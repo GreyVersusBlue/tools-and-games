@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 
 import {
   TRANSFER_FORMAT, TRANSFER_END_FORMAT, TRANSFER_VERSION, CHUNK_BYTES, CHUNK_PREFIX_BYTES, SIGNAL_PREFIX, SIGNAL_MOST, SENTENCES,
-  TransferError, packTransfer, createReceiver, chunkFrame, chunkCount, ackMessage, readAck,
+  TRANSFER_MOST_BYTES, TransferError, packTransfer, createReceiver, chunkFrame, chunkCount, ackMessage, readAck,
   encodeSignal, decodeSignal, toBase64Url, fromBase64Url, compressionAvailable,
 } from '../../engine/transfer.js';
 import { writeProjectFile, readProjectFile } from '../../engine/project-file.js';
@@ -503,4 +503,25 @@ test('a browser whose CompressionStream lacks deflate-raw (Chrome 80 to 102) mak
     [globalThis.CompressionStream, globalThis.DecompressionStream] = saved;
   }
   assert.equal(compressionAvailable(), true);
+});
+
+test('a header claiming more than 64 MB is refused, and a device without the room says so in a sentence', () => {
+  assert.equal(TRANSFER_MOST_BYTES, 64 * 1024 * 1024);
+  const header = (bytes) => JSON.stringify({ format: TRANSFER_FORMAT, version: 1, projectId: 'p1', bytes, sha256: 'a'.repeat(64), chunks: chunkCount(bytes) });
+  assert.throws(() => createReceiver({ subtle }).accept(header(TRANSFER_MOST_BYTES + 1)), refusal('badHeader'));
+  // The allocation itself failing, as it does on a phone short of memory.
+  const Real = globalThis.Uint8Array;
+  const receiver = createReceiver({ subtle });
+  try {
+    globalThis.Uint8Array = class extends Real {
+      constructor(...args) {
+        if (typeof args[0] === 'number' && args[0] > 1024) throw new RangeError('Array buffer allocation failed');
+        super(...args);
+      }
+    };
+    assert.throws(() => receiver.accept(header(TRANSFER_MOST_BYTES)), refusal('noRoom', /^[A-Z].*project file instead\.$/));
+  } finally {
+    globalThis.Uint8Array = Real;
+  }
+  assert.throws(() => receiver.accept(header(10)), refusal('noRoom'), 'and the refusal stays');
 });

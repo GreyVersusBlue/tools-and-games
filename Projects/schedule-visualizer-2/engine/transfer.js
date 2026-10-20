@@ -47,8 +47,12 @@ export const TRANSFER_VERSION = 1;
 export const CHUNK_BYTES = 16 * 1024;
 export const CHUNK_MAGIC = [0x53, 0x56, 0x32, 0x43];
 export const CHUNK_PREFIX_BYTES = 8;
-// No project comes near this; a header claiming more is not believed.
-export const TRANSFER_MOST_BYTES = 1024 * 1024 * 1024;
+// A header claiming more is not believed, and the receiver allocates the
+// whole file at the header, so this is also the most a phone is asked for.
+// The 3.13 sample project is 182 KB of JSON; traced floor plans ride inside
+// the project file as base64 images, and even several large ones leave 64 MB
+// far off.
+export const TRANSFER_MOST_BYTES = 64 * 1024 * 1024;
 
 export const SIGNAL_PREFIX = 'SV2:';
 export const SIGNAL_VERSION = 1;
@@ -72,6 +76,7 @@ export const SENTENCES = {
   afterEnd: 'A second start or end arrived after the end of the project, so nothing was changed. Try sending it again.',
   notEnded: 'The project has not finished arriving yet.',
   wrongHash: 'The project did not arrive whole: its check does not match what was sent, so nothing was changed. Try sending it again, or send the project file instead.',
+  noRoom: 'This device does not have the memory free to take the project, so nothing was changed. Close other tabs and try again, or send the project file instead.',
   notText: 'What arrived is not a project file, so nothing was changed. Try sending it again, or send the project file instead.',
   ackForeign: 'The other device\'s reply could not be read, so it is not known whether it took the project.',
   ackOther: 'The other device\'s reply is about a different sending, so it is not known whether it took this project.',
@@ -222,9 +227,14 @@ export function createReceiver(options) {
       if (trailer) refuse('afterEnd');
       if (value.format === TRANSFER_FORMAT) {
         if (header) refuse('secondHeader');
-        header = checkHeader(value);
-        buffer = new Uint8Array(header.bytes);
-        seen = new Uint8Array(header.chunks);
+        const checked = checkHeader(value);
+        try {
+          buffer = new Uint8Array(checked.bytes);
+          seen = new Uint8Array(checked.chunks);
+        } catch {
+          refuse('noRoom');
+        }
+        header = checked;
         return;
       }
       if (!header) refuse('noHeader');
