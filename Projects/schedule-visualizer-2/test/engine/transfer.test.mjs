@@ -479,3 +479,28 @@ test('a code whose check is right but which unpacks past 64 KB is refused, not o
   const edge = await codeWith([1, 1, 1], await deflated(new TextEncoder().encode('v'.repeat(64 * 1024))));
   assert.equal((await decodeSignal(edge, { subtle, expect: 'offer' })).sdp.length, 64 * 1024);
 });
+
+test('a browser whose CompressionStream lacks deflate-raw (Chrome 80 to 102) makes unpacked codes and says it cannot open a packed one', async () => {
+  const packed = await encodeSignal({ type: 'offer', sdp: OFFER }, { subtle });
+  const unpacked = await encodeSignal({ type: 'offer', sdp: OFFER }, { subtle, compress: false });
+  const saved = [globalThis.CompressionStream, globalThis.DecompressionStream];
+  // Constructors that know gzip and deflate only, and throw a TypeError on
+  // any other format, as those versions did.
+  const only = (Real) => function Stub(format) {
+    if (format !== 'gzip' && format !== 'deflate') throw new TypeError('Unsupported compression format: \'' + format + '\'');
+    return new Real(format);
+  };
+  try {
+    globalThis.CompressionStream = only(saved[0]);
+    globalThis.DecompressionStream = only(saved[1]);
+    assert.equal(compressionAvailable(), false);
+    assert.equal(await encodeSignal({ type: 'offer', sdp: OFFER }, { subtle }), unpacked);
+    await assert.rejects(decodeSignal(packed, { subtle, expect: 'offer' }), refusal('noInflate'));
+    // Compression with the format, decompression without: still not available.
+    globalThis.CompressionStream = saved[0];
+    assert.equal(compressionAvailable(), false);
+  } finally {
+    [globalThis.CompressionStream, globalThis.DecompressionStream] = saved;
+  }
+  assert.equal(compressionAvailable(), true);
+});

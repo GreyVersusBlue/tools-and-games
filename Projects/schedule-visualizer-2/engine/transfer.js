@@ -297,8 +297,18 @@ export function readAck(message, digest) {
 
 // ---------------------------------------------------------------- the connection codes
 
+// Both streams, with deflate-raw: Chrome 80 to 102 have the constructors
+// but only gzip and deflate, and throw a TypeError on any other format, so
+// the format is tried rather than the names looked for.
 export function compressionAvailable() {
-  return typeof CompressionStream === 'function' && typeof DecompressionStream === 'function';
+  if (typeof CompressionStream !== 'function' || typeof DecompressionStream !== 'function') return false;
+  try {
+    new CompressionStream('deflate-raw');
+    new DecompressionStream('deflate-raw');
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // The bytes through a compression stream; null, the stream cancelled, once
