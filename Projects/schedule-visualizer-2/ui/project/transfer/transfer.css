@@ -1,0 +1,166 @@
+/* Send to another device (SV2-29b): the card's two dialogs. The head (the
+   title and Close) stays in view and the body scrolls under it, on a phone
+   upright or on its side. Loaded by ui/project/transfer/index.js when
+   index.html has no link[data-sheet="transfer"]. */
+
+.dialog.xfer {
+  padding: 0;
+  overflow: hidden;
+  max-height: calc(100vh - var(--s-5));
+  max-height: calc(100dvh - var(--s-5));
+}
+
+.dialog.xfer[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.xfer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-5);
+  border-bottom: var(--border);
+}
+
+.xfer__head .dialog__title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.xfer__head .btn {
+  flex: none;
+}
+
+.xfer__scroll {
+  display: grid;
+  gap: var(--s-3);
+  min-height: 0;
+  overflow: auto;
+  padding: var(--s-4) var(--s-5) var(--s-5);
+}
+
+.xfer__body {
+  display: grid;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+.xfer__status {
+  font-weight: var(--w-medium);
+}
+
+.xfer__status:focus {
+  outline: none;
+}
+
+.xfer__status:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.xfer__shown,
+.xfer__taken {
+  display: grid;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+/* The QR code is dark on white in both themes, with its quiet margin drawn
+   inside the svg; a camera reads it best at about 3 px a module or more. */
+.xfer__qr-frame {
+  justify-self: center;
+  width: min(100%, 20rem);
+  padding: var(--s-1);
+  background: #ffffff;
+  border: var(--border);
+  border-radius: var(--r-1);
+}
+
+.xfer__qr {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.xfer__code,
+.xfer__paste {
+  width: 100%;
+  min-width: 0;
+  padding: var(--s-2);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--card);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  resize: vertical;
+}
+
+/* iOS zooms into a field under 16 px */
+@media (pointer: coarse) {
+  .xfer__code,
+  .xfer__paste {
+    font-size: 1rem;
+  }
+}
+
+.xfer__camera video {
+  display: block;
+  width: min(100%, 20rem);
+  margin-inline: auto;
+  border-radius: var(--r-1);
+  background: #000000;
+}
+
+.xfer__said:empty,
+.xfer__refused:empty,
+.xfer__copied:empty {
+  display: none;
+}
+
+.xfer__said,
+.xfer__copied,
+.xfer__parts {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.xfer__refused {
+  color: var(--problem);
+  font-weight: var(--w-medium);
+}
+
+.xfer__progress {
+  display: grid;
+  gap: var(--s-1);
+}
+
+.xfer__bar {
+  width: 100%;
+  height: 8px;
+  accent-color: var(--accent);
+}
+
+.xfer__alternative {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: var(--border);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--r-1);
+}
+
+@media (max-width: 639px) {
+  .xfer__head {
+    padding: var(--s-2) var(--s-4);
+  }
+
+  .xfer__scroll {
+    padding: var(--s-3) var(--s-4) var(--s-4);
+  }
+}
