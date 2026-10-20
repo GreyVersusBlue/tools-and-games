@@ -72,6 +72,8 @@
 .xfer__qr-frame {
   justify-self: center;
   width: min(100%, 20rem);
+  /* whole in the window under the dialog's head, a phone on its side too */
+  width: min(100%, 20rem, max(12rem, 100dvh - 9rem));
   padding: var(--s-1);
   background: #ffffff;
   border: var(--border);

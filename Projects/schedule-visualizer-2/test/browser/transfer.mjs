@@ -122,6 +122,9 @@ async function said(page, id, line) {
   });
 }
 
+const SEND_ENDS = ['applied', 'not-taken', 'lost', 'failed'];
+const RECEIVE_ENDS = ['confirm', 'applied', 'kept', 'lost', 'failed'];
+
 const codeOf = (page, kind) => page.$eval('textarea[data-code="' + kind + '"]', (el) => el.value);
 
 // Press a control by the keyboard: focus it, then Enter.
@@ -238,11 +241,24 @@ test('by the keyboard at 1280 by 900: the sample school goes over, is asked abou
     assert.equal(await figure(b.page, 'rooms'), '0');
     const pointsBefore = (await idb(b.page, 'recovery')).length;
 
+    // every connection either page makes is asked for with no ICE server
+    for (const page of [a.page, b.page]) {
+      await page.evaluate(() => {
+        const Real = globalThis.RTCPeerConnection;
+        globalThis.sv2configs = [];
+        globalThis.RTCPeerConnection = function made(config) {
+          globalThis.sv2configs.push(JSON.parse(JSON.stringify(config === undefined ? null : config)));
+          return new Real(config);
+        };
+        globalThis.RTCPeerConnection.prototype = Real.prototype;
+      });
+    }
     await connect(a, b, 'keyboard');
     const chunks = Number(await a.page.$eval('#' + SEND, (el) => el.dataset.chunks));
     assert.equal(chunks, 4, 'the sample school is four parts of 16 KB');
+    for (const page of [a.page, b.page]) assert.deepEqual(await page.evaluate(() => globalThis.sv2configs), [{ iceServers: [] }], 'one connection, no ICE server');
 
-    await reaches(b.page, RECEIVE, 'confirm');
+    assert.equal(await reaches(b.page, RECEIVE, RECEIVE_ENDS), 'confirm', 'the receiver asks before anything is replaced');
     await reaches(a.page, SEND, ['sent', 'sending']);
     rising(await b.page.evaluate(() => globalThis.sv2parts), chunks, 'the receiver');
     rising(await a.page.evaluate(() => globalThis.sv2parts), chunks, 'the sender');
@@ -261,9 +277,9 @@ test('by the keyboard at 1280 by 900: the sample school goes over, is asked abou
     assert.equal(await b.page.evaluate(() => document.activeElement.textContent), 'Replace my project');
     await b.page.keyboard.press('Enter');
 
-    await reaches(b.page, RECEIVE, 'applied');
+    assert.equal(await reaches(b.page, RECEIVE, RECEIVE_ENDS.slice(1)), 'applied');
     assert.match(await said(b.page, RECEIVE), /^Received and applied: 3 floors, 13 rooms, .* are here now\. Undo brings back the project that was here\.$/);
-    await reaches(a.page, SEND, 'applied');
+    assert.equal(await reaches(a.page, SEND, SEND_ENDS), 'applied', 'the sender hears the project was applied');
     assert.equal(await said(a.page, SEND), SENTENCES.applied);
 
     // replaced, one undo step, with the snapshot and the recovery point
@@ -324,6 +340,26 @@ test('by finger at 390 by 844: the same, with the title and Close in view and th
     for (const each of [a, b]) assert.deepEqual(each.session.problems().errors, []);
   } finally {
     await done(a, b);
+  }
+});
+
+test('on a phone on its side, 844 by 390, the QR code is whole in the window under the dialog\'s head', async () => {
+  const a = await device({ width: 844, height: 390, mobile: true });
+  try {
+    await a.page.tap('[data-action="send-project"]');
+    await reaches(a.page, SEND, 'offer');
+    // scrolled to the code: all of it lies between the head and the window's foot
+    const placed = await a.page.$eval('#transfer-send', (dialog) => {
+      const svg = dialog.querySelector('svg.xfer__qr');
+      svg.scrollIntoView({ block: 'center' });
+      const qr = svg.getBoundingClientRect();
+      const head = dialog.querySelector('.xfer__head').getBoundingClientRect();
+      return { top: qr.top, bottom: qr.bottom, head: head.bottom, window: innerHeight };
+    });
+    assert.ok(placed.top >= placed.head && placed.bottom <= placed.window, 'the QR code is whole in view: ' + JSON.stringify(placed));
+    assert.ok(await headInView(a.page, SEND));
+  } finally {
+    await done(a);
   }
 });
 
