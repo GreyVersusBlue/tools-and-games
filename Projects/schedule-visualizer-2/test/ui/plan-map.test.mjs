@@ -151,9 +151,10 @@ const corner = (height, tall = 38) => ({ x: 12, y: height - 12 - tall, w: 170, h
 const grown = (box, gap = ZOOM_GAP) => ({ x: box.x - gap, y: box.y - gap, w: box.w + gap * 2, h: box.h + gap * 2 });
 
 // stages of a section: a desktop window's, a phone's upright and on its
-// side (110 px was the walk-through's, 160 W5's least); the box 38 px tall
-// with a mouse, 46 with touch
-const STAGES = [[1080, 640, 38], [920, 540, 38], [390, 470, 46], [844, 160, 46], [844, 110, 46], [900, 140, 38]];
+// side (160 is W5's least); the box 38 px tall with a mouse, 46 with touch.
+// The walk-through's 110 px on its side has no clear fit with the map whole
+// and is SV2-72f's case below.
+const STAGES = [[1080, 640, 38], [920, 540, 38], [390, 470, 46], [844, 160, 46], [900, 140, 38]];
 
 test('W1: the sample school at Fit has no painted cell under the zoom box on any stage of the walk-through, where a plain fit has', () => {
   const floors = sampleSchool().building.floors;
@@ -170,7 +171,7 @@ test('W1: the sample school at Fit has no painted cell under the zoom box on any
     assert.ok(fitted.y >= -1e-9 || fitted.how === 'beside', width + ' by ' + height + ': the floors\' names run off the stage\'s top: ' + JSON.stringify(fitted));
     assert.ok(fitted.zoom <= plain.zoom + 1e-9, 'a fit round the box is never larger than the plain one');
   }
-  assert.ok(plainCovered >= 4, 'the plain fit covers a painted cell on only ' + plainCovered + ' stages: the case tests nothing');
+  assert.ok(plainCovered >= 3, 'the plain fit covers a painted cell on only ' + plainCovered + ' stages: the case tests nothing');
 });
 
 test('W1: a plain fit with only empty cells under the box stands, number for number the viewport\'s own fit', () => {
@@ -210,6 +211,29 @@ test('W1: the band above the box is taken where it clears the corner, never wide
   assert.equal(strip.how, 'beside', JSON.stringify(strip));
   assert.equal(strip.clear, true, JSON.stringify(strip));
   assert.ok(strip.x >= 12 + 170 + ZOOM_GAP - 1e-9, 'the floors start under the zoom box');
+});
+
+// ---- SV2-72f
+
+test('SV2-72f: where no band clears the zoom box with the map whole, Fit is the plain fit, every floor on the stage', () => {
+  const floors = sampleSchool().building.floors;
+  // Movement at 844 by 390 with touch: the stage 788 by 110, the zoom box 182 by 46 at 12 px
+  const [width, height] = [788, 110];
+  const layout = layoutFloors(floors, bestLayout(floors, width, height));
+  const box = { x: 12, y: height - 12 - 46, w: 182, h: 46 };
+  const fitted = fitClear(layout, width, height, box);
+  const size = CELL * fitted.zoom;
+  const floorsOff = layout.slots.filter((slot) => fitted.x + slot.x * size < -1e-9 || fitted.y + slot.y * size < -1e-9 || fitted.x + (slot.x + slot.w) * size > width + 1e-9 || fitted.y + (slot.y + slot.h) * size > height + 1e-9);
+  assert.equal(fitted.zoom, 0.25, 'the map is not at the least zoom: the case tests nothing');
+  // the band beside the box is clear and runs off the stage's right: what Fit took before
+  const beside = (width - box.x - box.w - ZOOM_GAP - FIT_MARGIN) / (layout.width * CELL);
+  assert.ok(beside < 0.25, 'the floors fit beside the box: the case tests nothing');
+  assert.deepEqual(floorsOff.map((slot) => slot.floor.name), [], 'floors off the stage at Fit: ' + JSON.stringify(fitted));
+  assert.equal(fitted.how, 'whole', JSON.stringify(fitted));
+  assert.equal(fitted.clear, false, 'the plain fit has painted cells under the box here, and says so');
+  // and a strip the plain fit cannot hold whole either keeps the clear band
+  const strip = fitClear(layout, 844, 60, corner(60, 46));
+  assert.equal(strip.how, 'beside', JSON.stringify(strip));
 });
 
 // ---- SV2-72c2

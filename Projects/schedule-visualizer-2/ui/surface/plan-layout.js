@@ -212,7 +212,9 @@ function placeIn(layout, band, m, keep) {
 // corner = the zoom box on the stage { x, y, w, h }, or null when it has no
 // box yet. The band above the box is taken whenever it leaves the corner
 // clear with the map whole on the stage, the band beside it only when that
-// one cannot (a strip at the least zoom). The band beside moves the floors
+// one cannot, and the plain fit, not clear, when neither is whole on the
+// stage and it is (SV2-72f); only where the plain fit is not whole either
+// (a strip at the least zoom) the clear band that shows more. The band beside moves the floors
 // right, toward a card on the stage's bottom right, so a section that asks
 // where the floors lie at Fit asks this, not a plain fit (the map's fitAt;
 // Movement's legend, docked when its card would lie on a floor:
@@ -246,10 +248,15 @@ export function fitClear(layout, width, height, corner, margin) {
     // a strip at the least zoom: the band above, the map run off the stage's top
     { ...placeIn(layout, band, { ...all, b: ZOOM_GAP }, 'bottom'), how: 'above' },
   ].map((place) => ({ ...place, clear: place.clear === undefined ? !paintedUnder(layout, place, box) : place.clear, shown: onStage(place) }));
-  // above, clear and whole; else beside, clear and whole; else of those
-  // that are clear the one that shows more of the map, the top kept on a tie
+  // above, clear and whole; else beside, clear and whole; else the plain
+  // fit when it is whole on the stage, the zoom buttons over some of it
+  // (SV2-72f: a fit that leaves a floor off the stage is no fit, spec 3.12;
+  // at 844 by 390 the band beside put Floor 3 158 px past the stage's right
+  // edge); else of those that are clear the one that shows more of the map,
+  // the top kept on a tie
   const clear = [above, beside, off].filter((place) => place.clear);
-  const pick = clear.find((place) => place.shown > 1 - 1e-9) || clear.sort((a, b) => b.shown - a.shown + (a === off ? 1e-9 : 0) - (b === off ? 1e-9 : 0))[0] || above;
+  const wholeOn = { ...whole, how: 'whole', clear: false };
+  const pick = clear.find((place) => place.shown > 1 - 1e-9) || (onStage(wholeOn) > 1 - 1e-9 ? wholeOn : null) || clear.sort((a, b) => b.shown - a.shown + (a === off ? 1e-9 : 0) - (b === off ? 1e-9 : 0))[0] || above;
   const { shown, ...place } = pick;
   return place;
 }
