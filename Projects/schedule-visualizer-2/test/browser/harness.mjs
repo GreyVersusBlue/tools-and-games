@@ -73,10 +73,29 @@ export async function waitForSection(page, id) {
 // with no saved project and no recovery points. localStorage is left alone
 // (the theme a test chose is meant to last). Without this, one screen's edits
 // would be the next screen's saved project.
+//
+// The CDP session this uses is made once per page and kept on it, never
+// detached; it goes when the page closes. Detaching one takes the page's
+// touch emulation with it, in the browser and after detach() has returned:
+// a phone's page then loads with no touch and a fine pointer. Asking for the
+// size again after the detach did not stop it; in a loop of 20 loads with
+// the session detached each time and setViewport called after, 5 to 6 came
+// up without touch, and 20 of 20 with the CPU throttled 20 times (SV2-72b,
+// the failure CI saw in SV2-57 item 5). With the session kept, 0 of 20.
 export async function clearSaved(page, base) {
-  const client = typeof page.createCDPSession === 'function' ? await page.createCDPSession() : await page.context().newCDPSession(page);
-  await client.send('Storage.clearDataForOrigin', { origin: base, storageTypes: 'indexeddb' });
-  await client.detach();
+  if (!page.__storageSession) {
+    page.__storageSession = typeof page.createCDPSession === 'function' ? await page.createCDPSession() : await page.context().newCDPSession(page);
+  }
+  await page.__storageSession.send('Storage.clearDataForOrigin', { origin: base, storageTypes: 'indexeddb' });
+}
+
+// A page asked for with touch has to have it once loaded: throw, rather than
+// let a suite measure a phone's screen with a fine pointer (SV2-72b).
+export async function assertTouch(page, what) {
+  const points = await page.evaluate(() => navigator.maxTouchPoints);
+  if (!(points > 0)) {
+    throw new Error('The harness asked for a touch page and the page loaded without touch (navigator.maxTouchPoints is ' + points + '): ' + what);
+  }
 }
 
 // Is this address inside the page's own origin? What the page makes itself
@@ -173,17 +192,17 @@ export async function openPlanner(options) {
     }
     if (opts.keep !== true) {
       await clearSaved(page, server.base);
-      // The CDP session clearSaved opens and closes takes Puppeteer's touch
-      // emulation with it: a page asked for as a phone then loads with no
-      // touch and a fine pointer, so the layout a finger gets (the 44 px
-      // rules under `pointer: coarse`) was never the one measured (SV2-55:
-      // the live 844 by 390 map was 41 px with touch, 106 px without). The
-      // page's size is asked for again before it loads.
+      // A detached CDP session once took the page's touch emulation away
+      // here (SV2-55: the live 844 by 390 map was 41 px with touch, 106 px
+      // without); clearSaved keeps its session now (SV2-72b). Asking for the
+      // size again changes nothing when touch is still on, and the check
+      // after the load is what says whether it is.
       if (size.mobile && browser.__engine !== 'playwright') await page.setViewport({ width: size.width, height: size.height, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
     }
     await page.goto(url(hash), { waitUntil: 'load' });
     await waitForSection(page, (hash.replace(/^#/, '').split('/')[0]) || 'building');
     await page.evaluate(() => document.fonts.ready);
+    if (size.mobile) await assertTouch(page, 'openPlanner ' + size.width + ' by ' + size.height + ' at ' + url(hash));
   } catch (error) {
     if (page) {
       let wait = null;
@@ -229,10 +248,10 @@ export async function go(page, hash) {
 // saved project (unless the screen says `keep: true`), then whatever the
 // screen needs opened. The page is at the size the session was opened at,
 // or at the screen's own `viewport` ({ width, height, mobile }), asked for
-// again after clearSaved and before the load (SV2-57 item 5): the CDP
-// session clearSaved opens and closes takes Puppeteer's touch emulation
-// with it, so a phone's page loaded with a fine pointer and the sweeps
-// measured a layout no finger gets (openPlanner does the same since SV2-55).
+// before the load (SV2-57 item 5). A page wanted with touch is checked for
+// it once loaded, and visit() throws when it has none (SV2-72b: a phone's
+// page that loaded with a fine pointer would have the sweeps measure a
+// layout no finger gets).
 export async function visit(session, screen) {
   const { page } = session;
   const sized = typeof page.setViewport === 'function';
@@ -240,14 +259,16 @@ export async function visit(session, screen) {
   if (sized && !page.__visitSize) page.__visitSize = page.viewport();
   await page.goto('about:blank');
   if (screen.keep !== true) await clearSaved(page, session.base);
+  let wanted = null;
   if (sized) {
     const own = screen.viewport;
-    const wanted = own ? { width: own.width, height: own.height, deviceScaleFactor: 1, hasTouch: own.mobile === true, isMobile: own.mobile === true } : page.__visitSize;
+    wanted = own ? { width: own.width, height: own.height, deviceScaleFactor: 1, hasTouch: own.mobile === true, isMobile: own.mobile === true } : page.__visitSize;
     if (wanted) await page.setViewport(wanted);
   }
   await page.goto(session.url(screen.hash), { waitUntil: 'load' });
   await waitForSection(page, screen.hash.replace(/^#/, '').split('/')[0]);
   await page.evaluate(() => document.fonts.ready);
+  if (wanted && wanted.hasTouch) await assertTouch(page, 'visit ' + (screen.id || screen.hash) + ' at ' + wanted.width + ' by ' + wanted.height);
   if (screen.open) await screen.open(page);
 }
 
