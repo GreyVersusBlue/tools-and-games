@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 
 import {
   TRANSFER_FORMAT, TRANSFER_END_FORMAT, TRANSFER_VERSION, CHUNK_BYTES, CHUNK_PREFIX_BYTES, SIGNAL_PREFIX, SIGNAL_MOST, SENTENCES,
-  TransferError, packTransfer, createReceiver, chunkFrame, chunkCount, ackMessage, readAck,
+  TRANSFER_MOST_BYTES, TransferError, packTransfer, createReceiver, chunkFrame, chunkCount, ackMessage, readAck,
   encodeSignal, decodeSignal, toBase64Url, fromBase64Url, compressionAvailable,
 } from '../../engine/transfer.js';
 import { writeProjectFile, readProjectFile } from '../../engine/project-file.js';
@@ -449,4 +449,123 @@ test('an offer goes into a QR code and is read back from its modules and from a 
   const fromFrame = decodeLuminance(luminance, width, height);
   assert.equal(fromFrame && fromFrame.text, code);
   assert.equal((await decodeSignal(fromFrame.text, { subtle, expect: 'offer' })).sdp, OFFER);
+});
+
+// ---------------------------------------------------------------- SV2-29c
+
+// Bytes through deflate-raw, for codes built by hand.
+async function deflated(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+test('a code longer than one QR code holds is refused before it is read, its check right or not', async () => {
+  const random = seededRandom('over');
+  const body = Uint8Array.from({ length: 1800 }, () => 97 + Math.floor(random() * 26));
+  const code = await codeWith([1, 1, 0], body);
+  assert.ok(code.length > SIGNAL_MOST, code.length + ' characters');
+  await assert.rejects(decodeSignal(code, { subtle, expect: 'offer' }), refusal('too-long', /too long for one QR code \(\d+ characters; one holds 2331\)/));
+  // Spaces do not count toward the length: the same code wrapped is still too long, and a short one wrapped wide is not.
+  const fits = await encodeSignal({ type: 'offer', sdp: OFFER }, { subtle });
+  assert.equal((await decodeSignal(fits.replace(/(.)/g, '$1 '), { subtle, expect: 'offer' })).sdp, OFFER);
+});
+
+test('a code whose check is right but which unpacks past 64 KB is refused, not opened', async () => {
+  const body = await deflated(new TextEncoder().encode('v'.repeat(200 * 1024)));
+  const code = await codeWith([1, 1, 1], body);
+  assert.ok(code.length <= SIGNAL_MOST, code.length + ' characters');
+  await assert.rejects(decodeSignal(code, { subtle, expect: 'offer' }), refusal('too-long', /more than 64 KB/));
+  // Exactly 64 KB opens.
+  const edge = await codeWith([1, 1, 1], await deflated(new TextEncoder().encode('v'.repeat(64 * 1024))));
+  assert.equal((await decodeSignal(edge, { subtle, expect: 'offer' })).sdp.length, 64 * 1024);
+});
+
+test('a browser whose CompressionStream lacks deflate-raw (Chrome 80 to 102) makes unpacked codes and says it cannot open a packed one', async () => {
+  const packed = await encodeSignal({ type: 'offer', sdp: OFFER }, { subtle });
+  const unpacked = await encodeSignal({ type: 'offer', sdp: OFFER }, { subtle, compress: false });
+  const saved = [globalThis.CompressionStream, globalThis.DecompressionStream];
+  // Constructors that know gzip and deflate only, and throw a TypeError on
+  // any other format, as those versions did.
+  const only = (Real) => function Stub(format) {
+    if (format !== 'gzip' && format !== 'deflate') throw new TypeError('Unsupported compression format: \'' + format + '\'');
+    return new Real(format);
+  };
+  try {
+    globalThis.CompressionStream = only(saved[0]);
+    globalThis.DecompressionStream = only(saved[1]);
+    assert.equal(compressionAvailable(), false);
+    assert.equal(await encodeSignal({ type: 'offer', sdp: OFFER }, { subtle }), unpacked);
+    await assert.rejects(decodeSignal(packed, { subtle, expect: 'offer' }), refusal('noInflate'));
+    // Compression with the format, decompression without: still not available.
+    globalThis.CompressionStream = saved[0];
+    assert.equal(compressionAvailable(), false);
+  } finally {
+    [globalThis.CompressionStream, globalThis.DecompressionStream] = saved;
+  }
+  assert.equal(compressionAvailable(), true);
+});
+
+test('a header claiming more than 64 MB is refused, and a device without the room says so in a sentence', () => {
+  assert.equal(TRANSFER_MOST_BYTES, 64 * 1024 * 1024);
+  const header = (bytes) => JSON.stringify({ format: TRANSFER_FORMAT, version: 1, projectId: 'p1', bytes, sha256: 'a'.repeat(64), chunks: chunkCount(bytes) });
+  assert.throws(() => createReceiver({ subtle }).accept(header(TRANSFER_MOST_BYTES + 1)), refusal('badHeader'));
+  // The allocation itself failing, as it does on a phone short of memory.
+  const Real = globalThis.Uint8Array;
+  const receiver = createReceiver({ subtle });
+  try {
+    globalThis.Uint8Array = class extends Real {
+      constructor(...args) {
+        if (typeof args[0] === 'number' && args[0] > 1024) throw new RangeError('Array buffer allocation failed');
+        super(...args);
+      }
+    };
+    assert.throws(() => receiver.accept(header(TRANSFER_MOST_BYTES)), refusal('noRoom', /^[A-Z].*project file instead\.$/));
+  } finally {
+    globalThis.Uint8Array = Real;
+  }
+  assert.throws(() => receiver.accept(header(10)), refusal('noRoom'), 'and the refusal stays');
+});
+
+test('the sender refuses a project id the receiver would refuse: over 64 characters', async () => {
+  await assert.rejects(packTransfer('x', { projectId: 'p'.repeat(65), subtle }), TypeError);
+  const pack = await packTransfer('x', { projectId: 'p'.repeat(64), subtle });
+  assert.equal((await receiveAll(pack.frames)).projectId, 'p'.repeat(64));
+});
+
+test('a kind is offer or answer only, not a name every object has', async () => {
+  for (const type of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+    await assert.rejects(encodeSignal({ type, sdp: OFFER }, { subtle }), TypeError, 'encode ' + type);
+    const code = await encodeSignal({ type: 'offer', sdp: OFFER }, { subtle });
+    await assert.rejects(decodeSignal(code, { subtle, expect: type }), TypeError, 'expect ' + type);
+  }
+});
+
+test('a project file that starts with a byte order mark arrives with it, its text matching its bytes and hash', async () => {
+  const text = '\uFEFF' + sampleFile();
+  const pack = await packTransfer(text, { projectId: 'p1', subtle });
+  const out = await receiveAll(pack.frames);
+  assert.equal(out.text, text);
+  assert.deepEqual(new TextEncoder().encode(out.text), out.bytes);
+  // A description too, though no browser writes one so.
+  for (const compress of [true, false]) {
+    const code = await encodeSignal({ type: 'offer', sdp: '\uFEFF' + OFFER }, { subtle, compress });
+    assert.equal((await decodeSignal(code, { subtle, expect: 'offer' })).sdp, '\uFEFF' + OFFER, 'compress ' + compress);
+  }
+});
+
+test('a code from a newer format is called newer even when its check is not four bytes or its length not ours', async () => {
+  const body = new TextEncoder().encode('v=0 from a later version');
+  for (const checkBytes of [0, 2, 8, 16]) {
+    const payload = new Uint8Array(3 + body.length + checkBytes);
+    payload.set([2, 1, 0], 0);
+    payload.set(body, 3);
+    const check = new Uint8Array(await subtle.digest('SHA-256', payload.subarray(0, 3 + body.length)));
+    payload.set(check.subarray(0, checkBytes), 3 + body.length);
+    await assert.rejects(decodeSignal(SIGNAL_PREFIX + toBase64Url(payload), { subtle, expect: 'offer' }), refusal('newerCode'), checkBytes + ' check bytes');
+  }
+  // Text that is not base64url of whole bytes, but whose first two characters give version 2.
+  await assert.rejects(decodeSignal(SIGNAL_PREFIX + 'AgEAdj0w5', { subtle, expect: 'offer' }), refusal('newerCode'));
+  // A version-1 code with a wrong check is still mistyped.
+  const code = await encodeSignal({ type: 'offer', sdp: OFFER }, { subtle });
+  await assert.rejects(decodeSignal(code.slice(0, -1) + (code.endsWith('A') ? 'Q' : 'A'), { subtle, expect: 'offer' }), refusal('mistyped'));
 });

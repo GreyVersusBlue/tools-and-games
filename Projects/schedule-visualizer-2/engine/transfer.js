@@ -47,16 +47,26 @@ export const TRANSFER_VERSION = 1;
 export const CHUNK_BYTES = 16 * 1024;
 export const CHUNK_MAGIC = [0x53, 0x56, 0x32, 0x43];
 export const CHUNK_PREFIX_BYTES = 8;
-// No project comes near this; a header claiming more is not believed.
-export const TRANSFER_MOST_BYTES = 1024 * 1024 * 1024;
+// A header claiming more is not believed, and the receiver allocates the
+// whole file at the header, so this is also the most a phone is asked for.
+// The 3.13 sample project is 182 KB of JSON; traced floor plans ride inside
+// the project file as base64 images, and even several large ones leave 64 MB
+// far off.
+export const TRANSFER_MOST_BYTES = 64 * 1024 * 1024;
 
 export const SIGNAL_PREFIX = 'SV2:';
 export const SIGNAL_VERSION = 1;
 export const SIGNAL_KINDS = { offer: 1, answer: 2 };
 export const SIGNAL_CHECK_BYTES = 4;
 // The most characters one QR code holds at error correction M (version 40,
-// byte mode). A code longer than this is refused when it is made.
+// byte mode). A code longer than this is refused when it is made and when
+// it is read.
 export const SIGNAL_MOST = 2331;
+// The most a code's description may unpack to. A browser's offer or answer
+// for one data channel is under 2 KB; deflate turns 100 KB of one letter
+// into a few hundred bytes, so a code that fits the QR limit could otherwise
+// unpack to hundreds of megabytes.
+export const SIGNAL_INFLATED_MOST = 64 * 1024;
 
 export const SENTENCES = {
   foreign: 'This did not come from Send to another device in Schedule Visualizer 2, so nothing was changed.',
@@ -67,6 +77,7 @@ export const SENTENCES = {
   afterEnd: 'A second start or end arrived after the end of the project, so nothing was changed. Try sending it again.',
   notEnded: 'The project has not finished arriving yet.',
   wrongHash: 'The project did not arrive whole: its check does not match what was sent, so nothing was changed. Try sending it again, or send the project file instead.',
+  noRoom: 'This device does not have the memory free to take the project, so nothing was changed. Close other tabs and try again, or send the project file instead.',
   notText: 'What arrived is not a project file, so nothing was changed. Try sending it again, or send the project file instead.',
   ackForeign: 'The other device\'s reply could not be read, so it is not known whether it took the project.',
   ackOther: 'The other device\'s reply is about a different sending, so it is not known whether it took this project.',
@@ -76,6 +87,7 @@ export const SENTENCES = {
   wantedOffer: 'This is a reply code. Paste the code from the device that is sending the project.',
   wantedAnswer: 'This is a sending device\'s code. Paste the reply code from the device that is receiving the project.',
   noInflate: 'This browser cannot open that code. Send the project file instead.',
+  tooBig: 'This code unpacks to more than 64 KB, which no connection code does, so it was not opened. Copy the code from the other device again, or send the project file instead.',
 };
 
 export class TransferError extends Error {
@@ -116,6 +128,10 @@ function fileBytes(file) {
   throw new TypeError('the project file is its text or its bytes');
 }
 
+// The sender and the receiver hold a project id to the same rule.
+export const PROJECT_ID_MOST = 64;
+const soundProjectId = (id) => typeof id === 'string' && id !== '' && id.length <= PROJECT_ID_MOST;
+
 export function chunkCount(bytes) {
   return Math.ceil(bytes / CHUNK_BYTES);
 }
@@ -131,7 +147,7 @@ export function chunkFrame(index, data) {
 export async function packTransfer(file, options) {
   const subtle = needSubtle(options);
   const projectId = options.projectId;
-  if (typeof projectId !== 'string' || projectId === '') throw new TypeError('options.projectId names the project being sent');
+  if (!soundProjectId(projectId)) throw new TypeError('options.projectId names the project being sent, in 1 to ' + PROJECT_ID_MOST + ' characters');
   const bytes = fileBytes(file);
   if (bytes.length === 0) throw new TypeError('the project file is empty');
   const digest = hex(await sha256(subtle, bytes));
@@ -171,7 +187,7 @@ function readFrame(text, formats) {
 }
 
 function checkHeader(value) {
-  const sound = typeof value.projectId === 'string' && value.projectId !== '' && value.projectId.length <= 64
+  const sound = soundProjectId(value.projectId)
     && Number.isInteger(value.bytes) && value.bytes > 0 && value.bytes <= TRANSFER_MOST_BYTES
     && typeof value.sha256 === 'string' && /^[0-9a-f]{64}$/.test(value.sha256)
     && value.chunks === chunkCount(value.bytes);
@@ -216,9 +232,14 @@ export function createReceiver(options) {
       if (trailer) refuse('afterEnd');
       if (value.format === TRANSFER_FORMAT) {
         if (header) refuse('secondHeader');
-        header = checkHeader(value);
-        buffer = new Uint8Array(header.bytes);
-        seen = new Uint8Array(header.chunks);
+        const checked = checkHeader(value);
+        try {
+          buffer = new Uint8Array(checked.bytes);
+          seen = new Uint8Array(checked.chunks);
+        } catch {
+          refuse('noRoom');
+        }
+        header = checked;
         return;
       }
       if (!header) refuse('noHeader');
@@ -264,7 +285,7 @@ export function createReceiver(options) {
         if (digest !== header.sha256 || trailer.sha256 !== header.sha256) refuse('wrongHash');
         let text;
         try {
-          text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+          text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buffer);
         } catch {
           refuse('notText');
         }
@@ -291,11 +312,23 @@ export function readAck(message, digest) {
 
 // ---------------------------------------------------------------- the connection codes
 
+// Both streams, with deflate-raw: Chrome 80 to 102 have the constructors
+// but only gzip and deflate, and throw a TypeError on any other format, so
+// the format is tried rather than the names looked for.
 export function compressionAvailable() {
-  return typeof CompressionStream === 'function' && typeof DecompressionStream === 'function';
+  if (typeof CompressionStream !== 'function' || typeof DecompressionStream !== 'function') return false;
+  try {
+    new CompressionStream('deflate-raw');
+    new DecompressionStream('deflate-raw');
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-async function through(bytes, stream) {
+// The bytes through a compression stream; null, the stream cancelled, once
+// the output passes `most` bytes.
+async function through(bytes, stream, most = Infinity) {
   const writer = stream.writable.getWriter();
   writer.write(bytes).catch(() => {});
   writer.close().catch(() => {});
@@ -307,6 +340,10 @@ async function through(bytes, stream) {
     if (done) break;
     pieces.push(value);
     length += value.length;
+    if (length > most) {
+      reader.cancel().catch(() => {});
+      return null;
+    }
   }
   const out = new Uint8Array(length);
   let at = 0;
@@ -351,11 +388,24 @@ export function fromBase64Url(text) {
   return out;
 }
 
+// A code's first byte, its version, from its first two characters; 0 when
+// they are not there or not base64url.
+function versionOf(encoded) {
+  if (encoded.length < 2) return 0;
+  const high = BASE64URL.indexOf(encoded[0]);
+  const low = BASE64URL.indexOf(encoded[1]);
+  return high < 0 || low < 0 ? 0 : (high << 2) | (low >> 4);
+}
+
+function refuseTooLong(length) {
+  refuse('too-long', 'This connection code is too long for one QR code (' + length + ' characters; one holds ' + SIGNAL_MOST + '). Send the project file instead.');
+}
+
 // options: { subtle, compress } — compress false packs the description as
 // it is; left out, it is deflated wherever the browser can.
 export async function encodeSignal(description, options) {
   const subtle = needSubtle(options);
-  if (!isObject(description) || !(description.type in SIGNAL_KINDS) || typeof description.sdp !== 'string') throw new TypeError('a session description is { type: "offer" or "answer", sdp }');
+  if (!isObject(description) || !Object.hasOwn(SIGNAL_KINDS, description.type) || typeof description.sdp !== 'string') throw new TypeError('a session description is { type: "offer" or "answer", sdp }');
   const wantCompress = !(options && options.compress === false) && compressionAvailable();
   let body = new TextEncoder().encode(description.sdp);
   if (wantCompress) body = await through(body, new CompressionStream('deflate-raw'));
@@ -367,9 +417,7 @@ export async function encodeSignal(description, options) {
   const check = await sha256(subtle, payload.subarray(0, 3 + body.length));
   payload.set(check.subarray(0, SIGNAL_CHECK_BYTES), 3 + body.length);
   const code = SIGNAL_PREFIX + toBase64Url(payload);
-  if (code.length > SIGNAL_MOST) {
-    throw new TransferError('This connection code is too long for one QR code (' + code.length + ' characters; one holds ' + SIGNAL_MOST + '). Send the project file instead.', 'too-long');
-  }
+  if (code.length > SIGNAL_MOST) refuseTooLong(code.length);
   return code;
 }
 
@@ -379,15 +427,24 @@ export async function encodeSignal(description, options) {
 export async function decodeSignal(code, options) {
   const subtle = needSubtle(options);
   const expect = options.expect;
-  if (!(expect in SIGNAL_KINDS)) throw new TypeError('options.expect is "offer" or "answer"');
+  if (!Object.hasOwn(SIGNAL_KINDS, expect)) throw new TypeError('options.expect is "offer" or "answer"');
   const text = typeof code === 'string' ? code.replace(/\s+/g, '') : '';
   if (text.slice(0, SIGNAL_PREFIX.length).toUpperCase() !== SIGNAL_PREFIX) refuse('notCode');
-  const payload = fromBase64Url(text.slice(SIGNAL_PREFIX.length));
-  if (!payload) refuse('mistyped');
-  if (payload.length < 3 + SIGNAL_CHECK_BYTES) refuse('mistyped');
+  // No code this side makes is longer, so a longer one is not read at all.
+  if (text.length > SIGNAL_MOST) refuseTooLong(text.length);
+  const encoded = text.slice(SIGNAL_PREFIX.length);
+  // The version byte is read first, from the first two characters, since a
+  // later version may lay out the rest differently (another check length,
+  // say) and would otherwise read as mistyped. A typo in those two
+  // characters of one of ours can read as newer too; the sentence then says
+  // to reload, which costs a reload, and the code is refused either way.
+  const mistaken = () => refuse(versionOf(encoded) > SIGNAL_VERSION ? 'newerCode' : 'mistyped');
+  const payload = fromBase64Url(encoded);
+  if (!payload) mistaken();
+  if (payload.length < 3 + SIGNAL_CHECK_BYTES) mistaken();
   const end = payload.length - SIGNAL_CHECK_BYTES;
   const check = await sha256(subtle, payload.subarray(0, end));
-  for (let i = 0; i < SIGNAL_CHECK_BYTES; i += 1) if (check[i] !== payload[end + i]) refuse('mistyped');
+  for (let i = 0; i < SIGNAL_CHECK_BYTES; i += 1) if (check[i] !== payload[end + i]) mistaken();
   if (payload[0] > SIGNAL_VERSION) refuse('newerCode');
   if (payload[0] < 1) refuse('notCode');
   const type = Object.keys(SIGNAL_KINDS).find((kind) => SIGNAL_KINDS[kind] === payload[1]);
@@ -396,15 +453,18 @@ export async function decodeSignal(code, options) {
   let body = payload.slice(3, end);
   if (payload[2] === 1) {
     if (!compressionAvailable()) refuse('noInflate');
+    let inflated;
     try {
-      body = await through(body, new DecompressionStream('deflate-raw'));
+      inflated = await through(body, new DecompressionStream('deflate-raw'), SIGNAL_INFLATED_MOST);
     } catch {
       refuse('mistyped');
     }
+    if (inflated === null) refuse('too-long', SENTENCES.tooBig);
+    body = inflated;
   }
   let sdp;
   try {
-    sdp = new TextDecoder('utf-8', { fatal: true }).decode(body);
+    sdp = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(body);
   } catch {
     refuse('mistyped');
   }

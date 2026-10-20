@@ -119,7 +119,11 @@ function looksLikeFinder(counts) {
 }
 
 // The five runs through (x, y) along a direction, the centre run holding
-// (x, y); null when they do not fit, or are much longer than `most`.
+// (x, y); null when they do not fit, or are much longer than `most`. Every
+// run is walked only as far as it could still fit: the centre to three times
+// `most`, the others to `most`. Unbounded, the centre walked a long dark
+// line end to end on every row that crossed it, and a frame of stripes cost
+// width × height² (SV2-29c: 25 s for one 4K frame).
 function runsThrough(bits, width, height, x, y, dx, dy, most) {
   const at = (px, py) => bits[py * width + px];
   const inside = (px, py) => px >= 0 && py >= 0 && px < width && py < height;
@@ -128,14 +132,25 @@ function runsThrough(bits, width, height, x, y, dx, dy, most) {
   // Backwards: the centre's first half, the light ring, the dark ring.
   let px = x;
   let py = y;
-  while (inside(px, py) && at(px, py)) { counts[2] += 1; px -= dx; py -= dy; }
+  const centreMost = 3 * most;
+  while (inside(px, py) && at(px, py)) {
+    counts[2] += 1;
+    if (counts[2] > centreMost) return null;
+    px -= dx;
+    py -= dy;
+  }
   while (inside(px, py) && !at(px, py) && counts[1] <= most) { counts[1] += 1; px -= dx; py -= dy; }
   while (inside(px, py) && at(px, py) && counts[0] <= most) { counts[0] += 1; px -= dx; py -= dy; }
   const startX = px + dx;
   const startY = py + dy;
   px = x + dx;
   py = y + dy;
-  while (inside(px, py) && at(px, py)) { counts[2] += 1; px += dx; py += dy; }
+  while (inside(px, py) && at(px, py)) {
+    counts[2] += 1;
+    if (counts[2] > centreMost) return null;
+    px += dx;
+    py += dy;
+  }
   while (inside(px, py) && !at(px, py) && counts[3] <= most) { counts[3] += 1; px += dx; py += dy; }
   while (inside(px, py) && at(px, py) && counts[4] <= most) { counts[4] += 1; px += dx; py += dy; }
   if (!looksLikeFinder(counts)) return null;
@@ -145,9 +160,17 @@ function runsThrough(bits, width, height, x, y, dx, dy, most) {
   return { counts, total, centre: (dx !== 0 ? startX : startY) + centre };
 }
 
-function findFinders(bits, width, height) {
+// At most this many places are kept: consider() looks through them all for
+// each row that crosses a finder, and a real code has three.
+export const FINDERS_MOST = 300;
+
+export function findFinders(bits, width, height) {
   const found = [];
+  // A finder is 7 of a symbol's 21 or more modules across, so one wider than
+  // half the frame's shorter side belongs to no code the frame holds whole.
+  const widest = Math.max(7, Math.min(width, height) / 2);
   const consider = (x, y, horizontal) => {
+    if (horizontal.total > widest) return;
     const column = Math.floor(x);
     const vertical = runsThrough(bits, width, height, column, y, 0, 1, horizontal.total);
     if (!vertical || 5 * Math.abs(vertical.total - horizontal.total) >= 3 * horizontal.total) return;
@@ -168,7 +191,7 @@ function findFinders(bits, width, height) {
         return;
       }
     }
-    found.push({ x: cx, y: cy, module, count: 1 });
+    if (found.length < FINDERS_MOST) found.push({ x: cx, y: cy, module, count: 1 });
   };
   for (let y = 0; y < height; y += 1) {
     const counts = [0, 0, 0, 0, 0];

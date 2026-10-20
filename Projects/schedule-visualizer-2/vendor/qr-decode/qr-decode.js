@@ -121,7 +121,7 @@ export function decodeMatrix(symbol) {
   let at = 0;
   let corrected = 0;
   for (let b = 0; b < blocks.length; b += 1) {
-    const mended = correct(blocks[b], layout.ecPerBlock);
+    const mended = correct(blocks[b], layout.ecPerBlock, misdecodeProtection(version, level));
     if (mended === null) return null;
     corrected += mended;
     data.set(blocks[b].subarray(0, layout.blocks[b].data), at);
@@ -134,12 +134,24 @@ export function decodeMatrix(symbol) {
 
 // ---------------------------------------------------------------- Reed-Solomon, corrected
 
+// ISO/IEC 18004:2015 Table 9, note b: the misdecode-protection codewords p
+// of the smallest symbols. Of their n error correction codewords, p are kept
+// for catching a misdecode and (n - p) / 2 errors are mended, the capacity
+// the table lists: 1-L (26,19,2), 1-M (26,16,4), 1-Q (26,13,6),
+// 1-H (26,9,8), 2-L (44,34,4), 3-L (70,55,7). Every other symbol has p = 0.
+const MISDECODE_PROTECTION = { '1-L': 3, '1-M': 2, '1-Q': 1, '1-H': 1, '2-L': 2, '3-L': 1 };
+
+export function misdecodeProtection(version, level) {
+  return MISDECODE_PROTECTION[version + '-' + level] || 0;
+}
+
 // Mend one block in place: data then n error correction codewords, the
-// generator's roots 2^0 … 2^(n-1). Returns how many codewords were changed,
-// or null when there are more errors than the block can mend (at most n/2).
+// generator's roots 2^0 … 2^(n-1), p of them held back for misdecode
+// protection. Returns how many codewords were changed, or null when there
+// are more errors than the block may mend (at most (n - p) / 2).
 // Berlekamp-Massey finds the error locator, a Chien search its roots and
 // Forney's formula the size of each error.
-export function correct(block, n) {
+export function correct(block, n, p = 0) {
   const length = block.length;
   const syndromes = new Uint8Array(n);
   let clean = true;
@@ -182,7 +194,7 @@ export function correct(block, n) {
   }
   while (lambda.length > 1 && lambda[lambda.length - 1] === 0) lambda.pop();
   const degree = lambda.length - 1;
-  if (degree !== errors || 2 * errors > n) return null;
+  if (degree !== errors || 2 * errors > n - p) return null;
 
   // Chien search: position p (counted from the end of the block, so the
   // codeword's power of x) is in error when lambda(2^-p) = 0.
