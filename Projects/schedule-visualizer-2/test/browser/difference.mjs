@@ -296,6 +296,72 @@ test('the card at the keyboard cursor: one sentence in the live region, in place
   await page.waitForFunction(() => document.querySelector('[data-card="difference"]').hidden);
 });
 
+test('SV2-72d 8: the difference table is laid out by scenarios.css, not inline styles: its five shares and the figures\' headings at the right', async () => {
+  const page = wide.page;
+  await open(page, [MOVE]);
+  await painted(page);
+  const table = await page.evaluate(() => {
+    const el = document.querySelector('[data-part="difference-table"]');
+    if (!el || el.getClientRects().length === 0) throw new Error('the table has no box');
+    const whole = el.getBoundingClientRect().width;
+    const heads = Array.from(el.querySelectorAll('thead th'));
+    return {
+      styled: Array.from(el.querySelectorAll('[style]')).length,
+      shares: heads.map((th) => Math.round((100 * th.getBoundingClientRect().width) / whole)),
+      sides: heads.map((th) => getComputedStyle(th).textAlign),
+    };
+  });
+  assert.equal(table.styled, 0, 'no inline style in the table');
+  [28, 17, 16, 13, 26].forEach((share, i) => assert.ok(Math.abs(table.shares[i] - share) <= 1, 'column ' + (i + 1) + ': ' + table.shares[i] + '% for ' + share + '%'));
+  assert.deepEqual(table.sides, ['left', 'left', 'right', 'right', 'right']);
+});
+
+test('SV2-72d 7: one cursor move says one sentence: the card\'s on a cell with a card, the lab\'s own line on one without, never both in turn', async () => {
+  const page = wide.page;
+  await open(page, [MOVE]);
+  const s = await state(page);
+  const hot = strongest(s.busier);
+  await where(page, hot.floorId, hot.cell);
+  await painted(page);
+  await page.evaluate(async (f, c) => {
+    const { placeOf } = await import(new URL('ui/surface/plan-layout.js', location.href).href);
+    const plan = document.querySelector('.scn').scenarios.plan;
+    const p = placeOf(plan.world, f, c);
+    plan.focus();
+    plan.cursor.moveTo(p.x - 1, p.y, true);
+    // every text the live region is given, in turn
+    globalThis.__said = [];
+    globalThis.__sayWatch = new MutationObserver(() => globalThis.__said.push(document.getElementById('announcer').textContent));
+    globalThis.__sayWatch.observe(document.getElementById('announcer'), { childList: true, characterData: true, subtree: true });
+  }, hot.floorId, hot.cell);
+  await page.keyboard.press('ArrowRight');
+  await page.waitForFunction((cell) => {
+    const card = document.querySelector('[data-card="difference"]');
+    return !card.hidden && card.dataset.cell === String(cell) && globalThis.__said.length > 0;
+  }, {}, hot.cell);
+  const onCard = await page.evaluate(() => globalThis.__said.splice(0));
+  assert.equal(onCard.length, 1, 'one sentence for the move: ' + JSON.stringify(onCard));
+  assert.match(onCard[0], /busier\./, 'the card\'s');
+  // Escape, then a move to a cell with no card: the lab's own line, once
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.querySelector('[data-card="difference"]').hidden);
+  await page.evaluate(() => {
+    const plan = document.querySelector('.scn').scenarios.plan;
+    plan.cursor.moveTo(1, 0, true);
+    globalThis.__said.splice(0);
+  });
+  await page.keyboard.press('ArrowLeft');
+  await page.waitForFunction(() => globalThis.__said.length > 0);
+  const offCard = await page.evaluate(() => {
+    globalThis.__sayWatch.disconnect();
+    return { said: globalThis.__said.splice(0), card: document.querySelector('[data-card="difference"]').hidden };
+  });
+  assert.equal(offCard.said.length, 1, 'one sentence: ' + JSON.stringify(offCard.said));
+  assert.equal(offCard.card, true, 'no card there');
+  assert.match(offCard.said[0], /^(.+: .+\.|Between floors\.)$/, 'the lab\'s line');
+  assert.doesNotMatch(offCard.said[0], /busier|quieter/);
+});
+
 test('the card by a tap with touch on a phone: a tap shows it and keeps it, a second tap on the cell puts it away', async () => {
   const phone = await openPlanner({ server, width: 390, height: 844, mobile: true, hash: '#scenarios', theme: 'light' });
   try {

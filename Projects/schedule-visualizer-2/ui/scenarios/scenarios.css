@@ -378,26 +378,17 @@
   overflow-wrap: anywhere;
 }
 
-/* four columns in the inspector's 320 px: fixed widths, and a figure wraps
-   at its spaces ("153 min / 48 s") rather than pushing the table wider */
+/* The tables in the inspector's 320 px. A figure never breaks inside itself
+   (SV2-72d, W3: "153 min / 48 s"): its spaces are no-break spaces
+   (ui/scenarios/model.js) and a number cell does not break a word, so the
+   table lays its columns out to fit the figures and the labels wrap at
+   their spaces in what is left. */
 .scn-table {
   width: 100%;
-  table-layout: fixed;
+  table-layout: auto;
   border-collapse: collapse;
   font-size: var(--t-sm);
   font-variant-numeric: tabular-nums;
-}
-
-.scn-table th:first-child {
-  width: 31%;
-}
-
-.scn-table thead th:last-child {
-  width: 27%;
-}
-
-.scn-table thead th {
-  overflow-wrap: normal;
 }
 
 .scn-table th,
@@ -407,6 +398,30 @@
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
+}
+
+.scn-table thead th {
+  overflow-wrap: normal;
+}
+
+.scn-table td.num {
+  overflow-wrap: normal;
+}
+
+/* The difference map's table (ui/scenarios/difference.js): five columns,
+   at fixed shares, the figures' headings over their figures at the right. */
+.scn-difference {
+  table-layout: fixed;
+}
+
+.scn-difference thead th:nth-child(1) { width: 28%; }
+.scn-difference thead th:nth-child(2) { width: 17%; }
+.scn-difference thead th:nth-child(3) { width: 16%; }
+.scn-difference thead th:nth-child(4) { width: 13%; }
+.scn-difference thead th:nth-child(5) { width: 26%; }
+
+.scn-difference thead th:nth-child(n + 3) {
+  text-align: right;
 }
 
 .scn-table thead th {
