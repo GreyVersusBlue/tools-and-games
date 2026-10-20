@@ -66,6 +66,12 @@ function themed(file, names) {
 const EXIT_NAMES = Array.from({ length: EXIT_COUNT }, (_, i) => '--exit-' + (i + 1));
 const exits = themed('ui/safety/safety.css', EXIT_NAMES);
 const tokens = themed('ui/tokens.css', ['--corridor']);
+// a token as its theme has it, var(--x) followed within the block
+function resolved(theme, name) {
+  let value = tokens[theme][0].get(name);
+  for (let hops = 0; value && /^var\(--[\w-]+\)$/.test(value) && hops < 4; hops += 1) value = tokens[theme][0].get(value.slice(4, -1));
+  return value;
+}
 
 function palette(theme) {
   assert.equal(exits[theme].length, 1, 'ui/safety/safety.css should set the exits in one ' + theme + ' block');
@@ -133,6 +139,30 @@ for (const theme of THEMES) {
   });
 }
 
+// what an exit lies beside on the map: the cursor's ring and a hovered
+// room (--accent, --focus) and the text of every label (--ink)
+const BESIDE = ['--accent', '--focus', '--ink'];
+
+for (const theme of THEMES) {
+  test('the ' + theme + ' exits are each at least ' + EXIT_APART + ' in OKLab from ' + BESIDE.join(', '), () => {
+    const close = [];
+    for (const name of BESIDE) assert.match(resolved(theme, name) || '', /^#[0-9a-f]{6}$/, theme + ' ' + name + ' did not resolve to a colour');
+    for (const [i, colour] of palette(theme).entries()) {
+      for (const name of BESIDE) {
+        const d = apart(colour, resolved(theme, name));
+        if (d < EXIT_APART) close.push('exit ' + (i + 1) + ' ' + colour + ' is ' + d.toFixed(3) + ' from ' + name + ' ' + resolved(theme, name));
+      }
+    }
+    assert.deepEqual(close, []);
+  });
+
+  test('no ' + theme + ' exit is the colour an unread token falls back to', () => {
+    const [fallback] = exitColours(1, [null]);
+    assert.match(fallback, /^#[0-9a-f]{6}$/);
+    assert.deepEqual(palette(theme).filter((colour) => colour.toLowerCase() === fallback.toLowerCase()), [], 'an exit drawn in the fallback reads the same as a token that could not be read');
+  });
+}
+
 test('the threshold of hue is one the old first exit fails: SV2-67b\'s red, in the light theme, was 4 degrees from --problem', () => {
   // EXIT_PRESETS[0] of SV2-67b made 3:1 on the white corridor: '#d1495b'
   const angle = between(hue('#d1495b').angle, hue(surface('light', '--problem')).angle);
@@ -156,6 +186,6 @@ test('past eight exits the colours repeat in key order; an unread token is the f
   assert.equal(colours[EXIT_COUNT], colours[0]);
   assert.equal(colours[EXIT_COUNT + 2], colours[2]);
   assert.equal(new Set(colours.slice(0, EXIT_COUNT)).size, EXIT_COUNT);
-  assert.deepEqual(exitColours(2, [null, '#0f641d'], '#1f2328'), ['#1f2328', '#0f641d']);
+  assert.deepEqual(exitColours(2, [null, '#005700'], '#1f2328'), ['#1f2328', '#005700']);
   assert.deepEqual(exitColours(2, null), ['#808080', '#808080']);
 });

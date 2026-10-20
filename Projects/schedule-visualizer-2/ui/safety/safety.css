@@ -15,7 +15,10 @@
    Each is at least 3:1 on --corridor, --grid and --stairs of its theme,
    since a route lies on corridors and stairs and a frame and a badge on a
    room over the floor, and every pair is at least 0.13 apart in OKLab
-   (ui/surface/overlays/evacuation.js EXIT_APART). test/ui/exit-colours.test.mjs
+   (ui/surface/overlays/evacuation.js EXIT_APART), and as far from --accent
+   (--focus) and --ink, since a route lies beside the cursor's ring and the
+   rooms' text; no exit is the grey a token that cannot be read falls back to
+   (exitColours, #808080). test/ui/exit-colours.test.mjs
    reads this file and tokens.css and holds all of it, and the two dark
    blocks equal, as tokens.css's own test does for its blocks. The theme
    selectors are tokens.css's, so the values are on the page's root and a
@@ -25,36 +28,36 @@
 [data-theme="light"],
 [data-theme="auto"] {
   --exit-1: #255ebc;    /* blue */
-  --exit-2: #0f641d;    /* green */
+  --exit-2: #005700;    /* green */
   --exit-3: #661f75;    /* purple */
-  --exit-4: #238994;    /* teal */
+  --exit-4: #1b8dae;    /* teal */
   --exit-5: #876fe4;    /* violet */
   --exit-6: #768b09;    /* olive */
-  --exit-7: #404040;    /* grey */
+  --exit-7: #48423f;    /* grey */
   --exit-8: #c34e97;    /* pink */
 }
 
 [data-theme="dark"] {
-  --exit-1: #87a9e1;    /* blue */
+  --exit-1: #90a5e7;    /* blue */
   --exit-2: #37a643;    /* green */
-  --exit-3: #e9c6f1;    /* purple */
-  --exit-4: #61ebfa;    /* teal */
+  --exit-3: #e7bafc;    /* purple */
+  --exit-4: #60edfc;    /* teal */
   --exit-5: #846ce0;    /* violet */
   --exit-6: #b7d341;    /* olive */
-  --exit-7: #808080;    /* grey */
+  --exit-7: #8c8c8c;    /* grey */
   --exit-8: #f07ec2;    /* pink */
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]),
   [data-theme="auto"] {
-    --exit-1: #87a9e1;    /* blue */
+    --exit-1: #90a5e7;    /* blue */
     --exit-2: #37a643;    /* green */
-    --exit-3: #e9c6f1;    /* purple */
-    --exit-4: #61ebfa;    /* teal */
+    --exit-3: #e7bafc;    /* purple */
+    --exit-4: #60edfc;    /* teal */
     --exit-5: #846ce0;    /* violet */
     --exit-6: #b7d341;    /* olive */
-    --exit-7: #808080;    /* grey */
+    --exit-7: #8c8c8c;    /* grey */
     --exit-8: #f07ec2;    /* pink */
   }
 }
