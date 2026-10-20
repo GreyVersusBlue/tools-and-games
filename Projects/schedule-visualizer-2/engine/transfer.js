@@ -284,7 +284,7 @@ export function createReceiver(options) {
         if (digest !== header.sha256 || trailer.sha256 !== header.sha256) refuse('wrongHash');
         let text;
         try {
-          text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+          text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buffer);
         } catch {
           refuse('notText');
         }
@@ -447,7 +447,7 @@ export async function decodeSignal(code, options) {
   }
   let sdp;
   try {
-    sdp = new TextDecoder('utf-8', { fatal: true }).decode(body);
+    sdp = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(body);
   } catch {
     refuse('mistyped');
   }

@@ -539,3 +539,16 @@ test('a kind is offer or answer only, not a name every object has', async () => 
     await assert.rejects(decodeSignal(code, { subtle, expect: type }), TypeError, 'expect ' + type);
   }
 });
+
+test('a project file that starts with a byte order mark arrives with it, its text matching its bytes and hash', async () => {
+  const text = '\uFEFF' + sampleFile();
+  const pack = await packTransfer(text, { projectId: 'p1', subtle });
+  const out = await receiveAll(pack.frames);
+  assert.equal(out.text, text);
+  assert.deepEqual(new TextEncoder().encode(out.text), out.bytes);
+  // A description too, though no browser writes one so.
+  for (const compress of [true, false]) {
+    const code = await encodeSignal({ type: 'offer', sdp: '\uFEFF' + OFFER }, { subtle, compress });
+    assert.equal((await decodeSignal(code, { subtle, expect: 'offer' })).sdp, '\uFEFF' + OFFER, 'compress ' + compress);
+  }
+});
