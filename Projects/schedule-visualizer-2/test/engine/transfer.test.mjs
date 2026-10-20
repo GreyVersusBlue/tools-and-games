@@ -552,3 +552,20 @@ test('a project file that starts with a byte order mark arrives with it, its tex
     assert.equal((await decodeSignal(code, { subtle, expect: 'offer' })).sdp, '\uFEFF' + OFFER, 'compress ' + compress);
   }
 });
+
+test('a code from a newer format is called newer even when its check is not four bytes or its length not ours', async () => {
+  const body = new TextEncoder().encode('v=0 from a later version');
+  for (const checkBytes of [0, 2, 8, 16]) {
+    const payload = new Uint8Array(3 + body.length + checkBytes);
+    payload.set([2, 1, 0], 0);
+    payload.set(body, 3);
+    const check = new Uint8Array(await subtle.digest('SHA-256', payload.subarray(0, 3 + body.length)));
+    payload.set(check.subarray(0, checkBytes), 3 + body.length);
+    await assert.rejects(decodeSignal(SIGNAL_PREFIX + toBase64Url(payload), { subtle, expect: 'offer' }), refusal('newerCode'), checkBytes + ' check bytes');
+  }
+  // Text that is not base64url of whole bytes, but whose first two characters give version 2.
+  await assert.rejects(decodeSignal(SIGNAL_PREFIX + 'AgEAdj0w5', { subtle, expect: 'offer' }), refusal('newerCode'));
+  // A version-1 code with a wrong check is still mistyped.
+  const code = await encodeSignal({ type: 'offer', sdp: OFFER }, { subtle });
+  await assert.rejects(decodeSignal(code.slice(0, -1) + (code.endsWith('A') ? 'Q' : 'A'), { subtle, expect: 'offer' }), refusal('mistyped'));
+});

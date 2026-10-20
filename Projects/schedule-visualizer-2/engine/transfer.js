@@ -387,6 +387,15 @@ export function fromBase64Url(text) {
   return out;
 }
 
+// A code's first byte, its version, from its first two characters; 0 when
+// they are not there or not base64url.
+function versionOf(encoded) {
+  if (encoded.length < 2) return 0;
+  const high = BASE64URL.indexOf(encoded[0]);
+  const low = BASE64URL.indexOf(encoded[1]);
+  return high < 0 || low < 0 ? 0 : (high << 2) | (low >> 4);
+}
+
 function refuseTooLong(length) {
   refuse('too-long', 'This connection code is too long for one QR code (' + length + ' characters; one holds ' + SIGNAL_MOST + '). Send the project file instead.');
 }
@@ -422,12 +431,19 @@ export async function decodeSignal(code, options) {
   if (text.slice(0, SIGNAL_PREFIX.length).toUpperCase() !== SIGNAL_PREFIX) refuse('notCode');
   // No code this side makes is longer, so a longer one is not read at all.
   if (text.length > SIGNAL_MOST) refuseTooLong(text.length);
-  const payload = fromBase64Url(text.slice(SIGNAL_PREFIX.length));
-  if (!payload) refuse('mistyped');
-  if (payload.length < 3 + SIGNAL_CHECK_BYTES) refuse('mistyped');
+  const encoded = text.slice(SIGNAL_PREFIX.length);
+  // The version byte is read first, from the first two characters, since a
+  // later version may lay out the rest differently (another check length,
+  // say) and would otherwise read as mistyped. A typo in those two
+  // characters of one of ours can read as newer too; the sentence then says
+  // to reload, which costs a reload, and the code is refused either way.
+  const mistaken = () => refuse(versionOf(encoded) > SIGNAL_VERSION ? 'newerCode' : 'mistyped');
+  const payload = fromBase64Url(encoded);
+  if (!payload) mistaken();
+  if (payload.length < 3 + SIGNAL_CHECK_BYTES) mistaken();
   const end = payload.length - SIGNAL_CHECK_BYTES;
   const check = await sha256(subtle, payload.subarray(0, end));
-  for (let i = 0; i < SIGNAL_CHECK_BYTES; i += 1) if (check[i] !== payload[end + i]) refuse('mistyped');
+  for (let i = 0; i < SIGNAL_CHECK_BYTES; i += 1) if (check[i] !== payload[end + i]) mistaken();
   if (payload[0] > SIGNAL_VERSION) refuse('newerCode');
   if (payload[0] < 1) refuse('notCode');
   const type = Object.keys(SIGNAL_KINDS).find((kind) => SIGNAL_KINDS[kind] === payload[1]);
