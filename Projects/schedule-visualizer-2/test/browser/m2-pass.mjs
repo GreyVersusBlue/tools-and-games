@@ -119,10 +119,42 @@ const stored = (page, groupId, day, period) => page.evaluate((g, d, p) => {
   const slot = globalThis.sv2.store.project.groups.find((group) => group.id === g).days[d][p];
   return { room: slot.room, roomText: slot.roomText };
 }, groupId, day, period);
-const act = (page, name, payload) => page.evaluate(async (action, given) => {
-  const actions = await import('./engine/actions.js');
-  globalThis.sv2.store.apply(actions[action], given);
-}, name, payload);
+// A module of the tool put on the page as `globalThis.sv2modules[key]`, by a
+// module script the page loads itself, and waited for: the page sets the
+// key. An import() awaited inside page.evaluate came back "Protocol error
+// (Runtime.callFunctionOn): Promise was collected" (SV2-72e: act's, on a page
+// just opened at #movement, in 2 of 10 runs of this file with the CPU
+// throttled 4 and the worker's answers late), so a module is loaded first
+// and used in a synchronous evaluate after, as SV2-72a did in grid-pass.mjs.
+// A load of the page empties the globals, and the module is loaded again.
+// The script imports the module itself and keeps `{ error }` under the key
+// when that fails: a static import that fails fires no error the test can
+// see, and a wrong path came back as this wait's timeout (SV2-72e2).
+async function loadModule(page, key, file) {
+  // null while it loads, then `{ error }`: null when the module is there
+  const held = (wanted) => {
+    const value = globalThis.sv2modules && globalThis.sv2modules[wanted];
+    if (!value) return null;
+    return { error: value[Symbol.toStringTag] === 'Module' ? null : String(value.error) };
+  };
+  let state = await page.evaluate(held, key);
+  if (state === null) {
+    const name = JSON.stringify(key);
+    await page.addScriptTag({ type: 'module', content: 'const modules = (globalThis.sv2modules ||= {}); import(' + JSON.stringify('./' + file) + ').then((module) => { modules[' + name + '] = module; }, (error) => { modules[' + name + '] = { error: String((error && error.message) || error) }; });' });
+    state = await (await page.waitForFunction(held, { timeout: 5000 }, key)).jsonValue();
+  }
+  if (state.error !== null) {
+    // forgotten, so a later call tries again rather than repeat this one
+    await page.evaluate((wanted) => delete globalThis.sv2modules[wanted], key);
+    throw new Error('loadModule: ' + file + ' did not load: ' + state.error);
+  }
+}
+async function act(page, name, payload) {
+  await loadModule(page, 'actions', 'engine/actions.js');
+  await page.evaluate((action, given) => {
+    globalThis.sv2.store.apply(globalThis.sv2modules.actions[action], given);
+  }, name, payload);
+}
 
 // A page of its own for a case: the sample school, nothing saved.
 async function open(hash, size, options) {
@@ -1447,6 +1479,35 @@ test('the sweeps have the three screens the walk-through missed, and each opens'
   assert.deepEqual(found, CLEAN);
 });
 
+// The SV2-57 review: three of the schedule's phone screens were resized by
+// their own `open` after a load at the sweep's size, so axe and the
+// no-offsite count saw them with a mouse, never with touch. They are loaded
+// at a phone's size with touch now, as the sweeps load every `viewport`
+// screen (harness.mjs, visit), and the size is the sweep's own again after.
+test('SV2-72e item 2: the schedule\'s phone screens in the sweeps run at a phone\'s size with touch, and the next screen at the sweep\'s size', async () => {
+  const phones = ['schedule-checks-phone', 'schedule-group-editor-phone', 'schedule-grid-phone'];
+  const session = await openPlanner({ server, browser, hash: '#project', theme: 'light', ...DESK });
+  let failed = null;
+  try {
+    for (const id of phones) {
+      const screen = SCREENS.find((each) => each.id === id);
+      assert.ok(screen, id + ' is not in test/browser/screens.mjs');
+      await visit(session, screen);
+      const seen = await session.page.evaluate(() => ({ width: window.innerWidth, touch: navigator.maxTouchPoints > 0, coarse: matchMedia('(pointer: coarse)').matches }));
+      assert.deepEqual(seen, { width: 390, touch: true, coarse: true }, id + ' ran without touch, or not at a phone\'s width');
+    }
+    await visit(session, SCREENS.find((each) => each.id === 'schedule-groups'));
+    const back = await session.page.evaluate(() => ({ width: window.innerWidth, touch: navigator.maxTouchPoints > 0 }));
+    assert.deepEqual(back, { width: 1280, touch: false }, 'the screen after a phone\'s is not at the sweep\'s size');
+  } catch (error) {
+    failed = error;
+  }
+  const found = session.problems();
+  await session.page.close().catch(() => {});
+  if (failed) throw failed;
+  assert.deepEqual(found, CLEAN);
+});
+
 // ---------------------------------------------------------------- SV2-50: the phone's history, and the focus
 
 const onPage = (page) => page.evaluate(() => document.activeElement === document.body || document.activeElement === null);
@@ -1454,8 +1515,10 @@ const drawnNarrow = (page, narrow) => shows(page, (wanted) => document.querySele
 
 test('SV2-50 item 1: on a phone the Show of an undone slot change is the slot\'s address, so the editor opens on it and not the list', async () => {
   await on('#schedule/groups', PHONE, async (p) => {
-    const hashes = await p.evaluate(async (g, d) => {
-      const { hashForFocus } = await import('./ui/app.js');
+    // the page's own app.js (the same address, so the same module, not a second boot)
+    await loadModule(p, 'app', 'ui/app.js');
+    const hashes = await p.evaluate((g, d) => {
+      const { hashForFocus } = globalThis.sv2modules.app;
       return [
         hashForFocus({ section: 'schedule', tab: 'groups', groupId: g, dayTypeId: d, period: 3 }),
         hashForFocus({ section: 'schedule', tab: 'groups', groupId: g, dayTypeId: d, period: 0 }),
@@ -2008,8 +2071,9 @@ test('SV2-56b: the only group deleted while wide, then upright, Add a group, All
   const UPRIGHT = { width: 390, height: 844, deviceScaleFactor: 1, hasTouch: true, isMobile: true };
   const SIDE = { width: 844, height: 390, deviceScaleFactor: 1, hasTouch: true, isMobile: true };
   await on('#project', { width: 390, height: 844, mobile: true }, async (p) => {
-    await p.evaluate(async (keep) => {
-      const actions = await import('./engine/actions.js');
+    await loadModule(p, 'actions', 'engine/actions.js');
+    await p.evaluate((keep) => {
+      const { actions } = globalThis.sv2modules;
       for (const group of globalThis.sv2.store.project.groups.slice()) {
         if (group.id !== keep) globalThis.sv2.store.apply(actions.deleteGroup, { id: group.id });
       }
@@ -2036,6 +2100,72 @@ test('SV2-56b: the only group deleted while wide, then upright, Add a group, All
     await listIs(p, false);
     await until(p, '"All groups" did not come back to the list', () => location.hash === '#schedule/groups');
     assert.deepEqual(await backTo(p, '#project', 4), ['#schedule/groups', '#project'], 'Back from the list showed the list twice');
+  });
+});
+
+// ---------------------------------------------------------------- SV2-72e
+
+// The review of SV2-56, finding 3 (probe-history.mjs, B): a finding's Show
+// beside the list (the inspector's panel, on a phone on its side) opened the
+// slot's address over the list with no mark, so a Delete on the phone, or
+// one on its side and then the turn upright, wrote the list in its place:
+// Back from the list was the list again. Every group or slot address the
+// schedule opens goes through one rule now (groups.js, `openAddress`).
+test('SV2-72e item 1: a finding\'s Show over the list, then a Delete on the phone or on its side and upright: Back from the list is the page before it, the list once', async () => {
+  const UPRIGHT = { width: 390, height: 844, deviceScaleFactor: 1, hasTouch: true, isMobile: true };
+  const SIDE = { width: 844, height: 390, deviceScaleFactor: 1, hasTouch: true, isMobile: true };
+  const slot = '#schedule/groups/' + C6 + '/' + DAY_A + '/1';
+  for (const where of ['upright', 'on its side']) {
+    await on('#project', { width: 844, height: 390, mobile: true }, async (p) => {
+      await go(p, '#schedule/groups');
+      await settled(p);
+      await p.click('.sch-group[data-group="' + C6 + '"]');
+      await shows(p, () => document.querySelector('.sch-editor__title')?.textContent === '6C' && document.querySelector('.sch').dataset.pending !== 'true');
+      assert.equal(await hashOf(p), '#schedule/groups', 'the case needs the page at the list, as a wide screen leaves it after a click');
+      await inspector(p, true);
+      await tap(p, '#inspector .sch-finding[data-finding^="room-double:' + DAY_A + ':1:"] [data-action="show"]');
+      await until(p, 'Show did not go to the slot\'s address', (hash) => location.hash === hash && document.querySelector('.sch').dataset.pending !== 'true', slot);
+      await inspector(p, false);
+      if (where === 'upright') {
+        await p.setViewport(UPRIGHT);
+        await drawnNarrow(p, true);
+        assert.deepEqual(await shownCards(p), [C6]);
+        await tap(p, '[data-action="delete"]');
+      } else {
+        await p.click('[data-action="delete"]');
+        await closeToast(p);
+        await until(p, '6C is still in the list', (id) => !document.querySelector('.sch-group[data-group="' + id + '"]') && document.querySelector('.sch').dataset.pending !== 'true', C6);
+        assert.equal(await hashOf(p), slot, 'the case needs the wide screen to have left the gone group\'s address');
+        await p.setViewport(UPRIGHT);
+        await drawnNarrow(p, true);
+      }
+      await closeToast(p);
+      await listIs(p, false);
+      await until(p, where + ': the page is not at the list, or is on a spent entry', () => location.hash === '#schedule/groups' && !(history.state && history.state.scheduleSpent) && document.querySelector('.sch').dataset.pending !== 'true');
+      assert.deepEqual(await backTo(p, '#project', 4), ['#schedule/groups', '#project'], where + ': Back from the list showed the list twice');
+    });
+  }
+});
+
+// SV2-54's case "from an entry the list was not under", with the link that
+// makes such an entry: Movement's "Fix it in the schedule" opens a slot's
+// address from #movement, by the same rule. There is no list under it, so
+// the gone group's address becomes the list's, and Back is Movement.
+test('SV2-72e item 1: Movement\'s link into a slot, then a Delete on a phone: the list in the slot\'s place, and Back is Movement', async () => {
+  await on('#project', { width: 390, height: 844, mobile: true }, async (p) => {
+    await go(p, '#movement');
+    await shows(p, () => document.querySelector('.mov')?.movement?.env !== undefined);
+    await p.evaluate((slot) => document.querySelector('.mov').movement.env.fix({ slot }), { groupId: C6, dayTypeId: DAY_A, period: 2 });
+    await waitForSection(p, 'schedule');
+    await settled(p);
+    await listIs(p, true);
+    assert.equal(await hashOf(p), '#schedule/groups/' + C6 + '/' + DAY_A + '/2');
+    assert.equal(await p.evaluate(() => history.state), null, 'opened from Movement, the entry is not marked as having the list under it');
+    await tap(p, '[data-action="delete"]');
+    await closeToast(p);
+    await listIs(p, false);
+    await until(p, 'the Delete did not come to the list', () => location.hash === '#schedule/groups' && document.querySelector('.sch').dataset.pending !== 'true');
+    assert.deepEqual(await backTo(p, '#movement', 3), ['#schedule/groups', '#movement']);
   });
 });
 
