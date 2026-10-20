@@ -34,6 +34,16 @@ let browser;
 
 const source = (file) => readFileSync(path.join(TOOL_DIR, ...file.split('/')), 'utf8');
 const settled = (page) => page.waitForFunction(() => document.querySelector('.sch')?.dataset.pending !== 'true', { timeout: 5000 });
+// Into a section from another, and waited for until it is drawn. The
+// schedule draws itself again when the engine's first answer for the page
+// comes (ui/schedule/index.js, `walkResults`), which puts a new control in
+// place of every one it had, and reads as pending until then. A click whose
+// node was found before that drawing and is sent after it fails with "Node is
+// detached from document" (SV2-72a: Add a group, on a slower CI runner).
+const goSettled = async (page, hash) => {
+  await go(page, hash);
+  await settled(page);
+};
 const shows = (page, fn, ...args) => page.waitForFunction(fn, { timeout: 5000 }, ...args);
 // A wait for a state the page sets that an assertion depends on: when the
 // state never comes, the case fails saying `why` (SV2-56 item 3: such a
@@ -710,7 +720,7 @@ test('with no rooms in the building the picker\'s one line says so and goes to B
     await p.click('#sample-school [data-action="sample"]');
     await shows(p, () => document.getElementById('sample-chip').hidden);
     await closeToast(p);
-    await go(p, '#schedule/groups');
+    await goSettled(p, '#schedule/groups');
     await p.click('[data-action="add-group"]');
     await keyIs(p, 'group-name');
     const day = await p.evaluate(() => globalThis.sv2.store.project.dayTypes[0].id);
@@ -810,8 +820,9 @@ test('on a 390 px phone a finding\'s Show, Fix… and Accept are under its sente
     const card = await box(p, '.sch');
     const rows = await findingBoxes(p);
     assert.equal(rows.length, 4);
+    // SV2-70: Fix… on the two findings the suggestion engine can work on (the clash and the walk), none on the two notes
+    assert.deepEqual(rows.map((row) => row.buttons.map((button) => button.label).join(' ')), ['Show Fix… Accept', 'Show Fix… Accept', 'Show Accept', 'Show Accept']);
     for (const row of rows) {
-      assert.deepEqual(row.buttons.map((button) => button.label), ['Show', 'Fix…', 'Accept']);
       for (const button of row.buttons) {
         assert.ok(button.left >= card.left && button.right <= card.right, button.label + ' runs out of the card: ' + JSON.stringify({ button, card }));
         assert.ok(button.right <= 390, button.label + ' runs off the phone');
@@ -957,36 +968,43 @@ test('beside the Checks tab the inspector does not repeat its table: the counts,
   });
 });
 
-// ---------------------------------------------------------------- 14: Fix… says why
+// ---------------------------------------------------------------- 14: Fix… opens its dialog
+// (SV2-70: Fix… is built, so these two cases moved from a press that said
+// "Suggestions are not built yet" to a press that opens the Fix dialog; the
+// dialog's own cases are test/browser/fix.mjs)
 
-test('Fix… is not built yet: it is drawn dashed, says so in its title, and a press says the same in a message, by pointer and by keyboard', async () => {
+test('Fix… is a working button: drawn solid, its title says what it does, and a press opens the Fix dialog, by pointer and by keyboard', async () => {
   await on('#schedule/checks', DESK, async (p) => {
     const fix = '.sch-checks .sch-findings tbody tr [data-action="fix"]';
-    assert.equal(await p.$eval(fix, (el) => [el.getAttribute('aria-disabled'), el.title, el.disabled, getComputedStyle(el).borderTopStyle].join('|')), 'true|Suggestions are not built yet|false|dashed');
+    assert.equal(await p.$eval(fix, (el) => [el.getAttribute('aria-disabled'), el.title, el.disabled, getComputedStyle(el).borderTopStyle].join('|')), '|Small changes that would clear this, to try in a scenario|false|solid');
+    const opened = async (hash) => {
+      await p.waitForSelector('#fix-dialog[open]');
+      assert.equal(await p.evaluate(() => location.hash), hash, 'the press stays where it is');
+      assert.equal(await count(p, '.toast'), 0);
+      await p.keyboard.press('Escape');
+      await p.waitForFunction(() => !document.querySelector('dialog[open]'));
+    };
     await p.click(fix);
-    assert.equal(await text(p, '.toast .toast__text'), 'Suggestions are not built yet.');
-    assert.equal(await p.evaluate(() => location.hash), '#schedule/checks');
-    assert.equal(await count(p, 'dialog[open]'), 0);
-    await closeToast(p);
-    assert.equal(await count(p, '.toast'), 0);
+    await opened('#schedule/checks');
     await p.focus(fix);
     await p.keyboard.press('Enter');
-    assert.equal(await text(p, '.toast .toast__text'), 'Suggestions are not built yet.');
-    await closeToast(p);
+    await opened('#schedule/checks');
     // the inspector's Fix… too
     await go(p, '#schedule/teachers');
     await settled(p);
     await p.focus('#inspector [data-action="fix"]');
     await p.keyboard.press(' ');
-    assert.equal(await text(p, '.toast .toast__text'), 'Suggestions are not built yet.');
+    await opened('#schedule/teachers');
   });
 });
 
-test('Fix… says why to a finger too', async () => {
+test('Fix… opens its dialog to a finger too', async () => {
   await on('#schedule/checks', PHONE, async (p) => {
     await tap(p, '.sch-checks .sch-findings tbody tr [data-action="fix"]');
-    await p.waitForSelector('.toast');
-    assert.equal(await text(p, '.toast .toast__text'), 'Suggestions are not built yet.');
+    await p.waitForSelector('#fix-dialog[open]');
+    assert.equal(await count(p, '.toast'), 0);
+    await p.keyboard.press('Escape');
+    await p.waitForFunction(() => !document.querySelector('dialog[open]'));
   });
 });
 
@@ -1279,7 +1297,7 @@ test('the picker\'s line of words is a status the field is described by, and its
     await p.click('#sample-school [data-action="sample"]');
     await shows(p, () => document.getElementById('sample-chip').hidden);
     await closeToast(p);
-    await go(p, '#schedule/groups');
+    await goSettled(p, '#schedule/groups');
     await p.click('[data-action="add-group"]');
     await keyIs(p, 'group-name');
     const day = await p.evaluate(() => globalThis.sv2.store.project.dayTypes[0].id);
@@ -1737,7 +1755,7 @@ test('SV2-50 item 11: the room picker\'s "Number them in Building." keeps the fo
     await p.click('#sample-school [data-action="sample"]');
     await shows(p, () => document.getElementById('sample-chip').hidden);
     await closeToast(p);
-    await go(p, '#schedule/groups');
+    await goSettled(p, '#schedule/groups');
     await p.click('[data-action="add-group"]');
     await keyIs(p, 'group-name');
     const day = await p.evaluate(() => globalThis.sv2.store.project.dayTypes[0].id);

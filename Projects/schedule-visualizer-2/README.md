@@ -166,6 +166,7 @@ row names a file it does not run.
 | `test/engine/scenario-actions.test.mjs` | The scenario lab's actions: start, rename, add and remove a change, discard, compare with another file, apply as one undo step |
 | `test/engine/prints-door-cards.test.mjs` | Door cards: which rooms and in what order, the cropped maps of the way out, the steps and their second sheet, rooms with no way out, and the floor plan's crop and route options |
 | `test/engine/suggest.test.mjs` | Suggestions for a finding: the candidates, the two stages, the order, the sentence, at most five, "No small change clears this." |
+| `test/engine/prints-congestion-scenario.test.mjs` | The congestion report's scenario section: before its comparison comes, the changes, the figures with their signs, new and resolved findings, places busier and quieter, a change that no longer applies, a failed or stale comparison, typed names, the same from Movement and from the lab |
 | `test/ui/progress.test.mjs` | Getting started: which steps a project has done |
 | `test/ui/helpers.test.mjs` | The interface's plain functions: the shortcut guard, fields, the picker, the table |
 | `test/ui/building-inspector.test.mjs` | The building inspector's plain functions and the traced image's arithmetic |
@@ -178,6 +179,9 @@ row names a file it does not run.
 | `test/ui/plan-map.test.mjs` | The plan map Movement, Scenarios and Safety mount: the stage's room and least, the keep on the stage, the floors shown, the name and frame it needs |
 | `test/ui/scenario-lane.test.mjs` | The scenario and suggestion lanes: a second pipeline on the shared route cache, the worker's answers, what the client keeps and drops, the main thread giving the worker's answers |
 | `test/ui/safety.test.mjs` | The Safety section's plain functions: the exits' colours far enough apart in both themes and repeating past ten, a way out in runs a floor, the first line, a room's line and the cursor's sentence |
+| `test/ui/scenarios-model.test.mjs` | The scenario lab's plain functions: a change that cancelled itself, the signs and the better or worse marks of the figures and of a group's row, which groups the comparison lists, the bar's words |
+| `test/ui/difference.test.mjs` | The difference map's plain functions: the five strengths against the largest change, both tints' contrast on the corridor in both themes, zero and exclusion zones left unpainted, every day type together, the transition chosen, the ten largest changes with ties, groups apart, the card's words with typed names |
+| `test/ui/fix-kinds.test.mjs` | The kinds Fix… is on (FIXABLE_KINDS) and the kinds the suggestion engine works on, read through its candidates, are the same set |
 | `test/a11y/contrast.mjs` | Token contrast, in Node |
 | `test/browser/shell.mjs` | The shell: the rail, shortcuts, themes, toasts, dialogs |
 | `test/browser/no-offsite.mjs` | Nothing the planner or a published file asks for leaves the origin |
@@ -213,6 +217,10 @@ row names a file it does not run.
 | `test/browser/playback.mjs` | Playback: play, the scrubber, pace, the markers, the Late line |
 | `test/browser/plan-map.mjs` | The plan map mounted through its module as Scenarios and Safety will: their stubs as they were, the toast clearance of two maps, the keep on the stage and the stage's least |
 | `test/browser/safety.mjs` | The Safety section: a room picked by pointer and by keyboard, every room coloured by exit with its key, the exits and the rooms with no way out, door cards for one room, the rooms ticked and every room through the preview, typed names as typed, the stage and toast rules at three sizes |
+| `test/browser/scenario.mjs` | The scenario lab: start and rename, each kind of change by pointer and by keyboard, a chip removed, a change that cancels itself, a change dropped when its room goes and back on Undo, the comparison as the scenario lane gives it and while it works, Apply as one step of undo, Discard asking, compare with a file and another building refused, the congestion report, the spec 18 journey, typed names as typed, the bar with touch at three sizes; SV2-68b's cases: no asking when nothing it is for changed, the focus after Apply, Discard and Undo, the lane's races and failure, a group deleted, a file's scenario edited, the slots not compared kept to their comparison, Undo of a rename in a focused field, Apply with nothing to apply, the picker after a rename |
+| `test/browser/congestion-scenario.mjs` | The congestion report with a scenario open: its section once the comparison comes, the same text from Movement's button and from the preview opened as the lab opens it, and what it says while the comparison has not come and when it failed |
+| `test/browser/difference.mjs` | The scenario lab's difference map: a corridor busier and one quieter painted (the overlay's state and one pixel a tint), the card by pointer, by a tap with touch and at the keyboard cursor, the transition and day type chosen in the comparison, the table of the ten largest changes, a change of theme, no answer, typed names as typed |
+| `test/browser/fix.mjs` | Fix… and Try it: Fix… only on a finding the suggestion engine can work on, the dialog working then the suggestion lane's sentences, the switch for other teachers' rooms naming whose room, Try it starting a scenario or adding to the open one and opening Scenarios on the new chip with the schedule unchanged, a refused Try it, "No small change clears this.", a failed and a stale answer, keyboard only, a phone with touch, the focus back on Escape and Close, typed names as typed |
 | `test/a11y/axe.mjs` | The accessibility sweep of every screen, light and dark |
 | `test/timing/routing.mjs` | Routing under its budget at the promised size |
 | `test/timing/crowd.mjs` | The crowd model under its budget |
@@ -222,3 +230,4 @@ row names a file it does not run.
 | `test/timing/evacuation.mjs` | Every room's way out and door card under its budget |
 | `test/timing/suggest.mjs` | Suggestions for one finding under their budget |
 | `test/timing/scenario-lane.mjs` | The scenario lane, one change added and the first asking, under its budgets |
+| `test/timing/difference-card.mjs` | The difference map's card, the first after an answer and a later one, under its budgets |

@@ -1043,3 +1043,46 @@
   stroke: #ffffff;
   stroke-width: 2;
 }
+
+/* ---------- SV2-71: the congestion report's scenario section (ui/prints/congestion.js) ----------
+   The tables are the report's own (.doc-table). Busier and quieter, more and
+   less, are said in words and signs ("+28 busier", "−48 s"); the weight and
+   the edge only repeat them, so the section reads the same in black and white. */
+
+.print-doc .doc-scenario h3 {
+  margin: 4mm 0 1.5mm;
+  font-size: 10.5pt;
+  font-weight: 600;
+  break-after: avoid;
+}
+
+.print-doc .doc-table--changes th {
+  width: 7mm;
+}
+
+.print-doc .doc-dropped {
+  margin: 0 0 1.5mm;
+  padding-left: 2.5mm;
+  border-left: 0.6mm dotted var(--ink-2);
+  font-size: 9pt;
+  color: var(--ink-2);
+}
+
+.print-doc .doc-table--scenario th[scope="row"] {
+  width: 46mm;
+}
+
+.print-doc .doc-table .doc-change {
+  white-space: nowrap;
+}
+
+/* more: bold, with a solid edge on its left; less: a dotted edge. Borders,
+   because a browser prints them whether or not it prints backgrounds. */
+.print-doc .doc-table .doc-change.is-more {
+  font-weight: 600;
+  border-left: 0.8mm solid var(--ink);
+}
+
+.print-doc .doc-table .doc-change.is-less {
+  border-left: 0.8mm dotted var(--ink);
+}

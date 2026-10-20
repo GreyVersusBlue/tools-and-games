@@ -115,6 +115,20 @@ async function checksOnPhone(page) {
   await page.waitForSelector('.sch-checks .sch-finding__cell');
 }
 
+// SV2-70: the Fix dialog on the sample school's double-booked room, answered;
+// `others` turns the switch on (the other teachers' rooms asked for too).
+const fixOpen = (options) => async (page) => {
+  const opts = options || {};
+  await scheduleDrawn(page);
+  await page.waitForSelector('.sch-findings tr[data-finding="room-double:dsample00a:1:rsample203"] [data-action="fix"]', { timeout: 30000 });
+  await page.click('.sch-findings tr[data-finding="room-double:dsample00a:1:rsample203"] [data-action="fix"]');
+  await page.waitForFunction(() => document.getElementById('fix-dialog')?.dataset.state === 'answered', { timeout: 30000 });
+  if (opts.others) {
+    await page.click('#fix-dialog [data-part="others"]');
+    await page.waitForFunction(() => document.getElementById('fix-dialog').dataset.others === 'true' && document.getElementById('fix-dialog').dataset.state === 'answered', { timeout: 30000 });
+  }
+};
+
 // SV2-38: the Groups tab on a phone after a group is chosen: its card, "All
 // groups", and the editor.
 async function groupEditorOnPhone(page) {
@@ -272,6 +286,69 @@ const playbackAt = (seconds, more) => async (page) => {
   }, seconds);
   await page.waitForFunction(() => document.querySelector('[data-bar="playback"]').dataset.started === 'true');
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+};
+
+// SV2-68: the scenario lab with a scenario open on the sample school (a move
+// that changes who teaches, a swap of periods, a swap of rooms), drawn and
+// its comparison answered; `dropped` deletes the room the move goes to.
+const scenarioOpen = (options) => async (page) => {
+  const opts = options || {};
+  await page.waitForFunction(() => document.querySelector('.scn') && document.querySelector('.scn').dataset.styled === 'true', { timeout: 20000 });
+  await page.evaluate(async (drop) => {
+    const { newScenario, addScenarioChange, deleteSpaces } = await import(new URL('engine/actions.js', location.href).href);
+    const store = globalThis.sv2.store;
+    store.apply(newScenario, { name: 'Library swap' });
+    store.apply(addScenarioChange, { change: { kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample07a', period: 2, roomId: 'rsample101' } });
+    store.apply(addScenarioChange, { change: { kind: 'swapPeriods', dayTypeId: 'dsample00b', groupId: 'gsample06a', periodA: 0, periodB: 3 } });
+    store.apply(addScenarioChange, { change: { kind: 'swapRooms', dayTypeId: 'dsample00a', groupA: 'gsample08a', groupB: 'gsample08b', period: 1 } });
+    if (drop) store.apply(deleteSpaces, { spaceIds: ['rsample101'] });
+  }, opts.dropped === true);
+  await page.waitForFunction(() => {
+    const el = document.querySelector('.scn');
+    return el.dataset.mode === 'open' && el.dataset.compare === 'ready' && !el.scenarios.pending && el.scenarios.plan.project === globalThis.sv2.store.project && Number(document.getElementById('scenarios-plan').dataset.drawn || 0) > 0;
+  }, { timeout: 30000 });
+  if (opts.apply) {
+    await page.click('[data-action="apply"]');
+    await page.waitForSelector('#scenario-apply[open]');
+  }
+};
+
+// SV2-69: the scenario lab's difference map: 7A moved out of the Library
+// for Period 3, the comparison narrowed to Period 3 to Period 4 (corridors
+// busier and quieter at full strength), painted, with the card of the
+// strongest busier cell up under the pointer.
+const differenceShown = async (page) => {
+  await page.waitForFunction(() => document.querySelector('.scn') && document.querySelector('.scn').dataset.styled === 'true', { timeout: 20000 });
+  await page.evaluate(async () => {
+    const { newScenario, addScenarioChange } = await import(new URL('engine/actions.js', location.href).href);
+    const store = globalThis.sv2.store;
+    document.querySelector('.scn').scenarios.memory.transition = 2;
+    store.apply(newScenario, { name: 'Library move' });
+    store.apply(addScenarioChange, { change: { kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample07a', period: 2, roomId: 'rsample101' } });
+  });
+  await page.waitForFunction(() => {
+    const el = document.querySelector('.scn');
+    return el.dataset.difference === 'shown' && !el.scenarios.pending && el.difference.answer === el.scenarios.answer && el.difference.painted.made === el.dataset.differenceMade;
+  }, { timeout: 30000 });
+  // the cell brought to the middle of the map, painted there, then pointed at
+  const drawn = await page.evaluate(() => {
+    const el = document.querySelector('.scn');
+    const hot = el.difference.state().busier.sort((a, b) => b.delta - a.delta)[0];
+    const was = Number(document.getElementById('scenarios-plan').dataset.drawn || 0);
+    el.scenarios.plan.show(hot.floorId, [hot.cell]);
+    el.scenarios.plan.paint();
+    return was;
+  });
+  await page.waitForFunction((was) => Number(document.getElementById('scenarios-plan').dataset.drawn || 0) > was, {}, drawn);
+  const at = await page.evaluate(() => {
+    const el = document.querySelector('.scn');
+    const hot = el.difference.state().busier.sort((a, b) => b.delta - a.delta)[0];
+    const middle = el.scenarios.plan.cellAt(hot.floorId, hot.cell);
+    const box = document.getElementById('scenarios-plan').getBoundingClientRect();
+    return { x: box.left + middle.x, y: box.top + middle.y };
+  });
+  await page.mouse.move(at.x, at.y);
+  await page.waitForFunction(() => !document.querySelector('[data-card="difference"]').hidden);
 };
 
 // SV2-67: the Safety section once its map is styled, measured and drawn for
@@ -490,6 +567,10 @@ export const SCREENS = [
       await page.waitForSelector('#accept-dialog .field__refusal:not([hidden])');
     },
   },
+  { id: 'schedule-fix', hash: '#schedule/checks', open: fixOpen() }, // SV2-70: the Fix dialog, its sentences and Try it
+  { id: 'schedule-fix-others', hash: '#schedule/checks', open: fixOpen({ others: true }) }, // SV2-70: the switch on
+  { id: 'schedule-fix-phone', hash: '#schedule/checks', viewport: { width: 390, height: 844, mobile: true }, open: fixOpen() }, // SV2-70: a phone, with touch
+  { id: 'schedule-fix-phone-side', hash: '#schedule/checks', viewport: { width: 844, height: 390, mobile: true }, open: fixOpen() }, // SV2-70b: a phone on its side, with touch
   {
     id: 'schedule-accepted-list', // SV2-11
     hash: '#schedule/checks',
@@ -805,6 +886,12 @@ export const SCREENS = [
       await page.waitForFunction(() => document.querySelector('.pub input[data-view="teacher"]').getClientRects().length > 0);
     },
   },
+  { id: 'scenarios-open', hash: '#scenarios', open: scenarioOpen() }, // SV2-68: a scenario's chips, the forms, the comparison, the bar
+  { id: 'scenarios-phone', hash: '#scenarios', viewport: { width: 390, height: 844, mobile: true }, open: scenarioOpen() }, // SV2-68: a phone, with touch
+  { id: 'scenarios-phone-sideways', hash: '#scenarios', viewport: { width: 844, height: 390, mobile: true }, open: scenarioOpen() }, // SV2-68: a phone on its side, with touch
+  { id: 'scenarios-dropped', hash: '#scenarios', open: scenarioOpen({ dropped: true }) }, // SV2-68: a change that no longer applies, with Remove them
+  { id: 'scenarios-apply', hash: '#scenarios', open: scenarioOpen({ apply: true }) }, // SV2-68: Apply's summary
+  { id: 'scenarios-difference', hash: '#scenarios', open: differenceShown }, // SV2-69: the difference map painted, its card up, the table of the ten largest changes
   { id: 'safety-map', hash: '#safety', open: safetyDrawn }, // SV2-67: every room's way out by exit, the key, the Exits tab
   { id: 'safety-phone', hash: '#safety', viewport: { width: 390, height: 844, mobile: true }, open: safetyDrawn }, // SV2-67: a phone, with touch
   { id: 'safety-phone-sideways', hash: '#safety', viewport: { width: 844, height: 390, mobile: true }, open: safetyDrawn }, // SV2-67: a phone on its side, with touch
