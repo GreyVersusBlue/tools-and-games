@@ -525,3 +525,9 @@ test('a header claiming more than 64 MB is refused, and a device without the roo
   }
   assert.throws(() => receiver.accept(header(10)), refusal('noRoom'), 'and the refusal stays');
 });
+
+test('the sender refuses a project id the receiver would refuse: over 64 characters', async () => {
+  await assert.rejects(packTransfer('x', { projectId: 'p'.repeat(65), subtle }), TypeError);
+  const pack = await packTransfer('x', { projectId: 'p'.repeat(64), subtle });
+  assert.equal((await receiveAll(pack.frames)).projectId, 'p'.repeat(64));
+});

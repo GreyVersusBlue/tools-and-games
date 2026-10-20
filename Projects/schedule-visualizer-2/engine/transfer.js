@@ -127,6 +127,10 @@ function fileBytes(file) {
   throw new TypeError('the project file is its text or its bytes');
 }
 
+// The sender and the receiver hold a project id to the same rule.
+export const PROJECT_ID_MOST = 64;
+const soundProjectId = (id) => typeof id === 'string' && id !== '' && id.length <= PROJECT_ID_MOST;
+
 export function chunkCount(bytes) {
   return Math.ceil(bytes / CHUNK_BYTES);
 }
@@ -142,7 +146,7 @@ export function chunkFrame(index, data) {
 export async function packTransfer(file, options) {
   const subtle = needSubtle(options);
   const projectId = options.projectId;
-  if (typeof projectId !== 'string' || projectId === '') throw new TypeError('options.projectId names the project being sent');
+  if (!soundProjectId(projectId)) throw new TypeError('options.projectId names the project being sent, in 1 to ' + PROJECT_ID_MOST + ' characters');
   const bytes = fileBytes(file);
   if (bytes.length === 0) throw new TypeError('the project file is empty');
   const digest = hex(await sha256(subtle, bytes));
@@ -182,7 +186,7 @@ function readFrame(text, formats) {
 }
 
 function checkHeader(value) {
-  const sound = typeof value.projectId === 'string' && value.projectId !== '' && value.projectId.length <= 64
+  const sound = soundProjectId(value.projectId)
     && Number.isInteger(value.bytes) && value.bytes > 0 && value.bytes <= TRANSFER_MOST_BYTES
     && typeof value.sha256 === 'string' && /^[0-9a-f]{64}$/.test(value.sha256)
     && value.chunks === chunkCount(value.bytes);
