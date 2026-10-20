@@ -49,7 +49,7 @@
 import { ownDayTypes, findDayType } from '../../engine/day-types.js';
 import { reconcile, changeWords } from '../../engine/scenario.js';
 import { blankName, NEW_SCENARIO_NAME } from '../../engine/actions.js';
-import { timeFigures } from '../scenarios/model.js';
+import { timeFigures, durationWords } from '../scenarios/model.js';
 import { sortFindings, SEVERITIES } from '../../engine/findings.js';
 import { loads } from '../../engine/load.js';
 import { count, list } from '../components/words.js';
@@ -57,7 +57,7 @@ import { transitionsOf, unitWord } from '../movement/model.js';
 import { rankedPlaces } from '../movement/hotspots.js';
 import { transitionRows, lateWords } from '../movement/tables.js';
 import { esc, frame } from './document.js';
-import { printedFrom, placesTable, seconds, PLACES_ON_PAPER } from './movement.js';
+import { printedFrom, placesTable, PLACES_ON_PAPER } from './movement.js';
 
 export const id = 'congestion';
 export const name = 'Congestion report';
@@ -108,6 +108,12 @@ function place(row) {
   return row.parts.map((part) => esc(part.text)).join('') + (row.floorName ? ' on ' + esc(row.floorName) : '');
 }
 
+// A time in a day section, by the scenario table's rule (ui/scenarios/model.js):
+// under an hour as everywhere else ("4 min 21 s"), from an hour in hours and
+// minutes ("2 h 34 min"), so the report says one length one way throughout
+// (SV2-72d2). Plain spaces: these tables are the movement prints' kind.
+const time = (n) => durationWords(n);
+
 function daySection(project, results, graph, dayType, first) {
   const transitions = transitionsOf(project, dayType.id);
   const load = dayLoad(project, results, graph, dayType.id);
@@ -138,9 +144,9 @@ function daySection(project, results, graph, dayType, first) {
   for (const each of worst.slice(0, WORST_TRANSITIONS)) {
     const busiest = rankedPlaces(project, results, graph, ask(each.period))[0] || null;
     out.push('<tr><th scope="row">' + esc(each.name) + '</th>'
-      + '<td>' + esc((each.times ? each.times + ', ' : '') + seconds(each.seconds)) + '</td>'
+      + '<td>' + esc((each.times ? each.times + ', ' : '') + time(each.seconds)) + '</td>'
       + '<td class="is-number">' + each.walks + '</td>'
-      + '<td class="is-number">' + (each.waiting === 0 ? 'none' : esc(seconds(each.waiting))) + '</td>'
+      + '<td class="is-number">' + (each.waiting === 0 ? 'none' : esc(time(each.waiting))) + '</td>'
       + '<td class="is-number">' + each.late + '</td>'
       + '<td>' + (busiest ? place(busiest) + ': ' + busiest.load + ' ' + unitWord(busiest.unit, busiest.load) : '') + '</td></tr>');
   }
@@ -164,10 +170,10 @@ function daySection(project, results, graph, dayType, first) {
       out.push('<tr><th scope="row">' + esc(row.group.name) + '</th>'
         + '<td>' + esc(transitions[row.period] ? transitions[row.period].name : '') + '</td>'
         + '<td>' + esc(row.from) + '</td><td>' + esc(row.to) + '</td>'
-        + '<td class="is-number">' + esc(seconds(row.walking)) + '</td>'
-        + '<td class="is-number">' + (row.waiting === 0 ? 'none' : esc(seconds(row.waiting))) + '</td>'
-        + '<td class="is-number">' + esc(seconds(row.total)) + '</td>'
-        + '<td class="is-number">' + esc(seconds(row.passingSeconds)) + '</td>'
+        + '<td class="is-number">' + esc(time(row.walking)) + '</td>'
+        + '<td class="is-number">' + (row.waiting === 0 ? 'none' : esc(time(row.waiting))) + '</td>'
+        + '<td class="is-number">' + esc(time(row.total)) + '</td>'
+        + '<td class="is-number">' + esc(time(row.passingSeconds)) + '</td>'
         + '<td>' + esc(lateWords(row)) + '</td></tr>');
     }
     out.push('</tbody></table>');
