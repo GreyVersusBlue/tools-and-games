@@ -34,6 +34,16 @@ let browser;
 
 const source = (file) => readFileSync(path.join(TOOL_DIR, ...file.split('/')), 'utf8');
 const settled = (page) => page.waitForFunction(() => document.querySelector('.sch')?.dataset.pending !== 'true', { timeout: 5000 });
+// Into a section from another, and waited for until it is drawn. The
+// schedule draws itself again when the engine's first answer for the page
+// comes (ui/schedule/index.js, `walkResults`), which puts a new control in
+// place of every one it had, and reads as pending until then. A click whose
+// node was found before that drawing and is sent after it fails with "Node is
+// detached from document" (SV2-72a: Add a group, on a slower CI runner).
+const goSettled = async (page, hash) => {
+  await go(page, hash);
+  await settled(page);
+};
 const shows = (page, fn, ...args) => page.waitForFunction(fn, { timeout: 5000 }, ...args);
 // A wait for a state the page sets that an assertion depends on: when the
 // state never comes, the case fails saying `why` (SV2-56 item 3: such a
@@ -710,7 +720,7 @@ test('with no rooms in the building the picker\'s one line says so and goes to B
     await p.click('#sample-school [data-action="sample"]');
     await shows(p, () => document.getElementById('sample-chip').hidden);
     await closeToast(p);
-    await go(p, '#schedule/groups');
+    await goSettled(p, '#schedule/groups');
     await p.click('[data-action="add-group"]');
     await keyIs(p, 'group-name');
     const day = await p.evaluate(() => globalThis.sv2.store.project.dayTypes[0].id);
@@ -1279,7 +1289,7 @@ test('the picker\'s line of words is a status the field is described by, and its
     await p.click('#sample-school [data-action="sample"]');
     await shows(p, () => document.getElementById('sample-chip').hidden);
     await closeToast(p);
-    await go(p, '#schedule/groups');
+    await goSettled(p, '#schedule/groups');
     await p.click('[data-action="add-group"]');
     await keyIs(p, 'group-name');
     const day = await p.evaluate(() => globalThis.sv2.store.project.dayTypes[0].id);
@@ -1737,7 +1747,7 @@ test('SV2-50 item 11: the room picker\'s "Number them in Building." keeps the fo
     await p.click('#sample-school [data-action="sample"]');
     await shows(p, () => document.getElementById('sample-chip').hidden);
     await closeToast(p);
-    await go(p, '#schedule/groups');
+    await goSettled(p, '#schedule/groups');
     await p.click('[data-action="add-group"]');
     await keyIs(p, 'group-name');
     const day = await p.evaluate(() => globalThis.sv2.store.project.dayTypes[0].id);
