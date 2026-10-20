@@ -99,6 +99,7 @@ export const GROUPS = {
     'ui/difference.test.mjs', // SV2-69
     'ui/fix-kinds.test.mjs', // SV2-70b
     'ui/lab-fixes.test.mjs', // SV2-72d
+    'ui/label-scale.test.mjs', // SV2-31
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
   ],
   browser: [

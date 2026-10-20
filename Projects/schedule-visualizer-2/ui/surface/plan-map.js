@@ -90,6 +90,9 @@
 //                           legend judges its card on (SV2-72c3)
 //   map.dock()              measure again where a message may lie (the
 //                           section's head moved with no change of size)
+//   map.setLabelScale(k)    every label drawn k times its size, caps
+//                           included (1 by default; presentation mode's
+//                           large type, SV2-31); map.labelScale reads it
 //
 // The rules of the stage (DESIGN 5.3; DECISIONS 2026-10-14 23:53,
 // 2026-10-15 11:54 and 2026-10-16 01:15) are here, for every section: the
@@ -426,6 +429,8 @@ export function createPlanMap(asked) {
   }
 
   // ---- the canvas
+  // every label's size times this: presentation mode's large type (setLabelScale, SV2-31)
+  let labelScale = 1;
   function paint() {
     queued = false;
     if (gone || !world || !project || view.width === 0 || element.hidden) return;
@@ -441,7 +446,7 @@ export function createPlanMap(asked) {
       const right = Math.round(view.x + (slot.x + slot.w) * size);
       const bottom = Math.round(view.y + (slot.y + slot.h) * size);
       // the floor's name, over its top left corner
-      const nameSize = Math.max(11, Math.min(18, Math.round(size * 0.7)));
+      const nameSize = Math.max(11, Math.min(18 * labelScale, Math.round(size * 0.7 * labelScale)));
       g.font = '600 ' + nameSize + 'px ' + theme.font;
       g.textAlign = 'left';
       g.textBaseline = 'alphabetic';
@@ -469,6 +474,7 @@ export function createPlanMap(asked) {
         // a door name the slot would cut goes inside its dash (SV2-72c, W6)
         clip: { x: slot.box.x, y: slot.box.y, w: slot.box.w, h: slot.box.h },
         namesOver: options.namesOver === true,
+        labelScale,
       });
       g.restore();
       g.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -925,6 +931,15 @@ export function createPlanMap(asked) {
       hovered = floorId === null || floorId === undefined ? null : { floorId, cell };
     },
     showFloors,
+    // every label of the map (rooms, corridors, doors, floor names, the
+    // overlays' pills) drawn k times its size, caps included; 1 is as ever
+    setLabelScale(k) {
+      const next = k > 0 ? k : 1;
+      if (next === labelScale) return;
+      labelScale = next;
+      queuePaint();
+    },
+    get labelScale() { return labelScale; },
     remeasure,
     dock,
     // where Fit would put the floors on a stage of this size, round the zoom

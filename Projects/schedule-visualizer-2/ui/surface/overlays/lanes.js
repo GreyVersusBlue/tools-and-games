@@ -28,7 +28,8 @@
 //
 // The second half draws:
 //
-//   lanesOverlay(read) -> (g, view, floor, theme) => {}   for scene.overlays
+//   lanesOverlay(read) -> (g, view, floor, theme, { labelScale }) => {}   for scene.overlays;
+//            the renderer's labelScale (SV2-31) sizes the corridor names and the pills
 //     read()   { bands: Map floorId -> Uint8Array, lanes, colourOf(groupId),
 //                markers: Map floorId -> [{ box, pills: [{ colour, text }] }],
 //                constantWidth, labels, bandColours: [5 colours] } or null
@@ -263,11 +264,11 @@ function drawBands(g, view, floor, bands, colours) {
 
 // The corridor names again, over the load colouring, with a light edge so
 // they read on any band.
-function drawNames(g, view, floor, theme) {
+function drawNames(g, view, floor, theme, large) {
   const size = view.size;
   if (size < 12) return;
   const seen = view.visible(floor);
-  const nameSize = Math.min(13, Math.max(9, Math.round(size * 0.5)));
+  const nameSize = Math.min(13 * large, Math.max(9, Math.round(size * 0.5 * large)));
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.lineJoin = 'round';
@@ -345,10 +346,10 @@ function drawLines(g, view, list, lanes, colourOf, constant, theme) {
 // room has no space for the rest. Small squares when the labels are off or
 // too small: square, so that zoomed far out a route's end is not taken for a
 // playback marker (a disc) or a stairs link's end (a round dot) (SV2-52).
-function drawMarkers(g, view, floor, markers, labels, theme) {
+function drawMarkers(g, view, floor, markers, labels, theme, large) {
   const size = view.size;
   const seen = view.visible(floor);
-  const font = Math.round(Math.min(13, size * 0.42));
+  const font = Math.round(Math.min(13 * large, size * 0.42 * large));
   const words = labels && font >= 9;
   const high = words ? font + 4 : Math.max(4, Math.min(8, Math.round(size * 0.3)));
   const gap = 2;
@@ -398,18 +399,19 @@ function drawMarkers(g, view, floor, markers, labels, theme) {
 }
 
 export function lanesOverlay(read) {
-  return (g, view, floor, theme) => {
+  return (g, view, floor, theme, given) => {
+    const large = given && given.labelScale > 0 ? given.labelScale : 1;
     const picture = read();
     if (!picture) return;
     const bands = picture.bands ? picture.bands.get(floor.id) : null;
     if (bands) {
       drawBands(g, view, floor, bands, picture.bandColours);
-      drawNames(g, view, floor, theme);
+      drawNames(g, view, floor, theme, large);
     }
     const list = picture.lanes ? picture.lanes.floors.get(floor.id) : null;
     if (list && list.length > 0) drawLines(g, view, list, picture.lanes, picture.colourOf, picture.constantWidth === true, theme);
     const markers = picture.markers ? picture.markers.get(floor.id) : null;
-    if (markers && markers.length > 0) drawMarkers(g, view, floor, markers, picture.labels !== false, theme);
+    if (markers && markers.length > 0) drawMarkers(g, view, floor, markers, picture.labels !== false, theme, large);
   };
 }
 

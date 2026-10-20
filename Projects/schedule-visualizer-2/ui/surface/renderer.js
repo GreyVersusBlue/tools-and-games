@@ -31,6 +31,11 @@
 //                                  slot). A door name that would run past it
 //                                  goes inside the exit's dash instead, and is
 //                                  left out when it is cut there too (SV2-72c)
+//   labelScale,                    every label's size and its caps times this
+//                                  (default 1; presentation mode's large type,
+//                                  SV2-31); a label still fits its room or is
+//                                  left out as at 1. The overlays are given it
+//                                  as their fifth argument, { labelScale }
 // }
 //
 // preview is one of
@@ -185,10 +190,12 @@ export function createRenderer(canvas) {
     return weight + ' ' + size + 'px ' + theme.font;
   }
 
+  // the scene's labelScale, for the draw under way
+  let large = 1;
   // The largest size from `size` down to the smallest readable one at which
   // the text fits in `room` pixels; 0 when none does.
   function fitSize(text, weight, size, room) {
-    for (let s = Math.min(MAX_LABEL, Math.round(size)); s >= MIN_LABEL; s -= 1) {
+    for (let s = Math.min(MAX_LABEL * large, Math.round(size)); s >= MIN_LABEL; s -= 1) {
       g.font = font(weight, s);
       if (g.measureText(text).width <= room) return s;
     }
@@ -226,6 +233,7 @@ export function createRenderer(canvas) {
     const { project, floor, view } = scene;
     const t = readTheme();
     const size = view.size;
+    large = scene.labelScale > 0 ? scene.labelScale : 1;
     const X = (column) => Math.round(view.x + column * size);
     const Y = (row) => Math.round(view.y + row * size);
     const seen = view.visible(floor);
@@ -398,7 +406,7 @@ export function createRenderer(canvas) {
         g.stroke();
       }
       if (lettered) {
-        const s = fitSize(letter, 600, Math.max(MIN_LABEL, w * 0.42), w - 4);
+        const s = fitSize(letter, 600, Math.max(MIN_LABEL, w * 0.42 * large), w - 4);
         if (s > 0) {
           g.fillStyle = stairsLabel;
           g.fillText(letter, left + w / 2, top + w * 0.68);
@@ -482,7 +490,7 @@ export function createRenderer(canvas) {
       g.lineWidth = thick;
       g.lineCap = 'butt';
       g.stroke();
-      const s = Math.min(MAX_LABEL, Math.max(MIN_LABEL, Math.round(size * 0.5)));
+      const s = Math.min(MAX_LABEL * large, Math.max(MIN_LABEL, Math.round(size * 0.5 * large)));
       if (exit.doorName !== '' && size >= 12) {
         g.font = font(600, s);
         const wide = g.measureText(exit.doorName).width;
@@ -525,7 +533,7 @@ export function createRenderer(canvas) {
       g.lineWidth = 1;
       g.strokeRect(left + 0.5, top + 0.5, w - 1, h - 1);
       g.setLineDash([]);
-      const s = Math.min(13, Math.max(MIN_LABEL, Math.round(size * 0.45)));
+      const s = Math.min(13 * large, Math.max(MIN_LABEL, Math.round(size * 0.45 * large)));
       // a zone one row high keeps its label for the inspector: the corridor's name is there
       if (zone.label !== '' && s >= MIN_LABEL && h >= s * 2 + 12) {
         g.font = font(500, s);
@@ -544,7 +552,7 @@ export function createRenderer(canvas) {
     // corridor names, along their run, in small capitals; under the
     // overlays, or over them on a halo (namesOver)
     const corridorNames = (halo) => {
-      const nameSize = Math.min(13, Math.max(MIN_LABEL, Math.round(size * 0.5)));
+      const nameSize = Math.min(13 * large, Math.max(MIN_LABEL, Math.round(size * 0.5 * large)));
       if (size < 12) return;
       for (const corridor of floor.corridors) {
         if (corridor.cells.length === 0 || corridor.name === '') continue;
@@ -588,7 +596,7 @@ export function createRenderer(canvas) {
     if (!scene.namesOver) corridorNames(false);
 
     // the labels of rooms and other spaces
-    const base = Math.max(MIN_LABEL, size * 0.55);
+    const base = Math.max(MIN_LABEL, size * 0.55 * large);
     for (const { space, shape, fill } of onScreen) {
       const cx = view.x + shape.anchor.x * size;
       const cy = view.y + shape.anchor.y * size;
@@ -605,12 +613,12 @@ export function createRenderer(canvas) {
       if (space.number.trim() === '') {
         // "needs a number", or "?" when there is no room for the words
         const words = 'needs a number';
-        let s = Math.min(13, Math.max(MIN_LABEL, Math.round(base * 0.8)));
+        let s = Math.min(13 * large, Math.max(MIN_LABEL, Math.round(base * 0.8)));
         g.font = font(500, s);
         const fits = g.measureText(words).width + 10 <= room;
         const text = fits ? words : '?';
         if (!fits) {
-          s = Math.max(MIN_LABEL, Math.min(MAX_LABEL, Math.round(base)));
+          s = Math.max(MIN_LABEL, Math.min(MAX_LABEL * large, Math.round(base)));
           if (size < 12) continue;
           g.font = font(600, s);
         }
@@ -646,7 +654,7 @@ export function createRenderer(canvas) {
     // what another view lays over the plan
     for (const overlay of scene.overlays || []) {
       g.save();
-      overlay(g, view, floor, t);
+      overlay(g, view, floor, t, { labelScale: large });
       g.restore();
     }
     if (scene.namesOver) {
