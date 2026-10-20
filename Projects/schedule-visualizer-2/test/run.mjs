@@ -79,6 +79,7 @@ export const GROUPS = {
     'engine/suggest.test.mjs', // SV2-63
     'engine/prints-congestion-scenario.test.mjs', // SV2-71
     'engine/snapshots.test.mjs', // SV2-28
+    'engine/transfer.test.mjs', // SV2-29a
     'engine/transfer-qr.test.mjs', // SV2-29a
     'ui/progress.test.mjs', // SV2-02
     'ui/helpers.test.mjs', // SV2-02
