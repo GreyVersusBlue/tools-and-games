@@ -148,6 +148,7 @@ export const GROUPS = {
     'timing/evacuation.mjs', // SV2-62
     'timing/suggest.mjs', // SV2-63
     'timing/scenario-lane.mjs', // SV2-64
+    'timing/difference-card.mjs', // SV2-69c
   ],
 };
 

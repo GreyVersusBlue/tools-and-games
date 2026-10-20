@@ -4,9 +4,9 @@
 // exclusion zones left unpainted (through a canvas that records what is
 // drawn), the strengths taken from painted cells only, every day type
 // together, the ten largest changes with ties, groups apart, the card's
-// walks against engine/load.js contributors and their cost on the big
-// fixture, and the card's words with typed names. The map in a page is
-// test/browser/difference.mjs.
+// walks against engine/load.js contributors and that a later card only
+// looks its cell up, and the card's words with typed names. The map in a
+// page is test/browser/difference.mjs.
 //
 //   node test/ui/difference.test.mjs
 
@@ -25,10 +25,7 @@ import { buildGraph } from '../../engine/graph.js';
 import { createPipeline, scenarioRun } from '../../engine/worker.js';
 import { loadDifference, applyChanges, editedGroupIds } from '../../engine/scenario.js';
 import { contributors } from '../../engine/load.js';
-import { routingGraph, routesForSchedule, createRouteCache } from '../../engine/routing.js';
-import { allRooms } from '../../engine/schema.js';
-import { effectiveSchedule } from '../../engine/day-types.js';
-import { bigProject } from '../fixtures/big.mjs';
+import { routingGraph, routesForSchedule } from '../../engine/routing.js';
 
 const TOOL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -319,49 +316,45 @@ test('the card\'s walks say who crosses every cell, day and transition as engine
   assert.deepEqual(groupsAt(null, 0, 'dsample00a', null), { onlyBefore: [], onlyAfter: [] });
 });
 
-// The card's cost at the size the tool promises (test/fixtures/big.mjs: 4
-// floors of 60 by 40, 80 groups, 10 periods), three moves on two day types.
-// The first card after an answer routes the edited groups for both sides
-// (an empty route cache here, the most it can cost) and indexes their
-// cells; a later card only looks its cell up. Measured by SV2-69b on huginn
-// (2026-10-19, load average 4 to 6), six fresh processes: the first 58 to 75
-// ms; a later card's median 7 to 18 microseconds (the contributors call per
-// hover it replaces: 72 to 650 microseconds). The budgets are the worst of
-// those and the suite fails at SLACK 2 of them, as every timing file here.
-const FIRST_CARD = 75;
-const LATER_CARD = 0.018;
-const SLACK = 2;
-
-function bigMove(project, g, dayIndex, period) {
-  const dayTypeId = project.dayTypes[dayIndex].id;
-  const used = new Set(project.groups.map((group) => effectiveSchedule(project, group.id, dayTypeId)[period].room));
-  const rooms = allRooms(project).filter((room) => !used.has(room.id));
-  const room = rooms[(g * 7 + period * 3) % rooms.length];
-  return { kind: 'move', dayTypeId, groupId: project.groups[g].id, period, roomId: room.id };
+// A later card only looks its cell up. groupsAt is handed walks whose day
+// and cell maps count their gets and throw on any iteration, set, delete or
+// clear: each call may get its day and its cell once a side, and read that
+// one cell's groups, so it neither walks every cell nor builds or changes
+// the index. Its answers are the same as on the plain walks. What that costs
+// on the big fixture is test/timing/difference-card.mjs.
+function watched(map, counts, inner) {
+  const out = new Map(Array.from(map, ([key, value]) => [key, inner ? inner(value) : value]));
+  const refuse = (what) => () => { throw new Error('groupsAt ' + what + ' a map of the index'); };
+  const get = out.get.bind(out);
+  return Object.assign(out, {
+    get(key) { counts.gets += 1; return get(key); },
+    has: refuse('asked has of'), set: refuse('set'), delete: refuse('deleted from'), clear: refuse('cleared'),
+    keys: refuse('iterated'), values: refuse('iterated'), entries: refuse('iterated'), forEach: refuse('iterated'),
+    [Symbol.iterator]: refuse('iterated'),
+  });
 }
 
-test('on the big fixture the first card works the walks out under ' + FIRST_CARD + ' ms and a later card looks its cell up under ' + LATER_CARD + ' ms (failing at ' + SLACK + ' times)', () => {
-  const project = bigProject({ seed: 1 });
-  const graph = buildGraph(project);
-  const changes = [bigMove(project, 3, 0, 4), bigMove(project, 11, 1, 2), bigMove(project, 40, 0, 7)];
-  const day = project.dayTypes[0].id;
-  let started = performance.now();
-  const walks = cardWalks(project, changes, graph, { cache: createRouteCache(16), geometryVersion: 1 });
-  const nodes = Array.from(walks.after.get(day).keys());
-  groupsAt(walks, nodes[0], day, null);
-  const first = performance.now() - started;
-  assert.ok(nodes.length > 100, 'the moves walk ' + nodes.length + ' cells');
-  const times = [];
-  for (let i = 0; i < 201; i += 1) {
-    started = performance.now();
-    groupsAt(walks, nodes[i % nodes.length], day, i % 2 === 0 ? null : 4);
-    times.push(performance.now() - started);
+test('a later card looks its cell up and nothing else: one get of its day and one of its cell a side, no walk over the cells, no change to the index', () => {
+  const { graph, walks } = walksOfSample();
+  const counts = { gets: 0 };
+  const side = (byDay) => watched(byDay, counts, (nodes) => watched(nodes, counts));
+  const seen = { order: walks.order, before: side(walks.before), after: side(walks.after) };
+  let calls = 0;
+  let apartSeen = 0;
+  for (const day of ['dsample00a', 'dsample00b', 'no-such-day']) {
+    for (const t of [null, 2]) {
+      for (let node = 0; node < graph.count; node += 1) {
+        const before = counts.gets;
+        const got = groupsAt(seen, node, day, t);
+        calls += 1;
+        assert.ok(counts.gets - before <= 4, day + ', node ' + node + ': ' + (counts.gets - before) + ' gets');
+        assert.deepEqual(got, groupsAt(walks, node, day, t), day + ', transition ' + t + ', node ' + node);
+        if (got.onlyBefore.length + got.onlyAfter.length > 0) apartSeen += 1;
+      }
+    }
   }
-  times.sort((a, b) => a - b);
-  const later = times[100];
-  console.log('# the first card ' + first.toFixed(1) + ' ms, a later card ' + (later * 1000).toFixed(1) + ' microseconds (median of 201)');
-  assert.ok(first <= FIRST_CARD * SLACK, 'the first card took ' + first.toFixed(1) + ' ms');
-  assert.ok(later <= LATER_CARD * SLACK, 'a later card took ' + (later * 1000).toFixed(1) + ' microseconds');
+  assert.ok(apartSeen > 10, 'cells with a group apart: ' + apartSeen);
+  assert.ok(counts.gets <= calls * 4, counts.gets + ' gets for ' + calls + ' cards');
 });
 
 // ---- words and the table
