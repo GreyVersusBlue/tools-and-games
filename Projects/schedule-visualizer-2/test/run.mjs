@@ -81,6 +81,7 @@ export const GROUPS = {
     'engine/snapshots.test.mjs', // SV2-28
     'engine/transfer.test.mjs', // SV2-29a
     'engine/transfer-qr.test.mjs', // SV2-29a
+    'engine/help.test.mjs', // SV2-30a
     'ui/progress.test.mjs', // SV2-02
     'ui/helpers.test.mjs', // SV2-02
     'ui/building-inspector.test.mjs', // SV2-07
@@ -142,6 +143,7 @@ export const GROUPS = {
     'browser/fix.mjs', // SV2-70
     'browser/snapshots.mjs', // SV2-28
     'browser/transfer.mjs', // SV2-29b
+    'browser/help.mjs', // SV2-30a
     'a11y/axe.mjs',
   ],
   a11y: [

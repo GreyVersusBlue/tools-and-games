@@ -24,7 +24,7 @@ import { openDialog, confirm, dialogIsOpen } from './components/dialog.js';
 import { openMenu, closeMenu } from './components/menu.js';
 import { createToasts } from './components/toast.js';
 import { field } from './components/field.js';
-import { table } from './components/table.js';
+import { openHelp as showHelp } from './help/index.js';
 import { gettingStarted } from './components/getting-started.js';
 import { paperForRegion } from './project/settings.js';
 
@@ -348,36 +348,7 @@ async function boot() {
   // ------------------------------------------------------------ help
 
   function openHelp(opener) {
-    const rows = shortcuts.list();
-    const list = table({
-      caption: 'Keyboard shortcuts',
-      key: (row) => row.id,
-      columns: [
-        { id: 'keys', label: 'Keys', sortable: true, value: (row) => row.keys, render: (row) => h('kbd', null, row.keys) },
-        { id: 'does', label: 'What it does', sortable: true, value: (row) => row.does },
-        { id: 'group', label: 'Where', sortable: true, value: (row) => row.group },
-      ],
-      rows,
-    });
-    const dialog = openDialog({
-      id: 'help-dialog',
-      title: 'These are the keyboard shortcuts.',
-      wide: true,
-      opener,
-      fallbackFocus: focusSurface,
-      body: [
-        h('p', null, 'A single key does nothing while you are typing in a field, or while Ctrl, Alt or ⌘ is held. Inside a text field, undo and redo belong to the field.'),
-        h('div', { class: 'dialog__scroll', tabindex: '0', role: 'group', 'aria-label': 'Keyboard shortcuts' }, list.element),
-      ],
-      buttons: [
-        { label: 'Show Getting started', value: 'start' },
-        { label: 'Close help', value: null },
-      ],
-    });
-    dialog.closed.then((value) => {
-      if (value === 'start') showStarted();
-    });
-    return dialog;
+    return showHelp(ctx, { sections: SECTIONS, current: current && current.section.id, opener });
   }
 
   function showStarted() {
