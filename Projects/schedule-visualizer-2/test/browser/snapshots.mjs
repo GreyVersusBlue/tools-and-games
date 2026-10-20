@@ -70,6 +70,18 @@ const listed = (n, target) => (target || page).waitForFunction((count) => {
   return el && el.dataset.state === 'ready' && el.dataset.pending === undefined && el.dataset.snapshots === String(count);
 }, { timeout: 10000 }, n);
 
+// The card is not drawing, whatever it holds; then how many it lists. A
+// change that should have taken a snapshot waits on this and asserts the
+// count, so a snapshot not taken fails on the count, not on a timeout.
+const settled = (target) => (target || page).waitForFunction(() => {
+  const el = document.getElementById('snapshots');
+  return el && el.dataset.state === 'ready' && el.dataset.pending === undefined;
+}, { timeout: 10000 });
+async function counted(n, why) {
+  await settled();
+  assert.equal(await page.$eval('#snapshots', (el) => Number(el.dataset.snapshots)), n, why);
+}
+
 // The names on the card, top to bottom, as the page shows them.
 const names = (target) => (target || page).$$eval('#snapshots .snap__item', (all) => all.map((item) => {
   const name = item.querySelector('.snap__name');
@@ -315,7 +327,8 @@ test('at the limit a snapshot is refused in a sentence that names it and says wh
   await page.focus('#snapshots [data-field="snapshot-name"]');
   await page.keyboard.type('One too many');
   await page.keyboard.press('Enter');
-  await shows(() => document.querySelector('#snapshots [data-line="result"]').dataset.result === 'refused');
+  // either answer ends the wait (taken, or refused at the limit), so a limit that did not hold fails on the sentence below
+  await shows(() => /One too many|at most/.test(document.querySelector('#snapshots [data-line="result"]').textContent));
   assert.deepEqual(await result('snapshots'), ['refused', fullSentence(SNAPSHOT_LIMIT), 'alert']);
   assert.deepEqual((await idb('snapshots')).map((record) => record.id + record.name).sort(), before, 'nothing added, nothing replaced');
   await page.$eval('#snapshots [data-field="snapshot-name"]', (el) => {
@@ -385,7 +398,7 @@ test('clear the building: it says what it removes and keeps, takes a snapshot fi
   await shows(() => document.querySelector('.figures__item[data-figure="rooms"] dd').textContent === '0');
   assert.deepEqual([await figure('floors'), await figure('exits'), await figure('groups')], ['3', '0', '8']);
   assert.equal(await text('#clear [data-says="building"]'), 'Nothing is drawn on any of the 3 floors, so there is nothing to clear.');
-  await listed(2);
+  await counted(2, 'a snapshot was taken before the building was cleared');
   assert.deepEqual(await names(), ['Before clearing the building', 'Before moving 7th grade <i>again</i>']);
   const auto = (await idb('snapshots')).find((record) => record.name === 'Before clearing the building');
   assert.equal(auto.project.building.floors[0].spaces.length > 0, true, 'the snapshot holds the building as it was');
@@ -420,7 +433,7 @@ test('clear the schedule: the groups and teachers go at once with a snapshot fir
   await answer('Clear the schedule');
   await shows(() => document.querySelector('.figures__item[data-figure="groups"] dd').textContent === '0');
   assert.deepEqual([await figure('teachers'), await figure('rooms'), await figure('dayTypes')], ['0', '13', '2']);
-  await listed(3);
+  await counted(3, 'a snapshot was taken before the schedule was cleared');
   assert.equal((await names())[0], 'Before clearing the schedule');
   await page.click('#undo');
   await shows(() => document.querySelector('.figures__item[data-figure="groups"] dd').textContent === '8');
@@ -439,7 +452,7 @@ test('start a new project: a recovery point and a snapshot first, an empty proje
   assert.equal(await page.$eval('#school-name', (el) => el.firstChild.textContent), 'Schedule Visualizer 2', 'no school name: the tool\'s own');
   const recovery = await idb('recovery');
   assert.deepEqual([recovery[recovery.length - 1].reason, recovery[recovery.length - 1].project.id], ['replace', id], 'the project replaced is the newest recovery point');
-  await listed(4);
+  await counted(4, 'a snapshot was taken before the new project');
   assert.equal((await names())[0], 'Before starting a new project');
   // the earlier snapshots are of another project now, and say whose
   assert.match(await page.$eval('#snapshots .snap__item:nth-child(2) .snap__other', (el) => el.textContent), /^Of another project: Harbour <b>View<\/b> School$/);
@@ -466,7 +479,8 @@ test('importing a project file over this one asks, takes a snapshot named for th
   await page.waitForSelector('dialog.dialog[open]');
   assert.equal((await dialogTexts())[2], 'A recovery point of this project is taken first, with a snapshot of it, “Before importing ' + fileName + '”, that you can restore from Snapshots at any time. Undo brings it back while this tab stays open.');
   await answer('Replace this project');
-  await listed(5);
+  await shows(() => document.querySelector('#project-file [data-line="result"]')?.dataset.result === 'done' && /^Imported/.test(document.querySelector('#project-file [data-line="result"]').textContent));
+  await counted(5, 'a snapshot was taken before the project file replaced the project');
   assert.equal((await names())[0], 'Before importing ' + fileName);
   assert.equal((await page.evaluate(async () => (await globalThis.sv2.storage.listRecoveryPoints())[0].reason)), 'import', 'the recovery point is still taken');
 });
@@ -498,7 +512,8 @@ test('importing a building file asks first and takes a snapshot named for the fi
   }, fileText);
   await page.waitForSelector('dialog.dialog[open]');
   await answer('Replace the building');
-  await listed(6);
+  await shows(() => /^Imported “east wing\.json”/.test(document.querySelector('#project-file [data-line="result"]').textContent));
+  await counted(6, 'a snapshot was taken before the building file replaced the building');
   assert.equal((await names())[0], 'Before importing east wing.json');
 });
 
