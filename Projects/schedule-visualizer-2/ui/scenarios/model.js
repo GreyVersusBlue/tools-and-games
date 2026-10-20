@@ -9,14 +9,14 @@ import { periodName } from '../../engine/bells.js';
 import { resolveSlotRoom, nameOfRoom } from '../../engine/schema.js';
 import { formatDuration } from '../../engine/findings.js';
 import { reconcile, changeWords } from '../../engine/scenario.js';
-import { NEW_SCENARIO_NAME } from '../../engine/actions.js';
+import { NEW_SCENARIO_NAME, blankName } from '../../engine/actions.js';
 import { count, list } from '../components/words.js';
 
 // The scenario's name as the screen says it: as typed, or "New scenario"
 // where a file left it blank (the actions' own rule for their labels).
 export function scenarioName(scenario) {
   const name = scenario && typeof scenario.name === 'string' ? scenario.name : '';
-  return name.replace(/[\s​-‍⁠﻿]/g, '') === '' ? NEW_SCENARIO_NAME : name;
+  return blankName(name) ? NEW_SCENARIO_NAME : name;
 }
 
 // The day types a change can name: those that are their own copy, each

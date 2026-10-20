@@ -48,6 +48,7 @@
 
 import { ownDayTypes, findDayType } from '../../engine/day-types.js';
 import { reconcile, changeWords } from '../../engine/scenario.js';
+import { blankName, NEW_SCENARIO_NAME } from '../../engine/actions.js';
 import { sortFindings, SEVERITIES } from '../../engine/findings.js';
 import { loads } from '../../engine/load.js';
 import { count, list } from '../components/words.js';
@@ -177,11 +178,10 @@ function daySection(project, results, graph, dayType, first) {
 // ---------------------------------------------------------------- the scenario
 
 // The scenario's name as the planner's labels say it: as typed, or "New
-// scenario" when nothing is left of it after white space and the zero-width
-// characters (engine/actions.js keeps this rule for its labels, unexported).
+// scenario" when it is blank by engine/actions.js's rule (blankName).
 function scenarioName(scenario) {
   const name = scenario.name;
-  return typeof name !== 'string' || name.replace(/[\s​-‍⁠﻿]/g, '') === '' ? 'New scenario' : name;
+  return typeof name !== 'string' || blankName(name) ? NEW_SCENARIO_NAME : name;
 }
 
 // Parts of words as markup: a name as typed keeps its own direction.

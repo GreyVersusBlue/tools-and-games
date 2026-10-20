@@ -56,7 +56,7 @@ import { h, uid, focusables } from '../components/dom.js';
 import { periodWords, count } from '../components/words.js';
 import { cancelled, cancelledSentence } from '../scenarios/model.js';
 import { checkLabel } from '../project/settings.js';
-import { newScenario, addScenarioChange, NEW_SCENARIO_NAME } from '../../engine/actions.js';
+import { newScenario, addScenarioChange, NEW_SCENARIO_NAME, blankName } from '../../engine/actions.js';
 import { changeWords } from '../../engine/scenario.js';
 import { SUGGESTION_LIMIT } from '../../engine/suggest.js';
 import { periodName } from '../../engine/bells.js';
@@ -122,10 +122,10 @@ function sameVersions(a, b) {
 }
 
 // The scenario's name as its labels say it: a blank name is 'New scenario'
-// (engine/actions.js).
+// (engine/actions.js's blankName).
 function scenarioLabel(scenario) {
   const name = scenario && typeof scenario.name === 'string' ? scenario.name : '';
-  return name.replace(/[\s\u200B-\u200D\u2060\uFEFF]/g, '') === '' ? NEW_SCENARIO_NAME : name;
+  return blankName(name) ? NEW_SCENARIO_NAME : name;
 }
 
 // Is the finding in the main lane's result (its findings or its accepted)?

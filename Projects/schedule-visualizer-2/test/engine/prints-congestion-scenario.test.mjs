@@ -357,3 +357,24 @@ test('an Error handed in as the answer, and a failure with no message, are said 
     assert.equal(countOf(section, '<span dir="auto"></span>'), 0);
   }
 });
+
+// SV2-72d item 2: the blank-name rule is engine/actions.js's blankName,
+// exported, and the report, the lab and the Fix dialog use it: none keeps a
+// copy of its character list to drift from the actions' labels.
+test('SV2-72d: the scenario\'s name follows engine/actions.js\'s blankName, and no screen or print keeps a copy of the rule', async () => {
+  const { blankName, NEW_SCENARIO_NAME } = await import('../../engine/actions.js');
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  for (const name of ['', '   ', '​⁠', '﻿ ‍', 'Plan', ' x ']) {
+    const said = blankName(name) ? NEW_SCENARIO_NAME : name;
+    const html = congestionPrint.scenarioSection(withScenario(school(), name, twoChanges()), undefined);
+    assert.ok(html.includes('<h2>The scenario: <span dir="auto">' + esc(said) + '</span></h2>'), JSON.stringify(name) + ' prints as ' + said);
+  }
+  const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+  for (const file of ['ui/prints/congestion.js', 'ui/scenarios/model.js', 'ui/schedule/checks-fix.js']) {
+    const source = fs.readFileSync(path.join(root, ...file.split('/')), 'utf8');
+    assert.ok(/\bblankName\b/.test(source), file + ' uses blankName');
+    assert.ok(!/\\u200[bBdD]|\\u2060|\\uFEFF|[​‍⁠﻿]/.test(source), file + ' keeps no copy of the zero-width characters of the rule');
+  }
+});
