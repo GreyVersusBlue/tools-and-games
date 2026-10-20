@@ -290,7 +290,7 @@ test('by the keyboard at 1280 by 900: the sample school goes over, is asked abou
     assert.equal(await b.page.evaluate(() => globalThis.sv2.store.project.settings.schoolName), SAMPLE_NAME);
     assert.equal(await b.page.evaluate(() => globalThis.sv2.store.project.id), await a.page.evaluate(() => globalThis.sv2.store.project.id), 'the project keeps its identity');
     const snapshots = await idb(b.page, 'snapshots');
-    assert.deepEqual(snapshots.map((each) => each.name), [SNAPSHOT_NAME]);
+    assert.deepEqual(snapshots.map((each) => each.name), [SNAPSHOT_NAME], 'a snapshot was taken before the replacement');
     const points = await idb(b.page, 'recovery');
     assert.ok(points.length > pointsBefore && points.some((each) => each.reason === 'import'), 'a recovery point "import" was taken: ' + JSON.stringify(points));
     await b.page.evaluate(() => globalThis.sv2.ctx.undo());
@@ -320,8 +320,14 @@ test('by finger at 390 by 844: the same, with the title and Close in view and th
     assert.ok(qr.square && qr.inside, 'the QR code is square and inside the dialog: ' + JSON.stringify(qr));
     assert.ok(qr.width >= 3 * (17 + 4 * qr.version + 8) - 1, 'at least 3 px a module: ' + JSON.stringify(qr));
     assert.ok(await headInView(a.page, SEND), 'the title and Close are in view');
-    // scrolled to its end, the head stays
-    await a.page.$eval('#' + SEND + ' .xfer__scroll', (el) => el.scrollTo(0, el.scrollHeight));
+    // scrolled to the body's last control, that control and the head are both in view
+    const last = await a.page.$eval('#' + SEND, (dialog) => {
+      const button = dialog.querySelector('[data-action="scan-answer"]');
+      button.scrollIntoView({ block: 'nearest' });
+      const box = button.getBoundingClientRect();
+      return box.top >= dialog.querySelector('.xfer__head').getBoundingClientRect().bottom && box.bottom <= innerHeight;
+    });
+    assert.ok(last, 'the last control comes into view under the head');
     assert.ok(await headInView(a.page, SEND), 'the title and Close stay in view with the body scrolled');
     await a.page.tap('[data-action="close-transfer"]');
     await a.page.waitForFunction(() => document.getElementById('transfer-send') === null);
@@ -641,9 +647,17 @@ test('after ' + NO_CHANNEL_MS / 1000 + ' s with no channel both sides say so pla
     const offer = await codeOf(a.page, 'offer');
     await press(b.page, '[data-action="receive-project"]');
     await reaches(b.page, RECEIVE, 'offer');
+    // the page's own clock at the reply shown and at the statement
+    await b.page.evaluate(() => {
+      const el = document.getElementById('transfer-receive');
+      globalThis.sv2times = {};
+      new MutationObserver(() => {
+        if (el.dataset.state === 'reply' && globalThis.sv2times.reply === undefined) globalThis.sv2times.reply = performance.now();
+        if (el.dataset.noChannel === 'true' && globalThis.sv2times.said === undefined) globalThis.sv2times.said = performance.now();
+      }).observe(el, { attributes: true });
+    });
     await paste(b.page, 'offer', offer, 'keyboard');
     await reaches(b.page, RECEIVE, 'reply');
-    const replied = Date.now();
     const answer = await codeOf(b.page, 'answer');
 
     // c's sender is given a reply from a device that has gone
@@ -668,7 +682,9 @@ test('after ' + NO_CHANNEL_MS / 1000 + ' s with no channel both sides say so pla
     assert.match(await c.page.evaluate(() => globalThis.sv2test.downloads[0]), /\.json$/);
 
     await b.page.waitForFunction(() => document.getElementById('transfer-receive')?.dataset.noChannel === 'true', { timeout: NO_CHANNEL_MS + 10000 });
-    assert.ok(Date.now() - replied >= NO_CHANNEL_MS - 500, 'the receiver said it at its time, not before: ' + (Date.now() - replied) + ' ms');
+    const times = await b.page.evaluate(() => globalThis.sv2times);
+    const waited = times.said - times.reply;
+    assert.ok(waited >= NO_CHANNEL_MS - 50 && waited < NO_CHANNEL_MS + 3000, 'the receiver said it at ' + NO_CHANNEL_MS + ' ms after showing its reply: ' + Math.round(waited) + ' ms');
     assert.equal(await said(b.page, RECEIVE, 'no-channel').then((text) => text.startsWith(SENTENCES.noChannelReceiving)), true);
     assert.equal(await reaches(b.page, RECEIVE, 'reply'), 'reply', 'still waiting');
 
