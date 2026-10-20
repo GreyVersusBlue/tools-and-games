@@ -217,10 +217,12 @@ function placeIn(layout, band, m, keep) {
 // (a strip at the least zoom), or `plainWhole` is false, the clear band
 // that shows more. The plan map passes false where the floors cannot be
 // whole above a sticky foot: whole there would be under the foot. The band
-// beside moves the floors right, toward a card on the stage's bottom right, so a section that asks
-// where the floors lie at Fit asks this, not a plain fit (the map's fitAt;
-// Movement's legend, docked when its card would lie on a floor:
-// ui/movement/index.js coversFloor, SV2-72c2).
+// beside moves the floors right, toward a card on the stage's bottom right,
+// so a section that asks where the floors lie at Fit asks the map's fitAt,
+// never this alone or a plain fit: fitAt takes the plan map's choose, this
+// above the foot and on the whole stage as Fit does (Movement's legend,
+// docked when its card would lie on a floor: ui/movement/index.js
+// coversFloor, SV2-72c2 and SV2-72f2).
 export function fitClear(layout, width, height, corner, margin, plainWhole = true) {
   const pad = margin === undefined ? FIT_MARGIN : margin;
   const all = { t: pad, r: pad, b: pad, l: pad };

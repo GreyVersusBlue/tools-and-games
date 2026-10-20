@@ -6,11 +6,22 @@
 // 1280 by 800 and by a finger alone at 390 by 844. A journey counts the
 // pointer and key events the page received and fails on any of the other
 // kind: a keyboard journey that clicked once, or a touch journey that
-// pressed a key or moved a mouse, is not the journey it says it is. The one
-// stand-in: a native select is chosen with page.select() after the finger's
-// tap on it, as the phone's own picker would (a headless browser draws
-// none). Fixtures are put in through the store's actions before a journey
-// starts; nothing a journey checks is done that way.
+// pressed a key or moved a mouse, is not the journey it says it is; nor is
+// one that turned a wheel, or had a script click, type into a field or move
+// the focus for it (an untrusted click, input, change or focus event).
+// What stands in for a person still, and why:
+// - a native select is chosen with page.select() after the finger's tap on
+//   it, as the phone's own picker would (a headless browser draws none); its
+//   input and change, one pair a select, are the only untrusted events
+//   allowed, counted by tapSelect;
+// - tap() brings what it taps into view with scrollIntoView() before the
+//   finger comes down: a finger reaches it by a swipe of the scroller it is
+//   in (every one of them scrolls by touch, nothing is under a fixed layer
+//   once in view, and the wait after it asserts nothing lies over the
+//   control), and a swipe's length depends on the device's own scrolling;
+// - the touch Safety journey's map is brought into view the same way.
+// Fixtures are put in through the store's actions before a journey starts;
+// nothing a journey checks is done that way.
 //
 // Also, from batch 17 and SV2-72e: at 844 by 390 with touch Movement and the
 // lab put every floor on the stage at Fit and none under the sticky foot,
@@ -115,11 +126,13 @@ async function fixture(page, alter, actions) {
   }, alter || null, actions || []);
 }
 
-// Every pointer and key event the page gets from here on, counted by kind;
-// a journey reads it at its end (journeyWas).
+// Every pointer, key and wheel event the page gets from here on, counted by
+// kind, and every click, input, change and focus a script made (untrusted)
+// rather than a person; a journey reads it at its end (journeyWas).
 async function countInput(page) {
+  page.__m5selects = 0;
   await page.evaluate(() => {
-    const seen = { keys: 0, touch: 0, mouse: 0, pen: 0 };
+    const seen = { keys: 0, touch: 0, mouse: 0, pen: 0, wheel: 0, scripted: { click: 0, input: 0, change: 0, focus: 0 } };
     globalThis.__m5input = seen;
     window.addEventListener('keydown', () => {
       seen.keys += 1;
@@ -131,10 +144,22 @@ async function countInput(page) {
       // a mouse moved over the page with no pointer down; a touch's own compatibility events come with a touch pointer
       if (!event.sourceCapabilities || !event.sourceCapabilities.firesTouchEvents) seen.mousemoved = (seen.mousemoved || 0) + 1;
     }, true);
+    window.addEventListener('wheel', () => {
+      seen.wheel += 1;
+    }, { capture: true, passive: true });
+    for (const type of ['click', 'input', 'change', 'focus']) {
+      window.addEventListener(type, (event) => {
+        if (!event.isTrusted) seen.scripted[type] += 1;
+      }, true);
+    }
   });
 }
 async function journeyWas(page, kind) {
   const seen = await page.evaluate(() => globalThis.__m5input);
+  // page.select's own pair, an input and a change on the select, once for each tapSelect
+  const selects = page.__m5selects || 0;
+  assert.deepEqual(seen.scripted, { click: 0, input: selects, change: selects, focus: 0 }, 'the ' + kind + ' journey had a script click, type or focus for it (' + selects + ' page.select pairs allowed): ' + JSON.stringify(seen));
+  assert.equal(seen.wheel, 0, 'the ' + kind + ' journey turned a wheel: ' + JSON.stringify(seen));
   if (kind === 'keyboard') {
     assert.equal(seen.mouse + seen.touch + seen.pen + (seen.mousemoved || 0), 0, 'the keyboard journey used a pointer: ' + JSON.stringify(seen));
     assert.ok(seen.keys > 0, 'no key was pressed: ' + JSON.stringify(seen));
@@ -169,11 +194,17 @@ async function tabTo(page, selector, options) {
   throw new Error(most + ' presses of ' + (back ? 'Shift+Tab' : 'Tab') + ' did not reach ' + selector + '; the focus is on ' + at);
 }
 
-// A section's digit, pressed with the focus on the page and nothing in a field.
+// A section's digit, pressed with nothing in a field: Tab moves the focus out
+// of one first, as a person would (a digit typed in a field is the field's).
 async function sectionKey(page, digit, id) {
-  await page.evaluate(() => {
-    if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
-  });
+  for (let press = 0; press < 20; press += 1) {
+    const typing = await page.evaluate(() => {
+      const el = document.activeElement;
+      return Boolean(el) && (el.isContentEditable || el.closest('input, select, textarea, [contenteditable=""], [contenteditable="true"], [data-editing]') !== null);
+    });
+    if (!typing) break;
+    await page.keyboard.press('Tab');
+  }
   await page.keyboard.press(String(digit));
   await waitForSection(page, id);
 }
@@ -210,6 +241,7 @@ async function tap(page, selector) {
 async function tapSelect(page, selector, value) {
   await tap(page, selector);
   await page.select(selector, value);
+  page.__m5selects = (page.__m5selects || 0) + 1;
 }
 
 const slotRoom = (page, groupId, dayTypeId, period) => page.evaluate((g, d, p) => globalThis.sv2.store.project.groups.find((each) => each.id === g).days[d][p].room, groupId, dayTypeId, period);
@@ -305,39 +337,187 @@ async function mapSettled(page, which) {
   }, which);
 }
 
-// Counted from here: each change of the stage's fit (data-fit) and of
-// Movement's legend dock (data-docked). A fit or a dock that judges the
-// layout it made can make two layouts choose each other (SV2-72c3).
-const countTurns = (page, which) => page.evaluate((name) => {
-  const plan = name === 'movement' ? document.querySelector('.mov').movement.plan : document.querySelector('.scn').scenarios.plan;
-  globalThis.__m5turns = { fit: 0, dock: 0 };
-  const watch = (el, attribute, key) => {
-    if (!el) return;
-    new MutationObserver((records) => {
-      for (const record of records) if (record.oldValue !== el.getAttribute(attribute)) globalThis.__m5turns[key] += 1;
-    }).observe(el, { attributes: true, attributeFilter: [attribute], attributeOldValue: true });
-  };
-  watch(plan.stage, 'data-fit', 'fit');
-  watch(document.querySelector('.mov-legend'), 'data-docked', 'dock');
-}, which);
+// Counted from here, before the section is opened: each change of a plan
+// stage's fit (data-fit) and of Movement's legend dock (data-docked), on
+// whatever element carries them, so the first layout's turns count too
+// (SV2-72f2: counted after go() a layout that turned while the section
+// opened was not seen). A fit or a dock that judges the layout it made can
+// make two layouts choose each other (SV2-72c3).
+const countTurns = (page) => page.evaluate(() => {
+  if (globalThis.__m5turnsWatch) globalThis.__m5turnsWatch.disconnect();
+  const turns = { fit: 0, dock: 0 };
+  globalThis.__m5turns = turns;
+  // a record holds the value before; the value a set left is the next
+  // record's for the same element, or the attribute as it is now for the
+  // last. A set to the value already there (the legend draws its dock each
+  // time) is no turn.
+  globalThis.__m5turnsWatch = new MutationObserver((records) => {
+    records.forEach((record, at) => {
+      const next = records.slice(at + 1).find((later) => later.target === record.target && later.attributeName === record.attributeName);
+      const value = next ? next.oldValue : record.target.getAttribute(record.attributeName);
+      if (record.oldValue !== value) turns[record.attributeName === 'data-fit' ? 'fit' : 'dock'] += 1;
+    });
+  });
+  globalThis.__m5turnsWatch.observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['data-fit', 'data-docked'], attributeOldValue: true });
+});
+
+// The map settled (mapSettled), and then the turns counted, the stage's fit
+// and the legend's dock unchanged over two animation frames running: a
+// layout still turning is not asserted on (SV2-72f2). The wait is on the
+// page's state, a frame at a time.
+async function turnsSettled(page, which) {
+  await mapSettled(page, which);
+  await page.evaluate(() => {
+    globalThis.__m5settle = null;
+  });
+  await until(page, which + '\'s fit or the legend\'s dock is still turning', (name) => {
+    const plan = name === 'movement' ? document.querySelector('.mov').movement.plan : document.querySelector('.scn').scenarios.plan;
+    const legend = document.querySelector('.mov-legend');
+    const now = JSON.stringify([globalThis.__m5turns, plan.stage.dataset.fit, legend ? legend.dataset.docked : null]);
+    const was = globalThis.__m5settle;
+    if (!was || was.now !== now) {
+      globalThis.__m5settle = { now, frames: 0 };
+      return false;
+    }
+    was.frames += 1;
+    return was.frames >= 2;
+  }, which);
+  return page.evaluate(() => ({ ...globalThis.__m5turns }));
+}
 
 for (const which of ['movement', 'scenarios']) {
   test('batch 17: at 844 by 390 with touch ' + (which === 'movement' ? 'Movement' : 'the lab, a scenario open,') + ' puts every floor on the stage at Fit and none under the sticky foot, as it opens and when Fit is tapped, and the layout settles', async () => {
     await on('#project', SIDE, async (page) => {
       assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), true, 'the page is not a touch screen’s');
       await fixture(page, null, which === 'scenarios' ? [['newScenario', { name: 'Trial' }]] : []);
+      await countTurns(page);
       await go(page, '#' + which);
-      await mapSettled(page, which);
-      await countTurns(page, which);
+      const first = await turnsSettled(page, which);
       const opened = await floorsAt(page, which);
       assert.ok(opened.zoom < 0.3, 'the floors are not near the least zoom: the case tests nothing: ' + JSON.stringify(opened));
       assert.deepEqual(offStage(opened), [], 'as it opens: ' + JSON.stringify(opened));
       await tap(page, '#section [data-action="fit"]');
-      await mapSettled(page, which);
+      const turns = await turnsSettled(page, which);
       const fitted = await floorsAt(page, which);
       assert.deepEqual(offStage(fitted), [], 'after Fit: ' + JSON.stringify(fitted));
-      const turns = await page.evaluate(() => globalThis.__m5turns);
-      assert.ok(turns.fit <= 2 && turns.dock <= 1, 'the layout did not settle: ' + JSON.stringify(turns));
+      // the stage's fit set once as the map is laid out, and once more at most as the section settles; the legend docked once
+      assert.ok(first.fit >= 1, 'no fit was counted: the count tests nothing: ' + JSON.stringify(first));
+      assert.ok(turns.fit <= 2 && turns.dock <= 1, 'the layout did not settle: ' + JSON.stringify({ first, turns }));
+    });
+  });
+}
+
+// SV2-72f2 item 1: Fit is meant to bring the stage clear of the foot again
+// after the reader scrolled, but the scroll the map had last made still
+// differed from the section's, so the map took Fit's own scroll for the
+// reader's and left the section where it was. Fit is pressed by its key and
+// by a finger, the finger on the button where it is (no scrollIntoView
+// stand-in to move the section first).
+test('SV2-72f2 item 1: at 844 by 390 with touch, Movement scrolled back to its top by the reader, Fit by its key and by a tap brings the stage clear of the sticky foot again', async () => {
+  await on('#project', SIDE, async (page) => {
+    await fixture(page);
+    await go(page, '#movement');
+    await mapSettled(page, 'movement');
+    // where the map's own scroll left the section as it opened (the Tab to
+    // the map may scroll it further, to the canvas)
+    const clear = await floorsAt(page, 'movement');
+    await tabTo(page, '#movement-plan');
+    await mapSettled(page, 'movement');
+    assert.ok(clear.scroll > 0, 'the map did not scroll the section clear of the foot as it opened: the case tests nothing: ' + JSON.stringify(clear));
+    for (const way of ['key', 'tap']) {
+      // the reader's scroll back to the section's top (the stand-in for a swipe)
+      await page.evaluate(() => {
+        document.querySelector('.mov').movement.plan.root.scrollTop = 0;
+      });
+      await until(page, 'the section did not take the scroll to its top', () => {
+        const plan = document.querySelector('.mov').movement.plan;
+        return plan.root.scrollTop === 0 && plan.root.dataset.dockedAt === '0';
+      });
+      const scrolled = await floorsAt(page, 'movement');
+      assert.ok(scrolled.stage.bottom > scrolled.footTop + 0.5, 'scrolled to the top, the foot is not over the stage: the case tests nothing: ' + JSON.stringify(scrolled));
+      if (way === 'key') {
+        assert.equal(await focusIs(page, '#movement-plan'), true, 'the focus left the map');
+        await page.keyboard.press('0');
+      } else {
+        const fitButton = '.mov [data-action="fit"]';
+        const at = await box(page, fitButton);
+        assert.ok(at, 'the Fit button has no box');
+        const hit = await page.evaluate((wanted, x, y) => {
+          const hitEl = document.elementFromPoint(x, y);
+          return Boolean(hitEl) && document.querySelector(wanted).contains(hitEl);
+        }, fitButton, at.left + at.width / 2, at.top + at.height / 2);
+        assert.equal(hit, true, 'something lies over the Fit button where it is: ' + JSON.stringify(at));
+        await page.touchscreen.tap(at.left + at.width / 2, at.top + at.height / 2);
+      }
+      await turnsSettled(page, 'movement');
+      const fitted = await floorsAt(page, 'movement');
+      assert.equal(fitted.scroll, clear.scroll, 'Fit by ' + way + ' did not scroll the section clear of the foot again: ' + JSON.stringify({ clear, scrolled, fitted }));
+      assert.deepEqual(offStage(fitted), [], 'after Fit by ' + way + ': ' + JSON.stringify(fitted));
+    }
+  });
+});
+
+// SV2-72f2 item 3: a rotation that clamps the section's scroll is not the
+// reader's scroll. On a phone turned on its side, back, and on its side again
+// the map had taken the clamp to 0 for the reader's and never cleared the
+// foot again: 24 px of it over the stage and the floors put beside the zoom
+// buttons.
+test('SV2-72f2 item 3: a phone at 390 by 844 turned on its side, back, and on its side again: Movement\'s stage clears the sticky foot each time it is on its side', async () => {
+  await on('#project', PHONE, async (page) => {
+    await fixture(page);
+    await countTurns(page);
+    await go(page, '#movement');
+    await turnsSettled(page, 'movement');
+    const turn = (size) => page.setViewport({ width: size.width, height: size.height, deviceScaleFactor: 1, hasTouch: true, isMobile: true, isLandscape: size.width > size.height });
+    const sides = [];
+    for (const size of [SIDE, PHONE, SIDE]) {
+      await turn(size);
+      await until(page, 'the page is not ' + size.width + ' wide', (w) => window.innerWidth === w, size.width);
+      await turnsSettled(page, 'movement');
+      if (size === SIDE) sides.push(await floorsAt(page, 'movement'));
+    }
+    assert.ok(sides[0].scroll > 0, 'on its side the first time the map did not scroll the section: the case tests nothing: ' + JSON.stringify(sides[0]));
+    assert.equal(sides[1].scroll, sides[0].scroll, 'on its side again the section was not scrolled as the first time: ' + JSON.stringify(sides));
+    assert.ok(sides[1].stage.bottom - sides[1].footTop <= sides[0].stage.bottom - sides[0].footTop + 0.5, 'on its side again the foot lies further over the stage: ' + JSON.stringify(sides));
+    assert.deepEqual(offStage(sides[1]), [], 'on its side again: ' + JSON.stringify(sides[1]));
+  });
+});
+
+// SV2-72f2 item 2: Movement's legend asked fitAt where Fit puts the floors,
+// and fitAt asked fitClear on the whole stage, while Fit fits above the
+// sticky foot where the floors are whole there and falls back to the whole
+// stage only where they are not: the legend judged one layout and the map
+// showed another (at 1280 by 600 the floors 19 px apart). Both ask choose().
+for (const size of [{ width: 900, height: 500, fallback: true }, { width: 1280, height: 600, fallback: false }]) {
+  test('SV2-72f2 item 2: Movement at ' + size.width + ' by ' + size.height + (size.fallback ? ', where the floors cannot be whole above the foot,' : '') + ' fitAt answers the fit the map took, the legend\'s card lies on no floor, and the layout settles', async () => {
+    await on('#project', { width: size.width, height: size.height }, async (page) => {
+      await fixture(page);
+      await countTurns(page);
+      await go(page, '#movement');
+      const turns = await turnsSettled(page, 'movement');
+      const got = await page.evaluate(() => {
+        const plan = document.querySelector('.mov').movement.plan;
+        const at = plan.fitAt(plan.view.width, plan.view.height);
+        const card = document.querySelector('.mov-legend');
+        const c = card.getBoundingClientRect();
+        const st = plan.stage.getBoundingClientRect();
+        const size = 24 * plan.view.zoom;
+        const floors = plan.world.slots.map((slot) => ({ left: st.left + plan.view.x + slot.x * size, right: st.left + plan.view.x + (slot.x + slot.w) * size, top: st.top + plan.view.y + slot.y * size, bottom: st.top + plan.view.y + (slot.y + slot.h) * size }));
+        return {
+          fitIn: plan.stage.dataset.fitIn,
+          view: { zoom: plan.view.zoom, x: plan.view.x, y: plan.view.y },
+          at: at && { zoom: at.zoom, x: at.x, y: at.y, in: at.in },
+          docked: card.dataset.docked,
+          onFloor: card.dataset.docked !== 'true' && floors.some((f) => f.left < c.right && c.left < f.right && f.top < c.bottom && c.top < f.bottom),
+          fitted: plan.fitted,
+        };
+      });
+      assert.equal(got.fitted, true, 'the map is not fitted: ' + JSON.stringify(got));
+      if (size.fallback) assert.equal(got.fitIn, 'stage', 'the floors were fitted above the foot: the case tests nothing: ' + JSON.stringify(got));
+      assert.ok(got.at, 'fitAt answered nothing');
+      for (const key of ['zoom', 'x', 'y']) assert.ok(Math.abs(got.at[key] - got.view[key]) < 1e-6, 'fitAt\'s ' + key + ' is not the fit the map took: ' + JSON.stringify(got));
+      assert.equal(got.onFloor, false, 'the legend\'s card lies on a floor: ' + JSON.stringify(got));
+      assert.ok(turns.fit >= 1 && turns.fit <= 2 && turns.dock <= 1, 'the layout did not settle: ' + JSON.stringify(turns));
     });
   });
 }
@@ -476,8 +656,19 @@ test('SV2-72f: Apply…\'s summary on a phone on its side with touch keeps its q
     await fixture(page, null, [['newScenario', { name: 'Library swap' }], ...changes.map((change) => ['addScenarioChange', { change }])]);
     await go(page, '#scenarios');
     await labReady(page);
+    // SV2-72f2 item 5: the lab's class is on the summary when it is shown
+    // and its button focused, not added after (the focus scrolled a dialog
+    // laid out without it)
+    await page.evaluate(() => {
+      const show = HTMLDialogElement.prototype.showModal;
+      HTMLDialogElement.prototype.showModal = function showModal() {
+        if (this.id === 'scenario-apply') globalThis.__m5applyClassAtShow = this.classList.contains('scn-apply');
+        return show.call(this);
+      };
+    });
     await tap(page, '[data-action="apply"]');
     await until(page, 'Apply… opened no summary', () => Boolean(document.querySelector('#scenario-apply[open]')));
+    assert.equal(await page.evaluate(() => globalThis.__m5applyClassAtShow), true, 'the summary was shown and focused before it had the lab\'s class .scn-apply');
     const at = await page.evaluate(() => {
       const dialog = document.getElementById('scenario-apply');
       const inView = (el) => {
