@@ -6,6 +6,11 @@
 // the card says what was wrong with it. One that passes is described, and the
 // tool asks before it replaces anything; a recovery point is taken first, and
 // the replacement is one undo step.
+//
+// Before a file replaces the project or its building, a snapshot of what is
+// here is taken too, named "Before importing <file name>" (spec 13.3), and
+// the question says so; when the device already keeps as many snapshots as
+// it can, the question says that instead, so going on without one is asked.
 
 import { h } from '../components/dom.js';
 import { card } from '../components/card.js';
@@ -14,6 +19,7 @@ import { buildExport } from '../../engine/exports.js';
 import { readProjectFile, readBuildingFile } from '../../engine/project-file.js';
 import { replaceProject, importBuilding } from '../../engine/actions.js';
 import { CURRENT_VERSION } from '../../engine/schema.js';
+import { pageSnapshots } from '../../storage/snapshots.js';
 
 // Hand a file to the browser to save.
 function download(fileName, mime, text) {
@@ -38,6 +44,16 @@ export function holdsWords(summary) {
   const parts = [count(summary.floors, 'floor'), count(summary.rooms, 'room')];
   if (summary.teachers !== undefined) parts.push(count(summary.teachers, 'teacher'), count(summary.groups, 'group'), count(summary.subjects, 'subject'), count(summary.dayTypes, 'day type'));
   return list(parts) + (summary.images > 0 ? ', with ' + count(summary.images, 'traced image') : '');
+}
+
+// The question's last line before an import: the recovery point, and the
+// snapshot or why there is none. `room` is what snapshots.room() answered
+// (null on a page with no snapshots); `what` is "it" or "the building".
+export function importSafetyLine(room, name, what) {
+  const point = 'A recovery point of this project is taken first';
+  if (!room || room.error) return point + ', and Undo brings ' + what + ' back while this tab stays open. No snapshot can be taken' + (room && room.error ? ': ' + room.error : '.');
+  if (room.full) return point + ', and Undo brings ' + what + ' back while this tab stays open. No snapshot can be taken: this device already keeps ' + room.limit + ' snapshots, the most it keeps, and none is replaced to make room. To have one as well, keep this, delete one under Snapshots, and import again.';
+  return point + ', with a snapshot of it, ' + quote(name) + ', that you can restore from Snapshots at any time. Undo brings ' + what + ' back while this tab stays open.';
 }
 
 export function filesCard(ctx) {
@@ -77,6 +93,20 @@ export function filesCard(ctx) {
     } catch (error) { /* storage has said so itself; the import is still one undo step */ }
   }
 
+  // Whether a snapshot can be taken before an import: { room, name }.
+  async function snapshotPlan(fileName) {
+    const snapshots = pageSnapshots();
+    return { snapshots, room: snapshots ? await snapshots.room() : null, name: 'Before importing ' + fileName };
+  }
+
+  // Take the snapshot the question promised. Null when it was taken or none
+  // was promised; otherwise the sentence saying why it was not.
+  async function takeSnapshot(plan) {
+    if (!plan.snapshots || !plan.room || plan.room.error || plan.room.full) return null;
+    const answer = await plan.snapshots.takeAuto('import', plan.name);
+    return answer.ok ? null : answer.text;
+  }
+
   async function importProject(fileName, text, opener) {
     let read;
     try {
@@ -86,12 +116,13 @@ export function filesCard(ctx) {
       return;
     }
     const here = figures(ctx.store.project);
+    const plan = await snapshotPlan(fileName);
     const ok = await ctx.confirm({
       title: 'Replace this project with the one in ' + quote(fileName) + '?',
       body: [
         h('p', null, 'The file' + (read.project.settings.schoolName === '' ? '' : ' is ' + read.project.settings.schoolName + '. It') + ' holds ' + holdsWords(read.summary) + '.'),
         h('p', null, 'It takes the place of everything in this project: ' + holdsWords({ ...here, images: 0 }) + '.'),
-        h('p', null, 'A recovery point of this project is taken first, and Undo brings it back while this tab stays open.'),
+        h('p', null, importSafetyLine(plan.room, plan.name, 'it')),
       ],
       action: 'Replace this project',
       keep: 'Keep this project',
@@ -103,6 +134,11 @@ export function filesCard(ctx) {
       return;
     }
     const before = ctx.store.project;
+    const unsnapped = await takeSnapshot(plan);
+    if (unsnapped) {
+      say('refused', quote(fileName) + ' was not imported, and nothing has changed, because the snapshot could not be taken first. ' + unsnapped);
+      return;
+    }
     try {
       await recoveryPoint();
       await storage.keepFileImages(read.project, read.images);
@@ -132,12 +168,13 @@ export function filesCard(ctx) {
     const here = figures(ctx.store.project);
     // a building file's summary counts the building alone
     const holds = holdsWords({ floors: read.summary.floors, rooms: read.summary.rooms, images: read.summary.images });
+    const plan = await snapshotPlan(fileName);
     const ok = await ctx.confirm({
       title: 'Replace the building with the one in ' + quote(fileName) + '?',
       body: [
         h('p', null, 'The file holds ' + holds + '. It takes the place of the building here: ' + holdsWords({ floors: here.floors, rooms: here.rooms, images: 0 }) + '.'),
         h('p', null, 'The schedule stays. A group stays with its room where the new building has that room or one with the same number; a room that is gone is kept as its number and reads "not in the building".'),
-        h('p', null, 'A recovery point of this project is taken first, and Undo brings the building back while this tab stays open.'),
+        h('p', null, importSafetyLine(plan.room, plan.name, 'the building')),
       ],
       action: 'Replace the building',
       keep: 'Keep this building',
@@ -149,6 +186,11 @@ export function filesCard(ctx) {
       return;
     }
     const before = ctx.store.project;
+    const unsnapped = await takeSnapshot(plan);
+    if (unsnapped) {
+      say('refused', quote(fileName) + ' was not imported, and nothing has changed, because the snapshot could not be taken first. ' + unsnapped);
+      return;
+    }
     try {
       await recoveryPoint();
       await storage.keepFileImages({ building: read.file.building }, read.images);

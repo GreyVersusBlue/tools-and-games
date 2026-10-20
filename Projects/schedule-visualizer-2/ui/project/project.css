@@ -1,0 +1,71 @@
+/* The Project section's own rules (SV2-28): the Snapshots card and the
+   Clear… card. Everything else on the page is ui/app.css's cards, buttons,
+   fields and tables. Loaded by ui/project/index.js when index.html has no
+   link[data-sheet="project"]. */
+
+.snap__take {
+  margin-top: var(--s-4);
+}
+
+.snap__take-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-1);
+}
+
+.snap__take-input {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.snap__list {
+  list-style: none;
+  margin: var(--s-4) 0 0;
+  padding: 0;
+}
+
+.snap__item {
+  padding: var(--s-3) 0;
+  border-top: var(--border);
+}
+
+.snap__item:last-child {
+  padding-bottom: 0;
+}
+
+.snap__name {
+  font-weight: var(--w-semibold);
+  overflow-wrap: anywhere;
+}
+
+.snap__about,
+.snap__other {
+  margin-top: var(--s-1);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}
+
+.snap__buttons {
+  margin-top: var(--s-2);
+}
+
+.snap__rename .field__input {
+  width: 100%;
+  max-width: 28rem;
+}
+
+#clear [data-says] {
+  margin-top: var(--s-4);
+}
+
+#clear [data-says] + .card__buttons {
+  margin-top: var(--s-2);
+}
+
+#clear [data-line="result"],
+#snapshots [data-line="result"] {
+  margin-top: var(--s-3);
+}

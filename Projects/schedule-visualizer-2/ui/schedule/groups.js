@@ -37,7 +37,7 @@ import { NOT_IN_BUILDING } from '../../engine/exports.js';
 import { fill, apply, button, keyed, emptyState, marksFor, freeName, roomLabel, quote, collator, dragRows, grip, SEVERITY_WORDS } from './common.js';
 import { slotKey } from './model.js';
 import { roomPicker } from './room-picker.js';
-import { GROUPS_HASH, groupHash, writtenAsList, showsList, groupOf, namesGoneGroup } from './address.js';
+import { GROUPS_HASH, groupHash, writtenAsList, groupOf, namesGoneGroup } from './address.js';
 
 const WHAT = 'A group is a set of students who travel together all day.';
 
@@ -96,7 +96,9 @@ export function openAddress(ctx, hash) {
     ctx.navigate(hash);
     return;
   }
-  const fromList = location.hash !== hash && showsList(project, location.hash);
+  // the list's own address only: a gone group's shows the list too (left
+  // after a Delete while wide), but the entry under it is not the list
+  const fromList = location.hash !== hash && writtenAsList(location.hash);
   ctx.navigate(hash);
   // the new entry is made as the address is set; the mark goes on it
   if (fromList && location.hash === hash) history.replaceState({ [LIST_UNDER]: true }, '');

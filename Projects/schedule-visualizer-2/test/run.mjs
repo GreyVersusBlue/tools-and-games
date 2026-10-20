@@ -78,6 +78,9 @@ export const GROUPS = {
     'engine/prints-door-cards.test.mjs', // SV2-66
     'engine/suggest.test.mjs', // SV2-63
     'engine/prints-congestion-scenario.test.mjs', // SV2-71
+    'engine/snapshots.test.mjs', // SV2-28
+    'engine/transfer.test.mjs', // SV2-29a
+    'engine/transfer-qr.test.mjs', // SV2-29a
     'ui/progress.test.mjs', // SV2-02
     'ui/helpers.test.mjs', // SV2-02
     'ui/building-inspector.test.mjs', // SV2-07
@@ -138,6 +141,7 @@ export const GROUPS = {
     'browser/difference.mjs', // SV2-69
     'browser/fix.mjs', // SV2-70
     'browser/m5-pass.mjs', // SV2-72f
+    'browser/snapshots.mjs', // SV2-28
     'a11y/axe.mjs',
   ],
   a11y: [
