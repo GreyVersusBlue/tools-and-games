@@ -141,11 +141,18 @@ async function answer(label) {
 }
 
 // Take a snapshot by the keyboard: the name field, the name, Enter.
+// The result line is hidden first, so the wait is for this take's answer,
+// whichever it is, and a take that went wrong fails on the count with its
+// sentence, never on a wait.
 async function takeByKeyboard(name, count) {
+  await page.$eval('#snapshots [data-line="result"]', (el) => {
+    el.hidden = true;
+  });
   await page.focus('#snapshots [data-field="snapshot-name"]');
   await page.keyboard.type(name);
   await page.keyboard.press('Enter');
-  await listed(count);
+  await shows(() => document.querySelector('#snapshots [data-line="result"]').hidden === false);
+  await counted(count, 'taken by the keyboard: ' + (await result('snapshots')).join(' / '));
 }
 
 // Run fn(store) on the raw `sv2` database in one readwrite transaction over
@@ -484,6 +491,26 @@ test('a snapshot taken while a save of an older project is under way still has e
   assert.equal(stored.project.building.floors[0].image.imageId, 'irace00001', 'the snapshot names the image');
   assert.ok((await idb('images')).includes('irace00001'), 'every image the snapshot names is stored');
   await page.evaluate((snapshotId) => import(new URL('storage/snapshots.js', document.baseURI).href).then((module) => module.pageSnapshots().remove(snapshotId)), id);
+  await rename(SCHOOL);
+  await waitSaved();
+  await redraw(1);
+});
+
+test('a snapshot taken while the last change is being written waits for that write and is taken', async () => {
+  await dismissToast();
+  const answer = await page.evaluate(async () => {
+    const { pageSnapshots } = await import(new URL('storage/snapshots.js', document.baseURI).href);
+    globalThis.sv2.store.apply(globalThis.sv2Actions.setSetting, { key: 'schoolName', value: 'Being written' });
+    // the write starts; nothing new waits behind it, so a flush now answers at once
+    globalThis.sv2.storage.flush();
+    try {
+      return { id: (await pageSnapshots().take('While writing')).id };
+    } catch (error) {
+      return { refused: error.message };
+    }
+  });
+  assert.deepEqual(Object.keys(answer), ['id'], 'taken, not refused: ' + answer.refused);
+  await page.evaluate((id) => import(new URL('storage/snapshots.js', document.baseURI).href).then((module) => module.pageSnapshots().remove(id)), answer.id);
   await rename(SCHOOL);
   await waitSaved();
   await redraw(1);

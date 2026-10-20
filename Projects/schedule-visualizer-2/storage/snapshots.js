@@ -372,14 +372,19 @@ export function startSnapshots(ctx, options) {
   // only by a save of the project that names it (db.js restoreImages, from
   // the images the session holds, which only the session can reach). So
   // flush until nothing is pending. The caller builds the record in the same
-  // turn as the last check, so no change slips in between. A save that fails
-  // (or meets another tab's newer save) is not waited on: the snapshot is
-  // refused, and says why. Twenty rounds bound a project that keeps changing.
+  // turn as the last check, so no change slips in between. flush() answers
+  // at once when nothing new is waiting even though a save is still being
+  // written, so a round that leaves it pending waits a moment before the
+  // next. A save that fails (or meets another tab's newer save) is not waited
+  // on: the snapshot is refused, and says why. Ten seconds bound a project
+  // that keeps changing.
   async function savedFirst() {
-    for (let tries = 0; tries < 20 && storage().pending; tries += 1) {
+    const until = Date.now() + 10000;
+    while (storage().pending && Date.now() < until) {
       await storage().flush();
       const save = storage().state.save;
       if (save === 'failed' || save === 'conflict') break;
+      if (storage().pending) await new Promise((resolve) => setTimeout(resolve, 25));
     }
     if (storage().pending) throw new SnapshotError('The snapshot was not taken, because the project could not be saved first, so the traced images it names might not all be kept. Try again once the project is saved.', 'not-saved');
   }
