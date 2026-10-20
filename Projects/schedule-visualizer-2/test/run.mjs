@@ -91,6 +91,8 @@ export const GROUPS = {
     'ui/scenario-lane.test.mjs', // SV2-64
     'ui/safety.test.mjs', // SV2-67b
     'ui/scenarios-model.test.mjs', // SV2-68b
+    'ui/difference.test.mjs', // SV2-69
+    'ui/fix-kinds.test.mjs', // SV2-70b
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
   ],
   browser: [
@@ -130,6 +132,8 @@ export const GROUPS = {
     'browser/safety.mjs', // SV2-67
     'browser/scenario.mjs', // SV2-68
     'browser/congestion-scenario.mjs', // SV2-71
+    'browser/difference.mjs', // SV2-69
+    'browser/fix.mjs', // SV2-70
     'a11y/axe.mjs',
   ],
   a11y: [
@@ -145,6 +149,7 @@ export const GROUPS = {
     'timing/evacuation.mjs', // SV2-62
     'timing/suggest.mjs', // SV2-63
     'timing/scenario-lane.mjs', // SV2-64
+    'timing/difference-card.mjs', // SV2-69c
   ],
 };
 

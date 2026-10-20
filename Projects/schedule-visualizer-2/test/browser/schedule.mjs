@@ -118,8 +118,8 @@ test('the sample school shows its groups with completeness, marks and the findin
   assert.deepEqual((await counts()).slice(0, 2), [1, 1]);
   assert.equal(await page.$eval('#inspector', (el) => el.hidden), false);
   assert.equal(await text('#inspector .sch-panel__scope'), 'About 6A');
-  // a button that is not built yet says why, and can be reached to hear it
-  assert.equal(await page.$eval('#inspector [data-action="fix"]', (el) => el.getAttribute('aria-disabled') + '|' + el.title + '|' + el.disabled), 'true|Suggestions are not built yet|false');
+  // SV2-70: what is found about 6A is a note no small change clears, so it has no Fix… (Fix… is only on a finding the suggestion engine can work on)
+  assert.deepEqual(await page.$$eval('#inspector .sch-finding', (all) => all.map((el) => el.classList.contains('sch-finding--note') + '|' + Boolean(el.querySelector('[data-action="fix"]')))), ['true|false']);
 });
 
 test('the room picker lists rooms as "204 — Mme. Dufrêne" and narrows as you type', async () => {

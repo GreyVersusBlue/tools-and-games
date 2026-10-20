@@ -12,14 +12,16 @@ import { checkLabel } from '../project/settings.js';
 import { acceptFinding, unacceptFinding } from '../../engine/actions.js';
 import { SEVERITIES } from '../../engine/findings.js';
 import { floorOfRoom } from '../../engine/schema.js';
-import { fill, apply, button, keyed, notYet, emptyState, severityMark, SEVERITY_WORDS } from './common.js';
+import { fill, apply, button, keyed, emptyState, severityMark, SEVERITY_WORDS } from './common.js';
 import { choosingGroup } from './groups.js';
 import { groupHash, slotHash } from './address.js';
 import { printButtons } from '../prints/index.js';
 import { printButton } from '../components/print-preview.js';
+import { openFix } from './checks-fix.js';
 
 const WHAT = 'Checks look through the schedule for problems, warnings and notes: two groups in one room, a teacher in two places, a walk too long for the passing time.';
-const FIX_REASON = 'Suggestions are not built yet';
+// Fix… is on a finding the suggestion engine can work on; this is its title.
+const FIX_REASON = 'Small changes that would clear this, to try in a scenario';
 const PANEL_LIMIT = 12;
 // Under this width the inspector is a sheet under the section, not a panel
 // beside it (the shell's own width). The section draws the inspector again
@@ -101,9 +103,7 @@ function actions(env, finding, where) {
   const key = where + ':' + finding.id + ':';
   return h('div', { class: 'sch-finding__actions' },
     button('Show', () => showFinding(env, finding), { small: true, key: key + 'show', action: 'show', more: ': ' + finding.text }),
-    // not built yet: the reason is the button's title, which a finger and a
-    // keyboard never see, so a press says it
-    notYet('Fix…', FIX_REASON, 'fix', () => env.ctx.toast({ text: FIX_REASON + '.' })),
+    finding.fixable ? button('Fix…', (opener) => openFix(env, finding, opener), { small: true, key: key + 'fix', action: 'fix', title: FIX_REASON, more: ': ' + finding.text }) : null,
     button('Accept', (opener) => acceptWithReason(env, finding, opener), { small: true, key: key + 'accept', action: 'accept', more: ': ' + finding.text }));
 }
 
