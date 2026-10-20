@@ -143,10 +143,12 @@ export function openHelp(ctx, options) {
       { label: 'Close help', value: null },
     ],
   });
+  // openDialog focused Close before the class was on, while the whole dialog
+  // was one scrolling box, and so scrolled itself down to it; as Help its own
+  // box does not scroll, and that offset would hide the title. It is put back
+  // now, and again once the sheet applies, before data-styled says so.
   dialog.element.classList.add('help');
-  // Opened before the sheet applied, the dialog scrolled itself to the
-  // focused Close; with the sheet its own box does not scroll, so that offset
-  // would hide the title. It is put back before the dialog says it is styled.
+  dialog.element.scrollTop = 0;
   styled.then(() => {
     dialog.element.scrollTop = 0;
     dialog.element.dataset.styled = 'true';
