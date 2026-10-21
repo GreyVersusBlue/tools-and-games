@@ -59,14 +59,15 @@ import { bandText } from './legend.js';
 import { unitWord } from './model.js';
 import { hotspotRows, placeWords } from './hotspots.js';
 
-// The keys, for Help. The section answers them itself (below).
+// The keys, for Help, under Movement (Help explains each group it lists,
+// ui/help/content.js). The section answers them itself (below).
 export const PRESENT_KEYS = [
   { id: 'movement-present', group: 'Movement', does: 'Present the movement view on the whole screen', shown: 'P' },
-  { id: 'present-step', group: 'Presentation mode', does: 'The previous or the next transition', shown: 'Left, Right' },
-  { id: 'present-play', group: 'Presentation mode', does: 'Play or pause the playback', shown: 'Space' },
-  { id: 'present-advance', group: 'Presentation mode', does: 'Step on by itself: off, then every 5, 10 or 15 seconds', shown: 'A' },
-  { id: 'present-hotspots', group: 'Presentation mode', does: 'Show or hide the busiest places', shown: 'H' },
-  { id: 'present-leave', group: 'Presentation mode', does: 'Leave presentation mode', shown: 'Esc' },
+  { id: 'present-step', group: 'Movement', does: 'In presentation mode: the previous or the next transition', shown: 'Left, Right' },
+  { id: 'present-play', group: 'Movement', does: 'In presentation mode: play or pause the playback', shown: 'Space' },
+  { id: 'present-advance', group: 'Movement', does: 'In presentation mode: step on by itself, off, then every 5, 10 or 15 seconds', shown: 'A' },
+  { id: 'present-hotspots', group: 'Movement', does: 'In presentation mode: show or hide the busiest places', shown: 'H' },
+  { id: 'present-leave', group: 'Movement', does: 'Leave presentation mode', shown: 'Esc' },
 ];
 
 // Seconds between steps, in the order A goes through them; 0 is off.

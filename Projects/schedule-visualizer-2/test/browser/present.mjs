@@ -213,7 +213,7 @@ test('by keyboard at 1280 by 800: P in, the arrows, Space, A, H, Escape out, and
 
     await t.test('Help lists Present and every key of the mode, with words', async () => {
       const listed = await page.evaluate(() => globalThis.sv2.shortcuts.list());
-      const want = { 'movement-present': ['Movement', 'P'], 'present-step': ['Presentation mode', 'Left, Right'], 'present-play': ['Presentation mode', 'Space'], 'present-advance': ['Presentation mode', 'A'], 'present-hotspots': ['Presentation mode', 'H'], 'present-leave': ['Presentation mode', 'Esc'] };
+      const want = { 'movement-present': ['Movement', 'P'], 'present-step': ['Movement', 'Left, Right'], 'present-play': ['Movement', 'Space'], 'present-advance': ['Movement', 'A'], 'present-hotspots': ['Movement', 'H'], 'present-leave': ['Movement', 'Esc'] };
       for (const [id, [group, keys]] of Object.entries(want)) {
         const entry = listed.find((each) => each.id === id);
         assert.ok(entry, id + ' is not on the shortcuts list');
