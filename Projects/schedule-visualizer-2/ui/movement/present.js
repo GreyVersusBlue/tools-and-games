@@ -215,7 +215,11 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
       return;
     }
     const into = phone.matches ? places.controls : places.line;
-    if (!into || button.parentNode === into) return;
+    if (!into) return;
+    if (button.parentNode === into) {
+      button.dataset.place = into === places.controls ? 'controls' : 'line';
+      return;
+    }
     const held = document.activeElement === button;
     if (into === places.line) into.append(' ', button);
     else {
@@ -223,7 +227,7 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
       if (button.previousSibling && button.previousSibling.nodeType === 3 && button.previousSibling.textContent === ' ') button.previousSibling.remove();
       into.append(button);
     }
-    button.dataset.place = phone.matches ? 'controls' : 'line';
+    button.dataset.place = button.parentNode === places.controls ? 'controls' : 'line';
     if (held) button.focus();
   }
   placeButton();
