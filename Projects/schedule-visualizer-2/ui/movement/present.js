@@ -109,6 +109,8 @@ export const LINE_FADE_MS = 2500;
 export const HOTSPOTS_SHOWN = 5;
 // How long the map is given to be back at its size before it is put back where it was.
 export const RESTORE_WAIT_MS = 1000;
+// A playback dropping to within this much of its transition's start has gone round (dueStep).
+export const AROUND = 0.02;
 // Under the map, the panel is at most this much of the screen's height.
 export const PANEL_UNDER_MOST = 0.38;
 
@@ -617,8 +619,10 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
   // end to its start (the loop over the transition). A pause before the end
   // holds the step until Play and the end (SV2-31c: Space mid-transition
   // brought it at once), and a seek is not a finish: the scrubber moved back
-  // is a drop from the middle, a going round is a drop from within a frame
-  // or two of the end (a frame's advance is the last stride seen). One that
+  // is a drop from the middle to the middle, a going round is a drop from
+  // within a frame or two of the end (a frame's advance is the last stride
+  // seen) or to within AROUND of the start. (A seek to the very start counts
+  // as going round; the mode has no scrubber, so only a script makes one.) One that
   // went on to the next transition by itself (the loop over the day) has
   // stepped already, and the next step is timed from there.
   function dueStep() {
@@ -632,7 +636,10 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     const end = pb.end;
     let finished;
     if (!pb.playing) finished = at >= end - 1e-6;
-    else finished = at < due.seconds && due.seconds + 2 * due.stride >= end;
+    // gone round: from near the end, or to the start (the playback sets its
+    // clock to 0 there and drops the overshoot, so after a slow frame the
+    // last sample can stand further from the end than two strides)
+    else finished = at < due.seconds && (due.seconds + 2 * due.stride >= end || at <= Math.max(2 * due.stride, AROUND * end));
     if (at > due.seconds) due.stride = at - due.seconds;
     due.seconds = at;
     if (!finished) {
