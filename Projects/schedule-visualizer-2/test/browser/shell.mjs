@@ -312,7 +312,7 @@ test('Help lists every shortcut, holds focus, ignores shortcuts behind it, and g
   await page.waitForSelector('#help-dialog[open]');
   assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Close help', 'the safe button is last and focused');
   // axe has no rule for the name of a native <dialog>, so it is checked here
-  assert.equal(await page.$eval('#help-dialog', (el) => document.getElementById(el.getAttribute('aria-labelledby'))?.textContent), 'These are the keyboard shortcuts.', 'the dialog is not named by its title');
+  assert.equal(await page.$eval('#help-dialog', (el) => document.getElementById(el.getAttribute('aria-labelledby'))?.textContent), 'This is how the planner works.', 'the dialog is not named by its title');
   assert.equal(await page.$eval('#help-dialog .dialog__buttons button:last-child', (el) => el.textContent), 'Close help');
   const listed = await page.$$eval('#help-dialog tbody tr', (rows) => rows.map((row) => row.dataset.key));
   const registered = await page.evaluate(() => globalThis.sv2.shortcuts.list().map((entry) => entry.id));

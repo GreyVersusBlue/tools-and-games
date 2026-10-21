@@ -103,6 +103,10 @@ export function createScanner(options) {
   let running = false;
   let canvas = null;
   let reads = 0;
+  // Each start() takes a number, and stop() moves it on; a start whose
+  // number has gone stale lets go of whatever the browser hands it late
+  // (Scan, Stop, Scan while the first camera is still being asked for).
+  let generation = 0;
 
   function set(state) {
     element.dataset.camera = state;
@@ -134,23 +138,31 @@ export function createScanner(options) {
     else setTimeout(fn, SCAN_GAP_MS);
   }
 
-  async function loop(detector) {
-    if (!running) return;
+  async function loop(detector, mine) {
+    if (mine !== generation) return;
     let text = null;
+    let reader = detector;
     try {
       text = await readOnce(detector);
     } catch {
       text = null;
+      // a detector that throws once throws on every frame (no support for
+      // this camera's frames, a broken platform service): the decoder reads
+      // from here on
+      if (detector) {
+        reader = null;
+        if (mine === generation) element.dataset.reader = 'decoder';
+      }
     }
+    if (mine !== generation) return;
     reads += 1;
     element.dataset.reads = String(reads);
-    if (!running) return;
     if (text) {
       stop();
       options.onCode(text.trim());
       return;
     }
-    next(() => loop(detector));
+    next(() => loop(reader, mine));
   }
 
   async function start() {
@@ -161,6 +173,8 @@ export function createScanner(options) {
       options.say('This browser cannot use a camera here. Paste the code instead.');
       return;
     }
+    generation += 1;
+    const mine = generation;
     running = true;
     element.hidden = false;
     set('starting');
@@ -168,6 +182,7 @@ export function createScanner(options) {
     try {
       got = await media.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
     } catch (error) {
+      if (mine !== generation) return;
       running = false;
       element.hidden = true;
       set('refused');
@@ -175,8 +190,8 @@ export function createScanner(options) {
       options.say(denied ? 'The camera was not allowed. Paste the code instead, or allow the camera for this page and scan again.' : 'The camera could not be started. Paste the code instead.');
       return;
     }
-    if (!running) {
-      // stopped while the browser was asking
+    if (mine !== generation) {
+      // stopped while the browser was asking, and perhaps started again since
       for (const track of got.getTracks()) track.stop();
       return;
     }
@@ -185,14 +200,17 @@ export function createScanner(options) {
     try {
       await video.play();
     } catch { /* autoplay with muted video starts by itself */ }
+    if (mine !== generation) return; // stop() has let go of the stream
     const detector = await detectorFor();
+    if (mine !== generation) return;
     element.dataset.reader = detector ? 'barcode-detector' : 'decoder';
     set('on');
     options.say('Hold the other device’s QR code in front of the camera.');
-    loop(detector);
+    loop(detector, mine);
   }
 
   function stop() {
+    generation += 1;
     running = false;
     if (stream) {
       for (const track of stream.getTracks()) track.stop();
