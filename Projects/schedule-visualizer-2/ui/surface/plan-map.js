@@ -836,6 +836,15 @@ export function createPlanMap(asked) {
     // a scroll the map did not make is the reader's, and is left alone
     if (ownScroll !== null && top !== ownScroll) keepClear = false;
     if (!keepClear) return;
+    // nor is the section moved under a reader typing (SV2-72i): still armed
+    // from opening, the lab at 1280 by 720 with a finger scrolled its
+    // scenario name 73 px up and out of view when a 400 px keyboard came up
+    // under it. The scroll stays armed, and is made at the next look once
+    // the field has let the focus go.
+    if (typing()) {
+      ownScroll = top;
+      return;
+    }
     const foot = footShown();
     if (!foot) return;
     const shown = stage.getBoundingClientRect();
