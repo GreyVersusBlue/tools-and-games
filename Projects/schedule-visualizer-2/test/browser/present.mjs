@@ -1070,8 +1070,8 @@ for (const size of [
   { width: 844, height: 390, insets: { top: 20, left: 44, right: 44, bottom: 21 } },
   { width: 390, height: 844, insets: { top: 47, left: 12, right: 12, bottom: 34 } },
   { width: 1180, height: 820, insets: { top: 24, left: 0, right: 20, bottom: 20 } },
-  // a short window, where 38 % of the screen is under the first row of groups with the inset (SV2-31d)
-  { width: 700, height: 300, insets: { top: 0, left: 0, right: 0, bottom: 34 } },
+  // a phone on its side in a shorter window, with an upright phone's home bar: there the panel's least is its height (SV2-31d: the row was cut 18 px)
+  { width: 844, height: 360, insets: { top: 0, left: 0, right: 0, bottom: 34 } },
 ]) {
   test('at ' + size.width + ' by ' + size.height + ' the touch controls, the corner line, the caption and the panel keep clear of the safe area', async () => {
     const session = await openPlanner({ browser, server, hash: '#movement', width: size.width, height: size.height, mobile: true });
