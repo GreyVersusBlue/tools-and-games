@@ -280,19 +280,22 @@ group('Rush Hour: the events and what the corridor costs');
   // turned the W left into an arrow under it, into an E through still in
   // the box on seeds 2 and 5 at 1.5 s of all-red (R3 read that as the
   // all-red's lesson, and plays this at 2.5). E gets its yellow and
-  // all-red now: none of the six collide at 1, 1.5 or 2.5 s, and at 0.5 s
-  // only seed 5, 51 s after the call.
+  // all-red now: at #918 none of the six collided at 1, 1.5 or 2.5 s, and
+  // at 0.5 s only seed 5, 51 s after the call. Since #957 nothing touches
+  // through the dropped leg's clearance at any of the four; seeds 3 and 5
+  // crash at 1.5 s at 156 and 168 s and seed 2 at 1 s at 174 s, all before
+  // the ambulance, and at 0.5 s seed 4 does, 5.7 s after the call (below).
   const l6 = levelById('rush-hour');
   const run = (seed, allRed = 2.5) => {
     const lvl = withAuto(l6);
     const w = new World({ ...lvl, controller: { ...lvl.controller, timing: { ...lvl.controller.timing, allRed } } }, seed);
-    let called = false;
+    let called = false, calledAt = -1;
     for (let i = 0; i < l6.duration * 60 && !w.stats.gridlock; i++) {
       w.step();
       const e = w.activeEvent('ambulance');
-      if (e && !called && w.t - e.at > 2) { called = w.requestPriority(e.car); }
+      if (e && !called && w.t - e.at > 2) { called = w.requestPriority(e.car); if (called) calledAt = w.t; }
     }
-    return { w, r: score(w) };
+    return { w, r: score(w), calledAt };
   };
   const { w, r } = run(2);
   ok(r.survived && r.cleared >= l6.target && w.stats.outages === 1 && w.stats.ambulances === 1, 'seed 2 with the corridor called survives, clears the target, and saw the outage and the ambulance', `${starString(r.stars)} ${r.cleared}/${r.avgWait.toFixed(0)}s/${r.collisions}x`);
@@ -304,9 +307,17 @@ group('Rush Hour: the events and what the corridor costs');
   ok(short.w.stats.collisions === 0 && short.r.survived && short.r.ambulanceLate === 0, 'at the shipped 1.5 s all-red the same call is clean: the leg the corridor drops gets its yellow before the left turns protected', `${starString(short.r.stars)} ${short.r.cleared}/${short.r.avgWait.toFixed(0)}s/${short.w.stats.collisions}x`);
   // and the left on the dropped leg goes on yielding through that yellow:
   // on seed 4 at 0.5 s, read as an ordinary yellow against a corridor that
-  // does not stop, an E left turned into a W through at 189.5 s
+  // does not stop, an E left turned into a W through at 189.5 s. Since
+  // #957 the run is not clean: the same left, still waiting in the box
+  // when its yellow and all-red have run, finishes on the red into a W
+  // through at 192.7 s, the short all-red the level's hint warns about.
+  // What #918 guards is the clearance, so that is what is pinned: nothing
+  // touches until the dropped leg's yellow and all-red are over (with
+  // `permissive` emptied in `current` the crash is at 189.7 s).
   const trap = run(4, 0.5);
-  ok(trap.w.stats.collisions === 0 && trap.r.survived, 'and at 0.5 s on seed 4 the dropped leg\'s left still yields to the corridor through its yellow', `${trap.w.stats.collisions}x: ${trap.r.reasons.join('; ')}`);
+  const clearEnd = trap.calledAt + l6.controller.timing.yellow + 0.5;
+  const crashes = trap.w.events.filter(e => e.kind === 'collision');
+  ok(trap.calledAt > 0 && crashes.every(e => e.t >= clearEnd), 'and at 0.5 s on seed 4 the dropped leg\'s left still yields to the corridor through its yellow', `called at ${trap.calledAt.toFixed(1)} s, clear at ${clearEnd.toFixed(1)} s, crashes at ${crashes.map(e => e.t.toFixed(1)).join(', ') || 'none'}`);
   // hard mode still ends a run on one collision
   short.w.stats.collisions = 1;
   const hr = score(short.w);
