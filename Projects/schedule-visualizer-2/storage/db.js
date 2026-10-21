@@ -177,7 +177,16 @@ export async function openDatabases(options) {
 
   // Image ids written in this session that no saved project names yet. A
   // save that runs before the project names them must not sweep them away.
-  const fresh = new Set();
+  // Each is held from its putImage until a save that names it, or until a
+  // save started after the put completes without naming it (SV2-28b): by
+  // then the project the put was for has been on screen and saved, or was
+  // undone before it ever was (a snapshot restored and undone inside the
+  // autosave's 600 ms), and the image is an ordinary one again, which the
+  // next sweep keeps only if something names it. A put the save did not
+  // follow (the save began first) is still held. Map of id -> the put's
+  // number, against `puts`.
+  const fresh = new Map();
+  let puts = 0;
   liveFresh.add(fresh);
   // The image ids of the project as last saved, to know when a sweep is due.
   let savedImageIds = null;
@@ -211,13 +220,15 @@ export async function openDatabases(options) {
       }
       const names = imageIdsOf(project).sort();
       const sweep = savedImageIds === null || !sameIds(names, savedImageIds);
+      // the puts this save follows: every one numbered up to here
+      const follows = puts;
       let stamp = clock().toISOString();
       if (typeof known === 'string' && stamp <= known) stamp = new Date(Date.parse(known) + 1).toISOString();
       const record = { savedAt: stamp, project, exportedAt: extra && extra.exportedAt ? extra.exportedAt : null };
       let refusal = null;
       let tx;
       try {
-        tx = main.transaction(sweep ? [PROJECT_STORE, SNAPSHOT_STORE, IMAGE_STORE] : [PROJECT_STORE], 'readwrite');
+        tx = main.transaction(sweep ? [PROJECT_STORE, SNAPSHOT_STORE, QUARANTINE_STORE, IMAGE_STORE] : [PROJECT_STORE], 'readwrite');
         const store = tx.objectStore(PROJECT_STORE);
         const held = store.get(CURRENT_KEY);
         held.onsuccess = () => {
@@ -230,7 +241,7 @@ export async function openDatabases(options) {
           store.put(record, CURRENT_KEY);
           if (sweep) {
             restoreImages(tx, names, extra && extra.images);
-            sweepImages(tx, names);
+            sweepUnnamedImages(tx, names);
           }
         };
       } catch (error) {
@@ -239,7 +250,7 @@ export async function openDatabases(options) {
       }
       tx.oncomplete = () => {
         savedImageIds = names;
-        for (const id of names) fresh.delete(id);
+        for (const [id, put] of Array.from(fresh)) if (names.includes(id) || put <= follows) fresh.delete(id);
         resolve(stamp);
       };
       tx.onerror = (event) => event.preventDefault();
@@ -277,26 +288,6 @@ export async function openDatabases(options) {
     }
   }
 
-  // Inside a write transaction over snapshots and images: delete every image
-  // that neither `named` (the project being saved) nor any snapshot names.
-  function sweepImages(tx, named) {
-    const keep = new Set(named);
-    const snapshots = tx.objectStore(SNAPSHOT_STORE).openCursor();
-    snapshots.onsuccess = () => {
-      const cursor = snapshots.result;
-      if (cursor) {
-        for (const id of imageIdsOf(cursor.value && cursor.value.project)) keep.add(id);
-        cursor.continue();
-        return;
-      }
-      const images = tx.objectStore(IMAGE_STORE);
-      const keys = images.getAllKeys();
-      keys.onsuccess = () => {
-        for (const id of keys.result) if (!keep.has(id) && !fresh.has(id)) images.delete(id);
-      };
-    };
-  }
-
   // Move an unreadable saved record aside, in one transaction, so that it is
   // never overwritten: it leaves `project/current` and lands in `quarantine`.
   async function quarantineCurrent(raw, error) {
@@ -328,7 +319,8 @@ export async function openDatabases(options) {
 
   // Keep an image's bytes. `value` is { blob, type, width, height }.
   async function putImage(id, value) {
-    fresh.add(id);
+    puts += 1;
+    fresh.set(id, puts);
     const tx = main.transaction(IMAGE_STORE, 'readwrite');
     tx.objectStore(IMAGE_STORE).put(value, id);
     await committed(tx);
