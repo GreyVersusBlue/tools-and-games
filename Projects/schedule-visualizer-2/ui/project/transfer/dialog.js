@@ -8,8 +8,12 @@
 //   dialog.close()                    Close, Escape and this all end here
 //
 // It traps Tab, closes on Escape, and gives the focus back to the opener (or
-// to fallbackFocus() when the opener has gone). onClose() runs first, so the
-// camera and the connection are stopped whichever way it was closed.
+// to fallbackFocus() when the opener has gone). onClose() runs first, once,
+// so the camera and the connection are stopped whichever way it was closed:
+// Close, Escape, close() here, the element's own close() (its close event),
+// and the page under it going away. The opener is the card's button, so when
+// it leaves the document the Project page has been taken down (Back, or a
+// section key) and the dialog goes with it, leaving the focus to the shell.
 
 import { h, uid, focusables } from '../../components/dom.js';
 
@@ -28,21 +32,36 @@ export function transferDialog(options) {
     settle = resolve;
   });
 
-  function close() {
-    if (!element.open) return;
+  let ended = false;
+  let watch = null;
+
+  // Every way out ends here, once. `refocus` is false when the page under
+  // the dialog has gone, and the focus is the shell's to place.
+  function end(refocus) {
+    if (ended) return;
+    ended = true;
+    if (watch) watch.disconnect();
     try {
       if (options.onClose) options.onClose();
     } finally {
-      element.close();
+      if (element.open) element.close();
       element.remove();
-      const target = opener && opener.isConnected && typeof opener.focus === 'function' ? opener : null;
-      if (target) target.focus();
-      else if (typeof options.fallbackFocus === 'function') options.fallbackFocus();
+      if (refocus) {
+        const target = opener && opener.isConnected && typeof opener.focus === 'function' ? opener : null;
+        if (target) target.focus();
+        else if (typeof options.fallbackFocus === 'function') options.fallbackFocus();
+      }
       settle();
     }
   }
 
+  function close() {
+    end(true);
+  }
+
   shut.addEventListener('click', close);
+  // the element closed by anything else (its own close(), a form)
+  element.addEventListener('close', () => end(true));
   element.addEventListener('cancel', (event) => {
     event.preventDefault();
     close();
@@ -77,5 +96,11 @@ export function transferDialog(options) {
   document.body.append(element);
   element.showModal();
   shut.focus();
+  if (opener && opener.isConnected && typeof MutationObserver === 'function') {
+    watch = new MutationObserver(() => {
+      if (!opener.isConnected) end(false);
+    });
+    watch.observe(document.body, { childList: true, subtree: true });
+  }
   return { element, status, body, show, close, closed, closeButton: shut };
 }

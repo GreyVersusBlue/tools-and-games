@@ -418,6 +418,29 @@ exactly as before" (now: accepted, no curve, rectangles). Browser: extend
 deck triangles over the building, none with its middle in the court, area the
 outline less the court once over. Leaves: the hip over a court.
 
+*Implementation note, 2026-10-19 (worker TG-28-holes3, #998).* Shipped as
+written, questions 2 and 4 on their defaults, the 108-case hash unchanged.
+Four findings. (1) A room's own hole goes into `unionOf`'s edge
+bookkeeping wound against its outer ring, so it comes out exactly as a court
+between rooms does, and a room filling a hole cancels its walls as a shared
+wall would; one rule for both, and the court is a hole of the *smallest*
+loop round it, so a courtyard building standing in another's court keeps its
+own. (2) A loop standing in another's court is no longer an overlap. (3) More
+tests pinned the refusal than section 1 lists: also `roof-curve`'s empty
+storey (the return shape), `roof-courtyard`'s "beside a courtyard building"
+and "a courtyard on the curved building itself", five in
+`roof-groupwalls.test.mjs` that used the courtyard L as a refused building,
+and `roof-takeoff`'s list of mask-counted roofs; each was rewritten to the
+new answer, and "a curve on a courtyard keeps the rectangles" only in its
+outline line, since its hip half is increment 4's. (4) `buildingsOf` groups a
+room with a hole with a separate room standing in that hole (`roomsMeet`
+asks every ring), which only matters where the storey is refused as a whole;
+left in the WISHLIST. *Closed, 2026-10-19 (worker TG-28-holegroup, #1002):*
+`roomsMeet` asks `pointInShape`, the room's floor, so a room in another's own
+hole is its own building, as one in a court of rooms already was. `roofPlan`'s rectangle test through `inFootprint` is
+the old `pointInRing` until a skeleton block carries holes. Increment 4
+starts from here.
+
 **4. Hipped roofs over a courtyard.** `roof.js`: `courtEaves`, `curvedRoofs`
 with holes, `skeletonRoofsOf` taking footprints with holes; `elevation.js`
 `roofHeightAt` through `inFootprint`. Tests in `test/roof-holes.test.mjs`:
@@ -432,6 +455,25 @@ on increment 3's code (the hip over a court is rectangles there). Browser:
 and outside the court eaves, covering the eave less the court eaves once.
 Leaves: the head-on notch, the pinch.
 
+*Implementation note, 2026-10-19 (worker TG-28-holes4, #999).* Shipped as
+written, question 3 on its default, the 108-case hash unchanged. Four
+findings. (1) `skeletonRoof` had not taken holes yet (3.1 lists it, no
+increment named it), so it does here; with no holes its faces and return
+carry no new key (`ring`, `holes`), so a shipped block is the same object
+key for key. (2) "`roofHeightAt` ... at the eave height 1.4ft into it"
+cannot hold beside "null in the court" once the test is `inFootprint`, as
+3.3 says: 1.4ft into the court is under the court's overhang and in no
+footprint, so it reads as sky, as the outer overhang does. The test reads
+null there and, 1.4ft back into the building from the court wall, the court
+face's plane at the eave plus 2.9ft times the pitch. (3) Four more old tests
+pinned the hip over a court as rectangles than this section names:
+`roof-courtyard`'s courtyard on the curved building, `roof-groupwalls`'
+hall touching the L, and two in `roof-takeoff`; each was rewritten to the
+new answer. (4) In `curved-roof-court` it is the area line that fails with
+the skeleton built without its court (2326.30 ft² against 2281.30), not the
+"inside the court's eave" line: the 9 by 5 court eave holds no triangle's
+middle. Increment 5 starts from here.
+
 **5. The head-on notch.** `roof.js`: `eaveLine`'s third answer. Tests: the
 notched hall of `roof-tightcurve.test.mjs` with the square notch, a slot and a
 dovetail, each now on its skeleton with an eave straight past the notch, every
@@ -443,6 +485,30 @@ the 108-case hash and every `roof-*` test against `eaveLine` with the third
 answer in place: a shipped loop that returned null there before and does not
 now is a moved hash, and the increment stops to report it. Browser: none new
 (`curved-roof` covers drawing a skeleton block). Leaves: the pinch.
+
+*Implementation note, 2026-10-19 (worker TG-28-holes5, #1000).* Shipped as
+written, the 108-case hash unchanged: run first with the third answer in
+place and no test touched, every one of the 108 lines was identical and the
+only `roof-*` or `skeleton*` test to fail was the one this section names.
+Four findings. (1) The court with a head-on notch of its own was already
+roofed on increment 4's code: `courtEaves` has asked `offsetRing` since
+#999, so its test passes on the code before and fails only with the court's
+offset taken out. It pins the case, it did not catch it. (2) `roof-curve`'s
+"a notch narrower than two eaves" tests `eavePolygon`, which is unchanged,
+so its rewrite asserts the mitred line still refuses and `offsetRing` gives
+the rectangle; it too passes on the code before. The test that fails on the
+code before is `roof-tightcurve`'s, the notched hall itself. (3) "None, or
+two pieces, is still null" has a case: a bottle notch (a 1ft mouth into a 5
+by 6ft pocket) closes at its mouth first, and the outward wavefront is the
+eave and the pocket, two loops. Taking the first would roof over the
+pocket's sky; it keeps its rectangles, and a test says so. (4) The order of
+the second and third answers decides nothing anyone has found: with
+`offsetRing` asked before #993's step-out, the whole Node suite and the 108
+cases are unchanged, the step-out being the same wavefront run by mitred
+steps. The design's order is kept, since it makes "a loop with an eave keeps
+it" true by construction. The eave is passed through `cleanPolygon`, which
+drops the straight-through corner where the notch closed. Increment 6 starts
+from here.
 
 **6. The courtyard that meets the outside at one corner.** `skeleton.js`:
 `cleanPolygon({ pinch })`, carried through `straightSkeleton` and
@@ -457,6 +523,30 @@ eave at a pinch: the outer and the court eave meet there; the test says what
 the eave line is (two loops touching at the corner, or one), and the
 implementer checks it against the frame offset before deciding. Browser:
 none new. Leaves: gable.
+
+*Implementation note, 2026-10-19 (worker TG-28-holes6, #1001).* Shipped,
+question 6 on its default, the 108-case hash unchanged. Four findings. (1)
+The eave at the pinch is neither of the two answers this section offers. The
+L's ring run outward 1.5ft through the frame (`offsetRing(ring, -1.5,
+{ pinch })`) comes back as two loops that do **not** touch: the L's own
+mitred eave, inner corner (21.5, 21.5), and the court's own eave, the square
+11.5 to 18.5 wound as a hole, corner (18.5, 18.5), 4.24ft apart. Each visit
+to the corner pairs its own two walls and the two run apart from t = 0, so
+outward they part at once. Section 2.3 and question 6 suppose the eaves meet
+at the corner; they do not, and the roof over a pinched court is the roof
+over any court: the outer eave with the court's eave as a hole. So the
+default holds, and the wiring is `pinchEave` in `roof.js` (one loop round the
+outside, one court per corner visited twice, else null) feeding #999's path,
+not a pinched ring into `skeletonRoof`; `skeletonRoof` takes no `pinch`
+since no caller has one to give. (2) `triangulate` refused the pinched deck:
+ear clipping read the second visit as a point inside every ear at the first.
+A repeated point now takes its first index, as a bridge's ends do, so the
+parapet's deck is the loop, area exact. (3) `unionOf` checks a pinched loop
+with `cleanPolygon({ pinch })` before keeping it; no layout of rooms is known
+to reach that refusal (the turn towards the rooms keeps the wedges apart),
+and its comment says so. (4) A pinched building beside a refused one, judged
+building by building, keeps its flag; a test says so, since dropping it was
+green until then. Gable, increment 7, waits for question 5.
 
 **7 (optional, after question 5). Gable over a curve, the weighted
 skeleton.** At least two increments: the weighted wavefront, pure, with its

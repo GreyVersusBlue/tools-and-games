@@ -11,7 +11,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { roofCover, roofPlan, roofMask, maskCount, skeletonRoofsOf } from '../js/roof.js';
+import { roofCover, roofPlan, roofMask, maskCount, skeletonRoofsOf, curvedLoopsOf } from '../js/roof.js';
 import { addShape, curveSegment } from '../js/shapes.js';
 import { createState, CELL } from '../js/grid.js';
 import { takeoff, takeoffCSV, roundQty } from '../js/takeoff.js';
@@ -37,6 +37,11 @@ function school({ curve = true, style = 'hip', pitch = 6, courtyard = false } = 
   return s;
 }
 const slopeOf = (pitch) => Math.hypot(12, pitch) / 12;
+const area = (pts) => {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) a += pts[i].x * pts[(i + 1) % pts.length].z - pts[(i + 1) % pts.length].x * pts[i].z;
+  return a / 2;
+};
 const maskFootprint = (s) => {
   const f = s.floors[s.floors.length - 1];
   return maskCount(roofMask(f, f.w, f.h)) * CELL * CELL;
@@ -110,9 +115,7 @@ test('every roof that does not take the skeleton path is the mask, figure for fi
   const cases = [
     ...['gable', 'flat'].map((style) => school({ style })),
     school({ curve: false }),
-    school({ courtyard: true }),
     school({ style: 'parapet', curve: false }),
-    school({ style: 'parapet', courtyard: true }),
   ];
   for (const s of cases) {
     assert.equal(skeletonRoofsOf(s).length, 0, `${s.roof.style}`);
@@ -123,6 +126,23 @@ test('every roof that does not take the skeleton path is the mask, figure for fi
     assert.equal(cover.footprint, want, `${s.roof.style} footprint`);
     assert.equal(cover.area, want * (pitched ? slopeOf(6) : 1), `${s.roof.style} area`);
   }
+});
+
+test('a parapet over a curve with a court is counted off the outline less the court (#998)', () => {
+  // Was the mask's count until #998, as the roofs above still are.
+  const s = school({ style: 'parapet', courtyard: true });
+  const f = curvedLoopsOf(s.floors[0]);
+  assert.equal(f.length, 1);
+  assert.equal(f[0].holes.length, 1);
+  const lessCourt = area(f[0].outer) - Math.abs(area(f[0].holes[0]));
+  const rest = 40 * 16 + 16 * 24;     // the L to the south, on whole cells
+  near(roofCover(s).footprint, lessCourt + rest, 1e-9, 'outline less the court, plus the L');
+  near(Math.abs(area(f[0].holes[0])), 32 * 20, 1e-9, 'the court is 32 by 20');
+  // Hipped, the same outline less the court since #999, sloped.
+  const hip = school({ courtyard: true });
+  assert.equal(skeletonRoofsOf(hip).length, 1, 'the hip stands round the court');
+  near(roofCover(hip).footprint, lessCourt + rest, 1e-9, 'hipped: outline less the court, plus the L');
+  near(roofCover(hip).area, (lessCourt + rest) * slopeOf(6), 1e-9, 'sloped at 6 in 12');
 });
 
 test('roofPlan and the takeoff agree on which loops are skeleton', () => {

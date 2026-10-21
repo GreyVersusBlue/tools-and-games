@@ -14,7 +14,7 @@ import { roofOutline, hasCurve, roofPlan, roofMask, EAVE, curvedRoofs } from '..
 import { arcPoints, addShape, curveSegment } from '../js/shapes.js';
 import { createState, CELL, WALL_H, floorBaseY } from '../js/grid.js';
 import { roofHeightAt, computeElevation, computeSection } from '../js/elevation.js';
-import { eavePolygon, cleanPolygon, skeletonRoof, triangulate, roofHeightOver } from '../js/skeleton.js';
+import { eavePolygon, cleanPolygon, skeletonRoof, triangulate, roofHeightOver, offsetRing } from '../js/skeleton.js';
 
 const room = (pts) => ({ rings: [{ pts: pts.map(([x, z]) => ({ x, z })), walls: [], openings: [] }] });
 const floorOf = (...rooms) => ({ shapes: rooms });
@@ -72,22 +72,28 @@ test('separate buildings are separate loops', () => {
   assert.equal(o.loops.length, 2);
 });
 
-test('a courtyard is refused, and says so', () => {
-  // Four rooms round an empty middle.
+test('a courtyard is a hole of the loop round it (#998)', () => {
+  // Four rooms round an empty middle: refused until #998.
   const o = roofOutline(floorOf(
     room([[0, 0], [48, 0], [48, 12], [0, 12]]), room([[0, 36], [48, 36], [48, 48], [0, 48]]),
     room([[0, 12], [12, 12], [12, 36], [0, 36]]), room([[36, 12], [48, 12], [48, 36], [36, 36]]),
   ));
-  assert.equal(o.loops, null);
-  assert.match(o.refused, /courtyard/);
+  assert.equal(o.refused, undefined);
+  assert.equal(o.loops.length, 1);
+  assert.equal(area(o.loops[0]), 48 * 48);
+  assert.equal(o.holes[0].length, 1);
+  assert.equal(area(o.holes[0][0]), -24 * 24, 'the court, wound the other way');
 });
 
-test('a room with a hole of its own is refused', () => {
+test('a room with a hole of its own gives the hole as its court (#998)', () => {
   const sh = room([[0, 0], [40, 0], [40, 40], [0, 40]]);
   sh.rings.push({ pts: [{ x: 10, z: 10 }, { x: 10, z: 30 }, { x: 30, z: 30 }, { x: 30, z: 10 }], walls: [], openings: [] });
   const o = roofOutline(floorOf(sh));
-  assert.equal(o.loops, null);
-  assert.match(o.refused, /hole/);
+  assert.equal(o.refused, undefined);
+  assert.equal(o.loops.length, 1);
+  assert.equal(area(o.loops[0]), 1600);
+  assert.equal(o.holes[0].length, 1);
+  assert.equal(area(o.holes[0][0]), -400);
 });
 
 test('overlapping rooms are refused, whether or not they share a wall', () => {
@@ -105,7 +111,7 @@ test('overlapping rooms are refused, whether or not they share a wall', () => {
 // splits them into a loop each: test/roof-pinch.test.mjs.
 
 test('an empty storey is no loops, not a refusal', () => {
-  assert.deepEqual(roofOutline(floorOf()), { loops: [] });
+  assert.deepEqual(roofOutline(floorOf()), { loops: [], holes: [], pinch: [] });
 });
 
 // ---------- what counts as a curve ----------
@@ -193,10 +199,19 @@ test('a curve bowed into the building tighter than the eave is refused, a looser
   assert.ok(eavePolygon(dented(10), 1.5), 'r 10ft');
 });
 
-test('a notch narrower than two eaves closes up and is refused', () => {
+// The mitred line still crosses itself over a notch narrower than two eaves,
+// and #993's step-out still refuses it (the sides meet head on); the eave a
+// roof stands on is the outline's wavefront run out 1.5ft (#1000), which
+// closes the notch at half its width and runs straight past it. A 4ft notch
+// stays open 1ft, the mitred line point for point.
+test('a notch narrower than two eaves: the mitred line crosses itself, and the eave closes straight past it', () => {
   const notch = (w) => P([[0, 0], [40, 0], [40, 10], [20 + w / 2, 10], [20 + w / 2, 4], [20 - w / 2, 4], [20 - w / 2, 10], [0, 10]]);
   assert.equal(eavePolygon(notch(2), 1.5), null);
+  const [closed, ...more] = offsetRing(notch(2), -1.5);
+  assert.equal(more.length, 0, 'one eave');
+  assert.deepEqual(cleanPolygon(closed).map((p) => [p.x, p.z]), [[-1.5, -1.5], [41.5, -1.5], [41.5, 11.5], [-1.5, 11.5]]);
   assert.ok(eavePolygon(notch(4), 1.5));
+  assert.deepEqual(offsetRing(notch(4), -1.5), [eavePolygon(notch(4), 1.5)]);
 });
 
 // ---------- the faces, in triangles ----------
@@ -399,12 +414,20 @@ test('only the hipped style takes the new path', () => {
   assert.ok(!roofPlan(school({ curve: false })).blocks.some((b) => b.skeleton), 'no curve, no skeleton');
 });
 
-test('a curve on a courtyard keeps the rectangles, the outline having said why', () => {
+test('a curve on a courtyard stands on its skeleton, round the court', () => {
+  // The outline takes the court as a hole since #998, and the hip stands
+  // round it since #999 (DESIGN-roof-holes.md increment 4); the L beside it
+  // keeps its rectangles.
   const s = school({ courtyard: true });
-  assert.match(roofOutline(s.floors[0]).refused, /courtyard/);
+  const o = roofOutline(s.floors[0]);
+  const at = o.loops.findIndex((l) => hasCurve(l));
+  assert.equal(o.holes[at].length, 1, 'the curved building has a court');
   const plan = roofPlan(s);
-  assert.ok(!plan.blocks.some((b) => b.skeleton));
-  assert.ok(plan.blocks.length > 2);
+  const sk = plan.blocks.filter((b) => b.skeleton);
+  assert.equal(sk.length, 1);
+  assert.deepEqual(sk[0].holes, o.holes[at]);
+  assert.ok(sk[0].faces.some((f) => f.ring === 1), 'faces rising from the court eave');
+  assert.ok(plan.blocks.some((b) => !b.skeleton), 'the L\'s rectangles');
 });
 
 test('a curve too tight for the eave stands on its skeleton, the eave closed over it (#993)', () => {

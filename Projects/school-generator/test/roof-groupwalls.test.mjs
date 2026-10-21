@@ -53,8 +53,12 @@ test('a curved hall in the notch of a courtyard L, touching none of it, has its 
   const alone = roofOutline(school({ l: false }).floors[0]);
   assert.ok(alone.loops && alone.loops.length === 1, 'the hall alone passes');
   assert.ok(o.loops, `the hall is judged with the courtyard: ${o.refused}`);
-  assert.deepEqual(o.loops, alone.loops, 'the hall\'s loop, point for point');
-  assert.match(o.refused, /courtyard/, 'and the L is still refused');
+  // The L passes too since #998, with its court as a hole.
+  const k = o.loops.findIndex((l) => JSON.stringify(l) === JSON.stringify(alone.loops[0]));
+  assert.ok(k >= 0, 'the hall\'s loop, point for point');
+  assert.deepEqual(o.holes[k], []);
+  assert.equal(o.loops.length, 2);
+  assert.equal(o.holes[1 - k].length, 1, 'and the L has its court');
 });
 
 test('so it stands on the skeleton under hip and its chords under parapet, and the L keeps rectangles', () => {
@@ -75,19 +79,28 @@ test('so it stands on the skeleton under hip and its chords under parapet, and t
   assert.ok(flat.deckPolys[0].pts.some((p) => p.x > 185), 'the deck runs out to the bow');
 });
 
-test('the same hall touching the L is judged with it and keeps rectangles, as before', () => {
+test('the same hall touching the L is judged with it: a court, the skeleton under hip, chords under parapet', () => {
+  // One building with the L's court as its hole since #998. The hip stands
+  // round the court on the skeleton since #999 (DESIGN-roof-holes.md
+  // increment 4); the parapet runs on the hall's chords and round the court.
   const o = roofOutline(school({ at: 'touching' }).floors[0]);
-  assert.equal(o.loops, null);
-  assert.match(o.refused, /courtyard/);
-  assert.equal(roofPlan(school({ at: 'touching' })).blocks.filter((b) => b.skeleton).length, 0);
-  assert.equal(roofPlan(school({ at: 'touching', style: 'parapet' })).deckPolys, undefined);
+  assert.equal(o.loops.length, 1);
+  assert.equal(o.holes[0].length, 1);
+  const sk = roofPlan(school({ at: 'touching' })).blocks.filter((b) => b.skeleton);
+  assert.equal(sk.length, 1);
+  assert.equal(sk[0].holes.length, 1, 'the skeleton has the court as its hole');
+  const deck = roofPlan(school({ at: 'touching', style: 'parapet' })).deckPolys;
+  assert.equal(deck.length, 1);
+  assert.equal(deck[0].holes.length, 1, 'the deck has the court as its hole');
 });
 
 test('a box in the notch, all straight walls, splits off and changes no roof', () => {
   const s = school({ at: 'none' });
   addShape(s, 0, R4(160, 16, 180, 40));
   const o = roofOutline(s.floors[0]);
-  assert.deepEqual(o.loops, [R4(160, 16, 180, 40)], 'its own loop');
+  // The L passes beside it since #998.
+  assert.equal(o.loops.length, 2);
+  assert.ok(o.loops.some((l) => JSON.stringify(l) === JSON.stringify(R4(160, 16, 180, 40))), 'its own loop');
   for (const style of ['hip', 'parapet', 'gable', 'flat']) {
     const t = school({ at: 'none', style });
     addShape(t, 0, R4(160, 16, 180, 40));
@@ -109,16 +122,24 @@ test('a room standing inside another, touching no wall of it, is still one build
   addShape(r, 0, R4(24, 12, 32, 20));
   hall(r, 20, 8);
   assert.equal(roofOutline(r.floors[0]).loops, null, 'inner room drawn first');
-  // And beside a courtyard L, the overlap keeps its rectangles too.
+  // And beside a courtyard L, the overlap keeps its rectangles too: only the
+  // L's loop comes through (it has passed since #998), none over the hall.
   const t = school({ at: 'none' });
   hall(t, 156, 14);
   addShape(t, 0, R4(160, 18, 168, 26));
-  assert.equal(roofOutline(t.floors[0]).loops, null);
+  const u = roofOutline(t.floors[0]);
+  assert.match(u.refused, /overlap/);
+  assert.equal(u.loops.length, 1);
+  assert.ok(u.loops[0].every((p) => p.x <= 150 || p.z >= 48 || p.x >= 190), 'the L\'s loop alone');
 });
 
 test('two rooms whose walls cross are one building, and refused', () => {
   const s = school({ at: 'none' });
   hall(s, 156, 14);
   addShape(s, 0, R4(170, 10, 180, 20));     // across the hall's north wall
-  assert.equal(roofOutline(s.floors[0]).loops, null);
+  // Only the L's loop comes through (it has passed since #998).
+  const o = roofOutline(s.floors[0]);
+  assert.match(o.refused, /overlap/);
+  assert.equal(o.loops.length, 1);
+  assert.ok(!o.loops[0].some((p) => p.x > 156 && p.x < 190 && p.z < 44), 'none over the hall');
 });

@@ -337,12 +337,13 @@ export const section = {
         title: 'Apply the scenario ' + quote(current.name) + '?',
         body,
         id: 'scenario-apply',
+        // the lab's own name for it, so scenarios.css keeps its question and
+        // buttons in view (SV2-72f), on it before it is shown and focused
+        class: 'scn-apply',
         opener: applyButton,
         // with nothing that applies the button says what it does: it closes the scenario
         buttons: [{ label: n === 0 ? APPLY_NOTHING : n === 1 ? 'Apply 1 change' : 'Apply ' + n + ' changes', value: 'apply', kind: 'primary' }, { label: 'Keep it as a scenario', value: null }],
       });
-      // the lab's own name for it, so scenarios.css keeps its question and buttons in view (SV2-72f)
-      dialog.element.classList.add('scn-apply');
       const answer = await dialog.closed;
       if (answer !== 'apply' || gone) return;
       if (!run(applyScenario, {})) return;

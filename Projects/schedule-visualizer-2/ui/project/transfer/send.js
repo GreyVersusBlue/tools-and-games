@@ -12,26 +12,30 @@
 //                NO_CHANNEL_MS (or when the connection says it failed) the
 //                dialog gains data-no-channel="true" and the plain statement
 //                with the project file; it keeps waiting all the same
-//   sending      parts going over; data-parts="sent/total"
+//   sending      parts going over; data-parts="sent/total". After STALL_MS
+//                with nothing leaving, data-stalled="true" and the plain
+//                statement with the project file; it keeps trying
 //   sent         every part has left; waiting for the reply
 //   applied      the other device replaced its project with this one
 //   not-taken    the other device kept its own (or could not take this one)
-//   lost         the connection closed before the other device answered
+//   lost         the connection closed before the other device answered;
+//                the project file is offered
 //   failed       something here went wrong; the sentence says what
 
 import { h } from '../../components/dom.js';
 import { buildExport } from '../../../engine/exports.js';
 import { packTransfer, encodeSignal, decodeSignal, readAck } from '../../../engine/transfer.js';
 import { transferDialog } from './dialog.js';
-import { createPeer, peerAvailable, sendFrames, NO_CHANNEL_MS } from './peer.js';
+import { createPeer, peerAvailable, sendFrames, stallClock, NO_CHANNEL_MS, STALL_MS } from './peer.js';
 import { codeShown, codeTaken } from './codes.js';
-import { lines, progressLine, exportRow, pasteAnywhere, subtleOf, messageOf } from './common.js';
+import { lines, progressLine, exportRow, pasteAnywhere, subtleOf, messageOf, unavailableSentence, alternative } from './common.js';
 import { SENTENCES } from './words.js';
 
 export function openSend(ctx, opener) {
   let peer = null;
   let taken = null;
   let timer = null;
+  let stall = null;
   let closed = false;
   let answered = false;
   let answeredDone = false;
@@ -43,24 +47,32 @@ export function openSend(ctx, opener) {
     onClose() {
       closed = true;
       clearTimeout(timer);
+      if (stall) stall.stop();
       if (taken) taken.stop();
       if (peer) peer.close();
     },
   });
   const talk = lines();
 
-  function failed(sentence) {
-    clearTimeout(timer);
-    if (taken) taken.stop();
-    if (peer) peer.close();
+  // The project file, under whatever the dialog last said.
+  function fileInstead() {
     const other = lines();
-    dialog.show('failed', sentence, [h('p', null, 'You can send the project file instead.'), exportRow(ctx, other.say), other.said]);
+    return [h('p', null, SENTENCES.sendFileInstead), exportRow(ctx, other.say), other.said];
   }
 
-  function finished(state, sentence) {
+  function failed(sentence) {
+    clearTimeout(timer);
+    if (stall) stall.stop();
+    if (taken) taken.stop();
+    if (peer) peer.close();
+    dialog.show('failed', sentence, fileInstead());
+  }
+
+  function finished(state, sentence, children) {
     answeredDone = true;
     clearTimeout(timer);
-    dialog.show(state, sentence, []);
+    if (stall) stall.stop();
+    dialog.show(state, sentence, children || []);
     // the reply is in; the channel has nothing more to carry
     setTimeout(() => peer && peer.close(), 0);
   }
@@ -69,16 +81,42 @@ export function openSend(ctx, opener) {
     if (closed || dialog.element.dataset.state !== 'connecting' || dialog.element.dataset.noChannel === 'true') return;
     dialog.element.dataset.noChannel = 'true';
     const other = lines();
-    dialog.body.append(h('div', { class: 'xfer__alternative', data: { line: 'no-channel' } },
-      h('p', { role: 'alert' }, SENTENCES.noChannelSending),
-      exportRow(ctx, other.say),
-      other.said));
+    dialog.body.append(alternative('no-channel', SENTENCES.noChannelSending, exportRow(ctx, other.say), other.said));
+  }
+
+  // Nothing has left for STALL_MS while sending: said once, taken back when
+  // something leaves again. A buffer that went down since the last look is
+  // something leaving.
+  function watchStall(channel) {
+    let seen = channel.bufferedAmount;
+    stall = stallClock(STALL_MS, () => {
+      if (closed || answeredDone || dialog.element.dataset.state !== 'sending') return;
+      if (channel.bufferedAmount < seen) {
+        seen = channel.bufferedAmount;
+        stall.poke();
+        return;
+      }
+      if (dialog.element.dataset.stalled === 'true') return;
+      dialog.element.dataset.stalled = 'true';
+      const other = lines();
+      dialog.body.append(alternative('stalled', SENTENCES.stalledSending, exportRow(ctx, other.say), other.said));
+    });
+    return () => {
+      seen = channel.bufferedAmount;
+      stall.poke();
+      if (dialog.element.dataset.stalled !== 'true') return;
+      delete dialog.element.dataset.stalled;
+      const said = dialog.body.querySelector('[data-alternative="stalled"]');
+      if (said) said.remove();
+    };
   }
 
   async function onChannel(channel) {
     if (closed) return;
     clearTimeout(timer);
     delete dialog.element.dataset.noChannel;
+    const statement = dialog.body.querySelector('[data-alternative="no-channel"]');
+    if (statement) statement.remove();
     const chunks = packed.header.chunks;
     const progress = progressLine(dialog, 'Sent');
     channel.addEventListener('message', (event) => {
@@ -87,7 +125,7 @@ export function openSend(ctx, opener) {
       try {
         ack = readAck(event.data, packed.sha256);
       } catch (error) {
-        finished('failed', messageOf(error));
+        finished('failed', messageOf(error), fileInstead());
         return;
       }
       if (ack.applied) {
@@ -100,18 +138,23 @@ export function openSend(ctx, opener) {
     channel.addEventListener('close', () => {
       if (!closed && !answeredDone) {
         answeredDone = true;
-        dialog.show('lost', SENTENCES.lostSending, []);
+        if (stall) stall.stop();
+        dialog.show('lost', SENTENCES.lostSending, fileInstead());
       }
     });
     dialog.show('sending', 'Connected. Sending the project…', [progress.element]);
     progress.set(0, chunks);
+    const moved = watchStall(channel);
     try {
       // frame 0 is the header and the last the trailer; the parts are between
       await sendFrames(channel, packed.frames, (index) => {
+        moved();
         if (index >= 1 && index <= chunks) progress.set(index, chunks);
-      });
+      }, peer.signal);
     } catch (error) {
-      return; // the close listener has said so
+      return; // the close listener has said so, or the dialog has closed
+    } finally {
+      stall.stop();
     }
     if (!closed && !answeredDone) dialog.show('sent', SENTENCES.sentAll, []);
   }
@@ -141,7 +184,7 @@ export function openSend(ctx, opener) {
     const subtle = subtleOf();
     if (!peerAvailable() || !subtle) {
       const other = lines();
-      dialog.show('unavailable', SENTENCES.noPeer, [exportRow(ctx, other.say), other.said]);
+      dialog.show('unavailable', unavailableSentence(), [exportRow(ctx, other.say), other.said]);
       return;
     }
     dialog.show('preparing', SENTENCES.preparing, []);

@@ -215,6 +215,14 @@ test('W1: the band above the box is taken where it clears the corner, never wide
 
 // ---- SV2-72f
 
+// The floors a fit leaves off a stage, each with its name row over it
+// (TITLE_ROWS cells), as the browser checks count them (test/browser/plan-map.mjs
+// and m5-pass.mjs): a floor whose name runs off the top is not whole.
+const offStage = (layout, place, width, height) => {
+  const size = CELL * place.zoom;
+  return layout.slots.filter((slot) => place.x + slot.x * size < -1e-9 || place.y + (slot.y - TITLE_ROWS) * size < -1e-9 || place.x + (slot.x + slot.w) * size > width + 1e-9 || place.y + (slot.y + slot.h) * size > height + 1e-9);
+};
+
 test('SV2-72f: where no band clears the zoom box with the map whole, Fit is the plain fit, every floor on the stage', () => {
   const floors = sampleSchool().building.floors;
   // Movement at 844 by 390 with touch: the stage 788 by 110, the zoom box 182 by 46 at 12 px
@@ -223,7 +231,7 @@ test('SV2-72f: where no band clears the zoom box with the map whole, Fit is the 
   const box = { x: 12, y: height - 12 - 46, w: 182, h: 46 };
   const fitted = fitClear(layout, width, height, box);
   const size = CELL * fitted.zoom;
-  const floorsOff = layout.slots.filter((slot) => fitted.x + slot.x * size < -1e-9 || fitted.y + slot.y * size < -1e-9 || fitted.x + (slot.x + slot.w) * size > width + 1e-9 || fitted.y + (slot.y + slot.h) * size > height + 1e-9);
+  const floorsOff = offStage(layout, fitted, width, height);
   assert.equal(fitted.zoom, 0.25, 'the map is not at the least zoom: the case tests nothing');
   // the band beside the box is clear and runs off the stage's right: what Fit took before
   const beside = (width - box.x - box.w - ZOOM_GAP - FIT_MARGIN) / (layout.width * CELL);
@@ -234,6 +242,41 @@ test('SV2-72f: where no band clears the zoom box with the map whole, Fit is the 
   // and a strip the plain fit cannot hold whole either keeps the clear band
   const strip = fitClear(layout, 844, 60, corner(60, 46));
   assert.equal(strip.how, 'beside', JSON.stringify(strip));
+});
+
+// The plan map passes plainWhole false where the floors cannot be whole
+// above a sticky foot (its choose): the clear band stands over the plain fit.
+test('SV2-72f2: with plainWhole false the 110 px stage keeps the clear band beside the zoom box, not the plain fit', () => {
+  const floors = sampleSchool().building.floors;
+  const [width, height] = [788, 110];
+  const layout = layoutFloors(floors, bestLayout(floors, width, height));
+  const box = { x: 12, y: height - 12 - 46, w: 182, h: 46 };
+  const plain = fitClear(layout, width, height, box);
+  assert.equal(plain.how, 'whole', 'with plainWhole true the plain fit is not taken here: the case tests nothing: ' + JSON.stringify(plain));
+  const kept = fitClear(layout, width, height, box, FIT_MARGIN, false);
+  assert.equal(kept.clear, true, JSON.stringify(kept));
+  assert.equal(kept.how, 'beside', JSON.stringify(kept));
+  assert.equal(paintedUnder(layout, kept, grown(box)), false, 'a painted cell under the zoom box: ' + JSON.stringify(kept));
+});
+
+// A zoom box lifted to the stage's top (a foot over all of a short stage)
+// leaves no band above it: Fit is still a place on the stage, never the band
+// of no height, and with plainWhole false still a clear one.
+test('SV2-72f2: a zoom box at the stage\'s top or above it leaves a band of 0 or less: Fit is finite, not the band above, and clear with plainWhole false', () => {
+  const floors = sampleSchool().building.floors;
+  const [width, height] = [788, 110];
+  const layout = layoutFloors(floors, bestLayout(floors, width, height));
+  for (const y of [0, -10]) {
+    const box = { x: 12, y, w: 182, h: 46 };
+    for (const plainWhole of [true, false]) {
+      const place = fitClear(layout, width, height, box, FIT_MARGIN, plainWhole);
+      const what = 'box at ' + y + ', plainWhole ' + plainWhole + ': ' + JSON.stringify(place);
+      assert.ok([place.zoom, place.x, place.y].every(Number.isFinite), what);
+      assert.notEqual(place.how, 'above', what);
+      if (plainWhole) assert.deepEqual(offStage(layout, place, width, height), [], what);
+      else assert.equal(place.clear, true, what);
+    }
+  }
 });
 
 // ---- SV2-72c2

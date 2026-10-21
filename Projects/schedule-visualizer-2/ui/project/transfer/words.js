@@ -2,6 +2,9 @@
 // screens and the browser test read the same words.
 
 import { count } from '../../components/words.js';
+import { STALL_MS } from './peer.js';
+
+const STALL_SECONDS = STALL_MS / 1000 + ' seconds';
 
 export const SENTENCES = {
   noPeer: 'This browser cannot connect straight to another device. Send the project file instead: Export the project under Project file, and open it on the other device with Import a project file.',
@@ -21,6 +24,10 @@ export const SENTENCES = {
   kept: 'You kept your project. Nothing was changed, and the other device has been told.',
   readOnly: 'This tab is read-only while the project is open in another tab, so it cannot take a project from another device. Close the other tab, or receive it there.',
   noChannelSending: 'No direct connection yet. Many school networks keep their devices from connecting to each other, and then this cannot work. If the other device is still connecting this may still go through, but you can send the project file instead: export it here, pass it on by mail, a shared drive or a USB stick, and open it there with Import a project file.',
+  notSecure: 'This page is not open over a secure connection (its address does not begin with https), so the browser holds back what checking the project needs. Open Schedule Visualizer 2 at its https address, or send the project file instead: Export the project under Project file, and open it on the other device with Import a project file.',
+  stalledSending: 'Nothing has gone over to the other device for ' + STALL_SECONDS + '. The connection may have stalled, or the other device may have stopped taking the project. This device keeps trying, but you can send the project file instead: export it here, pass it on by mail, a shared drive or a USB stick, and open it there with Import a project file.',
+  stalledReceiving: 'Nothing has arrived for ' + STALL_SECONDS + '. The connection may have stalled. This device keeps waiting, but you can ask for the project file instead and open it with Import a project file under Project file.',
+  sendFileInstead: 'You can send the project file instead.',
   noChannelReceiving: 'No connection yet. If the sending device has taken this reply code, the network may be keeping the two devices apart, as many school networks do. Ask for the project file instead and open it with Import a project file under Project file. This device keeps waiting meanwhile.',
 };
 

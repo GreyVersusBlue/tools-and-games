@@ -7,7 +7,8 @@
 // carried out the way the skeleton's own wavefront runs: a chord that closes
 // up on the way out is gone from there on, so a dent the overhang covers is
 // covered, and the roof stands on what the eave line is. A V notch closes the
-// same way; a notch whose two sides meet head on is still refused.
+// same way. A notch whose two sides meet head on closes as the outline's
+// own wavefront runs out (#1000), and the eave runs straight past it.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,7 +16,7 @@ import assert from 'node:assert/strict';
 import { roofOutline, hasCurve, roofPlan, roofCover, curvedRoofs, EAVE } from '../js/roof.js';
 import { arcPoints, addShape } from '../js/shapes.js';
 import { createState } from '../js/grid.js';
-import { eavePolygon, cleanPolygon } from '../js/skeleton.js';
+import { eavePolygon, cleanPolygon, offsetRing } from '../js/skeleton.js';
 
 const area = (pts) => {
   let a = 0;
@@ -104,16 +105,58 @@ function notched(pts) {
   return s;
 }
 
-test('a notch whose sides meet head on is still refused', () => {
+// Every face of a skeleton roof on the plane through its own eave edge: each
+// point's height the eave's plus the pitch times its distance in.
+function everyFaceOnItsPlane(roof, eaveY, slope, label) {
+  for (const f of roof.faces) {
+    const [a, c] = f.pts;
+    const L = Math.hypot(c.x - a.x, c.z - a.z);
+    for (const p of f.pts) {
+      const d = ((c.x - a.x) * (p.z - a.z) - (c.z - a.z) * (p.x - a.x)) / L;
+      assert.ok(Math.abs(p.y - (eaveY + slope * d)) < 1e-9, `${label}: face ${f.edge} off its plane by ${p.y - (eaveY + slope * d)}`);
+    }
+  }
+}
+
+// Two sides meeting head on closed neither the mitred line nor #993's
+// step-out, and the hall kept its rectangles. The eave is the outline's own
+// wavefront run out 1.5ft now (#1000): the sides meet at half the notch's
+// width and the west eave runs straight past where the notch was.
+test('a notch whose sides meet head on closes, and the eave runs straight past it', () => {
   for (const [name, pts] of Object.entries({
     square: [[24, 21], [27, 21], [27, 19], [24, 19]],
     slot: [[24, 20.25], [30, 20.25], [30, 19.75], [24, 19.75]],
     dovetail: [[24, 20.5], [27, 21.5], [27, 18.5], [24, 19.5]],
   })) {
     const s = notched(pts);
-    assert.deepEqual(curvedRoofs(s.floors[0], 12, 6), [], name);
-    assert.ok(!roofPlan(s).blocks.some((b) => b.skeleton), `${name}: the rectangles stay`);
+    const roofs = curvedRoofs(s.floors[0], 12, 6);
+    assert.equal(roofs.length, 1, `${name}: a skeleton roof`);
+    const [roof] = roofs;
+    // The west eave is two corners on the wall's line carried out 1.5ft, at
+    // the hall's own ends: nothing of the notch is left in it.
+    const west = roof.eave.filter((p) => p.x < 30);
+    assert.deepEqual(west.map((p) => [p.x, p.z].map((v) => Math.round(v * 1e9) / 1e9)).sort((a, b) => a[1] - b[1]),
+      [[22.5, 6.5], [22.5, 33.5]], `${name}: ${JSON.stringify(west)}`);
+    for (const p of loopOf(s)) assert.ok(inside(roof.eave, p.x, p.z), `${name}: ${p.x},${p.z} outside the eave`);
+    everyFaceOnItsPlane(roof, 12, 0.5, name);
+    let sum = 0;
+    for (const f of roof.faces) sum += area(f.pts);
+    assert.ok(Math.abs(sum - area(roof.eave)) < 1e-6, `${name}: faces ${sum} against the eave's ${area(roof.eave)}`);
+    const plan = roofPlan(s);
+    assert.ok(plan.blocks.length === 1 && plan.blocks[0].skeleton, `${name}: the rectangles go`);
+    assert.equal(roofCover(s).skeleton, 1, `${name}: the takeoff counts it off its chords`);
   }
+});
+
+// A bottle: a 1ft mouth into a 5 by 6ft pocket. The mouth's sides meet at
+// 0.5ft, before the pocket's do, so the outline's wavefront run out 1.5ft
+// is two loops, the eave and the pocket still open inside it, and a roof on
+// the first would cover the pocket's sky. Two pieces are refused (#1000).
+test('a bottle notch whose mouth closes first leaves a pocket, and keeps its rectangles', () => {
+  const s = notched([[24, 20.5], [25, 20.5], [25, 23], [30, 23], [30, 17], [25, 17], [25, 19.5], [24, 19.5]]);
+  assert.equal(offsetRing(loopOf(s), -EAVE).length, 2, 'the eave and the pocket');
+  assert.deepEqual(curvedRoofs(s.floors[0], 12, 6), []);
+  assert.ok(!roofPlan(s).blocks.some((b) => b.skeleton), 'the rectangles stay');
 });
 
 test('a V notch closes from its point outward, like the dent, and the eave runs straight past it', () => {
