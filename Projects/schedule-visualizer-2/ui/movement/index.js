@@ -288,7 +288,7 @@ export const section = {
     const element = plan.root;
     element.append(empty);
     // Present (./present.js: presentation mode): at the end of the playback bar's row, or beside Clear on a phone
-    presentMode({ ctx, plan, env, bar: bar.element, root: element, places: { bar: bar.element.querySelector('.mov-pb__row'), controls: top.element.querySelector('.mov-ctl--options') } });
+    const presenter = presentMode({ ctx, plan, env, bar: bar.element, root: element, places: { bar: bar.element.querySelector('.mov-pb__row'), controls: top.element.querySelector('.mov-ctl--options') } });
 
     // ---- the top bar's second row, the plan map's: on a phone it folds with the controls
     function placeFloors() {
@@ -502,7 +502,7 @@ export const section = {
         const a = given.point(link.a.floorId, link.a.cell);
         const b = given.point(link.b.floorId, link.b.cell);
         if (!a && !b) continue;
-        const style = { colour: alone || theme.ink, edge: theme.card, width: linkWidth, font: theme.font, ink: theme.ink };
+        const style = { colour: alone || theme.ink, edge: theme.card, width: linkWidth, font: theme.font, ink: theme.ink, labelScale: plan.labelScale };
         if (a && b) {
           drawStairLink(g, a, b, style);
         } else {
@@ -628,6 +628,8 @@ export const section = {
         refresh();
       },
       unmount() {
+        // presentation mode left first, the transition and floors put back for the next mount (a change of address inside Movement comes here too)
+        presenter.unmount();
         gone = true;
         asker.stop();
         bar.unmount();

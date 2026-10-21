@@ -665,7 +665,8 @@ export function hotspotsPanel(env) {
       g.strokeStyle = map.theme.card;
       g.lineWidth = 1;
       g.stroke();
-      g.font = '600 11px ' + map.theme.font;
+      // the number grows with the map's labels (presentation mode; SV2-31b)
+      g.font = '600 ' + Math.round(11 * (env.labelScale > 0 ? env.labelScale : 1)) + 'px ' + map.theme.font;
       g.textAlign = 'center';
       g.textBaseline = 'middle';
       g.fillStyle = map.theme.accentInk;

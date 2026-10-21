@@ -75,6 +75,10 @@
   min-height: 0;
   overflow-y: auto;
   padding: var(--s-4);
+  /* clear of a phone's notch and rounded corners on its side (the safe area) */
+  padding-top: calc(var(--s-4) + env(safe-area-inset-top, 0px));
+  padding-right: calc(var(--s-4) + env(safe-area-inset-right, 0px));
+  padding-bottom: calc(var(--s-4) + env(safe-area-inset-bottom, 0px));
   background: var(--card);
   border-left: var(--border);
   font-size: calc(var(--t-sm) * var(--pres-type));
@@ -200,6 +204,9 @@
   column-gap: var(--s-4);
   margin: 0;
   padding: var(--s-2) var(--s-4);
+  /* clear of a notch over it or beside it (the safe area) */
+  padding-top: calc(var(--s-2) + env(safe-area-inset-top, 0px));
+  padding-left: calc(var(--s-4) + env(safe-area-inset-left, 0px));
   background: var(--card);
   border-bottom: var(--border);
   font-size: calc(var(--t-md) * var(--pres-type));
@@ -222,9 +229,9 @@
   display: block;
   position: absolute;
   z-index: 8;
-  left: var(--s-3);
-  bottom: var(--s-3);
-  max-width: calc(100% - var(--s-5));
+  left: calc(var(--s-3) + env(safe-area-inset-left, 0px));
+  bottom: calc(var(--s-3) + env(safe-area-inset-bottom, 0px));
+  max-width: calc(100% - var(--s-5) - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
   margin: 0;
   padding: var(--s-1) var(--s-3);
   background: var(--card);
@@ -242,15 +249,19 @@
   transition: opacity 400ms ease-out, visibility 0s 400ms;
 }
 
-/* previous, play, next and leave, for a finger: shown on a touch (or a
-   mouse moved), gone 3 s after the last, and held while the keyboard's
-   focus is in them (./present.js) */
+/* previous, play, next and leave, for a finger: shown on entering by a
+   pointer, on a touch (or a mouse moved) and on the focus coming to them,
+   faded 3 s after the last, and held while the keyboard's focus is in them
+   (./present.js). Faded is transparent and lets taps through to the map, and
+   no more: the buttons stay in the Tab order and in what a screen reader
+   reads, which has no Escape to leave by (SV2-31b). Clear of a phone's
+   rounded corners and home bar (the safe area). */
 .mov[data-present] .mov-pres__touch {
   display: flex;
   position: absolute;
   z-index: 9;
   left: 50%;
-  bottom: var(--s-4);
+  bottom: calc(var(--s-4) + env(safe-area-inset-bottom, 0px));
   gap: var(--s-3);
   padding: var(--s-2);
   transform: translateX(-50%);
@@ -264,11 +275,12 @@
 
 .mov[data-present] .mov-pres__touch[data-shown="false"] {
   opacity: 0;
-  visibility: hidden;
-  transition: opacity 300ms ease-out, visibility 0s 300ms;
+  pointer-events: none;
 }
 
-.mov-pres__btn {
+/* 56 px a side (DECISIONS 2026-10-21), over the shell's and the section's
+   own button heights, which a coarse pointer's rules set more strongly */
+.mov[data-present] .mov-pres__btn {
   min-width: 56px;
   min-height: 56px;
   padding: 0 var(--s-4);
@@ -289,11 +301,24 @@
     width: auto;
     max-height: 38vh;
     max-height: 38dvh;
+    padding: var(--s-4);
+    padding-left: calc(var(--s-4) + env(safe-area-inset-left, 0px));
+    padding-right: calc(var(--s-4) + env(safe-area-inset-right, 0px));
+    padding-bottom: calc(var(--s-4) + env(safe-area-inset-bottom, 0px));
     border-left: 0;
     border-top: var(--border);
     flex-direction: row;
     flex-wrap: wrap;
     align-content: flex-start;
+  }
+
+  /* the map does not reach the screen's foot here: the panel does */
+  .mov[data-present] .mov-pres__touch {
+    bottom: var(--s-4);
+  }
+
+  .mov[data-present] .mov-pres__line {
+    bottom: var(--s-3);
   }
 
   .mov[data-present] > .mov-pres__panel > .mov-pres__part {

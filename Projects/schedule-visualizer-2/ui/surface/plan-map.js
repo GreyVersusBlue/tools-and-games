@@ -94,6 +94,9 @@
 //   map.setLabelScale(k)    every label drawn k times its size, caps
 //                           included (1 by default; presentation mode's
 //                           large type, SV2-31); map.labelScale reads it
+//   map.setView({ zoom, x, y })   the map at that zoom and place, off Fit,
+//                           with no 'view' said to onCell (presentation
+//                           mode putting back a reader's zoom, SV2-31b)
 //
 // The rules of the stage (DESIGN 5.3; DECISIONS 2026-10-14 23:53,
 // 2026-10-15 11:54 and 2026-10-16 01:15) are here, for every section: the
@@ -991,6 +994,19 @@ export function createPlanMap(asked) {
       queuePaint();
     },
     get labelScale() { return labelScale; },
+    // the map at a zoom and place given, off Fit, as a reader left it
+    // (presentation mode putting it back, SV2-31b): nothing is said to the
+    // section, so a card open on a cell stays open
+    setView({ zoom, x, y }) {
+      if (!world || !(zoom > 0) || !Number.isFinite(x) || !Number.isFinite(y)) return;
+      view.zoom = zoom;
+      view.x = x;
+      view.y = y;
+      keepOnStage(view, world);
+      fitted = false;
+      shownLast = null;
+      queuePaint();
+    },
     remeasure,
     dock,
     // what the stage gains in px when the docked line goes away: never more

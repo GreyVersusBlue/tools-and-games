@@ -6,7 +6,7 @@
 // steps every 5, 10 or 15 seconds, the playback runs inside it, and Escape
 // leaves with the section as it was.
 //
-//   presentMode({ ctx, plan, env, bar, root, places }) -> { button, enter(), leave() }
+//   presentMode({ ctx, plan, env, bar, root, places }) -> { button, enter(), leave(), unmount() }
 //     ctx    the shell's section context
 //     plan   the section's plan map (ui/surface/plan-map.js)
 //     env    the section's env (the top of ./index.js): choice(), change()
@@ -22,7 +22,11 @@
 //            row, which takes height from the map (44 px on a phone), and near
 //            the width where that happens a scrollbar coming and going turned
 //            the legend's dock over three times (m5-pass, 1024 by 768).
-//   button   "Present"; the key is P
+//   button   "Present"; the key is P (and P again leaves)
+//   unmount  the section leaving the page (Movement's unmount(), which a
+//            change of address inside Movement comes through too): the mode
+//            is left with the transition and floors put back for the next
+//            mount, and every listener, observer and timer let go
 //
 // Nothing is drawn twice and nothing keeps a clock of its own: the map is the
 // section's plan map, the playback is the section's bar (its clock is copied
@@ -36,26 +40,38 @@
 // section's element. The element is laid over the whole window at once
 // (data-present="window"), so where the browser refuses, or has no such API
 // (an iPhone), the presentation is whole as it is, and that is said once a
-// visit; when the browser grants it, data-present is "fullscreen". Leaving
-// full screen by the browser's own means (its Escape, its menu) leaves the
-// presentation too. Everything outside the element is made inert while it
+// visit; when the browser grants it, data-present is "fullscreen". A grant
+// that comes after the mode was left (Escape pressed before the browser
+// answered) is given straight back, and an error said by event (WebKit's
+// prefixed API returns no promise) is a refusal like a rejected promise.
+// Leaving full screen by the browser's own means (its Escape, its menu)
+// leaves the presentation too. Everything outside the element is made inert while it
 // lasts, but the shell's live regions, so neither Tab nor a screen reader
 // wanders under it.
 //
 // Keys while presenting (listed in Help through ctx.shortcuts, PRESENT_KEYS):
 // Left and Right step (the first from All is the first transition), Space
 // plays and pauses, A cycles the auto-advance off, 5, 10, 15 s, H shows or
-// hides the hotspot summary, Escape leaves. Every other key is kept from the
-// shell and the map, so a digit does not change section under the screen and
-// Ctrl+Z does not change the project unseen.
+// hides the hotspot summary, Escape (or P again) leaves. Every other key is
+// kept from the shell and the map, so a digit does not change section under
+// the screen and Ctrl+Z does not change the project unseen. While one of the
+// tool's dialogs is open its keys are its own, Escape included. The
+// auto-advance lets a playback that is running finish its transition first.
+//
+// The touch controls (previous, play, next, leave) are shown on entering by
+// a pointer and on any touch, and fade 3 s after. Faded they are only
+// transparent: still in the Tab order and read by a screen reader (which
+// has no Escape to press), shown again when the focus comes to them.
 //
 // Leaving puts back the transition, the floors, the map's zoom and place (or
-// its fit), the playback where it was, the section's scroll and the focus on
-// Present.
+// its fit; plan.setView, so a card open on a cell stays), the playback where
+// it was, the section's scroll and the focus on Present, or, where Present
+// is folded away on a phone, on Change, or the map.
 //
 // For the tests, on the section's element:
-//   root.present   { presenting, how, advance, hotspots, controls, saved,
+//   root.present   { presenting, how, advance, due, hotspots, controls, saved,
 //                    enter(), leave(), timers({ set(fn, ms, what), clear(id) }) }
+//   (due: an auto-advance step waiting on a running playback)
 // `timers` replaces setTimeout for the auto-advance, the fading of the
 // controls and of the corner line, so a test can run each one when it wants.
 
@@ -76,7 +92,7 @@ export const PRESENT_KEYS = [
   { id: 'present-play', group: 'Movement', does: 'In presentation mode: play or pause the playback', shown: 'Space' },
   { id: 'present-advance', group: 'Movement', does: 'In presentation mode: step on by itself, off, then every 5, 10 or 15 seconds', shown: 'A' },
   { id: 'present-hotspots', group: 'Movement', does: 'In presentation mode: show or hide the busiest places', shown: 'H' },
-  { id: 'present-leave', group: 'Movement', does: 'Leave presentation mode', shown: 'Esc' },
+  { id: 'present-leave', group: 'Movement', does: 'Leave presentation mode (P leaves too)', shown: 'Esc' },
 ];
 
 // Seconds between steps, in the order A goes through them; 0 is off.
@@ -175,12 +191,17 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
   let watchGone = null;
   let watchClock = null;
   let drawnKey = null;
+  // an auto-advance step that came while the playback ran: { transition, seconds }
+  let due = null;
+  // the section has left the page (unmount)
+  let gone = false;
 
   const view = () => root.movement || null;
   const playback = () => bar.playback;
 
   // ---- the button
-  const button = h('button', { type: 'button', class: 'btn mov-present', 'aria-keyshortcuts': 'P', title: 'Show the map on the whole screen, for a projector (P)', data: { action: 'present' }, on: { click: () => enter() } }, 'Present');
+  // a click with no pointer (Enter or Space on the button) is the keyboard's
+  const button = h('button', { type: 'button', class: 'btn mov-present', 'aria-keyshortcuts': 'P', title: 'Show the map on the whole screen, for a projector (P)', data: { action: 'present' }, on: { click: (event) => enter(event.detail > 0 ? 'pointer' : 'key') } }, 'Present');
 
   // ---- the panel: the groups on the map, the load, the busiest places
   const panel = h('section', { class: 'mov-pres__panel', tabindex: '0', 'aria-label': 'Presentation of the movement view: the key', data: { part: 'present-panel' } });
@@ -311,6 +332,7 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     const playing = Boolean(pb && pb.playing);
     playButton.textContent = playing ? 'Pause' : 'Play';
     playButton.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    if (due) dueStep();
   }
 
   // ---- the corner line, which fades
@@ -344,8 +366,14 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     if (event.type === 'pointerdown') lastInput = 'pointer';
     showControls();
   }
+  // the focus coming to them shows them, whoever brought it (a screen
+  // reader's swipe too); the keyboard's holds them
   touch.addEventListener('focusin', () => {
-    if (!presenting || lastInput !== 'key') return;
+    if (!presenting) return;
+    if (lastInput !== 'key') {
+      showControls();
+      return;
+    }
     held = true;
     touch.dataset.shown = 'true';
   });
@@ -387,13 +415,39 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
   function schedule() {
     if (advanceTimer !== null) timers.clear(advanceTimer);
     advanceTimer = null;
+    due = null;
     root.dataset.presentAdvance = String(advance);
     if (!presenting || advance === 0) return;
     advanceTimer = timers.set(() => {
       advanceTimer = null;
       if (!presenting || !root.isConnected) return;
+      const pb = playback();
+      if (pb && pb.playing) {
+        // a playback running: the step waits for it to stop or come to the end of its transition
+        due = { transition: env.choice().transition, seconds: pb.seconds };
+        return;
+      }
       step(1, true);
     }, advance * 1000, 'advance');
+  }
+
+  // Each change of the bar (its clock, Play and Pause) while a step waits:
+  // the playback stopped, or went back to its start (the transition played
+  // again), steps on; one that went on to the next transition by itself (the
+  // loop over the day) has stepped already, and the next step is timed from there.
+  function dueStep() {
+    const pb = playback();
+    if (!presenting || !due || !pb) return;
+    if (env.choice().transition !== due.transition) {
+      schedule();
+      return;
+    }
+    if (pb.playing && pb.seconds >= due.seconds) {
+      due.seconds = pb.seconds;
+      return;
+    }
+    due = null;
+    step(1, true);
   }
 
   function cycleAdvance() {
@@ -412,12 +466,13 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
   function onKey(event) {
     if (!presenting) return;
     lastInput = 'key';
-    if (event.key === 'Tab') return;
+    // a dialog of the tool's, opened over the mode: its keys, Escape included, are its own
+    if (event.key === 'Tab' || dialogIsOpen()) return;
     event.stopPropagation();
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     const onButton = event.target && event.target.closest ? event.target.closest('button') : null;
     const key = event.key;
-    if (key === 'Escape' || key === 'Esc') leave();
+    if (key === 'Escape' || key === 'Esc' || key === 'p' || key === 'P') leave();
     else if (key === 'ArrowLeft') step(-1, false);
     else if (key === 'ArrowRight') step(1, false);
     else if (key === ' ' || key === 'Spacebar') {
@@ -430,18 +485,37 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     event.preventDefault();
   }
 
+  // Listened for from the start to the section's unmount, so that a grant
+  // coming after the mode was left still finds somebody to give it back.
   function onFullscreenChange() {
     const element = fullscreenElement();
     if (element === root) {
       if (presenting) {
         how = 'fullscreen';
         root.dataset.present = 'fullscreen';
+      } else {
+        // granted after the mode was left (Escape before the browser answered)
+        exitFull();
       }
       return;
     }
     // the browser's own way out
     if (presenting && how === 'fullscreen') leave();
   }
+  function onFullscreenError() {
+    refused();
+  }
+
+  function exitFull() {
+    if (fullscreenElement() !== root) return;
+    const out = document.exitFullscreen || document.webkitExitFullscreen;
+    try {
+      const done = out ? out.call(document) : null;
+      if (done && typeof done.catch === 'function') done.catch(() => {});
+    } catch (error) { /* already out */ }
+  }
+  const FULLSCREEN_EVENTS = [['fullscreenchange', onFullscreenChange], ['webkitfullscreenchange', onFullscreenChange], ['fullscreenerror', onFullscreenError], ['webkitfullscreenerror', onFullscreenError]];
+  for (const [name, fn] of FULLSCREEN_EVENTS) document.addEventListener(name, fn);
 
   function refused() {
     if (!presenting || how === 'fullscreen') return;
@@ -470,8 +544,9 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
   }
 
   // ---- in
-  function enter() {
-    if (presenting || !can()) return;
+  // `by` is 'pointer' for a tap or a click, else the keyboard
+  function enter(by) {
+    if (presenting || gone || !can()) return;
     const movement = view();
     const choice = env.choice();
     const pb = playback();
@@ -509,9 +584,10 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     line.dataset.shown = 'false';
     touch.dataset.shown = 'false';
     held = false;
+    // entered by a finger or a mouse: the controls come with it, for the next tap
+    lastInput = by === 'pointer' ? 'pointer' : 'key';
+    if (lastInput === 'pointer') showControls();
     document.addEventListener('keydown', onKey, true);
-    document.addEventListener('fullscreenchange', onFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
     root.addEventListener('pointerdown', onPointer, true);
     root.addEventListener('pointermove', onPointer, true);
     // the section taken off the page while presenting (Back, a link): let go of everything
@@ -530,6 +606,7 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     }
     try {
       const asked = ask.call(root, { navigationUI: 'hide' });
+      // granted after the mode was left, onFullscreenChange gives it back
       if (asked && typeof asked.then === 'function') asked.then(() => onFullscreenChange(), () => refused());
     } catch (error) {
       refused();
@@ -537,7 +614,9 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
   }
 
   // ---- out
-  function leave() {
+  // `away`: the section is leaving the page (unmount): the choice is put
+  // back for the next mount, and nothing else is drawn or focused
+  function leave(away) {
     if (!presenting) return;
     presenting = false;
     for (const id of [advanceTimer, controlsTimer, lineTimer]) if (id !== null) timers.clear(id);
@@ -545,6 +624,7 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     controlsTimer = null;
     lineTimer = null;
     advance = 0;
+    due = null;
     delete root.dataset.presentAdvance;
     document.removeEventListener('keydown', onKey, true);
     root.removeEventListener('pointerdown', onPointer, true);
@@ -556,18 +636,10 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     for (const each of madeInert) each.inert = false;
     madeInert = [];
     how = null;
-    if (fullscreenElement() === root) {
-      const out = document.exitFullscreen || document.webkitExitFullscreen;
-      try {
-        const done = out ? out.call(document) : null;
-        if (done && typeof done.catch === 'function') done.catch(() => {});
-      } catch (error) { /* already out */ }
-    }
-    // the browser's own way out is over by the time its event comes; ours is now
-    document.removeEventListener('fullscreenchange', onFullscreenChange);
-    document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
+    const wasFull = fullscreenElement() === root;
+    exitFull();
     // the window comes back when full screen is over: the map is put back after the section measures it there
-    if (fullscreenElement() === root) {
+    if (wasFull && !away) {
       const over = () => {
         if (fullscreenElement() === root) return;
         document.removeEventListener('fullscreenchange', over);
@@ -581,14 +653,26 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     delete root.dataset.presentRefused;
     for (const part of parts) part.hidden = true;
     plan.setLabelScale(1);
+    if (away) {
+      putChoice(saved);
+      return;
+    }
     if (!root.isConnected) return;
     restore();
   }
 
+  // the transition and floors as they were; a card open on a cell stays when only the transition changes
+  function putChoice(was) {
+    const choice = env.choice();
+    const patch = {};
+    if (choice.transition !== was.transition) patch.transition = was.transition;
+    if (choice.floors !== was.floors) patch.floors = was.floors;
+    if (Object.keys(patch).length > 0) env.change(patch, { keepCard: true });
+  }
+
   function restore() {
     const was = saved;
-    const choice = env.choice();
-    if (choice.transition !== was.transition || choice.floors !== was.floors) env.change({ transition: was.transition, floors: was.floors });
+    putChoice(was);
     const pb = playback();
     if (pb) {
       if (!was.started && pb.started && was.transition !== null) {
@@ -622,30 +706,35 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
       if (pendingRestore && !presenting) requestAnimationFrame(look);
     };
     requestAnimationFrame(look);
-    button.focus();
+    focusBack();
+  }
+
+  // Present, where it has a box; folded away with the controls on a phone,
+  // the button that opens them (Change), or the map
+  function focusBack() {
+    const drawn = (el) => el && el.isConnected && el.getClientRects().length > 0;
+    if (drawn(button)) {
+      button.focus();
+      return;
+    }
+    const change = root.querySelector('[data-action="change"]');
+    if (drawn(change)) change.focus();
+    else plan.focus();
   }
 
   function putView() {
     const was = pendingRestore;
-    if (!was || presenting) return;
-    const v = plan.view;
+    // still at the screen's size (full screen granted late, and being given back): later
+    if (!was || presenting || gone || fullscreenElement() === root) return;
     pendingRestore = null;
     if (restoreTimer !== null) timers.clear(restoreTimer);
     restoreTimer = null;
     // the scroll again, now the section is its own height (set while it was
     // still the screen's, it was cut to 0), before Fit, which follows it
     root.scrollTop = was.scroll;
-    if (was.fitted) {
-      plan.fit(true);
-    } else {
-      // a zoom the reader made: the map is no longer at Fit (a zoom button is
-      // the plan map's way to say so), then at the zoom and place it had
-      const zoomIn = plan.stage.querySelector('[data-action="zoom-in"]');
-      if (zoomIn) zoomIn.click();
-      v.zoom = was.zoom;
-      v.x = was.x;
-      v.y = was.y;
-    }
+    if (was.fitted) plan.fit(true);
+    // a zoom the reader made, off Fit, with nothing said to the section (a card open on a cell stays)
+    else plan.setView({ zoom: was.zoom, x: was.x, y: was.y });
     plan.paint();
     root.dataset.presentRestored = String(Number(root.dataset.presentRestored || 0) + 1);
   }
@@ -662,25 +751,42 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
   stageWatch.observe(plan.stage);
   // each time the section draws its picture again (a step, an answer, a change of theme)
   plan.onLayout(() => {
-    if (presenting) draw(false);
+    if (presenting && !gone) draw(false);
   });
+  // the map's labelScale for what the section's marks write (the hotspot ranks, ./hotspots.js)
+  Object.defineProperty(env, 'labelScale', { configurable: true, enumerable: true, get: () => plan.labelScale });
 
-  const me = { root, enter, can, get presenting() { return presenting; } };
+  // the section leaving the page
+  function unmount() {
+    if (gone) return;
+    leave(true);
+    gone = true;
+    pendingRestore = null;
+    if (restoreTimer !== null) timers.clear(restoreTimer);
+    restoreTimer = null;
+    stageWatch.disconnect();
+    phone.removeEventListener('change', placeButton);
+    for (const [name, fn] of FULLSCREEN_EVENTS) document.removeEventListener(name, fn);
+    if (active === me) active = null;
+  }
+
+  const me = { root, enter: () => enter('key'), can, get presenting() { return presenting; } };
   active = me;
 
   root.present = {
     get presenting() { return presenting; },
     get how() { return how; },
     get advance() { return advance; },
+    get due() { return due !== null; },
     get hotspots() { return memory.hotspots; },
     get controls() { return touch.dataset.shown === 'true'; },
     get saved() { return saved; },
-    enter,
-    leave,
+    enter: () => enter('key'),
+    leave: () => leave(),
     timers(given) {
       timers = given || realTimers;
     },
   };
 
-  return { button, enter, leave };
+  return { button, enter: () => enter('key'), leave: () => leave(), unmount };
 }
