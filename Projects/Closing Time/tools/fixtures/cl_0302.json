@@ -1,0 +1,76 @@
+{
+  "id": "cl_0302",
+  "name": "Lorna Petrakis",
+  "type": "seller",
+  "archetype": "estate-trustee",
+  "tier": "commercial",
+  "budget": 0,
+  "patience": 8,
+  "statedReqs": {
+    "notes": "Trustee for her late uncle's building. Has a number from 2019 and a sister who will ask why the sale came in under it."
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "The trust has to distribute by the end of the year, and the sister would rather have the money in the fall than the argument in the spring.",
+      "type": "realMotive",
+      "revealOn": {
+        "trigger": "schmooze",
+        "value": 1
+      },
+      "data": {
+        "patienceBonus": 2
+      }
+    }
+  ],
+  "intro": "Her uncle bought 330 Courthouse Row in 1987 and never once raised the barber's rent. She has his ledger, his keys and an appraisal from before the offices emptied out.",
+  "referredBy": null,
+  "sellerListing": {
+    "address": "330 Courthouse Row",
+    "neighborhood": "nb_downtown",
+    "tier": "commercial",
+    "price": 1250000,
+    "beds": 0,
+    "baths": 4,
+    "sqft": 12800,
+    "features": [
+      "second-floor offices",
+      "street-front retail"
+    ],
+    "commercial": {
+      "assetType": "mixed-use",
+      "units": 7,
+      "grossRent": 151200,
+      "vacancy": 0.12,
+      "opex": 44800,
+      "marketCap": 0.078,
+      "rollPct": 0.4,
+      "rentRoll": "A barber, a tax preparer and a sandwich counter on the street; four office suites upstairs, two of them on month-to-month since the law firm left."
+    },
+    "issues": [
+      {
+        "desc": "Storefront awnings torn and the sign permit lapsed in the spring",
+        "discovery": "visible",
+        "severity": "moderate",
+        "repairCost": 4500,
+        "disclosureRequired": false,
+        "topic": "zoning"
+      },
+      {
+        "desc": "Two rooftop units past their rated life, one running on a bypassed compressor",
+        "discovery": "inspection",
+        "severity": "moderate",
+        "repairCost": 36000,
+        "disclosureRequired": true,
+        "topic": "hvac"
+      },
+      {
+        "desc": "The two month-to-month suites upstairs have both said they are going at year end",
+        "discovery": "question",
+        "severity": "dealbreaker",
+        "repairCost": 52000,
+        "disclosureRequired": true,
+        "topic": "leases"
+      }
+    ]
+  }
+}

@@ -22,7 +22,7 @@ import { maybeFireEvent, fireEvent, eligibleEvents } from "../js/engine/events.j
 import { FINANCING, financingFor, financingType, closeDaysFor, DEFAULT_FINANCING } from "../js/engine/financing.js";
 import * as Esc from "../js/engine/escalation.js";
 import * as Com from "../js/engine/commercial.js";
-import { trueValue, marketHeat } from "../js/engine/market.js";
+import { trueValue, marketHeat, playerListingValue } from "../js/engine/market.js";
 
 /* ------------------------------------------------------------------ harness */
 let passed = 0; const failures = [];
@@ -2064,6 +2064,318 @@ console.log("\ntwo doors that name one client:");
   try { for (let d = 0; d < 30; d++) { endDay(); S.choiceQueue.length = 0; } } catch (e) { threw = e; }
   ok(!threw, "and plays thirty days on", threw && threw.stack);
   ok(save(dstore) && loadSave(dstore), "and saves and loads again after them");
+}
+
+/* -------------------------- the listing side of the commercial tier, session 1 */
+// DESIGN-seller-commercial.md, section 9 item 1 (#1009): the arithmetic and the
+// save, no screen. Groups A, B (8 to 10), F (33, 34) and G of the design's
+// section 7, with A1 rewritten for CT-4 (the rent roll is required before a
+// building goes live, no 6% haircut) and a group for CT-5 (a cure is a wash in
+// dollars that costs days). The seller is tools/fixtures/cl_0302.json, which is
+// not on the manifest: until session 2 builds the flows, no career can be
+// handed a building to list. Figures are the design's, worked by hand from the
+// two content files, day 1 (rate 6.4%, Downtown 1.00).
+console.log("\nthe listing side of the commercial tier:");
+{
+  const FIXTURE = JSON.parse(fs.readFileSync(path.join(root, "..", "tools", "fixtures", "cl_0302.json"), "utf8"));
+  const withSeller = fn => {
+    DB.clients.cl_0302 = JSON.parse(JSON.stringify(FIXTURE));
+    try { return fn(); } finally { delete DB.clients.cl_0302; }
+  };
+  /** A seller's listing as takeListing() would hold it, with the session-1 fields fresh. */
+  const building = (listing, owner) => ({
+    id: "pl_t", clientRecId: null, status: "prep", price: null, marketingTier: 0, staged: 0,
+    repairsDone: [], disclosed: [], interest: 0, offers: [], openHouseBoost: 0, liveDay: null, dom: 0,
+    hbCalledDay: null, hbDeadline: null, milestones: [], preInspected: false,
+    rollStartedDay: null, rollReadyDay: null, bovWeight: 0, bovDay: null, staleSteps: 0, tourDay: null, cures: [],
+    listing: { ...JSON.parse(JSON.stringify(listing)), price: owner },
+  });
+  const ferryFile = DB.listings.ls_0101;
+  const ferry = () => {
+    const pl = building({ ...ferryFile, issues: ferryFile.hiddenIssues }, 1095000);
+    delete pl.listing.hiddenIssues;
+    return pl;
+  };
+  const court = () => building(FIXTURE.sellerListing, undefined);
+  newGame("bk_hearthstone");
+
+  // --- A. The packet.
+  {
+    const pl = ferry();
+    eq(Com.packetNoi(pl), 78384, "a building's packet income is its whole net income before the rent roll is started (CT-4: no unverified figure)");
+    pl.rollStartedDay = 1; pl.rollReadyDay = 1 + Com.PACKET.rollDays;
+    eq(Com.packetNoi(pl), 78384, "and the same once it is under way");
+    const blocked = [];
+    for (let d = 1; d <= 7; d++) blocked.push(Com.rollVerified(pl, d) ? "in" : "out");
+    eq(blocked.join(" "), "out out out out out in in", "the rent roll begun on day 1 lands on day 6, five days on and not four");
+    const fresh = ferry();
+    eq(Com.goLiveBlockers(fresh, 1).join(" "), "The rent roll has not been started.", "a building with no rent roll cannot go live (CT-4)");
+    eq(Com.goLiveBlockers(pl, 5).join(" "), "The rent roll lands on day 6.", "nor one whose roll is still out, the day before it lands");
+    eq(Com.goLiveBlockers(pl, 6).length, 0, "and it can on the day the roll lands");
+  }
+  {
+    const pl = ferry();
+    pl.rollStartedDay = 1; pl.rollReadyDay = 6; pl.preInspected = true; pl.disclosed = [0, 1];
+    eq(Com.packetValue(pl, 6), 970461, "packet value on 212 Ferry St's complete packet is $970,461");
+    eq(Com.buildingTrueValue(pl, 6), 970461, "which is its true value");
+    eq(Com.buildingTrueValue(pl, 6), Com.commercialValue({ ...ferryFile }), "and the buying side's value of the same file");
+    const c = court();
+    c.rollStartedDay = 1; c.rollReadyDay = 6; c.preInspected = true; c.disclosed = [1, 2];
+    eq(Com.packetValue(c, 6) + " " + Com.buildingTrueValue(c, 6), "983793 983793", "330 Courthouse Row's complete packet is its true value, $983,793");
+    const out = { ...pl, disclosed: [1] };
+    eq(Com.packetValue(out, 6) - Com.packetValue(pl, 6), 46000, "and an item in the packet comes off at its cost, the roof's $46,000");
+  }
+  {
+    const c = court();
+    eq(Com.agentKnows(c, 2, 1), false, "Courthouse Row's lease item ($52,000) is not known to the agent before the rent roll");
+    c.rollStartedDay = 1; c.rollReadyDay = 6;
+    eq([5, 6].map(d => Com.agentKnows(c, 2, d)).join(" "), "false true", "and is from the day it lands");
+    const clock = building({ ...DB.listings.ls_0104, issues: DB.listings.ls_0104.hiddenIssues }, 640000);
+    eq(Com.agentKnows(clock, 0, 1) + " " + Com.agentKnows(clock, 1, 1), "false true",
+      "on 401 Clocktower Sq the $41,000 lease item waits for the roll and the $38,000 environmental one is known from the walk");
+    const f = ferry();
+    eq(Com.agentKnows(f, 0, 1), false, "212 Ferry St's roof is not known before the condition report");
+    f.preInspected = true;
+    eq(Com.agentKnows(f, 0, 1), true, "and is after it");
+  }
+  {
+    const house = { listing: JSON.parse(JSON.stringify(DB.clients.cl_0101.sellerListing)) };
+    eq(Math.round(playerListingValue(house)), 407552, "the house flow is untouched: 212 Fernwell Ave is worth $407,552 on day 1, as before");
+    const pl = ferry(); pl.rollStartedDay = 1; pl.rollReadyDay = 6; pl.preInspected = true; pl.disclosed = [0, 1];
+    eq(Math.round(playerListingValue(pl)), Com.packetValue(pl), "and a building's listing value is its packet value");
+  }
+
+  // --- B. The seller, 8 to 10. Courthouse Row, owner's number $1,250,000.
+  {
+    const c = court();
+    c.listing.price = 1250000;
+    c.rollStartedDay = 1; c.rollReadyDay = 6; c.preInspected = true; c.disclosed = [1, 2];
+    S.day = 6;
+    eq(Com.sellerExpectation(c), 1250000, "expectation is the owner's number with no opinion presented");
+    eq(Com.sellerFloor(c), 1125000, "and the seller signs nothing under 90% of it");
+    const cases = [[0, 1, 0.5], [0, 6, 0.7], [2, 6, 0.9], [5, 6, 1]].map(([k, day, w]) => {
+      S.knowledge.nb_downtown = k + 0.4;
+      const r = { ...c, rollReadyDay: day === 1 ? null : 6, rollStartedDay: day === 1 ? null : 1 };
+      return Com.bovWeightNow(r, 6) === w ? (r.bovWeight = w, Com.sellerExpectation(r)) : `w ${Com.bovWeightNow(r, 6)}`;
+    });
+    eq(cases.join(" "), "1116897 1063655 1010414 983793",
+      "an opinion moves it by w, and w is 0.5, 0.7, 0.9 and 1.0 at knowledge 0 before the roll, 0 after, 2 and 5");
+    const stale = [1, 2, 3].map(n => Com.sellerExpectation({ ...c, staleSteps: n }));
+    eq(stale.join(" "), "1183448 1133534 1096099", "with no opinion, 21, 42 and 63 days sat bring it a quarter of the way down each time");
+    const w9 = { ...c, bovWeight: 0.9, disclosed: [2] };
+    const roofIn = { ...w9, disclosed: [1, 2] };
+    eq(Com.sellerExpectation(w9) - Com.sellerExpectation(roofIn), 32400,
+      "expectation follows the packet without a second opinion: the $36,000 units put in at w 0.9 take $32,400 off it");
+    withSeller(() => {
+      DB.clients.cl_0302.hiddenPrefs[0].data.floorPct = 0.93;
+      S.clients.push({ recId: "cr_t", clientId: "cl_0302" });
+      eq(Com.sellerFloor({ ...c, clientRecId: "cr_t" }), 1162500, "a seller's own floorPct replaces the 90%, revealed or not");
+      S.clients.pop();
+    });
+    S.knowledge.nb_downtown = 0; S.day = 1;
+  }
+
+  // --- CT-5. A cure is a wash in dollars that costs days.
+  {
+    eq([3200, 9000, 46000, 52000].map(Com.cureDays).join(" "), "5 5 12 13", "a cure takes five days, or a day for every $4,000 of it");
+    const pl = ferry();
+    pl.rollStartedDay = 1; pl.rollReadyDay = 6; pl.bovWeight = 0.7;
+    eq(Com.canCure(pl, 0, 1), false, "a roof nobody has been on cannot be cured");
+    pl.preInspected = true; pl.disclosed = [0, 1];
+    eq(Com.canCure(pl, 0, 1), true, "and can once the report has found it");
+    eq(Com.canCure({ ...pl, status: "live" }, 0, 1), false, "but only in prep");
+    const exp0 = Com.sellerExpectation(pl, 6), val0 = Com.packetValue(pl, 6), true0 = Com.buildingTrueValue(pl, 6);
+    const offer0 = Com.investorPrice(pl, 0.0742, 6).yieldPrice;
+    pl.cures = [{ idx: 0, startedDay: 6, readyDay: 6 + Com.cureDays(46000) }];
+    eq(Com.canCure(pl, 0, 6), false, "an item already curing cannot be cured twice");
+    eq(Com.goLiveBlockers(pl, 17).join(" "), "A cure is under way until day 18.", "a building does not go live with a cure under way");
+    eq(Com.goLiveBlockers(pl, 18).length, 0, "and does on the day it finishes");
+    eq(Com.packetValue(pl, 17), val0, "the day before it finishes nothing has moved");
+    eq(Com.packetValue(pl, 18) - val0, 46000, "the day it does, the roof is off the building and the packet is worth $46,000 more");
+    eq(Com.buildingTrueValue(pl, 18) - true0, 46000, "and so is the building");
+    eq(Com.sellerExpectation(pl, 18), exp0, "the seller expects what they did: they paid for it");
+    eq(Com.investorPrice(pl, 0.0742, 18).yieldPrice - offer0, 46000, "an offer is $46,000 higher");
+    eq(Com.sellerNet(pl, offer0 + 46000, 18), offer0, "and nets the seller what the offer on the uncured packet did, to the dollar");
+    eq(Com.dueDiligence(pl, { investor: "syndicate", uw: { capexIdx: [1, 2] } }, 18).cost, 0, "a cured item is no surprise in due diligence");
+    // Known and left out of the packet, cured: the seller reads it as an item put in.
+    const left = ferry();
+    left.rollStartedDay = 1; left.rollReadyDay = 6; left.preInspected = true; left.bovWeight = 0.7; left.disclosed = [1];
+    const told = { ...left, disclosed: [0, 1] };
+    left.cures = [{ idx: 0, startedDay: 6, readyDay: 18 }];
+    eq(Com.sellerExpectation(left, 18), Com.sellerExpectation(told, 6), "a cured item the packet had left out moves expectation as putting it in would have");
+  }
+
+  // --- The arithmetic session 2 reads: due diligence and the bank.
+  {
+    const pl = ferry();
+    pl.rollStartedDay = 1; pl.rollReadyDay = 6; pl.preInspected = true;
+    const left = { uw: { capexIdx: [2] } };
+    eq(["value-add", "exchange", "syndicate"].map(k => Com.dueDiligence(pl, { ...left, investor: k }, 6).retrade).join(" "), "55000 69000 82500",
+      "the roof and easement left out cost $55,000, $69,000, $82,500 by investor");
+    eq(Com.dueDiligence(pl, { investor: "exchange", uw: { capexIdx: [0, 1, 2] } }, 6).cost, 0, "and a complete packet costs nothing");
+    eq(Com.dueDiligence(pl, { ...left, investor: "exchange" }, 6).knewRequired, true, "the agent knew a required item it left out");
+    eq(Com.dueDiligence({ ...pl, preInspected: false }, { investor: "exchange", uw: { capexIdx: [1, 2] } }, 6).knewRequired, false,
+      "and did not know a roof the report was skipped on");
+    eq(Com.investorPrice({ ...pl, disclosed: [0, 1] }, 0.0742, 6).yieldPrice, 998188, "an exchange buyer at 7.42% writes $998,188 on the complete packet");
+    eq(Com.investorPrice({ ...pl, disclosed: [0, 1], price: 950000 }, 0.0742, 6).price, 979000, "no more than 3% over an asking price of $950,000");
+    const rate = S.market.rate;
+    S.market.rate = 8.4;
+    const t = Com.sellerLoanTest(pl, { price: 1000000, financing: "commercial", spareEquity: 40000 });
+    S.market.rate = rate;
+    eq(`${t.shortfall} ${t.covered} ${t.financeablePrice}`, "59225 false 980775", "at 8.4% the bank cuts $59,225 off a $1,000,000 loan and the deal finances at $980,775");
+    eq(Com.sellerLoanTest(pl, { price: 1000000, financing: "cash" }).covered, true, "a cash buyer has no bank to meet");
+  }
+
+  // --- F. The ladder: a building's seller is a Broker-Track client by every door (CT-12).
+  withSeller(() => {
+    const queue = ["cl_0302", "cl_0101"];
+    const intake = level => { newGame("bk_hearthstone"); S.level = level; S.clientQueue = [...queue]; return Clients.nextIntakeCandidate().id; };
+    eq(intake(3) + " " + intake(4), "cl_0101 cl_0302", "intake skips a building's seller for a Senior Agent and reaches them at Broker-Track");
+    const monday = level => {
+      const got = new Set();
+      for (let i = 1; i <= 20; i++) {
+        newGame("bk_hearthstone");
+        S.seed = (i * 2654435761) % 4294967296; S.level = level; S.day = 7; S.clientQueue = ["cl_0302", "cl_0008"];
+        endDay();
+        for (const ch of S.choiceQueue) if (ch.kind === "referralArrive" && ch.referredBy.rel === "office lead") got.add(ch.clientId);
+      }
+      return [...got].sort().join(" ");
+    };
+    eq(monday(3), "cl_0008", "the Monday lead never hands a Senior Agent a building's seller");
+    eq(monday(4), "cl_0008 cl_0302", "and does hand one to Broker-Track");
+    const referral = level => {
+      const got = new Set();
+      for (let i = 1; i <= 60; i++) {
+        newGame("bk_hearthstone");
+        S.seed = (i * 2654435761) % 4294967296; S.level = level;
+        const happy = Clients.meetClient("cl_0101"); happy.satisfaction = 100; happy.status = "closed";
+        S.clientQueue = ["cl_0302"];
+        const id = Clients.rollReferral(happy);
+        if (id) got.add(id);
+      }
+      return [...got].join(" ");
+    };
+    eq(referral(3), "", "a closed seller's referral never names a building's seller to a Senior Agent");
+    eq(referral(4), "cl_0302", "and does to Broker-Track");
+    const ruth = DB.events.ev_ruth_referral;
+    const call = level => {
+      newGame("bk_hearthstone"); S.level = level; S.day = 12; S.rep = 20; S.clientQueue = ["cl_0302"];
+      const open = eligibleEvents("any").includes(ruth);
+      fireEvent(ruth);
+      return open + ":" + S.choiceQueue.filter(ch => ch.kind === "referralArrive").map(ch => ch.clientId).join(" ");
+    };
+    eq(call(3), "false:", "Ruth has nobody to send a Senior Agent when a building's seller is all the queue holds");
+    eq(call(4), "true:cl_0302", "and sends them to Broker-Track");
+    newGame("bk_hearthstone"); S.level = 1; S.clientQueue = ["cl_0302", "cl_0106"];
+    eq(Clients.nextIntakeCandidate().id, "cl_0106", "a house seller is still every rung's client: a Rookie Agent gets the luxury one");
+  });
+
+  // --- G. Saves and content.
+  const careerWithBuilding = state => withSeller(() => {
+    newGame("bk_hearthstone"); S.level = 4; S.seed = 1009;
+    const rec = Clients.meetClient("cl_0302");
+    const pl = Seller.takeListing(rec);
+    Object.assign(pl, { rollStartedDay: 2, rollReadyDay: 7, bovWeight: 0.7, bovDay: 7, staleSteps: 0, tourDay: null, preInspected: true, disclosed: [1], cures: [] });
+    if (state !== "prep") { pl.status = "live"; pl.price = 1080000; pl.liveDay = 8; }
+    const offer = { id: "of_t", agentId: "ag_priya_natesan", price: 1010000, investor: "exchange", financing: "commercial", spareEquity: 120000,
+      uw: { noi: 88256, reqCap: 0.0802, capexIdx: [0, 1], yieldPrice: 1059939 } };
+    if (state === "live") pl.offers = [offer];
+    if (state === "contract") { pl.status = "underContract"; pl.acceptedOffer = offer; pl.milestones = [{ type: "sellerDueDiligence", day: 20 }]; }
+    return pl;
+  });
+  {
+    const store = memStore();
+    const pl = careerWithBuilding("prep");
+    for (const k of ["rollStartedDay", "rollReadyDay", "bovWeight", "bovDay", "staleSteps", "tourDay", "cures", "preInspected"]) delete pl[k];
+    withSeller(() => { save(store); ok(loadSave(store), "a career saved with a building and none of the new fields loads"); });
+    const back = S.playerListings[0];
+    eq(JSON.stringify([back.rollStartedDay, back.rollReadyDay, back.bovWeight, back.bovDay, back.staleSteps, back.tourDay, back.cures, back.preInspected]),
+      "[null,null,0,null,0,null,[],false]", "with every new field at its fresh value");
+    let threw = null;
+    withSeller(() => { try { endDay(); } catch (e) { threw = e.stack; } });
+    eq(threw, null, "and plays a day");
+  }
+  {
+    const pl = careerWithBuilding("live");
+    pl.rollReadyDay = "soon"; pl.bovWeight = 3; pl.staleSteps = -2;
+    pl.cures = [{ idx: 0, readyDay: 12 }, { idx: 0, readyDay: 14 }, { idx: 9, readyDay: 3 }, null];
+    pl.offers.push({ id: "of_u", agentId: "ag_priya_natesan", price: 990000, investor: "dentist", spareEquity: NaN });
+    const r = withSeller(() => repairCareer(JSON.parse(JSON.stringify(S)))).playerListings[0];
+    eq(`${r.rollReadyDay} ${r.bovWeight} ${r.staleSteps} ${JSON.stringify(r.cures)}`, '7 1 0 [{"idx":0,"readyDay":12,"startedDay":12}]',
+      "repair clamps a building's fields: the roll's day from its start, w to 1, steps to 0, one cure an item and none off the list");
+    const u = r.offers[1];
+    eq(`${u.investor} ${u.spareEquity} ${u.financing}`, "value-add 0 commercial", "an offer from an unknown kind of investor is a value-add buyer's, with nothing spare");
+    eq(JSON.stringify(u.uw), JSON.stringify({ noi: 88256, reqCap: 0.082, capexIdx: [0, 1], yieldPrice: 1035793 }),
+      "and an offer with no terms of its own is given the packet as it stands, at the market cap rate");
+    eq(JSON.stringify(r.offers[0].uw), JSON.stringify(pl.offers[0].uw), "while an offer with its terms keeps them");
+  }
+  for (const state of ["prep", "live", "contract"]) {
+    careerWithBuilding(state);
+    const seed = S.seed, raw = JSON.stringify(S);
+    const once = withSeller(() => repairCareer(JSON.parse(raw)));
+    eq(once.seed, seed, `repair on a building ${state === "contract" ? "under contract" : state === "live" ? "live with an offer" : "mid-prep"} advances the seed by zero`);
+    eq(JSON.stringify(withSeller(() => repairCareer(JSON.parse(JSON.stringify(once))))), JSON.stringify(once), "and a second repair changes nothing");
+  }
+  for (const state of ["prep", "live", "contract"]) {
+    careerWithBuilding(state);
+    const raw = JSON.parse(JSON.stringify(S));
+    const logs = raw.log.length;
+    const r = repairCareer(raw);
+    eq(`${r.playerListings.length} ${r.log.length - logs} ${r.log[0].text}`, "0 2 A listing agreement ended: its seller is no longer in the game.",
+      `a building ${state} whose seller's file is deleted ends the agreement with one line (and the book's own)`);
+  }
+  {
+    careerWithBuilding("contract");
+    S.choiceQueue.push({ kind: "sellerRetrade", plId: "pl_gone" }, { kind: "sellerLoanShortfall", plId: "pl_gone" }, { kind: "sellerRetrade", plId: S.playerListings[0].id });
+    const pl0 = S.playerListings[0];
+    const exp = Com.sellerExpectation(pl0), pv = Com.packetValue(pl0), cash = S.cash, xp = S.xp;
+    const raw = JSON.parse(JSON.stringify(S));
+    const stash = DB.agents.ag_priya_natesan; delete DB.agents.ag_priya_natesan;
+    let r;
+    try { r = withSeller(() => repairCareer(raw)); } finally { DB.agents.ag_priya_natesan = stash; }
+    const pl = r.playerListings[0];
+    eq(`${pl.status} ${pl.acceptedOffer} ${pl.rollReadyDay} ${pl.bovWeight} ${JSON.stringify(pl.disclosed)}`, "live null 7 0.7 [1]",
+      "a building under contract to a deleted agent's buyer goes back to live with its packet and rent roll");
+    adoptState(r);
+    eq(`${Com.packetValue(pl)} ${Com.sellerExpectation(pl)} ${r.cash} ${r.xp}`, `${pv} ${exp} ${cash} ${xp}`, "its expectation intact, and pays nothing");
+    eq(r.choiceQueue.filter(ch => ch.kind === "sellerRetrade" || ch.kind === "sellerLoanShortfall").length, 0,
+      "a queued retrade or loan shortfall naming a listing that is gone or voided is dropped");
+  }
+  {
+    careerWithBuilding("contract");
+    const slot = careerSlot(memStore());
+    const text = slot.serialize(S);
+    const back = withSeller(() => slot.deserialize(text));
+    eq(JSON.stringify(back.playerListings[0]), JSON.stringify(S.playerListings[0]), "export and import carry a building mid-contract byte for byte");
+  }
+  {
+    // 36: a client added to data/ after a career began, the building's seller among them.
+    const store = memStore();
+    newGame("bk_hearthstone"); save(store);
+    const before = JSON.parse(store.getItem(SAVE_KEY)).clientQueue;
+    withSeller(() => loadSave(store));
+    eq(S.clientQueue.slice(before.length).join(" "), "cl_0302", "a building's seller added to data/ after a career began is appended to its queue");
+    const again = withSeller(() => repairCareer(JSON.parse(JSON.stringify(S))));
+    eq(again.clientQueue.filter(id => id === "cl_0302").length, 1, "once, and not again on the next load");
+  }
+  {
+    const db = { ...JSON.parse(JSON.stringify(DB)) };
+    const one = (fn) => { const d = JSON.parse(JSON.stringify(db)); d.clients.cl_0302 = fn(JSON.parse(JSON.stringify(FIXTURE))); return [d, dropBrokenContent(d)]; };
+    let [d, e] = one(c => c);
+    eq(`${e.length} ${"cl_0302" in d.clients}`, "0 true", "the fixture seller passes the content pass");
+    [d, e] = one(c => { delete c.sellerListing.commercial; return c; });
+    ok(e.length === 1 && e[0].includes("sellerListing.commercial") && !("cl_0302" in d.clients),
+      "a building's seller with no commercial block is left out and named", e.join(" | "));
+    [d, e] = one(c => { c.sellerListing.commercial.vacancy = 1.4; return c; });
+    ok(e.length === 1 && e[0].includes("sellerListing.commercial") && !("cl_0302" in d.clients), "nor one with a vacancy over 1", e.join(" | "));
+    [d, e] = one(c => { delete c.sellerListing.price; return c; });
+    ok(e.length === 1 && e[0].includes("sellerListing.price is null") && !("cl_0302" in d.clients),
+      "a building's seller with no owner's number is left out and named", e.join(" | "));
+    [d, e] = one(c => { c.sellerListing.neighborhood = "nb_elsewhere"; return c; });
+    ok(e.length === 1 && e[0].includes('sellerListing.neighborhood is "nb_elsewhere"') && !("cl_0302" in d.clients),
+      "a building's seller in a deleted neighborhood is left out", e.join(" | "));
+  }
+  newGame("bk_hearthstone");
 }
 
 /* ------------------------------------------------ the content check's controls */

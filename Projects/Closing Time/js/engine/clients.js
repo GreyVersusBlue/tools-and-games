@@ -2,13 +2,15 @@
 import { DB } from "../data.js";
 import { S, uid, log, addRep, addXP, pick, rand, randInt, contentClient, levelInfo } from "../state.js";
 import { financingFor, financingType } from "./financing.js";
-import { isCommercial, isCommercialClient, capAt, knownCapex } from "./commercial.js";
+import { isCommercial, isCommercialClient, capAt, knownCapex, sellsBuilding } from "./commercial.js";
 
 export const REL_WORDS = ["college roommate", "sister", "coworker", "old neighbor", "cousin", "book-club friend", "brother-in-law", "poker buddy"];
 
 /**
  * The ladder, as it applies to a client: their tier is one this rung works, or
- * they are a seller. This is the only copy. Four doors hand out a client and
+ * they are a seller of a house. A seller of a building waits for the rung that
+ * works buildings, as a buyer of one does (CT-12, #1009); a house seller is
+ * open to every rung, as shipped. This is the only copy. Four doors hand out a client and
  * each one asks here: intake below, rollReferral() below, the Monday lead in
  * calendar.js and Ruth's call in events.js. The fourth was found picking from
  * the whole queue because it had been written without the other three's
@@ -16,6 +18,7 @@ export const REL_WORDS = ["college roommate", "sister", "coworker", "old neighbo
  */
 export function inReach(clientId) {
   const c = DB.clients[clientId];
+  if (sellsBuilding(c)) return levelInfo().tiers.includes("commercial");
   return levelInfo().tiers.includes(c.tier) || c.type === "seller";
 }
 
