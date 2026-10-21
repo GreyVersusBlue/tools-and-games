@@ -221,8 +221,8 @@ test('by keyboard at 1280 by 800: P in, the arrows, Space, A, H, Escape out, and
         assert.equal(entry.keys, keys, id + "'s keys");
         assert.ok(entry.does.length > 10, id + ' has no words');
       }
-      const button = await page.$eval('#movement-line [data-action="present"]', (el) => ({ text: el.textContent, keys: el.getAttribute('aria-keyshortcuts'), box: el.getClientRects().length, place: el.dataset.place }));
-      assert.deepEqual(button, { text: 'Present', keys: 'P', box: 1, place: 'line' }, 'Present does not end the first line at 1280');
+      const button = await page.$eval('[data-bar="playback"] .mov-pb__row > [data-action="present"]:last-child', (el) => ({ text: el.textContent, keys: el.getAttribute('aria-keyshortcuts'), box: el.getClientRects().length, place: el.dataset.place }));
+      assert.deepEqual(button, { text: 'Present', keys: 'P', box: 1, place: 'bar' }, 'Present does not end the playback bar\'s row at 1280');
     });
 
     // the map zoomed in by the reader first, and a transition chosen, so that putting back is tested on a state that is not the default
@@ -527,9 +527,9 @@ for (const size of [{ width: 390, height: 844, upright: true }, { width: 844, he
       // on a phone (640 px and under) Present stands beside Clear in the
       // controls, one tap behind Change (folded unless the reader opened them on
       // this device before: the run at the other size, in this browser); wider,
-      // it ends the first line, on screen with the controls folded
+      // it ends the playback bar's row, on screen with the controls folded
       const where = await page.$eval('[data-action="present"]', (el) => el.dataset.place);
-      assert.equal(where, size.width <= 640 ? 'controls' : 'line', 'Present stands in the wrong place');
+      assert.equal(where, size.width <= 640 ? 'controls' : 'bar', 'Present stands in the wrong place');
       const folded = await page.$eval('.mov-top', (el) => el.dataset.folded === 'true');
       assert.equal(await page.$eval('[data-action="present"]', (el) => el.getClientRects().length), where === 'controls' && folded ? 0 : 1, 'Present is drawn where it should not be, or not where it should');
       if (where === 'controls' && folded) await page.tap('[data-action="change"]');

@@ -13,11 +13,15 @@
 //     bar    the playback bar's element (its .playback is the bar's own state)
 //     root   the section's element, the plan map's root (div.mov), whose
 //            .movement (./index.js) is the view on screen
-//     places { line, controls }: where Present stands. It ends the first line
-//            (after Change), and under PHONE (640 px) it stands beside Clear
-//            in the controls, since on a phone the line has no room for it
-//            and a second row of the line would take 44 px from the map; it
-//            moves when the window crosses that width. P works either way.
+//     places { bar, controls }: where Present stands. It ends the playback
+//            bar's row (after More), where the scrubber gives up the width it
+//            takes, and at 640 px and under it stands beside Clear in the
+//            controls, since a phone's bar row has no width to spare. It
+//            moves when the window crosses that width; P works either way.
+//            Not the first line: there it could push the sentence to a second
+//            row, which takes height from the map (44 px on a phone), and near
+//            the width where that happens a scrollbar coming and going turned
+//            the legend's dock over three times (m5-pass, 1024 by 768).
 //   button   "Present"; the key is P
 //
 // Nothing is drawn twice and nothing keeps a clock of its own: the map is the
@@ -148,7 +152,7 @@ function fullscreenElement() {
 
 const realTimers = { set: (fn, ms) => setTimeout(fn, ms), clear: (id) => clearTimeout(id) };
 
-// Under this the button stands in the controls, not on the first line.
+// Under this the button stands in the controls, not on the playback bar's row.
 export const PRESENT_IN_CONTROLS = '(max-width: 640px)';
 
 export function presentMode({ ctx, plan, env, bar, root, places }) {
@@ -176,7 +180,7 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
   const playback = () => bar.playback;
 
   // ---- the button
-  const button = h('button', { type: 'button', class: 'mov-link mov-present', 'aria-keyshortcuts': 'P', title: 'Show the map on the whole screen, for a projector (P)', data: { action: 'present' }, on: { click: () => enter() } }, 'Present');
+  const button = h('button', { type: 'button', class: 'btn mov-present', 'aria-keyshortcuts': 'P', title: 'Show the map on the whole screen, for a projector (P)', data: { action: 'present' }, on: { click: () => enter() } }, 'Present');
 
   // ---- the panel: the groups on the map, the load, the busiest places
   const panel = h('section', { class: 'mov-pres__panel', tabindex: '0', 'aria-label': 'Presentation of the movement view: the key', data: { part: 'present-panel' } });
@@ -214,25 +218,22 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
       phone.removeEventListener('change', placeButton);
       return;
     }
-    const into = phone.matches ? places.controls : places.line;
+    const into = phone.matches ? places.controls : places.bar;
     if (!into) return;
-    if (button.parentNode === into) {
-      button.dataset.place = into === places.controls ? 'controls' : 'line';
-      return;
-    }
-    const held = document.activeElement === button;
-    if (into === places.line) into.append(' ', button);
-    else {
-      // the space before it on the line goes with it
-      if (button.previousSibling && button.previousSibling.nodeType === 3 && button.previousSibling.textContent === ' ') button.previousSibling.remove();
+    if (button.parentNode !== into) {
+      const held = document.activeElement === button;
       into.append(button);
+      if (held) button.focus();
     }
-    button.dataset.place = button.parentNode === places.controls ? 'controls' : 'line';
-    if (held) button.focus();
+    button.dataset.place = button.parentNode === places.controls ? 'controls' : 'bar';
   }
   placeButton();
   phone.addEventListener('change', placeButton);
 
+  // hidden until the mode is entered: present.css comes on its own, and until
+  // it is in they would stand in the section unstyled, moving its layout
+  const parts = [panel, caption, line, touch];
+  for (const part of parts) part.hidden = true;
   root.append(panel);
   plan.element.insertBefore(caption, plan.stage);
   plan.stage.append(line, touch);
@@ -494,6 +495,7 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     pendingRestore = null;
     root.dataset.present = 'window';
     delete root.dataset.presentRefused;
+    for (const part of parts) part.hidden = false;
     madeInert = inertOutside();
     plan.setLabelScale(LABEL_SCALE);
     plan.fit(true);
@@ -577,6 +579,7 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     }
     delete root.dataset.present;
     delete root.dataset.presentRefused;
+    for (const part of parts) part.hidden = true;
     plan.setLabelScale(1);
     if (!root.isConnected) return;
     restore();

@@ -287,8 +287,8 @@ export const section = {
     // the section's element is the plan map's root (div.mov), with the map in it
     const element = plan.root;
     element.append(empty);
-    // Present (./present.js: presentation mode): on the first line, or beside Clear on a phone, where the line has no room for it
-    presentMode({ ctx, plan, env, bar: bar.element, root: element, places: { line: top.element.querySelector('.mov-line'), controls: top.element.querySelector('.mov-ctl--options') } });
+    // Present (./present.js: presentation mode): at the end of the playback bar's row, or beside Clear on a phone
+    presentMode({ ctx, plan, env, bar: bar.element, root: element, places: { bar: bar.element.querySelector('.mov-pb__row'), controls: top.element.querySelector('.mov-ctl--options') } });
 
     // ---- the top bar's second row, the plan map's: on a phone it folds with the controls
     function placeFloors() {
