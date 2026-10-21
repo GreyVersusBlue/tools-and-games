@@ -734,6 +734,33 @@ test('SV2-72h item 4: at 844 by 390 with touch, Movement scrolled to its top by 
   });
 });
 
+// Item 2. Where the floors are whole above the sticky foot with the first
+// line kept, the map's own scroll stops at the line (SV2-72g's rule); no case
+// held that half. At 844 by 390 with touch both Movement and the lab scroll
+// the section, by less than the line's top.
+for (const which of ['movement', 'scenarios']) {
+  test('SV2-72h item 2: at 844 by 390 with touch ' + (which === 'movement' ? 'Movement' : 'the lab, a scenario open,') + ' scrolls clear of the foot and keeps its first line in view, every floor above the foot', async () => {
+    await on('#project', SIDE, async (page) => {
+      await fixture(page, null, which === 'scenarios' ? [['newScenario', { name: 'Trial' }]] : []);
+      await go(page, '#' + which);
+      if (which === 'movement') await answered(page);
+      await turnsSettled(page, which);
+      const at = await floorsAt(page, which);
+      const line = await page.evaluate((name) => {
+        const plan = name === 'movement' ? document.querySelector('.mov').movement.plan : document.querySelector('.scn').scenarios.plan;
+        const el = plan.root.querySelector('.mov-line');
+        if (!el || el.getClientRects().length === 0) return null;
+        const box = el.getBoundingClientRect();
+        return { top: box.top, bottom: box.bottom, rootTop: plan.root.getBoundingClientRect().top };
+      }, which);
+      assert.ok(line, 'the first line has no box');
+      assert.ok(at.scroll > 0, 'the map did not scroll the section: the case tests nothing: ' + JSON.stringify(at));
+      assert.ok(line.top >= line.rootTop - 0.5, 'the map scrolled past the first line where the floors fit with it: ' + JSON.stringify({ line, at }));
+      assert.deepEqual(offStage(at), [], JSON.stringify(at));
+    });
+  });
+}
+
 // ------------------------------------------- SV2-72e's open line: the toast's Show
 
 // The shell's own Show, on the message an Undo leaves, opened its address
