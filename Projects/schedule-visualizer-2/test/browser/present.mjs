@@ -859,11 +859,13 @@ test('in the mode the hotspot ranks and a stair link\'s words are 1.5 times as l
     }))));
     assert.deepEqual(out, { ranks: [11], links: [11] }, 'out of the mode: ' + JSON.stringify(out));
     const count = await restoredCount(page);
-    const inside = read2(await drawn(async () => {
-      await page.keyboard.press('p');
-      await inMode(page);
-      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    }));
+    await page.keyboard.press('p');
+    await inMode(page);
+    // written from here: a paint of the marks asked before P (the scale 1) is not this one's
+    const inside = read2(await drawn(() => page.evaluate(() => new Promise((resolve) => {
+      document.querySelector('.mov').movement.plan.paint();
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    }))));
     assert.deepEqual(inside, { ranks: [17], links: [17] }, 'in the mode: ' + JSON.stringify(inside));
     await page.keyboard.press('Escape');
     await outOfMode(page, count);
