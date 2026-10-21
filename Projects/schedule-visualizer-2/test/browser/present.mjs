@@ -1242,10 +1242,12 @@ test('P held down presents once: its repeats neither leave nor enter again, and 
     await page.keyboard.down('p');
     await page.keyboard.down('p');
     await page.keyboard.up('p');
-    await inMode(page);
-    assert.equal((await read(page)).presenting, true, 'P held left the mode again');
+    // the observer has seen the mode go in
+    await page.waitForFunction(() => globalThis.__presents.includes('in'), { timeout: 10000 });
     const seen = await page.evaluate(() => globalThis.__presents.filter((each, i, all) => i === 0 || each !== all[i - 1]));
-    assert.deepEqual(seen.filter((each) => each === 'out'), [], 'P held went in and out: ' + JSON.stringify(seen));
+    assert.deepEqual(seen, ['in'], 'P held went in and out: ' + JSON.stringify(seen));
+    assert.equal((await read(page)).presenting, true, 'P held left the mode again');
+    await inMode(page);
     const count = await restoredCount(page);
     await page.keyboard.down('Escape');
     await page.keyboard.down('Escape');
