@@ -777,6 +777,26 @@ export function createPlanMap(asked) {
     });
   }
   document.addEventListener('focusout', onFocusOut);
+  // The focus's own scroll (SV2-72k): a field given the focus is scrolled
+  // into view by the browser, and that is no scroll of the reader's. Start a
+  // scenario by its button at 1280 by 300 with a mouse: the map scrolled the
+  // section to 72 to clear the foot, start() put the focus in the scenario
+  // name, the browser scrolled back to 40 to show it, and clearFoot took that
+  // for the reader's and turned the clearing off, so the foot stayed 32 px
+  // over the stage after the focus left. A scroll that comes while a text
+  // field has the focus and before the next frame after the focus moved into
+  // it is the focus's: the clearing stays armed, held while typing, and is
+  // made as the focus leaves (onFocusOut). One that comes later is the
+  // reader's, as before.
+  let focusFrame = 0;
+  function onFocusIn(event) {
+    if (gone || !textField(event.target)) return;
+    const frame = ++focusFrame;
+    requestAnimationFrame(() => {
+      if (frame === focusFrame) focusFrame = 0;
+    });
+  }
+  document.addEventListener('focusin', onFocusIn);
 
   // ---- where a message of the shell may lie (DESIGN 5.3): above what is
   // docked at the bottom of the surface, the foot and the zoom buttons. How
@@ -897,7 +917,11 @@ export function createPlanMap(asked) {
     if (!root || gone || element.hidden || root.dataset.styled !== 'true') return;
     const top = Math.round(root.scrollTop);
     // a scroll the map did not make is the reader's, and is left alone
-    if (ownScroll !== null && top !== ownScroll) keepClear = false;
+    // (one the focus made as a text field took it is the focus's, SV2-72k)
+    if (ownScroll !== null && top !== ownScroll) {
+      if (focusFrame !== 0 && typing()) ownScroll = top;
+      else keepClear = false;
+    }
     if (!keepClear) return;
     // nor is the section moved under a reader typing (SV2-72i): still armed
     // from opening, the lab at 1280 by 720 with a finger scrolled its
@@ -1224,6 +1248,7 @@ export function createPlanMap(asked) {
       stage.removeEventListener('wheel', onStageWheel, { capture: true });
       window.removeEventListener('resize', onResize);
       document.removeEventListener('focusout', onFocusOut);
+      document.removeEventListener('focusin', onFocusIn);
       dark.removeEventListener('change', queuePaint);
       if (ratioQuery) ratioQuery.removeEventListener('change', onRatio);
       input.detach();
