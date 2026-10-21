@@ -490,7 +490,10 @@ test('SV2-72f2 item 3: a phone at 390 by 844 turned on its side, back, and on it
 // showed another (at 1280 by 600 the floors 19 px apart). Both ask choose().
 // SV2-72g: 900 by 500 was where the floors could not be whole above the
 // foot; the section now scrolls past the first line there, and they are.
-for (const size of [{ width: 900, height: 500, fallback: false }, { width: 1280, height: 600, fallback: false }]) {
+// SV2-72h item 5: 1100 by 450 with a mouse is a size where they still
+// cannot (the section scrolled to the stage's top, the stage 207 px with
+// the playback bar over its foot), so fitIn 'stage' keeps a browser case.
+for (const size of [{ width: 900, height: 500, fallback: false }, { width: 1280, height: 600, fallback: false }, { width: 1100, height: 450, fallback: true }]) {
   test('SV2-72f2 item 2: Movement at ' + size.width + ' by ' + size.height + (size.fallback ? ', where the floors cannot be whole above the foot,' : '') + ' fitAt answers the fit the map took, the legend\'s card lies on no floor, and the layout settles', async () => {
     await on('#project', { width: size.width, height: size.height }, async (page) => {
       await fixture(page);
