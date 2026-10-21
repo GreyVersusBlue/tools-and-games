@@ -157,6 +157,13 @@ export const CURSOR_LEAST = 14;
 // on the stage each way.
 export const KEEP_ON_STAGE = 48;
 
+// A change of the window's height alone up to this many CSS pixels is not a
+// new layout: the foot-clearing scroll is not armed again by it (SV2-72h).
+// Chrome on Android's address bar is 56 px, Safari on an iPhone's bars
+// together under 120 as they collapse; a phone turned changes the width, and
+// a desktop window made lower by more than this is a new layout.
+export const REARM_HEIGHT = 120;
+
 // The map is never moved off the stage (SV2-52): a wheel meant for the
 // section, a long drag or a zoom far in leaves at least KEEP_ON_STAGE px of
 // the floors' box on screen each way (all of it, when it is smaller), so the
@@ -634,13 +641,16 @@ export function createPlanMap(asked) {
     // layout the reader's scroll was not made for, and a scroll the window
     // clamped is none of theirs: the stage is brought clear of the foot again
     // (clearFoot; SV2-72f2). One that changes size within the same window
-    // (the legend docked, the controls folded) leaves the reader's scroll be.
-    const windowNow = window.innerWidth + 'x' + window.innerHeight;
-    if (windowNow !== windowSeen) {
-      if (windowSeen !== null) {
-        keepClear = true;
-        ownScroll = parts && parts.root ? Math.round(parts.root.scrollTop) : null;
-      }
+    // (the legend docked, the controls folded) leaves the reader's scroll be;
+    // so does a change of the window's height alone up to REARM_HEIGHT, a
+    // touch browser's bar coming or going (SV2-72h), measured from the
+    // window the scroll was last armed in, so a window dragged lower a few
+    // pixels at a time is armed again once it has gone that far.
+    const windowNow = { width: window.innerWidth, height: window.innerHeight };
+    if (windowSeen === null) windowSeen = windowNow;
+    else if (windowNow.width !== windowSeen.width || Math.abs(windowNow.height - windowSeen.height) > REARM_HEIGHT) {
+      keepClear = true;
+      ownScroll = parts && parts.root ? Math.round(parts.root.scrollTop) : null;
       windowSeen = windowNow;
     }
     view.resize(width, height);
@@ -771,7 +781,7 @@ export function createPlanMap(asked) {
   // it); the reader scrolls back to the line, and Tab brings it.
   let keepClear = true;
   let ownScroll = null;
-  // the window's size the stage was last measured in (measure)
+  // the window's size the foot-clearing scroll was last armed in (measure)
   let windowSeen = null;
   function clearFoot() {
     const root = parts && parts.root;

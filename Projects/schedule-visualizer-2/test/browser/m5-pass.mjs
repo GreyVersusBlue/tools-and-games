@@ -686,6 +686,51 @@ test('SV2-72h item 1: Movement at 900 by 500 with touch: the stage with the dock
   });
 });
 
+// Item 4. A change of the window's height alone, a touch browser's bar
+// coming or going (56 px in Chrome on Android) or the keyboard, was taken
+// for a new layout like a rotation: the foot-clearing scroll was armed again
+// and moved the section under a reader who had scrolled it. Only a change of
+// width, or of height by more than REARM_HEIGHT, arms it again.
+test('SV2-72h item 4: at 844 by 390 with touch, Movement scrolled to its top by the reader stays there when the browser\'s bar takes 56 px of the window\'s height, and is scrolled clear of the foot again after a change of 130 px', async () => {
+  await on('#project', SIDE, async (page) => {
+    await fixture(page);
+    await go(page, '#movement');
+    await answered(page);
+    await turnsSettled(page, 'movement');
+    const opened = await floorsAt(page, 'movement');
+    assert.ok(opened.scroll > 0, 'the map did not scroll the section clear of the foot as it opened: the case tests nothing: ' + JSON.stringify(opened));
+    // the reader's scroll back to the section's top (the stand-in for a swipe)
+    await page.evaluate(() => {
+      document.querySelector('.mov').movement.plan.root.scrollTop = 0;
+    });
+    await until(page, 'the section did not take the scroll to its top', () => {
+      const plan = document.querySelector('.mov').movement.plan;
+      return plan.root.scrollTop === 0 && plan.root.dataset.dockedAt === '0';
+    });
+    const resize = async (height) => {
+      await page.setViewport({ width: SIDE.width, height, deviceScaleFactor: 1, hasTouch: true, isMobile: true, isLandscape: true });
+      await until(page, 'the page is not ' + height + ' tall', (h) => window.innerHeight === h && document.querySelector('.mov').movement.plan.view.height > 0 && document.querySelector('.mov').movement.plan.root.dataset.dockedAt === String(Math.round(document.querySelector('.mov').movement.plan.root.scrollTop)), height);
+      await turnsSettled(page, 'movement');
+      return floorsAt(page, 'movement');
+    };
+    const barGone = await resize(SIDE.height - 56);
+    assert.equal(barGone.scroll, 0, 'the bar\'s 56 px moved the section under the reader: ' + JSON.stringify(barGone));
+    // at the top the foot lies over the stage: what a foot-clearing scroll would have moved
+    assert.ok(barGone.stage.bottom > barGone.footTop + 0.5, 'with the bar\'s 56 px gone the foot is not over the stage at the section\'s top: the case tests nothing: ' + JSON.stringify(barGone));
+    const barBack = await resize(SIDE.height);
+    assert.equal(barBack.scroll, 0, 'the bar coming back moved the section under the reader: ' + JSON.stringify(barBack));
+    // a change of 130 px is a new layout: 130 px taller, where the foot is
+    // clear of the stage, and back, where the stage is brought clear of the
+    // foot again
+    const taller = await resize(SIDE.height + 130);
+    assert.ok(taller.stage.bottom <= taller.footTop + 0.5, '130 px taller the foot still lies over the stage: ' + JSON.stringify(taller));
+    const back = await resize(SIDE.height);
+    assert.ok(back.scroll > 0, 'a window 130 px lower was not scrolled clear of the foot: ' + JSON.stringify({ taller, back }));
+    assert.equal(back.scroll, opened.scroll, 'a window 130 px lower was not scrolled as Movement opened at that size: ' + JSON.stringify({ opened, back }));
+    assert.deepEqual(offStage(back), [], 'a window 130 px lower: ' + JSON.stringify(back));
+  });
+});
+
 // ------------------------------------------- SV2-72e's open line: the toast's Show
 
 // The shell's own Show, on the message an Undo leaves, opened its address
