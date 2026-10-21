@@ -504,12 +504,15 @@ test('a traced image is kept while the project or a snapshot names it, and goes 
 
   await withImage(null);
   await waitSaved();
-  assert.deepEqual(await idb('sv2', 'images', 'keys'), ['ifreshimg0', 'isnapimage'], 'the project\'s own image and the orphan are gone; the snapshot\'s stays');
+  // ifreshimg0 was held only until a save begun after it was stored had
+  // finished without naming it (SV2-28b: a hold never lasts until a reload),
+  // so this sweep takes it with the orphan
+  assert.deepEqual(await idb('sv2', 'images', 'keys'), ['isnapimage'], 'the project\'s own image, the orphan and the image nothing came to name are gone; the snapshot\'s stays');
 
   // undo names the image again: the save puts its bytes back
   await page.evaluate(() => globalThis.sv2.store.undo());
   await waitSaved();
-  assert.deepEqual(await idb('sv2', 'images', 'keys'), ['ifreshimg0', 'isnapimage', 'itestimage'], 'an undo never leaves the project naming an image the device has lost');
+  assert.deepEqual(await idb('sv2', 'images', 'keys'), ['isnapimage', 'itestimage'], 'an undo never leaves the project naming an image the device has lost');
 });
 
 test('a recovery point carries the bytes of the images its project names', async () => {
