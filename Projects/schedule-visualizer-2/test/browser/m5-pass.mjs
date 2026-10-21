@@ -761,6 +761,75 @@ for (const which of ['movement', 'scenarios']) {
   });
 }
 
+// Item 6. Fit pressed with the zoom buttons lifted over the sticky foot, the
+// section at its top where the reader scrolled it: Fit scrolls the section
+// clear of the foot again, keeps the first line where the floors fit with
+// it, and fits round the buttons where they rest after that scroll, which
+// is the fit the section opened with. What the stage says of the zoom box
+// (data-fit-clear) is checked against the painted cells under the box as
+// drawn, with the module's own paintedUnder. At this size the lab keeps
+// its first line with the foot 15 px over the stage's foot, so its buttons
+// stay lifted and lie over part of a floor.
+for (const which of ['movement', 'scenarios']) {
+  test('SV2-72h item 6: at 844 by 390 with touch, ' + (which === 'movement' ? 'Movement' : 'the lab, a scenario open,') + ' at its top with the zoom buttons lifted over the foot, Fit tapped gives the fit it opened with: the first line in view, every floor above the foot, the zoom box as clear as the stage says', async () => {
+    await on('#project', SIDE, async (page) => {
+      await fixture(page, null, which === 'scenarios' ? [['newScenario', { name: 'Trial' }]] : []);
+      await loadModule(page, 'layout', 'ui/surface/plan-layout.js');
+      await go(page, '#' + which);
+      if (which === 'movement') await answered(page);
+      await turnsSettled(page, which);
+      const opened = await floorsAt(page, which);
+      const viewOf = () => page.evaluate((name) => {
+        const plan = name === 'movement' ? document.querySelector('.mov').movement.plan : document.querySelector('.scn').scenarios.plan;
+        return { zoom: plan.view.zoom, x: plan.view.x, y: plan.view.y, fit: plan.stage.dataset.fit, clear: plan.stage.dataset.fitClear };
+      }, which);
+      const openedView = await viewOf();
+      // the reader's scroll back to the section's top (the stand-in for a swipe)
+      await page.evaluate((name) => {
+        const plan = name === 'movement' ? document.querySelector('.mov').movement.plan : document.querySelector('.scn').scenarios.plan;
+        plan.root.scrollTop = 0;
+      }, which);
+      await until(page, 'the section did not take the scroll to its top', (name) => {
+        const plan = name === 'movement' ? document.querySelector('.mov').movement.plan : document.querySelector('.scn').scenarios.plan;
+        return plan.root.scrollTop === 0 && plan.root.dataset.dockedAt === '0';
+      }, which);
+      const lifted = await page.evaluate((name) => {
+        const plan = name === 'movement' ? document.querySelector('.mov').movement.plan : document.querySelector('.scn').scenarios.plan;
+        return parseFloat(plan.stage.style.getPropertyValue('--mov-under')) || 0;
+      }, which);
+      assert.ok(lifted > 0, 'at the top the zoom buttons are not lifted over the foot: the case tests nothing');
+      const fitButton = '#section [data-action="fit"]';
+      const at = await box(page, fitButton);
+      assert.ok(at, 'the Fit button has no box');
+      await page.touchscreen.tap(at.left + at.width / 2, at.top + at.height / 2);
+      await until(page, 'Fit did not scroll the section', (name) => {
+        const plan = name === 'movement' ? document.querySelector('.mov').movement.plan : document.querySelector('.scn').scenarios.plan;
+        return plan.root.scrollTop > 0;
+      }, which);
+      await turnsSettled(page, which);
+      const fitted = await floorsAt(page, which);
+      const fittedView = await viewOf();
+      const got = await page.evaluate((name) => {
+        const plan = name === 'movement' ? document.querySelector('.mov').movement.plan : document.querySelector('.scn').scenarios.plan;
+        const el = plan.root.querySelector('.mov-line');
+        const line = el && el.getClientRects().length > 0 ? el.getBoundingClientRect() : null;
+        const stage = plan.stage.getBoundingClientRect();
+        const zoom = plan.stage.querySelector('.mov-zoom').getBoundingClientRect();
+        const rect = { x: zoom.left - stage.left, y: zoom.top - stage.top, w: zoom.width, h: zoom.height };
+        const under = globalThis.sv2modules.layout.paintedUnder(plan.world, { zoom: plan.view.zoom, x: plan.view.x, y: plan.view.y }, rect);
+        return { line: line && { top: line.top }, rootTop: plan.root.getBoundingClientRect().top, clearSaid: plan.stage.dataset.fitClear, under, rect, fitted: plan.fitted };
+      }, which);
+      assert.equal(got.fitted, true, 'the map is not fitted');
+      assert.equal(fitted.scroll, opened.scroll, 'Fit did not scroll the section as it opened: ' + JSON.stringify({ opened: opened.scroll, fitted: fitted.scroll }));
+      assert.ok(got.line && got.line.top >= got.rootTop - 0.5, 'Fit scrolled past the first line: ' + JSON.stringify(got));
+      assert.deepEqual(offStage(fitted), [], 'after Fit: ' + JSON.stringify(fitted));
+      assert.equal(got.under, got.clearSaid !== 'true', 'the stage says the zoom box is ' + (got.clearSaid === 'true' ? '' : 'not ') + 'clear, and the cells under it as drawn say otherwise: ' + JSON.stringify(got));
+      // and the fit is the one the section opened with at that scroll, not one made round the buttons where they were lifted at the top
+      assert.deepEqual(fittedView, openedView, 'Fit from the top is not the fit the section opened with: ' + JSON.stringify({ openedView, fittedView }));
+    });
+  });
+}
+
 // ------------------------------------------- SV2-72e's open line: the toast's Show
 
 // The shell's own Show, on the message an Undo leaves, opened its address
