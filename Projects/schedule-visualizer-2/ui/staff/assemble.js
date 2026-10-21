@@ -39,6 +39,30 @@ export class LinkError extends Error {
   }
 }
 
+// The staff browser's files never arrived: the connection's failure, not the
+// linker's. `cause` is what the browser said.
+export class ReadError extends LinkError {
+  constructor(message, cause) {
+    super(message);
+    this.name = 'ReadError';
+    this.cause = cause;
+  }
+}
+
+// What to say when a file or a preview could not be made. A sentence the tool
+// wrote itself is said as it is: the linker's refusals, and the plain Errors
+// of the engine (publish-crypto.js saying this page has no encryption, on a
+// plain http address). `words.connection` is for files that never arrived and
+// for nothing else; anything the browser threw in its own words (a TypeError,
+// a RangeError) gets `words.other`, since "Failed to fetch" or "x is
+// undefined" tells a counsellor nothing.
+export function failureSentence(error, words) {
+  if (error instanceof ReadError) return words.connection;
+  if (error instanceof LinkError && error.message) return error.message;
+  if (error instanceof Error && error.name === 'Error' && error.message) return error.message;
+  return words.other;
+}
+
 // Names a module may not export: every module's exports share one scope in the
 // assembled script, so an export called `location` would stand in front of the
 // page's own for all of them.
@@ -521,7 +545,12 @@ export function pageReader() {
   ownFiles = async function read(path, kind) {
     const address = new URL(path, root);
     if (address.origin !== root.origin || !address.href.startsWith(root.href)) throw new LinkError(path + ' is outside the tool\'s own folder.');
-    const response = await fetch(address);
+    let response;
+    try {
+      response = await fetch(address);
+    } catch (cause) {
+      throw new ReadError('The staff browser\'s file ' + path + ' could not be loaded. Check the connection and try again; nothing was published.', cause);
+    }
     if (!response.ok) throw new LinkError('The staff browser\'s file ' + path + ' could not be loaded (' + response.status + '). Check the connection and try again; nothing was published.');
     return kind === 'bytes' ? new Uint8Array(await response.arrayBuffer()) : response.text();
   };
@@ -543,22 +572,49 @@ function originOf(win) {
 //   const feed = feedPreview(window, iframe, () => data);
 //   feed.send();   after the project changed
 //   feed.stop();
-export function feedPreview(win, frame, getData) {
+//
+// `getFlags()`, when given, is asked each time a message really goes, and
+// what it returns travels beside the data: { forget: true } tells the frame
+// to drop the key it kept for this school's passcode, wherever it kept it
+// (its storage, or its memory where storage is refused), before it reads the
+// copy in hand.
+//
+// A "ready" counts only once the frame has fired `load` for the address it
+// holds. A frame's window is one object across its pages, so a "ready" the
+// page being replaced posted just before it went arrives looking like the new
+// page's; taken for it, it would end the wait for the new page to open (and
+// send the data to a page about to go). The page asks again every 500 ms
+// until it is answered, so the new page's own "ready" after its `load` is
+// the one that counts.
+export function feedPreview(win, frame, getData, getFlags) {
   const own = originOf(win);
   const target = own === 'null' ? '*' : own;
   let ready = false;
+  // the address the frame held when its page asked: a frame given another
+  // address holds another page, which has not asked yet
+  let readyFor = null;
+  // the address the frame last finished loading
+  let loadedFor = null;
+  const loaded = () => {
+    loadedFor = frame.src;
+  };
+  frame.addEventListener('load', loaded);
   const send = () => {
+    if (ready && frame.src !== readyFor) ready = false;
     if (!ready || !frame.contentWindow) return false;
     const data = getData();
     // with nothing to show yet the frame is left asking, and is answered when there is
     if (data === null || data === undefined) return false;
-    frame.contentWindow.postMessage({ type: PREVIEW_DATA, data }, target);
+    const flags = typeof getFlags === 'function' ? getFlags() : null;
+    frame.contentWindow.postMessage(flags && flags.forget === true ? { type: PREVIEW_DATA, data, forget: true } : { type: PREVIEW_DATA, data }, target);
     return true;
   };
   const listen = (event) => {
     if (event.source !== frame.contentWindow || event.origin !== own) return;
     if (!event.data || event.data.type !== PREVIEW_READY) return;
+    if (frame.src !== loadedFor) return;
     ready = true;
+    readyFor = frame.src;
     send();
   };
   win.addEventListener('message', listen);
@@ -566,6 +622,7 @@ export function feedPreview(win, frame, getData) {
     send,
     stop() {
       win.removeEventListener('message', listen);
+      frame.removeEventListener('load', loaded);
     },
   };
 }

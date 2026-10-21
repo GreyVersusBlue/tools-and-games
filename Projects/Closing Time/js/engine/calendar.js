@@ -6,7 +6,7 @@ import { maybeFireEvent } from "./events.js";
 import { resolveMilestone } from "./deals.js";
 import { dailySellerTick, resolveSellerMilestone } from "./seller.js";
 import { offerDeadlineDay } from "./escalation.js";
-import { patienceTick } from "./clients.js";
+import { patienceTick, inReach } from "./clients.js";
 
 export const SLOTS_PER_DAY = 4;
 
@@ -123,9 +123,7 @@ function brokerageMondayPerks() {
   // eventually, so a Monday lead could ignore the ladder and nothing showed;
   // now a Rookie Agent handed a 1031 buyer would walk into a modal offering a
   // client the MLS board will not let them work.
-  const tiers = levelInfo().tiers;
-  const eligible = S.clientQueue.filter(id =>
-    tiers.includes(DB.clients[id].tier) || DB.clients[id].type === "seller");
+  const eligible = S.clientQueue.filter(inReach);
   if ((bk.perks || []).some(p => p.includes("free lead")) && eligible.length) {
     const id = pick(eligible);
     S.choiceQueue.push({ kind: "referralArrive", clientId: id, referredBy: { name: "Deb at the front desk", rel: "office lead" },

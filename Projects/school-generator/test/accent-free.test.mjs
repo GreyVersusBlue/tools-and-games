@@ -261,7 +261,7 @@ test('the panel has a colour input, a labelled hex field and a place to say no',
   // The chip's colour and its ink change together, with no fade between.
   assert.match(html, /#accent-chip \{[^}]*transition: none;/);
   // A lit swatch is ringed in both inks.
-  assert.match(html, /#accent-swatches \.swatch\.active, #accent-chip\.active \{ border-color: #fff; box-shadow: inset 0 0 0 2px #000; \}/);
+  assert.match(html, /#accent-swatches \.swatch\.active, #accent-used \.swatch\.active, #accent-chip\.active \{ border-color: #fff; box-shadow: inset 0 0 0 2px #000; \}/);
 });
 
 test('the panel writes the chip in the ink for its colour, and the brush outlines its bar in it', () => {

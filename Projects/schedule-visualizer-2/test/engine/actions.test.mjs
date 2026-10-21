@@ -835,11 +835,18 @@ test('setConnection refuses a label another stair connection has, and takes its 
   assert.equal(run(actions.setConnection, school(), { connectionId: 'csample00b', label: 'East stairs' }).building.connections[1].label, 'East stairs');
 });
 
-test('setOnboarding is a quiet action, and no other action is', () => {
+test('setOnboarding and notePublished are quiet actions, and no other action is', () => {
   assert.equal(actions.setOnboarding.quiet, true);
+  assert.equal(actions.notePublished.quiet, true);
   for (const [name, value] of Object.entries(actions)) {
-    if (typeof value === 'function' && 'label' in value && name !== 'setOnboarding') assert.equal(value.quiet, false, name);
+    if (typeof value === 'function' && 'label' in value && name !== 'setOnboarding' && name !== 'notePublished') assert.equal(value.quiet, false, name);
   }
+  // when a file was published: the time is kept, and only a date is taken
+  const before = school();
+  const after = actions.notePublished(before, { at: '2026-09-01T12:00:00.000Z' }, ctx());
+  assert.equal(after.publish.lastPublishedAt, '2026-09-01T12:00:00.000Z');
+  assert.equal(before.publish.lastPublishedAt, null);
+  assert.throws(() => actions.notePublished(before, { at: 'last Tuesday' }, ctx()), /The last published time is a date\./);
 });
 
 test('describeAction carries what a building action and an import reported, and null for the rest', () => {

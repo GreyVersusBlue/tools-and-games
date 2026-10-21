@@ -36,10 +36,16 @@ import { coverageView } from './views/coverage.js';
 import { subView } from './views/sub.js';
 import { directionsView } from './views/directions.js';
 import { meView } from './me.js';
+import { doorView } from './views/door-sign.js';
 
-export const VIEWS = [searchView, teacherView, groupView, roomView, mapView, staffingView, freeView, nowView, commonView, coverageView, subView, directionsView, meView];
+export const VIEWS = [searchView, teacherView, groupView, roomView, mapView, staffingView, freeView, nowView, commonView, coverageView, subView, directionsView, meView, doorView];
 
 // The view an address names; an address that names none is the search page.
 export function viewFor(id) {
   return VIEWS.find((view) => view.id === id) || searchView;
+}
+
+// Does an address name a view at all? The shell says so when it does not.
+export function isView(id) {
+  return VIEWS.some((view) => view.id === id);
 }

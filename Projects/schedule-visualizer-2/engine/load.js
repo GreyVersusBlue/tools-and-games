@@ -182,6 +182,43 @@ export function loads(project, routes, dayTypeId, graph) {
   return { dayTypeId: found.dayType.id, unit, transitions, cells, connections, excluded, excludedConnections, zones, max };
 }
 
+// The index of routes by node: for one group's routes of a day (an entry of
+// routes.days[].groups), the transitions in which it crosses each node and
+// each link. It is worked out once for an entry on a graph and kept beside
+// the entry, so asking who crosses a cell does not walk every route of the
+// day again. An entry is never changed once the router has given it, so what
+// is kept for it stays true; another graph, or another number of
+// transitions, is worked out afresh.
+const crossedBy = new WeakMap();
+function crossingsOf(entry, base, linkOfId, transitions) {
+  const kept = crossedBy.get(entry);
+  if (kept && kept.graph === base && kept.transitions === transitions) return kept;
+  const made = { graph: base, transitions, nodes: new Map(), links: new Map() };
+  const note = (map, key, t) => {
+    const list = map.get(key);
+    if (list) list.push(t);
+    else map.set(key, [t]);
+  };
+  for (let t = 0; t < transitions; t += 1) {
+    eachCrossed(base, linkOfId, entry.routes[t], (node) => note(made.nodes, node, t), (link) => note(made.links, link, t));
+  }
+  crossedBy.set(entry, made);
+  return made;
+}
+
+// Work the index out now, for every group of a day: for a caller that would
+// rather pay for it when the answer arrives than when the first cell is
+// pointed at (the movement view's picture).
+export function indexRoutes(project, routes, dayTypeId, graph) {
+  const found = dayOf(project, routes, dayTypeId);
+  if (!found) return 0;
+  const base = graph || buildGraph(project);
+  const linkOfId = linkIndex(base);
+  const transitions = Math.max(0, project.settings.periods - 1);
+  for (const entry of found.day.groups) crossingsOf(entry, base, linkOfId, transitions);
+  return found.day.groups.length;
+}
+
 // Who crosses these cells and connections, and how many times.
 export function contributors(project, routes, dayTypeId, where, graph, options) {
   const found = dayOf(project, routes, dayTypeId);
@@ -189,8 +226,8 @@ export function contributors(project, routes, dayTypeId, where, graph, options) 
   const base = graph || buildGraph(project);
   const linkOfId = linkIndex(base);
   const { countOf } = counting(project);
-  const nodes = new Set(where && where.nodes ? where.nodes : []);
-  const links = new Set(where && where.links ? where.links : []);
+  const nodes = where && where.nodes ? Array.from(new Set(where.nodes)) : [];
+  const links = where && where.links ? Array.from(new Set(where.links)) : [];
   const only = options && Number.isInteger(options.period) ? options.period : null;
   const transitions = Math.max(0, project.settings.periods - 1);
   const order = new Map(project.groups.map((group, index) => [group.id, index]));
@@ -199,14 +236,14 @@ export function contributors(project, routes, dayTypeId, where, graph, options) 
   for (const entry of found.day.groups) {
     const count = countOf.get(entry.groupId);
     if (count === undefined) continue;
-    const crossedIn = [];
-    for (let t = 0; t < transitions; t += 1) {
-      if (only !== null && t !== only) continue;
-      let crossed = false;
-      eachCrossed(base, linkOfId, entry.routes[t], (node) => { if (nodes.has(node)) crossed = true; }, (link) => { if (links.has(link)) crossed = true; });
-      if (crossed) crossedIn.push(t);
-    }
-    if (crossedIn.length > 0) list.push({ groupId: entry.groupId, count, times: crossedIn.length, transitions: crossedIn });
+    // the transitions in which this group crosses any of the places asked about, each once, in order
+    const index = crossingsOf(entry, base, linkOfId, transitions);
+    const crossed = new Set();
+    for (const node of nodes) for (const t of index.nodes.get(node) || []) if (only === null || t === only) crossed.add(t);
+    for (const link of links) for (const t of index.links.get(link) || []) if (only === null || t === only) crossed.add(t);
+    if (crossed.size === 0) continue;
+    const crossedIn = Array.from(crossed).sort((a, b) => a - b);
+    list.push({ groupId: entry.groupId, count, times: crossedIn.length, transitions: crossedIn });
   }
   return list.sort((a, b) => b.times * b.count - a.times * a.count || b.times - a.times || order.get(a.groupId) - order.get(b.groupId));
 }

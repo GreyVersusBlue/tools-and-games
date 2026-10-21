@@ -262,6 +262,15 @@ New events are pure JSON composed from these handlers. New handler = one functio
   of. Before that, adding a listing threw on the MLS board for every existing player, and adding
   a neighborhood left it permanently out of the weekly market drift. Anything else you add to `S`
   belongs in `repairCareer()` the same day you add it — especially if arithmetic touches it.
+- **A client file added to `data/` reaches a career already under way** (#956). `repairCareer()`
+  puts every client the save has never heard of (in none of `clientQueue`, `usedClients` and the
+  book) on the end of the queue, lowest rung first and then by id. Not shuffled in: repair runs on
+  every load and may not draw from `rand()`, and the front of the queue is who intake hands over
+  next. Before this a career older than a client file never met that client.
+- **Four doors hand out a client and one function gates them**: intake, a happy client's referral,
+  the Monday lead and Ruth's call all ask `inReach()` in `engine/clients.js`. Ruth's call was
+  written without the gate and sent a Rookie Agent buyers above the rung; a fifth door calls
+  `inReach()` or the suite fails on a second copy of the rule.
 - **Removing content from a live career is safe now too.** `repairCareer()` also drops any
   `listingsState` / `market.nb` / `knowledge` entry whose id no longer has a matching file in
   `data/`. Without that, `calendar.js`'s daily aging loop — `for (const id in S.listingsState)`,

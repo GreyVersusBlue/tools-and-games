@@ -13,7 +13,7 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf } from '../page.js';
-import { clockNow, dayTypeFor, momentOf, momentKey, momentWords, periodTimes, periodFor, watchClock, everyTeacherDay, dayTypePicker, periodPicker, viewLink, nowTabs, sectionHeading, shareRow, teacherDetail } from '../clock.js';
+import { clockNow, dayTypeFor, momentOf, momentKey, momentWords, periodTimes, periodFor, watchClock, everyTeacherDay, dayTypePicker, periodPicker, viewLink, nowTabs, sectionHeading, teacherDetail } from '../clock.js';
 
 // The teachers with no group in a period, in the school's own order.
 export function freeTeachers(school, dayTypeId, period) {
@@ -189,7 +189,7 @@ export const freeView = {
 
     drawPickers(false);
     draw();
-    const page = pageOf('Free right now', null, says, nowTabs(school, 'free'), pickers, teachersOut, roomsOut, shareRow(() => 'Free right now · ' + school.name));
+    const page = pageOf('Free right now', null, says, nowTabs(school, 'free'), pickers, teachersOut, roomsOut);
     watchClock(page, () => {
       if (state.period !== '') return;
       if (momentKey(state.dayType.id, momentOf(school, state.dayType.id, clockNow(ctx))) !== lastKey) draw();

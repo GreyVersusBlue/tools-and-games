@@ -285,7 +285,9 @@ const modulesFetched = (since = 0) =>
 // is the walk template's own 4 MB rule; the request ceiling leaves room for a
 // phase's worth of new modules above the measurement, because a budget that
 // is exactly the measurement is a budget that fails on a comment.
-const BOOT_BUDGET = { bytes: 4 * 1024 * 1024, requests: 115 };
+// 116 since #967: roof.js imports skeleton.js, because a hipped roof over a
+// curve is drawn at boot like any other roof.
+const BOOT_BUDGET = { bytes: 4 * 1024 * 1024, requests: 116 };
 // Modules the boot must not fetch: each is behind a button, and the phase
 // that put it there is named so the next reader knows what re-pinning costs.
 const DEFERRED = [
@@ -1395,6 +1397,317 @@ const CHECKS = [
       if (after.json !== before.json) throw new Error('the check left its paint on the design');
     },
   },
+  // A hipped roof over a curve, drawn (#967). test/roof-curve.test.mjs proves
+  // the faces and their triangles in Node; this builds the scene with an
+  // L-shaped wing whose end is curved on the top storey, away from the school,
+  // and reads the roof's triangles back: every one inside the eave line and
+  // the lot covering it exactly once. A fan from each face's first point,
+  // which is how the renderer drew every roof face before, lays triangles of
+  // the L's long slopes across the valley over the next face: with the
+  // renderer's triangles taken away it covered 2390.3 ft² of a 2326.3 ft² eave.
+  {
+    name: 'curved-roof',
+    what: 'a hipped roof over an L with a curved end is drawn as its skeleton faces, inside the eave, once over',
+    async run(d) {
+      return d.page.evaluate(`(async () => {
+        const THREE = await import('three');
+        const { addShape, curveSegment, pointInRing } = await import('./js/shapes.js');
+        const { roofPlan } = await import('./js/roof.js');
+        const { CELL } = await import('./js/grid.js');
+        const s = window.app.state, top = s.floors.length - 1, floor = s.floors[top];
+        const was = { roof: JSON.stringify(s.roof ?? null), shapes: JSON.stringify(floor.shapes), nextId: s.nextId };
+        const x0 = (s.w + 12) * CELL, z0 = 8;
+        const R = (a, b, c, e) => [{ x: a, z: b }, { x: c, z: b }, { x: c, z: e }, { x: a, z: e }];
+        const hall = addShape(s, top, R(x0, z0, x0 + 48, z0 + 24));
+        addShape(s, top, R(x0, z0 + 24, x0 + 20, z0 + 56));
+        // The hall's east wall, bowed out of the room.
+        const steps = curveSegment(hall, 0, 1, -0.45);
+        s.roof = { style: 'hip', pitch: 6, facade: 'brick' };
+        window.app.renderApi.buildFromState(s);
+        const plan = roofPlan(s);
+        const sk = plan.blocks.find((b) => b.skeleton);
+        const out = { steps, found: !!sk, n: 0, outside: 0, area: 0, eaveArea: 0 };
+        if (sk) {
+          const e = sk.eave;
+          for (let i = 0; i < e.length; i++) {
+            const p = e[i], q = e[(i + 1) % e.length];
+            out.eaveArea += (p.x * q.z - q.x * p.z) / 2;
+          }
+          let bx0 = Infinity, bx1 = -Infinity;
+          for (const p of e) { bx0 = Math.min(bx0, p.x); bx1 = Math.max(bx1, p.x); }
+          window.app.renderApi.scene.updateMatrixWorld(true);
+          window.app.renderApi.scene.traverse((o) => {
+            const g = o.isMesh && o.geometry;
+            if (!g || !g.attributes.position) return;
+            const P = g.attributes.position, I = g.index;
+            const n = (I ? I.count : P.count) / 3;
+            for (let k = 0; k < n; k++) {
+              const v = [0, 1, 2].map((j) => {
+                const i = I ? I.getX(k * 3 + j) : k * 3 + j;
+                return new THREE.Vector3(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(o.matrixWorld);
+              });
+              // A roof slope: off to the east of the school, at the eave or
+              // above it, and not flat.
+              if (v.some((p) => p.x < bx0 - 0.01 || p.x > bx1 + 0.01)) continue;
+              const ys = v.map((p) => p.y);
+              if (Math.min(...ys) < plan.eaveY - 1e-3 || Math.max(...ys) < plan.eaveY + 1e-2) continue;
+              out.n++;
+              out.area += Math.abs((v[1].x - v[0].x) * (v[2].z - v[0].z) - (v[1].z - v[0].z) * (v[2].x - v[0].x)) / 2;
+              const mx = (v[0].x + v[1].x + v[2].x) / 3, mz = (v[0].z + v[1].z + v[2].z) / 3;
+              if (!pointInRing(e, mx, mz)) out.outside++;
+            }
+          });
+        }
+        // Put the school back the way the next check expects to find it.
+        s.roof = JSON.parse(was.roof);
+        if (s.roof === null) delete s.roof;
+        floor.shapes = JSON.parse(was.shapes);
+        s.nextId = was.nextId;
+        window.app.renderApi.buildFromState(s);
+        return out;
+      })()`);
+    },
+    expect: ({ ctx, before, after }) => {
+      if (!(ctx.steps > 3)) throw new Error(`the curve tool laid ${ctx.steps} segments, not a curve`);
+      if (!ctx.found) throw new Error('the roof plan has no skeleton block over the curved wing');
+      if (ctx.n < 20) throw new Error(`found ${ctx.n} roof triangles over the wing`);
+      if (ctx.outside) throw new Error(`${ctx.outside} of ${ctx.n} roof triangles lie outside the eave line`);
+      if (Math.abs(ctx.area - ctx.eaveArea) > 1e-3 * ctx.eaveArea) {
+        throw new Error(`the roof's triangles cover ${ctx.area.toFixed(2)} ft² of plan, the eave line ${ctx.eaveArea.toFixed(2)}`);
+      }
+      if (after.json !== before.json) throw new Error('the check left its wing on the design');
+    },
+  },
+  // A parapet over a curve (#973). test/roof-parapet.test.mjs proves the plan
+  // runs the parapet on the chords and gives the deck as the outline; this
+  // builds the scene and reads the deck back: flat triangles at the deck's
+  // height over the curved building, inside its outline and covering it once.
+  {
+    name: 'curved-parapet',
+    what: 'a flat roof with a parapet over an L with a curved end has a deck that is the outline, once over',
+    async run(d) {
+      return d.page.evaluate(`(async () => {
+        const THREE = await import('three');
+        const { addShape, curveSegment, pointInRing } = await import('./js/shapes.js');
+        const { roofPlan } = await import('./js/roof.js');
+        const { CELL } = await import('./js/grid.js');
+        const s = window.app.state, top = s.floors.length - 1, floor = s.floors[top];
+        const was = { roof: JSON.stringify(s.roof ?? null), shapes: JSON.stringify(floor.shapes), nextId: s.nextId };
+        const x0 = (s.w + 12) * CELL, z0 = 8;
+        const R = (a, b, c, e) => [{ x: a, z: b }, { x: c, z: b }, { x: c, z: e }, { x: a, z: e }];
+        const hall = addShape(s, top, R(x0, z0, x0 + 48, z0 + 24));
+        addShape(s, top, R(x0, z0 + 24, x0 + 20, z0 + 56));
+        const steps = curveSegment(hall, 0, 1, -0.45);
+        s.roof = { style: 'parapet', pitch: 6, facade: 'brick' };
+        window.app.renderApi.buildFromState(s);
+        const plan = roofPlan(s);
+        const deck = (plan.deckPolys || []).find((p) => p.pts.some((q) => q.x > x0 - 0.01));
+        const out = { steps, found: !!deck, n: 0, outside: 0, area: 0, loopArea: 0 };
+        if (deck) {
+          const e = deck.pts;
+          for (let i = 0; i < e.length; i++) {
+            const p = e[i], q = e[(i + 1) % e.length];
+            out.loopArea += (p.x * q.z - q.x * p.z) / 2;
+          }
+          const y = plan.eaveY + 0.05;
+          window.app.renderApi.scene.updateMatrixWorld(true);
+          window.app.renderApi.scene.traverse((o) => {
+            const g = o.isMesh && o.geometry;
+            if (!g || !g.attributes.position) return;
+            const P = g.attributes.position, I = g.index;
+            const n = (I ? I.count : P.count) / 3;
+            for (let k = 0; k < n; k++) {
+              const v = [0, 1, 2].map((j) => {
+                const i = I ? I.getX(k * 3 + j) : k * 3 + j;
+                return new THREE.Vector3(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(o.matrixWorld);
+              });
+              // A deck triangle: east of the school, flat at the deck's height.
+              if (v.some((p) => p.x < x0 - 0.01 || Math.abs(p.y - y) > 1e-3)) continue;
+              out.n++;
+              out.area += Math.abs((v[1].x - v[0].x) * (v[2].z - v[0].z) - (v[1].z - v[0].z) * (v[2].x - v[0].x)) / 2;
+              const mx = (v[0].x + v[1].x + v[2].x) / 3, mz = (v[0].z + v[1].z + v[2].z) / 3;
+              if (!pointInRing(e, mx, mz)) out.outside++;
+            }
+          });
+        }
+        s.roof = JSON.parse(was.roof);
+        if (s.roof === null) delete s.roof;
+        floor.shapes = JSON.parse(was.shapes);
+        s.nextId = was.nextId;
+        window.app.renderApi.buildFromState(s);
+        return out;
+      })()`);
+    },
+    expect: ({ ctx, before, after }) => {
+      if (!(ctx.steps > 3)) throw new Error(`the curve tool laid ${ctx.steps} segments, not a curve`);
+      if (!ctx.found) throw new Error('the roof plan has no deck outline over the curved wing');
+      if (ctx.n < 4) throw new Error(`found ${ctx.n} deck triangles over the wing`);
+      if (ctx.outside) throw new Error(`${ctx.outside} of ${ctx.n} deck triangles lie outside the outline`);
+      if (Math.abs(ctx.area - ctx.loopArea) > 1e-3 * ctx.loopArea) {
+        throw new Error(`the deck's triangles cover ${ctx.area.toFixed(2)} ft² of plan, the outline ${ctx.loopArea.toFixed(2)}`);
+      }
+      if (after.json !== before.json) throw new Error('the check left its wing on the design');
+    },
+  },
+  // The same with a court in the hall (#998). test/roof-holes.test.mjs proves
+  // the plan's deck is the outline less the court; this reads the drawn deck
+  // back: no triangle with its middle in the court, none outside the outline,
+  // and the outline less the court covered once. With the deck triangulated
+  // without its court it is the area line that fails (1989.26 ft² against
+  // 1893.26: no triangle's middle lay in the court); with render.js drawing
+  // the outer ring alone, the build throws on the court's indices.
+  {
+    name: 'curved-parapet-court',
+    what: 'a flat roof with a parapet over a curved L with a court has a deck that is the outline less the court, once over',
+    async run(d) {
+      return d.page.evaluate(`(async () => {
+        const THREE = await import('three');
+        const { addShape, curveSegment, pointInRing } = await import('./js/shapes.js');
+        const { roofPlan } = await import('./js/roof.js');
+        const { CELL } = await import('./js/grid.js');
+        const s = window.app.state, top = s.floors.length - 1, floor = s.floors[top];
+        const was = { roof: JSON.stringify(s.roof ?? null), shapes: JSON.stringify(floor.shapes), nextId: s.nextId };
+        const x0 = (s.w + 12) * CELL, z0 = 8;
+        const R = (a, b, c, e) => [{ x: a, z: b }, { x: c, z: b }, { x: c, z: e }, { x: a, z: e }];
+        const hall = addShape(s, top, R(x0, z0, x0 + 48, z0 + 24));
+        addShape(s, top, R(x0, z0 + 24, x0 + 20, z0 + 56));
+        const steps = curveSegment(hall, 0, 1, -0.45);
+        const court = R(x0 + 12, z0 + 8, x0 + 24, z0 + 16);
+        hall.rings.push({ pts: court, walls: [], openings: [] });
+        s.roof = { style: 'parapet', pitch: 6, facade: 'brick' };
+        window.app.renderApi.buildFromState(s);
+        const plan = roofPlan(s);
+        const deck = (plan.deckPolys || []).find((p) => p.pts.some((q) => q.x > x0 - 0.01));
+        const out = { steps, found: !!deck, holes: deck ? deck.holes.length : 0, n: 0, outside: 0, inCourt: 0, area: 0, loopArea: 0 };
+        if (deck) {
+          const e = deck.pts;
+          for (let i = 0; i < e.length; i++) {
+            const p = e[i], q = e[(i + 1) % e.length];
+            out.loopArea += (p.x * q.z - q.x * p.z) / 2;
+          }
+          const y = plan.eaveY + 0.05;
+          window.app.renderApi.scene.updateMatrixWorld(true);
+          window.app.renderApi.scene.traverse((o) => {
+            const g = o.isMesh && o.geometry;
+            if (!g || !g.attributes.position) return;
+            const P = g.attributes.position, I = g.index;
+            const n = (I ? I.count : P.count) / 3;
+            for (let k = 0; k < n; k++) {
+              const v = [0, 1, 2].map((j) => {
+                const i = I ? I.getX(k * 3 + j) : k * 3 + j;
+                return new THREE.Vector3(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(o.matrixWorld);
+              });
+              if (v.some((p) => p.x < x0 - 0.01 || Math.abs(p.y - y) > 1e-3)) continue;
+              out.n++;
+              out.area += Math.abs((v[1].x - v[0].x) * (v[2].z - v[0].z) - (v[1].z - v[0].z) * (v[2].x - v[0].x)) / 2;
+              const mx = (v[0].x + v[1].x + v[2].x) / 3, mz = (v[0].z + v[1].z + v[2].z) / 3;
+              if (!pointInRing(e, mx, mz)) out.outside++;
+              if (pointInRing(court, mx, mz)) out.inCourt++;
+            }
+          });
+        }
+        s.roof = JSON.parse(was.roof);
+        if (s.roof === null) delete s.roof;
+        floor.shapes = JSON.parse(was.shapes);
+        s.nextId = was.nextId;
+        window.app.renderApi.buildFromState(s);
+        return out;
+      })()`);
+    },
+    expect: ({ ctx, before, after }) => {
+      if (!(ctx.steps > 3)) throw new Error(`the curve tool laid ${ctx.steps} segments, not a curve`);
+      if (!ctx.found) throw new Error('the roof plan has no deck outline over the curved wing with a court');
+      if (ctx.holes !== 1) throw new Error(`the deck has ${ctx.holes} courts, not 1`);
+      if (ctx.n < 8) throw new Error(`found ${ctx.n} deck triangles over the wing`);
+      if (ctx.outside) throw new Error(`${ctx.outside} of ${ctx.n} deck triangles lie outside the outline`);
+      if (ctx.inCourt) throw new Error(`${ctx.inCourt} of ${ctx.n} deck triangles lie in the court`);
+      const want = ctx.loopArea - 96;
+      if (Math.abs(ctx.area - want) > 1e-3 * want) {
+        throw new Error(`the deck's triangles cover ${ctx.area.toFixed(2)} ft² of plan, the outline less the court ${want.toFixed(2)}`);
+      }
+      if (after.json !== before.json) throw new Error('the check left its wing on the design');
+    },
+  },
+  // The hipped roof over the same L with its court (#999). test/roof-holes
+  // .test.mjs proves the plan's faces stand on their planes round the court's
+  // eave; this reads the drawn slopes back, as 'curved-roof' does: every
+  // triangle inside the outer eave and outside the court's eave, and the
+  // outer eave less the court's covered once.
+  {
+    name: 'curved-roof-court',
+    what: 'a hipped roof over a curved L with a court is drawn as its skeleton faces, inside the eave, round the court eave, once over',
+    async run(d) {
+      return d.page.evaluate(`(async () => {
+        const THREE = await import('three');
+        const { addShape, curveSegment, pointInRing } = await import('./js/shapes.js');
+        const { roofPlan } = await import('./js/roof.js');
+        const { CELL } = await import('./js/grid.js');
+        const s = window.app.state, top = s.floors.length - 1, floor = s.floors[top];
+        const was = { roof: JSON.stringify(s.roof ?? null), shapes: JSON.stringify(floor.shapes), nextId: s.nextId };
+        const x0 = (s.w + 12) * CELL, z0 = 8;
+        const R = (a, b, c, e) => [{ x: a, z: b }, { x: c, z: b }, { x: c, z: e }, { x: a, z: e }];
+        const hall = addShape(s, top, R(x0, z0, x0 + 48, z0 + 24));
+        addShape(s, top, R(x0, z0 + 24, x0 + 20, z0 + 56));
+        const steps = curveSegment(hall, 0, 1, -0.45);
+        hall.rings.push({ pts: R(x0 + 12, z0 + 8, x0 + 24, z0 + 16), walls: [], openings: [] });
+        s.roof = { style: 'hip', pitch: 6, facade: 'brick' };
+        window.app.renderApi.buildFromState(s);
+        const plan = roofPlan(s);
+        const sk = plan.blocks.find((b) => b.skeleton);
+        const ringArea = (e) => {
+          let a = 0;
+          for (let i = 0; i < e.length; i++) a += (e[i].x * e[(i + 1) % e.length].z - e[(i + 1) % e.length].x * e[i].z) / 2;
+          return a;
+        };
+        const out = { steps, found: !!sk, courts: sk && sk.eaveHoles ? sk.eaveHoles.length : 0, n: 0, outside: 0, inCourt: 0, area: 0, want: 0 };
+        if (sk) {
+          const e = sk.eave, holes = sk.eaveHoles || [];
+          out.want = ringArea(e) - holes.reduce((a, h) => a + Math.abs(ringArea(h)), 0);
+          let bx0 = Infinity, bx1 = -Infinity;
+          for (const p of e) { bx0 = Math.min(bx0, p.x); bx1 = Math.max(bx1, p.x); }
+          window.app.renderApi.scene.updateMatrixWorld(true);
+          window.app.renderApi.scene.traverse((o) => {
+            const g = o.isMesh && o.geometry;
+            if (!g || !g.attributes.position) return;
+            const P = g.attributes.position, I = g.index;
+            const n = (I ? I.count : P.count) / 3;
+            for (let k = 0; k < n; k++) {
+              const v = [0, 1, 2].map((j) => {
+                const i = I ? I.getX(k * 3 + j) : k * 3 + j;
+                return new THREE.Vector3(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(o.matrixWorld);
+              });
+              if (v.some((p) => p.x < bx0 - 0.01 || p.x > bx1 + 0.01)) continue;
+              const ys = v.map((p) => p.y);
+              if (Math.min(...ys) < plan.eaveY - 1e-3 || Math.max(...ys) < plan.eaveY + 1e-2) continue;
+              out.n++;
+              out.area += Math.abs((v[1].x - v[0].x) * (v[2].z - v[0].z) - (v[1].z - v[0].z) * (v[2].x - v[0].x)) / 2;
+              const mx = (v[0].x + v[1].x + v[2].x) / 3, mz = (v[0].z + v[1].z + v[2].z) / 3;
+              if (!pointInRing(e, mx, mz)) out.outside++;
+              if (holes.some((h) => pointInRing(h, mx, mz))) out.inCourt++;
+            }
+          });
+        }
+        s.roof = JSON.parse(was.roof);
+        if (s.roof === null) delete s.roof;
+        floor.shapes = JSON.parse(was.shapes);
+        s.nextId = was.nextId;
+        window.app.renderApi.buildFromState(s);
+        return out;
+      })()`);
+    },
+    expect: ({ ctx, before, after }) => {
+      if (!(ctx.steps > 3)) throw new Error(`the curve tool laid ${ctx.steps} segments, not a curve`);
+      if (!ctx.found) throw new Error('the roof plan has no skeleton block over the curved wing with a court');
+      if (ctx.courts !== 1) throw new Error(`the skeleton block has ${ctx.courts} court eaves, not 1`);
+      if (ctx.n < 24) throw new Error(`found ${ctx.n} roof triangles over the wing`);
+      if (ctx.outside) throw new Error(`${ctx.outside} of ${ctx.n} roof triangles lie outside the eave line`);
+      if (ctx.inCourt) throw new Error(`${ctx.inCourt} of ${ctx.n} roof triangles lie inside the court's eave`);
+      if (Math.abs(ctx.area - ctx.want) > 1e-3 * ctx.want) {
+        throw new Error(`the roof's triangles cover ${ctx.area.toFixed(2)} ft² of plan, the eave less the court's eave ${ctx.want.toFixed(2)}`);
+      }
+      if (after.json !== before.json) throw new Error('the check left its wing on the design');
+    },
+  },
   // An accent wall, drawn (#827). test/accent.test.mjs proves which face of
   // which run takes the colour; this builds the scene and reads the corners
   // back, the way 'wall-faces' does, with one wall of the red room green.
@@ -1572,6 +1885,67 @@ const CHECKS = [
         }
       }
       if (after.json !== before.json) throw new Error('the check left its ramp on the design');
+    },
+  },
+  // A straight ramp's top landing, drawn (#981). test/ramp-deck.test.mjs
+  // proves the box sits in the hole and is walked at the rise; this is
+  // whether anything stands there. Two ramps on a two-storey slab, the
+  // default and a wide shallow one, and a ray dropped on each landing; and a
+  // stair's 4ft one, drawn by the same line since #983 (test/stair-deck.test.mjs).
+  {
+    name: 'ramp-deck',
+    what: "a straight ramp's 5ft top landing and a stair's 4ft one are decks at the floor above, not holes",
+    async run(d) {
+      return d.page.evaluate(`(async () => {
+        const THREE = await import('three');
+        const { createState, addFloor } = await import('./js/grid.js');
+        const { createLattice, setTile, bake } = await import('./js/lattice.js');
+        const { addStair } = await import('./js/stairs.js');
+        const s = createState(60, 60);
+        addFloor(s);
+        for (const i of [0, 1]) {
+          const lat = createLattice(60, 60);
+          for (let y = 0; y < 60; y++) for (let x = 0; x < 60; x++) setTile(lat, x, y, true);
+          bake(s, i, lat);
+        }
+        addStair(s, 0, { type: 'ramp', x: 100, z: 40, rotationY: 0 });
+        addStair(s, 0, { type: 'ramp', x: 160, z: 20, rotationY: 0, width: 8, slope: 16 });
+        addStair(s, 0, { type: 'stair', x: 40, z: 40, rotationY: 0 });   // #983
+        const api = window.app.renderApi;
+        api.buildFromState(s);
+        api.scene.updateMatrixWorld(true);
+        const ray = new THREE.Raycaster();
+        const baked = [];
+        api.scene.traverse((o) => { if (o.isMesh && o.userData.baked) baked.push(o); });
+        const top = (x, z, from) => {
+          ray.set(new THREE.Vector3(x, from, z), new THREE.Vector3(0, -1, 0));
+          const hit = ray.intersectObjects(baked, false)[0];
+          return hit ? hit.point.y : null;
+        };
+        const out = {
+          narrow: top(100, 186.5, 12.5),     // the middle of the 4ft ramp's landing
+          narrowEdge: top(101.6, 188.7, 12.5), // near its far corner, inside the rail
+          wide: top(163, 214.5, 12.5),       // the 8ft ramp's, off its middle
+          wideNear: top(157.5, 212.3, 12.5), // just past the top of its run
+          stair: top(40, 61.25, 12.5),       // the middle of the stair's landing
+          stairEdge: top(41.6, 63, 12.5),    // near its far corner, inside the rail
+        };
+        api.buildFromState(window.app.state);
+        return out;
+      })()`);
+    },
+    expect: ({ ctx, before, after }) => {
+      // 4ft at 1:12 is 144ft of run from z 40, so its landing is z 184 to
+      // 189; 8ft at 1:16 is 192ft from z 20, landing z 212 to 217. Each is
+      // the floor above's height, 12; the hole under it reached the floor
+      // below, 0. The stair's 21 treads of 11in are 19.25ft from z 40, so its
+      // 4ft landing is z 59.25 to 63.25 (#983); before, the ray fell through.
+      for (const k of ['narrow', 'narrowEdge', 'wide', 'wideNear', 'stair', 'stairEdge']) {
+        if (ctx[k] === null || Math.abs(ctx[k] - 12) > 0.12) {
+          throw new Error(`${k}: the highest thing on the landing is at ${ctx[k]}ft, not 12ft`);
+        }
+      }
+      if (after.json !== before.json) throw new Error('the check left its ramps on the design');
     },
   },
   // The two controls of #832, driven the way a person drives them: the panel's
@@ -2105,8 +2479,11 @@ const CHECKS = [
   // and where it is stored; this types a hex into the Wall panel with the
   // keyboard, paints a wall with it, opens the design in a second page from
   // the autosave, types something that is not a colour, tries black and white
-  // for the ink, and goes back to a named swatch. One undo step goes on (the
-  // paint) and one comes off, so `undo-redo` finds the stack as it was.
+  // for the ink, and goes back to a named swatch. It also reads the row of the
+  // school's own custom colours (#961) at each step, presses its swatch with
+  // Enter, and reads what the page kept and what the second page opened with
+  // (#962). One undo step goes on (the paint) and one comes off (undo, redo,
+  // undo), so `undo-redo` finds the stack as it was.
   {
     name: 'accent-free',
     what: 'a hex typed under the swatches paints a wall and survives a reload, a bad one is refused with the old colour kept, black and white get the other ink, and a named swatch still works',
@@ -2158,6 +2535,13 @@ const CHECKS = [
           rim: rim ? { on: rim.visible && rim.parent.visible, ink: rim.material.color.getHexString(), bar: rim.parent.material.color.getHexString() } : null,
           focus: document.activeElement && document.activeElement.id,
           status: document.getElementById('status').textContent,
+          // #961: the school's own custom colours. #962: what the page keeps.
+          used: [...document.querySelectorAll('#accent-used .swatch')].map((b) => b.dataset.accent),
+          usedLit: [...document.querySelectorAll('#accent-used .swatch[aria-pressed="true"]')].map((b) => b.dataset.accent),
+          usedLabels: [...document.querySelectorAll('#accent-used .swatch')].map((b) => b.getAttribute('aria-label')),
+          usedHidden: el('accent-used-row').classList.contains('hidden'),
+          usedFocus: document.activeElement && document.activeElement.closest('#accent-used') ? document.activeElement.dataset.accent : null,
+          kept: localStorage.getItem('sg-accent-custom'),
         };
       })()`;
       const read = () => q(READ);
@@ -2203,6 +2587,10 @@ const CHECKS = [
               face: ring.accents ? ring.accents[${aim.seg}] : null,
               drawn: runs.some((r) => r.left === '#3a7f5c' || r.right === '#3a7f5c'),
               field: document.getElementById('accent-hex').value,
+              chip: document.getElementById('accent-chip').textContent,
+              armed: window.app.editor.accentPaint === undefined ? 'off' : window.app.editor.accentPaint,
+              used: [...document.querySelectorAll('#accent-used .swatch')].map((b) => b.dataset.accent),
+              usedHidden: document.getElementById('accent-used-row').classList.contains('hidden'),
             };
           })()`);
         } finally { await tab.close(); }
@@ -2231,13 +2619,25 @@ const CHECKS = [
       await q(`document.getElementById('accent-chip').click(); 1`);
       await hover();
       const chipOff = await read();
+      // #961: the swatch of the colour the wall wears, pressed with the
+      // keyboard, arms it as typing it did; again, and the brush is down.
+      await d.page.focus('#accent-used .swatch[data-accent="#3a7f5c"]');
+      await d.page.keyboard.press('Enter');
+      await d.page.waitForTimeout(120);
+      const usedOn = await read();
+      await d.page.keyboard.press('Enter');
+      await d.page.waitForTimeout(120);
+      const usedOff = await read();
       await q('window.app.editor.undo(); 1');
       const undone = await read();
-      return { aim, idle, typed, painted, saved, reloaded, refused, black, white, picked, named, swatch, chipOn, chipOff, undone };
+      await q('window.app.editor.redo(); 1');
+      const redone = await read();
+      await q('window.app.editor.undo(); 1');
+      return { aim, idle, typed, painted, saved, reloaded, refused, black, white, picked, named, swatch, chipOn, chipOff, usedOn, usedOff, undone, redone };
     },
     expect: ({ ctx, before, after }) => {
       const say = (what, v) => { throw new Error(`${what}: ${JSON.stringify(v)}`); };
-      const { idle, typed, painted, reloaded, refused, black, white, picked, named, swatch, chipOn, chipOff, undone } = ctx;
+      const { idle, typed, painted, reloaded, refused, black, white, picked, named, swatch, chipOn, chipOff, usedOn, usedOff, undone, redone } = ctx;
       if (idle.armed !== 'off' || idle.field !== '#808080' || idle.picker !== '#808080' || idle.chip !== '#808080' ||
           idle.pressed !== 'false' || idle.invalid || idle.msg) say('the free pick should open at mid grey, not armed', idle);
       if (typed.armed !== '#3a7f5c' || typed.field !== '#3a7f5c' || typed.picker !== '#3a7f5c' || typed.chip !== '#3a7f5c' ||
@@ -2271,6 +2671,36 @@ const CHECKS = [
       if (chipOn.armed !== '#123456' || chipOn.pressed !== 'true' || chipOn.lit.length) say('the chip should arm the custom colour', chipOn);
       if (chipOff.armed !== 'off' || chipOff.pressed !== 'false' || (chipOff.rim && chipOff.rim.on)) say('the chip again should put the brush down, outline and all', chipOff);
       if (undone.face !== null) say('one undo should take the paint off', undone);
+      // #961: the row follows the school.
+      if (idle.used.length || !idle.usedHidden) say('a school with no custom colour should show no row of them', idle);
+      if (typed.used.length || !typed.usedHidden) say('a colour typed and not yet on a wall is not the school\'s', typed);
+      if (painted.used.join() !== '#3a7f5c' || painted.usedHidden || painted.usedLit.join() !== '#3a7f5c' ||
+          painted.usedLabels.join() !== 'Accent paint #3a7f5c, in this school') {
+        say('a wall painted a custom colour should put its swatch in the row, lit while the brush holds it', painted);
+      }
+      if (reloaded.used.join() !== '#3a7f5c' || reloaded.usedHidden) say('a fresh page should list the colour the school holds', reloaded);
+      if (black.used.join() !== '#3a7f5c' || black.usedLit.length) say('arming another colour should leave the row as it was, unlit', black);
+      if (swatch.used.join() !== '#3a7f5c' || swatch.usedLit.length) say('a named swatch should not light the row', swatch);
+      if (usedOn.armed !== '#3a7f5c' || usedOn.field !== '#3a7f5c' || usedOn.picker !== '#3a7f5c' || usedOn.chip !== '#3a7f5c' ||
+          usedOn.pressed !== 'true' || usedOn.usedLit.join() !== '#3a7f5c' || usedOn.lit.length || usedOn.usedFocus !== '#3a7f5c' ||
+          !/^Accent, #3a7f5c — click just inside a room/.test(usedOn.status)) {
+        say('Enter on the school\'s own swatch should arm that colour as typing it does, and keep the focus', usedOn);
+      }
+      if (usedOff.armed !== 'off' || usedOff.usedLit.length || usedOff.pressed !== 'false' || usedOff.used.join() !== '#3a7f5c') {
+        say('Enter on the lit swatch should put the brush down and leave the swatch there', usedOff);
+      }
+      if (undone.used.length || !undone.usedHidden) say('the undo that takes the paint off should take the swatch out of the row', undone);
+      if (redone.face !== '#3a7f5c' || redone.used.join() !== '#3a7f5c' || redone.usedHidden) say('a redo should bring the wall and its swatch back', redone);
+      // #962: the page keeps the custom colour, and a fresh page opens with it.
+      if (idle.kept !== null) say('nothing should be kept before a colour is picked', idle.kept);
+      if (typed.kept !== '#3a7f5c') say('a typed colour should be kept', typed.kept);
+      if (reloaded.field !== '#3a7f5c' || reloaded.chip !== '#3a7f5c' || reloaded.armed !== 'off') {
+        say('a fresh page should open the free pick at the last custom colour, with the brush down', reloaded);
+      }
+      if (refused.kept !== '#3a7f5c') say('a refused entry should not be kept', refused.kept);
+      if (picked.kept !== '#123456') say('the colour input\'s pick should be kept', picked.kept);
+      if (named.kept !== '#123456' || swatch.kept !== '#123456') say('a palette colour is not the custom one and should not be kept', named.kept);
+      if (usedOn.kept !== '#3a7f5c') say('a colour armed from the school\'s row should be kept', usedOn.kept);
       if (after.walls !== before.walls) throw new Error('the brush drew a wall');
       if (after.json !== before.json) throw new Error('the design is not back to the bytes it started with');
     },
@@ -2668,6 +3098,73 @@ const CHECKS = [
       }
       if (!ctx.findings && !/Passes every check/.test(ctx.verdict)) {
         throw new Error(`the report built but says "${ctx.verdict}" with no findings`);
+      }
+    },
+  },
+  {
+    // #1003: "Show it on the plan" leaves a mark in the edit view where the
+    // map draws its own, and the next edit takes it away. After
+    // report-on-demand, which asks that nothing has loaded the analysis yet.
+    name: 'finding-mark',
+    what: 'a finding shown on the plan is marked in the edit view at the place the map marks it, until the next edit',
+    async run(d) {
+      const q = (js) => d.page.evaluate(js);
+      await d.pick('stair');
+      await q(`document.querySelector('#stair-kinds [data-type="ramp"]').click(); 1`);
+      for (let i = 0; i < 11; i++) await q(`document.getElementById('ramp-runs-less').click(); 1`);
+      await d.assertClear([[100, 112]]);
+      await d.click(100, 112);
+      const ramp = await q(`(() => { const l = window.app.state.links[window.app.state.links.length - 1];
+        return { id: l.id, type: l.type, from: l.from, data: { ...l.data } }; })()`);
+      await q(`document.getElementById('report-btn').click(); 1`);
+      await d.page.waitForFunction('!window.app.report.stale && !!window.app.report.data', { timeout: 90000 });
+      const pick = await q(`(() => {
+        const fs = window.app.report.data.findings;
+        const i = fs.findIndex((f) => f.code === 'ramp-rise' && (f.doors || []).some((p) => p.id === ${ramp.id}));
+        if (i < 0) return null;
+        const at = fs[i].doors.find((p) => p.id === ${ramp.id});
+        return { i, at: { x: at.x, z: at.z, floor: at.floor ?? 0 }, button: !!document.querySelector('#report-findings .goto[data-goto="' + i + '"]') };
+      })()`);
+      const before = await q(`window.app.renderApi.scene.getObjectByName('finding-mark').children.length`);
+      if (pick && pick.button) await q(`document.querySelector('#report-findings .goto[data-goto="${pick && pick.i}"]').click(); 1`);
+      await d.page.waitForTimeout(300);
+      const shown = await q(`(() => {
+        const g = window.app.renderApi.scene.getObjectByName('finding-mark');
+        return {
+          visible: g.visible, floor: window.app.state.currentFloor,
+          parts: g.children.map((m) => ({ kind: m.userData.kind, x: m.position.x, y: m.position.y, z: m.position.z, scale: m.scale.x })),
+          view: { x: window.app.renderApi.editView.x, z: window.app.renderApi.editView.z },
+        };
+      })()`);
+      await q(`document.getElementById('report-btn').click(); 1`);
+      await q(`window.app.editor.stairSelect(${ramp.id}); 1`);
+      await q(`document.getElementById('stair-delete').click(); 1`);
+      await d.page.waitForTimeout(300);
+      const after = await q(`(() => {
+        const g = window.app.renderApi.scene.getObjectByName('finding-mark');
+        return { visible: g.visible, parts: g.children.length, mark: window.app.editMark };
+      })()`);
+      await q(`document.querySelector('#stair-kinds [data-type="stair"]').click(); 1`);
+      return { ramp, pick, before, shown, after };
+    },
+    expect: ({ ctx }) => {
+      if (ctx.ramp.type !== 'ramp' || (ctx.ramp.data.runs || 1) !== 1) throw new Error(`no one-run ramp was placed: ${JSON.stringify(ctx.ramp)}`);
+      if (!ctx.pick) throw new Error('a one-run ramp up a storey raised no ramp-rise finding at its foot');
+      if (!ctx.pick.button) throw new Error('its finding has no "Show it on the plan" button');
+      if (ctx.before !== 0) throw new Error(`the edit view held ${ctx.before} marks before anything was shown`);
+      const rings = ctx.shown.parts.filter((p) => p.kind === 'ring');
+      if (!ctx.shown.visible || rings.length !== 1) throw new Error(`the edit view did not mark the ramp: ${JSON.stringify(ctx.shown)}`);
+      const r = rings[0];
+      if (Math.abs(r.x - ctx.pick.at.x) > 1e-6 || Math.abs(r.z - ctx.pick.at.z) > 1e-6) {
+        throw new Error(`the ring is at ${r.x}, ${r.z}, not at the map's ${ctx.pick.at.x}, ${ctx.pick.at.z}`);
+      }
+      if (ctx.shown.floor !== ctx.pick.at.floor) throw new Error(`the plan is on storey ${ctx.shown.floor}, the ramp's foot on ${ctx.pick.at.floor}`);
+      if (Math.abs(ctx.shown.view.x - r.x) > 1e-6 || Math.abs(ctx.shown.view.z - r.z) > 1e-6) {
+        throw new Error('the view did not pan to the ring');
+      }
+      if (!(r.scale >= 1.5)) throw new Error(`the ring was never sized to the view: scale ${r.scale}`);
+      if (ctx.after.visible || ctx.after.parts !== 0 || ctx.after.mark !== null) {
+        throw new Error(`deleting the ramp left its mark: ${JSON.stringify(ctx.after)}`);
       }
     },
   },

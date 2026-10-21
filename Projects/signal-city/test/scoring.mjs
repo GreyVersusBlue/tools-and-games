@@ -416,8 +416,9 @@ group('the lesson decides a star (R2)');
   ok(moved(b0.w) > 0 && b16.w.stats.laneChanges > 0 && rights(b16.w) > 0 && rights(b16.w) < b16.w.stats.handoffs / 4, 'some of the cars handed on turn right at the next box, and the ones in the inner lane change lanes for it or give up (#928)', `${rights(b0.w)} and ${rights(b16.w)} rights of ${b0.w.stats.handoffs} and ${b16.w.stats.handoffs} handed on; ${b0.w.stats.laneChanges} and ${b16.w.stats.laneChanges} lane changes, ${b0.w.stats.laneGiveUps} and ${b16.w.stats.laneGiveUps} given up`);
   ok(b16.w.stats.collisions === 0, 'and the 16 s run has no collision', `${b16.w.stats.collisions} collisions`);
   // Lights Out (R13, #933): seed 4 with nothing pressed, and with the
-  // slider moved to 32 ten seconds after the lights come back (on a 33 s
-  // cycle that is 16 s further on from where the east box stands)
+  // slider moved back to 16 ten seconds after the lights come back (the
+  // slider reads the street's 0 by then, #959, so that is 16 s further on
+  // from where the east box stands; it was the stale slider's 32)
   const lo = levelById('lights-out');
   const runL = slider => {
     const w = new World(lo, 4);
@@ -425,11 +426,11 @@ group('the lesson decides a star (R2)');
     for (let i = 0; i < lo.duration * 60 && !w.stats.gridlock; i++) { w.step(); if (!slid && w.t >= 100) { w.setOffset(slider); slid = true; } }
     return { w, r: score(w) };
   };
-  const l0 = runL(null), l32 = runL(32);
+  const l0 = runL(null), l32 = runL(16);
   ok(l0.w.stats.outages === 1 && l0.w.stats.carried > 60 && share(l0.w) > 0.5 && !l0.r.lesson.met && l0.r.stars === 1 && l0.r.cleared >= lo.target, 'Lights Out with nothing pressed: the wave it opened on is gone after the outage, over half the handed-on cars stop again, and the run keeps one star', `${pc(share(l0.w))}, ${starString(l0.r.stars)}`);
   ok(/^\d+% of the cars one box sent on stopped again at the next, against 40%$/.test(l0.r.reasons.at(-1)), 'its reason line gives the share against 40%', l0.r.reasons.at(-1));
   // the calibration's own run of the same thing (tools/calibrate.mjs played, `at`): the same run, to the car
-  const tool = playedAs(lo, 4, { offset: 32, at: 100 });
+  const tool = playedAs(lo, 4, { offset: 16, at: 100 });
   ok(tool.cleared === l32.r.cleared && tool.stars === l32.r.stars && Math.abs(tool.wait - l32.r.avgWait) < 1e-9 && tool.cleared !== l0.r.cleared, 'and the calibration tool, told to move the slider at 100 s, plays that same run and not the no-input one', `${tool.cleared} cleared at ${tool.wait.toFixed(2)} s against ${l32.r.cleared} at ${l32.r.avgWait.toFixed(2)} s; nothing pressed ${l0.r.cleared}`);
   ok(share(l32.w) <= 0.3 && l32.r.lesson.met && l32.r.stars === 3 && l32.w.controllers[1].shift === 0, 'with the slider moved half a cycle on once the lights are back the wave is back, the lesson is met and the run three-stars', `${pc(share(l32.w))}, ${starString(l32.r.stars)}`);
   // Cross Town (R13, #929; its clock and its length, #949): the ambulance

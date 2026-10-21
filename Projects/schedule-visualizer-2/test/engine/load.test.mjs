@@ -261,3 +261,111 @@ test('absolute bands begin at the loads the school set, whatever is on screen', 
   ]);
   assert.equal(bandOf(30, { mode: 'absolute', bands: [5, 10, 20, 40] }, 7), 4, 'the school\'s own numbers');
 });
+
+// ---------------------------------------------------------------- SV2-43: the index of routes by node
+
+// Who crosses a node, read straight off the routes: nothing of load.js's own.
+function crossers(project, routes, dayTypeId, graph, node, only) {
+  const floor = graph.floors[graph.nodeFloor[node]];
+  const cell = graph.nodeCell[node];
+  const found = [];
+  for (const entry of routes.days.find((day) => day.dayTypeId === dayTypeId).groups) {
+    const transitions = [];
+    entry.routes.forEach((walk, t) => {
+      if (only !== undefined && t !== only) return;
+      if (walk && walk.ok === true && walk.same !== true && walk.cells.some((place) => place.floorId === floor.id && place.cell === cell)) transitions.push(t);
+    });
+    if (transitions.length > 0) found.push([entry.groupId, transitions]);
+  }
+  return found.sort((a, b) => (a[0] < b[0] ? -1 : 1));
+}
+
+test('SV2-43 item 2: contributors answers from an index of routes by node, and every answer is what the routes themselves say', async () => {
+  const { indexRoutes } = await import('../../engine/load.js');
+  const project = school();
+  const graph = routingGraph(project, buildGraph(project));
+  const routes = routesForSchedule(project, graph);
+  const day = project.dayTypes[0].id;
+  assert.equal(indexRoutes(project, routes, day, graph), project.groups.length, 'one entry a group is indexed');
+  assert.equal(indexRoutes(project, routes, 'dnowhere00', graph), 0);
+  // every walkable node of the school, the whole day and one transition
+  let asked = 0;
+  for (let node = 0; node < graph.count; node += 1) {
+    for (const only of [undefined, 0, 4, 6]) {
+      const got = contributors(project, routes, day, { nodes: [node] }, graph, only === undefined ? undefined : { period: only }).map((entry) => [entry.groupId, entry.transitions]).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+      assert.deepEqual(got, crossers(project, routes, day, graph, node, only), 'node ' + node + (only === undefined ? '' : ', transition ' + only));
+      asked += 1;
+    }
+  }
+  assert.ok(asked > 400, 'the school has corridors to ask about: ' + asked);
+  // some of the groups: the same entries, so the same index, and only their answer
+  const some = { days: [{ dayTypeId: day, groups: routes.days[0].groups.slice(0, 3) }] };
+  const busy = Array.from({ length: graph.count }, (unused, node) => node).sort((a, b) => crossers(project, routes, day, graph, b).length - crossers(project, routes, day, graph, a).length)[0];
+  assert.deepEqual(contributors(project, some, day, { nodes: [busy] }, graph).map((entry) => entry.groupId).sort(), crossers(project, routes, day, graph, busy).map((entry) => entry[0]).filter((id) => some.days[0].groups.some((entry) => entry.groupId === id)).sort());
+  // two nodes asked about at once: a transition that crosses both counts once
+  const pair = contributors(project, routes, day, { nodes: [busy, busy] }, graph);
+  assert.deepEqual(pair, contributors(project, routes, day, { nodes: [busy] }, graph));
+  for (const entry of pair) assert.deepEqual(entry.transitions, Array.from(new Set(entry.transitions)).sort((a, b) => a - b), 'each transition once, in order');
+});
+
+// Who takes a stairs connection, read straight off the routes.
+function linkCrossers(routes, dayTypeId, graph, link, only) {
+  const id = graph.links[link].id;
+  const found = [];
+  for (const entry of routes.days.find((day) => day.dayTypeId === dayTypeId).groups) {
+    const transitions = [];
+    entry.routes.forEach((walk, t) => {
+      if (only !== undefined && t !== only) return;
+      if (walk && walk.ok === true && walk.same !== true && (walk.connections || []).includes(id)) transitions.push(t);
+    });
+    if (transitions.length > 0) found.push([entry.groupId, transitions]);
+  }
+  return found.sort((a, b) => (a[0] < b[0] ? -1 : 1));
+}
+
+test('SV2-52 item 11: contributors answers for the stairs connections (where.links) from the index too, and every answer is what the routes say', () => {
+  const project = school();
+  const graph = routingGraph(project, buildGraph(project));
+  const routes = routesForSchedule(project, graph);
+  const day = project.dayTypes[0].id;
+  let used = 0;
+  for (let link = 0; link < graph.links.length; link += 1) {
+    for (const only of [undefined, 0, 4, 6]) {
+      const got = contributors(project, routes, day, { links: [link] }, graph, only === undefined ? undefined : { period: only }).map((entry) => [entry.groupId, entry.transitions]).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+      const want = linkCrossers(routes, day, graph, link, only);
+      assert.deepEqual(got, want, 'link ' + graph.links[link].label + (only === undefined ? '' : ', transition ' + only));
+      if (only === undefined && want.length > 0) used += 1;
+    }
+  }
+  assert.ok(used >= 1, 'no stairs connection of the school is walked: the case tests nothing');
+  // a node and a link asked about at once: a transition that crosses both counts once
+  const link = graph.links.findIndex((each, index) => linkCrossers(routes, day, graph, index).length > 0);
+  const end = graph.links[link].a;
+  const node = nodeAt(graph, end.floorId, end.cell);
+  const both = contributors(project, routes, day, { nodes: [node], links: [link] }, graph);
+  for (const entry of both) assert.deepEqual(entry.transitions, Array.from(new Set(entry.transitions)).sort((a, b) => a - b), 'each transition once, in order');
+  const byLink = new Map(linkCrossers(routes, day, graph, link));
+  for (const [groupId, transitions] of byLink) assert.ok(both.find((entry) => entry.groupId === groupId).transitions.every((t, i, all) => i === 0 || all[i - 1] < t) && transitions.every((t) => both.find((entry) => entry.groupId === groupId).transitions.includes(t)));
+});
+
+test('SV2-43 item 2: what is kept for a group’s routes is for one graph and one length of day: another graph, or another number of periods, is worked out afresh', () => {
+  const project = school();
+  const graph = routingGraph(project, buildGraph(project));
+  const routes = routesForSchedule(project, graph);
+  const day = project.dayTypes[0].id;
+  const node = Array.from({ length: graph.count }, (unused, each) => each).find((each) => crossers(project, routes, day, graph, each).length >= 3);
+  const before = contributors(project, routes, day, { nodes: [node] }, graph);
+  assert.ok(before.length >= 3);
+  // the same routes on a graph whose nodes are numbered another way: Floor 1 moved to the end
+  const turned = { ...project, building: { ...project.building, floors: [...project.building.floors.slice(1), project.building.floors[0]] } };
+  const other = routingGraph(turned, buildGraph(turned));
+  const floor = graph.floors[graph.nodeFloor[node]];
+  const there = nodeAt(other, floor.id, graph.nodeCell[node]);
+  assert.notEqual(there, node, 'the node has another number on the other graph: the case tests something');
+  assert.deepEqual(contributors(turned, routes, day, { nodes: [there] }, other), before, 'answered from the first graph’s index');
+  assert.deepEqual(contributors(project, routes, day, { nodes: [node] }, graph), before, 'and back again');
+  // a shorter day: the transitions past its end are nobody's
+  const short = { ...project, settings: { ...project.settings, periods: 3 } };
+  for (const entry of contributors(short, routes, day, { nodes: [node] }, graph)) assert.ok(entry.transitions.every((t) => t < 2), 'a transition of the longer day: ' + entry.transitions);
+  assert.deepEqual(contributors(project, routes, day, { nodes: [node] }, graph), before);
+});

@@ -339,12 +339,18 @@ input[type=text].name-input:focus{outline:none;border-color:var(--brass)}
 .cell.floor.alt{background:#372E26}
 .cell.wall{background:#181410;border-color:#0E0B08;box-shadow:inset 0 0 8px #000}
 .cell.diff{background:#33352A}
-.cell.hl-move{background:rgba(94,156,143,.28);cursor:pointer;box-shadow:inset 0 0 0 1px rgba(140,199,186,.5)}
-.cell.hl-move:hover{background:rgba(94,156,143,.5)}
-.cell.hl-target{background:rgba(165,64,45,.3);cursor:crosshair;box-shadow:inset 0 0 0 1px rgba(208,106,80,.6)}
-.cell.hl-target:hover{background:rgba(165,64,45,.55)}
-.cell.hl-aoe{background:rgba(199,154,75,.3);box-shadow:inset 0 0 0 1px rgba(232,194,112,.55)}
-.cell.hl-aoe:hover{cursor:crosshair}
+/* Every highlight is scoped under #grid. `.cell.floor.alt` above is three
+   classes, so a two-class `.cell.hl-*` lost its fill on every other square and
+   the lit squares read as a checkerboard (only the inset ring survived).
+   The id outranks the floor's parity, and hl-hit, last, outranks hl-aoe on a
+   square that is both: the aim squares are a thin ring, the hit squares a
+   thick one and a hotter fill, so the two differ by more than colour. */
+#grid .cell.hl-move{background:rgba(94,156,143,.28);cursor:pointer;box-shadow:inset 0 0 0 1px rgba(140,199,186,.5)}
+#grid .cell.hl-move:hover{background:rgba(94,156,143,.5)}
+#grid .cell.hl-target{background:rgba(165,64,45,.3);cursor:crosshair;box-shadow:inset 0 0 0 1px rgba(208,106,80,.6)}
+#grid .cell.hl-target:hover{background:rgba(165,64,45,.55)}
+#grid .cell.hl-aoe{background:rgba(199,154,75,.3);box-shadow:inset 0 0 0 1px rgba(232,194,112,.55)}
+#grid .cell.hl-aoe:hover{cursor:crosshair}
 #grid .cell.hl-hit{background:rgba(214,96,52,.5);box-shadow:inset 0 0 0 2px rgba(255,190,120,.9)}
 .token{
   position:absolute;width:40px;height:40px;margin:3px;border-radius:50%;
@@ -3121,4 +3127,7 @@ window.addEventListener("DOMContentLoaded",()=>App.init());
 /* Dev probe. Nothing in the page reads it; it is how a browser-driven suite
    reaches the engine now that a module script has no globals. */
 window.__torchbearer=App;
+/* The fight, for test/browser.mjs: it compares the squares lit while an area
+   is armed with what the engine's `previewCells` says for that aim. */
+window.__torchbearerCombat=Combat;
 </script></body></html>

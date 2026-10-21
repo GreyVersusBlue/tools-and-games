@@ -12,7 +12,10 @@
 //   openPrintPreview(ctx, outputId, options)
 //     outputId   an id in ui/prints/index.js: 'floor-plan', 'room-list', 'checks'
 //     options    { floorId, sort, opener }: floorId and sort go to the output;
-//                opener is what gets focus back (the focused element, left out)
+//                opener is what gets focus back (the focused element, left out).
+//                Any other option goes to the output as it is ({ roomIds }
+//                for the door cards); the sheet's own (paper, now, base,
+//                floorId, the traced image) win over one of the same name.
 //   returns { element, frame, close(), closed, ready(), state }
 //     ready()    resolves when the document on show has been laid out
 //     state      { output, paper: { size, orientation }, floorId, traceImage, title }
@@ -31,6 +34,16 @@
 // The paper chosen here is the project's setting (Settings › Paper size), so
 // it is remembered and is one undo step, like any other setting. In a tab that
 // cannot change the project the choice lasts for this sheet only.
+//
+// An output marked `upright` (the door signs) prints in portrait whatever the
+// project's orientation is: the sheet shows a sentence where the choice would
+// be, and the project's setting is left alone.
+//
+// "About N sheets" is counted from what goes on paper. Each .page starts a
+// sheet and so does each .new-sheet inside it; a stretch longer than the
+// sheet runs on to more. On screen a .new-sheet is drawn with a gap, a dashed
+// line and some room above its first line, none of which is on paper, so
+// they are taken off the stretch before it is counted (sheetsOf).
 
 import { h, uid } from './dom.js';
 import { choice } from './choice.js';
@@ -50,6 +63,29 @@ const EDGE = 8;
 const SHEET_WAIT_MS = 3000;
 
 let sheet = null;
+
+// How many sheets of paper a list of stretches takes, each `printable` long.
+//   starts   where each stretch begins, top to bottom, with the end of the
+//            last one as the final entry
+//   marks    for each start after the first, what the screen adds there that
+//            paper does not have: { before } above the start (the gap between
+//            two sheets) and { inside } below it (the dashed line and the
+//            room under it)
+// A stretch that is all decoration is still a sheet: the count never goes
+// under one a stretch. But for the first, when a new sheet starts where the
+// page does: nothing is on paper before it, so the page opens on that sheet
+// and no blank one is printed ahead of it.
+export function sheetsOf(starts, marks, printable) {
+  let sheets = 0;
+  for (let i = 0; i < starts.length - 1; i += 1) {
+    const here = i === 0 ? null : marks[i - 1];
+    const next = i < marks.length ? marks[i] : null;
+    const paper = starts[i + 1] - starts[i] - (here ? here.inside : 0) - (next ? next.before : 0);
+    if (i === 0 && next && paper < 1) continue;
+    sheets += Math.max(1, Math.ceil((paper - 1) / printable));
+  }
+  return sheets;
+}
 
 // The sheet's own rules are in print.css, which index.html links (the link
 // marked data-sheet="print"). This waits for that link; a page with no such
@@ -98,9 +134,14 @@ export function openPrintPreview(ctx, outputId, options) {
   const store = ctx.store;
   const project = () => store.project;
 
+  const upright = output.upright === true;
+  const sheetPaper = () => {
+    const set = paperOf(project(), null);
+    return upright ? { ...set, orientation: 'portrait' } : set;
+  };
   const state = {
     output: output.id,
-    paper: paperOf(project(), null),
+    paper: sheetPaper(),
     floorId: opts.floorId || 'all',
     traceImage: false,
     title: '',
@@ -110,6 +151,8 @@ export function openPrintPreview(ctx, outputId, options) {
     settle = resolve;
   });
   let laidOut = Promise.resolve();
+  // ends the wait of the document being laid out, when show() replaces it
+  let cutLayout = null;
   let derived = null;
   let alive = true;
 
@@ -133,6 +176,8 @@ export function openPrintPreview(ctx, outputId, options) {
 
   function setPaper(key, value) {
     if (state.paper[key] === value) return;
+    // an upright output has no orientation to set
+    if (upright && key === 'orientation') return;
     state.paper = { ...state.paper, [key]: value };
     try {
       store.apply(setSetting, { key: 'paper.' + key, value });
@@ -159,7 +204,9 @@ export function openPrintPreview(ctx, outputId, options) {
 
   const controls = [
     h('div', { class: 'preview__control' }, h('span', { class: 'preview__label', id: sizeLabel }, 'Paper size'), size.element),
-    h('div', { class: 'preview__control' }, h('span', { class: 'preview__label', id: turnLabel }, 'Orientation'), turn.element),
+    upright
+      ? h('p', { class: 'preview__note', data: { says: 'upright' } }, output.uprightSays || 'This prints in portrait.')
+      : h('div', { class: 'preview__control' }, h('span', { class: 'preview__label', id: turnLabel }, 'Orientation'), turn.element),
   ];
 
   // "This floor / every floor", for the outputs that are about the building.
@@ -247,15 +294,22 @@ export function openPrintPreview(ctx, outputId, options) {
     fit.style.height = Math.ceil(height * scale) + 'px';
     // How many sheets of paper: each .page starts one, and so does each
     // .new-sheet inside it; a stretch longer than the sheet runs on to more.
+    // What the screen draws where a sheet starts is not counted (sheetsOf).
     const printable = (box.height - MARGIN.top - MARGIN.bottom) * MM;
+    const px = (value) => parseFloat(value) || 0;
     let sheets = 0;
     for (const page of doc.querySelectorAll('.page')) {
       const style = doc.defaultView.getComputedStyle(page);
       const edge = page.getBoundingClientRect();
       const top = edge.top + parseFloat(style.paddingTop);
       const bottom = Math.max(top, edge.top + page.scrollHeight - parseFloat(style.paddingBottom));
-      const starts = [top].concat(Array.from(page.querySelectorAll('.new-sheet')).map((el) => el.getBoundingClientRect().top), [bottom]);
-      for (let i = 0; i < starts.length - 1; i += 1) sheets += Math.max(1, Math.ceil((starts[i + 1] - starts[i] - 1) / printable));
+      const starting = Array.from(page.querySelectorAll('.new-sheet'));
+      const starts = [top].concat(starting.map((el) => el.getBoundingClientRect().top), [bottom]);
+      const marks = starting.map((el) => {
+        const drawn = doc.defaultView.getComputedStyle(el);
+        return { before: px(drawn.marginTop), inside: px(drawn.paddingTop) + px(drawn.borderTopWidth) };
+      });
+      sheets += sheetsOf(starts, marks, printable);
     }
     element.dataset.sheets = String(sheets);
     const lost = state.traceImage && tracedNow().some((floor) => traceUrls.get(floor.image.imageId) === null);
@@ -269,7 +323,10 @@ export function openPrintPreview(ctx, outputId, options) {
     traceControl.hidden = tracedNow().length === 0;
     const traceImages = {};
     for (const [imageId, url] of traceUrls) if (url !== null) traceImages[imageId] = url;
+    const extra = { ...opts };
+    delete extra.opener;
     const rendered = output.render(project(), derived, {
+      ...extra,
       paper: state.paper,
       now: ctx.clock ? ctx.clock() : null,
       base: UI_BASE,
@@ -277,10 +334,30 @@ export function openPrintPreview(ctx, outputId, options) {
       sort: opts.sort,
       traceImage: state.traceImage,
       traceImages,
+      movement: opts.movement,
     });
     state.title = rendered.title;
+    // A document replaced before it is laid out (a paper chosen while the
+    // scenario's answer is being shown, SV2-72d) never sends its stylesheets'
+    // or faces' word: its wait ends here instead, now, so nothing chained on
+    // it (ready(), the scenario's answer) waits for good.
+    if (cutLayout) cutLayout();
+    let cut;
+    const replaced = new Promise((resolve) => {
+      cut = resolve;
+    });
+    cutLayout = cut;
+    let over = false;
     laidOut = new Promise((resolve) => {
-      frame.addEventListener('load', async () => {
+      const end = () => {
+        if (over) return;
+        over = true;
+        frame.removeEventListener('load', onLoad);
+        resolve();
+      };
+      replaced.then(end);
+      async function onLoad() {
+        if (over) return;
         const doc = frame.contentDocument;
         if (doc && doc.documentElement) {
           doc.documentElement.classList.toggle('has-page-boxes', printsPageBoxes());
@@ -292,19 +369,22 @@ export function openPrintPreview(ctx, outputId, options) {
             }
           });
           // the sheets are measured once their stylesheets and faces are in
-          await Promise.all(Array.from(doc.querySelectorAll('link[rel="stylesheet"]')).map((link) => (link.sheet ? null : new Promise((done) => {
+          await Promise.race([replaced, Promise.all(Array.from(doc.querySelectorAll('link[rel="stylesheet"]')).map((link) => (link.sheet ? null : new Promise((done) => {
             link.addEventListener('load', done, { once: true });
             link.addEventListener('error', done, { once: true });
-          }))));
-          if (doc.fonts && doc.fonts.ready) await doc.fonts.ready;
+          }))))]);
+          if (!over && doc.fonts && doc.fonts.ready) await Promise.race([replaced, doc.fonts.ready]);
         }
+        // replaced meanwhile: the newer document is measured by its own wait
+        if (over) return;
         if (alive) {
           place();
           element.dataset.paper = state.paper.size + ' ' + state.paper.orientation;
           element.dataset.ready = 'true';
         }
-        resolve();
-      }, { once: true });
+        end();
+      }
+      frame.addEventListener('load', onLoad);
     });
     frame.srcdoc = rendered.html;
     return laidOut;
@@ -313,6 +393,11 @@ export function openPrintPreview(ctx, outputId, options) {
   function close() {
     if (!alive) return;
     alive = false;
+    // the document being laid out never will be now: its wait ends here, so
+    // nothing chained on a closing preview (ready(), the scenario's answer)
+    // waits for good
+    if (cutLayout) cutLayout();
+    cutLayout = null;
     observer.disconnect();
     element.close();
     element.remove();
@@ -374,13 +459,71 @@ export function openPrintPreview(ctx, outputId, options) {
     })).catch(() => { /* the document already on show stands */ });
   }
 
+  // The congestion report with a scenario open prints what the scenario
+  // would change: the scenario lane's comparison, asked here whoever opened
+  // the report, so the section is the same from Movement and from the lab.
+  // Until it comes the section says it is still being worked out; a failure
+  // or a null answer is shown as such; with no engine to ask, the section is
+  // told so ({ unavailable: true }) and says it cannot be worked out here.
+  // data-scenario is 'asked', then 'answered' once the answer is in the
+  // document being laid out (with data-ready="true", laid out), 'failed' if
+  // showing it threw (the document before it stands), or 'unavailable'.
+  if (output.id === 'congestion' && project().scenario) {
+    if (store.derived && store.derived.engine && typeof store.derived.scenario === 'function') {
+      element.dataset.scenario = 'asked';
+      // The document on show when the answer arrives may not be the first:
+      // a change of paper replaces it. Replacing one whose stylesheets and
+      // faces are still awaited would leave that wait pending for good, so
+      // the answer waits for whichever document is newest, again and again
+      // until no newer one came while it waited.
+      const settledNow = () => {
+        const now = laidOut;
+        return now.then(() => (laidOut === now ? null : settledNow()));
+      };
+      const answered = (scenario) => settledNow().then(() => {
+        if (!alive) return;
+        const before = derived;
+        derived = { ...(derived || {}), scenario };
+        try {
+          show();
+          element.dataset.scenario = 'answered';
+        } catch (error) {
+          // the render threw before the frame was touched: the document on
+          // show stands, and so does what it was drawn from
+          derived = before;
+          element.dataset.ready = 'true';
+          element.dataset.scenario = 'failed';
+        }
+      });
+      store.derived.scenario()
+        .then(answered, (error) => answered({ failed: error && error.message ? String(error.message) : String(error) }))
+        .catch(() => {
+          if (alive) element.dataset.scenario = 'failed';
+        });
+    } else {
+      // set before the first document is drawn: show() runs once the stylesheet is in
+      derived = { ...(derived || {}), scenario: { unavailable: true } };
+      element.dataset.scenario = 'unavailable';
+    }
+  }
+
+  // The document on show laid out (the contract above): a layout cut short
+  // because show() replaced its document ends its own wait without laying
+  // anything out, so the wait goes on to whichever document is newest, as
+  // settledNow() does, until none newer came while it waited. A closed
+  // preview ends every wait (close()).
+  function ready() {
+    const now = laidOut;
+    return now.then(() => (laidOut === now ? undefined : ready()));
+  }
+
   return {
     element,
     frame,
     close,
     closed,
     state,
-    ready: () => first.then(() => laidOut),
+    ready,
   };
 }
 

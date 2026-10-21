@@ -61,6 +61,7 @@ import {
   accentSpans, accentBreaks, spanOverlap, setSegAccent, insertVertex,
   SEG_WALL, SEG_GLASS, SEG_RAIL, MAX_SHAPES, MAX_RING_PTS, LEAF_NONE,
 } from './shapes.js';
+import { pruneAccents } from './wallrun.js';
 
 const EPS = 1e-6;
 
@@ -497,7 +498,7 @@ function assignOwners(lat, owner, pending, rooms, state, opts, made) {
 // ends there, make the plan bigger". `refused` is still their sum, which is
 // what every caller before Phase 35 read.
 export function paintCells(state, floorIndex, cells, on = true, opts = {}) {
-  const out = { changed: 0, refused: 0, frozen: 0, offSheet: 0, rooms: 0, added: 0, removed: 0 };
+  const out = { changed: 0, refused: 0, frozen: 0, offSheet: 0, rooms: 0, added: 0, removed: 0, accentsOff: 0 };
   const R = rasterize(state, floorIndex);
   if (!R) return out;
   const { floor, lat, owner, rooms, frozen, frozenCell } = R;
@@ -601,6 +602,14 @@ export function paintCells(state, floorIndex, cells, on = true, opts = {}) {
   }
   floor.shapes = next.slice(0, MAX_SHAPES);
   out.rooms = floor.shapes.length;
+  // #964. A stroke that rubs a room out can leave a free-standing wall's
+  // painted face with no room in front of it, which is a face the brush
+  // refuses and the load takes off (#910): the accent went on being written to
+  // the file until then. Asked here by the rule every other edit asks by, once
+  // the storey's rooms are what the stroke left, and only of a stroke that
+  // rubs out: one that lays floor takes a room from in front of nothing. A
+  // stroke that moved no cell returned above and is not asked either.
+  if (!on) out.accentsOff = pruneAccents(floor);
   return out;
 }
 

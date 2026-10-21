@@ -544,12 +544,12 @@ every load and must not advance the seed, #386):
   non-finite `spareEquity` becomes 0, a missing `uw` is rebuilt from the packet
   as it stands with `reqCap` equal to the market cap.
 - **Clients added to `data/` since the career began are appended to
-  `clientQueue`**, in id order. Today they are not: `repairCareer()` backfills
-  listings, neighborhoods and knowledge and never the queue, so a career started
-  before a client file existed never meets that client. That holds for the three
-  commercial buyers on any career older than round 7, and would hold for these
-  sellers. An id is appended only if it is in none of `clientQueue`,
-  `usedClients` and `clients[].clientId`.
+  `clientQueue`.** Fixed on 2026-10-12 (#956), ahead of the build: reproduced
+  on a career saved without the three commercial buyers, which reached
+  Broker-Track and day 301 without meeting one. They go on the end, lowest rung
+  first and by id inside a rung, not in plain id order as this note first said.
+  An id is appended only if it is in none of `clientQueue`, `usedClients` and
+  `clients[].clientId`. The build adds nothing here but its sellers' files.
 
 **What an old save loads as:** itself. It holds no building under a listing
 agreement, so nothing in it changes but the queue, which gains the new sellers
@@ -677,10 +677,13 @@ has not mattered because no seller was ever commercial. Each becomes "the tier
 is on the ladder, or it is a seller who is not commercial". Whether a Rookie
 should be meeting a luxury seller at all is question 12.
 
-**A fourth door was found and is not gated today:** the `bonusReferral` event
-handler (`events.js`, `ev_ruth_referral`, from day 12 at 20 reputation) picks
-from the whole queue with no ladder check, buyers included. Read in the code,
-not reproduced in a career. The build gates it with the other three.
+**A fourth door was found and is gated now** (#956, 2026-10-12): the
+`bonusReferral` event handler (`events.js`, `ev_ruth_referral`, from day 12 at
+20 reputation) picked from the whole queue with no ladder check, buyers
+included. Reproduced: ten of a Rookie Agent's nineteen on day one are buyers
+above the rung. The rule is one function, `inReach()` in `engine/clients.js`,
+and all four doors call it, so "the tier is on the ladder, or it is a seller
+who is not commercial" is one edit when the build makes it.
 
 ## 6. Balance
 

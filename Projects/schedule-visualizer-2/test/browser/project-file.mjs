@@ -96,7 +96,7 @@ after(async () => {
 });
 
 test('the Project file card is on the Project page, after Saved on this device', async () => {
-  assert.deepEqual(await page.$$eval('.page > .card .card__title', (all) => all.map((el) => el.textContent).slice(0, 3)), ['Saved on this device', 'Project file', 'Recovery points']);
+  assert.deepEqual(await page.$$eval('.page > .card .card__title', (all) => all.map((el) => el.textContent).slice(0, 3)), ['Saved on this device', 'Project file', 'Snapshots']);
   assert.deepEqual(await page.$$eval('#project-file .card__buttons > .btn', (all) => all.map((el) => el.textContent)),
     ['Export the project', 'Import a project file…', 'Export the building', 'Import a building file…', 'Export the schedule', 'Import a schedule file…']);
   assert.equal(await page.$eval('#project-file [data-action="import-schedule"]', (el) => el.getAttribute('href')), '#schedule/import');
@@ -136,7 +136,7 @@ test('importing over a project asks first, with buttons that name the action and
   assert.deepEqual(await page.$$eval('dialog.dialog[open] .dialog__body p', (all) => all.map((el) => el.textContent)), [
     'The file is ' + SCHOOL + '. It holds 3 floors, 13 rooms, 12 teachers, 7 groups, 9 subjects and 2 day types.',
     'It takes the place of everything in this project: 1 floor, no rooms, no teachers, no groups, 10 subjects and 2 day types.',
-    'A recovery point of this project is taken first, and Undo brings it back while this tab stays open.',
+    'A recovery point of this project is taken first, with a snapshot of it, “Before importing tidewater.json”, that you can restore from Snapshots at any time. Undo brings it back while this tab stays open.',
   ]);
   assert.deepEqual(await dialogButtons(), ['Replace this project', 'Keep this project (focused)']);
   assert.equal(await page.$$eval('dialog.dialog[open] img, dialog.dialog[open] b', (all) => all.length), 0, 'the school\'s name is text');

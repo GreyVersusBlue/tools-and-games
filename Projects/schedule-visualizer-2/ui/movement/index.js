@@ -3,14 +3,17 @@
 //
 //   top       the screen's first line, a sentence; then who, the day type,
 //             the transition strip, the two drawing options and Clear (./controls.js)
-//   the map   every floor on one canvas (./layout.js), drawn by the plan's
-//             own renderer with the lanes, the load colouring and the room
-//             markers laid over it (ui/surface/overlays/lanes.js), and the
-//             stairs links from floor to floor; the legend card bottom right
+//   the map   the plan map (ui/surface/plan-map.js): every floor on one
+//             canvas (ui/surface/plan-layout.js), drawn by the plan's own
+//             renderer, its zoom, its keyboard cursor and its row of
+//             floors; here the
+//             lanes, the load colouring and the room markers are laid over
+//             it (ui/surface/overlays/lanes.js), and the stairs links from
+//             floor to floor; the legend card bottom right
 //             (./legend.js); a card for the cell under the pointer, the cell
 //             tapped, or the cell the keyboard cursor rests on (./card.js)
 //   bottom    the playback bar's place (./playback.js)
-//   top bar   which floors are on the map, and side by side or stacked
+//   top bar   which floors are on the map, and side by side or stacked (the plan map's row)
 //   inspector Hotspots, Travel time, Summary, Export (./hotspots.js,
 //             ./tables.js, ./summary.js, ./export.js)
 //
@@ -18,23 +21,34 @@
 // (store.derived.results(): routes, crowd, loads, places, walks). They are
 // asked for once per state of the project. Until the answer for a change
 // comes the last answer stays on the map, drawn against the project it was
-// worked out for, and the section reads as pending (`data-pending`).
+// worked out for, and the section reads as pending (`data-pending`). When an
+// answer cannot be worked out the first line says so; a last answer that is
+// still on the map is then from before the change, and the section reads as
+// stale (`data-stale`) until an answer comes.
 //
 // Where a later unit plugs in. A panel of the inspector and the playback bar
 // are each a function of `env` returning { element, update(state) }:
 //
 //   env    { ctx,
-//            choice(), change(patch)      what is chosen on screen (model.js), and changing it
+//            choice(), change(patch, { keepCard })   what is chosen on screen (model.js), and changing it
 //            show(floorId, cells)         bring cells onto the map
 //            overlays                     [(g, view, floor, theme) => {}] drawn over a floor after the lanes
-//            marks                        [(g, map) => {}] drawn over the whole map after the stairs links;
-//                                         map.point(floorId, cell) gives a cell's middle in pixels, or null
-//            paint()                      draw the map again (an overlay changed)
+//            marks                        [(g, map) => {}] drawn over the whole map, on a canvas of their
+//                                         own laid over the map's (env.layer): map.point(floorId, cell)
+//                                         gives a cell's middle in pixels, or null. A mark with a higher
+//                                         `order` is drawn over one with a lower (playback's markers 1,
+//                                         the hotspot rings 2); the keyboard cursor is over them all.
+//            paint()                      draw the map again (an overlay changed); the marks with it
+//            paintMarks()                 draw the marks again, now, and nothing else: what a frame of
+//                                         playback or a tick of the pulse costs does not grow with the
+//                                         building
+//            layer                        the marks' canvas
 //            card                         the cell card (card.extra is playback's place in it)
 //            fix(where) }                 follow a "fix it" link of route health
-//   state  { project, results, graph, picture, health }: the project the
-//          results are for, the results (null until the first answer),
-//          buildGraph's graph, model.js's picture and routeHealth's list
+//   state  { project, results, graph, picture, health, stale }: the project
+//          the results are for, the results (null until the first answer),
+//          buildGraph's graph, model.js's picture, routeHealth's list, and
+//          whether all of it is from before a change whose answer failed
 //
 // The view on screen is at document.querySelector('.mov').movement, for the
 // tests and for the console.
@@ -42,20 +56,18 @@
 import { h } from '../components/dom.js';
 import { intro } from '../components/card.js';
 import { tabs } from '../components/tabs.js';
-import { choice as segmented } from '../components/choice.js';
 import { count, figures, periodWords } from '../components/words.js';
-import { singleKeyAllowed } from '../components/shortcuts.js';
-import { createViewport, ZOOM_STEP } from '../surface/viewport.js';
-import { createRenderer } from '../surface/renderer.js';
-import { attachInput } from '../surface/input.js';
-import { attachCursor } from '../surface/cursor.js';
+import { createViewport } from '../surface/viewport.js';
+import { createPlanMap, CURSOR_LEAST, KEEP_ON_STAGE } from '../surface/plan-map.js';
 import { lanesOverlay, drawStairLink, lanePoint, lineWidth } from '../surface/overlays/lanes.js';
 import { parse, readable } from '../colour.js';
 import { buildGraph } from '../../engine/graph.js';
 import { ActionError, setSetting, setOnboarding } from '../../engine/actions.js';
 import { MOVEMENT_STEP } from '../help/progress.js';
-import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard } from './model.js';
-import { layoutFloors, bestLayout, slotAt, placeOf } from './layout.js';
+import { slotHash, openAddress } from '../schedule/index.js';
+import { readMovement, writeMovement } from '../../storage/device.js';
+import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard, standingOf, failedSentence, createAsker } from './model.js';
+import { slotAt, placeOf, FIT_MARGIN } from '../surface/plan-layout.js';
 import { controls } from './controls.js';
 import { legend } from './legend.js';
 import { cellCardView } from './card.js';
@@ -79,6 +91,9 @@ export const MOVEMENT_KEYS = [
   { id: 'movement-escape', does: 'Put the cell card away', shown: 'Esc' },
 ];
 
+// The keyboard cursor's least and the keep on the stage are the plan map's.
+export { CURSOR_LEAST, KEEP_ON_STAGE };
+
 export const MOVEMENT_TABS = [
   { id: 'hotspots', label: 'Hotspots' },
   { id: 'tables', label: 'Travel time' },
@@ -86,39 +101,15 @@ export const MOVEMENT_TABS = [
   { id: 'export', label: 'Export' },
 ];
 
-// The section's own stylesheet. A page that links it (data-sheet="movement")
-// is left alone; otherwise it is added here.
-const SHEET = new URL('./movement.css', import.meta.url).href;
-function loadSheet() {
-  let link = document.querySelector('link[data-sheet="movement"]');
-  if (!link) {
-    link = h('link', { rel: 'stylesheet', href: SHEET, data: { sheet: 'movement' } });
-    document.head.append(link);
-  }
-  return new Promise((resolve) => {
-    if (link.sheet) resolve();
-    else {
-      link.addEventListener('load', () => resolve());
-      link.addEventListener('error', () => resolve());
-    }
-  });
-}
-
 // What is chosen here. It outlives a visit to another section, for the
 // project that is open.
-const memory = { projectId: null, choice: null, tab: 'summary', legendFolded: false };
+const memory = { projectId: null, choice: null, tab: 'hotspots', legendFolded: false, controls: null, refused: false };
 
-// One graph a building, kept by the building object: a change to the
-// schedule gives a new project with the same building.
-const graphs = new WeakMap();
-function graphOf(project) {
-  let graph = graphs.get(project.building);
-  if (!graph) {
-    graph = buildGraph(project);
-    graphs.set(project.building, graph);
-  }
-  return graph;
-}
+// The controls are open from this width and folded under it, until the
+// reader chooses (DESIGN 5.3); under PHONE the floors' row folds with them.
+export const CONTROLS_OPEN_FROM = '(min-width: 900px)';
+export const PHONE = '(max-width: 640px)';
+export const REFUSED_CHOICE = 'This browser did not keep that choice: it lasts until the page is closed.';
 
 function first(project) {
   const one = periodWords(project.settings).one;
@@ -130,31 +121,12 @@ function facts(project) {
   return 'There is nothing to draw yet: this project has ' + count(f.rooms, 'room') + ' and ' + count(f.groups, 'group') + '.';
 }
 
-// Open a group's slot in the Schedule section's Groups tab. The section has
-// no address for a slot, so this presses the group's own button once the tab
-// is drawn and puts the focus in the period's row.
-function openSlot(slot) {
-  let tries = 0;
-  const step = () => {
-    const section = document.querySelector('.sch');
-    const ready = section && section.dataset.pending !== 'true';
-    const button = ready ? Array.from(section.querySelectorAll('.sch-group')).find((each) => each.dataset.group === slot.groupId) : null;
-    if (!button) {
-      tries += 1;
-      if (tries < 40) setTimeout(step, 50);
-      return;
-    }
-    if (button.getAttribute('aria-current') !== 'true') button.click();
-    setTimeout(() => {
-      const day = Array.from(document.querySelectorAll('.sch-day')).find((each) => each.dataset.day === slot.dayTypeId);
-      const row = day ? day.querySelector('.sch-slot[data-period="' + slot.period + '"]') : null;
-      if (!row) return;
-      row.scrollIntoView({ block: 'center' });
-      const control = row.querySelector('input, select, button');
-      if (control) control.focus({ preventScroll: true });
-    }, 80);
-  };
-  step();
+// Open a group's slot in the Schedule section's Groups tab: a slot has an
+// address there (the top of ui/schedule/index.js), and the section does the
+// rest. It is opened as the schedule opens its own (`openAddress`), so the
+// entry is marked by the one rule when the list is under it.
+function openSlot(ctx, slot) {
+  openAddress(ctx, slotHash(slot.groupId, slot.dayTypeId, slot.period));
 }
 
 export const section = {
@@ -170,14 +142,11 @@ export const section = {
   mount(ctx) {
     const store = ctx.store;
     let choice = settleChoice(store.project, memory.projectId === store.project.id && memory.choice ? memory.choice : defaultChoice(store.project));
-    // the last answer, and the project it was worked out for
-    let derived = { asked: null, project: null, results: null, failed: null };
+    // the last answer, the project it was worked out for, and that project's graph
+    // The graph of the building as it is: the store keeps one a building (ARCHITECTURE 16, SV2-16).
+    const graphNow = () => store.derived.get('graph', ['building'], (project) => buildGraph(project));
     let state = null;
     let picture = null;
-    let world = null;
-    let worldKey = '';
-    let fitted = true;
-    let queued = false;
     let gone = false;
     // the cell whose card shows: { floorId, cell, source }
     let point = null;
@@ -185,34 +154,73 @@ export const section = {
     let bandKey = null;
     const lineColours = new Map();
 
-    const view = createViewport();
-    const canvas = h('canvas', { class: 'mov-plan', id: 'movement-plan', tabindex: '0', role: 'application', 'aria-label': 'The movement map', 'aria-describedby': 'movement-keys' });
-    const renderer = createRenderer(canvas);
-    const g = canvas.getContext('2d');
+    // ---- the map (ui/surface/plan-map.js): the canvas, the marks' canvas,
+    // the viewport, the pointer and the keyboard cursor, the zoom buttons and
+    // the row of floors, the stage's least and the keep on the stage; its
+    // root is this section's element, styled by movement.css (the map loads
+    // the sheet). The frame is asked for once the rest below is made.
+    const plan = createPlanMap({
+      ctx,
+      name: 'movement',
+      label: 'The movement map',
+      keys: KEYS,
+      floorsRow: { value: () => choice.floors, change: (value) => change({ floors: value }) },
+      frame: () => ({
+        before: [headline, top.element],
+        after: [key.line, bar.element],
+        inside: [staleBand, key.element, card.element],
+        head: top.element,
+        line: top.element.querySelector('.mov-line'),
+        foot: bar.element,
+        more: bar.element.querySelector('[data-part="more"]'),
+        under: key.line,
+      }),
+    });
+    const { view, canvas, layer, stage } = plan;
     const card = cellCardView();
-    const zoomText = h('span', { class: 'mov-zoom__text', 'aria-live': 'off' });
-    const zoomBox = h('div', { class: 'mov-zoom', role: 'group', 'aria-label': 'Zoom' },
-      h('button', { type: 'button', class: 'mov-zoom__btn', 'aria-label': 'Zoom out', title: 'Zoom out (-)', data: { action: 'zoom-out' }, on: { click: () => zoomBy(1 / ZOOM_STEP) } }, '−'),
-      zoomText,
-      h('button', { type: 'button', class: 'mov-zoom__btn', 'aria-label': 'Zoom in', title: 'Zoom in (=)', data: { action: 'zoom-in' }, on: { click: () => zoomBy(ZOOM_STEP) } }, '+'),
-      h('button', { type: 'button', class: 'mov-zoom__btn mov-zoom__btn--fit', title: 'Fit the map to the window (0)', data: { action: 'fit' }, on: { click: () => fit() } }, 'Fit'));
 
     const env = {
       ctx,
       choice: () => choice,
       change,
-      show,
-      overlays: [],
-      marks: [],
-      paint: () => queuePaint(),
+      show: (floorId, cells) => plan.show(floorId, cells),
+      // the plan map's: the lanes are first in it (below), before a panel's own
+      overlays: plan.overlays,
+      marks: plan.marks,
+      paint: () => plan.paint(),
+      paintMarks: () => plan.paintMarks(),
+      layer,
       card,
       fix(where) {
-        ctx.navigate(where.hash);
-        if (where.slot) openSlot(where.slot);
+        if (where.slot) openSlot(ctx, where.slot);
+        else ctx.navigate(where.hash);
       },
     };
 
+    // ---- the controls, shown or folded away behind "Change": the reader's
+    // choice on this device (sv2:device, `movement.controls`), and the
+    // window's width until there is one
+    const wide = matchMedia(CONTROLS_OPEN_FROM);
+    const phone = matchMedia(PHONE);
+    if (memory.controls === null) memory.controls = readMovement().controls;
+    const foldedByDefault = () => (memory.controls === null ? !wide.matches : memory.controls === 'folded');
+
     const top = controls({
+      folded: foldedByDefault(),
+      fold(folded) {
+        memory.controls = folded ? 'folded' : 'open';
+        try {
+          writeMovement({ controls: memory.controls });
+        } catch (error) {
+          // the browser keeps nothing: said once, and the choice holds for the visit
+          if (!memory.refused) ctx.toast({ kind: 'warning', text: REFUSED_CHOICE });
+          memory.refused = true;
+        }
+        placeFloors();
+        // the map and its zoom buttons moved up or down with no change to the stage's size
+        plan.dock();
+        ctx.announce(folded ? 'The controls are folded away.' : 'The controls are shown.');
+      },
       change,
       add(groupId) {
         const answer = addGroup(choice, groupId);
@@ -234,8 +242,14 @@ export const section = {
     });
     const key = legend({
       folded: memory.legendFolded,
+      // the card shown whole again may now lie on a floor (it was measured
+      // folded): then it docks, and is brought out over the map, since the
+      // reader asked to see it, until its own button puts it away
       fold(folded) {
         memory.legendFolded = folded;
+        if (folded) return;
+        dockLegend();
+        key.bringOut();
       },
       measure: (value) => change({ measure: value }),
       scale(value) {
@@ -247,47 +261,46 @@ export const section = {
         }
       },
     });
+    // the lanes go over each floor before any overlay of a panel's
+    plan.overlays.push(lanesOverlay(() => {
+      if (!picture) return null;
+      const theme = plan.theme();
+      return {
+        bands: picture.bands,
+        bandColours: themeColours(theme),
+        lanes: picture.lanes,
+        markers: picture.markers,
+        labels: choice.labels,
+        constantWidth: choice.constantWidth,
+        colourOf: (groupId) => lineColour(groupId, theme),
+      };
+    }));
     const bar = playbackBar(env);
-    const stage = h('div', { class: 'mov-stage' }, canvas, h('p', { class: 'vh', id: 'movement-keys' }, KEYS), key.element, card.element, zoomBox);
+    // over the map while it is the last answer after a derive that failed: the picture is muted under it (movement.css)
+    const staleBand = h('p', { class: 'mov-stale', hidden: true, data: { part: 'stale' } }, 'From before your last change');
     const headline = h('h1', { class: 'vh' }, HEADLINE);
-    const map = h('div', { class: 'mov-map' }, headline, top.element, stage, bar.element);
+    const map = plan.element;
     const empty = h('div', { class: 'mov-empty stub', hidden: true });
-    const element = h('div', { class: 'mov', data: { styled: 'false' } }, map, empty);
+    // the section's element is the plan map's root (div.mov), with the map in it
+    const element = plan.root;
+    element.append(empty);
 
-    // ---- the top bar's second row: which floors, and how they are laid out
-    const floorsRow = h('div', { class: 'mov-floors' });
-    let floorsKey = '';
-    function drawFloors(project) {
-      const floors = project.building.floors;
-      const next = JSON.stringify(floors.map((floor) => [floor.id, floor.name]));
-      if (next !== floorsKey) {
-        floorsKey = next;
-        const which = segmented({
-          name: 'movement-floors',
-          labelledBy: 'movement-floors-label',
-          value: choice.floors,
-          onChange: (value) => change({ floors: value === 'all' ? 'auto' : value }),
-          options: [{ value: 'all', label: floors.length === 1 ? 'The floor' : 'All ' + floors.length + ' floors' }, ...(floors.length > 1 ? floors.map((floor) => ({ value: floor.id, label: floor.name })) : [])],
-        });
-        const how = segmented({
-          name: 'movement-arrange',
-          labelledBy: 'movement-arrange-label',
-          value: 'side',
-          onChange: (value) => change({ floors: value }),
-          options: [{ value: 'side', label: 'Side by side' }, { value: 'stacked', label: 'Stacked' }],
-        });
-        floorsRow.replaceChildren(
-          h('span', { class: 'mov-floors__label', id: 'movement-floors-label' }, 'Floors'), which.element,
-          h('span', { class: 'vh', id: 'movement-arrange-label' }, 'How the floors are laid out'), how.element);
-        floorsRow.which = which;
-        floorsRow.how = how;
-      }
-      const one = floors.some((floor) => floor.id === choice.floors);
-      floorsRow.which.set(one ? choice.floors : 'all');
-      floorsRow.how.element.hidden = one || floors.length < 2;
-      floorsRow.how.set(world ? world.how : 'side');
+    // ---- the top bar's second row, the plan map's: on a phone it folds with the controls
+    function placeFloors() {
+      // the row put away with the focus in it (a window narrowed under 640 px):
+      // the focus goes to what brings it back
+      if (!plan.showFloors(!map.hidden && !(top.folded && phone.matches))) return;
+      if (map.hidden) ctx.focusSurface();
+      else top.element.querySelector('[data-action="change"]').focus();
     }
-    ctx.setSecondRow(floorsRow);
+    function onWidth() {
+      if (memory.controls === null) top.setFolded(!wide.matches);
+      placeFloors();
+      dockLegend();
+    }
+    wide.addEventListener('change', onWidth);
+    phone.addEventListener('change', onWidth);
+    placeFloors();
 
     // ---- the inspector
     const panels = { hotspots: hotspotsPanel(env), tables: tablesPanel(env), summary: summaryPanel(env), export: exportPanel(env) };
@@ -306,33 +319,47 @@ export const section = {
     }
 
     // ---- what is chosen
-    function change(patch) {
+    //   options.keepCard   a card the reader tapped open stays on its cell,
+    //                      saying what the new choice makes of it (playback
+    //                      going on from one transition to the next)
+    function change(patch, options) {
       choice = settleChoice(store.project, { ...choice, ...patch });
-      // a new arrangement of the floors is fitted to the window again
-      if (patch && 'floors' in patch) fitted = true;
+      const held = options && options.keepCard === true && !(patch && 'floors' in patch) ? tapped() : null;
       clearPoint();
       refresh();
+      reopen(held);
     }
 
-    // ---- the results
-    function ask() {
-      const project = store.project;
-      if (derived.asked === project) return;
-      derived.asked = project;
-      if (!store.derived || !store.derived.engine) {
-        derived.failed = 'Nothing is attached to work out the routes.';
-        return;
-      }
-      element.dataset.pending = 'true';
-      const settle = (results, failed) => {
-        // an answer for a state the project has left is not for the screen
-        if (gone || derived.asked !== project || store.project !== project) return;
-        derived = { asked: project, project: results ? project : derived.project, results: results || derived.results, failed };
-        refresh();
-        delete element.dataset.pending;
-      };
-      store.derived.results().then((results) => settle(results, null), (error) => settle(null, error && error.message ? error.message : String(error)));
+    // A card the reader tapped open, and putting it back on its cell after
+    // something that clears the card (the map drawn for another choice, or
+    // at another size).
+    function tapped() {
+      return point && point.source === 'tap' ? { floorId: point.floorId, cell: point.cell } : null;
     }
+    function reopen(held) {
+      const world = plan.world;
+      const at = held && world && state ? placeOf(world, held.floorId, held.cell) : null;
+      if (at) pointAt(at.x + 0.5, at.y + 0.5, 'tap');
+    }
+
+    // ---- the results: asked once per state of the project (model.js's
+    // createAsker, which a Node case runs as the view does)
+    const asker = createAsker({
+      store,
+      graph: () => graphNow(),
+      gone: () => gone,
+      timers: { set: (fn, ms) => setTimeout(fn, ms), clear: (id) => clearTimeout(id) },
+      pending() {
+        element.dataset.pending = 'true';
+      },
+      settled(failed, answered) {
+        // the answer is in: nothing is awaited by the time the panels are told (the Export tab reads this)
+        if (answered) delete element.dataset.pending;
+        refresh();
+        if (failed) ctx.announce(failedSentence(standingOf(store.project, asker.derived)).parts.map((part) => part.text).join(''));
+      },
+    });
+    const ask = () => asker.ask();
 
     // ---- everything but the canvas
     function refresh() {
@@ -349,84 +376,87 @@ export const section = {
         empty.replaceChildren(intro({ headline: HEADLINE, first: first(project), facts: facts(project) }));
         key.element.hidden = true;
         ctx.setInspector(null);
-        ctx.setSecondRow(null);
+        placeFloors();
         state = null;
+        delete element.dataset.stale;
         return;
       }
       if (empty.firstChild) {
         empty.replaceChildren();
         ctx.setInspector(inspector.element.parentElement);
-        ctx.setSecondRow(floorsRow);
       }
-      // the last answer is drawn against the project it was worked out for
-      const shown = derived.results && derived.project ? derived.project : project;
-      const graph = graphOf(shown);
-      picture = pictureOf(shown, derived.results, graph, choice);
-      const health = routeHealth(shown, derived.results);
-      const sentence = derived.failed && !derived.results
-        ? { parts: [{ text: 'The routes could not be worked out: ' + derived.failed }], showMe: false }
-        : sentenceOf(shown, picture, health);
-      state = { project: shown, results: derived.results, graph, picture, health };
+      placeFloors();
+      // the last answer is drawn against the project it was worked out for,
+      // on that project's graph; after a derive that failed it is stale
+      const derived = asker.derived;
+      const standing = standingOf(project, derived);
+      const shown = standing.project;
+      const graph = standing.results && derived.graph ? derived.graph : graphNow();
+      picture = pictureOf(shown, standing.results, graph, choice);
+      const health = routeHealth(shown, standing.results);
+      const sentence = standing.failed ? failedSentence(standing) : sentenceOf(shown, picture, health);
+      state = { project: shown, results: standing.results, graph, picture, health, stale: standing.stale };
+      if (standing.stale) element.dataset.stale = 'true';
+      else delete element.dataset.stale;
+      staleBand.hidden = !standing.stale;
       lineColours.clear();
       element.dataset.mode = picture.mode;
       element.dataset.groups = String(picture.groups.length);
       top.update(project, picture, sentence);
-      key.update(shown, picture);
+      // the scale's toggle shows the setting as it is now, not as the picture on screen had it
+      key.update(shown, picture, { mode: project.settings.colourScale && project.settings.colourScale.mode === 'absolute' ? 'absolute' : 'relative' });
       bar.update(state);
       drawPanel();
-      arrange();
-      drawFloors(project);
-      queuePaint();
+      // the floors laid out, the row of floors drawn, the map painted (plan-map.js)
+      plan.setProject(shown, graph);
     }
 
-    // ---- where the floors sit
-    function arrange() {
-      if (!picture) return;
-      const floors = picture.floors;
-      const how = choice.floors === 'side' || choice.floors === 'stacked' ? choice.floors : bestLayout(floors, view.width, view.height);
-      const next = layoutFloors(floors, how);
-      const nextKey = JSON.stringify([next.how, next.slots.map((slot) => [slot.floor.id, slot.x, slot.y, slot.w, slot.h, slot.box.x, slot.box.y])]);
-      // the floors' views are kept by the slot, for the renderer
-      for (const slot of next.slots) slot.view = createViewport();
-      if (nextKey !== worldKey) {
-        // a map of another shape: an arrangement the window chose is fitted again
-        if (worldKey === '' || choice.floors === 'auto') fitted = true;
-        worldKey = nextKey;
-      }
-      world = next;
-      if (fitted) fit(true);
+    // ---- the legend never covers a floor (DESIGN 5.3). Its card stands on
+    // the map's bottom right corner only where, with the map fitted to the
+    // window, it would lie on no floor; otherwise, and always on a phone, it
+    // is docked as one line under the map. The stage is measured as it is
+    // without that line, so that docking does not itself decide the answer.
+    const probe = createViewport();
+    function coversFloor() {
+      const world = plan.world;
+      if (!world || view.width === 0) return false;
+      // the stage undocked: what docking the line took from it, which is
+      // less than the line's height where the stage is at its least (SV2-72c3)
+      const height = view.height + (key.line.hidden ? 0 : plan.undockedGain());
+      const card = key.element;
+      const width = card.offsetWidth;
+      const tall = card.offsetHeight;
+      if (width === 0 || tall === 0) return false;
+      // where Fit puts the floors on that stage, round the zoom buttons and
+      // above the sticky foot, by the rule Fit itself takes (the map's
+      // choose, SV2-72f2): in the band beside them it moves them right,
+      // toward the card (SV2-72c2), so a plain fit is not asked
+      const place = plan.fitAt(view.width, height, FIT_MARGIN);
+      if (!place) return false;
+      probe.resize(view.width, height);
+      probe.zoom = place.zoom;
+      probe.x = place.x;
+      probe.y = place.y;
+      const style = getComputedStyle(card);
+      const right = view.width - (parseFloat(style.right) || 0);
+      // where the card rests: not lifted over the bar (--mov-under), which
+      // moves with the scroll and must not decide whether it docks
+      const lifted = parseFloat(stage.style.getPropertyValue('--mov-under')) || 0;
+      const bottom = height - ((parseFloat(style.bottom) || 0) - lifted);
+      const box = { left: right - width, top: bottom - tall, right, bottom };
+      const size = probe.size;
+      return world.slots.some((slot) => {
+        const left = probe.x + slot.x * size;
+        const topEdge = probe.y + slot.y * size;
+        return left < box.right && box.left < left + slot.w * size && topEdge < box.bottom && box.top < topEdge + slot.h * size;
+      });
     }
-
-    function fit(quiet) {
-      if (!world || view.width === 0) return;
-      view.fit({ x: 0, y: 0, w: world.width, h: world.height }, 20);
-      fitted = true;
-      if (!quiet) {
-        clearPoint();
-        queuePaint();
-      }
+    function dockLegend() {
+      if (gone || key.element.hidden) return;
+      key.setDocked(phone.matches || coversFloor());
     }
-
-    function zoomBy(factor) {
-      view.zoomAbout(view.zoom * factor, view.width / 2, view.height / 2);
-      fitted = false;
-      clearPoint();
-      queuePaint();
-    }
-
-    // Bring cells of a floor onto the map, in the middle of the window.
-    function show(floorId, cells) {
-      if (!world) return;
-      if (!world.slots.some((slot) => slot.floor.id === floorId)) change({ floors: floorId });
-      const places = (cells || []).map((cell) => placeOf(world, floorId, cell)).filter(Boolean);
-      if (places.length === 0) return;
-      const x = places.reduce((sum, place) => sum + place.x + 0.5, 0) / places.length;
-      const y = places.reduce((sum, place) => sum + place.y + 0.5, 0) / places.length;
-      const at = view.toScreen(x, y);
-      view.panBy(view.width / 2 - at.x, view.height / 2 - at.y);
-      fitted = false;
-      queuePaint();
-    }
+    // each time the floors are laid out, before a fitted map is fitted again
+    plan.onLayout(dockLegend);
 
     // ---- the colours
     function themeColours(theme) {
@@ -455,81 +485,17 @@ export const section = {
       return colour;
     }
 
-    // ---- the canvas
-    const overlay = lanesOverlay(() => {
-      if (!picture) return null;
-      const theme = renderer.theme();
-      return {
-        bands: picture.bands,
-        bandColours: themeColours(theme),
-        lanes: picture.lanes,
-        markers: picture.markers,
-        labels: choice.labels,
-        constantWidth: choice.constantWidth,
-        colourOf: (groupId) => lineColour(groupId, theme),
-      };
-    });
-
-    function pixel(floorId, cell) {
-      const place = world ? placeOf(world, floorId, cell) : null;
-      return place ? view.toScreen(place.x + 0.5, place.y + 0.5) : null;
-    }
-
-    function paint() {
-      queued = false;
-      if (gone || !world || !state || view.width === 0 || map.hidden) return;
-      const theme = renderer.theme();
-      const ratio = window.devicePixelRatio || 1;
-      const size = view.size;
+    // ---- the stairs links in use: a dotted arc from one end to the other,
+    // over every floor on the map's canvas
+    plan.across.push((g, given) => {
+      if (!picture || !state) return;
+      const theme = given.theme;
       themeColours(theme);
-      g.setTransform(ratio, 0, 0, ratio, 0, 0);
-      g.fillStyle = theme.paper;
-      g.fillRect(0, 0, view.width, view.height);
-      for (const slot of world.slots) {
-        const left = Math.round(view.x + slot.x * size);
-        const topEdge = Math.round(view.y + slot.y * size);
-        const right = Math.round(view.x + (slot.x + slot.w) * size);
-        const bottom = Math.round(view.y + (slot.y + slot.h) * size);
-        // the floor's name, over its top left corner
-        const nameSize = Math.max(11, Math.min(18, Math.round(size * 0.7)));
-        g.font = '600 ' + nameSize + 'px ' + theme.font;
-        g.textAlign = 'left';
-        g.textBaseline = 'alphabetic';
-        g.fillStyle = theme.ink;
-        g.fillText(slot.floor.name, left, topEdge - Math.max(4, Math.round(size * 0.3)));
-        if (right < 0 || bottom < 0 || left > view.width || topEdge > view.height) continue;
-        const floorView = slot.view;
-        floorView.resize(view.width, view.height);
-        floorView.zoom = view.zoom;
-        floorView.x = view.x + (slot.x - slot.box.x) * size;
-        floorView.y = view.y + (slot.y - slot.box.y) * size;
-        g.save();
-        g.beginPath();
-        g.rect(left, topEdge, right - left, bottom - topEdge);
-        g.clip();
-        renderer.draw({
-          project: state.project,
-          floor: slot.floor,
-          view: floorView,
-          selection: [],
-          hover: point && point.source !== 'keyboard' && point.floorId === slot.floor.id ? point.cell : null,
-          cursor: null,
-          preview: null,
-          overlays: [overlay, ...env.overlays],
-        });
-        g.restore();
-        g.setTransform(ratio, 0, 0, ratio, 0, 0);
-        g.strokeStyle = theme.line;
-        g.lineWidth = 1;
-        g.strokeRect(left + 0.5, topEdge + 0.5, right - left - 1, bottom - topEdge - 1);
-      }
-
-      // the stairs links in use: a dotted arc from one end to the other
       const alone = picture.groups.length === 1 ? lineColour(picture.groups[0].id, theme) : null;
-      const linkWidth = Math.max(2, Math.min(4, size * 0.14));
+      const linkWidth = Math.max(2, Math.min(4, view.size * 0.14));
       for (const link of picture.links) {
-        const a = pixel(link.a.floorId, link.a.cell);
-        const b = pixel(link.b.floorId, link.b.cell);
+        const a = given.point(link.a.floorId, link.a.cell);
+        const b = given.point(link.b.floorId, link.b.cell);
         if (!a && !b) continue;
         const style = { colour: alone || theme.ink, edge: theme.card, width: linkWidth, font: theme.font, ink: theme.ink };
         if (a && b) {
@@ -539,142 +505,72 @@ export const section = {
           drawStairLink(g, a || b, null, { ...style, text: link.label + (other ? ' to ' + other.name : '') });
         }
       }
-      for (const mark of env.marks) {
-        g.save();
-        mark(g, { view, theme, point: pixel });
-        g.restore();
-      }
-
-      // the keyboard cursor: dotted, with a light line under the dots
-      if (cursor.showing && document.activeElement === canvas) {
-        const at = view.toScreen(cursor.x, cursor.y);
-        const x = Math.round(at.x) + 1.5;
-        const y = Math.round(at.y) + 1.5;
-        const side = Math.round(size) - 3;
-        g.lineWidth = 3;
-        g.strokeStyle = theme.card;
-        g.strokeRect(x, y, side, side);
-        g.setLineDash([2, 2]);
-        g.lineWidth = 2;
-        g.strokeStyle = theme.ink;
-        g.strokeRect(x, y, side, side);
-        g.setLineDash([]);
-      }
-      zoomText.textContent = Math.round(view.zoom * 100) + '%';
-      canvas.dataset.drawn = String(Number(canvas.dataset.drawn || 0) + 1);
-    }
-
-    function queuePaint() {
-      if (queued) return;
-      queued = true;
-      requestAnimationFrame(paint);
-    }
+    });
 
     // ---- the cell card
     function clearPoint() {
       if (!point && card.element.hidden) return;
       point = null;
+      plan.hover(null);
       card.hide();
-      queuePaint();
+      plan.paint();
     }
 
     // The card for a cell of the map. Returns what was found there.
     function pointAt(x, y, source) {
+      const world = plan.world;
       const found = world ? slotAt(world, x, y) : null;
       const info = found && state ? cellCard(state.project, state.results, state.graph, picture, found.slot.floor.id, found.cell) : null;
       if (!info) {
         clearPoint();
         return { found, info: null };
       }
-      point = { floorId: found.slot.floor.id, cell: found.cell, source };
+      point = { floorId: found.slot.floor.id, cell: found.cell, source, picture };
+      // the cell the pointer is on is drawn as hovered; the keyboard's has its own ring
+      plan.hover(source === 'keyboard' ? null : point.floorId, point.cell);
       const at = view.toScreen(x, y);
       card.show(info, { x: at.x, y: at.y, size: view.size }, picture, state.project.settings);
       card.element.dataset.floor = point.floorId;
       card.element.dataset.cell = String(point.cell);
-      queuePaint();
+      plan.paint();
       return { found, info };
     }
 
-    const worldFloor = { get width() { return world ? Math.ceil(world.width) : 1; }, get height() { return world ? Math.ceil(world.height) : 1; } };
-    const host = {
-      view,
-      floor: () => worldFloor,
-      // nothing is drawn here: a drag moves the map
-      down: () => 'pan',
-      move() {},
-      up() {},
-      cancel() {},
-      // a tap shows a cell's card and keeps it; a tap on the same cell, or on nothing, puts it away
-      tap(ev) {
+    // what is done to a cell of the map (plan-map.js's onCell)
+    plan.onCell((ev) => {
+      const world = plan.world;
+      if (ev.kind === 'tap') {
+        // a tap shows a cell's card and keeps it; a tap on the same cell, or on nothing, puts it away
         const found = world && ev.inside ? slotAt(world, ev.x, ev.y) : null;
         if (!found || (point && point.source === 'tap' && point.floorId === found.slot.floor.id && point.cell === found.cell)) clearPoint();
         else pointAt(ev.x, ev.y, 'tap');
-      },
-      hover(ev) {
-        if (point && point.source === 'tap') return;
-        if (!ev || !ev.inside) clearPoint();
-        else pointAt(ev.x, ev.y, 'hover');
-      },
-      hasMenu: () => false,
-      menu() {},
-      spaceHeld: () => cursor.spaceHeld,
-      viewChanged() {
-        fitted = false;
-        clearPoint();
-        queuePaint();
-      },
-      moved(ev) {
+      } else if (ev.kind === 'hover') {
+        if (point && point.source === 'tap') return false;
+        if (!ev.inside) {
+          clearPoint();
+          return false;
+        }
+        // still in the cell whose card is up, over the same picture: nothing to work out again
+        const found = point && point.source === 'hover' && point.picture === picture && world ? slotAt(world, ev.x, ev.y) : null;
+        if (found && found.slot.floor.id === point.floorId && found.cell === point.cell) return false;
+        pointAt(ev.x, ev.y, 'hover');
+      } else if (ev.kind === 'keyboard') {
         const { found, info } = pointAt(ev.x, ev.y, 'keyboard');
         if (info) ctx.announce(card.text(info, picture, state.project.settings));
         else ctx.announce(found ? found.slot.floor.name + ': not a corridor.' : 'Between floors.');
-        queuePaint();
-      },
-      escape() {
+      } else if (ev.kind === 'escape') {
         if (!point) return false;
         clearPoint();
         return true;
-      },
-      shown: () => queuePaint(),
-    };
-    const input = attachInput(canvas, host);
-    const cursor = attachCursor(canvas, host);
-
-    function onKey(event) {
-      if (!singleKeyAllowed(event)) return;
-      if (event.key === '=' || event.key === '+') zoomBy(ZOOM_STEP);
-      else if (event.key === '-') zoomBy(1 / ZOOM_STEP);
-      else if (event.key === '0') fit();
-      else return;
-      event.preventDefault();
-    }
-    canvas.addEventListener('keydown', onKey);
-    canvas.addEventListener('focus', queuePaint);
-    canvas.addEventListener('blur', queuePaint);
-
-    // ---- the window
-    function measure() {
-      const width = stage.clientWidth;
-      const height = stage.clientHeight;
-      if (gone || width === 0 || height === 0) return;
-      if (width === view.width && height === view.height && canvas.dataset.ratio === String(window.devicePixelRatio || 1)) return;
-      view.resize(width, height);
-      renderer.resize(width, height, window.devicePixelRatio || 1);
-      canvas.dataset.ratio = String(window.devicePixelRatio || 1);
-      clearPoint();
-      arrange();
-      if (floorsRow.how) floorsRow.how.set(world ? world.how : 'side');
-      queued = false;
-      paint();
-    }
-    const watcher = new ResizeObserver(measure);
-    watcher.observe(stage);
-    const dark = matchMedia('(prefers-color-scheme: dark)');
-    dark.addEventListener('change', queuePaint);
-
-    loadSheet().then(() => {
-      if (gone) return;
-      element.dataset.styled = 'true';
-      measure();
+      } else if (ev.kind === 'view') {
+        clearPoint();
+      } else if (ev.kind === 'resize') {
+        // a card under the pointer goes with the old size; one the reader tapped open is put back on its cell
+        const held = tapped();
+        clearPoint();
+        reopen(held);
+      }
+      return false;
     });
 
     // Looking at this view is the last step of Getting started. The tick is
@@ -694,39 +590,46 @@ export const section = {
       view,
       canvas,
       env,
+      plan,
       get choice() { return choice; },
       get picture() { return picture; },
-      get world() { return world; },
+      get world() { return plan.world; },
       get state() { return state; },
-      get fitted() { return fitted; },
+      get fitted() { return plan.fitted; },
       get point() { return point; },
+      // the keyboard cursor (ui/surface/cursor.js): where it is, and moveTo(x, y, visible)
+      cursor: plan.cursor,
       change,
-      fit,
+      fit: () => plan.fit(),
       // Where on the canvas a group's lane runs through a cell, and how wide
       // the line is, in CSS pixels; null when the group does not walk there.
       laneAt(groupId, floorId, cell) {
+        const world = plan.world;
         const at = picture && picture.lanes ? lanePoint(picture.lanes, groupId, floorId, cell) : null;
         const slot = at && world ? world.slots.find((each) => each.floor.id === floorId) : null;
         if (!slot) return null;
         const place = view.toScreen(slot.x + at[0] - slot.box.x, slot.y + at[1] - slot.box.y);
-        return { x: place.x, y: place.y, width: lineWidth(picture.lanes, view.size, choice.constantWidth), colour: lineColour(groupId, renderer.theme()) };
+        return { x: place.x, y: place.y, width: lineWidth(picture.lanes, view.size, choice.constantWidth), colour: lineColour(groupId, plan.theme()) };
       },
-      cellAt: pixel,
+      cellAt: plan.cellAt,
     };
 
     return {
       element,
+      // where the shell's "to the surface" goes: the map
+      focus: () => plan.focus(),
       update() {
         ask();
         refresh();
       },
       unmount() {
         gone = true;
-        watcher.disconnect();
-        dark.removeEventListener('change', queuePaint);
-        input.detach();
-        cursor.detach();
-        canvas.removeEventListener('keydown', onKey);
+        asker.stop();
+        bar.unmount();
+        plan.unmount();
+        wide.removeEventListener('change', onWidth);
+        phone.removeEventListener('change', onWidth);
+        panels.hotspots.unmount();
       },
     };
   },

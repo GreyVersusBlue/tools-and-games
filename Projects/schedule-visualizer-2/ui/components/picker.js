@@ -7,6 +7,7 @@
 //   onPick(option)
 //   keepText  true leaves the picked label in the field; otherwise it clears,
 //             ready for the next pick
+// While the field is readOnly the list does not open and nothing is picked.
 // returns { element, input, close() }
 
 import { h, uid } from './dom.js';
@@ -81,7 +82,10 @@ export function picker(options) {
     mark();
   }
 
+  // A field that is read only shows what it holds and offers nothing: it
+  // neither opens its list nor picks from it.
   function show() {
+    if (input.readOnly) return;
     open = true;
     list.hidden = false;
     input.setAttribute('aria-expanded', 'true');
@@ -97,6 +101,10 @@ export function picker(options) {
   }
 
   function pick(option) {
+    if (input.readOnly) {
+      close();
+      return;
+    }
     input.value = options.keepText ? option.label : '';
     close();
     options.onPick(option);

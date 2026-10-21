@@ -41,8 +41,9 @@ import {
 } from './shapes.js';
 import { solidBeside, wallProbe } from './walls.js';
 import {
-  roofPlan, roofTop, roofMask, maskAt, PARAPET_H, COPING_T,
+  roofPlan, roofTop, roofMask, maskAt, PARAPET_H, COPING_T, inFootprint,
 } from './roof.js';
+import { roofHeightOver } from './skeleton.js';
 import { terrainField, groundAt } from './terrain.js';
 import {
   stairMetrics, linksFrom, runMetrics, localToWorld, footprintPolygon, isRun,
@@ -492,14 +493,26 @@ function cutWall(a, b, openings, kind, u, thick, base, top, out) {
 // The roof's height over one point of the plan, read off the same plan the
 // renderer extrudes, or null where nothing is overhead.
 export function roofHeightAt(plan, mask, x, z) {
+  // A hipped roof over a curve (#967) is read off its own faces inside the
+  // rooms' outline, and a mask cell whose middle is in that outline belongs
+  // to it, so the staircase of cells past the curve reads as nothing overhead.
+  // A court is not the footprint (#999): there it falls through to the mask,
+  // whose court cells are off, and reads as sky, as the overhang outside the
+  // outer wall does.
+  for (const b of plan.blocks) {
+    if (b.skeleton && inFootprint(b, x, z)) return roofHeightOver(b.faces, x, z);
+  }
   const c = Math.floor(x / CELL) - mask.cx0;
   const r = Math.floor(z / CELL) - mask.cy0;
   if (!maskAt(mask, c, r)) return null;
+  const mx = (mask.cx0 + c + 0.5) * CELL, mz = (mask.cy0 + r + 0.5) * CELL;
+  if (plan.blocks.some((b) => b.skeleton && inFootprint(b, mx, mz))) return null;
   if (plan.style === 'flat') return plan.eaveY;
   if (plan.style === 'parapet') return plan.eaveY + PARAPET_H + COPING_T;
   let best = plan.eaveY;
   for (const b of plan.blocks) {
     const rc = b.rect;
+    if (b.skeleton) continue;
     if (x < rc.x0 - 1e-6 || x > rc.x1 + 1e-6 || z < rc.z0 - 1e-6 || z > rc.z1 + 1e-6) continue;
     // Height climbs from the eave toward the ridge across the short span.
     const mid = b.alongX ? (rc.z0 + rc.z1) / 2 : (rc.x0 + rc.x1) / 2;

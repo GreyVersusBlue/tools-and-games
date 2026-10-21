@@ -4,9 +4,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { route, routeToExit, routingGraph } from '../../engine/routing.js';
-import { directions, describeFailure, CELL_UNITS } from '../../engine/directions.js';
+import { directions, describeFailure, CELL_UNITS, SQUARE_UNITS } from '../../engine/directions.js';
 import { school } from './helpers.mjs';
 import { planProject, twoRooms, threeFloors, disconnectedWing, roomId, cellAt } from '../fixtures/buildings/plans.mjs';
+import { publishedModel } from '../../engine/publish-data.js';
+import { openSchool } from '../../staff/model.js';
+import { directionsRefusal } from '../../staff/views/directions.js';
 
 // An L-shaped walk with a floor change. From room 1A: left out of the room
 // and east along the corridor past room 1C, right at the corner, south to
@@ -113,6 +116,34 @@ test('units: distances are in cells unless a scale is passed', () => {
   const paces = walk(threeFloors(), '1A', '2A', { perCell: 0.5, one: 'pace', many: 'paces' });
   assert.equal(paces.steps[1].text, 'Walk 1 pace to stairs A.', 'a distance is never less than one');
   assert.deepEqual(lines(walk(project, '1A', '2B', { perCell: 0 })), lines(walk(project, '1A', '2B')), 'a scale that is no scale falls back to cells');
+});
+
+test('for a reader a distance is in squares, one word for the planner\'s cell: "Walk 4 squares", "Walk 1 square"', () => {
+  assert.deepEqual(SQUARE_UNITS, { perCell: 1, one: 'square', many: 'squares' });
+  const squares = walk(lShape(), '1A', '2B', SQUARE_UNITS);
+  assert.deepEqual(lines(squares).filter((line) => line.startsWith('Walk')), ['Walk 4 squares, past Room 1C.', 'Walk 3 squares to stairs A.', 'Walk 2 squares to the end of the corridor.']);
+  assert.deepEqual([squares.steps[1].cells, squares.steps[1].distance], [4, '4 squares'], 'the count of cells is still the step\'s own figure');
+  assert.equal(walk(threeFloors(), '1A', '2A', SQUARE_UNITS).steps[1].text, 'Walk 1 square to stairs A.');
+  for (const line of lines(squares)) assert.doesNotMatch(line, /cell/, line);
+});
+
+test('a way with no stairs that does not exist between two rooms is said plainly, and every other failure keeps its own sentence', () => {
+  const floors = threeFloors();
+  const graph = routingGraph(floors);
+  const refused = route(graph, roomId('1A'), roomId('2B'), { avoidStairs: true });
+  assert.deepEqual(directions(floors, refused), { ok: false, steps: [], text: 'There is no way from Room 1A to Room 2B without stairs.' });
+  assert.deepEqual(directions(floors, refused, SQUARE_UNITS).text, 'There is no way from Room 1A to Room 2B without stairs.');
+  // with stairs allowed there is a way, so nothing is refused
+  assert.equal(directions(floors, route(graph, roomId('1A'), roomId('2B'))).ok, true);
+  // no way at all, stairs or not: the engine's sentence, with the floor
+  const wing = disconnectedWing();
+  assert.equal(directions(wing, route(routingGraph(wing), roomId('1A'), roomId('1C'))).text, 'There is no way through from Room 1A to Room 1C on Floor 1.');
+  // something else was avoided as well: not this sentence
+  assert.equal(directions(floors, { ...refused, avoiding: ['stairs', 'corridor'] }).text, describeFailure(floors, { ...refused, avoiding: ['stairs', 'corridor'] }));
+  // a way out of the building is not between two rooms
+  assert.equal(directions(floors, { ...refused, end: 'from' }).text, describeFailure(floors, { ...refused, end: 'from' }));
+  // a room that has gone
+  assert.equal(directions(floors, { ...refused, fromRoomId: 'rgone000001' }).text, describeFailure(floors, { ...refused, fromRoomId: 'rgone000001' }));
 });
 
 test('a three-floor stairwell is one step naming both connections', () => {
@@ -226,6 +257,28 @@ test('the same room, and each named failure, as a sentence that names the room a
   assert.equal(directions(floors, null).ok, false);
 });
 
+// SV2-49 item 5. The engine words a step-free refusal as "no way ... without
+// stairs" whenever stairs were being avoided, which on a wing no corridor
+// reaches promises a way that does not exist. The staff browser's page looks
+// once more with stairs allowed before it says so or offers that way.
+test('step-free with no way at all: the reader is told there is no way, and the way with stairs is offered only where there is one', () => {
+  const clock = () => new Date('2026-09-01T12:00:00Z');
+  const wing = disconnectedWing();
+  const opened = openSchool(publishedModel(wing, { clock }));
+  // what the engine says for the route as asked, and why the page cannot stop there
+  assert.equal(opened.directions(opened.route(roomId('1A'), roomId('1C'), { avoidStairs: true })).text, 'There is no way from Room 1A to Room 1C without stairs.');
+  assert.equal(opened.route(roomId('1A'), roomId('1C')).ok, false, 'and there is none with stairs either: one floor, two corridors that do not meet');
+
+  assert.deepEqual(directionsRefusal(opened, roomId('1A'), roomId('1C'), true), { text: 'There is no way through from Room 1A to Room 1C on Floor 1.', stairs: false });
+  assert.deepEqual(directionsRefusal(opened, roomId('1A'), roomId('1C'), false), { text: 'There is no way through from Room 1A to Room 1C on Floor 1.', stairs: false });
+  assert.equal(directionsRefusal(opened, roomId('1A'), roomId('1B'), true), null, 'a way that exists is no refusal');
+
+  // where stairs are the only way, the plain sentence stands and the way with stairs is offered
+  const floors = openSchool(publishedModel(threeFloors(), { clock }));
+  assert.deepEqual(directionsRefusal(floors, roomId('1A'), roomId('2B'), true), { text: 'There is no way from Room 1A to Room 2B without stairs.', stairs: true });
+  assert.equal(directionsRefusal(floors, roomId('1A'), roomId('2B'), false), null);
+});
+
 test('every route of the sample school can be written out: numbered from 1, a way out first and the room last', () => {
   const project = school();
   const graph = routingGraph(project);
@@ -251,4 +304,41 @@ test('every route of the sample school can be written out: numbered from 1, a wa
     }
   }
   assert.equal(written, 13 * 12);
+});
+
+// ---------------------------------------------------------------- SV2-43: does a failure's sentence open with what was typed?
+// (The import stands here so that the lines above are left as they were for
+// the unit changing two of the sentences beside this one.)
+import { startsAsTyped } from '../../engine/directions.js';
+
+test('startsAsTyped: true where describeFailure’s sentence opens with a room as it was typed, false where it opens with a word of the tool’s own', () => {
+  const project = planProject([['.A.....', '####...', '.....C.']]);
+  const floor = project.building.floors[0].id;
+  const cases = [
+    [{ ok: false, reason: 'no-room', roomId: null, floorId: null, end: 'to' }, false, 'No room'],
+    [{ ok: false, reason: 'room-missing', roomId: null, floorId: null, end: 'to', text: '' }, false, 'The room'],
+    [{ ok: false, reason: 'room-missing', roomId: null, floorId: null, end: 'to', text: '   ' }, false, 'The room'],
+    [{ ok: false, reason: 'room-missing', roomId: null, floorId: null, end: 'to' }, false, 'The room'],
+    [{ ok: false, reason: 'room-missing', roomId: null, floorId: null, end: 'to', text: '999' }, true, 'Room 999'],
+    [{ ok: false, reason: 'room-missing', roomId: null, floorId: null, end: 'to', text: 'the annex' }, true, 'the annex'],
+    [{ ok: false, reason: 'no-entry', roomId: roomId('1C'), floorId: floor, end: 'to' }, true, 'Room 1C'],
+    [{ ok: false, reason: 'no-entry', roomId: 'rgone00001', floorId: floor, end: 'to' }, false, 'The room'],
+    [{ ok: false, reason: 'unreachable', roomId: roomId('1C'), floorId: floor, end: 'to', fromRoomId: roomId('1A') }, false, 'There is'],
+    [{ ok: false, reason: 'unreachable', roomId: roomId('1A'), floorId: floor, end: 'from' }, false, 'There is'],
+  ];
+  for (const [failed, typed, opens] of cases) {
+    const sentence = describeFailure(project, failed);
+    assert.ok(sentence.startsWith(opens), JSON.stringify(failed) + ' reads ' + sentence);
+    assert.equal(startsAsTyped(project, failed), typed, sentence);
+  }
+  // a room whose number is blank is named in the tool's words; the same words typed as its number are its name
+  const room = project.building.floors[0].spaces.find((space) => space.id === roomId('1C'));
+  room.number = ' ';
+  assert.equal(describeFailure(project, cases[6][0]), 'A room with no number on Floor 1 does not open onto a corridor.');
+  assert.equal(startsAsTyped(project, cases[6][0]), false);
+  room.number = 'A room with no number';
+  assert.equal(describeFailure(project, cases[6][0]), 'A room with no number on Floor 1 does not open onto a corridor.');
+  assert.equal(startsAsTyped(project, cases[6][0]), true);
+  // nothing to describe
+  assert.equal(startsAsTyped(project, null), false);
 });

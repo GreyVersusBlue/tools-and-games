@@ -250,7 +250,7 @@ test('an other space has a label, a kind and a colour', async () => {
 
 // ---------------------------------------------------------------- the room list
 
-test('the Rooms tab lists the rooms of the floor on screen, sorted by number, and carries the two print buttons', async () => {
+test('the Rooms tab lists the rooms of the floor on screen, sorted by number, and carries the three print buttons', async () => {
   await tab('rooms');
   const now = await project();
   const rooms = now.building.floors[0].spaces.filter((space) => space.kind === 'room');
@@ -263,7 +263,7 @@ test('the Rooms tab lists the rooms of the floor on screen, sorted by number, an
   await page.click('#rooms-table th:first-child .table__sort');
   assert.deepEqual(await numbers(), sorted.slice().reverse());
   await page.click('#rooms-table th:first-child .table__sort');
-  assert.deepEqual(await page.$$eval('#rooms-print button', (all) => all.map((button) => button.id + ':' + button.textContent)), ['print-floor-plan:Print the floor plan', 'print-room-list:Print the room list']);
+  assert.deepEqual(await page.$$eval('#rooms-print button', (all) => all.map((button) => button.id + ':' + button.textContent)), ['print-floor-plan:Print the floor plan', 'print-door-cards:Print door cards', 'print-room-list:Print the room list']);
 });
 
 test('a room is edited in place in the list: the same actions, the same refusals, and its row stays where it is', async () => {

@@ -27,9 +27,10 @@ import { publishDocument } from '../../ui/staff/targets.js';
 import { publishedModel } from '../../engine/publish-data.js';
 import { buildGraph } from '../../engine/graph.js';
 import { routingGraph, route } from '../../engine/routing.js';
-import { directions } from '../../engine/directions.js';
+import { directions, SQUARE_UNITS } from '../../engine/directions.js';
 import { seededRandom } from '../../engine/ids.js';
 import { sampleSchool } from '../../data/sample-school.js';
+import { disconnectedWing, roomId } from '../fixtures/buildings/plans.mjs';
 
 const AXE = readFileSync(path.join(TOOL_DIR, 'test', 'vendor', 'axe-core', 'axe.min.js'), 'utf8');
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'];
@@ -52,8 +53,8 @@ const read = diskReader();
 const files = {};
 let browser;
 
-async function write(name, change) {
-  const project = sampleSchool();
+async function write(name, change, from) {
+  const project = from ? from() : sampleSchool();
   project.publish.passcode = '';
   if (change) change(project);
   const published = await publishDocument(read, project, { clock: future, random: seededRandom('staff-views-b ' + name) });
@@ -77,6 +78,8 @@ before(async () => {
   await write('nobells', (project) => {
     for (const dayType of project.dayTypes) dayType.bells = dayType.bells.map(() => null);
   });
+  // one floor, two corridors that do not meet: rooms 1A and 1B on one, 1C and 1D on the other
+  await write('wing', null, disconnectedWing);
   browser = await launch();
 });
 
@@ -575,7 +578,8 @@ test('the substitute plan is one page: the day, a date, who could cover, the roo
     ]);
     assert.equal(await text(page, '[data-sub="day"] .card__title'), 'The day: A Day');
     assert.equal(await text(page, '[data-sub="day"] > .muted'), 'Science · Room 103');
-    assert.deepEqual(await texts(page, '[data-sub="cover"] li'), [
+    // what is on screen: the first three, and a count of the rest (on paper every one is named: m4-pass.mjs)
+    assert.deepEqual(await page.evaluate(() => Array.from(document.querySelectorAll('[data-sub="cover"] li'), (line) => line.innerText)), [
       'Period 2: Ms. Thistlewood (same subject), Mr. Brightwater, Ms. Oyelaran, and 2 more',
       'Period 3: Ms. Thistlewood (same subject), Ms. Oyelaran, Mr. Castellanos, and 1 more',
       'Period 4: Ms. Thistlewood (same subject), ' + HOSTILE + ' T, Coach Dunmore, and 4 more',
@@ -629,6 +633,7 @@ test('on paper the substitute plan is one column with the pickers, buttons and b
         dayPicker: shown('[data-pick="day"]'),
         mapLinks: shown('[data-sub="room"] a.no-print'),
         date: shown('#sub-date'),
+        dated: shown('[data-sub="date"]'),
         rows: shown('[data-sub="day"] .row'),
         check: shown('[data-sub="check"]'),
         lefts: Array.from(new Set(cards.map((rect) => Math.round(rect.left)))).length,
@@ -636,7 +641,8 @@ test('on paper the substitute plan is one column with the pickers, buttons and b
         stacked: cards.every((rect, index) => index === 0 || rect.top >= cards[index - 1].bottom),
       };
     });
-    assert.deepEqual(paper, { bar: 0, buttons: 0, dayPicker: 0, mapLinks: 0, date: 1, rows: 8, check: 1, lefts: 1, widths: 1, stacked: true });
+    // the date is a line of words on paper, not the field (SV2-45 M7)
+    assert.deepEqual(paper, { bar: 0, buttons: 0, dayPicker: 0, mapLinks: 0, date: 0, dated: 1, rows: 8, check: 1, lefts: 1, widths: 1, stacked: true });
     assert.deepEqual(session.errors, []);
   } finally {
     await session.close();
@@ -660,7 +666,8 @@ test('Directions shows the engine\'s own route and words, with a step-free optio
     // what the planner's engine says for the same two rooms, on the same published data
     const model = files.open.model;
     const graph = routingGraph(model, buildGraph(model));
-    const written = directions(model, route(graph, 'rsample101', 'rsample303'));
+    // in the reader's word for a distance, squares (SV2-45 M2)
+    const written = directions(model, route(graph, 'rsample101', 'rsample303'), SQUARE_UNITS);
     const steps = await texts(page, '.steps > li');
     assert.deepEqual(steps, written.steps.map((step) => step.text));
     assert.equal(steps.length, 15);
@@ -675,8 +682,10 @@ test('Directions shows the engine\'s own route and words, with a step-free optio
     // step-free: this building has only stairs between floors
     await page.click('#directions-stepfree');
     assert.equal(await hash(page), '#/directions?from=rsample101&to=rsample303&stepfree=1');
-    assert.equal(await says(page), 'There is no step-free way through from Room 101 to Room 303 on Floor 3.');
+    assert.equal(await says(page), 'There is no way from Room 101 to Room 303 without stairs.');
     assert.equal(await page.evaluate(() => document.querySelector('.steps')), null);
+    // the way with stairs was looked for and found before it is offered
+    assert.equal(await text(page, '[data-directions="stairs"]'), 'There is a way that uses stairs. Show the way with stairs');
     await page.click('[data-directions="stairs"] button');
     assert.equal(await page.evaluate(() => document.getElementById('directions-stepfree').checked), false);
     assert.equal(await hash(page), '#/directions?from=rsample101&to=rsample303');
@@ -686,7 +695,7 @@ test('Directions shows the engine\'s own route and words, with a step-free optio
     await page.click('#directions-stepfree');
     await page.select('#directions-to', 'rsample103');
     assert.equal(await says(page), 'From Room 101 to Room 103: under a minute, all on one floor, step-free.');
-    assert.deepEqual(await texts(page, '.steps > li'), directions(model, route(graph, 'rsample101', 'rsample103', { avoidStairs: true })).steps.map((step) => step.text));
+    assert.deepEqual(await texts(page, '.steps > li'), directions(model, route(graph, 'rsample101', 'rsample103', { avoidStairs: true }), SQUARE_UNITS).steps.map((step) => step.text));
     assert.deepEqual(await texts(page, '[data-directions="floors"] li'), ['Floor 1, where the walk ends']);
 
     await page.click('[data-directions="swap"]');
@@ -695,6 +704,38 @@ test('Directions shows the engine\'s own route and words, with a step-free optio
     await page.select('#directions-to', 'rsample103');
     assert.equal(await says(page), 'This is the same room. There is no travel.');
     assert.deepEqual(asked(session, files.open.url), []);
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+// SV2-49 item 5
+test('Directions, step-free, between two rooms that nothing joins: the page says there is no way and offers no button that leads to a second refusal', async () => {
+  const session = await openPage();
+  try {
+    const { page } = session;
+    const [a, b, c] = [roomId('1A'), roomId('1B'), roomId('1C')];
+    await goto(page, files.wing.url + '#/directions?from=' + a + '&to=' + c + '&stepfree=1');
+    assert.equal(await page.evaluate(() => document.getElementById('directions-stepfree').checked), true);
+    assert.equal(await says(page), 'There is no way through from Room 1A to Room 1C on Floor 1.');
+    assert.equal(await page.evaluate(() => document.querySelector('.lede[role="status"]').dataset.ok), 'false');
+    assert.equal(await page.evaluate(() => document.querySelector('[data-directions="stairs"]')), null, 'no way with stairs is offered where there is none');
+    assert.equal(await page.evaluate(() => document.querySelectorAll('[data-out="directions"] button').length), 0);
+    assert.doesNotMatch(await page.evaluate(() => document.querySelector('.page__body').textContent), /without stairs|uses stairs/);
+
+    // with the box unticked the sentence is the same one: the box was never the reason
+    await page.click('#directions-stepfree');
+    assert.equal(await hash(page), '#/directions?from=' + a + '&to=' + c);
+    assert.equal(await says(page), 'There is no way through from Room 1A to Room 1C on Floor 1.');
+    assert.equal(await page.evaluate(() => document.querySelector('[data-directions="stairs"]')), null);
+
+    // and a way that exists on this floor is given, step-free
+    await page.click('#directions-stepfree');
+    await page.select('#directions-to', b);
+    assert.match(await says(page), /^From Room 1A to Room 1B: under a minute, all on one floor, step-free\.$/);
+    assert.ok((await texts(page, '.steps > li')).length >= 1);
+    assert.deepEqual(asked(session, files.wing.url), []);
     assert.deepEqual(session.errors, []);
   } finally {
     await session.close();

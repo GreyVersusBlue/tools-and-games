@@ -67,12 +67,39 @@ export const GROUPS = {
     'engine/import-teachers.test.mjs', // SV2-35
     'engine/finding-ids.test.mjs', // SV2-35
     'engine/prints.test.mjs', // SV2-14
+    'engine/prints-batch.test.mjs', // SV2-24
+    'engine/readers.test.mjs', // SV2-42
+    'engine/prints-movement.test.mjs', // SV2-18
     'engine/grid-edits.test.mjs', // SV2-12
     'engine/import-subjects.test.mjs', // SV2-13
+    'engine/scenario.test.mjs', // SV2-60
+    'engine/evacuation.test.mjs', // SV2-62
+    'engine/scenario-actions.test.mjs', // SV2-61
+    'engine/prints-door-cards.test.mjs', // SV2-66
+    'engine/suggest.test.mjs', // SV2-63
+    'engine/prints-congestion-scenario.test.mjs', // SV2-71
+    'engine/snapshots.test.mjs', // SV2-28
+    'engine/transfer.test.mjs', // SV2-29a
+    'engine/transfer-qr.test.mjs', // SV2-29a
+    'engine/help.test.mjs', // SV2-30a
     'ui/progress.test.mjs', // SV2-02
     'ui/helpers.test.mjs', // SV2-02
     'ui/building-inspector.test.mjs', // SV2-07
     'ui/movement.test.mjs', // SV2-17
+    'ui/playback.test.mjs', // SV2-44
+    'ui/room-picker.test.mjs', // SV2-48
+    'ui/schedule-address.test.mjs', // SV2-54
+    'ui/staff-pass.test.mjs', // SV2-45
+    'ui/engine-client.test.mjs', // SV2-49
+    'ui/plan-map.test.mjs', // SV2-65
+    'ui/scenario-lane.test.mjs', // SV2-64
+    'ui/safety.test.mjs', // SV2-67b
+    'ui/exit-colours.test.mjs', // SV2-72c
+    'ui/renderer-labels.test.mjs', // SV2-72c
+    'ui/scenarios-model.test.mjs', // SV2-68b
+    'ui/difference.test.mjs', // SV2-69
+    'ui/fix-kinds.test.mjs', // SV2-70b
+    'ui/lab-fixes.test.mjs', // SV2-72d
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
   ],
   browser: [
@@ -92,6 +119,8 @@ export const GROUPS = {
     'browser/tabs.mjs', // SV2-03
     'browser/schedule.mjs', // SV2-11
     'browser/grid.mjs', // SV2-12
+    'browser/grid-pass.mjs', // SV2-40, SV2-46
+    'browser/m2-pass.mjs', // SV2-38
     'browser/import.mjs', // SV2-13
     'browser/project-file.mjs', // SV2-13
     'browser/worker.mjs', // SV2-16
@@ -99,7 +128,23 @@ export const GROUPS = {
     'browser/staff-shell.mjs', // SV2-20
     'browser/staff-views-a.mjs', // SV2-21
     'browser/staff-views-b.mjs', // SV2-22
+    'browser/staff-outputs.mjs', // SV2-23
+    'browser/publish.mjs', // SV2-24
+    'browser/m4-pass.mjs', // SV2-45
     'browser/movement.mjs', // SV2-17
+    'browser/hotspots.mjs', // SV2-18
+    'browser/playback.mjs', // SV2-19
+    'browser/m3-pass.mjs', // SV2-43
+    'browser/plan-map.mjs', // SV2-65b
+    'browser/safety.mjs', // SV2-67
+    'browser/scenario.mjs', // SV2-68
+    'browser/congestion-scenario.mjs', // SV2-71
+    'browser/difference.mjs', // SV2-69
+    'browser/fix.mjs', // SV2-70
+    'browser/m5-pass.mjs', // SV2-72f
+    'browser/snapshots.mjs', // SV2-28
+    'browser/transfer.mjs', // SV2-29b
+    'browser/help.mjs', // SV2-30a
     'a11y/axe.mjs',
   ],
   a11y: [
@@ -110,6 +155,12 @@ export const GROUPS = {
     'timing/routing.mjs', // SV2-05
     'timing/crowd.mjs', // SV2-15
     'timing/pipeline.mjs', // SV2-16
+    'timing/movement.mjs', // SV2-39
+    'timing/playback.mjs', // SV2-44
+    'timing/evacuation.mjs', // SV2-62
+    'timing/suggest.mjs', // SV2-63
+    'timing/scenario-lane.mjs', // SV2-64
+    'timing/difference-card.mjs', // SV2-69c
   ],
 };
 

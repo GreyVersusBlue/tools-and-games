@@ -5,7 +5,9 @@
 //
 //   const shell = mountShell(root, { win, doc });
 //   shell.show(data);     a published model or a locked one; call again when
-//                         the planner's preview sends a newer one
+//                         the planner's preview sends a newer one. A second
+//                         argument { forget: true } drops the key kept for
+//                         the school first, from storage and from memory
 //   shell.waiting(text);  before any data has come
 //   shell.nothing();      no data anywhere
 //
@@ -19,9 +21,11 @@ import { openStorage, NOT_KEPT_SENTENCE } from './storage.js';
 import { dayText, momentText, isStale, isOlderThanSeen } from './dates.js';
 import { readPublished, DAMAGED_SENTENCE } from './source.js';
 import { openSchool } from './model.js';
-import { pageOf, leftOutPage } from './page.js';
+import { pageOf, leftOutPage, printWhen, UNKNOWN_PAGE_SENTENCE } from './page.js';
+import { unmountMaps } from './map.js';
+import { ME_KEY } from './notes.js';
 import { unlockScreen } from './passcode.js';
-import { viewFor } from './views.js';
+import { viewFor, isView } from './views.js';
 import { unlockPublished, unlockWithKey, toBase64, fromBase64 } from '../engine/publish-crypto.js';
 
 const BAR = [
@@ -51,8 +55,11 @@ export function mountShell(root, env) {
   // ---- the screens that are not a schedule
 
   function card(state, title, ...body) {
+    // a schedule's page may be leaving for this card: its maps stop listening
+    unmountMaps();
     open = null;
     gate = null;
+    delete root.dataset.view;
     root.dataset.state = state;
     root.replaceChildren(h('div', { class: 'gate' }, h('main', { class: 'gate__card' }, h('h1', { class: 'gate__title', tabindex: '-1' }, title), body)));
     setTitle(title);
@@ -96,9 +103,19 @@ export function mountShell(root, env) {
   function draw(moveFocus) {
     if (!open) return;
     const current = open;
-    const route = parseHash(win.location.hash);
-    const view = viewFor(route.view);
     const ctx = ctxFor(current);
+    // the page on screen is leaving: its maps stop listening before the next page makes its own
+    unmountMaps();
+    let route = parseHash(win.location.hash);
+    // An address that names no page of this file (a mistyped link, a view of
+    // a newer copy): the search page, told so, at the search page's own
+    // address, so the bar does not go on holding what led nowhere.
+    const unknown = !isView(route.view);
+    if (unknown) {
+      route = parseHash('#/search');
+      ctx.replace('#/search');
+    }
+    const view = viewFor(route.view);
     const left = view.flag !== null && !current.school.has(view.flag);
     let title = 'Staff schedule';
     let page;
@@ -107,11 +124,18 @@ export function mountShell(root, env) {
       page = left ? leftOutPage(title) : view.render(ctx, route);
     } catch (error) {
       // one page failing is said on that page; the rest of the file still works
-      page = pageOf('This page could not be shown', 'Something in this copy of the schedule could not be read for this page. The other pages still work.',
-        h('p', { class: 'muted' }, String(error && error.message ? error.message : error)));
+      page = printWhen(pageOf('This page could not be shown', 'Something in this copy of the schedule could not be read for this page. The other pages still work.',
+        h('p', { class: 'muted' }, String(error && error.message ? error.message : error))), false);
+    }
+    if (unknown) {
+      const heading = page.querySelector('.page__title');
+      if (heading) heading.before(h('p', { class: 'notice', role: 'status', dataset: { notice: 'unknown' } }, UNKNOWN_PAGE_SENTENCE));
     }
     current.main.replaceChildren(page);
     current.main.dataset.view = view.id;
+    // on the frame as well, so a rule for one view's paper (the door sign's)
+    // can reach the school's line and the footer without :has()
+    root.dataset.view = view.id;
     setTitle(title + ' · ' + current.school.name);
     for (const item of current.bar.querySelectorAll('a[data-item]')) {
       if (item.dataset.item === view.nav) item.setAttribute('aria-current', 'page');
@@ -178,7 +202,7 @@ export function mountShell(root, env) {
     if (firstOpen) {
       firstOpen = false;
       const hash = win.location.hash;
-      const me = store.get('me');
+      const me = store.get(ME_KEY);
       if ((hash === '' || hash === '#' || hash === '#/') && me && school.teacher(me) && school.has('teacher')) {
         ctxFor(open).replace(makeHash('teacher', me));
       }
@@ -222,7 +246,7 @@ export function mountShell(root, env) {
     return true;
   }
 
-  async function show(value) {
+  async function show(value, flags) {
     turn += 1;
     const mine = turn;
     const read = readPublished(value);
@@ -232,6 +256,9 @@ export function mountShell(root, env) {
 
     const envelope = read.envelope;
     const store = storeFor(envelope.schoolId);
+    // the planner's preview asked for the passcode screen: the key goes from
+    // wherever this page kept it, its storage or its memory
+    if (flags && flags.forget === true) store.remove('key');
     const kept = store.get('key');
     if (kept) {
       let model = null;
@@ -268,7 +295,10 @@ export function mountShell(root, env) {
         return true;
       },
     });
+    // the preview can lock a schedule that is open: the page on screen leaves, and its maps stop listening
+    unmountMaps();
     root.dataset.state = 'locked';
+    delete root.dataset.view;
     root.replaceChildren(screen.element);
     setTitle('Staff schedule');
     screen.focus();

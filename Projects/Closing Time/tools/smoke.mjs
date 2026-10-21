@@ -18,7 +18,7 @@ import * as Clients from "../js/engine/clients.js";
 import * as Deals from "../js/engine/deals.js";
 import * as Seller from "../js/engine/seller.js";
 import { endDay, CAREER_LENGTH_DAYS } from "../js/engine/calendar.js";
-import { maybeFireEvent } from "../js/engine/events.js";
+import { maybeFireEvent, fireEvent, eligibleEvents } from "../js/engine/events.js";
 import { FINANCING, financingFor, financingType, closeDaysFor, DEFAULT_FINANCING } from "../js/engine/financing.js";
 import * as Esc from "../js/engine/escalation.js";
 import * as Com from "../js/engine/commercial.js";
@@ -1847,6 +1847,223 @@ const unlist = (cat, file) => m => { m[cat] = m[cat].filter(p => p !== cat + "/"
       eq(sizes(), JSON.stringify(counts), "and loads every file");
     } finally { globalThis.fetch = realFetch; console.error = realError; }
   }
+}
+
+/* ------------------------------------- the fourth door, and the queue of an old career */
+// Two things the seller-side design read in the code and did not reproduce.
+// Both were real. Every career here is built by the engine, and the old one is
+// saved while the client files are out of DB, which is what a career begun
+// before those files existed holds.
+console.log("\nRuth's referral, and a client added since the career began:");
+{
+  const ruth = DB.events.ev_ruth_referral;
+  const without = (ids, fn) => {
+    const stash = ids.map(id => DB.clients[id]);
+    ids.forEach(id => delete DB.clients[id]);
+    try { return fn(); } finally { ids.forEach((id, i) => { DB.clients[id] = stash[i]; }); }
+  };
+  /** Who Ruth sends over `n` seeded calls at a rung, on a career's own shuffled queue. */
+  const ruthSends = (level, n, queue = null) => {
+    const sent = new Set();
+    for (let i = 1; i <= n; i++) {
+      newGame("bk_hearthstone");
+      S.seed = (i * 2654435761) % 4294967296; S.level = level; S.day = 12; S.rep = 20;
+      if (queue) S.clientQueue = [...queue];
+      fireEvent(ruth);
+      for (const ch of S.choiceQueue) if (ch.kind === "referralArrive") sent.add(ch.clientId);
+    }
+    return [...sent].sort().join(" ");
+  };
+
+  // --- (B) the door. The lists are written out, not worked from LEVELS: a
+  // list built by the rule would agree with the rule whatever it said.
+  const ROOKIE = "cl_0001 cl_0004 cl_0008 cl_0101 cl_0102 cl_0103 cl_0104 cl_0105 cl_0106";
+  eq(ruthSends(1, 400), ROOKIE,
+    "Ruth sends a Rookie Agent the three starter buyers and the six sellers, each of them, and nobody else");
+  eq(ruthSends(2, 400), [...ROOKIE.split(" "), "cl_0002", "cl_0003", "cl_0005", "cl_0009", "cl_0010"].sort().join(" "),
+    "an Associate the mid buyers as well");
+  eq(ruthSends(3, 400), [...ROOKIE.split(" "), "cl_0002", "cl_0003", "cl_0005", "cl_0006", "cl_0007", "cl_0009", "cl_0010"].sort().join(" "),
+    "a Senior Agent everybody but the three investors");
+  eq(ruthSends(4, 400), Object.keys(DB.clients).sort().join(" "), "and Broker-Track the whole queue, as before");
+  eq(ruthSends(1, 60, ["cl_0201", "cl_0007", "cl_0002", "cl_0004"]), "cl_0004",
+    "with one client in reach among three who are not, she sends that one");
+
+  // Nobody in reach. Before, the Ledger printed her call and a Rookie got a
+  // modal offering a 1031 buyer; with the queue empty it printed the call and
+  // nothing came of it.
+  const offered = queue => {
+    newGame("bk_hearthstone"); S.level = 1; S.day = 12; S.rep = 20; S.clientQueue = queue;
+    return eligibleEvents("any").includes(ruth);
+  };
+  eq(offered(["cl_0201", "cl_0004"]), true, "Ruth's call can fire while somebody in the queue is in reach");
+  eq(offered(["cl_0201", "cl_0007"]), false, "and cannot when nobody is, so the Ledger never prints a call with no client behind it");
+  eq(offered([]), false, "nor on an empty queue");
+  const firedAnyway = () => { try { fireEvent(ruth); return null; } catch (e) { return e.message; } };
+  eq(firedAnyway(), null, "fired anyway on an empty queue, the handler does not throw");
+  eq(S.choiceQueue.length, 0, "and opens no modal");
+  S.clientQueue = ["cl_0201", "cl_0007"];
+  eq(firedAnyway(), null, "fired anyway with nobody in reach, it does not throw");
+  eq(S.choiceQueue.length, 0, "and opens no modal either");
+  S.clientQueue = ["cl_0201", "cl_0004"];
+  const seedBefore = S.seed;
+  fireEvent(ruth);
+  eq(S.seed, (seedBefore * 1664525 + 1013904223) % 4294967296, "a call that lands is one draw from the career's seed, as it was");
+
+  // The Monday lead is the door #514 named and this file never opened.
+  // Twenty Mondays, because one unfiltered pick of four lands on the right
+  // client a time in four.
+  const deb = new Set();
+  let mondays = 0;
+  for (let i = 1; i <= 20; i++) {
+    newGame("bk_hearthstone");
+    S.seed = (i * 2654435761) % 4294967296; S.level = 1; S.day = 7;
+    S.clientQueue = ["cl_0201", "cl_0007", "cl_0002", "cl_0008"];
+    endDay();
+    for (const ch of S.choiceQueue) if (ch.kind === "referralArrive" && ch.referredBy.rel === "office lead") { mondays++; deb.add(ch.clientId); }
+  }
+  eq(mondays + ": " + [...deb].join(" "), "20: cl_0008", "the Monday lead hands a Rookie Agent the one client in reach, twenty Mondays of twenty");
+
+  // One copy of the rule. Four doors read it; a fifth that wrote its own
+  // would be the bug this section is here for.
+  const engineDir = path.join(root, "..", "js", "engine");
+  const copies = fs.readdirSync(engineDir).flatMap(f =>
+    (fs.readFileSync(path.join(engineDir, f), "utf8").match(/tiers\.includes\([^)]*\.tier\)/g) || []).map(() => f));
+  eq(copies.join(" "), "clients.js", "the ladder's test of a client's tier is written once under js/engine/");
+
+  // --- (A) a career begun before the three investors had files (round 7).
+  const NEWER = ["cl_0201", "cl_0202", "cl_0203"];
+  const oldStore = memStore();
+  without(NEWER, () => { newGame("bk_hearthstone"); Clients.meetClient("cl_0001"); save(oldStore); });
+  const oldRaw = JSON.parse(oldStore.getItem(SAVE_KEY));
+  eq(oldRaw.clientQueue.length, counts.clients - 4, "the old career's queue is everybody but the three investors and the client it met");
+  ok(loadSave(oldStore), "the old career loads");
+  eq(S.clientQueue.slice(0, oldRaw.clientQueue.length).join(" "), oldRaw.clientQueue.join(" "),
+    "the queue it had is where it was, in the order it was");
+  eq(S.clientQueue.slice(oldRaw.clientQueue.length).join(" "), NEWER.join(" "),
+    "and the three clients added since are at its end");
+  eq(S.seed, oldRaw.seed, "placing them drew nothing from the career's seed");
+  eq(S.usedClients.join(" "), "cl_0001", "the client already met is still met");
+  eq(S.clients.length, 1, "with the one record");
+
+  // The same load again, and a save in between: nothing moves.
+  const onceLoaded = JSON.stringify(S);
+  eq(JSON.stringify(repairCareer(JSON.parse(onceLoaded))), onceLoaded, "a second repair changes nothing");
+  save(oldStore);
+  const firstBytes = oldStore.getItem(SAVE_KEY);
+  loadSave(oldStore); save(oldStore);
+  eq(oldStore.getItem(SAVE_KEY), firstBytes, "and a second load and save writes the same bytes");
+
+  // The ladder still decides when they arrive.
+  S.level = 1;
+  const rookieMeets = [];
+  for (let c; (c = Clients.nextIntakeCandidate());) { rookieMeets.push(c.id); Clients.meetClient(c.id); }
+  eq(rookieMeets.filter(id => NEWER.includes(id)).length, 0, "a Rookie Agent's intake runs dry without meeting one of them");
+  eq(S.clientQueue.filter(id => NEWER.includes(id)).join(" "), NEWER.join(" "), "and they wait in the queue");
+  S.level = 4;
+  const brokerMeets = [];
+  for (let c; (c = Clients.nextIntakeCandidate());) { brokerMeets.push(c.id); Clients.meetClient(c.id); }
+  eq(brokerMeets.slice(-3).join(" "), NEWER.join(" "),
+    "at Broker-Track intake reaches them, after everybody the career already had waiting");
+  eq(S.clientQueue.length, 0, "and the queue is met to the last client");
+  let playThrew = null;
+  try {
+    for (let i = 0; i < 60; i++) { endDay(); S.choiceQueue = []; }
+  } catch (e) { playThrew = e.stack.split("\n").slice(0, 2).join(" "); }
+  eq(playThrew, null, "and the old career plays sixty days on with an investor on the books");
+
+  // Where each goes: the lowest rung first, then by id, so what comes in is in
+  // the order makeCareer() weights a new queue and never a matter of a roll.
+  const MIXED = ["cl_0002", "cl_0004", "cl_0006", "cl_0102", "cl_0202"];
+  let mixedSaved;
+  without(MIXED, () => { newGame("bk_hearthstone"); mixedSaved = JSON.parse(JSON.stringify(S)); });
+  const mixed = repairCareer(JSON.parse(JSON.stringify(mixedSaved)));
+  eq(mixed.clientQueue.slice(mixedSaved.clientQueue.length).join(" "), "cl_0004 cl_0102 cl_0002 cl_0006 cl_0202",
+    "five added at once land starter, starter, mid, luxury, commercial, and by id inside a rung");
+  eq(new Set(mixed.clientQueue).size, counts.clients, "and the queue holds every client once");
+
+  // A tier no rung works is a content slip, and its client waits behind the rest.
+  const strays = ["cl_0002", "cl_0202"];
+  let strayed;
+  without(strays, () => { newGame("bk_hearthstone"); strayed = JSON.parse(JSON.stringify(S)); });
+  DB.clients.cl_0002 = { ...DB.clients.cl_0002, tier: "estate" };
+  try { repairCareer(strayed); } finally { DB.clients.cl_0002 = { ...DB.clients.cl_0002, tier: "mid" }; }
+  eq(strayed.clientQueue.slice(-2).join(" "), "cl_0202 cl_0002", "a new client whose tier is on no rung goes last of all");
+
+  // What counts as already known to the career.
+  const noUsed = JSON.parse(JSON.stringify(oldRaw)); delete noUsed.__v; delete noUsed.usedClients;
+  ok(!repairCareer(noUsed).clientQueue.includes("cl_0001"),
+    "a client on the books is not queued again by a save with no used list");
+  const noBook = JSON.parse(JSON.stringify(oldRaw)); delete noBook.__v; noBook.clients = [];
+  ok(!repairCareer(noBook).clientQueue.includes("cl_0001"),
+    "nor one in the used list whose record is not in the book");
+  const present = repairCareer(JSON.parse(JSON.stringify(midCareer)));
+  eq(present.clientQueue.join(" "), midCareer.clientQueue.join(" "), "a career whose content is all present keeps its queue to the letter");
+
+  // One file gone and three new in the same load: #861's filter and this pass
+  // do not get in each other's way.
+  const both = JSON.parse(JSON.stringify(oldRaw)); delete both.__v;
+  const goneId = both.clientQueue[0];
+  without([goneId], () => repairCareer(both));
+  eq(both.clientQueue.join(" "), [...oldRaw.clientQueue.slice(1), ...NEWER].join(" "),
+    "a queue that lost one file and gained three drops the one and appends the three");
+}
+
+/* ------------------------------------------- two doors that name one client */
+// Every door queues a referralArrive naming somebody still in clientQueue, and
+// none of them looks at what is already waiting in choiceQueue, so two doors
+// on one day can name the same client. Taking both called meetClient() twice
+// and made two records of one person. The guard is in meetClient(), not at
+// the doors: a door that skipped a queued name would draw a different client
+// from rand() and move every seeded career that ever had two referrals
+// waiting at once.
+console.log("\ntwo doors that name one client:");
+{
+  const ruth = DB.events.ev_ruth_referral;
+  /** A Rookie's career with one client in reach, Ruth's call and a closed client's referral both naming them. */
+  const twoDoors = () => {
+    for (let i = 1; i <= 200; i++) {
+      newGame("bk_hearthstone");
+      S.seed = (i * 2654435761) % 4294967296; S.level = 1; S.day = 12; S.rep = 20;
+      const happy = Clients.meetClient("cl_0001");
+      happy.satisfaction = 100; happy.status = "closed";
+      S.clientQueue = ["cl_0004"];
+      S.choiceQueue.length = 0;
+      fireEvent(ruth);
+      if (Clients.rollReferral(happy) === null) continue;
+      return { happy, seed: i };
+    }
+    return null;
+  };
+  const got = twoDoors();
+  ok(got, "a seeded career where Ruth's call and a closed client's referral are both waiting");
+  if (got) {
+    const waiting = S.choiceQueue.filter(ch => ch.kind === "referralArrive").map(ch => ch.clientId);
+    eq(waiting.join(" "), "cl_0004 cl_0004", "and both name the same client");
+    const logBefore = S.log.length;
+    const first = Clients.meetClient(S.choiceQueue[0].clientId, S.choiceQueue[0].referredBy);
+    const second = Clients.meetClient(S.choiceQueue[1].clientId, S.choiceQueue[1].referredBy);
+    eq(S.clients.filter(r => r.clientId === "cl_0004").length, 1, "taking both makes one record of them, not two");
+    ok(second === first, "the second take hands back the record the first made");
+    eq(S.usedClients.filter(id => id === "cl_0004").length, 1, "they are in the used list once");
+    eq(S.log.length - logBefore, 1, "and the Ledger says New client once");
+    S.clientQueue.push("cl_0008");
+    ok(typeof Clients.alreadyMet === "function" && Clients.alreadyMet("cl_0004") && !Clients.alreadyMet("cl_0008"), "alreadyMet() tells a met client from one still in the queue");
+  }
+
+  // A save written before this fix can already hold two records of one
+  // client. Built by hand here, the way the old meetClient() left it.
+  newGame("bk_hearthstone");
+  S.seed = 977; S.level = 1;
+  const a = Clients.meetClient("cl_0004");
+  const b = { ...JSON.parse(JSON.stringify(a)), recId: "cr_doubled" };
+  S.clients.push(b); S.usedClients.push("cl_0004");
+  const dstore = memStore();
+  ok(save(dstore) && loadSave(dstore), "an old save with two records of one client loads");
+  eq(S.clients.filter(r => r.clientId === "cl_0004").length, 2, "and keeps both records: nothing is merged or dropped on load");
+  let threw = null;
+  try { for (let d = 0; d < 30; d++) { endDay(); S.choiceQueue.length = 0; } } catch (e) { threw = e; }
+  ok(!threw, "and plays thirty days on", threw && threw.stack);
+  ok(save(dstore) && loadSave(dstore), "and saves and loads again after them");
 }
 
 /* ------------------------------------------------ the content check's controls */

@@ -14,7 +14,10 @@
 //   demandCurve (fraction of duration) -> multiplier, for surges
 //   mix         { archetype: weight }
 //   turns       { T, L, R } weights
-//   spawns      [{ t, leg, archetype, turn }]   scripted arrivals
+//   spawns      [{ t, leg, archetype, turn }]   scripted arrivals; on a row
+//               of boxes `turn` is the first box's only, and `route:
+//               ['T', 'T', 'L']` is the turn at each box in order (#960),
+//               here and on an ambulance, a motorcade and a procession
 //   events      [{ kind, at, for, ... }]        scripted moments (M7):
 //               surge { scale }, outage, ambulance { leg, turn, within },
 //               motorcade / procession { leg, turn, size, spacing },

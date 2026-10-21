@@ -23,6 +23,23 @@
   margin-top: var(--s-4);
 }
 
+/* Above 900 px the seven tabs are one row: where the room runs short (beside
+   an open inspector on a 920 px window) they take less padding first, and
+   the row scrolls sideways before it would wrap. */
+@media not all and (max-width: 900px) {
+  .sch > .tabs > .tabs__list {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .sch > .tabs > .tabs__list > .tabs__tab {
+    flex: none;
+    padding: 0 clamp(2px, 3cqi - 8px, var(--s-3));
+    white-space: nowrap;
+  }
+}
+
 .sch-lead {
   max-width: 46rem;
 }
@@ -150,9 +167,20 @@
   gap: var(--s-2);
 }
 
+.sch-groups__find {
+  display: grid;
+  gap: var(--s-2);
+}
+
 .sch-groups__tally {
   color: var(--ink-2);
   font-size: var(--t-sm);
+}
+
+/* "All groups" is for a phone whose list is folded to the chosen group (the
+   end of this file). */
+.sch-groups__all {
+  display: none;
 }
 
 .sch-groups__list {
@@ -174,13 +202,14 @@
   background: var(--card);
   color: var(--ink);
   text-align: left;
+  cursor: pointer;
 }
 
 .sch-group:hover {
   border-color: var(--accent);
 }
 
-.sch-group[aria-current="true"] {
+.sch-group[aria-selected="true"] {
   background: var(--accent-soft);
   border-color: var(--accent);
   box-shadow: inset 3px 0 0 var(--accent);
@@ -461,6 +490,27 @@
   border-color: var(--warning);
 }
 
+/* Under the field: the words that are not options (nothing matches, two
+   rooms do, the building has no rooms yet). Empty, it takes no room. */
+.sch-room__line {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.sch-room__line:empty {
+  display: none;
+}
+
+/* Under the field: what it holds is no room of the building. */
+.sch-room__missing {
+  margin-top: var(--s-1);
+  color: var(--warning);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
 .sch-slot[data-shown="true"] > *,
 .sch-edit-table tr[data-shown="true"] > * {
   background: var(--accent-soft);
@@ -626,7 +676,32 @@
 }
 
 .sch-findings .sch-finding__actions {
+  flex: none;
   flex-wrap: nowrap;
+}
+
+/* A finding's sentence with its buttons beside it; under it when the cell is
+   too narrow for both (and always on a phone: the end of this file). */
+.sch-finding__cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-2) var(--s-4);
+}
+
+.sch-finding__what {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+/* The finding the inspector is showing. */
+.sch-findings tr[data-selected="true"] > * {
+  background: var(--accent-soft);
+}
+
+.sch-findings tr[data-selected="true"] > :first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .sch-panel {
@@ -703,6 +778,102 @@
   .sch {
     padding: var(--s-3);
   }
+
+  /* A finding's buttons go under its sentence, where all three fit. */
+  .sch-finding__what {
+    flex-basis: 100%;
+  }
+
+  .sch-findings .sch-finding__actions {
+    flex-wrap: wrap;
+  }
+
+  /* The Groups tab on a phone: the list and the editor take turns
+     (ui/schedule/groups.js has the same width, NARROW). With no group chosen
+     yet the cards are the page and there is no editor; a tap folds the list
+     to that group's card, with "All groups" under it and the editor next. */
+  /* All its cards are on the page, so the list is no scroller of its own:
+     one would clip the card's scroll margin (below) to its own edge. */
+  .sch-groups__list {
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  /* The chosen card is scrolled to the top of the surface (groups.js); this
+     much paper stays between it and the top bar, as the section's own
+     padding leaves above the first card (the Foreman measured its edge 0.1
+     px under the bar at 390 by 844 without it). */
+  .sch-group {
+    scroll-margin-top: var(--s-3);
+  }
+
+  .sch-groups[data-folded="false"] .sch-editor {
+    display: none;
+  }
+
+  .sch-groups[data-folded="true"] .sch-group:not([aria-selected="true"]),
+  .sch-groups[data-folded="true"] .sch-groups__find {
+    display: none;
+  }
+
+  .sch-groups[data-folded="true"] .sch-groups__all {
+    display: block;
+  }
+
+  /* A period's row on a phone: its name and time on a line of their own,
+     and the room field under it at the row's full width beside the menu.
+     (Beside the name the field was 150 px, and "203 — Ms. Vandermeer" was
+     cut at its edge.) The column headings are for a screen reader here. */
+  .sch-slots:not(.sch-slots--same),
+  .sch-slots:not(.sch-slots--same) > tbody {
+    display: block;
+  }
+
+  .sch-slots:not(.sch-slots--same) > thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .sch-slot {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    border-top: var(--border);
+  }
+
+  .sch-slot > .sch-slot__period {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--s-2);
+    padding-bottom: 0;
+  }
+
+  .sch-slot > td {
+    border-top: 0;
+  }
+
+  .sch-slot .sch-slot__time {
+    display: inline;
+    margin-left: 0;
+  }
+
+  /* the marks of a row are drawn once round the two lines, not round each */
+  .sch-slot[data-shown="true"] > .sch-slot__period {
+    box-shadow: inset 0 2px 0 var(--accent);
+  }
+
+  .sch-slot[data-shown="true"] > td {
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+
+  .sch-slot.is-drop > td {
+    box-shadow: none;
+  }
 }
 
 @media (pointer: coarse) {
@@ -716,5 +887,98 @@
   .sch-swatch {
     width: 44px;
     height: 44px;
+  }
+}
+
+/* ---------- SV2-72d: the Fix dialog (ui/schedule/checks-fix.js) ----------
+   Its own rules, out of the inline styles it was laid out with (SV2-70).
+   The title with nothing over it and the Close button stay in view however
+   long the list is, on a phone upright and on its side too (W4): the
+   dialog is a column the window's height at the most, and its body, the
+   finding, the switch and the list, scrolls between them. */
+
+#fix-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - var(--s-4));
+  max-height: calc(100dvh - var(--s-4));
+}
+
+#fix-dialog .dialog__title,
+#fix-dialog .dialog__buttons {
+  flex: none;
+}
+
+/* A scroller clips what is drawn outside its padding box, a focus ring
+   included: the body keeps a ring's room inside its edges (padding, the
+   same taken back from the dialog's own padding at the sides so the text
+   stays where it was) and scrolls a focused control in clear of them
+   (scroll-padding), so the switch's ring at the left and a Try it's at the
+   right are drawn whole (SV2-72d2). */
+#fix-dialog .dialog__body {
+  --fix-ring: calc(var(--focus-width) + var(--focus-offset));
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--fix-ring);
+  margin-inline: calc(var(--fix-ring) * -1);
+  scroll-padding: var(--fix-ring);
+}
+
+.fix-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.fix-asking {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.fix-list {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fix-list__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding-bottom: var(--s-3);
+  border-bottom: var(--border);
+}
+
+.fix-list__words {
+  flex: 1 1 16rem;
+  margin: 0;
+}
+
+.fix-refusal {
+  color: var(--problem);
+}
+
+/* a window with little height (a phone on its side): less paper round the
+   dialog's edge, so the list has more of it */
+@media (max-height: 500px) {
+  #fix-dialog {
+    padding: var(--s-3) var(--s-4);
+  }
+
+  #fix-dialog .dialog__body {
+    margin-top: var(--s-2);
+  }
+
+  #fix-dialog .dialog__buttons {
+    margin-top: var(--s-3);
   }
 }

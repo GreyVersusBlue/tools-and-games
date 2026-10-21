@@ -94,7 +94,8 @@ export const roomView = {
       says: (shown) => (shown.id === floor.id ? [typed(school.roomName(room, true)), ' is ringed.'] : [typed(school.roomName(room, true)), ' is on ', typed(floor.name), ', not on this floor.']),
     }) : null;
 
+    const sign = h('p', { class: 'actions no-print' }, h('a', { class: 'btn', href: makeHash('door', room.id), dataset: { output: 'door' } }, 'Door sign'));
     return pageOf(typed(school.roomName(room, true)), partsToNodes(roomSummaryOf(school, room)),
-      map ? besideMap([header, days], map, []) : [header, days]);
+      map ? besideMap([header, days], map, [sign]) : [header, days, sign]);
   },
 };

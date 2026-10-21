@@ -1,0 +1,9 @@
+This folder is original code, written for Schedule Visualizer 2
+(greyversusblue.com) in October 2026 from the published QR code standard,
+ISO/IEC 18004. No code was copied from another QR library: there is no
+third-party code here and so no third party's licence to carry. The
+version tables, the generator polynomials and the masks are the standard's
+own facts.
+
+It is part of the tools-and-games repository and is under the same terms
+as the rest of that repository.

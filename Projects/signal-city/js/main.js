@@ -630,6 +630,7 @@ class Game {
     const w = this.world;
     const L = w.controllers[0].cycleLength();
     const o = w.offsetOf();
+    this.waveReads = o;
     const r = $('offsetRange');
     r.max = String(Math.max(1, Math.ceil(L) - 1));
     r.value = String(((Math.round(o) % L) + L) % L);
@@ -918,6 +919,8 @@ class Game {
     const em = w.cars.find(c => !c.done && (c.archetype === 'emergency' || c.archetype === 'motorcade') && !c.priority);
     $('priorityBtn').classList.toggle('show', !!em && !w.nodes[em.path.node].roundabout);   // a ring refuses the corridor
     if (!$('waveBox').classList.contains('hidden')) {
+      // the lights came back and the world wrote down what the street runs (#959): the slider follows
+      if (w.offsetOf() !== this.waveReads) this.buildWave();
       this.drawWave();
       const shift = w.controllers[1].shift;
       if ((Math.abs(shift) > 1e-6) !== /Re-aligning/.test($('offsetNote').textContent) || Math.abs(shift) > 1e-6) {

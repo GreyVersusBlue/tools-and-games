@@ -367,16 +367,33 @@ and add to this list rather than starting a new one.
   notch in front of the entry counted as footprint; crowd agents walked up
   one in a browser, which nobody has watched; the straight ramp's top
   landing is ADA's 5ft now, ramps already placed included, and one with no
-  room for it is a `ramp-landing` warning that moves nothing (#904), but
-  `render.js` draws no deck on it, props and a door's swing are not asked,
-  and a folded ramp's top landing is not asked; a ramp's width and slope
+  room for it is a `ramp-landing` warning that moves nothing (#904), and it
+  is drawn as a deck at the floor above (#981), as a stair's 4ft one is
+  (#983), and a floor-standing prop or a door leaf sweeping into it is a
+  `ramp-landing` reason too (#984); a folded ramp's top landing is asked
+  the same five questions by the same lines, at its own open end (#985),
+  and was always drawn and walked (#825), but its turn landings are not
+  asked (they stand between storeys, on no floor); a stair's 4ft top
+  landing is asked the two of those questions that make sense for a stair,
+  a floor-standing prop and a door's swing, by the same lines, as a
+  `stair-landing` warning that moves nothing and cites no section (#987),
+  and the other three, a wall or a doorway in it or shutting its far end,
+  the landing off the floor above and another link in it, by the same
+  `landingFit` lines on the same warning (#989), so all five are asked of
+  it, and it cites no section, which is settled (Devon, 2026-10-16: not
+  IBC 1011.6); a ramp's width and slope
   are set from the Stairs panel (#907), 4 to 12ft in 6in steps and 1:12 to
   1:20, the selected ramp's or the next one's, with no new save field
-  (`data.width` and `data.slope` were there since Phase 2), but
-  `designdiff.js` says nothing when a ramp's width, slope or fold changes
-  and a ramp a file made narrower than 4ft raises no finding; a ramp over 30in a run still counts as a way up on the
-  accessible route, and that is settled (#833, Devon, 2026-10-05); the plan does not mark the ramp a `ramp-rise`
-  finding names, though the finding carries its position.
+  (`data.width` and `data.slope` were there since Phase 2), and the design
+  diff says when a ramp's width, slope or fold changes (#980), and a ramp a
+  file made narrower than 4ft is a `narrow-ramp` warning that moves nothing
+  (#982); a ramp over 30in a run still counts as a way up on the
+  accessible route, and that is settled (#833, Devon, 2026-10-05). A
+  `ramp-rise` or `narrow-ramp` ramp is marked as every finding with a
+  position is: a ring at the ramp's foot on the map, and "Show it on the
+  plan" pans the edit view there and draws the map's marks in it, a ring at
+  the same foot (#1003), until the next edit. That ring is the mark; the
+  ramp's own outline is not drawn.
 - Curvature isn't stored, so re-bending a wall after a reload starts from its
   chords. Curved walls are chords in the collider too.
 - Wall paint is per face (`facePainter` in `finish.js`, #823): each face is
@@ -416,27 +433,100 @@ and add to this list rather than starting a new one.
   color picker"): under the swatches a colour input, a hex field and a chip,
   the colour stored as the `#rrggbb` both fields already took, called by its
   hex, with black or white ink by luminance on the chip and on the brush's
-  hover bar. Left from #944: the custom colour is tool state, so a reload
-  starts the field at `#808080` and a colour used earlier is typed again or
-  read off the status line; the panel does not list the custom colours a
-  school already has; the hover bar's outline is one pixel; nobody has
-  looked at a custom colour on a wall or a free-standing wall in the lit
-  scene on a GPU. Left from #910: the click on the
+  hover bar. The panel lists the custom colours a school already holds
+  (#961): an "In this school" row between the swatches and the free pick,
+  one swatch a hex, every storey, hex order, armed like a named swatch. The
+  free pick's colour outlives a reload (#962), in the page's own
+  `sg-accent-custom` localStorage key and not in the school. Left from #944,
+  #961 and #962: the hover bar's outline is one pixel; nobody has looked at
+  a custom colour on a wall or a free-standing wall in the lit scene on a
+  GPU, nor at the "In this school" row on a real display (one huginn
+  screenshot, eleven colours, two rows); the row is driven in a browser for
+  paint, undo, redo and a fresh page, and by its source only for New and
+  Open; the kept colour is per browser profile, so a school opened on
+  another machine starts at `#808080` with its own colours in the row.
+  Left from #910: the click on the
   plan is a pointer gesture, for a room's wall and a free-standing one alike
   (the swatches take Tab and Enter, the plan has no keyboard cursor); a
   free-standing wall's outdoor face cannot be painted, because the facade is
   drawn over it; a wall drawn over another one of the same kind loses that
   wall's doorways, as it did before, and keeps its paint; the floor brush
-  rubbing a room out from in front of a painted face leaves the accent in
-  the file until the next load or the next corner let go; `duplicateFloor`
-  copies no free-standing wall, painted or not; the brush's two refusals for
+  rubbing a room out from in front of a painted face takes the accent with
+  it now (#964, `paintCells` asks `pruneAccents` after a rub-out; pure Node,
+  no browser check drives the stroke, and the status line does not say an
+  accent came off); `duplicateFloor` copies a storey's free-standing walls,
+  faces and doorways with them (#979); the brush's two refusals for
   a free-standing wall are driven by a browser check for glass and by
   nothing for the outdoor face; nobody has looked at one by eye;
   paint is counted as one area, so an accent is not a line of its own in
   the takeoff or the cost. The top and the ends
   keep the one-colour rule, and a glazed run's frame is not painted at all.
-- A pitched roof over a curve is a stepped rectangle; a straight skeleton
-  would fix it.
+- A hipped roof over a curve stands on the straight skeleton of the rooms'
+  own outline (#965, #967): `roofOutline`, `hasCurve`, `eavePolygon`,
+  `triangulate`, `roofHeightOver`, wired through `roofPlan`, `roofFace` and
+  `roofHeightAt`, and counted by the takeoff and the estimate through
+  `roofCover` off the loop's own chords (#970); every rectilinear roof is
+  what it was. A refusal keeps the rectangles for its own building only
+  (#971): rooms whose walls touch or cross, or one of which stands inside
+  another, one to the next, are judged together (#991; by bounds before), so
+  a curved building beside a courtyard building, or in the notch of one of
+  its L-shaped rooms, stands on its skeleton.
+  A flat roof's parapet over a curved building runs on the same loop's
+  chords, and the deck under it is that outline, ear-clipped (#973).
+  Two rooms meeting at a corner are a loop each, so a curved one there takes
+  the skeleton and the chord parapet; an arc of two chords is a curve when it
+  was bowed off a wall square to both its neighbours (#976), or splayed alike
+  at both ends by 45 degrees or more (#994).
+  A curve bowed in tighter than the 1.5ft eave stands on its skeleton, the
+  eave closing over it as the wavefront runs out, and a V or inward-tapering
+  notch closes the same way (#993). A notch whose sides meet head on (a
+  square notch, a slot, a dovetail) closes as the outline's own wavefront
+  runs out 1.5ft, and the eave runs straight past it (#1000).
+  A court, a room's own hole or the space rooms close round, is a hole of
+  its building's loop (#998), and a flat roof's parapet over a building with
+  a curve on any ring runs round it, the deck the outline less the court and
+  counted so; a hipped roof over such a building stands on the skeleton with
+  each court's eave, 1.5ft into the court, as a hole, the section reading the
+  court as sky (#999). A courtyard meeting the outside at a single corner is
+  one loop through that corner twice, kept with `pinch` set (#1001): under the
+  parapet it runs round the court with the deck the loop itself, and hipped
+  it stands on the outer eave with the court's own eave as a hole, the two
+  eaves not touching (question 6's default). A room standing in another
+  room's own hole, touching none of its walls, is a building of its own, as
+  one standing in a court of rooms is, so what is refused in the court is
+  refused alone (#1002). Left: a court narrower than two
+  eaves, or a pinched court its eave closes or splits, keeps the hip on
+  rectangles (`DESIGN-roof-holes.md` question 3's default), an arc of two chords off a wall whose ends turn unlike (a
+  parallelogram's end: bowed in two chords it is the polygon of a chamfer as
+  long as the wall before it, #994), and a notch whose mouth closes before
+  its inside does (a bottle: the wavefront run out is the eave and a pocket,
+  which `eaveLine` refuses) keep rectangles too; `gable` over a curve keeps
+  rectangles (a weighted skeleton); a curved building whose 4ft mask cells
+  touch another building's takes its chord parapet (#988), and where a cell
+  of the other reaches inside its chords (a box 0.2ft off a bow, its cell
+  1.56ft inside them) the other building gives way (#990, Devon): its loop
+  is cut back to the chords, its bitten cells are decked as what is left of
+  them, and the takeoff and the estimate count that deck; along the cut the
+  parapet is the curved building's, drawn once (#992), and a cut `ringMinus` cannot
+  vouch for (an edge along the other ring) keeps the pair stepped; the site plan's building line is the ground storey's mask, stepped on a curve
+  (it draws the ground storey whatever the roof, so the skeleton path's test
+  cannot decide it: drawing it from `roofOutline` moves the site plan of a
+  curved school under every roof style and every storey count, a call of its
+  own); the takeoff counts the roof inside the walls, not the 1.5ft eave, on
+  both paths (#970); the elevation sorts a
+  skeleton roof's faces by their nearest point like a rectangle's, and
+  nobody has checked a hip seen across a valley in the sheet by eye; no
+  `test/visual` capture has a curved roof (the sample school has none); the
+  look on a real GPU. The courts, the hole, the head-on notch and the
+  single-corner courtyard are designed in `DESIGN-roof-holes.md` (#995), six
+  increments in order with Devon's questions in its section 6. All six are
+  built: the skeleton with holes (#996), `offsetRing` and
+  `triangulate` with holes (#997), the outline's courts wired into the
+  parapet and its deck (#998), the hip round a court (#999), the head-on notch
+  (#1000) and the single-corner courtyard (#1001). Gable over a curve, the
+  design's increment 7, waits for Devon's answer to its question 5. One software-rendered look on huginn (an L with a
+  curved end, from above): hip, valley and the rounded end read right; and
+  one under the parapet (at an angle): the parapet and deck follow the curve.
 - Site regions can be restyled and deleted but not re-shaped.
 - The mesh is inscribed, not exact — a diagonal wall keeps its stair-step,
   and gates are midpoints rather than funnels.

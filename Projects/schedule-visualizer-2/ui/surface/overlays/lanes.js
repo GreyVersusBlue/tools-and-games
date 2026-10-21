@@ -114,15 +114,25 @@ export function buildLanes(project, entries) {
   const walks = [];
   const links = new Map();
   const seen = new Set();
+  // The walks are taken in an order of their own (the project's order of
+  // groups, then the walk), never the order they were given in: which of a
+  // group's two walks through a cell gives the cell its lane point, and
+  // which line is drawn over which, must not change when a transition is
+  // taken off the picture and put back.
+  const ordered = [];
   for (const entry of entries) {
     const route = entry.route;
     if (!route || route.ok !== true || route.same === true || !Array.isArray(route.cells) || route.cells.length === 0) continue;
+    // the same walk in two transitions is one line
+    ordered.push({ entry, once: entry.groupId + '|' + route.fromRoomId + '|' + route.toRoomId + '|' + route.cells.length + '|' + (route.connections || []).join(',') });
+  }
+  ordered.sort((a, b) => a.entry.rank - b.entry.rank || (a.once < b.once ? -1 : a.once > b.once ? 1 : 0));
+  for (const { entry, once } of ordered) {
+    const route = entry.route;
     for (const id of route.connections || []) {
       if (!links.has(id)) links.set(id, []);
       if (!links.get(id).includes(entry.groupId)) links.get(id).push(entry.groupId);
     }
-    // the same walk in two transitions is one line
-    const once = entry.groupId + '|' + route.fromRoomId + '|' + route.toRoomId + '|' + route.cells.length + '|' + (route.connections || []).join(',');
     if (seen.has(once)) continue;
     seen.add(once);
     for (const run of runsOf(route)) {
@@ -332,7 +342,9 @@ function drawLines(g, view, list, lanes, colourOf, constant, theme) {
 
 // A marker for each group a room sees, with the periods it is there: small
 // pills from the room's top left corner, a row at a time, and "+3" when the
-// room has no space for the rest. Dots when the labels are off or too small.
+// room has no space for the rest. Small squares when the labels are off or
+// too small: square, so that zoomed far out a route's end is not taken for a
+// playback marker (a disc) or a stairs link's end (a round dot) (SV2-52).
 function drawMarkers(g, view, floor, markers, labels, theme) {
   const size = view.size;
   const seen = view.visible(floor);
@@ -371,7 +383,7 @@ function drawMarkers(g, view, floor, markers, labels, theme) {
       g.fillStyle = fill;
       g.beginPath();
       if (words) g.rect(Math.round(x), Math.round(y), wide, high);
-      else g.arc(x + high / 2, y + high / 2, high / 2, 0, Math.PI * 2);
+      else g.rect(Math.round(x), Math.round(y), high, high);
       g.fill();
       g.strokeStyle = theme.card;
       g.lineWidth = 1;

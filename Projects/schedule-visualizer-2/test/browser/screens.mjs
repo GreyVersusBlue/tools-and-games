@@ -7,6 +7,9 @@
 //   hash   the address to load
 //   open   optional: async (page) => {} to bring up what the address alone does
 //          not show (a dialog, a menu, an emptied project)
+//   viewport  optional: { width, height, mobile } the page is loaded at, with
+//          touch when `mobile` (SV2-57); the next screen without one is at
+//          the sweep's own size again (harness.mjs's visit)
 
 const press = (key) => async (page) => {
   await page.keyboard.press(key);
@@ -15,6 +18,11 @@ const press = (key) => async (page) => {
 async function removeSample(page) {
   await page.click('#sample-school [data-action="sample"]');
   await page.waitForFunction(() => document.getElementById('sample-chip').hidden);
+}
+
+// SV2-24: the Staff browser section once its preview frame has been fed.
+async function staffLive(page) {
+  await page.waitForFunction(() => document.querySelector('.stf-preview')?.dataset.preview === 'live', { timeout: 30000 });
 }
 
 // SV2-11: the Schedule section draws again a moment after a change.
@@ -67,6 +75,58 @@ const gridRows = (rows) => async (page) => {
   await page.waitForFunction((value) => document.querySelector('.grd').dataset.rows === value && document.querySelector('.grd-table--read'), {}, rows);
   await scheduleDrawn(page);
 };
+
+// SV2-40: the grid on a phone, where Group and the periods are what shows.
+// The screen is loaded at a phone's size with touch (its `viewport`, SV2-72e;
+// it used to be resized here, with no touch).
+async function gridOnPhone(page) {
+  await page.waitForFunction(() => window.innerWidth === 390);
+  await gridDrawn(page);
+  await page.waitForFunction(() => document.querySelector('.grd-cell--grade').getClientRects().length === 0);
+}
+
+// SV2-38: a screen of the schedule on a phone, loaded at a phone's size with
+// touch (its `viewport`, SV2-72e).
+async function scheduleOnPhone(page) {
+  // the section says which width its last drawing was for
+  await page.waitForFunction(() => window.innerWidth === 390 && document.querySelector('.sch')?.dataset.narrow === 'true');
+  await scheduleDrawn(page);
+}
+
+// SV2-38: the Checks tab on a phone, a finding's buttons under its sentence.
+async function checksOnPhone(page) {
+  await scheduleOnPhone(page);
+  await page.waitForSelector('.sch-checks .sch-finding__cell');
+}
+
+// SV2-70: the Fix dialog on the sample school's double-booked room, answered;
+// `others` turns the switch on (the other teachers' rooms asked for too).
+const fixOpen = (options) => async (page) => {
+  const opts = options || {};
+  await scheduleDrawn(page);
+  await page.waitForSelector('.sch-findings tr[data-finding="room-double:dsample00a:1:rsample203"] [data-action="fix"]', { timeout: 30000 });
+  await page.click('.sch-findings tr[data-finding="room-double:dsample00a:1:rsample203"] [data-action="fix"]');
+  await page.waitForFunction(() => document.getElementById('fix-dialog')?.dataset.state === 'answered', { timeout: 30000 });
+  if (opts.others) {
+    await page.click('#fix-dialog [data-part="others"]');
+    await page.waitForFunction(() => document.getElementById('fix-dialog').dataset.others === 'true' && document.getElementById('fix-dialog').dataset.state === 'answered', { timeout: 30000 });
+  }
+};
+
+// SV2-38: the Groups tab on a phone after a group is chosen: its card, "All
+// groups", and the editor.
+async function groupEditorOnPhone(page) {
+  await scheduleOnPhone(page);
+  await page.evaluate(() => document.querySelectorAll('.sch-group')[1].click());
+  await page.waitForFunction(() => document.querySelector('.sch').dataset.pending !== 'true' && document.querySelector('.sch-groups').dataset.folded === 'true' && document.querySelector('.sch-editor').getClientRects().length > 0);
+}
+
+// SV2-40: the Teachers table with the cell of the sample's double-booking in
+// focus, its sentence drawn under it.
+async function gridTeachersMarked(page) {
+  await gridRows('teachers')(page);
+  await page.focus('.grd-table--read .is-marked');
+}
 
 // SV2-06: the plan is drawn once its own stylesheet has loaded.
 async function planReady(page) {
@@ -199,6 +259,122 @@ const movementShowing = (patch) => async (page) => {
   await movementDrawn(page);
 };
 
+// SV2-19: playback moved by its scrubber to a second of Period 6 to Period 7,
+// the sample school's long walk, with the settings behind More open or not.
+const playbackAt = (seconds, more) => async (page) => {
+  await movementShowing({ transition: 5 })(page);
+  if (more) await page.click('[data-bar="playback"] [data-action="more"]');
+  await page.$eval('[data-bar="playback"] [data-control="scrubber"]', (el, value) => {
+    el.value = String(value);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, seconds);
+  await page.waitForFunction(() => document.querySelector('[data-bar="playback"]').dataset.started === 'true');
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+};
+
+// SV2-68: the scenario lab with a scenario open on the sample school (a move
+// that changes who teaches, a swap of periods, a swap of rooms), drawn and
+// its comparison answered; `dropped` deletes the room the move goes to.
+const scenarioOpen = (options) => async (page) => {
+  const opts = options || {};
+  await page.waitForFunction(() => document.querySelector('.scn') && document.querySelector('.scn').dataset.styled === 'true', { timeout: 20000 });
+  await page.evaluate(async (drop) => {
+    const { newScenario, addScenarioChange, deleteSpaces } = await import(new URL('engine/actions.js', location.href).href);
+    const store = globalThis.sv2.store;
+    store.apply(newScenario, { name: 'Library swap' });
+    store.apply(addScenarioChange, { change: { kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample07a', period: 2, roomId: 'rsample101' } });
+    store.apply(addScenarioChange, { change: { kind: 'swapPeriods', dayTypeId: 'dsample00b', groupId: 'gsample06a', periodA: 0, periodB: 3 } });
+    store.apply(addScenarioChange, { change: { kind: 'swapRooms', dayTypeId: 'dsample00a', groupA: 'gsample08a', groupB: 'gsample08b', period: 1 } });
+    if (drop) store.apply(deleteSpaces, { spaceIds: ['rsample101'] });
+  }, opts.dropped === true);
+  await page.waitForFunction(() => {
+    const el = document.querySelector('.scn');
+    return el.dataset.mode === 'open' && el.dataset.compare === 'ready' && !el.scenarios.pending && el.scenarios.plan.project === globalThis.sv2.store.project && Number(document.getElementById('scenarios-plan').dataset.drawn || 0) > 0;
+  }, { timeout: 30000 });
+  if (opts.apply) {
+    await page.click('[data-action="apply"]');
+    await page.waitForSelector('#scenario-apply[open]');
+  }
+};
+
+// SV2-69: the scenario lab's difference map: 7A moved out of the Library
+// for Period 3, the comparison narrowed to Period 3 to Period 4 (corridors
+// busier and quieter at full strength), painted, with the card of the
+// strongest busier cell up under the pointer.
+const differenceShown = async (page) => {
+  await page.waitForFunction(() => document.querySelector('.scn') && document.querySelector('.scn').dataset.styled === 'true', { timeout: 20000 });
+  await page.evaluate(async () => {
+    const { newScenario, addScenarioChange } = await import(new URL('engine/actions.js', location.href).href);
+    const store = globalThis.sv2.store;
+    document.querySelector('.scn').scenarios.memory.transition = 2;
+    store.apply(newScenario, { name: 'Library move' });
+    store.apply(addScenarioChange, { change: { kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample07a', period: 2, roomId: 'rsample101' } });
+  });
+  await page.waitForFunction(() => {
+    const el = document.querySelector('.scn');
+    return el.dataset.difference === 'shown' && !el.scenarios.pending && el.difference.answer === el.scenarios.answer && el.difference.painted.made === el.dataset.differenceMade;
+  }, { timeout: 30000 });
+  // the cell brought to the middle of the map, painted there, then pointed at
+  const drawn = await page.evaluate(() => {
+    const el = document.querySelector('.scn');
+    const hot = el.difference.state().busier.sort((a, b) => b.delta - a.delta)[0];
+    const was = Number(document.getElementById('scenarios-plan').dataset.drawn || 0);
+    el.scenarios.plan.show(hot.floorId, [hot.cell]);
+    el.scenarios.plan.paint();
+    return was;
+  });
+  await page.waitForFunction((was) => Number(document.getElementById('scenarios-plan').dataset.drawn || 0) > was, {}, drawn);
+  const at = await page.evaluate(() => {
+    const el = document.querySelector('.scn');
+    const hot = el.difference.state().busier.sort((a, b) => b.delta - a.delta)[0];
+    const middle = el.scenarios.plan.cellAt(hot.floorId, hot.cell);
+    const box = document.getElementById('scenarios-plan').getBoundingClientRect();
+    return { x: box.left + middle.x, y: box.top + middle.y };
+  });
+  await page.mouse.move(at.x, at.y);
+  await page.waitForFunction(() => !document.querySelector('[data-card="difference"]').hidden);
+};
+
+// SV2-67: the Safety section once its map is styled, measured and drawn for
+// the project in the store.
+async function safetyDrawn(page) {
+  await page.waitForFunction(() => {
+    const el = document.querySelector('.sfy');
+    return el && el.dataset.styled === 'true' && el.safety && el.safety.picture && el.safety.plan.project === globalThis.sv2.store.project && Number(document.getElementById('safety-plan').dataset.drawn || 0) > 0;
+  }, { timeout: 20000 });
+}
+
+// SV2-67: the Safety inspector on one of its tabs.
+const safetyTab = (tab) => async (page) => {
+  await page.click('.sfy-inspector .tabs__tab[data-tab="' + tab + '"]');
+  await page.waitForFunction((which) => document.querySelector('.sfy-panel[data-panel="' + which + '"]')?.getClientRects().length > 0, {}, tab);
+};
+
+// SV2-67: the sample school with one room on Floor 1 that opens onto nothing.
+async function safetyCutOff(page) {
+  await safetyDrawn(page);
+  await page.evaluate(async () => {
+    const { sampleSchool } = await import(new URL('data/sample-school.js', location.href).href);
+    const project = sampleSchool();
+    const floor = project.building.floors[0];
+    const owned = new Set(floor.spaces.flatMap((space) => space.cells));
+    const empty = (x, y) => x >= 0 && y >= 0 && x < floor.width && y < floor.height && floor.cells[y * floor.width + x] === '.' && !owned.has(y * floor.width + x);
+    let at = null;
+    for (let y = 1; y < floor.height - 3 && !at; y += 1) {
+      for (let x = 1; x < floor.width - 3 && !at; x += 1) {
+        let ok = true;
+        for (let dy = -1; dy <= 2 && ok; dy += 1) for (let dx = -1; dx <= 2 && ok; dx += 1) if (!empty(x + dx, y + dy)) ok = false;
+        if (ok) at = [x, y];
+      }
+    }
+    const [x, y] = at;
+    floor.spaces.push({ id: 'rsafetycut', kind: 'room', cells: [y * floor.width + x, y * floor.width + x + 1, (y + 1) * floor.width + x, (y + 1) * floor.width + x + 1], number: 'Annex 9', teacherIds: [], subjectId: null, wing: '', capacity: 12, shared: false, doors: [] });
+    globalThis.sv2.store.replace(project);
+  });
+  await page.waitForFunction(() => document.querySelector('.sfy').dataset.missing === '1');
+  await safetyDrawn(page);
+}
+
 export const SCREENS = [
   { id: 'building', hash: '#building' },
   { id: 'schedule-groups', hash: '#schedule/groups' },
@@ -282,22 +458,25 @@ export const SCREENS = [
       await page.waitForSelector('.sch-slot .picker__option');
     },
   },
-  {
-    id: 'schedule-room-refused-and-missing', // SV2-11
+  { // SV2-38: a room number the building does not have is kept as typed (it
+    // was refused when SV2-11 wrote this screen), with its line under the
+    // field, and the next field's own line saying nothing matches
+    id: 'schedule-room-not-in-building',
     hash: '#schedule/groups',
     open: async (page) => {
-      await page.evaluate(() => import('./engine/actions.js').then((actions) => {
-        const { store } = globalThis.sv2;
-        store.apply(actions.setSlot, { groupId: store.project.groups[0].id, dayTypeId: store.project.dayTypes[0].id, period: 1, slot: { room: null, roomText: 'B12' } });
-      }));
-      await page.waitForSelector('.sch-room--missing');
       await scheduleDrawn(page);
       await page.click('.sch-slot .picker__input');
-      await page.keyboard.type('zzz');
+      await page.keyboard.type('B12');
       await page.keyboard.press('Enter');
-      await page.waitForSelector('.sch-room .field__refusal:not([hidden])');
+      await page.waitForSelector('.sch-slot .sch-room__missing:not([hidden])');
+      await scheduleDrawn(page);
+      await page.click('.sch-slot[data-period="1"] .picker__input');
+      await page.keyboard.type('zzz');
+      await page.waitForFunction(() => document.querySelector('.sch-slot[data-period="1"] .sch-room__line').textContent !== '');
     },
   },
+  { id: 'schedule-checks-phone', hash: '#schedule/checks', viewport: { width: 390, height: 844, mobile: true }, open: checksOnPhone }, // SV2-38; with touch since SV2-72e
+  { id: 'schedule-group-editor-phone', hash: '#schedule/groups', viewport: { width: 390, height: 844, mobile: true }, open: groupEditorOnPhone }, // SV2-38; with touch since SV2-72e
   {
     id: 'schedule-slot-menu', // SV2-11
     hash: '#schedule/groups',
@@ -372,6 +551,10 @@ export const SCREENS = [
       await page.waitForSelector('#accept-dialog .field__refusal:not([hidden])');
     },
   },
+  { id: 'schedule-fix', hash: '#schedule/checks', open: fixOpen() }, // SV2-70: the Fix dialog, its sentences and Try it
+  { id: 'schedule-fix-others', hash: '#schedule/checks', open: fixOpen({ others: true }) }, // SV2-70: the switch on
+  { id: 'schedule-fix-phone', hash: '#schedule/checks', viewport: { width: 390, height: 844, mobile: true }, open: fixOpen() }, // SV2-70: a phone, with touch
+  { id: 'schedule-fix-phone-side', hash: '#schedule/checks', viewport: { width: 844, height: 390, mobile: true }, open: fixOpen() }, // SV2-70b: a phone on its side, with touch
   {
     id: 'schedule-accepted-list', // SV2-11
     hash: '#schedule/checks',
@@ -418,6 +601,8 @@ export const SCREENS = [
   { id: 'schedule-grid-empty', hash: '#project', open: scheduleEmpty('grid') }, // SV2-12
   { id: 'schedule-grid-teachers', hash: '#schedule/grid', open: gridRows('teachers') }, // SV2-12
   { id: 'schedule-grid-rooms', hash: '#schedule/grid', open: gridRows('rooms') }, // SV2-12
+  { id: 'schedule-grid-phone', hash: '#schedule/grid', viewport: { width: 390, height: 844, mobile: true }, open: gridOnPhone }, // SV2-40; with touch since SV2-72e
+  { id: 'schedule-grid-teachers-marked', hash: '#schedule/grid', open: gridTeachersMarked }, // SV2-40
   { // SV2-12: a cell being edited, with the rooms listed under it
     id: 'schedule-grid-editing',
     hash: '#schedule/grid',
@@ -455,6 +640,7 @@ export const SCREENS = [
     },
   },
   { id: 'movement-map', hash: '#movement', open: movementDrawn }, // SV2-17: every group, the legend, the summary
+  { id: 'movement-phone-sideways', hash: '#movement', viewport: { width: 844, height: 390, mobile: true }, open: movementDrawn }, // SV2-57: a phone on its side, with touch
   { // SV2-17: four chosen groups, with the reason there can be no fifth
     id: 'movement-four-groups',
     hash: '#movement',
@@ -462,6 +648,8 @@ export const SCREENS = [
   },
   { id: 'movement-one-group', hash: '#movement', open: movementShowing({ who: 'groups', groupIds: ['gsample08a'], floors: 'fsample001' }) }, // SV2-17
   { id: 'movement-cleared', hash: '#movement', open: movementShowing({ who: 'groups', groupIds: [] }) }, // SV2-17
+  { id: 'movement-playback', hash: '#movement', open: playbackAt(120, false) }, // SV2-19: half way through a transition, every group a marker
+  { id: 'movement-playback-late', hash: '#movement', open: playbackAt(250, true) }, // SV2-19: after the bell, one group late, the settings behind More
   { // SV2-17: the card of the corridor cell the keyboard cursor rests on
     id: 'movement-cell-card',
     hash: '#movement',
@@ -484,12 +672,66 @@ export const SCREENS = [
     hash: '#movement',
     open: async (page) => {
       await movementDrawn(page);
+      // the import in one turn and the change in the next: one evaluate that
+      // awaited the import and then changed the store had its promise
+      // collected under it now and then ("Promise was collected")
       await page.evaluate(async () => {
-        const { setSlot } = await import(new URL('engine/actions.js', location.href).href);
-        globalThis.sv2.store.apply(setSlot, { groupId: 'gsample07a', dayTypeId: 'dsample00a', period: 2, slot: { room: null } });
+        globalThis.sv2actions = await import(new URL('engine/actions.js', location.href).href);
       });
+      await page.evaluate(() => {
+        globalThis.sv2.store.apply(globalThis.sv2actions.setSlot, { groupId: 'gsample07a', dayTypeId: 'dsample00a', period: 2, slot: { room: null } });
+      });
+      await page.click('#inspector [role="tab"][data-tab="summary"]');
       await page.waitForSelector('#inspector [data-summary="health"] li');
       await movementDrawn(page);
+    },
+  },
+  { // SV2-43: the controls folded away behind Change, and the playback bar's More open
+    id: 'movement-controls-folded',
+    hash: '#movement',
+    open: async (page) => {
+      await movementDrawn(page);
+      await page.evaluate(() => {
+        if (document.querySelector('.mov-top').dataset.folded !== 'true') document.querySelector('[data-action="change"]').click();
+        document.querySelector('[data-action="more"]').click();
+        // the choice is this screen's alone: the screens after it open as a new device does
+        const device = JSON.parse(localStorage.getItem('sv2:device') || '{}');
+        delete device.movement;
+        localStorage.setItem('sv2:device', JSON.stringify(device));
+      });
+      await page.waitForFunction(() => document.querySelector('.mov-top').dataset.folded === 'true' && !document.querySelector('[data-part="more"]').hidden);
+      await movementDrawn(page);
+    },
+  },
+  { // SV2-43: the floors stacked; where the legend's card would cover a floor it is one line, and Scale brings the card out
+    id: 'movement-legend-docked',
+    hash: '#movement',
+    open: async (page) => {
+      await movementShowing({ floors: 'stacked' })(page);
+      await page.evaluate(() => {
+        if (document.querySelector('.mov-legend').dataset.docked === 'true') document.querySelector('[data-action="scale"]').click();
+      });
+      await page.waitForFunction(() => getComputedStyle(document.querySelector('.mov-legend')).visibility === 'visible');
+    },
+  },
+  { // SV2-43: the last answer after a derive that failed: the muted map, its band, and the Summary's line
+    id: 'movement-stale',
+    hash: '#movement',
+    open: async (page) => {
+      await movementDrawn(page);
+      await page.evaluate(async () => {
+        globalThis.sv2actions = await import(new URL('engine/actions.js', location.href).href);
+        globalThis.sv2.store.derived.use({ results: () => new Promise((resolve, reject) => { setTimeout(() => reject(new Error('The engine stopped')), 0); }) });
+      });
+      await page.evaluate(() => {
+        globalThis.sv2.store.apply(globalThis.sv2actions.editGroup, { id: 'gsample07a', name: '7A West' });
+      });
+      await page.waitForFunction(() => document.querySelector('.mov').dataset.stale === 'true');
+      await page.click('#inspector [role="tab"][data-tab="summary"]');
+      await page.waitForFunction(() => {
+        const note = document.querySelector('#inspector [data-summary="stale"]');
+        return note !== null && !note.hidden;
+      });
     },
   },
   { // SV2-17: a tab of the inspector that another unit fills
@@ -499,6 +741,55 @@ export const SCREENS = [
       await movementDrawn(page);
       await page.click('#inspector [role="tab"][data-tab="hotspots"]');
       await page.waitForSelector('#inspector [data-panel="hotspots"]');
+    },
+  },
+  { // SV2-18: the hotspot table with a row opened to its cells and a place chosen on the map
+    id: 'movement-hotspots-open',
+    hash: '#movement',
+    open: async (page) => {
+      await movementDrawn(page);
+      await page.click('#inspector [role="tab"][data-tab="hotspots"]');
+      await page.click('#inspector .mov-hot__row[data-rank="2"] [data-action="cells"]');
+      await page.click('#inspector .mov-hot__row[data-rank="1"] [data-action="show"]');
+      await page.waitForSelector('#inspector .mov-hot__row[data-rank="1"][aria-current="true"]');
+    },
+  },
+  { // SV2-18: the travel-time tables
+    id: 'movement-travel-time',
+    hash: '#movement',
+    open: async (page) => {
+      await movementDrawn(page);
+      await page.click('#inspector [role="tab"][data-tab="tables"]');
+      await page.waitForSelector('#inspector [data-travel="day"] tbody');
+    },
+  },
+  { // SV2-18: the Export tab
+    id: 'movement-export',
+    hash: '#movement',
+    open: async (page) => {
+      await movementDrawn(page);
+      await page.click('#inspector [role="tab"][data-tab="export"]');
+      await page.waitForSelector('#inspector [data-panel="export"] [data-action="png"]:not([aria-disabled])');
+    },
+  },
+  { // SV2-18: the movement picture in the preview sheet
+    id: 'movement-print-picture',
+    hash: '#movement',
+    open: async (page) => {
+      await movementDrawn(page);
+      await page.click('#inspector [role="tab"][data-tab="export"]');
+      await page.click('#inspector [data-action="print-picture"]');
+      await page.waitForSelector('#print-preview[open][data-ready="true"]');
+    },
+  },
+  { // SV2-18: the congestion report in the preview sheet
+    id: 'movement-congestion-report',
+    hash: '#movement',
+    open: async (page) => {
+      await movementDrawn(page);
+      await page.click('#inspector [role="tab"][data-tab="export"]');
+      await page.click('#inspector [data-action="print-congestion"]');
+      await page.waitForSelector('#print-preview[open][data-ready="true"]');
     },
   },
   { id: 'movement-empty', hash: '#project', open: async (page) => { // SV2-17: no groups, so no map
@@ -557,6 +848,71 @@ export const SCREENS = [
       await page.click('#search');
       await page.keyboard.type('10');
       await page.waitForSelector('#search-results [role="option"]');
+    },
+  },
+  { id: 'staff-preview', hash: '#staff', open: staffLive }, // SV2-24: the preview frame fed, the publish form beside it
+  { // SV2-24: batch printing, in the preview sheet (SV2-45: with the sentence where a door sign's orientation would be)
+    id: 'staff-batch-print',
+    hash: '#staff',
+    open: async (page) => {
+      await staffLive(page);
+      await page.click('.pub [data-print="door-signs-day"]');
+      await page.waitForSelector('#print-preview[open][data-ready="true"]');
+    },
+  },
+  {
+    // SV2-45: the publish form with "What is in it" open, its mark turned
+    id: 'staff-contents-open',
+    hash: '#staff',
+    open: async (page) => {
+      await staffLive(page);
+      await page.click('#publish-contents > summary');
+      await page.waitForFunction(() => document.querySelector('.pub input[data-view="teacher"]').getClientRects().length > 0);
+    },
+  },
+  { id: 'scenarios-open', hash: '#scenarios', open: scenarioOpen() }, // SV2-68: a scenario's chips, the forms, the comparison, the bar
+  { id: 'scenarios-phone', hash: '#scenarios', viewport: { width: 390, height: 844, mobile: true }, open: scenarioOpen() }, // SV2-68: a phone, with touch
+  { id: 'scenarios-phone-sideways', hash: '#scenarios', viewport: { width: 844, height: 390, mobile: true }, open: scenarioOpen() }, // SV2-68: a phone on its side, with touch
+  { id: 'scenarios-dropped', hash: '#scenarios', open: scenarioOpen({ dropped: true }) }, // SV2-68: a change that no longer applies, with Remove them
+  { id: 'scenarios-apply', hash: '#scenarios', open: scenarioOpen({ apply: true }) }, // SV2-68: Apply's summary
+  { id: 'scenarios-difference', hash: '#scenarios', open: differenceShown }, // SV2-69: the difference map painted, its card up, the table of the ten largest changes
+  { id: 'safety-map', hash: '#safety', open: safetyDrawn }, // SV2-67: every room's way out by exit, the key, the Exits tab
+  { id: 'safety-phone', hash: '#safety', viewport: { width: 390, height: 844, mobile: true }, open: safetyDrawn }, // SV2-67: a phone, with touch
+  { id: 'safety-phone-sideways', hash: '#safety', viewport: { width: 844, height: 390, mobile: true }, open: safetyDrawn }, // SV2-67: a phone on its side, with touch
+  { // SV2-67: one room's way out across two floors, with the marks' line, on the Door cards tab with rooms ticked
+    id: 'safety-one-room',
+    hash: '#safety',
+    open: async (page) => {
+      await safetyDrawn(page);
+      await page.evaluate(() => document.querySelector('.sfy').safety.pick('rsample303'));
+      await safetyTab('cards')(page);
+      for (const id of ['rsample101', 'rsample204']) await page.click('.sfy-row[data-room="' + id + '"] .sfy-row__box');
+      await page.waitForFunction(() => document.querySelector('.sfy-panel [data-print="chosen"]').dataset.count === '2');
+    },
+  },
+  { id: 'safety-no-route', hash: '#safety', open: safetyCutOff }, // SV2-67: a room with no way out, listed with its sentence
+  { // SV2-67: door cards for every room in the preview sheet
+    id: 'safety-print',
+    hash: '#safety',
+    open: async (page) => {
+      await safetyDrawn(page);
+      await safetyTab('cards')(page);
+      await page.click('.sfy-panel [data-print="all"]');
+      await page.waitForSelector('#print-preview[open][data-ready="true"]', { timeout: 30000 });
+    },
+  },
+  { // SV2-67: no exits marked: the sentence and the way to the building
+    id: 'safety-no-exits',
+    hash: '#safety',
+    open: async (page) => {
+      await safetyDrawn(page);
+      await page.evaluate(async () => {
+        const { sampleSchool } = await import(new URL('data/sample-school.js', location.href).href);
+        const project = sampleSchool();
+        for (const floor of project.building.floors) floor.exits = [];
+        globalThis.sv2.store.replace(project);
+      });
+      await page.waitForFunction(() => document.querySelector('.sfy').dataset.mode === 'empty');
     },
   },
 ];

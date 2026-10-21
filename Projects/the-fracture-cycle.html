@@ -378,14 +378,14 @@
   <div class="tracker-bar">
     <div class="tracker-info">
       <span class="tracker-label">Endings Discovered</span>
-      <span class="tracker-count" id="trackerCount">0 / 5</span>
+      <span class="tracker-count" id="trackerCount">0 / 7</span>
     </div>
     <div class="tracker-chips" id="trackerChips"></div>
     <div id="saveControls"></div>
   </div>
 
   <div class="story-panel">
-    <h2 class="node-title" id="nodeTitle"></h2>
+    <h2 class="node-title" id="nodeTitle" tabindex="-1"></h2>
     <div class="node-text" id="nodeText"></div>
     <div class="choices" id="choices"></div>
   </div>
@@ -430,7 +430,8 @@ import { SAVE_KEY, SAVE_VERSION, ENDING_IDS, freshProgress, validateProgress, re
       choices: [
         { label:"Walk toward the gold light — the Radiant Sanctuary", mark:"I", next:"radiant_gate", effect:s=>{s.mainPath='radiant'; s.visited.radiant=true;} },
         { label:"Walk toward the crimson fire — the Dire Wildwoods", mark:"II", next:"dire_gate", effect:s=>{s.mainPath='dire'; s.visited.dire=true;} },
-        { label:"Follow the shifting color — a lone tower, humming with runes", mark:"III", next:"invoker_gate", effect:s=>{s.mainPath='invoker'; s.visited.invoker=true;} }
+        { label:"Follow the shifting color — a lone tower, humming with runes", mark:"III", next:"invoker_gate", effect:s=>{s.mainPath='invoker'; s.visited.invoker=true;} },
+        { label:"Take none of them — walk the seam itself, where nothing is lit", mark:"IV", next:"seam_walk", effect:s=>{s.mainPath='seam'; s.seam={name:null};} }
       ]
     },
 
@@ -548,6 +549,52 @@ import { SAVE_KEY, SAVE_VERSION, ENDING_IDS, freshProgress, validateProgress, re
       ]
     },
 
+    // ---------------- THE SEAM (the fourth prong) ----------------
+    // Not a fourth power and no fourth fragment: the one run in which nobody
+    // tells you what you are. Its state is `state.seam`, made at the entrance
+    // in `intro` and absent otherwise, so a run down any of the three roads
+    // carries exactly the state it always did. It rejoins at hub_bazaar with
+    // no fragment, and its payoff (seam_answer, end_witness, end_named) hangs
+    // off core_confrontation for a walker, who always has a name by then.
+    seam_walk:{
+      title:"The Unlit Way",
+      text:`<p>You take none of them. The seam runs on past the place where you woke — a line no wider than your foot, gold along one edge, crimson along the other, and no light of its own. It isn't a road. Nobody built it to arrive anywhere.</p>
+      <p>The ground isn't blank, though. Footprints run along the line ahead of you, bare, too many to count, and every one of them the size of yours. They keep to the seam for a while. Then, in ones and twos, they peel off — toward the gold, toward the crimson, toward the color that can't make up its mind.</p>
+      <p>None of them come back.</p>`,
+      choices:[
+        {label:"Keep to the gold edge, where most of the prints lean before they leave", mark:"a", next:"seam_cairn", effect:s=>{s.align+=1;}},
+        {label:"Keep to the crimson edge, where the prints dig deepest", mark:"b", next:"seam_cairn", effect:s=>{s.align-=1;}},
+        {label:"Walk the line itself, a foot on each side, where the prints are fewest", mark:"c", next:"seam_cairn"}
+      ]
+    },
+    seam_cairn:{
+      title:"The Count",
+      text:`<p>Where the last of the prints leave the line there's a cairn, shoulder-high, built of flat stones no bigger than a hand. Each one has a single mark scratched into it. Someone is sitting against it, knapping an edge onto a flake of flint, wearing neither court's colors — gray, mostly, like the stones.</p>
+      <p>"Sit or don't," the keeper says. "Orrin. I keep the count." A nod at the cairn. "Every stone is one of you. Something under the seam starts to hum, and one of you wakes up right where you did, and walks off down a road to be told what it is by whoever's standing at the end of it. Then it goes down to the hollow and chooses. The seam tilts, or it doesn't. After a while the humming starts again."</p>
+      <p>You ask how many. Orrin doesn't look up from the flint. "I stopped saying the number out loud. It started to sound like an accusation."</p>`,
+      choices:[
+        {label:"Ask what the marks mean", mark:"→", next:"seam_stone"}
+      ]
+    },
+    seam_stone:{
+      title:"The Top Stone",
+      text:`<p>"Not names. None of you ever had one to leave." Orrin taps the stones in turn. "A stroke for the gold road. A notch for the crimson. A ring for the tower. I cut them afterward, when word comes back of how it went." The top stone is blank. It is, you understand without being told, already yours — cut to size before you woke.</p>
+      <p>"You're the first to come this way before going that way. I haven't got a mark for it." The flint is held out to you, edge first, which in Orrin seems to pass for courtesy. "A name's only a thing you answer to. The courts will hand you one inside a day if you let them; they keep a few ready for whatever walks out of the seam. Or there's the one the first of you muttered, before it knew which road it wanted. <em>I've kept it.</em> Nobody's used it since."</p>`,
+      choices:[
+        {label:"Ask for the old name — carry what the first of them left behind", mark:"a", next:"seam_named", effect:s=>{s.seam.name='borne';}},
+        {label:"Take the flint, cut a mark of your own into the stone, and answer to that", mark:"b", next:"seam_named", effect:s=>{s.seam.name='own';}}
+      ]
+    },
+    seam_named:{
+      title:"A Name on the Seam",
+      text:`<p>Whichever it is, it sits oddly at first, the way a tool does before your grip has worn into it. You say it aloud once. The seam doesn't answer. Orrin does, which is more than the seam has ever done for anyone.</p>
+      <p>"It'll do. Don't spend it on the first court that asks." The flint goes back to work. "There's a market at Roseleaf, on the far edge. The pieces are there, or the people holding them are. You'll be offered all three, and every one of them comes tied to somebody's hand. Take them or don't."</p>
+      <p>"The hollow's under the seam, past the market. That's where the rest of you went. It'll be expecting a piece." For the first time Orrin looks straight at you. "See what it does with a name."</p>`,
+      choices:[
+        {label:"Head for the Roseleaf Bazaar", mark:"→", next:"hub_bazaar"}
+      ]
+    },
+
     // ---------------- HUB ----------------
     hub_bazaar:{
       title:"Roseleaf Bazaar",
@@ -610,6 +657,25 @@ import { SAVE_KEY, SAVE_VERSION, ENDING_IDS, freshProgress, validateProgress, re
         if(state.favor.invoker>=3 || (state.align>-2 && state.align<2)) opts.push({label:"Refuse to let either court own the Shard — bind it to no one, the Invoker's way", mark:"c", next:"end_convergence"});
         if(state.fragments.length===3) opts.push({label:"Set all three fragments into the socket at once", mark:"d", next:"end_ascension"});
         opts.push({label:"Force the socket open with whatever you're carrying, and see what happens", mark:"e", next:"end_corruption"});
+        if(state.seam) opts.push({label:"Set nothing down — say your name into the hollow first, and wait", mark:"f", next:"seam_answer"});
+        return opts;
+      })
+    },
+
+    // The seam's payoff. Giving the name needs a name of your own and empty
+    // hands: every fragment a walker carries came from a Roseleaf contact with
+    // a promise, a debt or a prediction tied to it.
+    seam_answer:{
+      title:"What the Hollow Wanted",
+      text:`<p>You say it into the hollow, and the hum drops — not gone, just lowered, the way a room goes quiet when the one it was waiting on finally walks in.</p>
+      <p>Nothing speaks. You understand it anyway, the same way you understood at the very beginning that you'd been called. The socket is what woke you. It woke every one of you. It was never short of pieces; pieces only ever needed carrying. It wanted someone who would <em>stay and see</em> what got chosen — and each time, the one it woke had been told what it was long before it got here, and chose, and was gone.</p>
+      <p>You carry ${'${fragCount}'} of the pieces. For once, the socket isn't asking about them. It's asking what you answer to, and whether anyone else already has a claim on it.</p>`,
+      dynamic:true,
+      choices: (()=>{
+        const opts = [];
+        if(state.seam.name==='own' && state.fragments.length===0) opts.push({label:"Give the hollow your name, and stay — so that nothing else has to be woken to ask", mark:"a", next:"end_named"});
+        if(state.fragments.length>0) opts.push({label:"Carry the pieces back up to the cairn, unset, and keep the count yourself", mark:"b", next:"end_witness"});
+        else opts.push({label:"Climb back up to the cairn with empty hands, and keep the count yourself", mark:"b", next:"end_witness"});
         return opts;
       })
     },
@@ -644,6 +710,20 @@ import { SAVE_KEY, SAVE_VERSION, ENDING_IDS, freshProgress, validateProgress, re
       title:"Ending: What the Socket Wasn't Ready For",
       text:`<p>You force it, because waiting has never been your strength and the Shard was never going to wait politely for you to earn the right kind of ending. The socket takes what you're carrying and gives back something none of the old stories mention — not light, not hunger, not balance. Just a crack, spreading slowly through the seam itself.</p>
       <p>Neither court notices immediately. They will. The Fracture Cycle doesn't end here so much as it starts over, somewhere worse, with someone else waking up at the seam wondering why.</p>`
+    },
+    end_witness:{
+      ending:true,
+      title:"Ending: The Count Kept",
+      text:`<p>You leave the socket as empty as you found it and climb back out with whatever you carried down. Orrin is already standing when you reach the cairn, which you suspect hasn't happened in a very long while. The flint changes hands. So does the place against the stones, still warm. Orrin walks off along the line without choosing an edge, and doesn't say goodbye, and doesn't need to.</p>
+      <p>The humming starts again, eventually. When it does, something with no name opens its eyes at the seam with three roads in front of it — and for the first time in the whole count, somebody is there. You won't tell it which road. You'll tell it what it is first, and how many came before, and that it can answer to whatever it likes.</p>
+      <p>Neither court ever learns what you're called. The stones do.</p>`
+    },
+    end_named:{
+      ending:true,
+      title:"Ending: The Last Waking",
+      text:`<p>You give it. Not to the socket — that was built for three pieces and you've brought none — but to the hollow itself, the way you'd tell whoever opens a door who's standing outside it. The hollow takes the name, and the one who answers to it comes along, because that's what a name is.</p>
+      <p>The humming doesn't stop. The Shard is still three pieces in three sets of hands, and the courts will go on circling the crumbs for as long as there are courts. But the thing under the seam has what it kept waking you for: someone who stayed. It won't pull another one out of nothing just to ask.</p>
+      <p>Up on the line, Orrin waits a season for the next set of prints, and then another. Then a mark goes onto the top stone that no stone has had before, and the flint is set down. The count is finished. You're the last of it, and the only one with a name.</p>`
     }
   };
 
@@ -744,6 +824,21 @@ import { SAVE_KEY, SAVE_VERSION, ENDING_IDS, freshProgress, validateProgress, re
     fragI.style.opacity = hasFrag('invoker') ? '1':'0.25';
   }
 
+  // A choice destroys the button that was pressed, and Begin the Cycle Anew
+  // sits below the story: without this, focus fell to the body after every
+  // choice and stayed under the page after a restart, so a screen reader was
+  // told nothing and a keyboard had no place (#963). The new screen's title
+  // takes focus. It is tabindex="-1": reachable from here, not a tab stop, and
+  // the next Tab is the first choice. Never on the first paint: a page does
+  // not take focus on load.
+  // The scroll back to the top is the one movement the stylesheet's
+  // reduced-motion rule cannot reach, so it is asked here.
+  const stillPlease = window.matchMedia('(prefers-reduced-motion: reduce)');
+  function arrive(){
+    titleEl.focus({preventScroll:true});
+    window.scrollTo({top:0, behavior: stillPlease.matches ? 'auto' : 'smooth'});
+  }
+
   function render(){
     const node = nodes[currentId];
     titleEl.textContent = node.title;
@@ -775,7 +870,7 @@ import { SAVE_KEY, SAVE_VERSION, ENDING_IDS, freshProgress, validateProgress, re
         currentId = opt.next;
         renderStatus();
         render();
-        window.scrollTo({top:0, behavior:'smooth'});
+        arrive();
       });
       choicesEl.appendChild(btn);
     });
@@ -786,7 +881,7 @@ import { SAVE_KEY, SAVE_VERSION, ENDING_IDS, freshProgress, validateProgress, re
     currentId = 'intro';
     renderStatus();
     render();
-    window.scrollTo({top:0, behavior:'smooth'});
+    arrive();
   });
 
   renderStatus();

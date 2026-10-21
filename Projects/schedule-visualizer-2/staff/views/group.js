@@ -12,11 +12,6 @@ import { wordsJoined, partsToNodes, countOf, linkToTeacher, linkToRoom, subjectC
 
 const isEmpty = (slot) => !slot || (!slot.room && !slot.roomText && !slot.label);
 
-// "Period 3" → "3", "Block C" → "C", "3rd Hour" → "3rd": what fits on a room.
-export function shortPeriod(name) {
-  return String(name).replace(/^(Period|Mod|Block)\s+/, '').replace(/\s+Hour$/, '');
-}
-
 // Who teaches the group: one row for each teacher in each room, in the order
 // the day meets them, with the periods on each kind of day.
 // [{ teacher, room, text, label, periods: [[period, …] per kind] }]
@@ -97,7 +92,7 @@ function groupMap(ctx, group, kinds, at) {
   if (seen.length === 0) return null;
   const bells = school.bells(kind.first.id);
   const timeOf = (period) => (bells[period].start ? school.time(bells[period].start) : '');
-  const shorts = (visit) => visit.periods.map((period) => shortPeriod(school.periodName(period))).join(', ');
+  const shorts = (visit) => visit.periods.map((period) => school.periodLabel(period)).join(', ');
   const box = h('div', { class: 'part', dataset: { kind: String(at) } });
   const tabs = kinds.length > 1 ? h('div', { class: 'tabs' }, kinds.map((each, index) => h('button', {
     class: 'tab',

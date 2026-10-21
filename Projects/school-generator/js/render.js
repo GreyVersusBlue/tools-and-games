@@ -32,7 +32,7 @@ import {
 import { catalogEntry, propColor, variantKey } from './catalog.js';
 import { revealAt } from './hunt.js';
 import {
-  stairMetrics, stairsOf, openingRails, runMetrics, rampLayout, rampGuards,
+  stairMetrics, stairsOf, openingRails, runMetrics, rampLayout, rampGuards, topLandingBox,
   elevatorSize, elevatorDoorWidth, elevatorsOn,
   floorCuts, inFloorCut, stairWidth,
 } from './stairs.js';
@@ -53,7 +53,7 @@ import { placardsFor, exitSignsFor, EXIT_W, EXIT_H } from './signage.js';
 import { classify, isGroup } from './occupancy.js';
 import { terrainField, groundAt, emptyField } from './terrain.js';
 import { regionsOf, surfaceEntry, markingsFor } from './site.js';
-import { roofPlan, roofTop, PARAPET_H, COPING_T } from './roof.js';
+import { roofPlan, roofTop, parapetRuns, PARAPET_H, COPING_T } from './roof.js';
 // --- Phase 9 ---
 import { sampleBake, bakedTint } from './bakelight.js';
 import { loadModel, writeGLB, FT_TO_M } from './gltf.js';
@@ -4965,6 +4965,16 @@ export function initRender(canvas) {
           localBox(link, w, 0.09, 0.2, 0, top - 0.045, z0 + m.tread - 0.1, _nosing, stairGeos);
         }
       }
+      // The level landing at the top, cut out of the floor above and walked
+      // at its height: a slab in the run's colour, as a folded ramp's top
+      // landing is, from the box the walker and the hole read. A ramp's is
+      // ADA's 5ft (#904, drawn since #981), a stair's 4ft (#983); before,
+      // nothing stood on either and the walk crossed open hole.
+      const land = topLandingBox(link, metrics);
+      if (land) {
+        localBox(link, land.x1 - land.x0, 0.5, land.z1 - land.z0,
+          (land.x0 + land.x1) / 2, m.rise - 0.25, (land.z0 + land.z1) / 2, _tread, stairGeos);
+      }
       // Handrails: a sloped cap either side, on posts that grow with the run.
       // Identical for both — a ramp needs them more than a stair does.
       const slope = Math.hypot(m.run, m.rise);
@@ -5994,12 +6004,16 @@ export function initRender(canvas) {
 
   // A roof face — a triangle or a quad in 3D — with planar UVs off its own
   // world footprint, so shingle courses come out at shingle size on a slope.
-  // White vertex colours, for the same reason `drapedRegion` uses them.
-  function roofFace(pts, color = '#ffffff') {
+  // White vertex colours, for the same reason `drapedRegion` uses them. A
+  // rectangle's faces are convex and fanned from the first point; a skeleton
+  // face over a curve need not be, and brings its own triangles (#967).
+  function roofFace(pts, color = '#ffffff', tris = null) {
     const verts = [];
     const uvs = [];
-    for (let i = 1; i + 1 < pts.length; i++) {
-      for (const p of [pts[0], pts[i], pts[i + 1]]) {
+    const fan = [];
+    for (let i = 1; i + 1 < pts.length; i++) fan.push([0, i, i + 1]);
+    for (const tri of tris || fan) {
+      for (const p of tri.map((k) => pts[k])) {
         verts.push(p.x, p.y, p.z);
         uvs.push(p.x, -p.z);
       }
@@ -6019,11 +6033,7 @@ export function initRender(canvas) {
     const wallGeos = [], capGeos = [], deckGeos = [], slopeGeos = [], gableGeos = [];
 
     if (plan.parapetH > 0) {
-      for (const loop of plan.outlines) {
-        for (let i = 0; i < loop.length; i++) {
-          parapetRun(loop[i], loop[(i + 1) % loop.length], plan.eaveY, wallGeos, capGeos);
-        }
-      }
+      for (const [a, b] of parapetRuns(plan)) parapetRun(a, b, plan.eaveY, wallGeos, capGeos);
     }
     for (const rect of plan.deckRects) {
       deckGeos.push(roofFace([
@@ -6033,9 +6043,15 @@ export function initRender(canvas) {
         { x: rect.x0, y: plan.eaveY + 0.05, z: rect.z1 },
       ]));
     }
+    // A parapet over a curve: the deck is the outline, in its own triangles,
+    // which index its courts' corners after its own (#998).
+    for (const poly of plan.deckPolys || []) {
+      const geo = roofFace([...poly.pts, ...(poly.holes || []).flat()].map((p) => ({ x: p.x, y: plan.eaveY + 0.05, z: p.z })), '#ffffff', poly.tris);
+      if (geo) deckGeos.push(geo);
+    }
     for (const block of plan.blocks) {
       for (const f of block.faces) {
-        const geo = roofFace(f.pts);
+        const geo = roofFace(f.pts, '#ffffff', f.tris);
         if (geo) slopeGeos.push(geo);
       }
       for (const g of block.gables) {

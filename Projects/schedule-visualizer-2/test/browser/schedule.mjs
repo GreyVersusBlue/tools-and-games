@@ -46,6 +46,36 @@ const click = async (selector) => {
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// A module of the tool put on the page as `globalThis.sv2modules[key]`, by a
+// module script the page loads itself, and waited for: the page sets the
+// key. An import() awaited inside page.evaluate can come back "Protocol
+// error (Runtime.callFunctionOn): Promise was collected" (SV2-72e saw it in
+// m2-pass.mjs, 2 runs in 10 with the CPU throttled 4), so a module is loaded
+// first and used in a synchronous evaluate after. A load of the page empties
+// the globals, and the module is loaded again.
+// The script imports the module itself and keeps `{ error }` under the key
+// when that fails: a static import that fails fires no error the test can
+// see, and a wrong path came back as this wait's timeout (SV2-72e2).
+async function loadModule(page, key, file) {
+  // null while it loads, then `{ error }`: null when the module is there
+  const held = (wanted) => {
+    const value = globalThis.sv2modules && globalThis.sv2modules[wanted];
+    if (!value) return null;
+    return { error: value[Symbol.toStringTag] === 'Module' ? null : String(value.error) };
+  };
+  let state = await page.evaluate(held, key);
+  if (state === null) {
+    const name = JSON.stringify(key);
+    await page.addScriptTag({ type: 'module', content: 'const modules = (globalThis.sv2modules ||= {}); import(' + JSON.stringify('./' + file) + ').then((module) => { modules[' + name + '] = module; }, (error) => { modules[' + name + '] = { error: String((error && error.message) || error) }; });' });
+    state = await (await page.waitForFunction(held, { timeout: 5000 }, key)).jsonValue();
+  }
+  if (state.error !== null) {
+    // forgotten, so a later call tries again rather than repeat this one
+    await page.evaluate((wanted) => delete globalThis.sv2modules[wanted], key);
+    throw new Error('loadModule: ' + file + ' did not load: ' + state.error);
+  }
+}
+
 async function selectAllAndType(value) {
   await settled();
   await page.keyboard.down('Control');
@@ -118,8 +148,8 @@ test('the sample school shows its groups with completeness, marks and the findin
   assert.deepEqual((await counts()).slice(0, 2), [1, 1]);
   assert.equal(await page.$eval('#inspector', (el) => el.hidden), false);
   assert.equal(await text('#inspector .sch-panel__scope'), 'About 6A');
-  // a button that is not built yet says why, and can be reached to hear it
-  assert.equal(await page.$eval('#inspector [data-action="fix"]', (el) => el.getAttribute('aria-disabled') + '|' + el.title + '|' + el.disabled), 'true|Suggestions are not built yet|false');
+  // SV2-70: what is found about 6A is a note no small change clears, so it has no Fix… (Fix… is only on a finding the suggestion engine can work on)
+  assert.deepEqual(await page.$$eval('#inspector .sch-finding', (all) => all.map((el) => el.classList.contains('sch-finding--note') + '|' + Boolean(el.querySelector('[data-action="fix"]')))), ['true|false']);
 });
 
 test('the room picker lists rooms as "204 — Mme. Dufrêne" and narrows as you type', async () => {
@@ -134,10 +164,11 @@ test('the room picker lists rooms as "204 — Mme. Dufrêne" and narrows as you 
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   assert.equal(await roomShown(DAY_A, 0), '201 — Ms. Oyelaran', 'Escape puts the room back');
-  // text that is no room is refused in a sentence and stays to be fixed
+  // text that is no room is not refused: the list says it will be kept as
+  // typed (SV2-38 item 9; test/browser/m2-pass.mjs has the keeping), and
+  // Escape still puts the room back
   await selectAllAndType('zzz');
-  await page.keyboard.press('Enter');
-  assert.match(await text('.sch-day[data-day="' + DAY_A + '"] tr[data-period="0"] .sch-room .field__refusal'), /No room matches "zzz"/);
+  assert.match(await text('.sch-day[data-day="' + DAY_A + '"] tr[data-period="0"] .sch-room .sch-room__line'), /No room matches\. It is kept as typed/);
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   assert.equal(await roomShown(DAY_A, 0), '201 — Ms. Oyelaran');
@@ -173,7 +204,8 @@ test('a group is entered from scratch by keyboard, and focus is never lost on th
       const labels = await page.$$eval('.sch-day[data-day="' + DAY_A + '"] tr[data-period="1"] .picker__option', (all) => all.map((el) => el.firstChild.textContent));
       const at = labels.findIndex((label) => label.split(' — ')[0] === plan[period]);
       assert.notEqual(at, -1, 'the list has ' + plan[period] + ': ' + labels.join(' | '));
-      for (let i = 0; i < at; i += 1) await page.keyboard.press('ArrowDown');
+      // nothing is highlighted until an arrow goes there (SV2-48): the first ArrowDown is the first room
+      for (let i = 0; i <= at; i += 1) await page.keyboard.press('ArrowDown');
       await page.keyboard.press('Enter');
       await shows((selector, number) => document.querySelector(selector).value.split(' — ')[0] === number && document.activeElement === document.querySelector(selector), slot(DAY_A, period, 'room'), plan[period]);
       await page.keyboard.press('Tab');
@@ -192,9 +224,9 @@ test('a group is entered from scratch by keyboard, and focus is never lost on th
     await page.keyboard.press('Tab');
   }
   assert.equal(await page.$eval(slot(DAY_A, 0, 'label'), (el) => el.value), 'Homeroom');
-  assert.equal(await page.$eval('.sch-group[aria-current="true"] .sch-bar[data-day="' + DAY_A + '"]', (el) => el.dataset.done), '8');
-  assert.equal(await text('.sch-group[aria-current="true"] .sch-group__name'), '8Z');
-  assert.equal(await page.$eval('.sch-group[aria-current="true"] .sch-group__grade', (el) => Array.from(el.childNodes).filter((node) => node.nodeType === 3).map((node) => node.textContent).join('')), '8');
+  assert.equal(await page.$eval('.sch-group[aria-selected="true"] .sch-bar[data-day="' + DAY_A + '"]', (el) => el.dataset.done), '8');
+  assert.equal(await text('.sch-group[aria-selected="true"] .sch-group__name'), '8Z');
+  assert.equal(await page.$eval('.sch-group[aria-selected="true"] .sch-group__grade', (el) => Array.from(el.childNodes).filter((node) => node.nodeType === 3).map((node) => node.textContent).join('')), '8');
   assert.equal(await page.$eval('[data-key="group-head"]', (el) => el.value), '22');
 });
 
@@ -202,7 +234,7 @@ test('the double-booking appears on the slot, on the group and in the panel as i
   const line = await text('.sch-day[data-day="' + DAY_A + '"] tr[data-period="2"] .sch-finding-line--problem');
   assert.match(line, /^● Problem: Room \d+ has two groups in Period 3 on A Day: 6A and 8Z\./);
   assert.equal(await page.$eval('.sch-day[data-day="' + DAY_A + '"] tr[data-period="2"] .picker__input', (el) => document.getElementById(el.getAttribute('aria-describedby')).textContent.includes('has two groups')), true, 'the finding describes the room field');
-  assert.equal(await exists('.sch-group[aria-current="true"] .sch-mark--problem'), true);
+  assert.equal(await exists('.sch-group[aria-selected="true"] .sch-mark--problem'), true);
   assert.equal((await counts())[0], 2);
   assert.equal(await text('#inspector .sch-panel__scope'), 'About 8Z');
   assert.match(await text('#inspector .sch-finding--problem .sch-finding__text'), /6A and 8Z/);
@@ -252,10 +284,11 @@ test('a redraw does not take the text out from under someone typing', async () =
   await click('[data-key="group-name"]');
   await selectAllAndType('6a');
   // a change from somewhere else draws the tab again, which replaces the field
-  await page.evaluate(() => import('./engine/actions.js').then((actions) => {
+  await loadModule(page, 'actions', 'engine/actions.js');
+  await page.evaluate(() => {
     const { store } = globalThis.sv2;
-    store.apply(actions.editGroup, { id: store.project.groups.find((group) => group.name === '8Z').id, headCount: 23 });
-  }));
+    store.apply(globalThis.sv2modules.actions.editGroup, { id: store.project.groups.find((group) => group.name === '8Z').id, headCount: 23 });
+  });
   await shows(() => document.querySelector('[data-key="group-head"]').value === '23');
   await keyIs('group-name');
   assert.equal(await activeValue(), '6a');
@@ -308,11 +341,13 @@ test('the Accepted list says which records no longer stand: changed since accept
   assert.equal(await exists(open), false, 'accepted, so not in the findings');
 
   // a third group in the room: the finding names somebody else now
+  await loadModule(page, 'actions', 'engine/actions.js');
   await act((dayId, findingId) => {
     const { store } = globalThis.sv2;
     const roomId = findingId.split(':')[3];
     const third = store.project.groups.find((group) => group.name === '6B');
-    return import('./engine/actions.js').then((actions) => store.apply(actions.setSlot, { groupId: third.id, dayTypeId: dayId, period: 2, slot: { room: roomId } }));
+    const { actions } = globalThis.sv2modules;
+    store.apply(actions.setSlot, { groupId: third.id, dayTypeId: dayId, period: 2, slot: { room: roomId } });
   }, DAY_A, id);
   await shows((selector) => document.querySelector(selector) !== null, open);
   await settled();
@@ -331,9 +366,11 @@ test('the Accepted list says which records no longer stand: changed since accept
   assert.equal(await exists(kept('changed')), false);
 
   // its check switched off: kept, and not called put right
+  await loadModule(page, 'actions', 'engine/actions.js');
   await act(() => {
     const { store } = globalThis.sv2;
-    return import('./engine/actions.js').then((actions) => store.apply(actions.setSetting, { key: 'checks.off', value: ['room-double'] }));
+    const { actions } = globalThis.sv2modules;
+    store.apply(actions.setSetting, { key: 'checks.off', value: ['room-double'] });
   });
   await shows(() => document.querySelector('.sch-findings tr[data-finding^="room-double:"]:not([data-state])') === null);
   await settled();
@@ -345,10 +382,12 @@ test('the Accepted list says which records no longer stand: changed since accept
   await shows((selector) => document.querySelector(selector) !== null, kept() + ':not([data-state])');
 
   // put right: gone, and the sentence does not speak of a check switched off
+  await loadModule(page, 'actions', 'engine/actions.js');
   await act((dayId) => {
     const { store } = globalThis.sv2;
     const group = store.project.groups.find((each) => each.name === '8Z');
-    return import('./engine/actions.js').then((actions) => store.apply(actions.setSlot, { groupId: group.id, dayTypeId: dayId, period: 2, slot: { room: null, roomText: '' } }));
+    const { actions } = globalThis.sv2modules;
+    store.apply(actions.setSlot, { groupId: group.id, dayTypeId: dayId, period: 2, slot: { room: null, roomText: '' } });
   }, DAY_A);
   await shows((selector) => document.querySelector(selector) !== null, kept('gone'));
   assert.equal(await page.$eval(kept('gone') + ' td', (td) => td.textContent), 'No longer found. What this was about has been put right.');
@@ -359,9 +398,10 @@ test('the Accepted list says which records no longer stand: changed since accept
 test('Accept hands the engine who the finding names, so a walk finding (which the engine cannot look up) keeps its list', async () => {
   // No walk figures reach this section yet, so no walk finding can be clicked.
   // The dialog is the real one; the store is a stand-in that keeps the payload.
+  await loadModule(page, 'checks', 'ui/schedule/checks.js');
   const payload = await page.evaluate(async () => {
     const { ctx } = globalThis.sv2;
-    const { acceptWithReason } = await import('./ui/schedule/checks.js');
+    const { acceptWithReason } = globalThis.sv2modules.checks;
     let given = null;
     const env = { ctx: { ...ctx, openDialog: ctx.openDialog, toast() {}, undo() {}, store: { apply: (action, sent) => { given = sent; } } } };
     const finding = { id: 'group-walk:dsample00a:3:gsample06a', kind: 'group-walk', severity: 'warning', text: 'An invented walk that does not fit.', about: ['gsample06a'], where: { dayTypeId: 'dsample00a', period: 3, groupIds: ['gsample06a'], roomId: null, teacherId: null } };
@@ -379,18 +419,21 @@ test('Accept hands the engine who the finding names, so a walk finding (which th
 test('Show jumps to the slot, marks it and puts focus in it', async () => {
   await go(page, '#schedule/checks');
   await click('.sch-findings tr[data-finding^="room-double:' + DAY_A + ':1:"] [data-action="show"]');
-  await shows(() => location.hash === '#schedule/groups' && document.querySelector('.sch-slot[data-shown="true"]') !== null);
+  // Show goes to the slot's own address (SV2-48), so the list is a Back away on a phone
+  await shows((day) => location.hash === '#schedule/groups/gsample06c/' + day + '/1' && document.querySelector('.sch-slot[data-shown="true"]') !== null, DAY_A);
   assert.equal(await text('.sch-editor__title'), '6C');
   assert.equal(await page.$eval('.sch-slot[data-shown="true"]', (el) => el.closest('.sch-day').dataset.day + ':' + el.dataset.period), DAY_A + ':1');
   await keyIs('slot:' + DAY_A + ':1:room');
   assert.equal(await count('.sch-slot[data-shown="true"]'), 1);
   // a finding about a teacher goes to the teacher's row
+  await loadModule(page, 'actions', 'engine/actions.js');
   await page.evaluate(() => {
     const { store } = globalThis.sv2;
     const teacher = store.project.teachers[0];
     globalThis.sv2Kept = teacher.roomIds.slice();
     const other = store.project.building.floors.flatMap((floor) => floor.spaces).find((space) => space.kind === 'room' && !teacher.roomIds.includes(space.id));
-    return import('./engine/actions.js').then((actions) => store.apply(actions.editTeacher, { id: teacher.id, roomIds: teacher.roomIds.concat([other.id]) }));
+    const { actions } = globalThis.sv2modules;
+    store.apply(actions.editTeacher, { id: teacher.id, roomIds: teacher.roomIds.concat([other.id]) });
   });
   await go(page, '#schedule/checks');
   await page.waitForSelector('.sch-findings tr[data-finding^="teacher-multi-room:"]');
@@ -416,6 +459,8 @@ test('Move up and Move down are in each row’s menu, and a row drags onto anoth
   assert.match(await text('#announcer'), /Moved Period 1’s assignment to Period 2/);
   // drag period 2's row (now holding what period 1 had) onto period 4
   await settled();
+  // (both rows in the window: with the day types side by side, SV2-38 item 8, a row is taller)
+  await page.$eval('.sch-day[data-day="' + DAY_A + '"] tr[data-period="1"]', (el) => el.scrollIntoView({ block: 'start' }));
   const grip = await page.$('.sch-day[data-day="' + DAY_A + '"] tr[data-period="1"] .sch-grip');
   const target = await page.$('.sch-day[data-day="' + DAY_A + '"] tr[data-period="3"] .sch-slot__period');
   const from = await grip.boundingBox();
@@ -433,9 +478,9 @@ test('Move up and Move down are in each row’s menu, and a row drags onto anoth
 });
 
 test('Copy A Day to B Day fills the group’s B Day, and a teacher named on a slot shows as a chip', async () => {
-  assert.equal(await page.$eval('.sch-group[aria-current="true"] .sch-bar[data-day="' + DAY_B + '"]', (el) => el.dataset.done), '0');
+  assert.equal(await page.$eval('.sch-group[aria-selected="true"] .sch-bar[data-day="' + DAY_B + '"]', (el) => el.dataset.done), '0');
   await click('.sch-day[data-day="' + DAY_B + '"] [data-action="copy-day"]');
-  await shows((day) => document.querySelector('.sch-group[aria-current="true"] .sch-bar[data-day="' + day + '"]').dataset.done === '8', DAY_B);
+  await shows((day) => document.querySelector('.sch-group[aria-selected="true"] .sch-bar[data-day="' + day + '"]').dataset.done === '8', DAY_B);
   assert.equal(await toastText(), 'Copied 8Z’s A Day to B Day.');
   assert.equal(await exists('.sch-day[data-day="' + DAY_A + '"] [data-action="copy-day"]'), false, 'the first day type has nothing to copy from');
   await click(slot(DAY_A, 4, 'teacher'));
@@ -467,7 +512,7 @@ test('a name with markup in it is shown exactly as typed, everywhere it appears'
   await selectAllAndType(HOSTILE);
   await page.keyboard.press('Enter');
   await shows((wanted) => document.querySelector('.sch-editor__title').textContent === wanted, HOSTILE);
-  assert.equal(await text('.sch-group[aria-current="true"] .sch-group__name'), HOSTILE);
+  assert.equal(await text('.sch-group[aria-selected="true"] .sch-group__name'), HOSTILE);
   assert.equal(await text('#inspector .sch-panel__scope'), 'About ' + HOSTILE);
   assert.equal(await count('#surface img, #inspector img'), 0);
   await click('#undo');
@@ -621,7 +666,7 @@ test('day: B Day made the same as A Day is greyed everywhere, and "Make its own 
   assert.equal(await text(column + ' .sch-day__title'), 'B Day: same as A Day');
   assert.equal(await count(column + ' input'), 0);
   assert.equal(await exists('[data-action="copy-day"]'), false, 'Copy A Day to B Day waits until B Day is its own copy');
-  assert.equal(await text('.sch-group[aria-current="true"] .sch-bar--same [aria-hidden]'), 'B Day = A Day');
+  assert.equal(await text('.sch-group[aria-selected="true"] .sch-bar--same [aria-hidden]'), 'B Day = A Day');
   await click(column + ' [data-action="make-own"]');
   await shows((selector) => !document.querySelector(selector).classList.contains('sch-day--same') && document.querySelector('[data-action="copy-day"]') !== null, column);
   assert.equal(await text('[data-action="copy-day"]'), 'Copy A Day to B Day');
@@ -695,13 +740,15 @@ test('an empty project: each tab says what the thing is and has one button', asy
 });
 
 test('a room that is no longer in the building stays on the slot, and says so', async () => {
+  await loadModule(page, 'actions', 'engine/actions.js');
   await page.evaluate((dayId) => {
     const { store } = globalThis.sv2;
     const group = store.project.groups.find((each) => each.name === '8Z');
-    return import('./engine/actions.js').then((actions) => store.apply(actions.setSlot, { groupId: group.id, dayTypeId: dayId, period: 5, slot: { room: null, roomText: 'B12' } }));
+    const { actions } = globalThis.sv2modules;
+    store.apply(actions.setSlot, { groupId: group.id, dayTypeId: dayId, period: 5, slot: { room: null, roomText: 'B12' } });
   }, DAY_A);
   await selectGroup('8Z');
-  await shows((selector) => document.querySelector(selector).value === 'B12 · not in the building', slot(DAY_A, 5, 'room'));
+  await shows((selector) => document.querySelector(selector).value === 'B12' && !document.querySelector(selector).parentNode.querySelector('.sch-room__missing').hidden, slot(DAY_A, 5, 'room'));
   assert.match(await text('.sch-day[data-day="' + DAY_A + '"] tr[data-period="5"] .sch-finding-line--warning'), /not in the building/);
-  assert.equal(await page.$eval('.sch-group[aria-current="true"] .sch-bar[data-day="' + DAY_A + '"]', (el) => el.dataset.done), '8', 'it still counts as entered');
+  assert.equal(await page.$eval('.sch-group[aria-selected="true"] .sch-bar[data-day="' + DAY_A + '"]', (el) => el.dataset.done), '8', 'it still counts as entered');
 });

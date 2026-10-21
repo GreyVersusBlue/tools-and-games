@@ -6,7 +6,7 @@
 import { h, typed } from './dom.js';
 import { makeHash } from './router.js';
 import { searchIndex, searchSchool } from './find.js';
-import { pageOf } from './page.js';
+import { pageOf, printGate } from './page.js';
 
 const MORE = [
   ['directions', 'Directions', 'From one room to another'],
@@ -73,8 +73,11 @@ export const searchView = {
     const results = h('div', { class: 'results' });
 
     const links = () => Array.from(results.querySelectorAll('a[data-result]'));
+    const gate = printGate();
     const draw = () => {
       const found = searchSchool(indexOf(school), input.value);
+      // a list of what was found is worth printing; the empty box is not
+      gate.set(found.query !== '' && found.total > 0);
       count.textContent = countText(found);
       results.replaceChildren(...[
         school.has('teacher') ? kindList('Teachers', 'teacher', found.teachers) : null,
@@ -115,7 +118,7 @@ export const searchView = {
 
     const more = MORE.filter(([view]) => school.has(view));
     draw();
-    return pageOf('Search', 'Find a teacher, a group or a room.',
+    return gate.on(pageOf('Search', 'Find a teacher, a group or a room.',
       h('div', { class: 'field field--search', role: 'search' },
         h('label', { class: 'field__label', for: 'find' }, 'Name, room number or subject'),
         input),
@@ -126,6 +129,6 @@ export const searchView = {
         h('ul', { class: 'list' }, more.map(([view, name, what]) => h('li', null,
           h('a', { class: 'list__link', href: makeHash(view) },
             h('span', { class: 'list__name' }, name),
-            h('span', { class: 'list__detail' }, what)))))) : null);
+            h('span', { class: 'list__detail' }, what)))))) : null));
   },
 };

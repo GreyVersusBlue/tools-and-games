@@ -21,6 +21,37 @@
 //                           URLs. An image with no entry here, one that is
 //                           hidden (visible: false) or missing, and an entry
 //                           that is not a data URL of an image are not drawn.
+//     options.crop          { x, y, width, height } in cells: draw only this
+//                           window of the floor (a door card's box), clamped
+//                           to the floor. The picture is the window, edge to
+//                           edge, with no room added round it; width and
+//                           height are the window's, so a caller scales it to
+//                           the space it has. What lies wholly outside is
+//                           left out; a room the edge cuts is drawn whole and
+//                           cut by the picture's edge, but a label (a room's
+//                           number or a surname, an other space's label, a
+//                           corridor's name, a stairs letter, a door name)
+//                           that the edge would cut is left out, never
+//                           printed in part ("Cafete" for Cafeteria; SV2-72c).
+//                           rooms, exits and letters count what is in the
+//                           window.
+//     options.route         { cells, start, exit }: the way out, drawn over the
+//                           plan as a line through the cells in walking order
+//                           (a jump between cells that do not touch, as at a
+//                           floor's second visit or a same-floor stairs, starts
+//                           the line again), from `start` (the room cell it
+//                           leaves by: a round mark) to `exit` (the exit's
+//                           cell: a square mark). Cells are indexes into this
+//                           floor; start and exit may be null (the route only
+//                           passes through, or ends on another floor).
+//                           Anything that is not a cell of the floor is left
+//                           out. With a window too, when `exit` is an exit
+//                           with a door name, the window grows past its edge
+//                           (past the floor's, where the name is drawn) to
+//                           hold the whole name; width and height grow with
+//                           it, and may then be fractions of a cell.
+//                           With neither option the picture is byte for byte
+//                           what it was before they existed.
 //     svg      the markup, or '' when nothing is drawn on the floor
 //     traced   whether the traced image is in the picture
 //     width, height   of the cropped picture, in cells (for fitting it to a page)
@@ -42,14 +73,45 @@ export const PLAN_ROOM_DEFAULT = '#e9e4d9';
 const U = 20;
 const SIDES = ['n', 'e', 's', 'w'];
 // Labels, in units. A number that cannot be this small and still fit is
-// printed at the smallest size anyway: on paper a label is never left out.
+// printed at the smallest size anyway: on a floor drawn whole a label is
+// never left out. In a window (options.crop, a door card's map) a label the
+// window's edge would cut is left out instead, judged at the widths fit()
+// sizes it by (textEms), so a label that fits its window stays.
 const NUMBER_MAX = 15;
 const NUMBER_MIN = 4;
 const LABEL_MAX = 8;
 const NAME_MAX = 7;
 const NAME_MIN = 3.6;
-// How wide a character of the condensed face runs, as a share of its size.
+// How wide a character runs, as a share of its size: the plan's condensed
+// face's Latin about 0.5; a script the face does not have, which the browser
+// sets in another face, 0.75; a wide character (CJK, Hangul, fullwidth forms,
+// an emoji or another wide symbol) a whole em; a joiner or a variation
+// selector nothing.
 const CHARACTER = 0.5;
+const OTHER_SCRIPT = 0.75;
+const WIDE = 1;
+// A corridor's name is set in capitals 0.08em apart: 1.15 of that.
+const SPACED = 1.15;
+
+// a character that takes a whole em: East Asian wide, or an emoji or a wide symbol
+export function isWide(code) {
+  return (code >= 0x1100 && code <= 0x115f) || (code >= 0x2600 && code <= 0x27bf) || (code >= 0x2b00 && code <= 0x2bff)
+    || (code >= 0x2e80 && code <= 0xa4cf) || (code >= 0xac00 && code <= 0xd7a3) || (code >= 0xf900 && code <= 0xfaff)
+    || (code >= 0xfe30 && code <= 0xfe4f) || (code >= 0xff00 && code <= 0xff60) || (code >= 0xffe0 && code <= 0xffe6)
+    || (code >= 0x1f000 && code <= 0x1faff) || code >= 0x20000;
+}
+const zeroWidth = (code) => code === 0x200d || (code >= 0xfe00 && code <= 0xfe0f) || (code >= 0x0300 && code <= 0x036f);
+
+// A label's width in ems, at the widths above: what fit() sizes it by and
+// what a window judges it by.
+export function textEms(value) {
+  let total = 0;
+  for (const character of String(value)) {
+    const code = character.codePointAt(0);
+    total += zeroWidth(code) ? 0 : code < 0x0250 ? CHARACTER : isWide(code) ? WIDE : OTHER_SCRIPT;
+  }
+  return total;
+}
 
 function n(value) {
   return String(Math.round(value * 100) / 100);
@@ -150,10 +212,10 @@ function doorStubs(doorEdges) {
   return stubs;
 }
 
-// The size a label of `length` characters can be and still fit `room` units.
-function fit(length, room, max) {
-  if (length === 0) return max;
-  return Math.min(max, room / (length * CHARACTER));
+// The size a label `ems` wide (textEms) can be and still fit `room` units.
+function fit(ems, room, max) {
+  if (!(ems > 0)) return max;
+  return Math.min(max, room / ems);
 }
 
 function fillFor(colour, strength, fallback) {
@@ -193,6 +255,106 @@ function traceMarkup(image, url) {
     + '</g>';
 }
 
+// The window asked for, as whole cells inside the floor, or null.
+function cropOf(floor, asked) {
+  if (!asked || typeof asked !== 'object') return null;
+  const values = [asked.x, asked.y, asked.width, asked.height];
+  if (!values.every((value) => typeof value === 'number' && Number.isFinite(value))) return null;
+  const x = Math.max(0, Math.floor(asked.x));
+  const y = Math.max(0, Math.floor(asked.y));
+  const right = Math.min(floor.width, Math.ceil(asked.x + asked.width));
+  const bottom = Math.min(floor.height, Math.ceil(asked.y + asked.height));
+  if (right <= x || bottom <= y) return null;
+  return { x, y, width: right - x, height: bottom - y };
+}
+
+// Where the route's exit's door name is drawn, in units, on the safe side,
+// for the window to grow round it: a character at 0.62 of the size in the
+// plan's face (it runs about 0.5), 0.75 in a script the face does not have
+// and the browser sets in another, 1.05 when wide (isWide: an emoji too),
+// and the height of a line set round its centre with room over and under (a
+// fallback face's box runs to 0.8 of the size). One unit of margin round it,
+// so the name never touches the picture's edge. Whether a window keeps a
+// label is judged by labelBox, at the widths fit() uses.
+function ems(name) {
+  let total = 0;
+  for (const character of String(name)) {
+    const code = character.codePointAt(0);
+    total += zeroWidth(code) ? 0 : code < 0x0250 ? 0.62 : isWide(code) ? 1.05 : 0.75;
+  }
+  return total;
+}
+
+function exitNameBox(name, side, x, y, at, gap) {
+  const size = 7.5;
+  const wide = ems(name) * size;
+  const half = size * 0.85;
+  let box;
+  if (side === 'n' || side === 's') {
+    const cx = (x + 0.5) * U;
+    const cy = at + (side === 'n' ? -gap - 3 : gap + 4);
+    box = { left: cx - wide / 2, right: cx + wide / 2, top: cy - half, bottom: cy + half };
+  } else {
+    const cy = (y + 0.5) * U;
+    const from = at + (side === 'w' ? -gap : gap);
+    box = { left: side === 'w' ? from - wide : from, right: side === 'w' ? from : from + wide, top: cy - half, bottom: cy + half };
+  }
+  return { left: box.left - 1, right: box.right + 1, top: box.top - 1, bottom: box.bottom + 1 };
+}
+
+// A label's box, in units, set round (x, y) as print.css sets every label
+// of the plan (text-anchor middle, dominant-baseline central): textEms wide
+// times `scale` (SPACED for a corridor's name), the widths fit() sized it by,
+// so a label fit() made to fit its room fits its window too (the sample's
+// Bathrooms on Room 202's and Room 302's cards were left out at 0.62 a
+// character, SV2-72c2); half a size over and under the middle; turned a
+// quarter for a name that runs down. A door name drawn beside its dash
+// (`side` 'w' or 'e') runs away from (x, y).
+function labelBox(value, x, y, size, scale, down, side) {
+  const wide = textEms(value) * (scale || 1) * size;
+  const half = wide / 2;
+  const tall = size * 0.5;
+  if (side === 'w') return { left: x - wide, right: x, top: y - tall, bottom: y + tall };
+  if (side === 'e') return { left: x, right: x + wide, top: y - tall, bottom: y + tall };
+  return down ? { left: x - tall, right: x + tall, top: y - half, bottom: y + half } : { left: x - half, right: x + half, top: y - tall, bottom: y + tall };
+}
+
+// The way out as markup: a pale band under a dark line, the round mark where
+// it leaves the room and the square mark at the exit.
+function routeMarkup(floor, route) {
+  const size = floor.width * floor.height;
+  const isCell = (cell) => Number.isInteger(cell) && cell >= 0 && cell < size;
+  const centre = (cell) => [((cell % floor.width) + 0.5) * U, (Math.floor(cell / floor.width) + 0.5) * U];
+  const cells = (Array.isArray(route.cells) ? route.cells : []).filter(isCell);
+  const start = isCell(route.start) ? route.start : null;
+  const exit = isCell(route.exit) ? route.exit : null;
+  const out = [];
+  const pieces = [];
+  let last = null;
+  for (const cell of start === null ? cells : [start].concat(cells)) {
+    const [x, y] = centre(cell);
+    const touching = last !== null && (last === start || Math.abs((last % floor.width) - (cell % floor.width)) + Math.abs(Math.floor(last / floor.width) - Math.floor(cell / floor.width)) <= 1);
+    pieces.push((touching ? 'L' : 'M') + n(x) + ' ' + n(y));
+    last = cell;
+  }
+  if (pieces.length > 1) {
+    const d = pieces.join('');
+    out.push('<path class="plan__route-band" d="' + d + '"/>');
+    out.push('<path class="plan__route" d="' + d + '"/>');
+  }
+  if (start !== null) {
+    const [x, y] = centre(start);
+    const r = U * 0.34;
+    out.push('<path class="plan__start" d="M' + n(x - r) + ' ' + n(y) + 'a' + n(r) + ' ' + n(r) + ' 0 1 0 ' + n(r * 2) + ' 0a' + n(r) + ' ' + n(r) + ' 0 1 0 ' + n(-r * 2) + ' 0z"/>');
+  }
+  if (exit !== null) {
+    const [x, y] = centre(exit);
+    const r = U * 0.32;
+    out.push('<path class="plan__end" d="M' + n(x - r) + ' ' + n(y - r) + 'h' + n(r * 2) + 'v' + n(r * 2) + 'h' + n(-r * 2) + 'z"/>');
+  }
+  return out.length === 0 ? '' : '<g class="plan__way">' + out.join('') + '</g>';
+}
+
 export function planSvg(project, floor, options) {
   const width = floor.width;
   const height = floor.height;
@@ -203,6 +365,12 @@ export function planSvg(project, floor, options) {
     if (floor.cells[cell] === CELL_CORRIDOR) corridor.push(cell);
     else if (floor.cells[cell] === CELL_STAIRS) stairs.push(cell);
   }
+  const crop = cropOf(floor, options && options.crop);
+  const inCrop = (cell) => {
+    const x = cell % width;
+    const y = Math.floor(cell / width);
+    return x >= crop.x && x < crop.x + crop.width && y >= crop.y && y < crop.y + crop.height;
+  };
 
   // what is drawn, and its box
   let x0 = Infinity;
@@ -221,21 +389,28 @@ export function planSvg(project, floor, options) {
   stairs.forEach(take);
   for (const space of floor.spaces) space.cells.forEach(take);
   if (x1 === -1) return { svg: '', drawn: false, traced: false, width: 0, height: 0, rooms: 0, exits: 0, letters: [] };
+  // in a window, only what is in it (the walls still look at the whole floor)
+  const shownCorridor = crop ? corridor.filter(inCrop) : corridor;
+  const shownStairs = crop ? stairs.filter(inCrop) : stairs;
+  const shown = (cells) => !crop || cells.some(inCrop);
 
   const walkable = (x, y) => x >= 0 && y >= 0 && x < width && y < height && (floor.cells[y * width + x] === CELL_CORRIDOR || floor.cells[y * width + x] === CELL_STAIRS);
   const outside = (x, y) => x < 0 || y < 0 || x >= width || y >= height || (floor.cells[y * width + x] === CELL_EMPTY && !owners.has(y * width + x));
 
   const out = [];
+  // a label: as it is with no window; in a window, kept with its box until
+  // the window is known, and left out if the window would cut it
+  const put = (markup, box) => out.push(crop ? { markup, box } : markup);
 
   // the traced image, under everything
   const traceUrl = traceSource(floor, options);
   if (traceUrl !== null) out.push(traceMarkup(floor.image, traceUrl));
 
   // corridors and stairs, then the line where a walkable cell meets anything else
-  if (corridor.length > 0) out.push('<path class="plan__corridor" d="' + cellsPath(corridor, width) + '"/>');
-  if (stairs.length > 0) out.push('<path class="plan__stairs" d="' + cellsPath(stairs, width) + '"/>');
+  if (shownCorridor.length > 0) out.push('<path class="plan__corridor" d="' + cellsPath(shownCorridor, width) + '"/>');
+  if (shownStairs.length > 0) out.push('<path class="plan__stairs" d="' + cellsPath(shownStairs, width) + '"/>');
   const walls = [];
-  for (const cell of corridor.concat(stairs)) {
+  for (const cell of shownCorridor.concat(shownStairs)) {
     const x = cell % width;
     const y = Math.floor(cell / width);
     if (!walkable(x, y - 1)) walls.push([x, y, x + 1, y]);
@@ -255,7 +430,7 @@ export function planSvg(project, floor, options) {
     }
   }
   const letters = [];
-  for (const cell of stairs) {
+  for (const cell of shownStairs) {
     const x = (cell % width) * U;
     const y = Math.floor(cell / width) * U;
     const here = lettersAt.get(cell) || [];
@@ -263,12 +438,15 @@ export function planSvg(project, floor, options) {
     const label = here.join(' ');
     const cy = y + (label === '' ? U * 0.5 : U * 0.3);
     out.push('<path class="plan__chevron" d="M' + n(x + U * 0.3) + ' ' + n(cy + U * 0.1) + 'L' + n(x + U * 0.5) + ' ' + n(cy - U * 0.1) + 'L' + n(x + U * 0.7) + ' ' + n(cy + U * 0.1) + '"/>');
-    if (label !== '') out.push(text(x + U / 2, y + U * 0.72, fit(label.length, U - 2, 8), 'plan__letter', label));
+    if (label !== '') {
+      const size = fit(textEms(label), U - 2, 8);
+      put(text(x + U / 2, y + U * 0.72, size, 'plan__letter', label), labelBox(label, x + U / 2, y + U * 0.72, size));
+    }
   }
 
   // other spaces, then rooms: the fill, the outline with its door gaps, the label
   let rooms = 0;
-  const spaces = floor.spaces.filter((space) => space.kind !== 'room').concat(floor.spaces.filter((space) => space.kind === 'room'));
+  const spaces = floor.spaces.filter((space) => space.kind !== 'room').concat(floor.spaces.filter((space) => space.kind === 'room')).filter((space) => shown(space.cells));
   for (const space of spaces) {
     const isRoom = space.kind === 'room';
     const shape = shapeOf(space, width);
@@ -285,27 +463,33 @@ export function planSvg(project, floor, options) {
     out.push('<g class="plan__space plan__space--' + (isRoom ? 'room' : 'other') + (numbered ? '' : ' plan__space--unnumbered') + '">');
     out.push('<path class="plan__fill" fill="' + fill + '" d="' + cellsPath(space.cells, width) + '"/>');
     out.push('<path class="plan__outline" d="' + linesPath(shape.edges.concat(doorStubs(shape.doorEdges))) + '"/>');
-    const label = isRoom ? space.number : space.label;
+    const words = isRoom ? space.number : space.label;
     const cx = shape.anchor.x * U;
     const cy = shape.anchor.y * U;
     const room = shape.anchor.w * U - 3;
     const mainTeacher = isRoom && space.teacherIds.length > 0 ? project.teachers.find((teacher) => teacher.id === space.teacherIds[0]) : null;
     const under = mainTeacher ? surname(mainTeacher.name) : '';
-    const underSize = fit(under.length, room, NAME_MAX);
-    const twoLines = under !== '' && shape.anchor.h >= 2 && underSize >= NAME_MIN && typeof label === 'string' && label.trim() !== '';
-    if (typeof label === 'string' && label.trim() !== '') {
+    const underSize = fit(textEms(under), room, NAME_MAX);
+    const twoLines = under !== '' && shape.anchor.h >= 2 && underSize >= NAME_MIN && typeof words === 'string' && words.trim() !== '';
+    if (typeof words === 'string' && words.trim() !== '') {
       // a number is as large as its room lets it be: at most 45% of the room's height (30% over a surname)
       const tall = shape.anchor.h * U * (twoLines ? 0.3 : 0.45);
-      const size = Math.max(NUMBER_MIN, fit(label.length, room, Math.min(isRoom ? NUMBER_MAX : LABEL_MAX, tall)));
-      out.push(text(cx, cy - (twoLines ? underSize * 0.6 : 0), size, isRoom ? 'plan__number' : 'plan__label', label, ' fill="' + ink + '"'));
-      if (twoLines) out.push(text(cx, cy + size * 0.5 + underSize * 0.2, underSize, 'plan__teacher', under, ' fill="' + ink + '"'));
+      const size = Math.max(NUMBER_MIN, fit(textEms(words), room, Math.min(isRoom ? NUMBER_MAX : LABEL_MAX, tall)));
+      const y = cy - (twoLines ? underSize * 0.6 : 0);
+      put(text(cx, y, size, isRoom ? 'plan__number' : 'plan__label', words, ' fill="' + ink + '"'), labelBox(words, cx, y, size));
+      if (twoLines) {
+        const below = cy + size * 0.5 + underSize * 0.2;
+        put(text(cx, below, underSize, 'plan__teacher', under, ' fill="' + ink + '"'), labelBox(under, cx, below, underSize));
+      }
     }
     out.push('</g>');
   }
 
   // corridor names, along the way the named cells run
+  const routed = Boolean(options && options.route && typeof options.route === 'object');
+  const namesOver = [];
   for (const named of floor.corridors) {
-    if (typeof named.name !== 'string' || named.name.trim() === '' || named.cells.length === 0) continue;
+    if (typeof named.name !== 'string' || named.name.trim() === '' || named.cells.length === 0 || !shown(named.cells)) continue;
     let ax = Infinity;
     let ay = Infinity;
     let bx = -1;
@@ -320,18 +504,27 @@ export function planSvg(project, floor, options) {
     const cx = ((ax + bx + 1) / 2) * U;
     const cy = ((ay + by + 1) / 2) * U;
     const run = (across ? bx - ax + 1 : by - ay + 1) * U - 4;
-    const size = Math.max(NAME_MIN, fit(named.name.length * 1.15, run, NAME_MAX));
-    out.push(text(cx, cy, size, 'plan__corridor-name', named.name, across ? '' : ' transform="rotate(-90 ' + n(cx) + ' ' + n(cy) + ')"'));
+    const size = Math.max(NAME_MIN, fit(textEms(named.name.toUpperCase()) * SPACED, run, NAME_MAX));
+    // with a route the names go over it, on a halo of paper (SV2-72c: the
+    // way out along MAIN CORRIDOR left "RIDOR" of it on Room 303's card)
+    const markup = text(cx, cy, size, 'plan__corridor-name', named.name, (across ? '' : ' transform="rotate(-90 ' + n(cx) + ' ' + n(cy) + ')"') + (routed ? ' stroke="' + PLAN_PAPER + '" stroke-width="2.4" paint-order="stroke"' : ''));
+    const box = labelBox(named.name.toUpperCase(), cx, cy, size, SPACED, !across);
+    if (routed) namesOver.push(crop ? { markup, box } : markup);
+    else put(markup, box);
   }
 
   // exits: a thick dash on the edge that leads outside, the door name beyond it
   let exits = 0;
   let named = false;
+  // in a window with a route, the box of the route's exit's name (it lies
+  // outside the floor, so the window grows to hold it)
+  const routeExit = options && options.route && typeof options.route === 'object' && Number.isInteger(options.route.exit) ? options.route.exit : null;
+  let nameBox = null;
   for (const exit of floor.exits) {
     const x = exit.cell % width;
     const y = Math.floor(exit.cell / width);
     const side = outside(x, y - 1) ? 'n' : outside(x, y + 1) ? 's' : outside(x - 1, y) ? 'w' : outside(x + 1, y) ? 'e' : null;
-    if (!side) continue;
+    if (!side || !shown([exit.cell])) continue;
     exits += 1;
     const across = side === 'n' || side === 's';
     const at = (side === 'n' ? y : side === 's' ? y + 1 : side === 'w' ? x : x + 1) * U;
@@ -341,18 +534,44 @@ export function planSvg(project, floor, options) {
     if (typeof exit.doorName === 'string' && exit.doorName.trim() !== '') {
       named = true;
       const gap = 4;
-      if (across) out.push(text((x + 0.5) * U, at + (side === 'n' ? -gap - 3 : gap + 4), 7.5, 'plan__exit-name', exit.doorName));
-      else out.push(text(at + (side === 'w' ? -gap : gap), (y + 0.5) * U, 7.5, 'plan__exit-name plan__exit-name--' + side, exit.doorName));
+      const markup = across
+        ? text((x + 0.5) * U, at + (side === 'n' ? -gap - 3 : gap + 4), 7.5, 'plan__exit-name', exit.doorName)
+        : text(at + (side === 'w' ? -gap : gap), (y + 0.5) * U, 7.5, 'plan__exit-name plan__exit-name--' + side, exit.doorName);
+      // the route's exit's name is always whole: the window grows to hold it, on the safe side
+      if (crop && routeExit === exit.cell) nameBox = exitNameBox(exit.doorName, side, x, y, at, gap);
+      put(markup, across
+        ? labelBox(exit.doorName, (x + 0.5) * U, at + (side === 'n' ? -gap - 3 : gap + 4), 7.5)
+        : labelBox(exit.doorName, at + (side === 'w' ? -gap : gap), (y + 0.5) * U, 7.5, 1, false, side));
     }
   }
 
-  // cropped to what is drawn, with room around it for the door names
+  // the way out, over everything
+  if (options && options.route && typeof options.route === 'object') {
+    const way = routeMarkup(floor, options.route);
+    if (way !== '') out.push(way);
+  }
+  out.push(...namesOver);
+
+  // cropped to what is drawn, with room around it for the door names; or to
+  // the window asked for, edge to edge
   const pad = named ? 1 : 0.25;
-  const vx = (x0 - pad) * U;
-  const vy = (y0 - pad) * U;
-  const vw = (x1 - x0 + 1 + pad * 2) * U;
-  const vh = (y1 - y0 + 1 + pad * 2) * U;
+  let vx = crop ? crop.x * U : (x0 - pad) * U;
+  let vy = crop ? crop.y * U : (y0 - pad) * U;
+  let vw = crop ? crop.width * U : (x1 - x0 + 1 + pad * 2) * U;
+  let vh = crop ? crop.height * U : (y1 - y0 + 1 + pad * 2) * U;
+  if (nameBox !== null) {
+    // the window grows past its edge, the floor's too, by what the name needs
+    const left = Math.min(vx, nameBox.left);
+    const top = Math.min(vy, nameBox.top);
+    vw = Math.max(vx + vw, nameBox.right) - left;
+    vh = Math.max(vy + vh, nameBox.bottom) - top;
+    vx = left;
+    vy = top;
+  }
+  // in a window, each label the window would cut is left out
+  const whole = (box) => box.left >= vx - 1e-9 && box.top >= vy - 1e-9 && box.right <= vx + vw + 1e-9 && box.bottom <= vy + vh + 1e-9;
+  const markup = crop ? out.filter((each) => typeof each === 'string' || whole(each.box)).map((each) => (typeof each === 'string' ? each : each.markup)) : out;
   const svg = '<svg class="plan" xmlns="http://www.w3.org/2000/svg" viewBox="' + [vx, vy, vw, vh].map(n).join(' ') + '" role="img" aria-label="' + esc('Floor plan of ' + floor.name) + '">\n'
-    + out.join('\n') + '\n</svg>';
+    + markup.join('\n') + '\n</svg>';
   return { svg, drawn: true, traced: traceUrl !== null, width: vw / U, height: vh / U, rooms, exits, letters };
 }

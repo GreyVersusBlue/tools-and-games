@@ -500,6 +500,14 @@
   color: var(--ink-2);
 }
 
+/* a sentence where a choice would be: why this output has none */
+.preview__note {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm, 1.35);
+}
+
 .preview__control[hidden] {
   display: none;
 }
@@ -579,4 +587,502 @@
     padding-left: var(--s-3);
     padding-right: var(--s-3);
   }
+}
+
+/* ---------- SV2-24: batch sheets (ui/prints/batch.js) ----------
+   Every teacher's schedule, or every door sign, as one document: a cover
+   sheet that lists what follows, then one .new-sheet each. */
+
+.print-doc .batch-cover__list {
+  margin: 4mm 0 0;
+  padding-left: 6mm;
+  columns: 2;
+  column-gap: 10mm;
+}
+
+.print-doc .batch-cover__list li {
+  break-inside: avoid;
+  padding: 0.5mm 0;
+}
+
+.print-doc .batch-cover__detail {
+  color: var(--ink-2);
+}
+
+.print-doc .batch-sheet {
+  break-inside: avoid;
+}
+
+.print-doc .batch-sheet__line {
+  display: flex;
+  justify-content: space-between;
+  gap: 6mm;
+  margin: 0;
+  font-size: 8pt;
+  color: var(--ink-2);
+}
+
+.print-doc .batch-sheet__name {
+  margin: 2mm 0 0;
+  font-size: 20pt;
+  line-height: 1.15;
+  font-weight: 600;
+}
+
+.print-doc .batch-sheet__facts {
+  margin: 1mm 0 0;
+}
+
+.print-doc .batch-sheet__says {
+  margin: 1mm 0 0;
+  color: var(--ink-2);
+}
+
+.print-doc .batch-days {
+  display: grid;
+  grid-template-columns: repeat(var(--batch-days, 1), minmax(0, 1fr));
+  gap: 6mm;
+  margin-top: 5mm;
+  align-items: start;
+}
+
+.print-doc .batch-day__name {
+  margin: 0 0 1.5mm;
+  font-size: 11pt;
+  font-weight: 600;
+}
+
+.print-doc .batch-day__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+}
+
+.print-doc .batch-day__table th,
+.print-doc .batch-day__table td {
+  padding: 1.4mm 1.5mm;
+  border-top: 0.2mm solid var(--line-strong);
+  text-align: left;
+  vertical-align: top;
+}
+
+.print-doc .batch-day__table tr:last-child th,
+.print-doc .batch-day__table tr:last-child td {
+  border-bottom: 0.2mm solid var(--line-strong);
+}
+
+.print-doc .batch-day__table th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.print-doc .batch-day__time {
+  display: block;
+  font-weight: 400;
+  color: var(--ink-2);
+  font-size: 8pt;
+}
+
+.print-doc .batch-day__quiet {
+  color: var(--ink-2);
+}
+
+/* A door sign's sheet. What is on it is the staff browser's own sign
+   (doorSignMarkup, staff/views/door-sign.js), so the rules below it are the
+   sign's paper rules from staff/staff.css, said again because a print
+   document does not load that file; test/engine/prints-batch.test.mjs holds
+   the two together. A print document has no reset, so each line of the sign
+   takes its own margin off here (one rule for every p in the sign would
+   outrank the lines' own margins). The sheet is as tall as the paper inside
+   its margins (28 mm) less a millimetre, so the school's name stands at its
+   foot and the sign is still one sheet. (The preview counts sheets from what
+   is on paper, not from the gap it draws between two of them, so the sign
+   leaves no room for that gap: print-preview.js, sheetsOf.) The door signs
+   are upright sheets: batch.js never lays one on its side. */
+.print-doc .batch-sign {
+  container-type: inline-size;      /* the sheet the sign's names are measured against (36cqw, below) */
+  display: flex;
+  flex-direction: column;
+  min-height: calc(var(--page-h) - 29mm);
+}
+
+.print-doc .sign {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  align-items: center;
+  padding: 12mm 0 0;
+  text-align: center;
+}
+
+.print-doc .sign__card {
+  display: contents;
+}
+
+.print-doc .sign__word {
+  margin: 0;
+  color: var(--ink-2);
+  font-family: var(--font-plan, var(--font-ui));
+  font-size: 22pt;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.print-doc .sign__number {
+  max-width: 100%;
+  margin: 0;
+  font-family: var(--font-plan, var(--font-ui));
+  font-size: calc(120pt * var(--sign-fit, 1));
+  font-weight: 600;
+  line-height: 1;
+  overflow-wrap: anywhere;          /* a number too long for one line at the smallest size wraps */
+}
+
+.print-doc .sign__teacher {
+  margin: 0;
+  margin-top: 8mm;
+  font-size: 32pt;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.print-doc .sign__subject {
+  margin: 0;
+  margin-top: 3mm;
+  color: var(--ink-2);
+  font-size: 22pt;
+  line-height: 1.2;
+}
+
+.print-doc .sign__day {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6mm;
+  order: 1;
+  width: 100%;
+  margin-top: 8mm;
+  text-align: left;
+}
+
+.print-doc .sign__kind {
+  flex: 1 1 42%;
+  min-width: min-content;
+  max-width: 100%;
+}
+
+.print-doc .sign__kindname {
+  margin: 0;
+  font-size: 14pt;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.print-doc .sign__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11pt;
+  font-variant-numeric: var(--numeric);
+  line-height: 1.3;
+}
+
+.print-doc .sign__table th,
+.print-doc .sign__table td {
+  padding: 1mm 2mm 1mm 0;
+  border-top: 0.2mm solid var(--line);
+  font-weight: 400;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: normal;            /* a word is never cut: a column is as wide as its longest */
+}
+
+.print-doc .sign__table th {
+  font-weight: 600;
+}
+
+.print-doc .sign__table td span[dir] {
+  display: inline-block;
+  max-width: 67mm;                  /* for a browser with no container units: 36% of the narrower sheet, A4's 186 mm */
+  max-width: 36cqw;                 /* a name longer than the sheet can hold is broken there, never run past its edge */
+  overflow-wrap: break-word;
+  vertical-align: top;
+}
+
+.print-doc .sign__with {
+  white-space: nowrap;              /* a name and the comma after it go to a line together */
+}
+
+.print-doc .sign__with > span {
+  white-space: normal;
+}
+
+.print-doc .sign__school {
+  order: 2;
+  margin: 0;
+  margin-top: auto;
+  padding-top: 8mm;
+  color: var(--ink-2);
+  font-size: 12pt;
+  line-height: 1.3;
+}
+
+/* ---------- SV2-66: door cards (ui/prints/door-cards.js) ----------
+   One card per room: the room and its floor, the maps of the way out, the
+   numbered steps, the exit and the assembly point. door-cards.js works out
+   how many steps fit on the first sheet from the sizes here; change one and
+   change its constant there too. Upright, the maps stand over the steps; on
+   a sheet turned on its side they stand left of them. */
+
+.print-doc .card__room {
+  margin-bottom: 4mm;
+}
+
+.print-doc .card__name {
+  margin: 0;
+  font-size: 26pt;
+  line-height: 1.1;
+  font-weight: 700;
+}
+
+.print-doc .card__floor {
+  margin: 0;
+  font-size: 13pt;
+  line-height: 1.3;
+  color: var(--ink-2);
+}
+
+.print-doc .card__body--side {
+  display: grid;
+  grid-template-columns: 58fr 42fr;
+  column-gap: 6mm;
+  align-items: start;
+}
+
+.print-doc .card__maps {
+  display: flex;
+  gap: 4mm;
+  justify-content: center;
+}
+
+.print-doc .card__maps--row {
+  align-items: flex-end;
+}
+
+.print-doc .card__maps--stack {
+  flex-direction: column;
+  align-items: center;
+}
+
+/* the maps cut into rows under one another, or columns side by side
+   (mapLayout in door-cards.js: whichever lets the cells be largest) */
+.print-doc .card__maps--rows {
+  flex-direction: column;
+  align-items: center;
+}
+
+.print-doc .card__maps--columns {
+  align-items: flex-start;
+}
+
+.print-doc .card__maps-group {
+  display: flex;
+  gap: 4mm;
+}
+
+.print-doc .card__maps--rows .card__maps-group {
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.print-doc .card__maps--columns .card__maps-group {
+  flex-direction: column;
+  align-items: center;
+}
+
+.print-doc .card__map {
+  margin: 0;
+  break-inside: avoid;
+}
+
+.print-doc .card__map-name {
+  margin-top: 1mm;
+  font-size: 9pt;
+  line-height: 1.3;
+  color: var(--ink-2);
+  text-align: center;
+}
+
+.print-doc .card__key {
+  margin: 2mm 0 0;
+  font-size: 8.5pt;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.print-doc .card__body--up .card__directions {
+  margin-top: 4mm;
+}
+
+.print-doc .card__steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* upright, short steps stand in two columns when that leaves the maps more
+   room; door-cards.js counts each column (6 mm apart) at half the width */
+.print-doc .card__steps--two {
+  columns: 2;
+  column-gap: 6mm;
+}
+
+.print-doc .card__step {
+  display: grid;
+  grid-template-columns: 8mm 1fr;
+  margin: 0 0 1.6mm;
+  font-size: 11pt;
+  line-height: 1.35;
+  break-inside: avoid;
+}
+
+.print-doc .card__n {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.print-doc .card__exit {
+  margin-top: 3mm;
+  padding-top: 3mm;
+  border-top: 0.5mm solid var(--ink);
+  font-size: 12pt;
+  line-height: 1.35;
+  break-inside: avoid;
+}
+
+.print-doc .card__exit-line,
+.print-doc .card__assembly {
+  margin: 0;
+}
+
+.print-doc .card__label {
+  margin-right: 2mm;
+  font-weight: 700;
+}
+
+.print-doc .card__assembly--none {
+  color: var(--ink-2);
+}
+
+.print-doc .card__continued {
+  margin: 0 0 4mm;
+  padding-bottom: 2mm;
+  border-bottom: 0.2mm solid var(--line-strong);
+  font-size: 10pt;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.print-doc .card__none {
+  margin: 6mm 0 3mm;
+  font-size: 16pt;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.print-doc .card-cover__all {
+  font-weight: 600;
+}
+
+.print-doc .card-cover__missing {
+  margin: 0 0 5mm;
+  padding-left: 6mm;
+}
+
+.print-doc .card-cover__list {
+  margin: 2mm 0 0;
+  padding-left: 6mm;
+  columns: 2;
+  column-gap: 10mm;
+}
+
+.print-doc .card-cover__list li {
+  break-inside: avoid;
+  padding: 0.5mm 0;
+}
+
+.print-doc .card-cover__to {
+  color: var(--ink-2);
+}
+
+/* the way out over a plan (planSvg's route option) */
+.print-doc .plan__route-band {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.print-doc .plan__route {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.print-doc .plan__start {
+  fill: var(--ink);
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+
+.print-doc .plan__end {
+  fill: var(--accent);
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+
+/* ---------- SV2-71: the congestion report's scenario section (ui/prints/congestion.js) ----------
+   The tables are the report's own (.doc-table). Busier and quieter, more and
+   less, are said in words and signs ("+28 busier", "−48 s"); the weight and
+   the edge only repeat them, so the section reads the same in black and white. */
+
+.print-doc .doc-scenario h3 {
+  margin: 4mm 0 1.5mm;
+  font-size: 10.5pt;
+  font-weight: 600;
+  break-after: avoid;
+}
+
+.print-doc .doc-table--changes th {
+  width: 7mm;
+}
+
+.print-doc .doc-dropped {
+  margin: 0 0 1.5mm;
+  padding-left: 2.5mm;
+  border-left: 0.6mm dotted var(--ink-2);
+  font-size: 9pt;
+  color: var(--ink-2);
+}
+
+.print-doc .doc-table--scenario th[scope="row"] {
+  width: 46mm;
+}
+
+.print-doc .doc-table .doc-change {
+  white-space: nowrap;
+}
+
+/* more: bold, with a solid edge on its left; less: a dotted edge. Borders,
+   because a browser prints them whether or not it prints backgrounds. */
+.print-doc .doc-table .doc-change.is-more {
+  font-weight: 600;
+  border-left: 0.8mm solid var(--ink);
+}
+
+.print-doc .doc-table .doc-change.is-less {
+  border-left: 0.8mm dotted var(--ink);
 }

@@ -55132,7 +55132,7 @@ function addFloor(s, index = s.currentFloor + 1) {
   return at;
 }
 
-// Copy an existing floor's rooms onto a new level above it.
+// Copy an existing floor's rooms and free-standing walls onto a new level above it.
 function duplicateFloor(s, index = s.currentFloor) {
   if (s.floors.length >= MAX_FLOORS) return -1;
   const src = s.floors[index];
@@ -55162,6 +55162,18 @@ function duplicateFloor(s, index = s.currentFloor) {
         ...(Array.isArray(r.accents) ? { accents: r.accents.slice() } : {}),
       })),
     })),
+    // ...and its free-standing walls (wallrun.js's `floor.walls`), the same
+    // way: fresh ids, the kind, each face's accent (#910) and the doorways
+    // and windows a wall holds, as a room's are (#979). No key when the
+    // storey has none, so a storey without one copies as it always did.
+    ...(Array.isArray(src.walls) && src.walls.length ? {
+      walls: src.walls.map((l) => ({
+        ...l,
+        id: nextShapeId(s),
+        ...(Array.isArray(l.openings) ? { openings: l.openings.map((o) => ({ ...o })) } : {}),
+        ...(Array.isArray(l.accents) ? { accents: l.accents.slice() } : {}),
+      })),
+    } : {}),
   });
   remapFloorRefs(s, (i) => (i >= at ? i + 1 : i));
   s.currentFloor = at;
@@ -57333,6 +57345,15 @@ function accentPick(text) {
 // True for a stored accent that is in the palette, by id or by hex.
 const isNamedAccent = (v) => ACCENT_BY_HEX.has(accentHex(v));
 
+// The free pick's colour as the page kept it from the last visit (#962), or
+// null: what was kept has to read as a colour by the rule typing follows, and
+// a palette colour is never the custom one (its swatch is), so neither a
+// damaged entry nor a palette hex comes back as the field's colour.
+function keptCustomAccent(text) {
+  const hex = parseAccentHex(text);
+  return hex && !ACCENT_BY_HEX.has(hex) ? hex : null;
+}
+
 // Ink to write or outline with on a colour that can be anything: black or
 // white, whichever has the higher WCAG contrast against it. The worst case is
 // a colour of luminance 0.179, where both give 4.58 to 1, so it clears 4.5.
@@ -58446,7 +58467,7 @@ function addShapeCopy(state, floorIndex, shape, dx = 0, dz = 0) {
   return clone;
 }
 
-return { MAX_SHAPES, MAX_RING_PTS, MAX_HOLES, MIN_SEG, MIN_AREA, MIN_DOOR_W, MAX_DOOR_W, OP_DOOR, OP_WINDOW, OP_KINDS, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, LEAF_KINDS, WINDOW_SILL, WINDOW_H, WINDOW_W, MIN_SILL, MAX_SILL, MIN_OPEN_H, openingSpec, isWindowOpening, isDoorOpening, writeOpening, defaultOpeningWidth, SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, SEG_KINDS, isBuilt, canOpen, segLength, projectOnSeg, unitDir, PARALLEL_TOL, parallelDirs, ringLen, segEnds, segDir, ringSignedArea, ringIsCCW, ACCENT_PALETTE, readAccentPaint, accentHex, accentName, sameAccent, parseAccentHex, accentPick, isNamedAccent, accentLuminance, INK_DARK, INK_LIGHT, accentInk, segAccent, setSegAccent, accentSpans, accentBreaks, spanOverlap, accentFaceAt, orientRing, orientShape, cleanRing, makeRing, shapesOf, pointInRing, pointInShape, shapeArea, shapeBBox, ringCentroid, distToBoundary, interiorPoint, shapeAt, shapeById, crossingsAlong, sideRuns, floorSolidAt, nearestSegment, nearestVertex, storeyBase, nextRoomName, takeId, makeShape, addShape, removeShape, addHole, enclosingShape, moveVertex, insertVertex, deleteVertex, setSegWall, openingsOnSeg, copyOpening, addOpening, toggleOpening, moveOpening, flipOpening, MAX_BULGE, MIN_ARC_CHORD, MAX_ARC_STEPS, ARC_CHORD_FT, arcGeometry, arcPoints, curveSegment, straightenRun, snapPoint, constrainAngle, normalizeShape, cloneShape, translateShape, rotatePoint90, rotateShape90, mirrorPointX, mirrorShapeX, totalShapeArea, addShapeCopy };
+return { MAX_SHAPES, MAX_RING_PTS, MAX_HOLES, MIN_SEG, MIN_AREA, MIN_DOOR_W, MAX_DOOR_W, OP_DOOR, OP_WINDOW, OP_KINDS, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, LEAF_KINDS, WINDOW_SILL, WINDOW_H, WINDOW_W, MIN_SILL, MAX_SILL, MIN_OPEN_H, openingSpec, isWindowOpening, isDoorOpening, writeOpening, defaultOpeningWidth, SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, SEG_KINDS, isBuilt, canOpen, segLength, projectOnSeg, unitDir, PARALLEL_TOL, parallelDirs, ringLen, segEnds, segDir, ringSignedArea, ringIsCCW, ACCENT_PALETTE, readAccentPaint, accentHex, accentName, sameAccent, parseAccentHex, accentPick, isNamedAccent, keptCustomAccent, accentLuminance, INK_DARK, INK_LIGHT, accentInk, segAccent, setSegAccent, accentSpans, accentBreaks, spanOverlap, accentFaceAt, orientRing, orientShape, cleanRing, makeRing, shapesOf, pointInRing, pointInShape, shapeArea, shapeBBox, ringCentroid, distToBoundary, interiorPoint, shapeAt, shapeById, crossingsAlong, sideRuns, floorSolidAt, nearestSegment, nearestVertex, storeyBase, nextRoomName, takeId, makeShape, addShape, removeShape, addHole, enclosingShape, moveVertex, insertVertex, deleteVertex, setSegWall, openingsOnSeg, copyOpening, addOpening, toggleOpening, moveOpening, flipOpening, MAX_BULGE, MIN_ARC_CHORD, MAX_ARC_STEPS, ARC_CHORD_FT, arcGeometry, arcPoints, curveSegment, straightenRun, snapPoint, constrainAngle, normalizeShape, cloneShape, translateShape, rotatePoint90, rotateShape90, mirrorPointX, mirrorShapeX, totalShapeArea, addShapeCopy };
 })();
 // ---- js/props.js ----
 const __m_js_props_js = (() => {
@@ -59762,13 +59783,37 @@ function rampLandingArea(link, metrics) {
   return layout.landings.reduce((a, l) => a + (l.box.x1 - l.box.x0) * (l.box.z1 - l.box.z0), 0);
 }
 
-// The level landing at the top of a straight ramp, as a local box: the ramp's
-// own width, from the top of the run to the far edge of the hole. Null for a
-// stair and for a folded ramp, whose landings are its layout's.
-function rampLandingBox(link, metrics) {
-  if (!link || link.type !== 'ramp' || isSwitchback(link)) return null;
+// The level landing at the top of a straight run, stair or ramp, as a local
+// box: the run's own width, from the top of the run to the far edge of the
+// hole, `topLanding` deep (a stair's 4ft, a ramp's 5ft). Null for a folded
+// ramp, whose landings are its layout's, and for a link with no run. render.js
+// draws it for both kinds (#981, #983).
+function topLandingBox(link, metrics) {
+  if (!isRun(link) || isSwitchback(link)) return null;
   const hw = stairWidth(link) / 2, run = runLength(link, metrics);
-  return { x0: -hw, x1: hw, z0: run, z1: run + RAMP_LANDING };
+  return { x0: -hw, x1: hw, z0: run, z1: run + topLanding(link) };
+}
+
+// The same box for a straight ramp alone, which is what the `ramp-landing`
+// finding asks about (ADA 405.7, #904); null for a stair.
+function rampLandingBox(link, metrics) {
+  return link && link.type === 'ramp' ? topLandingBox(link, metrics) : null;
+}
+
+// The top landing the `ramp-landing` finding asks about, straight or folded
+// (#985): `box` local, `out` +1 when the way off is past `z1` and -1 past
+// `z0`. A folded ramp's is its layout's 'top' landing, the one `render.js`
+// draws and the walker stands on, which is at the near end beside the foot
+// for an even count. Null for a stair.
+function rampTopLanding(link, metrics) {
+  if (!link || link.type !== 'ramp') return null;
+  const layout = rampLayout(link, metrics);
+  if (!layout) {
+    const box = rampLandingBox(link, metrics);
+    return box && { box, out: 1 };
+  }
+  const box = layout.landings[layout.landings.length - 1].box;
+  return { box, out: layout.exit.a.z > box.z0 ? 1 : -1 };
 }
 
 // The same guards as world segments on the plan, for the collider.
@@ -59977,7 +60022,7 @@ function stairFits(state, link) {
   return pts.every((p) => p.x >= -wFt && p.x <= wFt * 2 && p.z >= -hFt && p.z <= hFt * 2);
 }
 
-return { RISER_TARGET, TREAD, MIN_STEPS, STAIR_W, MIN_STAIR_W, MAX_STAIR_W, LANDING, RAMP_LANDING, topLanding, CUT_MARGIN, OPENING_W, OPENING_D, MIN_OPENING, MAX_OPENING, RAMP_SLOPES, ELEV_W, ELEV_D, MIN_ELEV, MAX_ELEV, ELEV_DOOR_W, ELEV_WALL_T, LINK_KINDS, STAIR_TYPES, RUN_TYPES, isRun, isElevator, stairRun, stairMetrics, stairWidth, rampSlope, rampRuns, rampSide, isSwitchback, rampRunRise, rampOverRise, rampMinRuns, setRampFold, RAMP_CTRL, stepRampWidth, stepRampSlope, setRampSize, runPhrase, rampLayout, elevatorSize, runLength, runTravel, runMetrics, openingSize, cutStart, localToWorld, worldToLocal, footprintBox, cutBox, cutColumns, rectCorners, footprintPolygon, cutPolygon, pointInPolygon, stairsOf, linksFrom, floorCuts, inFloorCut, openingRails, rampGuards, rampPath, rampLandingArea, rampLandingBox, rampGuardSegments, rampTopGuardSegments, stairSurfaceAt, stairUnder, elevatorDoorWidth, elevatorWalls, elevatorsOn, elevatorAt, linkAt, linkById, addStair, stairFits, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, MAX_RUNS, RAIL_H, floorSolidAt };
+return { RISER_TARGET, TREAD, MIN_STEPS, STAIR_W, MIN_STAIR_W, MAX_STAIR_W, LANDING, RAMP_LANDING, topLanding, CUT_MARGIN, OPENING_W, OPENING_D, MIN_OPENING, MAX_OPENING, RAMP_SLOPES, ELEV_W, ELEV_D, MIN_ELEV, MAX_ELEV, ELEV_DOOR_W, ELEV_WALL_T, LINK_KINDS, STAIR_TYPES, RUN_TYPES, isRun, isElevator, stairRun, stairMetrics, stairWidth, rampSlope, rampRuns, rampSide, isSwitchback, rampRunRise, rampOverRise, rampMinRuns, setRampFold, RAMP_CTRL, stepRampWidth, stepRampSlope, setRampSize, runPhrase, rampLayout, elevatorSize, runLength, runTravel, runMetrics, openingSize, cutStart, localToWorld, worldToLocal, footprintBox, cutBox, cutColumns, rectCorners, footprintPolygon, cutPolygon, pointInPolygon, stairsOf, linksFrom, floorCuts, inFloorCut, openingRails, rampGuards, rampPath, rampLandingArea, topLandingBox, rampLandingBox, rampTopLanding, rampGuardSegments, rampTopGuardSegments, stairSurfaceAt, stairUnder, elevatorDoorWidth, elevatorWalls, elevatorsOn, elevatorAt, linkAt, linkById, addStair, stairFits, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, MAX_RUNS, RAIL_H, floorSolidAt };
 })();
 // ---- js/walls.js ----
 const __m_js_walls_js = (() => {
@@ -60086,7 +60131,7 @@ return { PROBE, solidBeside, isExteriorSeg, segThickness, wallProbe, fixedProbe,
 })();
 // ---- js/wallrun.js ----
 const __m_js_wallrun_js = (() => {
-const { MIN_SEG, SEG_WALL, SEG_KINDS, isBuilt, canOpen, MIN_DOOR_W, MAX_DOOR_W, defaultOpeningWidth, writeOpening, openingSpec, shapesOf, segEnds, unitDir, parallelDirs, projectOnSeg, insertVertex, setSegWall, takeId, segAccent, setSegAccent, SEG_NONE, readAccentPaint, sameAccent, shapeAt } = __m_js_shapes_js;
+const { MIN_SEG, SEG_WALL, SEG_KINDS, isBuilt, canOpen, MIN_DOOR_W, MAX_DOOR_W, defaultOpeningWidth, writeOpening, openingSpec, shapesOf, segEnds, unitDir, parallelDirs, projectOnSeg, insertVertex, setSegWall, takeId, segAccent, setSegAccent, SEG_NONE, readAccentPaint, sameAccent, accentHex, isNamedAccent, shapeAt } = __m_js_shapes_js;
 // wallrun.js — a wall drawn from one point to another.
 //
 // Until this module the wall tool had no way to say how long a wall was. You
@@ -60239,6 +60284,32 @@ function tidyLineAccents(line) {
   const acc = Array.isArray(line.accents) ? line.accents : [];
   const out = [readHex(acc[LINE_LEFT]), readHex(acc[LINE_RIGHT])];
   if (out[0] || out[1]) line.accents = out; else delete line.accents;
+}
+
+// The colours outside the palette that a school is painted with: every storey's
+// room faces (`ring.accents`) and free-standing wall faces (`line.accents`),
+// each '#rrggbb' once, in hex order, so the list does not shuffle when a wall
+// is painted, undone or found on another storey first. A palette colour is
+// left out whether the file holds its id or its hex from before #912, since
+// the panel already has a swatch for it. This is what the Wall panel's
+// "In this school" row shows (#961).
+function customAccentsOf(state) {
+  const seen = new Set();
+  const take = (v) => {
+    const hex = accentHex(v);
+    if (hex && !isNamedAccent(hex)) seen.add(hex);
+  };
+  for (const floor of (state && Array.isArray(state.floors) ? state.floors : [])) {
+    for (const shape of shapesOf(floor)) {
+      for (const ring of (shape && Array.isArray(shape.rings) ? shape.rings : [])) {
+        if (Array.isArray(ring.accents)) ring.accents.forEach(take);
+      }
+    }
+    for (const line of wallLinesOf(floor)) {
+      if (line && Array.isArray(line.accents)) line.accents.forEach(take);
+    }
+  }
+  return [...seen].sort();
 }
 
 // Paint one face (a hex) or take its accent off (null). True if it changed.
@@ -60749,7 +60820,7 @@ function wallLineFootage(floor) {
   return ft;
 }
 
-return { MAX_WALL_LINES, ON_LINE_TOL, ON_LINE_ANGLE, MIN_RUN, wallLinesOf, lineEnds, lineLength, lineKind, lineOpenings, makeWallLine, addWallLine, removeWallLine, wallLineAt, LINE_LEFT, lineAccent, setLineAccent, lineFaceAt, lineFaceInRoom, addLineOpening, toggleLineOpening, moveLineOpening, alongRun, coverOf, ringCovers, ON_FACE_TOL, wallAlongSeg, pruneAccents, eraseSegWall, gapsOf, drawWallRun, eraseWallLineAt, normalizeWallLines, wallLineFootage };
+return { MAX_WALL_LINES, ON_LINE_TOL, ON_LINE_ANGLE, MIN_RUN, wallLinesOf, lineEnds, lineLength, lineKind, lineOpenings, makeWallLine, addWallLine, removeWallLine, wallLineAt, LINE_LEFT, lineAccent, customAccentsOf, setLineAccent, lineFaceAt, lineFaceInRoom, addLineOpening, toggleLineOpening, moveLineOpening, alongRun, coverOf, ringCovers, ON_FACE_TOL, wallAlongSeg, pruneAccents, eraseSegWall, gapsOf, drawWallRun, eraseWallLineAt, normalizeWallLines, wallLineFootage };
 })();
 // ---- js/terrain.js ----
 const __m_js_terrain_js = (() => {
@@ -68385,11 +68456,13 @@ return { YARD_STEP, YARD_MARGIN, FACE_CLEAR, WALK_GRADE, ACCESSIBLE_GRADE, MAX_R
 const __m_js_clearance_js = (() => {
 const { floorLabel } = __m_js_grid_js;
 const { LEAF_NONE, floorSolidAt, shapeAt } = __m_js_shapes_js;
-const { floorCuts, inFloorCut, stairsOf, stairMetrics, stairSurfaceAt, rampSlope, rampLandingBox, localToWorld, worldToLocal, rectCorners, cutPolygon, footprintPolygon, pointInPolygon, isElevator } = __m_js_stairs_js;
+const { floorCuts, inFloorCut, stairsOf, stairMetrics, stairSurfaceAt, rampSlope, rampTopLanding, topLandingBox, localToWorld, worldToLocal, rectCorners, cutPolygon, footprintPolygon, pointInPolygon, isElevator } = __m_js_stairs_js;
 const { MAX_RAMP_GRADE } = __m_js_sitemesh_js;
 const { buildCollider, candidates, wallSegments, doorwaySegments, segsCross } = __m_js_collide_js;
 const { emptyField } = __m_js_terrain_js;
 const { propsOnFloor } = __m_js_props_js;
+const { footprintOf } = __m_js_propplace_js;
+const { collectDoorLeaves, leafEnd } = __m_js_openings_js;
 // clearance.js — the chair: what a seated body needs of a building, said once.
 //
 // Phase 40. "Accessibility stops at routes" was the backlog's own sentence:
@@ -68419,6 +68492,8 @@ const { propsOnFloor } = __m_js_props_js;
 // so nothing in the save format moved.
 //
 // Pure module: no three.js, no DOM. Exercised by test/clearance.test.mjs.
+
+
 
 
 
@@ -68499,9 +68574,10 @@ const rampRolls = (link) =>
 //
 // ADA 405.7: a ramp ends on a level landing as wide as the ramp and 60in long
 // (#904). Nothing here refuses a ramp or moves one. This says whether the
-// landing a straight ramp is owed has the room it needs on the storey above,
-// read from the design as drawn, so a ramp placed when the landing was 4ft is
-// asked the same question as one placed today and no save field records it.
+// top landing a ramp is owed, straight or folded (#985), has the room it
+// needs on the storey above, read from the design as drawn, so a ramp placed
+// when the landing was 4ft is asked the same question as one placed today
+// and no save field records it.
 //
 // Three things can be in its way, and `why` names each that is:
 //   'wall'  a wall or rail of the storey above runs through it, or a doorway
@@ -68509,12 +68585,19 @@ const rampRolls = (link) =>
 //           a doorway's 32in to leave by. A doorway *at* its far end is the
 //           way off and is allowed (405.7.5), jambs and all.
 //   'edge'  a corner of it, or the floor a foot past the middle of its far
-//           end, is off the storey above: there is nowhere to arrive.
+//           end, is off the storey above: there is nowhere to arrive. A
+//           folded ramp's far end is the open edge its walker steps off by,
+//           beside the foot for an even count (`rampTopLanding`).
 //   'link'  another link's hole in that floor, or a stair, ramp or lift that
 //           stands on it, overlaps it.
-// Props are not asked, and neither is the swing of a door beside it.
-// Null for a stair, a folded ramp (its landings are its layout's) and a ramp
-// whose landing is clear.
+//   'prop'  a floor-standing prop's footprint overlaps it (wall and ceiling
+//           mounts are not asked). Needs `catalogGet` for the footprint; a
+//           caller without one is not asked this (#984).
+//   'swing' a door leaf of the storey above sweeps into it between shut and
+//           its quarter turn, the far end's own doorway included: 405.7.5
+//           lets a door's clearance share the landing, not its leaf (#984).
+// Null for a stair and a ramp whose landing is clear. A folded ramp's turn
+// landings are not asked: they stand between storeys, on no floor.
 const LANDING_EPS = 0.1;        // ft: flush against an edge is not in the way
 const LANDING_STEP_OFF = 1;     // ft of floor wanted past the far end
 const LANDING_LINK_INSET = 0.3; // ft: more than the slack a hole is cut with
@@ -68543,10 +68626,20 @@ function polygonsOverlap(a, b) {
   return false;
 }
 
-function rampLandingFit(state, link, metrics = stairMetrics(state)) {
-  const box = rampLandingBox(link, metrics);
-  const floor = box && state.floors[link.to];
-  if (!floor) return null;
+function rampLandingFit(state, link, metrics = stairMetrics(state), catalogGet = null) {
+  // Straight or folded, the one top landing and its open edge (#985).
+  const top = rampTopLanding(link, metrics);
+  if (!top || !top.box || !state.floors[link.to]) return null;
+  return landingFit(state, link, top.box, top.out, metrics, catalogGet);
+}
+
+// The five questions above, asked of local box `box` on storey `link.to`,
+// whose way off is past `z1` when `out` is +1 and past `z0` when it is -1.
+// A ramp's top landing and a stair's (#989) both come through here, so
+// there is one copy of each question. Null when nothing is in the way.
+function landingFit(state, link, box, out, metrics, catalogGet) {
+  const floor = state.floors[link.to];
+  const end = out === 1 ? box.z1 : box.z0;
   const e = LANDING_EPS;
   const why = [];
 
@@ -68555,17 +68648,17 @@ function rampLandingFit(state, link, metrics = stairMetrics(state)) {
     return [a.lx, a.lz, b.lx, b.lz];
   };
   const inside = { x0: box.x0 + e, x1: box.x1 - e, z0: box.z0 + e, z1: box.z1 - e };
-  const farEnd = { ...inside, z0: box.z1 - e, z1: box.z1 + e };
+  const farEnd = { ...inside, z0: end - e, z1: end + e };
   const walls = wallSegments(floor);
   const shut = walls.reduce((sum, s) => sum + lengthInBox(...local(s), farEnd), 0);
   if (walls.concat(doorwaySegments(floor)).some((s) => lengthInBox(...local(s), inside) > 1e-6)
     || inside.x1 - inside.x0 - shut < MIN_CLEAR_W) why.push('wall');
 
   const solid = (lx, lz) => { const p = localToWorld(link, lx, lz); return floorSolidAt(floor, p.x, p.z); };
-  const past = box.z1 + LANDING_STEP_OFF;
+  const mid = (box.x0 + box.x1) / 2;
   const asked = [
     [inside.x0, inside.z0], [inside.x1, inside.z0], [inside.x0, inside.z1], [inside.x1, inside.z1],
-    [0, past],
+    [mid, end + out * LANDING_STEP_OFF],
   ];
   if (!asked.every(([lx, lz]) => solid(lx, lz))) why.push('edge');
 
@@ -68579,9 +68672,52 @@ function rampLandingFit(state, link, metrics = stairMetrics(state)) {
   });
   if (others.some((poly) => polygonsOverlap(mine, poly))) why.push('link');
 
+  // The landing as a world polygon, flush edges let off as for walls.
+  const clear = rectCorners(link, inside);
+  if (catalogGet && propInLanding(state, link.to, clear, catalogGet)) why.push('prop');
+  if (swingInLanding(state, link.to, clear)) why.push('swing');
+
   if (!why.length) return null;
-  const at = localToWorld(link, 0, (box.z0 + box.z1) / 2);
+  const at = localToWorld(link, mid, (box.z0 + box.z1) / 2);
   return { id: link.id, floor: link.to, x: at.x, z: at.z, why };
+}
+
+// Does a floor-standing prop's footprint, turned, overlap `clear` (a world
+// polygon) on storey `floorId`? Wall and ceiling mounts are not asked.
+function propInLanding(state, floorId, clear, catalogGet) {
+  return propsOnFloor(state, floorId).some((p) => {
+    const entry = catalogGet(p.type);
+    if (!entry || entry.mount !== 'floor') return false;
+    const { hw, hd } = footprintOf(entry, p);
+    const c = Math.cos(p.rotationY || 0), sn = Math.sin(p.rotationY || 0);
+    const foot = [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].map(([lx, lz]) => (
+      { x: p.x + lx * c + lz * sn, z: p.z - lx * sn + lz * c }));
+    return polygonsOverlap(clear, foot);
+  });
+}
+
+// Does a door leaf of storey `floorId` sweep into `clear` between shut and its
+// quarter turn? The sweep is the hinge and nine points on the leaf's arc.
+function swingInLanding(state, floorId, clear) {
+  return collectDoorLeaves(state, floorId).some((leaf) => polygonsOverlap(clear,
+    [{ x: leaf.hx, z: leaf.hz }, ...Array.from({ length: 9 }, (_, k) => leafEnd(leaf, k / 8))]));
+}
+
+// ---------- the landing at the top of a stair ----------
+//
+// A straight stair's top landing is `topLandingBox`'s: the stair's width and
+// 4ft deep, from the top of the run, drawn as a deck since #983, left by its
+// far end. It is asked the ramp's five questions by the same lines
+// (`landingFit`): 'prop' and 'swing' since #987, and 'wall', 'edge' and
+// 'link' since #989, so a wall or a doorway in it or shutting its far end, a
+// landing off the floor above, and another link's hole or footprint in it are
+// each a reason too. Null for a ramp and for a stair whose landing is clear;
+// nothing is moved.
+function stairLandingFit(state, link, metrics = stairMetrics(state), catalogGet = null) {
+  if (!link || link.type !== 'stair') return null;
+  const box = topLandingBox(link, metrics);
+  if (!box || !state.floors[link.to]) return null;
+  return landingFit(state, link, box, 1, metrics, catalogGet);
 }
 
 // The seated walker, as `moveWalker` options. `extra` is the per-step state
@@ -69126,7 +69262,7 @@ function reachFindings({ items, rooms, tested, lockers, lockersLow }) {
   return out;
 }
 
-return { CLEAR_LOSS, MIN_CLEAR_W, MIN_ACCESSIBLE_W, clearWidth, doorClear, doorRolls, SEATED_R, SEATED_EYE_H, SEATED_HEAD_H, THRESHOLD, MAX_SEATED_GRADE, GRADE_PROBE, rampRolls, rampLandingFit, seatedStep, refusalText, TURN_D, TURN_R, PASSAGE_D, PASSAGE_R, clearanceWorld, clearRadiusAt, turningAnalysis, REACH_MIN, REACH_MAX, COUNTER_MAX, LAVATORY_MAX, SPOUT_MAX, WORK_MIN, WORK_MAX, REACH_RULES, reachAnalysis };
+return { CLEAR_LOSS, MIN_CLEAR_W, MIN_ACCESSIBLE_W, clearWidth, doorClear, doorRolls, SEATED_R, SEATED_EYE_H, SEATED_HEAD_H, THRESHOLD, MAX_SEATED_GRADE, GRADE_PROBE, rampRolls, rampLandingFit, stairLandingFit, seatedStep, refusalText, TURN_D, TURN_R, PASSAGE_D, PASSAGE_R, clearanceWorld, clearRadiusAt, turningAnalysis, REACH_MIN, REACH_MAX, COUNTER_MAX, LAVATORY_MAX, SPOUT_MAX, WORK_MIN, WORK_MAX, REACH_RULES, reachAnalysis };
 })();
 // ---- js/threshold.js ----
 const __m_js_threshold_js = (() => {
@@ -77274,10 +77410,946 @@ function signsFor(state, floorIndex, opts = {}) {
 
 return { PLACARD_W, PLACARD_H, PLACARD_Y, PLACARD_GAP, SIGN_CLEAR, EXIT_W, EXIT_H, EXIT_GAP, MAX_SIGNS, SIGNS_PER_ROOM, useOf, signable, placardText, placardsFor, exitSignY, exitSignsFor, signsFor };
 })();
+// ---- js/skeleton.js ----
+const __m_js_skeleton_js = (() => {
+
+// skeleton.js — the straight skeleton of a simple polygon, and the hipped
+// roof that stands on it.
+//
+// roof.js roofs a footprint as greedy rectangles over a 4ft cell mask, and its
+// header names the reason: a true pitched roof over an arbitrary polygon is a
+// straight skeleton, "a large amount of code to get subtly wrong". This is
+// that code, kept pure and apart so it can be checked by arithmetic before
+// anything draws it. A curved wall is a run of short chords (shapes.js
+// tessellates arcs at authoring time), so a curve reaches this module as an
+// ordinary polygon with a lot of vertices.
+//
+// The method is the wavefront: every edge walks inward at one foot per unit of
+// time, and each vertex rides the bisector of its two edges at whatever speed
+// keeps it on both. Two things can happen to the shrinking outline, and the
+// earliest of them is processed each step:
+//
+//   * an edge event: an edge's two vertices meet, the edge is gone, and one
+//     vertex carries on between the edges either side of it;
+//   * a split event: a reflex vertex runs into an edge across the outline,
+//     and the outline splits in two there.
+//
+// Simultaneous events (a rectangle's two ends, a square's four corners, the
+// two sides of a wing meeting along its ridge) are not special cases: after
+// each step every pair of vertices that now coincide is merged, and an outline
+// with no area left is laid down as ridge and retired. Each vertex's path is
+// an arc of the skeleton; the roof's faces are the regions those arcs cut the
+// polygon into, one per edge, found by walking the planar graph. A vertex's
+// time is its height over the eave divided by the pitch, so every face is a
+// plane at the stated pitch through its own eave line — which is the property
+// the tests check on every face of every shape.
+//
+// O(n^3) in the vertex count, with all events recomputed after each one. A
+// school's top storey is tens of vertices and a 64-chord arc about seventy,
+// which is well under a millisecond's worth of arithmetic each; clarity won
+// over a priority queue.
+//
+// Holes (#996, DESIGN-roof-holes.md): a court is a second ring, wound
+// clockwise so the building is on the left of every edge, and its wavefront
+// starts at time 0 with the outer one's. A third event joins them:
+//
+//   * a merge event: a reflex vertex runs into an edge of *another* loop, and
+//     the two loops become one there.
+//
+// Merges are looked for only when there is a hole, so a polygon without one
+// takes exactly the shipped search. Every skeleton is checked before it is
+// returned (`skeletonHolds`): a face off its own plane or faces that do not
+// add up to the footprint come back as null, never as a roof.
+//
+// Pure module: no three.js, no DOM. Exercised by test/skeleton.test.mjs and
+// test/skeleton-holes.test.mjs.
+
+const P2 = (x, z) => ({ x, z });
+
+const signedArea = (pts) => {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], q = pts[(i + 1) % pts.length];
+    a += p.x * q.z - q.x * p.z;
+  }
+  return a / 2;
+};
+
+const segsCross = (a, b, c, d, eps) => {
+  const o = (p, q, r) => (q.x - p.x) * (r.z - p.z) - (q.z - p.z) * (r.x - p.x);
+  const d1 = o(c, d, a), d2 = o(c, d, b), d3 = o(a, b, c), d4 = o(a, b, d);
+  return ((d1 > eps && d2 < -eps) || (d1 < -eps && d2 > eps)) &&
+    ((d3 > eps && d4 < -eps) || (d3 < -eps && d4 > eps));
+};
+
+// The polygon as the skeleton wants it: finite, counter-clockwise in (x, z)
+// (the winding roof.js's faces already use), no repeated points and no vertex
+// that does not turn. Returns null for anything that is not a simple polygon
+// with area, rather than a roof that is quietly wrong.
+//
+// `collinear` is the sine of the smallest turn kept. A chord of a curve turns
+// by its own angle, which for a 2ft chord on a 400ft radius is still 0.005, so
+// the default only removes vertices that are straight to within rounding.
+//
+// With `pinch` (#1001, DESIGN-roof-holes.md 2.3), one point may stand twice
+// in the ring, as a courtyard meeting the outside at a corner gives it: the
+// same point at two corners, each with its own two edges, where the two
+// wedges of building at it do not overlap and share no edge's direction. A
+// corner on another edge's interior is still refused, and so is a point three
+// times. Without `pinch` the answer is the shipped one for every input.
+function cleanPolygon(input, { collinear = 1e-6, pinch = false } = {}) {
+  if (!Array.isArray(input) || input.length < 3) return null;
+  let pts = [];
+  for (const p of input) {
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.z)) return null;
+    pts.push(P2(p.x, p.z));
+  }
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const p of pts) {
+    x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
+    z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z);
+  }
+  const scale = Math.hypot(x1 - x0, z1 - z0);
+  if (!(scale > 0)) return null;
+  const eps = scale * 1e-9;
+  // Drop repeats (the closing point included) and vertices that do not turn,
+  // until nothing changes: removing one can make its neighbour straight.
+  for (let changed = true; changed && pts.length >= 3;) {
+    changed = false;
+    const out = [];
+    for (let i = 0; i < pts.length; i++) {
+      const prev = out.length ? out[out.length - 1] : pts[pts.length - 1];
+      const cur = pts[i], next = pts[(i + 1) % pts.length];
+      const ax = cur.x - prev.x, az = cur.z - prev.z;
+      const bx = next.x - cur.x, bz = next.z - cur.z;
+      const la = Math.hypot(ax, az), lb = Math.hypot(bx, bz);
+      if (la <= eps || lb <= eps) { changed = true; continue; }
+      const sin = (ax * bz - az * bx) / (la * lb);
+      const cos = (ax * bx + az * bz) / (la * lb);
+      // A vertex that turns back on itself (a zero-width spike) is not
+      // straight, but it is not a polygon either; the area test refuses it.
+      if (Math.abs(sin) < collinear && cos > 0) { changed = true; continue; }
+      out.push(cur);
+    }
+    pts = out;
+  }
+  if (pts.length < 3) return null;
+  const area = signedArea(pts);
+  if (Math.abs(area) <= scale * scale * 1e-9) return null;
+  if (area < 0) pts.reverse();
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue;
+      if (segsCross(pts[i], pts[(i + 1) % n], pts[j], pts[(j + 1) % n], eps * scale)) return null;
+    }
+  }
+  // Two edges that touch without crossing (a vertex sitting on another edge,
+  // a polygon pinched at a point) are just as fatal to a wavefront. With
+  // `pinch`, a corner standing on another corner is the one touch let by,
+  // and only once the wedges at it are seen to keep apart.
+  const twin = new Array(n).fill(-1);
+  for (let i = 0; i < n; i++) {
+    const p = pts[i];
+    for (let j = 0; j < n; j++) {
+      if (j === i || (j + 1) % n === i) continue;
+      const a = pts[j], b = pts[(j + 1) % n];
+      const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz;
+      const t = ((p.x - a.x) * dx + (p.z - a.z) * dz) / L2;
+      if (t < 0 || t > 1) continue;
+      if (Math.hypot(a.x + dx * t - p.x, a.z + dz * t - p.z) > eps * 10) continue;
+      if (!pinch) return null;
+      const k = Math.hypot(a.x - p.x, a.z - p.z) <= eps * 10 ? j
+        : Math.hypot(b.x - p.x, b.z - p.z) <= eps * 10 ? (j + 1) % n : -1;
+      if (k < 0) return null;
+      twin[i] = k;
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    const k = twin[i];
+    if (k < 0) continue;
+    // Two visits name each other; a point three times cannot.
+    if (twin[k] !== i) return null;
+    if (k < i) continue;
+    // Each corner's wedge of building runs counter-clockwise from its next
+    // edge round to its previous one; neither of the other corner's edges
+    // may point into it or along its sides.
+    const p = pts[i];
+    const dir = (q) => Math.atan2(q.z - p.z, q.x - p.x);
+    const TAU = Math.PI * 2;
+    const wedge = (c) => {
+      const from = dir(pts[(c + 1) % n]);
+      return { from, span: ((dir(pts[(c - 1 + n) % n]) - from) % TAU + TAU) % TAU };
+    };
+    const into = (w, q) => {
+      const s = ((dir(q) - w.from) % TAU + TAU) % TAU;
+      return s > -1e-9 && s < w.span + 1e-9 || s > TAU - 1e-9;
+    };
+    const wi = wedge(i), wk = wedge(k);
+    for (const [w, c] of [[wi, k], [wk, i]]) {
+      if (into(w, pts[(c + 1) % n]) || into(w, pts[(c - 1 + n) % n])) return null;
+    }
+  }
+  return pts;
+}
+
+// A point strictly inside a ring, by crossings (on an edge counts as neither;
+// cleanRings refuses that case before it asks).
+const insideRing = (ring, x, z) => {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i], b = ring[j];
+    if ((a.z > z) !== (b.z > z) && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
+  }
+  return inside;
+};
+
+// The outer ring and its holes as the skeleton wants them: the outer ring
+// cleaned and counter-clockwise, each hole cleaned and then clockwise. Null
+// where any ring is refused, where a hole is not inside the outer ring or is
+// inside another hole, where two rings cross, or where they come within
+// `eps * 10` of each other anywhere: a hole touching the outer ring at a point
+// is not two rings to a wavefront (DESIGN-roof-holes.md 2.3).
+function cleanRings(outer, holes = [], opts = {}) {
+  const o = cleanPolygon(outer, opts);
+  if (!o || !Array.isArray(holes)) return null;
+  const hs = [];
+  for (const h of holes) {
+    const c = cleanPolygon(h, opts);
+    if (!c) return null;
+    hs.push(c.reverse());
+  }
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const p of o) {
+    x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
+    z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z);
+  }
+  const scale = Math.hypot(x1 - x0, z1 - z0);
+  const eps = scale * 1e-9;
+  const rings = [o, ...hs];
+  for (let r = 0; r < rings.length; r++) {
+    for (let s = r + 1; s < rings.length; s++) {
+      const A = rings[r], B = rings[s];
+      for (let i = 0; i < A.length; i++) {
+        for (let j = 0; j < B.length; j++) {
+          if (segsCross(A[i], A[(i + 1) % A.length], B[j], B[(j + 1) % B.length], eps * scale)) return null;
+        }
+      }
+      // Every corner of each ring kept clear of every edge of the other.
+      for (const [P, Q] of [[A, B], [B, A]]) {
+        for (const p of P) {
+          for (let j = 0; j < Q.length; j++) {
+            const a = Q[j], b = Q[(j + 1) % Q.length];
+            const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz;
+            const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / L2));
+            if (Math.hypot(a.x + dx * t - p.x, a.z + dz * t - p.z) <= eps * 10) return null;
+          }
+        }
+      }
+    }
+  }
+  // Nothing crosses or touches, so one corner says which side a whole ring is.
+  for (let r = 0; r < hs.length; r++) {
+    if (!insideRing(o, hs[r][0].x, hs[r][0].z)) return null;
+    for (let s = 0; s < hs.length; s++) {
+      if (s !== r && insideRing(hs[s], hs[r][0].x, hs[r][0].z)) return null;
+    }
+  }
+  return { outer: o, holes: hs };
+}
+
+// The skeleton itself. `nodes` are points with the time (= inset distance) at
+// which the wavefront passed them, the polygon's own corners first at time 0;
+// `arcs` are pairs of node indices; `faces` are node-index loops, one per
+// edge of `poly`, each starting with that edge's two ends. Null when the
+// polygon is refused.
+//
+// With `opts.holes`, `rings` is the outer ring then each hole clockwise, the
+// corners are numbered ring by ring (outer first, so with no hole the
+// numbering is the shipped one), and there is a face for every edge of every
+// ring, `{ edge, ring, nodes }`, the outer ring's first. `poly` stays the
+// outer ring.
+function straightSkeleton(input, opts = {}) {
+  return wavefront(input, opts);
+}
+
+// The wavefront itself. With `stop` it is offsetRing's: the event loop runs
+// until the next event would come after `stop` (one at `stop` itself is still
+// processed, so a notch that closes exactly at the eave's distance is closed),
+// moves every vertex on to `stop`, and returns the loops as they stand, each a
+// list of `{ x, z, corner, eL, eR }` with `corner` the ring corner the vertex
+// set out from (null once an event has made it anew). No loops left before
+// `stop` is `[]`.
+function wavefront(input, opts, stop) {
+  const holeList = Array.isArray(opts.holes) ? opts.holes : [];
+  let poly, rings;
+  if (holeList.length) {
+    const cr = cleanRings(input, holeList, opts);
+    if (!cr) return null;
+    poly = cr.outer;
+    rings = [cr.outer, ...cr.holes];
+  } else {
+    poly = cleanPolygon(input, opts);
+    if (!poly) return null;
+    rings = [poly];
+  }
+  const hasHoles = rings.length > 1;
+  const corners = rings.flat();
+  const n = corners.length;
+  // Which ring a corner is on, and its neighbours within that ring.
+  const ringOf = [], ringStart = [], ringLen = [];
+  rings.forEach((ring, r) => {
+    const start = ringOf.length;
+    for (let k = 0; k < ring.length; k++) { ringOf.push(r); ringStart.push(start); ringLen.push(ring.length); }
+  });
+  const nextOf = (i) => ringStart[i] + ((i - ringStart[i] + 1) % ringLen[i]);
+  const prevOf = (i) => ringStart[i] + ((i - ringStart[i] - 1 + ringLen[i]) % ringLen[i]);
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const p of poly) {
+    x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
+    z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z);
+  }
+  const scale = Math.hypot(x1 - x0, z1 - z0);
+  const EPS = scale * 1e-7;        // two points closer than this are one point
+
+  // Each edge's unit direction and inward (left-hand) normal, fixed for good.
+  const edges = corners.map((a, i) => {
+    const b = corners[nextOf(i)];
+    const L = Math.hypot(b.x - a.x, b.z - a.z);
+    const dx = (b.x - a.x) / L, dz = (b.z - a.z) / L;
+    return { dx, dz, nx: -dz, nz: dx, k: -dz * a.x + dx * a.z };
+  });
+
+  const nodes = corners.map((p) => ({ x: p.x, z: p.z, t: 0 }));
+  const arcs = [];
+  let now = 0;
+  const addNode = (x, z) => { nodes.push({ x, z, t: now }); return nodes.length - 1; };
+
+  // A wavefront vertex: where it is now, the node it set out from, and the
+  // edges before (eL) and after (eR) it. Its velocity solves v·nL = v·nR = 1.
+  const makeVertex = (x, z, node, eL, eR) => {
+    const a = edges[eL], b = edges[eR];
+    const dot = a.nx * b.nx + a.nz * b.nz;
+    const cross = a.dx * b.dz - a.dz * b.dx;
+    // Anti-parallel neighbours mean a zero-width spike; the merge pass is
+    // supposed to have closed it. Refusing beats an infinite velocity.
+    if (1 + dot < 1e-12) throw new Error('skeleton: spike');
+    return {
+      x, z, node, eL, eR,
+      vx: (a.nx + b.nx) / (1 + dot),
+      vz: (a.nz + b.nz) / (1 + dot),
+      reflex: cross < -1e-12,
+    };
+  };
+
+  // Edges either side that face each other along one line make a spike of
+  // zero width. Its point stands still, and the neighbours either side run
+  // into it as an ordinary edge event.
+  const vertexOrSpike = (x, z, node, eL, eR) => {
+    const a = edges[eL], b = edges[eR];
+    if (1 + a.nx * b.nx + a.nz * b.nz < 1e-9) return { x, z, node, eL, eR, vx: 0, vz: 0 };
+    return makeVertex(x, z, node, eL, eR);
+  };
+
+  let loops = rings.map((ring, r) => ring.map((p, k) => {
+    const i = ringOf.indexOf(r) + k;
+    return makeVertex(p.x, p.z, i, prevOf(i), i);
+  }));
+
+  // A vertex leaves the wavefront here: its path is an arc of the skeleton.
+  const retire = (v) => {
+    if (Math.hypot(nodes[v.node].x - v.x, nodes[v.node].z - v.z) <= EPS) return v.node;
+    const id = addNode(v.x, v.z);
+    arcs.push([v.node, id]);
+    return id;
+  };
+
+  // Merge every run of coincident neighbours, and lay down any loop that has
+  // no area left as ridge. Repeats until nothing changes.
+  const settle = () => {
+    for (let pass = 0; pass < 4 * n + 8; pass++) {
+      let changed = false;
+      const next = [];
+      for (let loop of loops) {
+                for (let i = 0; i < loop.length && loop.length > 1; i++) {
+          const a0 = loop[i], b0 = loop[(i + 1) % loop.length];
+          if (Math.hypot(a0.x - b0.x, a0.z - b0.z) > EPS) continue;
+          // Turn the loop so the pair is at the front; it is a cycle.
+          loop = loop.slice(i).concat(loop.slice(0, i));
+          const [a, b] = loop;
+          const ia = retire(a), ib = retire(b);
+          if (ia !== ib) arcs.push([ia, ib]);
+          const x = (a.x + b.x) / 2, z = (a.z + b.z) / 2;
+          let v;
+          if (loop.length <= 2 || a.eL === b.eR) {
+            // Nothing left either side: the loop closes on this point.
+            loop = [{ x, z, node: ia, eL: a.eL, eR: b.eR, vx: 0, vz: 0 }];
+          } else {
+            const dot = edges[a.eL].nx * edges[b.eR].nx + edges[a.eL].nz * edges[b.eR].nz;
+            v = vertexOrSpike(x, z, ia, a.eL, b.eR);
+            loop.splice(0, 2, v);
+          }
+          changed = true;
+          break;
+        }
+        if (loop.length >= 3) {
+          // No area left: the loop is a line (the ridge of a wing whose two
+          // sides have met). Lay it down in order along that line.
+          let far = 0, fa = 0, fb = 0;
+          for (let i = 0; i < loop.length; i++) {
+            for (let j = i + 1; j < loop.length; j++) {
+              const d = Math.hypot(loop[i].x - loop[j].x, loop[i].z - loop[j].z);
+              if (d > far) { far = d; fa = i; fb = j; }
+            }
+          }
+          const A = loop[fa], B = loop[fb];
+          const ux = (B.x - A.x) / far, uz = (B.z - A.z) / far;
+          const flat = loop.every((v) => Math.abs((v.x - A.x) * uz - (v.z - A.z) * ux) <= EPS * 10);
+          if (flat) {
+            const ids = loop.map((v) => ({ s: (v.x - A.x) * ux + (v.z - A.z) * uz, id: retire(v) }))
+              .sort((p, q) => p.s - q.s || p.id - q.id);
+            for (let i = 1; i < ids.length; i++) if (ids[i - 1].id !== ids[i].id) arcs.push([ids[i - 1].id, ids[i].id]);
+            changed = true;
+            continue;
+          }
+          next.push(loop);
+          continue;
+        }
+        if (loop.length === 2) {
+          const ia = retire(loop[0]), ib = retire(loop[1]);
+          if (ia !== ib) arcs.push([ia, ib]);
+          changed = true;
+          continue;
+        }
+        if (loop.length === 1) { retire(loop[0]); changed = true; continue; }
+        next.push(loop);
+      }
+      loops = next;
+      if (!changed) return;
+    }
+    throw new Error('skeleton: settle did not converge');
+  };
+
+  const guardMax = 8 * n * n + 64;
+  for (let guard = 0; loops.length; guard++) {
+    if (guard > guardMax) throw new Error('skeleton: no progress');
+    // The earliest event anywhere.
+    let best = null;
+    for (let li = 0; li < loops.length; li++) {
+      const loop = loops[li];
+      const L = loop.length;
+      for (let i = 0; i < L; i++) {
+        const a = loop[i], b = loop[(i + 1) % L];
+        // Edge event: the edge from a to b shrinks to nothing.
+        const e = edges[a.eR];
+        const closing = (b.vx - a.vx) * e.dx + (b.vz - a.vz) * e.dz;
+        if (closing < -1e-12) {
+          const len = (b.x - a.x) * e.dx + (b.z - a.z) * e.dz;
+          const dt = Math.max(0, -len / closing);
+          if (!best || dt < best.dt - EPS) best = { dt, kind: 'edge', li, i };
+        }
+        // Split event: reflex vertex a runs into an edge across the loop.
+        if (!a.reflex) continue;
+        for (let j = 0; j < L; j++) {
+          if (j === i || (j + 1) % L === i) continue;
+          const p = loop[j], q = loop[(j + 1) % L];
+          const f = edges[p.eR];
+          if (p.eR === a.eL || p.eR === a.eR) continue;
+          const speed = f.nx * a.vx + f.nz * a.vz - 1;
+          if (speed >= -1e-12) continue;
+          const gap = f.nx * (a.x - p.x) + f.nz * (a.z - p.z);
+          if (gap < -EPS) continue;
+          const dt = Math.max(0, -gap / speed);
+          // Where it lands, and whether that is on the edge as it will be then.
+          const hx = a.x + a.vx * dt, hz = a.z + a.vz * dt;
+          const px = p.x + p.vx * dt, pz = p.z + p.vz * dt;
+          const qx = q.x + q.vx * dt, qz = q.z + q.vz * dt;
+          const s = (hx - px) * f.dx + (hz - pz) * f.dz;
+          const span = (qx - px) * f.dx + (qz - pz) * f.dz;
+          if (s < -EPS || s > span + EPS) continue;
+          if (!best || dt < best.dt - EPS) best = { dt, kind: 'split', li, i, j };
+        }
+        // Merge event: the same test against every edge of every other loop.
+        if (!hasHoles) continue;
+        for (let lj = 0; lj < loops.length; lj++) {
+          if (lj === li) continue;
+          const other = loops[lj];
+          const M = other.length;
+          for (let j = 0; j < M; j++) {
+            const p = other[j], q = other[(j + 1) % M];
+            const f = edges[p.eR];
+            if (p.eR === a.eL || p.eR === a.eR) continue;
+            const speed = f.nx * a.vx + f.nz * a.vz - 1;
+            if (speed >= -1e-12) continue;
+            const gap = f.nx * (a.x - p.x) + f.nz * (a.z - p.z);
+            if (gap < -EPS) continue;
+            const dt = Math.max(0, -gap / speed);
+            const hx = a.x + a.vx * dt, hz = a.z + a.vz * dt;
+            const px = p.x + p.vx * dt, pz = p.z + p.vz * dt;
+            const qx = q.x + q.vx * dt, qz = q.z + q.vz * dt;
+            const s = (hx - px) * f.dx + (hz - pz) * f.dz;
+            const span = (qx - px) * f.dx + (qz - pz) * f.dz;
+            if (s < -EPS || s > span + EPS) continue;
+            if (!best || dt < best.dt - EPS) best = { dt, kind: 'merge', li, i, lj, j };
+          }
+        }
+      }
+    }
+    if (stop !== undefined && (!best || now + best.dt > stop + EPS)) {
+      const dt = stop - now;
+      return loops.map((lp) => lp.map((v) => ({
+        x: v.x + v.vx * dt, z: v.z + v.vz * dt,
+        corner: v.node < n ? v.node : null, eL: v.eL, eR: v.eR,
+      })));
+    }
+    if (!best) throw new Error('skeleton: no event');
+    // Move every vertex to the event's time.
+    now += best.dt;
+    for (const loop of loops) for (const v of loop) { v.x += v.vx * best.dt; v.z += v.vz * best.dt; }
+
+    const loop = loops[best.li];
+    const L = loop.length;
+    if (best.kind === 'edge') {
+      // Pull the two ends together exactly; settle() merges them.
+      const a = loop[best.i], b = loop[(best.i + 1) % L];
+      const x = (a.x + b.x) / 2, z = (a.z + b.z) / 2;
+      a.x = b.x = x; a.z = b.z = z;
+    } else if (best.kind === 'merge') {
+      // v (eL .. eE), the whole of the other loop from q round to p, then
+      // v' (eE .. eR) and the rest of v's own loop. Both loops go; the merged
+      // one goes on the end, so the order depends on nothing but the input.
+      const v = loop[best.i];
+      const id = retire(v);
+      const other = loops[best.lj];
+      const M = other.length;
+      const eE = other[best.j].eR;
+      const merged = [vertexOrSpike(v.x, v.z, id, v.eL, eE)];
+      for (let k = 1; k <= M; k++) merged.push(other[(best.j + k) % M]);
+      merged.push(vertexOrSpike(v.x, v.z, id, eE, v.eR));
+      for (let k = 1; k < L; k++) merged.push(loop[(best.i + k) % L]);
+      loops = loops.filter((_, k) => k !== best.li && k !== best.lj);
+      loops.push(merged);
+    } else {
+      const v = loop[best.i];
+      const id = retire(v);
+      const p = loop[best.j], q = loop[(best.j + 1) % L];
+      const eE = p.eR;
+      // loop1: v (eL .. eE), then q round to v's predecessor.
+      // loop2: v' (eE .. eR), then v's successor round to p.
+      const one = [vertexOrSpike(v.x, v.z, id, v.eL, eE)];
+      for (let k = (best.j + 1) % L; k !== best.i; k = (k + 1) % L) one.push(loop[k]);
+      const two = [vertexOrSpike(v.x, v.z, id, eE, v.eR)];
+      for (let k = (best.i + 1) % L; k !== (best.j + 1) % L; k = (k + 1) % L) two.push(loop[k]);
+      loops.splice(best.li, 1, one, two);
+    }
+    settle();
+  }
+  if (stop !== undefined) return [];
+
+  // Fold together nodes that landed on the same point, then drop arcs that
+  // shrank to nothing or repeat.
+  const canon = nodes.map((_, i) => i);
+  for (let i = n; i < nodes.length; i++) {
+    for (let j = 0; j < i; j++) {
+      if (canon[j] !== j) continue;
+      if (Math.hypot(nodes[i].x - nodes[j].x, nodes[i].z - nodes[j].z) <= EPS * 10) { canon[i] = j; break; }
+    }
+  }
+  const cut = arcs.map(([a, b]) => [canon[a], canon[b]]);
+  const seen = new Set();
+  const outArcs = [];
+  for (const [a, b] of cut) {
+    if (a === b) continue;
+    const key = a < b ? `${a},${b}` : `${b},${a}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    outArcs.push(a < b ? [a, b] : [b, a]);
+  }
+  // Renumber so only used nodes remain, corners first.
+  const used = new Map();
+  for (let i = 0; i < n; i++) used.set(i, i);
+  const outNodes = corners.map((p) => ({ x: p.x, z: p.z, t: 0 }));
+  for (const arc of outArcs) {
+    for (const k of [0, 1]) {
+      if (!used.has(arc[k])) {
+        used.set(arc[k], outNodes.length);
+        outNodes.push({ ...nodes[arc[k]] });
+      }
+      arc[k] = used.get(arc[k]);
+    }
+  }
+
+  // The faces: walk the graph from each eave edge, keeping the face on the
+  // left, which means taking the sharpest left turn at every node.
+  const adj = outNodes.map(() => []);
+  const link = (a, b) => { adj[a].push(b); adj[b].push(a); };
+  for (let i = 0; i < n; i++) link(i, nextOf(i));
+  for (const [a, b] of outArcs) link(a, b);
+  const ang = (a, b) => Math.atan2(outNodes[b].z - outNodes[a].z, outNodes[b].x - outNodes[a].x);
+  const TAU = Math.PI * 2;
+  const faces = [];
+  for (let i = 0; i < n; i++) {
+    const face = [i];
+    let from = i, at = nextOf(i);
+    for (let steps = 0; at !== i; steps++) {
+      if (steps > outNodes.length + 2) throw new Error('skeleton: open face');
+      face.push(at);
+      const back = ang(at, from);
+      let pick = -1, bestTurn = Infinity;
+      for (const w of adj[at]) {
+        if (w === from && adj[at].length > 1) continue;
+        let d = (back - ang(at, w)) % TAU;
+        if (d <= 1e-12) d += TAU;
+        if (d < bestTurn) { bestTurn = d; pick = w; }
+      }
+      from = at; at = pick;
+    }
+    faces.push({ edge: i, ring: ringOf[i], nodes: face });
+  }
+  const sk = { poly, rings, nodes: outNodes, arcs: outArcs, faces };
+  return skeletonHolds(sk) ? sk : null;
+}
+
+// The gate every skeleton passes before it is returned: each face's nodes on
+// the plane through its own eave edge (a node's time is its distance from
+// that edge's line, to 1e-6 of the outer ring's size), and the faces' plan
+// areas adding up to the outer ring less the holes (to 1e-9 of its size
+// squared). A wavefront that went wrong somewhere comes out as one or the
+// other, and null keeps the rectangles rather than drawing it.
+function skeletonHolds(sk) {
+  if (!sk || !Array.isArray(sk.rings) || !Array.isArray(sk.faces)) return false;
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const p of sk.rings[0]) {
+    x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
+    z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z);
+  }
+  const scale = Math.hypot(x1 - x0, z1 - z0);
+  let sum = 0;
+  for (const f of sk.faces) {
+    const pts = f.nodes.map((id) => sk.nodes[id]);
+    if (pts.length < 3 || pts.some((p) => !p)) return false;
+    const [a, b] = pts;
+    const L = Math.hypot(b.x - a.x, b.z - a.z);
+    if (!(L > 0)) return false;
+    for (const p of pts) {
+      const d = ((b.x - a.x) * (p.z - a.z) - (b.z - a.z) * (p.x - a.x)) / L;
+      if (!(Math.abs(d - p.t) <= 1e-6 * scale)) return false;
+    }
+    sum += signedArea(pts);
+  }
+  const want = sk.rings.reduce((s, r) => s + signedArea(r), 0);
+  return Math.abs(sum - want) <= 1e-9 * scale * scale;
+}
+
+// The eave line: the polygon pushed `d` feet outward, every edge parallel to
+// its own wall and every corner mitred, which is how a fascia board runs round
+// a building and also exactly where the straight skeleton's wavefront would be
+// at time -d, so the roof stood on it is the same roof carried out over the
+// overhang. Corners come back one for one with `poly` after `cleanPolygon`.
+//
+// The stated limit: an outward offset closes up a concave run (a curve bowed
+// into the building, a notch), and once `d` is more than such a run can give,
+// an edge turns end for end or the line crosses itself. Both are refused, as
+// null, and the caller keeps the rectangles (#967); nothing is trimmed or
+// patched into a roof that is quietly not what was drawn.
+function eavePolygon(input, d) {
+  const poly = cleanPolygon(input);
+  if (!poly || !(d >= 0)) return null;
+  const n = poly.length;
+  const normal = (i) => {
+    const a = poly[i], b = poly[(i + 1) % n];
+    const L = Math.hypot(b.x - a.x, b.z - a.z);
+    return { x: (b.z - a.z) / L, z: -(b.x - a.x) / L };
+  };
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const n1 = normal((i - 1 + n) % n), n2 = normal(i);
+    const k = 1 + n1.x * n2.x + n1.z * n2.z;
+    out.push(P2(poly[i].x + (d * (n1.x + n2.x)) / k, poly[i].z + (d * (n1.z + n2.z)) / k));
+  }
+  // A run turned end for end always crosses its neighbours, so one test for a
+  // simple polygon catches both (a corner that turns straight back has k of 0,
+  // and the infinite point it gives fails the same test).
+  const clean = cleanPolygon(out);
+  return clean ? out : null;
+}
+
+// A ring pushed `d` feet in (d > 0) or out (d < 0), as the wavefront has it at
+// that moment (DESIGN-roof-holes.md 2.2, #997): where `eavePolygon`'s mitred
+// line would cross itself, two sides meeting head on close the notch between
+// them as a ridge closes a wing, and the line runs straight past it. Inward is
+// the ring's own wavefront stopped at `d`; outward is the ring as a hole in a
+// frame, stopped at `-d`, keeping the loops that are not the frame's. The
+// frame stands `|d|` times the fastest corner's speed (plus two for the
+// frame's own corners) plus 10ft clear, so no corner reaches it by `-d`: the
+// design's flat `4|d| + 10` let a 4.6 degree spike's corner, which moves at
+// 25ft a foot, run into the frame and refused a ring `eavePolygon` takes. Returns the loops, each counter-clockwise and starting
+// at the vertex from the ring's lowest-numbered corner still standing (so an
+// offset with no event is `eavePolygon`'s corners in `eavePolygon`'s order);
+// `[]` where nothing is left (a court narrower than 2d); null where the ring
+// is refused or a loop of the ring's reached the frame's.
+function offsetRing(ring, d, opts = {}) {
+  const pts = cleanPolygon(ring, opts);
+  if (!pts || !Number.isFinite(d)) return null;
+  const m = pts.length;
+  const lead = (loop, cornerIndex) => {
+    let at = 0, best = Infinity;
+    loop.forEach((v, k) => {
+      const c = v.corner === null ? Infinity : cornerIndex(v.corner);
+      if (c < best) { best = c; at = k; }
+    });
+    return loop.slice(at).concat(loop.slice(0, at)).map((v) => P2(v.x, v.z));
+  };
+  try {
+    if (d >= 0) {
+      const front = wavefront(pts, opts, d);
+      return front.map((l) => lead(l, (c) => c));
+    }
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const p of pts) {
+      x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
+      z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z);
+    }
+    let fastest = 0;
+    for (let i = 0; i < m; i++) {
+      const a = pts[(i - 1 + m) % m], b = pts[i], c = pts[(i + 1) % m];
+      const l1 = Math.hypot(b.x - a.x, b.z - a.z), l2 = Math.hypot(c.x - b.x, c.z - b.z);
+      const n1x = (b.z - a.z) / l1, n1z = -(b.x - a.x) / l1, n2x = (c.z - b.z) / l2, n2z = -(c.x - b.x) / l2;
+      fastest = Math.max(fastest, Math.hypot(n1x + n2x, n1z + n2z) / (1 + n1x * n2x + n1z * n2z));
+    }
+    if (!Number.isFinite(fastest)) return null;
+    const g = -d * (fastest + 2) + 10;
+    const frame = [P2(x0 - g, z0 - g), P2(x1 + g, z0 - g), P2(x1 + g, z1 + g), P2(x0 - g, z1 + g)];
+    const front = wavefront(frame, { ...opts, holes: [pts] }, -d);
+    if (!front) return null;
+    // The frame's edges are 0 to 3; the hole's corner k is the ring's m-1-k.
+    const out = [];
+    for (const l of front) {
+      const own = l.map((v) => v.eL >= 4 && v.eR >= 4);
+      if (own.every((o) => !o)) continue;
+      if (!own.every((o) => o)) return null;
+      out.push(lead(l.slice().reverse(), (c) => m - 1 - (c - 4)));
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+// A face cut into triangles by ear clipping, as index triples into `pts`
+// (anything with x and z), each wound in (x, z) the way the face is. A
+// skeleton face is not convex in general (an L's long slope runs past its
+// valley), and a fan from the first point, which is how render.js has always
+// drawn a roof face, puts a triangle outside it there. Null if no ear can be
+// found, which a simple polygon always has.
+//
+// With `holes` (DESIGN-roof-holes.md 3.1, #997), each hole is bridged into the
+// outer ring first, furthest right first: from its rightmost corner to the
+// nearest corner of the ring so far that it can see without touching any
+// edge, entering that corner's own wedge. The bridged ring is ear clipped as
+// before, a bridge's two ends each standing twice in it under one index, and
+// the indices are into `[...pts, ...holes.flat()]`. Null if a hole sees no
+// corner.
+//
+// A ring through a corner twice (a pinch, #1001) is clipped the same way: the
+// second visit takes the first one's index, as a bridge's ends do, so neither
+// visit is read as standing inside an ear at the other.
+function triangulate(pts, holes = []) {
+  if (Array.isArray(holes) && holes.length) return bridged(pts, holes);
+  const n = pts.length;
+  if (n < 3) return null;
+  let idx = twinned(pts, [...Array(n).keys()]);
+  const backward = signedArea(pts) < 0;
+  if (backward) idx.reverse();
+  const tris = clipEars(pts, idx);
+  if (!tris) return null;
+  return backward ? tris.map(([a, b, c]) => [c, b, a]) : tris;
+}
+
+// Ear clipping over `idx`, a counter-clockwise walk of `pts` (an index may
+// stand in it twice, where a bridge comes and goes).
+// Each index of `idx` that names the same point as an earlier one, exactly,
+// given that earlier one's index (#1001). A ring with no repeated point comes
+// back as it went in.
+function twinned(pts, idx) {
+  const first = new Map();
+  return idx.map((i) => {
+    const k = `${pts[i].x},${pts[i].z}`;
+    if (!first.has(k)) first.set(k, i);
+    return first.get(k);
+  });
+}
+
+function clipEars(pts, idx) {
+  const cross = (a, b, c) => (pts[b].x - pts[a].x) * (pts[c].z - pts[a].z) - (pts[b].z - pts[a].z) * (pts[c].x - pts[a].x);
+  const tris = [];
+  while (idx.length > 3) {
+    const m = idx.length;
+    let cut = -1;
+    for (let k = 0; k < m && cut < 0; k++) {
+      const a = idx[(k - 1 + m) % m], b = idx[k], c = idx[(k + 1) % m];
+      const turn = cross(a, b, c);
+      // A corner that does not turn is never an ear (its triangle is flat);
+      // it becomes an ordinary corner once a neighbour is clipped.
+      if (turn <= 1e-12 * (1 + Math.abs(pts[a].x) + Math.abs(pts[a].z)) ** 2) continue;
+      let clear = true;
+      for (const j of idx) {
+        if (j === a || j === b || j === c) continue;
+        if (cross(a, b, j) >= 0 && cross(b, c, j) >= 0 && cross(c, a, j) >= 0) { clear = false; break; }
+      }
+      if (!clear) continue;
+      tris.push([a, b, c]);
+      cut = k;
+    }
+    if (cut < 0) return null;
+    idx.splice(cut, 1);
+  }
+  if (cross(idx[0], idx[1], idx[2]) > 0) tris.push([idx[0], idx[1], idx[2]]);
+  return tris;
+}
+
+function bridged(pts, holes) {
+  if (!Array.isArray(pts) || pts.length < 3) return null;
+  if (holes.some((h) => !Array.isArray(h) || h.length < 3)) return null;
+  const all = [...pts, ...holes.flat()];
+  const backward = signedArea(pts) < 0;
+  let outer = twinned(pts, [...pts.keys()]);
+  if (backward) outer.reverse();
+  // Each hole clockwise, so the face is on the left of every edge.
+  let base = pts.length;
+  const hs = holes.map((h) => {
+    const ix = h.map((_, k) => base + k);
+    base += h.length;
+    return signedArea(h) > 0 ? ix.reverse() : ix;
+  });
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const p of pts) {
+    x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
+    z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z);
+  }
+  const scale = Math.hypot(x1 - x0, z1 - z0);
+  const eps = scale * 1e-9;
+  const cross = (o, a, b) => (a.x - o.x) * (b.z - o.z) - (a.z - o.z) * (b.x - o.x);
+  const same = (p, q) => Math.hypot(p.x - q.x, p.z - q.z) <= eps;
+  // Every edge a bridge may not cross: each ring's, and each bridge made.
+  const segs = [];
+  for (const ix of [outer, ...hs]) ix.forEach((a, k) => segs.push([a, ix[(k + 1) % ix.length]]));
+  const sees = (V, M) => {
+    if (same(V, M)) return false;
+    for (const [a, b] of segs) {
+      const A = all[a], B = all[b];
+      if (same(A, V) || same(A, M) || same(B, V) || same(B, M)) continue;
+      if (segsCross(V, M, A, B, eps * scale)) return false;
+    }
+    // Nor may it run through a corner on the way.
+    const dx = M.x - V.x, dz = M.z - V.z, L2 = dx * dx + dz * dz;
+    for (const P of all) {
+      if (same(P, V) || same(P, M)) continue;
+      const t = ((P.x - V.x) * dx + (P.z - V.z) * dz) / L2;
+      if (t <= 0 || t >= 1) continue;
+      if (Math.hypot(V.x + dx * t - P.x, V.z + dz * t - P.z) <= eps * 10) return false;
+    }
+    return true;
+  };
+  // Whether M lies in the walk's interior wedge at position `pos`.
+  const inWedge = (pos, M) => {
+    const k = outer.length;
+    const A = all[outer[(pos - 1 + k) % k]], V = all[outer[pos]], B = all[outer[(pos + 1) % k]];
+    const toB = cross(V, B, M), toA = cross(V, A, M);
+    return cross(A, V, B) >= 0 ? toB > 0 && toA < 0 : toB > 0 || toA < 0;
+  };
+  const order = hs.map((ix, k) => {
+    let m = ix[0];
+    for (const i of ix) if (all[i].x > all[m].x || (all[i].x === all[m].x && all[i].z < all[m].z)) m = i;
+    return { ix, m, k };
+  }).sort((a, b) => all[b.m].x - all[a.m].x || a.k - b.k);
+  for (const { ix, m } of order) {
+    const M = all[m];
+    const near = outer.map((v, pos) => ({ v, pos, d: Math.hypot(all[v].x - M.x, all[v].z - M.z) }))
+      .sort((a, b) => a.d - b.d || a.pos - b.pos);
+    const pick = near.find((c) => inWedge(c.pos, M) && sees(all[c.v], M));
+    if (!pick) return null;
+    const k0 = ix.indexOf(m);
+    const round = [...ix.slice(k0), ...ix.slice(0, k0), m];
+    outer = [...outer.slice(0, pick.pos + 1), ...round, ...outer.slice(pick.pos)];
+    segs.push([pick.v, m]);
+  }
+  const tris = clipEars(all, outer);
+  if (!tris) return null;
+  return backward ? tris.map(([a, b, c]) => [c, b, a]) : tris;
+}
+
+// The height of a skeleton roof over one point of the plan, for the section:
+// the plane of the face the point lies in (or on the edge of), read off the
+// face itself (its eave and the point of it furthest from the eave), so it
+// needs no pitch passed in. Null outside every face.
+function roofHeightOver(faces, x, z) {
+  let best = null, bestD = Infinity;
+  for (const f of faces) {
+    const pts = f.pts;
+    let inside = false, d = Infinity;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const a = pts[i], b = pts[j];
+      if ((a.z > z) !== (b.z > z) && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
+      const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz;
+      const s = L2 > 0 ? Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / L2)) : 0;
+      d = Math.min(d, Math.hypot(a.x + dx * s - x, a.z + dz * s - z));
+    }
+    if (inside) d = 0;
+    if (d < bestD) { bestD = d; best = f; }
+  }
+  if (!best || bestD > 1e-6) return null;
+  const [a, b] = best.pts;
+  const L = Math.hypot(b.x - a.x, b.z - a.z);
+  const inward = (p) => ((b.x - a.x) * (p.z - a.z) - (b.z - a.z) * (p.x - a.x)) / L;
+  // Any corner off the eave gives the face's slope; the furthest gives it with
+  // the least rounding.
+  let far = a, farD = 0;
+  for (const p of best.pts) if (inward(p) > farD) { farD = inward(p); far = p; }
+  return a.y + ((far.y - a.y) / farD) * inward({ x, z });
+}
+
+// The hipped roof over a polygon: every edge an eave at `eaveY`, every face a
+// plane rising at `pitch` in 12. Faces come back in blockRoof's shape
+// ({ kind: 'slope', pts: [{ x, y, z }] }, counter-clockwise in (x, z), the
+// eave's two ends first), so a renderer that draws one draws the other.
+//
+// With `opts.holes` (each court's eave line, any winding), the faces of a
+// hole's edges are ordinary slopes rising from that eave, each face carrying
+// its `ring` beside its `edge`, and the roof carries the holes as the
+// skeleton cleaned them (clockwise) in `holes` (DESIGN-roof-holes.md 3.1).
+// With none, the answer is the shipped one, key for key.
+function skeletonRoof(polygon, eaveY, pitch, opts = {}) {
+  const withHoles = Array.isArray(opts.holes) && opts.holes.length > 0;
+  const sk = withHoles ? straightSkeleton(polygon, { holes: opts.holes }) : straightSkeleton(polygon);
+  if (!sk) return null;
+  const slope = pitch / 12;
+  const pts = sk.nodes.map((p) => ({ x: p.x, y: eaveY + p.t * slope, z: p.z }));
+  // A face can pass straight through a node where another face's ridge
+  // meets it (a T's stem joining the bar); that point is not a corner of
+  // this face, so it is left out.
+  const faces = sk.faces.map((f) => {
+    const ids = f.nodes.filter((id, k, a) => {
+      if (k < 2) return true;               // the eave's two ends always stay
+      const p = sk.nodes[a[k - 1]], q = sk.nodes[id], r = sk.nodes[a[(k + 1) % a.length]];
+      const cross = (q.x - p.x) * (r.z - p.z) - (q.z - p.z) * (r.x - p.x);
+      return Math.abs(cross) > 1e-9 * Math.hypot(r.x - p.x, r.z - p.z);
+    });
+    const face = { kind: 'slope', edge: f.edge, pts: ids.map((i) => pts[i]) };
+    return withHoles ? { ...face, ring: f.ring } : face;
+  });
+  const rise = Math.max(0, ...sk.nodes.map((p) => p.t)) * slope;
+  const out = { faces, gables: [], rise, topY: eaveY + rise, poly: sk.poly };
+  return withHoles ? { ...out, holes: sk.rings.slice(1) } : out;
+}
+
+return { cleanPolygon, cleanRings, straightSkeleton, skeletonHolds, eavePolygon, offsetRing, triangulate, roofHeightOver, skeletonRoof };
+})();
 // ---- js/roof.js ----
 const __m_js_roof_js = (() => {
 const { CELL, WALL_H, floorBaseY } = __m_js_grid_js;
-const { shapesOf, shapeBBox, pointInShape } = __m_js_shapes_js;
+const { shapesOf, shapeBBox, pointInShape, pointInRing } = __m_js_shapes_js;
+const { eavePolygon, cleanPolygon, skeletonRoof, triangulate, offsetRing } = __m_js_skeleton_js;
 // roof.js — what the building looks like from the outside, above the walls.
 //
 // Every version before this one stopped the building at the top of its walls.
@@ -77316,6 +78388,7 @@ const { shapesOf, shapeBBox, pointInShape } = __m_js_shapes_js;
 // two heights, which is true of the building and still reads as a compromise.
 //
 // Pure module: no three.js. Exercised by test/roof.test.mjs.
+
 
 
 
@@ -77651,12 +78724,32 @@ function roofPlan(state, roof = null) {
   // and a pitched roof needs one too: two masses of different width meet at a
   // valley, and without a deck under them that valley is a hole you can see
   // the classrooms through.
-  const rects = maskRects(mask);
+  let rects = maskRects(mask);
   plan.deckRects = rects;
 
   if (r.style === 'parapet') {
     plan.rise = PARAPET_H + COPING_T;
+    // Over a curve the parapet stands on the rooms' own chords and not on the
+    // mask's 4ft steps, and the deck under it is the outline itself (#973).
+    const chords = parapetOnChords(mask, plan.outlines, rects, curvedLoopsOf(floor));
+    if (chords) Object.assign(plan, chords);
     return plan;
+  }
+
+  // A hipped roof over a curve stands on the straight skeleton of the rooms'
+  // own outline, carried out to the eave (#967). Only there: every loop
+  // without a curve in it, every gable (over a curve that is a weighted
+  // skeleton) and every footprint the outline or the eave refuses keeps the
+  // rectangles below, unchanged. The rectangles a curved loop takes over are
+  // the ones whose first cell lies in it, which is the test the mask itself
+  // used to put that cell on, and its deck goes with them: nothing under a
+  // skeleton roof is open to the sky, and a 4ft deck cell would stand out
+  // past a curved eave.
+  const curved = skeletonRoofsOf(state, r);
+  if (curved.length) {
+    const firstCellIn = (rect) => curved.some((c) => inFootprint(c, rect.x0 + CELL / 2, rect.z0 + CELL / 2));
+    rects = rects.filter((rect) => !firstCellIn(rect));
+    plan.deckRects = rects;
   }
 
   for (const rect of rects) {
@@ -77669,14 +78762,837 @@ function roofPlan(state, roof = null) {
     plan.blocks.push({ ...block, rect });
     plan.rise = Math.max(plan.rise, block.rise);
   }
+  for (const c of curved) {
+    plan.blocks.push(c);
+    plan.rise = Math.max(plan.rise, c.rise);
+  }
   return plan;
+}
+
+// The skeleton roofs of a storey's curved loops, one block each in the shape
+// `blockRoof` gives (faces, gables, rise, topY) plus `skeleton: true`, the
+// loop as `outline`, the eave line as `eave` and each face's triangles as
+// `tris`; `rect` and `alongX` are null, since there is no rectangle. A loop
+// the eave or the skeleton refuses is left out, so its rectangles stay.
+//
+// A footprint with a court (#999) stands on the outer eave with each court's
+// eave, 1.5ft into the court, as a hole of the skeleton, so the slopes round
+// the court rise from that eave as the outer ones rise from theirs; the block
+// carries the court rings as `holes` and their eaves as `eaveHoles`. A court
+// too narrow for its eave keeps the building on its rectangles
+// (DESIGN-roof-holes.md question 3's default). A footprint with no court is
+// the block it always was, key for key.
+function curvedRoofs(floor, eaveY, pitch) {
+  const out = [];
+  for (const { outer: loop, holes, pinch } of curvedLoopsOf(floor)) {
+    const pinched = pinch ? pinchEave(loop, EAVE) : null;
+    const eave = pinch ? pinched && pinched.eave : eaveLine(loop, EAVE);
+    if (!eave) continue;
+    if (holes.length || pinch) {
+      const courts = holes.length ? courtEaves(holes, EAVE) : [];
+      const eaveHoles = courts && [...courts, ...(pinched ? pinched.courts : [])];
+      const roof = eaveHoles && skeletonRoof(eave, eaveY, pitch, { holes: eaveHoles });
+      if (!roof) continue;
+      const faces = roof.faces.map((f) => ({ ...f, tris: triangulate(f.pts) }));
+      out.push({ ...roof, faces, skeleton: true, outline: loop, holes, eave, eaveHoles, rect: null, alongX: null });
+      continue;
+    }
+    const roof = skeletonRoof(eave, eaveY, pitch);
+    if (!roof) continue;
+    const faces = roof.faces.map((f) => ({ ...f, tris: triangulate(f.pts) }));
+    out.push({ ...roof, faces, skeleton: true, outline: loop, eave, rect: null, alongX: null });
+  }
+  return out;
+}
+
+// Each court's eave line, `d` feet into the court: the court ring's own
+// wavefront stopped at `d` (`offsetRing`, #997), so a court the eave pinches
+// in two gives both pieces. Null where any court has no eave left (narrower
+// than 2d) or is refused, which keeps the building on its rectangles
+// (DESIGN-roof-holes.md question 3's default: nothing drawn that was not).
+function courtEaves(holes, d) {
+  const out = [];
+  for (const h of holes) {
+    const loops = offsetRing(h, d);
+    if (!loops || !loops.length) return null;
+    out.push(...loops);
+  }
+  return out;
+}
+
+// The eave line over a loop, `d` feet out. Where the mitred eave stands it is
+// that, corner for corner. Where it crosses itself because a curve bowed into
+// the building is tighter than the overhang (#993), the chords are carried out
+// the way the skeleton's own wavefront runs backwards: to the moment the first
+// of them closes up, which is gone from there on, its neighbours meeting, and
+// on to `d`. So a dent the overhang covers is covered (a V or a notch that
+// narrows inward closes the same way), and the roof stands on the eave line
+// as it is. Every step goes through `cleanPolygon`, which refuses a line that
+// crosses itself, so a line that is returned holds every wall corner.
+//
+// Two sides meeting head on (a square notch, a slot, a dovetail) is a split,
+// which neither of those answers takes. Only where both refuse, the third is
+// the loop's own wavefront run outward to `d` (`offsetRing`, #997): the two
+// sides walk towards each other, meet at half the notch's width, and the line
+// runs straight past where the notch was (DESIGN-roof-holes.md 2.2, #1000).
+// One loop back is the eave; none, or two pieces, is still null. So every
+// loop that had an eave has the same eave.
+function eaveLine(loop, d) {
+  const mitred = eavePolygon(loop, d);
+  if (mitred) return mitred;
+  const stepped = steppedEave(loop, d);
+  if (stepped) return stepped;
+  const loops = offsetRing(loop, -d);
+  return loops && loops.length === 1 ? cleanPolygon(loops[0]) : null;
+}
+
+// The eave of a loop through a corner twice (#1001), `d` feet out: the loop's
+// own wavefront run outward through the frame, as `eaveLine`'s third answer
+// is, with the corner let by (`pinch`). The two visits to the corner each
+// pair their own walls, and run out they come apart, so what comes back is
+// the eave round the outside and the court's own eave `d` into the court, not
+// touching: on the L of DESIGN-roof-holes.md 2.3 the outer eave's corner is
+// (21.5, 21.5) and the court's (18.5, 18.5), 4.24ft apart, which is the eave
+// a court with no pinch would have. `{ eave, courts }`, the courts wound
+// counter-clockwise as `courtEaves` gives them; null unless exactly one loop
+// runs round the outside and one court comes back for each corner visited
+// twice (a court the eave pinches in two, or a bottle notch's pocket, keeps
+// the rectangles, as #1000 keeps it with no pinch).
+function pinchEave(loop, d) {
+  const loops = offsetRing(loop, -d, { pinch: true });
+  if (!loops) return null;
+  const outer = loops.filter((l) => loopArea(l) > 0);
+  const inner = loops.filter((l) => loopArea(l) < 0);
+  const seen = new Set(), twice = new Set();
+  for (const p of loop) (seen.has(okey(p)) ? twice : seen).add(okey(p));
+  // Run outward, nothing splits the loop round the outside (a pocket closes
+  // off inside it), so `outer` is never two; the test is the statement.
+  if (outer.length !== 1 || inner.length !== twice.size) return null;
+  const eave = cleanPolygon(outer[0]);
+  const courts = inner.map((l) => cleanPolygon(l));
+  return eave && courts.every(Boolean) ? { eave, courts } : null;
+}
+
+// `eaveLine`'s second answer (#993).
+function steppedEave(loop, d) {
+  let cur = cleanPolygon(loop), left = d;
+  for (let step = 0; cur && step < loop.length; step++) {
+    const n = cur.length;
+    const normal = (i) => {
+      const a = cur[i], b = cur[(i + 1) % n];
+      const L = Math.hypot(b.x - a.x, b.z - a.z);
+      return { x: (b.z - a.z) / L, z: -(b.x - a.x) / L };
+    };
+    // Each corner's mitred speed, as `eavePolygon` moves it, and the moment
+    // each edge's length runs out between its two corners.
+    const speed = cur.map((_, i) => {
+      const n1 = normal((i - 1 + n) % n), n2 = normal(i);
+      const k = 1 + n1.x * n2.x + n1.z * n2.z;
+      return { x: (n1.x + n2.x) / k, z: (n1.z + n2.z) / k };
+    });
+    let first = Infinity;
+    for (let i = 0; i < n; i++) {
+      const a = cur[i], b = cur[(i + 1) % n], j = (i + 1) % n;
+      const L = Math.hypot(b.x - a.x, b.z - a.z);
+      const s = ((speed[j].x - speed[i].x) * (b.x - a.x) + (speed[j].z - speed[i].z) * (b.z - a.z)) / L;
+      if (s < 0) first = Math.min(first, -L / s);
+    }
+    // Nothing closing before `d` means the mitred line failed on a split;
+    // `cleanPolygon` would refuse the step below for the same reason, so this
+    // only says it sooner.
+    if (!(first < left)) return null;
+    // Out to that moment; the closed edges come back as repeated corners,
+    // which `cleanPolygon` drops, and a pair of sides that now run on one
+    // line joins. Sides meeting head on leave a spike, which it refuses.
+    cur = cleanPolygon(cur.map((p, i) => ({ x: p.x + speed[i].x * first, z: p.z + speed[i].z * first })));
+    left -= first;
+    const eave = cur && eavePolygon(cur, left);
+    if (eave) return eave;
+  }
+  return null;
+}
+
+// The footprints of a storey's true outline with a curve in them, as
+// `{ outer, holes, pinch }`: the buildings `roofOutline` accepts, one by one
+// (#971), read by `hasCurve` (#967) on every ring, a court's included (#998,
+// DESIGN-roof-holes.md question 2's default). The one test of which footprint
+// a roof follows off its chords rather than the mask, for the hipped roof's
+// skeleton and the parapet's run alike. `pinch` is true for a loop through a
+// corner twice (#1001).
+function curvedLoopsOf(floor) {
+  const o = roofOutline(floor);
+  return (o.loops || []).map((outer, i) => ({ outer, holes: o.holes[i], pinch: o.pinch[i] }))
+    .filter((f) => [f.outer, ...f.holes].some(hasCurve));
+}
+
+// Whether (x, z) lies on a footprint: in `block.outline` and in none of
+// `block.holes` (#998). A block with no `holes` is its outline alone.
+function inFootprint(block, x, z) {
+  return pointInRing(block.outline, x, z) && !(block.holes || []).some((h) => pointInRing(h, x, z));
+}
+
+// A parapet over a curve (#973). Each of the mask's loops is matched to the
+// curved loop holding the middle of every cell along its edges; a curved loop
+// whose cells are all in loops of its own takes their place, its chords as
+// the parapet and itself, ear-clipped, as the deck, and the deck rectangles
+// whose first cell lies in it go. `null` where nothing changes, so every
+// other roof is the plan it always was, key for key.
+//
+// Two buildings whose walls do not meet can still have mask cells side by
+// side, and share a mask loop (#988). The curved one is taken there too; the
+// rest of the shared loop is outlined again from its own cells, and a deck
+// rectangle laid across both keeps its cells outside the curve, cut again
+// into rectangles. Where a cell of the other building reaches inside the
+// chords, that building gives way (#990, Devon): its loop is cut back to the
+// chords, so its parapet runs along them where it was cut, and each cell the
+// curve takes a bite of leaves the deck as a rectangle and comes back as what
+// is left of it (`deckPolys` entries marked `trim`). Where the cut cannot be
+// vouched for (`ringMinus` says null) the pair stays on its steps, as before.
+function parapetOnChords(mask, outlines, rects, curved) {
+  if (!curved.length) return null;
+  const owner = (x, z) => curved.findIndex((f) => inFootprint({ outline: f.outer, holes: f.holes }, x, z));
+  const owners = outlines.map((loop) => {
+    const seen = new Set();
+    for (let i = 0; i < loop.length; i++) {
+      const a = loop[i], b = loop[(i + 1) % loop.length];
+      const len = Math.hypot(b.x - a.x, b.z - a.z);
+      const dx = (b.x - a.x) / len, dz = (b.z - a.z) / len;
+      // The covered side is on the right of every edge (`maskOutlines`).
+      for (let t = CELL / 2; t < len; t += CELL) {
+        seen.add(owner(a.x + dx * t - dz * CELL / 2, a.z + dz * t + dx * CELL / 2));
+      }
+    }
+    return seen;
+  });
+  const taken = new Map(), reach = new Set();
+  curved.forEach(({ outer: loop, holes }, k) => {
+    const mine = owners.filter((o) => o.has(k));
+    if (!mine.length) return;
+    // A court is a hole of the deck (#998); no court is the shipped call.
+    const tris = triangulate(loop, holes);
+    if (!tris) return;
+    if (mine.some((o) => o.size > 1) && cellReachesInto(mask, loop)) reach.add(k);
+    taken.set(k, { pts: loop, holes, tris });
+  });
+  if (!taken.size) return null;
+  const plan = chordPlan(mask, outlines, rects, owners, taken, reach);
+  if (plan || !reach.size) return plan;
+  for (const k of reach) taken.delete(k);
+  return taken.size ? chordPlan(mask, outlines, rects, owners, taken, new Set()) : null;
+}
+
+// `parapetOnChords`' plan for the curved loops it took; `reach` names the ones
+// another building's cells reach inside, which that building gives way to.
+// `null` where a cut cannot be made.
+function chordPlan(mask, outlines, rects, owners, taken, reach) {
+  const polys = [...taken.values()];
+  const inTaken = (x, z) => polys.some((d) => inFootprint({ outline: d.pts, holes: d.holes }, x, z));
+  // Each taken footprint's parapet: its outer ring and every court's (#998),
+  // which `roofOutline` winds as `maskOutlines` winds a hole loop, covered
+  // side on the right. A neighbour is cut against the outer ring only: it
+  // cannot reach into a court without crossing the curved building's walls.
+  const parapets = polys.flatMap((d) => [d.pts, ...d.holes]);
+  const kept = outlines.filter((_, i) => ![...owners[i]].some((k) => taken.has(k)));
+  const shared = owners.some((o) => o.size > 1 && [...o].some((k) => taken.has(k)));
+  if (!shared) {
+    const firstCellIn = (rect) => inTaken(rect.x0 + CELL / 2, rect.z0 + CELL / 2);
+    return {
+      outlines: [...kept, ...parapets],
+      deckRects: rects.filter((rect) => !firstCellIn(rect)),
+      deckPolys: polys,
+    };
+  }
+  const centreIn = (c, r) => inTaken((mask.cx0 + c + 0.5) * CELL, (mask.cy0 + r + 0.5) * CELL);
+  const rest = { ...mask, on: mask.on.map((v, i) => (v && !centreIn(i % mask.w, Math.floor(i / mask.w)) ? 1 : 0)) };
+  const keys = new Set(kept.map((l) => JSON.stringify(l)));
+  const split = maskOutlines(rest).filter((l) => !keys.has(JSON.stringify(l)));
+  // The cells the curve takes a bite of: covered, their middle outside it,
+  // some of their area inside (#990). None where nothing reaches inside.
+  const cuts = [...reach].map((k) => taken.get(k).pts);
+  const bitten = new Set();
+  for (const loop of cuts) for (const i of cellsReachingInto(rest, loop)) bitten.add(i);
+  const pieceOf = (i) => {
+    const sx = (mask.cx0 + (i % mask.w)) * CELL, sz = (mask.cy0 + Math.floor(i / mask.w)) * CELL;
+    return cuts.reduce((left, loop) => left && left.flatMap((l) => ringMinus(l, loop) || [null]),
+      [[{ x: sx, z: sz }, { x: sx + CELL, z: sz }, { x: sx + CELL, z: sz + CELL }, { x: sx, z: sz + CELL }]]);
+  };
+  const deckRects = rects.flatMap((rect) => {
+    let inside = 0, bit = 0;
+    for (let r = rect.r0; r < rect.r1; r++) {
+      for (let c = rect.c0; c < rect.c1; c++) {
+        if (centreIn(c, r)) inside++;
+        else if (bitten.has(r * mask.w + c)) bit++;
+      }
+    }
+    if (!inside && !bit) return [rect];
+    if (inside + bit === (rect.r1 - rect.r0) * (rect.c1 - rect.c0)) return [];
+    const part = { ...rest, on: rest.on.map((v, i) => {
+      const c = i % mask.w, r = Math.floor(i / mask.w);
+      return v && !bitten.has(i) && c >= rect.c0 && c < rect.c1 && r >= rect.r0 && r < rect.r1 ? 1 : 0;
+    }) };
+    return maskRects(part);
+  });
+  if (!bitten.size) {
+    return { outlines: [...kept, ...split, ...parapets], deckRects, deckPolys: polys };
+  }
+  // The other building's loops, cut back to the chords: its parapet.
+  const cutLoops = [];
+  for (const loop of [...kept, ...split]) {
+    let left = [loop];
+    for (const c of cuts) {
+      left = left.flatMap((l) => ringMinus(l, c) || [null]);
+      if (left.includes(null)) return null;
+    }
+    cutLoops.push(...left);
+  }
+  // Its deck: each bitten cell, less the curve, in its own triangles.
+  const pieces = [];
+  for (const i of [...bitten].sort((a, b) => a - b)) {
+    const left = pieceOf(i);
+    if (left.includes(null)) return null;
+    for (const pts of left) {
+      const tris = triangulate(pts);
+      if (!tris) return null;
+      pieces.push({ pts, holes: [], tris, trim: true });
+    }
+  }
+  // Along the cut the box's loop and the curve's stand on one line. The run is
+  // the curve's, drawn whole, and the cut loop's edges along its chords are
+  // left out (#992): every such edge is a piece of one chord, so nothing of
+  // the cut loop's own parapet goes with them.
+  const onChord = (p, q) => cuts.some((loop) => loop.some((a, i) => {
+    const b = loop[(i + 1) % loop.length];
+    const ux = b.x - a.x, uz = b.z - a.z, L2 = ux * ux + uz * uz;
+    return [p, q].every((m) => {
+      const t = ((m.x - a.x) * ux + (m.z - a.z) * uz) / L2;
+      return t > -1e-9 && t < 1 + 1e-9 && Math.abs((m.x - a.x) * uz - (m.z - a.z) * ux) <= 1e-9 * Math.sqrt(L2);
+    });
+  }));
+  const parapetSkip = [];
+  cutLoops.forEach((loop, i) => loop.forEach((a, j) => {
+    if (onChord(a, loop[(j + 1) % loop.length])) parapetSkip.push([i, j]);
+  }));
+  return { outlines: [...cutLoops, ...parapets], deckRects, deckPolys: [...polys, ...pieces], parapetSkip };
+}
+
+// The parapet as the renderer draws it: one `[from, to]` run per edge of every
+// outline, less the edges `parapetSkip` names (#992), which only a plan cut
+// back to a curve's chords carries.
+function parapetRuns(plan) {
+  const skip = new Set((plan.parapetSkip || []).map(([i, j]) => `${i}:${j}`));
+  const runs = [];
+  plan.outlines.forEach((loop, i) => loop.forEach((a, j) => {
+    if (!skip.has(`${i}:${j}`)) runs.push([a, loop[(j + 1) % loop.length]]);
+  }));
+  return runs;
+}
+
+// Does a covered cell whose middle lies outside `loop` lie partly inside it?
+function cellReachesInto(mask, loop) {
+  return cellsReachingInto(mask, loop, true).length > 0;
+}
+
+// The covered cells (indices into `mask.on`) whose middle lies outside `loop`
+// and some of whose area lies inside it: the area of the loop clipped to the
+// cell's square (Sutherland-Hodgman, which gives the right area for a loop
+// that is not convex). `first` stops at the first one.
+function cellsReachingInto(mask, loop, first = false) {
+  const out = [];
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  for (const p of loop) { x0 = Math.min(x0, p.x); z0 = Math.min(z0, p.z); x1 = Math.max(x1, p.x); z1 = Math.max(z1, p.z); }
+  const c0 = Math.max(0, Math.floor(x0 / CELL) - mask.cx0), c1 = Math.min(mask.w, Math.ceil(x1 / CELL) - mask.cx0);
+  const r0 = Math.max(0, Math.floor(z0 / CELL) - mask.cy0), r1 = Math.min(mask.h, Math.ceil(z1 / CELL) - mask.cy0);
+  for (let r = r0; r < r1; r++) {
+    for (let c = c0; c < c1; c++) {
+      if (!mask.on[r * mask.w + c]) continue;
+      const sx = (mask.cx0 + c) * CELL, sz = (mask.cy0 + r) * CELL;
+      if (pointInRing(loop, sx + CELL / 2, sz + CELL / 2)) continue;
+      let pts = loop;
+      for (const [axis, at, keep] of [['x', sx, 1], ['x', sx + CELL, -1], ['z', sz, 1], ['z', sz + CELL, -1]]) {
+        const next = [];
+        for (let i = 0; i < pts.length; i++) {
+          const a = pts[i], b = pts[(i + 1) % pts.length];
+          const ia = (a[axis] - at) * keep >= 0, ib = (b[axis] - at) * keep >= 0;
+          if (ia) next.push(a);
+          if (ia !== ib) {
+            const t = (at - a[axis]) / (b[axis] - a[axis]);
+            next.push({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
+          }
+        }
+        pts = next;
+        if (!pts.length) break;
+      }
+      if (pts.length >= 3 && Math.abs(loopArea(pts)) > 1e-6) {
+        out.push(r * mask.w + c);
+        if (first) return out;
+      }
+    }
+  }
+  return out;
+}
+
+// What is left of ring `a` once ring `b` is taken out of it (#990): a list of
+// loops, each wound as `a` is, or `null` where the bookkeeping cannot vouch
+// for the answer, and the caller then leaves things as they were. Both edges
+// lists are split where they cross; `a`'s pieces outside `b` and `b`'s pieces
+// inside `a`, reversed, chain end to start into the loops. Refused: an edge
+// of one lying along the other or ending on it, `b` wholly inside `a` (a hole
+// is not a loop), and `a` a hole loop of the mask that `b` crosses.
+function ringMinus(a, b) {
+  const E = 1e-9;
+  const cutsA = a.map(() => []), cutsB = b.map(() => []);
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i], q = a[(i + 1) % a.length];
+    const ux = q.x - p.x, uz = q.z - p.z;
+    for (let j = 0; j < b.length; j++) {
+      const r = b[j], s = b[(j + 1) % b.length];
+      const vx = s.x - r.x, vz = s.z - r.z;
+      const wx = r.x - p.x, wz = r.z - p.z;
+      const d = ux * vz - uz * vx;
+      const scale = Math.hypot(ux, uz) * Math.hypot(vx, vz);
+      if (Math.abs(d) <= 1e-12 * scale) {
+        // Parallel: refused if they lie on one line and meet.
+        if (Math.abs(wx * uz - wz * ux) > 1e-9 * Math.hypot(ux, uz)) continue;
+        const len2 = ux * ux + uz * uz;
+        const t0 = (wx * ux + wz * uz) / len2, t1 = ((s.x - p.x) * ux + (s.z - p.z) * uz) / len2;
+        if (Math.max(t0, t1) >= -E && Math.min(t0, t1) <= 1 + E) return null;
+        continue;
+      }
+      const t = (wx * vz - wz * vx) / d, u = (wx * uz - wz * ux) / d;
+      if (t < -E || t > 1 + E || u < -E || u > 1 + E) continue;
+      if (t < E || t > 1 - E || u < E || u > 1 - E) return null;
+      const pt = { x: p.x + ux * t, z: p.z + uz * t };
+      cutsA[i].push({ t, pt });
+      cutsB[j].push({ t: u, pt });
+    }
+  }
+  if (!cutsA.some((c) => c.length)) {
+    if (pointInRing(b, a[0].x, a[0].z)) return [];
+    if (pointInRing(a, b[0].x, b[0].z)) return null;
+    return [a];
+  }
+  if (loopArea(a) < 0) return null;
+  const forward = loopArea(b) > 0;
+  const pieces = new Map();
+  const put = (from, to) => {
+    const k = okey(from);
+    if (pieces.has(k)) return false;
+    pieces.set(k, { from, to });
+    return true;
+  };
+  const runs = (ring, cuts, i) => {
+    const pts = [ring[i], ...cuts[i].sort((m, n) => m.t - n.t).map((c) => c.pt), ring[(i + 1) % ring.length]];
+    return pts.slice(1).map((to, k) => [pts[k], to]);
+  };
+  for (let i = 0; i < a.length; i++) {
+    for (const [from, to] of runs(a, cutsA, i)) {
+      if (pointInRing(b, (from.x + to.x) / 2, (from.z + to.z) / 2)) continue;
+      if (!put(from, to)) return null;
+    }
+  }
+  for (let j = 0; j < b.length; j++) {
+    for (const [from, to] of runs(b, cutsB, j)) {
+      if (!pointInRing(a, (from.x + to.x) / 2, (from.z + to.z) / 2)) continue;
+      // `b`'s boundary inside `a` runs against `b`'s own winding.
+      if (!(forward ? put(to, from) : put(from, to))) return null;
+    }
+  }
+  const loops = [];
+  while (pieces.size) {
+    const [startKey, first] = pieces.entries().next().value;
+    const pts = [];
+    let cur = first, key = startKey;
+    while (cur) {
+      pieces.delete(key);
+      pts.push(cur.from);
+      key = okey(cur.to);
+      if (key === startKey) break;
+      cur = pieces.get(key);
+      if (!cur) return null;
+    }
+    if (pts.length < 3 || Math.abs(loopArea(pts)) < 1e-9) return null;
+    loops.push(pts);
+  }
+  return loops;
+}
+
+// The skeleton roofs a design's top storey stands under: the hipped style
+// over a loop the outline, the eave and the skeleton all accept, and nothing
+// for every other roof. This is the one test of which footprint takes the
+// skeleton path; `roofPlan`, the takeoff and the estimate all ask it.
+function skeletonRoofsOf(state, roof = null) {
+  const r = normalizeRoof(roof || state.roof);
+  const top = (state.floors || []).length - 1;
+  const floor = (state.floors || [])[top];
+  if (!floor || r.style !== 'hip') return [];
+  return curvedRoofs(floor, floorBaseY(state, top) + WALL_H, r.pitch);
+}
+
+// The roof's quantity for the takeoff and the estimate: `footprint`, the plan
+// area it covers inside the walls (the mask's cells, never the eave), and
+// `area`, that footprint sloped at the pitch. Where a loop takes the skeleton
+// path its cells give way to the loop's own area off its chords, so a curve
+// is counted as drawn and not as a staircase of 4ft cells. Every face of a
+// skeleton roof stands at the one pitch, so its sloped area over that outline
+// is still the plan area over the cosine. A parapet roof whose parapet runs on
+// the chords (`roofPlan`'s `deckPolys`, #973's one test) is counted off that
+// same outline, flat (#986), and so is a neighbour cut back to those chords,
+// off its whole cells and what is left of each cut one (#990): the deck as
+// drawn. Every other footprint is the mask's count, by the same lines the
+// takeoff and the estimate each had before (#970).
+function roofCover(state) {
+  const top = state.floors.length - 1;
+  const floor = state.floors[top];
+  if (!floor) return null;
+  const roof = normalizeRoof(state.roof || ensureRoof(state));
+  const entry = roofStyleEntry(roof.style);
+  const mask = roofMask(floor, floor.w, floor.h);
+  let footprint = maskCount(mask) * CELL * CELL;
+  const slope = entry.pitched ? Math.hypot(12, roof.pitch) / 12 : 1;
+  const curved = skeletonRoofsOf(state, roof);
+  // Only a parapet plan has `deckPolys`; the style test saves building the
+  // plan for every other roof and changes no figure.
+  const chords = roof.style === 'parapet' ? (roofPlan(state, roof).deckPolys || []) : [];
+  // A footprint with a court is its outline less the court (#998).
+  const loops = [...curved.map((k) => ({ outline: k.outline, holes: k.holes || [] })),
+    ...chords.map((d) => ({ outline: d.pts, holes: d.holes || [] }))];
+  if (loops.length) {
+    let cells = 0;
+    for (let r = 0; r < mask.h; r++) {
+      for (let c = 0; c < mask.w; c++) {
+        if (!mask.on[r * mask.w + c]) continue;
+        const x = (mask.cx0 + c + 0.5) * CELL, z = (mask.cy0 + r + 0.5) * CELL;
+        if (loops.some((f) => inFootprint(f, x, z))) cells++;
+      }
+    }
+    footprint -= cells * CELL * CELL;
+    for (const f of loops) footprint += loopArea(f.outline) - f.holes.reduce((a, h) => a + Math.abs(loopArea(h)), 0);
+  }
+  return { roof, entry, footprint, area: footprint * slope, skeleton: curved.length, chords: chords.filter((d) => !d.trim).length };
+}
+
+// ---------- 5. the true outline, for a roof over a curve ----------
+//
+// The mask above is the roof's resolution for every rectilinear school, and a
+// curve reaches it as a staircase of 4ft cells. A hipped roof over a curve is
+// stood on the rooms' own chords instead (#965, #967), so it needs the top
+// storey's footprint as polygons: the union of the rooms' outer rings. Rooms
+// share walls exactly, so the union is bookkeeping rather than clipping: every
+// ring wound the same way, each edge split wherever another ring's corner lies
+// on it, every edge that has its own reverse somewhere (a shared wall) taken
+// out with it, and what is left chained into loops. Anything that bookkeeping
+// cannot vouch for is refused with a sentence, and a refused footprint keeps
+// its rectangles:
+//   * two rooms laying the same wall the same way (they overlap),
+//   * two rooms whose walls cross, or one room inside another.
+// Rooms wrapped round a courtyard that meets the outside at one corner are
+// not refused (#1001): the loop through that corner twice is kept, marked in
+// `pinch`. Two rooms meeting at a corner are not refused: the outline is split at
+// that corner into a loop each (#976). A court is not refused either (#998):
+// a room's own hole goes into the bookkeeping wound the other way, so the
+// room is on the left of every edge of it, and a loop that comes out wound
+// the other way, whether a room's hole or the space rooms close round, is a
+// hole of the loop that holds it.
+// A refusal keeps the rectangles for its own building only (#971): rooms
+// whose walls touch or cross, or one of which stands inside another, one to
+// the next, are a building (#991), and where the storey as a whole is
+// refused each building is judged alone, so a curved building beside a
+// courtyard building, or in the notch of one of its rooms, still stands on
+// its skeleton.
+
+const OUTLINE_ON = 1e-4;     // ft — a corner this close to a wall lies on it
+const okey = (p) => `${Math.round(p.x * 1e4)},${Math.round(p.z * 1e4)}`;
+const loopArea = (pts) => {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], q = pts[(i + 1) % pts.length];
+    a += p.x * q.z - q.x * p.z;
+  }
+  return a / 2;
+};
+
+// `{ loops, holes, pinch }` (each loop a list of { x, z }, positive area, no
+// repeated point but where `pinch[i]` is true, a corner visited twice; `holes[i]`
+// the courts inside `loops[i]`, each wound the other way, negative area, and
+// empty where there are none), or
+// `{ loops: null, refused }` with the reason in words. Where some buildings
+// are refused and others are not, `{ loops, holes, pinch, refused }`: the loops of
+// the buildings that passed, and the first refusal's reason.
+function roofOutline(floor) {
+  const shapes = shapesOf(floor);
+  const whole = unionOf(shapes);
+  if (whole.loops) return whole;
+  const groups = buildingsOf(shapes);
+  if (groups.length < 2) return whole;
+  const loops = [], holes = [], pinch = [];
+  let refused = null;
+  for (const g of groups) {
+    const o = unionOf(g);
+    if (o.loops) { loops.push(...o.loops); holes.push(...o.holes); pinch.push(...o.pinch); }
+    else refused = refused || o.refused;
+  }
+  return loops.length ? { loops, holes, pinch, refused } : whole;
+}
+
+// The rooms in groups that meet, one to the next: two rooms meet where a wall
+// of one comes within OUTLINE_ON of a wall of the other (touching, a corner
+// on a wall, crossing) or a corner of one lies on the other's floor, in its
+// outer ring and in none of its holes (#991, #1002). No
+// wall of one group meets, crosses or encloses a wall of another, so each is
+// judged alone. By bounds alone (#971), a room standing in the notch of an
+// L-shaped room was judged with it.
+function buildingsOf(shapes) {
+  const boxes = shapes.map((sh) => {
+    const b = { x0: Infinity, z0: Infinity, x1: -Infinity, z1: -Infinity };
+    for (const ring of sh.rings) {
+      for (const p of ring.pts) {
+        b.x0 = Math.min(b.x0, p.x); b.z0 = Math.min(b.z0, p.z);
+        b.x1 = Math.max(b.x1, p.x); b.z1 = Math.max(b.z1, p.z);
+      }
+    }
+    return b;
+  });
+  const parent = shapes.map((_, i) => i);
+  const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i], b = boxes[j];
+      if (a.x0 > b.x1 + OUTLINE_ON || b.x0 > a.x1 + OUTLINE_ON ||
+          a.z0 > b.z1 + OUTLINE_ON || b.z0 > a.z1 + OUTLINE_ON) continue;
+      if (!roomsMeet(shapes[i], shapes[j])) continue;
+      parent[find(i)] = find(j);
+    }
+  }
+  const groups = new Map();
+  shapes.forEach((sh, i) => {
+    const k = find(i);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(sh);
+  });
+  return [...groups.values()];
+}
+
+function roomsMeet(p, q) {
+  const segs = (sh) => sh.rings.flatMap((r) => r.pts.map((a, i) => [a, r.pts[(i + 1) % r.pts.length]]));
+  const sp = segs(p), sq = segs(q);
+  for (const [a, b] of sp) for (const [c, d] of sq) if (segGap(a, b, c, d) <= OUTLINE_ON) return true;
+  // On the other's floor: a room standing in another's own hole is clear of
+  // it, as one standing in a court of rooms is (#1002).
+  const inside = (u, v) => pointInShape(u, v.rings[0].pts[0].x, v.rings[0].pts[0].z);
+  return inside(p, q) || inside(q, p);
+}
+
+// The least distance between segments ab and cd: 0 where they cross, else
+// the nearest of each end to the other segment.
+function segGap(a, b, c, d) {
+  const side = (p, q, r) => (q.x - p.x) * (r.z - p.z) - (q.z - p.z) * (r.x - p.x);
+  const s1 = side(c, d, a), s2 = side(c, d, b), s3 = side(a, b, c), s4 = side(a, b, d);
+  if (((s1 > 0 && s2 < 0) || (s1 < 0 && s2 > 0)) && ((s3 > 0 && s4 < 0) || (s3 < 0 && s4 > 0))) return 0;
+  const toSeg = (p, u, v) => {
+    const dx = v.x - u.x, dz = v.z - u.z, L2 = dx * dx + dz * dz;
+    const t = L2 > 0 ? Math.max(0, Math.min(1, ((p.x - u.x) * dx + (p.z - u.z) * dz) / L2)) : 0;
+    return Math.hypot(p.x - u.x - dx * t, p.z - u.z - dz * t);
+  };
+  return Math.min(toSeg(a, c, d), toSeg(b, c, d), toSeg(c, a, b), toSeg(d, a, b));
+}
+
+function unionOf(shapes) {
+  const rings = [];
+  for (const shape of shapes) {
+    shape.rings.forEach((ring, k) => {
+      const pts = ring.pts.map((p) => ({ x: p.x, z: p.z }));
+      // The outer ring counter-clockwise, a hole (#998) the other way.
+      if ((loopArea(pts) < 0) === (k === 0)) pts.reverse();
+      rings.push(pts);
+    });
+  }
+  const corners = rings.flat();
+  const edges = new Map();     // 'from|to' -> { from, to }
+  const add = (from, to) => {
+    const kf = okey(from), kt = okey(to);
+    if (kf === kt) return true;
+    const back = `${kt}|${kf}`;
+    if (edges.has(back)) { edges.delete(back); return true; }
+    if (edges.has(`${kf}|${kt}`)) return false;
+    edges.set(`${kf}|${kt}`, { from, to, kf, kt });
+    return true;
+  };
+  for (const pts of rings) {
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz;
+      if (L2 <= 0) continue;
+      const lo = { x: Math.min(a.x, b.x) - OUTLINE_ON, z: Math.min(a.z, b.z) - OUTLINE_ON };
+      const hi = { x: Math.max(a.x, b.x) + OUTLINE_ON, z: Math.max(a.z, b.z) + OUTLINE_ON };
+      const cuts = [];
+      for (const c of corners) {
+        if (c.x < lo.x || c.x > hi.x || c.z < lo.z || c.z > hi.z) continue;
+        const t = ((c.x - a.x) * dx + (c.z - a.z) * dz) / L2;
+        if (t <= 1e-9 || t >= 1 - 1e-9) continue;
+        if (Math.abs((c.x - a.x) * dz - (c.z - a.z) * dx) / Math.sqrt(L2) > OUTLINE_ON) continue;
+        cuts.push({ t, c });
+      }
+      cuts.sort((u, v) => u.t - v.t);
+      let from = a;
+      for (const { c } of cuts) {
+        if (!add(from, c)) return { loops: null, refused: 'two rooms overlap' };
+        from = c;
+      }
+      if (!add(from, b)) return { loops: null, refused: 'two rooms overlap' };
+    }
+  }
+  const out = new Map();       // corner -> the edges leaving it
+  for (const e of edges.values()) {
+    if (!out.has(e.kf)) out.set(e.kf, []);
+    out.get(e.kf).push(e);
+  }
+  // Where the outline touches itself at a corner (two rooms meeting at a
+  // point) two edges leave it. Each edge arriving goes on along the one that
+  // turns hardest towards the rooms, so the outline splits there into loops
+  // that each keep their own rooms (#976). Two arrivals wanting the same edge
+  // means two rooms' corners open into each other: they overlap.
+  const turnTo = (e, f) => {
+    const ax = e.to.x - e.from.x, az = e.to.z - e.from.z, bx = f.to.x - f.from.x, bz = f.to.z - f.from.z;
+    return Math.atan2(ax * bz - az * bx, ax * bx + az * bz);
+  };
+  const next = new Map();
+  const taken = new Set();
+  for (const e of edges.values()) {
+    const leaving = out.get(e.kt);
+    if (!leaving) return { loops: null, refused: 'the outline does not close' };
+    const f = leaving.reduce((best, g) => (turnTo(e, g) > turnTo(e, best) ? g : best));
+    if (taken.has(f)) return { loops: null, refused: 'two rooms overlap' };
+    taken.add(f);
+    next.set(e, f);
+  }
+  const loops = [], courts = [], pinched = [];
+  const done = new Set();
+  for (const first of edges.values()) {
+    if (done.has(first)) continue;
+    const loop = [];
+    const at = new Set();
+    let e = first, twice = false;
+    do {
+      // One loop through a corner twice wraps round a courtyard open to the
+      // outside only at that corner. It is kept as one loop, marked `pinch`
+      // (#1001), and `cleanPolygon({ pinch })` judges the corner below, a
+      // corner three times included.
+      if (at.has(e.kf)) twice = true;
+      at.add(e.kf);
+      done.add(e);
+      loop.push({ x: e.from.x, z: e.from.z });
+      e = next.get(e);
+    } while (e !== first);
+    // A wall split where a neighbour's corner met it is one wall again.
+    for (let i = 0; loop.length > 3 && i < loop.length;) {
+      const p = loop[(i - 1 + loop.length) % loop.length], q = loop[i], r = loop[(i + 1) % loop.length];
+      const ax = q.x - p.x, az = q.z - p.z, bx = r.x - q.x, bz = r.z - q.z;
+      const cross = ax * bz - az * bx, dot = ax * bx + az * bz;
+      if (Math.abs(cross) <= 1e-9 * Math.hypot(ax, az) * Math.hypot(bx, bz) && dot > 0) loop.splice(i, 1);
+      else i++;
+    }
+    const a = loopArea(loop);
+    if (a === 0) return { loops: null, refused: 'the outline does not close' };
+    // No layout of rooms is known that reaches this refusal: the turn
+    // towards the rooms keeps the wedges at a pinch apart. It stands so that
+    // nothing `cleanPolygon` would refuse is handed on as a pinch.
+    if (twice && !(a > 0 && cleanPolygon(loop, { pinch: true }))) {
+      return { loops: null, refused: 'the rooms close round a courtyard' };
+    }
+    if (a > 0) { loops.push(loop); pinched.push(twice); } else courts.push(loop);
+  }
+  // Rooms that cross without sharing a corner leave both rings whole, and
+  // their areas still add up; their walls cross, or one loop sits in another.
+  const segs = [...loops, ...courts].flatMap((l) => l.map((p, i) => [p, l[(i + 1) % l.length]]));
+  const side = (p, q, r) => (q.x - p.x) * (r.z - p.z) - (q.z - p.z) * (r.x - p.x);
+  for (let i = 0; i < segs.length; i++) {
+    for (let j = i + 1; j < segs.length; j++) {
+      const [a, b] = segs[i], [c, d] = segs[j];
+      if (Math.max(a.x, b.x) < Math.min(c.x, d.x) || Math.max(c.x, d.x) < Math.min(a.x, b.x) ||
+          Math.max(a.z, b.z) < Math.min(c.z, d.z) || Math.max(c.z, d.z) < Math.min(a.z, b.z)) continue;
+      const s1 = side(c, d, a), s2 = side(c, d, b), s3 = side(a, b, c), s4 = side(a, b, d);
+      if (((s1 > 1e-9 && s2 < -1e-9) || (s1 < -1e-9 && s2 > 1e-9)) &&
+          ((s3 > 1e-9 && s4 < -1e-9) || (s3 < -1e-9 && s4 > 1e-9))) {
+        return { loops: null, refused: 'two rooms overlap' };
+      }
+    }
+  }
+  // Each court is a hole of the smallest loop holding it (#998); a loop
+  // standing in another's footprint, and not in one of its courts, overlaps it.
+  const mid = (l) => ({ x: (l[0].x + l[1].x) / 2, z: (l[0].z + l[1].z) / 2 });
+  const holes = loops.map(() => []);
+  for (const c of courts) {
+    const m = mid(c);
+    let best = -1;
+    loops.forEach((l, i) => {
+      if (pointInRing(l, m.x, m.z) && (best < 0 || loopArea(l) < loopArea(loops[best]))) best = i;
+    });
+    if (best < 0) return { loops: null, refused: 'the rooms close round a courtyard' };
+    holes[best].push(c);
+  }
+  for (const l of loops) {
+    const m = mid(l);
+    if (loops.some((o, i) => o !== l && inFootprint({ outline: o, holes: holes[i] }, m.x, m.z))) {
+      return { loops: null, refused: 'two rooms overlap' };
+    }
+  }
+  return { loops, holes, pinch: pinched };
+}
+
+// Whether an outline has a curve in it. A curved wall is stored as its chords
+// (shapes.js tessellates an arc when it is drawn, in equal steps of angle, three
+// at least), and nothing records that they were ever a curve; so a curve is
+// read off its chords: three in a row of one length, turning the same way by
+// one angle, under 85 degrees a turn (#967). A diagonal wall, a chamfer, a
+// wing set at an angle, a rotated square and an octagon's alternate sides are
+// straight walls and keep their rectangles. Read as a curve as well, and
+// meant to be: a regular polygon of five sides or more, which is a curve
+// drawn by hand. An arc of two chords (only a `steps` of 2 asked for in code
+// lays one down) has one turn of its own, so it is read by its ends instead
+// (#976): two chords of one length turning under 85 degrees, where the turn
+// at each end plus half the middle one (the turn of the wall they were bowed
+// off) is alike at both ends and at least 45 degrees (#994; a right angle
+// before it). That is a wall square to both its neighbours, or splayed alike
+// at both, bowed. A chamfer, a saw-tooth wall and a prow of 45 degree walls
+// are not; a prow of two equal walls on such an end turning under 85 degrees
+// at its tip is, and is the same chords. Two equal saw teeth or a V cut in a
+// straight wall read as a wall turning under 42.5 degrees, so the 45 keeps
+// them out. A wall whose ends turn unlike (a parallelogram's end) is not read:
+// bowed in two chords it is the same polygon as a chamfer as long as the wall
+// before it.
+const CURVE_TURN = (85 * Math.PI) / 180;
+function hasCurve(loop) {
+  const n = loop.length;
+  if (n < 4) return false;
+  const len = (i) => Math.hypot(loop[(i + 1) % n].x - loop[i].x, loop[(i + 1) % n].z - loop[i].z);
+  const turn = (i) => {       // the signed turn at corner i + 1, between edges i and i + 1
+    const a = loop[i], b = loop[(i + 1) % n], c = loop[(i + 2) % n];
+    return Math.atan2((b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x),
+      (b.x - a.x) * (c.x - b.x) + (b.z - a.z) * (c.z - b.z));
+  };
+  for (let i = 0; i < n; i++) {
+    const l0 = len(i), l1 = len((i + 1) % n), l2 = len((i + 2) % n);
+    const t0 = turn(i), t1 = turn((i + 1) % n);
+    if (Math.abs(l1 - l0) > 1e-6 * l0 || Math.abs(l2 - l0) > 1e-6 * l0) continue;
+    if (Math.abs(t1 - t0) > 1e-6 || t0 === 0 || Math.abs(t0) >= CURVE_TURN) continue;
+    return true;
+  }
+  for (let i = 0; i < n; i++) {
+    const l0 = len(i), l1 = len((i + 1) % n);
+    if (Math.abs(l1 - l0) > 1e-6 * l0) continue;
+    const before = turn((i - 1 + n) % n), mid = turn(i), after = turn((i + 1) % n);
+    if (mid === 0 || Math.abs(mid) >= CURVE_TURN || Math.abs(after - before) > 1e-6) continue;
+    if (Math.abs(before + mid / 2) < Math.PI / 4) continue;
+    return true;
+  }
+  return false;
 }
 
 // The world height of the highest thing on the building, for the sun's shadow
 // frustum and the edit camera's standoff.
 const roofTop = (plan) => plan.eaveY + plan.rise;
 
-return { PARAPET_H, COPING_T, EAVE, MIN_PITCH, MAX_PITCH, DEFAULT_PITCH, ROOF_STYLES, ROOF_STYLE_KEYS, roofStyleEntry, isPitched, DEFAULT_ROOF, defaultRoof, normalizeRoof, ensureRoof, isDefaultRoof, roofMask, maskAt, maskCount, maskOutlines, largestRect, maskRects, sideIsOuter, blockRoof, roofPlan, roofTop };
+return { PARAPET_H, COPING_T, EAVE, MIN_PITCH, MAX_PITCH, DEFAULT_PITCH, ROOF_STYLES, ROOF_STYLE_KEYS, roofStyleEntry, isPitched, DEFAULT_ROOF, defaultRoof, normalizeRoof, ensureRoof, isDefaultRoof, roofMask, maskAt, maskCount, maskOutlines, largestRect, maskRects, sideIsOuter, blockRoof, roofPlan, curvedRoofs, curvedLoopsOf, inFootprint, parapetRuns, skeletonRoofsOf, roofCover, roofOutline, hasCurve, roofTop };
 })();
 // ---- js/sightline.js ----
 const __m_js_sightline_js = (() => {
@@ -79974,7 +81890,7 @@ const { CELL, WALL_H, WALL_T, WALL_T_EXT, DOOR_H, RAIL_H, FLOOR_H, floorBaseY, w
 const { SEG_WALL, SEG_GLASS, SEG_RAIL, isBuilt, shapesOf, segEnds, segLength, shapeBBox, pointInShape, interiorPoint, floorSolidAt, openingSpec, shapeAt } = __m_js_shapes_js;
 const { catalogEntry, propColor, variantKey } = __m_js_catalog_js;
 const { revealAt } = __m_js_hunt_js;
-const { stairMetrics, stairsOf, openingRails, runMetrics, rampLayout, rampGuards, elevatorSize, elevatorDoorWidth, elevatorsOn, floorCuts, inFloorCut, stairWidth } = __m_js_stairs_js;
+const { stairMetrics, stairsOf, openingRails, runMetrics, rampLayout, rampGuards, topLandingBox, elevatorSize, elevatorDoorWidth, elevatorsOn, floorCuts, inFloorCut, stairWidth } = __m_js_stairs_js;
 const { wallProbe, solidBeside } = __m_js_walls_js;
 const { wallLinesOf, lineEnds, lineKind, lineOpenings } = __m_js_wallrun_js;
 const { gridPitch, majorEvery, ORIGIN, asOrigin } = __m_js_snapgrid_js;
@@ -79988,7 +81904,7 @@ const { placardsFor, exitSignsFor, EXIT_W, EXIT_H } = __m_js_signage_js;
 const { classify, isGroup } = __m_js_occupancy_js;
 const { terrainField, groundAt, emptyField } = __m_js_terrain_js;
 const { regionsOf, surfaceEntry, markingsFor } = __m_js_site_js;
-const { roofPlan, roofTop, PARAPET_H, COPING_T } = __m_js_roof_js;
+const { roofPlan, roofTop, parapetRuns, PARAPET_H, COPING_T } = __m_js_roof_js;
 const { sampleBake, bakedTint } = __m_js_bakelight_js;
 const { loadModel, writeGLB, FT_TO_M } = __m_js_gltf_js;
 const { modelBytes, modelsOf } = __m_js_models_js;
@@ -84941,6 +86857,16 @@ function initRender(canvas) {
           localBox(link, w, 0.09, 0.2, 0, top - 0.045, z0 + m.tread - 0.1, _nosing, stairGeos);
         }
       }
+      // The level landing at the top, cut out of the floor above and walked
+      // at its height: a slab in the run's colour, as a folded ramp's top
+      // landing is, from the box the walker and the hole read. A ramp's is
+      // ADA's 5ft (#904, drawn since #981), a stair's 4ft (#983); before,
+      // nothing stood on either and the walk crossed open hole.
+      const land = topLandingBox(link, metrics);
+      if (land) {
+        localBox(link, land.x1 - land.x0, 0.5, land.z1 - land.z0,
+          (land.x0 + land.x1) / 2, m.rise - 0.25, (land.z0 + land.z1) / 2, _tread, stairGeos);
+      }
       // Handrails: a sloped cap either side, on posts that grow with the run.
       // Identical for both — a ramp needs them more than a stair does.
       const slope = Math.hypot(m.run, m.rise);
@@ -85970,12 +87896,16 @@ function initRender(canvas) {
 
   // A roof face — a triangle or a quad in 3D — with planar UVs off its own
   // world footprint, so shingle courses come out at shingle size on a slope.
-  // White vertex colours, for the same reason `drapedRegion` uses them.
-  function roofFace(pts, color = '#ffffff') {
+  // White vertex colours, for the same reason `drapedRegion` uses them. A
+  // rectangle's faces are convex and fanned from the first point; a skeleton
+  // face over a curve need not be, and brings its own triangles (#967).
+  function roofFace(pts, color = '#ffffff', tris = null) {
     const verts = [];
     const uvs = [];
-    for (let i = 1; i + 1 < pts.length; i++) {
-      for (const p of [pts[0], pts[i], pts[i + 1]]) {
+    const fan = [];
+    for (let i = 1; i + 1 < pts.length; i++) fan.push([0, i, i + 1]);
+    for (const tri of tris || fan) {
+      for (const p of tri.map((k) => pts[k])) {
         verts.push(p.x, p.y, p.z);
         uvs.push(p.x, -p.z);
       }
@@ -85995,11 +87925,7 @@ function initRender(canvas) {
     const wallGeos = [], capGeos = [], deckGeos = [], slopeGeos = [], gableGeos = [];
 
     if (plan.parapetH > 0) {
-      for (const loop of plan.outlines) {
-        for (let i = 0; i < loop.length; i++) {
-          parapetRun(loop[i], loop[(i + 1) % loop.length], plan.eaveY, wallGeos, capGeos);
-        }
-      }
+      for (const [a, b] of parapetRuns(plan)) parapetRun(a, b, plan.eaveY, wallGeos, capGeos);
     }
     for (const rect of plan.deckRects) {
       deckGeos.push(roofFace([
@@ -86009,9 +87935,15 @@ function initRender(canvas) {
         { x: rect.x0, y: plan.eaveY + 0.05, z: rect.z1 },
       ]));
     }
+    // A parapet over a curve: the deck is the outline, in its own triangles,
+    // which index its courts' corners after its own (#998).
+    for (const poly of plan.deckPolys || []) {
+      const geo = roofFace([...poly.pts, ...(poly.holes || []).flat()].map((p) => ({ x: p.x, y: plan.eaveY + 0.05, z: p.z })), '#ffffff', poly.tris);
+      if (geo) deckGeos.push(geo);
+    }
     for (const block of plan.blocks) {
       for (const f of block.faces) {
-        const geo = roofFace(f.pts);
+        const geo = roofFace(f.pts, '#ffffff', f.tris);
         if (geo) slopeGeos.push(geo);
       }
       for (const g of block.gables) {
@@ -91637,7 +93569,8 @@ const __m_js_elevation_js = (() => {
 const { CELL, WALL_H, RAIL_H, floorBaseY, wallHeightOf, floorLabel } = __m_js_grid_js;
 const { shapesOf, segEnds, openingSpec, SEG_WALL, SEG_GLASS, SEG_RAIL, isBuilt, takeId, floorSolidAt } = __m_js_shapes_js;
 const { solidBeside, wallProbe } = __m_js_walls_js;
-const { roofPlan, roofTop, roofMask, maskAt, PARAPET_H, COPING_T } = __m_js_roof_js;
+const { roofPlan, roofTop, roofMask, maskAt, PARAPET_H, COPING_T, inFootprint } = __m_js_roof_js;
+const { roofHeightOver } = __m_js_skeleton_js;
 const { terrainField, groundAt } = __m_js_terrain_js;
 const { stairMetrics, linksFrom, runMetrics, localToWorld, footprintPolygon, isRun, floorCuts, inFloorCut, pointInPolygon, rampPath } = __m_js_stairs_js;
 const { sheetDims, stackDims } = __m_js_annotate_js;
@@ -91674,6 +93607,7 @@ const { sheetDims, stackDims } = __m_js_annotate_js;
 // on the same terms as every optional record before it.
 //
 // Pure module: no three.js, no DOM. Exercised by test/elevation.test.mjs.
+
 
 
 
@@ -92125,14 +94059,26 @@ function cutWall(a, b, openings, kind, u, thick, base, top, out) {
 // The roof's height over one point of the plan, read off the same plan the
 // renderer extrudes, or null where nothing is overhead.
 function roofHeightAt(plan, mask, x, z) {
+  // A hipped roof over a curve (#967) is read off its own faces inside the
+  // rooms' outline, and a mask cell whose middle is in that outline belongs
+  // to it, so the staircase of cells past the curve reads as nothing overhead.
+  // A court is not the footprint (#999): there it falls through to the mask,
+  // whose court cells are off, and reads as sky, as the overhang outside the
+  // outer wall does.
+  for (const b of plan.blocks) {
+    if (b.skeleton && inFootprint(b, x, z)) return roofHeightOver(b.faces, x, z);
+  }
   const c = Math.floor(x / CELL) - mask.cx0;
   const r = Math.floor(z / CELL) - mask.cy0;
   if (!maskAt(mask, c, r)) return null;
+  const mx = (mask.cx0 + c + 0.5) * CELL, mz = (mask.cy0 + r + 0.5) * CELL;
+  if (plan.blocks.some((b) => b.skeleton && inFootprint(b, mx, mz))) return null;
   if (plan.style === 'flat') return plan.eaveY;
   if (plan.style === 'parapet') return plan.eaveY + PARAPET_H + COPING_T;
   let best = plan.eaveY;
   for (const b of plan.blocks) {
     const rc = b.rect;
+    if (b.skeleton) continue;
     if (x < rc.x0 - 1e-6 || x > rc.x1 + 1e-6 || z < rc.z0 - 1e-6 || z > rc.z1 + 1e-6) continue;
     // Height climbs from the eave toward the ridge across the short span.
     const mid = b.alongX ? (rc.z0 + rc.z1) / 2 : (rc.x0 + rc.x1) / 2;

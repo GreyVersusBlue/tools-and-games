@@ -4,8 +4,11 @@
 // answer), and returns focus to whatever opened it, or to `fallbackFocus()`
 // when the opener has gone (a menu item that no longer exists).
 //
-// openDialog({ title, body, buttons, opener, fallbackFocus, id, wide })
+// openDialog({ title, body, buttons, opener, fallbackFocus, id, wide, class })
 //   body      a node, a string, or a list of either
+//   class     a class of the caller's own, on the dialog before it is shown
+//             (its sheet lays the dialog out as it opens and takes the focus,
+//             not a frame later: SV2-72f2)
 //   buttons   [{ label, value, kind: 'primary' | 'danger' | 'plain' }], safe one last
 // returns { element, close(value), closed } where `closed` resolves with the
 // value of the button used, or null for Escape.
@@ -30,7 +33,7 @@ export function openDialog(options) {
     on: { click: () => close(button.value) },
   }, button.label));
 
-  const element = h('dialog', { class: 'dialog' + (options.wide ? ' dialog--wide' : ''), 'aria-labelledby': titleId, id: options.id },
+  const element = h('dialog', { class: 'dialog' + (options.wide ? ' dialog--wide' : '') + (options.class ? ' ' + options.class : ''), 'aria-labelledby': titleId, id: options.id },
     h('h2', { class: 'dialog__title', id: titleId }, options.title),
     h('div', { class: 'dialog__body' }, typeof options.body === 'string' ? h('p', null, options.body) : options.body),
     h('div', { class: 'dialog__buttons' }, buttons),

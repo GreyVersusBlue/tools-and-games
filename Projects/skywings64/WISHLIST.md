@@ -2,7 +2,7 @@
 
 A Pilotwings 64-style flight game in three.js r160: hang glider, gyrocopter and rocket belt, six
 scored missions and Free Flight over one island. `CONTRACT.md` has the module interfaces, URL
-parameters and the `window.__qa` test hook. `node test/browser.mjs` is the suite (82 checks, about a
+parameters and the `window.__qa` test hook. `node test/browser.mjs` is the suite (84 checks, about a
 minute and a half, Tools/board-check's harness); its first 35 are `test/assets.mjs`, which reads
 `assets/models/` in Node alone and can be run by itself, and its last 3 hold a frame's draw calls to
 `test/draws.json` from the first three of `test/draws.mjs`'s nine views (`node test/draws.mjs` runs
@@ -164,7 +164,11 @@ Nothing of the three. Smaller, from the lighthouse view's 156 static draws, none
   cabin cluster would be 4. It is transparent, so the order it is drawn in against the sea and the
   boats' wakes has to be kept: that wants a person's eye on the result, not a pixel count.
 - **Wakes and burner flames, 18**: one geometry and one material each kind, transparent, same caution.
-- **The seven cars on the bridge** (a geometry each, one material) and the 6 pad and landing decals.
+- **The 6 pad and landing decals** are 6 draws and stay so: the three pads and the three landing
+  targets are transparent (`decalMat` without `opaque`) at `renderOrder` 2, so three sorts them back
+  to front each frame by distance, and one mesh would fix an order the camera now changes. The
+  runway, the one opaque decal, is already one draw. The seven cars on the bridge became one
+  InstancedMesh on 2026-10-15 (#978): pad and lighthouse 6 draws fewer, windmills 3.
 - `lighthouse.glb` is 10 draws and `castle.glb` 7, one copy each: fewer means baking their materials
   into one, which is a change to the models and the masonry shader, not to the scene.
 - If the triangles of cut 1 matter on a weaker card: sectors for the mid-tier vegetation batches.

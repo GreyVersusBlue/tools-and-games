@@ -478,6 +478,32 @@ kbd {
   grid-template-columns: minmax(0, 1fr) 360px;
 }
 
+/* On Schedule and on the Staff browser the card goes under the section, at
+   full width: beside it, it took 360 px from tables and a preview that need
+   them (the schedule card was 455 px wide on a 1280 px screen, its tabs in
+   two rows). Its steps then lie side by side. */
+.surface__layout[data-section="schedule"]:has(> .getting-started:not([hidden])),
+.surface__layout[data-section="staff"]:has(> .getting-started:not([hidden])) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Brought back by Help, the card is scrolled to with the band a message
+   lies on (--toast-room, at the toast's rules) left clear under it: its
+   buttons are at its foot, where a message would otherwise be on them. */
+.surface__layout[data-section="schedule"] > .getting-started,
+.surface__layout[data-section="staff"] > .getting-started {
+  position: static;
+  scroll-margin-bottom: max(var(--s-6), var(--toast-room, 4.75rem));
+}
+
+@media not all and (max-width: 1000px) {
+  .surface__layout[data-section="schedule"] > .getting-started .steps,
+  .surface__layout[data-section="staff"] > .getting-started .steps {
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 0 var(--s-5);
+  }
+}
+
 /* The sections that draw the plan sit on its grid, faintly. */
 .surface__layout[data-section="building"],
 .surface__layout[data-section="movement"],
@@ -555,7 +581,13 @@ kbd {
   transform: rotate(180deg);
 }
 
+/* The panel scrolls inside itself, and holds what it scrolls: a table's
+   hidden words (.vh, absolutely placed) lie where their rows do, inside this
+   box. Without that they hung from the page, far below the window's foot,
+   and the document itself scrolled (1606 px tall in an 800 px window with
+   the movement view's Hotspots open). */
 .inspector__body {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
@@ -826,6 +858,9 @@ kbd {
   font-weight: var(--w-medium);
   line-height: var(--lh-lg);
   text-align: center;
+  /* a link that is a button (Import CSV…) has a button's shape, not a
+     link's underline */
+  text-decoration: none;
 }
 
 .btn:hover {
@@ -1271,6 +1306,41 @@ kbd {
   display: grid;
 }
 
+/* A control brought into view on the surface (the focus moving to it, Help
+   scrolling to a step) never lands under the banners stuck to its top: while
+   one is up, the surface keeps room for them at the top of what it scrolls
+   to. The room is --banners-height, which storage/session.js measures and
+   sets (SV2-55); until it has, an allowance a banner: the not-saved banner
+   with its button is 97 px at 1280 and 193 px at 390, where it wraps
+   (SV2-52). The allowance is never more than half the surface, so a short
+   window is not padded past what it shows. */
+.surface:has(> .banners > .banner) {
+  scroll-padding-top: var(--banners-height, min(7rem, 50%));
+}
+
+.surface:has(> .banners > .banner + .banner) {
+  scroll-padding-top: var(--banners-height, min(14rem, 50%));
+}
+
+.surface:has(> .banners > .banner + .banner + .banner) {
+  scroll-padding-top: var(--banners-height, min(21rem, 50%));
+}
+
+@media (max-width: 640px) {
+  .surface:has(> .banners > .banner) {
+    scroll-padding-top: var(--banners-height, min(13rem, 50%));
+  }
+
+  .surface:has(> .banners > .banner + .banner) {
+    scroll-padding-top: var(--banners-height, min(26rem, 50%));
+  }
+
+  .surface:has(> .banners > .banner + .banner + .banner) {
+    scroll-padding-top: var(--banners-height, min(39rem, 50%));
+  }
+}
+
+
 .banner {
   display: flex;
   flex-wrap: wrap;
@@ -1330,6 +1400,20 @@ kbd {
   border-radius: var(--r-2);
   box-shadow: var(--shadow);
   animation: rise var(--dur-1) var(--ease);
+}
+
+/* On a section that scrolls (every one but those that are a plan, which
+   place the message themselves: Building, Movement, and Scenarios and
+   Safety while a plan map is mounted in them, data-plan-map) the page ends
+   in a band of paper as tall as a message and its gap: with the page at
+   its end, the message is on that band and not on the last row of a table.
+   The band is --toast-room, which ui/components/toast.js raises while a
+   message taller than it is up (a long one, wrapped on a phone) and puts
+   back when the message leaves. Further up the page a message rides the
+   bottom edge over what is there, as it always did, and that can be
+   scrolled clear. */
+.surface__layout:not([data-section="building"]):not([data-section="movement"]):not([data-section="scenarios"][data-plan-map]):not([data-section="safety"][data-plan-map]) {
+  padding-bottom: max(var(--s-6), var(--toast-room, 4.75rem));
 }
 
 .toast__text {
@@ -1860,6 +1944,105 @@ kbd {
 
   .surface__layout[data-section="building"] .bld {
     min-height: 0;
+  }
+}
+
+/* ---------- The plan map's sections in the shell ----------
+
+   Movement, Scenarios and Safety mount the same plan map
+   (ui/surface/plan-map.js), and its rules hold for all three alike: for
+   Movement always, and for Scenarios and Safety while a map is mounted in
+   them, which the map marks on the layout (data-plan-map) and takes away
+   when it is unmounted, so a section of theirs with no map keeps the
+   layout's padding, its grid and the band under it. The map goes edge to
+   edge, as the building's plan does: the layout's padding and its faint
+   grid go. (These were in ui/movement/movement.css until the shell took
+   them.) */
+
+/* The banners (not saved, another tab, the device nearly full) are stuck to
+   the surface's top over the section; the section has the rest, so the bar
+   at its foot stays in the window (--banners-height, storage/session.js). */
+.surface__layout[data-section="scenarios"][data-plan-map],
+.surface__layout[data-section="safety"][data-plan-map],
+.surface__layout[data-section="movement"] {
+  height: calc(100% - var(--banners-height, 0px));
+  min-height: calc(100% - var(--banners-height, 0px));
+  padding: 0;
+  gap: 0;
+  align-items: stretch;
+  grid-template-rows: minmax(0, 1fr);
+  background-image: none;
+}
+
+.surface__layout[data-section="scenarios"][data-plan-map] > .surface__section,
+.surface__layout[data-section="safety"][data-plan-map] > .surface__section,
+.surface__layout[data-section="movement"] > .surface__section {
+  min-height: 0;
+}
+
+/* Getting started goes under the map at full width, as it does on Schedule:
+   beside the map it took 360 px of it, and over it (1000 px and under) it
+   took its height. The map keeps the whole surface, and the surface scrolls
+   down to the card. Under the card is the band a message lies on. */
+.surface__layout[data-section="scenarios"][data-plan-map]:has(> .getting-started:not([hidden])),
+.surface__layout[data-section="safety"][data-plan-map]:has(> .getting-started:not([hidden])),
+.surface__layout[data-section="movement"]:has(> .getting-started:not([hidden])) {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 100% auto;
+}
+
+.surface__layout[data-section="scenarios"][data-plan-map] > .getting-started,
+.surface__layout[data-section="safety"][data-plan-map] > .getting-started,
+.surface__layout[data-section="movement"] > .getting-started {
+  position: static;
+  order: 0;
+  align-self: start;
+  width: auto;
+  max-width: none;
+  margin: var(--s-4) var(--s-4) max(var(--s-6), var(--toast-room, 4.75rem));
+  scroll-margin-bottom: max(var(--s-6), var(--toast-room, 4.75rem));
+}
+
+@media not all and (max-width: 1000px) {
+  .surface__layout[data-section="scenarios"][data-plan-map] > .getting-started .steps,
+  .surface__layout[data-section="safety"][data-plan-map] > .getting-started .steps,
+  .surface__layout[data-section="movement"] > .getting-started .steps {
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 0 var(--s-5);
+  }
+}
+
+/* The shell's messages stay bottom left of the surface and sit above what
+   the section docks at the bottom: the playback bar, and the zoom buttons
+   over the map's corner. The plan map measures them (--toast-clear, on the
+   surface; ui/surface/plan-map.js). */
+.surface__layout[data-section="scenarios"][data-plan-map] ~ .toasts,
+.surface__layout[data-section="safety"][data-plan-map] ~ .toasts,
+.surface__layout[data-section="movement"] ~ .toasts {
+  bottom: calc(var(--toast-clear, 0px) + var(--s-3));
+}
+
+/* From 1200 px the scenario lab's panel is a column on the left of its map
+   (ui/scenarios/scenarios.css): a message starts right of it, never over the
+   forms. The lab measures how far the panel reaches in from the surface's
+   left edge (--toast-left, on the surface; SV2-72d). */
+@media (min-width: 1200px) {
+  .surface__layout[data-section="scenarios"][data-plan-map] ~ .toasts {
+    margin-left: calc(var(--toast-left, 0px) + var(--s-4));
+  }
+}
+
+/* On a phone the movement view's inspector is a sheet over the lower 55 % of
+   the window: the first line and the top of the map stay on screen above it
+   (DESIGN 5.3). "Show its N cells" in the sheet shuts it and moves the map
+   (ui/movement/hotspots.js). */
+@media (max-width: 640px) {
+  .app:has(.surface__layout[data-section="scenarios"][data-plan-map]) > .inspector[data-open="true"],
+  .app:has(.surface__layout[data-section="safety"][data-plan-map]) > .inspector[data-open="true"],
+  .app:has(.surface__layout[data-section="movement"]) > .inspector[data-open="true"] {
+    height: 55vh;
+    height: 55dvh;
+    max-height: none;
   }
 }
 

@@ -161,6 +161,33 @@ test('index.html links the Building section\'s stylesheet: it is there before th
   assert.doesNotMatch(source('ui/building/index.js'), /document\.head\.append/, 'the section no longer puts a link in the page');
 });
 
+// a selector list as a set: its selectors trimmed and sorted
+const selectorSet = (list) => list.split(',').map((one) => one.trim().replace(/\s+/g, ' ')).sort().join(', ');
+
+// SV2-65: Scenarios and Safety mount the plan map; their own sheets are
+// linked by index.html before either section has been on screen, once each,
+// after Movement's (whose map rules they lean on).
+test('index.html links the Scenarios and Safety sheets after Movement\'s: loaded before either section is opened, linked once, each with its own rules', async () => {
+  for (const [name, file, own] of [['scenarios', 'ui/scenarios/scenarios.css', /^\.scn[-\w]*([\s>:[.]|$)/], ['safety', 'ui/safety/safety.css', /^\.sfy[-\w]*([\s>:[.]|$)/]]) {
+    assert.match(source('index.html'), new RegExp('<link rel="stylesheet" href="' + file.replace(/[./]/g, '\\$&') + '" data-sheet="' + name + '">'), file);
+    // SV2-67 and SV2-68: each sheet has its own rules now, every one under the section's own names (.sfy, .scn)
+    // SV2-72c: a block that only sets the exits' colours (--exit-n) on one of
+    // tokens.css's three theme selectors styles nothing; on any other
+    // selector it is a rule like any other (SV2-72c2)
+    const themes = [':root, [data-theme="light"], [data-theme="auto"]', '[data-theme="dark"]', ':root:not([data-theme]), [data-theme="auto"]'].map(selectorSet);
+    const onlyExits = (block, prelude) => (themes.includes(selectorSet(prelude)) ? '' : block);
+    assert.deepEqual(source(file).replace(/\/\*[\s\S]*?\*\//g, '').replace(/@media[^{]*\{/g, '').replace(/([^{}]+)\{(?:\s*--exit-\d+\s*:[^;{}]*;)+\s*\}/g, onlyExits).match(/[^{}]+(?=\{)/g).flatMap((list) => list.split(',')).map((one) => one.trim()).filter((one) => !own.test(one)), [], file + ' styles something that is not the ' + name + ' section\'s own');
+  }
+  const links = await page.$$eval('link[rel="stylesheet"]', (all) => all.map((link) => ({ href: link.getAttribute('href'), sheet: link.dataset.sheet || null, inHead: link.parentNode === document.head, loaded: link.sheet !== null })));
+  const at = (sheet) => links.findIndex((link) => link.sheet === sheet);
+  for (const sheet of ['scenarios', 'safety']) {
+    assert.equal(links.filter((link) => link.sheet === sheet).length, 1, sheet + ' is linked once');
+    assert.deepEqual(links[at(sheet)], { href: 'ui/' + sheet + '/' + sheet + '.css', sheet, inHead: true, loaded: true });
+    assert.ok(at('movement') !== -1 && at(sheet) > at('movement'), sheet + ' comes after movement.css: ' + links.map((link) => link.sheet).join(', '));
+  }
+  assert.ok(at('scenarios') < at('safety'), 'scenarios.css, then safety.css');
+});
+
 test('what the Building section asks of the shell\'s layout and of the toasts is in ui/app.css, and still applies', async () => {
   const own = source('ui/building/building.css').replace(/\/\*[\s\S]*?\*\//g, '');
   assert.doesNotMatch(own, /\.surface__layout/, 'building.css reaches into the shell\'s layout');

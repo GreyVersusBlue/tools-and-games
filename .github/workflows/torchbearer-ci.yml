@@ -16,6 +16,12 @@
 # The job runs through suite.yml, the shared template. `for f in test/*.mjs`
 # is one line of it, so a suite a later phase adds runs here from its first
 # commit, and a red one names itself.
+#
+# Since 2026-10-14 one of those is `test/browser.mjs`, the page check (it arms
+# a cone, a line and a burst and compares the lit squares with the engine's
+# list). It borrows Tools/board-check's harness the way Absalom's and The
+# Fracture Cycle's page suites do, so the job runs `npm ci` there first; the
+# Node suites do not need it and do not notice.
 
 name: Torchbearer CI
 
@@ -25,6 +31,7 @@ on:
       - "Projects/torchbearer/**"
       - "Projects/torchbearer.html"
       - "assets/js/gvb-save.js"
+      - "Tools/board-check/harness.mjs"
       - ".github/workflows/torchbearer-ci.yml"
   push:
     branches:
@@ -33,6 +40,7 @@ on:
       - "Projects/torchbearer/**"
       - "Projects/torchbearer.html"
       - "assets/js/gvb-save.js"
+      - "Tools/board-check/harness.mjs"
       - ".github/workflows/torchbearer-ci.yml"
 
 permissions:
@@ -48,6 +56,7 @@ jobs:
     uses: ./.github/workflows/suite.yml
     with:
       working-directory: Projects/torchbearer
+      install: Tools/board-check
       commands: |
         node test/smoke.mjs
         failed=0; for f in test/*.mjs; do [ "$f" = test/smoke.mjs ] && continue; echo "== $f"; node "$f" || { echo "FAIL $f"; failed=1; }; done; exit $failed

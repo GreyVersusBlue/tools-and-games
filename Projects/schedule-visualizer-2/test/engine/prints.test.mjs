@@ -132,18 +132,22 @@ test('every output is a whole document: header with school, what it is and the d
     for (const paper of PAPER_CHOICES) {
       const { title, html } = output.render(project, null, { ...NOW, paper });
       const at = output.id + ' on ' + paper.size + ' ' + paper.orientation;
+      // a door sign is an upright sheet: it is portrait whatever is asked (SV2-45 item 2)
+      const turn = output.upright === true ? 'portrait' : paper.orientation;
       assert.equal(title, output.name + ' · ' + SAMPLE_SCHOOL_NAME, at);
-      assert.ok(html.startsWith('<!doctype html>\n<html lang="en" class="print-doc" data-theme="light" data-output="' + output.id + '" data-paper="' + paper.size + '" data-orientation="' + paper.orientation + '"'), at + ': the root');
+      assert.ok(html.startsWith('<!doctype html>\n<html lang="en" class="print-doc" data-theme="light" data-output="' + output.id + '" data-paper="' + paper.size + '" data-orientation="' + turn + '"'), at + ': the root');
       assert.equal(countOf(html, '<title>' + esc(title) + '</title>'), 1, at + ': the title');
       // written out here, not asked of pageRule(): a rule that ignored the paper would agree with itself
-      const rule = '@page { size: ' + { letter: 'letter', a4: 'A4' }[paper.size] + ' ' + paper.orientation + '; }';
+      const rule = '@page { size: ' + { letter: 'letter', a4: 'A4' }[paper.size] + ' ' + turn + '; }';
       assert.equal(countOf(html, '<style id="page-size">' + rule + '</style>'), 1, at + ': the page rule');
       assert.equal(countOf(html, '@page'), 1, at + ': one page rule and no other');
       assert.ok(html.includes('<link rel="stylesheet" href="ui/tokens.css">') && html.includes('<link rel="stylesheet" href="ui/print.css">'), at + ': the two stylesheets');
       assert.ok(countOf(html, '<p class="doc-head__school">' + esc(SAMPLE_SCHOOL_NAME) + '</p>') >= 1, at + ': the school');
       assert.ok(html.includes('<h1 class="doc-head__what">' + output.name), at + ': what this is');
       assert.ok(html.includes('<p class="doc-head__date">1 September 2026</p>'), at + ': the date');
-      assert.equal(countOf(html, '<footer class="doc-foot">' + TOOL_NAME + '</footer>'), 1, at + ': the footer');
+      // a batch has no closing line: its last sheet is the paper's height, and the line was a sheet more (SV2-49 item 3)
+      const batch = ['teacher-schedules', 'door-signs', 'door-signs-day'].includes(output.id);
+      assert.equal(countOf(html, '<footer class="doc-foot">' + TOOL_NAME + '</footer>'), batch ? 0 : 1, at + ': the footer');
       assert.ok(html.trimEnd().endsWith('</html>'), at + ': closed');
       assert.equal(countOf(html, '<header class="doc-head">'), countOf(html, '<section class="page">'), at + ': a header on every sheet');
       const stray = tagsOf(html).filter((tag) => !TAGS.has(tag));
@@ -175,19 +179,19 @@ test('the stylesheets are found where the caller says they are', () => {
 });
 
 test('the outputs are listed once each, and every print button names one of them', () => {
-  assert.deepEqual(OUTPUTS.map((output) => output.id), ['floor-plan', 'room-list', 'checks']);
+  assert.deepEqual(OUTPUTS.map((output) => output.id), ['floor-plan', 'room-list', 'checks', 'teacher-schedules', 'door-signs', 'door-signs-day', 'movement', 'congestion', 'door-cards']);
   for (const output of OUTPUTS) {
     assert.equal(typeof output.render, 'function');
     assert.equal(outputFor(output.id), output);
   }
-  assert.equal(outputFor('door-cards'), null);
-  assert.equal(renderOutput('door-cards', school(), null, {}), null);
-  assert.deepEqual(printButtons.map((button) => button.output).sort(), ['checks', 'floor-plan', 'room-list']);
+  assert.equal(outputFor('lockdown-map'), null);
+  assert.equal(renderOutput('lockdown-map', school(), null, {}), null);
+  assert.deepEqual(printButtons.map((button) => button.output).sort(), ['checks', 'door-cards', 'floor-plan', 'room-list']);
   assert.equal(new Set(printButtons.map((button) => button.id)).size, printButtons.length);
   for (const button of printButtons) {
     assert.ok(outputFor(button.output), button.id);
     assert.match(button.screen, /^#(building|schedule\/checks)$/);
-    assert.ok(button.label.startsWith('Print the '), button.id);
+    assert.ok(button.label.startsWith('Print '), button.id);
   }
 });
 
@@ -213,6 +217,12 @@ test('hostile names come through every output as text, never as markup', () => {
     'floor-plan': ['school', 'floor', 'room', 'other space', 'corridor', 'door', 'stairs'],
     'room-list': ['school', 'floor', 'room', 'teacher', 'subject'],
     checks: ['school', 'room', 'teacher', 'group', 'day type'],
+    'teacher-schedules': ['school', 'room', 'teacher', 'subject', 'group', 'day type'],
+    'door-signs': ['school', 'floor', 'room', 'teacher', 'subject'],
+    'door-signs-day': ['school', 'floor', 'room', 'teacher', 'subject', 'group', 'day type'],
+    movement: ['school', 'group', 'day type'],
+    congestion: ['school', 'group', 'day type'],
+    'door-cards': ['school', 'floor', 'room', 'other space', 'corridor', 'door', 'assembly', 'stairs'],
   };
   for (const output of OUTPUTS) {
     for (const paper of [PAPER_CHOICES[0], PAPER_CHOICES[3]]) {
@@ -232,7 +242,7 @@ test('hostile names come through every output as text, never as markup', () => {
       assert.equal(countOf(html, '</title>'), 1, output.id);
       assert.equal(countOf(html, '<style'), 1, output.id);
       assert.equal(countOf(html, '</style>'), 1, output.id);
-      assert.equal(countOf(html, '<svg'), output.id === 'floor-plan' ? project.building.floors.length : 0, output.id);
+      assert.equal(countOf(html, '<svg'), output.id === 'floor-plan' ? project.building.floors.length : output.id === 'door-cards' ? countOf(html, '<figure class="card__map"') : 0, output.id);
       // with every quoted value taken out (a quote inside one is &quot;), no tag has an event handler left in it
       assert.doesNotMatch(html.replace(/="[^"]*"/g, ''), /<[^>]*\son[a-z]+\s*=/i, output.id + ': an event handler attribute');
     }
@@ -666,7 +676,7 @@ test('a school with nothing in it still prints all three', () => {
 test('the print modules read no screen, clock or storage: a document is made from the model alone', () => {
   const dir = path.join(TOOL_DIR, 'ui', 'prints');
   const files = readdirSync(dir).filter((file) => file.endsWith('.js'));
-  assert.deepEqual(files.sort(), ['checks-report.js', 'document.js', 'floor-plan.js', 'index.js', 'plan-svg.js', 'room-list.js']);
+  assert.deepEqual(files.sort(), ['batch.js', 'checks-report.js', 'congestion.js', 'document.js', 'door-cards.js', 'floor-plan.js', 'index.js', 'movement.js', 'plan-svg.js', 'room-list.js']);
   for (const file of files) {
     const code = readFileSync(path.join(dir, file), 'utf8').replace(/\/\/.*$/gm, '');
     for (const name of [/\bdocument\.(?!js')/, /\bwindow\./, /\bnavigator\b/, /\blocalStorage\b/, /\bindexedDB\b/, /Date\.now/, /new Date\(\)/, /Math\.random/, /innerHTML/, /querySelector/, /getContext/]) {

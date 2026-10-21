@@ -6,7 +6,8 @@ import { h } from '../components/dom.js';
 import { field } from '../components/field.js';
 import { count, list } from '../components/words.js';
 import { addSubject, renameSubject, recolourSubject, reorderSubject, deleteSubject, describeSubjectUse } from '../../engine/actions.js';
-import { fill, apply, button, keyed, emptyState, freeName, dragRows } from './common.js';
+import { buildExport } from '../../engine/exports.js';
+import { fill, apply, button, keyed, emptyState, freeName, dragRows, download } from './common.js';
 
 const WHAT = 'A subject is a department. It has a code, a name and a colour, and the colour is how its rooms are drawn.';
 
@@ -26,6 +27,12 @@ export function mount(env) {
     if (!apply(env, addSubject, { code: '', name: freeName(project.subjects.map((subject) => subject.name), 'New subject') })) return;
     const subjects = ctx.store.project.subjects;
     env.render('subject:' + subjects[subjects.length - 1].id + ':code');
+  }
+
+  function exportCsv() {
+    const file = buildExport(ctx.store.project, 'subjects', { date: ctx.clock() });
+    download(file.fileName, file.mime, file.text);
+    ctx.toast({ text: 'Saved ' + file.fileName + ' to your downloads.' });
   }
 
   function move(subject, toIndex) {
@@ -95,7 +102,10 @@ export function mount(env) {
     dragRows(body, (from, to) => move(ctx.store.project.subjects[from], to));
     fill(element, 
       h('p', { class: 'sch-lead' }, WHAT + ' This project has ' + count(project.subjects.length, 'subject') + ', in the order shown.'),
-      h('div', { class: 'sch-toolbar' }, addButton),
+      h('div', { class: 'sch-toolbar' },
+        addButton,
+        button('Export CSV', exportCsv, { key: 'subject-export', action: 'export', more: ' of the subjects' }),
+        h('a', { class: 'btn', href: '#schedule/import', data: { action: 'import', key: 'subject-import' } }, 'Import CSV…', h('span', { class: 'vh' }, ' of subjects, on the Import tab'))),
       h('div', { class: 'sch-scroll' }, h('table', { class: 'table sch-edit-table' },
         h('caption', { class: 'vh' }, 'Subjects, in order'),
         h('thead', null, h('tr', null, h('th', { scope: 'col' }, h('span', { class: 'vh' }, 'Move')), ['Code', 'Name', 'Colour', 'Used by'].map((label) => h('th', { scope: 'col' }, label)), h('th', { scope: 'col' }, h('span', { class: 'vh' }, 'Delete')))),

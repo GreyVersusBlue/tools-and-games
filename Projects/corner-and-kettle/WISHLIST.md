@@ -823,9 +823,45 @@ outside CI on purpose (#353).
   - *Left.* Nobody has played either pace since the switch went in. The
     mean line at the door is what the sweep calls pressure; whether a person
     feels 1.3 and 1.5 as gentle enough is unjudged. The board says nothing
-    about the money difference. The rest of the Menu Board is still rebuilt
-    on every redraw and drops the keyboard's focus; only the pace buttons
-    are not.
+    about the money difference.
+  - *The board keeps the keyboard.* Done on 2026-10-14 (#968): the rest of
+    the Menu Board was one `innerHTML` on every redraw, which is every sale,
+    so a focused button was thrown away within seconds and the next Tab
+    started from the top of the page. Each row now carries a `data-row` key
+    and `patchRows()` in `js/chalkboard.js` updates the board in place: a
+    button that makes the same purchase as before is the same element, with
+    its focus, its place in the tab order and its name. `drive-save.mjs
+    --focus` (section 17, 21 checks) holds it, and holds the patched board
+    to a fresh build after every step. What it does not keep: a button whose
+    purchase changed (a station bought, so the row offers the next one, or
+    an unlock that turns into a tick) is a new element and the keyboard
+    falls to the page with it, as before.
+  - *The queue, the stations row and the tab bar keep it too.* Done on
+    2026-10-15 (#969): `patchRows()` moved to `js/patch.js`, which imports
+    nothing, and `renderQueue`, `renderSlots` and the station tab bar write
+    through it. A customer is a row keyed by their id, a station by its
+    number and the order on it, a tab by its id; clicks on the queue and the
+    stations are read on the row. `drive-save.mjs --focus` (section 18, 26
+    checks) holds each to a fresh build. A customer taken to a station, an
+    order released or served, and an empty station taking an order are new
+    elements, and the keyboard falls to the page with them.
+  - *The open station's panel keeps it too.* Done on 2026-10-15 (#972):
+    each tab's block is a `patchRows()` row, its key letters are written
+    into the markup by the one `bindKeys()` before it is patched, every
+    handler reads the station and its cup when clicked (a timed one keeps
+    that pair until its bar fills), and a running bar's width is kept and
+    written back across a redraw. `drive-save.mjs --focus` (section 19, 17
+    checks) holds it to a fresh build, key letters included, and the key
+    map after a 24-step scripted sequence was byte-identical before and
+    after the change.
+  - *Left.* Where the keyboard goes when its element does. A button whose
+    purchase changed (bought, now a tick), a customer taken, an order
+    released or served, a tab changed (the old block goes), and a button
+    whose place in its row changed all drop the keyboard to the page: Save
+    Current is one, because a saved preset is put in front of it, and so
+    is any syrup or topping that an unlock puts a new one in front of.
+    Moving the
+    keyboard to the nearest survivor instead is a design call, not a patch.
 - **Accessibility past the keyboard.** Done on 2026-10-07 (#916, #917), and
   judged by no person, with or without colour blindness:
   - *The cup.* Its picture says the base, the milk, the syrup and which

@@ -91,6 +91,9 @@ function watchPage() {
     event.preventDefault();
     grid.sheet.paste(event.clipboardData.getData('text/plain'));
   });
+  // (A phone turned on its side crosses the width at which columns hide. The
+  // section draws its tab again then, ../index.js, and the sheet puts the
+  // cursor in a column that is still in sight.)
   window.addEventListener('beforeunload', (event) => {
     if (!anyGridEditsPending()) return;
     event.preventDefault();
@@ -102,7 +105,9 @@ export function mount(env) {
   const { ctx, view } = env;
   loadSheet();
   watchPage();
-  if (!view.grid) view.grid = { rows: 'groups', at: null, anchor: null };
+  // `fields`: are Grade, Head count and Colour shown on a narrow screen. Kept
+  // while the page is open, like the cursor.
+  if (!view.grid) view.grid = { rows: 'groups', at: null, anchor: null, fields: false };
   const state = view.grid;
   const element = h('div', { class: 'grd' });
   const status = h('p', { class: 'grd-status' });
@@ -137,6 +142,7 @@ export function mount(env) {
     stage,
     say,
     roomLabel,
+    focusCursor: (key) => env.focusAfter(key),
     undo() {
       if (!takeBack(projectId())) return false;
       say('Took back the last change in the grid.');
@@ -254,10 +260,20 @@ export function mount(env) {
     if (state.rows === 'groups' && model.rows.length > 0) {
       const bulk = button('Bulk actions', (opener) => openMenu({ items: bulkItems(), anchor: opener, label: 'Bulk actions' }), { key: 'grid-bulk', action: 'bulk' });
       bulk.setAttribute('aria-haspopup', 'menu');
+      // only on a narrow screen (grid.css): there the periods come first
+      const shown = state.fields === true;
+      const fields = button('Fields', () => {
+        state.fields = !shown;
+        say(shown ? 'Grade, Head count and Colour are hidden. Fields shows them again.' : 'Showing Grade, Head count and Colour.');
+        env.render('grid-fields');
+      }, { key: 'grid-fields', action: 'fields', title: (shown ? 'Hide' : 'Show') + ' the Grade, Head count and Colour columns' });
+      fields.classList.add('grd-fields');
+      fields.setAttribute('aria-pressed', String(shown));
       tools.push(
         button('Add a group', add, { key: 'grid-add', action: 'add-group' }),
         button('Fill down', () => sheet.fillDown(), { key: 'grid-fill', action: 'fill-down', title: 'Copy the top row of the selection into the rows under it (' + MOD + 'D)' }),
-        bulk);
+        bulk,
+        fields);
     }
     return h('div', { class: 'sch-toolbar grd-toolbar' }, tools);
   }
@@ -275,13 +291,13 @@ export function mount(env) {
       if (staged.project.teachers.length === 0) {
         return emptyState('No teachers yet. Add a teacher, and this shows each teacher’s day.', button('Go to Teachers', () => ctx.navigate('#schedule/teachers'), { primary: true, key: 'grid-go' }));
       }
-      return [h('p', { class: 'sch-hint' }, 'Each teacher’s day, for reading: the groups they have each ' + words.one + ', and where. To change a room, set the rows to Groups.'), teacherTable(staged.project)];
+      return [h('p', { class: 'sch-hint' }, 'Each teacher’s day, for reading: the groups they have each ' + words.one + ', and where. To change a room, set the rows to Groups.'), teacherTable(staged.project, model.findings)];
     }
     if (state.rows === 'rooms') {
       if (allRooms(staged.project).length === 0) {
         return emptyState('No rooms yet. Draw rooms in the building, and this shows who is in each.', button('Go to Building', () => ctx.navigate('#building'), { primary: true, key: 'grid-go' }));
       }
-      return [h('p', { class: 'sch-hint' }, 'Each room’s day, for reading: the groups in it each ' + words.one + '. To change a room, set the rows to Groups.'), roomTable(staged.project)];
+      return [h('p', { class: 'sch-hint' }, 'Each room’s day, for reading: the groups in it each ' + words.one + '. To change a room, set the rows to Groups.'), roomTable(staged.project, model.findings)];
     }
     if (model.rows.length === 0) {
       return [
@@ -289,8 +305,16 @@ export function mount(env) {
         h('p', { class: 'sch-hint' }, 'A group is a set of students who travel together all day. To paste, copy rows whose columns are a name, a grade, a head count, a colour, then a room number for each ' + words.one + ', and press ' + MOD + 'V here. Columns you leave out at the end stay empty.'),
       ];
     }
-    return h('p', { class: 'sch-hint grd-hint' }, 'Arrow keys move. Type to replace a cell; Enter or F2 edits it; Escape leaves it as it was. Shift with the arrows selects a block. '
-      + MOD + 'C and ' + MOD + 'V copy and paste, to and from a spreadsheet; ' + MOD + 'D fills down; Delete empties. A room number with a dotted line under it is not in the building.');
+    return null;
+  }
+
+  // Above the table: under it is where every toast lands.
+  function keyHint() {
+    // the keys are left out on a narrow screen (grid.css); Help has them
+    return h('p', { class: 'sch-hint grd-hint' },
+      h('span', { class: 'grd-hint__keys' }, 'Arrow keys move. Type to replace a cell; Enter or F2 edits it; Escape leaves it as it was. Shift with the arrows selects a block. '
+        + MOD + 'C and ' + MOD + 'V copy and paste, to and from a spreadsheet; ' + MOD + 'D fills down; Delete empties. '),
+      'A room number with a dotted line under it is not in the building.');
   }
 
   // The sheet stays where it is from one drawing to the next (taking it out
@@ -304,14 +328,16 @@ export function mount(env) {
     const staged = preview(project, project.id, ctx);
     const pending = gridEditsPending(project.id);
     model = sheetModel(project, staged.project, draftFor(project.id));
-    sheet.draw(model);
     const sheetShown = state.rows === 'groups' && model.rows.length > 0;
     sheet.element.hidden = !sheetShown;
     element.dataset.rows = state.rows;
     element.dataset.staged = String(pending);
+    element.dataset.fields = state.fields === true ? 'shown' : 'hidden';
+    sheet.draw(model);
     const same = sheetShown ? project.dayTypes.filter((dayType) => !isOwnCopy(project, dayType.id)) : [];
     fill(above,
       toolbar(),
+      sheetShown ? keyHint() : null,
       pending ? bar(staged) : null,
       same.map((dayType) => h('p', { class: 'sch-hint' }, dayType.name + ' is the same as ' + baseDayType(project).name + ', so it has no columns of its own here. Give it its own copy on the Day tab.')));
     fill(below, body(project, staged));

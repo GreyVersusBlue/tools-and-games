@@ -38,6 +38,36 @@ const shows = (fn, ...args) => page.waitForFunction(fn, { timeout: 5000 }, ...ar
 // The tab draws again a moment after a change (data-pending says one is due).
 const settled = () => page.waitForFunction(() => document.querySelector('.sch')?.dataset.pending !== 'true', { timeout: 5000 });
 const stagedIs = (wanted) => shows((value) => document.querySelector('.sch')?.dataset.pending !== 'true' && document.querySelector('.grd').dataset.staged === value, String(wanted));
+
+// A module of the tool put on the page as `globalThis.sv2modules[key]`, by a
+// module script the page loads itself, and waited for: the page sets the
+// key. An import() awaited inside page.evaluate can come back "Protocol
+// error (Runtime.callFunctionOn): Promise was collected" (SV2-72e saw it in
+// m2-pass.mjs, 2 runs in 10 with the CPU throttled 4), so a module is loaded
+// first and used in a synchronous evaluate after. A load of the page empties
+// the globals, and the module is loaded again.
+// The script imports the module itself and keeps `{ error }` under the key
+// when that fails: a static import that fails fires no error the test can
+// see, and a wrong path came back as this wait's timeout (SV2-72e2).
+async function loadModule(page, key, file) {
+  // null while it loads, then `{ error }`: null when the module is there
+  const held = (wanted) => {
+    const value = globalThis.sv2modules && globalThis.sv2modules[wanted];
+    if (!value) return null;
+    return { error: value[Symbol.toStringTag] === 'Module' ? null : String(value.error) };
+  };
+  let state = await page.evaluate(held, key);
+  if (state === null) {
+    const name = JSON.stringify(key);
+    await page.addScriptTag({ type: 'module', content: 'const modules = (globalThis.sv2modules ||= {}); import(' + JSON.stringify('./' + file) + ').then((module) => { modules[' + name + '] = module; }, (error) => { modules[' + name + '] = { error: String((error && error.message) || error) }; });' });
+    state = await (await page.waitForFunction(held, { timeout: 5000 }, key)).jsonValue();
+  }
+  if (state.error !== null) {
+    // forgotten, so a later call tries again rather than repeat this one
+    await page.evaluate((wanted) => delete globalThis.sv2modules[wanted], key);
+    throw new Error('loadModule: ' + file + ' did not load: ' + state.error);
+  }
+}
 const inSchedule = (group, day, period) => page.evaluate((g, d, p) => {
   const project = globalThis.sv2.store.project;
   const held = project.groups.find((each) => each.id === g).days[d][p];
@@ -252,7 +282,7 @@ test('a name, a grade, a head count and a colour are edited in place, and a name
   await page.keyboard.press('Enter');
   await settled();
   assert.equal(await shown(key(B6, 'colour')), '#0a0b0c');
-  assert.equal(await page.$eval(key(B6, 'colour') + ' .sch-dot', (el) => getComputedStyle(el).backgroundColor), 'rgb(10, 11, 12)');
+  assert.equal(await page.$eval(key(B6, 'colour') + ' .grd-colour', (el) => el.value), '#0a0b0c');
   assert.equal(await barText(), 'Not applied yet: 2 groups changed');
 });
 
@@ -278,10 +308,10 @@ test('unapplied edits survive leaving the tab and the section: the bar is there 
   assert.equal(await shown(slot(A6, DAY_A, 2)), '101-Annex');
   await shows(() => /^Not applied yet: 2 groups changed\. Apply and Discard are above the grid\.$/.test(document.getElementById('announcer').textContent));
   // the hook for the dot on the rail's Schedule item
-  const hook = () => page.evaluate(async () => {
-    const grid = await import(new URL('ui/schedule/grid/index.js', location.href).href);
-    return grid.gridEditsPending(globalThis.sv2.store.project.id);
-  });
+  const hook = async () => {
+    await loadModule(page, 'grid', 'ui/schedule/grid/index.js');
+    return page.evaluate(() => globalThis.sv2modules.grid.gridEditsPending(globalThis.sv2.store.project.id));
+  };
   assert.equal(await hook(), true);
   // closing the page asks first
   const asks = () => page.evaluate(() => {
@@ -455,7 +485,7 @@ test('the same schedule is read by teacher and by room, and those tables are not
   await shows(() => document.querySelector('.grd').dataset.rows === 'teachers' && document.querySelector('.sch').dataset.pending !== 'true');
   assert.equal(await exists('.grd-table[role="grid"]:not([hidden])') && await page.$eval('.grd-sheet', (el) => el.hidden), true, 'the sheet is put away');
   assert.equal(await count('.grd-table--read tbody tr'), 12);
-  assert.equal(await count('.grd-table--read input, .grd-table--read [tabindex], .grd-table--read button'), 0);
+  assert.equal(await count('.grd-table--read input, .grd-table--read [tabindex]:not(.is-marked), .grd-table--read button'), 0);
   const row = await page.$$eval('.grd-table--read tbody tr', (rows) => rows.map((tr) => Array.from(tr.children, (cell) => cell.textContent)).find((cells) => cells[0] === 'Mme. Dufrêne'));
   assert.equal(row.length, 17);
   assert.equal(row[7], '6A in 204', 'Period 7 on A Day');
@@ -470,8 +500,8 @@ test('the same schedule is read by teacher and by room, and those tables are not
   assert.equal(rooms.length, 13);
   assert.deepEqual(rooms.map((cells) => cells[0]).slice(0, 4), ['101', '102', '103', '201'], 'rooms in order of their numbers');
   const cafeteria = rooms.find((cells) => cells[0] === 'Cafeteria');
-  assert.equal(cafeteria[4], '6A, 6B, 6C', 'Period 4 on A Day');
-  assert.equal(rooms.find((cells) => cells[0] === '203')[2], '6C, 7C', 'the double-booking, read from the room');
+  assert.equal(cafeteria[4], '6A, 6B, 6C◆ (note)', 'Period 4 on A Day');
+  assert.equal(rooms.find((cells) => cells[0] === '203')[2], '6C, 7C● (problem)', 'the double-booking, read from the room');
   await click('.grd-toolbar input[value="groups"]');
   await shows(() => document.querySelector('.grd').dataset.rows === 'groups' && !document.querySelector('.grd-sheet').hidden);
 });
