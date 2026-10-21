@@ -601,12 +601,20 @@ for (const size of EDGES) {
 // a stage 241 px or 151 px tall where the stage without the line is 196, and
 // each answer turned the other. Counted from before the section opens, and
 // again after Fit is tapped where the button is.
+// Movement's answer is in and drawn (the legend's card is judged with its
+// bands in it: before them it is 70 px, after them 172 at 900 by 500)
+const answered = (page) => until(page, 'Movement\'s answer did not come', () => {
+  const mov = document.querySelector('.mov');
+  return Boolean(mov && mov.movement && mov.dataset.pending !== 'true' && mov.movement.state && mov.movement.state.results && mov.movement.state.project === globalThis.sv2.store.project);
+});
+
 test('SV2-72h item 1: Movement at 900 by 500 with touch opens with the fit set at most twice and the legend docked at most once, and settles so again when Fit is tapped', async () => {
   await on('#project', { width: 900, height: 500, mobile: true }, async (page) => {
     assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), true, 'the page is not a touch screen’s');
     await fixture(page);
     await countTurns(page);
     await go(page, '#movement');
+    await answered(page);
     const first = await turnsSettled(page, 'movement');
     const opened = await floorsAt(page, 'movement');
     assert.ok(first.fit >= 1, 'no fit was counted: the count tests nothing: ' + JSON.stringify(first));
@@ -639,6 +647,7 @@ test('SV2-72h item 1: Movement at 900 by 500 with touch: the stage with the dock
   await on('#project', { width: 900, height: 500, mobile: true }, async (page) => {
     await fixture(page);
     await go(page, '#movement');
+    await answered(page);
     await turnsSettled(page, 'movement');
     const line = '.mov-legend-line';
     assert.equal(await page.evaluate((sel) => !document.querySelector(sel).hidden, line), true, 'the legend is not docked here: the case tests nothing');
