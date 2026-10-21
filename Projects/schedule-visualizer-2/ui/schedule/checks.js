@@ -13,7 +13,7 @@ import { acceptFinding, unacceptFinding } from '../../engine/actions.js';
 import { SEVERITIES } from '../../engine/findings.js';
 import { floorOfRoom } from '../../engine/schema.js';
 import { fill, apply, button, keyed, emptyState, severityMark, SEVERITY_WORDS } from './common.js';
-import { choosingGroup } from './groups.js';
+import { choosingGroup, openAddress } from './groups.js';
 import { groupHash, slotHash } from './address.js';
 import { printButtons } from '../prints/index.js';
 import { printButton } from '../components/print-preview.js';
@@ -37,7 +37,7 @@ export function showFinding(env, finding) {
     const groupId = where.groupIds.includes(view.groupId) ? view.groupId : where.groupIds[0];
     // the slot's address: it chooses the group, takes off a filter that
     // hides it, and on a phone leaves the list a Back away
-    ctx.navigate(where.dayTypeId && Number.isInteger(where.period) ? slotHash(groupId, where.dayTypeId, where.period) : groupHash(groupId));
+    openAddress(ctx, where.dayTypeId && Number.isInteger(where.period) ? slotHash(groupId, where.dayTypeId, where.period) : groupHash(groupId));
   } else if (where.teacherId !== null) {
     view.shown = { teacherId: where.teacherId, fresh: true };
     ctx.navigate('#schedule/teachers');

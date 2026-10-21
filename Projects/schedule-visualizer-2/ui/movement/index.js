@@ -64,7 +64,7 @@ import { parse, readable } from '../colour.js';
 import { buildGraph } from '../../engine/graph.js';
 import { ActionError, setSetting, setOnboarding } from '../../engine/actions.js';
 import { MOVEMENT_STEP } from '../help/progress.js';
-import { slotHash } from '../schedule/index.js';
+import { slotHash, openAddress } from '../schedule/index.js';
 import { readMovement, writeMovement } from '../../storage/device.js';
 import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard, standingOf, failedSentence, createAsker } from './model.js';
 import { slotAt, placeOf, FIT_MARGIN } from '../surface/plan-layout.js';
@@ -123,9 +123,10 @@ function facts(project) {
 
 // Open a group's slot in the Schedule section's Groups tab: a slot has an
 // address there (the top of ui/schedule/index.js), and the section does the
-// rest.
+// rest. It is opened as the schedule opens its own (`openAddress`), so the
+// entry is marked by the one rule when the list is under it.
 function openSlot(ctx, slot) {
-  ctx.navigate(slotHash(slot.groupId, slot.dayTypeId, slot.period));
+  openAddress(ctx, slotHash(slot.groupId, slot.dayTypeId, slot.period));
 }
 
 export const section = {
@@ -419,13 +420,23 @@ export const section = {
     function coversFloor() {
       const world = plan.world;
       if (!world || view.width === 0) return false;
-      const height = view.height + (key.line.hidden ? 0 : key.line.offsetHeight);
+      // the stage undocked: what docking the line took from it, which is
+      // less than the line's height where the stage is at its least (SV2-72c3)
+      const height = view.height + (key.line.hidden ? 0 : plan.undockedGain());
       const card = key.element;
       const width = card.offsetWidth;
       const tall = card.offsetHeight;
       if (width === 0 || tall === 0) return false;
+      // where Fit puts the floors on that stage, round the zoom buttons and
+      // above the sticky foot, by the rule Fit itself takes (the map's
+      // choose, SV2-72f2): in the band beside them it moves them right,
+      // toward the card (SV2-72c2), so a plain fit is not asked
+      const place = plan.fitAt(view.width, height, FIT_MARGIN);
+      if (!place) return false;
       probe.resize(view.width, height);
-      probe.fit({ x: 0, y: 0, w: world.width, h: world.height }, FIT_MARGIN);
+      probe.zoom = place.zoom;
+      probe.x = place.x;
+      probe.y = place.y;
       const style = getComputedStyle(card);
       const right = view.width - (parseFloat(style.right) || 0);
       // where the card rests: not lifted over the bar (--mov-under), which

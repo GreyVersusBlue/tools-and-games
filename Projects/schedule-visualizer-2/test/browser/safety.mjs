@@ -10,8 +10,8 @@
 // section's picture take on the 3.13 fixture in this browser. SV2-67b: where
 // the focus goes when what held it hides or goes, the exits' colours past ten
 // and under the badges' zoom, state gone stale while mounted (a room deleted
-// or renamed, another project), a no-route room's key, a draw waiting off the
-// page, and one finger and two on the map leaving the pick alone.
+// or renamed, another project), a no-route room's key, a section drawn off the
+// page (SV2-72c: at once, in the page's colours), and one finger and two on the map leaving the pick alone.
 
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -184,7 +184,7 @@ test('every room is shown coloured by its exit: the first line says so, and the 
 });
 
 for (const theme of ['light', 'dark']) {
-  test('the key\'s colours in the ' + theme + ' theme: each swatch at 3:1 on the key, its number at 4.5:1 on the swatch, and no two exits alike', async () => {
+  test('the key\'s colours in the ' + theme + ' theme: each swatch at 3:1 on the key, its number at 4.5:1 on the swatch, no two exits alike, and the colours safety.css\'s --exit-n tokens', async () => {
     const session = theme === 'light' ? null : await openPlanner({ width: 1280, height: 800, hash: '#safety', theme });
     const page = session ? session.page : wide.page;
     try {
@@ -195,10 +195,11 @@ for (const theme of ['light', 'dark']) {
         const hex = (rgb) => '#' + rgb.match(/\d+/g).slice(0, 3).map((n) => Number(n).toString(16).padStart(2, '0')).join('');
         const key = document.querySelector('.sfy-key');
         const surface = hex(getComputedStyle(key).backgroundColor);
-        return Array.from(document.querySelectorAll('.sfy-key .sfy-swatch')).map((swatch) => {
+        const tokens = getComputedStyle(document.documentElement);
+        return Array.from(document.querySelectorAll('.sfy-key .sfy-swatch')).map((swatch, i) => {
           const style = getComputedStyle(swatch);
           const fill = hex(style.backgroundColor);
-          return { fill, surface, edge: contrast(fill, surface), ink: contrast(hex(style.color), fill) };
+          return { fill, surface, edge: contrast(fill, surface), ink: contrast(hex(style.color), fill), token: tokens.getPropertyValue('--exit-' + (i + 1)).trim() };
         });
       });
       assert.equal(result.length, 2);
@@ -207,6 +208,8 @@ for (const theme of ['light', 'dark']) {
         assert.ok(swatch.ink >= 4.5, theme + ': the number on ' + swatch.fill + ' is ' + swatch.ink.toFixed(2) + ':1');
       }
       assert.notEqual(result[0].fill, result[1].fill, 'two exits share a colour');
+      // SV2-72c (W2): the exits' categorical set, never the problem red; the hues are test/ui/exit-colours.test.mjs's
+      assert.deepEqual(result.map((swatch) => swatch.fill), result.map((swatch) => swatch.token), theme + ': the swatches are not the --exit-n tokens');
     } finally {
       if (session) await session.close();
     }
@@ -614,6 +617,7 @@ for (const [name, size] of [['390 by 844 with touch', { width: 390, height: 844,
       assert.equal(touch, size.mobile === true, 'the page is not under the pointer asked for');
       const shape = await page.evaluate(async () => {
         const { stageLeast } = await import('./ui/surface/plan-layout.js');
+        const { SAFETY_LEAST } = await import('./ui/safety/index.js');
         const view = document.querySelector('.sfy').safety;
         const stage = document.querySelector('.sfy .mov-stage');
         const zoom = document.querySelector('.sfy .mov-zoom');
@@ -621,12 +625,22 @@ for (const [name, size] of [['390 by 844 with touch', { width: 390, height: 844,
         const root = document.querySelector('.sfy');
         return {
           stage: stage.getBoundingClientRect().height,
-          least: stageLeast(view.plan.world, stage.clientWidth, zoom.offsetHeight + margin * 2),
+          // Safety's own least (SV2-72c2: the plan map's 120 was the one compared)
+          least: stageLeast(view.plan.world, stage.clientWidth, zoom.offsetHeight + margin * 2, SAFETY_LEAST),
+          own: SAFETY_LEAST,
+          // the map's top on the stage at Fit: the floors' name row is its first
+          top: view.plan.view.y,
+          fit: stage.dataset.fit,
           wide: root.scrollWidth - root.clientWidth,
           zoomInStage: zoom.getBoundingClientRect().bottom <= stage.getBoundingClientRect().bottom + 0.5 && zoom.getBoundingClientRect().top >= stage.getBoundingClientRect().top - 0.5,
         };
       });
       assert.ok(shape.stage >= shape.least - 0.5, 'the stage is ' + shape.stage + ' px, under its least ' + shape.least);
+      // SV2-72c (W5): on a phone on its side Safety keeps 160 px of map (it had 135 under the first line and the key)
+      assert.equal(shape.own, 160);
+      // SV2-72c2 item 9: the floors' name row is whole at Fit, not run off the stage's top (2 px of "Floor 1" on a phone on its side)
+      assert.ok(shape.top >= -0.5, 'the floors\' name row runs ' + (-shape.top).toFixed(1) + ' px off the stage\'s top at Fit (' + shape.fit + ')');
+      if (size.height < 500) assert.ok(shape.stage >= shape.own - 0.5, 'on a phone on its side the stage is ' + shape.stage + ' px, under ' + shape.own);
       assert.ok(shape.wide <= 0, 'the section runs ' + shape.wide + ' px off the side');
       assert.ok(shape.zoomInStage, 'the zoom buttons are not on the stage');
       // the key, under the stage, is reached by scrolling the section to its end
@@ -831,7 +845,7 @@ test('another project put in while the section is mounted lets go of the picked 
   assert.equal(await page.$eval('.sfy-panel [data-print="chosen"]', (el) => el.dataset.count), '0');
 });
 
-test('twelve exits: the key lists twelve numbers and says the colours repeat after ten, exit 11 in exit 1\'s colour', async () => {
+test('twelve exits: the key lists twelve numbers and says the colours repeat after eight, exit 9 in exit 1\'s colour', async () => {
   const page = wide.page;
   await fresh(page);
   assert.equal(await page.$eval('.sfy-key [data-note="repeat"]', (el) => el.hidden), true, 'with two exits the key says the colours repeat');
@@ -854,15 +868,15 @@ test('twelve exits: the key lists twelve numbers and says the colours repeat aft
   await page.waitForFunction(() => document.querySelectorAll('.sfy-key__item').length === 12);
   const key = await page.$$eval('.sfy-key__item', (items) => items.map((item) => item.dataset.number + '|' + item.querySelector('.sfy-swatch').textContent));
   assert.deepEqual(key, Array.from({ length: 12 }, (_, i) => (i + 1) + '|' + (i + 1)));
-  assert.equal(await seen(page, '.sfy-key [data-note="repeat"]'), 'The colours repeat after exit 10: the number on each room says which exit.');
+  assert.equal(await seen(page, '.sfy-key [data-note="repeat"]'), 'The colours repeat after exit 8: the number on each room says which exit.');
   const colours = await page.evaluate(() => {
     const view = document.querySelector('.sfy').safety;
     return Array.from({ length: 12 }, (_, i) => view.colour(i + 1));
   });
-  assert.equal(colours[10], colours[0]);
-  assert.equal(new Set(colours.slice(0, 10)).size, 10);
-  // the key's swatch of exit 11 carries its number on exit 1's colour
-  assert.equal(await page.$eval('.sfy-key__item[data-number="11"] .sfy-swatch', (el) => el.style.backgroundColor), await page.$eval('.sfy-key__item[data-number="1"] .sfy-swatch', (el) => el.style.backgroundColor));
+  assert.equal(colours[8], colours[0]);
+  assert.equal(new Set(colours.slice(0, 8)).size, 8);
+  // the key's swatch of exit 9 carries its number on exit 1's colour
+  assert.equal(await page.$eval('.sfy-key__item[data-number="9"] .sfy-swatch', (el) => el.style.backgroundColor), await page.$eval('.sfy-key__item[data-number="1"] .sfy-swatch', (el) => el.style.backgroundColor));
 });
 
 test('a phone at Fit: the badges are under their least, and the key says zooming in shows the numbers; zoomed in to them, it says nothing of it', async () => {
@@ -944,36 +958,53 @@ test('on a phone, one finger moving the map and two pinching it over rooms leave
   }
 });
 
-test('the section mounted off the page asks for one frame at a time and none once unmounted; put on the page, it draws', async () => {
+test('the section mounted off the page draws at once in the page\'s colours, asking for no frame; put on the page, it draws again', async () => {
+  // SV2-72c item 7: the renderer no longer keeps a theme read off the page
+  // (every token #888888), so Safety's wait for the page (SV2-67b, one frame
+  // at a time) is gone
   const session = await openPlanner({ width: 1280, height: 800, hash: '#building', theme: 'light' });
   const page = session.page;
   try {
     await page.evaluate(async () => {
       globalThis.sfyModule = await import('./ui/safety/index.js');
     });
-    // mounted and never put on the page: the page goes on answering
+    // mounted and never put on the page: drawn already, its key in the theme's exit colours
     const first = await page.evaluate(() => {
       const ctx = { ...globalThis.sv2.ctx, setInspector() {} };
       globalThis.sfyOff = globalThis.sfyModule.section.mount(ctx);
-      return { connected: globalThis.sfyOff.element.isConnected, waiting: globalThis.sfyOff.element.safety.waiting };
+      const el = globalThis.sfyOff.element;
+      const tokens = getComputedStyle(document.documentElement);
+      return {
+        connected: el.isConnected,
+        mode: el.dataset.mode,
+        waiting: 'waiting' in el.safety,
+        swatches: Array.from(el.querySelectorAll('.sfy-key .sfy-swatch')).map((swatch) => swatch.style.backgroundColor),
+        tokens: [1, 2].map((n) => tokens.getPropertyValue('--exit-' + n).trim()),
+        ink: el.safety.plan.theme().ink,
+        pageInk: tokens.getPropertyValue('--ink').trim(),
+      };
     });
-    assert.deepEqual(first, { connected: false, waiting: true });
-    await page.waitForFunction(() => globalThis.sfyOff.element.safety.waiting === true && globalThis.sfyOff.element.dataset.mode === undefined);
-    assert.equal(await page.evaluate(() => {
-      globalThis.sfyOff.unmount();
-      return globalThis.sfyOff.element.safety.waiting;
-    }), false, 'a frame is still asked for after unmount');
-    // a second one put on the page draws
-    await page.evaluate(() => {
+    const rgb = (hex) => 'rgb(' + [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ') + ')';
+    assert.deepEqual({ connected: first.connected, mode: first.mode, waiting: first.waiting }, { connected: false, mode: 'all', waiting: false });
+    assert.deepEqual(first.swatches, first.tokens.map(rgb), 'the key off the page is not in the theme\'s exit colours');
+    assert.equal(first.ink, first.pageInk, 'the map\'s theme read off the page is not the page\'s');
+    await page.evaluate(() => globalThis.sfyOff.unmount());
+    // a second one put on the page, in a dark island, reads the island's colours: nothing read off the page was kept
+    const dark = await page.evaluate(() => {
       const ctx = { ...globalThis.sv2.ctx, setInspector() {} };
       globalThis.sfyOn = globalThis.sfyModule.section.mount(ctx);
+      const before = globalThis.sfyOn.element.safety.plan.theme().corridor;
       const box = document.createElement('div');
       box.id = 'sfy-off-test';
+      box.dataset.theme = 'dark';
       box.style.cssText = 'position:fixed;left:0;top:0;width:600px;height:500px;visibility:hidden';
       box.append(globalThis.sfyOn.element);
       document.body.append(box);
+      return { before, after: globalThis.sfyOn.element.safety.plan.theme().corridor, island: getComputedStyle(box).getPropertyValue('--corridor').trim() };
     });
-    await page.waitForFunction(() => globalThis.sfyOn.element.dataset.mode === 'all' && !globalThis.sfyOn.element.safety.waiting);
+    assert.notEqual(dark.before, dark.island, 'the page and the island have the same corridor: the case tests nothing');
+    assert.equal(dark.after, dark.island, 'the theme read off the page was kept once the map was on it');
+    await page.waitForFunction(() => globalThis.sfyOn.element.dataset.mode === 'all' && Number(document.querySelector('#sfy-off-test canvas.mov-plan').dataset.drawn || 0) > 0);
     await page.evaluate(() => {
       globalThis.sfyOn.unmount();
       document.getElementById('sfy-off-test').remove();

@@ -1,0 +1,234 @@
+/* Help (SV2-30a): the shell's dialog, made one column whose title stays at
+   the top and whose buttons (Close help among them) stay at the foot, with
+   the body scrolling between, on a phone upright or on its side. Loaded by
+   ui/help/index.js when index.html has no link[data-sheet="help"]. */
+
+.dialog.help {
+  width: min(760px, calc(100vw - var(--s-5)));
+  max-height: calc(100vh - var(--s-5));
+  max-height: calc(100dvh - var(--s-5));
+  padding: 0;
+  overflow: hidden;
+}
+
+.dialog.help[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.dialog.help > .dialog__title {
+  flex: none;
+  padding: var(--s-3) var(--s-5);
+  border-bottom: var(--border);
+  overflow-wrap: anywhere;
+}
+
+.dialog.help > .dialog__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+}
+
+.dialog.help > .dialog__buttons {
+  flex: none;
+  margin: 0;
+  padding: var(--s-3) var(--s-5);
+  border-top: var(--border);
+}
+
+.help__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--s-4) var(--s-5) var(--s-5);
+  display: grid;
+  gap: var(--s-4);
+  align-content: start;
+}
+
+.help__scroll p,
+.help__scroll h3,
+.help__scroll h4 {
+  margin: 0;
+}
+
+.help__scroll:focus-visible {
+  outline-offset: -2px;
+}
+
+.help__lead {
+  font-size: var(--t-md);
+}
+
+.help__jump ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.help__jump .btn {
+  justify-content: flex-start;
+  padding-inline: var(--s-2);
+  text-align: left;
+}
+
+.help__part {
+  display: grid;
+  gap: var(--s-3);
+  padding-top: var(--s-4);
+  border-top: var(--border);
+}
+
+.help__title {
+  font-size: var(--t-lg);
+  line-height: var(--lh-lg);
+  font-weight: var(--w-semibold);
+  scroll-margin-top: var(--s-3);
+}
+
+.help__name {
+  font-size: var(--t-md);
+  font-weight: var(--w-semibold);
+}
+
+.help__here {
+  color: var(--ink-2);
+  font-weight: var(--w-medium);
+}
+
+.help__sections,
+.help__device ul {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.help__device ul {
+  gap: var(--s-2);
+  padding-left: var(--s-5);
+  list-style: disc;
+}
+
+.help__section,
+.help__device,
+.help__numbers {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.help__section[data-here="true"] {
+  padding: var(--s-3);
+  border-radius: var(--r-1);
+  background: var(--accent-soft);
+}
+
+.help__more {
+  color: var(--ink-2);
+}
+
+.help kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 0 var(--s-1);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.help__table {
+  border: var(--border);
+  border-radius: var(--r-1);
+  overflow-x: auto;
+}
+
+.help__groups,
+.help__words {
+  display: grid;
+  grid-template-columns: minmax(7rem, max-content) 1fr;
+  gap: var(--s-2) var(--s-4);
+  margin: 0;
+}
+
+.help__groups dt,
+.help__words dt {
+  font-weight: var(--w-semibold);
+}
+
+.help__groups dd,
+.help__words dd {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .dialog.help > .dialog__title,
+  .dialog.help > .dialog__buttons {
+    padding: var(--s-2) var(--s-4);
+  }
+
+  .help__scroll {
+    padding: var(--s-3) var(--s-4) var(--s-4);
+  }
+
+  /* a shortcut is its keys and what it does on one line, where it works
+     under them, so nothing scrolls sideways at 390 px */
+  .help__table tr {
+    display: grid;
+    grid-template-columns: minmax(5.5rem, max-content) 1fr;
+    border-top: var(--border);
+  }
+
+  .help__table thead tr {
+    border-top: 0;
+  }
+
+  .help__table td {
+    border-top: 0;
+  }
+
+  .help__table td:nth-child(3),
+  .help__table th:nth-child(3) {
+    grid-column: 2;
+    padding-top: 0;
+    color: var(--ink-2);
+  }
+
+  .help__groups,
+  .help__words {
+    grid-template-columns: 1fr;
+    gap: 0 0;
+  }
+
+  .help__groups dd,
+  .help__words dd {
+    margin-bottom: var(--s-3);
+  }
+}
+
+/* A phone on its side: the head and foot take as little height as they can. */
+@media (max-height: 500px) {
+  .dialog.help > .dialog__title {
+    padding-block: var(--s-2);
+    font-size: var(--t-md);
+  }
+
+  .dialog.help > .dialog__buttons {
+    padding-block: var(--s-2);
+  }
+}
+
+@media (pointer: coarse) {
+  .help .table__sort {
+    min-height: 44px;
+  }
+}

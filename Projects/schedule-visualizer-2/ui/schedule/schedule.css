@@ -889,3 +889,96 @@
     height: 44px;
   }
 }
+
+/* ---------- SV2-72d: the Fix dialog (ui/schedule/checks-fix.js) ----------
+   Its own rules, out of the inline styles it was laid out with (SV2-70).
+   The title with nothing over it and the Close button stay in view however
+   long the list is, on a phone upright and on its side too (W4): the
+   dialog is a column the window's height at the most, and its body, the
+   finding, the switch and the list, scrolls between them. */
+
+#fix-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - var(--s-4));
+  max-height: calc(100dvh - var(--s-4));
+}
+
+#fix-dialog .dialog__title,
+#fix-dialog .dialog__buttons {
+  flex: none;
+}
+
+/* A scroller clips what is drawn outside its padding box, a focus ring
+   included: the body keeps a ring's room inside its edges (padding, the
+   same taken back from the dialog's own padding at the sides so the text
+   stays where it was) and scrolls a focused control in clear of them
+   (scroll-padding), so the switch's ring at the left and a Try it's at the
+   right are drawn whole (SV2-72d2). */
+#fix-dialog .dialog__body {
+  --fix-ring: calc(var(--focus-width) + var(--focus-offset));
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--fix-ring);
+  margin-inline: calc(var(--fix-ring) * -1);
+  scroll-padding: var(--fix-ring);
+}
+
+.fix-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.fix-asking {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.fix-list {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fix-list__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding-bottom: var(--s-3);
+  border-bottom: var(--border);
+}
+
+.fix-list__words {
+  flex: 1 1 16rem;
+  margin: 0;
+}
+
+.fix-refusal {
+  color: var(--problem);
+}
+
+/* a window with little height (a phone on its side): less paper round the
+   dialog's edge, so the list has more of it */
+@media (max-height: 500px) {
+  #fix-dialog {
+    padding: var(--s-3) var(--s-4);
+  }
+
+  #fix-dialog .dialog__body {
+    margin-top: var(--s-2);
+  }
+
+  #fix-dialog .dialog__buttons {
+    margin-top: var(--s-3);
+  }
+}

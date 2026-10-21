@@ -469,3 +469,32 @@ test('the card\'s words: the place and floor as typed, corridor or stairs, the c
   assert.equal(cardText(quiet), ARABIC + ', by ' + HOSTILE + ', Étage 2 "<b>", corridor: 1 quieter. Before 2, after 1 group, at its busiest in one transition, on A Day. In an exclusion zone.');
   assert.equal(cardText({ ...quiet, groups: null }), cardText(quiet));
 });
+
+// SV2-72d item 9: the day type each cell's change is from is kept in an
+// array wide enough for every day type; a Uint8Array wrapped past 256 and
+// named the wrong day type.
+test('SV2-72d: every day type together names the right day type past 256 day types', () => {
+  const n = 300;
+  const load = (dayTypeId, value) => ({
+    dayTypeId,
+    unit: 'students',
+    cells: { busiest: Int32Array.of(value, 0), total: Int32Array.of(value, 0), byTransition: [] },
+    connections: { busiest: Int32Array.of(value), total: Int32Array.of(value), byTransition: [] },
+    excluded: new Uint8Array(2),
+    excludedConnections: new Uint8Array(1),
+  });
+  const before = [];
+  const after = [];
+  // the change grows with the day type, so the last one's is largest
+  for (let i = 0; i < n; i += 1) {
+    before.push(load('d' + i, 0));
+    after.push(load('d' + i, i + 1));
+  }
+  const found = differenceOf(before, after, { dayTypeId: null });
+  assert.equal(found.dayTypeIds.length, n);
+  assert.equal(found.cells[0], n);
+  assert.equal(found.dayTypeIds[found.dayOfCell[0]], 'd' + (n - 1), 'the cell names the day type its change is from');
+  assert.equal(found.dayTypeIds[found.dayOfConnection[0]], 'd' + (n - 1), 'and so does the connection');
+  const places = { places: [{ id: 'p1', kind: 'run', name: 'Hall', nodes: [0, 1], floorId: 'f1' }] };
+  assert.equal(rankPlaces(found, places).rows[0].dayTypeId, 'd' + (n - 1), 'the table names it too');
+});

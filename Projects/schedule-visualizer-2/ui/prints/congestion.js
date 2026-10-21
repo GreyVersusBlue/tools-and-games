@@ -48,6 +48,8 @@
 
 import { ownDayTypes, findDayType } from '../../engine/day-types.js';
 import { reconcile, changeWords } from '../../engine/scenario.js';
+import { blankName, NEW_SCENARIO_NAME } from '../../engine/actions.js';
+import { timeFigures, durationWords } from '../scenarios/model.js';
 import { sortFindings, SEVERITIES } from '../../engine/findings.js';
 import { loads } from '../../engine/load.js';
 import { count, list } from '../components/words.js';
@@ -55,7 +57,7 @@ import { transitionsOf, unitWord } from '../movement/model.js';
 import { rankedPlaces } from '../movement/hotspots.js';
 import { transitionRows, lateWords } from '../movement/tables.js';
 import { esc, frame } from './document.js';
-import { printedFrom, placesTable, seconds, PLACES_ON_PAPER } from './movement.js';
+import { printedFrom, placesTable, PLACES_ON_PAPER } from './movement.js';
 
 export const id = 'congestion';
 export const name = 'Congestion report';
@@ -106,6 +108,12 @@ function place(row) {
   return row.parts.map((part) => esc(part.text)).join('') + (row.floorName ? ' on ' + esc(row.floorName) : '');
 }
 
+// A time in a day section, by the scenario table's rule (ui/scenarios/model.js):
+// under an hour as everywhere else ("4 min 21 s"), from an hour in hours and
+// minutes ("2 h 34 min"), so the report says one length one way throughout
+// (SV2-72d2). Plain spaces: these tables are the movement prints' kind.
+const time = (n) => durationWords(n);
+
 function daySection(project, results, graph, dayType, first) {
   const transitions = transitionsOf(project, dayType.id);
   const load = dayLoad(project, results, graph, dayType.id);
@@ -136,9 +144,9 @@ function daySection(project, results, graph, dayType, first) {
   for (const each of worst.slice(0, WORST_TRANSITIONS)) {
     const busiest = rankedPlaces(project, results, graph, ask(each.period))[0] || null;
     out.push('<tr><th scope="row">' + esc(each.name) + '</th>'
-      + '<td>' + esc((each.times ? each.times + ', ' : '') + seconds(each.seconds)) + '</td>'
+      + '<td>' + esc((each.times ? each.times + ', ' : '') + time(each.seconds)) + '</td>'
       + '<td class="is-number">' + each.walks + '</td>'
-      + '<td class="is-number">' + (each.waiting === 0 ? 'none' : esc(seconds(each.waiting))) + '</td>'
+      + '<td class="is-number">' + (each.waiting === 0 ? 'none' : esc(time(each.waiting))) + '</td>'
       + '<td class="is-number">' + each.late + '</td>'
       + '<td>' + (busiest ? place(busiest) + ': ' + busiest.load + ' ' + unitWord(busiest.unit, busiest.load) : '') + '</td></tr>');
   }
@@ -162,10 +170,10 @@ function daySection(project, results, graph, dayType, first) {
       out.push('<tr><th scope="row">' + esc(row.group.name) + '</th>'
         + '<td>' + esc(transitions[row.period] ? transitions[row.period].name : '') + '</td>'
         + '<td>' + esc(row.from) + '</td><td>' + esc(row.to) + '</td>'
-        + '<td class="is-number">' + esc(seconds(row.walking)) + '</td>'
-        + '<td class="is-number">' + (row.waiting === 0 ? 'none' : esc(seconds(row.waiting))) + '</td>'
-        + '<td class="is-number">' + esc(seconds(row.total)) + '</td>'
-        + '<td class="is-number">' + esc(seconds(row.passingSeconds)) + '</td>'
+        + '<td class="is-number">' + esc(time(row.walking)) + '</td>'
+        + '<td class="is-number">' + (row.waiting === 0 ? 'none' : esc(time(row.waiting))) + '</td>'
+        + '<td class="is-number">' + esc(time(row.total)) + '</td>'
+        + '<td class="is-number">' + esc(time(row.passingSeconds)) + '</td>'
         + '<td>' + esc(lateWords(row)) + '</td></tr>');
     }
     out.push('</tbody></table>');
@@ -177,11 +185,10 @@ function daySection(project, results, graph, dayType, first) {
 // ---------------------------------------------------------------- the scenario
 
 // The scenario's name as the planner's labels say it: as typed, or "New
-// scenario" when nothing is left of it after white space and the zero-width
-// characters (engine/actions.js keeps this rule for its labels, unexported).
+// scenario" when it is blank by engine/actions.js's rule (blankName).
 function scenarioName(scenario) {
   const name = scenario.name;
-  return typeof name !== 'string' || name.replace(/[\s​-‍⁠﻿]/g, '') === '' ? 'New scenario' : name;
+  return typeof name !== 'string' || blankName(name) ? NEW_SCENARIO_NAME : name;
 }
 
 // Parts of words as markup: a name as typed keeps its own direction.
@@ -190,7 +197,7 @@ function partsHtml(parts) {
 }
 
 // A difference with its sign, so it reads on paper without colour: "+2",
-// "−1 min 5 s" (a real minus), "no change".
+// "−1" (a real minus), "no change". Times are timeFigures' own.
 function signed(n, words) {
   if (n === 0) return 'no change';
   return (n > 0 ? '+' : '−') + (words ? words(Math.abs(n)) : String(Math.abs(n)));
@@ -225,21 +232,29 @@ function busiestHtml(project, side, names) {
 
 function figuresTable(project, compare, names) {
   const f = compare.figures;
-  const time = (n) => esc(seconds(n));
-  // a time's difference is that of the two times as printed (whole seconds),
-  // so the three cells always agree and less than half a second is no change
-  const row = (label, side, words) => '<tr><th scope="row">' + esc(label) + '</th>'
-    + '<td class="is-number">' + (words ? time(side.before) : side.before) + '</td><td class="is-number">' + (words ? time(side.after) : side.after) + '</td>'
-    + changeCell(words ? Math.round(side.after) - Math.round(side.before) : side.difference, words) + '</tr>';
+  const row = (label, side) => '<tr><th scope="row">' + esc(label) + '</th>'
+    + '<td class="is-number">' + side.before + '</td><td class="is-number">' + side.after + '</td>'
+    + changeCell(side.difference, null) + '</tr>';
+  // a time as the lab prints it (ui/scenarios/model.js timeFigures): in
+  // hours and minutes from an hour, and its difference that of the two times
+  // as printed, so the three cells always agree and a change smaller than
+  // what is printed is no change
+  const timeRow = (label, side) => {
+    const t = timeFigures(side.before, side.after);
+    const way = t.n > 0 ? ' is-more' : t.n < 0 ? ' is-less' : '';
+    return '<tr><th scope="row">' + esc(label) + '</th>'
+      + '<td class="is-number">' + esc(t.before) + '</td><td class="is-number">' + esc(t.after) + '</td>'
+      + '<td class="is-number doc-change' + way + '">' + esc(t.difference) + '</td></tr>';
+  };
   const out = ['<table class="doc-table doc-table--scenario">',
     '<thead><tr><th scope="col">Figure</th><th scope="col" class="is-number">Before</th><th scope="col" class="is-number">After</th><th scope="col" class="is-number">Difference</th></tr></thead>',
     '<tbody>',
-    row('Walking, all walks together', f.walking, seconds),
-    row('Lost to the crowd', f.crowding, seconds),
+    timeRow('Walking, all walks together', f.walking),
+    timeRow('Lost to the crowd', f.crowding),
     '<tr><th scope="row">Busiest place</th><td>' + busiestHtml(project, f.busiest.before, names) + '</td><td>' + busiestHtml(project, f.busiest.after, names) + '</td>' + changeCell(f.busiest.difference, null) + '</tr>',
-    row('Late walks', f.late, null),
-    row('Walks with no way through', f.failed, null)];
-  for (const severity of SEVERITIES) out.push(row(SEVERITY_ROWS[severity], f.findings[severity], null));
+    row('Late walks', f.late),
+    row('Walks with no way through', f.failed)];
+  for (const severity of SEVERITIES) out.push(row(SEVERITY_ROWS[severity], f.findings[severity]));
   out.push('</tbody></table>');
   return out.join('\n');
 }

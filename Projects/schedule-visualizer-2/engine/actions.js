@@ -1775,8 +1775,9 @@ function payloadOf(payload) {
 
 // A name is blank when nothing is left of it after white space and the
 // zero-width characters (U+200B to U+200D, U+2060, U+FEFF) are taken out.
-// A name that is not blank is kept exactly as typed.
-function blankName(value) {
+// A name that is not blank is kept exactly as typed. Exported (SV2-72d) so
+// the screens and prints that name a scenario use this rule, not a copy.
+export function blankName(value) {
   return typeof value === 'string' && value.replace(/[\s\u200B-\u200D\u2060\uFEFF]/g, '') === '';
 }
 
@@ -1961,3 +1962,39 @@ export const applyScenario = action(
 );
 
 // ================================================================ SV2-61: scenario actions (end)
+
+// ================================================================ SV2-72d: removeScenarioChanges (start)
+//
+// Several changes out of the open scenario as one step of undo: the lab's
+// "Remove them", for the changes that no longer apply. payload: { indexes },
+// places in project.scenario.changes, each once, in any order. A list with
+// no index makes no entry; an index that is not a change of the scenario
+// refuses the whole step, as removeScenarioChange does for one.
+
+export const removeScenarioChanges = action(
+  {
+    label: (before, payload) => {
+      const indexes = payloadOf(payload).indexes;
+      const name = scenarioName(before);
+      if (indexes.length === 1) return 'Remove from scenario ' + name + ': ' + chipText(before, before.scenario.changes[indexes[0]]);
+      return 'Remove from scenario ' + name + ': ' + changesWord(indexes.length);
+    },
+    bumps: [],
+    focus: scenarioFocus,
+  },
+  (project, payload) => {
+    const scenario = needScenario(project);
+    const indexes = payloadOf(payload).indexes;
+    if (!Array.isArray(indexes)) refuse('Say which changes to take out of the scenario.', 'bad-value');
+    if (indexes.length === 0) return project;
+    const out = new Set();
+    for (const index of indexes) {
+      if (!Number.isInteger(index) || index < 0 || index >= scenario.changes.length) refuse('That change is no longer in the scenario.', 'missing');
+      if (out.has(index)) refuse('Each change is taken out once: the same one is named twice.', 'bad-value');
+      out.add(index);
+    }
+    return withScenario(project, { ...scenario, changes: scenario.changes.filter((change, i) => !out.has(i)) });
+  },
+);
+
+// ================================================================ SV2-72d: removeScenarioChanges (end)

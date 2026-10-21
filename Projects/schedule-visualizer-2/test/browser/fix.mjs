@@ -99,6 +99,18 @@ async function waitState(page, state) {
   }, { timeout: 30000 }, state);
 }
 
+// The answer for the switch as it is now: 'answered' alone is also the
+// answer before the switch was pressed, so the wait names the new one by
+// the switch's value the answer was asked with (data-others, set when it
+// is asked; SV2-72d2 item 8).
+// `state` is the state that answer ends in ('answered' when left out).
+async function waitAnswer(page, others, state) {
+  await page.waitForFunction((wanted, end) => {
+    const dialog = document.getElementById('fix-dialog');
+    return dialog && dialog.open && dialog.dataset.state === end && dialog.dataset.others === wanted;
+  }, { timeout: 30000 }, String(others), state || 'answered');
+}
+
 // What the dialog shows, read only from what has a box.
 const shown = (page) => page.evaluate(() => {
   const dialog = document.getElementById('fix-dialog');
@@ -520,7 +532,7 @@ test('"No small change clears this." with and without the switch: a third group 
     assert.equal(off.status, NO_SUGGESTION + ' Other teachers’ rooms were not looked at: the switch above looks at them too.');
     assert.equal(off.items.length, 0);
     await page.click('#fix-dialog [data-part="others"]');
-    await waitState(page, 'none');
+    await waitAnswer(page, true, 'none');
     assert.equal((await shown(page)).status, NO_SUGGESTION);
     assert.equal(await page.$$eval('#fix-dialog [data-action="try"]', (all) => all.length), 0);
   }, { period: 1, room: 'rsample203', finding: third });
@@ -543,7 +555,7 @@ test('the finding cleared under the open dialog: stale first, then Ask again say
     assert.doesNotMatch(view.status, /switch|No small change/);
     // the switch asks again and gets the same
     await page.click('#fix-dialog [data-part="others"]');
-    await waitState(page, 'cleared');
+    await waitAnswer(page, true, 'cleared');
     // Undo puts the clash back: stale, and Ask again lists the changes again
     await page.evaluate(() => globalThis.sv2.store.undo());
     await waitState(page, 'stale');
@@ -596,7 +608,7 @@ test('keyboard only: Tab to Fix…, Enter opens it with the focus inside, Space 
       assert.equal((await active(page)).inDialog, true, 'Tab left the dialog');
     }
     await page.keyboard.press('Space');
-    await waitState(page, 'answered');
+    await waitAnswer(page, true);
     assert.equal((await shown(page)).others, 'true');
     await page.keyboard.press('Tab');
     assert.equal((await active(page)).action, 'try');
@@ -671,7 +683,7 @@ test('a phone at 390 by 844 with touch: the dialog inside the window, 44 px targ
     assert.equal(sizes.tries.length, 4);
     for (const height of [...sizes.tries, sizes.close, sizes.switchRow]) assert.ok(height >= 44, JSON.stringify(sizes));
     await tap('#fix-dialog [data-part="others"]');
-    await waitState(page, 'answered');
+    await waitAnswer(page, true);
     assert.equal((await shown(page)).others, 'true');
     await page.$eval('#fix-dialog .fix-list__item[data-index="0"] [data-action="try"]', (el) => el.scrollIntoView({ block: 'center' }));
     await tap('#fix-dialog .fix-list__item[data-index="0"] [data-action="try"]');
@@ -720,6 +732,142 @@ test('a phone on its side at 844 by 390 with touch: the dialog inside the window
     await tap(last);
     await landed(page);
     assert.equal((await scenarioOf(page)).changes.length, 1);
+  }, { hash: '#schedule/checks' });
+});
+
+// SV2-72d item 5 (W4) and item 8: the title and Close stay in the window
+// with the list scrolled to its end, and the dialog's layout is its sheet's.
+for (const [size, label] of [[PHONE, 'upright at 390 by 844'], [SIDE, 'on its side at 844 by 390']]) {
+  test('SV2-72d 5: a phone ' + label + ' with touch: the title and Close stay in view with the list scrolled to its last Try it, and nothing is laid out by an inline style', async () => {
+    await on(size, async (page) => {
+      assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches && navigator.maxTouchPoints > 0), true);
+      await page.$eval(fixOf(CLASH), (el) => el.scrollIntoView({ block: 'center' }));
+      const at = await page.$eval(fixOf(CLASH), (el) => {
+        const rect = el.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      });
+      await page.touchscreen.tap(at.x, at.y);
+      await waitState(page, 'answered');
+      // the switch on: five suggestions, the longest list
+      await page.$eval('#fix-dialog [data-part="others"]', (el) => el.click());
+      await waitAnswer(page, true);
+      assert.equal(await page.$$eval('#fix-dialog .fix-list__item', (items) => items.length), 5, 'the answer with the switch on lists five');
+      const view = await page.evaluate(() => {
+        const dialog = document.getElementById('fix-dialog');
+        const tries = dialog.querySelectorAll('[data-action="try"]');
+        tries[tries.length - 1].scrollIntoView({ block: 'end' });
+        const inView = (el) => {
+          if (el.getClientRects().length === 0) return 'no box';
+          const rect = el.getBoundingClientRect();
+          const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          return rect.top >= 0 && rect.bottom <= window.innerHeight && Boolean(hit) && (hit === el || el.contains(hit));
+        };
+        const body = dialog.querySelector('.dialog__body');
+        return {
+          title: inView(dialog.querySelector('.dialog__title')),
+          close: inView(dialog.querySelector('.dialog__buttons .btn')),
+          last: inView(tries[tries.length - 1]),
+          bodyScrolls: body.scrollHeight > body.clientHeight,
+          dialogScrolled: dialog.scrollTop,
+          styled: Array.from(dialog.querySelectorAll('[style]')).map((el) => el.className || el.tagName),
+        };
+      });
+      assert.equal(view.last, true, 'the last Try it is in view: ' + JSON.stringify(view));
+      assert.equal(view.title, true, 'the title is in view: ' + JSON.stringify(view));
+      assert.equal(view.close, true, 'Close is in view: ' + JSON.stringify(view));
+      assert.equal(view.dialogScrolled, 0, 'the dialog itself never scrolls: its body does');
+      assert.deepEqual(view.styled, [], 'no inline style in the dialog');
+      // Close still closes and gives the focus back
+      await page.$eval('#fix-dialog .dialog__buttons .btn', (el) => el.click());
+      await page.waitForFunction(() => !document.querySelector('dialog[open]'), { timeout: 5000 });
+      assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.dataset.action), 'fix');
+    }, { hash: '#schedule/checks' });
+  });
+}
+
+// SV2-72d2 item 7: the body scrolls, and a scroller clips what is drawn
+// outside its padding box. A phone upright, with touch.
+const tapOn = async (page, selector) => {
+  await page.$eval(selector, (el) => el.scrollIntoView({ block: 'center' }));
+  const at = await page.$eval(selector, (el) => {
+    const rect = el.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+  await page.touchscreen.tap(at.x, at.y);
+};
+
+test('SV2-72d2 7: at 390 by 844 with touch the focus rings of the switch and of every Try it are drawn whole inside the scrolling body', async () => {
+  await on(PHONE, async (page) => {
+    assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches && navigator.maxTouchPoints > 0), true);
+    await tapOn(page, fixOf(CLASH));
+    await waitState(page, 'answered');
+    await page.$eval('#fix-dialog [data-part="others"]', (el) => el.click());
+    await waitAnswer(page, true);
+    const wanted = await page.$$eval('#fix-dialog [data-part="others"], #fix-dialog [data-action="try"]', (all) => all.length);
+    assert.equal(wanted, 6, 'the switch and five Try it');
+    // each reached by the keyboard, as a ring is drawn for it, and read as it is drawn
+    const rings = [];
+    for (let press = 0; press < 40 && rings.length < wanted; press += 1) {
+      await page.keyboard.press('Tab');
+      const ring = await page.evaluate(() => {
+        const el = document.activeElement;
+        if (!el || !el.matches('#fix-dialog [data-part="others"], #fix-dialog [data-action="try"]')) return null;
+        const body = el.closest('.dialog__body');
+        const style = getComputedStyle(el);
+        const reach = style.outlineStyle === 'none' ? 0 : parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);
+        const rect = el.getBoundingClientRect();
+        const edge = body.getBoundingClientRect();
+        const box = { left: edge.left + body.clientLeft, top: edge.top + body.clientTop };
+        box.right = box.left + body.clientWidth;
+        box.bottom = box.top + body.clientHeight;
+        const ring = { left: rect.left - reach, right: rect.right + reach, top: rect.top - reach, bottom: rect.bottom + reach };
+        return {
+          what: el.dataset.part || el.dataset.action + ' ' + el.closest('.fix-list__item').dataset.index,
+          visible: el.matches(':focus-visible'),
+          reach,
+          clipped: ['left', 'top'].filter((side) => ring[side] < box[side] - 0.5).concat(['right', 'bottom'].filter((side) => ring[side] > box[side] + 0.5)),
+          ring,
+          box,
+        };
+      });
+      if (ring && !rings.some((each) => each.what === ring.what)) rings.push(ring);
+    }
+    assert.deepEqual(rings.map((ring) => ring.what), ['others', 'try 0', 'try 1', 'try 2', 'try 3', 'try 4'], 'every control reached by Tab');
+    for (const ring of rings) {
+      assert.ok(ring.visible && ring.reach >= 4, ring.what + ' has its ring: ' + JSON.stringify(ring));
+      assert.deepEqual(ring.clipped, [], ring.what + '\'s ring is cut at the body\'s edge: ' + JSON.stringify(ring));
+    }
+  }, { hash: '#schedule/checks' });
+});
+
+test('SV2-72d2 7: at 390 by 844 with touch a Try it the scenario refuses brings its alert into the body\'s view', async () => {
+  await on(PHONE, async (page) => {
+    await tapOn(page, fixOf(CLASH));
+    await waitState(page, 'answered');
+    await page.$eval('#fix-dialog [data-part="others"]', (el) => el.click());
+    await waitAnswer(page, true);
+    const asked = await lane(page, CLASH, true);
+    // the group the first change moves is deleted under the open dialog
+    await act(page, 'deleteGroup', { id: asked.suggestions[0].change.groupId });
+    await waitState(page, 'stale');
+    await page.$eval('#fix-dialog .dialog__body', (el) => {
+      el.scrollTop = 0;
+    });
+    await tapOn(page, tryAt(0));
+    await page.waitForFunction(() => {
+      const alert = document.querySelector('#fix-dialog [data-part="refusal"]');
+      return alert && !alert.hidden && alert.getClientRects().length > 0;
+    }, { timeout: 5000 });
+    const seen = await page.evaluate(() => {
+      const body = document.querySelector('#fix-dialog .dialog__body');
+      const alert = body.querySelector('[data-part="refusal"]').getBoundingClientRect();
+      const edge = body.getBoundingClientRect();
+      const top = edge.top + body.clientTop;
+      return { scrolls: body.scrollHeight > body.clientHeight, alert: { top: alert.top, bottom: alert.bottom }, body: { top, bottom: top + body.clientHeight }, inWindow: alert.top >= 0 && alert.bottom <= innerHeight };
+    });
+    assert.ok(seen.scrolls, 'the body scrolls here, so the alert could be out of its view: ' + JSON.stringify(seen));
+    assert.ok(seen.alert.top >= seen.body.top - 0.5 && seen.alert.bottom <= seen.body.bottom + 0.5 && seen.inWindow, 'the refusal is in view: ' + JSON.stringify(seen));
+    assert.equal(await scenarioOf(page), null, 'and nothing was started');
   }, { hash: '#schedule/checks' });
 });
 

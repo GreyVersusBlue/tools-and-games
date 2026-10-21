@@ -37,7 +37,7 @@ import { NOT_IN_BUILDING } from '../../engine/exports.js';
 import { fill, apply, button, keyed, emptyState, marksFor, freeName, roomLabel, quote, collator, dragRows, grip, SEVERITY_WORDS } from './common.js';
 import { slotKey } from './model.js';
 import { roomPicker } from './room-picker.js';
-import { GROUPS_HASH, groupHash, writtenAsList, showsList, groupOf, namesGoneGroup } from './address.js';
+import { GROUPS_HASH, groupHash, writtenAsList, groupOf, namesGoneGroup } from './address.js';
 
 const WHAT = 'A group is a set of students who travel together all day.';
 
@@ -73,21 +73,46 @@ export function listStop(project, view) {
   return stop ? 'group:' + stop.id : project.groups.length > 0 ? 'group-filter' : 'group-add';
 }
 
-// A group's editor put on the history, on a phone. An editor chosen from the
-// list is marked as having the list under it, which is where "All groups"
-// goes back to.
+// An address of a group or of a slot, opened from wherever the page is: a
+// card tapped in the list (below, `toGroup`), a finding's Show (checks.js),
+// Movement's "Fix it in the schedule" (ui/movement/index.js). Opened from
+// the list, its entry is marked as having the list under it, which is where
+// "All groups", a Delete and an undone Add go back to (`toList`). Unmarked,
+// they write the list in its place, and with the list under it that was the
+// list twice (the review of SV2-56, finding 3: a Show over the list, then a
+// Delete). The page already at the address makes no entry and no mark, and
+// an address of the group the page is at (a slot of it, Show from its own
+// editor) takes that entry's place with its mark: a second entry of one
+// group would be the gone group's address over the list after a Delete.
 const LIST_UNDER = 'scheduleListUnder';
 const SPENT = 'scheduleSpent';
+export function openAddress(ctx, hash) {
+  const project = ctx.store.project;
+  const here = groupOf(project, location.hash);
+  const there = groupOf(project, hash);
+  if (location.hash !== hash && here && there && here.id === there.id) {
+    history.replaceState(history.state, '', hash);
+    // the address is the page's now, and the shell shows it again
+    ctx.navigate(hash);
+    return;
+  }
+  // the list's own address only: a gone group's shows the list too (left
+  // after a Delete while wide), but the entry under it is not the list
+  const fromList = location.hash !== hash && writtenAsList(location.hash);
+  ctx.navigate(hash);
+  // the new entry is made as the address is set; the mark goes on it
+  if (fromList && location.hash === hash) history.replaceState({ [LIST_UNDER]: true }, '');
+}
+
+// A group's editor put on the history, on a phone. An editor chosen from the
+// list is marked as having the list under it (`openAddress`).
 export function toGroup(ctx, groupId) {
   const hash = groupHash(groupId);
   if (location.hash === hash) return;
   // the address is already this group's place: a slot of it
   const here = groupOf(ctx.store.project, location.hash);
   if (here && here.id === groupId) return;
-  const fromList = showsList(ctx.store.project, location.hash);
-  ctx.navigate(hash);
-  // the new entry is made as the address is set; the mark goes on it
-  if (fromList && location.hash === hash) history.replaceState({ [LIST_UNDER]: true }, '');
+  openAddress(ctx, hash);
 }
 
 // The list's address, on a phone: back to it when it is the entry under this

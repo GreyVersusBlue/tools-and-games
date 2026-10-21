@@ -378,26 +378,17 @@
   overflow-wrap: anywhere;
 }
 
-/* four columns in the inspector's 320 px: fixed widths, and a figure wraps
-   at its spaces ("153 min / 48 s") rather than pushing the table wider */
+/* The tables in the inspector's 320 px. A figure never breaks inside itself
+   (SV2-72d, W3: "153 min / 48 s"): its spaces are no-break spaces
+   (ui/scenarios/model.js) and a number cell does not break a word, so the
+   table lays its columns out to fit the figures and the labels wrap at
+   their spaces in what is left. */
 .scn-table {
   width: 100%;
-  table-layout: fixed;
+  table-layout: auto;
   border-collapse: collapse;
   font-size: var(--t-sm);
   font-variant-numeric: tabular-nums;
-}
-
-.scn-table th:first-child {
-  width: 31%;
-}
-
-.scn-table thead th:last-child {
-  width: 27%;
-}
-
-.scn-table thead th {
-  overflow-wrap: normal;
 }
 
 .scn-table th,
@@ -407,6 +398,70 @@
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
+}
+
+.scn-table thead th {
+  overflow-wrap: normal;
+}
+
+.scn-table td.num {
+  overflow-wrap: normal;
+}
+
+/* The figures: a grid of three columns, each figure's name a line of its
+   own over its before, after and difference (ui/scenarios/compare.js says
+   the table's roles outright, so the grid is still a table to a reader).
+   The corner heading, "Figure", is for a reader alone. */
+.scn-figures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.scn-figures thead,
+.scn-figures tbody,
+.scn-figures tr {
+  display: contents;
+}
+
+.scn-figures th,
+.scn-figures td {
+  display: block;
+}
+
+.scn-figures .scn-figures__corner {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.scn-figures tbody th {
+  grid-column: 1 / -1;
+  padding-top: var(--s-2);
+  border-bottom: 0;
+}
+
+.scn-figures thead th:not(.scn-figures__corner),
+.scn-figures td.num {
+  text-align: right;
+}
+
+/* The difference map's table (ui/scenarios/difference.js): five columns,
+   at fixed shares, the figures' headings over their figures at the right. */
+.scn-difference {
+  table-layout: fixed;
+}
+
+.scn-difference thead th:nth-child(1) { width: 28%; }
+.scn-difference thead th:nth-child(2) { width: 17%; }
+.scn-difference thead th:nth-child(3) { width: 16%; }
+.scn-difference thead th:nth-child(4) { width: 13%; }
+.scn-difference thead th:nth-child(5) { width: 26%; }
+
+.scn-difference thead th:nth-child(n + 3) {
+  text-align: right;
 }
 
 .scn-table thead th {
@@ -483,4 +538,27 @@
   margin: var(--s-1) 0 var(--s-3);
   padding-left: var(--s-5);
   overflow-wrap: anywhere;
+}
+
+/* Apply's summary keeps its question and its two buttons in view however
+   many changes it lists, on a phone on its side too (SV2-72f; the Fix
+   dialog's rule, W4): the dialog is a column the window's height at the
+   most, and its body, the list, scrolls between them. */
+.scn-apply[open] {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - var(--s-4));
+  max-height: calc(100dvh - var(--s-4));
+}
+
+.scn-apply .dialog__title,
+.scn-apply .dialog__buttons {
+  flex: none;
+}
+
+.scn-apply .dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }

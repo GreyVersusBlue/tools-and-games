@@ -9,14 +9,14 @@ import { periodName } from '../../engine/bells.js';
 import { resolveSlotRoom, nameOfRoom } from '../../engine/schema.js';
 import { formatDuration } from '../../engine/findings.js';
 import { reconcile, changeWords } from '../../engine/scenario.js';
-import { NEW_SCENARIO_NAME } from '../../engine/actions.js';
+import { NEW_SCENARIO_NAME, blankName } from '../../engine/actions.js';
 import { count, list } from '../components/words.js';
 
 // The scenario's name as the screen says it: as typed, or "New scenario"
 // where a file left it blank (the actions' own rule for their labels).
 export function scenarioName(scenario) {
   const name = scenario && typeof scenario.name === 'string' ? scenario.name : '';
-  return name.replace(/[\s​-‍⁠﻿]/g, '') === '' ? NEW_SCENARIO_NAME : name;
+  return blankName(name) ? NEW_SCENARIO_NAME : name;
 }
 
 // The day types a change can name: those that are their own copy, each
@@ -111,22 +111,62 @@ export const TEACHERS_FOLLOW = 'Teachers follow rooms: a slot with no teacher of
 // ---- the comparison's figures in words
 
 const MINUS = '−';
+const NO_CHANGE = 'no change';
 
 export function signed(n, unit) {
-  if (n === 0) return 'no change';
+  if (n === 0) return NO_CHANGE;
   return (n > 0 ? '+' : MINUS) + Math.abs(n) + (unit ? ' ' + unit : '');
 }
 
-// A number never parts from its unit at a line's end: "7 min 58 s" breaks
-// only between "7 min" and "58 s".
+// Durations, as the lab and the congestion report both print them (one
+// rule for the same figures, SV2-72d). Under an hour as everywhere else in
+// the tool (engine/findings.js formatDuration: "45 s", "7 min 58 s"); from an
+// hour on in hours and minutes, to the nearest minute ("2 h 34 min", "1 h"):
+// over a day's walking the seconds are noise, and "153 min 48 s" did not
+// fit a cell of the inspector's 320 px. Every space inside a figure is a
+// no-break space, so a figure never breaks across two lines.
 const NBSP = '\u00a0';
-export function duration(seconds) {
-  return formatDuration(seconds).replace(/(\d) (min|s)\b/g, '$1' + NBSP + '$2');
+const HOUR = 3600;
+
+function hoursAndMinutes(seconds) {
+  const minutes = Math.round(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours === 0) return rest + ' min';
+  return rest === 0 ? hours + ' h' : hours + ' h ' + rest + ' min';
+}
+
+// `toMinute`: to the nearest minute whatever the length (a time beside one
+// that reads in hours, so the two are to the same grain).
+export function duration(seconds, toMinute) {
+  return durationWords(seconds, toMinute).replace(/ /g, NBSP);
+}
+
+// The same rule with plain spaces, for a page whose lines may break inside
+// a time (the congestion report's day sections, ui/prints/congestion.js,
+// whose tables are pinned with plain spaces).
+export function durationWords(seconds, toMinute) {
+  const whole = Math.max(0, Math.round(seconds));
+  return whole >= HOUR || toMinute === true ? hoursAndMinutes(whole) : formatDuration(whole);
 }
 
 export function signedDuration(seconds) {
-  if (seconds === 0) return 'no change';
+  if (seconds === 0) return NO_CHANGE;
   return (seconds > 0 ? '+' : MINUS) + duration(Math.abs(seconds));
+}
+
+// Before, after and the difference of one time, printed so the three agree:
+// the difference is that of the two times as printed. When either reads in
+// hours, all three are to the minute ("58 min", "1 h 2 min", "+4 min"); else
+// to the second. A change smaller than what is printed is "no change".
+//   -> { before, after, difference, n }   n: the difference in seconds, as printed
+export function timeFigures(before, after) {
+  const a = Math.max(0, Math.round(before));
+  const b = Math.max(0, Math.round(after));
+  const minutes = Math.max(a, b) >= HOUR;
+  const grain = minutes ? 60 : 1;
+  const n = (Math.round(b / grain) - Math.round(a / grain)) * grain;
+  return { before: duration(a, minutes), after: duration(b, minutes), difference: n === 0 ? NO_CHANGE : (n > 0 ? '+' : MINUS) + duration(Math.abs(n), minutes), n };
 }
 
 function busiestWords(side) {
@@ -140,8 +180,8 @@ export function figureRows(compare) {
   const f = compare.figures;
   const unit = (f.busiest.after || f.busiest.before || { unit: 'students' }).unit;
   const rows = [
-    { id: 'walking', label: 'Total walking time', before: duration(f.walking.before), after: duration(f.walking.after), difference: signedDuration(f.walking.difference), n: f.walking.difference },
-    { id: 'crowding', label: 'Time lost to crowding', before: duration(f.crowding.before), after: duration(f.crowding.after), difference: signedDuration(f.crowding.difference), n: f.crowding.difference },
+    { id: 'walking', label: 'Total walking time', ...timeFigures(f.walking.before, f.walking.after) },
+    { id: 'crowding', label: 'Time lost to crowding', ...timeFigures(f.crowding.before, f.crowding.after) },
     { id: 'busiest', label: 'Busiest load (' + unit + ')', before: busiestWords(f.busiest.before), after: busiestWords(f.busiest.after), difference: signed(f.busiest.difference), n: f.busiest.difference },
     { id: 'late', label: 'Late arrivals', before: String(f.late.before), after: String(f.late.after), difference: signed(f.late.difference), n: f.late.difference },
     { id: 'failed', label: 'Walks with no way through', before: String(f.failed.before), after: String(f.failed.after), difference: signed(f.failed.difference), n: f.failed.difference },
@@ -165,22 +205,39 @@ export function busiestPlaces(compare) {
 export function groupRow(project, row) {
   const group = project.groups.find((each) => each.id === row.groupId);
   const name = group ? group.name : 'A group no longer in the project';
-  const total = (side) => (side ? duration(side.total) : '—');
+  // both sides walk: the three cells are timeFigures', so Before and After
+  // are to the change's grain ("58 min | 1 h 2 min | +4 min", never "58 min
+  // 20 s" beside a change to the minute) and the change is that of the two
+  // times as printed
+  const times = row.failedChange === 0 && row.difference !== null && row.before && row.after ? timeFigures(row.before.total, row.after.total) : null;
+  const total = (side, printed) => (times ? printed : side ? duration(side.total) : '—');
+  const moved = times ? times.n : row.difference;
   let change;
   if (row.failedChange > 0) change = count(row.failedChange, 'walk') + ' more with no way through';
   else if (row.failedChange < 0) change = count(-row.failedChange, 'walk') + ' fewer with no way through';
-  else if (row.difference === null) change = '—';
-  else change = signedDuration(row.difference);
-  const worse = row.failedChange !== 0 ? row.failedChange > 0 : row.difference === null || row.difference === 0 ? null : row.difference > 0;
-  return { groupId: row.groupId, name, typed: Boolean(group), edited: row.edited, before: total(row.before), after: total(row.after), change, worse };
+  else if (moved === null) change = '—';
+  else change = times ? times.difference : signedDuration(moved);
+  const worse = row.failedChange !== 0 ? row.failedChange > 0 : moved === null || moved === 0 ? null : moved > 0;
+  return { groupId: row.groupId, name, typed: Boolean(group), edited: row.edited, before: total(row.before, times && times.before), after: total(row.after, times && times.after), change, worse };
 }
 
-// The groups whose travel changed and the groups the scenario edits, in
-// compareResults' order (biggest change first, edited first within a band),
-// and how many others walk as before.
+// The groups whose travel changes as printed, in compareResults' order
+// (biggest change first, edited first within a band), and how many others
+// walk as before. The test is the printed change, not the seconds: a group
+// whose change reads "no change" (12 s over two and a half hours, or an
+// edited group whose times stay) walks as before and is counted with them,
+// never listed as a row that says it did not change (SV2-72d2). An edited
+// group with no time on a side ("—") is still listed: the scenario edits it
+// and nothing says it walks as before.
 export function groupRows(project, compare) {
-  const changed = compare.groups.filter((row) => row.edited || row.failedChange !== 0 || (row.difference !== null && row.difference !== 0));
-  return { rows: changed.map((row) => groupRow(project, row)), same: compare.groups.length - changed.length };
+  const rows = [];
+  for (const row of compare.groups) {
+    const shown = groupRow(project, row);
+    if (shown.change === NO_CHANGE) continue;
+    if (shown.change === '—' && !row.edited) continue;
+    rows.push(shown);
+  }
+  return { rows, same: compare.groups.length - rows.length };
 }
 
 export function placeRow(row, unit) {

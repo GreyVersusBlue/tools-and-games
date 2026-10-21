@@ -24,12 +24,12 @@ import { openDialog, confirm, dialogIsOpen } from './components/dialog.js';
 import { openMenu, closeMenu } from './components/menu.js';
 import { createToasts } from './components/toast.js';
 import { field } from './components/field.js';
-import { table } from './components/table.js';
+import { openHelp as showHelp } from './help/index.js';
 import { gettingStarted } from './components/getting-started.js';
 import { paperForRegion } from './project/settings.js';
 
 import { section as building } from './building/index.js';
-import { section as schedule } from './schedule/index.js';
+import { section as schedule, openAddress } from './schedule/index.js';
 import { section as movement } from './movement/index.js';
 import { section as scenarios } from './scenarios/index.js';
 import { section as safety } from './safety/index.js';
@@ -41,7 +41,7 @@ import { createIds } from '../engine/ids.js';
 import { newProject, THEMES } from '../engine/schema.js';
 import { DEFAULT_PASSCODE } from '../engine/publish-defaults.js';
 import { gridEditsPending, watchGridEdits } from './schedule/grid/index.js';
-import { focusHash } from './schedule/address.js';
+import { focusHash, groupOf } from './schedule/address.js';
 import { setSetting, setOnboarding, replaceProject } from '../engine/actions.js';
 import { sampleSchool, SAMPLE_PROJECT_ID } from '../data/sample-school.js';
 import { startStorage } from '../storage/session.js';
@@ -244,7 +244,8 @@ async function boot() {
 
   function showAction(focus) {
     const hash = hashForFocus(focus);
-    return hash ? { label: 'Show', run: () => navigate(hash) } : undefined;
+    // a group's or a slot's address is opened by the schedule's rule, marked when the list is under it (SV2-72e)
+    return hash ? { label: 'Show', run: () => (groupOf(store.project, hash) ? openAddress(ctx, hash) : navigate(hash)) } : undefined;
   }
 
   function undo() {
@@ -348,36 +349,7 @@ async function boot() {
   // ------------------------------------------------------------ help
 
   function openHelp(opener) {
-    const rows = shortcuts.list();
-    const list = table({
-      caption: 'Keyboard shortcuts',
-      key: (row) => row.id,
-      columns: [
-        { id: 'keys', label: 'Keys', sortable: true, value: (row) => row.keys, render: (row) => h('kbd', null, row.keys) },
-        { id: 'does', label: 'What it does', sortable: true, value: (row) => row.does },
-        { id: 'group', label: 'Where', sortable: true, value: (row) => row.group },
-      ],
-      rows,
-    });
-    const dialog = openDialog({
-      id: 'help-dialog',
-      title: 'These are the keyboard shortcuts.',
-      wide: true,
-      opener,
-      fallbackFocus: focusSurface,
-      body: [
-        h('p', null, 'A single key does nothing while you are typing in a field, or while Ctrl, Alt or ⌘ is held. Inside a text field, undo and redo belong to the field.'),
-        h('div', { class: 'dialog__scroll', tabindex: '0', role: 'group', 'aria-label': 'Keyboard shortcuts' }, list.element),
-      ],
-      buttons: [
-        { label: 'Show Getting started', value: 'start' },
-        { label: 'Close help', value: null },
-      ],
-    });
-    dialog.closed.then((value) => {
-      if (value === 'start') showStarted();
-    });
-    return dialog;
+    return showHelp(ctx, { sections: SECTIONS, current: current && current.section.id, opener });
   }
 
   function showStarted() {
@@ -527,7 +499,7 @@ async function boot() {
   shortcuts.add({ id: 'search', group: 'Anywhere', does: 'Go to the search box', chord: { key: 'f', mod: true }, run: () => searchInput.focus() });
   shortcuts.add({ id: 'search-slash', group: 'Anywhere', does: 'Go to the search box', key: '/', run: () => searchInput.focus() });
   import('./building/search.js').then((found) => found.attachSearch(searchInput, ctx)); // SV2-07: the results under the box
-  shortcuts.add({ id: 'help', group: 'Anywhere', does: 'Open this list', key: '?', run: () => openHelp(document.activeElement === document.body ? helpButton : document.activeElement) });
+  shortcuts.add({ id: 'help', group: 'Anywhere', does: 'Open Help', key: '?', run: () => openHelp(document.activeElement === document.body ? helpButton : document.activeElement) });
   shortcuts.add({
     id: 'regions',
     group: 'Anywhere',

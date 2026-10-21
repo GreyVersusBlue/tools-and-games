@@ -46,6 +46,36 @@ const click = async (selector) => {
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// A module of the tool put on the page as `globalThis.sv2modules[key]`, by a
+// module script the page loads itself, and waited for: the page sets the
+// key. An import() awaited inside page.evaluate can come back "Protocol
+// error (Runtime.callFunctionOn): Promise was collected" (SV2-72e saw it in
+// m2-pass.mjs, 2 runs in 10 with the CPU throttled 4), so a module is loaded
+// first and used in a synchronous evaluate after. A load of the page empties
+// the globals, and the module is loaded again.
+// The script imports the module itself and keeps `{ error }` under the key
+// when that fails: a static import that fails fires no error the test can
+// see, and a wrong path came back as this wait's timeout (SV2-72e2).
+async function loadModule(page, key, file) {
+  // null while it loads, then `{ error }`: null when the module is there
+  const held = (wanted) => {
+    const value = globalThis.sv2modules && globalThis.sv2modules[wanted];
+    if (!value) return null;
+    return { error: value[Symbol.toStringTag] === 'Module' ? null : String(value.error) };
+  };
+  let state = await page.evaluate(held, key);
+  if (state === null) {
+    const name = JSON.stringify(key);
+    await page.addScriptTag({ type: 'module', content: 'const modules = (globalThis.sv2modules ||= {}); import(' + JSON.stringify('./' + file) + ').then((module) => { modules[' + name + '] = module; }, (error) => { modules[' + name + '] = { error: String((error && error.message) || error) }; });' });
+    state = await (await page.waitForFunction(held, { timeout: 5000 }, key)).jsonValue();
+  }
+  if (state.error !== null) {
+    // forgotten, so a later call tries again rather than repeat this one
+    await page.evaluate((wanted) => delete globalThis.sv2modules[wanted], key);
+    throw new Error('loadModule: ' + file + ' did not load: ' + state.error);
+  }
+}
+
 async function selectAllAndType(value) {
   await settled();
   await page.keyboard.down('Control');
@@ -254,10 +284,11 @@ test('a redraw does not take the text out from under someone typing', async () =
   await click('[data-key="group-name"]');
   await selectAllAndType('6a');
   // a change from somewhere else draws the tab again, which replaces the field
-  await page.evaluate(() => import('./engine/actions.js').then((actions) => {
+  await loadModule(page, 'actions', 'engine/actions.js');
+  await page.evaluate(() => {
     const { store } = globalThis.sv2;
-    store.apply(actions.editGroup, { id: store.project.groups.find((group) => group.name === '8Z').id, headCount: 23 });
-  }));
+    store.apply(globalThis.sv2modules.actions.editGroup, { id: store.project.groups.find((group) => group.name === '8Z').id, headCount: 23 });
+  });
   await shows(() => document.querySelector('[data-key="group-head"]').value === '23');
   await keyIs('group-name');
   assert.equal(await activeValue(), '6a');
@@ -310,11 +341,13 @@ test('the Accepted list says which records no longer stand: changed since accept
   assert.equal(await exists(open), false, 'accepted, so not in the findings');
 
   // a third group in the room: the finding names somebody else now
+  await loadModule(page, 'actions', 'engine/actions.js');
   await act((dayId, findingId) => {
     const { store } = globalThis.sv2;
     const roomId = findingId.split(':')[3];
     const third = store.project.groups.find((group) => group.name === '6B');
-    return import('./engine/actions.js').then((actions) => store.apply(actions.setSlot, { groupId: third.id, dayTypeId: dayId, period: 2, slot: { room: roomId } }));
+    const { actions } = globalThis.sv2modules;
+    store.apply(actions.setSlot, { groupId: third.id, dayTypeId: dayId, period: 2, slot: { room: roomId } });
   }, DAY_A, id);
   await shows((selector) => document.querySelector(selector) !== null, open);
   await settled();
@@ -333,9 +366,11 @@ test('the Accepted list says which records no longer stand: changed since accept
   assert.equal(await exists(kept('changed')), false);
 
   // its check switched off: kept, and not called put right
+  await loadModule(page, 'actions', 'engine/actions.js');
   await act(() => {
     const { store } = globalThis.sv2;
-    return import('./engine/actions.js').then((actions) => store.apply(actions.setSetting, { key: 'checks.off', value: ['room-double'] }));
+    const { actions } = globalThis.sv2modules;
+    store.apply(actions.setSetting, { key: 'checks.off', value: ['room-double'] });
   });
   await shows(() => document.querySelector('.sch-findings tr[data-finding^="room-double:"]:not([data-state])') === null);
   await settled();
@@ -347,10 +382,12 @@ test('the Accepted list says which records no longer stand: changed since accept
   await shows((selector) => document.querySelector(selector) !== null, kept() + ':not([data-state])');
 
   // put right: gone, and the sentence does not speak of a check switched off
+  await loadModule(page, 'actions', 'engine/actions.js');
   await act((dayId) => {
     const { store } = globalThis.sv2;
     const group = store.project.groups.find((each) => each.name === '8Z');
-    return import('./engine/actions.js').then((actions) => store.apply(actions.setSlot, { groupId: group.id, dayTypeId: dayId, period: 2, slot: { room: null, roomText: '' } }));
+    const { actions } = globalThis.sv2modules;
+    store.apply(actions.setSlot, { groupId: group.id, dayTypeId: dayId, period: 2, slot: { room: null, roomText: '' } });
   }, DAY_A);
   await shows((selector) => document.querySelector(selector) !== null, kept('gone'));
   assert.equal(await page.$eval(kept('gone') + ' td', (td) => td.textContent), 'No longer found. What this was about has been put right.');
@@ -361,9 +398,10 @@ test('the Accepted list says which records no longer stand: changed since accept
 test('Accept hands the engine who the finding names, so a walk finding (which the engine cannot look up) keeps its list', async () => {
   // No walk figures reach this section yet, so no walk finding can be clicked.
   // The dialog is the real one; the store is a stand-in that keeps the payload.
+  await loadModule(page, 'checks', 'ui/schedule/checks.js');
   const payload = await page.evaluate(async () => {
     const { ctx } = globalThis.sv2;
-    const { acceptWithReason } = await import('./ui/schedule/checks.js');
+    const { acceptWithReason } = globalThis.sv2modules.checks;
     let given = null;
     const env = { ctx: { ...ctx, openDialog: ctx.openDialog, toast() {}, undo() {}, store: { apply: (action, sent) => { given = sent; } } } };
     const finding = { id: 'group-walk:dsample00a:3:gsample06a', kind: 'group-walk', severity: 'warning', text: 'An invented walk that does not fit.', about: ['gsample06a'], where: { dayTypeId: 'dsample00a', period: 3, groupIds: ['gsample06a'], roomId: null, teacherId: null } };
@@ -388,12 +426,14 @@ test('Show jumps to the slot, marks it and puts focus in it', async () => {
   await keyIs('slot:' + DAY_A + ':1:room');
   assert.equal(await count('.sch-slot[data-shown="true"]'), 1);
   // a finding about a teacher goes to the teacher's row
+  await loadModule(page, 'actions', 'engine/actions.js');
   await page.evaluate(() => {
     const { store } = globalThis.sv2;
     const teacher = store.project.teachers[0];
     globalThis.sv2Kept = teacher.roomIds.slice();
     const other = store.project.building.floors.flatMap((floor) => floor.spaces).find((space) => space.kind === 'room' && !teacher.roomIds.includes(space.id));
-    return import('./engine/actions.js').then((actions) => store.apply(actions.editTeacher, { id: teacher.id, roomIds: teacher.roomIds.concat([other.id]) }));
+    const { actions } = globalThis.sv2modules;
+    store.apply(actions.editTeacher, { id: teacher.id, roomIds: teacher.roomIds.concat([other.id]) });
   });
   await go(page, '#schedule/checks');
   await page.waitForSelector('.sch-findings tr[data-finding^="teacher-multi-room:"]');
@@ -700,10 +740,12 @@ test('an empty project: each tab says what the thing is and has one button', asy
 });
 
 test('a room that is no longer in the building stays on the slot, and says so', async () => {
+  await loadModule(page, 'actions', 'engine/actions.js');
   await page.evaluate((dayId) => {
     const { store } = globalThis.sv2;
     const group = store.project.groups.find((each) => each.name === '8Z');
-    return import('./engine/actions.js').then((actions) => store.apply(actions.setSlot, { groupId: group.id, dayTypeId: dayId, period: 5, slot: { room: null, roomText: 'B12' } }));
+    const { actions } = globalThis.sv2modules;
+    store.apply(actions.setSlot, { groupId: group.id, dayTypeId: dayId, period: 5, slot: { room: null, roomText: 'B12' } });
   }, DAY_A);
   await selectGroup('8Z');
   await shows((selector) => document.querySelector(selector).value === 'B12' && !document.querySelector(selector).parentNode.querySelector('.sch-room__missing').hidden, slot(DAY_A, 5, 'room'));

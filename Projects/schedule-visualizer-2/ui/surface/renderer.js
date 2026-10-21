@@ -20,6 +20,17 @@
 //   underlay(g, view, floor),      drawn under the cells: a traced image
 //   overlays: [(g, view, floor, theme) => {}],   drawn over the plan and under
 //                                  the editor's marks: route lanes, loads
+//   namesOver,                     true: corridor names and door names drawn
+//                                  over the overlays, a corridor's and an
+//                                  inward door name on a halo of the
+//                                  corridor's colour, so a route along a
+//                                  corridor or into its exit leaves the name
+//                                  readable (Safety; SV2-72c, SV2-72c2)
+//   clip,                          { x, y, w, h } in cells: the part of the
+//                                  floor the caller shows (the plan map's
+//                                  slot). A door name that would run past it
+//                                  goes inside the exit's dash instead, and is
+//                                  left out when it is cut there too (SV2-72c)
 // }
 //
 // preview is one of
@@ -125,20 +136,29 @@ export function createRenderer(canvas) {
   let letters = { connections: null, floorId: null, byCell: new Map() };
   let surnames = { teachers: null, byId: new Map() };
 
+  // The colours are kept once read, until the theme changes. A canvas that
+  // is not in the document has no styles of its own: it reads the page's
+  // root (where the tokens are), and what it read is not kept, so the first
+  // draw once it is on the page reads its own (SV2-72c: a map made before
+  // its section was put on the page kept #888888 for every token).
   function readTheme() {
     const key = (document.documentElement.dataset.theme || '') + ':' + dark.matches;
     if (theme && key === themeKey) return theme;
-    const style = getComputedStyle(canvas);
+    const placed = canvas.isConnected;
+    const style = getComputedStyle(placed ? canvas : document.documentElement);
     const next = {};
+    let whole = placed;
     for (const name of TOKENS) {
       const value = style.getPropertyValue('--' + name).trim();
+      if (!parse(value)) whole = false;
       next[camel(name)] = parse(value) ? value : '#888888';
     }
     next.font = style.getPropertyValue('--font-plan').trim() || 'sans-serif';
-    theme = next;
-    themeKey = key;
     fills.clear();
     labels.clear();
+    theme = next;
+    // a reading with a token missing is used for this draw and asked again at the next
+    themeKey = whole ? key : null;
     return theme;
   }
 
@@ -401,6 +421,45 @@ export function createRenderer(canvas) {
     }
 
     // exits: a thick dash on the edge that leads outside, the door name beyond it
+    // A door name's place: its anchor, alignment and box in pixels, beyond the
+    // dash (outside the floor) or, inward, on the floor's side of it; slid
+    // along the edge, as far as it must, to stay inside the caller's clip.
+    const clipPx = scene.clip ? { x0: X(scene.clip.x), x1: X(scene.clip.x + scene.clip.w), y0: Y(scene.clip.y), y1: Y(scene.clip.y + scene.clip.h) } : null;
+    const slide = (from, length, low, high) => (high - low < length ? from : Math.min(Math.max(from, low), high - length));
+    const doorNamePlace = (side, x, y, wide, s, gap, inward) => {
+      if (side === 'n' || side === 's') {
+        const edge = Y(side === 'n' ? y : y + 1);
+        const up = (side === 'n') === !inward;
+        const at = edge + (up ? -gap : gap);
+        const x0 = clipPx ? slide(X(x + 0.5) - wide / 2, wide, clipPx.x0, clipPx.x1) : X(x + 0.5) - wide / 2;
+        return { inward, x: x0 + wide / 2, y: at, align: 'center', baseline: up ? 'bottom' : 'top', box: { x0, x1: x0 + wide, y0: up ? at - s : at, y1: up ? at : at + s } };
+      }
+      const edge = X(side === 'w' ? x : x + 1);
+      const left = (side === 'w') !== inward;
+      const at = edge + (left ? -gap : gap);
+      const y0 = clipPx ? slide(Y(y + 0.5) - s / 2, s, clipPx.y0, clipPx.y1) : Y(y + 0.5) - s / 2;
+      return { inward, x: at, y: y0 + s / 2, align: left ? 'right' : 'left', baseline: 'middle', box: { x0: left ? at - wide : at, x1: left ? at : at + wide, y0, y1: y0 + s } };
+    };
+    const fitsClip = (box) => !clipPx || (box.x0 >= clipPx.x0 - 0.5 && box.x1 <= clipPx.x1 + 0.5 && box.y0 >= clipPx.y0 - 0.5 && box.y1 <= clipPx.y1 + 0.5);
+    // each door name drawn: inward, on a halo of the corridor's colour
+    const doorNames = [];
+    function drawDoorNames() {
+      for (const { name, place, s: tall } of doorNames) {
+        g.font = font(600, tall);
+        g.textAlign = place.align;
+        g.textBaseline = place.baseline;
+        if (place.inward) {
+          g.lineJoin = 'round';
+          g.strokeStyle = t.corridor;
+          g.lineWidth = scene.namesOver ? 4 : 3;
+          g.strokeText(name, place.x, place.y);
+        }
+        g.fillStyle = contrast(t.accent, place.inward ? t.corridor : t.grid) >= 4.5 ? t.accent : t.ink;
+        g.fillText(name, place.x, place.y);
+      }
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+    }
     for (const exit of floor.exits) {
       const x = exit.cell % width;
       const y = Math.floor(exit.cell / width);
@@ -426,21 +485,18 @@ export function createRenderer(canvas) {
       const s = Math.min(MAX_LABEL, Math.max(MIN_LABEL, Math.round(size * 0.5)));
       if (exit.doorName !== '' && size >= 12) {
         g.font = font(600, s);
-        g.fillStyle = contrast(t.accent, t.grid) >= 4.5 ? t.accent : t.ink;
+        const wide = g.measureText(exit.doorName).width;
         const gap = thick + 3;
-        if (side === 'n' || side === 's') {
-          g.textAlign = 'center';
-          g.textBaseline = side === 'n' ? 'bottom' : 'top';
-          g.fillText(exit.doorName, X(x + 0.5), Y(side === 'n' ? y : y + 1) + (side === 'n' ? -gap : gap));
-        } else {
-          g.textAlign = side === 'w' ? 'right' : 'left';
-          g.textBaseline = 'middle';
-          g.fillText(exit.doorName, X(side === 'w' ? x : x + 1) + (side === 'w' ? -gap : gap), Y(y + 0.5));
-        }
-        g.textAlign = 'center';
-        g.textBaseline = 'middle';
+        // where the name goes: beyond the dash, outside the floor; inside it
+        // when the caller's part of the floor would cut it there; else nowhere
+        const place = [false, true].map((inward) => doorNamePlace(side, x, y, wide, s, gap, inward)).find((at) => fitsClip(at.box));
+        if (place) doorNames.push({ name: exit.doorName, place, s });
       }
     }
+    // the door names: here, or with namesOver over the overlays, so a route
+    // that ends at the exit's cell runs under a name drawn inward rather
+    // than over it (Safety's "Door A", SV2-72c2)
+    if (!scene.namesOver) drawDoorNames();
 
     // exclusion zones: a hatched rectangle and its label
     for (const zone of project.building.zones) {
@@ -485,9 +541,11 @@ export function createRenderer(canvas) {
       }
     }
 
-    // corridor names, along their run, in small capitals
-    const nameSize = Math.min(13, Math.max(MIN_LABEL, Math.round(size * 0.5)));
-    if (size >= 12) {
+    // corridor names, along their run, in small capitals; under the
+    // overlays, or over them on a halo (namesOver)
+    const corridorNames = (halo) => {
+      const nameSize = Math.min(13, Math.max(MIN_LABEL, Math.round(size * 0.5)));
+      if (size < 12) return;
       for (const corridor of floor.corridors) {
         if (corridor.cells.length === 0 || corridor.name === '') continue;
         let x0 = Infinity;
@@ -506,19 +564,28 @@ export function createRenderer(canvas) {
         const across = x1 - x0 >= y1 - y0;
         const text = corridor.name.toUpperCase();
         g.font = font(500, nameSize);
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
         if ('letterSpacing' in g) g.letterSpacing = '0.08em';
         const long = g.measureText(text).width;
         if (long <= ((across ? x1 - x0 : y1 - y0) + 1) * size - 8) {
-          g.fillStyle = t.ink2;
           g.save();
           g.translate((X(x0) + X(x1 + 1)) / 2, (Y(y0) + Y(y1 + 1)) / 2);
           if (!across) g.rotate(-Math.PI / 2);
+          if (halo) {
+            g.lineJoin = 'round';
+            g.strokeStyle = t.corridor;
+            g.lineWidth = 4;
+            g.strokeText(text, 0, 0.5);
+          }
+          g.fillStyle = t.ink2;
           g.fillText(text, 0, 0.5);
           g.restore();
         }
         if ('letterSpacing' in g) g.letterSpacing = '0px';
       }
-    }
+    };
+    if (!scene.namesOver) corridorNames(false);
 
     // the labels of rooms and other spaces
     const base = Math.max(MIN_LABEL, size * 0.55);
@@ -581,6 +648,10 @@ export function createRenderer(canvas) {
       g.save();
       overlay(g, view, floor, t);
       g.restore();
+    }
+    if (scene.namesOver) {
+      corridorNames(true);
+      drawDoorNames();
     }
 
     // ---- the editor's marks. None of these is ever printed.

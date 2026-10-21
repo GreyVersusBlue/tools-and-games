@@ -157,6 +157,9 @@ export const section = {
       name: 'scenarios',
       label: 'The scenario map',
       keys: KEYS,
+      // a phone on its side keeps 160 px of map, the first line and the
+      // docked line scrolled away instead, as Safety does (W5, SV2-72d2)
+      least: 160,
       floorsRow: {
         value: () => memory.floors,
         change(value) {
@@ -176,9 +179,17 @@ export const section = {
     // reading the lane's last answer (lane.answer) and memory.transition.
     const difference = mountDifference({ ctx, store, plan, memory, lane, inspector: () => inspectorBox });
 
-    // ---- the map's cursor says what is under it
+    // ---- the map's cursor says what is under it: one sentence a move, the
+    // difference card's when the cursor is on a cell that has one (it names
+    // the floor and corridor or stairs too), else the lab's own line
     plan.onCell((ev) => {
-      if (ev.kind !== 'keyboard' || !plan.world || !plan.project) return false;
+      if (ev.kind !== 'keyboard') return false;
+      const card = difference.cursorWords();
+      if (card) {
+        ctx.announce(card);
+        return false;
+      }
+      if (!plan.world || !plan.project) return false;
       const found = slotAt(plan.world, ev.x, ev.y);
       if (!found) {
         ctx.announce('Between floors.');
@@ -191,6 +202,28 @@ export const section = {
       ctx.announce(floor.name + ': ' + what + '.');
       return false;
     });
+
+    // ---- where the shell's messages start (SV2-72d): from 1200 px the panel
+    // is a column on the left of the map, and a message lying over its forms
+    // for six seconds hid what was being typed. --toast-left on the surface
+    // is how far the panel reaches in from the surface's left edge while it
+    // stands beside the map; ui/app.css starts the messages right of it.
+    let toastHost = null;
+    function toastLeft() {
+      if (gone) return;
+      const surface = toastHost || element.closest('.surface');
+      if (!surface) return;
+      toastHost = surface;
+      const stage = plan.stage;
+      const beside = !panel.hidden && panel.getClientRects().length > 0 && stage.getClientRects().length > 0 && panel.getBoundingClientRect().right <= stage.getBoundingClientRect().left + 1;
+      const value = beside ? Math.max(0, Math.round(panel.getBoundingClientRect().right - surface.getBoundingClientRect().left - surface.clientLeft)) + 'px' : '';
+      if (surface.style.getPropertyValue('--toast-left') === value) return;
+      if (value === '') surface.style.removeProperty('--toast-left');
+      else surface.style.setProperty('--toast-left', value);
+    }
+    const toastWatch = new ResizeObserver(() => toastLeft());
+    toastWatch.observe(panel);
+    toastWatch.observe(element);
 
     // ---- the inspector
     const compare = comparePanel(env);
@@ -304,6 +337,9 @@ export const section = {
         title: 'Apply the scenario ' + quote(current.name) + '?',
         body,
         id: 'scenario-apply',
+        // the lab's own name for it, so scenarios.css keeps its question and
+        // buttons in view (SV2-72f), on it before it is shown and focused
+        class: 'scn-apply',
         opener: applyButton,
         // with nothing that applies the button says what it does: it closes the scenario
         buttons: [{ label: n === 0 ? APPLY_NOTHING : n === 1 ? 'Apply 1 change' : 'Apply ' + n + ' changes', value: 'apply', kind: 'primary' }, { label: 'Keep it as a scenario', value: null }],
@@ -418,6 +454,8 @@ export const section = {
       },
       unmount() {
         gone = true;
+        toastWatch.disconnect();
+        if (toastHost) toastHost.style.removeProperty('--toast-left');
         plan.unmount();
       },
     };

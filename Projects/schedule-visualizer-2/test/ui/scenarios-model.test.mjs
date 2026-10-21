@@ -9,7 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { cancelled, figureRows, groupRow, groupRows, barWords } from '../../ui/scenarios/model.js';
+import { timeFigures, duration, cancelled, figureRows, groupRow, groupRows, barWords } from '../../ui/scenarios/model.js';
 
 const MINUS = '−';
 const NBSP = ' ';
@@ -59,8 +59,8 @@ test('figureRows: eight rows, signed differences, every figure better lower', ()
   assert.deepEqual(rows.map((row) => row.id), ['walking', 'crowding', 'busiest', 'late', 'failed', 'problem', 'warning', 'note']);
   const by = Object.fromEntries(rows.map((row) => [row.id, row]));
   assert.equal(by.walking.before, '10' + NBSP + 'min');
-  assert.equal(by.walking.after, '11' + NBSP + 'min 15' + NBSP + 's');
-  assert.equal(by.walking.difference, '+1' + NBSP + 'min 15' + NBSP + 's');
+  assert.equal(by.walking.after, '11' + NBSP + 'min' + NBSP + '15' + NBSP + 's');
+  assert.equal(by.walking.difference, '+1' + NBSP + 'min' + NBSP + '15' + NBSP + 's');
   assert.equal(by.walking.worse, true, 'more walking is worse');
   assert.equal(by.crowding.difference, MINUS + '30' + NBSP + 's');
   assert.equal(by.crowding.worse, false, 'less crowding is better');
@@ -121,7 +121,10 @@ test('groupRow: a group no longer in the project is named so, and not as typed t
   assert.equal(row.typed, false);
 });
 
-test('groupRows: edited groups and groups whose travel changed, the rest counted', () => {
+// SV2-72d2 item 5: the list is of the groups whose printed change is a
+// change. An edited group whose times stay reads "no change" and is counted
+// with the others that walk as before (this case listed g3 until then).
+test('groupRows: the groups whose travel changes as printed, the rest counted, an edited group that stays the same among them', () => {
   const compare = {
     groups: [
       { groupId: 'g1', edited: false, before: sideOf(100), after: sideOf(100), difference: 0, failedChange: 1 },
@@ -129,11 +132,38 @@ test('groupRows: edited groups and groups whose travel changed, the rest counted
       { groupId: 'g3', edited: true, before: sideOf(100), after: sideOf(100), difference: 0, failedChange: 0 },
       { groupId: 'g4', edited: false, before: sideOf(100), after: sideOf(100), difference: 0, failedChange: 0 },
       { groupId: 'g5', edited: false, before: null, after: null, difference: null, failedChange: 0 },
+      { groupId: 'g6', edited: true, before: null, after: sideOf(60), difference: null, failedChange: 0 },
     ],
   };
   const found = groupRows(project, compare);
-  assert.deepEqual(found.rows.map((row) => row.groupId), ['g1', 'g2', 'g3'], 'in the comparison’s order');
-  assert.equal(found.same, 2, 'a group the same, and one with no time either side, walk as before');
+  assert.deepEqual(found.rows.map((row) => row.groupId), ['g1', 'g2', 'g6'], 'in the comparison’s order; an edited group with no time on a side is still listed');
+  assert.equal(found.same, 3, 'an edited group the same, a group the same, and one with no time either side, walk as before');
+});
+
+test('SV2-72d2 5: a group whose seconds moved but whose printed change is "no change" is not listed, and is counted as walking as before', () => {
+  const compare = {
+    groups: [
+      { groupId: 'g1', edited: false, before: sideOf(9228), after: sideOf(9240), difference: 12, failedChange: 0 },
+      { groupId: 'g2', edited: true, before: sideOf(9228), after: sideOf(9240), difference: 12, failedChange: 0 },
+      { groupId: 'g3', edited: false, before: sideOf(3500), after: sideOf(3700), difference: 200, failedChange: 0 },
+    ],
+  };
+  const found = groupRows(project, compare);
+  assert.deepEqual(found.rows.map((row) => [row.groupId, row.change]), [['g3', '+4' + NBSP + 'min']]);
+  assert.equal(found.rows.some((row) => row.change === 'no change'), false, 'no row says it did not change');
+  assert.equal(found.same, 2, '12 s over two and a half hours walks as before, edited or not');
+});
+
+test('SV2-72d2 4: a group\'s Before and After are to the grain of its change: 3500 s to 3700 s reads 58 min, 1 h 2 min, +4 min', () => {
+  const row = groupRow(project, { groupId: 'g1', edited: true, before: sideOf(3500), after: sideOf(3700), difference: 200, failedChange: 0 });
+  assert.deepEqual([row.before, row.after, row.change], ['58' + NBSP + 'min', '1' + NBSP + 'h' + NBSP + '2' + NBSP + 'min', '+4' + NBSP + 'min'], 'never "58 min 20 s" beside a change to the minute');
+  assert.equal(row.worse, true);
+  // under an hour on both sides the cells stay to the second
+  const short = groupRow(project, { groupId: 'g1', edited: true, before: sideOf(100), after: sideOf(130), difference: 30, failedChange: 0 });
+  assert.deepEqual([short.before, short.after, short.change], ['1' + NBSP + 'min' + NBSP + '40' + NBSP + 's', '2' + NBSP + 'min' + NBSP + '10' + NBSP + 's', '+30' + NBSP + 's']);
+  // a row worded by its walks with no way through keeps each side's own time
+  const failed = groupRow(project, { groupId: 'g1', edited: true, before: sideOf(3500), after: sideOf(60), difference: null, failedChange: 1 });
+  assert.deepEqual([failed.before, failed.after], ['58' + NBSP + 'min' + NBSP + '20' + NBSP + 's', '1' + NBSP + 'min']);
 });
 
 test('barWords: what is staged, with what is skipped', () => {
@@ -141,4 +171,27 @@ test('barWords: what is staged, with what is skipped', () => {
   assert.equal(barWords({ kept: [], dropped: [] }), 'Not applied yet: no changes');
   assert.equal(barWords({ kept: [{}], dropped: [] }), 'Not applied yet: 1 change');
   assert.equal(barWords({ kept: [{}, {}, {}], dropped: [{}, {}] }), 'Not applied yet: 3 changes, 2 skipped');
+});
+
+// SV2-72d item 3 (W3): an hour or more reads in hours and minutes, and a
+// time's three cells agree, as the congestion report's do.
+test('SV2-72d: durations from an hour read in hours and minutes, with no plain space inside a figure', () => {
+  assert.equal(duration(45), '45' + NBSP + 's');
+  assert.equal(duration(478), '7' + NBSP + 'min' + NBSP + '58' + NBSP + 's');
+  assert.equal(duration(3599), '59' + NBSP + 'min' + NBSP + '59' + NBSP + 's');
+  assert.equal(duration(3600), '1' + NBSP + 'h');
+  assert.equal(duration(9228), '2' + NBSP + 'h' + NBSP + '34' + NBSP + 'min', '153 min 48 s');
+  assert.equal(duration(3629), '1' + NBSP + 'h', 'to the nearest minute');
+  assert.equal(duration(3631), '1' + NBSP + 'h' + NBSP + '1' + NBSP + 'min');
+  for (const seconds of [0, 59, 61, 3600, 9228, 86399]) assert.ok(!duration(seconds).includes(' '), seconds + ' has no breaking space');
+});
+
+test('SV2-72d: timeFigures: the difference is that of the two times as printed, to the minute once either reads in hours', () => {
+  assert.deepEqual(timeFigures(9228, 9276), { before: '2' + NBSP + 'h' + NBSP + '34' + NBSP + 'min', after: '2' + NBSP + 'h' + NBSP + '35' + NBSP + 'min', difference: '+1' + NBSP + 'min', n: 60 });
+  assert.equal(timeFigures(9228, 9240).difference, 'no change', '12 seconds over two and a half hours prints the same, so no change');
+  assert.deepEqual(timeFigures(3500, 3700), { before: '58' + NBSP + 'min', after: '1' + NBSP + 'h' + NBSP + '2' + NBSP + 'min', difference: '+4' + NBSP + 'min', n: 240 }, '58 min 20 s beside 1 h 1 min 40 s: all three to the minute, 58 to 62');
+  assert.deepEqual(timeFigures(100.4, 101.6), { before: '1' + NBSP + 'min' + NBSP + '40' + NBSP + 's', after: '1' + NBSP + 'min' + NBSP + '42' + NBSP + 's', difference: '+2' + NBSP + 's', n: 2 });
+  assert.equal(timeFigures(4000, 300).difference, MINUS + '1' + NBSP + 'h' + NBSP + '2' + NBSP + 'min', '67 min to 5 min');
+  const row = groupRow(project, { groupId: 'g1', edited: true, before: sideOf(9228), after: sideOf(9240), difference: 12, failedChange: 0 });
+  assert.deepEqual([row.change, row.worse], ['no change', null], 'a group\'s row agrees with its printed times');
 });
