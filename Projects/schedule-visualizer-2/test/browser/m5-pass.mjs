@@ -488,7 +488,9 @@ test('SV2-72f2 item 3: a phone at 390 by 844 turned on its side, back, and on it
 // sticky foot where the floors are whole there and falls back to the whole
 // stage only where they are not: the legend judged one layout and the map
 // showed another (at 1280 by 600 the floors 19 px apart). Both ask choose().
-for (const size of [{ width: 900, height: 500, fallback: true }, { width: 1280, height: 600, fallback: false }]) {
+// SV2-72g: 900 by 500 was where the floors could not be whole above the
+// foot; the section now scrolls past the first line there, and they are.
+for (const size of [{ width: 900, height: 500, fallback: false }, { width: 1280, height: 600, fallback: false }]) {
   test('SV2-72f2 item 2: Movement at ' + size.width + ' by ' + size.height + (size.fallback ? ', where the floors cannot be whole above the foot,' : '') + ' fitAt answers the fit the map took, the legend\'s card lies on no floor, and the layout settles', async () => {
     await on('#project', { width: size.width, height: size.height }, async (page) => {
       await fixture(page);
@@ -518,6 +520,75 @@ for (const size of [{ width: 900, height: 500, fallback: true }, { width: 1280, 
       for (const key of ['zoom', 'x', 'y']) assert.ok(Math.abs(got.at[key] - got.view[key]) < 1e-6, 'fitAt\'s ' + key + ' is not the fit the map took: ' + JSON.stringify(got));
       assert.equal(got.onFloor, false, 'the legend\'s card lies on a floor: ' + JSON.stringify(got));
       assert.ok(turns.fit >= 1 && turns.fit <= 2 && turns.dock <= 1, 'the layout did not settle: ' + JSON.stringify(turns));
+    });
+  });
+}
+
+// ------------------------------------------- SV2-72g: Fit at the narrow and short edges
+
+// Two edges SV2-72f2 saw and left. At 1024 wide Movement's stage is 648 px
+// and the floors side by side are 744 at the least zoom, 25 %, so Fit put
+// them 48 px off the stage's left edge: the layout was chosen by the zoom
+// each arrangement fits at, clamped, and both clamp to 25 % there, a tie
+// that went to side by side while stacked, 240 by 282, fits. And from 900 px
+// wide Movement's controls are open, 224 px of them under the first line:
+// the map scrolled the section never past the first line's own box, so at
+// 900 by 500 the sticky foot lay 171 px over a 216 px stage, the floors
+// under it. Each case presses Fit where the button is and counts the fit's
+// and the legend's turns from before the section opens. 900 by 500 with
+// touch is left out: there Movement's legend does not settle before this
+// unit either (3 dock turns on sv2 at 66ee2854; it judges its card at 70 px,
+// before the picture is in, then at 172), and the legend is not the map's.
+const EDGES = [
+  { width: 1024, height: 768 },
+  { width: 1024, height: 768, mobile: true },
+  { width: 1024, height: 600 },
+  { width: 1024, height: 600, mobile: true },
+  { width: 900, height: 500 },
+];
+
+// What would have gone wrong here before: the floors side by side at the
+// least zoom wider than the stage, or the foot, with the section at its top,
+// over more of the stage than a scroll that keeps the first line can clear.
+const edgeOf = (page) => page.evaluate(() => {
+  const plan = document.querySelector('.mov').movement.plan;
+  const slots = plan.world.slots;
+  const across = (slots.reduce((sum, slot) => sum + slot.w, 0) + 2 * (slots.length - 1)) * 24 * 0.25;
+  const stage = plan.stage.getBoundingClientRect();
+  const root = plan.root.getBoundingClientRect();
+  const line = document.querySelector('.mov-line').getBoundingClientRect();
+  const foot = document.querySelector('[data-bar="playback"]').getBoundingClientRect();
+  const scroll = plan.root.scrollTop;
+  return { sideTooWide: across > stage.width, footPastLine: stage.bottom + scroll - foot.top > line.top + scroll - root.top, across, stageWidth: stage.width };
+});
+
+for (const size of EDGES) {
+  test('SV2-72g: Movement at ' + size.width + ' by ' + size.height + (size.mobile ? ' with touch' : ' with a mouse') + ' puts every floor on the stage and none under the sticky foot at Fit, as it opens and when Fit is pressed, and the layout settles', async () => {
+    await on('#project', size, async (page) => {
+      assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), Boolean(size.mobile), 'the page\'s pointer is not the case\'s');
+      await fixture(page);
+      await countTurns(page);
+      await go(page, '#movement');
+      const first = await turnsSettled(page, 'movement');
+      const opened = await floorsAt(page, 'movement');
+      const edge = await edgeOf(page);
+      assert.ok(edge.sideTooWide || edge.footPastLine, 'neither edge is here: the case tests nothing: ' + JSON.stringify(edge));
+      assert.deepEqual(offStage(opened), [], 'as it opens: ' + JSON.stringify({ opened, edge }));
+      const fitButton = '.mov [data-action="fit"]';
+      const at = await box(page, fitButton);
+      assert.ok(at, 'the Fit button has no box');
+      const hit = await page.evaluate((wanted, x, y) => {
+        const hitEl = document.elementFromPoint(x, y);
+        return Boolean(hitEl) && document.querySelector(wanted).contains(hitEl);
+      }, fitButton, at.left + at.width / 2, at.top + at.height / 2);
+      assert.equal(hit, true, 'something lies over the Fit button where it is: ' + JSON.stringify(at));
+      if (size.mobile) await page.touchscreen.tap(at.left + at.width / 2, at.top + at.height / 2);
+      else await page.mouse.click(at.left + at.width / 2, at.top + at.height / 2);
+      const turns = await turnsSettled(page, 'movement');
+      const fitted = await floorsAt(page, 'movement');
+      assert.deepEqual(offStage(fitted), [], 'after Fit: ' + JSON.stringify({ fitted, edge }));
+      assert.ok(first.fit >= 1, 'no fit was counted: the count tests nothing: ' + JSON.stringify(first));
+      assert.ok(turns.fit <= 2 && turns.dock <= 1, 'the layout did not settle: ' + JSON.stringify({ first, turns }));
     });
   });
 }
