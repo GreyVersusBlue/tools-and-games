@@ -123,6 +123,21 @@
       ok(cols.size === 7 && painted === 36 && paint.slice(0, 36).every((v) => v === 1),
         'bridge traffic: seven body colours, painted on the body\'s 36 vertices only', { colours: cols.size, painted });
 
+      // ---- chimney smoke (#1006): the 44 puffs are four InstancedMeshes, one per cluster of cabins,
+      // and no sprites. Rendered from beside the four-cabin cluster, every batch must hold its puffs
+      // back to front from that camera, the order three gave the sprites; and they rise with time.
+      const sm = []; let sprites = 0;
+      L.traverse((o) => { if (o.name === 'chimney-smoke') sm.push(o); if (o.isSprite) sprites++; });
+      const viewZ = (m) => { const v = cam.matrixWorldInverse.elements, a = m.instanceMatrix.array; return [...Array(m.count).keys()].map((i) => v[2] * a[i * 16 + 12] + v[6] * a[i * 16 + 13] + v[10] * a[i * 16 + 14]); };
+      const rise = () => sm.reduce((s, m) => s + [...Array(m.count).keys()].reduce((t, i) => t + m.instanceMatrix.array[i * 16 + 13], 0), 0);
+      look(-200, 140, 760, -336, 40, 615);
+      const y0 = rise(), unsorted = sm.filter((m) => viewZ(m).some((z, i, zs) => i > 0 && z < zs[i - 1] - 1e-6)).map((m) => m.count);
+      const alphas = sm.flatMap((m) => [...m.geometry.attributes.smokeA.array]);
+      q.sim(0.5, null); look(-200, 140, 760, -336, 40, 615);
+      ok(sm.length === 4 && sm.every((m) => m.isInstancedMesh && m.material === sm[0].material) && sm.reduce((s, m) => s + m.count, 0) === 44 && sprites <= 1
+        && unsorted.length === 0 && alphas.some((a) => a > 0.05) && alphas.every((a) => a >= 0 && a <= 0.35) && rise() !== y0,
+        'chimney smoke: 44 puffs in four batches, each back to front from the camera, and moving', { batches: sm.map((m) => m.count), sprites, unsorted, maxAlpha: +Math.max(...alphas).toFixed(3) });
+
       if (window.__swOnly === 'models') return out;                  // test/browser.mjs --models
 
       // ---- courses: every mission builds, and every ring can be flown through

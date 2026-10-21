@@ -7,7 +7,7 @@ import { createVegetation } from './vegetation.js';
 import { createProps } from './props.js';
 import { shared, quality } from './atmosphere.js';
 import { loadModel, fitModel } from '../core/models.js';
-import { addHerd, attachHerds } from './herd.js';
+import { addHerd, attachHerds, eachRender } from './herd.js';
 
 const heading = (ax, az, bx, bz) => Math.atan2(bx - ax, -(bz - az));
 
@@ -72,6 +72,20 @@ function smokeTexture() {
   gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.5, 'rgba(230,230,235,0.4)'); gr.addColorStop(1, 'rgba(230,230,235,0)');
   g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
   return new THREE.CanvasTexture(c);
+}
+// Chimney smoke as instanced camera-facing quads (HISTORY.md #1006): what THREE.SpriteMaterial draws,
+// one draw per batch. Each instance's matrix holds the puff's centre and its size; `smokeA` is its
+// opacity, which the material's own `opacity` (1) multiplies as a sprite's did.
+function smokeMaterial(map) {
+  const m = new THREE.MeshBasicMaterial({ map, color: 0xdddddd, transparent: true, depthWrite: false });
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = 'attribute float smokeA;\nvarying float vSmokeA;\n' + sh.vertexShader.replace('#include <project_vertex>', `vSmokeA = smokeA;
+vec4 mvPosition = modelViewMatrix * vec4( instanceMatrix[ 3 ].xyz, 1.0 );
+mvPosition.xy += position.xy * length( instanceMatrix[ 0 ].xyz );
+gl_Position = projectionMatrix * mvPosition;`);
+    sh.fragmentShader = 'varying float vSmokeA;\n' + sh.fragmentShader.replace('vec4 diffuseColor = vec4( diffuse, opacity );', 'vec4 diffuseColor = vec4( diffuse, opacity * vSmokeA );');
+  };
+  return m;
 }
 function decalMat(map, opaque) {
   return new THREE.MeshStandardMaterial({ map, roughness: 0.9, metalness: 0, transparent: !opaque, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
@@ -505,7 +519,9 @@ export function createLandmarks(terrain, seed = 1337) {
   // ============================================================== cabins
   const smoke = [];
   {
-    const smokeTex = smokeTexture();
+    // chimney smoke: one batch per cluster of cabins (a cabin within 120 m of a cluster's first joins it),
+    // so 44 puffs are 4 draws where 44 sprites were 44 (HISTORY.md #1006)
+    const smokeClusters = [];
     const logs = [0xa87444, 0xb98552, 0x8f6338, 0xc9a06a], roofs = [0xb5472e, 0x2f5fc8, 0x3a8a4a, 0x8a3b2b];
     // house bodies go into cabinHost (replaced by assets/models/cabin.glb when it loads); fences/smoke stay shared
     const cabinHost = new THREE.Group(); cabinHost.name = 'cabinHost';
@@ -532,10 +548,11 @@ export function createLandmarks(terrain, seed = 1337) {
       const a1 = loc(-4.8, 8.5), a2 = loc(4.8, 8.5); pb.beam(a1[0], H(a1[0], a1[1]) + 0.95, a1[1], a2[0], H(a2[0], a2[1]) + 0.95, a2[1], 0.12, 0x9a7a4a);
       // chimney smoke
       const cp = loc(2.2, -1.2);
+      let cl = smokeClusters.find((q) => Math.hypot(q.x - x, q.z - z) < 120);
+      if (!cl) smokeClusters.push(cl = { x, z, puffs: [] });
       for (let s = 0; s < 4; s++) {
-        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, color: 0xdddddd, transparent: true, depthWrite: false, opacity: 0 }));
-        sp.position.set(cp[0], y0 + 9, cp[1]); group.add(sp);
-        smoke.push({ sp, x: cp[0], y: y0 + 9, z: cp[1], off: s / 4 + ci * 0.13 });
+        const puff = { x: cp[0], y: y0 + 9, z: cp[1], off: s / 4 + ci * 0.13, px: cp[0], py: y0 + 9, pz: cp[1], sc: 1, a: 0, d: 0, i: cl.puffs.length };
+        smoke.push(puff); cl.puffs.push(puff);
       }
       info.cabins.push(new THREE.Vector3(x, y0, z));
     });
@@ -558,12 +575,35 @@ export function createLandmarks(terrain, seed = 1337) {
       });
       addHerd(copies, group, 'glb:cabin');
     }).catch((e) => console.warn('[landmarks] cabin swap failed', e));
+    const smokeMat = smokeMaterial(smokeTexture()), quad = new THREE.PlaneGeometry(1, 1);
+    for (const cl of smokeClusters) {
+      const geo = quad.clone(), alpha = new THREE.InstancedBufferAttribute(new Float32Array(cl.puffs.length), 1);
+      alpha.setUsage(THREE.DynamicDrawUsage); geo.setAttribute('smokeA', alpha);
+      cl.mesh = new THREE.InstancedMesh(geo, smokeMat, cl.puffs.length);
+      cl.mesh.name = 'chimney-smoke'; cl.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      cl.order = cl.puffs.slice();
+      group.add(cl.mesh);
+    }
     updaters.push((dt, t) => {
       for (const s of smoke) {
         const u = (t * 0.12 + s.off) % 1;
-        s.sp.position.set(s.x + shared.wind.x * u * 9, s.y + u * 14, s.z + shared.wind.z * u * 9);
-        const sc = 1.5 + u * 6; s.sp.scale.set(sc, sc, 1);
-        s.sp.material.opacity = Math.sin(Math.PI * Math.min(1, u * 1.3)) * 0.35 * clamp(shared.daylight * 1.3, 0.2, 1);
+        s.px = s.x + shared.wind.x * u * 9; s.py = s.y + u * 14; s.pz = s.z + shared.wind.z * u * 9;
+        s.sc = 1.5 + u * 6;
+        s.a = Math.sin(Math.PI * Math.min(1, u * 1.3)) * 0.35 * clamp(shared.daylight * 1.3, 0.2, 1);
+      }
+    });
+    // Before each render, a batch's puffs go in back to front from this camera, as three sorted the
+    // sprites, and its sphere is the puffs' own, so three culls and sorts the batch by where they are.
+    const _sm = new THREE.Matrix4();
+    eachRender((camera) => {
+      const e = camera.matrixWorldInverse.elements;
+      for (const cl of smokeClusters) {
+        for (const s of cl.puffs) s.d = e[2] * s.px + e[6] * s.py + e[10] * s.pz;   // view-space z less a constant: lower is farther
+        cl.order.sort((a, b) => a.d - b.d || a.i - b.i);
+        const im = cl.mesh, alpha = im.geometry.attributes.smokeA;
+        cl.order.forEach((s, k) => { im.setMatrixAt(k, _sm.makeScale(s.sc, s.sc, 1).setPosition(s.px, s.py, s.pz)); alpha.array[k] = s.a; });
+        im.instanceMatrix.needsUpdate = true; alpha.needsUpdate = true;
+        im.computeBoundingSphere();
       }
     });
   }
