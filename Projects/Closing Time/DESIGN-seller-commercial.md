@@ -11,6 +11,14 @@ is required before listing, no 6% penalty) and CT-5 (fixing a defect before the
 sale is a trade that costs days, not left out). Where the body below still says
 penalty or left out, the answer replaces it and the build follows the answer.*
 
+*Session 1 of 3 is built (2026-10-21, #1009): section 5.1's arithmetic in
+`engine/commercial.js`, the `playerListingValue` branch, `repairCareer`'s
+building fields, the content rule and the ladder gate, with CT-4 and CT-5
+carried as the amendments under 2.1 and 2.7 say. The seller is a suite fixture
+(`tools/fixtures/cl_0302.json`, 330 Courthouse Row), not on the manifest, so no
+career can be handed a building to list until session 2 builds the flows and
+moves the file into `data/`.*
+
 It reads top to bottom for someone who knows the game and is not a broker. Every
 figure was computed by a scratch script against the shipped `data/` and the
 shipped `js/engine/` modules; section 11 says what was run and what was not.
@@ -178,6 +186,23 @@ before the listing goes live, so it cannot be skipped and the 6% penalty
 (`unverifiedHaircut`) is not built. The "Skipping it" paragraph above and the
 "Unverified" arithmetic below describe the old assumption; the build follows the
 answer.
+
+*Amendment, 2026-10-21 (#1009), how CT-4 was carried.* `PACKET` has no
+`unverifiedHaircut` and `packetNoi()` is the whole net income: an offer is
+written only on a live building and a building is live only with its roll in,
+so there is no unverified figure for an offer to be written on. The gate is
+`goLiveBlockers(pl, day)`, the sentences that say why a building cannot go live
+today (roll not started, roll not landed, a cure under way); empty means it can.
+The roll's other effects stand: it shows the agent the lease items, it adds
+0.2 to the opinion of value's `w`, and the interest formula's `verifiedGain`
+term is kept and is simply always paid on a live building, so the measured
+pace in 2.2 still describes what session 3 should find. **Session 2:** `goLive`
+refuses a building while `goLiveBlockers` is not empty, and the listing file
+shows the sentences beside a disabled Go live; the walk-through's "the listing
+may go live while it is out" no longer holds. **Session 3:** the "flyer, no rent
+roll" row of 2.2's table and test 45 describe a listing that cannot exist; test
+45 becomes "a flyer finds no offer worth taking in 250 days on at least a third
+of listings", with the roll in.
 
 *Arithmetic, 212 Ferry St.* Net income $78,384 (128,400 × 0.91 − 38,460). Market
 cap 7.62% (7.40% + 0.22 × 1.00%).
@@ -398,6 +423,28 @@ waiting. It is last in the build order and the tier works without it.
   out. Fixing a defect before the sale is built as a trade that costs days, and
   the build follows the answer. The "argued against" reasoning above is the old
   assumption.
+
+  *Amendment, 2026-10-21 (#1009), how CT-5 was carried.* Option (b) is "a wash
+  that costs days", and the arithmetic is that and no more. A cure is
+  `{ idx, startedDay, readyDay }` in `pl.cures`; it may be started in prep on an
+  item the agent knows (`canCure`), takes `cureDays(cost)` = the longer of 5
+  days and a day per $4,000 (the signs 5, the roof 12, Courthouse Row's lease
+  item 13), and blocks going live until it is done. The seller pays; the agent
+  fronts nothing. On `readyDay` the item is off the building (`buildingOf`, so
+  true value and due diligence lose it) and out of the packet, so packet value
+  and every offer rise by its cost. The seller's side reads it as an item put in
+  the packet: `sellerBasis` is packet value less `curedCost`, so expectation and
+  floor do not move, and `sellerNet(price)` is the price less what they paid.
+  On 212 Ferry St's roof, in the packet at w 0.7: offers $46,000 higher, net to
+  the seller the same to the dollar, twelve days later. A cure of an item the
+  packet left out reads to the seller exactly as disclosing it would have. What
+  it buys is a building with nothing for due diligence to find, at the price of
+  days in prep. **Session 2:** `startCure(pl, i)` in `offering.js` (one
+  action, a Ledger line, a calendar item at `readyDay`), a Cure button beside
+  "Put it in the packet" on items `canCure` allows, `sellerReaction` and the
+  closing score read `sellerNet` against expectation, and `takeListing` sets
+  `cures: []`. **Session 3:** the autopilot's sweep plays a cure policy against a
+  disclose policy and says how many days a cure costs a listing on average.
 - **Leasing up the vacancy first.** Real, and the largest lever an owner has,
   but it is managing the building for a season, not selling it.
 - **Seller financing, an auction, a sealed-bid date.** The existing
@@ -847,7 +894,7 @@ must keep (#39).
 - **Both sides of one deal.** The player's own commercial buyer client cannot
   buy the player's own listing. Real, and worth 4%, and a conflict-of-interest
   design of its own. Question 7.
-- **Curing defects, leasing up, seller financing, auctions** (2.7).
+- **Leasing up, seller financing, auctions** (2.7).
   *Curing defects is no longer on this list:* Devon's answer of 2026-10-21
   (CT-5, #1008) puts it in the build as a trade that costs days. Leasing up,
   seller financing and auctions stay out.

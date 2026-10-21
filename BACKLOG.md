@@ -1688,8 +1688,8 @@ three investors, 2% a side, 200 XP. `tools/smoke.mjs` 270 → 270 + 89 = **359**
 **Nothing about the tier is open.** What it deliberately did not do is the
 seller side (#515) — representing the seller of a building wants a rent roll,
 an offering memorandum and a broker's opinion of value where `seller.js` has
-staging tiers, photo tiers and weekend open houses. **Designed, not built;
-Devon read it and answered all twelve questions on 2026-10-21 (#1008)** (#954, 2026-10-11, on his answer of 2026-10-07 "let's
+staging tiers, photo tiers and weekend open houses. **Designed, and session 1 of 3
+built (#1009); Devon read it and answered all twelve questions on 2026-10-21 (#1008)** (#954, 2026-10-11, on his answer of 2026-10-07 "let's
 write the design"): `Projects/Closing Time/DESIGN-seller-commercial.md`. Offers
 are written on the packet and closings happen on the building; the rent roll
 (2 actions, 5 days) is worth 6% of gross value to every offer, the memorandum
@@ -1708,8 +1708,22 @@ from the design**: CT-4, an unverified rent roll is **required before listing**
 (the design had a 6% penalty that could be skipped), and CT-5, fixing a defect
 before the sale is **a trade that costs days** (the design left it out). The
 build, three sessions with the first having no screen, can start on the design
-with those two changed. It is **not in the ranked table**: ranking it is the
-next re-ranking's, not a session's. The two things it read in the code on the way were both real and are
+with those two changed. **Session 1 of 3 is built (#1009, 2026-10-21)**: the
+arithmetic of section 5.1 in `commercial.js` with CT-4 (no haircut; a building
+cannot go live before its roll lands, `goLiveBlockers`) and CT-5 (a cure is a
+wash in dollars that costs days in prep, `cureDays`, `sellerBasis`,
+`sellerNet`) carried, a building's listing value is its packet value,
+`repairCareer` clamps the new fields, the content check leaves out a building's
+seller with no valid `commercial` block or price, and `inReach()` gates only
+building sellers by tier (CT-12). The design carries the two amendments under
+2.1 and 2.7. Nothing a player can reach changed: the one seller, 330 Courthouse
+Row, is `tools/fixtures/cl_0302.json` and not on the manifest. **Left: session
+2** (`offering.js`, the `seller.js` and `escalation.js` changes, the listing
+file, the offer row, the two modals, the cure button, the fixture moved into
+`data/` and the manifest; groups B 11 to 14, C, D, E, F 32 and the browser
+checks) **and session 3** (the other two sellers, the career autopilot and
+group H, the investor tour, the README). It is **not in the ranked table**:
+ranking it is the next re-ranking's, not a session's. The two things it read in the code on the way were both real and are
 fixed (#956, 2026-10-12): `repairCareer()` puts a client file added since a
 career began on the end of that career's queue, lowest rung first and then by
 id, and the `bonusReferral` event (`ev_ruth_referral`) asks the same
