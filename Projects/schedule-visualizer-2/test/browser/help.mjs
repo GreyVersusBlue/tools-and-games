@@ -7,8 +7,10 @@
 // Close stay in view while the body scrolls, at 390 by 844 and at 844 by 390
 // with touch, and nothing is wider than the window. The parts' buttons move
 // to their part; the numbers follow the project's settings; Show Getting
-// started brings the card back; axe finds nothing in either theme, nor on
-// a phone, where the shortcuts' rows are laid out as a grid.
+// started brings the card back; Escape closes it on the touch path too; a
+// school's own period word (Mod) is what the dialog says; axe finds nothing
+// in either theme at 1280 by 900, 390 by 844 and 844 by 390, and on a phone
+// in either theme the title and Close stay in view.
 //
 // Every wait is on a state the page sets: the dialog's open and data-styled,
 // the section's data-section, the card's hidden.
@@ -198,6 +200,17 @@ test('on a phone on its side, 844 by 390 with touch: the title and Close stay in
   });
 });
 
+test('by a finger at 390 by 844, Escape closes Help and gives the focus back to the ?', async () => {
+  await on(UPRIGHT, '#safety', async (page) => {
+    await page.tap('#help');
+    await page.waitForSelector(OPEN);
+    assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Close help');
+    await page.keyboard.press('Escape');
+    await helpGone(page);
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'help', 'the focus did not go back to the ?');
+  });
+});
+
 test('the parts’ buttons move the body to their part and put the focus on its heading', async () => {
   await on(DESK, '#schedule', async (page) => {
     await blurAll(page);
@@ -239,8 +252,26 @@ test('the numbers are this project’s settings, with the defaults beside them',
     await page.keyboard.press('?');
     await page.waitForSelector(OPEN);
     const travel = await page.$eval('#help-dialog [data-numbers="travel"]', (el) => el.textContent);
-    assert.match(travel, /5 seconds \(the default is 3 seconds\) for each square of corridor/);
+    assert.match(travel, /5 seconds \(the default is 3 seconds\) for each cell of corridor/);
     assert.match(travel, /8 seconds \(the default\) on stairs/);
+    await page.keyboard.press('Escape');
+    await helpGone(page);
+  });
+});
+
+test('a school that says Mod sees Mod in Help, in the words and in the numbers', async () => {
+  await on(DESK, '#project', async (page) => {
+    await page.click('#settings input[name="periodWord"][value="Mod"]');
+    await page.waitForFunction(() => globalThis.sv2.store.project.settings.periodWord === 'Mod');
+    await blurAll(page);
+    await page.keyboard.press('?');
+    await page.waitForSelector(OPEN);
+    const seen = await readHelp(page);
+    assert.ok(seen.words.includes('Mod') && !seen.words.includes('Period'), 'the words list the school’s word: ' + seen.words.join(', '));
+    const said = await page.$eval('#help-dialog dt[data-term="Mod"] + dd', (el) => el.textContent);
+    assert.match(said, /This school’s word for it is mod, and the planner says mod everywhere\./);
+    const late = await page.$eval('#help-dialog [data-numbers="late"]', (el) => el.textContent);
+    assert.match(late, /from the end of one mod to the start of the next/);
     await page.keyboard.press('Escape');
     await helpGone(page);
   });
@@ -258,7 +289,7 @@ test('Show Getting started brings the card back and puts the focus in it', async
   });
 });
 
-for (const [theme, size] of [['light', DESK], ['dark', DESK], ['light', UPRIGHT]]) {
+for (const [theme, size] of [['light', DESK], ['dark', DESK], ['light', UPRIGHT], ['dark', UPRIGHT], ['light', ON_ITS_SIDE], ['dark', ON_ITS_SIDE]]) {
   test('axe finds nothing in Help, in the ' + theme + ' theme at ' + size.width + ' by ' + size.height, async () => {
     const session = await openPlanner({ hash: '#safety', server, browser, theme, ...size });
     const { page } = session;
@@ -272,6 +303,7 @@ for (const [theme, size] of [['light', DESK], ['dark', DESK], ['light', UPRIGHT]
       const found = await page.evaluate((tags) => globalThis.axe.run(document.getElementById('help-dialog'), { runOnly: { type: 'tag', values: tags } }), TAGS);
       assert.ok(found.passes.length > 5, 'axe ran very few rules');
       assert.deepEqual(found.violations.map((violation) => violation.id + ': ' + violation.nodes.map((node) => node.target.join(' ')).join(', ')), []);
+      if (size.mobile) await holdsItsEnds(page, theme + ' at ' + size.width + ' by ' + size.height);
     } finally {
       await session.close();
     }
