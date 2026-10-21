@@ -1630,3 +1630,190 @@ test('the waiting step comes when a playback is taken back to within 2 % of its 
     await session.close();
   }
 });
+
+// ---- SV2-31e: the reader's zoom against the mode's Fit, and keys held past a leave
+
+// The mode entered at 844 by 390 by touch, the map's own 'view' counted
+// (globalThis.__views), and where a finger goes on the stage.
+async function phoneInMode(page) {
+  await settled(page);
+  await page.evaluate(() => document.querySelector('.mov').present.enter());
+  await inMode(page);
+  await handTimers(page);
+  await page.evaluate(() => {
+    globalThis.__views = 0;
+    document.querySelector('.mov').movement.plan.onCell((event) => { if (event.kind === 'view') globalThis.__views += 1; });
+  });
+  const stage = await page.$eval('.mov-stage', (el) => el.getBoundingClientRect().toJSON());
+  return { x: stage.left + stage.width / 2, y: stage.top + stage.height / 3 };
+}
+
+// The reader zooms in with Ctrl and the wheel over the map, as the map's
+// input takes it; the mode's Fit is over once the map says it moved.
+async function zoomIn(page, at) {
+  const before = (await read(page)).view.zoom;
+  await page.evaluate((x, y) => {
+    document.getElementById('movement-plan').dispatchEvent(new WheelEvent('wheel', { deltaY: -200, ctrlKey: true, clientX: x, clientY: y, bubbles: true, cancelable: true }));
+  }, at.x, at.y);
+  await page.waitForFunction((was) => {
+    const root = document.querySelector('.mov');
+    return !root.present.fitted && root.movement.view.zoom > was;
+  }, { timeout: 5000 }, before);
+  return (await read(page)).view;
+}
+
+test('by touch at 844 by 390: a reader who zoomed in the mode and taps a cell with a 2 px move keeps their zoom', async () => {
+  const session = await openPlanner({ browser, server, hash: '#movement', width: 844, height: 390, mobile: true });
+  const { page } = session;
+  try {
+    const at = await phoneInMode(page);
+    const zoomed = await zoomIn(page, at);
+    const views = await page.evaluate(() => globalThis.__views);
+    await page.touchscreen.touchStart(at.x, at.y);
+    await page.touchscreen.touchMove(at.x + 2, at.y + 1);
+    await page.touchscreen.touchEnd();
+    assert.ok(await page.evaluate(() => globalThis.__views) > views, 'a 2 px move did not move the map: the case tests nothing');
+    const now = await read(page);
+    assert.equal(now.presentFitted, false, 'a tap put the mode\'s Fit back over the reader\'s zoom');
+    assert.equal(now.view.zoom, zoomed.zoom, 'the reader\'s zoom did not stand through a tap');
+    await page.keyboard.press('Escape');
+    assert.deepEqual(session.problems().errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('by touch at 844 by 390: the floors laid out again in the middle of a drag (a step) do not move the map under the finger', async () => {
+  const session = await openPlanner({ browser, server, hash: '#movement', width: 844, height: 390, mobile: true });
+  const { page } = session;
+  try {
+    const at = await phoneInMode(page);
+    const fitView = (await read(page)).view;
+    const step = await page.evaluate(() => ({ layouts: document.querySelector('.mov').present.layouts, transition: document.querySelector('.mov').movement.choice.transition }));
+    await page.touchscreen.touchStart(at.x, at.y);
+    await page.touchscreen.touchMove(at.x + 40, at.y + 20);
+    const dragged = (await read(page)).view;
+    assert.notDeepEqual(place(dragged), place(fitView), 'the drag did not move the map: the case tests nothing');
+    // a step with the finger still down: the floors are laid out again
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction((was) => document.querySelector('.mov').present.layouts > was, { timeout: 5000 }, step.layouts).catch((error) => {
+      throw new Error('the step did not lay the floors out again: the case tests nothing (' + error.message + ')');
+    });
+    let now = await read(page);
+    assert.notEqual(now.transition, step.transition, 'the step did not step: the case tests nothing');
+    assert.deepEqual(place(now.view), place(dragged), 'the map jumped under the finger when the floors were laid out mid-drag');
+    await page.touchscreen.touchEnd();
+    now = await read(page);
+    assert.equal(now.presentFitted, false, 'a drag over a layout left the mode\'s Fit on');
+    assert.deepEqual(place(now.view), place(dragged), 'the map moved as the finger lifted');
+    await page.keyboard.press('Escape');
+    assert.deepEqual(session.problems().errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('by touch: a 56 px change of the window\'s height (a toolbar) keeps the reader\'s zoom, and a turn of the phone fits the mode again', async () => {
+  const session = await openPlanner({ browser, server, hash: '#movement', width: 844, height: 390, mobile: true });
+  const { page } = session;
+  try {
+    const at = await phoneInMode(page);
+    const zoomed = await zoomIn(page, at);
+    // the arrangement made for the window as it is now, and the map measured there
+    const arranged = (width, height) => page.waitForFunction((w, h) => {
+      const root = document.querySelector('.mov');
+      const m = root.movement;
+      return innerWidth === w && innerHeight === h && root.dataset.presentArranged === w + 'x' + h && m.view.width === m.plan.stage.clientWidth && m.view.height === m.plan.stage.clientHeight;
+    }, { timeout: 10000 }, width, height);
+    await page.setViewport({ width: 844, height: 446, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
+    await arranged(844, 446);
+    let now = await read(page);
+    assert.equal(now.presentFitted, false, 'a 56 px change of the window\'s height put the mode\'s Fit back');
+    assert.equal(now.view.zoom, zoomed.zoom, 'the reader\'s zoom did not stand through a 56 px change of height');
+    // turned: another width, the mode's Fit again
+    await page.setViewport({ width: 446, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
+    await arranged(446, 844);
+    now = await read(page);
+    assert.equal(now.presentFitted, true, 'a turn of the phone did not fit the mode again');
+    assert.notEqual(now.view.zoom, zoomed.zoom, 'after the turn the map is at the reader\'s zoom still');
+    await page.keyboard.press('Escape');
+    assert.deepEqual(session.problems().errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('Enter held down on Leave leaves once: its repeats on Present do not enter again, and a fresh Enter there does', async () => {
+  const session = await openPlanner({ browser, server, hash: '#movement', width: 1280, height: 800 });
+  const { page } = session;
+  try {
+    await settled(page);
+    await page.keyboard.press('p');
+    await inMode(page);
+    await page.evaluate(() => {
+      globalThis.__presents = [];
+      new MutationObserver(() => globalThis.__presents.push(document.querySelector('.mov').dataset.present ? 'in' : 'out')).observe(document.querySelector('.mov'), { attributes: true, attributeFilter: ['data-present'] });
+    });
+    await page.focus('[data-action="present-leave"]');
+    const count = await restoredCount(page);
+    await page.keyboard.down('Enter');
+    assert.equal((await read(page)).presenting, false, 'Enter on Leave did not leave');
+    assert.equal((await read(page)).focus, 'present', 'the focus is not on Present after the leave: the case tests nothing');
+    // the keyboard's repeats (autoRepeat), on Present now
+    await page.keyboard.down('Enter');
+    await page.keyboard.down('Enter');
+    assert.deepEqual(await page.evaluate(() => globalThis.__presents), ['out'], 'Enter held on Leave went out and in again');
+    await page.keyboard.up('Enter');
+    await outOfMode(page, count);
+    // up, and pressed afresh on Present: it presents
+    await page.keyboard.press('Enter');
+    await inMode(page);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.mov').present.presenting);
+    assert.deepEqual(session.problems().errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('full screen ended by the browser\'s own Escape: the held key\'s repeats reach nothing on the page until it comes up', async (t) => {
+  const session = await openPlanner({ browser, server, hash: '#movement', width: 1280, height: 800 });
+  const { page } = session;
+  try {
+    await settled(page);
+    await page.keyboard.press('p');
+    await inMode(page);
+    if ((await read(page)).how !== 'fullscreen') {
+      await page.keyboard.press('Escape');
+      t.skip('this browser did not grant full screen, so it cannot end it by its own Escape');
+      return;
+    }
+    await page.evaluate(() => {
+      globalThis.__escapes = [];
+      // the browser's own Escape: it takes the first press, which the page never sees, and ends full screen
+      window.addEventListener('keydown', function browserEscape(event) {
+        if (event.key !== 'Escape' || event.repeat) return;
+        window.removeEventListener('keydown', browserEscape, true);
+        event.stopImmediatePropagation();
+        event.preventDefault();
+        document.exitFullscreen();
+      }, true);
+      window.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') globalThis.__escapes.push(event.repeat ? 'repeat' : 'press');
+      });
+    });
+    const count = await restoredCount(page);
+    await page.keyboard.down('Escape');
+    await page.waitForFunction(() => !document.querySelector('.mov').present.presenting && document.fullscreenElement === null, { timeout: 10000 });
+    await page.keyboard.down('Escape');
+    await page.keyboard.down('Escape');
+    assert.deepEqual(await page.evaluate(() => globalThis.__escapes), [], 'the held Escape\'s repeats reached the page after the browser ended full screen');
+    await page.keyboard.up('Escape');
+    await outOfMode(page, count);
+    await page.keyboard.press('Escape');
+    assert.deepEqual(await page.evaluate(() => globalThis.__escapes), ['press'], 'an Escape pressed afresh after the leave is still kept from the page');
+    assert.deepEqual(session.problems().errors, []);
+  } finally {
+    await session.close();
+  }
+});

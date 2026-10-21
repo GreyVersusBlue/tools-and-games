@@ -85,7 +85,7 @@ import { unitWord } from './model.js';
 import { hotspotRows, placeWords } from './hotspots.js';
 import { layoutFloors, bestLayout, FIT_MARGIN } from '../surface/plan-layout.js';
 import { CELL, MIN_ZOOM, MAX_ZOOM } from '../surface/viewport.js';
-import { floorsShown } from '../surface/plan-map.js';
+import { floorsShown, REARM_HEIGHT } from '../surface/plan-map.js';
 
 // The keys, for Help, under Movement (Help explains each group it lists,
 // ui/help/content.js). The section answers them itself (below).
@@ -117,7 +117,8 @@ export const PANEL_UNDER_MOST = 0.38;
 // width there (a short sentence on one line), else above them (placeLine).
 export const LINE_LEAST = 240;
 // A finger on the map that moves less than this, in px, is a tap: the map
-// is put back at the mode's Fit when it lifts (SV2-31d: a 1 px move ended it).
+// is put back at the mode's Fit when it lifts, if the Fit was on as it went
+// down (SV2-31d: a 1 px move ended it; SV2-31e: a tap put a reader's zoom back to it).
 export const TAP_SLOP = 6;
 
 export const REFUSED_SAYS = 'This browser did not open full screen, so the map fills the window instead.';
@@ -401,16 +402,22 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     showControls();
   }
 
-  // A gesture on the map, from its first pointer down to its last up: how
-  // far each pointer went, and whether the map moved under it. A finger
-  // that went under TAP_SLOP px and moved the map (input.js pans with no
-  // slop) was a tap: the map goes back to the mode's Fit as it lifts.
-  // Further, or two fingers, the reader moved the map, and the mode's Fit
-  // ends (SV2-31d: a 1 px move on a tap had ended it for good).
+  // A gesture on the map, from its first pointer down on the stage (not on
+  // the touch controls) to its last up: how far each pointer went, whether
+  // the map moved under it, whether the mode's Fit was on as it began, and
+  // whether a fit was wanted while it lasted. While it lasts nothing fits
+  // the map under the finger (fitMode waits; SV2-31e: a step mid-drag threw
+  // the map back to the Fit under it). As it lifts: a finger that went
+  // under TAP_SLOP px was a tap, and the map goes back to the mode's Fit if
+  // the Fit was on as it went down (a reader who zoomed and taps a cell
+  // keeps their zoom, SV2-31e); further, or two fingers, the reader moved
+  // the map, and the mode's Fit ends (SV2-31d: a 1 px move on a tap had
+  // ended it for good). A window of another size meanwhile is fitted then.
   let gesture = null;
   function track(event) {
     if (event.type === 'pointerdown') {
-      if (!gesture) gesture = { pointers: new Map(), far: 0, many: false, moved: false };
+      if (!plan.stage.contains(event.target) || touch.contains(event.target)) return;
+      if (!gesture) gesture = { pointers: new Map(), far: 0, many: false, moved: false, fitted: modeFitted, wanted: false };
       gesture.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (gesture.pointers.size > 1) gesture.many = true;
       return;
@@ -418,17 +425,15 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     const at = gesture ? gesture.pointers.get(event.pointerId) : null;
     if (!at) return;
     gesture.far = Math.max(gesture.far, Math.hypot(event.clientX - at.x, event.clientY - at.y));
-    if (event.type === 'pointermove') return;
+    // a mouse moving with no button down has come up where nobody heard it
+    if (event.type === 'pointermove' && !(event.pointerType === 'mouse' && event.buttons === 0)) return;
     gesture.pointers.delete(event.pointerId);
     if (gesture.pointers.size > 0) return;
     const done = gesture;
     gesture = null;
-    if (!done.moved) return;
-    if (done.many || done.far >= TAP_SLOP) {
-      modeFitted = false;
-      return;
-    }
-    modeFitted = true;
+    if (!done.moved && !done.wanted) return;
+    if (done.many || done.far >= TAP_SLOP) modeFitted = false;
+    else if (done.fitted) modeFitted = true;
     fitMode(false);
   }
   // the focus coming to them shows them, whoever brought it (a screen
@@ -467,7 +472,8 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
   // choose) and setView; the map's own Fit, which knows nothing of the band,
   // is not used while presenting. The reader moving the map ends the mode's
   // Fit, but for a tap (a finger that moves under TAP_SLOP px), and a window
-  // of another size brings it back.
+  // of another width, or a height changed by more than REARM_HEIGHT, brings
+  // it back (a touch browser's bar coming or going does not, SV2-31e).
 
   // How far up from the stage's foot the touch controls and the corner line
   // reach, in px, as present.css places them: the controls as they stand
@@ -615,6 +621,8 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     const chosen = arrangement();
     if (!chosen) return;
     arrangedFor = key;
+    // the window it was arranged for, for a test to wait on
+    root.dataset.presentArranged = key;
     root.dataset.presentPanel = chosen.panel;
     root.dataset.presentHow = chosen.how;
     if (chosen.height === null) panel.style.removeProperty('height');
@@ -624,14 +632,27 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
 
   // The window changed size inside the plan map's own measuring (a resize
   // observer's turn): the arrangement waits a frame, so the boxes it lays
-  // out are not laid out again inside that turn. A window of another size
-  // is fitted again whatever the reader did to the map before (SV2-31d: a
-  // map moved once kept its place through a rotation).
+  // out are not laid out again inside that turn. A window of another width,
+  // or a height more than REARM_HEIGHT from the one last fitted for (the
+  // plan map's rule), is fitted again whatever the reader did to the map
+  // before (SV2-31d: a map moved once kept its place through a rotation);
+  // a phone's toolbar showing or hiding (56 px) is arranged for and leaves
+  // the reader's zoom (SV2-31e). A pointer down on the map holds all of
+  // this until it lifts (track).
   let arrangeFrame = null;
+  let fitWindow = null;
   function fitMode(fromLayout) {
     if (!presenting || fitting || gone) return;
+    if (gesture) {
+      gesture.wanted = true;
+      return;
+    }
     if (windowKey() !== arrangedFor) {
-      modeFitted = true;
+      const now = { width: root.clientWidth, height: root.clientHeight };
+      if (!fitWindow || now.width !== fitWindow.width || Math.abs(now.height - fitWindow.height) > REARM_HEIGHT) {
+        modeFitted = true;
+        fitWindow = now;
+      }
       if (fromLayout) {
         if (arrangeFrame === null) {
           arrangeFrame = requestAnimationFrame(() => {
@@ -670,6 +691,8 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     if (arrangeFrame !== null) cancelAnimationFrame(arrangeFrame);
     arrangeFrame = null;
     arrangedFor = null;
+    fitWindow = null;
+    delete root.dataset.presentArranged;
     delete root.dataset.presentPanel;
     delete root.dataset.presentHow;
     delete root.dataset.presentLine;
@@ -807,6 +830,7 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
       return;
     }
     if (key === 'Escape' || key === 'Esc' || key === 'p' || key === 'P') {
+      releaseHeld();
       holdUntilUp(key);
       leave();
     } else if (key === 'ArrowLeft') step(-1, false);
@@ -821,32 +845,38 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     event.preventDefault();
   }
 
-  // The key that left (Escape, P), held on past the leave: its repeats are
-  // kept from the shell and the map until it comes up (SV2-31d: a held
-  // Escape's repeats reached the map, which shuts a card on Escape, and the
-  // shell). A key pressed afresh, or the key's keyup, ends it.
-  let heldKey = null;
+  // The keys that may be held on past the leave: the one that left
+  // (Escape, P; Escape too when the browser's own Escape ended full
+  // screen), and Enter and Space, which press a button (Leave) and would
+  // press Present, where the focus goes, on their repeats. Their repeats
+  // are kept from the shell, the map and the button until each comes up
+  // (SV2-31d: a held Escape's repeats reached the map, which shuts a card
+  // on Escape, and the shell; SV2-31e: a held Enter on Leave entered
+  // again). A key pressed afresh ends it for all; a keyup, for that key.
+  const heldKeys = new Set();
   function onHeldKey(event) {
     if (event.type === 'keyup') {
-      if (event.key === heldKey) releaseHeld();
+      heldKeys.delete(event.key);
+      if (heldKeys.size === 0) releaseHeld();
       return;
     }
-    if (event.key !== heldKey || !event.repeat) {
+    if (!heldKeys.has(event.key) || !event.repeat) {
       releaseHeld();
       return;
     }
     event.stopPropagation();
     event.preventDefault();
   }
-  function holdUntilUp(key) {
-    releaseHeld();
-    heldKey = key;
-    document.addEventListener('keydown', onHeldKey, true);
-    document.addEventListener('keyup', onHeldKey, true);
+  function holdUntilUp(...keys) {
+    if (heldKeys.size === 0) {
+      document.addEventListener('keydown', onHeldKey, true);
+      document.addEventListener('keyup', onHeldKey, true);
+    }
+    for (const key of keys) heldKeys.add(key);
   }
   function releaseHeld() {
-    if (heldKey === null) return;
-    heldKey = null;
+    if (heldKeys.size === 0) return;
+    heldKeys.clear();
     document.removeEventListener('keydown', onHeldKey, true);
     document.removeEventListener('keyup', onHeldKey, true);
   }
@@ -865,8 +895,12 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
       }
       return;
     }
-    // the browser's own way out
-    if (presenting && how === 'fullscreen') leave();
+    // the browser's own way out: its Escape, held, repeats into the page
+    // as the in-page one would (SV2-31e)
+    if (presenting && how === 'fullscreen') {
+      holdUntilUp('Escape');
+      leave();
+    }
   }
   function onFullscreenError() {
     refused();
@@ -933,6 +967,7 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     };
     presenting = true;
     how = 'window';
+    gesture = null;
     dropLate();
     dropRestore();
     focusLater = false;
@@ -1020,6 +1055,8 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     // leaving the page: the section is not drawn again; what it is to remember is handed back
     if (away) return { transition: saved.transition, floors: saved.floors };
     if (!root.isConnected) return null;
+    // Enter or Space held on Leave: their repeats do not press Present (holdUntilUp)
+    holdUntilUp('Enter', ' ');
     restore();
     return null;
   }
