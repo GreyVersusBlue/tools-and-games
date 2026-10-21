@@ -2564,7 +2564,11 @@ console.log("\nthe listing side of the commercial tier:");
       const { pl } = taken(seed);
       ready(pl); Seller.goLive(pl, 1100000, 2);
       for (const a of Object.values(DB.agents)) {
+        // Written at a yield worth $985,000: each agent's ceiling is $985,000
+        // plus half their tolerance, $999,775 to $1,014,550, so a raise from
+        // $1,000,000 meets it. The house's value x 1.05 would let it run on.
         const o = exchangeOffer(pl, 1000000, { agentId: a.id });
+        o.uw.yieldPrice = 985000;
         const ceiling = Math.round(Com.offerCeiling(o, a) / 500) * 500;
         const r = Esc.agentHighestAndBest(pl, o);
         if (r.action !== "walked" && o.price > Math.max(1000000, ceiling)) over++;
