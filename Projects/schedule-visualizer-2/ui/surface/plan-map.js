@@ -442,10 +442,12 @@ export function createPlanMap(asked) {
     // Fit pressed brings the stage clear of the foot again (clearFoot): where
     // the section is now is where the map's own scrolling starts from, so a
     // scroll of the reader's before it does not turn it off at once (SV2-72f2)
+    // Even with a text field focused (SV2-72j): a tap on Fit moves no focus
+    // on iOS, and the reader who pressed it asked for the scroll.
     if (!quiet) {
       keepClear = true;
       ownScroll = parts && parts.root ? Math.round(parts.root.scrollTop) : null;
-      clearFoot();
+      asideTyping(clearFoot);
     }
     const place = choose(view.width, view.height, footOver(), FIT_MARGIN);
     view.zoom = place.zoom;
@@ -714,25 +716,67 @@ export function createPlanMap(asked) {
   // keyboard is the same whichever field raised it, and the section is what
   // the scroll moves. The window the scroll was armed in is kept, so the
   // keyboard going away is no change either.
-  function typing() {
-    const active = document.activeElement;
-    if (!active || active === document.body) return false;
-    if (active.isContentEditable || active.tagName === 'TEXTAREA') return true;
-    return active.tagName === 'INPUT' && !TYPED_NOT.has((active.type || 'text').toLowerCase());
+  //
+  // A field that takes no typing (readonly, disabled) raises no keyboard and
+  // holds nothing (SV2-72j).
+  function textField(el) {
+    if (!el || el === document.body) return false;
+    if (el.isContentEditable) return true;
+    if (el.tagName !== 'TEXTAREA' && el.tagName !== 'INPUT') return false;
+    if (el.readOnly || el.disabled) return false;
+    return el.tagName === 'TEXTAREA' || !TYPED_NOT.has((el.type || 'text').toLowerCase());
   }
-  function rearm() {
+  let typingAside = false;
+  function typing() {
+    return !typingAside && textField(document.activeElement);
+  }
+  // `fn` run as if no text field had the focus
+  function asideTyping(fn) {
+    typingAside = true;
+    try {
+      fn();
+    } finally {
+      typingAside = false;
+    }
+  }
+  // `released`: the comparison held while the reader typed, made as the
+  // focus leaves the field (onFocusOut)
+  function rearm(released) {
     if (gone) return;
     const windowNow = { width: window.innerWidth, height: window.innerHeight };
     if (windowSeen === null) windowSeen = windowNow;
-    else if ((windowNow.width !== windowSeen.width || Math.abs(windowNow.height - windowSeen.height) > REARM_HEIGHT) && !typing()) {
-      keepClear = true;
-      ownScroll = parts && parts.root ? Math.round(parts.root.scrollTop) : null;
-      windowSeen = windowNow;
+    else if (!typing()) {
+      const wider = windowNow.width !== windowSeen.width;
+      // a change of height alone made while the reader typed is taken for
+      // the keyboard, which may still be up as the field lets the focus go
+      // (SV2-72i: leaving the name with the keyboard up moves nothing); it
+      // stays measured from the window armed before, so the keyboard going
+      // away is no change either. A change of width (a rotation) is armed.
+      const taller = Math.abs(windowNow.height - windowSeen.height) > REARM_HEIGHT && released !== true;
+      if (wider || taller) {
+        keepClear = true;
+        ownScroll = parts && parts.root ? Math.round(parts.root.scrollTop) : null;
+        windowSeen = windowNow;
+      }
     }
     // the window last compared, for a test to wait on
     root.dataset.window = windowNow.width + 'x' + windowNow.height;
   }
-  window.addEventListener('resize', rearm);
+  const onResize = () => rearm();
+  window.addEventListener('resize', onResize);
+  // The next look after typing (SV2-72j): while a text field had the focus
+  // the foot-clearing scroll and the window's comparison were held, and
+  // nothing else may come to make them (a click on the map moves no window
+  // and scrolls nothing): they are made as the focus leaves for anything but
+  // another text field. dock() is the look: the lift, then clearFoot.
+  function onFocusOut(event) {
+    if (gone || textField(event.relatedTarget)) return;
+    asideTyping(() => {
+      rearm(true);
+      dock();
+    });
+  }
+  document.addEventListener('focusout', onFocusOut);
 
   // ---- where a message of the shell may lie (DESIGN 5.3): above what is
   // docked at the bottom of the surface, the foot and the zoom buttons. How
@@ -858,8 +902,8 @@ export function createPlanMap(asked) {
     // nor is the section moved under a reader typing (SV2-72i): still armed
     // from opening, the lab at 1280 by 720 with a finger scrolled its
     // scenario name 73 px up and out of view when a 400 px keyboard came up
-    // under it. The scroll stays armed, and is made at the next look once
-    // the field has let the focus go.
+    // under it. The scroll stays armed, and is made as the field lets the
+    // focus go (onFocusOut; SV2-72j), or on Fit.
     if (typing()) {
       ownScroll = top;
       return;
@@ -1178,7 +1222,8 @@ export function createPlanMap(asked) {
       roomWatcher.disconnect();
       onZoomBox.disconnect();
       stage.removeEventListener('wheel', onStageWheel, { capture: true });
-      window.removeEventListener('resize', rearm);
+      window.removeEventListener('resize', onResize);
+      document.removeEventListener('focusout', onFocusOut);
       dark.removeEventListener('change', queuePaint);
       if (ratioQuery) ratioQuery.removeEventListener('change', onRatio);
       input.detach();
