@@ -28,6 +28,10 @@
 // and the layout settles (the fit and the legend's dock counted); the shell's
 // own Show, on the message an Undo leaves, opens a group's address marked as
 // having the list under it, so a Delete on a phone leaves the list once.
+// From SV2-72h: Fit settles at 900 by 500 with touch, keeps the first line
+// where the floors fit with it, falls back to the whole stage at 1100 by
+// 450, holds still under a browser bar's 56 px, and from the section's top
+// with the zoom buttons lifted gives the fit the section opened with.
 
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
