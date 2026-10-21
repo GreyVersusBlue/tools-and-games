@@ -1088,8 +1088,9 @@ test('SV2-72i: Movement at 844 by 390 with a finger, still armed as it opened: a
 // at its least (160 px) with the section where it is. Started by the Start
 // button instead, the map clears the foot as the scenario opens (the focus
 // is on the button, nothing typed) and focusing the name then scrolls the
-// section 32 px back to show it, a scroll the map did not make, which turns
-// the clearing off as the reader's would (SV2-72f2); not this case's.
+// section 32 px back to show it, a scroll the map did not make; it comes in
+// the frame the focus moved into the field, so it is the focus's, not the
+// reader's, and the clearing stays held (SV2-72k's cases).
 const LAB_LOW = { width: 1280, height: 300 };
 
 // The lab opened with no scenario, then one started by Enter in its name
