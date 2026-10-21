@@ -157,6 +157,7 @@ test('Clear on the Floor tab says what it removes and keeps, clears the floor at
   assert.equal(await text('#floor-clear-says'), 'Nothing is drawn on Floor 2, so there is nothing to clear.');
   assert.equal(await page.$eval('#floor-clear', (el) => el.getAttribute('aria-disabled')), 'true');
   assert.equal(await entries(), before + 1, 'one undo step');
+  assert.notEqual(await page.$eval('#inspector-floor', (el) => el.dataset.snapshot), undefined, 'the clear asked for a snapshot');
   const cleared = (await project()).building.floors[1];
   assert.equal(cleared.cells, '.'.repeat(cleared.width * cleared.height));
   assert.deepEqual(cleared.spaces, []);
@@ -166,7 +167,7 @@ test('Clear on the Floor tab says what it removes and keeps, clears the floor at
   const snapshot = kept[kept.length - 1];
   assert.equal(snapshot.name, 'Before clearing Floor 2');
   assert.deepEqual(snapshot.project.building, start.building, 'the snapshot is the project from before the clear');
-  await shows(() => /^Cleared Floor 2, which removed 5 rooms, /.test(Array.from(document.querySelectorAll('.toast .toast__text')).pop()?.textContent || ''));
+  assert.match(await toastText(), /^Cleared Floor 2, which removed 5 rooms, /);
   assert.match(await toastText(), / The snapshot “⁨Before clearing Floor 2⁩” has what was there\.$/);
 
   // the snapshot restores what was cleared
@@ -220,12 +221,13 @@ test('a resize that cuts nothing keeps no snapshot; one that cuts something off 
   await page.click('#resize-dialog .btn--danger');
   await shows(() => document.querySelector('dialog.dialog[open]') === null);
   assert.equal((await project()).building.floors[0].width, 20, 'resized on screen without waiting for the snapshot');
+  assert.notEqual(await page.$eval('#inspector-floor', (el) => el.dataset.snapshot), undefined, 'the resize that cut something off asked for a snapshot');
   assert.equal(await panelSnapshot(), 'taken');
   const kept = await snapshots();
   assert.equal(kept.length, had + 1, 'one snapshot: the lossless resize took none');
   assert.equal(kept[kept.length - 1].name, 'Before resizing Floor 1 to 20 × 20');
   assert.deepEqual(kept[kept.length - 1].project.building, start.building);
-  await shows(() => /^Resized Floor 1 to 20 by 20, which removed .+ The snapshot “⁨Before resizing Floor 1 to 20 × 20⁩” has what was there\.$/.test(Array.from(document.querySelectorAll('.toast .toast__text')).pop()?.textContent || ''));
+  assert.match(await toastText(), /^Resized Floor 1 to 20 by 20, which removed .+ The snapshot “⁨Before resizing Floor 1 to 20 × 20⁩” has what was there\.$/);
   await page.click('#undo');
   await page.click('#undo');
   assert.equal((await project()).building.floors[0].width, 40);
@@ -281,6 +283,7 @@ test('applying a scenario of SCENARIO_SNAPSHOT_SLOTS slots keeps no snapshot; on
   await page.click('#scenario-apply .btn--primary');
   // the schedule changed and the scenario closed before the snapshot is kept
   assert.equal(await page.evaluate(() => globalThis.sv2.store.project.scenario), null);
+  assert.notEqual(await page.$eval('.scn', (el) => el.dataset.snapshot), undefined, 'the apply of more than ' + SCENARIO_SNAPSHOT_SLOTS + ' slots asked for a snapshot');
   await page.waitForFunction(() => ['taken', 'not-taken'].includes(document.querySelector('.scn').dataset.snapshot), { timeout: 15000 });
   assert.equal(await page.$eval('.scn', (el) => el.dataset.snapshot), 'taken');
   const kept = await snapshots();
@@ -288,7 +291,7 @@ test('applying a scenario of SCENARIO_SNAPSHOT_SLOTS slots keeps no snapshot; on
   assert.equal(kept[kept.length - 1].name, 'Before applying the scenario “Move <7th> grade”');
   assert.deepEqual(kept[kept.length - 1].project.groups, start.groups);
   assert.equal(kept[kept.length - 1].project.scenario.name, 'Move <7th> grade');
-  await shows(() => /^Applied “Move <7th> grade”: 11 changes made to the schedule\. The snapshot “⁨Before applying the scenario “Move <7th> grade”⁩” has what was there\.$/.test(Array.from(document.querySelectorAll('.toast .toast__text')).pop()?.textContent || ''));
+  assert.match(await toastText(), /^Applied “Move <7th> grade”: 11 changes made to the schedule\. The snapshot “⁨Before applying the scenario “Move <7th> grade”⁩” has what was there\.$/);
   await page.evaluate(() => globalThis.sv2.ctx.undo());
   assert.deepEqual((await project()).groups, start.groups);
   await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2Actions.discardScenario, {}));
@@ -304,21 +307,24 @@ test('with the device at its limit the floor is still cleared at once, and the m
   await rawWrite(['snapshots'], (tx, value) => {
     for (let i = value.from; i < value.to; i += 1) tx.objectStore('snapshots').put({ id: 'nfill' + String(i).padStart(5, '0'), name: 'Filler ' + i, takenAt: '2026-01-01T00:00:00.000Z', bytes: 2, project: {} });
   }, { from: have, to: SNAPSHOT_LIMIT });
-  await floorTab(2);
-  const before = await entries();
-  await resetPanel();
-  await page.click('#floor-clear');
-  assert.equal(await entries(), before + 1, 'cleared at once');
-  assert.equal(await panelSnapshot(), 'not-taken');
-  assert.equal((await snapshots()).length, SNAPSHOT_LIMIT, 'none replaced');
-  await shows(() => /^Cleared Floor 3, which removed .+ No snapshot was taken, because this device already keeps 30, the most it keeps\. Undo brings it back while this tab stays open\.$/.test(Array.from(document.querySelectorAll('.toast .toast__text')).pop()?.textContent || ''));
-  assert.equal(await page.$('dialog.dialog[open]'), null, 'nothing asked');
-  await page.click('#undo');
-  await rawWrite(['snapshots'], (tx) => {
-    const store = tx.objectStore('snapshots');
-    const keys = store.getAllKeys();
-    keys.onsuccess = () => keys.result.filter((id) => id.startsWith('nfill')).forEach((id) => store.delete(id));
-  });
+  try {
+    await floorTab(2);
+    const before = await entries();
+    await resetPanel();
+    await page.click('#floor-clear');
+    assert.equal(await entries(), before + 1, 'cleared at once');
+    assert.equal(await panelSnapshot(), 'not-taken');
+    assert.equal((await snapshots()).length, SNAPSHOT_LIMIT, 'none replaced');
+    assert.match(await toastText(), /^Cleared Floor 3, which removed .+ No snapshot was taken, because this device already keeps 30, the most it keeps\. Undo brings it back while this tab stays open\.$/);
+    assert.equal(await page.$('dialog.dialog[open]'), null, 'nothing asked');
+    await page.click('#undo');
+  } finally {
+    await rawWrite(['snapshots'], (tx) => {
+      const store = tx.objectStore('snapshots');
+      const keys = store.getAllKeys();
+      keys.onsuccess = () => keys.result.filter((id) => id.startsWith('nfill')).forEach((id) => store.delete(id));
+    });
+  }
   await dismissToasts();
 });
 
@@ -336,7 +342,7 @@ test('with saves failing the resize still happens, and the message says the snap
     await shows(() => document.querySelector('dialog.dialog[open]') === null);
     assert.equal((await project()).building.floors[0].width, 20);
     assert.equal(await panelSnapshot(), 'not-taken');
-    await shows(() => /^Resized Floor 1 to 20 by 14, which removed .+ No snapshot was taken, because the project could not be saved first, .+ Undo brings it back while this tab stays open\.$/.test(Array.from(document.querySelectorAll('.toast .toast__text')).pop()?.textContent || ''));
+    assert.match(await toastText(), /^Resized Floor 1 to 20 by 14, which removed .+ No snapshot was taken, because the project could not be saved first, .+ Undo brings it back while this tab stays open\.$/);
   } finally {
     await page.evaluate(() => {
       globalThis.sv2.storage.hooks.failWrite = null;
@@ -410,7 +416,7 @@ test('an image a restore put back is swept once the restore is undone inside the
   await dismissToasts();
 });
 
-test('a snapshot of a project from before a change is refused when an image it names is no longer stored, and the change is not undone', async () => {
+test('a snapshot of a project from before a change is refused when an image it names is no longer stored', async () => {
   const had = (await snapshots()).length;
   const answer = await page.evaluate(() => {
     const before = JSON.parse(JSON.stringify(globalThis.sv2.store.project));
