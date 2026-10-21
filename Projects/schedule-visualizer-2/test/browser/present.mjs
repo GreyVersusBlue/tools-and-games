@@ -1544,8 +1544,8 @@ test('at every size the mode chooses its panel\'s place by the layout the plan m
       await page.waitForFunction(() => !document.querySelector('.mov').dataset.present && document.fullscreenElement === null, { timeout: 10000 });
     }
     t.diagnostic(SWEEP.length + ' sizes; at 25 %, floors not judged: ' + (seenLeast.join(', ') || 'none'));
+    assert.deepEqual(failed, [], 'the panel\'s place judged by another layout than the map draws, or a floor under a part');
     assert.ok(seenLeast.length <= 4, 'the map is at its least at ' + seenLeast.length + ' sizes: the sweep judges little');
-    assert.deepEqual(failed, []);
     assert.deepEqual(session.problems().errors, []);
   } finally {
     await session.close();
@@ -1621,7 +1621,9 @@ test('the waiting step comes when a playback is taken back to within 2 % of its 
     assert.equal((await read(page)).transition, 1, 'back to 10 % brought the step');
     // from the middle to 1 %: neither near the end nor a frame's stride, only AROUND says it went round
     await seek(0.01);
-    await page.waitForFunction(() => document.querySelector('.mov').movement.choice.transition === 2, { timeout: 5000 });
+    await page.waitForFunction(() => document.querySelector('.mov').movement.choice.transition === 2, { timeout: 5000 }).catch((error) => {
+      throw new Error('back to 1 % from the middle did not bring the waiting step (' + error.message + ')');
+    });
     await page.keyboard.press('Escape');
     assert.deepEqual(session.problems().errors, []);
   } finally {
