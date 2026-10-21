@@ -320,10 +320,17 @@ export function createPlanMap(asked) {
     const value = floorsChoice ? floorsChoice.value() : 'auto';
     const floors = floorsShown(project, value);
     // another choice of floors is fitted to the window again
+    const chosenBefore = floorsValue === value;
     if (floorsValue !== null && value !== floorsValue) fitted = true;
     floorsValue = value;
-    const how = value === 'side' || value === 'stacked' ? value : bestLayout(floors, view.width, view.height);
+    // the arrangement on the map is kept unless the other is clearly larger
+    // (bestLayout's LAYOUT_MARGIN; SV2-72h), when the window chose it for
+    // these floors on a measured stage, not at the 0 by 0 a map has before
+    // it is measured, nor by the reader's Side by side or Stacked
+    const same = chosenBefore && world && world.measured && world.slots.length === floors.length && world.slots.every((slot, at) => slot.floor.id === floors[at].id);
+    const how = value === 'side' || value === 'stacked' ? value : bestLayout(floors, view.width, view.height, same ? world.how : undefined);
     const next = layoutFloors(floors, how);
+    next.measured = view.width > 0 && view.height > 0;
     const nextKey = JSON.stringify([next.how, next.slots.map((slot) => [slot.floor.id, slot.x, slot.y, slot.w, slot.h, slot.box.x, slot.box.y])]);
     // the floors' views are kept by the slot, for the renderer
     for (const slot of next.slots) slot.view = createViewport();
