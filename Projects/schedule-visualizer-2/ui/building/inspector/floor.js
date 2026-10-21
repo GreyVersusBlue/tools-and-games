@@ -3,14 +3,29 @@
 // change, whatever order the tabs are in) and place among the floors, its size (with what a new size would cut off,
 // said before anything is cut), the image traced over, and the things drawn
 // on it that are not rooms: stairs connections, corridor names and the areas
-// left out of the colour scale. Deleting the floor is at the bottom.
+// left out of the colour scale. Clearing the floor and deleting it are at the
+// bottom.
+//
+// Clearing a floor and a resize that cuts something off are large changes
+// that keep an automatic snapshot of the project from before them (spec
+// 13.3, SV2-28b). The change is made at once and the snapshot is kept
+// afterwards (storage/snapshots.js snapshotAfter), so a device that cannot
+// keep one never holds the change up; the message that follows says which.
+// Clearing asks nothing: it is one undo step and the snapshot keeps the rest
+// (spec 3.8). What it removes, decided here: everything drawn on the floor,
+// as the eraser takes it over every cell (rooms, other spaces, corridor and
+// stairs cells, and with them the doors, exits, corridor names and stairs
+// connections that stood on them). The floor keeps its name, level, size,
+// traced image and the areas left out of the colour scale, which are a
+// choice about counting rather than something drawn.
 
 import { h } from '../../components/dom.js';
 import { field } from '../../components/field.js';
 import { choice } from '../../components/choice.js';
-import { count } from '../../components/words.js';
-import { ActionError, renameFloor, setFloorLevel, reorderFloor, deleteFloor, describeFloorDelete, describeResize, resizeFloor, disconnectStairs, setConnection, renameCorridor, removeCorridorName, setZone, removeZone } from '../../../engine/actions.js';
+import { count, list } from '../../components/words.js';
+import { ActionError, renameFloor, setFloorLevel, reorderFloor, deleteFloor, describeFloorDelete, describeResize, resizeFloor, eraseCells, disconnectStairs, setConnection, renameCorridor, removeCorridorName, setZone, removeZone } from '../../../engine/actions.js';
 import { lossText } from '../../../engine/building.js';
+import { snapshotAfter } from '../../../storage/snapshots.js';
 import { RANGES } from '../../../engine/schema.js';
 import { keyedList, heading, cellWords } from './controls.js';
 
@@ -19,6 +34,46 @@ export const SIZE_PRESETS = [
   { id: 'medium', label: 'Medium', width: 40, height: 30 },
   { id: 'large', label: 'Large', width: 60, height: 40 },
 ];
+
+// Every cell of the floor with something drawn on it: what clearing erases.
+export function drawnCells(floor) {
+  const cells = new Set();
+  for (let cell = 0; cell < floor.cells.length; cell += 1) if (floor.cells[cell] !== '.') cells.add(cell);
+  for (const space of floor.spaces) for (const cell of space.cells) cells.add(cell);
+  return Array.from(cells).sort((a, b) => a - b);
+}
+
+// What clearing the floor would say beside its button: { empty, removes, keeps }.
+export function clearFloorWords(project, floor) {
+  let rooms = 0;
+  let otherSpaces = 0;
+  let corridorCells = 0;
+  let stairsCells = 0;
+  for (const space of floor.spaces) {
+    if (space.kind === 'room') rooms += 1;
+    else otherSpaces += 1;
+  }
+  for (const character of floor.cells) {
+    if (character === '#') corridorCells += 1;
+    else if (character === 'S') stairsCells += 1;
+  }
+  const connections = project.building.connections.filter((connection) => connection.a.floorId === floor.id || connection.b.floorId === floor.id).length;
+  const parts = [
+    rooms > 0 ? count(rooms, 'room') : null,
+    otherSpaces > 0 ? count(otherSpaces, 'other space') : null,
+    corridorCells > 0 ? count(corridorCells, 'corridor cell') : null,
+    stairsCells > 0 ? count(stairsCells, 'stairs cell') : null,
+    floor.corridors.length > 0 ? count(floor.corridors.length, 'corridor name') : null,
+    floor.exits.length > 0 ? count(floor.exits.length, 'exit') : null,
+    connections > 0 ? count(connections, 'stairs connection') : null,
+  ].filter(Boolean);
+  if (parts.length === 0) return { empty: true, removes: 'Nothing is drawn on ' + floor.name + ', so there is nothing to clear.', keeps: '' };
+  return {
+    empty: false,
+    removes: 'Removes everything drawn on ' + floor.name + ': ' + list(parts) + '.',
+    keeps: 'The floor stays, empty, with its name, level, size, traced image and the areas left out of the colour scale. A group in a room that goes keeps the room\'s number, which reads "not in the building". A snapshot of the project as it was is kept, and Undo brings it all back.',
+  };
+}
 
 function scheduledWords(described) {
   if (!described.slots) return '';
@@ -105,9 +160,53 @@ export function floorPanel(env) {
         return;
       }
     }
-    ed().commit(resizeFloor, ask.payload, {
-      done: (outcome) => 'Resized ' + floor.name + ' to ' + outcome.width + ' by ' + outcome.height + (described.losesData ? ', which removed ' + lossText(outcome.loss) : '') + '.',
+    const before = store.project;
+    const name = floor.name;
+    let sentence = null;
+    const outcome = ed().commit(resizeFloor, ask.payload, {
+      done: (made) => {
+        sentence = 'Resized ' + name + ' to ' + made.width + ' by ' + made.height + (described.losesData ? ', which removed ' + lossText(made.loss) : '') + '.';
+        return sentence;
+      },
+      // a resize that cuts something off says so once its snapshot is kept
+      toast: described.losesData ? null : undefined,
     });
+    if (outcome && described.losesData) await keptBefore('resize', 'Before resizing ' + name + ' to ' + outcome.width + ' × ' + outcome.height, before, sentence);
+  }
+
+  // ---------------------------------------------------------- clear
+
+  // The snapshot of `before`, kept after the change was made, and the message
+  // that says what was done and whether the snapshot is there. The panel's
+  // data-snapshot says where that stands, for tests: 'taking', then 'taken'
+  // or 'not-taken'.
+  async function keptBefore(reason, name, before, sentence) {
+    element.dataset.snapshot = 'taking';
+    const after = await snapshotAfter(reason, name, before);
+    element.dataset.snapshot = after.taken ? 'taken' : 'not-taken';
+    ctx.toast({ text: sentence + ' ' + after.said, action: { label: 'Undo', run: ctx.undo } });
+  }
+
+  async function clearFloor() {
+    const before = store.project;
+    const floor = before.building.floors.find((each) => each.id === state.floor.id);
+    if (!floor) return;
+    const words = clearFloorWords(before, floor);
+    if (words.empty) {
+      ctx.announce(words.removes);
+      return;
+    }
+    const name = floor.name;
+    let sentence = null;
+    const outcome = ed().commit(eraseCells, { floorId: floor.id, cells: drawnCells(floor), whole: true }, {
+      done: (made) => {
+        sentence = 'Cleared ' + name + ', which removed ' + lossText(made.loss) + '.';
+        return sentence;
+      },
+      same: words.removes,
+      toast: null,
+    });
+    if (outcome) await keptBefore('clear-floor', 'Before clearing ' + name, before, sentence);
   }
 
   // ---------------------------------------------------------- build
@@ -180,6 +279,9 @@ export function floorPanel(env) {
     const noCorridors = h('p', { class: 'bld-inspector__small' }, 'No corridor on this floor has a name yet. Choose the Name tool (N) and drag along a corridor.');
     const zones = h('ul', { class: 'bi-rows', id: 'floor-zones' });
     const noZones = h('p', { class: 'bld-inspector__small' }, 'Nothing on this floor is left out of the colour scale. A place that is busy by design, like the cafeteria doors, can be: choose the Leave out tool (Z) and drag a rectangle over it.');
+    const clearSays = h('p', { id: 'floor-clear-says' });
+    const clearKeeps = h('p', { class: 'bld-inspector__small', id: 'floor-clear-keeps' });
+    const clearButton = h('button', { type: 'button', class: 'btn btn--danger', id: 'floor-clear', 'aria-describedby': 'floor-clear-says floor-clear-keeps', data: { key: 'clear' }, on: { click: () => clearFloor() } });
     const remove = h('button', { type: 'button', class: 'btn btn--danger', id: 'floor-delete', data: { key: 'delete' }, on: { click: () => removeFloor() } });
     const lastNote = h('p', { class: 'bld-inspector__small', id: 'floor-last' }, 'This is the only floor, and a building has at least one, so it cannot be deleted.');
 
@@ -204,6 +306,7 @@ export function floorPanel(env) {
       h('section', { class: 'bi-part', 'aria-labelledby': 'floor-connections-heading' }, heading('Stairs connections', 'floor-connections-heading'), connections, noConnections),
       h('section', { class: 'bi-part', 'aria-labelledby': 'floor-corridors-heading' }, heading('Corridor names', 'floor-corridors-heading'), corridors, noCorridors),
       h('section', { class: 'bi-part', 'aria-labelledby': 'floor-zones-heading' }, heading('Left out of the colour scale', 'floor-zones-heading'), zones, noZones),
+      h('section', { class: 'bi-part', 'aria-labelledby': 'floor-clear-heading' }, heading('Clear', 'floor-clear-heading'), clearSays, clearKeeps, h('div', { class: 'bi-buttons' }, clearButton)),
       h('section', { class: 'bi-part', 'aria-labelledby': 'floor-delete-heading' }, heading('Delete', 'floor-delete-heading'), lastNote, h('div', { class: 'bi-buttons' }, remove)),
     );
     parts = {
@@ -212,6 +315,7 @@ export function floorPanel(env) {
       corridors: keyedList(corridors), corridorsHost: corridors, noCorridors,
       zones: keyedList(zones), zonesHost: zones, noZones,
       remove, lastNote, size: floor.width + 'x' + floor.height,
+      clearSays, clearKeeps, clear: clearButton,
     };
   }
 
@@ -386,6 +490,12 @@ export function floorPanel(env) {
       parts.height.value = String(floor.height);
     }
     preview();
+    const clearing = clearFloorWords(project, floor);
+    parts.clearSays.textContent = clearing.removes;
+    parts.clearKeeps.textContent = clearing.keeps;
+    parts.clearKeeps.hidden = clearing.empty;
+    parts.clear.textContent = 'Clear ' + floor.name;
+    parts.clear.setAttribute('aria-disabled', String(clearing.empty));
     parts.remove.textContent = 'Delete ' + floor.name;
     parts.remove.disabled = floors.length === 1;
     parts.lastNote.hidden = floors.length > 1;

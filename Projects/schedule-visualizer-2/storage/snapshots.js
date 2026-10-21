@@ -30,13 +30,17 @@
 // For code with no handle on it (the automatic snapshots inside sections,
 // SV2-28b):
 //
-//   takeAutoSnapshot(reason, name?) -> Promise<{ ok: true, snapshot } | { ok: false, code, text }>
+//   takeAutoSnapshot(reason, name?, of?) -> Promise<{ ok: true, snapshot } | { ok: false, code, text }>
 //
 // reason is a key of AUTO_SNAPSHOT_NAMES; name, when given, is the snapshot's
-// name instead ("Before clearing Floor 2"). It never throws: a snapshot that
-// could not be taken says why in `text`, and the caller decides whether to go
-// on (it should have asked first, with snapshotRoom(), when the limit is
-// reached).
+// name instead ("Before clearing Floor 2"); of, when given, is the project to
+// keep instead of the one on screen. It never throws: a snapshot that could
+// not be taken says why in `text`, and the caller decides whether to go on
+// (it should have asked first, with snapshotRoom(), when the limit is
+// reached). snapshotAfter(reason, name, before) is the form a section uses
+// after a change it has already made: clearing a floor, a resize that cuts
+// something off, applying a scenario of more than SCENARIO_SNAPSHOT_SLOTS
+// slots (ui/scenarios/model.js says why that many).
 
 import { migrate, versionOf } from '../engine/migrate.js';
 import { repair } from '../engine/repair.js';
@@ -70,6 +74,8 @@ export function fullSentence(limit, have) {
   const there = Number.isFinite(have) ? have : most;
   return 'This device keeps at most ' + most + ' snapshots, and it has ' + there + '. Delete one you no longer need (export it first to keep it as a file), then take this one. No snapshot is ever replaced to make room.';
 }
+
+export const IMAGE_GONE_SENTENCE = 'A traced image the project named before this change is no longer kept on this device, so a snapshot of it would be missing that image.';
 
 export const READ_ONLY_SENTENCE = 'This tab is read-only while the project is open in another tab, so it cannot take, restore, rename or delete a snapshot. It can export one.';
 
@@ -389,16 +395,36 @@ export function startSnapshots(ctx, options) {
     if (storage().pending) throw new SnapshotError('The snapshot was not taken, because the project could not be saved first, so the traced images it names might not all be kept. Try again once the project is saved.', 'not-saved');
   }
 
-  // Take a snapshot of the project as it is now. Throws a SnapshotError with
-  // the sentence to show.
-  async function take(name) {
+  // A project from before the change on screen (`of`, SV2-28b) names only
+  // images that are stored: the saves since may have swept one the project
+  // on screen no longer names, and a snapshot naming a missing image would
+  // restore with a hole in it. Refused, saying so. The three changes that
+  // take one this way keep every traced image, so this is a guard.
+  async function imagesStored(db, of) {
+    const now = new Set(imageIdsOf(ctx.store.project));
+    const asked = imageIdsOf(of).filter((id) => !now.has(id));
+    if (asked.length === 0) return;
+    const stored = await new Promise((resolve, reject) => {
+      const keys = db.transaction(IMAGE_STORE, 'readonly').objectStore(IMAGE_STORE).getAllKeys();
+      keys.onsuccess = () => resolve(new Set(keys.result));
+      keys.onerror = () => reject(keys.error);
+    });
+    if (asked.some((id) => !stored.has(id))) throw new SnapshotError(IMAGE_GONE_SENTENCE, 'image-gone');
+  }
+
+  // Take a snapshot of the project as it is now, or of `of`, a project the
+  // page held a moment ago (the one from before a change it has just made).
+  // Throws a SnapshotError with the sentence to show.
+  async function take(name, of) {
     editable();
     if (typeof name !== 'string' || blankName(name)) throw new SnapshotError(NAME_NEEDED, 'no-name');
+    if (of !== undefined && !isObject(of)) throw new TypeError('A snapshot is of a project.');
     const db = await main();
     let record = null;
     for (let tries = 0; tries < 2 && record === null; tries += 1) {
       await savedFirst();
-      const candidate = snapshotRecord(ctx.store.project, { id: ctx.ids('n'), name, takenAt: ctx.clock().toISOString() });
+      if (of !== undefined) await imagesStored(db, of);
+      const candidate = snapshotRecord(of === undefined ? ctx.store.project : of, { id: ctx.ids('n'), name, takenAt: ctx.clock().toISOString() });
       try {
         record = await addSnapshot(db, candidate, SNAPSHOT_LIMIT);
       } catch (error) {
@@ -413,11 +439,11 @@ export function startSnapshots(ctx, options) {
     return snapshotEntry(record);
   }
 
-  async function takeAuto(reason, name) {
+  async function takeAuto(reason, name, of) {
     const named = typeof name === 'string' && !blankName(name) ? name : AUTO_SNAPSHOT_NAMES[reason];
-    if (!named) return { ok: false, code: 'bad-reason', text: 'An automatic snapshot is taken for one of: ' + Object.keys(AUTO_SNAPSHOT_NAMES).join(', ') + '.' };
+    if (!AUTO_SNAPSHOT_NAMES[reason] || !named) return { ok: false, code: 'bad-reason', text: 'An automatic snapshot is taken for one of: ' + Object.keys(AUTO_SNAPSHOT_NAMES).join(', ') + '.' };
     try {
-      return { ok: true, snapshot: await take(named) };
+      return { ok: true, snapshot: await take(named, of) };
     } catch (error) {
       return { ok: false, code: error && error.code ? error.code : 'failed', text: messageOf(error) };
     }
@@ -512,9 +538,35 @@ export function pageSnapshots() {
 
 // For code with no handle on the page's snapshots: the header says what it
 // answers. Before boot it answers that the project is still loading.
-export function takeAutoSnapshot(reason, name) {
+export function takeAutoSnapshot(reason, name, of) {
   if (!active) return Promise.resolve({ ok: false, code: 'not-ready', text: 'The project is still loading, so no snapshot was taken.' });
-  return active.takeAuto(reason, name);
+  return active.takeAuto(reason, name, of);
+}
+
+// The change inside a section (SV2-28b): the change is made at once, and the
+// snapshot of the project from before it is kept afterwards, so nothing the
+// device's storage does (a read-only tab, the limit reached, a full disk, a
+// browser that keeps nothing) can hold the change up or lose it. Resolves
+// with { taken, snapshot, said, code }: `said` is the sentence for the
+// message that follows the change.
+export async function snapshotAfter(reason, name, before) {
+  const answer = await takeAutoSnapshot(reason, name, before);
+  return { taken: answer.ok, snapshot: answer.ok ? answer.snapshot : null, code: answer.ok ? null : answer.code, said: autoSnapshotSaid(answer) };
+}
+
+// What the message says of a snapshot taken by itself, or not taken.
+export function autoSnapshotSaid(answer) {
+  if (answer && answer.ok) return 'The snapshot “\u2068' + answer.snapshot.name + '\u2069” has what was there.';
+  const code = answer && answer.code;
+  const undo = ' Undo brings it back while this tab stays open.';
+  if (code === 'full') return 'No snapshot was taken, because this device already keeps ' + SNAPSHOT_LIMIT + ', the most it keeps.' + undo;
+  if (code === 'not-ready') return 'No snapshot was taken, because the project was still loading.' + undo;
+  if (code === 'read-only') return 'No snapshot was taken, because this tab is read-only while the project is open in another tab.' + undo;
+  const why = answer && typeof answer.text === 'string' && answer.text !== '' ? answer.text : 'the device did not say why.';
+  // the take's own sentence often starts by saying it was not taken: once is enough
+  const own = /^The snapshot was not (?:taken|kept)(, because |: )/.exec(why);
+  if (own) return 'No snapshot was taken' + own[1] + why.slice(own[0].length) + undo;
+  return 'No snapshot was taken: ' + why.charAt(0).toLowerCase() + why.slice(1) + undo;
 }
 
 // For code with no handle on the page's snapshots: is there room for one more?

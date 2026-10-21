@@ -37,6 +37,7 @@ import { buildGraph } from '../../engine/graph.js';
 import { ActionError, addScenarioChange, applyScenario, discardScenario } from '../../engine/actions.js';
 import { changeWords } from '../../engine/scenario.js';
 import { nameOfRoom } from '../../engine/schema.js';
+import { snapshotAfter } from '../../storage/snapshots.js';
 import { scenarioView, firstLine, barWords, cancelled, cancelledSentence, applySummary } from './model.js';
 import { changesPanel } from './changes.js';
 import { formsPanel, freshForm } from './forms.js';
@@ -332,6 +333,7 @@ export const section = {
         skipped > 0 ? h('ul', { class: 'scn-summary__list', data: { part: 'skipped' } }, summary.skipped.map((text) => h('li', { dir: 'auto' }, text))) : null,
         summary.added.length > 0 || summary.removed.length > 0 ? h('p', { data: { part: 'groups' } }, 'Groups only in one of the two files are not added or removed: a scenario changes rooms, not the list of groups.') : null,
         h('p', null, 'It is one step: Undo brings back the schedule and the scenario together.'),
+        summary.snapshot ? h('p', { data: { part: 'snapshot' } }, 'It changes ' + count(summary.slots, (project.settings.periodWord || 'Period').toLowerCase()) + ' of the groups\' days, so a snapshot of the project as it is now is kept as well, and can be restored from Snapshots in the Project section.') : null,
       ];
       const dialog = ctx.openDialog({
         title: 'Apply the scenario ' + quote(current.name) + '?',
@@ -346,11 +348,24 @@ export const section = {
       });
       const answer = await dialog.closed;
       if (answer !== 'apply' || gone) return;
+      // what is applied is reconciled again now: the question may have stood open
+      const before = store.project;
+      const now = scenarioView(before);
+      const big = now ? applySummary(before, now).snapshot : false;
       if (!run(applyScenario, {})) return;
       // the dialog gave the focus back to Apply, which the drawing has just
       // hidden: it goes on to the start field now, never by way of the page
       changes.focusName();
-      const text = n === 0 ? 'Closed ' + quote(current.name) + ': no change of it applied, and the schedule is as it was.' : 'Applied ' + quote(current.name) + ': ' + count(n, 'change') + ' made to the schedule.';
+      let text = n === 0 ? 'Closed ' + quote(current.name) + ': no change of it applied, and the schedule is as it was.' : 'Applied ' + quote(current.name) + ': ' + count(n, 'change') + ' made to the schedule.';
+      // a big apply keeps a snapshot of the project from before it, after
+      // the change is made, so storage cannot hold it up; data-snapshot says
+      // where that stands, for tests ('taking', 'taken', 'not-taken')
+      if (big) {
+        element.dataset.snapshot = 'taking';
+        const kept = await snapshotAfter('scenario', 'Before applying the scenario ' + quote(current.name), before);
+        element.dataset.snapshot = kept.taken ? 'taken' : 'not-taken';
+        text += ' ' + kept.said;
+      }
       // Undo from the message brings the scenario back, and the focus to its
       // name field, its first control (the message and its button are gone)
       ctx.toast({ text, action: { label: 'Undo', run: () => {

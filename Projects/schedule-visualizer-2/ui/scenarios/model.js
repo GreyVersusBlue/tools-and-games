@@ -8,7 +8,7 @@ import { baseDayType, isOwnCopy } from '../../engine/day-types.js';
 import { periodName } from '../../engine/bells.js';
 import { resolveSlotRoom, nameOfRoom } from '../../engine/schema.js';
 import { formatDuration } from '../../engine/findings.js';
-import { reconcile, changeWords } from '../../engine/scenario.js';
+import { reconcile, changeWords, changeSlots } from '../../engine/scenario.js';
 import { NEW_SCENARIO_NAME, blankName } from '../../engine/actions.js';
 import { count, list } from '../components/words.js';
 
@@ -253,11 +253,36 @@ export function transitionChoices(project) {
   return out;
 }
 
+// Applying a scenario that changes more than this many slots keeps an
+// automatic snapshot of the project from before it (spec 13.3, "apply a big
+// scenario"; SV2-28b). Why 10: a snapshot takes one of the 30 places this
+// device keeps (storage/snapshots.js SNAPSHOT_LIMIT), refused rather than
+// replaced at the limit, so the small applies that come often must not fill
+// it. Try it in the Fix dialog applies one change, which is one slot (a move)
+// or two (a swap), and a scenario built by hand from a few such changes stays
+// under 10; one Undo puts any of those back. Over 10 is more than one group's
+// whole day at the default 8 periods, or a scenario from another project
+// file, where a person could not rebuild the schedule by hand if the undo
+// history were gone (a reload, another tab).
+export const SCENARIO_SNAPSHOT_SLOTS = 10;
+
+// The slots Apply would change: each kept change's slots (a move one, a swap
+// two), every slot once.
+export function appliedSlots(view) {
+  const seen = new Set();
+  for (const each of view.kept) for (const slot of changeSlots(each.change)) seen.add(slot.dayTypeId + '\u0000' + slot.groupId + '\u0000' + slot.period);
+  return seen.size;
+}
+
 // What Apply will do, for its summary: the changes in words, and what is
 // skipped (the changes that no longer apply, the groups only in a compared
-// file, which a scenario cannot add or take away).
+// file, which a scenario cannot add or take away). `slots` is appliedSlots,
+// and `snapshot` whether that is enough to keep a snapshot first.
 export function applySummary(project, view) {
+  const slots = appliedSlots(view);
   return {
+    slots,
+    snapshot: slots > SCENARIO_SNAPSHOT_SLOTS,
     changes: view.kept.map((each) => each.words),
     skipped: view.dropped.map((each) => each.sentence),
     added: view.compared ? view.compared.addedGroups || [] : [],
