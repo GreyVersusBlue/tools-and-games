@@ -10,7 +10,8 @@
 //             (one under another)
 //     slots   [{ floor, box, x, y, w, h }]: (x, y) is where the box's top
 //             left cell is, in the map's cells
-//   bestLayout(floors, width, height)   'side' or 'stacked': whichever fits the window larger
+//   bestLayout(floors, width, height)   'side' or 'stacked': whichever fits the window larger (a tie at
+//                                       the least zoom to the one nearer to fitting)
 //   slotAt(layout, x, y)                { slot, x, y, cell } for a place on the map, or null between floors
 //   placeOf(layout, floorId, cell)      { x, y }: the top left of a floor's cell on the map, or null
 //   stageLeast(layout, width, zoomRoom) the least height the stage is given, in CSS pixels
@@ -21,7 +22,7 @@
 //
 // No DOM in here.
 
-import { CELL, clampZoom, drawnBox } from './viewport.js';
+import { CELL, MIN_ZOOM, clampZoom, drawnBox } from './viewport.js';
 
 // Cells between two floors, and the rows kept above a floor for its name.
 // Whole numbers, so the keyboard cursor's cells are the floors' cells.
@@ -93,9 +94,24 @@ export function stageLeast(layout, width, zoomRoom, most) {
   return Math.max(floor, Math.min(top, Math.ceil(enough)));
 }
 
+// Where both fit only at the least zoom the clamp makes them a tie, and the
+// tie goes to the one that comes nearer to fitting, unclamped (SV2-72g: at
+// 1024 wide Movement's 648 px stage took the sample's floors side by side,
+// 744 px at 25 %, 48 px off the stage's left edge, where stacked, 240 by
+// 282, fits).
 export function bestLayout(floors, width, height) {
   if (floors.length < 2) return 'side';
-  return fitZoom(layoutFloors(floors, 'stacked'), width, height) > fitZoom(layoutFloors(floors, 'side'), width, height) ? 'stacked' : 'side';
+  const stacked = layoutFloors(floors, 'stacked');
+  const side = layoutFloors(floors, 'side');
+  const a = fitZoom(stacked, width, height);
+  const b = fitZoom(side, width, height);
+  if (a === MIN_ZOOM && b === MIN_ZOOM) return rawZoom(stacked, width, height) > rawZoom(side, width, height) ? 'stacked' : 'side';
+  return a > b ? 'stacked' : 'side';
+}
+
+// fitZoom unclamped
+function rawZoom(layout, width, height) {
+  return Math.min(Math.max(1, width - CELL * 2) / (layout.width * CELL), Math.max(1, height - CELL * 2) / (layout.height * CELL));
 }
 
 export function slotAt(layout, x, y) {
