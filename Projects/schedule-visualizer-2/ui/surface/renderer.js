@@ -53,6 +53,42 @@ const MIN_LABEL = 9;
 const MAX_LABEL = 18;
 const SIDES = ['n', 'e', 's', 'w'];
 
+// The problem disc on a stairs cell nothing connects, w px a side: in the
+// cell's top right corner, 0.22 of the cell and at most 7 px, times the
+// labels' scale. Scaled, it grows only as far as it stays clear of the
+// stairs chevron drawn under it from 10 px a cell (from 0.3w, 0.6w up to
+// 0.5w, 0.4w and down to 0.7w, 0.6w, w/16 thick), and never below its size
+// at 1, which is as it was (SV2-31c: at 20 px a cell and 1.5 the disc lay
+// over the chevron's point).
+export function problemRadius(w, large) {
+  const one = Math.max(2, Math.min(7, w * 0.22));
+  const asked = Math.max(2, Math.min(7 * large, w * 0.22 * large));
+  if (asked <= one || w < 10) return asked;
+  const half = Math.max(1, w / 16) / 2;
+  const arms = [[0.3 * w, 0.6 * w, 0.5 * w, 0.4 * w], [0.5 * w, 0.4 * w, 0.7 * w, 0.6 * w]];
+  const clear = (r) => {
+    const cx = w - r - 1;
+    const cy = r + 1;
+    return arms.every(([ax, ay, bx, by]) => {
+      const dx = bx - ax;
+      const dy = by - ay;
+      const t = Math.max(0, Math.min(1, ((cx - ax) * dx + (cy - ay) * dy) / (dx * dx + dy * dy)));
+      return Math.hypot(cx - ax - t * dx, cy - ay - t * dy) >= r + half;
+    });
+  };
+  if (clear(asked)) return asked;
+  if (!clear(one)) return one;
+  // the largest radius between the two that is clear, to a hundredth of a pixel
+  let low = one;
+  let high = asked;
+  while (high - low > 0.01) {
+    const middle = (low + high) / 2;
+    if (clear(middle)) low = middle;
+    else high = middle;
+  }
+  return low;
+}
+
 function camel(name) {
   return name.replace(/-(.)/g, (match, letter) => letter.toUpperCase());
 }
@@ -195,7 +231,7 @@ export function createRenderer(canvas) {
   // The largest size from `size` down to the smallest readable one at which
   // the text fits in `room` pixels; 0 when none does.
   function fitSize(text, weight, size, room) {
-    for (let s = Math.min(MAX_LABEL * large, Math.round(size)); s >= MIN_LABEL; s -= 1) {
+    for (let s = Math.min(Math.round(MAX_LABEL * large), Math.round(size)); s >= MIN_LABEL; s -= 1) {
       g.font = font(weight, s);
       if (g.measureText(text).width <= room) return s;
     }
@@ -413,8 +449,9 @@ export function createRenderer(canvas) {
         }
       }
       if (letter === '') {
-        // the mark and its "!" grow with the labels (labelScale, SV2-31b)
-        const r = Math.max(2, Math.min(7 * large, w * 0.22 * large));
+        // the mark and its "!" grow with the labels (labelScale, SV2-31b), as
+        // far as the chevron leaves them room (problemRadius)
+        const r = problemRadius(w, large);
         const cx = left + w - r - 1;
         const cy = top + r + 1;
         g.beginPath();
@@ -491,7 +528,7 @@ export function createRenderer(canvas) {
       g.lineWidth = thick;
       g.lineCap = 'butt';
       g.stroke();
-      const s = Math.min(MAX_LABEL * large, Math.max(MIN_LABEL, Math.round(size * 0.5 * large)));
+      const s = Math.min(Math.round(MAX_LABEL * large), Math.max(MIN_LABEL, Math.round(size * 0.5 * large)));
       if (exit.doorName !== '' && size >= 12) {
         g.font = font(600, s);
         const wide = g.measureText(exit.doorName).width;
@@ -534,7 +571,7 @@ export function createRenderer(canvas) {
       g.lineWidth = 1;
       g.strokeRect(left + 0.5, top + 0.5, w - 1, h - 1);
       g.setLineDash([]);
-      const s = Math.min(13 * large, Math.max(MIN_LABEL, Math.round(size * 0.45 * large)));
+      const s = Math.min(Math.round(13 * large), Math.max(MIN_LABEL, Math.round(size * 0.45 * large)));
       // a zone one row high keeps its label for the inspector: the corridor's name is there
       if (zone.label !== '' && s >= MIN_LABEL && h >= s * 2 + 12) {
         g.font = font(500, s);
@@ -553,7 +590,7 @@ export function createRenderer(canvas) {
     // corridor names, along their run, in small capitals; under the
     // overlays, or over them on a halo (namesOver)
     const corridorNames = (halo) => {
-      const nameSize = Math.min(13 * large, Math.max(MIN_LABEL, Math.round(size * 0.5 * large)));
+      const nameSize = Math.min(Math.round(13 * large), Math.max(MIN_LABEL, Math.round(size * 0.5 * large)));
       if (size < 12) return;
       for (const corridor of floor.corridors) {
         if (corridor.cells.length === 0 || corridor.name === '') continue;
@@ -614,12 +651,12 @@ export function createRenderer(canvas) {
       if (space.number.trim() === '') {
         // "needs a number", or "?" when there is no room for the words
         const words = 'needs a number';
-        let s = Math.min(13 * large, Math.max(MIN_LABEL, Math.round(base * 0.8)));
+        let s = Math.min(Math.round(13 * large), Math.max(MIN_LABEL, Math.round(base * 0.8)));
         g.font = font(500, s);
         const fits = g.measureText(words).width + 10 <= room;
         const text = fits ? words : '?';
         if (!fits) {
-          s = Math.max(MIN_LABEL, Math.min(MAX_LABEL * large, Math.round(base)));
+          s = Math.max(MIN_LABEL, Math.min(Math.round(MAX_LABEL * large), Math.round(base)));
           if (size < 12) continue;
           g.font = font(600, s);
         }

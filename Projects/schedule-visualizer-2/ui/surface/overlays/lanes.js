@@ -268,7 +268,7 @@ function drawNames(g, view, floor, theme, large) {
   const size = view.size;
   if (size < 12) return;
   const seen = view.visible(floor);
-  const nameSize = Math.min(13 * large, Math.max(9, Math.round(size * 0.5 * large)));
+  const nameSize = Math.min(Math.round(13 * large), Math.max(9, Math.round(size * 0.5 * large)));
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.lineJoin = 'round';

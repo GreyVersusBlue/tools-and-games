@@ -44,7 +44,17 @@ function recorder() {
     save() { stack.push({ ...state }); },
     restore() { const was = stack.pop(); if (was) Object.assign(state, was); },
   };
-  for (const name of ['setTransform', 'fillRect', 'strokeRect', 'clearRect', 'beginPath', 'moveTo', 'lineTo', 'stroke', 'fill', 'arc', 'rect', 'clip', 'setLineDash', 'closePath', 'translate', 'rotate', 'quadraticCurveTo', 'bezierCurveTo']) ctx[name] = () => {};
+  for (const name of ['setTransform', 'fillRect', 'strokeRect', 'clearRect', 'rect', 'clip', 'setLineDash', 'closePath', 'translate', 'rotate', 'quadraticCurveTo', 'bezierCurveTo']) ctx[name] = () => {};
+  // the paths stroked and filled, for the shapes' geometry: { how, style, lineWidth, points, arcs }
+  const shapes = [];
+  let path = { points: [], arcs: [] };
+  ctx.shapes = shapes;
+  ctx.beginPath = () => { path = { points: [], arcs: [] }; };
+  ctx.moveTo = (x, y) => { path.points.push([x, y]); };
+  ctx.lineTo = (x, y) => { path.points.push([x, y]); };
+  ctx.arc = (x, y, r) => { path.arcs.push([x, y, r]); };
+  ctx.stroke = () => { shapes.push({ how: 'stroke', style: state.strokeStyle, lineWidth: state.lineWidth, points: path.points.slice(), arcs: path.arcs.slice() }); };
+  ctx.fill = () => { shapes.push({ how: 'fill', style: state.fillStyle, points: path.points.slice(), arcs: path.arcs.slice() }); };
   for (const key of Object.keys(state)) Object.defineProperty(ctx, key, { get: () => state[key], set: (value) => { state[key] = value; }, enumerable: true });
   return ctx;
 }
@@ -63,6 +73,7 @@ function drawFloor(project, floor, cell, extra) {
   renderer.resize(4000, 3000, 1);
   renderer.draw({ project, floor, view, selection: [], hover: null, cursor: null, preview: null, ...extra });
   assert.equal(view.size, cell, 'the view is not at the cell size asked');
+  drawFloor.shapes = g.shapes;
   return g.writes;
 }
 
@@ -250,7 +261,7 @@ test('labelScale 1.5 at a middling zoom: corridor and door names are 1.5 times t
   assert.ok(grew >= 3, 'only ' + grew + ' room numbers grew by 1.4 times or more');
 });
 
-test('labelScale 1.5 raises the caps by 1.5 and no more: far zoomed in, room numbers reach 27 px (18 at 1), corridor names 19.5 (13 at 1)', () => {
+test('labelScale 1.5 raises the caps by 1.5, rounded to a whole pixel, and no more: far zoomed in, room numbers reach 27 px (18 at 1), corridor names 20 (13 at 1; 19.5 rounded, SV2-31c)', () => {
   const project = sampleSchool();
   const cell = 90;
   const most = (writes, texts) => Math.max(0, ...fills(writes).filter((w) => texts.includes(w.text)).map((w) => w.size));
@@ -271,7 +282,39 @@ test('labelScale 1.5 raises the caps by 1.5 and no more: far zoomed in, room num
   assert.equal(rooms1, 18, 'the room numbers\' cap at 1');
   assert.equal(rooms15, 27, 'the room numbers\' cap at 1.5');
   assert.equal(names1, 13, 'the corridor names\' cap at 1');
-  assert.equal(names15, 19.5, 'the corridor names\' cap at 1.5');
+  assert.equal(names15, 20, 'the corridor names\' cap at 1.5: 13 times 1.5 rounded to a whole pixel');
+});
+
+test('at 1.5, 1.25 and 1.7 every label is written at a whole pixel size, caps included (SV2-31c: 13 times 1.5 was 19.5)', () => {
+  const project = sampleSchool();
+  const floor0 = project.building.floors[0];
+  const bands = new Map([[floor0.id, new Uint8Array(floor0.width * floor0.height).fill(1)]]);
+  const overlay = lanesOverlay(() => ({ bands, markers: new Map(), lanes: null, labels: true, bandColours: ['#e9eef2', '#bcd7e8', '#7fb3d5', '#d98a3e', '#b3261e'], colourOf: () => '#000000' }));
+  // and a copy of the first floor with no room numbered, for "needs a number" and its "?"
+  const unnumbered = sampleSchool();
+  const bare = unnumbered.building.floors[0];
+  for (const space of bare.spaces) if (space.kind === 'room') space.number = '';
+  // one room a single cell, too narrow for the words at any zoom, so its "?" reaches the 18 px cap times the scale
+  const narrow = bare.spaces.find((space) => space.kind === 'room');
+  narrow.cells = narrow.cells.slice(0, 1);
+  let written = 0;
+  let needs = 0;
+  for (const labelScale of [1.5, 1.25, 1.7]) {
+    for (const cell of [16, 24, 40, 64, 90]) {
+      const writes = fills(drawFloor(unnumbered, bare, cell, { labelScale }));
+      needs += writes.filter((w) => w.text === 'needs a number' || w.text === '?').length;
+      for (const w of writes) assert.ok(Number.isInteger(w.size), w.text + ' (no room numbered) is written at ' + w.size + ' px at labelScale ' + labelScale + ' and ' + cell + ' px a cell');
+    }
+    for (const floor of project.building.floors) {
+      for (const cell of [16, 24, 40, 64, 90]) {
+        const writes = fills(drawFloor(project, floor, cell, { labelScale, overlays: floor === floor0 ? [overlay] : [] }));
+        written += writes.length;
+        for (const w of writes) assert.ok(Number.isInteger(w.size), w.text + ' is written at ' + w.size + ' px at labelScale ' + labelScale + ' and ' + cell + ' px a cell');
+      }
+    }
+  }
+  assert.ok(written > 300, 'only ' + written + ' texts written: the case tests little');
+  assert.ok(needs > 10, 'only ' + needs + ' "needs a number" or "?" written: the case tests little');
 });
 
 test('labelScale 1.5 in a room too narrow for the larger number fits it to the room, as at 1, rather than running it over the walls', () => {
@@ -325,16 +368,80 @@ test('labelScale 1.5 reaches a stair link\'s words and the problem "!" on a stai
   assert.deepEqual(words({}), [11], 'a stair link\'s words at 1');
   assert.deepEqual(words({ labelScale: 1 }), [11], 'a stair link\'s words at labelScale 1');
   assert.deepEqual(words({ labelScale: 1.5 }), [17], 'a stair link\'s words are not 1.5 times as large');
-  // the "!": a disc of min(7, 0.22 of the cell) px radius with the mark at 1.7 times it; 1.5 times both
+  // the "!": a disc of min(7, 0.22 of the cell) px radius with the mark at
+  // 1.7 times it; larger at 1.5, as far as the stairs chevron leaves it room
+  // (SV2-31c: 1.5 times both put the disc over the chevron's point)
+  const { project, floor } = lonelyStairs();
+  const bang = (cell, extra) => fills(drawFloor(project, floor, cell, extra)).filter((w) => w.text === '!').map((w) => w.size);
+  assert.deepEqual(bang(40, {}), [12], 'the "!" at 1 and 40 px');
+  const at40 = bang(40, { labelScale: 1.5 });
+  assert.equal(at40.length, 1, 'no "!" at 1.5 and 40 px');
+  assert.ok(at40[0] > 12, 'the "!" is not larger at 1.5 and 40 px: ' + at40);
+  // at 64 px the chevron is far enough off for the whole 1.5 times: a 10.5 px disc, the mark round(17.85)
+  assert.deepEqual(bang(64, { labelScale: 1.5 }), [18], 'the "!" at 1.5 and 64 px');
+  // at 20 px the disc is 4.4 px at 1, too small for the mark; at 1.5 the chevron leaves it no more room than that
+  assert.deepEqual(bang(20, {}), [], 'the "!" at 1 and 20 px');
+  assert.deepEqual(bang(20, { labelScale: 1.5 }), [], 'the "!" at 1.5 and 20 px');
+});
+
+// The sample school's first floor with one stairs cell nothing connects: it gets the problem "!".
+function lonelyStairs() {
   const project = sampleSchool();
   const floor = project.building.floors[0];
   const owned = new Set(floor.spaces.flatMap((space) => space.cells));
   const at = Array.from(floor.cells).findIndex((c, i) => c === '.' && !owned.has(i) && floor.cells[i + 1] === '#');
   floor.cells = floor.cells.slice(0, at) + 'S' + floor.cells.slice(at + 1);
-  const bang = (cell, extra) => fills(drawFloor(project, floor, cell, extra)).filter((w) => w.text === '!').map((w) => w.size);
-  assert.deepEqual(bang(40, {}), [12], 'the "!" at 1 and 40 px');
-  assert.deepEqual(bang(40, { labelScale: 1.5 }), [18], 'the "!" is not 1.5 times as large at 40 px');
-  // at 20 px the disc is 4.4 px at 1, too small for the mark; 6.6 at 1.5 carries it
-  assert.deepEqual(bang(20, {}), [], 'the "!" at 1 and 20 px');
-  assert.deepEqual(bang(20, { labelScale: 1.5 }), [11], 'the "!" at 1.5 and 20 px');
+  return { project, floor };
+}
+
+// How far a disc's edge stands from a stroked line, in px: under 0 where they overlap.
+function apart(disc, stroke) {
+  const [cx, cy, r] = disc;
+  let least = Infinity;
+  for (let i = 1; i < stroke.points.length; i += 1) {
+    const [ax, ay] = stroke.points[i - 1];
+    const [bx, by] = stroke.points[i];
+    const dx = bx - ax;
+    const dy = by - ay;
+    const t = Math.max(0, Math.min(1, ((cx - ax) * dx + (cy - ay) * dy) / (dx * dx + dy * dy)));
+    least = Math.min(least, Math.hypot(cx - ax - t * dx, cy - ay - t * dy));
+  }
+  return least - r - stroke.lineWidth / 2;
+}
+
+test('the problem disc on a stairs cell keeps off the stairs chevron at a larger scale wherever it did at 1: at 20 px a cell and 1.5 it lay over its point (SV2-31c)', () => {
+  const { project, floor } = lonelyStairs();
+  const problem = TOKENS['--problem'];
+  // the disc and the chevron under it, as drawn on a cell `cell` px a side
+  const shapesAt = (cell, labelScale) => {
+    drawFloor(project, floor, cell, { labelScale });
+    const shapes = drawFloor.shapes;
+    const discs = shapes.filter((shape) => shape.how === 'fill' && shape.style === problem && shape.arcs.length === 1 && shape.points.length === 0);
+    assert.equal(discs.length, 1, 'not one problem disc at ' + cell + ' px and ' + labelScale);
+    const disc = discs[0].arcs[0];
+    // the chevron: three points, a stroke, its point within the cell of the disc
+    const chevrons = shapes.filter((shape) => shape.how === 'stroke' && shape.points.length === 3 && Math.abs(shape.points[1][0] - disc[0]) < cell && Math.abs(shape.points[1][1] - disc[1]) < cell);
+    return { disc, chevron: chevrons.length === 1 ? chevrons[0] : null };
+  };
+  // the case the review found
+  const one = shapesAt(20, 1);
+  const large = shapesAt(20, 1.5);
+  assert.ok(one.chevron && large.chevron, 'no chevron found under the disc at 20 px');
+  assert.ok(apart(one.disc, one.chevron) >= 0, 'at 1 and 20 px the disc lies on the chevron: the case tests the wrong thing');
+  assert.ok(apart(large.disc, large.chevron) >= 0, 'at 1.5 and 20 px the disc lies ' + (-apart(large.disc, large.chevron)).toFixed(2) + ' px over the chevron');
+  // and every size of cell with a chevron: clear at a larger scale where it was clear at 1, and never smaller than at 1
+  let checked = 0;
+  for (let cell = 10; cell <= 64; cell += 1) {
+    const at1 = shapesAt(cell, 1);
+    if (!at1.chevron) continue;
+    for (const labelScale of [1.25, 1.5, 2]) {
+      const now = shapesAt(cell, labelScale);
+      assert.ok(now.disc[2] >= at1.disc[2] - 1e-9, 'at ' + labelScale + ' and ' + cell + ' px the disc is smaller than at 1');
+      if (apart(at1.disc, at1.chevron) >= 0) {
+        checked += 1;
+        assert.ok(apart(now.disc, now.chevron) >= -1e-9, 'at ' + labelScale + ' and ' + cell + ' px the disc lies ' + (-apart(now.disc, now.chevron)).toFixed(2) + ' px over the chevron');
+      }
+    }
+  }
+  assert.ok(checked > 100, 'only ' + checked + ' sizes checked');
 });
