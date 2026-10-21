@@ -37,6 +37,9 @@
 // scroll is armed from opening or the reader had scrolled; and the scroll is
 // armed again by height changes that pass REARM_HEIGHT together, by a change
 // of width alone, and cleared on a small change while still armed.
+// From SV2-72j: in the lab at 1280 by 300 the scroll held while the scenario
+// name has the focus is made when a click on the map takes the focus, and by
+// Fit with the focus left in the field; a readonly field holds nothing.
 
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -1068,6 +1071,210 @@ test('SV2-72i: Movement at 844 by 390 with a finger, still armed as it opened: a
     // (DESIGN 5.4's limit under about 360 px tall), so the stage is judged
     assert.ok(lower.scroll > opened.scroll, 'the section did not scroll further 40 px lower: ' + JSON.stringify({ opened, lower }));
     assert.ok(lower.stage.bottom <= lower.footTop + 0.5, '40 px lower the foot lies over the stage: ' + JSON.stringify(lower));
+  });
+});
+
+// ------------------------------------------- SV2-72j: the scroll held while typing is made after it
+
+// SV2-72i held the foot-clearing scroll while any text field had the focus
+// and said it was made "at the next look" once the field let the focus go,
+// but nothing looked: a scenario started from its name field (Enter) puts
+// the focus in the scenario name (changes.js), the bar opens over the stage
+// held at its least, and a click on the map left the foot over the floors.
+// The scroll is made as the focus leaves for anything but another text field
+// (onFocusOut); Fit makes it even with a field focused (a tap on a button
+// moves no focus on iOS); and a readonly field holds nothing. LAB_LOW is a
+// desktop window, a mouse, where the opened bar lies 32 px over the stage
+// at its least (160 px) with the section where it is. Started by the Start
+// button instead, the map clears the foot as the scenario opens (the focus
+// is on the button, nothing typed) and focusing the name then scrolls the
+// section 32 px back to show it, a scroll the map did not make, which turns
+// the clearing off as the reader's would (SV2-72f2); not this case's.
+const LAB_LOW = { width: 1280, height: 300 };
+
+// The lab opened with no scenario, then one started by Enter in its name
+// field: the focus in the scenario name, the bar open over the stage, the
+// map settled, and the scroll held.
+async function labStarted(page) {
+  await fixture(page);
+  await go(page, '#scenarios');
+  await labReady(page);
+  await turnsSettled(page, 'scenarios');
+  await page.click('#scenario-start-name');
+  await page.keyboard.press('Enter');
+  await until(page, 'starting a scenario did not put the focus in the scenario name', () => document.activeElement && document.activeElement.id === 'scenario-name' && Boolean(globalThis.sv2.store.project.scenario));
+  await labReady(page);
+  await turnsSettled(page, 'scenarios');
+  const held = await nameAt(page);
+  assert.equal(held.focused, true, 'the focus is not in the scenario name');
+  assert.ok(!footClear(held), 'with the scenario name focused the foot does not lie over the stage: the case tests nothing: ' + JSON.stringify(held));
+  return held;
+}
+// the foot clear of the stage, by their boxes
+const footClear = (at) => at.stage.bottom <= at.footTop + 0.5;
+
+test('SV2-72j: the lab at 1280 by 300 with a mouse, a scenario started with the bar over the stage, then a click on the map: the stage is scrolled clear of the foot', async () => {
+  await on('#project', LAB_LOW, async (page) => {
+    const held = await labStarted(page);
+    // the map clicked where it shows above the foot
+    const spot = await page.evaluate(() => {
+      const plan = document.querySelector('.scn').scenarios.plan;
+      const canvas = plan.canvas.getBoundingClientRect();
+      const top = Math.max(canvas.top, plan.root.getBoundingClientRect().top);
+      const bottom = Math.min(canvas.bottom, document.querySelector('.scn-bar').getBoundingClientRect().top);
+      return { x: canvas.left + canvas.width / 2, y: (top + bottom) / 2, room: bottom - top };
+    });
+    assert.ok(spot.room > 4, 'no part of the map shows above the foot to click: ' + JSON.stringify({ spot, held }));
+    await page.mouse.click(spot.x, spot.y);
+    await until(page, 'the click on the map did not take the focus from the scenario name', () => document.activeElement && document.activeElement.id !== 'scenario-name');
+    await turnsSettled(page, 'scenarios');
+    const after = await nameAt(page);
+    assert.ok(after.scroll > held.scroll, 'the focus left the scenario name and the section was not scrolled: ' + JSON.stringify({ held, after }));
+    assert.ok(footClear(after), 'the focus left the scenario name and the foot still lies over the stage: ' + JSON.stringify(after));
+  });
+});
+
+test('SV2-72j: the lab at 1280 by 300 with a mouse, the scenario name focused, Fit clicked by a script that moves no focus: the stage is scrolled clear of the foot', async () => {
+  await on('#project', LAB_LOW, async (page) => {
+    const held = await labStarted(page);
+    const scrolled = await page.evaluate(() => {
+      document.querySelector('#section [data-action="fit"]').click();
+      return document.querySelector('.scn').scenarios.plan.root.scrollTop;
+    });
+    assert.ok(scrolled > held.scroll, 'Fit with the scenario name focused did not scroll the section: ' + JSON.stringify({ held, scrolled }));
+    await turnsSettled(page, 'scenarios');
+    const after = await nameAt(page);
+    assert.equal(after.focused, true, 'the script\'s click moved the focus: the case tests nothing');
+    assert.ok(footClear(after), 'after Fit with the scenario name focused the foot still lies over the stage: ' + JSON.stringify(after));
+  });
+});
+
+// The window's comparison held while typing is made as the focus leaves too
+// (SV2-72i had left it for the next resize, whenever that came): the reader
+// scrolled the section, so the scroll is off; the window 1 px narrower with
+// the name focused arms nothing; the click on the map that takes the focus
+// compares the window, a change of width, and the scroll is made.
+test('SV2-72j: the lab at 1280 by 300 with a mouse, scrolled by the reader with the scenario name focused: a window 1 px narrower arms nothing until the focus leaves, then the stage is scrolled clear of the foot', async () => {
+  await on('#project', LAB_LOW, async (page) => {
+    const held = await labStarted(page);
+    await readerScrolls(page, 'scenarios', Math.round(held.scroll));
+    const width = LAB_LOW.width - 1;
+    await page.setViewport({ width, height: LAB_LOW.height, deviceScaleFactor: 1 });
+    await until(page, 'the map was not measured in a window ' + width + ' by ' + LAB_LOW.height, (w, h) => {
+      const plan = document.querySelector('.scn').scenarios.plan;
+      if (window.innerWidth !== w || plan.root.dataset.window !== w + 'x' + h) return false;
+      const stage = plan.stage.getBoundingClientRect();
+      return plan.view.width === Math.round(stage.width) && plan.root.dataset.dockedAt === String(Math.round(plan.root.scrollTop));
+    }, width, LAB_LOW.height);
+    await turnsSettled(page, 'scenarios');
+    const narrower = await nameAt(page);
+    assert.equal(narrower.focused, true, 'the focus left the scenario name');
+    assert.equal(narrower.scroll, held.scroll, 'a window 1 px narrower moved the section under the reader typing: ' + JSON.stringify({ held, narrower }));
+    assert.ok(!footClear(narrower), 'the foot does not lie over the stage 1 px narrower: the case tests nothing: ' + JSON.stringify(narrower));
+    const spot = await page.evaluate(() => {
+      const canvas = document.querySelector('.scn').scenarios.plan.canvas.getBoundingClientRect();
+      const bottom = Math.min(canvas.bottom, document.querySelector('.scn-bar').getBoundingClientRect().top);
+      return { x: canvas.left + canvas.width / 2, y: (canvas.top + bottom) / 2 };
+    });
+    await page.mouse.click(spot.x, spot.y);
+    await until(page, 'the click on the map did not take the focus from the scenario name', () => document.activeElement && document.activeElement.id !== 'scenario-name');
+    await turnsSettled(page, 'scenarios');
+    const after = await nameAt(page);
+    assert.ok(after.scroll > narrower.scroll && footClear(after), 'the change of width made while typing was not compared as the focus left: ' + JSON.stringify({ narrower, after }));
+  });
+});
+
+// The name made readonly with the focus kept in it, then a change of
+// project, which lays the map out again (arrange, clearFoot): a field that
+// takes no typing raises no keyboard, and the scroll is made.
+test('SV2-72j: the lab at 1280 by 300 with a mouse, the scenario name focused and made readonly: the next change of project scrolls the stage clear of the foot', async () => {
+  await on('#project', LAB_LOW, async (page) => {
+    const held = await labStarted(page);
+    await page.evaluate(() => {
+      document.getElementById('scenario-name').readOnly = true;
+      globalThis.sv2.store.apply(globalThis.sv2modules.actions.renameScenario, { name: 'Trial' });
+    });
+    await until(page, 'the rename did not come', () => globalThis.sv2.store.project.scenario.name === 'Trial');
+    await labReady(page);
+    await turnsSettled(page, 'scenarios');
+    const after = await nameAt(page);
+    assert.equal(after.focused, true, 'the focus left the scenario name: the case tests nothing');
+    assert.equal(await page.$eval('#scenario-name', (el) => el.readOnly), true, 'the scenario name is not readonly: the case tests nothing');
+    assert.ok(after.scroll > held.scroll && footClear(after), 'a readonly scenario name held the scroll: the foot lies over the stage: ' + JSON.stringify({ held, after }));
+  });
+});
+
+// ------------------------------------------- SV2-72k: the focus's own scroll is not the reader's
+
+// Started by its Start button (a mouse click), the map clears the foot as the
+// scenario opens (the focus on the button, nothing typed), then start() puts
+// the focus in the scenario name and the browser scrolls the section back
+// 32 px to show it. That scroll is the focus's, not the reader's: the
+// clearing stays armed, held while the name has the focus, and is made as
+// the focus leaves. Before SV2-72k it turned the clearing off, and a click on
+// the map left the foot 32 px over the stage.
+async function labStartedByButton(page) {
+  await fixture(page);
+  await go(page, '#scenarios');
+  await labReady(page);
+  await turnsSettled(page, 'scenarios');
+  await page.click('.scn [data-action="start"]');
+  await until(page, 'the Start button did not start a scenario with the focus in its name', () => document.activeElement && document.activeElement.id === 'scenario-name' && Boolean(globalThis.sv2.store.project.scenario));
+  await labReady(page);
+  await turnsSettled(page, 'scenarios');
+  const held = await nameAt(page);
+  assert.equal(held.focused, true, 'the focus is not in the scenario name');
+  assert.ok(inView(held), 'the scenario name is not in view after Start: ' + JSON.stringify(held));
+  return held;
+}
+// a spot on the map that shows above the foot, clicked; the focus leaves
+// the name, and the map has looked at the section where it is now
+async function clickMap(page, held) {
+  const spot = await page.evaluate(() => {
+    const plan = document.querySelector('.scn').scenarios.plan;
+    const canvas = plan.canvas.getBoundingClientRect();
+    const top = Math.max(canvas.top, plan.root.getBoundingClientRect().top);
+    const bottom = Math.min(canvas.bottom, document.querySelector('.scn-bar').getBoundingClientRect().top);
+    return { x: canvas.left + canvas.width / 2, y: (top + bottom) / 2, room: bottom - top };
+  });
+  assert.ok(spot.room > 4, 'no part of the map shows above the foot to click: ' + JSON.stringify({ spot, held }));
+  await page.mouse.click(spot.x, spot.y);
+  await until(page, 'the click on the map did not take the focus from the scenario name', () => document.activeElement && document.activeElement.id !== 'scenario-name');
+  await turnsSettled(page, 'scenarios');
+  await until(page, 'the map did not look at the section where it is after the click', () => {
+    const plan = document.querySelector('.scn').scenarios.plan;
+    return plan.root.dataset.dockedAt === String(Math.round(plan.root.scrollTop));
+  });
+  return nameAt(page);
+}
+
+test('SV2-72k: the lab at 1280 by 300 with a mouse, a scenario started by a click on its Start button, then a click on the map: the stage is clear of the foot', async () => {
+  await on('#project', LAB_LOW, async (page) => {
+    const held = await labStartedByButton(page);
+    const after = await clickMap(page, held);
+    assert.ok(footClear(after), 'started by its Start button, the focus\'s scroll to the scenario name turned the clearing off: after a click on the map the foot still lies over the stage: ' + JSON.stringify({ held, after }));
+  });
+});
+
+// The name focused for longer than that frame, a scroll is the reader's
+// again: a wheel over the lab's panel scrolls the section to its top, and
+// the click on the map that takes the focus leaves it there.
+test('SV2-72k: the lab at 1280 by 300 with a mouse, the scenario name focused for a while, then the reader\'s wheel to the top: the click on the map that takes the focus leaves the section where the reader put it', async () => {
+  await on('#project', LAB_LOW, async (page) => {
+    const held = await labStartedByButton(page);
+    assert.ok(held.scroll > 0, 'the section is at its top already: the case tests nothing: ' + JSON.stringify(held));
+    const field = await box(page, '#scenario-name');
+    await page.mouse.move(field.left + field.width / 2, field.top + field.height / 2);
+    await page.mouse.wheel({ deltaY: -400 });
+    await until(page, 'the reader\'s wheel did not scroll the section to its top', () => {
+      const plan = document.querySelector('.scn').scenarios.plan;
+      return plan.root.scrollTop === 0 && plan.root.dataset.dockedAt === '0';
+    });
+    const wheeled = await nameAt(page);
+    assert.equal(wheeled.focused, true, 'the wheel moved the focus: the case tests nothing');
+    assert.ok(!footClear(wheeled), 'at its top the foot does not lie over the stage: the case tests nothing: ' + JSON.stringify(wheeled));
+    const after = await clickMap(page, wheeled);
+    assert.equal(after.scroll, 0, 'the reader wheeled the section to its top with the name focused, and the focus leaving scrolled it away: ' + JSON.stringify({ held, wheeled, after }));
   });
 });
 
