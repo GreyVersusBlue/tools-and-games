@@ -83,7 +83,7 @@ import { parse, readable } from '../colour.js';
 import { bandText } from './legend.js';
 import { unitWord } from './model.js';
 import { hotspotRows, placeWords } from './hotspots.js';
-import { layoutFloors, FIT_MARGIN } from '../surface/plan-layout.js';
+import { layoutFloors, bestLayout, FIT_MARGIN } from '../surface/plan-layout.js';
 import { CELL, MIN_ZOOM, MAX_ZOOM } from '../surface/viewport.js';
 import { floorsShown } from '../surface/plan-map.js';
 
@@ -113,6 +113,12 @@ export const RESTORE_WAIT_MS = 1000;
 export const AROUND = 0.02;
 // Under the map, the panel is at most this much of the screen's height.
 export const PANEL_UNDER_MOST = 0.38;
+// The corner line stands beside the touch controls where it has this much
+// width there (a short sentence on one line), else above them (placeLine).
+export const LINE_LEAST = 240;
+// A finger on the map that moves less than this, in px, is a tap: the map
+// is put back at the mode's Fit when it lifts (SV2-31d: a 1 px move ended it).
+export const TAP_SLOP = 6;
 
 export const REFUSED_SAYS = 'This browser did not open full screen, so the map fills the window instead.';
 
@@ -162,12 +168,14 @@ function onPageKey(event) {
     return;
   }
   if (event.key !== 'p' && event.key !== 'P') return;
+  // a field's p, or a dialog's, is theirs, held down too (SV2-31d: a held p
+  // in any text field lost its repeats while Movement was mounted)
+  if (!singleKeyAllowed(event) || dialogIsOpen()) return;
   // P held down: its repeats are not presses (SV2-31c: the mode went in and out)
   if (event.repeat) {
     event.preventDefault();
     return;
   }
-  if (!singleKeyAllowed(event) || dialogIsOpen()) return;
   if (!me.can()) return;
   event.preventDefault();
   me.enter();
@@ -199,6 +207,8 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
   let lineTimer = null;
   let restoreTimer = null;
   let pendingRestore = null;
+  // the focus to be given when a full screen that outlasted the leave ends (focusBack)
+  let focusLater = false;
   let madeInert = [];
   let watchGone = null;
   let watchClock = null;
@@ -248,6 +258,8 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
   const nextButton = touchButton('present-next', '›', 'Next transition', () => step(1, false));
   const leaveButton = touchButton('present-leave', 'Leave', 'Leave presentation mode', () => leave());
   const touch = h('div', { class: 'mov-pres__touch', role: 'group', 'aria-label': 'Presentation controls', data: { part: 'present-touch', shown: 'false' } }, previousButton, playButton, nextButton, leaveButton);
+  // what the safe area's insets are, read from its padding (insets())
+  const probe = h('div', { class: 'mov-pres__probe', 'aria-hidden': 'true' });
 
   // where the button stands: the first line, or the controls on a phone
   const phone = matchMedia(PRESENT_IN_CONTROLS);
@@ -272,9 +284,9 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
 
   // hidden until the mode is entered: present.css comes on its own, and until
   // it is in they would stand in the section unstyled, moving its layout
-  const parts = [panel, caption, line, touch];
+  const parts = [panel, caption, line, touch, probe];
   for (const part of parts) part.hidden = true;
-  root.append(panel);
+  root.append(panel, probe);
   plan.element.insertBefore(caption, plan.stage);
   plan.stage.append(line, touch);
 
@@ -371,6 +383,7 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
   // it was is the last of a key or a pointer pressed.
   let lastInput = 'key';
   let held = false;
+  const POINTER_EVENTS = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'];
   function showControls() {
     touch.dataset.shown = 'true';
     if (controlsTimer !== null) timers.clear(controlsTimer);
@@ -381,9 +394,42 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
   }
   function onPointer(event) {
     if (!presenting) return;
+    track(event);
+    if (event.type === 'pointerup' || event.type === 'pointercancel') return;
     if (event.type === 'pointermove' && event.pointerType !== 'mouse') return;
     if (event.type === 'pointerdown') lastInput = 'pointer';
     showControls();
+  }
+
+  // A gesture on the map, from its first pointer down to its last up: how
+  // far each pointer went, and whether the map moved under it. A finger
+  // that went under TAP_SLOP px and moved the map (input.js pans with no
+  // slop) was a tap: the map goes back to the mode's Fit as it lifts.
+  // Further, or two fingers, the reader moved the map, and the mode's Fit
+  // ends (SV2-31d: a 1 px move on a tap had ended it for good).
+  let gesture = null;
+  function track(event) {
+    if (event.type === 'pointerdown') {
+      if (!gesture) gesture = { pointers: new Map(), far: 0, many: false, moved: false };
+      gesture.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (gesture.pointers.size > 1) gesture.many = true;
+      return;
+    }
+    const at = gesture ? gesture.pointers.get(event.pointerId) : null;
+    if (!at) return;
+    gesture.far = Math.max(gesture.far, Math.hypot(event.clientX - at.x, event.clientY - at.y));
+    if (event.type === 'pointermove') return;
+    gesture.pointers.delete(event.pointerId);
+    if (gesture.pointers.size > 0) return;
+    const done = gesture;
+    gesture = null;
+    if (!done.moved) return;
+    if (done.many || done.far >= TAP_SLOP) {
+      modeFitted = false;
+      return;
+    }
+    modeFitted = true;
+    fitMode(false);
   }
   // the focus coming to them shows them, whoever brought it (a screen
   // reader's swipe too); the keyboard's holds them
@@ -405,18 +451,23 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
   // ---- the mode's Fit (SV2-31c). The map fills what the panel and the
   // caption leave, and the touch controls and the corner line lie over its
   // foot: the Fit counts that band as a foot, so no floor is drawn under
-  // them. Where the panel goes (a column beside the map, or a band under
-  // it) is chosen by the floors' layouts the reader left open (both, with
-  // 'auto'): the place where one of them shows every floor whole at the
-  // largest zoom, beside on a tie. At
-  // 844 by 390 the floors had stood stacked beside a 236 px panel, Floor 3
-  // under the controls, and no layout is whole there at 25 %; under a 109 px
-  // panel they are whole side by side at 27 %. Under the map the panel is as
-  // tall as the map leaves it, between its first row of groups and 38 % of
-  // the screen. The floors are placed through the plan map's fitAt (its
-  // rule, choose) and setView; the map's own Fit, which knows nothing of
-  // the band, is not used while presenting. The reader moving the map ends
-  // the mode's Fit until the mode is entered again.
+  // them, and the safe area's left and right insets as margins, so none is
+  // drawn under a phone's notch either (SV2-31d). Where the panel goes (a
+  // column beside the map, or a band under it) is chosen by the layout the
+  // plan map will draw on the stage each place leaves (bestLayout, which
+  // 'auto' asks, on that stage): the place where that layout shows every
+  // floor whole above the band at the larger zoom, beside on a tie (SV2-31d:
+  // the place had been judged by whichever layout fitted above the band,
+  // and the map then drew its own pick on the whole stage). At 844 by 390
+  // the floors had stood stacked beside a 236 px panel, Floor 3 under the
+  // controls, and no layout is whole there at 25 %; under a 109 px panel
+  // they are whole side by side at 27 %. Under the map the panel is as tall
+  // as the map leaves it, between its first row of groups and 38 % of the
+  // screen. The floors are placed through the plan map's fitAt (its rule,
+  // choose) and setView; the map's own Fit, which knows nothing of the band,
+  // is not used while presenting. The reader moving the map ends the mode's
+  // Fit, but for a tap (a finger that moves under TAP_SLOP px), and a window
+  // of another size brings it back.
 
   // How far up from the stage's foot the touch controls and the corner line
   // reach, in px, as present.css places them: the controls as they stand
@@ -441,14 +492,45 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     return Math.ceil(band);
   }
 
-  // The floors the mode may lay out: [{ how, layout }], both layouts where
-  // the reader left the choice to the window, else theirs alone.
-  function layoutsFor(project) {
+  // The safe area's insets in px, as env() gives them to the probe's padding.
+  function insets() {
+    const style = getComputedStyle(probe);
+    const px = (name) => parseFloat(style[name]) || 0;
+    return { top: px('paddingTop'), right: px('paddingRight'), bottom: px('paddingBottom'), left: px('paddingLeft') };
+  }
+
+  // The corner line and the touch controls side by side at the stage's
+  // foot (the line at the left, the controls at the right), or, on a stage
+  // too narrow for the line beside them (an upright phone), the line above
+  // the controls: never one over the other (SV2-31d: at 844 by 390 the
+  // centred controls lay over the line's end). `width` is the stage's.
+  // The line's width beside them is set here (--pres-line-most), so the
+  // sheet and this agree on it: from the line's left to the controls, less
+  // as much again as the line stands off the stage's edge.
+  function placeLine(width) {
+    const left = parseFloat(getComputedStyle(line).left) || 0;
+    const gap = Math.max(0, left - insets().left);
+    const touchStyle = getComputedStyle(touch);
+    const room = Math.floor(width - left - (parseFloat(touchStyle.right) || 0) - touch.offsetWidth - gap);
+    root.dataset.presentLine = room >= LINE_LEAST ? 'beside' : 'above';
+    root.style.setProperty('--pres-line-most', Math.max(0, room) + 'px');
+    root.style.setProperty('--pres-touch-up', Math.ceil((parseFloat(touchStyle.bottom) || 0) + touch.offsetHeight) + 'px');
+  }
+
+  // The floors the mode may be shown: the reader's choice, and the layout
+  // the plan map draws for it on a stage `width` by `height` (its arrange:
+  // bestLayout for 'auto', keeping the layout on the map unless the other
+  // is clearly larger), as { how, layout }.
+  function floorsNow(project) {
+    return floorsShown(project, saved ? saved.floors : env.choice().floors);
+  }
+  function drawnOn(project, width, height) {
     const value = saved ? saved.floors : env.choice().floors;
     const floors = floorsShown(project, value);
-    if (value === 'auto' && floors.length > 1) return ['side', 'stacked'].map((how) => ({ how, layout: layoutFloors(floors, how) }));
-    const how = value === 'stacked' ? 'stacked' : 'side';
-    return [{ how, layout: layoutFloors(floors, how) }];
+    const world = plan.world;
+    const same = world && world.measured && world.slots.length === floors.length && world.slots.every((slot, at) => slot.floor.id === floors[at].id);
+    const how = value === 'side' || value === 'stacked' ? value : bestLayout(floors, width, height, same ? world.how : undefined);
+    return { how, layout: layoutFloors(floors, how) };
   }
 
   // The zoom at which a layout fits `width` by `height` with the fit's
@@ -465,10 +547,11 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
   function arrangement() {
     const movement = view();
     if (!movement || !movement.state) return null;
-    const layouts = layoutsFor(movement.state.project);
+    const project = movement.state.project;
     const width = root.clientWidth;
     const height = root.clientHeight;
-    const was = root.dataset.presentPanel;
+    const edge = insets();
+    const was = { panel: root.dataset.presentPanel, line: root.dataset.presentLine };
     let best = null;
     const better = (next) => {
       if (!best || (next.whole && !best.whole) || (next.whole === best.whole && next.zoom > best.zoom + 1e-9)) best = next;
@@ -477,56 +560,78 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
       root.dataset.presentPanel = where;
       panel.style.removeProperty('height');
       const captionHeight = caption.offsetHeight;
-      const band = footBand();
       if (where === 'beside') {
+        // the stage reaches the screen's left edge, the panel its right
         const stageWidth = width - panel.offsetWidth;
-        for (const each of layouts) better({ panel: where, how: each.how, height: null, ...fitOf(each.layout, stageWidth, height - captionHeight - band) });
+        placeLine(stageWidth);
+        const band = footBand();
+        const drawn = drawnOn(project, stageWidth, height - captionHeight);
+        better({ panel: where, how: drawn.how, height: null, ...fitOf(drawn.layout, stageWidth - edge.left, height - captionHeight - band) });
         continue;
       }
-      // under: at least the panel's title and its first row of groups, at most 38 % of the screen
+      placeLine(width);
+      const band = footBand();
+      // under: at least the panel's title and its first row of groups, at
+      // most 38 % of the screen; to the row's foot, as the panel would
+      // stand unscrolled, then its padding and its bottom border (the safe
+      // area's, SV2-31d: left out, a phone's 34 px inset cut the row)
       const first = panel.querySelector('[data-present="groups"] li') || groupsTitle;
-      const least = Math.ceil(first.getBoundingClientRect().bottom - panel.getBoundingClientRect().top + (parseFloat(getComputedStyle(panel).paddingBottom) || 0));
+      const style = getComputedStyle(panel);
+      const least = Math.ceil(first.getBoundingClientRect().bottom - panel.getBoundingClientRect().top + panel.scrollTop + (parseFloat(style.paddingBottom) || 0) + (parseFloat(style.borderBottomWidth) || 0));
       const most = Math.max(least, Math.floor(height * PANEL_UNDER_MOST));
-      for (const each of layouts) {
-        // the map as tall as the width lets the floors be, the panel the rest
-        const across = fitOf(each.layout, width, Infinity).zoom;
-        const wants = Math.ceil(band + FIT_MARGIN * 2 + each.layout.height * CELL * across);
+      const across = width - edge.left - edge.right;
+      const tried = new Set();
+      for (const how of ['side', 'stacked']) {
+        // the map as tall as the width lets that layout be, the panel the
+        // rest; then the layout the map draws on the stage so left
+        const layout = layoutFloors(floorsNow(project), how);
+        const wants = Math.ceil(band + FIT_MARGIN * 2 + layout.height * CELL * fitOf(layout, across, Infinity).zoom);
         const panelHeight = Math.max(least, Math.min(most, height - captionHeight - wants));
-        better({ panel: where, how: each.how, height: panelHeight, ...fitOf(each.layout, width, height - captionHeight - panelHeight - band) });
+        if (tried.has(panelHeight)) continue;
+        tried.add(panelHeight);
+        const stageHeight = height - captionHeight - panelHeight;
+        const drawn = drawnOn(project, width, stageHeight);
+        better({ panel: where, how: drawn.how, height: panelHeight, ...fitOf(drawn.layout, across, stageHeight - band) });
       }
     }
-    if (was === undefined) delete root.dataset.presentPanel;
-    else root.dataset.presentPanel = was;
+    for (const [name, value] of [['presentPanel', was.panel], ['presentLine', was.line]]) {
+      if (value === undefined) delete root.dataset[name];
+      else root.dataset[name] = value;
+    }
     return best;
   }
 
   // The arrangement put on the page: where the panel stands, its height
-  // under the map, and the floors' layout. Asked on entering and when the
-  // window changes size, not at each step (its boxes are laid out twice).
+  // under the map, and where the corner line stands. Asked on entering and
+  // when the window changes size, not at each step (its boxes are laid out
+  // twice). The floors' layout is the plan map's own pick for 'auto' on
+  // the stage so made, the one judged here (root.dataset.presentHow, for a
+  // test); a layout the reader chose is theirs.
   let arrangedFor = null;
+  const windowKey = () => root.clientWidth + 'x' + root.clientHeight;
   function arrange(force) {
-    const key = root.clientWidth + 'x' + root.clientHeight;
+    const key = windowKey();
     if (!force && key === arrangedFor) return;
     const chosen = arrangement();
     if (!chosen) return;
     arrangedFor = key;
     root.dataset.presentPanel = chosen.panel;
+    root.dataset.presentHow = chosen.how;
     if (chosen.height === null) panel.style.removeProperty('height');
     else panel.style.height = chosen.height + 'px';
-    // the floors' layout is the plan map's own pick for 'auto' on the stage
-    // so made: it takes a layout that is whole where one is, so the one
-    // judged here, or another as whole at most 5 % smaller (bestLayout's
-    // current, SV2-72h); a layout the reader chose is theirs
+    placeLine(chosen.panel === 'beside' ? root.clientWidth - panel.offsetWidth : root.clientWidth);
   }
 
   // The window changed size inside the plan map's own measuring (a resize
   // observer's turn): the arrangement waits a frame, so the boxes it lays
-  // out are not laid out again inside that turn.
+  // out are not laid out again inside that turn. A window of another size
+  // is fitted again whatever the reader did to the map before (SV2-31d: a
+  // map moved once kept its place through a rotation).
   let arrangeFrame = null;
   function fitMode(fromLayout) {
-    if (!presenting || !modeFitted || fitting || gone) return;
-    const key = root.clientWidth + 'x' + root.clientHeight;
-    if (key !== arrangedFor) {
+    if (!presenting || fitting || gone) return;
+    if (windowKey() !== arrangedFor) {
+      modeFitted = true;
       if (fromLayout) {
         if (arrangeFrame === null) {
           arrangeFrame = requestAnimationFrame(() => {
@@ -543,13 +648,19 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
         }
       }
     }
+    if (!modeFitted) return;
     const v = plan.view;
     if (!plan.world || v.width === 0 || v.height === 0) return;
     fitting = true;
     try {
-      // where the map's own Fit would put the floors on the stage above the band
-      const place = plan.fitAt(v.width, Math.max(1, v.height - footBand()));
-      if (place) plan.setView(place);
+      // where the map's own Fit would put the floors on the stage above the
+      // band and inside the safe area's left and right insets
+      const stage = plan.stage.getBoundingClientRect();
+      const edge = insets();
+      const left = Math.max(0, Math.ceil(edge.left - stage.left));
+      const right = Math.max(0, Math.ceil(stage.left + v.width - (root.clientWidth - edge.right)));
+      const place = plan.fitAt(Math.max(1, v.width - left - right), Math.max(1, v.height - footBand()));
+      if (place) plan.setView({ zoom: place.zoom, x: place.x + left, y: place.y });
       root.dataset.presentFit = place ? plan.world.how : '';
     } finally {
       fitting = false;
@@ -560,6 +671,10 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     arrangeFrame = null;
     arrangedFor = null;
     delete root.dataset.presentPanel;
+    delete root.dataset.presentHow;
+    delete root.dataset.presentLine;
+    root.style.removeProperty('--pres-line-most');
+    root.style.removeProperty('--pres-touch-up');
     panel.style.removeProperty('height');
   }
 
@@ -691,8 +806,10 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
       if (!(key === ' ' && onButton)) event.preventDefault();
       return;
     }
-    if (key === 'Escape' || key === 'Esc' || key === 'p' || key === 'P') leave();
-    else if (key === 'ArrowLeft') step(-1, false);
+    if (key === 'Escape' || key === 'Esc' || key === 'p' || key === 'P') {
+      holdUntilUp(key);
+      leave();
+    } else if (key === 'ArrowLeft') step(-1, false);
     else if (key === 'ArrowRight') step(1, false);
     else if (key === ' ' || key === 'Spacebar') {
       // a button pressed with Space is the button's
@@ -702,6 +819,36 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     else if (key === 'h' || key === 'H') toggleHotspots();
     else return;
     event.preventDefault();
+  }
+
+  // The key that left (Escape, P), held on past the leave: its repeats are
+  // kept from the shell and the map until it comes up (SV2-31d: a held
+  // Escape's repeats reached the map, which shuts a card on Escape, and the
+  // shell). A key pressed afresh, or the key's keyup, ends it.
+  let heldKey = null;
+  function onHeldKey(event) {
+    if (event.type === 'keyup') {
+      if (event.key === heldKey) releaseHeld();
+      return;
+    }
+    if (event.key !== heldKey || !event.repeat) {
+      releaseHeld();
+      return;
+    }
+    event.stopPropagation();
+    event.preventDefault();
+  }
+  function holdUntilUp(key) {
+    releaseHeld();
+    heldKey = key;
+    document.addEventListener('keydown', onHeldKey, true);
+    document.addEventListener('keyup', onHeldKey, true);
+  }
+  function releaseHeld() {
+    if (heldKey === null) return;
+    heldKey = null;
+    document.removeEventListener('keydown', onHeldKey, true);
+    document.removeEventListener('keyup', onHeldKey, true);
   }
 
   // Listened for from the start to the section's unmount, so that a grant
@@ -786,7 +933,9 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     };
     presenting = true;
     how = 'window';
-    pendingRestore = null;
+    dropLate();
+    dropRestore();
+    focusLater = false;
     root.dataset.present = 'window';
     delete root.dataset.presentRefused;
     for (const part of parts) part.hidden = false;
@@ -809,8 +958,7 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     lastInput = by === 'pointer' ? 'pointer' : 'key';
     if (lastInput === 'pointer') showControls();
     document.addEventListener('keydown', onKey, true);
-    root.addEventListener('pointerdown', onPointer, true);
-    root.addEventListener('pointermove', onPointer, true);
+    for (const type of POINTER_EVENTS) root.addEventListener(type, onPointer, true);
     // the section taken off the page while presenting (Back, a link): let go of everything
     watchGone = new MutationObserver(() => {
       if (!root.isConnected) leave();
@@ -852,8 +1000,8 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     delete root.dataset.presentAdvance;
     delete root.dataset.presentFit;
     document.removeEventListener('keydown', onKey, true);
-    root.removeEventListener('pointerdown', onPointer, true);
-    root.removeEventListener('pointermove', onPointer, true);
+    for (const type of POINTER_EVENTS) root.removeEventListener(type, onPointer, true);
+    gesture = null;
     if (watchGone) watchGone.disconnect();
     if (watchClock) watchClock.disconnect();
     watchGone = null;
@@ -864,19 +1012,7 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     const wasFull = fullscreenElement() === root;
     exitFull();
     // the window comes back when full screen is over: the map is put back after the section measures it there
-    if (wasFull && !away) {
-      const over = () => {
-        if (fullscreenElement() === root) return;
-        document.removeEventListener('fullscreenchange', over);
-        document.removeEventListener('webkitfullscreenchange', over);
-        // looked for again, for as long again: the section is measured at its size a frame or two after
-        if (pendingRestore && !presenting) lookForPut();
-        // a focus outside the section that the full screen held off (focusBack)
-        if (focusLater && !presenting) focusBack();
-      };
-      document.addEventListener('fullscreenchange', over);
-      document.addEventListener('webkitfullscreenchange', over);
-    }
+    if (wasFull && !away) armLate();
     delete root.dataset.present;
     delete root.dataset.presentRefused;
     for (const part of parts) part.hidden = true;
@@ -888,6 +1024,50 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     return null;
   }
 
+  // The end of a full screen that outlasts the leave (the browser slow to
+  // give it up, or refusing to): the map is looked for again then and the
+  // focus given, unless the reader has acted since, whose zoom and focus
+  // stand (the map moved: dropRestore, from onCell; a key or a press: the
+  // focus is theirs). Let go when it comes, on the next entry and on
+  // unmount (SV2-31d: a full screen ending after the section had left
+  // focused the next section).
+  let late = null;
+  function armLate() {
+    dropLate();
+    const over = () => {
+      if (fullscreenElement() === root) return;
+      dropLate();
+      // looked for again, for as long again: the section is measured at its size a frame or two after
+      if (pendingRestore && !presenting) lookForPut();
+      // a focus outside the section that the full screen held off (focusBack)
+      if (focusLater && !presenting) focusBack();
+    };
+    const acted = (event) => {
+      if (event.repeat) return;
+      focusLater = false;
+    };
+    late = { over, acted };
+    document.addEventListener('fullscreenchange', over);
+    document.addEventListener('webkitfullscreenchange', over);
+    document.addEventListener('keydown', acted, true);
+    document.addEventListener('pointerdown', acted, true);
+  }
+  function dropLate() {
+    if (!late) return;
+    document.removeEventListener('fullscreenchange', late.over);
+    document.removeEventListener('webkitfullscreenchange', late.over);
+    document.removeEventListener('keydown', late.acted, true);
+    document.removeEventListener('pointerdown', late.acted, true);
+    late = null;
+  }
+  // the map is no longer to be put back (the reader moved it, or the section left)
+  function dropRestore() {
+    pendingRestore = null;
+    if (restoreTimer !== null) timers.clear(restoreTimer);
+    restoreTimer = null;
+    stopLook();
+  }
+
   // the transition and floors as they were; a card open on a cell stays on its cell
   function putChoice(was) {
     const choice = env.choice();
@@ -895,6 +1075,8 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     if (choice.transition !== was.transition) patch.transition = was.transition;
     if (choice.floors !== was.floors) patch.floors = was.floors;
     if (Object.keys(patch).length === 0) return;
+    // a change of floors shuts a card (Movement's change): this one is put
+    // back; with the floors as they were, putView puts it back on its cell
     const held = env.tapped();
     env.change(patch, { keepCard: true });
     if (held && 'floors' in patch) env.reopen(held);
@@ -970,14 +1152,23 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
       return;
     }
     if (drawn(plan.canvas) && plan.focus() !== false && document.activeElement === plan.canvas) return;
-    // not the empty card's heading: the section draws that card again on
-    // each change, and the focus went with the heading it replaced. Outside
-    // the section, which is still the full-screen element until the browser
-    // has let go, nothing takes the focus: it is given when full screen ends
+    // with no map, the section's empty card, its heading first, which says
+    // what the section needs (SV2-31d; it had been the shell's region, main,
+    // which reads nothing). The card and not its heading: the section draws
+    // the card's insides again on each change of the project, and a focus on
+    // the heading went to the page with it (a refresh after the leave did).
+    // Outside the section, which is still the full-screen element until the
+    // browser has let go, nothing takes the focus: it is given when full
+    // screen ends
+    const card = root.querySelector('.mov-empty:not([hidden])');
+    if (drawn(card)) {
+      if (!card.hasAttribute('tabindex')) card.setAttribute('tabindex', '-1');
+      card.focus({ preventScroll: true });
+      if (document.activeElement === card) return;
+    }
     if (ctx.focusSurface) ctx.focusSurface();
     if (fullscreenElement() === root && !root.contains(document.activeElement)) focusLater = true;
   }
-  let focusLater = false;
 
   function putView() {
     const was = pendingRestore;
@@ -1026,7 +1217,16 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
   });
   // the reader moving the map (a drag, the wheel, a pinch) ends the mode's Fit
   plan.onCell((event) => {
-    if (event.kind === 'view' && presenting && !fitting) modeFitted = false;
+    if (event.kind !== 'view' || fitting) return;
+    if (presenting) {
+      // under a finger or a mouse: judged when it lifts (track)
+      if (gesture) gesture.moved = true;
+      else modeFitted = false;
+      return;
+    }
+    // left, and the reader moved the map before it was put back: it stays
+    // where they moved it (SV2-31d: a full screen that ended late put it back over them)
+    if (pendingRestore) dropRestore();
   });
   // the map's labelScale for what the section's marks write (the hotspot ranks, ./hotspots.js)
   Object.defineProperty(env, 'labelScale', { configurable: true, enumerable: true, get: () => plan.labelScale });
@@ -1036,12 +1236,12 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     if (gone) return null;
     const kept = leave(true) || null;
     gone = true;
-    stopLook();
     if (layoutOff) layoutOff();
     layoutOff = null;
-    pendingRestore = null;
-    if (restoreTimer !== null) timers.clear(restoreTimer);
-    restoreTimer = null;
+    dropRestore();
+    dropLate();
+    releaseHeld();
+    focusLater = false;
     stageWatch.disconnect();
     phone.removeEventListener('change', placeButton);
     for (const [name, fn] of FULLSCREEN_EVENTS) document.removeEventListener(name, fn);
