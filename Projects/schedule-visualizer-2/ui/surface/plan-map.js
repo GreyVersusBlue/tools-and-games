@@ -335,8 +335,10 @@ export function createPlanMap(asked) {
     // these floors on a measured stage, not at the 0 by 0 a map has before
     // it is measured, nor by the reader's Side by side or Stacked
     const same = chosenBefore && world && world.measured && world.slots.length === floors.length && world.slots.every((slot, at) => slot.floor.id === floors[at].id);
-    const how = value === 'side' || value === 'stacked' ? value : bestLayout(floors, view.width, view.height, same ? world.how : undefined);
-    const next = layoutFloors(floors, how);
+    // both arrangements laid out once, for bestLayout and the one taken
+    const both = { side: layoutFloors(floors, 'side'), stacked: layoutFloors(floors, 'stacked') };
+    const how = value === 'side' || value === 'stacked' ? value : bestLayout(floors, view.width, view.height, same ? world.how : undefined, both);
+    const next = both[how];
     next.measured = view.width > 0 && view.height > 0;
     const nextKey = JSON.stringify([next.how, next.slots.map((slot) => [slot.floor.id, slot.x, slot.y, slot.w, slot.h, slot.box.x, slot.box.y])]);
     // the floors' views are kept by the slot, for the renderer

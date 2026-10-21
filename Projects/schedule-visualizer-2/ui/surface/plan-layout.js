@@ -10,7 +10,8 @@
 //             (one under another)
 //     slots   [{ floor, box, x, y, w, h }]: (x, y) is where the box's top
 //             left cell is, in the map's cells
-//   bestLayout(floors, width, height, current)   'side' or 'stacked': whichever fits the window
+//   bestLayout(floors, width, height, current, layouts)   'side' or 'stacked': one whole on the
+//                                       window at 25 % over one that is not; else whichever fits
 //                                       larger (a tie at the least zoom to the one nearer to
 //                                       fitting); `current` is kept unless the other wins by
 //                                       more than LAYOUT_MARGIN
@@ -33,6 +34,19 @@ import { CELL, MIN_ZOOM, MAX_ZOOM, clampZoom, drawnBox } from './viewport.js';
 export const FLOOR_GAP = 2;
 export const TITLE_ROWS = 2;
 
+// A floor's drawn box, kept by the floor object as paintedMask keeps its
+// cells: a floor of the project is never changed in place (the store makes a
+// new one), and the layout is asked for both arrangements on every measure.
+const drawnBoxes = new WeakMap();
+function boxOf(floor) {
+  let box = drawnBoxes.get(floor);
+  if (!box) {
+    box = drawnBox(floor);
+    drawnBoxes.set(floor, box);
+  }
+  return { ...box };
+}
+
 export function layoutFloors(floors, how) {
   const slots = [];
   let x = 0;
@@ -40,7 +54,7 @@ export function layoutFloors(floors, how) {
   let width = 0;
   let height = 0;
   for (const floor of floors) {
-    const box = drawnBox(floor);
+    const box = boxOf(floor);
     if (how === 'stacked') {
       slots.push({ floor, box, x: 0, y: y + TITLE_ROWS, w: box.w, h: box.h });
       y += TITLE_ROWS + box.h + FLOOR_GAP;
@@ -102,12 +116,22 @@ export function stageLeast(layout, width, zoomRoom, most) {
   return Math.max(floor, Math.min(top, Math.ceil(enough)));
 }
 
-// Where both fit only at the least zoom the clamp makes them a tie, and the
-// tie goes to the one that comes nearer to fitting, unclamped (SV2-72g: at
-// 1024 wide Movement's 648 px stage took the sample's floors side by side,
-// 744 px at 25 %, 48 px off the stage's left edge, where stacked, 240 by
-// 282, fits). So a layout's score is its zoom unclamped, capped at the most,
-// and one that fits at 25 % or more always beats one that does not.
+// A layout fits a stage when Fit can put every floor on it: its box at the
+// least zoom no wider and no taller than the stage, Fit's margin left out
+// (SV2-72i). Fit centres a map it cannot give its margin, so a box that
+// fits the stage at 25 % is whole on it with less margin; one that fits only
+// with the margin left out was judged not to fit before, and the layout on
+// the map was kept off the stage where the other was whole (700 by 300 with
+// side by side on the map: 22 px off each edge, stacked 282 px tall in 300).
+//
+// One that fits beats one that does not, whichever is on the map: a fit with
+// a floor off the stage is no fit (SV2-72f). Where both fit, or neither, a
+// layout's score is its zoom unclamped with Fit's margin, capped at the
+// most: where both fit only at the least zoom the clamp makes them a tie,
+// and the tie goes to the one that comes nearer to fitting with its margin
+// (SV2-72g: at 1024 wide Movement's 648 px stage took the sample's floors
+// side by side, 744 px at 25 %, 48 px off the stage's left edge, where
+// stacked, 240 by 282, fits).
 //
 // The layout on the map now (`current`) is kept unless the other's score is
 // more than LAYOUT_MARGIN over its own (SV2-72h): the stage's least follows
@@ -116,21 +140,31 @@ export function stageLeast(layout, width, zoomRoom, most) {
 // side by the order things were measured in, or turned at each pixel of a
 // resize. 5 %: a fifth of one press of the zoom buttons (25 %), less than
 // anyone sees between two layouts, and more than a scroll bar coming or
-// going takes from a stage (15 px of a 400 px stage, 3.75 %). Never across
-// the clamp: a layout the window cannot hold at 25 % is not kept over one it
-// can, since a fit that leaves a floor off the stage is no fit (SV2-72f).
+// going takes from a stage (15 px of a 400 px stage, 3.75 %).
 //
-// Judged on the whole stage with Fit's margin (FIT_MARGIN), as Fit has it
-// when no sticky foot lies over the stage; the foot and the zoom buttons are
-// left out on purpose: how far the foot lies over the stage changes as the
-// section scrolls, and a layout that turned with the scroll would be worse
-// than one a little smaller.
+// No margin across the fit itself (SV2-72i): a layout that stops fitting is
+// left at that pixel, since keeping it would put a floor off the stage, and
+// one that starts fitting is taken at once only where the one on the map
+// does not fit; where both fit the turn to it waits for LAYOUT_MARGIN like
+// any other. So a window moved a pixel either way across where one layout
+// stops fitting turns at most once each way, at different pixels, and the
+// two-way flip SV2-72h's review found at 321 and 322 px tall (749 to 783
+// wide) is gone with the margin left out of the fit: stacked fits from 282
+// px there, not from 322.
+//
+// Judged on the whole stage, as Fit has it when no sticky foot lies over the
+// stage; the foot and the zoom buttons are left out on purpose: how far the
+// foot lies over the stage changes as the section scrolls, and a layout that
+// turned with the scroll would be worse than one a little smaller.
+//
+// `layouts`, when given, is { side, stacked } already laid out for these
+// floors (layoutFloors), so the plan map lays them out once per arrange.
 export const LAYOUT_MARGIN = 0.05;
-export function bestLayout(floors, width, height, current) {
+export function bestLayout(floors, width, height, current, layouts) {
   if (floors.length < 2) return 'side';
   const score = (how) => {
-    const raw = rawZoom(layoutFloors(floors, how), width, height, FIT_MARGIN);
-    return { fits: raw >= MIN_ZOOM, value: Math.min(raw, MAX_ZOOM) };
+    const layout = (layouts && layouts[how]) || layoutFloors(floors, how);
+    return { fits: rawZoom(layout, width, height, 0) >= MIN_ZOOM, value: Math.min(rawZoom(layout, width, height, FIT_MARGIN), MAX_ZOOM) };
   };
   const stacked = score('stacked');
   const side = score('side');
