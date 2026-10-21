@@ -13,7 +13,7 @@
 //     bar    the playback bar's element (its .playback is the bar's own state)
 //     root   the section's element, the plan map's root (div.mov), whose
 //            .movement (./index.js) is the view on screen
-//   button   "Present", for the section's first line; the key is P
+//   button   "Present", for the section's controls beside Clear; the key is P
 //
 // Nothing is drawn twice and nothing keeps a clock of its own: the map is the
 // section's plan map, the playback is the section's bar (its clock is copied
@@ -167,8 +167,8 @@ export function presentMode({ ctx, plan, env, bar, root }) {
   const view = () => root.movement || null;
   const playback = () => bar.playback;
 
-  // ---- the button, on the section's first line
-  const button = h('button', { type: 'button', class: 'mov-link mov-present', 'aria-keyshortcuts': 'P', title: 'Show the map on the whole screen, for a projector (P)', data: { action: 'present' }, on: { click: () => enter() } }, 'Present');
+  // ---- the button, in the section's controls
+  const button = h('button', { type: 'button', class: 'btn mov-present', 'aria-keyshortcuts': 'P', title: 'Show the map on the whole screen, for a projector (P)', data: { action: 'present' }, on: { click: () => enter() } }, 'Present');
 
   // ---- the panel: the groups on the map, the load, the busiest places
   const panel = h('section', { class: 'mov-pres__panel', tabindex: '0', 'aria-label': 'Presentation of the movement view: the key', data: { part: 'present-panel' } });

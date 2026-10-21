@@ -287,8 +287,8 @@ export const section = {
     // the section's element is the plan map's root (div.mov), with the map in it
     const element = plan.root;
     element.append(empty);
-    // Present, at the end of the first line after Change (./present.js: presentation mode)
-    top.element.querySelector('.mov-line').append(' ', presentMode({ ctx, plan, env, bar: bar.element, root: element }).button);
+    // Present, beside Clear in the controls (./present.js: presentation mode); P works with them folded
+    top.element.querySelector('.mov-ctl--options').append(presentMode({ ctx, plan, env, bar: bar.element, root: element }).button);
 
     // ---- the top bar's second row, the plan map's: on a phone it folds with the controls
     function placeFloors() {

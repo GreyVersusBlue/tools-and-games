@@ -221,8 +221,8 @@ test('by keyboard at 1280 by 800: P in, the arrows, Space, A, H, Escape out, and
         assert.equal(entry.keys, keys, id + "'s keys");
         assert.ok(entry.does.length > 10, id + ' has no words');
       }
-      const button = await page.$eval('#movement-line [data-action="present"]', (el) => ({ text: el.textContent, keys: el.getAttribute('aria-keyshortcuts'), box: el.getClientRects().length }));
-      assert.deepEqual(button, { text: 'Present', keys: 'P', box: 1 }, 'Present is not on the first line');
+      const button = await page.$eval('.mov-ctl--options [data-action="present"]', (el) => ({ text: el.textContent, keys: el.getAttribute('aria-keyshortcuts'), box: el.getClientRects().length }));
+      assert.deepEqual(button, { text: 'Present', keys: 'P', box: 1 }, 'Present is not in the controls');
     });
 
     // the map zoomed in by the reader first, and a transition chosen, so that putting back is tested on a state that is not the default
@@ -237,7 +237,7 @@ test('by keyboard at 1280 by 800: P in, the arrows, Space, A, H, Escape out, and
     const labelSizeBefore = await page.$eval('.mov-legend', (el) => parseFloat(getComputedStyle(el).fontSize));
 
     await t.test('P in: true full screen, or the window layer where it is refused; the controls hidden, the map at Fit, large type', async () => {
-      await page.focus('#movement-line [data-action="present"]');
+      await page.focus('[data-action="present"]');
       await page.keyboard.press('p');
       await inMode(page);
       await handTimers(page);
@@ -463,7 +463,7 @@ test('where full screen is refused, the window layer is whole on its own, said o
         return Promise.reject(new TypeError('Permissions check failed'));
       };
     });
-    await page.click('#movement-line [data-action="present"]');
+    await page.click('[data-action="present"]');
     await inMode(page);
     let now = await read(page);
     assert.equal(now.present, 'window');
@@ -477,7 +477,7 @@ test('where full screen is refused, the window layer is whole on its own, said o
     let count = await restoredCount(page);
     await page.keyboard.press('Escape');
     await outOfMode(page, count);
-    await page.click('#movement-line [data-action="present"]');
+    await page.click('[data-action="present"]');
     await inMode(page);
     now = await read(page);
     assert.equal(now.present, 'window');
@@ -501,7 +501,7 @@ test('the section taken away while presenting (Back to another section) lets go:
         return Promise.reject(new TypeError('Permissions check failed'));
       };
     });
-    await page.click('#movement-line [data-action="present"]');
+    await page.click('[data-action="present"]');
     await inMode(page);
     await page.evaluate(() => {
       location.hash = '#schedule/groups';
@@ -524,8 +524,18 @@ for (const size of [{ width: 390, height: 844, upright: true }, { width: 844, he
     const { page } = session;
     try {
       await settled(page);
+      // under 900 px the controls open folded, unless the reader opened them on
+      // this device before (the run at the other size, in this browser): Present
+      // is in them, one tap behind Change, and on screen whenever they are open
+      const folded = await page.$eval('.mov-top', (el) => el.dataset.folded === 'true');
+      assert.equal(await page.$eval('[data-action="present"]', (el) => el.getClientRects().length), folded ? 0 : 1, 'Present is drawn when the controls are not');
+      if (folded) await page.tap('[data-action="change"]');
+      await page.waitForFunction(() => document.querySelector('[data-action="present"]').getClientRects().length > 0);
+      // the tap would scroll the section to the button first: bring it into view, then read where things are
+      await page.$eval('[data-action="present"]', (el) => el.scrollIntoView({ block: 'nearest' }));
+      await settled(page);
       const before = await read(page);
-      await page.tap('#movement-line [data-action="present"]');
+      await page.tap('[data-action="present"]');
       await inMode(page);
       await handTimers(page);
       let now = await read(page);
