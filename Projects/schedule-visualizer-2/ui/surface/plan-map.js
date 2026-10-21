@@ -87,8 +87,11 @@
 //                           { zoom, x, y, how, clear, in }, or null
 //                           (Movement's legend asks it, SV2-72c2)
 //   map.undockedGain()      how much taller the stage is with the docked
-//                           line away (0 with none docked): what Movement's
-//                           legend judges its card on (SV2-72c3)
+//                           line away (0 with none docked), as room() last
+//                           measured it
+//   map.undockedHeight()    the stage's height with the docked line away,
+//                           measured now: what Movement's legend judges its
+//                           card on (SV2-72c3, SV2-72h)
 //   map.dock()              measure again where a message may lie (the
 //                           section's head moved with no change of size)
 //   map.setLabelScale(k)    every label drawn k times its size, caps
@@ -330,6 +333,12 @@ export function createPlanMap(asked) {
       worldKey = nextKey;
     }
     world = next;
+    // the section scrolled clear of the foot first, where it is to be
+    // (clearFoot), so a section's judgement of the fit (Movement's legend)
+    // and the fit itself are of the section as the reader will see it, not
+    // of its top before the map's own scroll (SV2-72h: at 900 by 500 with
+    // touch the legend docked at the top and undocked once scrolled)
+    clearFoot();
     for (const fn of layoutFns) fn();
     if (fitted) fit(true);
     // the stage's least follows the floors' box (stageLeast)
@@ -698,8 +707,15 @@ export function createPlanMap(asked) {
     const foot = footShown();
     if (!foot || element.hidden) return 0;
     const shown = stage.getBoundingClientRect();
-    const extra = height === undefined ? 0 : height - view.height;
-    return Math.max(0, Math.min(shown.height + extra, Math.ceil(shown.bottom + extra - foot.getBoundingClientRect().top)));
+    // against the stage as it is laid out now, not as it was last measured
+    // (view.height): the two differ between a docked line shown and the
+    // stage's next measure (SV2-72h)
+    const extra = height === undefined ? 0 : height - shown.height;
+    // less than half a pixel over is none: a section scrolled as far as it
+    // goes can leave the foot 0.06 px over the stage (900 by 500 with touch),
+    // and a pixel of foot moved the fit from the plain one to the band above
+    // the zoom buttons and back as the scroll was clamped and let go (SV2-72h)
+    return Math.max(0, Math.min(shown.height + extra, Math.ceil(shown.bottom + extra - foot.getBoundingClientRect().top - 0.5)));
   }
   // How far the foot reaches up into the stage now, never lifting the
   // buttons out of the stage's top; 0 with no frame yet.
@@ -837,6 +853,20 @@ export function createPlanMap(asked) {
     root.dataset.measuredBar = String(foot ? foot.offsetHeight : 0);
     // and the zoom box's need, the same
     root.dataset.zoomRoom = String(zoomRoom());
+  }
+  // The stage's height with the docked line away, as the section is now.
+  // The room is measured first and the stage read as laid out after it, so
+  // the stage's height and the line's gain are of one measure: between a
+  // line shown or hidden and the observers' next round, view.height was the
+  // last measure's and undockedGain() the last room()'s, and Movement's
+  // legend, judging on their sum, asked a stage of 241 or 151 px where the
+  // stage without the line is 196 (900 by 500 with touch: 5 dock and 5 fit
+  // turns as it opened; SV2-72h).
+  function undockedHeight() {
+    if (gone || element.hidden) return view.height;
+    room();
+    const height = stage.getBoundingClientRect().height;
+    return height + (parts && parts.under && !parts.under.hidden ? roomAway : 0);
   }
   // and where a message may lie, which moves with the foot's height whether
   // or not the stage changes size. The zoom box is watched too: its size is
@@ -1012,6 +1042,7 @@ export function createPlanMap(asked) {
     // what the stage gains in px when the docked line goes away: never more
     // than the line's height, and less where the stage is held at its least
     undockedGain: () => roomAway,
+    undockedHeight,
     // where Fit would put the floors on a stage of this size, round the zoom
     // buttons as they are drawn and above the sticky foot as fit() puts
     // them: { zoom, x, y, how, clear, in } (choose), or null

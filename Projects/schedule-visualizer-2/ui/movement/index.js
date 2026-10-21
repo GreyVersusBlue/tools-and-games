@@ -426,8 +426,10 @@ export const section = {
       const world = plan.world;
       if (!world || view.width === 0) return false;
       // the stage undocked: what docking the line took from it, which is
-      // less than the line's height where the stage is at its least (SV2-72c3)
-      const height = view.height + (key.line.hidden ? 0 : plan.undockedGain());
+      // less than the line's height where the stage is at its least
+      // (SV2-72c3), measured now with the stage it is taken from, never the
+      // last measure's view.height (SV2-72h)
+      const height = plan.undockedHeight();
       const card = key.element;
       const width = card.offsetWidth;
       const tall = card.offsetHeight;

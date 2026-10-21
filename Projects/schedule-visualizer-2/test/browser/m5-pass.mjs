@@ -536,9 +536,7 @@ for (const size of [{ width: 900, height: 500, fallback: false }, { width: 1280,
 // 900 by 500 the sticky foot lay 171 px over a 216 px stage, the floors
 // under it. Each case presses Fit where the button is and counts the fit's
 // and the legend's turns from before the section opens. 900 by 500 with
-// touch is left out: there Movement's legend does not settle before this
-// unit either (3 dock turns on sv2 at 66ee2854; it judges its card at 70 px,
-// before the picture is in, then at 172), and the legend is not the map's.
+// touch is SV2-72h item 1's case, below.
 const EDGES = [
   { width: 1024, height: 768 },
   { width: 1024, height: 768, mobile: true },
@@ -592,6 +590,44 @@ for (const size of EDGES) {
     });
   });
 }
+
+// ------------------------------------------- SV2-72h: Fit settles everywhere
+
+// Item 1. At 900 by 500 with touch Movement opened with 5 dock and 5 fit
+// turns (3 and 2 before SV2-72g): the legend judged its card on the stage
+// with the docked line away as view.height plus undockedGain(), the one read
+// at the last measure and the other at the last room(), so a judgement made
+// between the line being shown or hidden and the stage measured again asked
+// a stage 241 px or 151 px tall where the stage without the line is 196, and
+// each answer turned the other. Counted from before the section opens, and
+// again after Fit is tapped where the button is.
+test('SV2-72h item 1: Movement at 900 by 500 with touch opens with the fit set at most twice and the legend docked at most once, and settles so again when Fit is tapped', async () => {
+  await on('#project', { width: 900, height: 500, mobile: true }, async (page) => {
+    assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), true, 'the page is not a touch screen’s');
+    await fixture(page);
+    await countTurns(page);
+    await go(page, '#movement');
+    const first = await turnsSettled(page, 'movement');
+    const opened = await floorsAt(page, 'movement');
+    assert.ok(first.fit >= 1, 'no fit was counted: the count tests nothing: ' + JSON.stringify(first));
+    assert.ok(first.fit <= 2 && first.dock <= 1, 'the layout did not settle as Movement opened: ' + JSON.stringify(first));
+    assert.deepEqual(offStage(opened), [], 'as it opens: ' + JSON.stringify(opened));
+    await countTurns(page);
+    const fitButton = '.mov [data-action="fit"]';
+    const at = await box(page, fitButton);
+    assert.ok(at, 'the Fit button has no box');
+    const hit = await page.evaluate((wanted, x, y) => {
+      const hitEl = document.elementFromPoint(x, y);
+      return Boolean(hitEl) && document.querySelector(wanted).contains(hitEl);
+    }, fitButton, at.left + at.width / 2, at.top + at.height / 2);
+    assert.equal(hit, true, 'something lies over the Fit button where it is: ' + JSON.stringify(at));
+    await page.touchscreen.tap(at.left + at.width / 2, at.top + at.height / 2);
+    const turns = await turnsSettled(page, 'movement');
+    const fitted = await floorsAt(page, 'movement');
+    assert.ok(turns.fit <= 2 && turns.dock <= 1, 'the layout did not settle after Fit: ' + JSON.stringify(turns));
+    assert.deepEqual(offStage(fitted), [], 'after Fit: ' + JSON.stringify(fitted));
+  });
+});
 
 // ------------------------------------------- SV2-72e's open line: the toast's Show
 
