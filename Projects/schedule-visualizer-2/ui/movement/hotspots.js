@@ -270,11 +270,13 @@ function stateNow(last) {
 // discs of this size are the most that stand clear of one another on the
 // smallest ring, and then the places between.
 //   rings   [{ rank, x, y, r }] in rank order; each gains { bx, by }
+//   radius  the discs' radius: RANK_RADIUS, times the map's label scale in
+//           presentation mode, where the number is larger (SV2-31c)
 export const RANK_RADIUS = 8;
 const RANK_PLACES = [-45, -165, 75, 135, -105, 15, -135, 45, 180, 0, 90, -90].map((degrees) => [Math.cos((degrees * Math.PI) / 180), Math.sin((degrees * Math.PI) / 180)]);
-export function placeRanks(rings) {
+export function placeRanks(rings, radius = RANK_RADIUS) {
   const placed = [];
-  const clear = RANK_RADIUS * 2 + 1;
+  const clear = radius * 2 + 1;
   for (const ring of rings) {
     let best = null;
     let room = -1;
@@ -642,7 +644,10 @@ export function hotspotsPanel(env) {
       const points = (row.place.kind === 'connection' ? row.ends : busiest ? [busiest] : []).map((end) => map.point(end.floorId, end.cell)).filter(Boolean);
       for (const at of points) rings.push({ rank: row.rank, x: at.x, y: at.y, r });
     }
-    placeRanks(rings);
+    // the disc grows with its number (presentation mode's labelScale, SV2-31c)
+    const scale = env.labelScale > 0 ? env.labelScale : 1;
+    const radius = RANK_RADIUS * scale;
+    placeRanks(rings, radius);
     // Zoomed out, the rings of two places lie over one another. They are
     // drawn last rank first, so the busiest place's is on top, and every
     // rank after every ring, so no ring's line runs through a number.
@@ -659,14 +664,14 @@ export function hotspotsPanel(env) {
     }
     for (const ring of backToFront) {
       g.beginPath();
-      g.arc(ring.bx, ring.by, RANK_RADIUS, 0, Math.PI * 2);
+      g.arc(ring.bx, ring.by, radius, 0, Math.PI * 2);
       g.fillStyle = map.theme.accent;
       g.fill();
       g.strokeStyle = map.theme.card;
       g.lineWidth = 1;
       g.stroke();
       // the number grows with the map's labels (presentation mode; SV2-31b)
-      g.font = '600 ' + Math.round(11 * (env.labelScale > 0 ? env.labelScale : 1)) + 'px ' + map.theme.font;
+      g.font = '600 ' + Math.round(11 * scale) + 'px ' + map.theme.font;
       g.textAlign = 'center';
       g.textBaseline = 'middle';
       g.fillStyle = map.theme.accentInk;
