@@ -579,6 +579,8 @@ trip below is the same trip #929 measured and only what counts as on time
 changed; moving it to 60 s instead was measured and passed over (it
 changes every trip, and a call a minute late then clears 85 of 88 on one
 seed). The target is 99, #929's 88 at the longer run's length.
+**Devon, 2026-10-21 (#1008), asked whether to keep it: "Keep 150 s"**
+(SC-crosstown). Closed: Cross Town stays at 150 s.
 
 **What the longer clock costs, said plainly:** at 100 s the call alone
 was on time on four seeds of six and the road ahead was what made the
@@ -729,11 +731,12 @@ them on seeds 1 to 6 at 78 s. The engine unit shipped as #957 on
 
 **NOBODY HAS PLAYED IT.** What a person should look at first: the slider.
 Since #959 it drops from 16 to 0 by itself on the step the lights come
-back, and nobody has watched that happen: whether a thumb moving under
-nobody's hand reads as the game telling the truth or as the game taking
-the control away, and whether a level whose answer is now "put it back
-where it was" is too plain (as #933 shipped it the slider lied and the
-answer was 32). Then whether a player notices the wave is gone at all:
+back. **Answered by Devon, 2026-10-21 (#1008): "Reads as true: keep it"**
+(SC-slider): whether a thumb moving under nobody's hand reads as the game
+telling the truth or as the game taking the control away, and whether a
+level whose answer is now "put it back where it was" is too plain (as #933
+shipped it the slider lied and the answer was 32), are closed on keeping
+the drop to 0 as it is. Then whether a player notices the wave is gone at all:
 the board announces the outage and the return, and besides the slider
 nothing says the lines have moved. Then whether 12 s of dark is long enough to register as an
 event, and whether a third of seeds losing the third star to a crash is
@@ -917,7 +920,8 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
 - An ambulance that crashed used to read as on time on its corridor once
   the tow took it off the map (`_ambulanceTick` asked only `car.done`;
   seen in a scratch run of a lighter Cross Town, on no seed of the level
-  as it ships). Since #1004, on Devon's answer of 2026-10-21, it is late
+  as it ships). Since #1004, on Devon's answer of 2026-10-21 (#1008, SC-crash:
+  "No, it counts as late / failed"), it is late
   on the step it crashes, never escorted, and its reason line says it
   crashed. `scoring.mjs` pins it on Cross Town seed 6 with the crash put
   in by hand, since no shipped seed crashes an ambulance.
@@ -1086,7 +1090,8 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
   car that stopped at a four-way, has its nose short of the edge and can
   stop there; the hold stops at the edge exactly, since a nose in the box
   held there counts as stalled. It moved Rush Hour's pinned runs and was
-  landed on Devon's word to re-pin them: no input one star on 4 seeds of
+  landed on Devon's word to re-pin them (2026-10-21, #1008, SC-dark: "Re-pin
+  Rush Hour and land the fix"): no input one star on 4 seeds of
   6 and not 6, the hand three stars on 5 and not 6. Both moved crashes are
   hazards the level already had (seed 3, a tailgater into a rideshare
   stopped for a pickup 110 m past the box at 156 s, the hand's too;

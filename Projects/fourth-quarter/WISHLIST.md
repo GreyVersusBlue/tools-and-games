@@ -9,7 +9,9 @@ the dated shelf with its walk-in the same day (#909) and season terms, the
 season that moves rent and wages, the same day (#911). **That is the whole
 back office: Q24's arc is complete.** What TG-25 has left is the sound and
 the texture pop, and neither is ranked. The mix was levelled by
-measurement on 2026-10-10 (#942) and has not been heard.
+measurement on 2026-10-10 (#942) and Devon heard it on 2026-10-21 (#1008):
+"Done: sounds fine". The texture pop was looked at in a GPU window the same
+day: "Done: looks fine".
 Three rounds shipped the
 day phase, the venue ladder, the shared save system and spoilage; Phase 5 put
 the suites in CI; Phase 1 made the room a description (`js/layout.js`, pure,
@@ -236,14 +238,18 @@ picks the oldest ready ticket regardless of how far it has to carry it.
 The prompt file's own block is closed — spoilage answered it. These are what
 the phases below would need answered.
 
-1. **Should the ladder be physically bigger?** Four tiers, $0 to $34,000, one
+1. ~~**Should the ladder be physically bigger?** Four tiers, $0 to $34,000, one
    30-seat room, and `buildWorld()` ignores the venue it is handed. Phases 1-3
    are the largest single piece of work in this file. Round 2's honest-30-seats
-   fix means nothing currently lies, so this is a want, not a fix.
-2. **Should there be a way to lose?** Cash goes negative, turns red, and
+   fix means nothing currently lies, so this is a want, not a fix.~~ Answered
+   yes by locked #185 (BACKLOG.md's struck Q22) and built: 30, 44, 58 and 76
+   seats up the ladder (Phases 1 to 3, all SHIPPED below).
+2. ~~**Should there be a way to lose?** Cash goes negative, turns red, and
    nothing else happens. Options that fit what exists: a bankruptcy threshold,
    a lease that can be lost (a downgrade rather than a game over), a bank that
-   stops lending. Round 3 declined to invent one unprompted and was right to.
+   stops lending. Round 3 declined to invent one unprompted and was right to.~~
+   Answered by locked #219 and #220 (BACKLOG.md's struck Q23): the losable
+   lease, three missed nights in a row. Built in Phase 9 (SHIPPED).
 3. ~~**How much of the 2D campaign is actually wanted?**~~ Answered by Devon
    on 2026-10-05 (HISTORY.md #902): all of it. Phases 6-9 ported the league,
    the regulars and the rival, the event cards and the losable lease; the
@@ -286,8 +292,10 @@ sound, then the texture pop.
    sound in `audio.js`, the seven cues within 1.1 dB of each other where they
    were 19.6 apart, the crowd's three sounds each 12 to 13 dB down,
    `test/smoke-mix.mjs` (111) holding it. The README's "The mix" has the
-   table. **Nobody has heard it: it wants Devon's ears again**, and what to
-   turn if it is wrong is the `TRIM` table and the bands in that suite. A new
+   table. **It wanted Devon's ears again, and has them (below)**, and what to
+   turn if it is wrong is the `TRIM` table and the bands in that suite.
+   **Heard: Devon, 2026-10-21 (#1008), FQ-mix: "Done: sounds fine".** The
+   levelled mix stands as shipped (crowd 12 to 13 dB down); nothing to turn. A new
    sound (the cheer, footsteps, music) needs a trim, a role in the suite and
    `node tools/measure-audio.mjs` run where a decoder is, or CI is red;
    re-encoding the groan to OGG needs the same run. Small and not done: a
@@ -296,7 +304,11 @@ sound, then the texture pop.
    the Floor" still pops in, and the 1k tier is one size for every surface.
    The order-of-magnitude cut itself is done (#201, #622); this is what Devon's
    "cut it" has left. It changes how the game looks, so it wants before-and-after
-   sizes and a GPU window.
+   sizes and a GPU window. **The look in a GPU window is done by Devon's
+   report, 2026-10-21 (#1008), FQ-tex: "Done: looks fine".** He gave no
+   numbers. The pop after "Take the Floor" is closed as looked at and fine;
+   the 512 px tier half of this item he did not speak to, and stays as
+   written.
 3. ~~**The back office** (Q24, all of it), a session each, in this order.~~
    **Complete on 2026-10-06**: all four systems below have shipped, each off
    until the player turns it on, and a campaign that turns none of them on is

@@ -20,12 +20,14 @@ tuning was asked for.
 
 ## 1. Draw-call cuts (all three made; measured on a real GPU before, not after)
 
-**Devon: re-run `node tools/gpu-profile.mjs` on the Windows GPU to see the milliseconds, and look at
-whether the extra triangles matter on a weaker card.** The three cuts below took 182 to 460 draws
+**Closed on Devon's report, 2026-10-21 (#1008), SW-gpu: "Done: looks fine"** for re-running
+`node tools/gpu-profile.mjs` on the Windows GPU and for the extra triangles on a weaker card. He gave
+no milliseconds, so there is no new table: the figures below are the 2026-10-03 measurement before
+any cut and the draw counts after. The three cuts below took 182 to 460 draws
 out of a frame, counted under software GL: a frame is 204 to 352 draws where it was 386 to 745. At
 the 4.7 to 5.8 µs a draw this section measured, that would be 0.9 to 2.7 ms of a 4.3 to 6.2 ms
-frame, but nothing here has timed it. Cut 1 also draws 0.05 to 1.42 M more triangles a frame, which
-cost nothing on the 3070 Ti and have not been tried anywhere slower; cuts 2 and 3 move triangles by
+frame, but no millisecond figure exists for it. Cut 1 also draws 0.05 to 1.42 M more triangles a frame, which
+cost nothing on the 3070 Ti and looked fine on the weaker card by Devon's report; cuts 2 and 3 move triangles by
 under 7 thousand.
 
 One frame from each of `test/draws.mjs`'s nine views, Rotor Rally at quality high, 960x540:
@@ -165,7 +167,7 @@ Nothing of the three. Smaller, from the lighthouse view's 156 static draws:
   (#1007), all packed back to front from the camera before each render. Lighthouse 346 to 291 draws,
   2 to 55 fewer a view; captures identical to the byte but for 7 pixels on a burner in two views, at
   most 8/255 (`HISTORY.md`'s log has the counts). Devon passed the draw order as it stood on
-  2026-10-21; nobody has looked at the batched version in motion.
+  2026-10-21 (#1008, SW-fx: "Done: looks fine"); nobody has looked at the batched version in motion.
 - **The 6 pad and landing decals** are 6 draws and stay so: the three pads and the three landing
   targets are transparent (`decalMat` without `opaque`) at `renderOrder` 2, so three sorts them back
   to front each frame by distance, and one mesh would fix an order the camera now changes. The

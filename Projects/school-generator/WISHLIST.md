@@ -438,10 +438,11 @@ and add to this list rather than starting a new one.
   one swatch a hex, every storey, hex order, armed like a named swatch. The
   free pick's colour outlives a reload (#962), in the page's own
   `sg-accent-custom` localStorage key and not in the school. Left from #944,
-  #961 and #962: the hover bar's outline is one pixel; nobody has looked at
-  a custom colour on a wall or a free-standing wall in the lit scene on a
-  GPU, nor at the "In this school" row on a real display (one huginn
-  screenshot, eleven colours, two rows); the row is driven in a browser for
+  #961 and #962: the hover bar's outline is one pixel; a custom colour on a
+  wall or a free-standing wall in the lit scene on a GPU, and the "In this
+  school" row on a real display, are looked at by Devon's report, 2026-10-21
+  (#1008, SG-gpu: "Done: looks fine"; before that one huginn screenshot,
+  eleven colours, two rows); the row is driven in a browser for
   paint, undo, redo and a fresh page, and by its source only for New and
   Open; the kept colour is per browser profile, so a school opened on
   another machine starts at `#808080` with its own colours in the row.
@@ -501,7 +502,8 @@ and add to this list rather than starting a new one.
   long as the wall before it, #994), and a notch whose mouth closes before
   its inside does (a bottle: the wavefront run out is the eave and a pocket,
   which `eaveLine` refuses) keep rectangles too; `gable` over a curve keeps
-  rectangles (a weighted skeleton); a curved building whose 4ft mask cells
+  rectangles (a weighted skeleton; Devon, 2026-10-21, #1008, SG-Q5: "Not now:
+  curves keep the hip/flat roofs only", so it stays that way); a curved building whose 4ft mask cells
   touch another building's takes its chord parapet (#988), and where a cell
   of the other reaches inside its chords (a box 0.2ft off a bow, its cell
   1.56ft inside them) the other building gives way (#990, Devon): its loop
@@ -512,19 +514,23 @@ and add to this list rather than starting a new one.
   (it draws the ground storey whatever the roof, so the skeleton path's test
   cannot decide it: drawing it from `roofOutline` moves the site plan of a
   curved school under every roof style and every storey count, a call of its
-  own); the takeoff counts the roof inside the walls, not the 1.5ft eave, on
+  own; settled by Devon, 2026-10-21, #1008, SG-site: "Keep it stepped"); the takeoff counts the roof inside the walls, not the 1.5ft eave, on
   both paths (#970); the elevation sorts a
-  skeleton roof's faces by their nearest point like a rectangle's, and
-  nobody has checked a hip seen across a valley in the sheet by eye; no
+  skeleton roof's faces by their nearest point like a rectangle's, and a hip
+  seen across a valley in the sheet is checked by Devon's report, 2026-10-21
+  (#1008, SG-elev): "Done: looks fine"; no
   `test/visual` capture has a curved roof (the sample school has none); the
-  look on a real GPU. The courts, the hole, the head-on notch and the
+  look on a real GPU is done by Devon's report, 2026-10-21 (#1008, SG-gpu):
+  "Done: looks fine". The courts, the hole, the head-on notch and the
   single-corner courtyard are designed in `DESIGN-roof-holes.md` (#995), six
-  increments in order with Devon's questions in its section 6. All six are
+  increments in order with Devon's questions in its section 6, all six answered
+  2026-10-21 (#1008; Q1 to Q4 and Q6 keep their defaults, as built). All six are
   built: the skeleton with holes (#996), `offsetRing` and
   `triangulate` with holes (#997), the outline's courts wired into the
   parapet and its deck (#998), the hip round a court (#999), the head-on notch
   (#1000) and the single-corner courtyard (#1001). Gable over a curve, the
-  design's increment 7, waits for Devon's answer to its question 5. One software-rendered look on huginn (an L with a
+  design's increment 7, is closed: Devon, 2026-10-21 (#1008, SG-Q5), "Not
+  now: curves keep the hip/flat roofs only". Do not build it. One software-rendered look on huginn (an L with a
   curved end, from above): hip, valley and the rounded end read right; and
   one under the parapet (at an angle): the parapet and deck follow the curve.
 - Site regions can be restyled and deleted but not re-shaped.
@@ -549,7 +555,8 @@ and add to this list rather than starting a new one.
   daylight, the takeoff and the estimate alike (#897, Devon's answer of
   2026-10-05; it was 10 ft to the daylight), and a section cut through a
   window in one draws wall under the sill and over the head. The room's
-  surfaces in the daylight factor still stop at the 10 ft ceiling. Neighbours, trees and the
+  surfaces in the daylight factor still stop at the 10 ft ceiling (Devon,
+  2026-10-21, #1008, SG-daylight: "Stop at 10 ft"). Neighbours, trees and the
   terrain are not obstructions, one reflectance serves every room
   whatever its finishes are, a rooflight does not exist, and none of it is
   drawn on the plan: the numbers are in the report panel and the CSV only.

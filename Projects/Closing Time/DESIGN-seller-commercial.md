@@ -5,6 +5,12 @@
 twelve questions that are his are in section 10, each with the options and the
 one this design assumes.
 
+*Section 10 is answered (Devon, 2026-10-21, #1008). The seller-side build is
+buildable on this design with two answers changed: CT-4 (an unverified rent roll
+is required before listing, no 6% penalty) and CT-5 (fixing a defect before the
+sale is a trade that costs days, not left out). Where the body below still says
+penalty or left out, the answer replaces it and the build follows the answer.*
+
 It reads top to bottom for someone who knows the game and is not a broker. Every
 figure was computed by a scratch script against the shipped `data/` and the
 shipped `js/engine/` modules; section 11 says what was run and what was not.
@@ -166,6 +172,12 @@ lands. No money. The listing may go live while it is out.
 
 *Skipping it:* allowed. Offers come 6% of gross value lower and a lease problem
 stays hidden from the agent until the buyer finds it.
+
+*Changed by Devon's answer of 2026-10-21 (CT-4, #1008):* the roll is required
+before the listing goes live, so it cannot be skipped and the 6% penalty
+(`unverifiedHaircut`) is not built. The "Skipping it" paragraph above and the
+"Unverified" arithmetic below describe the old assumption; the build follows the
+answer.
 
 *Arithmetic, 212 Ferry St.* Net income $78,384 (128,400 × 0.91 − 38,460). Market
 cap 7.62% (7.40% + 0.22 × 1.00%).
@@ -382,6 +394,10 @@ waiting. It is last in the build order and the tier works without it.
   defect is a dollar line: curing a $46,000 roof costs the seller $46,000 and
   raises every offer $46,000, a wash that takes weeks. What matters is whether
   it is on paper, which 2.5 covers. Question 5.
+  *Changed by Devon's answer of 2026-10-21 (CT-5, #1008):* this is not left
+  out. Fixing a defect before the sale is built as a trade that costs days, and
+  the build follows the answer. The "argued against" reasoning above is the old
+  assumption.
 - **Leasing up the vacancy first.** Real, and the largest lever an owner has,
   but it is managing the building for a season, not selling it.
 - **Seller financing, an auction, a sealed-bid date.** The existing
@@ -832,6 +848,9 @@ must keep (#39).
   buy the player's own listing. Real, and worth 4%, and a conflict-of-interest
   design of its own. Question 7.
 - **Curing defects, leasing up, seller financing, auctions** (2.7).
+  *Curing defects is no longer on this list:* Devon's answer of 2026-10-21
+  (CT-5, #1008) puts it in the build as a trade that costs days. Leasing up,
+  seller financing and auctions stay out.
 - **Tenants as people.** No tenant has a name, a lease record or an event. The
   rent roll is one number and one line of flavor, as on the buying side.
 - **An appraisal on this side.** The bank's test is the one lender milestone; a
@@ -870,54 +889,74 @@ opening rate it does.
 
 ## 10. Questions for Devon
 
-Each has the options and the one this design assumes. None is answered for him;
-a different answer changes the section named.
+Each has the options and the one this design assumes. **All twelve answered by
+Devon, 2026-10-21 (#1008):** ten as the design assumed, CT-4 and CT-5 changed.
+The answer is in bold under each question; a different answer changes the
+section named.
 
 1. **May a seller refuse?** No seller in the game says no today: "Advise accept"
    always signs. (a) Yes, a building's seller signs nothing under 90% of what
    they expect. (b) No, keep it advisory and let satisfaction carry it.
    *Assumed: (a).* Without it the opinion of value moves a feeling and nothing
    else. Section 2.3.
+   **CT-1, answered 2026-10-21: seller can refuse, as the design assumed.**
 2. **Should the agent see the true value before doing the work?** (a) No: the
    file shows packet value only, and the truth arrives in due diligence. (b)
    Yes: show both from day one, as the buying side shows a building's value on
    the flyer. *Assumed: (a).* On the buying side the hidden things are the
    capital items; here they are too, and (b) would print their total.
+   **CT-2, answered 2026-10-21: at due diligence, as the design assumed.**
 3. **Who pays for prep?** (a) The agent fronts the memorandum and the report, as
    staging and photos are fronted on a house. (b) The seller pays at closing, so
    it costs the agent nothing unless the deal dies. *Assumed: (a).*
+   **CT-3, answered 2026-10-21: the agent, up front, as the design assumed.**
 4. **Is 6% the right penalty for an unverified rent roll, and may it be skipped
    at all?** (a) 6%, skippable. (b) A larger penalty. (c) Required before going
    live. *Assumed: (a).* On Ferry St 6% is $61,720, about the size of its whole
    capital list.
+   **CT-4, answered 2026-10-21: required before listing (c), CHANGED from the
+   assumed (a), the 6% penalty that could be skipped.** The 6% haircut is not
+   built; section 2.1 carries the note.
 5. **Curing a defect before the sale:** (a) left out, (b) built as a wash that
    costs days. *Assumed: (a).* Section 2.7.
+   **CT-5, answered 2026-10-21: a trade that costs days (b), CHANGED from the
+   assumed (a), left out.** Section 2.7 carries the note.
 6. **The investor tour:** (a) build it last, (b) leave it out. *Assumed: (a).*
+   **CT-6, answered 2026-10-21: build it last, as the design assumed.**
 7. **Both sides of one deal** (the player's buyer on the player's listing): (a)
    not possible, (b) allowed and paid on both sides, with a reputation rule to
    be designed. *Assumed: (a).*
+   **CT-7, answered 2026-10-21: not allowed, as the design assumed.**
 8. **XP for a building's listing:** (a) 215, following the house pattern, (b)
    200, the same as the buying side. *Assumed: (a).*
+   **CT-8, answered 2026-10-21: 215, as the design assumed.**
 9. **How many sellers, and which buildings?** (a) Three new buildings (4.2). (b)
    Fewer. (c) Let the four buildings on the MLS board also arrive as listings to
    take. *Assumed: (a).* Under (c) a building could be on the board and in the
    player's book at once.
+   **CT-9, answered 2026-10-21: three new buildings, as the design assumed.**
 10. **Should a refused price cut still be a roll?** The buying side's rule is no
     dice at the bank. Here the bank and due diligence are arithmetic, and the
     one roll left is the house flow's: refuse a cut and the buyer walks 45% to
     70% of the time by their agent's style. (a) Keep that roll. (b) Make it a
     rule (for instance: they walk if the cut refused is over 3% of the price).
     *Assumed: (a).*
+    **CT-10, answered 2026-10-21: keep the 45% to 70% chance the seller walks
+    away, as the design assumed.**
 11. **Is a seeded career autopilot wanted before session 3?** Nothing in the
     project plays a whole year, so nobody knows the day a typical career reaches
     Broker-Track, and with it how many buildings a year can hold. (a) Build a
     small one as part of session 3's balance work. (b) Tune by the per-deal
     figures alone. *Assumed: (a).*
+    **CT-11, answered 2026-10-21: build an autopilot that plays a whole career,
+    as the design assumed.**
 12. **Should sellers be on the ladder at all?** Today a Rookie can be handed any
     seller, the $705,000 Brackenridge one included, because all three doors
     wave sellers through. This design gates only a building's seller. (a) Leave
     house sellers as they are. (b) Gate every seller by tier. *Assumed: (a)*, as
     it is the shipped behaviour and (b) changes every career's first season.
+    **CT-12, answered 2026-10-21: only building sellers are gated (house
+    sellers open to all), as the design assumed.**
 
 ## 11. How the numbers were checked
 

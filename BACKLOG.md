@@ -187,7 +187,7 @@ nightly's: Corner & Kettle's (old ranks 11 to 13, TG-12), Hearth's (old ranks
 ranks 1 to 4, TG-09). That is the line to
 update when your batch merges; a PR that only changes these files is not a
 batch and does not belong in it.
-**13 ranked items remain** (counted off the table on 2026-10-12), and **every one of them names a model.**
+**1 ranked item remains** (counted off the table on 2026-10-21), and **every one of them names a model.**
 
 **The Blender block is empty** (#642, #707, 2026-09-25, Devon's instruction
 and his re-rank, which put every Blender row first). Every project's
@@ -201,7 +201,10 @@ every Blender row shares is
 [Blender assets: the common plan](#blender-assets-the-common-plan).
 
 **Nothing is claimed.** Ranks 1 to 14, 24 and 26 to 28 shipped and their rows are gone;
-the others keep their numbers until the next renumbering. **Ranks 25 to 32
+ranks 15 to 21, 23 and 29 to 32 were answered by Devon on 2026-10-21 (#1008: the
+hardware and ears passes done or dropped, the Throneshard bots stopped, the GPU
+looks fine) and their rows are gone too; the one left keeps its number until the
+next renumbering. **Ranks 25 to 32
 are new on 2026-10-07** (Devon, 2026-10-01: rank the work the "next ranked
 rows" loop could not see): Signal City's second pack (25), SkyWings 64's
 draw-call cuts (26, shipped the same day, #930 to #932) and Throneshard's six open items (27 to 32; 27, Rift Wall, shipped on 2026-10-10, #938, and 28, the two new heroes, the same day, #941 and #943). They are
@@ -210,15 +213,11 @@ rows, because re-ranking the list is not a session's call; inside Throneshard
 the two Devon has answered come first, then the two with a measured number,
 then the two judged by eye. R13's Size and Model are its wishlist's; the
 other seven had none and are assigned here by Tier 1's three readings (#380).
-**Pick up next** for a session with no hardware is rank 25, Signal City's
-second pack (2+, naming Fable 5.1, so Opus 5.5 under #638; no gate); after
-it, ranks 29 to 31, none gated. Rank 22, The Fracture Cycle's fourth prong,
-shipped on 2026-10-12 (#958). The
-first row is still rank 15, the real-hardware pass on the site (½, naming
-Opus 5, so Opus 5.5 under #638; gate `GPU, phone`). Ranks 15 to 21, 23 and 32
-want a real GPU, a real phone or a person listening for an hour, and their
-`Gate` cell says which; a session without one moves the row to Parked with
-its context (rule 2) and takes the next.
+**Pick up next** is rank 25, Signal City's second pack (2+, naming Fable 5.1,
+so Opus 5.5 under #638; no gate), the only ranked row left. Rank 22, The
+Fracture Cycle's fourth prong, shipped on 2026-10-12 (#958). Ranks 15 to 21,
+23 and 32 wanted a real GPU, a real phone or a person listening for an hour;
+Devon's answers of 2026-10-21 settled all of them (see below).
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
@@ -529,7 +528,7 @@ means there. Scrub-and-read beats are trustworthy under it; six to eight of
 Golden Hour's real-time beats fail from run to run, as on `main`, and are #53's
 to settle on a real GPU. `assets/previews/{golden-hour,blue-hour}.jpg` and
 their og cards are SwiftShader captures, promoted as drafts; the real-hardware
-pass (rank 31) recaptures them. **Worth carrying forward**: engaging pointer
+pass recaptures them; Devon's 2026-10-21 answer (SITE-prev) says the GPU recapture was done and looked fine (#1008). **Worth carrying forward**: engaging pointer
 lock under Xvfb can throw the camera about 1.45 rad of yaw and 0.88 of pitch,
 which sent the first Blue Hour capture into the sky and a thrown stone up the
 beach; put the view back yourself after the lock engages. A guard-rail's floor
@@ -717,8 +716,8 @@ adding a beat**: a section that throws now costs its own checks and no others
 (#529), after the first deliberate break lost twelve unrelated ones to an abort;
 and the plan-vs-flight assertion has to be the clock and not the endpoint
 (#530), because launching at 0.9x `MAXSPEED` still wins on an empty field and
-the break ran green from 46/46. Orbital's rotate-to-play gate (rank 39) is still a real
-device's job and is untouched.
+the break ran green from 46/46. Orbital's rotate-to-play gate (rank 39) was still a real
+device's job and untouched when this was written; Devon's touch playtests passed (2026-10-03, recorded 2026-10-21, #1008).
 
 **A sink says what an order costs** (#531, #532). The tile-cost row was a design
 question and the arithmetic answered it: on the opening board the order and its
@@ -940,11 +939,12 @@ topping that is not on the shelf), and
 "Difficulty presets" was built on 2026-10-10 to Devon's four answers of
 2026-10-07 (#947, TG-29: Busy Corner is the game as it was, Quiet Corner
 slows the door by 1.3 and lengthens patience by 1.5, switchable from the Menu
-Board mid-shift, one save field; played by no person). The Menu Board, the
+Board mid-shift, one save field; Devon on 2026-10-21, #1008: "Fine as is", and
+the board need not say Quiet earns less). The Menu Board, the
 queue, the stations row, the station tab bar and the open station's panel keep
 the keyboard across a redraw since 2026-10-15 (#968, #969, #972, TG-29); a
 button whose purchase or place changed is a new element and still drops it,
-listed in the wishlist. Nothing from it is in the
+listed in the wishlist; he kept that default on 2026-10-21 (#1008). Nothing from it is in the
 ranked table, and putting one there is a judgement call a session may make.
 
 **`npm run check` and `npm run social:check` now run on every pull request**,
@@ -1082,19 +1082,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Gate | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 15 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 | GPU, phone |  | [The site itself](#the-site-itself) |
-| 16 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 | ears |  | [Golden Hour](#golden-hour) |
-| 17 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 | GPU |  | [Golden Hour](#golden-hour) |
-| 18 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 | phone |  | [Golden Hour](#golden-hour) |
-| 19 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 | GPU |  | [Blue Hour](#blue-hour) |
-| 20 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 | phone |  | [Blue Hour](#blue-hour) |
-| 21 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 | ears |  | [Blue Hour](#blue-hour) |
-| 23 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
-| 25 | R13's three named levels are built: Boulevard (the two-lane corridor, #926, #928), Cross Town (three boxes the ambulance crosses, #929; 150 s on its clock and a 270 s run since #949, on Devon's answer) and Lights Out (an outage on a timed corridor, #933), after Market Ring (#782). R13 lists no further level. Three of its engine units shipped on 2026-10-12: an ambulance still on the map when a run ends is late and the end card says where it was (#955; Cross Town keeps its 270 s); the true offset is written back when the lights return, so Lights Out's slider drops to 0 and its answer is 16 again (#959: no run moved, the pinned slider values did, 32 to 16 and 24 to 8); and a scripted vehicle takes a `route`, one turn a box (#960: no shipped level names one, so nothing moved). A fourth shipped on 2026-10-21: a box coming back from dark holds at its edge the cars the four-way was holding (#957; 13 crashes in 48 runs of a 20 s outage to 0), landed on Devon's word with Rush Hour re-pinned (no input one star on 4 seeds of 6 and not 6, the hand three stars on 5 and not 6, both moved crashes hazards the level already had); and on Devon's answer of the same day an ambulance that crashes is late and never escorted, where the tow used to read as an arrival on time (#1004; no shipped run moved). What it leaves is one level call, about a half (the Size cell is R13's and was not re-sized). The level call, Cross Town with turning traffic: `route: ['T', 'T', 'T']` on its ambulance and weights in `turns`, then its two tables and its stars again, since every car ahead of the ambulance may now turn across it. All in `WISHLIST.md` Known gaps. Nobody has played Cross Town at 150 s, where the call alone earns the second star, and nobody has watched Lights Out's slider drop by itself. Needs nothing but a container | `Projects/signal-city` | 2+ | Fable 5.1 |  |  | [Signal City](#signal-city); `WISHLIST.md` R13 |
-| 29 | Hard melee heroes still last-hit below normal in a hard-versus-hard match: 17.9 against 18.8 at 10 minutes over 12 seeds (#948), about what two such means differ by from noise. The melee core in a lane against two ranged heroes dies as often as normal's now (2.2 against 2.5) and takes 16.7 last hits against normal's 19.7; the melee heroes in the middle lane take 18.5 against 21.3, not looked into. Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
-| 30 | A contest of Grimmaw between hard bots is lost: over 12 seeds the defenders came out ahead in 1 of 10 and lost 19 heroes for 5 (#950). The count was never the trouble: 29 of 48 real attempts are contested, and #751's 0.8 to 3.2 counted plans dropped before he was touched. Two rules tried and not kept. Headless seeds, no hardware | `Projects/throneshard` | ½ | Opus 5 |  |  | [Throneshard](#throneshard) |
-| 31 | Wants a person's look on a real graphics card: Piercing Gale's corkscrew and the rune auras' rims were rebuilt and judged from software-rendered captures (#952). The spiral went from about 1,000 visible pixels to 8,400 to 43,400; each aura has a hard rim, and the arcane glyph no longer sits under the river. Nothing is left to build unless the look says so | `Projects/throneshard` | ¼ | Opus 5 | GPU |  | [Throneshard](#throneshard) |
-| 32 | One look on real hardware: the card preview is a SwiftShader draft (#749), and the every-second-frame shadow map was judged from a frame sequence (#753) | `Projects/throneshard` | ¼ | Sonnet 5 | GPU |  | [Throneshard](#throneshard) |
+| 25 | R13's three named levels are built: Boulevard (the two-lane corridor, #926, #928), Cross Town (three boxes the ambulance crosses, #929; 150 s on its clock and a 270 s run since #949, on Devon's answer) and Lights Out (an outage on a timed corridor, #933), after Market Ring (#782). R13 lists no further level. Three of its engine units shipped on 2026-10-12: an ambulance still on the map when a run ends is late and the end card says where it was (#955; Cross Town keeps its 270 s); the true offset is written back when the lights return, so Lights Out's slider drops to 0 and its answer is 16 again (#959: no run moved, the pinned slider values did, 32 to 16 and 24 to 8); and a scripted vehicle takes a `route`, one turn a box (#960: no shipped level names one, so nothing moved). A fourth shipped on 2026-10-21: a box coming back from dark holds at its edge the cars the four-way was holding (#957; 13 crashes in 48 runs of a 20 s outage to 0), landed on Devon's word with Rush Hour re-pinned (no input one star on 4 seeds of 6 and not 6, the hand three stars on 5 and not 6, both moved crashes hazards the level already had); and on Devon's answer of the same day an ambulance that crashes is late and never escorted, where the tow used to read as an arrival on time (#1004; no shipped run moved). What it leaves is one level call, about a half (the Size cell is R13's and was not re-sized). The level call, Cross Town with turning traffic: `route: ['T', 'T', 'T']` on its ambulance and weights in `turns`, then its two tables and its stars again, since every car ahead of the ambulance may now turn across it. All in `WISHLIST.md` Known gaps. Devon's answers of 2026-10-21 (#1008) close two things the row carried: Cross Town stays at 150 s, and Lights Out's slider dropping to 0 at 90 s reads as true, so both stay as built. Needs nothing but a container | `Projects/signal-city` | 2+ | Fable 5.1 |  |  | [Signal City](#signal-city); `WISHLIST.md` R13 |
 
 ## Parked — needs a person at a real device
 
@@ -1379,7 +1367,9 @@ all three questions that stood here on 2026-10-05: the flagging pass, go; the
 the third are built; the rewrite has its third increment (#894, #899, #937).
 
 1. **The spell map's 1,087 "partial" entries: the flagging pass is done**
-   (#886, 2026-10-05), and the list is Devon's to read. They were written by a
+   (#886, 2026-10-05), and **Devon read the weakest 47 and the rewritten
+   abilities on 2026-10-21 (#1008, PF-spells): "Done: looks fine"**; what
+   follows is the item as it stood. They were written by a
    second pass that fixed the first pass's misses and no person has read them.
    `node Pathfinder/converter-assets/flag-partials.mjs` scores every one on
    fourteen measured reasons and writes the 47 weakest (score 8 or more) to
@@ -1438,6 +1428,7 @@ the third are built; the rewrite has its third increment (#894, #899, #937).
      rule and not the stat line, and PF1e's two Reflex saves are one basic
      save; two negative levels are drained 2 a hit, capped at drained 4, with
      temporary Hit Points equal to the level and the DC moved to the hit.
+     **He kept all four on 2026-10-21 (#1008, PF-rulings: "Keep the default").**
      Nobody has read the 37 at a table.
    - **`converter-abilities.test.mjs` is in `site-ci.yml` since 2026-10-06**,
      under "Pathfinder converter" with the Foundry suite. Neither line has run
@@ -1697,8 +1688,8 @@ three investors, 2% a side, 200 XP. `tools/smoke.mjs` 270 → 270 + 89 = **359**
 **Nothing about the tier is open.** What it deliberately did not do is the
 seller side (#515) — representing the seller of a building wants a rent roll,
 an offering memorandum and a broker's opinion of value where `seller.js` has
-staging tiers, photo tiers and weekend open houses. **Designed, not built,
-waits for Devon's read** (#954, 2026-10-11, on his answer of 2026-10-07 "let's
+staging tiers, photo tiers and weekend open houses. **Designed, not built;
+Devon read it and answered all twelve questions on 2026-10-21 (#1008)** (#954, 2026-10-11, on his answer of 2026-10-07 "let's
 write the design"): `Projects/Closing Time/DESIGN-seller-commercial.md`. Offers
 are written on the packet and closings happen on the building; the rent roll
 (2 actions, 5 days) is worth 6% of gross value to every offer, the memorandum
@@ -1707,17 +1698,27 @@ of value (1 action) moves what the seller expects and so what they will sign.
 Measured on a scratch reimplementation: a median 23 days to an offer worth
 taking against a house's 12, $19,825 gross against $12,120, about the same
 money per day a client slot is held. Twelve questions for Devon are in its
-section 10 and are not in the table below; three sessions to build once he has
-answered. It is **not in the ranked table** and should not go there before his
-read. The two things it read in the code on the way were both real and are
+section 10 and are not in the table below. Ten of his answers are the
+design's assumed options (CT-1 the seller can refuse under 90%, CT-2 the true
+value at due diligence, CT-3 the agent pays for prep up front, CT-6 the investor
+tour last, CT-7 no own buyer on own listing, CT-8 215 XP, CT-9 three new
+buildings, CT-10 keep the 45 to 70% walk-away chance, CT-11 an autopilot that
+plays a whole career, CT-12 only building sellers gated by tier). **Two changed
+from the design**: CT-4, an unverified rent roll is **required before listing**
+(the design had a 6% penalty that could be skipped), and CT-5, fixing a defect
+before the sale is **a trade that costs days** (the design left it out). The
+build, three sessions with the first having no screen, can start on the design
+with those two changed. It is **not in the ranked table**: ranking it is the
+next re-ranking's, not a session's. The two things it read in the code on the way were both real and are
 fixed (#956, 2026-10-12): `repairCareer()` puts a client file added since a
 career began on the end of that career's queue, lowest rung first and then by
 id, and the `bonusReferral` event (`ev_ruth_referral`) asks the same
 `inReach()` the other three doors of #514 now ask, and does not fire with
 nobody in reach. Two doors that queue the same client on one day make one
 record of them now (#977, 2026-10-15). Seen beside them and not changed: a
-seller passes every door whatever their tier, which is the design's question
-12.
+seller passes every door whatever their tier, which was the design's question
+12 and is answered: building sellers are gated by career tier, house sellers
+are open to all.
 
 From the README's own "Design notes for future expansion", which was this
 project's only plan and is being retired from that file:
@@ -1793,6 +1794,10 @@ What's left:
    the dune line as from the waterline, and now the waterline moves 9.3 m.
    Deliberately not guessed at in the tide's own PR — a gain curve tuned
    without ears is the thing this row exists to stop.
+   **Answered 2026-10-03, recorded 2026-10-21 (#1008): the ears pass sounds
+   good.** Devon heard the beach and the night and had nothing to change, so no
+   gain curve is built from this item; the surf's missing distance term stays a
+   gap he did not hear, to be built only if he says so.
    **And the night's two new movers** (#633): the owl's 80 to 140 s between
    hunts and the fireflies' two-minute drift to the fire are as unwatched as
    the bait ball's interval was.
@@ -1802,6 +1807,8 @@ What's left:
    (water stays the dominant relative cost); the actual absolute numbers on a
    weak integrated GPU are still unmeasured. `renderer.info` at the widest home
    view reads 157 draw calls and 316k triangles, against a 300-call budget.
+   **Answered 2026-10-21 (#1008): "Done: looks fine"** on a real low-end GPU
+   (GH-gpu), with no frame numbers given, so none are written here.
 3. **Preview recapture and board card refresh. Closed 2026-09-24** (#630,
    PR #392). The card names the night, the tide, the lighthouse, the stones
    and the journal on `index.html` and `landing.html`, and the new frame has
@@ -1809,7 +1816,8 @@ What's left:
    pass recaptures it with `npm run previews golden-hour` and
    `npm run promote golden-hour`.
 4. **Touch playtest on a real phone:** the pill-as-throw-control needs a thumb
-   on glass, not a mouse pretending.
+   on glass, not a mouse pretending. **Answered 2026-10-03, recorded 2026-10-21
+   (#1008): the touch playtest passes.**
 5. **The owl hunts and the fireflies drift toward the fire. Closed 2026-09-24**
    (#633, PR #395). The condition, "if night proves popular", sets the
    row's priority, not what the page is, so the batch naming it was the ask.
@@ -1826,8 +1834,8 @@ What's left:
    a reload that keeps the journal and resets the sun. Each was broken once
    from green. Footprint-counting on the wet band was not added: it is a
    real-time walk, and #53 makes it a maybe.
-7. **A bar and a runnel: built as a try on 2026-10-11 (#953), waiting for
-   Devon's walk.** East of the pier, x 325 to 415: a ridge 13 m out with its
+7. **A bar and a runnel: built as a try on 2026-10-11 (#953), kept on
+   Devon's word of 2026-10-21 (#1008, GH-sandbar: "Keep it"; his walk is done).** East of the pier, x 325 to 415: a ridge 13 m out with its
    crest at -0.03, a channel behind it, and a ford across the channel's middle
    at -0.12. Low water leaves the ford and 61 m of bar dry with standing sea
    in the channel either side; the channel fills from its ends, the ford goes
@@ -1838,9 +1846,9 @@ What's left:
    clamp, the bar has two foam strips and a wet-sand patch of its own, and
    footprints read the ground. `test/smoke.mjs` 135 to 158. To take it out:
    revert its commit.
-   **What is left:** Devon's walk (the beach at x 370 at low water, out over
-   the ford to the bar, wait for the tide; the bar is a straight ridge and its
-   channel-side foam reads as a grey kerb in software-rendered frames). No
+   **What is left:** his walk is done and the bar stays (the bar is a straight
+   ridge and its channel-side foam read as a grey kerb in software-rendered
+   frames). No
    foam is drawn round the tip of the water where the channel runs dry beside
    the ford, no bird or crab is placed on the bar, the surf sound does not
    know it, and nothing in a browser suite walks it. The crest sits in a 4 cm
@@ -2054,15 +2062,21 @@ move; the pool water stays procedural. `test/props.mjs`, 29 checks on port
    numbers are honest and comfortable — 35 draw calls, 280k triangles against a
    budget of 300 — but this piece leans hard on large transparent billboards in
    fog, which is fill-rate cost software rasterization reports very differently.
+   **Answered 2026-10-21 (#1008): "Done: looks fine"** on a real GPU for the
+   mist fill and the headlamp (GH-gpu), with no frame numbers given, so none
+   are written here.
 4. **A touch playtest on real glass.** The hold-the-bottom-third-to-walk scheme
    has never had a thumb on it — and the logbook's hold-the-chip-to-read and
-   the headlamp button have joined it untested.
+   the headlamp button have joined it untested. **Answered 2026-10-03,
+   recorded 2026-10-21 (#1008): the touch playtest passes.**
 5. **An hour on the trail with ears on.** The dread cooldowns (55–100 s, first
    beat at 70 s) and the fog periods (211 s and 337 s) are unheard guesses; the
    drone gains, the new radio/transmission stingers, the headlamp partial and
    the descending phantom curve are too. They want a real walk, not a scrub. If
    Devon plays a build and leaves listening notes, tune the constants from
-   them; session 4 left every level as authored.
+   them; session 4 left every level as authored. **Answered 2026-10-03,
+   recorded 2026-10-21 (#1008): the trail with ears on sounds good**, so
+   every level stays as authored.
 6. **The causeway — closed 2026-09-16** (#523 to #527, Q44 struck). The first
    of the three ways out: the hill's climb is `hillProfile(z)`, the trail's own
    height read by z, and the trail sits on the hillside everywhere by
@@ -2336,7 +2350,8 @@ take no road. Its outline, and what was measured before and after, is
 endings, 519 paths and 3,775 words where there were 25, 36, 5, 171 and 2,591.
 Deeper side content was not asked for and was not written.
 
-1. **NOBODY HAS READ IT.** Devon should play the seam through once (the fourth
+1. **Read and kept, 2026-10-21 (#1008, FC-prong): "Read it: keep"** (the fourth prong and the
+   title's outline stay). What follows is the item as it stood. Devon should play the seam through once (the fourth
    choice on the first screen; both of its endings are reachable in two runs,
    "The Last Waking" only with a name of your own and nothing picked up at
    Roseleaf) and say whether it sounds like his game. Every word of it is
@@ -2347,7 +2362,11 @@ Deeper side content was not asked for and was not written.
 2. **A walker is told nothing about why "The Last Waking" is not on offer**
    when they come to the hollow with a piece or a borne name. The prose hints
    at it twice; the game's unused `.locked-note` style would say it outright.
-   Left as a choice for whoever reads it.
+   **Decided 2026-10-21 (#1008, FC-locked): "Add a line"** (he changed the
+   default, "no line"). Build it: one line, in the `.locked-note` style, that
+   tells a walker why that ending is not on offer. A small unit, buildable now;
+   the line's wording is the builder's, and the seam's text is pinned by hash,
+   so a change to it moves the suite's pinned runs.
 3. **The preview and the social card still show the game as it was.** The
    capture takes the first choice every time, so it never walks the seam and
    needs no re-take; the board's description does not count endings.
@@ -2412,7 +2431,9 @@ wants, not a placeholder for a "real" save); no `reset` button on the save bar
    correctly keyed to pointer type, not viewport width) — this environment's
    browser reports a fine pointer even at a 375×812 viewport, so
    `matchMedia("(pointer:coarse)")` never flips true here regardless of window
-   size. Needs different hardware to actually see it trigger.
+   size. Needs different hardware to actually see it trigger. **Answered
+   2026-10-03, recorded 2026-10-21 (#1008): the touch playtests pass**, and
+   the Selector's record counts this one with them.
 3. **The site's save bar. Shipped 2026-10-07** (#925), on Devon's yes to Q52
    (2026-10-05). `js/save.mjs` holds one slot through `gvb-save.js` on
    `orbital_progress_v2`, and the sector map has Export and Import; Reset
@@ -2555,7 +2576,10 @@ and the rest of M7 in PR #348 (2026-09-22, #571 to #576)**: items 1 to
 13 below are done (M8 in PRs #355 and #358), and M9 in PRs #362, #367 and #373 (the grid, endless, the sandbox): 919 checks across nine suites, all in Site CI. **Milestones 0 to 9 are done and the ranked row is retired.** What comes
 next is the **Roadmap** in `Projects/signal-city/WISHLIST.md` (2026-09-24):
 R1 to R14 in build order, all runnable in a cloud container, then H1 to H4,
-which need a real device, ears or a person. It absorbs the items that were
+which needed a real device, ears or a person and were all answered by Devon on
+2026-10-07 (phone support dropped, pacing and sound fine, a first-time player
+understood it). On 2026-10-21 (#1008) he kept Cross Town at 150 s and Lights Out's
+slider dropping to 0 at 90 s, and said an ambulance that crashes is late. It absorbs the items that were
 open here (the `games.mjs` recipe and preview capture are R5, the trucker's
 sweep is R11, the one-box priority corridor is R6). R1 (¼) shipped in PR #399
 (#636, #637): the calibration tool's `--baseline` and `--hand`, which
@@ -2678,7 +2702,13 @@ Settings; `HISTORY.md` #749 to #755). Rift Wall got its gameplay wall on
 2026-10-10 (#938, old rank 27), and the two new heroes went in the same day
 (old rank 28): Ormund the Tollkeeper on the spare model `rift_stalker` (#941)
 and Tobren the Lotcaster on `bone_shaman` (#943). Open, and **ranked 29 to
-32** in the order the table gives, not this list's:
+32** in the order the table gives, not this list's: **all four were closed by
+Devon on 2026-10-21 (#1008)**: the bots stop (TS-bots, "Stop: leave the bots as
+they are", so the first two items are not to be handed out again), and the GPU
+looks are done (TS-vfx and TS-heroes "Done: looks fine"; the card preview and
+shadow cadence had his "All looks good here" of 2026-10-07). The spare models
+(TS-models) and the three-lane layout (TS-lanes) are kept. The items stay
+below as the record of what was measured.
 
 - Hard melee heroes still last-hit below normal in a hard-versus-hard match:
   17.9 against 18.8 at 10 minutes over 12 seeds, each match in a fresh browser
@@ -2766,7 +2796,7 @@ and nothing is today. The four rows this line used to cite, Golden Hour's
 `?debug` beats and preview recapture and Blue Hour's `games.mjs` entry and
 preview recipe, shipped together on 2026-09-24 (`HISTORY.md`, "The site,
 board-check: Golden Hour's hook and Blue Hour on the board"); the two previews
-are TG-13's dioramas now, so the real-hardware pass (rank 15) has no preview of theirs to recapture. The
+are TG-13's dioramas now, so the real-hardware pass (rank 15, answered 2026-10-21 and gone from the table) has no preview of theirs to recapture. The
 four numbers drifted through three renumberings before anyone noticed they
 pointed at shipped rows, so this line cites none now. Castle Conundrum's
 preview promotion was rank 1, was parked, and left with the project (#491);
@@ -2823,7 +2853,8 @@ Three of them are closed.
    2,508), so the raw-under-gzipped rule is not a conservative rule any more
    but the one that matches what a visitor downloads, and #704's slack for a
    host that does not gzip is a live case again. Whether the host is meant
-   to compress them is Q61.
+   to compress them was Q61, and on 2026-10-21 Devon said to turn it on (#1008;
+   a host setting, not a change here).
    Castle Conundrum was the third game and is doing its own version of this in
    its own repo (#491). Not touched: Bell to Bell's four paintings (1.78 MB).
 3. **`gvb-save.js` v2. Closed by PR #325** (#494 to #502): `slot.usage()` and
@@ -2841,6 +2872,11 @@ Three of them are closed.
    2026-09-24. Recapture both (`npm run previews golden-hour`, then
    `blue-hour`), look, and `npm run promote golden-hour blue-hour`; the same
    run is the one that can settle Golden Hour's real-time `play-games` beats.
+   **Answered by Devon, 2026-10-21 (#1008): the real-hardware pass is done.**
+   SITE-prev, the board previews recaptured on a GPU and the tavern at 200%
+   display scaling: "Done: looks fine"; the ears and touch passes were
+   answered on 2026-10-03 and the real-GPU runs the same day; the ranked row
+   (old rank 15) is gone. The two previews are TG-13's dioramas now.
 5. **Ownership. Closed by PR #278** (#354, #355). `Tools/prompt-builder.html`
    was owned by no prompt and hotlinked Google Fonts, and the second was
    downstream of the first: no area owned the page, so no area's round ever
@@ -3022,7 +3058,7 @@ live. Nothing in that column is a link to follow.
 | --- | --- | --- | --- |
 | ~~Q32~~ | ~~**What is the attribute cost curve?** `skills/attributes-vitality.md` gives "Cost to Increase: *Cost of next attribute*" for Prowess, Insight, Fortitude and Vitality — circular, and the escalating numbers appear nowhere in `src/` or `source-material/markdown/`. Are they in the PDF's chart and the conversion dropped it, or genuinely unpublished? **This no longer blocks the builder:** `build-rules.js` leaves those purchases in `cp.unpriced` and flips `cp.exact` false (#305), so a build that raises an attribute comes back with a floor rather than a total. An answer here turns that floor into a number.~~ Struck — answered by Devon, 2026-10-05: **"ignore it"**. Recorded as: leave those purchases unpriced as #305 does, and do not ask again. | 1 | `Numina/WISHLIST.md` |
 | ~~Q34~~ | ~~**Do the eight nations with a blank `capital` have one?** Kindaria, Merrigor, Mists of Eltiel, Myos Islands, the Principalities of the Reach, Rues, T'barris and the Vale of Scyllina are `capital: ""`; five are `demonym: ""` (the Five Duchies' entry says outright that it has none). If the book does not name them, the infobox should collapse rather than render a flag chip over one "See also" row.~~ Struck — answered by Devon, 2026-10-05: **"they have none"**. The eight nations have no capital, so the infobox collapses rather than rendering an empty row. | 2 | wishlist, audit A4 |
-| ~~Q35~~ | ~~**Is the custom-domain move happening, and when — and does `numinalarp.com` serve HTTPS?** The README calls it a one-line `PATH_PREFIX` change and `site.json`'s `origin` feeds every absolute URL, but `test/smoke.mjs` hardcodes both `PREFIX` and `ORIGIN`, and `test/a11y/packet.mjs` hardcodes the prefix too (Phase 7). **The HTTPS half now needs one person and one page load, and nothing else.** Batch 1 could not verify it from its sandbox, and neither could Phase 5, which was refused at the environment's network egress before a request left the box — that says nothing about the host. The links stay `http://` until somebody can load it, because an `http://` link to a host that redirects still works and a `https://` link to a host that does not serve it fails outright (locked #319); the reasoning is a `websiteSchemeNote` key in `site.json` now rather than a checklist line.~~ **Half struck** — answered by Devon, 2026-10-05: the custom-domain move is **"not any time soon"**; the prefix, the origin and the `http://` links stay as they are. **Left open: whether `numinalarp.com` serves HTTPS.** His answer does not address it and nothing here has loaded the page; the links stay `http://` until somebody can say (#319). | 3 | wishlist, audit D4, Numina Phase 5 |
+| ~~Q35~~ | ~~**Is the custom-domain move happening, and when — and does `numinalarp.com` serve HTTPS?** The README calls it a one-line `PATH_PREFIX` change and `site.json`'s `origin` feeds every absolute URL, but `test/smoke.mjs` hardcodes both `PREFIX` and `ORIGIN`, and `test/a11y/packet.mjs` hardcodes the prefix too (Phase 7). **The HTTPS half now needs one person and one page load, and nothing else.** Batch 1 could not verify it from its sandbox, and neither could Phase 5, which was refused at the environment's network egress before a request left the box — that says nothing about the host. The links stay `http://` until somebody can load it, because an `http://` link to a host that redirects still works and a `https://` link to a host that does not serve it fails outright (locked #319); the reasoning is a `websiteSchemeNote` key in `site.json` now rather than a checklist line.~~ **Half struck** — answered by Devon, 2026-10-05: the custom-domain move is **"not any time soon"**; the prefix, the origin and the `http://` links stay as they are. **Left open: whether `numinalarp.com` serves HTTPS.** His answer does not address it and nothing here has loaded the page; the links stay `http://` until somebody can say (#319). **Asked on 2026-10-21 (#1008, NU-https), Devon: "Don't know."** So the links stay `http://`, the question stays open, and it still needs one person and one page load. | 3 | wishlist, audit D4, Numina Phase 5 |
 
 ### The projects with no wishlist
 
@@ -3045,16 +3081,27 @@ The public site moved to Devon's own server behind Cloudflare (his words of
 2026-10-07: "We recently swapped over to my private server, tunneling through
 cloudflare"). What was measured is in #934. These are what cannot be read from
 outside; none blocks anything ranked.
+**All five were answered by Devon on 2026-10-21 (#1008)** and are struck below;
+Q61 is the one that leaves an action, and it is the host's, not the repo's.
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| Q59 | **How does a commit on `main` reach the server, and how long does it take?** A pull on a timer, a webhook, a deploy job, or by hand? On 2026-10-10 the site and `main` were the same commit (`b1f9a3c`) and the server's `last-modified` for `index.html` was four minutes after GitHub Pages' build of it (01:45:17 against 01:41:07 UTC on 2026-10-09), which is one sample and says nothing about the usual lag. A PR here cannot say "live" until this is known. | 1 | #934 |
-| Q60 | **Which machine is it, and who restarts what?** This session's machine (huginn) runs `cloudflared` and an `nginx` in containers whose configuration it cannot read, which suggests it and does not show it. Is huginn the origin, or only where sessions run? What happens to the public site when it reboots, and is the tunnel watched? | 1 | #934 |
-| Q61 | **Should `.glb` and `.gltf` be compressed on the public host?** They are not: `Horse.glb` and `window.gltf` come back at 181,808 and 2,508 bytes with `content-type: application/octet-stream` and no `content-encoding`, where GitHub Pages sent 68,939 and 774. HTML is brotli. The repo cannot change this; it is the origin's or Cloudflare's setting. `Horse.glb` is 2.6 times what it was on the wire; the models that are meshopt-packed were not measured. | 1 | #934 |
-| Q62 | **Should responses carry `cache-control`, and should Cloudflare cache the assets?** None of the responses measured (the page, one `.glb`, one `.gltf`) has a `cache-control`, and `cf-cache-status` is `DYNAMIC` on all of them, so those requests reached his server. Fonts, textures and models are the heavy ones; none of them was measured. | 1 | #934 |
-| Q63 | **Is GitHub Pages meant to stay on as a second copy?** `https://greyversusblue.github.io/tools-and-games/` still answers from GitHub, with the same `index.html` and a gzipped `.glb`, last modified one minute after `b1f9a3c`'s merge. Also listed for him, because deleting is his: `.nojekyll` (404 on the public host, so dotfiles are not served from there, which says nothing about `.git/`, not probed), `.firebaserc`, and the three places that still name `CNAME`, deleted on 2026-10-06 (the "site itself" and Ownership rows in this file, and `Tools/board-check/ownership.json`, which this PR may not touch). Several project READMEs still say "GitHub Pages" for how to host a copy; those are true of any static host and were left. | 1 | #934 |
+| ~~Q59~~ | ~~**How does a commit on `main` reach the server, and how long does it take?** A pull on a timer, a webhook, a deploy job, or by hand? On 2026-10-10 the site and `main` were the same commit (`b1f9a3c`) and the server's `last-modified` for `index.html` was four minutes after GitHub Pages' build of it (01:45:17 against 01:41:07 UTC on 2026-10-09), which is one sample and says nothing about the usual lag. A PR here cannot say "live" until this is known.~~ Struck — answered by Devon, 2026-10-21 (#1008): **"Here's how."** His words: "I edit on machine Huginn, under user devon. When we push commits automatically at 3am, or sometimes manually, it gets sent to github. This then gets pulled back to Huginn on the admin side, which then serves the website via a cloudflare tunnel." Written into `CLAUDE.md`'s host lines. He did not say how long the pull takes, so a PR here still cannot say "live". | 1 | #934 |
+| ~~Q60~~ | ~~**Which machine is it, and who restarts what?** This session's machine (huginn) runs `cloudflared` and an `nginx` in containers whose configuration it cannot read, which suggests it and does not show it. Is huginn the origin, or only where sessions run? What happens to the public site when it reboots, and is the tunnel watched?~~ Struck — answered by Devon, 2026-10-21 (#1008): **keep the default, do not document it.** Which machine is the origin, what a reboot does and whether the tunnel is watched stay out of the repo's docs at his word. | 1 | #934 |
+| ~~Q61~~ | ~~**Should `.glb` and `.gltf` be compressed on the public host?** They are not: `Horse.glb` and `window.gltf` come back at 181,808 and 2,508 bytes with `content-type: application/octet-stream` and no `content-encoding`, where GitHub Pages sent 68,939 and 774. HTML is brotli. The repo cannot change this; it is the origin's or Cloudflare's setting. `Horse.glb` is 2.6 times what it was on the wire; the models that are meshopt-packed were not measured.~~ Struck — answered by Devon, 2026-10-21 (#1008): **"Turn on compression"** (he changed the default, "leave it"). It is not a repo unit and no worker takes it: the setting is on the serving stack on Huginn's admin side or in Cloudflare, so it is Devon's or an admin session's to make. Nothing in this repo was changed to fake it; `CLAUDE.md` says the public host does not compress until a `curl -sI` of a `.glb` shows a `content-encoding`. When it is on, the re-measure is that one request, and the raw-under-gzipped rule in the site's asset-weight note can relax. | 1 | #934 |
+| ~~Q62~~ | ~~**Should responses carry `cache-control`, and should Cloudflare cache the assets?** None of the responses measured (the page, one `.glb`, one `.gltf`) has a `cache-control`, and `cf-cache-status` is `DYNAMIC` on all of them, so those requests reached his server. Fonts, textures and models are the heavy ones; none of them was measured.~~ Struck — answered by Devon, 2026-10-21 (#1008): **leave it** (the default). No `cache-control` is added and Cloudflare's caching is not changed. | 1 | #934 |
+| ~~Q63~~ | ~~**Is GitHub Pages meant to stay on as a second copy?** `https://greyversusblue.github.io/tools-and-games/` still answers from GitHub, with the same `index.html` and a gzipped `.glb`, last modified one minute after `b1f9a3c`'s merge. Also listed for him, because deleting is his: `.nojekyll` (404 on the public host, so dotfiles are not served from there, which says nothing about `.git/`, not probed), `.firebaserc`, and the three places that still name `CNAME`, deleted on 2026-10-06 (the "site itself" and Ownership rows in this file, and `Tools/board-check/ownership.json`, which this PR may not touch). Several project READMEs still say "GitHub Pages" for how to host a copy; those are true of any static host and were left.~~ Struck — answered by Devon, 2026-10-21 (#1008): **keep it all** (the default). GitHub Pages stays on as a second copy, and `.nojekyll`, `.firebaserc` and the three places that name the old `CNAME` stay. Nothing is deleted. | 1 | #934 |
 
 ### Answered, kept here so they are not re-asked
+
+- **Q59 to Q63, the host, were answered by Devon on 2026-10-21** (#1008), in
+  their rows above. A commit reaches the server by his path (Huginn, pushed to
+  GitHub at 3am or by hand, pulled back on the admin side, served through a
+  Cloudflare tunnel), now in `CLAUDE.md`; the origin, restarts and tunnel watch
+  stay undocumented; `.glb` and `.gltf` are to be compressed, which is a host
+  setting and waits on him or an admin session; no caching headers are added;
+  GitHub Pages and its leftovers stay. Taken from his answers file, where the
+  words in bold are his.
 
 - **Eight questions Devon answered on 2026-10-05 were recorded here on
   2026-10-10** (#935), in their rows above, which keep the text of the
