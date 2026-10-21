@@ -453,7 +453,9 @@ export function drawStairLink(g, from, to, options) {
     g.stroke();
   }
   if (!to && options.text) {
-    g.font = '600 11px ' + options.font;
+    // its words grow with the map's labels (options.labelScale, SV2-31b)
+    const large = options.labelScale > 0 ? options.labelScale : 1;
+    g.font = '600 ' + Math.round(11 * large) + 'px ' + options.font;
     g.textAlign = 'left';
     g.textBaseline = 'middle';
     g.lineJoin = 'round';

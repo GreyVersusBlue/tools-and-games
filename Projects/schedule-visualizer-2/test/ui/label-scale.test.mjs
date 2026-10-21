@@ -1,8 +1,10 @@
 // The renderer's labelScale (SV2-31): presentation mode draws every label of
 // the map larger, caps included, by one factor handed to renderer.draw and on
 // to the overlays. Drawn in plain Node on a 2D context that records each text
-// with the size it was written at. At 1 (or with no labelScale) the writes
-// are the same as before the option existed; at 1.5 every size is 1.5 times
+// with the size it was written at. At 1 (or with no labelScale) the canvas
+// is told, call for call, what it was told at be5f4c88, the last commit
+// before the option existed (BASELINE, recorded there with this file's
+// callLog and baselineScenes; SV2-31b); at 1.5 every size is 1.5 times
 // as large where the label has the room, never past 1.5 times its cap, and
 // a label with no room is fitted or left out as at 1. The map in a page is
 // test/browser/present.mjs.
@@ -10,11 +12,12 @@
 //   node test/ui/label-scale.test.mjs
 
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 
 import { createRenderer } from '../../ui/surface/renderer.js';
 import { createViewport, drawnBox, CELL } from '../../ui/surface/viewport.js';
-import { lanesOverlay } from '../../ui/surface/overlays/lanes.js';
+import { lanesOverlay, drawStairLink } from '../../ui/surface/overlays/lanes.js';
 import { sampleSchool } from '../../data/sample-school.js';
 
 // the light theme's tokens (ui/tokens.css), as the canvas reads them
@@ -79,17 +82,138 @@ function kinds(project, floor) {
   };
 }
 
-test('labelScale 1, and no labelScale, write exactly what the renderer wrote before the option: every text at every size', () => {
+// A context that keeps every call made on it and every property set, in
+// order, as text: what the canvas was told, call for call.
+function callLog() {
+  const log = [];
+  const state = { font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic', fillStyle: '#000', strokeStyle: '#000', lineWidth: 1, globalAlpha: 1, lineCap: 'butt', lineJoin: 'miter', letterSpacing: '0px', lineDashOffset: 0, globalCompositeOperation: 'source-over', shadowBlur: 0, shadowColor: 'transparent', imageSmoothingEnabled: true };
+  const stack = [];
+  const size = () => Number(/(\d+(?:\.\d+)?)px/.exec(state.font)[1]);
+  const ctx = {
+    log,
+    measureText(text) {
+      log.push('measureText ' + JSON.stringify(String(text)) + ' ' + state.font);
+      return { width: String(text).length * size() * 0.55, actualBoundingBoxAscent: size() * 0.7, actualBoundingBoxDescent: size() * 0.2 };
+    },
+    save() { log.push('save'); stack.push({ ...state }); },
+    restore() { log.push('restore'); const was = stack.pop(); if (was) Object.assign(state, was); },
+  };
+  for (const name of ['setTransform', 'fillRect', 'strokeRect', 'clearRect', 'beginPath', 'moveTo', 'lineTo', 'stroke', 'fill', 'arc', 'rect', 'clip', 'setLineDash', 'closePath', 'translate', 'rotate', 'scale', 'quadraticCurveTo', 'bezierCurveTo', 'fillText', 'strokeText', 'drawImage', 'ellipse', 'arcTo', 'roundRect']) {
+    ctx[name] = (...args) => { log.push(name + ' ' + JSON.stringify(args.map((arg) => (typeof arg === 'object' && arg !== null && !Array.isArray(arg) ? '[object]' : arg)))); };
+  }
+  for (const key of Object.keys(state)) Object.defineProperty(ctx, key, { get: () => state[key], set: (value) => { log.push(key + '=' + JSON.stringify(value)); state[key] = value; }, enumerable: true });
+  return ctx;
+}
+
+// The scenes the baseline was recorded on: every floor of the sample school
+// at six cell sizes; with the plan map's clip and with names over; a stairs
+// cell with no connection (the problem "!"); the lanes overlay's load,
+// names and period pills; a stair link with and without its words.
+// `extra` is added to every scene (labelScale: 1, or nothing).
+function baselineScenes(modules, extra) {
+  const { createRenderer, createViewport, drawnBox, CELL, lanesOverlay, drawStairLink, sampleSchool } = modules;
+  const out = {};
+  function drawOne(project, floor, cell, more) {
+    const g = callLog();
+    const canvas = { isConnected: true, width: 0, height: 0, getContext: () => g };
+    const renderer = createRenderer(canvas);
+    const view = createViewport();
+    view.resize(4000, 3000);
+    const box = drawnBox(floor);
+    view.zoom = cell / CELL;
+    view.x = 40 - box.x * cell;
+    view.y = 40 - box.y * cell;
+    renderer.resize(4000, 3000, 1);
+    renderer.draw({ project, floor, view, selection: [], hover: null, cursor: null, preview: null, ...more, ...extra });
+    return g.log;
+  }
   const project = sampleSchool();
   for (const floor of project.building.floors) {
-    for (const cell of [10, 16, 24, 40, 64]) {
-      const plain = drawFloor(project, floor, cell, {});
-      assert.deepEqual(drawFloor(project, floor, cell, { labelScale: 1 }), plain, floor.name + ' at ' + cell + ' px: labelScale 1 changed a write');
-      // a value that is no scale is 1
-      assert.deepEqual(drawFloor(project, floor, cell, { labelScale: 0 }), plain, floor.name + ' at ' + cell + ' px: labelScale 0 is not read as 1');
-      assert.deepEqual(drawFloor(project, floor, cell, { labelScale: Number.NaN }), plain, floor.name + ' at ' + cell + ' px: labelScale NaN is not read as 1');
-    }
+    for (const cell of [10, 16, 24, 40, 64, 90]) out[floor.name + ' at ' + cell] = drawOne(project, floor, cell, {});
+    const box = drawnBox(floor);
+    out[floor.name + ' clipped, names over, at 24'] = drawOne(project, floor, 24, { clip: { x: box.x + 1, y: box.y, w: box.w - 2, h: box.h }, namesOver: true });
   }
+  // a stairs cell nothing connects: the renderer's "!"
+  const lone = sampleSchool();
+  const floor = lone.building.floors[0];
+  const owned = new Set(floor.spaces.flatMap((space) => space.cells));
+  const at = Array.from(floor.cells).findIndex((c, i) => c === '.' && !owned.has(i) && floor.cells[i + 1] === '#');
+  floor.cells = floor.cells.slice(0, at) + 'S' + floor.cells.slice(at + 1);
+  for (const cell of [16, 24, 40, 64]) out['a stairs cell with no connection at ' + cell] = drawOne(lone, floor, cell, {});
+  // the lanes overlay: load bands, names over them, period pills
+  const first = project.building.floors[0];
+  const bands = new Map([[first.id, new Uint8Array(first.width * first.height).fill(1)]]);
+  const markers = new Map([[first.id, [{ box: { x0: 0, y0: 0, x1: first.width, y1: first.height }, pills: [{ colour: '#d1495b', text: 'P1' }, { colour: '#0072b2', text: 'P2' }] }]]]);
+  const overlay = lanesOverlay(() => ({ bands, markers, lanes: null, labels: true, bandColours: ['#e9eef2', '#bcd7e8', '#7fb3d5', '#d98a3e', '#b3261e'], colourOf: () => '#000000' }));
+  for (const cell of [16, 20, 24, 40]) out['the lanes overlay at ' + cell] = drawOne(project, first, cell, { overlays: [overlay] });
+  // a stair link between two ends, and one whose other end is off the map, with its words
+  for (const [name, to, words] of [['between two ends', { x: 300, y: 140 }, null], ['to another floor', null, 'A to Floor 2']]) {
+    const g = callLog();
+    const style = { colour: '#1f2328', edge: '#fffdf8', width: 3, font: 'sans-serif', ink: '#1f2328', ...(words ? { text: words } : {}), ...extra };
+    drawStairLink(g, { x: 100, y: 200 }, to, style);
+    out['a stair link ' + name] = g.log;
+  }
+  return out;
+}
+
+// What the drawing of each scene was at be5f4c88, before labelScale: the
+// first 16 hex digits of the SHA-256 of its call log (one call a line) and
+// the number of calls. Recorded by running baselineScenes on that commit's
+// renderer.js, lanes.js, viewport.js and sample school (git archive
+// be5f4c88), unchanged since but for labelScale.
+const BASELINE = {
+  "Floor 1 at 10": "27ff385ff8611d34 599",
+  "Floor 1 at 16": "7036aa11b3a2e4d9 654",
+  "Floor 1 at 24": "42ed240569f1c7e8 694",
+  "Floor 1 at 40": "9b7f7ceb1538815f 742",
+  "Floor 1 at 64": "21ee4195caffd70d 802",
+  "Floor 1 at 90": "a191a7b4b601dd28 868",
+  "Floor 1 clipped, names over, at 24": "c60a23435b1b6061 706",
+  "Floor 2 at 10": "3e858d1c8263f218 502",
+  "Floor 2 at 16": "fc45ab98bd39d840 515",
+  "Floor 2 at 24": "2f9c2d76478ed4a3 535",
+  "Floor 2 at 40": "30d3d4e97ba408c7 535",
+  "Floor 2 at 64": "d7e0640bbf623e9b 535",
+  "Floor 2 at 90": "d431965240fe1389 535",
+  "Floor 2 clipped, names over, at 24": "9cd92e3079572180 539",
+  "Floor 3 at 10": "bbba8d7835e3553d 433",
+  "Floor 3 at 16": "f76e7b42cccf7c34 457",
+  "Floor 3 at 24": "f046b66a7ec27935 475",
+  "Floor 3 at 40": "89933343b7f62401 475",
+  "Floor 3 at 64": "614e4e7e56ca2fe5 473",
+  "Floor 3 at 90": "8517d5d34905d4be 473",
+  "Floor 3 clipped, names over, at 24": "bae597845283d89b 483",
+  "a stairs cell with no connection at 16": "74f653d9f7b3900a 672",
+  "a stairs cell with no connection at 24": "0e80a5b580d1f782 715",
+  "a stairs cell with no connection at 40": "f0f3a11044c90f15 763",
+  "a stairs cell with no connection at 64": "b0fe317c349715ed 823",
+  "the lanes overlay at 16": "93c58aa8584c9b33 736",
+  "the lanes overlay at 20": "fd89dea9459f9b58 766",
+  "the lanes overlay at 24": "27466a92f6f6d3bf 782",
+  "the lanes overlay at 40": "493697785ca994ad 830",
+  "a stair link between two ends": "0109e16af7b4331f 32",
+  "a stair link to another floor": "aa6a3b0c6b09885e 34",
+};
+
+const MODULES = { createRenderer, createViewport, drawnBox, CELL, lanesOverlay, drawStairLink, sampleSchool };
+const digest = (log) => createHash('sha256').update(log.join('\n')).digest('hex').slice(0, 16) + ' ' + log.length;
+
+test('labelScale 1, and no labelScale, tell the canvas call for call what be5f4c88 did, before the option existed', () => {
+  // a value that is no scale is 1
+  for (const [name, extra] of [['no labelScale', {}], ['labelScale 1', { labelScale: 1 }], ['labelScale 0', { labelScale: 0 }], ['labelScale NaN', { labelScale: Number.NaN }]]) {
+    const scenes = baselineScenes(MODULES, extra);
+    assert.deepEqual(Object.keys(scenes), Object.keys(BASELINE), 'the scenes are not the ones recorded');
+    for (const [key, log] of Object.entries(scenes)) assert.equal(digest(log), BASELINE[key], name + ', ' + key + ': the drawing is not the one recorded at be5f4c88');
+  }
+});
+
+test('the baseline\'s scenes write labels of every kind the scale reaches, the problem "!" and a stair link\'s words among them', () => {
+  const all = Object.values(baselineScenes(MODULES, {})).flat();
+  const texts = all.filter((line) => line.startsWith('fillText '));
+  assert.ok(texts.length >= 400, 'only ' + texts.length + ' texts written: the baseline tests little');
+  assert.ok(texts.some((line) => line.startsWith('fillText ["!"')), 'no problem "!" in the scenes');
+  assert.ok(texts.some((line) => line.startsWith('fillText ["A to Floor 2"')), 'no stair link words in the scenes');
+  assert.ok(texts.some((line) => line.startsWith('fillText ["P1"')), 'no period pill in the scenes');
 });
 
 test('labelScale 1.5 at a middling zoom: corridor and door names are 1.5 times their size at 1, and a room number with the room grows', () => {
@@ -189,4 +313,28 @@ test('the overlays are handed the scale: the lanes\' period pills and the corrid
   // the renderer's own corridor name, then the overlay's over the load, both at 15
   assert.deepEqual(corridor(large).filter((size) => size !== 15), [], 'a corridor name over the load is not 1.5 times as large: ' + corridor(large));
   assert.ok(corridor(one).every((size) => size === 10), 'the corridor names at 1: ' + corridor(one));
+});
+
+test('labelScale 1.5 reaches a stair link\'s words and the problem "!" on a stairs cell nothing connects (SV2-31b)', () => {
+  // a stair link to another floor: its words at 11 px, 17 at 1.5 (whole pixels)
+  const words = (extra) => {
+    const g = recorder();
+    drawStairLink(g, { x: 100, y: 200 }, null, { colour: '#1f2328', edge: '#fffdf8', width: 3, font: 'sans-serif', ink: '#1f2328', text: 'A to Floor 2', ...extra });
+    return fills(g.writes).map((w) => w.size);
+  };
+  assert.deepEqual(words({}), [11], 'a stair link\'s words at 1');
+  assert.deepEqual(words({ labelScale: 1 }), [11], 'a stair link\'s words at labelScale 1');
+  assert.deepEqual(words({ labelScale: 1.5 }), [17], 'a stair link\'s words are not 1.5 times as large');
+  // the "!": a disc of min(7, 0.22 of the cell) px radius with the mark at 1.7 times it; 1.5 times both
+  const project = sampleSchool();
+  const floor = project.building.floors[0];
+  const owned = new Set(floor.spaces.flatMap((space) => space.cells));
+  const at = Array.from(floor.cells).findIndex((c, i) => c === '.' && !owned.has(i) && floor.cells[i + 1] === '#');
+  floor.cells = floor.cells.slice(0, at) + 'S' + floor.cells.slice(at + 1);
+  const bang = (cell, extra) => fills(drawFloor(project, floor, cell, extra)).filter((w) => w.text === '!').map((w) => w.size);
+  assert.deepEqual(bang(40, {}), [12], 'the "!" at 1 and 40 px');
+  assert.deepEqual(bang(40, { labelScale: 1.5 }), [18], 'the "!" is not 1.5 times as large at 40 px');
+  // at 20 px the disc is 4.4 px at 1, too small for the mark; 6.6 at 1.5 carries it
+  assert.deepEqual(bang(20, {}), [], 'the "!" at 1 and 20 px');
+  assert.deepEqual(bang(20, { labelScale: 1.5 }), [11], 'the "!" at 1.5 and 20 px');
 });

@@ -413,7 +413,8 @@ export function createRenderer(canvas) {
         }
       }
       if (letter === '') {
-        const r = Math.max(2, Math.min(7, w * 0.22));
+        // the mark and its "!" grow with the labels (labelScale, SV2-31b)
+        const r = Math.max(2, Math.min(7 * large, w * 0.22 * large));
         const cx = left + w - r - 1;
         const cy = top + r + 1;
         g.beginPath();
