@@ -50,3 +50,12 @@ export function progress(project) {
 export function showGettingStarted(project) {
   return !project.onboarding.dismissed && !project.onboarding.neverShow;
 }
+
+// "Don't show this again" outlives the project it was said in: the sample
+// school loaded, removed, or a new project started in its place keeps it
+// (Dismiss is for this project only, and does not come across). `next` is a
+// project not yet in the store; it is changed in place and returned.
+export function keepNeverShow(before, next) {
+  if (before && before.onboarding && before.onboarding.neverShow === true) next.onboarding = { ...next.onboarding, neverShow: true };
+  return next;
+}

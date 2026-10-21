@@ -25,6 +25,7 @@ import { openMenu, closeMenu } from './components/menu.js';
 import { createToasts } from './components/toast.js';
 import { field } from './components/field.js';
 import { openHelp as showHelp } from './help/index.js';
+import { keepNeverShow } from './help/progress.js';
 import { gettingStarted } from './components/getting-started.js';
 import { paperForRegion } from './project/settings.js';
 
@@ -331,7 +332,7 @@ async function boot() {
       });
       if (!ok) return;
     }
-    const sample = sampleSchool();
+    const sample = keepNeverShow(now, sampleSchool());
     sample.settings.theme = now.settings.theme;
     store.apply(replaceProject, { project: sample, label: 'Load the sample school' });
     toast({ text: 'Loaded the sample school.', action: { label: 'Undo', run: undo } });
@@ -340,7 +341,7 @@ async function boot() {
   function removeSample() {
     const now = store.project;
     if (now.id !== SAMPLE_PROJECT_ID) return;
-    const empty = newProject(ids, clock, { paperSize: devicePaper(), passcode: DEFAULT_PASSCODE });
+    const empty = keepNeverShow(now, newProject(ids, clock, { paperSize: devicePaper(), passcode: DEFAULT_PASSCODE }));
     empty.settings.theme = now.settings.theme;
     store.apply(replaceProject, { project: empty, label: 'Remove the sample school' });
     toast({ text: 'Removed the sample school. This is an empty project.', action: { label: 'Undo', run: undo } });

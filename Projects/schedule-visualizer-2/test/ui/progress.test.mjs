@@ -5,7 +5,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { progress, showGettingStarted, STEPS } from '../../ui/help/progress.js';
+import { progress, showGettingStarted, keepNeverShow, STEPS } from '../../ui/help/progress.js';
+import { freshProject } from '../../ui/project/clear.js';
 import { newProject, newRoom } from '../../engine/schema.js';
 import { createIds, seededRandom } from '../../engine/ids.js';
 import { sampleSchool } from '../../data/sample-school.js';
@@ -105,4 +106,21 @@ test('the card shows until it is dismissed or never wanted again', () => {
   project.onboarding.dismissed = false;
   project.onboarding.neverShow = true;
   assert.equal(showGettingStarted(project), false);
+});
+
+test('"Don\'t show this again" comes across to the project put in this one\'s place; Dismiss does not', () => {
+  const said = empty();
+  said.onboarding.neverShow = true;
+  const sample = keepNeverShow(said, sampleSchool());
+  assert.equal(sample.onboarding.neverShow, true, 'the sample school loaded after "never"');
+  assert.equal(showGettingStarted(sample), false);
+  const fresh = freshProject(said, createIds(seededRandom(2)), clock);
+  assert.equal(fresh.onboarding.neverShow, true, 'a new project started after "never"');
+  assert.equal(showGettingStarted(fresh), false);
+
+  const dismissed = empty();
+  dismissed.onboarding.dismissed = true;
+  assert.equal(showGettingStarted(keepNeverShow(dismissed, sampleSchool())), true, 'Dismiss is for one project');
+  assert.equal(showGettingStarted(freshProject(dismissed, createIds(seededRandom(3)), clock)), true);
+  assert.equal(keepNeverShow(empty(), sampleSchool()).onboarding.neverShow, false);
 });
