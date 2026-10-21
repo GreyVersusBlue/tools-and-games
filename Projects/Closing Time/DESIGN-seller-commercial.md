@@ -19,6 +19,19 @@ carried as the amendments under 2.1 and 2.7 say. The seller is a suite fixture
 career can be handed a building to list until session 2 builds the flows and
 moves the file into `data/`.*
 
+*Session 2 of 3 is built (2026-10-21, #1010), and the tier is playable:
+section 5.2 in `engine/offering.js`, 5.3's changes, the listing file, the offer
+row and the two modals, with the CT-4 gate and the CT-5 cure in the flow. The
+seller is `data/clients/cl_0302.json`, on the manifest. Where the build differs
+from the body: the counter and highest-and-best ceiling of 5.2 is
+`offerCeiling()` in `commercial.js` (the name `investorCeiling` was taken); a
+seller refuses a counter under the floor as well as an acceptance; test 18
+reads "an offer written before an item went into the packet keeps its terms
+after", since under CT-4 no offer is written before the roll; the bank date
+(group E) is built, not moved; and the browser checks of section 7 are the
+project's own `tools/browser.mjs`, not `play-games.mjs`. Session 3 is the other
+two sellers, the autopilot and group H, the investor tour and the README.*
+
 It reads top to bottom for someone who knows the game and is not a broker. Every
 figure was computed by a scratch script against the shipped `data/` and the
 shipped `js/engine/` modules; section 11 says what was run and what was not.
