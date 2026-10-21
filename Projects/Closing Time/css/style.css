@@ -112,6 +112,12 @@ body::before { /* subtle ledger rule down the left, ambient not loud */
 .underwriting { border: 1px solid var(--line); border-left: 3px solid var(--brass); background: var(--paper-2);
   padding: 8px 10px; margin: 10px 0; }
 .uw-row { font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+/* The listing file on a building (#1010): the setup sheet, and a building's offer row. */
+.setup-sheet { font-family: var(--mono); font-size: 12.5px; border-left: 3px solid var(--brass); background: var(--paper-2);
+  margin: 8px 0; padding: 4px 8px; border-collapse: collapse; }
+.setup-sheet th { text-align: left; font-weight: normal; padding: 2px 16px 2px 0; }
+.setup-sheet td { padding: 2px 0; }
+.offer-uw { font-family: var(--mono); font-size: 12px; color: var(--ink); margin: 2px 0; }
 .uw-row + .uw-row { border-top: 1px dashed var(--line); }
 
 /* Clients */

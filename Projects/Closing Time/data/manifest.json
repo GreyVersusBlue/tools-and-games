@@ -48,7 +48,8 @@
     "clients/cl_0106.json",
     "clients/cl_0201.json",
     "clients/cl_0202.json",
-    "clients/cl_0203.json"
+    "clients/cl_0203.json",
+    "clients/cl_0302.json"
   ],
   "agents": [
     "agents/ag_sal_dimeo.json",

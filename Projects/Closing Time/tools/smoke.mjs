@@ -22,6 +22,7 @@ import { maybeFireEvent, fireEvent, eligibleEvents } from "../js/engine/events.j
 import { FINANCING, financingFor, financingType, closeDaysFor, DEFAULT_FINANCING } from "../js/engine/financing.js";
 import * as Esc from "../js/engine/escalation.js";
 import * as Com from "../js/engine/commercial.js";
+import * as Off from "../js/engine/offering.js";
 import { trueValue, marketHeat, playerListingValue } from "../js/engine/market.js";
 
 /* ------------------------------------------------------------------ harness */
@@ -2077,10 +2078,19 @@ console.log("\ntwo doors that name one client:");
 // two content files, day 1 (rate 6.4%, Downtown 1.00).
 console.log("\nthe listing side of the commercial tier:");
 {
-  const FIXTURE = JSON.parse(fs.readFileSync(path.join(root, "..", "tools", "fixtures", "cl_0302.json"), "utf8"));
+  // On the manifest since session 2 (#1010). withSeller() hands a test a fresh
+  // copy of the file to doctor and puts the loaded one back afterwards.
+  const FIXTURE = JSON.parse(fs.readFileSync(path.join(root, "clients", "cl_0302.json"), "utf8"));
   const withSeller = fn => {
+    const had = DB.clients.cl_0302;
     DB.clients.cl_0302 = JSON.parse(JSON.stringify(FIXTURE));
-    try { return fn(); } finally { delete DB.clients.cl_0302; }
+    try { return fn(); } finally { DB.clients.cl_0302 = had; }
+  };
+  /** The game as it was before the file was added, or after it is deleted. */
+  const withoutSeller = fn => {
+    const had = DB.clients.cl_0302;
+    delete DB.clients.cl_0302;
+    try { return fn(); } finally { DB.clients.cl_0302 = had; }
   };
   /** A seller's listing as takeListing() would hold it, with the session-1 fields fresh. */
   const building = (listing, owner) => ({
@@ -2320,7 +2330,7 @@ console.log("\nthe listing side of the commercial tier:");
     careerWithBuilding(state);
     const raw = JSON.parse(JSON.stringify(S));
     const logs = raw.log.length;
-    const r = repairCareer(raw);
+    const r = withoutSeller(() => repairCareer(raw));
     eq(`${r.playerListings.length} ${r.log.length - logs} ${r.log[0].text}`, "0 2 A listing agreement ended: its seller is no longer in the game.",
       `a building ${state} whose seller's file is deleted ends the agreement with one line (and the book's own)`);
   }
@@ -2351,7 +2361,7 @@ console.log("\nthe listing side of the commercial tier:");
   {
     // 36: a client added to data/ after a career began, the building's seller among them.
     const store = memStore();
-    newGame("bk_hearthstone"); save(store);
+    withoutSeller(() => { newGame("bk_hearthstone"); save(store); });
     const before = JSON.parse(store.getItem(SAVE_KEY)).clientQueue;
     withSeller(() => loadSave(store));
     eq(S.clientQueue.slice(before.length).join(" "), "cl_0302", "a building's seller added to data/ after a career began is appended to its queue");
@@ -2374,6 +2384,344 @@ console.log("\nthe listing side of the commercial tier:");
     [d, e] = one(c => { c.sellerListing.neighborhood = "nb_elsewhere"; return c; });
     ok(e.length === 1 && e[0].includes('sellerListing.neighborhood is "nb_elsewhere"') && !("cl_0302" in d.clients),
       "a building's seller in a deleted neighborhood is left out", e.join(" | "));
+  }
+
+  /* ------------------------ the listing side of the commercial tier, session 2 */
+  // Section 9 item 2 (#1010): the flows. Groups B 11 to 14, C, D, E and F 32
+  // of the design's section 7, the CT-4 gate and the CT-5 cure through the flow,
+  // and one listing taken from intake to closing. 18 is rewritten for CT-4: no
+  // offer is ever written before the roll lands, so the term fixed on an offer
+  // is the packet, and a packet improved afterwards does not reprice it.
+  console.log("\nthe listing side of the commercial tier, the flows:");
+  /** Lorna Petrakis's building taken at Broker-Track, the roll begun on day 1 and landed on day 6. */
+  const taken = (seed = 1010) => {
+    newGame("bk_hearthstone"); S.level = 4; S.seed = (seed * 2654435761) % 4294967296; S.cash = 20000; S.rep = 50;
+    const rec = Clients.meetClient("cl_0302");
+    const pl = Seller.takeListing(rec);
+    return { rec, pl };
+  };
+  /** Prepped: roll in on day 6, report done, the items in the packet, an opinion at w 0.9 (floor $909,373 on the complete packet). */
+  const ready = (pl, disclosed = [1, 2]) => {
+    pl.rollStartedDay = 1; pl.rollReadyDay = 6; pl.preInspected = true; pl.disclosed = [...disclosed]; pl.bovWeight = 0.9;
+    S.day = 6;
+    return pl;
+  };
+  /** 212 Ferry St's numbers, on Lorna Petrakis's record, so the design's figures hold and a satisfaction has somewhere to go. */
+  const ferryOn = rec => {
+    const pl = ferry();
+    pl.clientRecId = rec.recId; pl.id = "pl_ferry";
+    S.playerListings.push(pl);
+    return pl;
+  };
+  const exchangeOffer = (pl, price, extra = {}) => {
+    const o = { id: uid_("of"), agentId: "ag_priya_natesan", price, investor: "exchange", financing: "commercial", spareEquity: 40000,
+      inspection: false, closeDays: 45, day: S.day, status: "open", escalation: null,
+      uw: { noi: Com.packetNoi(pl), reqCap: 0.0742, capexIdx: Com.packetIdx(pl), yieldPrice: Com.investorPrice(pl, 0.0742).yieldPrice }, ...extra };
+    pl.offers.push(o);
+    return o;
+  };
+  let uidN = 0; const uid_ = p => `${p}_s2_${++uidN}`;
+
+  // --- The flow: what takeListing hands over, and the two gates on going live.
+  {
+    const { pl } = taken();
+    eq(`${pl.rollStartedDay} ${pl.bovWeight} ${pl.staleSteps} ${JSON.stringify(pl.cures)} ${pl.preInspected}`, "null 0 0 [] false",
+      "a building taken through intake starts with the roll not begun, no opinion, no steps and no cures");
+    eq(JSON.stringify(Seller.goLive(pl, 1100000, 1)), JSON.stringify({ refused: true, why: ["The rent roll has not been started."] }),
+      "goLive refuses a building whose rent roll is not started, and says why (CT-4)");
+    eq(pl.status, "prep", "and it stays in prep");
+    const cash = S.cash;
+    eq(Off.startRentRoll(pl) + " " + pl.rollReadyDay + " " + Off.startRentRoll(pl), "true 6 false", "the roll begun on day 1 lands on day 6, and is begun once");
+    Off.orderConditionReport(pl);
+    eq(cash - S.cash, 1800, "the condition report costs the agent $1,800");
+    eq(Com.agentKnows(pl, 1), true, "and shows them the rooftop units");
+    S.day = 2;
+    eq(Off.startCure(pl, 1) + " " + JSON.stringify(pl.cures), 'true [{"idx":1,"startedDay":2,"readyDay":11}]', "a cure of the $36,000 units started on day 2 is done on day 11");
+    eq(Off.startCure(pl, 1), false, "and is not started twice");
+    S.day = 6;
+    eq(Seller.goLive(pl, 1100000, 1).why.join(" "), "A cure is under way until day 11.", "the day the roll lands, a cure under way still keeps it off the market (CT-5)");
+    S.day = 11;
+    const c0 = S.cash;
+    eq(JSON.stringify(Seller.goLive(pl, 1100000, 1)), JSON.stringify({ live: true }), "and on the day the cure is done it goes live");
+    eq(`${pl.status} ${pl.liveDay} ${pl.marketingTier} ${c0 - S.cash}`, "live 11 1 900", "live on day 11 on a memorandum the agent paid $900 for (CT-3)");
+  }
+  {
+    const { pl } = taken();
+    ready(pl);
+    S.cash = 500;
+    eq(Seller.goLive(pl, 1000000, 2).why.join(" "), "The memorandum and data room costs $2,800 and you have $500.", "a memorandum the agent cannot front is refused");
+    S.cash = 20000; S.knowledge.nb_downtown = 2.4; pl.bovWeight = 0;
+    const r = Off.presentOpinion(pl);
+    eq(`${r.before} ${r.after} ${pl.bovWeight} ${pl.bovDay}`, "1250000 1010414 0.9 6", "an opinion presented at knowledge 2 with the roll in moves $1,250,000 to $1,010,414");
+    S.knowledge.nb_downtown = 0;
+  }
+
+  // --- B. The seller, 11 to 14.
+  {
+    const { rec, pl } = taken();
+    ready(pl); pl.bovWeight = 0.9;
+    Seller.goLive(pl, 1010000, 2);
+    const floor = Com.sellerFloor(pl, rec);
+    const o = exchangeOffer(pl, floor - 1000);
+    S.schedule.push({ day: S.day + 2, label: "deadline", type: "offerDeadline", ref: o.id });
+    const sat = rec.satisfaction;
+    const res = Seller.respondToOffer(pl, o, "accept");
+    eq(`${res.refused} ${res.floor} ${o.status} ${pl.status}`, `true ${floor} open live`, "a seller refuses an offer under 90% of expectation, and the offer stays open");
+    eq(`${rec.satisfaction - sat} ${S.schedule.some(it => it.ref === o.id)}`, "-2 true", "it costs 2 satisfaction and the offer keeps its deadline");
+    eq(Seller.respondToOffer(pl, o, "counter", floor - 500).refused, true, "nor will they sign a counter under it");
+    o.price = floor;
+    eq(Seller.respondToOffer(pl, o, "accept").accepted, true, "and they sign at the floor");
+  }
+  withSeller(() => {
+    DB.clients.cl_0302.hiddenPrefs[0].data.floorPct = 0.97;
+    const { rec, pl } = taken();
+    ready(pl); pl.bovWeight = 0.9;
+    Seller.goLive(pl, 1010000, 2);
+    const o = exchangeOffer(pl, Math.round(Com.sellerExpectation(pl) * 0.95));
+    eq(`${rec.revealed.length} ${Seller.respondToOffer(pl, o, "accept").refused}`, "0 true", "a seller's own floorPct of 97% refuses a 95% offer, unrevealed");
+  });
+  {
+    const { rec, pl } = taken();
+    ready(pl);
+    Seller.goLive(pl, 5000000, 0);
+    rec.satisfaction = 80;
+    const steps = [];
+    for (let d = 0; d < 42; d++) { S.slotsLeft = 4; S.choiceQueue.length = 0; endDay(); if (pl.dom === 20 || pl.dom === 21 || pl.dom === 42) steps.push(pl.staleSteps); }
+    eq(`${steps.join(" ")} ${pl.offers.length}`, "0 1 2 0", "21 days live with nothing accepted is one step, 42 is two");
+    pl.status = "underContract"; pl.acceptedOffer = exchangeOffer(pl, 1000000); pl.milestones = [];
+    for (let d = 0; d < 21; d++) { S.slotsLeft = 4; S.choiceQueue.length = 0; endDay(); }
+    eq(pl.staleSteps, 2, "and an accepted offer stops the count");
+  }
+  {
+    const score = price => {
+      const { rec, pl } = taken();
+      ready(pl); pl.bovWeight = 0.9; pl.status = "underContract"; pl.dom = 100;
+      pl.acceptedOffer = exchangeOffer(pl, price);
+      rec.satisfaction = 50;
+      Off.closeBuilding(pl);
+      return rec.satisfaction - 50;
+    };
+    eq([2000000, 1010414, 960000, 500000].map(score).join(" "), "12 5 0 -25",
+      "closing satisfaction is scored against expectation and held between -25 and +12");
+  }
+
+  // --- C. Offers.
+  {
+    const kinds = tier => {
+      const { pl } = taken(4242);
+      ready(pl);
+      Seller.goLive(pl, 1000000, tier);
+      pl.marketingTier = tier;
+      const got = {};
+      for (let i = 0; i < 400; i++) { const o = Off.spawnInvestorOffer(pl); got[o.investor] = (got[o.investor] || 0) + 1; }
+      return { pl, got, keys: Object.keys(got).sort().join(" ") };
+    };
+    const t0 = kinds(0), t1 = kinds(1), t2 = kinds(2);
+    eq(`${t0.keys} | ${t1.keys} | ${t2.keys}`, "value-add | exchange value-add | exchange syndicate value-add",
+      "a flyer draws only value-add buyers; a memorandum adds exchange; a data room adds the syndicate (400 seeded offers a tier)");
+    const all = [...t0.pl.offers, ...t1.pl.offers, ...t2.pl.offers];
+    eq(all.filter(o => o.price > 1030000).length, 0, "an offer never exceeds 3% over the asking price");
+    const ok16 = ["value-add", "exchange", "syndicate"].map(k => {
+      const o = t2.pl.offers.find(x => x.investor === k);
+      // Courthouse Row, complete packet: income $88,256, capital $92,500.
+      return o.uw.yieldPrice === Math.round(88256 / o.uw.reqCap - 92500)
+        && o.price === Math.round(Math.min(o.uw.yieldPrice, 1030000) / 1000) * 1000
+        && o.financing === Com.INVESTORS[k].financing;
+    });
+    eq(ok16.join(" "), "true true true", "an offer is packet income over the yield they need, less packet capital, one of each kind");
+    const spans = ["value-add", "exchange", "syndicate"].map(k => {
+      const caps = t2.pl.offers.filter(o => o.investor === k).map(o => o.uw.reqCap - Com.marketCap(t2.pl.listing));
+      const [lo, hi] = Com.INVESTORS[k].spread;
+      return caps.every(c => c >= lo - 1e-12 && c <= hi + 1e-12);
+    });
+    eq(spans.join(" "), "true true true", "and the yield each needs is inside its kind's band over the market cap rate");
+  }
+  {
+    const { pl } = taken();
+    ready(pl, [2]);
+    Seller.goLive(pl, 1100000, 1);
+    const o = Off.spawnInvestorOffer(pl);
+    const uw = JSON.stringify(o.uw);
+    Seller.discloseIssue(pl, 1);
+    eq(JSON.stringify(o.uw), uw, "an offer written before an item went into the packet keeps its terms after");
+    eq(o.uw.capexIdx.join(" "), "0 2", "and due diligence will read the two items it was written on");
+  }
+  {
+    const taken19 = [];
+    for (let seed = 1; seed <= 40; seed++) {
+      const { pl } = taken(seed);
+      ready(pl); Seller.goLive(pl, 1100000, 2);
+      const o = exchangeOffer(pl, 960000);
+      const ceiling = Com.offerCeiling(o, DB.agents[o.agentId]);
+      Seller.respondToOffer(pl, o, "counter", Math.round(ceiling * 1.06 / 500) * 500);
+      taken19.push(o.status);
+    }
+    eq(taken19.filter(s => s === "accepted").length, 0, "a counter 6% over the investor's ceiling is not taken at once, in 40 seeds");
+  }
+  {
+    let over = 0, raised = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+      const { pl } = taken(seed);
+      ready(pl); Seller.goLive(pl, 1100000, 2);
+      for (const a of Object.values(DB.agents)) {
+        const o = exchangeOffer(pl, 1000000, { agentId: a.id });
+        const ceiling = Math.round(Com.offerCeiling(o, a) / 500) * 500;
+        const r = Esc.agentHighestAndBest(pl, o);
+        if (r.action !== "walked" && o.price > Math.max(1000000, ceiling)) over++;
+        if (r.action === "raised") raised++;
+      }
+    }
+    ok(over === 0 && raised > 0, "a highest-and-best call on a building field raises no offer past its ceiling", `${over} over, ${raised} raised`);
+  }
+
+  // --- D. Due diligence.
+  {
+    const { rec, pl } = taken();
+    ready(pl); Seller.goLive(pl, 1000000, 2);
+    const o = exchangeOffer(pl, 990000);
+    Seller.respondToOffer(pl, o, "accept");
+    eq(pl.milestones.map(m => `${m.type}@${m.day - 6}`).join(" "), "sellerDueDiligence@10 sellerFinancing@20 sellerClosing@45",
+      "a building under contract has due diligence at 10 days, the bank at 20 (a weekday) and closing at the offer's 45");
+    const seed = S.seed, q = S.choiceQueue.length, price = o.price;
+    Off.resolveDueDiligence(pl, pl.milestones[0]);
+    eq(`${S.choiceQueue.length - q} ${o.price} ${S.seed === seed}`, `0 ${price} true`, "a complete packet passes with no modal, no change and no randomness");
+    eq(S.log[0].text, "Due diligence closes on 330 Courthouse Row with no change. The packet was the building.", "and says so in the Ledger");
+  }
+  {
+    const { rec, pl } = taken();
+    ready(pl, [2]); Seller.goLive(pl, 1000000, 2);
+    const o = exchangeOffer(pl, 990000);
+    Seller.respondToOffer(pl, o, "accept");
+    Seller.discloseIssue(pl, 1);
+    const seed = S.seed;
+    const ch = Off.resolveDueDiligence(pl, pl.milestones[0]);
+    eq(`${ch.kind} ${ch.retrade} ${ch.knewRequired} ${S.seed === seed}`, "sellerRetrade 45000 true true",
+      "due diligence reads the packet the offer was written on, not today's: the $36,000 units cost an exchange buyer $45,000, with no randomness");
+    eq(ch.text, "The buyer's people at 330 Courthouse Row found what the packet did not list: Two rooftop units past their rated life, one running on a bypassed compressor ($36,000). They want $45,000 off: the cost, and a quarter again for finding it themselves.",
+      "the modal names the item and the premium");
+    const rep = S.rep, sat = rec.satisfaction;
+    const seed2 = S.seed;
+    Off.retradeDecision(pl, "concede", ch.retrade, ch.knewRequired);
+    eq(`${o.price} ${rec.satisfaction - sat} ${S.rep - rep} ${S.seed === seed2}`, "945000 -8 -6 true",
+      "conceding takes it off the price, costs 3 plus the cut's 5% in satisfaction, and 6 reputation when the agent knew");
+  }
+  {
+    const rep = knew => { const { pl } = taken(); ready(pl); Seller.goLive(pl, 1000000, 2); const o = exchangeOffer(pl, 990000); Seller.respondToOffer(pl, o, "accept");
+      const r0 = S.rep; Off.retradeDecision(pl, "concede", 1000, knew); return S.rep - r0; };
+    eq(`${rep(true)} ${rep(false)}`, "-6 0", "-6 reputation only when the agent knew and it was required");
+    const { pl: p2 } = taken(); ready(p2, [2]); p2.preInspected = false; Seller.goLive(p2, 1000000, 2);
+    const o2 = exchangeOffer(p2, 990000); Seller.respondToOffer(p2, o2, "accept");
+    eq(Off.resolveDueDiligence(p2, p2.milestones[0]).knewRequired, false, "and the report skipped, the units were nobody's to know");
+  }
+  {
+    let walked = 0, stayed = 0;
+    for (let seed = 1; seed <= 200; seed++) {
+      const { pl } = taken(seed); ready(pl); Seller.goLive(pl, 1000000, 2);
+      const o = exchangeOffer(pl, 990000); Seller.respondToOffer(pl, o, "accept");
+      const r = Off.retradeDecision(pl, "refuse", 45000, false);
+      if (r.walked) { walked++; if (pl.status !== "live" || pl.acceptedOffer) walked += 1000; } else stayed++;
+    }
+    // Priya is by-the-book: 0.45 + 0.15 = 0.60.
+    ok(walked >= 100 && walked <= 140 && stayed === 200 - walked, "refusing a retrade sends a by-the-book buyer walking about 60% of the time, and a walk puts the building back live", `${walked} of 200`);
+  }
+  {
+    // 24: hiding never nets the seller more than disclosing, every building, every kind, every subset.
+    let worse = 0, n = 0;
+    for (const make of [() => ferry(), () => court()]) {
+      const base = make();
+      base.rollStartedDay = 1; base.rollReadyDay = 6; base.preInspected = true;
+      const hideable = base.listing.issues.map((is, i) => i).filter(i => base.listing.issues[i].discovery !== "visible");
+      for (const kind of Object.keys(Com.INVESTORS)) {
+        const reqCap = Com.marketCap(base.listing) + (Com.INVESTORS[kind].spread[0] + Com.INVESTORS[kind].spread[1]) / 2;
+        const full = Com.investorPrice({ ...base, disclosed: hideable }, reqCap, 6).yieldPrice;
+        for (let mask = 0; mask < 1 << hideable.length; mask++) {
+          const disclosed = hideable.filter((_, j) => mask & (1 << j));
+          const pl = { ...base, disclosed };
+          const offer = { investor: kind, uw: { capexIdx: Com.packetIdx(pl, 6) } };
+          const nets = Com.investorPrice(pl, reqCap, 6).yieldPrice - Com.dueDiligence(pl, offer, 6).retrade;
+          n++; if (nets > full) worse++;
+        }
+      }
+    }
+    eq(`${worse} of ${n}`, "0 of 24", "hiding never nets the seller more than disclosing: two buildings, three kinds, every subset of known items");
+  }
+
+  // --- E. The bank. 212 Ferry St's numbers, an exchange buyer at $1,000,000 with $40,000 spare.
+  {
+    const { pl: c } = taken();
+    ready(c); Seller.goLive(c, 1000000, 2);
+    const cash = exchangeOffer(c, 990000, { financing: "cash", investor: "syndicate", closeDays: 21 });
+    Seller.respondToOffer(c, cash, "accept");
+    eq(c.milestones.map(m => m.type).join(" "), "sellerDueDiligence sellerClosing", "a cash offer schedules no bank date");
+    const bank = rate => {
+      const { rec } = taken();
+      const pl = ferryOn(rec);
+      pl.rollStartedDay = 1; pl.rollReadyDay = 6; pl.preInspected = true; pl.disclosed = [0, 1]; S.day = 6;
+      Seller.goLive(pl, 1000000, 2);
+      const o = exchangeOffer(pl, 1000000);
+      Seller.respondToOffer(pl, o, "accept");
+      S.market.rate = rate;
+      const seed = S.seed, q = S.choiceQueue.length;
+      const ch = Off.resolveSellerLoan(pl, pl.milestones[1]);
+      return { pl, o, ch, rec, seedSame: S.seed === seed, queued: S.choiceQueue.length - q, line: S.log[0].text };
+    };
+    let r = bank(6.4);
+    eq(`${r.ch} ${r.queued} ${r.seedSame}`, "null 0 true", "a loan that sizes is a line, and consumes no randomness");
+    eq(r.line, "The bank sizes the buyer's loan on 212 Ferry St at 1.30x. Funded.", "the line gives the coverage");
+    r = bank(7.4);
+    eq(r.line, "The bank cuts the buyer's loan on 212 Ferry St by $3,725; they put in that much more of their own $40,000 spare. Funded.",
+      "a short loan covered by spare equity funds and says the dollars");
+    r = bank(8.4);
+    eq(`${r.ch.kind} ${r.ch.shortfall} ${r.ch.financeablePrice}`, "sellerLoanShortfall 59225 980775",
+      "a short loan not covered asks for the financeable price to the dollar");
+    const sat = r.rec.satisfaction;
+    Off.sellerLoanDecision(r.pl, "reprice");
+    eq(`${r.o.price} ${r.rec.satisfaction - sat}`, "980775 -5", "coming down sets the price the bank finances, and the seller minds it as a conceded retrade");
+    r = bank(8.4);
+    const seed = S.seed;
+    Off.sellerLoanDecision(r.pl, "hold");
+    eq(`${r.pl.status} ${r.pl.acceptedOffer} ${S.seed === seed}`, "live null true", "holding the price ends the deal with no roll, and the listing is back live");
+    S.market.rate = 6.4;
+  }
+
+  // --- F 32, and one listing the whole way.
+  {
+    const { rec, pl } = taken();
+    ready(pl); pl.bovWeight = 0.9; Seller.goLive(pl, 1000000, 2);
+    const o = exchangeOffer(pl, 990000);
+    Seller.respondToOffer(pl, o, "accept");
+    const cash = S.cash, xp = S.xp, closed = S.stats.closed;
+    Seller.resolveSellerMilestone(pl, pl.milestones[2]);
+    eq(`${Math.round(S.cash - cash)} ${S.xp - xp} ${S.stats.closed - closed} ${pl.status} ${rec.status}`, "10890 215 1 sold closedSeller",
+      "a building's listing pays 2% a side (990,000 x 0.02 x Hearthstone's 55%) and 215 XP");
+  }
+  {
+    // Taken at intake, prepped by the flow's own functions, listed on a
+    // memorandum, offered on by the dice, accepted, through due diligence and
+    // the bank, and closed. Seeded; nothing set by hand but the knowledge.
+    const { rec, pl } = taken(7);
+    const step = () => { S.slotsLeft = 4; S.choiceQueue = S.choiceQueue.filter(ch => ch.plId === pl.id); endDay(); };
+    Off.startRentRoll(pl); Off.orderConditionReport(pl);
+    while (!Com.rollVerified(pl)) step();
+    pl.listing.issues.forEach((_, i) => { if (Com.agentKnows(pl, i)) Seller.discloseIssue(pl, i); });
+    S.knowledge.nb_downtown = 2;
+    Off.presentOpinion(pl);
+    Seller.goLive(pl, Seller.suggestedPrice(pl), 1);
+    const answers = [];
+    for (let d = 0; d < 120 && pl.status === "live"; d++) {
+      step();
+      for (const o of Esc.openOffers(pl)) { const r = Seller.respondToOffer(pl, o, "accept"); answers.push(r.refused ? "refused" : "signed"); if (!r.refused) break; }
+    }
+    const kinds = [];
+    for (let d = 0; d < 70 && pl.status === "underContract"; d++) {
+      step();
+      kinds.push(...S.choiceQueue.filter(ch => ch.kind === "sellerRetrade" || ch.kind === "sellerLoanShortfall").map(ch => ch.kind));
+      S.choiceQueue = [];
+    }
+    eq(`${pl.status} ${answers.includes("signed")} ${kinds.length}`, "sold true 0",
+      "a building taken at intake goes through the roll, the report, the packet, the opinion and the memorandum, and sells with nothing for due diligence or the bank to raise");
+    ok(S.log.some(l => /^Due diligence closes on 330 Courthouse Row with no change/.test(l.text)) && S.log.some(l => /^The bank sizes the buyer's loan on 330 Courthouse Row/.test(l.text))
+      && S.log.some(l => /^SOLD: 330 Courthouse Row/.test(l.text)), "and the Ledger has the due diligence, the bank and the sale");
   }
   newGame("bk_hearthstone");
 }

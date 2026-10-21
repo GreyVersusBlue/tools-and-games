@@ -441,6 +441,14 @@ export function investorPrice(pl, reqCap, day = undefined) {
 }
 
 /**
+ * How far a counter or a highest-and-best call can move an investor: the
+ * price their yield wrote, plus half their agent's tolerance. Named apart from
+ * the buying side's investorCeiling(), which is a buyer client's wall.
+ */
+export const offerCeiling = (offer, agent) =>
+  Math.round(((offer && offer.uw && offer.uw.yieldPrice) || 0) * (1 + ((agent && agent.tolerance) || 0) / 2));
+
+/**
  * Due diligence: the buyer's people find every item still on the building
  * that the offer was not written with (`offer.uw.capexIdx`, fixed the day it
  * was written). It costs the investor's surprise factor per dollar, to $500.
