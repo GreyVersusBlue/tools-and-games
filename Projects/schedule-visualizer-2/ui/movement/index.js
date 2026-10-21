@@ -76,6 +76,7 @@ import { hotspotsPanel } from './hotspots.js';
 import { tablesPanel } from './tables.js';
 import { exportPanel } from './export.js';
 import { playbackBar } from './playback.js';
+import { presentMode, PRESENT_KEYS } from './present.js';
 
 const HEADLINE = 'This is the movement view.';
 const KEYS = 'Arrow keys move the cursor one cell and say what crosses it. Hold Space and press the arrows to move the map. = and - zoom in and out, 0 fits the map to the window. Escape puts the card away.';
@@ -138,6 +139,8 @@ export const section = {
   // Once, before anything is mounted: the map's keys go on the shell's list.
   start(ctx) {
     for (const key of MOVEMENT_KEYS) ctx.shortcuts.add({ id: key.id, group: 'Movement', does: key.does, shown: key.shown });
+    // Present (P) and the keys of presentation mode, which ./present.js answers
+    for (const key of PRESENT_KEYS) ctx.shortcuts.add({ id: key.id, group: key.group, does: key.does, shown: key.shown });
   },
   mount(ctx) {
     const store = ctx.store;
@@ -191,6 +194,11 @@ export const section = {
       paintMarks: () => plan.paintMarks(),
       layer,
       card,
+      // a card the reader tapped open ({ floorId, cell }, or null), and
+      // putting it back beside its cell after the map moved under it with
+      // nothing said (presentation mode leaving, ./present.js)
+      tapped: () => tapped(),
+      reopen: (held) => reopen(held),
       fix(where) {
         if (where.slot) openSlot(ctx, where.slot);
         else ctx.navigate(where.hash);
@@ -284,6 +292,8 @@ export const section = {
     // the section's element is the plan map's root (div.mov), with the map in it
     const element = plan.root;
     element.append(empty);
+    // Present (./present.js: presentation mode): at the end of the playback bar's row, or beside Clear on a phone
+    const presenter = presentMode({ ctx, plan, env, bar: bar.element, root: element, places: { bar: bar.element.querySelector('.mov-pb__row'), controls: top.element.querySelector('.mov-ctl--options') } });
 
     // ---- the top bar's second row, the plan map's: on a phone it folds with the controls
     function placeFloors() {
@@ -421,8 +431,12 @@ export const section = {
       const world = plan.world;
       if (!world || view.width === 0) return false;
       // the stage undocked: what docking the line took from it, which is
-      // less than the line's height where the stage is at its least (SV2-72c3)
-      const height = view.height + (key.line.hidden ? 0 : plan.undockedGain());
+      // less than the line's height where the stage is at its least
+      // (SV2-72c3), measured now with the stage it is taken from, never the
+      // last measure's view.height (SV2-72h)
+      // and its width read in the same look, not view.width, the last
+      // measure's: the two of one stage (SV2-72i)
+      const { width: across, height } = plan.undockedStage();
       const card = key.element;
       const width = card.offsetWidth;
       const tall = card.offsetHeight;
@@ -431,14 +445,14 @@ export const section = {
       // above the sticky foot, by the rule Fit itself takes (the map's
       // choose, SV2-72f2): in the band beside them it moves them right,
       // toward the card (SV2-72c2), so a plain fit is not asked
-      const place = plan.fitAt(view.width, height, FIT_MARGIN);
+      const place = plan.fitAt(across, height, FIT_MARGIN);
       if (!place) return false;
-      probe.resize(view.width, height);
+      probe.resize(across, height);
       probe.zoom = place.zoom;
       probe.x = place.x;
       probe.y = place.y;
       const style = getComputedStyle(card);
-      const right = view.width - (parseFloat(style.right) || 0);
+      const right = across - (parseFloat(style.right) || 0);
       // where the card rests: not lifted over the bar (--mov-under), which
       // moves with the scroll and must not decide whether it docks
       const lifted = parseFloat(stage.style.getPropertyValue('--mov-under')) || 0;
@@ -497,7 +511,7 @@ export const section = {
         const a = given.point(link.a.floorId, link.a.cell);
         const b = given.point(link.b.floorId, link.b.cell);
         if (!a && !b) continue;
-        const style = { colour: alone || theme.ink, edge: theme.card, width: linkWidth, font: theme.font, ink: theme.ink };
+        const style = { colour: alone || theme.ink, edge: theme.card, width: linkWidth, font: theme.font, ink: theme.ink, labelScale: plan.labelScale };
         if (a && b) {
           drawStairLink(g, a, b, style);
         } else {
@@ -623,6 +637,12 @@ export const section = {
         refresh();
       },
       unmount() {
+        // presentation mode left first (a change of address inside Movement
+        // comes here too): the transition and floors from before it are
+        // what the next mount opens on, written to memory only, since this
+        // section is not drawn again (SV2-31c)
+        const kept = presenter.unmount();
+        if (kept && memory.choice) memory.choice = { ...memory.choice, ...kept };
         gone = true;
         asker.stop();
         bar.unmount();

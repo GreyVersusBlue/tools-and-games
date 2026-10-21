@@ -232,13 +232,34 @@ async function qrShown(page, id) {
   });
 }
 
-// The dialog's title and Close lie inside the window.
+// The dialog's title and Close lie inside the window: { ok, ... } with the
+// numbers it was judged on, which an assertion on it prints, so a failure
+// says which edge was crossed and by how much (SV2-29e: one CI run failed
+// here with nothing to go on; 25 runs of the case here under 4x and 6x CPU
+// throttling never did, nor any frame from the offer on in 6 of them).
 async function headInView(page, id) {
   return page.$eval('#' + id, (dialog) => {
+    const round = (n) => Math.round(n * 10) / 10;
     const head = dialog.querySelector('.xfer__head').getBoundingClientRect();
     const close = dialog.querySelector('[data-action="close-transfer"]').getBoundingClientRect();
-    return head.top >= 0 && close.top >= 0 && close.bottom <= innerHeight && close.right <= innerWidth && close.height >= 44;
+    const box = dialog.getBoundingClientRect();
+    const active = document.activeElement;
+    return {
+      ok: head.top >= 0 && close.top >= 0 && close.bottom <= innerHeight && close.right <= innerWidth && close.height >= 44,
+      head: round(head.top),
+      close: [round(close.top), round(close.bottom), round(close.right), round(close.height)],
+      window: [innerWidth, innerHeight, round(visualViewport.scale)],
+      dialog: [round(box.top), round(box.height), dialog.scrollTop, getComputedStyle(dialog).display],
+      coarse: matchMedia('(pointer: coarse)').matches,
+      sheet: Boolean(document.querySelector('link[data-sheet="transfer"]')?.sheet),
+      focus: active ? active.tagName.toLowerCase() + (active.dataset.action ? '[' + active.dataset.action + ']' : '') : null,
+    };
   });
+}
+
+async function assertHeadInView(page, id, message) {
+  const seen = await headInView(page, id);
+  assert.ok(seen.ok, message + ': ' + JSON.stringify(seen));
 }
 
 // ---------------------------------------------------------------- the keyboard at 1280
@@ -330,7 +351,7 @@ test('by finger at 390 by 844: the same, with the title and Close in view and th
     const qr = await qrShown(a.page, SEND);
     assert.ok(qr.square && qr.inside, 'the QR code is square and inside the dialog: ' + JSON.stringify(qr));
     assert.ok(qr.width >= 3 * (17 + 4 * qr.version + 8) - 1, 'at least 3 px a module: ' + JSON.stringify(qr));
-    assert.ok(await headInView(a.page, SEND), 'the title and Close are in view');
+    await assertHeadInView(a.page, SEND, 'the title and Close are in view');
     // scrolled to the body's last control, that control and the head are both in view
     const last = await a.page.$eval('#' + SEND, (dialog) => {
       const button = dialog.querySelector('[data-action="scan-answer"]');
@@ -339,13 +360,13 @@ test('by finger at 390 by 844: the same, with the title and Close in view and th
       return box.top >= dialog.querySelector('.xfer__head').getBoundingClientRect().bottom && box.bottom <= innerHeight;
     });
     assert.ok(last, 'the last control comes into view under the head');
-    assert.ok(await headInView(a.page, SEND), 'the title and Close stay in view with the body scrolled');
+    await assertHeadInView(a.page, SEND, 'the title and Close stay in view with the body scrolled');
     await a.page.tap('[data-action="close-transfer"]');
     await a.page.waitForFunction(() => document.getElementById('transfer-send') === null);
 
     await connect(a, b, 'tap');
     await reaches(b.page, RECEIVE, 'confirm');
-    assert.ok(await headInView(b.page, RECEIVE), 'the receiver\'s title and Close are in view');
+    await assertHeadInView(b.page, RECEIVE, 'the receiver\'s title and Close are in view');
     rising(await b.page.evaluate(() => globalThis.sv2parts), 4, 'the receiver');
     await b.page.tap('[data-action="replace-project"]');
     await reaches(b.page, RECEIVE, 'applied');
@@ -374,7 +395,7 @@ test('on a phone on its side, 844 by 390, the QR code is whole in the window und
       return { top: qr.top, bottom: qr.bottom, head: head.bottom, window: innerHeight };
     });
     assert.ok(placed.top >= placed.head && placed.bottom <= placed.window, 'the QR code is whole in view: ' + JSON.stringify(placed));
-    assert.ok(await headInView(a.page, SEND));
+    await assertHeadInView(a.page, SEND, 'the title and Close are in view on its side');
   } finally {
     await done(a);
   }

@@ -80,17 +80,32 @@
 //   map.showFloors(shown)   put the row of floors in the top bar or take it
 //                           away; true when the focus was in the row taken away
 //   map.onLayout(fn)        fn() each time the floors are laid out, before
-//                           a fitted map is fitted again
+//                           a fitted map is fitted again; returns off(),
+//                           which takes fn off again (SV2-31c)
 //   map.remeasure()         measure the section again
 //   map.fitAt(width, height)   where Fit would put the floors on a stage of
 //                           that size, by the rule fit() takes (choose):
 //                           { zoom, x, y, how, clear, in }, or null
 //                           (Movement's legend asks it, SV2-72c2)
 //   map.undockedGain()      how much taller the stage is with the docked
-//                           line away (0 with none docked): what Movement's
-//                           legend judges its card on (SV2-72c3)
+//                           line away (0 with none docked), as room() last
+//                           measured it
+//   map.undockedHeight()    the stage's height with the docked line away,
+//                           measured now: what Movement's legend judges its
+//                           card on (SV2-72c3, SV2-72h)
+//   map.undockedStage()     { width, height }: that height and the stage's
+//                           width, read in one look (SV2-72i)
 //   map.dock()              measure again where a message may lie (the
 //                           section's head moved with no change of size)
+//   map.setLabelScale(k)    every label drawn k times its size, caps
+//                           included (1 by default; presentation mode's
+//                           large type, SV2-31); map.labelScale reads it
+//   map.setView({ zoom, x, y })   the map at that zoom and place, off Fit,
+//                           with no 'view' said to onCell (presentation
+//                           mode putting back a reader's zoom, SV2-31b);
+//                           the zoom clamped and the place kept on the
+//                           stage, a view that is no view refused (viewAt):
+//                           true when the map was moved
 //
 // The rules of the stage (DESIGN 5.3; DECISIONS 2026-10-14 23:53,
 // 2026-10-15 11:54 and 2026-10-16 01:15) are here, for every section: the
@@ -148,6 +163,16 @@ export const CURSOR_LEAST = 14;
 // on the stage each way.
 export const KEEP_ON_STAGE = 48;
 
+// A change of the window's height alone up to this many CSS pixels is not a
+// new layout: the foot-clearing scroll is not armed again by it (SV2-72h).
+// Chrome on Android's address bar is 56 px, Safari on an iPhone's bars
+// together under 120 as they collapse; a phone turned changes the width, and
+// a desktop window made lower by more than this is a new layout.
+export const REARM_HEIGHT = 120;
+// inputs that raise no keyboard: the rest, a text field's kind, hold the
+// foot-clearing scroll unarmed while they have the focus (rearm)
+const TYPED_NOT = new Set(['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit']);
+
 // The map is never moved off the stage (SV2-52): a wheel meant for the
 // section, a long drag or a zoom far in leaves at least KEEP_ON_STAGE px of
 // the floors' box on screen each way (all of it, when it is smaller), so the
@@ -159,6 +184,21 @@ export function keepOnStage(view, world) {
   const { dx, dy } = keepShift(view, world, KEEP_ON_STAGE);
   if (dx !== 0 || dy !== 0) view.panBy(dx, dy);
   return dx !== 0 || dy !== 0;
+}
+
+// The view at a zoom and place asked (setView, below): the zoom clamped to
+// 25 % to 300 % as viewport.restore clamps a saved one, then kept on the
+// stage (keepOnStage), so no value puts the floors off it. A zoom or place
+// that is not a finite number (Infinity, NaN, a string), a zoom of 0 or
+// under, or no floors laid out yet is refused: false, and the view is not
+// touched. True when the view was set.
+export function viewAt(view, world, asked) {
+  const { zoom, x, y } = asked || {};
+  if (!world || typeof zoom !== 'number' || typeof x !== 'number' || typeof y !== 'number') return false;
+  if (!Number.isFinite(zoom) || !(zoom > 0) || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+  view.restore({ zoom, x, y });
+  keepOnStage(view, world);
+  return true;
 }
 
 // What the section has for the map (DESIGN 5.3; SV2-52): its height less the
@@ -311,10 +351,19 @@ export function createPlanMap(asked) {
     const value = floorsChoice ? floorsChoice.value() : 'auto';
     const floors = floorsShown(project, value);
     // another choice of floors is fitted to the window again
+    const chosenBefore = floorsValue === value;
     if (floorsValue !== null && value !== floorsValue) fitted = true;
     floorsValue = value;
-    const how = value === 'side' || value === 'stacked' ? value : bestLayout(floors, view.width, view.height);
-    const next = layoutFloors(floors, how);
+    // the arrangement on the map is kept unless the other is clearly larger
+    // (bestLayout's LAYOUT_MARGIN; SV2-72h), when the window chose it for
+    // these floors on a measured stage, not at the 0 by 0 a map has before
+    // it is measured, nor by the reader's Side by side or Stacked
+    const same = chosenBefore && world && world.measured && world.slots.length === floors.length && world.slots.every((slot, at) => slot.floor.id === floors[at].id);
+    // both arrangements laid out once, for bestLayout and the one taken
+    const both = { side: layoutFloors(floors, 'side'), stacked: layoutFloors(floors, 'stacked') };
+    const how = value === 'side' || value === 'stacked' ? value : bestLayout(floors, view.width, view.height, same ? world.how : undefined, both);
+    const next = both[how];
+    next.measured = view.width > 0 && view.height > 0;
     const nextKey = JSON.stringify([next.how, next.slots.map((slot) => [slot.floor.id, slot.x, slot.y, slot.w, slot.h, slot.box.x, slot.box.y])]);
     // the floors' views are kept by the slot, for the renderer
     for (const slot of next.slots) slot.view = createViewport();
@@ -324,10 +373,22 @@ export function createPlanMap(asked) {
       worldKey = nextKey;
     }
     world = next;
+    // the layout on the map, for a test to count its turns
+    stage.dataset.layout = next.how;
+    // the stage's least follows the floors' box (stageLeast): the room is
+    // set first, so the scroll below, the section's judgement and the fit
+    // are all of the stage this layout is given, and a change of project
+    // scrolls the section once, not once for the old stage and again when
+    // the new one is measured (SV2-72i)
+    if (parts) room();
+    // the section scrolled clear of the foot, where it is to be
+    // (clearFoot), so a section's judgement of the fit (Movement's legend)
+    // and the fit itself are of the section as the reader will see it, not
+    // of its top before the map's own scroll (SV2-72h: at 900 by 500 with
+    // touch the legend docked at the top and undocked once scrolled)
+    clearFoot();
     for (const fn of layoutFns) fn();
     if (fitted) fit(true);
-    // the stage's least follows the floors' box (stageLeast)
-    if (parts) room();
   }
 
   function setProject(next, nextGraph) {
@@ -345,13 +406,15 @@ export function createPlanMap(asked) {
   // cleared them only where they rest, and Movement's playback bar lifts
   // them 24 px on a phone on its side, over 100 in a short desktop window,
   // until the section is scrolled); null before the sheet has given them a box.
-  function zoomCorner(height) {
+  // `lift` in place of the lift now: where they would be with the section
+  // scrolled otherwise (clearFoot)
+  function zoomCorner(height, lift = liftNow()) {
     const w = zoomBox.offsetWidth;
     const h = zoomBox.offsetHeight;
     if (w === 0 || h === 0) return null;
     const margin = parseFloat(getComputedStyle(zoomBox).left) || 0;
     const rest = height - margin - h;
-    return { x: margin, y: rest - Math.max(0, Math.min(liftNow(), rest)), w, h };
+    return { x: margin, y: rest - Math.max(0, Math.min(lift, rest)), w, h };
   }
 
   // Where Fit puts the floors on a stage `width` by `height` with `foot` px
@@ -364,8 +427,8 @@ export function createPlanMap(asked) {
   // be under the foot. fit() and fitAt both ask this, so Movement's legend
   // judges the layout the map shows (SV2-72f2: fitAt had asked fitClear on
   // the whole stage alone). `in` says which: 'shown' or 'stage'.
-  function choose(width, height, foot, margin) {
-    const corner = zoomCorner(height);
+  function choose(width, height, foot, margin, lift) {
+    const corner = zoomCorner(height, lift);
     const shown = height - foot;
     const seen = fitClear(world, width, shown, corner, margin);
     const size = CELL * seen.zoom;
@@ -379,10 +442,12 @@ export function createPlanMap(asked) {
     // Fit pressed brings the stage clear of the foot again (clearFoot): where
     // the section is now is where the map's own scrolling starts from, so a
     // scroll of the reader's before it does not turn it off at once (SV2-72f2)
+    // Even with a text field focused (SV2-72j): a tap on Fit moves no focus
+    // on iOS, and the reader who pressed it asked for the scroll.
     if (!quiet) {
       keepClear = true;
       ownScroll = parts && parts.root ? Math.round(parts.root.scrollTop) : null;
-      clearFoot();
+      asideTyping(clearFoot);
     }
     const place = choose(view.width, view.height, footOver(), FIT_MARGIN);
     view.zoom = place.zoom;
@@ -394,6 +459,8 @@ export function createPlanMap(asked) {
     stage.dataset.fitClear = String(place.clear !== false);
     // and whether the floors were fitted above the foot or on the whole stage (choose)
     stage.dataset.fitIn = place.in;
+    // and the zoom it took, for a test to count its turns
+    stage.dataset.zoom = place.zoom.toFixed(4);
     fitted = true;
     shownLast = null;
     if (!quiet) {
@@ -439,6 +506,8 @@ export function createPlanMap(asked) {
   }
 
   // ---- the canvas
+  // every label's size times this: presentation mode's large type (setLabelScale, SV2-31)
+  let labelScale = 1;
   function paint() {
     queued = false;
     if (gone || !world || !project || view.width === 0 || element.hidden) return;
@@ -454,7 +523,7 @@ export function createPlanMap(asked) {
       const right = Math.round(view.x + (slot.x + slot.w) * size);
       const bottom = Math.round(view.y + (slot.y + slot.h) * size);
       // the floor's name, over its top left corner
-      const nameSize = Math.max(11, Math.min(18, Math.round(size * 0.7)));
+      const nameSize = Math.max(11, Math.min(18 * labelScale, Math.round(size * 0.7 * labelScale)));
       g.font = '600 ' + nameSize + 'px ' + theme.font;
       g.textAlign = 'left';
       g.textBaseline = 'alphabetic';
@@ -482,6 +551,7 @@ export function createPlanMap(asked) {
         // a door name the slot would cut goes inside its dash (SV2-72c, W6)
         clip: { x: slot.box.x, y: slot.box.y, w: slot.box.w, h: slot.box.h },
         namesOver: options.namesOver === true,
+        labelScale,
       });
       g.restore();
       g.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -602,20 +672,10 @@ export function createPlanMap(asked) {
     const width = stage.clientWidth;
     const height = stage.clientHeight;
     if (gone || width === 0 || height === 0) return;
+    // the window compared before the stage: a window that changed with the
+    // stage the same size still arms the scroll (rearm)
+    rearm();
     if (width === view.width && height === view.height && canvas.dataset.ratio === String(window.devicePixelRatio || 1)) return;
-    // a stage that changes size with the window (a rotation, a resize) is a
-    // layout the reader's scroll was not made for, and a scroll the window
-    // clamped is none of theirs: the stage is brought clear of the foot again
-    // (clearFoot; SV2-72f2). One that changes size within the same window
-    // (the legend docked, the controls folded) leaves the reader's scroll be.
-    const windowNow = window.innerWidth + 'x' + window.innerHeight;
-    if (windowNow !== windowSeen) {
-      if (windowSeen !== null) {
-        keepClear = true;
-        ownScroll = parts && parts.root ? Math.round(parts.root.scrollTop) : null;
-      }
-      windowSeen = windowNow;
-    }
     view.resize(width, height);
     renderer.resize(width, height, window.devicePixelRatio || 1);
     canvas.dataset.ratio = String(window.devicePixelRatio || 1);
@@ -635,6 +695,108 @@ export function createPlanMap(asked) {
     dock();
   });
   watcher.observe(stage);
+
+  // A stage that changes size with the window (a rotation, a resize) is a
+  // layout the reader's scroll was not made for, and a scroll the window
+  // clamped is none of theirs: the stage is brought clear of the foot again
+  // (clearFoot; SV2-72f2). One that changes size within the same window
+  // (the legend docked, the controls folded) leaves the reader's scroll be;
+  // so does a change of the window's height alone up to REARM_HEIGHT, a
+  // touch browser's bar coming or going (SV2-72h), measured from the
+  // window the scroll was last armed in, so a window dragged lower a few
+  // pixels at a time is armed again once it has gone that far.
+  //
+  // Compared on every resize of the window, not only when the stage changes
+  // size with it (SV2-72i: a stage held at its least is the same size in a
+  // window 130 px lower, and measure() returned before it looked). And never
+  // while a text field has the focus (SV2-72i): an on-screen keyboard takes
+  // far more than REARM_HEIGHT (about 200 px of a phone on its side), and
+  // the scroll it armed moved the lab's scenario fields from under the
+  // reader typing in them. Any text field, not only one in the section: the
+  // keyboard is the same whichever field raised it, and the section is what
+  // the scroll moves. The window the scroll was armed in is kept, so the
+  // keyboard going away is no change either.
+  //
+  // A field that takes no typing (readonly, disabled) raises no keyboard and
+  // holds nothing (SV2-72j).
+  function textField(el) {
+    if (!el || el === document.body) return false;
+    if (el.isContentEditable) return true;
+    if (el.tagName !== 'TEXTAREA' && el.tagName !== 'INPUT') return false;
+    if (el.readOnly || el.disabled) return false;
+    return el.tagName === 'TEXTAREA' || !TYPED_NOT.has((el.type || 'text').toLowerCase());
+  }
+  let typingAside = false;
+  function typing() {
+    return !typingAside && textField(document.activeElement);
+  }
+  // `fn` run as if no text field had the focus
+  function asideTyping(fn) {
+    typingAside = true;
+    try {
+      fn();
+    } finally {
+      typingAside = false;
+    }
+  }
+  // `released`: the comparison held while the reader typed, made as the
+  // focus leaves the field (onFocusOut)
+  function rearm(released) {
+    if (gone) return;
+    const windowNow = { width: window.innerWidth, height: window.innerHeight };
+    if (windowSeen === null) windowSeen = windowNow;
+    else if (!typing()) {
+      const wider = windowNow.width !== windowSeen.width;
+      // a change of height alone made while the reader typed is taken for
+      // the keyboard, which may still be up as the field lets the focus go
+      // (SV2-72i: leaving the name with the keyboard up moves nothing); it
+      // stays measured from the window armed before, so the keyboard going
+      // away is no change either. A change of width (a rotation) is armed.
+      const taller = Math.abs(windowNow.height - windowSeen.height) > REARM_HEIGHT && released !== true;
+      if (wider || taller) {
+        keepClear = true;
+        ownScroll = parts && parts.root ? Math.round(parts.root.scrollTop) : null;
+        windowSeen = windowNow;
+      }
+    }
+    // the window last compared, for a test to wait on
+    root.dataset.window = windowNow.width + 'x' + windowNow.height;
+  }
+  const onResize = () => rearm();
+  window.addEventListener('resize', onResize);
+  // The next look after typing (SV2-72j): while a text field had the focus
+  // the foot-clearing scroll and the window's comparison were held, and
+  // nothing else may come to make them (a click on the map moves no window
+  // and scrolls nothing): they are made as the focus leaves for anything but
+  // another text field. dock() is the look: the lift, then clearFoot.
+  function onFocusOut(event) {
+    if (gone || textField(event.relatedTarget)) return;
+    asideTyping(() => {
+      rearm(true);
+      dock();
+    });
+  }
+  document.addEventListener('focusout', onFocusOut);
+  // The focus's own scroll (SV2-72k): a field given the focus is scrolled
+  // into view by the browser, and that is no scroll of the reader's. Start a
+  // scenario by its button at 1280 by 300 with a mouse: the map scrolled the
+  // section to 72 to clear the foot, start() put the focus in the scenario
+  // name, the browser scrolled back to 40 to show it, and clearFoot took that
+  // for the reader's and turned the clearing off, so the foot stayed 32 px
+  // over the stage after the focus left. A scroll that comes while a text
+  // field has the focus and before the next frame after the focus moved into
+  // it is the focus's: the clearing stays armed, held while typing, and is
+  // made as the focus leaves (onFocusOut). One that comes later is the
+  // reader's, as before.
+  let focusFrame = 0;
+  function onFocusIn(event) {
+    if (gone || !textField(event.target)) return;
+    const frame = ++focusFrame;
+    requestAnimationFrame(() => {
+      if (frame === focusFrame) focusFrame = 0;
+    });
+  }
+  document.addEventListener('focusin', onFocusIn);
 
   // ---- where a message of the shell may lie (DESIGN 5.3): above what is
   // docked at the bottom of the surface, the foot and the zoom buttons. How
@@ -679,15 +841,22 @@ export function createPlanMap(asked) {
   // the section is at its end. How far it reaches up into the stage is
   // --mov-under on the stage, and they lift by that much, but never out of
   // the stage's top.
-  // How far the foot lies over the stage now, in px of the stage; with
-  // `height`, over a stage that tall standing where this one stands, its
-  // foot moved by the difference (fitAt: the stage with the docked line away,
-  // whose foot comes down by what the stage gains, the foot where it is)
+  // How far the foot lies over the stage now, in px of the stage, from 0 to
+  // the stage's height.
+  //   height   optional, in CSS px: the answer for a stage that tall in
+  //            place of this one, with its top where this one's is and its
+  //            bottom moved by the difference, the foot left where it is on
+  //            screen (fitAt: the stage with the docked line away, which
+  //            comes down by what the stage gains while the sticky foot
+  //            stays). Left out, the stage as it is laid out now.
   function footOver(height) {
     const foot = footShown();
     if (!foot || element.hidden) return 0;
     const shown = stage.getBoundingClientRect();
-    const extra = height === undefined ? 0 : height - view.height;
+    // against the stage as it is laid out now, not as it was last measured
+    // (view.height): the two differ between a docked line shown and the
+    // stage's next measure (SV2-72h)
+    const extra = height === undefined ? 0 : height - shown.height;
     return Math.max(0, Math.min(shown.height + extra, Math.ceil(shown.bottom + extra - foot.getBoundingClientRect().top)));
   }
   // How far the foot reaches up into the stage now, never lifting the
@@ -697,9 +866,13 @@ export function createPlanMap(asked) {
     const shown = stage.getBoundingClientRect();
     const foot = footShown();
     const footTop = foot ? foot.getBoundingClientRect().top : shown.bottom;
+    return liftFor(shown.bottom - footTop);
+  }
+  // the lift with the foot `over` px over the stage
+  function liftFor(over) {
     const margin = parseFloat(getComputedStyle(zoomBox).left) || 0;
-    const most = Math.max(0, shown.height - zoomBox.offsetHeight - margin * 2);
-    return Math.round(Math.min(most, Math.max(0, shown.bottom - footTop)));
+    const most = Math.max(0, stage.getBoundingClientRect().height - zoomBox.offsetHeight - margin * 2);
+    return Math.round(Math.min(most, Math.max(0, over)));
   }
   // A lift that changes with the section where it was (the foot grew, the
   // window changed, the section was measured) moves the buttons over a
@@ -729,25 +902,49 @@ export function createPlanMap(asked) {
   // 390). Until the reader scrolls the section, and again on Fit, the section
   // is scrolled the least that puts the stage whole above the foot, never so
   // far that the first line's own box (frame.line) or the stage's top leaves
-  // the section's top; the head's padding over the line goes first.
+  // the section's top; the head's padding over the line goes first. Where
+  // the floors cannot be whole above the foot with the first line kept, the
+  // line goes too, as far as the stage's top (SV2-72g: from 900 px wide
+  // Movement's controls are open, 224 px of them under the first line, and
+  // at 900 by 500 the foot lay 171 px over a 216 px stage, the floors under
+  // it); the reader scrolls back to the line, and Tab brings it.
   let keepClear = true;
   let ownScroll = null;
-  // the window's size the stage was last measured in (measure)
+  // the window's size the foot-clearing scroll was last armed in (measure)
   let windowSeen = null;
   function clearFoot() {
     const root = parts && parts.root;
     if (!root || gone || element.hidden || root.dataset.styled !== 'true') return;
     const top = Math.round(root.scrollTop);
     // a scroll the map did not make is the reader's, and is left alone
-    if (ownScroll !== null && top !== ownScroll) keepClear = false;
+    // (one the focus made as a text field took it is the focus's, SV2-72k)
+    if (ownScroll !== null && top !== ownScroll) {
+      if (focusFrame !== 0 && typing()) ownScroll = top;
+      else keepClear = false;
+    }
     if (!keepClear) return;
+    // nor is the section moved under a reader typing (SV2-72i): still armed
+    // from opening, the lab at 1280 by 720 with a finger scrolled its
+    // scenario name 73 px up and out of view when a 400 px keyboard came up
+    // under it. The scroll stays armed, and is made as the field lets the
+    // focus go (onFocusOut; SV2-72j), or on Fit.
+    if (typing()) {
+      ownScroll = top;
+      return;
+    }
     const foot = footShown();
     if (!foot) return;
     const shown = stage.getBoundingClientRect();
     const edge = root.getBoundingClientRect();
     const over = Math.ceil(shown.bottom - foot.getBoundingClientRect().top);
     const line = parts.line && parts.line.getClientRects().length > 0 ? parts.line.getBoundingClientRect().top : shown.top;
-    const most = Math.floor(Math.min(line - edge.top, shown.top - edge.top, root.scrollHeight - root.clientHeight - top));
+    const rest = root.scrollHeight - root.clientHeight - top;
+    let most = Math.floor(Math.min(line - edge.top, shown.top - edge.top, rest));
+    if (over > most && world && view.width > 0) {
+      // the fit with the line kept, the foot over the stage by what is left (choose)
+      const left = over - Math.max(0, most);
+      if (choose(view.width, view.height, left, FIT_MARGIN, liftFor(left)).in !== 'shown') most = Math.floor(Math.min(shown.top - edge.top, rest));
+    }
     const by = Math.min(over, most);
     if (by <= 0) {
       ownScroll = top;
@@ -811,6 +1008,31 @@ export function createPlanMap(asked) {
     root.dataset.measuredBar = String(foot ? foot.offsetHeight : 0);
     // and the zoom box's need, the same
     root.dataset.zoomRoom = String(zoomRoom());
+  }
+  // The stage's height with the docked line away, as the section is now.
+  // The room is measured first and the stage read as laid out after it, so
+  // the stage's height and the line's gain are of one measure: between a
+  // line shown or hidden and the observers' next round, view.height was the
+  // last measure's and undockedGain() the last room()'s, and Movement's
+  // legend, judging on their sum, asked a stage of 241 or 151 px where the
+  // stage without the line is 196 (900 by 500 with touch: 5 dock and 5 fit
+  // turns as it opened; SV2-72h).
+  //
+  // undockedStage() is that height with the stage's width read in the same
+  // look, { width, height }: the legend judged the fresh height beside
+  // view.width, the last measure's, and the two could be of two stages
+  // (SV2-72h's review). The room() in it changes nothing inside arrange(),
+  // which has set the room before it asks the section (SV2-72i); called from
+  // anywhere else it is what makes the height the one the stage is about to
+  // take, and without it the legend would judge the last room()'s stage.
+  function undockedStage() {
+    if (gone || element.hidden) return { width: view.width, height: view.height };
+    room();
+    const shown = stage.getBoundingClientRect();
+    return { width: shown.width, height: shown.height + (parts && parts.under && !parts.under.hidden ? roomAway : 0) };
+  }
+  function undockedHeight() {
+    return undockedStage().height;
   }
   // and where a message may lie, which moves with the foot's height whether
   // or not the stage changes size. The zoom box is watched too: its size is
@@ -951,19 +1173,48 @@ export function createPlanMap(asked) {
     onCell(fn) {
       cellFns.push(fn);
     },
+    // returns its unregister: off() takes fn off the list (true when it was on it)
     onLayout(fn) {
       layoutFns.push(fn);
+      return () => {
+        const at = layoutFns.indexOf(fn);
+        if (at !== -1) layoutFns.splice(at, 1);
+        return at !== -1;
+      };
     },
     theme: () => renderer.theme(),
     hover(floorId, cell) {
       hovered = floorId === null || floorId === undefined ? null : { floorId, cell };
     },
     showFloors,
+    // every label of the map (rooms, corridors, doors, floor names, the
+    // overlays' pills) drawn k times its size, caps included; 1 is as ever
+    setLabelScale(k) {
+      const next = k > 0 ? k : 1;
+      if (next === labelScale) return;
+      labelScale = next;
+      queuePaint();
+    },
+    get labelScale() { return labelScale; },
+    // the map at a zoom and place given, off Fit, as a reader left it
+    // (presentation mode putting it back, SV2-31b): nothing is said to the
+    // section, so a card open on a cell stays open (the section puts it
+    // back on its cell). viewAt's guards: false, and nothing moved, for a
+    // view that is no view
+    setView(asked) {
+      if (!viewAt(view, world, asked)) return false;
+      fitted = false;
+      shownLast = null;
+      queuePaint();
+      return true;
+    },
     remeasure,
     dock,
     // what the stage gains in px when the docked line goes away: never more
     // than the line's height, and less where the stage is held at its least
     undockedGain: () => roomAway,
+    undockedHeight,
+    undockedStage,
     // where Fit would put the floors on a stage of this size, round the zoom
     // buttons as they are drawn and above the sticky foot as fit() puts
     // them: { zoom, x, y, how, clear, in } (choose), or null
@@ -995,6 +1246,9 @@ export function createPlanMap(asked) {
       roomWatcher.disconnect();
       onZoomBox.disconnect();
       stage.removeEventListener('wheel', onStageWheel, { capture: true });
+      window.removeEventListener('resize', onResize);
+      document.removeEventListener('focusout', onFocusOut);
+      document.removeEventListener('focusin', onFocusIn);
       dark.removeEventListener('change', queuePaint);
       if (ratioQuery) ratioQuery.removeEventListener('change', onRatio);
       input.detach();
