@@ -273,6 +273,15 @@ function stateNow(last) {
 //   radius  the discs' radius: RANK_RADIUS, times the map's label scale in
 //           presentation mode, where the number is larger (SV2-31c)
 export const RANK_RADIUS = 8;
+// A ring's radius on a map `size` px a cell: nine tenths of a cell, and at
+// least 10 px times the label scale, so three discs of RANK_RADIUS times
+// that scale still stand clear on the smallest ring (a 120 degree chord of
+// 17.3 at 1, 26 at 1.5, against discs 17 and 25 apart; SV2-31d: at 1.5 the
+// least stayed 10 and no two discs fitted clear on it).
+export function ringRadius(size, scale = 1) {
+  const k = scale > 0 ? scale : 1;
+  return Math.max(Math.round(10 * k), Math.round(size * 0.9));
+}
 const RANK_PLACES = [-45, -165, 75, 135, -105, 15, -135, 45, 180, 0, 90, -90].map((degrees) => [Math.cos((degrees * Math.PI) / 180), Math.sin((degrees * Math.PI) / 180)]);
 export function placeRanks(rings, radius = RANK_RADIUS) {
   const placed = [];
@@ -637,15 +646,15 @@ export function hotspotsPanel(env) {
     const chosen = list.find((row) => row.id === selected);
     if (chosen) outline(g, map, chosen, floors);
 
-    const r = Math.max(10, Math.round(map.view.size * 0.9));
+    // the disc grows with its number (presentation mode's labelScale, SV2-31c), and the least ring with it
+    const scale = env.labelScale > 0 ? env.labelScale : 1;
+    const r = ringRadius(map.view.size, scale);
     for (const row of list.slice(0, PULSE_TOP)) {
       // the busiest cell of the place that the scale counts; both ends of a stairs connection
       const busiest = row.cells.find((cell) => !cell.excluded);
       const points = (row.place.kind === 'connection' ? row.ends : busiest ? [busiest] : []).map((end) => map.point(end.floorId, end.cell)).filter(Boolean);
       for (const at of points) rings.push({ rank: row.rank, x: at.x, y: at.y, r });
     }
-    // the disc grows with its number (presentation mode's labelScale, SV2-31c)
-    const scale = env.labelScale > 0 ? env.labelScale : 1;
     const radius = RANK_RADIUS * scale;
     placeRanks(rings, radius);
     // Zoomed out, the rings of two places lie over one another. They are

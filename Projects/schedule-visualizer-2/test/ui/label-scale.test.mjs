@@ -19,7 +19,7 @@ import { createRenderer } from '../../ui/surface/renderer.js';
 import { createViewport, drawnBox, CELL } from '../../ui/surface/viewport.js';
 import { lanesOverlay, drawStairLink } from '../../ui/surface/overlays/lanes.js';
 import { sampleSchool } from '../../data/sample-school.js';
-import { placeRanks, RANK_RADIUS } from '../../ui/movement/hotspots.js';
+import { placeRanks, ringRadius, RANK_RADIUS } from '../../ui/movement/hotspots.js';
 
 // the light theme's tokens (ui/tokens.css), as the canvas reads them
 const TOKENS = {
@@ -378,6 +378,8 @@ test('labelScale 1.5 reaches a stair link\'s words and the problem "!" on a stai
   const at40 = bang(40, { labelScale: 1.5 });
   assert.equal(at40.length, 1, 'no "!" at 1.5 and 40 px');
   assert.ok(at40[0] > 12, 'the "!" is not larger at 1.5 and 40 px: ' + at40);
+  // and by how much: a 9.44 px disc there (the chevron leaves it that), the mark round(16.05) (SV2-31d: "> 12" let it shrink unseen)
+  assert.deepEqual(at40, [16], 'the "!" at 1.5 and 40 px');
   // at 64 px the chevron is far enough off for the whole 1.5 times: a 10.5 px disc, the mark round(17.85)
   assert.deepEqual(bang(64, { labelScale: 1.5 }), [18], 'the "!" at 1.5 and 64 px');
   // at 20 px the disc is 4.4 px at 1, too small for the mark; at 1.5 the chevron leaves it no more room than that
@@ -463,4 +465,32 @@ test('the hotspot ranks\' discs, 1.5 times as large in presentation mode, are pl
   assert.ok(placeRanks(pair(40), large).every(upperRight));
   // the default is RANK_RADIUS
   assert.deepEqual(placeRanks(pair(20)).map((ring) => [ring.bx, ring.by]), placeRanks(pair(20), RANK_RADIUS).map((ring) => [ring.bx, ring.by]));
+});
+
+test('the caps are rounded to the nearest whole pixel, neither up nor down: corridor names 16, 20 and 22 px at 1.25, 1.5 and 1.7 (13 times each is 16.25, 19.5, 22.1; ceil gives 17, 20, 23, floor 16, 19, 22) (SV2-31d)', () => {
+  const project = sampleSchool();
+  const cell = 90;
+  const capAt = (labelScale) => {
+    let most = 0;
+    for (const floor of project.building.floors) {
+      const k = kinds(project, floor);
+      most = Math.max(most, ...fills(drawFloor(project, floor, cell, { labelScale })).filter((w) => k.corridors.includes(w.text)).map((w) => w.size));
+    }
+    return most;
+  };
+  assert.deepEqual([1.25, 1.5, 1.7].map(capAt), [16, 20, 22], 'the corridor names\' cap at 1.25, 1.5 and 1.7');
+});
+
+test('the hotspot rings\' least radius grows with the scale, so three ranks stand clear on the smallest ring at 1.5 as they do at 1 (SV2-31d)', () => {
+  // three places on one cell far zoomed out: their rings are the least
+  const three = (scale) => {
+    const r = ringRadius(4, scale);
+    return placeRanks([1, 2, 3].map((rank) => ({ rank, x: 100, y: 100, r })), RANK_RADIUS * scale);
+  };
+  const clear = (rings, radius) => rings.every((a, i) => rings.every((b, j) => j <= i || Math.hypot(a.bx - b.bx, a.by - b.by) >= radius * 2 + 1));
+  assert.equal(ringRadius(4), 10, 'the least ring at 1');
+  assert.equal(ringRadius(40), 36, 'nine tenths of a cell');
+  assert.equal(ringRadius(40, 1.5), 36, 'the scale does not grow a ring past its least');
+  assert.ok(clear(three(1), RANK_RADIUS), 'at 1 the three discs overlap: ' + JSON.stringify(three(1)));
+  assert.ok(clear(three(1.5), RANK_RADIUS * 1.5), 'at 1.5 the three discs overlap on a ' + ringRadius(4, 1.5) + ' px ring: ' + JSON.stringify(three(1.5)));
 });
