@@ -348,13 +348,15 @@ export function createPlanMap(asked) {
   // cleared them only where they rest, and Movement's playback bar lifts
   // them 24 px on a phone on its side, over 100 in a short desktop window,
   // until the section is scrolled); null before the sheet has given them a box.
-  function zoomCorner(height) {
+  // `lift` in place of the lift now: where they would be with the section
+  // scrolled otherwise (clearFoot)
+  function zoomCorner(height, lift = liftNow()) {
     const w = zoomBox.offsetWidth;
     const h = zoomBox.offsetHeight;
     if (w === 0 || h === 0) return null;
     const margin = parseFloat(getComputedStyle(zoomBox).left) || 0;
     const rest = height - margin - h;
-    return { x: margin, y: rest - Math.max(0, Math.min(liftNow(), rest)), w, h };
+    return { x: margin, y: rest - Math.max(0, Math.min(lift, rest)), w, h };
   }
 
   // Where Fit puts the floors on a stage `width` by `height` with `foot` px
@@ -367,8 +369,8 @@ export function createPlanMap(asked) {
   // be under the foot. fit() and fitAt both ask this, so Movement's legend
   // judges the layout the map shows (SV2-72f2: fitAt had asked fitClear on
   // the whole stage alone). `in` says which: 'shown' or 'stage'.
-  function choose(width, height, foot, margin) {
-    const corner = zoomCorner(height);
+  function choose(width, height, foot, margin, lift) {
+    const corner = zoomCorner(height, lift);
     const shown = height - foot;
     const seen = fitClear(world, width, shown, corner, margin);
     const size = CELL * seen.zoom;
@@ -703,9 +705,13 @@ export function createPlanMap(asked) {
     const shown = stage.getBoundingClientRect();
     const foot = footShown();
     const footTop = foot ? foot.getBoundingClientRect().top : shown.bottom;
+    return liftFor(shown.bottom - footTop);
+  }
+  // the lift with the foot `over` px over the stage
+  function liftFor(over) {
     const margin = parseFloat(getComputedStyle(zoomBox).left) || 0;
-    const most = Math.max(0, shown.height - zoomBox.offsetHeight - margin * 2);
-    return Math.round(Math.min(most, Math.max(0, shown.bottom - footTop)));
+    const most = Math.max(0, stage.getBoundingClientRect().height - zoomBox.offsetHeight - margin * 2);
+    return Math.round(Math.min(most, Math.max(0, over)));
   }
   // A lift that changes with the section where it was (the foot grew, the
   // window changed, the section was measured) moves the buttons over a
@@ -735,7 +741,12 @@ export function createPlanMap(asked) {
   // 390). Until the reader scrolls the section, and again on Fit, the section
   // is scrolled the least that puts the stage whole above the foot, never so
   // far that the first line's own box (frame.line) or the stage's top leaves
-  // the section's top; the head's padding over the line goes first.
+  // the section's top; the head's padding over the line goes first. Where
+  // the floors cannot be whole above the foot with the first line kept, the
+  // line goes too, as far as the stage's top (SV2-72g: from 900 px wide
+  // Movement's controls are open, 224 px of them under the first line, and
+  // at 900 by 500 the foot lay 171 px over a 216 px stage, the floors under
+  // it); the reader scrolls back to the line, and Tab brings it.
   let keepClear = true;
   let ownScroll = null;
   // the window's size the stage was last measured in (measure)
@@ -753,7 +764,13 @@ export function createPlanMap(asked) {
     const edge = root.getBoundingClientRect();
     const over = Math.ceil(shown.bottom - foot.getBoundingClientRect().top);
     const line = parts.line && parts.line.getClientRects().length > 0 ? parts.line.getBoundingClientRect().top : shown.top;
-    const most = Math.floor(Math.min(line - edge.top, shown.top - edge.top, root.scrollHeight - root.clientHeight - top));
+    const rest = root.scrollHeight - root.clientHeight - top;
+    let most = Math.floor(Math.min(line - edge.top, shown.top - edge.top, rest));
+    if (over > most && world && view.width > 0) {
+      // the fit with the line kept, the foot over the stage by what is left (choose)
+      const left = over - Math.max(0, most);
+      if (choose(view.width, view.height, left, FIT_MARGIN, liftFor(left)).in !== 'shown') most = Math.floor(Math.min(shown.top - edge.top, rest));
+    }
     const by = Math.min(over, most);
     if (by <= 0) {
       ownScroll = top;

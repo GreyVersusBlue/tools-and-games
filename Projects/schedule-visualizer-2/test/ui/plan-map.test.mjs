@@ -320,3 +320,19 @@ test('item 7: with a least of its own the stage may take the docked line, which 
   // More is measured from what the section has under its first line, as before
   assert.equal(own.more, plain.more);
 });
+
+test('SV2-72g: where both layouts fit only at the least zoom, the one nearer to fitting is taken: at Movement\'s 648 by 320 (1024 by 600) the sample stacked, whole on the stage at 25 %', () => {
+  const floors = sampleSchool().building.floors;
+  const [width, height] = [648, 320];
+  const side = layoutFloors(floors, 'side');
+  // side by side at the least zoom is wider than the stage: what Fit had shown, 48 px off its left edge
+  assert.ok(side.width * CELL * 0.25 > width, 'the floors side by side fit the stage: the case tests nothing');
+  assert.equal(bestLayout(floors, width, height), 'stacked');
+  const layout = layoutFloors(floors, 'stacked');
+  const fitted = fitClear(layout, width, height, corner(height));
+  const size = CELL * fitted.zoom;
+  assert.equal(fitted.zoom, 0.25);
+  assert.ok(fitted.x >= 0 && fitted.x + layout.width * size <= width && fitted.y >= 0 && fitted.y + layout.height * size <= height, 'stacked is not whole on the stage: ' + JSON.stringify(fitted));
+  // and a stage too low for either keeps the floors side by side, the nearer there
+  assert.equal(bestLayout(floors, 760, 60), 'side');
+});

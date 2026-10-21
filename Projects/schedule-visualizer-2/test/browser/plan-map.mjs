@@ -720,12 +720,38 @@ test('SV2-72c2 item 1: on a phone on its side with a sticky foot over the stage,
     await bare(page);
     // 230 px of section: a 100 px first line, the stage at its least, a 74 px sticky foot over the stage's foot
     await mount(page, 'lab-lift', { slot: 'flex: 0 0 788px; height: 230px', head: 100, foot: 74, sticky: true, lift: true });
+    // SV2-72g: the floors cannot be whole above the foot with the first line
+    // kept, so the map scrolls the line away, the stage clear of the foot
     await page.waitForFunction(() => {
       const { map } = globalThis.planMaps['lab-lift'];
-      return parseFloat(map.stage.style.getPropertyValue('--mov-under')) > 0 && map.root.dataset.dockedAt === '0';
+      return map.root.scrollTop > 0 && map.root.dataset.dockedAt === String(Math.round(map.root.scrollTop)) && map.stage.style.getPropertyValue('--mov-under') === '0px';
     }, { timeout: 10000 });
-    await pressFit(page, 'lab-lift');
+    // the reader scrolls back to the top, the buttons lifted over the foot as
+    // far as they go (50 px), and the foot shrinks there (playback's More
+    // folded): the lift moves with no scroll, and the fitted map is fitted
+    // again round the buttons where they are drawn, 40 px up
+    await page.evaluate(() => {
+      globalThis.planMaps['lab-lift'].map.root.scrollTop = 0;
+    });
+    await page.waitForFunction(() => {
+      const { map } = globalThis.planMaps['lab-lift'];
+      return map.root.dataset.dockedAt === '0' && parseFloat(map.stage.style.getPropertyValue('--mov-under')) > 0;
+    }, { timeout: 10000 });
+    const shrunk = await page.evaluate(() => {
+      const { map } = globalThis.planMaps['lab-lift'];
+      const drawn = Number(map.canvas.dataset.drawn);
+      const under = map.stage.style.getPropertyValue('--mov-under');
+      const foot = map.element.lastElementChild;
+      foot.style.height = '50px';
+      return { drawn, under };
+    });
+    await page.waitForFunction((was) => {
+      const { map } = globalThis.planMaps['lab-lift'];
+      return map.stage.style.getPropertyValue('--mov-under') !== was.under && Number(map.canvas.dataset.drawn) > was.drawn && map.root.dataset.dockedAt === '0';
+    }, { timeout: 10000 }, shrunk);
     const top = await paintedUnderBox(page, 'lab-lift');
+    assert.equal(top.top, 0, 'the section is not at its top: the case tests nothing: ' + JSON.stringify(top));
+    assert.equal(top.under, '40px', 'the buttons are not lifted 40 px over the foot: the case tests nothing: ' + JSON.stringify({ shrunk, top }));
     assert.equal(top.coarse, true, 'the page is not under a finger');
     assert.ok(parseFloat(top.under) >= 24, 'the zoom buttons are not lifted over the foot: the case tests nothing: ' + JSON.stringify(top));
     assert.equal(top.painted, 0, 'painted cells under the zoom buttons lifted over the foot at Fit: ' + JSON.stringify(top));
