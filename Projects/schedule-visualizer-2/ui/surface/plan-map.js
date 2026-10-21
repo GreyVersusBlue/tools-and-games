@@ -711,11 +711,7 @@ export function createPlanMap(asked) {
     // (view.height): the two differ between a docked line shown and the
     // stage's next measure (SV2-72h)
     const extra = height === undefined ? 0 : height - shown.height;
-    // less than half a pixel over is none: a section scrolled as far as it
-    // goes can leave the foot 0.06 px over the stage (900 by 500 with touch),
-    // and a pixel of foot moved the fit from the plain one to the band above
-    // the zoom buttons and back as the scroll was clamped and let go (SV2-72h)
-    return Math.max(0, Math.min(shown.height + extra, Math.ceil(shown.bottom + extra - foot.getBoundingClientRect().top - 0.5)));
+    return Math.max(0, Math.min(shown.height + extra, Math.ceil(shown.bottom + extra - foot.getBoundingClientRect().top)));
   }
   // How far the foot reaches up into the stage now, never lifting the
   // buttons out of the stage's top; 0 with no frame yet.
