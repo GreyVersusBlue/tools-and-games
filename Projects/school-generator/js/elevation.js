@@ -37,11 +37,11 @@ import {
 } from './grid.js';
 import {
   shapesOf, segEnds, openingSpec,
-  SEG_WALL, SEG_GLASS, SEG_RAIL, isBuilt, takeId, floorSolidAt, pointInRing,
+  SEG_WALL, SEG_GLASS, SEG_RAIL, isBuilt, takeId, floorSolidAt,
 } from './shapes.js';
 import { solidBeside, wallProbe } from './walls.js';
 import {
-  roofPlan, roofTop, roofMask, maskAt, PARAPET_H, COPING_T,
+  roofPlan, roofTop, roofMask, maskAt, PARAPET_H, COPING_T, inFootprint,
 } from './roof.js';
 import { roofHeightOver } from './skeleton.js';
 import { terrainField, groundAt } from './terrain.js';
@@ -496,14 +496,17 @@ export function roofHeightAt(plan, mask, x, z) {
   // A hipped roof over a curve (#967) is read off its own faces inside the
   // rooms' outline, and a mask cell whose middle is in that outline belongs
   // to it, so the staircase of cells past the curve reads as nothing overhead.
+  // A court is not the footprint (#999): there it falls through to the mask,
+  // whose court cells are off, and reads as sky, as the overhang outside the
+  // outer wall does.
   for (const b of plan.blocks) {
-    if (b.skeleton && pointInRing(b.outline, x, z)) return roofHeightOver(b.faces, x, z);
+    if (b.skeleton && inFootprint(b, x, z)) return roofHeightOver(b.faces, x, z);
   }
   const c = Math.floor(x / CELL) - mask.cx0;
   const r = Math.floor(z / CELL) - mask.cy0;
   if (!maskAt(mask, c, r)) return null;
   const mx = (mask.cx0 + c + 0.5) * CELL, mz = (mask.cy0 + r + 0.5) * CELL;
-  if (plan.blocks.some((b) => b.skeleton && pointInRing(b.outline, mx, mz))) return null;
+  if (plan.blocks.some((b) => b.skeleton && inFootprint(b, mx, mz))) return null;
   if (plan.style === 'flat') return plan.eaveY;
   if (plan.style === 'parapet') return plan.eaveY + PARAPET_H + COPING_T;
   let best = plan.eaveY;
