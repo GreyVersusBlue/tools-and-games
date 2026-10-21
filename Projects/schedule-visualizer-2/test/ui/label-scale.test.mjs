@@ -19,6 +19,7 @@ import { createRenderer } from '../../ui/surface/renderer.js';
 import { createViewport, drawnBox, CELL } from '../../ui/surface/viewport.js';
 import { lanesOverlay, drawStairLink } from '../../ui/surface/overlays/lanes.js';
 import { sampleSchool } from '../../data/sample-school.js';
+import { placeRanks, RANK_RADIUS } from '../../ui/movement/hotspots.js';
 
 // the light theme's tokens (ui/tokens.css), as the canvas reads them
 const TOKENS = {
@@ -444,4 +445,22 @@ test('the problem disc on a stairs cell keeps off the stairs chevron at a larger
     }
   }
   assert.ok(checked > 100, 'only ' + checked + ' sizes checked');
+});
+
+test('the hotspot ranks\' discs, 1.5 times as large in presentation mode, are placed clear of one another at that size (placeRanks\' radius; SV2-31c)', () => {
+  const large = RANK_RADIUS * 1.5;
+  const apart = (rings, radius) => rings.every((a, i) => rings.every((b, j) => j <= i || Math.hypot(a.bx - b.bx, a.by - b.by) >= radius * 2 + 1));
+  const upperRight = (ring) => Math.abs(ring.bx - ring.x - ring.r * Math.SQRT1_2) < 0.01 && Math.abs(ring.by - ring.y + ring.r * Math.SQRT1_2) < 0.01;
+  const pair = (dx) => [{ rank: 1, x: 100, y: 100, r: 14 }, { rank: 2, x: 100 + dx, y: 100, r: 14 }];
+  // 20 px apart: two 8 px discs clear one another where they stand, two 12 px discs do not
+  const small = placeRanks(pair(20));
+  assert.ok(small.every(upperRight) && apart(small, RANK_RADIUS), 'at 8 px: ' + JSON.stringify(small));
+  const grown = placeRanks(pair(20), large);
+  assert.ok(upperRight(grown[0]), 'the busiest place\'s rank moved: ' + JSON.stringify(grown));
+  assert.equal(upperRight(grown[1]), false, 'at 12 px the second rank was left on the first');
+  assert.ok(apart(grown, large), 'at 12 px the two discs overlap: ' + JSON.stringify(grown));
+  // far apart, both keep their upper right at either size
+  assert.ok(placeRanks(pair(40), large).every(upperRight));
+  // the default is RANK_RADIUS
+  assert.deepEqual(placeRanks(pair(20)).map((ring) => [ring.bx, ring.by]), placeRanks(pair(20), RANK_RADIUS).map((ring) => [ring.bx, ring.by]));
 });
