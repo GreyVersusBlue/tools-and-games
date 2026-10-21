@@ -24,6 +24,7 @@
 //   ambulanceEscorted          ambulances that left the map on time with
 //                              their corridor called, and ambulanceLateBy
 //                              the most seconds one left late (R2)
+//   ambulanceCrashed           ambulances that crashed, each late too (#1004)
 //   gridlock                   set once a car has waited past `gridlockWait`
 //                              or one car has sat in the box past `boxStall`
 //                              (per car: two lefts waiting in turn are two
@@ -234,7 +235,7 @@ export class World {
     this.scheduledCalls = (level.calls || []).slice().sort((a, b) => a.t - b.t); // [{ t, leg, node, walkers }]
     this.schedule = (level.events || []).map(e => ({ ...e })).sort((a, b) => a.at - b.at); // events yet to start (M7)
     this.active = [];       // events in force: { kind, at, until, ... }
-    this.stats = { spawned: 0, cleared: 0, collisions: 0, honks: 0, wait: 0, waitCleared: 0, maxWait: 0, gridlock: false, gridlockAt: -1, boxStalled: 0, nearMisses: 0, pedCalls: 0, pedServed: 0, pedLate: 0, walkers: 0, struck: 0, handoffs: 0, outages: 0, ambulances: 0, ambulanceLate: 0, platoons: 0, platoonSplits: 0, closures: 0, merges: 0, pedMaxWait: 0, carried: 0, carriedStops: 0, ambulanceEscorted: 0, ambulanceLateBy: 0, laneChanges: 0, laneGiveUps: 0 };
+    this.stats = { spawned: 0, cleared: 0, collisions: 0, honks: 0, wait: 0, waitCleared: 0, maxWait: 0, gridlock: false, gridlockAt: -1, boxStalled: 0, nearMisses: 0, pedCalls: 0, pedServed: 0, pedLate: 0, walkers: 0, struck: 0, handoffs: 0, outages: 0, ambulances: 0, ambulanceLate: 0, platoons: 0, platoonSplits: 0, closures: 0, merges: 0, pedMaxWait: 0, carried: 0, carriedStops: 0, ambulanceEscorted: 0, ambulanceLateBy: 0, ambulanceCrashed: 0, laneChanges: 0, laneGiveUps: 0 };
     this.events = [];       // [{ t, kind, ... }], the renderer drains these
     this.boxStallT = 0;
     this._conf = new Map();
@@ -561,7 +562,19 @@ export class World {
   // The clock on an ambulance: late once past its deadline still on the
   // map, over once it has left. One still on the map when the run's own
   // clock runs out is late too, whatever is left on its own (_settle).
+  // One that crashed has not made it either (#1004): it is late the step
+  // it crashes, with whatever its clock reads, and the tow that takes it
+  // off the map is not an arrival, so it is never escorted.
   _ambulanceTick(e) {
+    if (e.car.crashed && !e.crashed) {
+      e.crashed = true;
+      this.stats.ambulanceCrashed++;
+      if (!e.late) {
+        e.late = true;
+        this.stats.ambulanceLate++;
+        this.events.push({ t: this.t, kind: 'ambulance-late', car: e.car.id, crashed: true });
+      }
+    }
     if (e.car.done) {
       e.clearedAt = this.t;
       if (!e.late && e.car.priority) this.stats.ambulanceEscorted++;

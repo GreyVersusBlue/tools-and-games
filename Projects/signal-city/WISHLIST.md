@@ -914,12 +914,13 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
   120 s with 60 s on a 180 s day, so one that came at 120 s and is still
   there at the end is late now where it had a frame in hand.
 
-- An ambulance that crashes is off the map, and if it was called and not
-  yet late that reads as on time on its corridor (`_ambulanceTick` asks
-  only `car.done`). Seen in a scratch run of a lighter Cross Town (300 an
-  hour, seed 6, called 10 s in, a crash 14.3 s after it came); on no seed
-  of the level as it ships. The crash costs the third star and not the
-  second. Not changed.
+- An ambulance that crashed used to read as on time on its corridor once
+  the tow took it off the map (`_ambulanceTick` asked only `car.done`;
+  seen in a scratch run of a lighter Cross Town, on no seed of the level
+  as it ships). Since #1004, on Devon's answer of 2026-10-21, it is late
+  on the step it crashes, never escorted, and its reason line says it
+  crashed. `scoring.mjs` pins it on Cross Town seed 6 with the crash put
+  in by hand, since no shipped seed crashes an ambulance.
 
 - A district "locks" more often with every ambulance followed, and that
   is the design, not a fault in the follow (#918). Thirty seeds, eight
