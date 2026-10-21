@@ -320,3 +320,147 @@ test('item 7: with a least of its own the stage may take the docked line, which 
   // More is measured from what the section has under its first line, as before
   assert.equal(own.more, plain.more);
 });
+
+test('SV2-72g: where both layouts fit only at the least zoom, the one nearer to fitting is taken: at Movement\'s 648 by 320 (1024 by 600) the sample stacked, whole on the stage at 25 %', () => {
+  const floors = sampleSchool().building.floors;
+  const [width, height] = [648, 320];
+  const side = layoutFloors(floors, 'side');
+  // side by side at the least zoom is wider than the stage: what Fit had shown, 48 px off its left edge
+  assert.ok(side.width * CELL * 0.25 > width, 'the floors side by side fit the stage: the case tests nothing');
+  assert.equal(bestLayout(floors, width, height), 'stacked');
+  const layout = layoutFloors(floors, 'stacked');
+  const fitted = fitClear(layout, width, height, corner(height));
+  const size = CELL * fitted.zoom;
+  assert.equal(fitted.zoom, 0.25);
+  assert.ok(fitted.x >= 0 && fitted.x + layout.width * size <= width && fitted.y >= 0 && fitted.y + layout.height * size <= height, 'stacked is not whole on the stage: ' + JSON.stringify(fitted));
+  // and a stage too low for either keeps the floors side by side, the nearer there
+  assert.equal(bestLayout(floors, 760, 60), 'side');
+});
+
+// ---- SV2-72h item 3 and SV2-72i items 1 and 2: the layout kept unless the
+// other is clearly larger, and never kept off the stage where the other is on it
+
+import { rawZoom, fitZoom, LAYOUT_MARGIN } from '../../ui/surface/plan-layout.js';
+import { clampZoom, MIN_ZOOM } from '../../ui/surface/viewport.js';
+
+// Where Fit itself puts a layout on a stage with no foot and no zoom box
+// (fitClear), and whether every floor is on the stage there, read from the
+// layout's own box at that place. Nothing of bestLayout's arithmetic is
+// copied here: what is judged is the picture Fit draws (house rule #34).
+function fitBox(floors, how, width, height) {
+  const layout = layoutFloors(floors, how);
+  const place = fitClear(layout, width, height, null);
+  const size = CELL * place.zoom;
+  const right = place.x + layout.width * size;
+  const bottom = place.y + layout.height * size;
+  const whole = place.x >= -1e-9 && place.y >= -1e-9 && right <= width + 1e-9 && bottom <= height + 1e-9;
+  return { how, zoom: place.zoom, whole, x: Math.round(place.x), y: Math.round(place.y), right: Math.round(right), bottom: Math.round(bottom) };
+}
+const otherOf = (how) => (how === 'side' ? 'stacked' : 'side');
+
+test('SV2-72i item 1: at 700 by 300 with side by side on the map, stacked is taken: side by side runs 22 px off each edge at 25 %, stacked is whole', () => {
+  const floors = sampleSchool().building.floors;
+  const side = fitBox(floors, 'side', 700, 300);
+  const stacked = fitBox(floors, 'stacked', 700, 300);
+  // the point: Fit puts side by side off both edges at the least zoom, stacked whole
+  assert.ok(side.zoom === MIN_ZOOM && !side.whole && side.x === -22 && side.right === 722, 'side by side is not 22 px off each edge at 25 %: the case tests nothing: ' + JSON.stringify(side));
+  assert.ok(stacked.whole, 'stacked is not whole at 700 by 300: the case tests nothing: ' + JSON.stringify(stacked));
+  assert.equal(bestLayout(floors, 700, 300, 'side'), 'stacked', 'side by side, on the map, was kept with its floors off the stage where stacked is whole');
+  assert.equal(bestLayout(floors, 700, 300, 'stacked'), 'stacked');
+  assert.equal(bestLayout(floors, 700, 300), 'stacked');
+});
+
+// Every stage from 300 to 1400 wide by 100 to 500 tall, `step` px apart,
+// with each layout on the map and none: where Fit puts one layout whole on
+// the stage and not the other, the whole one is taken; where both are
+// whole, the one taken is never more than LAYOUT_MARGIN smaller at Fit. The
+// review counted 2074 points of 1 px where side by side was kept off the
+// stage; the sample's boundaries are not on a 4 px grid, so this steps 3 px
+// one way and 1 px across the boundaries the other.
+test('SV2-72i item 2: across 300 to 1400 by 100 to 500, a layout off the stage at Fit is never taken where the other is whole, with either on the map', () => {
+  const floors = sampleSchool().building.floors;
+  const wrong = [];
+  let split = 0;
+  for (let width = 300; width <= 1400; width += 3) {
+    for (let height = 100; height <= 500; height += 1) {
+      const boxes = { side: fitBox(floors, 'side', width, height), stacked: fitBox(floors, 'stacked', width, height) };
+      if (boxes.side.whole !== boxes.stacked.whole) split += 1;
+      for (const current of ['side', 'stacked', undefined]) {
+        const how = bestLayout(floors, width, height, current);
+        const taken = boxes[how];
+        const other = boxes[otherOf(how)];
+        if (!taken.whole && other.whole) wrong.push({ width, height, current, how, taken });
+        else if (taken.whole && other.whole && other.zoom > taken.zoom * (1 + LAYOUT_MARGIN) + 1e-12) wrong.push({ width, height, current, how, taken, other });
+      }
+    }
+  }
+  // the sweep crosses places where one layout is whole and the other is not, or it tests nothing
+  assert.ok(split > 1000, 'the sweep met only ' + split + ' stages where one layout is whole and the other not: the case tests nothing');
+  assert.equal(wrong.length, 0, wrong.length + ' stages took a layout Fit draws off the stage, or one more than the margin smaller: ' + JSON.stringify(wrong.slice(0, 5)));
+});
+
+// The window's width (or height) in 1 px steps up across the boundary and
+// back down, the layout on the map handed in each time as the plan map hands it.
+function sweep(floors, from, to, at) {
+  const step = from < to ? 1 : -1;
+  const seen = [];
+  let current;
+  for (let n = from; n !== to + step; n += step) {
+    const [width, height] = at(n);
+    current = bestLayout(floors, width, height, current);
+    seen.push({ n, width, height, how: current, box: fitBox(floors, current, width, height), other: fitBox(floors, otherOf(current), width, height) });
+  }
+  return seen;
+}
+const turnsOf = (seen) => seen.filter((each, at) => at > 0 && each.how !== seen[at - 1].how);
+
+for (const [what, from, to, at] of [
+  ['400 px tall, the width swept, where both fit over 25 %', 600, 1400, (n) => [n, 400]],
+  ['300 px tall, the width swept, across the clamp', 600, 1400, (n) => [n, 300]],
+  ['322 px tall, the width swept, SV2-72h\'s 1 px flip at 749 to 783 wide', 600, 1400, (n) => [n, 322]],
+  ['760 px wide, the height swept', 100, 700, (n) => [760, n]],
+  ['1000 px wide, the height swept', 100, 700, (n) => [1000, n]],
+]) {
+  test('SV2-72h item 3, SV2-72i: the sample\'s floors on a stage ' + what + ' 1 px at a time each way: at most one turn each way, the turns apart, never a layout off the stage where the other is whole', () => {
+    const floors = sampleSchool().building.floors;
+    const up = sweep(floors, from, to, at);
+    const down = sweep(floors, to, from, at);
+    const upTurns = turnsOf(up);
+    const downTurns = turnsOf(down);
+    // the sweep turns the layout, or it tests nothing
+    assert.equal(upTurns.length, 1, 'going up the layout turned ' + upTurns.length + ' times: ' + JSON.stringify(upTurns.map((each) => [each.n, each.how])));
+    assert.equal(downTurns.length, 1, 'going down the layout turned ' + downTurns.length + ' times: ' + JSON.stringify(downTurns.map((each) => [each.n, each.how])));
+    // a layout kept past the boundary each way: the turn up comes later than the turn down, never at one pixel back and forth
+    assert.ok(upTurns[0].n > downTurns[0].n, 'the turns are at one pixel, a flip: ' + JSON.stringify({ up: upTurns[0].n, down: downTurns[0].n }));
+    for (const each of up.concat(down)) assert.ok(each.box.whole || !each.other.whole, 'at ' + each.width + ' by ' + each.height + ' ' + each.how + ' was taken off the stage where the other is whole: ' + JSON.stringify(each.box));
+  });
+}
+
+test('SV2-72h item 3: across the clamp a layout the window holds at 25 % beats the one on the map that it cannot hold, however near the two are', () => {
+  const floors = sampleSchool().building.floors;
+  // 742 wide: side by side at 25 % (744 px) does not fit by 2 px; stacked does
+  const [width, height] = [742, 322];
+  const side = fitBox(floors, 'side', width, height);
+  const stacked = fitBox(floors, 'stacked', width, height);
+  assert.ok(!side.whole && stacked.whole && side.zoom === MIN_ZOOM, 'the point is not across the clamp: the case tests nothing: ' + JSON.stringify({ stacked, side }));
+  assert.equal(bestLayout(floors, width, height, 'side'), 'stacked', 'side by side, on the map, was kept where its floors run off the stage at 25 %');
+  assert.equal(bestLayout(floors, width, height, 'stacked'), 'stacked');
+  assert.equal(bestLayout(floors, width, height), 'stacked');
+});
+
+test('SV2-72h nits: fitZoom is rawZoom clamped, and bestLayout takes the layout Fit puts at the larger zoom', () => {
+  const floors = sampleSchool().building.floors;
+  for (const how of ['side', 'stacked']) {
+    const layout = layoutFloors(floors, how);
+    for (const [width, height] of [[200, 100], [749, 322], [990, 400], [3000, 3000], [60, 40]]) {
+      for (const margin of [undefined, 0, FIT_MARGIN]) assert.equal(fitZoom(layout, width, height, margin), clampZoom(rawZoom(layout, width, height, margin)));
+    }
+  }
+  // every 1 px across the boundary at 400 px tall: no layout handed in, the one Fit draws larger (above the clamp, where Fit's zoom tells them apart)
+  for (let width = 960; width <= 1020; width += 1) {
+    const side = fitBox(floors, 'side', width, 400);
+    const stacked = fitBox(floors, 'stacked', width, 400);
+    if (side.zoom === stacked.zoom) continue;
+    assert.equal(bestLayout(floors, width, 400), side.zoom > stacked.zoom ? 'side' : 'stacked', 'at ' + width + ' by 400 bestLayout took the layout Fit draws smaller: ' + JSON.stringify({ side, stacked }));
+  }
+});

@@ -100,6 +100,8 @@ export const GROUPS = {
     'ui/difference.test.mjs', // SV2-69
     'ui/fix-kinds.test.mjs', // SV2-70b
     'ui/lab-fixes.test.mjs', // SV2-72d
+    'ui/label-scale.test.mjs', // SV2-31
+    'ui/set-view.test.mjs', // SV2-31c
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
   ],
   browser: [
@@ -145,6 +147,7 @@ export const GROUPS = {
     'browser/snapshots.mjs', // SV2-28
     'browser/transfer.mjs', // SV2-29b
     'browser/help.mjs', // SV2-30a
+    'browser/present.mjs', // SV2-31
     'a11y/axe.mjs',
   ],
   a11y: [

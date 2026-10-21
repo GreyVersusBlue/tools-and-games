@@ -1,0 +1,385 @@
+/* Presentation mode (spec 15; ./present.js): the movement map on the whole
+   screen for a projector. The section's own element (div.mov, the plan map's
+   root) is what goes full screen, so everything shown is inside it. Its
+   data-present is "fullscreen" when the browser granted the Fullscreen API
+   and "window" when it did not (or has none): then the same element is laid
+   over the whole window. Every rule here is under [data-present], so the
+   section is as it was the moment the attribute goes.
+
+   The map takes what the panel leaves: the panel (the groups on the map, the
+   load bands, the hotspot summary) is a column on the right of the map or a
+   band under it, as ./present.js chooses, so no floor ever lies under it. Type is 1.5 times its size in the section: the panel's here, the
+   map's own labels by the plan map's labelScale. */
+
+.mov[data-present] {
+  --pres-type: 1.5;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+  /* not scrolled even by a script: the section's own scroll (the plan
+     map's, kept clear of its foot) had carried into the mode and moved the
+     caption and the floors 65 px off the screen's top (SV2-31c) */
+  overflow: clip;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.mov[data-present="window"] {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  width: auto;
+  height: auto;
+}
+
+.mov[data-present]:fullscreen {
+  width: 100%;
+  height: 100%;
+}
+
+.mov[data-present] > .mov-map {
+  grid-column: 1;
+  grid-row: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+/* the tool's controls: the first line and the controls, the docked legend
+   line, the playback bar; the zoom buttons and the section's legend card */
+.mov[data-present] > .mov-map > :not(.mov-stage):not(.mov-pres__caption),
+.mov[data-present] .mov-zoom,
+.mov[data-present] .mov-legend,
+.mov[data-present] > .mov-empty {
+  display: none;
+}
+
+.mov[data-present] > .mov-map > .mov-stage {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.mov-pres__panel,
+.mov-pres__caption,
+.mov-pres__line,
+.mov-pres__touch,
+.mov-pres__probe {
+  display: none;
+}
+
+/* the safe area's insets, read by ./present.js from this padding (it is
+   never shown: hidden, its computed padding is the insets all the same) */
+.mov-pres__probe {
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+}
+
+/* ---------- The panel ---------- */
+
+.mov[data-present] > .mov-pres__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  grid-column: 2;
+  grid-row: 1;
+  width: clamp(14rem, 28vw, 26rem);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s-4);
+  background: var(--card);
+  border-left: var(--border);
+  /* clear of a phone's notch and rounded corners (the safe area): borders
+     of the panel's own colour, outside the box it scrolls in, so a word
+     scrolled to its edge is not under them as it would be in a padding (SV2-31c) */
+  border-top: env(safe-area-inset-top, 0px) solid var(--card);
+  border-right: env(safe-area-inset-right, 0px) solid var(--card);
+  border-bottom: env(safe-area-inset-bottom, 0px) solid var(--card);
+  font-size: calc(var(--t-sm) * var(--pres-type));
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+
+.mov-pres__panel:focus {
+  outline: none;
+}
+
+.mov-pres__panel:focus-visible {
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: calc(-1 * var(--focus-width));
+}
+
+.mov-pres__title {
+  margin: 0 0 var(--s-2);
+  font-size: calc(var(--t-xs) * var(--pres-type));
+  line-height: 1.2;
+  font-weight: var(--w-semibold);
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.mov-pres__part[hidden] {
+  display: none;
+}
+
+.mov-pres__what {
+  margin: 0 0 var(--s-2);
+}
+
+.mov-pres__list {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* the groups side by side as far as their names allow */
+.mov-pres__list[data-present="groups"] {
+  grid-template-columns: repeat(auto-fill, minmax(6.5em, 1fr));
+  column-gap: var(--s-4);
+}
+
+.mov-pres__group,
+.mov-pres__band {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+.mov-pres__group > bdi {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* a group's line as the map draws it: a bar, so the key is a shape and not
+   only a colour beside the name */
+.mov-pres__swatch {
+  flex: none;
+  width: 1.75em;
+  height: 0.4em;
+  border-radius: 1px;
+  box-shadow: 0 0 0 1px var(--card);
+}
+
+.mov-pres__chip {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 1.6em;
+  height: 1.6em;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-1);
+  /* as the section's legend: dark on the four light bands, white on the fifth */
+  color: #1f2328;
+  font-size: 0.75em;
+  font-weight: var(--w-semibold);
+}
+
+.mov-pres__band[data-band="5"] .mov-pres__chip {
+  color: #ffffff;
+}
+
+.mov-pres__hot {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--s-2);
+}
+
+.mov-pres__rank {
+  font-weight: var(--w-semibold);
+}
+
+.mov-pres__place {
+  overflow-wrap: anywhere;
+}
+
+.mov-pres__detail {
+  grid-column: 2;
+  color: var(--ink-2);
+}
+
+.mov-pres__note {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+/* ---------- Over the map ---------- */
+
+/* what is shown, a line over the map: the day type, the transition and its
+   times, and the playback clock while it runs. It takes its own height, so
+   Fit puts no floor under it. */
+.mov[data-present] > .mov-map > .mov-pres__caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--s-4);
+  margin: 0;
+  padding: var(--s-2) var(--s-4);
+  /* clear of a notch over it or beside it (the safe area) */
+  padding-top: calc(var(--s-2) + env(safe-area-inset-top, 0px));
+  padding-left: calc(var(--s-4) + env(safe-area-inset-left, 0px));
+  background: var(--card);
+  border-bottom: var(--border);
+  font-size: calc(var(--t-md) * var(--pres-type));
+  line-height: 1.25;
+  font-weight: var(--w-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.mov-pres__clock {
+  font-weight: var(--w-regular);
+  color: var(--ink-2);
+}
+
+.mov-pres__clock:empty {
+  display: none;
+}
+
+/* the small corner line: what A, H or a refusal just did, then it fades.
+   It stands at the stage's foot left of the touch controls where ./present.js
+   finds it room there (data-present-line "beside": its width stops short of
+   them), else above them ("above"): never the one over the other (SV2-31d) */
+.mov[data-present] .mov-pres__line {
+  display: block;
+  position: absolute;
+  z-index: 8;
+  left: calc(var(--s-3) + env(safe-area-inset-left, 0px));
+  bottom: calc(var(--s-3) + env(safe-area-inset-bottom, 0px));
+  max-width: calc(100% - var(--s-5) - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  margin: 0;
+  padding: var(--s-1) var(--s-3);
+  background: var(--card);
+  border: var(--border);
+  border-radius: var(--r-1);
+  font-size: calc(var(--t-sm) * var(--pres-type));
+  line-height: 1.3;
+  opacity: 1;
+  transition: opacity 400ms ease-out;
+}
+
+.mov[data-present][data-present-line="beside"] .mov-pres__line {
+  max-width: var(--pres-line-most);
+}
+
+.mov[data-present] .mov-pres__line[data-shown="false"] {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 400ms ease-out, visibility 0s 400ms;
+}
+
+/* previous, play, next and leave, for a finger: shown on entering by a
+   pointer, on a touch (or a mouse moved) and on the focus coming to them,
+   faded 3 s after the last, and held while the keyboard's focus is in them
+   (./present.js). Faded is transparent and lets taps through to the map, and
+   no more: the buttons stay in the Tab order and in what a screen reader
+   reads, which has no Escape to leave by (SV2-31b). Clear of a phone's
+   rounded corners and home bar (the safe area). */
+.mov[data-present] .mov-pres__touch {
+  display: flex;
+  position: absolute;
+  z-index: 9;
+  /* at the right of the stage's foot, so the corner line has the left
+     (SV2-31d); clear of a notch on the right where the stage reaches it */
+  right: var(--s-4);
+  bottom: calc(var(--s-4) + env(safe-area-inset-bottom, 0px));
+  gap: var(--s-3);
+  padding: var(--s-2);
+  background: var(--card);
+  border: var(--border);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow);
+  opacity: 1;
+  transition: opacity 300ms ease-out;
+}
+
+.mov[data-present] .mov-pres__touch[data-shown="false"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 56 px a side (DECISIONS 2026-10-21), over the shell's and the section's
+   own button heights, which a coarse pointer's rules set more strongly */
+.mov[data-present] .mov-pres__btn {
+  min-width: 56px;
+  min-height: 56px;
+  padding: 0 var(--s-4);
+  font-size: calc(var(--t-md) * 1.25);
+}
+
+/* as wide reading Pause as Play, so the controls keep the width the
+   corner line was placed beside (./present.js placeLine) */
+.mov[data-present] .mov-pres__btn[data-action="present-play"] {
+  min-width: 5em;
+}
+
+/* ---------- The panel under the map ----------
+   Where the panel stands is chosen by ./present.js (data-present-panel):
+   beside the map, or under it as a band, whichever shows every floor whole
+   at the larger zoom with the touch controls' band at the map's foot
+   (SV2-31c: under on an upright phone and on a phone on its side, beside
+   at 1280 by 800). Under, its height is set there too: what the map
+   leaves, from its first row of groups to 38 % of the screen. */
+.mov[data-present][data-present-panel="under"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.mov[data-present][data-present-panel="under"] > .mov-pres__panel {
+  grid-column: 1;
+  grid-row: 2;
+  width: auto;
+  /* no max-height: the height is ./present.js's, at most 38 % of the screen
+     and never under the first row of groups (SV2-31d: a 38dvh cap here cut
+     that row in a short window) */
+  padding: var(--s-4);
+  border-top: var(--border);
+  border-left: env(safe-area-inset-left, 0px) solid var(--card);
+  border-right: env(safe-area-inset-right, 0px) solid var(--card);
+  border-bottom: env(safe-area-inset-bottom, 0px) solid var(--card);
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-content: flex-start;
+}
+
+/* the map does not reach the screen's foot here: the panel does */
+.mov[data-present][data-present-panel="under"] .mov-pres__touch {
+  right: calc(var(--s-4) + env(safe-area-inset-right, 0px));
+  bottom: var(--s-4);
+}
+
+.mov[data-present][data-present-panel="under"] .mov-pres__line {
+  bottom: var(--s-3);
+}
+
+/* the caption runs the screen's width: clear of a notch on its right too */
+.mov[data-present][data-present-panel="under"] > .mov-map > .mov-pres__caption {
+  padding-right: calc(var(--s-4) + env(safe-area-inset-right, 0px));
+}
+
+.mov[data-present][data-present-panel="under"] > .mov-pres__panel > .mov-pres__part {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+/* the key of the groups first and across the band, so a short band shows
+   as many groups as it can in its first rows */
+.mov[data-present][data-present-panel="under"] > .mov-pres__panel > [data-present="key"] {
+  flex-basis: 100%;
+}
+
+/* the corner line above the touch controls, where the stage has no room
+   for it beside them (./present.js placeLine): after the rules above, whose
+   foot it would otherwise take */
+.mov[data-present][data-present-line="above"] .mov-pres__line {
+  bottom: calc(var(--pres-touch-up, 0px) + var(--s-2));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mov[data-present] .mov-pres__line,
+  .mov[data-present] .mov-pres__line[data-shown="false"],
+  .mov[data-present] .mov-pres__touch,
+  .mov[data-present] .mov-pres__touch[data-shown="false"] {
+    transition: none;
+  }
+}
