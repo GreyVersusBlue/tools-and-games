@@ -1312,7 +1312,8 @@ test('the project left with nothing to draw while presenting: the mode is left, 
       for (const group of store.project.groups.slice()) store.apply(deleteGroup, { id: group.id });
     });
     await page.waitForFunction(() => !document.querySelector('.mov').present.presenting && document.fullscreenElement === null, { timeout: 10000 });
-    await page.waitForFunction(() => document.querySelector('.mov-map').hidden === true);
+    // the section has its answer for the empty project and has drawn its empty card (which it draws again on each change)
+    await page.waitForFunction(() => document.querySelector('.mov-map').hidden === true && document.querySelector('.mov').dataset.pending !== 'true' && !document.querySelector('.mov-empty').hidden);
     const focus = await page.evaluate(() => {
       const el = document.activeElement;
       return { body: el === document.body || el === null, inSection: Boolean(el && (el.closest('.mov') || el.closest('main') || el.matches('main'))), tag: el ? el.tagName : null, box: el ? el.getClientRects().length : 0 };

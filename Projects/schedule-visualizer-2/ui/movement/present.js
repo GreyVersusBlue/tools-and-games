@@ -881,6 +881,8 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
         document.removeEventListener('webkitfullscreenchange', over);
         // looked for again, for as long again: the section is measured at its size a frame or two after
         if (pendingRestore && !presenting) lookForPut();
+        // a focus outside the section that the full screen held off (focusBack)
+        if (focusLater && !presenting) focusBack();
       };
       document.addEventListener('fullscreenchange', over);
       document.addEventListener('webkitfullscreenchange', over);
@@ -964,9 +966,10 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
 
   // Present, where it has a box; folded away with the controls on a phone,
   // the button that opens them (Change), or the map; with no map (the
-  // project left with nothing to draw while presenting) the section's
-  // heading, or the section's region: never the page's body (SV2-31c)
+  // project left with nothing to draw while presenting) the shell's region
+  // of the section (#surface): never the page's body (SV2-31c)
   function focusBack() {
+    focusLater = false;
     const drawn = (el) => el && el.isConnected && el.getClientRects().length > 0;
     if (drawn(button)) {
       button.focus();
@@ -978,14 +981,14 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
       return;
     }
     if (drawn(plan.canvas) && plan.focus() !== false && document.activeElement === plan.canvas) return;
-    const heading = Array.from(root.querySelectorAll('h1, h2')).find(drawn);
-    if (heading) {
-      if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
-      heading.focus();
-      if (document.activeElement === heading) return;
-    }
+    // not the empty card's heading: the section draws that card again on
+    // each change, and the focus went with the heading it replaced. Outside
+    // the section, which is still the full-screen element until the browser
+    // has let go, nothing takes the focus: it is given when full screen ends
     if (ctx.focusSurface) ctx.focusSurface();
+    if (fullscreenElement() === root && !root.contains(document.activeElement)) focusLater = true;
   }
+  let focusLater = false;
 
   function putView() {
     const was = pendingRestore;
