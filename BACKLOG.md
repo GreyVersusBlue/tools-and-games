@@ -2651,13 +2651,15 @@ Folder `Projects/skywings64/`; `WISHLIST.md` there carries the two open
 items. Item 1 was three measured draw-call cuts, rank 26 for a day: all three
 shipped on 2026-10-07 (#930 vegetation in 20 batches, #931 the copies of each
 GLB as herds, #932 far terrain one mesh a square; 182 to 460 fewer draws a
-frame, counted and not yet timed; #978 drew the bridge's seven cars as one on
-2026-10-15, 3 to 6 fewer). What is open in it is Devon's timing run on
-the Windows GPU and a list of smaller cuts nobody has ranked. Item 2, a phone
+frame, counted; #978 drew the bridge's seven cars as one on 2026-10-15, 3 to 6
+fewer; #1006 and #1007 batched the chimney smoke, wakes and burner flames on
+2026-10-21, 2 to 55 fewer). Devon's timing run came back "Done: looks fine" on
+2026-10-21, without milliseconds. What is open in it is a short list of smaller
+cuts nobody has ranked. Item 2, a phone
 and a controller in hand, waits on a person (see Parked). The glider landing
 and the heads model were the other two: Devon flew the landing on 2026-10-03
 and it works, and `heads.glb` was rebuilt on 2026-10-05 (#895). Its suite is
-`node test/browser.mjs` from the project folder, in Site CI's matrix (84
+`node test/browser.mjs` from the project folder, in Site CI's matrix (86
 checks; the first 35 are `test/assets.mjs`, Node only, and the last 3 hold a
 frame's draw calls to `test/draws.json`).
 

@@ -2,7 +2,7 @@
 
 A Pilotwings 64-style flight game in three.js r160: hang glider, gyrocopter and rocket belt, six
 scored missions and Free Flight over one island. `CONTRACT.md` has the module interfaces, URL
-parameters and the `window.__qa` test hook. `node test/browser.mjs` is the suite (84 checks, about a
+parameters and the `window.__qa` test hook. `node test/browser.mjs` is the suite (86 checks, about a
 minute and a half, Tools/board-check's harness); its first 35 are `test/assets.mjs`, which reads
 `assets/models/` in Node alone and can be run by itself, and its last 3 hold a frame's draw calls to
 `test/draws.json` from the first three of `test/draws.mjs`'s nine views (`node test/draws.mjs` runs
@@ -10,8 +10,9 @@ all nine, about three minutes). `node test/browser.mjs --models` runs the model,
 checks alone in half a minute.
 
 Both items below are open. Item 1 was measured on a real GPU on 2026-10-03 and all three of its
-cuts shipped on 2026-10-07, counted in draws and not yet timed, so what is open in it is Devon's
-timing run and the smaller cuts it lists; nothing else here has
+cuts shipped on 2026-10-07, counted in draws. Devon re-ran the profile on his GPU and on a weaker
+card and reported on 2026-10-21 "Done: looks fine", with no milliseconds, so no table after the cuts
+exists. What is open in it is the smaller cuts it lists; nothing else here has
 been seen on a real GPU, and that includes the carved heads, rebuilt on 2026-10-05 and judged from Blender
 renders and SwiftShader captures (`screenshots/heads_near.jpg`, `heads_far.jpg`; `HISTORY.md` #895).
 The glider's landing is not here any more: Devon flew it by hand on 2026-10-03, it works, and no
@@ -158,12 +159,13 @@ casts shadows only while the sun's shadow box reaches one of its merged chunks, 
 
 ### What is left
 
-Nothing of the three. Smaller, from the lighthouse view's 156 static draws, none started:
-- **Chimney smoke: 44 sprites, a material each, a draw each** wherever the cabins are in the frustum
-  at any distance (45 of the lighthouse view's draws with the lamp's glow). One instanced quad per
-  cabin cluster would be 4. It is transparent, so the order it is drawn in against the sea and the
-  boats' wakes has to be kept: that wants a person's eye on the result, not a pixel count.
-- **Wakes and burner flames, 18**: one geometry and one material each kind, transparent, same caution.
+Nothing of the three. Smaller, from the lighthouse view's 156 static draws:
+- **Done 2026-10-21: chimney smoke, wakes and burner flames.** The 44 smoke sprites are four
+  instanced batches, one per cluster of cabins (#1006), and the 10 wakes and 6 flames one batch each
+  (#1007), all packed back to front from the camera before each render. Lighthouse 346 to 291 draws,
+  2 to 55 fewer a view; captures identical to the byte but for 7 pixels on a burner in two views, at
+  most 8/255 (`HISTORY.md`'s log has the counts). Devon passed the draw order as it stood on
+  2026-10-21; nobody has looked at the batched version in motion.
 - **The 6 pad and landing decals** are 6 draws and stay so: the three pads and the three landing
   targets are transparent (`decalMat` without `opaque`) at `renderOrder` 2, so three sorts them back
   to front each frame by distance, and one mesh would fix an order the camera now changes. The
