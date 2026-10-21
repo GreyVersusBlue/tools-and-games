@@ -6,14 +6,19 @@
 // steps every 5, 10 or 15 seconds, the playback runs inside it, and Escape
 // leaves with the section as it was.
 //
-//   presentMode({ ctx, plan, env, bar, root }) -> { button, enter(), leave() }
+//   presentMode({ ctx, plan, env, bar, root, places }) -> { button, enter(), leave() }
 //     ctx    the shell's section context
 //     plan   the section's plan map (ui/surface/plan-map.js)
 //     env    the section's env (the top of ./index.js): choice(), change()
 //     bar    the playback bar's element (its .playback is the bar's own state)
 //     root   the section's element, the plan map's root (div.mov), whose
 //            .movement (./index.js) is the view on screen
-//   button   "Present", for the section's controls beside Clear; the key is P
+//     places { line, controls }: where Present stands. It ends the first line
+//            (after Change), and under PHONE (640 px) it stands beside Clear
+//            in the controls, since on a phone the line has no room for it
+//            and a second row of the line would take 44 px from the map; it
+//            moves when the window crosses that width. P works either way.
+//   button   "Present"; the key is P
 //
 // Nothing is drawn twice and nothing keeps a clock of its own: the map is the
 // section's plan map, the playback is the section's bar (its clock is copied
@@ -143,7 +148,10 @@ function fullscreenElement() {
 
 const realTimers = { set: (fn, ms) => setTimeout(fn, ms), clear: (id) => clearTimeout(id) };
 
-export function presentMode({ ctx, plan, env, bar, root }) {
+// Under this the button stands in the controls, not on the first line.
+export const PRESENT_IN_CONTROLS = '(max-width: 640px)';
+
+export function presentMode({ ctx, plan, env, bar, root, places }) {
   loadSheet();
   if (!listening) {
     document.addEventListener('keydown', onPageKey);
@@ -167,8 +175,8 @@ export function presentMode({ ctx, plan, env, bar, root }) {
   const view = () => root.movement || null;
   const playback = () => bar.playback;
 
-  // ---- the button, in the section's controls
-  const button = h('button', { type: 'button', class: 'btn mov-present', 'aria-keyshortcuts': 'P', title: 'Show the map on the whole screen, for a projector (P)', data: { action: 'present' }, on: { click: () => enter() } }, 'Present');
+  // ---- the button
+  const button = h('button', { type: 'button', class: 'mov-link mov-present', 'aria-keyshortcuts': 'P', title: 'Show the map on the whole screen, for a projector (P)', data: { action: 'present' }, on: { click: () => enter() } }, 'Present');
 
   // ---- the panel: the groups on the map, the load, the busiest places
   const panel = h('section', { class: 'mov-pres__panel', tabindex: '0', 'aria-label': 'Presentation of the movement view: the key', data: { part: 'present-panel' } });
@@ -196,6 +204,30 @@ export function presentMode({ ctx, plan, env, bar, root }) {
   const nextButton = touchButton('present-next', '›', 'Next transition', () => step(1, false));
   const leaveButton = touchButton('present-leave', 'Leave', 'Leave presentation mode', () => leave());
   const touch = h('div', { class: 'mov-pres__touch', role: 'group', 'aria-label': 'Presentation controls', data: { part: 'present-touch', shown: 'false' } }, previousButton, playButton, nextButton, leaveButton);
+
+  // where the button stands: the first line, or the controls on a phone
+  const phone = matchMedia(PRESENT_IN_CONTROLS);
+  function placeButton() {
+    if (!places) return;
+    // the section has left the page: nothing is placed again
+    if (!root.isConnected && root.dataset.styled === 'true') {
+      phone.removeEventListener('change', placeButton);
+      return;
+    }
+    const into = phone.matches ? places.controls : places.line;
+    if (!into || button.parentNode === into) return;
+    const held = document.activeElement === button;
+    if (into === places.line) into.append(' ', button);
+    else {
+      // the space before it on the line goes with it
+      if (button.previousSibling && button.previousSibling.nodeType === 3 && button.previousSibling.textContent === ' ') button.previousSibling.remove();
+      into.append(button);
+    }
+    button.dataset.place = phone.matches ? 'controls' : 'line';
+    if (held) button.focus();
+  }
+  placeButton();
+  phone.addEventListener('change', placeButton);
 
   root.append(panel);
   plan.element.insertBefore(caption, plan.stage);

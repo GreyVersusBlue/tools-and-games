@@ -737,9 +737,8 @@ async function tabsToMap(page) {
 }
 
 test('W6: from Who to the map is six Tabs whatever the number of periods: the transition strip is a radio group with one Tab stop, arrows, Home and End', async () => {
-  // Present (SV2-31) stands beside Clear in the controls: one more stop, still the same whatever the number of periods
   await on('#movement', DESK, async (p) => {
-    assert.deepEqual(await tabsToMap(p), ['day', 'transition all', 'labels', 'constant-width', 'clear', 'present', 'the map']);
+    assert.deepEqual(await tabsToMap(p), ['day', 'transition all', 'labels', 'constant-width', 'clear', 'the map']);
     const strip = () => p.evaluate(() => ({
       role: document.querySelector('[data-control="transition"]').getAttribute('role'),
       roles: Array.from(new Set(Array.from(document.querySelectorAll('.mov-strip__item')).map((item) => item.getAttribute('role')))),
@@ -760,7 +759,7 @@ test('W6: from Who to the map is six Tabs whatever the number of periods: the tr
     // with a transition chosen it is that one the Tab lands on, and still six Tabs
     await p.keyboard.press('ArrowRight');
     await drawn(p);
-    assert.deepEqual(await tabsToMap(p), ['day', 'transition 0', 'labels', 'constant-width', 'clear', 'present', 'the map']);
+    assert.deepEqual(await tabsToMap(p), ['day', 'transition 0', 'labels', 'constant-width', 'clear', 'the map']);
     // a day of twelve periods: eleven transitions and All, and six Tabs
     await p.evaluate(async () => {
       const actions = await import('./engine/actions.js');
@@ -768,7 +767,7 @@ test('W6: from Who to the map is six Tabs whatever the number of periods: the tr
     });
     await drawn(p);
     assert.equal((await strip()).count, 12);
-    assert.deepEqual(await tabsToMap(p), ['day', 'transition 0', 'labels', 'constant-width', 'clear', 'present', 'the map']);
+    assert.deepEqual(await tabsToMap(p), ['day', 'transition 0', 'labels', 'constant-width', 'clear', 'the map']);
   });
 });
 

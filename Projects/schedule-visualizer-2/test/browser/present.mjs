@@ -221,8 +221,8 @@ test('by keyboard at 1280 by 800: P in, the arrows, Space, A, H, Escape out, and
         assert.equal(entry.keys, keys, id + "'s keys");
         assert.ok(entry.does.length > 10, id + ' has no words');
       }
-      const button = await page.$eval('.mov-ctl--options [data-action="present"]', (el) => ({ text: el.textContent, keys: el.getAttribute('aria-keyshortcuts'), box: el.getClientRects().length }));
-      assert.deepEqual(button, { text: 'Present', keys: 'P', box: 1 }, 'Present is not in the controls');
+      const button = await page.$eval('#movement-line [data-action="present"]', (el) => ({ text: el.textContent, keys: el.getAttribute('aria-keyshortcuts'), box: el.getClientRects().length, place: el.dataset.place }));
+      assert.deepEqual(button, { text: 'Present', keys: 'P', box: 1, place: 'line' }, 'Present does not end the first line at 1280');
     });
 
     // the map zoomed in by the reader first, and a transition chosen, so that putting back is tested on a state that is not the default
@@ -524,12 +524,15 @@ for (const size of [{ width: 390, height: 844, upright: true }, { width: 844, he
     const { page } = session;
     try {
       await settled(page);
-      // under 900 px the controls open folded, unless the reader opened them on
-      // this device before (the run at the other size, in this browser): Present
-      // is in them, one tap behind Change, and on screen whenever they are open
+      // on a phone (640 px and under) Present stands beside Clear in the
+      // controls, one tap behind Change (folded unless the reader opened them on
+      // this device before: the run at the other size, in this browser); wider,
+      // it ends the first line, on screen with the controls folded
+      const where = await page.$eval('[data-action="present"]', (el) => el.dataset.place);
+      assert.equal(where, size.width <= 640 ? 'controls' : 'line', 'Present stands in the wrong place');
       const folded = await page.$eval('.mov-top', (el) => el.dataset.folded === 'true');
-      assert.equal(await page.$eval('[data-action="present"]', (el) => el.getClientRects().length), folded ? 0 : 1, 'Present is drawn when the controls are not');
-      if (folded) await page.tap('[data-action="change"]');
+      assert.equal(await page.$eval('[data-action="present"]', (el) => el.getClientRects().length), where === 'controls' && folded ? 0 : 1, 'Present is drawn where it should not be, or not where it should');
+      if (where === 'controls' && folded) await page.tap('[data-action="change"]');
       await page.waitForFunction(() => document.querySelector('[data-action="present"]').getClientRects().length > 0);
       // the tap would scroll the section to the button first: bring it into view, then read where things are
       await page.$eval('[data-action="present"]', (el) => el.scrollIntoView({ block: 'nearest' }));
