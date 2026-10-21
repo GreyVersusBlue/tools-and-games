@@ -492,11 +492,10 @@ starves the north, its second star the entry meter (`lesson: { kind:
 green wave both ways, **Cross Town** (2026-10-07), three boxes in a row
 that an ambulance crosses (R6), and **Lights Out** (2026-10-07), an outage
 on a timed corridor. No candidate is left on the list. What R13 leaves is
-one engine unit, one level call and four levels nobody has played: a box
-coming back from dark without hitting the car still crossing (Lights
-Out, written and held back) and Cross Town with turning traffic, which
-the route of #960 makes possible and nobody has calibrated, both in
-Known gaps; the slider reads true after an outage since #959. Each level gets R1's two tables and
+one level call and four levels nobody has played: Cross Town with
+turning traffic, which the route of #960 makes possible and nobody has
+calibrated, in Known gaps (the box coming back from dark shipped as
+#957 on 2026-10-21); the slider reads true after an outage since #959. Each level gets R1's two tables and
 R2's rule from the first commit. One increment a session, a level or two at
 a time.
 
@@ -725,7 +724,8 @@ all-red, and on a two-lane box a car still crossing on its four-way turn
 is hit by the first green. Counting crashes in the dark and the 10 s
 after it, on 24 seeds a 20 s outage read 8 or 9, a 25 s one 8, a 15 s one
 4 or 5; 12 s read 5, 6 and 5 on 48 seeds at three start times, none of
-them on seeds 1 to 6 at 78 s. It is in Known gaps as an engine unit.
+them on seeds 1 to 6 at 78 s. The engine unit shipped as #957 on
+2026-10-21 (Known gaps); the 12 s has not been revisited since.
 
 **NOBODY HAS PLAYED IT.** What a person should look at first: the slider.
 Since #959 it drops from 16 to 0 by itself on the step the lights come
@@ -1075,40 +1075,26 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
   help (broken on purpose in a scratch copy on 2026-10-07, nothing
   pressed read 14 to 31% stopping again and three stars on four seeds),
   which deletes Lights Out's lesson, so it is a decision, not a fix.
-- A box that comes back from dark crashes its own front row, and the
-  cause is traced (2026-10-12): it is not the green and not the all-red's
-  length. In the dark a car stops at the line and rolls 3.6 m up to the
-  box's edge to wait its turn. The step the lights return every such car
-  is past its stop line by more than half a metre, so `stopLineVerdict`
-  reads it as committed by position on the red it now faces, the
-  four-way's order and its 3 s gap went with the dark, and the front row
-  of every leg goes at once. Lights Out's street with 20 s of dark, 24
-  seeds at 60 s and at 78 s: 13 crashes in the 12 s after the lights and
-  none in the dark; seed 1 at 78 s, five cars at the two boxes' edges go
-  in on the red 1.2 to 2.2 s after the return. A return all-red of
-  yellow plus all-red (5.5 s) was tried and leaves the same crashes at
-  the same instants, both cars on a red. The fix is written and NOT on
-  `main`: a car that stopped at a four-way (`stoppedAtLine`), has its
-  nose short of the box's edge and can stop there is held at the edge by
-  a red (one line in `cars.js`); the same 48 runs then read 0 crashes,
-  and `test/stars.mjs`'s Lights Out lines all pass (the slider to 32
-  three-stars 4 seeds of 6, not 2). It was held back because it moves
-  Rush Hour, whose outage is 30 s: nothing pressed keeps one star on 4
-  seeds of 6 and not 6 (seeds 3 and 5 collide once, 16 and 28 s after
-  the lights, and the level is hard mode), the hand three-stars 5 of 6
-  and not 6 (seed 3), and `scoring.mjs`'s "at 0.5 s on seed 4 the
-  dropped leg's left still yields" line fails on a collision. Over 48
-  seeds with nothing pressed and collisions forgiven Rush Hour reads 10
-  collisions before and 11 after, so the level is not shown to be
-  harder, but its pinned seeds are different runs and neither new crash
-  was traced. The code and a 17-check test group (a seeded reproduction,
-  the rule on one car, a flashing red switched off) are commit afc8f07
-  on GitHub's `wave/2026-10-12-TG-29-signalengine`, under the claimed
-  number #957; the unit is to trace Rush Hour's seeds 3 and 5 and then
-  re-pin or recalibrate it. One trap found by reading: a car held with
-  its nose past the edge would count as stalled in the box, and 30 s of
-  that ends a run, so the hold stops at the edge exactly. Lights Out's
-  12 s of dark stays until this lands.
+- A box that came back from dark crashed its own front row (traced
+  2026-10-12, shipped as #957 on 2026-10-21). In the dark a car stops at
+  the line and rolls 3.6 m up to the box's edge to wait its turn; the
+  step the lights returned, `stopLineVerdict` read every such car as
+  committed by position on the red, and the front row of every leg went
+  at once (Lights Out's street, 20 s of dark, 48 runs: 13 crashes in the
+  12 s after the lights, 0 with the hold). A red now holds at the edge a
+  car that stopped at a four-way, has its nose short of the edge and can
+  stop there; the hold stops at the edge exactly, since a nose in the box
+  held there counts as stalled. It moved Rush Hour's pinned runs and was
+  landed on Devon's word to re-pin them: no input one star on 4 seeds of
+  6 and not 6, the hand three stars on 5 and not 6. Both moved crashes are
+  hazards the level already had (seed 3, a tailgater into a rideshare
+  stopped for a pickup 110 m past the box at 156 s, the hand's too;
+  seed 5, a yellow puncher meeting a left on the all-red at 168 s), and
+  48 seeds read 10 crashes before and 11 after. What is left: seed 3's
+  crash comes before the hand has changed anything, so on one seed of six
+  Rush Hour's hard mode ends a run on a crash no timing at the box was
+  shown to prevent (#641 claimed none did). And Lights Out's 12 s of dark,
+  chosen to dodge this bug, was not revisited: that is a level call.
 - A platoon member obeys the light like anyone else: a funeral
   procession's follow-through on a red (a courtesy law in much of the
   world) is not built, because with it a procession could only be split
