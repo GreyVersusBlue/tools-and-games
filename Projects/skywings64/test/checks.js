@@ -138,6 +138,28 @@
         && unsorted.length === 0 && alphas.some((a) => a > 0.05) && alphas.every((a) => a >= 0 && a <= 0.35) && rise() !== y0,
         'chimney smoke: 44 puffs in four batches, each back to front from the camera, and moving', { batches: sm.map((m) => m.count), sprites, unsorted, maxAlpha: +Math.max(...alphas).toFixed(3) });
 
+      // ---- wakes and burner flames (#1007): one InstancedMesh each, packed with the hidden copies the
+      // camera can see, back to front, each where its copy is (the mesh stands on the camera), a flame
+      // at its own copy's opacity. Seen from 1.5 km up over the middle of the map.
+      const bt = {}, copies = { 'boat-wakes': [], 'burner-flames': [] };
+      L.traverse((o) => {
+        if (o.name in copies) bt[o.name] = o;
+        else if (o.isMesh && !o.isInstancedMesh && o.material && (o.geometry.type === 'PlaneGeometry' && o.material.map && o.material.map.image && o.material.map.image.width === 64 && o.material.map.image.height === 256 || o.geometry.type === 'ConeGeometry' && o.material.blending === 2)) copies[o.geometry.type === 'ConeGeometry' ? 'burner-flames' : 'boat-wakes'].push(o);
+      });
+      look(0, 1500, 300, 0, 0, 0);
+      const batch = Object.keys(copies).map((k) => {
+        const im = bt[k], a = im.instanceMatrix.array, v = cam.matrixWorldInverse.elements;
+        const at = [...Array(im.count).keys()].map((i) => [a[i * 16 + 12] + im.position.x, a[i * 16 + 13] + im.position.y, a[i * 16 + 14] + im.position.z]);
+        const c = im.geometry.boundingSphere.center, z = [...Array(im.count).keys()].map((i) => { const o = i * 16;   // the sphere's centre, which three sorted the copies by
+          return v[2] * (a[o] * c.x + a[o + 4] * c.y + a[o + 8] * c.z + at[i][0]) + v[6] * (a[o + 1] * c.x + a[o + 5] * c.y + a[o + 9] * c.z + at[i][1]) + v[10] * (a[o + 2] * c.x + a[o + 6] * c.y + a[o + 10] * c.z + at[i][2]); });
+        const placed = at.every((p) => copies[k].some((o) => Math.hypot(o.matrixWorld.elements[12] - p[0], o.matrixWorld.elements[13] - p[1], o.matrixWorld.elements[14] - p[2]) < 0.01));
+        const ops = im.geometry.attributes.aOpacity ? [...im.geometry.attributes.aOpacity.array.slice(0, im.count)] : null;
+        return { k, copies: copies[k].length, hidden: copies[k].every((o) => !o.visible), packed: im.count, placed, sorted: z.every((d, i) => i === 0 || d >= z[i - 1] - 1e-3),
+          ownOpacity: ops === null || ops.every((x) => copies[k].some((o) => Math.abs(o.material.opacity - x) < 1e-6)) };
+      });
+      ok(batch.length === 2 && batch[0].copies === 10 && batch[1].copies === 6 && batch.every((b) => b.hidden && b.packed > 1 && b.placed && b.sorted && b.ownOpacity),
+        'wakes and burner flames: one batch each, the hidden copies in view packed back to front where they stand', batch);
+
       if (window.__swOnly === 'models') return out;                  // test/browser.mjs --models
 
       // ---- courses: every mission builds, and every ring can be flown through
