@@ -190,6 +190,7 @@ row names a file it does not run.
 | `test/ui/fix-kinds.test.mjs` | The kinds Fix… is on (FIXABLE_KINDS) and the kinds the suggestion engine works on, read through its candidates, are the same set |
 | `test/ui/lab-fixes.test.mjs` | The M5 pass's lab and Fix dialog follow-ups with no browser (SV2-72d): `notYet` gone, README's fix.mjs row as Try it behaves |
 | `test/ui/label-scale.test.mjs` | The renderer's `labelScale` (presentation mode's large type), on a context that records each text with its size: at 1 every write is as before; at 1.5 corridor and door names are 1.5 times as large, room numbers grow where they have the room and are fitted where they have not, the caps rise to 27 and 19.5 px and no further, and the lanes overlay is handed the scale for its period pills and corridor names |
+| `test/ui/set-view.test.mjs` | The plan map's `setView` (presentation mode putting a reader's zoom back) through its rule `viewAt`: a zoom clamped to 25 % to 300 % as `viewport.restore` clamps one, a zoom or place that is not a finite number refused with the view untouched, and a place off the stage kept on it by `keepOnStage` |
 | `test/a11y/contrast.mjs` | Token contrast, in Node |
 | `test/browser/shell.mjs` | The shell: the rail, shortcuts, themes, toasts, dialogs |
 | `test/browser/no-offsite.mjs` | Nothing the planner or a published file asks for leaves the origin |

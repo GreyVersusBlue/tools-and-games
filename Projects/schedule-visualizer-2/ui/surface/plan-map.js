@@ -80,7 +80,8 @@
 //   map.showFloors(shown)   put the row of floors in the top bar or take it
 //                           away; true when the focus was in the row taken away
 //   map.onLayout(fn)        fn() each time the floors are laid out, before
-//                           a fitted map is fitted again
+//                           a fitted map is fitted again; returns off(),
+//                           which takes fn off again (SV2-31c)
 //   map.remeasure()         measure the section again
 //   map.fitAt(width, height)   where Fit would put the floors on a stage of
 //                           that size, by the rule fit() takes (choose):
@@ -96,7 +97,10 @@
 //                           large type, SV2-31); map.labelScale reads it
 //   map.setView({ zoom, x, y })   the map at that zoom and place, off Fit,
 //                           with no 'view' said to onCell (presentation
-//                           mode putting back a reader's zoom, SV2-31b)
+//                           mode putting back a reader's zoom, SV2-31b);
+//                           the zoom clamped and the place kept on the
+//                           stage, a view that is no view refused (viewAt):
+//                           true when the map was moved
 //
 // The rules of the stage (DESIGN 5.3; DECISIONS 2026-10-14 23:53,
 // 2026-10-15 11:54 and 2026-10-16 01:15) are here, for every section: the
@@ -165,6 +169,21 @@ export function keepOnStage(view, world) {
   const { dx, dy } = keepShift(view, world, KEEP_ON_STAGE);
   if (dx !== 0 || dy !== 0) view.panBy(dx, dy);
   return dx !== 0 || dy !== 0;
+}
+
+// The view at a zoom and place asked (setView, below): the zoom clamped to
+// 25 % to 300 % as viewport.restore clamps a saved one, then kept on the
+// stage (keepOnStage), so no value puts the floors off it. A zoom or place
+// that is not a finite number (Infinity, NaN, a string), a zoom of 0 or
+// under, or no floors laid out yet is refused: false, and the view is not
+// touched. True when the view was set.
+export function viewAt(view, world, asked) {
+  const { zoom, x, y } = asked || {};
+  if (!world || typeof zoom !== 'number' || typeof x !== 'number' || typeof y !== 'number') return false;
+  if (!Number.isFinite(zoom) || !(zoom > 0) || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+  view.restore({ zoom, x, y });
+  keepOnStage(view, world);
+  return true;
 }
 
 // What the section has for the map (DESIGN 5.3; SV2-52): its height less the
@@ -977,8 +996,14 @@ export function createPlanMap(asked) {
     onCell(fn) {
       cellFns.push(fn);
     },
+    // returns its unregister: off() takes fn off the list (true when it was on it)
     onLayout(fn) {
       layoutFns.push(fn);
+      return () => {
+        const at = layoutFns.indexOf(fn);
+        if (at !== -1) layoutFns.splice(at, 1);
+        return at !== -1;
+      };
     },
     theme: () => renderer.theme(),
     hover(floorId, cell) {
@@ -996,16 +1021,15 @@ export function createPlanMap(asked) {
     get labelScale() { return labelScale; },
     // the map at a zoom and place given, off Fit, as a reader left it
     // (presentation mode putting it back, SV2-31b): nothing is said to the
-    // section, so a card open on a cell stays open
-    setView({ zoom, x, y }) {
-      if (!world || !(zoom > 0) || !Number.isFinite(x) || !Number.isFinite(y)) return;
-      view.zoom = zoom;
-      view.x = x;
-      view.y = y;
-      keepOnStage(view, world);
+    // section, so a card open on a cell stays open (the section puts it
+    // back on its cell). viewAt's guards: false, and nothing moved, for a
+    // view that is no view
+    setView(asked) {
+      if (!viewAt(view, world, asked)) return false;
       fitted = false;
       shownLast = null;
       queuePaint();
+      return true;
     },
     remeasure,
     dock,
