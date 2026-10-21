@@ -194,6 +194,11 @@ export const section = {
       paintMarks: () => plan.paintMarks(),
       layer,
       card,
+      // a card the reader tapped open ({ floorId, cell }, or null), and
+      // putting it back beside its cell after the map moved under it with
+      // nothing said (presentation mode leaving, ./present.js)
+      tapped: () => tapped(),
+      reopen: (held) => reopen(held),
       fix(where) {
         if (where.slot) openSlot(ctx, where.slot);
         else ctx.navigate(where.hash);
@@ -628,8 +633,12 @@ export const section = {
         refresh();
       },
       unmount() {
-        // presentation mode left first, the transition and floors put back for the next mount (a change of address inside Movement comes here too)
-        presenter.unmount();
+        // presentation mode left first (a change of address inside Movement
+        // comes here too): the transition and floors from before it are
+        // what the next mount opens on, written to memory only, since this
+        // section is not drawn again (SV2-31c)
+        const kept = presenter.unmount();
+        if (kept && memory.choice) memory.choice = { ...memory.choice, ...kept };
         gone = true;
         asker.stop();
         bar.unmount();

@@ -83,6 +83,9 @@ import { parse, readable } from '../colour.js';
 import { bandText } from './legend.js';
 import { unitWord } from './model.js';
 import { hotspotRows, placeWords } from './hotspots.js';
+import { bestLayout, layoutFloors, FIT_MARGIN } from '../surface/plan-layout.js';
+import { CELL, MIN_ZOOM, MAX_ZOOM } from '../surface/viewport.js';
+import { floorsShown } from '../surface/plan-map.js';
 
 // The keys, for Help, under Movement (Help explains each group it lists,
 // ui/help/content.js). The section answers them itself (below).
@@ -106,6 +109,8 @@ export const LINE_FADE_MS = 2500;
 export const HOTSPOTS_SHOWN = 5;
 // How long the map is given to be back at its size before it is put back where it was.
 export const RESTORE_WAIT_MS = 1000;
+// Under the map, the panel is at most this much of the screen's height.
+export const PANEL_UNDER_MOST = 0.38;
 
 export const REFUSED_SAYS = 'This browser did not open full screen, so the map fills the window instead.';
 
@@ -155,6 +160,11 @@ function onPageKey(event) {
     return;
   }
   if (event.key !== 'p' && event.key !== 'P') return;
+  // P held down: its repeats are not presses (SV2-31c: the mode went in and out)
+  if (event.repeat) {
+    event.preventDefault();
+    return;
+  }
   if (!singleKeyAllowed(event) || dialogIsOpen()) return;
   if (!me.can()) return;
   event.preventDefault();
@@ -195,6 +205,13 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
   let due = null;
   // the section has left the page (unmount)
   let gone = false;
+  // the mode's own Fit (fitMode): on from entering until the reader moves the map
+  let modeFitted = false;
+  let fitting = false;
+  // the frame a waiting step samples the playback on (watchDue), and the
+  // frame the map is put back on after leaving (restore's look)
+  let dueFrame = null;
+  let lookFrame = null;
 
   const view = () => root.movement || null;
   const playback = () => bar.playback;
@@ -383,6 +400,184 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     if (presenting) showControls();
   });
 
+  // ---- the mode's Fit (SV2-31c). The map fills what the panel and the
+  // caption leave, and the touch controls and the corner line lie over its
+  // foot: the Fit counts that band as a foot, so no floor is drawn under
+  // them. Where the panel goes (a column beside the map, or a band under
+  // it) and, where the reader left it to the window ('auto'), how the floors
+  // are laid out (side by side or stacked), are chosen together: the pair
+  // that shows every floor whole at the largest zoom, beside on a tie. At
+  // 844 by 390 the floors had stood stacked beside a 236 px panel, Floor 3
+  // under the controls, and no layout is whole there at 25 %; under a 109 px
+  // panel they are whole side by side at 27 %. Under the map the panel is as
+  // tall as the map leaves it, between its first row of groups and 38 % of
+  // the screen. The floors are placed through the plan map's fitAt (its
+  // rule, choose) and setView; the map's own Fit, which knows nothing of
+  // the band, is not used while presenting. The reader moving the map ends
+  // the mode's Fit until the mode is entered again.
+
+  // How far up from the stage's foot the touch controls and the corner line
+  // reach, in px, as present.css places them: the controls as they stand
+  // (faded they keep their box), the line as tall as its longest sentence
+  // (the refusal) or as what it says now, so a line said later is not drawn
+  // over a floor.
+  function footBand() {
+    let band = 0;
+    const from = (el) => (parseFloat(getComputedStyle(el).bottom) || 0) + el.offsetHeight;
+    if (touch.getClientRects().length > 0) band = Math.max(band, from(touch));
+    if (line.getClientRects().length > 0) {
+      band = Math.max(band, from(line));
+      // a copy that says the longest, laid out where the line is, read by nobody
+      const longest = line.cloneNode(false);
+      for (const name of ['role', 'aria-live', 'data-part']) longest.removeAttribute(name);
+      longest.setAttribute('aria-hidden', 'true');
+      longest.textContent = REFUSED_SAYS;
+      line.after(longest);
+      band = Math.max(band, from(longest));
+      longest.remove();
+    }
+    return Math.ceil(band);
+  }
+
+  // The floors the mode may lay out: [{ how, layout }], both layouts where
+  // the reader left the choice to the window, else theirs alone.
+  function layoutsFor(project) {
+    const value = saved ? saved.floors : env.choice().floors;
+    const floors = floorsShown(project, value);
+    if (value === 'auto' && floors.length > 1) return ['side', 'stacked'].map((how) => ({ how, layout: layoutFloors(floors, how) }));
+    const how = value === 'stacked' ? 'stacked' : 'side';
+    return [{ how, layout: layoutFloors(floors, how) }];
+  }
+
+  // The zoom at which a layout fits `width` by `height` with the fit's
+  // margin, unclamped, and whether that is a zoom the map can take (25 %
+  // and over: every floor whole)
+  function fitOf(layout, width, height) {
+    const zoom = Math.min(MAX_ZOOM, Math.max(0, width - FIT_MARGIN * 2) / (layout.width * CELL), Math.max(0, height - FIT_MARGIN * 2) / (layout.height * CELL));
+    return { zoom, whole: zoom >= MIN_ZOOM };
+  }
+
+  // Each place of the panel measured as laid out (the attribute set, the
+  // page asked for its boxes), and the best arrangement:
+  // { panel: 'beside' | 'under', how, height (the panel's, under), zoom, whole }
+  function arrangement() {
+    const movement = view();
+    if (!movement || !movement.state) return null;
+    const layouts = layoutsFor(movement.state.project);
+    const width = root.clientWidth;
+    const height = root.clientHeight;
+    const was = root.dataset.presentPanel;
+    let best = null;
+    const better = (next) => {
+      if (!best || (next.whole && !best.whole) || (next.whole === best.whole && next.zoom > best.zoom + 1e-9)) best = next;
+    };
+    for (const where of ['beside', 'under']) {
+      root.dataset.presentPanel = where;
+      panel.style.removeProperty('height');
+      const captionHeight = caption.offsetHeight;
+      const band = footBand();
+      if (where === 'beside') {
+        const stageWidth = width - panel.offsetWidth;
+        for (const each of layouts) better({ panel: where, how: each.how, height: null, ...fitOf(each.layout, stageWidth, height - captionHeight - band) });
+        continue;
+      }
+      // under: at least the panel's title and its first row of groups, at most 38 % of the screen
+      const first = panel.querySelector('[data-present="groups"] li') || groupsTitle;
+      const least = Math.ceil(first.getBoundingClientRect().bottom - panel.getBoundingClientRect().top + (parseFloat(getComputedStyle(panel).paddingBottom) || 0));
+      const most = Math.max(least, Math.floor(height * PANEL_UNDER_MOST));
+      for (const each of layouts) {
+        // the map as tall as the width lets the floors be, the panel the rest
+        const across = fitOf(each.layout, width, Infinity).zoom;
+        const wants = Math.ceil(band + FIT_MARGIN * 2 + each.layout.height * CELL * across);
+        const panelHeight = Math.max(least, Math.min(most, height - captionHeight - wants));
+        better({ panel: where, how: each.how, height: panelHeight, ...fitOf(each.layout, width, height - captionHeight - panelHeight - band) });
+      }
+    }
+    if (was === undefined) delete root.dataset.presentPanel;
+    else root.dataset.presentPanel = was;
+    return best;
+  }
+
+  // The arrangement put on the page: where the panel stands, its height
+  // under the map, and the floors' layout. Asked on entering and when the
+  // window changes size, not at each step (its boxes are laid out twice).
+  let arrangedFor = null;
+  function arrange(force) {
+    const key = root.clientWidth + 'x' + root.clientHeight;
+    if (!force && key === arrangedFor) return;
+    const chosen = arrangement();
+    if (!chosen) return;
+    arrangedFor = key;
+    root.dataset.presentPanel = chosen.panel;
+    if (chosen.height === null) panel.style.removeProperty('height');
+    else panel.style.height = chosen.height + 'px';
+    layoutMode(chosen.how);
+  }
+
+  // The floors' layout chosen, where the reader left it to the window: the
+  // section's floors made that layout, or 'auto' where the window's own
+  // pick is the same (put back on leaving; a card open on a cell stays on it)
+  function layoutMode(how) {
+    if (!saved || saved.floors !== 'auto') return;
+    const movement = view();
+    const floors = movement && movement.state ? floorsShown(movement.state.project, 'auto') : [];
+    if (floors.length < 2) return;
+    const stage = plan.stage;
+    const target = stage.clientWidth > 0 && bestLayout(floors, stage.clientWidth, stage.clientHeight) === how ? 'auto' : how;
+    if (env.choice().floors !== target) changeFloors(target);
+  }
+
+  // the floors changed, with a card the reader tapped open put back on its cell
+  function changeFloors(floors) {
+    const held = env.tapped();
+    env.change({ floors }, { keepCard: true });
+    if (held) env.reopen(held);
+  }
+
+  // The window changed size inside the plan map's own measuring (a resize
+  // observer's turn): the arrangement waits a frame, so the boxes it lays
+  // out are not laid out again inside that turn.
+  let arrangeFrame = null;
+  function fitMode(fromLayout) {
+    if (!presenting || !modeFitted || fitting || gone) return;
+    const key = root.clientWidth + 'x' + root.clientHeight;
+    if (key !== arrangedFor) {
+      if (fromLayout) {
+        if (arrangeFrame === null) {
+          arrangeFrame = requestAnimationFrame(() => {
+            arrangeFrame = null;
+            fitMode(false);
+          });
+        }
+      } else {
+        fitting = true;
+        try {
+          arrange(false);
+        } finally {
+          fitting = false;
+        }
+      }
+    }
+    const v = plan.view;
+    if (!plan.world || v.width === 0 || v.height === 0) return;
+    fitting = true;
+    try {
+      // where the map's own Fit would put the floors on the stage above the band
+      const place = plan.fitAt(v.width, Math.max(1, v.height - footBand()));
+      if (place) plan.setView(place);
+      root.dataset.presentFit = place ? plan.world.how : '';
+    } finally {
+      fitting = false;
+    }
+  }
+  function stopArrange() {
+    if (arrangeFrame !== null) cancelAnimationFrame(arrangeFrame);
+    arrangeFrame = null;
+    arrangedFor = null;
+    delete root.dataset.presentPanel;
+    panel.style.removeProperty('height');
+  }
+
   // ---- stepping, playing, the auto-advance, the summary
   function step(by, wrap) {
     const movement = view();
@@ -416,6 +611,7 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     if (advanceTimer !== null) timers.clear(advanceTimer);
     advanceTimer = null;
     due = null;
+    stopDue();
     root.dataset.presentAdvance = String(advance);
     if (!presenting || advance === 0) return;
     advanceTimer = timers.set(() => {
@@ -423,18 +619,25 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
       if (!presenting || !root.isConnected) return;
       const pb = playback();
       if (pb && pb.playing) {
-        // a playback running: the step waits for it to stop or come to the end of its transition
-        due = { transition: env.choice().transition, seconds: pb.seconds };
+        // a playback running: the step waits for it to finish its transition (dueStep)
+        due = { transition: env.choice().transition, seconds: pb.seconds, stride: 0 };
+        watchDue();
         return;
       }
       step(1, true);
     }, advance * 1000, 'advance');
   }
 
-  // Each change of the bar (its clock, Play and Pause) while a step waits:
-  // the playback stopped, or went back to its start (the transition played
-  // again), steps on; one that went on to the next transition by itself (the
-  // loop over the day) has stepped already, and the next step is timed from there.
+  // Each change of the bar (its clock, Play and Pause) and each frame while
+  // a step waits: it comes once the playback has finished its transition,
+  // that is played it to its end and stopped there, or gone round from its
+  // end to its start (the loop over the transition). A pause before the end
+  // holds the step until Play and the end (SV2-31c: Space mid-transition
+  // brought it at once), and a seek is not a finish: the scrubber moved back
+  // is a drop from the middle, a going round is a drop from within a frame
+  // or two of the end (a frame's advance is the last stride seen). One that
+  // went on to the next transition by itself (the loop over the day) has
+  // stepped already, and the next step is timed from there.
   function dueStep() {
     const pb = playback();
     if (!presenting || !due || !pb) return;
@@ -442,12 +645,32 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
       schedule();
       return;
     }
-    if (pb.playing && pb.seconds >= due.seconds) {
-      due.seconds = pb.seconds;
+    const at = pb.seconds;
+    const end = pb.end;
+    let finished;
+    if (!pb.playing) finished = at >= end - 1e-6;
+    else finished = at < due.seconds && due.seconds + 2 * due.stride >= end;
+    if (at > due.seconds) due.stride = at - due.seconds;
+    due.seconds = at;
+    if (!finished) {
+      watchDue();
       return;
     }
     due = null;
     step(1, true);
+  }
+  // a frame at a time while the playback runs and a step waits on it
+  function watchDue() {
+    const pb = playback();
+    if (dueFrame !== null || !presenting || !due || !pb || !pb.playing) return;
+    dueFrame = requestAnimationFrame(() => {
+      dueFrame = null;
+      dueStep();
+    });
+  }
+  function stopDue() {
+    if (dueFrame !== null) cancelAnimationFrame(dueFrame);
+    dueFrame = null;
   }
 
   function cycleAdvance() {
@@ -472,6 +695,12 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     const onButton = event.target && event.target.closest ? event.target.closest('button') : null;
     const key = event.key;
+    // a key held down: the arrows step on as it repeats; the toggles (P,
+    // Escape, Space, A, H) answer the press only, or holding one flickers it
+    if (event.repeat && key !== 'ArrowLeft' && key !== 'ArrowRight') {
+      if (!(key === ' ' && onButton)) event.preventDefault();
+      return;
+    }
     if (key === 'Escape' || key === 'Esc' || key === 'p' || key === 'P') leave();
     else if (key === 'ArrowLeft') step(-1, false);
     else if (key === 'ArrowRight') step(1, false);
@@ -573,10 +802,12 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     for (const part of parts) part.hidden = false;
     madeInert = inertOutside();
     plan.setLabelScale(LABEL_SCALE);
-    plan.fit(true);
-    plan.paint();
+    // the panel drawn first: how tall it must be under the map is its first row of groups
     drawnKey = null;
     draw(true);
+    modeFitted = true;
+    fitMode(false);
+    plan.paint();
     copyClock();
     advance = 0;
     schedule();
@@ -625,7 +856,11 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     lineTimer = null;
     advance = 0;
     due = null;
+    stopDue();
+    stopArrange();
+    modeFitted = false;
     delete root.dataset.presentAdvance;
+    delete root.dataset.presentFit;
     document.removeEventListener('keydown', onKey, true);
     root.removeEventListener('pointerdown', onPointer, true);
     root.removeEventListener('pointermove', onPointer, true);
@@ -644,7 +879,8 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
         if (fullscreenElement() === root) return;
         document.removeEventListener('fullscreenchange', over);
         document.removeEventListener('webkitfullscreenchange', over);
-        requestAnimationFrame(tryPut);
+        // looked for again, for as long again: the section is measured at its size a frame or two after
+        if (pendingRestore && !presenting) lookForPut();
       };
       document.addEventListener('fullscreenchange', over);
       document.addEventListener('webkitfullscreenchange', over);
@@ -653,21 +889,24 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     delete root.dataset.presentRefused;
     for (const part of parts) part.hidden = true;
     plan.setLabelScale(1);
-    if (away) {
-      putChoice(saved);
-      return;
-    }
-    if (!root.isConnected) return;
+    // leaving the page: the section is not drawn again; what it is to remember is handed back
+    if (away) return { transition: saved.transition, floors: saved.floors };
+    if (!root.isConnected) return null;
     restore();
+    return null;
   }
 
-  // the transition and floors as they were; a card open on a cell stays when only the transition changes
+  // the transition and floors as they were; a card open on a cell stays on
+  // its cell (the mode may have changed the floors' layout, layoutMode)
   function putChoice(was) {
     const choice = env.choice();
     const patch = {};
     if (choice.transition !== was.transition) patch.transition = was.transition;
     if (choice.floors !== was.floors) patch.floors = was.floors;
-    if (Object.keys(patch).length > 0) env.change(patch, { keepCard: true });
+    if (Object.keys(patch).length === 0) return;
+    const held = env.tapped();
+    env.change(patch, { keepCard: true });
+    if (held && 'floors' in patch) env.reopen(held);
   }
 
   function restore() {
@@ -693,24 +932,40 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     // stage need not be the size it was (the playback's hint line goes once
     // playback has run), so nothing waits for that size itself.
     pendingRestore = was;
+    lookForPut();
+    focusBack();
+  }
+
+  // Full screen ends after the attribute goes, and the section may already
+  // be at its size by then, so no resize follows: each frame looks again
+  // until the map is put back, and no longer than RESTORE_WAIT_MS, when the
+  // map is put back as it is. A full screen the browser will not give up
+  // (exitFullscreen refused) stops the looking there (SV2-31c: it spun a
+  // frame at a time for as long); its end, whenever it comes, looks again
+  // (leave's listener).
+  function lookForPut() {
     if (restoreTimer !== null) timers.clear(restoreTimer);
     restoreTimer = timers.set(() => {
       restoreTimer = null;
       putView();
     }, RESTORE_WAIT_MS, 'restore');
-    // full screen ends after the attribute goes, and the section may already
-    // be at its size by then, so no resize follows: each frame looks again
-    // until the map is put back (or the timer above does it)
+    stopLook();
     const look = () => {
+      lookFrame = null;
       tryPut();
-      if (pendingRestore && !presenting) requestAnimationFrame(look);
+      if (pendingRestore && !presenting && restoreTimer !== null) lookFrame = requestAnimationFrame(look);
     };
-    requestAnimationFrame(look);
-    focusBack();
+    lookFrame = requestAnimationFrame(look);
+  }
+  function stopLook() {
+    if (lookFrame !== null) cancelAnimationFrame(lookFrame);
+    lookFrame = null;
   }
 
   // Present, where it has a box; folded away with the controls on a phone,
-  // the button that opens them (Change), or the map
+  // the button that opens them (Change), or the map; with no map (the
+  // project left with nothing to draw while presenting) the section's
+  // heading, or the section's region: never the page's body (SV2-31c)
   function focusBack() {
     const drawn = (el) => el && el.isConnected && el.getClientRects().length > 0;
     if (drawn(button)) {
@@ -718,8 +973,18 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
       return;
     }
     const change = root.querySelector('[data-action="change"]');
-    if (drawn(change)) change.focus();
-    else plan.focus();
+    if (drawn(change)) {
+      change.focus();
+      return;
+    }
+    if (drawn(plan.canvas) && plan.focus() !== false && document.activeElement === plan.canvas) return;
+    const heading = Array.from(root.querySelectorAll('h1, h2')).find(drawn);
+    if (heading) {
+      if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
+      heading.focus();
+      if (document.activeElement === heading) return;
+    }
+    if (ctx.focusSurface) ctx.focusSurface();
   }
 
   function putView() {
@@ -735,6 +1000,10 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     if (was.fitted) plan.fit(true);
     // a zoom the reader made, off Fit, with nothing said to the section (a card open on a cell stays)
     else plan.setView({ zoom: was.zoom, x: was.x, y: was.y });
+    // neither tells the section the map moved: a card the reader tapped open
+    // is put back beside its cell, not left where the mode's map had it (SV2-31c)
+    const held = env.tapped();
+    if (held) env.reopen(held);
     plan.paint();
     root.dataset.presentRestored = String(Number(root.dataset.presentRestored || 0) + 1);
   }
@@ -745,22 +1014,39 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     if (pendingRestore && fullscreenElement() !== root && plan.view.width === plan.stage.clientWidth && plan.view.height === plan.stage.clientHeight) putView();
   }
   const stageWatch = new ResizeObserver(() => {
+    // the project left with nothing to draw (the map hidden): nothing to present
+    if (presenting && plan.element.hidden) {
+      leave();
+      return;
+    }
     tryPut();
     if (presenting) draw(false);
   });
   stageWatch.observe(plan.stage);
-  // each time the section draws its picture again (a step, an answer, a change of theme)
-  plan.onLayout(() => {
-    if (presenting && !gone) draw(false);
+  // each time the floors are laid out (a step, an answer, a change of theme,
+  // the stage at another size): the mode's Fit again, and the panel
+  let layouts = 0;
+  let layoutOff = plan.onLayout(() => {
+    layouts += 1;
+    if (!presenting || gone) return;
+    fitMode(true);
+    draw(false);
+  });
+  // the reader moving the map (a drag, the wheel, a pinch) ends the mode's Fit
+  plan.onCell((event) => {
+    if (event.kind === 'view' && presenting && !fitting) modeFitted = false;
   });
   // the map's labelScale for what the section's marks write (the hotspot ranks, ./hotspots.js)
   Object.defineProperty(env, 'labelScale', { configurable: true, enumerable: true, get: () => plan.labelScale });
 
   // the section leaving the page
   function unmount() {
-    if (gone) return;
-    leave(true);
+    if (gone) return null;
+    const kept = leave(true) || null;
     gone = true;
+    stopLook();
+    if (layoutOff) layoutOff();
+    layoutOff = null;
     pendingRestore = null;
     if (restoreTimer !== null) timers.clear(restoreTimer);
     restoreTimer = null;
@@ -768,6 +1054,7 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     phone.removeEventListener('change', placeButton);
     for (const [name, fn] of FULLSCREEN_EVENTS) document.removeEventListener(name, fn);
     if (active === me) active = null;
+    return kept;
   }
 
   const me = { root, enter: () => enter('key'), can, get presenting() { return presenting; } };
@@ -781,6 +1068,12 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     get hotspots() { return memory.hotspots; },
     get controls() { return touch.dataset.shown === 'true'; },
     get saved() { return saved; },
+    // the mode's Fit holds (fitMode), the map not moved by the reader since
+    get fitted() { return presenting && modeFitted; },
+    // a frame is asked to put the map back (restore's look)
+    get looking() { return lookFrame !== null; },
+    // how many times the floors were laid out with this listening (plan.onLayout)
+    get layouts() { return layouts; },
     enter: () => enter('key'),
     leave: () => leave(),
     timers(given) {

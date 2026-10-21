@@ -70,6 +70,9 @@ function read(page) {
       stage: { width: stage.clientWidth, height: stage.clientHeight },
       view: { width: view.width, height: view.height, zoom: view.zoom, x: view.x, y: view.y },
       fitted: movement.fitted,
+      // the mode's own Fit (present.js fitMode), and where it put the panel
+      presentFitted: root.present.fitted,
+      panelAt: root.dataset.presentPanel || null,
       fit: stage.dataset.fit || null,
       labelScale: movement.plan.labelScale,
       transition: movement.choice.transition,
@@ -135,7 +138,7 @@ async function inMode(page) {
     const root = document.querySelector('.mov');
     const movement = root.movement;
     const stage = movement.plan.stage;
-    return root.present.presenting && Boolean(root.dataset.present) && movement.fitted && movement.view.width === stage.clientWidth && movement.view.height === stage.clientHeight && stage.clientHeight > 0;
+    return root.present.presenting && Boolean(root.dataset.present) && root.present.fitted && movement.view.width === stage.clientWidth && movement.view.height === stage.clientHeight && stage.clientHeight > 0;
   }, { timeout: 10000 });
   // the browser's answer to the request has come: full screen granted (the event), or refused (the line)
   await page.waitForFunction(() => {
@@ -259,8 +262,8 @@ test('by keyboard at 1280 by 800: P in, the arrows, Space, A, H, Escape out, and
       assert.ok(Math.abs(parts.stage.right - parts.panel.left) <= 1, 'the map does not reach the panel');
       assert.ok(Math.abs(parts.stage.top - parts.caption.bottom) <= 1 && Math.abs(parts.stage.bottom - now.window.height) <= 1, 'the map does not fill the column under the caption');
       assert.ok(parts.stage.width * parts.stage.height >= 0.6 * now.window.width * now.window.height, 'the map takes under 60 % of the screen');
-      assert.equal(now.fitted, true, 'the map is not at Fit');
-      assert.ok(['whole', 'above', 'beside'].includes(now.fit), 'no fit recorded on the stage');
+      assert.equal(now.presentFitted, true, 'the map is not at the mode\'s Fit');
+      assert.equal(now.panelAt, 'beside', 'at 1280 by 800 the panel is not beside the map');
       assert.equal(now.labelScale, 1.5, "the map's labels are not 1.5 times as large");
       assert.ok(now.view.zoom > before.view.zoom * 0.9, 'the map is smaller on the whole screen than in the section');
       const panelSize = await page.$eval('[data-part="present-panel"]', (el) => parseFloat(getComputedStyle(el).fontSize));
@@ -576,14 +579,14 @@ for (const size of [{ width: 390, height: 844, upright: true }, { width: 844, he
       t.diagnostic('full screen here: ' + now.how);
       assert.deepEqual([now.root.width, now.root.height], [now.window.width, now.window.height]);
       assert.equal(now.labelScale, 1.5);
-      assert.equal(now.fitted, true);
+      assert.equal(now.presentFitted, true);
       const parts = await page.evaluate(() => {
         const box = (s) => document.querySelector(s).getBoundingClientRect().toJSON();
         return { stage: box('.mov-stage'), panel: box('[data-part="present-panel"]') };
       });
-      // the panel under the map upright, beside it on its side; never over it
-      if (size.upright) assert.ok(parts.panel.top >= parts.stage.bottom - 1, 'upright, the panel is not under the map');
-      else assert.ok(parts.panel.left >= parts.stage.right - 1, 'on its side, the panel is not beside the map');
+      // the panel under the map on a phone, upright or on its side (SV2-31c: beside it, at 844 by 390 no floor layout is whole); never over it
+      assert.equal(now.panelAt, 'under', 'the panel is not under the map');
+      assert.ok(parts.panel.top >= parts.stage.bottom - 1, 'the panel lies over the map');
       assert.ok(parts.stage.height >= 0.5 * now.window.height, 'the map has under half the screen\'s height');
       // entered by a tap, the controls are there for the next one, and go 3 s after (SV2-31b)
       assert.equal(now.controls, 'true', 'entered by a tap, the controls are not shown');
@@ -673,6 +676,13 @@ test('Escape before the browser grants full screen: the grant that comes after i
   try {
     await settled(page);
     await holdFullscreen(page);
+    // every change of full screen, by the element it made full screen (SV2-31c: the case had read only the end state)
+    await page.evaluate(() => {
+      globalThis.__fullscreenSeen = [];
+      document.addEventListener('fullscreenchange', () => {
+        globalThis.__fullscreenSeen.push(document.fullscreenElement === document.querySelector('.mov') ? 'section' : document.fullscreenElement ? 'other' : 'none');
+      });
+    });
     await page.focus('[data-action="present"]');
     await page.keyboard.press('p');
     await page.waitForFunction(() => document.querySelector('.mov').dataset.present === 'window');
@@ -682,8 +692,9 @@ test('Escape before the browser grants full screen: the grant that comes after i
     // the browser says yes now (evaluate carries a user gesture, as the press did)
     await page.evaluate(() => globalThis.__releaseFullscreen());
     await outOfMode(page, count);
-    // it may take the grant and give it back: what counts is where it ends
     await page.waitForFunction(() => document.fullscreenElement === null, { timeout: 5000 });
+    // the grant came, to the section, and was given back: the branch that gives it back ran
+    assert.deepEqual(await page.evaluate(() => globalThis.__fullscreenSeen), ['section', 'none'], 'the late grant was not seen and given back');
     const now = await read(page);
     assert.equal(now.anyFull, false, 'the page is full screen with the mode off');
     assert.equal(now.present, null);
@@ -759,6 +770,9 @@ test('a reader\'s zoom is put back as it was without a press of Zoom in: a card 
       return point ? { floorId: point.floorId, cell: point.cell, source: point.source } : null;
     });
     assert.deepEqual(after, card, 'the card open on the cell was shut by putting the zoom back');
+    // and it stands beside its cell on the map as it is now, not where the mode's map had it (SV2-31c)
+    const off = await cardBesideCell(page);
+    assert.ok(off <= 1, 'the card stands ' + off.toFixed(1) + ' px further from its cell than card.js lays it');
     assert.deepEqual(session.problems().errors, []);
   } finally {
     await session.close();
@@ -791,7 +805,7 @@ test('a dialog opened over the mode has its own keys: Escape shuts the dialog, a
   }
 });
 
-test('the auto-advance lets a running playback finish: the step waits, and comes when it stops', async () => {
+test('the auto-advance lets a running playback finish: the step waits through a pause and a seek, and comes when the playback reaches its end', async () => {
   const session = await openPlanner({ browser, server, hash: '#movement', width: 1280, height: 800 });
   const { page } = session;
   try {
@@ -805,19 +819,75 @@ test('the auto-advance lets a running playback finish: the step waits, and comes
     await page.keyboard.press('a');
     await page.keyboard.press(' ');
     assert.equal((await read(page)).playing, true, 'Space did not play');
+    const due = () => page.evaluate(() => document.querySelector('.mov').present.due);
+    const pb = (what, value) => page.evaluate((w, v) => {
+      const playback = document.querySelector('[data-bar="playback"]').playback;
+      return w === 'seek' ? playback.seek(v * playback.end) : w === 'at' ? playback.seconds / playback.end : null;
+    }, what, value);
+    // half way through the transition when the step's time comes
+    await pb('seek', 0.5);
     assert.equal(await runTimer(page, 'advance'), 5000);
     let now = await read(page);
     assert.equal(now.transition, 1, 'the step came with the playback running');
-    assert.equal(await page.evaluate(() => document.querySelector('.mov').present.due), true, 'no step is waiting');
+    assert.equal(await due(), true, 'no step is waiting');
+    // the scrubber moved back is not the playback finishing (SV2-31c: a seek back brought the step)
+    await pb('seek', 0.1);
+    await page.waitForFunction(() => document.querySelector('[data-bar="playback"]').playback.seconds > 0, { timeout: 5000 });
+    now = await read(page);
+    assert.equal(now.transition, 1, 'a seek back brought the step');
+    assert.equal(await due(), true, 'a seek back let the waiting step go');
+    // Space to pause mid-transition holds the step until Play (SV2-31c: it came at once)
     await page.keyboard.press(' ');
     now = await read(page);
     assert.equal(now.playing, false);
-    assert.equal(now.transition, 2, 'the step did not come when the playback stopped');
-    assert.equal(await page.evaluate(() => document.querySelector('.mov').present.due), false);
+    assert.equal(now.transition, 1, 'a pause mid-transition brought the step');
+    assert.equal(await due(), true, 'a pause let the waiting step go');
+    await page.keyboard.press(' ');
+    assert.equal((await read(page)).playing, true, 'Space did not play again');
+    assert.equal((await read(page)).transition, 1);
+    // played to its end: the step comes, and the next is timed from there
+    await pb('seek', 0.98);
+    await page.waitForFunction(() => document.querySelector('.mov').movement.choice.transition === 2, { timeout: 15000 });
+    now = await read(page);
+    assert.equal(now.playing, false, 'the playback did not stop at its end');
+    assert.equal(await due(), false);
     assert.deepEqual(await waiting(page, 'advance'), [5000], 'the next step is not asked for');
     await page.keyboard.press('Escape');
     assert.deepEqual(session.problems().errors, []);
   } finally {
+    await session.close();
+  }
+});
+
+test('the waiting step comes when a playback looping its transition goes round from its end, and not when it is sought back', async () => {
+  const session = await openPlanner({ browser, server, hash: '#movement', width: 1280, height: 800 });
+  const { page } = session;
+  try {
+    await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
+    await settled(page);
+    await page.evaluate(() => {
+      const m = document.querySelector('.mov').movement;
+      m.change({ transition: 1 });
+      document.querySelector('[data-bar="playback"]').playback.set({ loop: 'transition' });
+    });
+    await settled(page);
+    await page.keyboard.press('p');
+    await inMode(page);
+    await handTimers(page);
+    await page.keyboard.press('a');
+    await page.keyboard.press(' ');
+    await page.evaluate(() => { const p = document.querySelector('[data-bar="playback"]').playback; p.seek(p.end * 0.5); });
+    await runTimer(page, 'advance');
+    assert.equal(await page.evaluate(() => document.querySelector('.mov').present.due), true, 'no step is waiting');
+    // near the end: it goes round to its start by itself, and that is the transition played
+    await page.evaluate(() => { const p = document.querySelector('[data-bar="playback"]').playback; p.seek(p.end * 0.98); });
+    await page.waitForFunction(() => document.querySelector('.mov').movement.choice.transition === 2, { timeout: 15000 });
+    assert.equal(await page.evaluate(() => document.querySelector('.mov').present.due), false);
+    await page.keyboard.press('Escape');
+    assert.deepEqual(session.problems().errors, []);
+  } finally {
+    // the loop is kept on this device: the cases after this one play once
+    await page.evaluate(() => document.querySelector('[data-bar="playback"]').playback.set({ loop: 'once' })).catch(() => {});
     await session.close();
   }
 });
@@ -836,18 +906,30 @@ test('in the mode the hotspot ranks and a stair link\'s words are 1.5 times as l
     // what the map's two canvases are told to write, with the font
     await page.evaluate(() => {
       globalThis.__written = [];
+      globalThis.__arcs = [];
       const real = CanvasRenderingContext2D.prototype.fillText;
       CanvasRenderingContext2D.prototype.fillText = function written(text, x, y, most) {
         const canvas = this.canvas;
-        if (canvas.matches('#movement-plan, .mov-marks')) globalThis.__written.push({ on: canvas.id || 'marks', text: String(text), font: this.font });
+        if (canvas.matches('#movement-plan, .mov-marks')) globalThis.__written.push({ on: canvas.id || 'marks', text: String(text), font: this.font, x, y, width: this.measureText(String(text)).width });
         return real.call(this, text, x, y, most);
+      };
+      // the discs the ranks are written on: arcs on the marks' canvas
+      const arc = CanvasRenderingContext2D.prototype.arc;
+      CanvasRenderingContext2D.prototype.arc = function drawn(x, y, r, ...rest) {
+        if (this.canvas.matches('.mov-marks')) globalThis.__arcs.push({ x, y, r });
+        return arc.call(this, x, y, r, ...rest);
       };
     });
     const drawn = async (wait) => {
-      await page.evaluate(() => { globalThis.__written = []; });
+      await page.evaluate(() => { globalThis.__written = []; globalThis.__arcs = []; });
       await wait();
       return page.evaluate(() => globalThis.__written.slice());
     };
+    // each rank's digit and the disc it is written on (the arc centred where it is written, half a pixel up)
+    const discs = () => page.evaluate(() => globalThis.__written.filter((w) => w.on === 'marks' && /^\d$/.test(w.text)).map((w) => {
+      const disc = globalThis.__arcs.find((a) => Math.abs(a.x - w.x) < 0.01 && Math.abs(a.y - (w.y - 0.5)) < 0.01);
+      return { size: Number(/(\d+(?:\.\d+)?)px/.exec(w.font)[1]), width: w.width, r: disc ? disc.r : null };
+    }));
     const sizeOf = (font) => Number(/(\d+(?:\.\d+)?)px/.exec(font)[1]);
     const read2 = (writes) => ({
       ranks: [...new Set(writes.filter((w) => w.on === 'marks' && /^\d$/.test(w.text)).map((w) => sizeOf(w.font)))],
@@ -858,6 +940,7 @@ test('in the mode the hotspot ranks and a stair link\'s words are 1.5 times as l
       requestAnimationFrame(() => requestAnimationFrame(resolve));
     }))));
     assert.deepEqual(out, { ranks: [11], links: [11] }, 'out of the mode: ' + JSON.stringify(out));
+    const outDiscs = await discs();
     const count = await restoredCount(page);
     await page.keyboard.press('p');
     await inMode(page);
@@ -867,6 +950,15 @@ test('in the mode the hotspot ranks and a stair link\'s words are 1.5 times as l
       requestAnimationFrame(() => requestAnimationFrame(resolve));
     }))));
     assert.deepEqual(inside, { ranks: [17], links: [17] }, 'in the mode: ' + JSON.stringify(inside));
+    // the disc grows with its digit (SV2-31c: an 8 px disc under a 17 px digit): as large against it as out of the mode, and the digit fits in it
+    const inDiscs = await discs();
+    assert.ok(outDiscs.length >= 3 && inDiscs.length >= 3, 'the ranks\' discs were not found: ' + JSON.stringify({ outDiscs, inDiscs }));
+    const ratio = (all) => all[0].r / all[0].size;
+    for (const each of inDiscs) {
+      assert.ok(each.r !== null, 'a rank is written on no disc');
+      assert.ok(Math.abs(each.r / each.size - ratio(outDiscs)) <= 0.1 * ratio(outDiscs), 'the disc is ' + each.r + ' px round a ' + each.size + ' px digit; out of the mode ' + outDiscs[0].r + ' round ' + outDiscs[0].size);
+      assert.ok(each.width + 4 <= 2 * each.r && each.size <= 2 * each.r - 4, 'the ' + each.size + ' px digit (' + each.width.toFixed(1) + ' wide) does not fit a ' + each.r + ' px disc with 2 px about it');
+    }
     await page.keyboard.press('Escape');
     await outOfMode(page, count);
     assert.deepEqual(session.problems().errors, []);
@@ -907,6 +999,11 @@ test('a change of address inside Movement while presenting leaves the mode, puts
     await page.keyboard.press('ArrowRight');
     const saved = await page.evaluate(() => document.querySelector('.mov').present.saved.transition);
     assert.notEqual((await read(page)).transition, saved, 'the step did not move: the case tests nothing');
+    // the section that leaves, held: its picture now, and how often its floors were laid out
+    await page.evaluate(() => {
+      const root = document.querySelector('.mov');
+      globalThis.__left = { root, picture: root.movement.picture, layouts: root.present.layouts };
+    });
     // another address of Movement's own: the section is mounted again
     await page.evaluate(() => { location.hash = '#movement/again'; });
     await page.waitForFunction(() => document.querySelectorAll('.mov').length === 1 && document.querySelector('.mov').present && !document.querySelector('.mov').present.presenting && Array.from(document.querySelectorAll('[inert]')).every((el) => el.closest('.mov')) && document.fullscreenElement === null, { timeout: 10000 }).catch(async (error) => {
@@ -915,6 +1012,19 @@ test('a change of address inside Movement while presenting leaves the mode, puts
     });
     await settled(page);
     assert.equal((await read(page)).transition, saved, 'the section mounted again does not have the transition from before the mode');
+    // the transition was put back in memory, not by drawing the section that left again (SV2-31c)
+    const left = await page.evaluate(() => {
+      const held = globalThis.__left;
+      const sameRoot = held.root === document.querySelector('.mov');
+      const samePicture = held.root.movement.picture === held.picture;
+      // its plan map laid out again by hand: the mode's listener is no longer on it (onLayout's unregister)
+      const before = held.root.present.layouts;
+      held.root.movement.plan.setProject(held.root.movement.plan.project, held.root.movement.plan.graph);
+      return { sameRoot, samePicture, layoutsAfter: held.root.present.layouts - before };
+    });
+    assert.equal(left.sameRoot, false, 'the section was not mounted again: the case tests nothing');
+    assert.equal(left.samePicture, true, 'the section that left was drawn again on its way out');
+    assert.equal(left.layoutsAfter, 0, 'the section that left still listens to its plan map\'s layout');
     // what the section that left held is let go: the new one holds as many as the first did
     assert.deepEqual(await alive(), once, 'the section that left still holds listeners or observers (outside Movement: ' + JSON.stringify(outside) + ')');
     // P on the new one presents it, and only it
@@ -950,32 +1060,267 @@ test('at 390 by 844 with the controls folded, leaving puts the focus on Change (
   }
 });
 
-test('the touch controls, the corner line, the caption and the panel keep clear of a phone\'s safe area', async () => {
-  const session = await openPlanner({ browser, server, hash: '#movement', width: 844, height: 390, mobile: true });
+// The safe area (a phone's notch, rounded corners and home bar), by
+// geometry: every word of the caption, the corner line and the panel (as
+// far as the panel shows it), and every touch control, lies inside the
+// window less the insets. On a phone on its side and upright (the panel
+// under the map), and on a tablet on its side (the panel beside it, so its
+// own top is the screen's top).
+for (const size of [
+  { width: 844, height: 390, insets: { top: 20, left: 44, right: 44, bottom: 21 } },
+  { width: 390, height: 844, insets: { top: 47, left: 12, right: 12, bottom: 34 } },
+  { width: 1180, height: 820, insets: { top: 24, left: 0, right: 20, bottom: 20 } },
+]) {
+  test('at ' + size.width + ' by ' + size.height + ' the touch controls, the corner line, the caption and the panel keep clear of the safe area', async () => {
+    const session = await openPlanner({ browser, server, hash: '#movement', width: size.width, height: size.height, mobile: true });
+    const { page } = session;
+    try {
+      await settled(page);
+      const insets = size.insets;
+      const cdp = await page.createCDPSession();
+      await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets });
+      await page.evaluate(() => document.querySelector('.mov').present.enter());
+      await inMode(page);
+      await page.evaluate((says) => {
+        document.querySelector('[data-part="present-touch"]').dataset.shown = 'true';
+        document.querySelector('[data-part="present-line"]').dataset.shown = 'true';
+        document.querySelector('[data-part="present-line"]').textContent = says;
+      }, REFUSED_SAYS);
+      const found = await page.evaluate(() => {
+        const out = [];
+        // the boxes of the words in an element, cut to the box it scrolls
+        // them in (inside its borders): what of them is on the screen
+        const words = (el, name, shownIn) => {
+          const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+          let seen = null;
+          if (shownIn) {
+            const outer = shownIn.getBoundingClientRect();
+            const top = outer.top + shownIn.clientTop;
+            const left = outer.left + shownIn.clientLeft;
+            seen = { top, left, bottom: top + shownIn.clientHeight, right: left + shownIn.clientWidth };
+          }
+          for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            if (node.textContent.trim() === '' || node.parentElement.closest('[hidden], .vh')) continue;
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            for (const rect of range.getClientRects()) {
+              if (rect.width === 0 || rect.height === 0) continue;
+              const box = seen ? { left: Math.max(rect.left, seen.left), top: Math.max(rect.top, seen.top), right: Math.min(rect.right, seen.right), bottom: Math.min(rect.bottom, seen.bottom) } : rect;
+              if (box.right <= box.left || box.bottom <= box.top) continue;
+              out.push({ name, text: node.textContent.slice(0, 20), left: box.left, top: box.top, right: box.right, bottom: box.bottom });
+            }
+          }
+        };
+        const panel = document.querySelector('[data-part="present-panel"]');
+        words(document.querySelector('[data-part="present-caption"]'), 'caption');
+        words(document.querySelector('[data-part="present-line"]'), 'line');
+        words(panel, 'panel', panel);
+        for (const button of document.querySelectorAll('[data-part="present-touch"] button')) {
+          const rect = button.getBoundingClientRect();
+          out.push({ name: 'touch', text: button.textContent, left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom });
+        }
+        return { boxes: out, window: { width: innerWidth, height: innerHeight }, panelAt: document.querySelector('.mov').dataset.presentPanel };
+      });
+      const names = new Set(found.boxes.map((box) => box.name));
+      for (const name of ['caption', 'line', 'panel', 'touch']) assert.ok(names.has(name), 'nothing of the ' + name + ' was measured');
+      for (const box of found.boxes) {
+        const where = box.name + ' "' + box.text + '" at ' + JSON.stringify([Math.round(box.left), Math.round(box.top), Math.round(box.right), Math.round(box.bottom)]);
+        assert.ok(box.left >= insets.left - 0.5 && box.right <= found.window.width - insets.right + 0.5, where + ' runs into the left or right inset (panel ' + found.panelAt + ')');
+        assert.ok(box.top >= insets.top - 0.5 && box.bottom <= found.window.height - insets.bottom + 0.5, where + ' runs into the top or bottom inset (panel ' + found.panelAt + ')');
+      }
+      // the CDP session is not detached: a detach once took the page's touch emulation with it (SV2-72b)
+      await page.keyboard.press('Escape');
+      assert.deepEqual(session.problems().errors, []);
+    } finally {
+      await session.close();
+    }
+  });
+}
+
+// ---- SV2-31c: the second review's faults, each a case
+
+// How far the cell card stands from the cell it is open on, in px past
+// what card.js leaves between them: it lays the card a cell and 10 px from
+// the cell's middle (or 10 px the other side), so a card beside its cell
+// reads 0 here or less; the cell is found where the map draws it now.
+function cardBesideCell(page) {
+  return page.evaluate(() => {
+    const m = document.querySelector('.mov').movement;
+    const card = document.querySelector('.mov-card');
+    if (!m.point || !card || card.hidden || card.getClientRects().length === 0) return Infinity;
+    const at = m.cellAt(m.point.floorId, m.point.cell);
+    const canvas = m.plan.canvas.getBoundingClientRect();
+    const x = canvas.left + at.x;
+    const y = canvas.top + at.y;
+    const box = card.getBoundingClientRect();
+    const across = Math.max(0, box.left - x, x - box.right);
+    const down = Math.max(0, box.top - y, y - box.bottom);
+    return Math.max(across, down) - (m.view.size + 10);
+  });
+}
+
+// What lies over a drawn floor in the mode: each floor's box on the screen
+// (its slot at the map's zoom and place, its name over it), against the
+// caption, the panel, the touch controls and the corner line, shown and
+// saying the longest it says (the refusal); and a floor off the screen.
+function overFloors(page) {
+  return page.evaluate((says) => {
+    const root = document.querySelector('.mov');
+    const m = root.movement;
+    document.querySelector('[data-part="present-touch"]').dataset.shown = 'true';
+    const line = document.querySelector('[data-part="present-line"]');
+    line.dataset.shown = 'true';
+    line.textContent = says;
+    const stage = m.plan.stage.getBoundingClientRect();
+    const size = m.view.size;
+    const floors = m.world.slots.map((slot) => ({ name: slot.floor.name, left: stage.left + m.view.x + slot.x * size, top: stage.top + m.view.y + slot.y * size, right: stage.left + m.view.x + (slot.x + slot.w) * size, bottom: stage.top + m.view.y + (slot.y + slot.h) * size }));
+    const parts = {};
+    for (const part of ['caption', 'panel', 'touch', 'line']) {
+      const el = document.querySelector('[data-part="present-' + part + '"]');
+      parts[part] = el.getClientRects().length > 0 ? el.getBoundingClientRect().toJSON() : null;
+    }
+    const hits = [];
+    for (const floor of floors) {
+      for (const [name, box] of Object.entries(parts)) {
+        if (box && floor.left < box.right && box.left < floor.right && floor.top < box.bottom && box.top < floor.bottom) hits.push(floor.name + ' under the ' + name);
+      }
+      if (floor.left < 0 || floor.top < 0 || floor.right > innerWidth || floor.bottom > innerHeight) hits.push(floor.name + ' off the screen');
+    }
+    return { hits, panelAt: root.dataset.presentPanel, how: m.world.how, zoom: m.view.zoom, floors: floors.length };
+  }, REFUSED_SAYS);
+}
+
+for (const size of [{ width: 1280, height: 800, touch: false }, { width: 390, height: 844, touch: true }, { width: 844, height: 390, touch: true }]) {
+  test('at ' + size.width + ' by ' + size.height + (size.touch ? ' by touch' : '') + ', at the mode\'s Fit no floor lies under the caption, the panel, the touch controls or the corner line, and every floor is on the screen', async () => {
+    const session = await openPlanner({ browser, server, hash: '#movement', width: size.width, height: size.height, mobile: size.touch });
+    const { page } = session;
+    try {
+      await settled(page);
+      if (size.touch) {
+        // tapped, as the Foreman's screens of 03d529aa were taken
+        if (await page.$eval('[data-action="present"]', (el) => el.getClientRects().length === 0)) await page.tap('[data-action="change"]');
+        await page.waitForFunction(() => document.querySelector('[data-action="present"]').getClientRects().length > 0);
+        await page.$eval('[data-action="present"]', (el) => el.scrollIntoView({ block: 'nearest' }));
+        await page.tap('[data-action="present"]');
+      } else {
+        await page.focus('[data-action="present"]');
+        await page.keyboard.press('p');
+      }
+      await inMode(page);
+      // and a step on, the caption saying a transition
+      await page.keyboard.press('ArrowRight');
+      await inMode(page);
+      const found = await overFloors(page);
+      assert.equal(found.floors, 3, 'the sample school\'s three floors are not on the map: the case tests the wrong thing');
+      assert.deepEqual(found.hits, [], 'at ' + size.width + ' by ' + size.height + ' (panel ' + found.panelAt + ', floors ' + found.how + ', zoom ' + found.zoom.toFixed(3) + ')');
+      assert.ok(found.zoom >= 0.25, 'the map is under 25 %');
+      // the arrangement the mode chose there, for the record of why: beside on a desk, under on a phone either way up
+      assert.equal(found.panelAt, size.touch ? 'under' : 'beside');
+      if (size.width === 844) assert.equal(found.how, 'side', 'on its side the floors are not side by side');
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => !document.querySelector('.mov').present.presenting);
+      assert.deepEqual(session.problems().errors, []);
+    } finally {
+      await session.close();
+    }
+  });
+}
+
+test('P held down presents once: its repeats neither leave nor enter again, and Escape held leaves once', async () => {
+  const session = await openPlanner({ browser, server, hash: '#movement', width: 1280, height: 800 });
   const { page } = session;
   try {
     await settled(page);
-    const insets = { top: 0, left: 44, right: 44, bottom: 21 };
-    const cdp = await page.createCDPSession();
-    await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets });
-    await page.evaluate(() => document.querySelector('.mov').present.enter());
-    await inMode(page);
+    // the presses the mode saw, by what each did
     await page.evaluate(() => {
-      document.querySelector('[data-part="present-touch"]').dataset.shown = 'true';
-      document.querySelector('[data-part="present-line"]').dataset.shown = 'true';
-      document.querySelector('[data-part="present-line"]').textContent = 'A line.';
+      globalThis.__presents = [];
+      new MutationObserver(() => globalThis.__presents.push(document.querySelector('.mov').dataset.present ? 'in' : 'out')).observe(document.querySelector('.mov'), { attributes: true, attributeFilter: ['data-present'] });
     });
-    const boxes = await page.evaluate(() => {
-      const box = (s) => document.querySelector(s).getBoundingClientRect().toJSON();
-      const pad = (s) => { const style = getComputedStyle(document.querySelector(s)); return { left: parseFloat(style.paddingLeft), right: parseFloat(style.paddingRight), bottom: parseFloat(style.paddingBottom) }; };
-      return { touch: box('[data-part="present-touch"]'), line: box('[data-part="present-line"]'), caption: pad('[data-part="present-caption"]'), panel: pad('[data-part="present-panel"]'), window: { width: innerWidth, height: innerHeight } };
+    await page.focus('body');
+    // a held key: the first press, then the keyboard's repeats (event.repeat)
+    await page.keyboard.down('p');
+    await page.keyboard.down('p');
+    await page.keyboard.down('p');
+    await page.keyboard.up('p');
+    await inMode(page);
+    assert.equal((await read(page)).presenting, true, 'P held left the mode again');
+    const seen = await page.evaluate(() => globalThis.__presents.filter((each, i, all) => i === 0 || each !== all[i - 1]));
+    assert.deepEqual(seen.filter((each) => each === 'out'), [], 'P held went in and out: ' + JSON.stringify(seen));
+    const count = await restoredCount(page);
+    await page.keyboard.down('Escape');
+    await page.keyboard.down('Escape');
+    await page.keyboard.up('Escape');
+    await outOfMode(page, count);
+    assert.equal((await read(page)).presenting, false);
+    assert.deepEqual(session.problems().errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('a full screen the browser will not give up when the mode is left: the map is not looked for every frame, and is put back when full screen does end', async () => {
+  const session = await openPlanner({ browser, server, hash: '#movement', width: 1280, height: 800 });
+  const { page } = session;
+  try {
+    await settled(page);
+    await page.keyboard.press('p');
+    await inMode(page);
+    if ((await read(page)).how !== 'fullscreen') {
+      // no full screen here: nothing can refuse to end it
+      await page.keyboard.press('Escape');
+      return;
+    }
+    await handTimers(page);
+    // the browser refuses to leave full screen
+    await page.evaluate(() => {
+      globalThis.__exit = Document.prototype.exitFullscreen;
+      Document.prototype.exitFullscreen = function refuse() {
+        return Promise.reject(new TypeError('Not now'));
+      };
     });
-    assert.ok(boxes.touch.bottom <= boxes.window.height - insets.bottom, 'the controls lie in the home bar\'s inset: ' + JSON.stringify(boxes.touch));
-    assert.ok(boxes.line.left >= insets.left && boxes.line.bottom <= boxes.window.height - insets.bottom, 'the corner line lies in the inset: ' + JSON.stringify(boxes.line));
-    assert.ok(boxes.caption.left >= insets.left, 'the caption\'s words start in the left inset: ' + JSON.stringify(boxes.caption));
-    assert.ok(boxes.panel.right >= insets.right && boxes.panel.bottom >= insets.bottom, 'the panel\'s words run into the right or bottom inset: ' + JSON.stringify(boxes.panel));
-    // the CDP session is not detached: a detach once took the page's touch emulation with it (SV2-72b)
+    const count = await restoredCount(page);
     await page.keyboard.press('Escape');
+    assert.equal((await read(page)).presenting, false, 'Escape did not leave');
+    assert.equal(await page.evaluate(() => document.fullscreenElement === document.querySelector('.mov')), true, 'full screen ended: the case tests nothing');
+    assert.equal(await page.evaluate(() => document.querySelector('.mov').present.looking), true, 'the map is not being looked for');
+    // the time to put it back is up while full screen still holds: the looking stops (SV2-31c: it went on a frame at a time)
+    assert.equal(await runTimer(page, 'restore'), 1000);
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(await page.evaluate(() => document.querySelector('.mov').present.looking), false, 'the map is still looked for each frame');
+    assert.equal(await restoredCount(page), count, 'the map was put back while the screen was still full');
+    // full screen ends at last: the map is put back then
+    await page.evaluate(() => globalThis.__exit.call(document));
+    await outOfMode(page, count);
+    assert.deepEqual(session.problems().errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('the project left with nothing to draw while presenting: the mode is left, and the focus goes to the section, not the page', async () => {
+  const session = await openPlanner({ browser, server, hash: '#movement', width: 1280, height: 800 });
+  const { page } = session;
+  try {
+    await settled(page);
+    await loadModule(page, 'actions', 'engine/actions.js');
+    await page.keyboard.press('p');
+    await inMode(page);
+    // every group deleted (from another tab, or a script): the map has nothing to show
+    await page.evaluate(() => {
+      const { deleteGroup } = globalThis.sv2modules.actions;
+      const store = globalThis.sv2.store;
+      for (const group of store.project.groups.slice()) store.apply(deleteGroup, { id: group.id });
+    });
+    await page.waitForFunction(() => !document.querySelector('.mov').present.presenting && document.fullscreenElement === null, { timeout: 10000 });
+    await page.waitForFunction(() => document.querySelector('.mov-map').hidden === true);
+    const focus = await page.evaluate(() => {
+      const el = document.activeElement;
+      return { body: el === document.body || el === null, inSection: Boolean(el && (el.closest('.mov') || el.closest('main') || el.matches('main'))), tag: el ? el.tagName : null, box: el ? el.getClientRects().length : 0 };
+    });
+    assert.equal(focus.body, false, 'the focus fell to the page');
+    assert.equal(focus.inSection, true, 'the focus is not in the section: ' + JSON.stringify(focus));
+    assert.ok(focus.box > 0, 'the focus is on something with no box: ' + JSON.stringify(focus));
+    assert.equal((await read(page)).inertCount, 0, 'something is left inert');
     assert.deepEqual(session.problems().errors, []);
   } finally {
     await session.close();
