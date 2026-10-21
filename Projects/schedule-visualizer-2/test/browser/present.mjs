@@ -166,6 +166,49 @@ async function outOfMode(page, restoredBefore) {
   });
 }
 const place = (view) => ({ zoom: view.zoom, x: view.x, y: view.y });
+
+// What lies round the stage, by height, so a failure names what changed:
+// the section, its room for the map (--mov-room), the stage and the map's
+// measure of it, the controls folded or open, the legend docked, and every
+// row above and under the map (the sentence, the controls, the floors row,
+// the playback bar with its lines, the docked legend line).
+function rows(page) {
+  return page.evaluate(() => {
+    const root = document.querySelector('.mov');
+    const movement = root.movement;
+    const tall = (el) => (el && el.getClientRects().length > 0 ? Math.round(el.getBoundingClientRect().height) : 0);
+    return {
+      section: root.clientHeight,
+      room: root.style.getPropertyValue('--mov-room') || null,
+      stage: movement.plan.stage.clientHeight,
+      measured: movement.view.height,
+      folded: document.querySelector('.mov-top').dataset.folded,
+      docked: document.querySelector('.mov-legend').dataset.docked,
+      sentence: tall(document.querySelector('.mov-line')),
+      controls: tall(document.querySelector('.mov-controls')),
+      floors: tall(document.querySelector('.mov-floors')),
+      bar: tall(document.querySelector('[data-bar="playback"]')),
+      barLines: Array.from(document.querySelectorAll('.mov-pb__line')).map(tall),
+      legendLine: tall(document.querySelector('.mov-legend-line')),
+      scroll: root.scrollTop,
+    };
+  });
+}
+
+// Measured: the map's view is the size of the stage it has now. A read of
+// the map straight after the controls are unfolded can come before the
+// plan map has measured the smaller stage (SV2-31f: on GitHub's runner the
+// phone case's `before` was the view of the folded section, 390 by 512,
+// and the section put back after Leave, 390 by 380, failed against it).
+async function measured(page, what) {
+  await page.waitForFunction(() => {
+    const movement = document.querySelector('.mov').movement;
+    const stage = movement.plan.stage;
+    return stage.clientHeight > 0 && movement.view.width === stage.clientWidth && movement.view.height === stage.clientHeight;
+  }, { timeout: 10000 }).catch(async (error) => {
+    throw new Error(what + ': the map was not measured on its stage: ' + JSON.stringify(await rows(page)) + ' (' + error.message + ')');
+  });
+}
 const restoredCount = (page) => page.evaluate(() => Number(document.querySelector('.mov').dataset.presentRestored || 0));
 
 // Is the element's box inside the window and not covered, at its middle, by something else?
@@ -569,7 +612,10 @@ for (const size of [{ width: 390, height: 844, upright: true }, { width: 844, he
       // the tap would scroll the section to the button first: bring it into view, then read where things are
       await page.$eval('[data-action="present"]', (el) => el.scrollIntoView({ block: 'nearest' }));
       await settled(page);
+      // and the map measured on the stage the open controls leave it (SV2-31f)
+      await measured(page, 'before Present');
       const before = await read(page);
+      const rowsBefore = await rows(page);
       // the timers handed over first: entering by a tap asks for the controls' fade at once
       await handTimers(page);
       await page.tap('[data-action="present"]');
@@ -638,11 +684,13 @@ for (const size of [{ width: 390, height: 844, upright: true }, { width: 844, he
       await page.tap('[data-action="present-leave"]');
       await outOfMode(page, count);
       now = await read(page);
+      // the rows round the stage before Present and after Leave, in every message that compares the map (SV2-31f)
+      const around = ' (before Present ' + JSON.stringify(rowsBefore) + ', after Leave ' + JSON.stringify(await rows(page)) + ')';
       assert.equal(now.transition, before.transition, 'the transition');
       assert.equal(before.fitted, true, 'the phone opened off Fit: the case tests the wrong thing');
-      assert.equal(now.fitted, true, 'the map is not at Fit again');
-      assert.equal(now.fit, before.fit, 'the stage\'s fit');
-      assert.deepEqual(now.view, before.view, 'the zoom and place');
+      assert.equal(now.fitted, true, 'the map is not at Fit again' + around);
+      assert.equal(now.fit, before.fit, 'the stage\'s fit' + around);
+      assert.deepEqual(now.view, before.view, 'the zoom and place' + around);
       assert.equal(now.scroll, before.scroll);
       assert.equal(now.focus, 'present');
       assert.equal(now.labelScale, 1);
