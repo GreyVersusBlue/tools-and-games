@@ -629,6 +629,54 @@ test('SV2-72h item 1: Movement at 900 by 500 with touch opens with the fit set a
   });
 });
 
+// Item 1, the judgement itself: the stage with the docked line away is
+// measured now. Between the line shown or hidden and the observers' next
+// round, view.height was the last measure's and undockedGain() the last
+// room()'s, and their sum, what the legend judged on, was a stage that is
+// not there. Read in the same task as the line is shown or hidden, before
+// any observer runs.
+test('SV2-72h item 1: Movement at 900 by 500 with touch: the stage with the docked line away, asked in the same task as the line is shown or hidden, is the stage the line leaves', async () => {
+  await on('#project', { width: 900, height: 500, mobile: true }, async (page) => {
+    await fixture(page);
+    await go(page, '#movement');
+    await turnsSettled(page, 'movement');
+    const line = '.mov-legend-line';
+    assert.equal(await page.evaluate((sel) => !document.querySelector(sel).hidden, line), true, 'the legend is not docked here: the case tests nothing');
+    // the stage as it is laid out with the line away, once the map has measured it
+    const settledWith = async (hidden) => {
+      // the height before is forgotten, so the wait sees the stage over two frames from here
+      await page.evaluate((sel, value) => {
+        globalThis.__m5stage = null;
+        document.querySelector(sel).hidden = value;
+      }, line, hidden);
+      await until(page, 'the stage did not settle with the line ' + (hidden ? 'away' : 'shown'), () => {
+        const plan = document.querySelector('.mov').movement.plan;
+        const now = plan.stage.getBoundingClientRect().height;
+        const was = globalThis.__m5stage;
+        globalThis.__m5stage = now;
+        return plan.view.height === Math.round(now) && was === now;
+      });
+      return page.evaluate(() => document.querySelector('.mov').movement.plan.stage.getBoundingClientRect().height);
+    };
+    const away = await settledWith(true);
+    const shown = await settledWith(false);
+    assert.ok(away > shown, 'the line takes nothing from the stage here: the case tests nothing: ' + JSON.stringify({ away, shown }));
+    const asked = await page.evaluate((sel) => {
+      const plan = document.querySelector('.mov').movement.plan;
+      const el = document.querySelector(sel);
+      const out = {};
+      for (const hidden of [true, false]) {
+        el.hidden = hidden;
+        out[hidden ? 'away' : 'shown'] = { now: plan.undockedHeight(), sum: plan.view.height + (hidden ? 0 : plan.undockedGain()) };
+      }
+      return out;
+    }, line);
+    // the sum of the last measures was another stage at least once: the case would have caught it
+    assert.ok(Math.abs(asked.away.sum - away) > 1 || Math.abs(asked.shown.sum - away) > 1, 'the last measures already agree here: the case tests nothing: ' + JSON.stringify({ away, asked }));
+    for (const way of ['away', 'shown']) assert.ok(Math.abs(asked[way].now - away) <= 1, 'with the line ' + way + ' the stage without it was asked as ' + asked[way].now + ' px, not ' + away + ': ' + JSON.stringify({ away, shown, asked }));
+  });
+});
+
 // ------------------------------------------- SV2-72e's open line: the toast's Show
 
 // The shell's own Show, on the message an Undo leaves, opened its address
