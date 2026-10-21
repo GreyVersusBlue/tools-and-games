@@ -28,6 +28,10 @@
 // and the layout settles (the fit and the legend's dock counted); the shell's
 // own Show, on the message an Undo leaves, opens a group's address marked as
 // having the list under it, so a Delete on a phone leaves the list once.
+// From SV2-72h: Fit settles at 900 by 500 with touch, keeps the first line
+// where the floors fit with it, falls back to the whole stage at 1100 by
+// 450, holds still under a browser bar's 56 px, and from the section's top
+// with the zoom buttons lifted gives the fit the section opened with.
 
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -490,7 +494,10 @@ test('SV2-72f2 item 3: a phone at 390 by 844 turned on its side, back, and on it
 // showed another (at 1280 by 600 the floors 19 px apart). Both ask choose().
 // SV2-72g: 900 by 500 was where the floors could not be whole above the
 // foot; the section now scrolls past the first line there, and they are.
-for (const size of [{ width: 900, height: 500, fallback: false }, { width: 1280, height: 600, fallback: false }]) {
+// SV2-72h item 5: 1100 by 450 with a mouse is a size where they still
+// cannot (the section scrolled to the stage's top, the stage 207 px with
+// the playback bar over its foot), so fitIn 'stage' keeps a browser case.
+for (const size of [{ width: 900, height: 500, fallback: false }, { width: 1280, height: 600, fallback: false }, { width: 1100, height: 450, fallback: true }]) {
   test('SV2-72f2 item 2: Movement at ' + size.width + ' by ' + size.height + (size.fallback ? ', where the floors cannot be whole above the foot,' : '') + ' fitAt answers the fit the map took, the legend\'s card lies on no floor, and the layout settles', async () => {
     await on('#project', { width: size.width, height: size.height }, async (page) => {
       await fixture(page);
@@ -536,9 +543,7 @@ for (const size of [{ width: 900, height: 500, fallback: false }, { width: 1280,
 // 900 by 500 the sticky foot lay 171 px over a 216 px stage, the floors
 // under it. Each case presses Fit where the button is and counts the fit's
 // and the legend's turns from before the section opens. 900 by 500 with
-// touch is left out: there Movement's legend does not settle before this
-// unit either (3 dock turns on sv2 at 66ee2854; it judges its card at 70 px,
-// before the picture is in, then at 172), and the legend is not the map's.
+// touch is SV2-72h item 1's case, below.
 const EDGES = [
   { width: 1024, height: 768 },
   { width: 1024, height: 768, mobile: true },
@@ -589,6 +594,242 @@ for (const size of EDGES) {
       assert.deepEqual(offStage(fitted), [], 'after Fit: ' + JSON.stringify({ fitted, edge }));
       assert.ok(first.fit >= 1, 'no fit was counted: the count tests nothing: ' + JSON.stringify(first));
       assert.ok(turns.fit <= 2 && turns.dock <= 1, 'the layout did not settle: ' + JSON.stringify({ first, turns }));
+    });
+  });
+}
+
+// ------------------------------------------- SV2-72h: Fit settles everywhere
+
+// Item 1. At 900 by 500 with touch Movement opened with 5 dock and 5 fit
+// turns (3 and 2 before SV2-72g): the legend judged its card on the stage
+// with the docked line away as view.height plus undockedGain(), the one read
+// at the last measure and the other at the last room(), so a judgement made
+// between the line being shown or hidden and the stage measured again asked
+// a stage 241 px or 151 px tall where the stage without the line is 196, and
+// each answer turned the other. Counted from before the section opens, and
+// again after Fit is tapped where the button is.
+// Movement's answer is in and drawn (the legend's card is judged with its
+// bands in it: before them it is 70 px, after them 172 at 900 by 500)
+const answered = (page) => until(page, 'Movement\'s answer did not come', () => {
+  const mov = document.querySelector('.mov');
+  return Boolean(mov && mov.movement && mov.dataset.pending !== 'true' && mov.movement.state && mov.movement.state.results && mov.movement.state.project === globalThis.sv2.store.project);
+});
+
+test('SV2-72h item 1: Movement at 900 by 500 with touch opens with the fit set at most twice and the legend docked at most once, and settles so again when Fit is tapped', async () => {
+  await on('#project', { width: 900, height: 500, mobile: true }, async (page) => {
+    assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), true, 'the page is not a touch screen’s');
+    await fixture(page);
+    await countTurns(page);
+    await go(page, '#movement');
+    await answered(page);
+    const first = await turnsSettled(page, 'movement');
+    const opened = await floorsAt(page, 'movement');
+    assert.ok(first.fit >= 1, 'no fit was counted: the count tests nothing: ' + JSON.stringify(first));
+    assert.ok(first.fit <= 2 && first.dock <= 1, 'the layout did not settle as Movement opened: ' + JSON.stringify(first));
+    assert.deepEqual(offStage(opened), [], 'as it opens: ' + JSON.stringify(opened));
+    await countTurns(page);
+    const fitButton = '.mov [data-action="fit"]';
+    const at = await box(page, fitButton);
+    assert.ok(at, 'the Fit button has no box');
+    const hit = await page.evaluate((wanted, x, y) => {
+      const hitEl = document.elementFromPoint(x, y);
+      return Boolean(hitEl) && document.querySelector(wanted).contains(hitEl);
+    }, fitButton, at.left + at.width / 2, at.top + at.height / 2);
+    assert.equal(hit, true, 'something lies over the Fit button where it is: ' + JSON.stringify(at));
+    await page.touchscreen.tap(at.left + at.width / 2, at.top + at.height / 2);
+    const turns = await turnsSettled(page, 'movement');
+    const fitted = await floorsAt(page, 'movement');
+    assert.ok(turns.fit <= 2 && turns.dock <= 1, 'the layout did not settle after Fit: ' + JSON.stringify(turns));
+    assert.deepEqual(offStage(fitted), [], 'after Fit: ' + JSON.stringify(fitted));
+  });
+});
+
+// Item 1, the judgement itself: the stage with the docked line away is
+// measured now. Between the line shown or hidden and the observers' next
+// round, view.height was the last measure's and undockedGain() the last
+// room()'s, and their sum, what the legend judged on, was a stage that is
+// not there. Read in the same task as the line is shown or hidden, before
+// any observer runs.
+test('SV2-72h item 1: Movement at 900 by 500 with touch: the stage with the docked line away, asked in the same task as the line is shown or hidden, is the stage the line leaves', async () => {
+  await on('#project', { width: 900, height: 500, mobile: true }, async (page) => {
+    await fixture(page);
+    await go(page, '#movement');
+    await answered(page);
+    await turnsSettled(page, 'movement');
+    const line = '.mov-legend-line';
+    assert.equal(await page.evaluate((sel) => !document.querySelector(sel).hidden, line), true, 'the legend is not docked here: the case tests nothing');
+    // the stage as it is laid out with the line away, once the map has measured it
+    const settledWith = async (hidden) => {
+      // the height before is forgotten, so the wait sees the stage over two frames from here
+      await page.evaluate((sel, value) => {
+        globalThis.__m5stage = null;
+        document.querySelector(sel).hidden = value;
+      }, line, hidden);
+      await until(page, 'the stage did not settle with the line ' + (hidden ? 'away' : 'shown'), () => {
+        const plan = document.querySelector('.mov').movement.plan;
+        const now = plan.stage.getBoundingClientRect().height;
+        const was = globalThis.__m5stage;
+        globalThis.__m5stage = now;
+        return plan.view.height === Math.round(now) && was === now;
+      });
+      return page.evaluate(() => document.querySelector('.mov').movement.plan.stage.getBoundingClientRect().height);
+    };
+    const away = await settledWith(true);
+    const shown = await settledWith(false);
+    assert.ok(away > shown, 'the line takes nothing from the stage here: the case tests nothing: ' + JSON.stringify({ away, shown }));
+    const asked = await page.evaluate((sel) => {
+      const plan = document.querySelector('.mov').movement.plan;
+      const el = document.querySelector(sel);
+      const out = {};
+      for (const hidden of [true, false]) {
+        el.hidden = hidden;
+        out[hidden ? 'away' : 'shown'] = { now: plan.undockedHeight(), sum: plan.view.height + (hidden ? 0 : plan.undockedGain()) };
+      }
+      return out;
+    }, line);
+    // the sum of the last measures was another stage at least once: the case would have caught it
+    assert.ok(Math.abs(asked.away.sum - away) > 1 || Math.abs(asked.shown.sum - away) > 1, 'the last measures already agree here: the case tests nothing: ' + JSON.stringify({ away, asked }));
+    for (const way of ['away', 'shown']) assert.ok(Math.abs(asked[way].now - away) <= 1, 'with the line ' + way + ' the stage without it was asked as ' + asked[way].now + ' px, not ' + away + ': ' + JSON.stringify({ away, shown, asked }));
+  });
+});
+
+// Item 4. A change of the window's height alone, a touch browser's bar
+// coming or going (56 px in Chrome on Android) or the keyboard, was taken
+// for a new layout like a rotation: the foot-clearing scroll was armed again
+// and moved the section under a reader who had scrolled it. Only a change of
+// width, or of height by more than REARM_HEIGHT, arms it again.
+test('SV2-72h item 4: at 844 by 390 with touch, Movement scrolled to its top by the reader stays there when the browser\'s bar takes 56 px of the window\'s height, and is scrolled clear of the foot again after a change of 130 px', async () => {
+  await on('#project', SIDE, async (page) => {
+    await fixture(page);
+    await go(page, '#movement');
+    await answered(page);
+    await turnsSettled(page, 'movement');
+    const opened = await floorsAt(page, 'movement');
+    assert.ok(opened.scroll > 0, 'the map did not scroll the section clear of the foot as it opened: the case tests nothing: ' + JSON.stringify(opened));
+    // the reader's scroll back to the section's top (the stand-in for a swipe)
+    await page.evaluate(() => {
+      document.querySelector('.mov').movement.plan.root.scrollTop = 0;
+    });
+    await until(page, 'the section did not take the scroll to its top', () => {
+      const plan = document.querySelector('.mov').movement.plan;
+      return plan.root.scrollTop === 0 && plan.root.dataset.dockedAt === '0';
+    });
+    const resize = async (height) => {
+      await page.setViewport({ width: SIDE.width, height, deviceScaleFactor: 1, hasTouch: true, isMobile: true, isLandscape: true });
+      await until(page, 'the page is not ' + height + ' tall', (h) => window.innerHeight === h && document.querySelector('.mov').movement.plan.view.height > 0 && document.querySelector('.mov').movement.plan.root.dataset.dockedAt === String(Math.round(document.querySelector('.mov').movement.plan.root.scrollTop)), height);
+      await turnsSettled(page, 'movement');
+      return floorsAt(page, 'movement');
+    };
+    const barGone = await resize(SIDE.height - 56);
+    assert.equal(barGone.scroll, 0, 'the bar\'s 56 px moved the section under the reader: ' + JSON.stringify(barGone));
+    // at the top the foot lies over the stage: what a foot-clearing scroll would have moved
+    assert.ok(barGone.stage.bottom > barGone.footTop + 0.5, 'with the bar\'s 56 px gone the foot is not over the stage at the section\'s top: the case tests nothing: ' + JSON.stringify(barGone));
+    const barBack = await resize(SIDE.height);
+    assert.equal(barBack.scroll, 0, 'the bar coming back moved the section under the reader: ' + JSON.stringify(barBack));
+    // a change of 130 px is a new layout: 130 px taller, where the foot is
+    // clear of the stage, and back, where the stage is brought clear of the
+    // foot again
+    const taller = await resize(SIDE.height + 130);
+    assert.ok(taller.stage.bottom <= taller.footTop + 0.5, '130 px taller the foot still lies over the stage: ' + JSON.stringify(taller));
+    const back = await resize(SIDE.height);
+    assert.ok(back.scroll > 0, 'a window 130 px lower was not scrolled clear of the foot: ' + JSON.stringify({ taller, back }));
+    assert.equal(back.scroll, opened.scroll, 'a window 130 px lower was not scrolled as Movement opened at that size: ' + JSON.stringify({ opened, back }));
+    assert.deepEqual(offStage(back), [], 'a window 130 px lower: ' + JSON.stringify(back));
+  });
+});
+
+// Item 2. Where the floors are whole above the sticky foot with the first
+// line kept, the map's own scroll stops at the line (SV2-72g's rule); no case
+// held that half. At 844 by 390 with touch both Movement and the lab scroll
+// the section, by less than the line's top.
+for (const which of ['movement', 'scenarios']) {
+  test('SV2-72h item 2: at 844 by 390 with touch ' + (which === 'movement' ? 'Movement' : 'the lab, a scenario open,') + ' scrolls clear of the foot and keeps its first line in view, every floor above the foot', async () => {
+    await on('#project', SIDE, async (page) => {
+      await fixture(page, null, which === 'scenarios' ? [['newScenario', { name: 'Trial' }]] : []);
+      await go(page, '#' + which);
+      if (which === 'movement') await answered(page);
+      await turnsSettled(page, which);
+      const at = await floorsAt(page, which);
+      const line = await page.evaluate((name) => {
+        const plan = name === 'movement' ? document.querySelector('.mov').movement.plan : document.querySelector('.scn').scenarios.plan;
+        const el = plan.root.querySelector('.mov-line');
+        if (!el || el.getClientRects().length === 0) return null;
+        const box = el.getBoundingClientRect();
+        return { top: box.top, bottom: box.bottom, rootTop: plan.root.getBoundingClientRect().top };
+      }, which);
+      assert.ok(line, 'the first line has no box');
+      assert.ok(at.scroll > 0, 'the map did not scroll the section: the case tests nothing: ' + JSON.stringify(at));
+      assert.ok(line.top >= line.rootTop - 0.5, 'the map scrolled past the first line where the floors fit with it: ' + JSON.stringify({ line, at }));
+      assert.deepEqual(offStage(at), [], JSON.stringify(at));
+    });
+  });
+}
+
+// Item 6. Fit pressed with the zoom buttons lifted over the sticky foot, the
+// section at its top where the reader scrolled it: Fit scrolls the section
+// clear of the foot again, keeps the first line where the floors fit with
+// it, and fits round the buttons where they rest after that scroll, which
+// is the fit the section opened with. What the stage says of the zoom box
+// (data-fit-clear) is checked against the painted cells under the box as
+// drawn, with the module's own paintedUnder. At this size the lab keeps
+// its first line with the foot 15 px over the stage's foot, so its buttons
+// stay lifted and lie over part of a floor.
+for (const which of ['movement', 'scenarios']) {
+  test('SV2-72h item 6: at 844 by 390 with touch, ' + (which === 'movement' ? 'Movement' : 'the lab, a scenario open,') + ' at its top with the zoom buttons lifted over the foot, Fit tapped gives the fit it opened with: the first line in view, every floor above the foot, the zoom box as clear as the stage says', async () => {
+    await on('#project', SIDE, async (page) => {
+      await fixture(page, null, which === 'scenarios' ? [['newScenario', { name: 'Trial' }]] : []);
+      await loadModule(page, 'layout', 'ui/surface/plan-layout.js');
+      await go(page, '#' + which);
+      if (which === 'movement') await answered(page);
+      await turnsSettled(page, which);
+      const opened = await floorsAt(page, which);
+      const viewOf = () => page.evaluate((name) => {
+        const plan = name === 'movement' ? document.querySelector('.mov').movement.plan : document.querySelector('.scn').scenarios.plan;
+        return { zoom: plan.view.zoom, x: plan.view.x, y: plan.view.y, fit: plan.stage.dataset.fit, clear: plan.stage.dataset.fitClear };
+      }, which);
+      const openedView = await viewOf();
+      // the reader's scroll back to the section's top (the stand-in for a swipe)
+      await page.evaluate((name) => {
+        const plan = name === 'movement' ? document.querySelector('.mov').movement.plan : document.querySelector('.scn').scenarios.plan;
+        plan.root.scrollTop = 0;
+      }, which);
+      await until(page, 'the section did not take the scroll to its top', (name) => {
+        const plan = name === 'movement' ? document.querySelector('.mov').movement.plan : document.querySelector('.scn').scenarios.plan;
+        return plan.root.scrollTop === 0 && plan.root.dataset.dockedAt === '0';
+      }, which);
+      const lifted = await page.evaluate((name) => {
+        const plan = name === 'movement' ? document.querySelector('.mov').movement.plan : document.querySelector('.scn').scenarios.plan;
+        return parseFloat(plan.stage.style.getPropertyValue('--mov-under')) || 0;
+      }, which);
+      assert.ok(lifted > 0, 'at the top the zoom buttons are not lifted over the foot: the case tests nothing');
+      const fitButton = '#section [data-action="fit"]';
+      const at = await box(page, fitButton);
+      assert.ok(at, 'the Fit button has no box');
+      await page.touchscreen.tap(at.left + at.width / 2, at.top + at.height / 2);
+      await until(page, 'Fit did not scroll the section', (name) => {
+        const plan = name === 'movement' ? document.querySelector('.mov').movement.plan : document.querySelector('.scn').scenarios.plan;
+        return plan.root.scrollTop > 0;
+      }, which);
+      await turnsSettled(page, which);
+      const fitted = await floorsAt(page, which);
+      const fittedView = await viewOf();
+      const got = await page.evaluate((name) => {
+        const plan = name === 'movement' ? document.querySelector('.mov').movement.plan : document.querySelector('.scn').scenarios.plan;
+        const el = plan.root.querySelector('.mov-line');
+        const line = el && el.getClientRects().length > 0 ? el.getBoundingClientRect() : null;
+        const stage = plan.stage.getBoundingClientRect();
+        const zoom = plan.stage.querySelector('.mov-zoom').getBoundingClientRect();
+        const rect = { x: zoom.left - stage.left, y: zoom.top - stage.top, w: zoom.width, h: zoom.height };
+        const under = globalThis.sv2modules.layout.paintedUnder(plan.world, { zoom: plan.view.zoom, x: plan.view.x, y: plan.view.y }, rect);
+        return { line: line && { top: line.top }, rootTop: plan.root.getBoundingClientRect().top, clearSaid: plan.stage.dataset.fitClear, under, rect, fitted: plan.fitted };
+      }, which);
+      assert.equal(got.fitted, true, 'the map is not fitted');
+      assert.equal(fitted.scroll, opened.scroll, 'Fit did not scroll the section as it opened: ' + JSON.stringify({ opened: opened.scroll, fitted: fitted.scroll }));
+      assert.ok(got.line && got.line.top >= got.rootTop - 0.5, 'Fit scrolled past the first line: ' + JSON.stringify(got));
+      assert.deepEqual(offStage(fitted), [], 'after Fit: ' + JSON.stringify(fitted));
+      assert.equal(got.under, got.clearSaid !== 'true', 'the stage says the zoom box is ' + (got.clearSaid === 'true' ? '' : 'not ') + 'clear, and the cells under it as drawn say otherwise: ' + JSON.stringify(got));
+      // and the fit is the one the section opened with at that scroll, not one made round the buttons where they were lifted at the top
+      assert.deepEqual(fittedView, openedView, 'Fit from the top is not the fit the section opened with: ' + JSON.stringify({ openedView, fittedView }));
     });
   });
 }

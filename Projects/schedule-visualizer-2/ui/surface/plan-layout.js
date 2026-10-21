@@ -10,8 +10,12 @@
 //             (one under another)
 //     slots   [{ floor, box, x, y, w, h }]: (x, y) is where the box's top
 //             left cell is, in the map's cells
-//   bestLayout(floors, width, height)   'side' or 'stacked': whichever fits the window larger (a tie at
-//                                       the least zoom to the one nearer to fitting)
+//   bestLayout(floors, width, height, current)   'side' or 'stacked': whichever fits the window
+//                                       larger (a tie at the least zoom to the one nearer to
+//                                       fitting); `current` is kept unless the other wins by
+//                                       more than LAYOUT_MARGIN
+//   fitZoom(layout, width, height, margin)   the zoom a map fits a window at, 25 % to 300 %
+//   rawZoom(layout, width, height, margin)   the same before the clamp
 //   slotAt(layout, x, y)                { slot, x, y, cell } for a place on the map, or null between floors
 //   placeOf(layout, floorId, cell)      { x, y }: the top left of a floor's cell on the map, or null
 //   stageLeast(layout, width, zoomRoom) the least height the stage is given, in CSS pixels
@@ -22,7 +26,7 @@
 //
 // No DOM in here.
 
-import { CELL, MIN_ZOOM, clampZoom, drawnBox } from './viewport.js';
+import { CELL, MIN_ZOOM, MAX_ZOOM, clampZoom, drawnBox } from './viewport.js';
 
 // Cells between two floors, and the rows kept above a floor for its name.
 // Whole numbers, so the keyboard cursor's cells are the floors' cells.
@@ -52,10 +56,14 @@ export function layoutFloors(floors, how) {
   return { how: how === 'stacked' ? 'stacked' : 'side', slots, width: Math.max(1, width), height: Math.max(1, height) };
 }
 
-// The zoom at which a map of this size fits the window.
+// The zoom at which a map of this size fits the window; rawZoom is it
+// before the clamp (bestLayout's tie at the least zoom reads it).
 export function fitZoom(layout, width, height, margin) {
+  return clampZoom(rawZoom(layout, width, height, margin));
+}
+export function rawZoom(layout, width, height, margin) {
   const pad = margin === undefined ? CELL : margin;
-  return clampZoom(Math.min(Math.max(1, width - pad * 2) / (layout.width * CELL), Math.max(1, height - pad * 2) / (layout.height * CELL)));
+  return Math.min(Math.max(1, width - pad * 2) / (layout.width * CELL), Math.max(1, height - pad * 2) / (layout.height * CELL));
 }
 
 // The map is fitted with this margin, in CSS pixels, all round.
@@ -98,20 +106,42 @@ export function stageLeast(layout, width, zoomRoom, most) {
 // tie goes to the one that comes nearer to fitting, unclamped (SV2-72g: at
 // 1024 wide Movement's 648 px stage took the sample's floors side by side,
 // 744 px at 25 %, 48 px off the stage's left edge, where stacked, 240 by
-// 282, fits).
-export function bestLayout(floors, width, height) {
+// 282, fits). So a layout's score is its zoom unclamped, capped at the most,
+// and one that fits at 25 % or more always beats one that does not.
+//
+// The layout on the map now (`current`) is kept unless the other's score is
+// more than LAYOUT_MARGIN over its own (SV2-72h): the stage's least follows
+// the layout (stageLeast), so where the two are near a choice moved the
+// stage and the stage moved the choice, and a size opened stacked or side by
+// side by the order things were measured in, or turned at each pixel of a
+// resize. 5 %: a fifth of one press of the zoom buttons (25 %), less than
+// anyone sees between two layouts, and more than a scroll bar coming or
+// going takes from a stage (15 px of a 400 px stage, 3.75 %). Never across
+// the clamp: a layout the window cannot hold at 25 % is not kept over one it
+// can, since a fit that leaves a floor off the stage is no fit (SV2-72f).
+//
+// Judged on the whole stage with Fit's margin (FIT_MARGIN), as Fit has it
+// when no sticky foot lies over the stage; the foot and the zoom buttons are
+// left out on purpose: how far the foot lies over the stage changes as the
+// section scrolls, and a layout that turned with the scroll would be worse
+// than one a little smaller.
+export const LAYOUT_MARGIN = 0.05;
+export function bestLayout(floors, width, height, current) {
   if (floors.length < 2) return 'side';
-  const stacked = layoutFloors(floors, 'stacked');
-  const side = layoutFloors(floors, 'side');
-  const a = fitZoom(stacked, width, height);
-  const b = fitZoom(side, width, height);
-  if (a === MIN_ZOOM && b === MIN_ZOOM) return rawZoom(stacked, width, height) > rawZoom(side, width, height) ? 'stacked' : 'side';
-  return a > b ? 'stacked' : 'side';
-}
-
-// fitZoom unclamped
-function rawZoom(layout, width, height) {
-  return Math.min(Math.max(1, width - CELL * 2) / (layout.width * CELL), Math.max(1, height - CELL * 2) / (layout.height * CELL));
+  const score = (how) => {
+    const raw = rawZoom(layoutFloors(floors, how), width, height, FIT_MARGIN);
+    return { fits: raw >= MIN_ZOOM, value: Math.min(raw, MAX_ZOOM) };
+  };
+  const stacked = score('stacked');
+  const side = score('side');
+  if (stacked.fits !== side.fits) return stacked.fits ? 'stacked' : 'side';
+  if (current === 'stacked' || current === 'side') {
+    const kept = current === 'stacked' ? stacked : side;
+    const other = current === 'stacked' ? side : stacked;
+    if (!(other.value > kept.value * (1 + LAYOUT_MARGIN))) return current;
+    return current === 'stacked' ? 'side' : 'stacked';
+  }
+  return stacked.value > side.value ? 'stacked' : 'side';
 }
 
 export function slotAt(layout, x, y) {
