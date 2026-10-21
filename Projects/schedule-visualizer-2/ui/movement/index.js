@@ -432,9 +432,10 @@ export const section = {
       const width = card.offsetWidth;
       const tall = card.offsetHeight;
       if (width === 0 || tall === 0) return false;
-      // where Fit puts the floors on that stage, round the zoom buttons: in
-      // the band beside them it moves them right, toward the card
-      // (fitClear, SV2-72c2), so a plain fit is not asked
+      // where Fit puts the floors on that stage, round the zoom buttons and
+      // above the sticky foot, by the rule Fit itself takes (the map's
+      // choose, SV2-72f2): in the band beside them it moves them right,
+      // toward the card (SV2-72c2), so a plain fit is not asked
       const place = plan.fitAt(view.width, height, FIT_MARGIN);
       if (!place) return false;
       probe.resize(view.width, height);

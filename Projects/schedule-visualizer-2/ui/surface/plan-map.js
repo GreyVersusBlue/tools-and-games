@@ -83,7 +83,8 @@
 //                           a fitted map is fitted again
 //   map.remeasure()         measure the section again
 //   map.fitAt(width, height)   where Fit would put the floors on a stage of
-//                           that size: { zoom, x, y, how, clear }, or null
+//                           that size, by the rule fit() takes (choose):
+//                           { zoom, x, y, how, clear, in }, or null
 //                           (Movement's legend asks it, SV2-72c2)
 //   map.undockedGain()      how much taller the stage is with the docked
 //                           line away (0 with none docked): what Movement's
@@ -356,27 +357,37 @@ export function createPlanMap(asked) {
     return { x: margin, y: rest - Math.max(0, Math.min(liftNow(), rest)), w, h };
   }
 
-  // Fit leaves the zoom buttons' corner clear of every painted cell (fitClear in ./plan-layout.js)
+  // Where Fit puts the floors on a stage `width` by `height` with `foot` px
+  // of a sticky foot over its foot: in the part of the stage the foot leaves
+  // (all of it with no foot over it), where the floors are whole in it, clear
+  // of the zoom buttons if a band can be, else the plain fit (SV2-72f: at 844
+  // by 390 the foot still lies 12 px over Movement's stage once the first
+  // line stops clearFoot). Where they cannot be whole there, on the whole
+  // stage with the zoom buttons kept clear, as SV2-72c had it: whole would
+  // be under the foot. fit() and fitAt both ask this, so Movement's legend
+  // judges the layout the map shows (SV2-72f2: fitAt had asked fitClear on
+  // the whole stage alone). `in` says which: 'shown' or 'stage'.
+  function choose(width, height, foot, margin) {
+    const corner = zoomCorner(height);
+    const shown = height - foot;
+    const seen = fitClear(world, width, shown, corner, margin);
+    const size = CELL * seen.zoom;
+    const whole = seen.y >= -1e-9 && seen.y + world.height * size <= shown + 1e-9 && seen.x >= -1e-9 && seen.x + world.width * size <= width + 1e-9;
+    return whole ? { ...seen, in: 'shown' } : { ...fitClear(world, width, height, corner, margin, false), in: 'stage' };
+  }
+
+  // Fit leaves the zoom buttons' corner clear of every painted cell (choose, fitClear in ./plan-layout.js)
   function fit(quiet) {
     if (!world || view.width === 0) return;
-    // Fit pressed brings the stage clear of the foot again (clearFoot)
+    // Fit pressed brings the stage clear of the foot again (clearFoot): where
+    // the section is now is where the map's own scrolling starts from, so a
+    // scroll of the reader's before it does not turn it off at once (SV2-72f2)
     if (!quiet) {
       keepClear = true;
+      ownScroll = parts && parts.root ? Math.round(parts.root.scrollTop) : null;
       clearFoot();
     }
-    // in the part of the stage the foot leaves (all of it with no foot
-    // over it), where the floors are whole in it: clear of the zoom buttons
-    // if a band can be, else the plain fit (SV2-72f: at 844 by 390 the foot
-    // still lies 12 px over Movement's stage once the first line stops
-    // clearFoot). Where they cannot be whole there, on the whole stage with
-    // the zoom buttons kept clear, as SV2-72c had it: whole would be under
-    // the foot.
-    const corner = zoomCorner(view.height);
-    const shown = view.height - footOver();
-    const size = (at) => CELL * at.zoom;
-    const seen = fitClear(world, view.width, shown, corner, FIT_MARGIN);
-    const whole = seen.y >= -1e-9 && seen.y + world.height * size(seen) <= shown + 1e-9 && seen.x >= -1e-9 && seen.x + world.width * size(seen) <= view.width + 1e-9;
-    const place = whole ? seen : fitClear(world, view.width, view.height, corner, FIT_MARGIN, false);
+    const place = choose(view.width, view.height, footOver(), FIT_MARGIN);
     view.zoom = place.zoom;
     view.x = place.x;
     view.y = place.y;
@@ -384,6 +395,8 @@ export function createPlanMap(asked) {
     // clear of every painted cell, for a test to read
     stage.dataset.fit = place.how;
     stage.dataset.fitClear = String(place.clear !== false);
+    // and whether the floors were fitted above the foot or on the whole stage (choose)
+    stage.dataset.fitIn = place.in;
     fitted = true;
     shownLast = null;
     if (!quiet) {
@@ -596,6 +609,19 @@ export function createPlanMap(asked) {
     const height = stage.clientHeight;
     if (gone || width === 0 || height === 0) return;
     if (width === view.width && height === view.height && canvas.dataset.ratio === String(window.devicePixelRatio || 1)) return;
+    // a stage that changes size with the window (a rotation, a resize) is a
+    // layout the reader's scroll was not made for, and a scroll the window
+    // clamped is none of theirs: the stage is brought clear of the foot again
+    // (clearFoot; SV2-72f2). One that changes size within the same window
+    // (the legend docked, the controls folded) leaves the reader's scroll be.
+    const windowNow = window.innerWidth + 'x' + window.innerHeight;
+    if (windowNow !== windowSeen) {
+      if (windowSeen !== null) {
+        keepClear = true;
+        ownScroll = parts && parts.root ? Math.round(parts.root.scrollTop) : null;
+      }
+      windowSeen = windowNow;
+    }
     view.resize(width, height);
     renderer.resize(width, height, window.devicePixelRatio || 1);
     canvas.dataset.ratio = String(window.devicePixelRatio || 1);
@@ -659,12 +685,16 @@ export function createPlanMap(asked) {
   // the section is at its end. How far it reaches up into the stage is
   // --mov-under on the stage, and they lift by that much, but never out of
   // the stage's top.
-  // How far the foot lies over the stage now, in px of the stage.
-  function footOver() {
+  // How far the foot lies over the stage now, in px of the stage; with
+  // `height`, over a stage that tall standing where this one stands, its
+  // foot moved by the difference (fitAt: the stage with the docked line away,
+  // whose foot comes down by what the stage gains, the foot where it is)
+  function footOver(height) {
     const foot = footShown();
     if (!foot || element.hidden) return 0;
     const shown = stage.getBoundingClientRect();
-    return Math.max(0, Math.min(shown.height, Math.ceil(shown.bottom - foot.getBoundingClientRect().top)));
+    const extra = height === undefined ? 0 : height - view.height;
+    return Math.max(0, Math.min(shown.height + extra, Math.ceil(shown.bottom + extra - foot.getBoundingClientRect().top)));
   }
   // How far the foot reaches up into the stage now, never lifting the
   // buttons out of the stage's top; 0 with no frame yet.
@@ -708,6 +738,8 @@ export function createPlanMap(asked) {
   // the section's top; the head's padding over the line goes first.
   let keepClear = true;
   let ownScroll = null;
+  // the window's size the stage was last measured in (measure)
+  let windowSeen = null;
   function clearFoot() {
     const root = parts && parts.root;
     if (!root || gone || element.hidden || root.dataset.styled !== 'true') return;
@@ -890,6 +922,8 @@ export function createPlanMap(asked) {
   loadSheet().then(() => {
     if (gone) return;
     root.dataset.styled = 'true';
+    // the section's scroll as it is styled is where the map's own scrolling starts from (clearFoot)
+    if (ownScroll === null) ownScroll = Math.round(root.scrollTop);
     remeasure();
   });
 
@@ -942,14 +976,15 @@ export function createPlanMap(asked) {
     get labelScale() { return labelScale; },
     remeasure,
     dock,
-    // where Fit would put the floors on a stage of this size, round the zoom
-    // buttons as they are drawn: { zoom, x, y, how, clear } (fitClear), or null
     // what the stage gains in px when the docked line goes away: never more
     // than the line's height, and less where the stage is held at its least
     undockedGain: () => roomAway,
+    // where Fit would put the floors on a stage of this size, round the zoom
+    // buttons as they are drawn and above the sticky foot as fit() puts
+    // them: { zoom, x, y, how, clear, in } (choose), or null
     fitAt(width, height, margin) {
       if (!world || !(width > 0) || !(height > 0)) return null;
-      return fitClear(world, width, height, zoomCorner(height), margin === undefined ? FIT_MARGIN : margin);
+      return choose(width, height, footOver(height), margin === undefined ? FIT_MARGIN : margin);
     },
     unmount() {
       if (gone) return;

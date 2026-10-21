@@ -6043,9 +6043,10 @@ export function initRender(canvas) {
         { x: rect.x0, y: plan.eaveY + 0.05, z: rect.z1 },
       ]));
     }
-    // A parapet over a curve: the deck is the outline, in its own triangles.
+    // A parapet over a curve: the deck is the outline, in its own triangles,
+    // which index its courts' corners after its own (#998).
     for (const poly of plan.deckPolys || []) {
-      const geo = roofFace(poly.pts.map((p) => ({ x: p.x, y: plan.eaveY + 0.05, z: p.z })), '#ffffff', poly.tris);
+      const geo = roofFace([...poly.pts, ...(poly.holes || []).flat()].map((p) => ({ x: p.x, y: plan.eaveY + 0.05, z: p.z })), '#ffffff', poly.tris);
       if (geo) deckGeos.push(geo);
     }
     for (const block of plan.blocks) {

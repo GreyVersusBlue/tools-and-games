@@ -60,15 +60,19 @@ test('a building of several rooms touching another at one corner is two loops', 
   assert.deepEqual(o.loops.map((l) => area(l)).sort((u, v) => u - v), [256, 320 + 192]);
 });
 
-test('a pinch still refuses a room inside another, and a courtyard', () => {
+test('a pinch still refuses a room inside another; a courtyard open at one corner is one loop', () => {
   // A small room in a bigger one's corner: both walls leave that corner into the same room.
   const corner = roofOutline(floorOf(room([[0, 0], [10, 0], [0, 10]]), room([[0, 0], [2, 1], [1, 2]])));
   assert.equal(corner.loops, null);
   assert.match(corner.refused, /overlap/);
-  // Four rooms round a 20ft courtyard that reaches the outside at one corner (30, 30).
+  // Four rooms round a 20ft courtyard that reaches the outside at one corner
+  // (30, 30): one loop through that corner twice, marked `pinch` (#1001).
   const court = roofOutline(floorOf(room(R(0, 0, 40, 10)), room(R(30, 10, 40, 30)), room(R(0, 10, 10, 40)), room(R(10, 30, 30, 40))));
-  assert.equal(court.loops, null);
-  assert.match(court.refused, /courtyard/);
+  assert.equal(court.refused, undefined);
+  assert.equal(court.loops.length, 1);
+  assert.deepEqual(court.pinch, [true]);
+  assert.equal(area(court.loops[0]), 1600 - 400 - 100);
+  assert.equal(court.loops[0].filter((p) => p.x === 30 && p.z === 30).length, 2);
 });
 
 // ---------- a curved building at a pinch takes its skeleton ----------
