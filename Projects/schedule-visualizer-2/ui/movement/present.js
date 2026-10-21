@@ -83,7 +83,7 @@ import { parse, readable } from '../colour.js';
 import { bandText } from './legend.js';
 import { unitWord } from './model.js';
 import { hotspotRows, placeWords } from './hotspots.js';
-import { bestLayout, layoutFloors, FIT_MARGIN } from '../surface/plan-layout.js';
+import { layoutFloors, FIT_MARGIN } from '../surface/plan-layout.js';
 import { CELL, MIN_ZOOM, MAX_ZOOM } from '../surface/viewport.js';
 import { floorsShown } from '../surface/plan-map.js';
 
@@ -404,9 +404,9 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
   // caption leave, and the touch controls and the corner line lie over its
   // foot: the Fit counts that band as a foot, so no floor is drawn under
   // them. Where the panel goes (a column beside the map, or a band under
-  // it) and, where the reader left it to the window ('auto'), how the floors
-  // are laid out (side by side or stacked), are chosen together: the pair
-  // that shows every floor whole at the largest zoom, beside on a tie. At
+  // it) is chosen by the floors' layouts the reader left open (both, with
+  // 'auto'): the place where one of them shows every floor whole at the
+  // largest zoom, beside on a tie. At
   // 844 by 390 the floors had stood stacked beside a 236 px panel, Floor 3
   // under the controls, and no layout is whole there at 25 %; under a 109 px
   // panel they are whole side by side at 27 %. Under the map the panel is as
@@ -511,27 +511,10 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     root.dataset.presentPanel = chosen.panel;
     if (chosen.height === null) panel.style.removeProperty('height');
     else panel.style.height = chosen.height + 'px';
-    layoutMode(chosen.how);
-  }
-
-  // The floors' layout chosen, where the reader left it to the window: the
-  // section's floors made that layout, or 'auto' where the window's own
-  // pick is the same (put back on leaving; a card open on a cell stays on it)
-  function layoutMode(how) {
-    if (!saved || saved.floors !== 'auto') return;
-    const movement = view();
-    const floors = movement && movement.state ? floorsShown(movement.state.project, 'auto') : [];
-    if (floors.length < 2) return;
-    const stage = plan.stage;
-    const target = stage.clientWidth > 0 && bestLayout(floors, stage.clientWidth, stage.clientHeight) === how ? 'auto' : how;
-    if (env.choice().floors !== target) changeFloors(target);
-  }
-
-  // the floors changed, with a card the reader tapped open put back on its cell
-  function changeFloors(floors) {
-    const held = env.tapped();
-    env.change({ floors }, { keepCard: true });
-    if (held) env.reopen(held);
+    // the floors' layout is the plan map's own pick for 'auto' on the stage
+    // so made: it takes a layout that is whole where one is, so the one
+    // judged here, or another as whole at most 5 % smaller (bestLayout's
+    // current, SV2-72h); a layout the reader chose is theirs
   }
 
   // The window changed size inside the plan map's own measuring (a resize
@@ -898,8 +881,7 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     return null;
   }
 
-  // the transition and floors as they were; a card open on a cell stays on
-  // its cell (the mode may have changed the floors' layout, layoutMode)
+  // the transition and floors as they were; a card open on a cell stays on its cell
   function putChoice(was) {
     const choice = env.choice();
     const patch = {};
