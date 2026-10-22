@@ -208,3 +208,17 @@ test('an accepted finding\'s `about` is a list of ids when it is there, and a re
   project.accepted = [{ findingId: 'no-planning:dsample00a:tsample001', reason: 'Part time', at: PINNED, about: [''] }];
   assert.match(validate(project)[0].message, /list of ids\.$/);
 });
+
+// SV2-32c: the poster sizes are values added to the paper setting.
+test('every paper size this version prints on is valid, and one it does not know is a finding that names them', () => {
+  for (const size of ['letter', 'a4', 'tabloid', 'a3', 'a2', 'a1', 'a0', 'poster-24x36']) {
+    for (const orientation of ['portrait', 'landscape']) {
+      const project = school();
+      project.settings.paper = { size, orientation };
+      assert.deepEqual(validate(project), [], size + ' ' + orientation);
+    }
+  }
+  const project = school();
+  project.settings.paper = { size: 'b5', orientation: 'portrait' };
+  assert.deepEqual(validate(project), [{ path: 'settings.paper.size', message: 'The paper size is one of letter, a4, tabloid, a3, a2, a1, a0, poster-24x36.' }]);
+});

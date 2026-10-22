@@ -28,7 +28,10 @@ export const RANGES = {
 
 export const PERIOD_WORDS = ['Period', 'Mod', 'Block', 'Hour'];
 export const TIME_FORMATS = ['12h', '24h'];
-export const PAPER_SIZES = ['letter', 'a4'];
+// The papers a print can be laid out for (ui/prints/document.js PAPERS has
+// their sizes and names). Values are only ever added: a project saved with
+// one this version does not know reads as the default through repair.
+export const PAPER_SIZES = ['letter', 'a4', 'tabloid', 'a3', 'a2', 'a1', 'a0', 'poster-24x36'];
 export const PAPER_ORIENTATIONS = ['portrait', 'landscape'];
 export const THEMES = ['auto', 'light', 'dark'];
 export const COLOUR_SCALE_MODES = ['relative', 'absolute'];

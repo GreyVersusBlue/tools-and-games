@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { OUTPUTS, outputFor, renderOutput, printButtons } from '../../ui/prints/index.js';
 import { esc, frame, paperOf, paperBox, printableBox, pageRule, printDate, PAPERS, ORIENTATIONS, MARGIN, TOOL_NAME } from '../../ui/prints/document.js';
 import { planSvg, PLAN_INK, PLAN_ROOM_DEFAULT } from '../../ui/prints/plan-svg.js';
+import { PAPER_SIZES } from '../../engine/schema.js';
 import { roomRows, sortRoomRows, ROOM_COLUMNS } from '../../ui/prints/room-list.js';
 import { gridMarks, numbered, findingsFor } from '../../ui/prints/checks-report.js';
 import { checkSchedule } from '../../engine/checks.js';
@@ -25,6 +26,18 @@ import { school, PINNED } from './helpers.mjs';
 
 const TOOL_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const NOW = { now: PINNED };
+// What each paper's page rule says, written out here (SV2-32c: the sizes CSS
+// has no keyword for are lengths, the way the sheet is read).
+const PAGE_SIZES = {
+  letter: { portrait: 'letter portrait', landscape: 'letter landscape' },
+  a4: { portrait: 'A4 portrait', landscape: 'A4 landscape' },
+  tabloid: { portrait: '279.4mm 431.8mm', landscape: '431.8mm 279.4mm' },
+  a3: { portrait: '297mm 420mm', landscape: '420mm 297mm' },
+  a2: { portrait: '420mm 594mm', landscape: '594mm 420mm' },
+  a1: { portrait: '594mm 841mm', landscape: '841mm 594mm' },
+  a0: { portrait: '841mm 1189mm', landscape: '1189mm 841mm' },
+  'poster-24x36': { portrait: '609.6mm 914.4mm', landscape: '914.4mm 609.6mm' },
+};
 const PAPER_CHOICES = Object.keys(PAPERS).flatMap((size) => Object.keys(ORIENTATIONS).map((orientation) => ({ size, orientation })));
 
 // Every tag a print document is made of. A name that came through as markup
@@ -112,6 +125,15 @@ test('the paper is what was asked, else the project\'s setting, else US Letter u
   assert.deepEqual(printableBox({ size: 'a4', orientation: 'portrait' }), { width: 210 - MARGIN.left - MARGIN.right, height: 297 - MARGIN.top - MARGIN.bottom });
 });
 
+test('the papers are the setting\'s sizes, in its order: US Letter and A4, tabloid and A3, then the posters', () => {
+  assert.deepEqual(Object.keys(PAPERS), PAPER_SIZES);
+  assert.deepEqual(Object.keys(PAPERS), Object.keys(PAGE_SIZES));
+  assert.deepEqual(Object.entries(PAPERS).filter(([, paper]) => paper.poster).map(([size]) => size), ['a2', 'a1', 'a0', 'poster-24x36']);
+  // millimetres, upright: ISO 216 and the US sizes
+  assert.deepEqual(Object.values(PAPERS).map((paper) => [paper.width, paper.height]), [[215.9, 279.4], [210, 297], [279.4, 431.8], [297, 420], [420, 594], [594, 841], [841, 1189], [609.6, 914.4]]);
+  for (const paper of PAPER_CHOICES) assert.equal(pageRule(paper), '@page { size: ' + PAGE_SIZES[paper.size][paper.orientation] + '; }', paper.size + ' ' + paper.orientation);
+});
+
 test('the page rule names the size and the orientation, for both papers both ways', () => {
   assert.equal(pageRule({ size: 'letter', orientation: 'portrait' }), '@page { size: letter portrait; }');
   assert.equal(pageRule({ size: 'letter', orientation: 'landscape' }), '@page { size: letter landscape; }');
@@ -138,7 +160,7 @@ test('every output is a whole document: header with school, what it is and the d
       assert.ok(html.startsWith('<!doctype html>\n<html lang="en" class="print-doc" data-theme="light" data-output="' + output.id + '" data-paper="' + paper.size + '" data-orientation="' + turn + '"'), at + ': the root');
       assert.equal(countOf(html, '<title>' + esc(title) + '</title>'), 1, at + ': the title');
       // written out here, not asked of pageRule(): a rule that ignored the paper would agree with itself
-      const rule = '@page { size: ' + { letter: 'letter', a4: 'A4' }[paper.size] + ' ' + turn + '; }';
+      const rule = '@page { size: ' + PAGE_SIZES[paper.size][turn] + '; }';
       assert.equal(countOf(html, '<style id="page-size">' + rule + '</style>'), 1, at + ': the page rule');
       assert.equal(countOf(html, '@page'), 1, at + ': one page rule and no other');
       assert.ok(html.includes('<link rel="stylesheet" href="ui/tokens.css">') && html.includes('<link rel="stylesheet" href="ui/print.css">'), at + ': the two stylesheets');
@@ -371,6 +393,37 @@ test('the plan fits inside the margins of every paper, whichever way it is turne
       assert.ok(Number(height) <= box.height - 30, paper.size + ' ' + paper.orientation + ': ' + height + ' mm tall in ' + box.height);
       assert.ok(Number(width) > box.width * 0.5 || Number(height) > box.height * 0.5, 'and it is not a postage stamp');
     }
+  }
+});
+
+// SV2-32c: on a poster the plan is as large as the sheet lets it be, not
+// held at the size it has on Letter.
+test('on every paper each floor is one sheet, its plan filling the sheet\'s width or the height under the header', () => {
+  const project = school();
+  for (const paper of PAPER_CHOICES) {
+    const at = paper.size + ' ' + paper.orientation;
+    const box = printableBox(paper);
+    const { html } = renderOutput('floor-plan', project, null, { ...NOW, paper });
+    assert.equal(countOf(html, '<section class="page">'), project.building.floors.length, at + ': a sheet a floor');
+    const sizes = Array.from(html.matchAll(/class="plan-figure__plan" style="width: ([\d.]+)mm; height: ([\d.]+)mm;"/g)).map((match) => [Number(match[1]), Number(match[2])]);
+    for (const [width, height] of sizes) {
+      // 26 mm for the header and 12 for the sentence under the plan (floor-plan.js)
+      const fills = Math.abs(width - box.width) <= 0.01 || Math.abs(height - (box.height - 38)) <= 0.01;
+      assert.ok(fills, at + ': ' + width + ' by ' + height + ' mm in ' + box.width + ' by ' + (box.height - 38));
+    }
+  }
+});
+
+test('a building of a few cells is not blown up past 14 mm a cell on Letter, and past the same share of a poster\'s shorter side', () => {
+  const project = planProject([['#######', '#.....#', '#######']]);
+  for (const paper of PAPER_CHOICES) {
+    const box = printableBox(paper);
+    const { html } = renderOutput('floor-plan', project, null, { ...NOW, paper });
+    const [, width] = /class="plan-figure__plan" style="width: ([\d.]+)mm;/.exec(html);
+    const plan = planSvg(project, project.building.floors[0]);
+    const cell = Number(width) / plan.width;
+    const most = 14 * Math.max(1, Math.min(box.width, box.height) / (215.9 - 24));
+    assert.ok(cell <= most + 0.01, paper.size + ' ' + paper.orientation + ': ' + cell + ' mm a cell');
   }
 });
 

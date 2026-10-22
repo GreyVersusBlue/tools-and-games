@@ -24,8 +24,15 @@ export const name = 'Floor plan';
 // Room on the sheet for the header above the plan and the sentence under it.
 const HEADER_MM = 26;
 const CAPTION_MM = 12;
-// A small building is not blown up past this many millimetres a cell.
+// A small building is not blown up past this many millimetres a cell on US
+// Letter. A larger sheet lets a cell grow with its shorter side, so a plan on
+// a poster fills the poster as one on Letter fills Letter.
 const LARGEST_CELL_MM = 14;
+const LETTER_SHORT_MM = printableBox({ size: 'letter', orientation: 'portrait' }).width;
+
+export function largestCell(box) {
+  return LARGEST_CELL_MM * Math.max(1, Math.min(box.width, box.height) / LETTER_SHORT_MM);
+}
 
 function sentence(floor, plan) {
   const parts = [count(plan.rooms, 'room'), count(plan.exits, 'exit')];
@@ -58,7 +65,7 @@ export function render(project, derived, options) {
     if (!plan.drawn) {
       return { what, body: '<p class="doc-lead">' + esc('Nothing is drawn on ' + floor.name + ' yet.') + '</p>' };
     }
-    const cell = Math.min(room.width / plan.width, room.height / plan.height, LARGEST_CELL_MM);
+    const cell = Math.min(room.width / plan.width, room.height / plan.height, largestCell(box));
     const figure = '<figure class="plan-figure">'
       + '<div class="plan-figure__plan" style="width: ' + mm(plan.width * cell) + '; height: ' + mm(plan.height * cell) + ';">' + plan.svg + '</div>'
       + '<figcaption class="plan-figure__caption">' + esc(sentence(floor, plan)) + '</figcaption>'

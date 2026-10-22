@@ -103,7 +103,7 @@ export function validate(project) {
       if (!isObject(paper)) {
         add('settings.paper', 'The paper setting is an object.');
       } else {
-        if (!PAPER_SIZES.includes(paper.size)) add('settings.paper.size', 'The paper size is letter or a4.');
+        if (!PAPER_SIZES.includes(paper.size)) add('settings.paper.size', 'The paper size is one of ' + PAPER_SIZES.join(', ') + '.');
         if (!PAPER_ORIENTATIONS.includes(paper.orientation)) add('settings.paper.orientation', 'The paper orientation is portrait or landscape.');
       }
       if (!THEMES.includes(settings.theme)) add('settings.theme', 'The theme is auto, light or dark.');

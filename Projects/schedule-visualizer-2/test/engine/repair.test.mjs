@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { repair, UNKNOWN_ROOM_TEXT } from '../../engine/repair.js';
 import { validate } from '../../engine/validate.js';
+import { migrate } from '../../engine/migrate.js';
+import { PAPER_SIZES } from '../../engine/schema.js';
 import { seededRandom, isId } from '../../engine/ids.js';
 import { emptyProject, school, clone, clock, makeIds, room, group, PINNED, BREAKS } from './helpers.mjs';
 
@@ -631,4 +633,42 @@ test('an exit, a corridor name, a connection, a zone and an other space with ids
   assert.ok(isId(fixed.exits[0].id, 'x') && isId(fixed.corridors[0].id, 'k') && isId(fixed.spaces[5].id, 'o'));
   assert.ok(isId(result.project.building.connections[0].id, 'c') && isId(result.project.building.zones[0].id, 'z') && isId(result.project.id, 'p'));
   assert.deepEqual(validate(result.project), []);
+});
+
+// SV2-32c: paper sizes are only ever added. What an older project was saved
+// with reads as it was; what this version does not know becomes the default.
+test('a project saved with letter or a4, at format 1 or before files had a version, reads with its paper unchanged', () => {
+  for (const size of ['letter', 'a4']) {
+    for (const orientation of ['portrait', 'landscape']) {
+      const project = school();
+      project.settings.paper = { size, orientation };
+      const result = repair(project);
+      assert.equal(result.project, project, size + ' ' + orientation + ': the same object, nothing to put right');
+      assert.deepEqual(result.notes, []);
+      const old = clone(project);
+      delete old.version;
+      const read = repair(migrate(old)).project;
+      assert.deepEqual(read.settings.paper, { size, orientation }, size + ' ' + orientation + ' from version 0');
+    }
+  }
+});
+
+test('each poster size is kept as it is, and a paper this version does not know becomes US Letter with a note', () => {
+  assert.deepEqual(PAPER_SIZES.slice(0, 2), ['letter', 'a4'], 'the two first sizes keep their place and their names');
+  for (const size of ['tabloid', 'a3', 'a2', 'a1', 'a0', 'poster-24x36']) {
+    const project = school();
+    project.settings.paper = { size, orientation: 'landscape' };
+    const result = repair(project);
+    assert.deepEqual(result.notes, [], size);
+    assert.deepEqual(result.project.settings.paper, { size, orientation: 'landscape' }, size);
+  }
+  for (const size of ['b5', 'A4', '', null, 4]) {
+    const project = school();
+    project.settings.paper = { size, orientation: 'landscape' };
+    const result = repair(project);
+    assert.deepEqual(result.project.settings.paper, { size: 'letter', orientation: 'landscape' }, JSON.stringify(size) + ': the default size, the orientation kept');
+    assert.equal(result.notes.length, 1, JSON.stringify(size));
+    assert.match(result.notes[0], /paper size/i);
+    assert.deepEqual(validate(result.project), []);
+  }
 });

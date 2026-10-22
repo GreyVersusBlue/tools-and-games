@@ -6,6 +6,7 @@ import { h, uid } from '../components/dom.js';
 import { card } from '../components/card.js';
 import { field, wholeNumber } from '../components/field.js';
 import { choice } from '../components/choice.js';
+import { PAPERS } from '../prints/document.js';
 import { picker } from '../components/picker.js';
 import { icon } from '../components/icons.js';
 import { count, list, periodWords } from '../components/words.js';
@@ -279,7 +280,7 @@ export function settingsCard(ctx) {
   row(display, 'Time format', 'How times are written: 2:05 PM or 14:05.',
     pick('timeFormat', (s) => s.timeFormat, [{ value: '12h', label: '12-hour' }, { value: '24h', label: '24-hour' }]));
   row(display, 'Paper size', 'The paper that prints are laid out for. It starts as the size this device’s region uses.',
-    pick('paper.size', (s) => s.paper.size, [{ value: 'letter', label: 'US Letter' }, { value: 'a4', label: 'A4' }]));
+    pick('paper.size', (s) => s.paper.size, Object.entries(PAPERS).map(([value, paper]) => ({ value, label: paper.label }))));
   row(display, 'Paper orientation', 'Which way up a print starts. Each print preview can still turn its own page.',
     pick('paper.orientation', (s) => s.paper.orientation, [{ value: 'portrait', label: 'Portrait' }, { value: 'landscape', label: 'Landscape' }]));
   row(display, 'Theme', 'Light or dark. Follow the device uses whichever this device is set to.',
