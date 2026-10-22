@@ -52,6 +52,6 @@ test('the runner\'s own lists: every suite on disk is listed, and browser/, a11y
     assert.deepEqual(unlisted([folder + '/a-new-suite.mjs'], REAL_GROUPS, REAL_FOLDERS), [folder + '/a-new-suite.mjs'], 'a new file in test/' + folder + '/ would not have to be listed');
   }
   assert.ok(REAL_GROUPS.node.includes('engine/worker.test.mjs'), 'the pipeline\'s correctness cases run with the plain-Node suites');
-  assert.deepEqual(REAL_GROUPS.timing, ['timing/routing.mjs', 'timing/crowd.mjs', 'timing/pipeline.mjs', 'timing/movement.mjs', 'timing/playback.mjs', 'timing/evacuation.mjs', 'timing/suggest.mjs', 'timing/scenario-lane.mjs', 'timing/difference-card.mjs']);
+  assert.deepEqual(REAL_GROUPS.timing, ['timing/routing.mjs', 'timing/crowd.mjs', 'timing/pipeline.mjs', 'timing/movement.mjs', 'timing/playback.mjs', 'timing/evacuation.mjs', 'timing/suggest.mjs', 'timing/scenario-lane.mjs', 'timing/difference-card.mjs', 'timing/checks.mjs']);
   for (const helper of REAL_FOLDERS.browser) assert.ok(files.includes('browser/' + helper), helper + ' is named as a helper and is not on disk');
 });
