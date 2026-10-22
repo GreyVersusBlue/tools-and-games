@@ -547,18 +547,50 @@ export function takeAutoSnapshot(reason, name, of) {
 // snapshot of the project from before it is kept afterwards, so nothing the
 // device's storage does (a read-only tab, the limit reached, a full disk, a
 // browser that keeps nothing) can hold the change up or lose it. Resolves
-// with { taken, snapshot, said, code }: `said` is the sentence for the
-// message that follows the change.
+// with { taken, snapshot, said, alone, code }: `said` is the sentence for
+// the message that follows the change, `alone` the same without its word
+// on Undo, for when the change is no longer the step Undo takes back.
+//
+// The section says the change, with its Undo, before calling this (SV2-28d):
+// the snapshot can wait up to ten seconds on a save, and the message about
+// the change must not wait with it.
 export async function snapshotAfter(reason, name, before) {
   const answer = await takeAutoSnapshot(reason, name, before);
-  return { taken: answer.ok, snapshot: answer.ok ? answer.snapshot : null, code: answer.ok ? null : answer.code, said: autoSnapshotSaid(answer) };
+  return { taken: answer.ok, snapshot: answer.ok ? answer.snapshot : null, code: answer.ok ? null : answer.code, said: autoSnapshotSaid(answer), alone: autoSnapshotSaid(answer, { undo: false }) };
+}
+
+// The Undo a message offers for the step a section has just made (SV2-28d):
+// it takes back that step or nothing. From the first change after it (an
+// edit, an undo, a redo, a project loaded; not a quiet action, which is no
+// step) it is withdrawn: `current` is false and run() does nothing. Call it
+// right after the change, before anything else can happen.
+export function undoForStep(store, undo) {
+  let current = true;
+  const stop = store.subscribe((project, change) => {
+    if (change && change.quiet) return;
+    current = false;
+    stop();
+  });
+  return {
+    get current() {
+      return current;
+    },
+    run() {
+      if (!current) return false;
+      current = false;
+      stop();
+      undo();
+      return true;
+    },
+  };
 }
 
 // What the message says of a snapshot taken by itself, or not taken.
-export function autoSnapshotSaid(answer) {
+// options.undo false leaves out the sentence on Undo.
+export function autoSnapshotSaid(answer, options) {
   if (answer && answer.ok) return 'The snapshot “\u2068' + answer.snapshot.name + '\u2069” has what was there.';
   const code = answer && answer.code;
-  const undo = ' Undo brings it back while this tab stays open.';
+  const undo = options && options.undo === false ? '' : ' Undo brings it back while this tab stays open.';
   if (code === 'full') return 'No snapshot was taken, because this device already keeps ' + SNAPSHOT_LIMIT + ', the most it keeps.' + undo;
   if (code === 'not-ready') return 'No snapshot was taken, because the project was still loading.' + undo;
   if (code === 'read-only') return 'No snapshot was taken, because this tab is read-only while the project is open in another tab.' + undo;

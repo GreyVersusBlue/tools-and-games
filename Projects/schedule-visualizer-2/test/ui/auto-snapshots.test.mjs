@@ -11,8 +11,8 @@ import assert from 'node:assert/strict';
 
 import { drawnCells, clearFloorWords } from '../../ui/building/inspector/floor.js';
 import { appliedSlots, applySummary, scenarioView, SCENARIO_SNAPSHOT_SLOTS } from '../../ui/scenarios/model.js';
-import { autoSnapshotSaid, AUTO_SNAPSHOT_NAMES, SNAPSHOT_LIMIT, READ_ONLY_SENTENCE } from '../../storage/snapshots.js';
-import { eraseCells } from '../../engine/actions.js';
+import { autoSnapshotSaid, undoForStep, AUTO_SNAPSHOT_NAMES, SNAPSHOT_LIMIT, READ_ONLY_SENTENCE } from '../../storage/snapshots.js';
+import { eraseCells, setSetting } from '../../engine/actions.js';
 import { createStore } from '../../engine/store.js';
 import { sampleSchool } from '../../data/sample-school.js';
 
@@ -61,7 +61,8 @@ test('clearFloorWords counts what is drawn, in the words the button stands besid
   assert.equal(words.empty, false);
   assert.equal(words.removes, 'Removes everything drawn on Floor 2: 5 rooms, 3 other spaces, 38 corridor cells, 2 stairs cells, 1 corridor name and 2 stairs connections.');
   assert.match(words.keeps, /^The floor stays, empty, with its name, level, size, traced image and the areas left out of the colour scale\./);
-  assert.match(words.keeps, /snapshot of the project as it was is kept, and Undo brings it all back\.$/);
+  // it promises no snapshot: the device may have no room for one (SV2-28d)
+  assert.match(words.keeps, /Undo brings it all back, and a snapshot of the project as it was is kept too when this device has room for one\.$/);
   const empty = { ...floor, name: 'Roof <b>deck</b>', cells: '.'.repeat(floor.cells.length), spaces: [], corridors: [], exits: [] };
   const none = { ...project, building: { ...project.building, connections: [] } };
   assert.deepEqual(clearFloorWords(none, empty), { empty: true, removes: 'Nothing is drawn on Roof <b>deck</b>, so there is nothing to clear.', keeps: '' });
@@ -137,4 +138,37 @@ test('autoSnapshotSaid names a kept snapshot isolated, and says why none was kep
   assert.equal(autoSnapshotSaid({ ok: false, code: 'not-ready', text: 'The project is still loading, so no snapshot was taken.' }), 'No snapshot was taken, because the project was still loading. Undo brings it back while this tab stays open.');
   assert.equal(autoSnapshotSaid({ ok: false, code: 'failed', text: '' }), 'No snapshot was taken: the device did not say why. Undo brings it back while this tab stays open.');
   assert.deepEqual(['clear-floor', 'resize', 'scenario'].every((reason) => reason in AUTO_SNAPSHOT_NAMES), true);
+});
+
+// ---------------------------------------------------------------- the Undo a message offers (SV2-28d)
+
+test('autoSnapshotSaid without its word on Undo, for a change Undo no longer takes back', () => {
+  assert.equal(autoSnapshotSaid({ ok: true, snapshot: { name: 'Before clearing Floor 2' } }, { undo: false }), 'The snapshot “⁨Before clearing Floor 2⁩” has what was there.');
+  assert.equal(autoSnapshotSaid({ ok: false, code: 'full', text: 'x' }, { undo: false }), 'No snapshot was taken, because this device already keeps ' + SNAPSHOT_LIMIT + ', the most it keeps.');
+  assert.equal(autoSnapshotSaid({ ok: false, code: 'failed', text: '' }, { undo: false }), 'No snapshot was taken: the device did not say why.');
+});
+
+test('undoForStep takes back its own step while it is the last one, and nothing once history has moved', () => {
+  const s = store();
+  s.apply(setSetting, { key: 'schoolName', value: 'First' });
+  s.apply(setSetting, { key: 'schoolName', value: 'Second' });
+  const step = undoForStep(s, () => s.undo());
+  assert.equal(step.current, true);
+  assert.equal(step.run(), true);
+  assert.equal(s.project.settings.schoolName, 'First', 'its own step undone');
+  assert.equal(step.run(), false, 'once only');
+  assert.equal(s.project.settings.schoolName, 'First');
+
+  s.apply(setSetting, { key: 'schoolName', value: 'Third' });
+  const late = undoForStep(s, () => s.undo());
+  s.undo();
+  assert.equal(late.current, false, 'an undo since withdraws it');
+  assert.equal(late.run(), false);
+  assert.equal(s.project.settings.schoolName, 'First', 'the step before it is left alone');
+
+  const edited = undoForStep(s, () => s.undo());
+  s.apply(setSetting, { key: 'schoolName', value: 'Fourth' });
+  assert.equal(edited.current, false, 'an edit since withdraws it');
+  assert.equal(edited.run(), false);
+  assert.equal(s.project.settings.schoolName, 'Fourth');
 });
