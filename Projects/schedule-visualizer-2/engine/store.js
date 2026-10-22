@@ -157,10 +157,14 @@ export function createStore(options) {
       }
       const before = project;
       const result = action(before, given, ctx);
-      if (result === before) return before;
-      const info = describeAction(action, before, given, result);
+      // A quiet action that changes nothing here may still carry an
+      // acrossProjects to the other projects in the history (SV2-28f): Help's
+      // reopen of Getting started on a project already showing the card.
+      const unchanged = result === before;
+      if (unchanged && (action.quiet !== true || across === null)) return before;
+      const info = unchanged ? null : describeAction(action, before, given, result);
       // whatever the action brought in, its ids are never handed out again
-      if (typeof ids.reserve === 'function') ids.reserve(collectIds(result));
+      if (!unchanged && typeof ids.reserve === 'function') ids.reserve(collectIds(result));
       if (action.quiet === true) {
         const runner = (body, done) => (state) => {
           if (!done.has(state)) {
@@ -191,6 +195,8 @@ export function createStore(options) {
           return out;
         };
         history = { past: carry(history.past, 'after', 'before'), future: carry(history.future, 'before', 'after') };
+        // the visible project is as it was: nothing to save, nobody to tell
+        if (unchanged) return before;
         project = result;
         bump(info.bumps);
         notify({ kind: 'apply', label: info.label, focus: info.focus, bumps: info.bumps, quiet: true });

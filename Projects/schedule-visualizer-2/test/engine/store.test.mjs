@@ -361,6 +361,28 @@ test('a quiet action can name what crosses a boundary: "Don\'t show this again" 
   assert.equal(store.canUndo && !store.canRedo, true, 'and it made no entry and cleared nothing');
 });
 
+// SV2-28f: Help's reopen of Getting started on a project already showing the
+// card changes nothing on that project, and its acrossProjects still has to
+// reach the project before an import.
+test('a quiet action that changes nothing here still carries its acrossProjects past a boundary', () => {
+  const store = sampleStore();
+  store.apply(actions.setOnboarding, { neverShow: true });
+  store.apply(actions.replaceProject, { project: emptyProject(), label: 'Load a file' });
+  assert.equal(store.project.onboarding.neverShow, false, 'the loaded project starts with the card showing');
+  const changes = [];
+  store.subscribe((project, change) => changes.push(change));
+  const shown = store.project;
+  assert.equal(store.apply(actions.setOnboarding, { neverShow: false, acrossProjects: { neverShow: false } }), shown, 'a no-op on the visible project leaves it the same object');
+  assert.deepEqual(changes, [], 'and tells nobody of a change');
+  assert.equal(store.history.past.length, 1, 'and makes no entry');
+  store.undo();
+  assert.equal(store.project.onboarding.neverShow, false, 'acrossProjects did not reach the project before the load when the visible project needed no change');
+  store.redo();
+  const before = store.history;
+  store.apply(actions.setOnboarding, { neverShow: false });
+  assert.equal(store.history, before, 'without acrossProjects a no-op still leaves the history alone');
+});
+
 test('the history entry keeps what a building action reported, so nobody runs the action twice to ask', () => {
   const store = sampleStore();
   assert.equal(store.undoOutcome, null);
