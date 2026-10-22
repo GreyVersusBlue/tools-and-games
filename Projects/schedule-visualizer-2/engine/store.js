@@ -3,7 +3,8 @@
 //
 //   store.project              the current project (never changed in place)
 //   store.apply(action, payload)   run an action from actions.js; one undo entry
-//                              (none for a quiet action; see apply below)
+//                              (none for a quiet action; see apply below, and
+//                              a quiet payload's acrossProjects there)
 //   store.undoOutcome          what the action undo would take back reported
 //                              (actions.js buildingOutcome, importOutcome), or null
 //   store.undo(), store.redo()     { label, focus } of what was undone or redone, or null
@@ -20,7 +21,7 @@
 // move the same ones. `modified` is set from the clock on every change.
 
 import { createHistory, record, undo as undoHistory, redo as redoHistory, peekUndo, peekRedo, HISTORY_LIMIT } from './history.js';
-import { describeAction, ActionError, GEOMETRY, BUILDING, SCHEDULE } from './actions.js';
+import { describeAction, ActionError, GEOMETRY, BUILDING, SCHEDULE, replaceProject } from './actions.js';
 import { collectIds } from './ids.js';
 
 export function createStore(options) {
@@ -134,9 +135,26 @@ export function createStore(options) {
     // A quiet action (action.quiet) is not the user's work on the school: it
     // makes no entry, does not clear redo and does not set `modified`. So
     // that undo and redo do not take it back, it is run on every state the
-    // history holds as well; a state it refuses is left as it is.
+    // history holds of this same project as well; a state it refuses is left
+    // as it is. A replaceProject entry (a load, a clear, an import, a
+    // transfer, a restore) is where another project begins: its `before` and
+    // everything past it on the undo side, its `after` and everything past it
+    // on the redo side, are left alone (SV2-30c), so undoing a load does not
+    // bring the other project back dismissed, ticked or noted as published.
+    // A quiet payload's acrossProjects is a payload run on those other states
+    // instead, for the one quiet change that belongs to the person and not
+    // the project ("Don't show this again", SV2-30b); it is taken off before
+    // the action sees the payload. It rides in the payload, not in a third
+    // argument, so a wrapper of apply (the read-only refusal in
+    // storage/session.js) passes it on.
     apply(action, payload) {
-      const given = payload === undefined ? {} : payload;
+      let given = payload === undefined ? {} : payload;
+      let across = null;
+      if (action.quiet === true && given !== null && typeof given === 'object' && 'acrossProjects' in given) {
+        const { acrossProjects, ...rest } = given;
+        across = acrossProjects === undefined ? null : acrossProjects;
+        given = rest;
+      }
       const before = project;
       const result = action(before, given, ctx);
       if (result === before) return before;
@@ -144,12 +162,11 @@ export function createStore(options) {
       // whatever the action brought in, its ids are never handed out again
       if (typeof ids.reserve === 'function') ids.reserve(collectIds(result));
       if (action.quiet === true) {
-        const done = new Map([[before, result]]);
-        const through = (state) => {
+        const runner = (body, done) => (state) => {
           if (!done.has(state)) {
             let next = state;
             try {
-              next = action(state, given, ctx);
+              next = action(state, body, ctx);
             } catch (error) {
               if (!(error instanceof ActionError)) throw error;
             }
@@ -157,15 +174,33 @@ export function createStore(options) {
           }
           return done.get(state);
         };
-        const carry = (entries) => entries.map((entry) => ({ ...entry, before: through(entry.before), after: through(entry.after) }));
-        history = { past: carry(history.past), future: carry(history.future) };
+        const through = runner(given, new Map([[before, result]]));
+        const beyond = across === null ? (state) => state : runner(across, new Map());
+        // newest first on each side: this project's states until a boundary
+        const carry = (entries, near, far) => {
+          const out = entries.slice();
+          let inside = true;
+          for (let i = out.length - 1; i >= 0; i -= 1) {
+            const entry = out[i];
+            const own = inside ? through : beyond;
+            const crosses = inside && entry.replaces === true;
+            const other = crosses || !inside ? beyond : through;
+            out[i] = { ...entry, [near]: own(entry[near]), [far]: other(entry[far]) };
+            if (crosses) inside = false;
+          }
+          return out;
+        };
+        history = { past: carry(history.past, 'after', 'before'), future: carry(history.future, 'before', 'after') };
         project = result;
         bump(info.bumps);
         notify({ kind: 'apply', label: info.label, focus: info.focus, bumps: info.bumps, quiet: true });
         return project;
       }
       const after = stamped(result);
-      history = record(history, { label: info.label, before, after, focus: info.focus, bumps: info.bumps, outcome: info.outcome }, limit);
+      const entry = { label: info.label, before, after, focus: info.focus, bumps: info.bumps, outcome: info.outcome };
+      // another project from here on: a quiet action's carry stops at it
+      if (action === replaceProject) entry.replaces = true;
+      history = record(history, entry, limit);
       project = after;
       bump(info.bumps);
       notify({ kind: 'apply', label: info.label, focus: info.focus, bumps: info.bumps });

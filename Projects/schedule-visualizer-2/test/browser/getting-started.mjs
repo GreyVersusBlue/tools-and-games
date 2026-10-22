@@ -228,6 +228,42 @@ test('"Don\'t show this again" outlives a reload and the sample school loaded an
   });
 });
 
+// SV2-30c: a quiet change (Dismiss, the movement tick) stays with the project
+// it was made on. Undo of a load brings the other project back as it was
+// left; "Don't show this again" is the one that crosses (SV2-30b).
+test('Dismiss and the movement tick stay with the project they were made on: undo and redo of a load do not carry them across', async () => {
+  await onEmpty(async (page) => {
+    await page.evaluate(() => globalThis.sv2.ctx.loadSample());
+    await page.waitForFunction(() => globalThis.sv2.store.project.groups.length > 0);
+    await shown(page, true);
+    await go(page, '#movement');
+    await tickIs(page, 'movement', true);
+    await page.click(CARD + ' [data-action="dismiss"]');
+    await shown(page, false);
+
+    await page.click('#undo');
+    await page.waitForFunction(() => globalThis.sv2.store.project.groups.length === 0);
+    await shown(page, true);
+    await tickIs(page, 'movement', false);
+    assert.deepEqual(await onboarding(page), { steps: {}, dismissed: false, neverShow: false }, 'undo of the load brought the empty project back with the sample school\'s Dismiss or tick');
+
+    await page.click('#redo');
+    await page.waitForFunction(() => globalThis.sv2.store.project.groups.length > 0);
+    await shown(page, false);
+    assert.deepEqual(await onboarding(page), { steps: { movement: true }, dismissed: true, neverShow: false }, 'redo of the load lost what was done on the sample school');
+
+    // never show is the person's: it reaches the project before the load too
+    await showFromHelp(page);
+    await page.click(CARD + ' [data-action="never"]');
+    await shown(page, false);
+    await page.click('#undo');
+    await page.waitForFunction(() => globalThis.sv2.store.project.groups.length === 0);
+    await go(page, '#building');
+    assert.deepEqual(await onboarding(page), { steps: {}, dismissed: false, neverShow: true }, 'never show stayed behind with the sample school');
+    assert.equal(await page.$eval(CARD, (el) => el.hidden), true, 'the card came back after an undo of the load');
+  });
+});
+
 test('the About card\'s Help button reads Help and opens the whole of Help, and the focus comes back to it', async () => {
   await onEmpty(async (page) => {
     await go(page, '#project');
