@@ -5,7 +5,7 @@
 //   node test/run.mjs --node     the plain-Node suites (no install, no browser)
 //   node test/run.mjs --browser  the journeys in Chromium, and the axe sweep
 //   node test/run.mjs --a11y     token contrast (Node) and the axe sweep (Chromium)
-//   node test/run.mjs --timing   the budgets at the promised size (plain Node too) // SV2-05
+//   node test/run.mjs --timing   the budgets at the promised size (plain Node, and timing/page.mjs in Chromium) // SV2-05, SV2-32i
 //   node test/run.mjs --browser --base http://127.0.0.1:8123
 //                                against a server that is already running
 //
@@ -168,6 +168,9 @@ export const GROUPS = {
     'timing/suggest.mjs', // SV2-63
     'timing/scenario-lane.mjs', // SV2-64
     'timing/difference-card.mjs', // SV2-69c
+    'timing/checks.mjs', // SV2-32i
+    'timing/worker.mjs', // SV2-32i
+    'timing/page.mjs', // SV2-32i: starts Chromium (Tools/board-check installed)
   ],
 };
 

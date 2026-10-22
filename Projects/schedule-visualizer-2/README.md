@@ -93,7 +93,7 @@ From this folder, with Node 22 or newer:
 ```
 node test/run.mjs            every suite
 node test/run.mjs --node     the plain-Node suites: nothing to install
-node test/run.mjs --timing   the budgets at the size the tool promises
+node test/run.mjs --timing   the budgets at the size the tool promises (page.mjs in Chromium)
 node test/run.mjs --browser  the journeys in Chromium, and the axe sweep
 node test/engine/repair.test.mjs     one file
 ```
@@ -249,3 +249,6 @@ row names a file it does not run.
 | `test/timing/suggest.mjs` | Suggestions for one finding under their budget |
 | `test/timing/scenario-lane.mjs` | The scenario lane, one change added and the first asking, under its budgets |
 | `test/timing/difference-card.mjs` | The difference map's card, the first after an answer and a later one, under its budgets |
+| `test/timing/checks.mjs` | The schedule checks of both day types, the engine call alone, under their budget |
+| `test/timing/worker.mjs` | Full routing and the first derive, cold, in a worker thread running `engine/worker.js`, under their budgets |
+| `test/timing/page.mjs` | In the planner in Chromium: paint one cell and redraw, the movement render after the worker answers, and an autosave write into IndexedDB, under their budgets |
