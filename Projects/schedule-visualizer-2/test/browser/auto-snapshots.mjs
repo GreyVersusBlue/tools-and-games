@@ -373,6 +373,152 @@ test('a read-only second tab refuses the clear itself, so no snapshot is asked f
   }
 });
 
+// ---------------------------------------------------------------- the message comes at once (SV2-28d)
+
+// Another connection holds the project store, so every save waits behind it
+// and a snapshot's savedFirst() waits with it. Resolves once it holds.
+function holdSaves() {
+  return page.evaluate(() => new Promise((resolve, reject) => {
+    const open = indexedDB.open('sv2');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      let release = false;
+      const tx = db.transaction('project', 'readwrite');
+      const store = tx.objectStore('project');
+      const spin = () => {
+        store.count().onsuccess = () => {
+          resolve();
+          if (!release) spin();
+        };
+      };
+      tx.oncomplete = () => db.close();
+      globalThis.releaseSaves = () => {
+        release = true;
+      };
+      spin();
+    };
+  }));
+}
+
+const releaseSaves = () => page.evaluate(() => {
+  if (globalThis.releaseSaves) globalThis.releaseSaves();
+  delete globalThis.releaseSaves;
+});
+
+const toast = (target) => (target || page).evaluate(() => {
+  const el = document.querySelector('.toast');
+  if (!el) return null;
+  const action = el.querySelector('.toast__action');
+  return { text: el.querySelector('.toast__text').textContent, action: action ? action.textContent : null };
+});
+
+async function fillToLimit() {
+  const have = (await snapshots()).length;
+  await rawWrite(['snapshots'], (tx, value) => {
+    for (let i = value.from; i < value.to; i += 1) tx.objectStore('snapshots').put({ id: 'nfill' + String(i).padStart(5, '0'), name: 'Filler ' + i, takenAt: '2026-01-01T00:00:00.000Z', bytes: 2, project: {} });
+  }, { from: have, to: SNAPSHOT_LIMIT });
+}
+
+async function unfill() {
+  await rawWrite(['snapshots'], (tx) => {
+    const store = tx.objectStore('snapshots');
+    const keys = store.getAllKeys();
+    keys.onsuccess = () => keys.result.filter((id) => id.startsWith('nfill')).forEach((id) => store.delete(id));
+  });
+}
+
+test('a clear whose snapshot waits on a save says so with its Undo at once, and a Ctrl+Z before the snapshot settles leaves the late message no Undo of an earlier step', async () => {
+  await waitSaved();
+  await floorTab(1);
+  assert.equal(await page.$eval('#floor-clear', (el) => el.getAttribute('aria-disabled')), 'false', 'Floor 2 has something to clear');
+  // the step before the clear, which no Undo offered for the clear may take back
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2Actions.setSetting, { key: 'schoolName', value: 'Held Save School' }));
+  await waitSaved();
+  const earlier = await project();
+  await dismissToasts();
+  let first = null;
+  await holdSaves();
+  try {
+    await resetPanel();
+    await page.click('#floor-clear');
+    assert.equal(await page.$eval('#inspector-floor', (el) => el.dataset.snapshot), 'taking', 'the snapshot waits on the held save');
+    first = await toast();
+    // Ctrl+Z before the snapshot settles takes back the clear
+    await page.keyboard.down('Control');
+    await page.keyboard.press('z');
+    await page.keyboard.up('Control');
+    await shows(() => document.getElementById('floor-clear-says').textContent.startsWith('Removes everything drawn on Floor 2'));
+    assert.deepEqual((await project()).building, earlier.building);
+    assert.equal(await page.$eval('#inspector-floor', (el) => el.dataset.snapshot), 'taking', 'Ctrl+Z came before the snapshot settled');
+  } finally {
+    await releaseSaves();
+  }
+  assert.equal(await panelSnapshot(), 'taken');
+  const late = await toast();
+  assert.ok(late, 'the snapshot\'s outcome follows as a message of its own');
+  if (late.action) await page.click('.toast .toast__action');
+  const now = await project();
+  assert.equal(now.settings.schoolName, 'Held Save School', 'the late message\'s Undo took back the step before the clear: ' + JSON.stringify(late));
+  assert.deepEqual(now.building, earlier.building);
+  // it is the snapshot's sentence alone, with no Undo: the clear is undone already
+  assert.deepEqual(late, { text: 'The snapshot “⁨Before clearing Floor 2⁩” has what was there.', action: null });
+  // and before any of that, the clear was said with its Undo
+  assert.ok(first && /^Cleared Floor 2, which removed .+\.$/.test(first.text), 'the clear is said at once: ' + JSON.stringify(first));
+  assert.equal(first.action, 'Undo', 'with its Undo at once');
+  assert.doesNotMatch(first.text, /snapshot/i, 'and promises no snapshot');
+  await dismissToasts();
+  await waitSaved();
+});
+
+test('a big apply whose snapshot waits on a save says it and offers Undo at once, and the late message\'s Undo takes back that apply', async () => {
+  await waitSaved();
+  await scenarioOf(SCENARIO_SNAPSHOT_SLOTS + 1, 'Held apply');
+  const start = await project();
+  await applyFromLab();
+  await holdSaves();
+  try {
+    await page.click('#scenario-apply .btn--primary');
+    await shows(() => document.querySelector('.scn').dataset.snapshot === 'taking');
+    const first = await toast();
+    assert.equal(first && first.text, 'Applied “Held apply”: 11 changes made to the schedule.', 'said at once');
+    assert.equal(first.action, 'Undo');
+    assert.equal(await text('#announcer'), 'Applied “Held apply”: 11 changes made to the schedule.', 'announced at once');
+  } finally {
+    await releaseSaves();
+  }
+  await page.waitForFunction(() => ['taken', 'not-taken'].includes(document.querySelector('.scn').dataset.snapshot), { timeout: 15000 });
+  const late = await toast();
+  assert.equal(late.text, 'Applied “Held apply”: 11 changes made to the schedule. The snapshot “⁨Before applying the scenario “Held apply”⁩” has what was there.');
+  assert.equal(late.action, 'Undo', 'nothing came between: the apply is still the step to undo');
+  await page.click('.toast .toast__action');
+  assert.deepEqual((await project()).groups, start.groups);
+  assert.equal((await project()).scenario.name, 'Held apply');
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2Actions.discardScenario, {}));
+  await dismissToasts();
+  await page.evaluate(() => globalThis.sv2.navigate('#building'));
+  await page.waitForSelector('.bld');
+  await waitSaved();
+});
+
+test('at the device limit the Apply question says no snapshot will be kept and why, before it is answered', async () => {
+  await scenarioOf(SCENARIO_SNAPSHOT_SLOTS + 1, 'Full device');
+  await fillToLimit();
+  try {
+    await applyFromLab();
+    assert.equal(await text('#scenario-apply [data-part="snapshot"]'), 'It changes ' + (SCENARIO_SNAPSHOT_SLOTS + 1) + ' periods of the groups\' days, which would keep a snapshot of the project as it is now, but none will be kept: this device already keeps ' + SNAPSHOT_LIMIT + ' snapshots, the most it keeps, and none is replaced to make room. Undo still brings the schedule back while this tab stays open.');
+    await page.evaluate(() => Array.from(document.querySelectorAll('#scenario-apply .dialog__buttons button')).find((button) => button.textContent === 'Keep it as a scenario').click());
+    await shows(() => document.querySelector('dialog.dialog[open]') === null);
+    assert.equal((await project()).scenario.name, 'Full device', 'kept as a scenario');
+  } finally {
+    await unfill();
+  }
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2Actions.discardScenario, {}));
+  await dismissToasts();
+  await page.evaluate(() => globalThis.sv2.navigate('#building'));
+  await page.waitForSelector('.bld');
+});
+
 // ---------------------------------------------------------------- db.js
 
 test('a save that sweeps images spares one only a quarantined record names, and takes one nothing names', async () => {
@@ -423,7 +569,13 @@ test('a snapshot of a project from before a change is refused when an image it n
     before.building.floors[0].image = { imageId: 'igone00001', width: 2, height: 2, opacity: 0.4, scale: 1, rotation: 0, x: 0, y: 0, visible: true, locked: false, missing: false };
     return globalThis.sv2Snapshots.snapshotAfter('resize', 'Before a picture went', before);
   });
-  assert.deepEqual(answer, { taken: false, snapshot: null, code: 'image-gone', said: 'No snapshot was taken: a traced image the project named before this change is no longer kept on this device, so a snapshot of it would be missing that image. Undo brings it back while this tab stays open.' });
+  assert.deepEqual(answer, {
+    taken: false,
+    snapshot: null,
+    code: 'image-gone',
+    said: 'No snapshot was taken: a traced image the project named before this change is no longer kept on this device, so a snapshot of it would be missing that image. Undo brings it back while this tab stays open.',
+    alone: 'No snapshot was taken: a traced image the project named before this change is no longer kept on this device, so a snapshot of it would be missing that image.',
+  });
   assert.equal((await snapshots()).length, had);
 });
 

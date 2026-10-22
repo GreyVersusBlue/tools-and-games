@@ -524,6 +524,113 @@ test('a recovery point carries the bytes of the images its project names', async
   assert.ok(newest.bytes > JSON.stringify(newest.project).length, 'the size counts the image');
 });
 
+// The first floor's traced image is `id`, or none, as one undo step.
+const floorImage = (imageId) => page.evaluate((id) => {
+  const project = globalThis.sv2.store.project;
+  const floors = project.building.floors.map((floor, index) => (index === 0
+    ? { ...floor, image: id ? { imageId: id, opacity: 0.4, scale: 1, rotation: 0, x: 0, y: 0, visible: true, locked: false, width: 2, height: 2, missing: false } : null }
+    : floor));
+  globalThis.sv2.store.apply(globalThis.sv2Actions.replaceProject, { project: { ...project, building: { ...project.building, floors } }, label: 'Test: image ' + id });
+}, imageId);
+
+// SV2-28d: the save made as the page is left puts back an image the project
+// names again (an undo) that an earlier save swept, as every other save does.
+test('the save made as the page is left puts back an image the project names again', async () => {
+  await waitSaved();
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.project.building.floors[0].image.imageId), 'itestimage');
+  await floorImage(null);
+  await waitSaved();
+  assert.equal((await idb('sv2', 'images', 'keys')).includes('itestimage'), false, 'the sweep took it');
+  // the autosave waits; undo names the image again, and the page is left first
+  await page.evaluate((most) => globalThis.sv2.storage.setTiming({ delay: most, maxWait: most }), 600000);
+  try {
+    const before = (await idb('sv2', 'project', 'get', 'current')).savedAt;
+    await page.evaluate(() => {
+      globalThis.sv2.store.undo();
+      globalThis.dispatchEvent(new Event('pagehide'));
+    });
+    await page.waitForFunction((stamp) => new Promise((resolve) => {
+      const open = indexedDB.open('sv2');
+      open.onsuccess = () => {
+        const request = open.result.transaction('project', 'readonly').objectStore('project').get('current');
+        request.onsuccess = () => {
+          open.result.close();
+          resolve(request.result.savedAt !== stamp);
+        };
+      };
+    }), before, { timeout: 10000 });
+    const record = await idb('sv2', 'project', 'get', 'current');
+    assert.equal(record.project.building.floors[0].image.imageId, 'itestimage', 'the leaving save names it');
+    assert.ok((await idb('sv2', 'images', 'keys')).includes('itestimage'), 'the leaving save put its bytes back: ' + JSON.stringify(await idb('sv2', 'images', 'keys')));
+  } finally {
+    await page.evaluate((timing) => globalThis.sv2.storage.setTiming(timing), { delay: SAVE_DELAY_MS, maxWait: SAVE_MAX_WAIT_MS });
+    await page.evaluate(() => globalThis.sv2.storage.flush());
+    await waitSaved();
+  }
+});
+
+// SV2-28d: an image's put is numbered when it commits, not when it starts.
+// A put held in flight (another connection keeps the images store busy)
+// while a save is begun: that save must not count the put among those it
+// follows, so the image is still held through the next sweep, as it must be
+// while trace.js waits on createImageBitmap before naming it.
+test('an image whose put is still in flight when a save begins is not released by that save', async () => {
+  await waitSaved();
+  const seen = await page.evaluate(async () => {
+    const value = { blob: new Blob(['png']), type: 'image/png', width: 2, height: 2 };
+    const store = globalThis.sv2.store;
+    const storage = globalThis.sv2.storage;
+    const db = await new Promise((resolve, reject) => {
+      const open = indexedDB.open('sv2');
+      open.onsuccess = () => resolve(open.result);
+      open.onerror = () => reject(open.error);
+    });
+    // another connection holds the images store, so the put below waits behind it
+    let release = false;
+    let holding = null;
+    const holds = new Promise((resolve) => {
+      holding = resolve;
+    });
+    const held = new Promise((resolve) => {
+      const tx = db.transaction('images', 'readwrite');
+      const images = tx.objectStore('images');
+      const spin = () => {
+        images.count().onsuccess = () => {
+          holding();
+          if (!release) spin();
+        };
+      };
+      spin();
+      tx.oncomplete = () => resolve();
+    });
+    await holds;
+    let putDone = false;
+    const putting = storage.putImage('iflightimg', value).then(() => {
+      putDone = true;
+    });
+    // a save that sweeps (the first floor names no image now), begun while the put waits
+    const project = store.project;
+    const floors = project.building.floors.map((floor, index) => (index === 0 ? { ...floor, image: null } : floor));
+    store.apply(globalThis.sv2Actions.replaceProject, { project: { ...project, building: { ...project.building, floors } }, label: 'Test: no image' });
+    const saving = storage.flush();
+    const begunInFlight = !putDone;
+    release = true;
+    await held;
+    await putting;
+    await saving;
+    db.close();
+    // a later save that sweeps again (undo names the first floor's image), the new one still unnamed
+    store.undo();
+    await storage.flush();
+    return { begunInFlight };
+  });
+  assert.equal(seen.begunInFlight, true, 'the save began while the put was in flight');
+  const keys = await idb('sv2', 'images', 'keys');
+  assert.ok(keys.includes('iflightimg'), 'a put in flight when a save began is still held through the next sweep: ' + JSON.stringify(keys));
+  assert.ok(keys.includes('itestimage'));
+  await waitSaved();
+});
+
 test('a save never overwrites a record newer than the one this tab read: it stops and says so', async () => {
   const foreign = { savedAt: '2999-01-01T00:00:00.000Z', project: { marker: 'another tab wrote this' }, exportedAt: null };
   await put('sv2', 'project', foreign, 'current');

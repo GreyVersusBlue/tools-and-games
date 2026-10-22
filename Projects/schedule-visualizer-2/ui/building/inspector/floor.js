@@ -10,7 +10,10 @@
 // that keep an automatic snapshot of the project from before them (spec
 // 13.3, SV2-28b). The change is made at once and the snapshot is kept
 // afterwards (storage/snapshots.js snapshotAfter), so a device that cannot
-// keep one never holds the change up; the message that follows says which.
+// keep one never holds the change up. The change is said at once with its
+// Undo, as every other change is; when the snapshot settles a second message
+// says whether it was kept (SV2-28d), with the Undo again only while the
+// change is still the step Undo takes back.
 // Clearing asks nothing: it is one undo step and the snapshot keeps the rest
 // (spec 3.8). What it removes, decided here: everything drawn on the floor,
 // as the eraser takes it over every cell (rooms, other spaces, corridor and
@@ -25,7 +28,7 @@ import { choice } from '../../components/choice.js';
 import { count, list } from '../../components/words.js';
 import { ActionError, renameFloor, setFloorLevel, reorderFloor, deleteFloor, describeFloorDelete, describeResize, resizeFloor, eraseCells, disconnectStairs, setConnection, renameCorridor, removeCorridorName, setZone, removeZone } from '../../../engine/actions.js';
 import { lossText } from '../../../engine/building.js';
-import { snapshotAfter } from '../../../storage/snapshots.js';
+import { snapshotAfter, undoForStep } from '../../../storage/snapshots.js';
 import { RANGES } from '../../../engine/schema.js';
 import { keyedList, heading, cellWords } from './controls.js';
 
@@ -71,7 +74,7 @@ export function clearFloorWords(project, floor) {
   return {
     empty: false,
     removes: 'Removes everything drawn on ' + floor.name + ': ' + list(parts) + '.',
-    keeps: 'The floor stays, empty, with its name, level, size, traced image and the areas left out of the colour scale. A group in a room that goes keeps the room\'s number, which reads "not in the building". A snapshot of the project as it was is kept, and Undo brings it all back.',
+    keeps: 'The floor stays, empty, with its name, level, size, traced image and the areas left out of the colour scale. A group in a room that goes keeps the room\'s number, which reads "not in the building". Undo brings it all back, and a snapshot of the project as it was is kept too when this device has room for one.',
   };
 }
 
@@ -168,7 +171,7 @@ export function floorPanel(env) {
         sentence = 'Resized ' + name + ' to ' + made.width + ' by ' + made.height + (described.losesData ? ', which removed ' + lossText(made.loss) : '') + '.';
         return sentence;
       },
-      // a resize that cuts something off says so once its snapshot is kept
+      // a resize that cuts something off says so below, with an Undo of that step
       toast: described.losesData ? null : undefined,
     });
     if (outcome && described.losesData) await keptBefore('resize', 'Before resizing ' + name + ' to ' + outcome.width + ' × ' + outcome.height, before, sentence);
@@ -176,15 +179,22 @@ export function floorPanel(env) {
 
   // ---------------------------------------------------------- clear
 
-  // The snapshot of `before`, kept after the change was made, and the message
-  // that says what was done and whether the snapshot is there. The panel's
-  // data-snapshot says where that stands, for tests: 'taking', then 'taken'
-  // or 'not-taken'.
+  // Called right after the change: the message that says what was done, with
+  // an Undo of that step, at once; then the snapshot of `before`, kept after
+  // the change was made, and a message that says whether it is there. That
+  // one offers the Undo again only while the change is still the step Undo
+  // takes back (an edit or a Ctrl+Z in the wait withdraws it), and otherwise
+  // is the snapshot's sentence alone. The panel's data-snapshot says where
+  // that stands, for tests: 'taking', then 'taken' or 'not-taken'.
   async function keptBefore(reason, name, before, sentence) {
+    const step = undoForStep(store, ctx.undo);
+    const offer = { label: 'Undo', run: () => step.run() };
+    ctx.toast({ text: sentence, action: offer });
     element.dataset.snapshot = 'taking';
     const after = await snapshotAfter(reason, name, before);
     element.dataset.snapshot = after.taken ? 'taken' : 'not-taken';
-    ctx.toast({ text: sentence + ' ' + after.said, action: { label: 'Undo', run: ctx.undo } });
+    if (step.current) ctx.toast({ text: sentence + ' ' + after.said, action: offer });
+    else ctx.toast({ text: after.alone });
   }
 
   async function clearFloor() {
