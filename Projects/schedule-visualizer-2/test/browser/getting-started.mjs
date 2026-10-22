@@ -72,15 +72,26 @@ function ticks(page) {
   }, CARD);
 }
 
-// Wait until the card has drawn this step's tick as `done`.
-function tickIs(page, step, done) {
-  return page.waitForFunction((card, id, wanted) => {
-    const li = document.querySelector(card + ' .steps__step[data-step="' + id + '"]');
-    return li !== null && li.dataset.done === String(wanted);
-  }, {}, CARD, step, done);
+// Wait until the card has drawn this step's tick as `done`; a card that
+// never does fails with what it shows, not a bare timeout.
+async function tickIs(page, step, done) {
+  try {
+    await page.waitForFunction((card, id, wanted) => {
+      const li = document.querySelector(card + ' .steps__step[data-step="' + id + '"]');
+      return li !== null && li.dataset.done === String(wanted);
+    }, { timeout: 10000 }, CARD, step, done);
+  } catch (error) {
+    assert.fail('the step "' + step + '" did not read ' + (done ? 'done' : 'not done') + ': ' + JSON.stringify(await ticks(page)));
+  }
 }
 
-const shown = (page, wanted) => page.waitForFunction((card, value) => document.querySelector(card).hidden === !value, {}, CARD, wanted);
+async function shown(page, wanted) {
+  try {
+    await page.waitForFunction((card, value) => document.querySelector(card).hidden === !value, { timeout: 10000 }, CARD, wanted);
+  } catch (error) {
+    assert.fail('the card was ' + (wanted ? 'not shown' : 'still shown') + ': ' + JSON.stringify(await onboarding(page)));
+  }
+}
 const onboarding = (page) => page.evaluate(() => ({ ...globalThis.sv2.store.project.onboarding, steps: { ...globalThis.sv2.store.project.onboarding.steps } }));
 
 // Save now, load the page again with what was saved, and wait for it.
