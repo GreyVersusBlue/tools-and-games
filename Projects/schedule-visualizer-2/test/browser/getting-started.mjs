@@ -264,6 +264,27 @@ test('Dismiss and the movement tick stay with the project they were made on: und
   });
 });
 
+// SV2-30c: asking for the card again is changing one's mind about never
+// show, so it crosses a load the way "Don't show this again" does; Dismiss
+// stays with the project it was said in.
+test('reopening the card from Help on the sample school takes never show off the project before the load too', async () => {
+  await onEmpty(async (page) => {
+    await page.click(CARD + ' [data-action="never"]');
+    await shown(page, false);
+    await page.evaluate(() => globalThis.sv2.ctx.loadSample());
+    await page.waitForFunction(() => globalThis.sv2.store.project.groups.length > 0);
+    assert.equal((await onboarding(page)).neverShow, true, 'never show did not come with the sample school, so this proves nothing');
+    await showFromHelp(page);
+    await page.click(CARD + ' [data-action="dismiss"]');
+    await shown(page, false);
+
+    await page.click('#undo');
+    await page.waitForFunction(() => globalThis.sv2.store.project.groups.length === 0);
+    assert.deepEqual(await onboarding(page), { steps: {}, dismissed: false, neverShow: false }, 'undo of the load brought the project before it back still set to never show, or dismissed');
+    await shown(page, true);
+  });
+});
+
 // SV2-30c: the movement view ticks its step whenever it has something to
 // draw, not only when it is opened.
 test('the movement view ticks when a project comes to have something to draw while it is open: an undo, the sample school loaded', async () => {

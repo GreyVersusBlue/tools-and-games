@@ -354,7 +354,9 @@ async function boot() {
   }
 
   function showStarted() {
-    store.apply(setOnboarding, { dismissed: false, neverShow: false });
+    // never show is the person's, so taking it back crosses a load as saying
+    // it does; dismissed stays with this project (SV2-30b, SV2-30c)
+    store.apply(setOnboarding, { dismissed: false, neverShow: false, acrossProjects: { neverShow: false } });
     started.unfold(true);
     started.element.scrollIntoView({ block: 'nearest' });
     const link = started.element.querySelector('.steps a') || focusables(started.element)[0];
