@@ -8,10 +8,12 @@
 // resize that cuts nothing and a scenario at the limit keep none. With no
 // room for a snapshot (the limit reached, saves failing, a read-only second
 // tab) the change is still made and its message says why no snapshot was
-// kept. Then db.js: a save's sweep spares an image only a quarantined record
-// names, and an image a restore put back is swept once the restore is undone
-// inside the autosave's wait and nothing names it. Then at 390 by 844 with
-// touch, a floor cleared by finger.
+// kept, and the Apply question says so before it is answered (the limit,
+// saves failing, a tab stopped by another tab's save). Then db.js: a save's
+// sweep spares an image only a quarantined record names, and an image a
+// restore put back is swept once the restore is undone inside the
+// autosave's wait and nothing names it. Then at 390 by 844 with touch, a
+// floor cleared by finger.
 //
 // Every wait is on a state the page sets: the panel's or the lab's
 // data-snapshot ('taking', then 'taken' or 'not-taken'), the save indicator,
@@ -237,8 +239,8 @@ test('a resize that cuts nothing keeps no snapshot; one that cuts something off 
 // ---------------------------------------------------------------- a scenario
 
 // A scenario of n moves on distinct slots of the base day, opened as one.
-async function scenarioOf(n, name) {
-  await page.evaluate(({ count, title }) => {
+async function scenarioOf(n, name, target) {
+  await (target || page).evaluate(({ count, title }) => {
     const { store } = globalThis.sv2;
     const A = globalThis.sv2Actions;
     const p = store.project;
@@ -257,14 +259,15 @@ async function scenarioOf(n, name) {
   }, { count: n, title: name });
 }
 
-async function applyFromLab() {
-  await page.evaluate(() => globalThis.sv2.navigate('#scenarios'));
-  await page.waitForSelector('.scn [data-action="apply"]', { visible: true });
-  await page.evaluate(() => {
+async function applyFromLab(target) {
+  const p = target || page;
+  await p.evaluate(() => globalThis.sv2.navigate('#scenarios'));
+  await p.waitForSelector('.scn [data-action="apply"]', { visible: true });
+  await p.evaluate(() => {
     delete document.querySelector('.scn').dataset.snapshot;
   });
-  await page.click('.scn [data-action="apply"]');
-  await page.waitForSelector('#scenario-apply[open]');
+  await p.click('.scn [data-action="apply"]');
+  await p.waitForSelector('#scenario-apply[open]');
 }
 
 test('applying a scenario of SCENARIO_SNAPSHOT_SLOTS slots keeps no snapshot; one more slot keeps one from before, after the schedule changed', async () => {
@@ -517,6 +520,55 @@ test('at the device limit the Apply question says no snapshot will be kept and w
   await dismissToasts();
   await page.evaluate(() => globalThis.sv2.navigate('#building'));
   await page.waitForSelector('.bld');
+});
+
+// SV2-28e: a tab whose saves are failing, or that has stopped saving after
+// another tab's save, cannot save first, so savedFirst() refuses the
+// snapshot ('not-saved'). The question says so before it is answered.
+test('with saves failing the Apply question says no snapshot will be kept and why, before it is answered', async () => {
+  await waitSaved();
+  await page.evaluate(() => {
+    globalThis.sv2.storage.hooks.failWrite = 'QuotaExceededError: the device is full';
+  });
+  try {
+    await scenarioOf(SCENARIO_SNAPSHOT_SLOTS + 1, 'Failing saves');
+    await page.waitForFunction(() => globalThis.sv2.storage.state.save === 'failed', { timeout: 15000 });
+    await applyFromLab();
+    assert.equal(await text('#scenario-apply [data-part="snapshot"]'), 'It changes ' + (SCENARIO_SNAPSHOT_SLOTS + 1) + ' periods of the groups\' days, which would keep a snapshot of the project as it is now, but none will be kept: the project could not be saved on this device just now, and a snapshot is kept only of a saved project. Undo still brings the schedule back while this tab stays open.');
+    await page.evaluate(() => Array.from(document.querySelectorAll('#scenario-apply .dialog__buttons button')).find((button) => button.textContent === 'Keep it as a scenario').click());
+    await shows(() => document.querySelector('dialog.dialog[open]') === null);
+  } finally {
+    await page.evaluate(() => {
+      globalThis.sv2.storage.hooks.failWrite = null;
+    });
+  }
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2Actions.discardScenario, {}));
+  await page.evaluate(() => globalThis.sv2.storage.flush());
+  await waitSaved();
+  await dismissToasts();
+  await page.evaluate(() => globalThis.sv2.navigate('#building'));
+  await page.waitForSelector('.bld');
+});
+
+test('in a tab that stopped saving after another tab saved, the Apply question says no snapshot will be kept and why', async () => {
+  // its own server, so its own origin: the conflict stops this page's saves for good
+  const other = await openPlanner({ hash: '#building', browser });
+  try {
+    const p = other.page;
+    await editable(p);
+    await p.evaluate(async () => {
+      globalThis.sv2Actions = await import(new URL('engine/actions.js', document.baseURI).href);
+    });
+    await rawWrite(['project'], (tx) => {
+      tx.objectStore('project').put({ savedAt: '2999-01-01T00:00:00.000Z', project: { marker: 'another tab wrote this' }, exportedAt: null }, 'current');
+    }, null, p);
+    await scenarioOf(SCENARIO_SNAPSHOT_SLOTS + 1, 'After a conflict', p);
+    await p.waitForFunction(() => globalThis.sv2.storage.state.save === 'conflict', { timeout: 15000 });
+    await applyFromLab(p);
+    assert.equal(await text('#scenario-apply [data-part="snapshot"]', p), 'It changes ' + (SCENARIO_SNAPSHOT_SLOTS + 1) + ' periods of the groups\' days, which would keep a snapshot of the project as it is now, but none will be kept: another tab saved this project after this tab read it, so this tab has stopped saving, and a snapshot is kept only of a saved project. Undo still brings the schedule back while this tab stays open.');
+  } finally {
+    await other.close();
+  }
 });
 
 // ---------------------------------------------------------------- db.js
