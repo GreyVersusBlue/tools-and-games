@@ -457,11 +457,12 @@ test('a clear whose snapshot waits on a save says so with its Undo at once, and 
   assert.equal(await panelSnapshot(), 'taken');
   const late = await toast();
   assert.ok(late, 'the snapshot\'s outcome follows as a message of its own');
-  assert.equal(late.text, 'The snapshot “⁨Before clearing Floor 2⁩” has what was there.');
   if (late.action) await page.click('.toast .toast__action');
   const now = await project();
   assert.equal(now.settings.schoolName, 'Held Save School', 'the late message\'s Undo took back the step before the clear: ' + JSON.stringify(late));
   assert.deepEqual(now.building, earlier.building);
+  // it is the snapshot's sentence alone, with no Undo: the clear is undone already
+  assert.deepEqual(late, { text: 'The snapshot “⁨Before clearing Floor 2⁩” has what was there.', action: null });
   // and before any of that, the clear was said with its Undo
   assert.ok(first && /^Cleared Floor 2, which removed .+\.$/.test(first.text), 'the clear is said at once: ' + JSON.stringify(first));
   assert.equal(first.action, 'Undo', 'with its Undo at once');
