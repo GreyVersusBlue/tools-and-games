@@ -631,6 +631,136 @@ test('an image whose put is still in flight when a save begins is not released b
   await waitSaved();
 });
 
+// Name the first floor's image, leave the page with the autosave still
+// waiting, and resolve once the leaving save's record is stored.
+async function leaveNaming(imageId) {
+  const before = (await idb('sv2', 'project', 'get', 'current') || {}).savedAt;
+  await floorImage(imageId);
+  await page.evaluate(() => globalThis.dispatchEvent(new Event('pagehide')));
+  await page.waitForFunction((stamp) => new Promise((resolve) => {
+    const open = indexedDB.open('sv2');
+    open.onsuccess = () => {
+      const request = open.result.transaction('project', 'readonly').objectStore('project').get('current');
+      request.onsuccess = () => {
+        open.result.close();
+        resolve(Boolean(request.result) && request.result.savedAt !== stamp);
+      };
+    };
+  }), {}, before || null);
+  const record = await idb('sv2', 'project', 'get', 'current');
+  assert.equal(record.project.building.floors[0].image.imageId, imageId, 'the leaving save names it');
+}
+
+const slowSaves = () => page.evaluate((most) => globalThis.sv2.storage.setTiming({ delay: most, maxWait: most }), 600000);
+async function usualSaves() {
+  await page.evaluate((timing) => globalThis.sv2.storage.setTiming(timing), { delay: SAVE_DELAY_MS, maxWait: SAVE_MAX_WAIT_MS });
+  await page.evaluate(() => globalThis.sv2.storage.flush());
+  await waitSaved();
+}
+
+// SV2-28e: a put that failed is not stored, whatever its place among the
+// puts: the leaving save, which cannot ask what is stored, writes it from
+// the images the session holds instead of counting it as there.
+test('the save made as the page is left writes back an image whose put failed', async () => {
+  await waitSaved();
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.project.building.floors[0].image.imageId), 'itestimage');
+  await floorImage(null);
+  await waitSaved();
+  assert.equal((await idb('sv2', 'images', 'keys')).includes('itestimage'), false, 'the sweep took it');
+  await slowSaves();
+  try {
+    await page.evaluate(() => {
+      globalThis.sv2.storage.hooks.failImagePut = true;
+    });
+    let refused;
+    try {
+      refused = await page.evaluate(() => globalThis.sv2.storage.putImage('itestimage', { blob: new Blob(['png']), type: 'image/png', width: 2, height: 2 }).then(() => null, (error) => String(error && error.message)));
+    } finally {
+      await page.evaluate(() => {
+        globalThis.sv2.storage.hooks.failImagePut = false;
+      });
+    }
+    assert.ok(refused, 'the put failed');
+    await leaveNaming('itestimage');
+    assert.ok((await idb('sv2', 'images', 'keys')).includes('itestimage'), 'the leaving save wrote the image whose put failed: ' + JSON.stringify(await idb('sv2', 'images', 'keys')));
+  } finally {
+    await usualSaves();
+  }
+});
+
+// SV2-28e: a put still in flight as the page is left. Transactions over the
+// same store run in the order they were made, so the leaving save takes in
+// the images store whenever the project names an image put this session and
+// is ordered after that put: no record naming the image is stored before
+// its bytes are.
+test('the save made as the page is left is stored after an image put still in flight', async () => {
+  await waitSaved();
+  await slowSaves();
+  try {
+    const order = await page.evaluate(async () => {
+      const value = { blob: new Blob(['png']), type: 'image/png', width: 2, height: 2 };
+      const { store, storage } = globalThis.sv2;
+      const db = await new Promise((resolve, reject) => {
+        const open = indexedDB.open('sv2');
+        open.onsuccess = () => resolve(open.result);
+        open.onerror = () => reject(open.error);
+      });
+      // another connection holds the images store, so the put below waits behind it
+      let release = false;
+      let holding = null;
+      const holds = new Promise((resolve) => {
+        holding = resolve;
+      });
+      const held = new Promise((resolve) => {
+        const tx = db.transaction('images', 'readwrite');
+        const images = tx.objectStore('images');
+        const spin = () => {
+          images.count().onsuccess = () => {
+            holding();
+            if (!release) spin();
+          };
+        };
+        spin();
+        tx.oncomplete = () => resolve();
+      });
+      await holds;
+      const events = [];
+      const putting = storage.putImage('iflight002', value).then(() => events.push('put'));
+      const project = store.project;
+      const floors = project.building.floors.map((floor, index) => (index === 0
+        ? { ...floor, image: { imageId: 'iflight002', opacity: 0.4, scale: 1, rotation: 0, x: 0, y: 0, visible: true, locked: false, width: 2, height: 2, missing: false } }
+        : floor));
+      store.apply(globalThis.sv2Actions.replaceProject, { project: { ...project, building: { ...project.building, floors } }, label: 'Test: image in flight' });
+      globalThis.dispatchEvent(new Event('pagehide'));
+      // the saved project, read by a transaction made after the leaving save
+      const read = new Promise((resolve) => {
+        const request = db.transaction('project', 'readonly').objectStore('project').get('current');
+        request.onsuccess = () => {
+          const image = request.result && request.result.project.building.floors[0].image;
+          events.push('read:' + (image ? image.imageId : null));
+          resolve();
+        };
+      });
+      // the holder lets go once the read has answered, or a transaction on a
+      // store none of them touches has
+      const aside = new Promise((resolve) => {
+        db.transaction('quarantine', 'readonly').objectStore('quarantine').count().onsuccess = () => resolve();
+      });
+      await Promise.race([read, aside]);
+      release = true;
+      await held;
+      await putting;
+      await read;
+      db.close();
+      return events;
+    });
+    assert.deepEqual(order, ['put', 'read:iflight002'], 'the record naming the image is stored only after the image\'s put');
+    assert.ok((await idb('sv2', 'images', 'keys')).includes('iflight002'));
+  } finally {
+    await usualSaves();
+  }
+});
+
 test('a save never overwrites a record newer than the one this tab read: it stops and says so', async () => {
   const foreign = { savedAt: '2999-01-01T00:00:00.000Z', project: { marker: 'another tab wrote this' }, exportedAt: null };
   await put('sv2', 'project', foreign, 'current');
@@ -644,6 +774,87 @@ test('a save never overwrites a record newer than the one this tab read: it stop
   await pause(1500);
   assert.deepEqual(await idb('sv2', 'project', 'get', 'current'), foreign, 'the other tab\'s record is untouched');
   assert.equal(await page.$('#banner-save-failed'), null, 'a conflict is not a failing disk');
+});
+
+// SV2-28e: a tab that edits again after a spell as read-only knows nothing
+// of what the images store holds now. The other tab may have swept an image
+// this tab's project still names (its own project named it no longer), and
+// that tab's last save may have been unreadable, so this tab carries on with
+// what it shows. Its next save, and the save made as the page is left, must
+// write the image back. Web Locks never hand the lock back to a tab that had
+// it, so this runs on the heartbeat: a beat written by "another tab" makes
+// this one read-only within 2 s, and taking it away hands the edit back.
+test('a tab that edits again after another tab swept an image its project names writes the image back', async () => {
+  const main = { session, page };
+  const other = await openPlanner({ hash: '#project' });
+  try {
+    await other.page.evaluateOnNewDocument(() => {
+      Object.defineProperty(Navigator.prototype, 'locks', { get: () => undefined, configurable: true });
+    });
+    await other.page.reload({ waitUntil: 'load' });
+    await waitForSection(other.page, 'project');
+    page = other.page;
+    await withActions();
+    await page.waitForFunction(() => globalThis.sv2.storage.state.tabs === 'heartbeat' && globalThis.sv2.storage.state.available && !globalThis.sv2.storage.state.readOnly, { timeout: 15000 });
+    await page.evaluate(() => globalThis.sv2.storage.putImage('ibecome001', { blob: new Blob(['png']), type: 'image/png', width: 2, height: 2 }));
+    await floorImage('ibecome001');
+    await waitSaved();
+    assert.ok((await idb('sv2', 'images', 'keys')).includes('ibecome001'));
+
+    // while this tab is read-only the other one sweeps the image, and its last save cannot be read
+    const away = async (round) => {
+      await page.evaluate(() => localStorage.setItem('sv2:tab', JSON.stringify({ tabId: 'another-tab', at: Date.now() })));
+      await page.waitForFunction(() => globalThis.sv2.storage.state.readOnly, { timeout: 15000 });
+      await page.evaluate(() => new Promise((resolve, reject) => {
+        const open = indexedDB.open('sv2');
+        open.onsuccess = () => {
+          const tx = open.result.transaction(['images', 'project'], 'readwrite');
+          tx.objectStore('images').delete('ibecome001');
+          tx.objectStore('project').put({ savedAt: '2999-01-01T00:00:00.000Z', project: 'not a project' }, 'current');
+          tx.oncomplete = () => {
+            open.result.close();
+            resolve();
+          };
+          tx.onabort = () => reject(tx.error);
+        };
+      }));
+      await page.evaluate(() => localStorage.removeItem('sv2:tab'));
+      await page.waitForFunction((n) => !globalThis.sv2.storage.state.readOnly && globalThis.sv2.storage.state.quarantined === n, { timeout: 15000 }, round);
+      assert.equal(await page.evaluate(() => globalThis.sv2.store.project.building.floors[0].image.imageId), 'ibecome001', 'this tab carries on with what it shows');
+      assert.equal((await idb('sv2', 'images', 'keys')).includes('ibecome001'), false, 'the other tab swept it');
+    };
+
+    // the next save writes it back
+    await away(1);
+    await rename('Edits again');
+    await waitSaved();
+    assert.ok((await idb('sv2', 'images', 'keys')).includes('ibecome001'), 'the first save after editing again wrote the image back: ' + JSON.stringify(await idb('sv2', 'images', 'keys')));
+
+    // and so does the save made as the page is left
+    await away(2);
+    await slowSaves();
+    try {
+      await rename('Leaves at once');
+      await page.evaluate(() => globalThis.dispatchEvent(new Event('pagehide')));
+      await page.waitForFunction(() => new Promise((resolve) => {
+        const open = indexedDB.open('sv2');
+        open.onsuccess = () => {
+          const request = open.result.transaction('project', 'readonly').objectStore('project').get('current');
+          request.onsuccess = () => {
+            open.result.close();
+            resolve(Boolean(request.result) && request.result.project.settings.schoolName === 'Leaves at once');
+          };
+        };
+      }), { timeout: 10000 });
+      assert.ok((await idb('sv2', 'images', 'keys')).includes('ibecome001'), 'the leaving save after editing again wrote the image back: ' + JSON.stringify(await idb('sv2', 'images', 'keys')));
+    } finally {
+      await usualSaves();
+    }
+    assert.deepEqual(other.problems().errors, []);
+  } finally {
+    page = main.page;
+    await other.close();
+  }
 });
 
 test('after all of that the page has logged no error', () => {

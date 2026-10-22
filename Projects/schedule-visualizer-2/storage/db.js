@@ -30,8 +30,9 @@ export const CURRENT_KEY = 'current';
 export const RECOVERY_KEEP = 8;
 
 // For the tests. `failWrite` set to a sentence makes every save of the
-// project fail with it, the way a full disk would.
-export const hooks = { failWrite: null };
+// project fail with it, the way a full disk would; `failImagePut` set true
+// makes every putImage's transaction abort, the way a full disk would.
+export const hooks = { failWrite: null, failImagePut: false };
 
 // The saved record is newer than the one this tab last read or wrote: another
 // tab saved in between. Nothing was written.
@@ -188,8 +189,12 @@ export async function openDatabases(options) {
   // (SV2-28d): until then it is Infinity, which no save follows and no save
   // releases, so a save begun while the bytes are still being written can
   // never count them as done. `flying` counts the puts of an id in flight.
+  // `landed` (SV2-28e) holds the fresh ids a put of which committed: a put
+  // that failed is numbered too, so that saves release it, but its bytes
+  // are not known to be stored.
   const fresh = new Map();
   const flying = new Map();
+  const landed = new Set();
   let puts = 0;
   liveFresh.add(fresh);
   // The images the session holds, as the last save was given them, for the
@@ -198,7 +203,12 @@ export async function openDatabases(options) {
   // Saves begun and not yet complete or refused.
   let saving = 0;
   // The image ids of the project as last saved, to know when a sweep is due.
+  // null when nothing is known of the images store (no save yet, or since
+  // forgetStored()): the next save sweeps, which puts back every image the
+  // project names that the store lacks. `era` counts forgetStored() calls,
+  // so a save begun before one does not set it again when it completes.
   let savedImageIds = null;
+  let era = 0;
 
   function needRecovery() {
     if (!recovery) throw recoveryError || new Error('This device is not keeping recovery points.');
@@ -229,6 +239,7 @@ export async function openDatabases(options) {
       }
       const names = imageIdsOf(project).sort();
       const sweep = savedImageIds === null || !sameIds(names, savedImageIds);
+      const begunIn = era;
       // the puts this save follows: every one numbered up to here
       const follows = puts;
       if (extra && extra.images) lastHeld = extra.images;
@@ -261,8 +272,13 @@ export async function openDatabases(options) {
       saving += 1;
       tx.oncomplete = () => {
         saving -= 1;
-        savedImageIds = names;
-        for (const [id, put] of Array.from(fresh)) if (put !== Infinity && (names.includes(id) || put <= follows)) fresh.delete(id);
+        if (begunIn === era) savedImageIds = names;
+        for (const [id, put] of Array.from(fresh)) {
+          if (put !== Infinity && (names.includes(id) || put <= follows)) {
+            fresh.delete(id);
+            landed.delete(id);
+          }
+        }
         resolve(stamp);
       };
       tx.onerror = (event) => event.preventDefault();
@@ -286,17 +302,23 @@ export async function openDatabases(options) {
   // holds (`extra.images`, else those the last save was given). Without a
   // read first it cannot ask what is stored, so it writes each one that is
   // not known to be there: known means named by the last save to complete
-  // while no other save is under way, or put in this session and not yet
-  // released (fresh, done or in flight; a put in flight was begun first, so
-  // it commits first).
+  // while no other save is under way (and since the last forgetStored()),
+  // or put in this session, committed and not yet released (SV2-28e: a put
+  // that failed, or is still in flight, is not known to be stored, and is
+  // written from what the session holds). Transactions over one store run
+  // in the order they were made, so whenever the project names an image put
+  // in this session the transaction takes in the images store as well: it
+  // then commits after any put of it still in flight, never before.
   function saveProjectLeaving(project, known, extra) {
     let stamp = clock().toISOString();
     if (typeof known === 'string' && stamp <= known) stamp = new Date(Date.parse(known) + 1).toISOString();
     if (hooks.failWrite) return { savedAt: null, done: Promise.reject(new Error(hooks.failWrite)) };
     const held = extra && extra.images ? extra.images : lastHeld;
     const stored = new Set(saving === 0 && savedImageIds ? savedImageIds : []);
-    const missing = held ? imageIdsOf(project).filter((id) => held.has(id) && !stored.has(id) && !fresh.has(id)) : [];
-    const tx = main.transaction(missing.length > 0 ? [PROJECT_STORE, IMAGE_STORE] : [PROJECT_STORE], 'readwrite');
+    const named = imageIdsOf(project);
+    const missing = held ? named.filter((id) => held.has(id) && !stored.has(id) && !(fresh.has(id) && landed.has(id))) : [];
+    const images = missing.length > 0 || named.some((id) => fresh.has(id));
+    const tx = main.transaction(images ? [PROJECT_STORE, IMAGE_STORE] : [PROJECT_STORE], 'readwrite');
     tx.objectStore(PROJECT_STORE).put({ savedAt: stamp, project, exportedAt: extra && extra.exportedAt ? extra.exportedAt : null }, CURRENT_KEY);
     for (const id of missing) tx.objectStore(IMAGE_STORE).put(held.get(id), id);
     const done = committed(tx);
@@ -345,6 +367,15 @@ export async function openDatabases(options) {
     });
   }
 
+  // The tab is to edit again after a spell as read-only (SV2-28e): another
+  // tab may have swept or written images since, so nothing is known of the
+  // images store. The next save sweeps and puts back what the project names;
+  // the save made as the page is left counts none as stored.
+  function forgetStored() {
+    savedImageIds = null;
+    era += 1;
+  }
+
   // ------------------------------------------------------------ images
 
   // Keep an image's bytes. `value` is { blob, type, width, height }.
@@ -356,7 +387,9 @@ export async function openDatabases(options) {
     try {
       const tx = main.transaction(IMAGE_STORE, 'readwrite');
       tx.objectStore(IMAGE_STORE).put(value, id);
+      if (hooks.failImagePut) tx.abort();
       await committed(tx);
+      landed.add(id);
     } finally {
       const left = flying.get(id) - 1;
       if (left > 0) {
@@ -464,6 +497,7 @@ export async function openDatabases(options) {
     readCurrent,
     saveProject,
     saveProjectLeaving,
+    forgetStored,
     quarantineCurrent,
     quarantined,
     putImage,
