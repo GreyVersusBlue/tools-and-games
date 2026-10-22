@@ -586,14 +586,16 @@ export function undoForStep(store, undo) {
 }
 
 // What the message says of a snapshot taken by itself, or not taken.
-// options.undo false leaves out the sentence on Undo.
+// options.undo false leaves out the sentence on Undo; a read-only refusal
+// never has it.
 export function autoSnapshotSaid(answer, options) {
   if (answer && answer.ok) return 'The snapshot “\u2068' + answer.snapshot.name + '\u2069” has what was there.';
   const code = answer && answer.code;
   const undo = options && options.undo === false ? '' : ' Undo brings it back while this tab stays open.';
   if (code === 'full') return 'No snapshot was taken, because this device already keeps ' + SNAPSHOT_LIMIT + ', the most it keeps.' + undo;
   if (code === 'not-ready') return 'No snapshot was taken, because the project was still loading.' + undo;
-  if (code === 'read-only') return 'No snapshot was taken, because this tab is read-only while the project is open in another tab.' + undo;
+  // a read-only tab's store refuses Undo (SV2-28e), so no Undo is offered
+  if (code === 'read-only') return 'No snapshot was taken, because this tab is read-only while the project is open in another tab.';
   const why = answer && typeof answer.text === 'string' && answer.text !== '' ? answer.text : 'the device did not say why.';
   // the take's own sentence often starts by saying it was not taken: once is enough
   const own = /^The snapshot was not (?:taken|kept)(, because |: )/.exec(why);

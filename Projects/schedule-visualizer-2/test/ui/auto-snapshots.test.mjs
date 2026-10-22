@@ -132,12 +132,20 @@ test('a change that no longer applies does not count toward a snapshot', () => {
 test('autoSnapshotSaid names a kept snapshot isolated, and says why none was kept and that Undo still works', () => {
   assert.equal(autoSnapshotSaid({ ok: true, snapshot: { name: 'Before clearing ‮Floor 2' } }), 'The snapshot “⁨Before clearing ‮Floor 2⁩” has what was there.');
   assert.equal(autoSnapshotSaid({ ok: false, code: 'full', text: 'x' }), 'No snapshot was taken, because this device already keeps ' + SNAPSHOT_LIMIT + ', the most it keeps. Undo brings it back while this tab stays open.');
-  assert.equal(autoSnapshotSaid({ ok: false, code: 'read-only', text: READ_ONLY_SENTENCE }), 'No snapshot was taken, because this tab is read-only while the project is open in another tab. Undo brings it back while this tab stays open.');
   assert.equal(autoSnapshotSaid({ ok: false, code: 'failed', text: 'The snapshot was not kept: QuotaExceededError.' }), 'No snapshot was taken: QuotaExceededError. Undo brings it back while this tab stays open.');
   assert.equal(autoSnapshotSaid({ ok: false, code: 'not-saved', text: 'The snapshot was not taken, because the project could not be saved first.' }), 'No snapshot was taken, because the project could not be saved first. Undo brings it back while this tab stays open.');
   assert.equal(autoSnapshotSaid({ ok: false, code: 'not-ready', text: 'The project is still loading, so no snapshot was taken.' }), 'No snapshot was taken, because the project was still loading. Undo brings it back while this tab stays open.');
   assert.equal(autoSnapshotSaid({ ok: false, code: 'failed', text: '' }), 'No snapshot was taken: the device did not say why. Undo brings it back while this tab stays open.');
   assert.deepEqual(['clear-floor', 'resize', 'scenario'].every((reason) => reason in AUTO_SNAPSHOT_NAMES), true);
+});
+
+// SV2-28e: a read-only tab's store refuses Undo (store.undo returns null), so
+// the sentence for a read-only refusal offers none, with or without options.
+test('autoSnapshotSaid says no Undo for a read-only refusal: Undo does nothing in a read-only tab', () => {
+  const said = 'No snapshot was taken, because this tab is read-only while the project is open in another tab.';
+  assert.equal(autoSnapshotSaid({ ok: false, code: 'read-only', text: READ_ONLY_SENTENCE }), said);
+  assert.equal(autoSnapshotSaid({ ok: false, code: 'read-only', text: READ_ONLY_SENTENCE }, { undo: false }), said);
+  assert.equal(autoSnapshotSaid({ ok: false, code: 'read-only', text: READ_ONLY_SENTENCE }, { undo: true }), said);
 });
 
 // ---------------------------------------------------------------- the Undo a message offers (SV2-28d)
