@@ -10,8 +10,10 @@
 //             (one under another)
 //     slots   [{ floor, box, x, y, w, h }]: (x, y) is where the box's top
 //             left cell is, in the map's cells
-//   bestLayout(floors, width, height, current, layouts)   'side' or 'stacked': one whole on the
-//                                       window at 25 % over one that is not; else whichever fits
+//   bestLayout(floors, width, height, current, layouts, at)   'side' or 'stacked': one Fit
+//                                       draws whole on the window over one it does not (`at`:
+//                                       { foot, corner }, the sticky foot and the zoom box); then
+//                                       one whole above the foot at no less zoom; else whichever fits
 //                                       larger (a tie at the least zoom to the one nearer to
 //                                       fitting); `current` is kept unless the other wins by
 //                                       more than LAYOUT_MARGIN
@@ -157,23 +159,49 @@ export function stageLeast(layout, width, zoomRoom, most) {
 // wide) is gone with the margin left out of the fit: stacked fits from 282
 // px there, not from 322.
 //
-// Judged on the whole stage, as Fit has it when no sticky foot lies over the
-// stage; the foot and the zoom buttons are left out on purpose: how far the
-// foot lies over the stage changes as the section scrolls, and a layout that
-// turned with the scroll would be worse than one a little smaller.
+// "Fits" is judged on what Fit draws (SV2-32a): the place chooseFit puts
+// the layout at, with the sticky foot and the zoom box as `at` gives them
+// ({ foot, corner }; none when left out), every floor whole on the stage
+// there. It was judged on the box at the least zoom with no foot, and where
+// the foot lay over the stage Fit could draw a layout called fitting off it
+// (798 by 120 with a 40 px foot: side by side past the right edge, the clear
+// band beside the zoom box). chooseFit now keeps a layout on the stage
+// wherever its plain fit is, so the two answers agree, and a scroll that
+// moves the foot cannot turn the layout; the judgement reads the drawing so
+// that a later change to chooseFit is judged as it draws.
+//
+// Where both are whole on the stage and the foot lies over one and not the
+// other, the one Fit draws whole above the foot is taken where Fit draws it
+// larger, LAYOUT_MARGIN waived, and on a tie where no layout is on the map
+// yet (SV2-32a: a layout was kept under the foot where the other was whole
+// above it). Not on a tie with one on the map: a layout that has just
+// started fitting is at the least zoom, and taking it there over one at the
+// least zoom under the foot turned the layout back and forth across a
+// single pixel (744 by 300 with a 40 px foot: side by side whole above the
+// foot at 744 wide, off the stage at 743). Larger cannot happen at that
+// pixel, so the turn to it waits for the zoom to tell the two apart.
 //
 // `layouts`, when given, is { side, stacked } already laid out for these
 // floors (layoutFloors), so the plan map lays them out once per arrange.
 export const LAYOUT_MARGIN = 0.05;
-export function bestLayout(floors, width, height, current, layouts) {
+export function bestLayout(floors, width, height, current, layouts, at) {
   if (floors.length < 2) return 'side';
+  const foot = at && at.foot > 0 ? at.foot : 0;
+  const corner = at ? at.corner || null : null;
   const score = (how) => {
     const layout = (layouts && layouts[how]) || layoutFloors(floors, how);
-    return { fits: rawZoom(layout, width, height, 0) >= MIN_ZOOM, value: Math.min(rawZoom(layout, width, height, FIT_MARGIN), MAX_ZOOM) };
+    const place = chooseFit(layout, width, height, foot, corner, FIT_MARGIN);
+    return { fits: wholeAt(layout, place, width, height), above: place.in === 'shown', zoom: place.zoom, value: Math.min(rawZoom(layout, width, height, FIT_MARGIN), MAX_ZOOM) };
   };
   const stacked = score('stacked');
   const side = score('side');
   if (stacked.fits !== side.fits) return stacked.fits ? 'stacked' : 'side';
+  // whole above the foot over whole under it, where it costs no zoom
+  if (stacked.fits && stacked.above !== side.above) {
+    const [up, down] = stacked.above ? [stacked, side] : [side, stacked];
+    const fresh = current !== 'stacked' && current !== 'side';
+    if (up.zoom > down.zoom || (fresh && up.zoom === down.zoom)) return stacked.above ? 'stacked' : 'side';
+  }
   if (current === 'stacked' || current === 'side') {
     const kept = current === 'stacked' ? stacked : side;
     const other = current === 'stacked' ? side : stacked;
@@ -377,13 +405,31 @@ export function zoomCornerAt(height, box, margin, lift) {
 // it), where the floors are whole in it, clear of the zoom buttons if a
 // band can be, else the plain fit (SV2-72f: at 844 by 390 the foot still
 // lies 12 px over Movement's stage once the first line stops clearFoot).
-// Where they cannot be whole there, on the whole stage with the zoom
-// buttons kept clear, as SV2-72c had it: whole would be under the foot.
-// `in` says which: 'shown' or 'stage'.
+// Where they cannot be whole there, on the whole stage by fitClear's own
+// rule: a band clear of the zoom buttons with the floors whole, else the
+// plain fit with the buttons over some of it, and only where neither is
+// whole the clear band that shows more. `in` says which: 'shown' or 'stage'.
+//
+// The whole stage took the clear band before the plain fit (plainWhole
+// false; SV2-72f2), for "whole there would be under the foot". So is the
+// band: it is fitted on the whole stage too, and the one it came to was the
+// band beside the zoom box, which at the least zoom runs past the stage's
+// right edge (SV2-32a: 798 by 120 with a 40 px foot, Floor 3 to 934 px of
+// 798 with a mouse, where the plain fit puts every floor on the stage). A
+// fit with a floor off the stage is no fit (SV2-72f), under the foot or not.
+// So a layout is drawn whole on the stage exactly where its plain fit is
+// whole, whatever the foot and the zoom box, and bestLayout's judgement of
+// what is drawn cannot be turned by a scroll.
 export function chooseFit(layout, width, height, foot, corner, margin) {
   const shown = height - foot;
   const seen = fitClear(layout, width, shown, corner, margin);
-  const size = CELL * seen.zoom;
-  const whole = seen.y >= -1e-9 && seen.y + layout.height * size <= shown + 1e-9 && seen.x >= -1e-9 && seen.x + layout.width * size <= width + 1e-9;
-  return whole ? { ...seen, in: 'shown' } : { ...fitClear(layout, width, height, corner, margin, false), in: 'stage' };
+  if (wholeAt(layout, seen, width, shown)) return { ...seen, in: 'shown' };
+  return { ...fitClear(layout, width, height, corner, margin), in: 'stage' };
+}
+
+// true when the map's box (the floors with their names) lies whole on a
+// stage `width` by `height` at `place`
+export function wholeAt(layout, place, width, height) {
+  const size = CELL * place.zoom;
+  return place.y >= -1e-9 && place.y + layout.height * size <= height + 1e-9 && place.x >= -1e-9 && place.x + layout.width * size <= width + 1e-9;
 }
