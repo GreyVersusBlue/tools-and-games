@@ -74,9 +74,14 @@ function quote(text) {
 
 // Why no snapshot would be kept now, as the end of a sentence, or null when
 // one would (SV2-28d): asked before the Apply question, so that it never
-// promises a snapshot the device will refuse.
+// promises a snapshot the device will refuse. A tab whose saves are failing,
+// or that stopped saving after another tab's save, cannot save first, and
+// the snapshot is refused for that ('not-saved', SV2-28e).
 async function noSnapshotBecause(ctx) {
   if (ctx.storage && ctx.storage.state.readOnly) return 'this tab is read-only while the project is open in another tab.';
+  const save = ctx.storage ? ctx.storage.state.save : null;
+  if (save === 'conflict') return 'another tab saved this project after this tab read it, so this tab has stopped saving, and a snapshot is kept only of a saved project.';
+  if (save === 'failed') return 'the project could not be saved on this device just now, and a snapshot is kept only of a saved project.';
   const room = await snapshotRoom();
   if (room.error) return room.error.charAt(0).toLowerCase() + room.error.slice(1);
   if (room.full) return 'this device already keeps ' + room.limit + ' snapshots, the most it keeps, and none is replaced to make room.';
