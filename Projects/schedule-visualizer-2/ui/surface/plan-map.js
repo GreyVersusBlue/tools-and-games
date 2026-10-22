@@ -123,7 +123,7 @@ import { createViewport, ZOOM_STEP, CELL } from './viewport.js';
 import { createRenderer } from './renderer.js';
 import { attachInput } from './input.js';
 import { attachCursor } from './cursor.js';
-import { layoutFloors, bestLayout, placeOf, stageLeast, keepShift, fitClear, FIT_MARGIN } from './plan-layout.js';
+import { layoutFloors, bestLayout, placeOf, stageLeast, keepShift, chooseFit, zoomCornerAt, liftOver, FIT_MARGIN } from './plan-layout.js';
 
 // The map's stylesheet: movement.css's .mov-* rules, for every section that
 // mounts it. A page that links it (data-sheet="movement", as index.html does)
@@ -412,28 +412,17 @@ export function createPlanMap(asked) {
     const w = zoomBox.offsetWidth;
     const h = zoomBox.offsetHeight;
     if (w === 0 || h === 0) return null;
-    const margin = parseFloat(getComputedStyle(zoomBox).left) || 0;
-    const rest = height - margin - h;
-    return { x: margin, y: rest - Math.max(0, Math.min(lift, rest)), w, h };
+    return zoomCornerAt(height, { w, h }, parseFloat(getComputedStyle(zoomBox).left) || 0, lift);
   }
 
   // Where Fit puts the floors on a stage `width` by `height` with `foot` px
-  // of a sticky foot over its foot: in the part of the stage the foot leaves
-  // (all of it with no foot over it), where the floors are whole in it, clear
-  // of the zoom buttons if a band can be, else the plain fit (SV2-72f: at 844
-  // by 390 the foot still lies 12 px over Movement's stage once the first
-  // line stops clearFoot). Where they cannot be whole there, on the whole
-  // stage with the zoom buttons kept clear, as SV2-72c had it: whole would
-  // be under the foot. fit() and fitAt both ask this, so Movement's legend
-  // judges the layout the map shows (SV2-72f2: fitAt had asked fitClear on
-  // the whole stage alone). `in` says which: 'shown' or 'stage'.
+  // of a sticky foot over its foot, the zoom box lifted by `lift` (by the
+  // foot as it lies now when left out): chooseFit in ./plan-layout.js, which
+  // has the rule. fit() and fitAt both ask this, so Movement's legend judges
+  // the layout the map shows (SV2-72f2: fitAt had asked fitClear on the
+  // whole stage alone). { zoom, x, y, how, clear, in }, `in` 'shown' or 'stage'.
   function choose(width, height, foot, margin, lift) {
-    const corner = zoomCorner(height, lift);
-    const shown = height - foot;
-    const seen = fitClear(world, width, shown, corner, margin);
-    const size = CELL * seen.zoom;
-    const whole = seen.y >= -1e-9 && seen.y + world.height * size <= shown + 1e-9 && seen.x >= -1e-9 && seen.x + world.width * size <= width + 1e-9;
-    return whole ? { ...seen, in: 'shown' } : { ...fitClear(world, width, height, corner, margin, false), in: 'stage' };
+    return chooseFit(world, width, height, foot, zoomCorner(height, lift), margin);
   }
 
   // Fit leaves the zoom buttons' corner clear of every painted cell (choose, fitClear in ./plan-layout.js)
@@ -870,9 +859,7 @@ export function createPlanMap(asked) {
   }
   // the lift with the foot `over` px over the stage
   function liftFor(over) {
-    const margin = parseFloat(getComputedStyle(zoomBox).left) || 0;
-    const most = Math.max(0, stage.getBoundingClientRect().height - zoomBox.offsetHeight - margin * 2);
-    return Math.round(Math.min(most, Math.max(0, over)));
+    return liftOver(stage.getBoundingClientRect().height, zoomBox.offsetHeight, parseFloat(getComputedStyle(zoomBox).left) || 0, over);
   }
   // A lift that changes with the section where it was (the foot grew, the
   // window changed, the section was measured) moves the buttons over a

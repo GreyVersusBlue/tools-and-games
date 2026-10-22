@@ -24,6 +24,11 @@
 //   fitClear(layout, width, height, corner, margin)   { zoom, x, y, how, clear }: the fit
 //                                       that leaves no painted cell under `corner` (the zoom box)
 //   paintedUnder(layout, place, rect)   true when a painted cell lies under rect at that place
+//   chooseFit(layout, width, height, foot, corner, margin)   { zoom, x, y, how, clear, in }:
+//                                       where Fit puts the floors with `foot` px of a sticky
+//                                       foot over the stage (the plan map's choose)
+//   zoomCornerAt(height, box, margin, lift)   the zoom box on the stage, lifted
+//   liftOver(height, box, margin, over)  how far the zoom box lifts over a foot
 //
 // No DOM in here.
 
@@ -343,4 +348,42 @@ export function fitClear(layout, width, height, corner, margin, plainWhole = tru
   const pick = clear.find((place) => place.shown > 1 - 1e-9) || (plainWhole && onStage(wholeOn) > 1 - 1e-9 ? wholeOn : null) || clear.sort((a, b) => b.shown - a.shown + (a === off ? 1e-9 : 0) - (b === off ? 1e-9 : 0))[0] || above;
   const { shown, ...place } = pick;
   return place;
+}
+
+// ---- The zoom box over a sticky foot, and Fit with the foot (the plan
+// map's choose; SV2-72c2, SV2-72f, SV2-72f2). Here, with no DOM, so the
+// rule that picks a layout (bestLayout) and a Node sweep can judge the very
+// place Fit draws (SV2-32a). The plan map reads the boxes off the page and
+// hands them in.
+
+// How far the zoom buttons lift over a foot `over` px over a stage `height`
+// tall: by the foot, never out of the stage's top. `box` is the zoom box's
+// height, `margin` its distance from the stage's edges (its CSS left).
+export function liftOver(height, box, margin, over) {
+  const most = Math.max(0, height - box - margin * 2);
+  return Math.round(Math.min(most, Math.max(0, over)));
+}
+
+// The zoom box on a stage `height` tall, lifted by `lift`: { x, y, w, h }
+// in the stage's pixels, its bottom left corner where the sheet puts it.
+export function zoomCornerAt(height, box, margin, lift) {
+  const rest = height - margin - box.h;
+  return { x: margin, y: rest - Math.max(0, Math.min(lift, rest)), w: box.w, h: box.h };
+}
+
+// Where Fit puts `layout` on a stage `width` by `height` with `foot` px of a
+// sticky foot over its foot and the zoom box at `corner` (null for none):
+// in the part of the stage the foot leaves (all of it with no foot over
+// it), where the floors are whole in it, clear of the zoom buttons if a
+// band can be, else the plain fit (SV2-72f: at 844 by 390 the foot still
+// lies 12 px over Movement's stage once the first line stops clearFoot).
+// Where they cannot be whole there, on the whole stage with the zoom
+// buttons kept clear, as SV2-72c had it: whole would be under the foot.
+// `in` says which: 'shown' or 'stage'.
+export function chooseFit(layout, width, height, foot, corner, margin) {
+  const shown = height - foot;
+  const seen = fitClear(layout, width, shown, corner, margin);
+  const size = CELL * seen.zoom;
+  const whole = seen.y >= -1e-9 && seen.y + layout.height * size <= shown + 1e-9 && seen.x >= -1e-9 && seen.x + layout.width * size <= width + 1e-9;
+  return whole ? { ...seen, in: 'shown' } : { ...fitClear(layout, width, height, corner, margin, false), in: 'stage' };
 }
