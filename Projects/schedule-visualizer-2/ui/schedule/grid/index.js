@@ -289,19 +289,19 @@ export function mount(env) {
     const words = periodWords(project.settings);
     if (state.rows === 'teachers') {
       if (staged.project.teachers.length === 0) {
-        return emptyState('No teachers yet. Add a teacher, and this shows each teacher’s day.', button('Go to Teachers', () => ctx.navigate('#schedule/teachers'), { primary: true, key: 'grid-go' }));
+        return emptyState('No teachers yet. With the rows set to Teachers, the grid shows each teacher’s day. Add teachers in the Teachers tab first.', button('Go to Teachers', () => ctx.navigate('#schedule/teachers'), { primary: true, key: 'grid-go' }), 'grid-teachers');
       }
       return [h('p', { class: 'sch-hint' }, 'Each teacher’s day, for reading: the groups they have each ' + words.one + ', and where. To change a room, set the rows to Groups.'), teacherTable(staged.project, model.findings)];
     }
     if (state.rows === 'rooms') {
       if (allRooms(staged.project).length === 0) {
-        return emptyState('No rooms yet. Draw rooms in the building, and this shows who is in each.', button('Go to Building', () => ctx.navigate('#building'), { primary: true, key: 'grid-go' }));
+        return emptyState('No rooms yet. With the rows set to Rooms, the grid shows who is in each room every ' + words.one + '. Draw rooms in the building first.', button('Go to the building', () => ctx.navigate('#building'), { primary: true, key: 'grid-go' }), 'grid-rooms');
       }
       return [h('p', { class: 'sch-hint' }, 'Each room’s day, for reading: the groups in it each ' + words.one + '. To change a room, set the rows to Groups.'), roomTable(staged.project, model.findings)];
     }
     if (model.rows.length === 0) {
       return [
-        emptyState('Add the first group here, or paste a block from a spreadsheet.', button('Add a group', add, { primary: true, key: 'grid-add', action: 'add-group' })),
+        emptyState('No groups yet. The grid is the whole schedule in one table, a row for each group and a column for each ' + words.one + '. Add the first group here, or paste a block from a spreadsheet.', button('Add a group', add, { primary: true, key: 'grid-add', action: 'add-group' }), 'grid-groups'),
         h('p', { class: 'sch-hint' }, 'A group is a set of students who travel together all day. To paste, copy rows whose columns are a name, a grade, a head count, a colour, then a room number for each ' + words.one + ', and press ' + MOD + 'V here. Columns you leave out at the end stay empty.'),
       ];
     }

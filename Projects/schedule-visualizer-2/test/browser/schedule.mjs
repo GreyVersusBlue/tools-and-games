@@ -716,15 +716,15 @@ test('an empty project: each tab says what the thing is and has one button', asy
   await page.evaluate(() => globalThis.sv2.ctx.removeSample());
   await go(page, '#schedule/groups');
   await shows(() => document.querySelector('.sch-groups .sch-empty') !== null);
-  assert.equal(await text('.sch-groups .sch-empty__text'), 'No groups yet. A group is a set of students who travel together all day.');
+  assert.equal(await text('.sch-groups .sch-empty__text'), 'No groups yet. A group is a set of students who travel together all day, and this is where each group gets a room for every period. Add the first group to begin.');
   assert.deepEqual(await page.$$eval('.sch-groups button, .sch-groups a', (all) => all.map((el) => el.textContent)), ['Add a group']);
   assert.equal(await text('#inspector .sch-panel__none'), 'Nothing to check yet. Add a group and the checks start.');
   await go(page, '#schedule/teachers');
-  assert.equal(await text('.sch-teachers .sch-empty__text'), 'No teachers yet. A teacher is a named member of staff, with a subject and one or more rooms.');
+  assert.equal(await text('.sch-teachers .sch-empty__text'), 'No teachers yet. A teacher is a named member of staff, with a subject and one or more rooms, and this is the list of them. Add the first teacher to begin.');
   assert.deepEqual(await page.$$eval('.sch-teachers button, .sch-teachers a', (all) => all.map((el) => el.textContent)), ['Add a teacher']);
   await go(page, '#schedule/checks');
   assert.match(await text('.sch-checks .sch-empty__text'), /^Nothing to check yet\. Checks look through the schedule/);
-  assert.deepEqual(await page.$$eval('.sch-checks button, .sch-checks a', (all) => all.map((el) => el.textContent)), ['Add a group']);
+  assert.deepEqual(await page.$$eval('.sch-checks button, .sch-checks a', (all) => all.map((el) => el.textContent)), ['Go to Groups']);
   await click('.sch-checks [data-action="go-groups"]');
   await shows(() => location.hash === '#schedule/groups' && document.querySelector('.sch-groups [data-action="add-group"]') !== null);
   // the first group of a new project, and a room that is then missing from the building

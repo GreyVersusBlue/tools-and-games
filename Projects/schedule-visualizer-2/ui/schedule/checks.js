@@ -246,7 +246,7 @@ export function mount(env) {
     if (!model.findings.some((finding) => finding.id === env.view.findingId)) env.view.findingId = null;
     const nothing = model.findings.length + model.accepted.length + model.changed.length + model.off.length + model.gone.length === 0;
     if (nothing && project.groups.length === 0) {
-      fill(element, emptyState('Nothing to check yet. ' + WHAT, h('a', { class: 'btn btn--primary', href: '#schedule/groups', data: { action: 'go-groups' } }, 'Add a group')));
+      fill(element, emptyState('Nothing to check yet. ' + WHAT + ' Add a group first.', h('a', { class: 'btn btn--primary', href: '#schedule/groups', data: { action: 'go-groups' } }, 'Go to Groups'), 'checks'));
       return;
     }
     fill(element, 

@@ -531,7 +531,7 @@ test('an empty project says what the grid is for, and a block pasted there becom
   await page.waitForFunction(() => document.getElementById('sample-chip').hidden);
   await go(page, '#schedule/grid');
   await settled();
-  assert.equal(await text('.grd .sch-empty__text'), 'Add the first group here, or paste a block from a spreadsheet.');
+  assert.equal(await text('.grd .sch-empty__text'), 'No groups yet. The grid is the whole schedule in one table, a row for each group and a column for each period. Add the first group here, or paste a block from a spreadsheet.');
   assert.equal(await count('.grd .sch-empty .btn--primary'), 1);
   assert.equal(await page.$eval('.grd-sheet', (el) => el.hidden), true);
   await page.focus('#surface [role="tabpanel"]');

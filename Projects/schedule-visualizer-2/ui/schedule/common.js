@@ -56,9 +56,11 @@ export function button(label, run, options) {
   return element;
 }
 
-// The screen a tab shows when it has nothing: what the thing is, one button.
-export function emptyState(text, action) {
-  return h('div', { class: 'sch-empty' }, h('p', { class: 'sch-empty__text' }, text), action);
+// The screen a tab shows when it has nothing: what the thing is, what to do
+// first, and one button that does it. `id` names the screen for the list in
+// test/browser/empty-states.mjs.
+export function emptyState(text, action, id) {
+  return h('div', { class: 'sch-empty', data: { empty: id } }, h('p', { class: 'sch-empty__text' }, text), action);
 }
 
 // "● 2 problems", with the shape for the eye and the words for everyone.

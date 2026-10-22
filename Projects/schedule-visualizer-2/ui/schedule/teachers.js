@@ -112,7 +112,7 @@ export function mount(env) {
     const model = env.model();
     const addButton = button('Add a teacher', add, { primary: true, key: 'teacher-add', action: 'add-teacher' });
     if (project.teachers.length === 0) {
-      fill(element, emptyState('No teachers yet. ' + WHAT, addButton));
+      fill(element, emptyState('No teachers yet. ' + WHAT.slice(0, -1) + ', and this is the list of them. Add the first teacher to begin.', addButton, 'teachers'));
       return;
     }
     const alike = new Set(findNearDuplicateTeachers(project).flat().map((teacher) => teacher.id));

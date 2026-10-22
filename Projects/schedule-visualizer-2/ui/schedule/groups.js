@@ -547,7 +547,7 @@ export function mount(env) {
     if (project.groups.length === 0) {
       view.groupId = null;
       view.folded = false;
-      fill(element, emptyState('No groups yet. ' + WHAT, button('Add a group', add, { primary: true, key: 'group-add', action: 'add-group' })));
+      fill(element, emptyState('No groups yet. ' + WHAT.slice(0, -1) + ', and this is where each group gets a room for every ' + periodWords(project.settings).one + '. Add the first group to begin.', button('Add a group', add, { primary: true, key: 'group-add', action: 'add-group' }), 'groups'));
       return;
     }
     // The chosen group is gone (an undo took back its adding, an import
