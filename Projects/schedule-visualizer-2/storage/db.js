@@ -370,9 +370,11 @@ export async function openDatabases(options) {
   // The tab is to edit again after a spell as read-only (SV2-28e): another
   // tab may have swept or written images since, so nothing is known of the
   // images store. The next save sweeps and puts back what the project names;
-  // the save made as the page is left counts none as stored.
+  // the save made as the page is left counts none as stored, this session's
+  // own committed puts included (SV2-28f).
   function forgetStored() {
     savedImageIds = null;
+    landed.clear();
     era += 1;
   }
 

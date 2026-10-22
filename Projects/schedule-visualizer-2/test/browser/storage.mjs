@@ -761,6 +761,64 @@ test('the save made as the page is left is stored after an image put still in fl
   }
 });
 
+// SV2-28f: forgetStored() says nothing is known of the images store, and
+// that covers this session's own puts too: one that committed before it and
+// no completed save has named since is not counted as stored by the leaving
+// save after it, which writes it from the images it is given. Run on a
+// second set of connections from storage/db.js, so the page's own session
+// keeps what it knows; the record it last saved is put back afterwards.
+test('after forgetStored the save made as the page is left counts none of this session\'s puts as stored', async () => {
+  await waitSaved();
+  const original = await idb('sv2', 'project', 'get', 'current');
+  try {
+    const keys = await page.evaluate(async () => {
+      const { openDatabases } = await import(new URL('storage/db.js', document.baseURI).href);
+      const db = await openDatabases({});
+      try {
+        const value = { blob: new Blob(['png']), type: 'image/png', width: 2, height: 2 };
+        await db.putImage('iforget001', value);
+        db.forgetStored();
+        // another tab swept it while this one was read-only
+        await new Promise((resolve, reject) => {
+          const tx = db.main.transaction('images', 'readwrite');
+          tx.objectStore('images').delete('iforget001');
+          tx.oncomplete = () => resolve();
+          tx.onabort = () => reject(tx.error);
+        });
+        const project = globalThis.sv2.store.project;
+        const floors = project.building.floors.map((floor, index) => (index === 0
+          ? { ...floor, image: { imageId: 'iforget001', opacity: 0.4, scale: 1, rotation: 0, x: 0, y: 0, visible: true, locked: false, width: 2, height: 2, missing: false } }
+          : floor));
+        const leaving = db.saveProjectLeaving({ ...project, building: { ...project.building, floors } }, null, { images: new Map([['iforget001', value]]) });
+        await leaving.done;
+        return await new Promise((resolve, reject) => {
+          const request = db.main.transaction('images', 'readonly').objectStore('images').getAllKeys();
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+      } finally {
+        db.close();
+      }
+    });
+    assert.ok(keys.includes('iforget001'), 'the leaving save after forgetStored counted a put of this session as stored and did not write it back: ' + JSON.stringify(keys));
+  } finally {
+    await put('sv2', 'project', original, 'current');
+    await page.evaluate(() => new Promise((resolve, reject) => {
+      const open = indexedDB.open('sv2');
+      open.onsuccess = () => {
+        const tx = open.result.transaction('images', 'readwrite');
+        tx.objectStore('images').delete('iforget001');
+        tx.oncomplete = () => {
+          open.result.close();
+          resolve();
+        };
+        tx.onabort = () => reject(tx.error);
+      };
+    }));
+  }
+  assert.deepEqual(await idb('sv2', 'project', 'get', 'current'), original, 'the page\'s own record is as it left it');
+});
+
 test('a save never overwrites a record newer than the one this tab read: it stops and says so', async () => {
   const foreign = { savedAt: '2999-01-01T00:00:00.000Z', project: { marker: 'another tab wrote this' }, exportedAt: null };
   await put('sv2', 'project', foreign, 'current');
