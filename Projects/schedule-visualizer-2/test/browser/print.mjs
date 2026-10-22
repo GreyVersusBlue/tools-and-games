@@ -243,6 +243,35 @@ test('the paper size and orientation change the page rule and the sheet, and are
   assert.deepEqual(await page.evaluate(() => globalThis.sv2.store.project.settings.paper), { size: 'letter', orientation: 'portrait' });
 });
 
+// SV2-32c
+test('the paper choice offers the eight sizes in order; a poster size is the sheet on show, says where to print it, and is the project\'s setting', async () => {
+  await openPreview('floor-plan');
+  assert.deepEqual(await page.$$eval('#print-preview .preview__control:first-child .seg__option', (all) => all.map((option) => option.querySelector('input').value + ':' + option.textContent)),
+    ['letter:US Letter', 'a4:A4', 'tabloid:Tabloid', 'a3:A3', 'a2:A2', 'a1:A1', 'a0:A0', 'poster-24x36:24 × 36 in']);
+  await page.click('#print-preview input[value="a0"]');
+  await page.waitForSelector('#print-preview[data-ready="true"][data-paper="a0 portrait"]');
+  let seen = await readDocument();
+  assert.equal(seen.pageSizeText, '@page { size: 841mm 1189mm; }');
+  assert.deepEqual(seen.pageRules.filter((rule) => rule.own === 'page-size').map((rule) => rule.size), ['841mm 1189mm']);
+  assert.ok(Math.abs(seen.pageWidth - 841 * 96 / 25.4) <= 1, 'an A0 sheet is 3179 px wide, drew ' + seen.pageWidth);
+  assert.ok(seen.stage.scroll <= seen.stage.client, 'and it is scaled to fit');
+  assert.equal(seen.pages, 3);
+  assert.deepEqual(seen.plans.map((plan) => plan.past), [0, 0, 0], 'each plan inside its sheet\'s margins');
+  assert.ok(seen.plans.every((plan) => plan.width > 2800), 'each plan fills the poster\'s width: ' + seen.plans.map((plan) => Math.round(plan.width)).join(', '));
+  assert.equal(seen.status, 'A0, portrait. About 3 sheets. A poster size: most office printers cannot take it, so print it at a print shop, or choose Save as PDF in the print dialog and take the file there.');
+  assert.deepEqual(await page.evaluate(() => globalThis.sv2.store.project.settings.paper), { size: 'a0', orientation: 'portrait' });
+  await page.click('#print-preview input[value="tabloid"]');
+  await page.waitForSelector('#print-preview[data-ready="true"][data-paper="tabloid portrait"]');
+  seen = await readDocument();
+  assert.equal(seen.status, 'Tabloid, portrait. About 3 sheets.', 'tabloid is office paper');
+  await closePreview();
+  await page.evaluate(() => {
+    globalThis.sv2.store.undo();
+    globalThis.sv2.store.undo();
+  });
+  assert.deepEqual(await page.evaluate(() => globalThis.sv2.store.project.settings.paper), { size: 'letter', orientation: 'portrait' });
+});
+
 test('in a tab that cannot change the project, the paper chosen still changes the sheet on show', async () => {
   await openPreview('room-list');
   await page.evaluate(() => {
@@ -387,6 +416,13 @@ test('printed to PDF: the sheet is the size the page rule names, and a floor pla
       { id: 'room-list', paper: { size: 'a4', orientation: 'portrait' }, box: [595, 842], sheets: 1 },
       { id: 'checks', paper: { size: 'letter', orientation: 'landscape' }, box: [792, 612], sheets: 3 },
       { id: 'checks', paper: { size: 'letter', orientation: 'portrait' }, box: [612, 792], sheets: 3 },
+      // SV2-32c: tabloid, A3 and the posters, each floor still one sheet
+      { id: 'floor-plan', paper: { size: 'tabloid', orientation: 'portrait' }, box: [792, 1224], sheets: 3 },
+      { id: 'floor-plan', paper: { size: 'a3', orientation: 'landscape' }, box: [1191, 842], sheets: 3 },
+      { id: 'floor-plan', paper: { size: 'a2', orientation: 'portrait' }, box: [1191, 1684], sheets: 3 },
+      { id: 'floor-plan', paper: { size: 'a1', orientation: 'landscape' }, box: [2384, 1684], sheets: 3 },
+      { id: 'floor-plan', paper: { size: 'a0', orientation: 'portrait' }, box: [2384, 3370], sheets: 3 },
+      { id: 'floor-plan', paper: { size: 'poster-24x36', orientation: 'landscape' }, box: [2592, 1728], sheets: 3 },
     ];
     for (const one of cases) {
       const at = one.id + ' on ' + one.paper.size + ' ' + one.paper.orientation;

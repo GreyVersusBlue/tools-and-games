@@ -13,7 +13,8 @@ import { fileURLToPath } from 'node:url';
 
 import { OUTPUTS, outputFor, renderOutput, printButtons } from '../../ui/prints/index.js';
 import { esc, frame, paperOf, paperBox, printableBox, pageRule, printDate, PAPERS, ORIENTATIONS, MARGIN, TOOL_NAME } from '../../ui/prints/document.js';
-import { planSvg, PLAN_INK, PLAN_ROOM_DEFAULT } from '../../ui/prints/plan-svg.js';
+import { planSvg, PLAN_INK, PLAN_ROOM_DEFAULT, PLAN_STYLE } from '../../ui/prints/plan-svg.js';
+import { planImage, IMAGE_CELL } from '../../ui/prints/floor-plan.js';
 import { PAPER_SIZES } from '../../engine/schema.js';
 import { roomRows, sortRoomRows, ROOM_COLUMNS } from '../../ui/prints/room-list.js';
 import { gridMarks, numbered, findingsFor } from '../../ui/prints/checks-report.js';
@@ -747,4 +748,131 @@ test('print.css keeps to its two roots and reaches for nothing outside the tool'
   for (const selector of selectors) assert.match(selector, /^\.(print-doc|preview)(?![a-zA-Z0-9-])/, selector);
   assert.match(css, /@page\s*\{\s*margin: 12mm 12mm 16mm;/, 'the margins document.js lays the plan out for');
   assert.deepEqual(MARGIN, { top: 12, right: 12, bottom: 16, left: 12 });
+});
+
+// ---------------------------------------------------------------- the floor plan as a picture (SV2-32c)
+
+// Every tag the picture is made of. A name that came through as markup would bring one that is not here.
+const IMAGE_TAGS = new Set(['svg', 'title', 'style', 'rect', 'text', 'g', 'path']);
+const FACE = 'data:font/woff2;base64,d09GMgABAAAAAA==';
+
+test('the picture is the plan of every floor, one under the other, labelled as the print is and cropped to what is drawn', () => {
+  const project = school();
+  const image = planImage(project, NOW);
+  assert.equal(image.drawn, true);
+  assert.deepEqual(image.floors.map((floor) => floor.name), ['Floor 1', 'Floor 2', 'Floor 3']);
+  assert.ok(image.svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg" width="' + image.width + '" height="' + image.height + '" viewBox="0 0 ' + image.width + ' ' + image.height + '">'));
+  assert.equal(countOf(image.svg, '<title>Floor plan · ' + esc(SAMPLE_SCHOOL_NAME) + '</title>'), 1);
+  // the heading: the school, what this is, the date; then each floor's name, its plan and the print's sentence
+  const lines = Array.from(image.svg.matchAll(/<text class="img (img__[a-z]+)"[^>]*>([^<]*)<\/text>/g)).map((match) => match[1] + ': ' + match[2]);
+  assert.deepEqual(lines.slice(0, 3), ['img__school: ' + esc(SAMPLE_SCHOOL_NAME), 'img__what: Floor plan', 'img__date: 1 September 2026']);
+  assert.deepEqual(lines.filter((line) => line.startsWith('img__floor')), ['img__floor: Floor 1', 'img__floor: Floor 2', 'img__floor: Floor 3']);
+  assert.ok(lines.includes('img__caption: Floor 1: 5 rooms, 2 exits, stairs A.'), lines.join(' / '));
+  // each floor is the print's own plan, placed at IMAGE_CELL pixels a cell, centred, top to bottom without overlapping
+  const placed = Array.from(image.svg.matchAll(/<svg class="plan" xmlns="http:\/\/www.w3.org\/2000\/svg" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" viewBox="([^"]+)"/g)).map((match) => match.slice(1, 5).map(Number).concat([match[5]]));
+  assert.equal(placed.length, 3);
+  let bottom = 0;
+  project.building.floors.forEach((floor, index) => {
+    const plan = planSvg(project, floor);
+    const [x, y, width, height, viewBox] = placed[index];
+    assert.equal(viewBox, /viewBox="([^"]+)"/.exec(plan.svg)[1], floor.name + ': cropped as the print is');
+    assert.ok(Math.abs(width - plan.width * IMAGE_CELL) < 0.01 && Math.abs(height - plan.height * IMAGE_CELL) < 0.01, floor.name + ': ' + width + ' by ' + height);
+    assert.ok(Math.abs(x + width / 2 - image.width / 2) < 0.01, floor.name + ': centred');
+    assert.ok(y > bottom, floor.name + ' starts under what is above it');
+    bottom = y + height;
+  });
+  assert.ok(bottom < image.height, 'the last floor is inside the picture');
+  const widest = Math.max(...project.building.floors.map((floor) => planSvg(project, floor).width * IMAGE_CELL));
+  assert.equal(image.width, Math.ceil(Math.max(640, widest) + 64), 'as wide as the widest plan and its margins');
+  // on light paper, with nothing of the editor and no traced image
+  assert.ok(image.svg.includes('<rect width="100%" height="100%" fill="#ffffff"/>'));
+  assert.doesNotMatch(image.svg, /selection|selected|hover|cursor|handle|preview|<image/i);
+  assert.deepEqual(tagsOf(image.svg).filter((tag) => !IMAGE_TAGS.has(tag)), []);
+});
+
+test('one floor is that floor alone under "Floor plan: its name"; the picture is as wide as its plan, and never under 640 pixels', () => {
+  const project = school();
+  const floor = project.building.floors[1];
+  const image = planImage(project, { ...NOW, floorId: floor.id });
+  assert.deepEqual(image.floors.map((each) => each.id), [floor.id]);
+  assert.ok(image.svg.includes('>Floor plan: ' + esc(floor.name) + '</text>'));
+  assert.equal(countOf(image.svg, 'class="img img__floor"'), 0, 'no floor line over a lone floor: the heading names it');
+  assert.equal(countOf(image.svg, '<svg class="plan"'), 1);
+  assert.equal(image.width, Math.ceil(Math.max(640, planSvg(project, floor).width * IMAGE_CELL) + 64));
+  const wide = planProject([['#'.repeat(60), '#' + '.'.repeat(58) + '#', '#'.repeat(60)]]);
+  assert.equal(planImage(wide, { floorId: wide.building.floors[0].id }).width, Math.ceil(60.5 * IMAGE_CELL + 64), 'a wide floor sets the width');
+  const empty = planProject([['.....']]);
+  const nothing = planImage(empty, { floorId: empty.building.floors[0].id });
+  assert.equal(nothing.drawn, false);
+  assert.ok(nothing.svg.includes('>Nothing is drawn on Floor 1 yet.</text>'));
+});
+
+test('the picture carries the faces it is given as data, and nothing else: no address, no file of its own', () => {
+  const project = school();
+  const fonts = [
+    { family: 'Barlow Semi Condensed', weight: 600, url: FACE },
+    { family: 'Public Sans', weight: 700, url: FACE },
+    { family: 'Public Sans', weight: 400, url: 'https://fonts.example/public-sans.woff2' },
+    { family: 'Public Sans', weight: 500, url: FACE + ') format("woff2"); } svg { display: none } @font-face { src: url(x' },
+    { family: 'Bad"; } svg { display: none } x { a: "', weight: 500, url: FACE },
+    { family: 'Public Sans', weight: '600', url: FACE },
+  ];
+  const { svg } = planImage(project, { ...NOW, fonts });
+  assert.equal(countOf(svg, '@font-face'), 2, 'the two faces that are woff2 data, with a plain family and a whole weight');
+  assert.ok(svg.includes('@font-face { font-family: "Barlow Semi Condensed"; font-weight: 600; font-style: normal; src: url(' + FACE + ') format("woff2"); }'));
+  assert.equal(countOf(svg, 'url('), 2);
+  assert.doesNotMatch(svg, /https?:\/\/(?!www\.w3\.org\/2000\/svg)/, 'no address but the SVG namespace');
+  assert.doesNotMatch(svg, /display: none/);
+  assert.equal(countOf(planImage(project, NOW).svg, '@font-face'), 0, 'with none given the picture names the faces and carries none');
+});
+
+test('every name in the picture is text, escaped, and the picture is still one SVG', () => {
+  const { project, made } = hostileSchool();
+  for (const floorId of ['all', project.building.floors[0].id]) {
+    const { svg } = planImage(project, { ...NOW, floorId });
+    for (const { what, value } of made) assert.equal(countOf(svg, value), 0, 'the ' + what + ' name ' + value + ' is in the picture as typed');
+    for (const raw of HOSTILE) assert.equal(countOf(svg, raw), 0, raw);
+    assert.ok(svg.includes(esc(project.settings.schoolName)), 'the school, escaped');
+    assert.deepEqual(tagsOf(svg).filter((tag) => !IMAGE_TAGS.has(tag)), [], floorId + ': a tag the picture has no use for');
+    assert.equal(countOf(svg, '<svg'), countOf(svg, '</svg>'));
+    assert.equal(countOf(svg, '<style>'), 1);
+    assert.equal(countOf(svg, '</style>'), 1);
+    assert.doesNotMatch(svg.replace(/="[^"]*"/g, ''), /<[^>]*\son[a-z]+\s*=/i, 'an event handler attribute');
+  }
+});
+
+test('a long school name is set smaller to stay inside the picture, down to 8 pixels', () => {
+  const project = school();
+  project.settings.schoolName = 'Marrowby '.repeat(40).trim();
+  const { svg, width } = planImage(project, NOW);
+  const size = Number(/class="img img__school"[^>]*font-size="([\d.]+)"/.exec(svg)[1]);
+  assert.ok(size < 16 && size >= 8, String(size));
+  project.settings.schoolName = 'Marrowby Middle School';
+  assert.equal(Number(/class="img img__school"[^>]*font-size="([\d.]+)"/.exec(planImage(project, NOW).svg)[1]), 16, 'a name that fits is set at 16');
+  assert.ok(width >= 640);
+});
+
+test('the picture\'s plan looks as the printed plan does: print.css\'s plan rules with the light theme written in', () => {
+  const tokens = readFileSync(path.join(TOOL_DIR, 'ui', 'tokens.css'), 'utf8');
+  const light = /\[data-theme="light"\],\s*\[data-theme="auto"\]\s*\{([^}]*)\}/.exec(tokens)[1];
+  const root = /:root\s*\{([^}]*)\}/.exec(tokens)[1];
+  const token = (name) => {
+    const found = new RegExp('--' + name + ':\\s*([^;]+);').exec(light) || new RegExp('--' + name + ':\\s*([^;]+);').exec(root);
+    assert.ok(found, '--' + name);
+    return found[1].trim();
+  };
+  const css = readFileSync(path.join(TOOL_DIR, 'ui', 'print.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const printed = new Map();
+  for (const match of css.matchAll(/([^{}@]+)\{([^{}]*)\}/g)) {
+    for (const selector of match[1].split(',').map((each) => each.trim())) {
+      if (!/^\.print-doc \.plan(\b|__)/.test(selector) || /^\.print-doc \.plan-/.test(selector)) continue;
+      const declarations = match[2].split(';').map((each) => each.trim()).filter(Boolean).map((each) => each.replace(/var\(--([a-z0-9-]+)\)/g, (all, name) => token(name)).replace(/\s+/g, ' '));
+      const own = selector.replace(/^\.print-doc /, '');
+      // .plan's display, width and height lay it out on a sheet; on a nested <svg> they would undo its placing
+      printed.set(own, (printed.get(own) || []).concat(own === '.plan' ? declarations.filter((each) => !/^(display|width|height):/.test(each)) : declarations));
+    }
+  }
+  const written = new Map(PLAN_STYLE.map(([selector, rules]) => [selector, rules.split(';').map((each) => each.trim().replace(/\s+/g, ' '))]));
+  assert.deepEqual([...written.keys()].sort(), [...printed.keys()].sort(), 'the same parts of the plan');
+  for (const [selector, rules] of printed) assert.deepEqual(written.get(selector), rules, selector);
 });

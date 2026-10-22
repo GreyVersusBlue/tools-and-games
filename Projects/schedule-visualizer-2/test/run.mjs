@@ -128,6 +128,7 @@ export const GROUPS = {
     'browser/project-file.mjs', // SV2-13
     'browser/worker.mjs', // SV2-16
     'browser/print.mjs', // SV2-14
+    'browser/building-files.mjs', // SV2-32c
     'browser/staff-shell.mjs', // SV2-20
     'browser/staff-views-a.mjs', // SV2-21
     'browser/staff-views-b.mjs', // SV2-22

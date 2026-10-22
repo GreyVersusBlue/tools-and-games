@@ -215,6 +215,7 @@ row names a file it does not run.
 | `test/browser/project-file.mjs` | The Project file card: export, import, building only, schedule only |
 | `test/browser/worker.mjs` | The derived pipeline in a real worker |
 | `test/browser/print.mjs` | The print preview sheet |
+| `test/browser/building-files.mjs` | The Rooms tab's files: the floor plan as a PNG, the room list as CSV |
 | `test/browser/staff-shell.mjs` | The staff browser's frame: unlock, search, addresses, notices, from a file on disk |
 | `test/browser/staff-views-a.mjs` | The teacher, group, room, building map and staffing pages |
 | `test/browser/staff-views-b.mjs` | Free right now, Where right now, Common planning, Coverage, the substitute plan, Directions |
