@@ -184,10 +184,19 @@ export async function openDatabases(options) {
   // autosave's 600 ms), and the image is an ordinary one again, which the
   // next sweep keeps only if something names it. A put the save did not
   // follow (the save began first) is still held. Map of id -> the put's
-  // number, against `puts`.
+  // number, against `puts`. A put is numbered when its transaction completes
+  // (SV2-28d): until then it is Infinity, which no save follows and no save
+  // releases, so a save begun while the bytes are still being written can
+  // never count them as done. `flying` counts the puts of an id in flight.
   const fresh = new Map();
+  const flying = new Map();
   let puts = 0;
   liveFresh.add(fresh);
+  // The images the session holds, as the last save was given them, for the
+  // save made as the page is left (which is given none).
+  let lastHeld = null;
+  // Saves begun and not yet complete or refused.
+  let saving = 0;
   // The image ids of the project as last saved, to know when a sweep is due.
   let savedImageIds = null;
 
@@ -222,6 +231,7 @@ export async function openDatabases(options) {
       const sweep = savedImageIds === null || !sameIds(names, savedImageIds);
       // the puts this save follows: every one numbered up to here
       const follows = puts;
+      if (extra && extra.images) lastHeld = extra.images;
       let stamp = clock().toISOString();
       if (typeof known === 'string' && stamp <= known) stamp = new Date(Date.parse(known) + 1).toISOString();
       const record = { savedAt: stamp, project, exportedAt: extra && extra.exportedAt ? extra.exportedAt : null };
@@ -248,27 +258,47 @@ export async function openDatabases(options) {
         reject(error);
         return;
       }
+      saving += 1;
       tx.oncomplete = () => {
+        saving -= 1;
         savedImageIds = names;
-        for (const [id, put] of Array.from(fresh)) if (names.includes(id) || put <= follows) fresh.delete(id);
+        for (const [id, put] of Array.from(fresh)) if (put !== Infinity && (names.includes(id) || put <= follows)) fresh.delete(id);
         resolve(stamp);
       };
       tx.onerror = (event) => event.preventDefault();
-      tx.onabort = () => reject(refusal || tx.error || new Error('The browser stopped the write.'));
+      tx.onabort = () => {
+        saving -= 1;
+        reject(refusal || tx.error || new Error('The browser stopped the write.'));
+      };
     });
   }
 
   // Save as the page is being left. A page that is going gets to start a
   // write but not to wait for an answer, so this one does not read first: the
-  // put is issued here and now, with no check of what is stored and no sweep.
-  // Only the editing tab calls it. Returns { savedAt, done }: the stamp at
-  // once, and a promise for the commit that the page may never see.
+  // put is issued here and now, with no check of what is stored and no sweep,
+  // so it spares every image, fresh, in flight or otherwise. Only the editing
+  // tab calls it. Returns { savedAt, done }: the stamp at once, and a promise
+  // for the commit that the page may never see.
+  //
+  // Its backstop (SV2-28d), what restoreImages is to saveProject: an image
+  // the project names that an earlier save may have swept (an undo since)
+  // is written again in the same transaction, from the images the session
+  // holds (`extra.images`, else those the last save was given). Without a
+  // read first it cannot ask what is stored, so it writes each one that is
+  // not known to be there: known means named by the last save to complete
+  // while no other save is under way, or put in this session and not yet
+  // released (fresh, done or in flight; a put in flight was begun first, so
+  // it commits first).
   function saveProjectLeaving(project, known, extra) {
     let stamp = clock().toISOString();
     if (typeof known === 'string' && stamp <= known) stamp = new Date(Date.parse(known) + 1).toISOString();
     if (hooks.failWrite) return { savedAt: null, done: Promise.reject(new Error(hooks.failWrite)) };
-    const tx = main.transaction(PROJECT_STORE, 'readwrite');
+    const held = extra && extra.images ? extra.images : lastHeld;
+    const stored = new Set(saving === 0 && savedImageIds ? savedImageIds : []);
+    const missing = held ? imageIdsOf(project).filter((id) => held.has(id) && !stored.has(id) && !fresh.has(id)) : [];
+    const tx = main.transaction(missing.length > 0 ? [PROJECT_STORE, IMAGE_STORE] : [PROJECT_STORE], 'readwrite');
     tx.objectStore(PROJECT_STORE).put({ savedAt: stamp, project, exportedAt: extra && extra.exportedAt ? extra.exportedAt : null }, CURRENT_KEY);
+    for (const id of missing) tx.objectStore(IMAGE_STORE).put(held.get(id), id);
     const done = committed(tx);
     commitNow(tx);
     return { savedAt: stamp, done };
@@ -318,12 +348,25 @@ export async function openDatabases(options) {
   // ------------------------------------------------------------ images
 
   // Keep an image's bytes. `value` is { blob, type, width, height }.
+  // Fresh from now, and numbered only once the put has committed (or
+  // failed): a save that begins while it is in flight does not follow it.
   async function putImage(id, value) {
-    puts += 1;
-    fresh.set(id, puts);
-    const tx = main.transaction(IMAGE_STORE, 'readwrite');
-    tx.objectStore(IMAGE_STORE).put(value, id);
-    await committed(tx);
+    flying.set(id, (flying.get(id) || 0) + 1);
+    fresh.set(id, Infinity);
+    try {
+      const tx = main.transaction(IMAGE_STORE, 'readwrite');
+      tx.objectStore(IMAGE_STORE).put(value, id);
+      await committed(tx);
+    } finally {
+      const left = flying.get(id) - 1;
+      if (left > 0) {
+        flying.set(id, left);
+      } else {
+        flying.delete(id);
+        puts += 1;
+        fresh.set(id, puts);
+      }
+    }
   }
 
   function getImage(id) {
