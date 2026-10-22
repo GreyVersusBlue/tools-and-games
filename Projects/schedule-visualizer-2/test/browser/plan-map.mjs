@@ -699,7 +699,10 @@ const paintedUnderBox = (page, name) => page.evaluate((which) => {
     const px = [data[i], data[i + 1], data[i + 2]];
     if (!allowed.some((ok) => ok.every((value, k) => Math.abs(value - px[k]) <= 6))) painted += 1;
   }
-  return { painted, fit: map.stage.dataset.fit, under: map.stage.style.getPropertyValue('--mov-under'), top: map.root.scrollTop, zoomTop: z.top - c.top, coarse: matchMedia('(pointer: coarse)').matches };
+  // and the floors, each with its name row (2 cells), that Fit left off the stage (SV2-32a)
+  const size = 24 * map.view.zoom;
+  const off = map.world.slots.filter((slot) => map.view.x + slot.x * size < -0.01 || map.view.y + (slot.y - 2) * size < -0.01 || map.view.x + (slot.x + slot.w) * size > map.view.width + 0.01 || map.view.y + (slot.y + slot.h) * size > map.view.height + 0.01).map((slot) => slot.floor.name);
+  return { painted, fit: map.stage.dataset.fit, clearSaid: map.stage.dataset.fitClear, fitIn: map.stage.dataset.fitIn, off, under: map.stage.style.getPropertyValue('--mov-under'), top: map.root.scrollTop, zoomTop: z.top - c.top, coarse: matchMedia('(pointer: coarse)').matches };
 }, name);
 
 // Fit pressed, and the map drawn since.
@@ -713,7 +716,7 @@ async function pressFit(page, name) {
   await page.waitForFunction((which, n) => Number(globalThis.planMaps[which].map.canvas.dataset.drawn) > n, { timeout: 10000 }, name, was);
 }
 
-test('SV2-72c2 item 1: on a phone on its side with a sticky foot over the stage, Fit clears the zoom buttons where they are drawn: lifted over the foot at the section\'s top, at rest at its end', async () => {
+test('SV2-72c2 item 1, SV2-32a: on a phone on its side with a sticky foot over the stage, Fit keeps every floor on the stage: the zoom buttons over the floors where they are lifted over the foot at the section\'s top and no clear band holds the floors, clear of them at rest at its end', async () => {
   const session = await openPlanner({ width: 844, height: 390, mobile: true, hash: '#scenarios', theme: 'light' });
   const page = session.page;
   try {
@@ -754,7 +757,16 @@ test('SV2-72c2 item 1: on a phone on its side with a sticky foot over the stage,
     assert.equal(top.under, '40px', 'the buttons are not lifted 40 px over the foot: the case tests nothing: ' + JSON.stringify({ shrunk, top }));
     assert.equal(top.coarse, true, 'the page is not under a finger');
     assert.ok(parseFloat(top.under) >= 24, 'the zoom buttons are not lifted over the foot: the case tests nothing: ' + JSON.stringify(top));
-    assert.equal(top.painted, 0, 'painted cells under the zoom buttons lifted over the foot at Fit: ' + JSON.stringify(top));
+    // SV2-32a moved this: the floors cannot be whole above the foot here, and
+    // no band clear of the lifted buttons holds them whole on the stage, so
+    // Fit is the plain fit, every floor on the stage and the buttons over
+    // some of it, said by data-fit-clear. It asserted the buttons clear, and
+    // what kept them clear was the band beside them with the floors run off
+    // the stage's right edge. No longer covered here: the buttons clear of
+    // every painted cell at the section's top on this stage.
+    assert.equal(top.fitIn, 'stage', 'the floors were fitted above the foot: the case tests nothing: ' + JSON.stringify(top));
+    assert.deepEqual(top.off, [], 'floors off the stage at Fit with the zoom buttons lifted over the foot: ' + JSON.stringify(top));
+    assert.equal(top.painted > 0 ? top.clearSaid : 'false', 'false', 'painted cells under the lifted zoom buttons, and the stage says they are clear: ' + JSON.stringify(top));
     // scrolled to its end the buttons rest at the stage's foot; Fit pressed there clears them where they rest
     await page.evaluate(() => {
       const { map } = globalThis.planMaps['lab-lift'];
@@ -767,6 +779,7 @@ test('SV2-72c2 item 1: on a phone on its side with a sticky foot over the stage,
     await pressFit(page, 'lab-lift');
     const end = await paintedUnderBox(page, 'lab-lift');
     assert.equal(end.painted, 0, 'painted cells under the zoom buttons at rest: ' + JSON.stringify(end));
+    assert.deepEqual(end.off, [], 'floors off the stage at Fit with the zoom buttons at rest: ' + JSON.stringify(end));
     await unmount(page, 'lab-lift');
     assert.deepEqual(session.problems().errors, []);
   } finally {

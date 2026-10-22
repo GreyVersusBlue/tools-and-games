@@ -361,32 +361,47 @@ export function createPlanMap(asked) {
     const same = chosenBefore && world && world.measured && world.slots.length === floors.length && world.slots.every((slot, at) => slot.floor.id === floors[at].id);
     // both arrangements laid out once, for bestLayout and the one taken
     const both = { side: layoutFloors(floors, 'side'), stacked: layoutFloors(floors, 'stacked') };
-    const how = value === 'side' || value === 'stacked' ? value : bestLayout(floors, view.width, view.height, same ? world.how : undefined, both);
-    const next = both[how];
-    next.measured = view.width > 0 && view.height > 0;
-    const nextKey = JSON.stringify([next.how, next.slots.map((slot) => [slot.floor.id, slot.x, slot.y, slot.w, slot.h, slot.box.x, slot.box.y])]);
-    // the floors' views are kept by the slot, for the renderer
-    for (const slot of next.slots) slot.view = createViewport();
-    if (nextKey !== worldKey) {
-      // a map of another shape: an arrangement the window chose is fitted again
-      if (worldKey === '' || value === 'auto') fitted = true;
-      worldKey = nextKey;
+    const chosen = value === 'side' || value === 'stacked';
+    const how = chosen ? value : bestLayout(floors, view.width, view.height, same ? world.how : undefined, both);
+    const take = (each) => {
+      const next = both[each];
+      next.measured = view.width > 0 && view.height > 0;
+      const nextKey = JSON.stringify([next.how, next.slots.map((slot) => [slot.floor.id, slot.x, slot.y, slot.w, slot.h, slot.box.x, slot.box.y])]);
+      // the floors' views are kept by the slot, for the renderer
+      for (const slot of next.slots) if (!slot.view) slot.view = createViewport();
+      if (nextKey !== worldKey) {
+        // a map of another shape: an arrangement the window chose is fitted again
+        if (worldKey === '' || value === 'auto') fitted = true;
+        worldKey = nextKey;
+      }
+      world = next;
+      // the stage's least follows the floors' box (stageLeast): the room is
+      // set first, so the scroll below, the section's judgement and the fit
+      // are all of the stage this layout is given, and a change of project
+      // scrolls the section once, not once for the old stage and again when
+      // the new one is measured (SV2-72i)
+      if (parts) room();
+      // the section scrolled clear of the foot, where it is to be
+      // (clearFoot), so a section's judgement of the fit (Movement's legend)
+      // and the fit itself are of the section as the reader will see it, not
+      // of its top before the map's own scroll (SV2-72h: at 900 by 500 with
+      // touch the legend docked at the top and undocked once scrolled)
+      clearFoot();
+    };
+    take(how);
+    // The window's choice judged again against what Fit will draw (SV2-32a):
+    // with the sticky foot as it lies once the section is scrolled clear of
+    // it and the zoom box where it is lifted to, the layout taken kept as
+    // the one on the map. Whether a layout is on the stage at all is the
+    // same either way (chooseFit), so this turns only to a layout drawn
+    // whole above the foot, and larger, where the one taken lies under it;
+    // the turn is made once, before anything is told of the layout.
+    if (!chosen && view.width > 0 && view.height > 0) {
+      const again = bestLayout(floors, view.width, view.height, how, both, { foot: footOver(), corner: zoomCorner(view.height) });
+      if (again !== how) take(again);
     }
-    world = next;
     // the layout on the map, for a test to count its turns
-    stage.dataset.layout = next.how;
-    // the stage's least follows the floors' box (stageLeast): the room is
-    // set first, so the scroll below, the section's judgement and the fit
-    // are all of the stage this layout is given, and a change of project
-    // scrolls the section once, not once for the old stage and again when
-    // the new one is measured (SV2-72i)
-    if (parts) room();
-    // the section scrolled clear of the foot, where it is to be
-    // (clearFoot), so a section's judgement of the fit (Movement's legend)
-    // and the fit itself are of the section as the reader will see it, not
-    // of its top before the map's own scroll (SV2-72h: at 900 by 500 with
-    // touch the legend docked at the top and undocked once scrolled)
-    clearFoot();
+    stage.dataset.layout = world.how;
     for (const fn of layoutFns) fn();
     if (fitted) fit(true);
   }
