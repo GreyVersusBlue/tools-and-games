@@ -38,6 +38,7 @@ import { detachRooms, replaceProject } from '../../engine/actions.js';
 import { newProject } from '../../engine/schema.js';
 import { DEFAULT_PASSCODE } from '../../engine/publish-defaults.js';
 import { pageSnapshots, AUTO_SNAPSHOT_NAMES, READ_ONLY_SENTENCE } from '../../storage/snapshots.js';
+import { keepNeverShow } from '../help/progress.js';
 
 function quote(text) {
   return '“' + text + '”';
@@ -93,9 +94,10 @@ export function clearedSchedule(project) {
   return { ...project, building: { ...project.building, floors }, groups: [], teachers: [], accepted: [], scenario: null };
 }
 
-// An empty project in place of this one. Only the theme comes across.
+// An empty project in place of this one. Only the theme comes across, and
+// "Don't show this again" for Getting started (ui/help/progress.js).
 export function freshProject(project, ids, clock, paperSize) {
-  const next = newProject(ids, clock, { paperSize, passcode: DEFAULT_PASSCODE });
+  const next = keepNeverShow(project, newProject(ids, clock, { paperSize, passcode: DEFAULT_PASSCODE }));
   next.settings.theme = project.settings.theme;
   return next;
 }

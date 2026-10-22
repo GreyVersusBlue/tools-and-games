@@ -37,6 +37,7 @@ import { buildGraph } from '../../engine/graph.js';
 import { ActionError, addScenarioChange, applyScenario, discardScenario } from '../../engine/actions.js';
 import { changeWords } from '../../engine/scenario.js';
 import { nameOfRoom } from '../../engine/schema.js';
+import { snapshotAfter, snapshotRoom, undoForStep } from '../../storage/snapshots.js';
 import { scenarioView, firstLine, barWords, cancelled, cancelledSentence, applySummary } from './model.js';
 import { changesPanel } from './changes.js';
 import { formsPanel, freshForm } from './forms.js';
@@ -69,6 +70,22 @@ function words(parts) {
 
 function quote(text) {
   return '“' + text + '”';
+}
+
+// Why no snapshot would be kept now, as the end of a sentence, or null when
+// one would (SV2-28d): asked before the Apply question, so that it never
+// promises a snapshot the device will refuse. A tab whose saves are failing,
+// or that stopped saving after another tab's save, cannot save first, and
+// the snapshot is refused for that ('not-saved', SV2-28e).
+async function noSnapshotBecause(ctx) {
+  if (ctx.storage && ctx.storage.state.readOnly) return 'this tab is read-only while the project is open in another tab.';
+  const save = ctx.storage ? ctx.storage.state.save : null;
+  if (save === 'conflict') return 'another tab saved this project after this tab read it, so this tab has stopped saving, and a snapshot is kept only of a saved project.';
+  if (save === 'failed') return 'the project could not be saved on this device just now, and a snapshot is kept only of a saved project.';
+  const room = await snapshotRoom();
+  if (room.error) return room.error.charAt(0).toLowerCase() + room.error.slice(1);
+  if (room.full) return 'this device already keeps ' + room.limit + ' snapshots, the most it keeps, and none is replaced to make room.';
+  return null;
 }
 
 function first(project) {
@@ -324,6 +341,13 @@ export const section = {
       const summary = applySummary(project, current);
       const n = summary.changes.length;
       const skipped = summary.skipped.length;
+      const slots = count(summary.slots, (project.settings.periodWord || 'Period').toLowerCase());
+      const none = summary.snapshot ? await noSnapshotBecause(ctx) : null;
+      if (gone) return;
+      const readOnly = Boolean(ctx.storage && ctx.storage.state.readOnly);
+      const snapshotLine = none === null
+        ? 'It changes ' + slots + ' of the groups\' days, so a snapshot of the project as it is now is kept as well, and can be restored from Snapshots in the Project section.'
+        : 'It changes ' + slots + ' of the groups\' days, which would keep a snapshot of the project as it is now, but none will be kept: ' + none + (readOnly ? '' : ' Undo still brings the schedule back while this tab stays open.');
       const body = [
         h('p', null, n === 0 ? 'Nothing in this scenario applies to the schedule as it is now. Applying it closes it and changes no slot.' : (n === 1 ? 'This change goes' : 'These ' + n + ' changes go') + ' into the real schedule:'),
         n > 0 ? h('ul', { class: 'scn-summary__list', data: { part: 'applies' } }, summary.changes.map((said) => h('li', { dir: 'auto' }, words(said.parts)))) : null,
@@ -332,6 +356,7 @@ export const section = {
         skipped > 0 ? h('ul', { class: 'scn-summary__list', data: { part: 'skipped' } }, summary.skipped.map((text) => h('li', { dir: 'auto' }, text))) : null,
         summary.added.length > 0 || summary.removed.length > 0 ? h('p', { data: { part: 'groups' } }, 'Groups only in one of the two files are not added or removed: a scenario changes rooms, not the list of groups.') : null,
         h('p', null, 'It is one step: Undo brings back the schedule and the scenario together.'),
+        summary.snapshot ? h('p', { data: { part: 'snapshot' } }, snapshotLine) : null,
       ];
       const dialog = ctx.openDialog({
         title: 'Apply the scenario ' + quote(current.name) + '?',
@@ -346,18 +371,37 @@ export const section = {
       });
       const answer = await dialog.closed;
       if (answer !== 'apply' || gone) return;
+      // what is applied is reconciled again now: the question may have stood open
+      const before = store.project;
+      const now = scenarioView(before);
+      const big = now ? applySummary(before, now).snapshot : false;
       if (!run(applyScenario, {})) return;
+      // the Undo the messages offer takes back this apply or nothing (SV2-28d)
+      const step = undoForStep(store, ctx.undo);
       // the dialog gave the focus back to Apply, which the drawing has just
       // hidden: it goes on to the start field now, never by way of the page
       changes.focusName();
       const text = n === 0 ? 'Closed ' + quote(current.name) + ': no change of it applied, and the schedule is as it was.' : 'Applied ' + quote(current.name) + ': ' + count(n, 'change') + ' made to the schedule.';
       // Undo from the message brings the scenario back, and the focus to its
       // name field, its first control (the message and its button are gone)
-      ctx.toast({ text, action: { label: 'Undo', run: () => {
-        ctx.undo();
-        if (!gone) changes.focusName();
-      } } });
+      const offer = { label: 'Undo', run: () => {
+        if (step.run() && !gone) changes.focusName();
+      } };
+      // said at once, as every change is, whatever the snapshot does after
+      ctx.toast({ text, action: offer });
       ctx.announce(text);
+      // a big apply keeps a snapshot of the project from before it, after
+      // the change is made, so storage cannot hold it up; when it settles the
+      // message says whether it is there, with the Undo again only while the
+      // apply is still the step Undo takes back. data-snapshot says where
+      // that stands, for tests ('taking', 'taken', 'not-taken')
+      if (big) {
+        element.dataset.snapshot = 'taking';
+        const kept = await snapshotAfter('scenario', 'Before applying the scenario ' + quote(current.name), before);
+        element.dataset.snapshot = kept.taken ? 'taken' : 'not-taken';
+        if (step.current) ctx.toast({ text: text + ' ' + kept.said, action: offer });
+        else ctx.toast({ text: kept.alone });
+      }
     }
 
     // ---- Discard…: asks first
@@ -388,11 +432,12 @@ export const section = {
       headline.hidden = nothing;
       plan.showFloors(!nothing);
       if (nothing) {
+        empty.dataset.empty = f.rooms === 0 ? 'scenarios-rooms' : 'scenarios-groups';
         empty.replaceChildren(intro({
           headline: HEADLINE,
           first: first(project),
           facts: facts(project),
-          actions: [h('button', { type: 'button', class: 'btn btn--primary', data: { action: f.rooms === 0 ? 'to-building' : 'to-schedule' }, on: { click: () => ctx.navigate(f.rooms === 0 ? '#building' : '#schedule/groups') } }, f.rooms === 0 ? 'Go to the building' : 'Go to the schedule')],
+          actions: [h('button', { type: 'button', class: 'btn btn--primary', data: { action: f.rooms === 0 ? 'to-building' : 'to-schedule' }, on: { click: () => ctx.navigate(f.rooms === 0 ? '#building' : '#schedule/groups') } }, f.rooms === 0 ? 'Go to the building' : 'Go to Groups')],
         }));
         if (inspectorShown) ctx.setInspector(null);
         inspectorShown = false;

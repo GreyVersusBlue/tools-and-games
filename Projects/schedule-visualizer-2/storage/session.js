@@ -522,6 +522,9 @@ export function startStorage(ctx, options) {
   // The other tab has gone: take up its last save and start editing.
   async function becomeEditor() {
     if (db) {
+      // what the images store held when this tab last saved is not known now:
+      // the other tab may have swept an image this tab's project names (SV2-28e)
+      db.forgetStored();
       try {
         const raw = await db.readCurrent();
         if (raw !== undefined) {

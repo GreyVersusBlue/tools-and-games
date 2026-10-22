@@ -30,8 +30,9 @@ export const CURRENT_KEY = 'current';
 export const RECOVERY_KEEP = 8;
 
 // For the tests. `failWrite` set to a sentence makes every save of the
-// project fail with it, the way a full disk would.
-export const hooks = { failWrite: null };
+// project fail with it, the way a full disk would; `failImagePut` set true
+// makes every putImage's transaction abort, the way a full disk would.
+export const hooks = { failWrite: null, failImagePut: false };
 
 // The saved record is newer than the one this tab last read or wrote: another
 // tab saved in between. Nothing was written.
@@ -177,10 +178,37 @@ export async function openDatabases(options) {
 
   // Image ids written in this session that no saved project names yet. A
   // save that runs before the project names them must not sweep them away.
-  const fresh = new Set();
+  // Each is held from its putImage until a save that names it, or until a
+  // save started after the put completes without naming it (SV2-28b): by
+  // then the project the put was for has been on screen and saved, or was
+  // undone before it ever was (a snapshot restored and undone inside the
+  // autosave's 600 ms), and the image is an ordinary one again, which the
+  // next sweep keeps only if something names it. A put the save did not
+  // follow (the save began first) is still held. Map of id -> the put's
+  // number, against `puts`. A put is numbered when its transaction completes
+  // (SV2-28d): until then it is Infinity, which no save follows and no save
+  // releases, so a save begun while the bytes are still being written can
+  // never count them as done. `flying` counts the puts of an id in flight.
+  // `landed` (SV2-28e) holds the fresh ids a put of which committed: a put
+  // that failed is numbered too, so that saves release it, but its bytes
+  // are not known to be stored.
+  const fresh = new Map();
+  const flying = new Map();
+  const landed = new Set();
+  let puts = 0;
   liveFresh.add(fresh);
+  // The images the session holds, as the last save was given them, for the
+  // save made as the page is left (which is given none).
+  let lastHeld = null;
+  // Saves begun and not yet complete or refused.
+  let saving = 0;
   // The image ids of the project as last saved, to know when a sweep is due.
+  // null when nothing is known of the images store (no save yet, or since
+  // forgetStored()): the next save sweeps, which puts back every image the
+  // project names that the store lacks. `era` counts forgetStored() calls,
+  // so a save begun before one does not set it again when it completes.
   let savedImageIds = null;
+  let era = 0;
 
   function needRecovery() {
     if (!recovery) throw recoveryError || new Error('This device is not keeping recovery points.');
@@ -211,13 +239,17 @@ export async function openDatabases(options) {
       }
       const names = imageIdsOf(project).sort();
       const sweep = savedImageIds === null || !sameIds(names, savedImageIds);
+      const begunIn = era;
+      // the puts this save follows: every one numbered up to here
+      const follows = puts;
+      if (extra && extra.images) lastHeld = extra.images;
       let stamp = clock().toISOString();
       if (typeof known === 'string' && stamp <= known) stamp = new Date(Date.parse(known) + 1).toISOString();
       const record = { savedAt: stamp, project, exportedAt: extra && extra.exportedAt ? extra.exportedAt : null };
       let refusal = null;
       let tx;
       try {
-        tx = main.transaction(sweep ? [PROJECT_STORE, SNAPSHOT_STORE, IMAGE_STORE] : [PROJECT_STORE], 'readwrite');
+        tx = main.transaction(sweep ? [PROJECT_STORE, SNAPSHOT_STORE, QUARANTINE_STORE, IMAGE_STORE] : [PROJECT_STORE], 'readwrite');
         const store = tx.objectStore(PROJECT_STORE);
         const held = store.get(CURRENT_KEY);
         held.onsuccess = () => {
@@ -230,34 +262,65 @@ export async function openDatabases(options) {
           store.put(record, CURRENT_KEY);
           if (sweep) {
             restoreImages(tx, names, extra && extra.images);
-            sweepImages(tx, names);
+            sweepUnnamedImages(tx, names);
           }
         };
       } catch (error) {
         reject(error);
         return;
       }
+      saving += 1;
       tx.oncomplete = () => {
-        savedImageIds = names;
-        for (const id of names) fresh.delete(id);
+        saving -= 1;
+        if (begunIn === era) savedImageIds = names;
+        for (const [id, put] of Array.from(fresh)) {
+          if (put !== Infinity && (names.includes(id) || put <= follows)) {
+            fresh.delete(id);
+            landed.delete(id);
+          }
+        }
         resolve(stamp);
       };
       tx.onerror = (event) => event.preventDefault();
-      tx.onabort = () => reject(refusal || tx.error || new Error('The browser stopped the write.'));
+      tx.onabort = () => {
+        saving -= 1;
+        reject(refusal || tx.error || new Error('The browser stopped the write.'));
+      };
     });
   }
 
   // Save as the page is being left. A page that is going gets to start a
   // write but not to wait for an answer, so this one does not read first: the
-  // put is issued here and now, with no check of what is stored and no sweep.
-  // Only the editing tab calls it. Returns { savedAt, done }: the stamp at
-  // once, and a promise for the commit that the page may never see.
+  // put is issued here and now, with no check of what is stored and no sweep,
+  // so it spares every image, fresh, in flight or otherwise. Only the editing
+  // tab calls it. Returns { savedAt, done }: the stamp at once, and a promise
+  // for the commit that the page may never see.
+  //
+  // Its backstop (SV2-28d), what restoreImages is to saveProject: an image
+  // the project names that an earlier save may have swept (an undo since)
+  // is written again in the same transaction, from the images the session
+  // holds (`extra.images`, else those the last save was given). Without a
+  // read first it cannot ask what is stored, so it writes each one that is
+  // not known to be there: known means named by the last save to complete
+  // while no other save is under way (and since the last forgetStored()),
+  // or put in this session, committed and not yet released (SV2-28e: a put
+  // that failed, or is still in flight, is not known to be stored, and is
+  // written from what the session holds). Transactions over one store run
+  // in the order they were made, so whenever the project names an image put
+  // in this session the transaction takes in the images store as well: it
+  // then commits after any put of it still in flight, never before.
   function saveProjectLeaving(project, known, extra) {
     let stamp = clock().toISOString();
     if (typeof known === 'string' && stamp <= known) stamp = new Date(Date.parse(known) + 1).toISOString();
     if (hooks.failWrite) return { savedAt: null, done: Promise.reject(new Error(hooks.failWrite)) };
-    const tx = main.transaction(PROJECT_STORE, 'readwrite');
+    const held = extra && extra.images ? extra.images : lastHeld;
+    const stored = new Set(saving === 0 && savedImageIds ? savedImageIds : []);
+    const named = imageIdsOf(project);
+    const missing = held ? named.filter((id) => held.has(id) && !stored.has(id) && !(fresh.has(id) && landed.has(id))) : [];
+    const images = missing.length > 0 || named.some((id) => fresh.has(id));
+    const tx = main.transaction(images ? [PROJECT_STORE, IMAGE_STORE] : [PROJECT_STORE], 'readwrite');
     tx.objectStore(PROJECT_STORE).put({ savedAt: stamp, project, exportedAt: extra && extra.exportedAt ? extra.exportedAt : null }, CURRENT_KEY);
+    for (const id of missing) tx.objectStore(IMAGE_STORE).put(held.get(id), id);
     const done = committed(tx);
     commitNow(tx);
     return { savedAt: stamp, done };
@@ -275,26 +338,6 @@ export async function openDatabases(options) {
         if (there.result === undefined) images.put(held.get(id), id);
       };
     }
-  }
-
-  // Inside a write transaction over snapshots and images: delete every image
-  // that neither `named` (the project being saved) nor any snapshot names.
-  function sweepImages(tx, named) {
-    const keep = new Set(named);
-    const snapshots = tx.objectStore(SNAPSHOT_STORE).openCursor();
-    snapshots.onsuccess = () => {
-      const cursor = snapshots.result;
-      if (cursor) {
-        for (const id of imageIdsOf(cursor.value && cursor.value.project)) keep.add(id);
-        cursor.continue();
-        return;
-      }
-      const images = tx.objectStore(IMAGE_STORE);
-      const keys = images.getAllKeys();
-      keys.onsuccess = () => {
-        for (const id of keys.result) if (!keep.has(id) && !fresh.has(id)) images.delete(id);
-      };
-    };
   }
 
   // Move an unreadable saved record aside, in one transaction, so that it is
@@ -324,14 +367,41 @@ export async function openDatabases(options) {
     });
   }
 
+  // The tab is to edit again after a spell as read-only (SV2-28e): another
+  // tab may have swept or written images since, so nothing is known of the
+  // images store. The next save sweeps and puts back what the project names;
+  // the save made as the page is left counts none as stored, this session's
+  // own committed puts included (SV2-28f).
+  function forgetStored() {
+    savedImageIds = null;
+    landed.clear();
+    era += 1;
+  }
+
   // ------------------------------------------------------------ images
 
   // Keep an image's bytes. `value` is { blob, type, width, height }.
+  // Fresh from now, and numbered only once the put has committed (or
+  // failed): a save that begins while it is in flight does not follow it.
   async function putImage(id, value) {
-    fresh.add(id);
-    const tx = main.transaction(IMAGE_STORE, 'readwrite');
-    tx.objectStore(IMAGE_STORE).put(value, id);
-    await committed(tx);
+    flying.set(id, (flying.get(id) || 0) + 1);
+    fresh.set(id, Infinity);
+    try {
+      const tx = main.transaction(IMAGE_STORE, 'readwrite');
+      tx.objectStore(IMAGE_STORE).put(value, id);
+      if (hooks.failImagePut) tx.abort();
+      await committed(tx);
+      landed.add(id);
+    } finally {
+      const left = flying.get(id) - 1;
+      if (left > 0) {
+        flying.set(id, left);
+      } else {
+        flying.delete(id);
+        puts += 1;
+        fresh.set(id, puts);
+      }
+    }
   }
 
   function getImage(id) {
@@ -429,6 +499,7 @@ export async function openDatabases(options) {
     readCurrent,
     saveProject,
     saveProjectLeaving,
+    forgetStored,
     quarantineCurrent,
     quarantined,
     putImage,

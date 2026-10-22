@@ -95,7 +95,7 @@ export function mount(env) {
   function draw(project) {
     const addButton = button('Add a subject', add, { primary: true, key: 'subject-add', action: 'add-subject' });
     if (project.subjects.length === 0) {
-      fill(element, emptyState('No subjects yet. ' + WHAT, addButton));
+      fill(element, emptyState('No subjects yet. ' + WHAT + ' Add the first subject to begin.', addButton, 'subjects'));
       return;
     }
     const body = h('tbody', null, project.subjects.map((subject, index) => row(project, subject, index)));

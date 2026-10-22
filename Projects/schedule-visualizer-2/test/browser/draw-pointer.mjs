@@ -298,7 +298,7 @@ if (MAIN) {
     assert.equal(now.entries, 1, 'the project that was just put in place');
     assert.equal(await page.$eval('#empty-floor', (el) => el.hidden), false);
     assert.equal(await text('#empty-floor h1'), 'This is the building.');
-    assert.equal(await text('#empty-floor .intro__first'), 'Draw a corridor, then rooms along it.');
+    assert.equal(await text('#empty-floor .intro__first'), 'Draw each floor here: a corridor first, then rooms along it.');
     assert.deepEqual(await page.$$eval('#empty-floor button', (all) => all.map((button) => button.textContent)), [
       'Trace over a photo of your floor plan',
       'Change the size (Floor 1 is 40 × 30 squares)',

@@ -114,7 +114,8 @@ export const REFUSED_CHOICE = 'This browser did not keep that choice: it lasts u
 
 function first(project) {
   const one = periodWords(project.settings).one;
-  return 'It draws every group’s walk between one ' + one + ' and the next, so you can see where the corridors fill and who cannot make it in time. Draw the building and give a group its rooms first.';
+  const then = figures(project).rooms === 0 ? 'Draw the building and its rooms first.' : 'Add a group and give it its rooms first.';
+  return 'It draws every group’s walk between one ' + one + ' and the next, so you can see where the corridors fill and who cannot make it in time. ' + then;
 }
 
 function facts(project) {
@@ -383,7 +384,15 @@ export const section = {
       empty.hidden = !nothing;
       headline.hidden = nothing;
       if (nothing) {
-        empty.replaceChildren(intro({ headline: HEADLINE, first: first(project), facts: facts(project) }));
+        // the one button does what the first line says comes first
+        const noRooms = f.rooms === 0;
+        empty.dataset.empty = noRooms ? 'movement-rooms' : 'movement-groups';
+        empty.replaceChildren(intro({
+          headline: HEADLINE,
+          first: first(project),
+          facts: facts(project),
+          actions: [h('button', { type: 'button', class: 'btn btn--primary', data: { action: noRooms ? 'to-building' : 'to-groups' }, on: { click: () => ctx.navigate(noRooms ? '#building' : '#schedule/groups') } }, noRooms ? 'Go to the building' : 'Go to Groups')],
+        }));
         key.element.hidden = true;
         ctx.setInspector(null);
         placeFloors();
@@ -588,14 +597,25 @@ export const section = {
     });
 
     // Looking at this view is the last step of Getting started. The tick is
-    // quiet: no undo entry, and the project does not read as changed.
-    setTimeout(() => {
-      if (gone || store.project.onboarding.steps[MOVEMENT_STEP] === true) return;
-      if (ctx.storage && ctx.storage.state && ctx.storage.state.readOnly) return;
-      const f = figures(store.project);
-      if (f.groups === 0 || f.rooms === 0) return;
-      store.apply(setOnboarding, { step: MOVEMENT_STEP });
-    }, 0);
+    // quiet: no undo entry, and the project does not read as changed. It is
+    // looked for at mount and on every update, so a project that comes to
+    // have something to draw while the view is open (the sample school
+    // loaded, an undo, a file imported) is ticked too (SV2-30c). After this
+    // turn, since an update comes from inside the store's own notify.
+    let ticking = false;
+    function tick() {
+      if (ticking) return;
+      ticking = true;
+      setTimeout(() => {
+        ticking = false;
+        if (gone || store.project.onboarding.steps[MOVEMENT_STEP] === true) return;
+        if (ctx.storage && ctx.storage.state && ctx.storage.state.readOnly) return;
+        const f = figures(store.project);
+        if (f.groups === 0 || f.rooms === 0) return;
+        store.apply(setOnboarding, { step: MOVEMENT_STEP });
+      }, 0);
+    }
+    tick();
 
     ask();
     refresh();
@@ -635,6 +655,7 @@ export const section = {
       update() {
         ask();
         refresh();
+        tick();
       },
       unmount() {
         // presentation mode left first (a change of address inside Movement
