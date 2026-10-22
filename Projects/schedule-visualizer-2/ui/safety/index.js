@@ -383,6 +383,7 @@ export const section = {
       headline.hidden = nothing;
       plan.showFloors(!nothing);
       if (nothing) {
+        empty.dataset.empty = f.rooms === 0 ? 'safety-rooms' : 'safety-exits';
         empty.replaceChildren(intro({
           headline: HEADLINE,
           first: first(project),

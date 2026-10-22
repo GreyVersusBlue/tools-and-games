@@ -403,11 +403,12 @@ export const section = {
       headline.hidden = nothing;
       plan.showFloors(!nothing);
       if (nothing) {
+        empty.dataset.empty = f.rooms === 0 ? 'scenarios-rooms' : 'scenarios-groups';
         empty.replaceChildren(intro({
           headline: HEADLINE,
           first: first(project),
           facts: facts(project),
-          actions: [h('button', { type: 'button', class: 'btn btn--primary', data: { action: f.rooms === 0 ? 'to-building' : 'to-schedule' }, on: { click: () => ctx.navigate(f.rooms === 0 ? '#building' : '#schedule/groups') } }, f.rooms === 0 ? 'Go to the building' : 'Go to the schedule')],
+          actions: [h('button', { type: 'button', class: 'btn btn--primary', data: { action: f.rooms === 0 ? 'to-building' : 'to-schedule' }, on: { click: () => ctx.navigate(f.rooms === 0 ? '#building' : '#schedule/groups') } }, f.rooms === 0 ? 'Go to the building' : 'Go to Groups')],
         }));
         if (inspectorShown) ctx.setInspector(null);
         inspectorShown = false;

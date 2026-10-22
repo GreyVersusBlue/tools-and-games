@@ -114,7 +114,8 @@ export const REFUSED_CHOICE = 'This browser did not keep that choice: it lasts u
 
 function first(project) {
   const one = periodWords(project.settings).one;
-  return 'It draws every group’s walk between one ' + one + ' and the next, so you can see where the corridors fill and who cannot make it in time. Draw the building and give a group its rooms first.';
+  const then = figures(project).rooms === 0 ? 'Draw the building and its rooms first.' : 'Add a group and give it its rooms first.';
+  return 'It draws every group’s walk between one ' + one + ' and the next, so you can see where the corridors fill and who cannot make it in time. ' + then;
 }
 
 function facts(project) {
@@ -383,7 +384,15 @@ export const section = {
       empty.hidden = !nothing;
       headline.hidden = nothing;
       if (nothing) {
-        empty.replaceChildren(intro({ headline: HEADLINE, first: first(project), facts: facts(project) }));
+        // the one button does what the first line says comes first
+        const noRooms = f.rooms === 0;
+        empty.dataset.empty = noRooms ? 'movement-rooms' : 'movement-groups';
+        empty.replaceChildren(intro({
+          headline: HEADLINE,
+          first: first(project),
+          facts: facts(project),
+          actions: [h('button', { type: 'button', class: 'btn btn--primary', data: { action: noRooms ? 'to-building' : 'to-groups' }, on: { click: () => ctx.navigate(noRooms ? '#building' : '#schedule/groups') } }, noRooms ? 'Go to the building' : 'Go to Groups')],
+        }));
         key.element.hidden = true;
         ctx.setInspector(null);
         placeFloors();

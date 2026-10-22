@@ -138,6 +138,8 @@ export function followTab(store, storage) {
   }
 }
 
+export const NOTHING_TO_SHOW = 'There is nothing in the file yet: it shows your staff the building and the schedule you enter in the planner. Draw the building first, then add teachers and groups.';
+
 const readOnlyOf = (ctx) => Boolean(ctx.storage && ctx.storage.state && ctx.storage.state.readOnly);
 
 // "just now": `project`, the one on screen, is the project the file was made
@@ -186,12 +188,18 @@ export const section = {
     const shown = preview(ctx);
     const form = publishForm(ctx, hooks);
     const lead = h('p', { class: 'intro__facts stf-facts' });
+    // A project with no teacher, group or room makes a file with nothing in
+    // it: the section says so and where to begin, over the empty preview.
+    const empty = h('div', { class: 'stf-empty', hidden: true, data: { empty: 'staff' } },
+      h('p', { class: 'stf-empty__text' }, NOTHING_TO_SHOW),
+      h('button', { type: 'button', class: 'btn btn--primary', data: { action: 'to-building' }, on: { click: () => ctx.navigate('#building') } }, 'Go to the building'));
     const element = h('div', { class: 'stf' },
       intro({
         headline: 'This is the staff browser.',
         first: 'It is what your staff see: one file they open on a phone to look up a teacher, a room or a group. Below is that file, live.',
       }),
       lead,
+      empty,
       shown.element);
     element.staff = viewHandle({ preview: shown, form }, hooks, automated());
     ctx.setInspector(form.element, { title: 'Publish' });
@@ -205,6 +213,8 @@ export const section = {
     const line = (project) => {
       const entry = unnotedOf(project, readOnlyOf(ctx));
       lead.textContent = facts(project, entry ? entry.unnoted : null, entry ? justNowOf(entry, project) : true);
+      const f = figures(project);
+      empty.hidden = f.teachers + f.groups + f.rooms > 0;
     };
     // the line again when "just now" runs out for the project on screen
     const watch = (project) => {

@@ -22,6 +22,24 @@
   margin-top: 0;
 }
 
+/* An empty project: what the file is for and where to begin (SV2-30b). */
+.stf-empty {
+  display: grid;
+  justify-items: start;
+  gap: var(--s-3);
+  max-width: 34rem;
+}
+
+.stf-empty[hidden] {
+  display: none;
+}
+
+.stf-empty__text {
+  margin: 0;
+  font-size: var(--t-lg);
+  line-height: 1.4;
+}
+
 .stf-preview {
   display: grid;
   gap: var(--s-3);

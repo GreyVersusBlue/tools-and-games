@@ -69,7 +69,7 @@ const memory = { projectId: null, floorId: null, toolId: null, view: null, fitBo
 
 const HEADLINE = 'This is the building.';
 const FIRST = 'Draw a corridor, then rooms along it. Give each room its number, and mark the stairs and the exits.';
-const FIRST_EMPTY = 'Draw a corridor, then rooms along it.';
+const FIRST_EMPTY = 'Draw each floor here: a corridor first, then rooms along it.';
 const KEYS = 'Arrow keys move the cursor one cell. Enter does what a click would. Hold Shift and press the arrows to drag; let go of Shift to finish. Hold Space and press the arrows to move the map. Escape cancels. Page Up and Page Down change floor.';
 
 // The keys of the plan. The plan answers them itself, so they are listed for
@@ -158,7 +158,7 @@ export const section = {
     const sizeButton = h('button', { type: 'button', class: 'btn', data: { action: 'size' }, on: { click: () => inspector.showTab('floor') } });
     const sampleButton = h('button', { type: 'button', class: 'btn', data: { action: 'load-sample' }, on: { click: () => ctx.loadSample(sampleButton) } }, 'Load the sample school');
     const cardWords = h('div', { class: 'bld-empty__words' });
-    const card = h('div', { class: 'bld-empty', id: 'empty-floor', hidden: true }, cardWords, h('div', { class: 'bld-empty__actions' }, traceButton, sizeButton, sampleButton));
+    const card = h('div', { class: 'bld-empty', id: 'empty-floor', hidden: true, data: { empty: 'building' } }, cardWords, h('div', { class: 'bld-empty__actions' }, traceButton, sizeButton, sampleButton));
 
     const strip = toolStrip({ tools: TOOLS, pick: (id) => setTool(id) });
     const status = statusLine({ zoomIn: () => zoomBy(ZOOM_STEP), zoomOut: () => zoomBy(1 / ZOOM_STEP), fit: () => fit() });

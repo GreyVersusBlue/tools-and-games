@@ -150,6 +150,8 @@ export const GROUPS = {
     'browser/help.mjs', // SV2-30a
     'browser/present.mjs', // SV2-31
     'browser/auto-snapshots.mjs', // SV2-28b
+    'browser/getting-started.mjs', // SV2-30b
+    'browser/empty-states.mjs', // SV2-30b
     'a11y/axe.mjs',
   ],
   a11y: [
