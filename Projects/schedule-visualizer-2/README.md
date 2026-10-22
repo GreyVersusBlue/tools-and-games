@@ -250,3 +250,4 @@ row names a file it does not run.
 | `test/timing/scenario-lane.mjs` | The scenario lane, one change added and the first asking, under its budgets |
 | `test/timing/difference-card.mjs` | The difference map's card, the first after an answer and a later one, under its budgets |
 | `test/timing/checks.mjs` | The schedule checks of both day types, the engine call alone, under their budget |
+| `test/timing/worker.mjs` | Full routing and the first derive, cold, in a worker thread running `engine/worker.js`, under their budgets |

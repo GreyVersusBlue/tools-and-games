@@ -169,6 +169,7 @@ export const GROUPS = {
     'timing/scenario-lane.mjs', // SV2-64
     'timing/difference-card.mjs', // SV2-69c
     'timing/checks.mjs', // SV2-32i
+    'timing/worker.mjs', // SV2-32i
   ],
 };
 
