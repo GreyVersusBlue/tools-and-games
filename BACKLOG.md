@@ -1688,49 +1688,21 @@ three investors, 2% a side, 200 XP. `tools/smoke.mjs` 270 → 270 + 89 = **359**
 **Nothing about the tier is open.** What it deliberately did not do is the
 seller side (#515) — representing the seller of a building wants a rent roll,
 an offering memorandum and a broker's opinion of value where `seller.js` has
-staging tiers, photo tiers and weekend open houses. **Designed, and sessions 1 and 2
-of 3 built (#1009, #1010); Devon read it and answered all twelve questions on 2026-10-21 (#1008)** (#954, 2026-10-11, on his answer of 2026-10-07 "let's
-write the design"): `Projects/Closing Time/DESIGN-seller-commercial.md`. Offers
-are written on the packet and closings happen on the building; the rent roll
-(2 actions, 5 days) is worth 6% of gross value to every offer, the memorandum
-($0, $900, $2,800) sets which of three investor kinds see it, and the opinion
-of value (1 action) moves what the seller expects and so what they will sign.
-Measured on a scratch reimplementation: a median 23 days to an offer worth
-taking against a house's 12, $19,825 gross against $12,120, about the same
-money per day a client slot is held. Twelve questions for Devon are in its
-section 10 and are not in the table below. Ten of his answers are the
-design's assumed options (CT-1 the seller can refuse under 90%, CT-2 the true
-value at due diligence, CT-3 the agent pays for prep up front, CT-6 the investor
-tour last, CT-7 no own buyer on own listing, CT-8 215 XP, CT-9 three new
-buildings, CT-10 keep the 45 to 70% walk-away chance, CT-11 an autopilot that
-plays a whole career, CT-12 only building sellers gated by tier). **Two changed
-from the design**: CT-4, an unverified rent roll is **required before listing**
-(the design had a 6% penalty that could be skipped), and CT-5, fixing a defect
-before the sale is **a trade that costs days** (the design left it out). The
-build, three sessions with the first having no screen, can start on the design
-with those two changed. **Session 1 of 3 is built (#1009, 2026-10-21)**: the
-arithmetic of section 5.1 in `commercial.js` with CT-4 (no haircut; a building
-cannot go live before its roll lands, `goLiveBlockers`) and CT-5 (a cure is a
-wash in dollars that costs days in prep, `cureDays`, `sellerBasis`,
-`sellerNet`) carried, a building's listing value is its packet value,
-`repairCareer` clamps the new fields, the content check leaves out a building's
-seller with no valid `commercial` block or price, and `inReach()` gates only
-building sellers by tier (CT-12). The design carries the two amendments under
-2.1 and 2.7. **Session 2 of 3 is built (#1010, 2026-10-21) and the tier is
-playable**: `engine/offering.js` carries the flows (the rent roll, the
-condition report, the opinion of value, a cure, going live behind the CT-4
-gate, investor offers by memorandum tier, due diligence and the bank as
-arithmetic, the retrade and loan modals, closing at 2% and 215 XP), a building's
-seller refuses to sign under their floor, and 330 Courthouse Row is in `data/`
-and on the manifest, so a Broker-Track career can be handed her. `ui.js` has
-the listing file, a building's offer row and the two modals; the project's own
-`tools/browser.mjs` (port 8178) checks them in the page. Nobody has played it.
-**Left: session 3** (the other two sellers, the career autopilot and group H's
-sweeps, the investor tour, the README), and two shared-file edits session 2
-could not make: `site-ci.yml` runs only `tools/smoke.mjs` for Closing Time and
-wants `node tools/browser.mjs` (with `install: Tools/board-check`), and
-`Tools/board-check/README.md`'s port table wants a row for 8178. It is **not in the ranked table**:
-ranking it is the next re-ranking's, not a session's. The two things it read in the code on the way were both real and are
+staging tiers, photo tiers and weekend open houses. **Designed (#954) and built
+whole in three sessions (#1009, #1010, #1011, 2026-10-21 and 2026-10-22), on Devon's
+twelve answers of 2026-10-21 (#1008)**: `Projects/Closing Time/DESIGN-seller-commercial.md`
+is the design and carries what each session built. Offers are written on the packet
+and closings happen on the building; three sellers (14 Tannery Row, 330 Courthouse
+Row, 58 Mill Race Rd) reach a Broker-Track career through any of the four doors; the
+rent roll is required before going live (CT-4), a cure costs days (CT-5), a seller
+refuses under their floor (CT-1), the investor tour is built (CT-6), and
+`tools/autopilot.mjs` plays whole careers (CT-11). Measured on the shipped code: a
+memorandum at packet value draws an offer worth taking in a median 20 days against a
+house's 11, at 0.90 of a house listing's gross per slot-day (1.06 on a data room); a
+careful career reaches Broker-Track on a median day 215 and 17 of 20 close a
+building. `tools/smoke.mjs` 703, `tools/browser.mjs` 40 (port 8178, now in
+`site-ci.yml`). **Left: a person's play of it**, and test 20's empty-room half.
+It was never in the ranked table. The two things it read in the code on the way were both real and are
 fixed (#956, 2026-10-12): `repairCareer()` puts a client file added since a
 career began on the end of that career's queue, lowest rung first and then by
 id, and the `bonusReferral` event (`ev_ruth_referral`) asks the same

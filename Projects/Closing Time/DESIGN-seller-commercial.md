@@ -32,6 +32,29 @@ after", since under CT-4 no offer is written before the roll; the bank date
 project's own `tools/browser.mjs`, not `play-games.mjs`. Session 3 is the other
 two sellers, the autopilot and group H, the investor tour and the README.*
 
+*Session 3 of 3 is built (2026-10-22, #1011), and the design is built whole:
+14 Tannery Row (`cl_0301`) and 58 Mill Race Rd (`cl_0303`) are on the
+manifest with the 4.2 numbers, the investor tour of 2.6 is in `offering.js`
+and on a live building's card (the "spin costs 3 on the second one" is the
+second spin on a listing, counted in `tourSpins`), `tools/autopilot.mjs` plays
+whole careers (CT-11) and `tools/sweep.mjs` re-runs section 6's table on the
+shipped tick. Built against the scratch figures, 1,000 listings a row:
+memorandum at packet value 16 / 20 / 25 days (scratch 18 / 23 / 29), data room
+12 / 16 / 20 (14 / 17 / 21), data room 5% under 11 / 14 / 17 (13 / 15 / 18),
+memorandum 8% over 34 / 48 / 77 with 30 none (38 / 57 / 97, 45), data room 15%
+over 55 / 91 / 133 with 72 none (66 / 106 / 152, 89); a house 9 / 11 / 14 (9 /
+12 / 16). Gross a slot-day against a house: 0.90 on a memorandum (scratch
+0.99), 1.06 on a data room (1.13). A tour every week: 9 / 12 / 16. The flyer
+row is the one that moved: with the roll required (CT-4) the flyer has no 6%
+haircut, and it waits 64 / 104 / 187 with 168 of 1,000 finding nothing (the
+scratch figure, no roll, was 192 / 250 / 250 and 553), so test 45 is now "at
+least four times the memorandum's median, and nothing on at least a tenth".
+No engine number changed: every other row is inside the band section 7 set.
+The autopilot, 20 careers: Broker-Track on a median day 215 (171 to 289), all
+three buildings taken in every career (they arrive together), and 17 of 20
+careers close at least one; the three that reach the rung after day 260 close
+none, which is section 6's "after day 263 cannot close any".*
+
 It reads top to bottom for someone who knows the game and is not a broker. Every
 figure was computed by a scratch script against the shipped `data/` and the
 shipped `js/engine/` modules; section 11 says what was run and what was not.
