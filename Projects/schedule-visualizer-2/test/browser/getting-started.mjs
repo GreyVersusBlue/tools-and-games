@@ -264,6 +264,30 @@ test('Dismiss and the movement tick stay with the project they were made on: und
   });
 });
 
+// SV2-30c: the movement view ticks its step whenever it has something to
+// draw, not only when it is opened.
+test('the movement view ticks when a project comes to have something to draw while it is open: an undo, the sample school loaded', async () => {
+  await onEmpty(async (page) => {
+    await go(page, '#movement');
+    await page.waitForSelector('.mov-empty:not([hidden])');
+    // the undo of "Remove the sample school" puts the sample back under the open view
+    await page.click('#undo');
+    await page.waitForFunction(() => globalThis.sv2.store.project.groups.length > 0);
+    await page.waitForFunction(() => document.querySelector('.mov-empty').hidden === true);
+    await tickIs(page, 'movement', true);
+    assert.equal((await onboarding(page)).steps.movement, true);
+
+    await page.evaluate(() => globalThis.sv2.ctx.removeSample());
+    await page.waitForFunction(() => globalThis.sv2.store.project.groups.length === 0);
+    await tickIs(page, 'movement', false);
+    await page.evaluate(() => globalThis.sv2.ctx.loadSample());
+    await page.waitForFunction(() => globalThis.sv2.store.project.groups.length > 0);
+    await tickIs(page, 'movement', true);
+    assert.equal((await onboarding(page)).steps.movement, true, 'loading the sample school with the view open did not tick it');
+    assert.equal(await page.evaluate(() => document.querySelector('.surface__layout').dataset.section), 'movement', 'the view was left, so this proves nothing');
+  });
+});
+
 test('the About card\'s Help button reads Help and opens the whole of Help, and the focus comes back to it', async () => {
   await onEmpty(async (page) => {
     await go(page, '#project');
