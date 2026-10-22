@@ -6,6 +6,11 @@ import { playerListingValue, marketHeat, bumpKnowledge } from "./market.js";
 import { satisfactionDelta, checkReveals, rollReferral } from "./clients.js";
 import { pickHook, sevRank } from "./deals.js";
 import { clauseFor, clauseOf, resolveField, bestOf, openOffers, resolveHighestAndBest } from "./escalation.js";
+import { isBuilding, sellerExpectation, sellerFloor, sellerNet, offerCeiling } from "./commercial.js";
+import * as Off from "./offering.js";
+
+/** How often a buyer walks when the seller refuses what they asked for, by their agent's style. */
+export const INSPECTION_WALK = { lowballer: 0.55, shark: 0.5, stonewall: 0.35, charmer: 0.4, "by-the-book": 0.45, mentor: 0.3 };
 
 export function takeListing(rec) {
   const c = contentClient(rec);
@@ -17,6 +22,7 @@ export function takeListing(rec) {
     interest: 0, offers: [], openHouseBoost: 0, liveDay: null, dom: 0,
     hbCalledDay: null, hbDeadline: null,
   };
+  if (isBuilding(pl)) Off.freshBuildingFields(pl);
   S.playerListings.push(pl);
   rec.dealId = pl.id;
   addXP(15, "took a listing: " + sl.address, rec.recId);
@@ -37,6 +43,7 @@ export function doRepair(pl, issueIdx) {
 
 export function setStaging(pl, tier) { pl.staged = tier; } // 0,1,2
 export function goLive(pl, price, marketingTier) {
+  if (isBuilding(pl)) return Off.goLiveBuilding(pl, price, marketingTier);
   pl.price = price; pl.marketingTier = marketingTier; pl.status = "live"; pl.liveDay = S.day;
   const bk = DB.brokerages[S.brokerageId];
   const freePhoto = (bk.perks || []).some(p => p.includes("photo tier")) ? 1 : 0;
@@ -49,6 +56,7 @@ export function priceRatio(pl) { return pl.price / Math.max(1, playerListingValu
 
 // Called each day for live listings: build interest, maybe spawn an NPC offer.
 export function dailySellerTick(pl) {
+  if (isBuilding(pl)) return Off.dailyBuildingTick(pl);
   if (pl.status !== "live") return;
   // A listing running a highest-and-best call is still live, so the deadline
   // cannot ride on pl.milestones — those only run under contract.
@@ -71,6 +79,7 @@ export function dailySellerTick(pl) {
 }
 
 export function spawnNPCOffer(pl) {
+  if (isBuilding(pl)) return Off.spawnInvestorOffer(pl);
   const agents = Object.values(DB.agents).filter(a => a.id !== "ag_ruth_okafor" || rand() < 0.5);
   const agent = pick(agents);
   const value = playerListingValue(pl);
@@ -103,10 +112,15 @@ export function sellerReaction(pl, offer, atPrice) {
   const c = contentClient(rec);
   const notes = [];
   const price = Number.isFinite(atPrice) ? atPrice : offer.price;
-  let inclination = (price / pl.price - 0.94) * 10; // >0 leaning yes
+  // A building's seller measures what the sale leaves them against what they
+  // expect (2.3), not against the asking price, and says where the floor is.
+  const building = isBuilding(pl);
+  let inclination = building ? (sellerNet(pl, price) / Math.max(1, sellerExpectation(pl)) - 0.94) * 10
+    : (price / pl.price - 0.94) * 10; // >0 leaning yes
+  if (building) notes.push(Off.offerRowFacts(pl, offer, price).read);
   c.hiddenPrefs.forEach((p, i) => {
     if (!rec.revealed.includes(i) || !p.data) return;
-    if (p.data.floorPct && price >= pl.price * p.data.floorPct) { inclination += 1; notes.push("Above their true floor — they'd take this if pushed."); }
+    if (p.data.floorPct && !building && price >= pl.price * p.data.floorPct) { inclination += 1; notes.push("Above their true floor — they'd take this if pushed."); }
     if (p.data.familyFloor) { if (price >= p.data.familyFloor) { inclination += 1.5; notes.push("Clears the family-peace number."); } else { inclination -= 1.5; notes.push("Below the number that keeps the siblings quiet."); } }
     if (p.data.sentimentDiscount && DB.agents[offer.agentId].negotiationStyle === "mentor") { inclination += 1; notes.push("They like the sound of this buyer."); }
     if (p.data.teardownAversion && offer.financing === "cash" && price > pl.price) { inclination -= 2; notes.push("Smells like a teardown buyer. Ray's jaw is tight."); }
@@ -118,6 +132,18 @@ export function sellerReaction(pl, offer, atPrice) {
 export function respondToOffer(pl, offer, action, counterPrice) {
   const agent = DB.agents[offer.agentId];
   const rec = getClientRec(pl.clientRecId);
+  // CT-1: a building's seller signs nothing that nets them under their floor,
+  // by acceptance or by a counter. The offer stays open with its deadline.
+  if (isBuilding(pl) && (action === "accept" || action === "counter")) {
+    const at = action === "accept" ? (resolveField([offer, ...openOffers(pl).filter(o => o !== offer)]).find(r => r.offer === offer) || { final: offer.price }).final : counterPrice;
+    const floor = sellerFloor(pl, rec);
+    if (!(sellerNet(pl, at) >= floor)) {
+      satisfactionDelta(rec, -2, "being advised to sign under their number");
+      log(`${contentClient(rec).name} will not sign ${pl.listing.address} at ${fmtMoney(at)}: they take nothing under ${fmtMoney(floor)}. The offer is still on the table.`,
+        "bad", undefined, rec && rec.recId);
+      return { refused: true, floor };
+    }
+  }
   unschedule(it => it.ref === offer.id);
   if (action === "reject") { offer.status = "rejected"; log(`Rejected ${agent.name}'s offer on ${pl.listing.address}. "${pickHook(agent, "reject")}"`, "", undefined, rec && rec.recId); return { done: true }; }
   if (action === "accept") { offer.status = "accepted"; return acceptSellerOffer(pl, offer); }
@@ -125,7 +151,8 @@ export function respondToOffer(pl, offer, action, counterPrice) {
   offer.status = "countered";
   const value = playerListingValue(pl);
   const clause = clauseOf(offer);
-  const ceiling = (clause && clause.cap) || Math.min(pl.price * 1.02, value * (1 + agent.tolerance) * 1.02);
+  const ceiling = (clause && clause.cap) || (isBuilding(pl) ? offerCeiling(offer, agent)
+    : Math.min(pl.price * 1.02, value * (1 + agent.tolerance) * 1.02));
   if (counterPrice <= ceiling * randRange(0.985, 1.02)) {
     offer.price = counterPrice; offer.status = "accepted";
     log(`${agent.name} takes your counter at ${fmtMoney(counterPrice)}. "${pickHook(agent, "accept")}"`, "deal", undefined, rec && rec.recId);
@@ -167,10 +194,14 @@ function acceptSellerOffer(pl, offer) {
   const base = S.day;
   const wk = d => { while (isWeekend(d)) d++; return d; };
   pl.milestones = [];
-  if (offer.inspection) pl.milestones.push({ day: base + 3, type: "sellerInspection", done: false });
-  if (offer.financing !== "cash") pl.milestones.push({ day: wk(base + 10), type: "sellerFinancing", done: false });
-  pl.milestones.push({ day: base + offer.closeDays, type: "sellerClosing", done: false });
-  pl.milestones.forEach(m => scheduleItem(m.day, `${m.type.replace("seller", "")} — ${pl.listing.address}`, m.type, pl.id));
+  if (isBuilding(pl)) pl.milestones = Off.buildingMilestones(pl, offer);
+  else {
+    if (offer.inspection) pl.milestones.push({ day: base + 3, type: "sellerInspection", done: false });
+    if (offer.financing !== "cash") pl.milestones.push({ day: wk(base + 10), type: "sellerFinancing", done: false });
+    pl.milestones.push({ day: base + offer.closeDays, type: "sellerClosing", done: false });
+  }
+  const name = t => isBuilding(pl) ? { sellerDueDiligence: "Due diligence", sellerFinancing: "Bank", sellerClosing: "Closing" }[t] : t.replace("seller", "");
+  pl.milestones.forEach(m => scheduleItem(m.day, `${name(m.type)} — ${pl.listing.address}`, m.type, pl.id));
   const rec = getClientRec(pl.clientRecId);
   satisfactionDelta(rec, 8, "accepting a solid offer");
   log(`${pl.listing.address} under contract at ${fmtMoney(offer.price)} with ${DB.agents[offer.agentId].name}'s buyers.`, "milestone", undefined, rec && rec.recId);
@@ -180,6 +211,12 @@ function acceptSellerOffer(pl, offer) {
 export function resolveSellerMilestone(pl, m) {
   const rec = getClientRec(pl.clientRecId);
   m.done = true;
+  if (isBuilding(pl)) {
+    if (m.type === "sellerDueDiligence") Off.resolveDueDiligence(pl, m);
+    else if (m.type === "sellerFinancing") Off.resolveSellerLoan(pl, m);
+    else if (m.type === "sellerClosing") Off.closeBuilding(pl);
+    return;
+  }
   if (m.type === "sellerInspection") {
     const undisclosed = pl.listing.issues
       .map((is, i) => ({ is, i }))
@@ -229,7 +266,7 @@ export function sellerInspectionDecision(pl, decision, cost) {
     return;
   }
   if (decision === "refuse") {
-    const walkOdds = { lowballer: 0.55, shark: 0.5, stonewall: 0.35, charmer: 0.4, "by-the-book": 0.45, mentor: 0.3 }[agent.negotiationStyle] || 0.45;
+    const walkOdds = INSPECTION_WALK[agent.negotiationStyle] || 0.45;
     if (rand() < walkOdds) failSellerDeal(pl, `the buyers walked over inspection findings — ${agent.name}: "${pickHook(agent, "reject")}"`);
     else { log(`${agent.name}'s buyers grumble and proceed. "${pickHook(agent, "counter")}"`, "", undefined, rec && rec.recId); satisfactionDelta(rec, 5, "you holding the line"); }
     return;

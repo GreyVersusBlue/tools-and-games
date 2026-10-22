@@ -282,6 +282,7 @@ taking a new one.
 | 8174 | `Projects/skywings64/test/draws.mjs` |
 | 8175 | `Projects/the-fracture-cycle/test/browser.mjs` |
 | 8177 | `Projects/torchbearer/test/browser.mjs` |
+| 8178 | `Projects/Closing Time/tools/browser.mjs` |
 | 8191 | `Projects/throneshard/tools/scripts/vfx_measure.mjs` (`VFX_PORT` moves it) |
 
 8127 is doubled and always has been: `tools.mjs` and Integer Foundry's suite are

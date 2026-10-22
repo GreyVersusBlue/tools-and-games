@@ -108,11 +108,11 @@ export function knownCapex(rec, listing) {
  * Rising cap rate means falling value. Both of the first two terms are signed
  * that way on purpose: rates up is value down, neighborhood up is value up.
  */
-export function marketCap(listing) {
+export function marketCap(listing, market = S.market) {
   const c = listing.commercial;
-  const nbMult = S.market.nb[listing.neighborhood] || 1;
+  const nbMult = market.nb[listing.neighborhood] || 1;
   const cap = c.marketCap
-    + (S.market.rate - RATE_ANCHOR) * CAP_PER_RATE_POINT
+    + (market.rate - RATE_ANCHOR) * CAP_PER_RATE_POINT
     - (nbMult - 1) * CAP_PER_NB_POINT
     + (c.rollPct || 0) * CAP_PER_ROLL;
   return Math.min(CAP_CEIL, Math.max(CAP_FLOOR, cap));
@@ -237,3 +237,253 @@ export function underwrite(rec, listing, price) {
 /** Percent, one decimal, for anything printing a cap rate or a DSCR. */
 export const pct = x => (x * 100).toFixed(2) + "%";
 export const dscrText = d => Number.isFinite(d) ? d.toFixed(2) + "x" : "—";
+
+// ---------------------------------------------------------------------------
+// The listing side: a seller's building (DESIGN-seller-commercial.md, #1009).
+//
+// Offers are written on the packet, and closings happen on the building. The
+// packet is what the agent has put on paper: the income and the capital items
+// in it. Everything below is arithmetic on a player listing `pl` whose
+// `listing` is a seller's building, read off the save and the content and
+// nothing else: no rand(), no log, no state written. The flows that move a
+// listing through prep, the market and a contract call these (session 2).
+//
+// Two of Devon's answers of 2026-10-21 (#1008) changed the design, and both
+// are carried here rather than in the design's body text:
+//
+// - CT-4. The rent roll is required before a building goes live. There is no
+//   unverified income and no 6% haircut: an offer is only ever written on a
+//   live listing, so every offer reads the whole net income. The roll's other
+//   two effects stand: it shows the agent the lease items, and it makes an
+//   opinion of value count for more.
+// - CT-5. Curing a defect before the sale is a trade that costs days. In
+//   dollars it is a wash: the seller pays the cost, the item comes off the
+//   building, and the seller's expectation and net read as if the item had
+//   gone in the packet. What it costs is time in prep (cureDays()), because a
+//   building does not go live with a cure under way.
+
+/** Prep. `rollActions` are spent the day the rent roll is begun; it lands `rollDays` later. */
+export const PACKET = { rollActions: 2, rollDays: 5,
+  reportCost: 1800, omCost: [0, 900, 2800], omGain: 0.25, verifiedGain: 0.2, pace: 0.5 };
+
+/**
+ * The three kinds of investor on the other side of the table. `spread` is the
+ * yield they need over the market cap rate, `equity` what they hold spare as a
+ * share of the price, `surprise` what an item the packet left out costs them
+ * in due diligence per dollar, `minOm` the memorandum tier that reaches them.
+ */
+export const INVESTORS = {
+  "value-add": { spread: [0.006, 0.014],  financing: "commercial", equity: [0.02, 0.06], surprise: 1.0,  minOm: 0, weight: 3 },
+  exchange:    { spread: [-0.002, 0.004], financing: "commercial", equity: [0.10, 0.18], surprise: 1.25, minOm: 1, weight: 2 },
+  syndicate:   { spread: [-0.006, 0.0],   financing: "cash",       equity: [0, 0],       surprise: 1.5,  minOm: 2, weight: 1 },
+};
+
+export const SELLER_SIDE = { floorPct: 0.90, underAskPct: 0.97, staleDays: 21, staleKeep: 0.75,
+  bovBase: 0.5, bovPerKnowledge: 0.1, bovVerified: 0.2, ddDay: 10, bankDay: 20,
+  closeDays: { commercial: [45, 60], cash: [21, 30] }, refuseWalkBonus: 0.15,
+  satisfaction: [-25, 12], fastDom: 45, xp: 215 };
+
+/**
+ * CT-5. A cure takes `minDays` or a day for every `perDay` dollars of the
+ * item's cost, whichever is longer: the $3,200 signs five days, the $46,000
+ * roof on 212 Ferry St twelve. The seller pays; the agent fronts nothing.
+ */
+export const CURE = { minDays: 5, perDay: 4000 };
+
+// Who is a seller of a building, and what their building must carry. In
+// data.js, which the loader's content pass needs them in, and read from here.
+export { sellsBuilding, validCommercialBlock } from "../data.js";
+
+export const isBuilding = pl => !!(pl && isCommercial(pl.listing));
+
+const issuesOf = pl => Array.isArray(pl.listing.issues) ? pl.listing.issues : [];
+const today = day => (Number.isFinite(day) ? day : S.day);
+
+/** Day by day: false through day `rollReadyDay - 1`, true from it. */
+export const rollVerified = (pl, day = undefined) =>
+  Number.isFinite(pl.rollReadyDay) && today(day) >= pl.rollReadyDay;
+
+/** CT-5: days a cure of this many dollars takes. */
+export const cureDays = cost => Math.max(CURE.minDays, Math.ceil((cost || 0) / CURE.perDay));
+
+const cureList = pl => Array.isArray(pl.cures) ? pl.cures : [];
+/** Indexes into `issues` whose cure has finished by `day`. Gone from the building. */
+export const curedIdx = (pl, day = undefined) =>
+  cureList(pl).filter(c => today(day) >= c.readyDay).map(c => c.idx);
+/** Dollars the seller has paid for cures that have finished by `day`. */
+export const curedCost = (pl, day = undefined) =>
+  curedIdx(pl, day).reduce((s, i) => s + ((issuesOf(pl)[i] || {}).repairCost || 0), 0);
+/** A cure started and not finished by `day`. */
+export const cureUnderWay = (pl, day = undefined) => cureList(pl).some(c => today(day) < c.readyDay);
+
+/**
+ * `pl.listing` as the shipped buying-side functions read a building: the same
+ * object with `hiddenIssues` naming every item still on it. A cured item is off
+ * the building, so commercialValue() of this is the true value.
+ */
+export function buildingOf(pl, day = undefined) {
+  const cured = new Set(curedIdx(pl, day));
+  return { ...pl.listing, hiddenIssues: issuesOf(pl).filter((_, i) => !cured.has(i)) };
+}
+
+/**
+ * Whether the agent knows about item `i`. Visible items always; a question
+ * item from the walk, except a lease item, which waits for the rent roll; an
+ * inspection item once the condition report is in. A lease item is known once
+ * the roll lands whatever its discovery says.
+ */
+export function agentKnows(pl, i, day = undefined) {
+  const is = issuesOf(pl)[i];
+  if (!is) return false;
+  if (is.topic === "leases") return is.discovery === "visible" || rollVerified(pl, day);
+  if (is.discovery === "visible" || is.discovery === "question") return true;
+  if (is.discovery === "inspection") return !!pl.preInspected;
+  return false;
+}
+
+/** In the packet: visible, or put there by the agent, and not cured off the building. */
+export function inPacket(pl, i, day = undefined) {
+  const is = issuesOf(pl)[i];
+  if (!is || curedIdx(pl, day).includes(i)) return false;
+  return is.discovery === "visible" || (Array.isArray(pl.disclosed) && pl.disclosed.includes(i));
+}
+
+/** CT-4: the whole net income. There is no unverified figure to write an offer on. */
+export const packetNoi = pl => noi(pl.listing);
+export const packetIdx = (pl, day = undefined) => issuesOf(pl).map((_, i) => i).filter(i => inPacket(pl, i, day));
+export const packetCapex = (pl, day = undefined) =>
+  packetIdx(pl, day).reduce((s, i) => s + (issuesOf(pl)[i].repairCost || 0), 0);
+/** What the paper supports: packet income over today's cap rate, less the capital in the packet. */
+export const packetValue = (pl, day = undefined) =>
+  Math.round(packetNoi(pl) / marketCap(pl.listing) - packetCapex(pl, day));
+export const buildingTrueValue = (pl, day = undefined) => commercialValue(buildingOf(pl, day));
+
+/**
+ * CT-4: why this building cannot go live today, as sentences; empty when it
+ * can. The rent roll must have landed, and no cure may be under way (CT-5).
+ */
+export function goLiveBlockers(pl, day = undefined) {
+  const out = [];
+  if (!Number.isFinite(pl.rollStartedDay)) out.push("The rent roll has not been started.");
+  else if (!rollVerified(pl, day)) out.push(`The rent roll lands on day ${pl.rollReadyDay}.`);
+  const open = cureList(pl).filter(c => today(day) < c.readyDay);
+  if (open.length) out.push(`A cure is under way until day ${Math.max(...open.map(c => c.readyDay))}.`);
+  return out;
+}
+
+/**
+ * CT-5: whether item `i` can be cured from here. In prep only, on an item the
+ * agent knows, not already cured or curing, with a cost to pay.
+ */
+export function canCure(pl, i, day = undefined) {
+  const is = issuesOf(pl)[i];
+  return !!is && pl.status === "prep" && agentKnows(pl, i, day) && (is.repairCost || 0) > 0
+    && !cureList(pl).some(c => c.idx === i);
+}
+
+/**
+ * The `w` an opinion of value presented today would carry: half, a tenth more
+ * a whole level of the neighborhood known, a fifth more once the roll is in.
+ */
+export function bovWeightNow(pl, day = undefined) {
+  const k = Math.floor(Math.max(0, Math.min(5, (S.knowledge && S.knowledge[pl.listing.neighborhood]) || 0)));
+  // To the hundredth: 0.5 + 0.2 + 0.2 is 0.8999999999999999 in floating point,
+  // and w is stored on the listing and printed.
+  return Math.min(1, Math.round(100 * (SELLER_SIDE.bovBase + SELLER_SIDE.bovPerKnowledge * k
+    + (rollVerified(pl, day) ? SELLER_SIDE.bovVerified : 0))) / 100);
+}
+
+/**
+ * The value the seller measures against. The packet value, less what the
+ * seller has paid for cures (CT-5), so a cured item reads to them as one put in
+ * the packet: the same expectation, and the same net, a few days later.
+ */
+export const sellerBasis = (pl, day = undefined) => packetValue(pl, day) - curedCost(pl, day);
+
+/**
+ * What the seller expects: the owner's number, brought toward the basis by an
+ * opinion of value and by each 21 days sat. Computed, never stored, so it
+ * follows the packet the day an item goes in.
+ */
+export function sellerExpectation(pl, day = undefined) {
+  const basis = sellerBasis(pl, day);
+  const owner = Number.isFinite(pl.listing.price) ? pl.listing.price : basis;
+  const w = Math.max(0, Math.min(1, Number.isFinite(pl.bovWeight) ? pl.bovWeight : 0));
+  const stale = Math.max(0, Math.round(Number.isFinite(pl.staleSteps) ? pl.staleSteps : 0));
+  return Math.round(basis + (owner - basis) * (1 - w) * Math.pow(SELLER_SIDE.staleKeep, stale));
+}
+
+/** CT-5: what a sale at `price` leaves the seller, after the cures they paid for. */
+export const sellerNet = (pl, price, day = undefined) => price - curedCost(pl, day);
+
+/** The seller's own floor, from a hidden preference whether revealed or not, else 90%. */
+export function sellerFloorPct(pl, rec = undefined) {
+  const r = rec || (S.clients || []).find(x => x && x.recId === pl.clientRecId);
+  const c = r && DB.clients[r.clientId];
+  for (const p of (c && c.hiddenPrefs) || []) {
+    const f = p && p.data && p.data.floorPct;
+    if (Number.isFinite(f)) return f;
+  }
+  return SELLER_SIDE.floorPct;
+}
+/** Under this net the seller signs nothing. */
+export const sellerFloor = (pl, rec = undefined, day = undefined) =>
+  Math.round(sellerExpectation(pl, day) * sellerFloorPct(pl, rec));
+
+/**
+ * What an investor who needs `reqCap` writes: packet income over that yield,
+ * less the packet's capital, no more than 3% over the asking price, to $1,000.
+ */
+export function investorPrice(pl, reqCap, day = undefined) {
+  const yieldPrice = Math.round(packetNoi(pl) / reqCap - packetCapex(pl, day));
+  const cap = Number.isFinite(pl.price) && pl.price > 0 ? pl.price * 1.03 : Infinity;
+  return { yieldPrice, price: Math.max(0, Math.round(Math.min(yieldPrice, cap) / 1000) * 1000) };
+}
+
+/**
+ * How far a counter or a highest-and-best call can move an investor: the
+ * price their yield wrote, plus half their agent's tolerance. Named apart from
+ * the buying side's investorCeiling(), which is a buyer client's wall.
+ */
+export const offerCeiling = (offer, agent) =>
+  Math.round(((offer && offer.uw && offer.uw.yieldPrice) || 0) * (1 + ((agent && agent.tolerance) || 0) / 2));
+
+/**
+ * Due diligence: the buyer's people find every item still on the building
+ * that the offer was not written with (`offer.uw.capexIdx`, fixed the day it
+ * was written). It costs the investor's surprise factor per dollar, to $500.
+ * `knewRequired` is the −6 reputation case: a required item the agent knew.
+ */
+export function dueDiligence(pl, offer, day = undefined) {
+  const written = new Set((offer && offer.uw && offer.uw.capexIdx) || []);
+  const cured = new Set(curedIdx(pl, day));
+  const surprises = issuesOf(pl).map((_, i) => i).filter(i => !cured.has(i) && !written.has(i));
+  const cost = surprises.reduce((s, i) => s + (issuesOf(pl)[i].repairCost || 0), 0);
+  const kind = INVESTORS[offer && offer.investor] || INVESTORS["value-add"];
+  return {
+    surprises, cost,
+    retrade: Math.round(cost * kind.surprise / 500) * 500,
+    knewRequired: surprises.some(i => issuesOf(pl)[i].disclosureRequired && agentKnows(pl, i, day)),
+  };
+}
+
+/**
+ * The bank on a building under contract, at the offer's price. The loan is
+ * sized on the building's real income. `financeablePrice` is the most the
+ * buyer can pay keeping the 30% they planned and adding what they hold spare.
+ */
+export function sellerLoanTest(pl, offer) {
+  const b = buildingOf(pl);
+  const price = offer.price;
+  if (offer.financing === "cash") {
+    return { dscr: Infinity, sizes: true, shortfall: 0, spare: 0, covered: true, financeablePrice: price };
+  }
+  const spare = Math.max(0, Number.isFinite(offer.spareEquity) ? offer.spareEquity : 0);
+  const shortfall = loanShortfall(b, price);
+  const sized = noi(b) / DEBT.minDscr / loanConstant();
+  return {
+    dscr: dscrAt(b, price), sizes: shortfall === 0, shortfall, spare,
+    covered: shortfall <= spare,
+    financeablePrice: Math.min(price, Math.round(sized + (1 - DEBT.ltv) * price + spare)),
+  };
+}

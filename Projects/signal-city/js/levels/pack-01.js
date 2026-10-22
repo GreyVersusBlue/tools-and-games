@@ -202,16 +202,26 @@ const PACK_01 = [
     light: 'dusk',
     // calibrated on a 22 s cycle over six seeds: the corridor called 2 s
     // after the ambulance arrives clears 59 to 77 at 13 to 21 s with it on
-    // time every seed; never called, 65 to 83 at 10 to 17 s and late on 3.
+    // time every seed; never called, 65 to 83 at 10 to 17 s and late on 3
+    // (65 to 84 at 12 to 17 s since #957, seeds 3 and 5 now crashing).
     // The corridor cost the wait star it was meant to earn, so the second
     // star is the ambulance on time on its corridor (R2, #639)
     target: 56,
     waitTarget: 20,
     lesson: { kind: 'ambulance' },
     gridlockWait: 150,
-    // the one hard level (R3, #641): one collision ends the run. No input
-    // and R1's hand both run all six seeds clean here, so a crash is the
-    // player's timing and not a red-runner no timing prevents
+    // the one hard level (R3, #641): one collision ends the run. At #641
+    // no input and R1's hand both ran all six seeds clean here, so a crash
+    // was the player's timing and not a red-runner no timing prevents.
+    // Since #957 (the box back from dark holds the cars the four-way held)
+    // no input runs four clean and the hand five: seed 3 is a tailgater
+    // into a rideshare stopped for a pickup 110 m past the box at 156 s,
+    // before the hand has changed anything, and seed 5 (no input only) a
+    // yellow puncher meeting a left finishing on the all-red at 168 s.
+    // The rideshare was held 1.5 s at the box's edge as the lights came
+    // back, which is how its run moved; no car of seed 5's was held. Both
+    // are hazards the level always had (48 seeds: 10 crashes before, 11
+    // after, and none in the 12 s after the lights against 1 before).
     mode: 'hard',
     unlocks: ['phases', 'auto', 'allred', 'flash', 'priority'],
   },

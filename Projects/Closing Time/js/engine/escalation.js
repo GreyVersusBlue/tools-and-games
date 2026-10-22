@@ -55,6 +55,7 @@ import { financingType } from "./financing.js";
 import { playerListingValue, marketHeat } from "./market.js";
 import { satisfactionDelta } from "./clients.js";
 import { pickHook } from "./deals.js";
+import { offerCeiling } from "./commercial.js";
 
 /** What a clause steps by when its offer file does not say. */
 export const DEFAULT_INCREMENT = 1000;
@@ -241,7 +242,10 @@ export function agentHighestAndBest(pl, offer) {
   const style = HB_STYLE[agent.negotiationStyle] || HB_STYLE["by-the-book"];
   const heat = marketHeat(pl.listing.neighborhood);
   const value = playerListingValue(pl);
-  const ceiling = value * (1 + agent.tolerance) * 1.05;
+  // An investor on a building stops where their yield and their agent's
+  // tolerance do (offering.js, #1010), not at value × 1.05: the house rule
+  // would let a highest-and-best call buy past the price the yield allows.
+  const ceiling = offer.uw ? offerCeiling(offer, agent) : value * (1 + agent.tolerance) * 1.05;
 
   const walkOdds = Math.max(0.02, Math.min(0.8, style.walk * (2 - heat)));
   if (rand() < walkOdds) {
@@ -263,7 +267,7 @@ export function agentHighestAndBest(pl, offer) {
   // A clause is re-decided at the call, not carried over. by-the-book strips
   // one it arrived with; a shark who did not have one may bring one now.
   const had = !!clauseOf(offer);
-  offer.escalation = (style.clause && rand() < style.clause) ? clauseFor(agent, to, value) : null;
+  offer.escalation = (style.clause && rand() < style.clause) ? clauseFor(agent, to, offer.uw ? ceiling / 1.07 : value) : null;
   const clause = clauseOf(offer);
 
   return {

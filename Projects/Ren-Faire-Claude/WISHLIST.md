@@ -624,7 +624,9 @@ campaign and contract tier has unlocked, and weekend 12 is weekend 7 again.
   loads a Stage 22 save, a pre-Stage-22 save and a version-1 export through
   the migration with every original key compared. Section 27 is the
   screens. 1,652 → 1,825.* **The full run seeds reputation at 70 and says
-  why** — see Questions for Devon: from a real start no manager the suite
+  why** — see the struck economy-numbers item under Questions for
+  Devon (BACKLOG.md's struck Q27, answered 2026-10-05, #914: "right as they are",
+  nothing moved): from a real start no manager the suite
   could write cleared 63, while cash cleared the bar two to four times over.
 
 *Leans on:* `checkWinCondition`, `startNextWeekend`/`acknowledgeVictory`,

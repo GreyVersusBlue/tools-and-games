@@ -12,6 +12,7 @@ import { maybeFireEvent } from "./engine/events.js";
 import { financingType, closeDaysFor } from "./engine/financing.js";
 import * as Esc from "./engine/escalation.js";
 import * as Com from "./engine/commercial.js";
+import * as Off from "./engine/offering.js";
 
 let screen = "dashboard";
 const $ = sel => document.querySelector(sel);
@@ -269,13 +270,25 @@ function playerListingCard(pl) {
   const rec = getClientRec(pl.clientRecId);
   const d = el("div", "card");
   d.appendChild(el("div", "client-head", `<b>${esc(pl.listing.address)}</b> <span class="tag">${esc(DB.neighborhoods[pl.listing.neighborhood].name)}</span> <span class="stamp stamp-sm">${pl.status === "prep" ? "IN PREP" : pl.status === "live" ? "LIVE" : "UNDER CONTRACT"}</span>`));
-  d.appendChild(el("p", "facts", `Seller: ${esc(contentClient(rec).name)} · ${pl.listing.beds}bd/${pl.listing.baths}ba · suggested value ${fmtMoney(suggested(pl))}${pl.price ? ` · listed ${fmtMoney(pl.price)}` : ""}${pl.status === "live" ? ` · DOM ${pl.dom} · interest ${pl.interest.toFixed(1)}` : ""}`));
+  const building = Com.isBuilding(pl);
+  // A building's card leads with what a building is argued on: the income, the
+  // packet and what the seller expects (#1010). Its own value is not on it (CT-2).
+  d.appendChild(el("p", "facts", building
+    ? `Seller: ${esc(contentClient(rec).name)} · ${esc(pl.listing.commercial.assetType)}, ${pl.listing.commercial.units} doors · NOI ${fmtMoney(Com.noi(pl.listing))} · packet value ${fmtMoney(Com.packetValue(pl))} · seller expects ${fmtMoney(Com.sellerExpectation(pl))}${pl.price ? ` · listed ${fmtMoney(pl.price)}` : ""}${pl.status === "live" ? ` · DOM ${pl.dom} · interest ${pl.interest.toFixed(1)}` : ""}`
+    : `Seller: ${esc(contentClient(rec).name)} · ${pl.listing.beds}bd/${pl.listing.baths}ba · suggested value ${fmtMoney(suggested(pl))}${pl.price ? ` · listed ${fmtMoney(pl.price)}` : ""}${pl.status === "live" ? ` · DOM ${pl.dom} · interest ${pl.interest.toFixed(1)}` : ""}`));
   const acts = el("div", "actions");
-  if (pl.status === "prep") acts.appendChild(actionBtn("Continue prep", 0, false, () => flowPrepListing(pl)));
+  if (pl.status === "prep") acts.appendChild(actionBtn(building ? "Open the listing file" : "Continue prep", 0, false, () => flowPrepListing(pl)));
   if (pl.status === "live") {
-    acts.appendChild(actionBtn("Host open house (full day, weekend)", S.slotsLeft, !isWeekend(S.day), () => {
+    if (!building) acts.appendChild(actionBtn("Host open house (full day, weekend)", S.slotsLeft, !isWeekend(S.day), () => {
       S.slotsLeft = 0; flowOpenHouse(pl);
     }));
+    // A building's open house is the investor tour (2.6, #1011). The button
+    // says why when it cannot be had today, as Go live does.
+    if (building) {
+      const why = Off.tourBlockers(pl);
+      acts.appendChild(actionBtn("Investor tour (weekday)", Off.TOUR.actions, why.length > 0, () => { if (!spendSlots(Off.TOUR.actions)) return; flowInvestorTour(pl); }));
+      if (why.length) acts.appendChild(el("p", "hint tour-why", esc(why.join(" "))));
+    }
     acts.appendChild(actionBtn("Adjust price", 1, false, () => { if (!spendSlots()) return; flowReprice(pl); }));
     const open = pl.offers.filter(o => o.status === "open");
     if (open.length) acts.appendChild(actionBtn(
@@ -405,7 +418,7 @@ function flowIntake(clientId) {
   const body = el("div");
   body.appendChild(el("p", "", esc(c.intro)));
   if (c.type === "buyer") body.appendChild(el("p", "facts", `Stated budget <b>${fmtMoney(c.budget)}</b> · ${c.statedReqs.minBeds || "?"}+ beds · ${(c.statedReqs.mustFeatures || []).map(esc).join(", ") || "no must-haves stated"} · areas: ${(c.statedReqs.neighborhoods || []).map(n => esc(DB.neighborhoods[n].name)).join(", ")}`));
-  else body.appendChild(el("p", "facts", `Wants to sell: ${esc(c.sellerListing.address)}, ${esc(DB.neighborhoods[c.sellerListing.neighborhood].name)}.`));
+  else body.appendChild(el("p", "facts", `Wants to sell: ${esc(c.sellerListing.address)}, ${esc(DB.neighborhoods[c.sellerListing.neighborhood].name)}${Com.isCommercial(c.sellerListing) ? ` · ${esc(c.sellerListing.commercial.assetType)}, ${c.sellerListing.commercial.units} doors · the owner's number ${fmtMoney(c.sellerListing.price)}` : ""}.`));
   body.appendChild(el("p", "muted", esc(c.statedReqs.notes || "")));
   body.appendChild(el("p", "hint", "What they say and what they mean won't fully overlap. Viewings, questions, and lunches surface the rest."));
   modal(`New client: ${esc(c.name)}`, body, [["Welcome aboard", () => { closeModal(); render(); }]]);
@@ -579,6 +592,7 @@ function flowNegotiate(deal, price) {
 
 // ----- Seller prep / reprice / offer review / open house -----
 function flowPrepListing(pl) {
+  if (Com.isBuilding(pl)) return flowPrepBuilding(pl);
   const rec = getClientRec(pl.clientRecId);
   const body = el("div");
   body.appendChild(el("p", "", `Walkthrough at ${esc(pl.listing.address)}. Suggested value: <b>${fmtMoney(suggested(pl))}</b>.`));
@@ -616,6 +630,84 @@ function flowPrepListing(pl) {
   ], true);
 }
 
+/**
+ * The listing file for a building (DESIGN-seller-commercial.md 1 and 5.3,
+ * #1010): the setup sheet, the work that changes it, the capital list, the
+ * memorandum and the asking price. Every figure is commercial.js's; nothing
+ * here does arithmetic. The building's true value is not shown (CT-2): the
+ * agent learns it at due diligence.
+ */
+function flowPrepBuilding(pl) {
+  const rec = getClientRec(pl.clientRecId);
+  const l = pl.listing, c = l.commercial;
+  const reopen = () => flowRefresh(() => flowPrepBuilding(pl));
+  const body = el("div", "listing-file");
+  const income = Com.rollVerified(pl) ? "verified against the leases"
+    : Number.isFinite(pl.rollStartedDay) ? `the owner's figures until the rent roll lands on day ${pl.rollReadyDay}` : "the owner's figures: no rent roll yet";
+  const n = Com.packetIdx(pl).length;
+  body.appendChild(el("p", "", `${esc(l.address)} · ${esc(c.assetType)} · ${c.units} doors. ${esc(c.rentRoll)}`));
+  body.appendChild(el("table", "setup-sheet", [
+    ["Owner's number", fmtMoney(l.price)],
+    ["Income on the packet", `${fmtMoney(Com.packetNoi(pl))} <span class="muted">(${income})</span>`],
+    ["Market cap rate today", Com.pct(Com.marketCap(l))],
+    ["Capital on the packet", `${fmtMoney(Com.packetCapex(pl))} (${n} item${n === 1 ? "" : "s"})`],
+    ["Packet value", `<b>${fmtMoney(Com.packetValue(pl))}</b>`],
+    ["Seller expects", `${fmtMoney(Com.sellerExpectation(pl))} <span class="muted">signs nothing under ${fmtMoney(Com.sellerFloor(pl, rec))}</span>`],
+  ].map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join("")));
+
+  // The capital list: what the agent knows, each with the two things to do about it.
+  const cap = el("div", "capital-list");
+  l.issues.forEach((is, i) => {
+    if (!Com.agentKnows(pl, i)) return;
+    const cure = (pl.cures || []).find(x => x.idx === i);
+    const row = el("div", "issue issue-" + is.severity);
+    row.dataset.issue = i;
+    row.innerHTML = `${esc(is.desc)} (${fmtMoney(is.repairCost)})${is.disclosureRequired ? " · disclosure-required" : ""} · `
+      + (cure ? (S.day >= cure.readyDay ? "<b>cured</b>" : `curing until day ${cure.readyDay}`) : Com.inPacket(pl, i) ? "<b>in the packet</b>" : "not in the packet") + " ";
+    if (!cure && !Com.inPacket(pl, i)) row.appendChild(btn("Put it in the packet", () => { Seller.discloseIssue(pl, i); reopen(); }));
+    if (Com.canCure(pl, i)) row.appendChild(actionBtn(`Cure it (${Com.cureDays(is.repairCost)} days, the seller pays)`, 1, false, () => {
+      if (!spendSlots()) return; Off.startCure(pl, i); reopen(); }));
+    cap.appendChild(row);
+  });
+  if (!cap.childElementCount) cap.appendChild(el("p", "muted", "Nothing on the capital list yet."));
+  body.appendChild(el("h3", "subhead", "Capital list"));
+  body.appendChild(cap);
+
+  const work = el("div", "actions prep-work");
+  if (!Number.isFinite(pl.rollStartedDay)) work.appendChild(actionBtn(`Build the rent roll (lands in ${Com.PACKET.rollDays} days)`, Com.PACKET.rollActions, false, () => {
+    if (!spendSlots(Com.PACKET.rollActions)) return; Off.startRentRoll(pl); reopen(); }));
+  if (!pl.preInspected) {
+    const rep = btn(`Order the condition report (${fmtMoney(Com.PACKET.reportCost)})`, () => {
+      if (S.cash < Com.PACKET.reportCost) { toast("You can't front the condition report right now."); return; }
+      Off.orderConditionReport(pl); reopen(); });
+    work.appendChild(rep);
+  }
+  const w = Com.bovWeightNow(pl);
+  work.appendChild(actionBtn(`${Number.isFinite(pl.bovDay) ? "Present your opinion of value again" : "Present your opinion of value"} (they would weigh it ${Math.round(w * 100)}%)`, 1,
+    Number.isFinite(pl.bovDay) && pl.bovWeight >= w, () => { if (!spendSlots()) return; Off.presentOpinion(pl); reopen(); }));
+  body.appendChild(work);
+
+  const omSel = el("select"); omSel.className = "om-tier";
+  Off.OM_LABEL.forEach((name, i) => omSel.appendChild(el("option", "", `${name[0].toUpperCase() + name.slice(1)} (${fmtMoney(Com.PACKET.omCost[i])}) · reaches ${Off.reachedKinds(i).map(k => Off.INVESTOR_LABEL[k] + "s").join(", ")}`)));
+  omSel.selectedIndex = Math.min(2, pl.marketingTier || 0);
+  const priceIn = el("input"); priceIn.type = "number"; priceIn.value = suggested(pl); priceIn.step = 1000; priceIn.className = "input-lg";
+  body.append(labelWrap("Offering memorandum", omSel), labelWrap("Asking price", priceIn));
+  const blockers = Com.goLiveBlockers(pl);
+  const why = el("p", "hint go-live-blockers", blockers.map(esc).join(" "));
+  if (!blockers.length) why.textContent = "Offers are written on the packet. Closings happen on the building.";
+  body.appendChild(why);
+  modal(`Listing file — ${esc(l.address)}`, body, [
+    ["Go live", () => {
+      const res = Seller.goLive(pl, parseInt(priceIn.value, 10) || suggested(pl), omSel.selectedIndex);
+      if (res && res.refused) { toast(res.why.join(" ")); return; }
+      closeModal(); render();
+    }],
+    ["Save for later", () => { closeModal(); render(); }],
+  ], true);
+  const go = $("#modal-root .modal-actions button");
+  if (go && blockers.length) go.disabled = true;
+}
+
 function flowReprice(pl) {
   const body = el("div");
   const priceIn = el("input"); priceIn.type = "number"; priceIn.value = pl.price; priceIn.step = 1000; priceIn.className = "input-lg";
@@ -631,8 +723,10 @@ function flowReprice(pl) {
   }], ["Cancel", () => { S.slotsLeft++; closeModal(); render(); }]]);
 }
 
-function flowOfferReview(pl) {
+function flowOfferReview(pl, note = "") {
   const body = el("div");
+  if (note) body.appendChild(el("p", "hint refusal", esc(note)));
+  const building = Com.isBuilding(pl);
   // The list is the RESOLVED field now, not the raw offers. A clause that is
   // worth $2,500 more than its paper has to say so on the card the player
   // decides from — the arithmetic is in escalation.js and nothing here
@@ -648,13 +742,19 @@ function flowOfferReview(pl) {
     const reaction = Seller.sellerReaction(pl, o, r.final);
     const row = el("div", "card offer-row");
     const escalated = r.final > r.base;
-    row.innerHTML = `<b>${fmtMoney(r.final)}</b>${escalated ? ` <span class="tag">escalated from ${fmtMoney(r.base)}</span>` : ""}${i === 0 && field.length > 1 ? ` <span class="stamp stamp-sm">LEADING</span>` : ""} — ${esc(a.name)} (${esc(a.negotiationStyle)}) · ${esc(financingType(o.financing).label)}${o.inspection ? "" : " · inspection waived"} · close ${o.closeDays}d
+    // A building's row carries every number the bank and the buyer will use
+    // later (#1010), out of offering.js, so the one time the bank bites the
+    // player was told.
+    const f = building ? Off.offerRowFacts(pl, o, r.final) : null;
+    row.innerHTML = `<b>${fmtMoney(r.final)}</b>${escalated ? ` <span class="tag">escalated from ${fmtMoney(r.base)}</span>` : ""}${i === 0 && field.length > 1 ? ` <span class="stamp stamp-sm">LEADING</span>` : ""} — ${esc(a.name)} (${esc(a.negotiationStyle)}) · ${f ? `${esc(f.kind)} · ` : ""}${esc(financingType(o.financing).label)}${f || o.inspection ? "" : " · inspection waived"} · close ${o.closeDays}d
+      ${f ? `<div class="offer-uw">Yield at this price ${Com.pct(f.yieldAt)} · ${f.cash ? "cash, no bank to meet" : `coverage ${Com.dscrText(f.dscr)} against ${f.minDscr.toFixed(2)}x, ${f.sizes ? `sizes with ${fmtMoney(f.room)} to spare` : `short by ${fmtMoney(f.shortfall)}`}`}${f.cash ? "" : ` · spare equity ${fmtMoney(f.spare)}`} · written on a packet with ${f.capexItems} capital item${f.capexItems === 1 ? "" : "s"}</div>` : ""}
       ${r.clause ? `<div class="hint">Fine print: escalates ${fmtMoney(r.clause.increment)} over any competing offer, cap ${fmtMoney(r.clause.cap)}.${r.capped ? " They are at the cap and still behind." : escalated ? ` Beating the ${fmtMoney(r.beat)} behind it.` : " Nothing to beat yet."}</div>` : ""}
       <div class="muted">Seller's read: ${reaction.notes.map(esc).join(" ") || (reaction.inclination > 0 ? "Warm-ish." : "Unimpressed.")}</div>`;
     const acts = el("div", "actions");
     const counterIn = el("input"); counterIn.type = "number"; counterIn.value = Math.min(pl.price, Math.round(r.final * 1.03 / 500) * 500); counterIn.step = 500;
-    acts.appendChild(btn("Advise accept", () => { Seller.respondToOffer(pl, o, "accept"); closeModal(); render(); }));
-    acts.append(counterIn, btn("Counter", () => { const res = Seller.respondToOffer(pl, o, "counter", parseInt(counterIn.value, 10)); closeModal(); if (res.recounter) flowOfferReview(pl); else render(); }));
+    const refused = res => `${contentClient(getClientRec(pl.clientRecId)).name} will not sign that: they take nothing under ${fmtMoney(res.floor)}. The offer is still on the table.`;
+    acts.appendChild(btn("Advise accept", () => { const res = Seller.respondToOffer(pl, o, "accept"); closeModal(); if (res && res.refused) flowOfferReview(pl, refused(res)); else render(); }));
+    acts.append(counterIn, btn("Counter", () => { const res = Seller.respondToOffer(pl, o, "counter", parseInt(counterIn.value, 10)); closeModal(); if (res.refused) flowOfferReview(pl, refused(res)); else if (res.recounter) flowOfferReview(pl); else render(); }));
     acts.appendChild(btn("Reject", () => { Seller.respondToOffer(pl, o, "reject"); flowRefresh(() => pl.offers.some(x => x.status === "open") ? flowOfferReview(pl) : (closeModal(), render())); }));
     row.appendChild(acts);
     body.appendChild(row);
@@ -691,6 +791,20 @@ function flowCallHighestAndBest(pl) {
   modal(`Highest and best — ${esc(pl.listing.address)}`, body, [
     ["Make the call", () => { Esc.callHighestAndBest(pl); closeModal(); render(); }],
     ["Not yet", () => { S.slotsLeft++; closeModal(); render(); }],
+  ]);
+}
+
+function flowInvestorTour(pl) {
+  const body = el("div");
+  body.appendChild(el("p", "", `Eight buyers' people who asked for the memorandum walk ${esc(pl.listing.address)}: the roof, the mechanicals, two of the units.`));
+  body.appendChild(el("p", "", esc(Off.tourQuestion(pl))));
+  const finish = answer => {
+    const r = Off.investorTour(pl, answer);
+    modal("Tour wrapped", el("p", "", `Interest +${r.gain.toFixed(1)}. ${answer === "spin" ? "The analyst writes something down and does not say what." : "The analyst nods and asks for the condition report."}`), [["Lock up", () => { closeModal(); render(); }]]);
+  };
+  modal(`Investor tour — ${esc(pl.listing.address)}`, body, [
+    ["Answer straight — walk them through the capital list", () => { closeModal(); finish("straight"); }],
+    ["Spin it — 'it is all in the memorandum'", () => { closeModal(); finish("spin"); }],
   ]);
 }
 
@@ -805,6 +919,12 @@ function renderChoiceQueue() {
     sellerInspectionHit: () => { const sellerRec = getClientRec(pl.clientRecId); return modal("Buyer's inspection findings", body, [
       ["Offer a credit (~70% of cost)", () => { Seller.sellerInspectionDecision(pl, "credit", ch.cost); if (ch.undisclosedRequired) addRep(-6, "an undisclosed required issue surfaced under contract", sellerRec && sellerRec.recId); done(); }],
       ["Refuse — dare them to walk", () => { Seller.sellerInspectionDecision(pl, "refuse", ch.cost); if (ch.undisclosedRequired) addRep(-6, "an undisclosed required issue surfaced under contract", sellerRec && sellerRec.recId); done(); }]]); },
+    sellerRetrade: () => modal("Due diligence", body, [
+      [`Concede ${fmtMoney(ch.retrade)}`, () => { Off.retradeDecision(pl, "concede", ch.retrade, ch.knewRequired); done(); }],
+      ["Refuse, and see if they walk", () => { Off.retradeDecision(pl, "refuse", ch.retrade, ch.knewRequired); done(); }]]),
+    sellerLoanShortfall: () => modal("The bank", body, [
+      [`Come down to ${fmtMoney(ch.financeablePrice)}`, () => { Off.sellerLoanDecision(pl, "reprice"); done(); }],
+      ["Hold the price: the deal ends", () => { Off.sellerLoanDecision(pl, "hold"); done(); }]]),
     poach: () => { const rec2 = getClientRec(ch.recId); const a = DB.agents[ch.agentId];
       modal("Poaching attempt", body, [
         ["Counter-schmooze immediately ($200)", () => { addCash(-200, "damage-control dinner", rec2.recId); log(`${contentClient(rec2).name} stays. ${a.name} sends a winking emoji.`, "", undefined, rec2.recId); done(); }],

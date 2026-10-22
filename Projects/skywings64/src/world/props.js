@@ -3,11 +3,56 @@
 // API: createProps(terrain, { seed, lighthouse, runway }) -> { group, update(dt, elapsed), info }
 import * as THREE from 'three';
 import { loadModel } from '../core/models.js';
-import { addHerd } from './herd.js';
+import { addHerd, attachHerds, eachRender } from './herd.js';
 import { GeoBuilder, makeRng, LAYOUT } from './terrain.js';
 import { shared } from './atmosphere.js';
 
 const stdMat = (o = {}) => new THREE.MeshStandardMaterial(Object.assign({ vertexColors: true, roughness: 0.8, metalness: 0 }, o));
+
+// Copies of one transparent mesh drawn as one InstancedMesh (HISTORY.md #1007): the boats' wakes and
+// the balloons' burner flames. The copies stay in the scene graph, hidden, and their owners go on
+// moving them. Before each render the copies in the camera's frustum are packed back to front, the
+// order three sorted them in. With `ownOpacity` each instance takes its copy's material.opacity,
+// which its updater still sets, and `material` is patched to multiply it in.
+const _bf = new THREE.Frustum(), _bm = new THREE.Matrix4(), _bs = new THREE.Sphere();
+function batchTransparent(copies, material, parent, name, ownOpacity) {
+  const geo = copies[0].geometry.clone();
+  geo.computeBoundingSphere();
+  const alpha = new THREE.InstancedBufferAttribute(new Float32Array(copies.length), 1);
+  if (ownOpacity) {
+    alpha.setUsage(THREE.DynamicDrawUsage); geo.setAttribute('aOpacity', alpha);
+    material.opacity = 1;
+    material.onBeforeCompile = (sh) => {
+      sh.vertexShader = 'attribute float aOpacity;\nvarying float vOpacity;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvOpacity = aOpacity;');
+      sh.fragmentShader = 'varying float vOpacity;\n' + sh.fragmentShader.replace('vec4 diffuseColor = vec4( diffuse, opacity );', 'vec4 diffuseColor = vec4( diffuse, opacity * vOpacity );');
+    };
+  }
+  const im = new THREE.InstancedMesh(geo, material, copies.length);
+  im.name = name; im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  im.count = 0; im.visible = false;   // nothing until the first pack
+  parent.add(im);
+  const items = copies.map((m, i) => { m.visible = false; return { m, i, d: 0 }; }), shown = [];
+  eachRender((camera) => {
+    _bf.setFromProjectionMatrix(_bm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+    const e = camera.matrixWorldInverse.elements;
+    shown.length = 0;
+    for (const it of items) {
+      _bs.copy(geo.boundingSphere).applyMatrix4(it.m.matrixWorld);
+      if (!_bf.intersectsSphere(_bs)) continue;
+      it.d = e[2] * _bs.center.x + e[6] * _bs.center.y + e[10] * _bs.center.z;   // view-space z less a constant: lower is farther
+      shown.push(it);
+    }
+    shown.sort((a, b) => a.d - b.d || a.i - b.i);
+    // The mesh stands on the camera and the instances are kept relative to it, so the shader never
+    // subtracts one large float32 position from another. In world coordinates a far flame (a pixel
+    // wide) landed up to 48/255 off on a few pixels against the copies three drew itself.
+    if (shown.length) { im.position.setFromMatrixPosition(camera.matrixWorld); im.updateMatrixWorld(); }
+    shown.forEach((it, k) => { im.setMatrixAt(k, _bm.copy(it.m.matrixWorld).setPosition(_bs.center.setFromMatrixPosition(it.m.matrixWorld).sub(im.position))); alpha.array[k] = ownOpacity ? it.m.material.opacity : 1; });
+    im.count = shown.length; im.visible = shown.length > 0;
+    if (shown.length) { im.instanceMatrix.needsUpdate = true; alpha.needsUpdate = true; im.computeBoundingSphere(); }
+  });
+  return im;
+}
 
 // ---------------------------------------------------------------- birds
 function birdGeo(gull) {
@@ -204,6 +249,9 @@ export function createProps(terrain, opts = {}) {
       }
     });
     info.balloons = spots.length;
+    // six flames, one batch, each at its own flicker (#1007)
+    const flames = bs.map((o) => o.b.userData.flame);
+    batchTransparent(flames, flames[0].material.clone(), group, 'burner-flames', true);
     // hero GLB (same local frame as balloon()); the animated burner flame stays procedural
     loadModel('balloon').then((proto) => {
       if (!proto) return;
@@ -222,7 +270,7 @@ export function createProps(terrain, opts = {}) {
     const wakeTex = wakeTexture();
     const wakeMat = new THREE.MeshBasicMaterial({ map: wakeTex, transparent: true, depthWrite: false, opacity: 0.8, fog: true });
     const wakeGeo = new THREE.PlaneGeometry(7, 26).rotateX(-Math.PI / 2).translate(0, 0.12, 13.5);
-    const hulls = [0xf4f4f0, 0xd7362b, 0x2f5fc8, 0xf2c94c, 0x2fa84a], boats = [];
+    const hulls = [0xf4f4f0, 0xd7362b, 0x2f5fc8, 0xf2c94c, 0x2fa84a], boats = [], wakes = [];
     const boatMat = stdMat({ roughness: 0.55 });
     let n = 0;
     for (let a = 0; a < 4000 && n < 12; a++) {
@@ -232,7 +280,7 @@ export function createProps(terrain, opts = {}) {
       const m = new THREE.Mesh(boatGeo(kind, hulls[n % 5], n % 2 ? 0xffffff : 0xffd8a8), boatMat);
       const body = new THREE.Group(); body.add(m);           // rocks; holds procedural hull and (later) the GLB
       const holder = new THREE.Group(); holder.add(body); holder.position.set(x, 0, z); group.add(holder);
-      const w = new THREE.Mesh(wakeGeo, wakeMat); if (kind !== 'row') holder.add(w); w.scale.set(kind === 'motor' ? 1.3 : 1, 1, kind === 'motor' ? 1.4 : 1);
+      const w = new THREE.Mesh(wakeGeo, wakeMat); if (kind !== 'row') { holder.add(w); wakes.push(w); } w.scale.set(kind === 'motor' ? 1.3 : 1, 1, kind === 'motor' ? 1.4 : 1);
       boats.push({ h: holder, m: body, hull: m, ry: rng() * 6.28, sp: kind === 'sail' ? 2.2 + rng() * 1.2 : kind === 'motor' ? 6 + rng() * 3 : 0.4, ph: rng() * 6.28, kind, turn: 0 });
       n++;
     }
@@ -249,6 +297,7 @@ export function createProps(terrain, opts = {}) {
       }
     });
     info.boats = boats.length;
+    batchTransparent(wakes, wakeMat, group, 'boat-wakes', false);   // ten wakes, one batch (#1007)
     for (const kind of ['sail', 'motor']) {
       loadModel(kind === 'sail' ? 'boat_sail' : 'boat_motor').then((proto) => {
         if (!proto) return;
@@ -317,5 +366,5 @@ export function createProps(terrain, opts = {}) {
     info.runwayLights = pts.length;
   }
 
-  return { group, info, update(dt, t) { uTime.value = t; for (let i = 0; i < updaters.length; i++) updaters[i](dt, t); } };
+  return { group, info, update(dt, t) { attachHerds(group); uTime.value = t; for (let i = 0; i < updaters.length; i++) updaters[i](dt, t); } };
 }
