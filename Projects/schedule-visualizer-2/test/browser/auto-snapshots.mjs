@@ -9,10 +9,11 @@
 // room for a snapshot (the limit reached, saves failing, a read-only second
 // tab) the change is still made and its message says why no snapshot was
 // kept, and the Apply question says so before it is answered (the limit,
-// saves failing, a tab stopped by another tab's save). Then db.js: a save's sweep spares an image only a quarantined record
-// names, and an image a restore put back is swept once the restore is undone
-// inside the autosave's wait and nothing names it. Then at 390 by 844 with
-// touch, a floor cleared by finger.
+// saves failing, a tab stopped by another tab's save). Then db.js: a save's
+// sweep spares an image only a quarantined record names, and an image a
+// restore put back is swept once the restore is undone inside the
+// autosave's wait and nothing names it. Then at 390 by 844 with touch, a
+// floor cleared by finger.
 //
 // Every wait is on a state the page sets: the panel's or the lab's
 // data-snapshot ('taking', then 'taken' or 'not-taken'), the save indicator,
