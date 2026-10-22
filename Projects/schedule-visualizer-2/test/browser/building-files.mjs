@@ -190,7 +190,7 @@ test('the heading is drawn in the tool\'s own face, carried in the picture: the 
     }
     return { faces: faces.map((face) => face.family + ' ' + face.weight + ' ' + face.url.slice(0, 22)), dark, differ };
   }, floorId, NOW);
-  assert.deepEqual(compared.faces, ['Barlow Semi Condensed 500 data:font/woff2;base', 'Barlow Semi Condensed 600 data:font/woff2;base', 'Public Sans 400 data:font/woff2;base', 'Public Sans 600 data:font/woff2;base', 'Public Sans 700 data:font/woff2;base']);
+  assert.deepEqual(compared.faces, ['Barlow Semi Condensed 500 data:font/woff2;base64', 'Barlow Semi Condensed 600 data:font/woff2;base64', 'Public Sans 400 data:font/woff2;base64', 'Public Sans 600 data:font/woff2;base64', 'Public Sans 700 data:font/woff2;base64']);
   assert.ok(compared.dark > 500, 'the heading is drawn: ' + compared.dark + ' dark pixels in its band');
   assert.ok(compared.differ > 200, 'the heading is in another face than the browser\'s own: ' + compared.differ + ' pixels differ');
 });
@@ -281,13 +281,14 @@ test('a picture the browser cannot hold at twice its size is saved a size down a
 });
 
 test('the room list\'s CSV from Building is the file Schedule › Import\'s Rooms export saves, byte for byte', async () => {
-  // a room number that is markup and a quote, so the two files have something to differ on
+  // a room number that is markup, a quote and a formula, so the two files have something to differ on
+  const number = '=1+' + HOSTILE;
   await page.evaluate(async (name) => {
     const actions = await import('./engine/actions.js');
     const { store } = globalThis.sv2;
     const room = store.project.building.floors[1].spaces.find((space) => space.kind === 'room');
     store.apply(actions.setRoomFields, { roomId: room.id, number: name });
-  }, HOSTILE);
+  }, number);
   try {
     // both through the real download, a link with a download name: its bytes are read instead of saved
     await page.evaluate(() => {
@@ -305,8 +306,9 @@ test('the room list\'s CSV from Building is the file Schedule › Import\'s Room
     await page.click('#rooms-export [data-action="rooms-csv"]');
     await until('Building\'s CSV was not downloaded', () => globalThis.sv2test.downloads.length === 1);
     await go(page, '#schedule/import');
-    await page.waitForSelector('[data-action="export-rooms"]');
-    await page.click('[data-action="export-rooms"]');
+    // the tab redraws while a change is being drawn: the button is pressed once it is settled
+    await until('the Import tab did not settle', () => document.querySelector('[data-action="export-rooms"]') !== null && document.querySelector('.sch')?.dataset.pending !== 'true');
+    await page.evaluate(() => document.querySelector('[data-action="export-rooms"]').click());
     await until('Import\'s Rooms export was not downloaded', () => globalThis.sv2test.downloads.length === 2);
     const [building, schedule] = await page.evaluate(() => globalThis.sv2test.downloads);
     assert.equal(building.name, SCHOOL + ' - rooms - 2026-09-01.csv');
@@ -314,7 +316,7 @@ test('the room list\'s CSV from Building is the file Schedule › Import\'s Room
     assert.deepEqual(building.bytes.slice(0, 3), [0xef, 0xbb, 0xbf], 'a byte-order mark first');
     assert.deepEqual(building.bytes, schedule.bytes, 'the same bytes');
     const csv = new TextDecoder().decode(new Uint8Array(building.bytes));
-    assert.ok(csv.includes('"' + HOSTILE.replace(/"/g, '""') + '"'), 'the room number as typed, quoted for CSV');
+    assert.ok(csv.includes('"' + number.replace(/"/g, '""') + '"'), 'the room number as typed, quoted for CSV');
     const rooms = await page.evaluate(() => globalThis.sv2.store.project.building.floors.flatMap((floor) => floor.spaces).filter((space) => space.kind === 'room').length);
     assert.equal(csv.trimEnd().split('\r\n').length, rooms + 1, 'a header and a row for every room of every floor');
   } finally {

@@ -246,7 +246,20 @@ test('the paper size and orientation change the page rule and the sheet, and are
 // SV2-32c
 test('the paper choice offers the eight sizes in order; a poster size is the sheet on show, says where to print it, and is the project\'s setting', async () => {
   await openPreview('floor-plan');
-  assert.deepEqual(await page.$$eval('#print-preview .preview__control:first-child .seg__option', (all) => all.map((option) => option.querySelector('input').value + ':' + option.textContent)),
+  try {
+    await posters();
+  } finally {
+    // the paper is put back whatever failed, so the cases after this one start on US Letter
+    await page.evaluate(() => {
+      const { store } = globalThis.sv2;
+      while (store.project.settings.paper.size !== 'letter' && store.undoLabel && /paper/.test(store.undoLabel)) store.undo();
+    });
+  }
+  assert.deepEqual(await page.evaluate(() => globalThis.sv2.store.project.settings.paper), { size: 'letter', orientation: 'portrait' });
+});
+
+async function posters() {
+  assert.deepEqual(await page.$$eval('#print-preview .seg:has(input[value="a4"]) .seg__option', (all) => all.map((option) => option.querySelector('input').value + ':' + option.textContent)),
     ['letter:US Letter', 'a4:A4', 'tabloid:Tabloid', 'a3:A3', 'a2:A2', 'a1:A1', 'a0:A0', 'poster-24x36:24 × 36 in']);
   await page.click('#print-preview input[value="a0"]');
   await page.waitForSelector('#print-preview[data-ready="true"][data-paper="a0 portrait"]');
@@ -265,12 +278,7 @@ test('the paper choice offers the eight sizes in order; a poster size is the she
   seen = await readDocument();
   assert.equal(seen.status, 'Tabloid, portrait. About 3 sheets.', 'tabloid is office paper');
   await closePreview();
-  await page.evaluate(() => {
-    globalThis.sv2.store.undo();
-    globalThis.sv2.store.undo();
-  });
-  assert.deepEqual(await page.evaluate(() => globalThis.sv2.store.project.settings.paper), { size: 'letter', orientation: 'portrait' });
-});
+}
 
 test('in a tab that cannot change the project, the paper chosen still changes the sheet on show', async () => {
   await openPreview('room-list');
