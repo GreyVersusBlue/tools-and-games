@@ -318,8 +318,10 @@ jobs:
 
           - name: Closing Time
             dir: Projects/Closing Time
+            install: Tools/board-check
             commands: |
               node tools/smoke.mjs
+              node tools/browser.mjs
 
           - name: Archived teaching tools
             dir: .
