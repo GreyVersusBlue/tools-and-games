@@ -280,19 +280,22 @@ group('Rush Hour: the events and what the corridor costs');
   // turned the W left into an arrow under it, into an E through still in
   // the box on seeds 2 and 5 at 1.5 s of all-red (R3 read that as the
   // all-red's lesson, and plays this at 2.5). E gets its yellow and
-  // all-red now: none of the six collide at 1, 1.5 or 2.5 s, and at 0.5 s
-  // only seed 5, 51 s after the call.
+  // all-red now: at #918 none of the six collided at 1, 1.5 or 2.5 s, and
+  // at 0.5 s only seed 5, 51 s after the call. Since #957 nothing touches
+  // through the dropped leg's clearance at any of the four; seeds 3 and 5
+  // crash at 1.5 s at 156 and 168 s and seed 2 at 1 s at 174 s, all before
+  // the ambulance, and at 0.5 s seed 4 does, 5.7 s after the call (below).
   const l6 = levelById('rush-hour');
   const run = (seed, allRed = 2.5) => {
     const lvl = withAuto(l6);
     const w = new World({ ...lvl, controller: { ...lvl.controller, timing: { ...lvl.controller.timing, allRed } } }, seed);
-    let called = false;
+    let called = false, calledAt = -1;
     for (let i = 0; i < l6.duration * 60 && !w.stats.gridlock; i++) {
       w.step();
       const e = w.activeEvent('ambulance');
-      if (e && !called && w.t - e.at > 2) { called = w.requestPriority(e.car); }
+      if (e && !called && w.t - e.at > 2) { called = w.requestPriority(e.car); if (called) calledAt = w.t; }
     }
-    return { w, r: score(w) };
+    return { w, r: score(w), calledAt };
   };
   const { w, r } = run(2);
   ok(r.survived && r.cleared >= l6.target && w.stats.outages === 1 && w.stats.ambulances === 1, 'seed 2 with the corridor called survives, clears the target, and saw the outage and the ambulance', `${starString(r.stars)} ${r.cleared}/${r.avgWait.toFixed(0)}s/${r.collisions}x`);
@@ -304,9 +307,17 @@ group('Rush Hour: the events and what the corridor costs');
   ok(short.w.stats.collisions === 0 && short.r.survived && short.r.ambulanceLate === 0, 'at the shipped 1.5 s all-red the same call is clean: the leg the corridor drops gets its yellow before the left turns protected', `${starString(short.r.stars)} ${short.r.cleared}/${short.r.avgWait.toFixed(0)}s/${short.w.stats.collisions}x`);
   // and the left on the dropped leg goes on yielding through that yellow:
   // on seed 4 at 0.5 s, read as an ordinary yellow against a corridor that
-  // does not stop, an E left turned into a W through at 189.5 s
+  // does not stop, an E left turned into a W through at 189.5 s. Since
+  // #957 the run is not clean: the same left, still waiting in the box
+  // when its yellow and all-red have run, finishes on the red into a W
+  // through at 192.7 s, the short all-red the level's hint warns about.
+  // What #918 guards is the clearance, so that is what is pinned: nothing
+  // touches until the dropped leg's yellow and all-red are over (with
+  // `permissive` emptied in `current` the crash is at 189.7 s).
   const trap = run(4, 0.5);
-  ok(trap.w.stats.collisions === 0 && trap.r.survived, 'and at 0.5 s on seed 4 the dropped leg\'s left still yields to the corridor through its yellow', `${trap.w.stats.collisions}x: ${trap.r.reasons.join('; ')}`);
+  const clearEnd = trap.calledAt + l6.controller.timing.yellow + 0.5;
+  const crashes = trap.w.events.filter(e => e.kind === 'collision');
+  ok(trap.calledAt > 0 && crashes.every(e => e.t >= clearEnd), 'and at 0.5 s on seed 4 the dropped leg\'s left still yields to the corridor through its yellow', `called at ${trap.calledAt.toFixed(1)} s, clear at ${clearEnd.toFixed(1)} s, crashes at ${crashes.map(e => e.t.toFixed(1)).join(', ') || 'none'}`);
   // hard mode still ends a run on one collision
   short.w.stats.collisions = 1;
   const hr = score(short.w);
@@ -482,6 +493,32 @@ group('the lesson decides a star (R2)');
   // nothing pressed is 99.7 s on the map, on time by 50 s
   const lucky = runC(null, 1);
   ok(lucky.trip < 115 && lucky.lateAt === null && lucky.w.stats.ambulanceLate === 0 && lucky.corridors === '' && lucky.r.lesson && !lucky.r.lesson.met && lucky.r.reasons.at(-1) === 'the ambulance made it without its corridor' && lucky.r.stars === 1, 'seed 1\'s ambulance gets across on time with nothing pressed, and that is not the lesson: one star', `${tripText(lucky)}: ${lucky.r.reasons.at(-1)}`);
+  // an ambulance that crashes has not made it (#1004, Devon 2026-10-21:
+  // late / failed). Seed 6 called as it arrives, as above, and the
+  // ambulance put in the state a collision leaves it in once box 2 has it.
+  // Until #1004 the tow 8 s later was its arrival: `done`, on time, on its
+  // corridor, the lesson met
+  const wreck = (() => {
+    const w = new World(ct, 6);
+    let amb = null, crashAt = null, lates = [], towed = null, read = 0;
+    for (let i = 0; i < ct.duration * 60 && !w.stats.gridlock; i++) {
+      w.step();
+      handStep(w, { ahead: false });
+      for (; read < w.events.length; read++) {
+        const e = w.events[read];
+        if (e.kind === 'spawn' && e.archetype === 'emergency') amb = e.car;
+        if (amb === null || e.car !== amb) continue;
+        if (e.kind === 'handoff' && crashAt === null) { const c = w.cars.find(c => c.id === amb); c.crashed = true; c.crashedAt = w.t; c.v = 0; crashAt = w.t; }
+        if (e.kind === 'ambulance-late') lates.push(e);
+        if (e.kind === 'towed') towed = e.t;
+      }
+    }
+    return { w, r: score(w), crashAt, lates, towed };
+  })();
+  ok(wreck.crashAt !== null && wreck.towed !== null && wreck.towed - wreck.crashAt < amb0.within, 'Cross Town seed 6, called: the ambulance crashed past box 1 and was towed off with its own clock still running', `crashed at ${wreck.crashAt === null ? 'no time' : wreck.crashAt.toFixed(2) + ' s'}, towed at ${wreck.towed === null ? 'no time' : wreck.towed.toFixed(2) + ' s'}`);
+  ok(wreck.w.stats.ambulanceLate === 1 && wreck.w.stats.ambulanceEscorted === 0 && wreck.w.stats.ambulanceCrashed === 1 && wreck.r.ambulanceLate === 1, 'it counts as late, not escorted', `${wreck.w.stats.ambulanceLate} late, ${wreck.w.stats.ambulanceEscorted} escorted, ${wreck.w.stats.ambulanceCrashed} crashed`);
+  ok(wreck.lates.length === 1 && wreck.lates[0].crashed === true && wreck.lates[0].t > wreck.crashAt && wreck.lates[0].t - wreck.crashAt <= 1 / 60 + 1e-9, 'and is said to be late once, on the first step after it crashed', wreck.lates.map(e => `${e.t.toFixed(2)} s${e.crashed ? ' crashed' : ''}`).join(', '));
+  ok(wreck.r.lesson && !wreck.r.lesson.met && wreck.r.reasons.at(-1) === 'the ambulance crashed' && wreck.w.stats.ambulanceLateBy === 0, 'its reason line says it crashed, not by how much it was late', wreck.r.reasons.at(-1));
   // walks: the World's longest served call, against its own walk events
   const l4 = levelById('crossing');
   const w4 = new World(withAuto(l4), 3).run(120);

@@ -11,9 +11,17 @@ server behind Cloudflare: measured on 2026-10-10 every response is
 `main`, #934. GitHub Pages still answers at
 `greyversusblue.github.io/tools-and-games/` and is not the public host),
 so **every file here is a live URL**, markdown included, and nothing can be
-hidden from the web by an ignore rule any more. **The public host does not
+hidden from the web by an ignore rule any more. **How a commit gets there**,
+in Devon's words of 2026-10-21 (#1008): "I edit on machine Huginn, under user
+devon. When we push commits automatically at 3am, or sometimes manually, it
+gets sent to github. This then gets pulled back to Huginn on the admin side,
+which then serves the website via a cloudflare tunnel." He did not say how long
+that takes, so a PR never claims a change is live. **The public host does not
 compress `.glb` or `.gltf`** (#934; GitHub Pages did, #821), so what a visitor
-downloads of a model is its raw size.
+downloads of a model is its raw size. Devon has said to turn compression on
+(2026-10-21, #1008); that is a setting on the serving stack or in Cloudflare,
+not a change to any file here, and this sentence stands until a `curl -sI` of a
+`.glb` shows a `content-encoding`.
 
 **`BACKLOG.md` is the entry point. `HISTORY.md` is the record. `ARCHIVE.md`
 is work that will not be done.** Open work is ranked in `BACKLOG.md`; the

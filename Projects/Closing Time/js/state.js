@@ -2,6 +2,7 @@
 import { DB, fmtMoney } from "./data.js";
 import { FINANCING, DEFAULT_FINANCING, financingFor } from "./engine/financing.js";
 import { clauseOf } from "./engine/escalation.js";
+import { isBuilding, validCommercialBlock, INVESTORS, PACKET, marketCap, noi, packetIdx, packetCapex } from "./engine/commercial.js";
 // Relative, not "/assets/js/gvb-save.js": tools/smoke.mjs imports this module
 // under plain Node, which cannot resolve a leading slash. The relative form
 // resolves identically in the browser.
@@ -447,6 +448,7 @@ export function repairCareer(s) {
       o.escalation = clauseOf(o);
     }
     for (const o of pl.offers) if (o && !Number.isFinite(o.hbDeadline)) delete o.hbDeadline;
+    if (isBuilding(pl)) repairBuilding(pl, s);
   }
 
   for (const d of s.deals) {
@@ -471,6 +473,51 @@ export function repairCareer(s) {
   // "cr_NaN", and getClientRec then matches the wrong record.
   if (!Number.isFinite(s.nextId)) s.nextId = highestIdIn(s) + 1;
   return s;
+}
+
+/**
+ * The listing side of the commercial tier (#1009): the fields a building under
+ * a listing agreement carries, set to what a fresh one has when missing and
+ * clamped when wrong. No rand(): this runs on every load. An offer written on
+ * a building is fixed to the packet it was written on (`uw`); one that lost it
+ * is given the packet as it stands, at the market cap rate, which is the
+ * price a buyer needing no more than the market would have written.
+ */
+function repairBuilding(pl, s) {
+  const day = v => (Number.isFinite(v) ? Math.round(v) : null);
+  pl.rollStartedDay = day(pl.rollStartedDay);
+  pl.rollReadyDay = pl.rollStartedDay === null ? null : (day(pl.rollReadyDay) ?? pl.rollStartedDay + PACKET.rollDays);
+  pl.bovWeight = Math.max(0, Math.min(1, num(pl.bovWeight, 0)));
+  pl.bovDay = day(pl.bovDay);
+  pl.staleSteps = Math.max(0, Math.round(num(pl.staleSteps, 0)));
+  pl.tourDay = day(pl.tourDay);
+  pl.tourSpins = Math.max(0, Math.round(num(pl.tourSpins, 0)));
+  pl.preInspected = !!pl.preInspected;
+  const n = Array.isArray(pl.listing.issues) ? pl.listing.issues.length : 0;
+  const seen = new Set();
+  pl.cures = (Array.isArray(pl.cures) ? pl.cures : []).filter(c => {
+    if (!c || typeof c !== "object" || !Number.isInteger(c.idx) || c.idx < 0 || c.idx >= n || seen.has(c.idx)) return false;
+    if (!Number.isFinite(c.readyDay)) return false;
+    seen.add(c.idx);
+    c.startedDay = day(c.startedDay) ?? c.readyDay;
+    return true;
+  });
+  pl.disclosed = pl.disclosed.filter(i => Number.isInteger(i) && i >= 0 && i < n);
+  const valid = validCommercialBlock(pl.listing.commercial);
+  for (const o of [...pl.offers, pl.acceptedOffer]) {
+    if (!o || typeof o !== "object") continue;
+    if (!(o.investor in INVESTORS)) o.investor = "value-add";
+    if (!Number.isFinite(o.spareEquity)) o.spareEquity = 0;
+    if (!(o.financing === "commercial" || o.financing === "cash")) o.financing = INVESTORS[o.investor].financing;
+    const uw = o.uw;
+    const whole = uw && typeof uw === "object" && Number.isFinite(uw.noi) && Number.isFinite(uw.reqCap) && uw.reqCap > 0
+      && Number.isFinite(uw.yieldPrice) && Array.isArray(uw.capexIdx);
+    if (whole) { uw.capexIdx = uw.capexIdx.filter(i => Number.isInteger(i) && i >= 0 && i < n); continue; }
+    if (!valid) { o.uw = null; continue; }
+    const reqCap = marketCap(pl.listing, s.market);
+    o.uw = { noi: noi(pl.listing), reqCap, capexIdx: packetIdx(pl, s.day),
+      yieldPrice: Math.round(noi(pl.listing) / reqCap - packetCapex(pl, s.day)) };
+  }
 }
 
 /** FNV-1a over a string, as eight hex digits. Stable across loads, which is all it is for. */

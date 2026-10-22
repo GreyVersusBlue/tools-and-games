@@ -1,7 +1,7 @@
 // market.js — interest rates, seasonal demand, neighborhood drift, valuations.
 import { DB } from "../data.js";
 import { S, rand, randRange, seasonOf, log } from "../state.js";
-import { isCommercial, commercialValue } from "./commercial.js";
+import { isCommercial, commercialValue, isBuilding, packetValue } from "./commercial.js";
 
 export const SEASON_DEMAND = { Winter: 0.85, Spring: 1.15, Summer: 1.1, Fall: 0.95 };
 
@@ -42,7 +42,10 @@ export function trueValue(listing) {
 }
 
 // Value of a player-managed seller listing (baseValue + repairs/staging already folded into condition).
+// A building has neither: it is worth what its packet supports (#1009), and
+// suggestedPrice(), priceRatio() and the reprice screen read that unchanged.
 export function playerListingValue(pl) {
+  if (isBuilding(pl)) return packetValue(pl);
   const nbMult = S.market.nb[pl.listing.neighborhood] || 1;
   const conditionAdj = 0.88 + pl.listing.condition * 0.18;
   return pl.listing.baseValue * conditionAdj * nbMult;

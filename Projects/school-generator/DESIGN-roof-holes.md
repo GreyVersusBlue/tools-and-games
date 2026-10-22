@@ -546,14 +546,16 @@ with `cleanPolygon({ pinch })` before keeping it; no layout of rooms is known
 to reach that refusal (the turn towards the rooms keeps the wedges apart),
 and its comment says so. (4) A pinched building beside a refused one, judged
 building by building, keeps its flag; a test says so, since dropping it was
-green until then. Gable, increment 7, waits for question 5.
+green until then. Gable, increment 7, waited for question 5; closed, do not build (#1008).
 
 **7 (optional, after question 5). Gable over a curve, the weighted
 skeleton.** At least two increments: the weighted wavefront, pure, with its
 own tests (a rectangle with both ends weight 0 gives `blockRoof`'s gable,
 point for point; an L; a hall with one straight end); then the wiring
 (`skeletonRoofsOf` for `gable`, the gable faces into the block's `gables`,
-`roofPaints` drawing them as `gable`). Not started without Devon's answer.
+`roofPaints` drawing them as `gable`).
+**Closed:** Devon, 2026-10-21 (#1008, SG-Q5): "Not now: curves keep the
+hip/flat roofs only". Do not build it.
 
 ## 5. Left out on purpose
 
@@ -562,7 +564,7 @@ point for point; an L; a hall with one straight end); then the wiring
 - **The site plan's building line.** It draws the ground storey's mask
   whatever the roof (`blueprint.js`, `maskOutlines(roofMask(ground))`), stepped
   on a curve with or without a court; a call of its own, already on the
-  WISHLIST.
+  WISHLIST. Devon, 2026-10-21 (#1008, SG-site): "Keep it stepped".
 - **The takeoff counting the eave.** It counts the roof inside the walls on
   both paths (#970), and a court's eave is counted the same way: not at all.
 - **A gutter, a downpipe or a drain in the court.** A pitched roof over a court
@@ -571,16 +573,19 @@ point for point; an L; a hall with one straight end); then the wiring
   rooms and the site say; nothing here paves it.
 - **The elevation's painter order** across a court (a far slope seen through
   the court over a near one). It sorts faces by their nearest point, as for a
-  valley, which nobody has checked by eye; a court adds the same risk, not a
+  valley, which nobody had checked by eye until Devon's report of 2026-10-21 (#1008,
+  SG-elev: "Done: looks fine"); a court adds the same risk, not a
   new one.
 - **A `test/visual` capture of any of this.** The sample school has no curve;
   adding a capture moves a baseline, and that is a session of its own.
-- **The look on a real GPU.** Windows, as for every roof since #967.
+- **The look on a real GPU.** Windows, as for every roof since #967. Done by
+  Devon's report, 2026-10-21 (#1008, SG-gpu): "Done: looks fine".
 
 ## 6. Questions for Devon
 
-Not answered here. Each has the default an implementer takes until he does,
-marked **Default**.
+Each has the default an implementer takes until he answers, marked **Default**.
+Devon answered all six on 2026-10-21 (#1008); each is marked **Answered**
+below.
 
 1. **Should a rectilinear courtyard building move to the skeleton too?** Today
    a courtyard school with no curve is hipped as rectangles, which is how such
@@ -588,30 +593,43 @@ marked **Default**.
    would be one continuous hipped roof round the court. Every such design's
    roof would change, which moves the hash.
    **Default: no.** The skeleton path stays for footprints with a curve.
+   **Answered 2026-10-21 (#1008), SG-Q1: "Keep the default".** No change: the
+   skeleton path stays for footprints with a curve.
 2. **A curve only in the court** (a round or bowed courtyard in a
    rectilinear building): does that building take the skeleton?
    **Default: yes**, a curve on any ring of the footprint, because the court's
    staircase of 4ft hips is the same fault as a curved outer wall's.
+   **Answered 2026-10-21 (#1008), SG-Q2: "Keep the default".** Yes stands, as
+   built.
 3. **A court narrower than two eaves (3ft) under a pitched roof**: refuse the
    building (rectangles), or let the eaves close over it, roofing the light
    well?
    **Default: refuse**, keeping the rule that nothing is drawn that was not
    drawn.
+   **Answered 2026-10-21 (#1008), SG-Q3: "Keep the default".** Refuse stands,
+   as built.
 4. **A room with a hole versus a courtyard of rooms**: today's WISHLIST asks
    whether a room's own hole should be a hip (a court) or a parapet deck
    bridged round it. This design treats them alike, by roof style: a hip
    stands round it, a parapet runs round it.
    **Default: alike, by the roof's style.**
+   **Answered 2026-10-21 (#1008), SG-Q4: "Keep the default".** Alike stands,
+   as built.
 5. **Gable over a curve**: build the weighted skeleton at all, and if so, which
    edges are gable ends?
    **Default: not built**; gable over a curve keeps its rectangles. If built,
    a straight end wall square to the ridge is a gable end and a curved end is
    hipped.
+   **Answered 2026-10-21 (#1008), SG-Q5: "Not now: curves keep the hip/flat
+   roofs only".** Increment 7 (the weighted skeleton) is closed for now: do not
+   build it. Gable over a curve keeps its rectangles.
 6. **The single-corner courtyard's eave at the corner** (the outer eave and the
    court's meet there, as two lines touching at one point): accept that, or
    refuse the pinch under a pitched roof and roof it only under a parapet?
    **Default: accept**, after increment 6's check of the frame offset at the
    pinch.
+   **Answered 2026-10-21 (#1008), SG-Q6: "Keep the default".** Accept stands,
+   as built (#1001).
 
 ## 7. How the numbers were checked
 

@@ -229,9 +229,14 @@ because it could not.
   code* is a separate question tied to the one above: #17 says each project
   vendors its own copy, so a shared rules module would be a deliberate
   exception.
-- **Does the engine grow past level 3?** Guide §13 states the intent as
-  "correct-feeling PF2e at level 3, not a rules-complete VTT", and Phase 6
-  contradicts it on purpose. Worth doing only if a campaign is wanted.
+  *Partly answered in `HISTORY.md` #133 (Answers Q18):* per #17 Absalom
+  re-implemented Torchbearer's `combat.js` rather than importing it, so the
+  two share vocabulary (reaction names) and no code. A shared module is still
+  not built, and #17 still says no.
+- ~~**Does the engine grow past level 3?**~~ Answered in `HISTORY.md` #111
+  (Answers Q19): **yes, to level 10**, the level is the hero's, and Phase 6
+  built it. Guide §13 states the intent as "correct-feeling PF2e at level 3,
+  not a rules-complete VTT"; Phase 6 contradicts it on purpose.
 
 ## The standing backlog
 
@@ -366,14 +371,21 @@ Open and unclaimed. Add here rather than starting a new list.
     2d6 and 15 feet**: those are the tabletop spell's numbers, and the 2.24
     was the half-plane's doing, not the spell's. Nobody has played it; if it
     reads as weak beside Force Barrage's sure 2d4+2, one step is its damage
-    to 2d8 or its length to 30 feet, and that is Devon's call.
-  - Left beside them: **a line's length is counted one square a step on any
+    to 2d8 or its length to 30 feet, and that is Devon's call. **Answered by
+    Devon, 2026-10-21 (#1008): "Keep 2d6 at 15 ft"** (TB-fire). Breathe Fire
+    stays 2d6 and 15 feet; closed, no change to build.
+  - Left beside them, and all four closed by Devon, 2026-10-21 (#1008):
+    **a line's length is counted one square a step on any
     bearing**, as every range and reach in the engine is, so a 30-foot line is
     six squares on a diagonal where the tabletop's 5-10-5 count gives four;
     counted the tabletop's way the best click fell to 1.40, a cut nobody asked
-    for, so it was not taken. `Widen Spell` is still flavour; a monster's
-    power is still a `radius` and cannot be a cone or a line (the suite fails
-    the day a pack writes one, and points at `areaCells`).
+    for, so it was not taken. **Devon: "Six squares"** (TB-diag): the
+    diagonal line stays six squares, as built. `Widen Spell` is still flavour;
+    a monster's power is still a `radius` and cannot be a cone or a line (the
+    suite fails the day a pack writes one, and points at `areaCells`).
+    **Devon: "Keep the default"** (TB-misc): Widen Spell stays flavour, no
+    cone or line monster powers, damage numbers unchanged. Nothing to build
+    for either.
   - ~~**The lit squares were a checkerboard and nothing opened the page to
     see it.**~~ **Fixed 2026-10-14, #966.** `.cell.floor.alt` is three
     classes and outranked the two-class `.cell.hl-aoe`, `.cell.hl-move` and
@@ -386,7 +398,10 @@ Open and unclaimed. Add here rather than starting a new list.
     Seek, Breathe Fire, Grim Tendrils and a burst in the Chapel Yard, hovers
     two aims each and compares the lit squares with `aimable` and
     `previewCells`, then casts the line once. Torchbearer CI runs it.
-  - **Keyboard aiming, a proposal, not built.** The grid has no keyboard
+  - ~~**Keyboard aiming, a proposal, not built.**~~ **Declined: answered by
+    Devon, 2026-10-21 (#1008): "Don't build it"** (TB-kbd). Closed, do not
+    build; the proposal below is kept only as the record of what was
+    declined, and its two open calls are moot. The grid has no keyboard
     model at all: the cells are plain `div`s with no `tabindex` and a click
     handler each, and the page's only keyboard path into play is the action
     bar's buttons and the `.opt-card` Enter handler. Aiming by key would

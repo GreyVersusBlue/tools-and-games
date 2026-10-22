@@ -1,0 +1,76 @@
+{
+  "id": "cl_0303",
+  "name": "Ines Okonkwo-Hale",
+  "type": "seller",
+  "archetype": "partnership-unwind",
+  "tier": "commercial",
+  "budget": 0,
+  "patience": 7,
+  "statedReqs": {
+    "notes": "One of three partners who bought the old mill dormitory together. The other two want out by spring, and she is the one who answers the phone."
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "The partnership agreement lets the other two force a sale to the highest bidder if she cannot clear 93% of their number. She will not sign under that.",
+      "type": "realMotive",
+      "revealOn": {
+        "trigger": "schmooze",
+        "value": 1
+      },
+      "data": {
+        "floorPct": 0.93
+      }
+    }
+  ],
+  "intro": "Twelve apartments in a brick dormitory the mill built for its weavers. She has the partnership's spreadsheet open on her phone before she sits down, and she has already divided it by a cap rate she read in a newsletter.",
+  "referredBy": null,
+  "sellerListing": {
+    "address": "58 Mill Race Rd",
+    "neighborhood": "nb_carver_mill",
+    "tier": "commercial",
+    "price": 1330000,
+    "beds": 0,
+    "baths": 12,
+    "sqft": 11400,
+    "features": [
+      "twelve one-bedroom apartments",
+      "coin laundry"
+    ],
+    "commercial": {
+      "assetType": "apartment building",
+      "units": 12,
+      "grossRent": 158400,
+      "vacancy": 0.07,
+      "opex": 49300,
+      "marketCap": 0.072,
+      "rollPct": 0.3,
+      "rentRoll": "Twelve one-bedrooms on yearly leases, a third of them turning over in the summer when the college lets out. One unit has been the same retired loom-fixer since 1994."
+    },
+    "issues": [
+      {
+        "desc": "Hallway carpet and the laundry room's two dryers at the end of their life",
+        "discovery": "visible",
+        "severity": "cosmetic",
+        "repairCost": 6000,
+        "disclosureRequired": false,
+        "topic": "hvac"
+      },
+      {
+        "desc": "The boiler's heat exchanger is cracked and the 1960s risers weep at three joints",
+        "discovery": "inspection",
+        "severity": "moderate",
+        "repairCost": 19000,
+        "disclosureRequired": true,
+        "topic": "hvac"
+      },
+      {
+        "desc": "An abandoned heating-oil tank under the side lot, never pulled when the building went to gas",
+        "discovery": "question",
+        "severity": "dealbreaker",
+        "repairCost": 15000,
+        "disclosureRequired": true,
+        "topic": "environmental"
+      }
+    ]
+  }
+}

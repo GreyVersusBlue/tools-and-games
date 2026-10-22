@@ -65,13 +65,17 @@ js/
     escalation.js    multi-offer fields: clauses, the resolution rule, highest and best
     commercial.js    the commercial tier: NOI, cap rates, DSCR, the investor's ceiling
     seller.js        listing-side: prep, marketing, NPC offers, open houses, closing
+    offering.js      a building's listing: rent roll, memorandum, opinion of value, investor tour, due diligence
     events.js        data-driven event system (weighted draws + effect handlers)
     marketFacade.js  re-exports for the UI
 data/                ALL game content — see schemas below
-DESIGN-seller-commercial.md   the listing side of the commercial tier: designed, not built
+DESIGN-seller-commercial.md   the listing side of the commercial tier: the design it was built from (#1009 to #1011)
 tools/
   seed_data.py       regenerates the initial content set (optional; JSON is hand-editable)
   smoke.mjs          headless engine + save test: node tools/smoke.mjs
+  browser.mjs        the listing side of the commercial tier in the real page (port 8178)
+  sweep.mjs          seeded sweeps of a building's listing on the shipped tick: node tools/sweep.mjs
+  autopilot.mjs      a seeded career played day 1 to 336 through endDay(): node tools/autopilot.mjs
 ```
 
 **The contract:** adding content never requires touching engine code. Add a JSON file under the right `/data` subfolder, list its path in `data/manifest.json`, reload. (GitHub Pages can't list directories, hence the manifest.)
@@ -198,7 +202,7 @@ New events are pure JSON composed from these handlers. New handler = one functio
 
 - **Feature strings are an implicit vocabulary.** Client `mustFeatures` and `revealOn: feature` triggers match listing `features` verbatim. Check existing listings before inventing new wording.
 - **The value model:** a listing's *ask* is the seller's opinion; `trueValue` = ask × condition adjustment × neighborhood drift. Appraisals anchor between contract price and modeled value. Player-side seller listings use `baseValue` instead of ask.
-- **Priority-tested slice:** the buyer loop, seller loop, open houses, events, brokerages, market drift, referrals, and career ladder are all live. Per-client financing, multi-offer escalation wars, the hall of past careers and the commercial tier have all shipped. **The "next layers" list is finished.** What is open now is what the tier left for a later round, one item, at the end of this list.
+- **Priority-tested slice:** the buyer loop, seller loop, open houses, events, brokerages, market drift, referrals, and career ladder are all live. Per-client financing, multi-offer escalation wars, the hall of past careers and the commercial tier have all shipped. **The "next layers" list is finished.** The one item the tier left for a later round, the seller side, has shipped too (below).
 - **The commercial tier shipped** (`engine/commercial.js`, and one line in `LEVELS`). Four
   buildings, three investors, and a model that shares nothing with the residential one but the
   screens it renders on. Three decisions hold it up. **A building is priced by its income and
@@ -215,16 +219,24 @@ New events are pure JSON composed from these handlers. New handler = one functio
   about the building: Nadia Brost's yield stops her at $1,045,120 on Ferry St and her
   chequebook stops her at $1,250,000 on Ironworks. Commercial pays 2% a side against a house's
   3%, on numbers three times the size, and closes for 200 XP.
-- **What the commercial tier left open: the seller side.** Everything above is buyer-side. A
-  commercial *listing agreement* — representing the seller of a building — is a different
-  feature, not a missing half of this one: `seller.js`'s prep flow is staging tiers, photo
-  tiers and weekend open houses, and none of the three means anything on a six-bay strip, which
-  wants a rent roll, an offering memorandum and a broker's-opinion-of-value instead. Sized as
-  its own row rather than bolted on here. **It is designed and not built** (#954, 2026-10-11):
-  [`DESIGN-seller-commercial.md`](DESIGN-seller-commercial.md), beside this file, has the
-  walk-through, what each prep step costs and does with the arithmetic on 212 Ferry St, the
-  data shapes, the module surface, the tests and twelve questions for Devon. Nothing under
-  `js/` or `data/` changed for it, and nothing is to be built from it before he has read it.
+- **The seller side of the commercial tier shipped** (#1009 to #1011, on Devon's answers CT-1 to
+  CT-12 of 2026-10-21, #1008). At Broker-Track the intake queue can hand you the owner of a
+  building: 14 Tannery Row (light industrial, an honest owner 4.8% over), 330 Courthouse Row
+  (mixed-use, a trustee 27.1% over) and 58 Mill Race Rd (twelve apartments, a partner who will
+  not sign under 93%). Offers are written on the packet and closings happen on the building:
+  the rent roll (2 actions, lands in 5 days, required before going live), the condition report
+  ($1,800), the opinion of value (1 action, moves what the seller expects), putting items in the
+  packet or curing them (the seller's money, days in prep), the memorandum ($0, $900, $2,800,
+  which sets which of three investor kinds see it) and the investor tour (2 actions, a weekday,
+  once a week, on a memorandum: interest +2.0 and +0.5 a tier, and one question from the room).
+  Due diligence and the bank are arithmetic; a seller refuses to sign under their floor.
+  [`DESIGN-seller-commercial.md`](DESIGN-seller-commercial.md) has the walk-through and the
+  arithmetic. **Measured on the shipped code** (`node tools/sweep.mjs`, 1,000 listings a row): a
+  memorandum at packet value draws an offer worth taking in a median 20 days (a house: 11), and
+  a building listing makes 0.90 of a house listing's gross per day a client slot is held on a
+  memorandum, 1.06 on a data room. `node tools/autopilot.mjs` plays whole careers: a careful
+  player reaches Broker-Track on a median day 215 (20 of 20 careers, days 171 to 289), and 17 of
+  20 close at least one building before day 336. Nobody has played it by hand.
 - **The hall of past careers shipped** (`state.js`, the second half of it). `createNamespace({
   prefix: "closingTime." })` holds two members: `save.v1`, the career, at the key it has always
   had, and `hall`, one array of frozen scorecards. `enrollFinishedCareer()` is idempotent on
@@ -324,5 +336,5 @@ New events are pure JSON composed from these handlers. New handler = one functio
   ladder gate on all three doors clients come through, the income model, the loan constant
   amortized rather than re-derived, and the two assertions that the sizing branch consumes no
   randomness), and what a contract on deleted content leaves behind (no payout, no
-  penalty, one line under the client's name), and the content check with a doctored copy of `data/` for each thing it can say (#879). 501 assertions. It is blind to the wiring by design —
+  penalty, one line under the client's name), the content check with a doctored copy of `data/` for each thing it can say (#879), and the seller side of the commercial tier (#1009 to #1011, with the seeded sweeps and 20 autopilot careers as bands that fail the build). 703 assertions. It is blind to the wiring by design —
   `cd Tools/board-check && npm run games closing-time` drives the real page.

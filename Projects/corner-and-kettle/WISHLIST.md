@@ -823,7 +823,9 @@ outside CI on purpose (#353).
   - *Left.* Nobody has played either pace since the switch went in. The
     mean line at the door is what the sweep calls pressure; whether a person
     feels 1.3 and 1.5 as gentle enough is unjudged. The board says nothing
-    about the money difference.
+    about the money difference. **Devon, 2026-10-21 (#1008): "Fine as is"**
+    (CK-presets). Closed: the board need not say Quiet earns less, and the
+    two paces stay as built.
   - *The board keeps the keyboard.* Done on 2026-10-14 (#968): the rest of
     the Menu Board was one `innerHTML` on every redraw, which is every sale,
     so a focused button was thrown away within seconds and the next Tab
@@ -862,6 +864,9 @@ outside CI on purpose (#353).
     is any syrup or topping that an unlock puts a new one in front of.
     Moving the
     keyboard to the nearest survivor instead is a design call, not a patch.
+    **Devon, 2026-10-21 (#1008): "Keep the default"** (CK-focus). Closed on
+    the default as built: the keyboard falls to the page when its element
+    goes, and nothing is moved to a nearest survivor.
 - **Accessibility past the keyboard.** Done on 2026-10-07 (#916, #917), and
   judged by no person, with or without colour blindness:
   - *The cup.* Its picture says the base, the milk, the syrup and which

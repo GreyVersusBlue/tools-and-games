@@ -60,6 +60,8 @@ export function lessonMet(world) {
   const s = world.stats;
   switch (lesson.kind) {
     case 'ambulance': {
+      // one that crashed did not make it, whatever its clock read (#1004)
+      if (s.ambulanceCrashed) return { met: false, why: 'the ambulance crashed' };
       const clock = world.ambulanceClock();
       const late = Math.max(s.ambulanceLateBy || 0, clock !== null && clock < 0 ? -clock : 0);
       if (late > 0) return { met: false, why: `the ambulance was ${Math.max(1, Math.round(late))} s late` };

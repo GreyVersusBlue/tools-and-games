@@ -312,6 +312,8 @@ has been his since his own answer on mobile.
    2026-10-10 (root `HISTORY.md` #940).** His later word that touch code in
    the other games stays if it causes no problems names Bell to Bell's removal
    as the exception. The Phase 8 section below says what went and what stayed.
+   Bell to Bell was looked at in a real window after this and item 2 on
+   2026-10-21 (#1008, BB-window): "Done: looks fine".
 
 ## The standing backlog
 
@@ -400,7 +402,11 @@ new list.
 **The room**
 - The front row's advantage may be too small to notice. Do not decide without
   `SPREAD=1 node balance.mjs`.
-- **Nobody has looked at the Idle pose in a window.** `poseIdle()` keeps its
+- **Looked at in a real window by Devon's report, 2026-10-21 (#1008, BB-window): "Done: looks fine".**
+  He was asked about the game in a real window after "phantom on any seat"
+  and the touch-control removal, and did not name the Idle pose; the look he
+  reported covers the room as it stands, and this item has no separate answer.
+  `poseIdle()` keeps its
   pose now (#882, 2026-10-05): 35 to 42 of each student's 62 bones are off the
   rest pose, the head sits up to 8.3 mm higher, and each is still 1.48 m tall
   with its feet on the floor, all of it asserted in `tests/characters.mjs`.

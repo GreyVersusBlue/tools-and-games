@@ -12,6 +12,18 @@ export const DB = {
  */
 export const contentErrors = [];
 
+/** A seller client whose listing is a building. The ladder gates these, and only these, among sellers (CT-12). */
+export const sellsBuilding = c => !!(c && c.type === "seller"
+  && (c.tier === "commercial" || (c.sellerListing && c.sellerListing.tier === "commercial")));
+
+/** A building's own numbers, all five finite, with vacancy and rollPct in 0 to 1. The content check's test of a seller's building. */
+export function validCommercialBlock(cb) {
+  if (!cb || typeof cb !== "object") return false;
+  const fin = k => typeof cb[k] === "number" && Number.isFinite(cb[k]);
+  return ["grossRent", "vacancy", "opex", "marketCap", "rollPct"].every(fin)
+    && cb.vacancy >= 0 && cb.vacancy <= 1 && cb.rollPct >= 0 && cb.rollPct <= 1;
+}
+
 export async function loadAll() {
   const manifest = await fetchJSON("data/manifest.json");
   const jobs = [], files = {};
@@ -39,6 +51,10 @@ export async function loadAll() {
  * - A listing whose agent or neighborhood is missing is dropped.
  * - A seller whose house stands in a missing neighborhood is dropped: the
  *   listing is inside the client's file.
+ * - A seller of a building with no valid `commercial` block (five finite
+ *   numbers, vacancy and rollPct in 0 to 1) or no finite `price`, the owner's
+ *   number, is dropped: every figure on the listing file divides by them
+ *   (#1009).
  * - A buyer keeps their file and loses the missing area from their list.
  * - An event whose handler names a missing agent or brokerage is dropped.
  *
@@ -68,6 +84,17 @@ export function dropBrokenContent(db = DB, fileOf = () => undefined) {
       say("clients", c.id, "sellerListing.neighborhood", "neighborhoods", c.sellerListing.neighborhood, "The seller is left out of the game, and the house with them.");
       delete db.clients[c.id];
       continue;
+    }
+    if (sellsBuilding(c)) {
+      const sl = c.sellerListing || {};
+      const bad = !validCommercialBlock(sl.commercial) ? ["sellerListing.commercial", "a building's five numbers"]
+        : !(typeof sl.price === "number" && Number.isFinite(sl.price) && sl.price > 0) ? ["sellerListing.price", "the owner's number, in dollars"]
+        : null;
+      if (bad) {
+        errors.push(`${fileOf("clients", c.id) || usual("clients", c.id)}: ${bad[0]} is ${JSON.stringify(sl[bad[0].split(".")[1]] ?? null)}, and a seller of a building needs ${bad[1]}. The seller is left out of the game, and the building with them.`);
+        delete db.clients[c.id];
+        continue;
+      }
     }
     const req = c.statedReqs;
     if (req && Array.isArray(req.neighborhoods)) {
