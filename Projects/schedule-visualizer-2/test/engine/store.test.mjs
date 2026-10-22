@@ -307,6 +307,60 @@ test('a quiet action is not taken back by undo or redo: the states in the histor
   assert.equal(store.history.future[1].before.building, store.history.future[1].after.building, 'and the states still share what they shared');
 });
 
+// SV2-30c: a quiet change stays with the project it was made on. A
+// replaceProject entry (a load, a clear, an import, a transfer, a restore) is
+// a boundary: its `before` is another project, and nothing quiet crosses it.
+test('a quiet action stops at a replaceProject boundary: undo of a load does not bring the other project back dismissed or ticked', () => {
+  const store = sampleStore();
+  store.apply(actions.setSlot, SLOT);
+  store.apply(actions.replaceProject, { project: emptyProject(), label: 'Clear everything' });
+  store.apply(actions.addGroup, { name: '7Z' });
+  store.apply(actions.setOnboarding, { dismissed: true, step: 'movement' });
+  store.apply(actions.notePublished, { at: PINNED });
+  store.undo();
+  assert.deepEqual([store.project.onboarding.dismissed, store.project.onboarding.steps.movement, store.project.publish.lastPublishedAt], [true, true, PINNED], 'within the loaded project the quiet changes still carry back');
+  store.undo();
+  assert.equal(store.project.groups.length, 8, 'the load is undone: the sample school is back');
+  assert.equal(store.project.onboarding.dismissed, false, 'undo of the load brought the sample school back dismissed (the quiet change crossed the boundary)');
+  assert.equal(store.project.onboarding.steps.movement, undefined, 'undo of the load brought the sample school back with Movement ticked');
+  assert.equal(store.project.publish.lastPublishedAt, null, 'undo of the load brought the other project back noted as published');
+  store.undo();
+  assert.equal(store.project.onboarding.dismissed, false, 'nor further back');
+  store.redo();
+  store.redo();
+  assert.deepEqual([store.project.onboarding.dismissed, store.project.onboarding.steps.movement, store.project.publish.lastPublishedAt], [true, true, PINNED], 'redo of the load finds the loaded project as it was left');
+});
+
+test('a quiet action on the redo side stops at a replaceProject boundary too', () => {
+  const store = sampleStore();
+  store.apply(actions.replaceProject, { project: emptyProject(), label: 'Load a file' });
+  store.apply(actions.addGroup, { name: '7Z' });
+  store.undo();
+  store.undo();
+  // the sample school again, with the load and the group on the redo side
+  store.apply(actions.setOnboarding, { dismissed: true });
+  store.apply(actions.setOnboarding, { step: 'movement' });
+  store.redo();
+  assert.equal(store.project.groups.length, 0, 'redo brought the loaded project back');
+  assert.equal(store.project.onboarding.dismissed, false, 'redo of the load brought the loaded project back dismissed');
+  assert.equal(store.project.onboarding.steps.movement, undefined, 'redo of the load brought the loaded project back ticked');
+  store.undo();
+  assert.deepEqual([store.project.onboarding.dismissed, store.project.onboarding.steps.movement], [true, true], 'the sample school keeps what was done on it');
+});
+
+test('a quiet action can name what crosses a boundary: "Don\'t show this again" outlives the project it was said in', () => {
+  const store = sampleStore();
+  store.apply(actions.replaceProject, { project: emptyProject(), label: 'Load the sample school' });
+  store.apply(actions.setOnboarding, { dismissed: true });
+  store.apply(actions.setOnboarding, { neverShow: true, acrossProjects: { neverShow: true } });
+  store.undo();
+  assert.equal(store.project.onboarding.neverShow, true, 'never show did not reach the project before the load');
+  assert.equal(store.project.onboarding.dismissed, false, 'only what was named crosses: Dismiss stays with its project');
+  store.redo();
+  assert.deepEqual([store.project.onboarding.neverShow, store.project.onboarding.dismissed], [true, true]);
+  assert.equal(store.canUndo && !store.canRedo, true, 'and it made no entry and cleared nothing');
+});
+
 test('the history entry keeps what a building action reported, so nobody runs the action twice to ask', () => {
   const store = sampleStore();
   assert.equal(store.undoOutcome, null);

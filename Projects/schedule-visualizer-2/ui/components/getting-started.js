@@ -54,8 +54,11 @@ export function gettingStarted(ctx) {
     toggle.textContent = open ? 'Hide the steps' : 'Show the steps';
   }
 
+  // Dismiss stays with this project; never show belongs to the person, so it
+  // also reaches the projects an undo or redo of a load would bring back
+  // (the store's acrossProjects; SV2-30b, SV2-30c).
   function hide(payload) {
-    ctx.store.apply(setOnboarding, payload);
+    ctx.store.apply(setOnboarding, payload.neverShow === true ? { ...payload, acrossProjects: { neverShow: true } } : payload);
     ctx.toast({ text: 'Getting started is hidden. Help brings it back.' });
     ctx.focusSurface();
   }

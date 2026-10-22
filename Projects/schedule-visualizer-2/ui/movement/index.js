@@ -597,14 +597,25 @@ export const section = {
     });
 
     // Looking at this view is the last step of Getting started. The tick is
-    // quiet: no undo entry, and the project does not read as changed.
-    setTimeout(() => {
-      if (gone || store.project.onboarding.steps[MOVEMENT_STEP] === true) return;
-      if (ctx.storage && ctx.storage.state && ctx.storage.state.readOnly) return;
-      const f = figures(store.project);
-      if (f.groups === 0 || f.rooms === 0) return;
-      store.apply(setOnboarding, { step: MOVEMENT_STEP });
-    }, 0);
+    // quiet: no undo entry, and the project does not read as changed. It is
+    // looked for at mount and on every update, so a project that comes to
+    // have something to draw while the view is open (the sample school
+    // loaded, an undo, a file imported) is ticked too (SV2-30c). After this
+    // turn, since an update comes from inside the store's own notify.
+    let ticking = false;
+    function tick() {
+      if (ticking) return;
+      ticking = true;
+      setTimeout(() => {
+        ticking = false;
+        if (gone || store.project.onboarding.steps[MOVEMENT_STEP] === true) return;
+        if (ctx.storage && ctx.storage.state && ctx.storage.state.readOnly) return;
+        const f = figures(store.project);
+        if (f.groups === 0 || f.rooms === 0) return;
+        store.apply(setOnboarding, { step: MOVEMENT_STEP });
+      }, 0);
+    }
+    tick();
 
     ask();
     refresh();
@@ -644,6 +655,7 @@ export const section = {
       update() {
         ask();
         refresh();
+        tick();
       },
       unmount() {
         // presentation mode left first (a change of address inside Movement

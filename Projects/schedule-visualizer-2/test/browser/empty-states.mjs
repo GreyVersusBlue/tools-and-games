@@ -246,6 +246,38 @@ for (const screen of EMPTY_SCREENS) {
   });
 }
 
+// SV2-30c: on the sample school, "Load the sample school" does nothing, so
+// Building's card leaves it out there, as the Getting started card does; and
+// it is back on the next project's empty floor, with the card shown all along.
+test('Building\'s card on a new empty floor of the sample school has no "Load the sample school", and it comes back when the sample goes', async () => {
+  const floorId = await page.evaluate(async () => {
+    const [{ replaceProject, addFloor }, { sampleSchool }] = await Promise.all(['engine/actions.js', 'data/sample-school.js'].map((file) => import(new URL(file, location.href).href)));
+    const store = globalThis.sv2.store;
+    store.apply(replaceProject, { project: sampleSchool(), label: 'The sample school, for the empty floor' });
+    store.apply(addFloor, {});
+    const floors = store.project.building.floors;
+    return floors[floors.length - 1].id;
+  });
+  await go(page, '#building/' + floorId);
+  const card = '#surface [data-empty="building"]';
+  await page.waitForFunction((sel) => {
+    const el = document.querySelector(sel);
+    return el !== null && !el.hidden && el.getClientRects().length > 0;
+  }, { timeout: 15000 }, card);
+  const read = await readEmpty();
+  assert.deepEqual(read.ids, ['building']);
+  assert.equal(read.buttons.includes('Load the sample school'), false, 'the sample school\'s own empty floor offers to load the sample school: ' + JSON.stringify(read.buttons));
+  assert.deepEqual(read.buttons.map((text) => text.replace(/\(.*\)/, '(…)')), ['Trace over a photo of your floor plan', 'Change the size (…)']);
+
+  await page.evaluate(() => globalThis.sv2.ctx.removeSample());
+  await page.waitForFunction(() => globalThis.sv2.store.project.groups.length === 0 && globalThis.sv2.store.project.building.floors.length === 1);
+  await page.waitForFunction((sel) => {
+    const el = document.querySelector(sel);
+    return el !== null && !el.hidden && el.getClientRects().length > 0 && /Floor 1/.test(el.textContent);
+  }, { timeout: 15000 }, card);
+  assert.deepEqual((await readEmpty()).buttons, EMPTY_SCREENS[0].buttons, 'the next project\'s empty floor lost its "Load the sample school"');
+});
+
 test('on an empty project every section, Schedule tab and grid row choice shows an empty screen from the list', async () => {
   const listed = new Set(EMPTY_SCREENS.map((screen) => screen.id));
   await useProject('empty');

@@ -44,6 +44,7 @@ import { counts, describeCell, copySpaces, isLoss } from '../../engine/building.
 import { buildingChecks } from '../../engine/building-checks.js';
 import { spaceOwners } from '../../engine/schema.js';
 import { roomName } from '../../engine/findings.js';
+import { SAMPLE_PROJECT_ID } from '../../data/sample-school.js';
 
 // The section's own stylesheet, which index.html links. The plan waits for it
 // before it measures itself.
@@ -757,6 +758,8 @@ export const section = {
     }
 
     function placeCard() {
+      // on the sample school, loading the sample school does nothing (SV2-30c)
+      sampleButton.hidden = project.id === SAMPLE_PROJECT_ID;
       const empty = drawnBox(floor).empty;
       if (!empty) cardDismissed = false;
       const show = empty && !cardDismissed;
