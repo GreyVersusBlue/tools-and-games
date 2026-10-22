@@ -9,7 +9,8 @@
 // its buttons spend what they say, Go live waits on the rent roll, a
 // building's offer row shows yield, coverage and spare equity, a refusal
 // leaves the folder open with the offer still in it, and both new modals open
-// and leave their Ledger line. Asserted against the DOM for what just happened
+// and leave their Ledger line, and the investor tour (#1011) spends its
+// actions and leaves its line. Asserted against the DOM for what just happened
 // and against the save for what a reload must keep (#39).
 //
 // Borrows Tools/board-check's harness, as Integer Foundry's suite does; bare
@@ -147,6 +148,29 @@ try {
   t.ok(live.pl.status === 'live' && live.pl.marketingTier === 1 && cash2 - live.cash === 900, 'live on the memorandum, $900 fronted', `${live.pl.status} tier ${live.pl.marketingTier}, ${cash2 - live.cash}`);
   const stamp = await page.evaluate(() => [...document.querySelectorAll('#main .card')].map(c => c.textContent).find(x => x.includes('330 Courthouse Row')) || '');
   t.ok(/LIVE/.test(stamp) && !/open house/i.test(stamp), 'the card is stamped LIVE and offers no open house', stamp.slice(0, 120));
+
+  console.log('\nthe investor tour (#1011)');
+  const pre = await inGame(page, m => {
+    while (m.st.isWeekend(m.S.day)) m.S.day++;
+    m.S.slotsLeft = 4; m.ui.render();
+    return { interest: m.S.playerListings[0].interest, rep: m.S.rep, day: m.S.day };
+  });
+  t.ok(await clickText(page, '#main', 'Investor tour') === 'clicked', 'a live building on a memorandum has an Investor tour button, open on a weekday');
+  const tourText = await modalText(page);
+  t.ok(await modalTitle(page) === 'Investor tour — 330 Courthouse Row' && /So what is wrong with it\?/.test(tourText)
+    && await inGame(page, m => m.S.slotsLeft) === 2, 'it opens on the question from the room and spends two actions', tourText.slice(0, 120));
+  t.ok(await clickText(page, '#modal-root', 'Answer straight') === 'clicked' && await modalTitle(page) === 'Tour wrapped', 'a straight answer wraps the tour');
+  const toured = await inGame(page, m => ({ interest: m.S.playerListings[0].interest, rep: m.S.rep, tourDay: m.S.playerListings[0].tourDay,
+    line: (m.S.log.find(l => /^Investor tour at 330 Courthouse Row: interest \+2\.5/.test(l.text)) || {}).text }));
+  t.ok(!!toured.line && Math.abs(toured.interest - pre.interest - 2.5) < 1e-9 && toured.rep - pre.rep === 2 && toured.tourDay === pre.day,
+    'and leaves its Ledger line, interest +2.5 and reputation +2', `${toured.line} ${toured.rep - pre.rep}`);
+  await clickText(page, '#modal-root', 'Lock up');
+  const again = await page.evaluate(() => {
+    const card = [...document.querySelectorAll('#main .card')].find(c => c.textContent.includes('330 Courthouse Row'));
+    const b = card && [...card.querySelectorAll('button')].find(x => x.textContent.startsWith('Investor tour'));
+    return { disabled: !!(b && b.disabled), why: ((card && card.querySelector('.tour-why')) || {}).textContent || '' };
+  });
+  t.ok(again.disabled && again.why.includes(`the next can be day ${pre.day + 7}`), 'the button is shut for a week afterwards and says until when', again.why);
 
   console.log('\nthe offer row and a refusal');
   await inGame(page, m => {

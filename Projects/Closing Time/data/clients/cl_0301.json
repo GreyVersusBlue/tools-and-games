@@ -1,0 +1,76 @@
+{
+  "id": "cl_0301",
+  "name": "Walt Szymanski",
+  "type": "seller",
+  "archetype": "retiring-owner",
+  "tier": "commercial",
+  "budget": 0,
+  "patience": 9,
+  "statedReqs": {
+    "notes": "Ran a cabinet shop out of bay one for thirty years and rented the other three. Knows every tenant's kids' names. Wants it done right more than done fast."
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "His knees are finished and his daughter in Tucson has a spare room. He would rather sell at a fair number this year than a high one next.",
+      "type": "realMotive",
+      "revealOn": {
+        "trigger": "schmooze",
+        "value": 1
+      },
+      "data": {
+        "patienceBonus": 2
+      }
+    }
+  ],
+  "intro": "He brings a manila folder with every lease in it, typed, and a number he got by asking two friends at the Elks. \"I don't know cap rates. I know what I put into it.\"",
+  "referredBy": null,
+  "sellerListing": {
+    "address": "14 Tannery Row",
+    "neighborhood": "nb_old_foundry",
+    "tier": "commercial",
+    "price": 760000,
+    "beds": 0,
+    "baths": 4,
+    "sqft": 16000,
+    "features": [
+      "four roll-up bays",
+      "three-phase power"
+    ],
+    "commercial": {
+      "assetType": "light industrial",
+      "units": 4,
+      "grossRent": 96000,
+      "vacancy": 0.06,
+      "opex": 24500,
+      "marketCap": 0.086,
+      "rollPct": 0.15,
+      "rentRoll": "A cabinet shop, a brewery's barrel storage, an HVAC contractor and a man who restores pinball machines. Long leases, small rents, nobody behind."
+    },
+    "issues": [
+      {
+        "desc": "Two bay doors off their tracks and chained shut",
+        "discovery": "visible",
+        "severity": "cosmetic",
+        "repairCost": 2800,
+        "disclosureRequired": false,
+        "topic": "parking"
+      },
+      {
+        "desc": "The sawtooth roof's gutters have rotted through over bays three and four",
+        "discovery": "inspection",
+        "severity": "moderate",
+        "repairCost": 14000,
+        "disclosureRequired": true,
+        "topic": "roof"
+      },
+      {
+        "desc": "The brewery's lease lets it leave on ninety days' notice, and it has been looking at a building in Carver Mill",
+        "discovery": "question",
+        "severity": "moderate",
+        "repairCost": 9000,
+        "disclosureRequired": true,
+        "topic": "leases"
+      }
+    ]
+  }
+}

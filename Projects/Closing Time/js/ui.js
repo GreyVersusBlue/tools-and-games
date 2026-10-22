@@ -282,6 +282,13 @@ function playerListingCard(pl) {
     if (!building) acts.appendChild(actionBtn("Host open house (full day, weekend)", S.slotsLeft, !isWeekend(S.day), () => {
       S.slotsLeft = 0; flowOpenHouse(pl);
     }));
+    // A building's open house is the investor tour (2.6, #1011). The button
+    // says why when it cannot be had today, as Go live does.
+    if (building) {
+      const why = Off.tourBlockers(pl);
+      acts.appendChild(actionBtn("Investor tour (weekday)", Off.TOUR.actions, why.length > 0, () => { if (!spendSlots(Off.TOUR.actions)) return; flowInvestorTour(pl); }));
+      if (why.length) acts.appendChild(el("p", "hint tour-why", esc(why.join(" "))));
+    }
     acts.appendChild(actionBtn("Adjust price", 1, false, () => { if (!spendSlots()) return; flowReprice(pl); }));
     const open = pl.offers.filter(o => o.status === "open");
     if (open.length) acts.appendChild(actionBtn(
@@ -784,6 +791,20 @@ function flowCallHighestAndBest(pl) {
   modal(`Highest and best — ${esc(pl.listing.address)}`, body, [
     ["Make the call", () => { Esc.callHighestAndBest(pl); closeModal(); render(); }],
     ["Not yet", () => { S.slotsLeft++; closeModal(); render(); }],
+  ]);
+}
+
+function flowInvestorTour(pl) {
+  const body = el("div");
+  body.appendChild(el("p", "", `Eight buyers' people who asked for the memorandum walk ${esc(pl.listing.address)}: the roof, the mechanicals, two of the units.`));
+  body.appendChild(el("p", "", esc(Off.tourQuestion(pl))));
+  const finish = answer => {
+    const r = Off.investorTour(pl, answer);
+    modal("Tour wrapped", el("p", "", `Interest +${r.gain.toFixed(1)}. ${answer === "spin" ? "The analyst writes something down and does not say what." : "The analyst nods and asks for the condition report."}`), [["Lock up", () => { closeModal(); render(); }]]);
+  };
+  modal(`Investor tour — ${esc(pl.listing.address)}`, body, [
+    ["Answer straight — walk them through the capital list", () => { closeModal(); finish("straight"); }],
+    ["Spin it — 'it is all in the memorandum'", () => { closeModal(); finish("spin"); }],
   ]);
 }
 

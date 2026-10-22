@@ -11,7 +11,7 @@
 // with no call to rand() (#511's rule, on this side too).
 import { DB, fmtMoney } from "../data.js";
 import { S, uid, log, addRep, addXP, addCash, rand, randInt, randRange, pick, scheduleItem, contentClient, getClientRec, isWeekend } from "../state.js";
-import { marketHeat } from "./market.js";
+import { marketHeat, bumpKnowledge } from "./market.js";
 import { satisfactionDelta, rollReferral } from "./clients.js";
 import { pickHook } from "./deals.js";
 import { clauseFor, resolveHighestAndBest } from "./escalation.js";
@@ -33,7 +33,7 @@ const addr = pl => pl.listing.address;
 /** The fields a building under a listing agreement carries, fresh (4.3, and `cures` for CT-5). */
 export function freshBuildingFields(pl) {
   Object.assign(pl, { rollStartedDay: null, rollReadyDay: null, bovWeight: 0, bovDay: null, staleSteps: 0, tourDay: null,
-    preInspected: false, cures: [] });
+    tourSpins: 0, preInspected: false, cures: [] });
   return pl;
 }
 
@@ -106,6 +106,54 @@ export function goLiveBuilding(pl, price, omTier) {
   const exp = sellerExpectation(pl);
   if (price < exp * SELLER_SIDE.underAskPct) satisfactionDelta(recOf(pl), -4, "an asking price under what they expect");
   return { live: true };
+}
+
+// ------------------------------------------------------------------ tour ---
+
+/**
+ * The investor tour (2.6, CT-6), in place of the open house: a weekday walk of
+ * a live building for the buyers who asked for the memorandum. Two actions
+ * (the UI spends them), once in any `TOUR.everyDays`. Not on a flyer: nobody
+ * who only read a flyer asked to see the boiler room.
+ */
+export const TOUR = { actions: 2, everyDays: 7, interest: 2.0, perOm: 0.5, xp: 10, knowledge: 0.5, straightRep: 2, spinRep: -3 };
+
+/** Why a tour cannot happen today, in sentences; empty means it can. */
+export function tourBlockers(pl, day = S.day) {
+  if (!isBuilding(pl)) return ["Only a building gets an investor tour."];
+  if (pl.status !== "live") return ["The building is not live."];
+  const why = [];
+  if (!(pl.marketingTier >= 1)) why.push("A flyer brings nobody to tour: it takes a memorandum.");
+  if (isWeekend(day)) why.push("Investors tour on weekdays.");
+  if (Number.isFinite(pl.tourDay) && day < pl.tourDay + TOUR.everyDays) why.push(`The last tour was day ${pl.tourDay}; the next can be day ${pl.tourDay + TOUR.everyDays}.`);
+  return why;
+}
+
+/** The one question from the room, the open house's honesty test on a building. */
+export const tourQuestion = pl =>
+  `A buyer's analyst stops you on the roof of ${addr(pl)}: "So what is wrong with it? Every building has a number the memorandum leaves out."`;
+
+/**
+ * The tour itself. Interest +2.0 and +0.5 a memorandum tier, 10 XP and half a
+ * point of neighborhood knowledge, as an open house pays. `answer` is
+ * "straight" (+2 reputation) or "spin": the first spin on a listing passes,
+ * the second and every one after costs 3 (the open house's rule, where it is
+ * the second spin that is noticed). No rand().
+ */
+export function investorTour(pl, answer) {
+  if (tourBlockers(pl).length) return null;
+  const rec = recOf(pl), recId = rec && rec.recId;
+  const gain = TOUR.interest + TOUR.perOm * pl.marketingTier;
+  pl.interest += gain;
+  pl.tourDay = S.day;
+  addXP(TOUR.xp, `walked investors through ${addr(pl)}`, recId);
+  bumpKnowledge(pl.listing.neighborhood, TOUR.knowledge);
+  if (answer === "spin") {
+    pl.tourSpins = (pl.tourSpins || 0) + 1;
+    if (pl.tourSpins >= 2) addRep(TOUR.spinRep, `a second tour of ${addr(pl)} answered with spin, and the analysts compare notes`, recId);
+  } else addRep(TOUR.straightRep, `straight answers on the roof of ${addr(pl)}`, recId);
+  log(`Investor tour at ${addr(pl)}: interest +${gain.toFixed(1)}.`, "deal", undefined, recId);
+  return { gain };
 }
 
 // ----------------------------------------------------------------- daily ---

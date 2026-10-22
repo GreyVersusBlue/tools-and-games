@@ -24,6 +24,8 @@ import * as Esc from "../js/engine/escalation.js";
 import * as Com from "../js/engine/commercial.js";
 import * as Off from "../js/engine/offering.js";
 import { trueValue, marketHeat, playerListingValue } from "../js/engine/market.js";
+import * as Sweep from "./sweep.mjs";
+import * as Autopilot from "./autopilot.mjs";
 
 /* ------------------------------------------------------------------ harness */
 let passed = 0; const failures = [];
@@ -1697,12 +1699,13 @@ const unlist = (cat, file) => m => { m[cat] = m[cat].filter(p => p !== cat + "/"
   fileGone("neighborhoods", NB, true, errors => {
     const of = part => errors.filter(x => x.includes(part)).map(x => x.split(":")[0].replace(/^data\/\w+\/|\.json$/g, "")).sort().join(" ");
     eq(of(": neighborhood is "), MILL.join(" "), "a neighborhood's file gone: one line for each of the five listings that stand in it");
-    eq(of(": sellerListing.neighborhood is "), "cl_0102", "one for the seller whose house is there");
+    eq(of(": sellerListing.neighborhood is "), "cl_0102 cl_0303", "one for each seller whose house or building is there (58 Mill Race Rd is the building, #1011)");
     eq(of(": an entry in statedReqs.neighborhoods is "), "cl_0001 cl_0004 cl_0008 cl_0202", "and one for each of the four buyers who asked for it");
-    eq(errors.length, 10, "and nothing else");
+    eq(errors.length, 11, "and nothing else");
     eq(MILL.filter(id => id in DB.listings).length, 0, "the five listings are out of the game");
     ok(!("cl_0102" in DB.clients), "and so is the seller, whose listing is inside their file");
-    eq(Object.keys(DB.clients).length, counts.clients - 1, "the buyers all stay");
+    ok(!("cl_0303" in DB.clients), "and the seller of a building there, by the same rule (design test 42)");
+    eq(Object.keys(DB.clients).length, counts.clients - 2, "the buyers all stay");
     eq(JSON.stringify(DB.clients["cl_0004"].statedReqs.neighborhoods), '["nb_old_foundry"]', "with the missing area off their list and the other one on it");
     eq(JSON.stringify(DB.clients["cl_0001"].statedReqs.neighborhoods), "[]", "a buyer who asked for nowhere else is left flexible");
   });
@@ -2730,6 +2733,105 @@ console.log("\nthe listing side of the commercial tier:");
   newGame("bk_hearthstone");
 }
 
+/* ------------------------ the listing side of the commercial tier, session 3 */
+// Section 9 item 3 (#1011): the other two sellers, the investor tour, the
+// whole-career autopilot (CT-11) and group H's sweeps on the built tick
+// (tools/sweep.mjs). The design's figures came from a scratch tick and are the
+// target; the bands below hold the built code, at 20 seeds a row (400
+// listings), and tools/sweep.mjs prints the full table at 50.
+console.log("\nthe listing side of the commercial tier, content, the tour and the balance:");
+{
+  const at = (id, seed = 1011) => {
+    newGame("bk_hearthstone"); S.level = 4; S.cash = 20000; S.rep = 50; S.seed = (seed * 2654435761) % 4294967296;
+    const rec = Clients.meetClient(id);
+    return { rec, pl: Seller.takeListing(rec) };
+  };
+  /** Roll in on day 6, the report, every item in the packet: the design's "complete packet". */
+  const complete = pl => {
+    pl.rollStartedDay = 1; pl.rollReadyDay = 6; pl.preInspected = true; S.day = 6;
+    pl.listing.issues.forEach((_, i) => { if (Com.agentKnows(pl, i)) Seller.discloseIssue(pl, i); });
+    return pl;
+  };
+
+  // --- the three sellers (CT-9), against the design's 4.2 table, day 1.
+  {
+    const vals = ["cl_0301", "cl_0302", "cl_0303"].map(id => { const { pl } = at(id); return `${Com.packetValue(pl)}/${Com.buildingTrueValue(pl)}`; });
+    eq(vals.join(" "), "748514/725514 1071793/983793 1300827/1266827",
+      "on the day each is taken, the packet holds only what a walk shows (income over today's cap, less the visible item) and is worth more than the building (4.2's true values $725,514, $983,793, $1,266,827)");
+    const done = ["cl_0301", "cl_0302", "cl_0303"].map(id => { const { pl } = at(id); complete(pl); return Com.packetValue(pl) - Com.buildingTrueValue(pl); });
+    eq(done.join(" "), "0 0 0", "and a complete packet is the true value on all three (design test 3)");
+    eq(["cl_0301", "cl_0302", "cl_0303"].map(id => DB.clients[id].sellerListing.price).join(" "), "760000 1250000 1330000",
+      "the owners' numbers are 4.8%, 27.1% and 5.0% over");
+    const floors = ["cl_0301", "cl_0303"].map(id => { const { pl } = at(id); return Math.round(Com.sellerFloor(pl, getClientRec(pl.clientRecId))); });
+    eq(floors.join(" "), `${Math.round(760000 * 0.90)} ${Math.round(1330000 * 0.93)}`,
+      "Tannery Row's owner signs nothing under 90% of what he expects; Mill Race Rd's partner under 93%, a floor of her own, revealed or not (design test 12 on a second seller)");
+  }
+
+  // --- the investor tour (2.6, CT-6).
+  {
+    const { pl } = at("cl_0301");
+    complete(pl);
+    eq(Off.tourBlockers(pl).join(" "), "The building is not live.", "a building in prep has no tour");
+    Seller.goLive(pl, 726000, 0);
+    S.day = 8; // a Monday
+    eq(Off.tourBlockers(pl).join(" "), "A flyer brings nobody to tour: it takes a memorandum.", "nor one on a flyer");
+    pl.marketingTier = 1;
+    S.day = 6;
+    eq(Off.tourBlockers(pl).join(" "), "Investors tour on weekdays.", "nor on a Saturday");
+    S.day = 8;
+    eq(Off.tourBlockers(pl).length, 0, "and a live building on a memorandum can have one on a Monday");
+    const seed = S.seed, interest = pl.interest, xp = S.xp, rep = S.rep, know = S.knowledge.nb_old_foundry || 0;
+    const r = Off.investorTour(pl, "straight");
+    eq(`${(pl.interest - interest).toFixed(2)} ${S.xp - xp} ${S.rep - rep} ${((S.knowledge.nb_old_foundry || 0) - know).toFixed(2)} ${pl.tourDay}`, "2.50 10 2 0.50 8",
+      "a tour on a memorandum pays interest 2.0 + 0.5, 10 XP, +0.5 knowledge, and +2 reputation for a straight answer");
+    eq(S.seed, seed, "and rolls no dice");
+    eq(Off.tourBlockers(pl, 12).join(" "), "The last tour was day 8; the next can be day 15.", "the next is a week on, not six days");
+    eq(Off.investorTour(pl, "straight"), null, "and a tour asked for inside the week does nothing");
+    pl.marketingTier = 2;
+    S.day = 15; const i2 = pl.interest, rep2 = S.rep;
+    Off.investorTour(pl, "spin");
+    eq(`${(pl.interest - i2).toFixed(2)} ${S.rep - rep2}`, "3.00 0", "on a data room it pays 3.0, and the first spin on a listing passes");
+    S.day = 22; const rep3 = S.rep;
+    Off.investorTour(pl, "spin");
+    eq(S.rep - rep3, -3, "the second spin costs 3, the open house's rule");
+    const copy = JSON.parse(JSON.stringify(S));
+    const bpl = copy.playerListings.find(p => p.id === pl.id);
+    bpl.tourSpins = -4.6; delete bpl.tourDay;
+    const fixed = repairCareer(copy).playerListings.find(p => p.id === pl.id);
+    eq(`${fixed.tourSpins} ${fixed.tourDay}`, "0 null", "repair clamps a tour count and gives a missing tour day null");
+  }
+
+  // --- group H, the sweeps on the built tick. 20 seeds a row, four seasons, five buildings.
+  {
+    const sellers = Sweep.sweepSellers();
+    try {
+      const memo = Sweep.sweepRow({ om: 1 }, 20, sellers);
+      const flyer = Sweep.sweepRow({ prep: "roll", om: 0 }, 20, sellers);
+      const room = Sweep.sweepRow({ om: 2 }, 20, sellers);
+      const over = Sweep.sweepRow({ om: 1, over: 1.08 }, 20, sellers);
+      const tour = Sweep.sweepRow({ om: 1, tours: true }, 20, sellers);
+      const house = Sweep.houseRow(20);
+      ok(memo.med >= 15 && memo.med <= 35 && memo.none === 0, "memorandum and rent roll at packet value: median days to an offer worth taking is between 15 and 35 (design test 44, measured 23 on the scratch tick)", `median ${memo.med}, ${memo.none} none`);
+      ok(flyer.med >= 4 * memo.med && flyer.none >= flyer.n / 10,
+        "a flyer, roll in, waits at least four times as long and finds nothing in 250 days on at least a tenth of listings (test 45 under CT-4, #1011)", `median ${flyer.med} against ${memo.med}, ${flyer.none} of ${flyer.n} none`);
+      const hg = Sweep.grossPerDay(house.gross), r1 = Sweep.grossPerDay(memo.gross) / hg, r2 = Sweep.grossPerDay(room.gross) / hg;
+      ok(r1 >= 0.7 && r1 <= 1.4 && r2 >= 0.7 && r2 <= 1.4, "gross per slot-day on a memorandum and on a data room is between 0.7 and 1.4 of a house listing's (design test 46)", `${r1.toFixed(2)} and ${r2.toFixed(2)}`);
+      ok(over.med >= 2 * memo.med, "8% over packet value at least doubles the median wait (design test 47)", `${memo.med} to ${over.med}`);
+      ok(tour.med < memo.med && tour.med >= house.q1, "a tour every week shortens the wait, and not below a house's first quartile", `memorandum ${memo.med}, with tours ${tour.med}, house q1 ${house.q1}`);
+    } finally { Sweep.dropSweepSellers(); }
+  }
+
+  // --- the autopilot (CT-11): 20 careers through the real endDay().
+  {
+    const out = Autopilot.playCareers(20);
+    ok(out.runs.every(r => r.day === 336), "the autopilot plays every one of 20 careers to day 336", out.runs.map(r => r.day).join(" "));
+    ok(out.reachedBrokerTrack >= 18 && out.brokerTrackDay >= 150 && out.brokerTrackDay <= 280,
+      "a careful player reaches Broker-Track, the building rung, in the year, a median between day 150 and 280", `${out.reachedBrokerTrack} of 20, median day ${out.brokerTrackDay}`);
+    ok(out.anyBuildingSold >= 10, "and at least half of careers close a building's listing before the year ends", `${out.anyBuildingSold} of 20`);
+  }
+  newGame("bk_hearthstone");
+}
+
 /* ------------------------------------------------ the content check's controls */
 // auditContent() passed on the real data/ at the top of this file, which shows
 // nothing unless it can also fail. Each copy below has one thing wrong with
@@ -2761,8 +2863,8 @@ console.log("\nthe content check, on doctored copies of data/:");
   ok(only(p, 5, "data/listings/", 'listingAgentId is "ag_sal_dimeo"'), "an agent's file deleted and taken off the manifest: the five listings that still name them, by file", show(p));
 
   p = auditContent(doctored({ "neighborhoods/nb_carver_mill.json": null }, unlist("neighborhoods", "nb_carver_mill.json")));
-  ok(only(p, 10, '"nb_carver_mill"', 'under "neighborhoods"') && p.filter(x => x.startsWith("data/listings/")).length === 5,
-    "a neighborhood's file deleted and taken off the manifest: five listings, a seller and four buyers", show(p));
+  ok(only(p, 11, '"nb_carver_mill"', 'under "neighborhoods"') && p.filter(x => x.startsWith("data/listings/")).length === 5,
+    "a neighborhood's file deleted and taken off the manifest: five listings, two sellers and four buyers", show(p));
 
   p = auditContent(doctored({ "agents/ag_sal_dimeo.json": null }));
   ok(p.length === 6 && p[0] === "data/manifest.json names agents/ag_sal_dimeo.json, and there is no such file",

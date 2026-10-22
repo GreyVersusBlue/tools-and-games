@@ -491,6 +491,7 @@ function repairBuilding(pl, s) {
   pl.bovDay = day(pl.bovDay);
   pl.staleSteps = Math.max(0, Math.round(num(pl.staleSteps, 0)));
   pl.tourDay = day(pl.tourDay);
+  pl.tourSpins = Math.max(0, Math.round(num(pl.tourSpins, 0)));
   pl.preInspected = !!pl.preInspected;
   const n = Array.isArray(pl.listing.issues) ? pl.listing.issues.length : 0;
   const seen = new Set();
