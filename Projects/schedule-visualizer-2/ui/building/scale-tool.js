@@ -311,8 +311,9 @@ export function createScaleTool(ed, ctx, options) {
   function cancel(tell) {
     if (mode === null) return false;
     end();
-    if (tell) ed.say('Cancelled. The image is as it was.');
+    // the focus first: the plan says what it is when the keyboard brings it the focus
     canvas.focus({ preventScroll: true });
+    if (tell) ed.say('Cancelled. The image is as it was.');
     return true;
   }
 
@@ -347,9 +348,9 @@ export function createScaleTool(ed, ctx, options) {
     canvas.style.cursor = 'crosshair';
     if (ctx.closeInspector && typeof matchMedia === 'function' && matchMedia(SHEET_QUERY).matches) ctx.closeInspector();
     draw();
-    ed.say(words.textContent);
     canvas.focus({ preventScroll: true });
     if (event && event.detail === 0) ed.cursor.moveTo(ed.cursor.x, ed.cursor.y, true);
+    ed.say(words.textContent);
     ed.schedule();
   }
 
@@ -358,8 +359,8 @@ export function createScaleTool(ed, ctx, options) {
     mode.points = [];
     clearRefusal();
     draw();
-    ed.say(words.textContent);
     canvas.focus({ preventScroll: true });
+    ed.say(words.textContent);
     ed.schedule();
   }
 
@@ -445,6 +446,7 @@ export function createScaleTool(ed, ctx, options) {
     if (!done) return;
     end();
     canvas.focus({ preventScroll: true });
+    ed.say(said);
   }
 
   // ---------------------------------------------------------- the plan's input

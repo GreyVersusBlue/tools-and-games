@@ -158,6 +158,7 @@ export const GROUPS = {
     'browser/auto-snapshots.mjs', // SV2-28b
     'browser/getting-started.mjs', // SV2-30b
     'browser/empty-states.mjs', // SV2-30b
+    'browser/trace-scale.mjs', // SV2-73a
     'a11y/axe.mjs',
   ],
   a11y: [

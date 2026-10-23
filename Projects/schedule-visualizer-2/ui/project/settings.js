@@ -11,7 +11,8 @@ import { picker } from '../components/picker.js';
 import { icon } from '../components/icons.js';
 import { count, list, periodWords } from '../components/words.js';
 import { setSetting, resetSettings, describePeriodChange } from '../../engine/actions.js';
-import { CHECK_KINDS, RANGES } from '../../engine/schema.js';
+import { CHECK_KINDS, RANGES, CELL_LENGTH_MOST } from '../../engine/schema.js';
+import { readLength, lengthWords } from '../building/scale-tool.js';
 import { isOwnCopy } from '../../engine/day-types.js';
 
 const LETTER_REGIONS = ['US', 'CA', 'MX', 'PH', 'CL', 'CO', 'VE', 'CR', 'PA', 'GT', 'DO', 'PR', 'SV', 'HN', 'NI', 'BO'];
@@ -222,7 +223,53 @@ export function settingsCard(ctx) {
     number('secondsPerCell', (s) => s.secondsPerCell, 'Seconds per corridor cell'));
   row(movement, 'Seconds per stair connection', 'How long the stairs take, for each floor climbed or descended.',
     number('secondsPerStair', (s) => s.secondsPerStair, 'Seconds per stair connection'));
-  row(movement, 'Cell scale', 'How long one cell is in metres or feet.', wish());
+  row(movement, 'Cell scale', 'How long one cell of the floor plan is, in feet or metres; not set until it is given. Building uses it to scale a traced image from a length. Real distances in directions and reports, and walking speed as a speed, are not in the tool yet.', (labelId, hintId) => {
+    const read = (settings) => (settings.cellScale && typeof settings.cellScale === 'object' ? settings.cellScale : null);
+    // the unit a length typed here is in: the setting's, or feet until one is set
+    let unit = (read(ctx.store.project.settings) || { unit: 'feet' }).unit;
+    const length = field({
+      value: read(ctx.store.project.settings) ? read(ctx.store.project.settings).length : null,
+      labelledBy: labelId,
+      describedBy: hintId,
+      name: 'cellScale',
+      width: '6rem',
+      inputMode: 'decimal',
+      placeholder: 'Not set',
+      parse: (text) => (text.trim() === '' ? null : readLength(text, 'One cell', CELL_LENGTH_MOST)),
+      format: (value) => (value === null || value === undefined ? '' : String(value)),
+      commit: (value) => {
+        set('cellScale', value === null ? null : { unit, length: value });
+      },
+    });
+    const units = choice({
+      name: 'cellScale.unit',
+      labelledBy: labelId,
+      describedBy: hintId,
+      options: [{ value: 'feet', label: 'Feet' }, { value: 'metres', label: 'Metres' }],
+      value: unit,
+      onChange: (value) => {
+        unit = value;
+        const now = read(ctx.store.project.settings);
+        if (now) set('cellScale', { unit: value, length: now.length });
+      },
+    });
+    const clear = h('button', { type: 'button', class: 'btn', data: { action: 'clear-cell-scale' }, on: { click: () => {
+      set('cellScale', null);
+      length.input.focus();
+    } } }, 'Clear');
+    const says = h('p', { class: 'setting__summary', id: labelId + '-now' });
+    return {
+      element: h('div', { class: 'setting__stack' }, h('div', { style: 'display: flex; flex-wrap: wrap; align-items: start; gap: var(--s-2)' }, length.element, units.element, clear), says),
+      sync(project) {
+        const now = read(project.settings);
+        if (now) unit = now.unit;
+        length.set(now ? now.length : null);
+        units.set(unit);
+        clear.disabled = now === null;
+        says.textContent = now ? 'One cell is ' + lengthWords(now.length, now.unit) + '.' : 'Not set.';
+      },
+    };
+  });
   row(movement, 'Colour scale', 'Relative colours the busiest corridor in this school as the top band. Absolute uses the numbers in the next row.',
     pick('colourScale.mode', (s) => s.colourScale.mode, [{ value: 'relative', label: 'Relative' }, { value: 'absolute', label: 'Absolute' }]));
   row(movement, 'Absolute bands', 'The load at which the second, third, fourth and fifth bands begin.',
