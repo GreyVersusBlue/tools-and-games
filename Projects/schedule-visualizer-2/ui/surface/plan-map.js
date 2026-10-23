@@ -412,7 +412,15 @@ export function createPlanMap(asked) {
       // touch the legend docked at the top and undocked once scrolled)
       clearFoot();
       if (!next.measured) return null;
-      return { width: view.width, height: view.height, foot: footOver(), corner: zoomCorner(view.height) };
+      // the stage as room() and the scroll leave it, measured here: its
+      // width and height, the foot over it and the zoom box's corner all of
+      // that one stage (SV2-32j). view's size is the last measure's, and
+      // room() can resize the stage before the next: the second judgement
+      // weighed the last measure's height against the foot and the lift of
+      // the stage as resized
+      const width = stage.clientWidth;
+      const height = stage.clientHeight;
+      return { width, height, foot: footOver(height), corner: zoomCorner(height) };
     };
     if (chosen) take(value);
     else windowLayout(floors, both, same ? world.how : undefined, view.width, view.height, take);
