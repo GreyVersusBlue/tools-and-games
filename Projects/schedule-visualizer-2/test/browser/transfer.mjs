@@ -232,12 +232,28 @@ async function qrShown(page, id) {
   });
 }
 
+// The dialog has finished rising: none of its finite animations (the
+// dialog's own rise, 200 ms of translateY, and any inside it) is left; a
+// finished one leaves getAnimations(). A box read during the rise is moved
+// by a fractional transform, and Close's 44 px reads 43.999996 there (#577's
+// CI: {ok:false, head:13, close:[25,69,677,44], ...}, every edge inside the
+// window; here, sampled through a rise slowed by CDP, 6 reads in 20). Made
+// to fail so here by a rise held at 56 ms (SV2-32b). An endless animation
+// is not waited for.
+async function risen(page, id) {
+  await page.waitForFunction((which) => {
+    const dialog = document.getElementById(which);
+    return Boolean(dialog) && dialog.open && dialog.getAnimations({ subtree: true }).every((animation) => animation.effect.getComputedTiming().endTime === Infinity);
+  }, { timeout: 15000 }, id);
+}
+
 // The dialog's title and Close lie inside the window: { ok, ... } with the
 // numbers it was judged on, which an assertion on it prints, so a failure
 // says which edge was crossed and by how much (SV2-29e: one CI run failed
 // here with nothing to go on; 25 runs of the case here under 4x and 6x CPU
 // throttling never did, nor any frame from the offer on in 6 of them).
 async function headInView(page, id) {
+  await risen(page, id);
   return page.$eval('#' + id, (dialog) => {
     const round = (n) => Math.round(n * 10) / 10;
     const head = dialog.querySelector('.xfer__head').getBoundingClientRect();
@@ -253,6 +269,8 @@ async function headInView(page, id) {
       coarse: matchMedia('(pointer: coarse)').matches,
       sheet: Boolean(document.querySelector('link[data-sheet="transfer"]')?.sheet),
       focus: active ? active.tagName.toLowerCase() + (active.dataset.action ? '[' + active.dataset.action + ']' : '') : null,
+      // finite animations still running in the dialog as it was judged: 0
+      rising: dialog.getAnimations({ subtree: true }).filter((animation) => animation.effect.getComputedTiming().endTime !== Infinity).length,
     };
   });
 }
@@ -386,13 +404,14 @@ test('on a phone on its side, 844 by 390, the QR code is whole in the window und
   try {
     await a.page.tap('[data-action="send-project"]');
     await reaches(a.page, SEND, 'offer');
+    await risen(a.page, SEND);
     // scrolled to the code: all of it lies between the head and the window's foot
     const placed = await a.page.$eval('#transfer-send', (dialog) => {
       const svg = dialog.querySelector('svg.xfer__qr');
       svg.scrollIntoView({ block: 'center' });
       const qr = svg.getBoundingClientRect();
       const head = dialog.querySelector('.xfer__head').getBoundingClientRect();
-      return { top: qr.top, bottom: qr.bottom, head: head.bottom, window: innerHeight };
+      return { top: qr.top, bottom: qr.bottom, head: head.bottom, window: innerHeight, close: dialog.querySelector('[data-action="close-transfer"]').getBoundingClientRect().height };
     });
     assert.ok(placed.top >= placed.head && placed.bottom <= placed.window, 'the QR code is whole in view: ' + JSON.stringify(placed));
     await assertHeadInView(a.page, SEND, 'the title and Close are in view on its side');
