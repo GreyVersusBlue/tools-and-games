@@ -16,7 +16,7 @@
 // changes nothing returns the project it was given, and the store then makes
 // no undo entry.
 
-import { RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, PUBLISH_VIEWS, CHECK_KINDS, CELL_UNITS, CELL_LENGTH_MOST } from './schema.js';
+import { RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, PUBLISH_VIEWS, CHECK_KINDS, CELL_SCALE_UNITS, CELL_LENGTH_MOST } from './schema.js';
 import { defaultSettings, isCellScale, emptySlot, emptyDay, emptyBells, newFloor, nameKey, looseNameKey, isHexColour, isBellTime, isIsoDate, inRange, allRooms, findRoom, nextGroupColour, nameOfRoom, newAcceptedFinding } from './schema.js';
 import { checkSchedule } from './checks.js';
 import { isOwnCopy, findDayType, baseDayType } from './day-types.js';
@@ -181,7 +181,7 @@ function choiceRule(allowed, what) {
   return (value) => (allowed.includes(value) ? null : what + ' is one of: ' + allowed.join(', ') + '.');
 }
 
-const CELL_SCALE_RULE = 'One cell is a length above 0 and at most ' + CELL_LENGTH_MOST + ', in ' + CELL_UNITS.join(' or ') + ', or the cell scale is not set.';
+const CELL_SCALE_RULE = 'One cell is a length above 0 and at most ' + CELL_LENGTH_MOST + ', in ' + CELL_SCALE_UNITS.join(' or ') + ', or the cell scale is not set.';
 
 const SETTINGS = {
   schoolName: { label: 'Change the school name', bumps: [], check: (value) => (typeof value === 'string' ? null : 'The school name is text.') },

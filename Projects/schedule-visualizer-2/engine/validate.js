@@ -12,7 +12,7 @@
 
 import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CHANGE_KINDS, PUBLISH_VIEWS, CHECK_KINDS, CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY } from './schema.js';
 import { isId, ID_LENGTH } from './ids.js';
-import { roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isCellScale, CELL_UNITS, CELL_LENGTH_MOST } from './schema.js';
+import { roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isCellScale, CELL_SCALE_UNITS, CELL_LENGTH_MOST } from './schema.js';
 
 function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -108,7 +108,7 @@ export function validate(project) {
       }
       if (!THEMES.includes(settings.theme)) add('settings.theme', 'The theme is auto, light or dark.');
       // optional: a project saved before Cell scale existed has none, which is not set
-      if (settings.cellScale !== undefined && !isCellScale(settings.cellScale)) add('settings.cellScale', 'The cell scale is not set, or one cell\'s length above 0 and at most ' + CELL_LENGTH_MOST + ', in ' + CELL_UNITS.join(' or ') + '.');
+      if (settings.cellScale !== undefined && !isCellScale(settings.cellScale)) add('settings.cellScale', 'The cell scale is not set, or one cell\'s length above 0 and at most ' + CELL_LENGTH_MOST + ', in ' + CELL_SCALE_UNITS.join(' or ') + '.');
     }
     if (!TIME_FORMATS.includes(settings.timeFormat)) add('settings.timeFormat', 'The time format is 12h or 24h.');
   }

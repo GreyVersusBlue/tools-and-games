@@ -42,7 +42,7 @@ export const COLOUR_SCALE_MODES = ['relative', 'absolute'];
 // scaling tool reads it (ui/building/scale-tool.js); real units in
 // directions and reports, walking speed as a speed and corridor width are
 // still a wish.
-export const CELL_UNITS = ['feet', 'metres'];
+export const CELL_SCALE_UNITS = ['feet', 'metres'];
 // A cell is longer than 0 and at most this long, in either unit.
 export const CELL_LENGTH_MOST = 1000;
 export const METRES_PER_FOOT = 0.3048;
@@ -166,12 +166,12 @@ export function inRange(value, range) {
 }
 
 // A Cell scale as settings.cellScale holds it: null (not set), or
-// { unit, length } with unit one of CELL_UNITS and length above 0 and at
+// { unit, length } with unit one of CELL_SCALE_UNITS and length above 0 and at
 // most CELL_LENGTH_MOST. Nothing else is one.
 export function isCellScale(value) {
   if (value === null) return true;
   if (typeof value !== 'object' || Array.isArray(value)) return false;
-  return Object.keys(value).length === 2 && CELL_UNITS.includes(value.unit) && typeof value.length === 'number' && Number.isFinite(value.length) && value.length > 0 && value.length <= CELL_LENGTH_MOST;
+  return Object.keys(value).length === 2 && CELL_SCALE_UNITS.includes(value.unit) && typeof value.length === 'number' && Number.isFinite(value.length) && value.length > 0 && value.length <= CELL_LENGTH_MOST;
 }
 
 // ---------------------------------------------------------------- defaults
