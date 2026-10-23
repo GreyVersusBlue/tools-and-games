@@ -34,15 +34,16 @@ export { gridEditsPending, watchGridEdits } from './staged.js';
 
 const MOD = IS_MAC ? '⌘' : 'Ctrl+';
 
+// A box of the grid is a slot, never a cell: spec 2's cell is a floor's.
 export const GRID_KEYS = [
-  { id: 'grid-arrows', does: 'Move from cell to cell in the grid', shown: 'Arrows' },
-  { id: 'grid-select', does: 'Select a block of cells', shown: 'Shift+Arrows' },
-  { id: 'grid-edit', does: 'Edit the cell, keeping what it holds', shown: 'Enter, F2' },
-  { id: 'grid-escape', does: 'Leave the cell as it was', shown: 'Esc' },
-  { id: 'grid-copy', does: 'Copy the selected cells, for the grid or a spreadsheet', shown: MOD + 'C' },
-  { id: 'grid-paste', does: 'Paste cells from the grid or a spreadsheet', shown: MOD + 'V' },
+  { id: 'grid-arrows', does: 'Move from slot to slot in the grid', shown: 'Arrows' },
+  { id: 'grid-select', does: 'Select a block of slots', shown: 'Shift+Arrows' },
+  { id: 'grid-edit', does: 'Edit the slot, keeping what it holds', shown: 'Enter, F2' },
+  { id: 'grid-escape', does: 'Leave the slot as it was', shown: 'Esc' },
+  { id: 'grid-copy', does: 'Copy the selected slots, for the grid or a spreadsheet', shown: MOD + 'C' },
+  { id: 'grid-paste', does: 'Paste slots from the grid or a spreadsheet', shown: MOD + 'V' },
   { id: 'grid-fill', does: 'Fill down from the top row of the selection', shown: MOD + 'D' },
-  { id: 'grid-clear', does: 'Empty the selected cells', shown: 'Delete' },
+  { id: 'grid-clear', does: 'Empty the selected slots', shown: 'Delete' },
 ];
 
 const ROWS = [
@@ -329,7 +330,7 @@ export function mount(env) {
   function keyHint() {
     // the keys are left out on a narrow screen (grid.css); Help has them
     return h('p', { class: 'sch-hint grd-hint' },
-      h('span', { class: 'grd-hint__keys' }, 'Arrow keys move. Type to replace a cell; Enter or F2 edits it; Escape leaves it as it was. Shift with the arrows selects a block. '
+      h('span', { class: 'grd-hint__keys' }, 'Arrow keys move. Type to replace a slot; Enter or F2 edits it; Escape leaves it as it was. Shift with the arrows selects a block. '
         + MOD + 'C and ' + MOD + 'V copy and paste, to and from a spreadsheet; ' + MOD + 'D fills down; Delete empties. '),
       'A room number with a dotted line under it is not in the building.');
   }

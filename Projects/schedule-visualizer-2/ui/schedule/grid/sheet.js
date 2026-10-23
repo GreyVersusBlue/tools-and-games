@@ -472,8 +472,9 @@ export function sheet(options) {
     return writeTsv(rows);
   }
 
+  // said as slots: spec 2's cell is a floor's
   function cellCount(n) {
-    return n + (n === 1 ? ' cell' : ' cells');
+    return n + (n === 1 ? ' slot' : ' slots');
   }
 
   function notTaken(refused) {
