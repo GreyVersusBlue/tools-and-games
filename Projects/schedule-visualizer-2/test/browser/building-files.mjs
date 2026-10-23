@@ -241,6 +241,93 @@ test('names that are markup are drawn as text: the image is still made and nothi
   assert.equal(await page.evaluate(() => globalThis.sv2.store.undoLabel), before);
 });
 
+test('a name holding a control character (U+000B) is still made into a PNG, and a picture that will not decode says so, not that the browser failed (SV2-32k)', async () => {
+  const before = await page.evaluate(() => globalThis.sv2.store.undoLabel);
+  const odd = 'Marrowby\u000bMiddle';
+  await page.evaluate(async (name) => {
+    const actions = await import('./engine/actions.js');
+    const { store } = globalThis.sv2;
+    store.apply(actions.setSetting, { key: 'schoolName', value: name });
+    const floor = store.project.building.floors[0];
+    store.apply(actions.renameFloor, { id: floor.id, name: name + ' 1' });
+    const room = floor.spaces.find((space) => space.kind === 'room');
+    store.apply(actions.setRoomFields, { roomId: room.id, number: '1\u000b01' });
+  }, odd);
+  try {
+    const kept = await page.evaluate(() => {
+      const project = globalThis.sv2.store.project;
+      return [project.settings.schoolName, project.building.floors[0].name, project.building.floors[0].spaces.find((space) => space.kind === 'room').number];
+    });
+    assert.deepEqual(kept, [odd, odd + ' 1', '1\u000b01'], 'the names are kept as typed');
+    await until('the button did not take the floor\'s new name', (name) => document.querySelector('#rooms-export [data-action="plan-png"]').textContent === 'Save ' + name + ' 1 as an image', odd);
+    const one = await save('plan-png');
+    assert.ok(one.file, 'the floor alone: ' + one.status);
+    assert.equal(one.file.type, 'image/png');
+    assert.match(one.status, /^Saved .* pixels\.$/);
+    const all = await save('plan-png-all');
+    assert.ok(all.file, 'every floor: ' + all.status);
+    // a picture the browser will not decode: the sentence puts it on the picture made from the plan
+    const failed = await page.evaluate(async (when) => {
+      const { planPng } = await import(new URL('ui/building/plan-png.js', location.href).href);
+      const decode = HTMLImageElement.prototype.decode;
+      HTMLImageElement.prototype.decode = () => Promise.reject(new DOMException('The source image cannot be decoded.', 'EncodingError'));
+      try {
+        const project = globalThis.sv2.store.project;
+        return await planPng(project, { floorId: project.building.floors[0].id, now: new Date(when) });
+      } finally {
+        HTMLImageElement.prototype.decode = decode;
+      }
+    }, NOW);
+    assert.deepEqual(failed, { ok: false, text: 'The picture could not be drawn from this plan. Print the plan instead, or save it as a PDF from the print dialog.' });
+  } finally {
+    await page.evaluate(() => {
+      const { store } = globalThis.sv2;
+      store.undo();
+      store.undo();
+      store.undo();
+    });
+  }
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.undoLabel), before);
+});
+
+test('a face whose fetch failed is not kept: the next picture fetches it again and carries it (SV2-32k)', async () => {
+  const got = await page.evaluate(async () => {
+    // a module of its own, so no face read by an earlier case is in it
+    const { planFaces } = await import(new URL('ui/building/plan-png.js?faces=' + Date.now(), location.href).href);
+    const fetched = [];
+    const real = globalThis.fetch;
+    let failed = false;
+    globalThis.fetch = (url, ...rest) => {
+      const file = String(url).split('/').pop();
+      // the page fetches its own files meanwhile: only the faces are counted
+      if (file.endsWith('.woff2')) fetched.push(file);
+      if (!failed && file === 'public-sans-latin-700-normal.woff2') {
+        failed = true;
+        return Promise.reject(new TypeError('Failed to fetch'));
+      }
+      return real(url, ...rest);
+    };
+    try {
+      const first = await planFaces();
+      const second = await planFaces();
+      const third = await planFaces();
+      return {
+        first: first.map((face) => face.family + ' ' + face.weight),
+        second: second.map((face) => face.family + ' ' + face.weight),
+        same: second === third,
+        fetched,
+      };
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+  const every = ['Barlow Semi Condensed 500', 'Barlow Semi Condensed 600', 'Public Sans 400', 'Public Sans 600', 'Public Sans 700'];
+  assert.deepEqual(got.first, every.slice(0, 4), 'the face that failed is left out of the first picture');
+  assert.deepEqual(got.second, every, 'the next picture fetched it again: ' + got.fetched.join(', '));
+  assert.equal(got.fetched.length, 10, 'two rounds of five fetches, and none after every face was read: ' + got.fetched.join(', '));
+  assert.equal(got.same, true, 'once every face is read, it is kept');
+});
+
 test('a floor with nothing drawn saves nothing and says why; the room list still saves', async () => {
   await page.evaluate(async () => {
     const actions = await import('./engine/actions.js');

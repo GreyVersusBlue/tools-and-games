@@ -56,6 +56,10 @@
 //                           inside a larger SVG (the floor plan's PNG,
 //                           SV2-32c), written on its root. Left out, the root
 //                           has no position or size of its own.
+//     options.xml           true for a picture that stands alone as XML: each
+//                           character XML cannot hold is written as U+FFFD
+//                           (escXml, SV2-32k). A print, which is HTML, keeps
+//                           every name as typed.
 //     svg      the markup, or '' when nothing is drawn on the floor
 //     traced   whether the traced image is in the picture
 //     width, height   of the cropped picture, in cells (for fitting it to a page)
@@ -63,7 +67,7 @@
 
 import { mix, labelOn, parse, ROOM_STRENGTH, OTHER_STRENGTH } from '../colour.js';
 import { CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY, spaceOwners } from '../../engine/schema.js';
-import { esc } from './document.js';
+import { esc, escXml } from './document.js';
 import { tracePlacement } from '../building/trace.js';
 
 // The light theme's ink and room-default (tokens.css), and white paper. They
@@ -269,8 +273,10 @@ function surname(name) {
   return words[words.length - 1];
 }
 
-function text(x, y, size, cls, value, more) {
-  return '<text class="' + cls + '" x="' + n(x) + '" y="' + n(y) + '" font-size="' + n(size) + '"' + (more || '') + '>' + esc(value) + '</text>';
+// A label, its words escaped by `write`: esc for a print, which is HTML, and
+// escXml for the stand-alone picture (options.xml).
+function textWith(write) {
+  return (x, y, size, cls, value, more) => '<text class="' + cls + '" x="' + n(x) + '" y="' + n(y) + '" font-size="' + n(size) + '"' + (more || '') + '>' + write(value) + '</text>';
 }
 
 // The data URL to draw for a floor's traced image, or null: asked for, shown
@@ -398,6 +404,8 @@ function routeMarkup(floor, route) {
 }
 
 export function planSvg(project, floor, options) {
+  const write = options && options.xml === true ? escXml : esc;
+  const text = textWith(write);
   const width = floor.width;
   const height = floor.height;
   const owners = spaceOwners(floor);
@@ -615,7 +623,7 @@ export function planSvg(project, floor, options) {
   const markup = crop ? out.filter((each) => typeof each === 'string' || whole(each.box)).map((each) => (typeof each === 'string' ? each : each.markup)) : out;
   const place = options && options.place && typeof options.place === 'object' ? options.place : null;
   const at = place ? ' x="' + n(place.x) + '" y="' + n(place.y) + '" width="' + n(place.width) + '" height="' + n(place.height) + '"' : '';
-  const svg = '<svg class="plan" xmlns="http://www.w3.org/2000/svg"' + at + ' viewBox="' + [vx, vy, vw, vh].map(n).join(' ') + '" role="img" aria-label="' + esc('Floor plan of ' + floor.name) + '">\n'
+  const svg = '<svg class="plan" xmlns="http://www.w3.org/2000/svg"' + at + ' viewBox="' + [vx, vy, vw, vh].map(n).join(' ') + '" role="img" aria-label="' + write('Floor plan of ' + floor.name) + '">\n'
     + markup.join('\n') + '\n</svg>';
   return { svg, drawn: true, traced: traceUrl !== null, width: vw / U, height: vh / U, rooms, exits, letters };
 }
