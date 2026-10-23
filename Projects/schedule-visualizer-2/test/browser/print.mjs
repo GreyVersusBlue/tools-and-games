@@ -947,6 +947,133 @@ test('the Travel time tab prints its day type\'s tables: each transition\'s walk
   await go(page, '#project');
 });
 
+// ---------------------------------------------------------------- SV2-32l: the prints say what the screen says
+
+// Set the Grid tab's rows, and wait for it to draw them.
+async function gridRows(value) {
+  await page.click('.grd-toolbar input[value="' + value + '"]');
+  await page.waitForFunction((rows) => document.querySelector('.grd').dataset.rows === rows && document.querySelector('.sch').dataset.pending !== 'true' && document.getElementById('print-grid-' + rows) !== null, {}, value);
+}
+
+// The marks of the Grid tab's teacher or room table: each marked cell by its
+// row's name, day type and period, and the words the screen gives it.
+function screenMarks() {
+  return page.evaluate(() => Array.from(document.querySelectorAll('.grd-table--read td.is-marked'), (cell) => {
+    const [, , dayTypeId, period] = cell.dataset.key.split(':');
+    return { at: cell.closest('tr').querySelector('th').textContent + ' | ' + dayTypeId + ' | ' + period, why: cell.dataset.why };
+  }).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)));
+}
+
+// The marks of the document in the preview, read the same way: each marked
+// cell by its row's name, its sheet's day type and its period, and the words
+// under its sheet's grid for each of its references, worst first as written.
+function paperMarks() {
+  return page.evaluate(() => {
+    const frame = document.querySelector('#print-preview iframe');
+    const doc = frame.contentDocument;
+    const view = frame.contentWindow;
+    const marks = [];
+    let drawn = 0;
+    for (const table of doc.querySelectorAll('table.doc-grid')) {
+      const lines = new Map(Array.from(table.closest('.page').querySelectorAll('.doc-grid__finding'), (line) => [line.querySelector('.mark').textContent, line.textContent.slice(line.querySelector('.mark').textContent.length + 1)]));
+      for (const row of table.querySelectorAll('tbody tr')) {
+        Array.from(row.querySelectorAll('td')).forEach((cell, index) => {
+          if (!cell.classList.contains('is-marked')) return;
+          if (view.getComputedStyle(cell).boxShadow !== 'none') drawn += 1;
+          const refs = Array.from(cell.querySelectorAll('.marks .mark'), (mark) => mark.textContent);
+          marks.push({ at: row.querySelector('.doc-grid__name').textContent + ' | ' + table.dataset.day + ' | ' + (Number(table.dataset.from) + index), why: refs.map((ref) => lines.get(ref)).join(' ') });
+        });
+      }
+    }
+    return { marks: marks.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)), drawn };
+  });
+}
+
+async function closeSheet() {
+  await page.click('#print-preview [data-action="close"]');
+  await page.waitForFunction(() => document.getElementById('print-preview') === null);
+}
+
+test('the teachers and rooms by period mark on paper the slots the Grid tab marks, with the words the Grid tab gives them', async () => {
+  await go(page, '#schedule/grid');
+  await scheduleDrawn();
+  try {
+    for (const rows of ['teachers', 'rooms']) {
+      await gridRows(rows);
+      const screen = await screenMarks();
+      assert.ok(screen.length >= 1, rows + ': the sample school has marks on the screen (Room 203 has two groups in Period 2): ' + JSON.stringify(screen));
+      await pressPrint('#print-grid-' + rows);
+      const paper = await paperMarks();
+      assert.deepEqual(paper.marks, screen, rows + ': the same slots, the same words');
+      assert.equal(paper.drawn, paper.marks.length, rows + ': print.css draws every mark');
+      await closeSheet();
+    }
+  } finally {
+    // a sheet a failed assertion left open would cover the rows' radio, and
+    // the wait for it would be the failure reported instead
+    if (await page.$('#print-preview')) await closeSheet();
+    await gridRows('groups');
+  }
+});
+
+test('a room with no number and a room not in the building read on paper as they do on screen, in the teachers by period and the teacher list', async () => {
+  await loadModule(page, 'actions', 'engine/actions.js');
+  const before = await page.evaluate(() => globalThis.sv2.store.history.past.length);
+  const halloran = await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    const { actions } = globalThis.sv2modules;
+    const teacher = store.project.teachers.find((each) => each.roomIds.length === 1);
+    store.apply(actions.setRoomFields, { roomId: teacher.roomIds[0], number: '' });
+    // a group she does not teach, in a room the schedule names and the building does not have, with her named on it
+    const day = store.project.dayTypes[0].id;
+    const free = store.project.groups.find((group) => !store.project.building.floors.some((floor) => floor.spaces.some((space) => space.id === group.days[day][0].room && space.teacherIds.includes(teacher.id))));
+    store.apply(actions.setSlot, { groupId: free.id, dayTypeId: day, period: 0, slot: { room: null, roomText: 'Portable <9>', teacherIds: [teacher.id] } });
+    return { id: teacher.id, name: teacher.name, group: free.name };
+  });
+  try {
+    await go(page, '#schedule/grid');
+    await scheduleDrawn();
+    await gridRows('teachers');
+    const screen = await page.evaluate((name) => {
+      const row = Array.from(document.querySelectorAll('.grd-table--read tbody tr')).find((tr) => tr.querySelector('th').textContent === name);
+      return Array.from(row.querySelectorAll('td'), (cell) => cell.textContent);
+    }, halloran.name);
+    assert.ok(screen.some((cell) => cell.includes(' in a room with no number')), 'the screen says it: ' + JSON.stringify(screen));
+    assert.ok(screen[0].startsWith(halloran.group + ' in a room not in the building'), 'the screen says it: ' + JSON.stringify(screen));
+    await pressPrint('#print-grid-teachers');
+    const paper = await page.evaluate((id) => {
+      const doc = document.querySelector('#print-preview iframe').contentDocument;
+      // her row on every sheet, A Day's then B Day's, as the screen's one row
+      return Array.from(doc.querySelectorAll('table.doc-grid tr[data-teacher="' + id + '"] td'), (cell) => ({ slot: cell.querySelector('.doc-grid__slot') ? cell.querySelector('.doc-grid__slot').textContent : null, notes: Array.from(cell.querySelectorAll('.doc-grid__missing'), (note) => note.textContent) }));
+    }, halloran.id);
+    assert.deepEqual(paper[0], { slot: halloran.group + ' · Portable <9>', notes: ['not in the building'] }, 'Period 1 on paper');
+    const unnumbered = paper.filter((cell) => cell.notes.includes('a room with no number'));
+    assert.equal(unnumbered.length, screen.filter((cell) => cell.includes(' in a room with no number')).length, 'every slot in the room with no number says so: ' + JSON.stringify(paper));
+    assert.ok(unnumbered.every((cell) => cell.slot !== '' && !cell.slot.includes(' · ')), 'beside the file\'s cell, the group alone: ' + JSON.stringify(unnumbered));
+    await closeSheet();
+    await gridRows('groups');
+
+    await go(page, '#schedule/teachers');
+    await scheduleDrawn();
+    const chip = await page.$eval('tr[data-teacher="' + halloran.id + '"] .chip', (el) => el.firstChild.textContent);
+    assert.equal(chip, 'a room with no number', 'the Teachers tab names the room so');
+    await pressPrint('#print-teachers');
+    const rooms = await page.evaluate((name) => {
+      const doc = document.querySelector('#print-preview iframe').contentDocument;
+      const row = Array.from(doc.querySelectorAll('table tbody tr')).find((tr) => tr.querySelector('th').textContent === name);
+      return row.children[3].textContent;
+    }, halloran.name);
+    assert.equal(rooms, chip, 'and so does the teacher list on paper');
+    await closeSheet();
+  } finally {
+    await page.evaluate((length) => {
+      const { store } = globalThis.sv2;
+      while (store.history.past.length > length) store.undo();
+    }, before);
+  }
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.history.past.length), before, 'the school is as it was for the cases after this one');
+});
+
 test('the previews asked for nothing outside the tool and nothing went wrong on the page', async () => {
   const problems = session.problems();
   assert.deepEqual(problems.errors, []);
