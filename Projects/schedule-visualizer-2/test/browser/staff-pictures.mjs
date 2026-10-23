@@ -478,3 +478,70 @@ test('a page with nothing to print has nothing to save either', async () => {
     await session.close();
   }
 });
+
+test('from 900 px wide the side map is drawn where it sits in the page, not where it is stuck when the button is pressed', async () => {
+  const session = await openPage({ width: 1280, height: 600 });
+  try {
+    const { page } = session;
+    await goto(page, files.open.url + '#/room/rsample203');
+    await move(page, '#/room/rsample203', 'Room 203');
+    // a room page taller than the window
+    await page.evaluate(() => {
+      document.querySelector('.split > :first-child').after(Object.assign(document.createElement('div'), { style: 'height: 1600px' }));
+      window.scrollTo(0, 0);
+    });
+    const at = (label) => page.evaluate((scrolled) => {
+      const body = document.querySelector('.page__body').getBoundingClientRect();
+      const map = document.querySelector('.split__side canvas').getBoundingClientRect();
+      return { left: map.left - body.left, top: map.top - body.top, width: map.width, height: map.height, body: body.width, page: document.scrollingElement.scrollHeight, window: innerHeight, scrolled };
+    }, label);
+    const sits = await at('top');
+    await page.evaluate(() => window.scrollTo(0, document.scrollingElement.scrollHeight));
+    const stuck = await at('foot');
+    assert.ok(sits.page > sits.window * 2, 'the page is taller than the window: ' + sits.page + ' to ' + sits.window);
+    assert.ok(stuck.top - sits.top > sits.height + 200, 'at the foot the map is stuck ' + (stuck.top - sits.top) + ' px under where it sits, more than its height ' + sits.height);
+    await page.evaluate(() => {
+      for (const line of document.querySelectorAll('[data-says="picture"]')) line.textContent = '';
+      document.querySelector('.page__body [data-output="picture"]').click();
+    });
+    await page.waitForFunction(() => {
+      const line = document.querySelector('.page__body [data-says="picture"]');
+      return line.textContent !== '' && line.textContent !== 'Making the image…';
+    }, { timeout: 10000 });
+    assert.equal(await page.evaluate(() => window.scrollY + innerHeight >= document.scrollingElement.scrollHeight - 1), true, 'still at the foot');
+    // The share of the map's columns with ink, in a band of the picture: the
+    // page starts 46 to 76 page pixels down it (the margin and the two lines
+    // over the page), so a band from 80 under the map's top to 40 over its
+    // foot is inside the map wherever in that range the page starts.
+    const bands = await page.evaluate(async (place, others) => {
+      const blob = await (await fetch(globalThis.sv2Downloads[globalThis.sv2Downloads.length - 1].href)).blob();
+      const bitmap = await createImageBitmap(blob);
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const g = canvas.getContext('2d');
+      g.drawImage(bitmap, 0, 0);
+      const data = g.getImageData(0, 0, canvas.width, canvas.height).data;
+      const scale = canvas.width / Math.ceil(place.body + 32);
+      const paper = Array.from(data.slice(0, 3));
+      const inkOf = (top) => {
+        let ink = 0;
+        let all = 0;
+        for (let y = top + 80; y < top + place.height + 46 - 40; y += 4) {
+          for (let x = place.left + 20; x < place.left + place.width - 4; x += 4) {
+            const i = (Math.round(y * scale) * canvas.width + Math.round(x * scale)) * 4;
+            all += 1;
+            if (Math.abs(data[i] - paper[0]) + Math.abs(data[i + 1] - paper[1]) + Math.abs(data[i + 2] - paper[2]) > 60) ink += 1;
+          }
+        }
+        return ink / all;
+      };
+      return { sits: inkOf(place.top), stuck: inkOf(others.top), size: [canvas.width, canvas.height] };
+    }, sits, stuck);
+    assert.ok(bands.sits > 0.2, 'the map is drawn where it sits in the page: ' + Math.round(bands.sits * 100) + '% ink there, ' + Math.round(bands.stuck * 100) + '% where it was stuck');
+    assert.ok(bands.stuck < 0.02, 'nothing is drawn where the map was stuck: ' + Math.round(bands.stuck * 100) + '% ink');
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});

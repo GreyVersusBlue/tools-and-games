@@ -453,9 +453,42 @@ function shortenedText(g, value, fit) {
   return kept.join('').trimEnd() + '…';
 }
 
+// Lay every sticky element in `target` out where it sits in the page, as if
+// it had not stuck (relative with no offset takes the same place and keeps
+// what is positioned inside it), for as long as the picture is drawn: from
+// 900 px wide the side map sticks to the window as the page scrolls, and the
+// picture is of the page, not of the window. → a function that puts them back.
+function laidInPlace(target) {
+  const held = [];
+  const sides = ['position', 'top', 'right', 'bottom', 'left'];
+  for (const element of [target, ...target.querySelectorAll('*')]) {
+    if (getComputedStyle(element).position !== 'sticky') continue;
+    held.push({ element, was: sides.map((side) => [side, element.style.getPropertyValue(side), element.style.getPropertyPriority(side)]) });
+    element.style.setProperty('position', 'relative', 'important');
+    for (const side of sides.slice(1)) element.style.setProperty(side, 'auto', 'important');
+  }
+  return () => {
+    for (const { element, was } of held) {
+      for (const [side, value, priority] of was) {
+        if (value === '') element.style.removeProperty(side);
+        else element.style.setProperty(side, value, priority);
+      }
+    }
+  };
+}
+
 // Draw `target` (a page, or the part of it marked data-picture) on a new
 // canvas. → { canvas, scale } or { refused: PICTURE_TOO_LONG }.
 export function paintPicture(target, options) {
+  const putBack = laidInPlace(target);
+  try {
+    return paintLaidOut(target, options);
+  } finally {
+    putBack();
+  }
+}
+
+function paintLaidOut(target, options) {
   const opts = options || {};
   const alone = opts.alone === true;
   const box = target.getBoundingClientRect();
