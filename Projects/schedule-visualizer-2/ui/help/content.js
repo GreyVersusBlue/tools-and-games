@@ -79,7 +79,7 @@ export const SHORTCUT_GROUPS = {
   Sections: 'Open a section from anywhere. They are the digits in the corners of the rail.',
   Anywhere: 'Work on every screen.',
   Building: 'Work on the Building plan once it has the keyboard: Tab to it, or press F6 until it is reached.',
-  'Schedule grid': 'Work in Schedule › Grid, with a cell chosen.',
+  'Schedule grid': 'Work in Schedule › Grid, with a slot chosen.',
   Movement: 'Work on the Movement map once it has the keyboard.',
   'Scenario lab': 'Work on the scenario lab’s map once it has the keyboard.',
   Safety: 'Work on the Safety map once it has the keyboard.',
