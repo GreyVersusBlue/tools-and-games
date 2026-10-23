@@ -47,6 +47,18 @@ export function esc(value) {
   return String(value).replace(/[&<>"']/g, (character) => ESCAPES[character]);
 }
 
+// What XML 1.0 cannot hold at all, even as a character reference: the C0
+// controls but tab, newline and carriage return, U+FFFE, U+FFFF, and a
+// surrogate that is not half of a pair.
+const NOT_XML = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
+
+// A string as text inside a stand-alone SVG, which is XML: as esc(), and each
+// character XML cannot hold written as U+FFFD, so the file still parses (the
+// floor plan's PNG, SV2-32k). HTML holds these as typed, so a print keeps esc().
+export function escXml(value) {
+  return esc(value).replace(NOT_XML, '\ufffd');
+}
+
 // The paper a document is laid out for: what was asked, else the project's
 // setting, else US Letter upright. Anything unknown falls back the same way.
 export function paperOf(project, options) {

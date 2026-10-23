@@ -17,7 +17,7 @@
 //   and what every output takes (document.js)
 
 import { count, list } from '../components/words.js';
-import { esc, frame, mm, paperOf, printableBox, printDate, schoolName } from './document.js';
+import { esc, escXml, frame, mm, paperOf, printableBox, printDate, schoolName } from './document.js';
 import { planSvg, planStyleText, textEms, PLAN_INK, PLAN_PAPER } from './plan-svg.js';
 
 export const id = 'floor-plan';
@@ -96,37 +96,62 @@ export function render(project, derived, options) {
 //                     picture; url is a data URL of a woff2 file, and
 //                     anything else is left out. Without them the picture
 //                     names the faces and a browser uses what it has.
+//   options.measure   (value, weight) → the width of value in ems in the
+//                     face the picture falls back to (IMAGE_FALLBACK_FONT)
+//                     at that weight. A heading line whose Public Sans face
+//                     is not carried is sized by it, since the browser sets
+//                     it in that face; without it such a line is sized at
+//                     FALLBACK_WIDTH, wider than Public Sans (SV2-32k).
+//   Every name is written with escXml: a character XML cannot hold is
+//   U+FFFD in the picture, so it parses; the print keeps it as typed.
 //   width, height     of the picture in CSS pixels, at IMAGE_CELL a cell
 //   drawn             false when no floor in it has anything drawn
 //   floors            [{ id, name, drawn }] in the picture's order
 export const IMAGE_CELL = 24;
 const IMAGE_PAD = 32;
 const IMAGE_NARROWEST = 640;
-const IMAGE_FONT = '"Public Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+// What a browser sets the heading in when Public Sans is not in the picture.
+export const IMAGE_FALLBACK_FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+const IMAGE_FONT = '"Public Sans", ' + IMAGE_FALLBACK_FONT;
 const IMAGE_INK_2 = '#515761';
 // Public Sans runs wider than the plan's condensed face: its Latin about 0.6 of its size.
 const UI_WIDTH = 1.2;
+// A system sans at its widest bold Latin about 0.75 of its size: what a line
+// is sized by when its face is not carried and nothing measured it.
+const FALLBACK_WIDTH = 1.5;
 const FONT_URL = /^data:font\/woff2;base64,[A-Za-z0-9+/]+=*$/;
 
-// A line of text no wider than `room`: its size, down to `least`.
-function lineSize(value, room, most, least) {
-  const ems = textEms(value) * UI_WIDTH;
-  return ems === 0 ? most : Math.max(least, Math.min(most, room / ems));
+// The faces given that the picture can carry: woff2 data, a plain family, a whole weight.
+function carried(fonts) {
+  if (!Array.isArray(fonts)) return [];
+  return fonts.filter((face) => face && typeof face.family === 'string' && /^[A-Za-z ]+$/.test(face.family) && Number.isInteger(face.weight) && typeof face.url === 'string' && FONT_URL.test(face.url));
 }
 
-function faces(fonts) {
-  if (!Array.isArray(fonts)) return '';
-  return fonts.filter((face) => face && typeof face.family === 'string' && /^[A-Za-z ]+$/.test(face.family) && Number.isInteger(face.weight) && typeof face.url === 'string' && FONT_URL.test(face.url))
-    .map((face) => '@font-face { font-family: "' + face.family + '"; font-weight: ' + face.weight + '; font-style: normal; src: url(' + face.url + ') format("woff2"); }')
+function faces(list) {
+  return list.map((face) => '@font-face { font-family: "' + face.family + '"; font-weight: ' + face.weight + '; font-style: normal; src: url(' + face.url + ') format("woff2"); }')
     .join('\n');
 }
 
 export function planImage(project, options) {
   const opts = options || {};
+  const fonts = carried(opts.fonts);
+  // A heading line's width in ems in the face it will be set in: Public Sans
+  // when the picture carries it at that weight, else the fallback, measured
+  // when a measure is given.
+  const ems = (value, weight) => {
+    if (fonts.some((face) => face.family === 'Public Sans' && face.weight === weight)) return textEms(value) * UI_WIDTH;
+    const measured = typeof opts.measure === 'function' ? Number(opts.measure(String(value), weight)) : NaN;
+    return Number.isFinite(measured) && measured >= 0 ? measured : textEms(value) * FALLBACK_WIDTH;
+  };
+  // A line of text no wider than `room`: its size, down to `least`.
+  const lineSize = (value, weight, most, least) => {
+    const wide = ems(value, weight);
+    return wide === 0 ? most : Math.max(least, Math.min(most, room / wide));
+  };
   const floors = floorsFor(project, opts);
   const many = floors.length > 1;
   const one = !opts.floorId || opts.floorId === 'all' ? null : floors[0];
-  const plans = floors.map((floor) => ({ floor, plan: planSvg(project, floor) }));
+  const plans = floors.map((floor) => ({ floor, plan: planSvg(project, floor, { xml: true }) }));
   const widest = Math.max(0, ...plans.map(({ plan }) => plan.width * IMAGE_CELL));
   const width = Math.ceil(Math.max(IMAGE_NARROWEST, widest) + IMAGE_PAD * 2);
   const room = width - IMAGE_PAD * 2;
@@ -134,38 +159,38 @@ export function planImage(project, options) {
   const parts = [];
   let y = IMAGE_PAD;
   const line = (value, size, cls) => {
-    parts.push('<text class="img ' + cls + '" x="' + middle + '" y="' + Math.round((y + size * 0.8) * 100) / 100 + '" font-size="' + Math.round(size * 100) / 100 + '">' + esc(value) + '</text>');
+    parts.push('<text class="img ' + cls + '" x="' + middle + '" y="' + Math.round((y + size * 0.8) * 100) / 100 + '" font-size="' + Math.round(size * 100) / 100 + '">' + escXml(value) + '</text>');
     y += size * 1.35;
   };
 
   // the heading: the school, what this is, the date (DESIGN 8)
-  line(schoolName(project), lineSize(schoolName(project), room, 16, 8), 'img__school');
+  line(schoolName(project), lineSize(schoolName(project), 600, 16, 8), 'img__school');
   const what = one && !many ? name + ': ' + one.name : name;
-  line(what, lineSize(what, room, 26, 10), 'img__what');
+  line(what, lineSize(what, 700, 26, 10), 'img__what');
   const date = printDate(opts.now);
   if (date !== '') line(date, 14, 'img__date');
   y += 16;
 
   for (const { floor, plan } of plans) {
-    if (many) line(floor.name, lineSize(floor.name, room, 20, 9), 'img__floor');
+    if (many) line(floor.name, lineSize(floor.name, 600, 20, 9), 'img__floor');
     if (!plan.drawn) {
-      line('Nothing is drawn on ' + floor.name + ' yet.', lineSize('Nothing is drawn on ' + floor.name + ' yet.', room, 14, 7), 'img__caption');
+      line('Nothing is drawn on ' + floor.name + ' yet.', lineSize('Nothing is drawn on ' + floor.name + ' yet.', 400, 14, 7), 'img__caption');
       y += 24;
       continue;
     }
     const w = plan.width * IMAGE_CELL;
     const h = plan.height * IMAGE_CELL;
-    const placed = planSvg(project, floor, { place: { x: (width - w) / 2, y, width: w, height: h } });
+    const placed = planSvg(project, floor, { xml: true, place: { x: (width - w) / 2, y, width: w, height: h } });
     parts.push(placed.svg);
     y += h + 10;
     const said = sentence(floor, plan);
-    line(said, lineSize(said, room, 14, 7), 'img__caption');
+    line(said, lineSize(said, 400, 14, 7), 'img__caption');
     y += 24;
   }
   const height = Math.ceil(y - 24 + IMAGE_PAD);
 
   const style = [
-    faces(opts.fonts),
+    faces(fonts),
     // the picture's own lines only: a rule on every text would beat the
     // plan's face and the fill each room number carries as an attribute
     '.img { text-anchor: middle; font-family: ' + IMAGE_FONT + '; fill: ' + PLAN_INK + '; }',
@@ -178,7 +203,7 @@ export function planImage(project, options) {
 
   const title = what + ' · ' + schoolName(project);
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">\n'
-    + '<title>' + esc(title) + '</title>\n'
+    + '<title>' + escXml(title) + '</title>\n'
     + '<style>\n' + style + '\n</style>\n'
     + '<rect width="100%" height="100%" fill="' + PLAN_PAPER + '"/>\n'
     + parts.join('\n') + '\n</svg>\n';

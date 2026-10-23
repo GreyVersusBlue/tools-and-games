@@ -19,7 +19,7 @@
 //   options.now       a Date: the heading's date and the file's name
 //   options.holds     (width, height) → boolean, standing for canvasHolds (tests)
 
-import { planImage } from '../prints/floor-plan.js';
+import { planImage, IMAGE_FALLBACK_FONT } from '../prints/floor-plan.js';
 import { exportFileName } from '../../engine/exports.js';
 import { canvasHolds, fitScale, heldScale } from '../movement/export.js';
 
@@ -44,11 +44,13 @@ function asDataUrl(blob) {
   });
 }
 
-// The faces as data URLs, read once. A face that cannot be read is left out
-// and the picture uses what the browser has instead.
+// The faces as data URLs, read once they have all been read. A face that
+// cannot be read is left out and the picture uses what the browser has
+// instead; and then nothing is kept, so the next picture fetches them again
+// (SV2-32k: one failed fetch is not the page's answer for the session).
 export function planFaces() {
   if (!faces) {
-    faces = Promise.all(FACES.map(async (face) => {
+    const asked = Promise.all(FACES.map(async (face) => {
       try {
         const response = await fetch(new URL('../../fonts/' + face.file, import.meta.url).href);
         if (!response.ok) return null;
@@ -57,9 +59,25 @@ export function planFaces() {
       } catch (error) {
         return null;
       }
-    })).then((list) => list.filter(Boolean));
+    })).then((list) => {
+      if (list.some((face) => face === null) && faces === asked) faces = null;
+      return list.filter(Boolean);
+    });
+    faces = asked;
   }
   return faces;
+}
+
+// A heading line's width in ems in the face the picture falls back to, at
+// that weight, for a line whose own face could not be read (planImage's
+// options.measure). NaN when the page has no canvas to measure with, and
+// planImage sizes the line wide instead.
+let measurer = null;
+function measureFallback(value, weight) {
+  if (!measurer) measurer = document.createElement('canvas').getContext('2d');
+  if (!measurer) return NaN;
+  measurer.font = weight + ' 100px ' + IMAGE_FALLBACK_FONT;
+  return measurer.measureText(value).width / 100;
 }
 
 // Characters a file system refuses, out of a floor's name in the file's name.
@@ -70,7 +88,7 @@ function fileWords(value) {
 export async function planPng(project, options) {
   const opts = options || {};
   const now = opts.now instanceof Date ? opts.now : opts.now ? new Date(opts.now) : null;
-  const image = planImage(project, { floorId: opts.floorId, now, fonts: await planFaces() });
+  const image = planImage(project, { floorId: opts.floorId, now, fonts: await planFaces(), measure: measureFallback });
   if (!image.drawn) {
     const names = image.floors.map((floor) => floor.name);
     return { ok: false, text: 'Nothing is drawn on ' + (names.length === 1 ? names[0] : 'any floor') + ' yet, so there is no plan to save.' };
@@ -84,10 +102,12 @@ export async function planPng(project, options) {
 
   const source = URL.createObjectURL(new Blob([image.svg], { type: 'image/svg+xml' }));
   let blob = null;
+  let drawn = false;
   try {
     const picture = new Image();
     picture.src = source;
     await picture.decode();
+    drawn = true;
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
@@ -103,6 +123,9 @@ export async function planPng(project, options) {
   } finally {
     URL.revokeObjectURL(source);
   }
+  // the picture would not decode: the fault is in the picture made from the
+  // plan, not the browser's; past that, the canvas would not give a file
+  if (!blob && !drawn) return { ok: false, text: 'The picture could not be drawn from this plan. Print the plan instead, or save it as a PDF from the print dialog.' };
   if (!blob) return { ok: false, text: 'The browser could not make the image. Print the plan instead, or save it as a PDF from the print dialog.' };
   const single = image.floors.length === 1 && opts.floorId && opts.floorId !== 'all';
   const what = single ? 'floor plan - ' + (fileWords(image.floors[0].name) || 'floor') : 'floor plan';

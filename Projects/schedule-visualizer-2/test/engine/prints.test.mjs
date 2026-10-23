@@ -12,7 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { OUTPUTS, outputFor, renderOutput, printButtons } from '../../ui/prints/index.js';
-import { esc, frame, paperOf, paperBox, printableBox, pageRule, printDate, PAPERS, ORIENTATIONS, MARGIN, TOOL_NAME } from '../../ui/prints/document.js';
+import { esc, escXml, frame, paperOf, paperBox, printableBox, pageRule, printDate, PAPERS, ORIENTATIONS, MARGIN, TOOL_NAME } from '../../ui/prints/document.js';
 import { planSvg, PLAN_INK, PLAN_ROOM_DEFAULT, PLAN_STYLE } from '../../ui/prints/plan-svg.js';
 import { planImage, IMAGE_CELL } from '../../ui/prints/floor-plan.js';
 import { PAPER_SIZES } from '../../engine/schema.js';
@@ -839,6 +839,73 @@ test('every name in the picture is text, escaped, and the picture is still one S
     assert.equal(countOf(svg, '</style>'), 1);
     assert.doesNotMatch(svg.replace(/="[^"]*"/g, ''), /<[^>]*\son[a-z]+\s*=/i, 'an event handler attribute');
   }
+});
+
+// What XML 1.0 cannot hold: a C0 control but tab, newline and carriage return, U+FFFE, U+FFFF, a lone surrogate.
+const NOT_XML = /[\u0000-\u0008\u000b\u000c\u000e-\u001f￾￿]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+
+test('escXml writes each character XML cannot hold as U+FFFD and keeps the rest as esc() does (SV2-32k)', () => {
+  assert.equal(escXml('a\u0000b\u0008c\u000bd\u000ce\u001ff'), 'a�b�c�d�e�f');
+  assert.equal(escXml('tab\tnew\nline\rend'), 'tab\tnew\nline\rend', 'tab, newline and carriage return are XML');
+  assert.equal(escXml('x￾y￿z'), 'x�y�z');
+  assert.equal(escXml('lone \ud800 and \udc00, a pair 😀'), 'lone � and �, a pair 😀');
+  assert.equal(escXml('<a href="x">O\'Brien & Ñandú, 王老师</a>'), esc('<a href="x">O\'Brien & Ñandú, 王老师</a>'));
+  assert.equal(escXml(null), '');
+  assert.equal(esc('a\u000bb'), 'a\u000bb', 'esc, for HTML, is as it was');
+});
+
+test('a control character in a floor, a room number, a teacher or the school: the picture writes it as U+FFFD and is XML; the print keeps it as typed (SV2-32k)', () => {
+  const project = school();
+  const floor = project.building.floors[0];
+  const room = floor.spaces.find((space) => space.kind === 'room' && space.teacherIds.length > 0);
+  const teacher = project.teachers.find((each) => each.id === room.teacherIds[0]);
+  project.settings.schoolName = 'Marrow\u0001by ￾\ud800School';
+  floor.name = 'Floor\u000b1';
+  room.number = '1\u001f01';
+  teacher.name = 'Ms. Ze\u0002d';
+  const typed = [project.settings.schoolName, floor.name, room.number, 'Ze\u0002d'];
+  for (const floorId of ['all', floor.id]) {
+    const { svg } = planImage(project, { ...NOW, floorId });
+    const bad = NOT_XML.exec(svg);
+    assert.equal(bad, null, floorId + ': U+' + (bad ? bad[0].charCodeAt(0).toString(16).padStart(4, '0') : '') + ' at ' + (bad ? bad.index : -1) + ' is not XML');
+    for (const value of typed) {
+      assert.equal(countOf(svg, value), 0, floorId + ': ' + JSON.stringify(value) + ' as typed');
+      assert.ok(svg.includes(escXml(value)), floorId + ': ' + JSON.stringify(escXml(value)) + ' in the picture');
+    }
+  }
+  const { html } = renderOutput('floor-plan', project, null, { ...NOW, floorId: floor.id });
+  for (const value of typed) assert.ok(html.includes(value), 'the print keeps ' + JSON.stringify(value) + ' as typed');
+  assert.equal(countOf(html, '�'), 0, 'the print writes no U+FFFD');
+});
+
+test('a heading line whose Public Sans face the picture does not carry is sized in the face it falls back to (SV2-32k)', () => {
+  const project = school();
+  const floor = project.building.floors[0];
+  floor.name = 'West Wing Upper Level '.repeat(2).trim();
+  const what = 'Floor plan: ' + floor.name;
+  const room = (width) => width - 64;
+  const sizeOf = (svg, cls) => Number(new RegExp('class="img ' + cls + '"[^>]*font-size="([\\d.]+)"').exec(svg)[1]);
+  const all = [400, 600, 700].map((weight) => ({ family: 'Public Sans', weight, url: FACE }));
+  const asked = [];
+  const measure = (value, weight) => {
+    asked.push(weight + ' ' + value);
+    return value.length * 0.9;
+  };
+  // carried at 700: the heading is sized by Public Sans, and the fallback is never measured
+  const carried = planImage(project, { ...NOW, floorId: floor.id, fonts: all, measure });
+  assert.deepEqual(asked, [], 'nothing measured when every face is carried');
+  const publicSans = sizeOf(carried.svg, 'img__what');
+  // not carried: measured in the fallback, at the line's weight
+  const without = planImage(project, { ...NOW, floorId: floor.id, fonts: all.filter((face) => face.weight !== 700), measure });
+  assert.deepEqual(asked, ['700 ' + what], 'the heading measured at 700 in the face the browser falls back to');
+  const measured = sizeOf(without.svg, 'img__what');
+  assert.equal(measured, Math.round(Math.max(10, Math.min(26, room(without.width) / (what.length * 0.9))) * 100) / 100, 'sized by the measure');
+  assert.ok(measured < publicSans, measured + ' under ' + publicSans);
+  // not carried and nothing to measure with: sized wider than Public Sans, never as if it were
+  const unmeasured = sizeOf(planImage(project, { ...NOW, floorId: floor.id }).svg, 'img__what');
+  assert.ok(unmeasured < publicSans, unmeasured + ' under ' + publicSans);
+  // a measure that gives nothing a number is not taken
+  assert.equal(sizeOf(planImage(project, { ...NOW, floorId: floor.id, measure: () => NaN }).svg, 'img__what'), unmeasured);
 });
 
 test('a long school name is set smaller to stay inside the picture, down to 8 pixels', () => {
