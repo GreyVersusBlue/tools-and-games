@@ -17,7 +17,10 @@ import { repair } from '../../engine/repair.js';
 import { ownDayTypes } from '../../engine/day-types.js';
 import { periodName } from '../../engine/bells.js';
 import { OUTPUTS, outputFor, renderOutput, printButtons, buttonLabel } from '../../ui/prints/index.js';
-import { GRIDS, periodParts, partWords, groupDetails, NAME_MM, PERIOD_MM } from '../../ui/prints/schedule-grids.js';
+import { GRIDS, periodParts, partWords, groupDetails, NAME_MM, PERIOD_MM, ROOM_GONE } from '../../ui/prints/schedule-grids.js';
+import { checkSchedule } from '../../engine/checks.js';
+import { roomName } from '../../engine/findings.js';
+import { findingWords } from '../../ui/schedule/grid/words.js';
 import { PAPERS, ORIENTATIONS, printableBox, esc } from '../../ui/prints/document.js';
 import { exportList, PRINTED } from '../../ui/schedule/import/exports.js';
 import { school, emptyProject, PINNED } from './helpers.mjs';
@@ -53,6 +56,36 @@ function tablesOf(html) {
       rows: body.split('</tr>').filter((row) => row.includes('<tr')).map((row) => ({ tag: row.slice(row.indexOf('<tr'), row.indexOf('>', row.indexOf('<tr')) + 1), cells: cells(row) })),
     };
   });
+}
+
+// The file's cell inside a printed cell: the slot, or the planning period,
+// whatever the print says beside it ('' for a cell with neither).
+function fileCell(markup) {
+  const slot = classText(markup, 'doc-grid__slot');
+  if (slot !== null) return slot;
+  const planning = classText(markup, 'doc-grid__planning');
+  return planning === null ? '' : planning;
+}
+
+// The notes said under a cell's slot, and the references of its marks.
+function notesOf(markup) {
+  return Array.from(markup.matchAll(/<span class="doc-grid__time doc-grid__missing">([\s\S]*?)<\/span>/g), (match) => text(match[1]));
+}
+function refsOf(markup) {
+  return Array.from(markup.matchAll(/<span class="mark mark--([a-z]+)">([\s\S]*?)<\/span>/g), (match) => match[2]);
+}
+function isMarked(cell) {
+  return /class="[^"]*\bis-marked\b/.test(cell.attributes);
+}
+
+// Each sheet of a document, as markup.
+function sheetsOf(html) {
+  return html.split('<section class="page">').slice(1);
+}
+
+// The finding lines under a sheet's grid: reference to words.
+function findingLines(sheet) {
+  return new Map(Array.from(sheet.matchAll(/<p class="doc-meaning doc-grid__finding"><span class="mark mark--[a-z]+">([\s\S]*?)<\/span> ([\s\S]*?)<\/p>/g), (match) => [text(match[1]), text(match[2])]));
 }
 
 function whatOf(html) {
@@ -209,11 +242,11 @@ test('the teachers by period print the file\'s cells for each day type of its ow
   own.forEach((dayType, day) => {
     const file = teacherGridRows(project, dayType.id);
     assert.deepEqual(tables[day].head.map((cell) => classText(cell.inside, 'doc-grid__period') || text(cell.inside)), ['Teacher'].concat(file[0].slice(2)));
-    const printed = tables[day].rows.map((row) => [classText(row.cells[0].inside, 'doc-grid__name')].concat(row.cells.slice(1).map((cell) => text(cell.inside))));
+    const printed = tables[day].rows.map((row) => [classText(row.cells[0].inside, 'doc-grid__name')].concat(row.cells.slice(1).map((cell) => fileCell(cell.inside))));
     assert.deepEqual(printed, file.slice(1).map((row) => [row[0]].concat(row.slice(2))), dayType.name);
     // planning is the class of a planning period, and of nothing else
     for (const row of tables[day].rows) {
-      for (const cell of row.cells.slice(1)) assert.equal(cell.attributes.includes('is-planning'), text(cell.inside) === PLANNING, dayType.name + ': ' + text(cell.inside));
+      for (const cell of row.cells.slice(1)) assert.equal(cell.attributes.includes('is-planning'), fileCell(cell.inside) === PLANNING, dayType.name + ': ' + text(cell.inside));
     }
   });
   assert.ok(tables[0].rows.some((row) => row.cells.some((cell) => cell.attributes.includes('is-planning'))), 'the sample has planning periods');
@@ -224,7 +257,7 @@ test('a group named Planning is taught, not planning', () => {
   project.groups[0].name = PLANNING;
   const { html } = renderOutput('teacher-grid', project, null, NOW);
   const cells = tablesOf(html).flatMap((table) => table.rows.flatMap((row) => row.cells.slice(1)));
-  assert.ok(cells.some((cell) => cell.attributes.includes('is-teaching') && text(cell.inside).startsWith(PLANNING + ' · ')), 'the group\'s slot is teaching');
+  assert.ok(cells.some((cell) => cell.attributes.includes('is-teaching') && fileCell(cell.inside).startsWith(PLANNING + ' · ')), 'the group\'s slot is teaching');
 });
 
 // ---------------------------------------------------------------- the rooms by period
@@ -238,22 +271,167 @@ test('the rooms by period print the file\'s cells; a room the schedule names tha
   const tables = tablesOf(html);
   own.forEach((dayType, day) => {
     const file = roomGridRows(project, dayType.id);
-    const printed = tables[day].rows.map((row) => [classText(row.cells[0].inside, 'doc-grid__name'), classText(row.cells[0].inside, 'doc-grid__time')].concat(row.cells.slice(1).map((cell) => text(cell.inside))));
+    const printed = tables[day].rows.map((row) => [classText(row.cells[0].inside, 'doc-grid__name'), classText(row.cells[0].inside, 'doc-grid__time')].concat(row.cells.slice(1).map((cell) => fileCell(cell.inside))));
     assert.deepEqual(printed, file.slice(1).map((row) => [row[0], row[1]].concat(row.slice(3))), dayType.name);
   });
   const last = tables[0].rows[tables[0].rows.length - 1];
   assert.equal(last.tag, '<tr class="is-away">');
   assert.equal(classText(last.cells[0].inside, 'doc-grid__name'), 'Annex 1');
   assert.equal(classText(last.cells[0].inside, 'doc-grid__time'), NOT_IN_BUILDING);
-  assert.equal(text(last.cells[5].inside), project.groups[1].name);
+  assert.equal(fileCell(last.cells[5].inside), project.groups[1].name);
 });
 
-test('a room with no number says so where the number would be', () => {
+test('a room with no number says so where the number would be, in the screen\'s words', () => {
   const project = school();
   const room = project.building.floors[0].spaces.find((space) => space.kind === 'room');
   room.number = '';
   const { html } = renderOutput('room-grid', project, null, NOW);
-  assert.ok(html.includes('<span class="doc-grid__name"><span class="is-missing">No number</span></span>'));
+  assert.ok(html.includes('<span class="doc-grid__name"><span class="is-missing">A room with no number</span></span>'));
+});
+
+// ---------------------------------------------------------------- what the screen says (SV2-32l)
+
+// Room 101 of the sample, with its number gone: Ms. Halloran is based there
+// and teaches 8B and 6A in it on A Day.
+function unnumbered101() {
+  const project = school();
+  const room = project.building.floors.flatMap((floor) => floor.spaces).find((space) => space.id === 'rsample101');
+  room.number = '';
+  return { project, room };
+}
+
+test('a room with no number reads "a room with no number" in the groups grid, the teachers by period and the teacher list, beside the file\'s own cells', () => {
+  const { project, room } = unnumbered101();
+  const words = roomName(room);
+  assert.equal(words, 'a room with no number');
+  const dayType = project.dayTypes[0];
+  const periods = project.settings.periods;
+
+  // the groups: the slot the file leaves empty says so
+  const groups = tablesOf(renderOutput('groups', project, null, NOW).html)[0];
+  const file = groupsRows(project);
+  let seen = 0;
+  project.groups.forEach((group, index) => {
+    group.days[dayType.id].forEach((slot, period) => {
+      const cell = groups.rows[index].cells[1 + period].inside;
+      assert.equal(fileCell(cell), file[index + 1][4 + period], group.name + ': the file\'s cell');
+      if (slot.room !== room.id) return;
+      seen += 1;
+      assert.equal(file[index + 1][4 + period], '', 'the file has nothing for it');
+      assert.deepEqual(notesOf(cell), [words], group.name + ', ' + periodName(project.settings, period));
+    });
+  });
+  assert.ok(seen >= 2, 'the sample has groups in room 101 on A Day: ' + seen);
+
+  // the teachers by period: "8B" alone in the file, and the room's words under it
+  const teacherFile = teacherGridRows(project, dayType.id);
+  const halloran = project.teachers.findIndex((teacher) => teacher.id === 'tsample001');
+  const row = tablesOf(renderOutput('teacher-grid', project, null, NOW).html)[0].rows[halloran];
+  let taught = 0;
+  for (let period = 0; period < periods; period += 1) {
+    const cell = row.cells[1 + period].inside;
+    assert.equal(fileCell(cell), teacherFile[1 + halloran][2 + period]);
+    if (fileCell(cell) === PLANNING) continue;
+    taught += 1;
+    assert.ok(!fileCell(cell).includes(' · '), 'the file names the group alone: ' + fileCell(cell));
+    assert.deepEqual(notesOf(cell), [words], 'Ms. Halloran, ' + periodName(project.settings, period));
+  }
+  assert.equal(taught, 2);
+
+  // the teacher list: the file's empty entry is the room's words
+  const list = tablesOf(renderOutput('teachers', project, null, NOW).html)[0].rows[halloran].cells[3].inside;
+  assert.equal(teachersRows(project)[1 + halloran][3], '');
+  assert.equal(text(list), words);
+});
+
+test('the teachers by period mark a room that is not in the building as the groups grid does, under the slot the file prints', () => {
+  const project = school();
+  const dayType = project.dayTypes[0];
+  const halloran = project.teachers.find((teacher) => teacher.id === 'tsample001');
+  // 8B in a room that is not in the building, with Ms. Halloran named on the slot
+  const group = project.groups.find((each) => each.id === 'gsample08b');
+  group.days[dayType.id][1] = { room: null, roomText: '999 <b>', label: '', teacherIds: [halloran.id] };
+  const index = project.teachers.indexOf(halloran);
+  const html = renderOutput('teacher-grid', project, null, NOW).html;
+  const cell = tablesOf(html)[0].rows[index].cells[2].inside;
+  assert.equal(fileCell(cell), teacherGridRows(project, dayType.id)[1 + index][3]);
+  assert.equal(fileCell(cell), '8B · 999 <b>');
+  assert.deepEqual(notesOf(cell), [NOT_IN_BUILDING]);
+  assert.equal(countOf(html, '999 <b>'), 0, 'the number is escaped');
+  // the groups grid says the same of the same slot
+  const groupCell = tablesOf(renderOutput('groups', project, null, NOW).html)[0].rows[project.groups.indexOf(group)].cells[2].inside;
+  assert.deepEqual(notesOf(groupCell), [NOT_IN_BUILDING]);
+  // with two groups in the cell, each note names its group
+  const other = project.groups.find((each) => each.id === 'gsample06c');
+  other.days[dayType.id][1] = { room: null, roomText: 'Annex', label: '', teacherIds: [halloran.id] };
+  const two = tablesOf(renderOutput('teacher-grid', project, null, NOW).html)[0].rows[index].cells[2].inside;
+  assert.deepEqual(notesOf(two), ['6C: ' + NOT_IN_BUILDING, '8B: ' + NOT_IN_BUILDING]);
+});
+
+test('the grids mark the slots the screen marks, from the same checks: a double-booked room and a teacher in two rooms, each a numbered mark with its words under the grid', () => {
+  const project = school();
+  const dayType = project.dayTypes[0];
+  const halloran = project.teachers.find((teacher) => teacher.id === 'tsample001');
+  halloran.name = 'Ms. <Halloran>';
+  // 6A in Room 103 in Period 2, with Ms. Halloran named on the slot: she has 8B in 101 then too
+  project.groups.find((each) => each.id === 'gsample06a').days[dayType.id][1].teacherIds = [halloran.id];
+  const findings = checkSchedule(project, null).findings.filter((finding) => finding.where.dayTypeId === dayType.id && finding.where.period === 1);
+  const double = findings.find((finding) => finding.id.startsWith('teacher-double:'));
+  const room = findings.find((finding) => finding.id.startsWith('room-double:'));
+  assert.ok(double && room, 'the two problems: ' + findings.map((finding) => finding.id).join(', '));
+  const at = (ids) => ids.map((id) => project.groups.findIndex((group) => group.id === id));
+
+  // the groups: 8B and 6A carry the teacher's finding, 6C and 7C the room's
+  const groupsHtml = renderOutput('groups', project, null, NOW).html;
+  const [sheet] = sheetsOf(groupsHtml);
+  const lines = findingLines(sheet);
+  const rows = tablesOf(groupsHtml)[0].rows;
+  const refOf = (finding) => Array.from(lines).find(([, words]) => words === findingWords([finding]))[0];
+  for (const finding of [double, room]) {
+    assert.ok(Array.from(lines.values()).includes(findingWords([finding])), 'the words under the grid: ' + findingWords([finding]));
+    for (const index of at(finding.where.groupIds)) {
+      const cell = rows[index].cells[2];
+      assert.ok(isMarked(cell), project.groups[index].name + ' in Period 2 is marked');
+      assert.ok(refsOf(cell.inside).includes(refOf(finding)), project.groups[index].name + ': ' + refsOf(cell.inside));
+    }
+  }
+  assert.match(refOf(double), /^P\d$/);
+  // a slot with no findings is not marked; one the screen marks is
+  const screen = new Set(checkSchedule(project, null).findings.filter((finding) => finding.where.dayTypeId === dayType.id && finding.where.period !== null).flatMap((finding) => finding.where.groupIds.map((id) => id + '|' + finding.where.period)));
+  rows.forEach((row, index) => row.cells.slice(1).forEach((cell, period) => assert.equal(isMarked(cell), screen.has(project.groups[index].id + '|' + period), project.groups[index].name + ', period ' + (period + 1))));
+  assert.equal(countOf(groupsHtml, '<Halloran>'), 0, 'the teacher\'s name is escaped in the words');
+  assert.ok(groupsHtml.includes(esc('Ms. <Halloran>')));
+
+  // the teachers by period: her cell, and Ms. Vandermeer's in Room 203
+  const teacherHtml = renderOutput('teacher-grid', project, null, NOW).html;
+  const teacherRows = tablesOf(teacherHtml)[0].rows;
+  const teacherLines = findingLines(sheetsOf(teacherHtml)[0]);
+  const hers = teacherRows[project.teachers.indexOf(halloran)].cells[2];
+  assert.ok(isMarked(hers), 'Ms. Halloran in Period 2');
+  assert.equal(teacherLines.get(refsOf(hers.inside)[0]), findingWords([double]));
+  const vandermeer = teacherRows[project.teachers.findIndex((teacher) => teacher.id === 'tsample007')].cells[2];
+  assert.ok(isMarked(vandermeer), 'Ms. Vandermeer, whose room has two groups');
+  assert.equal(teacherLines.get(refsOf(vandermeer.inside)[0]), findingWords([room]));
+  assert.ok(teacherRows.every((row) => row.cells.slice(1).every((cell) => !cell.attributes.includes('is-planning') || !isMarked(cell))), 'a planning period carries no group, so no mark');
+
+  // the rooms by period: Room 203 in Period 2
+  const roomHtml = renderOutput('room-grid', project, null, NOW).html;
+  const roomRow = tablesOf(roomHtml)[0].rows.find((row) => classText(row.cells[0].inside, 'doc-grid__name') === '203');
+  assert.ok(isMarked(roomRow.cells[2]), 'Room 203 in Period 2 is marked');
+  assert.ok(refsOf(roomRow.cells[2].inside).map((ref) => findingLines(sheetsOf(roomHtml)[0]).get(ref)).includes(findingWords([room])));
+  assert.ok(!isMarked(roomRow.cells[1]), 'and not in Period 1');
+});
+
+test('a teacher\'s room that is no longer in the building is named, never an empty entry', () => {
+  const project = school();
+  const halloran = project.teachers.findIndex((teacher) => teacher.id === 'tsample001');
+  project.teachers[halloran].roomIds = ['rgone', 'rsample101'];
+  const file = teachersRows(project)[1 + halloran][3];
+  assert.equal(file, '; 101', 'the file has an empty entry');
+  const cell = tablesOf(renderOutput('teachers', project, null, NOW).html)[0].rows[halloran].cells[3].inside;
+  assert.equal(text(cell), ROOM_GONE + '; 101');
+  // the words are beside the file's entries: without them, the cell is the file's
+  assert.equal(text(cell.replace(/<span class="is-missing">[\s\S]*?<\/span>/g, '')), file);
 });
 
 // ---------------------------------------------------------------- cut by periods, and the school's word
@@ -286,7 +464,7 @@ test('a day too long for the sheet is printed in parts: each a sheet under its p
   // the parts together are the file
   const file = teacherGridRows(project, project.dayTypes[0].id).slice(1);
   const tables = tablesOf(renderOutput('teacher-grid', project, null, { ...NOW, paper: LETTER }).html);
-  const joined = tables[0].rows.map((row, index) => row.cells.slice(1).concat(tables[1].rows[index].cells.slice(1)).map((cell) => text(cell.inside)));
+  const joined = tables[0].rows.map((row, index) => row.cells.slice(1).concat(tables[1].rows[index].cells.slice(1)).map((cell) => fileCell(cell.inside)));
   assert.deepEqual(joined, file.map((row) => row.slice(2)));
 });
 
