@@ -87,6 +87,10 @@ test('feet and metres go through the Cell scale, either way round', () => {
   near(after.scale, 0.02, 'scale');
 });
 
+// This case measures with the module's own floorPoint, so a turn that both
+// floorPoint and scaledPlacement got wrong the same way would pass here: the
+// first case pins floorPoint to numbers worked by hand (an image turned 90°
+// puts its top left corner at its top right), and that is what catches it.
 test('a turned image keeps its turn, its line takes the length, and its first point stays put', () => {
   for (const rotation of [15, 90, 180, -60]) {
     const image = { ...IMAGE, rotation, scale: 0.0137, x: -2.5, y: 7 };
