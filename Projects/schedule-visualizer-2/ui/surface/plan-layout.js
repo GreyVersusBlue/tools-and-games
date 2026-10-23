@@ -181,6 +181,14 @@ export function stageLeast(layout, width, zoomRoom, most) {
 // foot at 744 wide, off the stage at 743). Larger cannot happen at that
 // pixel, so the turn to it waits for the zoom to tell the two apart.
 //
+// "No layout on the map" is `at.held` false where `at` gives it (SV2-32j):
+// the plan map judges a second time with the layout its first judgement
+// took as `current`, and that is not a layout on the map before this
+// arrange; read from `current` alone the tie rule never fired in the page
+// (744 by 308 with a 40 px foot and a mouse, the sample opened fresh:
+// stacked drawn under the foot where side by side is whole above it at the
+// same 25 %). With `held` left out, a `current` is a layout on the map.
+//
 // `layouts`, when given, is { side, stacked } already laid out for these
 // floors (layoutFloors), so the plan map lays them out once per arrange.
 export const LAYOUT_MARGIN = 0.05;
@@ -199,7 +207,7 @@ export function bestLayout(floors, width, height, current, layouts, at) {
   // whole above the foot over whole under it, where it costs no zoom
   if (stacked.fits && stacked.above !== side.above) {
     const [up, down] = stacked.above ? [stacked, side] : [side, stacked];
-    const fresh = current !== 'stacked' && current !== 'side';
+    const fresh = at && typeof at.held === 'boolean' ? !at.held : current !== 'stacked' && current !== 'side';
     if (up.zoom > down.zoom || (fresh && up.zoom === down.zoom)) return stacked.above ? 'stacked' : 'side';
   }
   if (current === 'stacked' || current === 'side') {

@@ -786,3 +786,50 @@ test('SV2-72c2 item 1, SV2-32a: on a phone on its side with a sticky foot over t
     await session.close();
   }
 });
+
+// SV2-32j: arrange() judges the layout a second time on the stage as room()
+// leaves it. A section that loses width and height at once is measured
+// first at its new width and its old height (the stage's flex basis is the
+// last room, and it does not shrink until room() is set again), and room()
+// in arrange() then makes it its new height. The second judgement read
+// view's size, the last measure's, beside the foot and the zoom box of the
+// stage as resized: here, 800 by 300 to 450 by 160, it took stacked on the
+// 450 by 300 measured, told the section (data-layout, onLayout), and the
+// next measure turned it back to side by side. On one stage the turn back
+// is made inside the arrange, before anything is told.
+test('SV2-32j: a section losing width and height at once (800 by 300 to 450 by 160) is never told a layout it turns back from: the second judgement is of the stage room() leaves', async () => {
+  const page = wide.page;
+  await bare(page);
+  await mount(page, 'one-stage', { slot: 'flex: 0 0 800px; height: 340px', foot: 40, sticky: true });
+  const before = await page.evaluate(() => {
+    const { map } = globalThis.planMaps['one-stage'];
+    // every layout the section is told of, in order, with the stage it was told on
+    globalThis.planMapTold = [];
+    map.onLayout(() => {
+      globalThis.planMapTold.push({ how: map.world.how, stage: [map.stage.clientWidth, map.stage.clientHeight], view: [map.view.width, map.view.height] });
+    });
+    return { how: map.stage.dataset.layout, stage: [map.stage.clientWidth, map.stage.clientHeight], view: [map.view.width, map.view.height] };
+  });
+  // the point: side by side on an 800 by 300 stage, measured
+  assert.equal(before.how, 'side', 'the map does not open side by side: the case tests nothing: ' + JSON.stringify(before));
+  assert.deepEqual(before.stage, [800, 300], 'the stage is not 800 by 300: the case tests nothing: ' + JSON.stringify(before));
+  assert.deepEqual(before.view, before.stage, 'the stage is not measured as it is: ' + JSON.stringify(before));
+  await page.evaluate(() => {
+    globalThis.planMaps['one-stage'].place.style.cssText = 'flex: 0 0 450px; height: 200px';
+  });
+  // measured at its new size, and drawn there
+  await page.waitForFunction(() => {
+    const { map } = globalThis.planMaps['one-stage'];
+    return map.view.height === 160 && map.stage.clientHeight === 160 && map.view.width === map.stage.clientWidth && map.view.width < 460 && globalThis.planMapTold.some((told) => told.view[1] === 160);
+  }, { timeout: 10000 });
+  const after = await page.evaluate(() => {
+    const { map } = globalThis.planMaps['one-stage'];
+    return { how: map.stage.dataset.layout, stage: [map.stage.clientWidth, map.stage.clientHeight], told: globalThis.planMapTold };
+  });
+  const told = after.told.map((each) => each.how);
+  // the resize did measure the new width beside the old height, or the case tests nothing
+  assert.ok(after.told.some((each) => each.view[1] === 300 && each.view[0] < 460), 'no measure saw the new width with the old height: the case tests nothing: ' + JSON.stringify(after));
+  assert.equal(after.how, 'side', 'the resized stage is not side by side: ' + JSON.stringify(after));
+  assert.deepEqual(told.filter((how) => how !== 'side'), [], 'the section was told ' + told.join(', ') + ' as the stage went from 800 by 300 to ' + after.stage.join(' by ') + ': ' + JSON.stringify(after.told));
+  await unmount(page, 'one-stage');
+});
