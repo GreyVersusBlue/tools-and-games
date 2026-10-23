@@ -33,7 +33,8 @@ let page;
 
 const near = (a, b, what, within) => assert.ok(Math.abs(a - b) <= within, what + ': ' + a + ' is not within ' + within + ' of ' + b);
 const project = (p = page) => p.evaluate(() => JSON.parse(JSON.stringify(globalThis.sv2.store.project)));
-const entries = async (p = page) => (await state(p)).entries;
+// how many undo steps there are, on any section
+const entries = (p = page) => p.evaluate(() => globalThis.sv2.store.history.past.length);
 const text = (selector, p = page) => p.$eval(selector, (el) => el.textContent);
 const hidden = (selector, p = page) => p.$eval(selector, (el) => el.hidden || el.closest('[hidden]') !== null);
 
@@ -64,11 +65,25 @@ function onFloor(image, u, v) {
   return { x: image.x + u * image.scale, y: image.y + v * image.scale };
 }
 
+// One corridor cell in the far corner, so the floor is not empty: on an empty
+// floor the "This is the building" card stands in the middle of the plan, over
+// the image, and a click there presses its buttons. Then the Corridor tool,
+// which a click on the plan would paint with were the mode not in the way.
+async function notEmpty(p) {
+  await p.evaluate(() => {
+    const { store } = globalThis.sv2;
+    const floor = store.project.building.floors[0];
+    store.apply(globalThis.sv2modules.actions.paintCorridor, { floorId: floor.id, cells: [floor.width * floor.height - 1] });
+  });
+  await p.waitForFunction(() => document.getElementById('empty-floor').hidden);
+  await p.evaluate(() => document.querySelector('.bld').editor.setTool('corridor'));
+}
+
 async function floorTab(p) {
   if (await p.$eval('#inspector', (el) => el.dataset.open) === 'false') await p.evaluate(() => globalThis.sv2.ctx.openInspector());
   await p.waitForSelector('#inspector [data-tab="floor"]', { visible: true });
   await p.click('#inspector [data-tab="floor"]');
-  await p.waitForSelector('#trace-scale');
+  await p.waitForSelector('#trace-heading');
 }
 
 before(async () => {
@@ -80,6 +95,7 @@ before(async () => {
   await startEmpty(page);
   await floorTab(page);
   await upload(page);
+  await notEmpty(page);
   await wholeFloor(page);
   await clearToast(page);
 });
@@ -96,7 +112,7 @@ test('by mouse: two points, a length in feet, the Cell scale asked for once and 
   await freshImage(page);
   const start = await project();
   const before = await entries();
-  assert.equal((await state(page)).tool, 'corridor', 'an empty floor opens on the Corridor tool, which a click would paint with');
+  assert.equal((await state(page)).tool, 'corridor', 'the Corridor tool, which a click would paint with');
   await page.click('#trace-scale');
   assert.equal(await active(), true);
   assert.equal(await hidden('#scale-banner'), false);
@@ -129,12 +145,14 @@ test('by mouse: two points, a length in feet, the Cell scale asked for once and 
   await page.keyboard.type('5');
   await page.keyboard.press('Enter');
   const image = (await project()).building.floors[0].image;
-  near(image.scale, 0.05, 'scale: 100 feet at 5 feet a cell is 20 cells over 400 pixels', 1e-9);
-  const first = onFloor(image, 220, 220);
-  near(first.x, 5.5, 'the first point stays put, x', 1e-9);
-  near(first.y, 5.5, 'the first point stays put, y', 1e-9);
-  const second = onFloor(image, 620, 220);
-  near(second.x - first.x, 20, 'the line is 20 cells', 1e-9);
+  // a click lands on a whole CSS pixel, so the points are the ones placed, not 5.5 exactly
+  const pixels = Math.hypot(placed[1].x - placed[0].x, placed[1].y - placed[0].y) / 0.025;
+  near(image.scale, 20 / pixels, 'scale: 100 feet at 5 feet a cell is 20 cells', 1e-12);
+  const first = onFloor(image, placed[0].x / 0.025, placed[0].y / 0.025);
+  near(first.x, placed[0].x, 'the first point stays put, x', 1e-9);
+  near(first.y, placed[0].y, 'the first point stays put, y', 1e-9);
+  const second = onFloor(image, placed[1].x / 0.025, placed[1].y / 0.025);
+  near(Math.hypot(second.x - first.x, second.y - first.y), 20, 'the line is 20 cells', 1e-9);
   assert.deepEqual((await project()).settings.cellScale, { unit: 'feet', length: 5 });
   assert.equal(await entries(), before + 1, 'the image and the Cell scale are one undo step');
   assert.equal((await state(page)).label, 'Scale the traced image on Floor 1');
@@ -150,7 +168,7 @@ test('by mouse: two points, a length in feet, the Cell scale asked for once and 
   await page.mouse.click(b.x, b.y);
   assert.equal(await hidden('#scale-cell-part'), true);
   assert.equal(await text('#scale-cell-known'), 'One cell is 5 feet, the project\'s Cell scale. Change it in Settings.');
-  await page.click('input[name="scale-unit"][value="metres"]');
+  await page.click('input[name="scale-unit"][value="metres"] + .seg__label');
   assert.equal(await text('#scale-cell-known'), 'One cell is 5 feet (1.52 metres), the project\'s Cell scale. Change it in Settings.');
   await page.keyboard.press('Escape');
   assert.equal(await active(), false);
@@ -165,8 +183,11 @@ test('a length of nothing, a negative, a non-number and a Cell scale of nothing 
   await freshImage(page);
   const before = await entries();
   await page.click('#trace-scale');
+  assert.equal(await active(), true, 'the mode did not start: ' + JSON.stringify(await state(page)));
   await page.mouse.click(...Object.values(await point(page, 5, 20)));
   await page.mouse.click(...Object.values(await point(page, 25, 20)));
+  assert.equal((await points()).length, 2);
+  assert.equal(await hidden('#scale-form'), false);
   const refusal = () => page.$eval('#scale-refusal', (el) => (el.hidden ? null : el.textContent));
   const typeLength = async (value) => {
     await page.click('#scale-length', { clickCount: 3 });
@@ -174,7 +195,7 @@ test('a length of nothing, a negative, a non-number and a Cell scale of nothing 
     if (value) await page.keyboard.type(value);
     await page.click('#scale-apply');
   };
-  await page.click('input[name="scale-unit"][value="cells"]');
+  await page.click('input[name="scale-unit"][value="cells"] + .seg__label');
   assert.equal(await hidden('#scale-cell-part'), true, 'cells need no Cell scale');
   for (const [typed, said] of [['0', 'The line needs a length above 0.'], ['-4', 'The line cannot be shorter than nothing. Type a length above 0.'], ['twelve', '"twelve" is not a number. Type how long the line is, like 30.'], ['', 'Type how long the line is, like 30.']]) {
     await typeLength(typed);
@@ -182,7 +203,7 @@ test('a length of nothing, a negative, a non-number and a Cell scale of nothing 
     assert.equal(await page.$eval('#scale-length', (el) => el.getAttribute('aria-invalid') + ' ' + el.getAttribute('aria-describedby')), 'true scale-refusal');
     assert.equal(await page.evaluate(() => document.activeElement.id), 'scale-length');
   }
-  await page.click('input[name="scale-unit"][value="feet"]');
+  await page.click('input[name="scale-unit"][value="feet"] + .seg__label');
   await typeLength('40');
   assert.equal(await refusal(), 'Type how long one cell is, like 5.');
   await page.click('#scale-cell');
@@ -191,9 +212,9 @@ test('a length of nothing, a negative, a non-number and a Cell scale of nothing 
   assert.equal(await refusal(), 'One cell needs a length above 0.');
   assert.equal(await page.$eval('#scale-cell', (el) => el.getAttribute('aria-invalid')), 'true');
   // an image grown past any floor
-  await page.click('input[name="scale-unit"][value="cells"]');
-  await typeLength('900');
-  assert.equal(await refusal(), 'That would make the image 1,800 cells across, far larger than any floor can be (200 cells). Check the length and its unit.');
+  await page.click('input[name="scale-unit"][value="cells"] + .seg__label');
+  await typeLength('1200');
+  assert.equal(await refusal(), 'That would make the image 2,400 cells across, far larger than any floor can be (200 cells). Check the length and its unit.');
   assert.equal(await entries(), before, 'no refusal changed the project');
   assert.equal(await active(), true, 'the mode goes on after a refusal');
   await page.click('#scale-cancel');
@@ -214,13 +235,15 @@ test('a point can be placed again before finishing: near the second, it moves th
   await page.mouse.click(...Object.values(await point(page, 3, 9)));
   placed = await points();
   near(placed[0].x, 3.5, 'near the first, the first moves', 1e-6);
-  // the same place as the other point is refused
-  await page.mouse.click(...Object.values(await point(page, 18, 12)));
-  assert.equal(await page.evaluate(() => document.querySelector('.toast .toast__text').textContent), 'The two points are in the same place on the image. Place the second point at the other end of a length you know.');
-  assert.equal((await points()).length, 1, 'the point in the same place is taken away');
   await page.click('#scale-again');
   assert.equal((await points()).length, 0);
   assert.match(await text('#scale-text'), /^Scaling the image: place the first point/);
+  // a second point in the same place as the first is refused
+  await page.mouse.click(...Object.values(await point(page, 3, 9)));
+  await page.mouse.click(...Object.values(await point(page, 3, 9)));
+  assert.equal(await page.evaluate(() => document.querySelector('.toast .toast__text').textContent), 'The two points are in the same place on the image. Place the second point at the other end of a length you know.');
+  assert.equal((await points()).length, 1, 'the point in the same place is taken away, the first kept');
+  assert.equal(await hidden('#scale-form'), true);
   await page.keyboard.press('Escape');
   await clearToast(page);
 });
@@ -360,7 +383,8 @@ test('axe finds nothing on the Floor tab with the mode open and its form, nor on
 // ---------------------------------------------------------------- by touch
 
 test('by touch at 390 by 844: the sheet steps aside, each point goes in where the finger lifts at the marker above it, and the keyboard does not rise by itself', async () => {
-  const phone = await openPlanner({ browser, server, hash: '#building', width: 390, height: 844, mobile: true });
+  // its own server, so its own origin: its own IndexedDB and tab lock, not a second tab of the page above
+  const phone = await openPlanner({ browser, hash: '#building', width: 390, height: 844, mobile: true });
   try {
     const p = phone.page;
     await assertTouch(p, 'trace-scale at 390 by 844');
@@ -368,6 +392,7 @@ test('by touch at 390 by 844: the sheet steps aside, each point goes in where th
     await startEmpty(p);
     await floorTab(p);
     await upload(p);
+    await notEmpty(p);
     await freshImage(p);
     await wholeFloor(p);
     await clearToast(p);
@@ -387,6 +412,11 @@ test('by touch at 390 by 844: the sheet steps aside, each point goes in where th
     const placeBy = async (x, y, count) => {
       const at = await point(p, x, y);
       assert.ok(at.y > banner + 4, 'cell ' + x + ', ' + y + ' is below the banner');
+      const under = await p.evaluate((x, y) => {
+        const el = document.elementFromPoint(x, y);
+        return el ? el.id || el.className : 'nothing';
+      }, at.x, at.y + offset);
+      assert.equal(under, 'plan', 'the plan is under the finger at cell ' + x + ', ' + y);
       // the finger lands under the point, slides a little, and lifts
       await finger('touchStart', { x: at.x + 12, y: at.y + offset + 9 });
       await finger('touchMove', { x: at.x, y: at.y + offset });
@@ -420,6 +450,7 @@ test('by touch at 390 by 844: the sheet steps aside, each point goes in where th
     assert.deepEqual((await project(p)).settings.cellScale, { unit: 'feet', length: 1.5 });
     assert.equal((await state(p)).entries, before + 1);
     // a second finger calls off the point being placed
+    await clearToast(p);
     await p.evaluate(() => globalThis.sv2.ctx.openInspector());
     await p.tap('#trace-scale');
     await p.waitForFunction(() => document.querySelector('.bld').editor.trace.scaling.active);
