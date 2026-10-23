@@ -244,6 +244,31 @@ export function floorsShown(project, value) {
   return one ? [one] : project.building.floors.slice();
 }
 
+// The window's choice of layout for 'auto', as arrange() makes it: judged
+// once on the stage as last measured with no foot, `onMap` kept unless the
+// other is clearly larger (bestLayout); that one taken (`take(how)`, which
+// sets the stage's room and scrolls the section clear of the foot, and
+// returns the stage as that leaves it, { width, height, foot, corner }, or
+// null on a stage not measured yet); then judged once more against what
+// Fit will draw (SV2-32a): with the sticky foot as it lies once the section
+// is scrolled clear of it and the zoom box where it is lifted to, the
+// layout taken kept as the one on the map. Whether a layout is on the
+// stage at all is the same either way (chooseFit), so this turns only to a
+// layout drawn whole above the foot, and larger, where the one taken lies
+// under it; the turn is made once, before anything is told of the layout.
+// `onMap` is the layout on the map before this arrange when the window
+// chose it for these floors on a measured stage, else undefined. Returns
+// the layout taken last.
+export function windowLayout(floors, layouts, onMap, width, height, take) {
+  const how = bestLayout(floors, width, height, onMap, layouts);
+  const stage = take(how);
+  if (!stage || !(stage.width > 0) || !(stage.height > 0)) return how;
+  // the tie with none on the map is judged by `onMap`, not by the first choice (SV2-32j)
+  const again = bestLayout(floors, stage.width, stage.height, how, layouts, { foot: stage.foot, corner: stage.corner, held: onMap !== undefined });
+  if (again !== how) take(again);
+  return again;
+}
+
 export function createPlanMap(asked) {
   const options = asked || {};
   if (typeof options.name !== 'string' || options.name === '') throw new TypeError('createPlanMap needs a name: the prefix of the map\'s ids (\'movement\' gives #movement-plan).');
@@ -362,7 +387,6 @@ export function createPlanMap(asked) {
     // both arrangements laid out once, for bestLayout and the one taken
     const both = { side: layoutFloors(floors, 'side'), stacked: layoutFloors(floors, 'stacked') };
     const chosen = value === 'side' || value === 'stacked';
-    const how = chosen ? value : bestLayout(floors, view.width, view.height, same ? world.how : undefined, both);
     const take = (each) => {
       const next = both[each];
       next.measured = view.width > 0 && view.height > 0;
@@ -387,19 +411,11 @@ export function createPlanMap(asked) {
       // of its top before the map's own scroll (SV2-72h: at 900 by 500 with
       // touch the legend docked at the top and undocked once scrolled)
       clearFoot();
+      if (!next.measured) return null;
+      return { width: view.width, height: view.height, foot: footOver(), corner: zoomCorner(view.height) };
     };
-    take(how);
-    // The window's choice judged again against what Fit will draw (SV2-32a):
-    // with the sticky foot as it lies once the section is scrolled clear of
-    // it and the zoom box where it is lifted to, the layout taken kept as
-    // the one on the map. Whether a layout is on the stage at all is the
-    // same either way (chooseFit), so this turns only to a layout drawn
-    // whole above the foot, and larger, where the one taken lies under it;
-    // the turn is made once, before anything is told of the layout.
-    if (!chosen && view.width > 0 && view.height > 0) {
-      const again = bestLayout(floors, view.width, view.height, how, both, { foot: footOver(), corner: zoomCorner(view.height) });
-      if (again !== how) take(again);
-    }
+    if (chosen) take(value);
+    else windowLayout(floors, both, same ? world.how : undefined, view.width, view.height, take);
     // the layout on the map, for a test to count its turns
     stage.dataset.layout = world.how;
     for (const fn of layoutFns) fn();
