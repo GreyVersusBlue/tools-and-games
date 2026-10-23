@@ -3551,3 +3551,7 @@ Worker TG-28-curvecapture of the audit's line TG-28, on huginn in a worktree (`s
 
 **Did not move.** 108 cases (five fixtures, the sample school, three gallery schools; parapet, flat, gable, hip at 2, 4, 12) hash the same before and after in roofPlan, roofHeightAt on a 3ft grid, four elevations, a section, roofCover, takeoff, its CSV, estimate and its CSV. No save field, no module added to the page; `walk-template.html` rebuilt.
 
+**Checks.** `node --test 'test/*.test.mjs'` 2591 before and after, exit 0 (the bottle test rewritten, none added); `tools/blender/validate.mjs` 630, exit 0; `test/tools/run.mjs` 62 of 62 on Chromium 1194 under the suites lock, exit 0, one run; `test/visual/run.mjs` under the lock: `roof-curve` 0 px moved, the five sheets 0 px, the seven huginn text failures at the same pixel counts before and after `roof.js` changed (CI decides those, and `roof-curve` has not yet been compared on CI: if it goes red there, take its candidate from the `school-generator-failures` artifact, as 6593dd2 did); `npm run check`, `social:check` and `ci-check.mjs` each exit 0 under the lock.
+
+**Left.** `gable` over a curve is closed for now (Devon, SG-Q5); a bottle pocket beside a pinch, a court narrower than two eaves and an arc of two chords whose ends turn unlike keep rectangles. Nobody else's list or file needs updating for this.
+
