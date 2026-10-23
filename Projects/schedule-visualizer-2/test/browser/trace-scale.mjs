@@ -281,6 +281,7 @@ test('by keyboard: the button by Enter brings up the plan\'s cursor, Enter place
   assert.notEqual(now.cursor, null, 'the cursor shows');
   const [cx, cy] = now.cursor;
   await page.keyboard.press('Enter');
+  assert.equal((await points()).length, 1, 'Enter on the plan places the first point');
   for (let i = 0; i < 8; i += 1) await page.keyboard.press('ArrowRight');
   await page.keyboard.press('Enter');
   const placed = await points();
