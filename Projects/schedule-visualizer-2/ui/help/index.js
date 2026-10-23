@@ -133,8 +133,13 @@ export function openHelp(ctx, options) {
     : h('p', { class: 'help__lead' }, 'The planner has ' + model.sections.length + ' sections.');
   scroller.append(here, jump, ...parts);
 
+  // The class is on before the dialog is shown, so help.css lays it out as
+  // it opens: openDialog's focus on Close then scrolls the body, never the
+  // whole dialog, and the title stays at the top with no scroll put back by
+  // hand (SV2-32b; the sheet is asked for as the page boots).
   const dialog = ctx.openDialog({
     id: 'help-dialog',
+    class: 'help',
     title: HELP_TITLE,
     opener: options.opener,
     body: scroller,
@@ -143,14 +148,7 @@ export function openHelp(ctx, options) {
       { label: 'Close help', value: null },
     ],
   });
-  // openDialog focused Close before the class was on, while the whole dialog
-  // was one scrolling box, and so scrolled itself down to it; as Help its own
-  // box does not scroll, and that offset would hide the title. It is put back
-  // now, and again once the sheet applies, before data-styled says so.
-  dialog.element.classList.add('help');
-  dialog.element.scrollTop = 0;
   styled.then(() => {
-    dialog.element.scrollTop = 0;
     dialog.element.dataset.styled = 'true';
   });
   dialog.closed.then((value) => {

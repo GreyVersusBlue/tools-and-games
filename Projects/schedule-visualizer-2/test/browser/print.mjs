@@ -11,7 +11,7 @@
 import test, { after, afterEach, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { openPlanner, go, TOOL_PATH } from './harness.mjs';
+import { openPlanner, go, TOOL_PATH, loadModule } from './harness.mjs';
 
 let session;
 let page;
@@ -572,27 +572,6 @@ test('the floor plan offers the traced image only when a floor has one to show; 
 
 // ---------------------------------------------------------------- SV2-32d: the schedule's prints and the travel times
 
-// Load a module of the tool into the page once, under a key of
-// globalThis.sv2modules, by a module script: an import awaited inside
-// page.evaluate came back "Promise was collected" (DECISIONS 2026-10-20).
-async function loadModule(target, key, file) {
-  const held = (wanted) => {
-    const value = globalThis.sv2modules && globalThis.sv2modules[wanted];
-    if (!value) return null;
-    return { error: value[Symbol.toStringTag] === 'Module' ? null : String(value.error) };
-  };
-  let state = await target.evaluate(held, key);
-  if (state === null) {
-    const name = JSON.stringify(key);
-    await target.addScriptTag({ type: 'module', content: 'const modules = (globalThis.sv2modules ||= {}); import(' + JSON.stringify(new URL(file, session.url('')).href) + ').then((module) => { modules[' + name + '] = module; }, (error) => { modules[' + name + '] = { error: String((error && error.message) || error) }; });' });
-    state = await (await target.waitForFunction(held, { timeout: 5000 }, key)).jsonValue();
-  }
-  if (state.error !== null) {
-    await target.evaluate((wanted) => delete globalThis.sv2modules[wanted], key);
-    throw new Error('loadModule: ' + file + ' did not load: ' + state.error);
-  }
-}
-
 // The Schedule section has drawn the project as it is.
 function scheduleDrawn() {
   return page.waitForFunction(() => {
@@ -730,6 +709,100 @@ test('the groups, the teacher list and the teachers and rooms by period print fr
   }
 });
 
+// SV2-32b: the sheet is named as the document names itself, so a school
+// that says Block reads "Print: Teachers by block", not the output's static
+// name, and the frame's own name follows.
+test('in a school that says Block, the sheet and its frame are named as the document is: Teachers by block, Rooms by block', async () => {
+  await loadModule(page, 'actions', 'engine/actions.js');
+  const before = await page.evaluate(() => globalThis.sv2.store.history.past.length);
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.setSetting, { key: 'periodWord', value: 'Block' }));
+  try {
+    await go(page, '#schedule/import');
+    await scheduleDrawn();
+    for (const [kind, what] of [['teacher-grid', 'Teachers by block'], ['room-grid', 'Rooms by block']]) {
+      await pressPrint('#print-export-' + kind);
+      const seen = await page.evaluate(() => {
+        const sheet = document.querySelector('#print-preview');
+        const frame = sheet.querySelector('iframe');
+        return { heading: sheet.querySelector('.preview__title').textContent, frame: frame.title, title: frame.contentDocument.title, what: frame.contentDocument.querySelector('.doc-head__what').textContent };
+      });
+      assert.deepEqual(seen, { heading: 'Print: ' + what, frame: 'Preview of the ' + what.toLowerCase() + ' as it will print', title: what + ' · ' + SAMPLE_NAME, what: what + ': A Day' }, kind + ': ' + JSON.stringify(seen));
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => document.getElementById('print-preview') === null);
+    }
+  } finally {
+    await page.evaluate((count) => {
+      while (globalThis.sv2.store.history.past.length > count) globalThis.sv2.store.undo();
+    }, before);
+  }
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.project.settings.periodWord), 'Period', 'the school says Period again for the cases after this one');
+});
+
+// SV2-32b (from SV2-32d's review): in a fixed-layout grid every cell has
+// its width, and the notes in it wrap there. With 9 periods on Letter
+// upright, "not in the building" (about 27 mm on one line) ran over the next
+// period's cell, and "Grade 6, head count 24" under a group's name (about
+// 31 mm in a 24 mm box) over Period 1. Each line of text is measured as
+// laid out (a Range's box), not by its element, whose box is the cell's.
+test('with 9 periods on Letter upright, no slot, name or note in the grids runs past its own cell', async () => {
+  await loadModule(page, 'actions', 'engine/actions.js');
+  const before = await page.evaluate(() => globalThis.sv2.store.history.past.length);
+  await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    const { actions } = globalThis.sv2modules;
+    store.apply(actions.setSetting, { key: 'periods', value: 9 });
+    if (store.project.settings.paper.size !== 'letter') store.apply(actions.setSetting, { key: 'paper.size', value: 'letter' });
+    if (store.project.settings.paper.orientation !== 'portrait') store.apply(actions.setSetting, { key: 'paper.orientation', value: 'portrait' });
+    const group = store.project.groups[0];
+    store.apply(actions.setSlot, { groupId: group.id, dayTypeId: store.project.dayTypes[0].id, period: 0, slot: { room: null, roomText: 'Portable 9' } });
+  });
+  try {
+    await go(page, '#schedule/import');
+    await scheduleDrawn();
+    for (const kind of ['groups', 'teacher-grid', 'room-grid']) {
+      await pressPrint('#print-export-' + kind);
+      const seen = await page.evaluate(() => {
+        const frame = document.querySelector('#print-preview iframe');
+        const doc = frame.contentDocument;
+        const view = frame.contentWindow;
+        const over = [];
+        let notes = 0;
+        let parts = 0;
+        for (const cell of doc.querySelectorAll('.doc-grid tbody th, .doc-grid tbody td')) {
+          const box = cell.getBoundingClientRect();
+          const style = view.getComputedStyle(cell);
+          const left = box.left + parseFloat(style.paddingLeft) - 0.5;
+          const right = box.right - parseFloat(style.paddingRight) + 0.5;
+          for (const part of cell.querySelectorAll('.doc-grid__slot, .doc-grid__name, .doc-grid__time, .doc-grid__planning')) {
+            parts += 1;
+            if (part.classList.contains('doc-grid__time')) notes += 1;
+            const range = doc.createRange();
+            range.selectNodeContents(part);
+            for (const line of range.getClientRects()) {
+              if (line.left < left || line.right > right) over.push({ text: part.textContent, line: [Math.round(line.left), Math.round(line.right)], cell: [Math.round(left), Math.round(right)] });
+            }
+          }
+        }
+        return { over: over.slice(0, 5), count: over.length, notes, parts, missing: doc.querySelectorAll('.doc-grid__missing').length, periods: doc.querySelector('.doc-grid thead tr').children.length - 1, paper: [doc.documentElement.dataset.paper, doc.documentElement.dataset.orientation] };
+      });
+      assert.deepEqual(seen.paper, ['letter', 'portrait'], kind);
+      assert.equal(seen.periods, 9, kind + ': the nine periods on one sheet, so the cells are their narrowest');
+      // the teachers by period have no note under a name; the other two do
+      assert.ok(seen.parts > seen.notes && (kind === 'teacher-grid' || seen.notes > 0), kind + ': there are notes to measure: ' + JSON.stringify(seen));
+      if (kind === 'groups') assert.equal(seen.missing, 1, 'the slot in a room not in the building says so');
+      assert.equal(seen.count, 0, kind + ': text past its own cell: ' + JSON.stringify(seen));
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => document.getElementById('print-preview') === null);
+    }
+  } finally {
+    await page.evaluate((length) => {
+      const { store } = globalThis.sv2;
+      while (store.history.past.length > length) store.undo();
+    }, before);
+  }
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.project.settings.periods), 8, 'the school is as it was for the cases after this one');
+});
+
 test('a day too long for the sheet prints in parts from the Grid tab, each part inside the margins and a sheet of its own; on its side the day is one sheet', async () => {
   await loadModule(page, 'actions', 'engine/actions.js');
   const before = await page.evaluate(() => globalThis.sv2.store.history.past.length);
@@ -824,6 +897,25 @@ test('the Travel time tab prints its day type\'s tables: each transition\'s walk
   await pressPrint('#print-travel-time');
   const seen = await readTables();
   assert.equal(seen.heading, 'Print: Travel time');
+  // SV2-32b: a late row is set apart on paper by more than its words, in
+  // ways that print with no colour and no backgrounds: bold, and a heavy
+  // rule down its left edge
+  const marks = await page.evaluate(() => {
+    const frame = document.querySelector('#print-preview iframe');
+    const view = frame.contentWindow;
+    const look = (row) => {
+      const first = view.getComputedStyle(row.querySelector('th'));
+      return { weight: first.fontWeight, edge: Math.round(parseFloat(first.borderLeftWidth) * 10) / 10, cells: Array.from(row.children, (cell) => view.getComputedStyle(cell).fontWeight) };
+    };
+    const rows = Array.from(frame.contentDocument.querySelectorAll('.doc-table--travel tbody tr'));
+    const late = rows.filter((row) => row.classList.contains('is-late'));
+    const plain = rows.filter((row) => !row.classList.contains('is-late'));
+    return { late: late.length, plain: plain.length, lateLook: late.length ? look(late[0]) : null, plainLook: plain.length ? look(plain[0]) : null };
+  });
+  assert.ok(marks.late >= 1 && marks.plain >= 1, 'the sample school has late walks and walks in time: ' + JSON.stringify(marks));
+  assert.ok(marks.lateLook.cells.every((weight) => Number(weight) >= 600), 'a late row is bold in every cell: ' + JSON.stringify(marks));
+  assert.ok(marks.plainLook.cells.slice(1).every((weight) => Number(weight) < 600), 'a row in time is not: ' + JSON.stringify(marks));
+  assert.ok(marks.lateLook.edge >= marks.plainLook.edge + 3, 'a late row has a heavy rule down its left edge: ' + JSON.stringify(marks));
   assert.deepEqual(seen.what, ['Travel time: A Day'], 'the day type on the map');
   const transitions = seen.tables.filter((table) => table.period !== null);
   const day = seen.tables.filter((table) => table.period === null);

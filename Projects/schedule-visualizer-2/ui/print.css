@@ -312,6 +312,47 @@
   font-style: italic;
 }
 
+/* The schedule grids (ui/prints/schedule-grids.js). A fixed-layout table
+   gives every cell its width, and what is in a cell wraps inside it: a slot,
+   a name, and the notes under them ("Grade 6, head count 24", "not in the
+   building"), which ran over the next cell when they could not (SV2-32b).
+   The times in the head row stay on one line. */
+.print-doc .doc-grid__slot,
+.print-doc .doc-grid__name {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.print-doc .doc-grid tbody .doc-grid__time {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.print-doc .doc-grid__missing {
+  font-style: italic;
+}
+
+/* A room the schedule names that is not in the building: its row is set
+   apart by a dashed edge and an italic name, which print without colour. */
+.print-doc .doc-grid tr.is-away > * {
+  border-style: dashed;
+}
+
+.print-doc .doc-grid tr.is-away .doc-grid__name {
+  font-style: italic;
+}
+
+/* The travel-time tables (ui/prints/travel-time.js). A late row is set apart
+   by more than its words: bold, with a heavy rule down its left edge, both
+   of which print in black and white with backgrounds off. */
+.print-doc .doc-table--travel tr.is-late > * {
+  font-weight: 600;
+}
+
+.print-doc .doc-table--travel tr.is-late > th:first-child {
+  border-left: 1.2mm solid var(--ink);
+}
+
 .print-doc .doc-grid .is-marked {
   background: #f1eee7;
   box-shadow: inset 0 0 0 0.5mm var(--ink);

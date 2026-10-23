@@ -272,4 +272,37 @@ export async function visit(session, screen) {
   if (screen.open) await screen.open(page);
 }
 
+// Put one module of the tool on the page as globalThis.sv2modules[key], for
+// a synchronous page.evaluate to use after. `file` is relative to the tool's
+// folder, where the planner's page is. An import() awaited inside
+// page.evaluate can come back "Protocol error (Runtime.callFunctionOn):
+// Promise was collected" (SV2-72e: m2-pass.mjs, 2 runs in 10 with the CPU
+// throttled 4; SV2-28's full run in congestion-scenario.mjs), so a module
+// script the page loads itself does the import, and this waits on the key
+// the script sets. The script keeps `{ error }` under the key when the
+// import fails, and this throws with it: a static import that fails fires no
+// error a test can see, and a wrong path once came back as this wait's
+// timeout (SV2-72e2). A failed key is forgotten, so a later call tries
+// again. A load of the page empties the globals, and the module is loaded
+// again. One helper for every browser file (SV2-32b; there were eight
+// copies).
+export async function loadModule(page, key, file) {
+  // null while it loads, then `{ error }`: null when the module is there
+  const held = (wanted) => {
+    const value = globalThis.sv2modules && globalThis.sv2modules[wanted];
+    if (!value) return null;
+    return { error: value[Symbol.toStringTag] === 'Module' ? null : String(value.error) };
+  };
+  let state = await page.evaluate(held, key);
+  if (state === null) {
+    const name = JSON.stringify(key);
+    await page.addScriptTag({ type: 'module', content: 'const modules = (globalThis.sv2modules ||= {}); import(' + JSON.stringify('./' + file) + ').then((module) => { modules[' + name + '] = module; }, (error) => { modules[' + name + '] = { error: String((error && error.message) || error) }; });' });
+    state = await (await page.waitForFunction(held, { timeout: 10000 }, key)).jsonValue();
+  }
+  if (state.error !== null) {
+    await page.evaluate((wanted) => delete globalThis.sv2modules[wanted], key);
+    throw new Error('loadModule: ' + file + ' did not load: ' + state.error);
+  }
+}
+
 export { launch };
