@@ -93,7 +93,7 @@ From this folder, with Node 22 or newer:
 ```
 node test/run.mjs            every suite
 node test/run.mjs --node     the plain-Node suites: nothing to install
-node test/run.mjs --timing   the budgets at the size the tool promises
+node test/run.mjs --timing   the budgets at the size the tool promises (page.mjs in Chromium)
 node test/run.mjs --browser  the journeys in Chromium, and the axe sweep
 node test/engine/repair.test.mjs     one file
 ```
@@ -215,6 +215,7 @@ row names a file it does not run.
 | `test/browser/project-file.mjs` | The Project file card: export, import, building only, schedule only |
 | `test/browser/worker.mjs` | The derived pipeline in a real worker |
 | `test/browser/print.mjs` | The print preview sheet |
+| `test/browser/building-files.mjs` | The Rooms tab's files: the floor plan as a PNG, the room list as CSV |
 | `test/browser/staff-shell.mjs` | The staff browser's frame: unlock, search, addresses, notices, from a file on disk |
 | `test/browser/staff-views-a.mjs` | The teacher, group, room, building map and staffing pages |
 | `test/browser/staff-views-b.mjs` | Free right now, Where right now, Common planning, Coverage, the substitute plan, Directions |
@@ -249,3 +250,6 @@ row names a file it does not run.
 | `test/timing/suggest.mjs` | Suggestions for one finding under their budget |
 | `test/timing/scenario-lane.mjs` | The scenario lane, one change added and the first asking, under its budgets |
 | `test/timing/difference-card.mjs` | The difference map's card, the first after an answer and a later one, under its budgets |
+| `test/timing/checks.mjs` | The schedule checks of both day types, the engine call alone, under their budget |
+| `test/timing/worker.mjs` | Full routing and the first derive, cold, in a worker thread running `engine/worker.js`, under their budgets |
+| `test/timing/page.mjs` | In the planner in Chromium: paint one cell and redraw, the movement render after the worker answers, and an autosave write into IndexedDB, under their budgets |

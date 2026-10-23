@@ -12,8 +12,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { OUTPUTS, outputFor, renderOutput, printButtons } from '../../ui/prints/index.js';
-import { esc, frame, paperOf, paperBox, printableBox, pageRule, printDate, PAPERS, ORIENTATIONS, MARGIN, TOOL_NAME } from '../../ui/prints/document.js';
-import { planSvg, PLAN_INK, PLAN_ROOM_DEFAULT } from '../../ui/prints/plan-svg.js';
+import { esc, escXml, frame, paperOf, paperBox, printableBox, pageRule, printDate, PAPERS, ORIENTATIONS, MARGIN, TOOL_NAME } from '../../ui/prints/document.js';
+import { planSvg, PLAN_INK, PLAN_ROOM_DEFAULT, PLAN_STYLE } from '../../ui/prints/plan-svg.js';
+import { planImage, IMAGE_CELL } from '../../ui/prints/floor-plan.js';
+import { PAPER_SIZES } from '../../engine/schema.js';
 import { roomRows, sortRoomRows, ROOM_COLUMNS } from '../../ui/prints/room-list.js';
 import { gridMarks, numbered, findingsFor } from '../../ui/prints/checks-report.js';
 import { checkSchedule } from '../../engine/checks.js';
@@ -25,6 +27,18 @@ import { school, PINNED } from './helpers.mjs';
 
 const TOOL_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const NOW = { now: PINNED };
+// What each paper's page rule says, written out here (SV2-32c: the sizes CSS
+// has no keyword for are lengths, the way the sheet is read).
+const PAGE_SIZES = {
+  letter: { portrait: 'letter portrait', landscape: 'letter landscape' },
+  a4: { portrait: 'A4 portrait', landscape: 'A4 landscape' },
+  tabloid: { portrait: '279.4mm 431.8mm', landscape: '431.8mm 279.4mm' },
+  a3: { portrait: '297mm 420mm', landscape: '420mm 297mm' },
+  a2: { portrait: '420mm 594mm', landscape: '594mm 420mm' },
+  a1: { portrait: '594mm 841mm', landscape: '841mm 594mm' },
+  a0: { portrait: '841mm 1189mm', landscape: '1189mm 841mm' },
+  'poster-24x36': { portrait: '609.6mm 914.4mm', landscape: '914.4mm 609.6mm' },
+};
 const PAPER_CHOICES = Object.keys(PAPERS).flatMap((size) => Object.keys(ORIENTATIONS).map((orientation) => ({ size, orientation })));
 
 // Every tag a print document is made of. A name that came through as markup
@@ -112,6 +126,15 @@ test('the paper is what was asked, else the project\'s setting, else US Letter u
   assert.deepEqual(printableBox({ size: 'a4', orientation: 'portrait' }), { width: 210 - MARGIN.left - MARGIN.right, height: 297 - MARGIN.top - MARGIN.bottom });
 });
 
+test('the papers are the setting\'s sizes, in its order: US Letter and A4, tabloid and A3, then the posters', () => {
+  assert.deepEqual(Object.keys(PAPERS), PAPER_SIZES);
+  assert.deepEqual(Object.keys(PAPERS), Object.keys(PAGE_SIZES));
+  assert.deepEqual(Object.entries(PAPERS).filter(([, paper]) => paper.poster).map(([size]) => size), ['a2', 'a1', 'a0', 'poster-24x36']);
+  // millimetres, upright: ISO 216 and the US sizes
+  assert.deepEqual(Object.values(PAPERS).map((paper) => [paper.width, paper.height]), [[215.9, 279.4], [210, 297], [279.4, 431.8], [297, 420], [420, 594], [594, 841], [841, 1189], [609.6, 914.4]]);
+  for (const paper of PAPER_CHOICES) assert.equal(pageRule(paper), '@page { size: ' + PAGE_SIZES[paper.size][paper.orientation] + '; }', paper.size + ' ' + paper.orientation);
+});
+
 test('the page rule names the size and the orientation, for both papers both ways', () => {
   assert.equal(pageRule({ size: 'letter', orientation: 'portrait' }), '@page { size: letter portrait; }');
   assert.equal(pageRule({ size: 'letter', orientation: 'landscape' }), '@page { size: letter landscape; }');
@@ -138,7 +161,7 @@ test('every output is a whole document: header with school, what it is and the d
       assert.ok(html.startsWith('<!doctype html>\n<html lang="en" class="print-doc" data-theme="light" data-output="' + output.id + '" data-paper="' + paper.size + '" data-orientation="' + turn + '"'), at + ': the root');
       assert.equal(countOf(html, '<title>' + esc(title) + '</title>'), 1, at + ': the title');
       // written out here, not asked of pageRule(): a rule that ignored the paper would agree with itself
-      const rule = '@page { size: ' + { letter: 'letter', a4: 'A4' }[paper.size] + ' ' + turn + '; }';
+      const rule = '@page { size: ' + PAGE_SIZES[paper.size][turn] + '; }';
       assert.equal(countOf(html, '<style id="page-size">' + rule + '</style>'), 1, at + ': the page rule');
       assert.equal(countOf(html, '@page'), 1, at + ': one page rule and no other');
       assert.ok(html.includes('<link rel="stylesheet" href="ui/tokens.css">') && html.includes('<link rel="stylesheet" href="ui/print.css">'), at + ': the two stylesheets');
@@ -371,6 +394,37 @@ test('the plan fits inside the margins of every paper, whichever way it is turne
       assert.ok(Number(height) <= box.height - 30, paper.size + ' ' + paper.orientation + ': ' + height + ' mm tall in ' + box.height);
       assert.ok(Number(width) > box.width * 0.5 || Number(height) > box.height * 0.5, 'and it is not a postage stamp');
     }
+  }
+});
+
+// SV2-32c: on a poster the plan is as large as the sheet lets it be, not
+// held at the size it has on Letter.
+test('on every paper each floor is one sheet, its plan filling the sheet\'s width or the height under the header', () => {
+  const project = school();
+  for (const paper of PAPER_CHOICES) {
+    const at = paper.size + ' ' + paper.orientation;
+    const box = printableBox(paper);
+    const { html } = renderOutput('floor-plan', project, null, { ...NOW, paper });
+    assert.equal(countOf(html, '<section class="page">'), project.building.floors.length, at + ': a sheet a floor');
+    const sizes = Array.from(html.matchAll(/class="plan-figure__plan" style="width: ([\d.]+)mm; height: ([\d.]+)mm;"/g)).map((match) => [Number(match[1]), Number(match[2])]);
+    for (const [width, height] of sizes) {
+      // 26 mm for the header and 12 for the sentence under the plan (floor-plan.js)
+      const fills = Math.abs(width - box.width) <= 0.01 || Math.abs(height - (box.height - 38)) <= 0.01;
+      assert.ok(fills, at + ': ' + width + ' by ' + height + ' mm in ' + box.width + ' by ' + (box.height - 38));
+    }
+  }
+});
+
+test('a building of a few cells is not blown up past 14 mm a cell on Letter, and past the same share of a poster\'s shorter side', () => {
+  const project = planProject([['#######', '#.....#', '#######']]);
+  for (const paper of PAPER_CHOICES) {
+    const box = printableBox(paper);
+    const { html } = renderOutput('floor-plan', project, null, { ...NOW, paper });
+    const [, width] = /class="plan-figure__plan" style="width: ([\d.]+)mm;/.exec(html);
+    const plan = planSvg(project, project.building.floors[0]);
+    const cell = Number(width) / plan.width;
+    const most = 14 * Math.max(1, Math.min(box.width, box.height) / (215.9 - 24));
+    assert.ok(cell <= most + 0.01, paper.size + ' ' + paper.orientation + ': ' + cell + ' mm a cell');
   }
 });
 
@@ -694,4 +748,198 @@ test('print.css keeps to its two roots and reaches for nothing outside the tool'
   for (const selector of selectors) assert.match(selector, /^\.(print-doc|preview)(?![a-zA-Z0-9-])/, selector);
   assert.match(css, /@page\s*\{\s*margin: 12mm 12mm 16mm;/, 'the margins document.js lays the plan out for');
   assert.deepEqual(MARGIN, { top: 12, right: 12, bottom: 16, left: 12 });
+});
+
+// ---------------------------------------------------------------- the floor plan as a picture (SV2-32c)
+
+// Every tag the picture is made of. A name that came through as markup would bring one that is not here.
+const IMAGE_TAGS = new Set(['svg', 'title', 'style', 'rect', 'text', 'g', 'path']);
+const FACE = 'data:font/woff2;base64,d09GMgABAAAAAA==';
+
+test('the picture is the plan of every floor, one under the other, labelled as the print is and cropped to what is drawn', () => {
+  const project = school();
+  const image = planImage(project, NOW);
+  assert.equal(image.drawn, true);
+  assert.deepEqual(image.floors.map((floor) => floor.name), ['Floor 1', 'Floor 2', 'Floor 3']);
+  assert.ok(image.svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg" width="' + image.width + '" height="' + image.height + '" viewBox="0 0 ' + image.width + ' ' + image.height + '">'));
+  assert.equal(countOf(image.svg, '<title>Floor plan · ' + esc(SAMPLE_SCHOOL_NAME) + '</title>'), 1);
+  // the heading: the school, what this is, the date; then each floor's name, its plan and the print's sentence
+  const lines = Array.from(image.svg.matchAll(/<text class="img (img__[a-z]+)"[^>]*>([^<]*)<\/text>/g)).map((match) => match[1] + ': ' + match[2]);
+  assert.deepEqual(lines.slice(0, 3), ['img__school: ' + esc(SAMPLE_SCHOOL_NAME), 'img__what: Floor plan', 'img__date: 1 September 2026']);
+  assert.deepEqual(lines.filter((line) => line.startsWith('img__floor')), ['img__floor: Floor 1', 'img__floor: Floor 2', 'img__floor: Floor 3']);
+  assert.ok(lines.includes('img__caption: Floor 1: 5 rooms, 2 exits, stairs A.'), lines.join(' / '));
+  // each floor is the print's own plan, placed at IMAGE_CELL pixels a cell, centred, top to bottom without overlapping
+  const placed = Array.from(image.svg.matchAll(/<svg class="plan" xmlns="http:\/\/www.w3.org\/2000\/svg" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" viewBox="([^"]+)"/g)).map((match) => match.slice(1, 5).map(Number).concat([match[5]]));
+  assert.equal(placed.length, 3);
+  let bottom = 0;
+  project.building.floors.forEach((floor, index) => {
+    const plan = planSvg(project, floor);
+    const [x, y, width, height, viewBox] = placed[index];
+    assert.equal(viewBox, /viewBox="([^"]+)"/.exec(plan.svg)[1], floor.name + ': cropped as the print is');
+    assert.ok(Math.abs(width - plan.width * IMAGE_CELL) < 0.01 && Math.abs(height - plan.height * IMAGE_CELL) < 0.01, floor.name + ': ' + width + ' by ' + height);
+    assert.ok(Math.abs(x + width / 2 - image.width / 2) < 0.01, floor.name + ': centred');
+    assert.ok(y > bottom, floor.name + ' starts under what is above it');
+    bottom = y + height;
+  });
+  assert.ok(bottom < image.height, 'the last floor is inside the picture');
+  const widest = Math.max(...project.building.floors.map((floor) => planSvg(project, floor).width * IMAGE_CELL));
+  assert.equal(image.width, Math.ceil(Math.max(640, widest) + 64), 'as wide as the widest plan and its margins');
+  // on light paper, with nothing of the editor and no traced image
+  assert.ok(image.svg.includes('<rect width="100%" height="100%" fill="#ffffff"/>'));
+  assert.doesNotMatch(image.svg, /selection|selected|hover|cursor|handle|preview|<image/i);
+  assert.deepEqual(tagsOf(image.svg).filter((tag) => !IMAGE_TAGS.has(tag)), []);
+});
+
+test('one floor is that floor alone under "Floor plan: its name"; the picture is as wide as its plan, and never under 640 pixels', () => {
+  const project = school();
+  const floor = project.building.floors[1];
+  const image = planImage(project, { ...NOW, floorId: floor.id });
+  assert.deepEqual(image.floors.map((each) => each.id), [floor.id]);
+  assert.ok(image.svg.includes('>Floor plan: ' + esc(floor.name) + '</text>'));
+  assert.equal(countOf(image.svg, 'class="img img__floor"'), 0, 'no floor line over a lone floor: the heading names it');
+  assert.equal(countOf(image.svg, '<svg class="plan"'), 1);
+  assert.equal(image.width, Math.ceil(Math.max(640, planSvg(project, floor).width * IMAGE_CELL) + 64));
+  const wide = planProject([['#'.repeat(60), '#' + '.'.repeat(58) + '#', '#'.repeat(60)]]);
+  assert.equal(planImage(wide, { floorId: wide.building.floors[0].id }).width, Math.ceil(60.5 * IMAGE_CELL + 64), 'a wide floor sets the width');
+  const empty = planProject([['.....']]);
+  const nothing = planImage(empty, { floorId: empty.building.floors[0].id });
+  assert.equal(nothing.drawn, false);
+  assert.ok(nothing.svg.includes('>Nothing is drawn on Floor 1 yet.</text>'));
+});
+
+test('the picture carries the faces it is given as data, and nothing else: no address, no file of its own', () => {
+  const project = school();
+  const fonts = [
+    { family: 'Barlow Semi Condensed', weight: 600, url: FACE },
+    { family: 'Public Sans', weight: 700, url: FACE },
+    { family: 'Public Sans', weight: 400, url: 'https://fonts.example/public-sans.woff2' },
+    { family: 'Public Sans', weight: 500, url: FACE + ') format("woff2"); } svg { display: none } @font-face { src: url(x' },
+    { family: 'Bad"; } svg { display: none } x { a: "', weight: 500, url: FACE },
+    { family: 'Public Sans', weight: '600', url: FACE },
+  ];
+  const { svg } = planImage(project, { ...NOW, fonts });
+  assert.equal(countOf(svg, '@font-face'), 2, 'the two faces that are woff2 data, with a plain family and a whole weight');
+  assert.ok(svg.includes('@font-face { font-family: "Barlow Semi Condensed"; font-weight: 600; font-style: normal; src: url(' + FACE + ') format("woff2"); }'));
+  assert.equal(countOf(svg, 'url('), 2);
+  assert.doesNotMatch(svg, /https?:\/\/(?!www\.w3\.org\/2000\/svg)/, 'no address but the SVG namespace');
+  assert.doesNotMatch(svg, /display: none/);
+  assert.equal(countOf(planImage(project, NOW).svg, '@font-face'), 0, 'with none given the picture names the faces and carries none');
+});
+
+test('every name in the picture is text, escaped, and the picture is still one SVG', () => {
+  const { project, made } = hostileSchool();
+  for (const floorId of ['all', project.building.floors[0].id]) {
+    const { svg } = planImage(project, { ...NOW, floorId });
+    for (const { what, value } of made) assert.equal(countOf(svg, value), 0, 'the ' + what + ' name ' + value + ' is in the picture as typed');
+    for (const raw of HOSTILE) assert.equal(countOf(svg, raw), 0, raw);
+    assert.ok(svg.includes(esc(project.settings.schoolName)), 'the school, escaped');
+    assert.deepEqual(tagsOf(svg).filter((tag) => !IMAGE_TAGS.has(tag)), [], floorId + ': a tag the picture has no use for');
+    assert.equal(countOf(svg, '<svg'), countOf(svg, '</svg>'));
+    assert.equal(countOf(svg, '<style>'), 1);
+    assert.equal(countOf(svg, '</style>'), 1);
+    assert.doesNotMatch(svg.replace(/="[^"]*"/g, ''), /<[^>]*\son[a-z]+\s*=/i, 'an event handler attribute');
+  }
+});
+
+// What XML 1.0 cannot hold: a C0 control but tab, newline and carriage return, U+FFFE, U+FFFF, a lone surrogate.
+const NOT_XML = /[\u0000-\u0008\u000b\u000c\u000e-\u001f￾￿]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+
+test('escXml writes each character XML cannot hold as U+FFFD and keeps the rest as esc() does (SV2-32k)', () => {
+  assert.equal(escXml('a\u0000b\u0008c\u000bd\u000ce\u001ff'), 'a�b�c�d�e�f');
+  assert.equal(escXml('tab\tnew\nline\rend'), 'tab\tnew\nline\rend', 'tab, newline and carriage return are XML');
+  assert.equal(escXml('x￾y￿z'), 'x�y�z');
+  assert.equal(escXml('lone \ud800 and \udc00, a pair 😀'), 'lone � and �, a pair 😀');
+  assert.equal(escXml('<a href="x">O\'Brien & Ñandú, 王老师</a>'), esc('<a href="x">O\'Brien & Ñandú, 王老师</a>'));
+  assert.equal(escXml(null), '');
+  assert.equal(esc('a\u000bb'), 'a\u000bb', 'esc, for HTML, is as it was');
+});
+
+test('a control character in a floor, a room number, a teacher or the school: the picture writes it as U+FFFD and is XML; the print keeps it as typed (SV2-32k)', () => {
+  const project = school();
+  const floor = project.building.floors[0];
+  const room = floor.spaces.find((space) => space.kind === 'room' && space.teacherIds.length > 0);
+  const teacher = project.teachers.find((each) => each.id === room.teacherIds[0]);
+  project.settings.schoolName = 'Marrow\u0001by ￾\ud800School';
+  floor.name = 'Floor\u000b1';
+  room.number = '1\u001f01';
+  teacher.name = 'Ms. Ze\u0002d';
+  const typed = [project.settings.schoolName, floor.name, room.number, 'Ze\u0002d'];
+  for (const floorId of ['all', floor.id]) {
+    const { svg } = planImage(project, { ...NOW, floorId });
+    const bad = NOT_XML.exec(svg);
+    assert.equal(bad, null, floorId + ': U+' + (bad ? bad[0].charCodeAt(0).toString(16).padStart(4, '0') : '') + ' at ' + (bad ? bad.index : -1) + ' is not XML');
+    for (const value of typed) {
+      assert.equal(countOf(svg, value), 0, floorId + ': ' + JSON.stringify(value) + ' as typed');
+      assert.ok(svg.includes(escXml(value)), floorId + ': ' + JSON.stringify(escXml(value)) + ' in the picture');
+    }
+  }
+  const { html } = renderOutput('floor-plan', project, null, { ...NOW, floorId: floor.id });
+  for (const value of typed) assert.ok(html.includes(value), 'the print keeps ' + JSON.stringify(value) + ' as typed');
+  assert.equal(countOf(html, '�'), 0, 'the print writes no U+FFFD');
+});
+
+test('a heading line whose Public Sans face the picture does not carry is sized in the face it falls back to (SV2-32k)', () => {
+  const project = school();
+  const floor = project.building.floors[0];
+  floor.name = 'West Wing Upper Level '.repeat(2).trim();
+  const what = 'Floor plan: ' + floor.name;
+  const room = (width) => width - 64;
+  const sizeOf = (svg, cls) => Number(new RegExp('class="img ' + cls + '"[^>]*font-size="([\\d.]+)"').exec(svg)[1]);
+  const all = [400, 600, 700].map((weight) => ({ family: 'Public Sans', weight, url: FACE }));
+  const asked = [];
+  const measure = (value, weight) => {
+    asked.push(weight + ' ' + value);
+    return value.length * 0.9;
+  };
+  // carried at 700: the heading is sized by Public Sans, and the fallback is never measured
+  const carried = planImage(project, { ...NOW, floorId: floor.id, fonts: all, measure });
+  assert.deepEqual(asked, [], 'nothing measured when every face is carried');
+  const publicSans = sizeOf(carried.svg, 'img__what');
+  // not carried: measured in the fallback, at the line's weight
+  const without = planImage(project, { ...NOW, floorId: floor.id, fonts: all.filter((face) => face.weight !== 700), measure });
+  assert.deepEqual(asked, ['700 ' + what], 'the heading measured at 700 in the face the browser falls back to');
+  const measured = sizeOf(without.svg, 'img__what');
+  assert.equal(measured, Math.round(Math.max(10, Math.min(26, room(without.width) / (what.length * 0.9))) * 100) / 100, 'sized by the measure');
+  assert.ok(measured < publicSans, measured + ' under ' + publicSans);
+  // not carried and nothing to measure with: sized wider than Public Sans, never as if it were
+  const unmeasured = sizeOf(planImage(project, { ...NOW, floorId: floor.id }).svg, 'img__what');
+  assert.ok(unmeasured < publicSans, unmeasured + ' under ' + publicSans);
+  // a measure that gives nothing a number is not taken
+  assert.equal(sizeOf(planImage(project, { ...NOW, floorId: floor.id, measure: () => NaN }).svg, 'img__what'), unmeasured);
+});
+
+test('a long school name is set smaller to stay inside the picture, down to 8 pixels', () => {
+  const project = school();
+  project.settings.schoolName = 'Marrowby '.repeat(40).trim();
+  const { svg, width } = planImage(project, NOW);
+  const size = Number(/class="img img__school"[^>]*font-size="([\d.]+)"/.exec(svg)[1]);
+  assert.ok(size < 16 && size >= 8, String(size));
+  project.settings.schoolName = 'Marrowby Middle School';
+  assert.equal(Number(/class="img img__school"[^>]*font-size="([\d.]+)"/.exec(planImage(project, NOW).svg)[1]), 16, 'a name that fits is set at 16');
+  assert.ok(width >= 640);
+});
+
+test('the picture\'s plan looks as the printed plan does: print.css\'s plan rules with the light theme written in', () => {
+  const tokens = readFileSync(path.join(TOOL_DIR, 'ui', 'tokens.css'), 'utf8');
+  const light = /\[data-theme="light"\],\s*\[data-theme="auto"\]\s*\{([^}]*)\}/.exec(tokens)[1];
+  const root = /:root\s*\{([^}]*)\}/.exec(tokens)[1];
+  const token = (name) => {
+    const found = new RegExp('--' + name + ':\\s*([^;]+);').exec(light) || new RegExp('--' + name + ':\\s*([^;]+);').exec(root);
+    assert.ok(found, '--' + name);
+    return found[1].trim();
+  };
+  const css = readFileSync(path.join(TOOL_DIR, 'ui', 'print.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const printed = new Map();
+  for (const match of css.matchAll(/([^{}@]+)\{([^{}]*)\}/g)) {
+    for (const selector of match[1].split(',').map((each) => each.trim())) {
+      if (!/^\.print-doc \.plan(\b|__)/.test(selector) || /^\.print-doc \.plan-/.test(selector)) continue;
+      const declarations = match[2].split(';').map((each) => each.trim()).filter(Boolean).map((each) => each.replace(/var\(--([a-z0-9-]+)\)/g, (all, name) => token(name)).replace(/\s+/g, ' '));
+      const own = selector.replace(/^\.print-doc /, '');
+      // .plan's display, width and height lay it out on a sheet; on a nested <svg> they would undo its placing
+      printed.set(own, (printed.get(own) || []).concat(own === '.plan' ? declarations.filter((each) => !/^(display|width|height):/.test(each)) : declarations));
+    }
+  }
+  const written = new Map(PLAN_STYLE.map(([selector, rules]) => [selector, rules.split(';').map((each) => each.trim().replace(/\s+/g, ' '))]));
+  assert.deepEqual([...written.keys()].sort(), [...printed.keys()].sort(), 'the same parts of the plan');
+  for (const [selector, rules] of printed) assert.deepEqual(written.get(selector), rules, selector);
 });

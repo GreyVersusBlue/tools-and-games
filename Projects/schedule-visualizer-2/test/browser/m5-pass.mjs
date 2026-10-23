@@ -1634,3 +1634,84 @@ test('Fix… to Try it to Apply, by a finger alone at 390 by 844: the clash is c
     await journeyWas(page, 'touch');
   });
 });
+
+// ------------------------------------------- SV2-32a: Fit judged against what it draws
+
+// The layout Movement takes, judged against the picture: what the map drew
+// (its view on the stage), and what the page's own chooseFit draws of the
+// other layout with the sticky foot and the zoom box where they lie on the
+// page now. Before SV2-32a the layout was judged at the least zoom with no
+// foot, and where no band held the floors above the foot Fit took the band
+// beside the zoom box, which ran the floors past the stage's right edge
+// where the plain fit has them all (798 by 120 with a 40 px foot in Node,
+// test/ui/plan-map.test.mjs). Sizes where the foot still lies over the
+// stage once the section is scrolled clear of it, or the floors cannot be
+// whole above it, found by a sweep of window sizes: at most others the
+// scroll clears the foot and there is nothing to judge. Each says what it
+// judged.
+const FOOTED = [
+  // the floors cannot be whole above the foot, nor either layout on the stage at all
+  { width: 1100, height: 450 },
+  { width: 740, height: 360, mobile: true },
+  // the foot 105 px over a 217 px stage, the first line kept
+  { width: 1600, height: 460 },
+  // the foot 12 px over the stage once the first line stops the scroll
+  { width: 800, height: 390, mobile: true },
+  { width: 844, height: 390, mobile: true },
+];
+
+const pictureOf = (page) => page.evaluate(() => {
+  const plan = document.querySelector('.mov').movement.plan;
+  const layout = globalThis.sv2modules.layout;
+  const width = plan.view.width;
+  const height = plan.view.height;
+  const st = plan.stage.getBoundingClientRect();
+  const bar = document.querySelector('[data-bar="playback"]');
+  const foot = bar && bar.getClientRects().length > 0 ? Math.max(0, Math.min(st.height, Math.ceil(st.bottom - bar.getBoundingClientRect().top))) : 0;
+  const z = plan.stage.querySelector('.mov-zoom').getBoundingClientRect();
+  const corner = { x: z.left - st.left, y: z.top - st.top, w: z.width, h: z.height };
+  // a layout's floors, each with its name row, at a place: off the stage, under the foot
+  const judge = (world, place) => {
+    const size = 24 * place.zoom;
+    const floors = world.slots.map((slot) => ({ name: slot.floor.name, left: place.x + slot.x * size, top: place.y + (slot.y - 2) * size, right: place.x + (slot.x + slot.w) * size, bottom: place.y + (slot.y + slot.h) * size }));
+    const off = floors.filter((f) => f.left < -0.01 || f.top < -0.01 || f.right > width + 0.01 || f.bottom > height + 0.01).map((f) => f.name + ' ' + Math.round(f.left) + '..' + Math.round(f.right) + ' x ' + Math.round(f.top) + '..' + Math.round(f.bottom));
+    const under = floors.filter((f) => f.bottom > height - foot + 0.01).map((f) => f.name);
+    return { how: world.how, zoom: place.zoom, whole: off.length === 0, above: off.length === 0 && under.length === 0, off, under };
+  };
+  const floors = plan.world.slots.map((slot) => slot.floor);
+  const other = layout.layoutFloors(floors, plan.world.how === 'side' ? 'stacked' : 'side');
+  return {
+    width, height, foot, corner,
+    fitIn: plan.stage.dataset.fitIn,
+    taken: judge(plan.world, { zoom: plan.view.zoom, x: plan.view.x, y: plan.view.y }),
+    // what Fit would draw of the layout taken with no foot and no zoom box: the plain fit
+    plain: judge(plan.world, layout.chooseFit(plan.world, width, height, 0, null, layout.FIT_MARGIN)),
+    other: judge(other, layout.chooseFit(other, width, height, foot, corner, layout.FIT_MARGIN)),
+  };
+});
+
+for (const size of FOOTED) {
+  test('SV2-32a: Movement at ' + size.width + ' by ' + size.height + (size.mobile ? ' with touch' : ' with a mouse') + ' draws every floor on the stage wherever a layout can be whole, and none under the foot where the other is whole above it and larger', async () => {
+    await on('#project', size, async (page) => {
+      assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), Boolean(size.mobile), 'the page\'s pointer is not the case\'s');
+      await fixture(page);
+      await loadModule(page, 'layout', 'ui/surface/plan-layout.js');
+      await countTurns(page);
+      await go(page, '#movement');
+      await answered(page);
+      const turns = await turnsSettled(page, 'movement');
+      // the map has drawn at the fit it holds, measured where the section is now
+      await until(page, 'the map did not settle fitted where the section is', () => {
+        const plan = document.querySelector('.mov').movement.plan;
+        return plan.fitted && plan.root.dataset.dockedAt === String(Math.round(plan.root.scrollTop)) && Number(plan.canvas.dataset.drawn || 0) > 0;
+      });
+      const got = await pictureOf(page);
+      const said = JSON.stringify(got);
+      assert.ok(got.foot > 0 || got.fitIn === 'stage', 'no foot lies over the stage and the floors are whole above it: the case tests nothing: ' + said);
+      assert.ok(got.taken.whole || !(got.plain.whole || got.other.whole), 'a floor off the stage where a layout can be whole: ' + said);
+      assert.ok(!(got.taken.whole && !got.taken.above && got.other.above && got.other.zoom > got.taken.zoom + 1e-9), 'the floors under the foot where the other layout is whole above it and larger: ' + said);
+      assert.ok(turns.layout <= 1 && turns.fit <= 2, 'the layout did not settle: ' + JSON.stringify(turns));
+      console.log('# ' + size.width + ' by ' + size.height + (size.mobile ? ' touch' : ' mouse') + ': ' + got.taken.how + ' at ' + got.taken.zoom.toFixed(4) + ' in ' + got.fitIn + ', foot ' + got.foot + ' px, the other ' + (got.other.above ? 'above the foot' : got.other.whole ? 'under the foot' : 'off the stage') + ' at ' + got.other.zoom.toFixed(4));
+    });
+  });
+}

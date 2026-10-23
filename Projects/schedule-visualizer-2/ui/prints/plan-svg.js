@@ -52,6 +52,14 @@
 //                           it, and may then be fractions of a cell.
 //                           With neither option the picture is byte for byte
 //                           what it was before they existed.
+//     options.place         { x, y, width, height }: where the picture lies
+//                           inside a larger SVG (the floor plan's PNG,
+//                           SV2-32c), written on its root. Left out, the root
+//                           has no position or size of its own.
+//     options.xml           true for a picture that stands alone as XML: each
+//                           character XML cannot hold is written as U+FFFD
+//                           (escXml, SV2-32k). A print, which is HTML, keeps
+//                           every name as typed.
 //     svg      the markup, or '' when nothing is drawn on the floor
 //     traced   whether the traced image is in the picture
 //     width, height   of the cropped picture, in cells (for fitting it to a page)
@@ -59,7 +67,7 @@
 
 import { mix, labelOn, parse, ROOM_STRENGTH, OTHER_STRENGTH } from '../colour.js';
 import { CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY, spaceOwners } from '../../engine/schema.js';
-import { esc } from './document.js';
+import { esc, escXml } from './document.js';
 import { tracePlacement } from '../building/trace.js';
 
 // The light theme's ink and room-default (tokens.css), and white paper. They
@@ -68,6 +76,44 @@ import { tracePlacement } from '../building/trace.js';
 export const PLAN_INK = '#1f2328';
 export const PLAN_PAPER = '#ffffff';
 export const PLAN_ROOM_DEFAULT = '#e9e4d9';
+
+// The plan's look on paper, for a picture that stands alone and so cannot
+// read print.css (a PNG drawn from the SVG, SV2-32c): print.css's rules for
+// .print-doc .plan and its parts, with the light theme's tokens written in.
+// test/engine/prints.test.mjs holds the two to the same declarations, but
+// for .plan's display, width and height: those lay the plan out on a sheet,
+// and on a nested <svg> they would undo the x, y, width and height it is
+// placed by.
+export const PLAN_FONT = '"Barlow Semi Condensed", "Public Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+export const PLAN_STYLE = [
+  ['.plan', 'font-family: ' + PLAN_FONT],
+  ['.plan text', 'text-anchor: middle; dominant-baseline: central'],
+  ['.plan__corridor', 'fill: #ffffff'],
+  ['.plan__stairs', 'fill: #d9ece9'],
+  ['.plan__wall', 'fill: none; stroke: #857f73; stroke-width: 0.6; stroke-linecap: square'],
+  ['.plan__chevron', 'fill: none; stroke: #1f2328; stroke-width: 1.2'],
+  ['.plan__letter', 'fill: #1f2328; font-weight: 600'],
+  ['.plan__outline', 'fill: none; stroke: #1f2328; stroke-width: 1; stroke-linecap: square'],
+  ['.plan__space--other .plan__outline', 'stroke: #857f73; stroke-width: 0.7'],
+  ['.plan__space--unnumbered .plan__outline', 'stroke-dasharray: 3 2.5'],
+  ['.plan__number', 'font-weight: 600'],
+  ['.plan__label', 'font-weight: 500'],
+  ['.plan__teacher', 'font-weight: 500'],
+  ['.plan__corridor-name', 'fill: #515761; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase'],
+  ['.plan__exit', 'fill: none; stroke: #0f6e66; stroke-width: 3.2'],
+  ['.plan__exit-name', 'fill: #0f6e66; font-weight: 600'],
+  ['.plan .plan__exit-name--w', 'text-anchor: end'],
+  ['.plan .plan__exit-name--e', 'text-anchor: start'],
+  ['.plan__route-band', 'fill: none; stroke: #ffffff; stroke-width: 9; stroke-linecap: round; stroke-linejoin: round'],
+  ['.plan__route', 'fill: none; stroke: #1f2328; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round'],
+  ['.plan__start', 'fill: #1f2328; stroke: #ffffff; stroke-width: 2'],
+  ['.plan__end', 'fill: #0f6e66; stroke: #ffffff; stroke-width: 2'],
+];
+
+// PLAN_STYLE as the text of a <style>.
+export function planStyleText() {
+  return PLAN_STYLE.map(([selector, rules]) => selector + ' { ' + rules + '; }').join('\n');
+}
 
 // One cell is this many units of the picture.
 const U = 20;
@@ -227,8 +273,10 @@ function surname(name) {
   return words[words.length - 1];
 }
 
-function text(x, y, size, cls, value, more) {
-  return '<text class="' + cls + '" x="' + n(x) + '" y="' + n(y) + '" font-size="' + n(size) + '"' + (more || '') + '>' + esc(value) + '</text>';
+// A label, its words escaped by `write`: esc for a print, which is HTML, and
+// escXml for the stand-alone picture (options.xml).
+function textWith(write) {
+  return (x, y, size, cls, value, more) => '<text class="' + cls + '" x="' + n(x) + '" y="' + n(y) + '" font-size="' + n(size) + '"' + (more || '') + '>' + write(value) + '</text>';
 }
 
 // The data URL to draw for a floor's traced image, or null: asked for, shown
@@ -356,6 +404,8 @@ function routeMarkup(floor, route) {
 }
 
 export function planSvg(project, floor, options) {
+  const write = options && options.xml === true ? escXml : esc;
+  const text = textWith(write);
   const width = floor.width;
   const height = floor.height;
   const owners = spaceOwners(floor);
@@ -571,7 +621,9 @@ export function planSvg(project, floor, options) {
   // in a window, each label the window would cut is left out
   const whole = (box) => box.left >= vx - 1e-9 && box.top >= vy - 1e-9 && box.right <= vx + vw + 1e-9 && box.bottom <= vy + vh + 1e-9;
   const markup = crop ? out.filter((each) => typeof each === 'string' || whole(each.box)).map((each) => (typeof each === 'string' ? each : each.markup)) : out;
-  const svg = '<svg class="plan" xmlns="http://www.w3.org/2000/svg" viewBox="' + [vx, vy, vw, vh].map(n).join(' ') + '" role="img" aria-label="' + esc('Floor plan of ' + floor.name) + '">\n'
+  const place = options && options.place && typeof options.place === 'object' ? options.place : null;
+  const at = place ? ' x="' + n(place.x) + '" y="' + n(place.y) + '" width="' + n(place.width) + '" height="' + n(place.height) + '"' : '';
+  const svg = '<svg class="plan" xmlns="http://www.w3.org/2000/svg"' + at + ' viewBox="' + [vx, vy, vw, vh].map(n).join(' ') + '" role="img" aria-label="' + write('Floor plan of ' + floor.name) + '">\n'
     + markup.join('\n') + '\n</svg>';
   return { svg, drawn: true, traced: traceUrl !== null, width: vw / U, height: vh / U, rooms, exits, letters };
 }

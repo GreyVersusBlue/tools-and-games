@@ -8,7 +8,7 @@
 // (`options.now`), so the same project and options give the same document.
 //
 // options, for every output:
-//   paper   { size: 'letter' | 'a4', orientation: 'portrait' | 'landscape' };
+//   paper   { size: a key of PAPERS, orientation: 'portrait' | 'landscape' };
 //           the project's own setting when left out
 //   now     a Date or an ISO string for the header's date; no date when left out
 //   base    where the two stylesheets are, as the document will see it
@@ -16,10 +16,20 @@
 
 export const TOOL_NAME = 'Schedule Visualizer 2';
 
-// Millimetres, portrait.
+// Millimetres, portrait, in the order the preview offers them; the keys are
+// engine/schema.js PAPER_SIZES. `css` is the page rule's keyword where CSS
+// has one that every browser reads; the others are written as lengths.
+// `poster` marks the sizes a print shop or a plotter prints, not an office
+// printer. Tabloid is 11 × 17 in.
 export const PAPERS = {
   letter: { label: 'US Letter', css: 'letter', width: 215.9, height: 279.4 },
   a4: { label: 'A4', css: 'A4', width: 210, height: 297 },
+  tabloid: { label: 'Tabloid', width: 279.4, height: 431.8 },
+  a3: { label: 'A3', width: 297, height: 420 },
+  a2: { label: 'A2', poster: true, width: 420, height: 594 },
+  a1: { label: 'A1', poster: true, width: 594, height: 841 },
+  a0: { label: 'A0', poster: true, width: 841, height: 1189 },
+  'poster-24x36': { label: '24 × 36 in', poster: true, width: 609.6, height: 914.4 },
 };
 export const ORIENTATIONS = { portrait: 'Portrait', landscape: 'Landscape' };
 
@@ -35,6 +45,18 @@ const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&
 export function esc(value) {
   if (value === null || value === undefined) return '';
   return String(value).replace(/[&<>"']/g, (character) => ESCAPES[character]);
+}
+
+// What XML 1.0 cannot hold at all, even as a character reference: the C0
+// controls but tab, newline and carriage return, U+FFFE, U+FFFF, and a
+// surrogate that is not half of a pair.
+const NOT_XML = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
+
+// A string as text inside a stand-alone SVG, which is XML: as esc(), and each
+// character XML cannot hold written as U+FFFD, so the file still parses (the
+// floor plan's PNG, SV2-32k). HTML holds these as typed, so a print keeps esc().
+export function escXml(value) {
+  return esc(value).replace(NOT_XML, '\ufffd');
 }
 
 // The paper a document is laid out for: what was asked, else the project's
@@ -59,9 +81,13 @@ export function printableBox(paper) {
   return { width: box.width - MARGIN.left - MARGIN.right, height: box.height - MARGIN.top - MARGIN.bottom };
 }
 
-// "@page { size: letter portrait; }"
+// "@page { size: letter portrait; }", or for a size CSS has no keyword for,
+// its two lengths the way the sheet is read: "@page { size: 841mm 594mm; }".
 export function pageRule(paper) {
-  return '@page { size: ' + PAPERS[paper.size].css + ' ' + paper.orientation + '; }';
+  const sheet = PAPERS[paper.size];
+  if (sheet.css) return '@page { size: ' + sheet.css + ' ' + paper.orientation + '; }';
+  const box = paperBox(paper);
+  return '@page { size: ' + mm(box.width) + ' ' + mm(box.height) + '; }';
 }
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];

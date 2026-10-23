@@ -699,7 +699,10 @@ const paintedUnderBox = (page, name) => page.evaluate((which) => {
     const px = [data[i], data[i + 1], data[i + 2]];
     if (!allowed.some((ok) => ok.every((value, k) => Math.abs(value - px[k]) <= 6))) painted += 1;
   }
-  return { painted, fit: map.stage.dataset.fit, under: map.stage.style.getPropertyValue('--mov-under'), top: map.root.scrollTop, zoomTop: z.top - c.top, coarse: matchMedia('(pointer: coarse)').matches };
+  // and the floors, each with its name row (2 cells), that Fit left off the stage (SV2-32a)
+  const size = 24 * map.view.zoom;
+  const off = map.world.slots.filter((slot) => map.view.x + slot.x * size < -0.01 || map.view.y + (slot.y - 2) * size < -0.01 || map.view.x + (slot.x + slot.w) * size > map.view.width + 0.01 || map.view.y + (slot.y + slot.h) * size > map.view.height + 0.01).map((slot) => slot.floor.name);
+  return { painted, fit: map.stage.dataset.fit, clearSaid: map.stage.dataset.fitClear, fitIn: map.stage.dataset.fitIn, off, under: map.stage.style.getPropertyValue('--mov-under'), top: map.root.scrollTop, zoomTop: z.top - c.top, coarse: matchMedia('(pointer: coarse)').matches };
 }, name);
 
 // Fit pressed, and the map drawn since.
@@ -713,7 +716,7 @@ async function pressFit(page, name) {
   await page.waitForFunction((which, n) => Number(globalThis.planMaps[which].map.canvas.dataset.drawn) > n, { timeout: 10000 }, name, was);
 }
 
-test('SV2-72c2 item 1: on a phone on its side with a sticky foot over the stage, Fit clears the zoom buttons where they are drawn: lifted over the foot at the section\'s top, at rest at its end', async () => {
+test('SV2-72c2 item 1, SV2-32a: on a phone on its side with a sticky foot over the stage, Fit keeps every floor on the stage: the zoom buttons over the floors where they are lifted over the foot at the section\'s top and no clear band holds the floors, clear of them at rest at its end', async () => {
   const session = await openPlanner({ width: 844, height: 390, mobile: true, hash: '#scenarios', theme: 'light' });
   const page = session.page;
   try {
@@ -754,7 +757,16 @@ test('SV2-72c2 item 1: on a phone on its side with a sticky foot over the stage,
     assert.equal(top.under, '40px', 'the buttons are not lifted 40 px over the foot: the case tests nothing: ' + JSON.stringify({ shrunk, top }));
     assert.equal(top.coarse, true, 'the page is not under a finger');
     assert.ok(parseFloat(top.under) >= 24, 'the zoom buttons are not lifted over the foot: the case tests nothing: ' + JSON.stringify(top));
-    assert.equal(top.painted, 0, 'painted cells under the zoom buttons lifted over the foot at Fit: ' + JSON.stringify(top));
+    // SV2-32a moved this: the floors cannot be whole above the foot here, and
+    // no band clear of the lifted buttons holds them whole on the stage, so
+    // Fit is the plain fit, every floor on the stage and the buttons over
+    // some of it, said by data-fit-clear. It asserted the buttons clear, and
+    // what kept them clear was the band beside them with the floors run off
+    // the stage's right edge. No longer covered here: the buttons clear of
+    // every painted cell at the section's top on this stage.
+    assert.equal(top.fitIn, 'stage', 'the floors were fitted above the foot: the case tests nothing: ' + JSON.stringify(top));
+    assert.deepEqual(top.off, [], 'floors off the stage at Fit with the zoom buttons lifted over the foot: ' + JSON.stringify(top));
+    assert.equal(top.painted > 0 ? top.clearSaid : 'false', 'false', 'painted cells under the lifted zoom buttons, and the stage says they are clear: ' + JSON.stringify(top));
     // scrolled to its end the buttons rest at the stage's foot; Fit pressed there clears them where they rest
     await page.evaluate(() => {
       const { map } = globalThis.planMaps['lab-lift'];
@@ -767,9 +779,57 @@ test('SV2-72c2 item 1: on a phone on its side with a sticky foot over the stage,
     await pressFit(page, 'lab-lift');
     const end = await paintedUnderBox(page, 'lab-lift');
     assert.equal(end.painted, 0, 'painted cells under the zoom buttons at rest: ' + JSON.stringify(end));
+    assert.deepEqual(end.off, [], 'floors off the stage at Fit with the zoom buttons at rest: ' + JSON.stringify(end));
     await unmount(page, 'lab-lift');
     assert.deepEqual(session.problems().errors, []);
   } finally {
     await session.close();
   }
+});
+
+// SV2-32j: arrange() judges the layout a second time on the stage as room()
+// leaves it. A section that loses width and height at once is measured
+// first at its new width and its old height (the stage's flex basis is the
+// last room, and it does not shrink until room() is set again), and room()
+// in arrange() then makes it its new height. The second judgement read
+// view's size, the last measure's, beside the foot and the zoom box of the
+// stage as resized: here, 800 by 300 to 450 by 160, it took stacked on the
+// 450 by 300 measured, told the section (data-layout, onLayout), and the
+// next measure turned it back to side by side. On one stage the turn back
+// is made inside the arrange, before anything is told.
+test('SV2-32j: a section losing width and height at once (800 by 300 to 450 by 160) is never told a layout it turns back from: the second judgement is of the stage room() leaves', async () => {
+  const page = wide.page;
+  await bare(page);
+  await mount(page, 'one-stage', { slot: 'flex: 0 0 800px; height: 340px', foot: 40, sticky: true });
+  const before = await page.evaluate(() => {
+    const { map } = globalThis.planMaps['one-stage'];
+    // every layout the section is told of, in order, with the stage it was told on
+    globalThis.planMapTold = [];
+    map.onLayout(() => {
+      globalThis.planMapTold.push({ how: map.world.how, stage: [map.stage.clientWidth, map.stage.clientHeight], view: [map.view.width, map.view.height] });
+    });
+    return { how: map.stage.dataset.layout, stage: [map.stage.clientWidth, map.stage.clientHeight], view: [map.view.width, map.view.height] };
+  });
+  // the point: side by side on an 800 by 300 stage, measured
+  assert.equal(before.how, 'side', 'the map does not open side by side: the case tests nothing: ' + JSON.stringify(before));
+  assert.deepEqual(before.stage, [800, 300], 'the stage is not 800 by 300: the case tests nothing: ' + JSON.stringify(before));
+  assert.deepEqual(before.view, before.stage, 'the stage is not measured as it is: ' + JSON.stringify(before));
+  await page.evaluate(() => {
+    globalThis.planMaps['one-stage'].place.style.cssText = 'flex: 0 0 450px; height: 200px';
+  });
+  // measured at its new size, and drawn there
+  await page.waitForFunction(() => {
+    const { map } = globalThis.planMaps['one-stage'];
+    return map.view.height === 160 && map.stage.clientHeight === 160 && map.view.width === map.stage.clientWidth && map.view.width < 460 && globalThis.planMapTold.some((told) => told.view[1] === 160);
+  }, { timeout: 10000 });
+  const after = await page.evaluate(() => {
+    const { map } = globalThis.planMaps['one-stage'];
+    return { how: map.stage.dataset.layout, stage: [map.stage.clientWidth, map.stage.clientHeight], told: globalThis.planMapTold };
+  });
+  const told = after.told.map((each) => each.how);
+  // the resize did measure the new width beside the old height, or the case tests nothing
+  assert.ok(after.told.some((each) => each.view[1] === 300 && each.view[0] < 460), 'no measure saw the new width with the old height: the case tests nothing: ' + JSON.stringify(after));
+  assert.equal(after.how, 'side', 'the resized stage is not side by side: ' + JSON.stringify(after));
+  assert.deepEqual(told.filter((how) => how !== 'side'), [], 'the section was told ' + told.join(', ') + ' as the stage went from 800 by 300 to ' + after.stage.join(' by ') + ': ' + JSON.stringify(after.told));
+  await unmount(page, 'one-stage');
 });

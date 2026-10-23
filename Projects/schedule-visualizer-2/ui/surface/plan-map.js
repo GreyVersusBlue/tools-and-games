@@ -123,7 +123,7 @@ import { createViewport, ZOOM_STEP, CELL } from './viewport.js';
 import { createRenderer } from './renderer.js';
 import { attachInput } from './input.js';
 import { attachCursor } from './cursor.js';
-import { layoutFloors, bestLayout, placeOf, stageLeast, keepShift, fitClear, FIT_MARGIN } from './plan-layout.js';
+import { layoutFloors, bestLayout, placeOf, stageLeast, keepShift, chooseFit, zoomCornerAt, liftOver, FIT_MARGIN } from './plan-layout.js';
 
 // The map's stylesheet: movement.css's .mov-* rules, for every section that
 // mounts it. A page that links it (data-sheet="movement", as index.html does)
@@ -244,6 +244,31 @@ export function floorsShown(project, value) {
   return one ? [one] : project.building.floors.slice();
 }
 
+// The window's choice of layout for 'auto', as arrange() makes it: judged
+// once on the stage as last measured with no foot, `onMap` kept unless the
+// other is clearly larger (bestLayout); that one taken (`take(how)`, which
+// sets the stage's room and scrolls the section clear of the foot, and
+// returns the stage as that leaves it, { width, height, foot, corner }, or
+// null on a stage not measured yet); then judged once more against what
+// Fit will draw (SV2-32a): with the sticky foot as it lies once the section
+// is scrolled clear of it and the zoom box where it is lifted to, the
+// layout taken kept as the one on the map. Whether a layout is on the
+// stage at all is the same either way (chooseFit), so this turns only to a
+// layout drawn whole above the foot, and larger, where the one taken lies
+// under it; the turn is made once, before anything is told of the layout.
+// `onMap` is the layout on the map before this arrange when the window
+// chose it for these floors on a measured stage, else undefined. Returns
+// the layout taken last.
+export function windowLayout(floors, layouts, onMap, width, height, take) {
+  const how = bestLayout(floors, width, height, onMap, layouts);
+  const stage = take(how);
+  if (!stage || !(stage.width > 0) || !(stage.height > 0)) return how;
+  // the tie with none on the map is judged by `onMap`, not by the first choice (SV2-32j)
+  const again = bestLayout(floors, stage.width, stage.height, how, layouts, { foot: stage.foot, corner: stage.corner, held: onMap !== undefined });
+  if (again !== how) take(again);
+  return again;
+}
+
 export function createPlanMap(asked) {
   const options = asked || {};
   if (typeof options.name !== 'string' || options.name === '') throw new TypeError('createPlanMap needs a name: the prefix of the map\'s ids (\'movement\' gives #movement-plan).');
@@ -361,32 +386,46 @@ export function createPlanMap(asked) {
     const same = chosenBefore && world && world.measured && world.slots.length === floors.length && world.slots.every((slot, at) => slot.floor.id === floors[at].id);
     // both arrangements laid out once, for bestLayout and the one taken
     const both = { side: layoutFloors(floors, 'side'), stacked: layoutFloors(floors, 'stacked') };
-    const how = value === 'side' || value === 'stacked' ? value : bestLayout(floors, view.width, view.height, same ? world.how : undefined, both);
-    const next = both[how];
-    next.measured = view.width > 0 && view.height > 0;
-    const nextKey = JSON.stringify([next.how, next.slots.map((slot) => [slot.floor.id, slot.x, slot.y, slot.w, slot.h, slot.box.x, slot.box.y])]);
-    // the floors' views are kept by the slot, for the renderer
-    for (const slot of next.slots) slot.view = createViewport();
-    if (nextKey !== worldKey) {
-      // a map of another shape: an arrangement the window chose is fitted again
-      if (worldKey === '' || value === 'auto') fitted = true;
-      worldKey = nextKey;
-    }
-    world = next;
+    const chosen = value === 'side' || value === 'stacked';
+    const take = (each) => {
+      const next = both[each];
+      next.measured = view.width > 0 && view.height > 0;
+      const nextKey = JSON.stringify([next.how, next.slots.map((slot) => [slot.floor.id, slot.x, slot.y, slot.w, slot.h, slot.box.x, slot.box.y])]);
+      // the floors' views are kept by the slot, for the renderer
+      for (const slot of next.slots) if (!slot.view) slot.view = createViewport();
+      if (nextKey !== worldKey) {
+        // a map of another shape: an arrangement the window chose is fitted again
+        if (worldKey === '' || value === 'auto') fitted = true;
+        worldKey = nextKey;
+      }
+      world = next;
+      // the stage's least follows the floors' box (stageLeast): the room is
+      // set first, so the scroll below, the section's judgement and the fit
+      // are all of the stage this layout is given, and a change of project
+      // scrolls the section once, not once for the old stage and again when
+      // the new one is measured (SV2-72i)
+      if (parts) room();
+      // the section scrolled clear of the foot, where it is to be
+      // (clearFoot), so a section's judgement of the fit (Movement's legend)
+      // and the fit itself are of the section as the reader will see it, not
+      // of its top before the map's own scroll (SV2-72h: at 900 by 500 with
+      // touch the legend docked at the top and undocked once scrolled)
+      clearFoot();
+      if (!next.measured) return null;
+      // the stage as room() and the scroll leave it, measured here: its
+      // width and height, the foot over it and the zoom box's corner all of
+      // that one stage (SV2-32j). view's size is the last measure's, and
+      // room() can resize the stage before the next: the second judgement
+      // weighed the last measure's height against the foot and the lift of
+      // the stage as resized
+      const width = stage.clientWidth;
+      const height = stage.clientHeight;
+      return { width, height, foot: footOver(height), corner: zoomCorner(height) };
+    };
+    if (chosen) take(value);
+    else windowLayout(floors, both, same ? world.how : undefined, view.width, view.height, take);
     // the layout on the map, for a test to count its turns
-    stage.dataset.layout = next.how;
-    // the stage's least follows the floors' box (stageLeast): the room is
-    // set first, so the scroll below, the section's judgement and the fit
-    // are all of the stage this layout is given, and a change of project
-    // scrolls the section once, not once for the old stage and again when
-    // the new one is measured (SV2-72i)
-    if (parts) room();
-    // the section scrolled clear of the foot, where it is to be
-    // (clearFoot), so a section's judgement of the fit (Movement's legend)
-    // and the fit itself are of the section as the reader will see it, not
-    // of its top before the map's own scroll (SV2-72h: at 900 by 500 with
-    // touch the legend docked at the top and undocked once scrolled)
-    clearFoot();
+    stage.dataset.layout = world.how;
     for (const fn of layoutFns) fn();
     if (fitted) fit(true);
   }
@@ -412,28 +451,17 @@ export function createPlanMap(asked) {
     const w = zoomBox.offsetWidth;
     const h = zoomBox.offsetHeight;
     if (w === 0 || h === 0) return null;
-    const margin = parseFloat(getComputedStyle(zoomBox).left) || 0;
-    const rest = height - margin - h;
-    return { x: margin, y: rest - Math.max(0, Math.min(lift, rest)), w, h };
+    return zoomCornerAt(height, { w, h }, parseFloat(getComputedStyle(zoomBox).left) || 0, lift);
   }
 
   // Where Fit puts the floors on a stage `width` by `height` with `foot` px
-  // of a sticky foot over its foot: in the part of the stage the foot leaves
-  // (all of it with no foot over it), where the floors are whole in it, clear
-  // of the zoom buttons if a band can be, else the plain fit (SV2-72f: at 844
-  // by 390 the foot still lies 12 px over Movement's stage once the first
-  // line stops clearFoot). Where they cannot be whole there, on the whole
-  // stage with the zoom buttons kept clear, as SV2-72c had it: whole would
-  // be under the foot. fit() and fitAt both ask this, so Movement's legend
-  // judges the layout the map shows (SV2-72f2: fitAt had asked fitClear on
-  // the whole stage alone). `in` says which: 'shown' or 'stage'.
+  // of a sticky foot over its foot, the zoom box lifted by `lift` (by the
+  // foot as it lies now when left out): chooseFit in ./plan-layout.js, which
+  // has the rule. fit() and fitAt both ask this, so Movement's legend judges
+  // the layout the map shows (SV2-72f2: fitAt had asked fitClear on the
+  // whole stage alone). { zoom, x, y, how, clear, in }, `in` 'shown' or 'stage'.
   function choose(width, height, foot, margin, lift) {
-    const corner = zoomCorner(height, lift);
-    const shown = height - foot;
-    const seen = fitClear(world, width, shown, corner, margin);
-    const size = CELL * seen.zoom;
-    const whole = seen.y >= -1e-9 && seen.y + world.height * size <= shown + 1e-9 && seen.x >= -1e-9 && seen.x + world.width * size <= width + 1e-9;
-    return whole ? { ...seen, in: 'shown' } : { ...fitClear(world, width, height, corner, margin, false), in: 'stage' };
+    return chooseFit(world, width, height, foot, zoomCorner(height, lift), margin);
   }
 
   // Fit leaves the zoom buttons' corner clear of every painted cell (choose, fitClear in ./plan-layout.js)
@@ -870,9 +898,7 @@ export function createPlanMap(asked) {
   }
   // the lift with the foot `over` px over the stage
   function liftFor(over) {
-    const margin = parseFloat(getComputedStyle(zoomBox).left) || 0;
-    const most = Math.max(0, stage.getBoundingClientRect().height - zoomBox.offsetHeight - margin * 2);
-    return Math.round(Math.min(most, Math.max(0, over)));
+    return liftOver(stage.getBoundingClientRect().height, zoomBox.offsetHeight, parseFloat(getComputedStyle(zoomBox).left) || 0, over);
   }
   // A lift that changes with the section where it was (the foot grew, the
   // window changed, the section was measured) moves the buttons over a

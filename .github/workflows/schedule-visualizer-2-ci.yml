@@ -7,6 +7,8 @@
 #   --node     the engines (model, routing, crowd, checks, files, publishing),
 #              named cases in node:test, no browser, about a minute
 #   --timing   the budgets of ARCHITECTURE 14 on a 4-floor, 150-room fixture
+#              (test/timing/page.mjs times the planner in the harness's
+#              Chromium, so this job installs Tools/board-check too)
 #   --browser  the journeys and the axe sweep in the harness's Chromium
 #              (install: Tools/board-check), about twenty minutes
 #
@@ -43,6 +45,7 @@ jobs:
     uses: ./.github/workflows/suite.yml
     with:
       working-directory: Projects/schedule-visualizer-2
+      install: Tools/board-check
       commands: |
         node test/run.mjs --node
         node test/run.mjs --timing

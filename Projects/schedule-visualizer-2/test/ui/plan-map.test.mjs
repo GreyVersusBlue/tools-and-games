@@ -464,3 +464,264 @@ test('SV2-72h nits: fitZoom is rawZoom clamped, and bestLayout takes the layout 
     assert.equal(bestLayout(floors, width, 400), side.zoom > stacked.zoom ? 'side' : 'stacked', 'at ' + width + ' by 400 bestLayout took the layout Fit draws smaller: ' + JSON.stringify({ side, stacked }));
   }
 });
+
+// ---- SV2-32a: Fit judged against what it draws, with the sticky foot and
+// the zoom box. Every place below is chooseFit's own (the plan map's choose
+// hands it the boxes it measures and returns what it says), and every
+// judgement is read from the floors' boxes at that place: nothing of
+// bestLayout's or chooseFit's arithmetic is copied here (house rule #34).
+
+import { chooseFit, zoomCornerAt, liftOver } from '../../ui/surface/plan-layout.js';
+
+// the zoom box as the sheet draws it: 12 px in, 170 by 38 under a mouse, 182 by 46 under a finger
+const ZOOM_IN = 12;
+const MOUSE = { w: 170, h: 38 };
+const FINGER = { w: 182, h: 46 };
+// where the plan map's choose puts it, lifted over a foot `foot` px over the stage
+const cornerOver = (height, foot, box) => zoomCornerAt(height, box, ZOOM_IN, liftOver(height, box.h, ZOOM_IN, foot));
+
+// What Fit draws of `layout` on the stage, and how it lies: every floor
+// with its name row whole on the stage, and whole above the foot.
+function drawn(layout, width, height, foot, box) {
+  const place = chooseFit(layout, width, height, foot, box ? cornerOver(height, foot, box) : null, FIT_MARGIN);
+  const size = CELL * place.zoom;
+  const boxes = layout.slots.map((slot) => ({ name: slot.floor.name, left: place.x + slot.x * size, top: place.y + (slot.y - TITLE_ROWS) * size, right: place.x + (slot.x + slot.w) * size, bottom: place.y + (slot.y + slot.h) * size }));
+  const off = boxes.filter((b) => b.left < -1e-9 || b.top < -1e-9 || b.right > width + 1e-9 || b.bottom > height + 1e-9);
+  const under = boxes.filter((b) => b.bottom > height - foot + 1e-9);
+  return { how: layout.how, place, whole: off.length === 0, above: off.length === 0 && under.length === 0, off: off.map((b) => b.name + ' ' + Math.round(b.left) + '..' + Math.round(b.right) + ' x ' + Math.round(b.top) + '..' + Math.round(b.bottom)) };
+}
+
+test('SV2-32a: at 798 by 120 with a 40 px foot every floor is drawn on the stage: side by side was fitted beside the zoom box, past the right edge, where its plain fit is whole', () => {
+  const floors = sampleSchool().building.floors;
+  const both = { side: layoutFloors(floors, 'side'), stacked: layoutFloors(floors, 'stacked') };
+  for (const box of [MOUSE, FINGER]) {
+    const say = (box === MOUSE ? 'with a mouse' : 'with a finger') + ': ';
+    // the point: neither layout can be whole above the foot, and side by side at 25 % is narrower than the stage
+    assert.ok(!drawn(both.side, 798, 80, 0, box).whole && !drawn(both.stacked, 798, 80, 0, box).whole, say + 'a layout is whole above the foot: the case tests nothing');
+    assert.ok(both.side.width * CELL * 0.25 <= 798 && both.side.height * CELL * 0.25 <= 120, say + 'side by side at 25 % is not inside the stage: the case tests nothing');
+    for (const current of ['side', 'stacked', undefined]) {
+      const how = bestLayout(floors, 798, 120, current, both, { foot: 40, corner: cornerOver(120, 40, box) });
+      const got = drawn(both[how], 798, 120, 40, box);
+      assert.deepEqual(got.off, [], say + 'with ' + current + ' on the map ' + how + ' was drawn off the stage: ' + JSON.stringify(got.place));
+    }
+  }
+});
+
+// The feet a section's sticky foot lies over the stage by: none, a phone on
+// its side once the first line stops the scroll (12), a playback bar (40),
+// most of a short stage (100); the zoom box under a mouse and a finger.
+const FEET = [0, 12, 40, 100];
+
+// Every stage from 300 to 1400 wide by 100 to 500 tall with each foot, each
+// layout on the map and none, as the plan map judges it (the foot and the
+// zoom box handed in): what is taken is never drawn with a floor off the
+// stage where its own plain fit (no foot, no zoom box) is whole, nor where
+// the other is drawn whole, nor drawn under the foot where the
+// other is drawn whole above it larger (or as large, with no layout on the map). Steps of 7 by 3 px, not on
+// the sample's boundaries.
+test('SV2-32a: across 300 to 1400 by 100 to 500 with feet of 0, 12, 40 and 100 px, the layout taken is never drawn off the stage where it or the other can be whole, nor under the foot where the other is whole above it and larger', () => {
+  const floors = sampleSchool().building.floors;
+  const both = { side: layoutFloors(floors, 'side'), stacked: layoutFloors(floors, 'stacked') };
+  const wrong = [];
+  const met = { split: 0, aboveSplit: 0, offTaken: 0, under: 0 };
+  for (const foot of FEET) {
+    const box = foot % 24 === 0 ? MOUSE : FINGER;
+    for (let width = 300; width <= 1400; width += 7) {
+      for (let height = 100; height <= 500; height += 3) {
+        if (foot >= height) continue;
+        const pictures = { side: drawn(both.side, width, height, foot, box), stacked: drawn(both.stacked, width, height, foot, box) };
+        // and whether the plain fit, no foot and no zoom box, has every floor on the stage
+        const plain = { side: drawn(both.side, width, height, 0, null).whole, stacked: drawn(both.stacked, width, height, 0, null).whole };
+        if (pictures.side.whole !== pictures.stacked.whole) met.split += 1;
+        if (pictures.side.whole && pictures.stacked.whole && pictures.side.above !== pictures.stacked.above) met.aboveSplit += 1;
+        for (const current of ['side', 'stacked', undefined]) {
+          const how = bestLayout(floors, width, height, current, both, { foot, corner: cornerOver(height, foot, box) });
+          const taken = pictures[how];
+          const other = pictures[otherOf(how)];
+          if (!taken.whole) met.offTaken += 1;
+          if (taken.whole && !taken.above) met.under += 1;
+          if (!taken.whole && plain[how]) wrong.push({ width, height, foot, current, how, off: taken.off, plainWhole: true });
+          else if (!taken.whole && other.whole) wrong.push({ width, height, foot, current, how, off: taken.off });
+          else if (taken.whole && !taken.above && other.above && (other.place.zoom > taken.place.zoom || (current === undefined && other.place.zoom === taken.place.zoom))) wrong.push({ width, height, foot, current, how, under: true, zoom: [taken.place.zoom, other.place.zoom] });
+        }
+      }
+    }
+  }
+  // the sweep meets each thing it judges, or it tests nothing
+  assert.ok(met.split > 1000, 'the sweep met only ' + met.split + ' stages where one layout is drawn whole and the other not: ' + JSON.stringify(met));
+  assert.ok(met.aboveSplit > 100, 'the sweep met only ' + met.aboveSplit + ' stages where one layout is drawn above the foot and the other under it: ' + JSON.stringify(met));
+  assert.ok(met.under > 100, 'the sweep met only ' + met.under + ' stages where the layout taken lies under the foot: ' + JSON.stringify(met));
+  assert.equal(wrong.length, 0, wrong.length + ' stages took a layout Fit draws off the stage where it or the other can be whole, or under the foot where the other is above it: ' + JSON.stringify(wrong.slice(0, 5)));
+});
+
+// A window a pixel either way at every pixel of a sweep, from the layout
+// the window took there: once it turns a pixel back, a pixel forward again
+// keeps what it turned to. A flip at a single pixel is a layout turning
+// each way as a window's edge is dragged across one pixel.
+function flipsOn(floors, both, foot, box, sizes) {
+  const take = ([width, height], current) => bestLayout(floors, width, height, current, both, { foot, corner: cornerOver(height, foot, box) });
+  const flips = [];
+  let turns = 0;
+  let current;
+  for (let at = 0; at < sizes.length; at += 1) {
+    const was = current;
+    current = take(sizes[at], current);
+    if (at > 0 && current !== was) turns += 1;
+    if (at === 0) continue;
+    // back a pixel from here, then forward again
+    const back = take(sizes[at - 1], current);
+    const again = take(sizes[at], back);
+    if (back !== current && again !== back) flips.push({ at: sizes[at], from: current, back, again });
+  }
+  return { flips, turns };
+}
+
+for (const [what, sizes] of [
+  ['the width swept at 200 px tall', Array.from({ length: 1101 }, (_, n) => [300 + n, 200])],
+  ['the width swept at 300 px tall', Array.from({ length: 1101 }, (_, n) => [300 + n, 300])],
+  ['the width swept at 322 px tall', Array.from({ length: 1101 }, (_, n) => [300 + n, 322])],
+  ['the height swept at 760 px wide', Array.from({ length: 501 }, (_, n) => [760, 100 + n])],
+  ['the height swept at 798 px wide', Array.from({ length: 501 }, (_, n) => [798, 100 + n])],
+  ['the height swept at 1000 px wide', Array.from({ length: 501 }, (_, n) => [1000, 100 + n])],
+]) {
+  test('SV2-32a: ' + what + ', 1 px at a time with feet of 0, 12, 40 and 100 px: never a flip at a single pixel', () => {
+    const floors = sampleSchool().building.floors;
+    const both = { side: layoutFloors(floors, 'side'), stacked: layoutFloors(floors, 'stacked') };
+    let turned = 0;
+    for (const foot of FEET) {
+      for (const box of [MOUSE, FINGER]) {
+        const { flips, turns } = flipsOn(floors, both, foot, box, sizes.filter(([, height]) => height > foot));
+        turned += turns;
+        assert.deepEqual(flips.slice(0, 3), [], 'with a ' + foot + ' px foot and the ' + (box === MOUSE ? 'mouse' : 'finger') + '\'s zoom box the layout flips at a single pixel (' + flips.length + ' places)');
+      }
+    }
+    // the sweep turns the layout, or it tests nothing
+    assert.ok(turned > 0, 'the layout never turned along the sweep: the case tests nothing');
+  });
+}
+
+// ---- SV2-32j: the second judgement as arrange() makes it. arrange() asks
+// windowLayout (plan-map.js) with the layout on the map before it and a
+// `take` that sets the stage's room and returns the stage as that leaves
+// it; these cases hand it a stand-in stage, so the judgement is the plan
+// map's own path, not bestLayout called as a test would call it.
+
+import { windowLayout } from '../../ui/surface/plan-map.js';
+
+// a stand-in stage: `width` by `height` whatever is taken, the foot over it
+// by `foot` and the zoom box `box` lifted over it; every layout taken, in order
+function standIn(width, height, foot, box) {
+  const taken = [];
+  const take = (how) => {
+    taken.push(how);
+    return { width, height, foot, corner: box ? cornerOver(height, foot, box) : null };
+  };
+  return { take, taken };
+}
+const arranged = (floors, both, onMap, [width, height], foot, box) => {
+  const stage = standIn(width, height, foot, box);
+  const how = windowLayout(floors, both, onMap, width, height, stage.take);
+  return { how, taken: stage.taken };
+};
+
+test('SV2-32j: the sample opened fresh at 744 by 308 under a 40 px foot with a mouse is drawn side by side, whole above the foot, where stacked lies under it at the same 25 %', () => {
+  const floors = sampleSchool().building.floors;
+  const both = { side: layoutFloors(floors, 'side'), stacked: layoutFloors(floors, 'stacked') };
+  const side = drawn(both.side, 744, 308, 40, MOUSE);
+  const stacked = drawn(both.stacked, 744, 308, 40, MOUSE);
+  // the point: both whole, only side by side above the foot, and the same zoom
+  assert.ok(side.above && stacked.whole && !stacked.above && side.place.zoom === stacked.place.zoom, 'the stage is not the tie it was found at: the case tests nothing (' + JSON.stringify({ side: side.place, stacked: stacked.place }) + ')');
+  const fresh = arranged(floors, both, undefined, [744, 308], 40, MOUSE);
+  assert.equal(fresh.how, 'side', 'opened fresh, ' + fresh.taken.join(' then ') + ' was taken: stacked drawn under the foot where side by side is whole above it at the same zoom (the tie with none on the map judged as if the first choice were on it)');
+  // with a layout on the map the tie keeps it (SV2-32a: that flipped at a pixel)
+  assert.equal(arranged(floors, both, 'stacked', [744, 308], 40, MOUSE).how, 'stacked', 'stacked, on the map, was turned on a tie');
+  assert.equal(arranged(floors, both, 'side', [744, 308], 40, MOUSE).how, 'side');
+});
+
+test('SV2-32j: the second judgement is made on the stage take() returns, not on the one measured before it', () => {
+  const floors = sampleSchool().building.floors;
+  const both = { side: layoutFloors(floors, 'side'), stacked: layoutFloors(floors, 'stacked') };
+  // stacked on the map, measured at 744 by 300; the room set leaves 744 by 200 with the foot 40 px over it
+  const before = { side: drawn(both.side, 744, 300, 40, MOUSE), stacked: drawn(both.stacked, 744, 300, 40, MOUSE) };
+  const after = { side: drawn(both.side, 744, 200, 40, MOUSE), stacked: drawn(both.stacked, 744, 200, 40, MOUSE) };
+  // the point: on the stage measured before, stacked is kept; on the one the
+  // room leaves, it runs off the stage where side by side is whole, so no
+  // tie rule decides it
+  assert.equal(bestLayout(floors, 744, 300, 'stacked', both), 'stacked', 'at 744 by 300 the first judgement turns stacked: the case tests nothing');
+  assert.equal(bestLayout(floors, 744, 300, 'stacked', both, { foot: 40, corner: cornerOver(300, 40, MOUSE) }), 'stacked', 'at 744 by 300 the foot turns stacked: the case tests nothing (' + JSON.stringify(before) + ')');
+  assert.ok(after.side.whole && !after.stacked.whole, 'at 744 by 200 side by side is not whole where stacked runs off: the case tests nothing (' + JSON.stringify(after) + ')');
+  const stage = standIn(744, 200, 40, MOUSE);
+  const how = windowLayout(floors, both, 'stacked', 744, 300, stage.take);
+  assert.equal(how, 'side', 'judged again on the 744 by 300 measured before, not the 744 by 200 the room left: ' + stage.taken.join(' then '));
+  assert.deepEqual(stage.taken, ['stacked', 'side'], 'the layout turned more than once');
+});
+
+// The SV2-32a sweep, through windowLayout: the stand-in stage the size the
+// window measured, each layout on the map and none before the arrange.
+test('SV2-32j: across 300 to 1400 by 100 to 500 with feet of 0, 12, 40 and 100 px, arrange()\'s path never takes a layout drawn off the stage where it or the other can be whole, nor under the foot where the other is whole above it and larger, or as large with none on the map', () => {
+  const floors = sampleSchool().building.floors;
+  const both = { side: layoutFloors(floors, 'side'), stacked: layoutFloors(floors, 'stacked') };
+  const wrong = [];
+  let freshTies = 0;
+  let turns = 0;
+  for (const foot of FEET) {
+    const box = foot % 24 === 0 ? MOUSE : FINGER;
+    for (let width = 300; width <= 1400; width += 7) {
+      for (let height = 100; height <= 500; height += 3) {
+        if (foot >= height) continue;
+        const pictures = { side: drawn(both.side, width, height, foot, box), stacked: drawn(both.stacked, width, height, foot, box) };
+        const plain = { side: drawn(both.side, width, height, 0, null).whole, stacked: drawn(both.stacked, width, height, 0, null).whole };
+        for (const onMap of ['side', 'stacked', undefined]) {
+          const { how, taken } = arranged(floors, both, onMap, [width, height], foot, box);
+          if (taken.length > 2) wrong.push({ width, height, foot, onMap, taken });
+          if (taken.length === 2) turns += 1;
+          const got = pictures[how];
+          const other = pictures[otherOf(how)];
+          const tie = other.place.zoom === got.place.zoom;
+          if (onMap === undefined && other.whole && got.above && !other.above && tie) freshTies += 1;
+          if (!got.whole && plain[how]) wrong.push({ width, height, foot, onMap, how, off: got.off, plainWhole: true });
+          else if (!got.whole && other.whole) wrong.push({ width, height, foot, onMap, how, off: got.off });
+          else if (got.whole && !got.above && other.above && (other.place.zoom > got.place.zoom || (onMap === undefined && tie))) wrong.push({ width, height, foot, onMap, how, under: true, zoom: [got.place.zoom, other.place.zoom], taken });
+        }
+      }
+    }
+  }
+  // the sweep meets the tie it judges, and the second judgement turns, or it tests nothing
+  assert.ok(freshTies > 100, 'the sweep met only ' + freshTies + ' stages opened fresh at a tie taken above the foot');
+  assert.ok(turns > 100, 'the second judgement turned the layout at only ' + turns + ' stages');
+  assert.equal(wrong.length, 0, wrong.length + ' stages: ' + JSON.stringify(wrong.slice(0, 5)));
+});
+
+// SV2-32a's single-pixel sweeps, through windowLayout: a window dragged a
+// pixel at a time, the layout taken at each pixel the one on the map at the next.
+for (const [what, sizes] of [
+  ['the width swept at 300 px tall', Array.from({ length: 1101 }, (_, n) => [300 + n, 300])],
+  ['the width swept at 308 px tall', Array.from({ length: 1101 }, (_, n) => [300 + n, 308])],
+  ['the height swept at 744 px wide', Array.from({ length: 501 }, (_, n) => [744, 100 + n])],
+  ['the height swept at 798 px wide', Array.from({ length: 501 }, (_, n) => [798, 100 + n])],
+]) {
+  test('SV2-32j: ' + what + ' through arrange()\'s path, 1 px at a time with feet of 0, 12, 40 and 100 px: never a flip at a single pixel', () => {
+    const floors = sampleSchool().building.floors;
+    const both = { side: layoutFloors(floors, 'side'), stacked: layoutFloors(floors, 'stacked') };
+    let turned = 0;
+    for (const foot of FEET) {
+      for (const box of [MOUSE, FINGER]) {
+        const take = (size, onMap) => arranged(floors, both, onMap, size, foot, box).how;
+        const flips = [];
+        let current;
+        const at = sizes.filter(([, height]) => height > foot);
+        for (let n = 0; n < at.length; n += 1) {
+          const was = current;
+          current = take(at[n], current);
+          if (n > 0 && current !== was) turned += 1;
+          if (n === 0) continue;
+          const back = take(at[n - 1], current);
+          const again = take(at[n], back);
+          if (back !== current && again !== back) flips.push({ at: at[n], from: current, back, again });
+        }
+        assert.deepEqual(flips.slice(0, 3), [], 'with a ' + foot + ' px foot and the ' + (box === MOUSE ? 'mouse' : 'finger') + '\'s zoom box the layout flips at a single pixel (' + flips.length + ' places)');
+      }
+    }
+    assert.ok(turned > 0, 'the layout never turned along the sweep: the case tests nothing');
+  });
+}

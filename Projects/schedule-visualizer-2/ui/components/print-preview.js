@@ -314,6 +314,7 @@ export function openPrintPreview(ctx, outputId, options) {
     element.dataset.sheets = String(sheets);
     const lost = state.traceImage && tracedNow().some((floor) => traceUrls.get(floor.image.imageId) === null);
     status.textContent = PAPERS[state.paper.size].label + ', ' + ORIENTATIONS[state.paper.orientation].toLowerCase() + '. About ' + sheets + (sheets === 1 ? ' sheet.' : ' sheets.')
+      + (PAPERS[state.paper.size].poster ? ' A poster size: most office printers cannot take it, so print it at a print shop, or choose Save as PDF in the print dialog and take the file there.' : '')
       + (lost ? ' A traced image could not be read from this device, so its plan prints without it.' : '');
   }
 
