@@ -81,6 +81,7 @@ export const SHORTCUT_GROUPS = {
   Building: 'Work on the Building plan once it has the keyboard: Tab to it, or press F6 until it is reached.',
   'Schedule grid': 'Work in Schedule › Grid, with a cell chosen.',
   Movement: 'Work on the Movement map once it has the keyboard.',
+  'Scenario lab': 'Work on the scenario lab’s map once it has the keyboard.',
   Safety: 'Work on the Safety map once it has the keyboard.',
   'Dialogs and menus': 'Work in any dialog or menu, this one included.',
   Fields: 'Work in any field you type in.',

@@ -50,6 +50,16 @@ const HEADLINE = 'This is the scenario lab.';
 const APPLY_NOTHING = 'Close the scenario: no change of it applies';
 const KEYS = 'Arrow keys move the cursor one cell and say what is under it. Hold Space and press the arrows to move the map. = and - zoom in and out, 0 fits the map to the window. The comparison is in the inspector.';
 
+// The keys of the lab's map. The map answers them itself, so they are listed
+// for Help only (spec 3.15; SV2-32b: until then Help had none of them).
+export const SCENARIO_KEYS = [
+  { id: 'scenarios-arrows', does: 'Move the cursor one cell, and say what is under it', shown: 'Arrows' },
+  { id: 'scenarios-pan', does: 'Move the map', shown: 'Space+Arrows' },
+  { id: 'scenarios-zoom-in', does: 'Zoom in', shown: '=' },
+  { id: 'scenarios-zoom-out', does: 'Zoom out', shown: '-' },
+  { id: 'scenarios-fit', does: 'Fit the map to the window', shown: '0' },
+];
+
 // What is chosen here, kept for the open project while the page is open
 // (in memory: no storage key, and nothing new in project.scenario).
 const memory = { projectId: null, form: freshForm(), dayTypeId: null, transition: null, floors: 'auto', file: null };
@@ -105,6 +115,10 @@ export const section = {
   name: 'Scenarios',
   key: '4',
   icon: 'scenarios',
+  // Once, before anything is mounted: the map's keys go on the shell's list.
+  start(ctx) {
+    for (const key of SCENARIO_KEYS) ctx.shortcuts.add({ id: key.id, group: 'Scenario lab', does: key.does, shown: key.shown });
+  },
   mount(ctx) {
     const store = ctx.store;
     adopt(store.project);
