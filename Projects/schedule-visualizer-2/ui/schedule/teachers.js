@@ -11,6 +11,8 @@ import { addTeacher, editTeacher, deleteTeacher, mergeTeachers, findNearDuplicat
 import { allRooms, findRoom } from '../../engine/schema.js';
 import { roomName } from '../../engine/findings.js';
 import { buildExport } from '../../engine/exports.js';
+import { printButtons } from '../prints/index.js';
+import { printButton } from '../components/print-preview.js';
 import { fill, apply, button, keyed, emptyState, marksFor, freeName, quote, collator, download } from './common.js';
 
 const WHAT = 'A teacher is a named member of staff, with a subject and one or more rooms.';
@@ -121,6 +123,7 @@ export function mount(env) {
       h('div', { class: 'sch-toolbar' },
         addButton,
         button('Export CSV', exportCsv, { key: 'teacher-export', action: 'export', more: ' of the teachers' }),
+        keyed(printButton(ctx, printButtons.find((entry) => entry.id === 'print-teachers')), 'teacher-print'),
         h('a', { class: 'btn', href: '#schedule/import', data: { action: 'import', key: 'teacher-import' } }, 'Import CSV…', h('span', { class: 'vh' }, ' of teachers, on the Import tab'))),
       duplicates(project),
       h('div', { class: 'sch-scroll' }, h('table', { class: 'table sch-edit-table' },

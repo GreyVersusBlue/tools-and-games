@@ -27,6 +27,8 @@ import { draftFor, gridEditsPending, anyGridEditsPending, preview, payloadOf, to
 import { sheetModel, namesOf, newGroup } from './model.js';
 import { sheet as makeSheet, cellKey } from './sheet.js';
 import { teacherTable, roomTable } from './readonly.js';
+import { printButtons, buttonLabel } from '../../prints/index.js';
+import { printButton } from '../../components/print-preview.js';
 
 export { gridEditsPending, watchGridEdits } from './staged.js';
 
@@ -275,7 +277,22 @@ export function mount(env) {
         bulk,
         fields);
     }
+    const print = printFor(state.rows);
+    if (print) tools.push(print);
     return h('div', { class: 'sch-toolbar grd-toolbar' }, tools);
+  }
+
+  // The print of what the rows show (SV2-32d): the groups, or the teachers or
+  // rooms by period. It prints the schedule as applied, so with changes not
+  // applied yet its title says they are not on it. Nothing to print, no button.
+  function printFor(rows) {
+    const project = ctx.store.project;
+    const has = rows === 'teachers' ? project.teachers.length > 0 : rows === 'rooms' ? allRooms(project).length > 0 || project.groups.length > 0 : project.groups.length > 0;
+    if (!has) return null;
+    const entry = printButtons.find((each) => each.id === 'print-grid-' + rows);
+    const element = keyed(printButton(ctx, { ...entry, label: buttonLabel(entry, project.settings) }), 'grid-print');
+    if (gridEditsPending(project.id)) element.title = 'Prints the schedule as it is applied. The changes not applied yet are not on it.';
+    return element;
   }
 
   function bar(staged) {
