@@ -2391,7 +2391,7 @@ for (const theme of ['light', 'dark']) {
       await axe(page, 'the publish form as a sheet, ' + theme + ', 390 px');
       await openFold(page);
       const targets = await page.evaluate(() => Array.from(document.querySelectorAll('.pub .stf-check, .pub .btn, .pub summary'), (el) => Math.round(el.getBoundingClientRect().height)));
-      assert.equal(targets.length, 18, 'twelve boxes, the protect box, four buttons and the folded line');
+      assert.equal(targets.length, 20, 'twelve boxes, the protect box, six buttons and the folded line');
       assert.ok(targets.every((height) => height >= 28), 'every target in the form is tall enough for a finger: ' + targets.join(' '));
     });
   });
