@@ -510,6 +510,14 @@ it" true by construction. The eave is passed through `cleanPolygon`, which
 drops the straight-through corner where the notch closed. Increment 6 starts
 from here.
 
+*Note, 2026-10-23 (worker TG-28-curvecapture, #1014).* Finding (3) is
+reversed for a loop with no pinch: the bottle's pocket is the second loop of
+the same outward wavefront, which is what a court's eave is under question 3,
+so `pocketEave` in `roof.js` hands it to the skeleton as a hole and the hall
+stands round it with the pocket's sky open (`roof-tightcurve`'s bottle test).
+Nothing is roofed over the pocket, which was the reason for the refusal. The
+108-case hash did not move. A pocket beside a pinch is still refused.
+
 **6. The courtyard that meets the outside at one corner.** `skeleton.js`:
 `cleanPolygon({ pinch })`, carried through `straightSkeleton` and
 `offsetRing`; `roof.js`: `unionOf` keeps the loop through a corner twice, with

@@ -78786,11 +78786,13 @@ function curvedRoofs(floor, eaveY, pitch) {
   const out = [];
   for (const { outer: loop, holes, pinch } of curvedLoopsOf(floor)) {
     const pinched = pinch ? pinchEave(loop, EAVE) : null;
-    const eave = pinch ? pinched && pinched.eave : eaveLine(loop, EAVE);
+    const line = pinch ? null : eaveLine(loop, EAVE);
+    const pocketed = pinch || line ? null : pocketEave(loop, EAVE);
+    const eave = pinch ? pinched && pinched.eave : line || (pocketed && pocketed.eave);
     if (!eave) continue;
-    if (holes.length || pinch) {
+    if (holes.length || pinch || pocketed) {
       const courts = holes.length ? courtEaves(holes, EAVE) : [];
-      const eaveHoles = courts && [...courts, ...(pinched ? pinched.courts : [])];
+      const eaveHoles = courts && [...courts, ...(pinched ? pinched.courts : []), ...(pocketed ? pocketed.pockets : [])];
       const roof = eaveHoles && skeletonRoof(eave, eaveY, pitch, { holes: eaveHoles });
       if (!roof) continue;
       const faces = roof.faces.map((f) => ({ ...f, tris: triangulate(f.pts) }));
@@ -78856,8 +78858,8 @@ function eaveLine(loop, d) {
 // a court with no pinch would have. `{ eave, courts }`, the courts wound
 // counter-clockwise as `courtEaves` gives them; null unless exactly one loop
 // runs round the outside and one court comes back for each corner visited
-// twice (a court the eave pinches in two, or a bottle notch's pocket, keeps
-// the rectangles, as #1000 keeps it with no pinch).
+// twice (a court the eave pinches in two, or a bottle notch's pocket beside
+// a pinch, keeps the rectangles; with no pinch a pocket is a hole, #1014).
 function pinchEave(loop, d) {
   const loops = offsetRing(loop, -d, { pinch: true });
   if (!loops) return null;
@@ -78871,6 +78873,26 @@ function pinchEave(loop, d) {
   const eave = cleanPolygon(outer[0]);
   const courts = inner.map((l) => cleanPolygon(l));
   return eave && courts.every(Boolean) ? { eave, courts } : null;
+}
+
+// The eave of a loop with a bottle notch in it (#1014), `d` feet out, where
+// `eaveLine` has none: the loop's own wavefront run outward, as its third
+// answer is, comes back as the eave round the outside and, inside it, a
+// pocket the mouth closed off before the pocket's own sides met. A pocket is
+// the second loop of the same wavefront, which is what a court's eave is
+// (#999), so it goes to the skeleton as a hole and keeps its sky; `holes`
+// stays the walls' courts, since the pocket lies outside the walls.
+// `{ eave, pockets }`, the pockets wound as `courtEaves` gives a court's;
+// null unless exactly one loop runs round the outside.
+function pocketEave(loop, d) {
+  const loops = offsetRing(loop, -d);
+  if (!loops) return null;
+  const outer = loops.filter((l) => loopArea(l) > 0);
+  const inner = loops.filter((l) => loopArea(l) < 0);
+  if (outer.length !== 1 || !inner.length) return null;
+  const eave = cleanPolygon(outer[0]);
+  const pockets = inner.map((l) => cleanPolygon(l));
+  return eave && pockets.every(Boolean) ? { eave, pockets } : null;
 }
 
 // `eaveLine`'s second answer (#993).
