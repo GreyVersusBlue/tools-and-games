@@ -417,7 +417,7 @@ test('the grids mark the slots the screen marks, from the same checks: a double-
   // the rooms by period: Room 203 in Period 2
   const roomHtml = renderOutput('room-grid', project, null, NOW).html;
   const roomRow = tablesOf(roomHtml)[0].rows.find((row) => classText(row.cells[0].inside, 'doc-grid__name') === '203');
-  assert.ok(isMarked(roomRow.cells[2]));
+  assert.ok(isMarked(roomRow.cells[2]), 'Room 203 in Period 2 is marked');
   assert.ok(refsOf(roomRow.cells[2].inside).map((ref) => findingLines(sheetsOf(roomHtml)[0]).get(ref)).includes(findingWords([room])));
   assert.ok(!isMarked(roomRow.cells[1]), 'and not in Period 1');
 });
