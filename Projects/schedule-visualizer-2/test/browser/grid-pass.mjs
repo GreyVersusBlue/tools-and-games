@@ -987,16 +987,29 @@ test('a sentence taller than the frame is not cut at its bottom, and it is place
     await refocus(cell);
     const start = await inside(cell, 'at 700 px');
     const at = await box(page, cell);
-    const placings = await page.$eval('.grd-below .grd-scroll', (frame) => Number(frame.dataset.placings));
+    // The frame counts its placings (data-placings), and its own scroll
+    // listener places the sentence again. A listener of this case's, added
+    // after the frame's, runs after it at the scroll and keeps the count
+    // that placing left: the wait is on that, the scroll itself. A count
+    // read before the scroll and waited past was met on GitHub's runner by a
+    // placing from the narrowing above (the frame's ResizeObserver, late),
+    // before the scroll had been placed: the sentence read at 6 to 294 in a
+    // frame of 106 to 650 (#574's CI). Made to fail so here by a resize
+    // dispatched just before the scroll (SV2-32b).
     const moved = await page.$eval('.grd-below .grd-scroll', (frame, by) => {
+      delete frame.dataset.scrolledAt;
+      frame.addEventListener('scroll', () => {
+        frame.dataset.scrolledAt = frame.dataset.placings + ' at ' + frame.scrollLeft;
+      }, { once: true });
       const from = frame.scrollLeft;
       frame.scrollLeft = from + by;
       return frame.scrollLeft - from;
     }, at.left - start.frame.left + 100);
     assert.ok(moved > start.drawn.left - start.frame.left, 'the table does not scroll far enough sideways at 700 px: ' + moved);
-    // the frame says each time it places the sentence again: one more than before it was scrolled
-    await page.waitForFunction((was) => Number(document.querySelector('.grd-below .grd-scroll').dataset.placings) > was, { timeout: 5000 }, placings);
-    await inside(cell, 'after the frame scrolled sideways');
+    await page.waitForFunction(() => document.querySelector('.grd-below .grd-scroll').dataset.scrolledAt !== undefined, { timeout: 5000 });
+    const judged = await page.$eval('.grd-below .grd-scroll', (frame, selector) => ({ placings: frame.dataset.placings, scrolledAt: frame.dataset.scrolledAt, scrollLeft: frame.scrollLeft, focused: document.activeElement === document.querySelector(selector) }), cell);
+    assert.ok(judged.focused, 'the mark lost the focus while the frame scrolled: ' + JSON.stringify(judged));
+    await inside(cell, 'after the frame scrolled sideways (' + JSON.stringify(judged) + ')');
   } finally {
     await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
     await page.waitForFunction(() => window.innerWidth === 1280);
