@@ -321,7 +321,8 @@ test('the Subjects toolbar exports the subjects CSV and goes to its import, and 
     await go(p, '#schedule/teachers');
     await settled(p);
     const teachers = await shape();
-    assert.deepEqual(teachers.labels, ['Add a teacher', 'Export CSV', 'Import CSV…']);
+    // SV2-32d: the teacher list prints, from the end of the toolbar
+    assert.deepEqual(teachers.labels, ['Add a teacher', 'Export CSV', 'Import CSV…', 'Print the teacher list']);
     assert.equal(teachers.import.replace(/^A /, ''), teachers.export.replace(/^BUTTON /, ''));
     assert.equal(teachers.export, subjects.export, 'the two tabs\' buttons differ');
   });
