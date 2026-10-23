@@ -149,7 +149,7 @@ test('copying a block gives tab-separated text a spreadsheet takes', async () =>
   await page.keyboard.press('ArrowDown');
   await page.keyboard.up('Shift');
   assert.equal(await copied(), '201\t103\t101\r\n203\tGym\t103');
-  assert.equal(await statusText(), 'Copied 6 cells.');
+  assert.equal(await statusText(), 'Copied 6 slots.');
 });
 
 test('typing a room number into a cell stages it: the cell is marked, the bar says so, and the schedule has not changed', async () => {
@@ -320,7 +320,7 @@ test('a three-by-four block pasted from a spreadsheet is summarised, applied as 
   await stagedIs(true);
   const pasted = [block[0], block[1], ['201', '202', 'Portable 4', 'Gym']];
   assert.deepEqual(await cellsOf(), pasted, 'a room is shown by its own number, an unknown one as typed');
-  assert.equal(await statusText(), 'Pasted 12 cells.');
+  assert.equal(await statusText(), 'Pasted 12 slots.');
   assert.equal(await barText(), 'Not applied yet: 3 groups changed');
   assert.equal(await count('.grd-table .is-staged'), 12);
   assert.equal(await has(slot(C6, DAY_A, 2), 'is-unknown'), true);
@@ -361,11 +361,11 @@ test('one copied cell pasted over a selection fills it, Delete empties a selecti
   await page.keyboard.up('Shift');
   await paste('Library');
   assert.deepEqual(await Promise.all([A6, B6, C6].map((group) => shown(slot(group, DAY_B, 0)))), ['Library', 'Library', 'Library']);
-  assert.equal(await statusText(), 'Pasted 3 cells.');
+  assert.equal(await statusText(), 'Pasted 3 slots.');
   await page.keyboard.press('Delete');
   await settled();
   assert.deepEqual(await Promise.all([A6, B6, C6].map((group) => shown(slot(group, DAY_B, 0)))), ['', '', '']);
-  assert.equal(await statusText(), 'Cleared 3 cells.');
+  assert.equal(await statusText(), 'Cleared 3 slots.');
   // fill down from 6A's Periods 2 and 3 into 6B and 6C
   await focusCell(slot(A6, DAY_B, 1));
   await page.keyboard.down('Shift');
@@ -378,7 +378,7 @@ test('one copied cell pasted over a selection fills it, Delete empties a selecti
   await page.keyboard.up('Control');
   await settled();
   for (const group of [B6, C6]) assert.deepEqual([await shown(slot(group, DAY_B, 1)), await shown(slot(group, DAY_B, 2))], ['204', 'Gym']);
-  assert.equal(await statusText(), 'Filled down 4 cells from 6A.');
+  assert.equal(await statusText(), 'Filled down 4 slots from 6A.');
   assert.equal(await barText(), 'Not applied yet: 3 groups changed');
   await discard();
 });
@@ -509,7 +509,7 @@ test('an empty project says what the grid is for, and a block pasted there becom
   await paste('7-1\t7\t24\r\n7-2\t7\t\r\n' + HOSTILE + '\t8\t30\r\n');
   await stagedIs(true);
   assert.equal(await barText(), 'Not applied yet: 3 groups added');
-  assert.equal(await statusText(), 'Pasted 9 cells. Added 3 groups.');
+  assert.equal(await statusText(), 'Pasted 9 slots. Added 3 groups.');
   assert.deepEqual(await page.$$eval('.grd-row .grd-cell--name .grd-cell__text', (all) => all.map((cell) => cell.textContent)), ['7-1', '7-2', HOSTILE]);
   assert.deepEqual(await page.$$eval('.grd-grade th', (all) => all.map((th) => th.textContent)), ['Grade 7 · 2 groups', 'Grade 8 · 1 group']);
   await click('.grd-bar [data-action="apply"]');

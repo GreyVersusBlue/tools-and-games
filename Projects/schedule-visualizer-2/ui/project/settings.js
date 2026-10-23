@@ -218,11 +218,11 @@ export function settingsCard(ctx) {
   const movement = group('movement', 'Movement');
   row(movement, 'Default head count', 'How many students are in a group that has no head count of its own.',
     number('defaultHeadCount', (s) => s.defaultHeadCount, 'The default head count'));
-  row(movement, 'Seconds per corridor cell', 'How long it takes to walk one square of corridor.',
+  row(movement, 'Seconds per corridor cell', 'How long it takes to walk one cell of corridor.',
     number('secondsPerCell', (s) => s.secondsPerCell, 'Seconds per corridor cell'));
   row(movement, 'Seconds per stair connection', 'How long the stairs take, for each floor climbed or descended.',
     number('secondsPerStair', (s) => s.secondsPerStair, 'Seconds per stair connection'));
-  row(movement, 'Cell scale', 'How long one square is in metres or feet.', wish());
+  row(movement, 'Cell scale', 'How long one cell is in metres or feet.', wish());
   row(movement, 'Colour scale', 'Relative colours the busiest corridor in this school as the top band. Absolute uses the numbers in the next row.',
     pick('colourScale.mode', (s) => s.colourScale.mode, [{ value: 'relative', label: 'Relative' }, { value: 'absolute', label: 'Absolute' }]));
   row(movement, 'Absolute bands', 'The load at which the second, third, fourth and fifth bands begin.',

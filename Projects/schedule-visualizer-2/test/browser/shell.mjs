@@ -527,7 +527,7 @@ test('one click removes the sample school, one click loads it, and both can be u
   assert.equal(await text('#getting-started .getting-started__tally'), '0 of 5 done.');
   assert.equal(await exists('dialog[open]'), false, 'removing the sample asked a question');
   await go(page, '#building');
-  assert.match(await text('#surface .intro__facts'), /^Nothing is drawn yet\. Floor 1 is 40 × 30 squares\.$/);
+  assert.match(await text('#surface .intro__facts'), /^Nothing is drawn yet\. Floor 1 is 40 × 30 cells\.$/);
   await page.click('#getting-started [data-action="load-sample"]');
   assert.equal(await exists('dialog[open]'), false, 'an empty project has nothing to lose, so no question');
   assert.equal(await schoolShown(), SAMPLE_NAME);

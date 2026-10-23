@@ -530,7 +530,7 @@ test('on a phone a block is what is on screen: hidden columns are not selected a
     B6 + ':name', B6 + ':' + DAY_A + ':0', B6 + ':' + DAY_A + ':1',
   ], 'Group and two periods of two groups, and nothing that is out of sight');
   assert.equal(await copied(page), '6A\t201\t103\r\n6B\t203\tGym');
-  assert.equal(await status(page), 'Copied 6 cells.');
+  assert.equal(await status(page), 'Copied 6 slots.');
 });
 
 test('on a phone a pasted row wider than Group goes into the periods, not into the columns out of sight', async () => {
@@ -540,7 +540,7 @@ test('on a phone a pasted row wider than Group goes into the periods, not into t
   await paste(page, '6A\t202\t204\r\n');
   try {
     await stagedIs(page, true);
-    assert.equal(await status(page), 'Pasted 3 cells.');
+    assert.equal(await status(page), 'Pasted 3 slots.');
     assert.deepEqual([await cellText(page, slot(A6, DAY_A, 0)), await cellText(page, slot(A6, DAY_A, 1))], ['202', '204']);
     assert.deepEqual([await cellText(page, key(A6, 'grade')), await cellText(page, key(A6, 'headCount'))], ['6', '24'], 'Grade and Head count are as they were');
     assert.deepEqual([await isStaged(page, key(A6, 'grade')), await isStaged(page, key(A6, 'headCount')), await isStaged(page, key(A6, 'colour'))], [false, false, false]);
@@ -548,7 +548,7 @@ test('on a phone a pasted row wider than Group goes into the periods, not into t
 
     // one copied cell over a block fills what is on screen of it
     await paste(page, 'Gym');
-    assert.equal(await status(page), 'Pasted 3 cells.', 'the name and two periods');
+    assert.equal(await status(page), 'Pasted 3 slots.', 'the name and two periods');
     assert.deepEqual([await cellText(page, key(A6, 'name')), await cellText(page, slot(A6, DAY_A, 0)), await cellText(page, slot(A6, DAY_A, 1))], ['Gym', 'Gym', 'Gym']);
     assert.deepEqual([await cellText(page, key(A6, 'grade')), await cellText(page, key(A6, 'headCount'))], ['6', '24']);
   } finally {
@@ -566,7 +566,7 @@ test('on a phone Delete empties only what is on screen of a block', async () => 
   await page.keyboard.press('Delete');
   try {
     await stagedIs(page, true);
-    assert.equal(await status(page), 'Cleared 1 cell.');
+    assert.equal(await status(page), 'Cleared 1 slot.');
     assert.equal(await cellText(page, slot(A6, DAY_A, 0)), '');
     assert.deepEqual([await cellText(page, key(A6, 'grade')), await cellText(page, key(A6, 'headCount'))], ['6', '24']);
     assert.deepEqual([await isStaged(page, key(A6, 'grade')), await isStaged(page, key(A6, 'headCount'))], [false, false]);
@@ -589,7 +589,7 @@ test('on a phone Fill down fills only what is on screen of a block', async () =>
   try {
     await stagedIs(page, true);
     // the name is refused (6A is taken); the room is the one cell filled
-    assert.match(await status(page), /^Filled down 1 cell from 6A\. 1 cell was not taken: There is already a group called "6A"\./);
+    assert.match(await status(page), /^Filled down 1 slot from 6A\. 1 slot was not taken: There is already a group called "6A"\./);
     assert.equal(await cellText(page, slot(B6, DAY_A, 0)), '201');
     assert.deepEqual([await cellText(page, key(B6, 'headCount')), await isStaged(page, key(B6, 'headCount')), await isStaged(page, key(B6, 'colour'))], ['26', false, false], '6B keeps its own head count and colour');
   } finally {

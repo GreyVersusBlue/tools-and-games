@@ -84,6 +84,7 @@ export const GROUPS = {
     'engine/help.test.mjs', // SV2-30a
     'engine/prints-schedule.test.mjs', // SV2-32d
     'engine/prints-travel.test.mjs', // SV2-32d
+    'engine/vocabulary.test.mjs', // SV2-32f
     'ui/progress.test.mjs', // SV2-02
     'ui/helpers.test.mjs', // SV2-02
     'ui/building-inspector.test.mjs', // SV2-07

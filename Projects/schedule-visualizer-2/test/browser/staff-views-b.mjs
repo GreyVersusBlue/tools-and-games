@@ -27,7 +27,7 @@ import { publishDocument } from '../../ui/staff/targets.js';
 import { publishedModel } from '../../engine/publish-data.js';
 import { buildGraph } from '../../engine/graph.js';
 import { routingGraph, route } from '../../engine/routing.js';
-import { directions, SQUARE_UNITS } from '../../engine/directions.js';
+import { directions, CELL_UNITS } from '../../engine/directions.js';
 import { seededRandom } from '../../engine/ids.js';
 import { sampleSchool } from '../../data/sample-school.js';
 import { disconnectedWing, roomId } from '../fixtures/buildings/plans.mjs';
@@ -666,8 +666,8 @@ test('Directions shows the engine\'s own route and words, with a step-free optio
     // what the planner's engine says for the same two rooms, on the same published data
     const model = files.open.model;
     const graph = routingGraph(model, buildGraph(model));
-    // in the reader's word for a distance, squares (SV2-45 M2)
-    const written = directions(model, route(graph, 'rsample101', 'rsample303'), SQUARE_UNITS);
+    // in the reader's word for a distance, cells (spec 2; squares until SV2-32f)
+    const written = directions(model, route(graph, 'rsample101', 'rsample303'), CELL_UNITS);
     const steps = await texts(page, '.steps > li');
     assert.deepEqual(steps, written.steps.map((step) => step.text));
     assert.equal(steps.length, 15);
@@ -695,7 +695,7 @@ test('Directions shows the engine\'s own route and words, with a step-free optio
     await page.click('#directions-stepfree');
     await page.select('#directions-to', 'rsample103');
     assert.equal(await says(page), 'From Room 101 to Room 103: under a minute, all on one floor, step-free.');
-    assert.deepEqual(await texts(page, '.steps > li'), directions(model, route(graph, 'rsample101', 'rsample103', { avoidStairs: true }), SQUARE_UNITS).steps.map((step) => step.text));
+    assert.deepEqual(await texts(page, '.steps > li'), directions(model, route(graph, 'rsample101', 'rsample103', { avoidStairs: true }), CELL_UNITS).steps.map((step) => step.text));
     assert.deepEqual(await texts(page, '[data-directions="floors"] li'), ['Floor 1, where the walk ends']);
 
     await page.click('[data-directions="swap"]');

@@ -1527,7 +1527,7 @@ export const setTraceImage = action(
       }
       if (typeof next.imageId !== 'string' || next.imageId === '') bad('A traced image names its stored image.');
       if (typeof next.opacity !== 'number' || !(next.opacity >= 0 && next.opacity <= 1)) bad('Opacity is from 0% to 100%.');
-      if (typeof next.scale !== 'number' || !Number.isFinite(next.scale) || !(next.scale > 0)) bad('The image needs a width above 0 squares.');
+      if (typeof next.scale !== 'number' || !Number.isFinite(next.scale) || !(next.scale > 0)) bad('The image needs a width above 0 cells.');
       for (const key of ['rotation', 'x', 'y']) if (!Number.isFinite(next[key])) bad('The ' + key + ' of a traced image is a number.');
       for (const key of TRACE_FLAGS) if (typeof next[key] !== 'boolean') bad('The ' + key + ' flag of a traced image is on or off.');
       for (const key of TRACE_SIZES) if (!Number.isInteger(next[key]) || next[key] < 1) bad('The ' + key + ' of a traced image is a whole number of pixels.');
