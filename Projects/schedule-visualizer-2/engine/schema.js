@@ -35,6 +35,17 @@ export const PAPER_SIZES = ['letter', 'a4', 'tabloid', 'a3', 'a2', 'a1', 'a0', '
 export const PAPER_ORIENTATIONS = ['portrait', 'landscape'];
 export const THEMES = ['auto', 'light', 'dark'];
 export const COLOUR_SCALE_MODES = ['relative', 'absolute'];
+// Cell scale (spec 16): how long one cell is in real life, in one of these
+// units, kept as settings.cellScale = { unit, length }. It is optional and
+// not in defaultSettings(): absent or null means not set, so a project saved
+// before the setting existed reads unchanged, and a new project is as it was. Today only the traced image's
+// scaling tool reads it (ui/building/scale-tool.js); real units in
+// directions and reports, walking speed as a speed and corridor width are
+// still a wish.
+export const CELL_UNITS = ['feet', 'metres'];
+// A cell is longer than 0 and at most this long, in either unit.
+export const CELL_LENGTH_MOST = 1000;
+export const METRES_PER_FOOT = 0.3048;
 export const OTHER_KINDS = ['bathroom', 'office', 'storage', 'library', 'outdoor', 'utility', 'other'];
 export const DOOR_SIDES = ['n', 'e', 's', 'w'];
 export const CONNECTION_DIRECTIONS = ['both', 'ab', 'ba'];
@@ -152,6 +163,15 @@ export function isIsoDate(value) {
 
 export function inRange(value, range) {
   return Number.isInteger(value) && value >= range[0] && value <= range[1];
+}
+
+// A Cell scale as settings.cellScale holds it: null (not set), or
+// { unit, length } with unit one of CELL_UNITS and length above 0 and at
+// most CELL_LENGTH_MOST. Nothing else is one.
+export function isCellScale(value) {
+  if (value === null) return true;
+  if (typeof value !== 'object' || Array.isArray(value)) return false;
+  return Object.keys(value).length === 2 && CELL_UNITS.includes(value.unit) && typeof value.length === 'number' && Number.isFinite(value.length) && value.length > 0 && value.length <= CELL_LENGTH_MOST;
 }
 
 // ---------------------------------------------------------------- defaults

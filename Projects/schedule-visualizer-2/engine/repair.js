@@ -40,7 +40,7 @@
 // not.
 
 import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CHANGE_KINDS, PUBLISH_VIEWS, CHECK_KINDS, CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY, DEFAULT_FLOOR_WIDTH, DEFAULT_FLOOR_HEIGHT, DEFAULT_OTHER_COLOUR, DEFAULT_DAY_TYPE_NAMES } from './schema.js';
-import { defaultSettings, defaultPublish, defaultOnboarding, emptyCells, emptySlot, emptyDay, newFloor, newDayType, roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isEdgeCorridorCell, nextGroupColour, nextConnectionLabel } from './schema.js';
+import { defaultSettings, defaultPublish, defaultOnboarding, emptyCells, emptySlot, emptyDay, newFloor, newDayType, roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isEdgeCorridorCell, nextGroupColour, nextConnectionLabel, isCellScale } from './schema.js';
 import { DEFAULT_PASSCODE } from './publish-defaults.js';
 import { createIds, seededRandom, collectIds, isId } from './ids.js';
 
@@ -234,6 +234,17 @@ export function repair(input, options) {
     choice(paper, 'size', PAPER_SIZES, defaults.paper.size, 'The paper size');
     choice(paper, 'orientation', PAPER_ORIENTATIONS, defaults.paper.orientation, 'The paper orientation');
     choice(settings, 'theme', THEMES, defaults.theme, 'The theme');
+    // Cell scale is optional: absent or null is not set, and a project from
+    // before it existed reads unchanged. One that cannot be read is cleared;
+    // anything kept beside its unit and length is dropped.
+    const cell = settings.cellScale;
+    if (cell !== undefined && cell !== null) {
+      const kept = isObject(cell) ? { unit: cell.unit, length: cell.length } : null;
+      if (kept === null || !isCellScale(kept)) {
+        note('The cell scale could not be read and is not set now.');
+        settings.cellScale = null;
+      } else if (Object.keys(cell).length !== 2) settings.cellScale = kept;
+    }
   }
 
   // ---- subjects
