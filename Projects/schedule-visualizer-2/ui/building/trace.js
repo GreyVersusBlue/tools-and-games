@@ -26,6 +26,7 @@ import { setTraceImage, DEFAULT_TRACE_OPACITY } from '../../engine/actions.js';
 import { h } from '../components/dom.js';
 import { field } from '../components/field.js';
 import { checkField, decimal, heading } from './inspector/controls.js';
+import { createScaleTool } from './scale-tool.js';
 
 export { setTraceImage };
 
@@ -235,6 +236,7 @@ export function createTrace(ed, ctx) {
 
   function setMoving(on) {
     if (moving === on) return;
+    if (on) scaling.cancel(false);
     moving = on;
     drag = null;
     live = null;
@@ -298,6 +300,11 @@ export function createTrace(ed, ctx) {
   // on the window, ahead of everything in the page: Escape here is this mode's
   window.addEventListener('keydown', onKey, true);
 
+  // ---------------------------------------------------------- scaling from a length (./scale-tool.js)
+
+  const scaling = createScaleTool(ed, ctx, { stopMoving: () => setMoving(false), isMissing });
+  ed.overlays.push(scaling.overlay);
+
   // ---------------------------------------------------------- the controls
 
   const element = h('section', { class: 'bi-part', id: 'trace', 'aria-labelledby': 'trace-heading' });
@@ -354,6 +361,8 @@ export function createTrace(ed, ctx) {
     const left = number('trace-x', 'Left edge, in cells', image.x, 'The left edge', (value) => patchWith({ x: value }, 'Moved the image.'));
     const top = number('trace-y', 'Top edge, in cells', image.y, 'The top edge', (value) => patchWith({ y: value }, 'Moved the image.'));
     const move = h('button', { type: 'button', class: 'btn', id: 'trace-move', 'aria-pressed': 'false', data: { key: 'trace-move' }, on: { click: () => setMoving(!moving) } }, 'Move it by dragging');
+    const scale = h('button', { type: 'button', class: 'btn', id: 'trace-scale', data: { key: 'trace-scale' }, 'aria-describedby': 'trace-scale-hint', on: { click: (event) => scaling.start(event) } }, 'Scale the image from a length');
+    const scaleHint = h('p', { class: 'bld-inspector__small', id: 'trace-scale-hint' }, 'Place two points on the image, then say how long the line between them is, in feet, metres or cells.');
     const fit = h('button', { type: 'button', class: 'btn', id: 'trace-fit', data: { key: 'trace-fit' }, on: { click: () => {
       const now = ed.floor;
       patchWith(fitPlacement(now, now.image.width, now.image.height), 'The image fits ' + now.name + '.');
@@ -364,6 +373,7 @@ export function createTrace(ed, ctx) {
     } } }, 'Use another image…');
     const remove = h('button', { type: 'button', class: 'btn btn--danger', id: 'trace-remove', data: { key: 'trace-remove' }, on: { click: () => {
       setMoving(false);
+      scaling.cancel(false);
       const name = ed.floor.name;
       const outcome = ed.commit(setTraceImage, { floorId: ed.floor.id, image: null }, { done: () => 'Removed the image from under ' + name + '.', toast: () => 'Removed the image from under ' + name + '.' });
       if (outcome) ed.schedule();
@@ -378,6 +388,8 @@ export function createTrace(ed, ctx) {
       h('div', { class: 'bi-range' }, h('label', { class: 'field__label', for: 'trace-opacity' }, 'Opacity'), opacity, opacityValue),
       h('div', { class: 'bi-pair' }, wide.element, turn.element),
       h('div', { class: 'bi-pair' }, left.element, top.element),
+      h('div', { class: 'bi-buttons' }, scale),
+      scaleHint,
       h('div', { class: 'bi-buttons' }, move, fit),
       h('div', { class: 'bi-buttons' }, replace, remove),
       fileInput,
@@ -427,7 +439,9 @@ export function createTrace(ed, ctx) {
       return moving;
     },
     stopMoving: () => setMoving(false),
+    scaling,
     detach() {
+      scaling.detach();
       canvas.removeEventListener('pointerdown', onDown, true);
       canvas.removeEventListener('pointermove', onMove, true);
       canvas.removeEventListener('pointerup', onUp, true);
