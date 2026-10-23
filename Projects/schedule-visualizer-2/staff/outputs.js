@@ -18,7 +18,7 @@
 import { h, typed } from './dom.js';
 import { makeHash } from './router.js';
 import { dayText } from './dates.js';
-import { printButton } from './page.js';
+import { printButton, handOver } from './page.js';
 import { isMe, chooseMe, forgetMe } from './notes.js';
 
 export const LOCK_WIDTH = 1170;
@@ -193,35 +193,6 @@ export async function lockScreenImage(school, teacher, kinds) {
       else reject(new Error('The image could not be made.'));
     }, 'image/png');
   });
-}
-
-// Hand an image to the reader: through the device's share sheet where it
-// takes a file (so it can go to Photos on a phone), else as a download.
-// → 'shared', 'saved', or 'cancelled' when the share sheet was closed.
-export async function handOver(blob, name, title) {
-  const nav = globalThis.navigator;
-  let file = null;
-  try {
-    file = new File([blob], name, { type: 'image/png' });
-  } catch (error) {
-    file = null;
-  }
-  if (file && nav && typeof nav.canShare === 'function' && typeof nav.share === 'function' && nav.canShare({ files: [file] })) {
-    try {
-      await nav.share({ files: [file], title });
-      return 'shared';
-    } catch (error) {
-      if (error && error.name === 'AbortError') return 'cancelled';
-      // a share sheet that fails for any other reason: the download below
-    }
-  }
-  const address = URL.createObjectURL(blob);
-  const link = h('a', { href: address, download: name, hidden: true });
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  globalThis.setTimeout(() => URL.revokeObjectURL(address), 60000);
-  return 'saved';
 }
 
 // The row under a teacher's day: print, the image, the door sign of each of
