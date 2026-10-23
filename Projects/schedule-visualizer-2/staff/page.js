@@ -63,15 +63,59 @@ export function printButton(label, primary) {
 // it out, so the picture is what the reader sees, and a name is drawn as text
 // whatever characters it holds (a character the face has no glyph for is
 // drawn as the device draws it on the page). What a sheet of paper leaves
-// out, the picture leaves out too: the buttons, the bar, the pickers
-// (PICTURE_LEAVES). A page that is one thing to hand over marks that part
+// out, the picture leaves out too: the buttons, the bar, the pickers, read
+// from the print rules themselves (paperLeaves). A page that is one thing to hand over marks that part
 // `data-picture` (the door sign's sheet), and only it is drawn; any other
 // picture has the school's line and the publish line over the page, because
 // a picture travels without the file it came from.
 
-// Left out of a picture, as they are left off paper (the @media print blocks
-// of staff/staff.css), with the bars around the page.
-export const PICTURE_LEAVES = '.no-print, .actions, .page__outputs, .print-only, .page .tabs, .map__bar, .map__which, .map__pulse, .row__mark, .chips__remove, .note__input, .note__count, .bar, .bands, script, style, template, svg';
+// Left out of every picture whatever paper does: what is only for paper
+// (.print-only, hidden on screen anyway), a note's field and its count, and
+// what is not drawn as a box at all.
+export const PICTURE_LEAVES = '.print-only, .note__input, .note__count, script, style, template, svg';
+
+// Is a media list one that paper is printed under ("print", "only print and
+// (orientation: portrait)", but never "not print" or "screen")?
+function forPaper(media) {
+  return Array.from(media || []).some((one) => /^(only\s+)?print\b/iu.test(one.trim()));
+}
+
+// The rules of `rules` that hide something (display: none), from inside an
+// @media print block at any depth.
+function hiddenOnPaper(rules, paper, out) {
+  for (const rule of Array.from(rules || [])) {
+    if (rule.media && rule.cssRules) hiddenOnPaper(rule.cssRules, paper || forPaper(rule.media), out);
+    else if (rule.cssRules && !rule.selectorText) hiddenOnPaper(rule.cssRules, paper, out);
+    else if (paper && rule.selectorText && rule.style && rule.style.getPropertyValue('display').trim() === 'none') out.push(rule.selectorText);
+  }
+  return out;
+}
+
+// What the picture leaves out: everything the page's own print rules hide
+// (the @media print blocks of staff/staff.css, read from the page as it was
+// served, so a rule added for paper is left out of the picture too), and
+// PICTURE_LEAVES. A selector this browser cannot test is passed over.
+export function paperLeaves(doc) {
+  const found = [];
+  for (const sheet of Array.from(doc.styleSheets || [])) {
+    let rules = null;
+    try {
+      rules = sheet.cssRules;
+    } catch (error) {
+      rules = null;
+    }
+    hiddenOnPaper(rules, forPaper(sheet.media), found);
+  }
+  const usable = found.filter((selector) => {
+    try {
+      doc.documentElement.matches(selector);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  });
+  return [PICTURE_LEAVES, ...usable].join(', ');
+}
 
 // A picture is drawn at three image pixels a page pixel for a phone's
 // column, two for a desktop's, and less only where the device's canvas could
@@ -393,7 +437,7 @@ function paintControl(g, element, box, style, at) {
 }
 
 function paintElement(g, element, at) {
-  if (element.matches(PICTURE_LEAVES)) return;
+  if (element.matches(at.leaves)) return;
   const style = getComputedStyle(element);
   if (style.display === 'none') return;
   const opacity = Number(style.opacity);
@@ -520,7 +564,7 @@ function paintLaidOut(target, options) {
     y += lineHeights[at];
   });
   if (lines.length > 0) y += PICTURE_PAD / 2;
-  paintElement(g, target, { x: box.left - pad, y: box.top - y });
+  paintElement(g, target, { x: box.left - pad, y: box.top - y, leaves: paperLeaves(target.ownerDocument) });
   return { canvas, scale };
 }
 

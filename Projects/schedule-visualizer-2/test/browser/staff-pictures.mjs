@@ -24,12 +24,32 @@ import { diskReader } from '../publish/reader.mjs';
 import { publishDocument } from '../../ui/staff/targets.js';
 import { seededRandom } from '../../engine/ids.js';
 import { sampleSchool } from '../../data/sample-school.js';
-import { pictureName, pictureScale, fileWords, PICTURE_LEAVES, PICTURE_SCALE, PICTURE_WIDE_SCALE, PICTURE_MOST_SIDE, PICTURE_TOO_LONG, PICTURE_SAVED } from '../../staff/page.js';
+import { pictureName, pictureScale, fileWords, PICTURE_SCALE, PICTURE_WIDE_SCALE, PICTURE_MOST_SIDE, PICTURE_TOO_LONG, PICTURE_SAVED } from '../../staff/page.js';
 
 const ZONE = 'America/New_York';
 const AT_0950 = '2026-09-01T13:50:00Z'; // A Day: Period 3
 const HOSTILE = '<img src=x onerror="window.__pwned=1"> </script><b>"Ünï" 東京 ‮evil\u0001';
 const future = () => new Date('2999-01-01T12:00:00Z');
+
+// What paper leaves off a page, named here from what the reader sees rather
+// than read from staff/page.js or staff/staff.css: the squares wholly inside
+// one are not compared with the screenshot, and none of them may have ink.
+const LEFT_OFF = 'button, .btn, .actions, .page__outputs, .controls, .field--search, .page__body > .field, .page__body > .pick, .page .tabs, .map__bar, .map__which, .map__pulse, .row__mark, .chips__remove, .note__input, .note__count, svg';
+
+// The pickers, each found by what it is on its own page (the day and the
+// period on /free and /now, the day on /coverage, the date on the substitute
+// plan, From, To and the step-free tick on /directions, the search box): the area of each is
+// paper in the picture, and the screenshot has ink there.
+const PICKERS = {
+  day: '[data-pick="day"]',
+  period: '.field:has(> select[data-pick="period"])',
+  from: '.field:has(> #directions-from)',
+  to: '.field:has(> #directions-to)',
+  stepFree: 'label[for="directions-stepfree"]',
+  stairs: '[data-directions="stairs"] button',
+  date: '.field:has(> #sub-date)',
+  search: '.field:has(> #find)',
+};
 
 const scratch = mkdtempSync(path.join(os.tmpdir(), 'sv2-staff-pictures-'));
 const read = diskReader();
@@ -306,13 +326,42 @@ async function inkSquares(page, from, frame, cell) {
       screen: squares(screen, 1, 0, 0, paperOf(screen, 0, 0)),
       size: [picture.width, picture.height],
     };
-  }, from, shot, frame, cell, PICTURE_LEAVES);
+  }, from, shot, frame, cell, LEFT_OFF);
+}
+
+// The squares (as inkSquares counts them) wholly inside what `selector`
+// finds in `frame.selector`, from its top to `frame.bottom`.
+const areaSquares = (page, frame, cell, selector) => page.evaluate((box, side, wanted) => {
+  const frameBox = document.querySelector(box.selector).getBoundingClientRect();
+  const rects = Array.from(document.querySelector(box.selector).querySelectorAll(wanted)).flatMap((each) => Array.from(each.getClientRects())).filter((rect) => rect.width > 0 && rect.height > 0);
+  const out = [];
+  let at = 0;
+  for (let row = 0; row * side < box.bottom; row += 1) {
+    for (let col = 0; (col + 1) * side <= box.width; col += 1) {
+      const x = frameBox.left + col * side;
+      const y = frameBox.top + row * side;
+      if (rects.some((rect) => x >= rect.left && x + side <= rect.right && y >= rect.top && y + side <= rect.bottom)) out.push(at);
+      at += 1;
+    }
+  }
+  return out;
+}, frame, cell, selector);
+
+// Each picker named for a page is on it, inked on screen, and paper in the picture.
+async function pickersArePaper(page, squares, frame, names, address) {
+  for (const name of names) {
+    const inside = await areaSquares(page, frame, 6, PICKERS[name]);
+    assert.ok(inside.length > 4, address + ': the ' + name + ' picker is on the page (' + inside.length + ' squares)');
+    assert.ok(inside.some((at) => squares.screen[at]), address + ': the ' + name + ' picker has ink on screen');
+    const drawn = inside.filter((at) => squares.picture[at]).length;
+    assert.equal(drawn, 0, address + ': nothing is drawn where the ' + name + ' picker is, of ' + inside.length + ' squares');
+  }
 }
 
 // How far a picture's squares agree with the screenshot's: a square agrees
 // when the other has ink in it, or in the square over or under it, exactly
 // when it has ink itself (a hairline on a square's edge falls in either).
-// The squares inside something the picture leaves out (PICTURE_LEAVES) are
+// The squares inside something the picture leaves out (LEFT_OFF) are
 // not compared; `leftInked` counts those the picture drew on.
 function agreement(squares) {
   const near = (list, at) => Boolean(list[at] || list[at - squares.cols] || list[at + squares.cols]);
@@ -339,16 +388,17 @@ const measure = (page) => page.evaluate(() => {
 });
 
 const PAGES = [
-  ['#/group/gsample06a', '6A', 'group-6a.png'],
-  ['#/room/rsample203', 'Room 203', 'room-203.png'],
-  ['#/map/fsample001', 'Building map: Floor 1', 'building-map-floor-1.png'],
-  ['#/staffing', 'Staffing', 'staffing.png'],
-  ['#/free', 'Free right now', 'free-right-now.png'],
-  ['#/now?g=gsample06a', 'Where right now', 'where-right-now.png'],
-  ['#/common?t=tsample001,tsample002', 'Common planning', 'common-planning.png'],
-  ['#/coverage/tsample003', 'Coverage: Dr. Quillfeather', 'coverage-dr-quillfeather.png'],
-  ['#/sub/tsample003', 'Substitute plan: Dr. Quillfeather', 'substitute-plan-dr-quillfeather.png'],
-  ['#/directions?from=rsample101&to=rsample303', 'Directions', 'directions.png'],
+  ['#/group/gsample06a', '6A', 'group-6a.png', []],
+  ['#/room/rsample203', 'Room 203', 'room-203.png', []],
+  ['#/map/fsample001', 'Building map: Floor 1', 'building-map-floor-1.png', []],
+  ['#/staffing', 'Staffing', 'staffing.png', []],
+  ['#/free', 'Free right now', 'free-right-now.png', ['day', 'period']],
+  ['#/now?g=gsample06a', 'Where right now', 'where-right-now.png', ['day', 'period']],
+  ['#/common?t=tsample001,tsample002', 'Common planning', 'common-planning.png', []],
+  ['#/coverage/tsample003', 'Coverage: Dr. Quillfeather', 'coverage-dr-quillfeather.png', ['day']],
+  ['#/sub/tsample003', 'Substitute plan: Dr. Quillfeather', 'substitute-plan-dr-quillfeather.png', ['date']],
+  ['#/directions?from=rsample101&to=rsample303', 'Directions', 'directions.png', ['from', 'to', 'stepFree']],
+  ['#/search?q=Quillfeather', 'Search', 'search.png', ['search']],
 ];
 
 test('every page but a teacher\'s has "Save as image" beside "Print this page", and the picture is the page: the same squares inked, the buttons left out', async () => {
@@ -356,7 +406,7 @@ test('every page but a teacher\'s has "Save as image" beside "Print this page", 
   try {
     const { page } = session;
     await goto(page, files.open.url + '#/search');
-    for (const [address, title, name] of PAGES) {
+    for (const [address, title, name, pickers] of PAGES) {
       await move(page, address, title);
       assert.deepEqual(await page.evaluate(() => Array.from(document.querySelector('.page__body [data-output="picture"]').parentElement.querySelectorAll('button'), (button) => button.textContent)), ['Print this page', 'Save as image'], address);
       const where = await measure(page);
@@ -376,6 +426,7 @@ test('every page but a teacher\'s has "Save as image" beside "Print this page", 
       const agree = agreement(squares);
       assert.ok(agree.inked > 60, address + ': the screenshot has ink in ' + agree.inked + ' squares');
       assert.ok(agree.part > 0.95, address + ': ' + agree.same + ' of ' + agree.of + ' squares agree between the page and its picture');
+      await pickersArePaper(page, squares, { selector: '.page__body', width: where.width, bottom: where.outputsTop }, pickers, address);
       assert.equal(agree.leftInked, 0, address + ': nothing is drawn where the tabs, the map\'s buttons and the pickers are, of ' + agree.left + ' squares');
       // under the page, where its buttons are, the picture is paper
       const below = await inkSquares(page, 'saved', { selector: '.page__body', scale, left: 16, top: squares.top, width: where.width, bottom: where.height }, 6);
@@ -540,6 +591,35 @@ test('from 900 px wide the side map is drawn where it sits in the page, not wher
     }, sits, stuck);
     assert.ok(bands.sits > 0.2, 'the map is drawn where it sits in the page: ' + Math.round(bands.sits * 100) + '% ink there, ' + Math.round(bands.stuck * 100) + '% where it was stuck');
     assert.ok(bands.stuck < 0.02, 'nothing is drawn where the map was stuck: ' + Math.round(bands.stuck * 100) + '% ink');
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('the way with stairs, offered when there is no step-free way, is left out of the picture', async () => {
+  const session = await openPage();
+  try {
+    const { page } = session;
+    await goto(page, files.open.url + '#/search');
+    await move(page, '#/directions?from=rsample101&to=rsample303&stepfree=1', 'Directions');
+    await page.waitForSelector(PICKERS.stairs, { timeout: 5000 });
+    const where = await page.evaluate(() => {
+      const body = document.querySelector('.page__body').getBoundingClientRect();
+      return { width: body.width, height: body.height };
+    });
+    // the row of buttons is hidden with no way to show (printWhen): the button is pressed from the page
+    await page.evaluate(() => {
+      for (const line of document.querySelectorAll('[data-says="picture"]')) line.textContent = '';
+      document.querySelector('.page__body [data-output="picture"]').click();
+    });
+    await page.waitForFunction(() => {
+      const line = document.querySelector('.page__body [data-says="picture"]');
+      return line.textContent !== '' && line.textContent !== 'Making the image…';
+    }, { timeout: 10000 });
+    const frame = { selector: '.page__body', scale: PICTURE_SCALE, left: 16, top: 16, search: 150, width: where.width, bottom: where.height };
+    const squares = await inkSquares(page, 'saved', frame, 6);
+    await pickersArePaper(page, squares, frame, ['stairs', 'from', 'to', 'stepFree'], 'step-free directions');
     assert.deepEqual(session.errors, []);
   } finally {
     await session.close();
