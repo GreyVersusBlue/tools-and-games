@@ -44,7 +44,7 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { openPlanner, go, launch, startServer, waitForSection } from './harness.mjs';
+import { openPlanner, go, launch, startServer, waitForSection, loadModule } from './harness.mjs';
 
 const DAY_A = 'dsample00a';
 const C6 = 'gsample06c';
@@ -97,29 +97,6 @@ async function until(page, why, fn, ...args) {
   } catch (error) {
     if (error.name !== 'TimeoutError') throw error;
     assert.fail(why + ' (waited 15 s for: ' + String(fn).replace(/\s+/g, ' ').slice(0, 160) + ')');
-  }
-}
-
-// A module of the tool put on the page as globalThis.sv2modules[key] by a
-// module script the page loads itself, and waited for by its key; a failed
-// load is kept as `{ error }` and said (SV2-72e2). An import() awaited inside
-// page.evaluate came back "Promise was collected" (SV2-72e). A load of the
-// page empties the globals; the module is loaded again.
-async function loadModule(page, key, file) {
-  const held = (wanted) => {
-    const value = globalThis.sv2modules && globalThis.sv2modules[wanted];
-    if (!value) return null;
-    return { error: value[Symbol.toStringTag] === 'Module' ? null : String(value.error) };
-  };
-  let state = await page.evaluate(held, key);
-  if (state === null) {
-    const name = JSON.stringify(key);
-    await page.addScriptTag({ type: 'module', content: 'const modules = (globalThis.sv2modules ||= {}); import(' + JSON.stringify('./' + file) + ').then((module) => { modules[' + name + '] = module; }, (error) => { modules[' + name + '] = { error: String((error && error.message) || error) }; });' });
-    state = await (await page.waitForFunction(held, { timeout: 10000 }, key)).jsonValue();
-  }
-  if (state.error !== null) {
-    await page.evaluate((wanted) => delete globalThis.sv2modules[wanted], key);
-    throw new Error('loadModule: ' + file + ' did not load: ' + state.error);
   }
 }
 

@@ -11,7 +11,7 @@
 import test, { after, afterEach, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { openPlanner, go, TOOL_PATH } from './harness.mjs';
+import { openPlanner, go, TOOL_PATH, loadModule } from './harness.mjs';
 
 let session;
 let page;
@@ -571,27 +571,6 @@ test('the floor plan offers the traced image only when a floor has one to show; 
 });
 
 // ---------------------------------------------------------------- SV2-32d: the schedule's prints and the travel times
-
-// Load a module of the tool into the page once, under a key of
-// globalThis.sv2modules, by a module script: an import awaited inside
-// page.evaluate came back "Promise was collected" (DECISIONS 2026-10-20).
-async function loadModule(target, key, file) {
-  const held = (wanted) => {
-    const value = globalThis.sv2modules && globalThis.sv2modules[wanted];
-    if (!value) return null;
-    return { error: value[Symbol.toStringTag] === 'Module' ? null : String(value.error) };
-  };
-  let state = await target.evaluate(held, key);
-  if (state === null) {
-    const name = JSON.stringify(key);
-    await target.addScriptTag({ type: 'module', content: 'const modules = (globalThis.sv2modules ||= {}); import(' + JSON.stringify(new URL(file, session.url('')).href) + ').then((module) => { modules[' + name + '] = module; }, (error) => { modules[' + name + '] = { error: String((error && error.message) || error) }; });' });
-    state = await (await target.waitForFunction(held, { timeout: 5000 }, key)).jsonValue();
-  }
-  if (state.error !== null) {
-    await target.evaluate((wanted) => delete globalThis.sv2modules[wanted], key);
-    throw new Error('loadModule: ' + file + ' did not load: ' + state.error);
-  }
-}
 
 // The Schedule section has drawn the project as it is.
 function scheduleDrawn() {
