@@ -346,13 +346,13 @@ export function createTrace(ed, ctx) {
       made.input.dataset.key = id;
       return made;
     };
-    const wide = number('trace-width', 'Width, in squares', image.scale * image.width, 'The width', (value) => {
-      if (!(value > 0)) throw new Error('The image needs a width above 0 squares.');
-      patchWith({ scale: value / ed.floor.image.width }, 'The image is ' + round(value, 2) + ' squares wide.');
+    const wide = number('trace-width', 'Width, in cells', image.scale * image.width, 'The width', (value) => {
+      if (!(value > 0)) throw new Error('The image needs a width above 0 cells.');
+      patchWith({ scale: value / ed.floor.image.width }, 'The image is ' + round(value, 2) + ' cells wide.');
     });
     const turn = number('trace-rotation', 'Turned, in degrees', image.rotation, 'The turn', (value) => patchWith({ rotation: value }, 'The image is turned ' + round(value, 2) + ' degrees.'));
-    const left = number('trace-x', 'Left edge, in squares', image.x, 'The left edge', (value) => patchWith({ x: value }, 'Moved the image.'));
-    const top = number('trace-y', 'Top edge, in squares', image.y, 'The top edge', (value) => patchWith({ y: value }, 'Moved the image.'));
+    const left = number('trace-x', 'Left edge, in cells', image.x, 'The left edge', (value) => patchWith({ x: value }, 'Moved the image.'));
+    const top = number('trace-y', 'Top edge, in cells', image.y, 'The top edge', (value) => patchWith({ y: value }, 'Moved the image.'));
     const move = h('button', { type: 'button', class: 'btn', id: 'trace-move', 'aria-pressed': 'false', data: { key: 'trace-move' }, on: { click: () => setMoving(!moving) } }, 'Move it by dragging');
     const fit = h('button', { type: 'button', class: 'btn', id: 'trace-fit', data: { key: 'trace-fit' }, on: { click: () => {
       const now = ed.floor;
@@ -389,7 +389,7 @@ export function createTrace(ed, ctx) {
     const image = floor.image;
     const gone = isMissing(image);
     controls.missing.hidden = !gone;
-    controls.facts.textContent = 'The image is ' + image.width + ' × ' + image.height + ' pixels, drawn ' + round(image.scale * image.width, 1) + ' × ' + round(image.scale * image.height, 1) + ' squares.';
+    controls.facts.textContent = 'The image is ' + image.width + ' × ' + image.height + ' pixels, drawn ' + round(image.scale * image.width, 1) + ' × ' + round(image.scale * image.height, 1) + ' cells.';
     controls.visible.set(image.visible);
     controls.locked.set(image.locked);
     if (document.activeElement !== controls.opacity) controls.opacity.value = String(Math.round(image.opacity * 100));

@@ -38,7 +38,7 @@ export const EMPTY_SCREENS = [
   {
     id: 'building', project: 'empty', hash: '#building',
     text: 'This is the building. Draw each floor here: a corridor first, then rooms along it.',
-    buttons: ['Trace over a photo of your floor plan', 'Change the size (Floor 1 is 40 × 30 squares)', 'Load the sample school'],
+    buttons: ['Trace over a photo of your floor plan', 'Change the size (Floor 1 is 40 × 30 cells)', 'Load the sample school'],
   },
   {
     id: 'groups', project: 'empty', hash: '#schedule/groups',

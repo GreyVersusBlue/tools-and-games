@@ -6,7 +6,7 @@
 // the light theme and the dark, and at 1280 by 800 where a case says so.
 //
 //   M1  a period's times stay on one line, and the rows of a day line up
-//   M2  directions are in squares, the one word a reader is given
+//   M2  directions are in cells, spec 2's one word, as the planner says it
 //   M3  a way with no stairs that does not exist is said plainly
 //   M4  "Print this page" stands only on a page with something to print
 //   M5  a link in a row or a table is 44 px high under a finger
@@ -210,7 +210,7 @@ test('M1: at 1280 px, the two day types side by side, the times are on one line 
 
 // ---------------------------------------------------------------- M2, M3
 
-both('M2: directions are written in squares, in the steps and in the line under them, and nowhere in cells', async (page) => {
+both('M2: directions are written in cells, in the steps and in the line under them, and nowhere in squares', async (page) => {
   await visit(page, '#/directions?from=rsample101&to=rsample302');
   await page.waitForFunction(() => document.querySelector('[data-directions="steps"]') !== null);
   const said = await page.evaluate(() => ({
@@ -219,10 +219,10 @@ both('M2: directions are written in squares, in the steps and in the line under 
     all: document.querySelector('[data-out="directions"]').textContent,
   }));
   assert.ok(said.walks.length >= 3, 'the way crosses the building: ' + said.walks.length + ' walks');
-  for (const walk of said.walks) assert.match(walk, /^Walk \d+ squares?\b/, walk);
-  assert.equal(said.walks[0], 'Walk 9 squares along Main Corridor, past Room 102.');
-  assert.match(said.under, /Distances are in squares of the floor plan\.$/);
-  assert.doesNotMatch(said.all, /\bcells?\b/, 'the planner\'s word is nowhere on the page');
+  for (const walk of said.walks) assert.match(walk, /^Walk \d+ cells?\b/, walk);
+  assert.equal(said.walks[0], 'Walk 9 cells along Main Corridor, past Room 102.');
+  assert.match(said.under, /Distances are in cells of the floor plan\.$/);
+  assert.doesNotMatch(said.all, /\bsquares?\b/, 'spec 2 has one word for a cell, and "square" is not it');
 });
 
 both('M3: a way with no stairs between two floors is refused plainly, and the line that offers the stairs follows', async (page) => {

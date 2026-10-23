@@ -1741,7 +1741,7 @@ test('Directions draws the route on the map, floor by floor, and says the line i
     await page.click(map.replace(' .map', '') + ' .tab[data-floor="fsample002"]');
     await page.waitForFunction((s) => document.querySelector(s).dataset.floor === 'fsample002', {}, map);
     assert.equal(await text(page, '[data-directions="floors"] .map__says'), 'On Floor 2 the line runs from stairs A to stairs B.');
-    assert.equal(await text(page, '[data-directions="time"]'), 'The walk is ' + sample.formatDuration(found.seconds) + ' at the school\'s walking pace, for an empty corridor. Distances are in squares of the floor plan.');
+    assert.equal(await text(page, '[data-directions="time"]'), 'The walk is ' + sample.formatDuration(found.seconds) + ' at the school\'s walking pace, for an empty corridor. Distances are in cells of the floor plan.');
 
     // one floor: the other floors say the way does not cross them
     await page.select('#directions-to', 'rsample102');
