@@ -2287,7 +2287,7 @@ test('door signs are upright sheets: with landscape chosen for the project the b
       await openBatch(page, output);
       const shown = await previewOf(page);
       assert.equal(shown.upright, 'Door signs are upright sheets: they print in portrait.', output);
-      assert.equal(shown.turn, 2, output + ': the two paper sizes, and no orientation to choose');
+      assert.equal(shown.turn, 8, output + ': the eight paper sizes (SV2-32c), and no orientation to choose');
       assert.equal(shown.paper, 'letter portrait');
       assert.equal(shown.root, 'portrait');
       assert.equal(shown.rule, '@page { size: letter portrait; }');
@@ -2302,7 +2302,7 @@ test('door signs are upright sheets: with landscape chosen for the project the b
     await openBatch(page, 'teacher-schedules');
     const teachers = await previewOf(page);
     assert.equal(teachers.upright, null);
-    assert.equal(teachers.turn, 4, 'two sizes and two orientations');
+    assert.equal(teachers.turn, 10, 'eight sizes (SV2-32c) and two orientations');
     assert.equal(teachers.paper, 'letter landscape');
     assert.equal(teachers.root, 'landscape');
     await closeBatch(page);
