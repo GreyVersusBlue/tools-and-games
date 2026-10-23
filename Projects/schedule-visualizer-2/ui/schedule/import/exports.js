@@ -5,8 +5,14 @@
 import { h } from '../../components/dom.js';
 import { periodWords } from '../../components/words.js';
 import { buildExport } from '../../../engine/exports.js';
-import { button, download } from '../common.js';
+import { printButtons, buttonLabel } from '../../prints/index.js';
+import { printButton } from '../../components/print-preview.js';
+import { button, download, keyed } from '../common.js';
 import { panel } from './parts.js';
+
+// The four files that print as well, each a document of ui/prints/ made from
+// the same rows (SV2-32d), with their buttons' entries in printButtons.
+export const PRINTED = ['groups', 'teachers', 'teacher-grid', 'room-grid'];
 
 // kind (engine/exports.js), the button's words, and what the file is.
 export function exportList(settings) {
@@ -43,6 +49,11 @@ export function exportsPanel(env) {
       h('ul', { class: 'imp-exports' }, exportList(project.settings).map(([kind, label, what]) => h('li', { class: 'imp-export' },
         button(label, () => save(kind), { key: 'imp-export:' + kind, action: 'export-' + kind, more: kind === 'schedule' ? '' : ', as CSV' }),
         h('span', { class: 'imp-export__what' }, what)))),
+      h('p', { class: 'sch-lead' }, 'Four of them print as well, as the same rows set out on paper. The paper and its size are chosen in the preview.'),
+      h('div', { class: 'sch-toolbar imp-prints' }, PRINTED.map((kind) => {
+        const entry = printButtons.find((each) => each.id === 'print-export-' + kind);
+        return keyed(printButton(ctx, { ...entry, label: buttonLabel(entry, project.settings) }), 'imp-print:' + kind);
+      })),
       h('p', { class: 'sch-hint' }, 'The whole project, and the building alone, are exported from ', h('a', { href: '#project' }, 'the Project section'), '.'));
   }
 

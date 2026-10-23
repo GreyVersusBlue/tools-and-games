@@ -202,18 +202,18 @@ test('the stylesheets are found where the caller says they are', () => {
 });
 
 test('the outputs are listed once each, and every print button names one of them', () => {
-  assert.deepEqual(OUTPUTS.map((output) => output.id), ['floor-plan', 'room-list', 'checks', 'teacher-schedules', 'door-signs', 'door-signs-day', 'movement', 'congestion', 'door-cards']);
+  assert.deepEqual(OUTPUTS.map((output) => output.id), ['floor-plan', 'room-list', 'checks', 'teacher-schedules', 'door-signs', 'door-signs-day', 'movement', 'congestion', 'door-cards', 'groups', 'teachers', 'teacher-grid', 'room-grid', 'travel-time']);
   for (const output of OUTPUTS) {
     assert.equal(typeof output.render, 'function');
     assert.equal(outputFor(output.id), output);
   }
   assert.equal(outputFor('lockdown-map'), null);
   assert.equal(renderOutput('lockdown-map', school(), null, {}), null);
-  assert.deepEqual(printButtons.map((button) => button.output).sort(), ['checks', 'door-cards', 'floor-plan', 'room-list']);
+  assert.deepEqual(printButtons.map((button) => button.output).sort(), ['checks', 'door-cards', 'floor-plan', 'groups', 'groups', 'room-grid', 'room-grid', 'room-list', 'teacher-grid', 'teacher-grid', 'teachers', 'teachers', 'travel-time']);
   assert.equal(new Set(printButtons.map((button) => button.id)).size, printButtons.length);
   for (const button of printButtons) {
     assert.ok(outputFor(button.output), button.id);
-    assert.match(button.screen, /^#(building|schedule\/checks)$/);
+    assert.match(button.screen, /^#(building|schedule\/(checks|grid|teachers|import)|movement)$/);
     assert.ok(button.label.startsWith('Print '), button.id);
   }
 });
@@ -246,6 +246,11 @@ test('hostile names come through every output as text, never as markup', () => {
     movement: ['school', 'group', 'day type'],
     congestion: ['school', 'group', 'day type'],
     'door-cards': ['school', 'floor', 'room', 'other space', 'corridor', 'door', 'assembly', 'stairs'],
+    groups: ['school', 'room', 'group', 'day type'],
+    teachers: ['school', 'room', 'teacher', 'subject', 'code'],
+    'teacher-grid': ['school', 'room', 'teacher', 'group', 'day type'],
+    'room-grid': ['school', 'floor', 'room', 'group', 'day type'],
+    'travel-time': ['school', 'room', 'group', 'day type'],
   };
   for (const output of OUTPUTS) {
     for (const paper of [PAPER_CHOICES[0], PAPER_CHOICES[3]]) {
@@ -730,7 +735,7 @@ test('a school with nothing in it still prints all three', () => {
 test('the print modules read no screen, clock or storage: a document is made from the model alone', () => {
   const dir = path.join(TOOL_DIR, 'ui', 'prints');
   const files = readdirSync(dir).filter((file) => file.endsWith('.js'));
-  assert.deepEqual(files.sort(), ['batch.js', 'checks-report.js', 'congestion.js', 'document.js', 'door-cards.js', 'floor-plan.js', 'index.js', 'movement.js', 'plan-svg.js', 'room-list.js']);
+  assert.deepEqual(files.sort(), ['batch.js', 'checks-report.js', 'congestion.js', 'document.js', 'door-cards.js', 'floor-plan.js', 'index.js', 'movement.js', 'plan-svg.js', 'room-list.js', 'schedule-grids.js', 'travel-time.js']);
   for (const file of files) {
     const code = readFileSync(path.join(dir, file), 'utf8').replace(/\/\/.*$/gm, '');
     for (const name of [/\bdocument\.(?!js')/, /\bwindow\./, /\bnavigator\b/, /\blocalStorage\b/, /\bindexedDB\b/, /Date\.now/, /new Date\(\)/, /Math\.random/, /innerHTML/, /querySelector/, /getContext/]) {

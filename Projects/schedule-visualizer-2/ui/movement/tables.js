@@ -20,6 +20,10 @@
 //
 //   tablesPanel(env) -> { element, update(state) }
 //
+// "Print the travel times" prints both tables of the day type on the map,
+// every transition's and the whole day's (ui/prints/travel-time.js), made
+// from the view's own state as the tables here are.
+//
 // `env` and `state` are described at the top of ./index.js.
 //
 // The rows, as plain data for the screen, the prints and the CSV files:
@@ -53,6 +57,8 @@ import { periodName } from '../../engine/bells.js';
 import { findDayType, effectiveDayType } from '../../engine/day-types.js';
 import { parse } from '../colour.js';
 import { transitionsOf } from './model.js';
+import { printButtons } from '../prints/index.js';
+import { printButton } from '../components/print-preview.js';
 
 function roomNumbers(project) {
   const numbers = new Map();
@@ -216,12 +222,17 @@ export function tablesPanel(env) {
   const dayTitle = h('h3', { class: 'mov-panel__sub', data: { travel: 'day-title' } }, 'The whole day');
   const whole = h('div', { class: 'mov-travel', data: { travel: 'day' } });
   const picker = h('div', { class: 'mov-travel__choose' }, h('label', { class: 'mov-ctl__label', for: pickId }, 'Transition'), pick);
-  const tables = h('div', { class: 'mov-travel__tables' }, oneTitle, picker, oneLine, one, oneRest, dayTitle, whole);
+  let last = null;
+  // what the tables are drawn from, handed to the print whole
+  const print = printButton(env.ctx, printButtons.find((entry) => entry.id === 'print-travel-time'), () => ({
+    dayTypeId: last.picture.choice.dayTypeId,
+    movement: { project: last.project, results: last.results, graph: last.graph },
+  }));
+  const tables = h('div', { class: 'mov-travel__tables' }, h('div', { class: 'mov-export__buttons' }, print), oneTitle, picker, oneLine, one, oneRest, dayTitle, whole);
   const element = h('div', { class: 'mov-panel', data: { panel: 'tables' } },
     h('h2', { class: 'mov-panel__title' }, 'Travel time'),
     lead, tables);
 
-  let last = null;
   // the transition picked here; null follows the map
   let picked = null;
   let mapTransition = null;

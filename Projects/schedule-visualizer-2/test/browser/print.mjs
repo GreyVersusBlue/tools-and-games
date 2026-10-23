@@ -570,6 +570,291 @@ test('the floor plan offers the traced image only when a floor has one to show; 
   assert.equal(await page.evaluate(() => globalThis.sv2.store.project.building.floors[0].image), null, 'the school is as it was for the cases after this one');
 });
 
+// ---------------------------------------------------------------- SV2-32d: the schedule's prints and the travel times
+
+// Load a module of the tool into the page once, under a key of
+// globalThis.sv2modules, by a module script: an import awaited inside
+// page.evaluate came back "Promise was collected" (DECISIONS 2026-10-20).
+async function loadModule(target, key, file) {
+  const held = (wanted) => {
+    const value = globalThis.sv2modules && globalThis.sv2modules[wanted];
+    if (!value) return null;
+    return { error: value[Symbol.toStringTag] === 'Module' ? null : String(value.error) };
+  };
+  let state = await target.evaluate(held, key);
+  if (state === null) {
+    const name = JSON.stringify(key);
+    await target.addScriptTag({ type: 'module', content: 'const modules = (globalThis.sv2modules ||= {}); import(' + JSON.stringify(new URL(file, session.url('')).href) + ').then((module) => { modules[' + name + '] = module; }, (error) => { modules[' + name + '] = { error: String((error && error.message) || error) }; });' });
+    state = await (await target.waitForFunction(held, { timeout: 5000 }, key)).jsonValue();
+  }
+  if (state.error !== null) {
+    await target.evaluate((wanted) => delete globalThis.sv2modules[wanted], key);
+    throw new Error('loadModule: ' + file + ' did not load: ' + state.error);
+  }
+}
+
+// The Schedule section has drawn the project as it is.
+function scheduleDrawn() {
+  return page.waitForFunction(() => {
+    const section = document.querySelector('.sch');
+    const sheet = document.querySelector('link[data-sheet="schedule"]');
+    return Boolean(section) && section.dataset.pending !== 'true' && Boolean(sheet) && sheet.sheet !== null;
+  });
+}
+
+// Press a print button the screen drew, and wait for the document it opened
+// to be laid out. The button is pressed where it is: it must be the thing at
+// its own middle.
+async function pressPrint(selector) {
+  await page.waitForSelector(selector);
+  await page.$eval(selector, (button) => button.scrollIntoView({ block: 'center' }));
+  const hit = await page.$eval(selector, (button) => {
+    const box = button.getBoundingClientRect();
+    const there = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return there === button || button.contains(there);
+  });
+  assert.ok(hit, selector + ' is under something');
+  await page.click(selector);
+  await page.waitForSelector('#print-preview[open][data-ready="true"]');
+}
+
+// The document in the preview as tables: each sheet's heading, and each
+// table's rows (each row's cells as text), whether its head row repeats on
+// each sheet, and how far it reaches past its sheet's margins.
+function readTables() {
+  return page.evaluate(() => {
+    const sheet = document.querySelector('#print-preview');
+    const frame = sheet.querySelector('iframe');
+    const doc = frame.contentDocument;
+    const view = frame.contentWindow;
+    return {
+      heading: sheet.querySelector('.preview__title').textContent,
+      title: doc.title,
+      theme: doc.documentElement.dataset.theme,
+      paper: sheet.dataset.paper,
+      sheets: Number(sheet.dataset.sheets),
+      status: sheet.querySelector('.preview__status').textContent,
+      what: Array.from(doc.querySelectorAll('.doc-head__what'), (el) => el.textContent),
+      school: Array.from(doc.querySelectorAll('.doc-head__school'), (el) => el.textContent),
+      dates: doc.querySelectorAll('.doc-head__date').length,
+      sheetColour: view.getComputedStyle(doc.querySelector('.page')).backgroundColor,
+      scripts: doc.querySelectorAll('script').length,
+      html: frame.srcdoc,
+      tables: Array.from(doc.querySelectorAll('table'), (table) => {
+        const page = table.closest('.page');
+        const style = view.getComputedStyle(page);
+        const outer = page.getBoundingClientRect();
+        const inner = table.getBoundingClientRect();
+        return {
+          page: page.querySelector('.doc-head__what').textContent,
+          head: Array.from(table.querySelectorAll('thead th'), (cell) => cell.textContent),
+          repeats: view.getComputedStyle(table.querySelector('thead')).display,
+          rows: Array.from(table.querySelectorAll('tbody tr'), (row) => Array.from(row.children, (cell) => cell.textContent)),
+          past: Math.max(0, outer.left + parseFloat(style.paddingLeft) - inner.left, inner.right - (outer.right - parseFloat(style.paddingRight))),
+          period: table.closest('[data-period]') ? table.closest('[data-period]').dataset.period : null,
+        };
+      }),
+    };
+  });
+}
+
+// What Chromium prints of a document: its sheets and their size in points.
+async function printed(html) {
+  const paper = await session.browser.newPage();
+  try {
+    await paper.goto(session.url(''), { waitUntil: 'load' });
+    await paper.evaluate((markup) => {
+      document.open();
+      document.write(markup);
+      document.close();
+    }, html);
+    await paper.waitForFunction(() => document.readyState === 'complete' && Array.from(document.querySelectorAll('link[rel="stylesheet"]')).every((link) => link.sheet !== null));
+    await paper.evaluate(() => document.fonts.ready.then(() => true));
+    assert.equal(await paper.evaluate(() => getComputedStyle(document.querySelector('.doc-head__what')).fontWeight), '700', 'print.css is applied');
+    const pdf = Buffer.from(await paper.pdf({ preferCSSPageSize: true, printBackground: true })).toString('latin1');
+    const boxes = Array.from(pdf.matchAll(/\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/g)).map((match) => [Math.round(Number(match[3])), Math.round(Number(match[4]))]);
+    return { boxes, sheets: (pdf.match(/\/Type\s*\/Page\b(?!s)/g) || []).length };
+  } finally {
+    await paper.close();
+  }
+}
+
+const SAMPLE_NAME = 'Marrowby Middle School (sample)';
+
+test('the groups, the teacher list and the teachers and rooms by period print from the Import tab: a sheet a day type under the header, every row of the schedule, and the sheets Chromium prints', async () => {
+  await go(page, '#schedule/import');
+  await scheduleDrawn();
+  const counts = await page.evaluate(() => {
+    const project = globalThis.sv2.store.project;
+    let rooms = 0;
+    for (const floor of project.building.floors) rooms += floor.spaces.filter((space) => space.kind === 'room').length;
+    return { groups: project.groups.length, teachers: project.teachers.length, rooms, groupNames: project.groups.map((group) => group.name), teacherNames: project.teachers.map((teacher) => teacher.name) };
+  });
+  const wanted = [
+    { kind: 'groups', label: 'Print the groups', name: 'Groups', what: ['Groups: A Day', 'Groups: B Day'], rows: counts.groups, first: counts.groupNames },
+    { kind: 'teachers', label: 'Print the teacher list', name: 'Teachers', what: ['Teachers'], rows: counts.teachers, first: counts.teacherNames },
+    { kind: 'teacher-grid', label: 'Print the teachers by period', name: 'Teachers by period', what: ['Teachers by period: A Day', 'Teachers by period: B Day'], rows: counts.teachers, first: counts.teacherNames },
+    { kind: 'room-grid', label: 'Print the rooms by period', name: 'Rooms by period', what: ['Rooms by period: A Day', 'Rooms by period: B Day'], rows: counts.rooms, first: null },
+  ];
+  for (const one of wanted) {
+    const selector = '#print-export-' + one.kind;
+    assert.equal(await page.$eval(selector, (button) => button.textContent), one.label);
+    await pressPrint(selector);
+    const seen = await readTables();
+    const at = one.kind;
+    assert.equal(seen.heading, 'Print: ' + one.name, at);
+    assert.equal(seen.title, one.name + ' · ' + SAMPLE_NAME, at);
+    assert.deepEqual(seen.what, one.what, at + ': a sheet a day type, each under its own header');
+    assert.deepEqual(seen.school, one.what.map(() => SAMPLE_NAME), at);
+    assert.equal(seen.dates, one.what.length, at);
+    assert.equal(seen.theme, 'light', at);
+    assert.equal(seen.sheetColour, 'rgb(255, 255, 255)', at + ': light paper under the dark planner');
+    assert.equal(seen.scripts, 0, at);
+    assert.equal(seen.tables.length, one.what.length, at + ': a table a sheet');
+    for (const table of seen.tables) {
+      assert.equal(table.repeats, 'table-header-group', at + ': the head row repeats on every sheet the table runs on to');
+      assert.equal(table.rows.length, one.rows, at + ': every row');
+      assert.ok(table.past <= 0.5, at + ': the table reaches ' + table.past + ' px past the margins of ' + table.page);
+      if (one.first) assert.deepEqual(table.rows.map((row) => row[0].startsWith(one.first[table.rows.indexOf(row)])), one.first.map(() => true), at + ': in the schedule\'s order');
+    }
+    if (one.kind !== 'teachers') assert.deepEqual(seen.tables[0].head.slice(1, 3).map((cell) => cell.slice(0, 8)), ['Period 1', 'Period 2'], at + ': a column a period');
+    // the count the preview says is the count Chromium prints, on the paper it names
+    assert.equal(seen.sheets, one.what.length, at + ': one sheet a day type');
+    assert.equal(seen.status, 'US Letter, portrait. About ' + seen.sheets + (seen.sheets === 1 ? ' sheet.' : ' sheets.'), at);
+    const pdf = await printed(seen.html);
+    assert.equal(pdf.sheets, seen.sheets, at + ': sheets of paper');
+    for (const box of pdf.boxes) assert.deepEqual(box, [612, 792], at + ': US Letter, in points');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.getElementById('print-preview') === null);
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'print-export-' + one.kind, at + ': focus goes back to the button');
+  }
+});
+
+test('a day too long for the sheet prints in parts from the Grid tab, each part inside the margins and a sheet of its own; on its side the day is one sheet', async () => {
+  await loadModule(page, 'actions', 'engine/actions.js');
+  const before = await page.evaluate(() => globalThis.sv2.store.history.past.length);
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.setSetting, { key: 'periods', value: 12 }));
+  try {
+    await go(page, '#schedule/grid');
+    await scheduleDrawn();
+    await page.click('.grd-toolbar input[value="teachers"]');
+    await page.waitForFunction(() => document.querySelector('.grd').dataset.rows === 'teachers' && document.querySelector('.sch').dataset.pending !== 'true' && document.getElementById('print-grid-teachers') !== null);
+    assert.equal(await page.$eval('#print-grid-teachers', (button) => button.textContent), 'Print the teachers by period');
+    await pressPrint('#print-grid-teachers');
+    let seen = await readTables();
+    assert.deepEqual(seen.what, ['Teachers by period: A Day, Period 1 to Period 6', 'Teachers by period: A Day, Period 7 to Period 12', 'Teachers by period: B Day, Period 1 to Period 6', 'Teachers by period: B Day, Period 7 to Period 12']);
+    assert.deepEqual(seen.tables.map((table) => table.head.length), [7, 7, 7, 7], 'the names and six periods a part');
+    assert.deepEqual(seen.tables[1].rows.map((row) => row[0]), seen.tables[0].rows.map((row) => row[0]), 'the names again on the second part');
+    for (const table of seen.tables) assert.ok(table.past <= 0.5, table.page + ' reaches ' + table.past + ' px past the margins');
+    assert.equal(seen.sheets, 4);
+    let pdf = await printed(seen.html);
+    assert.equal(pdf.sheets, 4, 'Chromium prints a sheet a part');
+
+    // turned: twelve periods fit across, one sheet a day
+    await page.click('#print-preview .seg__input[value="landscape"]');
+    await page.waitForFunction(() => {
+      const sheet = document.querySelector('#print-preview');
+      return sheet.dataset.ready === 'true' && sheet.dataset.paper === 'letter landscape';
+    });
+    seen = await readTables();
+    assert.deepEqual(seen.what, ['Teachers by period: A Day', 'Teachers by period: B Day']);
+    assert.deepEqual(seen.tables.map((table) => table.head.length), [13, 13]);
+    for (const table of seen.tables) assert.ok(table.past <= 0.5, table.page + ' on its side reaches ' + table.past + ' px past the margins');
+    assert.equal(seen.sheets, 2);
+    pdf = await printed(seen.html);
+    assert.equal(pdf.sheets, 2);
+    for (const box of pdf.boxes) assert.deepEqual(box, [792, 612], 'US Letter on its side, in points');
+    await page.click('#print-preview [data-action="close"]');
+    await page.waitForFunction(() => document.getElementById('print-preview') === null);
+
+    // the rows set to Rooms print the rooms; to Groups, the groups
+    await page.click('.grd-toolbar input[value="rooms"]');
+    await page.waitForFunction(() => document.querySelector('.grd').dataset.rows === 'rooms' && document.querySelector('.sch').dataset.pending !== 'true' && document.getElementById('print-grid-rooms') !== null);
+    await pressPrint('#print-grid-rooms');
+    assert.deepEqual((await readTables()).what, ['Rooms by period: A Day', 'Rooms by period: B Day'], 'on its side still: the paper is the project\'s');
+    await page.click('#print-preview [data-action="close"]');
+    await page.waitForFunction(() => document.getElementById('print-preview') === null);
+    await page.click('.grd-toolbar input[value="groups"]');
+    await page.waitForFunction(() => document.querySelector('.grd').dataset.rows === 'groups' && document.querySelector('.sch').dataset.pending !== 'true' && document.getElementById('print-grid-groups') !== null);
+    await pressPrint('#print-grid-groups');
+    assert.deepEqual((await readTables()).what, ['Groups: A Day', 'Groups: B Day']);
+    await page.click('#print-preview [data-action="close"]');
+    await page.waitForFunction(() => document.getElementById('print-preview') === null);
+  } finally {
+    await page.evaluate((length) => {
+      const { store } = globalThis.sv2;
+      while (store.history.past.length > length) store.undo();
+    }, before);
+  }
+  assert.deepEqual(await page.evaluate(() => [globalThis.sv2.store.project.settings.periods, globalThis.sv2.store.project.settings.paper.orientation]), [8, 'portrait'], 'the school is as it was for the cases after this one');
+});
+
+test('the Teachers tab prints the teacher list', async () => {
+  await go(page, '#schedule/teachers');
+  await scheduleDrawn();
+  assert.equal(await page.$eval('#print-teachers', (button) => button.textContent), 'Print the teacher list');
+  await pressPrint('#print-teachers');
+  const seen = await readTables();
+  assert.deepEqual(seen.what, ['Teachers']);
+  assert.deepEqual(seen.tables[0].head, ['Teacher', 'Subject code', 'Subject', 'Rooms', 'Notes']);
+  assert.equal(seen.tables[0].rows.length, await page.evaluate(() => globalThis.sv2.store.project.teachers.length));
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.getElementById('print-preview') === null);
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'print-teachers');
+});
+
+test('the Travel time tab prints its day type\'s tables: each transition\'s walks and the whole day\'s, in the tab\'s order, and the sheets Chromium prints', async () => {
+  await go(page, '#movement');
+  const settled = () => page.waitForFunction(() => {
+    const section = document.querySelector('.mov');
+    if (!section || section.dataset.styled !== 'true' || section.dataset.pending === 'true') return false;
+    const movement = section.movement;
+    return movement.state !== null && movement.state.results !== null && movement.state.project === globalThis.sv2.store.project;
+  }, { timeout: 15000 });
+  await settled();
+  await page.click('#inspector [role="tab"][data-tab="tables"]');
+  await page.waitForSelector('#inspector [data-panel="tables"] .mov-travel__group');
+  // the tab's own order: the transition it shows, and the whole day
+  const tab = await page.evaluate(() => {
+    const panel = document.querySelector('#inspector [data-panel="tables"]');
+    const names = (selector) => Array.from(panel.querySelectorAll(selector + ' .mov-travel__group .mov-travel__name'), (el) => el.textContent);
+    return { period: panel.querySelector('[data-travel="transition"]').dataset.period, one: names('[data-travel="transition"]'), day: names('[data-travel="day"]') };
+  });
+  assert.equal(await page.$eval('#print-travel-time', (button) => button.textContent), 'Print the travel times');
+  await pressPrint('#print-travel-time');
+  const seen = await readTables();
+  assert.equal(seen.heading, 'Print: Travel time');
+  assert.deepEqual(seen.what, ['Travel time: A Day'], 'the day type on the map');
+  const transitions = seen.tables.filter((table) => table.period !== null);
+  const day = seen.tables.filter((table) => table.period === null);
+  assert.ok(transitions.length >= 1);
+  assert.equal(day.length, 1);
+  const shown = transitions.find((table) => table.period === tab.period);
+  assert.deepEqual(shown.rows.map((row) => row[0]), tab.one, 'the transition the tab shows, in its order');
+  assert.deepEqual(day[0].rows.map((row) => row[0]), tab.day, 'the whole day, in the tab\'s order');
+  for (const table of seen.tables) {
+    assert.equal(table.repeats, 'table-header-group');
+    assert.ok(table.past <= 0.5, table.page + ' reaches ' + table.past + ' px past the margins');
+  }
+  assert.ok(seen.sheets >= 2, 'the whole day starts a sheet');
+  const pdf = await printed(seen.html);
+  assert.equal(pdf.sheets, seen.sheets, 'the count the preview says is the count Chromium prints');
+  await page.click('#print-preview [data-action="close"]');
+  await page.waitForFunction(() => document.getElementById('print-preview') === null);
+
+  // B Day on the map: B Day on paper
+  await page.evaluate(() => document.querySelector('.mov').movement.change({ dayTypeId: 'dsample00b' }));
+  await settled();
+  await page.waitForFunction(() => document.querySelector('#inspector [data-panel="tables"]').dataset.day === 'dsample00b');
+  await pressPrint('#print-travel-time');
+  assert.deepEqual((await readTables()).what, ['Travel time: B Day']);
+  await page.click('#print-preview [data-action="close"]');
+  await page.waitForFunction(() => document.getElementById('print-preview') === null);
+  await page.evaluate(() => document.querySelector('.mov').movement.change({ dayTypeId: 'dsample00a' }));
+  await settled();
+  await go(page, '#project');
+});
+
 test('the previews asked for nothing outside the tool and nothing went wrong on the page', async () => {
   const problems = session.problems();
   assert.deepEqual(problems.errors, []);
