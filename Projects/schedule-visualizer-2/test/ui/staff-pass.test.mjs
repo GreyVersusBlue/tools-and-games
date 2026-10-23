@@ -32,7 +32,7 @@ import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { noteCountOf } from '../../staff/notes.js';
-import { render as renderBatch, batchCount, batchWords, BATCHES, UPRIGHT_ASKED, UPRIGHT_COVER, UPRIGHT_SENTENCE } from '../../ui/prints/batch.js';
+import { render as renderBatch, batchCount, batchWords, BATCHES, UPRIGHT_ASKED, UPRIGHT_COVER, UPRIGHT_SENTENCE, UPRIGHT_ALL_SENTENCE } from '../../ui/prints/batch.js';
 import { GROUPS } from '../run.mjs';
 import { readTool } from '../publish/reader.mjs';
 
@@ -892,5 +892,7 @@ test('a door sign is never laid on its side: asked for landscape the batch is po
     ['teacher-schedules', false, null],
     ['door-signs', true, UPRIGHT_SENTENCE],
     ['door-signs-day', true, UPRIGHT_SENTENCE],
+    ['room-schedules', false, null],
+    ['whole-school', true, UPRIGHT_ALL_SENTENCE],
   ]);
 });

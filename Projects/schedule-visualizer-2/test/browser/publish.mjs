@@ -2154,13 +2154,17 @@ test('a map\'s listeners leave when its page gives way to a screen that is not a
 
 test('batch printing: each button opens the preview sheet on one document, a sheet per teacher or room after the cover', async () => {
   await closing(await open(), async (page) => {
-    assert.equal(await says(page, 'batch'), 'One document each, a sheet for every teacher or room after a cover sheet: 12 teachers, 13 rooms. Choose "Save as PDF" in the print dialog for one file.');
+    assert.equal(await says(page, 'batch'), 'One document each, a sheet for every teacher or room after a cover sheet: 12 teachers, 13 rooms. The last puts every teacher’s schedule, every door sign and every room’s schedule in one document. Choose "Save as PDF" in the print dialog for one file.');
     const expected = [
-      ['teacher-schedules', 'Print every teacher’s schedule', 'Teacher schedules', 12, 'teacher'],
-      ['door-signs', 'Print every door sign', 'Door signs', 13, 'door'],
-      ['door-signs-day', 'Print every door sign with the room’s day', 'Door signs with each room’s day', 13, 'door'],
+      ['teacher-schedules', 'Print every teacher’s schedule', 'Teacher schedules', new Array(12).fill('teacher')],
+      ['door-signs', 'Print every door sign', 'Door signs', new Array(13).fill('door')],
+      ['door-signs-day', 'Print every door sign with the room’s day', 'Door signs with each room’s day', new Array(13).fill('door')],
+      ['room-schedules', 'Print every room’s schedule', 'Room schedules', new Array(13).fill('room')],
+      ['whole-school', 'Print every schedule and door sign in one document', 'Every schedule and door sign', new Array(12).fill('teacher').concat(new Array(13).fill('door'), new Array(13).fill('room'))],
     ];
-    for (const [output, label, what, sheets, kind] of expected) {
+    assert.deepEqual(await page.evaluate(() => Array.from(document.querySelectorAll('.pub [data-print]'), (button) => button.dataset.print)), expected.map((each) => each[0]), 'the five buttons, in this order');
+    for (const [output, label, what, kinds] of expected) {
+      const sheets = kinds.length;
       const selector = '.pub [data-print="' + output + '"]';
       assert.equal(await page.evaluate((s) => document.querySelector(s)?.textContent ?? null, selector), label, 'the button for ' + output);
       await page.click(selector);
@@ -2189,12 +2193,12 @@ test('batch printing: each button opens the preview sheet on one document, a she
       assert.equal(shown.output, output);
       assert.equal(shown.what, what);
       assert.equal(shown.school, SCHOOL);
-      assert.deepEqual(shown.newSheets, new Array(sheets).fill(kind), output + ': one new sheet each');
+      assert.deepEqual(shown.newSheets, kinds, output + ': one new sheet each');
       assert.ok(shown.breaks.every((value) => value === 'page'), output + ': each starts a sheet of paper');
       assert.equal(shown.sheets, sheets + 1, output + ': the cover and one sheet each, none running on to a second');
       // a US Letter sheet's printable height is 251.4 mm, 950 px
       assert.ok(shown.tallest < 950, output + ': the tallest sheet fits the paper: ' + shown.tallest);
-      if (kind === 'door') assert.equal(shown.numberPx, 160, 'the room number at 120 pt');
+      if (kinds.includes('door')) assert.equal(shown.numberPx, 160, 'the room number at 120 pt');
       if (output !== 'door-signs') assert.equal(shown.columns, 2, output + ': the two day types side by side');
       assert.equal(shown.scripts, 0);
       await page.click('#print-preview [data-action="close"]');
