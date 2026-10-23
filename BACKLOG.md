@@ -2352,15 +2352,7 @@ Deeper side content was not asked for and was not written.
    in the last two endings. To take it out: `git revert` the four commits of
    #958; a save that had seen one of its two endings loads with that ending
    dropped by `repair` and the rest kept.
-2. **A walker is told nothing about why "The Last Waking" is not on offer**
-   when they come to the hollow with a piece or a borne name. The prose hints
-   at it twice; the game's unused `.locked-note` style would say it outright.
-   **Decided 2026-10-21 (#1008, FC-locked): "Add a line"** (he changed the
-   default, "no line"). Build it: one line, in the `.locked-note` style, that
-   tells a walker why that ending is not on offer. A small unit, buildable now;
-   the line's wording is the builder's, and the seam's text is pinned by hash,
-   so a change to it moves the suite's pinned runs.
-3. **The preview and the social card still show the game as it was.** The
+2. **The preview and the social card still show the game as it was.** The
    capture takes the first choice every time, so it never walks the seam and
    needs no re-take; the board's description does not count endings.
 

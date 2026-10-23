@@ -130,6 +130,17 @@ is the only run in which nobody tells them what they are, and the only one
 that says what the socket has been doing all along. The worst ending's last
 line gets an answer in "The Last Waking".
 
+## The name that is not offered
+
+A walker at the hollow who is not given "The Last Waking" reads one line
+between the prose and the choices (`#lockedNote`, the `.locked-note` style),
+written by the page, not by the story, so no node's text and no pinned hash
+moved (#1012). "You are not offered your name here." then the reason that is
+theirs: a name carried from the old one, pieces in hand because each came with
+a promise, a debt or a prediction, or both. It says what would be needed ("a
+name cut by your own hand", "empty hands") and no more than the prose already
+says. The line is empty and hidden on every other screen.
+
 ## As built
 
 7 nodes (5 screens and 2 endings), 10 choices of its own and 2 more on old

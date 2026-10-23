@@ -286,7 +286,7 @@
     font-size:11px;
     color:var(--parchment-dim);
     font-style:normal;
-    margin-top:2px;
+    margin:10px 0 0;
   }
 
   .restart-row{ display:flex; justify-content:center; margin-top:8px; }
@@ -387,6 +387,7 @@
   <div class="story-panel">
     <h2 class="node-title" id="nodeTitle" tabindex="-1"></h2>
     <div class="node-text" id="nodeText"></div>
+    <p class="locked-note" id="lockedNote" hidden></p>
     <div class="choices" id="choices"></div>
   </div>
 
@@ -731,6 +732,7 @@ import { SAVE_KEY, SAVE_VERSION, ENDING_IDS, freshProgress, validateProgress, re
   const titleEl = document.getElementById('nodeTitle');
   const textEl = document.getElementById('nodeText');
   const choicesEl = document.getElementById('choices');
+  const noteEl = document.getElementById('lockedNote');
   const alignLabel = document.getElementById('alignLabel');
   const alignMarker = document.getElementById('alignMarker');
   const favR = document.getElementById('favR');
@@ -839,6 +841,14 @@ import { SAVE_KEY, SAVE_VERSION, ENDING_IDS, freshProgress, validateProgress, re
     window.scrollTo({top:0, behavior: stillPlease.matches ? 'auto' : 'smooth'});
   }
 
+  function seamNameNote(){
+    const carrying = state.fragments.length>0, borne = state.seam.name!=='own';
+    if(carrying && borne) return "You are not offered your name here. You answer to the old one, and every piece you carry came with a promise, a debt or a prediction. It would take a name of your own and empty hands.";
+    if(carrying) return "You are not offered your name here. Every piece you carry came with a promise, a debt or a prediction. It would take empty hands.";
+    if(borne) return "You are not offered your name here. You answer to the old one. It would take a name cut by your own hand.";
+    return '';
+  }
+
   function render(){
     const node = nodes[currentId];
     titleEl.textContent = node.title;
@@ -850,6 +860,12 @@ import { SAVE_KEY, SAVE_VERSION, ENDING_IDS, freshProgress, validateProgress, re
     textEl.innerHTML = html;
 
     choicesEl.innerHTML = '';
+
+    // Why "The Last Waking" is missing from the hollow's choices (#1012). It
+    // sits between the prose and the buttons, outside #choices, so a screen
+    // reader reads it in order, and it is empty everywhere else.
+    noteEl.textContent = currentId==='seam_answer' ? seamNameNote() : '';
+    noteEl.hidden = !noteEl.textContent;
 
     if(node.ending){
       const tag = document.createElement('div');
