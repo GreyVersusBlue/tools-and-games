@@ -110,7 +110,7 @@ export function parse(text) {
         i = end;
         warn(
           "unclosed-quote",
-          `Row ${rows.length + 1} has a quoted cell that never closes. Everything after its opening quote was read as one cell.`,
+          `Row ${rows.length + 1} has a quoted entry that never closes. Everything after its opening quote was read as one entry.`,
         );
       }
       // Line breaks inside the quotes still count as lines of the file.
@@ -143,7 +143,7 @@ export function parse(text) {
     if (ch === QUOTE) {
       warn(
         "stray-quote",
-        `Row ${rows.length + 1} has a quote in the middle of a cell that is not quoted. The quote was kept as typed.`,
+        `Row ${rows.length + 1} has a quote in the middle of an entry that is not quoted. The quote was kept as typed.`,
       );
     }
     cell += ch;
@@ -211,5 +211,5 @@ function needsQuotes(cell, alone) {
 }
 
 function count(n) {
-  return n === 1 ? "1 cell" : `${n} cells`;
+  return n === 1 ? "1 entry" : `${n} entries`;
 }

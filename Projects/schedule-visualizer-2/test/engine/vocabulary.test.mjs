@@ -6,7 +6,10 @@
 // the planner's modules (ui/), the staff browser's (staff/) and the engine's
 // (engine/), with comments left out, plus the text of the HTML pages. Each
 // string that says "square" outside ALLOWED_SQUARE fails, and each string in
-// ui/schedule/ that says "cell" outside ALLOWED_CELL fails. An allowed string
+// ui/schedule/ that says "cell" outside ALLOWED_CELL fails, and so does each
+// help sentence that names the schedule grid and says "cell", and each string
+// in engine/csv.js (whose notes call a field of the file an "entry", SV2-32n).
+// An allowed string
 // is named by its file and a piece of its text, with the reason it is allowed:
 // "square" as a shape (the exit's mark, a colour swatch) or a value handed to
 // the canvas or CSS, never one a reader takes for a distance.
@@ -43,7 +46,12 @@ export const ALLOWED_SQUARE = [
 // [file, a piece of the string, why it may say "cell"]
 export const ALLOWED_CELL = [
   ['ui/schedule/groups.js', 'cell', 'the ARIA role of a table cell, read by a screen reader as "cell" of a table, never as a word of the tool'],
+  ['engine/csv.js', 'write needs rows as an array of arrays of cells.', 'a TypeError for a caller that passes the wrong shape (a programmer\'s mistake), never a note an import shows'],
 ];
+
+// The help's sentences that name the schedule's grid: Schedule › Grid, or
+// "the schedule grid" / "the schedule's grid".
+const SCHEDULE_GRID = /Schedule\s*(?:›|>)\s*Grid|\bschedule(?:'s|’s)? grid\b/i;
 
 function filesUnder(folder) {
   const out = [];
@@ -150,11 +158,11 @@ export function htmlText(source) {
   return lines;
 }
 
-function scan(folders, word, allowed) {
+function scan(folders, word, allowed, only = () => true) {
   const hits = [];
   const used = new Set();
   for (const folder of folders) {
-    for (const file of filesUnder(folder)) {
+    for (const file of filesUnder(folder).filter(only)) {
       const source = readFileSync(path.join(TOOL, file), 'utf8');
       const strings = file.endsWith('.html') ? htmlText(source) : stringsOf(source);
       for (const { text, line } of strings) {
@@ -190,7 +198,21 @@ test('ui/, staff/ and engine/ say "cell" for a square of a floor\'s grid: "squar
 });
 
 test('the schedule (ui/schedule/) says "slot" for a box of its grid, never "cell" (spec 2: a cell is a floor\'s)', () => {
-  const { hits, unused } = scan(['ui/schedule'], CELL, ALLOWED_CELL);
+  const { hits, unused } = scan(['ui/schedule'], CELL, ALLOWED_CELL.filter(([file]) => file.startsWith('ui/schedule/')));
   assert.deepEqual(hits, [], 'a user-visible string in ui/schedule/ says "cell" (or add it to ALLOWED_CELL with why):\n' + hits.join('\n'));
   assert.deepEqual(unused, [], 'an allowed "cell" no longer exists: take its line out of ALLOWED_CELL');
+});
+
+test('the help says "slot" for a box of the schedule grid, never "cell" (spec 2: a cell is a floor\'s)', () => {
+  const file = 'ui/help/content.js';
+  const grid = stringsOf(readFileSync(path.join(TOOL, file), 'utf8')).filter(({ text }) => SCHEDULE_GRID.test(text));
+  assert.ok(grid.length > 0, 'no help string names the schedule grid any more: SCHEDULE_GRID matches nothing, so this check checks nothing');
+  const hits = grid.filter(({ text }) => CELL.test(text)).map(({ text, line }) => file + ':' + line + '  ' + JSON.stringify(text));
+  assert.deepEqual(hits, [], 'a help sentence about the schedule grid says "cell" where spec 2 says "slot":\n' + hits.join('\n'));
+});
+
+test('engine/csv.js\'s notes say "entry" for a field of the imported file, never "cell" (spec 2: a cell is a floor\'s)', () => {
+  const { hits, unused } = scan(['engine'], CELL, ALLOWED_CELL.filter(([file]) => file.startsWith('engine/')), (file) => file === 'engine/csv.js');
+  assert.deepEqual(hits, [], 'a note engine/csv.js shows says "cell" where SV2-32f\'s import rules say "entry" (or add it to ALLOWED_CELL with why):\n' + hits.join('\n'));
+  assert.deepEqual(unused, [], 'an allowed "cell" in engine/csv.js no longer exists: take its line out of ALLOWED_CELL');
 });

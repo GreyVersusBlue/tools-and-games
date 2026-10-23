@@ -232,15 +232,15 @@ test("parse: a ragged row is kept and warned, with its row and line", () => {
   const result = parse("a,b,c\n1,2\n\n1,2,3\n1,2,3,4\n");
   assert.deepEqual(result.rows, [["a", "b", "c"], ["1", "2"], ["1", "2", "3"], ["1", "2", "3", "4"]]);
   assert.deepEqual(result.warnings, [
-    { kind: "ragged", row: 2, line: 2, message: "Row 2 has 2 cells; the first row has 3 cells. The row was kept as it is." },
-    { kind: "ragged", row: 4, line: 5, message: "Row 4 has 4 cells; the first row has 3 cells. The row was kept as it is." },
+    { kind: "ragged", row: 2, line: 2, message: "Row 2 has 2 entries; the first row has 3 entries. The row was kept as it is." },
+    { kind: "ragged", row: 4, line: 5, message: "Row 4 has 4 entries; the first row has 3 entries. The row was kept as it is." },
   ]);
 });
 
 test("parse: a warning's line counts line breaks inside quoted cells", () => {
   const result = parse('a,b\n"x\ny\r\nz",2\n3\n');
   assert.deepEqual(result.warnings.map((w) => [w.kind, w.row, w.line]), [["ragged", 3, 5]]);
-  assert.match(result.warnings[0].message, /^Row 3 has 1 cell; /);
+  assert.match(result.warnings[0].message, /^Row 3 has 1 entry; /);
 });
 
 test("parse: a quote in the middle of an unquoted cell is kept and warned once for the row", () => {
