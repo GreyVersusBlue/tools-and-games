@@ -87,7 +87,7 @@ every rule on this page and `engine/repair.js` enforces them on every load.
 | `checks.passingMarginSeconds` | integer | `0` | 0 to 600. Added to the passing time before a walk counts as late. |
 | `checks.off` | text[] | `[]` | The check kinds switched off, each once. |
 | `timeFormat` | text | `"12h"` | `"12h"` or `"24h"`. Display only; times are stored as 24-hour. |
-| `paper.size` | text | `"letter"` | `"letter"` or `"a4"`. A new project takes the device's region. |
+| `paper.size` | text | `"letter"` | One of `"letter"` (US Letter), `"a4"`, `"tabloid"` (11 × 17 in), `"a3"`, `"a2"`, `"a1"`, `"a0"` or `"poster-24x36"` (24 × 36 in). A new project takes the device's region. An unknown size reads as `"letter"`: a saved project or an older file is repaired to it with a note, and a print asked for one lays out on US Letter; a project file of the current version that names one is refused, as any value out of range is. |
 | `paper.orientation` | text | `"portrait"` | `"portrait"` or `"landscape"`. |
 | `theme` | text | `"auto"` | `"auto"`, `"light"` or `"dark"`. |
 
