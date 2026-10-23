@@ -68,6 +68,21 @@ test('a picture is named for what it is, then for the page\'s heading, in letter
   assert.equal(fileWords('  Ms. O’Neil  '), 'ms-o-neil');
 });
 
+test('a name\'s vowel signs and accents stay with its letters, and the name stays one a disk takes', () => {
+  // Devanagari's vowel signs are marks (\p{M}), not letters
+  assert.equal(fileWords('दीपा'), 'दीपा');
+  assert.equal(pictureName('teacher', 'दीपा'), 'schedule-दीपा.png');
+  assert.equal(pictureName('group', 'Kristiina Ka\u0301rdenas'), 'group-kristiina-kárdenas.png', 'a decomposed accent is composed with its letter');
+  assert.equal(pictureName('group', 'تَعَلُّم'), 'group-تَعَلُّم.png', 'Arabic\'s vowel marks are kept');
+  assert.equal(pictureName('group', '\u0301\u0308 6A'), 'group-6a.png', 'a mark with no letter before it is not a word');
+  assert.equal(pictureName('room', 'CON'), 'room-con.png', 'a reserved name is never the whole name');
+  assert.equal(pictureName('nothing', 'NUL'), 'page-nul.png');
+  assert.equal(pictureName('room', 'Room 101.'), 'room-101.png', 'no dot before ".png" but its own');
+  const long = pictureName('teacher', 'दीपा '.repeat(60));
+  assert.ok(Array.from(long).length <= 84, 'at most 80 characters before ".png": ' + Array.from(long).length);
+  assert.ok(!/-\.png$/.test(long), long);
+});
+
 test('a page is drawn three times over on a phone, twice on a desktop, less only where a canvas cannot hold it, and refused under one', () => {
   assert.equal(pictureScale(422, 2000), PICTURE_SCALE);
   assert.equal(pictureScale(752, 2000), PICTURE_WIDE_SCALE);

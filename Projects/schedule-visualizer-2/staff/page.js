@@ -100,11 +100,13 @@ export function pictureScale(width, height) {
   return scale >= PICTURE_LEAST_SCALE ? scale : 0;
 }
 
-// The words of a file's name: letters and digits of any script, everything
-// else a hyphen, at most 60 of them (a name in a script of three bytes a
+// The words of a file's name: letters, their marks and digits of any
+// script, everything else a hyphen, at most 60 of them (a name in a script of three bytes a
 // letter still fits any disk's 255).
 export function fileWords(text) {
-  const words = String(text).normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '');
+  // a mark (an accent left apart, a vowel sign) is kept with the letter it
+  // is on: "दीपा" is one word. One standing on no letter is dropped.
+  const words = String(text).normalize('NFC').toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, '-').replace(/(^|-)\p{M}+/gu, '$1').replace(/-+/g, '-').replace(/^-+|-+$/g, '');
   return Array.from(words).slice(0, 60).join('').replace(/-+$/, '');
 }
 
