@@ -1,7 +1,8 @@
 // The Getting started card (DESIGN 5.0): the five steps of a new project as a
 // checklist, each a link to its screen and ticked when the project has what
 // the step needs. "Dismiss" hides it for this project, "Don't show this again"
-// says never, and Help brings it back.
+// says never, and Help brings it back. The X in the top right corner and
+// Escape with the focus in the card do what Dismiss does (SV2-74).
 //
 // Under 1000 px the card lies above the section, and is folded to its title
 // and tally so the section keeps the window: "Show the steps" unfolds it
@@ -23,6 +24,7 @@ export function gettingStarted(ctx) {
   const bodyId = uid('getting-started-steps');
   const toggle = h('button', { type: 'button', class: 'btn btn--quiet getting-started__toggle', 'aria-expanded': 'false', 'aria-controls': bodyId, data: { action: 'steps' }, on: { click: () => unfold(!open) } }, 'Show the steps');
   let open = false;
+  const close = h('button', { type: 'button', class: 'icon-btn getting-started__close', 'aria-label': 'Close Getting started', title: 'Close', data: { action: 'close' }, on: { click: () => hide({ dismissed: true }) } }, icon('close'));
 
   const element = h('section', { class: 'getting-started', 'aria-labelledby': titleId, id: 'getting-started' },
     h('div', { class: 'getting-started__head' },
@@ -30,7 +32,8 @@ export function gettingStarted(ctx) {
         h('p', { class: 'eyebrow' }, 'A new project in five steps'),
         h('h2', { class: 'card__title', id: titleId }, 'Getting started'),
         tally),
-      toggle),
+      toggle,
+      close),
     h('div', { class: 'getting-started__body', id: bodyId },
       list,
       h('div', { class: 'getting-started__sample-row' }, sampleLine, sampleButton),
@@ -39,6 +42,14 @@ export function gettingStarted(ctx) {
         h('button', { type: 'button', class: 'btn btn--quiet', data: { action: 'never' }, on: { click: () => hide({ neverShow: true }) } }, 'Don’t show this again'),
       )),
   );
+
+  // Escape with the focus anywhere in the card closes it, as the X does.
+  element.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    event.preventDefault();
+    event.stopPropagation();
+    hide({ dismissed: true });
+  });
 
   // A step that is chosen is where the work is now: the steps fold away
   // again, so on a narrow window the section they lead to is not under them.
@@ -78,7 +89,7 @@ export function gettingStarted(ctx) {
       ),
     )));
     const isSample = project.id === SAMPLE_PROJECT_ID;
-    sampleLine.textContent = isSample ? 'This is the sample school, so most of it is already done. Look around.' : 'Or load the sample school to look around.';
+    sampleLine.textContent = isSample ? 'This is the sample school. Look around.' : 'Or load the sample school to look around.';
     sampleButton.hidden = isSample;
   }
 

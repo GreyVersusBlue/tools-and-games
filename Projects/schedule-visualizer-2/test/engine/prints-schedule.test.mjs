@@ -191,12 +191,14 @@ test('the groups print the groups file\'s cells: a sheet a day type, a row a gro
 
 test('a group\'s colour is a square of that colour by its name; a value that is not a colour is not written at all', () => {
   const project = school();
-  project.groups[0].colour = 'red; background: url(https://example.com/x)';
+  // A relative url(): the smuggled request needs no host to be one, and the
+  // site's integrity check refuses any offsite host named in a file.
+  project.groups[0].colour = 'red; background: url(smuggled.png)';
   const { html } = renderOutput('groups', project, null, NOW);
   const first = tablesOf(html)[0].rows;
   assert.ok(!first[0].cells[0].inside.includes('doc-swatch'), 'no square for a colour that is not one');
   assert.ok(first[1].cells[0].inside.includes('border-left: 3mm solid ' + project.groups[1].colour + ';'), 'the second group\'s own colour');
-  assert.equal(countOf(html, 'example.com'), 0);
+  assert.equal(countOf(html, 'smuggled.png'), 0, 'the url() in the colour is not carried into the print');
 });
 
 test('a room that is not in the building prints as typed, said so under it', () => {
