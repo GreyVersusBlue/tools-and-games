@@ -1632,6 +1632,11 @@ const FOOTED = [
   { width: 740, height: 360, mobile: true },
   // the foot 105 px over a 217 px stage, the first line kept
   { width: 1600, height: 460 },
+  // the same at 1280 and 1366: the legend docking took the stage from 245
+  // to 217 px, and a fit judged the old height against the new foot, then
+  // turned back once the stage was measured: 3 fit turns (SV2-32b)
+  { width: 1280, height: 460 },
+  { width: 1366, height: 460 },
   // the foot 12 px over the stage once the first line stops the scroll
   { width: 800, height: 390, mobile: true },
   { width: 844, height: 390, mobile: true },
