@@ -1874,7 +1874,7 @@ test('every page has one Share, and one Print when it has something to print; Sh
   try {
     await goto(plain.page, files.open.url + '#/group/gsample06a');
     assert.equal(await count(plain.page, '[data-actions="share"]'), 0, 'no share sheet, no Share');
-    assert.deepEqual(await texts(plain.page, '.page__outputs button'), ['Print this page']);
+    assert.deepEqual(await texts(plain.page, '.page__outputs button'), ['Print this page', 'Save as image']);
     assert.deepEqual(plain.errors, []);
   } finally {
     await plain.close();

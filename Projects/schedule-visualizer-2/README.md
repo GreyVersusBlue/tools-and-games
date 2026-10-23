@@ -222,6 +222,7 @@ row names a file it does not run.
 | `test/browser/staff-views-a.mjs` | The teacher, group, room, building map and staffing pages |
 | `test/browser/staff-views-b.mjs` | Free right now, Where right now, Common planning, Coverage, the substitute plan, Directions |
 | `test/browser/staff-outputs.mjs` | My schedule, notes, the lock-screen image, the door sign, every page on paper, batch sheets |
+| `test/browser/staff-pictures.mjs` | Every staff page and the door sign saved as an image, held square by square to a screenshot of the page |
 | `test/browser/publish.mjs` | The Staff browser section: the preview, the publish form, a file published and opened from disk, batch printing |
 | `test/browser/m3-pass.mjs` | The movement view after the walk-through of it: the map first, the page that does not scroll, the toast above the dock |
 | `test/browser/m4-pass.mjs` | The published file on a phone after the walk-through: M1 to M8 |

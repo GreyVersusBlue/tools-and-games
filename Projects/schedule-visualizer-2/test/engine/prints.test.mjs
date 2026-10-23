@@ -169,7 +169,7 @@ test('every output is a whole document: header with school, what it is and the d
       assert.ok(html.includes('<h1 class="doc-head__what">' + output.name), at + ': what this is');
       assert.ok(html.includes('<p class="doc-head__date">1 September 2026</p>'), at + ': the date');
       // a batch has no closing line: its last sheet is the paper's height, and the line was a sheet more (SV2-49 item 3)
-      const batch = ['teacher-schedules', 'door-signs', 'door-signs-day'].includes(output.id);
+      const batch = ['teacher-schedules', 'door-signs', 'door-signs-day', 'room-schedules', 'whole-school'].includes(output.id);
       assert.equal(countOf(html, '<footer class="doc-foot">' + TOOL_NAME + '</footer>'), batch ? 0 : 1, at + ': the footer');
       assert.ok(html.trimEnd().endsWith('</html>'), at + ': closed');
       assert.equal(countOf(html, '<header class="doc-head">'), countOf(html, '<section class="page">'), at + ': a header on every sheet');
@@ -202,7 +202,7 @@ test('the stylesheets are found where the caller says they are', () => {
 });
 
 test('the outputs are listed once each, and every print button names one of them', () => {
-  assert.deepEqual(OUTPUTS.map((output) => output.id), ['floor-plan', 'room-list', 'checks', 'teacher-schedules', 'door-signs', 'door-signs-day', 'movement', 'congestion', 'door-cards', 'groups', 'teachers', 'teacher-grid', 'room-grid', 'travel-time']);
+  assert.deepEqual(OUTPUTS.map((output) => output.id), ['floor-plan', 'room-list', 'checks', 'teacher-schedules', 'door-signs', 'door-signs-day', 'room-schedules', 'whole-school', 'movement', 'congestion', 'door-cards', 'groups', 'teachers', 'teacher-grid', 'room-grid', 'travel-time']);
   for (const output of OUTPUTS) {
     assert.equal(typeof output.render, 'function');
     assert.equal(outputFor(output.id), output);
@@ -243,6 +243,8 @@ test('hostile names come through every output as text, never as markup', () => {
     'teacher-schedules': ['school', 'room', 'teacher', 'subject', 'group', 'day type'],
     'door-signs': ['school', 'floor', 'room', 'teacher', 'subject'],
     'door-signs-day': ['school', 'floor', 'room', 'teacher', 'subject', 'group', 'day type'],
+    'room-schedules': ['school', 'floor', 'room', 'teacher', 'subject', 'group', 'day type'],
+    'whole-school': ['school', 'floor', 'room', 'teacher', 'subject', 'group', 'day type'],
     movement: ['school', 'group', 'day type'],
     congestion: ['school', 'group', 'day type'],
     'door-cards': ['school', 'floor', 'room', 'other space', 'corridor', 'door', 'assembly', 'stairs'],

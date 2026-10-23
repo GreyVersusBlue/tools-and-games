@@ -15,7 +15,7 @@
 
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
-import { pageOf, missingPage, printButton } from '../page.js';
+import { pageOf, missingPage, printButton, pictureButton } from '../page.js';
 import { dayKindsOf } from './teacher.js';
 import { roomUse } from './room.js';
 
@@ -319,7 +319,8 @@ export const doorView = {
     if (!room) return missingPage('room');
     const name = school.roomName(room, true);
 
-    const sheet = h('div', { class: 'sheet', 'data-theme': 'light', dataset: { sheet: 'door' } });
+    // the sheet is the picture "Save the sign as an image" makes (page.js)
+    const sheet = h('div', { class: 'sheet', 'data-theme': 'light', dataset: { sheet: 'door', picture: 'sign' } });
     const box = h('input', { class: 'check__input', id: 'door-day', type: 'checkbox', checked: route.query.day === '1' });
     const draw = () => sheet.replaceChildren(nodeOf(signTree(school, room, { day: box.checked })));
     box.addEventListener('change', () => {
@@ -333,6 +334,7 @@ export const doorView = {
         h('label', { class: 'check', for: 'door-day' }, box, h('span', null, 'Show the room\'s day on the sign')),
         h('p', { class: 'actions' },
           printButton('Print the sign', true),
+          pictureButton('Save the sign as an image'),
           school.has('room') ? h('a', { class: 'btn', href: makeHash('room', room.id) }, h('span', null, 'Back to ', typed(name))) : null)),
       sheet);
   },
