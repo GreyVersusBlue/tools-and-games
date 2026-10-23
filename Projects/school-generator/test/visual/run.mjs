@@ -74,6 +74,14 @@ window.renderSheet = async (which) => {
     document.fonts.load('600 11px "Public Sans"'),
     document.fonts.load('400 10px "IBM Plex Mono"'),
   ]);
+  if (which === 'roof-curve') {
+    // No shipped school has a curved roof, so this one is built here; the
+    // picture has no text in it (see curve-school.js).
+    const { drawCurveRoofs } = await import('/test/visual/curve-school.js');
+    const roof = await import('/js/roof.js');
+    const elevation = await import('/js/elevation.js');
+    return drawCurveRoofs(document, roof, elevation).toDataURL('image/png');
+  }
   const { buildSampleSchool } = await import('/js/sample.js');
   const bp = await import('/js/blueprint.js');
   const state = buildSampleSchool();
@@ -139,6 +147,9 @@ const CAPTURES = [
   { name: 'sheet-elevation', sheet: 'elevation' },
   { name: 'sheet-section', sheet: 'section' },
   { name: 'sheet-spec', sheet: 'spec' },
+  // The curved roofs (#1013): hip on the straight skeleton and parapet on
+  // the chords, a court in one building, from above and from the south.
+  { name: 'roof-curve', sheet: 'roof-curve' },
   {
     name: 'chrome-edit', width: 1600, height: 950,
     prep: `${hideView}`,
