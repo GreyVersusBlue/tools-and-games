@@ -996,6 +996,25 @@ const errorsNow = () => session.problems().errors.length;
 // two frames, so an overlay that throws has thrown
 const frames = (p = page) => p.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 
+// Each case below starts from a quiet planner whatever the case before it
+// left behind when it failed: no dialog open, no moving, scaling or placing,
+// Floor 1 on show with the Floor tab up, and the image as fitted to it.
+async function settle(p = page) {
+  await p.evaluate(() => {
+    for (const open of document.querySelectorAll('dialog[open]')) open.close();
+    const editor = document.querySelector('.bld').editor;
+    editor.trace.stopMoving();
+    editor.trace.scaling.cancel(false);
+    const first = globalThis.sv2.store.project.building.floors[0];
+    if (editor.floor.id !== first.id) editor.openFloor(first.id);
+  });
+  await p.waitForFunction(() => document.querySelector('.bld').editor.floor.name === 'Floor 1');
+  await floorTab(p);
+  await freshImage(p);
+  await wholeFloor(p);
+  await clearToast(p);
+}
+
 // An image larger than the floor: 1600 by 1200 pixels drawn 48 by 36 cells
 // from -4, -3, so "Fit the floor to the image" grows the floor to 48 by 36 and
 // cuts nothing (the corridor cell at 39, 29 is under it).
@@ -1007,6 +1026,7 @@ async function largeImage(p) {
 }
 
 test('placing by keyboard where the image already is: the mode ends saying so, nothing changed, and the next Enter places nothing', async () => {
+  await settle();
   await floorTab(page);
   await freshImage(page);
   await wholeFloor(page);
@@ -1044,6 +1064,7 @@ test('placing by keyboard where the image already is: the mode ends saying so, n
 });
 
 test('Fit the image to the floor says the width the image has after the fit', async () => {
+  await settle();
   await smallImage(page);
   await clearToast(page);
   await page.click('#trace-fit');
@@ -1055,6 +1076,7 @@ test('Fit the image to the floor says the width the image has after the fit', as
 });
 
 test('while moving, = resizes like + (the unshifted key) and does not zoom the plan', async () => {
+  await settle();
   await smallImage(page);
   await wholeFloor(page);
   await clearToast(page);
@@ -1078,6 +1100,7 @@ test('while moving, = resizes like + (the unshifted key) and does not zoom the p
 });
 
 test('while moving, a dialog has the keys: - resizes nothing behind it and Escape closes it; Fit the floor to the image stops moving before it asks', async () => {
+  await settle();
   await largeImage(page);
   await wholeFloor(page);
   await clearToast(page);
@@ -1115,6 +1138,7 @@ test('while moving, a dialog has the keys: - resizes nothing behind it and Escap
 });
 
 test('Fit the floor to the image ends placing at the press, and an undo that changes the floor\'s size ends it with a sentence', async () => {
+  await settle();
   await largeImage(page);
   await wholeFloor(page);
   await clearToast(page);
@@ -1162,6 +1186,7 @@ test('Fit the floor to the image ends placing at the press, and an undo that cha
 });
 
 test('placing ends in words about placing, scaling in words about scaling: the image hidden, locked or gone, and another floor on show', async () => {
+  await settle();
   await freshImage(page);
   await clearToast(page);
   const patch = (image) => page.evaluate((image) => {
@@ -1205,6 +1230,7 @@ test('placing ends in words about placing, scaling in words about scaling: the i
 });
 
 test('a small image while moving: a press inside it moves it, though it is within a mouse\'s reach of a corner; a press just outside a corner is the corner', async () => {
+  await settle();
   // 1600 by 1200 pixels drawn 0.8 by 0.6 cells at 10, 10
   await page.evaluate(() => {
     const { store } = globalThis.sv2;
