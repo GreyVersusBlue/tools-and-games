@@ -1025,7 +1025,7 @@ async function largeImage(p) {
   });
 }
 
-test('placing by keyboard where the image already is: the mode ends saying so, nothing changed, and the next Enter places nothing', async () => {
+test('placing by keyboard where the image already is: the mode ends saying so, nothing changed, and no place is kept for another Enter to add to', async () => {
   await settle();
   await floorTab(page);
   await freshImage(page);
