@@ -70,7 +70,7 @@ jobs:
   gate:
     name: sheet, determinism, save, 12-day soak, pinned hashes
     if: github.event_name == 'pull_request' || github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -121,7 +121,7 @@ jobs:
   deep:
     name: deep · ${{ matrix.mode }}
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:

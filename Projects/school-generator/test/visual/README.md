@@ -56,6 +56,14 @@ Playwright is missing.
 | `chrome-rail` | All five rail panels open, the sky panel folded |
 | `chrome-walk-overlay` | The walkthrough cheat sheet, first-run state |
 | `chrome-narrow` | The 900px narrow-desktop layout |
+| `roof-curve` | `roofPlan` and `computeElevation` over a school built in `curve-school.js`: a bowed L and an apse hall with a court, under a hipped roof (the straight skeleton) and a parapet (the chords), from above and from the south (#1013) |
+
+`roof-curve` is the one capture with no text in it. No shipped school has a
+curved roof, so it builds its own, and it draws the roof faces and the
+elevation's paints straight onto a canvas rather than through a sheet: a
+sheet's type is rasterized differently on huginn and on CI even with the same
+Chromium, and this picture is about the roof's shape. The harness throws
+before the shutter if either building has fallen off its curved path.
 
 The sheets are drawn in a minimal harness page that imports `js/sample.js`
 and `js/blueprint.js` directly — pure state in, canvas out, no app, no

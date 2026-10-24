@@ -150,13 +150,37 @@ test('a notch whose sides meet head on closes, and the eave runs straight past i
 
 // A bottle: a 1ft mouth into a 5 by 6ft pocket. The mouth's sides meet at
 // 0.5ft, before the pocket's do, so the outline's wavefront run out 1.5ft
-// is two loops, the eave and the pocket still open inside it, and a roof on
-// the first would cover the pocket's sky. Two pieces are refused (#1000).
-test('a bottle notch whose mouth closes first leaves a pocket, and keeps its rectangles', () => {
+// is two loops, the eave and the pocket still open inside it. #1000 refused
+// two pieces, since a roof on the first would cover the pocket's sky; the
+// pocket is the second loop of that same wavefront, which is what a court's
+// eave is (#999), so the roof stands round it as round a court (#1014).
+test('a bottle notch whose mouth closes first stands on its skeleton, round the pocket as round a court', () => {
   const s = notched([[24, 20.5], [25, 20.5], [25, 23], [30, 23], [30, 17], [25, 17], [25, 19.5], [24, 19.5]]);
-  assert.equal(offsetRing(loopOf(s), -EAVE).length, 2, 'the eave and the pocket');
-  assert.deepEqual(curvedRoofs(s.floors[0], 12, 6), []);
-  assert.ok(!roofPlan(s).blocks.some((b) => b.skeleton), 'the rectangles stay');
+  const loop = loopOf(s);
+  assert.equal(offsetRing(loop, -EAVE).length, 2, 'the eave and the pocket');
+  const [roof, more] = curvedRoofs(s.floors[0], 12, 6);
+  assert.ok(roof && !more, 'one skeleton roof');
+  assert.deepEqual(roof.holes, [], 'no court in the walls: the pocket is outside them');
+  assert.equal(roof.eaveHoles.length, 1, 'the pocket, as an eave hole');
+  const [pocket] = roof.eaveHoles;
+  // The notch 1.5ft in from its three walls: x 26.5 to 28.5, z 18.5 to 21.5.
+  const xs = pocket.map((p) => p.x), zs = pocket.map((p) => p.z);
+  assert.ok(Math.abs(Math.min(...xs) - 26.5) < 1e-9 && Math.abs(Math.max(...xs) - 28.5) < 1e-9, JSON.stringify(pocket));
+  assert.ok(Math.abs(Math.min(...zs) - 18.5) < 1e-9 && Math.abs(Math.max(...zs) - 21.5) < 1e-9, JSON.stringify(pocket));
+  // The west eave runs straight past the mouth, which it closes over.
+  const west = roof.eave.filter((p) => p.x < 30);
+  assert.ok(west.length >= 2 && west.every((p) => Math.abs(p.x - 22.5) < 1e-9), JSON.stringify(west));
+  for (const p of loop) assert.ok(inside(roof.eave, p.x, p.z), `${p.x},${p.z} outside the eave`);
+  everyFaceOnItsPlane(roof, 12, 0.5, 'bottle');
+  // The faces cover the eave less the pocket, once, and the pocket's sky.
+  let sum = 0;
+  for (const f of roof.faces) sum += Math.abs(area(f.pts));
+  assert.ok(Math.abs(sum - (area(roof.eave) - Math.abs(area(pocket)))) < 1e-6, `faces ${sum}`);
+  assert.ok(Math.abs(Math.abs(area(pocket)) - 6) < 1e-9);
+  assert.ok(!roof.faces.some((f) => inside(f.pts, 27.5, 20)), 'nothing over the pocket');
+  const plan = roofPlan(s);
+  assert.ok(plan.blocks.length === 1 && plan.blocks[0].skeleton, 'the rectangles go');
+  assert.equal(roofCover(s).skeleton, 1, 'the takeoff counts it off its chords');
 });
 
 test('a V notch closes from its point outward, like the dent, and the eave runs straight past it', () => {
