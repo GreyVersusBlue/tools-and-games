@@ -25,6 +25,7 @@
 import { setTraceImage, placeTraceImage, fitFloorToImage, floorForImage, DEFAULT_TRACE_OPACITY } from '../../engine/actions.js';
 import { h } from '../components/dom.js';
 import { field } from '../components/field.js';
+import { singleKeyAllowed } from '../components/shortcuts.js';
 import { checkField, decimal, heading } from './inspector/controls.js';
 import { createScaleTool, floorPoint, MOST_CELLS } from './scale-tool.js';
 
@@ -112,6 +113,15 @@ export function steppedPlacement(image, factor) {
 
 // How much + and - resize the image by.
 export const STEP = 1.05;
+
+// The corner handles: drawn this many CSS pixels square, and caught this far
+// from a corner by a mouse or pen, and by a finger (DESIGN 6's 40 px margin
+// round a selection, near enough).
+const HANDLE_DRAWN = 10;
+const HANDLE_MOUSE = 10;
+const HANDLE_TOUCH = 22;
+
+const MOVING_HINT = 'Drag the image to where it belongs, or a corner to resize it (with Shift, about its middle); + and - resize it too. Escape, or Done, when it is in place.';
 
 // The box a traced image is drawn in, in cells: its top left corner, its
 // size, its middle (the point it is turned about), the turn in degrees and
@@ -299,14 +309,53 @@ export function createTrace(ed, ctx) {
     live = null;
     if (on) {
       canvas.dataset.tracing = 'true';
-      ed.setHint('Drag the image to where it belongs. Escape, or Done, when it is in place.');
-      say('Drag the image to where it belongs. Escape when it is in place.');
+      ed.setHint(MOVING_HINT);
+      say('Drag the image to where it belongs, or a corner to resize it. + and - resize it too. Escape when it is in place.');
     } else {
       delete canvas.dataset.tracing;
       ed.setHint(ed.tool.hint);
     }
     if (shown) update(ed.floor);
     ed.schedule();
+    modeChanged();
+  }
+
+  // Scaling, placing or moving began or ended: the empty floor's note steps
+  // aside while any of them lasts (ui/building/index.js).
+  function modeChanged() {
+    if (typeof ed.placeCard === 'function') ed.placeCard();
+  }
+
+  // Which corner handle, if any, is under a press at (sx, sy) on the canvas:
+  // 0 to 3 (cornerPixels' order), or -1. A finger gets a larger reach.
+  function handleAt(image, sx, sy, type) {
+    const reach = type === 'touch' ? HANDLE_TOUCH : HANDLE_MOUSE;
+    const size = ed.view.size;
+    let best = -1;
+    let nearest = Infinity;
+    cornersOf(image).forEach((corner, i) => {
+      const apart = Math.hypot(ed.view.x + corner.x * size - sx, ed.view.y + corner.y * size - sy);
+      if (apart <= reach && apart < nearest) {
+        best = i;
+        nearest = apart;
+      }
+    });
+    return best;
+  }
+
+  // Where the pointer is, in cells on the floor.
+  function cellOf(event) {
+    const rect = canvas.getBoundingClientRect();
+    return ed.view.toCell(event.clientX - rect.left, event.clientY - rect.top);
+  }
+
+  function widthWords(image) {
+    return 'The image is ' + round(image.scale * image.width, 1) + ' cells wide.';
+  }
+
+  // One step of the image's scale, turn or place, refused while locked.
+  function place(image, how, words) {
+    return ed.commit(placeTraceImage, { floorId: ed.floor.id, image, how }, { done: () => words, toast: null });
   }
 
   function onDown(event) {
@@ -315,38 +364,76 @@ export function createTrace(ed, ctx) {
     if (!floor.image || floor.image.locked) return;
     event.stopImmediatePropagation();
     event.preventDefault();
+    if (drag) {
+      // a second finger: the drag is called off, nothing kept
+      drag.off = true;
+      live = null;
+      ed.schedule();
+      return;
+    }
     try {
       canvas.setPointerCapture(event.pointerId);
     } catch (error) { /* a synthetic pointer has nothing to capture */ }
-    drag = { id: event.pointerId, sx: event.clientX, sy: event.clientY, x: floor.image.x, y: floor.image.y, floorId: floor.id };
+    const rect = canvas.getBoundingClientRect();
+    const corner = handleAt(floor.image, event.clientX - rect.left, event.clientY - rect.top, event.pointerType);
+    // a handle caught a little off its corner keeps that offset, so the corner does not jump to the pointer
+    const pressed = cellOf(event);
+    const grabbed = corner === -1 ? pressed : cornersOf(floor.image)[corner];
+    drag = { id: event.pointerId, sx: event.clientX, sy: event.clientY, x: floor.image.x, y: floor.image.y, floorId: floor.id, corner, image: floor.image, off: false, dx: grabbed.x - pressed.x, dy: grabbed.y - pressed.y };
+    canvas.dataset.dragging = corner === -1 ? 'image' : 'corner';
   }
 
   function onMove(event) {
     if (!drag || event.pointerId !== drag.id) return;
     event.stopImmediatePropagation();
-    const size = ed.view.size;
-    live = { floorId: drag.floorId, image: { x: round(drag.x + (event.clientX - drag.sx) / size, 2), y: round(drag.y + (event.clientY - drag.sy) / size, 2) } };
+    if (drag.off) return;
+    if (drag.corner !== -1) {
+      const at = cellOf(event);
+      live = { floorId: drag.floorId, image: cornerPlacement(drag.image, drag.corner, { x: at.x + drag.dx, y: at.y + drag.dy }, event.shiftKey) };
+    } else {
+      const size = ed.view.size;
+      live = { floorId: drag.floorId, image: { x: round(drag.x + (event.clientX - drag.sx) / size, 2), y: round(drag.y + (event.clientY - drag.sy) / size, 2) } };
+    }
     ed.schedule();
   }
 
   function onUp(event) {
     if (!drag || event.pointerId !== drag.id) return;
     event.stopImmediatePropagation();
-    const kept = live;
+    const kept = drag.off ? null : live;
+    const corner = drag.corner;
     drag = null;
     live = null;
+    delete canvas.dataset.dragging;
     try {
       canvas.releasePointerCapture(event.pointerId);
     } catch (error) { /* already let go */ }
-    if (kept && event.type === 'pointerup') apply(kept.image, 'Moved the image.');
+    if (kept && event.type === 'pointerup') {
+      if (corner === -1) apply(kept.image, 'Moved the image.');
+      else place(kept.image, 'corner', 'Resized the image. ' + widthWords({ ...ed.floor.image, ...kept.image }));
+    }
     ed.schedule();
   }
 
   function onKey(event) {
-    if (moving && event.key === 'Escape') {
+    if (!moving) return;
+    if (event.key === 'Escape') {
       event.preventDefault();
       event.stopImmediatePropagation();
       setMoving(false);
+    } else if ((event.key === '+' || event.key === '-') && singleKeyAllowed(event) && !drag) {
+      // + and - resize the image about its middle, 5 % a press
+      const image = ed.floor.image;
+      if (!image || image.locked) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const next = steppedPlacement(image, event.key === '+' ? STEP : 1 / STEP);
+      const words = widthWords({ ...image, ...next });
+      if (next.scale === image.scale) {
+        say((event.key === '+' ? 'The image is as large as it can be. ' : 'The image is as small as it can be. ') + words);
+        return;
+      }
+      place(next, 'keys', words);
     }
   }
 
@@ -357,12 +444,66 @@ export function createTrace(ed, ctx) {
   // on the window, ahead of everything in the page: Escape here is this mode's
   window.addEventListener('keydown', onKey, true);
 
-  // ---------------------------------------------------------- scaling from a length (./scale-tool.js)
+  // ---------------------------------------------------------- the corner handles
 
-  const scaling = createScaleTool(ed, ctx, { stopMoving: () => setMoving(false), isMissing });
+  // While moving, the image's edge as a thin line and a square handle at each
+  // corner, over the plan; a finger reaches HANDLE_TOUCH pixels round each.
+  function handles(g, view, floor, theme) {
+    if (!moving || floor.id !== ed.floor.id) return;
+    const image = imageOf(floor);
+    if (!image || image.locked || !image.visible) return;
+    const size = view.size;
+    const corners = cornersOf(image).map((at) => ({ sx: view.x + at.x * size, sy: view.y + at.y * size }));
+    g.setLineDash([]);
+    for (const [width, colour] of [[4, theme.paper], [1.5, theme.accent]]) {
+      g.strokeStyle = colour;
+      g.lineWidth = width;
+      g.beginPath();
+      corners.forEach((at, i) => (i === 0 ? g.moveTo(at.sx, at.sy) : g.lineTo(at.sx, at.sy)));
+      g.closePath();
+      g.stroke();
+    }
+    for (const at of corners) {
+      g.fillStyle = theme.paper;
+      g.fillRect(at.sx - HANDLE_DRAWN / 2 - 2, at.sy - HANDLE_DRAWN / 2 - 2, HANDLE_DRAWN + 4, HANDLE_DRAWN + 4);
+      g.fillStyle = theme.accent;
+      g.fillRect(at.sx - HANDLE_DRAWN / 2, at.sy - HANDLE_DRAWN / 2, HANDLE_DRAWN, HANDLE_DRAWN);
+    }
+  }
+  ed.overlays.push(handles);
+
+  // ---------------------------------------------------------- scaling from a length, placing by two points (./scale-tool.js)
+
+  const scaling = createScaleTool(ed, ctx, { stopMoving: () => setMoving(false), isMissing, changed: modeChanged });
   ed.overlays.push(scaling.overlay);
 
   // ---------------------------------------------------------- the controls
+
+  // "Fit the floor to the image": the floor's edges move to the image's box,
+  // rounded out to whole cells, after asking; refused, with the reason, when
+  // that would cut anything drawn (engine/actions.js fitFloorToImage).
+  async function fitFloor(opener) {
+    const floor = ed.floor;
+    if (!floor.image) return;
+    const tried = ed.attempt(() => fitFloorToImage(ed.project, { floorId: floor.id }, { ids: ctx.ids, clock: ctx.clock }));
+    if (!tried) return;
+    if (tried === ed.project) {
+      say(floor.name + ' is already the size of its image, ' + floor.width + ' × ' + floor.height + ' cells.');
+      ctx.toast({ text: floor.name + ' is already the size of its image.' });
+      return;
+    }
+    const size = floorForImage(floor, floor.image);
+    const ok = await ctx.confirm({
+      title: 'Make ' + floor.name + ' ' + size.width + ' × ' + size.height + ' cells, the size of its image?',
+      body: 'Its edges move to the edges of the image, rounded out to whole cells. Nothing drawn is cut, and the drawing stays where it is on the image.',
+      action: 'Make it ' + size.width + ' × ' + size.height,
+      keep: 'Keep ' + floor.width + ' × ' + floor.height,
+      opener,
+    });
+    if (!ok || ed.floor.id !== floor.id) return;
+    const done = ed.commit(fitFloorToImage, { floorId: floor.id }, { done: (outcome) => floor.name + ' is ' + outcome.width + ' × ' + outcome.height + ' cells now, the size of its image.', toast: (outcome) => floor.name + ' is ' + outcome.width + ' × ' + outcome.height + ' cells now, the size of its image.' });
+    if (done) ed.schedule();
+  }
 
   const element = h('section', { class: 'bi-part', id: 'trace', 'aria-labelledby': 'trace-heading' });
   let controls = null;
@@ -420,10 +561,13 @@ export function createTrace(ed, ctx) {
     const move = h('button', { type: 'button', class: 'btn', id: 'trace-move', 'aria-pressed': 'false', data: { key: 'trace-move' }, on: { click: () => setMoving(!moving) } }, 'Move it by dragging');
     const scale = h('button', { type: 'button', class: 'btn', id: 'trace-scale', data: { key: 'trace-scale' }, 'aria-describedby': 'trace-scale-hint', on: { click: (event) => scaling.start(event) } }, 'Scale the image from a length');
     const scaleHint = h('p', { class: 'bld-inspector__small', id: 'trace-scale-hint' }, 'Place two points on the image, then say how long the line between them is, in feet, metres or cells.');
+    const byPoints = h('button', { type: 'button', class: 'btn', id: 'trace-place', data: { key: 'trace-place' }, 'aria-describedby': 'trace-place-hint', on: { click: (event) => scaling.start(event, 'place') } }, 'Place the image by two points');
+    const placeHint = h('p', { class: 'bld-inspector__small', id: 'trace-place-hint' }, 'Place two points on the image, then the two places on the floor they belong at. The image is scaled, turned and moved so both land there.');
     const fit = h('button', { type: 'button', class: 'btn', id: 'trace-fit', data: { key: 'trace-fit' }, on: { click: () => {
       const now = ed.floor;
-      patchWith(fitPlacement(now, now.image.width, now.image.height), 'The image fits ' + now.name + '.');
-    } } }, 'Fit it to the floor');
+      place(fitPlacement(now, now.image.width, now.image.height, now.image.rotation), 'fit', 'The whole image fits ' + now.name + ', in its middle. ' + widthWords(now.image));
+    } } }, 'Fit the image to the floor');
+    const floorFit = h('button', { type: 'button', class: 'btn', id: 'trace-floor-fit', data: { key: 'trace-floor-fit' }, on: { click: () => fitFloor(floorFit) } }, 'Fit the floor to the image');
     const replace = h('button', { type: 'button', class: 'btn', id: 'trace-replace', data: { key: 'trace-replace' }, on: { click: () => {
       // another image: this one's place is not the next one's
       choose(true);
@@ -435,7 +579,7 @@ export function createTrace(ed, ctx) {
       const outcome = ed.commit(setTraceImage, { floorId: ed.floor.id, image: null }, { done: () => 'Removed the image from under ' + name + '.', toast: () => 'Removed the image from under ' + name + '.' });
       if (outcome) ed.schedule();
     } } }, 'Remove the image');
-    controls = { missing, facts, visible, locked, opacity, opacityValue, wide, turn, left, top, move, fit, replace };
+    controls = { missing, facts, visible, locked, opacity, opacityValue, wide, turn, left, top, move, fit, floorFit, byPoints, replace };
     element.replaceChildren(
       title,
       missing,
@@ -447,7 +591,10 @@ export function createTrace(ed, ctx) {
       h('div', { class: 'bi-pair' }, left.element, top.element),
       h('div', { class: 'bi-buttons' }, scale),
       scaleHint,
-      h('div', { class: 'bi-buttons' }, move, fit),
+      h('div', { class: 'bi-buttons' }, byPoints),
+      placeHint,
+      h('div', { class: 'bi-buttons' }, move),
+      h('div', { class: 'bi-buttons' }, fit, floorFit),
       h('div', { class: 'bi-buttons' }, replace, remove),
       fileInput,
     );
@@ -468,7 +615,7 @@ export function createTrace(ed, ctx) {
     controls.left.set(image.x);
     controls.top.set(image.y);
     for (const made of [controls.wide, controls.turn, controls.left, controls.top]) made.input.disabled = image.locked;
-    for (const button of [controls.move, controls.fit]) button.disabled = image.locked;
+    for (const button of [controls.move, controls.fit, controls.floorFit]) button.disabled = image.locked;
     controls.move.setAttribute('aria-pressed', String(moving));
     controls.move.textContent = moving ? 'Done moving' : 'Move it by dragging';
   }

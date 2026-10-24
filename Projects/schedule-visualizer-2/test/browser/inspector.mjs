@@ -512,8 +512,19 @@ test('opacity, width, turn and place are each kept as one step, and a width of n
   await page.keyboard.press('Escape');
   assert.equal(await entries(), before + 5);
   await page.click('#trace-fit');
-  image = (await project()).building.floors[0].image;
-  assert.deepEqual([image.rotation, image.y], [0, 0]);
+  // Fit keeps the turn (SV2-73b): turned 90°, the image's height lies across the floor
+  const floor = (await project()).building.floors[0];
+  image = floor.image;
+  assert.equal(image.rotation, 90);
+  const across = image.height * image.scale;
+  const down = image.width * image.scale;
+  assert.ok(across <= floor.width + 1e-9 && down <= floor.height + 1e-9, 'the whole turned image is on the floor: ' + [across, down]);
+  assert.ok(Math.abs(across - floor.width) < 1e-9 || Math.abs(down - floor.height) < 1e-9, 'as large as fits');
+  // it turns about its middle, which is the floor's
+  assert.ok(Math.abs(image.x + down / 2 - floor.width / 2) < 1e-9, 'in the middle across');
+  assert.ok(Math.abs(image.y + across / 2 - floor.height / 2) < 1e-9, 'in the middle down');
+  assert.equal(await entries(), before + 6);
+  assert.equal((await state(page)).label, 'Fit the traced image to Floor 1');
 });
 
 test('the image is moved by dragging it on the plan, as one undo step, and the tool in hand does not draw', async () => {
