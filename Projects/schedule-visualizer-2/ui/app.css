@@ -1645,6 +1645,30 @@ kbd {
   .surface__layout {
     padding: var(--s-5);
   }
+
+  /* The title is short and never wraps: the folded head is one line, with
+     the tally under the title where the row has no room for it (SV2-32o). */
+  .getting-started .card__title {
+    white-space: nowrap;
+  }
+}
+
+/* Under 640 px the button says "Steps" (its name is still "Show the steps",
+   aria-label), and the head's gaps and the button's sides are 8 px, so the
+   title, the button and the 44 px X keep one row at 320 px (SV2-32o). */
+@media (max-width: 640px) {
+  .getting-started__head {
+    gap: var(--s-2);
+  }
+
+  .getting-started__toggle {
+    padding-inline: var(--s-2);
+    text-transform: capitalize;
+  }
+
+  .getting-started__toggle-lead {
+    display: none;
+  }
 }
 
 /* Under 900 px the rail is icons only, and the inspector is a sheet along

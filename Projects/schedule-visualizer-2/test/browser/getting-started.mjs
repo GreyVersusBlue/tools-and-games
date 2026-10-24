@@ -490,6 +490,46 @@ test('by touch at 390 by 844: the X is 44 px square in the folded card\'s corner
   }, { width: 390, height: 844, mobile: true });
 });
 
+// The folded head on a phone is one line (SV2-32o): the X made "Getting
+// started" wrap at 390 px and the card 26 px taller (65 to 91), which put
+// the first group card of m2-pass under the inspector's handle. The title
+// never wraps, and under 640 px the button reads "Steps" by its name
+// "Show the steps", so the card is 65 px high at 390 as before SV2-74, and
+// at 320 too (where before SV2-74 the title wrapped and it was 91).
+for (const [width, height] of [[390, 844], [320, 640]]) {
+  test('by touch at ' + width + ' by ' + height + ': the folded head is one line, the title, "Steps" and the X side by side, the card 65 px high, the X 44 px in its corner', async () => {
+    await onEmpty(async (page) => {
+      await go(page, '#schedule/teachers');
+      await shown(page, true);
+      const head = await page.evaluate((card) => {
+        const box = (el) => {
+          const r = el.getBoundingClientRect();
+          return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+        };
+        const element = document.querySelector(card);
+        const title = element.querySelector('.card__title');
+        const toggle = element.querySelector('.getting-started__toggle');
+        return { card: box(element), title: box(title), lineHeight: parseFloat(getComputedStyle(title).lineHeight), toggle: box(toggle), shows: toggle.innerText.trim(), name: toggle.getAttribute('aria-label') };
+      }, CARD);
+      assert.equal(head.title.height, head.lineHeight, 'the title is not one line at ' + width + ': ' + JSON.stringify(head));
+      assert.equal(Math.round(head.card.height), 65, 'the folded card is not 65 px high at ' + width + ': ' + JSON.stringify(head));
+      assert.equal(head.shows, 'Steps');
+      assert.equal(head.name, 'Show the steps');
+      const named = page.__engine === 'playwright'
+        ? await page.getByRole('button', { name: 'Show the steps', exact: true }).count()
+        : (await page.$$('aria/Show the steps[role="button"]')).length;
+      assert.equal(named, 1, 'no one button is named "Show the steps"');
+      const seen = await closeButton(page);
+      inTheCorner(seen, 'at ' + width + ' by ' + height);
+      assert.ok(seen.x.width >= 44 && seen.x.height >= 44, 'the X is under 44 px for a finger: ' + JSON.stringify(seen.x));
+      assert.ok(head.title.right <= head.toggle.left && head.toggle.top < seen.x.bottom && seen.x.top < head.toggle.bottom && head.title.top < head.toggle.bottom, 'the title, the button and the X are not on one row: ' + JSON.stringify({ head, x: seen.x }));
+      await page.tap(CARD + ' [data-action="steps"]');
+      await page.waitForFunction((card) => document.querySelector(card + ' [data-action="steps"]').getAttribute('aria-expanded') === 'true', {}, CARD);
+      assert.equal(await page.$eval(CARD + ' [data-action="steps"]', (el) => el.getAttribute('aria-label')), 'Hide the steps');
+    }, { width, height, mobile: true });
+  });
+}
+
 for (const theme of ['light', 'dark']) {
   test('axe finds nothing in the card in the ' + theme + ' theme, and the X stands out from the card', async () => {
     await onEmpty(async (page) => {

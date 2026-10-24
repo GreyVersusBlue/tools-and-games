@@ -7,6 +7,9 @@
 // Under 1000 px the card lies above the section, and is folded to its title
 // and tally so the section keeps the window: "Show the steps" unfolds it
 // (ui/app.css; at full width the steps always show and the button is away).
+// Under 640 px the button reads "Steps" (its "Show the " is not drawn) so
+// the title, the button and the X keep one row at 320 px; its name stays
+// "Show the steps" or "Hide the steps" (aria-label), as Help says (SV2-32o).
 
 import { h, uid } from './dom.js';
 import { icon } from './icons.js';
@@ -22,7 +25,8 @@ export function gettingStarted(ctx) {
   const sampleButton = h('button', { type: 'button', class: 'btn', data: { action: 'load-sample' }, on: { click: () => ctx.loadSample(sampleButton) } }, 'Load the sample school');
 
   const bodyId = uid('getting-started-steps');
-  const toggle = h('button', { type: 'button', class: 'btn btn--quiet getting-started__toggle', 'aria-expanded': 'false', 'aria-controls': bodyId, data: { action: 'steps' }, on: { click: () => unfold(!open) } }, 'Show the steps');
+  const toggleLead = h('span', { class: 'getting-started__toggle-lead' }, 'Show the ');
+  const toggle = h('button', { type: 'button', class: 'btn btn--quiet getting-started__toggle', 'aria-label': 'Show the steps', 'aria-expanded': 'false', 'aria-controls': bodyId, data: { action: 'steps' }, on: { click: () => unfold(!open) } }, toggleLead, 'steps');
   let open = false;
   const close = h('button', { type: 'button', class: 'icon-btn getting-started__close', 'aria-label': 'Close Getting started', title: 'Close', data: { action: 'close' }, on: { click: () => hide({ dismissed: true }) } }, icon('close'));
 
@@ -62,7 +66,8 @@ export function gettingStarted(ctx) {
     open = next;
     element.classList.toggle('getting-started--open', open);
     toggle.setAttribute('aria-expanded', String(open));
-    toggle.textContent = open ? 'Hide the steps' : 'Show the steps';
+    toggleLead.textContent = open ? 'Hide the ' : 'Show the ';
+    toggle.setAttribute('aria-label', open ? 'Hide the steps' : 'Show the steps');
   }
 
   // Dismiss stays with this project; never show belongs to the person, so it
