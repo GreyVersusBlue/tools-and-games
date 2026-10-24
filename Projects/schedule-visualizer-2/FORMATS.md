@@ -400,6 +400,10 @@ Format name `sv2-building`, version **1**. `writeBuildingFile`,
 A room in the file keeps its `teacherIds` and `subjectId` as they were in the
 project it came from.
 
+The file carries no settings. The Cell scale (`settings.cellScale`) is a
+project setting, so a building imported into another project takes that
+project's Cell scale, and its traced images keep the scale they were placed at.
+
 **Reading.** JSON; `format` is `sv2-building` (another of the tool's files is
 refused by name); `version` is 1 (larger is refused as newer); then the
 building has to pass every Building rule of the project object, and each
