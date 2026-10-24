@@ -207,8 +207,17 @@ const CLICK_SLOP = 6;
 export const OFFSET = 56;
 // Narrower than this the inspector is a sheet over the plan (ui/app.js).
 const SHEET_QUERY = '(max-width: 900px)';
+// Placing by two points where the image already is.
+export const ALREADY_PLACED = 'The image is already there: each point is on its place. Nothing changed.';
+
+// The mode's name in a sentence about it ending: "placing" or "scaling".
+export function modeWords(kind) {
+  return kind === 'place' ? 'placing' : 'scaling';
+}
 
 // createScaleTool(ed, ctx, { stopMoving, isMissing, changed }) -> { start(event, kind), cancel(tell), active, kind, points, targets, overlay, detach() }
+//   the mode ends by itself when its image goes, is locked or hidden, when
+//   another floor is shown, and when its floor becomes another size
 //   kind 'scale' (from a length, the default) or 'place' (by two points);
 //   changed() is called whenever the mode starts or ends
 export function createScaleTool(ed, ctx, options) {
@@ -405,7 +414,7 @@ export function createScaleTool(ed, ctx, options) {
     options.stopMoving();
     if (ed.connect && ed.connect.active) ed.connect.cancel(false);
     if (mode !== null) end();
-    mode = { kind: how, floorId: floor.id, imageId: image.imageId, points: [], targets: [], hover: null, press: null };
+    mode = { kind: how, floorId: floor.id, imageId: image.imageId, width: floor.width, height: floor.height, points: [], targets: [], hover: null, press: null };
     unit = LENGTH_UNITS[0].value;
     units.set(unit);
     canvas.style.cursor = 'crosshair';
@@ -500,11 +509,27 @@ export function createScaleTool(ed, ctx, options) {
     }
     const floor = floorOf(mode.floorId);
     const said = 'Placed the image by two points: it is ' + round(image.width * placed.scale, 1) + ' cells wide, turned ' + round(placed.rotation, 1) + ' degrees.';
-    const done = ed.commit(placeTraceImage, { floorId: floor.id, image: placed, how: 'points' }, { done: () => said, toast: () => said });
-    if (!done) return;
+    // the placement the image already has changes nothing: the mode ends all
+    // the same, saying so, rather than waiting on a third place with two kept.
+    // ed.commit reads `same` only when the store kept the project as it was.
+    let already = false;
+    const done = ed.commit(placeTraceImage, { floorId: floor.id, image: placed, how: 'points' }, {
+      done: () => said,
+      toast: () => said,
+      get same() {
+        already = true;
+        return ALREADY_PLACED;
+      },
+    });
+    // null for a refusal too (the floor or the image gone, the image locked):
+    // each of those ends the mode as well, and ed.attempt has said why
     end();
     canvas.focus({ preventScroll: true });
-    ed.say(said);
+    if (done) ed.say(said);
+    else if (already) {
+      ctx.toast({ text: ALREADY_PLACED });
+      ed.say(ALREADY_PLACED);
+    }
   }
 
   function apply() {
@@ -565,8 +590,9 @@ export function createScaleTool(ed, ctx, options) {
 
   function offFloor() {
     if (mode && ed.floor.id !== mode.floorId) {
+      const doing = modeWords(mode.kind);
       end();
-      ed.say('Another floor is on show, so scaling the image has stopped.');
+      ed.say('Another floor is on show, so ' + doing + ' the image has stopped.');
       return true;
     }
     return false;
@@ -662,18 +688,24 @@ export function createScaleTool(ed, ctx, options) {
 
   // The project changed: the image may be gone, replaced or locked. A change
   // that only moves or resizes it keeps the points, which ride on the image.
+  // A floor made another size (Fit the floor to the image, or its undo) moves
+  // the floor's frame under the places kept in cells, so it ends the mode too.
   const unsubscribe = ed.store.subscribe(() => {
     if (mode === null) return;
     const floor = floorOf(mode.floorId);
+    const doing = modeWords(mode.kind);
     if (!floor || !floor.image || floor.image.imageId !== mode.imageId) {
       end();
-      ed.say('The image is gone, so scaling it has stopped.');
+      ed.say('The image is gone, so ' + doing + ' it has stopped.');
     } else if (floor.image.locked) {
       end();
-      ed.say('The image is locked now, so scaling it has stopped.');
+      ed.say('The image is locked now, so ' + doing + ' it has stopped.');
     } else if (!floor.image.visible) {
       end();
-      ed.say('The image is hidden now, so scaling it has stopped.');
+      ed.say('The image is hidden now, so ' + doing + ' it has stopped.');
+    } else if (floor.width !== mode.width || floor.height !== mode.height) {
+      end();
+      ed.say(floor.name + ' is ' + floor.width + ' × ' + floor.height + ' cells now, so ' + doing + ' the image has stopped. Start it again to place the points afresh.');
     } else draw();
   });
 
@@ -781,7 +813,8 @@ export function createScaleTool(ed, ctx, options) {
     const halo = theme.paper;
     const ink = theme.accent;
     const size = view.size;
-    const targets = mode.targets.map((at) => ({ sx: view.x + at.x * size, sy: view.y + at.y * size }));
+    // a place for each point on the image and no more: a third would have no point to draw a line from
+    const targets = mode.targets.slice(0, shown.length).map((at) => ({ sx: view.x + at.x * size, sy: view.y + at.y * size }));
     const pending = pendingAt(g, ink);
     targets.forEach((at, i) => stroke(shown[i], at, true));
     if (pending && shown.length === 2 && targets.length < 2) stroke(shown[targets.length], pending, true);
