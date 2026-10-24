@@ -27,7 +27,8 @@ import { h } from '../components/dom.js';
 import { field } from '../components/field.js';
 import { singleKeyAllowed } from '../components/shortcuts.js';
 import { checkField, decimal, heading } from './inspector/controls.js';
-import { createScaleTool, floorPoint, MOST_CELLS } from './scale-tool.js';
+import { dialogIsOpen } from '../components/dialog.js';
+import { createScaleTool, floorPoint, imagePoint, MOST_CELLS } from './scale-tool.js';
 
 export { setTraceImage };
 
@@ -107,8 +108,14 @@ export function cornerPlacement(image, corner, at, centre) {
 }
 
 // + and - while moving: the image `factor` times as large, about its middle.
+// An image already outside the held range (a width typed past MOST_CELLS, or
+// under one cell) is held where it is rather than pulled the wrong way: +
+// never makes it smaller and - never larger. The scale is then the image's
+// own, which the caller says as "as large (small) as it can be".
 export function steppedPlacement(image, factor) {
-  return scaledAbout(image, { u: image.width / 2, v: image.height / 2 }, heldScale(image, image.scale * factor));
+  const held = heldScale(image, image.scale * factor);
+  if (factor > 1 ? held < image.scale : held > image.scale) return { scale: image.scale, x: image.x, y: image.y };
+  return scaledAbout(image, { u: image.width / 2, v: image.height / 2 }, held);
 }
 
 // How much + and - resize the image by.
@@ -120,6 +127,34 @@ export const STEP = 1.05;
 const HANDLE_DRAWN = 10;
 const HANDLE_MOUSE = 10;
 const HANDLE_TOUCH = 22;
+
+// An image whose shorter side is under this many reaches on screen is small:
+// a press inside it moves it, and its corners are caught from outside only.
+// Under about two reaches every press inside would be in a corner's reach.
+export const SMALL_REACHES = 3;
+
+// Which corner handle is under a press at (sx, sy) on the canvas, for a view
+// { x, y, size } (the floor's corner on the canvas, and pixels a cell) and a
+// reach in pixels: 0 to 3 (cornerPixels' order), or -1 for none, the press
+// then moving the image. The nearest corner within reach wins; on a small
+// image a press inside the image is never a corner.
+export function handleUnder(image, view, sx, sy, reach) {
+  const size = view.size;
+  if (Math.min(image.width, image.height) * image.scale * size < SMALL_REACHES * reach) {
+    const on = imagePoint(image, { x: (sx - view.x) / size, y: (sy - view.y) / size });
+    if (on.u >= 0 && on.u <= image.width && on.v >= 0 && on.v <= image.height) return -1;
+  }
+  let best = -1;
+  let nearest = Infinity;
+  cornersOf(image).forEach((corner, i) => {
+    const apart = Math.hypot(view.x + corner.x * size - sx, view.y + corner.y * size - sy);
+    if (apart <= reach && apart < nearest) {
+      best = i;
+      nearest = apart;
+    }
+  });
+  return best;
+}
 
 const MOVING_HINT = 'Drag the image to where it belongs, or a corner to resize it (with Shift, about its middle); + and - resize it too. Escape, or Done, when it is in place.';
 
@@ -329,18 +364,7 @@ export function createTrace(ed, ctx) {
   // Which corner handle, if any, is under a press at (sx, sy) on the canvas:
   // 0 to 3 (cornerPixels' order), or -1. A finger gets a larger reach.
   function handleAt(image, sx, sy, type) {
-    const reach = type === 'touch' ? HANDLE_TOUCH : HANDLE_MOUSE;
-    const size = ed.view.size;
-    let best = -1;
-    let nearest = Infinity;
-    cornersOf(image).forEach((corner, i) => {
-      const apart = Math.hypot(ed.view.x + corner.x * size - sx, ed.view.y + corner.y * size - sy);
-      if (apart <= reach && apart < nearest) {
-        best = i;
-        nearest = apart;
-      }
-    });
-    return best;
+    return handleUnder(image, ed.view, sx, sy, type === 'touch' ? HANDLE_TOUCH : HANDLE_MOUSE);
   }
 
   // Where the pointer is, in cells on the floor.
@@ -417,20 +441,25 @@ export function createTrace(ed, ctx) {
 
   function onKey(event) {
     if (!moving) return;
+    // a dialog or the menu has the keys first: Escape closes it, and nothing
+    // behind a modal is resized
+    if (dialogIsOpen() || (event.target && event.target.closest && event.target.closest('[role="menu"], dialog'))) return;
+    // '=' is the unshifted '+' key, the plan's zoom in otherwise
+    const larger = event.key === '+' || event.key === '=';
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopImmediatePropagation();
       setMoving(false);
-    } else if ((event.key === '+' || event.key === '-') && singleKeyAllowed(event) && !drag) {
+    } else if ((larger || event.key === '-') && singleKeyAllowed(event) && !drag) {
       // + and - resize the image about its middle, 5 % a press
       const image = ed.floor.image;
       if (!image || image.locked) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      const next = steppedPlacement(image, event.key === '+' ? STEP : 1 / STEP);
+      const next = steppedPlacement(image, larger ? STEP : 1 / STEP);
       const words = widthWords({ ...image, ...next });
       if (next.scale === image.scale) {
-        say((event.key === '+' ? 'The image is as large as it can be. ' : 'The image is as small as it can be. ') + words);
+        say((larger ? 'The image is as large as it can be. ' : 'The image is as small as it can be. ') + words);
         return;
       }
       place(next, 'keys', words);
@@ -485,6 +514,11 @@ export function createTrace(ed, ctx) {
   async function fitFloor(opener) {
     const floor = ed.floor;
     if (!floor.image) return;
+    // the floor's frame moves under the image: moving, scaling and placing
+    // end first, so no key reaches the image behind the dialog and no place
+    // kept in cells is left pointing at another part of the image
+    setMoving(false);
+    scaling.cancel(false);
     const tried = ed.attempt(() => fitFloorToImage(ed.project, { floorId: floor.id }, { ids: ctx.ids, clock: ctx.clock }));
     if (!tried) return;
     if (tried === ed.project) {
@@ -565,7 +599,8 @@ export function createTrace(ed, ctx) {
     const placeHint = h('p', { class: 'bld-inspector__small', id: 'trace-place-hint' }, 'Place two points on the image, then the two places on the floor they belong at. The image is scaled, turned and moved so both land there.');
     const fit = h('button', { type: 'button', class: 'btn', id: 'trace-fit', data: { key: 'trace-fit' }, on: { click: () => {
       const now = ed.floor;
-      place(fitPlacement(now, now.image.width, now.image.height, now.image.rotation), 'fit', 'The whole image fits ' + now.name + ', in its middle. ' + widthWords(now.image));
+      const fitted = fitPlacement(now, now.image.width, now.image.height, now.image.rotation);
+      place(fitted, 'fit', 'The whole image fits ' + now.name + ', in its middle. ' + widthWords({ ...now.image, ...fitted }));
     } } }, 'Fit the image to the floor');
     const floorFit = h('button', { type: 'button', class: 'btn', id: 'trace-floor-fit', data: { key: 'trace-floor-fit' }, on: { click: () => fitFloor(floorFit) } }, 'Fit the floor to the image');
     const replace = h('button', { type: 'button', class: 'btn', id: 'trace-replace', data: { key: 'trace-replace' }, on: { click: () => {

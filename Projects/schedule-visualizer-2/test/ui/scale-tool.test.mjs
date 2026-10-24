@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { imagePoint, floorPoint, pixelsApart, cellsFor, cellLengthIn, scaledPlacement, readLength, lengthWords, placeWords, ScaleError, LEAST_PIXELS, MOST_CELLS, LENGTH_UNITS, pointsPlacement, plainDegrees, LEAST_CELLS } from '../../ui/building/scale-tool.js';
-import { fitPlacement, cornersOf, cornerPlacement, steppedPlacement, tracePlacement, STEP } from '../../ui/building/trace.js';
+import { fitPlacement, cornersOf, cornerPlacement, steppedPlacement, tracePlacement, STEP, handleUnder, SMALL_REACHES } from '../../ui/building/trace.js';
 import * as actions from '../../engine/actions.js';
 import { writeProjectFile, readProjectFile } from '../../engine/project-file.js';
 import { validate } from '../../engine/validate.js';
@@ -420,4 +420,43 @@ test('+ and - make the image 5 % larger or smaller about its middle', () => {
   near(smaller.x, 3, 'back where it was', 1e-9);
   // never under one cell across
   near(steppedPlacement({ ...IMAGE, scale: 1 / 1600 }, 1 / STEP).scale * 1600, 1, 'held at one cell');
+});
+
+test('+ never makes an image outside the held range smaller, nor - a sub-cell one larger: the step is held where the image is', () => {
+  // a typed width of 5,000 cells, past MOST_CELLS (2,000)
+  const huge = { ...IMAGE, scale: 5000 / 1600, x: -100, y: -50 };
+  assert.ok(5000 > MOST_CELLS, 'the image is past the held range');
+  const plus = steppedPlacement(huge, STEP);
+  assert.deepEqual(plus, { scale: huge.scale, x: -100, y: -50 }, '+ on a 5,000-cell image holds it where it is, the place unmoved');
+  const minus = steppedPlacement(huge, 1 / STEP);
+  assert.ok(minus.scale < huge.scale, '- still makes it smaller: ' + minus.scale * 1600);
+  // a quarter of a cell across, under the one cell the range starts at
+  const tiny = { ...IMAGE, scale: 0.25 / 1600, x: 4, y: 6 };
+  assert.deepEqual(steppedPlacement(tiny, 1 / STEP), { scale: tiny.scale, x: 4, y: 6 }, '- on a quarter-cell image holds it where it is');
+  assert.ok(steppedPlacement(tiny, STEP).scale > tiny.scale, '+ still makes it larger');
+  // at the edge of the range the step is held too, so the caller says "as large as it can be"
+  const most = { ...IMAGE, scale: MOST_CELLS / 1600 };
+  near(steppedPlacement(most, STEP).scale, most.scale, 'held at the most');
+});
+
+test('a corner handle is caught within reach of a corner; on a small image a press inside it moves it, and a corner is caught from outside', () => {
+  // a view of 20 pixels a cell, the floor's corner at 10, 10 on the canvas
+  const view = { x: 10, y: 10, size: 20 };
+  // IMAGE is 16 by 12 cells at 3, 2: 320 by 240 pixels from 70, 50, its corners at 70,50 / 390,50 / 390,290 / 70,290
+  assert.equal(handleUnder(IMAGE, view, 75, 55, 10), 0, 'just inside the top left corner of a large image is the corner');
+  assert.equal(handleUnder(IMAGE, view, 384, 284, 22), 2, 'a finger\'s reach inside the bottom right corner');
+  assert.equal(handleUnder(IMAGE, view, 230, 170, 22), -1, 'the middle moves it');
+  assert.equal(handleUnder(IMAGE, view, 395, 45, 10), 1, 'just outside the top right corner');
+  assert.equal(handleUnder(IMAGE, view, 420, 50, 10), -1, 'out of reach');
+  // the same image 1.6 by 1.2 cells: 32 by 24 pixels, under three of a finger's 22-pixel reaches
+  const small = { ...IMAGE, scale: 0.001, x: 3, y: 2 };
+  assert.ok(Math.min(small.width, small.height) * small.scale * view.size < SMALL_REACHES * 22);
+  // every place inside it is within 22 pixels of a corner, and none is a corner
+  for (const [sx, sy] of [[71, 51], [86, 62], [101, 73], [72, 72]]) assert.equal(handleUnder(small, view, sx, sy, 22), -1, sx + ', ' + sy + ' inside the small image moves it');
+  assert.equal(handleUnder(small, view, 64, 44, 22), 0, 'outside its top left corner, the corner');
+  assert.equal(handleUnder(small, view, 108, 80, 22), 2, 'outside its bottom right corner, the corner');
+  // turned a quarter, the small image is caught by its turned box, not its unturned one
+  const turned = { ...small, rotation: 90 };
+  const middle = cornersOf(turned).reduce((sum, at) => ({ x: sum.x + at.x / 4, y: sum.y + at.y / 4 }), { x: 0, y: 0 });
+  assert.equal(handleUnder(turned, view, view.x + middle.x * 20, view.y + (middle.y + 0.7) * 20, 22), -1, 'inside the turned image, below its middle');
 });
