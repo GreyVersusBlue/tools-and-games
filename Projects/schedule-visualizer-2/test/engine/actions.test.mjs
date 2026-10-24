@@ -76,6 +76,7 @@ test('setSetting changes each field, one at a time', () => {
     ['defaultHeadCount', 30],
     ['secondsPerCell', 2],
     ['secondsPerStair', 12],
+    ['cellScale', { unit: 'feet', length: 5 }],
     ['colourScale.mode', 'absolute'],
     ['colourScale.bands', [5, 10, 20, 40]],
     ['checks.consecutiveLimit', 5],
@@ -991,4 +992,60 @@ test('setTraceImage is one undo entry in the store, and undo takes the image off
   store.undo();
   assert.equal(store.project.building.floors[0].image, null);
   assert.equal(store.history.past.length, 0);
+});
+
+// ---------------------------------------------------------------- SV2-73a: Cell scale and scaling the traced image
+
+test('Cell scale is not set in a new project, is set and cleared as one setting, and the same value changes nothing', () => {
+  assert.equal(defaultSettings().cellScale, undefined, 'a new project has no Cell scale: it is a wish brought forward only as far as the scaling tool');
+  const set = run(actions.setSetting, school(), { key: 'cellScale', value: { unit: 'metres', length: 1.5 } });
+  assert.deepEqual(set.settings.cellScale, { unit: 'metres', length: 1.5 });
+  assert.equal(actions.setSetting(set, { key: 'cellScale', value: { unit: 'metres', length: 1.5 } }, ctx()), set, 'the same unit and length is no change');
+  const cleared = run(actions.setSetting, set, { key: 'cellScale', value: null });
+  assert.equal(cleared.settings.cellScale, null);
+  assert.equal(info(actions.setSetting, set, { key: 'cellScale', value: null }, cleared).label, 'Change the cell scale');
+  assert.deepEqual(info(actions.setSetting, set, { key: 'cellScale', value: null }, cleared).bumps, [], 'nothing reads it for a route or a load yet');
+  const given = { unit: 'feet', length: 5 };
+  const kept = run(actions.setSetting, school(), { key: 'cellScale', value: given });
+  given.length = 9;
+  assert.equal(kept.settings.cellScale.length, 5, 'the project keeps a copy, not the caller\'s object');
+});
+
+test('Cell scale refuses a length of nothing, a negative, too long, a non-number and an unknown unit, with a sentence', () => {
+  for (const value of [{ unit: 'feet', length: 0 }, { unit: 'feet', length: -2 }, { unit: 'metres', length: 1001 }, { unit: 'feet', length: Number.NaN }, { unit: 'feet', length: '5' }, { unit: 'yards', length: 3 }, { unit: 'feet' }, { unit: 'feet', length: 5, extra: true }, 5, 'five', []]) {
+    refused(actions.setSetting, school(), { key: 'cellScale', value }, 'bad-value');
+  }
+  assert.throws(() => actions.setSetting(school(), { key: 'cellScale', value: { unit: 'feet', length: 0 } }, ctx()), /One cell is a length above 0 and at most 1000, in feet or metres, or the cell scale is not set\.$/);
+});
+
+test('scaleTraceImage sets the scale and the corner in one step, leaving the rest of the image as it was', () => {
+  const start = traced(emptyProject());
+  const floorId = start.building.floors[0].id;
+  const after = run(actions.scaleTraceImage, start, { floorId, image: { scale: 0.02, x: -1.5, y: 3.25 } });
+  assert.deepEqual(after.building.floors[0].image, { ...start.building.floors[0].image, scale: 0.02, x: -1.5, y: 3.25 });
+  assert.equal(after.settings, start.settings, 'no Cell scale given: the settings are the same object');
+  assert.equal(info(actions.scaleTraceImage, start, { floorId }, after).label, 'Scale the traced image on Floor 1');
+  assert.deepEqual(actions.scaleTraceImage.bumps, [BUILDING]);
+  const store = createStore({ project: start, clock, ids: makeIds() });
+  store.apply(actions.scaleTraceImage, { floorId, image: { scale: 0.02, x: -1.5, y: 3.25 }, cellScale: { unit: 'feet', length: 4 } });
+  assert.equal(store.history.past.length, 1, 'the image and the Cell scale are one undo step');
+  assert.deepEqual(store.project.settings.cellScale, { unit: 'feet', length: 4 });
+  store.undo();
+  assert.equal(store.project.settings.cellScale, undefined);
+  assert.equal(store.project.building.floors[0].image.scale, 0.05);
+});
+
+test('scaleTraceImage refuses a locked image, a floor with none, a bad scale and a bad Cell scale, each with its reason', () => {
+  const start = traced(emptyProject());
+  const floorId = start.building.floors[0].id;
+  const locked = run(actions.setTraceImage, start, { floorId, image: { locked: true } });
+  refused(actions.scaleTraceImage, locked, { floorId, image: { scale: 0.02, x: 0, y: 0 } }, 'locked');
+  assert.throws(() => actions.scaleTraceImage(locked, { floorId, image: { scale: 0.02, x: 0, y: 0 } }, ctx()), /locked, so it cannot be scaled\. Untick "Lock the image" on the Floor tab first\./);
+  refused(actions.scaleTraceImage, emptyProject(), { floorId: emptyProject().building.floors[0].id, image: { scale: 0.02, x: 0, y: 0 } }, 'missing');
+  refused(actions.scaleTraceImage, start, { floorId: 'fnothing00', image: { scale: 0.02, x: 0, y: 0 } }, 'missing');
+  refused(actions.scaleTraceImage, start, { floorId, image: { scale: 0, x: 0, y: 0 } }, 'bad-value');
+  refused(actions.scaleTraceImage, start, { floorId, image: { scale: 0.02, x: Number.NaN, y: 0 } }, 'bad-value');
+  refused(actions.scaleTraceImage, start, { floorId }, 'bad-value');
+  refused(actions.scaleTraceImage, start, { floorId, image: { scale: 0.02, x: 0, y: 0 }, cellScale: { unit: 'feet', length: -1 } }, 'bad-value');
+  refused(actions.scaleTraceImage, start, { floorId, image: { scale: 0.02, x: 0, y: 0 }, cellScale: null }, 'bad-value');
 });

@@ -106,6 +106,7 @@ export const GROUPS = {
     'ui/label-scale.test.mjs', // SV2-31
     'ui/set-view.test.mjs', // SV2-31c
     'ui/auto-snapshots.test.mjs', // SV2-28b
+    'ui/scale-tool.test.mjs', // SV2-73a
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
   ],
   browser: [
@@ -157,6 +158,7 @@ export const GROUPS = {
     'browser/auto-snapshots.mjs', // SV2-28b
     'browser/getting-started.mjs', // SV2-30b
     'browser/empty-states.mjs', // SV2-30b
+    'browser/trace-scale.mjs', // SV2-73a
     'a11y/axe.mjs',
   ],
   a11y: [

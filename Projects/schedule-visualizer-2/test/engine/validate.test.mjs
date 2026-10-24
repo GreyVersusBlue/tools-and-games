@@ -222,3 +222,19 @@ test('every paper size this version prints on is valid, and one it does not know
   project.settings.paper = { size: 'b5', orientation: 'portrait' };
   assert.deepEqual(validate(project), [{ path: 'settings.paper.size', message: 'The paper size is one of letter, a4, tabloid, a3, a2, a1, a0, poster-24x36.' }]);
 });
+
+test('Cell scale (SV2-73a): absent or null is not set, a unit and a length is set, and anything else is found', () => {
+  const project = school();
+  assert.equal(project.settings.cellScale, undefined, 'the sample school has no Cell scale');
+  assert.deepEqual(validate(project), [], 'absent is not set');
+  for (const fine of [null, { unit: 'feet', length: 5 }, { unit: 'metres', length: 0.5 }, { unit: 'feet', length: 1000 }]) {
+    const p = clone(project);
+    p.settings.cellScale = fine;
+    assert.deepEqual(validate(p), [], JSON.stringify(fine));
+  }
+  for (const bad of [{ unit: 'feet', length: 0 }, { unit: 'feet', length: 1000.5 }, { unit: 'yards', length: 3 }, { unit: 'feet' }, { unit: 'feet', length: 5, note: '' }, 'five feet', 5, []]) {
+    const p = clone(project);
+    p.settings.cellScale = bad;
+    assert.deepEqual(validate(p).map((finding) => finding.path), ['settings.cellScale'], JSON.stringify(bad));
+  }
+});

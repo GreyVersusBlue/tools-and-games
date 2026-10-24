@@ -81,6 +81,7 @@ every rule on this page and `engine/repair.js` enforces them on every load.
 | `defaultHeadCount` | integer | `25` | 1 to 999. Used for a group with no head count. |
 | `secondsPerCell` | integer | `3` | 1 to 10. Walking time for one corridor cell. |
 | `secondsPerStair` | integer | `8` | 2 to 30. Per level changed on a stair connection. |
+| `cellScale` | object or null, optional | absent | Cell scale: how long one cell is, `{ "unit": "feet" or "metres", "length": a number above 0 and at most 1000 }` (exactly those two fields). Absent or `null` means not set, so a project saved before the setting existed reads unchanged and a new project has none. One that cannot be read is repaired to `null` with a note. Only the traced image's scaling tool reads it (SV2-73a); a published file does not carry it. |
 | `colourScale.mode` | text | `"relative"` | `"relative"` or `"absolute"`. |
 | `colourScale.bands` | integer[4] | `[10, 25, 50, 100]` | The loads at which bands 2 to 5 begin in absolute mode. Each larger than the one before, 1 to 99999. |
 | `checks.consecutiveLimit` | integer | `4` | 1 to 16. A teacher teaching more periods in a row than this is a warning. |
