@@ -372,8 +372,10 @@ and add to this list rather than starting a new one.
   (#983), and a floor-standing prop or a door leaf sweeping into it is a
   `ramp-landing` reason too (#984); a folded ramp's top landing is asked
   the same five questions by the same lines, at its own open end (#985),
-  and was always drawn and walked (#825), but its turn landings are not
-  asked (they stand between storeys, on no floor); a stair's 4ft top
+  and was always drawn and walked (#825); its turn landings are not asked,
+  and none of the five questions can apply to one: each asks the storey a
+  landing arrives on (`landingFit` reads `link.to`), and a turn landing
+  arrives on none, under a hole cut round the whole fold (#825); a stair's 4ft top
   landing is asked the two of those questions that make sense for a stair,
   a floor-standing prop and a door's swing, by the same lines, as a
   `stair-landing` warning that moves nothing and cites no section (#987),
@@ -499,9 +501,10 @@ and add to this list rather than starting a new one.
   eaves, or a pinched court its eave closes or splits, keeps the hip on
   rectangles (`DESIGN-roof-holes.md` question 3's default), an arc of two chords off a wall whose ends turn unlike (a
   parallelogram's end: bowed in two chords it is the polygon of a chamfer as
-  long as the wall before it, #994), and a notch whose mouth closes before
-  its inside does (a bottle: the wavefront run out is the eave and a pocket,
-  which `eaveLine` refuses) keep rectangles too; `gable` over a curve keeps
+  long as the wall before it, #994), keeps rectangles too; a notch whose
+  mouth closes before its inside does (a bottle: the wavefront run out is the
+  eave and a pocket) stands on its skeleton with the pocket as a hole, the
+  second loop of that wavefront being what a court's eave is (#1014); `gable` over a curve keeps
   rectangles (a weighted skeleton; Devon, 2026-10-21, #1008, SG-Q5: "Not now:
   curves keep the hip/flat roofs only", so it stays that way); a curved building whose 4ft mask cells
   touch another building's takes its chord parapet (#988), and where a cell
@@ -518,8 +521,10 @@ and add to this list rather than starting a new one.
   both paths (#970); the elevation sorts a
   skeleton roof's faces by their nearest point like a rectangle's, and a hip
   seen across a valley in the sheet is checked by Devon's report, 2026-10-21
-  (#1008, SG-elev): "Done: looks fine"; no
-  `test/visual` capture has a curved roof (the sample school has none); the
+  (#1008, SG-elev): "Done: looks fine"; `test/visual`'s
+  `roof-curve` capture draws a school of its own with a bowed L and an apse
+  hall round a court, under hip and parapet, from above and from the south,
+  with no text in it (#1013); the
   look on a real GPU is done by Devon's report, 2026-10-21 (#1008, SG-gpu):
   "Done: looks fine". The courts, the hole, the head-on notch and the
   single-corner courtyard are designed in `DESIGN-roof-holes.md` (#995), six

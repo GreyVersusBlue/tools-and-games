@@ -144,6 +144,7 @@ const snap = page => page.evaluate(KEY => {
       button: b.tagName === "BUTTON" && !b.disabled,
     })),
     extra: q("choices").children.length - buttons.length,
+    note: q("lockedNote").textContent, noteShown: shown(q("lockedNote")),
     tag: tag ? tag.textContent : null,
     align: q("alignLabel").textContent, marker: q("alignMarker").style.left,
     favor: [q("favR").textContent, q("favD").textContent, q("favI").textContent],
@@ -229,7 +230,8 @@ async function play(page, p, how, { fromLoad = false, log = null } = {}) {
     const got = s.choices.map(c => `${c.mark} | ${c.label}`), wanted = list.map(c => `${c.mark || "→"} | ${c.label}`);
     if (JSON.stringify(got) !== JSON.stringify(wanted)) bad.choices.push(`${at}: offers [${got.join("; ")}], the walker says [${wanted.join("; ")}]`);
     if (s.choices.some(c => !c.shown || !c.button) || s.extra !== 0 || s.tag) bad.choices.push(`${at}: a choice is hidden, disabled or not a button`);
-    if (log) log.push({ id: step.id, labels: s.choices.map(c => c.label), list });
+    if (log) log.push({ id: step.id, labels: s.choices.map(c => c.label), list, note: s.noteShown ? s.note : "",
+      pieces: st.fragments.length, name: st.seam ? st.seam.name : null });
 
     if (how === "click") await page.click(choiceSel(k));
     else {
@@ -351,6 +353,18 @@ try {
     const hol = split("seam_answer", NAME, "end_named");
     ok(`the hollow offers the name to a walker with a name of their own and empty hands, and to no other (${hol.on} of ${hol.at})`,
       !!NAME && hol.agree && hol.on > 0 && hol.on < hol.at && hol.on === hol.says, JSON.stringify(hol));
+    // #1012: the walker who is not offered the name is told why, in the
+    // reason's own words, at the hollow and nowhere else. The sentences are
+    // written out here, not read back from the page.
+    const WHY = { pieces: /every piece you carry came with a promise, a debt or a prediction/, borne: /You answer to the old one/ };
+    const hollow = log.filter(e => e.id === "seam_answer"), refused = hollow.filter(e => !e.labels.includes(NAME));
+    none("a walker not offered the name is told so, with the reason that is theirs, and one who is offered it is told nothing", hollow.filter(e => {
+      if (e.labels.includes(NAME)) return e.note !== "";
+      return !/^You are not offered your name here\./.test(e.note) || WHY.pieces.test(e.note) !== e.pieces > 0 || WHY.borne.test(e.note) !== (e.name !== "own");
+    }).map(e => `${e.pieces} pieces, name ${e.name}: "${e.note}"`));
+    ok(`both reasons, and both together, were met at the hollow (${refused.length} refusals)`,
+      ["pieces", "borne"].every(k => refused.some(e => WHY[k].test(e.note))) && refused.some(e => e.pieces > 0 && e.name !== "own") && refused.some(e => e.pieces === 0));
+    none("no other screen shows the note", log.filter(e => e.id !== "seam_answer" && e.note !== "").map(e => e.id));
     const road = chosen.filter(p => prongOf(p) !== "seam");
     ok("a run down one of the three roads is never shown a seam screen",
       road.length > 0 && road.every(p => p.steps.every(s => !s.id.startsWith("seam_") && !["end_witness", "end_named"].includes(s.id))));
