@@ -341,8 +341,9 @@ test('the box an image covers, and the floor fitted to it rounded out to whole c
   assert.deepEqual(actions.floorForImage({ width: 40, height: 30 }, IMAGE), { left: -3, top: -2, right: -21, bottom: -16, width: 16, height: 12 });
   // 2.5 to 18.5 across and -1.25 to 10.75 down: rounded out, 2 to 19 and -2 to 11
   assert.deepEqual(actions.floorForImage({ width: 40, height: 30 }, { ...IMAGE, x: 2.5, y: -1.25 }), { left: -2, top: 2, right: -21, bottom: -19, width: 17, height: 13 });
-  // an edge a hair off a whole number is that whole number
-  assert.equal(actions.floorForImage({ width: 40, height: 30 }, { ...IMAGE, x: 3 + 1e-12 }).width, 16);
+  // an edge a hair either side of a whole number is that whole number: no column gained at either edge
+  assert.equal(actions.floorForImage({ width: 40, height: 30 }, { ...IMAGE, x: 3 + 1e-12 }).width, 16, 'nudged right');
+  assert.equal(actions.floorForImage({ width: 40, height: 30 }, { ...IMAGE, x: 3 - 1e-12 }).width, 16, 'nudged left');
 });
 
 test('fit the floor to the image is one action: the drawing and the image stay where they are on each other; refused when it would cut, when locked, or past a floor\'s sizes', () => {
