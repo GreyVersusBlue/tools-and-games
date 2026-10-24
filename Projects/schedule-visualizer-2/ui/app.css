@@ -1498,6 +1498,27 @@ kbd {
   flex: none;
 }
 
+/* The X: top right, in the corner the card's padding leaves, so the title
+   keeps its place. 36 px to a mouse, 44 px to a finger (.icon-btn). */
+.getting-started__head {
+  align-items: flex-start;
+}
+
+.getting-started__toggle,
+.getting-started__words {
+  align-self: center;
+}
+
+.getting-started__close {
+  flex: none;
+  margin: calc(var(--s-3) * -1) calc(var(--s-3) * -1) 0 0;
+  color: var(--ink-2);
+}
+
+.getting-started__close:hover {
+  color: var(--ink);
+}
+
 .getting-started__tally {
   margin-top: var(--s-1);
   color: var(--ink-2);
@@ -1592,6 +1613,10 @@ kbd {
     display: inline-flex;
   }
 
+  .getting-started__close {
+    margin: 0;
+  }
+
   .getting-started .eyebrow {
     display: none;
   }
@@ -1619,6 +1644,30 @@ kbd {
 
   .surface__layout {
     padding: var(--s-5);
+  }
+
+  /* The title is short and never wraps: the folded head is one line, with
+     the tally under the title where the row has no room for it (SV2-32o). */
+  .getting-started .card__title {
+    white-space: nowrap;
+  }
+}
+
+/* Under 640 px the button says "Steps" (its name is still "Show the steps",
+   aria-label), and the head's gaps and the button's sides are 8 px, so the
+   title, the button and the 44 px X keep one row at 320 px (SV2-32o). */
+@media (max-width: 640px) {
+  .getting-started__head {
+    gap: var(--s-2);
+  }
+
+  .getting-started__toggle {
+    padding-inline: var(--s-2);
+    text-transform: capitalize;
+  }
+
+  .getting-started__toggle-lead {
+    display: none;
   }
 }
 

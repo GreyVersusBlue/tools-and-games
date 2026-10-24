@@ -38,7 +38,7 @@ export const EMPTY_SCREENS = [
   {
     id: 'building', project: 'empty', hash: '#building',
     text: 'This is the building. Draw each floor here: a corridor first, then rooms along it.',
-    buttons: ['Trace over a photo of your floor plan', 'Change the size (Floor 1 is 40 × 30 squares)', 'Load the sample school'],
+    buttons: ['Trace over a photo of your floor plan', 'Change the size (Floor 1 is 40 × 30 cells)', 'Load the sample school'],
   },
   {
     id: 'groups', project: 'empty', hash: '#schedule/groups',
@@ -178,11 +178,42 @@ async function useProject(kind) {
   }, {}, kind);
 }
 
-// Set the grid's rows to Groups, Teachers or Rooms, by its own control.
+// The Schedule section drawn for the project as it is: it carries
+// data-pending from a change, and while the walk checks' answer for a new
+// state is coming, until it has been drawn again (ui/schedule/index.js).
+// Each drawing makes the grid's toolbar anew.
+function scheduleDrawn() {
+  return page.waitForFunction(() => {
+    const section = document.querySelector('.sch');
+    return Boolean(section) && section.dataset.pending !== 'true' && document.querySelector('.grd input[name][value]') !== null;
+  }, { timeout: 15000 });
+}
+
+// What the Schedule section was, for a message.
+const scheduleState = () => page.evaluate(() => {
+  const section = document.querySelector('.sch');
+  const grid = document.querySelector('.grd');
+  return { section: Boolean(section), pending: section ? section.dataset.pending || null : null, rows: grid ? grid.dataset.rows : null, checked: (document.querySelector('.grd input[name]:checked') || {}).value || null };
+});
+
+// Set the grid's rows to Groups, Teachers or Rooms, by its own control, once
+// the section is drawn: a radio found while a drawing was still to come had
+// left the page by the click ("Node is detached from document", once in
+// SV2-32a's full run). Made to fail so here by a drawing started as the
+// click is made (SV2-32b). The wait after is on the drawing for the new rows.
 async function gridRows(value) {
-  await page.waitForSelector('.grd input[name][value="' + value + '"]');
-  await page.click('.grd input[name][value="' + value + '"]');
-  await page.waitForFunction((wanted) => document.querySelector('.grd input[value="' + wanted + '"]').checked, {}, value);
+  await scheduleDrawn();
+  try {
+    await page.click('.grd input[name][value="' + value + '"]');
+  } catch (error) {
+    error.message += ' (clicking the rows ' + value + ' with the Schedule at ' + JSON.stringify(await scheduleState()) + ')';
+    throw error;
+  }
+  await page.waitForFunction((wanted) => {
+    const section = document.querySelector('.sch');
+    const grid = document.querySelector('.grd');
+    return Boolean(section) && section.dataset.pending !== 'true' && grid && grid.dataset.rows === wanted && document.querySelector('.grd input[value="' + wanted + '"]').checked;
+  }, { timeout: 15000 }, value);
 }
 
 // What the shown empty screen says: its marks, and the one shown's words and buttons.
@@ -308,6 +339,7 @@ test('on an empty project every section, Schedule tab and grid row choice shows 
         if (TAB_NEVER_EMPTY[tab]) continue;
         await go(page, '#schedule/' + tab);
         if (tab === 'grid') {
+          await scheduleDrawn();
           const rows = await page.$$eval('.grd input[name][value]', (all) => all.map((input) => input.value));
           assert.deepEqual(rows, ['groups', 'teachers', 'rooms']);
           for (const value of rows) {

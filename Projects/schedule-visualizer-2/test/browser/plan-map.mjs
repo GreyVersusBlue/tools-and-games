@@ -45,8 +45,14 @@ afterEach(async () => {
 // Safety into the plan's layout: the layout's padding (the bottom one is the
 // band a message lies on, --toast-room), its faint grid, the stub's card and
 // Getting started as [left, top, width, height], and the messages' bottom.
+// The Scenarios rows were measured again by bare() and stubShape() after
+// SV2-74 (4a216aab) gave the card its X and a one-line sample sentence: at
+// 1280 the card is 501 high, not 520. At 390 the X made the folded head 91
+// high for a while; since SV2-32o's one-line head it is 65 again and the
+// stub under it at 246, measured again, as at 3c0eee81. The Safety rows are
+// not read (Safety mounts its own map) and keep 3c0eee81's.
 const BEFORE = {
-  '1280 #scenarios': { padding: '32px 32px 76px', grid: true, stub: [124, 113, 704, 285], started: [888, 81, 360, 520], toasts: '16px' },
+  '1280 #scenarios': { padding: '32px 32px 76px', grid: true, stub: [124, 113, 704, 285], started: [888, 81, 360, 501], toasts: '16px' },
   '1280 #safety': { padding: '32px 32px 76px', grid: true, stub: [124, 113, 704, 285], started: [888, 81, 360, 520], toasts: '16px' },
   '390 #scenarios': { padding: '16px 12px 76px', grid: true, stub: [12, 246, 366, 372], started: [12, 65, 366, 65], toasts: '12px' },
   '390 #safety': { padding: '16px 12px 76px', grid: true, stub: [12, 274, 366, 316], started: [12, 65, 366, 65], toasts: '12px' },

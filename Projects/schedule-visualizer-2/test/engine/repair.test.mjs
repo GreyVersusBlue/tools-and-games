@@ -672,3 +672,30 @@ test('each poster size is kept as it is, and a paper this version does not know 
     assert.deepEqual(validate(result.project), []);
   }
 });
+
+test('Cell scale (SV2-73a): a project with none, or not set, comes back as the same object; one that cannot be read is cleared, said once', () => {
+  const none = school();
+  assert.equal(none.settings.cellScale, undefined);
+  const plain = repair(none, { ids: makeIds(), clock });
+  assert.equal(plain.project, none, 'a project from before the setting existed reads unchanged');
+  assert.deepEqual(plain.notes, []);
+  for (const kept of [null, { unit: 'metres', length: 1.2 }]) {
+    const p = clone(none);
+    p.settings.cellScale = kept;
+    const result = repair(p, { ids: makeIds(), clock });
+    assert.equal(result.project, p, JSON.stringify(kept));
+  }
+  for (const bad of [{ unit: 'feet', length: -1 }, { unit: 'furlongs', length: 2 }, 'five', 7]) {
+    const p = clone(none);
+    p.settings.cellScale = bad;
+    const result = repair(p, { ids: makeIds(), clock });
+    assert.equal(result.project.settings.cellScale, null, JSON.stringify(bad));
+    assert.deepEqual(result.notes, ['The cell scale could not be read and is not set now.'], JSON.stringify(bad));
+    assert.deepEqual(validate(result.project), []);
+  }
+  const extra = clone(none);
+  extra.settings.cellScale = { unit: 'feet', length: 5, note: 'from the plans' };
+  const tidied = repair(extra, { ids: makeIds(), clock });
+  assert.deepEqual(tidied.project.settings.cellScale, { unit: 'feet', length: 5 });
+  assert.deepEqual(tidied.notes, [], 'what is dropped beside the unit and length is nothing the tool reads');
+});

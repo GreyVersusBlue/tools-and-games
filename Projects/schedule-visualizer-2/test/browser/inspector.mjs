@@ -326,7 +326,7 @@ test('a floor with no rooms says what to do, and the list follows the floor on s
 
 test('the Floor tab renames the floor, and the tab in the top bar follows', async () => {
   await tab('floor');
-  assert.equal(await text('#floor-about'), 'Floor 4 is 40 × 14 squares. It is floor 4 of 4 in the tabs.');
+  assert.equal(await text('#floor-about'), 'Floor 4 is 40 × 14 cells. It is floor 4 of 4 in the tabs.');
   const before = await entries();
   await retype('#floor-name', 'Roof <deck>', 'Enter');
   assert.equal((await project()).building.floors[3].name, 'Roof <deck>');
@@ -343,7 +343,7 @@ test('a floor is moved among the tabs, and the first and last cannot go further'
   const names = (await project()).building.floors.map((floor) => floor.name);
   assert.deepEqual(names, ['Floor 1', 'Floor 2', 'Roof <deck>', 'Floor 3']);
   assert.equal(await entries(), before + 1);
-  assert.equal(await text('#floor-about'), 'Roof <deck> is 40 × 14 squares. It is floor 3 of 4 in the tabs.');
+  assert.equal(await text('#floor-about'), 'Roof <deck> is 40 × 14 cells. It is floor 3 of 4 in the tabs.');
   assert.equal(await page.$eval('#floor-later', (el) => el.disabled), false);
 });
 
@@ -354,7 +354,7 @@ test('a size preset fills the two fields and says what the floor would be; nothi
   assert.deepEqual(await page.$$eval('#inspector-floor [data-preset]', (all) => all.map((button) => button.textContent)), ['Small 30 × 20', 'Medium 40 × 30', 'Large 60 × 40']);
   await page.click('#inspector-floor [data-preset="large"]');
   assert.deepEqual([await value('#floor-width'), await value('#floor-height')], ['60', '40']);
-  assert.equal(await text('#floor-size-preview'), 'Roof <deck> would be 60 × 40 squares. Nothing drawn would be cut off.');
+  assert.equal(await text('#floor-size-preview'), 'Roof <deck> would be 60 × 40 cells. Nothing drawn would be cut off.');
   assert.equal(await text('#floor-resize'), 'Resize to 60 × 40');
   assert.equal(await entries(), before);
   await page.click('#floor-resize');
@@ -362,7 +362,7 @@ test('a size preset fills the two fields and says what the floor would be; nothi
   assert.deepEqual([floor.width, floor.height], [60, 40]);
   assert.equal(await entries(), before + 1);
   assert.equal((await state(page)).label, 'Resize Roof <deck> to 60 by 40');
-  assert.equal(await text('#floor-about'), 'Roof <deck> is 60 × 40 squares. It is floor 3 of 4 in the tabs.');
+  assert.equal(await text('#floor-about'), 'Roof <deck> is 60 × 40 cells. It is floor 3 of 4 in the tabs.');
 });
 
 test('a size out of range, or one that is not a number, is refused in the preview and Resize does nothing', async () => {
@@ -372,7 +372,7 @@ test('a size out of range, or one that is not a number, is refused in the previe
   assert.equal(await page.$eval('#floor-resize', (el) => el.getAttribute('aria-disabled')), 'true');
   await page.click('#floor-resize');
   await retype('#floor-width', 'wide');
-  assert.equal(await text('#floor-size-preview'), 'A size is two whole numbers of squares, each from 5 to 200.');
+  assert.equal(await text('#floor-size-preview'), 'A size is two whole numbers of cells, each from 5 to 200.');
   await page.keyboard.press('Enter');
   assert.equal(await entries(), before);
   assert.equal((await project()).building.floors[2].width, 60);
@@ -385,7 +385,7 @@ test('a size that would cut off drawn cells says what would be lost, asks, and c
   const before = await entries();
   await retype('#floor-width', '20');
   const preview = await text('#floor-size-preview');
-  assert.match(preview, /^Floor 1 would be 20 × 14 squares\. That would cut off /);
+  assert.match(preview, /^Floor 1 would be 20 × 14 cells\. That would cut off /);
   assert.match(preview, /Gym/);
   assert.match(preview, /corridor cells/);
   assert.match(preview, /scheduled into what would go/);
@@ -475,7 +475,7 @@ test('an image chosen for a floor is reduced on import, given a light backing, s
   assert.deepEqual(await page.evaluate(() => import('./engine/validate.js').then((module) => module.validate(globalThis.sv2.store.project))), []);
 
   // on the plan: the wall of the image shows through an empty cell
-  assert.equal(await text('#trace-facts'), 'The image is 1600 × 1200 pixels, drawn 18.7 × 14 squares.');
+  assert.equal(await text('#trace-facts'), 'The image is 1600 × 1200 pixels, drawn 18.7 × 14 cells.');
   await page.waitForFunction(() => {
     const editor = document.querySelector('.bld').editor;
     editor.drawNow();
@@ -508,7 +508,7 @@ test('opacity, width, turn and place are each kept as one step, and a width of n
   assert.equal(await entries(), before + 5);
   assert.equal((await state(page)).label, 'Adjust the traced image on Floor 1');
   await retype('#trace-width', '0', 'Enter');
-  assert.equal(await page.$eval('#trace-width', (el) => el.closest('.field').querySelector('.field__refusal').textContent), 'The image needs a width above 0 squares.');
+  assert.equal(await page.$eval('#trace-width', (el) => el.closest('.field').querySelector('.field__refusal').textContent), 'The image needs a width above 0 cells.');
   await page.keyboard.press('Escape');
   assert.equal(await entries(), before + 5);
   await page.click('#trace-fit');

@@ -26,6 +26,11 @@ const TOOL = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const read = (...parts) => readFileSync(path.join(TOOL, ...parts), 'utf8');
 const APP = read('ui', 'app.js');
 
+// each rail section's module source, for what it mounts
+const sources = new Map();
+// what each section's start(ctx) put on the list, by the section's id
+const fromStart = new Map();
+
 // The rail: `export const SECTIONS = [building, schedule, …]` and the import
 // line that names each.
 async function railSections() {
@@ -37,6 +42,7 @@ async function railSections() {
     const line = APP.match(new RegExp("import \\{[^}]*\\bsection as " + local + "\\b[^}]*\\} from '([^']+)'"));
     assert.ok(line, 'ui/app.js has no import line for the rail\'s ' + local);
     const mod = await import(pathToFileURL(path.join(TOOL, 'ui', line[1])).href);
+    sources.set(mod.section, read('ui', line[1]));
     sections.push(mod.section);
   }
   return sections;
@@ -64,8 +70,10 @@ async function registered(sections) {
     };
     for (const each of sections) {
       if (!each.start) continue;
+      const before = shortcuts.list().length;
       try {
         each.start(ctx);
+        fromStart.set(each.id, shortcuts.list().slice(before));
       } catch (error) {
         assert.fail(each.id + '.start(ctx) threw in Node (' + error.message + '): give the fake ctx here what it needs');
       }
@@ -114,6 +122,24 @@ test('every shortcut the shell and the sections’ start() register is in Help o
   for (const each of model.keys.groups) assert.equal(each.written, true, 'Help has no sentence for the shortcut group "' + each.group + '": add it to SHORTCUT_GROUPS in ui/help/content.js');
   // a group nobody registers has no business in Help
   for (const group of Object.keys(SHORTCUT_GROUPS)) assert.ok(groups.includes(group), 'SHORTCUT_GROUPS explains "' + group + '", which nothing registers');
+});
+
+// The plan map (ui/surface/plan-map.js) answers =, - and 0 itself, on every
+// section that mounts one, so each such section lists them from its start():
+// the scenario lab's map answered them for weeks with none of them in Help
+// (SV2-32b).
+test('every section that mounts the plan map lists its zoom and fit keys, = - 0, in Help', async () => {
+  const sections = await railSections();
+  const rows = await registered(sections);
+  const withMap = sections.filter((each) => /\bcreatePlanMap\(/.test(sources.get(each)));
+  assert.deepEqual(withMap.map((each) => each.id), ['movement', 'scenarios', 'safety'], 'the sections that mount the plan map');
+  const listed = new Set(helpModel({ sections, shortcuts: rows }).keys.rows.map((row) => row.id));
+  for (const each of withMap) {
+    const own = fromStart.get(each.id) || [];
+    const keys = new Set(own.flatMap((row) => String(row.keys).split(/\s+/)));
+    for (const key of ['=', '-', '0']) assert.ok(keys.has(key), each.id + ' mounts the plan map, which answers ' + key + ', and its start() lists no shortcut with that key: Help cannot show it');
+    for (const row of own) assert.ok(listed.has(row.id), 'Help leaves out ' + row.id);
+  }
 });
 
 test('a shortcut group Help has no sentence for still shows, saying so', () => {

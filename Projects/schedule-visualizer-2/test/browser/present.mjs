@@ -19,7 +19,7 @@ import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 
-import { openPlanner, TOOL_DIR, launch, startServer } from './harness.mjs';
+import { openPlanner, TOOL_DIR, launch, startServer, loadModule } from './harness.mjs';
 
 const AXE = path.join(TOOL_DIR, 'test', 'vendor', 'axe-core', 'axe.min.js');
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'];
@@ -220,25 +220,6 @@ function onTop(page, selector) {
     const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
     return hit !== null && (hit === el || el.contains(hit));
   }, selector);
-}
-
-// A module of the tool put on the page as globalThis.sv2modules[key] by a
-// module script the page loads itself, and waited for by its key (as
-// m5-pass.mjs does: an import() awaited inside page.evaluate came back
-// "Promise was collected", SV2-72e).
-async function loadModule(page, key, file) {
-  const held = (wanted) => {
-    const value = globalThis.sv2modules && globalThis.sv2modules[wanted];
-    if (!value) return null;
-    return { error: value[Symbol.toStringTag] === 'Module' ? null : String(value.error) };
-  };
-  let state = await page.evaluate(held, key);
-  if (state === null) {
-    const name = JSON.stringify(key);
-    await page.addScriptTag({ type: 'module', content: 'const modules = (globalThis.sv2modules ||= {}); import(' + JSON.stringify('./' + file) + ').then((module) => { modules[' + name + '] = module; }, (error) => { modules[' + name + '] = { error: String((error && error.message) || error) }; });' });
-    state = await (await page.waitForFunction(held, { timeout: 10000 }, key)).jsonValue();
-  }
-  if (state.error !== null) throw new Error('loadModule: ' + file + ' did not load: ' + state.error);
 }
 
 async function axeFinds(page) {

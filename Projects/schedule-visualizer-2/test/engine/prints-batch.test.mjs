@@ -1,5 +1,6 @@
-// Batch printing (ui/prints/batch.js): every teacher's schedule and every
-// door sign as one print document each, rendered in plain Node from the
+// Batch printing (ui/prints/batch.js): every teacher's schedule, every door
+// sign and every room's schedule as one print document each, and all three in
+// one document (SV2-32e), rendered in plain Node from the
 // sample school, from a school with nothing in it, and from a school whose
 // every name is hostile. A door sign in the batch is the staff browser's own
 // sign (doorSignMarkup, staff/views/door-sign.js), made from the published
@@ -13,7 +14,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { render, BATCHES, batchCount, batchWords } from '../../ui/prints/batch.js';
+import { render, BATCHES, batchCount, batchWords, UPRIGHT_ALL_SENTENCE, UPRIGHT_ALL_COVER, UPRIGHT_ALL_ASKED, UPRIGHT_COVER, UPRIGHT_ASKED } from '../../ui/prints/batch.js';
 import * as doorModule from '../../staff/views/door-sign.js';
 import { openSchool } from '../../staff/model.js';
 import { publishedModel } from '../../engine/publish-data.js';
@@ -31,6 +32,8 @@ const NOW = { now: PINNED };
 
 const teachers = (project, options) => render(project, null, { ...NOW, ...options, batch: 'teachers' }).html;
 const doors = (project, options) => render(project, null, { ...NOW, ...options, batch: 'doors' }).html;
+const rooms = (project, options) => render(project, null, { ...NOW, ...options, batch: 'rooms' }).html;
+const everything = (project, options) => render(project, null, { ...NOW, ...options, batch: 'all' }).html;
 
 function countOf(html, piece) {
   return html.split(piece).length - 1;
@@ -244,10 +247,115 @@ test('with the room\'s day, a sign shows who is there each period, and a double-
   }
 });
 
-// ---------------------------------------------------------------- the three outputs
+// ---------------------------------------------------------------- every room's schedule (SV2-32e)
 
-test('the three batch outputs are in the list the preview sheet reads, each with its own fixed choice', () => {
-  assert.deepEqual(BATCHES.map((batch) => batch.id), ['teacher-schedules', 'door-signs', 'door-signs-day']);
+test('every room gets one schedule sheet, in the order of the building, after a cover that lists them', () => {
+  const project = school();
+  const html = rooms(project);
+  const sheets = sheetsOf(html);
+  assert.deepEqual(sheets.map((sheet) => sheet.id), allRooms(project).map((each) => each.id));
+  assert.ok(sheets.every((sheet) => sheet.kind === 'room'));
+  assert.equal(countOf(html, 'new-sheet'), 13);
+  const cover = html.slice(0, html.indexOf('new-sheet'));
+  assert.ok(cover.includes('<h1 class="doc-head__what">Room schedules</h1>'));
+  assert.ok(cover.includes('<p class="doc-lead">13 room schedules follow, one sheet each, in the order of the building’s floors.</p>'));
+  assert.equal(countOf(cover, '<li>'), 13);
+  const first = sheets.find((sheet) => sheet.id === room(project, '101').id).html;
+  assert.ok(first.includes('<span>' + esc(SAMPLE_SCHOOL_NAME) + ' · Room schedule</span><span>1 September 2026</span>'));
+  assert.ok(first.includes('<h2 class="batch-sheet__name">Room 101</h2>'));
+  assert.ok(first.includes('<p class="batch-sheet__facts">Mathematics · Ms. Halloran · Wing: West · Seats 30</p>'), 'subject, teacher, wing, seats');
+  assert.ok(first.includes('<p class="batch-sheet__says">On Floor 1. In use for 2 of 8 periods on A Day and 3 on B Day.</p>'), 'the room page\'s own sentence');
+});
+
+test('a room\'s sheet shows who is in it each period, with the teacher, against the schedule itself; a double-booked room shows both', () => {
+  const project = school();
+  const sheets = sheetsOf(rooms(project));
+  const [aDay] = tablesOf(sheets.find((sheet) => sheet.id === room(project, '203').id).html);
+  assert.deepEqual(aDay[0], ['Period 1', '6B', 'Ms. Vandermeer']);
+  assert.deepEqual(aDay[1], ['Period 2', '6C and 7C', 'Ms. Vandermeer'], 'the sample\'s double-booking: neither group is dropped');
+  assert.deepEqual(aDay[4], ['Period 5', 'Empty', '']);
+  for (const each of allRooms(project)) {
+    const tables = tablesOf(sheets.find((sheet) => sheet.id === each.id).html);
+    project.dayTypes.forEach((dayType, d) => {
+      for (let period = 0; period < project.settings.periods; period += 1) {
+        const here = project.groups.filter((candidate) => effectiveSchedule(project, candidate.id, dayType.id)[period].room === each.id).map((candidate) => candidate.name);
+        const cell = tables[d][period][1];
+        if (here.length === 0) assert.equal(cell, 'Empty', each.number + ' period ' + period);
+        else for (const name of here) assert.ok(cell.split(/, | and /).some((part) => part === name || part.startsWith(name + ' ')), each.number + ' period ' + period + ' on ' + dayType.name + ' has ' + name + ': ' + cell);
+      }
+    });
+  }
+});
+
+test('a room nobody is scheduled into says so, and every period reads Empty', () => {
+  const project = school();
+  const gym = room(project, '101');
+  for (const each of project.groups) for (const day of Object.values(each.days)) for (const slot of day) if (slot.room === gym.id) slot.room = null;
+  const sheet = sheetsOf(rooms(project)).find((each) => each.id === gym.id).html;
+  assert.ok(sheet.includes('<p class="batch-sheet__says">On Floor 1. Not used in this schedule.</p>'));
+  const tables = tablesOf(sheet);
+  assert.equal(tables.length, 2, 'A Day and B Day ring different bells, so each has its table');
+  assert.ok(tables.every((table) => table.length === 8 && table.every((row) => row[1] === 'Empty' && row[2] === '')));
+});
+
+// ---------------------------------------------------------------- everything in one document (SV2-32e)
+
+test('one document holds every teacher\'s schedule, then every door sign, then every room\'s schedule, each sheet as its own batch prints it', () => {
+  const project = school();
+  const html = everything(project);
+  const sheets = sheetsOf(html);
+  assert.deepEqual(sheets.map((sheet) => sheet.kind), Array(12).fill('teacher').concat(Array(13).fill('door'), Array(13).fill('room')));
+  assert.equal(countOf(html, 'new-sheet'), 38);
+  assert.equal(batchCount(project, 'all'), 38);
+  // the same sheets, byte for byte, as the three batches print them; the signs without the room's day, which the room's own sheet has
+  // (a document's last sheet runs on to the document's end: that is cut off)
+  const own = (list) => list.map((sheet) => sheet.html.replace(/<\/div>\n<\/section>\n<\/body>\n<\/html>$/, '').replace(/\n$/, ''));
+  assert.deepEqual(own(sheets.slice(0, 12)), own(sheetsOf(teachers(project))));
+  assert.deepEqual(own(sheets.slice(12, 25)), own(sheetsOf(doors(project))));
+  assert.deepEqual(own(sheets.slice(25)), own(sheetsOf(rooms(project))));
+  const cover = html.slice(0, html.indexOf('new-sheet'));
+  assert.ok(cover.includes('<h1 class="doc-head__what">Every schedule and door sign</h1>'));
+  assert.ok(cover.includes('<p class="doc-lead">Everything for the whole school in one document, one sheet each: 12 teachers’ schedules, 13 door signs and 13 rooms’ schedules, in that order.</p>'));
+  assert.ok(cover.includes('<p class="doc-lead">Teacher schedules, in the order of the Teachers list:</p>'));
+  assert.ok(cover.includes('<p class="doc-lead">Door signs, in the order of the building’s floors:</p>'));
+  assert.ok(cover.includes('<p class="doc-lead">Room schedules, in the order of the building’s floors:</p>'));
+  assert.equal(countOf(cover, '<li>'), 38, 'every sheet on the cover, in its part');
+});
+
+test('the one document is upright, as its door signs are, and its cover says why when landscape was chosen or asked for', () => {
+  const project = school();
+  const asked = everything(project, { paper: { size: 'letter', orientation: 'landscape' } });
+  assert.ok(asked.includes('data-paper="letter" data-orientation="portrait"'));
+  assert.ok(asked.includes(UPRIGHT_ALL_ASKED) && !asked.includes(UPRIGHT_ALL_COVER));
+  assert.ok(!asked.includes(UPRIGHT_ASKED) && !asked.includes(UPRIGHT_COVER), 'the door signs\' own sentence is for their own batch');
+  const upright = everything(project, { paper: { size: 'letter', orientation: 'portrait' } });
+  assert.equal(asked.replace(' ' + UPRIGHT_ALL_ASKED, ''), upright, 'but for that sentence it is the portrait document');
+  const set = school();
+  set.settings.paper = { size: 'a4', orientation: 'landscape' };
+  const chosen = everything(set);
+  assert.ok(chosen.includes('data-paper="a4" data-orientation="portrait"') && chosen.includes(UPRIGHT_ALL_COVER));
+  const entry = BATCHES.find((batch) => batch.id === 'whole-school');
+  assert.deepEqual([entry.upright, entry.uprightSays], [true, UPRIGHT_ALL_SENTENCE]);
+  // a room's schedule keeps what was asked, as a teacher's does
+  const roomsTurned = rooms(project, { paper: { size: 'letter', orientation: 'landscape' } });
+  assert.ok(roomsTurned.includes('data-orientation="landscape"'));
+  assert.equal(BATCHES.find((batch) => batch.id === 'room-schedules').upright, undefined);
+});
+
+test('a school with no teachers and no rooms gets the one document with a sentence for each part and no sheets', () => {
+  const project = planProject([['.....']]);
+  const html = everything(project);
+  assert.equal(countOf(html, 'new-sheet'), 0);
+  assert.ok(html.includes('one sheet each: no teachers’ schedules, no door signs and no rooms’ schedules, in that order.'));
+  assert.ok(html.includes('<p class="doc-lead">Teacher schedules, in the order of the Teachers list: There are no teachers in the schedule yet, so there is no schedule to print.</p>'));
+  assert.ok(html.includes('<p class="doc-lead">Room schedules, in the order of the building’s floors: There are no rooms in the building yet, so there is no room’s schedule to print.</p>'));
+  assert.ok(rooms(project).includes('<p class="doc-lead">There are no rooms in the building yet, so there is no room’s schedule to print.</p>'));
+});
+
+// ---------------------------------------------------------------- the five outputs
+
+test('the five batch outputs are in the list the preview sheet reads, each with its own fixed choice', () => {
+  assert.deepEqual(BATCHES.map((batch) => batch.id), ['teacher-schedules', 'door-signs', 'door-signs-day', 'room-schedules', 'whole-school']);
   const project = school();
   for (const batch of BATCHES) {
     assert.equal(outputFor(batch.id), batch);
@@ -263,8 +371,11 @@ test('the three batch outputs are in the list the preview sheet reads, each with
   assert.equal(BATCHES[0].render(project, null, { ...NOW, batch: 'doors' }).html, teachers(project));
   assert.equal(BATCHES[1].render(project, null, { ...NOW, day: true }).html, doors(project));
   assert.equal(BATCHES[2].render(project, null, NOW).html, doors(project, { day: true }));
+  assert.equal(BATCHES[3].render(project, null, { ...NOW, batch: 'teachers' }).html, rooms(project));
+  assert.equal(BATCHES[4].render(project, null, { ...NOW, batch: 'doors', day: true }).html, everything(project));
   assert.equal(batchCount(project, 'teachers'), 12);
   assert.equal(batchCount(project, 'doors'), 13);
+  assert.equal(batchCount(project, 'rooms'), 13);
   assert.deepEqual(batchWords(project), { teachers: '12 teachers', rooms: '13 rooms' });
 });
 
@@ -309,6 +420,8 @@ test('hostile names come through every batch as text, never as markup', () => {
     'teacher-schedules': ['school', 'room', 'teacher', 'subject', 'group', 'label', 'day type'],
     'door-signs': ['school', 'floor', 'room', 'teacher', 'subject'],
     'door-signs-day': ['school', 'floor', 'room', 'teacher', 'subject', 'group', 'day type'],
+    'room-schedules': ['school', 'floor', 'room', 'teacher', 'subject', 'group', 'label', 'day type'],
+    'whole-school': ['school', 'floor', 'room', 'teacher', 'subject', 'group', 'label', 'day type'],
   };
   for (const batch of BATCHES) {
     const { title, html } = batch.render(project, null, NOW);
@@ -325,7 +438,8 @@ test('hostile names come through every batch as text, never as markup', () => {
     assert.equal(countOf(html, '<style'), 1, batch.id + ': the page rule and no other style');
     assert.doesNotMatch(html.replace(/="[^"]*"/g, ''), /<[^>]*\son[a-z]+\s*=/i, batch.id + ': an event handler attribute');
     // every teacher and every room is still there, one sheet each
-    assert.equal(countOf(html, 'new-sheet'), batch.id === 'teacher-schedules' ? project.teachers.length : allRooms(project).length, batch.id);
+    const sheetCount = { 'teacher-schedules': project.teachers.length, 'whole-school': project.teachers.length + allRooms(project).length * 2 }[batch.id];
+    assert.equal(countOf(html, 'new-sheet'), sheetCount === undefined ? allRooms(project).length : sheetCount, batch.id);
   }
   // each teacher's name is on its own sheet, escaped, exactly as typed
   const sheets = sheetsOf(teachers(project));
@@ -351,7 +465,7 @@ test('every class a batch sheet uses has a rule in print.css, under the document
   }
   assert.ok(used.size >= 20, 'the sheets are made of batch- classes and the sign\'s own: ' + used.size);
   for (const name of used) {
-    if (name === 'batch-sheet--teacher' || name === 'batch-day' || name === 'sign__kind') continue; // a hook for a later rule, and two plain sections
+    if (name === 'batch-sheet--teacher' || name === 'batch-sheet--room' || name === 'batch-day' || name === 'sign__kind') continue; // two hooks for a later rule, and two plain sections
     assert.match(css, new RegExp('\\.print-doc \\.' + name + '(?![a-zA-Z0-9_-])'), name);
   }
   assert.match(css, /\.print-doc \.sign__number \{[^}]*font-size: calc\(120pt \* var\(--sign-fit, 1\)\)/, 'the number at 120 pt (DESIGN 7), times the fit');

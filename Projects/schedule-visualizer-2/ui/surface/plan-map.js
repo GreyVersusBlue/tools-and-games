@@ -913,6 +913,16 @@ export function createPlanMap(asked) {
     const moved = stage.style.getPropertyValue('--mov-under') !== under;
     if (moved) stage.style.setProperty('--mov-under', under);
     if (moved && (liftScroll === null || scrolled === liftScroll) && fitted && world) {
+      // The stage measured first, so the fit is of one stage: a lift seen
+      // before the stage's own watcher has measured its new size (the zoom
+      // box's watcher, or the section's dock, ran first) weighed the last
+      // measure's height against the foot and the corner of the stage as
+      // resized. At 1280 by 460 with a mouse Movement's legend docked, the
+      // stage went from 245 to 217 px, and the fit judged 245 against a foot
+      // of 103 ("above"); the measure then judged 217 and turned it back
+      // ("whole"): three fit turns where two is the bound (SV2-32b). measure()
+      // does nothing when the stage is the size the view has.
+      measure();
       // the section asks again where the fitted floors lie (Movement's legend)
       for (const fn of layoutFns) fn();
       fit(true);

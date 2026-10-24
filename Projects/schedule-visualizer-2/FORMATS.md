@@ -81,13 +81,14 @@ every rule on this page and `engine/repair.js` enforces them on every load.
 | `defaultHeadCount` | integer | `25` | 1 to 999. Used for a group with no head count. |
 | `secondsPerCell` | integer | `3` | 1 to 10. Walking time for one corridor cell. |
 | `secondsPerStair` | integer | `8` | 2 to 30. Per level changed on a stair connection. |
+| `cellScale` | object or null, optional | absent | Cell scale: how long one cell is, `{ "unit": "feet" or "metres", "length": a number above 0 and at most 1000 }` (exactly those two fields). Absent or `null` means not set, so a project saved before the setting existed reads unchanged and a new project has none. One that cannot be read is repaired to `null` with a note. Only the traced image's scaling tool reads it (SV2-73a); a published file does not carry it. |
 | `colourScale.mode` | text | `"relative"` | `"relative"` or `"absolute"`. |
 | `colourScale.bands` | integer[4] | `[10, 25, 50, 100]` | The loads at which bands 2 to 5 begin in absolute mode. Each larger than the one before, 1 to 99999. |
 | `checks.consecutiveLimit` | integer | `4` | 1 to 16. A teacher teaching more periods in a row than this is a warning. |
 | `checks.passingMarginSeconds` | integer | `0` | 0 to 600. Added to the passing time before a walk counts as late. |
 | `checks.off` | text[] | `[]` | The check kinds switched off, each once. |
 | `timeFormat` | text | `"12h"` | `"12h"` or `"24h"`. Display only; times are stored as 24-hour. |
-| `paper.size` | text | `"letter"` | `"letter"` or `"a4"`. A new project takes the device's region. |
+| `paper.size` | text | `"letter"` | One of `"letter"` (US Letter), `"a4"`, `"tabloid"` (11 × 17 in), `"a3"`, `"a2"`, `"a1"`, `"a0"` or `"poster-24x36"` (24 × 36 in). A new project takes the device's region. An unknown size reads as `"letter"`: a saved project or an older file is repaired to it with a note, and a print asked for one lays out on US Letter; a project file of the current version that names one is refused, as any value out of range is. |
 | `paper.orientation` | text | `"portrait"` | `"portrait"` or `"landscape"`. |
 | `theme` | text | `"auto"` | `"auto"`, `"light"` or `"dark"`. |
 

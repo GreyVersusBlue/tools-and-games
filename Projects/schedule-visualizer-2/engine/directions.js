@@ -44,12 +44,13 @@ const NONE = 4;
 const OPPOSITE = [2, 3, 0, 1];
 const SIDE_INDEX = new Map(DOOR_SIDES.map((side, index) => [side, index]));
 
+// "Cell" is spec 2's one word for a square of a floor's grid, in the planner
+// and in a published file alike, so a reader of the staff browser is told
+// "Walk 4 cells" and "Distances are in cells of the floor plan" as the
+// planner would say it (SV2-32f; the staff browser said "squares" until
+// then). The staff browser passes these (staff/model.js) until a building
+// has a scale and the distances are in its own unit.
 export const CELL_UNITS = { perCell: 1, one: 'cell', many: 'cells' };
-// For a reader who never saw the planner: "cell" is the planner's word for a
-// square of its grid, and a published file says "squares of the floor plan".
-// The staff browser passes these (staff/model.js) until a building has a
-// scale and the distances are in its own unit.
-export const SQUARE_UNITS = { perCell: 1, one: 'square', many: 'squares' };
 
 function typed(text) {
   return { text, name: true };

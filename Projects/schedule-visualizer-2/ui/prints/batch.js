@@ -1,10 +1,14 @@
-// Batch printing (spec 12.4): every teacher's schedule, or every door sign,
-// as one print document, so a whole school's worth goes to the printer (or to
-// one PDF) in a single job.
+// Batch printing (spec 12.4): every teacher's schedule, every door sign, or
+// every room's schedule, as one print document, so a whole school's worth
+// goes to the printer (or to one PDF) in a single job; and all three in one
+// document, for the one file spec 12.4 asks for.
 //
 // render(project, derived, options) → { title, html }
-//   options.batch  'teachers' (the default) or 'doors'
-//   options.day    doors only: true puts the room's day on each sign
+//   options.batch  'teachers' (the default), 'doors', 'rooms', or 'all' (the
+//                  teachers' schedules, then the door signs, then the rooms'
+//                  schedules)
+//   options.day    doors only: true puts the room's day on each sign (the
+//                  signs of 'all' have none: the room's sheet is its day)
 //   and what every output takes (document.js)
 //
 // The first sheet is a cover: the header every print document has, and the
@@ -23,7 +27,7 @@
 // staff/views/door-sign.js), put inside a sheet. The sheets' rules are the
 // marked block at the end of ui/print.css.
 //
-// BATCHES are the three entries ui/prints/index.js lists, each with the fixed
+// BATCHES are the five entries ui/prints/index.js lists, each with the fixed
 // options the preview sheet cannot pass.
 //
 // A door sign is an upright sheet: the number, the teacher and the room's day
@@ -31,19 +35,25 @@
 // So the door signs print in portrait whatever orientation is chosen: the
 // entries say so (`upright`), the preview sheet offers no orientation for
 // them, and render() itself turns a landscape sheet upright and says so on
-// the cover.
+// the cover. The one document of everything holds door signs, so it is
+// upright too; a schedule's sheet is as readable upright as on its side.
 
 import { count } from '../components/words.js';
 import { publishedModel } from '../../engine/publish-data.js';
 import { openSchool } from '../../staff/model.js';
 import { wordsJoined, partsToText, dayKindsOf, teacherSummaryOf } from '../../staff/views/teacher.js';
 import { doorSignMarkup } from '../../staff/views/door-sign.js';
+import { roomUse, roomSummaryOf } from '../../staff/views/room.js';
 import { esc, frame, paperOf, printDate, schoolName } from './document.js';
 
 export const UPRIGHT_SENTENCE = 'Door signs are upright sheets: they print in portrait.';
 export const UPRIGHT_COVER = 'Landscape is chosen for this project. Door signs are upright sheets, so these print in portrait.';
 // landscape came with the request and the project is set to portrait
 export const UPRIGHT_ASKED = 'Landscape was asked for. Door signs are upright sheets, so these print in portrait.';
+// the same three for the one document of everything, which holds the signs
+export const UPRIGHT_ALL_SENTENCE = 'This document holds the door signs, which are upright sheets: it prints in portrait.';
+export const UPRIGHT_ALL_COVER = 'Landscape is chosen for this project. The door signs are upright sheets, so this document prints in portrait.';
+export const UPRIGHT_ALL_ASKED = 'Landscape was asked for. The door signs are upright sheets, so this document prints in portrait.';
 
 export const id = 'batch';
 export const name = 'Batch printing';
@@ -149,16 +159,61 @@ function signSheet(project, school, room, options) {
   ].join('\n');
 }
 
+// ---------------------------------------------------------------- rooms
+
+// A room's sheet: who is in it each period of each kind of day, and when it
+// is empty, from the room page's own answer (roomUse, roomSummaryOf in
+// staff/views/room.js).
+function roomSheet(project, school, room, options) {
+  const subject = school.subject(room.subjectId);
+  const teachers = (room.teacherIds || []).map((teacherId) => school.teacher(teacherId)).filter(Boolean);
+  const uses = new Map(school.dayTypes.map((dayType) => [dayType.id, roomUse(school, room.id, dayType.id)]));
+  const kinds = dayKindsOf(school, (dayType) => uses.get(dayType.id).map((period) => period.map((use) => [use.group.id, use.label, use.teachers.map((teacher) => teacher.id)])));
+  const tables = kinds.map((kind) => dayTable(school, kind, [school.data.settings.periodWord, 'Group', 'Teacher'], (dayType, period) => {
+    const here = uses.get(dayType.id)[period] || [];
+    if (here.length === 0) return [quiet('Empty'), ''];
+    const who = [];
+    for (const use of here) {
+      for (const teacher of use.teachers) {
+        const text = esc(teacher.name);
+        if (!who.includes(text)) who.push(text);
+      }
+    }
+    return [joined(here.map((use) => esc(use.group.name) + (use.label ? ' ' + quiet(use.label) : ''))), who.length === 0 ? quiet('No teacher') : joined(who)];
+  }));
+  const features = [];
+  if (room.shared) features.push('Shared space');
+  if (room.wing) features.push('Wing: ' + room.wing);
+  if (typeof room.capacity === 'number') features.push('Seats ' + room.capacity);
+  // the floor is the first words of the sentence under these
+  const facts = [
+    subject ? subject.name : null,
+    teachers.length === 0 ? 'No teacher is based here' : joined(teachers.map((teacher) => teacher.name)),
+  ].concat(features).filter(Boolean);
+  return [
+    '<section class="batch-sheet batch-sheet--room new-sheet" data-sheet="room" data-id="' + esc(room.id) + '">',
+    sheetLine(project, 'Room schedule', options),
+    '<h2 class="batch-sheet__name">' + esc(school.roomName(room, true)) + '</h2>',
+    '<p class="batch-sheet__facts">' + esc(facts.join(' · ')) + '</p>',
+    '<p class="batch-sheet__says">' + esc(partsToText(roomSummaryOf(school, room))) + '</p>',
+    days(kinds, tables),
+    '</section>',
+  ].join('\n');
+}
+
 // ---------------------------------------------------------------- the document
 
-function cover(lead, items) {
-  const out = ['<p class="doc-lead">' + esc(lead) + '</p>'];
-  if (items.length > 0) {
-    out.push('<ul class="batch-cover__list">');
-    for (const item of items) out.push('<li>' + esc(item.name) + (item.detail ? ' <span class="batch-cover__detail">' + esc(item.detail) + '</span>' : '') + '</li>');
-    out.push('</ul>');
-  }
+// The list of what follows, in order.
+function coverList(items) {
+  if (items.length === 0) return '';
+  const out = ['<ul class="batch-cover__list">'];
+  for (const item of items) out.push('<li>' + esc(item.name) + (item.detail ? ' <span class="batch-cover__detail">' + esc(item.detail) + '</span>' : '') + '</li>');
+  out.push('</ul>');
   return out.join('\n');
+}
+
+function cover(lead, items) {
+  return ['<p class="doc-lead">' + esc(lead) + '</p>', coverList(items)].filter(Boolean).join('\n');
 }
 
 // The school as a published file would carry it. The publish time is on no
@@ -169,9 +224,75 @@ function publishedSchool(project, now) {
   return openSchool(publishedModel(project, { clock: () => at }));
 }
 
+// What each batch holds: the cover's sentence and list, and the sheets.
+const PARTS = {
+  teachers(project, school, opts) {
+    const teachers = school.teachers;
+    return {
+      lead: teachers.length === 0
+        ? 'There are no teachers in the schedule yet, so there is no schedule to print.'
+        : (teachers.length === 1 ? 'One schedule follows' : teachers.length + ' schedules follow, one sheet each') + ', in the order of the Teachers list.',
+      items: teachers.map((teacher) => {
+        const subject = school.subject(teacher.subjectId);
+        return { name: teacher.name, detail: subject ? subject.name : '' };
+      }),
+      sheets: teachers.map((teacher) => teacherSheet(project, school, teacher, opts)),
+    };
+  },
+  doors(project, school, opts) {
+    const rooms = school.rooms;
+    return {
+      lead: rooms.length === 0
+        ? 'There are no rooms in the building yet, so there is no sign to print.'
+        : (rooms.length === 1 ? 'One door sign follows' : rooms.length + ' door signs follow, one sheet each') + ', in the order of the building’s floors.',
+      items: rooms.map((room) => {
+        const floor = school.floorOfRoom(room.id);
+        return { name: school.roomName(room, true), detail: floor ? floor.name : '' };
+      }),
+      sheets: rooms.map((room) => signSheet(project, school, room, opts)),
+    };
+  },
+  rooms(project, school, opts) {
+    const rooms = school.rooms;
+    return {
+      lead: rooms.length === 0
+        ? 'There are no rooms in the building yet, so there is no room’s schedule to print.'
+        : (rooms.length === 1 ? 'One room’s schedule follows' : rooms.length + ' room schedules follow, one sheet each') + ', in the order of the building’s floors.',
+      items: rooms.map((room) => {
+        const floor = school.floorOfRoom(room.id);
+        return { name: school.roomName(room, true), detail: floor ? floor.name : '' };
+      }),
+      sheets: rooms.map((room) => roomSheet(project, school, room, opts)),
+    };
+  },
+};
+
+// The one document of everything: a cover that names its three parts and
+// lists each, then the parts in that order. Its signs carry no day: the
+// room's own sheet is its day.
+function everything(project, school, opts, upright) {
+  const teachers = PARTS.teachers(project, school, opts);
+  const doors = PARTS.doors(project, school, { ...opts, day: false });
+  const rooms = PARTS.rooms(project, school, opts);
+  const counts = [count(school.teachers.length, 'teacher’s schedule', 'teachers’ schedules'), count(school.rooms.length, 'door sign'), count(school.rooms.length, 'room’s schedule', 'rooms’ schedules')];
+  const lead = 'Everything for the whole school in one document, one sheet each: ' + joined(counts) + ', in that order.' + (upright ? ' ' + upright : '');
+  // each part's title, and its list or the sentence saying it has nothing
+  const part = (title, made) => cover(made.items.length === 0 ? title + ': ' + made.lead : title + ':', made.items);
+  return [
+    '<p class="doc-lead">' + esc(lead) + '</p>',
+    part('Teacher schedules, in the order of the Teachers list', teachers),
+    part('Door signs, in the order of the building’s floors', doors),
+    part('Room schedules, in the order of the building’s floors', rooms),
+  ].concat(teachers.sheets, doors.sheets, rooms.sheets);
+}
+
+const OUTPUT_OF = { teachers: 'teacher-schedules', rooms: 'room-schedules', all: 'whole-school' };
+const WHAT_OF = { teachers: 'Teacher schedules', rooms: 'Room schedules', all: 'Every schedule and door sign' };
+
 export function render(project, derived, options) {
   const given = options || {};
-  const doors = given.batch === 'doors';
+  const batch = ['doors', 'rooms', 'all'].includes(given.batch) ? given.batch : 'teachers';
+  const upright = batch === 'doors' || batch === 'all';
   const asked = paperOf(project, given);
   // a door sign is never laid on its side: not when landscape is asked for,
   // and the cover says so whenever landscape is what the project is set to
@@ -179,34 +300,30 @@ export function render(project, derived, options) {
   // landscape somewhere). The cover names where landscape came from: the
   // project's setting, or, with the project set to portrait, the request.
   const chosen = paperOf(project, null).orientation === 'landscape';
-  const turned = doors && (asked.orientation === 'landscape' || chosen);
+  const turned = upright && (asked.orientation === 'landscape' || chosen);
   const opts = turned ? { ...given, paper: { ...asked, orientation: 'portrait' } } : given;
   const school = publishedSchool(project, opts.now);
   let what;
+  let output;
   let body;
-  if (doors) {
-    const rooms = school.rooms;
-    what = opts.day === true ? 'Door signs with each room’s day' : 'Door signs';
-    body = [cover(rooms.length === 0
-      ? 'There are no rooms in the building yet, so there is no sign to print.'
-      : (rooms.length === 1 ? 'One door sign follows' : rooms.length + ' door signs follow, one sheet each') + ', in the order of the building’s floors.' + (turned ? ' ' + (chosen ? UPRIGHT_COVER : UPRIGHT_ASKED) : ''),
-    rooms.map((room) => {
-      const floor = school.floorOfRoom(room.id);
-      return { name: school.roomName(room, true), detail: floor ? floor.name : '' };
-    }))].concat(rooms.map((room) => signSheet(project, school, room, opts)));
+  if (batch === 'all') {
+    what = WHAT_OF.all;
+    output = OUTPUT_OF.all;
+    body = everything(project, school, opts, turned ? (chosen ? UPRIGHT_ALL_COVER : UPRIGHT_ALL_ASKED) : '');
   } else {
-    const teachers = school.teachers;
-    what = 'Teacher schedules';
-    body = [cover(teachers.length === 0
-      ? 'There are no teachers in the schedule yet, so there is no schedule to print.'
-      : (teachers.length === 1 ? 'One schedule follows' : teachers.length + ' schedules follow, one sheet each') + ', in the order of the Teachers list.',
-    teachers.map((teacher) => {
-      const subject = school.subject(teacher.subjectId);
-      return { name: teacher.name, detail: subject ? subject.name : '' };
-    }))].concat(teachers.map((teacher) => teacherSheet(project, school, teacher, opts)));
+    const made = PARTS[batch](project, school, opts);
+    if (batch === 'doors') {
+      what = opts.day === true ? 'Door signs with each room’s day' : 'Door signs';
+      output = opts.day === true ? 'door-signs-day' : 'door-signs';
+    } else {
+      what = WHAT_OF[batch];
+      output = OUTPUT_OF[batch];
+    }
+    const lead = made.lead + (turned && made.items.length > 0 ? ' ' + (chosen ? UPRIGHT_COVER : UPRIGHT_ASKED) : '');
+    body = [cover(lead, made.items)].concat(made.sheets);
   }
   // no closing line after the last sheet: a sign's sheet is the paper's height, and the line was one sheet more (document.js)
-  return frame(project, { output: doors ? (opts.day === true ? 'door-signs-day' : 'door-signs') : 'teacher-schedules', what, pages: [{ body: body.join('\n') }], foot: false, options: opts });
+  return frame(project, { output, what, pages: [{ body: body.join('\n') }], foot: false, options: opts });
 }
 
 // How many sheets a batch is, the cover not counted: for the words beside
@@ -214,15 +331,16 @@ export function render(project, derived, options) {
 // published file carries, so the words and the sheets cannot disagree.
 export function batchCount(project, batch) {
   const school = publishedSchool(project, null);
-  return batch === 'doors' ? school.rooms.length : school.teachers.length;
+  if (batch === 'all') return school.teachers.length + school.rooms.length * 2;
+  return batch === 'doors' || batch === 'rooms' ? school.rooms.length : school.teachers.length;
 }
 
 function entry(entryId, entryName, fixed) {
   const made = { id: entryId, name: entryName, render: (project, derived, options) => render(project, derived, { ...options, ...fixed }) };
   // the preview sheet reads these: no orientation to choose, and why
-  if (fixed.batch === 'doors') {
+  if (fixed.batch === 'doors' || fixed.batch === 'all') {
     made.upright = true;
-    made.uprightSays = UPRIGHT_SENTENCE;
+    made.uprightSays = fixed.batch === 'all' ? UPRIGHT_ALL_SENTENCE : UPRIGHT_SENTENCE;
   }
   return made;
 }
@@ -231,6 +349,8 @@ export const BATCHES = [
   entry('teacher-schedules', 'Teacher schedules', { batch: 'teachers' }),
   entry('door-signs', 'Door signs', { batch: 'doors', day: false }),
   entry('door-signs-day', 'Door signs with each room’s day', { batch: 'doors', day: true }),
+  entry('room-schedules', 'Room schedules', { batch: 'rooms' }),
+  entry('whole-school', 'Every schedule and door sign', { batch: 'all' }),
 ];
 
 // "12 teachers", for the lines beside the buttons.

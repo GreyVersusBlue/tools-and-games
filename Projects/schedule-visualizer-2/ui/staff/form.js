@@ -424,7 +424,9 @@ export function publishForm(ctx, hooks) {
     h('div', { class: 'pub__batch' },
       batch('teacher-schedules', 'Print every teacher’s schedule'),
       batch('door-signs', 'Print every door sign'),
-      batch('door-signs-day', 'Print every door sign with the room’s day')));
+      batch('door-signs-day', 'Print every door sign with the room’s day'),
+      batch('room-schedules', 'Print every room’s schedule'),
+      batch('whole-school', 'Print every schedule and door sign in one document')));
 
   function update(project) {
     const publish = project.publish;
@@ -448,7 +450,7 @@ export function publishForm(ctx, hooks) {
     truth.textContent = !on ? PASSCODE_OFF : publish.passcode === DEFAULT_PASSCODE ? PASSCODE_DEFAULT : PASSCODE_TRUTH;
 
     const words = batchWords(project);
-    batchSays.textContent = 'One document each, a sheet for every teacher or room after a cover sheet: ' + words.teachers + ', ' + words.rooms + '. Choose "Save as PDF" in the print dialog for one file.';
+    batchSays.textContent = 'One document each, a sheet for every teacher or room after a cover sheet: ' + words.teachers + ', ' + words.rooms + '. The last puts every teacher’s schedule, every door sign and every room’s schedule in one document. Choose "Save as PDF" in the print dialog for one file.';
     askChecks(project);
   }
 

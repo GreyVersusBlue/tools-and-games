@@ -195,7 +195,7 @@ function summary(project, counts, accepted, walks, entries) {
   if (off > 0) lines.push(count(off, 'check') + (off === 1 ? ' is' : ' are') + ' switched off in Settings.');
   const figures = SEVERITIES.map((severity) => '<li class="doc-figure doc-figure--' + severity + '"><span class="doc-figure__n">' + counts[severity] + '</span> ' + HEADING[severity].toLowerCase() + '</li>').join('');
   return '<section class="doc-section doc-summary">\n<p class="doc-lead">' + esc(lines.join(' ')) + '</p>\n<ul class="doc-figures">' + figures + '</ul>\n'
-    + (entries.length > 0 ? '<p class="doc-meaning">Each finding has a number (P for a problem, W for a warning, N for a note). The same number marks the cell it is about in the grids at the end.</p>\n' : '')
+    + (entries.length > 0 ? '<p class="doc-meaning">Each finding has a number (P for a problem, W for a warning, N for a note). The same number marks the slot it is about in the grids at the end.</p>\n' : '')
     + '</section>';
 }
 

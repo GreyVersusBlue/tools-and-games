@@ -25,7 +25,7 @@ const KINDS = {
     action: importTeachers,
     name: (line) => line.name,
     tab: { href: '#schedule/teachers', label: 'See the teachers' },
-    rules: 'A name already on the list is that teacher, whatever the capitals. Nobody is deleted, rooms are added and never taken away, and an empty cell changes nothing.',
+    rules: 'A name already on the list is that teacher, whatever the capitals. Nobody is deleted, rooms are added and never taken away, and an empty entry in the file changes nothing.',
   },
   subjects: {
     title: 'Subjects from a spreadsheet',
@@ -37,7 +37,7 @@ const KINDS = {
     action: importSubjects,
     name: (line) => (line.name.trim() === '' ? line.code : line.code.trim() === '' ? line.name : line.code + ' · ' + line.name),
     tab: { href: '#schedule/subjects', label: 'See the subjects' },
-    rules: 'A code already on the list is that subject, whatever the capitals, and the rooms and teachers that use it still do. Nothing is deleted, and an empty cell changes nothing.',
+    rules: 'A code already on the list is that subject, whatever the capitals, and the rooms and teachers that use it still do. Nothing is deleted, and an empty entry in the file changes nothing.',
   },
 };
 

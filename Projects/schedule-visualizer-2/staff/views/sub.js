@@ -11,7 +11,7 @@
 
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
-import { pageOf, missingPage } from '../page.js';
+import { pageOf, missingPage, pictureButton } from '../page.js';
 import { dayText } from '../dates.js';
 import { aroundRoom } from '../map.js';
 import { clockNow, dayTypeFor, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
@@ -125,6 +125,7 @@ export const subView = {
         h('div', { class: 'no-print' }, picker)),
       out,
       h('p', { class: 'actions no-print' },
-        h('button', { class: 'btn btn--primary', type: 'button', dataset: { sub: 'print', print: 'page' }, onclick: () => globalThis.print() }, 'Print this page')));
+        h('button', { class: 'btn btn--primary', type: 'button', dataset: { sub: 'print', print: 'page' }, onclick: () => globalThis.print() }, 'Print this page'),
+        pictureButton()));
   },
 };

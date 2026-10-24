@@ -4,7 +4,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { route, routeToExit, routingGraph } from '../../engine/routing.js';
-import { directions, describeFailure, CELL_UNITS, SQUARE_UNITS } from '../../engine/directions.js';
+import * as directionsModule from '../../engine/directions.js';
+import { directions, describeFailure, CELL_UNITS } from '../../engine/directions.js';
 import { school } from './helpers.mjs';
 import { planProject, twoRooms, threeFloors, disconnectedWing, roomId, cellAt } from '../fixtures/buildings/plans.mjs';
 import { publishedModel } from '../../engine/publish-data.js';
@@ -118,13 +119,13 @@ test('units: distances are in cells unless a scale is passed', () => {
   assert.deepEqual(lines(walk(project, '1A', '2B', { perCell: 0 })), lines(walk(project, '1A', '2B')), 'a scale that is no scale falls back to cells');
 });
 
-test('for a reader a distance is in squares, one word for the planner\'s cell: "Walk 4 squares", "Walk 1 square"', () => {
-  assert.deepEqual(SQUARE_UNITS, { perCell: 1, one: 'square', many: 'squares' });
-  const squares = walk(lShape(), '1A', '2B', SQUARE_UNITS);
-  assert.deepEqual(lines(squares).filter((line) => line.startsWith('Walk')), ['Walk 4 squares, past Room 1C.', 'Walk 3 squares to stairs A.', 'Walk 2 squares to the end of the corridor.']);
-  assert.deepEqual([squares.steps[1].cells, squares.steps[1].distance], [4, '4 squares'], 'the count of cells is still the step\'s own figure');
-  assert.equal(walk(threeFloors(), '1A', '2A', SQUARE_UNITS).steps[1].text, 'Walk 1 square to stairs A.');
-  for (const line of lines(squares)) assert.doesNotMatch(line, /cell/, line);
+test('for a reader a distance is in cells, spec 2\'s one word for a square of the grid: "Walk 4 cells", "Walk 1 cell" (SV2-32f)', () => {
+  assert.equal(directionsModule.SQUARE_UNITS, undefined, 'a second word for a cell is offered again');
+  const cells = walk(lShape(), '1A', '2B', CELL_UNITS);
+  assert.deepEqual(lines(cells).filter((line) => line.startsWith('Walk')), ['Walk 4 cells, past Room 1C.', 'Walk 3 cells to stairs A.', 'Walk 2 cells to the end of the corridor.']);
+  assert.deepEqual([cells.steps[1].cells, cells.steps[1].distance], [4, '4 cells'], 'the count of cells is the step\'s own figure');
+  assert.equal(walk(threeFloors(), '1A', '2A', CELL_UNITS).steps[1].text, 'Walk 1 cell to stairs A.');
+  for (const line of lines(cells)) assert.doesNotMatch(line, /square/, line);
 });
 
 test('a way with no stairs that does not exist between two rooms is said plainly, and every other failure keeps its own sentence', () => {
@@ -132,7 +133,7 @@ test('a way with no stairs that does not exist between two rooms is said plainly
   const graph = routingGraph(floors);
   const refused = route(graph, roomId('1A'), roomId('2B'), { avoidStairs: true });
   assert.deepEqual(directions(floors, refused), { ok: false, steps: [], text: 'There is no way from Room 1A to Room 2B without stairs.' });
-  assert.deepEqual(directions(floors, refused, SQUARE_UNITS).text, 'There is no way from Room 1A to Room 2B without stairs.');
+  assert.deepEqual(directions(floors, refused, CELL_UNITS).text, 'There is no way from Room 1A to Room 2B without stairs.');
   // with stairs allowed there is a way, so nothing is refused
   assert.equal(directions(floors, route(graph, roomId('1A'), roomId('2B'))).ok, true);
   // no way at all, stairs or not: the engine's sentence, with the floor

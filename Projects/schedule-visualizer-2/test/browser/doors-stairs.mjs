@@ -436,7 +436,7 @@ test('the Leave out tool draws an area that is left out of the colour scale, and
   let now = await state(page);
   assert.equal(now.entries, before + 1);
   assert.equal(now.label, 'Add an exclusion zone on Floor 1');
-  assert.equal(now.said, 'Left 3 by 3 squares out of the colour scale. Type a label for the area.');
+  assert.equal(now.said, 'Left 3 by 3 cells out of the colour scale. Type a label for the area.');
   assert.equal(await page.evaluate(() => document.activeElement.dataset.zone !== undefined), true, 'the label does not have the focus');
   await page.keyboard.type('Gym doors');
   await page.keyboard.press('Enter');
@@ -445,7 +445,7 @@ test('the Leave out tool draws an area that is left out of the colour scale, and
   assert.equal(now.entries, before + 2);
   const zones = (await building()).zones;
   assert.deepEqual(zones.map((zone) => [zone.label, zone.x, zone.y, zone.w, zone.h]), [['Gym doors', 14, 9, 3, 3]]);
-  assert.match(await text('#floor-zones li'), /3 × 3 squares from column 15, row 10\./);
+  assert.match(await text('#floor-zones li'), /3 × 3 cells from column 15, row 10\./);
 });
 
 test('the menu of a cell inside a left-out area puts it back in the colour scale', async () => {

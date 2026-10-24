@@ -11,7 +11,7 @@
 import test, { after, afterEach, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { openPlanner, go, TOOL_PATH } from './harness.mjs';
+import { openPlanner, go, TOOL_PATH, loadModule } from './harness.mjs';
 
 let session;
 let page;
@@ -568,6 +568,510 @@ test('the floor plan offers the traced image only when a floor has one to show; 
     });
   }
   assert.equal(await page.evaluate(() => globalThis.sv2.store.project.building.floors[0].image), null, 'the school is as it was for the cases after this one');
+});
+
+// ---------------------------------------------------------------- SV2-32d: the schedule's prints and the travel times
+
+// The Schedule section has drawn the project as it is.
+function scheduleDrawn() {
+  return page.waitForFunction(() => {
+    const section = document.querySelector('.sch');
+    const sheet = document.querySelector('link[data-sheet="schedule"]');
+    return Boolean(section) && section.dataset.pending !== 'true' && Boolean(sheet) && sheet.sheet !== null;
+  });
+}
+
+// Press a print button the screen drew, and wait for the document it opened
+// to be laid out. The button is pressed where it is: it must be the thing at
+// its own middle.
+async function pressPrint(selector) {
+  await page.waitForSelector(selector);
+  await page.$eval(selector, (button) => button.scrollIntoView({ block: 'center' }));
+  const hit = await page.$eval(selector, (button) => {
+    const box = button.getBoundingClientRect();
+    const there = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return there === button || button.contains(there);
+  });
+  assert.ok(hit, selector + ' is under something');
+  await page.click(selector);
+  await page.waitForSelector('#print-preview[open][data-ready="true"]');
+}
+
+// The document in the preview as tables: each sheet's heading, and each
+// table's rows (each row's cells as text), whether its head row repeats on
+// each sheet, and how far it reaches past its sheet's margins.
+function readTables() {
+  return page.evaluate(() => {
+    const sheet = document.querySelector('#print-preview');
+    const frame = sheet.querySelector('iframe');
+    const doc = frame.contentDocument;
+    const view = frame.contentWindow;
+    return {
+      heading: sheet.querySelector('.preview__title').textContent,
+      title: doc.title,
+      theme: doc.documentElement.dataset.theme,
+      paper: sheet.dataset.paper,
+      sheets: Number(sheet.dataset.sheets),
+      status: sheet.querySelector('.preview__status').textContent,
+      what: Array.from(doc.querySelectorAll('.doc-head__what'), (el) => el.textContent),
+      school: Array.from(doc.querySelectorAll('.doc-head__school'), (el) => el.textContent),
+      dates: doc.querySelectorAll('.doc-head__date').length,
+      sheetColour: view.getComputedStyle(doc.querySelector('.page')).backgroundColor,
+      scripts: doc.querySelectorAll('script').length,
+      html: frame.srcdoc,
+      tables: Array.from(doc.querySelectorAll('table'), (table) => {
+        const page = table.closest('.page');
+        const style = view.getComputedStyle(page);
+        const outer = page.getBoundingClientRect();
+        const inner = table.getBoundingClientRect();
+        return {
+          page: page.querySelector('.doc-head__what').textContent,
+          head: Array.from(table.querySelectorAll('thead th'), (cell) => cell.textContent),
+          repeats: view.getComputedStyle(table.querySelector('thead')).display,
+          rows: Array.from(table.querySelectorAll('tbody tr'), (row) => Array.from(row.children, (cell) => cell.textContent)),
+          past: Math.max(0, outer.left + parseFloat(style.paddingLeft) - inner.left, inner.right - (outer.right - parseFloat(style.paddingRight))),
+          period: table.closest('[data-period]') ? table.closest('[data-period]').dataset.period : null,
+        };
+      }),
+    };
+  });
+}
+
+// What Chromium prints of a document: its sheets and their size in points.
+async function printed(html) {
+  const paper = await session.browser.newPage();
+  try {
+    await paper.goto(session.url(''), { waitUntil: 'load' });
+    await paper.evaluate((markup) => {
+      document.open();
+      document.write(markup);
+      document.close();
+    }, html);
+    await paper.waitForFunction(() => document.readyState === 'complete' && Array.from(document.querySelectorAll('link[rel="stylesheet"]')).every((link) => link.sheet !== null));
+    await paper.evaluate(() => document.fonts.ready.then(() => true));
+    assert.equal(await paper.evaluate(() => getComputedStyle(document.querySelector('.doc-head__what')).fontWeight), '700', 'print.css is applied');
+    const pdf = Buffer.from(await paper.pdf({ preferCSSPageSize: true, printBackground: true })).toString('latin1');
+    const boxes = Array.from(pdf.matchAll(/\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/g)).map((match) => [Math.round(Number(match[3])), Math.round(Number(match[4]))]);
+    return { boxes, sheets: (pdf.match(/\/Type\s*\/Page\b(?!s)/g) || []).length };
+  } finally {
+    await paper.close();
+  }
+}
+
+const SAMPLE_NAME = 'Marrowby Middle School (sample)';
+
+test('the groups, the teacher list and the teachers and rooms by period print from the Import tab: a sheet a day type under the header, every row of the schedule, and the sheets Chromium prints', async () => {
+  await go(page, '#schedule/import');
+  await scheduleDrawn();
+  const counts = await page.evaluate(() => {
+    const project = globalThis.sv2.store.project;
+    let rooms = 0;
+    for (const floor of project.building.floors) rooms += floor.spaces.filter((space) => space.kind === 'room').length;
+    return { groups: project.groups.length, teachers: project.teachers.length, rooms, groupNames: project.groups.map((group) => group.name), teacherNames: project.teachers.map((teacher) => teacher.name) };
+  });
+  const wanted = [
+    { kind: 'groups', label: 'Print the groups', name: 'Groups', what: ['Groups: A Day', 'Groups: B Day'], rows: counts.groups, first: counts.groupNames },
+    { kind: 'teachers', label: 'Print the teacher list', name: 'Teachers', what: ['Teachers'], rows: counts.teachers, first: counts.teacherNames },
+    { kind: 'teacher-grid', label: 'Print the teachers by period', name: 'Teachers by period', what: ['Teachers by period: A Day', 'Teachers by period: B Day'], rows: counts.teachers, first: counts.teacherNames },
+    { kind: 'room-grid', label: 'Print the rooms by period', name: 'Rooms by period', what: ['Rooms by period: A Day', 'Rooms by period: B Day'], rows: counts.rooms, first: null },
+  ];
+  for (const one of wanted) {
+    const selector = '#print-export-' + one.kind;
+    assert.equal(await page.$eval(selector, (button) => button.textContent), one.label);
+    await pressPrint(selector);
+    const seen = await readTables();
+    const at = one.kind;
+    assert.equal(seen.heading, 'Print: ' + one.name, at);
+    assert.equal(seen.title, one.name + ' · ' + SAMPLE_NAME, at);
+    assert.deepEqual(seen.what, one.what, at + ': a sheet a day type, each under its own header');
+    assert.deepEqual(seen.school, one.what.map(() => SAMPLE_NAME), at);
+    assert.equal(seen.dates, one.what.length, at);
+    assert.equal(seen.theme, 'light', at);
+    assert.equal(seen.sheetColour, 'rgb(255, 255, 255)', at + ': light paper under the dark planner');
+    assert.equal(seen.scripts, 0, at);
+    assert.equal(seen.tables.length, one.what.length, at + ': a table a sheet');
+    for (const table of seen.tables) {
+      assert.equal(table.repeats, 'table-header-group', at + ': the head row repeats on every sheet the table runs on to');
+      assert.equal(table.rows.length, one.rows, at + ': every row');
+      assert.ok(table.past <= 0.5, at + ': the table reaches ' + table.past + ' px past the margins of ' + table.page);
+      if (one.first) assert.deepEqual(table.rows.map((row) => row[0].startsWith(one.first[table.rows.indexOf(row)])), one.first.map(() => true), at + ': in the schedule\'s order');
+    }
+    if (one.kind !== 'teachers') assert.deepEqual(seen.tables[0].head.slice(1, 3).map((cell) => cell.slice(0, 8)), ['Period 1', 'Period 2'], at + ': a column a period');
+    // the count the preview says is the count Chromium prints, on the paper it names
+    assert.equal(seen.sheets, one.what.length, at + ': one sheet a day type');
+    assert.equal(seen.status, 'US Letter, portrait. About ' + seen.sheets + (seen.sheets === 1 ? ' sheet.' : ' sheets.'), at);
+    const pdf = await printed(seen.html);
+    assert.equal(pdf.sheets, seen.sheets, at + ': sheets of paper');
+    for (const box of pdf.boxes) assert.deepEqual(box, [612, 792], at + ': US Letter, in points');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.getElementById('print-preview') === null);
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'print-export-' + one.kind, at + ': focus goes back to the button');
+  }
+});
+
+// SV2-32b: the sheet is named as the document names itself, so a school
+// that says Block reads "Print: Teachers by block", not the output's static
+// name, and the frame's own name follows.
+test('in a school that says Block, the sheet and its frame are named as the document is: Teachers by block, Rooms by block', async () => {
+  await loadModule(page, 'actions', 'engine/actions.js');
+  const before = await page.evaluate(() => globalThis.sv2.store.history.past.length);
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.setSetting, { key: 'periodWord', value: 'Block' }));
+  try {
+    await go(page, '#schedule/import');
+    await scheduleDrawn();
+    for (const [kind, what] of [['teacher-grid', 'Teachers by block'], ['room-grid', 'Rooms by block']]) {
+      await pressPrint('#print-export-' + kind);
+      const seen = await page.evaluate(() => {
+        const sheet = document.querySelector('#print-preview');
+        const frame = sheet.querySelector('iframe');
+        return { heading: sheet.querySelector('.preview__title').textContent, frame: frame.title, title: frame.contentDocument.title, what: frame.contentDocument.querySelector('.doc-head__what').textContent };
+      });
+      assert.deepEqual(seen, { heading: 'Print: ' + what, frame: 'Preview of the ' + what.toLowerCase() + ' as it will print', title: what + ' · ' + SAMPLE_NAME, what: what + ': A Day' }, kind + ': ' + JSON.stringify(seen));
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => document.getElementById('print-preview') === null);
+    }
+  } finally {
+    await page.evaluate((count) => {
+      while (globalThis.sv2.store.history.past.length > count) globalThis.sv2.store.undo();
+    }, before);
+  }
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.project.settings.periodWord), 'Period', 'the school says Period again for the cases after this one');
+});
+
+// SV2-32b (from SV2-32d's review): in a fixed-layout grid every cell has
+// its width, and the notes in it wrap there. With 9 periods on Letter
+// upright, "not in the building" (about 27 mm on one line) ran over the next
+// period's cell, and "Grade 6, head count 24" under a group's name (about
+// 31 mm in a 24 mm box) over Period 1. Each line of text is measured as
+// laid out (a Range's box), not by its element, whose box is the cell's.
+test('with 9 periods on Letter upright, no slot, name or note in the grids runs past its own cell', async () => {
+  await loadModule(page, 'actions', 'engine/actions.js');
+  const before = await page.evaluate(() => globalThis.sv2.store.history.past.length);
+  await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    const { actions } = globalThis.sv2modules;
+    store.apply(actions.setSetting, { key: 'periods', value: 9 });
+    if (store.project.settings.paper.size !== 'letter') store.apply(actions.setSetting, { key: 'paper.size', value: 'letter' });
+    if (store.project.settings.paper.orientation !== 'portrait') store.apply(actions.setSetting, { key: 'paper.orientation', value: 'portrait' });
+    const group = store.project.groups[0];
+    store.apply(actions.setSlot, { groupId: group.id, dayTypeId: store.project.dayTypes[0].id, period: 0, slot: { room: null, roomText: 'Portable 9' } });
+  });
+  try {
+    await go(page, '#schedule/import');
+    await scheduleDrawn();
+    for (const kind of ['groups', 'teacher-grid', 'room-grid']) {
+      await pressPrint('#print-export-' + kind);
+      const seen = await page.evaluate(() => {
+        const frame = document.querySelector('#print-preview iframe');
+        const doc = frame.contentDocument;
+        const view = frame.contentWindow;
+        const over = [];
+        let notes = 0;
+        let parts = 0;
+        for (const cell of doc.querySelectorAll('.doc-grid tbody th, .doc-grid tbody td')) {
+          const box = cell.getBoundingClientRect();
+          const style = view.getComputedStyle(cell);
+          const left = box.left + parseFloat(style.paddingLeft) - 0.5;
+          const right = box.right - parseFloat(style.paddingRight) + 0.5;
+          for (const part of cell.querySelectorAll('.doc-grid__slot, .doc-grid__name, .doc-grid__time, .doc-grid__planning')) {
+            parts += 1;
+            if (part.classList.contains('doc-grid__time')) notes += 1;
+            const range = doc.createRange();
+            range.selectNodeContents(part);
+            for (const line of range.getClientRects()) {
+              if (line.left < left || line.right > right) over.push({ text: part.textContent, line: [Math.round(line.left), Math.round(line.right)], cell: [Math.round(left), Math.round(right)] });
+            }
+          }
+        }
+        return { over: over.slice(0, 5), count: over.length, notes, parts, missing: doc.querySelectorAll('.doc-grid__missing').length, periods: doc.querySelector('.doc-grid thead tr').children.length - 1, paper: [doc.documentElement.dataset.paper, doc.documentElement.dataset.orientation] };
+      });
+      assert.deepEqual(seen.paper, ['letter', 'portrait'], kind);
+      assert.equal(seen.periods, 9, kind + ': the nine periods on one sheet, so the cells are their narrowest');
+      // the teachers by period have no note under a name; the other two do
+      assert.ok(seen.parts > seen.notes && (kind === 'teacher-grid' || seen.notes > 0), kind + ': there are notes to measure: ' + JSON.stringify(seen));
+      if (kind === 'groups') assert.equal(seen.missing, 1, 'the slot in a room not in the building says so');
+      assert.equal(seen.count, 0, kind + ': text past its own cell: ' + JSON.stringify(seen));
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => document.getElementById('print-preview') === null);
+    }
+  } finally {
+    await page.evaluate((length) => {
+      const { store } = globalThis.sv2;
+      while (store.history.past.length > length) store.undo();
+    }, before);
+  }
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.project.settings.periods), 8, 'the school is as it was for the cases after this one');
+});
+
+test('a day too long for the sheet prints in parts from the Grid tab, each part inside the margins and a sheet of its own; on its side the day is one sheet', async () => {
+  await loadModule(page, 'actions', 'engine/actions.js');
+  const before = await page.evaluate(() => globalThis.sv2.store.history.past.length);
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.setSetting, { key: 'periods', value: 12 }));
+  try {
+    await go(page, '#schedule/grid');
+    await scheduleDrawn();
+    await page.click('.grd-toolbar input[value="teachers"]');
+    await page.waitForFunction(() => document.querySelector('.grd').dataset.rows === 'teachers' && document.querySelector('.sch').dataset.pending !== 'true' && document.getElementById('print-grid-teachers') !== null);
+    assert.equal(await page.$eval('#print-grid-teachers', (button) => button.textContent), 'Print the teachers by period');
+    await pressPrint('#print-grid-teachers');
+    let seen = await readTables();
+    assert.deepEqual(seen.what, ['Teachers by period: A Day, Period 1 to Period 6', 'Teachers by period: A Day, Period 7 to Period 12', 'Teachers by period: B Day, Period 1 to Period 6', 'Teachers by period: B Day, Period 7 to Period 12']);
+    assert.deepEqual(seen.tables.map((table) => table.head.length), [7, 7, 7, 7], 'the names and six periods a part');
+    assert.deepEqual(seen.tables[1].rows.map((row) => row[0]), seen.tables[0].rows.map((row) => row[0]), 'the names again on the second part');
+    for (const table of seen.tables) assert.ok(table.past <= 0.5, table.page + ' reaches ' + table.past + ' px past the margins');
+    assert.equal(seen.sheets, 4);
+    let pdf = await printed(seen.html);
+    assert.equal(pdf.sheets, 4, 'Chromium prints a sheet a part');
+
+    // turned: twelve periods fit across, one sheet a day
+    await page.click('#print-preview .seg__input[value="landscape"]');
+    await page.waitForFunction(() => {
+      const sheet = document.querySelector('#print-preview');
+      return sheet.dataset.ready === 'true' && sheet.dataset.paper === 'letter landscape';
+    });
+    seen = await readTables();
+    assert.deepEqual(seen.what, ['Teachers by period: A Day', 'Teachers by period: B Day']);
+    assert.deepEqual(seen.tables.map((table) => table.head.length), [13, 13]);
+    for (const table of seen.tables) assert.ok(table.past <= 0.5, table.page + ' on its side reaches ' + table.past + ' px past the margins');
+    assert.equal(seen.sheets, 2);
+    pdf = await printed(seen.html);
+    assert.equal(pdf.sheets, 2);
+    for (const box of pdf.boxes) assert.deepEqual(box, [792, 612], 'US Letter on its side, in points');
+    await page.click('#print-preview [data-action="close"]');
+    await page.waitForFunction(() => document.getElementById('print-preview') === null);
+
+    // the rows set to Rooms print the rooms; to Groups, the groups
+    await page.click('.grd-toolbar input[value="rooms"]');
+    await page.waitForFunction(() => document.querySelector('.grd').dataset.rows === 'rooms' && document.querySelector('.sch').dataset.pending !== 'true' && document.getElementById('print-grid-rooms') !== null);
+    await pressPrint('#print-grid-rooms');
+    assert.deepEqual((await readTables()).what, ['Rooms by period: A Day', 'Rooms by period: B Day'], 'on its side still: the paper is the project\'s');
+    await page.click('#print-preview [data-action="close"]');
+    await page.waitForFunction(() => document.getElementById('print-preview') === null);
+    await page.click('.grd-toolbar input[value="groups"]');
+    await page.waitForFunction(() => document.querySelector('.grd').dataset.rows === 'groups' && document.querySelector('.sch').dataset.pending !== 'true' && document.getElementById('print-grid-groups') !== null);
+    await pressPrint('#print-grid-groups');
+    assert.deepEqual((await readTables()).what, ['Groups: A Day', 'Groups: B Day']);
+    await page.click('#print-preview [data-action="close"]');
+    await page.waitForFunction(() => document.getElementById('print-preview') === null);
+  } finally {
+    await page.evaluate((length) => {
+      const { store } = globalThis.sv2;
+      while (store.history.past.length > length) store.undo();
+    }, before);
+  }
+  assert.deepEqual(await page.evaluate(() => [globalThis.sv2.store.project.settings.periods, globalThis.sv2.store.project.settings.paper.orientation]), [8, 'portrait'], 'the school is as it was for the cases after this one');
+});
+
+test('the Teachers tab prints the teacher list', async () => {
+  await go(page, '#schedule/teachers');
+  await scheduleDrawn();
+  assert.equal(await page.$eval('#print-teachers', (button) => button.textContent), 'Print the teacher list');
+  await pressPrint('#print-teachers');
+  const seen = await readTables();
+  assert.deepEqual(seen.what, ['Teachers']);
+  assert.deepEqual(seen.tables[0].head, ['Teacher', 'Subject code', 'Subject', 'Rooms', 'Notes']);
+  assert.equal(seen.tables[0].rows.length, await page.evaluate(() => globalThis.sv2.store.project.teachers.length));
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.getElementById('print-preview') === null);
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'print-teachers');
+});
+
+test('the Travel time tab prints its day type\'s tables: each transition\'s walks and the whole day\'s, in the tab\'s order, and the sheets Chromium prints', async () => {
+  await go(page, '#movement');
+  const settled = () => page.waitForFunction(() => {
+    const section = document.querySelector('.mov');
+    if (!section || section.dataset.styled !== 'true' || section.dataset.pending === 'true') return false;
+    const movement = section.movement;
+    return movement.state !== null && movement.state.results !== null && movement.state.project === globalThis.sv2.store.project;
+  }, { timeout: 15000 });
+  await settled();
+  await page.click('#inspector [role="tab"][data-tab="tables"]');
+  await page.waitForSelector('#inspector [data-panel="tables"] .mov-travel__group');
+  // the tab's own order: the transition it shows, and the whole day
+  const tab = await page.evaluate(() => {
+    const panel = document.querySelector('#inspector [data-panel="tables"]');
+    const names = (selector) => Array.from(panel.querySelectorAll(selector + ' .mov-travel__group .mov-travel__name'), (el) => el.textContent);
+    return { period: panel.querySelector('[data-travel="transition"]').dataset.period, one: names('[data-travel="transition"]'), day: names('[data-travel="day"]') };
+  });
+  assert.equal(await page.$eval('#print-travel-time', (button) => button.textContent), 'Print the travel times');
+  await pressPrint('#print-travel-time');
+  const seen = await readTables();
+  assert.equal(seen.heading, 'Print: Travel time');
+  // SV2-32b: a late row is set apart on paper by more than its words, in
+  // ways that print with no colour and no backgrounds: bold, and a heavy
+  // rule down its left edge
+  const marks = await page.evaluate(() => {
+    const frame = document.querySelector('#print-preview iframe');
+    const view = frame.contentWindow;
+    const look = (row) => {
+      const first = view.getComputedStyle(row.querySelector('th'));
+      return { weight: first.fontWeight, edge: Math.round(parseFloat(first.borderLeftWidth) * 10) / 10, cells: Array.from(row.children, (cell) => view.getComputedStyle(cell).fontWeight) };
+    };
+    const rows = Array.from(frame.contentDocument.querySelectorAll('.doc-table--travel tbody tr'));
+    const late = rows.filter((row) => row.classList.contains('is-late'));
+    const plain = rows.filter((row) => !row.classList.contains('is-late'));
+    return { late: late.length, plain: plain.length, lateLook: late.length ? look(late[0]) : null, plainLook: plain.length ? look(plain[0]) : null };
+  });
+  assert.ok(marks.late >= 1 && marks.plain >= 1, 'the sample school has late walks and walks in time: ' + JSON.stringify(marks));
+  assert.ok(marks.lateLook.cells.every((weight) => Number(weight) >= 600), 'a late row is bold in every cell: ' + JSON.stringify(marks));
+  assert.ok(marks.plainLook.cells.slice(1).every((weight) => Number(weight) < 600), 'a row in time is not: ' + JSON.stringify(marks));
+  assert.ok(marks.lateLook.edge >= marks.plainLook.edge + 3, 'a late row has a heavy rule down its left edge: ' + JSON.stringify(marks));
+  assert.deepEqual(seen.what, ['Travel time: A Day'], 'the day type on the map');
+  const transitions = seen.tables.filter((table) => table.period !== null);
+  const day = seen.tables.filter((table) => table.period === null);
+  assert.ok(transitions.length >= 1);
+  assert.equal(day.length, 1);
+  const shown = transitions.find((table) => table.period === tab.period);
+  assert.deepEqual(shown.rows.map((row) => row[0]), tab.one, 'the transition the tab shows, in its order');
+  assert.deepEqual(day[0].rows.map((row) => row[0]), tab.day, 'the whole day, in the tab\'s order');
+  for (const table of seen.tables) {
+    assert.equal(table.repeats, 'table-header-group');
+    assert.ok(table.past <= 0.5, table.page + ' reaches ' + table.past + ' px past the margins');
+  }
+  assert.ok(seen.sheets >= 2, 'the whole day starts a sheet');
+  const pdf = await printed(seen.html);
+  assert.equal(pdf.sheets, seen.sheets, 'the count the preview says is the count Chromium prints');
+  await page.click('#print-preview [data-action="close"]');
+  await page.waitForFunction(() => document.getElementById('print-preview') === null);
+
+  // B Day on the map: B Day on paper
+  await page.evaluate(() => document.querySelector('.mov').movement.change({ dayTypeId: 'dsample00b' }));
+  await settled();
+  await page.waitForFunction(() => document.querySelector('#inspector [data-panel="tables"]').dataset.day === 'dsample00b');
+  await pressPrint('#print-travel-time');
+  assert.deepEqual((await readTables()).what, ['Travel time: B Day']);
+  await page.click('#print-preview [data-action="close"]');
+  await page.waitForFunction(() => document.getElementById('print-preview') === null);
+  await page.evaluate(() => document.querySelector('.mov').movement.change({ dayTypeId: 'dsample00a' }));
+  await settled();
+  await go(page, '#project');
+});
+
+// ---------------------------------------------------------------- SV2-32l: the prints say what the screen says
+
+// Set the Grid tab's rows, and wait for it to draw them.
+async function gridRows(value) {
+  await page.click('.grd-toolbar input[value="' + value + '"]');
+  await page.waitForFunction((rows) => document.querySelector('.grd').dataset.rows === rows && document.querySelector('.sch').dataset.pending !== 'true' && document.getElementById('print-grid-' + rows) !== null, {}, value);
+}
+
+// The marks of the Grid tab's teacher or room table: each marked cell by its
+// row's name, day type and period, and the words the screen gives it.
+function screenMarks() {
+  return page.evaluate(() => Array.from(document.querySelectorAll('.grd-table--read td.is-marked'), (cell) => {
+    const [, , dayTypeId, period] = cell.dataset.key.split(':');
+    return { at: cell.closest('tr').querySelector('th').textContent + ' | ' + dayTypeId + ' | ' + period, why: cell.dataset.why };
+  }).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)));
+}
+
+// The marks of the document in the preview, read the same way: each marked
+// cell by its row's name, its sheet's day type and its period, and the words
+// under its sheet's grid for each of its references, worst first as written.
+function paperMarks() {
+  return page.evaluate(() => {
+    const frame = document.querySelector('#print-preview iframe');
+    const doc = frame.contentDocument;
+    const view = frame.contentWindow;
+    const marks = [];
+    let drawn = 0;
+    for (const table of doc.querySelectorAll('table.doc-grid')) {
+      const lines = new Map(Array.from(table.closest('.page').querySelectorAll('.doc-grid__finding'), (line) => [line.querySelector('.mark').textContent, line.textContent.slice(line.querySelector('.mark').textContent.length + 1)]));
+      for (const row of table.querySelectorAll('tbody tr')) {
+        Array.from(row.querySelectorAll('td')).forEach((cell, index) => {
+          if (!cell.classList.contains('is-marked')) return;
+          if (view.getComputedStyle(cell).boxShadow !== 'none') drawn += 1;
+          const refs = Array.from(cell.querySelectorAll('.marks .mark'), (mark) => mark.textContent);
+          marks.push({ at: row.querySelector('.doc-grid__name').textContent + ' | ' + table.dataset.day + ' | ' + (Number(table.dataset.from) + index), why: refs.map((ref) => lines.get(ref)).join(' ') });
+        });
+      }
+    }
+    return { marks: marks.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)), drawn };
+  });
+}
+
+async function closeSheet() {
+  await page.click('#print-preview [data-action="close"]');
+  await page.waitForFunction(() => document.getElementById('print-preview') === null);
+}
+
+test('the teachers and rooms by period mark on paper the slots the Grid tab marks, with the words the Grid tab gives them', async () => {
+  await go(page, '#schedule/grid');
+  await scheduleDrawn();
+  try {
+    for (const rows of ['teachers', 'rooms']) {
+      await gridRows(rows);
+      const screen = await screenMarks();
+      assert.ok(screen.length >= 1, rows + ': the sample school has marks on the screen (Room 203 has two groups in Period 2): ' + JSON.stringify(screen));
+      await pressPrint('#print-grid-' + rows);
+      const paper = await paperMarks();
+      assert.deepEqual(paper.marks, screen, rows + ': the same slots, the same words');
+      assert.equal(paper.drawn, paper.marks.length, rows + ': print.css draws every mark');
+      await closeSheet();
+    }
+  } finally {
+    // a sheet a failed assertion left open would cover the rows' radio, and
+    // the wait for it would be the failure reported instead
+    if (await page.$('#print-preview')) await closeSheet();
+    await gridRows('groups');
+  }
+});
+
+test('a room with no number and a room not in the building read on paper as they do on screen, in the teachers by period and the teacher list', async () => {
+  await loadModule(page, 'actions', 'engine/actions.js');
+  const before = await page.evaluate(() => globalThis.sv2.store.history.past.length);
+  const halloran = await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    const { actions } = globalThis.sv2modules;
+    const teacher = store.project.teachers.find((each) => each.roomIds.length === 1);
+    store.apply(actions.setRoomFields, { roomId: teacher.roomIds[0], number: '' });
+    // a group she does not teach, in a room the schedule names and the building does not have, with her named on it
+    const day = store.project.dayTypes[0].id;
+    const free = store.project.groups.find((group) => !store.project.building.floors.some((floor) => floor.spaces.some((space) => space.id === group.days[day][0].room && space.teacherIds.includes(teacher.id))));
+    store.apply(actions.setSlot, { groupId: free.id, dayTypeId: day, period: 0, slot: { room: null, roomText: 'Portable <9>', teacherIds: [teacher.id] } });
+    return { id: teacher.id, name: teacher.name, group: free.name };
+  });
+  try {
+    await go(page, '#schedule/grid');
+    await scheduleDrawn();
+    await gridRows('teachers');
+    const screen = await page.evaluate((name) => {
+      const row = Array.from(document.querySelectorAll('.grd-table--read tbody tr')).find((tr) => tr.querySelector('th').textContent === name);
+      return Array.from(row.querySelectorAll('td'), (cell) => cell.textContent);
+    }, halloran.name);
+    assert.ok(screen.some((cell) => cell.includes(' in a room with no number')), 'the screen says it: ' + JSON.stringify(screen));
+    assert.ok(screen[0].startsWith(halloran.group + ' in a room not in the building'), 'the screen says it: ' + JSON.stringify(screen));
+    await pressPrint('#print-grid-teachers');
+    const paper = await page.evaluate((id) => {
+      const doc = document.querySelector('#print-preview iframe').contentDocument;
+      // her row on every sheet, A Day's then B Day's, as the screen's one row
+      return Array.from(doc.querySelectorAll('table.doc-grid tr[data-teacher="' + id + '"] td'), (cell) => ({ slot: cell.querySelector('.doc-grid__slot') ? cell.querySelector('.doc-grid__slot').textContent : null, notes: Array.from(cell.querySelectorAll('.doc-grid__missing'), (note) => note.textContent) }));
+    }, halloran.id);
+    assert.deepEqual(paper[0], { slot: halloran.group + ' · Portable <9>', notes: ['not in the building'] }, 'Period 1 on paper');
+    const unnumbered = paper.filter((cell) => cell.notes.includes('a room with no number'));
+    assert.equal(unnumbered.length, screen.filter((cell) => cell.includes(' in a room with no number')).length, 'every slot in the room with no number says so: ' + JSON.stringify(paper));
+    assert.ok(unnumbered.every((cell) => cell.slot !== '' && !cell.slot.includes(' · ')), 'beside the file\'s cell, the group alone: ' + JSON.stringify(unnumbered));
+    await closeSheet();
+    await gridRows('groups');
+
+    await go(page, '#schedule/teachers');
+    await scheduleDrawn();
+    const chip = await page.$eval('tr[data-teacher="' + halloran.id + '"] .chip', (el) => el.firstChild.textContent);
+    assert.equal(chip, 'a room with no number', 'the Teachers tab names the room so');
+    await pressPrint('#print-teachers');
+    const rooms = await page.evaluate((name) => {
+      const doc = document.querySelector('#print-preview iframe').contentDocument;
+      const row = Array.from(doc.querySelectorAll('table tbody tr')).find((tr) => tr.querySelector('th').textContent === name);
+      return row.children[3].textContent;
+    }, halloran.name);
+    assert.equal(rooms, chip, 'and so does the teacher list on paper');
+    await closeSheet();
+  } finally {
+    await page.evaluate((length) => {
+      const { store } = globalThis.sv2;
+      while (store.history.past.length > length) store.undo();
+    }, before);
+  }
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.history.past.length), before, 'the school is as it was for the cases after this one');
 });
 
 test('the previews asked for nothing outside the tool and nothing went wrong on the page', async () => {
