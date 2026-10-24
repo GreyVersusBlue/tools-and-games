@@ -12,7 +12,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { imagePoint, floorPoint, pixelsApart, cellsFor, cellLengthIn, scaledPlacement, readLength, lengthWords, placeWords, ScaleError, LEAST_PIXELS, MOST_CELLS, LENGTH_UNITS } from '../../ui/building/scale-tool.js';
+import { imagePoint, floorPoint, pixelsApart, cellsFor, cellLengthIn, scaledPlacement, readLength, lengthWords, placeWords, ScaleError, LEAST_PIXELS, MOST_CELLS, LENGTH_UNITS, pointsPlacement, plainDegrees, LEAST_CELLS } from '../../ui/building/scale-tool.js';
+import { fitPlacement, cornersOf, cornerPlacement, steppedPlacement, tracePlacement, STEP } from '../../ui/building/trace.js';
 import * as actions from '../../engine/actions.js';
 import { writeProjectFile, readProjectFile } from '../../engine/project-file.js';
 import { validate } from '../../engine/validate.js';
@@ -196,4 +197,226 @@ test('the Cell scale travels through a saved project file, and an older file wit
 
   const cleared = actions.setSetting(set, { key: 'cellScale', value: null }, ctx());
   assert.equal(readProjectFile(writeProjectFile(cleared)).project.settings.cellScale, null, 'not set, kept as null');
+});
+
+// ---------------------------------------------------------------- SV2-73b
+
+// Placing by two points, the fits, the corner handles and + and -, in plain
+// Node, with the two actions they go through.
+
+const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+// Where an image place lands once the image is placed as `placed`.
+const landing = (image, placed, at) => floorPoint({ ...image, ...placed }, at);
+
+function lands(image, placed, at, want, what) {
+  const there = landing(image, placed, at);
+  near(there.x, want.x, what + ' x', 1e-9);
+  near(there.y, want.y, what + ' y', 1e-9);
+}
+
+test('two points and two places: each point lands on its place, the image unturned, turned, or turned over the half circle', () => {
+  const a1 = { u: 200, v: 300 };
+  const a2 = { u: 1400, v: 300 };
+  // unturned: a line 1200 pixels long put 24 cells long, from 4, 5 to 28, 5
+  const flat = pointsPlacement(IMAGE, a1, a2, { x: 4, y: 5 }, { x: 28, y: 5 });
+  near(flat.scale, 0.02, 'scale');
+  assert.equal(flat.rotation, 0, 'no turn, and no -0');
+  lands(IMAGE, flat, a1, { x: 4, y: 5 }, 'first');
+  lands(IMAGE, flat, a2, { x: 28, y: 5 }, 'second');
+  // the places straight down from each other: the image turns a quarter clockwise
+  const quarter = pointsPlacement(IMAGE, a1, a2, { x: 10, y: 2 }, { x: 10, y: 14 });
+  near(quarter.rotation, 90, 'turned 90');
+  near(quarter.scale, 0.01, 'scale');
+  lands(IMAGE, quarter, a1, { x: 10, y: 2 }, 'first, turned');
+  lands(IMAGE, quarter, a2, { x: 10, y: 14 }, 'second, turned');
+  // an image already turned 30° and points on a slant: the answer is whole, not added to the old turn
+  const turned = { ...IMAGE, rotation: 30 };
+  const b1 = { x: 7.25, y: 20.5 };
+  const b2 = { x: 2.5, y: 9 };
+  const slant = pointsPlacement(turned, { u: 100, v: 1100 }, { u: 900, v: 150 }, b1, b2);
+  assert.ok(slant.rotation > -180 && slant.rotation <= 180, 'the turn is said between -180 and 180: ' + slant.rotation);
+  lands(turned, slant, { u: 100, v: 1100 }, b1, 'first, slanted');
+  lands(turned, slant, { u: 900, v: 150 }, b2, 'second, slanted');
+  // left to right on the image, right to left on the floor: half a turn, said as 180
+  const back = pointsPlacement(IMAGE, a1, a2, { x: 30, y: 6 }, { x: 6, y: 6 });
+  near(back.rotation, 180, 'half a turn');
+  lands(IMAGE, back, a1, { x: 30, y: 6 }, 'first, half turned');
+});
+
+test('the pairs in either order give the same placement', () => {
+  const a1 = { u: 250, v: 900 };
+  const a2 = { u: 1300, v: 200 };
+  const b1 = { x: 3, y: 18 };
+  const b2 = { x: 33.5, y: 4 };
+  const one = pointsPlacement(IMAGE, a1, a2, b1, b2);
+  const other = pointsPlacement(IMAGE, a2, a1, b2, b1);
+  for (const key of ['scale', 'rotation', 'x', 'y']) near(other[key], one[key], key, 1e-9);
+});
+
+test('two points too close, on the image or on the floor, and a placement past any floor or under a cell, are refused in a sentence', () => {
+  const refused = (run) => {
+    try {
+      run();
+    } catch (error) {
+      assert.ok(error instanceof ScaleError, 'a ScaleError: ' + error);
+      return error.code + ': ' + error.message;
+    }
+    return 'not refused';
+  };
+  const a1 = { u: 200, v: 300 };
+  assert.equal(refused(() => pointsPlacement(IMAGE, a1, { u: 200.5, v: 300.5 }, { x: 1, y: 1 }, { x: 20, y: 1 })), 'same-place: The two points are in the same place on the image. Place the second point somewhere else on it, as far from the first as you can.');
+  assert.equal(refused(() => pointsPlacement(IMAGE, a1, { u: 900, v: 300 }, { x: 1, y: 1 }, { x: 1.1, y: 1.1 })), 'same-cell: The two places on the floor are in the same place. Place the second where the second point belongs, as far from the first as you can.');
+  assert.equal(LEAST_CELLS, 0.25);
+  // 2 pixels apart put 40 cells apart: 32,000 cells across
+  assert.match(refused(() => pointsPlacement(IMAGE, a1, { u: 202, v: 300 }, { x: 1, y: 1 }, { x: 41, y: 1 })), /^too-large: That would make the image 32,000 cells across/);
+  // 1600 pixels apart put 0.5 cells apart: the whole image half a cell
+  assert.match(refused(() => pointsPlacement(IMAGE, { u: 0, v: 0 }, { u: 1600, v: 0 }, { x: 1, y: 1 }, { x: 1.5, y: 1 })), /^too-small: That would make the whole image less than one cell across/);
+});
+
+test('degrees are said above -180 and up to 180', () => {
+  assert.equal(plainDegrees(0), 0);
+  assert.equal(Object.is(plainDegrees(-360), 0), true, 'no -0');
+  assert.equal(plainDegrees(190), -170);
+  assert.equal(plainDegrees(-180), 180);
+  assert.equal(plainDegrees(540), 180);
+  assert.equal(plainDegrees(-725), -5);
+});
+
+test('placing by two points is one action: refused while locked, its label, and the round trip through a saved project', () => {
+  let project = emptyProject();
+  const floorId = project.building.floors[0].id;
+  project = actions.setTraceImage(project, { floorId, image: { ...IMAGE, imageId: 'isample001', rotation: 12 } }, ctx());
+  const image = project.building.floors[0].image;
+  const a1 = { u: 120, v: 80 };
+  const a2 = { u: 1450, v: 1010 };
+  const b1 = { x: 2, y: 27 };
+  const b2 = { x: 37, y: 3 };
+  const placed = pointsPlacement(image, a1, a2, b1, b2);
+  const after = actions.placeTraceImage(project, { floorId, image: placed, how: 'points' }, ctx());
+  assert.deepEqual(validate(after), []);
+  lands(image, after.building.floors[0].image, a1, b1, 'first, as kept');
+  lands(image, after.building.floors[0].image, a2, b2, 'second, as kept');
+  assert.equal(actions.placeTraceImage.label(project, { floorId, how: 'points' }, after), 'Place the traced image by two points on Floor 1');
+  assert.deepEqual(actions.placeTraceImage.bumps, ['building']);
+  // through a project file and back: the same numbers, so the points land on their places again
+  const images = { isample001: { data: PNG, type: 'image/png' } };
+  const text = writeProjectFile(after, { images });
+  const read = readProjectFile(text);
+  assert.deepEqual(read.project.building.floors[0].image, after.building.floors[0].image);
+  lands(image, read.project.building.floors[0].image, a2, b2, 'second, read back');
+  assert.equal(writeProjectFile(read.project, { images: read.images }), text, 'export, import, export is the same file');
+
+  const locked = actions.setTraceImage(project, { floorId, image: { locked: true } }, ctx());
+  assert.throws(() => actions.placeTraceImage(locked, { floorId, image: placed, how: 'points' }, ctx()), (error) => error.code === 'locked' && error.message === 'The image is locked, so it cannot be moved or resized. Untick "Lock the image" on the Floor tab first.');
+  assert.throws(() => actions.placeTraceImage(emptyProject(), { floorId: emptyProject().building.floors[0].id, image: placed }, ctx()), (error) => error.code === 'missing');
+  assert.throws(() => actions.placeTraceImage(project, { floorId, image: { ...placed, scale: 0 } }, ctx()), (error) => error.code === 'bad-value');
+  assert.equal(actions.placeTraceImage.label(project, { floorId, how: 'fit' }, after), 'Fit the traced image to Floor 1');
+  assert.equal(actions.placeTraceImage.label(project, { floorId, how: 'corner' }, after), 'Resize the traced image on Floor 1');
+});
+
+test('fit the image to the floor: the whole image inside the floor and in its middle, turned as it is', () => {
+  const floor = { width: 40, height: 30 };
+  for (const rotation of [0, 30, 90, -45, 170]) {
+    const placed = fitPlacement(floor, 1600, 1200, rotation);
+    assert.equal(placed.rotation, rotation, 'the turn is kept');
+    const box = actions.traceImageBox({ ...IMAGE, ...placed });
+    assert.ok(box.x0 >= -1e-9 && box.y0 >= -1e-9 && box.x1 <= 40 + 1e-9 && box.y1 <= 30 + 1e-9, rotation + '° inside the floor: ' + JSON.stringify(box));
+    // as large as fits: it touches two opposite edges
+    assert.ok(Math.abs(box.x1 - box.x0 - 40) < 1e-9 || Math.abs(box.y1 - box.y0 - 30) < 1e-9, rotation + '° touches the floor\'s edges');
+    near((box.x0 + box.x1) / 2, 20, rotation + '° centred across');
+    near((box.y0 + box.y1) / 2, 15, rotation + '° centred down');
+  }
+  assert.deepEqual(fitPlacement(floor, 1600, 1200), { scale: 0.025, x: 0, y: 0, rotation: 0 }, 'a new image, unturned');
+});
+
+test('the box an image covers, and the floor fitted to it rounded out to whole cells', () => {
+  near(actions.traceImageBox(IMAGE).x1, 19, 'right edge unturned');
+  const quarter = actions.traceImageBox({ ...IMAGE, rotation: 90 });
+  near(quarter.x0, 5, 'turned 90, left');
+  near(quarter.y0, 0, 'turned 90, top');
+  near(quarter.x1, 17, 'turned 90, right');
+  near(quarter.y1, 16, 'turned 90, bottom');
+  // 3, 2 to 19, 14 on a 40 by 30 floor: cut 3 at the left, 2 at the top, 21 at the right and 16 at the bottom
+  assert.deepEqual(actions.floorForImage({ width: 40, height: 30 }, IMAGE), { left: -3, top: -2, right: -21, bottom: -16, width: 16, height: 12 });
+  // 2.5 to 18.5 across and -1.25 to 10.75 down: rounded out, 2 to 19 and -2 to 11
+  assert.deepEqual(actions.floorForImage({ width: 40, height: 30 }, { ...IMAGE, x: 2.5, y: -1.25 }), { left: -2, top: 2, right: -21, bottom: -19, width: 17, height: 13 });
+  // an edge a hair off a whole number is that whole number
+  assert.equal(actions.floorForImage({ width: 40, height: 30 }, { ...IMAGE, x: 3 + 1e-12 }).width, 16);
+});
+
+test('fit the floor to the image is one action: the drawing and the image stay where they are on each other; refused when it would cut, when locked, or past a floor\'s sizes', () => {
+  let project = emptyProject();
+  const floorId = project.building.floors[0].id;
+  project = actions.setTraceImage(project, { floorId, image: { ...IMAGE, imageId: 'isample001' } }, ctx());
+  // a corridor cell at 5, 4, inside the image
+  project = actions.paintCorridor(project, { floorId, cells: [4 * 40 + 5] }, ctx());
+  const after = actions.fitFloorToImage(project, { floorId }, ctx());
+  const floor = after.building.floors[0];
+  assert.equal(floor.width, 16);
+  assert.equal(floor.height, 12);
+  assert.equal(floor.cells[(4 - 2) * 16 + (5 - 3)], '#', 'the corridor cell moved with the edges');
+  assert.deepEqual([floor.image.x, floor.image.y], [0, 0], 'the image at the floor\'s corner, over the same cells');
+  assert.deepEqual(validate(after), []);
+  assert.equal(actions.fitFloorToImage.label(project, { floorId }, after), 'Fit Floor 1 to its traced image, 16 by 12');
+  assert.deepEqual(actions.fitFloorToImage.bumps(project, { floorId }, after), ['geometry']);
+  assert.equal(actions.fitFloorToImage(after, { floorId }, ctx()), after, 'already fitted: nothing changes');
+
+  // a room at 30, 20 lies outside the image: refused, saying what would go
+  const outside = actions.placeRoom(project, { floorId, rect: { x: 30, y: 20, w: 2, h: 2 }, number: '204' }, ctx());
+  assert.throws(() => actions.fitFloorToImage(outside, { floorId }, ctx()), (error) => error.code === 'cuts' && error.message === 'Fitting Floor 1 to the image would cut Room 204, outside the image. Move them over the image first, or resize the floor by its edges instead.');
+  const locked = actions.setTraceImage(project, { floorId, image: { locked: true } }, ctx());
+  assert.throws(() => actions.fitFloorToImage(locked, { floorId }, ctx()), (error) => error.code === 'locked');
+  const huge = actions.setTraceImage(project, { floorId, image: { scale: 0.2 } }, ctx());
+  assert.throws(() => actions.fitFloorToImage(huge, { floorId }, ctx()), (error) => error.code === 'bad-size' && error.message === 'The image covers 320 by 240 cells, and a floor is from 5 to 200 cells each way, so Floor 1 cannot be fitted to it. Resize the image first.');
+  const tiny = actions.setTraceImage(project, { floorId, image: { scale: 0.001 } }, ctx());
+  assert.throws(() => actions.fitFloorToImage(tiny, { floorId }, ctx()), (error) => error.code === 'bad-size');
+});
+
+test('a corner handle resizes about the opposite corner with the shape kept; with Shift about the middle; a turned image too', () => {
+  for (const rotation of [0, 35, -120]) {
+    const image = { ...IMAGE, rotation };
+    const corners = cornersOf(image);
+    for (let corner = 0; corner < 4; corner += 1) {
+      const opposite = corners[(corner + 2) % 4];
+      // the pointer half as far again from the opposite corner, along the diagonal
+      const at = { x: opposite.x + (corners[corner].x - opposite.x) * 1.5, y: opposite.y + (corners[corner].y - opposite.y) * 1.5 };
+      const placed = cornerPlacement(image, corner, at, false);
+      near(placed.scale, IMAGE.scale * 1.5, rotation + '° corner ' + corner + ' scale');
+      const after = cornersOf({ ...image, ...placed });
+      near(after[(corner + 2) % 4].x, opposite.x, rotation + '° corner ' + corner + ': the opposite corner stays, x');
+      near(after[(corner + 2) % 4].y, opposite.y, rotation + '° corner ' + corner + ': the opposite corner stays, y');
+      near(after[corner].x, at.x, rotation + '° corner ' + corner + ' follows the pointer, x');
+      near(after[corner].y, at.y, rotation + '° corner ' + corner + ' follows the pointer, y');
+    }
+    // with Shift, about the middle: the middle stays and the image doubles
+    const middle = tracePlacement(image);
+    const placed = cornerPlacement(image, 2, { x: middle.cx + (corners[2].x - middle.cx) * 2, y: middle.cy + (corners[2].y - middle.cy) * 2 }, true);
+    near(placed.scale, IMAGE.scale * 2, rotation + '° about the middle');
+    const moved = tracePlacement({ ...image, ...placed });
+    near(moved.cx, middle.cx, rotation + '° the middle stays, x');
+    near(moved.cy, middle.cy, rotation + '° the middle stays, y');
+  }
+  // a pointer off the diagonal: the shape is kept, the corner goes to the nearest place on the diagonal
+  const off = cornerPlacement(IMAGE, 2, { x: 19 + 4, y: 14 }, false);
+  near(off.scale * 1200 / (off.scale * 1600), 0.75, 'the shape is kept');
+  assert.equal(off.x, 3, 'the top left corner stays');
+  // dragged past the opposite corner, the image is held at one cell across, never turned over
+  const past = cornerPlacement(IMAGE, 2, { x: 0, y: 0 }, false);
+  near(past.scale * 1600, 1, 'one cell across');
+});
+
+test('+ and - make the image 5 % larger or smaller about its middle', () => {
+  assert.equal(STEP, 1.05);
+  const larger = steppedPlacement(IMAGE, STEP);
+  near(larger.scale, 0.0105, 'larger');
+  const middle = tracePlacement(IMAGE);
+  const moved = tracePlacement({ ...IMAGE, ...larger });
+  near(moved.cx, middle.cx, 'the middle stays, x');
+  near(moved.cy, middle.cy, 'the middle stays, y');
+  const smaller = steppedPlacement({ ...IMAGE, ...larger }, 1 / STEP);
+  near(smaller.scale, 0.01, 'smaller again');
+  near(smaller.x, 3, 'back where it was', 1e-9);
+  // never under one cell across
+  near(steppedPlacement({ ...IMAGE, scale: 1 / 1600 }, 1 / STEP).scale * 1600, 1, 'held at one cell');
 });

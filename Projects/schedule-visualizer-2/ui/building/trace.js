@@ -22,11 +22,11 @@
 // engine/actions.js, with the other building actions; it is handed on from
 // here so what imported it from this file still finds it.
 
-import { setTraceImage, DEFAULT_TRACE_OPACITY } from '../../engine/actions.js';
+import { setTraceImage, placeTraceImage, fitFloorToImage, floorForImage, DEFAULT_TRACE_OPACITY } from '../../engine/actions.js';
 import { h } from '../components/dom.js';
 import { field } from '../components/field.js';
 import { checkField, decimal, heading } from './inspector/controls.js';
-import { createScaleTool } from './scale-tool.js';
+import { createScaleTool, floorPoint, MOST_CELLS } from './scale-tool.js';
 
 export { setTraceImage };
 
@@ -50,11 +50,68 @@ export function reducedSize(width, height, max) {
   return { width: Math.max(1, Math.round(width * factor)), height: Math.max(1, Math.round(height * factor)), reduced: true };
 }
 
-// Where a new image goes: as large as fits on the floor, in its middle.
-export function fitPlacement(floor, width, height) {
-  const scale = Math.min(floor.width / width, floor.height / height);
-  return { scale, x: (floor.width - width * scale) / 2, y: (floor.height - height * scale) / 2, rotation: 0 };
+// Where a new image goes, and "Fit the image to the floor": as large as fits
+// whole on the floor, in its middle, turned as it is (`rotation` degrees,
+// none for a new image).
+export function fitPlacement(floor, width, height, rotation) {
+  const turn = ((rotation || 0) * Math.PI) / 180;
+  const cos = Math.abs(Math.cos(turn));
+  const sin = Math.abs(Math.sin(turn));
+  const scale = Math.min(floor.width / (width * cos + height * sin), floor.height / (width * sin + height * cos));
+  return { scale, x: (floor.width - width * scale) / 2, y: (floor.height - height * scale) / 2, rotation: rotation || 0 };
 }
+
+// The image's four corners, in its own pixels, clockwise from its top left
+// as stored: what a corner handle is named by (0 to 3).
+export function cornerPixels(image) {
+  return [{ u: 0, v: 0 }, { u: image.width, v: 0 }, { u: image.width, v: image.height }, { u: 0, v: image.height }];
+}
+
+// The image's corners on the floor, in cells, in cornerPixels' order.
+export function cornersOf(image) {
+  return cornerPixels(image).map((corner) => floorPoint(image, corner));
+}
+
+// A resized image's scale kept between one cell across and MOST_CELLS.
+function heldScale(image, scale) {
+  const longer = Math.max(image.width, image.height);
+  return Math.min(MOST_CELLS / longer, Math.max(1 / longer, scale));
+}
+
+// The image resized about one place on it (`about`, in its pixels), which
+// stays where it is on the floor: { scale, x, y }, the turn kept.
+export function scaledAbout(image, about, scale) {
+  const kept = floorPoint(image, about);
+  const landed = floorPoint({ ...image, scale, x: 0, y: 0 }, about);
+  return { scale, x: kept.x - landed.x, y: kept.y - landed.y };
+}
+
+// A corner handle (0 to 3, cornerPixels' order) dragged to `at` (cells): the
+// image resized with its shape kept, about the opposite corner, or about its
+// middle with `centre` (Shift held). The corner follows the pointer along the
+// image's diagonal. { scale, x, y }, the turn kept.
+export function cornerPlacement(image, corner, at, centre) {
+  const corners = cornerPixels(image);
+  const grabbed = corners[corner];
+  const about = centre ? { u: image.width / 2, v: image.height / 2 } : corners[(corner + 2) % 4];
+  const fixed = floorPoint(image, about);
+  // the pointer from the fixed place, turned back into the image's own frame
+  const turn = (image.rotation * Math.PI) / 180;
+  const dx = at.x - fixed.x;
+  const dy = at.y - fixed.y;
+  const along = { u: dx * Math.cos(turn) + dy * Math.sin(turn), v: -dx * Math.sin(turn) + dy * Math.cos(turn) };
+  const diagonal = { u: grabbed.u - about.u, v: grabbed.v - about.v };
+  const scale = heldScale(image, (along.u * diagonal.u + along.v * diagonal.v) / (diagonal.u * diagonal.u + diagonal.v * diagonal.v));
+  return scaledAbout(image, about, scale);
+}
+
+// + and - while moving: the image `factor` times as large, about its middle.
+export function steppedPlacement(image, factor) {
+  return scaledAbout(image, { u: image.width / 2, v: image.height / 2 }, heldScale(image, image.scale * factor));
+}
+
+// How much + and - resize the image by.
+export const STEP = 1.05;
 
 // The box a traced image is drawn in, in cells: its top left corner, its
 // size, its middle (the point it is turned about), the turn in degrees and

@@ -153,6 +153,45 @@ export function placeWords(at) {
   return round(at.x, 1) + ', ' + round(at.y, 1);
 }
 
+// Two places on the floor nearer than this (in cells) are one place.
+export const LEAST_CELLS = 0.25;
+
+// Degrees to the range above -180 and up to 180, with no -0.
+export function plainDegrees(degrees) {
+  let turned = degrees % 360;
+  if (turned > 180) turned -= 360;
+  if (turned <= -180) turned += 360;
+  return turned === 0 ? 0 : turned;
+}
+
+// Placing the image by two points (SV2-73b): a1 and a2 are places on the
+// image (its pixels), b1 and b2 the places on the floor (cells) they belong
+// at. The image's scale, turn and top left corner so that each lands on its
+// own: { scale, rotation, x, y }, or a ScaleError. The pairs may come in
+// either order; the answer is the same.
+export function pointsPlacement(image, a1, a2, b1, b2) {
+  if (!(pixelsApart(a1, a2) >= LEAST_PIXELS)) throw new ScaleError('The two points are in the same place on the image. Place the second point somewhere else on it, as far from the first as you can.', 'same-place');
+  const across = Math.hypot(b2.x - b1.x, b2.y - b1.y);
+  if (!(across >= LEAST_CELLS)) throw new ScaleError('The two places on the floor are in the same place. Place the second where the second point belongs, as far from the first as you can.', 'same-cell');
+  const du = a2.u - a1.u;
+  const dv = a2.v - a1.v;
+  const scale = across / Math.hypot(du, dv);
+  const longer = Math.max(image.width, image.height) * scale;
+  if (longer > MOST_CELLS) throw new ScaleError('That would make the image ' + Math.round(longer).toLocaleString('en-US') + ' cells across, far larger than any floor can be (' + RANGES.floorSize[1] + ' cells). Place the points farther apart on the image, or nearer on the floor.', 'too-large');
+  if (longer < 1) throw new ScaleError('That would make the whole image less than one cell across. Place the points nearer on the image, or farther apart on the floor.', 'too-small');
+  const turn = Math.atan2(b2.y - b1.y, b2.x - b1.x) - Math.atan2(dv, du);
+  const rotation = plainDegrees((turn * 180) / Math.PI);
+  // a1, turned and scaled about the image's middle, lands on b1: the middle follows
+  const radians = (rotation * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const ou = (a1.u - image.width / 2) * scale;
+  const ov = (a1.v - image.height / 2) * scale;
+  const cx = b1.x - (ou * cos - ov * sin);
+  const cy = b1.y - (ou * sin + ov * cos);
+  return { scale, rotation, x: cx - (image.width * scale) / 2, y: cy - (image.height * scale) / 2 };
+}
+
 // ---------------------------------------------------------------- on the page
 
 // How far a mouse or pen press may move and still place a point.
