@@ -50,7 +50,7 @@ import { choice } from './choice.js';
 import { setSetting } from '../../engine/actions.js';
 import { outputFor } from '../prints/index.js';
 import { tracedFloors } from '../prints/floor-plan.js';
-import { PAPERS, ORIENTATIONS, paperOf, paperBox, MARGIN } from '../prints/document.js';
+import { PAPERS, ORIENTATIONS, paperOf, paperBox, MARGIN, schoolName } from '../prints/document.js';
 
 const SHEET = new URL('../print.css', import.meta.url).href;
 const UI_BASE = new URL('../', import.meta.url).href;
@@ -173,6 +173,18 @@ export function openPrintPreview(ctx, outputId, options) {
   });
   const fit = h('div', { class: 'preview__fit' }, frame);
   const stage = h('div', { class: 'preview__stage', tabindex: '0', role: 'group', 'aria-label': 'Preview' }, fit);
+
+  // The sheet is named as the document names itself, "<what> · <school>"
+  // (frame() in ../prints/document.js), less the school: the grids say the
+  // school's own word for a period ("Print: Teachers by block"), and the
+  // room list of one floor names the floor. A title not in that shape keeps
+  // the output's name (SV2-32b).
+  function named(documentTitle) {
+    const school = ' · ' + schoolName(project());
+    const what = typeof documentTitle === 'string' && documentTitle.endsWith(school) && documentTitle.length > school.length ? documentTitle.slice(0, -school.length) : output.name;
+    title.textContent = 'Print: ' + what;
+    frame.title = 'Preview of the ' + what.charAt(0).toLowerCase() + what.slice(1) + ' as it will print';
+  }
 
   function setPaper(key, value) {
     if (state.paper[key] === value) return;
@@ -338,6 +350,7 @@ export function openPrintPreview(ctx, outputId, options) {
       movement: opts.movement,
     });
     state.title = rendered.title;
+    named(rendered.title);
     // A document replaced before it is laid out (a paper chosen while the
     // scenario's answer is being shown, SV2-72d) never sends its stylesheets'
     // or faces' word: its wait ends here instead, now, so nothing chained on

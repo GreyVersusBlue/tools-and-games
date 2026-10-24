@@ -32,7 +32,7 @@ import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { noteCountOf } from '../../staff/notes.js';
-import { render as renderBatch, batchCount, batchWords, BATCHES, UPRIGHT_ASKED, UPRIGHT_COVER, UPRIGHT_SENTENCE } from '../../ui/prints/batch.js';
+import { render as renderBatch, batchCount, batchWords, BATCHES, UPRIGHT_ASKED, UPRIGHT_COVER, UPRIGHT_SENTENCE, UPRIGHT_ALL_SENTENCE } from '../../ui/prints/batch.js';
 import { GROUPS } from '../run.mjs';
 import { readTool } from '../publish/reader.mjs';
 
@@ -226,14 +226,14 @@ test('a feed with no flags sends the data alone, as before', () => {
   assert.deepEqual(sent, [{ type: PREVIEW_DATA, data: { n: 1 } }, { type: PREVIEW_DATA, data: { n: 1 } }]);
 });
 
-test('the staff browser\'s directions are written for a reader: every walk is in squares, and a way with no stairs that does not exist is said plainly', () => {
+test('the staff browser\'s directions are written for a reader: every walk is in cells (spec 2), and a way with no stairs that does not exist is said plainly', () => {
   const opened = openSchool(publishedModel(school(), { clock }));
   const rooms = (number) => opened.rooms.find((room) => room.number === number).id;
   const written = opened.directions(opened.route(rooms('101'), rooms('302')));
   const walks = written.steps.filter((step) => step.kind === 'walk');
   assert.ok(walks.length >= 3, 'the walk crosses the building');
-  for (const step of walks) assert.match(step.text, /^Walk \d+ squares?\b/, step.text);
-  assert.doesNotMatch(written.text, /\bcells?\b/);
+  for (const step of walks) assert.match(step.text, /^Walk \d+ cells?\b/, step.text);
+  assert.doesNotMatch(written.text, /\bsquares?\b/);
   const refused = opened.directions(opened.route(rooms('101'), rooms('302'), { avoidStairs: true }));
   assert.equal(refused.text, 'There is no way from Room 101 to Room 302 without stairs.');
 });
@@ -892,5 +892,7 @@ test('a door sign is never laid on its side: asked for landscape the batch is po
     ['teacher-schedules', false, null],
     ['door-signs', true, UPRIGHT_SENTENCE],
     ['door-signs-day', true, UPRIGHT_SENTENCE],
+    ['room-schedules', false, null],
+    ['whole-school', true, UPRIGHT_ALL_SENTENCE],
   ]);
 });

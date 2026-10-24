@@ -27,20 +27,23 @@ import { draftFor, gridEditsPending, anyGridEditsPending, preview, payloadOf, to
 import { sheetModel, namesOf, newGroup } from './model.js';
 import { sheet as makeSheet, cellKey } from './sheet.js';
 import { teacherTable, roomTable } from './readonly.js';
+import { printButtons, buttonLabel } from '../../prints/index.js';
+import { printButton } from '../../components/print-preview.js';
 
 export { gridEditsPending, watchGridEdits } from './staged.js';
 
 const MOD = IS_MAC ? '⌘' : 'Ctrl+';
 
+// A box of the grid is a slot, never a cell: spec 2's cell is a floor's.
 export const GRID_KEYS = [
-  { id: 'grid-arrows', does: 'Move from cell to cell in the grid', shown: 'Arrows' },
-  { id: 'grid-select', does: 'Select a block of cells', shown: 'Shift+Arrows' },
-  { id: 'grid-edit', does: 'Edit the cell, keeping what it holds', shown: 'Enter, F2' },
-  { id: 'grid-escape', does: 'Leave the cell as it was', shown: 'Esc' },
-  { id: 'grid-copy', does: 'Copy the selected cells, for the grid or a spreadsheet', shown: MOD + 'C' },
-  { id: 'grid-paste', does: 'Paste cells from the grid or a spreadsheet', shown: MOD + 'V' },
+  { id: 'grid-arrows', does: 'Move from slot to slot in the grid', shown: 'Arrows' },
+  { id: 'grid-select', does: 'Select a block of slots', shown: 'Shift+Arrows' },
+  { id: 'grid-edit', does: 'Edit the slot, keeping what it holds', shown: 'Enter, F2' },
+  { id: 'grid-escape', does: 'Leave the slot as it was', shown: 'Esc' },
+  { id: 'grid-copy', does: 'Copy the selected slots, for the grid or a spreadsheet', shown: MOD + 'C' },
+  { id: 'grid-paste', does: 'Paste slots from the grid or a spreadsheet', shown: MOD + 'V' },
   { id: 'grid-fill', does: 'Fill down from the top row of the selection', shown: MOD + 'D' },
-  { id: 'grid-clear', does: 'Empty the selected cells', shown: 'Delete' },
+  { id: 'grid-clear', does: 'Empty the selected slots', shown: 'Delete' },
 ];
 
 const ROWS = [
@@ -275,7 +278,22 @@ export function mount(env) {
         bulk,
         fields);
     }
+    const print = printFor(state.rows);
+    if (print) tools.push(print);
     return h('div', { class: 'sch-toolbar grd-toolbar' }, tools);
+  }
+
+  // The print of what the rows show (SV2-32d): the groups, or the teachers or
+  // rooms by period. It prints the schedule as applied, so with changes not
+  // applied yet its title says they are not on it. Nothing to print, no button.
+  function printFor(rows) {
+    const project = ctx.store.project;
+    const has = rows === 'teachers' ? project.teachers.length > 0 : rows === 'rooms' ? allRooms(project).length > 0 || project.groups.length > 0 : project.groups.length > 0;
+    if (!has) return null;
+    const entry = printButtons.find((each) => each.id === 'print-grid-' + rows);
+    const element = keyed(printButton(ctx, { ...entry, label: buttonLabel(entry, project.settings) }), 'grid-print');
+    if (gridEditsPending(project.id)) element.title = 'Prints the schedule as it is applied. The changes not applied yet are not on it.';
+    return element;
   }
 
   function bar(staged) {
@@ -312,7 +330,7 @@ export function mount(env) {
   function keyHint() {
     // the keys are left out on a narrow screen (grid.css); Help has them
     return h('p', { class: 'sch-hint grd-hint' },
-      h('span', { class: 'grd-hint__keys' }, 'Arrow keys move. Type to replace a cell; Enter or F2 edits it; Escape leaves it as it was. Shift with the arrows selects a block. '
+      h('span', { class: 'grd-hint__keys' }, 'Arrow keys move. Type to replace a slot; Enter or F2 edits it; Escape leaves it as it was. Shift with the arrows selects a block. '
         + MOD + 'C and ' + MOD + 'V copy and paste, to and from a spreadsheet; ' + MOD + 'D fills down; Delete empties. '),
       'A room number with a dotted line under it is not in the building.');
   }

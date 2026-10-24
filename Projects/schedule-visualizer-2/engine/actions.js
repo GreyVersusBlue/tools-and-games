@@ -16,8 +16,8 @@
 // changes nothing returns the project it was given, and the store then makes
 // no undo entry.
 
-import { RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, PUBLISH_VIEWS, CHECK_KINDS } from './schema.js';
-import { defaultSettings, emptySlot, emptyDay, emptyBells, newFloor, nameKey, looseNameKey, isHexColour, isBellTime, isIsoDate, inRange, allRooms, findRoom, nextGroupColour, nameOfRoom, newAcceptedFinding } from './schema.js';
+import { RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, PUBLISH_VIEWS, CHECK_KINDS, CELL_SCALE_UNITS, CELL_LENGTH_MOST } from './schema.js';
+import { defaultSettings, isCellScale, emptySlot, emptyDay, emptyBells, newFloor, nameKey, looseNameKey, isHexColour, isBellTime, isIsoDate, inRange, allRooms, findRoom, nextGroupColour, nameOfRoom, newAcceptedFinding } from './schema.js';
 import { checkSchedule } from './checks.js';
 import { isOwnCopy, findDayType, baseDayType } from './day-types.js';
 import { periodName } from './bells.js';
@@ -181,6 +181,8 @@ function choiceRule(allowed, what) {
   return (value) => (allowed.includes(value) ? null : what + ' is one of: ' + allowed.join(', ') + '.');
 }
 
+const CELL_SCALE_RULE = 'One cell is a length above 0 and at most ' + CELL_LENGTH_MOST + ', in ' + CELL_SCALE_UNITS.join(' or ') + ', or the cell scale is not set.';
+
 const SETTINGS = {
   schoolName: { label: 'Change the school name', bumps: [], check: (value) => (typeof value === 'string' ? null : 'The school name is text.') },
   periodWord: { label: 'Change the period word', bumps: [SCHEDULE], check: choiceRule(PERIOD_WORDS, 'The period word') },
@@ -188,6 +190,7 @@ const SETTINGS = {
   defaultHeadCount: { label: 'Change the default head count', bumps: [SCHEDULE], check: wholeRule(RANGES.headCount, 'The default head count') },
   secondsPerCell: { label: 'Change seconds per corridor cell', bumps: [GEOMETRY, SCHEDULE], check: wholeRule(RANGES.secondsPerCell, 'Seconds per corridor cell') },
   secondsPerStair: { label: 'Change seconds per stair connection', bumps: [GEOMETRY, SCHEDULE], check: wholeRule(RANGES.secondsPerStair, 'Seconds per stair connection') },
+  cellScale: { label: 'Change the cell scale', bumps: [], check: (value) => (isCellScale(value) ? null : CELL_SCALE_RULE) },
   'colourScale.mode': { label: 'Change the colour scale', bumps: [], check: choiceRule(COLOUR_SCALE_MODES, 'The colour scale') },
   'colourScale.bands': {
     label: 'Change the colour bands',
@@ -216,7 +219,16 @@ export const SETTING_KEYS = ['periods'].concat(Object.keys(SETTINGS));
 
 function sameValue(a, b) {
   if (Array.isArray(a) && Array.isArray(b)) return sameList(a, b);
+  // a Cell scale: the same unit and length is the same setting
+  if (a && b && typeof a === 'object' && typeof b === 'object') return Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((key) => a[key] === b[key]);
   return a === b;
+}
+
+// A setting's value as it is kept: a copy, so the caller's object is not the project's.
+function keptValue(value) {
+  if (Array.isArray(value)) return value.slice();
+  if (value && typeof value === 'object') return { ...value };
+  return value;
 }
 
 function resizeDays(project, periods) {
@@ -306,7 +318,7 @@ export const setSetting = action(
     if (!rule) refuse('There is no setting called "' + payload.key + '".', 'bad-value');
     const problem = rule.check(payload.value);
     if (problem) refuse(problem, 'bad-value');
-    const value = Array.isArray(payload.value) ? payload.value.slice() : payload.value;
+    const value = keptValue(payload.value);
     return patch(project, ['settings'].concat(payload.key.split('.')), (current) => (sameValue(current, value) ? current : value));
   },
 );
@@ -1527,13 +1539,45 @@ export const setTraceImage = action(
       }
       if (typeof next.imageId !== 'string' || next.imageId === '') bad('A traced image names its stored image.');
       if (typeof next.opacity !== 'number' || !(next.opacity >= 0 && next.opacity <= 1)) bad('Opacity is from 0% to 100%.');
-      if (typeof next.scale !== 'number' || !Number.isFinite(next.scale) || !(next.scale > 0)) bad('The image needs a width above 0 squares.');
+      if (typeof next.scale !== 'number' || !Number.isFinite(next.scale) || !(next.scale > 0)) bad('The image needs a width above 0 cells.');
       for (const key of ['rotation', 'x', 'y']) if (!Number.isFinite(next[key])) bad('The ' + key + ' of a traced image is a number.');
       for (const key of TRACE_FLAGS) if (typeof next[key] !== 'boolean') bad('The ' + key + ' flag of a traced image is on or off.');
       for (const key of TRACE_SIZES) if (!Number.isInteger(next[key]) || next[key] < 1) bad('The ' + key + ' of a traced image is a whole number of pixels.');
     }
     if (next === floor.image) return project;
     return patch(project, ['building', 'floors'], (list) => mapShared(list, (candidate) => (candidate === floor ? { ...floor, image: next } : candidate)));
+  },
+);
+
+// Scale a floor's traced image from a line drawn on it (SV2-73a): the new
+// scale and top left corner, which ui/building/scale-tool.js works out so the
+// line's first point stays where it was, and, when the length was given in
+// feet or metres before the project had a Cell scale, that setting as well,
+// in the same undo step. Refused while the image is locked.
+// payload: { floorId, image: { scale, x, y }, cellScale? }
+export const scaleTraceImage = action(
+  {
+    label: (before, payload) => {
+      const floor = before.building.floors.find((candidate) => candidate.id === payload.floorId);
+      return 'Scale the traced image on ' + (floor ? floor.name : 'the floor');
+    },
+    bumps: [BUILDING],
+    focus: (before, payload) => ({ section: 'building', floorId: payload.floorId }),
+  },
+  (project, payload, ctx) => {
+    const floor = project.building.floors.find((candidate) => candidate.id === payload.floorId);
+    if (!floor) refuse('That floor is no longer in the building.', 'missing');
+    if (!floor.image) refuse('There is no image under ' + floor.name + ' to scale.', 'missing');
+    if (floor.image.locked) refuse('The image is locked, so it cannot be scaled. Untick "Lock the image" on the Floor tab first.', 'locked');
+    const given = payload.image;
+    if (!given || typeof given !== 'object') refuse('A scaled image has a scale and a place.', 'bad-value');
+    let next = setTraceImage(project, { floorId: floor.id, image: { scale: given.scale, x: given.x, y: given.y } }, ctx);
+    if (payload.cellScale !== undefined) {
+      if (payload.cellScale === null || !isCellScale(payload.cellScale)) refuse(CELL_SCALE_RULE, 'bad-value');
+      const kept = { unit: payload.cellScale.unit, length: payload.cellScale.length };
+      next = patch(next, ['settings', 'cellScale'], (current) => (current && sameValue(current, kept) ? current : kept));
+    }
+    return next;
   },
 );
 

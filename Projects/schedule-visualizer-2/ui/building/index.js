@@ -94,7 +94,7 @@ export const PLAN_KEYS = [
 function facts(project) {
   const f = figures(project);
   const first = project.building.floors[0];
-  if (f.rooms === 0 && f.exits === 0 && f.floors === 1) return 'Nothing is drawn yet. ' + first.name + ' is ' + first.width + ' × ' + first.height + ' squares.';
+  if (f.rooms === 0 && f.exits === 0 && f.floors === 1) return 'Nothing is drawn yet. ' + first.name + ' is ' + first.width + ' × ' + first.height + ' cells.';
   return 'So far: ' + list([count(f.floors, 'floor'), count(f.rooms, 'room'), count(f.otherSpaces, 'other space'), count(f.connections, 'stairs connection'), count(f.exits, 'exit')]) + '.';
 }
 
@@ -725,7 +725,7 @@ export const section = {
       if (!done) return;
       const added = store.project.building.floors[store.project.building.floors.length - 1];
       ctx.navigate('#building/' + added.id);
-      say('Added ' + added.name + ', ' + added.width + ' by ' + added.height + ' squares, the size of ' + from.name + '.');
+      say('Added ' + added.name + ', ' + added.width + ' by ' + added.height + ' cells, the size of ' + from.name + '.');
     }
 
     // Another floor comes on screen. The tool and the zoom stay as they are.
@@ -782,7 +782,7 @@ export const section = {
       status.setCounts(counts(project.building));
       inspector.update(project, floor, selection);
       factsLine.textContent = facts(project);
-      sizeButton.textContent = 'Change the size (' + floor.name + ' is ' + floor.width + ' × ' + floor.height + ' squares)';
+      sizeButton.textContent = 'Change the size (' + floor.name + ' is ' + floor.width + ' × ' + floor.height + ' cells)';
       canvas.setAttribute('aria-label', 'The floor plan of ' + floor.name);
       placeCard();
       nameInspector();

@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { openPlanner, go, startServer, launch, waitForSection, visit, TOOL_DIR } from './harness.mjs';
+import { openPlanner, go, startServer, launch, waitForSection, visit, TOOL_DIR, loadModule } from './harness.mjs';
 import { SCREENS } from './screens.mjs';
 
 const DAY_A = 'dsample00a';
@@ -119,36 +119,6 @@ const stored = (page, groupId, day, period) => page.evaluate((g, d, p) => {
   const slot = globalThis.sv2.store.project.groups.find((group) => group.id === g).days[d][p];
   return { room: slot.room, roomText: slot.roomText };
 }, groupId, day, period);
-// A module of the tool put on the page as `globalThis.sv2modules[key]`, by a
-// module script the page loads itself, and waited for: the page sets the
-// key. An import() awaited inside page.evaluate came back "Protocol error
-// (Runtime.callFunctionOn): Promise was collected" (SV2-72e: act's, on a page
-// just opened at #movement, in 2 of 10 runs of this file with the CPU
-// throttled 4 and the worker's answers late), so a module is loaded first
-// and used in a synchronous evaluate after, as SV2-72a did in grid-pass.mjs.
-// A load of the page empties the globals, and the module is loaded again.
-// The script imports the module itself and keeps `{ error }` under the key
-// when that fails: a static import that fails fires no error the test can
-// see, and a wrong path came back as this wait's timeout (SV2-72e2).
-async function loadModule(page, key, file) {
-  // null while it loads, then `{ error }`: null when the module is there
-  const held = (wanted) => {
-    const value = globalThis.sv2modules && globalThis.sv2modules[wanted];
-    if (!value) return null;
-    return { error: value[Symbol.toStringTag] === 'Module' ? null : String(value.error) };
-  };
-  let state = await page.evaluate(held, key);
-  if (state === null) {
-    const name = JSON.stringify(key);
-    await page.addScriptTag({ type: 'module', content: 'const modules = (globalThis.sv2modules ||= {}); import(' + JSON.stringify('./' + file) + ').then((module) => { modules[' + name + '] = module; }, (error) => { modules[' + name + '] = { error: String((error && error.message) || error) }; });' });
-    state = await (await page.waitForFunction(held, { timeout: 5000 }, key)).jsonValue();
-  }
-  if (state.error !== null) {
-    // forgotten, so a later call tries again rather than repeat this one
-    await page.evaluate((wanted) => delete globalThis.sv2modules[wanted], key);
-    throw new Error('loadModule: ' + file + ' did not load: ' + state.error);
-  }
-}
 async function act(page, name, payload) {
   await loadModule(page, 'actions', 'engine/actions.js');
   await page.evaluate((action, given) => {
@@ -321,7 +291,8 @@ test('the Subjects toolbar exports the subjects CSV and goes to its import, and 
     await go(p, '#schedule/teachers');
     await settled(p);
     const teachers = await shape();
-    assert.deepEqual(teachers.labels, ['Add a teacher', 'Export CSV', 'Import CSV…']);
+    // SV2-32d: the teacher list prints, from the end of the toolbar
+    assert.deepEqual(teachers.labels, ['Add a teacher', 'Export CSV', 'Import CSV…', 'Print the teacher list']);
     assert.equal(teachers.import.replace(/^A /, ''), teachers.export.replace(/^BUTTON /, ''));
     assert.equal(teachers.export, subjects.export, 'the two tabs\' buttons differ');
   });

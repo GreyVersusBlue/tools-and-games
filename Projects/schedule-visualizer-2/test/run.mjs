@@ -82,6 +82,9 @@ export const GROUPS = {
     'engine/transfer.test.mjs', // SV2-29a
     'engine/transfer-qr.test.mjs', // SV2-29a
     'engine/help.test.mjs', // SV2-30a
+    'engine/prints-schedule.test.mjs', // SV2-32d
+    'engine/prints-travel.test.mjs', // SV2-32d
+    'engine/vocabulary.test.mjs', // SV2-32f
     'ui/progress.test.mjs', // SV2-02
     'ui/helpers.test.mjs', // SV2-02
     'ui/building-inspector.test.mjs', // SV2-07
@@ -103,6 +106,7 @@ export const GROUPS = {
     'ui/label-scale.test.mjs', // SV2-31
     'ui/set-view.test.mjs', // SV2-31c
     'ui/auto-snapshots.test.mjs', // SV2-28b
+    'ui/scale-tool.test.mjs', // SV2-73a
     'a11y/contrast.mjs', // SV2-33, listed by SV2-02
   ],
   browser: [
@@ -133,6 +137,7 @@ export const GROUPS = {
     'browser/staff-views-a.mjs', // SV2-21
     'browser/staff-views-b.mjs', // SV2-22
     'browser/staff-outputs.mjs', // SV2-23
+    'browser/staff-pictures.mjs', // SV2-32e
     'browser/publish.mjs', // SV2-24
     'browser/m4-pass.mjs', // SV2-45
     'browser/movement.mjs', // SV2-17
@@ -153,6 +158,7 @@ export const GROUPS = {
     'browser/auto-snapshots.mjs', // SV2-28b
     'browser/getting-started.mjs', // SV2-30b
     'browser/empty-states.mjs', // SV2-30b
+    'browser/trace-scale.mjs', // SV2-73a
     'a11y/axe.mjs',
   ],
   a11y: [

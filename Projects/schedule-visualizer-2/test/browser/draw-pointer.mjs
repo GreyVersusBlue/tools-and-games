@@ -301,7 +301,7 @@ if (MAIN) {
     assert.equal(await text('#empty-floor .intro__first'), 'Draw each floor here: a corridor first, then rooms along it.');
     assert.deepEqual(await page.$$eval('#empty-floor button', (all) => all.map((button) => button.textContent)), [
       'Trace over a photo of your floor plan',
-      'Change the size (Floor 1 is 40 × 30 squares)',
+      'Change the size (Floor 1 is 40 × 30 cells)',
       'Load the sample school',
     ]);
     assert.equal(await page.$$eval('h1', (all) => all.length), 1);
@@ -317,7 +317,7 @@ if (MAIN) {
 
     await page.click('#empty-floor [data-action="size"]');
     assert.equal(await page.evaluate(() => document.activeElement.dataset.tab), 'floor', 'the size button did not open the Floor tab');
-    assert.match(await text('#inspector [role="tabpanel"]'), /Floor 1 is 40 × 30 squares\./);
+    assert.match(await text('#inspector [role="tabpanel"]'), /Floor 1 is 40 × 30 cells\./);
     await page.click('#empty-floor [data-action="trace"]');
     assert.equal(await page.evaluate(() => document.activeElement.dataset.tab), 'floor');
   });

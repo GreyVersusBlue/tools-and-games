@@ -101,7 +101,7 @@ export function floorPanel(env) {
     const floor = state.floor;
     const width = Number(parts.width.value.trim());
     const height = Number(parts.height.value.trim());
-    if (!/^\d+$/.test(parts.width.value.trim()) || !/^\d+$/.test(parts.height.value.trim())) return { error: 'A size is two whole numbers of squares, each from ' + RANGES.floorSize[0] + ' to ' + RANGES.floorSize[1] + '.' };
+    if (!/^\d+$/.test(parts.width.value.trim()) || !/^\d+$/.test(parts.height.value.trim())) return { error: 'A size is two whole numbers of cells, each from ' + RANGES.floorSize[0] + ' to ' + RANGES.floorSize[1] + '.' };
     const dx = width - floor.width;
     const dy = height - floor.height;
     const payload = { floorId: floor.id };
@@ -122,7 +122,7 @@ export function floorPanel(env) {
       try {
         described = describeResize(state.project, ask.payload);
         ok = true;
-        text = floor.name + ' would be ' + described.width + ' × ' + described.height + ' squares. '
+        text = floor.name + ' would be ' + described.width + ' × ' + described.height + ' cells. '
           + (described.losesData ? 'That would cut off ' + lossText(described.loss) + '.' + scheduledWords(described) : 'Nothing drawn would be cut off.');
       } catch (error) {
         if (!(error instanceof ActionError)) throw error;
@@ -306,8 +306,8 @@ export function floorPanel(env) {
         heading('Size', 'floor-size-heading'),
         presets,
         h('div', { class: 'bi-pair' },
-          h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'floor-width' }, 'Squares across'), width),
-          h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'floor-height' }, 'Squares down'), height)),
+          h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'floor-width' }, 'Cells across'), width),
+          h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'floor-height' }, 'Cells down'), height)),
         h('div', { class: 'bi-side' }, h('span', { class: 'field__label', id: 'floor-side-x-label' }, 'Add or cut across at the'), sideX.element),
         h('div', { class: 'bi-side' }, h('span', { class: 'field__label', id: 'floor-side-y-label' }, 'Add or cut down at the'), sideY.element),
         previewLine,
@@ -468,7 +468,7 @@ export function floorPanel(env) {
           element: h('li', { class: 'bi-row bi-row--stack', data: { zone: zone.id } }, label.element, where, h('div', { class: 'bi-row__buttons' }, buttons)),
           sync: (now) => {
             label.set(now.label);
-            where.textContent = now.w + ' × ' + now.h + ' squares from column ' + (now.x + 1) + ', row ' + (now.y + 1) + '.';
+            where.textContent = now.w + ' × ' + now.h + ' cells from column ' + (now.x + 1) + ', row ' + (now.y + 1) + '.';
           },
         };
       },
@@ -488,7 +488,7 @@ export function floorPanel(env) {
     if (title.textContent !== floor.name) title.textContent = floor.name;
     parts.name.set(floor.name);
     parts.level.set(floor.level);
-    parts.about.textContent = floor.name + ' is ' + floor.width + ' × ' + floor.height + ' squares.' + (floors.length > 1 ? ' It is floor ' + (at + 1) + ' of ' + floors.length + ' in the tabs.' : '');
+    parts.about.textContent = floor.name + ' is ' + floor.width + ' × ' + floor.height + ' cells.' + (floors.length > 1 ? ' It is floor ' + (at + 1) + ' of ' + floors.length + ' in the tabs.' : '');
     parts.earlier.disabled = at === 0;
     parts.later.disabled = at === floors.length - 1;
     parts.earlier.parentElement.hidden = floors.length < 2;

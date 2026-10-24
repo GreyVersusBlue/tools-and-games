@@ -11,7 +11,7 @@ import { teacherDay } from '../engine/teacher-day.js';
 import { roomName, formatDuration } from '../engine/findings.js';
 import { buildGraph } from '../engine/graph.js';
 import { routingGraph, route } from '../engine/routing.js';
-import { directions, SQUARE_UNITS } from '../engine/directions.js';
+import { directions, CELL_UNITS } from '../engine/directions.js';
 
 export const SCHOOL_FALLBACK_NAME = 'Staff schedule';
 
@@ -95,10 +95,10 @@ export function openSchool(data) {
     route(fromRoomId, toRoomId, options) {
       return route(school.graph(), fromRoomId, toRoomId, options);
     },
-    // Written for a reader: distances in squares of the floor plan, not in
-    // the planner's cells.
+    // Written for a reader: distances in cells of the floor plan, the
+    // planner's word too (spec 2).
     directions(found) {
-      return directions(data, found, SQUARE_UNITS);
+      return directions(data, found, CELL_UNITS);
     },
   };
   return school;

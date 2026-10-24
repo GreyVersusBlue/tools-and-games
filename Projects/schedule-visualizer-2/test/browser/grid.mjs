@@ -9,7 +9,7 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { openPlanner, go, startServer, launch } from './harness.mjs';
+import { openPlanner, go, startServer, launch, loadModule } from './harness.mjs';
 
 const DAY_A = 'dsample00a';
 const DAY_B = 'dsample00b';
@@ -39,35 +39,6 @@ const shows = (fn, ...args) => page.waitForFunction(fn, { timeout: 5000 }, ...ar
 const settled = () => page.waitForFunction(() => document.querySelector('.sch')?.dataset.pending !== 'true', { timeout: 5000 });
 const stagedIs = (wanted) => shows((value) => document.querySelector('.sch')?.dataset.pending !== 'true' && document.querySelector('.grd').dataset.staged === value, String(wanted));
 
-// A module of the tool put on the page as `globalThis.sv2modules[key]`, by a
-// module script the page loads itself, and waited for: the page sets the
-// key. An import() awaited inside page.evaluate can come back "Protocol
-// error (Runtime.callFunctionOn): Promise was collected" (SV2-72e saw it in
-// m2-pass.mjs, 2 runs in 10 with the CPU throttled 4), so a module is loaded
-// first and used in a synchronous evaluate after. A load of the page empties
-// the globals, and the module is loaded again.
-// The script imports the module itself and keeps `{ error }` under the key
-// when that fails: a static import that fails fires no error the test can
-// see, and a wrong path came back as this wait's timeout (SV2-72e2).
-async function loadModule(page, key, file) {
-  // null while it loads, then `{ error }`: null when the module is there
-  const held = (wanted) => {
-    const value = globalThis.sv2modules && globalThis.sv2modules[wanted];
-    if (!value) return null;
-    return { error: value[Symbol.toStringTag] === 'Module' ? null : String(value.error) };
-  };
-  let state = await page.evaluate(held, key);
-  if (state === null) {
-    const name = JSON.stringify(key);
-    await page.addScriptTag({ type: 'module', content: 'const modules = (globalThis.sv2modules ||= {}); import(' + JSON.stringify('./' + file) + ').then((module) => { modules[' + name + '] = module; }, (error) => { modules[' + name + '] = { error: String((error && error.message) || error) }; });' });
-    state = await (await page.waitForFunction(held, { timeout: 5000 }, key)).jsonValue();
-  }
-  if (state.error !== null) {
-    // forgotten, so a later call tries again rather than repeat this one
-    await page.evaluate((wanted) => delete globalThis.sv2modules[wanted], key);
-    throw new Error('loadModule: ' + file + ' did not load: ' + state.error);
-  }
-}
 const inSchedule = (group, day, period) => page.evaluate((g, d, p) => {
   const project = globalThis.sv2.store.project;
   const held = project.groups.find((each) => each.id === g).days[d][p];
@@ -178,7 +149,7 @@ test('copying a block gives tab-separated text a spreadsheet takes', async () =>
   await page.keyboard.press('ArrowDown');
   await page.keyboard.up('Shift');
   assert.equal(await copied(), '201\t103\t101\r\n203\tGym\t103');
-  assert.equal(await statusText(), 'Copied 6 cells.');
+  assert.equal(await statusText(), 'Copied 6 slots.');
 });
 
 test('typing a room number into a cell stages it: the cell is marked, the bar says so, and the schedule has not changed', async () => {
@@ -349,7 +320,7 @@ test('a three-by-four block pasted from a spreadsheet is summarised, applied as 
   await stagedIs(true);
   const pasted = [block[0], block[1], ['201', '202', 'Portable 4', 'Gym']];
   assert.deepEqual(await cellsOf(), pasted, 'a room is shown by its own number, an unknown one as typed');
-  assert.equal(await statusText(), 'Pasted 12 cells.');
+  assert.equal(await statusText(), 'Pasted 12 slots.');
   assert.equal(await barText(), 'Not applied yet: 3 groups changed');
   assert.equal(await count('.grd-table .is-staged'), 12);
   assert.equal(await has(slot(C6, DAY_A, 2), 'is-unknown'), true);
@@ -390,11 +361,11 @@ test('one copied cell pasted over a selection fills it, Delete empties a selecti
   await page.keyboard.up('Shift');
   await paste('Library');
   assert.deepEqual(await Promise.all([A6, B6, C6].map((group) => shown(slot(group, DAY_B, 0)))), ['Library', 'Library', 'Library']);
-  assert.equal(await statusText(), 'Pasted 3 cells.');
+  assert.equal(await statusText(), 'Pasted 3 slots.');
   await page.keyboard.press('Delete');
   await settled();
   assert.deepEqual(await Promise.all([A6, B6, C6].map((group) => shown(slot(group, DAY_B, 0)))), ['', '', '']);
-  assert.equal(await statusText(), 'Cleared 3 cells.');
+  assert.equal(await statusText(), 'Cleared 3 slots.');
   // fill down from 6A's Periods 2 and 3 into 6B and 6C
   await focusCell(slot(A6, DAY_B, 1));
   await page.keyboard.down('Shift');
@@ -407,7 +378,7 @@ test('one copied cell pasted over a selection fills it, Delete empties a selecti
   await page.keyboard.up('Control');
   await settled();
   for (const group of [B6, C6]) assert.deepEqual([await shown(slot(group, DAY_B, 1)), await shown(slot(group, DAY_B, 2))], ['204', 'Gym']);
-  assert.equal(await statusText(), 'Filled down 4 cells from 6A.');
+  assert.equal(await statusText(), 'Filled down 4 slots from 6A.');
   assert.equal(await barText(), 'Not applied yet: 3 groups changed');
   await discard();
 });
@@ -538,7 +509,7 @@ test('an empty project says what the grid is for, and a block pasted there becom
   await paste('7-1\t7\t24\r\n7-2\t7\t\r\n' + HOSTILE + '\t8\t30\r\n');
   await stagedIs(true);
   assert.equal(await barText(), 'Not applied yet: 3 groups added');
-  assert.equal(await statusText(), 'Pasted 9 cells. Added 3 groups.');
+  assert.equal(await statusText(), 'Pasted 9 slots. Added 3 groups.');
   assert.deepEqual(await page.$$eval('.grd-row .grd-cell--name .grd-cell__text', (all) => all.map((cell) => cell.textContent)), ['7-1', '7-2', HOSTILE]);
   assert.deepEqual(await page.$$eval('.grd-grade th', (all) => all.map((th) => th.textContent)), ['Grade 7 · 2 groups', 'Grade 8 · 1 group']);
   await click('.grd-bar [data-action="apply"]');

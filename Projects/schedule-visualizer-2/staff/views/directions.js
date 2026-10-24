@@ -150,7 +150,7 @@ export const directionsView = {
           sectionHeading('The way', written.steps.length),
           h('ol', { class: 'steps' }, written.steps.map((step) => h('li', { class: 'steps__step', dataset: { kind: step.kind } },
             step.parts.map((part) => (part.name ? typed(part.text) : part.text))))),
-          h('p', { class: 'muted', dataset: { directions: 'time' } }, 'The walk is ' + school.formatDuration(found.seconds) + ' at the school\'s walking pace, for an empty corridor. Distances are in squares of the floor plan.')),
+          h('p', { class: 'muted', dataset: { directions: 'time' } }, 'The walk is ' + school.formatDuration(found.seconds) + ' at the school\'s walking pace, for an empty corridor. Distances are in cells of the floor plan.')),
         h('section', { class: 'card', dataset: { directions: 'floors' } },
           sectionHeading('Floors on the way', floors.length),
           h('ol', { class: 'plain' }, floors.map((part) => h('li', null,

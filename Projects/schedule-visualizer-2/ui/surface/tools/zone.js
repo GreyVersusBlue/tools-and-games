@@ -38,7 +38,7 @@ export const tool = {
     const rect = box(ed.gesture, ev);
     ed.endGesture();
     const outcome = ed.commit(addZone, { floorId: ed.floor.id, x: rect.x, y: rect.y, w: rect.w, h: rect.h }, {
-      done: () => 'Left ' + rect.w + ' by ' + rect.h + ' squares out of the colour scale. Type a label for the area.',
+      done: () => 'Left ' + rect.w + ' by ' + rect.h + ' cells out of the colour scale. Type a label for the area.',
     });
     if (outcome) ed.placedZone(outcome.zoneId, ev);
   },

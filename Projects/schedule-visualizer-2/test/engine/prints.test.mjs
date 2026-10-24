@@ -169,7 +169,7 @@ test('every output is a whole document: header with school, what it is and the d
       assert.ok(html.includes('<h1 class="doc-head__what">' + output.name), at + ': what this is');
       assert.ok(html.includes('<p class="doc-head__date">1 September 2026</p>'), at + ': the date');
       // a batch has no closing line: its last sheet is the paper's height, and the line was a sheet more (SV2-49 item 3)
-      const batch = ['teacher-schedules', 'door-signs', 'door-signs-day'].includes(output.id);
+      const batch = ['teacher-schedules', 'door-signs', 'door-signs-day', 'room-schedules', 'whole-school'].includes(output.id);
       assert.equal(countOf(html, '<footer class="doc-foot">' + TOOL_NAME + '</footer>'), batch ? 0 : 1, at + ': the footer');
       assert.ok(html.trimEnd().endsWith('</html>'), at + ': closed');
       assert.equal(countOf(html, '<header class="doc-head">'), countOf(html, '<section class="page">'), at + ': a header on every sheet');
@@ -202,18 +202,18 @@ test('the stylesheets are found where the caller says they are', () => {
 });
 
 test('the outputs are listed once each, and every print button names one of them', () => {
-  assert.deepEqual(OUTPUTS.map((output) => output.id), ['floor-plan', 'room-list', 'checks', 'teacher-schedules', 'door-signs', 'door-signs-day', 'movement', 'congestion', 'door-cards']);
+  assert.deepEqual(OUTPUTS.map((output) => output.id), ['floor-plan', 'room-list', 'checks', 'teacher-schedules', 'door-signs', 'door-signs-day', 'room-schedules', 'whole-school', 'movement', 'congestion', 'door-cards', 'groups', 'teachers', 'teacher-grid', 'room-grid', 'travel-time']);
   for (const output of OUTPUTS) {
     assert.equal(typeof output.render, 'function');
     assert.equal(outputFor(output.id), output);
   }
   assert.equal(outputFor('lockdown-map'), null);
   assert.equal(renderOutput('lockdown-map', school(), null, {}), null);
-  assert.deepEqual(printButtons.map((button) => button.output).sort(), ['checks', 'door-cards', 'floor-plan', 'room-list']);
+  assert.deepEqual(printButtons.map((button) => button.output).sort(), ['checks', 'door-cards', 'floor-plan', 'groups', 'groups', 'room-grid', 'room-grid', 'room-list', 'teacher-grid', 'teacher-grid', 'teachers', 'teachers', 'travel-time']);
   assert.equal(new Set(printButtons.map((button) => button.id)).size, printButtons.length);
   for (const button of printButtons) {
     assert.ok(outputFor(button.output), button.id);
-    assert.match(button.screen, /^#(building|schedule\/checks)$/);
+    assert.match(button.screen, /^#(building|schedule\/(checks|grid|teachers|import)|movement)$/);
     assert.ok(button.label.startsWith('Print '), button.id);
   }
 });
@@ -243,9 +243,16 @@ test('hostile names come through every output as text, never as markup', () => {
     'teacher-schedules': ['school', 'room', 'teacher', 'subject', 'group', 'day type'],
     'door-signs': ['school', 'floor', 'room', 'teacher', 'subject'],
     'door-signs-day': ['school', 'floor', 'room', 'teacher', 'subject', 'group', 'day type'],
+    'room-schedules': ['school', 'floor', 'room', 'teacher', 'subject', 'group', 'day type'],
+    'whole-school': ['school', 'floor', 'room', 'teacher', 'subject', 'group', 'day type'],
     movement: ['school', 'group', 'day type'],
     congestion: ['school', 'group', 'day type'],
     'door-cards': ['school', 'floor', 'room', 'other space', 'corridor', 'door', 'assembly', 'stairs'],
+    groups: ['school', 'room', 'group', 'day type'],
+    teachers: ['school', 'room', 'teacher', 'subject', 'code'],
+    'teacher-grid': ['school', 'room', 'teacher', 'group', 'day type'],
+    'room-grid': ['school', 'floor', 'room', 'group', 'day type'],
+    'travel-time': ['school', 'room', 'group', 'day type'],
   };
   for (const output of OUTPUTS) {
     for (const paper of [PAPER_CHOICES[0], PAPER_CHOICES[3]]) {
@@ -730,7 +737,7 @@ test('a school with nothing in it still prints all three', () => {
 test('the print modules read no screen, clock or storage: a document is made from the model alone', () => {
   const dir = path.join(TOOL_DIR, 'ui', 'prints');
   const files = readdirSync(dir).filter((file) => file.endsWith('.js'));
-  assert.deepEqual(files.sort(), ['batch.js', 'checks-report.js', 'congestion.js', 'document.js', 'door-cards.js', 'floor-plan.js', 'index.js', 'movement.js', 'plan-svg.js', 'room-list.js']);
+  assert.deepEqual(files.sort(), ['batch.js', 'checks-report.js', 'congestion.js', 'document.js', 'door-cards.js', 'floor-plan.js', 'index.js', 'movement.js', 'plan-svg.js', 'room-list.js', 'schedule-grids.js', 'travel-time.js']);
   for (const file of files) {
     const code = readFileSync(path.join(dir, file), 'utf8').replace(/\/\/.*$/gm, '');
     for (const name of [/\bdocument\.(?!js')/, /\bwindow\./, /\bnavigator\b/, /\blocalStorage\b/, /\bindexedDB\b/, /Date\.now/, /new Date\(\)/, /Math\.random/, /innerHTML/, /querySelector/, /getContext/]) {

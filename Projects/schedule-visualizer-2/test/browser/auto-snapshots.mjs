@@ -208,7 +208,7 @@ test('a resize that cuts nothing keeps no snapshot; one that cuts something off 
   const had = (await snapshots()).length;
   // growing cuts nothing: no question, no snapshot
   await retype('#floor-height', '20');
-  assert.equal(await text('#floor-size-preview'), 'Floor 1 would be 40 × 20 squares. Nothing drawn would be cut off.');
+  assert.equal(await text('#floor-size-preview'), 'Floor 1 would be 40 × 20 cells. Nothing drawn would be cut off.');
   await resetPanel();
   await page.click('#floor-resize');
   assert.equal((await project()).building.floors[0].height, 20);

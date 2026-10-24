@@ -23,7 +23,7 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { openPlanner, go, startServer, launch } from './harness.mjs';
+import { openPlanner, go, startServer, launch, loadModule } from './harness.mjs';
 
 const DAY_A = 'dsample00a';
 const DAY_B = 'dsample00b';
@@ -184,36 +184,6 @@ async function discard(page) {
   await page.waitForSelector('dialog[open]');
   await page.evaluate(() => document.querySelector('dialog[open] .btn--danger').click());
   await stagedIs(page, false);
-}
-
-// A module of the tool put on the page as `globalThis.sv2modules[key]`, by a
-// module script the page loads itself, and waited for: the page sets the
-// key. An import() awaited inside page.evaluate can come back "Protocol
-// error (Runtime.callFunctionOn): Promise was collected" (SV2-72a: once here,
-// in a full run; SV2-72e: in m2-pass.mjs, 2 runs in 10 with the CPU throttled 4), so a module is loaded
-// first and used in a synchronous evaluate after. A load of the page empties
-// the globals, and the module is loaded again.
-// The script imports the module itself and keeps `{ error }` under the key
-// when that fails: a static import that fails fires no error the test can
-// see, and a wrong path came back as this wait's timeout (SV2-72e2).
-async function loadModule(page, key, file) {
-  // null while it loads, then `{ error }`: null when the module is there
-  const held = (wanted) => {
-    const value = globalThis.sv2modules && globalThis.sv2modules[wanted];
-    if (!value) return null;
-    return { error: value[Symbol.toStringTag] === 'Module' ? null : String(value.error) };
-  };
-  let state = await page.evaluate(held, key);
-  if (state === null) {
-    const name = JSON.stringify(key);
-    await page.addScriptTag({ type: 'module', content: 'const modules = (globalThis.sv2modules ||= {}); import(' + JSON.stringify('./' + file) + ').then((module) => { modules[' + name + '] = module; }, (error) => { modules[' + name + '] = { error: String((error && error.message) || error) }; });' });
-    state = await (await page.waitForFunction(held, { timeout: 5000 }, key)).jsonValue();
-  }
-  if (state.error !== null) {
-    // forgotten, so a later call tries again rather than repeat this one
-    await page.evaluate((wanted) => delete globalThis.sv2modules[wanted], key);
-    throw new Error('loadModule: ' + file + ' did not load: ' + state.error);
-  }
 }
 
 // Change the project behind the page, and take the changes back.
@@ -560,7 +530,7 @@ test('on a phone a block is what is on screen: hidden columns are not selected a
     B6 + ':name', B6 + ':' + DAY_A + ':0', B6 + ':' + DAY_A + ':1',
   ], 'Group and two periods of two groups, and nothing that is out of sight');
   assert.equal(await copied(page), '6A\t201\t103\r\n6B\t203\tGym');
-  assert.equal(await status(page), 'Copied 6 cells.');
+  assert.equal(await status(page), 'Copied 6 slots.');
 });
 
 test('on a phone a pasted row wider than Group goes into the periods, not into the columns out of sight', async () => {
@@ -570,7 +540,7 @@ test('on a phone a pasted row wider than Group goes into the periods, not into t
   await paste(page, '6A\t202\t204\r\n');
   try {
     await stagedIs(page, true);
-    assert.equal(await status(page), 'Pasted 3 cells.');
+    assert.equal(await status(page), 'Pasted 3 slots.');
     assert.deepEqual([await cellText(page, slot(A6, DAY_A, 0)), await cellText(page, slot(A6, DAY_A, 1))], ['202', '204']);
     assert.deepEqual([await cellText(page, key(A6, 'grade')), await cellText(page, key(A6, 'headCount'))], ['6', '24'], 'Grade and Head count are as they were');
     assert.deepEqual([await isStaged(page, key(A6, 'grade')), await isStaged(page, key(A6, 'headCount')), await isStaged(page, key(A6, 'colour'))], [false, false, false]);
@@ -578,7 +548,7 @@ test('on a phone a pasted row wider than Group goes into the periods, not into t
 
     // one copied cell over a block fills what is on screen of it
     await paste(page, 'Gym');
-    assert.equal(await status(page), 'Pasted 3 cells.', 'the name and two periods');
+    assert.equal(await status(page), 'Pasted 3 slots.', 'the name and two periods');
     assert.deepEqual([await cellText(page, key(A6, 'name')), await cellText(page, slot(A6, DAY_A, 0)), await cellText(page, slot(A6, DAY_A, 1))], ['Gym', 'Gym', 'Gym']);
     assert.deepEqual([await cellText(page, key(A6, 'grade')), await cellText(page, key(A6, 'headCount'))], ['6', '24']);
   } finally {
@@ -596,7 +566,7 @@ test('on a phone Delete empties only what is on screen of a block', async () => 
   await page.keyboard.press('Delete');
   try {
     await stagedIs(page, true);
-    assert.equal(await status(page), 'Cleared 1 cell.');
+    assert.equal(await status(page), 'Cleared 1 slot.');
     assert.equal(await cellText(page, slot(A6, DAY_A, 0)), '');
     assert.deepEqual([await cellText(page, key(A6, 'grade')), await cellText(page, key(A6, 'headCount'))], ['6', '24']);
     assert.deepEqual([await isStaged(page, key(A6, 'grade')), await isStaged(page, key(A6, 'headCount'))], [false, false]);
@@ -619,7 +589,7 @@ test('on a phone Fill down fills only what is on screen of a block', async () =>
   try {
     await stagedIs(page, true);
     // the name is refused (6A is taken); the room is the one cell filled
-    assert.match(await status(page), /^Filled down 1 cell from 6A\. 1 cell was not taken: There is already a group called "6A"\./);
+    assert.match(await status(page), /^Filled down 1 slot from 6A\. 1 slot was not taken: There is already a group called "6A"\./);
     assert.equal(await cellText(page, slot(B6, DAY_A, 0)), '201');
     assert.deepEqual([await cellText(page, key(B6, 'headCount')), await isStaged(page, key(B6, 'headCount')), await isStaged(page, key(B6, 'colour'))], ['26', false, false], '6B keeps its own head count and colour');
   } finally {
@@ -1017,16 +987,29 @@ test('a sentence taller than the frame is not cut at its bottom, and it is place
     await refocus(cell);
     const start = await inside(cell, 'at 700 px');
     const at = await box(page, cell);
-    const placings = await page.$eval('.grd-below .grd-scroll', (frame) => Number(frame.dataset.placings));
+    // The frame counts its placings (data-placings), and its own scroll
+    // listener places the sentence again. A listener of this case's, added
+    // after the frame's, runs after it at the scroll and keeps the count
+    // that placing left: the wait is on that, the scroll itself. A count
+    // read before the scroll and waited past was met on GitHub's runner by a
+    // placing from the narrowing above (the frame's ResizeObserver, late),
+    // before the scroll had been placed: the sentence read at 6 to 294 in a
+    // frame of 106 to 650 (#574's CI). Made to fail so here by a resize
+    // dispatched just before the scroll (SV2-32b).
     const moved = await page.$eval('.grd-below .grd-scroll', (frame, by) => {
+      delete frame.dataset.scrolledAt;
+      frame.addEventListener('scroll', () => {
+        frame.dataset.scrolledAt = frame.dataset.placings + ' at ' + frame.scrollLeft;
+      }, { once: true });
       const from = frame.scrollLeft;
       frame.scrollLeft = from + by;
       return frame.scrollLeft - from;
     }, at.left - start.frame.left + 100);
     assert.ok(moved > start.drawn.left - start.frame.left, 'the table does not scroll far enough sideways at 700 px: ' + moved);
-    // the frame says each time it places the sentence again: one more than before it was scrolled
-    await page.waitForFunction((was) => Number(document.querySelector('.grd-below .grd-scroll').dataset.placings) > was, { timeout: 5000 }, placings);
-    await inside(cell, 'after the frame scrolled sideways');
+    await page.waitForFunction(() => document.querySelector('.grd-below .grd-scroll').dataset.scrolledAt !== undefined, { timeout: 5000 });
+    const judged = await page.$eval('.grd-below .grd-scroll', (frame, selector) => ({ placings: frame.dataset.placings, scrolledAt: frame.dataset.scrolledAt, scrollLeft: frame.scrollLeft, focused: document.activeElement === document.querySelector(selector) }), cell);
+    assert.ok(judged.focused, 'the mark lost the focus while the frame scrolled: ' + JSON.stringify(judged));
+    await inside(cell, 'after the frame scrolled sideways (' + JSON.stringify(judged) + ')');
   } finally {
     await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
     await page.waitForFunction(() => window.innerWidth === 1280);
