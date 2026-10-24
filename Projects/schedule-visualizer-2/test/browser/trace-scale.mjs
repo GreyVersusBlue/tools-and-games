@@ -983,3 +983,254 @@ test('by touch at 390 by 844: placing by two points with the marker above the fi
     await phone.close();
   }
 });
+
+// ---------------------------------------------------------------- SV2-73c
+
+// Review faults in SV2-73b: placing by two points where the image already
+// is, the width "Fit the image to the floor" says, '=' while moving, keys
+// with a dialog open over moving, the floor made another size under scaling
+// or placing, and the words each mode ends with.
+
+const moving = (p = page) => p.evaluate(() => document.querySelector('.bld').editor.trace.moving);
+const errorsNow = () => session.problems().errors.length;
+// two frames, so an overlay that throws has thrown
+const frames = (p = page) => p.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+
+// An image larger than the floor: 1600 by 1200 pixels drawn 48 by 36 cells
+// from -4, -3, so "Fit the floor to the image" grows the floor to 48 by 36 and
+// cuts nothing (the corridor cell at 39, 29 is under it).
+async function largeImage(p) {
+  await p.evaluate(() => {
+    const { store } = globalThis.sv2;
+    store.apply(globalThis.sv2modules.actions.setTraceImage, { floorId: store.project.building.floors[0].id, image: { scale: 0.03, x: -4, y: -3, rotation: 0, locked: false, visible: true } });
+  });
+}
+
+test('placing by keyboard where the image already is: the mode ends saying so, nothing changed, and the next Enter places nothing', async () => {
+  await floorTab(page);
+  await freshImage(page);
+  await wholeFloor(page);
+  await clearToast(page);
+  const before = await entries();
+  const errors = errorsNow();
+  const keys = async (key, times) => {
+    for (let i = 0; i < times; i += 1) await page.keyboard.press(key);
+  };
+  await page.evaluate(() => document.querySelector('.bld').editor.cursor.moveTo(5, 5, false));
+  await page.focus('#trace-place');
+  await page.keyboard.press('Enter');
+  assert.equal(await kind(), 'place');
+  // the image's points at 5.5, 5.5 and 15.5, 5.5, and their places the same cells
+  await page.keyboard.press('Enter');
+  await keys('ArrowRight', 10);
+  await page.keyboard.press('Enter');
+  await keys('ArrowLeft', 10);
+  await page.keyboard.press('Enter');
+  assert.equal((await targets()).length, 1);
+  await keys('ArrowRight', 10);
+  await page.keyboard.press('Enter');
+  assert.equal(await active(), false, 'the mode ends when the image is already there, not waiting on a third place');
+  const now = await state(page);
+  assert.equal(now.said, 'The image is already there: each point is on its place. Nothing changed.');
+  assert.equal(now.toast, 'The image is already there: each point is on its place. Nothing changed.');
+  assert.equal(now.focus, 'plan');
+  assert.equal(await entries(), before, 'no undo step');
+  assert.match(now.hint, /^Corridor:/, 'the tool\'s hint is back');
+  // no place is kept for a third Enter to add to, and nothing is thrown while drawing
+  assert.deepEqual(await targets(), []);
+  await frames();
+  assert.deepEqual(session.problems().errors.slice(errors), [], 'no error on the page');
+  await clearToast(page);
+});
+
+test('Fit the image to the floor says the width the image has after the fit', async () => {
+  await smallImage(page);
+  await clearToast(page);
+  await page.click('#trace-fit');
+  const image = await image0();
+  near(image.scale * 1600, 40, 'fitted to the floor\'s 40 cells', 1e-9);
+  assert.equal((await state(page)).said, 'The whole image fits Floor 1, in its middle. The image is 40 cells wide.', 'the width after the fit, not the 20 before it');
+  await freshImage(page);
+  await clearToast(page);
+});
+
+test('while moving, = resizes like + (the unshifted key) and does not zoom the plan', async () => {
+  await smallImage(page);
+  await wholeFloor(page);
+  await clearToast(page);
+  const before = await entries();
+  const zoom = (await state(page)).zoom;
+  await page.click('#trace-move');
+  await page.focus('#plan');
+  await page.keyboard.press('=');
+  const image = await image0();
+  near(image.scale * 1600, 21, '= made it 5 % larger', 1e-9);
+  near(image.x + (image.scale * 1600) / 2, 15, 'about the middle', 1e-6);
+  assert.equal((await state(page)).said, 'The image is 21 cells wide.');
+  assert.equal(await entries(), before + 1, 'one step');
+  assert.equal((await state(page)).zoom, zoom, '= resized the image and did not zoom the plan');
+  await page.keyboard.press('Escape');
+  assert.equal(await moving(), false);
+  await page.keyboard.press('0');
+  await freshImage(page);
+  await wholeFloor(page);
+  await clearToast(page);
+});
+
+test('while moving, a dialog has the keys: - resizes nothing behind it and Escape closes it; Fit the floor to the image stops moving before it asks', async () => {
+  await largeImage(page);
+  await wholeFloor(page);
+  await clearToast(page);
+  const before = await entries();
+  const start = await image0();
+  await page.click('#trace-move');
+  assert.equal(await moving(), true);
+  // any dialog over the plan while moving
+  await page.evaluate(() => {
+    globalThis.sv2test = { answered: null };
+    globalThis.sv2.ctx.confirm({ title: 'A question', body: 'Is this a question?', action: 'Yes', keep: 'No' }).then((ok) => {
+      globalThis.sv2test.answered = ok;
+    });
+  });
+  await page.waitForSelector('dialog[open]');
+  await page.keyboard.press('-');
+  assert.deepEqual(await image0(), start, '- behind the dialog resized nothing');
+  assert.equal(await entries(), before);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('dialog[open]'));
+  assert.equal(await page.evaluate(() => globalThis.sv2test.answered), false, 'Escape closed the dialog');
+  assert.equal(await moving(), true, 'Escape went to the dialog, not to moving');
+
+  // Fit the floor to the image: moving ends at the press, before the dialog asks
+  await page.click('#trace-floor-fit');
+  await page.waitForSelector('dialog[open]');
+  assert.equal(await moving(), false, 'moving stopped when Fit the floor to the image was pressed');
+  assert.equal(await page.$eval('#trace-move', (el) => el.getAttribute('aria-pressed')), 'false');
+  await answer(page, 'Keep 40 × 30');
+  assert.deepEqual(await image0(), start);
+  assert.equal(await entries(), before);
+  await freshImage(page);
+  await wholeFloor(page);
+  await clearToast(page);
+});
+
+test('Fit the floor to the image ends placing at the press, and an undo that changes the floor\'s size ends it with a sentence', async () => {
+  await largeImage(page);
+  await wholeFloor(page);
+  await clearToast(page);
+  const before = await entries();
+  await page.click('#trace-place');
+  for (const [x, y] of [[5, 5], [15, 5], [10, 10]]) {
+    const at = await point(page, x, y);
+    await page.mouse.click(at.x, at.y);
+  }
+  assert.equal((await targets()).length, 1);
+  await page.click('#trace-floor-fit');
+  await page.waitForSelector('dialog[open]');
+  assert.equal(await active(), false, 'placing ended at the press, before the floor moved under its kept place');
+  await answer(page, 'Make it 48 × 36');
+  let floor = (await project()).building.floors[0];
+  assert.deepEqual([floor.width, floor.height], [48, 36]);
+  assert.equal(await entries(), before + 1);
+  await wholeFloor(page);
+  await clearToast(page);
+
+  // placing again, then the fit undone: the floor is 40 by 30 once more and the mode ends, saying why
+  await page.click('#trace-place');
+  for (const [x, y] of [[5, 5], [15, 5], [10, 10]]) {
+    const at = await point(page, x, y);
+    await page.mouse.click(at.x, at.y);
+  }
+  assert.equal((await targets()).length, 1);
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  floor = (await project()).building.floors[0];
+  assert.deepEqual([floor.width, floor.height], [40, 30], 'the fit undone');
+  assert.equal(await active(), false, 'a floor made another size ends placing');
+  assert.equal((await state(page)).said, 'Floor 1 is 40 × 30 cells now, so placing the image has stopped. Start it again to place the points afresh.');
+  // a move of the image alone keeps the mode, as before
+  await page.click('#trace-scale');
+  await page.mouse.click(...Object.values(await point(page, 5, 5)));
+  await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    store.apply(globalThis.sv2modules.actions.setTraceImage, { floorId: store.project.building.floors[0].id, image: { x: -3 } });
+  });
+  assert.equal(await active(), true, 'moving the image keeps scaling going');
+  await page.keyboard.press('Escape');
+  await freshImage(page);
+  await wholeFloor(page);
+  await clearToast(page);
+});
+
+test('placing ends in words about placing, scaling in words about scaling: the image hidden, locked or gone, and another floor on show', async () => {
+  await freshImage(page);
+  await clearToast(page);
+  const patch = (image) => page.evaluate((image) => {
+    const { store } = globalThis.sv2;
+    store.apply(globalThis.sv2modules.actions.setTraceImage, { floorId: store.project.building.floors[0].id, image });
+  }, image);
+  const ended = async (how, change, words) => {
+    await page.click(how === 'place' ? '#trace-place' : '#trace-scale');
+    assert.equal(await kind(), how);
+    await change();
+    assert.equal(await active(), false, words);
+    assert.equal((await state(page)).said, words);
+  };
+  await ended('place', () => patch({ visible: false }), 'The image is hidden now, so placing it has stopped.');
+  await patch({ visible: true });
+  await ended('place', () => patch({ locked: true }), 'The image is locked now, so placing it has stopped.');
+  await patch({ locked: false });
+  await ended('scale', () => patch({ locked: true }), 'The image is locked now, so scaling it has stopped.');
+  await patch({ locked: false });
+  await ended('place', () => patch(null), 'The image is gone, so placing it has stopped.');
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  assert.notEqual(await image0(), null, 'the image back');
+  // another floor on show: Page Down from the plan to a second floor
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.addFloor, {}));
+  await page.click('.bld-floors [role="tab"]:first-child');
+  await floorTab(page);
+  assert.equal((await state(page)).floor, 'Floor 1');
+  await ended('place', async () => {
+    await page.focus('#plan');
+    await page.keyboard.press('PageDown');
+    await page.waitForFunction(() => document.querySelector('.bld').editor.floor.name === 'Floor 2');
+    await frames();
+  }, 'Another floor is on show, so placing the image has stopped.');
+  await page.keyboard.press('PageUp');
+  await page.waitForFunction(() => document.querySelector('.bld').editor.floor.name === 'Floor 1');
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  assert.equal((await project()).building.floors.length, 1, 'the second floor taken back');
+  await floorTab(page);
+  await wholeFloor(page);
+  await clearToast(page);
+});
+
+test('a small image while moving: a press inside it moves it, though it is within a mouse\'s reach of a corner; a press just outside a corner is the corner', async () => {
+  // 1600 by 1200 pixels drawn 0.8 by 0.6 cells at 10, 10
+  await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    store.apply(globalThis.sv2modules.actions.setTraceImage, { floorId: store.project.building.floors[0].id, image: { scale: 0.8 / 1600, x: 10, y: 10, rotation: 0, locked: false, visible: true } });
+  });
+  await wholeFloor(page);
+  await clearToast(page);
+  const size = await page.evaluate(() => document.querySelector('.bld').editor.view.size);
+  assert.ok(0.6 * size < 3 * 10 && 0.6 * size > 8, 'the image is small on screen, and has an inside to press: ' + 0.6 * size + ' pixels high');
+  await page.click('#trace-move');
+  // 6 and 4 pixels in from the top left corner: 7.2 pixels from it, inside a mouse's 10
+  const corner = await point(page, 10, 10, 0, 0);
+  await page.mouse.move(corner.x + 6, corner.y + 4);
+  await page.mouse.down();
+  assert.equal(await page.$eval('#plan', (el) => el.dataset.dragging), 'image', 'a press inside the small image moves it');
+  await page.mouse.up();
+  // 4 and 4 pixels out from the bottom right corner
+  const far = await point(page, 10.8, 10.6, 0, 0);
+  await page.mouse.move(far.x + 4, far.y + 4);
+  await page.mouse.down();
+  assert.equal(await page.$eval('#plan', (el) => el.dataset.dragging), 'corner', 'just outside a corner, the corner');
+  await page.mouse.up();
+  await page.focus('#plan');
+  await page.keyboard.press('Escape');
+  assert.equal(await moving(), false);
+  await freshImage(page);
+  await wholeFloor(page);
+  await clearToast(page);
+});
