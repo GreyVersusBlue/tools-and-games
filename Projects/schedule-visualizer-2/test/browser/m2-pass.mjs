@@ -453,14 +453,15 @@ test('a picker whose field is read only neither opens its list nor picks from it
     await settled(p);
     assert.equal(await rooms(), had, 'Enter picked a room into a read-only field');
     assert.equal(await expanded(), 'false|true');
-    // a press on an option is the same
+    // a press on an option is the same: the pick is on the click (SV2-32h2),
+    // so a click is what is sent, the press alone picks nothing either way
     await p.$eval(field, (el) => {
       el.readOnly = false;
     });
     await p.keyboard.press('ArrowDown');
     await p.$eval(field, (el) => {
       el.readOnly = true;
-      el.parentNode.querySelector('.picker__option').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+      el.parentNode.querySelector('.picker__option').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
     });
     await settled(p);
     assert.equal(await rooms(), had, 'a press on an option picked into a read-only field');

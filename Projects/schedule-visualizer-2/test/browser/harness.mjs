@@ -29,6 +29,7 @@
 // The host is 127.0.0.1, never localhost: the harness treats anything else as
 // offsite.
 
+import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, prepPage, serve, SITE } from '../../../../Tools/board-check/harness.mjs';
@@ -303,6 +304,39 @@ export async function loadModule(page, key, file) {
     await page.evaluate((wanted) => delete globalThis.sv2modules[wanted], key);
     throw new Error('loadModule: ' + file + ' did not load: ' + state.error);
   }
+}
+
+// The plan at rest, before a place on it is read to press at. Folding the
+// sheet away (or a hint that wraps) gives the plan another size at once, but
+// the view learns it from a ResizeObserver a frame later and refits then, so
+// a point() read in between is where the floor was, not where it is: the CI
+// runner pressed the image's top right corner for its bottom right that way
+// (SV2-73d). At rest is the view measured to the canvas's own box, and that
+// box and the view the same two frames running. One wait for every suite that
+// presses the plan (SV2-32h1 lifted it from trace-scale.mjs).
+export async function still(p) {
+  const rest = await p.evaluate(() => new Promise((resolve) => {
+    const read = () => {
+      const editor = document.querySelector('.bld').editor;
+      const box = editor.canvas.getBoundingClientRect();
+      const { view } = editor;
+      return { measured: view.width === box.width && view.height === box.height, at: [box.left, box.top, box.width, box.height, view.width, view.height, view.zoom, view.x, view.y].join(' ') };
+    };
+    let last = read();
+    let frames = 0;
+    const next = () => requestAnimationFrame(() => {
+      const now = read();
+      frames += 1;
+      if (now.measured && now.at === last.at) resolve({ ok: true, at: now.at });
+      else if (frames >= 120) resolve({ ok: false, at: now.at, measured: now.measured });
+      else {
+        last = now;
+        next();
+      }
+    });
+    next();
+  }));
+  assert.ok(rest.ok, 'the plan came to rest within 120 frames: box and view ' + rest.at + (rest.measured ? '' : ', the view not measured to the box'));
 }
 
 export { launch };

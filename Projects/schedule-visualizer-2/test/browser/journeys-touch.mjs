@@ -144,7 +144,10 @@ async function touch(page, type, fingers) {
 
 // The page has stopped moving: whatever the selector names (the document when
 // none) has the same box over two frames, and the window has not scrolled.
-// A local stand-in for harness.mjs's still() until SV2-32h1 adds it.
+// Not harness.mjs's still(), which is a wait for Building's plan alone (its
+// view measured to its canvas's box): this one waits for any target on any
+// page, the published file's and Movement's map included, and for the
+// window's scroll, which still() does not read (SV2-32h1).
 async function settle(page, selector) {
   const rest = await page.evaluate((wanted) => new Promise((resolve) => {
     const read = () => {

@@ -898,8 +898,21 @@ export const section = {
       },
       unmount,
       // The section's surface is the plan: the keyboard goes there, with the
-      // cursor showing, when the shell is asked for the surface.
-      focus: () => toSurface(),
+      // cursor showing, when the shell is asked for the surface. Until the
+      // sheet has loaded the section is not visible and cannot take the
+      // focus, so a section opened by its key put the keyboard on the page's
+      // body (SV2-32h1); it waits for the sheet, and gives way to a focus put
+      // anywhere but the page or the region it is in meanwhile.
+      focus: () => {
+        if (styled) {
+          toSurface();
+          return;
+        }
+        stylesheet().then(() => {
+          const now = document.activeElement;
+          if (element.isConnected && (now === null || now.contains(element))) toSurface();
+        });
+      },
     };
   },
 };

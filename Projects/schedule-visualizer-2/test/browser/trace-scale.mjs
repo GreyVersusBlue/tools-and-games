@@ -19,7 +19,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { openPlanner, launch, startServer, loadModule, assertTouch, go, TOOL_DIR } from './harness.mjs';
+import { openPlanner, launch, startServer, loadModule, assertTouch, go, still, TOOL_DIR } from './harness.mjs';
 import { startEmpty, planReady, point, state, wholeFloor, clearToast, drag } from './draw-pointer.mjs';
 import { floorPoint } from '../../ui/building/scale-tool.js';
 
@@ -491,38 +491,6 @@ function landed(image, u, v) {
   return floorPoint(image, { u, v });
 }
 
-// The plan at rest, before a place on it is read to press at. Folding the
-// sheet away (or a hint that wraps) gives the plan another size at once, but
-// the view learns it from a ResizeObserver a frame later and refits then, so
-// a point() read in between is where the floor was, not where it is: the CI
-// runner pressed the image's top right corner for its bottom right that way
-// (SV2-73d). At rest is the view measured to the canvas's own box, and that
-// box and the view the same two frames running.
-async function still(p = page) {
-  const rest = await p.evaluate(() => new Promise((resolve) => {
-    const read = () => {
-      const editor = document.querySelector('.bld').editor;
-      const box = editor.canvas.getBoundingClientRect();
-      const { view } = editor;
-      return { measured: view.width === box.width && view.height === box.height, at: [box.left, box.top, box.width, box.height, view.width, view.height, view.zoom, view.x, view.y].join(' ') };
-    };
-    let last = read();
-    let frames = 0;
-    const next = () => requestAnimationFrame(() => {
-      const now = read();
-      frames += 1;
-      if (now.measured && now.at === last.at) resolve({ ok: true, at: now.at });
-      else if (frames >= 120) resolve({ ok: false, at: now.at, measured: now.measured });
-      else {
-        last = now;
-        next();
-      }
-    });
-    next();
-  }));
-  assert.ok(rest.ok, 'the plan came to rest within 120 frames: box and view ' + rest.at + (rest.measured ? '' : ', the view not measured to the box'));
-}
-
 // Which corner handle a corner drag (no Shift) had caught, from what it did:
 // the image resized about the opposite corner, so the corner that stayed put
 // is two from the one caught. The drag under way is the editor's own and not
@@ -718,7 +686,7 @@ test('corner handles while moving: a corner dragged resizes about the opposite c
   const zoom = (await state(page)).zoom;
   await page.click('#trace-move');
   assert.match((await state(page)).hint, /^Drag the image to where it belongs, or a corner to resize it/);
-  await still();
+  await still(page);
   // the bottom right corner (25, 20) out along the diagonal to (35, 27.5): half as large again
   const from = await point(page, 25, 20, 0, 0);
   const to = await point(page, 35, 27.5, 0, 0);
@@ -1297,7 +1265,7 @@ test('a small image while moving: a press inside it moves it, though it is withi
   const size = await page.evaluate(() => document.querySelector('.bld').editor.view.size);
   assert.ok(0.6 * size < 3 * 10 && 0.6 * size > 8, 'the image is small on screen, and has an inside to press: ' + 0.6 * size + ' pixels high');
   await page.click('#trace-move');
-  await still();
+  await still(page);
   // 6 and 4 pixels in from the top left corner: 7.2 pixels from it, inside a mouse's 10
   const corner = await point(page, 10, 10, 0, 0);
   await page.mouse.move(corner.x + 6, corner.y + 4);

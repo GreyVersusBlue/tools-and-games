@@ -1202,7 +1202,18 @@ export function createPlanMap(asked) {
     focus() {
       // with nothing to draw there is no map: the shell takes the region
       if (element.hidden) return false;
-      canvas.focus();
+      if (root.dataset.styled === 'true') {
+        canvas.focus();
+        return true;
+      }
+      // Until the sheet is in the map is not visible and cannot take the
+      // focus, and a section opened by its key put the keyboard on the
+      // page's body (SV2-32h1): the map takes it once styled, unless the
+      // focus went somewhere other than the page or the region meanwhile.
+      loadSheet().then(() => {
+        const now = document.activeElement;
+        if (!gone && !element.hidden && (now === null || now.contains(root))) canvas.focus();
+      });
       return true;
     },
     cellAt: pixel,

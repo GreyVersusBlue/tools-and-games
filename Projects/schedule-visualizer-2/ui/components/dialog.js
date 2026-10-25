@@ -2,7 +2,8 @@
 // then the body, then a row of buttons that name the action, the safe one last
 // and focused. It traps focus, closes on Escape (which is the safe button's
 // answer), and returns focus to whatever opened it, or to `fallbackFocus()`
-// when the opener has gone (a menu item that no longer exists).
+// when the opener has gone (a menu item that no longer exists) or there was
+// none (the focus was on the page's body).
 //
 // openDialog({ title, body, buttons, opener, fallbackFocus, id, wide, class })
 //   body      a node, a string, or a list of either
@@ -21,7 +22,11 @@ export function dialogIsOpen() {
 
 export function openDialog(options) {
   const titleId = uid('dialog-title');
-  const opener = options.opener || document.activeElement;
+  // A dialog opened while nothing had the focus (the start-up question, a
+  // key pressed on the bare page) has nobody to give it back to: the body is
+  // no place for the keyboard, so it goes to `fallbackFocus()` (SV2-32h1).
+  const given = options.opener || document.activeElement;
+  const opener = given === document.body ? null : given;
   let settle;
   const closed = new Promise((resolve) => {
     settle = resolve;
