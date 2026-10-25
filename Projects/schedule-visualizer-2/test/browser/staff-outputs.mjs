@@ -1116,6 +1116,10 @@ test('a note is typed on the reader\'s own day card, kept as typed, and shown as
     await page.goto('about:blank');
     await goto(page, files.open.url);
     assert.equal(await hash(page), '#/teacher/tsample001');
+    // the empty address sends the reader on to their own teacher page, which
+    // is drawn after the file reads as open: wait for that page, not the
+    // first one (CI read the note's paper empty there once, #582)
+    await page.waitForFunction(() => document.querySelector('[data-note="dsample00a:1"] .note__paper')?.textContent !== '', { timeout: 5000 }).catch(() => {});
     assert.equal(await text(page, '[data-note="dsample00a:1"] .note__paper'), HOSTILE);
     assert.equal(await page.evaluate(() => document.querySelector('[data-note="dsample00a:1"] input').value), HOSTILE);
 
