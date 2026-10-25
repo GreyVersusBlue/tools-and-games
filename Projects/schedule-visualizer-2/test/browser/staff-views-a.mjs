@@ -399,7 +399,12 @@ const PAGES = [
   ['#/group/gsample06a', 'the group page'],
   ['#/room/rsample203', 'the room page'],
   ['#/map/fsample001', 'the building map'],
+  ['#/map/fsample002', 'the building map on Floor 2'], // SV2-32g2: every floor, not only the first
+  ['#/map/fsample003', 'the building map on Floor 3'],
   ['#/staffing', 'the staffing page'],
+  ['#/me', 'My schedule with no one chosen'], // SV2-32g2: the teacher page's own address, and the room's door sign
+  ['#/door/rsample203', 'the door sign'],
+  ['#/door/rsample203?day=1', 'the door sign with the room\'s day'],
 ];
 
 for (const width of [390, 1280]) {

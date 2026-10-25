@@ -149,10 +149,19 @@ async function goto(page, url) {
   await page.evaluate(() => document.fonts.ready);
 }
 
-// Move to another address in the same file and wait for its page.
+// Move to another address in the same file and wait for its page. The page
+// that was there is marked first, so two addresses with one heading (Free
+// right now, for a period chosen by hand) are not taken for each other.
 async function move(page, to, title) {
-  await page.evaluate((next) => { location.hash = next; }, to);
-  await page.waitForFunction((want, where) => location.hash === where && document.querySelector('h1').textContent === want, { timeout: 5000 }, title, to);
+  await page.evaluate((next) => {
+    const main = document.getElementById('page');
+    if (main && main.firstElementChild) main.firstElementChild.dataset.leaving = 'true';
+    location.hash = next;
+  }, to);
+  await page.waitForFunction((want, where) => {
+    const main = document.getElementById('page');
+    return location.hash === where && document.querySelector('h1').textContent === want && main.firstElementChild && main.firstElementChild.dataset.leaving !== 'true';
+  }, { timeout: 5000 }, title, to);
 }
 
 async function axe(page, name) {
@@ -837,10 +846,14 @@ test('Share hands the page\'s name to the device and never a file address; witho
 
 const PAGES = [
   ['#/free', 'Free right now'],
+  ['#/free?p=3&d=dsample00b', 'Free right now'], // SV2-32g2: a period and day type chosen by hand
   ['#/now?g=gsample06a', 'Where right now'],
+  ['#/now?t=tsample003', 'Where right now'], // SV2-32g2: a teacher as well as a group
   ['#/common?t=tsample001,tsample002,tsample003', 'Common planning'],
+  ['#/coverage', 'Coverage'], // SV2-32g2: no teacher chosen yet
   ['#/coverage/tsample003', 'Coverage: Dr. Quillfeather'],
   ['#/sub/tsample003', 'Substitute plan: Dr. Quillfeather'],
+  ['#/directions', 'Directions'], // SV2-32g2: no rooms chosen yet
   ['#/directions?from=rsample101&to=rsample303', 'Directions'],
   ['#/directions?from=rsample101&to=rsample303&stepfree=1', 'Directions'],
 ];
