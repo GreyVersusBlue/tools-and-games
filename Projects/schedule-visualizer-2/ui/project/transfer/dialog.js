@@ -19,7 +19,9 @@ import { h, uid, focusables } from '../../components/dom.js';
 
 export function transferDialog(options) {
   const titleId = uid('xfer-title');
-  const opener = options.opener || document.activeElement;
+  // the page's body is nobody to give the focus back to (SV2-32r, as dialog.js)
+  const given = options.opener || document.activeElement;
+  const opener = given === document.body ? null : given;
   const status = h('p', { class: 'xfer__status', role: 'status', tabindex: '-1', data: { line: 'status' } });
   const body = h('div', { class: 'xfer__body' });
   const shut = h('button', { type: 'button', class: 'btn', data: { action: 'close-transfer' } }, 'Close');
