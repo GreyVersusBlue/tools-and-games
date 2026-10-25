@@ -464,6 +464,15 @@
     padding: 8px;                   /* the room print-preview.js leaves around the sheets */
   }
 
+  /* the sheets are inside <main class="doc-main"> (ui/prints/document.js),
+     so the body's grid holds that one element: the gap between sheets is
+     this grid's (SV2-32g1b) */
+  .print-doc .doc-main {
+    display: grid;
+    gap: 6mm;
+    justify-items: start;
+  }
+
   .print-doc .page {
     box-sizing: border-box;
     width: var(--page-w);

@@ -169,6 +169,21 @@ for (const output of OUTPUTS) {
   });
 }
 
+// SV2-32g1b: the sheets sit inside <main class="doc-main">, so the gap that
+// keeps them apart on screen has to be that element's; the body's grid once
+// held only the main, and three sheets of a floor plan drew flush.
+test('in the preview the sheets of a document stand apart, 6 mm between each and the next', async () => {
+  await openPreview('floor-plan');
+  const gaps = await page.evaluate(() => {
+    const sheets = Array.from(document.querySelector('#print-preview iframe').contentDocument.querySelectorAll('.page')).map((sheet) => sheet.getBoundingClientRect());
+    return sheets.slice(1).map((box, i) => box.top - sheets[i].bottom);
+  });
+  assert.equal(gaps.length, 2, 'the sample school\'s floor plan is three sheets');
+  // 6 mm is 22.68 CSS px
+  for (const gap of gaps) assert.ok(Math.abs(gap - 22.68) <= 1, 'two sheets of the preview should be 6 mm (22.68 px) apart, were ' + gap.toFixed(2) + ' px');
+  await closePreview();
+});
+
 test('a room selected in the editor leaves no mark on the printed plan', async () => {
   await go(page, '#building');
   await page.waitForFunction(() => {
