@@ -1914,6 +1914,15 @@ kbd {
   .inspector__icon {
     height: 44px;
   }
+
+  /* an option of a picker's list is a target too (SV2-32h2: 35 px) */
+  .picker__option {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 0.25em;
+    min-height: 44px;
+  }
 }
 
 /* ---------- The Building section's place in the shell ----------
