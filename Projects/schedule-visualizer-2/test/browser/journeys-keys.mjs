@@ -757,3 +757,42 @@ test('a tapped button that changes the section leaves the plan unfocused and no 
     await session.close();
   }
 });
+
+// The print preview and a sending's dialog, opened with no opener while the
+// focus is on the page's body (a shortcut on the bare page, or a caller that
+// passes none): the body is nobody to give it back to, so Escape gives it to
+// the shell's surface, or to the dialog's fallback (SV2-32r, as dialog.js).
+// The harness opens each through its own module, as print.mjs does.
+test('a print preview and a sending\'s dialog opened from the page\'s body give the focus to the surface on Escape, not back to the body', async () => {
+  await finish(await keysPlanner('#building'), async (page) => {
+    await page.waitForFunction(() => document.querySelector('.bld') && document.querySelector('.bld').editor, { timeout: 15000 });
+    const opened = await page.evaluate(async () => {
+      const at = (file) => new URL(file, location.href).href;
+      const { openPrintPreview } = await import(at('ui/components/print-preview.js'));
+      if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+      const before = document.activeElement === document.body;
+      const sheet = openPrintPreview(globalThis.sv2.ctx, 'floor-plan', {});
+      await sheet.ready();
+      return before;
+    });
+    assert.equal(opened, true, 'the set-up: the focus was on the body when the preview opened');
+    await page.waitForSelector('#print-preview[open][data-ready="true"]', { timeout: 15000 });
+    await key(page, 'Escape');
+    await page.waitForFunction(() => document.getElementById('print-preview') === null, { timeout: 5000 });
+    await focusOn(page, '#plan', 'Escape in a print preview opened from the body');
+    const sent = await page.evaluate(async () => {
+      const at = (file) => new URL(file, location.href).href;
+      const { transferDialog } = await import(at('ui/project/transfer/dialog.js'));
+      document.activeElement.blur();
+      const before = document.activeElement === document.body;
+      transferDialog({ id: 'keys-transfer', title: 'Send a test project', fallbackFocus: () => globalThis.sv2.ctx.focusSurface() });
+      return before;
+    });
+    assert.equal(sent, true, 'the set-up: the focus was on the body when the sending\'s dialog opened');
+    await page.waitForSelector('#keys-transfer[open]', { timeout: 5000 });
+    await key(page, 'Escape');
+    await page.waitForFunction(() => document.getElementById('keys-transfer') === null, { timeout: 5000 });
+    await focusOn(page, '#plan', 'Escape in a sending\'s dialog opened from the body');
+    await onlyKeys(page, 'the print preview and the sending\'s dialog from the body');
+  });
+});
