@@ -544,9 +544,10 @@ test('a room whose only way out is by elevator says so on its card and on the fi
 
 // Every floor of these, drawn with no options and hashed. The hash was taken
 // from planSvg as it was before crop and route existed (sv2 at c3fe77e), and
-// so was the floor plan print's.
+// so was the floor plan print's, taken again when the print's sheets went
+// into a main element (SV2-32g1; the drawing is unchanged, PLAN_HASH).
 const PLAN_HASH = '4e886855bc6973ccef36d5e35d151faae06e23287dd16939f933bed6b019a160';
-const FLOOR_PLAN_HASH = '9e630c4687bfd6d29f439dea31c72bacba092620f8e1c91602c4a2d3175713d3';
+const FLOOR_PLAN_HASH = '3056d4f45082739594125ef31fd1edb91c1363d47229950e8492f7512f7fd217';
 
 test('with neither option, planSvg and the floor plan print are byte for byte what they were', () => {
   const hash = createHash('sha256');

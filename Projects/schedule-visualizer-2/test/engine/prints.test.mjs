@@ -43,7 +43,7 @@ const PAPER_CHOICES = Object.keys(PAPERS).flatMap((size) => Object.keys(ORIENTAT
 
 // Every tag a print document is made of. A name that came through as markup
 // would bring a tag that is not here.
-const TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'style', 'body', 'section', 'header', 'footer', 'div', 'p', 'h1', 'h2', 'ul', 'li', 'span',
+const TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'style', 'body', 'main', 'section', 'header', 'footer', 'div', 'p', 'h1', 'h2', 'ul', 'li', 'span',
   'table', 'thead', 'tbody', 'tr', 'th', 'td', 'figure', 'figcaption', 'svg', 'g', 'path', 'text']);
 
 function tagsOf(html) {

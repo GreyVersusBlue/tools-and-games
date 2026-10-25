@@ -1202,7 +1202,28 @@ export function createPlanMap(asked) {
     focus() {
       // with nothing to draw there is no map: the shell takes the region
       if (element.hidden) return false;
-      canvas.focus();
+      // no scroll: the shell, a dialog's close and the start asking for the
+      // surface leave the page where it is, as Building's plan does (SV2-32r)
+      if (root.dataset.styled === 'true') {
+        canvas.focus({ preventScroll: true });
+        return true;
+      }
+      // Until the sheet is in the map is not visible and cannot take the
+      // focus, and a section opened by its key put the keyboard on the
+      // page's body (SV2-32h1): the map takes it once styled, unless the
+      // focus went somewhere other than the page or the region meanwhile.
+      // A map hidden in that time (the project emptied under it) has the
+      // shell's answer for no map, the region, which the shell cannot give
+      // itself: this call said yes already (SV2-32r).
+      loadSheet().then(() => {
+        const now = document.activeElement;
+        if (gone || !(now === null || now.contains(root))) return;
+        if (!element.hidden) canvas.focus({ preventScroll: true });
+        else {
+          const region = root.closest('main');
+          if (region) region.focus({ preventScroll: true });
+        }
+      });
       return true;
     },
     cellAt: pixel,

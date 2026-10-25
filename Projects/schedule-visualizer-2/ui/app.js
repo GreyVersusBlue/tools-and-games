@@ -173,6 +173,28 @@ async function boot() {
     main.focus();
   }
 
+  // How the person got here: the last pointer the page saw, or a key. A
+  // focus the shell places on its own (a section drawn again under a tapped
+  // button, the start-up question answered, a dialog whose opener has gone)
+  // goes to the surface only for a keyboard, mouse or pen. After a tap the
+  // region takes it instead, with no cursor and no scroll: DESIGN 4, no
+  // auto-focus on touch (SV2-32r). A key typed into a field is the on-screen
+  // keyboard's as often as not, and does not count.
+  let lastInput = '';
+  window.addEventListener('pointerdown', (event) => {
+    lastInput = event.pointerType || 'mouse';
+  }, true);
+  window.addEventListener('keydown', (event) => {
+    if (event.isComposing || event.key === 'Unidentified' || event.key === 'Process') return;
+    const at = event.target;
+    if (at && at.closest && at.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+    lastInput = 'key';
+  }, true);
+  function placeFocus() {
+    if (lastInput === 'touch') main.focus({ preventScroll: true });
+    else focusSurface();
+  }
+
   const toasts = createToasts(toastHost, { back: focusSurface });
   const toast = (options) => toasts.show(options);
 
@@ -328,7 +350,7 @@ async function boot() {
         keep: 'Keep my project',
         danger: true,
         opener,
-        fallbackFocus: focusSurface,
+        fallbackFocus: placeFocus,
       });
       if (!ok) return;
     }
@@ -381,8 +403,8 @@ async function boot() {
     removeSample,
     openHelp,
     showGettingStarted: showStarted,
-    confirm: (options) => confirm({ fallbackFocus: focusSurface, ...options }),
-    openDialog: (options) => openDialog({ fallbackFocus: focusSurface, ...options }),
+    confirm: (options) => confirm({ fallbackFocus: placeFocus, ...options }),
+    openDialog: (options) => openDialog({ fallbackFocus: placeFocus, ...options }),
     announce(text) {
       announcer.textContent = text;
     },
@@ -464,6 +486,11 @@ async function boot() {
     }
     closeMenu();
     const same = current && current.section === wanted;
+    // A focus in the section or its inspector goes with them when they are
+    // drawn again (a section's key, Back, a link inside the section), and the
+    // keyboard would be left on the page's body, a Tab from the top. It goes
+    // to the new section's surface instead (SV2-32h1).
+    const held = current !== null && (main.contains(document.activeElement) || inspector.contains(document.activeElement));
     if (!same || !(current.view.route && current.view.route(rest))) {
       if (!same) {
         ctx.setSecondRow(null);
@@ -488,6 +515,7 @@ async function boot() {
       announcer.textContent = wanted.name;
       if (device.lastSection !== wanted.id) writeDevice({ lastSection: wanted.id });
     }
+    if (held && (document.activeElement === null || document.activeElement === document.body)) placeFocus();
   }
 
   // ------------------------------------------------------------ shortcuts
@@ -564,6 +592,11 @@ async function boot() {
   window.addEventListener('hashchange', route);
   route();
   draw();
+  // A question storage asked before anything was drawn (the start-up
+  // recovery dialog) gave the focus back to the region, there being no
+  // section yet: it goes on to the section's surface now (SV2-32h1), unless
+  // the question was answered by a tap (SV2-32r).
+  if (document.activeElement === main && lastInput !== 'touch') focusSurface();
   document.documentElement.dataset.ready = 'true';
 
   // For the tests and for the console.

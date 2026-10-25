@@ -288,11 +288,13 @@ export const section = {
       const typed = typing ? active.value : null;
       const held = field ? active.value : null;
       const caret = field ? [active.selectionStart, active.selectionEnd] : null;
-      // A room picker with its list open hands over the option the arrow
-      // keys highlighted (room-picker.js, `picker:resume`).
+      // A picker with its list open hands over the option the arrow keys
+      // highlighted, or that none was (`picker:resume`): a room picker's by
+      // its room (room-picker.js), any other picker's by its option's id
+      // (components/picker.js, a slot's Teacher, a teacher's Add a room).
       const listed = field && active.getAttribute('role') === 'combobox' && active.getAttribute('aria-expanded') === 'true';
       const lit = listed && active.getAttribute('aria-activedescendant') ? document.getElementById(active.getAttribute('aria-activedescendant')) : null;
-      const resume = listed ? { room: lit ? lit.dataset.room : null } : null;
+      const resume = listed ? { room: lit ? lit.dataset.room : null, id: lit && lit.dataset.id !== undefined ? lit.dataset.id : null } : null;
       // the focus on a room picker's link to the building, which is in the
       // line under the field while its list is open: the new field's list is
       // opened for it, so the link is there to take the focus back
@@ -326,7 +328,9 @@ export const section = {
           // nothing was typed and nothing changed under it: the caret stays
           target.setSelectionRange(caret[0], caret[1]);
         }
-        if (resume && target === document.activeElement && target.getAttribute('role') === 'combobox') {
+        // the list goes on only in the field drawn in place of the one whose
+        // list was open, never in a field that was asked for instead
+        if (resume && target === find(had) && target === document.activeElement && target.getAttribute('role') === 'combobox') {
           target.dispatchEvent(new CustomEvent('picker:resume', { detail: resume }));
         }
       };

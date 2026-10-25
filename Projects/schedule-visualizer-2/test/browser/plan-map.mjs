@@ -480,6 +480,53 @@ async function paintedUnderZoom(page) {
   });
 }
 
+// The map at rest (SV2-32s): the section has its answer (Movement reads
+// as pending until its worker answers, data-pending), the view is measured
+// to the stage as it is laid out, and nothing on the map moved or was drawn
+// again for a frame. A Fit pressed while Movement was pending fitted the
+// stage as it stood then, 485 px at 390 by 844 with touch; the answer took
+// 19 px of it, and the paint of that first fit, made in a long task of
+// the page's, came before the stage's watcher measured the 466 and fitted it
+// again. Read at that paint, 288 px of floor lay under the buttons ('-35%');
+// at rest, none ('-34%'). CI read it so on ec0b07ca; bc114b46 makes the
+// same paint. The state is waited for as still() waits for
+// Building's plan, frames and not a time.
+async function mapAtRest(page, what) {
+  const rest = await page.evaluate(() => new Promise((resolve) => {
+    const read = () => {
+      const canvas = Array.from(document.querySelectorAll('#section canvas.mov-plan')).find((each) => each.getClientRects().length > 0);
+      if (!canvas) return { ready: false, at: 'no map' };
+      const root = canvas.closest('.mov');
+      const stage = canvas.parentElement;
+      const plan = root.movement ? root.movement.plan : root.safety ? root.safety.plan : root.scenarios ? root.scenarios.plan : document.querySelector('.scn').scenarios.plan;
+      const { view } = plan;
+      const box = canvas.getBoundingClientRect();
+      const zoom = stage.querySelector('.mov-zoom').getBoundingClientRect();
+      const measured = view.width === stage.clientWidth && view.height === stage.clientHeight;
+      const answered = root.dataset.pending !== 'true';
+      return {
+        ready: measured && answered,
+        why: (measured ? '' : 'view ' + view.width + 'x' + view.height + ' on a stage ' + stage.clientWidth + 'x' + stage.clientHeight + ' ') + (answered ? '' : 'pending'),
+        at: [canvas.dataset.drawn, box.left, box.top, box.width, box.height, zoom.left, zoom.top, view.width, view.height, view.zoom, view.x, view.y, stage.style.getPropertyValue('--mov-under')].join(' '),
+      };
+    };
+    let last = read();
+    let frames = 0;
+    const next = () => requestAnimationFrame(() => {
+      const now = read();
+      frames += 1;
+      if (now.ready && now.at === last.at) resolve({ ok: true, at: now.at });
+      else if (frames >= 600) resolve({ ok: false, at: now.at, why: now.why });
+      else {
+        last = now;
+        next();
+      }
+    });
+    next();
+  }));
+  assert.ok(rest.ok, what + ': the map came to rest within 600 frames: drawn, canvas, zoom box and view ' + rest.at + (rest.why ? ', ' + rest.why : ''));
+}
+
 // SV2-72f: where no band clears the zoom buttons with every floor whole on
 // the stage, Fit is the plain fit, whole, with the buttons over some of it.
 // Of these sizes that is Movement on a phone on its side alone (its stage
@@ -521,6 +568,8 @@ for (const size of W1_CASES) {
           return drawn;
         });
         await page.waitForFunction((n) => Number(Array.from(document.querySelectorAll('#section canvas.mov-plan')).find((each) => each.getClientRects().length > 0).dataset.drawn) > n, { timeout: 10000 }, was);
+        // and read once the map is at rest, not at the first paint after the press (SV2-32s)
+        await mapAtRest(page, hash + ' after Fit');
         found[hash] = await paintedUnderZoom(page);
       }
       const covered = Object.entries(found).filter(([, got]) => got.painted > 0 && got.clear !== 'false');

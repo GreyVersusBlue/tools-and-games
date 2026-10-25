@@ -130,7 +130,9 @@ export function openPrintPreview(ctx, outputId, options) {
   const output = outputFor(outputId);
   if (!output) throw new Error('There is no printable output called "' + outputId + '".');
   const opts = options || {};
-  const opener = opts.opener || document.activeElement;
+  // the page's body is nobody to give the focus back to (SV2-32r, as dialog.js)
+  const given = opts.opener || document.activeElement;
+  const opener = given === document.body ? null : given;
   const store = ctx.store;
   const project = () => store.project;
 

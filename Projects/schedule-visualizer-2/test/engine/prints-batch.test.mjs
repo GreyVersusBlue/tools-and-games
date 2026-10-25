@@ -39,13 +39,14 @@ function countOf(html, piece) {
   return html.split(piece).length - 1;
 }
 
-// The sheets of a document, in order: [{ kind, id, html }].
+// The sheets of a document, in order: [{ kind, id, html }]. The last ends
+// where the document's main part does (SV2-32g1: the sheets are in a main).
 function sheetsOf(html) {
   const starts = Array.from(html.matchAll(/<section class="[^"]*\bnew-sheet\b[^"]*" data-sheet="([a-z]+)" data-id="([^"]*)">/g));
   return starts.map((match, at) => ({
     kind: match[1],
     id: match[2],
-    html: html.slice(match.index, at + 1 < starts.length ? starts[at + 1].index : html.indexOf('</div>\n</section>\n<footer')),
+    html: html.slice(match.index, at + 1 < starts.length ? starts[at + 1].index : html.indexOf('</div>\n</section>\n</main>')),
   }));
 }
 
@@ -412,7 +413,7 @@ test('a school with no name prints under the tool\'s name on every sheet', () =>
 
 // ---------------------------------------------------------------- hostile names
 
-const TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'style', 'body', 'section', 'header', 'footer', 'div', 'p', 'h1', 'h2', 'ul', 'li', 'span', 'table', 'thead', 'tbody', 'tr', 'th', 'td']);
+const TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'style', 'body', 'main', 'section', 'header', 'footer', 'div', 'p', 'h1', 'h2', 'ul', 'li', 'span', 'table', 'thead', 'tbody', 'tr', 'th', 'td']);
 
 test('hostile names come through every batch as text, never as markup', () => {
   const { project, made } = hostileSchool();
@@ -515,6 +516,53 @@ test('a door sign in the batch is the staff browser\'s own sign for that room, r
   assert.ok(rows.every((row) => row.length === 4), 'period, time, group, teacher');
   // the builder is text in and text out: it stands in plain Node, where there is no page
   assert.equal(typeof globalThis.document, 'undefined');
+});
+
+// The name of every door sign's region in a document, as the attribute holds it.
+function signLabels(html) {
+  return Array.from(html.matchAll(/<section class="sign"[^>]* aria-label="([^"]*)"/g), (match) => match[1]);
+}
+
+test('every door sign in a batch is a region of its own name: rooms with no number, and one number on two floors, are told apart', () => {
+  const project = school();
+  // two rooms with no number on Floor 1, one on Floor 2; 303 on Floor 3 and on Floor 1
+  room(project, '101').number = '';
+  room(project, '102').number = '  ';
+  room(project, '201').number = '';
+  room(project, '103').number = '303';
+  for (const day of [false, true]) {
+    const labels = signLabels(doors(project, { day }));
+    assert.equal(labels.length, 13, 'a label on every sign');
+    assert.equal(new Set(labels).size, labels.length, 'no two signs share a region name: ' + labels.join(' | '));
+    assert.deepEqual(labels.slice(0, 3), [
+      'Door sign: A room with no number, Floor 1, 1 of 2',
+      'Door sign: A room with no number, Floor 1, 2 of 2',
+      'Door sign: Room 303, Floor 1',
+    ], 'the floor, and then the place on it, only where the name alone is not enough');
+    assert.ok(labels.includes('Door sign: A room with no number, Floor 2'));
+    assert.ok(labels.includes('Door sign: Room 303, Floor 3'));
+    assert.ok(labels.includes('Door sign: Room 203'), 'a room of a name of its own is named by it alone');
+  }
+  // the one document of everything holds the same signs, so the same names, once each
+  const all = signLabels(everything(project));
+  assert.equal(all.length, 13);
+  assert.equal(new Set(all).size, 13);
+  // a name typed to look like another's is told apart too
+  room(project, '202').number = 'Room 303, Floor 3';
+  const typedAlike = signLabels(doors(project));
+  assert.equal(new Set(typedAlike).size, 13, typedAlike.join(' | '));
+});
+
+test('a door sign\'s region is named for its room as plain text: a number, a name, and a number with markup in it', () => {
+  const project = school();
+  room(project, '204').number = '<b>7</b> & "x"';
+  const own = model(project);
+  assert.equal(doorModule.signLabel(own, own.room('rsample203')), 'Door sign: Room 203');
+  assert.equal(doorModule.signLabel(own, own.room('rsamplegym')), 'Door sign: Gym');
+  assert.equal(doorModule.signLabel(own, own.room('rsample204')), 'Door sign: <b>7</b> & "x"', 'the number as typed, not read as markup');
+  const sheet = sheetsOf(doors(project)).find((each) => each.id === 'rsample204').html;
+  assert.ok(sheet.includes('aria-label="Door sign: &lt;b&gt;7&lt;/b&gt; &amp; &quot;x&quot;"'), 'escaped in the attribute');
+  assert.equal(countOf(sheet, '<b>'), 0, 'no element made of the number');
 });
 
 test('a room whose teachers are of different subjects names no subject; teachers of one subject name theirs', () => {

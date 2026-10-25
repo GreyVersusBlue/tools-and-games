@@ -130,10 +130,14 @@ export function attachSearch(input, ctx) {
       'aria-selected': 'false',
       data: { room: entry.id, floor: entry.floorId },
       on: {
-        // pointerdown, not click: the box must not lose the focus first
-        pointerdown: (event) => {
-          event.preventDefault();
-          choose(entry);
+        // The press must not take the focus from the box, or the list would
+        // shut before the click came; the choice is on the click, which a
+        // finger that swipes the list or the page never makes (as
+        // ui/components/picker.js does).
+        pointerdown: (event) => event.preventDefault(),
+        mousedown: (event) => event.preventDefault(),
+        click: (event) => {
+          if (event.button === 0) choose(entry);
         },
       },
     }, h('span', { class: 'bld-search__name' }, entry.name), entry.detail === '' ? null : h('span', { class: 'picker__detail' }, ' ' + entry.detail)));
