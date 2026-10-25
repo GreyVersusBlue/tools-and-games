@@ -722,15 +722,18 @@ const SV2_32G1 = [
   { id: 'building-trace-placing', hash: '#building', open: traceMode('#trace-place', '#scale-mode[data-kind="place"]:not([hidden])') },
   { id: 'building-trace-fit-floor', hash: '#building', open: async (page) => { // SV2-32g1b: "Fit the floor to the image" asks first
     await traced(page);
-    // the image is laid over the floor to fit it, so the floor is its size
-    // already; made a quarter larger, the floor has somewhere to grow to
+    // the image comes in fitted to the floor's height and centred across
+    // it (on the sample, 40 by 14 cells, it covers columns 10.7 to 29.3), so
+    // fitting the floor to it would cut what is drawn and is refused without
+    // asking. Placed at the floor's top left one cell wider than the floor,
+    // the image covers all of it and the floor only grows (41 by 31)
     const placed = await page.evaluate(() => {
       const floor = globalThis.sv2.store.project.building.floors[0];
-      return { floorId: floor.id, image: { scale: floor.image.scale * 1.25, x: floor.image.x, y: floor.image.y }, how: 'keys' };
+      return { floorId: floor.id, image: { scale: (floor.width + 1) / floor.image.width, x: 0, y: 0 }, how: 'keys' };
     });
     await act(page, 'placeTraceImage', placed);
     await page.click('#trace-floor-fit');
-    await asked(page, /^Make Floor 1 \d+ × \d+ cells, the size of its image\?$/);
+    await asked(page, 'Make Floor 1 41 × 31 cells, the size of its image?');
   } },
   { id: 'building-corridor-name', hash: '#building', open: cellMenuItem(/^(Name this corridor|Rename the corridor .+)…$/, 'What is this corridor called?') }, // SV2-32g1b
   { id: 'building-zone-label', hash: '#building', open: cellMenuItem(/^Label the left-out area .+…$/, 'What is this left-out area?') }, // SV2-32g1b
