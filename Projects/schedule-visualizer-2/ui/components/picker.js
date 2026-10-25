@@ -71,10 +71,14 @@ export function picker(options) {
         id: listId + '-' + index,
         'aria-selected': 'false',
         on: {
-          // pointerdown, not click: the field must not blur first
-          pointerdown: (event) => {
-            event.preventDefault();
-            pick(option);
+          // The press must not take the focus from the field, or the list
+          // would shut before the click came; the pick is on the click, which
+          // a finger that swipes the list or the page never makes (as
+          // ui/schedule/room-picker.js does).
+          pointerdown: (event) => event.preventDefault(),
+          mousedown: (event) => event.preventDefault(),
+          click: (event) => {
+            if (event.button === 0) pick(option);
           },
         },
       }, h('span', null, option.label), option.detail ? h('span', { class: 'picker__detail' }, option.detail) : null)));
@@ -116,6 +120,12 @@ export function picker(options) {
   });
   input.addEventListener('click', () => {
     if (!open) show();
+  });
+  // A section that draws this field again while its list is open hands the
+  // list over (ui/schedule/index.js dispatches `picker:resume` on the field
+  // drawn in its place): the new field opens its list.
+  input.addEventListener('picker:resume', () => {
+    if (document.activeElement === input) show();
   });
   input.addEventListener('blur', close);
   input.addEventListener('keydown', (event) => {
