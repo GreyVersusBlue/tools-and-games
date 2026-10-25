@@ -160,10 +160,12 @@ export const GROUPS = {
     'browser/empty-states.mjs', // SV2-30b
     'browser/trace-scale.mjs', // SV2-73a
     'a11y/axe.mjs',
+    'a11y/staff-axe.mjs', // SV2-32g2
   ],
   a11y: [
     'a11y/contrast.mjs',
     'a11y/axe.mjs',
+    'a11y/staff-axe.mjs', // SV2-32g2
   ],
   timing: [
     'timing/routing.mjs', // SV2-05

@@ -15,11 +15,11 @@ import { readPublished, NEWER_SENTENCE, DAMAGED_SENTENCE, NOT_OURS_SENTENCE, DAT
 import { openSchool } from '../../staff/model.js';
 import { searchIndex, searchSchool, foldText, FIND_LIMIT } from '../../staff/find.js';
 import { publishedModel } from '../../engine/publish-data.js';
-import { lockPublished } from '../../engine/publish-crypto.js';
+import { lockPublished, unlockPublished } from '../../engine/publish-crypto.js';
 import { teacherDay } from '../../engine/teacher-day.js';
 import { seededRandom } from '../../engine/ids.js';
 import { sampleSchool } from '../../data/sample-school.js';
-import { readTool } from './reader.mjs';
+import { readTool, partsOf } from './reader.mjs';
 
 const clock = () => new Date('2026-09-01T12:00:00Z');
 const model = (change) => {
@@ -28,6 +28,26 @@ const model = (change) => {
   return publishedModel(project, { clock });
 };
 const names = (kind) => kind.items.map((item) => item.name);
+
+// ---------------------------------------------------------------- a file from an earlier version
+
+// test/publish/frozen/sv2-m4.html is a published file as the tool at sv2-m4
+// made it (its first comment says how). Spec 18: it still opens. Here today's
+// reader is handed what it holds; test/a11y/staff-axe.mjs opens it in Chromium.
+test('a published file frozen from an earlier version reads in today\'s staff browser, behind the same passcode', async () => {
+  const data = JSON.parse(partsOf(readTool('test/publish/frozen/sv2-m4.html')).data);
+  const envelope = readPublished(data);
+  assert.equal(envelope.kind, 'locked', 'the frozen file is read as a locked schedule, not refused');
+  const opened = await unlockPublished(data, 'bulldogs2015');
+  assert.ok(opened, 'the default passcode of that version opens it with today\'s key derivation');
+  const read = readPublished(opened.model);
+  assert.equal(read.kind, 'open', 'its schedule is read as today\'s format, not as an older or damaged one');
+  const school = openSchool(read.model);
+  assert.equal(school.name, 'Marrowby Middle School (sample)');
+  assert.equal(school.teachers.length, sampleSchool().teachers.length);
+  assert.equal(opened.model.publishedAt, '2026-09-01T12:00:00.000Z');
+  assert.equal(teacherDay(read.model, 'tsample007', 'dsample00a').length, read.model.settings.periods);
+});
 
 // ---------------------------------------------------------------- addresses
 

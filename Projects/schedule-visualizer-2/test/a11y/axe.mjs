@@ -43,12 +43,7 @@ const DEVICE_KEY = 'sv2:device';
 
 // { rule, screen (optional, an id from screens.mjs), where (optional:
 // 'print' for the document inside the print preview; the page otherwise), reason }
-const SIGN = 'Each door sign is a region named "The sign" (staff/views/door-sign.js), so a document of many signs has many regions of one name. The name is SV2-32g2\'s to change (staff/): reported, to go when each sign is named for its room.';
-const ALLOW = [
-  { rule: 'landmark-unique', screen: 'staff-batch-print', where: 'print', reason: SIGN },
-  { rule: 'landmark-unique', screen: 'print-door-signs', where: 'print', reason: SIGN },
-  { rule: 'landmark-unique', screen: 'print-whole-school', where: 'print', reason: SIGN },
-];
+const ALLOW = [];
 
 const used = new Set();
 let browser;
