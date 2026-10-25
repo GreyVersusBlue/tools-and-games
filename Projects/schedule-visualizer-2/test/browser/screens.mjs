@@ -20,6 +20,8 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { go, loadModule, waitForSection } from './harness.mjs';
+
 const TRACE_FIXTURE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'images', 'floor-plan.png');
 
 const press = (key) => async (page) => {
@@ -399,18 +401,71 @@ const printFrom = (button) => async (page) => {
   await previewReady(page);
 };
 
-// SV2-32g1: the shell's question dialog, open, whatever its id.
-async function asked(page) {
-  await page.waitForSelector('dialog.dialog[open]');
+// SV2-32g1: the shell's question dialog, open, and the one asked for: its
+// title (ui/components/dialog.js's .dialog__title) is `title`, a string to
+// match whole or a RegExp, and it is the only dialog open. Most of the
+// planner's questions are made by confirm(), which gives a dialog no id, so
+// the title is what tells one from another (SV2-32g1b: any open dialog used
+// to do). Throws with the titles that are open when the one wanted is not.
+async function asked(page, title) {
+  const wanted = title instanceof RegExp ? title : new RegExp('^' + String(title).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$');
+  const open = () => page.evaluate(() => Array.from(document.querySelectorAll('dialog[open]')).map((dialog) => (dialog.querySelector('.dialog__title') || dialog).textContent.trim().slice(0, 120)));
+  try {
+    await page.waitForFunction((source, flags) => {
+      const match = new RegExp(source, flags);
+      return Array.from(document.querySelectorAll('dialog.dialog[open] .dialog__title')).some((heading) => match.test(heading.textContent.trim()));
+    }, { timeout: 15000 }, wanted.source, wanted.flags);
+  } catch (error) {
+    throw new Error('asked: no open dialog is titled ' + wanted + '; open: ' + JSON.stringify(await open()) + ' (' + error.message + ')');
+  }
+  const seen = await open();
+  if (seen.length !== 1) throw new Error('asked: ' + seen.length + ' dialogs are open, wanted only ' + wanted + ': ' + JSON.stringify(seen));
 }
 
-// SV2-32g1: a store action, applied as the page would (imported in one turn
-// and applied in the next; see movement-route-failed).
+// SV2-32g1: a store action, applied as the page would: the module loaded by
+// the harness's loadModule (an import() awaited inside page.evaluate is the
+// flaky pattern its comment names), applied in the next turn.
 async function act(page, name, payload) {
-  await page.evaluate(async () => {
-    globalThis.sv2actions = await import(new URL('engine/actions.js', location.href).href);
+  await loadModule(page, 'actions', 'engine/actions.js');
+  await page.evaluate((action, given) => globalThis.sv2.store.apply(globalThis.sv2modules.actions[action], given), name, payload);
+}
+
+// SV2-32g1b: an IndexedDB request on the page's own database, settled: the
+// promise it returns rejects with the reason when the database cannot be
+// opened, is blocked, or the transaction fails or is aborted.
+const IDB_HELPER = `
+  globalThis.sv2idb = (store, write) => new Promise((resolve, reject) => {
+    const opened = indexedDB.open('sv2');
+    opened.onerror = () => reject(new Error('indexedDB.open(sv2) failed: ' + (opened.error && opened.error.message)));
+    opened.onblocked = () => reject(new Error('indexedDB.open(sv2) is blocked by another connection'));
+    opened.onsuccess = () => {
+      const db = opened.result;
+      let tx;
+      try {
+        tx = db.transaction(store, 'readwrite');
+        write(tx.objectStore(store));
+      } catch (error) {
+        db.close();
+        reject(new Error('writing ' + store + ' failed: ' + error.message));
+        return;
+      }
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        reject(new Error('writing ' + store + ' failed: ' + (tx.error && tx.error.message)));
+      };
+      tx.onabort = () => {
+        db.close();
+        reject(new Error('writing ' + store + ' was aborted: ' + (tx.error ? tx.error.message : 'no reason given')));
+      };
+    };
   });
-  await page.evaluate((action, given) => globalThis.sv2.store.apply(globalThis.sv2actions[action], given), name, payload);
+`;
+async function idbReady(page) {
+  await page.evaluate(IDB_HELPER);
 }
 
 // SV2-32g1: a field typed over and left, as a person commits it.
@@ -434,36 +489,30 @@ async function traced(page) {
 const traceMode = (button, shown) => async (page) => {
   await traced(page);
   await page.click(button);
-  await page.waitForSelector(shown);
+  try {
+    await page.waitForSelector(shown, { timeout: 15000 });
+  } catch (error) {
+    throw new Error('the trace mode of ' + button + ' did not start: ' + shown + ' never matched (' + error.message + ')');
+  }
 };
 
 // SV2-32g1: a project file of the page's own, handed to a file input.
-const fileOf = (selector, name, kind) => async (page) => {
+const fileOf = (selector, name, kind, title) => async (page) => {
   await chooseFile(page, selector, name, await fileText(page, kind));
-  await asked(page);
+  await asked(page, title);
 };
 
 // SV2-32g1: one of the three Clear buttons on Project with the device keeping
 // as many snapshots as it keeps (30, storage/snapshots.js), which is when
 // Clear asks before going on: there is no snapshot to take first.
-const clearAsks = (which) => async (page) => {
+const clearAsks = (which, title) => async (page) => {
   await page.waitForSelector('#clear [data-action="clear-' + which + '"]');
-  await page.evaluate(() => new Promise((resolve, reject) => {
-    const opened = indexedDB.open('sv2');
-    opened.onerror = () => reject(opened.error);
-    opened.onsuccess = () => {
-      const db = opened.result;
-      const tx = db.transaction('snapshots', 'readwrite');
-      for (let i = 0; i < 30; i += 1) tx.objectStore('snapshots').put({ id: 'nfill' + String(i).padStart(5, '0'), name: 'Kept ' + i, takenAt: '2026-01-01T00:00:00.000Z', bytes: 2, project: {} });
-      tx.oncomplete = () => {
-        db.close();
-        resolve();
-      };
-      tx.onabort = () => reject(tx.error);
-    };
+  await idbReady(page);
+  await page.evaluate(() => globalThis.sv2idb('snapshots', (objects) => {
+    for (let i = 0; i < 30; i += 1) objects.put({ id: 'nfill' + String(i).padStart(5, '0'), name: 'Kept ' + i, takenAt: '2026-01-01T00:00:00.000Z', bytes: 2, project: {} });
   }));
   await page.click('#clear [data-action="clear-' + which + '"]');
-  await asked(page);
+  await asked(page, title);
 };
 
 // SV2-32g1: the sample school changed, so it is someone's work, and a
@@ -482,24 +531,25 @@ async function startUpRecovery(page) {
     await globalThis.sv2.storage.flush();
     return globalThis.sv2.storage.pending === false;
   }, { polling: 50 });
-  await page.evaluate(() => new Promise((resolve, reject) => {
-    const opened = indexedDB.open('sv2');
-    opened.onerror = () => reject(opened.error);
-    opened.onsuccess = () => {
-      const db = opened.result;
-      const tx = db.transaction('project', 'readwrite');
-      tx.objectStore('project').put({ savedAt: '2026-09-01T12:00:00.000Z', project: { format: 'sv2-project', version: 1, building: 'not a building' }, exportedAt: null }, 'current');
-      tx.oncomplete = () => {
-        db.close();
-        resolve();
-      };
-    };
+  await idbReady(page);
+  await page.evaluate(() => globalThis.sv2idb('project', (objects) => {
+    objects.put({ savedAt: '2026-09-01T12:00:00.000Z', project: { format: 'sv2-project', version: 1, building: 'not a building' }, exportedAt: null }, 'current');
   }));
+  // The page loaded again as visit() loads one, but for the section: the
+  // shell draws its section and sets data-ready only once the start-up
+  // question is answered (ui/app.js awaits ctx.storage.ready before route()),
+  // so here the question is what is waited for, then the fonts.
   const url = page.url();
   await page.goto('about:blank');
   await page.goto(url, { waitUntil: 'load' });
-  await page.waitForSelector('#recovery-dialog[open]');
+  // the four start-up questions share #recovery-dialog: this is the one for
+  // an unreadable project with a recovery point to offer (storage/session.js)
+  await asked(page, 'The saved project could not be read.');
+  await page.evaluate(() => document.fonts.ready);
+  const restore = await page.evaluate(() => Array.from(document.querySelectorAll('#recovery-dialog[open] button')).map((button) => button.textContent.trim()));
+  if (!restore.some((words) => words.startsWith('Restore the recovery point from '))) throw new Error('start-up-recovery: the dialog offers no "Restore the recovery point" button: ' + JSON.stringify(restore));
 }
+
 
 // SV2-32g1: this page the second tab on the project, read-only: the page
 // leaves, a tab of its own opens the project and holds it, and this one comes
@@ -507,11 +557,15 @@ async function startUpRecovery(page) {
 async function secondTab(page) {
   const url = page.url();
   await page.goto('about:blank');
-  const first = await page.browser().newPage();
+  // a tab of this page's own browser context, so the two share the lock:
+  // Playwright's harness page has a context of its own (harness.mjs plainPage)
+  const first = page.__engine === 'playwright' ? await page.context().newPage() : await page.browserContext().newPage();
   page.sv2FirstTab = first;
   await first.goto(url, { waitUntil: 'load' });
   await first.waitForFunction(() => globalThis.sv2 && globalThis.sv2.storage && globalThis.sv2.storage.state.readOnly === false && document.getElementById('banner-read-only') === null);
   await page.goto(url, { waitUntil: 'load' });
+  await waitForSection(page, (new URL(url).hash.replace(/^#/, '').split('/')[0]) || 'building');
+  await page.evaluate(() => document.fonts.ready);
   await page.waitForSelector('#banner-read-only');
   await page.waitForFunction(() => globalThis.sv2.storage.state.readOnly === true);
 }
@@ -529,6 +583,33 @@ const gettingStarted = (unfold) => async (page) => {
   }
 };
 
+// SV2-32g1b: the sample's left-out area on its first floor (a corridor
+// cell), right-clicked, and the cell menu's item whose words match `item`
+// used, to the question it asks (ui/building/menu.js).
+const cellMenuItem = (item, title) => async (page) => {
+  await planReady(page);
+  const at = await page.evaluate(() => {
+    const editor = document.querySelector('.bld').editor;
+    const zone = globalThis.sv2.store.project.building.zones.find((each) => each.floorId === editor.floor.id);
+    if (!zone) return null;
+    const box = editor.canvas.getBoundingClientRect();
+    const place = editor.view.toScreen(zone.x + 0.5, zone.y + 0.5);
+    return { x: box.left + place.x, y: box.top + place.y };
+  });
+  if (!at) throw new Error('the floor on show has no left-out area to right-click');
+  await page.mouse.click(at.x, at.y, { button: 'right' });
+  await page.waitForSelector('.menu[role="menu"]');
+  const items = await page.evaluate((source, flags) => {
+    const match = new RegExp(source, flags);
+    const all = Array.from(document.querySelectorAll('.menu[role="menu"] [role^="menuitem"]'));
+    const wanted = all.find((each) => match.test(each.textContent.trim()));
+    if (wanted) wanted.click();
+    return wanted ? null : all.map((each) => each.textContent.trim());
+  }, item.source, item.flags);
+  if (items) throw new Error('the cell menu has no item ' + item + ': ' + JSON.stringify(items));
+  await asked(page, title);
+};
+
 // SV2-32g1: the planner's dialogs, previews and states the audit of
 // 2026-10-22 found no sweep visiting.
 const SV2_32G1 = [
@@ -537,9 +618,11 @@ const SV2_32G1 = [
     hash: '#building',
     open: async (page) => {
       await inspectorTab('floor')(page);
+      // Enter in the field resizes (ui/building/inspector/floor.js); a click
+      // on Resize after it once landed under the dialog (SV2-32g1b)
       await retype(page, '#floor-width', '20');
-      await page.click('#floor-resize');
       await page.waitForSelector('#resize-dialog[open]');
+      await asked(page, /^Resize Floor 1 to 20 × \d+ and remove what is cut off\?$/);
     },
   },
   {
@@ -548,7 +631,7 @@ const SV2_32G1 = [
     open: async (page) => {
       await inspectorTab('floor')(page);
       await page.click('#floor-delete');
-      await asked(page);
+      await asked(page, 'Delete Floor 2?');
     },
   },
   { // connect mode's banner, and the question it asks of two stairs on one floor
@@ -565,7 +648,7 @@ const SV2_32G1 = [
         return { x: box.left + place.x, y: box.top + place.y };
       });
       await page.mouse.click(at.x, at.y);
-      await asked(page);
+      await asked(page, 'Connect two stairs on Floor 2?');
     },
   },
   { // a project of someone's own, and the sample school asked for over it
@@ -576,7 +659,7 @@ const SV2_32G1 = [
       const floorId = await page.evaluate(() => globalThis.sv2.store.project.building.floors[0].id);
       await act(page, 'paintCorridor', { floorId, cells: [0] });
       await page.click('#sample-school [data-action="sample"]');
-      await asked(page);
+      await asked(page, 'Replace this project with the sample school?');
     },
   },
   {
@@ -585,7 +668,7 @@ const SV2_32G1 = [
     open: async (page) => {
       await scenarioOpen()(page);
       await page.click('.scn [data-action="discard"]');
-      await asked(page);
+      await asked(page, /^Discard the scenario .+\?$/);
     },
   },
   { // a project file to compare with, over the open scenario
@@ -593,7 +676,7 @@ const SV2_32G1 = [
     hash: '#scenarios',
     open: async (page) => {
       await scenarioOpen()(page);
-      await fileOf('.scn input[data-file="compare"]', 'Larkspur.json', 'project')(page);
+      await fileOf('.scn input[data-file="compare"]', 'Larkspur.json', 'project', /^Replace the scenario .+ with the comparison\?$/)(page);
     },
   },
   { // the Day tab asked for fewer periods than the schedule uses
@@ -602,17 +685,17 @@ const SV2_32G1 = [
     open: async (page) => {
       await scheduleDrawn(page);
       await retype(page, '[data-key="day-periods"]', '6');
-      await asked(page);
+      await asked(page, /^Remove .+ from every day\?$/);
     },
   },
-  { id: 'project-building-import', hash: '#project', open: fileOf('#project-file input[data-file="building"]', 'Larkspur building.json', 'building') },
+  { id: 'project-building-import', hash: '#project', open: fileOf('#project-file input[data-file="building"]', 'Larkspur building.json', 'building', /^Replace the building with the one in .Larkspur building\.json.\?$/) },
   {
     id: 'project-recovery-point-delete',
     hash: '#project',
     open: async (page) => {
       await withRecoveryPoint(page);
       await page.click('#recovery [data-action="delete"]');
-      await asked(page);
+      await asked(page, /^Delete the recovery point from .+\?$/);
     },
   },
   {
@@ -624,26 +707,42 @@ const SV2_32G1 = [
       await page.keyboard.press('Enter');
       await page.waitForSelector('.snap__item [data-action="delete"]');
       await page.click('.snap__item [data-action="delete"]');
-      await asked(page);
+      await asked(page, /^Delete the snapshot .Before moving 7th grade.\?$/);
     },
   },
-  { id: 'project-clear-building', hash: '#project', open: clearAsks('building') },
-  { id: 'project-clear-schedule', hash: '#project', open: clearAsks('schedule') },
-  { id: 'project-clear-new', hash: '#project', open: clearAsks('new') },
+  { id: 'project-clear-building', hash: '#project', open: clearAsks('building', 'Clear the building?') },
+  { id: 'project-clear-schedule', hash: '#project', open: clearAsks('schedule', 'Clear the schedule?') },
+  { id: 'project-clear-new', hash: '#project', open: clearAsks('new', 'Start a new project in place of this one?') },
   { id: 'start-up-recovery', hash: '#project', open: startUpRecovery },
   { id: 'read-only-tab', hash: '#project', open: secondTab, close: closeSecondTab },
   { id: 'read-only-tab-building', hash: '#building', open: secondTab, close: closeSecondTab },
   { id: 'building-trace-image', hash: '#building', open: traced },
   { id: 'building-trace-moving', hash: '#building', open: traceMode('#trace-move', '#trace-move[aria-pressed="true"]') },
-  { id: 'building-trace-scaling', hash: '#building', open: traceMode('#trace-scale', '#scale-banner:not([hidden])') },
-  { id: 'building-trace-placing', hash: '#building', open: traceMode('#trace-place', '#scale-banner:not([hidden])') },
+  { id: 'building-trace-scaling', hash: '#building', open: traceMode('#trace-scale', '#scale-mode[data-kind="scale"]:not([hidden])') },
+  { id: 'building-trace-placing', hash: '#building', open: traceMode('#trace-place', '#scale-mode[data-kind="place"]:not([hidden])') },
+  { id: 'building-trace-fit-floor', hash: '#building', open: async (page) => { // SV2-32g1b: "Fit the floor to the image" asks first
+    await traced(page);
+    // the image comes in fitted to the floor's height and centred across
+    // it (on the sample, 40 by 14 cells, it covers columns 10.7 to 29.3), so
+    // fitting the floor to it would cut what is drawn and is refused without
+    // asking. Placed at the floor's top left one cell wider than the floor,
+    // the image covers all of it and the floor only grows (41 by 31)
+    const placed = await page.evaluate(() => {
+      const floor = globalThis.sv2.store.project.building.floors[0];
+      return { floorId: floor.id, image: { scale: (floor.width + 1) / floor.image.width, x: 0, y: 0 }, how: 'keys' };
+    });
+    await act(page, 'placeTraceImage', placed);
+    await page.click('#trace-floor-fit');
+    await asked(page, 'Make Floor 1 41 × 31 cells, the size of its image?');
+  } },
+  { id: 'building-corridor-name', hash: '#building', open: cellMenuItem(/^(Name this corridor|Rename the corridor .+)…$/, 'What is this corridor called?') }, // SV2-32g1b
+  { id: 'building-zone-label', hash: '#building', open: cellMenuItem(/^Label the left-out area .+…$/, 'What is this left-out area?') }, // SV2-32g1b
   { id: 'getting-started-folded', hash: '#building', viewport: { width: 820, height: 900 }, open: gettingStarted(false) },
   { id: 'getting-started-open', hash: '#building', viewport: { width: 820, height: 900 }, open: gettingStarted(true) },
   { id: 'getting-started-empty', hash: '#project', open: async (page) => {
     await removeSample(page);
-    await page.evaluate(() => {
-      location.hash = '#building';
-    });
+    // the card is Building's: Building drawn first, so a card left on Project is not what is checked
+    await go(page, '#building');
     await page.waitForSelector('#getting-started:not([hidden]) [data-action="load-sample"]');
   } },
   // every output in ui/prints/index.js's OUTPUTS that no screen above opens

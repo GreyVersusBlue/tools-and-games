@@ -1,8 +1,9 @@
 // The accessibility sweep: node test/a11y/axe.mjs
 //
-// Opens every screen in test/browser/screens.mjs three times: with the device
-// asking for light, with it asking for dark, and with the device asking for
-// light and dark chosen from the planner's theme menu (SV2-32g1). It runs
+// Opens every screen in test/browser/screens.mjs four times: with the device
+// asking for light, with it asking for dark, with the device asking for
+// light and dark chosen from the planner's theme menu (SV2-32g1), and with the
+// device asking for dark and light chosen from the menu (SV2-32g1b). It runs
 // axe-core (vendored, test/vendor/axe-core) on each and fails on any
 // violation of WCAG 2.0 and 2.1 at A and AA and of axe's best practices.
 // Where the screen has the print preview open, axe also runs inside the
@@ -18,19 +19,27 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { openPlanner, visit, go, launch, startServer, TOOL_DIR } from '../browser/harness.mjs';
+import { openPlanner, visit, go, launch, startServer, TOOL_DIR, sameOrigin } from '../browser/harness.mjs';
 import { SCREENS } from '../browser/screens.mjs';
 
 const AXE = path.join(TOOL_DIR, 'test', 'vendor', 'axe-core', 'axe.min.js');
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'];
 
-// The three passes: what the device asks for, what the theme menu chooses
-// (none: the project follows the device), and the theme the page must end up in.
+// The four passes: what the device asks for, what the theme menu chooses
+// (none: the project follows the device), and the theme the page must end up
+// in. Each chosen pass is the mirror of the other: the device asks for one
+// theme and the person chooses the other.
 const PASSES = [
   { name: 'light theme', device: 'light', expect: 'light' },
   { name: 'dark theme', device: 'dark', expect: 'dark' },
   { name: 'dark theme chosen from the theme menu', device: 'light', choose: 'Dark', expect: 'dark' },
+  { name: 'light theme chosen from the theme menu', device: 'dark', choose: 'Light', expect: 'light' },
 ];
+
+// The light paper of the print preview's frame: tokens.css's light --paper,
+// the desk the sheets lie on (print.css, @media screen).
+const LIGHT_PAPER = 'rgb(246, 243, 236)';
+const DEVICE_KEY = 'sv2:device';
 
 // { rule, screen (optional, an id from screens.mjs), where (optional:
 // 'print' for the document inside the print preview; the page otherwise), reason }
@@ -68,9 +77,30 @@ function describe(violation) {
 // bar's theme switch opens, or, on a phone, where the top bar has no theme
 // switch (DESIGN 4), from Theme in Project › Settings, and then back to the
 // screen's own address. The project keeps the choice, so it is made on each
-// screen's fresh project before the screen opens.
+// screen's fresh project before the screen opens. The theme the device
+// remembers (sv2:device's `theme`, which the planner writes whenever the
+// theme changes and reads before the project on load, ui/app.js) is cleared
+// before each screen loads (forget), so each screen starts following the
+// device and the menu's choice is really made, not found made already.
+async function forget(session) {
+  const { page } = session;
+  if (!sameOrigin(page.url(), session.base) || page.url().startsWith('about:')) await page.goto(session.url('#project'), { waitUntil: 'load' });
+  await page.evaluate((key) => {
+    const held = JSON.parse(localStorage.getItem(key) || '{}');
+    if (held && typeof held === 'object' && 'theme' in held) {
+      delete held.theme;
+      localStorage.setItem(key, JSON.stringify(held));
+    }
+  }, DEVICE_KEY);
+}
+
 async function choose(page, pass, hash) {
   const value = pass.expect;
+  // Auto, and so the device's scheme: a theme already chosen (one the
+  // device remembered from the screen before) has the device's scheme too
+  // when it is the device's, so the scheme alone could not tell
+  const before = await page.evaluate(() => ({ theme: document.documentElement.dataset.theme, scheme: getComputedStyle(document.documentElement).colorScheme }));
+  assert.deepEqual(before, { theme: 'auto', scheme: pass.device }, 'before the theme menu is used the screen should follow the device (Auto, ' + pass.device + '), so the choice is really made');
   if (await page.$eval('#theme', (el) => el.getClientRects().length > 0)) {
     await page.click('#theme');
     await page.waitForSelector('.menu[role="menu"]');
@@ -98,9 +128,14 @@ async function choose(page, pass, hash) {
 // and its answer is left on the planner's page, which can wait for it. Null
 // when no preview is open.
 const AXE_SOURCE = fs.readFileSync(AXE, 'utf8');
-async function inFrame(page) {
+// A screen whose id starts print- is one of the previews, and has to have
+// one open: without it, nothing on paper would be checked.
+async function inFrame(page, screen) {
   const handle = await page.$('#print-preview[open] iframe');
-  if (!handle) return null;
+  if (!handle) {
+    if (screen.id.startsWith('print-')) throw new Error(screen.id + ' is a print preview screen and no preview frame is open, so the document on paper was not checked');
+    return null;
+  }
   const frame = await handle.contentFrame();
   await frame.evaluate(AXE_SOURCE + '\n;void 0');
   await frame.evaluate((tags) => {
@@ -119,7 +154,10 @@ async function inFrame(page) {
     up.sv2FrameAxe = null;
     globalThis.axe.run(document, { runOnly: { type: 'tag', values: tags }, resultTypes: ['violations', 'incomplete'] }).then(
       (result) => {
-        up.sv2FrameAxe = JSON.stringify({ theme: document.documentElement.dataset.theme, passes: result.passes.length, violations: result.violations, incomplete: result.incomplete.map((item) => ({ id: item.id, nodes: item.nodes.length })) });
+        const look = (el) => getComputedStyle(el);
+        const transparent = (colour) => colour === 'rgba(0, 0, 0, 0)' || colour === 'transparent';
+        const ground = transparent(look(document.body).backgroundColor) ? look(document.documentElement).backgroundColor : look(document.body).backgroundColor;
+        up.sv2FrameAxe = JSON.stringify({ scheme: look(document.documentElement).colorScheme, ground, passes: result.passes.length, violations: result.violations, incomplete: result.incomplete.map((item) => ({ id: item.id, nodes: item.nodes.length })) });
       },
       (error) => {
         up.sv2FrameAxe = JSON.stringify({ error: String(error && error.message) });
@@ -152,8 +190,12 @@ for (const pass of PASSES) {
               if (screen.open) await screen.open(page);
             },
           } : screen;
-          await visit(session, chosen);
           try {
+            if (pass.choose) await forget(session);
+            // inside the try, so a screen whose open() throws still has its
+            // close() run: a second tab left holding the project would make
+            // every later screen read-only (no-offsite.mjs does the same)
+            await visit(session, chosen);
             await atRest(session.page);
             const scheme = await session.page.evaluate(() => ({ scheme: getComputedStyle(document.documentElement).colorScheme, theme: document.documentElement.dataset.theme }));
             assert.equal(scheme.scheme, pass.expect, 'the page should be in the ' + pass.expect + ' theme, ' + (pass.choose ? 'chosen by the person' : 'following the device'));
@@ -163,10 +205,12 @@ for (const pass of PASSES) {
             assert.ok(result.passes.length > 10, 'axe ran very few rules (' + result.passes.length + '), so it did not check the page');
             const violations = unallowed(result.violations, screen, 'page');
             if (result.incomplete.length > 0) t.diagnostic(screen.id + ' (' + pass.name + '): axe could not decide ' + result.incomplete.map((item) => item.id + ' ×' + item.nodes.length).join(', '));
-            const paper = await inFrame(session.page);
+            const paper = await inFrame(session.page, screen);
             let printed = [];
             if (paper) {
-              assert.equal(paper.theme, 'light', 'the print preview\'s document is printed light, whatever the screen');
+              // what the frame draws, not what the markup says (data-theme is written there and could not fail)
+              assert.equal(paper.scheme, 'light', 'the print preview\'s document should be in the light colour scheme, whatever the screen');
+              assert.equal(paper.ground, LIGHT_PAPER, 'the print preview\'s sheets should lie on the light paper (' + LIGHT_PAPER + '), whatever the screen');
               assert.ok(paper.passes > 5, 'axe ran very few rules inside the print preview (' + paper.passes + '), so it did not check the document');
               printed = unallowed(paper.violations, screen, 'print');
               if (paper.incomplete.length > 0) t.diagnostic(screen.id + ' (' + pass.name + ', print preview): axe could not decide ' + paper.incomplete.map((item) => item.id + ' ×' + item.nodes).join(', '));
