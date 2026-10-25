@@ -406,6 +406,7 @@ test('by touch at 390 by 844: the sheet steps aside, each point goes in where th
     await p.tap('#trace-scale');
     await p.waitForFunction(() => document.querySelector('.bld').editor.trace.scaling.active);
     await p.waitForFunction(() => document.querySelector('#inspector').dataset.open === 'false');
+    await still(p);
     assert.equal(await p.$eval('#scale-cancel', (el) => el.getBoundingClientRect().height >= 44), true, 'Cancel is a finger\'s height');
     const banner = await p.$eval('#scale-mode', (el) => el.getBoundingClientRect().bottom);
     await loadModule(p, 'scale', 'ui/building/scale-tool.js');
@@ -456,6 +457,8 @@ test('by touch at 390 by 844: the sheet steps aside, each point goes in where th
     await p.evaluate(() => globalThis.sv2.ctx.openInspector());
     await p.tap('#trace-scale');
     await p.waitForFunction(() => document.querySelector('.bld').editor.trace.scaling.active);
+    await p.waitForFunction(() => document.querySelector('#inspector').dataset.open === 'false');
+    await still(p);
     const at = await point(p, 10, 20);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: Math.round(at.x), y: Math.round(at.y + offset), id: 1 }] });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: Math.round(at.x), y: Math.round(at.y + offset), id: 1 }, { x: Math.round(at.x + 60), y: Math.round(at.y + offset), id: 2 }] });
@@ -486,6 +489,52 @@ const image0 = async (p = page) => (await project(p)).building.floors[0].image;
 // Where an image place (its pixels) lies on the floor for this image, turned or not.
 function landed(image, u, v) {
   return floorPoint(image, { u, v });
+}
+
+// The plan at rest, before a place on it is read to press at. Folding the
+// sheet away (or a hint that wraps) gives the plan another size at once, but
+// the view learns it from a ResizeObserver a frame later and refits then, so
+// a point() read in between is where the floor was, not where it is: the CI
+// runner pressed the image's top right corner for its bottom right that way
+// (SV2-73d). At rest is the view measured to the canvas's own box, and that
+// box and the view the same two frames running.
+async function still(p = page) {
+  const rest = await p.evaluate(() => new Promise((resolve) => {
+    const read = () => {
+      const editor = document.querySelector('.bld').editor;
+      const box = editor.canvas.getBoundingClientRect();
+      const { view } = editor;
+      return { measured: view.width === box.width && view.height === box.height, at: [box.left, box.top, box.width, box.height, view.width, view.height, view.zoom, view.x, view.y].join(' ') };
+    };
+    let last = read();
+    let frames = 0;
+    const next = () => requestAnimationFrame(() => {
+      const now = read();
+      frames += 1;
+      if (now.measured && now.at === last.at) resolve({ ok: true, at: now.at });
+      else if (frames >= 120) resolve({ ok: false, at: now.at, measured: now.measured });
+      else {
+        last = now;
+        next();
+      }
+    });
+    next();
+  }));
+  assert.ok(rest.ok, 'the plan came to rest within 120 frames: box and view ' + rest.at + (rest.measured ? '' : ', the view not measured to the box'));
+}
+
+// Which corner handle a corner drag (no Shift) had caught, from what it did:
+// the image resized about the opposite corner, so the corner that stayed put
+// is two from the one caught. The drag under way is the editor's own and not
+// readable, so this is read from the result. Corners in cornerPixels' order.
+const CORNER_NAMES = ['top left', 'top right', 'bottom right', 'bottom left'];
+function caughtCorner(before, after) {
+  const corners = (image) => [[0, 0], [image.width, 0], [image.width, image.height], [0, image.height]].map(([u, v]) => floorPoint(image, { u, v }));
+  const was = corners(before);
+  const now = corners(after);
+  const moved = was.map((corner, i) => Math.hypot(corner.x - now[i].x, corner.y - now[i].y));
+  const stayed = moved.indexOf(Math.min(...moved));
+  return (stayed + 2) % 4;
 }
 
 // A smaller image inside the floor: 1600 by 1200 pixels drawn 20 by 15 cells,
@@ -669,6 +718,7 @@ test('corner handles while moving: a corner dragged resizes about the opposite c
   const zoom = (await state(page)).zoom;
   await page.click('#trace-move');
   assert.match((await state(page)).hint, /^Drag the image to where it belongs, or a corner to resize it/);
+  await still();
   // the bottom right corner (25, 20) out along the diagonal to (35, 27.5): half as large again
   const from = await point(page, 25, 20, 0, 0);
   const to = await point(page, 35, 27.5, 0, 0);
@@ -928,6 +978,7 @@ test('by touch at 390 by 844: placing by two points with the marker above the fi
     await p.tap('#trace-place');
     await p.waitForFunction(() => document.querySelector('.bld').editor.trace.scaling.active);
     await p.waitForFunction(() => document.querySelector('#inspector').dataset.open === 'false');
+    await still(p);
     assert.ok(await p.$eval('#place-again', (el) => el.hidden || el.getBoundingClientRect().height >= 44), 'Start again is a finger\'s height');
     const banner = await p.$eval('#scale-mode', (el) => el.getBoundingClientRect().bottom);
     const offset = 56;
@@ -966,7 +1017,9 @@ test('by touch at 390 by 844: placing by two points with the marker above the fi
     await p.evaluate(() => globalThis.sv2.ctx.closeInspector());
     await p.waitForFunction(() => document.querySelector('#inspector').dataset.open === 'false');
     await wholeFloor(p);
+    await still(p);
     const steps = (await state(p)).entries;
+    const small = await image0(p);
     // the finger lands a little off the corner, inside a finger's reach
     const from = await point(p, 25, 20, 0, 0);
     const to = await point(p, 35, 27.5, 0, 0);
@@ -976,6 +1029,8 @@ test('by touch at 390 by 844: placing by two points with the marker above the fi
     await finger('touchEnd', null);
     await p.waitForFunction((n) => globalThis.sv2.store.history.past.length === n, {}, steps + 1);
     const resized = await image0(p);
+    const caught = caughtCorner(small, resized);
+    assert.equal(caught, 2, 'the finger caught corner ' + caught + ' (' + CORNER_NAMES[caught] + '), not 2 (bottom right)');
     near(resized.x, 5, 'the opposite corner stays, x', 1e-9);
     near(resized.y, 5, 'the opposite corner stays, y', 1e-9);
     near(resized.scale * 1600, 30, 'the corner followed the finger', 3 / size);
@@ -1013,6 +1068,7 @@ async function settle(p = page) {
   await freshImage(p);
   await wholeFloor(p);
   await clearToast(p);
+  await still(p);
 }
 
 // An image larger than the floor: 1600 by 1200 pixels drawn 48 by 36 cells
@@ -1241,6 +1297,7 @@ test('a small image while moving: a press inside it moves it, though it is withi
   const size = await page.evaluate(() => document.querySelector('.bld').editor.view.size);
   assert.ok(0.6 * size < 3 * 10 && 0.6 * size > 8, 'the image is small on screen, and has an inside to press: ' + 0.6 * size + ' pixels high');
   await page.click('#trace-move');
+  await still();
   // 6 and 4 pixels in from the top left corner: 7.2 pixels from it, inside a mouse's 10
   const corner = await point(page, 10, 10, 0, 0);
   await page.mouse.move(corner.x + 6, corner.y + 4);
