@@ -163,7 +163,11 @@ export function frame(project, parts) {
     '<style id="page-size">' + pageRule(paper) + '</style>',
     '</head>',
     '<body>',
+    // the sheets are the document's main part, and the closing line its foot,
+    // so a screen reader can go to either (axe's landmark rules, SV2-32g1)
+    '<main class="doc-main">',
     pages.join('\n'),
+    '</main>',
   ].concat(parts.foot === false ? [] : ['<footer class="doc-foot">' + esc(TOOL_NAME) + '</footer>'], [
     '</body>',
     '</html>',

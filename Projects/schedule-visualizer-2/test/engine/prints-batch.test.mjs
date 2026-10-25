@@ -39,13 +39,14 @@ function countOf(html, piece) {
   return html.split(piece).length - 1;
 }
 
-// The sheets of a document, in order: [{ kind, id, html }].
+// The sheets of a document, in order: [{ kind, id, html }]. The last ends
+// where the document's main part does (SV2-32g1: the sheets are in a main).
 function sheetsOf(html) {
   const starts = Array.from(html.matchAll(/<section class="[^"]*\bnew-sheet\b[^"]*" data-sheet="([a-z]+)" data-id="([^"]*)">/g));
   return starts.map((match, at) => ({
     kind: match[1],
     id: match[2],
-    html: html.slice(match.index, at + 1 < starts.length ? starts[at + 1].index : html.indexOf('</div>\n</section>\n<footer')),
+    html: html.slice(match.index, at + 1 < starts.length ? starts[at + 1].index : html.indexOf('</div>\n</section>\n</main>')),
   }));
 }
 
@@ -412,7 +413,7 @@ test('a school with no name prints under the tool\'s name on every sheet', () =>
 
 // ---------------------------------------------------------------- hostile names
 
-const TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'style', 'body', 'section', 'header', 'footer', 'div', 'p', 'h1', 'h2', 'ul', 'li', 'span', 'table', 'thead', 'tbody', 'tr', 'th', 'td']);
+const TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'style', 'body', 'main', 'section', 'header', 'footer', 'div', 'p', 'h1', 'h2', 'ul', 'li', 'span', 'table', 'thead', 'tbody', 'tr', 'th', 'td']);
 
 test('hostile names come through every batch as text, never as markup', () => {
   const { project, made } = hostileSchool();
