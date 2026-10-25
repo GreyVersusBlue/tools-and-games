@@ -16,7 +16,10 @@
 //   - when a pointer, mouse, touch or wheel event reached the page at all;
 //   - when a key put the focus on the page's body (a focus that was on
 //     something goes nowhere): the case names the key and where the focus
-//     was;
+//     was. Two ways: a focusout with nowhere to go, and the focus on the body
+//     after a key that found it elsewhere, which is the only trace a focused
+//     node removed from the page leaves (it fires no event; SV2-32r). Tab is
+//     tabTo's to judge: off the page's end is its barrier;
 //   - when a dialog opens with no accessible name, or a name other than its
 //     title (DESIGN 4: a native <dialog> with no name passes axe);
 //   - when what it was Tabbing to is not reached before the page's end.
@@ -133,11 +136,21 @@ async function dialogsNamed(page) {
   }
 }
 
+const onBody = (page) => page.evaluate(() => document.activeElement === null || document.activeElement === document.body);
+
 // What a key did to the focus and the dialogs, checked the moment it is done.
-async function afterKey(page, what) {
+// `was` is where the focus was before the key, in words, or null when it was
+// on the body: a focus that was somewhere has to be somewhere once the key's
+// work has settled (a section's map takes it once its sheet is in, so it is
+// waited for, two seconds at most).
+async function afterKey(page, what, was) {
   await frames(page);
   const lost = await page.evaluate(() => globalThis.__keysLog.lost.splice(0));
   assert.deepEqual(lost, [], what + ' put the focus on the page\'s body');
+  if (typeof was === 'string' && (await onBody(page))) {
+    const back = await page.waitForFunction(() => document.activeElement !== null && document.activeElement !== document.body, { timeout: 2000 }).then(() => true, () => false);
+    assert.ok(back, what + ' left the focus on the page\'s body; it was on ' + was);
+  }
   await dialogsNamed(page);
 }
 
@@ -146,10 +159,11 @@ async function key(page, combo, times = 1) {
   const parts = combo.split('+');
   const last = parts.pop();
   for (let i = 0; i < times; i += 1) {
+    const was = last === 'Tab' || (await onBody(page)) ? null : await focused(page);
     for (const held of parts) await page.keyboard.down(held);
     await page.keyboard.press(last);
     for (const held of parts.slice().reverse()) await page.keyboard.up(held);
-    await afterKey(page, combo);
+    await afterKey(page, combo, was);
   }
 }
 
@@ -481,6 +495,8 @@ async function publishFile(page, folder) {
     names = readdirSync(folder);
   }
   assert.equal(names.length, 1, 'one file was downloaded: ' + names.join(', '));
+  // a download still under way is one file too, named .crdownload
+  assert.ok(names[0].endsWith('.html'), 'the download finished as an .html file: ' + names[0]);
   return path.join(folder, names[0]);
 }
 
@@ -644,3 +660,100 @@ for (let run = 1; run <= REPEAT; run += 1) {
     }
   });
 }
+
+// ---------------------------------------------------------------- 6. the maps of Scenarios and Safety, and the inspector
+
+for (let run = 1; run <= REPEAT; run += 1) {
+  test('Scenarios and Safety opened by their keys take the keyboard on their map, and a section key pressed in the inspector gives it to the next section\'s map (run ' + run + ' of ' + REPEAT + ')', async () => {
+    await finish(await keysPlanner('#building'), async (page) => {
+      await key(page, 'Tab');
+      await key(page, 'Enter');
+      await focusOn(page, '#plan', 'the skip link');
+      await section(page, '4', 'scenarios');
+      await focusOn(page, '#scenarios-plan', 'Scenarios opened by its key');
+      await section(page, '5', 'safety');
+      await focusOn(page, '#safety-plan', 'Safety opened by its key');
+      // F6 from the map is the inspector; Tab goes on into the section's panel
+      await key(page, 'F6');
+      await focusOn(page, '#inspector', 'F6 from the map');
+      await tabTo(page, { selector: '#inspector-body :is(button, a[href])' }, { most: 20 });
+      // the panel is taken down with the section it served, and the focus in it
+      await section(page, '3', 'movement');
+      await focusOn(page, '#movement-plan', 'Movement opened by its key from the inspector');
+      await onlyKeys(page, 'the maps by keys');
+    });
+  });
+}
+
+// ---------------------------------------------------------------- 7. the shell's focus, set up by the harness
+
+// The map asked for the focus before its sheet was in, and the project
+// emptied under it before the sheet came: the map is hidden, and the focus
+// goes to the region, not to the page's body. The harness stands in for the
+// timing: it marks the mounted map as not yet styled, takes the focus off the
+// page, asks the shell for the surface (as a route, a dialog's close and the
+// start do), and removes the sample school in the same task.
+test('a map hidden before its deferred focus lands gives the focus to the region, not the page\'s body', async () => {
+  const session = await openPlanner({ server, browser, hash: '#movement', theme: 'light', width: 1280, height: 900 });
+  try {
+    const { page } = session;
+    await page.waitForFunction(() => document.querySelector('.mov') && document.querySelector('.mov').dataset.styled === 'true', { timeout: 15000 });
+    const asked = await page.evaluate(() => {
+      document.querySelector('.mov').dataset.styled = 'false';
+      if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+      const before = document.activeElement === document.body;
+      globalThis.sv2.ctx.focusSurface();
+      globalThis.sv2.ctx.removeSample();
+      return { before, hidden: document.querySelector('.mov-map').hidden };
+    });
+    assert.deepEqual(asked, { before: true, hidden: true }, 'the set-up: the focus on the body, the map hidden in the same task');
+    await frames(page);
+    assert.equal(await page.evaluate(() => document.activeElement === document.getElementById('surface')), true, 'the deferred focus with no map to take it is on the region, not on ' + (await focused(page)));
+    assert.deepEqual(session.problems(), CLEAN);
+  } finally {
+    await session.close();
+  }
+});
+
+// A tapped button that takes the page to another section is focused, then
+// removed with the section; the shell does not hand the plan the keyboard
+// for it (DESIGN 4: no auto-focus on touch). Safety's "Go to the building",
+// on a project with no rooms.
+test('a tapped button that changes the section leaves the plan unfocused and no keyboard cursor on a touch page', async () => {
+  const session = await openPlanner({ server, browser, hash: '#project', theme: 'light', width: 390, height: 844, mobile: true });
+  try {
+    const { page } = session;
+    await page.evaluate(() => globalThis.sv2.ctx.removeSample());
+    await page.waitForFunction(() => globalThis.sv2.store.project.building.floors.every((floor) => floor.spaces.length === 0), { timeout: 5000 });
+    await page.evaluate(() => {
+      location.hash = '#safety';
+    });
+    await waitForSection(page, 'safety');
+    await page.waitForSelector('[data-action="to-building"]', { visible: true, timeout: 10000 });
+    await page.evaluate(() => {
+      globalThis.__tapped = false;
+      addEventListener('focusin', (event) => {
+        if (event.target.matches && event.target.matches('[data-action="to-building"]')) globalThis.__tapped = true;
+      }, true);
+    });
+    await page.tap('[data-action="to-building"]');
+    await waitForSection(page, 'building');
+    await page.waitForFunction(() => document.querySelector('.bld') && document.querySelector('.bld').editor, { timeout: 10000 });
+    await frames(page);
+    await pause(300);
+    await frames(page);
+    const seen = await page.evaluate(() => ({
+      tapped: globalThis.__tapped,
+      plan: document.activeElement === document.getElementById('plan'),
+      cursor: document.querySelector('.bld').editor.cursor.showing,
+      at: document.activeElement ? document.activeElement.tagName.toLowerCase() + (document.activeElement.id ? '#' + document.activeElement.id : '') : 'null',
+    }));
+    // the case is only a case when the tap focused the button it removed
+    assert.equal(seen.tapped, true, 'the tap focused the button');
+    assert.deepEqual({ plan: seen.plan, cursor: seen.cursor }, { plan: false, cursor: false }, 'after a tapped section change the plan has the focus (' + seen.at + ') or the keyboard cursor shows');
+    assert.equal(seen.at, 'main#surface', 'the region keeps the focus after the tap');
+    assert.deepEqual(session.problems(), CLEAN);
+  } finally {
+    await session.close();
+  }
+});
