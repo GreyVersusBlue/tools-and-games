@@ -76,7 +76,21 @@ function listen() {
   globalThis.__touchLog = log;
   let lifted = -1e9;
   const editable = (el) => Boolean(el) && (el.isContentEditable || el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !['button', 'submit', 'checkbox', 'radio', 'range', 'reset', 'file', 'color'].includes(el.type)));
-  addEventListener('pointerdown', (event) => log.pointers.push(event.pointerType), true);
+  const named = (el) => (el && el.tagName ? el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.isConnected ? '' : ' (gone)') : String(el));
+  // what each finger met, for a failure to say
+  log.trail = [];
+  const note = (what) => {
+    log.trail.push(what);
+    if (log.trail.length > 40) log.trail.shift();
+  };
+  addEventListener('pointerdown', (event) => {
+    log.pointers.push(event.pointerType);
+    note('down ' + named(event.target));
+  }, true);
+  addEventListener('click', (event) => note('click ' + named(event.target) + (event.target.isConnected ? '' : ' (gone)')), true);
+  addEventListener('focusout', (event) => note('blur ' + named(event.target)), true);
+  addEventListener('focusin', (event) => note('focus ' + named(event.target)), true);
+  addEventListener('pointercancel', (event) => note('cancel ' + named(event.target)), true);
   addEventListener('pointerup', (event) => {
     if (event.pointerType !== 'touch') return;
     lifted = performance.now();
@@ -114,8 +128,12 @@ export async function onlyTouch(page, what) {
 
 // One protocol session per page, kept for the page's life: detaching one
 // takes the page's touch emulation with it (harness.mjs, clearSaved).
+// SV2_TOUCH_CPU=4 slows each page's CPU four times, to look for races.
 async function cdpOf(page) {
-  if (!page.__touchSession) page.__touchSession = await page.createCDPSession();
+  if (!page.__touchSession) {
+    page.__touchSession = await page.createCDPSession();
+    if (Number(process.env.SV2_TOUCH_CPU) > 1) await page.__touchSession.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.SV2_TOUCH_CPU) });
+  }
   return page.__touchSession;
 }
 
@@ -292,12 +310,22 @@ async function reveal(page, selector, index, clear) {
       dx = at.x - (across.left + across.right) / 2;
       area = across;
     } else {
+      // The innermost scrolling box the target lies outside of (above or
+      // below what it shows), moved so the target comes to its middle: a
+      // field in the sheet is brought into the sheet, not the page under it.
+      // With the target inside every box but covered or out of the band,
+      // the outermost box moves it into the band.
       const inside = (box) => at.y >= box.top + 10 && at.y <= box.bottom - 10;
-      // the innermost box the target is outside of, that can move it; or, the
-      // target inside every box but covered or out of the band, the page's
-      dy = at.y < band.top || at.y > band.bottom || !at.ok ? at.y - (band.top + band.bottom) / 2 : at.y - band.top;
-      area = at.sy.find((box) => box.bottom - box.top >= 60 && !inside(box) && (dy > 0 ? box.on : box.back))
-        || at.sy.find((box) => box.bottom - box.top >= 60 && (dy > 0 ? box.on : box.back));
+      const tall = (box) => box.bottom - box.top >= 60;
+      const out = at.sy.find((box) => tall(box) && !inside(box));
+      if (out) {
+        dy = at.y - (out.top + out.bottom) / 2;
+        if (dy > 0 ? out.on : out.back) area = out;
+      }
+      if (!area) {
+        dy = at.y - (band.top + band.bottom) / 2;
+        area = at.sy.slice().reverse().find((box) => tall(box) && (dy > 0 ? box.on : box.back)) || null;
+      }
     }
     assert.ok(area, selector + ' (' + at.name + ') is covered by ' + at.on + ' at ' + Math.round(at.x) + ', ' + Math.round(at.y) + ' and nothing a finger can swipe would move it');
     // a finger swipes at most half the area at once
@@ -315,6 +343,8 @@ async function reveal(page, selector, index, clear) {
 // Tap a target the way a finger does, after holding it to what a finger needs.
 export async function tap(page, selector, options) {
   const opts = options || {};
+  // a target still moving (a sheet sliding up, a list opening) is read once it has stopped
+  await settle(page, selector);
   const at = await reveal(page, selector, opts.index, opts.clear);
   const small = Math.min(at.width, at.height);
   if (opts.size !== false) assert.ok(small >= FINGER, 'a target under ' + FINGER + ' px: ' + at.name + ' is ' + Math.round(at.width) + ' by ' + Math.round(at.height));
@@ -373,6 +403,7 @@ export async function tapList(page, selector, options) {
 // A fresh planner on the phone, listening.
 async function phonePlanner(hash) {
   const session = await openPlanner({ server, browser, hash: hash || '#building', theme: 'light', ...PHONE });
+  await cdpOf(session.page);
   await hear(session.page);
   return session;
 }
@@ -466,7 +497,10 @@ export async function enterSchedule(page) {
       const group = project.groups.find((each) => each.id === id);
       const room = project.building.floors.flatMap((floor) => floor.spaces).find((space) => space.id === group.days[day][at].room);
       return Boolean(room) && room.number === number;
-    }, { timeout: 5000 }, groupId, DAY_A, period, rooms[period]);
+    }, { timeout: 5000 }, groupId, DAY_A, period, rooms[period]).catch(async (error) => {
+      const seen = await page.evaluate((wanted) => ({ value: document.querySelector(wanted).value, expanded: document.querySelector(wanted).getAttribute('aria-expanded'), trail: globalThis.__touchLog.trail.slice(-12) }), field);
+      throw new Error('room ' + rooms[period] + ' was not picked for period ' + (period + 1) + ': ' + JSON.stringify(seen) + ' (' + error.message + ')');
+    });
     await scheduleSettled(page);
   }
   // the teacher of the first period, from the list of teachers
@@ -605,6 +639,7 @@ async function openFileOnPhone(file) {
   const page = await context.newPage();
   await page.setViewport({ width: PHONE.width, height: PHONE.height, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
   await page.evaluateOnNewDocument(listen);
+  await cdpOf(page);
   const url = pathToFileURL(file).href;
   const requests = [];
   const errors = [];
@@ -731,6 +766,7 @@ for (let run = 1; run <= REPEAT; run += 1) {
     try {
       await next.setViewport({ width: PHONE.width, height: PHONE.height, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
       await next.evaluateOnNewDocument(listen);
+      await cdpOf(next);
       const errors = [];
       next.on('pageerror', (error) => errors.push('page error: ' + error.message));
       const offsite = [];
