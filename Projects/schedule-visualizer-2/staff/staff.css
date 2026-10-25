@@ -2161,10 +2161,13 @@ select.field__input {
    lines together inside one target, and two names one above the other in a
    cell are a whole target apart: neither covers the other. The box is never
    wider than the cell it is in, so a long name still breaks inside it. On
-   paper a link is as tall as its words. */
+   paper a link is as tall as its words. The same holds for a link in a
+   header card's lines, a teacher's room (SV2-32h2: a finger met "Room 302" on
+   a teacher's page at 80 by 20). */
 @media screen and (pointer: coarse), screen and (max-width: 639.98px) {
   .row a,
-  .table a {
+  .table a,
+  .facts a {
     display: inline-block;
     max-width: 100%;
     padding-block: calc((var(--tap) - 1.5em) / 2);   /* where the browser has no lh unit */
