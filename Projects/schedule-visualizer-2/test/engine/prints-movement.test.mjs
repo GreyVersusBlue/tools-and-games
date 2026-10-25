@@ -537,7 +537,7 @@ function hostileSchool() {
 }
 
 // Every tag either document is made of.
-const TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'style', 'body', 'section', 'header', 'footer', 'div', 'p', 'h1', 'h2', 'span',
+const TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'style', 'body', 'main', 'section', 'header', 'footer', 'div', 'p', 'h1', 'h2', 'span',
   'table', 'thead', 'tbody', 'tr', 'th', 'td', 'figure', 'figcaption', 'svg', 'image']);
 
 test('hostile names come through both documents as text: no "<" a name brought reaches the markup', () => {

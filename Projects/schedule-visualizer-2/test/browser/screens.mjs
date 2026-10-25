@@ -10,6 +10,17 @@
 //   viewport  optional: { width, height, mobile } the page is loaded at, with
 //          touch when `mobile` (SV2-57); the next screen without one is at
 //          the sweep's own size again (harness.mjs's visit)
+//   close  optional: async (page) => {} that a sweep runs once it has checked
+//          the screen, to put away what `open` started outside the page (the
+//          second tab of the read-only screen, SV2-32g1)
+//
+// A screen with the print preview open is checked twice by axe.mjs: the
+// planner's page, and the document inside the preview's frame (SV2-32g1).
+
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const TRACE_FIXTURE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'images', 'floor-plan.png');
 
 const press = (key) => async (page) => {
   await page.keyboard.press(key);
@@ -369,11 +380,324 @@ async function safetyCutOff(page) {
     }
     const [x, y] = at;
     floor.spaces.push({ id: 'rsafetycut', kind: 'room', cells: [y * floor.width + x, y * floor.width + x + 1, (y + 1) * floor.width + x, (y + 1) * floor.width + x + 1], number: 'Annex 9', teacherIds: [], subjectId: null, wing: '', capacity: 12, shared: false, doors: [] });
+    // the theme stays the one the project has (a sweep may have chosen it)
+    project.settings.theme = globalThis.sv2.store.project.settings.theme;
     globalThis.sv2.store.replace(project);
   });
   await page.waitForFunction(() => document.querySelector('.sfy').dataset.missing === '1');
   await safetyDrawn(page);
 }
+
+// SV2-32g1: the preview sheet opened by a screen's own button, its document
+// laid out in the frame.
+async function previewReady(page) {
+  await page.waitForSelector('#print-preview[open][data-ready="true"]', { timeout: 30000 });
+}
+const printFrom = (button) => async (page) => {
+  await page.waitForSelector(button);
+  await page.click(button);
+  await previewReady(page);
+};
+
+// SV2-32g1: the shell's question dialog, open, whatever its id.
+async function asked(page) {
+  await page.waitForSelector('dialog.dialog[open]');
+}
+
+// SV2-32g1: a store action, applied as the page would (imported in one turn
+// and applied in the next; see movement-route-failed).
+async function act(page, name, payload) {
+  await page.evaluate(async () => {
+    globalThis.sv2actions = await import(new URL('engine/actions.js', location.href).href);
+  });
+  await page.evaluate((action, given) => globalThis.sv2.store.apply(globalThis.sv2actions[action], given), name, payload);
+}
+
+// SV2-32g1: a field typed over and left, as a person commits it.
+async function retype(page, selector, typed) {
+  await page.click(selector, { clickCount: 3 });
+  await page.keyboard.type(typed);
+  await page.keyboard.press('Enter');
+}
+
+// SV2-32g1: the Floor tab of the Building inspector with the sample school's
+// first floor traced over the fixture image, its controls drawn.
+async function traced(page) {
+  await inspectorTab('floor')(page);
+  const input = await page.$('#trace-file');
+  await input.uploadFile(TRACE_FIXTURE);
+  await page.waitForFunction(() => globalThis.sv2.store.project.building.floors[0].image !== null);
+  await page.waitForSelector('#trace-move');
+}
+
+// SV2-32g1: one of the trace modes started from its button on the Floor tab.
+const traceMode = (button, shown) => async (page) => {
+  await traced(page);
+  await page.click(button);
+  await page.waitForSelector(shown);
+};
+
+// SV2-32g1: a project file of the page's own, handed to a file input.
+const fileOf = (selector, name, kind) => async (page) => {
+  await chooseFile(page, selector, name, await fileText(page, kind));
+  await asked(page);
+};
+
+// SV2-32g1: one of the three Clear buttons on Project with the device keeping
+// as many snapshots as it keeps (30, storage/snapshots.js), which is when
+// Clear asks before going on: there is no snapshot to take first.
+const clearAsks = (which) => async (page) => {
+  await page.waitForSelector('#clear [data-action="clear-' + which + '"]');
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    const opened = indexedDB.open('sv2');
+    opened.onerror = () => reject(opened.error);
+    opened.onsuccess = () => {
+      const db = opened.result;
+      const tx = db.transaction('snapshots', 'readwrite');
+      for (let i = 0; i < 30; i += 1) tx.objectStore('snapshots').put({ id: 'nfill' + String(i).padStart(5, '0'), name: 'Kept ' + i, takenAt: '2026-01-01T00:00:00.000Z', bytes: 2, project: {} });
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onabort = () => reject(tx.error);
+    };
+  }));
+  await page.click('#clear [data-action="clear-' + which + '"]');
+  await asked(page);
+};
+
+// SV2-32g1: the sample school changed, so it is someone's work, and a
+// recovery point taken of it, listed on the card.
+async function withRecoveryPoint(page) {
+  await act(page, 'setSetting', { key: 'schoolName', value: 'Larkspur Middle School' });
+  await page.evaluate(() => globalThis.sv2.storage.takeRecoveryPoint('timer'));
+  await page.waitForFunction(() => Number(document.getElementById('recovery').dataset.points || 0) > 0);
+}
+
+// SV2-32g1: the saved project unreadable, and the page loaded again over it,
+// with a recovery point to offer.
+async function startUpRecovery(page) {
+  await withRecoveryPoint(page);
+  await page.waitForFunction(async () => {
+    await globalThis.sv2.storage.flush();
+    return globalThis.sv2.storage.pending === false;
+  }, { polling: 50 });
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    const opened = indexedDB.open('sv2');
+    opened.onerror = () => reject(opened.error);
+    opened.onsuccess = () => {
+      const db = opened.result;
+      const tx = db.transaction('project', 'readwrite');
+      tx.objectStore('project').put({ savedAt: '2026-09-01T12:00:00.000Z', project: { format: 'sv2-project', version: 1, building: 'not a building' }, exportedAt: null }, 'current');
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+    };
+  }));
+  const url = page.url();
+  await page.goto('about:blank');
+  await page.goto(url, { waitUntil: 'load' });
+  await page.waitForSelector('#recovery-dialog[open]');
+}
+
+// SV2-32g1: this page the second tab on the project, read-only: the page
+// leaves, a tab of its own opens the project and holds it, and this one comes
+// back to find it held. `close` shuts that other tab.
+async function secondTab(page) {
+  const url = page.url();
+  await page.goto('about:blank');
+  const first = await page.browser().newPage();
+  page.sv2FirstTab = first;
+  await first.goto(url, { waitUntil: 'load' });
+  await first.waitForFunction(() => globalThis.sv2 && globalThis.sv2.storage && globalThis.sv2.storage.state.readOnly === false && document.getElementById('banner-read-only') === null);
+  await page.goto(url, { waitUntil: 'load' });
+  await page.waitForSelector('#banner-read-only');
+  await page.waitForFunction(() => globalThis.sv2.storage.state.readOnly === true);
+}
+async function closeSecondTab(page) {
+  if (page.sv2FirstTab) await page.sv2FirstTab.close();
+  page.sv2FirstTab = null;
+}
+
+// SV2-32g1: the Getting started card at a width that folds it, unfolded or not.
+const gettingStarted = (unfold) => async (page) => {
+  await page.waitForSelector('#getting-started:not([hidden])');
+  if (unfold) {
+    await page.click('#getting-started [data-action="steps"]');
+    await page.waitForSelector('#getting-started.getting-started--open');
+  }
+};
+
+// SV2-32g1: the planner's dialogs, previews and states the audit of
+// 2026-10-22 found no sweep visiting.
+const SV2_32G1 = [
+  { // the size made smaller than what is drawn: the question before anything is cut off
+    id: 'building-resize-dialog',
+    hash: '#building',
+    open: async (page) => {
+      await inspectorTab('floor')(page);
+      await retype(page, '#floor-width', '20');
+      await page.click('#floor-resize');
+      await page.waitForSelector('#resize-dialog[open]');
+    },
+  },
+  {
+    id: 'building-delete-floor',
+    hash: '#building/fsample002',
+    open: async (page) => {
+      await inspectorTab('floor')(page);
+      await page.click('#floor-delete');
+      await asked(page);
+    },
+  },
+  { // connect mode's banner, and the question it asks of two stairs on one floor
+    id: 'building-connect-same-floor',
+    hash: '#building/fsample002',
+    open: async (page) => {
+      await planReady(page);
+      await page.evaluate(() => document.querySelector('.bld').editor.connect.start({ floorId: 'fsample002', cell: 332 }));
+      await page.waitForSelector('#connect-banner:not([hidden])');
+      const at = await page.evaluate(() => {
+        const editor = document.querySelector('.bld').editor;
+        const box = editor.canvas.getBoundingClientRect();
+        const place = editor.view.toScreen((353 % editor.floor.width) + 0.5, Math.floor(353 / editor.floor.width) + 0.5);
+        return { x: box.left + place.x, y: box.top + place.y };
+      });
+      await page.mouse.click(at.x, at.y);
+      await asked(page);
+    },
+  },
+  { // a project of someone's own, and the sample school asked for over it
+    id: 'project-replace-with-sample',
+    hash: '#project',
+    open: async (page) => {
+      await removeSample(page);
+      const floorId = await page.evaluate(() => globalThis.sv2.store.project.building.floors[0].id);
+      await act(page, 'paintCorridor', { floorId, cells: [0] });
+      await page.click('#sample-school [data-action="sample"]');
+      await asked(page);
+    },
+  },
+  {
+    id: 'scenarios-discard',
+    hash: '#scenarios',
+    open: async (page) => {
+      await scenarioOpen()(page);
+      await page.click('.scn [data-action="discard"]');
+      await asked(page);
+    },
+  },
+  { // a project file to compare with, over the open scenario
+    id: 'scenarios-file-replace',
+    hash: '#scenarios',
+    open: async (page) => {
+      await scenarioOpen()(page);
+      await fileOf('.scn input[data-file="compare"]', 'Larkspur.json', 'project')(page);
+    },
+  },
+  { // the Day tab asked for fewer periods than the schedule uses
+    id: 'schedule-remove-periods',
+    hash: '#schedule/day',
+    open: async (page) => {
+      await scheduleDrawn(page);
+      await retype(page, '[data-key="day-periods"]', '6');
+      await asked(page);
+    },
+  },
+  { id: 'project-building-import', hash: '#project', open: fileOf('#project-file input[data-file="building"]', 'Larkspur building.json', 'building') },
+  {
+    id: 'project-recovery-point-delete',
+    hash: '#project',
+    open: async (page) => {
+      await withRecoveryPoint(page);
+      await page.click('#recovery [data-action="delete"]');
+      await asked(page);
+    },
+  },
+  {
+    id: 'project-snapshot-delete',
+    hash: '#project',
+    open: async (page) => {
+      await page.click('[data-field="snapshot-name"]');
+      await page.keyboard.type('Before moving 7th grade');
+      await page.keyboard.press('Enter');
+      await page.waitForSelector('.snap__item [data-action="delete"]');
+      await page.click('.snap__item [data-action="delete"]');
+      await asked(page);
+    },
+  },
+  { id: 'project-clear-building', hash: '#project', open: clearAsks('building') },
+  { id: 'project-clear-schedule', hash: '#project', open: clearAsks('schedule') },
+  { id: 'project-clear-new', hash: '#project', open: clearAsks('new') },
+  { id: 'start-up-recovery', hash: '#project', open: startUpRecovery },
+  { id: 'read-only-tab', hash: '#project', open: secondTab, close: closeSecondTab },
+  { id: 'read-only-tab-building', hash: '#building', open: secondTab, close: closeSecondTab },
+  { id: 'building-trace-image', hash: '#building', open: traced },
+  { id: 'building-trace-moving', hash: '#building', open: traceMode('#trace-move', '#trace-move[aria-pressed="true"]') },
+  { id: 'building-trace-scaling', hash: '#building', open: traceMode('#trace-scale', '#scale-banner:not([hidden])') },
+  { id: 'building-trace-placing', hash: '#building', open: traceMode('#trace-place', '#scale-banner:not([hidden])') },
+  { id: 'getting-started-folded', hash: '#building', viewport: { width: 820, height: 900 }, open: gettingStarted(false) },
+  { id: 'getting-started-open', hash: '#building', viewport: { width: 820, height: 900 }, open: gettingStarted(true) },
+  { id: 'getting-started-empty', hash: '#project', open: async (page) => {
+    await removeSample(page);
+    await page.evaluate(() => {
+      location.hash = '#building';
+    });
+    await page.waitForSelector('#getting-started:not([hidden]) [data-action="load-sample"]');
+  } },
+  // every output in ui/prints/index.js's OUTPUTS that no screen above opens
+  { id: 'print-floor-plan', hash: '#building', open: async (page) => {
+    await inspectorTab('rooms')(page);
+    await printFrom('#print-floor-plan')(page);
+  } },
+  { id: 'print-room-list', hash: '#building', open: async (page) => {
+    await inspectorTab('rooms')(page);
+    await printFrom('#print-room-list')(page);
+  } },
+  { id: 'print-teacher-schedules', hash: '#staff', open: async (page) => {
+    await staffLive(page);
+    await printFrom('.pub [data-print="teacher-schedules"]')(page);
+  } },
+  { id: 'print-door-signs', hash: '#staff', open: async (page) => {
+    await staffLive(page);
+    await printFrom('.pub [data-print="door-signs"]')(page);
+  } },
+  { id: 'print-room-schedules', hash: '#staff', open: async (page) => {
+    await staffLive(page);
+    await printFrom('.pub [data-print="room-schedules"]')(page);
+  } },
+  { id: 'print-whole-school', hash: '#staff', open: async (page) => {
+    await staffLive(page);
+    await printFrom('.pub [data-print="whole-school"]')(page);
+  } },
+  { id: 'print-groups', hash: '#schedule/grid', open: async (page) => {
+    await gridDrawn(page);
+    await printFrom('#print-grid-groups')(page);
+  } },
+  { id: 'print-teachers', hash: '#schedule/teachers', open: async (page) => {
+    await scheduleDrawn(page);
+    await printFrom('#print-teachers')(page);
+  } },
+  { id: 'print-teacher-grid', hash: '#schedule/grid', open: async (page) => {
+    await gridRows('teachers')(page);
+    await printFrom('#print-grid-teachers')(page);
+  } },
+  { id: 'print-room-grid', hash: '#schedule/grid', open: async (page) => {
+    await gridRows('rooms')(page);
+    await printFrom('#print-grid-rooms')(page);
+  } },
+  { id: 'print-travel-time', hash: '#movement', open: async (page) => {
+    await movementDrawn(page);
+    await page.click('#inspector [role="tab"][data-tab="tables"]');
+    await page.waitForSelector('#inspector [data-travel="day"] tbody');
+    await printFrom('#print-travel-time')(page);
+  } },
+  { id: 'print-congestion-scenario', hash: '#scenarios', open: async (page) => {
+    await scenarioOpen()(page);
+    await printFrom('.scn [data-action="congestion"]')(page);
+  } },
+];
 
 export const SCREENS = [
   { id: 'building', hash: '#building' },
@@ -910,9 +1234,12 @@ export const SCREENS = [
         const { sampleSchool } = await import(new URL('data/sample-school.js', location.href).href);
         const project = sampleSchool();
         for (const floor of project.building.floors) floor.exits = [];
+        // the theme stays the one the project has (a sweep may have chosen it)
+        project.settings.theme = globalThis.sv2.store.project.settings.theme;
         globalThis.sv2.store.replace(project);
       });
       await page.waitForFunction(() => document.querySelector('.sfy').dataset.mode === 'empty');
     },
   },
+  ...SV2_32G1,
 ];

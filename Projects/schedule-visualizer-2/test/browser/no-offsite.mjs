@@ -103,7 +103,12 @@ for (const screen of SCREENS) {
     session.page.__blocked.length = 0;
     session.page.__shimmed.length = 0;
     session.page.__errs.length = 0;
-    await visit(session, screen);
+    try {
+      await visit(session, screen);
+    } finally {
+      // the other tab a screen opened (the read-only one, SV2-32g1) is shut
+      if (screen.close) await screen.close(session.page);
+    }
     const { errors, blocked, shimmed } = session.problems();
     assert.deepEqual(blocked, [], 'offsite requests the harness refused');
     assert.deepEqual(shimmed, [], 'font requests the harness answered itself; a real visit sends these offsite');

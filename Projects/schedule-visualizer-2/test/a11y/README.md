@@ -29,4 +29,14 @@ Put the token in the light block and in both dark blocks of `tokens.css`, then a
 node test/a11y/axe.mjs
 ```
 
-`test/vendor/axe-core/` holds axe-core. `axe.mjs` opens every screen in `test/browser/screens.mjs`, once with the device asking for light and once for dark, and fails on any violation of WCAG 2.0 and 2.1 at A and AA and of axe's best practices. It needs a browser: the site's harness, so `Tools/board-check` has to be installed. `node test/run.mjs --browser` runs it with the journeys.
+`test/vendor/axe-core/` holds axe-core. `axe.mjs` opens every screen in `test/browser/screens.mjs` three times, and fails on any violation of WCAG 2.0 and 2.1 at A and AA and of axe's best practices:
+
+- with the device asking for light;
+- with the device asking for dark;
+- with the device asking for light and Dark chosen from the planner's theme menu (the top bar's theme switch), so a rule written only for the device's colour scheme, and not for the chosen theme, is caught.
+
+Where a screen has the print preview open, axe runs a second time inside the preview's frame, on the document that goes to paper, which is light in every pass. The frame is sandboxed without scripts, so a script tag put in it never runs and its timers never fire: axe's source is evaluated into the frame from outside, its timers are lent as promise callbacks, and its answer is read from the planner's page. An entry in `ALLOW` with `where: 'print'` is for the frame's document.
+
+A screen (`screens.mjs`) is `{ id, hash, open, viewport, close }`; `close` puts away what `open` started outside the page, such as the other tab that makes the read-only screen read-only. Since SV2-32g1 the list holds every dialog of the planner, every print preview, the read-only second tab, a floor with a traced image (and moving it, scaling and placing it), and Getting started folded and unfolded.
+
+It needs a browser: the site's harness, so `Tools/board-check` has to be installed. `node test/run.mjs --browser` runs it with the journeys.
