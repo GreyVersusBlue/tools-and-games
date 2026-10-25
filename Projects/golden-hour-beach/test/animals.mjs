@@ -114,9 +114,18 @@ try {
     // -- the gulls: `fly` in the air, head first on the way in, folded on the sand
     const gulls = seats.gull.map(s => s.parent);
     const g = gulls[0], gd = g.userData;
+    // The widest the wing gets from where it started, read on every frame of
+    // the 0.2 s and not only at its end. `fly` starts at a random point of its
+    // loop and each gull flaps at its own rate, so the window's two ends can
+    // fall either side of a beat's turn with the wing in the same place: the
+    // end alone read 0.01 rad once on GitHub's runner, 2026-10-22 (#1015).
+    // The start is read after one frame, once the clip has posed the wing: off
+    // the model's rest pose a wing held still would count as moved.
+    step(1 / 30);
     const q0 = gd.wingR.quaternion.clone();
-    step(0.2);
-    out.gullFly = { running: gd.fly.isRunning(), moved: gd.wingR.quaternion.angleTo(q0) };
+    let moved = 0;
+    step(0.2, () => { moved = Math.max(moved, gd.wingR.quaternion.angleTo(q0)); });
+    out.gullFly = { running: gd.fly.isRunning(), moved };
     // Crumbs on the dry sand by the camp, and this gull's orbit put over them.
     const cx = F.CAMP.x - 6, cz = F.CAMP.z - 6;
     // 48 to 72 m out, inside the 80 m it notices crumbs from, so the run in
@@ -258,7 +267,7 @@ try {
      r.flock ? `${r.flock.count} birds, ${r.flock.verts} of ${r.flock.srcVerts} vertices` : 'no flock');
 
   group('the gulls (#661)');
-  ok(r.gullFly.running && r.gullFly.moved > 0.02, '`fly` beats the wings in the air', `wingR turned ${f2(r.gullFly.moved)} rad in 0.2 s`);
+  ok(r.gullFly.running && r.gullFly.moved > 0.02, '`fly` beats the wings in the air', `wingR swung up to ${f2(r.gullFly.moved)} rad off its start in 0.2 s`);
   ok(r.gullIn.samples > 10 && r.gullIn.worst > 0.95, 'on the way in to the crumbs it flies head first, not wingtip first',
      `least cos to the spot ${f2(r.gullIn.worst)} over ${r.gullIn.samples} frames`);
   const L = r.gullIn.land;

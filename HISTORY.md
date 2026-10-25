@@ -1896,6 +1896,8 @@ Generator.
 
 **#1014. A bottle notch's pocket is a hole in the skeleton, as a court's eave is; #1000's refusal of two pieces stands only beside a pinch.** The outline's wavefront run out 1.5ft is the eave and the pocket the mouth closed off; the pocket is that wavefront's second loop, which is what #999 roofs round for a court, so `pocketEave` passes it to `skeletonRoof` as a hole and the pocket keeps its sky. `holes` stays the walls' courts (the pocket is outside the walls), so the takeoff's footprint is the outline's. *School Generator, TG-28.*
 
+**#1015. Golden Hour's gull wing check reads the widest swing over every frame of its 0.2 s, from a start the clip has already posed.** The check stepped simulated time (six frames of 1/30 s), so the runner's speed was never in it. It compared the wing's rest pose with its pose at the end: a wing held still passed (the first frame alone moves it 0.13 rad off rest), and a random start phase and flap rate could end the window near rest, which read 0.01 rad on tools-and-games#575. *Golden Hour, TG-29.*
+
 **#1005. Reserved: #976 to #1005 are held for sessions on Huginn (the Selector loop); anyone else numbers from #1006.**
 
 **#1035. Reserved: #1006 to #1035 are held for sessions on Huginn (the Selector loop); anyone else numbers from #1036.**
@@ -3554,4 +3556,14 @@ Worker TG-28-curvecapture of the audit's line TG-28, on huginn in a worktree (`s
 **Checks.** `node --test 'test/*.test.mjs'` 2591 before and after, exit 0 (the bottle test rewritten, none added); `tools/blender/validate.mjs` 630, exit 0; `test/tools/run.mjs` 62 of 62 on Chromium 1194 under the suites lock, exit 0, one run; `test/visual/run.mjs` under the lock: `roof-curve` 0 px moved, the five sheets 0 px, the seven huginn text failures at the same pixel counts before and after `roof.js` changed (CI decides those, and `roof-curve` has not yet been compared on CI: if it goes red there, take its candidate from the `school-generator-failures` artifact, as 6593dd2 did); `npm run check`, `social:check` and `ci-check.mjs` each exit 0 under the lock.
 
 **Left.** `gable` over a curve is closed for now (Devon, SG-Q5); a bottle pocket beside a pinch, a court narrower than two eaves and an arc of two chords whose ends turn unlike keep rectangles. Nobody else's list or file needs updating for this.
+
+## Golden Hour: the gull wing check that failed once on CI, 2026-10-24 (TG-29)
+
+Worker TG-29-goldenflake of the audit's line TG-29, under Opus 5.5 on huginn in a worktree (`sel/TG-29-goldenflake`), no subagents; decision #1015. On 2026-10-22 the landing PR tools-and-games#575, which changed nothing in Golden Hour, failed `test/animals.mjs` once on "`fly` beats the wings in the air" (wingR turned 0.01 rad in 0.2 s); a rerun passed.
+
+**Cause.** Not the runner's speed: the 0.2 s is six `w.update(1/30)` calls. `makeGull` starts `fly` at a random time in its 0.8 s loop and each gull's flap is 1.5 to 2.5, so the window covers 0.19 to 0.32 of a beat from a random point. The old check took its start before the mixer had posed the wing, so it measured rest pose against the end pose. Probed over 1,100 start times and flap rates with the start taken after the clip posed the wing, the end-only reading was 0.02 rad or under in 14 (lowest 0.0003); the widest swing over the six frames was never under 0.068. The old check's own failure rate was not measured.
+
+**Change.** `test/animals.mjs` only: one frame stepped before the start is read, and `moved` is the widest angle off it over the 0.2 s. The threshold stays 0.02. No `js/` file changed; the page had no bug.
+
+**Checks.** `test/animals.mjs` 35 of 35, exit 0, three runs under the suites lock (0.52, 0.23 and 0.85 rad), the third with eight `node` busy loops on huginn's eight cores (load 9.0). Breaks in place, each one run: orbit `timeScale` 0 failed it on `isRunning()` (and "when the crumbs are gone it leaves, flapping" with it); the mixer stepped by 0 in orbit, the wings held still with the clip running, failed it alone at 0.00 rad; that same break with the first frame taken out passed at 0.13 rad, so the old check could not see still wings. `test/smoke.mjs` 158, `test/props.mjs` 29, `test/gltf-loader.mjs` 400, each exit 0. `npm run check`, `social:check` and `ci-check.mjs` each exit 0 under the lock. Nobody else's list or file needs updating for this.
 
