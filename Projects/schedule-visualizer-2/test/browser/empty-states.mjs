@@ -237,9 +237,13 @@ async function openScreen(screen) {
   await useProject(screen.project);
   await go(page, screen.hash);
   if (screen.rows) await gridRows(screen.rows);
+  // A section still waiting on its answer (Movement's data-pending) draws
+  // again when the answer comes, and a button read before that is gone by
+  // the time it is clicked ("Node is detached", CI on #582): the screen is
+  // read once nothing in the section is pending.
   await page.waitForFunction((id) => {
     const el = document.querySelector('#surface [data-empty="' + id + '"]');
-    return el !== null && !el.hidden && el.getClientRects().length > 0;
+    return el !== null && !el.hidden && el.getClientRects().length > 0 && document.querySelector('#surface [data-pending="true"]') === null;
   }, { timeout: 15000 }, screen.id);
 }
 
