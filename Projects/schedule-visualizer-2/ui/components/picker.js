@@ -8,6 +8,9 @@
 //   keepText  true leaves the picked label in the field; otherwise it clears,
 //             ready for the next pick
 // While the field is readOnly the list does not open and nothing is picked.
+// Each option in the list carries its id as `data-id` (as text; an option
+// with no id has ''), which is how a drawing hands the highlight over
+// (`picker:resume` below).
 // returns { element, input, close() }
 
 import { h, uid } from './dom.js';
@@ -16,6 +19,11 @@ export function filterOptions(options, text) {
   const wanted = text.trim().toLowerCase();
   if (wanted === '') return options.slice();
   return options.filter((option) => option.label.toLowerCase().includes(wanted));
+}
+
+// An option's id as the list carries it.
+export function optionKey(option) {
+  return option.id === undefined || option.id === null ? '' : String(option.id);
 }
 
 export function picker(options) {
@@ -70,6 +78,7 @@ export function picker(options) {
         role: 'option',
         id: listId + '-' + index,
         'aria-selected': 'false',
+        data: { id: optionKey(option) },
         on: {
           // The press must not take the focus from the field, or the list
           // would shut before the click came; the pick is on the click, which
@@ -123,9 +132,17 @@ export function picker(options) {
   });
   // A section that draws this field again while its list is open hands the
   // list over (ui/schedule/index.js dispatches `picker:resume` on the field
-  // drawn in its place): the new field opens its list.
-  input.addEventListener('picker:resume', () => {
-    if (document.activeElement === input) show();
+  // drawn in its place, with { id } of the option that was highlighted, or
+  // id null for none): the new field opens its list on that option, or on
+  // none when the new list does not have it, never on the first instead.
+  // An event with no id at all opens the list as a click does.
+  input.addEventListener('picker:resume', (event) => {
+    if (document.activeElement !== input) return;
+    show();
+    if (!open || !event.detail || !('id' in event.detail)) return;
+    const wanted = event.detail.id;
+    active = typeof wanted === 'string' ? shown.findIndex((option) => optionKey(option) === wanted) : -1;
+    mark();
   });
   input.addEventListener('blur', close);
   input.addEventListener('keydown', (event) => {
@@ -137,7 +154,9 @@ export function picker(options) {
       }
       if (shown.length === 0) return;
       const step = event.key === 'ArrowDown' ? 1 : -1;
-      active = (active + step + shown.length) % shown.length;
+      // with nothing highlighted, Down goes to the first and Up to the last
+      if (active === -1) active = step === 1 ? 0 : shown.length - 1;
+      else active = (active + step + shown.length) % shown.length;
       mark();
     } else if (event.key === 'Enter') {
       if (open && active >= 0 && shown[active]) {

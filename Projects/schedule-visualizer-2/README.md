@@ -180,6 +180,7 @@ row names a file it does not run.
 | `test/ui/movement.test.mjs` | The movement view's plain functions: lanes, the choice, the legend |
 | `test/ui/playback.test.mjs` | Playback's plain functions: what the device keeps, where a marker is |
 | `test/ui/room-picker.test.mjs` | The room picker's rules and the Groups tab's addresses, with no browser |
+| `test/ui/picker.test.mjs` | The lists a finger picks from, with no browser: the general picker, the Building search's results and the grid sheet's rooms pick on a click of the main button, never on a press or a swipe; a drawing that hands a picker's list over keeps its highlight or none, never the first; a read-only field picks nothing |
 | `test/ui/schedule-address.test.mjs` | The Groups tab's addresses, its one Tab stop and a phone's history of the list and a group, with no browser |
 | `test/ui/staff-pass.test.mjs` | The Staff browser section's plain functions: failure sentences, the publish time, the sign's fit, this table |
 | `test/ui/engine-client.test.mjs` | What the engine client remembers: an answer, never a run that failed |
