@@ -7,6 +7,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
 import { parseHash, makeHash } from '../../staff/router.js';
 import { openStorage, STORAGE_PREFIX, NOT_KEPT_SENTENCE } from '../../staff/storage.js';
@@ -19,7 +21,7 @@ import { lockPublished, unlockPublished } from '../../engine/publish-crypto.js';
 import { teacherDay } from '../../engine/teacher-day.js';
 import { seededRandom } from '../../engine/ids.js';
 import { sampleSchool } from '../../data/sample-school.js';
-import { readTool, partsOf } from './reader.mjs';
+import { readTool, toolFile, partsOf } from './reader.mjs';
 
 const clock = () => new Date('2026-09-01T12:00:00Z');
 const model = (change) => {
@@ -47,6 +49,22 @@ test('a published file frozen from an earlier version reads in today\'s staff br
   assert.equal(school.teachers.length, sampleSchool().teachers.length);
   assert.equal(opened.model.publishedAt, '2026-09-01T12:00:00.000Z');
   assert.equal(teacherDay(read.model, 'tsample007', 'dsample00a').length, read.model.settings.periods);
+});
+
+// The frozen file is only a file from an earlier version while nobody
+// changes it. Its bytes are pinned here: an edit, a regeneration, a formatter
+// or an editor's save fails this case. Regenerating it on purpose (from the
+// commit its first comment names) means writing the new hash and size here
+// and saying why in the commit. A checkout that writes CRLF reads as the
+// same bytes (line endings are taken out, as baseline.mjs takes them out).
+const FROZEN_SHA256 = 'fc0d6d0bc91c951553f00a86e53acacbe7d10f211838f4676324d2e34dd2c454';
+const FROZEN_BYTES = 488642;
+
+test('the frozen file is the file that was frozen, byte for byte', () => {
+  const raw = readFileSync(toolFile('test/publish/frozen/sv2-m4.html'));
+  const bytes = Buffer.from(raw.toString('latin1').replace(/\r\n/g, '\n'), 'latin1');
+  assert.equal(bytes.length, FROZEN_BYTES, 'test/publish/frozen/sv2-m4.html is not the size it was frozen at');
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), FROZEN_SHA256, 'test/publish/frozen/sv2-m4.html is not the file that was frozen: it is never edited');
 });
 
 // ---------------------------------------------------------------- addresses

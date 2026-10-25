@@ -298,9 +298,16 @@ export function sheet(options) {
         'aria-selected': String(index === editor.active),
         data: { room: option.room.id },
         on: {
-          // pointerdown, not click: the field must not lose focus first
-          pointerdown: (event) => {
-            event.preventDefault();
+          // The press must not take the focus from the field, or the field
+          // would be read before the click came; the pick is on the click,
+          // which a finger that swipes the list or the page never makes (as
+          // ui/components/picker.js does). The option clicked is the one
+          // read, whatever the arrow keys had highlighted.
+          pointerdown: (event) => event.preventDefault(),
+          mousedown: (event) => event.preventDefault(),
+          click: (event) => {
+            if (event.button !== 0 || !editor || editor.shown[index] !== option) return;
+            editor.active = index;
             editor.input.value = option.room.number;
             commit(0, 0);
           },

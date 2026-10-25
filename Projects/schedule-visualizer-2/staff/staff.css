@@ -2163,13 +2163,18 @@ select.field__input {
    wider than the cell it is in, so a long name still breaks inside it. On
    paper a link is as tall as its words. The same holds for a link in a
    header card's lines, a teacher's room (SV2-32h2: a finger met "Room 302" on
-   a teacher's page at 80 by 20). */
+   a teacher's page at 80 by 20), and for the link in the line under a map
+   ("Room 302 is ringed.", SV2-32p). The padding of a line of the smaller
+   type rounds to the layout's unit a fraction under the target (43.98 px in
+   Chromium under the map), so the target is a floor as well. */
 @media screen and (pointer: coarse), screen and (max-width: 639.98px) {
   .row a,
   .table a,
-  .facts a {
+  .facts a,
+  .map__says a {
     display: inline-block;
     max-width: 100%;
+    min-height: var(--tap);
     padding-block: calc((var(--tap) - 1.5em) / 2);   /* where the browser has no lh unit */
     padding-block: calc((var(--tap) - 1lh) / 2);
     vertical-align: middle;

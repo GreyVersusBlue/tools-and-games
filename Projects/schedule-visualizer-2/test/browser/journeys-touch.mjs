@@ -11,10 +11,13 @@
 //
 // page.evaluate reads what the page shows or holds, to assert on and to find
 // where a finger goes; it never clicks, focuses or scrolls. The keyboard is
-// used only to type into a field a tap focused, and each journey asserts
-// that: every keydown the page saw had an editable field as its target that
-// got the focus within a moment of a finger lifting, and every pointer the
-// page saw was a finger.
+// used only to type into a field a tap focused, with the keys a phone's
+// keyboard has, and each journey asserts that: every keydown the page saw
+// was a printable character or Backspace (Enter only where a journey says
+// it needs it) and had as its target an editable field that got the focus
+// within a moment of a finger lifting and has kept it since; and every
+// pointer the page saw was a finger. Each journey's first page starts with
+// nothing kept on the device: no saved project and no localStorage.
 //
 // Every tap is held to what a finger needs. The target is brought into view
 // by a swipe of the page (never by a script), then its middle is hit-tested:
@@ -100,6 +103,10 @@ function listen() {
   addEventListener('focusin', (event) => {
     if (editable(event.target)) event.target.__tapFocus = performance.now() - lifted < 1500;
   }, true);
+  // a field that loses the focus has to be tapped again to be typed in
+  addEventListener('focusout', (event) => {
+    if (event.target) event.target.__tapFocus = false;
+  }, true);
   addEventListener('keydown', (event) => {
     const el = event.target;
     log.keys.push({ key: event.key, field: editable(el), tapped: Boolean(el && el.__tapFocus), what: el ? el.tagName + (el.id ? '#' + el.id : '') : '' });
@@ -113,8 +120,18 @@ async function hear(page) {
   await page.evaluate(listen);
 }
 
-// Every pointer was a finger, there was no wheel, and every key went into a field a tap focused.
-export async function onlyTouch(page, what) {
+// The keys a phone's keyboard sends while a word is typed: one printable
+// character, or Backspace. Enter is a key a journey has to ask for.
+export function phoneKey(key, options) {
+  if (key === 'Backspace') return true;
+  if (key === 'Enter') return Boolean(options && options.enter);
+  return [...key].length === 1;
+}
+
+// Every pointer was a finger, there was no wheel, and every key was one a
+// phone's keyboard has and went into a field a tap focused. No journey here
+// presses Enter; one that needs it passes { enter: true }.
+export async function onlyTouch(page, what, options) {
   const log = await page.evaluate(() => globalThis.__touchLog);
   assert.ok(log, what + ': the page was not listening');
   assert.ok(log.pointers.length > 0, what + ': no pointer reached the page at all');
@@ -122,6 +139,8 @@ export async function onlyTouch(page, what) {
   assert.equal(log.wheels, 0, what + ': a wheel turned');
   const stray = log.keys.filter((key) => !key.field || !key.tapped);
   assert.deepEqual(stray, [], what + ': a key went somewhere a tap had not put a field');
+  const unknown = log.keys.filter((key) => !phoneKey(key.key, options));
+  assert.deepEqual(unknown, [], what + ': a key a phone\'s keyboard does not send while typing');
 }
 
 // ---------------------------------------------------------------- a finger
@@ -351,7 +370,18 @@ export async function tap(page, selector, options) {
   const at = await reveal(page, selector, opts.index, opts.clear);
   const small = Math.min(at.width, at.height);
   if (opts.size !== false) assert.ok(small >= FINGER, 'a target under ' + FINGER + ' px: ' + at.name + ' is ' + Math.round(at.width) + ' by ' + Math.round(at.height));
-  await touch(page, 'touchStart', [{ x: at.x, y: at.y }]);
+  let x = at.x;
+  if (opts.end) {
+    // near the field's right edge, past its text: where a finger puts the caret at the end
+    x = at.x + at.width / 2 - 12;
+    const on = await page.evaluate((px, py, wanted, index) => {
+      const el = document.querySelectorAll(wanted)[index || 0];
+      const hit = document.elementFromPoint(px, py);
+      return { ok: Boolean(hit) && (hit === el || el.contains(hit)), on: hit ? hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') : 'nothing' };
+    }, x, at.y, selector, opts.index || 0);
+    assert.ok(on.ok, 'the end of ' + at.name + ' is covered by ' + on.on);
+  }
+  await touch(page, 'touchStart', [{ x, y: at.y }]);
   await touch(page, 'touchEnd', []);
   return at;
 }
@@ -368,16 +398,20 @@ export async function tapAt(page, x, y, under) {
 }
 
 // Tap a field and type into it, as the phone's keyboard does. `replace`
-// clears what it held first, by the keyboard's own delete key.
+// clears what it held first the way a phone can: the field is tapped at its
+// end, so the caret is after the last character (or the text is selected to
+// the end), and Backspace takes the text away. A phone's keyboard has no
+// Delete key.
 export async function typeInto(page, selector, text, options) {
   const opts = options || {};
-  await tap(page, selector, opts);
+  await tap(page, selector, { ...opts, end: opts.replace === true });
   await page.waitForFunction((wanted, at) => document.activeElement === document.querySelectorAll(wanted)[at || 0], { timeout: 5000 }, selector, opts.index || 0);
   if (opts.replace) {
-    const length = await page.evaluate(() => document.activeElement.value.length);
-    // the caret goes where the tap put it; delete both ways from there
-    for (let i = 0; i < length; i += 1) await page.keyboard.press('Backspace');
-    for (let i = 0; i < length; i += 1) await page.keyboard.press('Delete');
+    const caret = () => page.evaluate(() => ({ value: document.activeElement.value, start: document.activeElement.selectionStart, end: document.activeElement.selectionEnd }));
+    const first = await caret();
+    assert.equal(first.end, first.value.length, 'a tap at the end of ' + selector + ' put the caret at ' + first.end + ' of ' + JSON.stringify(first.value));
+    for (let i = 0; i < first.value.length && (await caret()).value !== ''; i += 1) await page.keyboard.press('Backspace');
+    assert.equal((await caret()).value, '', selector + ' was not emptied by Backspace');
   }
   await page.keyboard.type(text);
 }
@@ -403,8 +437,28 @@ export async function tapList(page, selector, options) {
 
 // ---------------------------------------------------------------- pages
 
-// A fresh planner on the phone, listening.
+// This origin's localStorage emptied (sv2:device: the theme, the tab lock,
+// what the last journey's page remembered), from a page of the origin's own
+// that is closed again. openPlanner empties IndexedDB and leaves
+// localStorage alone, for suites that set a device on purpose.
+async function forgetDevice() {
+  const probe = await browser.newPage();
+  try {
+    await probe.goto(server.base + TOOL_PATH + 'icon.svg', { waitUntil: 'load' });
+    const left = await probe.evaluate(() => {
+      localStorage.clear();
+      return localStorage.length;
+    });
+    assert.equal(left, 0, 'localStorage was not emptied');
+  } finally {
+    await probe.close();
+  }
+}
+
+// A fresh planner on the phone, listening: nothing kept on the device from
+// an earlier journey or repeat.
 async function phonePlanner(hash) {
+  await forgetDevice();
   const session = await openPlanner({ server, browser, hash: hash || '#building', theme: 'light', ...PHONE });
   await cdpOf(session.page);
   await hear(session.page);
@@ -423,6 +477,74 @@ async function finish(session, run) {
   await session.close();
   if (failed) throw failed;
   assert.deepEqual(found, CLEAN);
+}
+
+// ---------------------------------------------------------------- what the device kept
+
+// One read of a store of the page's IndexedDB: `key` one record, or null for
+// all of them. It refuses, saying why, when the database is not there (and
+// makes none: an open with no version that would create one is aborted),
+// when it has no such store, when the read fails, and after `ms`; the
+// database is closed in every case.
+function readStore(page, name, store, key, ms) {
+  return page.evaluate((db, storeName, wanted, limit) => new Promise((resolve, reject) => {
+    let opened = null;
+    let done = false;
+    const end = (fn, value) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      if (opened) opened.close();
+      fn(value);
+    };
+    const timer = setTimeout(() => end(reject, new Error('reading ' + db + ' / ' + storeName + ' took over ' + limit + ' ms')), limit);
+    let open;
+    try {
+      open = indexedDB.open(db);
+    } catch (error) {
+      end(reject, error);
+      return;
+    }
+    open.onupgradeneeded = () => {
+      opened = open.result;
+      open.transaction.abort();
+    };
+    open.onblocked = () => end(reject, new Error('opening ' + db + ' was blocked'));
+    open.onerror = () => end(reject, new Error('there is no database ' + db + ' (' + (open.error ? open.error.name : 'no error') + ')'));
+    open.onsuccess = () => {
+      opened = open.result;
+      if (!opened.objectStoreNames.contains(storeName)) {
+        end(reject, new Error(db + ' has no store ' + storeName + ': ' + Array.from(opened.objectStoreNames).join(', ')));
+        return;
+      }
+      try {
+        const source = opened.transaction(storeName, 'readonly').objectStore(storeName);
+        const read = wanted === null ? source.getAll() : source.get(wanted);
+        read.onsuccess = () => end(resolve, read.result);
+        read.onerror = () => end(reject, new Error('reading ' + db + ' / ' + storeName + ' failed: ' + (read.error ? read.error.name : 'no error')));
+      } catch (error) {
+        end(reject, error);
+      }
+    };
+  }), name, store, key === undefined ? null : key, ms || 5000);
+}
+
+// Read until `ok(result)` holds, for up to `ms`; a read that refuses is
+// tried again, and the last refusal is in the failure.
+async function readUntil(page, name, store, key, ok, ms, what) {
+  const until = Date.now() + ms;
+  let last = 'nothing was read';
+  for (;;) {
+    try {
+      const result = await readStore(page, name, store, key, 2000);
+      if (ok(result)) return result;
+      last = 'read, and not yet';
+    } catch (error) {
+      last = error.message;
+    }
+    if (Date.now() > until) assert.fail(what + ' within ' + ms + ' ms: ' + last);
+    await pause(200);
+  }
 }
 
 // ---------------------------------------------------------------- 1. enter a schedule
@@ -527,17 +649,9 @@ for (let run = 1; run <= REPEAT; run += 1) {
       const made = await enterSchedule(page);
       // and what a reload has to keep: the saved project has both
       await page.waitForFunction(() => document.getElementById('save-indicator').dataset.state === 'saved', { timeout: 10000 });
-      const saved = await page.evaluate(() => new Promise((resolve, reject) => {
-        const open = indexedDB.open('sv2');
-        open.onerror = () => reject(open.error);
-        open.onsuccess = () => {
-          const read = open.result.transaction('project', 'readonly').objectStore('project').get('current');
-          read.onsuccess = () => {
-            open.result.close();
-            resolve(read.result.project);
-          };
-        };
-      }));
+      const record = await readStore(page, 'sv2', 'project', 'current');
+      assert.ok(record && record.project, 'the saved project is not in sv2 / project');
+      const saved = record.project;
       assert.equal(saved.teachers.find((each) => each.id === made.teacherId).name, TEACHER);
       assert.equal(saved.groups.find((each) => each.id === made.groupId).name, GROUP);
       await onlyTouch(page, 'enter a schedule');
@@ -749,16 +863,7 @@ for (let run = 1; run <= REPEAT; run += 1) {
     // leaving the field commits it: a tap on the section's heading
     await tap(page, '#section h1', { size: false });
     await page.waitForFunction((name) => globalThis.sv2.store.project.settings.schoolName === name, { timeout: 5000 }, SCHOOL);
-    await page.waitForFunction((name) => new Promise((resolve) => {
-      const open = indexedDB.open('sv2-recovery');
-      open.onsuccess = () => {
-        const all = open.result.transaction('recovery', 'readonly').objectStore('recovery').getAll();
-        all.onsuccess = () => {
-          open.result.close();
-          resolve(all.result.some((point) => point.project.settings.schoolName === name));
-        };
-      };
-    }), { timeout: 10000 }, SCHOOL);
+    await readUntil(page, 'sv2-recovery', 'recovery', null, (points) => points.some((point) => point.project.settings.schoolName === SCHOOL), 10000, 'no recovery point holds the school\'s new name');
     await onlyTouch(page, 'the work before the crash');
     const problems = session.problems();
     await crash(session);
@@ -796,3 +901,99 @@ for (let run = 1; run <= REPEAT; run += 1) {
     }
   });
 }
+
+// ---------------------------------------------------------------- 5. the lists a finger picks from
+
+// Every option `selector` names is a target a finger can take: at least 44
+// px in its smaller side, its text inside its box, and its words apart: a
+// name and its detail (two spans) on one line with a gap between them, or on
+// two lines. app.css gives every .picker__option on a coarse pointer
+// display: flex (SV2-32h2), which also reaches the Building search's results
+// and the grid sheet's rooms; a flex item's leading space is dropped, so the
+// gap is the rule's column-gap.
+async function fitsAFinger(page, selector, what) {
+  const options = await page.$$eval(selector, (all) => all.map((el) => {
+    const box = el.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const text = range.getBoundingClientRect();
+    const parts = Array.from(el.children).map((child) => child.getBoundingClientRect());
+    const [a, b] = parts;
+    return {
+      label: el.textContent.trim().slice(0, 50),
+      width: box.width,
+      height: box.height,
+      inside: text.left >= box.left - 0.5 && text.right <= box.right + 0.5 && text.top >= box.top - 0.5 && text.bottom <= box.bottom + 0.5,
+      parts: parts.length,
+      apart: parts.length < 2 ? null : b.top >= a.bottom - 1 ? 'two lines' : b.left - a.right,
+    };
+  }));
+  assert.ok(options.length > 0, what + ': no option is on the page');
+  for (const option of options) {
+    assert.ok(Math.min(option.width, option.height) >= FINGER, what + ' under ' + FINGER + ' px: "' + option.label + '" is ' + Math.round(option.width) + ' by ' + Math.round(option.height));
+    assert.ok(option.inside, what + ': the text of "' + option.label + '" runs out of its box');
+    if (option.parts >= 2) assert.ok(option.apart === 'two lines' || option.apart >= 2, what + ': the name and the detail of "' + option.label + '" run together (' + option.apart + ' px apart)');
+  }
+  return options;
+}
+
+// What was measured, in one line: the smallest side, and the least gap between a name and its detail.
+const measured = (what, options) => what + ': ' + options.length + ' options, smallest side ' + Math.round(Math.min(...options.map((o) => Math.min(o.width, o.height)))) + ' px'
+  + (options.some((o) => o.parts >= 2) ? ', name to detail ' + options.filter((o) => o.parts >= 2).map((o) => (o.apart === 'two lines' ? 'two lines' : Math.round(o.apart * 10) / 10 + ' px')).filter((v, i, all) => all.indexOf(v) === i).join(' or ') : '');
+
+// A finger that lands on an option and swipes the list or the page: it
+// picks nothing, so a swipe leaves what `state` reads as it was.
+async function swipeFromOption(page, selector, index, state, what) {
+  const at = await reveal(page, selector, index);
+  const before = await state();
+  await swipeOnly(page, { x: at.x, y: at.y }, 0, 40);
+  await settle(page);
+  assert.deepEqual(await state(), before, what + ': a swipe that began on an option picked it');
+}
+
+test('the Building search\'s results and the grid sheet\'s rooms by touch at 390 by 844: each option 44 px with its words apart, a swipe that starts on one picks nothing, a tap picks it', async (t) => {
+  await finish(await phonePlanner('#building'), async (page) => {
+    // the search: its mark tapped, a number typed, the results measured
+    await tap(page, '#search');
+    await page.waitForFunction(() => document.activeElement === document.getElementById('search'), { timeout: 5000 });
+    await page.keyboard.type('10');
+    const results = '#search-results [role="option"]';
+    await page.waitForSelector(results);
+    await settle(page, '#search-results');
+    const found = await fitsAFinger(page, results, 'a result of the Building search');
+    t.diagnostic(measured('search', found));
+    assert.ok(found.length >= 2 && found.every((option) => option.parts === 2), 'the case needs two results with a detail each: ' + JSON.stringify(found));
+    const searchState = () => page.evaluate(() => ({ hash: location.hash, open: !document.getElementById('search-results').hidden }));
+    await swipeFromOption(page, results, 1, searchState, 'the Building search');
+    const wanted = await page.$$eval(results, (all) => all[1].dataset.room);
+    await tap(page, results, { index: 1 });
+    await page.waitForFunction((room) => location.hash.endsWith('?room=' + room), { timeout: 5000 }, wanted);
+
+    // the grid sheet: a slot's cell tapped, tapped again to edit, its rooms measured
+    await tap(page, '.rail__item[data-section="schedule"]');
+    await waitForSection(page, 'schedule');
+    await tap(page, '#surface [role="tab"][data-tab="grid"]');
+    await page.waitForSelector('.grd-table');
+    const slot = await page.evaluate((day) => {
+      const group = globalThis.sv2.store.project.groups[0];
+      return { key: 'grid:' + group.id + ':' + day + ':1', room: group.days[day][1].room };
+    }, DAY_A);
+    const cell = '[data-key="' + slot.key + '"]';
+    await tap(page, cell);
+    await page.waitForFunction((wanted) => document.activeElement === document.querySelector(wanted), { timeout: 5000 }, cell);
+    await tap(page, cell);
+    const rooms = '.grd-list:not([hidden]) .picker__option';
+    await page.waitForSelector(rooms);
+    await settle(page, '.grd-list');
+    t.diagnostic(measured('grid sheet', await fitsAFinger(page, rooms, 'a room in the grid sheet\'s list')));
+    const gridState = () => page.evaluate(() => ({ staged: document.querySelector('.grd').dataset.staged, open: Boolean(document.querySelector('.grd-list:not([hidden])')) }));
+    const other = await page.$$eval(rooms, (all, now) => all.findIndex((el, index) => index > 0 && el.dataset.room !== now), slot.room);
+    assert.notEqual(other, -1, 'the case needs a room other than the cell\'s');
+    await swipeFromOption(page, rooms, other, gridState, 'the grid sheet');
+    const number = await page.$$eval(rooms, (all, at) => all[at].textContent.split(' — ')[0], other);
+    await tap(page, rooms, { index: other });
+    await page.waitForFunction(() => document.querySelector('.grd').dataset.staged === 'true', { timeout: 5000 });
+    assert.equal(await page.$eval(cell + ' .grd-cell__text', (el) => el.textContent), number);
+    await onlyTouch(page, 'the lists');
+  });
+});
