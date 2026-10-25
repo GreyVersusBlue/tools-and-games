@@ -1693,6 +1693,36 @@ test('SV2-50 item 6: the arrow keys\' highlight under an open list survives a dr
   });
 });
 
+// The same for a picker that is not a room picker (ui/components/picker.js):
+// its options carry their ids, the section hands the highlighted one over,
+// and the new field opens on it. Before SV2-32q the new list opened on its
+// first option, and Enter picked that one.
+test('SV2-32q item 2: a slot\'s Teacher list keeps the arrow keys\' highlight across a drawing: ArrowDown twice, the project changed elsewhere, Enter picks the third teacher, not the first', async () => {
+  await on('#schedule/groups/' + A6, DESK, async (p) => {
+    const field = '[data-key="slot:' + DAY_A + ':1:teacher"]';
+    const options = slotRow(DAY_A, 1) + ' .sch-slot__teacher .picker__option';
+    const lit = () => p.$$eval(options + '[aria-selected="true"]', (all) => all.map((el) => el.dataset.id));
+    await settled(p);
+    await p.click(field);
+    await p.waitForSelector(options);
+    assert.ok((await count(p, options)) >= 3, 'the case needs three teachers offered');
+    await p.keyboard.press('ArrowDown');
+    await p.keyboard.press('ArrowDown');
+    const third = await p.$$eval(options, (all) => all[2].dataset.id);
+    assert.deepEqual(await lit(), [third]);
+    // a drawing under the open list, as the walk's answer makes one
+    const before = await p.$(field);
+    await act(p, 'setSlot', { groupId: A7, dayTypeId: DAY_A, period: 0, slot: { label: 'Homeroom' } });
+    await settled(p);
+    assert.equal(await p.evaluate((el) => el.isConnected, before), false, 'the case needs the field drawn again');
+    assert.equal(await activeKey(p), 'slot:' + DAY_A + ':1:teacher');
+    assert.equal(await p.$eval(field, (el) => el.getAttribute('aria-expanded')), 'true', 'the list shut at the drawing');
+    assert.deepEqual(await lit(), [third], 'the highlight was not kept at the drawing');
+    await p.keyboard.press('Enter');
+    await shows(p, (group, day, id) => globalThis.sv2.store.project.groups.find((each) => each.id === group).days[day][1].teacherIds.includes(id), A6, DAY_A, third);
+  });
+});
+
 test('SV2-50 item 8: the section left behind hears nothing more: a group chosen, Project opened, the window narrowed under 640 px, and the address is still Project\'s', async () => {
   await on('#schedule/groups', DESK, async (p) => {
     await p.click('.sch-group[data-group="' + B6 + '"]');
