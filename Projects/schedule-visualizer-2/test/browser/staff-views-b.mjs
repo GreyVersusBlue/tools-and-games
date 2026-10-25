@@ -856,30 +856,40 @@ const PAGES = [
   ['#/directions', 'Directions'], // SV2-32g2: no rooms chosen yet
   ['#/directions?from=rsample101&to=rsample303', 'Directions'],
   ['#/directions?from=rsample101&to=rsample303&stepfree=1', 'Directions'],
+  // SV2-32p: a teacher's page, for the links in a header card's lines (her
+  // room) and under her map ("Room 203 is ringed."). From 900 px its map
+  // stands beside the column (.split), so the page is wider than one column.
+  ['#/teacher/tsample007', 'Ms. Vandermeer', 'split'],
 ];
 
 for (const [width, height] of [[390, 760], [1280, 900]]) {
   for (const theme of ['light', 'dark']) {
-    test('the six pages at ' + width + ' px, ' + theme + ': axe passes, nothing runs off the side, and what is tapped is big enough', async () => {
+    test('the pages of PAGES (' + PAGES.length + ' addresses) at ' + width + ' px, ' + theme + ': axe passes, nothing runs off the side, and what is tapped is big enough', async () => {
       const session = await openPage(width === 390 ? { theme } : { theme, width, height });
       try {
         const { page } = session;
         await goto(page, files.open.url + PAGES[0][0]);
-        for (const [to, title] of PAGES) {
+        for (const [to, title, split] of PAGES) {
           if (to !== PAGES[0][0]) await move(page, to, title);
           const name = to + ' at ' + width + ' px, ' + theme;
+          const beside = split === 'split' && width >= 900;
           await axe(page, name);
           const layout = await page.evaluate(() => {
             const column = document.querySelector('.page').getBoundingClientRect();
             const small = [];
-            for (const el of document.querySelectorAll('.page a.list__link, .page button, .page select, .page input:not([type="radio"]):not([type="checkbox"]), .page .pick__name, .page label.check, .page .tab')) {
+            // a link in a header card's lines and under a map is 44 px under a
+            // finger and as tall as its words under a mouse (staff/staff.css)
+            const finger = matchMedia('(pointer: coarse), (max-width: 639.98px)').matches;
+            const links = finger ? ', .page .facts a, .page .map__says a' : '';
+            for (const el of document.querySelectorAll('.page a.list__link, .page button, .page select, .page input:not([type="radio"]):not([type="checkbox"]), .page .pick__name, .page label.check, .page .tab' + links)) {
               const rect = el.getBoundingClientRect();
-              if (rect.width > 0 && rect.height < 44) small.push(el.className + ' ' + Math.round(rect.height));
+              if (rect.width > 0 && rect.height < 44) small.push(el.tagName.toLowerCase() + '.' + el.className + ' "' + el.textContent.trim().slice(0, 40) + '" ' + Math.round(rect.height));
             }
             const fields = Array.from(document.querySelectorAll('.page select, .page input:not([type="radio"]):not([type="checkbox"])'), (el) => parseFloat(getComputedStyle(el).fontSize));
             return {
               sideways: document.documentElement.scrollWidth - document.documentElement.clientWidth,
               column: Math.round(column.width),
+              split: getComputedStyle(document.querySelector('.page .split') || document.body).display === 'grid',
               small,
               smallestField: fields.length > 0 ? Math.min(...fields) : 16,
               paper: getComputedStyle(document.body).backgroundColor,
@@ -888,7 +898,8 @@ for (const [width, height] of [[390, 760], [1280, 900]]) {
           assert.equal(layout.sideways, 0, name + ' scrolls sideways');
           assert.deepEqual(layout.small, [], name + ' has something under 44 px to tap');
           assert.ok(layout.smallestField >= 16, name + ' has a field under 16 px');
-          assert.ok(layout.column <= 720, name + ' is wider than the 720 px column');
+          assert.equal(layout.split, beside, name + (beside ? ' has no map beside its column' : ' has a map beside its column'));
+          if (!beside) assert.ok(layout.column <= 720, name + ' is wider than the 720 px column');
           assert.equal(layout.paper, theme === 'dark' ? 'rgb(21, 24, 28)' : 'rgb(246, 243, 236)', name + ' is not in the ' + theme + ' theme');
         }
         assert.deepEqual(asked(session, files.open.url), []);

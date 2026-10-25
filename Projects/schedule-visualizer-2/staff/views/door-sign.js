@@ -252,6 +252,54 @@ function dayOf(school, room) {
   }));
 }
 
+// The words a sign's region is named by, one for each room of the school, so
+// that a document holding several signs (the planner's batch of every door
+// sign) names no two regions alike. A room is named as a sentence names it
+// ("Room 204", "Gym"); two rooms of one name (every room with no number, or
+// one number on two floors) are told apart by their floor, and two still
+// alike by their place among them, in the order of the building: "A room with
+// no number, First floor, 2 of 3". All of it is plain text, put in an
+// attribute. Worked out once a school, as the signs of a batch share one.
+const SIGN_NAMES = new WeakMap();
+
+function apart(rooms, nameOf, more) {
+  const names = new Map(rooms.map((each) => [each.id, nameOf(each)]));
+  const groups = new Map();
+  for (const each of rooms) {
+    const name = names.get(each.id);
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(each);
+  }
+  for (const [name, alike] of groups) {
+    if (alike.length < 2) continue;
+    alike.forEach((each, at) => names.set(each.id, name + ', ' + more(each, at, alike.length)));
+  }
+  return names;
+}
+
+function floorWords(school, each) {
+  const floor = school.floorOfRoom(each.id);
+  return floor && typeof floor.name === 'string' && floor.name.trim() !== '' ? floor.name : 'a floor with no name';
+}
+
+function signNames(school) {
+  if (SIGN_NAMES.has(school)) return SIGN_NAMES.get(school);
+  const rooms = school.rooms;
+  const byFloor = apart(rooms, (each) => school.roomName(each, true), (each) => floorWords(school, each));
+  const byPlace = apart(rooms, (each) => byFloor.get(each.id), (each, at, of) => (at + 1) + ' of ' + of);
+  // a name typed to look like another's (a room numbered "Gym, East wing"
+  // beside a Gym on the East wing) is told apart by its place in the building
+  const names = apart(rooms, (each) => byPlace.get(each.id), (each) => 'sign ' + (rooms.indexOf(each) + 1) + ' of ' + rooms.length);
+  SIGN_NAMES.set(school, names);
+  return names;
+}
+
+// The name of a room's door sign as a region: "Door sign: Room 204".
+export function signLabel(school, room) {
+  const names = signNames(school);
+  return 'Door sign: ' + (names.has(room.id) ? names.get(room.id) : school.roomName(room, true));
+}
+
 // options.day     true puts the room's day on the sign
 // options.school  the line at the foot, when it is not the school's own name
 function signTree(school, room, options) {
@@ -272,8 +320,9 @@ function signTree(school, room, options) {
   const foot = el('p', { class: 'sign__school', 'data-sign': 'school' }, typedName(typeof opts.school === 'string' ? opts.school : school.name));
   // data-day: the room's day is on the sign, so on a phone the card is not
   // the whole sheet (staff/staff.css)
-  // named for its room, so a batch of signs is as many regions of as many names
-  const label = 'Door sign: ' + name;
+  // named for its room, so a batch of signs is as many regions of as many
+  // names (signLabel)
+  const label = signLabel(school, room);
   return el('section', day ? { class: 'sign', 'aria-label': label, 'data-day': 'on' } : { class: 'sign', 'aria-label': label },
     el('div', { class: 'sign__card' },
       worded ? el('p', { class: 'sign__word' }, 'Room') : null,

@@ -13,7 +13,8 @@
 //    assembles them. Every view's address in four states: a current copy, an
 //    old copy (the stale band), a copy older than one this device has opened
 //    (the newer-copy band), and a reader who has chosen themselves and kept
-//    notes. Then the screens that are not a schedule: the unlock screen, a
+//    notes, each address's page checked for its heading. Views the publisher
+//    switched off. Then the screens that are not a schedule: the unlock screen, a
 //    wrong passcode, a newer format, a damaged file, a page with no
 //    schedule, and a browser that keeps nothing.
 // 2. The planner's Staff browser section: axe inside the preview frame's own
@@ -53,43 +54,70 @@ const FROZEN = path.join(TOOL_DIR, 'test', 'publish', 'frozen', 'sv2-m4.html');
 // { rule, where (optional, a substring of the case's name), reason }
 const ALLOW = [];
 
-// Every view's address, with the view it draws. A view added to
-// staff/views.js without a line here fails the first case below.
+// Every view's address, with the view it draws and the heading it draws it
+// under, and, for an address that is meant to reach no page of its own, which
+// page it gets instead ('missing': "Not in this schedule"). A view added to
+// staff/views.js without a line here fails the first case below. A page that
+// could not be shown (the shell's answer to a view that throws), a missing
+// page and a left-out page keep the view's id, so the heading and the kind
+// are what tell them from the page itself.
 const ADDRESSES = [
-  ['#/search', 'search'],
-  ['#/search?q=Hal', 'search'],
-  ['#/nowhere', 'search'], // an address that names no page: the search page, told so
-  ['#/teacher/tsample007', 'teacher'],
-  ['#/group/gsample06a', 'group'],
-  ['#/room/rsample203', 'room'],
-  ['#/map/fsample001', 'map'],
-  ['#/map/fsample002', 'map'],
-  ['#/staffing', 'staffing'],
-  ['#/free', 'free'],
-  ['#/free?p=3&d=dsample00b', 'free'],
-  ['#/now', 'now'],
-  ['#/now?g=gsample06a', 'now'],
-  ['#/now?t=tsample003', 'now'],
-  ['#/common?t=tsample001,tsample002,tsample003', 'common'],
-  ['#/coverage', 'coverage'],
-  ['#/coverage/tsample003', 'coverage'],
-  ['#/sub/tsample007', 'sub'],
-  ['#/directions', 'directions'],
-  ['#/directions?from=rsample101&to=rsample303', 'directions'],
-  ['#/directions?from=rsample101&to=rsample303&stepfree=1', 'directions'],
-  ['#/me', 'me'],
-  ['#/door/rsample203', 'door'],
-  ['#/door/rsample203?day=1', 'door'],
+  ['#/search', 'search', 'Search'],
+  ['#/search?q=Hal', 'search', 'Search'],
+  ['#/nowhere', 'search', 'Search'], // an address that names no page: the search page, told so
+  ['#/teacher/tsample007', 'teacher', 'Ms. Vandermeer'],
+  ['#/teacher', 'teacher', 'Not in this schedule', 'missing'], // no teacher named
+  ['#/group/gsample06a', 'group', '6A'],
+  ['#/room/rsample203', 'room', 'Room 203'],
+  ['#/room/rnosuch', 'room', 'Not in this schedule', 'missing'], // a room this file does not have
+  ['#/map/fsample001', 'map', 'Building map: Floor 1'],
+  ['#/map/fsample002', 'map', 'Building map: Floor 2'],
+  ['#/map/fsample003', 'map', 'Building map: Floor 3'],
+  ['#/staffing', 'staffing', 'Staffing'],
+  ['#/free', 'free', 'Free right now'],
+  ['#/free?p=3&d=dsample00b', 'free', 'Free right now'],
+  ['#/now', 'now', 'Where right now'],
+  ['#/now?g=gsample06a', 'now', 'Where right now'],
+  ['#/now?t=tsample003', 'now', 'Where right now'],
+  ['#/common?t=tsample001,tsample002,tsample003', 'common', 'Common planning'],
+  ['#/coverage', 'coverage', 'Coverage'],
+  ['#/coverage/tsample003', 'coverage', 'Coverage: Dr. Quillfeather'],
+  ['#/sub/tsample007', 'sub', 'Substitute plan: Ms. Vandermeer'],
+  ['#/directions', 'directions', 'Directions'],
+  ['#/directions?from=rsample101&to=rsample303', 'directions', 'Directions'],
+  ['#/directions?from=rsample101&to=rsample303&stepfree=1', 'directions', 'Directions'],
+  ['#/me', 'me', 'My schedule'],
+  ['#/door/rsample203', 'door', 'Door sign: Room 203'],
+  ['#/door/rsample203?day=1', 'door', 'Door sign: Room 203'],
+  ['#/door', 'door', 'Not in this schedule', 'missing'], // no room named
 ];
+
+// Views the publisher switched off (publish.views), each with the heading its
+// left-out page is drawn under.
+const LEFT_OUT = [
+  ['#/staffing', 'staffing', 'Staffing', 'left out'],
+  ['#/map/fsample001', 'map', 'Building map: Floor 1', 'left out'],
+  ['#/coverage/tsample003', 'coverage', 'Coverage: Dr. Quillfeather', 'left out'],
+];
+
+// What tells the pages that keep a view's id apart from the view's own page
+// (staff/shell.js, staff/page.js).
+const ERROR_HEADING = 'This page could not be shown';
+const MISSING_HEADING = 'Not in this schedule';
+const LEFT_OUT_LEDE = 'This view was not included when this schedule was published.';
 
 const SIZES = [
   { name: 'desktop', width: 1280, height: 900, phone: false },
   { name: 'phone', width: 390, height: 844, phone: true },
 ];
 
-const future = () => new Date('2999-01-01T12:00:00Z');
-const past = () => new Date('2020-01-15T12:00:00Z');
+// The page's clock is pinned to PINNED. A current copy is published a week
+// before it, so it is neither stale nor from the future, and the newer copy
+// this device has seen (SEEN, below) is dated four days after the pinned
+// clock, so the band names two days that cannot be mistaken for each other.
 const PINNED = '2026-09-01T09:00:00Z';
+const recent = () => new Date('2026-08-25T12:00:00Z');
+const past = () => new Date('2020-01-15T12:00:00Z');
 
 const scratch = mkdtempSync(path.join(os.tmpdir(), 'sv2-staff-axe-'));
 const read = diskReader();
@@ -109,7 +137,8 @@ function save(name, html) {
 async function publish(name, options) {
   const project = sampleSchool();
   if (!options.locked) project.publish.passcode = '';
-  const made = await publishDocument(read, project, { clock: options.clock || future, random: seededRandom('staff-axe ' + name) });
+  if (options.off) for (const view of options.off) project.publish.views[view] = false;
+  const made = await publishDocument(read, project, { clock: options.clock || recent, random: seededRandom('staff-axe ' + name) });
   return save(name, made.html);
 }
 
@@ -122,7 +151,8 @@ before(async () => {
   await publish('open', {});
   await publish('old', { clock: past });
   await publish('locked', { locked: true });
-  const model = publishedModel(sampleSchool(), { clock: future });
+  await publish('off', { off: ['staffing', 'map', 'coverage'] });
+  const model = publishedModel(sampleSchool(), { clock: recent });
   await holding('newer', { ...model, version: model.version + 1 });
   await holding('none', null);
   const whole = files.open.html;
@@ -202,8 +232,12 @@ async function state(target, wanted) {
 }
 
 // Move to an address of the open schedule and wait for the new page: the
-// view it names, drawn afresh (the page that was there is marked first).
-async function move(target, address, view) {
+// view it names, drawn afresh (the page that was there is marked first). Then
+// the page is the one the row expects: its heading, and the view's own page,
+// not the page that could not be shown, a missing page or a left-out page,
+// unless the row says so.
+async function move(target, row) {
+  const [address, view, heading, expects] = row;
   await target.evaluate((next) => {
     // the address the page is already at draws nothing new
     if (location.hash === next) return;
@@ -216,6 +250,15 @@ async function move(target, address, view) {
     return Boolean(main) && main.dataset.view === want && main.firstElementChild && main.firstElementChild.dataset.leaving !== 'true';
   }, { timeout: 10000 }, view);
   await atRest(target);
+  const drawn = await target.evaluate(() => {
+    const main = document.getElementById('page');
+    const title = main.querySelector('h1');
+    const lede = main.querySelector('.lede');
+    return { heading: title ? title.textContent : null, lede: lede ? lede.textContent : null, text: main.textContent.replace(/\s+/g, ' ').trim().slice(0, 300) };
+  });
+  const kind = drawn.heading === ERROR_HEADING ? 'error' : drawn.heading === MISSING_HEADING ? 'missing' : drawn.lede === LEFT_OUT_LEDE ? 'left out' : 'page';
+  assert.equal(kind, expects || 'page', address + ' drew the ' + kind + ' page, not the ' + (expects || 'view\'s own') + ': ' + drawn.text);
+  assert.equal(drawn.heading, heading, address + ': the heading');
 }
 
 function describe(violation) {
@@ -261,12 +304,15 @@ test('every view in staff/views.js has an address in the sweep', () => {
 // ---------------------------------------------------------------- 1. every view, in every state of an open schedule
 
 const SEEN = 'sv2staff:psample001:seen';
+// The newer-copy band's words, in either order a browser writes a day in.
+const NEWER_COPY = /^A newer copy of this schedule has been opened on this device, published (5 September|September 5)\. This one is from (25 August|August 25)\.$/;
 const NOTES = JSON.stringify({ dsample00a: { 0: 'Hall duty by the gym doors', 3: 'Department meeting, Room 204' }, dsample00b: { 5: 'Keep free: marking' } });
 
 const STATES = [
-  { id: 'current', file: 'open', bands: [] },
+  { id: 'current', file: 'open', bands: [], says: [] },
   { id: 'stale', file: 'old', bands: ['stale'] },
-  { id: 'a newer copy seen', file: 'open', kept: { [SEEN]: '2999-06-01T12:00:00.000Z' }, bands: ['note'] },
+  // the band of kind 'note' that says so, not the "keeps nothing" note
+  { id: 'a newer copy seen', file: 'open', kept: { [SEEN]: '2026-09-05T12:00:00.000Z' }, bands: ['note'], says: [NEWER_COPY] },
   { id: 'notes shown', file: 'open', kept: { 'sv2staff:psample001:me': 'tsample007', 'sv2staff:psample001:notes': NOTES }, bands: [], notes: true },
 ];
 
@@ -281,11 +327,16 @@ for (const size of SIZES) {
           await state(page, 'open');
           await atRest(page);
           assert.equal(await theme(page), colour, 'the page should follow the device into the ' + colour + ' theme');
-          for (const [address, view] of ADDRESSES) {
-            await move(page, address, view);
+          for (const row of ADDRESSES) {
+            const [address, view] = row;
+            await move(page, row);
             const name = address + ' (' + each.id + ') at ' + size.name + ', ' + colour;
-            const bands = await page.evaluate(() => Array.from(document.querySelectorAll('.band'), (band) => band.dataset.band));
-            assert.deepEqual(bands, each.bands, 'the notices on ' + name);
+            const bands = await page.evaluate(() => Array.from(document.querySelectorAll('.band'), (band) => ({ kind: band.dataset.band, text: band.querySelector('.band__text').textContent })));
+            assert.deepEqual(bands.map((band) => band.kind), each.bands, 'the notices on ' + name);
+            if (each.says) {
+              assert.equal(bands.length, each.says.length, 'the notices on ' + name);
+              each.says.forEach((words, at) => assert.match(bands[at].text, words, 'what the ' + bands[at].kind + ' band says on ' + name));
+            }
             if (each.notes && view === 'me') {
               const notes = await page.evaluate(() => Array.from(document.querySelectorAll('.page textarea, .page input[type="text"]'), (field) => field.value).filter(Boolean));
               assert.ok(notes.includes('Hall duty by the gym doors'), 'the kept notes are on My schedule: ' + JSON.stringify(notes));
@@ -356,6 +407,31 @@ for (const size of SIZES) {
   }
 }
 
+// ---------------------------------------------------------------- 1. views the publisher switched off
+
+for (const size of SIZES) {
+  for (const colour of ['light', 'dark']) {
+    test('views switched off in publish.views draw their left-out page at ' + size.name + ', ' + colour, async () => {
+      const session = await openPage(size, colour);
+      try {
+        const { page } = session;
+        await page.goto(files.off.url + ADDRESSES[0][0], { waitUntil: 'load' });
+        await state(page, 'open');
+        await atRest(page);
+        for (const row of LEFT_OUT) {
+          await move(page, row);
+          await axe(page, row[0] + ' (switched off) at ' + size.name + ', ' + colour);
+        }
+        // a view left on in the same file is its own page
+        await move(page, ADDRESSES.find(([, view]) => view === 'teacher'));
+        assert.deepEqual(session.errors, []);
+      } finally {
+        await session.close();
+      }
+    });
+  }
+}
+
 // ---------------------------------------------------------------- 2. inside the planner's preview frame
 
 // The preview's own document: the frame at a blob address the Staff browser
@@ -387,9 +463,9 @@ for (const colour of ['light', 'dark']) {
         }
         const frameWidth = await inside.evaluate(() => window.innerWidth);
         assert.equal(frameWidth, width === 'phone' ? 390 : 1180, 'the frame is the ' + width + '\'s width');
-        for (const [address, view] of ADDRESSES) {
-          await move(inside, address, view);
-          await axe(inside, address + ' in the preview at the ' + width + ' width, ' + colour);
+        for (const row of ADDRESSES) {
+          await move(inside, row);
+          await axe(inside, row[0] + ' in the preview at the ' + width + ' width, ' + colour);
         }
       }
       // "Start at the passcode screen": the file as a reader first meets it
@@ -444,9 +520,9 @@ test('a published file frozen from an earlier version of the tool opens, and tod
       await unlock(page, 'the frozen file\'s schedule, in today\'s staff browser,');
       assert.equal(await page.evaluate(() => document.querySelector('.top__school').textContent), SCHOOL);
       assert.match(await page.evaluate(() => document.querySelector('.foot').textContent), /published (1 September 2026|September 1, 2026)/);
-      for (const [address, view] of ADDRESSES) {
-        await move(page, address, view);
-        await axe(page, address + ' of the frozen file in today\'s staff browser, ' + colour);
+      for (const row of ADDRESSES) {
+        await move(page, row);
+        await axe(page, row[0] + ' of the frozen file in today\'s staff browser, ' + colour);
       }
       assert.deepEqual(today.errors, []);
     } finally {
