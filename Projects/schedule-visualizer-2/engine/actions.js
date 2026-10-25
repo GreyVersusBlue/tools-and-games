@@ -1581,6 +1581,103 @@ export const scaleTraceImage = action(
   },
 );
 
+// The box a traced image covers on its floor, in cells, turned or not: its
+// left, top, right and bottom edges { x0, y0, x1, y1 }. The image turns about
+// its middle (ui/building/trace.js says what each number means).
+export function traceImageBox(image) {
+  const w = image.width * image.scale;
+  const hgt = image.height * image.scale;
+  const turn = (image.rotation * Math.PI) / 180;
+  const cos = Math.abs(Math.cos(turn));
+  const sin = Math.abs(Math.sin(turn));
+  const halfW = (w * cos + hgt * sin) / 2;
+  const halfH = (w * sin + hgt * cos) / 2;
+  const cx = image.x + w / 2;
+  const cy = image.y + hgt / 2;
+  return { x0: cx - halfW, y0: cy - halfH, x1: cx + halfW, y1: cy + halfH };
+}
+
+// A box edge that is a whole number but for the sums' last digits is that
+// whole number, so a fitted image does not grow its floor by a cell.
+const EDGE_SLACK = 1e-6;
+
+// The resize that makes a floor the image's box, rounded out to whole cells
+// so every drawn cell stays under the same part of the image:
+// { left, right, top, bottom, width, height } as resizeFloor takes them.
+export function floorForImage(floor, image) {
+  const box = traceImageBox(image);
+  const x0 = Math.floor(box.x0 + EDGE_SLACK);
+  const y0 = Math.floor(box.y0 + EDGE_SLACK);
+  const x1 = Math.ceil(box.x1 - EDGE_SLACK);
+  const y1 = Math.ceil(box.y1 - EDGE_SLACK);
+  return { left: -x0, top: -y0, right: x1 - floor.width, bottom: y1 - floor.height, width: x1 - x0, height: y1 - y0 };
+}
+
+const PLACE_HOW = {
+  points: 'Place the traced image by two points on ',
+  fit: 'Fit the traced image to ',
+  corner: 'Resize the traced image on ',
+  keys: 'Resize the traced image on ',
+};
+
+// Place a floor's traced image (SV2-73b): its scale, turn and top left corner
+// in one step, worked out by ui/building/scale-tool.js (two points on the
+// image and the two places they belong) or ui/building/trace.js (fit to the
+// floor, a corner handle, + and -). Refused while the image is locked.
+// payload: { floorId, image: { scale, rotation?, x, y }, how: 'points' | 'fit' | 'corner' | 'keys' }
+export const placeTraceImage = action(
+  {
+    label: (before, payload) => {
+      const floor = before.building.floors.find((candidate) => candidate.id === payload.floorId);
+      return (PLACE_HOW[payload.how] || PLACE_HOW.corner) + (floor ? floor.name : 'the floor');
+    },
+    bumps: [BUILDING],
+    focus: (before, payload) => ({ section: 'building', floorId: payload.floorId }),
+  },
+  (project, payload, ctx) => {
+    const floor = project.building.floors.find((candidate) => candidate.id === payload.floorId);
+    if (!floor) refuse('That floor is no longer in the building.', 'missing');
+    if (!floor.image) refuse('There is no image under ' + floor.name + ' to place.', 'missing');
+    if (floor.image.locked) refuse('The image is locked, so it cannot be moved or resized. Untick "Lock the image" on the Floor tab first.', 'locked');
+    const given = payload.image;
+    if (!given || typeof given !== 'object') refuse('A placed image has a scale and a place.', 'bad-value');
+    const image = { scale: given.scale, x: given.x, y: given.y };
+    if (given.rotation !== undefined) image.rotation = given.rotation;
+    return setTraceImage(project, { floorId: floor.id, image }, ctx);
+  },
+);
+
+// Make a floor the size of its traced image (SV2-73b): its width and height
+// become the image's box rounded out to whole cells (floorForImage), the
+// drawing and the image staying where they are on each other. Refused while
+// the image is locked, when the box is outside a floor's sizes, and when it
+// would cut anything drawn, saying what. payload: { floorId }
+export const fitFloorToImage = action(
+  {
+    label: (before, payload, after) => {
+      const outcome = outcomes.get(after);
+      return 'Fit ' + floorName(before, payload.floorId) + ' to its traced image' + (outcome ? ', ' + outcome.width + ' by ' + outcome.height : '');
+    },
+    bumps: geometryBumps,
+    focus: buildingFocus,
+  },
+  (project, payload) => {
+    const floor = project.building.floors.find((candidate) => candidate.id === payload.floorId);
+    if (!floor) refuse('That floor is no longer in the building.', 'missing');
+    if (!floor.image) refuse('There is no image under ' + floor.name + ' to fit it to.', 'missing');
+    if (floor.image.locked) refuse('The image is locked, so the floor is not fitted to it. Untick "Lock the image" on the Floor tab first.', 'locked');
+    const edges = floorForImage(floor, floor.image);
+    const [least, most] = RANGES.floorSize;
+    if (!inRange(edges.width, RANGES.floorSize) || !inRange(edges.height, RANGES.floorSize)) {
+      refuse('The image covers ' + edges.width + ' by ' + edges.height + ' cells, and a floor is from ' + least + ' to ' + most + ' cells each way, so ' + floor.name + ' cannot be fitted to it. Resize the image first.', 'bad-size');
+    }
+    const resize = { floorId: floor.id, left: edges.left, right: edges.right, top: edges.top, bottom: edges.bottom };
+    const described = describing(() => geometry.describeResize(project.building, resize));
+    if (described.losesData) refuse('Fitting ' + floor.name + ' to the image would cut ' + geometry.lossText(described.loss) + ', outside the image. Move them over the image first, or resize the floor by its edges instead.', 'cuts');
+    return inBuilding(project, (building) => geometry.resizeFloor(building, resize));
+  },
+);
+
 // ================================================================ SV2-04: the building (end)
 
 // ================================================================ SV2-10: imports (start)
