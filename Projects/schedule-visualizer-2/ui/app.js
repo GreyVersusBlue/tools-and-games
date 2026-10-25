@@ -464,6 +464,11 @@ async function boot() {
     }
     closeMenu();
     const same = current && current.section === wanted;
+    // A focus in the section or its inspector goes with them when they are
+    // drawn again (a section's key, Back, a link inside the section), and the
+    // keyboard would be left on the page's body, a Tab from the top. It goes
+    // to the new section's surface instead (SV2-32h1).
+    const held = current !== null && (main.contains(document.activeElement) || inspector.contains(document.activeElement));
     if (!same || !(current.view.route && current.view.route(rest))) {
       if (!same) {
         ctx.setSecondRow(null);
@@ -488,6 +493,7 @@ async function boot() {
       announcer.textContent = wanted.name;
       if (device.lastSection !== wanted.id) writeDevice({ lastSection: wanted.id });
     }
+    if (held && (document.activeElement === null || document.activeElement === document.body)) focusSurface();
   }
 
   // ------------------------------------------------------------ shortcuts
@@ -564,6 +570,10 @@ async function boot() {
   window.addEventListener('hashchange', route);
   route();
   draw();
+  // A question storage asked before anything was drawn (the start-up
+  // recovery dialog) gave the focus back to the region, there being no
+  // section yet: it goes on to the section's surface now (SV2-32h1).
+  if (document.activeElement === main) focusSurface();
   document.documentElement.dataset.ready = 'true';
 
   // For the tests and for the console.
