@@ -96,8 +96,11 @@ async function forget(session) {
 
 async function choose(page, pass, hash) {
   const value = pass.expect;
-  const before = await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme);
-  assert.equal(before, pass.device, 'before the theme menu is used the screen should follow the device (' + pass.device + '), so the choice is really made');
+  // Auto, and so the device's scheme: a theme already chosen (one the
+  // device remembered from the screen before) has the device's scheme too
+  // when it is the device's, so the scheme alone could not tell
+  const before = await page.evaluate(() => ({ theme: document.documentElement.dataset.theme, scheme: getComputedStyle(document.documentElement).colorScheme }));
+  assert.deepEqual(before, { theme: 'auto', scheme: pass.device }, 'before the theme menu is used the screen should follow the device (Auto, ' + pass.device + '), so the choice is really made');
   if (await page.$eval('#theme', (el) => el.getClientRects().length > 0)) {
     await page.click('#theme');
     await page.waitForSelector('.menu[role="menu"]');
