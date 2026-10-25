@@ -24,10 +24,17 @@
 // goes in where the finger lifts, at a marker drawn OFFSET pixels above the
 // finger (below it near the top of the plan), so the finger never hides the
 // point it is placing; the finger can slide before it lifts.
+//
+// The same mode places the image by two points (SV2-73b), "Place the image by
+// two points": two points on the image, then the two places on the floor they
+// belong at, placed the same way; the image's scale, turn and corner are set
+// so both land where they belong, in one undo step, the moment the fourth is
+// placed (pointsPlacement). The first two are kept in image pixels like the
+// scaling points; the two places are kept in cells, since they are on the floor.
 
 import { h } from '../components/dom.js';
 import { choice } from '../components/choice.js';
-import { scaleTraceImage } from '../../engine/actions.js';
+import { scaleTraceImage, placeTraceImage } from '../../engine/actions.js';
 import { CELL_SCALE_UNITS, CELL_LENGTH_MOST, METRES_PER_FOOT, RANGES } from '../../engine/schema.js';
 import { inspectorSheet } from './inspector/sheet.js';
 
@@ -153,6 +160,45 @@ export function placeWords(at) {
   return round(at.x, 1) + ', ' + round(at.y, 1);
 }
 
+// Two places on the floor nearer than this (in cells) are one place.
+export const LEAST_CELLS = 0.25;
+
+// Degrees to the range above -180 and up to 180, with no -0.
+export function plainDegrees(degrees) {
+  let turned = degrees % 360;
+  if (turned > 180) turned -= 360;
+  if (turned <= -180) turned += 360;
+  return turned === 0 ? 0 : turned;
+}
+
+// Placing the image by two points (SV2-73b): a1 and a2 are places on the
+// image (its pixels), b1 and b2 the places on the floor (cells) they belong
+// at. The image's scale, turn and top left corner so that each lands on its
+// own: { scale, rotation, x, y }, or a ScaleError. The pairs may come in
+// either order; the answer is the same.
+export function pointsPlacement(image, a1, a2, b1, b2) {
+  if (!(pixelsApart(a1, a2) >= LEAST_PIXELS)) throw new ScaleError('The two points are in the same place on the image. Place the second point somewhere else on it, as far from the first as you can.', 'same-place');
+  const across = Math.hypot(b2.x - b1.x, b2.y - b1.y);
+  if (!(across >= LEAST_CELLS)) throw new ScaleError('The two places on the floor are in the same place. Place the second where the second point belongs, as far from the first as you can.', 'same-cell');
+  const du = a2.u - a1.u;
+  const dv = a2.v - a1.v;
+  const scale = across / Math.hypot(du, dv);
+  const longer = Math.max(image.width, image.height) * scale;
+  if (longer > MOST_CELLS) throw new ScaleError('That would make the image ' + Math.round(longer).toLocaleString('en-US') + ' cells across, far larger than any floor can be (' + RANGES.floorSize[1] + ' cells). Place the points farther apart on the image, or nearer on the floor.', 'too-large');
+  if (longer < 1) throw new ScaleError('That would make the whole image less than one cell across. Place the points nearer on the image, or farther apart on the floor.', 'too-small');
+  const turn = Math.atan2(b2.y - b1.y, b2.x - b1.x) - Math.atan2(dv, du);
+  const rotation = plainDegrees((turn * 180) / Math.PI);
+  // a1, turned and scaled about the image's middle, lands on b1: the middle follows
+  const radians = (rotation * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const ou = (a1.u - image.width / 2) * scale;
+  const ov = (a1.v - image.height / 2) * scale;
+  const cx = b1.x - (ou * cos - ov * sin);
+  const cy = b1.y - (ou * sin + ov * cos);
+  return { scale, rotation, x: cx - (image.width * scale) / 2, y: cy - (image.height * scale) / 2 };
+}
+
 // ---------------------------------------------------------------- on the page
 
 // How far a mouse or pen press may move and still place a point.
@@ -161,21 +207,35 @@ const CLICK_SLOP = 6;
 export const OFFSET = 56;
 // Narrower than this the inspector is a sheet over the plan (ui/app.js).
 const SHEET_QUERY = '(max-width: 900px)';
+// Placing by two points where the image already is.
+export const ALREADY_PLACED = 'The image is already there: each point is on its place. Nothing changed.';
 
-// createScaleTool(ed, ctx, { stopMoving }) -> { start(event), cancel(tell), active, overlay, update(floor), detach() }
+// The mode's name in a sentence about it ending: "placing" or "scaling".
+export function modeWords(kind) {
+  return kind === 'place' ? 'placing' : 'scaling';
+}
+
+// createScaleTool(ed, ctx, { stopMoving, isMissing, changed }) -> { start(event, kind), cancel(tell), active, kind, points, targets, overlay, detach() }
+//   the mode ends by itself when its image goes, is locked or hidden, when
+//   another floor is shown, and when its floor becomes another size
+//   kind 'scale' (from a length, the default) or 'place' (by two points);
+//   changed() is called whenever the mode starts or ends
 export function createScaleTool(ed, ctx, options) {
   inspectorSheet();
   const canvas = ed.canvas;
   const stage = canvas.parentElement;
-  // the mode: null, or { floorId, imageId, points: [{ u, v }], hover, press }
+  // the mode: null, or { kind, floorId, imageId, points: [{ u, v }], targets: [{ x, y }], hover, press }
   let mode = null;
+  const placing = () => mode !== null && mode.kind === 'place';
 
   // ---------------------------------------------------------- the banner and the form
 
   const words = h('p', { class: 'bld-connect__text', id: 'scale-text' });
   const stop = h('button', { type: 'button', class: 'btn', id: 'scale-cancel', on: { click: () => cancel(true) } }, 'Cancel');
+  // placing by two points: start over, from the first point on the image
+  const over = h('button', { type: 'button', class: 'btn', id: 'place-again', hidden: true, on: { click: () => restart() } }, 'Start again');
   // connect mode's banner, in the flow of this box rather than over it
-  const banner = h('div', { class: 'bld-connect', id: 'scale-banner', role: 'status', style: 'position: static' }, words, stop);
+  const banner = h('div', { class: 'bld-connect', id: 'scale-banner', role: 'status', style: 'position: static' }, words, over, stop);
 
   const lineWords = h('p', { id: 'scale-line', style: 'flex: 1 1 100%; margin: 0' });
   const lengthInput = h('input', { class: 'field__input', id: 'scale-length', name: 'scale-length', inputmode: 'decimal', autocomplete: 'off', spellcheck: 'false', style: 'width: 7rem' });
@@ -232,6 +292,12 @@ export function createScaleTool(ed, ctx, options) {
     const image = imageNow();
     if (!image) return '';
     const places = mode.points.map((point) => floorPoint(image, point));
+    if (placing()) {
+      if (places.length === 0) return 'Placing the image: put the first point on a mark of the image you can find on the floor too, such as a corner (click, tap, or move the cursor and press Enter). Esc cancels.';
+      if (places.length === 1) return 'First point on the image at ' + placeWords(places[0]) + ' cells. Now the second point on the image, as far from the first as you can. Esc cancels.';
+      if (mode.targets.length === 0) return 'Both points are on the image. Now click or tap the place on the floor where the first point belongs. Esc cancels.';
+      return 'The first point belongs at ' + placeWords(mode.targets[0]) + ' cells. Now the place on the floor where the second point belongs. Esc cancels.';
+    }
     if (places.length === 0) return 'Scaling the image: place the first point at one end of a length you know, such as a wall (click, tap, or move the cursor and press Enter). Esc cancels.';
     if (places.length === 1) return 'First point at ' + placeWords(places[0]) + ' cells. Now place the second point at the other end of the length. Esc cancels.';
     const cells = Math.hypot(places[1].x - places[0].x, places[1].y - places[0].y);
@@ -257,10 +323,12 @@ export function createScaleTool(ed, ctx, options) {
       return;
     }
     canvas.dataset.scaling = 'true';
+    box.dataset.kind = mode.kind;
     const text = sentence();
     words.textContent = text;
     ed.setHint(text);
-    form.hidden = mode.points.length < 2;
+    over.hidden = !placing() || mode.points.length === 0;
+    form.hidden = placing() || mode.points.length < 2;
     if (!form.hidden) {
       const image = imageNow();
       const a = floorPoint(image, mode.points[0]);
@@ -298,6 +366,7 @@ export function createScaleTool(ed, ctx, options) {
   // ---------------------------------------------------------- the mode
 
   function end() {
+    const was = mode !== null;
     mode = null;
     clearRefusal();
     lengthInput.value = '';
@@ -306,6 +375,7 @@ export function createScaleTool(ed, ctx, options) {
     ed.setHint(ed.tool.hint);
     draw();
     ed.schedule();
+    if (was && options.changed) options.changed();
   }
 
   function cancel(tell) {
@@ -322,14 +392,15 @@ export function createScaleTool(ed, ctx, options) {
     ed.say(message);
   }
 
-  // start(event): from the Floor tab's button; a press by keyboard (no
+  // start(event, kind): from the Floor tab's buttons; a press by keyboard (no
   // pointer, event.detail 0) brings the plan's cursor up, ready for Enter
-  function start(event) {
+  function start(event, kind) {
+    const how = kind === 'place' ? 'place' : 'scale';
     const floor = ed.floor;
     const image = floor.image;
     if (!image) return;
     if (image.locked) {
-      refuseStart('The image is locked, so it cannot be scaled. Untick "Lock the image" first.');
+      refuseStart(how === 'place' ? 'The image is locked, so it cannot be placed. Untick "Lock the image" first.' : 'The image is locked, so it cannot be scaled. Untick "Lock the image" first.');
       return;
     }
     if (image.missing === true || options.isMissing(image)) {
@@ -342,7 +413,8 @@ export function createScaleTool(ed, ctx, options) {
     }
     options.stopMoving();
     if (ed.connect && ed.connect.active) ed.connect.cancel(false);
-    mode = { floorId: floor.id, imageId: image.imageId, points: [], hover: null, press: null };
+    if (mode !== null) end();
+    mode = { kind: how, floorId: floor.id, imageId: image.imageId, width: floor.width, height: floor.height, points: [], targets: [], hover: null, press: null };
     unit = LENGTH_UNITS[0].value;
     units.set(unit);
     canvas.style.cursor = 'crosshair';
@@ -352,11 +424,13 @@ export function createScaleTool(ed, ctx, options) {
     if (event && event.detail === 0) ed.cursor.moveTo(ed.cursor.x, ed.cursor.y, true);
     ed.say(words.textContent);
     ed.schedule();
+    if (options.changed) options.changed();
   }
 
   function restart() {
     if (mode === null) return;
     mode.points = [];
+    mode.targets = [];
     clearRefusal();
     draw();
     canvas.focus({ preventScroll: true });
@@ -369,6 +443,10 @@ export function createScaleTool(ed, ctx, options) {
   function place(at, how) {
     const image = imageNow();
     if (!image) return;
+    if (placing() && mode.points.length === 2) {
+      placeTarget(at);
+      return;
+    }
     const point = imagePoint(image, at);
     let which;
     if (mode.points.length < 2) {
@@ -384,7 +462,7 @@ export function createScaleTool(ed, ctx, options) {
     }
     if (mode.points.length === 2 && pixelsApart(mode.points[0], mode.points[1]) < LEAST_PIXELS) {
       mode.points.splice(which, 1);
-      const message = 'The two points are in the same place on the image. Place the ' + (which === 0 ? 'first' : 'second') + ' point at the other end of a length you know.';
+      const message = placing() ? 'The two points are in the same place on the image. Place the second point somewhere else on it, as far from the first as you can.' : 'The two points are in the same place on the image. Place the ' + (which === 0 ? 'first' : 'second') + ' point at the other end of a length you know.';
       ctx.toast({ kind: 'problem', text: message });
       draw();
       ed.say(message);
@@ -395,7 +473,7 @@ export function createScaleTool(ed, ctx, options) {
     clearRefusal();
     draw();
     ed.schedule();
-    if (mode.points.length < 2) {
+    if (mode.points.length < 2 || placing()) {
       ed.say(words.textContent);
       return;
     }
@@ -403,6 +481,55 @@ export function createScaleTool(ed, ctx, options) {
     // the length field takes the focus, except under a finger: the on-screen
     // keyboard would rise over the plan the reader may still be placing on
     if (how !== 'touch' && fresh) lengthInput.focus({ preventScroll: true });
+  }
+
+  // Placing by two points: a place on the floor where a point belongs. The
+  // second of them places the image, in one undo step.
+  function placeTarget(at) {
+    const image = imageNow();
+    mode.targets.push({ x: at.x, y: at.y });
+    if (mode.targets.length < 2) {
+      draw();
+      ed.schedule();
+      ed.say(words.textContent);
+      return;
+    }
+    let placed;
+    try {
+      placed = pointsPlacement(image, mode.points[0], mode.points[1], mode.targets[0], mode.targets[1]);
+    } catch (error) {
+      if (!(error instanceof ScaleError)) throw error;
+      // the second place is taken back; the reader places it again
+      mode.targets.pop();
+      ctx.toast({ kind: 'problem', text: error.message });
+      draw();
+      ed.schedule();
+      ed.say(error.message);
+      return;
+    }
+    const floor = floorOf(mode.floorId);
+    const said = 'Placed the image by two points: it is ' + round(image.width * placed.scale, 1) + ' cells wide, turned ' + round(placed.rotation, 1) + ' degrees.';
+    // the placement the image already has changes nothing: the mode ends all
+    // the same, saying so, rather than waiting on a third place with two kept.
+    // ed.commit reads `same` only when the store kept the project as it was.
+    let already = false;
+    const done = ed.commit(placeTraceImage, { floorId: floor.id, image: placed, how: 'points' }, {
+      done: () => said,
+      toast: () => said,
+      get same() {
+        already = true;
+        return ALREADY_PLACED;
+      },
+    });
+    // null for a refusal too (the floor or the image gone, the image locked):
+    // each of those ends the mode as well, and ed.attempt has said why
+    end();
+    canvas.focus({ preventScroll: true });
+    if (done) ed.say(said);
+    else if (already) {
+      ctx.toast({ text: ALREADY_PLACED });
+      ed.say(ALREADY_PLACED);
+    }
   }
 
   function apply() {
@@ -463,8 +590,9 @@ export function createScaleTool(ed, ctx, options) {
 
   function offFloor() {
     if (mode && ed.floor.id !== mode.floorId) {
+      const doing = modeWords(mode.kind);
       end();
-      ed.say('Another floor is on show, so scaling the image has stopped.');
+      ed.say('Another floor is on show, so ' + doing + ' the image has stopped.');
       return true;
     }
     return false;
@@ -560,18 +688,24 @@ export function createScaleTool(ed, ctx, options) {
 
   // The project changed: the image may be gone, replaced or locked. A change
   // that only moves or resizes it keeps the points, which ride on the image.
+  // A floor made another size (Fit the floor to the image, or its undo) moves
+  // the floor's frame under the places kept in cells, so it ends the mode too.
   const unsubscribe = ed.store.subscribe(() => {
     if (mode === null) return;
     const floor = floorOf(mode.floorId);
+    const doing = modeWords(mode.kind);
     if (!floor || !floor.image || floor.image.imageId !== mode.imageId) {
       end();
-      ed.say('The image is gone, so scaling it has stopped.');
+      ed.say('The image is gone, so ' + doing + ' it has stopped.');
     } else if (floor.image.locked) {
       end();
-      ed.say('The image is locked now, so scaling it has stopped.');
+      ed.say('The image is locked now, so ' + doing + ' it has stopped.');
     } else if (!floor.image.visible) {
       end();
-      ed.say('The image is hidden now, so scaling it has stopped.');
+      ed.say('The image is hidden now, so ' + doing + ' it has stopped.');
+    } else if (floor.width !== mode.width || floor.height !== mode.height) {
+      end();
+      ed.say(floor.name + ' is ' + floor.width + ' × ' + floor.height + ' cells now, so ' + doing + ' the image has stopped. Start it again to place the points afresh.');
     } else draw();
   });
 
@@ -640,35 +774,85 @@ export function createScaleTool(ed, ctx, options) {
         g.fillText(label, at.sx + 12, at.sy - 12);
       }
     };
-    if (shown.length === 2) stroke(shown[0], shown[1], false);
     const press = mode.press;
-    let pending = null;
+    if (placing()) {
+      placeMarks(g, view, theme, shown, stroke, marker);
+      return;
+    }
+    if (shown.length === 2) stroke(shown[0], shown[1], false);
+    let pending = pendingAt(g, ink);
+    // with both points placed, the pointer alone draws nothing
+    if ((!press || press.off) && shown.length >= 2) pending = null;
+    if (pending && shown.length === 1) stroke(shown[0], pending, true);
+    shown.forEach((at, i) => marker(at, String(i + 1)));
+    if (pending && (press || shown.length < 2)) crosshair(g, pending, halo, ink);
+  }
+
+  // Where a press would put its point now: under a finger, the marker above
+  // it (with a thin line to the finger); under a mouse, the pointer.
+  function pendingAt(g, ink) {
+    const press = mode.press;
     if (press && !press.off && press.type === 'touch') {
-      pending = offsetFrom(press.sx, press.sy);
+      const at = offsetFrom(press.sx, press.sy);
       g.strokeStyle = ink;
       g.lineWidth = 1;
       g.beginPath();
       g.moveTo(press.sx, press.sy);
-      g.lineTo(pending.sx, pending.sy);
+      g.lineTo(at.sx, at.sy);
       g.stroke();
-    } else if (press && !press.off) pending = { sx: press.sx, sy: press.sy };
-    else if (mode.hover && shown.length < 2) pending = mode.hover;
+      return at;
+    }
+    if (press && !press.off) return { sx: press.sx, sy: press.sy };
+    return mode.hover;
+  }
+
+  // Placing by two points: the points on the image as numbered dots, each
+  // place on the floor as a numbered square, and a dashed line from each point
+  // to its place (to the pointer, for the place being chosen).
+  function placeMarks(g, view, theme, shown, stroke, marker) {
+    const halo = theme.paper;
+    const ink = theme.accent;
+    const size = view.size;
+    // a place for each point on the image and no more: a third would have no point to draw a line from
+    const targets = mode.targets.slice(0, shown.length).map((at) => ({ sx: view.x + at.x * size, sy: view.y + at.y * size }));
+    const pending = pendingAt(g, ink);
+    targets.forEach((at, i) => stroke(shown[i], at, true));
+    if (pending && shown.length === 2 && targets.length < 2) stroke(shown[targets.length], pending, true);
     if (pending && shown.length === 1) stroke(shown[0], pending, true);
     shown.forEach((at, i) => marker(at, String(i + 1)));
-    if (pending && (press || shown.length < 2)) {
-      // a crosshair where the point would go
-      g.strokeStyle = halo;
-      g.lineWidth = 4;
-      g.beginPath();
-      g.moveTo(pending.sx - 10, pending.sy);
-      g.lineTo(pending.sx + 10, pending.sy);
-      g.moveTo(pending.sx, pending.sy - 10);
-      g.lineTo(pending.sx, pending.sy + 10);
-      g.stroke();
+    targets.forEach((at, i) => {
+      g.fillStyle = halo;
+      g.fillRect(at.sx - 9, at.sy - 9, 18, 18);
       g.strokeStyle = ink;
       g.lineWidth = 2;
-      g.stroke();
-    }
+      g.strokeRect(at.sx - 6.5, at.sy - 6.5, 13, 13);
+      g.fillStyle = ink;
+      g.fillRect(at.sx - 2, at.sy - 2, 4, 4);
+      g.font = '600 13px ' + theme.font;
+      g.textAlign = 'left';
+      g.textBaseline = 'middle';
+      g.lineWidth = 4;
+      g.strokeStyle = halo;
+      g.strokeText(String(i + 1), at.sx + 12, at.sy + 12);
+      g.fillStyle = theme.ink;
+      g.fillText(String(i + 1), at.sx + 12, at.sy + 12);
+    });
+    if (pending && (mode.press || targets.length < 2)) crosshair(g, pending, halo, ink);
+  }
+
+  // a crosshair where the point would go
+  function crosshair(g, pending, halo, ink) {
+    g.strokeStyle = halo;
+    g.lineWidth = 4;
+    g.beginPath();
+    g.moveTo(pending.sx - 10, pending.sy);
+    g.lineTo(pending.sx + 10, pending.sy);
+    g.moveTo(pending.sx, pending.sy - 10);
+    g.lineTo(pending.sx, pending.sy + 10);
+    g.stroke();
+    g.strokeStyle = ink;
+    g.lineWidth = 2;
+    g.stroke();
   }
 
   return {
@@ -677,10 +861,17 @@ export function createScaleTool(ed, ctx, options) {
     get active() {
       return mode !== null;
     },
+    get kind() {
+      return mode === null ? null : mode.kind;
+    },
     // for tests and the Floor tab: the points placed so far, in cells on the floor
     get points() {
       const image = imageNow();
       return mode && image ? mode.points.map((point) => floorPoint(image, point)) : [];
+    },
+    // placing by two points: the places on the floor chosen so far, in cells
+    get targets() {
+      return mode ? mode.targets.map((at) => ({ ...at })) : [];
     },
     overlay,
     detach() {
