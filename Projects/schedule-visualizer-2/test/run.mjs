@@ -159,6 +159,7 @@ export const GROUPS = {
     'browser/getting-started.mjs', // SV2-30b
     'browser/empty-states.mjs', // SV2-30b
     'browser/trace-scale.mjs', // SV2-73a
+    'browser/journeys-touch.mjs', // SV2-32h2
     'a11y/axe.mjs',
     'a11y/staff-axe.mjs', // SV2-32g2
   ],
