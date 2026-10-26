@@ -215,6 +215,29 @@ test('simulateSchedule: every bell-schedule run, with the periods that do not me
   assert.equal('bells' in simulateSchedule(sampleSchool(), routesByRun(sampleSchool())), false);
 });
 
+// ARCHITECTURE 17.3: an off period moves nobody, and that holds in the
+// middle of the day too. The walk from Period 2's room to Period 4's room,
+// around an off Period 3, is not simulated: both transitions are off.
+test('a middle off period moves nobody: the walk from Period 2\'s room to Period 4\'s room is not simulated', () => {
+  const project = sampleSchool();
+  project.bellSchedules = [{ id: ER, name: 'Assembly', short: '', bells: project.dayTypes[0].bells.map((bell) => (bell ? { ...bell } : null)), off: [2] }];
+  const result = createPipeline().run(project);
+  assert.deepEqual(result.crowd, fresh(project).crowd);
+  for (const day of result.crowd.bells) {
+    assert.deepEqual(day.transitions.map((transition) => transition.off === true), [false, true, true, false, false, false, false], day.dayTypeId);
+    for (const transition of day.transitions.slice(1, 3)) {
+      assert.deepEqual(transition.groups, []);
+      assert.equal(transition.passingSeconds, null);
+    }
+  }
+  // no walk figure into or out of Period 3, nor one from Period 2 to Period 4
+  const early = result.walks.bells.groups.filter((walk) => walk.bellsId === ER);
+  assert.ok(early.length > 0);
+  assert.deepEqual(early.filter((walk) => walk.period === 1 || walk.period === 2), []);
+  // and a group whose Period 2 and Period 4 rooms differ has no late walk between them under Assembly
+  assert.equal(result.findings.findings.some((finding) => finding.kind === 'group-walk' && Array.isArray(finding.where.bellsIds) && finding.where.bellsIds.includes(ER) && (finding.where.period === 1 || finding.where.period === 2)), false);
+});
+
 test('walkResults: the bell-schedule runs\' walks are in bells, each with its bellsId; the regular lists are as without them', () => {
   const project = withBells();
   const graph = routingGraph(project);
@@ -613,6 +636,43 @@ test('a packed answer carries the bell-schedule runs, leaves out what was sent, 
   assert.deepEqual(parts(sent), parts(second));
   assert.equal(sent.crowd.bells[0], firstAnswer.crowd.bells[0], 'a run with nothing new is the run this side already has');
   assert.throws(() => unpack(structuredClone(answer), null), /never had/);
+});
+
+test('pack and unpack across adding the first bell schedule and deleting the last one', () => {
+  const store = storeOf(sampleSchool());
+  const pipeline = createPipeline();
+  const first = pipeline.run(store.project, versionsOf(store));
+  let had = unpack(structuredClone(pack(first, null)), null);
+  assert.deepEqual(parts(had), parts(first));
+  let previous = first;
+  const next = (label) => {
+    const result = pipeline.run(store.project, versionsOf(store));
+    const answer = pack(result, previous);
+    const sent = unpack(structuredClone(answer), had);
+    assert.deepEqual(parts(sent), parts(result), label);
+    assert.deepEqual(parts(result), fresh(store.project), label + ': as a fresh run');
+    had = sent;
+    previous = result;
+    return { result, answer, sent };
+  };
+  store.apply(actions.addBellSchedule, { name: 'Early Release' });
+  const added = next('the first schedule added');
+  assert.equal(added.sent.crowd.bells.length, 2);
+  assert.equal(added.sent.bellLoads.length, 2);
+  assert.equal(added.answer.crowdBells.length, 2, 'the new runs are sent');
+  const id = store.project.bellSchedules[0].id;
+  store.apply(actions.setBellSchedule, { bellScheduleId: id, off: [6, 7] });
+  next('periods that do not meet');
+  store.apply(actions.deleteBellSchedule, { bellScheduleId: id });
+  const removed = next('the last schedule deleted');
+  assert.equal('bells' in removed.sent.crowd, false);
+  assert.equal('bellLoads' in removed.sent, false);
+  assert.equal('bells' in removed.sent.routes, false);
+  assert.equal('crowdBells' in removed.answer, false);
+  // and added again, against an answer that had none
+  store.apply(actions.addBellSchedule, { name: 'Testing' });
+  const again = next('a schedule added again');
+  assert.equal(again.sent.crowd.bells.length, 2);
 });
 
 test('runResults picks one run\'s parts out of a result', () => {
