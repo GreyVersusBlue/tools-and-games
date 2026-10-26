@@ -129,6 +129,7 @@ row names a file it does not run.
 | `test/engine/calendar.test.mjs` | The calendar walk as a wall planner, whole-day dates, breaks counted in school days, deletions, the 731-day limit |
 | `test/engine/runs.test.mjs` | Meeting slots under a bell schedule's periods that do not meet, and the runs movement needs |
 | `test/engine/runs-today.test.mjs` | A project with none of the new fields gives byte for byte the results it gave before the engines worked by run |
+| `test/engine/bell-runs.test.mjs` | The engines by run: routes, crowd, loads, walk checks, the pipeline's transition cache, scenario and suggestions under bell schedules |
 | `test/engine/actions.test.mjs` | Every action on a frozen project: what changes, what is shared, the undo label |
 | `test/engine/history.test.mjs` | Undo and redo, 200 steps, quiet actions |
 | `test/engine/store.test.mjs` | The store: apply, undo, subscribe, the three counters |

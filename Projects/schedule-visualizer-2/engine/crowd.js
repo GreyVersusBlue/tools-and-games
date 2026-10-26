@@ -486,8 +486,9 @@ export function retimeTransition(result, passingSeconds, marginSeconds) {
   const passing = Number.isFinite(passingSeconds) ? passingSeconds : defaultSettings().defaultPassingSeconds;
   const margin = Number.isFinite(marginSeconds) ? marginSeconds : 0;
   const cap = crowdCap(passing);
+  // a group stopped at its cap means the transition ran to it, so this is
+  // also "every group arrived"
   if (!(result.seconds < result.cap) || !(result.seconds < cap)) return null;
-  if (result.groups.some((group) => group.arrived !== true)) return null;
   const groups = result.groups.map((group) => {
     const late = isLate(group.total, passing, margin);
     return late === group.late ? group : { ...group, late };
