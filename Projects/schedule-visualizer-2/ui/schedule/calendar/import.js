@@ -5,13 +5,9 @@
 // importCalendarDates. A file that cannot be read, or names a day type or a
 // bell schedule the project does not have, is refused whole with the
 // engine's sentence (spec 3.7), and nothing changes.
-//
-// The action is SV2-77b's. The namespace import below finds it by name, so
-// this file loads before it exists and says so on Apply if it is still not
-// there.
 
 import { h, uid } from '../../components/dom.js';
-import * as actions from '../../../engine/actions.js';
+import { importCalendarDates } from '../../../engine/actions.js';
 import { readCalendarCsv, calendarImportText } from '../../../engine/import-calendar.js';
 import { dateWords } from '../../../engine/calendar.js';
 import { bellSchedulesOf } from '../../../engine/schema.js';
@@ -92,13 +88,9 @@ export function openImportDialog(env, opener) {
 
   dialog.closed.then((answer) => {
     if (answer !== 'go' || !reading) return;
-    if (typeof actions.importCalendarDates !== 'function') {
-      ctx.toast({ kind: 'problem', text: 'Importing dates is not in this copy of the planner yet. Nothing has changed.' });
-      return;
-    }
     const text = calendarImportText(ctx.store.project, reading);
     try {
-      ctx.store.apply(actions.importCalendarDates, { changes: reading.changes });
+      ctx.store.apply(importCalendarDates, { changes: reading.changes, counts: reading.counts });
     } catch (error) {
       ctx.toast({ kind: 'problem', text: (error && error.message ? error.message : 'The dates could not be imported.') + ' Nothing has changed.' });
       return;

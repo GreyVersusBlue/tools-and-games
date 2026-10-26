@@ -375,18 +375,13 @@ test('Save as CSV, then Import dates… with that file: nothing to change; a cha
   await shows(() => document.querySelectorAll('.cal-import__table tbody tr').length === 1);
   assert.deepEqual(await page.$eval('.cal-import__table tbody tr', (row) => Array.from(row.children, (each) => each.textContent)).then((cells) => cells[0]), 'Thursday 26 November 2026');
   assert.equal(await ownChange('2026-11-26'), null, 'nothing changed before Apply');
-  const has = await page.evaluate(() => typeof globalThis.sv2modules.actions.importCalendarDates === 'function');
+  assert.equal(await text('[data-action="apply-import"]'), 'Apply: 1 date changes');
   await page.click('[data-action="apply-import"]');
-  if (has) {
-    await shows(() => (document.querySelector('.toast .toast__text')?.textContent || '').startsWith('Imported dates: '));
-    assert.equal((await dayOn('2026-11-26')).school, false);
-    await undoFromToast();
-    assert.equal((await dayOn('2026-11-26')).school, true);
-  } else {
-    // SV2-77b's action is not on this branch yet: the import says so and changes nothing
-    await toastSays('Importing dates is not in this copy of the planner yet. Nothing has changed.');
-    assert.equal(await ownChange('2026-11-26'), null);
-  }
+  await toastSays('Imported dates: 1 date changes; ' + (days - 1) + ' dates are as the calendar has them.');
+  assert.deepEqual(await ownChange('2026-11-26'), { date: '2026-11-26', day: 'closed', bells: null, label: 'Thanksgiving' });
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.undoLabel), 'Import dates: 1 date changes; ' + (days - 1) + ' dates are as the calendar has them');
+  await undoFromToast();
+  assert.equal(await ownChange('2026-11-26'), null);
 });
 
 test('a file naming a day type the project does not have is refused whole, and nothing changes', async () => {
