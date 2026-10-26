@@ -173,7 +173,7 @@ export function dayCardsOf(ctx, kinds, rowOf) {
     const rows = bells.map((bell, period) => {
       const off = bell.off === true;
       const row = off ? { what: h('span', { class: 'muted' }, 'No class'), where: null } : rowOf(kind.first, period);
-      return h('li', { class: 'row', dataset: { period: String(period), off: off ? 'true' : null } },
+      return h('li', { class: 'row', dataset: off ? { period: String(period), off: 'true' } : { period: String(period) } },
         h('span', { class: 'row__when' },
           h('span', { class: 'row__period' }, school.periodName(period)),
           bell.start && bell.end ? h('span', { class: 'row__time' }, school.time(bell.start) + ' to ' + school.time(bell.end)) : null),
@@ -185,10 +185,12 @@ export function dayCardsOf(ctx, kinds, rowOf) {
       isToday ? h('span', { class: 'day__tag' }, 'Today') : null,
       schedule ? h('p', { class: 'day__bells' }, typed(schedule.name), ' bells') : null,
     ];
-    const attrs = {
-      class: 'card day' + (ownCard && isToday ? ' no-print' : ''),
-      dataset: { days: kind.dayTypes.map((dayType) => dayType.id).join(' '), today: isToday ? 'true' : null, bells: bellsId || null, own: ownCard && isToday ? 'true' : null },
-    };
+    // (dom.js writes a dataset's value as it is, so what a card is not is left off)
+    const dataset = { days: kind.dayTypes.map((dayType) => dayType.id).join(' ') };
+    if (isToday) dataset.today = 'true';
+    if (bellsId) dataset.bells = bellsId;
+    if (ownCard && isToday) dataset.own = 'true';
+    const attrs = { class: 'card day' + (ownCard && isToday ? ' no-print' : ''), dataset };
     const list = h('ol', { class: 'rows' }, rows);
     if (open) return h('section', attrs, h('div', { class: 'day__head' }, title), list);
     return h('details', attrs, h('summary', { class: 'day__head' }, title), list);

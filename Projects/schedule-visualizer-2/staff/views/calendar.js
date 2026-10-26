@@ -11,12 +11,12 @@
 // month and its list.
 //
 // Shown only when the file has a calendar; an address for it in a copy with
-// none says so.
+// none says so. Drawn again when today changes while it is open.
 
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, printWhen } from '../page.js';
-import { todayOf, todayLine, readDayOn, nowTabs, hasCalendar, localDate } from '../clock.js';
+import { todayOf, todayKey, todayLine, readDayOn, nowTabs, hasCalendar, localDate, watchClock } from '../clock.js';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -132,7 +132,7 @@ export const calendarView = {
       const known = dayTypes.get(day.dayTypeId);
       const short = known ? school.dayShort(known.dayType) : '';
       const schedule = scheduleOf(day.bellsId);
-      return h('td', { class: 'cal__date', 'aria-current': isToday ? 'date' : null, dataset: { date, tint: known && known.at < CALENDAR_TINTS ? String(known.at + 1) : null } },
+      return h('td', { class: 'cal__date', 'aria-current': isToday ? 'date' : null, dataset: known && known.at < CALENDAR_TINTS ? { date, tint: String(known.at + 1) } : { date } },
         h('span', { class: 'cal__num' }, number),
         h('span', { class: 'cal__day' + (Array.from(short).length > 2 ? ' cal__day--long' : '') }, typed(short)),
         schedule ? h('span', { class: 'cal__bells' }, typed(school.bellsShort(schedule))) : null);
@@ -156,7 +156,7 @@ export const calendarView = {
         if (day.bellsId) shownBells.add(day.bellsId);
       }
     }
-    const keyItems = school.dayTypes.filter((dayType) => shownDays.has(dayType.id)).map((dayType) => h('li', { class: 'cal__key', dataset: { tint: dayTypes.get(dayType.id).at < CALENDAR_TINTS ? String(dayTypes.get(dayType.id).at + 1) : null } },
+    const keyItems = school.dayTypes.filter((dayType) => shownDays.has(dayType.id)).map((dayType) => h('li', { class: 'cal__key', dataset: dayTypes.get(dayType.id).at < CALENDAR_TINTS ? { tint: String(dayTypes.get(dayType.id).at + 1) } : {} },
       h('span', { class: 'cal__keymark' }, typed(school.dayShort(dayType))), ' ', typed(dayType.name)))
       .concat(school.bellSchedules.filter((schedule) => shownBells.has(schedule.id)).map((schedule) => h('li', { class: 'cal__key' },
         h('span', { class: 'cal__keymark cal__keymark--bells' }, typed(school.bellsShort(schedule))), ' ', typed(schedule.name), ' bells')))
@@ -195,7 +195,7 @@ export const calendarView = {
     const made = Date.parse(school.data.publishedAt);
     const madeOn = Number.isFinite(made) ? localDate(new Date(made)) : null;
     const lede = ['Calendar as published on ', madeOn ? school.dateWords(madeOn, { year: madeOn.slice(0, 4) !== today.date.slice(0, 4) }) : 'an unknown date', '. It covers ', school.dateWords(calendar.start), ' to ', school.dateWords(calendar.end), '.'];
-    return pageOf('Calendar', lede,
+    const page = pageOf('Calendar', lede,
       nowTabs(school, 'calendar'),
       todayLine(ctx, () => ctx.redraw()),
       h('section', { class: 'card cal__card', 'aria-labelledby': 'cal-month' },
@@ -205,5 +205,11 @@ export const calendarView = {
       h('section', { class: 'part', 'aria-label': 'Every date of ' + monthWords(month) },
         h('h2', { class: 'part__title' }, 'Every date of ', monthWords(month)),
         items.length > 0 ? h('ul', { class: 'list plain cal__list' }, items) : h('p', { class: 'muted' }, 'No school days this month.')));
+    // past midnight, or woken the next morning: today's ring and line move
+    const key = todayKey(today);
+    watchClock(page, () => {
+      if (todayKey(todayOf(ctx)) !== key) ctx.redraw();
+    });
+    return page;
   },
 };

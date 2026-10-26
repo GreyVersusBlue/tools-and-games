@@ -2531,8 +2531,7 @@ details[open] > summary.day__head {
 }
 
 @media print {
-  .today__not,
-  .today__panel,
+  .today,
   .day__tag,
   .day[data-own="true"],
   summary.day__head::before,

@@ -144,6 +144,7 @@ export const GROUPS = {
     'browser/staff-views-b.mjs', // SV2-22
     'browser/staff-outputs.mjs', // SV2-23
     'browser/staff-pictures.mjs', // SV2-32e
+    'browser/staff-calendar.mjs', // SV2-81
     'browser/publish.mjs', // SV2-24
     'browser/m4-pass.mjs', // SV2-45
     'browser/movement.mjs', // SV2-17

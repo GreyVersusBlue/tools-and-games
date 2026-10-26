@@ -231,6 +231,7 @@ row names a file it does not run.
 | `test/browser/staff-views-b.mjs` | Free right now, Where right now, Common planning, Coverage, the substitute plan, Directions |
 | `test/browser/staff-outputs.mjs` | My schedule, notes, the lock-screen image, the door sign, every page on paper, batch sheets |
 | `test/browser/staff-pictures.mjs` | Every staff page and the door sign saved as an image, held square by square to a screenshot of the page |
+| `test/browser/staff-calendar.mjs` | The staff browser's today: the calendar's day and bells on Free right now, Where right now and the day cards, "Not right?" (just today, and the days after following on, cleared by a newer file), no school, a date outside the calendar, a date change and a page coming back into view; many day types in cards, folded cards and on paper; the calendar page and its print; staffing's "same as"; the lock-screen image with many day types; at 390 and 1280 px and by keyboard |
 | `test/browser/publish.mjs` | The Staff browser section: the preview, the publish form, a file published and opened from disk, batch printing |
 | `test/browser/m3-pass.mjs` | The movement view after the walk-through of it: the map first, the page that does not scroll, the toast above the dock |
 | `test/browser/m4-pass.mjs` | The published file on a phone after the walk-through: M1 to M8 |

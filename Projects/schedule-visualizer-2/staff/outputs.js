@@ -19,7 +19,7 @@ import { h, typed } from './dom.js';
 import { makeHash } from './router.js';
 import { dayText } from './dates.js';
 import { printButton, handOver } from './page.js';
-import { isMe, chooseMe, forgetMe } from './notes.js';
+import { isMe, chooseMe, forgetMe, dayListWords } from './notes.js';
 
 export const LOCK_WIDTH = 1170;
 export const LOCK_HEIGHT = 2532;
@@ -115,7 +115,7 @@ export function lockScreenLayout(school, teacher, kinds, when) {
       const bells = school.bells(kind.first.id);
       const rowHeight = Math.min(34, (bandHeight - head) / Math.max(1, day.length));
       const size = Math.max(7, Math.min(14, Math.floor(rowHeight * 0.54)));
-      text(kind.dayTypes.map((dayType) => dayType.name).join(' and '), x, bandTop + 13, 13, { weight: 700, tone: 'accent', fit: columnWidth });
+      text(dayListWords(kind.dayTypes.map((dayType) => dayType.name)), x, bandTop + 13, 13, { weight: 700, tone: 'accent', fit: columnWidth });
       items.push({ kind: 'rule', x, y: bandTop + head - 3, w: columnWidth });
       const labelWidth = Math.max(...day.map((entry) => school.periodLabel(entry.period).length), 1) * size * 0.62 + 6;
       // a lone column has room for the whole time; side by side, the start
