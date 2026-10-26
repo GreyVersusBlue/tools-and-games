@@ -59,8 +59,8 @@
 //   changeWords(project, change)
 //       { parts, text, teachers: [{ groupId, from, to }] } for a chip
 //   trimResult(result)
-//       { places, loads, walks, findings, failedWalks }: what compareResults
-//       reads of a pipeline result, and nothing else
+//       { places, loads, bellLoads?, walks, findings, failedWalks }: what
+//       compareResults reads of a pipeline result, and nothing else
 //   compareResults(before, after, options?)
 //       every figure of spec 9.2 (the shape is at the function)
 //   loadDifference(before, after, options?)
@@ -83,9 +83,12 @@
 //                        connections: busiest, peak, total, byTransition
 //     walks.groups[]     dayTypeId, groupId, walking, waiting, total, late
 //                        (with the school's margin), arrived
+//     bellLoads[], walks.bells.groups[]   the same for the bell-schedule
+//                        runs, each with its bellsId, when one is asked about
 //     findings.findings[]  whole: id, severity and where.dayTypeId are read,
 //                        and the findings are handed back as they are
-//     failedWalks[]      dayTypeId, groupId: the walks with no way through.
+//     failedWalks[]      dayTypeId, groupId, and bellsId for a bell-schedule
+//                        run's: the walks with no way through.
 //                        A pipeline result has no such field: trimResult
 //                        builds it from `routes`, and compareResults calls
 //                        trimResult on a result that does not carry it. It
@@ -452,9 +455,16 @@ function sideOf(figureBefore, figureAfter) {
   return { before: figureBefore, after: figureAfter, difference: figureAfter - figureBefore };
 }
 
-function wantedLoads(result, dayTypeId) {
-  const list = result && Array.isArray(result.loads) ? result.loads.filter(Boolean) : [];
+// The loads of the runs asked about: every own day type's, or one's, under
+// the regular bells (bellsId null) or under one bell schedule.
+function wantedLoads(result, dayTypeId, bellsId) {
+  const source = bellsId === null ? (result ? result.loads : null) : result ? result.bellLoads : null;
+  const list = Array.isArray(source) ? source.filter((load) => load && (bellsId === null || load.bellsId === bellsId)) : [];
   return dayTypeId === null ? list : list.filter((load) => load.dayTypeId === dayTypeId);
+}
+
+function runOfEntry(entry) {
+  return typeof entry.bellsId === 'string' ? entry.bellsId : null;
 }
 
 // Walking, crowding, lateness and failed walks, per group and in all, from
@@ -467,16 +477,18 @@ function emptyFigures() {
   return { walking: 0, waiting: 0, total: 0, late: 0, walks: 0, failed: 0 };
 }
 
-function walkFigures(view, dayTypeId) {
+function walkFigures(view, dayTypeId, bellsId) {
   const groups = new Map();
   const all = emptyFigures();
   const into = (groupId) => {
     if (!groups.has(groupId)) groups.set(groupId, emptyFigures());
     return [groups.get(groupId), all];
   };
-  const walks = view.walks && Array.isArray(view.walks.groups) ? view.walks.groups : [];
+  const source = bellsId === null ? view.walks : view.walks && view.walks.bells;
+  const walks = source && Array.isArray(source.groups) ? source.groups : [];
   for (const walk of walks) {
     if (dayTypeId !== null && walk.dayTypeId !== dayTypeId) continue;
+    if (bellsId !== null && walk.bellsId !== bellsId) continue;
     const late = walk.late === true || walk.arrived === false;
     for (const figures of into(walk.groupId)) {
       figures.walking += walk.walking;
@@ -488,6 +500,7 @@ function walkFigures(view, dayTypeId) {
   }
   for (const failed of view.failedWalks) {
     if (dayTypeId !== null && failed.dayTypeId !== dayTypeId) continue;
+    if (runOfEntry(failed) !== bellsId) continue;
     for (const figures of into(failed.groupId)) figures.failed += 1;
   }
   return { groups, all };
@@ -496,12 +509,18 @@ function walkFigures(view, dayTypeId) {
 // Every walk with no way through in a routesForSchedule() result: a route
 // that failed for any reason but a slot with no room ('no-room' is an empty
 // period, not a walk).
+// The walks of a bell-schedule run come after the regular runs', each with
+// its bellsId after dayTypeId. A walk into or out of a period that does not
+// meet is 'no-room' too (meetingSlots empties the period).
 function failedWalksOf(routes) {
   const out = [];
-  for (const day of routes && Array.isArray(routes.days) ? routes.days : []) {
+  const days = routes && Array.isArray(routes.days) ? routes.days : [];
+  const bells = routes && Array.isArray(routes.bells) ? routes.bells : [];
+  for (const day of days.concat(bells)) {
+    const head = typeof day.bellsId === 'string' ? { dayTypeId: day.dayTypeId, bellsId: day.bellsId } : { dayTypeId: day.dayTypeId };
     for (const group of day.groups) {
       group.routes.forEach((found, period) => {
-        if (found && found.ok === false && found.reason !== 'no-room') out.push({ dayTypeId: day.dayTypeId, groupId: group.groupId, period, reason: found.reason });
+        if (found && found.ok === false && found.reason !== 'no-room') out.push({ ...head, groupId: group.groupId, period, reason: found.reason });
       });
     }
   }
@@ -510,7 +529,8 @@ function failedWalksOf(routes) {
 
 // What compareResults reads of a createPipeline().run() result, and nothing
 // else: { places, loads, walks, findings, failedWalks }, the first four the
-// result's own (the same objects), failedWalks [{ dayTypeId, groupId,
+// result's own (the same objects), with bellLoads after loads when the
+// result has bell-schedule runs, and failedWalks [{ dayTypeId, groupId,
 // period, reason }] worked out from result.routes. A result that already
 // carries failedWalks (one trimResult gave) comes back as it is. The
 // scenario lane sends this in place of the whole result. A result with
@@ -520,15 +540,20 @@ export function trimResult(result) {
   if (!result || typeof result !== 'object') throw new TypeError('trimResult needs a pipeline result.');
   if (Array.isArray(result.failedWalks)) return result;
   if (!result.routes || !Array.isArray(result.routes.days)) throw new TypeError('trimResult needs a pipeline result with its routes, or one trimResult gave.');
-  return { places: result.places, loads: result.loads, walks: result.walks, findings: result.findings, failedWalks: failedWalksOf(result.routes) };
+  const trimmed = { places: result.places, loads: result.loads };
+  if (Array.isArray(result.bellLoads)) trimmed.bellLoads = result.bellLoads;
+  trimmed.walks = result.walks;
+  trimmed.findings = result.findings;
+  trimmed.failedWalks = failedWalksOf(result.routes);
+  return trimmed;
 }
 
 // The busiest place: the highest load in any one transition of a cell or a
 // connection outside the exclusion zones, the cells first and then the
 // connections, lower index first on a tie. Null when nothing is crossed.
-function busiestOf(result, dayTypeId) {
+function busiestOf(result, dayTypeId, bellsId) {
   let best = null;
-  for (const load of wantedLoads(result, dayTypeId)) {
+  for (const load of wantedLoads(result, dayTypeId, bellsId)) {
     const consider = (source, shut, isLink) => {
       for (let i = 0; i < source.busiest.length; i += 1) {
         if (shut[i] || source.busiest[i] === 0) continue;
@@ -583,6 +608,9 @@ function sameGeometry(before, after) {
 //
 // options:
 //   dayTypeId   one own day type, or null (the default) for all of them
+//   bellsId     the bell schedule whose runs are compared, or null (the
+//               default) for the regular bells. The findings are the day
+//               type's whatever the bells: they are the schedule's.
 //   transition  for the places: one transition (the period walked out of),
 //               or null for the whole day
 //   measure     for the places over the whole day: 'busiest' (the default)
@@ -593,7 +621,7 @@ function sameGeometry(before, after) {
 //   limit       how many places busier and how many quieter (default 10)
 //
 // The answer:
-//   { dayTypeId,
+//   { dayTypeId, bellsId (when one was asked for),
 //     figures: {
 //       walking:  { before, after, difference }   seconds, the crowd model's walking
 //       crowding: { before, after, difference }   seconds lost waiting in the crowd
@@ -629,6 +657,7 @@ function sameGeometry(before, after) {
 export function compareResults(before, after, options) {
   const opts = options || {};
   const dayTypeId = opts.dayTypeId === undefined ? null : opts.dayTypeId;
+  const bellsId = typeof opts.bellsId === 'string' ? opts.bellsId : null;
   const transition = Number.isInteger(opts.transition) ? opts.transition : null;
   const measure = opts.measure === 'total' ? 'total' : 'busiest';
   const limit = Number.isInteger(opts.limit) && opts.limit >= 0 ? opts.limit : 10;
@@ -638,10 +667,10 @@ export function compareResults(before, after, options) {
   if (!sameGeometry(was, now)) throw new TypeError('compareResults needs two results for one building.');
 
   // ---- figures
-  const walksBefore = walkFigures(was, dayTypeId);
-  const walksAfter = walkFigures(now, dayTypeId);
-  const busyBefore = busiestOf(was, dayTypeId);
-  const busyAfter = busiestOf(now, dayTypeId);
+  const walksBefore = walkFigures(was, dayTypeId, bellsId);
+  const walksAfter = walkFigures(now, dayTypeId, bellsId);
+  const busyBefore = busiestOf(was, dayTypeId, bellsId);
+  const busyAfter = busiestOf(now, dayTypeId, bellsId);
   const findingsBefore = findingsOf(was).filter((finding) => dayTypeId === null || finding.where.dayTypeId === null || finding.where.dayTypeId === dayTypeId);
   const findingsAfter = findingsOf(now).filter((finding) => dayTypeId === null || finding.where.dayTypeId === null || finding.where.dayTypeId === dayTypeId);
   const countsBefore = countBySeverity(findingsBefore);
@@ -682,8 +711,8 @@ export function compareResults(before, after, options) {
   const quieter = [];
   let elsewhere = 0;
   const cut = now.places ? now.places.places : [];
-  const loadsBefore = new Map(wantedLoads(was, dayTypeId).map((load) => [load.dayTypeId, load]));
-  const loadsAfter = wantedLoads(now, dayTypeId);
+  const loadsBefore = new Map(wantedLoads(was, dayTypeId, bellsId).map((load) => [load.dayTypeId, load]));
+  const loadsAfter = wantedLoads(now, dayTypeId, bellsId);
   cut.forEach((place, order) => {
     let best = null;
     for (const load of loadsAfter) {
@@ -712,6 +741,7 @@ export function compareResults(before, after, options) {
 
   return {
     dayTypeId,
+    ...(bellsId === null ? {} : { bellsId }),
     figures,
     groups,
     places: { covers: floorIds === null ? 'building' : 'floors', busier: trim(busier), quieter: trim(quieter), elsewhere },
@@ -723,10 +753,11 @@ export function compareResults(before, after, options) {
   };
 }
 
-// The difference map's numbers for two loads() results of one day type on
-// one building: after less before, per graph node (cells) and per index into
+// The difference map's numbers for two loads() results of one run on one
+// building: after less before, per graph node (cells) and per index into
 // graph.links (connections), as Int32Arrays. Two results of different day
-// types, or of different buildings, are refused with a TypeError.
+// types, of different bells, or of different buildings, are refused with a
+// TypeError.
 //
 // options.transition picks one transition's loads (the period walked out
 // of); null or left out is the whole day, by options.measure: 'busiest' (the
@@ -741,6 +772,7 @@ export function loadDifference(before, after, options) {
   const measure = opts.measure === 'total' ? 'total' : 'busiest';
   if (!before || !after) throw new TypeError('loadDifference needs two loads() results.');
   if (before.dayTypeId !== after.dayTypeId) throw new TypeError('loadDifference needs two loads() results of one day type.');
+  if (runOfEntry(before) !== runOfEntry(after)) throw new TypeError('loadDifference needs two loads() results under the same bells.');
   if (before.cells.busiest.length !== after.cells.busiest.length || before.connections.busiest.length !== after.connections.busiest.length) {
     throw new TypeError('loadDifference needs two loads() results for one building.');
   }
