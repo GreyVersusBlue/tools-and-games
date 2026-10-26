@@ -131,6 +131,7 @@ export function mount(env) {
   if (!view.halfBells) view.halfBells = new Map();
   // what is typed and chosen in "Add a day type", until it is added
   if (!view.dayAdd) view.dayAdd = { name: null, kind: 'own', refusal: '' };
+  // (name null: nothing typed, and the next free name is suggested afresh)
 
   // ------------------------------------------------------------ 1. the school day
 
@@ -445,14 +446,13 @@ export function mount(env) {
         h('div', { class: 'sch-dtadd__go' }, off, h('p', { class: 'sch-hint sch-dtadd__count', id: countId }, n + ' of ' + DAY_TYPES_MOST + '. A project has at most ' + DAY_TYPES_MOST + ' day types; delete one to add another.')));
     }
     const state = view.dayAdd;
-    if (state.name === null) state.name = nextDayTypeName(project);
     const nameId = uid('dt-add');
     const refusalId = uid('dt-add-refusal');
     const input = keyed(h('input', {
       type: 'text', class: 'field__input', id: nameId, autocomplete: 'off', spellcheck: 'false', style: 'width:12rem',
       'aria-describedby': state.refusal ? refusalId : null, 'aria-invalid': state.refusal ? 'true' : null,
     }), 'daytype-add-name');
-    input.value = state.name;
+    input.value = state.name === null ? nextDayTypeName(project) : state.name;
     input.addEventListener('input', () => {
       state.name = input.value;
     });
