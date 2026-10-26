@@ -325,7 +325,10 @@ export function repair(input, options) {
     }
   }
   const ownIds = new Set();
-  const promoted = new Set();
+  // a day type marked the same as another that had bells or days of its own
+  // is made its own copy; what it was the same as fills in the rest
+  const promoted = new Map();
+  const markedOwn = new Set();
   dayTypes.forEach((dayType, i) => {
     const rawId = dayType.id;
     dayType.id = claimId(dayType, 'd', 'A day type');
@@ -350,6 +353,7 @@ export function repair(input, options) {
     const changed = bad > 0 || fixed.length !== bells.length || !Array.isArray(dayType.bells);
     const hasBells = fixed.some((bell) => bell !== null);
     const hasDays = rawGroups.some((group) => isObject(group.days) && (Array.isArray(group.days[dayType.id]) || (typeof rawId === 'string' && renamed.d.get(rawId) === dayType.id && Array.isArray(group.days[rawId]))));
+    if (i === 0 || dayType.own === true) markedOwn.add(dayType.id);
     if (i === 0) {
       if (dayType.own !== true) {
         if (dayType.own !== undefined) note('The first day type, ' + dayType.name + ', is always its own copy.');
@@ -357,9 +361,9 @@ export function repair(input, options) {
       }
     } else if (dayType.own !== true) {
       if (hasBells || hasDays) {
-        note(dayType.name + ' was marked the same as ' + dayTypes[0].name + ' and had ' + (hasDays ? 'days' : 'bell times') + ' of its own, so it is its own copy now.');
+        promoted.set(dayType.id, { dayType, sameAs: dayType.sameAs, hasDays });
         dayType.own = true;
-        promoted.add(dayType.id);
+        dayType.sameAs = null;
       } else {
         flag(dayType, 'own', false, 'Whether ' + dayType.name + ' is its own copy');
       }
@@ -369,6 +373,15 @@ export function repair(input, options) {
   });
   project.dayTypes = dayTypes;
   const baseId = dayTypes[0].id;
+  // a promoted day type starts from what it was the same as when that was a
+  // day type with its own classes, else from the first
+  const promotedFrom = new Map();
+  for (const [id, { dayType, sameAs, hasDays }] of promoted) {
+    const value = typeof sameAs === 'string' ? follow('d', sameAs) : sameAs;
+    const from = typeof value === 'string' && value !== id && markedOwn.has(value) ? dayTypes.find((candidate) => candidate.id === value) : dayTypes[0];
+    promotedFrom.set(id, from.id);
+    note(dayType.name + ' was marked the same as ' + from.name + ' and had ' + (hasDays ? 'days' : 'bell times') + ' of its own, so it is its own copy now; where it had no classes of its own, it has ' + from.name + '\'s.');
+  }
 
   // sameAs names another own day type, one hop, or is null for the first
   for (const dayType of dayTypes) {
@@ -823,15 +836,17 @@ export function repair(input, options) {
       }
       return changed ? day : rawDay;
     };
+    const fromDays = [];
     for (const dayType of dayTypes) {
       if (!ownIds.has(dayType.id)) continue;
       const rawDay = rawDays[dayType.id];
       if (Array.isArray(rawDay)) {
         days[dayType.id] = fixDay(rawDay, dayType.name);
         if (days[dayType.id] !== rawDay) daysChanged = true;
-      } else if (promoted.has(dayType.id) && days[baseId]) {
-        // the group followed the first day type until now; it still does
-        days[dayType.id] = days[baseId].map((slot) => ({ ...slot, teacherIds: slot.teacherIds.slice() }));
+      } else if (promotedFrom.has(dayType.id)) {
+        // the group followed what the day type was the same as until now; it
+        // still does, once that day is read (it may come later in the list)
+        fromDays.push(dayType.id);
         daysChanged = true;
       } else {
         if (rawDay !== undefined) note('The day of group "' + group.name + '" on ' + dayType.name + ' could not be read and was emptied.');
@@ -839,6 +854,7 @@ export function repair(input, options) {
         daysChanged = true;
       }
     }
+    for (const id of fromDays) days[id] = days[promotedFrom.get(id)].map((slot) => ({ ...slot, teacherIds: slot.teacherIds.slice() }));
     for (const key of Object.keys(rawDays)) {
       if (ownIds.has(key)) continue;
       note('Group "' + group.name + '" had a day for a day type that is not in the project; it was removed.');

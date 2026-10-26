@@ -370,6 +370,53 @@ test('when only some groups have a day for it, the others get a copy of their A 
   assert.deepEqual(validate(result.project), []);
 });
 
+// SV2-75b: a C Day marked the same as B Day (an own day type) that has
+// something of its own starts from B Day, not from the first day type
+function withCSameAsB() {
+  const project = school();
+  project.dayTypes.push({ id: 'dsample00c', name: 'C Day', own: false, sameAs: 'dsample00b', short: '', bells: Array(project.settings.periods).fill(null) });
+  return project;
+}
+
+test('a day type the same as another own day type, with bells only, is promoted with that day type\'s classes, and the note names it', () => {
+  const project = withCSameAsB();
+  project.dayTypes[2].bells[0] = { start: '08:00', end: '08:50' };
+  assert.notDeepEqual(group(project, '6A').days.dsample00a, group(project, '6A').days.dsample00b, 'A and B differ, so the case tells them apart');
+  const result = repair(project);
+  const c = result.project.dayTypes[2];
+  assert.equal(c.own, true);
+  assert.equal(c.sameAs, null);
+  for (const g of project.groups) assert.deepEqual(group(result.project, g.name).days.dsample00c, g.days.dsample00b, g.name + ' has its B Day on C Day');
+  assert.ok(result.notes.some((note) => /^C Day was marked the same as B Day .* its own copy now; where it had no classes of its own, it has B Day's\.$/.test(note)), JSON.stringify(result.notes));
+  assert.ok(!result.notes.some((note) => /A Day/.test(note)));
+  assert.deepEqual(validate(result.project), []);
+  assert.equal(repair(result.project).project, result.project, 'and a second repair has nothing to do');
+});
+
+test('a day type the same as another own day type, with some groups\' days, gives the other groups that day type\'s days', () => {
+  const project = withCSameAsB();
+  const own = group(project, '6A').days.dsample00a.map((slot) => ({ ...slot, teacherIds: slot.teacherIds.slice() }));
+  group(project, '6A').days.dsample00c = own;
+  const result = repair(project);
+  assert.equal(result.project.dayTypes[2].own, true);
+  assert.deepEqual(group(result.project, '6A').days.dsample00c, own, 'the day it had is kept');
+  for (const g of project.groups.slice(1)) {
+    assert.deepEqual(group(result.project, g.name).days.dsample00c, g.days.dsample00b, g.name + ' has its B Day');
+    assert.notEqual(group(result.project, g.name).days.dsample00c, group(result.project, g.name).days.dsample00b, 'a copy, not the same list');
+  }
+  assert.ok(result.notes.some((note) => /^C Day was marked the same as B Day and had days of its own/.test(note)));
+  assert.deepEqual(validate(result.project), []);
+});
+
+test('a day type the same as one that is not its own copy is promoted from the first day type', () => {
+  const project = withCSameAsB();
+  project.dayTypes.push({ id: 'dsample00d', name: 'D Day', own: false, sameAs: 'dsample00c', short: '', bells: Array(project.settings.periods).fill(null) });
+  project.dayTypes[3].bells[0] = { start: '08:00', end: '08:50' };
+  const result = repair(project);
+  for (const g of project.groups) assert.deepEqual(group(result.project, g.name).days.dsample00d, g.days.dsample00a);
+  assert.ok(result.notes.some((note) => /^D Day was marked the same as A Day and had bell times/.test(note)));
+});
+
 test('an own day type with a missing day gets an empty one', () => {
   const project = school();
   delete group(project, '8B').days.dsample00b;
@@ -822,7 +869,9 @@ test('a day type that was the same as another and has days of its own becomes it
   for (const g of project.groups) g.days[C] = g.days[B];
   const { project: fixed, notes } = repair(project);
   assert.deepEqual([fixed.dayTypes[2].own, fixed.dayTypes[2].sameAs], [true, null]);
-  assert.ok(notes.includes('C Day is its own copy, so it is the same as nothing; what it said it was the same as was cleared.'));
+  // one note says it all, naming what it was the same as (SV2-75b)
+  assert.ok(notes.includes('C Day was marked the same as B Day and had days of its own, so it is its own copy now; where it had no classes of its own, it has B Day\'s.'), JSON.stringify(notes));
+  assert.ok(!notes.some((note) => /C Day is its own copy, so it is the same as nothing/.test(note)));
   assert.deepEqual(validate(fixed), []);
 });
 
