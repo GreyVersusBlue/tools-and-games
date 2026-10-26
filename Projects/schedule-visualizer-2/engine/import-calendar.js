@@ -117,6 +117,57 @@ function weekdaysOnly(rows, index) {
   return cells.length > 0 && cells.every((cell) => WEEKDAY_KEYS.has(cell.toLowerCase()));
 }
 
+// The line of the text each row csv.js keeps starts on, counting from 1 and
+// counting every line, blank or not: the row a spreadsheet shows it on, so
+// a refusal's "row 4" is row 4 there. csv.js reads the same way (a quote
+// opens a field only as its first character; a line with nothing on it is
+// no row; a line break inside quotes is still a line).
+function rowLines(text) {
+  const lines = [];
+  let i = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  let line = 1;
+  let start = 1;
+  let empty = true; // nothing yet on this row
+  let fresh = true; // nothing yet in this cell
+  const breakAt = (k) => (text[k] === '\r' ? (text[k + 1] === '\n' ? 2 : 1) : text[k] === '\n' ? 1 : 0);
+  while (i < text.length) {
+    if (text[i] === '"' && fresh) {
+      empty = false;
+      fresh = false;
+      i += 1;
+      while (i < text.length) {
+        if (text[i] === '"') {
+          if (text[i + 1] === '"') i += 2;
+          else {
+            i += 1;
+            break;
+          }
+        } else {
+          const step = breakAt(i);
+          if (step > 0) line += 1;
+          i += step || 1;
+        }
+      }
+      continue;
+    }
+    const step = breakAt(i);
+    if (step > 0) {
+      if (!empty) lines.push(start);
+      i += step;
+      line += 1;
+      start = line;
+      empty = true;
+      fresh = true;
+      continue;
+    }
+    empty = false;
+    fresh = text[i] === ',';
+    i += 1;
+  }
+  if (!empty) lines.push(start);
+  return lines;
+}
+
 function quoted(texts) {
   return texts.map((text) => '"' + text + '"').join(', ');
 }
@@ -198,7 +249,11 @@ export function readCalendarCsv(project, text) {
   const days = calendarDays(project);
   if (calendar === null || days.length === 0) throw new CalendarImportError('There is no calendar to import dates into. Make the calendar first, then import the dates.', 'no-calendar');
   if (typeof text !== 'string') throw new CalendarImportError('This file could not be read. Choose a CSV file of dates.', 'not-csv');
-  const rows = parse(text).rows.filter((row) => row.some((cell) => cell.trim() !== ''));
+  const parsed = parse(text).rows;
+  const starts = rowLines(text);
+  const lineOf = (index) => (starts.length === parsed.length ? starts[index] : index + 1);
+  const kept = parsed.map((row, index) => ({ row, line: lineOf(index) })).filter((item) => item.row.some((cell) => cell.trim() !== ''));
+  const rows = kept.map((item) => item.row);
   if (rows.length === 0) throw new CalendarImportError('This file is empty. A calendar CSV has a header row (Date, Weekday, Day type, Bells, Note) and a row for each date.', 'empty');
   const columns = columnsOf(rows[0]);
   if (columns.date === undefined) throw new CalendarImportError('The first row is the header, and it has no Date column. The columns are ' + CALENDAR_HEADER.join(', ') + '; only Date is needed.', 'no-date-column');
@@ -241,7 +296,7 @@ export function readCalendarCsv(project, text) {
   const seen = new Map();
   const read = [];
   rows.slice(1).forEach((row, index) => {
-    const line = index + 2;
+    const line = kept[index + 1].line;
     const date = (cell(row, 'date') || '').trim();
     if (!isCalendarDate(date)) {
       problems.push('Row ' + line + ': "' + date + '" is not a date written YYYY-MM-DD, such as 2026-11-26.');

@@ -307,3 +307,14 @@ test('with no Day type or Note column, the one other column is the note; with no
   // a Bells column is something to read
   assert.deepEqual(readCalendarCsv(project, csv(['Date,Bells', '2026-12-01,Assembly'])).changes, [{ date: '2026-12-01', day: null, bells: AS, label: '' }]);
 });
+
+test('a row number is the spreadsheet\'s: every line of the text counts, blank or not, the header as row 1', () => {
+  const project = withEverything();
+  // the review's case: a row of empty cells and an empty line before the bad date
+  assert.throws(() => readCalendarCsv(project, 'Date,Day type\n,,\n\n2026-13-01,A Day\n'), refusal('invalid', /The first: Row 4: "2026-13-01" is not a date/));
+  assert.throws(() => readCalendarCsv(project, '﻿Date,Note\r\n\r\n2026-12-21,Winter break\r\n\r\n\r\n2026-12-21,Again\r\n'), refusal('invalid', /Row 6: 2026-12-21 is already on row 3\./));
+  // a note over two lines, in quotes, is two lines of the text
+  assert.throws(() => readCalendarCsv(project, 'Date,Day type,Note\n2026-12-21,,"Winter\nbreak"\n2026-12-22,Z Day,\n'), refusal('unknown-names', /"Z Day" \(row 4\)/));
+  const read = readCalendarCsv(project, 'Date,Note\n\n2026-12-21,Winter break\n,\n2026-12-22,"Winter ""long"" break"\n');
+  assert.deepEqual(read.rows.map((line) => [line.row, line.date]), [[3, '2026-12-21'], [5, '2026-12-22']]);
+});

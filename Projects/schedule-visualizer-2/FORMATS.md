@@ -868,6 +868,10 @@ them); any day-type or bell-schedule name the project does not have
 (every one is named, with its rows); and a day-type name that could be
 either of two day types (named, with its rows).
 
+A row number, in a refusal and in the preview, is the row a spreadsheet
+shows: every line of the text counts, blank or not, with the header as row 1
+(a note running over two lines in quotes takes two).
+
 The reader returns the changes, the calendar with them in place, a preview
 row for each line of the file (`change`, `same` or `outside`, with the day
 before and after), the counts, and the first date the file does not name
