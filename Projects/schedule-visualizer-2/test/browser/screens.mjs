@@ -798,6 +798,105 @@ const SV2_32G1 = [
   } },
 ];
 
+// SV2-78: more day types. `manyDays` gives the sample a C Day and a D Day
+// with their own classes, a Testing Day the same as B Day, and an Early
+// Release bell schedule whose periods 5 to 8 do not meet; `twelveDays` fills
+// the list to the most a project has.
+async function manyDays(page) {
+  await scheduleDrawn(page);
+  await act(page, 'addDayType', { name: 'C Day', own: true });
+  await act(page, 'addDayType', { name: 'D Day', own: true });
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.addDayType, { name: 'Testing Day', own: false, sameAs: globalThis.sv2.store.project.dayTypes[1].id }));
+  await act(page, 'addBellSchedule', { name: 'Early Release' });
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.setBellSchedule, { bellScheduleId: globalThis.sv2.store.project.bellSchedules[0].id, off: [4, 5, 6, 7] }));
+  await scheduleDrawn(page);
+}
+
+async function twelveDays(page) {
+  await manyDays(page);
+  for (const name of ['E Day', 'F Day', 'G Day', 'H Day', 'I Day', 'J Day', 'K Day']) await act(page, 'addDayType', { name, own: true });
+  await scheduleDrawn(page);
+}
+
+// SV2-78: B Day made the same as A Day through its Change… dialog.
+async function sameAsA(page) {
+  await page.click('[data-key="daytype:dsample00b:change"]');
+  await page.waitForSelector('#day-kind-dialog[open]');
+  await page.click('#day-kind-dialog input[value="dsample00a"]');
+  await page.click('#day-kind-dialog .btn--primary');
+  await page.waitForSelector('.sch-dtrow--same');
+}
+
+const dayTypeId = (page, index) => page.evaluate((at) => globalThis.sv2.store.project.dayTypes[at].id, index);
+
+const SV2_78 = [
+  { id: 'schedule-day-types', hash: '#schedule/day', open: manyDays },
+  {
+    id: 'schedule-day-kind-dialog',
+    hash: '#schedule/day',
+    open: async (page) => {
+      await manyDays(page);
+      await page.click('[data-key="daytype:' + (await dayTypeId(page, 2)) + ':change"]');
+      await page.waitForSelector('#day-kind-dialog[open]');
+      await page.click('#day-kind-dialog input[value="' + (await dayTypeId(page, 0)) + '"]');
+    },
+  },
+  {
+    id: 'schedule-day-row-menu',
+    hash: '#schedule/day',
+    open: async (page) => {
+      await manyDays(page);
+      await page.click('[data-key="daytype:' + (await dayTypeId(page, 2)) + ':menu"]');
+      await page.waitForSelector('.menu[role="menu"]');
+    },
+  },
+  {
+    id: 'schedule-day-copy-dialog',
+    hash: '#schedule/day',
+    open: async (page) => {
+      await manyDays(page);
+      await page.click('[data-key="daytype:' + (await dayTypeId(page, 2)) + ':menu"]');
+      await page.waitForSelector('.menu[role="menu"]');
+      await page.evaluate(() => Array.from(document.querySelectorAll('.menu__item')).find((item) => item.textContent === 'Copy classes from…').click());
+      await page.waitForSelector('#day-copy-dialog[open]');
+    },
+  },
+  { id: 'schedule-day-twelve', hash: '#schedule/day', open: twelveDays },
+  { id: 'schedule-day-phone', hash: '#schedule/day', viewport: { width: 390, height: 844, mobile: true }, open: manyDays },
+  { id: 'schedule-group-day-chips', hash: '#schedule/groups/gsample06a', open: manyDays },
+  { id: 'schedule-group-day-chips-phone', hash: '#schedule/groups/gsample06a', viewport: { width: 390, height: 844, mobile: true }, open: manyDays },
+  {
+    id: 'schedule-group-copy-dialog',
+    hash: '#schedule/groups/gsample06a',
+    open: async (page) => {
+      await scheduleDrawn(page);
+      await page.click('.sch-day[data-day="dsample00b"] [data-action="copy-day"]');
+      await page.waitForSelector('#group-copy-dialog[open]');
+    },
+  },
+  {
+    id: 'schedule-grid-day-type',
+    hash: '#schedule/grid',
+    open: async (page) => {
+      await manyDays(page);
+      await gridDrawn(page);
+      await page.waitForSelector('[data-key="grid-day"]');
+    },
+  },
+  {
+    id: 'schedule-grid-copy-dialog',
+    hash: '#schedule/grid',
+    open: async (page) => {
+      await manyDays(page);
+      await gridDrawn(page);
+      await page.click('.grd-toolbar [data-action="bulk"]');
+      await page.waitForSelector('.menu[role="menu"]');
+      await page.evaluate(() => Array.from(document.querySelectorAll('.menu__item')).find((item) => item.textContent === 'Copy classes from…').click());
+      await page.waitForSelector('#grid-copy-dialog[open]');
+    },
+  },
+];
+
 export const SCREENS = [
   { id: 'building', hash: '#building' },
   { id: 'schedule-groups', hash: '#schedule/groups' },
@@ -914,8 +1013,7 @@ export const SCREENS = [
     hash: '#schedule/day',
     open: async (page) => {
       await scheduleDrawn(page);
-      await page.click('.sch-daytype [data-action="revert"]');
-      await page.waitForSelector('.sch-daytype--same');
+      await sameAsA(page);
       await scheduleDrawn(page);
     },
   },
@@ -924,8 +1022,7 @@ export const SCREENS = [
     hash: '#schedule/day',
     open: async (page) => {
       await scheduleDrawn(page);
-      await page.click('.sch-daytype [data-action="revert"]');
-      await page.waitForSelector('.sch-daytype--same');
+      await sameAsA(page);
       await page.evaluate(() => {
         location.hash = '#schedule/groups';
       });
@@ -1340,5 +1437,6 @@ export const SCREENS = [
       await page.waitForFunction(() => document.querySelector('.sfy').dataset.mode === 'empty');
     },
   },
+  ...SV2_78,
   ...SV2_32G1,
 ];
