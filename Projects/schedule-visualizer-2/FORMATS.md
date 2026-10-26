@@ -879,8 +879,11 @@ shows: every line of the text counts, blank or not, with the header as row 1
 The reader returns the changes, the calendar with them in place, a preview
 row for each line of the file (`change`, `same` or `outside`, with the day
 before and after), the counts, and the first date the file does not name
-whose day type or bells move. Putting the calendar in place is one undo
-step, stamped with the time, like every calendar change.
+whose day type or bells move. Putting the calendar in place is
+`actions.importCalendarDates` (`{ changes, counts }`): one undo step,
+labelled "Import dates: " and what the reader counted, stamped with the
+time like every calendar change, and refused when the project has no
+calendar.
 
 ## The movement CSV exports
 

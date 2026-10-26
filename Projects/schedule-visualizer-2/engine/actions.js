@@ -25,6 +25,7 @@ import { DAY_TYPES_MOST, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DA
 import { spacelessKey, textLength, bellSchedulesOf, calendarOf, newBellSchedule, defaultWeekdays } from './schema.js';
 import { isCalendarDate, daysBetween, datesFrom, weekdayOf, dateWords, calendarDays } from './calendar.js';
 import { isId, collectIds } from './ids.js';
+import { importedCalendar, calendarImportText } from './import-calendar.js';
 
 export const GEOMETRY = 'geometry';
 export const BUILDING = 'building';
@@ -1626,6 +1627,51 @@ export const removeCalendar = action(
 );
 
 // ================================================================ SV2-75 (end)
+
+// ================================================================ SV2-77b: Import dates (start)
+
+// payload: { changes, counts }: what readCalendarCsv returned for a calendar
+// CSV (`counts` optional, for the label). The calendar becomes
+// importedCalendar(project, changes) as one undo step, stamped with the
+// store's clock, labelled "Import dates: 3 dates change; …". Each change is
+// checked as setCalendarDates checks its payload, since the project may have
+// moved on since the file was read. Changes that leave the calendar as it is
+// make no step.
+export const importCalendarDates = action(
+  {
+    label: (before, payload) => 'Import dates: ' + calendarImportText(before, { counts: importCounts(payload) }),
+    bumps: [SCHEDULE],
+    focus: calendarFocus,
+  },
+  (project, payload, ctx) => {
+    const calendar = needCalendar(project);
+    const changes = payload.changes;
+    if (!Array.isArray(changes)) refuse('There are no dates to import. Choose a calendar CSV first.', 'bad-value');
+    const seen = new Set();
+    for (const change of changes) {
+      if (!change || typeof change !== 'object') refuse('A date to import is a date with its day type, bells and note.', 'bad-value');
+      needDate(change.date, 'A date');
+      if (seen.has(change.date)) refuse(dateWords(change.date) + ' is in the list twice. Each date is imported once.', 'bad-value');
+      seen.add(change.date);
+      if (change.date < calendar.start || change.date > calendar.end) refuse(dateWords(change.date) + ' is outside the calendar, which runs from ' + dateWords(calendar.start) + ' to ' + dateWords(calendar.end) + '.', 'outside');
+      if (change.day !== null) needDayValue(project, change.day);
+      needCalendarBells(project, change.bells, true);
+      needDateLabel(change.label);
+    }
+    const next = importedCalendar(project, changes);
+    if (sameJson(tidyDates(next).dates, calendar.dates)) return project;
+    return withCalendar(project, next, ctx);
+  },
+);
+
+function importCounts(payload) {
+  const counts = payload && payload.counts;
+  if (counts && typeof counts === 'object') return counts;
+  const changes = payload && Array.isArray(payload.changes) ? payload.changes.length : 0;
+  return { rows: changes, changes, same: 0, outside: 0 };
+}
+
+// ================================================================ SV2-77b: Import dates (end)
 
 // ---------------------------------------------------------------- floors
 
