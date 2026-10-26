@@ -49,7 +49,8 @@ export class CalendarImportError extends Error {
     super(message);
     this.name = 'CalendarImportError';
     this.code = code || 'refused';
-    // for 'unknown-names': { dayTypes: [text], bells: [text] }, as typed
+    // for 'unknown-names': { dayTypes: [text], bells: [text] }, as typed;
+    // for 'unclear-names': { dayTypes: [text] }
     this.names = names || null;
   }
 }
@@ -100,6 +101,12 @@ function columnsOf(header) {
 
 function quoted(texts) {
   return texts.map((text) => '"' + text + '"').join(', ');
+}
+
+// "A Day", "a day" or "ADay"
+function orWords(texts) {
+  const all = texts.map((text) => '"' + text + '"');
+  return all.length === 1 ? all[0] : all.slice(0, -1).join(', ') + ' or ' + all[all.length - 1];
 }
 
 function rowsWords(rows) {
@@ -177,8 +184,17 @@ export function readCalendarCsv(project, text) {
   const columns = columnsOf(rows[0]);
   if (columns.date === undefined) throw new CalendarImportError('The first row is the header, and it has no Date column. The columns are ' + CALENDAR_HEADER.join(', ') + '; only Date is needed.', 'no-date-column');
 
+  // A day type's name is matched as written first, then whatever the
+  // capitals and spaces. Older projects may have two day types whose names
+  // differ only so (17.1): a name that is written as neither, but reads as
+  // both, is not guessed at.
   const dayByKey = new Map();
-  for (const dayType of project.dayTypes) if (!dayByKey.has(spacelessKey(dayType.name))) dayByKey.set(spacelessKey(dayType.name), dayType.id);
+  for (const dayType of project.dayTypes) {
+    const key = spacelessKey(dayType.name);
+    if (!dayByKey.has(key)) dayByKey.set(key, []);
+    dayByKey.get(key).push(dayType);
+  }
+  const unclearDays = new Map();
   const bellsByKey = new Map();
   for (const schedule of schedulesOf(project)) if (!bellsByKey.has(spacelessKey(schedule.name))) bellsByKey.set(spacelessKey(schedule.name), schedule.id);
 
@@ -212,8 +228,14 @@ export function readCalendarCsv(project, text) {
     if (dayText === '') day = label !== undefined && label.trim() !== '' ? DAY_CLOSED : undefined;
     else if (spacelessKey(dayText) === NO_SCHOOL_KEY) day = DAY_CLOSED;
     else if (spacelessKey(dayText) === ROTATION_KEY) day = DAY_ROTATION;
-    else if (dayByKey.has(spacelessKey(dayText))) day = dayByKey.get(spacelessKey(dayText));
-    else note(unknownDays, dayText, line);
+    else if (dayByKey.has(spacelessKey(dayText))) {
+      const sharing = dayByKey.get(spacelessKey(dayText));
+      const exact = sharing.filter((dayType) => dayType.name.trim() === dayText);
+      if (exact.length === 1 || sharing.length === 1) day = (exact.length === 1 ? exact : sharing)[0].id;
+      // two day types written the same: the one the date has already, if either
+      else if (exact.length > 1) day = { among: exact.map((dayType) => dayType.id), text: dayText };
+      else note(unclearDays, dayText, line);
+    } else note(unknownDays, dayText, line);
     let bells;
     if (bellsText === '' || day === DAY_CLOSED) bells = undefined;
     else if (REGULAR_KEYS.includes(spacelessKey(bellsText))) bells = BELLS_REGULAR;
@@ -228,6 +250,10 @@ export function readCalendarCsv(project, text) {
     if (unknownDays.size > 0) parts.push((unknownDays.size === 1 ? 'a day type' : 'day types') + ' this project does not have: ' + describe(unknownDays));
     if (unknownBells.size > 0) parts.push((unknownBells.size === 1 ? 'a bell schedule' : 'bell schedules') + ' this project does not have: ' + describe(unknownBells));
     throw new CalendarImportError('This file cannot be imported, and nothing was changed. It names ' + parts.join('; and ') + '. Add ' + (unknownDays.size + unknownBells.size === 1 ? 'it' : 'them') + ' on the Day tab, or change the file to use ' + quoted(project.dayTypes.map((dayType) => dayType.name).concat(schedulesOf(project).map((schedule) => schedule.name), [NO_SCHOOL, NEXT_IN_ROTATION, REGULAR_BELLS])) + ', and import it again.', 'unknown-names', { dayTypes: Array.from(unknownDays.keys()), bells: Array.from(unknownBells.keys()) });
+  }
+  if (unclearDays.size > 0) {
+    const describe = Array.from(unclearDays, ([name, lines]) => '"' + name + '" (' + rowsWords(lines) + ') could be ' + orWords(dayByKey.get(spacelessKey(name)).map((dayType) => dayType.name))).join('; ');
+    throw new CalendarImportError('This file cannot be imported, and nothing was changed. Some day types\' names differ only in capitals or spaces, and the file does not say which it means: ' + describe + '. Write the name exactly as the Day tab has it, or rename one of the day types, and import it again.', 'unclear-names', { dayTypes: Array.from(unclearDays.keys()) });
   }
   if (problems.length > 0) {
     throw new CalendarImportError('This file cannot be imported, and nothing was changed. ' + problems.length + (problems.length === 1 ? ' row is' : ' rows are') + ' not as the calendar CSV is written. The first: ' + problems[0], 'invalid');
@@ -248,6 +274,7 @@ export function readCalendarCsv(project, text) {
     }
     const given = days[offsetOf(item.date)];
     const had = own.get(item.date);
+    if (item.day !== null && typeof item.day === 'object') item.day = given.school && item.day.among.includes(given.dayTypeId) ? given.dayTypeId : unwritable(item);
     const entry = had ? { date: item.date, day: had.day, bells: had.bells, label: had.label } : { date: item.date, day: null, bells: null, label: '' };
     const dayMoves = item.day !== undefined && !sameDay(given, item.day);
     if (dayMoves) entry.day = item.day;
@@ -282,6 +309,12 @@ export function readCalendarCsv(project, text) {
     },
     movedFrom: moved ? moved.date : null,
   };
+}
+
+// Two day types are written exactly as the row writes, and the date is
+// neither: there is no saying which.
+function unwritable(item) {
+  throw new CalendarImportError('This file cannot be imported, and nothing was changed. Row ' + item.line + ' names "' + item.day.text + '", and two day types are written so. Rename one of them on the Day tab, and import it again.', 'unclear-names', { dayTypes: [item.day.text] });
 }
 
 // "12 dates change; 3 are as the calendar has them; 2 are outside it, from

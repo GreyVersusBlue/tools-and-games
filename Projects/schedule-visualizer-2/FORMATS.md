@@ -833,8 +833,11 @@ name, is enough.
   calendar is passed over and counted.
 - Day type: a day type's name, "No school" or "Next in the rotation",
   without regard to capitals or spaces; those two words are taken before a
-  day type of the same name. Blank with a note is "No school"; blank with no
-  note leaves the day as it is.
+  day type of the same name. A name written exactly as a day type's is that
+  day type, even when another's name differs from it only in capitals or
+  spaces (an older project may have two such); one that is written as
+  neither but reads as both is refused, naming them. Blank with a note is
+  "No school"; blank with no note leaves the day as it is.
 - Bells: "Regular" (or "Regular bells") or a bell schedule's name, without
   regard to capitals or spaces. Blank leaves the bells as they are. Bells on
   a date with no school say nothing.
@@ -851,8 +854,9 @@ to no change at all.
 Refused whole, with nothing changed: a project with no calendar; a file with
 no header or no Date column; a date that is not one, or that is on two rows;
 a note over 60 characters (the refusal names the first such row and counts
-them); and any day-type or bell-schedule name the project does not have
-(every one is named, with its rows).
+them); any day-type or bell-schedule name the project does not have
+(every one is named, with its rows); and a day-type name that could be
+either of two day types (named, with its rows).
 
 The reader returns the changes, the calendar with them in place, a preview
 row for each line of the file (`change`, `same` or `outside`, with the day

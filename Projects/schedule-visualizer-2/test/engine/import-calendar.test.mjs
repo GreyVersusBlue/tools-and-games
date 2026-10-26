@@ -244,3 +244,40 @@ test('the words the file uses are the planner\'s', () => {
   assert.deepEqual([NO_SCHOOL, NEXT_IN_ROTATION, REGULAR_BELLS], ['No school', 'Next in the rotation', 'Regular']);
   assert.equal(ER, 'bsample0er');
 });
+
+// ---------------------------------------------------------------- SV2-77b: the review's cases
+
+// An older project may hold two day types whose names differ only in
+// capitals or spaces (17.1: the rule lives in the actions, not validate).
+function withSharedNames(name) {
+  const project = withEverything();
+  project.dayTypes[3].name = name;
+  project.calendar.weekdays[4] = { day: project.dayTypes[3].id, bells: null };
+  assert.deepEqual(validate(project), []);
+  return project;
+}
+
+test('two day types whose names share a key: the name as written is matched first, so the tool\'s own file reads back to no change', () => {
+  for (const name of ['ADay', 'A Day']) {
+    const project = withSharedNames(name);
+    const read = readCalendarCsv(project, calendarCsv(project));
+    assert.deepEqual(read.changes, [], name + ': no Friday is turned into A Day (the review found 41)');
+    assert.equal(read.counts.same, 285);
+  }
+  const project = withSharedNames('ADay');
+  assert.deepEqual(readCalendarCsv(project, csv(['Date,Day type', '2026-09-03,ADay'])).changes, [{ date: '2026-09-03', day: project.dayTypes[3].id, bells: null, label: '' }]);
+  assert.deepEqual(readCalendarCsv(project, csv(['Date,Day type', '2026-09-03,A Day'])).changes, [{ date: '2026-09-03', day: A, bells: null, label: '' }]);
+});
+
+test('two day types whose names share a key: a name written as neither is refused whole, naming both', () => {
+  const project = withSharedNames('ADay');
+  assert.throws(() => readCalendarCsv(project, csv(['Date,Day type', '2026-09-03,a day', '2026-09-04,B Day', '2026-09-08,A DAY'])), (error) => {
+    refusal('unclear-names', /"a day" \(row 2\) could be "A Day" or "ADay"; "A DAY" \(row 4\) could be "A Day" or "ADay"\./)(error);
+    assert.match(error.message, /nothing was changed/);
+    assert.deepEqual(error.names, { dayTypes: ['a day', 'A DAY'] });
+    return true;
+  });
+  // two written exactly alike, on a date that is neither
+  const same = withSharedNames('A Day');
+  assert.throws(() => readCalendarCsv(same, csv(['Date,Day type', '2026-09-05,A Day'])), refusal('unclear-names', /Row 2 names "A Day", and two day types are written so/));
+});
