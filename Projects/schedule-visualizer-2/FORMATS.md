@@ -512,7 +512,9 @@ Format name `sv2-schedule`, version **1**. `writeScheduleFile`,
   "subjects": Subject[],
   "teachers": Teacher[],
   "groups": Group[],
-  "dayTypes": DayType[]
+  "dayTypes": DayType[],
+  "bellSchedules": BellSchedule[],
+  "calendar": Calendar
 }
 ```
 
@@ -520,20 +522,30 @@ Format name `sv2-schedule`, version **1**. `writeScheduleFile`,
 |---|---|
 | `settings` | Those four settings of the project object, all present. |
 | `rooms` | The room index: one entry for each room a slot or a teacher names, with the number it had when the file was written. It is how the file is read against a building whose rooms have other ids. |
-| `subjects`, `teachers`, `groups`, `dayTypes` | As in the project object, unchanged. A slot's `room` and a teacher's `roomIds` are ids found in `rooms`. |
+| `subjects`, `teachers`, `groups`, `dayTypes` | As in the project object, unchanged, a day type's `sameAs` and `short` with it. A slot's `room` and a teacher's `roomIds` are ids found in `rooms`. |
+| `bellSchedules` | Optional. As in the project object. Written only when the project has a bell schedule; absent is none. |
+| `calendar` | Optional. As in the project object, `changedAt` with it. Written only when the project has a calendar; absent is none. |
+
+A project with no bell schedules and no calendar writes the file exactly as a
+planner from before them did.
 
 **Reading.** JSON; `format` is `sv2-schedule`; `version` is 1; every field
-above is present; then the settings, subjects, teachers, groups and day types
-have to pass every rule of the project object, with `rooms` standing for the
-building: a slot or a teacher naming a room that is not in the index is a
-refusal, and so are two index entries with one number.
+above that is not optional is present; then the settings, subjects, teachers,
+groups, day types, bell schedules and calendar have to pass every rule of the
+project object, with `rooms` standing for the building: a slot or a teacher
+naming a room that is not in the index is a refusal, and so are two index
+entries with one number. The summary of what a file holds counts its bell
+schedules and says whether it has a calendar.
 
 **Importing** brings the schedule into the project. The rules:
 
-- **Subjects, teachers and day types** are matched to this project's by id,
-  then by name (a subject by code and name together), without regard to
-  capitals or surrounding spaces. One that matches is left exactly as it is
-  here. One that does not is added, with the file's id when that id is free.
+- **Subjects, teachers, day types and bell schedules** are matched to this
+  project's by id, then by name (a subject by code and name together),
+  without regard to capitals or surrounding spaces (a day type's or a bell
+  schedule's without regard to any spaces). One that matches is left exactly
+  as it is here. One that does not is added, with the file's id when that id
+  is free, and with its typed short name when no other here has it (else
+  empty, worked out from the name).
 - **Rooms** are matched by id, then by the number in the index. A slot whose
   room is not in this building becomes `{ room: null, roomText: <the number> }`.
   A new teacher's room that is not in this building is left off the teacher.
@@ -547,11 +559,26 @@ refusal, and so are two index entries with one number.
   project's day that long; nothing is cut. A file with fewer leaves the later
   periods as they are.
 - **Bells.** A bell time already entered here is never changed. One that is
-  empty here is filled from the file.
-- **Day types.** A day type that has its own bells or rooms in the file and
-  is the same as the first day type here becomes its own copy here. A new
-  day type that is its own copy gives every group already here a copy of its
-  first day.
+  empty here is filled from the file, for a day type and for a bell schedule
+  alike. A bell schedule's periods that do not meet are left as they are here.
+- **Day types.** A day type that is "same as" here becomes its own copy here
+  when the file gives it bells or rooms of its own, or makes it the same as
+  another day type than here and that day type has bells or rooms. It starts
+  as a copy of the day type it was the same as here (not of the first day
+  type), and the file's groups then fill it. A new day type that is its own
+  copy gives every group already here a copy of its first day. A new day
+  type that is "same as" in the file is the same as the day type here that
+  its own one matched.
+- **The calendar.** When the file has one, it replaces this project's, and
+  the summary says so ("the calendar replaced"). Every day type and bell
+  schedule it names is re-pointed through the matches above; a reference that
+  matches nothing is dropped (a weekday takes the rotation, a dated change
+  goes, bells become `null`, an empty rotation becomes the first day type)
+  and counted. A calendar that is the same as the one here is left, with its
+  `changedAt`; a replaced one is stamped with the time of the import when the
+  importer passes a clock, else keeps the file's `changedAt`.
+- **Limits.** A file that would bring the project to more than 12 day types,
+  or more than 12 bell schedules, is refused whole.
 - **Settings.** The period word and the two defaults are taken from the file
   only when the user asks (`takeSettings`).
 
@@ -577,7 +604,9 @@ day type the day type's name is left out ("Period 1"). The **template** is
 this header and no other row. The **groups export** adds one row per group:
 name, grade, head count (empty for none), colour as `#rrggbb`, then the room
 number of each period. A slot whose room is not in the building has its text.
-A day type that is the same as the first has empty cells.
+Every day type has its block of columns, so every day type with its own
+classes is listed, however many there are; a day type that is the same as
+another has empty cells.
 
 A cell holds the room's number and nothing else. The label and the teachers
 named for a slot are not in the CSV; the schedule file carries them.
@@ -620,9 +649,9 @@ Rules for the rows:
   surrounding spaces. A number that is not in the building is kept as typed
   in `roomText`, and the preview lists it with the rows that name it.
 - An empty cell in a period column is an empty period.
-- Rooms for a day type that is the same as the first make it its own copy
-  (every group already here gets a copy of its first day). Empty cells for
-  such a day type leave it as it is.
+- Rooms for a day type that is the same as another make it its own copy
+  (every group already here gets a copy of its day on the day type it was the
+  same as). Empty cells for such a day type leave it as it is.
 
 Name clashes with groups already in the project are answered as for the
 schedule file: skip (the default), overwrite, or rename. On overwrite a slot
@@ -749,6 +778,7 @@ to the same names.
 | Rooms | Room, Floor, Teachers, Subject code, Subject, Wing, Capacity, Shared space, Doors | one per room, floor by floor. Teachers are names joined by "; ", main teacher first. Shared space is Yes or No. Doors is a count. |
 | Teachers by period | Teacher, Day type, then one column per period | one per teacher per day type. A cell is "group · room number" for each group taught, joined by "; ", or "Planning". |
 | Rooms by period | Room, Floor, Day type, then one column per period | one per room per day type. A cell is the groups in the room, joined by "; ". Room numbers that slots name and the building does not have come last, with "not in the building" as the floor. |
+| Calendar | as "The calendar CSV" | one per date of the calendar; the header alone with no calendar |
 
 The two grids come from the same rules as every screen: a teacher's day from
 `engine/teacher-day.js`, and a day type that is the same as the first reads
@@ -760,6 +790,72 @@ school is the school name with the characters a file system refuses left out
 (`< > : " / \ | ? *` and control characters), or "Schedule Visualizer 2" when
 the project has no school name. The date is the day of the export on the
 user's device.
+
+## The calendar CSV
+
+Written by `calendarRows` and `calendarCsv`, read by `readCalendarCsv`, both
+in `engine/import-calendar.js`. CSV as `engine/csv.js` reads and writes it.
+
+**What the tool writes.** UTF-8 with a byte-order mark, CRLF line endings,
+the header first, then one row for each date from the calendar's `start` to
+its `end`:
+
+```
+Date,Weekday,Day type,Bells,Note
+2026-08-31,Monday,A Day,Regular,
+2026-09-02,Wednesday,A Day,Early Release,
+2026-11-26,Thursday,No school,,Thanksgiving
+```
+
+| Column | Holds |
+|---|---|
+| Date | The date, `YYYY-MM-DD`. |
+| Weekday | Its weekday, Monday to Sunday. |
+| Day type | The day type's name as the calendar works it out (`dayOn`), or "No school". |
+| Bells | "Regular" (the day type's own bells) or the bell schedule's name; empty on a date with no school. |
+| Note | The dated change's note, empty for none. |
+
+Names are written exactly as typed.
+
+**What the tool reads** ("Import dates"): any list of dates, in the same
+columns. Only Date is needed: a district's list of holidays, a date and a
+name, is enough.
+
+- The first row is the header. Headers are compared without regard to
+  capitals or spaces at the ends: Date; Weekday (read and passed over); Day
+  type, Daytype or Day; Bells, Bell schedule or Bell; Note, Notes, Label,
+  Event, Holiday or Description. Any other column is passed over. A blank row
+  is passed over.
+- A date is written `YYYY-MM-DD` and is on one row. A date outside the
+  calendar is passed over and counted.
+- Day type: a day type's name, "No school" or "Next in the rotation",
+  without regard to capitals or spaces; those two words are taken before a
+  day type of the same name. Blank with a note is "No school"; blank with no
+  note leaves the day as it is.
+- Bells: "Regular" (or "Regular bells") or a bell schedule's name, without
+  regard to capitals or spaces. Blank leaves the bells as they are. Bells on
+  a date with no school say nothing.
+- Note: at most 60 characters, kept exactly as typed. With a Note column, a
+  blank note takes a date's note away.
+
+A row becomes a dated change only where it differs from what the calendar
+already gives that date. A date with a change of its own keeps what the row
+does not change; one without gets a change whose `day` is `null` (as the
+weekday says) when only its bells or its note differ. A change left saying
+nothing takes the date's change away. So the file the tool wrote reads back
+to no change at all.
+
+Refused whole, with nothing changed: a project with no calendar; a file with
+no header or no Date column; a date that is not one, or that is on two rows;
+a note over 60 characters (the refusal names the first such row and counts
+them); and any day-type or bell-schedule name the project does not have
+(every one is named, with its rows).
+
+The reader returns the changes, the calendar with them in place, a preview
+row for each line of the file (`change`, `same` or `outside`, with the day
+before and after), the counts, and the first date the file does not name
+whose day type or bells move. Putting the calendar in place is one undo
+step, stamped with the time, like every calendar change.
 
 ## The movement CSV exports
 
@@ -846,21 +942,23 @@ run on it unchanged, and `validate` and `repair` accept it.
 | `version` | integer | `1` |
 | `id` | id | The project's id. The staff browser keeps a reader's settings under it. |
 | `publishedAt` | date | When it was published, in UTC. Shown in the reader's own time zone. |
-| `staleAfter` | date | `publishedAt` plus the project's `publish.stalenessDays`. After it the staff browser shows a notice and goes on working. |
+| `staleAfter` | date | With a calendar and `publish.staleAtCalendarEnd` not `false`, the day after the calendar's `end` at 12:00 UTC (the school's date; noon UTC falls on it from UTC−11 to UTC+11). Otherwise, or when that is not after `publishedAt` (a calendar already over), `publishedAt` plus the project's `publish.stalenessDays`. After it the staff browser shows a notice and goes on working. `staleness(project, date)` in the same module says which applied. |
 | `settings` | object | `schoolName`, `periods`, `periodWord`, `defaultPassingSeconds`, `secondsPerCell`, `secondsPerStair`, `timeFormat`, as in the project. |
 | `building` | object | `floors` and `connections`. A floor has `id`, `name`, `level`, `width`, `height`, `cells`, `spaces`, `corridors`, `exits`. A room and an other space have every field they have in the project. |
 | `subjects` | list | As in the project. |
 | `teachers` | list | As in the project: `id`, `name`, `subjectId`, `roomIds`, `notes`. |
-| `dayTypes` | list | As in the project. |
+| `dayTypes` | list | `id`, `name`, `own`, `sameAs` (`null` when absent in the project), `short` (`""` when absent), `bells`. |
+| `bellSchedules` | list | As in the project: `id`, `name`, `short`, `bells`, `off`. Empty when there are none. |
+| `calendar` | object or `null` | As in the project: `start`, `end`, `weekdays`, `rotation`, `dates`, `changedAt`. `null` when there is none. |
 | `groups` | list | `id`, `name`, `grade`, `colour`, `days`. |
-| `publish` | object | `views` (one true or false for each view) and `teacherNamesOnMap`. |
+| `publish` | object | `views` (one true or false for each view, `calendar` included; one the project has no switch for is true) and `teacherNamesOnMap`. |
 
 Never in it: a group's `headCount`, `settings.defaultHeadCount`, a floor's
 `image`, `building.zones`, `scenario`, `accepted`, `onboarding`,
-`publish.passcode`, `publish.stalenessDays`, `publish.lastPublishedAt`,
-`created`, `modified`, the settings only the planner uses (`colourScale`,
-`checks`, `paper`, `theme`), and anything worked out (routes, loads, travel
-times, findings). The model is built by naming each field that goes in, so a
+`publish.passcode`, `publish.stalenessDays`, `publish.staleAtCalendarEnd`,
+`publish.lastPublishedAt`, `created`, `modified`, the settings only the
+planner uses (`colourScale`, `checks`, `paper`, `theme`), and anything worked
+out (routes, loads, travel times, findings). The model is built by naming each field that goes in, so a
 field the project gains later is not published until it is named.
 
 Nothing that is named is dropped: a double-booked room, a teacher with two

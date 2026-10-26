@@ -102,8 +102,9 @@ test('what is never published is not in it under any key', () => {
   project.scenario = { name: 'Move the sixth grade', changes: [], compared: null };
   project.accepted = [{ findingId: 'room-double:dsample00a:1:rsample203', reason: 'Both teachers are there', at: '2026-09-01T12:00:00.000Z' }];
   project.publish.passcode = 'a-passcode-nobody-should-see';
+  project.publish.staleAtCalendarEnd = true;
   const text = JSON.stringify(published(project));
-  for (const never of ['headCount', 'defaultHeadCount', 'image', 'zones', 'scenario', 'accepted', 'onboarding', 'passcode', 'stalenessDays', 'lastPublishedAt', 'colourScale', 'checks', 'paper', 'theme', 'created', 'modified']) {
+  for (const never of ['headCount', 'defaultHeadCount', 'image', 'zones', 'scenario', 'accepted', 'onboarding', 'passcode', 'stalenessDays', 'staleAtCalendarEnd', 'lastPublishedAt', 'colourScale', 'checks', 'paper', 'theme', 'created', 'modified']) {
     assert.ok(!text.includes('"' + never + '"'), never + ' is in the published data');
   }
   assert.ok(!text.includes('a-passcode-nobody-should-see'));
