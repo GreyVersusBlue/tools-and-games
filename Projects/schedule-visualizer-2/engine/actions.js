@@ -19,8 +19,11 @@
 import { RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, PUBLISH_VIEWS, CHECK_KINDS, CELL_SCALE_UNITS, CELL_LENGTH_MOST } from './schema.js';
 import { defaultSettings, isCellScale, emptySlot, emptyDay, emptyBells, newFloor, nameKey, looseNameKey, isHexColour, isBellTime, isIsoDate, inRange, allRooms, findRoom, nextGroupColour, nameOfRoom, newAcceptedFinding } from './schema.js';
 import { checkSchedule } from './checks.js';
-import { isOwnCopy, findDayType, baseDayType } from './day-types.js';
+import { isOwnCopy, findDayType, baseDayType, effectiveDayType, followersOf } from './day-types.js';
 import { periodName } from './bells.js';
+import { DAY_TYPES_MOST, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DAYS_MOST, ROTATION_RANGE, DATE_LABEL_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, WEEKDAY_NAMES, LATER_PUBLISH_VIEWS } from './schema.js';
+import { spacelessKey, textLength, bellSchedulesOf, calendarOf, newBellSchedule, defaultWeekdays } from './schema.js';
+import { isCalendarDate, daysBetween, datesFrom, weekdayOf, dateWords, calendarDays } from './calendar.js';
 import { isId, collectIds } from './ids.js';
 
 export const GEOMETRY = 'geometry';
@@ -55,7 +58,7 @@ export function action(spec, run) {
 // entry, because the project the store holds afterwards is a stamped copy.
 export function describeAction(act, before, payload, after) {
   const read = (value, fallback) => (typeof value === 'function' ? value(before, payload, after) : value === undefined || value === null ? fallback : value);
-  return { label: read(act.label, 'Change'), bumps: read(act.bumps, []), focus: read(act.focus, null), outcome: buildingOutcome(after) || importOutcome(after) };
+  return { label: read(act.label, 'Change'), bumps: read(act.bumps, []), focus: read(act.focus, null), outcome: buildingOutcome(after) || importOutcome(after) || scheduleOutcome(after) };
 }
 
 // ---------------------------------------------------------------- sharing
@@ -249,6 +252,20 @@ function resizeDays(project, periods) {
     while (bells.length < periods) bells.push(null);
     return { ...dayType, bells };
   }));
+  // bell schedules are sized as day types are, and a period past the end is
+  // no longer one that does not meet
+  if (Array.isArray(next.bellSchedules)) {
+    next = withKey(next, 'bellSchedules', mapShared(next.bellSchedules, (schedule) => {
+      let resized = schedule;
+      if (schedule.bells.length !== periods) {
+        const bells = schedule.bells.slice(0, periods);
+        while (bells.length < periods) bells.push(null);
+        resized = { ...resized, bells };
+      }
+      const off = schedule.off.filter((period) => period < periods);
+      return off.length === schedule.off.length ? resized : { ...resized, off };
+    }));
+  }
   return next;
 }
 
@@ -279,6 +296,14 @@ export function describePeriodChange(project, periods) {
     if (count > 0) dayTypes.push({ dayTypeId: dayType.id, name: dayType.name, bells: count });
     bells += count;
   }
+  const bellSchedules = [];
+  for (const schedule of bellSchedulesOf(project)) {
+    const count = schedule.bells.slice(periods).filter((bell) => bell !== null).length;
+    const off = schedule.off.filter((period) => period >= periods).length;
+    if (count > 0 || off > 0) bellSchedules.push({ bellScheduleId: schedule.id, name: schedule.name, bells: count, off });
+    bells += count;
+  }
+  const offLost = bellSchedules.reduce((sum, entry) => sum + entry.off, 0);
   let scenarioChanges = 0;
   if (project.scenario) {
     for (const change of project.scenario.changes) {
@@ -286,11 +311,12 @@ export function describePeriodChange(project, periods) {
       if (used.some((value) => value >= periods)) scenarioChanges += 1;
     }
   }
-  return { from, to: periods, removedPeriods, slots, bells, groups, dayTypes, scenarioChanges, losesData: slots + bells + scenarioChanges > 0 };
+  return { from, to: periods, removedPeriods, slots, bells, groups, dayTypes, bellSchedules, scenarioChanges, losesData: slots + bells + offLost + scenarioChanges > 0 };
 }
 
-// Periods per day. Going down removes the later periods from every day and
-// bell schedule; undo brings them back.
+// Periods per day. Going down removes the later periods from every day, every
+// day type's bells and every bell schedule, and the later periods from each
+// schedule's list of those that do not meet; undo brings them back.
 export const setPeriods = action(
   {
     label: (before, payload) => 'Change periods per day to ' + payload.periods,
@@ -341,17 +367,19 @@ const PUBLISH = {
   stalenessDays: wholeRule(RANGES.stalenessDays, 'The staleness period in days'),
   teacherNamesOnMap: (value) => (typeof value === 'boolean' ? null : 'Teacher names on the map is on or off.'),
   lastPublishedAt: (value) => (value === null || isIsoDate(value) ? null : 'The last published time is a date.'),
+  staleAtCalendarEnd: (value) => (typeof value === 'boolean' ? null : 'Whether a published file is stale the day after the calendar ends is on or off.'),
 };
 
 // One publish setting. payload: { key, value }; key is passcode,
-// stalenessDays, teacherNamesOnMap, lastPublishedAt or views.<view>.
+// stalenessDays, teacherNamesOnMap, lastPublishedAt, staleAtCalendarEnd or
+// views.<view>, the calendar view included.
 export const setPublishSetting = action(
   { label: 'Change a publish setting', bumps: [], focus: () => ({ section: 'staff' }) },
   (project, payload) => {
     const key = payload.key;
     if (typeof key === 'string' && key.startsWith('views.')) {
       const view = key.slice(6);
-      if (!PUBLISH_VIEWS.includes(view)) refuse('There is no view called "' + view + '".', 'bad-value');
+      if (!PUBLISH_VIEWS.includes(view) && !LATER_PUBLISH_VIEWS.includes(view)) refuse('There is no view called "' + view + '".', 'bad-value');
       if (typeof payload.value !== 'boolean') refuse('A view is on or off.', 'bad-value');
       return patch(project, ['publish', 'views', view], () => payload.value);
     }
@@ -703,7 +731,7 @@ export const deleteGroup = action(
 function needOwnDayType(project, dayTypeId) {
   const dayType = findDayType(project, dayTypeId);
   if (!dayType) refuse('That day type is no longer in the project.', 'missing');
-  if (!isOwnCopy(project, dayTypeId)) refuse(dayType.name + ' is the same as ' + baseDayType(project).name + '. Make it its own copy to change it.', 'same-as-base');
+  if (!isOwnCopy(project, dayTypeId)) refuse(dayType.name + ' is the same as ' + effectiveDayType(project, dayTypeId).name + '. Make it its own copy to change it.', 'same-as-base');
   return dayType;
 }
 
@@ -784,8 +812,10 @@ function sameSlot(a, b) {
 }
 
 // Copy one day type's days onto another, for one group or for every group.
-// payload: { fromDayTypeId, toDayTypeId } and optionally groupId. Copying onto
-// a day type that is the same as the first changes nothing: it already is.
+// payload: { fromDayTypeId, toDayTypeId } and optionally groupId. A day type
+// that is the same as another gives that one's days. Copying onto a day type
+// that is already the same as the source changes nothing; onto one that is
+// the same as anything else is refused, since it has no days of its own.
 export const copyDay = action(
   {
     label: (before, payload) => 'Copy ' + (findDayType(before, payload.fromDayTypeId) || { name: '' }).name + ' to ' + (findDayType(before, payload.toDayTypeId) || { name: '' }).name + (payload.groupId ? ' for ' + groupName(before, payload.groupId) : ' for every group'),
@@ -797,17 +827,17 @@ export const copyDay = action(
     const to = findDayType(project, payload.toDayTypeId);
     if (!from || !to) refuse('That day type is no longer in the project.', 'missing');
     if (payload.groupId !== undefined) need(project.groups, payload.groupId, 'group');
-    const sourceId = isOwnCopy(project, from.id) ? from.id : baseDayType(project).id;
+    const sourceId = effectiveDayType(project, from.id).id;
     if (!isOwnCopy(project, to.id)) {
-      if (sourceId === baseDayType(project).id) return project;
-      refuse(to.name + ' is the same as ' + baseDayType(project).name + '. Make it its own copy to change it.', 'same-as-base');
+      if (sourceId === effectiveDayType(project, to.id).id) return project;
+      refuse(to.name + ' is the same as ' + effectiveDayType(project, to.id).name + '. Make it its own copy to change it.', 'same-as-base');
     }
     if (sourceId === to.id) return project;
     return withKey(project, 'groups', mapShared(project.groups, (group) => {
       if (payload.groupId !== undefined && group.id !== payload.groupId) return group;
-      const source = group.days[sourceId];
-      const target = group.days[to.id];
-      if (source.every((slot, p) => sameSlot(slot, target[p]))) return group;
+      const source = group.days[sourceId] || emptyDay(project.settings.periods);
+      const target = group.days[to.id] || emptyDay(project.settings.periods);
+      if (group.days[to.id] && source.every((slot, p) => sameSlot(slot, target[p]))) return group;
       return { ...group, days: { ...group.days, [to.id]: source.map(copySlot) } };
     }));
   },
@@ -819,48 +849,39 @@ function dayTypeFocus(before, payload) {
   return { section: 'schedule', tab: 'day', dayTypeId: payload.dayTypeId };
 }
 
+// payload: { dayTypeId, name }. Refused when the name is blank, longer than
+// NAME_MOST characters, or another day type's, ignoring case and spaces
+// (ARCHITECTURE 17.2; old files with two alike are left as they are).
 export const renameDayType = action(
   { label: (before, payload) => 'Rename ' + (findDayType(before, payload.dayTypeId) || { name: '' }).name + ' to ' + payload.name, bumps: [SCHEDULE], focus: dayTypeFocus },
   (project, payload) => {
-    need(project.dayTypes, payload.dayTypeId, 'day type');
-    needName(payload.name, 'A day type');
+    const dayType = need(project.dayTypes, payload.dayTypeId, 'day type');
+    // a field left as it was asks nothing, even of a file with two alike
+    if (payload.name === dayType.name) return project;
+    needDayTypeName(project, payload.name, payload.dayTypeId);
     return withKey(project, 'dayTypes', mapShared(project.dayTypes, (dayType) => (dayType.id === payload.dayTypeId ? withKey(dayType, 'name', payload.name) : dayType)));
   },
 );
 
-// Turn "same as A Day" into a copy of A Day that can be edited: its bells and
-// every group's day start as the first day type's.
+// Turn "same as" into a copy that can be edited: its bells and every group's
+// day start as those of the day type it was the same as.
 export const makeOwnCopy = action(
   { label: (before, payload) => 'Make ' + (findDayType(before, payload.dayTypeId) || { name: '' }).name + ' its own copy', bumps: [SCHEDULE], focus: dayTypeFocus },
   (project, payload) => {
-    const dayType = need(project.dayTypes, payload.dayTypeId, 'day type');
-    if (isOwnCopy(project, dayType.id)) return project;
-    const base = baseDayType(project);
-    return {
-      ...project,
-      dayTypes: project.dayTypes.map((candidate) => (candidate === dayType ? { ...dayType, own: true, bells: base.bells.map((bell) => (bell === null ? null : { ...bell })) } : candidate)),
-      groups: project.groups.map((group) => ({ ...group, days: { ...group.days, [dayType.id]: group.days[base.id].map(copySlot) } })),
-    };
+    need(project.dayTypes, payload.dayTypeId, 'day type');
+    return changeDayTypeKind(project, payload.dayTypeId, true, null);
   },
 );
 
-// Back to "same as A Day". The day type's own bells and days go; undo brings
-// them back.
+// Back to "same as A Day". The day type's own bells and days go, and the day
+// types that were the same as it are the same as A Day too; undo brings them
+// back. One that is the same as another day type is made the same as A Day.
 export const revertToBase = action(
   { label: (before, payload) => 'Make ' + (findDayType(before, payload.dayTypeId) || { name: '' }).name + ' the same as ' + baseDayType(before).name, bumps: [SCHEDULE], focus: dayTypeFocus },
   (project, payload) => {
     const dayType = need(project.dayTypes, payload.dayTypeId, 'day type');
     if (dayType === baseDayType(project)) refuse(dayType.name + ' is the first day type. The others can be the same as it; it cannot be the same as another.', 'base');
-    if (!dayType.own) return project;
-    return {
-      ...project,
-      dayTypes: project.dayTypes.map((candidate) => (candidate === dayType ? { ...dayType, own: false, bells: emptyBells(project.settings.periods) } : candidate)),
-      groups: project.groups.map((group) => {
-        const days = { ...group.days };
-        delete days[dayType.id];
-        return { ...group, days };
-      }),
-    };
+    return changeDayTypeKind(project, payload.dayTypeId, false, null);
   },
 );
 
@@ -915,6 +936,655 @@ export const setBells = action(
     return patch(project, ['dayTypes', project.dayTypes.indexOf(dayType), 'bells'], (current) => bells.map((bell, p) => (sameBell(bell, current[p]) ? current[p] : bell)));
   },
 );
+
+// ================================================================ SV2-75: day types, bell schedules, the calendar (start)
+//
+// ARCHITECTURE 17.2 to 17.4. Every action here is one undo step and bumps
+// SCHEDULE, since findings and movement read all of it. The limits on names
+// and counts live here and nowhere else (17.1). An action whose result needs
+// saying (what a delete took, how many school days a break closed) reports
+// it as the entry's outcome: scheduleOutcome(after).
+
+const scheduleOutcomes = new WeakMap();
+
+function reporting(project, next, outcome) {
+  if (next !== project) scheduleOutcomes.set(next, outcome);
+  return next;
+}
+
+// What a day-type, bell-schedule or calendar action here reported for the
+// project it returned, or null.
+export function scheduleOutcome(project) {
+  return scheduleOutcomes.get(project) || null;
+}
+
+// "a", "a and b", "a, b and c".
+function listWords(parts) {
+  if (parts.length <= 1) return parts.join('');
+  return parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1];
+}
+
+function count(n, one, many) {
+  return n + ' ' + (n === 1 ? one : many);
+}
+
+function dayTypeName(project, dayTypeId) {
+  return (findDayType(project, dayTypeId) || { name: '' }).name;
+}
+
+// A name for a thing in `list`: not blank, at most NAME_MOST characters, and
+// no other's, ignoring case and spaces.
+function needUniqueName(list, name, exceptId, what, whats) {
+  needName(name, what);
+  if (textLength(name) > NAME_MOST) refuse(what + '\'s name is at most ' + NAME_MOST + ' characters; this one has ' + textLength(name) + '. Type a shorter one.', 'too-long');
+  const clash = list.find((item) => item.id !== exceptId && spacelessKey(item.name) === spacelessKey(name));
+  if (clash) refuse('There is already ' + what.replace(/^A /, 'a ') + ' called "' + clash.name + '". ' + whats + ' names are unique, whatever the capitals and spaces; type a different name.', 'duplicate-name');
+  return name;
+}
+
+function needDayTypeName(project, name, exceptId) {
+  return needUniqueName(project.dayTypes, name, exceptId, 'A day type', 'Day type');
+}
+
+// A typed short name: 0 to SHORT_MOST characters, and no other's in `list`,
+// ignoring case. "" means it is worked out from the name (dayShort).
+function needShort(list, short, exceptId, what) {
+  if (typeof short !== 'string') refuse('A short name is text.', 'bad-value');
+  if (textLength(short) > SHORT_MOST) refuse('A short name is at most ' + SHORT_MOST + ' characters, so it fits on a date in the calendar.', 'too-long');
+  if (short === '') return short;
+  const clash = list.find((item) => item.id !== exceptId && typeof item.short === 'string' && item.short.toLowerCase() === short.toLowerCase());
+  if (clash) refuse('"' + clash.short + '" is already the short name of ' + clash.name + '. Each ' + what + ' has its own; type another, or leave it empty to have one worked out.', 'duplicate-short');
+  return short;
+}
+
+function copyBells(bells) {
+  return bells.map((bell) => (bell === null ? null : { start: bell.start, end: bell.end }));
+}
+
+// The own day type `sameAs` may name for day type `dayTypeId`: null (the
+// first day type) or another own day type. The first is kept as null.
+function needSameAsTarget(project, sameAs, dayTypeId) {
+  if (sameAs === null || sameAs === undefined) return null;
+  const target = findDayType(project, sameAs);
+  if (!target) refuse('That day type is no longer in the project.', 'missing');
+  if (target.id === dayTypeId) refuse('A day type cannot be the same as itself. Choose another day type.', 'bad-value');
+  if (!isOwnCopy(project, target.id)) refuse(target.name + ' is the same as ' + effectiveDayType(project, target.id).name + ', so nothing can be the same as it. Choose a day type with its own classes.', 'not-own');
+  return target.id === baseDayType(project).id ? null : target.id;
+}
+
+// Every group's day on `toId` as a copy of its day on `fromId`.
+function copyDaysTo(project, fromId, toId) {
+  return project.groups.map((group) => ({ ...group, days: { ...group.days, [toId]: (group.days[fromId] || emptyDay(project.settings.periods)).map(copySlot) } }));
+}
+
+function withoutDays(groups, dayTypeId) {
+  return mapShared(groups, (group) => {
+    if (!(dayTypeId in group.days)) return group;
+    const days = { ...group.days };
+    delete days[dayTypeId];
+    return { ...group, days };
+  });
+}
+
+// What changing D's kind would take with it, for the sentence on the button
+// ("Make C Day the same as A Day (14 groups' days on C Day go; Undo brings
+// them back)"). payload as setDayTypeKind's. Nothing is changed here.
+export function describeDayTypeKind(project, payload) {
+  const dayType = findDayType(project, payload.dayTypeId);
+  const none = { from: null, to: null, slots: 0, groups: 0, bells: 0, followers: [], losesData: false };
+  if (!dayType) return none;
+  if (payload.own === true) {
+    if (isOwnCopy(project, dayType.id)) return none;
+    return { ...none, from: effectiveDayType(project, dayType.id).name };
+  }
+  const target = findDayType(project, payload.sameAs) || baseDayType(project);
+  if (!isOwnCopy(project, dayType.id) || dayType === baseDayType(project)) return { ...none, to: target.name };
+  const revert = describeRevert(project, dayType.id);
+  const followers = followersOf(project, dayType.id).map((follower) => follower.name);
+  return { from: null, to: target.name, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, losesData: revert.losesData };
+}
+
+// The one rule for turning a day type into its own copy or into "same as":
+// to own, a copy of what it was the same as; to same, its days and bells go
+// and the day types that were the same as it follow what it is now the same as.
+function changeDayTypeKind(project, dayTypeId, own, sameAs) {
+  const dayType = findDayType(project, dayTypeId);
+  const index = project.dayTypes.indexOf(dayType);
+  if (own) {
+    if (isOwnCopy(project, dayTypeId)) return project;
+    const from = effectiveDayType(project, dayTypeId);
+    return {
+      ...project,
+      dayTypes: project.dayTypes.map((candidate) => (candidate === dayType ? { ...dayType, own: true, sameAs: null, bells: copyBells(from.bells) } : candidate)),
+      groups: copyDaysTo(project, from.id, dayType.id),
+    };
+  }
+  if (index === 0) refuse(dayType.name + ' is the first day type. The others can be the same as it; it cannot be the same as another.', 'base');
+  const target = needSameAsTarget(project, sameAs, dayTypeId);
+  if (!isOwnCopy(project, dayTypeId)) {
+    if (effectiveDayType(project, dayTypeId).id === (target || project.dayTypes[0].id)) return project;
+    return patch(project, ['dayTypes', index], (current) => ({ ...current, sameAs: target }));
+  }
+  const followers = new Set(followersOf(project, dayTypeId));
+  return {
+    ...project,
+    dayTypes: project.dayTypes.map((candidate) => {
+      if (candidate === dayType) return { ...dayType, own: false, sameAs: target, bells: emptyBells(project.settings.periods) };
+      if (followers.has(candidate)) return { ...candidate, sameAs: target };
+      return candidate;
+    }),
+    groups: withoutDays(project.groups, dayTypeId),
+  };
+}
+
+// payload: { name, own, sameAs, copyOf, short } and optionally id. An own day
+// type starts as a copy of `copyOf` (any day type: what it gives is what it
+// means; left out, the first), every group's day and the bells; one that is
+// not own is the same as `sameAs`, an own day type (left out, the first). It
+// goes at the end of the list. At most DAY_TYPES_MOST.
+export const addDayType = action(
+  { label: (before, payload) => 'Add day type ' + payload.name, bumps: [SCHEDULE], focus: (before, payload, after) => ({ section: 'schedule', tab: 'day', dayTypeId: after.dayTypes[after.dayTypes.length - 1].id }) },
+  (project, payload, ctx) => {
+    const data = payload || {};
+    if (project.dayTypes.length >= DAY_TYPES_MOST) refuse('A project has at most ' + DAY_TYPES_MOST + ' day types, and this one has ' + project.dayTypes.length + '. Delete one to add another.', 'limit');
+    const name = needDayTypeName(project, data.name, null);
+    const short = needShort(project.dayTypes, data.short === undefined ? '' : data.short, null, 'day type');
+    const id = newId(project, data, ctx, 'd');
+    if (data.own === true) {
+      const source = data.copyOf === undefined || data.copyOf === null ? baseDayType(project) : findDayType(project, data.copyOf);
+      if (!source) refuse('That day type is no longer in the project.', 'missing');
+      const from = effectiveDayType(project, source.id);
+      const dayType = { id, name, own: true, sameAs: null, short, bells: copyBells(from.bells) };
+      return { ...project, dayTypes: project.dayTypes.concat([dayType]), groups: copyDaysTo(project, from.id, id) };
+    }
+    const dayType = { id, name, own: false, sameAs: needSameAsTarget(project, data.sameAs, id), short, bells: emptyBells(project.settings.periods) };
+    return { ...project, dayTypes: project.dayTypes.concat([dayType]) };
+  },
+);
+
+// What deleting D takes with it (ARCHITECTURE 17.12): its groups' days and
+// its bells when it is its own copy; the day types the same as it go back to
+// being the same as the first; the scenario's changes on it; its place in the
+// calendar's rotation, its dated changes, and a weekday that was always it
+// goes back to the rotation. Accepted findings are left: the checks list one
+// that no longer arises as gone. Nothing is changed here.
+export function describeDayTypeDelete(project, dayTypeId) {
+  const dayType = findDayType(project, dayTypeId);
+  if (!dayType || dayType === baseDayType(project)) return null;
+  const own = isOwnCopy(project, dayTypeId);
+  const revert = own ? describeRevert(project, dayTypeId) : { slots: 0, groups: 0, bells: 0 };
+  const followers = own ? followersOf(project, dayTypeId).map((follower) => follower.name) : [];
+  const scenarioChanges = project.scenario ? project.scenario.changes.filter((change) => change.dayTypeId === dayTypeId).length : 0;
+  const calendar = calendarOf(project);
+  const dates = calendar && Array.isArray(calendar.dates) ? calendar.dates.filter((entry) => entry.day === dayTypeId).length : 0;
+  const weekdays = calendar && Array.isArray(calendar.weekdays) ? calendar.weekdays.map((rule, w) => (rule && rule.day === dayTypeId ? w : -1)).filter((w) => w !== -1) : [];
+  const rotation = calendar && Array.isArray(calendar.rotation) ? calendar.rotation.filter((id) => id === dayTypeId).length : 0;
+  const parts = [];
+  if (revert.slots > 0) parts.push('its classes for ' + count(revert.groups, 'group', 'groups'));
+  if (revert.bells > 0) parts.push('its bells');
+  if (dates > 0) parts.push(count(dates, 'date', 'dates') + ' in the calendar');
+  if (weekdays.length > 0) parts.push(listWords(weekdays.map((w) => WEEKDAY_NAMES[w] + 's')) + ' in the calendar');
+  if (rotation > 0) parts.push('its place in the rotation');
+  if (scenarioChanges > 0) parts.push(count(scenarioChanges, 'change', 'changes') + ' in the scenario');
+  let text = 'Deleted ' + dayType.name + (parts.length > 0 ? ', ' + listWords(parts) : '');
+  if (followers.length > 0) text += '. ' + listWords(followers) + (followers.length === 1 ? ' is' : ' are') + ' now the same as ' + baseDayType(project).name;
+  return { dayTypeId, name: dayType.name, own, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, dates, weekdays, rotation, text };
+}
+
+// payload: { dayTypeId }. The first day type cannot be deleted. The outcome
+// is describeDayTypeDelete's, said in its `text` ("Deleted Testing Day, its
+// bells and 3 dates in the calendar").
+export const deleteDayType = action(
+  { label: (before, payload) => 'Delete day type ' + dayTypeName(before, payload.dayTypeId), bumps: [SCHEDULE], focus: () => ({ section: 'schedule', tab: 'day' }) },
+  (project, payload, ctx) => {
+    const dayType = need(project.dayTypes, payload.dayTypeId, 'day type');
+    if (dayType === baseDayType(project)) refuse(dayType.name + ' comes first and cannot be deleted. Every other day type can be the same as it.', 'base');
+    const outcome = describeDayTypeDelete(project, dayType.id);
+    const followers = new Set(isOwnCopy(project, dayType.id) ? followersOf(project, dayType.id) : []);
+    let next = {
+      ...project,
+      dayTypes: project.dayTypes.filter((candidate) => candidate !== dayType).map((candidate) => (followers.has(candidate) ? { ...candidate, sameAs: null } : candidate)),
+      groups: withoutDays(project.groups, dayType.id),
+    };
+    if (project.scenario && outcome.scenarioChanges > 0) next.scenario = { ...project.scenario, changes: project.scenario.changes.filter((change) => change.dayTypeId !== dayType.id) };
+    const calendar = calendarOf(project);
+    if (calendar && (outcome.dates > 0 || outcome.weekdays.length > 0 || outcome.rotation > 0)) {
+      const rotation = calendar.rotation.filter((id) => id !== dayType.id);
+      next = withCalendar(next, {
+        ...calendar,
+        rotation: rotation.length > 0 ? rotation : [project.dayTypes[0].id],
+        weekdays: calendar.weekdays.map((rule) => (rule.day === dayType.id ? { ...rule, day: DAY_ROTATION } : rule)),
+        dates: calendar.dates.filter((entry) => entry.day !== dayType.id),
+      }, ctx);
+    }
+    return reporting(project, next, outcome);
+  },
+);
+
+// payload: { dayTypeId, toIndex }. The first day type stays first, so the
+// others move among places 1 and on. The order is the display order
+// everywhere and a new calendar's rotation.
+export const reorderDayType = action(
+  { label: (before, payload) => 'Move ' + dayTypeName(before, payload.dayTypeId) + ' in the list of day types', bumps: [SCHEDULE], focus: dayTypeFocus },
+  (project, payload) => {
+    const dayType = need(project.dayTypes, payload.dayTypeId, 'day type');
+    if (dayType === baseDayType(project)) refuse(dayType.name + ' comes first and stays first.', 'base');
+    if (!Number.isInteger(payload.toIndex)) refuse('A position in the list is a whole number.', 'bad-value');
+    return withKey(project, 'dayTypes', moveItem(project.dayTypes, dayType.id, Math.max(1, payload.toIndex), 'day type'));
+  },
+);
+
+// payload: { dayTypeId, own, sameAs }. own true: its own classes, starting as
+// a copy of what it was the same as. own false: the same as `sameAs`, an own
+// day type (null or left out: the first); its own days and bells go, and the
+// day types that were the same as it are the same as `sameAs` too. Undo
+// brings everything back. The outcome is describeDayTypeKind's.
+export const setDayTypeKind = action(
+  {
+    label: (before, payload) => (payload.own === true ? 'Make ' + dayTypeName(before, payload.dayTypeId) + ' its own copy' : 'Make ' + dayTypeName(before, payload.dayTypeId) + ' the same as ' + (findDayType(before, payload.sameAs) || baseDayType(before)).name),
+    bumps: [SCHEDULE],
+    focus: dayTypeFocus,
+  },
+  (project, payload) => {
+    need(project.dayTypes, payload.dayTypeId, 'day type');
+    if (typeof payload.own !== 'boolean') refuse('A day type has its own classes, or is the same as another: own is true or false.', 'bad-value');
+    const outcome = describeDayTypeKind(project, payload);
+    return reporting(project, changeDayTypeKind(project, payload.dayTypeId, payload.own, payload.sameAs), outcome);
+  },
+);
+
+// payload: { dayTypeId, short }: up to SHORT_MOST characters, "" to have one
+// worked out from the name (dayShort).
+export const setDayTypeShort = action(
+  { label: (before, payload) => 'Change the short name of ' + dayTypeName(before, payload.dayTypeId), bumps: [SCHEDULE], focus: dayTypeFocus },
+  (project, payload) => {
+    const dayType = need(project.dayTypes, payload.dayTypeId, 'day type');
+    const short = needShort(project.dayTypes, payload.short, dayType.id, 'day type');
+    if ((dayType.short === undefined ? '' : dayType.short) === short) return project;
+    return patch(project, ['dayTypes', project.dayTypes.indexOf(dayType)], (current) => ({ ...current, short }));
+  },
+);
+
+// ---------------------------------------------------------------- bell schedules
+
+function bellScheduleName(project, bellScheduleId) {
+  return (bellSchedulesOf(project).find((schedule) => schedule.id === bellScheduleId) || { name: '' }).name;
+}
+
+function bellsFocus(before, payload, after) {
+  const list = bellSchedulesOf(after);
+  const id = payload.bellScheduleId || (list.length > 0 ? list[list.length - 1].id : undefined);
+  return { section: 'schedule', tab: 'day', bellsId: id };
+}
+
+function needScheduleName(project, name, exceptId) {
+  return needUniqueName(bellSchedulesOf(project), name, exceptId, 'A bell schedule', 'Bell schedule');
+}
+
+// payload: { name, short, fromDayTypeId } and optionally id: another set of
+// times for the same classes, starting as a copy of a day type's regular
+// bells (left out, the first day type's), every period meeting. At most
+// BELL_SCHEDULES_MOST.
+export const addBellSchedule = action(
+  { label: (before, payload) => 'Add bell schedule ' + payload.name, bumps: [SCHEDULE], focus: bellsFocus },
+  (project, payload, ctx) => {
+    const data = payload || {};
+    const list = bellSchedulesOf(project);
+    if (list.length >= BELL_SCHEDULES_MOST) refuse('A project has at most ' + BELL_SCHEDULES_MOST + ' bell schedules, and this one has ' + list.length + '. Delete one to add another.', 'limit');
+    const name = needScheduleName(project, data.name, null);
+    const short = needShort(list, data.short === undefined ? '' : data.short, null, 'bell schedule');
+    const source = data.fromDayTypeId === undefined || data.fromDayTypeId === null ? baseDayType(project) : findDayType(project, data.fromDayTypeId);
+    if (!source) refuse('That day type is no longer in the project.', 'missing');
+    const schedule = { ...newBellSchedule(newId(project, data, ctx, 'b'), name, copyBells(effectiveDayType(project, source.id).bells)), short };
+    return { ...project, bellSchedules: list.concat([schedule]) };
+  },
+);
+
+function bellScheduleLabel(before, payload) {
+  const name = bellScheduleName(before, payload.bellScheduleId);
+  const keys = ['name', 'short', 'bell', 'off'].filter((key) => payload[key] !== undefined);
+  if (keys.length !== 1) return 'Change bell schedule ' + name;
+  if (keys[0] === 'name') return 'Rename bell schedule ' + name + ' to ' + payload.name;
+  if (keys[0] === 'short') return 'Change the short name of ' + name;
+  if (keys[0] === 'bell') return 'Change the bell for ' + periodName(before.settings, payload.period) + ' on ' + name;
+  if (typeof payload.off === 'boolean') return (payload.off ? 'Make ' : 'Let ') + periodName(before.settings, payload.period) + (payload.off ? ' not meet on ' : ' meet on ') + name;
+  return 'Change the periods that do not meet on ' + name;
+}
+
+// payload: { bellScheduleId } and any of: name; short; period with bell
+// ({ start, end } or null); period with off true or false (that period does
+// not meet, or meets); off as the whole list of periods that do not meet.
+export const setBellSchedule = action(
+  { label: bellScheduleLabel, bumps: [SCHEDULE], focus: (before, payload) => ({ section: 'schedule', tab: 'day', bellsId: payload.bellScheduleId, period: payload.period }) },
+  (project, payload) => {
+    const list = bellSchedulesOf(project);
+    const schedule = need(list, payload.bellScheduleId, 'bell schedule');
+    let next = schedule;
+    if (payload.name !== undefined) next = withKey(next, 'name', needScheduleName(project, payload.name, schedule.id));
+    if (payload.short !== undefined) next = withKey(next, 'short', needShort(list, payload.short, schedule.id, 'bell schedule'));
+    if (payload.bell !== undefined) {
+      const period = needPeriod(project, payload.period);
+      const bell = needBell(payload.bell);
+      if (!sameBell(bell, next.bells[period])) next = { ...next, bells: next.bells.map((current, p) => (p === period ? bell : current)) };
+    }
+    if (typeof payload.off === 'boolean') {
+      const period = needPeriod(project, payload.period);
+      const off = payload.off ? Array.from(new Set(next.off.concat([period]))).sort((a, b) => a - b) : next.off.filter((p) => p !== period);
+      if (!sameList(off, next.off)) next = { ...next, off };
+    } else if (payload.off !== undefined) {
+      if (!Array.isArray(payload.off) || !payload.off.every((p) => Number.isInteger(p) && p >= 0 && p < project.settings.periods)) refuse('The periods that do not meet are a list of periods of the school day.', 'bad-value');
+      const off = Array.from(new Set(payload.off)).sort((a, b) => a - b);
+      if (!sameList(off, next.off)) next = { ...next, off };
+    }
+    if (next === schedule) return project;
+    return { ...project, bellSchedules: list.map((candidate) => (candidate === schedule ? next : candidate)) };
+  },
+);
+
+// Where bell schedule B is named in the calendar, for the toast after
+// deleting it ("Wednesdays in the calendar"). Nothing is changed here.
+export function describeBellScheduleDelete(project, bellScheduleId) {
+  const schedule = bellSchedulesOf(project).find((candidate) => candidate.id === bellScheduleId);
+  if (!schedule) return null;
+  const calendar = calendarOf(project);
+  const weekdays = calendar ? calendar.weekdays.map((rule, w) => (rule.bells === bellScheduleId ? w : -1)).filter((w) => w !== -1) : [];
+  const dates = calendar ? calendar.dates.filter((entry) => entry.bells === bellScheduleId).length : 0;
+  const parts = [];
+  if (weekdays.length > 0) parts.push(listWords(weekdays.map((w) => WEEKDAY_NAMES[w] + 's')));
+  if (dates > 0) parts.push(count(dates, 'date', 'dates'));
+  const text = 'Deleted ' + schedule.name + (parts.length > 0 ? ', used on ' + listWords(parts) + ' in the calendar' : '');
+  return { bellScheduleId, name: schedule.name, weekdays, dates, text };
+}
+
+// payload: { bellScheduleId }. Wherever the calendar named it, the regular
+// bells ring instead, in the same step.
+export const deleteBellSchedule = action(
+  { label: (before, payload) => 'Delete bell schedule ' + bellScheduleName(before, payload.bellScheduleId), bumps: [SCHEDULE], focus: () => ({ section: 'schedule', tab: 'day' }) },
+  (project, payload, ctx) => {
+    const list = bellSchedulesOf(project);
+    const schedule = need(list, payload.bellScheduleId, 'bell schedule');
+    const outcome = describeBellScheduleDelete(project, schedule.id);
+    let next = { ...project, bellSchedules: list.filter((candidate) => candidate !== schedule) };
+    const calendar = calendarOf(project);
+    if (calendar && (outcome.weekdays.length > 0 || outcome.dates > 0)) {
+      next = withCalendar(next, {
+        ...calendar,
+        weekdays: calendar.weekdays.map((rule) => (rule.bells === schedule.id ? { ...rule, bells: null } : rule)),
+        dates: calendar.dates.map((entry) => (entry.bells === schedule.id ? { ...entry, bells: null } : entry)),
+      }, ctx);
+    }
+    return reporting(project, next, outcome);
+  },
+);
+
+// payload: { bellScheduleId, toIndex }.
+export const reorderBellSchedule = action(
+  { label: (before, payload) => 'Move ' + bellScheduleName(before, payload.bellScheduleId) + ' in the list of bell schedules', bumps: [SCHEDULE], focus: (before, payload) => ({ section: 'schedule', tab: 'day', bellsId: payload.bellScheduleId }) },
+  (project, payload) => {
+    const list = bellSchedulesOf(project);
+    const next = moveItem(list, payload.bellScheduleId, payload.toIndex, 'bell schedule');
+    return next === list ? project : { ...project, bellSchedules: next };
+  },
+);
+
+// ---------------------------------------------------------------- the calendar
+
+function calendarFocus() {
+  return { section: 'schedule', tab: 'calendar' };
+}
+
+function needCalendar(project) {
+  const calendar = calendarOf(project);
+  if (!calendar) refuse('There is no calendar yet. Make one first.', 'no-calendar');
+  return calendar;
+}
+
+function needDate(value, what) {
+  if (!isCalendarDate(value)) refuse(what + ' is a date written YYYY-MM-DD, for example 2026-08-31.', 'bad-value');
+  return value;
+}
+
+function needRange(start, end) {
+  needDate(start, 'The first day');
+  needDate(end, 'The last day');
+  const days = daysBetween(start, end) + 1;
+  if (days < 1) refuse('The last day of the calendar is before its first. Swap them, or choose another date.', 'bad-value');
+  if (days > CALENDAR_DAYS_MOST) refuse('A calendar covers at most ' + CALENDAR_DAYS_MOST + ' days, two school years; this would cover ' + days + '.', 'too-long');
+}
+
+// What a weekday or a dated change says the day is.
+function needDayValue(project, value) {
+  if (value === DAY_ROTATION || value === DAY_CLOSED) return value;
+  if (!findDayType(project, value)) refuse('That day type is no longer in the project.', 'missing');
+  return value;
+}
+
+function needCalendarBells(project, value, regular) {
+  if (value === null || (regular && value === BELLS_REGULAR)) return value;
+  if (!bellSchedulesOf(project).some((schedule) => schedule.id === value)) refuse('That bell schedule is no longer in the project.', 'missing');
+  return value;
+}
+
+function needWeekdays(project, weekdays) {
+  if (!Array.isArray(weekdays) || weekdays.length !== 7) refuse('The calendar has a rule for each of the seven weekdays, Monday first.', 'bad-value');
+  return weekdays.map((rule) => {
+    if (!rule || typeof rule !== 'object') refuse('A weekday\'s rule says its day and its bells.', 'bad-value');
+    return { day: needDayValue(project, rule.day), bells: needCalendarBells(project, rule.bells === undefined ? null : rule.bells, false) };
+  });
+}
+
+function needRotation(project, rotation) {
+  if (!Array.isArray(rotation) || rotation.length < ROTATION_RANGE[0] || rotation.length > ROTATION_RANGE[1]) refuse('The rotation is ' + ROTATION_RANGE[0] + ' to ' + ROTATION_RANGE[1] + ' day types, in the order they come round.', 'bad-value');
+  for (const id of rotation) if (!findDayType(project, id)) refuse('That day type is no longer in the project.', 'missing');
+  return rotation.slice();
+}
+
+function needDateLabel(value) {
+  if (typeof value !== 'string') refuse('A note is text.', 'bad-value');
+  if (textLength(value) > DATE_LABEL_MOST) refuse('A note on a date is at most ' + DATE_LABEL_MOST + ' characters.', 'too-long');
+  return value;
+}
+
+// A dated change that says nothing its weekday does not (the rotation, the
+// weekday's bells, no note, on a weekday that takes the rotation) is taken
+// out, as repair takes it out.
+function tidyDates(calendar) {
+  const dates = calendar.dates.filter((entry) => !(entry.day === DAY_ROTATION && entry.bells === null && entry.label === '' && calendar.weekdays[weekdayOf(entry.date)].day === DAY_ROTATION));
+  return dates.length === calendar.dates.length ? calendar : { ...calendar, dates };
+}
+
+// The project with `calendar` in place, tidied and stamped with the store's
+// clock, which the publish form compares with the last publish.
+function withCalendar(project, calendar, ctx) {
+  return { ...project, calendar: { ...tidyDates(calendar), changedAt: ctx.clock().toISOString() } };
+}
+
+function sameJson(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+// Write `change` ({ day, bells, label }) on each date, replacing its change.
+function writeDates(calendar, dates, change) {
+  const byDate = new Map(calendar.dates.map((entry) => [entry.date, entry]));
+  for (const date of dates) byDate.set(date, { date, day: change.day, bells: change.bells, label: change.label });
+  return { ...calendar, dates: Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? -1 : 1)) };
+}
+
+// The school days among `dates`, by the calendar as it stands.
+function schoolDaysAmong(project, calendar, dates) {
+  const days = calendarDays({ ...project, calendar });
+  const first = days.length > 0 ? days[0].date : null;
+  return dates.filter((date) => {
+    const offset = first === null ? -1 : daysBetween(first, date);
+    return offset >= 0 && offset < days.length && days[offset].school;
+  });
+}
+
+// payload: { start, end } and optionally weekdays (seven { day, bells },
+// Monday first; left out, Monday to Friday in the rotation and no school at
+// the weekend), rotation (left out, every day type in order), breaks
+// ([{ from, to, label }], each writing "closed" with its label on the dates
+// from..to that would otherwise be school days) and replace (true to make a
+// new one over a calendar there already is). The outcome counts each break's
+// school days ("Winter break: 8 school days").
+export const makeCalendar = action(
+  { label: 'Make the calendar', bumps: [SCHEDULE], focus: calendarFocus },
+  (project, payload, ctx) => {
+    const data = payload || {};
+    if (calendarOf(project) && data.replace !== true) refuse('There is already a calendar. Change it, or remove it first.', 'calendar-exists');
+    needRange(data.start, data.end);
+    const weekdays = data.weekdays === undefined ? defaultWeekdays() : needWeekdays(project, data.weekdays);
+    const rotation = data.rotation === undefined ? project.dayTypes.slice(0, ROTATION_RANGE[1]).map((dayType) => dayType.id) : needRotation(project, data.rotation);
+    let calendar = { start: data.start, end: data.end, weekdays, rotation, dates: [], changedAt: null };
+    const breaks = [];
+    if (data.breaks !== undefined) {
+      if (!Array.isArray(data.breaks)) refuse('The breaks are a list of first and last dates with a name.', 'bad-value');
+      for (const item of data.breaks) {
+        if (!item || typeof item !== 'object') refuse('A break has a first date, a last date and a name.', 'bad-value');
+        const from = needDate(item.from, 'A break\'s first day');
+        const to = item.to === undefined || item.to === null || item.to === '' ? from : needDate(item.to, 'A break\'s last day');
+        if (to < from) refuse('A break ends before it starts. Swap the two dates.', 'bad-value');
+        const label = needDateLabel(item.label === undefined ? '' : item.label);
+        const inside = datesFrom(from < calendar.start ? calendar.start : from, to > calendar.end ? calendar.end : to);
+        const closing = schoolDaysAmong(project, calendar, inside);
+        calendar = writeDates(calendar, closing, { day: DAY_CLOSED, bells: null, label });
+        breaks.push({ from, to, label, schoolDays: closing.length });
+      }
+    }
+    const next = withCalendar(project, calendar, ctx);
+    return reporting(project, next, { breaks, text: breaks.map((item) => (item.label === '' ? dateWords(item.from, { year: false }) + ' to ' + dateWords(item.to, { year: false }) : item.label) + ': ' + count(item.schoolDays, 'school day', 'school days')).join('; ') });
+  },
+);
+
+// payload: { start, end }. Dated changes outside the new range are kept, so
+// lengthening it again loses nothing.
+export const setCalendarRange = action(
+  { label: (before, payload) => 'Change the calendar to ' + dateWords(payload.start) + ' to ' + dateWords(payload.end), bumps: [SCHEDULE], focus: calendarFocus },
+  (project, payload, ctx) => {
+    const calendar = needCalendar(project);
+    needRange(payload.start, payload.end);
+    if (calendar.start === payload.start && calendar.end === payload.end) return project;
+    return withCalendar(project, { ...calendar, start: payload.start, end: payload.end }, ctx);
+  },
+);
+
+// payload: { weekday, day, bells }: weekday 0 (Monday) to 6; day "rotation",
+// "closed" or a day type id; bells null (the regular bells) or a bell
+// schedule id. Either may be left out.
+export const setCalendarWeekday = action(
+  { label: (before, payload) => 'Change ' + (WEEKDAY_NAMES[payload.weekday] || 'a weekday') + 's in the calendar', bumps: [SCHEDULE], focus: calendarFocus },
+  (project, payload, ctx) => {
+    const calendar = needCalendar(project);
+    if (!Number.isInteger(payload.weekday) || payload.weekday < 0 || payload.weekday > 6) refuse('A weekday is 0 (Monday) to 6 (Sunday).', 'bad-value');
+    const current = calendar.weekdays[payload.weekday];
+    const rule = {
+      day: payload.day === undefined ? current.day : needDayValue(project, payload.day),
+      bells: payload.bells === undefined ? current.bells : needCalendarBells(project, payload.bells, false),
+    };
+    if (rule.day === current.day && rule.bells === current.bells) return project;
+    return withCalendar(project, { ...calendar, weekdays: calendar.weekdays.map((one, w) => (w === payload.weekday ? { ...one, ...rule } : one)) }, ctx);
+  },
+);
+
+// payload: { rotation }: 1 to 24 day type ids, repeats allowed, in the order
+// they come round.
+export const setCalendarRotation = action(
+  { label: 'Change the rotation', bumps: [SCHEDULE], focus: calendarFocus },
+  (project, payload, ctx) => {
+    const calendar = needCalendar(project);
+    const rotation = needRotation(project, payload.rotation);
+    if (sameList(rotation, calendar.rotation)) return project;
+    return withCalendar(project, { ...calendar, rotation }, ctx);
+  },
+);
+
+function datesWords(dates, schoolDays) {
+  if (dates.length === 1) return dateWords(dates[0], { year: false });
+  return schoolDays ? count(dates.length, 'school day', 'school days') : count(dates.length, 'date', 'dates');
+}
+
+function setDatesLabel(before, payload, after) {
+  const outcome = scheduleOutcome(after);
+  const written = outcome ? outcome.written : [];
+  const words = datesWords(written.length > 0 ? written : outcome ? outcome.removed : [], payload.day === DAY_CLOSED);
+  if (payload.day === null) return 'Set ' + words + ' as the calendar says';
+  if (payload.day === DAY_CLOSED) return 'Set ' + words + ' to No school';
+  if (payload.day === DAY_ROTATION) return 'Set ' + words + ' to Next in the rotation';
+  if (payload.day !== undefined) return 'Set ' + words + ' to ' + dayTypeName(before, payload.day);
+  return 'Change ' + words + ' in the calendar';
+}
+
+// payload: { dates, day, bells, label }. dates: a list of dates, or
+// { from, to }, inside the calendar. day: a day type id, "closed" (no school),
+// "rotation" (next in the rotation), or null for "as the calendar says",
+// which takes each date's change away; left out, each date keeps its day.
+// bells: null (as the weekday says), "regular" or a bell schedule id; label:
+// the note. Either left out keeps what each date has. "closed" is written
+// only on dates that are school days (and on dates already closed by a
+// change of their own, which keep being closed with the new note), and the
+// outcome counts them. The outcome also says the first later date whose day
+// type moved (`movedFrom`), for the toast "The rotation moves back a day
+// from 27 November".
+export const setCalendarDates = action(
+  { label: setDatesLabel, bumps: [SCHEDULE], focus: calendarFocus },
+  (project, payload, ctx) => {
+    const calendar = needCalendar(project);
+    let dates = payload.dates;
+    if (dates && typeof dates === 'object' && !Array.isArray(dates)) {
+      needDate(dates.from, 'The first date');
+      needDate(dates.to === undefined ? dates.from : dates.to, 'The last date');
+      dates = datesFrom(dates.from, dates.to === undefined ? dates.from : dates.to);
+    }
+    if (!Array.isArray(dates) || dates.length === 0) refuse('Choose the dates to change.', 'bad-value');
+    for (const date of dates) {
+      needDate(date, 'A date');
+      if (date < calendar.start || date > calendar.end) refuse(dateWords(date) + ' is outside the calendar, which runs from ' + dateWords(calendar.start) + ' to ' + dateWords(calendar.end) + '.', 'outside');
+    }
+    dates = Array.from(new Set(dates)).sort();
+    const own = new Map(calendar.dates.map((entry) => [entry.date, entry]));
+    let next;
+    let written = [];
+    let removed = [];
+    if (payload.day === null) {
+      removed = dates.filter((date) => own.has(date));
+      next = { ...calendar, dates: calendar.dates.filter((entry) => !removed.includes(entry.date)) };
+    } else {
+      const day = payload.day === undefined ? undefined : needDayValue(project, payload.day);
+      const bells = payload.bells === undefined ? undefined : needCalendarBells(project, payload.bells, true);
+      const label = payload.label === undefined ? undefined : needDateLabel(payload.label);
+      written = day === DAY_CLOSED ? dates.filter((date) => schoolDaysAmong(project, calendar, [date]).length === 1 || (own.has(date) && own.get(date).day === DAY_CLOSED)) : dates;
+      next = calendar;
+      for (const date of written) {
+        const had = own.get(date);
+        const rule = calendar.weekdays[weekdayOf(date)];
+        next = writeDates(next, [date], {
+          day: day !== undefined ? day : had ? had.day : rule.day,
+          bells: bells !== undefined ? bells : had ? had.bells : null,
+          label: label !== undefined ? label : had ? had.label : '',
+        });
+      }
+    }
+    const schoolDays = payload.day === DAY_CLOSED ? schoolDaysAmong(project, calendar, written).length : 0;
+    if (sameJson(tidyDates(next).dates, calendar.dates)) return project;
+    const after = withCalendar(project, next, ctx);
+    const changed = new Set(dates);
+    const beforeDays = calendarDays(project);
+    const afterDays = calendarDays(after);
+    const moved = afterDays.find((entry, i) => !changed.has(entry.date) && entry.date > dates[0] && (entry.dayTypeId !== beforeDays[i].dayTypeId || entry.bellsId !== beforeDays[i].bellsId));
+    return reporting(project, after, { written, removed, schoolDays, skipped: payload.day === null ? 0 : dates.length - written.length, movedFrom: moved ? moved.date : null });
+  },
+);
+
+// Takes the calendar away; undo brings it back.
+export const removeCalendar = action(
+  { label: 'Remove the calendar', bumps: [SCHEDULE], focus: calendarFocus },
+  (project) => {
+    needCalendar(project);
+    return { ...project, calendar: null };
+  },
+);
+
+// ================================================================ SV2-75 (end)
 
 // ---------------------------------------------------------------- floors
 
