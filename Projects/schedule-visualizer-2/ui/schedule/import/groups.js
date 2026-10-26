@@ -7,7 +7,7 @@
 import { h } from '../../components/dom.js';
 import { count, list, periodWords } from '../../components/words.js';
 import { parse } from '../../../engine/csv.js';
-import { ROLES, guessColumns, previewImport, mergeGroups, summaryText } from '../../../engine/import-groups.js';
+import { ROLES, guessColumns, previewImport, mergeGroups, summaryText, makesOwnText } from '../../../engine/import-groups.js';
 import { buildExport } from '../../../engine/exports.js';
 import { periodName } from '../../../engine/bells.js';
 import { importGroups } from '../../../engine/actions.js';
@@ -222,7 +222,7 @@ export function groupsPanel(env, state) {
     const clashes = usable ? preview.groups.filter((group) => group.existing).map((group) => ({ key: group.key, name: group.name })) : [];
     const plan = usable ? planOf(project, preview, loaded.policy) : {};
     const label = plan.summary ? actionLabel(plan.summary) : null;
-    const makesOwn = usable ? preview.makesOwn.map((id) => (project.dayTypes.find((dayType) => dayType.id === id) || { name: '' }).name) : [];
+    const makesOwn = usable ? makesOwnText(project, preview.makesOwn) : '';
 
     return panel('groups', 'Groups from a spreadsheet',
       h('p', { class: 'sch-lead', data: { file: 'groups' } }, quote(loaded.fileName) + ' has ' + count(loaded.rows.length - 1, 'row') + ' under its header. Nothing changes until you import.'),
@@ -238,7 +238,7 @@ export function groupsPanel(env, state) {
       usable ? [
         h('h3', { class: 'imp-step' }, '2. What will happen'),
         h('p', { class: 'imp-counts', data: { create: String(preview.counts.create), match: String(preview.counts.match), skip: String(preview.counts.skip), unknown: String(preview.counts.unknownRooms) } }, countsLine(preview)),
-        makesOwn.length > 0 ? h('p', { class: 'sch-hint', data: { note: 'makes-own' } }, list(makesOwn) + (makesOwn.length === 1 ? ' is' : ' are') + ' the same as ' + project.dayTypes[0].name + ' now. The file has rooms for ' + (makesOwn.length === 1 ? 'it, so it becomes its own copy' : 'them, so they become their own copies') + '.') : null,
+        makesOwn !== '' ? h('p', { class: 'sch-hint', data: { note: 'makes-own' } }, makesOwn) : null,
         previewTable(project, preview, plan),
         clashes.length > 0 ? [
           h('h3', { class: 'imp-step' }, '3. Groups that are already here'),

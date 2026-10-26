@@ -41,7 +41,7 @@
 
 import { RANGES, roomNumberKey, nameKey, inRange, emptySlot, emptyDay, allRooms, nextGroupColour } from './schema.js';
 import { isId } from './ids.js';
-import { isOwnCopy, effectiveDayType, findDayType } from './day-types.js';
+import { isOwnCopy, effectiveDayType, findDayType, describeDayType } from './day-types.js';
 import { periodName, periodLabel } from './bells.js';
 
 export const ROLES = ['name', 'grade', 'headCount', 'colour', 'dayType', 'period', 'ignore'];
@@ -620,6 +620,25 @@ export function applyGroupImport(project, rows, mapping, policy, ids) {
   merged.summary.rowsSkipped = preview.counts.skip;
   merged.summary.unknownRooms = preview.unknownRooms.map((record) => record.text);
   return merged;
+}
+
+// The preview's note on the day types the file makes their own copies, each
+// named with what it is the same as now: "C Day is the same as B Day and D
+// Day is the same as A Day now. The file has rooms for them, so they become
+// their own copies." Empty when there are none.
+export function makesOwnText(project, dayTypeIds) {
+  const and = (items) => (items.length <= 1 ? items.join('') : items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1]);
+  const byFollows = new Map();
+  for (const id of dayTypeIds) {
+    const described = describeDayType(project, id);
+    if (!described || described.own) continue;
+    if (!byFollows.has(described.follows)) byFollows.set(described.follows, []);
+    byFollows.get(described.follows).push(described.name);
+  }
+  if (byFollows.size === 0) return '';
+  const total = Array.from(byFollows.values()).reduce((sum, names) => sum + names.length, 0);
+  const parts = Array.from(byFollows, ([follows, names]) => and(names) + (names.length === 1 ? ' is' : ' are') + ' the same as ' + follows);
+  return and(parts) + ' now. The file has rooms for ' + (total === 1 ? 'it, so it becomes its own copy.' : 'them, so they become their own copies.');
 }
 
 // "3 groups added, 1 replaced, 2 left as they were", for the undo label and
