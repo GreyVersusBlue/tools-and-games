@@ -61,6 +61,23 @@ function followerSchool() {
   return project;
 }
 
+// The sample school with one teacher following 7A from room to room, so
+// that there are teachers' walks (the sample has none), one of them late
+// against a passing time of 40 seconds.
+function walkingTeacherSchool() {
+  const project = sampleSchool();
+  const teacher = project.teachers[0];
+  const group = project.groups.find((one) => one.name === '7A');
+  for (const dayType of project.dayTypes) {
+    const day = group.days[dayType.id];
+    if (!day) continue;
+    for (let p = 0; p < day.length; p += 1) day[p] = { ...day[p], teacherIds: [teacher.id] };
+  }
+  project.dayTypes[0].bells = project.dayTypes[0].bells.map(() => null);
+  project.settings.defaultPassingSeconds = 40;
+  return project;
+}
+
 function scenarioSchool() {
   const project = sampleSchool();
   project.scenario = {
@@ -82,6 +99,7 @@ const RECORDED = {
   'sample school: scenario lane and comparison': 'e205ecbb5d5caf96ae0d43e17f6ce08d0f32e5d2e3331c2f2afc69b6bbb5b9aa',
   'sample school: suggestions for the double booking and the long walk': 'ad893b0e9a33abf9fc109dce9cc3761bb88714df3aba3bebcd2a3aeaa5033f1d',
   'B Day same as A Day, as an older file says it: pipeline': 'da4ea50e951422160fdeb06f144a2999d7e4ee56d19749dc3a5a6809aa7ef9f4',
+  'one teacher walking with 7A: pipeline': '97edace53efdd2857a03f129674c60aa745abd5a52b7a5a334e9b3ea52f7760d',
   'the 3.13 fixture: pipeline': 'dd0294ebe4d807667da8d004b6ad9b3194ab390121226ceb8a26a3642ef843e5',
 };
 
@@ -171,6 +189,12 @@ test('sample school: suggestions for the double booking and the long walk', () =
 
 test('B Day same as A Day, as an older file says it: pipeline', () => {
   agree('B Day same as A Day, as an older file says it: pipeline', withoutWork(createPipeline().run(followerSchool())));
+});
+
+test('one teacher walking with 7A: pipeline', () => {
+  const result = createPipeline().run(walkingTeacherSchool());
+  assert.ok(result.walks.teachers.length > 0 && result.walks.teachers.some((walk) => walk.late), 'the case has teachers\' walks, and a late one');
+  agree('one teacher walking with 7A: pipeline', { ...withoutWork(result), engines: engines(walkingTeacherSchool()) });
 });
 
 test('the 3.13 fixture: pipeline', () => {

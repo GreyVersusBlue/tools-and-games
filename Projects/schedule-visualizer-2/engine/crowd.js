@@ -158,7 +158,7 @@
 
 import { DOOR_SIDES, STUDENTS_PER_LANE_CELL, RANGES, inRange, defaultSettings } from './schema.js';
 import { routingGraph, route, createRouteCache, routesForSchedule, runRoutes } from './routing.js';
-import { ownDayTypes, effectiveDayType } from './day-types.js';
+import { effectiveDayType } from './day-types.js';
 import { bellsFor, offPeriods } from './bells.js';
 import { teacherDays, teacherMoves } from './teacher-day.js';
 import { runsOf, meetingSlots } from './runs.js';
@@ -592,20 +592,22 @@ export function simulateDay(project, routes, dayTypeId, graph, bellsId) {
   return runDay(project, routingGraph(project, graph), found, null);
 }
 
-// The whole day of every run: { days: [simulateDay's result for each own day
-// type, regular bells] }, and when the project has a bell schedule `bells`,
+// The whole day of every run: { days: [simulateDay's result for each run
+// with regular bells, each own day type in order] }, and when the project has a bell schedule `bells`,
 // each own day type under each schedule in runsOf's order, whose
 // transitions retime the regular run's where they can.
 export function simulateSchedule(project, routes, graph) {
   const routing = routingGraph(project, graph);
+  const runs = runsOf(project);
   const days = [];
-  for (const dayType of ownDayTypes(project)) {
-    const found = dayOf(project, routes, dayType.id, null);
+  for (const run of runs) {
+    if (run.bellsId !== null) continue;
+    const found = dayOf(project, routes, run.dayTypeId, null);
     if (found) days.push(runDay(project, routing, found, null));
   }
   const result = { days };
   const bells = [];
-  for (const run of runsOf(project)) {
+  for (const run of runs) {
     if (run.bellsId === null) continue;
     const found = dayOf(project, routes, run.dayTypeId, run.bellsId);
     if (!found) continue;
@@ -638,9 +640,8 @@ export function teacherWalks(project, graph, options) {
   const routeOptions = { cache };
   if (options && options.geometryVersion !== undefined) routeOptions.geometryVersion = options.geometryVersion;
   const marginSeconds = project.settings.checks ? project.settings.checks.passingMarginSeconds : 0;
-  const runs = options && options.bells === true
-    ? runsOf(project).filter((run) => run.bellsId !== null)
-    : ownDayTypes(project).map((dayType) => ({ dayTypeId: dayType.id, bellsId: null }));
+  const bellRuns = Boolean(options && options.bells === true);
+  const runs = runsOf(project).filter((run) => (run.bellsId !== null) === bellRuns);
   const walks = [];
   const daysOf = new Map();
   for (const run of runs) {
