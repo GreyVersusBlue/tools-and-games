@@ -196,3 +196,64 @@ test('bell checks warn and never block: every finding is a path, a message, a ki
     assert.ok(['end-before-start', 'overlap', 'gap'].includes(finding.kind));
   }
 });
+
+// ---------------------------------------------------------------- ARCHITECTURE 17.3: bell schedules
+
+import { findBellSchedule, offPeriods } from '../../engine/bells.js';
+
+// The sample school with an Early Release schedule: A Day's bells with each
+// period ending 10 minutes sooner, and Periods 6 to 8 not meeting.
+function earlyRelease(off) {
+  const project = school();
+  const bells = project.dayTypes[0].bells.map((bell) => (bell === null ? null : { start: bell.start, end: toBellTime(parseTime(bell.end) - 10) }));
+  project.bellSchedules = [{ id: 'bsample0er', name: 'Early Release', short: '', bells, off: off === undefined ? [5, 6, 7] : off }];
+  return project;
+}
+
+test('bellsFor with a bell schedule: its times, and the periods that do not meet as off with no passing time into or out of them', () => {
+  const project = earlyRelease();
+  const regular = bellsFor(project, 'dsample00a');
+  const early = bellsFor(project, 'dsample00a', 'bsample0er');
+  assert.equal(early.length, 8);
+  assert.deepEqual(early.slice(5), [0, 0, 0].map(() => ({ start: null, end: null, passingAfter: null, passingFromBells: false, off: true })));
+  assert.equal(early[1].end, toBellTime(parseTime(regular[1].end) - 10));
+  // Period 1 ends 10 minutes sooner and Period 2 starts when it did
+  assert.equal(early[0].passingAfter, regular[0].passingAfter + 10 * 60);
+  assert.equal(early[0].passingFromBells, true);
+  // nothing passes from Period 5 into Period 6, which does not meet
+  assert.equal(early[4].passingAfter, null);
+  assert.equal(early.filter((bell) => bell.off).length, 3);
+  // the meeting periods carry exactly the regular shape
+  assert.deepEqual(Object.keys(early[0]), Object.keys(regular[0]));
+  // the same classes: the day type decides nothing about the times
+  assert.deepEqual(bellsFor(project, 'dsample00b', 'bsample0er'), early);
+});
+
+test('bellsFor with no bell schedule, or one that is not there, is the regular bells exactly as before', () => {
+  const project = earlyRelease();
+  const regular = bellsFor(project, 'dsample00a');
+  assert.deepEqual(bellsFor(project, 'dsample00a', null), regular);
+  assert.deepEqual(bellsFor(project, 'dsample00a', 'bnowhere00'), regular);
+  assert.deepEqual(bellsFor(school(), 'dsample00a'), regular);
+  assert.ok(regular.every((bell) => !('off' in bell)));
+  assert.equal(findBellSchedule(project, 'bnowhere00'), null);
+  assert.equal(findBellSchedule(school(), 'bsample0er'), null);
+});
+
+test('an off period in the middle of the day: no transition into it or out of it', () => {
+  const early = bellsFor(earlyRelease([2]), 'dsample00a', 'bsample0er');
+  assert.deepEqual(early.map((bell) => bell.passingAfter === null), [false, true, true, false, false, false, false, true]);
+  assert.deepEqual(Array.from(offPeriods(earlyRelease([2, 9, -1, 2.5]), 'bsample0er')), [2]);
+});
+
+test('the bell checks skip a period that does not meet: no gap, overlap or end-before-start for it', () => {
+  const project = earlyRelease();
+  // times that would be wrong, left on periods that do not meet
+  project.bellSchedules[0].bells[6] = { start: '09:00', end: '08:00' };
+  project.bellSchedules[0].bells[7] = null;
+  assert.deepEqual(bellFindings(project, 'dsample00a', 'bsample0er'), []);
+  // the same times on a schedule where every period meets are pointed out
+  project.bellSchedules[0].off = [];
+  const kinds = bellFindings(project, 'dsample00a', 'bsample0er').map((finding) => [finding.kind, finding.period, finding.path]);
+  assert.deepEqual(kinds, [['end-before-start', 6, 'bellSchedules[0].bells[6]'], ['gap', 7, 'bellSchedules[0].bells[7]']]);
+});

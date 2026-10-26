@@ -37,6 +37,8 @@ export const GROUPS = {
     'engine/repair.test.mjs',
     'engine/day-types.test.mjs',
     'engine/bells.test.mjs',
+    'engine/calendar.test.mjs',
+    'engine/runs.test.mjs',
     'engine/actions.test.mjs',
     'engine/history.test.mjs',
     'engine/store.test.mjs',
