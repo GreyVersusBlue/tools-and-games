@@ -19,6 +19,9 @@ import * as actions from '../../engine/actions.js';
 import { createStore } from '../../engine/store.js';
 import { validate } from '../../engine/validate.js';
 import { school, emptyProject, clone, clock, makeIds, tickingClock, assertValid, group, room, teacher } from './helpers.mjs';
+import { withEverything, C, D } from '../fixtures/day-types-calendar.mjs';
+import { summaryText } from '../../engine/import-groups.js';
+import { dayOn, calendarDays } from '../../engine/calendar.js';
 
 const FORMATS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'formats');
 const fixture = (name) => readFileSync(path.join(FORMATS_DIR, name), 'utf8');
@@ -640,6 +643,203 @@ test('schedule file: an import that cannot be done is an ActionError and changes
   // and one that changes nothing makes no entry
   store.apply(actions.importSchedule, { file });
   assert.equal(store.history.past.length, 0);
+});
+
+// ---------------------------------------------------------------- the schedule file: ARCHITECTURE 17.9 (SV2-77)
+
+const schedule = (project) => readScheduleFile(writeScheduleFile(project)).file;
+
+// withEverything() as another project would hold it: every id different,
+// every name the same.
+function everythingElsewhere() {
+  const text = JSON.stringify(withEverything()).replace(/"([a-z])sample([a-z0-9]{3})"/g, '"$1other0$2"');
+  const project = JSON.parse(text);
+  assertValid(project);
+  return project;
+}
+
+test('schedule file: bell schedules, the calendar and the day-type fields travel, and come back the same', () => {
+  const project = withEverything();
+  assertValid(project);
+  const first = writeScheduleFile(project);
+  const value = JSON.parse(first);
+  assert.deepEqual(Object.keys(value), ['format', 'version', 'settings', 'rooms', 'subjects', 'teachers', 'groups', 'dayTypes', 'bellSchedules', 'calendar']);
+  assert.deepEqual(value.bellSchedules, project.bellSchedules);
+  assert.deepEqual(value.calendar, project.calendar);
+  assert.deepEqual(value.dayTypes[2], { id: C, name: 'C Day', own: false, sameAs: B, short: 'C', bells: Array(8).fill(null) });
+  const read = readScheduleFile(first);
+  assert.deepEqual([read.summary.bellSchedules, read.summary.calendar, read.summary.dayTypes], [2, true, 4]);
+  const applied = applySchedule(project, read.file, { policy: { all: 'overwrite' }, ids: makeIds(9) });
+  assert.equal(applied.project, project, 'its own schedule changes nothing');
+  assert.equal(applied.summary.calendarReplaced, false);
+  assert.equal(writeScheduleFile(applied.project), first);
+});
+
+test('schedule file: a project with no bell schedules and no calendar writes neither, as before they existed', () => {
+  const value = JSON.parse(writeScheduleFile(school()));
+  assert.equal('bellSchedules' in value, false);
+  assert.equal('calendar' in value, false);
+  const read = readScheduleFile(writeScheduleFile(school()));
+  assert.deepEqual([read.file.bellSchedules, read.file.calendar], [[], null], 'absent reads as none');
+});
+
+test('schedule file: a bell schedule or a calendar that breaks a rule is refused whole, naming where', () => {
+  const value = JSON.parse(writeScheduleFile(withEverything()));
+  const broken = (change) => {
+    const copy = clone(value);
+    change(copy);
+    return JSON.stringify(copy);
+  };
+  assert.throws(() => readScheduleFile(broken((v) => { v.bellSchedules[0].off = [9]; })), refusal('invalid', /bellSchedules\[0\]\.off/));
+  assert.throws(() => readScheduleFile(broken((v) => { v.calendar.rotation = ['dnowhere00']; })), refusal('invalid', /calendar\.rotation\[0\]/));
+  assert.throws(() => readScheduleFile(broken((v) => { v.calendar.dates[1].bells = 'bnowhere00'; })), refusal('invalid', /calendar\.dates\[1\]\.bells/));
+  assert.throws(() => readScheduleFile(broken((v) => { v.dayTypes[2].sameAs = D; })), refusal('invalid', /dayTypes\[2\]\.sameAs/));
+  assert.throws(() => readScheduleFile(broken((v) => { v.calendar = 'every day'; })), refusal('invalid', /calendar/));
+});
+
+test('schedule file: into a project without them, day types, bell schedules and the calendar are added', () => {
+  const project = school();
+  const applied = applySchedule(project, schedule(withEverything()), { policy: { all: 'skip' }, ids: makeIds(9) });
+  assertValid(applied.project);
+  assert.deepEqual(applied.summary.dayTypesAdded, ['C Day', 'D Day']);
+  assert.deepEqual(applied.summary.bellSchedulesAdded, ['Early Release', 'Assembly']);
+  assert.equal(applied.summary.calendarReplaced, true);
+  assert.equal(applied.summary.referencesDropped, 0);
+  const [, , c, d] = applied.project.dayTypes;
+  assert.deepEqual(c, { id: C, name: 'C Day', own: false, sameAs: B, short: 'C', bells: Array(8).fill(null) }, 'the same as B Day, as in the file');
+  assert.deepEqual(d, { id: D, name: 'D Day', own: false, bells: Array(8).fill(null) }, 'the same as the first, with no field it did not have');
+  assert.deepEqual(applied.project.bellSchedules, withEverything().bellSchedules);
+  assert.deepEqual(applied.project.calendar, withEverything().calendar);
+  assert.deepEqual(dayOn(applied.project, '2026-10-14'), dayOn(withEverything(), '2026-10-14'));
+  assert.equal(summaryText(applied.summary), '8 groups left as they were, the calendar replaced');
+});
+
+test('schedule file: every reference is re-pointed through the matches, by id and then by name', () => {
+  // here: the same school with other ids, and an "early  release" of its own
+  const here = school();
+  const elsewhere = everythingElsewhere();
+  here.bellSchedules = [{ id: 'bhere000er', name: 'early  release', short: 'E', bells: Array(8).fill(null), off: [6, 7] }];
+  assertValid(here);
+  const applied = applySchedule(here, schedule(elsewhere), { policy: { all: 'skip' }, ids: makeIds(9) });
+  assertValid(applied.project);
+  const project = applied.project;
+  // A and B Day matched by name; C and D Day added with the file's ids
+  assert.deepEqual(applied.summary.dayTypesAdded, ['C Day', 'D Day']);
+  assert.deepEqual(project.dayTypes.map((one) => one.id), [A, B, 'dother000c', 'dother000d']);
+  assert.equal(project.dayTypes[2].sameAs, B, 'C Day is the same as this project\'s B Day');
+  // Early Release matched by name, whatever the spaces; Assembly added
+  assert.deepEqual(applied.summary.bellSchedulesAdded, ['Assembly']);
+  assert.deepEqual(project.bellSchedules.map((one) => [one.id, one.name, one.off]), [['bhere000er', 'early  release', [6, 7]], ['bother00as', 'Assembly', []]]);
+  assert.deepEqual(project.bellSchedules[0].bells, elsewhere.bellSchedules[0].bells, 'its empty bells are filled from the file');
+  // the calendar names only what is here
+  const calendar = project.calendar;
+  assert.deepEqual(calendar.rotation, [A, B]);
+  assert.equal(calendar.weekdays[2].bells, 'bhere000er');
+  assert.deepEqual(calendar.dates.find((entry) => entry.date === '2026-10-14'), { date: '2026-10-14', day: 'dother000c', bells: 'bother00as', label: 'Assembly' });
+  assert.deepEqual(calendar.dates.find((entry) => entry.date === '2027-01-13'), { date: '2027-01-13', day: B, bells: 'regular', label: '' });
+  // and walks to the same days, by name
+  const names = (p) => calendarDays(p).map((day) => [day.date, day.dayTypeId === null ? null : p.dayTypes.find((one) => one.id === day.dayTypeId).name, day.bellsId === null ? null : p.bellSchedules.find((one) => one.id === day.bellsId).name.replace(/\s+/g, ' ').toLowerCase()]);
+  assert.deepEqual(names(project), names(elsewhere));
+});
+
+test('schedule file: a reference that matches nothing is dropped and counted', () => {
+  const file = schedule(withEverything());
+  file.calendar = clone(file.calendar);
+  file.calendar.rotation = ['dnowhere00'];
+  file.calendar.weekdays[0] = { day: 'dnowhere00', bells: 'bnowhere00' };
+  file.calendar.dates[1] = { ...file.calendar.dates[1], bells: 'bnowhere00' };
+  file.calendar.dates[4] = { ...file.calendar.dates[4], day: 'dnowhere00' };
+  const applied = applySchedule(school(), file, { ids: makeIds(9) });
+  assertValid(applied.project);
+  assert.equal(applied.summary.referencesDropped, 5);
+  const calendar = applied.project.calendar;
+  assert.deepEqual(calendar.rotation, [A], 'an empty rotation is the first day type');
+  assert.deepEqual(calendar.weekdays[0], { day: 'rotation', bells: null });
+  assert.equal(calendar.dates[1].bells, null);
+  assert.equal(calendar.dates.length, 4, 'a dated change naming a day type that is not here is left out');
+});
+
+test('schedule file: a day type "same as" here that the file gives classes starts as a copy of what it was the same as', () => {
+  const here = withEverything();
+  const file = withEverything();
+  // in the file C Day has its own classes: 6A only, in the gym first period
+  file.dayTypes[2] = { id: C, name: 'C Day', own: true, sameAs: null, short: 'C', bells: file.dayTypes[0].bells.map((bell) => (bell ? { ...bell } : null)) };
+  file.groups = file.groups.filter((one) => one.name === '6A');
+  file.groups[0].days[C] = file.groups[0].days[A].map((slot, period) => (period === 0 ? { ...slot, room: 'rsamplegym', teacherIds: [] } : { ...slot, teacherIds: slot.teacherIds.slice() }));
+  assertValid(file);
+  const applied = applySchedule(here, schedule(file), { policy: { all: 'overwrite' }, ids: makeIds(9) });
+  assertValid(applied.project);
+  const c = applied.project.dayTypes[2];
+  assert.deepEqual([c.own, c.sameAs, c.short], [true, null, 'C']);
+  assert.deepEqual(applied.summary.madeOwn, ['C Day']);
+  assert.deepEqual(c.bells, here.dayTypes[1].bells, 'B Day\'s bells, the day it was the same as, are kept: a bell entered is never changed');
+  assert.deepEqual(group(applied.project, '7A').days[C], group(here, '7A').days[B], 'a group the file does not have gets a copy of its B Day');
+  assert.deepEqual(group(applied.project, '6A').days[C], file.groups[0].days[C], 'a group the file has takes the file\'s C Day');
+});
+
+test('schedule file: a day type the same as another one in the file than here becomes its own copy, from what it was here', () => {
+  const here = withEverything();
+  const file = withEverything();
+  file.dayTypes[2] = { ...file.dayTypes[2], sameAs: null };
+  file.groups = file.groups.filter((one) => one.name === '6A');
+  const applied = applySchedule(here, schedule(file), { policy: { all: 'overwrite' }, ids: makeIds(9) });
+  assertValid(applied.project);
+  assert.deepEqual(applied.summary.madeOwn, ['C Day']);
+  assert.deepEqual(group(applied.project, '7A').days[C], group(here, '7A').days[B], 'here it was B Day');
+  assert.deepEqual(group(applied.project, '6A').days[C], group(here, '6A').days[A], 'the file says it is A Day');
+});
+
+test('schedule file: a calendar the same as here is left, with its changedAt; a new one is stamped from the clock when given', () => {
+  const here = withEverything();
+  const file = schedule(withEverything());
+  file.calendar = { ...file.calendar, changedAt: '2026-10-01T09:00:00.000Z' };
+  const same = applySchedule(here, file, { ids: makeIds(9), clock });
+  assert.equal(same.project, here);
+  assert.equal(same.summary.calendarReplaced, false);
+  file.calendar = { ...file.calendar, end: '2027-06-18' };
+  const kept = applySchedule(here, file, { ids: makeIds(9) });
+  assert.equal(kept.project.calendar.changedAt, '2026-10-01T09:00:00.000Z', 'no clock: the file\'s');
+  const stamped = applySchedule(here, file, { ids: makeIds(9), clock });
+  assert.equal(stamped.project.calendar.changedAt, clock().toISOString());
+  assert.equal(stamped.project.calendar.end, '2027-06-18');
+});
+
+test('schedule file: a file that would bring more than 12 day types or 12 bell schedules is refused whole', () => {
+  const file = withEverything();
+  for (let i = 0; i < 9; i += 1) file.dayTypes.push({ id: 'dextra000' + i, name: 'Extra ' + i, own: false, bells: Array(8).fill(null) });
+  assertValid(file);
+  const project = school();
+  assert.throws(() => applySchedule(project, schedule(file), { ids: makeIds(9) }), refusal('too-many-day-types', /13 day types, and a project has at most 12/));
+  const bells = withEverything();
+  bells.dayTypes = bells.dayTypes.slice(0, 2);
+  bells.calendar = null;
+  for (let i = 0; i < 11; i += 1) bells.bellSchedules.push({ id: 'bextra000' + i, name: 'Extra ' + i, short: '', bells: Array(8).fill(null), off: [] });
+  bells.bellSchedules.splice(12);
+  assertValid(bells);
+  const here = school();
+  here.bellSchedules = [{ id: 'bhere00001', name: 'Testing', short: '', bells: Array(8).fill(null), off: [] }];
+  assert.throws(() => applySchedule(here, schedule(bells), { ids: makeIds(9) }), refusal('too-many-bell-schedules', /13 bell schedules, and a project has at most 12/));
+});
+
+test('schedule file: a typed short name another day type here has is left to be worked out', () => {
+  const here = school();
+  here.dayTypes[1].short = 'C';
+  assertValid(here);
+  const applied = applySchedule(here, schedule(withEverything()), { ids: makeIds(9) });
+  assertValid(applied.project);
+  assert.equal(applied.project.dayTypes[2].short, '');
+});
+
+test('schedule file: importSchedule brings the calendar in one undo entry, says so, and undo takes it away', () => {
+  const project = school();
+  const store = storeOf(project);
+  const after = store.apply(actions.importSchedule, { file: schedule(withEverything()) });
+  assert.equal(store.history.past.length, 1);
+  assert.equal(store.undoLabel, 'Import a schedule file: 8 groups left as they were, the calendar replaced');
+  assertValid(after);
+  assert.equal(after.calendar.start, '2026-08-31');
+  store.undo();
+  assert.deepEqual([store.project.calendar, store.project.bellSchedules, store.project.dayTypes], [project.calendar, project.bellSchedules, project.dayTypes]);
 });
 
 test('no reader or writer changes what it is given', () => {

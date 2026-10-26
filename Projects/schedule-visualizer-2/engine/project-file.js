@@ -723,7 +723,7 @@ export function applySchedule(project, file, options) {
     const id = keepOrMake(dayType.id, 'd', taken, ids);
     const own = fileOwn(dayType);
     // a "same as" day type's sameAs is set below, once every day type is here
-    const sameAs = own ? (dayType.sameAs === undefined ? undefined : null) : null;
+    const sameAs = dayType.sameAs === undefined ? undefined : null;
     const short = dayType.short === undefined ? undefined : shortFree(dayType.short, next.dayTypes) ? dayType.short : '';
     const base = next.dayTypes[0];
     next = {
