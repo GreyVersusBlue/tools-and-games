@@ -33,7 +33,6 @@ const STYLE = [
   '.cal-print__month h2 { margin: 0 0 1mm; font-size: 10pt; }',
   '.cal-print__month table { width: 100%; table-layout: fixed; border-collapse: collapse; font-variant-numeric: tabular-nums; }',
   '.cal-print__month th { font-size: 6.5pt; font-weight: 500; color: #515761; padding: 0 0 0.5mm; }',
-  '.cal-print__month abbr { text-decoration: none; }',
   '.cal-print__month td { position: relative; height: 7.5mm; border: 0.2mm solid #b9b3a7; text-align: center; vertical-align: middle; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }',
   '.cal-print__month td.is-blank { border: 0; }',
   '.cal-print__month td.is-out { border-style: dotted; }',
@@ -78,7 +77,7 @@ function keyMarkup(project, days) {
 }
 
 function monthMarkup(project, month, byDate, order) {
-  const head = '<tr>' + order.map((weekday) => '<th scope="col"><abbr title="' + WEEKDAY_NAMES[weekday] + '">' + SHORT_DAYS[weekday] + '</abbr></th>').join('') + '</tr>';
+  const head = '<tr>' + order.map((weekday) => '<th scope="col" title="' + WEEKDAY_NAMES[weekday] + '">' + SHORT_DAYS[weekday] + '</th>').join('') + '</tr>';
   const rows = month.weeks.map((week) => '<tr>' + week.map((date) => {
     if (date === null) return '<td class="is-blank"></td>';
     const n = '<span class="cal-print__n">' + Number(date.slice(8, 10)) + '</span>';

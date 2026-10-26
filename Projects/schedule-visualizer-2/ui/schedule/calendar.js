@@ -83,7 +83,7 @@ export function mount(env) {
     env.render('cal-show-months');
   } } }), 'cal-show-months');
 
-  const lead = h('p', { class: 'sch-lead cal-lead' }, 'Each square is a date, with its day type. Choose a date to change it; Shift with the arrows, or Through in the dialog, changes a run of dates.');
+  const lead = h('p', { class: 'sch-lead cal-lead' }, 'Each date shows its day type. Choose a date to change it; Shift with the arrows, or Through in the dialog, changes a run of dates.');
   // the panel's place under the year, where the inspector is a sheet
   const slot = h('div', { class: 'cal-slot' });
 

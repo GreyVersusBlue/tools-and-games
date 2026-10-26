@@ -39,10 +39,12 @@ function withCalendar() {
   return { p, early };
 }
 
-test('the calendar print is an output with a button on the Calendar tab', () => {
+// The button is the calendar panel's own (ui/schedule/calendar/panel.js),
+// not an entry of printButtons, whose screens are pinned in prints.test.mjs.
+test('the calendar print is an output the preview can find', () => {
   assert.ok(OUTPUTS.includes(calendarPrint));
   assert.equal(outputFor('calendar'), calendarPrint);
-  assert.deepEqual(printButtons.filter((entry) => entry.screen === '#schedule/calendar').map((entry) => [entry.id, entry.output, entry.label]), [['print-calendar', 'calendar', 'Print the calendar']]);
+  assert.equal(printButtons.some((entry) => entry.output === 'calendar'), false);
 });
 
 test('with no calendar the print says where to make one', () => {
@@ -110,7 +112,7 @@ test('weeks start on the day asked, Sunday when none is: the headers and the fir
   const { p } = withCalendar();
   const sunday = calendarPrint.render(p, null, { ...NOW, ...LANDSCAPE }).html;
   const monday = calendarPrint.render(p, null, { ...NOW, ...LANDSCAPE, firstDay: 0 }).html;
-  const heads = (html) => Array.from(html.slice(0, html.indexOf('</thead>')).matchAll(/<abbr title="(\w+)">/g)).map((match) => match[1]);
+  const heads = (html) => Array.from(html.slice(0, html.indexOf('</thead>')).matchAll(/<th scope="col" title="(\w+)">/g)).map((match) => match[1]);
   assert.deepEqual(heads(sunday), ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']);
   assert.deepEqual(heads(monday), ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']);
   // August 2026 begins on a Saturday

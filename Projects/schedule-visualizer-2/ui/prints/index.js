@@ -57,8 +57,6 @@ export const printButtons = [
   { id: 'print-export-teacher-grid', output: 'teacher-grid', screen: '#schedule/import', place: 'the Export panel of the Import tab, beside the teachers by period CSV', label: 'Print the teachers by period', floors: false },
   { id: 'print-export-room-grid', output: 'room-grid', screen: '#schedule/import', place: 'the Export panel of the Import tab, beside the rooms by period CSV', label: 'Print the rooms by period', floors: false },
   { id: 'print-travel-time', output: 'travel-time', screen: '#movement', place: 'the Travel time tab of the Movement inspector', label: 'Print the travel times', floors: false },
-  // SV2-80: the year, from the calendar's panel
-  { id: 'print-calendar', output: 'calendar', screen: '#schedule/calendar', place: 'the Calendar tab\'s panel', label: 'Print the calendar', floors: false },
 ];
 
 // An entry's words in the school's own word for a period: "Print the
