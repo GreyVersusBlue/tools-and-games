@@ -16,6 +16,7 @@ export const MODULES = [
   'engine/schema.js',
   'engine/day-types.js',
   'engine/bells.js',
+  'engine/calendar.js', // SV2-81
   'engine/teacher-day.js',
   'engine/findings.js',
   'engine/graph.js',

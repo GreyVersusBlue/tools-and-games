@@ -15,7 +15,7 @@ import { VIEWS } from '../../staff/views.js';
 import { readTool, toolFile, TOOL_DIR } from './reader.mjs';
 
 // The engine modules a published file carries (ARCHITECTURE 8).
-const ENGINE = ['bells', 'day-types', 'directions', 'findings', 'graph', 'publish-crypto', 'routing', 'schema', 'teacher-day'].map((name) => 'engine/' + name + '.js');
+const ENGINE = ['bells', 'calendar', 'day-types', 'directions', 'findings', 'graph', 'publish-crypto', 'routing', 'schema', 'teacher-day'].map((name) => 'engine/' + name + '.js');
 
 function closure(entry) {
   const seen = new Set();
@@ -45,7 +45,7 @@ test('the manifest is exactly what staff/main.js loads, directly or through anot
   assert.deepEqual(MODULES.slice().sort(), closure(ENTRY));
 });
 
-test('the engine modules on it are exactly the nine of ARCHITECTURE 8', () => {
+test('the engine modules on it are exactly the nine of ARCHITECTURE 8, and calendar.js (SV2-81: the staff browser\'s today)', () => {
   assert.deepEqual(MODULES.filter((id) => id.startsWith('engine/')).sort(), ENGINE);
 });
 

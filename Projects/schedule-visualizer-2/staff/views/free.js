@@ -3,8 +3,12 @@
 // Which teachers have no group, and which rooms are empty, in one period: the
 // period it is by the reader's clock and the school's bells, or one chosen.
 // While it shows "now" the page reads the clock again as time passes and is
-// drawn again when the period changes. A period chosen by hand is kept in the
-// address (?p=2&d=…), so the page can be shared and Back returns to it.
+// drawn again when the period changes, or the date. The day type and bells
+// are today's: the calendar's, or the reader's own answer to "Not right?"
+// (staff/clock.js); where neither says, chosen by hand. A period chosen by
+// hand is kept in the address with its day type and bells (?p=2&d=…&b=…), so
+// the page can be shared and Back returns to it, and then a day type can be
+// picked to look at any day.
 //
 // A teacher is free when engine/teacher-day.js says the period is planning; a
 // room is empty when no group's day puts a group in it. Rooms can be narrowed
@@ -13,7 +17,7 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf } from '../page.js';
-import { clockNow, dayTypeFor, momentOf, momentKey, momentWords, periodTimes, periodFor, watchClock, everyTeacherDay, dayTypePicker, periodPicker, viewLink, nowTabs, sectionHeading, teacherDetail } from '../clock.js';
+import { clockNow, dayTypeFor, bellsIdFor, chosenDayType, chosenBells, todayOf, todayKey, todayLine, dayWords, momentOf, momentKey, momentWords, periodTimes, periodFor, watchClock, everyTeacherDay, dayTypePicker, bellsPicker, periodPicker, viewLink, nowTabs, sectionHeading, teacherDetail } from '../clock.js';
 
 // The teachers with no group in a period, in the school's own order.
 export function freeTeachers(school, dayTypeId, period) {
@@ -64,26 +68,37 @@ export const freeView = {
     const school = ctx.school;
     const state = {
       dayType: dayTypeFor(ctx, route),
+      bellsId: bellsIdFor(ctx, route),
       period: periodFor(school, route),
       seats: /^\d+$/.test(route.query.seats || '') ? Number(route.query.seats) : 0,
       subject: school.subject(route.query.subject) ? route.query.subject : '',
       wing: route.query.wing || '',
     };
     let lastKey = '';
+    let lastToday = '';
 
     const says = h('p', { class: 'lede', role: 'status' });
+    const todayOut = h('div', { dataset: { part: 'today' } });
     const pickers = h('div', { class: 'controls' });
     const teachersOut = h('section', { 'aria-label': 'Teachers free' });
     const roomsOut = h('section', { class: 'stack', 'aria-label': 'Rooms empty' });
     const roomList = h('div', { dataset: { out: 'rooms' } });
 
     const shownPeriod = (moment) => (state.period === '' ? moment.shown : state.period);
+    const momentNow = () => momentOf(school, state.dayType.id, clockNow(ctx), state.bellsId);
+    // "now" is today's day and bells, asked again each time it is drawn
+    const settle = () => {
+      if (state.period !== '') return;
+      state.dayType = chosenDayType(ctx);
+      state.bellsId = chosenBells(ctx);
+    };
 
     const address = () => {
       const chosen = state.period !== '';
       ctx.replace(makeHash('free', '', {
         p: chosen ? String(state.period) : '',
         d: chosen ? state.dayType.id : '',
+        b: chosen && state.bellsId ? state.bellsId : '',
         seats: state.seats > 0 ? state.seats : '',
         subject: state.subject,
         wing: state.wing,
@@ -112,10 +127,22 @@ export const freeView = {
     };
 
     const draw = () => {
-      const moment = momentOf(school, state.dayType.id, clockNow(ctx));
-      lastKey = momentKey(state.dayType.id, moment);
+      const today = todayOf(ctx);
+      const moment = momentNow();
+      lastKey = momentKey(state.dayType.id, moment, state.bellsId);
+      lastToday = todayKey(today);
       const period = shownPeriod(moment);
-      const times = periodTimes(school, state.dayType.id, period);
+      const times = periodTimes(school, state.dayType.id, period, state.bellsId);
+      const bell = school.bells(state.dayType.id, state.bellsId)[period];
+      if (bell && bell.off === true) {
+        // a period the day's bells leave out: nobody has a class in it
+        teachersOut.replaceChildren();
+        roomList.replaceChildren();
+        says.replaceChildren(h('span', null, school.periodName(period), ' does not meet on ', dayWords(school, state.dayType, state.bellsId), '.'));
+        says.dataset.period = String(period);
+        says.dataset.moment = 'off';
+        return;
+      }
       const free = freeTeachers(school, state.dayType.id, period);
 
       teachersOut.replaceChildren(
@@ -131,33 +158,58 @@ export const freeView = {
 
       const counts = countOf(free.length, 'teacher', 'teachers') + ' and ' + countOf(rooms, 'room', 'rooms') + ' are free.';
       const named = [school.periodName(period), times ? ', ' + times : ''];
+      const day = dayWords(school, state.dayType, state.bellsId);
+      // on a date with no school there is no "now": the period by the clock is shown on the day chosen
+      const closed = state.period === '' && today.known && !today.school;
       let sentence;
-      if (state.period !== '') sentence = [named, ' on ', typed(state.dayType.name), ': ', counts];
-      else if (moment.state === 'in') sentence = [momentWords(school, state.dayType, moment), ' ', counts];
-      else sentence = [momentWords(school, state.dayType, moment), ' Showing ', named, ': ', counts];
+      if (state.period !== '' || closed) sentence = [closed ? 'Showing ' : null, named, ' on ', day, ': ', counts];
+      else if (moment.state === 'in') sentence = [momentWords(school, state.dayType, moment, state.bellsId), ' ', counts];
+      else sentence = [momentWords(school, state.dayType, moment, state.bellsId), ' Showing ', named, ': ', counts];
       says.replaceChildren(h('span', null, sentence));
       says.dataset.period = String(period);
-      says.dataset.moment = state.period === '' ? moment.state : 'chosen';
+      says.dataset.moment = state.period === '' ? (closed ? 'closed' : moment.state) : 'chosen';
     };
 
-    // The pickers are made again only when the day type changes (the periods'
-    // times are the day type's), so choosing a period never moves focus.
+    // The pickers are made again only when what they offer changes: the day
+    // type or the bells (the periods' times are theirs), whether a period is
+    // chosen, and today. Today settled by the calendar or the reader asks
+    // nothing until a period is chosen; then any day can be looked at.
     const drawPickers = (focus) => {
+      const today = todayOf(ctx);
+      const asking = state.period !== '' || !today.known || !today.school;
+      todayOut.replaceChildren(...[todayLine(ctx, () => {
+        settle();
+        address();
+        drawPickers(null);
+        draw();
+      })].filter(Boolean));
       pickers.replaceChildren(...[
-        dayTypePicker(ctx, state.dayType.id, (dayType) => {
+        asking ? dayTypePicker(ctx, state.dayType.id, (dayType) => {
           state.dayType = dayType;
           address();
-          drawPickers(true);
+          drawPickers('day');
           draw();
-        }),
-        periodPicker(school, state.dayType.id, state.period, (value) => {
-          state.period = value;
+        }) : null,
+        asking ? bellsPicker(ctx, state.bellsId, (bellsId) => {
+          state.bellsId = bellsId;
           address();
+          drawPickers('bells');
           draw();
-        }),
+        }) : null,
+        periodPicker(school, state.dayType.id, state.period, (value) => {
+          const was = state.period;
+          state.period = value;
+          settle();
+          address();
+          if ((was === '') !== (value === '')) drawPickers('period');
+          draw();
+        }, state.bellsId),
       ].filter(Boolean));
-      const checked = focus ? pickers.querySelector('input:checked') : null;
-      if (checked) checked.focus();
+      let target = null;
+      if (focus === 'day') target = pickers.querySelector('[data-pick="day"] input:checked');
+      if (focus === 'bells') target = pickers.querySelector('[data-pick="bells"] input:checked');
+      if (focus === 'period') target = pickers.querySelector('[data-pick="period"]');
+      if (target) target.focus();
     };
 
     // The room filters are made once, so a field keeps its focus while typing.
@@ -175,7 +227,7 @@ export const freeView = {
       state.subject = subject.value;
       state.wing = wing.value;
       address();
-      drawRooms(shownPeriod(momentOf(school, state.dayType.id, clockNow(ctx))));
+      drawRooms(shownPeriod(momentNow()));
     };
     seats.addEventListener('input', again);
     subject.addEventListener('change', again);
@@ -187,12 +239,18 @@ export const freeView = {
         wings.length > 0 ? h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'free-wing' }, 'Wing'), wing) : null),
       roomList);
 
-    drawPickers(false);
+    drawPickers(null);
     draw();
-    const page = pageOf('Free right now', null, says, nowTabs(school, 'free'), pickers, teachersOut, roomsOut);
+    const page = pageOf('Free right now', null, says, nowTabs(school, 'free'), todayOut, pickers, teachersOut, roomsOut);
     watchClock(page, () => {
+      if (todayKey(todayOf(ctx)) !== lastToday) {
+        settle();
+        drawPickers(null);
+        draw();
+        return;
+      }
       if (state.period !== '') return;
-      if (momentKey(state.dayType.id, momentOf(school, state.dayType.id, clockNow(ctx))) !== lastKey) draw();
+      if (momentKey(state.dayType.id, momentNow(), state.bellsId) !== lastKey) draw();
     });
     return page;
   },

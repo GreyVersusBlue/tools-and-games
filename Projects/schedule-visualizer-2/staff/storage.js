@@ -2,9 +2,14 @@
 //
 //   sv2staff:<schoolId>:me     who the reader is (a teacher id)
 //   sv2staff:<schoolId>:notes  the reader's own notes
-//   sv2staff:<schoolId>:day    the day type chosen by hand
+//   sv2staff:<schoolId>:day    the day type chosen by hand, when the calendar
+//                              does not say (or the file has none)
 //   sv2staff:<schoolId>:key    the key the passcode made, so it is asked once
 //   sv2staff:<schoolId>:seen   the newest publish time opened here
+//   sv2staff:<schoolId>:dayOn  the reader's "Not right?" answer: { date,
+//                              dayTypeId, bellsId, follow } as JSON (SV2-81)
+//   sv2staff:<schoolId>:bells  the bell schedule chosen by hand beside `day`
+//                              (SV2-81)
 //
 // These names never change. Every read and write goes through this one
 // guard. Where the browser gives no storage, or refuses a write (a file

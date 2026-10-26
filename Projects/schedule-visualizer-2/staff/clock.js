@@ -1,15 +1,25 @@
 // "Now", for every page that asks: which period it is by the reader's own
-// clock and the school's bells, which day type the reader said today is, and
-// the two pickers that go with them. The pages that show "right now" ask to be
+// clock and the school's bells, which day type and which bells today has, and
+// the pickers that go with them. The pages that show "right now" ask to be
 // told when the answer changes; the clock is read again every 30 seconds and
 // whenever the page comes back into view, since a sleeping phone stops timers.
+// A date that changes while a page is open is a change like any other.
 //
-// No rule about the school is written here. A bell time is engine/bells.js's
-// and a teacher's day is engine/teacher-day.js's, both asked through the
-// school of model.js.
+// No rule about the school is written here. A bell time is engine/bells.js's,
+// a teacher's day is engine/teacher-day.js's and the day a date is is
+// engine/calendar.js's, all asked through the school of model.js.
 //
-// A published file has no calendar, so the day type is chosen by hand and
-// kept on the device under sv2staff:<schoolId>:day.
+// Which day today is (DESIGN 11.8, ARCHITECTURE 17.9), in this order:
+//
+//   1. the reader's own answer to "Not right?" for today's date
+//      (sv2staff:<schoolId>:dayOn, follow false or true);
+//   2. the calendar, with an earlier answer that said "the days after follow
+//      on from it" laid over it as a dated change of the reader's own, until
+//      a file published after that date is opened, which clears it;
+//   3. where the calendar does not say (no calendar, or a date outside it),
+//      the day type chosen by hand (sv2staff:<schoolId>:day) and the bells
+//      chosen beside it (sv2staff:<schoolId>:bells), as before there was a
+//      calendar.
 //
 // For the tests: a page that has `globalThis.sv2StaffClock = { now, every }`
 // takes the time from now() (a Date, or milliseconds, or an ISO string) and
@@ -20,6 +30,8 @@ import { makeHash } from './router.js';
 
 export const CLOCK_EVERY_MS = 30000;
 export const DAY_TYPE_KEY = 'day';
+export const BELLS_KEY = 'bells';
+export const DAY_ON_KEY = 'dayOn';
 
 function hook() {
   const given = globalThis.sv2StaffClock;
@@ -42,15 +54,117 @@ function clockEvery() {
   return given && Number.isFinite(given.every) && given.every > 0 ? given.every : CLOCK_EVERY_MS;
 }
 
-// The day type the reader chose, or the school's first.
+// A moment as the reader's own date, "YYYY-MM-DD", in the device's zone: the
+// date the school means when it says "today".
+export function localDate(date) {
+  return String(date.getFullYear()).padStart(4, '0') + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+}
+
+// Today's date by the reader's clock.
+export function todayDate(ctx) {
+  return localDate(clockNow(ctx));
+}
+
+function dayTypeById(school, id) {
+  return typeof id === 'string' ? school.dayTypes.find((dayType) => dayType.id === id) || null : null;
+}
+
+function bellsById(school, id) {
+  return typeof id === 'string' && school.bellSchedule(id) ? id : null;
+}
+
+// The reader's "Not right?" answer as it was kept, or null: { date,
+// dayTypeId, bellsId, follow }. Anything kept that is not that (a day type
+// this copy does not have, a damaged value) reads as no answer and is left
+// where it is. A `follow` answer is cleared here once a file published after
+// its date is open: that file's calendar is the office's newer word.
+export function readDayOn(ctx) {
+  const school = ctx.school;
+  let raw = null;
+  try {
+    raw = JSON.parse(ctx.store.get(DAY_ON_KEY));
+  } catch (error) {
+    raw = null;
+  }
+  if (raw === null || typeof raw !== 'object' || !school.isDate(raw.date) || !dayTypeById(school, raw.dayTypeId)) return null;
+  const answer = { date: raw.date, dayTypeId: raw.dayTypeId, bellsId: bellsById(school, raw.bellsId), follow: raw.follow === true };
+  const published = Date.parse(school.data.publishedAt);
+  if (answer.follow && Number.isFinite(published) && localDate(new Date(published)) > answer.date) {
+    ctx.store.remove(DAY_ON_KEY);
+    return null;
+  }
+  return answer;
+}
+
+export function keepDayOn(ctx, answer) {
+  ctx.store.set(DAY_ON_KEY, JSON.stringify({ date: answer.date, dayTypeId: answer.dayTypeId, bellsId: answer.bellsId, follow: answer.follow === true }));
+}
+
+export function forgetDayOn(ctx) {
+  ctx.store.remove(DAY_ON_KEY);
+}
+
+// Which day today is, and who says so:
+//
+//   { date, calendar, known, school, dayType, bellsId, label, by, since }
+//
+//   calendar  'known' (the calendar covers today), 'outside', or 'none'
+//   known     the calendar or the reader has settled today: nothing is asked
+//   school    false on a date with no school (dayType is then null)
+//   dayType   today's day type; where nothing settles it, the one chosen by
+//             hand, else the school's first
+//   bellsId   today's bell schedule, or null for the day type's regular bells
+//   label     the calendar's note for today ("Thanksgiving"), or ''
+//   by        'reader' (an answer for today), 'follow' (the calendar, following
+//             on from an answer given on `since`), 'calendar', 'hand' (chosen
+//             by hand) or null (nobody has said)
+export function todayOf(ctx) {
+  const school = ctx.school;
+  const date = todayDate(ctx);
+  const answer = readDayOn(ctx);
+  const earlier = answer && answer.follow && answer.date < date ? answer : null;
+  const day = school.dayOn(date, earlier);
+  const calendar = day.known ? 'known' : day.why;
+  const label = day.known && typeof day.label === 'string' ? day.label : '';
+  if (answer && answer.date === date) {
+    return { date, calendar, known: true, school: true, dayType: dayTypeById(school, answer.dayTypeId), bellsId: answer.bellsId, label, by: 'reader', since: null };
+  }
+  if (day.known) {
+    const dayType = day.school ? dayTypeById(school, day.dayTypeId) : null;
+    return { date, calendar, known: true, school: dayType !== null, dayType, bellsId: dayType ? bellsById(school, day.bellsId) : null, label, by: earlier ? 'follow' : 'calendar', since: earlier ? earlier.date : null };
+  }
+  const hand = dayTypeById(school, ctx.store.get(DAY_TYPE_KEY));
+  return { date, calendar, known: false, school: true, dayType: hand || school.dayTypes[0], bellsId: bellsById(school, ctx.store.get(BELLS_KEY)), label: '', by: hand ? 'hand' : null, since: null };
+}
+
+// What makes two answers about today the same: a page drawn for one is drawn
+// again when this changes (past midnight, or a newer answer).
+export function todayKey(today) {
+  return [today.date, today.calendar, today.school, today.dayType ? today.dayType.id : '', today.bellsId || '', today.by || ''].join(':');
+}
+
+// The day type a page shows when nobody chose one for it: today's when the
+// calendar or the reader says, else the one chosen by hand, else the first.
 export function chosenDayType(ctx) {
-  const kept = ctx.store.get(DAY_TYPE_KEY);
-  const found = kept ? ctx.school.dayTypes.find((dayType) => dayType.id === kept) : null;
-  return found || ctx.school.dayTypes[0];
+  const today = todayOf(ctx);
+  if (today.known && today.dayType) return today.dayType;
+  return dayTypeById(ctx.school, ctx.store.get(DAY_TYPE_KEY)) || ctx.school.dayTypes[0];
+}
+
+// Today's bells in the same way: null for the regular bells.
+export function chosenBells(ctx) {
+  const today = todayOf(ctx);
+  if (today.known && today.dayType) return today.bellsId;
+  return bellsById(ctx.school, ctx.store.get(BELLS_KEY));
 }
 
 export function rememberDayType(ctx, dayTypeId) {
   if (ctx.school.dayTypes.some((dayType) => dayType.id === dayTypeId)) ctx.store.set(DAY_TYPE_KEY, dayTypeId);
+}
+
+export function rememberBells(ctx, bellsId) {
+  if (bellsId === null) ctx.store.remove(BELLS_KEY);
+  else if (ctx.school.bellSchedule(bellsId)) ctx.store.set(BELLS_KEY, bellsId);
 }
 
 // The day type an address names with ?d=…, else the reader's own.
@@ -59,9 +173,32 @@ export function dayTypeFor(ctx, route) {
   return named || chosenDayType(ctx);
 }
 
-// "9:44 AM to 10:32 AM", or '' when the period has no bell times.
-export function periodTimes(school, dayTypeId, period) {
-  const bell = school.bells(dayTypeId)[period];
+// The bells an address names with ?b=… beside its ?d=… (none is the regular
+// bells), else today's.
+export function bellsIdFor(ctx, route) {
+  if (route.query.d && dayTypeById(ctx.school, route.query.d)) return bellsById(ctx.school, route.query.b);
+  return chosenBells(ctx);
+}
+
+// "A Day", or "A Day with Early Release bells": pieces for a sentence.
+export function dayWords(school, dayType, bellsId) {
+  const schedule = bellsId ? school.bellSchedule(bellsId) : null;
+  return schedule ? [typed(dayType.name), ' with ', typed(schedule.name), ' bells'] : [typed(dayType.name)];
+}
+
+// "a" or "an" before a day type's name, as it is said: "an A Day", "an
+// Early Release day", "an H Day", "a B Day".
+export function articleFor(name) {
+  const text = String(name).trim();
+  const first = text.split(/\s+/u)[0] || '';
+  if (/^[A-Za-z]$/.test(first)) return /^[AEFHILMNORSX]$/i.test(first) ? 'an' : 'a';
+  return /^[AEIOU]/i.test(first) ? 'an' : 'a';
+}
+
+// "9:44 AM to 10:32 AM", or '' when the period has no bell times (or, with
+// bell schedule B, does not meet under it).
+export function periodTimes(school, dayTypeId, period, bellsId) {
+  const bell = school.bells(dayTypeId, bellsId)[period];
   if (!bell || !bell.start || !bell.end) return '';
   return school.time(bell.start) + ' to ' + school.time(bell.end);
 }
@@ -77,10 +214,13 @@ export function periodTimes(school, dayTypeId, period) {
 //           'unknown'  the day type has no bell times
 //   shown   the period a page shows when nobody chose one: the period it is,
 //           the one about to start, or the first of the day
-export function momentOf(school, dayTypeId, date) {
+//
+// With bell schedule B the times are B's, and a period B leaves out is never
+// the one it is.
+export function momentOf(school, dayTypeId, date, bellsId) {
   const minutes = date.getHours() * 60 + date.getMinutes();
   const timed = [];
-  school.bells(dayTypeId).forEach((bell, period) => {
+  school.bells(dayTypeId, bellsId).forEach((bell, period) => {
     const start = bell ? school.parseTime(bell.start) : null;
     const end = bell ? school.parseTime(bell.end) : null;
     if (start !== null && end !== null && end > start) timed.push({ period, start, end });
@@ -98,20 +238,22 @@ export function momentOf(school, dayTypeId, date) {
 }
 
 // What makes two moments the same answer: a page is drawn again only when
-// this changes.
-export function momentKey(dayTypeId, moment) {
-  return [dayTypeId, moment.state, moment.period, moment.next].join(':');
+// this changes. `more` is anything else the page's answer hangs on (today's
+// key, the bells).
+export function momentKey(dayTypeId, moment, more) {
+  return [dayTypeId, moment.state, moment.period, moment.next, more === undefined ? '' : more].join(':');
 }
 
 // The moment in words, as pieces for a sentence: "It is Period 3 on A Day,
-// 9:44 AM to 10:32 AM."
-export function momentWords(school, dayType, moment) {
-  const day = typed(dayType.name);
+// 9:44 AM to 10:32 AM.", or with bell schedule B "on A Day with Early
+// Release bells".
+export function momentWords(school, dayType, moment, bellsId) {
+  const day = dayWords(school, dayType, bellsId);
   const start = (period) => {
-    const bell = school.bells(dayType.id)[period];
+    const bell = school.bells(dayType.id, bellsId)[period];
     return bell && bell.start ? school.time(bell.start) : '';
   };
-  if (moment.state === 'in') return ['It is ', school.periodName(moment.period), ' on ', day, ', ', periodTimes(school, dayType.id, moment.period), '.'];
+  if (moment.state === 'in') return ['It is ', school.periodName(moment.period), ' on ', day, ', ', periodTimes(school, dayType.id, moment.period, bellsId), '.'];
   if (moment.state === 'passing') return ['It is passing time on ', day, '. ', school.periodName(moment.next), ' starts at ', start(moment.next), '.'];
   if (moment.state === 'before') return ['The day has not started on ', day, '. ', school.periodName(moment.next), ' starts at ', start(moment.next), '.'];
   if (moment.state === 'after') return ['The last bell on ', day, ' has gone.'];
@@ -189,15 +331,41 @@ export function dayTypePicker(ctx, chosenId, onChoose) {
     })));
 }
 
-// "Period": "Now" and then every period with its times. `value` is '' for
+// "Bells": "Regular" and each of the school's other bell schedules, the chosen
+// one marked. Choosing one keeps it on the device and calls onChoose(bellsId),
+// null for the regular bells. A school with no other bell schedules gets no
+// picker.
+export function bellsPicker(ctx, chosenId, onChoose) {
+  const school = ctx.school;
+  if (school.bellSchedules.length === 0) return null;
+  serial += 1;
+  const group = 'bells-' + serial;
+  const item = (bellsId, name) => {
+    const input = h('input', { class: 'pick__input', type: 'radio', name: group, value: bellsId || '', checked: bellsId === chosenId });
+    input.addEventListener('change', () => {
+      if (!input.checked) return;
+      rememberBells(ctx, bellsId);
+      onChoose(bellsId);
+    });
+    return h('label', { class: 'pick__item' }, input, h('span', { class: 'pick__name' }, name));
+  };
+  return h('fieldset', { class: 'pick', dataset: { pick: 'bells' } },
+    h('legend', { class: 'field__label' }, 'Bells'),
+    h('div', { class: 'pick__items' }, item(null, 'Regular'), school.bellSchedules.map((schedule) => item(schedule.id, typed(schedule.name)))));
+}
+
+// "Period": "Now" and then every period with its times, under bell schedule
+// B when one is given (a period B leaves out says so). `value` is '' for
 // now, or a period's index. onChoose('' | index).
-export function periodPicker(school, dayTypeId, value, onChoose) {
+export function periodPicker(school, dayTypeId, value, onChoose, bellsId) {
   serial += 1;
   const id = 'period-' + serial;
+  const bells = school.bells(dayTypeId, bellsId);
   const options = [h('option', { value: '', selected: value === '' }, 'Now')];
   for (let period = 0; period < school.data.settings.periods; period += 1) {
-    const times = periodTimes(school, dayTypeId, period);
-    options.push(h('option', { value: String(period), selected: value === period }, school.periodName(period) + (times ? ', ' + times : '')));
+    const times = periodTimes(school, dayTypeId, period, bellsId);
+    const off = bells[period] && bells[period].off === true;
+    options.push(h('option', { value: String(period), selected: value === period }, school.periodName(period) + (off ? ', no class' : times ? ', ' + times : '')));
   }
   const select = h('select', { class: 'field__input', id, dataset: { pick: 'period' } }, options);
   select.addEventListener('change', () => onChoose(select.value === '' ? '' : Number(select.value)));
@@ -231,12 +399,113 @@ export function viewLink(school, view, id, children, className) {
   return h('a', { class: className || null, href: makeHash(view, id) }, children);
 }
 
-// "Where right now" and "Free right now" are the two pages behind the bar's
-// Now: each carries the pair, with its own marked.
+// Does this copy have a calendar page to show? Only with a calendar.
+export function hasCalendar(school) {
+  return school.has('calendar') && school.calendarDays().length > 0;
+}
+
+// "Where right now", "Free right now" and the calendar are the pages behind
+// the bar's Now: each carries the row, with its own marked.
 export function nowTabs(school, current) {
-  if (!school.has('now') || !school.has('free')) return null;
+  const tabs = [['now', 'Where right now', school.has('now')], ['free', 'Free right now', school.has('free')], ['calendar', 'Calendar', hasCalendar(school)]].filter((tab) => tab[2]);
+  if (tabs.length < 2) return null;
   const tab = (view, name) => h('a', { class: 'tab', href: makeHash(view), 'aria-current': view === current ? 'page' : null }, name);
-  return h('nav', { class: 'tabs', 'aria-label': 'Now' }, tab('now', 'Where right now'), tab('free', 'Free right now'));
+  return h('nav', { class: 'tabs', 'aria-label': 'Now' }, tabs.map(([view, name]) => tab(view, name)));
+}
+
+// ---- today
+
+// The line that says which day today is, with "Not right?" beside it (DESIGN
+// 11.8), or null where there is nothing to say (no calendar, and no answer
+// of the reader's for today). `onChange()` is called after the reader has
+// answered, to draw what depends on today again; focus then goes to the
+// line, rewritten.
+//
+//   "Today is a B Day with Early Release bells."            the calendar says
+//   "No school today: Thanksgiving."                        a date with no school
+//   "Today is a C Day. You said so on this device."         the reader's answer
+//   "Today is not in this schedule's calendar, which runs from … to …."
+//
+// "Not right?" opens, in place, the day types (and the bells, where the
+// school has other bell schedules) and two buttons: "Just today", and "Today,
+// and the days after follow on from it" (the rotation follows on from the
+// answer). With an answer kept, a third goes back to the calendar.
+export function todayLine(ctx, onChange) {
+  const school = ctx.school;
+  const today = todayOf(ctx);
+  const answered = today.by === 'reader' || today.by === 'follow';
+  if (today.calendar === 'none' && !answered) return null;
+  if (today.calendar === 'outside' && !answered) {
+    const calendar = school.calendar;
+    return h('div', { class: 'today', dataset: { today: 'outside' } },
+      h('p', { class: 'today__says', tabindex: '-1' }, 'Today, ', school.dateWords(today.date), ', is not in this schedule\'s calendar, which runs from ', school.dateWords(calendar.start), ' to ', school.dateWords(calendar.end), '.'));
+  }
+  const says = today.school
+    ? ['Today is ', articleFor(today.dayType.name), ' ', dayWords(school, today.dayType, today.bellsId), today.label ? [': ', typed(today.label)] : null, '.']
+    : ['No school today', today.label ? [': ', typed(today.label)] : null, '.'];
+  if (today.by === 'reader') says.push(' You said so on this device.');
+  if (today.by === 'follow') says.push(' It follows on from what you said on ', school.dateWords(today.since, { year: false }), '.');
+
+  serial += 1;
+  const panelId = 'today-' + serial;
+  const toggle = h('button', { class: 'today__not', type: 'button', 'aria-expanded': 'false', 'aria-controls': panelId, dataset: { today: 'not-right' } }, 'Not right?');
+  const line = h('p', { class: 'today__says', tabindex: '-1' }, says, ' ', toggle);
+
+  const days = 'today-day-' + serial;
+  const bells = 'today-bells-' + serial;
+  const shownDay = today.dayType || school.dayTypes[0];
+  const dayChoice = h('fieldset', { class: 'pick', dataset: { pick: 'today-day' } },
+    h('legend', { class: 'field__label' }, 'Which day is today?'),
+    h('div', { class: 'pick__items' }, school.dayTypes.map((dayType) => h('label', { class: 'pick__item' },
+      h('input', { class: 'pick__input', type: 'radio', name: days, value: dayType.id, checked: dayType.id === shownDay.id }),
+      h('span', { class: 'pick__name' }, typed(dayType.name))))));
+  const bellsChoice = school.bellSchedules.length === 0 ? null : h('fieldset', { class: 'pick', dataset: { pick: 'today-bells' } },
+    h('legend', { class: 'field__label' }, 'Bells'),
+    h('div', { class: 'pick__items' }, [null].concat(school.bellSchedules.map((schedule) => schedule.id)).map((bellsId) => h('label', { class: 'pick__item' },
+      h('input', { class: 'pick__input', type: 'radio', name: bells, value: bellsId || '', checked: bellsId === (today.school ? today.bellsId : null) }),
+      h('span', { class: 'pick__name' }, bellsId === null ? 'Regular' : typed(school.bellSchedule(bellsId).name))))));
+
+  const answer = (follow) => {
+    const picked = dayChoice.querySelector('input:checked');
+    const pickedBells = bellsChoice ? bellsChoice.querySelector('input:checked') : null;
+    keepDayOn(ctx, { date: today.date, dayTypeId: picked ? picked.value : shownDay.id, bellsId: pickedBells && pickedBells.value !== '' ? pickedBells.value : null, follow });
+    settle();
+  };
+  const settle = () => {
+    onChange();
+    const again = document.querySelector('.today__says');
+    if (again) again.focus();
+  };
+  const just = h('button', { class: 'btn', type: 'button', dataset: { today: 'just' }, onclick: () => answer(false) }, 'Just today');
+  const follow = h('button', { class: 'btn', type: 'button', dataset: { today: 'follow' }, onclick: () => answer(true) }, 'Today, and the days after follow on from it');
+  const back = answered ? h('button', { class: 'btn', type: 'button', dataset: { today: 'calendar' }, onclick: () => {
+    forgetDayOn(ctx);
+    settle();
+  } }, 'As the calendar says') : null;
+  const panel = h('div', { class: 'today__panel', id: panelId, hidden: true, role: 'group', 'aria-label': 'Which day is today?' },
+    dayChoice, bellsChoice, h('p', { class: 'actions' }, just, follow, back));
+
+  const close = () => {
+    panel.hidden = true;
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.focus();
+  };
+  toggle.addEventListener('click', () => {
+    if (!panel.hidden) {
+      close();
+      return;
+    }
+    panel.hidden = false;
+    toggle.setAttribute('aria-expanded', 'true');
+    const first = panel.querySelector('input:checked') || panel.querySelector('input');
+    if (first) first.focus();
+  });
+  panel.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    close();
+  });
+  return h('div', { class: 'today', dataset: { today: today.school ? 'school' : 'closed', by: today.by || '' } }, line, panel);
 }
 
 // A heading inside a page, with a count when there is one: "Teachers free (5)".

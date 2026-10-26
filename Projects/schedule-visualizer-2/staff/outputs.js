@@ -32,6 +32,12 @@ export const LOCK_BOTTOM = 728;
 const SIDE = 24;
 const GAP = 14;
 const MAX_COLUMNS = 3;
+// A period's row is never less than this tall: with more kinds of day than
+// that leaves room for, the image holds the first that fit and says how many
+// more there are (a school with many day types, DESIGN 11.8). Sixteen
+// periods fit two bands of three; eight or ten fit three.
+export const LOCK_ROW_LEAST = 9;
+const MORE_LINE = 18;
 
 // "Ms. Okafor" → "ms-okafor-schedule.png". Letters and digits of any script
 // are kept; everything else is a hyphen.
@@ -80,11 +86,26 @@ export function lockScreenLayout(school, teacher, kinds, when) {
   const under = [subject ? subject.name : null].concat(rooms).filter(Boolean).join(' · ');
   if (under !== '') text(under, SIDE, LOCK_TOP + 48, 13, { tone: 'soft' });
 
-  // the kinds of day, three to a band; bands one under another
+  // the kinds of day, three to a band; bands one under another, as many as
+  // leave each period a row of LOCK_ROW_LEAST
   const top = LOCK_TOP + 68;
+  const head = 22;
+  const periods = Math.max(1, ...kinds.map((kind) => (school.teacherDay(teacher.id, kind.first.id) || []).length));
+  const fits = (count, bottom) => {
+    const many = Math.ceil(count / MAX_COLUMNS);
+    return ((bottom - top - GAP * (many - 1)) / many - head) / periods >= LOCK_ROW_LEAST;
+  };
+  let shown = kinds;
+  let bottom = LOCK_BOTTOM;
+  if (kinds.length > 1 && !fits(kinds.length, LOCK_BOTTOM)) {
+    bottom = LOCK_BOTTOM - MORE_LINE;
+    let count = kinds.length - 1;
+    while (count > 1 && !fits(count, bottom)) count -= 1;
+    shown = kinds.slice(0, count);
+  }
   const bands = [];
-  for (let at = 0; at < kinds.length; at += MAX_COLUMNS) bands.push(kinds.slice(at, at + MAX_COLUMNS));
-  const bandHeight = bands.length > 0 ? (LOCK_BOTTOM - top - GAP * (bands.length - 1)) / bands.length : 0;
+  for (let at = 0; at < shown.length; at += MAX_COLUMNS) bands.push(shown.slice(at, at + MAX_COLUMNS));
+  const bandHeight = bands.length > 0 ? (bottom - top - GAP * (bands.length - 1)) / bands.length : 0;
   bands.forEach((band, bandAt) => {
     const columnWidth = (width - SIDE * 2 - GAP * (band.length - 1)) / band.length;
     const bandTop = top + bandAt * (bandHeight + GAP);
@@ -92,7 +113,6 @@ export function lockScreenLayout(school, teacher, kinds, when) {
       const x = SIDE + columnAt * (columnWidth + GAP);
       const day = school.teacherDay(teacher.id, kind.first.id) || [];
       const bells = school.bells(kind.first.id);
-      const head = 22;
       const rowHeight = Math.min(34, (bandHeight - head) / Math.max(1, day.length));
       const size = Math.max(7, Math.min(14, Math.floor(rowHeight * 0.54)));
       text(kind.dayTypes.map((dayType) => dayType.name).join(' and '), x, bandTop + 13, 13, { weight: 700, tone: 'accent', fit: columnWidth });
@@ -112,6 +132,9 @@ export function lockScreenLayout(school, teacher, kinds, when) {
       });
     });
   });
+
+  const left = kinds.length - shown.length;
+  if (left > 0) text('And ' + left + ' more ' + (left === 1 ? 'kind of day' : 'kinds of day') + ': print the schedule for every one.', SIDE, LOCK_BOTTOM - 4, 11, { tone: 'soft' });
 
   const options = when || {};
   text(school.name, width / 2, LOCK_BOTTOM + 28, 11, { weight: 600, align: 'center', fit: 220 });
