@@ -427,7 +427,7 @@ test('a group is added and named where it is, moved to another grade, and anothe
   assert.deepEqual(await page.$$eval('.grd-row .grd-cell--name .grd-cell__text', (all) => all.map((cell) => cell.textContent)), ['6A', '6B', '6C', '7A', '7B', '7C', '8A', '8B']);
 });
 
-test('the bulk actions are staged too: clear a day, copy A Day to B Day for every group, clear all', async () => {
+test('the bulk actions are staged too: clear a day, Copy classes from… A Day to B Day for every group, clear all', async () => {
   const pick = async (label) => {
     await click('.grd-toolbar [data-action="bulk"]');
     await page.waitForSelector('.menu[role="menu"]');
@@ -436,13 +436,22 @@ test('the bulk actions are staged too: clear a day, copy A Day to B Day for ever
   };
   await click('.grd-toolbar [data-action="bulk"]');
   await page.waitForSelector('.menu[role="menu"]');
-  assert.deepEqual(await page.$$eval('.menu__item', (all) => all.map((item) => item.textContent)), ['Copy A Day to B Day for every group', 'Clear A Day', 'Clear B Day', 'Clear all']);
+  assert.deepEqual(await page.$$eval('.menu__item', (all) => all.map((item) => item.textContent)), ['Copy classes from…', 'Clear A Day', 'Clear B Day', 'Clear all']);
   await page.keyboard.press('Escape');
   await pick('Clear B Day');
   assert.equal(await barText(), 'Not applied yet: 8 groups changed');
   assert.equal(await page.$$eval('[data-col^="' + DAY_B + ':"] .grd-cell__text', (all) => all.filter((cell) => cell.textContent !== '').length), 0);
   assert.equal(await shown(slot(A6, DAY_A, 0)), '201', 'A Day is as it was');
-  await pick('Copy A Day to B Day for every group');
+  await pick('Copy classes from…');
+  await page.waitForSelector('#grid-copy-dialog[open]');
+  // From A Day, To B Day to start with; a choice of the same two names no copy
+  assert.equal(await text('#grid-copy-dialog .btn--primary'), 'Copy A Day to B Day for every group');
+  await page.click('#grid-copy-dialog fieldset[data-which="to"] input[value="' + DAY_A + '"]');
+  assert.equal(await text('#grid-copy-dialog .btn--primary'), 'Choose two different day types');
+  await page.click('#grid-copy-dialog fieldset[data-which="to"] input[value="' + DAY_B + '"]');
+  await page.click('#grid-copy-dialog .btn--primary');
+  await shows(() => document.querySelector('#grid-copy-dialog') === null);
+  await settled();
   assert.deepEqual(await page.$$eval('.grd-row[data-group="gsample08b"] [data-col^="' + DAY_B + ':"] .grd-cell__text', (all) => all.map((cell) => cell.textContent)), ['Gym', '101', '204', '203', 'Cafeteria', '103', '202', '303']);
   await pick('Clear all');
   assert.equal(await page.$$eval('.grd-cell--slot .grd-cell__text', (all) => all.filter((cell) => cell.textContent !== '').length), 0);
