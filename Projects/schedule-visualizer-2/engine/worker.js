@@ -204,7 +204,9 @@ export function createPipeline(options) {
       if (!contents.has(what)) contents.set(what, new Map(earlier && earlier.has(what) ? earlier.get(what) : []));
       const known = contents.get(what);
       if (known.has(passing)) return known.get(passing);
-      for (const result of known.values()) {
+      // an off transition is never a met one retimed, even with the same
+      // walkers (nobody): it says off: true and has no passing time
+      if (passing !== 'off') for (const result of known.values()) {
         const retimed = retimeTransition(result, passing, margin);
         if (retimed) {
           known.set(passing, retimed);

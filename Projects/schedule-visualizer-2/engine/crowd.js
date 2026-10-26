@@ -480,10 +480,14 @@ export function simulateTransition(graph, walkers, options) {
 // the cap under the passing time it was simulated with, or would reach the
 // cap under this one (rule 6 is the only rule that reads the passing time;
 // the header has why). A group whose `late` does not change is the same
-// object; positions and delays are shared, never copied.
+// object; positions and delays are shared, never copied. Null too for a
+// passing time that is not a number: an off transition ('off' in the
+// worker's cache, null in bellsFor) is { off: true } with no passing time,
+// never a met transition retimed, even one that moves nobody.
 export function retimeTransition(result, passingSeconds, marginSeconds) {
   if (!result || !Array.isArray(result.groups) || result.off === true) return null;
-  const passing = Number.isFinite(passingSeconds) ? passingSeconds : defaultSettings().defaultPassingSeconds;
+  if (typeof passingSeconds !== 'number' || !Number.isFinite(passingSeconds)) return null;
+  const passing = passingSeconds;
   const margin = Number.isFinite(marginSeconds) ? marginSeconds : 0;
   const cap = crowdCap(passing);
   // a group stopped at its cap means the transition ran to it, so this is

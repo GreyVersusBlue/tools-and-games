@@ -444,6 +444,59 @@ test('the transition cache keys on content: a schedule ringing the regular times
   assert.equal(new Set(offs.map((transition) => transition.groups)).size, 1);
 });
 
+// A school where nobody moves from Period 6 to Period 7 under the regular
+// bells (every group's Period 7 is its Period 6), with Early Release, whose
+// Periods 7 and 8 do not meet: the regular transition and Early Release's
+// off one both have nobody walking, and the off one is still off.
+function stillAfterSix() {
+  const project = withBells();
+  for (const group of project.groups) {
+    for (const day of Object.values(group.days)) if (Array.isArray(day) && day[5]) day[6] = { ...day[5] };
+  }
+  return project;
+}
+
+test('an off transition is never a met one retimed, even when the met one moves nobody', () => {
+  const project = stillAfterSix();
+  const graph = routingGraph(project);
+  const routes = routesByRun(project, graph);
+  const crowd = simulateSchedule(project, routes, graph);
+  assert.deepEqual(crowd.days[0].transitions[5].groups.filter((group) => group.walking > 0), [], 'nobody walks after Period 6 with the regular bells');
+  const result = createPipeline().run(project);
+  assert.deepEqual(result.crowd, crowd);
+  const early = result.crowd.bells.find((day) => day.dayTypeId === A && day.bellsId === ER);
+  for (const transition of early.transitions.slice(5)) {
+    assert.equal(transition.off, true, 'period ' + transition.period);
+    assert.equal(transition.passingSeconds, null);
+  }
+  // and retimeTransition takes no passing time that is not a number
+  const empty = simulateTransition(graph, [], { passingSeconds: 240 });
+  assert.equal(retimeTransition(empty, 'off', 0), null);
+  assert.equal(retimeTransition(empty, null, 0), null);
+  assert.equal(retimeTransition(empty, undefined, 0), null);
+});
+
+// The pipeline against a simulation from nothing that does not retime
+// (simulateDayTransition is handed no regular result), transition by
+// transition: not simulateSchedule, which retimes as the pipeline does.
+test('every bell-run transition the pipeline gives is what simulating it from nothing gives', () => {
+  const slow = withBells();
+  slow.settings.secondsPerCell = 10; // some groups reach the cap
+  for (const [label, project] of [['two schedules', withBells()], ['nobody moving after Period 6', stillAfterSix()], ['walks reaching the cap', slow]]) {
+    const graph = routingGraph(project);
+    const routes = routesByRun(project, graph);
+    const result = createPipeline().run(project);
+    let compared = 0;
+    for (const day of result.crowd.bells) {
+      for (const transition of day.transitions) {
+        assert.deepEqual(transition, simulateDayTransition(project, routes, day.dayTypeId, transition.period, graph, day.bellsId), label + ': ' + day.dayTypeId + ' ' + day.bellsId + ' ' + transition.period);
+        compared += 1;
+      }
+    }
+    assert.equal(compared, 4 * 7, label);
+  }
+});
+
 test('the transition cache: one changed slot runs the regular transitions into and out of it, and the bell runs only retime', () => {
   const store = storeOf(withBells());
   const pipeline = createPipeline();
