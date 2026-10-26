@@ -873,15 +873,17 @@ export const makeOwnCopy = action(
   },
 );
 
-// Back to "same as A Day". The day type's own bells and days go, and the day
-// types that were the same as it are the same as A Day too; undo brings them
-// back. One that is the same as another day type is made the same as A Day.
+// Back to "same as A Day". The day type's own bells and days go, with the
+// open scenario's changes on them, and the day types that were the same as it
+// are the same as A Day too; undo brings them back. One that is the same as
+// another day type is made the same as A Day. The outcome is
+// describeDayTypeKind's, as setDayTypeKind's.
 export const revertToBase = action(
   { label: (before, payload) => 'Make ' + (findDayType(before, payload.dayTypeId) || { name: '' }).name + ' the same as ' + baseDayType(before).name, bumps: [SCHEDULE], focus: dayTypeFocus },
   (project, payload) => {
     const dayType = need(project.dayTypes, payload.dayTypeId, 'day type');
     if (dayType === baseDayType(project)) refuse(dayType.name + ' is the first day type. The others can be the same as it; it cannot be the same as another.', 'base');
-    return changeDayTypeKind(project, payload.dayTypeId, false, null);
+    return reporting(project, changeDayTypeKind(project, payload.dayTypeId, false, null), describeDayTypeKind(project, { dayTypeId: payload.dayTypeId, own: false }));
   },
 );
 
@@ -1031,7 +1033,7 @@ function withoutDays(groups, dayTypeId) {
 // them back)"). payload as setDayTypeKind's. Nothing is changed here.
 export function describeDayTypeKind(project, payload) {
   const dayType = findDayType(project, payload.dayTypeId);
-  const none = { from: null, to: null, slots: 0, groups: 0, bells: 0, followers: [], losesData: false };
+  const none = { from: null, to: null, slots: 0, groups: 0, bells: 0, followers: [], scenarioChanges: 0, losesData: false };
   if (!dayType) return none;
   if (payload.own === true) {
     if (isOwnCopy(project, dayType.id)) return none;
@@ -1041,12 +1043,25 @@ export function describeDayTypeKind(project, payload) {
   if (!isOwnCopy(project, dayType.id) || dayType === baseDayType(project)) return { ...none, to: target.name };
   const revert = describeRevert(project, dayType.id);
   const followers = followersOf(project, dayType.id).map((follower) => follower.name);
-  return { from: null, to: target.name, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, losesData: revert.losesData };
+  // the scenario's changes on its own days go with them, as deleteDayType's do
+  const scenarioChanges = scenarioChangesOn(project, dayType.id);
+  return { from: null, to: target.name, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, losesData: revert.losesData || scenarioChanges > 0 };
+}
+
+function scenarioChangesOn(project, dayTypeId) {
+  return project.scenario ? project.scenario.changes.filter((change) => change.dayTypeId === dayTypeId).length : 0;
+}
+
+// The project with the open scenario's changes on `dayTypeId` taken out.
+function withoutScenarioChanges(project, dayTypeId) {
+  if (scenarioChangesOn(project, dayTypeId) === 0) return project;
+  return { ...project, scenario: { ...project.scenario, changes: project.scenario.changes.filter((change) => change.dayTypeId !== dayTypeId) } };
 }
 
 // The one rule for turning a day type into its own copy or into "same as":
-// to own, a copy of what it was the same as; to same, its days and bells go
-// and the day types that were the same as it follow what it is now the same as.
+// to own, a copy of what it was the same as; to same, its days and bells go,
+// with the open scenario's changes on them, and the day types that were the
+// same as it follow what it is now the same as.
 function changeDayTypeKind(project, dayTypeId, own, sameAs) {
   const dayType = findDayType(project, dayTypeId);
   const index = project.dayTypes.indexOf(dayType);
@@ -1067,7 +1082,7 @@ function changeDayTypeKind(project, dayTypeId, own, sameAs) {
   }
   const followers = new Set(followersOf(project, dayTypeId));
   return {
-    ...project,
+    ...withoutScenarioChanges(project, dayTypeId),
     dayTypes: project.dayTypes.map((candidate) => {
       if (candidate === dayType) return { ...dayType, own: false, sameAs: target, bells: emptyBells(project.settings.periods) };
       if (followers.has(candidate)) return { ...candidate, sameAs: target };
@@ -1114,7 +1129,7 @@ export function describeDayTypeDelete(project, dayTypeId) {
   const own = isOwnCopy(project, dayTypeId);
   const revert = own ? describeRevert(project, dayTypeId) : { slots: 0, groups: 0, bells: 0 };
   const followers = own ? followersOf(project, dayTypeId).map((follower) => follower.name) : [];
-  const scenarioChanges = project.scenario ? project.scenario.changes.filter((change) => change.dayTypeId === dayTypeId).length : 0;
+  const scenarioChanges = scenarioChangesOn(project, dayTypeId);
   const calendar = calendarOf(project);
   const dates = calendar && Array.isArray(calendar.dates) ? calendar.dates.filter((entry) => entry.day === dayTypeId).length : 0;
   const weekdays = calendar && Array.isArray(calendar.weekdays) ? calendar.weekdays.map((rule, w) => (rule && rule.day === dayTypeId ? w : -1)).filter((w) => w !== -1) : [];
@@ -1142,11 +1157,10 @@ export const deleteDayType = action(
     const outcome = describeDayTypeDelete(project, dayType.id);
     const followers = new Set(isOwnCopy(project, dayType.id) ? followersOf(project, dayType.id) : []);
     let next = {
-      ...project,
+      ...withoutScenarioChanges(project, dayType.id),
       dayTypes: project.dayTypes.filter((candidate) => candidate !== dayType).map((candidate) => (followers.has(candidate) ? { ...candidate, sameAs: null } : candidate)),
       groups: withoutDays(project.groups, dayType.id),
     };
-    if (project.scenario && outcome.scenarioChanges > 0) next.scenario = { ...project.scenario, changes: project.scenario.changes.filter((change) => change.dayTypeId !== dayType.id) };
     const calendar = calendarOf(project);
     if (calendar && (outcome.dates > 0 || outcome.weekdays.length > 0 || outcome.rotation > 0)) {
       const rotation = calendar.rotation.filter((id) => id !== dayType.id);

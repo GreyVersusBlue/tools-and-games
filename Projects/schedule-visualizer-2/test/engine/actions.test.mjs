@@ -1157,7 +1157,7 @@ test('setDayTypeKind to the same as another: its days and bells go and its follo
   assert.deepEqual([after.dayTypes[1].own, after.dayTypes[1].sameAs], [false, null]);
   assert.ok(after.dayTypes[1].bells.every((bell) => bell === null));
   assert.equal(after.dayTypes[2].sameAs, null);
-  assert.deepEqual(outcome, { from: null, to: 'A Day', slots: 64, groups: 8, bells: 8, followers: ['C Day'], losesData: true });
+  assert.deepEqual(outcome, { from: null, to: 'A Day', slots: 64, groups: 8, bells: 8, followers: ['C Day'], scenarioChanges: 0, losesData: true });
   assert.deepEqual(actions.describeDayTypeKind(project, { dayTypeId: B, own: false }), outcome);
   // to its own classes: a copy of what it was the same as
   const own = step(project, actions.setDayTypeKind, { dayTypeId: C, own: true });
@@ -1169,6 +1169,26 @@ test('setDayTypeKind to the same as another: its days and bells go and its follo
   assert.equal(moved.dayTypes[3].sameAs, B);
   assert.equal(actions.setDayTypeKind(project, { dayTypeId: D, own: false, sameAs: null }, shared), project);
   assert.equal(actions.setDayTypeKind(project, { dayTypeId: B, own: true }, shared), project);
+});
+
+test('setDayTypeKind and revertToBase from own to same take the scenario\'s changes on that day type with its days, and count them, as deleteDayType does (SV2-75b)', () => {
+  const project = withEverything();
+  project.scenario = { name: 'Trial', changes: [{ kind: 'move', dayTypeId: B, groupId: 'gsample06a', period: 0, roomId: 'rsample302' }, { kind: 'move', dayTypeId: A, groupId: 'gsample06a', period: 0, roomId: 'rsample302' }], compared: null };
+  const described = actions.describeDayTypeKind(project, { dayTypeId: B, own: false });
+  assert.equal(described.scenarioChanges, 1);
+  const kind = step(project, actions.setDayTypeKind, { dayTypeId: B, own: false, sameAs: A });
+  assert.deepEqual(kind.after.scenario.changes.map((change) => change.dayTypeId), [A]);
+  assert.equal(kind.after.scenario.changes[0], project.scenario.changes[1], 'the other changes are kept as they were');
+  assert.equal(kind.outcome.scenarioChanges, 1);
+  assert.deepEqual(kind.outcome, described);
+  const revert = step(project, actions.revertToBase, { dayTypeId: B });
+  assert.deepEqual(revert.after.scenario.changes.map((change) => change.dayTypeId), [A]);
+  assert.deepEqual(revert.outcome, described);
+  // with none on it, the scenario is the same object
+  const none = { ...project, scenario: { ...project.scenario, changes: [project.scenario.changes[1]] } };
+  const after = run(actions.setDayTypeKind, none, { dayTypeId: B, own: false });
+  assert.equal(after.scenario, none.scenario);
+  assert.equal(actions.describeDayTypeKind(none, { dayTypeId: B, own: false }).scenarioChanges, 0);
 });
 
 test('setDayTypeKind refuses the first day type, itself, and a day type that is not its own', () => {
