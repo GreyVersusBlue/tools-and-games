@@ -1349,6 +1349,8 @@
       "id": "dsample00a",
       "name": "A Day",
       "own": true,
+      "sameAs": null,
+      "short": "",
       "bells": [
         {
           "start": "08:00",
@@ -1388,6 +1390,8 @@
       "id": "dsample00b",
       "name": "B Day",
       "own": true,
+      "sameAs": null,
+      "short": "",
       "bells": [
         {
           "start": "08:20",
@@ -1424,6 +1428,8 @@
       ]
     }
   ],
+  "bellSchedules": [],
+  "calendar": null,
   "groups": [
     {
       "id": "gsample06a",
@@ -2302,7 +2308,8 @@
       "coverage": true,
       "sub": true,
       "directions": true,
-      "staffing": true
+      "staffing": true,
+      "calendar": true
     },
     "teacherNamesOnMap": true
   }
