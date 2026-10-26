@@ -414,7 +414,7 @@ test('the publish form: the day after the calendar ends sets the out-of-date day
   await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.setPublishSetting, { key: 'lastPublishedAt', value: '2026-08-31T12:00:00.000Z' }));
   await go(page, '#staff');
   await page.waitForSelector('[data-says="calendar-changed"]');
-  assert.equal(await page.$eval('[data-says="stale-at-end"]', (el) => el.hidden), false);
+  assert.equal(await page.$eval('[data-says="stale-at-end"]', (el) => el.querySelector('input') !== null), true, 'the tick is there with a calendar');
   assert.equal(await page.$eval('[data-says="stale-at-end"] input', (el) => el.checked), true);
   assert.match(await page.$eval('#publish-stale', (el) => document.getElementById(el.getAttribute('aria-describedby').split(' ')[0]).textContent), /a file published today is current until 12 June 2027, the day after the calendar ends\./);
   assert.equal(await page.$eval('[data-says="calendar-changed"]', (el) => (el.hidden ? '' : el.textContent)), 'The calendar changed after your last publish on 31 August 2026. Staff copies still have the old one.');

@@ -206,8 +206,8 @@ export function publishForm(ctx, hooks) {
 
   // with a calendar: out of date the day after it ends, or after the days
   const atEnd = check('stale-at-end', STALE_AT_END_LABEL, (on) => change('staleAtCalendarEnd', on));
-  // a box of its own, so `hidden` is not beaten by the tick's display
-  const atEndRow = h('div', { class: 'pub__row', data: { says: 'stale-at-end' } }, atEnd.element);
+  // in the form only with a calendar (an empty place for it otherwise)
+  const atEndRow = h('div', { class: 'pub__row', data: { says: 'stale-at-end' } });
   const changedSays = h('p', { class: 'pub__hint', role: 'status', data: { says: 'calendar-changed' }, hidden: true });
 
   // ---- the passcode
@@ -458,7 +458,8 @@ export function publishForm(ctx, hooks) {
     // with a calendar, the end of the year says when, unless it has ended
     // (staleness's why: ARCHITECTURE 17.4)
     const calendar = calendarOf(project);
-    atEndRow.hidden = !calendar;
+    if (calendar && !atEndRow.contains(atEnd.element)) atEndRow.append(atEnd.element);
+    else if (!calendar && atEndRow.contains(atEnd.element)) atEnd.element.remove();
     atEnd.box.checked = publish.staleAtCalendarEnd !== false;
     const goesStale = staleness(project, now);
     if (goesStale.why === 'calendar') {

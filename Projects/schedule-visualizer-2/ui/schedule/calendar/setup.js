@@ -23,6 +23,8 @@ export function freshSetup(project, today) {
   const month = Number(today.slice(5, 7));
   const first = month >= 7 ? year : year - 1;
   return {
+    // whose setup this is: another project does not inherit it
+    projectId: project.id,
     start: first + '-09-01',
     end: (first + 1) + '-06-15',
     days: WEEKDAY_NAMES.map((name, index) => ({ on: index < 5, bells: null })),

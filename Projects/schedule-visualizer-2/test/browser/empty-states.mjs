@@ -281,6 +281,9 @@ for (const screen of EMPTY_SCREENS) {
     } else if (screen.opens) {
       await page.click('#surface [data-empty="' + screen.id + '"] .btn--primary');
       await page.waitForFunction((sel, id) => document.querySelector('#surface ' + sel) !== null && document.querySelector('#surface [data-empty="' + id + '"]') === null, {}, screen.opens, screen.id);
+      // and Cancel puts the empty screen back
+      await page.click('#surface [data-key="cal-setup-cancel"]');
+      await page.waitForFunction((id) => document.querySelector('#surface [data-empty="' + id + '"]') !== null, {}, screen.id);
     } else if (screen.stages) {
       // the grid stages its changes: the row is there, not applied, and the empty screen gone
       await page.click('#surface [data-empty="' + screen.id + '"] .btn--primary');

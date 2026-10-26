@@ -128,6 +128,8 @@ export function mount(env) {
   function update(project) {
     const calendar = calendarOf(project);
     const today = todayOf(ctx.clock());
+    // a setup begun for another project (one loaded or started since) goes
+    if (view.calSetup && view.calSetup.projectId !== project.id) view.calSetup = null;
     if (!calendar || calendarDays(project).length === 0) {
       closeDateDialog(false);
       env.side(null);
