@@ -49,7 +49,8 @@ export class CalendarImportError extends Error {
     super(message);
     this.name = 'CalendarImportError';
     this.code = code || 'refused';
-    // for 'unknown-names': { dayTypes: [text], bells: [text] }, as typed
+    // for 'unknown-names': { dayTypes: [text], bells: [text] }, as typed;
+    // for 'unclear-names': { dayTypes: [text] }
     this.names = names || null;
   }
 }
@@ -87,19 +88,101 @@ function headerKey(text) {
   return String(text).trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+// Which column plays each part. A role's words are in order of preference,
+// so "Day type" is taken before a column headed "Day" wherever they stand.
 function columnsOf(header) {
   const columns = {};
-  header.forEach((cell, index) => {
-    const key = headerKey(cell);
-    for (const [role, words] of Object.entries(COLUMN_WORDS)) {
-      if (columns[role] === undefined && words.includes(key)) columns[role] = index;
+  const keys = header.map(headerKey);
+  const claimed = new Set();
+  for (const [role, words] of Object.entries(COLUMN_WORDS)) {
+    for (const word of words) {
+      const index = keys.findIndex((key, i) => key === word && !claimed.has(i));
+      if (index !== -1) {
+        columns[role] = index;
+        claimed.add(index);
+        break;
+      }
     }
-  });
+  }
   return columns;
+}
+
+// Monday … Sunday, and Mon … Sun, whatever the capitals.
+const WEEKDAY_KEYS = new Set(WEEKDAY_NAMES.flatMap((name) => [name.toLowerCase(), name.slice(0, 3).toLowerCase()]));
+
+// A column headed "Day" whose every entry is a weekday's name is the
+// weekday, not the day type (a list written Date, Day, Note).
+function weekdaysOnly(rows, index) {
+  const cells = rows.map((row) => (index < row.length ? row[index].trim() : '')).filter((cell) => cell !== '');
+  return cells.length > 0 && cells.every((cell) => WEEKDAY_KEYS.has(cell.toLowerCase()));
+}
+
+// The line of the text each row csv.js keeps starts on, counting from 1 and
+// counting every line, blank or not: the row a spreadsheet shows it on, so
+// a refusal's "row 4" is row 4 there. csv.js reads the same way (a quote
+// opens a field only as its first character; a line with nothing on it is
+// no row; a line break inside quotes is still a line).
+function rowLines(text) {
+  const lines = [];
+  let i = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  let line = 1;
+  let start = 1;
+  let empty = true; // nothing yet on this row
+  let fresh = true; // nothing yet in this cell
+  const breakAt = (k) => (text[k] === '\r' ? (text[k + 1] === '\n' ? 2 : 1) : text[k] === '\n' ? 1 : 0);
+  while (i < text.length) {
+    if (text[i] === '"' && fresh) {
+      empty = false;
+      fresh = false;
+      i += 1;
+      while (i < text.length) {
+        if (text[i] === '"') {
+          if (text[i + 1] === '"') i += 2;
+          else {
+            i += 1;
+            break;
+          }
+        } else {
+          const step = breakAt(i);
+          if (step > 0) line += 1;
+          i += step || 1;
+        }
+      }
+      continue;
+    }
+    const step = breakAt(i);
+    if (step > 0) {
+      if (!empty) lines.push(start);
+      i += step;
+      line += 1;
+      start = line;
+      empty = true;
+      fresh = true;
+      continue;
+    }
+    empty = false;
+    fresh = text[i] === ',';
+    i += 1;
+  }
+  if (!empty) lines.push(start);
+  return lines;
+}
+
+// calendarCsv with `guard` puts a ' before a cell starting with = + - or @,
+// so a spreadsheet does not take it for a formula; read back, it goes.
+const GUARDED = ['=', '+', '-', '@'];
+function unguarded(cell) {
+  return cell.length > 1 && cell[0] === "'" && GUARDED.includes(cell[1]) ? cell.slice(1) : cell;
 }
 
 function quoted(texts) {
   return texts.map((text) => '"' + text + '"').join(', ');
+}
+
+// "A Day", "a day" or "ADay"
+function orWords(texts) {
+  const all = texts.map((text) => '"' + text + '"');
+  return all.length === 1 ? all[0] : all.slice(0, -1).join(', ') + ' or ' + all[all.length - 1];
 }
 
 function rowsWords(rows) {
@@ -155,7 +238,8 @@ function entryOf(day) {
 //   row does not change; one without gets a change whose day is null (as the
 //   weekday says) when only its bells or note differ.
 //
-// Refused whole: no calendar, a file with no header or no Date column, a row
+// Refused whole: no calendar, a file with no header or no Date column, one
+// with nothing to read (no Day type, Note or Bells column and not one other), a row
 // that is not as above, and any name the project does not have (every one is
 // named, with its rows).
 //
@@ -172,13 +256,39 @@ export function readCalendarCsv(project, text) {
   const days = calendarDays(project);
   if (calendar === null || days.length === 0) throw new CalendarImportError('There is no calendar to import dates into. Make the calendar first, then import the dates.', 'no-calendar');
   if (typeof text !== 'string') throw new CalendarImportError('This file could not be read. Choose a CSV file of dates.', 'not-csv');
-  const rows = parse(text).rows.filter((row) => row.some((cell) => cell.trim() !== ''));
+  const parsed = parse(text).rows;
+  const starts = rowLines(text);
+  const lineOf = (index) => (starts.length === parsed.length ? starts[index] : index + 1);
+  const kept = parsed.map((row, index) => ({ row, line: lineOf(index) })).filter((item) => item.row.some((cell) => cell.trim() !== ''));
+  const rows = kept.map((item) => item.row);
   if (rows.length === 0) throw new CalendarImportError('This file is empty. A calendar CSV has a header row (Date, Weekday, Day type, Bells, Note) and a row for each date.', 'empty');
   const columns = columnsOf(rows[0]);
   if (columns.date === undefined) throw new CalendarImportError('The first row is the header, and it has no Date column. The columns are ' + CALENDAR_HEADER.join(', ') + '; only Date is needed.', 'no-date-column');
+  const passed = new Set();
+  if (columns.day !== undefined && headerKey(rows[0][columns.day]) === 'day' && weekdaysOnly(rows.slice(1), columns.day)) {
+    passed.add(columns.day);
+    delete columns.day;
+  }
+  // No Day type and no Note column: a list of dates and one other column
+  // (Date, Name) is a list of notes; with nothing else, nothing is read.
+  if (columns.day === undefined && columns.note === undefined) {
+    for (const role of ['date', 'weekday', 'bells']) if (columns[role] !== undefined) passed.add(columns[role]);
+    const others = rows[0].map((cell, index) => index).filter((index) => !passed.has(index) && rows[0][index].trim() !== '');
+    if (others.length === 1) columns.note = others[0];
+    else if (columns.bells === undefined) throw new CalendarImportError('This file has no Day type or Note column, so there is nothing to read.', 'nothing-to-read');
+  }
 
+  // A day type's name is matched as written first, then whatever the
+  // capitals and spaces. Older projects may have two day types whose names
+  // differ only so (17.1): a name that is written as neither, but reads as
+  // both, is not guessed at.
   const dayByKey = new Map();
-  for (const dayType of project.dayTypes) if (!dayByKey.has(spacelessKey(dayType.name))) dayByKey.set(spacelessKey(dayType.name), dayType.id);
+  for (const dayType of project.dayTypes) {
+    const key = spacelessKey(dayType.name);
+    if (!dayByKey.has(key)) dayByKey.set(key, []);
+    dayByKey.get(key).push(dayType);
+  }
+  const unclearDays = new Map();
   const bellsByKey = new Map();
   for (const schedule of schedulesOf(project)) if (!bellsByKey.has(spacelessKey(schedule.name))) bellsByKey.set(spacelessKey(schedule.name), schedule.id);
 
@@ -189,11 +299,11 @@ export function readCalendarCsv(project, text) {
     if (!map.has(textValue)) map.set(textValue, []);
     map.get(textValue).push(row);
   };
-  const cell = (row, role) => (columns[role] === undefined || columns[role] >= row.length ? undefined : row[columns[role]]);
+  const cell = (row, role) => (columns[role] === undefined || columns[role] >= row.length ? undefined : unguarded(row[columns[role]]));
   const seen = new Map();
   const read = [];
   rows.slice(1).forEach((row, index) => {
-    const line = index + 2;
+    const line = kept[index + 1].line;
     const date = (cell(row, 'date') || '').trim();
     if (!isCalendarDate(date)) {
       problems.push('Row ' + line + ': "' + date + '" is not a date written YYYY-MM-DD, such as 2026-11-26.');
@@ -212,8 +322,14 @@ export function readCalendarCsv(project, text) {
     if (dayText === '') day = label !== undefined && label.trim() !== '' ? DAY_CLOSED : undefined;
     else if (spacelessKey(dayText) === NO_SCHOOL_KEY) day = DAY_CLOSED;
     else if (spacelessKey(dayText) === ROTATION_KEY) day = DAY_ROTATION;
-    else if (dayByKey.has(spacelessKey(dayText))) day = dayByKey.get(spacelessKey(dayText));
-    else note(unknownDays, dayText, line);
+    else if (dayByKey.has(spacelessKey(dayText))) {
+      const sharing = dayByKey.get(spacelessKey(dayText));
+      const exact = sharing.filter((dayType) => dayType.name.trim() === dayText);
+      if (exact.length === 1 || sharing.length === 1) day = (exact.length === 1 ? exact : sharing)[0].id;
+      // two day types written the same: the one the date has already, if either
+      else if (exact.length > 1) day = { among: exact.map((dayType) => dayType.id), text: dayText };
+      else note(unclearDays, dayText, line);
+    } else note(unknownDays, dayText, line);
     let bells;
     if (bellsText === '' || day === DAY_CLOSED) bells = undefined;
     else if (REGULAR_KEYS.includes(spacelessKey(bellsText))) bells = BELLS_REGULAR;
@@ -228,6 +344,10 @@ export function readCalendarCsv(project, text) {
     if (unknownDays.size > 0) parts.push((unknownDays.size === 1 ? 'a day type' : 'day types') + ' this project does not have: ' + describe(unknownDays));
     if (unknownBells.size > 0) parts.push((unknownBells.size === 1 ? 'a bell schedule' : 'bell schedules') + ' this project does not have: ' + describe(unknownBells));
     throw new CalendarImportError('This file cannot be imported, and nothing was changed. It names ' + parts.join('; and ') + '. Add ' + (unknownDays.size + unknownBells.size === 1 ? 'it' : 'them') + ' on the Day tab, or change the file to use ' + quoted(project.dayTypes.map((dayType) => dayType.name).concat(schedulesOf(project).map((schedule) => schedule.name), [NO_SCHOOL, NEXT_IN_ROTATION, REGULAR_BELLS])) + ', and import it again.', 'unknown-names', { dayTypes: Array.from(unknownDays.keys()), bells: Array.from(unknownBells.keys()) });
+  }
+  if (unclearDays.size > 0) {
+    const describe = Array.from(unclearDays, ([name, lines]) => '"' + name + '" (' + rowsWords(lines) + ') could be ' + orWords(dayByKey.get(spacelessKey(name)).map((dayType) => dayType.name))).join('; ');
+    throw new CalendarImportError('This file cannot be imported, and nothing was changed. Some day types\' names differ only in capitals or spaces, and the file does not say which it means: ' + describe + '. Write the name exactly as the Day tab has it, or rename one of the day types, and import it again.', 'unclear-names', { dayTypes: Array.from(unclearDays.keys()) });
   }
   if (problems.length > 0) {
     throw new CalendarImportError('This file cannot be imported, and nothing was changed. ' + problems.length + (problems.length === 1 ? ' row is' : ' rows are') + ' not as the calendar CSV is written. The first: ' + problems[0], 'invalid');
@@ -248,9 +368,12 @@ export function readCalendarCsv(project, text) {
     }
     const given = days[offsetOf(item.date)];
     const had = own.get(item.date);
+    if (item.day !== null && typeof item.day === 'object') item.day = given.school && item.day.among.includes(given.dayTypeId) ? given.dayTypeId : unwritable(item);
     const entry = had ? { date: item.date, day: had.day, bells: had.bells, label: had.label } : { date: item.date, day: null, bells: null, label: '' };
     const dayMoves = item.day !== undefined && !sameDay(given, item.day);
     if (dayMoves) entry.day = item.day;
+    // a date the row closes keeps no bells of its own
+    if (dayMoves && item.day === DAY_CLOSED) entry.bells = null;
     // bells say nothing on a date with no school
     const closed = dayMoves ? item.day === DAY_CLOSED : !given.school;
     if (item.bells !== undefined && !closed && !sameBells(given, item.bells)) entry.bells = item.bells;
@@ -282,6 +405,12 @@ export function readCalendarCsv(project, text) {
     },
     movedFrom: moved ? moved.date : null,
   };
+}
+
+// Two day types are written exactly as the row writes, and the date is
+// neither: there is no saying which.
+function unwritable(item) {
+  throw new CalendarImportError('This file cannot be imported, and nothing was changed. Row ' + item.line + ' names "' + item.day.text + '", and two day types are written so. Rename one of them on the Day tab, and import it again.', 'unclear-names', { dayTypes: [item.day.text] });
 }
 
 // "12 dates change; 3 are as the calendar has them; 2 are outside it, from

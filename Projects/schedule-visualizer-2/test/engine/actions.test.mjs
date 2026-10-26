@@ -1445,3 +1445,64 @@ test('followersOf after every kind of change stays one hop', () => {
   assert.ok(project.dayTypes.every((d) => d.sameAs === null || d.sameAs === undefined));
   assertValid(project);
 });
+
+// ---------------------------------------------------------------- SV2-77b: names the calendar uses
+
+test('a day type cannot be called "No school", "Next in the rotation" or "As the calendar says", whatever the capitals and spaces', () => {
+  for (const name of ['No school', 'NOSCHOOL', ' next in the  Rotation ', 'As the calendar says']) {
+    refused(actions.addDayType, school(), { name }, 'reserved-name');
+    refused(actions.renameDayType, school(), { dayTypeId: B, name }, 'reserved-name');
+  }
+  assert.throws(() => actions.addDayType(school(), { name: 'no school' }, shared), { message: '"No school" is what the calendar says for a date with no school, so a day type cannot be called that: the calendar and its CSV could not tell the two apart. Type a different name.' });
+  // a name that only contains one is a name
+  assert.equal(run(actions.addDayType, school(), { name: 'No school day' }).dayTypes[2].name, 'No school day');
+  assert.equal(run(actions.addDayType, school(), { name: 'Regular' }).dayTypes[2].name, 'Regular', 'Regular is a word for bells, not day types');
+});
+
+test('a bell schedule cannot be called "Regular" or "As the weekday says", whatever the capitals and spaces', () => {
+  for (const name of ['Regular', ' regular ', 'Regular Bells', 'As the weekday says', 'astheweekdaysays']) {
+    refused(actions.addBellSchedule, school(), { name }, 'reserved-name');
+    refused(actions.setBellSchedule, withEverything(), { bellScheduleId: ER, name }, 'reserved-name');
+  }
+  assert.throws(() => actions.addBellSchedule(school(), { name: 'Regular' }, shared), { message: '"Regular" is what the calendar says for a day type\'s own bells, so a bell schedule cannot be called that: the calendar and its CSV could not tell the two apart. Type a different name.' });
+  assert.equal(run(actions.addBellSchedule, school(), { name: 'Regular bells, late' }).bellSchedules[0].name, 'Regular bells, late');
+  assert.equal(run(actions.addBellSchedule, school(), { name: 'No school' }).bellSchedules[0].name, 'No school', 'a day-type word is a bell schedule\'s name');
+});
+
+// ---------------------------------------------------------------- SV2-77b: importCalendarDates
+
+import { readCalendarCsv, importedCalendar, calendarImportText } from '../../engine/import-calendar.js';
+
+test('importCalendarDates puts a calendar CSV\'s changes in place: one step, its label, SCHEDULE, stamped from the clock', () => {
+  const project = withEverything();
+  project.calendar.changedAt = '2026-08-20T09:00:00.000Z';
+  const read = readCalendarCsv(project, 'Date,Note\r\n2026-12-21,Winter break\r\n2026-11-26,Thanksgiving\r\n2030-01-01,Later\r\n');
+  const { after, label, focus } = step(project, actions.importCalendarDates, { changes: read.changes, counts: read.counts });
+  assert.equal(label, 'Import dates: ' + calendarImportText(project, read));
+  assert.equal(label, 'Import dates: 1 date changes; 1 date is as the calendar has it; 1 date is outside the calendar, which runs from 31 August 2026 to 11 June 2027');
+  assert.deepEqual(focus, { section: 'schedule', tab: 'calendar' });
+  assert.deepEqual(after.calendar.dates, importedCalendar(project, read.changes).dates);
+  assert.equal(after.calendar.changedAt, clock().toISOString(), 'the store\'s time, for the publish form');
+  assert.equal(dayOn(after, '2026-12-21').school, false);
+  // without counts the label counts the changes
+  assert.equal(step(project, actions.importCalendarDates, { changes: read.changes }).label, 'Import dates: 1 date changes');
+  assert.deepEqual(actions.importCalendarDates.bumps, [SCHEDULE]);
+});
+
+test('importCalendarDates: no change makes no step, and it is refused with no calendar or a change that no longer fits', () => {
+  const project = withEverything();
+  const store = createStore({ project, clock, ids: makeIds(3) });
+  store.apply(actions.importCalendarDates, { changes: [] });
+  store.apply(actions.importCalendarDates, { changes: readCalendarCsv(project, 'Date,Note\n2026-11-26,Thanksgiving\n').changes });
+  assert.equal(store.history.past.length, 0);
+  assert.equal(store.project, project);
+  const change = { date: '2026-12-21', day: 'closed', bells: null, label: 'Winter break' };
+  refused(actions.importCalendarDates, school(), { changes: [change] }, 'no-calendar');
+  refused(actions.importCalendarDates, project, {}, 'bad-value');
+  refused(actions.importCalendarDates, project, { changes: [{ ...change, date: '2026-12-32' }] }, 'bad-value');
+  refused(actions.importCalendarDates, project, { changes: [change, change] }, 'bad-value');
+  refused(actions.importCalendarDates, project, { changes: [{ ...change, date: '2030-01-01' }] }, 'outside');
+  refused(actions.importCalendarDates, project, { changes: [{ ...change, day: 'dnowhere00' }] }, 'missing');
+  refused(actions.importCalendarDates, project, { changes: [{ ...change, day: null, bells: 'bnowhere00' }] }, 'missing');
+  refused(actions.importCalendarDates, project, { changes: [{ ...change, label: 'x'.repeat(61) }] }, 'too-long');
+});

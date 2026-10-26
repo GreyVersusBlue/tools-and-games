@@ -25,6 +25,7 @@ import { DAY_TYPES_MOST, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DA
 import { spacelessKey, textLength, bellSchedulesOf, calendarOf, newBellSchedule, defaultWeekdays } from './schema.js';
 import { isCalendarDate, daysBetween, datesFrom, weekdayOf, dateWords, calendarDays } from './calendar.js';
 import { isId, collectIds } from './ids.js';
+import { importedCalendar, calendarImportText } from './import-calendar.js';
 
 export const GEOMETRY = 'geometry';
 export const BUILDING = 'building';
@@ -984,7 +985,29 @@ function needUniqueName(list, name, exceptId, what, whats) {
   return name;
 }
 
+// Words the calendar and its CSV use beside the names (import-calendar.js,
+// the calendar's choices). A day type or bell schedule called one of them
+// could not be told apart from it, so the name is refused, ignoring
+// capitals and spaces. The reader keeps taking the word first (FORMATS.md).
+const RESERVED_DAY_TYPE_NAMES = [
+  ['No school', 'is what the calendar says for a date with no school'],
+  ['Next in the rotation', 'is what the calendar says for a date that takes the next day type in the rotation'],
+  ['As the calendar says', 'is what a date says when it follows the calendar'],
+];
+const RESERVED_SCHEDULE_NAMES = [
+  ['Regular', 'is what the calendar says for a day type\'s own bells'],
+  ['Regular bells', 'is what the calendar CSV reads as a day type\'s own bells'],
+  ['As the weekday says', 'is what a date says when it takes its weekday\'s bells'],
+];
+
+function needUnreserved(name, reserved, what) {
+  if (typeof name !== 'string') return;
+  const word = reserved.find(([text]) => spacelessKey(text) === spacelessKey(name));
+  if (word) refuse('"' + word[0] + '" ' + word[1] + ', so ' + what + ' cannot be called that: the calendar and its CSV could not tell the two apart. Type a different name.', 'reserved-name');
+}
+
 function needDayTypeName(project, name, exceptId) {
+  needUnreserved(name, RESERVED_DAY_TYPE_NAMES, 'a day type');
   return needUniqueName(project.dayTypes, name, exceptId, 'A day type', 'Day type');
 }
 
@@ -1232,6 +1255,7 @@ function bellsFocus(before, payload, after) {
 }
 
 function needScheduleName(project, name, exceptId) {
+  needUnreserved(name, RESERVED_SCHEDULE_NAMES, 'a bell schedule');
   return needUniqueName(bellSchedulesOf(project), name, exceptId, 'A bell schedule', 'Bell schedule');
 }
 
@@ -1603,6 +1627,51 @@ export const removeCalendar = action(
 );
 
 // ================================================================ SV2-75 (end)
+
+// ================================================================ SV2-77b: Import dates (start)
+
+// payload: { changes, counts }: what readCalendarCsv returned for a calendar
+// CSV (`counts` optional, for the label). The calendar becomes
+// importedCalendar(project, changes) as one undo step, stamped with the
+// store's clock, labelled "Import dates: 3 dates change; …". Each change is
+// checked as setCalendarDates checks its payload, since the project may have
+// moved on since the file was read. Changes that leave the calendar as it is
+// make no step.
+export const importCalendarDates = action(
+  {
+    label: (before, payload) => 'Import dates: ' + calendarImportText(before, { counts: importCounts(payload) }),
+    bumps: [SCHEDULE],
+    focus: calendarFocus,
+  },
+  (project, payload, ctx) => {
+    const calendar = needCalendar(project);
+    const changes = payload.changes;
+    if (!Array.isArray(changes)) refuse('There are no dates to import. Choose a calendar CSV first.', 'bad-value');
+    const seen = new Set();
+    for (const change of changes) {
+      if (!change || typeof change !== 'object') refuse('A date to import is a date with its day type, bells and note.', 'bad-value');
+      needDate(change.date, 'A date');
+      if (seen.has(change.date)) refuse(dateWords(change.date) + ' is in the list twice. Each date is imported once.', 'bad-value');
+      seen.add(change.date);
+      if (change.date < calendar.start || change.date > calendar.end) refuse(dateWords(change.date) + ' is outside the calendar, which runs from ' + dateWords(calendar.start) + ' to ' + dateWords(calendar.end) + '.', 'outside');
+      if (change.day !== null) needDayValue(project, change.day);
+      needCalendarBells(project, change.bells, true);
+      needDateLabel(change.label);
+    }
+    const next = importedCalendar(project, changes);
+    if (sameJson(tidyDates(next).dates, calendar.dates)) return project;
+    return withCalendar(project, next, ctx);
+  },
+);
+
+function importCounts(payload) {
+  const counts = payload && payload.counts;
+  if (counts && typeof counts === 'object') return counts;
+  const changes = payload && Array.isArray(payload.changes) ? payload.changes.length : 0;
+  return { rows: changes, changes, same: 0, outside: 0 };
+}
+
+// ================================================================ SV2-77b: Import dates (end)
 
 // ---------------------------------------------------------------- floors
 
@@ -2452,12 +2521,13 @@ export const importSubjects = action(
 );
 
 // A schedule file. payload: { file, policy, takeSettings }, where `file` is
-// what readScheduleFile returned.
+// what readScheduleFile returned. A calendar the file replaces is stamped
+// with the store's clock, so the publish form knows staff copies are old.
 export const importSchedule = action(
   { label: importLabel('a schedule file'), bumps: [BUILDING, SCHEDULE], focus: () => ({ section: 'schedule', tab: 'groups' }) },
   (project, payload, ctx) => {
     if (!payload.file || typeof payload.file !== 'object') refuse('There is no schedule file to import.', 'bad-value');
-    return importing(project, () => applySchedule(project, payload.file, { policy: payload.policy, takeSettings: payload.takeSettings === true, ids: ctx.ids }));
+    return importing(project, () => applySchedule(project, payload.file, { policy: payload.policy, takeSettings: payload.takeSettings === true, ids: ctx.ids, clock: ctx.clock }));
   },
 );
 

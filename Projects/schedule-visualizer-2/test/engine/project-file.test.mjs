@@ -842,6 +842,76 @@ test('schedule file: importSchedule brings the calendar in one undo entry, says 
   assert.deepEqual([store.project.calendar, store.project.bellSchedules, store.project.dayTypes], [project.calendar, project.bellSchedules, project.dayTypes]);
 });
 
+// ---------------------------------------------------------------- SV2-77b: an older schedule file reads as it did
+
+// The sample school's day types in the other order, with every group's days
+// keyed to match, and a C Day that is "same as" the way a file written
+// before `sameAs` says it: own false and nothing more.
+function reversedWithC(project) {
+  const file = clone(project);
+  file.dayTypes.reverse();
+  file.dayTypes.push({ id: 'dfile0000c', name: 'C Day', own: false, bells: Array(8).fill(null) });
+  assertValid(file);
+  return file;
+}
+
+const hasSameAs = (project) => project.dayTypes.filter((one) => Object.prototype.hasOwnProperty.call(one, 'sameAs')).map((one) => one.name);
+
+test('schedule file (SV2-77b): a file without sameAs whose first day type is not the first here adds its day types as their own copies', () => {
+  const here = school();
+  const applied = applySchedule(here, schedule(reversedWithC(here)), { policy: { all: 'overwrite' }, ids: makeIds(9) });
+  assertValid(applied.project);
+  assert.deepEqual(applied.summary.dayTypesAdded, ['C Day']);
+  const c = applied.project.dayTypes[2];
+  assert.deepEqual([c.id, c.own], ['dfile0000c', true], 'its own copy, as before SV2-77');
+  assert.deepEqual(hasSameAs(applied.project), [], 'no sameAs is written into the project');
+  assert.deepEqual(c.bells, here.dayTypes[1].bells, 'the file\'s first day type\'s bells, B Day\'s');
+  assert.deepEqual(group(applied.project, '6A').days[c.id], group(here, '6A').days[B], 'a C Day that is "same as" in the file is the file\'s first day, B Day');
+});
+
+test('schedule file (SV2-77b): a file without sameAs, other ids and the same names: the names match, and a new day type is its own copy', () => {
+  const here = school();
+  const file = reversedWithC(sibling());
+  file.dayTypes[2].name = 'New Day';
+  const applied = applySchedule(here, schedule(file), { policy: { all: 'overwrite' }, ids: makeIds(9) });
+  assertValid(applied.project);
+  assert.deepEqual(applied.summary.dayTypesAdded, ['New Day']);
+  assert.deepEqual(applied.project.dayTypes.map((one) => [one.id, one.name, one.own]), [[A, 'A Day', true], [B, 'B Day', true], ['dfile0000c', 'New Day', true]]);
+  assert.deepEqual(hasSameAs(applied.project), []);
+});
+
+test('schedule file (SV2-77b): a day type\'s name matches ignoring capitals and the spaces at its ends, not the spaces inside', () => {
+  const here = school();
+  const file = sibling();
+  file.dayTypes[0].name = 'ADay';
+  file.dayTypes[1].name = '  b day ';
+  assertValid(file);
+  const applied = applySchedule(here, schedule(file), { policy: { all: 'overwrite' }, ids: makeIds(9) });
+  assertValid(applied.project);
+  assert.deepEqual(applied.summary.dayTypesAdded, ['ADay'], '"ADay" is not "A Day"; " b day " is "B Day"');
+  assert.deepEqual(applied.project.dayTypes.map((one) => [one.name, one.own]), [['A Day', true], ['B Day', true], ['ADay', true]]);
+  assert.deepEqual(hasSameAs(applied.project), []);
+});
+
+test('schedule file (SV2-77b): a file that carries sameAs still adds a "same as" day type following its own one\'s match', () => {
+  const here = school();
+  const file = reversedWithC(here);
+  file.dayTypes[2].sameAs = null;
+  const applied = applySchedule(here, schedule(file), { policy: { all: 'overwrite' }, ids: makeIds(9) });
+  assertValid(applied.project);
+  const c = applied.project.dayTypes[2];
+  assert.deepEqual([c.own, c.sameAs], [false, B], 'the same as B Day, what the file\'s first day type matched');
+});
+
+test('schedule file (SV2-77b): importSchedule stamps a replaced calendar with the store\'s clock', () => {
+  const file = schedule(withEverything());
+  file.calendar = { ...file.calendar, changedAt: '2026-01-05T08:00:00.000Z' };
+  const store = createStore({ project: school(), clock, ids: makeIds(3) });
+  const after = store.apply(actions.importSchedule, { file });
+  assert.equal(after.calendar.changedAt, clock().toISOString());
+  assert.equal(store.project.calendar.changedAt, '2026-09-01T12:00:00.000Z');
+});
+
 test('no reader or writer changes what it is given', () => {
   const project = hostile();
   const before = clone(project);
