@@ -77,9 +77,12 @@ test('newProject takes its passcode from the caller, and has every view on and 6
   assert.equal(schema.newProject(makeIds(), clock, { passcode: DEFAULT_PASSCODE }).publish.passcode, 'bulldogs2015');
   assert.equal(schema.defaultPublish(DEFAULT_PASSCODE).passcode, 'bulldogs2015');
   assert.equal(publish.stalenessDays, 60);
-  assert.deepEqual(Object.keys(publish.views), schema.PUBLISH_VIEWS);
+  // the calendar page's switch is kept now and published from SV2-77
+  assert.deepEqual(Object.keys(publish.views), schema.PUBLISH_VIEWS.concat(['calendar']));
+  assert.deepEqual(schema.LATER_PUBLISH_VIEWS, ['calendar']);
   assert.ok(Object.values(publish.views).every((on) => on === true));
   assert.equal(publish.lastPublishedAt, null);
+  assert.equal(publish.staleAtCalendarEnd, true);
   assert.deepEqual(onboarding, { steps: {}, dismissed: false, neverShow: false });
   assert.deepEqual([accepted, scenario], [[], null]);
 });

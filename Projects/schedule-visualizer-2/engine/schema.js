@@ -51,6 +51,43 @@ export const DOOR_SIDES = ['n', 'e', 's', 'w'];
 export const CONNECTION_DIRECTIONS = ['both', 'ab', 'ba'];
 export const CHANGE_KINDS = ['move', 'swapPeriods', 'swapRooms'];
 export const PUBLISH_VIEWS = ['teacher', 'group', 'room', 'map', 'free', 'now', 'common', 'coverage', 'sub', 'directions', 'staffing'];
+// Views a project keeps a switch for that the published file does not carry
+// yet. The calendar page (ARCHITECTURE 17.4) is switched on and off from
+// SV2-75, and published from SV2-77, which moves it into PUBLISH_VIEWS: the
+// published data's key set is pinned by publish-data.test.mjs, which that
+// unit owns. Absent from a project's views means on.
+export const LATER_PUBLISH_VIEWS = ['calendar'];
+
+// ---------------------------------------------------------------- day types, bell schedules, the calendar (ARCHITECTURE 17)
+//
+// Every field below is additive: a project saved before them has none, and
+// every rule reads an absent one as its default (no bell schedules, no
+// calendar, a day type the same as the first, a short name worked out from
+// the name). The limits on names and counts are kept by the actions that add
+// and rename, never by validate for a field that already existed (17.1).
+
+// At most this many day types, and this many bell schedules.
+export const DAY_TYPES_MOST = 12;
+export const BELL_SCHEDULES_MOST = 12;
+// A day type's or a bell schedule's name, in characters.
+export const NAME_MOST = 40;
+// A short name, for the calendar's squares: "A", "ER".
+export const SHORT_MOST = 4;
+// A calendar covers at most this many dates, first and last included.
+export const CALENDAR_DAYS_MOST = 731;
+// The rotation is 1 to 24 day type ids.
+export const ROTATION_RANGE = [1, 24];
+// A dated change's note, in characters.
+export const DATE_LABEL_MOST = 60;
+// What a weekday's rule or a dated change says the day is, other than a day
+// type id: the next day type in the rotation, or no school.
+export const DAY_ROTATION = 'rotation';
+export const DAY_CLOSED = 'closed';
+// A dated change's bells: null is as the weekday says; this is the day
+// type's own regular bells.
+export const BELLS_REGULAR = 'regular';
+// Index 0 is Monday.
+export const WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 // The kinds a schedule check can report (spec 5.7), in the table's order.
 // `settings.checks.off` holds the ones a school has switched off.
@@ -153,6 +190,18 @@ export function isHexColour(value) {
   return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
 }
 
+// Names of day types and of bell schedules are compared without regard to
+// case or to any white space: "A Day", "a day" and "ADay" are one name.
+export function spacelessKey(name) {
+  return String(name).toLowerCase().replace(/\s+/gu, '');
+}
+
+// How many characters a text has, counting each code point once, so a name
+// in any script is measured as it is read.
+export function textLength(value) {
+  return Array.from(String(value)).length;
+}
+
 export function isBellTime(value) {
   return typeof value === 'string' && /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(value);
 }
@@ -200,13 +249,16 @@ export function defaultSettings() {
 // be in.
 export function defaultPublish(passcode) {
   const views = {};
-  for (const view of PUBLISH_VIEWS) views[view] = true;
+  for (const view of PUBLISH_VIEWS.concat(LATER_PUBLISH_VIEWS)) views[view] = true;
   return {
     passcode: typeof passcode === 'string' ? passcode : '',
     stalenessDays: 60,
     views,
     teacherNamesOnMap: true,
     lastPublishedAt: null,
+    // with a calendar, a published file is stale the day after the
+    // calendar's last date (ARCHITECTURE 17.4)
+    staleAtCalendarEnd: true,
   };
 }
 
@@ -276,13 +328,39 @@ export function newOtherSpace(id, cells) {
   return { id, kind: 'other', cells, label: '', otherKind: 'other', colour: DEFAULT_OTHER_COLOUR };
 }
 
+// `sameAs` is null for an own day type, and for one that is the same as the
+// first; `short` is "" until one is typed.
 export function newDayType(id, name, own, periods) {
-  return { id, name, own, bells: emptyBells(periods) };
+  return { id, name, own, sameAs: null, short: '', bells: emptyBells(periods) };
+}
+
+// Another set of times for the same classes (ARCHITECTURE 17.3): the bells
+// it starts with are the caller's, one entry per period.
+export function newBellSchedule(id, name, bells) {
+  return { id, name, short: '', bells, off: [] };
+}
+
+// A weekday's rule, as a new calendar has it: Monday to Friday take the
+// rotation, Saturday and Sunday have no school.
+export function defaultWeekdays() {
+  return WEEKDAY_NAMES.map((weekday, index) => ({ day: index < 5 ? DAY_ROTATION : DAY_CLOSED, bells: null }));
+}
+
+// The project's bell schedules: absent, or anything but a list, is none.
+// Every rule asks through here, since the staff browser never runs repair.
+export function bellSchedulesOf(project) {
+  return project && Array.isArray(project.bellSchedules) ? project.bellSchedules : [];
+}
+
+// The project's calendar, or null: absent, or anything but an object, is none.
+export function calendarOf(project) {
+  const calendar = project ? project.calendar : null;
+  return calendar !== null && typeof calendar === 'object' && !Array.isArray(calendar) ? calendar : null;
 }
 
 // newProject(ids, clock) is a valid empty project: one floor of 40 by 30, an
-// A Day and a B Day that is the same as A Day, the starter subjects, and the
-// settings of spec 16. `options.paperSize` is how the page passes the device's
+// A Day and a B Day that is the same as A Day, no other bell schedules, no
+// calendar, the starter subjects, and the settings of spec 16. `options.paperSize` is how the page passes the device's
 // region; `options.subjects` replaces the starter list; `options.passcode` is
 // the staff passcode the project starts with (none, and protection is off).
 export function newProject(ids, clock, options) {
@@ -310,6 +388,8 @@ export function newProject(ids, clock, options) {
       newDayType(ids('d'), DEFAULT_DAY_TYPE_NAMES[0], true, settings.periods),
       newDayType(ids('d'), DEFAULT_DAY_TYPE_NAMES[1], false, settings.periods),
     ],
+    bellSchedules: [],
+    calendar: null,
     accepted: [],
     scenario: null,
     publish: defaultPublish(opts.passcode),

@@ -20,7 +20,7 @@ test('the empty B Day: a day type with nothing entered means the same as A Day',
     assert.equal(effectiveSchedule(project, g.id, 'dsample00b'), g.days.dsample00a, g.name + ' has A Day\'s very slots on B Day');
   }
   assert.deepEqual(bellsFor(project, 'dsample00b'), bellsFor(project, 'dsample00a'));
-  assert.deepEqual(describeDayType(project, 'dsample00b'), { name: 'B Day', own: false, sameAs: 'A Day' });
+  assert.deepEqual(describeDayType(project, 'dsample00b'), { name: 'B Day', own: false, sameAs: 'A Day', follows: 'A Day' });
 });
 
 test('the empty B Day follows A Day as A Day is edited', () => {
@@ -36,7 +36,7 @@ test('once B Day is its own copy it stops following A Day', () => {
   assert.equal(isOwnCopy(project, 'dsample00b'), true);
   project = setSlot(project, { groupId: 'gsample06a', dayTypeId: 'dsample00a', period: 0, slot: { room: 'rsample302' } }, ctx());
   assert.equal(effectiveSchedule(project, 'gsample06a', 'dsample00b')[0].room, 'rsample201');
-  assert.deepEqual(describeDayType(project, 'dsample00b'), { name: 'B Day', own: true, sameAs: null });
+  assert.deepEqual(describeDayType(project, 'dsample00b'), { name: 'B Day', own: true, sameAs: null, follows: null });
 });
 
 test('the first day type is always its own copy, even if its flag said otherwise', () => {
