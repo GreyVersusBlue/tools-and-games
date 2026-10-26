@@ -480,6 +480,30 @@ test('at 390 px with touch: rows stack, every target is 44 px, Move down by a ta
   await settled();
 });
 
+test('on a tablet with touch, a finger where the grip would be drags nothing: no grip is drawn, and a touch starts no drag', async () => {
+  await session.close();
+  session = await openPlanner({ server, browser, hash: '#schedule/day', theme: 'light', width: 1024, height: 1366, mobile: true });
+  page = session.page;
+  await settled();
+  await addByStore(['C Day', 'D Day', 'E Day']);
+  const ids = await dayIds();
+  assert.equal(await page.$eval('.sch-dtrow[data-day="' + ids[4] + '"] .sch-grip', (el) => getComputedStyle(el).display), 'none', 'no grip on a coarse pointer');
+  await page.$eval('.sch-dtlist', (el) => el.scrollIntoView({ block: 'center' }));
+  const before = await rowOrder();
+  const cell = await page.$eval('.sch-dtrow[data-day="' + ids[4] + '"] .sch-dtrow__grip', (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+  const onto = await page.$eval('.sch-dtrow[data-day="' + ids[1] + '"]', (el) => { const r = el.getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; });
+  const client = await page.target().createCDPSession();
+  await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [cell] });
+  for (let step = 1; step <= 8; step += 1) await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: cell.x, y: cell.y + ((onto.y - cell.y) * step) / 8 }] });
+  await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await settled();
+  assert.deepEqual(await rowOrder(), before, 'the order is as it was');
+  await session.close();
+  session = await openPlanner({ server, browser, hash: '#schedule/day', theme: 'light', width: 1280, height: 900 });
+  page = session.page;
+  await settled();
+});
+
 test('the Day tab by keyboard alone: add a day type, change what it is, move it, with no pointer and no focus lost', async () => {
   await freshSample();
   await go(page, '#schedule/day');
