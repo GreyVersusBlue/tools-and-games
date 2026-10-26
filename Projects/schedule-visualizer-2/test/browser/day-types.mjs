@@ -180,6 +180,8 @@ test('Change… makes C Day the same as B Day: the button says what goes, the to
   assert.deepEqual(await radios('#day-kind-dialog'), ['Its own classes (checked)', 'Same as A Day', 'Same as B Day']);
   await page.click('#day-kind-dialog input[value="' + DAY_B + '"]');
   assert.equal(await text('#day-kind-dialog .btn--primary'), 'Make C Day the same as B Day (8 groups’ days on C Day and its 8 bell times go; Undo brings them back)');
+  await settled();
+  assert.equal(await text(row + ' .sch-dtrow__kind'), 'Its own classes', 'choosing in the dialog commits nothing');
   await page.click('#day-kind-dialog .btn--primary');
   await shows((selector) => document.querySelector(selector)?.classList.contains('sch-dtrow--same'), row);
   assert.equal(await toastText(), 'C Day is the same as B Day now. Its own classes for 8 groups went with that.');
