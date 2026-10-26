@@ -1440,7 +1440,7 @@ function schoolDaysAmong(project, calendar, dates) {
 // ([{ from, to, label }], each writing "closed" with its label on the dates
 // from..to that would otherwise be school days) and replace (true to make a
 // new one over a calendar there already is). The outcome counts each break's
-// school days ("Winter break: 8 school days").
+// school days ("Winter break: 8 school days"); with no breaks there is none.
 export const makeCalendar = action(
   { label: 'Make the calendar', bumps: [SCHEDULE], focus: calendarFocus },
   (project, payload, ctx) => {
@@ -1466,6 +1466,8 @@ export const makeCalendar = action(
       }
     }
     const next = withCalendar(project, calendar, ctx);
+    // with no breaks there is nothing to report
+    if (breaks.length === 0) return next;
     return reporting(project, next, { breaks, text: breaks.map((item) => (item.label === '' ? dateWords(item.from, { year: false }) + ' to ' + dateWords(item.to, { year: false }) : item.label) + ': ' + count(item.schoolDays, 'school day', 'school days')).join('; ') });
   },
 );

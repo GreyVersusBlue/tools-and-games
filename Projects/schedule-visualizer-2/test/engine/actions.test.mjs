@@ -1316,7 +1316,13 @@ test('makeCalendar: Monday to Friday in the rotation of every day type, weekends
     dates: [],
     changedAt: '2026-09-01T12:00:01.000Z',
   });
-  assert.deepEqual([label, focus, outcome], ['Make the calendar', { section: 'schedule', tab: 'calendar' }, { breaks: [], text: '' }]);
+  // no breaks: no outcome to report (SV2-75b)
+  assert.deepEqual([label, focus, outcome], ['Make the calendar', { section: 'schedule', tab: 'calendar' }, null]);
+  assert.equal(actions.describeAction(actions.makeCalendar, bare(), { start: '2026-08-31', end: '2027-06-11' }, after).outcome, null);
+  assert.equal(actions.scheduleOutcome(run(actions.makeCalendar, bare(), { start: '2026-08-31', end: '2027-06-11', breaks: [] })), null);
+  // a break, even one that closes no school day, is reported
+  const weekend = run(actions.makeCalendar, bare(), { start: '2026-08-31', end: '2027-06-11', breaks: [{ from: '2026-09-05', to: '2026-09-06', label: 'Weekend' }] });
+  assert.deepEqual(actions.scheduleOutcome(weekend), { breaks: [{ from: '2026-09-05', to: '2026-09-06', label: 'Weekend', schoolDays: 0 }], text: 'Weekend: 0 school days' });
   assert.throws(() => actions.makeCalendar(withEverything(), { start: '2026-08-31', end: '2027-06-11' }, shared), { code: 'calendar-exists' });
   assert.equal(run(actions.makeCalendar, withEverything(), { start: '2027-08-30', end: '2028-06-09', replace: true }).calendar.start, '2027-08-30');
 });
