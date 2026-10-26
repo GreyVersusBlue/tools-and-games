@@ -97,14 +97,43 @@
 //   routePath(graph, route)                        the lane slots of a route
 //   walkingSeconds(graph, route)                   the uncrowded time
 //   simulateTransition(graph, walkers, options)    one transition
-//   simulateDayTransition(project, routes, dayTypeId, period, graph?)
-//   simulateDay(project, routes, dayTypeId, graph?)
-//   simulateSchedule(project, routes, graph?)      every own day type
+//   retimeTransition(result, passingSeconds, marginSeconds)
+//                                                  the same transition under
+//                                                  another passing time, when
+//                                                  nothing but `late` changes
+//   simulateDayTransition(project, routes, dayTypeId, period, graph?, bellsId?)
+//   simulateDay(project, routes, dayTypeId, graph?, bellsId?)
+//   simulateSchedule(project, routes, graph?)      every run
+//   routesByRun(project, graph?, options?)         routesForSchedule for every run
 //   teacherWalks(project, graph?, options?)        teachers' walks, uncrowded
 //   walkResults(project, crowd, graph?, options?)  what checkSchedule takes
 //
 // `graph` is routingGraph(project) from routing.js (a bare buildGraph result
-// is wrapped); `routes` is what routesForSchedule() gave for the same project.
+// is wrapped); `routes` is what routesByRun() (or routesForSchedule()) gave
+// for the same project.
+//
+// Runs (ARCHITECTURE 17.8). A run is a day type's classes under one set of
+// bells: { dayTypeId, bellsId }, bellsId null for its regular bells
+// (engine/runs.js runsOf). A run with regular bells is keyed and shaped
+// exactly as a day type was before bell schedules: `days` in a crowd result,
+// the entries of `groups` and `teachers` in the walk results. A run with a
+// bell schedule is in `bells` beside them, each entry carrying `bellsId`,
+// and `bells` is there only when the project has a bell schedule.
+//
+// Where the passing time matters. simulateTransition reads the passing time
+// for two things only: the cap (rule 6, three times the passing time and at
+// least 600 s) and `late`. No step, wait or crossing depends on it. So a
+// transition whose walkers are the same under two passing times gives the
+// same walking, waiting, totals, positions and delays under both whenever no
+// group reaches either cap, and only `late` (and the passing time and cap
+// the result names) differ: retimeTransition makes that result without
+// simulating. A transition in which a group reaches a cap is simulated
+// again. A bell-schedule run takes its rooms from the regular run (the same
+// classes), so each transition whose two periods both meet is the regular
+// run's walkers, and simulateSchedule retimes the regular run's result for
+// it; a transition into or out of a period that does not meet moves nobody
+// (meetingSlots empties the period) and is { off: true } with no passing
+// time.
 //
 // One transition's result:
 //
@@ -119,13 +148,17 @@
 //                       charged to each cell (the one the head was refused)
 //     connectionDelay } Int32Array over graph.links, the same for stairs
 //
-// simulateDayTransition adds dayTypeId and period (the one walked out of).
+// simulateDayTransition adds dayTypeId and period (the one walked out of),
+// and for a bell-schedule run bellsId between them; a transition of such a
+// run into or out of a period that does not meet also has off: true and a
+// passingSeconds of null.
 
 import { DOOR_SIDES, STUDENTS_PER_LANE_CELL, RANGES, inRange, defaultSettings } from './schema.js';
-import { routingGraph, route, createRouteCache } from './routing.js';
+import { routingGraph, route, createRouteCache, routesForSchedule, runRoutes } from './routing.js';
 import { ownDayTypes, effectiveDayType } from './day-types.js';
-import { bellsFor } from './bells.js';
+import { bellsFor, offPeriods } from './bells.js';
 import { teacherDays, teacherMoves } from './teacher-day.js';
+import { runsOf, meetingSlots } from './runs.js';
 
 export const CAP_FACTOR = 3;
 export const CAP_MINIMUM_SECONDS = 600;
@@ -439,11 +472,44 @@ export function simulateTransition(graph, walkers, options) {
   return { passingSeconds, marginSeconds, cap, seconds, groups, cellDelay, connectionDelay };
 }
 
-function dayOf(project, routes, dayTypeId) {
+// The same transition under another passing time, or null when the result
+// would be more than `late` and the times it names: when a group reached
+// the cap under the passing time it was simulated with, or would reach the
+// cap under this one (rule 6 is the only rule that reads the passing time;
+// the header has why). A group whose `late` does not change is the same
+// object; positions and delays are shared, never copied.
+export function retimeTransition(result, passingSeconds, marginSeconds) {
+  if (!result || !Array.isArray(result.groups) || result.off === true) return null;
+  const passing = Number.isFinite(passingSeconds) ? passingSeconds : defaultSettings().defaultPassingSeconds;
+  const margin = Number.isFinite(marginSeconds) ? marginSeconds : 0;
+  const cap = crowdCap(passing);
+  if (!(result.seconds < result.cap) || !(result.seconds < cap)) return null;
+  if (result.groups.some((group) => group.arrived !== true)) return null;
+  const groups = result.groups.map((group) => {
+    const late = isLate(group.total, passing, margin);
+    return late === group.late ? group : { ...group, late };
+  });
+  return { ...result, passingSeconds: passing, marginSeconds: margin, cap, groups };
+}
+
+// The routes of run (dayTypeId, bellsId), with the own day type its classes
+// are: a day type that is the same as A Day is answered from A Day.
+function dayOf(project, routes, dayTypeId, bellsId) {
   const dayType = effectiveDayType(project, dayTypeId);
-  if (!dayType || !routes || !Array.isArray(routes.days)) return null;
-  const day = routes.days.find((candidate) => candidate.dayTypeId === dayType.id);
-  return day ? { dayType, day } : null;
+  if (!dayType) return null;
+  const day = runRoutes(routes, dayType.id, bellsId);
+  return day ? { dayType, day, bellsId: typeof bellsId === 'string' ? bellsId : null } : null;
+}
+
+// What every transition result of a run starts with: the day type, a bell
+// schedule's id when there is one, the period walked out of.
+function runHead(found, period) {
+  return found.bellsId === null ? { dayTypeId: found.dayType.id, period } : { dayTypeId: found.dayType.id, bellsId: found.bellsId, period };
+}
+
+function simulated(result) {
+  const { dayTypeId, bellsId, period, off, ...rest } = result;
+  return rest;
 }
 
 function runTransition(project, routing, found, period, passingSeconds) {
@@ -458,82 +524,140 @@ function runTransition(project, routing, found, period, passingSeconds) {
   }
   const marginSeconds = settings.checks ? settings.checks.passingMarginSeconds : 0;
   const result = simulateTransition(routing, walkers, { passingSeconds, marginSeconds });
-  return { dayTypeId: found.dayType.id, period, ...result };
+  return { ...runHead(found, period), ...result };
 }
 
-// The transition out of `period` (into period + 1) on one day type. A day
-// type that is the same as A Day is answered from A Day. Null when the day
-// type, its routes or the transition is not there.
-export function simulateDayTransition(project, routes, dayTypeId, period, graph) {
-  const found = dayOf(project, routes, dayTypeId);
+// A transition into or out of a period that does not meet: nobody walks.
+function offTransition(project, routing, found, period) {
+  const marginSeconds = project.settings.checks ? project.settings.checks.passingMarginSeconds : 0;
+  return { ...runHead(found, period), off: true, ...simulateTransition(routing, [], { marginSeconds }), passingSeconds: null };
+}
+
+// One transition of a run: off, the regular run's result retimed when it is
+// handed in and can be (`regular`, the same period's transition of the
+// regular run of this day type), or simulated.
+function transitionOf(project, routing, found, period, bells, regular) {
+  if (bells[period].off === true || bells[period + 1].off === true) return offTransition(project, routing, found, period);
+  const passingSeconds = bells[period].passingAfter;
+  if (regular) {
+    const marginSeconds = project.settings.checks ? project.settings.checks.passingMarginSeconds : 0;
+    const retimed = retimeTransition(regular, passingSeconds, marginSeconds);
+    if (retimed) return { ...runHead(found, period), ...simulated(retimed) };
+  }
+  return runTransition(project, routing, found, period, passingSeconds);
+}
+
+// The transition out of `period` (into period + 1) on one day type, under
+// its regular bells or with bellsId under a bell schedule. A day type that
+// is the same as A Day is answered from A Day. Null when the day type, the
+// run's routes or the transition is not there.
+export function simulateDayTransition(project, routes, dayTypeId, period, graph, bellsId) {
+  const found = dayOf(project, routes, dayTypeId, bellsId);
   if (!found || !Number.isInteger(period) || period < 0 || period + 1 >= project.settings.periods) return null;
-  const bells = bellsFor(project, found.dayType.id);
-  return runTransition(project, routingGraph(project, graph), found, period, bells[period].passingAfter);
+  const bells = bellsFor(project, found.dayType.id, found.bellsId === null ? undefined : found.bellsId);
+  return transitionOf(project, routingGraph(project, graph), found, period, bells, null);
 }
 
-// Every transition of one day type: { dayTypeId, transitions: [one result each] }.
-export function simulateDay(project, routes, dayTypeId, graph) {
-  const found = dayOf(project, routes, dayTypeId);
-  if (!found) return null;
-  const routing = routingGraph(project, graph);
-  const bells = bellsFor(project, found.dayType.id);
+function runDay(project, routing, found, regularDay) {
+  const bells = bellsFor(project, found.dayType.id, found.bellsId === null ? undefined : found.bellsId);
   const transitions = [];
   for (let period = 0; period + 1 < project.settings.periods; period += 1) {
-    transitions.push(runTransition(project, routing, found, period, bells[period].passingAfter));
+    const regular = regularDay && found.bellsId !== null ? regularDay.transitions[period] : null;
+    transitions.push(transitionOf(project, routing, found, period, bells, regular));
   }
-  return { dayTypeId: found.dayType.id, transitions };
+  return found.bellsId === null ? { dayTypeId: found.dayType.id, transitions } : { dayTypeId: found.dayType.id, bellsId: found.bellsId, transitions };
 }
 
-// The whole day of every day type that is its own copy: { days: [simulateDay's result] }.
+// Every transition of one run: { dayTypeId, transitions: [one result each] },
+// with bellsId between them for a bell-schedule run.
+export function simulateDay(project, routes, dayTypeId, graph, bellsId) {
+  const found = dayOf(project, routes, dayTypeId, bellsId);
+  if (!found) return null;
+  return runDay(project, routingGraph(project, graph), found, null);
+}
+
+// The whole day of every run: { days: [simulateDay's result for each own day
+// type, regular bells] }, and when the project has a bell schedule `bells`,
+// each own day type under each schedule in runsOf's order, whose
+// transitions retime the regular run's where they can.
 export function simulateSchedule(project, routes, graph) {
   const routing = routingGraph(project, graph);
   const days = [];
   for (const dayType of ownDayTypes(project)) {
-    const day = simulateDay(project, routes, dayType.id, routing);
-    if (day) days.push(day);
+    const found = dayOf(project, routes, dayType.id, null);
+    if (found) days.push(runDay(project, routing, found, null));
   }
-  return { days };
+  const result = { days };
+  const bells = [];
+  for (const run of runsOf(project)) {
+    if (run.bellsId === null) continue;
+    const found = dayOf(project, routes, run.dayTypeId, run.bellsId);
+    if (!found) continue;
+    bells.push(runDay(project, routing, found, days.find((day) => day.dayTypeId === found.dayType.id)));
+  }
+  if (bells.length > 0) result.bells = bells;
+  return result;
+}
+
+// routesForSchedule (routing.js) for every run of the project: runsOf's runs,
+// each group where meetingSlots puts it (engine/runs.js). What the pipeline
+// and every caller that wants the bell-schedule runs ask.
+export function routesByRun(project, graph, options) {
+  return routesForSchedule(project, graph, { ...(options || {}), runs: runsOf(project), meetingSlots });
 }
 
 // A teacher's walk between rooms is routed like a group's and timed by
 // walking alone, with no crowd. One entry per walk teacherMoves() names, on
 // every own day type, in the shape checkSchedule takes. A walk with no way
 // through has no figure and is left out. options.cache is a route cache.
+//
+// With options.bells true, the same for every bell-schedule run instead
+// (runsOf's order), each entry with bellsId after dayTypeId: the teacher's
+// day is the day type's, less the periods that do not meet under the
+// schedule, so a walk into or out of one of those is not one, and every
+// other walk is timed against the schedule's passing time.
 export function teacherWalks(project, graph, options) {
   const routing = routingGraph(project, graph);
   const cache = options && options.cache ? options.cache : createRouteCache();
   const routeOptions = { cache };
   if (options && options.geometryVersion !== undefined) routeOptions.geometryVersion = options.geometryVersion;
   const marginSeconds = project.settings.checks ? project.settings.checks.passingMarginSeconds : 0;
+  const runs = options && options.bells === true
+    ? runsOf(project).filter((run) => run.bellsId !== null)
+    : ownDayTypes(project).map((dayType) => ({ dayTypeId: dayType.id, bellsId: null }));
   const walks = [];
-  for (const dayType of ownDayTypes(project)) {
-    const days = teacherDays(project, dayType.id);
+  const daysOf = new Map();
+  for (const run of runs) {
+    if (!daysOf.has(run.dayTypeId)) daysOf.set(run.dayTypeId, teacherDays(project, run.dayTypeId));
+    const days = daysOf.get(run.dayTypeId);
     if (!days) continue;
-    const bells = bellsFor(project, dayType.id);
+    const bellsId = run.bellsId;
+    const bells = bellsId === null ? bellsFor(project, run.dayTypeId) : bellsFor(project, run.dayTypeId, bellsId);
+    const off = bellsId === null ? null : offPeriods(project, bellsId);
     for (const teacher of project.teachers) {
       const day = days.get(teacher.id);
       if (!day) continue;
       for (const move of teacherMoves(day)) {
+        if (off !== null && (off.has(move.period) || off.has(move.period + 1))) continue;
         const walking = walkingSeconds(routing, route(routing, move.fromRoomId, move.toRoomId, routeOptions));
         if (walking === null) continue;
         const passingSeconds = bells[move.period].passingAfter;
-        walks.push({ dayTypeId: dayType.id, teacherId: teacher.id, period: move.period, fromRoomId: move.fromRoomId, toRoomId: move.toRoomId, passingSeconds, walking, late: isLate(walking, passingSeconds, marginSeconds) });
+        const head = bellsId === null ? { dayTypeId: run.dayTypeId } : { dayTypeId: run.dayTypeId, bellsId };
+        walks.push({ ...head, teacherId: teacher.id, period: move.period, fromRoomId: move.fromRoomId, toRoomId: move.toRoomId, passingSeconds, walking, late: isLate(walking, passingSeconds, marginSeconds) });
       }
     }
   }
   return walks;
 }
 
-// The walk results checkSchedule(project, walkResults) takes, built from
-// simulateSchedule's result: { groups, teachers }. Every walk is there, late
-// or not, so the travel-time tables read the same list the checks do.
-export function walkResults(project, crowd, graph, options) {
+function groupWalks(days) {
   const groups = [];
-  for (const day of crowd && Array.isArray(crowd.days) ? crowd.days : []) {
+  for (const day of days) {
     for (const transition of day.transitions) {
       for (const group of transition.groups) {
+        const head = typeof day.bellsId === 'string' ? { dayTypeId: day.dayTypeId, bellsId: day.bellsId } : { dayTypeId: day.dayTypeId };
         groups.push({
-          dayTypeId: day.dayTypeId,
+          ...head,
           groupId: group.groupId,
           period: transition.period,
           fromRoomId: group.fromRoomId,
@@ -548,5 +672,21 @@ export function walkResults(project, crowd, graph, options) {
       }
     }
   }
-  return { groups, teachers: teacherWalks(project, graph, options) };
+  return groups;
+}
+
+// The walk results checkSchedule(project, walkResults) takes, built from
+// simulateSchedule's result: { groups, teachers } for the regular runs, and
+// when the crowd result has bell-schedule runs, bells: { groups, teachers }
+// for those, each entry with its bellsId. Every walk is there, late or not,
+// so the travel-time tables read the same list the checks do.
+export function walkResults(project, crowd, graph, options) {
+  const result = {
+    groups: groupWalks(crowd && Array.isArray(crowd.days) ? crowd.days : []),
+    teachers: teacherWalks(project, graph, options),
+  };
+  if (crowd && Array.isArray(crowd.bells)) {
+    result.bells = { groups: groupWalks(crowd.bells), teachers: teacherWalks(project, graph, { ...(options || {}), bells: true }) };
+  }
+  return result;
 }
