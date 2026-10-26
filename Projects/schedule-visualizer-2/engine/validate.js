@@ -9,10 +9,19 @@
 // whether a bell schedule makes sense (bells.js warns about that inline; a
 // warning never blocks), and the form of a traced image's id (it is the key
 // the image is stored under on the device, so nothing here could replace it).
+//
+// The fields of ARCHITECTURE 17 (a day type's sameAs and short, the bell
+// schedules, the calendar, staleAtCalendarEnd, the calendar view) are
+// checked strictly when they are there and never asked for when they are
+// not: a file saved before them has none, and every rule reads an absent one
+// as its default. No rule on a field that existed before them is tightened
+// (17.1): project-file.js refuses a current-version file on any finding.
 
 import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CHANGE_KINDS, PUBLISH_VIEWS, CHECK_KINDS, CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY } from './schema.js';
 import { isId, ID_LENGTH } from './ids.js';
 import { roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isCellScale, CELL_SCALE_UNITS, CELL_LENGTH_MOST } from './schema.js';
+import { LATER_PUBLISH_VIEWS, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DAYS_MOST, ROTATION_RANGE, DATE_LABEL_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, spacelessKey, textLength } from './schema.js';
+import { isCalendarDate, daysBetween } from './calendar.js';
 
 function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -172,6 +181,134 @@ export function validate(project) {
       }
       return undefined;
     });
+  }
+
+  // ---- day types: the fields of ARCHITECTURE 17.2
+  if (Array.isArray(project.dayTypes)) {
+    const shorts = new Map();
+    project.dayTypes.forEach((dayType, i) => {
+      if (!isObject(dayType)) return;
+      const path = 'dayTypes[' + i + ']';
+      const own = i === 0 || dayType.own === true;
+      if (dayType.sameAs !== undefined && dayType.sameAs !== null) {
+        if (own) add(path + '.sameAs', 'A day type that is its own copy is the same as nothing: sameAs is null.');
+        else if (!isString(dayType.sameAs) || !ownIds.has(dayType.sameAs) || dayType.sameAs === dayType.id) add(path + '.sameAs', 'A day type is the same as another day type that is its own copy, named by its id, or null for the first.');
+      }
+      if (dayType.short !== undefined) {
+        if (!isString(dayType.short) || textLength(dayType.short) > SHORT_MOST) {
+          add(path + '.short', 'A short name is text of at most ' + SHORT_MOST + ' characters; empty means it is worked out from the name.');
+        } else if (dayType.short !== '') {
+          const key = dayType.short.toLowerCase();
+          if (shorts.has(key)) add(path + '.short', 'The short name "' + dayType.short + '" is already used at ' + shorts.get(key) + '. Each day type has its own.');
+          else shorts.set(key, path);
+        }
+      }
+    });
+  }
+
+  // ---- bell schedules (ARCHITECTURE 17.3)
+  const bellIds = new Set();
+  if (project.bellSchedules !== undefined) {
+    if (!Array.isArray(project.bellSchedules)) {
+      add('bellSchedules', 'The bell schedules are a list.');
+    } else {
+      if (project.bellSchedules.length > BELL_SCHEDULES_MOST) add('bellSchedules', 'A project has at most ' + BELL_SCHEDULES_MOST + ' bell schedules, not ' + project.bellSchedules.length + '.');
+      const names = new Map();
+      const shorts = new Map();
+      project.bellSchedules.forEach((schedule, i) => {
+        const path = 'bellSchedules[' + i + ']';
+        if (!isObject(schedule)) return add(path, 'A bell schedule is an object.');
+        const id = checkId(path, schedule, 'b');
+        if (id) bellIds.add(id);
+        if (isBlank(schedule.name)) {
+          add(path + '.name', 'A bell schedule has a name.');
+        } else if (textLength(schedule.name) > NAME_MOST) {
+          add(path + '.name', 'A bell schedule\'s name is at most ' + NAME_MOST + ' characters.');
+        } else {
+          const key = spacelessKey(schedule.name);
+          if (names.has(key)) add(path + '.name', 'The name "' + schedule.name + '" is already used at ' + names.get(key) + '. Bell schedule names are unique, whatever the capitals and spaces.');
+          else names.set(key, path);
+        }
+        if (!isString(schedule.short) || textLength(schedule.short) > SHORT_MOST) {
+          add(path + '.short', 'A short name is text of at most ' + SHORT_MOST + ' characters; empty means it is worked out from the name.');
+        } else if (schedule.short !== '') {
+          const key = schedule.short.toLowerCase();
+          if (shorts.has(key)) add(path + '.short', 'The short name "' + schedule.short + '" is already used at ' + shorts.get(key) + '. Each bell schedule has its own.');
+          else shorts.set(key, path);
+        }
+        if (!Array.isArray(schedule.bells)) {
+          add(path + '.bells', 'A bell schedule\'s times are a list with one entry per period.');
+        } else {
+          if (periods !== null && schedule.bells.length !== periods) add(path + '.bells', 'A bell schedule has one entry per period: ' + periods + ', not ' + schedule.bells.length + '.');
+          schedule.bells.forEach((bell, p) => {
+            if (bell !== null && (!isObject(bell) || !isBellTime(bell.start) || !isBellTime(bell.end))) add(path + '.bells[' + p + ']', 'A bell entry is null, or a start and an end written HH:MM on the 24-hour clock.');
+          });
+        }
+        const off = schedule.off;
+        const sorted = Array.isArray(off) && off.every((period, k) => Number.isInteger(period) && period >= 0 && (k === 0 || period > off[k - 1]));
+        if (!sorted) add(path + '.off', 'The periods that do not meet are a list of period numbers from 0, each once, in order.');
+        else if (periods !== null && off.length > 0 && off[off.length - 1] >= periods) add(path + '.off', 'Period ' + off[off.length - 1] + ' does not meet, and the school day has ' + periods + ' periods, numbered from 0.');
+        return undefined;
+      });
+    }
+  }
+
+  // ---- the calendar (ARCHITECTURE 17.4)
+  const calendar = project.calendar;
+  if (calendar !== undefined && calendar !== null) {
+    if (!isObject(calendar)) {
+      add('calendar', 'The calendar is null or an object.');
+    } else {
+      const startOk = isCalendarDate(calendar.start);
+      const endOk = isCalendarDate(calendar.end);
+      if (!startOk) add('calendar.start', 'The calendar\'s first day is a date written YYYY-MM-DD.');
+      if (!endOk) add('calendar.end', 'The calendar\'s last day is a date written YYYY-MM-DD.');
+      if (startOk && endOk) {
+        const count = daysBetween(calendar.start, calendar.end) + 1;
+        if (count < 1) add('calendar.end', 'The calendar\'s last day is not before its first.');
+        else if (count > CALENDAR_DAYS_MOST) add('calendar.end', 'A calendar covers at most ' + CALENDAR_DAYS_MOST + ' days; this one covers ' + count + '.');
+      }
+      const dayValue = (value) => value === DAY_ROTATION || value === DAY_CLOSED || dayTypeIds.has(value);
+      if (!Array.isArray(calendar.weekdays) || calendar.weekdays.length !== 7) {
+        add('calendar.weekdays', 'The calendar has one rule for each of the seven weekdays, Monday first.');
+      } else {
+        calendar.weekdays.forEach((rule, w) => {
+          const path = 'calendar.weekdays[' + w + ']';
+          if (!isObject(rule)) return add(path, 'A weekday\'s rule is an object.');
+          if (!dayValue(rule.day)) add(path + '.day', 'A weekday is "' + DAY_ROTATION + '", "' + DAY_CLOSED + '" or the id of a day type.');
+          if (rule.bells !== null && !bellIds.has(rule.bells)) add(path + '.bells', 'A weekday\'s bells are null, the regular bells, or the id of a bell schedule.');
+          return undefined;
+        });
+      }
+      const rotation = calendar.rotation;
+      if (!Array.isArray(rotation) || rotation.length < ROTATION_RANGE[0] || rotation.length > ROTATION_RANGE[1]) {
+        add('calendar.rotation', 'The rotation is a list of ' + ROTATION_RANGE[0] + ' to ' + ROTATION_RANGE[1] + ' day type ids.');
+      } else {
+        rotation.forEach((dayTypeId, r) => {
+          if (!dayTypeIds.has(dayTypeId)) add('calendar.rotation[' + r + ']', 'There is no day type with the id "' + dayTypeId + '".');
+        });
+      }
+      if (!Array.isArray(calendar.dates)) {
+        add('calendar.dates', 'The dated changes are a list.');
+      } else {
+        let last = null;
+        calendar.dates.forEach((entry, d) => {
+          const path = 'calendar.dates[' + d + ']';
+          if (!isObject(entry)) return add(path, 'A dated change is an object.');
+          if (!isCalendarDate(entry.date)) {
+            add(path + '.date', 'A dated change names a date written YYYY-MM-DD.');
+          } else {
+            if (last !== null && entry.date <= last) add(path + '.date', 'The dated changes are in date order, one for each date; ' + entry.date + ' comes after ' + last + '.');
+            last = entry.date;
+          }
+          if (!dayValue(entry.day)) add(path + '.day', 'A dated change says "' + DAY_ROTATION + '", "' + DAY_CLOSED + '" or the id of a day type.');
+          if (entry.bells !== null && entry.bells !== BELLS_REGULAR && !bellIds.has(entry.bells)) add(path + '.bells', 'A dated change\'s bells are null (as the weekday says), "' + BELLS_REGULAR + '" or the id of a bell schedule.');
+          if (!isString(entry.label) || textLength(entry.label) > DATE_LABEL_MOST) add(path + '.label', 'A dated change\'s note is text of at most ' + DATE_LABEL_MOST + ' characters.');
+          return undefined;
+        });
+      }
+      if (calendar.changedAt !== null && !isIsoDate(calendar.changedAt)) add('calendar.changedAt', 'When the calendar last changed is null or an ISO date in UTC.');
+    }
   }
 
   // ---- building
@@ -566,7 +703,9 @@ export function validate(project) {
       add('publish.views', 'The published views are an object.');
     } else {
       for (const view of PUBLISH_VIEWS) if (typeof publish.views[view] !== 'boolean') add('publish.views.' + view, 'Each published view is switched on or off, true or false.');
+      for (const view of LATER_PUBLISH_VIEWS) if (publish.views[view] !== undefined && typeof publish.views[view] !== 'boolean') add('publish.views.' + view, 'Each published view is switched on or off, true or false.');
     }
+    if (publish.staleAtCalendarEnd !== undefined && typeof publish.staleAtCalendarEnd !== 'boolean') add('publish.staleAtCalendarEnd', 'Whether a published file is stale after the calendar\'s last day is true or false.');
     if (typeof publish.teacherNamesOnMap !== 'boolean') add('publish.teacherNamesOnMap', 'Teacher names on the map is true or false.');
     if (publish.lastPublishedAt !== null && !isIsoDate(publish.lastPublishedAt)) add('publish.lastPublishedAt', 'The last published time is null or an ISO date in UTC.');
   }

@@ -41,8 +41,10 @@
 
 import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CHANGE_KINDS, PUBLISH_VIEWS, CHECK_KINDS, CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY, DEFAULT_FLOOR_WIDTH, DEFAULT_FLOOR_HEIGHT, DEFAULT_OTHER_COLOUR, DEFAULT_DAY_TYPE_NAMES } from './schema.js';
 import { defaultSettings, defaultPublish, defaultOnboarding, emptyCells, emptySlot, emptyDay, newFloor, newDayType, roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isEdgeCorridorCell, nextGroupColour, nextConnectionLabel, isCellScale } from './schema.js';
+import { LATER_PUBLISH_VIEWS, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DAYS_MOST, ROTATION_RANGE, DATE_LABEL_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, WEEKDAY_NAMES, defaultWeekdays, spacelessKey, textLength } from './schema.js';
 import { DEFAULT_PASSCODE } from './publish-defaults.js';
 import { createIds, seededRandom, collectIds, isId } from './ids.js';
+import { isCalendarDate, daysBetween, addDays, weekdayOf, dateWords } from './calendar.js';
 
 const FALLBACK_DATE = '1970-01-01T00:00:00.000Z';
 const FALLBACK_SUBJECT_COLOUR = '#5a6b7b';
@@ -78,7 +80,7 @@ export function repair(input, options) {
   // id can follow it. The old id is never an id of that kind, so it cannot
   // also be the id of a thing of that kind that kept its own.
   const seenIds = new Set();
-  const renamed = { s: new Map(), t: new Map(), d: new Map(), f: new Map(), r: new Map(), g: new Map() };
+  const renamed = { s: new Map(), t: new Map(), d: new Map(), f: new Map(), r: new Map(), g: new Map(), b: new Map() };
   const claimId = (thing, prefix, what) => {
     const id = thing.id;
     if (isId(id, prefix) && !seenIds.has(id)) {
@@ -186,6 +188,7 @@ export function repair(input, options) {
     for (const day of Object.values(group.days)) if (Array.isArray(day)) longest = Math.max(longest, day.length);
   }
   for (const dayType of rawDayTypes) if (Array.isArray(dayType.bells)) longest = Math.max(longest, dayType.bells.length);
+  if (Array.isArray(source.bellSchedules)) for (const schedule of source.bellSchedules) if (isObject(schedule) && Array.isArray(schedule.bells)) longest = Math.max(longest, schedule.bells.length);
   if (!inRange(settings.periods, RANGES.periods)) {
     const had = settings.periods;
     settings.periods = longest === 0 ? defaults.periods : Math.min(RANGES.periods[1], longest);
@@ -366,6 +369,43 @@ export function repair(input, options) {
   });
   project.dayTypes = dayTypes;
   const baseId = dayTypes[0].id;
+
+  // sameAs names another own day type, one hop, or is null for the first
+  for (const dayType of dayTypes) {
+    if (dayType.sameAs === undefined) continue;
+    const value = typeof dayType.sameAs === 'string' ? follow('d', dayType.sameAs) : dayType.sameAs;
+    const own = ownIds.has(dayType.id);
+    const sound = value === null || (!own && typeof value === 'string' && value !== dayType.id && ownIds.has(value));
+    if (sound) {
+      if (value !== dayType.sameAs) dayType.sameAs = value;
+      continue;
+    }
+    if (own) note(dayType.name + ' is its own copy, so it is the same as nothing; what it said it was the same as was cleared.');
+    else note(dayType.name + ' was the same as something that is not a day type with its own classes, so it is the same as ' + dayTypes[0].name + ' now.');
+    dayType.sameAs = null;
+  }
+  // a typed short name: text, at most SHORT_MOST characters, one per day type
+  const shortOf = (thing, taken, what) => {
+    if (thing.short === undefined) return;
+    if (typeof thing.short !== 'string') {
+      note('The short name of ' + what + ' was not text and was cleared; it is worked out from the name.');
+      thing.short = '';
+      return;
+    }
+    let short = thing.short;
+    if (textLength(short) > SHORT_MOST) {
+      short = Array.from(short).slice(0, SHORT_MOST).join('');
+      note('The short name of ' + what + ' was longer than ' + SHORT_MOST + ' characters and is now "' + short + '".');
+    }
+    if (short !== '' && taken.has(short.toLowerCase())) {
+      note('The short name "' + short + '" of ' + what + ' was already used, so it was cleared and is worked out from the name.');
+      short = '';
+    }
+    if (short !== '') taken.add(short.toLowerCase());
+    if (short !== thing.short) thing.short = short;
+  };
+  const dayShorts = new Set();
+  for (const dayType of dayTypes) shortOf(dayType, dayShorts, dayType.name);
 
   // ---- building
   if (source.building !== undefined && !isObject(source.building)) note('The building could not be read and was emptied.');
@@ -809,6 +849,219 @@ export function repair(input, options) {
   }
   project.groups = groups;
 
+  // ---- bell schedules (ARCHITECTURE 17.3)
+  const bellIds = new Set();
+  if (source.bellSchedules !== undefined) {
+    let list = objects(source.bellSchedules, 'bell schedules');
+    if (list.length > BELL_SCHEDULES_MOST) {
+      note('There were ' + list.length + ' bell schedules, and a project has at most ' + BELL_SCHEDULES_MOST + '; the last ' + plural(list.length - BELL_SCHEDULES_MOST, 'was', 'were') + ' removed.');
+      list = list.slice(0, BELL_SCHEDULES_MOST);
+    }
+    const names = new Set();
+    const shorts = new Set();
+    project.bellSchedules = list.map((raw, i) => {
+      const schedule = { ...raw };
+      schedule.id = claimId(schedule, 'b', 'A bell schedule');
+      bellIds.add(schedule.id);
+      if (typeof schedule.name !== 'string' || schedule.name.trim() === '') {
+        note('A bell schedule had no name and is now called "Bell schedule ' + (i + 1) + '".');
+        schedule.name = 'Bell schedule ' + (i + 1);
+      }
+      if (textLength(schedule.name) > NAME_MOST) {
+        const cut = Array.from(schedule.name).slice(0, NAME_MOST).join('');
+        note('The bell schedule "' + schedule.name + '" had a name longer than ' + NAME_MOST + ' characters and is now "' + cut + '".');
+        schedule.name = cut;
+      }
+      if (names.has(spacelessKey(schedule.name))) {
+        const had = schedule.name;
+        for (let n = 2; ; n += 1) {
+          const suffix = ' (' + n + ')';
+          const candidate = Array.from(had).slice(0, NAME_MOST - suffix.length).join('') + suffix;
+          if (!names.has(spacelessKey(candidate))) {
+            schedule.name = candidate;
+            break;
+          }
+        }
+        note('Two bell schedules were both called "' + had + '". The second is now "' + schedule.name + '".');
+      }
+      names.add(spacelessKey(schedule.name));
+      if (schedule.short === undefined) schedule.short = '';
+      shortOf(schedule, shorts, 'the bell schedule "' + schedule.name + '"');
+      let bells = schedule.bells;
+      if (!Array.isArray(bells)) {
+        if (bells !== undefined) note('The times of the bell schedule "' + schedule.name + '" could not be read and were emptied.');
+        bells = [];
+      }
+      let fixed = bells.map((bell) => (bell === null || (isObject(bell) && isBellTime(bell.start) && isBellTime(bell.end)) ? bell : undefined));
+      const bad = fixed.filter((bell) => bell === undefined).length;
+      if (bad > 0) {
+        note(plural(bad, 'bell time', 'bell times') + ' of the bell schedule "' + schedule.name + '" could not be read and ' + (bad === 1 ? 'was' : 'were') + ' cleared.');
+        fixed = fixed.map((bell) => (bell === undefined ? null : bell));
+      }
+      if (fixed.length > periods) {
+        const lost = fixed.slice(periods).filter((bell) => bell !== null).length;
+        if (lost > 0) note('The bell schedule "' + schedule.name + '" had times for more periods than the school has; ' + plural(lost, 'entry was', 'entries were') + ' removed.');
+        fixed = fixed.slice(0, periods);
+      }
+      while (fixed.length < periods) fixed.push(null);
+      if (bad > 0 || fixed.length !== bells.length || !Array.isArray(schedule.bells)) schedule.bells = fixed;
+      const off = schedule.off;
+      if (!Array.isArray(off)) {
+        if (off !== undefined) note('The periods that do not meet under "' + schedule.name + '" could not be read; every period meets.');
+        schedule.off = [];
+      } else {
+        const kept = Array.from(new Set(off.filter((period) => Number.isInteger(period) && period >= 0 && period < periods))).sort((a, b) => a - b);
+        if (kept.length !== off.length || kept.some((period, k) => period !== off[k])) {
+          if (kept.length !== off.length) note('The periods that do not meet under "' + schedule.name + '" listed ' + plural(off.length - kept.length, 'entry', 'entries') + ' that are not a period of the day, or the same one twice; ' + (off.length - kept.length === 1 ? 'it was' : 'they were') + ' removed.');
+          schedule.off = kept;
+        }
+      }
+      return schedule;
+    });
+  }
+
+  // ---- the calendar (ARCHITECTURE 17.4)
+  if (source.calendar !== undefined && source.calendar !== null) {
+    const raw = source.calendar;
+    const dayIds = new Set(dayTypes.map((dayType) => dayType.id));
+    const dayValue = (value) => {
+      const followed = typeof value === 'string' ? follow('d', value) : value;
+      return followed === DAY_ROTATION || followed === DAY_CLOSED || dayIds.has(followed) ? followed : undefined;
+    };
+    const bellsValue = (value, regular) => {
+      if (value === null || (regular && value === BELLS_REGULAR)) return value;
+      const followed = typeof value === 'string' ? follow('b', value) : value;
+      return bellIds.has(followed) ? followed : undefined;
+    };
+    if (!isObject(raw) || !isCalendarDate(raw.start) || !isCalendarDate(raw.end)) {
+      note(isObject(raw) ? 'The calendar had no first or last day that is a date, so it was removed.' : 'The calendar could not be read and was removed.');
+      project.calendar = null;
+    } else {
+      const calendar = { ...raw };
+      if (calendar.start > calendar.end) {
+        note('The calendar\'s first day was after its last; the two were swapped.');
+        calendar.start = raw.end;
+        calendar.end = raw.start;
+      }
+      if (daysBetween(calendar.start, calendar.end) + 1 > CALENDAR_DAYS_MOST) {
+        const end = addDays(calendar.start, CALENDAR_DAYS_MOST - 1);
+        note('The calendar covered ' + (daysBetween(calendar.start, calendar.end) + 1) + ' days, and covers at most ' + CALENDAR_DAYS_MOST + '; it now ends on ' + dateWords(end) + '.');
+        calendar.end = end;
+      }
+      // weekdays: seven rules, Monday first
+      const defaults = defaultWeekdays();
+      const rawWeekdays = Array.isArray(calendar.weekdays) ? calendar.weekdays : [];
+      if (calendar.weekdays !== undefined && !(Array.isArray(calendar.weekdays) && calendar.weekdays.length === 7)) note('The calendar\'s weekday rules were not one for each of the seven days; the missing ones are Monday to Friday in the rotation and no school at the weekend.');
+      let weekdaysChanged = !(Array.isArray(calendar.weekdays) && calendar.weekdays.length === 7);
+      const weekdays = defaults.map((fallback, w) => {
+        const entry = rawWeekdays[w];
+        if (!isObject(entry)) {
+          if (entry !== undefined) note('The rule for ' + WEEKDAY_NAMES[w] + ' could not be read and was reset.');
+          weekdaysChanged = true;
+          return fallback;
+        }
+        let rule = entry;
+        const set = (key, value) => {
+          if (rule === entry) rule = { ...entry };
+          rule[key] = value;
+          weekdaysChanged = true;
+        };
+        const day = dayValue(entry.day);
+        if (day === undefined) {
+          if (entry.day !== undefined) note(WEEKDAY_NAMES[w] + ' named a day type that is not in the project, so it takes the rotation now.');
+          set('day', DAY_ROTATION);
+        } else if (day !== entry.day) set('day', day);
+        const bells = entry.bells === undefined ? null : bellsValue(entry.bells, false);
+        if (bells === undefined) {
+          note(WEEKDAY_NAMES[w] + ' named a bell schedule that is not in the project, so it has the regular bells now.');
+          set('bells', null);
+        } else if (bells !== entry.bells) set('bells', bells);
+        return rule;
+      });
+      if (weekdaysChanged) calendar.weekdays = weekdays;
+      // the rotation: day types that exist, 1 to 24 of them
+      const rawRotation = Array.isArray(calendar.rotation) ? calendar.rotation : [];
+      if (calendar.rotation !== undefined && !Array.isArray(calendar.rotation)) note('The calendar\'s rotation could not be read.');
+      let rotation = rawRotation.map((id) => (typeof id === 'string' ? follow('d', id) : id));
+      const knownRotation = rotation.filter((id) => dayIds.has(id));
+      if (knownRotation.length !== rotation.length) note('The rotation named ' + plural(rotation.length - knownRotation.length, 'day type', 'day types') + ' not in the project; ' + (rotation.length - knownRotation.length === 1 ? 'that entry was' : 'those entries were') + ' removed.');
+      rotation = knownRotation;
+      if (rotation.length > ROTATION_RANGE[1]) {
+        note('The rotation had ' + rotation.length + ' entries, and has at most ' + ROTATION_RANGE[1] + '; the rest were removed.');
+        rotation = rotation.slice(0, ROTATION_RANGE[1]);
+      }
+      if (rotation.length === 0) {
+        if (calendar.rotation !== undefined) note('The rotation was empty, so it is ' + dayTypes[0].name + ' every school day now.');
+        rotation = [baseId];
+      }
+      if (!Array.isArray(calendar.rotation) || rotation.length !== calendar.rotation.length || rotation.some((id, r) => id !== calendar.rotation[r])) calendar.rotation = rotation;
+      // the dated changes: real dates, in order, one per date, each saying something
+      const rawDates = objects(calendar.dates, 'dated changes in the calendar');
+      let datesChanged = !Array.isArray(calendar.dates) || rawDates.length !== calendar.dates.length;
+      const counts = { date: 0, day: 0, bells: 0, label: 0 };
+      let dates = [];
+      for (const entry of rawDates) {
+        if (!isCalendarDate(entry.date)) {
+          counts.date += 1;
+          datesChanged = true;
+          continue;
+        }
+        const day = dayValue(entry.day);
+        if (day === undefined) {
+          counts.day += 1;
+          datesChanged = true;
+          continue;
+        }
+        let next = entry;
+        const set = (key, value) => {
+          if (next === entry) next = { ...entry };
+          next[key] = value;
+          datesChanged = true;
+        };
+        if (day !== entry.day) set('day', day);
+        const bells = entry.bells === undefined ? null : bellsValue(entry.bells, true);
+        if (bells === undefined) {
+          counts.bells += 1;
+          set('bells', null);
+        } else if (bells !== entry.bells) set('bells', bells);
+        if (typeof entry.label !== 'string') {
+          if (entry.label !== undefined) counts.label += 1;
+          set('label', '');
+        } else if (textLength(entry.label) > DATE_LABEL_MOST) {
+          counts.label += 1;
+          set('label', Array.from(entry.label).slice(0, DATE_LABEL_MOST).join(''));
+        }
+        dates.push(next);
+      }
+      if (counts.date > 0) note(plural(counts.date, 'dated change in the calendar was', 'dated changes in the calendar were') + ' not on a date and ' + (counts.date === 1 ? 'was' : 'were') + ' removed.');
+      if (counts.day > 0) note(plural(counts.day, 'dated change in the calendar named', 'dated changes in the calendar named') + ' a day type that is not in the project and ' + (counts.day === 1 ? 'was' : 'were') + ' removed.');
+      if (counts.bells > 0) note(plural(counts.bells, 'dated change in the calendar named', 'dated changes in the calendar named') + ' a bell schedule that is not in the project and now ' + (counts.bells === 1 ? 'follows' : 'follow') + ' the weekday\'s bells.');
+      if (counts.label > 0) note(plural(counts.label, 'note on a date in the calendar was', 'notes on dates in the calendar were') + ' not text, or longer than ' + DATE_LABEL_MOST + ' characters, and ' + (counts.label === 1 ? 'was' : 'were') + ' cut or cleared.');
+      const sorted = dates.every((entry, d) => d === 0 || entry.date > dates[d - 1].date);
+      if (!sorted) {
+        const byDate = new Map();
+        for (const entry of dates) byDate.set(entry.date, entry);
+        const kept = Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? -1 : 1));
+        if (kept.length !== dates.length) note(plural(dates.length - kept.length, 'date in the calendar had', 'dates in the calendar had') + ' two changes; the later in the list was kept.');
+        dates = kept;
+        datesChanged = true;
+      }
+      const silent = dates.filter((entry) => entry.day === DAY_ROTATION && entry.bells === null && entry.label === '' && calendar.weekdays[weekdayOf(entry.date)].day === DAY_ROTATION);
+      if (silent.length > 0) {
+        note(plural(silent.length, 'dated change in the calendar said', 'dated changes in the calendar said') + ' nothing the weekday did not and ' + (silent.length === 1 ? 'was' : 'were') + ' removed.');
+        dates = dates.filter((entry) => !silent.includes(entry));
+        datesChanged = true;
+      }
+      if (datesChanged) calendar.dates = dates;
+      if (calendar.changedAt === undefined) calendar.changedAt = null;
+      else if (calendar.changedAt !== null && !isIsoDate(calendar.changedAt)) {
+        note('When the calendar last changed could not be read and was cleared.');
+        calendar.changedAt = null;
+      }
+      project.calendar = calendar;
+    }
+  }
+
   if (!published) {
     // ---- accepted findings
     const accepted = objects(source.accepted, 'accepted findings');
@@ -888,7 +1141,9 @@ export function repair(input, options) {
     const views = isObject(publish.views) ? { ...publish.views } : {};
     publish.views = views;
     for (const view of PUBLISH_VIEWS) flag(views, view, true, 'Whether the ' + view + ' view is published');
+    for (const view of LATER_PUBLISH_VIEWS) if (views[view] !== undefined) flag(views, view, true, 'Whether the ' + view + ' view is published');
     flag(publish, 'teacherNamesOnMap', publishDefaults.teacherNamesOnMap, 'Teacher names on the map');
+    if (publish.staleAtCalendarEnd !== undefined) flag(publish, 'staleAtCalendarEnd', publishDefaults.staleAtCalendarEnd, 'Whether a published file is stale after the calendar\'s last day');
     if (publish.lastPublishedAt !== null && !isIsoDate(publish.lastPublishedAt)) {
       if (publish.lastPublishedAt !== undefined) note('The last published time could not be read and was cleared.');
       publish.lastPublishedAt = null;
