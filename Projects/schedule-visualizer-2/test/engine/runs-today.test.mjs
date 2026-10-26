@@ -3,7 +3,9 @@
 // worked by run (SV2-76): node test/engine/runs-today.test.mjs
 //
 // The hashes below were recorded from `sv2` at 6c872439, the commit before
-// SV2-76 changed any engine, by running this file with SV2_RUNS_PRINT=1. Each
+// SV2-76 changed any engine, by running this file with SV2_RUNS_PRINT=1
+// inside that commit's tool folder (`git archive 6c872439
+// Projects/schedule-visualizer-2` unpacked elsewhere, this file copied in). Each
 // is the sha-256 of one result written out in full: every typed array
 // element by element, every Map and Set as its entries, keys in the order
 // the engine made them. So a renamed field, a field added to a regular run,
@@ -93,13 +95,13 @@ function scenarioSchool() {
 
 const RECORDED = {
   'sample school: pipeline': '0291d33e5c9a98b099a513809f9fa5d959dc1c5732ce86b3b32afe7b861137c3',
-  'sample school: engines one by one': '31ddd3007f1f1383acc9ca24321b269f867ec4afb1991d5be6c720f6622325f3',
+  'sample school: engines one by one': '5404d2ec5d5165cf592f6c095b9377bbe3d946c28917c114fff3fc349899a658',
   'sample school: one transition and one day': '16099535543cb3c911be672a5e9365a46549db860e883e94b1d1163855a27138',
   'sample school: a one-slot edit kept and packed': '334979613d2e7ae0191af3ab41e1984245ae63f8f7b7d1aab7c060843c728e11',
   'sample school: scenario lane and comparison': 'e205ecbb5d5caf96ae0d43e17f6ce08d0f32e5d2e3331c2f2afc69b6bbb5b9aa',
   'sample school: suggestions for the double booking and the long walk': 'ad893b0e9a33abf9fc109dce9cc3761bb88714df3aba3bebcd2a3aeaa5033f1d',
   'B Day same as A Day, as an older file says it: pipeline': 'da4ea50e951422160fdeb06f144a2999d7e4ee56d19749dc3a5a6809aa7ef9f4',
-  'one teacher walking with 7A: pipeline': '97edace53efdd2857a03f129674c60aa745abd5a52b7a5a334e9b3ea52f7760d',
+  'one teacher walking with 7A: pipeline': '7411307f41d50093fd1d644f94b5df3e24530d5ad8b8f52eb262a8588e4a55af',
   'the 3.13 fixture: pipeline': 'dd0294ebe4d807667da8d004b6ad9b3194ab390121226ceb8a26a3642ef843e5',
 };
 
@@ -110,6 +112,12 @@ function agree(name, value) {
   seen[name] = got;
   if (PRINT) return;
   assert.equal(got, RECORDED[name], name + ': the result is not byte for byte what it was before SV2-76');
+}
+
+// The nodes of the first walked route of the first group on A Day.
+function crossed(graph, routes) {
+  const found = routes.days[0].groups[0].routes.find((one) => one.ok && !one.same);
+  return found.cells.map((place) => graph.floors[graph.floorIndex.get(place.floorId)].nodeOfCell[place.cell]);
 }
 
 function engines(project) {
@@ -124,7 +132,7 @@ function engines(project) {
     teachers: teacherWalks(project, graph),
     loads: ownDayTypes(project).map((dayType) => loads(project, routes, dayType.id, graph)),
     findings: checkSchedule(project, walks),
-    contributors: contributors(project, routes, 'dsample00a', { kind: 'cell', floorId: project.building.floors[0].id, cell: routes.days[0].groups[0].routes.find((found) => found.ok && !found.same).cells[0].cell }, graph),
+    contributors: contributors(project, routes, 'dsample00a', { nodes: crossed(graph, routes) }, graph),
   };
 }
 
