@@ -15,15 +15,18 @@
 // `excluded`: the colour scale and the hotspot table leave them out. A
 // connection is excluded when either of its ends is in a zone.
 //
-//   loads(project, routes, dayTypeId, graph?)
+//   loads(project, routes, dayTypeId, graph?, bellsId?)
 //
-// `routes` is what routesForSchedule() gave; `graph` is buildGraph(project)
-// or routingGraph(project) when the caller has one. A day type that is the
-// same as A Day is answered from A Day. Null when the day type or its routes
-// are not there. The result, with every array indexed by graph node (cells)
-// or by index into graph.links (connections):
+// `routes` is what routesByRun() (crowd.js) or routesForSchedule() gave;
+// `graph` is buildGraph(project) or routingGraph(project) when the caller
+// has one. A day type that is the same as A Day is answered from A Day.
+// With bellsId, a bell schedule's id, the day type's run under that
+// schedule (ARCHITECTURE 17.8): its routes are in routes.bells, and a walk
+// into or out of a period that does not meet is no walk. Null when the day
+// type or the run's routes are not there. The result, with every array
+// indexed by graph node (cells) or by index into graph.links (connections):
 //
-//   { dayTypeId, unit: 'students' | 'groups', transitions,
+//   { dayTypeId, bellsId (a bell-schedule run only), unit: 'students' | 'groups', transitions,
 //     cells:       { busiest, total, peak, byTransition: [Int32Array] },
 //     connections: { busiest, total, peak, byTransition: [Int32Array] },
 //       peak is the first transition in which the busiest load is reached, −1 where nothing crosses
@@ -32,13 +35,16 @@
 //     zones,               how many exclusion zones the building has
 //     max: { busiest, total } }   the highest of each over what is not excluded, cells and connections together
 //
-//   contributors(project, routes, dayTypeId, where, graph?)
+//   contributors(project, routes, dayTypeId, where, graph?, options?)
 //     the groups that cross `where` ({ nodes, links }, lists or Sets, either
 //     may be left out), busiest first:
 //     [{ groupId, count, times, transitions }] with count the load one
 //     crossing adds, times how many transitions the group crosses in (once a
 //     transition, however many of the cells it walks) and transitions which.
-//     options.period keeps one transition only.
+//     options.period keeps one transition only; options.bellsId asks
+//     about the day type's run under that bell schedule.
+//
+//   indexRoutes(project, routes, dayTypeId, graph?, bellsId?)
 //
 //   bandOf(load, scale, max) and bandEdges(scale, max)
 //     the five colour bands, quiet to busy. `scale` is settings.colourScale.
@@ -52,6 +58,7 @@
 import { RANGES, inRange, defaultSettings } from './schema.js';
 import { buildGraph } from './graph.js';
 import { effectiveDayType } from './day-types.js';
+import { runRoutes } from './routing.js';
 
 export const LOAD_BANDS = 5;
 
@@ -69,11 +76,11 @@ function counting(project) {
   return { unit: students ? 'students' : 'groups', countOf };
 }
 
-function dayOf(project, routes, dayTypeId) {
+function dayOf(project, routes, dayTypeId, bellsId) {
   const dayType = effectiveDayType(project, dayTypeId);
-  if (!dayType || !routes || !Array.isArray(routes.days)) return null;
-  const day = routes.days.find((candidate) => candidate.dayTypeId === dayType.id);
-  return day ? { dayType, day } : null;
+  if (!dayType) return null;
+  const day = runRoutes(routes, dayType.id, bellsId);
+  return day ? { dayType, day, bellsId: typeof bellsId === 'string' ? bellsId : null } : null;
 }
 
 // Calls back with each node and each link a found route crosses. A cell or a
@@ -139,8 +146,8 @@ function summarise(byTransition, size) {
 }
 
 // How busy is this cell?
-export function loads(project, routes, dayTypeId, graph) {
-  const found = dayOf(project, routes, dayTypeId);
+export function loads(project, routes, dayTypeId, graph, bellsId) {
+  const found = dayOf(project, routes, dayTypeId, bellsId);
   if (!found) return null;
   const base = graph || buildGraph(project);
   const linkOfId = linkIndex(base);
@@ -179,7 +186,8 @@ export function loads(project, routes, dayTypeId, graph) {
     if (connections.busiest[index] > max.busiest) max.busiest = connections.busiest[index];
     if (connections.total[index] > max.total) max.total = connections.total[index];
   }
-  return { dayTypeId: found.dayType.id, unit, transitions, cells, connections, excluded, excludedConnections, zones, max };
+  const head = found.bellsId === null ? { dayTypeId: found.dayType.id } : { dayTypeId: found.dayType.id, bellsId: found.bellsId };
+  return { ...head, unit, transitions, cells, connections, excluded, excludedConnections, zones, max };
 }
 
 // The index of routes by node: for one group's routes of a day (an entry of
@@ -209,8 +217,8 @@ function crossingsOf(entry, base, linkOfId, transitions) {
 // Work the index out now, for every group of a day: for a caller that would
 // rather pay for it when the answer arrives than when the first cell is
 // pointed at (the movement view's picture).
-export function indexRoutes(project, routes, dayTypeId, graph) {
-  const found = dayOf(project, routes, dayTypeId);
+export function indexRoutes(project, routes, dayTypeId, graph, bellsId) {
+  const found = dayOf(project, routes, dayTypeId, bellsId);
   if (!found) return 0;
   const base = graph || buildGraph(project);
   const linkOfId = linkIndex(base);
@@ -221,7 +229,7 @@ export function indexRoutes(project, routes, dayTypeId, graph) {
 
 // Who crosses these cells and connections, and how many times.
 export function contributors(project, routes, dayTypeId, where, graph, options) {
-  const found = dayOf(project, routes, dayTypeId);
+  const found = dayOf(project, routes, dayTypeId, options ? options.bellsId : null);
   if (!found) return [];
   const base = graph || buildGraph(project);
   const linkOfId = linkIndex(base);

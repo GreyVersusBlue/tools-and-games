@@ -101,6 +101,9 @@
 //                                                  the same transition under
 //                                                  another passing time, when
 //                                                  nothing but `late` changes
+//   transitionAs(result, dayTypeId, period, bellsId?)
+//                                                  the same figures as another
+//                                                  run's transition
 //   simulateDayTransition(project, routes, dayTypeId, period, graph?, bellsId?)
 //   simulateDay(project, routes, dayTypeId, graph?, bellsId?)
 //   simulateSchedule(project, routes, graph?)      every run
@@ -510,6 +513,19 @@ function runHead(found, period) {
 function simulated(result) {
   const { dayTypeId, bellsId, period, off, ...rest } = result;
   return rest;
+}
+
+// A transition result of one run as the result of another run's transition
+// with the same walkers and the same passing time: the same figures under
+// the other run's day type, bell schedule (null or left out for regular
+// bells) and period. The very object when those already match; the parts
+// are shared, never copied.
+export function transitionAs(result, dayTypeId, period, bellsId) {
+  const bells = typeof bellsId === 'string' ? bellsId : null;
+  const was = typeof result.bellsId === 'string' ? result.bellsId : null;
+  if (result.dayTypeId === dayTypeId && result.period === period && was === bells) return result;
+  const head = bells === null ? { dayTypeId, period } : { dayTypeId, bellsId: bells, period };
+  return result.off === true ? { ...head, off: true, ...simulated(result) } : { ...head, ...simulated(result) };
 }
 
 function runTransition(project, routing, found, period, passingSeconds) {

@@ -18,15 +18,21 @@
 //                                schedule is routed again from the kept
 //                                fields, which searches nothing)
 //   places, building findings    kept while building is the same
-//   a transition's crowd result  kept while geometry is the same and the
-//                                transition has the same walkers going the
-//                                same ways with the same head counts in the
-//                                same passing time. So one changed slot runs
-//                                two transitions again, the one into the
-//                                period and the one out of it, and nothing
-//                                else.
-//   a day type's loads           kept while building is the same and nobody's
-//                                walk or head count on that day has changed
+//   a transition's crowd result  kept while geometry is the same, by what
+//                                the transition is: the walkers going the
+//                                same ways with the same head counts, the
+//                                margin and the passing time, never the day
+//                                type or the run it is in. So one changed
+//                                slot runs two transitions again, the one
+//                                into the period and the one out of it, and
+//                                nothing else; a transition two runs or two
+//                                day types have alike is worked out once;
+//                                and one whose passing time alone differs is
+//                                retimed (crowd.js retimeTransition) rather
+//                                than simulated, unless a group reaches the
+//                                cap
+//   a run's loads                kept while building is the same and nobody's
+//                                walk or head count in that run has changed
 //   walk results, findings       worked out again unless all three counters
 //                                are the same
 //
@@ -41,14 +47,27 @@
 // its own, so each pipeline's counters only have to be consistent with
 // themselves. Left out, a cache of its own, as before.
 //
+// It works by run (ARCHITECTURE 17.8): each own day type with its regular
+// bells, then each with each bell schedule (engine/runs.js runsOf). A run
+// with regular bells is keyed by its day type id and shaped exactly as a day
+// type was before bell schedules, so a project with no bell schedules gets
+// the very result it got then (test/engine/runs-today.test.mjs). The
+// bell-schedule runs sit beside the regular ones, each entry carrying its
+// bellsId, and only when there is a bell schedule: routes.bells,
+// crowd.bells, bellLoads and walks.bells. runResults(result, dayTypeId,
+// bellsId) picks one run's parts out.
+//
 // The result:
 //
 //   { versions,           the counters it was worked out for, or null
-//     routes,             routesForSchedule()
-//     crowd,              simulateSchedule(): { days: [{ dayTypeId, transitions }] }
+//     routes,             routesByRun() (crowd.js): { days, bells?, … }
+//     crowd,              simulateSchedule(): { days: [{ dayTypeId, transitions }],
+//                         bells?: [{ dayTypeId, bellsId, transitions }] }
 //     loads,              [loads() for each own day type, in order]
+//     bellLoads,          [loads() for each bell-schedule run, in runsOf's
+//                         order], only when there is one
 //     places,             places()
-//     walks,              walkResults(): { groups, teachers }
+//     walks,              walkResults(): { groups, teachers, bells?: { groups, teachers } }
 //     findings,           checkSchedule(project, walks): { findings, accepted, gone }
 //     buildingFindings,   buildingChecks()
 //     work }              what this run had to do: { run, searches,
@@ -87,10 +106,10 @@
 // about 100 ms, more than working out a one-slot change does. The page puts the parts back from the answer before
 // (unpack). Both halves of that rule are here so they cannot drift.
 
-import { ownDayTypes } from './day-types.js';
 import { bellsFor } from './bells.js';
-import { routingGraph, routesForSchedule, createRouteCache } from './routing.js';
-import { simulateDayTransition, walkResults } from './crowd.js';
+import { runsOf } from './runs.js';
+import { routingGraph, runRoutes, createRouteCache } from './routing.js';
+import { simulateDayTransition, walkResults, routesByRun, retimeTransition, transitionAs } from './crowd.js';
 import { loads } from './load.js';
 import { places } from './places.js';
 import { checkSchedule } from './checks.js';
@@ -128,6 +147,16 @@ function walkKey(project, dayRoutes, period, headCounts) {
   return pieces.join(';');
 }
 
+// A run's key in what a pipeline keeps: the day type id for regular bells,
+// as before bell schedules; the day type and the schedule otherwise.
+function runKey(dayTypeId, bellsId) {
+  return typeof bellsId === 'string' ? dayTypeId + '\u0000' + bellsId : dayTypeId;
+}
+
+function sameRun(a, b) {
+  return a.dayTypeId === b.dayTypeId && (typeof a.bellsId === 'string' ? a.bellsId : null) === (typeof b.bellsId === 'string' ? b.bellsId : null);
+}
+
 export function createPipeline(options) {
   const given = options && options.cache;
   const cache = given || createRouteCache();
@@ -152,7 +181,7 @@ export function createPipeline(options) {
     if (sameGeometry && sameSchedule) {
       routes = before.result.routes;
     } else {
-      routes = routesForSchedule(project, graph, routeOptions);
+      routes = routesByRun(project, graph, routeOptions);
       work.searches = routes.searches;
       work.routesRun = true;
     }
@@ -162,53 +191,99 @@ export function createPipeline(options) {
     const headCounts = new Map(project.groups.map((group) => [group.id, group.headCount === null || group.headCount === undefined ? 'd' + settings.defaultHeadCount : String(group.headCount)]));
     const counted = Array.from(headCounts.values()).join(',');
 
+    // The transitions worked out, by what they are: the walkers (who walks
+    // from which room to which, how many they are) and the margin, then the
+    // passing time ('off' for a transition into or out of a period that does
+    // not meet). Kept while the geometry is the same, so a transition that is
+    // the same in two runs, or in two day types, is worked out once, and one
+    // under another passing time is retimed when nothing but `late` changes.
+    const contents = new Map();
+    const earlier = sameGeometry ? before.contents : null;
+    const contentOf = (walkers, passing, make) => {
+      const what = margin + '|' + walkers;
+      if (!contents.has(what)) contents.set(what, new Map(earlier && earlier.has(what) ? earlier.get(what) : []));
+      const known = contents.get(what);
+      if (known.has(passing)) return known.get(passing);
+      for (const result of known.values()) {
+        const retimed = retimeTransition(result, passing, margin);
+        if (retimed) {
+          known.set(passing, retimed);
+          return retimed;
+        }
+      }
+      const made = make();
+      known.set(passing, made);
+      work.transitionsRun += 1;
+      return made;
+    };
+
     const crowdDays = [];
+    const crowdBells = [];
     const loadList = [];
+    const bellLoads = [];
     const keys = new Map();
     let crowdKept = before !== null;
-    for (const dayType of ownDayTypes(project)) {
-      const dayRoutes = routes.days.find((day) => day.dayTypeId === dayType.id);
+    const wasCrowd = before ? before.result.crowd : null;
+    for (const { dayTypeId, bellsId } of runsOf(project)) {
+      const dayRoutes = runRoutes(routes, dayTypeId, bellsId);
       if (!dayRoutes) continue;
-      const bells = bellsFor(project, dayType.id);
-      const was = before ? before.keys.get(dayType.id) : undefined;
-      const wasDay = was && sameGeometry ? before.result.crowd.days.find((day) => day.dayTypeId === dayType.id) : undefined;
+      const regular = bellsId === null;
+      const bells = regular ? bellsFor(project, dayTypeId) : bellsFor(project, dayTypeId, bellsId);
+      const key = runKey(dayTypeId, bellsId);
+      const was = before ? before.keys.get(key) : undefined;
+      const wasList = wasCrowd ? (regular ? wasCrowd.days : wasCrowd.bells || []) : [];
+      const wasDay = was && sameGeometry ? wasList.find((day) => sameRun(day, { dayTypeId, bellsId })) : undefined;
       const dayKeys = { transitions: [], load: '' };
       const walkKeys = [];
       const transitions = [];
       let dayKept = wasDay !== undefined && wasDay.transitions.length === settings.periods - 1;
       for (let period = 0; period + 1 < settings.periods; period += 1) {
         const walkers = walkKey(project, dayRoutes, period, headCounts);
-        const key = bells[period].passingAfter + '|' + margin + '|' + walkers;
+        const off = bells[period].off === true || bells[period + 1].off === true;
+        const passing = off ? 'off' : bells[period].passingAfter;
+        const slotKey = passing + '|' + margin + '|' + walkers;
         walkKeys.push(walkers);
-        dayKeys.transitions.push(key);
+        dayKeys.transitions.push(slotKey);
         work.transitions += 1;
-        if (wasDay && was.transitions[period] === key && wasDay.transitions[period]) {
-          transitions.push(wasDay.transitions[period]);
+        if (wasDay && was.transitions[period] === slotKey && wasDay.transitions[period]) {
+          const kept = wasDay.transitions[period];
+          transitions.push(kept);
+          const what = margin + '|' + walkers;
+          if (!contents.has(what)) contents.set(what, new Map(earlier && earlier.has(what) ? earlier.get(what) : []));
+          if (!contents.get(what).has(passing)) contents.get(what).set(passing, kept);
         } else {
-          transitions.push(simulateDayTransition(project, routes, dayType.id, period, graph));
-          work.transitionsRun += 1;
+          const result = contentOf(walkers, passing, () => simulateDayTransition(project, routes, dayTypeId, period, graph, regular ? undefined : bellsId));
+          transitions.push(transitionAs(result, dayTypeId, period, bellsId));
           dayKept = false;
         }
       }
+      const day = regular ? { dayTypeId, transitions } : { dayTypeId, bellsId, transitions };
       if (dayKept) {
-        crowdDays.push(wasDay);
+        (regular ? crowdDays : crowdBells).push(wasDay);
       } else {
-        crowdDays.push({ dayTypeId: dayType.id, transitions });
+        (regular ? crowdDays : crowdBells).push(day);
         crowdKept = false;
       }
 
       dayKeys.load = counted + '|' + walkKeys.join('|');
-      const wasLoad = was && sameBuilding ? before.result.loads.find((load) => load.dayTypeId === dayType.id) : undefined;
+      const wasLoads = before && sameBuilding ? (regular ? before.result.loads : before.result.bellLoads || []) : [];
+      const wasLoad = was ? wasLoads.find((load) => sameRun(load, { dayTypeId, bellsId })) : undefined;
       if (wasLoad && was.load === dayKeys.load) {
-        loadList.push(wasLoad);
+        (regular ? loadList : bellLoads).push(wasLoad);
       } else {
-        loadList.push(loads(project, routes, dayType.id, graph));
+        (regular ? loadList : bellLoads).push(loads(project, routes, dayTypeId, graph, regular ? undefined : bellsId));
         work.loadsRun += 1;
       }
-      keys.set(dayType.id, dayKeys);
+      keys.set(key, dayKeys);
     }
-    if (before && before.result.crowd.days.length !== crowdDays.length) crowdKept = false;
-    const crowd = crowdKept ? before.result.crowd : { days: crowdDays };
+    if (before && (wasCrowd.days.length !== crowdDays.length || (wasCrowd.bells || []).length !== crowdBells.length)) crowdKept = false;
+    let crowd;
+    if (crowdKept) {
+      crowd = wasCrowd;
+    } else {
+      crowd = { days: crowdDays };
+      if (crowdBells.length > 0) crowd.bells = crowdBells;
+    }
 
     const walks = walkResults(project, crowd, graph, routeOptions);
     const result = {
@@ -216,13 +291,14 @@ export function createPipeline(options) {
       routes,
       crowd,
       loads: loadList,
-      places: sameBuilding ? before.result.places : places(project, graph),
-      walks,
-      findings: checkSchedule(project, walks),
-      buildingFindings: sameBuilding ? before.result.buildingFindings : buildingChecks(project, graph),
-      work,
     };
-    held = { counters, graph, keys, result };
+    if (bellLoads.length > 0) result.bellLoads = bellLoads;
+    result.places = sameBuilding ? before.result.places : places(project, graph);
+    result.walks = walks;
+    result.findings = checkSchedule(project, walks);
+    result.buildingFindings = sameBuilding ? before.result.buildingFindings : buildingChecks(project, graph);
+    result.work = work;
+    held = { counters, graph, keys, contents, result };
     return result;
   }
 
@@ -240,6 +316,26 @@ export function createPipeline(options) {
       cache.bytes = 0;
       cache.stamp = undefined;
     },
+  };
+}
+
+// One run's parts of a pipeline result (or of a scenario lane's trimmed
+// one, which has no routes or crowd): { routes, crowd, loads, walks: {
+// groups, teachers } }, each null (or empty lists) where the result has
+// none. dayTypeId is the run's own day type (a day type that is the same as
+// A Day is A Day's runs: ask effectiveDayType first); bellsId null or left
+// out is the regular bells.
+export function runResults(result, dayTypeId, bellsId) {
+  const run = { dayTypeId, bellsId: typeof bellsId === 'string' ? bellsId : null };
+  const regular = run.bellsId === null;
+  const pick = (list) => (Array.isArray(list) ? list.find((entry) => entry && sameRun(entry, run)) || null : null);
+  const walks = result && result.walks ? (regular ? result.walks : result.walks.bells) : null;
+  const mine = (list) => (Array.isArray(list) ? list.filter((walk) => sameRun(walk, run)) : []);
+  return {
+    routes: result && result.routes ? pick(regular ? result.routes.days : result.routes.bells) : null,
+    crowd: result && result.crowd ? pick(regular ? result.crowd.days : result.crowd.bells) : null,
+    loads: result ? pick(regular ? result.loads : result.bellLoads) : null,
+    walks: { groups: mine(walks ? walks.groups : null), teachers: mine(walks ? walks.teachers : null) },
   };
 }
 
@@ -273,8 +369,44 @@ function sameRoute(found, before) {
   return JSON.stringify(found) === JSON.stringify(before);
 }
 
+// A list of runs (routes.days, routes.bells, crowd.days, crowd.bells) as
+// sent: each run's entry with the parts the other side already has as null.
+function packRuns(list, previousList, packOne) {
+  return list.map((entry) => {
+    const was = (previousList || []).find((other) => sameRun(other, entry));
+    return packOne(entry, was);
+  });
+}
+
+function packRouteDay(day, was) {
+  const wasGroups = new Map(was ? was.groups.map((group) => [group.groupId, group.routes]) : []);
+  const head = typeof day.bellsId === 'string' ? { dayTypeId: day.dayTypeId, bellsId: day.bellsId } : { dayTypeId: day.dayTypeId };
+  return {
+    ...head,
+    groups: day.groups.map((group) => {
+      const before = wasGroups.get(group.groupId);
+      const same = before !== undefined && before.length === group.routes.length && group.routes.every((found, t) => sameRoute(found, before[t]));
+      return { groupId: group.groupId, routes: same ? null : group.routes };
+    }),
+  };
+}
+
+function packCrowdDay(day, was) {
+  const head = typeof day.bellsId === 'string' ? { dayTypeId: day.dayTypeId, bellsId: day.bellsId } : { dayTypeId: day.dayTypeId };
+  return { ...head, transitions: day.transitions.map((transition, period) => (was && was.transitions[period] === transition ? null : transition)) };
+}
+
+function packLoads(list, previousList) {
+  return list.map((load) => {
+    if (!previousList || !previousList.includes(load)) return load;
+    return typeof load.bellsId === 'string' ? { dayTypeId: load.dayTypeId, bellsId: load.bellsId, kept: true } : { dayTypeId: load.dayTypeId, kept: true };
+  });
+}
+
 // What to send for `result` when the other side already has `previous` (the
 // result sent before, or null). A part that is the same object is left out.
+// The bell-schedule runs (routes.bells, crowd.bells, bellLoads) go as the
+// regular ones do, run by run.
 export function pack(result, previous) {
   const answer = { versions: result.versions, work: result.work, kept: [], routes: null, crowd: null, loads: null };
   for (const part of WHOLE_PARTS) {
@@ -286,34 +418,17 @@ export function pack(result, previous) {
   if (previous && previous.routes === result.routes) {
     answer.kept.push('routes');
   } else {
-    answer.routes = {
-      ...result.routes,
-      days: result.routes.days.map((day) => {
-        const was = previous ? previous.routes.days.find((other) => other.dayTypeId === day.dayTypeId) : undefined;
-        const wasGroups = new Map(was ? was.groups.map((group) => [group.groupId, group.routes]) : []);
-        return {
-          dayTypeId: day.dayTypeId,
-          groups: day.groups.map((group) => {
-            const before = wasGroups.get(group.groupId);
-            const same = before !== undefined && before.length === group.routes.length && group.routes.every((found, t) => sameRoute(found, before[t]));
-            return { groupId: group.groupId, routes: same ? null : group.routes };
-          }),
-        };
-      }),
-    };
+    answer.routes = { ...result.routes, days: packRuns(result.routes.days, previous ? previous.routes.days : null, packRouteDay) };
+    if (Array.isArray(result.routes.bells)) answer.routes.bells = packRuns(result.routes.bells, previous ? previous.routes.bells : null, packRouteDay);
   }
   if (previous && previous.crowd === result.crowd) {
     answer.kept.push('crowd');
   } else {
-    answer.crowd = result.crowd.days.map((day) => {
-      const was = previous ? previous.crowd.days.find((other) => other.dayTypeId === day.dayTypeId) : undefined;
-      return {
-        dayTypeId: day.dayTypeId,
-        transitions: day.transitions.map((transition, period) => (was && was.transitions[period] === transition ? null : transition)),
-      };
-    });
+    answer.crowd = packRuns(result.crowd.days, previous ? previous.crowd.days : null, packCrowdDay);
+    if (Array.isArray(result.crowd.bells)) answer.crowdBells = packRuns(result.crowd.bells, previous ? previous.crowd.bells : null, packCrowdDay);
   }
-  answer.loads = result.loads.map((load) => (previous && previous.loads.includes(load) ? { dayTypeId: load.dayTypeId, kept: true } : load));
+  answer.loads = packLoads(result.loads, previous ? previous.loads : null);
+  if (Array.isArray(result.bellLoads)) answer.bellLoads = packLoads(result.bellLoads, previous ? previous.bellLoads : null);
   return answer;
 }
 
@@ -324,43 +439,44 @@ export function unpack(answer, previous) {
     if (found === undefined || found === null) throw new Error('The answer keeps ' + what + ' from an answer this side never had.');
     return found;
   };
+  const was = (list, entry) => (Array.isArray(list) ? list.find((other) => sameRun(other, entry)) : undefined);
   const result = { versions: answer.versions, work: answer.work };
   for (const part of WHOLE_PARTS) {
     result[part] = answer.kept.includes(part) ? need(previous && previous[part], part) : answer[part];
   }
+  const routeDay = (list) => (day) => {
+    const before = was(list, day);
+    const head = typeof day.bellsId === 'string' ? { dayTypeId: day.dayTypeId, bellsId: day.bellsId } : { dayTypeId: day.dayTypeId };
+    return {
+      ...head,
+      groups: day.groups.map((group) => {
+        if (group.routes !== null) return group;
+        return need(before && before.groups.find((other) => other.groupId === group.groupId), 'a group\'s routes');
+      }),
+    };
+  };
   if (answer.kept.includes('routes')) {
     result.routes = need(previous && previous.routes, 'routes');
   } else {
-    result.routes = {
-      ...answer.routes,
-      days: answer.routes.days.map((day) => {
-        const was = previous ? previous.routes.days.find((other) => other.dayTypeId === day.dayTypeId) : undefined;
-        return {
-          dayTypeId: day.dayTypeId,
-          groups: day.groups.map((group) => {
-            if (group.routes !== null) return group;
-            return need(was && was.groups.find((other) => other.groupId === group.groupId), 'a group\'s routes');
-          }),
-        };
-      }),
-    };
+    result.routes = { ...answer.routes, days: answer.routes.days.map(routeDay(previous ? previous.routes.days : null)) };
+    if (Array.isArray(answer.routes.bells)) result.routes.bells = answer.routes.bells.map(routeDay(previous ? previous.routes.bells : null));
   }
+  const crowdDay = (list) => (day) => {
+    const before = was(list, day);
+    // a day with nothing new in it is the day this side already has
+    if (before && before.transitions.length === day.transitions.length && day.transitions.every((transition) => transition === null)) return before;
+    const head = typeof day.bellsId === 'string' ? { dayTypeId: day.dayTypeId, bellsId: day.bellsId } : { dayTypeId: day.dayTypeId };
+    return { ...head, transitions: day.transitions.map((transition, period) => (transition === null ? need(before && before.transitions[period], 'a transition') : transition)) };
+  };
   if (answer.kept.includes('crowd')) {
     result.crowd = need(previous && previous.crowd, 'crowd');
   } else {
-    result.crowd = {
-      days: answer.crowd.map((day) => {
-        const was = previous ? previous.crowd.days.find((other) => other.dayTypeId === day.dayTypeId) : undefined;
-        // a day with nothing new in it is the day this side already has
-        if (was && was.transitions.length === day.transitions.length && day.transitions.every((transition) => transition === null)) return was;
-        return {
-          dayTypeId: day.dayTypeId,
-          transitions: day.transitions.map((transition, period) => (transition === null ? need(was && was.transitions[period], 'a transition') : transition)),
-        };
-      }),
-    };
+    result.crowd = { days: answer.crowd.map(crowdDay(previous ? previous.crowd.days : null)) };
+    if (Array.isArray(answer.crowdBells)) result.crowd.bells = answer.crowdBells.map(crowdDay(previous ? previous.crowd.bells : null));
   }
-  result.loads = answer.loads.map((load) => (load.kept === true ? need(previous && previous.loads.find((other) => other.dayTypeId === load.dayTypeId), 'loads') : load));
+  const loadsOf = (list, previousList) => list.map((load) => (load.kept === true ? need(was(previousList, load), 'loads') : load));
+  result.loads = loadsOf(answer.loads, previous ? previous.loads : null);
+  if (Array.isArray(answer.bellLoads)) result.bellLoads = loadsOf(answer.bellLoads, previous ? previous.bellLoads : null);
   return result;
 }
 
