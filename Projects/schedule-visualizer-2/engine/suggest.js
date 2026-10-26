@@ -440,6 +440,23 @@ function findingIds(checked) {
   return ids;
 }
 
+// Whether the walk finding `finding` is still there in a checkSchedule()
+// answer under any id. A walk finding's id depends on which runs it is late
+// in (checks.js: the regular run's id, else the first bell schedule's added),
+// so a change that only moves the lateness from one run to another (from
+// Early Release bells to the regular ones, or back) changes the id and fixes
+// nothing: the walk is the same (kind, day type, period, group or teacher),
+// the first four parts of the id.
+function walkRemains(checked, finding) {
+  const base = finding.id.split(':').slice(0, 4).join(':');
+  for (const list of [checked.findings, checked.accepted]) {
+    for (const one of Array.isArray(list) ? list : []) {
+      if (one.kind === finding.kind && one.id.split(':').slice(0, 4).join(':') === base) return true;
+    }
+  }
+  return false;
+}
+
 // The sentence of one candidate (from suggestionCandidates) with its
 // effects, as parts. suggest uses it; it is exported so the words can be
 // read for a slot no finding offers a surviving move from (a group with no
@@ -566,6 +583,7 @@ export function suggest(project, finding, options) {
       tried += 1;
       const result = pipeline.run(next, counters());
       if (findingIds(result.findings).has(finding.id)) continue;
+      if (isWalk && walkRemains(result.findings, finding)) continue;
       const compared = compareResults(before, result, { dayTypeId: d, bellsId: run, changes: [candidate.change], limit: 0 });
       if (compared.findings.new.some((one) => one.severity === 'problem')) continue;
       if (compared.figures.failed.difference > 0) continue;
