@@ -2452,12 +2452,13 @@ export const importSubjects = action(
 );
 
 // A schedule file. payload: { file, policy, takeSettings }, where `file` is
-// what readScheduleFile returned.
+// what readScheduleFile returned. A calendar the file replaces is stamped
+// with the store's clock, so the publish form knows staff copies are old.
 export const importSchedule = action(
   { label: importLabel('a schedule file'), bumps: [BUILDING, SCHEDULE], focus: () => ({ section: 'schedule', tab: 'groups' }) },
   (project, payload, ctx) => {
     if (!payload.file || typeof payload.file !== 'object') refuse('There is no schedule file to import.', 'bad-value');
-    return importing(project, () => applySchedule(project, payload.file, { policy: payload.policy, takeSettings: payload.takeSettings === true, ids: ctx.ids }));
+    return importing(project, () => applySchedule(project, payload.file, { policy: payload.policy, takeSettings: payload.takeSettings === true, ids: ctx.ids, clock: ctx.clock }));
   },
 );
 

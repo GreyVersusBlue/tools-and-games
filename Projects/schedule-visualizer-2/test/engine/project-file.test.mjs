@@ -842,6 +842,15 @@ test('schedule file: importSchedule brings the calendar in one undo entry, says 
   assert.deepEqual([store.project.calendar, store.project.bellSchedules, store.project.dayTypes], [project.calendar, project.bellSchedules, project.dayTypes]);
 });
 
+test('schedule file (SV2-77b): importSchedule stamps a replaced calendar with the store\'s clock', () => {
+  const file = schedule(withEverything());
+  file.calendar = { ...file.calendar, changedAt: '2026-01-05T08:00:00.000Z' };
+  const store = createStore({ project: school(), clock, ids: makeIds(3) });
+  const after = store.apply(actions.importSchedule, { file });
+  assert.equal(after.calendar.changedAt, clock().toISOString());
+  assert.equal(store.project.calendar.changedAt, '2026-09-01T12:00:00.000Z');
+});
+
 test('no reader or writer changes what it is given', () => {
   const project = hostile();
   const before = clone(project);
