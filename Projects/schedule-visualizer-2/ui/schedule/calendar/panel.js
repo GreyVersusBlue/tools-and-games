@@ -13,9 +13,10 @@ import { calendarCounts, dateWords } from '../../../engine/calendar.js';
 import { exportFileName } from '../../../engine/exports.js';
 import { calendarCsv } from '../../../engine/import-calendar.js';
 import { calendarOf, bellSchedulesOf, DAY_ROTATION, DAY_CLOSED, ROTATION_RANGE, DATE_LABEL_MOST, WEEKDAY_NAMES } from '../../../engine/schema.js';
-import { openPrintPreview } from '../../components/print-preview.js';
+import { printButton as previewButton } from '../../components/print-preview.js';
+import { printButtons } from '../../prints/index.js';
 import { keyed, button, download } from '../common.js';
-import { summaryWords, breaksOf, runWords } from './model.js';
+import { summaryWords, breaksOf, runWords, firstDayOf } from './model.js';
 import { rotationChips, dateInput } from './parts.js';
 import { openImportDialog } from './import.js';
 
@@ -153,7 +154,8 @@ export function calendarPanel(env, project, today) {
   }, { key: 'cal-add-break', action: 'add-break' });
 
   // ---- the files
-  const printButton = button('Print the calendar', (opener) => openPrintPreview(ctx, 'calendar', { opener }), { key: 'cal-print', action: 'print-calendar' });
+  // the week starts on this device's first day, as on screen
+  const printButton = keyed(previewButton(ctx, printButtons.find((entry) => entry.id === 'print-calendar'), () => ({ firstDay: firstDayOf(navigator.language || 'en-US') })), 'cal-print');
   const csvButton = button('Save as CSV', () => {
     const now = ctx.clock();
     download(exportFileName(ctx.store.project, 'calendar', 'csv', now), 'text/csv', calendarCsv(ctx.store.project));
