@@ -984,7 +984,29 @@ function needUniqueName(list, name, exceptId, what, whats) {
   return name;
 }
 
+// Words the calendar and its CSV use beside the names (import-calendar.js,
+// the calendar's choices). A day type or bell schedule called one of them
+// could not be told apart from it, so the name is refused, ignoring
+// capitals and spaces. The reader keeps taking the word first (FORMATS.md).
+const RESERVED_DAY_TYPE_NAMES = [
+  ['No school', 'is what the calendar says for a date with no school'],
+  ['Next in the rotation', 'is what the calendar says for a date that takes the next day type in the rotation'],
+  ['As the calendar says', 'is what a date says when it follows the calendar'],
+];
+const RESERVED_SCHEDULE_NAMES = [
+  ['Regular', 'is what the calendar says for a day type\'s own bells'],
+  ['Regular bells', 'is what the calendar CSV reads as a day type\'s own bells'],
+  ['As the weekday says', 'is what a date says when it takes its weekday\'s bells'],
+];
+
+function needUnreserved(name, reserved, what) {
+  if (typeof name !== 'string') return;
+  const word = reserved.find(([text]) => spacelessKey(text) === spacelessKey(name));
+  if (word) refuse('"' + word[0] + '" ' + word[1] + ', so ' + what + ' cannot be called that: the calendar and its CSV could not tell the two apart. Type a different name.', 'reserved-name');
+}
+
 function needDayTypeName(project, name, exceptId) {
+  needUnreserved(name, RESERVED_DAY_TYPE_NAMES, 'a day type');
   return needUniqueName(project.dayTypes, name, exceptId, 'A day type', 'Day type');
 }
 
@@ -1232,6 +1254,7 @@ function bellsFocus(before, payload, after) {
 }
 
 function needScheduleName(project, name, exceptId) {
+  needUnreserved(name, RESERVED_SCHEDULE_NAMES, 'a bell schedule');
   return needUniqueName(bellSchedulesOf(project), name, exceptId, 'A bell schedule', 'Bell schedule');
 }
 

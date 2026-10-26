@@ -226,9 +226,11 @@ was entered disappears, and a `sameAs` that names anything but another `own`
 day type is pointed at `dayTypes[0]` again, with a note.
 
 The planner keeps a project to at most 12 day types, each named, at most 40
-characters, unique ignoring case and spaces. Those limits are kept by adding
-and renaming, not by validation: a file saved before them with 13 day types
-or two of one name still opens, as it is.
+characters, unique ignoring case and spaces, and not "No school", "Next in
+the rotation" or "As the calendar says" (the calendar's own words, ignoring
+case and spaces). Those limits are kept by adding and renaming, not by
+validation: a file saved before them with 13 day types or two of one name
+still opens, as it is.
 
 ### BellSchedule
 
@@ -239,7 +241,7 @@ day type, and only the times change.
 | Field | Type | Meaning |
 |---|---|---|
 | `id` | id, `b…` | |
-| `name` | text | Not blank, at most 40 characters, unique among bell schedules ignoring case and spaces. |
+| `name` | text | Not blank, at most 40 characters, unique among bell schedules ignoring case and spaces. Adding and renaming refuse "Regular", "Regular bells" and "As the weekday says", ignoring case and spaces: the calendar's own words. |
 | `short` | text | 0 to 4 characters; empty is worked out from the name ("ER"). A typed one is unique among bell schedules, ignoring case. |
 | `bells` | (Bell or `null`)[] | One entry per period, as a day type's. |
 | `off` | integer[] | The periods that do not meet under these bells, from 0, in order, each once, each below `settings.periods`. They book no room, move nobody and have no passing time into or out of them. |

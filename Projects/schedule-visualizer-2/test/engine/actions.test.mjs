@@ -1445,3 +1445,26 @@ test('followersOf after every kind of change stays one hop', () => {
   assert.ok(project.dayTypes.every((d) => d.sameAs === null || d.sameAs === undefined));
   assertValid(project);
 });
+
+// ---------------------------------------------------------------- SV2-77b: names the calendar uses
+
+test('a day type cannot be called "No school", "Next in the rotation" or "As the calendar says", whatever the capitals and spaces', () => {
+  for (const name of ['No school', 'NOSCHOOL', ' next in the  Rotation ', 'As the calendar says']) {
+    refused(actions.addDayType, school(), { name }, 'reserved-name');
+    refused(actions.renameDayType, school(), { dayTypeId: B, name }, 'reserved-name');
+  }
+  assert.throws(() => actions.addDayType(school(), { name: 'no school' }, shared), { message: '"No school" is what the calendar says for a date with no school, so a day type cannot be called that: the calendar and its CSV could not tell the two apart. Type a different name.' });
+  // a name that only contains one is a name
+  assert.equal(run(actions.addDayType, school(), { name: 'No school day' }).dayTypes[2].name, 'No school day');
+  assert.equal(run(actions.addDayType, school(), { name: 'Regular' }).dayTypes[2].name, 'Regular', 'Regular is a word for bells, not day types');
+});
+
+test('a bell schedule cannot be called "Regular" or "As the weekday says", whatever the capitals and spaces', () => {
+  for (const name of ['Regular', ' regular ', 'Regular Bells', 'As the weekday says', 'astheweekdaysays']) {
+    refused(actions.addBellSchedule, school(), { name }, 'reserved-name');
+    refused(actions.setBellSchedule, withEverything(), { bellScheduleId: ER, name }, 'reserved-name');
+  }
+  assert.throws(() => actions.addBellSchedule(school(), { name: 'Regular' }, shared), { message: '"Regular" is what the calendar says for a day type\'s own bells, so a bell schedule cannot be called that: the calendar and its CSV could not tell the two apart. Type a different name.' });
+  assert.equal(run(actions.addBellSchedule, school(), { name: 'Regular bells, late' }).bellSchedules[0].name, 'Regular bells, late');
+  assert.equal(run(actions.addBellSchedule, school(), { name: 'No school' }).bellSchedules[0].name, 'No school', 'a day-type word is a bell schedule\'s name');
+});
