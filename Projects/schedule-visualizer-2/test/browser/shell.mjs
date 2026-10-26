@@ -124,8 +124,8 @@ test('the schedule sub-tabs have addresses, and the arrow keys move between them
   assert.equal(await page.evaluate(() => location.hash), '#schedule/day');
   assert.match(await text('#surface [role="tabpanel"]'), /The day is 8 periods long/);
   await page.keyboard.press('ArrowRight');
-  assert.equal(await page.evaluate(() => location.hash), '#schedule/checks');
-  assert.equal(await page.evaluate(() => document.activeElement.dataset.tab), 'checks');
+  assert.equal(await page.evaluate(() => location.hash), '#schedule/calendar');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.tab), 'calendar');
   await page.keyboard.press('Home');
   assert.equal(await page.evaluate(() => location.hash), '#schedule/groups');
   assert.equal(await page.$$eval('#surface [role="tab"][tabindex="0"]', (all) => all.length), 1, 'one Tab stop in the tab list');

@@ -100,8 +100,8 @@ after(async () => {
   if (problems) assert.deepEqual(problems, { errors: [], blocked: [], shimmed: [] });
 });
 
-test('the tabs are Groups, Grid, Teachers, Subjects, Day, Checks and Import, and the one that is coming says so', async () => {
-  assert.deepEqual(await page.$$eval('#surface [role="tab"]', (all) => all.map((tab) => tab.textContent)), ['Groups', 'Grid', 'Teachers', 'Subjects', 'Day', 'Checks', 'Import']);
+test('the tabs are Groups, Grid, Teachers, Subjects, Day, Calendar, Checks and Import, and the one that is coming says so', async () => {
+  assert.deepEqual(await page.$$eval('#surface [role="tab"]', (all) => all.map((tab) => tab.textContent)), ['Groups', 'Grid', 'Teachers', 'Subjects', 'Day', 'Calendar', 'Checks', 'Import']);
   await go(page, '#schedule/import');
   assert.equal(await text('#surface [role="tab"][aria-selected="true"]'), 'Import');
   await go(page, '#schedule/groups');

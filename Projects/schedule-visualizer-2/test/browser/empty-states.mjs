@@ -71,6 +71,12 @@ export const EMPTY_SCREENS = [
     buttons: ['Add a subject'], adds: 'subjects',
   },
   {
+    // SV2-80: its button opens the setup card in place (`opens`)
+    id: 'calendar', project: 'empty', hash: '#schedule/calendar',
+    text: 'No calendar yet. A calendar says which day type each date is, so the staff browser knows what today is.',
+    buttons: ['Make a calendar'], opens: '.cal-setup',
+  },
+  {
     id: 'checks', project: 'empty', hash: '#schedule/checks',
     text: 'Nothing to check yet. Checks look through the schedule for problems, warnings and notes: two groups in one room, a teacher in two places, a walk too long for the passing time. Add a group first.',
     buttons: ['Go to Groups'], goes: '#schedule/groups',
@@ -272,6 +278,9 @@ for (const screen of EMPTY_SCREENS) {
       await page.click('#surface [data-empty="' + screen.id + '"] .btn--primary');
       await page.waitForFunction((what, n) => globalThis.sv2.store.project[what].length === n + 1, {}, screen.adds, before);
       await page.waitForFunction((id) => document.querySelector('#surface [data-empty="' + id + '"]') === null, {}, screen.id);
+    } else if (screen.opens) {
+      await page.click('#surface [data-empty="' + screen.id + '"] .btn--primary');
+      await page.waitForFunction((sel, id) => document.querySelector('#surface ' + sel) !== null && document.querySelector('#surface [data-empty="' + id + '"]') === null, {}, screen.opens, screen.id);
     } else if (screen.stages) {
       // the grid stages its changes: the row is there, not applied, and the empty screen gone
       await page.click('#surface [data-empty="' + screen.id + '"] .btn--primary');
