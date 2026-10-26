@@ -45,7 +45,7 @@ export const SECTION_HELP = {
   schedule: {
     purpose: (w) => 'Enter the school day and who is where: the ' + w.many + ' and bells, the subjects, the teachers, and each group’s room for every ' + w.one + ' on every day type.',
     first: (w) => 'Add teachers under Teachers, then add a group under Groups and pick its room for each ' + w.one + '. Day sets how many ' + w.many + ' there are, what they are called, the day types and the bells.',
-    more: (w) => 'Grid is the whole schedule as a spreadsheet: changes there wait for Apply, and its Day type choice shows every day type or one. Checks lists what is wrong (a double-booking, a walk too long for the passing time) with Show, Fix… and Accept. Import reads groups, teachers or subjects from a CSV file. Day holds the day types, up to ' + DAY_TYPES_MOST + ': each has its own classes or is the same as another, and Change… turns one into the other. It also holds the regular bells of each day type, and other bell schedules, such as an early release, where the ' + w.many + ' ticked No class do not meet. With more than two day types of their own, the group editor’s Show chips choose which are side by side.',
+    more: (w) => 'Grid is the whole schedule as a spreadsheet: changes there wait for Apply, and its Day type choice shows every day type or one. Checks lists what is wrong (a double-booking, a walk too long for the passing time) with Show, Fix… and Accept. Import reads groups, teachers or subjects from a CSV file. Day holds the day types, up to ' + DAY_TYPES_MOST + ': each has its own classes or is the same as another, and Change… turns one into the other. It also holds the regular bells of each day type, and other bell schedules, such as an early release, where the ' + w.many + ' ticked No class do not meet. When there are more day types of their own than fit side by side, the group editor’s Show chips choose which it shows.',
   },
   movement: {
     purpose: (w) => 'Watch every group walk between one ' + w.one + ' and the next: the routes, where the corridors fill, and who cannot make it in the passing time.',
@@ -152,10 +152,6 @@ export function words(settings) {
     { term: 'Load', meaning: 'How many students (or groups) cross a corridor cell.' },
     { term: 'Scenario', meaning: 'A set of trial changes to the schedule, kept apart from the real schedule until it is applied.' },
     { term: 'Finding', meaning: 'Something a check has noticed: a problem, a warning or a note.' },
-    // DESIGN 11.1's words, after spec 2's
-    { term: 'Bell schedule', meaning: 'Which times ring: when each ' + w.one + ' starts and ends. A day type’s own are its regular bells; another bell schedule, such as an early release, gives the same classes other times.' },
-    { term: 'Regular bells', meaning: 'The bell schedule a day type rings on an ordinary day, set under Schedule › Day.' },
-    { term: 'No class', meaning: 'Under a bell schedule, the ' + w.many + ' ticked No class do not meet: their rooms are kept but not used, nobody moves into them and nobody teaches in them.' },
   ];
 }
 

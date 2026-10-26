@@ -16,6 +16,8 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { helpModel, numbers, words, gestures, SECTION_HELP, SHORTCUT_GROUPS, NOTHING_WRITTEN, duration } from '../../ui/help/content.js';
+import { periodWords as periodWordsFor } from '../../ui/components/words.js';
+const periodWordsOf = (periodWord) => periodWordsFor({ periodWord });
 import { createShortcuts } from '../../ui/components/shortcuts.js';
 import { defaultSettings, STUDENTS_PER_LANE_CELL, PERIOD_WORDS } from '../../engine/schema.js';
 import { CROSSING_WAIT_MAX, walkingSeconds } from '../../engine/crowd.js';
@@ -149,20 +151,31 @@ test('a shortcut group Help has no sentence for still shows, saying so', () => {
 
 // Spec 2, the vocabulary table, in its order.
 const SPEC_WORDS = ['Project', 'Floor', 'Cell', 'Room', 'Other space', 'Corridor', 'Stairs', 'Elevator', 'Exit', 'Door', 'Period', 'Day type', 'Passing time', 'Transition', 'Group', 'Teacher', 'Subject', 'Load', 'Scenario', 'Finding'];
-// DESIGN 11.1's words, after spec 2's, as the units that build them add them
-// (SV2-78: bell schedules and their No class; the calendar's and the marks'
-// words come with their tabs)
-const NEW_WORDS = ['Bell schedule', 'Regular bells', 'No class'];
-
-test('every word of spec 2 is explained, in the spec’s order, with the school’s own period word, then DESIGN 11.1’s', () => {
-  assert.deepEqual(words(defaultSettings()).map((each) => each.term), SPEC_WORDS.concat(NEW_WORDS));
+test('every word of spec 2 is explained, in the spec’s order, with the school’s own period word', () => {
+  assert.deepEqual(words(defaultSettings()).map((each) => each.term), SPEC_WORDS);
   for (const each of words(defaultSettings())) assert.ok(each.meaning.endsWith('.') && each.meaning.length > 20, each.term + ' is not explained in a sentence');
   const block = words({ ...defaultSettings(), periodWord: 'Block' });
-  assert.deepEqual(block.map((each) => each.term), SPEC_WORDS.map((term) => (term === 'Period' ? 'Block' : term)).concat(NEW_WORDS));
+  assert.deepEqual(block.map((each) => each.term), SPEC_WORDS.map((term) => (term === 'Period' ? 'Block' : term)));
   assert.match(block.find((each) => each.term === 'Block').meaning, /This school’s word for it is block, and the planner says block everywhere\./);
   assert.match(block.find((each) => each.term === 'Passing time').meaning, /one block and the start of the next/);
-  assert.equal(words(undefined).length, SPEC_WORDS.length + NEW_WORDS.length);
-  assert.match(block.find((each) => each.term === 'No class').meaning, /^Under a bell schedule, the blocks ticked No class do not meet/);
+  assert.equal(words(undefined).length, SPEC_WORDS.length);
+});
+
+// SV2-78: Help says what the Day tab holds now, with as many day types as a
+// school makes, and assumes none are two (DESIGN 11.3, 11.10). The words of
+// DESIGN 11.1 join the vocabulary when test/browser/help.mjs's count of spec
+// 2's words moves with them; until then the schedule's part says them.
+test('Help’s schedule part tells of day types up to the most, Change…, bell schedules and No class, and nothing of two', () => {
+  const block = periodWordsOf('Block');
+  const more = SECTION_HELP.schedule.more(block);
+  assert.match(more, /Day holds the day types, up to 12: each has its own classes or is the same as another, and Change… turns one into the other\./);
+  assert.match(more, /other bell schedules, such as an early release, where the blocks ticked No class do not meet\./);
+  assert.match(more, /the group editor’s Show chips/);
+  assert.match(more, /its Day type choice shows every day type or one/);
+  const dayType = words(defaultSettings()).find((each) => each.term === 'Day type').meaning;
+  assert.match(dayType, /has its own classes, or is the same as another/);
+  assert.match(dayType, /up to 12\./);
+  for (const text of [more, dayType]) assert.doesNotMatch(text, /\btwo\b|at least two|B Day starts as/i, text);
 });
 
 // The settings the engines read for load, routes, the crowd and the passing
