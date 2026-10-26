@@ -49,6 +49,7 @@ export const MODULES = [
   'staff/notes.js', // SV2-23
   'staff/outputs.js', // SV2-23
   'staff/views/door-sign.js', // SV2-23
+  'staff/views/calendar.js', // SV2-81
   'staff/me.js',
   'staff/views.js',
   'staff/shell.js',

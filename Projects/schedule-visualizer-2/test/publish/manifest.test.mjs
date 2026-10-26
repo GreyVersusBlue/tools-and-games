@@ -75,12 +75,12 @@ test('no staff module reaches the planner, storage, or the engine modules a publ
 
 test('every address of ARCHITECTURE 8 has a view, and each view has its own name', () => {
   const ids = VIEWS.map((view) => view.id);
-  assert.deepEqual(ids.slice().sort(), ['common', 'coverage', 'directions', 'door', 'free', 'group', 'map', 'me', 'now', 'room', 'search', 'staffing', 'sub', 'teacher']);
+  assert.deepEqual(ids.slice().sort(), ['calendar', 'common', 'coverage', 'directions', 'door', 'free', 'group', 'map', 'me', 'now', 'room', 'search', 'staffing', 'sub', 'teacher']);
   for (const view of VIEWS) {
     assert.equal(typeof view.title, 'function', view.id);
     assert.equal(typeof view.render, 'function', view.id);
     assert.ok(['search', 'map', 'now', 'me'].includes(view.nav), view.id + ' marks a bar item that exists');
-    assert.ok(view.flag === null || ['teacher', 'group', 'room', 'map', 'free', 'now', 'common', 'coverage', 'sub', 'directions', 'staffing'].includes(view.flag), view.id + ' has a flag the publish settings have');
+    assert.ok(view.flag === null || ['teacher', 'group', 'room', 'map', 'free', 'now', 'common', 'coverage', 'sub', 'directions', 'staffing', 'calendar'].includes(view.flag), view.id + ' has a flag the publish settings have');
   }
 });
 
