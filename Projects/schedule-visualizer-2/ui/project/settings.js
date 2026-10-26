@@ -14,6 +14,7 @@ import { setSetting, resetSettings, describePeriodChange } from '../../engine/ac
 import { CHECK_KINDS, RANGES, CELL_LENGTH_MOST, DAY_TYPES_MOST, bellSchedulesOf } from '../../engine/schema.js';
 import { readLength, lengthWords } from '../building/scale-tool.js';
 import { isOwnCopy, effectiveDayType } from '../../engine/day-types.js';
+import { calendarDays, dateWords } from '../../engine/calendar.js';
 
 const LETTER_REGIONS = ['US', 'CA', 'MX', 'PH', 'CL', 'CO', 'VE', 'CR', 'PA', 'GT', 'DO', 'PR', 'SV', 'HN', 'NI', 'BO'];
 
@@ -213,7 +214,12 @@ export function settingsCard(ctx) {
     }, '#schedule/day', 'Edit under Schedule › Day'));
   row(day, 'Default passing time', (w) => 'Minutes between one ' + w.one + ' and the next, used wherever the bells do not say. Write 4, or 4:30 for four and a half.',
     text('defaultPassingSeconds', (s) => s.defaultPassingSeconds, { width: '6rem', parse: parsePassing, format: formatPassing }));
-  row(day, 'Calendar', 'Which day type each date of the year is.', wish());
+  row(day, 'Calendar', 'Which day type and which bells each date of the year has, so the staff browser knows what today is.',
+    summary((project) => {
+      const days = calendarDays(project);
+      if (days.length === 0) return 'No calendar';
+      return dateWords(days[0].date) + ' to ' + dateWords(days[days.length - 1].date) + ', ' + count(days.filter((day) => day.school).length, 'school day');
+    }, '#schedule/calendar', 'Edit under Schedule › Calendar'));
   row(day, 'Subjects', 'The departments, each with a code, a name and a colour.',
     summary((project) => count(project.subjects.length, 'subject'), '#schedule/subjects', 'Edit under Schedule › Subjects'));
 

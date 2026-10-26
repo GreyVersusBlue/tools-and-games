@@ -15,7 +15,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { helpModel, numbers, words, gestures, SECTION_HELP, SHORTCUT_GROUPS, NOTHING_WRITTEN, duration } from '../../ui/help/content.js';
+import { helpModel, numbers, words, gestures, SECTION_HELP, SHORTCUT_GROUPS, NOTHING_WRITTEN, duration, ROTATION_RULE } from '../../ui/help/content.js';
 import { periodWords as periodWordsFor } from '../../ui/components/words.js';
 const periodWordsOf = (periodWord) => periodWordsFor({ periodWord });
 import { createShortcuts } from '../../ui/components/shortcuts.js';
@@ -151,14 +151,35 @@ test('a shortcut group Help has no sentence for still shows, saying so', () => {
 
 // Spec 2, the vocabulary table, in its order.
 const SPEC_WORDS = ['Project', 'Floor', 'Cell', 'Room', 'Other space', 'Corridor', 'Stairs', 'Elevator', 'Exit', 'Door', 'Period', 'Day type', 'Passing time', 'Transition', 'Group', 'Teacher', 'Subject', 'Load', 'Scenario', 'Finding'];
+// DESIGN 11.1's words, after spec 2's (SV2-80): No class beside No school.
+const DESIGN_WORDS = ['Bell schedule', 'Regular bells', 'Calendar', 'Rotation', 'No school', 'No class', 'Next in the rotation'];
+const ALL_WORDS = SPEC_WORDS.concat(DESIGN_WORDS);
 test('every word of spec 2 is explained, in the spec’s order, with the school’s own period word', () => {
-  assert.deepEqual(words(defaultSettings()).map((each) => each.term), SPEC_WORDS);
+  assert.deepEqual(words(defaultSettings()).map((each) => each.term), ALL_WORDS);
   for (const each of words(defaultSettings())) assert.ok(each.meaning.endsWith('.') && each.meaning.length > 20, each.term + ' is not explained in a sentence');
   const block = words({ ...defaultSettings(), periodWord: 'Block' });
-  assert.deepEqual(block.map((each) => each.term), SPEC_WORDS.map((term) => (term === 'Period' ? 'Block' : term)));
+  assert.deepEqual(block.map((each) => each.term), ALL_WORDS.map((term) => (term === 'Period' ? 'Block' : term)));
   assert.match(block.find((each) => each.term === 'Block').meaning, /This school’s word for it is block, and the planner says block everywhere\./);
   assert.match(block.find((each) => each.term === 'Passing time').meaning, /one block and the start of the next/);
-  assert.equal(words(undefined).length, SPEC_WORDS.length);
+  assert.equal(words(undefined).length, ALL_WORDS.length);
+});
+
+// SV2-80: the Calendar tab in Help (DESIGN 11.10): what it is for, the
+// rotation's rule in the words of ARCHITECTURE 17.4, its keys under a group
+// Help explains, and Through for touch.
+test('Help tells of the Calendar tab, the rotation rule, the calendar’s keys and Through by touch; No class sits beside No school', () => {
+  const more = SECTION_HELP.schedule.more(periodWordsOf('Period'));
+  assert.match(more, /Calendar says which day type, and which bells, each date of the year has/);
+  assert.ok(more.includes(ROTATION_RULE));
+  assert.match(ROTATION_RULE, /^The rotation moves on one step on every school day it decides\. Days with no school, and weekdays that always have the same day type, do not move it\./);
+  assert.match(ROTATION_RULE, /A snow day \(No school\) pushes every later day back by one/);
+  assert.match(SHORTCUT_GROUPS['Schedule calendar'], /Through/);
+  const touch = gestures().find((each) => each.id === 'touch').items.join(' ');
+  assert.match(touch, /tap a date to change it\. To change a run of dates, set Through/);
+  const terms = words(defaultSettings()).map((each) => each.term);
+  assert.equal(terms.indexOf('No class'), terms.indexOf('No school') + 1);
+  const hour = words({ ...defaultSettings(), periodWord: 'Hour' }).find((each) => each.term === 'No class').meaning;
+  assert.match(hour, /^Said of hours that do not meet/);
 });
 
 // SV2-78: Help says what the Day tab holds now, with as many day types as a
