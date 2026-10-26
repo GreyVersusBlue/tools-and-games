@@ -833,6 +833,22 @@ test('duplicate dates keep the later; a change that says nothing is dropped; a r
   ]);
 });
 
+test('a dated change with day null is kept; one that says nothing (day null, bells null, no note) is removed with a note (SV2-75b)', () => {
+  const project = withEverything();
+  project.calendar.dates.splice(1, 0, { date: '2026-10-07', day: null, bells: ER, label: '' }, { date: '2026-10-08', day: null, bells: null, label: 'Picture day' }, { date: '2026-10-09', day: null, bells: null, label: '' });
+  const { project: fixed, notes } = repair(project);
+  assert.deepEqual(fixed.calendar.dates.slice(1, 3), [{ date: '2026-10-07', day: null, bells: ER, label: '' }, { date: '2026-10-08', day: null, bells: null, label: 'Picture day' }]);
+  assert.equal(fixed.calendar.dates.some((entry) => entry.date === '2026-10-09'), false);
+  assert.deepEqual(notes, ['1 dated change in the calendar said nothing the weekday did not and was removed.']);
+  assert.deepEqual(validate(fixed), []);
+  assert.equal(repair(fixed).project, fixed);
+  // on a fixed weekday too: day null with nothing else says nothing
+  const fixedDay = withEverything();
+  fixedDay.calendar.weekdays[3] = { day: B, bells: null };
+  fixedDay.calendar.dates.splice(1, 0, { date: '2026-10-08', day: null, bells: null, label: '' });
+  assert.equal(repair(fixedDay).project.calendar.dates.some((entry) => entry.date === '2026-10-08'), false);
+});
+
 test('the renamed map follows into sameAs, the rotation, the dates and the weekdays, and a renamed bell schedule into the calendar', () => {
   const project = withEverything();
   const swap = (value) => (value === B ? 'B-DAY' : value === ER ? 'ER' : value);

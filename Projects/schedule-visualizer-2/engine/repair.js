@@ -1023,7 +1023,8 @@ export function repair(input, options) {
           datesChanged = true;
           continue;
         }
-        const day = dayValue(entry.day);
+        // day null: as the weekday says (a change of bells or note only)
+        const day = entry.day === null ? null : dayValue(entry.day);
         if (day === undefined) {
           counts.day += 1;
           datesChanged = true;
@@ -1064,7 +1065,7 @@ export function repair(input, options) {
         dates = kept;
         datesChanged = true;
       }
-      const silent = dates.filter((entry) => entry.day === DAY_ROTATION && entry.bells === null && entry.label === '' && calendar.weekdays[weekdayOf(entry.date)].day === DAY_ROTATION);
+      const silent = dates.filter((entry) => entry.bells === null && entry.label === '' && (entry.day === null || (entry.day === DAY_ROTATION && calendar.weekdays[weekdayOf(entry.date)].day === DAY_ROTATION)));
       if (silent.length > 0) {
         note(plural(silent.length, 'dated change in the calendar said', 'dated changes in the calendar said') + ' nothing the weekday did not and ' + (silent.length === 1 ? 'was' : 'were') + ' removed.');
         dates = dates.filter((entry) => !silent.includes(entry));

@@ -1055,7 +1055,7 @@ test('scaleTraceImage refuses a locked image, a floor with none, a bad scale and
 import { withEverything, A, B, C, D, ER, AS } from '../fixtures/day-types-calendar.mjs';
 import { describeDayType, followersOf } from '../../engine/day-types.js';
 import { bellsFor } from '../../engine/bells.js';
-import { dayOn } from '../../engine/calendar.js';
+import { dayOn, calendarDays } from '../../engine/calendar.js';
 import { tickingClock } from './helpers.mjs';
 
 // The store, so each action is checked as the page runs it: one undo step,
@@ -1362,6 +1362,36 @@ test('setCalendarDates: a day type, next in the rotation, bells, a note, and bac
   // a change that would say nothing is not kept, and nothing changed is no step
   assert.equal(actions.setCalendarDates(project, { dates: ['2026-09-01'], day: 'rotation' }, shared), project);
   assert.equal(actions.setCalendarDates(project, { dates: ['2026-11-26'], day: 'closed', label: 'Thanksgiving' }, shared), project);
+});
+
+test('setCalendarDates with no day on a date with no change of its own writes day null, so a fixed weekday\'s bells change moves nothing later (SV2-75b)', () => {
+  // Mondays and Wednesdays A, Tuesdays and Thursdays B, Fridays alternate
+  const project = withEverything();
+  project.calendar = { ...project.calendar, weekdays: [{ day: A, bells: null }, { day: B, bells: null }, { day: A, bells: null }, { day: B, bells: null }, { day: 'rotation', bells: null }, { day: 'closed', bells: null }, { day: 'closed', bells: null }], dates: [] };
+  const before = calendarDays(project);
+  const { after, label, outcome } = step(project, actions.setCalendarDates, { dates: ['2026-09-16'], bells: ER });
+  assert.equal(label, 'Change 16 September in the calendar');
+  assert.deepEqual(after.calendar.dates, [{ date: '2026-09-16', day: null, bells: ER, label: '' }]);
+  const days = calendarDays(after);
+  days.forEach((entry, i) => {
+    if (entry.date === '2026-09-16') assert.deepEqual([entry.dayTypeId, entry.bellsId, entry.why, entry.changed], [A, ER, 'weekday', true]);
+    else assert.deepEqual(entry, before[i], entry.date + ' moved');
+  });
+  assert.equal(outcome.movedFrom, null);
+  // a note only, on a fixed weekday: day null, and nothing moves
+  const note = run(actions.setCalendarDates, project, { dates: ['2026-09-17'], label: 'Picture day' });
+  assert.deepEqual(note.calendar.dates, [{ date: '2026-09-17', day: null, bells: null, label: 'Picture day' }]);
+  calendarDays(note).forEach((entry, i) => {
+    if (entry.date !== '2026-09-17') assert.deepEqual(entry, before[i], entry.date + ' moved');
+  });
+  // a date with a change of its own keeps its day
+  const kept = run(actions.setCalendarDates, withEverything(), { dates: ['2026-10-14'], bells: ER });
+  assert.deepEqual(kept.calendar.dates.find((entry) => entry.date === '2026-10-14'), { date: '2026-10-14', day: C, bells: ER, label: 'Assembly' });
+  // taking the note away again leaves a change that says nothing, which goes
+  const cleared = run(actions.setCalendarDates, note, { dates: ['2026-09-17'], label: '' });
+  assert.deepEqual(cleared.calendar.dates, []);
+  assertValid(after);
+  assertValid(note);
 });
 
 test('setCalendarDates refuses dates outside the calendar, unknown day types and bells, and a long note', () => {

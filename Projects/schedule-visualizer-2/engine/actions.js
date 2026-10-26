@@ -1385,11 +1385,11 @@ function needDateLabel(value) {
   return value;
 }
 
-// A dated change that says nothing its weekday does not (the rotation, the
-// weekday's bells, no note, on a weekday that takes the rotation) is taken
-// out, as repair takes it out.
+// A dated change that says nothing its weekday does not (the weekday's
+// bells and no note, with day null, or with the rotation on a weekday that
+// takes the rotation) is taken out, as repair takes it out.
 function tidyDates(calendar) {
-  const dates = calendar.dates.filter((entry) => !(entry.day === DAY_ROTATION && entry.bells === null && entry.label === '' && calendar.weekdays[weekdayOf(entry.date)].day === DAY_ROTATION));
+  const dates = calendar.dates.filter((entry) => !(entry.bells === null && entry.label === '' && (entry.day === null || (entry.day === DAY_ROTATION && calendar.weekdays[weekdayOf(entry.date)].day === DAY_ROTATION))));
   return dates.length === calendar.dates.length ? calendar : { ...calendar, dates };
 }
 
@@ -1517,7 +1517,8 @@ function setDatesLabel(before, payload, after) {
 // payload: { dates, day, bells, label }. dates: a list of dates, or
 // { from, to }, inside the calendar. day: a day type id, "closed" (no school),
 // "rotation" (next in the rotation), or null for "as the calendar says",
-// which takes each date's change away; left out, each date keeps its day.
+// which takes each date's change away; left out, each date keeps its day (a
+// date with no change of its own gets day null: as its weekday says).
 // bells: null (as the weekday says), "regular" or a bell schedule id; label:
 // the note. Either left out keeps what each date has. "closed" is written
 // only on dates that are school days (and on dates already closed by a
@@ -1556,9 +1557,10 @@ export const setCalendarDates = action(
       next = calendar;
       for (const date of written) {
         const had = own.get(date);
-        const rule = calendar.weekdays[weekdayOf(date)];
+        // with no day given, a date with no change of its own stays as its
+        // weekday says (day null), so a bells-only change moves nothing
         next = writeDates(next, [date], {
-          day: day !== undefined ? day : had ? had.day : rule.day,
+          day: day !== undefined ? day : had ? had.day : null,
           bells: bells !== undefined ? bells : had ? had.bells : null,
           label: label !== undefined ? label : had ? had.label : '',
         });
