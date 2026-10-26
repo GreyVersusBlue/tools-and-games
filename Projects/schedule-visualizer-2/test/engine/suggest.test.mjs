@@ -55,6 +55,12 @@ function routeSecondsOf(result, groupId, dayTypeId) {
   return routes.reduce((sum, found) => sum + (found && found.ok === true && found.same !== true ? found.seconds : 0), 0);
 }
 
+// kind, day type, period and group or teacher: what a walk finding is about,
+// whichever runs it is late in
+function walkBase(id) {
+  return id.split(':').slice(0, 4).join(':');
+}
+
 // Every suggestion, checked again from nothing: the finding is gone, no
 // problem is new, no walk lost its way, and the effects are what a fresh run
 // says.
@@ -66,6 +72,11 @@ function assertHonest(project, finding, answer) {
     const after = run(applyChanges(project, [suggestion.change]));
     const ids = after.findings.findings.map((one) => one.id).concat(after.findings.accepted.map((one) => one.id));
     assert.ok(!ids.includes(finding.id), suggestion.text + ': the finding is cleared');
+    if (finding.kind === 'group-walk' || finding.kind === 'teacher-walk') {
+      // under any id: a walk's id says which runs it is late in
+      const base = walkBase(finding.id);
+      assert.deepEqual(ids.filter((id) => walkBase(id) === base), [], suggestion.text + ': the walk is late in no run');
+    }
     const newProblems = after.findings.findings.filter((one) => one.severity === 'problem' && !problemsBefore.has(one.id));
     assert.deepEqual(newProblems.map((one) => one.id), [], suggestion.text + ': no new problem');
     const fresh = after.findings.findings.filter((one) => !idsBefore.has(one.id));
@@ -688,5 +699,54 @@ test('the cap changes no answer on the sample school: capped and uncapped give t
         assert.deepEqual(capped, uncapped, finding.id);
       }
     }
+  }
+});
+
+// ---------------------------------------------------------------- bell schedules
+
+const ER = 'bsample0er';
+function clock2(minutes) {
+  return String(Math.floor(minutes / 60)).padStart(2, '0') + ':' + String(minutes % 60).padStart(2, '0');
+}
+// eight 30-minute periods from 08:00 with `gap` minutes of passing time
+function bellsWithGap(gap) {
+  const bells = [];
+  for (let p = 0; p < 8; p += 1) bells.push({ start: clock2(480 + (30 + gap) * p), end: clock2(510 + (30 + gap) * p) });
+  return bells;
+}
+
+// A walk finding's id depends on the runs it is late in (the regular run's
+// id, else the first schedule's added), so a change that only moves the
+// lateness between the regular bells and a bell schedule renames the finding
+// and clears nothing.
+test('bell schedules: a walk late under the regular bells and Early Release is not cleared by making it late under Early Release alone', () => {
+  const project = school();
+  project.bellSchedules = [{ id: ER, name: 'Early Release', short: '', bells: bellsWithGap(2), off: [] }];
+  const both = run(project).findings.findings.filter((one) => one.kind === 'group-walk' && Array.isArray(one.where.bellsIds) && one.where.bellsIds[0] === null && one.where.bellsIds.includes(ER));
+  assert.ok(both.length > 0, 'a walk late under both');
+  for (const finding of both) {
+    const answer = suggest(project, finding, { limit: 50, otherTeachersRooms: true });
+    for (const suggestion of answer.suggestions) {
+      assert.ok(!suggestion.effects.findings.newIds.includes(finding.id + ':' + ER), suggestion.text + ': not a rename');
+    }
+    assertHonest(project, finding, answer);
+  }
+});
+
+test('bell schedules: a walk late under Early Release alone is not cleared by making it late under the regular bells', () => {
+  const project = school();
+  for (const dayType of project.dayTypes) if (dayType.own) dayType.bells = bellsWithGap(3);
+  project.bellSchedules = [{ id: ER, name: 'Early Release', short: '', bells: bellsWithGap(1), off: [] }];
+  const only = run(project).findings.findings.filter((one) => one.kind === 'group-walk' && one.id.endsWith(':' + ER));
+  assert.ok(only.length > 5, only.length + ' walks late under Early Release alone');
+  // the review found renames for 6C's and 7B's walks out of Period 1
+  const chosen = only.filter((one) => one.where.period === 0).slice(0, 4);
+  assert.ok(chosen.length >= 2);
+  for (const finding of chosen) {
+    const answer = suggest(project, finding, { limit: 50, otherTeachersRooms: true });
+    for (const suggestion of answer.suggestions) {
+      assert.ok(!suggestion.effects.findings.newIds.includes(walkBase(finding.id)), suggestion.text + ': not a rename');
+    }
+    assertHonest(project, finding, answer);
   }
 });

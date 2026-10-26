@@ -98,6 +98,7 @@ const RECORDED = {
   'sample school: engines one by one': '5404d2ec5d5165cf592f6c095b9377bbe3d946c28917c114fff3fc349899a658',
   'sample school: one transition and one day': '16099535543cb3c911be672a5e9365a46549db860e883e94b1d1163855a27138',
   'sample school: a one-slot edit kept and packed': '334979613d2e7ae0191af3ab41e1984245ae63f8f7b7d1aab7c060843c728e11',
+  'sample school: passing time, head count and margin edits kept and packed': '4d4230a993adcd86976d7ecb6da708af66732c755ac6569cecee478bf1f2dd6f',
   'sample school: scenario lane and comparison': 'e205ecbb5d5caf96ae0d43e17f6ce08d0f32e5d2e3331c2f2afc69b6bbb5b9aa',
   'sample school: suggestions for the double booking and the long walk': 'ad893b0e9a33abf9fc109dce9cc3761bb88714df3aba3bebcd2a3aeaa5033f1d',
   'B Day same as A Day, as an older file says it: pipeline': 'da4ea50e951422160fdeb06f144a2999d7e4ee56d19749dc3a5a6809aa7ef9f4',
@@ -170,6 +171,40 @@ test('sample school: a one-slot edit kept and packed', () => {
     keptCrowd: second.crowd.days.map((day, d) => day.transitions.map((transition, t) => transition === first.crowd.days[d].transitions[t])),
     keptLoads: second.loads.map((load, d) => load === first.loads[d]),
   });
+});
+
+// The pipeline's cache across edits that change no slot: the regular
+// passing time (two bells moved, then one back), a head count and the
+// margin. Each step's result, its packed answer against the step before, and
+// which transitions and loads were kept.
+test('sample school: passing time, head count and margin edits kept and packed', () => {
+  const store = createStore({ project: sampleSchool(), clock, ids: createIds(seededRandom(16)) });
+  const pipeline = createPipeline();
+  const versions = () => ({ geometry: store.geometryVersion, building: store.buildingVersion, schedule: store.scheduleVersion });
+  const steps = [];
+  let previous = null;
+  const step = () => {
+    const result = pipeline.run(store.project, versions());
+    steps.push({
+      result: withoutWork(result),
+      answer: { ...pack(result, previous), work: null },
+      keptCrowd: previous ? result.crowd.days.map((day, d) => day.transitions.map((transition, t) => transition === previous.crowd.days[d].transitions[t])) : null,
+      keptLoads: previous ? result.loads.map((load, d) => load === previous.loads[d]) : null,
+    });
+    previous = result;
+  };
+  step();
+  store.apply(actions.setBell, { dayTypeId: 'dsample00a', period: 2, bell: { start: '10:05', end: '10:50' } });
+  step();
+  store.apply(actions.setBell, { dayTypeId: 'dsample00a', period: 3, bell: { start: '10:52', end: '11:40' } });
+  step();
+  store.apply(actions.editGroup, { id: 'gsample08a', headCount: 61 });
+  step();
+  store.apply(actions.setSetting, { key: 'checks.passingMarginSeconds', value: 30 });
+  step();
+  store.apply(actions.setBell, { dayTypeId: 'dsample00a', period: 2, bell: { start: '10:00', end: '10:45' } });
+  step();
+  agree('sample school: passing time, head count and margin edits kept and packed', steps);
 });
 
 test('sample school: scenario lane and comparison', () => {

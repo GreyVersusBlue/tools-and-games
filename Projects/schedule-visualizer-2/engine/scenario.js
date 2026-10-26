@@ -108,7 +108,7 @@
 // `class extends ActionError`, no constant built from an actions.js export.
 
 import { findRoom, findById, resolveSlotRoom, nameKey, roomNumberKey, allRooms } from './schema.js';
-import { findDayType, isOwnCopy, ownDayTypes, baseDayType, effectiveSchedule } from './day-types.js';
+import { findDayType, isOwnCopy, ownDayTypes, effectiveSchedule, describeDayType } from './day-types.js';
 import { periodName } from './bells.js';
 import { slotTeacherIds } from './teacher-day.js';
 import { countBySeverity, SEVERITIES, countWord, listWords, periodWord } from './findings.js';
@@ -384,7 +384,7 @@ function whyGone(project, change) {
   const dayType = findDayType(project, change.dayTypeId);
   if (!dayType) return [words('its day type is no longer in the project.')];
   if (!isOwnCopy(project, change.dayTypeId)) {
-    return [typed(dayType.name), words(' is the same as '), typed(baseDayType(project).name), words(' again, so it has no schedule of its own to change.')];
+    return [typed(dayType.name), words(' is the same as '), typed(describeDayType(project, dayType.id).follows), words(' again, so it has no schedule of its own to change.')];
   }
   const slots = changeSlots(change);
   if (slots.some((slot) => !findById(project.groups, slot.groupId))) {
@@ -945,7 +945,7 @@ export function scenarioFromDiff(projectA, projectB, options) {
         if (a.room && matched === a.room) continue;
         const skip = (reason, why) => note(reason, group.name, dayType.name, period, group.name + ' · ' + dayType.name + ' · ' + periodName(projectA.settings, period) + ': ' + why);
         if (!own) {
-          skip('same-as', dayType.name + ' is the same as ' + baseDayType(projectA).name + ' here, so it has no schedule of its own to change.');
+          skip('same-as', dayType.name + ' is the same as ' + describeDayType(projectA, dayType.id).follows + ' here, so it has no schedule of its own to change.');
           continue;
         }
         if (!b.room) {

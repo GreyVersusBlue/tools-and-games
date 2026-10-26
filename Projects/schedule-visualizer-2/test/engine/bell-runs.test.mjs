@@ -27,6 +27,8 @@ import { createPipeline, pack, unpack, runResults, scenarioRun } from '../../eng
 import { trimResult, compareResults, loadDifference } from '../../engine/scenario.js';
 import { suggest } from '../../engine/suggest.js';
 import { newAcceptedFinding } from '../../engine/schema.js';
+import { splitAccepted } from '../../engine/findings.js';
+import { followAcceptedWalks } from '../../engine/checks.js';
 import { sampleSchool } from '../../data/sample-school.js';
 
 const A = 'dsample00a';
@@ -214,6 +216,29 @@ test('simulateSchedule: every bell-schedule run, with the periods that do not me
   assert.equal('bells' in simulateSchedule(sampleSchool(), routesByRun(sampleSchool())), false);
 });
 
+// ARCHITECTURE 17.3: an off period moves nobody, and that holds in the
+// middle of the day too. The walk from Period 2's room to Period 4's room,
+// around an off Period 3, is not simulated: both transitions are off.
+test('a middle off period moves nobody: the walk from Period 2\'s room to Period 4\'s room is not simulated', () => {
+  const project = sampleSchool();
+  project.bellSchedules = [{ id: ER, name: 'Assembly', short: '', bells: project.dayTypes[0].bells.map((bell) => (bell ? { ...bell } : null)), off: [2] }];
+  const result = createPipeline().run(project);
+  assert.deepEqual(result.crowd, fresh(project).crowd);
+  for (const day of result.crowd.bells) {
+    assert.deepEqual(day.transitions.map((transition) => transition.off === true), [false, true, true, false, false, false, false], day.dayTypeId);
+    for (const transition of day.transitions.slice(1, 3)) {
+      assert.deepEqual(transition.groups, []);
+      assert.equal(transition.passingSeconds, null);
+    }
+  }
+  // no walk figure into or out of Period 3, nor one from Period 2 to Period 4
+  const early = result.walks.bells.groups.filter((walk) => walk.bellsId === ER);
+  assert.ok(early.length > 0);
+  assert.deepEqual(early.filter((walk) => walk.period === 1 || walk.period === 2), []);
+  // and a group whose Period 2 and Period 4 rooms differ has no late walk between them under Assembly
+  assert.equal(result.findings.findings.some((finding) => finding.kind === 'group-walk' && Array.isArray(finding.where.bellsIds) && finding.where.bellsIds.includes(ER) && (finding.where.period === 1 || finding.where.period === 2)), false);
+});
+
 test('walkResults: the bell-schedule runs\' walks are in bells, each with its bellsId; the regular lists are as without them', () => {
   const project = withBells();
   const graph = routingGraph(project);
@@ -315,6 +340,88 @@ test('late under the regular bells and a schedule alike: one finding naming both
   const after = findingsOf(accepted);
   assert.equal(after.findings.some((one) => one.id === 'group-walk:' + A + ':5:' + G8A), false);
   assert.equal(after.accepted.some((one) => one.id === 'group-walk:' + A + ':5:' + G8A), true);
+});
+
+// Accepting a walk late only under bell schedules (ARCHITECTURE 17.8, the
+// Foreman's rule after SV2-76's review): the id keeps naming the first
+// schedule in the project's order, and a record naming schedule X stays
+// accepted while the walk is late under X and not under the regular bells,
+// whatever the id is today; the finding is listed under the record's id.
+const YL = 'bsample0yy';
+function twoAlike(order) {
+  const project = sampleSchool();
+  const yellow = { ...earlyRelease(), id: YL, name: 'Yellow' };
+  project.bellSchedules = order === 'yellow first' ? [yellow, earlyRelease()] : [earlyRelease(), yellow];
+  return project;
+}
+const LATE_7B = 'group-walk:' + A + ':4:' + G7B;
+const accept = (project, id) => {
+  project.accepted = [newAcceptedFinding(id, 'Early Release only', '2026-09-01T12:00:00.000Z', [G7B])];
+  return project;
+};
+const walksOf7B = (checked) => checked.findings.concat(checked.accepted).filter((one) => one.id.startsWith(LATE_7B));
+
+test('an accepted walk late only under bell schedules stays accepted when the schedules are reordered', () => {
+  const before = findingsOf(accept(twoAlike('early first'), LATE_7B + ':' + ER));
+  assert.deepEqual(walksOf7B(before).map((one) => [one.id, Boolean(one.accepted)]), [[LATE_7B + ':' + ER, true]]);
+  const after = findingsOf(accept(twoAlike('yellow first'), LATE_7B + ':' + ER));
+  // the id today would name Yellow; it is listed under the record's
+  assert.deepEqual(walksOf7B(after).map((one) => [one.id, Boolean(one.accepted)]), [[LATE_7B + ':' + ER, true]]);
+  assert.deepEqual(after.accepted.find((one) => one.id.startsWith(LATE_7B)).where.bellsIds, [YL, ER]);
+  assert.deepEqual(after.gone, []);
+  assert.deepEqual(after.changed, []);
+});
+
+test('an accepted walk naming the second schedule stays accepted while the first is there and after it is deleted', () => {
+  // accepted as Yellow's (Yellow was first, or alone), Early Release now first
+  const project = accept(twoAlike('early first'), LATE_7B + ':' + YL);
+  const both = findingsOf(project);
+  assert.deepEqual(walksOf7B(both).map((one) => [one.id, Boolean(one.accepted)]), [[LATE_7B + ':' + YL, true]]);
+  project.bellSchedules = project.bellSchedules.filter((schedule) => schedule.id !== ER);
+  const deleted = findingsOf(project);
+  assert.deepEqual(walksOf7B(deleted).map((one) => [one.id, Boolean(one.accepted)]), [[LATE_7B + ':' + YL, true]]);
+  assert.deepEqual(deleted.gone, []);
+});
+
+test('an accepted walk naming a schedule that is deleted is gone, though the walk is late under another', () => {
+  const project = accept(twoAlike('early first'), LATE_7B + ':' + ER);
+  project.bellSchedules = project.bellSchedules.filter((schedule) => schedule.id !== ER);
+  const checked = findingsOf(project);
+  assert.deepEqual(walksOf7B(checked).map((one) => [one.id, Boolean(one.accepted)]), [[LATE_7B + ':' + YL, false]]);
+  assert.deepEqual(checked.gone.map((record) => record.findingId), [LATE_7B + ':' + ER]);
+});
+
+test('an accepted walk late only under a schedule counts again once it is late under the regular bells too (acceptance lost by design)', () => {
+  const project = accept(twoAlike('early first'), LATE_7B + ':' + ER);
+  // A Day's regular bells as Early Release's for the first six periods: 3 minutes between them
+  const a = project.dayTypes.find((dayType) => dayType.id === A);
+  a.bells = a.bells.map((bell, p) => (p < 6 ? { ...earlyRelease().bells[p] } : { start: time(480 + 33 * p), end: time(510 + 33 * p) }));
+  const checked = findingsOf(project);
+  const found = walksOf7B(checked);
+  assert.deepEqual(found.map((one) => [one.id, Boolean(one.accepted)]), [[LATE_7B, false]]);
+  assert.deepEqual(found[0].where.bellsIds, [null, ER, YL]);
+  assert.deepEqual(checked.gone.map((record) => record.findingId), [LATE_7B + ':' + ER]);
+});
+
+test('followAcceptedWalks and splitAccepted: a teacher-walk record follows the walk the same way, one record for one finding', () => {
+  const finding = (id, bellsIds) => ({ id, kind: 'teacher-walk', severity: 'warning', where: { dayTypeId: A, period: 2, groupIds: [], roomId: null, teacherId: 'tsample001', bellsIds }, about: ['tsample001'] });
+  const record = (id) => ({ findingId: id, reason: 'ok', at: '2026-09-01T12:00:00.000Z', about: ['tsample001'] });
+  const base = 'teacher-walk:' + A + ':2:tsample001';
+  const split = (findings, records) => splitAccepted(followAcceptedWalks(findings, records), records, {});
+  const one = split([finding(base + ':' + YL, [YL, ER])], [record(base + ':' + ER)]);
+  assert.deepEqual(one.accepted.map((f) => f.id), [base + ':' + ER]);
+  assert.deepEqual(one.findings, []);
+  // not when the record's schedule is not among the runs
+  const other = split([finding(base + ':' + YL, [YL])], [record(base + ':' + ER)]);
+  assert.deepEqual(other.findings.map((f) => f.id), [base + ':' + YL]);
+  assert.deepEqual(other.gone.map((r) => r.findingId), [base + ':' + ER]);
+  // a finding already accepted under its own id is not taken by a second record
+  const two = split([finding(base + ':' + YL, [YL, ER])], [record(base + ':' + YL), record(base + ':' + ER)]);
+  assert.deepEqual(two.accepted.map((f) => f.id), [base + ':' + YL]);
+  assert.deepEqual(two.gone.map((r) => r.findingId), [base + ':' + ER]);
+  // nothing to follow: the very list
+  const list = [finding(base + ':' + YL, [YL])];
+  assert.equal(followAcceptedWalks(list, []), list);
 });
 
 test('late under two runs with different figures: the first run\'s sentence, then the other\'s figures in one of their own', () => {
@@ -444,6 +551,59 @@ test('the transition cache keys on content: a schedule ringing the regular times
   assert.equal(new Set(offs.map((transition) => transition.groups)).size, 1);
 });
 
+// A school where nobody moves from Period 6 to Period 7 under the regular
+// bells (every group's Period 7 is its Period 6), with Early Release, whose
+// Periods 7 and 8 do not meet: the regular transition and Early Release's
+// off one both have nobody walking, and the off one is still off.
+function stillAfterSix() {
+  const project = withBells();
+  for (const group of project.groups) {
+    for (const day of Object.values(group.days)) if (Array.isArray(day) && day[5]) day[6] = { ...day[5] };
+  }
+  return project;
+}
+
+test('an off transition is never a met one retimed, even when the met one moves nobody', () => {
+  const project = stillAfterSix();
+  const graph = routingGraph(project);
+  const routes = routesByRun(project, graph);
+  const crowd = simulateSchedule(project, routes, graph);
+  assert.deepEqual(crowd.days[0].transitions[5].groups.filter((group) => group.walking > 0), [], 'nobody walks after Period 6 with the regular bells');
+  const result = createPipeline().run(project);
+  assert.deepEqual(result.crowd, crowd);
+  const early = result.crowd.bells.find((day) => day.dayTypeId === A && day.bellsId === ER);
+  for (const transition of early.transitions.slice(5)) {
+    assert.equal(transition.off, true, 'period ' + transition.period);
+    assert.equal(transition.passingSeconds, null);
+  }
+  // and retimeTransition takes no passing time that is not a number
+  const empty = simulateTransition(graph, [], { passingSeconds: 240 });
+  assert.equal(retimeTransition(empty, 'off', 0), null);
+  assert.equal(retimeTransition(empty, null, 0), null);
+  assert.equal(retimeTransition(empty, undefined, 0), null);
+});
+
+// The pipeline against a simulation from nothing that does not retime
+// (simulateDayTransition is handed no regular result), transition by
+// transition: not simulateSchedule, which retimes as the pipeline does.
+test('every bell-run transition the pipeline gives is what simulating it from nothing gives', () => {
+  const slow = withBells();
+  slow.settings.secondsPerCell = 10; // some groups reach the cap
+  for (const [label, project] of [['two schedules', withBells()], ['nobody moving after Period 6', stillAfterSix()], ['walks reaching the cap', slow]]) {
+    const graph = routingGraph(project);
+    const routes = routesByRun(project, graph);
+    const result = createPipeline().run(project);
+    let compared = 0;
+    for (const day of result.crowd.bells) {
+      for (const transition of day.transitions) {
+        assert.deepEqual(transition, simulateDayTransition(project, routes, day.dayTypeId, transition.period, graph, day.bellsId), label + ': ' + day.dayTypeId + ' ' + day.bellsId + ' ' + transition.period);
+        compared += 1;
+      }
+    }
+    assert.equal(compared, 4 * 7, label);
+  }
+});
+
 test('the transition cache: one changed slot runs the regular transitions into and out of it, and the bell runs only retime', () => {
   const store = storeOf(withBells());
   const pipeline = createPipeline();
@@ -481,6 +641,43 @@ test('a packed answer carries the bell-schedule runs, leaves out what was sent, 
   assert.deepEqual(parts(sent), parts(second));
   assert.equal(sent.crowd.bells[0], firstAnswer.crowd.bells[0], 'a run with nothing new is the run this side already has');
   assert.throws(() => unpack(structuredClone(answer), null), /never had/);
+});
+
+test('pack and unpack across adding the first bell schedule and deleting the last one', () => {
+  const store = storeOf(sampleSchool());
+  const pipeline = createPipeline();
+  const first = pipeline.run(store.project, versionsOf(store));
+  let had = unpack(structuredClone(pack(first, null)), null);
+  assert.deepEqual(parts(had), parts(first));
+  let previous = first;
+  const next = (label) => {
+    const result = pipeline.run(store.project, versionsOf(store));
+    const answer = pack(result, previous);
+    const sent = unpack(structuredClone(answer), had);
+    assert.deepEqual(parts(sent), parts(result), label);
+    assert.deepEqual(parts(result), fresh(store.project), label + ': as a fresh run');
+    had = sent;
+    previous = result;
+    return { result, answer, sent };
+  };
+  store.apply(actions.addBellSchedule, { name: 'Early Release' });
+  const added = next('the first schedule added');
+  assert.equal(added.sent.crowd.bells.length, 2);
+  assert.equal(added.sent.bellLoads.length, 2);
+  assert.equal(added.answer.crowdBells.length, 2, 'the new runs are sent');
+  const id = store.project.bellSchedules[0].id;
+  store.apply(actions.setBellSchedule, { bellScheduleId: id, off: [6, 7] });
+  next('periods that do not meet');
+  store.apply(actions.deleteBellSchedule, { bellScheduleId: id });
+  const removed = next('the last schedule deleted');
+  assert.equal('bells' in removed.sent.crowd, false);
+  assert.equal('bellLoads' in removed.sent, false);
+  assert.equal('bells' in removed.sent.routes, false);
+  assert.equal('crowdBells' in removed.answer, false);
+  // and added again, against an answer that had none
+  store.apply(actions.addBellSchedule, { name: 'Testing' });
+  const again = next('a schedule added again');
+  assert.equal(again.sent.crowd.bells.length, 2);
 });
 
 test('runResults picks one run\'s parts out of a result', () => {

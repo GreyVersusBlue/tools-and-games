@@ -26,8 +26,11 @@
 // type is one finding naming them all ("on A Day, regular and Early Release
 // bells"), whose id is the regular run's when the regular bells are among
 // them, so a finding accepted before bell schedules existed stays accepted;
-// late only under bell schedules, the id gains the first schedule's id. The
-// runs are in `where.bellsIds` whenever a bell schedule is among them.
+// late only under bell schedules, the id gains the first schedule's id (and
+// an acceptance naming schedule X holds while the walk is late under X and
+// not under the regular bells, whatever the id is today:
+// followAcceptedWalks below). The runs are in `where.bellsIds` whenever a bell schedule
+// is among them.
 //
 // The rules, one per kind:
 //
@@ -442,5 +445,42 @@ export function checkSchedule(project, walkResults) {
     }
   }
 
-  return splitAccepted(sortFindings(found, project), project.accepted, { off, limit, runs });
+  return splitAccepted(followAcceptedWalks(sortFindings(found, project), project.accepted), project.accepted, { off, limit, runs });
+}
+
+// A walk late only under bell schedules has the first of them (in the
+// project's order) in its id, `group-walk:d:p:<group>:<schedule>`, so
+// reordering the schedules, or deleting one, would change the id and lose
+// an acceptance. The id rule stays; instead a walk record whose id names
+// schedule X, with no finding of its own id, follows the finding of the same
+// kind, day type, period and group or teacher that is still late under X (X
+// among its where.bellsIds), whatever its id is now: the finding takes the
+// record's id, so splitAccepted (findings.js) matches them as ever and
+// taking the acceptance back finds the record. It must still be late only
+// under bell schedules: a walk late under the regular bells as well is worse
+// than the one accepted, has the regular id and counts again (by design).
+// Nor does it follow once X is deleted: the walk is late under X no longer.
+// A record follows one finding, never two, and never one with a record of
+// its own. Here rather than in splitAccepted because findings.js is in the
+// staff browser, whose published code does not change for this.
+export function followAcceptedWalks(findings, acceptedRecords) {
+  const records = Array.isArray(acceptedRecords) ? acceptedRecords : [];
+  const ids = new Set(findings.map((finding) => finding.id));
+  const recordIds = new Set(records.map((record) => record.findingId));
+  const renamed = new Map();
+  for (const record of records) {
+    const parts = String(record.findingId).split(':');
+    if ((parts[0] !== 'group-walk' && parts[0] !== 'teacher-walk') || parts.length !== 5 || ids.has(record.findingId)) continue;
+    const base = parts.slice(0, 4).join(':');
+    const match = findings.find((finding) => {
+      if (finding.kind !== parts[0] || recordIds.has(finding.id) || renamed.has(finding.id)) return false;
+      const own = finding.id.split(':');
+      if (own.length !== 5 || own.slice(0, 4).join(':') !== base) return false;
+      const bellsIds = Array.isArray(finding.where.bellsIds) ? finding.where.bellsIds : [];
+      return !bellsIds.includes(null) && bellsIds.includes(parts[4]);
+    });
+    if (match) renamed.set(match.id, record.findingId);
+  }
+  if (renamed.size === 0) return findings;
+  return findings.map((finding) => (renamed.has(finding.id) ? { ...finding, id: renamed.get(finding.id) } : finding));
 }
