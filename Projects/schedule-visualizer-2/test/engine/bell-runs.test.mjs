@@ -28,6 +28,7 @@ import { trimResult, compareResults, loadDifference } from '../../engine/scenari
 import { suggest } from '../../engine/suggest.js';
 import { newAcceptedFinding } from '../../engine/schema.js';
 import { splitAccepted } from '../../engine/findings.js';
+import { followAcceptedWalks } from '../../engine/checks.js';
 import { sampleSchool } from '../../data/sample-school.js';
 
 const A = 'dsample00a';
@@ -402,21 +403,25 @@ test('an accepted walk late only under a schedule counts again once it is late u
   assert.deepEqual(checked.gone.map((record) => record.findingId), [LATE_7B + ':' + ER]);
 });
 
-test('splitAccepted: a teacher-walk record follows the walk the same way, one record for one finding', () => {
+test('followAcceptedWalks and splitAccepted: a teacher-walk record follows the walk the same way, one record for one finding', () => {
   const finding = (id, bellsIds) => ({ id, kind: 'teacher-walk', severity: 'warning', where: { dayTypeId: A, period: 2, groupIds: [], roomId: null, teacherId: 'tsample001', bellsIds }, about: ['tsample001'] });
   const record = (id) => ({ findingId: id, reason: 'ok', at: '2026-09-01T12:00:00.000Z', about: ['tsample001'] });
   const base = 'teacher-walk:' + A + ':2:tsample001';
-  const one = splitAccepted([finding(base + ':' + YL, [YL, ER])], [record(base + ':' + ER)], {});
+  const split = (findings, records) => splitAccepted(followAcceptedWalks(findings, records), records, {});
+  const one = split([finding(base + ':' + YL, [YL, ER])], [record(base + ':' + ER)]);
   assert.deepEqual(one.accepted.map((f) => f.id), [base + ':' + ER]);
   assert.deepEqual(one.findings, []);
   // not when the record's schedule is not among the runs
-  const other = splitAccepted([finding(base + ':' + YL, [YL])], [record(base + ':' + ER)], {});
+  const other = split([finding(base + ':' + YL, [YL])], [record(base + ':' + ER)]);
   assert.deepEqual(other.findings.map((f) => f.id), [base + ':' + YL]);
   assert.deepEqual(other.gone.map((r) => r.findingId), [base + ':' + ER]);
   // a finding already accepted under its own id is not taken by a second record
-  const two = splitAccepted([finding(base + ':' + YL, [YL, ER])], [record(base + ':' + YL), record(base + ':' + ER)], {});
+  const two = split([finding(base + ':' + YL, [YL, ER])], [record(base + ':' + YL), record(base + ':' + ER)]);
   assert.deepEqual(two.accepted.map((f) => f.id), [base + ':' + YL]);
   assert.deepEqual(two.gone.map((r) => r.findingId), [base + ':' + ER]);
+  // nothing to follow: the very list
+  const list = [finding(base + ':' + YL, [YL])];
+  assert.equal(followAcceptedWalks(list, []), list);
 });
 
 test('late under two runs with different figures: the first run\'s sentence, then the other\'s figures in one of their own', () => {

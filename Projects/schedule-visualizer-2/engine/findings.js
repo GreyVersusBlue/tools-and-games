@@ -185,19 +185,6 @@ export function sortFindings(findings, project) {
 // there. `options.runs` is a Map of finding id to { start, end }. The finding
 // is then listed under the id it was accepted as, so taking the acceptance
 // back finds the record. A record accepts one finding, never two.
-//
-// The walk kinds have a second way too. A walk late only under bell
-// schedules has the first of them (in the project's order) in its id,
-// `group-walk:d:p:<group>:<schedule>`, so reordering the schedules, or
-// deleting one, would change the id and lose the acceptance. A walk record
-// whose id names schedule X, with no finding of its own id, is matched to the
-// finding of the same kind, day type, period and group or teacher that is
-// still late under X (X among its where.bellsIds), whatever its id is now,
-// and the finding is listed under the record's id. It must still be late
-// only under bell schedules: a walk that is late under the regular bells as
-// well is worse than the one accepted, has the regular id, and counts again
-// (by design). Nor is it matched once X is deleted: then it is late under X
-// no longer.
 function sameIds(a, b) {
   return a.length === b.length && a.every((id, index) => id === b[index]);
 }
@@ -230,19 +217,6 @@ export function splitAccepted(findings, acceptedRecords, options) {
       if (finding.where.dayTypeId !== parts[1] || finding.where.teacherId !== parts[3]) return false;
       const run = runs.get(finding.id);
       return Boolean(run) && run.start <= start + limit && run.end >= start;
-    });
-    if (match) moved.set(match.id, record);
-  }
-  for (const record of records.values()) {
-    const parts = String(record.findingId).split(':');
-    if ((parts[0] !== 'group-walk' && parts[0] !== 'teacher-walk') || parts.length !== 5 || foundIds.has(record.findingId)) continue;
-    const base = parts.slice(0, 4).join(':');
-    const match = findings.find((finding) => {
-      if (finding.kind !== parts[0] || records.has(finding.id) || moved.has(finding.id)) return false;
-      const own = finding.id.split(':');
-      if (own.length !== 5 || own.slice(0, 4).join(':') !== base) return false;
-      const bellsIds = Array.isArray(finding.where.bellsIds) ? finding.where.bellsIds : [];
-      return !bellsIds.includes(null) && bellsIds.includes(parts[4]);
     });
     if (match) moved.set(match.id, record);
   }
