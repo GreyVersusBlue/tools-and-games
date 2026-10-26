@@ -35,7 +35,9 @@ import { printDate } from '../prints/document.js';
 import { batchWords } from '../prints/batch.js';
 import { notePublished, setPublishSetting } from '../../engine/actions.js';
 import { PUBLISH_VIEWS, RANGES } from '../../engine/schema.js';
-import { isProtected } from '../../engine/publish-data.js';
+import { isProtected, staleness } from '../../engine/publish-data.js';
+import { calendarOf } from '../../engine/schema.js';
+import { dateWords, addDays } from '../../engine/calendar.js';
 import { DEFAULT_PASSCODE } from '../../engine/publish-defaults.js';
 import { pageReader, failureSentence } from './assemble.js';
 import { publishDocument, deviceRandom, fileTarget } from './targets.js';
@@ -81,6 +83,15 @@ export const MOVED_ON = 'The schedule changed while the file was being made. The
 // every keystroke would move the Publish button under the pointer.
 export const CHECKS_WORDS_AFTER_MS = 400;
 export const STALE_LABEL = 'Days until the file counts as out of date';
+export const STALE_AT_END_LABEL = 'Out of date the day after the calendar ends';
+// SV2-80 (ARCHITECTURE 17.4): a calendar changed since the last file went out
+export function calendarChangedWords(project) {
+  const calendar = calendarOf(project);
+  const last = project.publish ? project.publish.lastPublishedAt : null;
+  if (!calendar || typeof calendar.changedAt !== 'string' || typeof last !== 'string') return '';
+  if (Date.parse(calendar.changedAt) <= Date.parse(last)) return '';
+  return 'The calendar changed after your last publish on ' + printDate(last) + '. Staff copies still have the old one.';
+}
 export const NOTES_LINE = 'Teacher notes are published: the substitute plan shows them.';
 export const MAIL_LINE = 'On a phone, open the file in Safari or Chrome, or save it to Files first; a mail app’s preview will not work.';
 export const NOTHING_REMAINS = NOTHING;
@@ -192,6 +203,12 @@ export function publishForm(ctx, hooks) {
     describedBy: staleHint,
     commit: (value) => taken('stalenessDays', value),
   });
+
+  // with a calendar: out of date the day after it ends, or after the days
+  const atEnd = check('stale-at-end', STALE_AT_END_LABEL, (on) => change('staleAtCalendarEnd', on));
+  // a box of its own, so `hidden` is not beaten by the tick's display
+  const atEndRow = h('div', { class: 'pub__row', data: { says: 'stale-at-end' } }, atEnd.element);
+  const changedSays = h('p', { class: 'pub__hint', role: 'status', data: { says: 'calendar-changed' }, hidden: true });
 
   // ---- the passcode
 
@@ -416,9 +433,9 @@ export function publishForm(ctx, hooks) {
     h('p', { class: 'pub__lead' }, fileTarget.says),
     group('Passcode', protect.element, passcode.element, truth),
     group('Before you publish', checksList, checksSays, h('p', { class: 'pub__hint', data: { says: 'notes' } }, NOTES_LINE)),
-    h('div', { class: 'pub__publish' }, button, says, h('p', { class: 'pub__hint', data: { says: 'mail' } }, MAIL_LINE)),
+    h('div', { class: 'pub__publish' }, button, says, changedSays, h('p', { class: 'pub__hint', data: { says: 'mail' } }, MAIL_LINE)),
     fold,
-    h('div', { class: 'pub__group', role: 'group', 'aria-labelledby': staleTitle }, h('h3', { class: 'eyebrow pub__title', id: staleTitle }, h('label', { for: 'publish-stale' }, STALE_LABEL)), stale.element, staleSays),
+    h('div', { class: 'pub__group', role: 'group', 'aria-labelledby': staleTitle }, h('h3', { class: 'eyebrow pub__title', id: staleTitle }, h('label', { for: 'publish-stale' }, STALE_LABEL)), atEndRow, stale.element, staleSays),
     h('h2', { class: 'pub__heading pub__heading--next' }, 'Print for the whole school'),
     batchSays,
     h('div', { class: 'pub__batch' },
@@ -435,8 +452,25 @@ export function publishForm(ctx, hooks) {
     names.box.checked = publish.teacherNamesOnMap !== false;
     foldSays.textContent = (held === views.length ? 'All ' + views.length + ' views' : held + ' of ' + views.length + ' views') + (names.box.checked ? '' : ', no teacher names on the map');
     stale.set(publish.stalenessDays);
-    const until = printDate(new Date(ctx.clock().getTime() + publish.stalenessDays * DAY_MS));
-    staleSays.textContent = 'Readers see a notice once the file is older than this. Published today, it is current until ' + until + '. From 1 to ' + RANGES.stalenessDays[1] + ' days.';
+    const now = ctx.clock();
+    const until = printDate(new Date(now.getTime() + publish.stalenessDays * DAY_MS));
+    const days = 'From 1 to ' + RANGES.stalenessDays[1] + ' days.';
+    // with a calendar, the end of the year says when, unless it has ended
+    // (staleness's why: ARCHITECTURE 17.4)
+    const calendar = calendarOf(project);
+    atEndRow.hidden = !calendar;
+    atEnd.box.checked = publish.staleAtCalendarEnd !== false;
+    const goesStale = staleness(project, now);
+    if (goesStale.why === 'calendar') {
+      staleSays.textContent = 'Readers see a notice once the file is out of date. With the calendar, a file published today is current until ' + dateWords(addDays(calendar.end, 1)) + ', the day after the calendar ends. The days below count only without it.';
+    } else if (goesStale.why === 'calendar-ended') {
+      staleSays.textContent = 'The calendar ended on ' + dateWords(calendar.end) + ', so the days below say when the file is out of date: published today, it is current until ' + until + '. ' + days;
+    } else {
+      staleSays.textContent = 'Readers see a notice once the file is older than this. Published today, it is current until ' + until + '. ' + days;
+    }
+    const changedWords = calendarChangedWords(project);
+    changedSays.textContent = changedWords;
+    changedSays.hidden = changedWords === '';
 
     const on = isProtected(project);
     if (project.id !== lastProject) {
