@@ -5,6 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parse } from '../../engine/csv.js';
+import { withEverything, C } from '../fixtures/day-types-calendar.mjs';
 import { EXPORT_KINDS, NOT_IN_BUILDING, PLANNING, buildExport, csvText, exportFileName, groupsHeader, groupsRows, templateRows, teachersRows, roomsRows, teacherGridRows, roomGridRows } from '../../engine/exports.js';
 import { guessColumns, previewImport, applyGroupImport } from '../../engine/import-groups.js';
 import { readProjectFile, readBuildingFile, readScheduleFile } from '../../engine/project-file.js';
@@ -63,6 +64,35 @@ test('the template matches the current periods and day types, for every period w
       assert.deepEqual(mapping.filter((item) => item.role === 'period').map((item) => [item.dayTypeId, item.period]), project.dayTypes.flatMap((dayType) => Array.from({ length: periods }, (unused, period) => [dayType.id, period])));
     }
   }
+});
+
+test('the template and the export list every day type with its own classes, and a day type the same as B Day has empty cells', () => {
+  const project = withEverything();
+  // a third day type with its own classes, after B Day and before D Day
+  project.dayTypes[2] = { ...project.dayTypes[2], own: true, sameAs: null, bells: project.dayTypes[1].bells.map((bell) => (bell ? { ...bell } : null)) };
+  project.dayTypes[3] = { ...project.dayTypes[3], sameAs: C };
+  for (const one of project.groups) one.days[C] = one.days[B].map((slot) => ({ ...slot, teacherIds: slot.teacherIds.slice() }));
+  group(project, '6A').days[C][0] = { room: 'rsamplegym', roomText: '', label: '', teacherIds: [] };
+  assertValid(project);
+  const header = templateRows(project)[0];
+  assert.equal(header.length, 4 + 4 * 8);
+  assert.deepEqual([header[4], header[12], header[20], header[28]], ['A Day Period 1', 'B Day Period 1', 'C Day Period 1', 'D Day Period 1']);
+  const rows = groupsRows(project);
+  assert.equal(row(rows, '6A')[20], 'Gym', 'C Day has its own classes');
+  assert.deepEqual(row(rows, '6A').slice(28), Array(8).fill(''), 'D Day is the same as C Day: empty, not C Day\'s rooms');
+  const back = parse(csvText(rows)).rows;
+  assert.equal(applyGroupImport(project, back, guessColumns(back[0], project), { all: 'overwrite' }, makeIds(2)).project, project, 'it reads back to the same project');
+});
+
+test('twelve day types: the template understands every column it writes', () => {
+  const project = school();
+  for (let i = 2; i < 12; i += 1) project.dayTypes.push({ id: 'dmany000' + String(i).padStart(2, '0'), name: 'Day ' + String.fromCharCode(65 + i), own: i % 2 === 0, sameAs: null, short: '', bells: Array(8).fill(null) });
+  for (const one of project.groups) for (const dayType of project.dayTypes.slice(2)) if (dayType.own) one.days[dayType.id] = one.days[A].map((slot) => ({ ...slot, teacherIds: slot.teacherIds.slice() }));
+  assertValid(project);
+  const header = templateRows(project)[0];
+  assert.equal(header.length, 4 + 12 * 8);
+  const mapping = guessColumns(header, project);
+  assert.deepEqual(mapping.filter((item) => item.role === 'period').map((item) => item.dayTypeId), project.dayTypes.flatMap((dayType) => Array(8).fill(dayType.id)));
 });
 
 test('the template opens cleanly in a spreadsheet: a byte-order mark, CRLF, one line', () => {
@@ -255,6 +285,7 @@ test('every export is named with the school, what it is and the date', () => {
     'Marrowby Middle School (sample) - building - 2026-09-01.json',
     'Marrowby Middle School (sample) - project - 2026-09-01.json',
     'Marrowby Middle School (sample) - subjects - 2026-09-01.csv',
+    'Marrowby Middle School (sample) - calendar - 2026-09-01.csv',
   ]);
 });
 

@@ -41,6 +41,7 @@
 
 import { RANGES, roomNumberKey, nameKey, inRange, emptySlot, emptyDay, allRooms, nextGroupColour } from './schema.js';
 import { isId } from './ids.js';
+import { isOwnCopy, effectiveDayType, findDayType } from './day-types.js';
 import { periodName, periodLabel } from './bells.js';
 
 export const ROLES = ['name', 'grade', 'headCount', 'colour', 'dayType', 'period', 'ignore'];
@@ -263,7 +264,7 @@ function isOwn(project, dayTypeId) {
 //   groups        one per imported name, the rows merged: { key, name, existing,
 //                 rows, fields, days } with days[dayTypeId][period] = { room, roomText }
 //   unknownRooms  [{ text, count, rows }] room numbers that are not in the building
-//   makesOwn      day types now "same as the first" that would become their own copy
+//   makesOwn      day types now "same as" another that would become their own copy
 //   counts        { create, match, skip, slots, unknownRooms }
 export function previewImport(project, rows, mapping) {
   const result = { problems: checkMapping(project, mapping), rows: [], groups: [], unknownRooms: [], makesOwn: [], counts: { create: 0, match: 0, skip: 0, slots: 0, unknownRooms: 0 } };
@@ -452,15 +453,15 @@ function freeName(used, name) {
 // colour; `days[dayTypeId]` is a list or an object by period of
 // { room, roomText, label, teacherIds }, where a missing period or a missing
 // label or teacherIds leaves what is there. Every dayTypeId is a day type of
-// `project`. A day type that is the same as the first becomes its own copy
-// when a group that is not skipped has a room in it.
+// `project`. A day type that is "same as" becomes its own copy when a group
+// that is not skipped has a room in it, starting as a copy of the day type
+// it was the same as (day-types.js says which), not of the first.
 //
 // Returns { project, summary }. When nothing changes, `project` is the one
 // that was passed in.
 export function mergeGroups(project, incoming, policy, ids) {
   const summary = { created: [], overwritten: [], skipped: [], renamed: [], madeOwn: [], unchanged: [] };
   const periods = project.settings.periods;
-  const base = project.dayTypes[0];
   const existingByKey = new Map(project.groups.map((group) => [nameKey(group.name), group]));
   const usedNames = new Set(existingByKey.keys());
   for (const item of incoming) usedNames.add(nameKey(item.name));
@@ -512,24 +513,29 @@ export function mergeGroups(project, incoming, policy, ids) {
   };
   for (const step of plan) step.days = daysOf(step.item);
 
-  // day types that become their own copy
-  const toOwn = project.dayTypes.filter((dayType, index) => index > 0 && !dayType.own && plan.some((step) => step.days[dayType.id] !== undefined));
+  // day types that become their own copy, each from what it was the same as
+  const toOwn = project.dayTypes.filter((dayType) => !isOwnCopy(project, dayType.id) && plan.some((step) => step.days[dayType.id] !== undefined));
+  const copiedFrom = new Map(toOwn.map((dayType) => [dayType.id, effectiveDayType(project, dayType.id).id]));
   let next = project;
   if (toOwn.length > 0) {
-    const becoming = new Set(toOwn.map((dayType) => dayType.id));
     next = {
       ...project,
-      dayTypes: project.dayTypes.map((dayType) => (becoming.has(dayType.id) ? { ...dayType, own: true, bells: base.bells.map((bell) => (bell === null ? null : { ...bell })) } : dayType)),
+      dayTypes: project.dayTypes.map((dayType) => {
+        if (!copiedFrom.has(dayType.id)) return dayType;
+        const from = findDayType(project, copiedFrom.get(dayType.id));
+        const own = { ...dayType, own: true, bells: from.bells.map((bell) => (bell === null ? null : { ...bell })) };
+        if (own.sameAs !== undefined) own.sameAs = null;
+        return own;
+      }),
       groups: project.groups.map((group) => {
         const days = { ...group.days };
-        for (const dayType of toOwn) days[dayType.id] = group.days[base.id].map(copySlot);
+        for (const dayType of toOwn) days[dayType.id] = (group.days[copiedFrom.get(dayType.id)] || emptyDay(periods)).map(copySlot);
         return { ...group, days };
       }),
     };
     summary.madeOwn = toOwn.map((dayType) => dayType.name);
   }
   const ownIds = next.dayTypes.filter((dayType, index) => index === 0 || dayType.own).map((dayType) => dayType.id);
-  const becameOwn = new Set(toOwn.map((dayType) => dayType.id));
 
   const taken = new Set(next.groups.map((group) => group.id));
   let groups = next.groups;
@@ -576,9 +582,13 @@ export function mergeGroups(project, incoming, policy, ids) {
       const given = step.days[dayTypeId];
       if (given) days[dayTypeId] = given.map((slot) => mergeSlot(null, slot === undefined ? emptySlot() : slot));
     }
+    // a day type made its own copy starts as a copy of what it was the same
+    // as, once that has its slots
     for (const dayTypeId of ownIds) {
-      if (days[dayTypeId]) continue;
-      days[dayTypeId] = becameOwn.has(dayTypeId) && days[base.id] ? days[base.id].map(copySlot) : emptyDay(periods);
+      if (!days[dayTypeId] && !copiedFrom.has(dayTypeId)) days[dayTypeId] = emptyDay(periods);
+    }
+    for (const dayTypeId of ownIds) {
+      if (!days[dayTypeId]) days[dayTypeId] = days[copiedFrom.get(dayTypeId)].map(copySlot);
     }
     const group = {
       id,
@@ -621,5 +631,7 @@ export function summaryText(summary) {
   if (summary.overwritten.length > 0) parts.push(groups(summary.overwritten.length) + ' replaced');
   const left = summary.skipped.length + summary.unchanged.length;
   if (left > 0) parts.push(groups(left) + ' left as ' + (left === 1 ? 'it was' : 'they were'));
+  // a schedule file's calendar replaces the one here, and says so
+  if (summary.calendarReplaced === true) parts.push('the calendar replaced');
   return parts.length === 0 ? 'nothing to import' : parts.join(', ');
 }

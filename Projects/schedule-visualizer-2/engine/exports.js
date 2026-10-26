@@ -18,11 +18,12 @@
 import { write } from './csv.js';
 import { allRooms, floorOfRoom, resolveSlotRoom } from './schema.js';
 import { periodName } from './bells.js';
-import { effectiveSchedule } from './day-types.js';
+import { effectiveSchedule, isOwnCopy } from './day-types.js';
 import { teacherDays } from './teacher-day.js';
 import { writeProjectFile, writeBuildingFile, writeScheduleFile } from './project-file.js';
+import { calendarRows } from './import-calendar.js';
 
-export const EXPORT_KINDS = ['groups', 'groups-template', 'teachers', 'rooms', 'teacher-grid', 'room-grid', 'schedule', 'building', 'project', 'subjects'];
+export const EXPORT_KINDS = ['groups', 'groups-template', 'teachers', 'rooms', 'teacher-grid', 'room-grid', 'schedule', 'building', 'project', 'subjects', 'calendar'];
 
 export const NOT_IN_BUILDING = 'not in the building';
 export const PLANNING = 'Planning';
@@ -36,8 +37,12 @@ export function csvText(rows, options) {
 // ---------------------------------------------------------------- groups
 
 // The header of the groups CSV, and of the template: the four group columns,
-// then every period of every day type. With one day type the period columns
-// are "Period 1"; with more they are "A Day Period 1".
+// then every period of every day type, so every day type with its own
+// classes is listed, however many (ARCHITECTURE 17.9). With one day type the
+// period columns are "Period 1"; with more they are "A Day Period 1". A day
+// type that is the same as another keeps its columns, empty, so the file's
+// shape is as it always was (the groups print finds a day type's cells by
+// its place among them).
 export function groupsHeader(project) {
   const header = ['Group', 'Grade', 'Head count', 'Colour'];
   const many = project.dayTypes.length > 1;
@@ -60,13 +65,13 @@ function slotText(project, slot) {
 }
 
 // One row per group. A cell is the room's number. A day type that is the
-// same as the first has empty cells, so reading the file back leaves it so.
+// same as another has empty cells, so reading the file back leaves it so.
 export function groupsRows(project) {
   const rows = [groupsHeader(project)];
   for (const group of project.groups) {
     const row = [group.name, group.grade, group.headCount === null ? '' : String(group.headCount), group.colour];
-    project.dayTypes.forEach((dayType, index) => {
-      const day = index === 0 || dayType.own ? group.days[dayType.id] : null;
+    project.dayTypes.forEach((dayType) => {
+      const day = isOwnCopy(project, dayType.id) ? group.days[dayType.id] : null;
       for (let period = 0; period < project.settings.periods; period += 1) row.push(day && day[period] ? slotText(project, day[period]) : '');
     });
     rows.push(row);
@@ -217,6 +222,8 @@ const BUILDERS = {
   rooms: { what: 'rooms', extension: 'csv', mime: CSV, text: (project, options) => csvText(roomsRows(project), options) },
   'teacher-grid': { what: 'teachers by period', extension: 'csv', mime: CSV, text: (project, options) => csvText(teacherGridRows(project, options.dayTypeId), options) },
   'room-grid': { what: 'rooms by period', extension: 'csv', mime: CSV, text: (project, options) => csvText(roomGridRows(project, options.dayTypeId), options) },
+  // the calendar, one row per date (import-calendar.js reads it back)
+  calendar: { what: 'calendar', extension: 'csv', mime: CSV, text: (project, options) => csvText(calendarRows(project), options) },
   schedule: { what: 'schedule', extension: 'json', mime: JSON_TYPE, text: (project) => writeScheduleFile(project) },
   building: { what: 'building', extension: 'json', mime: JSON_TYPE, text: (project, options) => writeBuildingFile(project, { images: options.images }) },
   project: { what: 'project', extension: 'json', mime: JSON_TYPE, text: (project, options) => writeProjectFile(project, { images: options.images }) },

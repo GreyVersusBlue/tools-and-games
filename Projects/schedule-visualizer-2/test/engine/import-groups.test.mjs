@@ -325,6 +325,45 @@ test('rooms for a day type that is the same as the first make it its own copy, f
   assertValid(result.project);
 });
 
+// SV2-77: "same as" may name any own day type (ARCHITECTURE 17.2), and a day
+// type made its own copy starts from what it was the same as (17.12).
+test('rooms for a day type that is the same as B Day make it a copy of B Day, not of the first', () => {
+  const project = school();
+  project.dayTypes.push({ id: 'dsample00c', name: 'C Day', own: false, sameAs: B, short: '', bells: Array(8).fill(null) });
+  assertValid(project);
+  assert.notDeepEqual(group(project, '7A').days[A], group(project, '7A').days[B], 'the sample\'s A and B Days differ, so the copy can be told apart');
+  const rows = [['Group', 'C Day Period 1', 'C Day Period 2'], ['6A', 'Gym', '']];
+  const preview = previewImport(project, rows, guessColumns(rows[0], project));
+  assert.deepEqual(preview.makesOwn, ['dsample00c']);
+  const result = importRows(project, rows, { all: 'overwrite' });
+  assertValid(result.project);
+  const made = result.project.dayTypes[2];
+  assert.deepEqual([made.own, made.sameAs], [true, null], 'its own copy, the same as nothing');
+  assert.deepEqual(made.bells, project.dayTypes[1].bells, 'the bells start as B Day\'s');
+  assert.deepEqual(result.summary.madeOwn, ['C Day']);
+  // a group the file does not name gets a copy of its B Day
+  assert.deepEqual(group(result.project, '7A').days.dsample00c, group(project, '7A').days[B]);
+  // a group the file names keeps B Day's slots where the file has no column
+  assert.equal(group(result.project, '6A').days.dsample00c[0].room, 'rsamplegym');
+  assert.equal(group(result.project, '6A').days.dsample00c[1].room, null, 'an empty cell is an empty period');
+  assert.deepEqual(group(result.project, '6A').days.dsample00c.slice(2), group(project, '6A').days[B].slice(2));
+  // a new group with no C Day of its own gets a copy of its B Day
+  const slot = (roomId) => ({ room: roomId, roomText: '', label: '', teacherIds: [] });
+  const merged = mergeGroups(project, [{ name: '6A', days: { dsample00c: [slot('rsamplegym')] } }, { name: '9N', days: { [B]: [slot('rsample102')] } }], { all: 'overwrite' }, makeIds(12));
+  assertValid(merged.project);
+  assert.deepEqual(group(merged.project, '9N').days.dsample00c, group(merged.project, '9N').days[B]);
+  assert.equal(group(merged.project, '9N').days.dsample00c[0].room, 'rsample102');
+});
+
+test('a day type the same as one whose sameAs field is absent is made its own from the first', () => {
+  const project = sameAsA();
+  delete project.dayTypes[1].sameAs;
+  const result = importRows(project, [['Group', 'B Day Period 1'], ['6A', 'Gym']], { all: 'overwrite' });
+  assert.equal('sameAs' in result.project.dayTypes[1], false, 'a field the day type did not have is not added');
+  assert.deepEqual(group(result.project, '7A').days[B], group(project, '7A').days[A]);
+  assertValid(result.project);
+});
+
 test('empty cells for a day type that is the same as the first leave it the same', () => {
   const project = sameAsA();
   const rows = parse(csvText(templateRows(project))).rows.concat([['9N', '9', '', '', '101'].concat(Array(15).fill(''))]);
