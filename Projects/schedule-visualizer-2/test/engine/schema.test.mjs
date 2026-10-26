@@ -214,3 +214,19 @@ test('findRoom, floorOfRoom and allRooms read the building', () => {
   assert.equal(schema.allRooms(project).length, 13);
   assert.equal(schema.findFloor(project, 'fsample003').level, 3);
 });
+
+test('ARCHITECTURE 17: the limits, the new project\'s fields, and the readers that treat absent as none', () => {
+  assert.deepEqual([schema.DAY_TYPES_MOST, schema.BELL_SCHEDULES_MOST, schema.NAME_MOST, schema.SHORT_MOST, schema.CALENDAR_DAYS_MOST, schema.ROTATION_RANGE, schema.DATE_LABEL_MOST], [12, 12, 40, 4, 731, [1, 24], 60]);
+  const project = emptyProject();
+  assert.deepEqual([project.bellSchedules, project.calendar], [[], null]);
+  assert.deepEqual(project.dayTypes.map((d) => [d.own, d.sameAs, d.short]), [[true, null, ''], [false, null, '']]);
+  assert.deepEqual(schema.newBellSchedule('bsample0er', 'Early Release', [null]), { id: 'bsample0er', name: 'Early Release', short: '', bells: [null], off: [] });
+  assert.deepEqual(schema.defaultWeekdays().map((rule) => rule.day), ['rotation', 'rotation', 'rotation', 'rotation', 'rotation', 'closed', 'closed']);
+  assert.deepEqual(schema.bellSchedulesOf({}), []);
+  assert.deepEqual(schema.bellSchedulesOf({ bellSchedules: 'x' }), []);
+  assert.equal(schema.calendarOf({}), null);
+  assert.equal(schema.calendarOf({ calendar: [] }), null);
+  assert.deepEqual(schema.calendarOf({ calendar: { start: 'x' } }), { start: 'x' });
+  assert.equal(schema.spacelessKey(' Early  Release '), 'earlyrelease');
+  assert.equal(schema.textLength('Τρίτη 😀'), 7);
+});

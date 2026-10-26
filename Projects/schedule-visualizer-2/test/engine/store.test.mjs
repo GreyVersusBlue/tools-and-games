@@ -396,3 +396,17 @@ test('the history entry keeps what a building action reported, so nobody runs th
   store.apply(actions.renameFloor, { id: 'fsample001', name: 'Ground' });
   assert.equal(store.undoOutcome, null, 'an action that reports nothing has none');
 });
+
+test('a day-type or calendar action\'s outcome rides on its undo entry, and the calendar is stamped by the store\'s clock', async () => {
+  const { withEverything, B } = await import('../fixtures/day-types-calendar.mjs');
+  const store = createStore({ project: withEverything(), clock: tickingClock(), ids: makeIds(3) });
+  store.apply(actions.deleteDayType, { dayTypeId: B });
+  assert.match(store.undoOutcome.text, /^Deleted B Day, its classes for 8 groups/);
+  assert.equal(store.project.calendar.changedAt, '2026-09-01T12:00:01.000Z');
+  assert.equal(store.project.modified, '2026-09-01T12:00:02.000Z');
+  store.apply(actions.setCalendarDates, { dates: ['2026-09-01'], day: 'closed', label: 'Storm' });
+  assert.deepEqual([store.undoOutcome.schoolDays, store.undoLabel], [1, 'Set 1 September to No school']);
+  assert.equal(store.project.calendar.changedAt, '2026-09-01T12:00:03.000Z');
+  store.undo();
+  assert.match(store.undoOutcome.text, /^Deleted B Day/);
+});

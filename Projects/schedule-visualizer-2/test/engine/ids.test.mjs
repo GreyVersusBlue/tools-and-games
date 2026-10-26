@@ -73,3 +73,19 @@ test('collectIds finds every id in the sample school, each once', () => {
   }
   assert.ok(found.every((id) => isId(id)));
 });
+
+test('bell schedules, marks and duties have id kinds b, m and u, and collectIds finds them, so nothing hands one out twice', () => {
+  assert.deepEqual([ID_PREFIXES.bellSchedule, ID_PREFIXES.mark, ID_PREFIXES.duty], ['b', 'm', 'u']);
+  assert.equal(new Set(Object.values(ID_PREFIXES)).size, Object.keys(ID_PREFIXES).length);
+  const project = school();
+  project.bellSchedules = [{ id: 'bsample0er' }];
+  project.marks = [{ id: 'msample001' }];
+  project.duties = [{ id: 'usample001' }];
+  const found = collectIds(project);
+  for (const id of ['bsample0er', 'msample001', 'usample001']) assert.ok(found.includes(id), id);
+  // a source that would give a reserved bell schedule id is passed over it
+  const first = createIds(seededRandom(9))('b');
+  const ids = createIds(seededRandom(9));
+  ids.reserve(collectIds({ bellSchedules: [{ id: first }] }));
+  assert.notEqual(ids('b'), first);
+});
