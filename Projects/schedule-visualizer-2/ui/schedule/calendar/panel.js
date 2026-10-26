@@ -80,7 +80,7 @@ export function calendarPanel(env, project, today) {
             if (run(ctx, setCalendarWeekday, { weekday: index, day: event.target.value })) undoToast(ctx, name + 's: ' + event.target.selectedOptions[0].textContent + '.');
           },
         },
-      }, h('option', { value: DAY_ROTATION }, 'In the rotation'), h('option', { value: DAY_CLOSED }, 'No school'), project.dayTypes.map((dayType) => h('option', { value: dayType.id }, 'Always ' + dayType.name))), 'cal-weekday:' + index);
+      }, h('option', { value: DAY_ROTATION }, 'Rotation'), h('option', { value: DAY_CLOSED }, 'No school'), project.dayTypes.map((dayType) => h('option', { value: dayType.id }, 'Always ' + dayType.name))), 'cal-weekday:' + index);
       day.value = rule.day;
       let bells = null;
       if (schedules.length > 0) {
@@ -91,10 +91,10 @@ export function calendarPanel(env, project, today) {
           on: {
             change: (event) => {
               const value = event.target.value === '' ? null : event.target.value;
-              if (run(ctx, setCalendarWeekday, { weekday: index, bells: value })) undoToast(ctx, name + 's: ' + event.target.selectedOptions[0].textContent + '.');
+              if (run(ctx, setCalendarWeekday, { weekday: index, bells: value })) undoToast(ctx, name + 's: ' + event.target.selectedOptions[0].textContent + ' bells.');
             },
           },
-        }, h('option', { value: '' }, 'Regular bells'), schedules.map((schedule) => h('option', { value: schedule.id }, schedule.name + ' bells'))), 'cal-weekday-bells:' + index);
+        }, h('option', { value: '' }, 'Regular'), schedules.map((schedule) => h('option', { value: schedule.id }, schedule.name))), 'cal-weekday-bells:' + index);
         select.value = rule.bells || '';
         bells = h('td', null, select);
       }

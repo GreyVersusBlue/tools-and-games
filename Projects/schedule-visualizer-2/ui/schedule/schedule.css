@@ -1835,3 +1835,28 @@
 .cal-weekday .cal-select {
   width: auto;
 }
+
+/* a weekday a row on a phone: its toggle, then its bells */
+@media (max-width: 640px) {
+  .cal-weekdays {
+    flex-direction: column;
+  }
+
+  .cal-weekday {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .cal-weekday .cal-select {
+    width: 100%;
+  }
+}
+
+/* the weekdays' rules fit the 320 px inspector: the two choices share the row */
+.cal-rules {
+  table-layout: fixed;
+}
+
+.cal-rules th[scope="row"] {
+  width: 6.5rem;
+}
