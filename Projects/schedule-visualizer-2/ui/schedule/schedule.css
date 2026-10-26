@@ -982,3 +982,335 @@
     margin-top: var(--s-3);
   }
 }
+
+/* ---------- SV2-78: the Day tab's cards, and more day types ----------
+   DESIGN 11.3 and 11.6. The Day tab is four cards one under another; the
+   day types are a list of rows that stack under 640 px; the group editor
+   has a row of chips choosing which day types it shows. Every chip, tick,
+   radio and row menu is 44 px on a coarse pointer or under 640 px (11.2). */
+
+.sch-card {
+  margin-top: var(--s-5);
+  padding: var(--s-4);
+  border: var(--border);
+  border-radius: var(--r-2);
+  background: var(--card);
+}
+
+.sch-card__title {
+  font-size: var(--t-lg);
+  line-height: var(--lh-lg);
+}
+
+.sch-card__sub {
+  font-size: var(--t-md);
+  font-weight: var(--w-semibold);
+}
+
+.sch-card > .sch-hint {
+  max-width: 46rem;
+}
+
+.sch-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.sch-fieldset > legend {
+  padding: 0;
+  margin-bottom: var(--s-1);
+  font-size: var(--t-sm);
+  font-weight: var(--w-semibold);
+}
+
+.sch-radio {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 32px;
+  cursor: pointer;
+}
+
+.sch-radio > input,
+.sch-tick > input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.sch-tick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
+  cursor: pointer;
+}
+
+/* The day types, one row each: grip, name, then short and kind, then menu. */
+
+.sch-dtlist {
+  display: grid;
+  gap: var(--s-2);
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sch-dtrow {
+  display: grid;
+  grid-template-columns: 22px auto minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--s-2) var(--s-4);
+  padding: var(--s-2) var(--s-3);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--r-1);
+  background: var(--card);
+}
+
+.sch-dtrow--same {
+  border-style: dashed;
+  border-color: var(--line-strong);
+  background: var(--paper);
+}
+
+.sch-dtrow.is-dragging {
+  opacity: 0.6;
+}
+
+.sch-dtrow.is-drop {
+  box-shadow: inset 0 3px 0 var(--accent);
+}
+
+.sch-dtrow__grip {
+  align-self: center;
+}
+
+.sch-dtrow__more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--s-2) var(--s-4);
+}
+
+.sch-dtrow__kindbox {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 40px;
+}
+
+.sch-dtrow__kind {
+  margin: 0;
+}
+
+.sch-dtrow__kind[data-kind="same"],
+.sch-dtrow__kind[data-kind="base"] {
+  color: var(--ink-2);
+}
+
+.sch-dtrow__menu {
+  align-self: center;
+}
+
+.sch-dtadd {
+  display: grid;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+  padding-top: var(--s-3);
+  border-top: var(--border);
+}
+
+.sch-dtadd__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: var(--s-3) var(--s-6);
+}
+
+.sch-dtadd__go {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.sch-dtadd__count {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.sch-followers {
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-2);
+}
+
+/* Other bell schedules. */
+
+.sch-bsched {
+  display: grid;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+  padding-top: var(--s-3);
+  border-top: var(--border);
+}
+
+.sch-bsched__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.sch-bsched__fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+}
+
+.sch-bsched__off {
+  margin: 0;
+}
+
+.sch-bsched__add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-4);
+}
+
+.sch-bells__off {
+  text-align: center;
+}
+
+.sch-bells__none {
+  color: var(--ink-2);
+  font-style: italic;
+}
+
+/* The group editor's choice of day types, with more than two of their own. */
+
+.sch-show {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+}
+
+.sch-show__label {
+  font-size: var(--t-sm);
+  font-weight: var(--w-semibold);
+}
+
+.sch-show__chip {
+  min-height: 32px;
+  padding: 0 var(--s-3);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+
+.sch-show__chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: var(--w-semibold);
+}
+
+.sch-show__chip:hover {
+  border-color: var(--accent);
+}
+
+.sch-same-lines {
+  margin: var(--s-2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-sm);
+}
+
+.sch-same-lines li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-2);
+  min-height: 32px;
+  color: var(--ink-2);
+}
+
+.sch-complete {
+  margin-top: var(--s-2);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+/* three day types side by side only where the window holds them */
+.sch-days[data-shown="3"] {
+  gap: var(--s-4);
+}
+
+@media (max-width: 640px) {
+  .sch-dtrow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .sch-dtrow__grip {
+    display: none;
+  }
+
+  .sch-dtrow__name {
+    grid-column: 1;
+  }
+
+  .sch-dtrow__more {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .sch-dtrow__menu {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+  .sch-radio,
+  .sch-tick,
+  .sch-show__chip,
+  .sch-same-lines li {
+    min-height: 44px;
+  }
+
+  .sch-tick,
+  .sch-show__chip {
+    min-width: 44px;
+  }
+
+  .sch-dtrow .sch-slot__menu,
+  .sch-dtrow .sch-btn--small,
+  .sch-bsched .sch-btn--small,
+  .sch-same-lines .sch-btn--small {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* A finger does not drag a day type: no grip to aim at (Move up and Move
+   down are in the row's menu). */
+@media (pointer: coarse) {
+  .sch-dtrow__grip .sch-grip {
+    display: none;
+  }
+}

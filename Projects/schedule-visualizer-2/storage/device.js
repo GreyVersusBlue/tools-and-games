@@ -1,5 +1,6 @@
 // Small choices this device remembers, in localStorage under `sv2:device`:
-// { theme, lastSection, playback, paper, movement }. The name is permanent.
+// { theme, lastSection, playback, paper, movement, schedule, grid }. The name
+// is permanent.
 //
 // Every write reads what is stored first and changes only the keys it was
 // given, so two parts of the page never undo each other's choices.
@@ -126,4 +127,57 @@ export function writeMovement(patch, storage) {
   if (asked.played === true) next.played = true;
   writeDevice({ movement: next }, store);
   return movementOf({ movement: next });
+}
+
+// `schedule`: { shownDays: [dayTypeId…] }, the day types the group editor
+// shows when there are more than two of their own (DESIGN 11.6), the one
+// chosen last first. `grid`: { day: dayTypeId | 'all' }, the grid's Day type
+// choice. Ids are kept as they are; whether one is still a day type of the
+// project is for the screen to ask. A value that is not of that shape reads
+// as nothing chosen (ARCHITECTURE 17.9), and a write keeps the other fields
+// of the same key.
+export const SHOWN_DAYS_MOST = 3;
+
+function idList(value) {
+  if (!Array.isArray(value)) return [];
+  const ids = [];
+  for (const id of value) if (typeof id === 'string' && id !== '' && !ids.includes(id)) ids.push(id);
+  return ids.slice(0, SHOWN_DAYS_MOST);
+}
+
+export function shownDaysOf(device) {
+  const kept = isObject(device) && isObject(device.schedule) ? device.schedule : {};
+  return idList(kept.shownDays);
+}
+
+export function readShownDays(storage) {
+  return shownDaysOf(readDevice(storage));
+}
+
+// Remember the day types shown, chosen last first. Returns what is kept.
+// Throws when the browser refuses.
+export function writeShownDays(ids, storage) {
+  const store = storage || globalThis.localStorage;
+  const device = readDevice(store);
+  const next = { ...(isObject(device.schedule) ? device.schedule : {}), shownDays: idList(ids) };
+  writeDevice({ schedule: next }, store);
+  return next.shownDays;
+}
+
+export function gridDayOf(device) {
+  const kept = isObject(device) && isObject(device.grid) ? device.grid : {};
+  return typeof kept.day === 'string' && kept.day !== '' ? kept.day : null;
+}
+
+export function readGridDay(storage) {
+  return gridDayOf(readDevice(storage));
+}
+
+// Remember the grid's Day type: an id or 'all'. Throws when the browser
+// refuses.
+export function writeGridDay(day, storage) {
+  const store = storage || globalThis.localStorage;
+  const device = readDevice(store);
+  writeDevice({ grid: { ...(isObject(device.grid) ? device.grid : {}), day: String(day) } }, store);
+  return String(day);
 }

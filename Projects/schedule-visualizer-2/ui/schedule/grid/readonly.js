@@ -104,8 +104,10 @@ function placeWhy(cell, frame) {
 }
 
 // rows: [{ id, name, free, cell(dayTypeId, period) → { text, findings } }]
-function shell(project, caption, first, rows) {
-  const days = ownDayTypes(project);
+// `dayTypeIds`: the day types shown (the grid's Day type choice); left out,
+// every day type that is its own copy.
+function shell(project, caption, first, rows, dayTypeIds) {
+  const days = ownDayTypes(project).filter((dayType) => !Array.isArray(dayTypeIds) || dayTypeIds.includes(dayType.id));
   const periods = project.settings.periods;
   // one line for each finding, however many cells it is on
   const lines = new Map();
@@ -241,8 +243,8 @@ function groupNames(project, ids) {
 }
 
 // One row per teacher: "7-1 in 204". `findings` is the grid model's: slot key
-// to the findings on that slot.
-export function teacherTable(project, findings) {
+// to the findings on that slot. `dayTypeIds` as shell's.
+export function teacherTable(project, findings, dayTypeIds) {
   const days = new Map(ownDayTypes(project).map((dayType) => [dayType.id, teacherDays(project, dayType.id)]));
   const numberOf = (roomId) => {
     const room = roomId ? findRoom(project, roomId) : null;
@@ -259,11 +261,11 @@ export function teacherTable(project, findings) {
         findings: findingsOf(findings, taught.map((each) => each.groupId), dayTypeId, period),
       };
     },
-  })));
+  })), dayTypeIds);
 }
 
 // One row per room: the groups in it.
-export function roomTable(project, findings) {
+export function roomTable(project, findings, dayTypeIds) {
   const rooms = allRooms(project).slice().sort((a, b) => collator.compare(a.number, b.number));
   const inRoom = new Map();
   for (const dayType of ownDayTypes(project)) {
@@ -288,5 +290,5 @@ export function roomTable(project, findings) {
         findings: findingsOf(findings, groups.map((group) => group.id), dayTypeId, period),
       };
     },
-  })));
+  })), dayTypeIds);
 }

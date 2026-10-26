@@ -35,7 +35,7 @@ import { h } from '../components/dom.js';
 import { card } from '../components/card.js';
 import { count, list } from '../components/words.js';
 import { detachRooms, replaceProject } from '../../engine/actions.js';
-import { newProject } from '../../engine/schema.js';
+import { newProject, DEFAULT_DAY_TYPE_NAMES } from '../../engine/schema.js';
 import { DEFAULT_PASSCODE } from '../../engine/publish-defaults.js';
 import { pageSnapshots, AUTO_SNAPSHOT_NAMES, READ_ONLY_SENTENCE } from '../../storage/snapshots.js';
 import { keepNeverShow } from '../help/progress.js';
@@ -149,7 +149,7 @@ export function newProjectWords(project) {
   return {
     empty: false,
     removes: 'Replaces the whole project with an empty one: the building, the schedule, the scenario, the publish settings and every other setting. This project has ' + list(parts) + '.',
-    keeps: 'The new project has one empty floor, an A Day and a B Day, the starter subjects and the settings a new project starts with. Only the theme stays as it is.',
+    keeps: 'The new project has one empty floor, the day types a new project starts with (' + list(DEFAULT_DAY_TYPE_NAMES) + '), the starter subjects and the settings a new project starts with. Only the theme stays as it is.',
   };
 }
 

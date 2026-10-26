@@ -433,3 +433,28 @@
     scroll-padding-left: 6rem;
   }
 }
+
+/* SV2-78: the grid's Day type choice, at the toolbar's left, and its copy dialog. */
+.grd-toolbar__day {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-right: var(--s-3);
+}
+
+.grd-day {
+  width: auto;
+  min-width: 8rem;
+}
+
+.grd-copy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3) var(--s-6);
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+  .grd-day {
+    min-height: 44px;
+  }
+}

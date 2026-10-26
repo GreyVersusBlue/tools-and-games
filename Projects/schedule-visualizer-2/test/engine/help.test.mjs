@@ -149,15 +149,20 @@ test('a shortcut group Help has no sentence for still shows, saying so', () => {
 
 // Spec 2, the vocabulary table, in its order.
 const SPEC_WORDS = ['Project', 'Floor', 'Cell', 'Room', 'Other space', 'Corridor', 'Stairs', 'Elevator', 'Exit', 'Door', 'Period', 'Day type', 'Passing time', 'Transition', 'Group', 'Teacher', 'Subject', 'Load', 'Scenario', 'Finding'];
+// DESIGN 11.1's words, after spec 2's, as the units that build them add them
+// (SV2-78: bell schedules and their No class; the calendar's and the marks'
+// words come with their tabs)
+const NEW_WORDS = ['Bell schedule', 'Regular bells', 'No class'];
 
-test('every word of spec 2 is explained, in the spec’s order, with the school’s own period word', () => {
-  assert.deepEqual(words(defaultSettings()).map((each) => each.term), SPEC_WORDS);
+test('every word of spec 2 is explained, in the spec’s order, with the school’s own period word, then DESIGN 11.1’s', () => {
+  assert.deepEqual(words(defaultSettings()).map((each) => each.term), SPEC_WORDS.concat(NEW_WORDS));
   for (const each of words(defaultSettings())) assert.ok(each.meaning.endsWith('.') && each.meaning.length > 20, each.term + ' is not explained in a sentence');
   const block = words({ ...defaultSettings(), periodWord: 'Block' });
-  assert.deepEqual(block.map((each) => each.term), SPEC_WORDS.map((term) => (term === 'Period' ? 'Block' : term)));
+  assert.deepEqual(block.map((each) => each.term), SPEC_WORDS.map((term) => (term === 'Period' ? 'Block' : term)).concat(NEW_WORDS));
   assert.match(block.find((each) => each.term === 'Block').meaning, /This school’s word for it is block, and the planner says block everywhere\./);
   assert.match(block.find((each) => each.term === 'Passing time').meaning, /one block and the start of the next/);
-  assert.equal(words(undefined).length, SPEC_WORDS.length);
+  assert.equal(words(undefined).length, SPEC_WORDS.length + NEW_WORDS.length);
+  assert.match(block.find((each) => each.term === 'No class').meaning, /^Under a bell schedule, the blocks ticked No class do not meet/);
 });
 
 // The settings the engines read for load, routes, the crowd and the passing
