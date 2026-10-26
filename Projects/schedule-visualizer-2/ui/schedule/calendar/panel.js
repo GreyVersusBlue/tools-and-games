@@ -8,7 +8,7 @@
 // calendar. Every change is one undo step with a toast that offers Undo.
 
 import { h, uid } from '../../components/dom.js';
-import { setCalendarRange, setCalendarWeekday, setCalendarRotation, setCalendarDates, removeCalendar, scheduleOutcome } from '../../../engine/actions.js';
+import { setCalendarRange, setCalendarWeekday, setCalendarRotation, setCalendarDates, removeCalendar } from '../../../engine/actions.js';
 import { calendarCounts, dateWords } from '../../../engine/calendar.js';
 import { exportFileName } from '../../../engine/exports.js';
 import { calendarCsv } from '../../../engine/import-calendar.js';
@@ -148,7 +148,7 @@ export function calendarPanel(env, project, today) {
     env.focusAfter('cal-add-break');
     const after = run(ctx, setCalendarDates, { dates: { from: from < calendar.start ? calendar.start : from, to: to > calendar.end ? calendar.end : to }, day: DAY_CLOSED, label: adding.label });
     if (!after) return;
-    const outcome = scheduleOutcome(after);
+    const outcome = ctx.store.undoOutcome;
     view.calBreak = { from: '', to: '', label: '' };
     undoToast(ctx, (adding.label === '' ? 'A break' : adding.label) + ': ' + count(outcome ? outcome.schoolDays : 0, 'school day') + ' with no school, ' + runWords(from, to) + '.');
   }, { key: 'cal-add-break', action: 'add-break' });

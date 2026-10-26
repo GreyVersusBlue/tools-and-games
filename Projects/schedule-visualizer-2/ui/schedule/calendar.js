@@ -20,7 +20,7 @@
 // words are calendar/model.js's, which the print shares.
 
 import { h } from '../components/dom.js';
-import { setCalendarDates, scheduleOutcome } from '../../engine/actions.js';
+import { setCalendarDates } from '../../engine/actions.js';
 import { calendarOf } from '../../engine/schema.js';
 import { calendarDays } from '../../engine/calendar.js';
 import { emptyState, button, keyed } from './common.js';
@@ -119,7 +119,7 @@ export function mount(env) {
       ctx.toast({ text: 'Nothing changed: ' + (dates.length === 1 ? 'the date already says that.' : 'the dates already say that.') });
       return null;
     }
-    const outcome = scheduleOutcome(after);
+    const outcome = ctx.store.undoOutcome;
     const moved = movedWords(before, after, dates, change, outcome ? outcome.movedFrom : null);
     ctx.toast({ text: doneWords(after, dates, change) + (moved ? ' ' + moved : ''), action: { label: 'Undo', run: ctx.undo } });
     return null;
@@ -175,6 +175,10 @@ export function mount(env) {
     slot.replaceChildren(...(sheet ? [panel] : []));
     env.side(sheet ? null : panel);
   }
+
+  // drawn now: a tab that comes on screen without a change to the project
+  // has nothing else to draw it
+  update(ctx.store.project);
 
   return {
     element,

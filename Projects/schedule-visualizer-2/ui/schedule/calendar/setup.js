@@ -11,7 +11,6 @@
 
 import { h } from '../../components/dom.js';
 import { makeCalendar } from '../../../engine/actions.js';
-import { scheduleOutcome } from '../../../engine/actions.js';
 import { calendarDays, dateWords, datesFrom, daysBetween, isCalendarDate } from '../../../engine/calendar.js';
 import { bellSchedulesOf, DAY_ROTATION, DAY_CLOSED, ROTATION_RANGE, DATE_LABEL_MOST, WEEKDAY_NAMES } from '../../../engine/schema.js';
 import { keyed, button } from '../common.js';
@@ -135,7 +134,7 @@ export function setupCard(env, project, done) {
       env.render('cal-make');
       return;
     }
-    const outcome = scheduleOutcome(ctx.store.project);
+    const outcome = ctx.store.undoOutcome;
     view.calSetup = null;
     const school = calendarDays(ctx.store.project).filter((day) => day.school).length;
     ctx.toast({ text: 'Made the calendar: ' + school + (school === 1 ? ' school day' : ' school days') + ' from ' + dateWords(payload.start) + ' to ' + dateWords(payload.end) + '.' + (outcome && outcome.text ? ' ' + outcome.text + '.' : ''), action: { label: 'Undo', run: ctx.undo } });

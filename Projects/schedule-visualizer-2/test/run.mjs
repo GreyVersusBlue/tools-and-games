@@ -81,6 +81,7 @@ export const GROUPS = {
     'engine/evacuation.test.mjs', // SV2-62
     'engine/scenario-actions.test.mjs', // SV2-61
     'engine/prints-door-cards.test.mjs', // SV2-66
+    'engine/prints-calendar.test.mjs', // SV2-80
     'engine/suggest.test.mjs', // SV2-63
     'engine/prints-congestion-scenario.test.mjs', // SV2-71
     'engine/snapshots.test.mjs', // SV2-28
@@ -133,6 +134,7 @@ export const GROUPS = {
     'browser/schedule.mjs', // SV2-11
     'browser/grid.mjs', // SV2-12
     'browser/day-types.mjs', // SV2-78
+    'browser/calendar.mjs', // SV2-80
     'browser/grid-pass.mjs', // SV2-40, SV2-46
     'browser/m2-pass.mjs', // SV2-38
     'browser/import.mjs', // SV2-13
