@@ -144,7 +144,7 @@ export function setupCard(env, project, done) {
   }
 
   return h('section', { class: 'sch-card cal-setup', data: { card: 'calendar-setup' }, 'aria-labelledby': 'cal-setup-title' },
-    h('h3', { class: 'sch-card__title', id: 'cal-setup-title' }, 'Make a calendar'),
+    h('h2', { class: 'sch-card__title', id: 'cal-setup-title' }, 'Make a calendar'),
     h('p', { class: 'sch-hint' }, 'Say when the year runs, which weekdays have school, and the order the day types come round in. Every date can be changed afterwards.'),
     h('div', { class: 'cal-range' }, start.element, end.element),
     h('fieldset', { class: 'sch-fieldset cal-group' }, h('legend', null, 'School weekdays'), weekdays),

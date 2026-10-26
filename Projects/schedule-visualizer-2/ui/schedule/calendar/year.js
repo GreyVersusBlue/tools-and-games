@@ -70,14 +70,16 @@ export function createYear(hooks) {
         h('thead', null, h('tr', { role: 'row' }, order.map((weekday) => h('th', { scope: 'col', role: 'columnheader' }, h('abbr', { title: WEEKDAY_NAMES[weekday] }, SHORT_DAYS[weekday]))))),
         h('tbody', null, month.weeks.map((week) => h('tr', { role: 'row' }, week.map((date) => {
           if (date === null) return h('td', { role: 'presentation', class: 'cal-blank' });
+          // the name is the hidden sentence inside; what is drawn is hidden from it
           const cell = h('td', { role: 'gridcell', class: 'cal-day', tabindex: '-1', data: { date, key: 'cal:' + date } },
+            h('span', { class: 'vh cal-day__name' }),
             h('span', { class: 'cal-day__n', 'aria-hidden': 'true' }, String(Number(date.slice(8, 10)))),
             h('span', { class: 'cal-day__t', 'aria-hidden': 'true' }),
             h('span', { class: 'cal-day__b', 'aria-hidden': 'true' }));
           cells.set(date, cell);
           return cell;
         })))));
-      return h('section', { class: 'cal-month', data: { month: month.key } }, h('h3', { class: 'cal-month__name', id: headingId }, month.name), table);
+      return h('section', { class: 'cal-month', data: { month: month.key } }, h('h2', { class: 'cal-month__name', id: headingId }, month.name), table);
     });
     element.replaceChildren(...months);
   }
@@ -88,8 +90,8 @@ export function createYear(hooks) {
     const chosen = run();
     for (const [date, cell] of cells) {
       const day = byDate.get(date) || null;
-      const t = cell.children[1];
-      const b = cell.children[2];
+      const t = cell.children[2];
+      const b = cell.children[3];
       cell.className = 'cal-day';
       cell.style.removeProperty('--tint');
       if (!day) {
@@ -123,7 +125,8 @@ export function createYear(hooks) {
       }
       if (date === today) cell.setAttribute('aria-current', 'date');
       else cell.removeAttribute('aria-current');
-      cell.setAttribute('aria-label', dateName(project, date, today));
+      const name = dateName(project, date, today);
+      if (cell.firstChild.textContent !== name) cell.firstChild.textContent = name;
       cell.tabIndex = date === cursor ? 0 : -1;
     }
     const selected = chosen && chosen.from !== chosen.to ? daysBetween(chosen.from, chosen.to) + 1 : 0;

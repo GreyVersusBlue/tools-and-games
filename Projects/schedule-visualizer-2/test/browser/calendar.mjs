@@ -56,7 +56,7 @@ async function toastSays(words) {
 }
 const closeToast = () => page.evaluate(() => document.querySelector('.toast__close')?.click());
 const cell = (date) => '.cal-day[data-date="' + date + '"]';
-const nameOf = (date) => page.$eval(cell(date), (el) => el.getAttribute('aria-label'));
+const nameOf = (date) => page.$eval(cell(date) + ' .cal-day__name', (el) => el.textContent);
 const activeDate = () => page.evaluate(() => document.activeElement?.dataset.date || null);
 const dialogOpen = () => shows(() => document.getElementById('calendar-date-dialog')?.open === true);
 const dialogGone = () => shows(() => document.getElementById('calendar-date-dialog') === null);
@@ -168,7 +168,7 @@ test('the setup card: dates, Monday to Friday on, Wednesdays on Early Release be
 test('the year: eleven months, each a grid named by its heading; today ringed and the one Tab stop; a date named by its whole sentence', async () => {
   const months = await page.$$eval('.cal-month', (all) => all.map((month) => {
     const grid = month.querySelector('table');
-    return [month.querySelector('h3').textContent, grid.getAttribute('role'), document.getElementById(grid.getAttribute('aria-labelledby')).textContent];
+    return [month.querySelector('h2').textContent, grid.getAttribute('role'), document.getElementById(grid.getAttribute('aria-labelledby')).textContent];
   }));
   assert.equal(months.length, 11);
   assert.deepEqual(months[0], ['August 2026', 'grid', 'August 2026']);
