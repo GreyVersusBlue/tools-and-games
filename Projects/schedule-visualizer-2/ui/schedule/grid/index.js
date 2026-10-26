@@ -18,9 +18,9 @@ import { h, uid } from '../../components/dom.js';
 import { choice } from '../../components/choice.js';
 import { openMenu } from '../../components/menu.js';
 import { isEditing, IS_MAC } from '../../components/shortcuts.js';
-import { periodWords } from '../../components/words.js';
+import { periodWords, list } from '../../components/words.js';
 import { applyGridEdits } from '../../../engine/actions.js';
-import { ownDayTypes, isOwnCopy, baseDayType } from '../../../engine/day-types.js';
+import { ownDayTypes, isOwnCopy, effectiveDayType } from '../../../engine/day-types.js';
 import { allRooms } from '../../../engine/schema.js';
 import { fill, apply, button, keyed, emptyState, roomLabel } from '../common.js';
 import { draftFor, gridEditsPending, anyGridEditsPending, preview, payloadOf, touch, discard, remember, takeBack, forgetSteps, stageSlot, stageField, stageAdd, stageRemove, stageKeep } from './staged.js';
@@ -28,6 +28,7 @@ import { sheetModel, namesOf, newGroup } from './model.js';
 import { sheet as makeSheet, cellKey } from './sheet.js';
 import { teacherTable, roomTable } from './readonly.js';
 import { printButtons, buttonLabel } from '../../prints/index.js';
+import { readGridDay, writeGridDay } from '../../../storage/device.js';
 import { printButton } from '../../components/print-preview.js';
 
 export { gridEditsPending, watchGridEdits } from './staged.js';
@@ -45,6 +46,15 @@ export const GRID_KEYS = [
   { id: 'grid-fill', does: 'Fill down from the top row of the selection', shown: MOD + 'D' },
   { id: 'grid-clear', does: 'Empty the selected slots', shown: 'Delete' },
 ];
+
+// The grid's Day type choice (DESIGN 11.6): 'all', or one day type with its
+// own classes. This device's choice when it is still one; otherwise "All"
+// with two day types of their own or fewer, the first one with more.
+export function gridDayOf(project, kept) {
+  const own = ownDayTypes(project);
+  if (kept === 'all' || own.some((dayType) => dayType.id === kept)) return kept;
+  return own.length <= 2 ? 'all' : own[0].id;
+}
 
 const ROWS = [
   { value: 'groups', label: 'Groups' },
@@ -110,8 +120,20 @@ export function mount(env) {
   watchPage();
   // `fields`: are Grade, Head count and Colour shown on a narrow screen. Kept
   // while the page is open, like the cursor.
-  if (!view.grid) view.grid = { rows: 'groups', at: null, anchor: null, fields: false };
+  if (!view.grid) view.grid = { rows: 'groups', at: null, anchor: null, fields: false, day: null };
   const state = view.grid;
+  // this device's Day type, read once a visit; the page's when it keeps none
+  try {
+    const kept = readGridDay();
+    if (kept !== null) state.day = kept;
+  } catch (error) {
+    // nothing kept on this device: the page's choice stands
+  }
+  // The day types whose periods are columns now.
+  const shownIds = (project) => {
+    const day = gridDayOf(project, state.day);
+    return day === 'all' ? ownDayTypes(project).map((dayType) => dayType.id) : [day];
+  };
   const element = h('div', { class: 'grd' });
   const status = h('p', { class: 'grd-status' });
   let model = null;
@@ -226,17 +248,50 @@ export function mount(env) {
 
   const emptied = () => ({ room: null, roomText: '', label: '', teacherIds: [] });
 
-  function bulkItems() {
-    const base = baseDayType(model.after);
+  // Copy classes from…, for every group: one day type's slots staged onto
+  // another's, the spec's "copy A to B for all". Two sets of radios, From
+  // and To, commit nothing; the one button names the copy and stages it.
+  async function copyForAll(opener) {
     const own = ownDayTypes(model.after);
-    const items = own.filter((dayType) => dayType.id !== base.id).map((dayType) => ({
-      label: 'Copy ' + base.name + ' to ' + dayType.name + ' for every group',
-      run: () => stage(everySlot([dayType.id], (row, period) => {
-        const from = row.group.days[base.id][period];
-        return { room: from.room, roomText: from.roomText, label: from.label, teacherIds: from.teacherIds.slice() };
-      }), 'Copied ' + base.name + ' to ' + dayType.name + ' for every group. It is not applied yet.'),
-    }));
-    if (items.length > 0) items.push('separator');
+    if (own.length < 2) return;
+    const pick = { from: own[0], to: own[1] };
+    const words = () => (pick.from === pick.to ? 'Choose two different day types' : 'Copy ' + pick.from.name + ' to ' + pick.to.name + ' for every group');
+    const set = (which, legend) => {
+      const name = uid('grid-copy-' + which);
+      return h('fieldset', { class: 'sch-fieldset', data: { which } }, h('legend', null, legend), own.map((dayType) => {
+        const radio = h('input', { type: 'radio', name, value: dayType.id });
+        radio.checked = pick[which] === dayType;
+        return h('label', { class: 'sch-radio' }, radio, h('span', null, dayType.name));
+      }));
+    };
+    const from = set('from', 'From');
+    const to = set('to', 'To');
+    const dialog = ctx.openDialog({
+      title: 'Copy classes for every group',
+      body: [h('div', { class: 'grd-copy' }, from, to), h('p', { class: 'sch-hint' }, 'It waits in the grid with your other changes until Apply.')],
+      opener,
+      id: 'grid-copy-dialog',
+      buttons: [{ label: words(), value: 'go', kind: 'primary' }, { label: 'Cancel', value: null }],
+    });
+    const go = dialog.element.querySelector('.dialog__buttons .btn--primary');
+    go.dataset.action = 'copy-classes';
+    dialog.element.addEventListener('change', (event) => {
+      const which = event.target.closest('fieldset').dataset.which;
+      pick[which] = own.find((dayType) => dayType.id === event.target.value) || pick[which];
+      go.textContent = words();
+    });
+    from.querySelector('input:checked').focus();
+    if ((await dialog.closed) !== 'go' || pick.from === pick.to) return;
+    stage(everySlot([pick.to.id], (row, period) => {
+      const source = (row.group.days[pick.from.id] || [])[period] || { room: null, roomText: '', label: '', teacherIds: [] };
+      return { room: source.room, roomText: source.roomText, label: source.label, teacherIds: source.teacherIds.slice() };
+    }), 'Copied ' + pick.from.name + ' to ' + pick.to.name + ' for every group. It is not applied yet.');
+  }
+
+  function bulkItems(opener) {
+    const own = ownDayTypes(model.after);
+    const items = [];
+    if (own.length > 1) items.push({ label: 'Copy classes from…', run: () => copyForAll(opener) }, 'separator');
     for (const dayType of own) {
       items.push({ label: 'Clear ' + dayType.name, run: () => stage(everySlot([dayType.id], emptied), 'Cleared ' + dayType.name + ' for every group. It is not applied yet.') });
     }
@@ -259,9 +314,9 @@ export function mount(env) {
       },
     });
     for (const input of rows.element.querySelectorAll('input')) keyed(input, 'grid-rows:' + input.value);
-    const tools = [h('span', { class: 'grd-toolbar__label', id: labelId }, 'Rows'), rows.element];
+    const tools = [daySelect(), h('span', { class: 'grd-toolbar__label', id: labelId }, 'Rows'), rows.element];
     if (state.rows === 'groups' && model.rows.length > 0) {
-      const bulk = button('Bulk actions', (opener) => openMenu({ items: bulkItems(), anchor: opener, label: 'Bulk actions' }), { key: 'grid-bulk', action: 'bulk' });
+      const bulk = button('Bulk actions', (opener) => openMenu({ items: bulkItems(opener), anchor: opener, label: 'Bulk actions' }), { key: 'grid-bulk', action: 'bulk' });
       bulk.setAttribute('aria-haspopup', 'menu');
       // only on a narrow screen (grid.css): there the periods come first
       const shown = state.fields === true;
@@ -281,6 +336,30 @@ export function mount(env) {
     const print = printFor(state.rows);
     if (print) tools.push(print);
     return h('div', { class: 'sch-toolbar grd-toolbar' }, tools);
+  }
+
+  // "Day type": All, or one day type with its own classes. Kept on this
+  // device (storage/device.js), and on this page when the device keeps nothing.
+  function daySelect() {
+    const project = ctx.store.project;
+    const id = uid('grid-day');
+    const day = gridDayOf(project, state.day);
+    const select = keyed(h('select', { class: 'field__input grd-day', id }), 'grid-day');
+    select.append(h('option', { value: 'all' }, 'All'));
+    for (const dayType of ownDayTypes(project)) select.append(h('option', { value: dayType.id }, dayType.name));
+    select.value = day;
+    select.addEventListener('change', () => {
+      state.day = select.value;
+      try {
+        writeGridDay(select.value);
+      } catch (error) {
+        // the page keeps it (view.grid.day) until it is closed
+      }
+      const name = select.value === 'all' ? 'every day type' : select.options[select.selectedIndex].textContent;
+      say('Showing ' + name + '.');
+      env.render('grid-day');
+    });
+    return h('span', { class: 'grd-toolbar__day' }, h('label', { class: 'grd-toolbar__label', for: id }, 'Day type'), select);
   }
 
   // The print of what the rows show (SV2-32d): the groups, or the teachers or
@@ -309,13 +388,13 @@ export function mount(env) {
       if (staged.project.teachers.length === 0) {
         return emptyState('No teachers yet. With the rows set to Teachers, the grid shows each teacher’s day. Add teachers in the Teachers tab first.', button('Go to Teachers', () => ctx.navigate('#schedule/teachers'), { primary: true, key: 'grid-go' }), 'grid-teachers');
       }
-      return [h('p', { class: 'sch-hint' }, 'Each teacher’s day, for reading: the groups they have each ' + words.one + ', and where. To change a room, set the rows to Groups.'), teacherTable(staged.project, model.findings)];
+      return [h('p', { class: 'sch-hint' }, 'Each teacher’s day, for reading: the groups they have each ' + words.one + ', and where. To change a room, set the rows to Groups.'), teacherTable(staged.project, model.findings, shownIds(staged.project))];
     }
     if (state.rows === 'rooms') {
       if (allRooms(staged.project).length === 0) {
         return emptyState('No rooms yet. With the rows set to Rooms, the grid shows who is in each room every ' + words.one + '. Draw rooms in the building first.', button('Go to the building', () => ctx.navigate('#building'), { primary: true, key: 'grid-go' }), 'grid-rooms');
       }
-      return [h('p', { class: 'sch-hint' }, 'Each room’s day, for reading: the groups in it each ' + words.one + '. To change a room, set the rows to Groups.'), roomTable(staged.project, model.findings)];
+      return [h('p', { class: 'sch-hint' }, 'Each room’s day, for reading: the groups in it each ' + words.one + '. To change a room, set the rows to Groups.'), roomTable(staged.project, model.findings, shownIds(staged.project))];
     }
     if (model.rows.length === 0) {
       return [
@@ -345,19 +424,19 @@ export function mount(env) {
   function draw(project) {
     const staged = preview(project, project.id, ctx);
     const pending = gridEditsPending(project.id);
-    model = sheetModel(project, staged.project, draftFor(project.id));
+    model = sheetModel(project, staged.project, draftFor(project.id), shownIds(staged.project));
     const sheetShown = state.rows === 'groups' && model.rows.length > 0;
     sheet.element.hidden = !sheetShown;
     element.dataset.rows = state.rows;
     element.dataset.staged = String(pending);
     element.dataset.fields = state.fields === true ? 'shown' : 'hidden';
     sheet.draw(model);
-    const same = sheetShown ? project.dayTypes.filter((dayType) => !isOwnCopy(project, dayType.id)) : [];
+    const same = sheetShown && gridDayOf(project, state.day) === 'all' ? project.dayTypes.filter((dayType) => !isOwnCopy(project, dayType.id)) : [];
     fill(above,
       toolbar(),
       sheetShown ? keyHint() : null,
       pending ? bar(staged) : null,
-      same.map((dayType) => h('p', { class: 'sch-hint' }, dayType.name + ' is the same as ' + baseDayType(project).name + ', so it has no columns of its own here. Give it its own copy on the Day tab.')));
+      same.length === 0 ? null : h('p', { class: 'sch-hint grd-same' }, list(same.map((dayType) => dayType.name + ' is the same as ' + effectiveDayType(project, dayType.id).name)) + ', so ' + (same.length === 1 ? 'it has' : 'they have') + ' no columns of ' + (same.length === 1 ? 'its' : 'their') + ' own here. Change that on the Day tab.'));
     fill(below, body(project, staged));
     if (editNext && sheetShown) sheet.startEditing(editNext, 'name');
     editNext = null;

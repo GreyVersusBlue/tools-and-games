@@ -226,9 +226,11 @@ was entered disappears, and a `sameAs` that names anything but another `own`
 day type is pointed at `dayTypes[0]` again, with a note.
 
 The planner keeps a project to at most 12 day types, each named, at most 40
-characters, unique ignoring case and spaces. Those limits are kept by adding
-and renaming, not by validation: a file saved before them with 13 day types
-or two of one name still opens, as it is.
+characters, unique ignoring case and spaces, and not "No school", "Next in
+the rotation" or "As the calendar says" (the calendar's own words, ignoring
+case and spaces). Those limits are kept by adding and renaming, not by
+validation: a file saved before them with 13 day types or two of one name
+still opens, as it is.
 
 ### BellSchedule
 
@@ -239,7 +241,7 @@ day type, and only the times change.
 | Field | Type | Meaning |
 |---|---|---|
 | `id` | id, `b…` | |
-| `name` | text | Not blank, at most 40 characters, unique among bell schedules ignoring case and spaces. |
+| `name` | text | Not blank, at most 40 characters, unique among bell schedules ignoring case and spaces. Adding and renaming refuse "Regular", "Regular bells" and "As the weekday says", ignoring case and spaces: the calendar's own words. |
 | `short` | text | 0 to 4 characters; empty is worked out from the name ("ER"). A typed one is unique among bell schedules, ignoring case. |
 | `bells` | (Bell or `null`)[] | One entry per period, as a day type's. |
 | `off` | integer[] | The periods that do not meet under these bells, from 0, in order, each once, each below `settings.periods`. They book no room, move nobody and have no passing time into or out of them. |
@@ -541,8 +543,8 @@ schedules and says whether it has a calendar.
 
 - **Subjects, teachers, day types and bell schedules** are matched to this
   project's by id, then by name (a subject by code and name together),
-  without regard to capitals or surrounding spaces (a day type's or a bell
-  schedule's without regard to any spaces). One that matches is left exactly
+  without regard to capitals or surrounding spaces (a bell schedule's
+  without regard to any spaces). One that matches is left exactly
   as it is here. One that does not is added, with the file's id when that id
   is free, and with its typed short name when no other here has it (else
   empty, worked out from the name).
@@ -568,7 +570,10 @@ schedules and says whether it has a calendar.
   type), and the file's groups then fill it. A new day type that is its own
   copy gives every group already here a copy of its first day. A new day
   type that is "same as" in the file is the same as the day type here that
-  its own one matched.
+  its own one matched. A file in which no day type has `sameAs` (one written
+  before it existed) is read exactly as it was then: a new day type is its
+  own copy when it is in the file, or when the file's first day type is not
+  this project's first, and none is given a `sameAs`.
 - **The calendar.** When the file has one, it replaces this project's, and
   the summary says so ("the calendar replaced"). Every day type and bell
   schedule it names is re-pointed through the matches above; a reference that
@@ -824,17 +829,32 @@ name, is enough.
 - The first row is the header. Headers are compared without regard to
   capitals or spaces at the ends: Date; Weekday (read and passed over); Day
   type, Daytype or Day; Bells, Bell schedule or Bell; Note, Notes, Label,
-  Event, Holiday or Description. Any other column is passed over. A blank row
+  Event, Holiday or Description. Where two headers could be one column, the
+  first in that list is taken: a Day type column before one headed Day. A
+  column headed Day whose every entry is a weekday's name (Monday or Mon) is
+  the weekday, and passed over. Any other column is passed over. A blank row
   is passed over.
+- With no Day type and no Note column, a file with exactly one other column
+  besides Date, Weekday and Bells reads that column as the note (Date, Name
+  is a list of holidays). One with neither, and no Bells column either, is
+  refused: "This file has no Day type or Note column, so there is nothing to
+  read."
 - A date is written `YYYY-MM-DD` and is on one row. A date outside the
   calendar is passed over and counted.
 - Day type: a day type's name, "No school" or "Next in the rotation",
   without regard to capitals or spaces; those two words are taken before a
-  day type of the same name. Blank with a note is "No school"; blank with no
-  note leaves the day as it is.
+  day type of the same name. A name written exactly as a day type's is that
+  day type, even when another's name differs from it only in capitals or
+  spaces (an older project may have two such); one that is written as
+  neither but reads as both is refused, naming them. Blank with a note is
+  "No school"; blank with no note leaves the day as it is.
 - Bells: "Regular" (or "Regular bells") or a bell schedule's name, without
   regard to capitals or spaces. Blank leaves the bells as they are. Bells on
-  a date with no school say nothing.
+  a date with no school say nothing, and a row that closes a date takes away
+  any bells the date's change had.
+- A cell that starts with ' before =, +, - or @ (the guard the tool writes
+  when asked, so a spreadsheet does not take the cell for a formula) is read
+  without the '. An apostrophe before anything else is part of the cell.
 - Note: at most 60 characters, kept exactly as typed. With a Note column, a
   blank note takes a date's note away.
 
@@ -846,16 +866,24 @@ nothing takes the date's change away. So the file the tool wrote reads back
 to no change at all.
 
 Refused whole, with nothing changed: a project with no calendar; a file with
-no header or no Date column; a date that is not one, or that is on two rows;
+no header or no Date column; a file with nothing to read, as above; a date that is not one, or that is on two rows;
 a note over 60 characters (the refusal names the first such row and counts
-them); and any day-type or bell-schedule name the project does not have
-(every one is named, with its rows).
+them); any day-type or bell-schedule name the project does not have
+(every one is named, with its rows); and a day-type name that could be
+either of two day types (named, with its rows).
+
+A row number, in a refusal and in the preview, is the row a spreadsheet
+shows: every line of the text counts, blank or not, with the header as row 1
+(a note running over two lines in quotes takes two).
 
 The reader returns the changes, the calendar with them in place, a preview
 row for each line of the file (`change`, `same` or `outside`, with the day
 before and after), the counts, and the first date the file does not name
-whose day type or bells move. Putting the calendar in place is one undo
-step, stamped with the time, like every calendar change.
+whose day type or bells move. Putting the calendar in place is
+`actions.importCalendarDates` (`{ changes, counts }`): one undo step,
+labelled "Import dates: " and what the reader counted, stamped with the
+time like every calendar change, and refused when the project has no
+calendar.
 
 ## The movement CSV exports
 

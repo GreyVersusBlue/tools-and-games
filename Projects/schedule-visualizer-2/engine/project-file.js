@@ -587,8 +587,9 @@ const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // What the project would be with the file's schedule brought into it. `file`
 // is what readScheduleFile returned. The rules:
 // - Subjects, teachers, day types and bell schedules are matched to this
-//   project's by id, then by name (a subject by code and name; a day type and
-//   a bell schedule whatever the capitals and spaces). One that matches is
+//   project's by id, then by name (a subject by code and name; a day type
+//   whatever the capitals and the spaces at its ends, as before SV2-77; a bell
+//   schedule whatever the capitals and any spaces). One that matches is
 //   left as it is here. One that does not is added, with the file's id when
 //   that id is free, and with its typed short name when no other has it.
 // - A room is matched by id, then by number. A slot whose room is not in
@@ -605,7 +606,10 @@ const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 //   the file (or, in the file, is the same as another day type than here)
 //   becomes its own copy here, starting as a copy of what it was the same as
 //   here (not of the first day type). A day type the file adds as "same as"
-//   is the same as the day type its own one matched.
+//   is the same as the day type its own one matched. A file in which no day
+//   type has `sameAs` (one written before it) is read as it was then: a day
+//   type it adds is its own copy when the file's first day type is not this
+//   project's first, and no `sameAs` is written for it.
 // - The calendar, when the file has one, replaces this project's, with every
 //   day type and bell schedule it names re-pointed through the matches above.
 //   A reference that matches nothing is dropped and counted.
@@ -712,23 +716,29 @@ export function applySchedule(project, file, options) {
   const fileSource = (dayType) => effectiveDayType(inFile, dayType.id);
   const fileDay = (group, dayType) => group.days[fileSource(dayType).id];
   const hasData = (dayType) => fileSource(dayType).bells.some((bell) => bell !== null) || file.groups.some((group) => fileDay(group, dayType).some((slot) => slot.room !== null || slot.roomText !== ''));
+  // A file written before "same as" could name a day type (no day type in
+  // it has `sameAs`) is read exactly as it was then: an added day type is its
+  // own copy when it is in the file or when the two first day types do not
+  // match, so no `sameAs` is written into the project for it.
+  const fileHasSameAs = file.dayTypes.some((dayType) => dayType.sameAs !== undefined);
   const dayMap = new Map();
   const added = new Set();
   for (const dayType of file.dayTypes) {
-    const match = project.dayTypes.find((candidate) => candidate.id === dayType.id) || next.dayTypes.find((candidate) => spacelessKey(candidate.name) === spacelessKey(dayType.name));
-    if (match) {
-      dayMap.set(dayType.id, match.id);
-      continue;
-    }
+    const match = project.dayTypes.find((candidate) => candidate.id === dayType.id) || next.dayTypes.find((candidate) => nameKey(candidate.name) === nameKey(dayType.name));
+    if (match) dayMap.set(dayType.id, match.id);
+  }
+  const basesAgree = dayMap.get(file.dayTypes[0].id) === project.dayTypes[0].id;
+  for (const dayType of file.dayTypes) {
+    if (dayMap.has(dayType.id)) continue;
     const id = keepOrMake(dayType.id, 'd', taken, ids);
-    const own = fileOwn(dayType);
+    const own = fileOwn(dayType) || (!fileHasSameAs && !basesAgree);
     // a "same as" day type's sameAs is set below, once every day type is here
     const sameAs = dayType.sameAs === undefined ? undefined : null;
     const short = dayType.short === undefined ? undefined : shortFree(dayType.short, next.dayTypes) ? dayType.short : '';
     const base = next.dayTypes[0];
     next = {
       ...next,
-      dayTypes: next.dayTypes.concat([dayTypeOf(id, dayType.name, own, sameAs, short, own ? padTo(copyBells(dayType.bells), periods, () => null) : emptyBells(periods))]),
+      dayTypes: next.dayTypes.concat([dayTypeOf(id, dayType.name, own, sameAs, short, own ? padTo(copyBells(fileSource(dayType).bells), periods, () => null) : emptyBells(periods))]),
       groups: own ? next.groups.map((group) => ({ ...group, days: { ...group.days, [id]: group.days[base.id].map(copySlot) } })) : next.groups,
     };
     dayMap.set(dayType.id, id);
@@ -759,7 +769,7 @@ export function applySchedule(project, file, options) {
       if (fileOwn(dayType) !== pass) continue;
       const id = dayMap.get(dayType.id);
       if (added.has(id) || isOwnCopy(next, id)) continue;
-      const differs = fileOwn(dayType) || effectiveDayType(next, dayMap.get(fileSource(dayType).id)).id !== effectiveDayType(next, id).id;
+      const differs = fileOwn(dayType) || (fileHasSameAs ? effectiveDayType(next, dayMap.get(fileSource(dayType).id)).id !== effectiveDayType(next, id).id : !basesAgree);
       if (!differs || !hasData(dayType)) continue;
       promote(id);
       summary.madeOwn.push(findDayType(next, id).name);

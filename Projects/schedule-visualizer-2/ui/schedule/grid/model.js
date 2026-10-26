@@ -24,23 +24,26 @@ export function gradeLabel(grade) {
   return grade.trim() === '' ? 'No grade' : 'Grade ' + grade;
 }
 
-// sheetModel(project, after, draft)
+// sheetModel(project, after, draft, dayTypeIds)
 //   project  the schedule as it stands
 //   after    the schedule with the staged edits applied (staged.js preview)
+//   dayTypeIds  the day types whose periods are columns (the grid's Day type
+//            choice); left out, every day type that is its own copy
 // returns {
 //   project, after,
 //   columns   the four fields, one column per period of each day type that is
-//             its own copy, and the column of row buttons
+//             its own copy (of those asked for), and the column of row buttons
 //   days      [{ dayType, first, count }] for the header over the periods
 //   sections  [{ grade, label, rows }], grades in order, "No grade" last
 //   rows      every row in the order shown: { id, group, original, removed, added }
 //   rooms     room number, as compared, to room
 //   findings  "group|dayType|period" to the findings on that slot
 // }
-export function sheetModel(project, after, draft) {
+export function sheetModel(project, after, draft, dayTypeIds) {
   const columns = FIELD_COLUMNS.slice();
   const days = [];
-  for (const dayType of ownDayTypes(after)) {
+  const asked = Array.isArray(dayTypeIds) ? new Set(dayTypeIds) : null;
+  for (const dayType of ownDayTypes(after).filter((each) => !asked || asked.has(each.id))) {
     days.push({ dayType, first: columns.length, count: after.settings.periods });
     for (let period = 0; period < after.settings.periods; period += 1) {
       columns.push({ id: dayType.id + ':' + period, kind: 'slot', dayTypeId: dayType.id, period, label: dayType.name + ', ' + periodName(after.settings, period), short: periodName(after.settings, period) });

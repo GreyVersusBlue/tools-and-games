@@ -23,7 +23,7 @@
 // A section, a shortcut group or a setting with no words here still shows,
 // with a sentence saying Help has nothing for it; the Node test fails first.
 
-import { defaultSettings, STUDENTS_PER_LANE_CELL, DOOR_SIDES } from '../../engine/schema.js';
+import { defaultSettings, STUDENTS_PER_LANE_CELL, DOOR_SIDES, DAY_TYPES_MOST, DEFAULT_DAY_TYPE_NAMES } from '../../engine/schema.js';
 import { CROSSING_WAIT_MAX, CAP_FACTOR, CAP_MINIMUM_SECONDS, columnLength, walkingSeconds } from '../../engine/crowd.js';
 import { routingGraph } from '../../engine/routing.js';
 import { LOAD_BANDS, bandEdges } from '../../engine/load.js';
@@ -44,8 +44,8 @@ export const SECTION_HELP = {
   },
   schedule: {
     purpose: (w) => 'Enter the school day and who is where: the ' + w.many + ' and bells, the subjects, the teachers, and each group’s room for every ' + w.one + ' on every day type.',
-    first: (w) => 'Add teachers under Teachers, then add a group under Groups and pick its room for each ' + w.one + '. Day sets how many ' + w.many + ' there are, what they are called, and the bells.',
-    more: 'Grid is the whole schedule as a spreadsheet: changes there wait for Apply. Checks lists what is wrong (a double-booking, a walk too long for the passing time) with Show, Fix… and Accept. Import reads groups, teachers or subjects from a CSV file. B Day starts as the same as A Day until you make its own copy.',
+    first: (w) => 'Add teachers under Teachers, then add a group under Groups and pick its room for each ' + w.one + '. Day sets how many ' + w.many + ' there are, what they are called, the day types and the bells.',
+    more: (w) => 'Grid is the whole schedule as a spreadsheet: changes there wait for Apply, and its Day type choice shows every day type or one. Checks lists what is wrong (a double-booking, a walk too long for the passing time) with Show, Fix… and Accept. Import reads groups, teachers or subjects from a CSV file. Day holds the day types, up to ' + DAY_TYPES_MOST + ': each has its own classes or is the same as another, and Change… turns one into the other. It also holds the regular bells of each day type, and other bell schedules, such as an early release, where the ' + w.many + ' ticked No class do not meet. When there are more day types of their own than fit side by side, the group editor’s Show chips choose which it shows.',
   },
   movement: {
     purpose: (w) => 'Watch every group walk between one ' + w.one + ' and the next: the routes, where the corridors fill, and who cannot make it in the passing time.',
@@ -143,7 +143,7 @@ export function words(settings) {
     { term: 'Exit', meaning: 'A point on a corridor that leads outside. It can have a door name and an assembly point.' },
     { term: 'Door', meaning: 'Where a room opens onto a corridor. A room with no door opens onto every corridor cell beside it.' },
     { term: w.One, meaning: 'One slot of the school day. The school picks the word: Period, Mod, Block or Hour.' + own },
-    { term: 'Day type', meaning: 'A named pattern of the day. There are at least two, A Day and B Day to start with.' },
+    { term: 'Day type', meaning: 'A named pattern of the day: which classes meet. A day type has its own classes, or is the same as another and follows it in everything. A new project has ' + DEFAULT_DAY_TYPE_NAMES.join(' and ') + ', and a project can have up to ' + DAY_TYPES_MOST + '.' },
     { term: 'Passing time', meaning: 'The gap between the end of one ' + w.one + ' and the start of the next.' },
     { term: 'Transition', meaning: 'The movement between two ' + w.many + ' that follow each other.' },
     { term: 'Group', meaning: 'A set of students who travel together all day. It has a name, and can have a grade and a head count.' },

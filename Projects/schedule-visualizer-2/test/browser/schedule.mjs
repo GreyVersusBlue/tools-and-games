@@ -3,7 +3,7 @@
 // A group is entered from scratch by keyboard, a double-booking appears and is
 // accepted with a reason, a period is moved by the row's menu and by drag,
 // teachers are added and merged, subjects reordered, bells typed, a day type
-// made the same as A Day and its own copy again, and the period count changed
+// made the same as A Day by Change… and its own copy again, and the period count changed
 // through the dialog that says what would be lost. Assertions are on what the
 // page shows. The store is read only to choose what to type (which rooms are
 // free in which period).
@@ -447,12 +447,19 @@ test('Move up and Move down are in each row’s menu, and a row drags onto anoth
   await shows((selector, wanted) => document.querySelector(selector).value === wanted, slot(DAY_A, 0, 'room'), before[0]);
 });
 
-test('Copy A Day to B Day fills the group’s B Day, and a teacher named on a slot shows as a chip', async () => {
+test('Copy classes from… fills the group’s B Day from A Day, and a teacher named on a slot shows as a chip', async () => {
   assert.equal(await page.$eval('.sch-group[aria-selected="true"] .sch-bar[data-day="' + DAY_B + '"]', (el) => el.dataset.done), '0');
+  assert.equal(await page.$eval('.sch-day[data-day="' + DAY_B + '"] [data-action="copy-day"]', (el) => el.firstChild.textContent), 'Copy classes from…');
   await click('.sch-day[data-day="' + DAY_B + '"] [data-action="copy-day"]');
+  await page.waitForSelector('#group-copy-dialog[open]');
+  // the one other day type with its own classes, chosen, and the button says what it does
+  assert.deepEqual(await page.$$eval('#group-copy-dialog input[type="radio"]', (all) => all.map((radio) => radio.parentNode.textContent + (radio.checked ? ' (checked)' : ''))), ['A Day (checked)']);
+  assert.equal(await page.evaluate(() => document.activeElement.type), 'radio', 'the focus starts on the choice');
+  assert.equal(await text('#group-copy-dialog .btn--primary'), 'Copy 8Z’s A Day to B Day');
+  await page.click('#group-copy-dialog .btn--primary');
   await shows((day) => document.querySelector('.sch-group[aria-selected="true"] .sch-bar[data-day="' + day + '"]').dataset.done === '8', DAY_B);
   assert.equal(await toastText(), 'Copied 8Z’s A Day to B Day.');
-  assert.equal(await exists('.sch-day[data-day="' + DAY_A + '"] [data-action="copy-day"]'), false, 'the first day type has nothing to copy from');
+  assert.equal(await exists('.sch-day[data-day="' + DAY_A + '"] [data-action="copy-day"]'), false, 'the first day type is copied onto from the Day tab, for every group');
   await click(slot(DAY_A, 4, 'teacher'));
   await page.keyboard.type('Dunmore');
   await page.keyboard.press('Enter');
@@ -621,25 +628,35 @@ test('day: bell times are typed the way people write them, and a bad or half tim
   await shows(() => document.querySelector('.sch-bells [data-bell="end-before-start"]') === null);
 });
 
-test('day: B Day made the same as A Day is greyed everywhere, and "Make its own copy" brings it back', async () => {
-  const card = '.sch-daytype[data-day="' + DAY_B + '"]';
-  await click(card + ' [data-action="revert"]');
-  await shows((selector) => document.querySelector(selector).classList.contains('sch-daytype--same'), card);
-  assert.match(await toastText(), /^B Day is the same as A Day again\. Its own \d+ room entries in 9 groups and 8 bell times went with that\.$/);
-  assert.equal(await page.$eval(card + ' .sch-day__line', (el) => el.firstChild.textContent), 'B Day: same as A Day · ');
-  assert.equal(await text(card + ' [data-action="make-own"]'), 'Make its own copy: B Day');
-  assert.equal(await count(card + ' .sch-bells input'), 0, 'its bells are A Day’s, shown and not editable');
-  assert.equal(await page.$eval(card + ' .sch-bells tbody tr td', (el) => el.textContent), '8:00 AM');
+test('day: B Day made the same as A Day by Change… is greyed everywhere, and "Make its own copy" brings it back', async () => {
+  const row = '.sch-dtrow[data-day="' + DAY_B + '"]';
+  assert.equal(await text(row + ' .sch-dtrow__kind'), 'Its own classes');
+  assert.equal(await text('.sch-dtrow[data-day="' + DAY_A + '"] .sch-dtrow__kind'), 'A Day comes first');
+  assert.equal(await exists('.sch-dtrow[data-day="' + DAY_A + '"] [data-action="change-kind"]'), false, 'the first day type is always its own');
+  await click(row + ' [data-action="change-kind"]');
+  await page.waitForSelector('#day-kind-dialog[open]');
+  assert.deepEqual(await page.$$eval('#day-kind-dialog input[type="radio"]', (all) => all.map((radio) => radio.parentNode.textContent + (radio.checked ? ' (checked)' : ''))), ['Its own classes (checked)', 'Same as A Day']);
+  assert.equal(await text('#day-kind-dialog .btn--primary'), 'Keep B Day as it is');
+  // arrowing moves the choice and commits nothing: the button says what it would do
+  await page.keyboard.press('ArrowDown');
+  assert.match(await text('#day-kind-dialog .btn--primary'), /^Make B Day the same as A Day \(9 groups’ days on B Day and its 8 bell times go; Undo brings them back\)$/);
+  assert.equal(await page.evaluate((id) => globalThis.sv2.store.project.dayTypes.find((each) => each.id === id).own, DAY_B), true);
+  await page.click('#day-kind-dialog .btn--primary');
+  await shows((selector) => document.querySelector(selector)?.classList.contains('sch-dtrow--same'), row);
+  assert.equal(await toastText(), 'B Day is the same as A Day now. Its own classes for 9 groups went with that.');
+  assert.equal(await text(row + ' .sch-dtrow__kind'), 'Same as A Day');
+  assert.equal(await text('.sch-followers__line[data-day="' + DAY_B + '"]'), 'B Day: A Day’s bells');
+  assert.equal(await exists('.sch-daytype[data-day="' + DAY_B + '"]'), false, 'its bells are A Day’s: no table of its own');
   await go(page, '#schedule/groups');
   const column = '.sch-day[data-day="' + DAY_B + '"]';
   assert.equal(await page.$eval(column, (el) => el.classList.contains('sch-day--same')), true);
   assert.equal(await text(column + ' .sch-day__title'), 'B Day: same as A Day');
   assert.equal(await count(column + ' input'), 0);
-  assert.equal(await exists('[data-action="copy-day"]'), false, 'Copy A Day to B Day waits until B Day is its own copy');
+  assert.equal(await exists('[data-action="copy-day"]'), false, 'Copy classes from… waits for a second day type with its own classes');
   assert.equal(await text('.sch-group[aria-selected="true"] .sch-bar--same [aria-hidden]'), 'B Day = A Day');
   await click(column + ' [data-action="make-own"]');
   await shows((selector) => !document.querySelector(selector).classList.contains('sch-day--same') && document.querySelector('[data-action="copy-day"]') !== null, column);
-  assert.equal(await text('[data-action="copy-day"]'), 'Copy A Day to B Day');
+  assert.equal(await page.$eval('[data-action="copy-day"]', (el) => el.firstChild.textContent), 'Copy classes from…');
   await click('#undo');
   await click('#undo');
   await shows((selector) => !document.querySelector(selector).classList.contains('sch-day--same'), column);

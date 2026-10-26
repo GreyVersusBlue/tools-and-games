@@ -219,6 +219,7 @@ row names a file it does not run.
 | `test/browser/tabs.mjs` | Two tabs on one project |
 | `test/browser/schedule.mjs` | The Schedule section: a group entered by keyboard, the checks |
 | `test/browser/grid.mjs` | The Grid tab: typing, pasting, Apply and Discard |
+| `test/browser/day-types.mjs` | Day types and bell schedules: a C Day added, a duplicate name and short name refused, Change… and its toast, Copy classes from…, moves by menu and drag, Delete and Undo, an Early Release schedule with periods 5 to 8 ticked No class; twelve day types with Add off and why, the group editor's Show chips and the grid's Day type kept on this device; at 390 by 844 with touch; the Day tab by keyboard alone |
 | `test/browser/grid-pass.mjs` | The Grid tab after the walk-through of the schedule |
 | `test/browser/m2-pass.mjs` | The schedule after the walk-through of it |
 | `test/browser/import.mjs` | The Import tab |

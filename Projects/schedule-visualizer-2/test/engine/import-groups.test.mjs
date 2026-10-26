@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse, write } from '../../engine/csv.js';
-import { guessColumns, checkMapping, previewImport, applyGroupImport, mergeGroups, summaryText, ImportError, ROLES, CLASH_POLICIES } from '../../engine/import-groups.js';
+import { guessColumns, checkMapping, previewImport, applyGroupImport, mergeGroups, summaryText, makesOwnText, ImportError, ROLES, CLASH_POLICIES } from '../../engine/import-groups.js';
 import { groupsRows, templateRows, csvText } from '../../engine/exports.js';
 import * as actions from '../../engine/actions.js';
 import { createStore } from '../../engine/store.js';
@@ -451,4 +451,19 @@ test('importGroups that changes nothing makes no undo entry', () => {
 
 test('the room helper finds what the fixtures rely on', () => {
   assert.equal(room(school(), 'Gym').id, 'rsamplegym');
+});
+
+// SV2-77b: the preview's note names what each day type is the same as now.
+test('the note on day types the file makes their own copies names what each is the same as', () => {
+  const project = school();
+  project.dayTypes.push({ id: 'dsample00c', name: 'C Day', own: false, sameAs: B, short: '', bells: Array(8).fill(null) });
+  project.dayTypes.push({ id: 'dsample00d', name: 'D Day', own: false, short: '', bells: Array(8).fill(null) });
+  project.dayTypes.push({ id: 'dsample00e', name: 'E Day', own: false, sameAs: B, short: '', bells: Array(8).fill(null) });
+  assertValid(project);
+  const rows = [['Group', 'C Day Period 1'], ['6A', 'Gym']];
+  const preview = previewImport(project, rows, guessColumns(rows[0], project));
+  assert.equal(makesOwnText(project, preview.makesOwn), 'C Day is the same as B Day now. The file has rooms for it, so it becomes its own copy.');
+  assert.equal(makesOwnText(project, ['dsample00c', 'dsample00d', 'dsample00e']), 'C Day and E Day are the same as B Day and D Day is the same as A Day now. The file has rooms for them, so they become their own copies.');
+  assert.equal(makesOwnText(project, []), '');
+  assert.equal(makesOwnText(project, [B]), '', 'an own day type is not "same as"');
 });

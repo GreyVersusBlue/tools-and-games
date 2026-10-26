@@ -30,7 +30,7 @@ import { openMenu } from '../components/menu.js';
 import { icon } from '../components/icons.js';
 import { count, periodWords } from '../components/words.js';
 import { addGroup, editGroup, duplicateGroup, deleteGroup, setSlot, moveSlot, copyDay, makeOwnCopy } from '../../engine/actions.js';
-import { effectiveSchedule, isOwnCopy, baseDayType } from '../../engine/day-types.js';
+import { effectiveSchedule, isOwnCopy, ownDayTypes, effectiveDayType } from '../../engine/day-types.js';
 import { bellsFor, periodName, formatTime } from '../../engine/bells.js';
 import { allRooms, resolveSlotRoom, GROUP_COLOUR_PRESETS, RANGES } from '../../engine/schema.js';
 import { NOT_IN_BUILDING } from '../../engine/exports.js';
@@ -38,6 +38,8 @@ import { fill, apply, button, keyed, emptyState, marksFor, freeName, roomLabel, 
 import { slotKey } from './model.js';
 import { roomPicker } from './room-picker.js';
 import { GROUPS_HASH, groupHash, writtenAsList, groupOf, namesGoneGroup } from './address.js';
+import { radioDialog } from './day.js';
+import { readShownDays, writeShownDays, SHOWN_DAYS_MOST } from '../../storage/device.js';
 
 const WHAT = 'A group is a set of students who travel together all day.';
 
@@ -46,6 +48,72 @@ const WHAT = 'A group is a set of students who travel together all day.';
 export const NARROW = '(max-width: 640px)';
 
 // Is the Groups tab showing its list alone, waiting for a group to be chosen?
+// From this width the group editor shows three day types side by side when
+// there are more than two of their own; two below it, one under NARROW
+// (DESIGN 11.6). schedule.css lays the columns out by their count.
+export const WIDE = '(min-width: 1800px)';
+
+// With more than this many day types of their own, the group editor has the
+// "Show:" chips, and the list one bar for all of them.
+const SIDE_BY_SIDE = 2;
+const BARS_MOST = 3;
+
+// How many day types the editor has room for side by side.
+function roomForDays() {
+  if (window.matchMedia(NARROW).matches) return 1;
+  return window.matchMedia(WIDE).matches ? 3 : 2;
+}
+
+// The day types the editor shows, chosen last first: this device's choice
+// (storage/device.js), or what was chosen on this page when the device keeps
+// nothing, with those no longer of their own left out.
+function shownChoice(project, view) {
+  const own = new Set(ownDayTypes(project).map((dayType) => dayType.id));
+  let kept = [];
+  try {
+    kept = readShownDays();
+  } catch (error) {
+    kept = [];
+  }
+  if (kept.length === 0 && Array.isArray(view.shownDays)) kept = view.shownDays;
+  return kept.filter((id) => own.has(id));
+}
+
+// Show day type `dayTypeId` in the editor, in place of the one chosen
+// longest ago. Kept on this device; on this page too, for a browser that
+// keeps nothing.
+export function chooseShownDay(project, view, dayTypeId) {
+  const next = [dayTypeId].concat(shownChoice(project, view).filter((id) => id !== dayTypeId)).slice(0, SHOWN_DAYS_MOST);
+  view.shownDays = next;
+  try {
+    writeShownDays(next);
+  } catch (error) {
+    // the page keeps it (view.shownDays) until it is closed
+  }
+  return next;
+}
+
+// The own day types in the editor's columns, in the project's order: the
+// ones chosen last, as many as there is room for, the rest made up from the
+// first day types.
+export function shownDays(project, view, room) {
+  const own = ownDayTypes(project);
+  const picks = shownChoice(project, view);
+  for (const dayType of own) if (!picks.includes(dayType.id)) picks.push(dayType.id);
+  const ids = new Set(picks.slice(0, room));
+  return own.filter((dayType) => ids.has(dayType.id));
+}
+
+// One watch on the 1800 px line for whichever Groups tab is on screen.
+let liveGroups = null;
+function watchWide() {
+  if (watchWide.done) return;
+  watchWide.done = true;
+  window.matchMedia(WIDE).addEventListener('change', () => {
+    if (liveGroups && liveGroups.element.isConnected) liveGroups.redraw();
+  });
+}
+
 export function choosingGroup(view) {
   return view.folded !== true && window.matchMedia(NARROW).matches;
 }
@@ -183,6 +251,8 @@ export function mount(env) {
   const { ctx, view } = env;
   const element = h('div', { class: 'sch-groups' });
   let reveal = false;
+  watchWide();
+  liveGroups = { element, redraw: () => env.render() };
 
   // Was the focus in the editor when the editor went out of sight? A phone's
   // list coming back (Back, "All groups", a window narrowed across 640 px)
@@ -244,18 +314,33 @@ export function mount(env) {
   function listItem(project, model, group, selected, stop) {
     const words = periodWords(project.settings);
     const periods = project.settings.periods;
-    const base = baseDayType(project);
     const seen = (text) => h('span', { 'aria-hidden': 'true' }, text);
     const said = (text) => h('span', { class: 'vh' }, text);
-    const bars = project.dayTypes.map((dayType) => {
-      if (!isOwnCopy(project, dayType.id)) {
-        return h('span', { class: 'sch-bar sch-bar--same' }, h('span', { class: 'sch-bar__text' }, seen(dayType.name + ' = ' + base.name), said(dayType.name + ': same as ' + base.name + '. ')));
-      }
-      const done = effectiveSchedule(project, group.id, dayType.id).filter(filled).length;
-      return h('span', { class: 'sch-bar', data: { day: dayType.id, done: String(done) } },
-        h('span', { class: 'sch-bar__track' }, h('span', { class: 'sch-bar__fill', style: 'width:' + Math.round((100 * done) / periods) + '%' })),
-        h('span', { class: 'sch-bar__text' }, seen(dayType.name + ' ' + done + '/' + periods), said(dayType.name + ': ' + done + ' of ' + count(periods, words.one, words.many) + ' have a room. ')));
-    });
+    const own = ownDayTypes(project);
+    const doneOn = (dayType) => effectiveSchedule(project, group.id, dayType.id).filter(filled).length;
+    let bars;
+    if (own.length > BARS_MOST) {
+      // one bar for them all, the day by day in its title and in the editor
+      const complete = own.filter((dayType) => doneOn(dayType) === periods).length;
+      const breakdown = own.map((dayType) => dayType.name + ' ' + doneOn(dayType) + ' of ' + periods).join(', ');
+      bars = [h('span', { class: 'sch-bar sch-bar--all', title: breakdown, data: { complete: String(complete), of: String(own.length) } },
+        h('span', { class: 'sch-bar__track' }, h('span', { class: 'sch-bar__fill', style: 'width:' + Math.round((100 * complete) / own.length) + '%' })),
+        h('span', { class: 'sch-bar__text' }, seen(complete + ' of ' + own.length + ' complete'), said('Complete on ' + complete + ' of ' + own.length + ' day types. ')))];
+    } else {
+      // a bar for each day type, and a line for each that is the same as
+      // another while they all fit in three
+      const listed = project.dayTypes.length <= BARS_MOST ? project.dayTypes : own;
+      bars = listed.map((dayType) => {
+        if (!isOwnCopy(project, dayType.id)) {
+          const follows = effectiveDayType(project, dayType.id).name;
+          return h('span', { class: 'sch-bar sch-bar--same' }, h('span', { class: 'sch-bar__text' }, seen(dayType.name + ' = ' + follows), said(dayType.name + ': same as ' + follows + '. ')));
+        }
+        const done = doneOn(dayType);
+        return h('span', { class: 'sch-bar', data: { day: dayType.id, done: String(done) } },
+          h('span', { class: 'sch-bar__track' }, h('span', { class: 'sch-bar__fill', style: 'width:' + Math.round((100 * done) / periods) + '%' })),
+          h('span', { class: 'sch-bar__text' }, seen(dayType.name + ' ' + done + '/' + periods), said(dayType.name + ': ' + done + ' of ' + count(periods, words.one, words.many) + ' have a room. ')));
+      });
+    }
     const found = model.byGroup.get(group.id) || [];
     return keyed(h('li', {
       class: 'sch-group',
@@ -470,19 +555,40 @@ export function mount(env) {
       h('td', { class: 'sch-slot__more', role: 'cell' }, menu));
   }
 
+  // Copy classes from…: another day type's classes onto this one, for this
+  // group (the Day tab's row menu does it for every group).
+  async function copyClassesFor(group, dayType, opener) {
+    const project = ctx.store.project;
+    const sources = ownDayTypes(project).filter((each) => each.id !== dayType.id).map((each) => ({ value: each.id, label: each.name }));
+    if (sources.length === 0) return;
+    const chosen = await radioDialog(ctx, {
+      id: 'group-copy-dialog',
+      title: 'Copy classes onto ' + group.name + '’s ' + dayType.name,
+      legend: 'Copy ' + group.name + '’s classes on',
+      options: sources,
+      chosen: sources[0],
+      words: (option) => 'Copy ' + group.name + '’s ' + option.label + ' to ' + dayType.name,
+      action: 'copy-classes',
+      opener,
+      after: h('p', { class: 'sch-hint' }, group.name + '’s ' + dayType.name + ' becomes a copy of its day on the one chosen. Undo brings back what it had.'),
+    });
+    if (!chosen) return;
+    if (apply(env, copyDay, { fromDayTypeId: chosen.value, toDayTypeId: dayType.id, groupId: group.id })) ctx.toast({ text: 'Copied ' + group.name + '’s ' + chosen.label + ' to ' + dayType.name + '.', action: { label: 'Undo', run: ctx.undo } });
+  }
+
   function dayColumn(project, model, group, dayType) {
-    const base = baseDayType(project);
     const words = periodWords(project.settings);
     const titleId = uid('day');
     const bells = bellsFor(project, dayType.id);
     const day = effectiveSchedule(project, group.id, dayType.id);
     if (!isOwnCopy(project, dayType.id)) {
+      const follows = effectiveDayType(project, dayType.id).name;
       return h('section', { class: 'sch-day sch-day--same', 'aria-labelledby': titleId, data: { day: dayType.id } },
-        h('h3', { class: 'sch-day__title', id: titleId }, dayType.name + ': same as ' + base.name),
-        h('p', { class: 'sch-day__line' }, 'Whatever ' + base.name + ' holds, ' + dayType.name + ' holds too. ',
+        h('h3', { class: 'sch-day__title', id: titleId }, dayType.name + ': same as ' + follows),
+        h('p', { class: 'sch-day__line' }, 'Whatever ' + follows + ' holds, ' + dayType.name + ' holds too. ',
           button('Make its own copy', () => apply(env, makeOwnCopy, { dayTypeId: dayType.id }), { small: true, key: 'own:' + dayType.id, action: 'make-own', more: ': ' + dayType.name })),
         h('table', { class: 'table sch-slots sch-slots--same' },
-          h('caption', { class: 'vh' }, group.name + ' on ' + dayType.name + ', the same as ' + base.name),
+          h('caption', { class: 'vh' }, group.name + ' on ' + dayType.name + ', the same as ' + follows),
           h('thead', null, h('tr', null, h('th', { scope: 'col' }, words.One), h('th', { scope: 'col' }, 'Room'))),
           h('tbody', null, day.map((slot, period) => {
             const resolved = resolveSlotRoom(project, slot);
@@ -495,12 +601,18 @@ export function mount(env) {
       if (apply(env, moveSlot, { groupId: group.id, dayTypeId: dayType.id, from, to })) ctx.announce('Moved ' + periodName(project.settings, from) + '’s assignment to ' + periodName(project.settings, to) + '.');
     });
     const whole = model.byDay.get(group.id + '|' + dayType.id) || [];
+    // as "Copy A Day to B Day" was: on each day type after the first (the
+    // Day tab's row menu copies onto the first, for every group)
+    const others = dayType !== project.dayTypes[0] && ownDayTypes(project).length > 1;
+    let copy = null;
+    if (others) {
+      copy = button('Copy classes from…', (opener) => copyClassesFor(group, dayType, opener), { small: true, key: 'copy:' + dayType.id, action: 'copy-day', more: ' onto ' + group.name + '’s ' + dayType.name });
+      copy.setAttribute('aria-haspopup', 'dialog');
+    }
     return h('section', { class: 'sch-day', 'aria-labelledby': titleId, data: { day: dayType.id } },
       h('div', { class: 'sch-day__head' },
         h('h3', { class: 'sch-day__title', id: titleId }, dayType.name),
-        dayType === base ? null : button('Copy ' + base.name + ' to ' + dayType.name, () => {
-          if (apply(env, copyDay, { fromDayTypeId: base.id, toDayTypeId: dayType.id, groupId: group.id })) ctx.toast({ text: 'Copied ' + group.name + '’s ' + base.name + ' to ' + dayType.name + '.', action: { label: 'Undo', run: ctx.undo } });
-        }, { small: true, key: 'copy:' + dayType.id, action: 'copy-day' })),
+        copy),
       whole.map((finding) => h('p', { class: 'sch-finding-line sch-finding-line--' + finding.severity }, finding.text)),
       // The roles are written out because on a phone schedule.css makes the
       // table, its body and its rows blocks and grids, and a browser may drop
@@ -514,9 +626,53 @@ export function mount(env) {
         body));
   }
 
+  // With more than two day types of their own (DESIGN 11.6): "Show:", a chip
+  // for each, the ones shown pressed; choosing another shows it in place of
+  // the one chosen longest ago. Under NARROW one is shown, and the chips are
+  // a single choice. Then a line for each day type that is the same as
+  // another, and how complete the group is on each.
+  function dayChooser(project, group, shown) {
+    const own = ownDayTypes(project);
+    const narrow = window.matchMedia(NARROW).matches;
+    const labelId = uid('show');
+    const chips = own.map((dayType) => {
+      const pressed = shown.includes(dayType);
+      return keyed(h('button', {
+        type: 'button',
+        class: 'sch-show__chip',
+        'aria-pressed': String(pressed),
+        data: { day: dayType.id },
+        on: { click: () => {
+          chooseShownDay(ctx.store.project, view, dayType.id);
+          ctx.announce(narrow ? 'Showing ' + dayType.name + '.' : 'Showing ' + dayType.name + ' beside the others shown.');
+          env.render('show:' + dayType.id);
+        } },
+      }, dayType.name), 'show:' + dayType.id);
+    });
+    const followers = project.dayTypes.filter((dayType) => !isOwnCopy(project, dayType.id));
+    const periods = project.settings.periods;
+    const done = own.map((dayType) => ({ dayType, done: effectiveSchedule(project, group.id, dayType.id).filter(filled).length }));
+    const complete = done.filter((each) => each.done === periods).length;
+    return [
+      h('div', { class: 'sch-show', role: 'group', 'aria-labelledby': labelId },
+        h('span', { class: 'sch-show__label', id: labelId }, 'Show:'), chips),
+      followers.length === 0 ? null : h('ul', { class: 'sch-same-lines' }, followers.map((dayType) => h('li', { data: { day: dayType.id } },
+        h('span', null, dayType.name + ': same as ' + effectiveDayType(project, dayType.id).name + ' · '),
+        button('Make it its own', () => apply(env, makeOwnCopy, { dayTypeId: dayType.id }), { small: true, key: 'own:' + dayType.id, action: 'make-own', more: ': ' + dayType.name })))),
+      h('p', { class: 'sch-complete' }, 'Complete on ' + complete + ' of ' + own.length + ' day types: ' + done.map((each) => each.dayType.name + ' ' + each.done + ' of ' + periods).join(', ') + '.'),
+    ];
+  }
+
   function editor(project, model, group) {
     const titleId = uid('editor');
     const index = project.groups.indexOf(group);
+    const chips = ownDayTypes(project).length > SIDE_BY_SIDE;
+    // A slot's address shows its day type, whichever were chosen before.
+    if (chips && view.shown && view.shown.fresh && view.shown.groupId === group.id) {
+      const wanted = effectiveDayType(project, view.shown.dayTypeId);
+      if (wanted && !shownDays(project, view, roomForDays()).includes(wanted)) chooseShownDay(project, view, wanted.id);
+    }
+    const columns = chips ? shownDays(project, view, roomForDays()) : project.dayTypes;
     return h('section', { class: 'sch-editor', 'aria-labelledby': titleId, data: { group: group.id } },
       h('div', { class: 'sch-editor__head' },
         h('h2', { class: 'sch-editor__title', id: titleId }, h('span', { class: 'sch-dot', style: 'background:' + group.colour }), group.name),
@@ -537,7 +693,8 @@ export function mount(env) {
             show(listStop(ctx.store.project, view), true);
           }, { small: true, key: 'group-delete', action: 'delete', more: ' ' + group.name }))),
       headFields(project, group),
-      h('div', { class: 'sch-days' }, project.dayTypes.map((dayType) => dayColumn(project, model, group, dayType))));
+      chips ? dayChooser(project, group, columns) : null,
+      h('div', { class: 'sch-days', data: { shown: String(columns.length) } }, columns.map((dayType) => dayColumn(project, model, group, dayType))));
   }
 
   // ------------------------------------------------------------ drawing
