@@ -950,15 +950,35 @@ export function repair(input, options) {
       const followed = typeof value === 'string' ? follow('b', value) : value;
       return bellIds.has(followed) ? followed : undefined;
     };
-    if (!isObject(raw) || !isCalendarDate(raw.start) || !isCalendarDate(raw.end)) {
+    if (!isObject(raw) || (!isCalendarDate(raw.start) && !isCalendarDate(raw.end))) {
       note(isObject(raw) ? 'The calendar had no first or last day that is a date, so it was removed.' : 'The calendar could not be read and was removed.');
       project.calendar = null;
     } else {
       const calendar = { ...raw };
+      // one end that is not a date is taken from the other end and the dated
+      // changes: a first day the earliest of them, a last day the latest,
+      // never more than CALENDAR_DAYS_MOST days from the good end
+      if (!isCalendarDate(raw.start) || !isCalendarDate(raw.end)) {
+        const dated = (Array.isArray(raw.dates) ? raw.dates : []).filter((entry) => isObject(entry) && isCalendarDate(entry.date)).map((entry) => entry.date);
+        const good = isCalendarDate(raw.start) ? raw.start : raw.end;
+        const all = [good].concat(dated).sort();
+        const most = CALENDAR_DAYS_MOST - 1;
+        if (!isCalendarDate(raw.start)) {
+          const limit = addDays(good, -most);
+          const start = all[0] < limit ? limit : all[0];
+          calendar.start = start;
+          note('The calendar\'s first day was not a date, so it is now ' + dateWords(start) + ', the earliest of its last day and its dated changes' + (start === all[0] ? '' : ' that is within ' + CALENDAR_DAYS_MOST + ' days of its last day') + '.');
+        } else {
+          const limit = addDays(good, most);
+          const latest = all[all.length - 1];
+          const end = latest > limit ? limit : latest;
+          calendar.end = end;
+          note('The calendar\'s last day was not a date, so it is now ' + dateWords(end) + ', the latest of its first day and its dated changes' + (end === latest ? '' : ' that is within ' + CALENDAR_DAYS_MOST + ' days of its first day') + '.');
+        }
+      }
       if (calendar.start > calendar.end) {
         note('The calendar\'s first day was after its last; the two were swapped.');
-        calendar.start = raw.end;
-        calendar.end = raw.start;
+        [calendar.start, calendar.end] = [calendar.end, calendar.start];
       }
       if (daysBetween(calendar.start, calendar.end) + 1 > CALENDAR_DAYS_MOST) {
         const end = addDays(calendar.start, CALENDAR_DAYS_MOST - 1);

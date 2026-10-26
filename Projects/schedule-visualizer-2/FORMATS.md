@@ -280,7 +280,10 @@ removed, a rotation entry naming one is removed (an empty rotation becomes
 duplicate dates keep the later, and a dated change that says nothing its
 weekday does not (`day` `null`, `bells` `null` and no note; or `"rotation"`,
 `null`, no note, on a weekday that takes the rotation) is removed, each with
-a note.
+a note. A calendar whose `start` is not a date starts on the earliest of
+`end` and its dated changes' dates, one whose `end` is not a date ends on the
+latest of `start` and those dates (within 731 days of the good end), with a
+note; with neither a date, the calendar is removed.
 
 ### Group
 

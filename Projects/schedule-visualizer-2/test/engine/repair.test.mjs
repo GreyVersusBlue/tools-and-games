@@ -849,6 +849,46 @@ test('a dated change with day null is kept; one that says nothing (day null, bel
   assert.equal(repair(fixedDay).project.calendar.dates.some((entry) => entry.date === '2026-10-08'), false);
 });
 
+test('a calendar with one end that is not a date is kept: that end is taken from the other and the dated changes, with a note (SV2-75b)', () => {
+  // a bad first day: the earliest of the last day and the dated changes
+  const start = withEverything();
+  start.calendar.start = '2026-02-30';
+  const fixedStart = repair(start);
+  assert.deepEqual([fixedStart.project.calendar.start, fixedStart.project.calendar.end], ['2026-10-03', '2027-06-11']);
+  assert.equal(fixedStart.project.calendar.dates.length, 5, 'the dated changes are kept');
+  assert.deepEqual(fixedStart.project.calendar.rotation, [A, B]);
+  assert.deepEqual(fixedStart.notes, ['The calendar\'s first day was not a date, so it is now 3 October 2026, the earliest of its last day and its dated changes.']);
+  assert.deepEqual(validate(fixedStart.project), []);
+  assert.equal(repair(fixedStart.project).project, fixedStart.project);
+  // a bad last day: the latest of the first day and the dated changes
+  const end = withEverything();
+  end.calendar.end = '11 June 2027';
+  const fixedEnd = repair(end);
+  assert.deepEqual([fixedEnd.project.calendar.start, fixedEnd.project.calendar.end], ['2026-08-31', '2027-01-13']);
+  assert.deepEqual(fixedEnd.notes, ['The calendar\'s last day was not a date, so it is now 13 January 2027, the latest of its first day and its dated changes.']);
+  assert.deepEqual(validate(fixedEnd.project), []);
+  // no dated changes: the one good day is the whole calendar
+  const alone = withEverything();
+  alone.calendar.end = null;
+  alone.calendar.dates = [];
+  assert.deepEqual([repair(alone).project.calendar.start, repair(alone).project.calendar.end], ['2026-08-31', '2026-08-31']);
+  // a dated change far away: the range stops at 731 days from the good end
+  const far = withEverything();
+  far.calendar.start = 'soon';
+  far.calendar.dates.unshift({ date: '2020-01-06', day: 'closed', bells: null, label: 'Long ago' });
+  const fixedFar = repair(far);
+  assert.deepEqual([fixedFar.project.calendar.start, fixedFar.project.calendar.end], ['2025-06-11', '2027-06-11']);
+  assert.ok(fixedFar.notes[0].endsWith('that is within 731 days of its last day.'), fixedFar.notes[0]);
+  assert.deepEqual(validate(fixedFar.project), []);
+  // both ends bad: removed, as before
+  const both = withEverything();
+  both.calendar.start = 'x';
+  both.calendar.end = 'y';
+  const gone = repair(both);
+  assert.equal(gone.project.calendar, null);
+  assert.deepEqual(gone.notes, ['The calendar had no first or last day that is a date, so it was removed.']);
+});
+
 test('the renamed map follows into sameAs, the rotation, the dates and the weekdays, and a renamed bell schedule into the calendar', () => {
   const project = withEverything();
   const swap = (value) => (value === B ? 'B-DAY' : value === ER ? 'ER' : value);
