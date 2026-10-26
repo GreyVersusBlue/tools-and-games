@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { dayOn, calendarDays, calendarCounts, isCalendarDate, dayNumber, dateOfNumber, addDays, daysBetween, weekdayOf, datesFrom, dateWords } from '../../engine/calendar.js';
 import { dayShort, bellsShort } from '../../engine/day-types.js';
+import { bellFindings } from '../../engine/bells.js';
 import { CALENDAR_DAYS_MOST, defaultWeekdays } from '../../engine/schema.js';
 import { validate } from '../../engine/validate.js';
 import { repair } from '../../engine/repair.js';
@@ -189,6 +190,106 @@ test('a day type twice in the rotation, and a date that puts the rotation at its
   `);
 });
 
+test('a date set to a day type twice in the rotation puts the rotation after its next place, wrapping: [A, A, B] at its B, set to A, goes on at the second A', () => {
+  // Monday and Tuesday take the two As, so Wednesday stands at B (place 2);
+  // set to A, the first A at or after place 2 is place 0, wrapping, so
+  // Thursday takes place 1, another A, and Friday B
+  expectTable(project({ start: '2026-08-31', end: '2026-09-07', rotation: [A, A, B], dates: [{ date: '2026-09-02', day: A, bells: null, label: '' }] }), `
+    2026-08-31 Mon A  . rotation
+    2026-09-01 Tue A  . rotation
+    2026-09-02 Wed A  . date*
+    2026-09-03 Thu A  . rotation
+    2026-09-04 Fri B  . rotation
+    2026-09-05 Sat -  . weekday
+    2026-09-06 Sun -  . weekday
+    2026-09-07 Mon A  . rotation
+  `);
+});
+
+// SV2-75b: a dated change with day null is a change of bells or note only;
+// the weekday's rule decides the day, with the same effect on the rotation
+const fixedWeekdays = () => {
+  const weekdays = defaultWeekdays();
+  weekdays[0] = { day: A, bells: null };
+  weekdays[1] = { day: B, bells: null };
+  weekdays[2] = { day: A, bells: null };
+  weekdays[3] = { day: B, bells: null };
+  return weekdays;
+};
+
+test('a dated change with day null on a fixed weekday: its bells and note, the weekday\'s day, and nothing later moves', () => {
+  const plain = project({ start: '2026-08-31', end: '2026-10-02', weekdays: fixedWeekdays() });
+  const changed = project({ start: '2026-08-31', end: '2026-10-02', weekdays: fixedWeekdays(), dates: [{ date: '2026-09-16', day: null, bells: ER, label: 'Half day' }] });
+  expectTable(changed, `
+    2026-08-31 Mon A  . weekday
+    2026-09-01 Tue B  . weekday
+    2026-09-02 Wed A  . weekday
+    2026-09-03 Thu B  . weekday
+    2026-09-04 Fri A  . rotation
+    2026-09-05 Sat -  . weekday
+    2026-09-06 Sun -  . weekday
+    2026-09-07 Mon A  . weekday
+    2026-09-08 Tue B  . weekday
+    2026-09-09 Wed A  . weekday
+    2026-09-10 Thu B  . weekday
+    2026-09-11 Fri B  . rotation
+    2026-09-12 Sat -  . weekday
+    2026-09-13 Sun -  . weekday
+    2026-09-14 Mon A  . weekday
+    2026-09-15 Tue B  . weekday
+    2026-09-16 Wed A  ER weekday* Half day
+    2026-09-17 Thu B  . weekday
+    2026-09-18 Fri A  . rotation
+    2026-09-19 Sat -  . weekday
+    2026-09-20 Sun -  . weekday
+    2026-09-21 Mon A  . weekday
+    2026-09-22 Tue B  . weekday
+    2026-09-23 Wed A  . weekday
+    2026-09-24 Thu B  . weekday
+    2026-09-25 Fri B  . rotation
+    2026-09-26 Sat -  . weekday
+    2026-09-27 Sun -  . weekday
+    2026-09-28 Mon A  . weekday
+    2026-09-29 Tue B  . weekday
+    2026-09-30 Wed A  . weekday
+    2026-10-01 Thu B  . weekday
+    2026-10-02 Fri A  . rotation
+  `);
+  // every other date reads exactly as with no change at all
+  const before = calendarDays(plain);
+  calendarDays(changed).forEach((entry, i) => {
+    if (entry.date === '2026-09-16') return;
+    assert.deepEqual(entry, before[i], entry.date);
+  });
+  // a note only: the day and the bells are the weekday's
+  const note = project({ start: '2026-08-31', end: '2026-10-02', weekdays: fixedWeekdays(), dates: [{ date: '2026-09-16', day: null, bells: null, label: 'Picture day' }] });
+  assert.deepEqual(dayOn(note, '2026-09-16'), { known: true, school: true, dayTypeId: A, bellsId: null, why: 'weekday', label: 'Picture day', changed: true });
+  calendarDays(note).forEach((entry, i) => {
+    if (entry.date !== '2026-09-16') assert.deepEqual(entry, before[i], entry.date);
+  });
+});
+
+test('a dated change with day null on a rotation day takes the rotation and moves it on, as the weekday would; on a closed day it stays closed', () => {
+  const p = project({
+    start: '2026-08-31',
+    end: '2026-09-07',
+    dates: [
+      { date: '2026-09-01', day: null, bells: ER, label: '' },
+      { date: '2026-09-05', day: null, bells: null, label: 'Fair' },
+    ],
+  });
+  expectTable(p, `
+    2026-08-31 Mon A  . rotation
+    2026-09-01 Tue B  ER rotation*
+    2026-09-02 Wed A  . rotation
+    2026-09-03 Thu B  . rotation
+    2026-09-04 Fri A  . rotation
+    2026-09-05 Sat -  . weekday* Fair
+    2026-09-06 Sun -  . weekday
+    2026-09-07 Mon B  . rotation
+  `);
+});
+
 test('"next in the rotation" makes a Saturday a make-up day that takes the next one', () => {
   expectTable(project({ start: '2026-09-03', end: '2026-09-07', dates: [{ date: '2026-09-05', day: 'rotation', bells: null, label: 'Make-up day' }] }), `
     2026-09-03 Thu A  . rotation
@@ -269,6 +370,37 @@ test('calendarDays is worked out once per calendar, day types and bell schedules
   assert.notEqual(calendarDays({ ...p, dayTypes: p.dayTypes.slice() }), calendarDays(p));
   assert.notEqual(calendarDays({ ...p, bellSchedules: p.bellSchedules.slice() }), calendarDays(p));
   assert.equal(calendarDays(p).length, 285);
+});
+
+test('the walk is worked out again when only the bell schedules change, the calendar and day types the same objects', () => {
+  const p = project({ start: '2026-08-31', end: '2026-09-04', weekdays: weekday(2, 'rotation', ER) });
+  assert.equal(dayOn(p, '2026-09-02').bellsId, ER);
+  // the same calendar and day types; Early Release gone from the list
+  const gone = { ...p, bellSchedules: [] };
+  assert.equal(gone.calendar, p.calendar);
+  assert.equal(gone.dayTypes, p.dayTypes);
+  assert.equal(dayOn(gone, '2026-09-02').bellsId, null, 'not the walk kept for the old list');
+  assert.equal(calendarCounts(gone).bells.length, 1);
+  // and back: the first list reads ER again
+  assert.equal(dayOn(p, '2026-09-02').bellsId, ER);
+});
+
+test('bellFindings: a period that does not meet between two sound periods has no gap found across it', () => {
+  const p = project({ start: '2026-08-31', end: '2026-09-04' });
+  const bells = p.bellSchedules[0].bells;
+  // period 3 does not meet, and an hour and more lies between period 2's end
+  // and period 4's start
+  bells[3] = null;
+  bells[1] = { start: '09:00', end: '09:50' };
+  bells[2] = { start: '09:55', end: '10:45' };
+  bells[4] = { start: '12:00', end: '12:50' };
+  for (let k = 5; k < bells.length; k += 1) bells[k] = { start: String(13 + k - 5).padStart(2, '0') + ':00', end: String(13 + k - 5).padStart(2, '0') + ':50' };
+  bells[0] = { start: '08:00', end: '08:50' };
+  p.bellSchedules[0].off = [3];
+  assert.deepEqual(bellFindings(p, A, ER), []);
+  // the same times with period 3 meeting and no times: it is a gap
+  p.bellSchedules[0].off = [];
+  assert.deepEqual(bellFindings(p, A, ER).map((finding) => [finding.kind, finding.period]), [['gap', 3]]);
 });
 
 test('calendarCounts: school days per day type and per bell schedule', () => {

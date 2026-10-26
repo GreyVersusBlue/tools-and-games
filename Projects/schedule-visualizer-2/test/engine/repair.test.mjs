@@ -370,6 +370,53 @@ test('when only some groups have a day for it, the others get a copy of their A 
   assert.deepEqual(validate(result.project), []);
 });
 
+// SV2-75b: a C Day marked the same as B Day (an own day type) that has
+// something of its own starts from B Day, not from the first day type
+function withCSameAsB() {
+  const project = school();
+  project.dayTypes.push({ id: 'dsample00c', name: 'C Day', own: false, sameAs: 'dsample00b', short: '', bells: Array(project.settings.periods).fill(null) });
+  return project;
+}
+
+test('a day type the same as another own day type, with bells only, is promoted with that day type\'s classes, and the note names it', () => {
+  const project = withCSameAsB();
+  project.dayTypes[2].bells[0] = { start: '08:00', end: '08:50' };
+  assert.notDeepEqual(group(project, '6A').days.dsample00a, group(project, '6A').days.dsample00b, 'A and B differ, so the case tells them apart');
+  const result = repair(project);
+  const c = result.project.dayTypes[2];
+  assert.equal(c.own, true);
+  assert.equal(c.sameAs, null);
+  for (const g of project.groups) assert.deepEqual(group(result.project, g.name).days.dsample00c, g.days.dsample00b, g.name + ' has its B Day on C Day');
+  assert.ok(result.notes.some((note) => /^C Day was marked the same as B Day .* its own copy now; where it had no classes of its own, it has B Day's\.$/.test(note)), JSON.stringify(result.notes));
+  assert.ok(!result.notes.some((note) => /A Day/.test(note)));
+  assert.deepEqual(validate(result.project), []);
+  assert.equal(repair(result.project).project, result.project, 'and a second repair has nothing to do');
+});
+
+test('a day type the same as another own day type, with some groups\' days, gives the other groups that day type\'s days', () => {
+  const project = withCSameAsB();
+  const own = group(project, '6A').days.dsample00a.map((slot) => ({ ...slot, teacherIds: slot.teacherIds.slice() }));
+  group(project, '6A').days.dsample00c = own;
+  const result = repair(project);
+  assert.equal(result.project.dayTypes[2].own, true);
+  assert.deepEqual(group(result.project, '6A').days.dsample00c, own, 'the day it had is kept');
+  for (const g of project.groups.slice(1)) {
+    assert.deepEqual(group(result.project, g.name).days.dsample00c, g.days.dsample00b, g.name + ' has its B Day');
+    assert.notEqual(group(result.project, g.name).days.dsample00c, group(result.project, g.name).days.dsample00b, 'a copy, not the same list');
+  }
+  assert.ok(result.notes.some((note) => /^C Day was marked the same as B Day and had days of its own/.test(note)));
+  assert.deepEqual(validate(result.project), []);
+});
+
+test('a day type the same as one that is not its own copy is promoted from the first day type', () => {
+  const project = withCSameAsB();
+  project.dayTypes.push({ id: 'dsample00d', name: 'D Day', own: false, sameAs: 'dsample00c', short: '', bells: Array(project.settings.periods).fill(null) });
+  project.dayTypes[3].bells[0] = { start: '08:00', end: '08:50' };
+  const result = repair(project);
+  for (const g of project.groups) assert.deepEqual(group(result.project, g.name).days.dsample00d, g.days.dsample00a);
+  assert.ok(result.notes.some((note) => /^D Day was marked the same as A Day and had bell times/.test(note)));
+});
+
 test('an own day type with a missing day gets an empty one', () => {
   const project = school();
   delete group(project, '8B').days.dsample00b;
@@ -786,6 +833,62 @@ test('duplicate dates keep the later; a change that says nothing is dropped; a r
   ]);
 });
 
+test('a dated change with day null is kept; one that says nothing (day null, bells null, no note) is removed with a note (SV2-75b)', () => {
+  const project = withEverything();
+  project.calendar.dates.splice(1, 0, { date: '2026-10-07', day: null, bells: ER, label: '' }, { date: '2026-10-08', day: null, bells: null, label: 'Picture day' }, { date: '2026-10-09', day: null, bells: null, label: '' });
+  const { project: fixed, notes } = repair(project);
+  assert.deepEqual(fixed.calendar.dates.slice(1, 3), [{ date: '2026-10-07', day: null, bells: ER, label: '' }, { date: '2026-10-08', day: null, bells: null, label: 'Picture day' }]);
+  assert.equal(fixed.calendar.dates.some((entry) => entry.date === '2026-10-09'), false);
+  assert.deepEqual(notes, ['1 dated change in the calendar said nothing the weekday did not and was removed.']);
+  assert.deepEqual(validate(fixed), []);
+  assert.equal(repair(fixed).project, fixed);
+  // on a fixed weekday too: day null with nothing else says nothing
+  const fixedDay = withEverything();
+  fixedDay.calendar.weekdays[3] = { day: B, bells: null };
+  fixedDay.calendar.dates.splice(1, 0, { date: '2026-10-08', day: null, bells: null, label: '' });
+  assert.equal(repair(fixedDay).project.calendar.dates.some((entry) => entry.date === '2026-10-08'), false);
+});
+
+test('a calendar with one end that is not a date is kept: that end is taken from the other and the dated changes, with a note (SV2-75b)', () => {
+  // a bad first day: the earliest of the last day and the dated changes
+  const start = withEverything();
+  start.calendar.start = '2026-02-30';
+  const fixedStart = repair(start);
+  assert.deepEqual([fixedStart.project.calendar.start, fixedStart.project.calendar.end], ['2026-10-03', '2027-06-11']);
+  assert.equal(fixedStart.project.calendar.dates.length, 5, 'the dated changes are kept');
+  assert.deepEqual(fixedStart.project.calendar.rotation, [A, B]);
+  assert.deepEqual(fixedStart.notes, ['The calendar\'s first day was not a date, so it is now 3 October 2026, the earliest of its last day and its dated changes.']);
+  assert.deepEqual(validate(fixedStart.project), []);
+  assert.equal(repair(fixedStart.project).project, fixedStart.project);
+  // a bad last day: the latest of the first day and the dated changes
+  const end = withEverything();
+  end.calendar.end = '11 June 2027';
+  const fixedEnd = repair(end);
+  assert.deepEqual([fixedEnd.project.calendar.start, fixedEnd.project.calendar.end], ['2026-08-31', '2027-01-13']);
+  assert.deepEqual(fixedEnd.notes, ['The calendar\'s last day was not a date, so it is now 13 January 2027, the latest of its first day and its dated changes.']);
+  assert.deepEqual(validate(fixedEnd.project), []);
+  // no dated changes: the one good day is the whole calendar
+  const alone = withEverything();
+  alone.calendar.end = null;
+  alone.calendar.dates = [];
+  assert.deepEqual([repair(alone).project.calendar.start, repair(alone).project.calendar.end], ['2026-08-31', '2026-08-31']);
+  // a dated change far away: the range stops at 731 days from the good end
+  const far = withEverything();
+  far.calendar.start = 'soon';
+  far.calendar.dates.unshift({ date: '2020-01-06', day: 'closed', bells: null, label: 'Long ago' });
+  const fixedFar = repair(far);
+  assert.deepEqual([fixedFar.project.calendar.start, fixedFar.project.calendar.end], ['2025-06-11', '2027-06-11']);
+  assert.ok(fixedFar.notes[0].endsWith('that is within 731 days of its last day.'), fixedFar.notes[0]);
+  assert.deepEqual(validate(fixedFar.project), []);
+  // both ends bad: removed, as before
+  const both = withEverything();
+  both.calendar.start = 'x';
+  both.calendar.end = 'y';
+  const gone = repair(both);
+  assert.equal(gone.project.calendar, null);
+  assert.deepEqual(gone.notes, ['The calendar had no first or last day that is a date, so it was removed.']);
+});
+
 test('the renamed map follows into sameAs, the rotation, the dates and the weekdays, and a renamed bell schedule into the calendar', () => {
   const project = withEverything();
   const swap = (value) => (value === B ? 'B-DAY' : value === ER ? 'ER' : value);
@@ -822,7 +925,9 @@ test('a day type that was the same as another and has days of its own becomes it
   for (const g of project.groups) g.days[C] = g.days[B];
   const { project: fixed, notes } = repair(project);
   assert.deepEqual([fixed.dayTypes[2].own, fixed.dayTypes[2].sameAs], [true, null]);
-  assert.ok(notes.includes('C Day is its own copy, so it is the same as nothing; what it said it was the same as was cleared.'));
+  // one note says it all, naming what it was the same as (SV2-75b)
+  assert.ok(notes.includes('C Day was marked the same as B Day and had days of its own, so it is its own copy now; where it had no classes of its own, it has B Day\'s.'), JSON.stringify(notes));
+  assert.ok(!notes.some((note) => /C Day is its own copy, so it is the same as nothing/.test(note)));
   assert.deepEqual(validate(fixed), []);
 });
 

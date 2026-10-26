@@ -529,6 +529,33 @@ test('scenarioFromDiff: what a move cannot say is listed, not guessed', () => {
   assert.ok(sameAs.skipped.every((entry) => entry.sentence.endsWith('B Day is the same as A Day here, so it has no schedule of its own to change.')));
 });
 
+// C Day its own copy of B Day's classes, D Day the same as C Day (not the base)
+const C = 'dsample00c';
+const D = 'dsample00d';
+function withCAndD(project, dOwn) {
+  const blank = project.dayTypes[0].bells.map(() => null);
+  project.dayTypes.push({ id: C, name: 'C Day', own: true, sameAs: null, short: '', bells: project.dayTypes[1].bells.map((bell) => (bell ? { ...bell } : null)) });
+  project.dayTypes.push({ id: D, name: 'D Day', own: dOwn, sameAs: dOwn ? null : C, short: '', bells: dOwn ? project.dayTypes[1].bells.map((bell) => (bell ? { ...bell } : null)) : blank });
+  for (const one of project.groups) {
+    one.days[C] = clone(one.days[B]);
+    if (dOwn) one.days[D] = clone(one.days[B]);
+  }
+  return project;
+}
+
+test('scenarioFromDiff and reconcile: a day type the same as C Day says it is the same as C Day, not the base', () => {
+  const mine = withCAndD(school(), false);
+  const file = withCAndD(school(), true);
+  slot(file, G6A, D, 3).room = 'rsamplegym';
+  const { skipped } = scenarioFromDiff(mine, file);
+  const onD = skipped.filter((entry) => entry.dayTypeName === 'D Day');
+  assert.ok(onD.length > 0, 'the file\'s D Day differs');
+  for (const entry of onD) assert.ok(entry.sentence.endsWith('D Day is the same as C Day here, so it has no schedule of its own to change.'), entry.sentence);
+  const dropped = reconcile(mine, [move(G7C, 1, 'rsample204', D)]).dropped;
+  assert.equal(dropped.length, 1);
+  assert.match(dropped[0].sentence, /D Day is the same as C Day again, so it has no schedule of its own to change\.$/);
+});
+
 test('scenarioFromDiff: rooms whose numbers read alike in one building are told apart by the engine\'s own key', () => {
   const project = school();
   room(project, '201').number = 'B12';

@@ -1,5 +1,6 @@
 // The schedule checks of spec 5.7. checkSchedule(project, walkResults) runs
-// every kind over every day type that is its own copy and gives
+// every kind over every day type that is its own copy (and the walk kinds
+// over every run the walk results hold) and gives
 //
 //   { findings, accepted, changed, off, gone }
 //
@@ -12,8 +13,24 @@
 // findings.js has the shape of a finding, the ids, and the shape of
 // `walkResults`, which is null until the routes and the crowd model have run.
 //
-// A day type that is "the same as A Day" is not checked a second time: what
-// is true of A Day is reported once, and the sentence names both day types.
+// A day type that is "the same as" another is not checked a second time:
+// what is true of the day type it is the same as (its `sameAs`, or A Day) is
+// reported once, and the sentence names both day types.
+//
+// Where a group is comes from meetingSlots (engine/runs.js) with the regular
+// bells. The checks of a schedule's rooms and teachers are made once a day
+// type, on its regular run: a bell schedule changes only the times, and a
+// period that does not meet under it can only take a finding away. The walk
+// checks are made for every run the walk results hold (ARCHITECTURE 17.8):
+// a group or a teacher late in one transition under several runs of one day
+// type is one finding naming them all ("on A Day, regular and Early Release
+// bells"), whose id is the regular run's when the regular bells are among
+// them, so a finding accepted before bell schedules existed stays accepted;
+// late only under bell schedules, the id gains the first schedule's id (and
+// an acceptance naming schedule X holds while the walk is late under X and
+// not under the regular bells, whatever the id is today:
+// followAcceptedWalks below). The runs are in `where.bellsIds` whenever a bell schedule
+// is among them.
 //
 // The rules, one per kind:
 //
@@ -47,20 +64,35 @@
 // Head counts fall back to the school default, as everywhere else.
 
 import { allRooms, findRoom, findById, resolveSlotRoom } from './schema.js';
-import { ownDayTypes, effectiveSchedule, isOwnCopy, findDayType } from './day-types.js';
-import { bellsFor, periodName } from './bells.js';
+import { ownDayTypes, isOwnCopy, findDayType, followersOf } from './day-types.js';
+import { bellsFor, periodName, findBellSchedule, offPeriods } from './bells.js';
+import { meetingSlots } from './runs.js';
 import { teacherDays, slotTeacherIds, entryPlaces, teacherMoves } from './teacher-day.js';
 import { makeFinding, sortFindings, splitAccepted, countWord, listWords, periodWord, roomName, formatDuration } from './findings.js';
 
-// "on A Day", or "on A Day and B Day" when B Day is the same as A Day.
+// "on A Day", or "on A Day and B Day" when B Day is the same as A Day: the
+// own day type, then the day types the same as it (followersOf, which reads
+// `sameAs`), in the school's order.
 function onDays(project, dayType) {
-  const names = [dayType.name];
-  if (project.dayTypes[0] === dayType) {
-    for (let i = 1; i < project.dayTypes.length; i += 1) {
-      if (project.dayTypes[i].own !== true) names.push(project.dayTypes[i].name);
-    }
-  }
+  const names = [dayType.name].concat(followersOf(project, dayType.id).map((follower) => follower.name));
   return 'on ' + listWords(names);
+}
+
+// The runs a walk finding names, after onDays: nothing for the regular bells
+// alone, " with Early Release bells" for one schedule, ", regular and Early
+// Release bells" for several. bellsIds are in the order runs are listed.
+function runWords(project, bellsIds) {
+  if (bellsIds.length === 1 && bellsIds[0] === null) return '';
+  const names = bellsIds.map((bellsId) => (bellsId === null ? 'regular' : findBellSchedule(project, bellsId).name));
+  return (bellsIds.length === 1 ? ' with ' : ', ') + listWords(names) + ' bells';
+}
+
+// The position of a run among a day type's runs: the regular bells first,
+// then the bell schedules in the project's order.
+function runOrder(project, bellsId) {
+  if (bellsId === null) return -1;
+  const schedules = Array.isArray(project.bellSchedules) ? project.bellSchedules : [];
+  return schedules.findIndex((schedule) => schedule && schedule.id === bellsId);
 }
 
 function isNumbered(room) {
@@ -110,7 +142,7 @@ export function checkSchedule(project, walkResults) {
     const used = new Set();
 
     for (const group of project.groups) {
-      const day = effectiveSchedule(project, group.id, d);
+      const day = meetingSlots(project, group.id, d, null);
       const empty = [];
       for (let p = 0; p < periods; p += 1) {
         const slot = day[p];
@@ -286,31 +318,101 @@ export function checkSchedule(project, walkResults) {
     const passingText = (seconds) => 'the passing time is ' + formatDuration(seconds) + (margin > 0 ? ' plus a margin of ' + formatDuration(margin) : '');
     const ownDay = (dayTypeId) => (isOwnCopy(project, dayTypeId) ? findDayType(project, dayTypeId) : null);
     const isTransition = (period) => Number.isInteger(period) && period >= 0 && period < periods - 1;
+    // the run an entry is for: null for the regular bells; undefined for a
+    // schedule the project no longer has, whose figures say nothing
+    const runOf = (walk, fromBells) => {
+      if (!fromBells) return null;
+      return typeof walk.bellsId === 'string' && findBellSchedule(project, walk.bellsId) ? walk.bellsId : undefined;
+    };
+    const bellsOf = new Map();
+    const passingFor = (dayTypeId, bellsId, period) => {
+      const key = dayTypeId + '\u0000' + bellsId;
+      if (!bellsOf.has(key)) bellsOf.set(key, bellsId === null ? bellsFor(project, dayTypeId) : bellsFor(project, dayTypeId, bellsId));
+      return bellsOf.get(key)[period].passingAfter;
+    };
+    const lists = (part) => {
+      const out = [];
+      for (const walk of Array.isArray(walkResults[part]) ? walkResults[part] : []) out.push({ walk, bellsId: runOf(walk, false) });
+      const bells = walkResults.bells && Array.isArray(walkResults.bells[part]) ? walkResults.bells[part] : [];
+      for (const walk of bells) out.push({ walk, bellsId: runOf(walk, true) });
+      return out;
+    };
+    // one finding per (day type, period, who): the runs it is late in, in run order
+    const gather = (entries, keyOf) => {
+      const byKey = new Map();
+      for (const entry of entries) {
+        const key = keyOf(entry);
+        if (!byKey.has(key)) byKey.set(key, []);
+        if (!byKey.get(key).some((other) => other.bellsId === entry.bellsId)) byKey.get(key).push(entry);
+      }
+      for (const list of byKey.values()) list.sort((a, b) => runOrder(project, a.bellsId) - runOrder(project, b.bellsId));
+      return Array.from(byKey.values());
+    };
+    // the runs, as they are said and as they go into the id and `where`
+    const runParts = (list, parts) => {
+      const bellsIds = list.map((entry) => entry.bellsId);
+      const regular = bellsIds[0] === null;
+      return { bellsIds, id: regular ? parts : parts.concat([bellsIds[0]]), where: bellsIds.length === 1 && regular ? {} : { bellsIds } };
+    };
+    // the late runs whose figures read alike, together: the first set is the
+    // sentence, every other set a sentence of its own after it
+    const alike = (list, figureKey) => {
+      const sets = [];
+      for (const entry of list) {
+        const key = figureKey(entry.walk);
+        const set = sets.find((candidate) => candidate.key === key);
+        if (set) set.entries.push(entry);
+        else sets.push({ key, entries: [entry] });
+      }
+      return sets;
+    };
+    const bellsNames = (entries) => listWords(entries.map((entry) => (entry.bellsId === null ? 'regular' : findBellSchedule(project, entry.bellsId).name)));
 
-    for (const walk of Array.isArray(walkResults.groups) ? walkResults.groups : []) {
+    const groupEntries = [];
+    for (const entry of lists('groups')) {
+      const walk = entry.walk;
+      if (entry.bellsId === undefined) continue;
       if (!walk || walk.late !== true || !isTransition(walk.period) || !isWholeSeconds(walk.total)) continue;
       const dayType = ownDay(walk.dayTypeId);
       const group = findById(project.groups, walk.groupId);
       if (!dayType || !group) continue;
-      const day = effectiveSchedule(project, group.id, dayType.id);
+      const day = meetingSlots(project, group.id, dayType.id, entry.bellsId);
       const from = resolveSlotRoom(project, day[walk.period]).room;
       const to = resolveSlotRoom(project, day[walk.period + 1]).room;
       if (!from || !to || from === to) continue;
       // a figure for other rooms, or decided against another passing time,
       // is not a figure for this walk
       if (walk.fromRoomId !== from.id || walk.toRoomId !== to.id) continue;
-      if (walk.passingSeconds !== bellsFor(project, dayType.id)[walk.period].passingAfter) continue;
-      const passing = walk.passingSeconds;
-      const after = ' after ' + periodName(settings, walk.period) + ' ' + onDays(project, dayType);
-      const text = walk.arrived === false
-        ? group.name + ' did not arrive at ' + roomName(to, false) + ' from ' + roomName(from, false) + after + ': it was still on the way after ' + formatDuration(walk.total) + ', and ' + passingText(passing) + '.'
-        : group.name + ' needs ' + formatDuration(walk.total) + ' to get from ' + roomName(from, false) + ' to ' + roomName(to, false) + after
-          + (isWholeSeconds(walk.waiting) && walk.waiting > 0 ? ', ' + formatDuration(walk.waiting) + ' of it waiting in crowded corridors' : '') + ', and ' + passingText(passing) + '.';
-      add('group-walk', [dayType.id, walk.period, group.id], text, { dayTypeId: dayType.id, period: walk.period, groupIds: [group.id], roomId: to.id });
+      if (walk.passingSeconds !== passingFor(dayType.id, entry.bellsId, walk.period)) continue;
+      groupEntries.push({ ...entry, dayType, group, from, to });
+    }
+    for (const list of gather(groupEntries, (entry) => entry.dayType.id + '\u0000' + entry.walk.period + '\u0000' + entry.group.id)) {
+      const { dayType, group, from, to } = list[0];
+      const period = list[0].walk.period;
+      const sets = alike(list, (walk) => walk.total + '|' + walk.waiting + '|' + walk.passingSeconds + '|' + (walk.arrived === false));
+      const after = ' after ' + periodName(settings, period) + ' ' + onDays(project, dayType);
+      const said = (walk) => (walk.arrived === false
+        ? 'was still on the way after ' + formatDuration(walk.total)
+        : 'needs ' + formatDuration(walk.total) + (isWholeSeconds(walk.waiting) && walk.waiting > 0 ? ', ' + formatDuration(walk.waiting) + ' of it waiting in crowded corridors' : ''));
+      const first = sets[0].entries[0].walk;
+      const runs = runWords(project, sets[0].entries.map((entry) => entry.bellsId));
+      let text = first.arrived === false
+        ? group.name + ' did not arrive at ' + roomName(to, false) + ' from ' + roomName(from, false) + after + runs + ': it was still on the way after ' + formatDuration(first.total) + ', and ' + passingText(first.passingSeconds) + '.'
+        : group.name + ' needs ' + formatDuration(first.total) + ' to get from ' + roomName(from, false) + ' to ' + roomName(to, false) + after + runs
+          + (isWholeSeconds(first.waiting) && first.waiting > 0 ? ', ' + formatDuration(first.waiting) + ' of it waiting in crowded corridors' : '') + ', and ' + passingText(first.passingSeconds) + '.';
+      for (const set of sets.slice(1)) {
+        const walk = set.entries[0].walk;
+        text += ' With ' + bellsNames(set.entries) + ' bells it ' + said(walk) + ', and ' + passingText(walk.passingSeconds) + '.';
+      }
+      const run = runParts(list, [dayType.id, period, group.id]);
+      add('group-walk', run.id, text, { dayTypeId: dayType.id, period, groupIds: [group.id], roomId: to.id, ...run.where });
     }
 
     const daysOf = new Map();
-    for (const walk of Array.isArray(walkResults.teachers) ? walkResults.teachers : []) {
+    const teacherEntries = [];
+    for (const entry of lists('teachers')) {
+      const walk = entry.walk;
+      if (entry.bellsId === undefined) continue;
       if (!walk || walk.late !== true || !isTransition(walk.period) || !isWholeSeconds(walk.walking)) continue;
       const dayType = ownDay(walk.dayTypeId);
       const teacher = findById(project.teachers, walk.teacherId);
@@ -319,13 +421,66 @@ export function checkSchedule(project, walkResults) {
       const day = daysOf.get(dayType.id).get(teacher.id);
       const move = teacherMoves(day).find((candidate) => candidate.period === walk.period);
       if (!move || walk.fromRoomId !== move.fromRoomId || walk.toRoomId !== move.toRoomId) continue;
-      if (walk.passingSeconds !== bellsFor(project, dayType.id)[walk.period].passingAfter) continue;
-      add('teacher-walk', [dayType.id, walk.period, teacher.id],
-        teacher.name + ' needs ' + formatDuration(walk.walking) + ' to walk from ' + roomName(findRoom(project, move.fromRoomId), false) + ' to ' + roomName(findRoom(project, move.toRoomId), false)
-          + ' after ' + periodName(settings, walk.period) + ' ' + onDays(project, dayType) + ', before any crowding, and ' + passingText(walk.passingSeconds) + '.',
-        { dayTypeId: dayType.id, period: walk.period, groupIds: day[walk.period + 1].groups.map((taught) => taught.groupId), roomId: move.toRoomId, teacherId: teacher.id }, [teacher.id]);
+      if (entry.bellsId !== null) {
+        const off = offPeriods(project, entry.bellsId);
+        if (off.has(walk.period) || off.has(walk.period + 1)) continue;
+      }
+      if (walk.passingSeconds !== passingFor(dayType.id, entry.bellsId, walk.period)) continue;
+      teacherEntries.push({ ...entry, dayType, teacher, day, move });
+    }
+    for (const list of gather(teacherEntries, (entry) => entry.dayType.id + '\u0000' + entry.walk.period + '\u0000' + entry.teacher.id)) {
+      const { dayType, teacher, day, move } = list[0];
+      const period = list[0].walk.period;
+      const sets = alike(list, (walk) => walk.walking + '|' + walk.passingSeconds);
+      const first = sets[0].entries[0].walk;
+      let text = teacher.name + ' needs ' + formatDuration(first.walking) + ' to walk from ' + roomName(findRoom(project, move.fromRoomId), false) + ' to ' + roomName(findRoom(project, move.toRoomId), false)
+        + ' after ' + periodName(settings, period) + ' ' + onDays(project, dayType) + runWords(project, sets[0].entries.map((entry) => entry.bellsId)) + ', before any crowding, and ' + passingText(first.passingSeconds) + '.';
+      for (const set of sets.slice(1)) {
+        const walk = set.entries[0].walk;
+        text += ' With ' + bellsNames(set.entries) + ' bells it needs ' + formatDuration(walk.walking) + ', and ' + passingText(walk.passingSeconds) + '.';
+      }
+      const run = runParts(list, [dayType.id, period, teacher.id]);
+      add('teacher-walk', run.id, text,
+        { dayTypeId: dayType.id, period, groupIds: day[period + 1].groups.map((taught) => taught.groupId), roomId: move.toRoomId, teacherId: teacher.id, ...run.where }, [teacher.id]);
     }
   }
 
-  return splitAccepted(sortFindings(found, project), project.accepted, { off, limit, runs });
+  return splitAccepted(followAcceptedWalks(sortFindings(found, project), project.accepted), project.accepted, { off, limit, runs });
+}
+
+// A walk late only under bell schedules has the first of them (in the
+// project's order) in its id, `group-walk:d:p:<group>:<schedule>`, so
+// reordering the schedules, or deleting one, would change the id and lose
+// an acceptance. The id rule stays; instead a walk record whose id names
+// schedule X, with no finding of its own id, follows the finding of the same
+// kind, day type, period and group or teacher that is still late under X (X
+// among its where.bellsIds), whatever its id is now: the finding takes the
+// record's id, so splitAccepted (findings.js) matches them as ever and
+// taking the acceptance back finds the record. It must still be late only
+// under bell schedules: a walk late under the regular bells as well is worse
+// than the one accepted, has the regular id and counts again (by design).
+// Nor does it follow once X is deleted: the walk is late under X no longer.
+// A record follows one finding, never two, and never one with a record of
+// its own. Here rather than in splitAccepted because findings.js is in the
+// staff browser, whose published code does not change for this.
+export function followAcceptedWalks(findings, acceptedRecords) {
+  const records = Array.isArray(acceptedRecords) ? acceptedRecords : [];
+  const ids = new Set(findings.map((finding) => finding.id));
+  const recordIds = new Set(records.map((record) => record.findingId));
+  const renamed = new Map();
+  for (const record of records) {
+    const parts = String(record.findingId).split(':');
+    if ((parts[0] !== 'group-walk' && parts[0] !== 'teacher-walk') || parts.length !== 5 || ids.has(record.findingId)) continue;
+    const base = parts.slice(0, 4).join(':');
+    const match = findings.find((finding) => {
+      if (finding.kind !== parts[0] || recordIds.has(finding.id) || renamed.has(finding.id)) return false;
+      const own = finding.id.split(':');
+      if (own.length !== 5 || own.slice(0, 4).join(':') !== base) return false;
+      const bellsIds = Array.isArray(finding.where.bellsIds) ? finding.where.bellsIds : [];
+      return !bellsIds.includes(null) && bellsIds.includes(parts[4]);
+    });
+    if (match) renamed.set(match.id, record.findingId);
+  }
+  if (renamed.size === 0) return findings;
+  return findings.map((finding) => (renamed.has(finding.id) ? { ...finding, id: renamed.get(finding.id) } : finding));
 }

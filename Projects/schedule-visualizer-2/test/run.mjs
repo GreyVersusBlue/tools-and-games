@@ -39,6 +39,8 @@ export const GROUPS = {
     'engine/bells.test.mjs',
     'engine/calendar.test.mjs',
     'engine/runs.test.mjs',
+    'engine/runs-today.test.mjs', // SV2-76
+    'engine/bell-runs.test.mjs', // SV2-76
     'engine/actions.test.mjs',
     'engine/history.test.mjs',
     'engine/store.test.mjs',
@@ -192,7 +194,7 @@ export const GROUPS = {
 // Folders whose every .mjs is a suite and has to be in a group above, apart
 // from the helpers named here, which the suites import. A *.test.mjs has to
 // be in a group wherever under test/ it is.
-export const SUITE_FOLDERS = { browser: ['harness.mjs', 'screens.mjs'], a11y: [], timing: [] };
+export const SUITE_FOLDERS = { browser: ['harness.mjs', 'screens.mjs'], a11y: [], timing: ['big-runs.mjs'] };
 // Groups whose suites take `--base <url>`.
 const TAKES_BASE = ['browser', 'a11y'];
 
