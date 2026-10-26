@@ -27,6 +27,7 @@ import { createPipeline, pack, unpack, runResults, scenarioRun } from '../../eng
 import { trimResult, compareResults, loadDifference } from '../../engine/scenario.js';
 import { suggest } from '../../engine/suggest.js';
 import { newAcceptedFinding } from '../../engine/schema.js';
+import { splitAccepted } from '../../engine/findings.js';
 import { sampleSchool } from '../../data/sample-school.js';
 
 const A = 'dsample00a';
@@ -315,6 +316,84 @@ test('late under the regular bells and a schedule alike: one finding naming both
   const after = findingsOf(accepted);
   assert.equal(after.findings.some((one) => one.id === 'group-walk:' + A + ':5:' + G8A), false);
   assert.equal(after.accepted.some((one) => one.id === 'group-walk:' + A + ':5:' + G8A), true);
+});
+
+// Accepting a walk late only under bell schedules (ARCHITECTURE 17.8, the
+// Foreman's rule after SV2-76's review): the id keeps naming the first
+// schedule in the project's order, and a record naming schedule X stays
+// accepted while the walk is late under X and not under the regular bells,
+// whatever the id is today; the finding is listed under the record's id.
+const YL = 'bsample0yy';
+function twoAlike(order) {
+  const project = sampleSchool();
+  const yellow = { ...earlyRelease(), id: YL, name: 'Yellow' };
+  project.bellSchedules = order === 'yellow first' ? [yellow, earlyRelease()] : [earlyRelease(), yellow];
+  return project;
+}
+const LATE_7B = 'group-walk:' + A + ':4:' + G7B;
+const accept = (project, id) => {
+  project.accepted = [newAcceptedFinding(id, 'Early Release only', '2026-09-01T12:00:00.000Z', [G7B])];
+  return project;
+};
+const walksOf7B = (checked) => checked.findings.concat(checked.accepted).filter((one) => one.id.startsWith(LATE_7B));
+
+test('an accepted walk late only under bell schedules stays accepted when the schedules are reordered', () => {
+  const before = findingsOf(accept(twoAlike('early first'), LATE_7B + ':' + ER));
+  assert.deepEqual(walksOf7B(before).map((one) => [one.id, Boolean(one.accepted)]), [[LATE_7B + ':' + ER, true]]);
+  const after = findingsOf(accept(twoAlike('yellow first'), LATE_7B + ':' + ER));
+  // the id today would name Yellow; it is listed under the record's
+  assert.deepEqual(walksOf7B(after).map((one) => [one.id, Boolean(one.accepted)]), [[LATE_7B + ':' + ER, true]]);
+  assert.deepEqual(after.accepted.find((one) => one.id.startsWith(LATE_7B)).where.bellsIds, [YL, ER]);
+  assert.deepEqual(after.gone, []);
+  assert.deepEqual(after.changed, []);
+});
+
+test('an accepted walk naming the second schedule stays accepted while the first is there and after it is deleted', () => {
+  // accepted as Yellow's (Yellow was first, or alone), Early Release now first
+  const project = accept(twoAlike('early first'), LATE_7B + ':' + YL);
+  const both = findingsOf(project);
+  assert.deepEqual(walksOf7B(both).map((one) => [one.id, Boolean(one.accepted)]), [[LATE_7B + ':' + YL, true]]);
+  project.bellSchedules = project.bellSchedules.filter((schedule) => schedule.id !== ER);
+  const deleted = findingsOf(project);
+  assert.deepEqual(walksOf7B(deleted).map((one) => [one.id, Boolean(one.accepted)]), [[LATE_7B + ':' + YL, true]]);
+  assert.deepEqual(deleted.gone, []);
+});
+
+test('an accepted walk naming a schedule that is deleted is gone, though the walk is late under another', () => {
+  const project = accept(twoAlike('early first'), LATE_7B + ':' + ER);
+  project.bellSchedules = project.bellSchedules.filter((schedule) => schedule.id !== ER);
+  const checked = findingsOf(project);
+  assert.deepEqual(walksOf7B(checked).map((one) => [one.id, Boolean(one.accepted)]), [[LATE_7B + ':' + YL, false]]);
+  assert.deepEqual(checked.gone.map((record) => record.findingId), [LATE_7B + ':' + ER]);
+});
+
+test('an accepted walk late only under a schedule counts again once it is late under the regular bells too (acceptance lost by design)', () => {
+  const project = accept(twoAlike('early first'), LATE_7B + ':' + ER);
+  // A Day's regular bells as Early Release's for the first six periods: 3 minutes between them
+  const a = project.dayTypes.find((dayType) => dayType.id === A);
+  a.bells = a.bells.map((bell, p) => (p < 6 ? { ...earlyRelease().bells[p] } : { start: time(480 + 33 * p), end: time(510 + 33 * p) }));
+  const checked = findingsOf(project);
+  const found = walksOf7B(checked);
+  assert.deepEqual(found.map((one) => [one.id, Boolean(one.accepted)]), [[LATE_7B, false]]);
+  assert.deepEqual(found[0].where.bellsIds, [null, ER, YL]);
+  assert.deepEqual(checked.gone.map((record) => record.findingId), [LATE_7B + ':' + ER]);
+});
+
+test('splitAccepted: a teacher-walk record follows the walk the same way, one record for one finding', () => {
+  const finding = (id, bellsIds) => ({ id, kind: 'teacher-walk', severity: 'warning', where: { dayTypeId: A, period: 2, groupIds: [], roomId: null, teacherId: 'tsample001', bellsIds }, about: ['tsample001'] });
+  const record = (id) => ({ findingId: id, reason: 'ok', at: '2026-09-01T12:00:00.000Z', about: ['tsample001'] });
+  const base = 'teacher-walk:' + A + ':2:tsample001';
+  const one = splitAccepted([finding(base + ':' + YL, [YL, ER])], [record(base + ':' + ER)], {});
+  assert.deepEqual(one.accepted.map((f) => f.id), [base + ':' + ER]);
+  assert.deepEqual(one.findings, []);
+  // not when the record's schedule is not among the runs
+  const other = splitAccepted([finding(base + ':' + YL, [YL])], [record(base + ':' + ER)], {});
+  assert.deepEqual(other.findings.map((f) => f.id), [base + ':' + YL]);
+  assert.deepEqual(other.gone.map((r) => r.findingId), [base + ':' + ER]);
+  // a finding already accepted under its own id is not taken by a second record
+  const two = splitAccepted([finding(base + ':' + YL, [YL, ER])], [record(base + ':' + YL), record(base + ':' + ER)], {});
+  assert.deepEqual(two.accepted.map((f) => f.id), [base + ':' + YL]);
+  assert.deepEqual(two.gone.map((r) => r.findingId), [base + ':' + ER]);
 });
 
 test('late under two runs with different figures: the first run\'s sentence, then the other\'s figures in one of their own', () => {

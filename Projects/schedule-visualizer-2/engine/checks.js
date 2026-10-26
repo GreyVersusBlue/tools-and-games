@@ -26,8 +26,11 @@
 // type is one finding naming them all ("on A Day, regular and Early Release
 // bells"), whose id is the regular run's when the regular bells are among
 // them, so a finding accepted before bell schedules existed stays accepted;
-// late only under bell schedules, the id gains the first schedule's id. The
-// runs are in `where.bellsIds` whenever a bell schedule is among them.
+// late only under bell schedules, the id gains the first schedule's id (and
+// an acceptance naming schedule X holds while the walk is late under X and
+// not under the regular bells, whatever the id is today: findings.js
+// splitAccepted). The runs are in `where.bellsIds` whenever a bell schedule
+// is among them.
 //
 // The rules, one per kind:
 //
