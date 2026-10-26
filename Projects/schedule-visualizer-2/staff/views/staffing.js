@@ -1,7 +1,9 @@
 // #/staffing  Staffing
 //
 // For every subject the school has defined, with or without a teacher: how
-// many teachers it has and how many periods they teach on each day type.
+// many teachers it has and how many periods they teach on each day type that
+// has classes of its own. A day type that is the same as another is said so
+// under the table, by the one it follows ("C Day is the same as B Day").
 
 import { h, typed } from '../dom.js';
 import { pageOf } from '../page.js';
@@ -39,7 +41,9 @@ export const staffingView = {
   render(ctx) {
     const school = ctx.school;
     const dayTypes = school.ownDayTypes();
-    const followers = school.dayTypes.filter((dayType) => !school.isOwnCopy(dayType.id));
+    // the day types that are the same as another, put together by the one
+    // they follow, in the order of the day types they follow
+    const followers = dayTypes.map((own) => ({ own, same: school.dayTypes.filter((dayType) => !school.isOwnCopy(dayType.id) && school.effectiveDayType(dayType.id).id === own.id) })).filter((each) => each.same.length > 0);
     const rows = staffingRows(school);
     const total = dayTypes.map((dayType, at) => rows.reduce((sum, row) => sum + row.taught[at], 0));
 
@@ -63,6 +67,9 @@ export const staffingView = {
     const lede = countOf(school.teachers.length, 'teacher', 'teachers') + ' in ' + countOf(school.subjects.length, 'subject', 'subjects') + '.';
     return pageOf('Staffing', lede,
       table,
-      followers.length > 0 ? h('p', { class: 'muted' }, wordsJoined(followers.map((dayType) => typed(dayType.name))), followers.length === 1 ? ' is' : ' are', ' the same as ', typed(school.dayTypes[0].name), '.') : null);
+      followers.length > 0 ? h('p', { class: 'muted', dataset: { part: 'same' } }, followers.map((each, at) => [
+        at > 0 ? ' ' : null,
+        wordsJoined(each.same.map((dayType) => typed(dayType.name))), each.same.length === 1 ? ' is' : ' are', ' the same as ', typed(each.own.name), '.',
+      ])) : null);
   },
 };

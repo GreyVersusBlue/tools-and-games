@@ -3,7 +3,11 @@
 //
 //   #/teacher/t…   #/group/g…   #/room/r…   #/map/f…   #/free   #/now
 //   #/common?t=…,…   #/coverage/t…   #/sub/t…   #/directions?from=…&to=…
-//   #/staffing   #/me   #/search?q=…
+//   #/staffing   #/me   #/search?q=…   #/door/r…?day=1
+//   #/calendar?m=2026-11 (SV2-81)
+//
+// A period chosen by hand on Free right now and Where right now travels with
+// its day type and, when not the regular ones, its bells: ?p=2&d=…&b=….
 //
 // No DOM here: the two functions turn an address into its parts and back.
 

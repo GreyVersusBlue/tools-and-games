@@ -2194,3 +2194,378 @@ select.field__input {
 }
 
 /* ---------- SV2-45: end ---------- */
+
+/* ---------- SV2-81: today, the day cards for many day types, the calendar page ----------
+
+    .today  .today__says  .today__not  .today__panel    the line that says which day
+                           today is, "Not right?" and what it opens (staff/clock.js)
+    .daybox                the today line and the day cards together (dayCardsOf)
+    .day__head  .day__tag  .day__bells   a day card's heading: its names, "Today",
+                           and today's bells when they are not the regular ones
+    details.day            a day card folded (past three cards); open on paper
+    .cal  .cal__date  .cal__date--closed  .cal__date--out  .cal__blank
+    .cal__num  .cal__day  .cal__day--long  .cal__bells   the month's squares
+    .cal__card  .cal__top  .cal__month  .cal__nav  .cal__step
+    .cal__keys  .cal__key  .cal__keymark   the key under the squares
+    .cal__list  .cal__item  .cal__when  .cal__tag   the month as a list
+    .visually-hidden       words for a screen reader only
+*/
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.today {
+  margin: 0 0 var(--s-3);
+}
+
+.today__says {
+  margin: 0;
+}
+
+.today__says:focus {
+  outline: none;
+}
+
+.today__says:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* "Not right?" reads as a link and is a whole finger's target */
+.today__not {
+  min-height: var(--tap);
+  padding: 0 var(--s-1);
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.today__not:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.today__panel {
+  margin-top: var(--s-3);
+  padding: var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  background: var(--card);
+}
+
+.today__panel > * + * {
+  margin-top: var(--s-3);
+}
+
+.today__panel[hidden] {
+  display: none;
+}
+
+/* the cards wrap by the room the page column has: one on a phone, two or
+   three where they fit (the column beside a desktop's map holds two). A
+   folded card is a full row of its own, under the open ones. */
+.daybox > .days {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+}
+
+.daybox > .days > details.day:not([open]) {
+  grid-column: 1 / -1;
+}
+
+.day__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--s-2);
+}
+
+.day__head > .card__title {
+  margin: 0;
+}
+
+summary.day__head {
+  min-height: var(--tap);
+  align-items: center;
+  cursor: pointer;
+  list-style: none;
+}
+
+summary.day__head::-webkit-details-marker {
+  display: none;
+}
+
+summary.day__head::before {
+  content: "\25B8";
+  color: var(--ink-2);
+}
+
+details[open] > summary.day__head::before {
+  content: "\25BE";
+}
+
+summary.day__head:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+details[open] > summary.day__head {
+  margin-bottom: var(--s-2);
+}
+
+.day__tag {
+  padding: 0 var(--s-2);
+  border-radius: var(--r-1);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: var(--t-xs);
+  font-weight: var(--w-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.day__bells {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+/* The Now row has three tabs with a calendar: on a phone it wraps rather
+   than scroll the tab that is open out of sight. */
+@media (max-width: 639.98px) {
+  .tabs[aria-label="Now"] {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  .tabs[aria-label="Now"] .tab {
+    padding-inline: var(--s-3);
+  }
+}
+
+/* ---- the calendar page */
+
+.cal__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+}
+
+.cal__month {
+  margin: 0;
+  font-size: var(--t-lg);
+}
+
+.cal__nav {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.cal__step {
+  min-height: var(--tap);
+}
+
+.cal__step[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.cal {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 2px;
+}
+
+.cal th {
+  padding: var(--s-1) 0;
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  font-weight: var(--w-semibold);
+  text-align: center;
+}
+
+.cal abbr {
+  text-decoration: none;
+}
+
+.cal__date {
+  position: relative;
+  height: 3.2rem;
+  padding: 2px 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+  background: var(--card);
+  vertical-align: top;
+  overflow: hidden;
+}
+
+.cal__blank {
+  border: 0;
+}
+
+.cal__date--out {
+  background: transparent;
+  border-style: dashed;
+}
+
+.cal__num {
+  display: block;
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  line-height: 1.1;
+}
+
+.cal__day {
+  display: block;
+  font-family: var(--font-plan);
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: 1.1;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.cal__day--long {
+  font-size: var(--t-sm);
+}
+
+.cal__bells {
+  display: block;
+  font-size: var(--t-xs);
+  font-weight: var(--w-semibold);
+  line-height: 1.1;
+  text-align: center;
+}
+
+/* no school: paper with a fine hatch, and the word */
+.cal__date--closed {
+  background: repeating-linear-gradient(135deg, transparent 0 5px, var(--line) 5px 6px), var(--paper);
+}
+
+.cal__date--closed .cal__day {
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--w-semibold);
+}
+
+/* today: a 2 px ink ring */
+.cal__date[aria-current="date"] {
+  box-shadow: inset 0 0 0 2px var(--ink);
+}
+
+/* the day types' tints: the data palette over the card; the short name
+   always carries the meaning, the tint never alone */
+[data-tint="1"] { --cal-tint: color-mix(in srgb, #d1495b 24%, var(--card)); }
+[data-tint="2"] { --cal-tint: color-mix(in srgb, #0072b2 24%, var(--card)); }
+[data-tint="3"] { --cal-tint: color-mix(in srgb, #e69f00 24%, var(--card)); }
+[data-tint="4"] { --cal-tint: color-mix(in srgb, #009e73 24%, var(--card)); }
+[data-tint="5"] { --cal-tint: color-mix(in srgb, #cc79a7 24%, var(--card)); }
+[data-tint="6"] { --cal-tint: color-mix(in srgb, #56b4e9 24%, var(--card)); }
+[data-tint="7"] { --cal-tint: color-mix(in srgb, #8c6d31 24%, var(--card)); }
+[data-tint="8"] { --cal-tint: color-mix(in srgb, #7b4ea3 24%, var(--card)); }
+
+.cal__date[data-tint] {
+  background: var(--cal-tint);
+}
+
+.cal__keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-sm);
+}
+
+.cal__keymark {
+  display: inline-block;
+  min-width: 2.2em;
+  padding: 0 var(--s-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+  background: var(--card);
+  font-family: var(--font-plan);
+  font-weight: 600;
+  text-align: center;
+}
+
+.cal__key[data-tint] .cal__keymark {
+  background: var(--cal-tint);
+}
+
+.cal__key--closed .cal__keymark {
+  background: repeating-linear-gradient(135deg, transparent 0 5px, var(--line) 5px 6px), var(--paper);
+  font-family: var(--font-ui);
+}
+
+.cal__when {
+  font-weight: var(--w-semibold);
+}
+
+.cal__item--closed {
+  color: var(--ink-2);
+}
+
+.cal__tag {
+  color: var(--accent);
+  font-size: var(--t-xs);
+  font-weight: var(--w-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@media print {
+  .today,
+  .day__tag,
+  .day[data-own="true"],
+  summary.day__head::before,
+  .cal__nav,
+  .page .tabs {
+    display: none;
+  }
+
+  /* a teacher's schedule: three cards across at most, then the next row */
+  .page[data-view="teacher"] .days,
+  .page[data-view="me"] .days {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .page[data-view="teacher"] .days[data-paper="1"],
+  .page[data-view="me"] .days[data-paper="1"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .page[data-view="teacher"] .days[data-paper="2"],
+  .page[data-view="me"] .days[data-paper="2"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cal__date {
+    height: 2.4rem;
+    border-color: #857f73;
+  }
+
+  .cal__date[aria-current="date"] {
+    box-shadow: none;
+  }
+
+}
+
+/* ---------- SV2-81: end ---------- */
