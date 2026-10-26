@@ -285,6 +285,7 @@ test('every export is named with the school, what it is and the date', () => {
     'Marrowby Middle School (sample) - building - 2026-09-01.json',
     'Marrowby Middle School (sample) - project - 2026-09-01.json',
     'Marrowby Middle School (sample) - subjects - 2026-09-01.csv',
+    'Marrowby Middle School (sample) - calendar - 2026-09-01.csv',
   ]);
 });
 

@@ -21,8 +21,9 @@ import { periodName } from './bells.js';
 import { effectiveSchedule, isOwnCopy } from './day-types.js';
 import { teacherDays } from './teacher-day.js';
 import { writeProjectFile, writeBuildingFile, writeScheduleFile } from './project-file.js';
+import { calendarRows } from './import-calendar.js';
 
-export const EXPORT_KINDS = ['groups', 'groups-template', 'teachers', 'rooms', 'teacher-grid', 'room-grid', 'schedule', 'building', 'project', 'subjects'];
+export const EXPORT_KINDS = ['groups', 'groups-template', 'teachers', 'rooms', 'teacher-grid', 'room-grid', 'schedule', 'building', 'project', 'subjects', 'calendar'];
 
 export const NOT_IN_BUILDING = 'not in the building';
 export const PLANNING = 'Planning';
@@ -221,6 +222,8 @@ const BUILDERS = {
   rooms: { what: 'rooms', extension: 'csv', mime: CSV, text: (project, options) => csvText(roomsRows(project), options) },
   'teacher-grid': { what: 'teachers by period', extension: 'csv', mime: CSV, text: (project, options) => csvText(teacherGridRows(project, options.dayTypeId), options) },
   'room-grid': { what: 'rooms by period', extension: 'csv', mime: CSV, text: (project, options) => csvText(roomGridRows(project, options.dayTypeId), options) },
+  // the calendar, one row per date (import-calendar.js reads it back)
+  calendar: { what: 'calendar', extension: 'csv', mime: CSV, text: (project, options) => csvText(calendarRows(project), options) },
   schedule: { what: 'schedule', extension: 'json', mime: JSON_TYPE, text: (project) => writeScheduleFile(project) },
   building: { what: 'building', extension: 'json', mime: JSON_TYPE, text: (project, options) => writeBuildingFile(project, { images: options.images }) },
   project: { what: 'project', extension: 'json', mime: JSON_TYPE, text: (project, options) => writeProjectFile(project, { images: options.images }) },

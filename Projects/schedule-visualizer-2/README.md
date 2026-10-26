@@ -148,6 +148,7 @@ row names a file it does not run.
 | `test/engine/import-groups.test.mjs` | Groups from CSV: the column guess, the preview, a name clash |
 | `test/engine/exports.test.mjs` | Every CSV and JSON export, and the file names |
 | `test/engine/project-file.test.mjs` | The project, building and schedule files, written and read back |
+| `test/engine/import-calendar.test.mjs` | The calendar CSV: one row per date written, any list of dates read back as the changes that differ |
 | `test/engine/publish-data.test.mjs` | What a published file holds, key by key, and what it never holds |
 | `test/engine/publish-crypto.test.mjs` | The lock on a published file: the key, the round trip, a wrong passcode |
 | `test/publish/linker.test.mjs` | The linker rule, each form it refuses, and the assembled script |

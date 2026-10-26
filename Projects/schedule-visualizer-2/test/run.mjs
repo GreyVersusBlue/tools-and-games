@@ -59,6 +59,7 @@ export const GROUPS = {
     'engine/import-groups.test.mjs', // SV2-10
     'engine/exports.test.mjs', // SV2-10
     'engine/project-file.test.mjs', // SV2-10
+    'engine/import-calendar.test.mjs', // SV2-77
     'engine/publish-data.test.mjs', // SV2-20
     'engine/publish-crypto.test.mjs', // SV2-20
     'publish/linker.test.mjs', // SV2-20
