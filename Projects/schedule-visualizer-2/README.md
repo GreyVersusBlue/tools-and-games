@@ -126,6 +126,8 @@ row names a file it does not run.
 | `test/engine/repair.test.mjs` | What is put right on every load, and what is said about it |
 | `test/engine/day-types.test.mjs` | A day type that is "the same as A Day", and its own copy |
 | `test/engine/bells.test.mjs` | Period names, times, passing times, the bell schedule checks |
+| `test/engine/calendar.test.mjs` | The calendar walk as a wall planner, whole-day dates, breaks counted in school days, deletions, the 731-day limit |
+| `test/engine/runs.test.mjs` | Meeting slots under a bell schedule's periods that do not meet, and the runs movement needs |
 | `test/engine/actions.test.mjs` | Every action on a frozen project: what changes, what is shared, the undo label |
 | `test/engine/history.test.mjs` | Undo and redo, 200 steps, quiet actions |
 | `test/engine/store.test.mjs` | The store: apply, undo, subscribe, the three counters |
