@@ -829,7 +829,10 @@ name, is enough.
 - The first row is the header. Headers are compared without regard to
   capitals or spaces at the ends: Date; Weekday (read and passed over); Day
   type, Daytype or Day; Bells, Bell schedule or Bell; Note, Notes, Label,
-  Event, Holiday or Description. Any other column is passed over. A blank row
+  Event, Holiday or Description. Where two headers could be one column, the
+  first in that list is taken: a Day type column before one headed Day. A
+  column headed Day whose every entry is a weekday's name (Monday or Mon) is
+  the weekday, and passed over. Any other column is passed over. A blank row
   is passed over.
 - A date is written `YYYY-MM-DD` and is on one row. A date outside the
   calendar is passed over and counted.

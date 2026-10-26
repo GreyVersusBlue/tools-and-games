@@ -281,3 +281,16 @@ test('two day types whose names share a key: a name written as neither is refuse
   const same = withSharedNames('A Day');
   assert.throws(() => readCalendarCsv(same, csv(['Date,Day type', '2026-09-05,A Day'])), refusal('unclear-names', /Row 2 names "A Day", and two day types are written so/));
 });
+
+test('a "Day type" column is taken before one headed "Day", and a "Day" column of weekdays is the weekday', () => {
+  const project = withEverything();
+  assert.equal(dayOn(project, '2026-12-02').dayTypeId, A);
+  const both = readCalendarCsv(project, csv(['Date,Day,Day type,Note', '2026-12-02,Wednesday,B Day,']));
+  assert.deepEqual(both.changes, [{ date: '2026-12-02', day: B, bells: null, label: '' }], 'not refused for a day type called "Wednesday"');
+  const after = readCalendarCsv(project, csv(['Date,Day type,Day,Note', '2026-12-02,B Day,Wed,']));
+  assert.deepEqual(after.changes, both.changes, 'wherever the columns stand');
+  const weekdays = readCalendarCsv(project, csv(['Date,Day,Note', '2026-12-21,Monday,Winter break', '2026-12-22,tue,Winter break']));
+  assert.deepEqual(weekdays.changes.map((change) => [change.date, change.day]), [['2026-12-21', 'closed'], ['2026-12-22', 'closed']]);
+  const days = readCalendarCsv(project, csv(['Date,Day', '2026-12-02,B Day', '2026-12-03,Thursday']).replace('Thursday', ''));
+  assert.deepEqual(days.changes, [{ date: '2026-12-02', day: B, bells: null, label: '' }], 'a "Day" column of day types is the day type');
+});

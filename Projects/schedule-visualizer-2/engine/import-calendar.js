@@ -88,15 +88,33 @@ function headerKey(text) {
   return String(text).trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+// Which column plays each part. A role's words are in order of preference,
+// so "Day type" is taken before a column headed "Day" wherever they stand.
 function columnsOf(header) {
   const columns = {};
-  header.forEach((cell, index) => {
-    const key = headerKey(cell);
-    for (const [role, words] of Object.entries(COLUMN_WORDS)) {
-      if (columns[role] === undefined && words.includes(key)) columns[role] = index;
+  const keys = header.map(headerKey);
+  const claimed = new Set();
+  for (const [role, words] of Object.entries(COLUMN_WORDS)) {
+    for (const word of words) {
+      const index = keys.findIndex((key, i) => key === word && !claimed.has(i));
+      if (index !== -1) {
+        columns[role] = index;
+        claimed.add(index);
+        break;
+      }
     }
-  });
+  }
   return columns;
+}
+
+// Monday … Sunday, and Mon … Sun, whatever the capitals.
+const WEEKDAY_KEYS = new Set(WEEKDAY_NAMES.flatMap((name) => [name.toLowerCase(), name.slice(0, 3).toLowerCase()]));
+
+// A column headed "Day" whose every entry is a weekday's name is the
+// weekday, not the day type (a list written Date, Day, Note).
+function weekdaysOnly(rows, index) {
+  const cells = rows.map((row) => (index < row.length ? row[index].trim() : '')).filter((cell) => cell !== '');
+  return cells.length > 0 && cells.every((cell) => WEEKDAY_KEYS.has(cell.toLowerCase()));
 }
 
 function quoted(texts) {
@@ -183,6 +201,10 @@ export function readCalendarCsv(project, text) {
   if (rows.length === 0) throw new CalendarImportError('This file is empty. A calendar CSV has a header row (Date, Weekday, Day type, Bells, Note) and a row for each date.', 'empty');
   const columns = columnsOf(rows[0]);
   if (columns.date === undefined) throw new CalendarImportError('The first row is the header, and it has no Date column. The columns are ' + CALENDAR_HEADER.join(', ') + '; only Date is needed.', 'no-date-column');
+  if (columns.day !== undefined && headerKey(rows[0][columns.day]) === 'day' && weekdaysOnly(rows.slice(1), columns.day)) {
+    if (columns.weekday === undefined) columns.weekday = columns.day;
+    delete columns.day;
+  }
 
   // A day type's name is matched as written first, then whatever the
   // capitals and spaces. Older projects may have two day types whose names
