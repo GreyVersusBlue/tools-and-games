@@ -65,6 +65,8 @@ every rule on this page and `engine/repair.js` enforces them on every load.
 | `teachers` | Teacher[] | |
 | `groups` | Group[] | |
 | `dayTypes` | DayType[] | At least one. `dayTypes[0]` is the base day type ("A Day"). |
+| `bellSchedules` | BellSchedule[] | Optional, 0 to 12; absent is none. Other sets of times for the same classes. |
+| `calendar` | Calendar or `null` | Optional; absent or `null` is no calendar. Which dates are which day type. |
 | `accepted` | AcceptedFinding[] | Findings the user has accepted. |
 | `scenario` | Scenario or `null` | The one open scenario. |
 | `publish` | PublishSettings | |
@@ -208,16 +210,74 @@ only one side is added to the other, so nothing is lost.
 |---|---|---|
 | `id` | id, `d…` | |
 | `name` | text | "A Day", "B Day", or the school's own. |
-| `own` | boolean | `dayTypes[0]` is always `true`. `false` means "the same as the first day type" for bells and for every group's day. |
-| `bells` | (Bell or `null`)[] | One entry per period. `null` means not entered. For a day type that is not `own`, every entry is `null`. |
+| `own` | boolean | `dayTypes[0]` is always `true`. `false` means "the same as" another day type, `sameAs`, for bells and for every group's day. |
+| `sameAs` | id or `null` | Optional. For a day type that is not `own`: the `own` day type it is the same as, one hop. `null` or absent is `dayTypes[0]`. An `own` day type's is `null`. |
+| `short` | text | Optional, 0 to 4 characters, for the calendar ("A", "C"). Empty or absent is worked out from the name (`dayShort`). A typed one is unique among the day types, ignoring case. |
+| `bells` | (Bell or `null`)[] | One entry per period. `null` means not entered. For a day type that is not `own`, every entry is `null`. These are its **regular bells**. |
 
 **Bell**: `{ start, end }`, both bell times. An end before its start is
 allowed in the data; the bell checks warn about it and never block.
 
 A day type that is not `own` has no data of its own. Everything that asks
-about it is answered from `dayTypes[0]`, through `engine/day-types.js`. On
-load, a day type marked not `own` that does carry bell times or group days
-becomes `own`, so nothing that was entered disappears.
+about it is answered from the day type its `sameAs` names, or from
+`dayTypes[0]`, through `engine/day-types.js`. On load, a day type marked not
+`own` that does carry bell times or group days becomes `own`, so nothing that
+was entered disappears, and a `sameAs` that names anything but another `own`
+day type is pointed at `dayTypes[0]` again, with a note.
+
+The planner keeps a project to at most 12 day types, each named, at most 40
+characters, unique ignoring case and spaces. Those limits are kept by adding
+and renaming, not by validation: a file saved before them with 13 day types
+or two of one name still opens, as it is.
+
+### BellSchedule
+
+Another set of times for the same classes ("Early Release", "Assembly"):
+whichever day type a date is, its rooms, groups and teachers are as on that
+day type, and only the times change.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `id` | id, `b…` | |
+| `name` | text | Not blank, at most 40 characters, unique among bell schedules ignoring case and spaces. |
+| `short` | text | 0 to 4 characters; empty is worked out from the name ("ER"). A typed one is unique among bell schedules, ignoring case. |
+| `bells` | (Bell or `null`)[] | One entry per period, as a day type's. |
+| `off` | integer[] | The periods that do not meet under these bells, from 0, in order, each once, each below `settings.periods`. They book no room, move nobody and have no passing time into or out of them. |
+
+### Calendar
+
+| Field | Type | Meaning |
+|---|---|---|
+| `start`, `end` | date, `YYYY-MM-DD` | The first and last dates it covers, the school's own local dates. `start` is not after `end`; at most 731 dates. |
+| `weekdays` | WeekdayRule[7] | Monday first. |
+| `rotation` | id[] | 1 to 24 day type ids, repeats allowed: the order the rotation comes round in. |
+| `dates` | DatedChange[] | In date order, one per date. A date outside `start` to `end` is kept and has no effect. |
+| `changedAt` | date or `null` | Set from the store's clock by every calendar action. |
+
+**WeekdayRule**: `{ day, bells }`. `day` is `"rotation"`, `"closed"` (no
+school) or a day type id; `bells` is `null` (the day type's regular bells) or
+a bell schedule id.
+
+**DatedChange**: `{ date, day, bells, label }`. `day` as a weekday's;
+`bells` is `null` (as the weekday says), `"regular"` (the day type's own
+regular bells) or a bell schedule id; `label` is a note of 0 to 60
+characters ("Thanksgiving").
+
+**The rule** (`dayOn` in `engine/calendar.js`). Walk from `start` with the
+rotation at its first place. Each date is decided by its dated change if it
+has one, else by its weekday's rule. `"closed"`: no school, the rotation
+stays. `"rotation"`: the rotation's day type at its place, and the rotation
+moves on one. A day type id from a dated change: that day type, and if it is
+in the rotation the rotation is put at its first place at or after where it
+stands and moves on one; if not, the rotation stays. A day type id from a
+weekday: that day type, and the rotation stays. The bells are the dated
+change's when not `null`, else the weekday's. On load, a weekday naming a
+day type that is gone takes the rotation, a dated change naming one is
+removed, a rotation entry naming one is removed (an empty rotation becomes
+`dayTypes[0]`), a bell schedule that is gone is `null` wherever it was named,
+duplicate dates keep the later, and a dated change that says nothing its
+weekday does not (`"rotation"`, `null`, no note, on a weekday that takes the
+rotation) is removed, each with a note.
 
 ### Group
 
@@ -279,9 +339,10 @@ removed on load: the scenario lab reconciles it and says what it dropped.
 |---|---|---|---|
 | `passcode` | text | `"bulldogs2015"` | The staff passcode. Empty means protection is off. |
 | `stalenessDays` | integer | `60` | 1 to 3650. |
-| `views` | `{ [view]: boolean }` | all `true` | One key for each of `teacher`, `group`, `room`, `map`, `free`, `now`, `common`, `coverage`, `sub`, `directions`, `staffing`. |
+| `views` | `{ [view]: boolean }` | all `true` | One key for each of `teacher`, `group`, `room`, `map`, `free`, `now`, `common`, `coverage`, `sub`, `directions`, `staffing`; optionally `calendar`, absent meaning on. |
 | `teacherNamesOnMap` | boolean | `true` | |
 | `lastPublishedAt` | date or `null` | `null` | |
+| `staleAtCalendarEnd` | boolean | `true` | Optional, absent meaning `true`. With a calendar, a published file is stale the day after the calendar's last date. |
 
 ### Onboarding
 
@@ -294,6 +355,7 @@ removed on load: the scenario lab reconciles it and says what it dropped.
 |---|---|
 | 0 | Data with no `version`. A scenario held one `dayTypeId` for all of its changes. |
 | 1 | `format` and `version` are in the object. Each scenario change has its own `dayTypeId`. `Floor.level` exists. |
+| 1, unchanged | Added without a version step, every one optional: `DayType.sameAs` and `short`, `bellSchedules`, `calendar`, `PublishSettings.staleAtCalendarEnd` and `views.calendar`. A file without them reads exactly as before; a copy of the tool from before them keeps them through its own repair, which copies what it does not know. |
 
 ### What is never in a project
 
