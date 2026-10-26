@@ -238,3 +238,47 @@ test('Cell scale (SV2-73a): absent or null is not set, a unit and a length is se
     assert.deepEqual(validate(p).map((finding) => finding.path), ['settings.cellScale'], JSON.stringify(bad));
   }
 });
+
+// ---------------------------------------------------------------- ARCHITECTURE 17: the new fields, strictly where present
+
+import { withEverything, NEW_BREAKS } from '../fixtures/day-types-calendar.mjs';
+
+test('a project with every new field in use has no findings, and one with none of them has none either', () => {
+  assert.deepEqual(validate(withEverything()), []);
+  const bare = school();
+  for (const dayType of bare.dayTypes) {
+    assert.equal('sameAs' in dayType, false);
+    assert.equal('short' in dayType, false);
+  }
+  assert.equal('bellSchedules' in bare, false);
+  assert.equal('calendar' in bare, false);
+  assert.equal('staleAtCalendarEnd' in bare.publish, false);
+  assert.equal('calendar' in bare.publish.views, false);
+  assert.deepEqual(validate(bare), []);
+});
+
+test('no older field is held to a new rule: two day types of one name, a name of 60 characters, thirteen day types', () => {
+  const project = school();
+  project.dayTypes[1].name = 'a day';
+  project.dayTypes[0].name = 'A Day'.padEnd(60, '!');
+  for (let n = 0; n < 11; n += 1) project.dayTypes.push({ id: 'dmore' + String(n).padStart(5, '0'), name: 'A Day', own: false, bells: Array(8).fill(null) });
+  assert.equal(project.dayTypes.length, 13);
+  assert.deepEqual(validate(project), []);
+});
+
+for (const [name, mutate, where] of NEW_BREAKS) {
+  test('finds ' + name, () => {
+    const project = withEverything();
+    mutate(project);
+    const findings = validate(project);
+    assert.ok(findings.some((finding) => where.test(finding.path)), 'no finding at ' + where + '; got ' + JSON.stringify(findings.map((finding) => finding.path)));
+  });
+}
+
+test('a published model may carry the new fields and is held to the same rules', () => {
+  const project = withEverything();
+  project.format = 'sv2-published';
+  assert.deepEqual(validate(project).filter((finding) => /^(calendar|bellSchedules|dayTypes)/.test(finding.path)), []);
+  project.calendar.rotation = [];
+  assert.ok(validate(project).some((finding) => finding.path === 'calendar.rotation'));
+});

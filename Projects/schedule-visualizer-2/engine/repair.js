@@ -912,7 +912,8 @@ export function repair(input, options) {
       } else {
         const kept = Array.from(new Set(off.filter((period) => Number.isInteger(period) && period >= 0 && period < periods))).sort((a, b) => a - b);
         if (kept.length !== off.length || kept.some((period, k) => period !== off[k])) {
-          if (kept.length !== off.length) note('The periods that do not meet under "' + schedule.name + '" listed ' + plural(off.length - kept.length, 'entry', 'entries') + ' that are not a period of the day, or the same one twice; ' + (off.length - kept.length === 1 ? 'it was' : 'they were') + ' removed.');
+          if (kept.length === off.length) note('The periods that do not meet under "' + schedule.name + '" were not in order and were put in order.');
+          else note('The periods that do not meet under "' + schedule.name + '" listed ' + plural(off.length - kept.length, 'entry', 'entries') + ' that are not a period of the day, or the same one twice; ' + (off.length - kept.length === 1 ? 'it was' : 'they were') + ' removed.');
           schedule.off = kept;
         }
       }
@@ -1043,6 +1044,7 @@ export function repair(input, options) {
         for (const entry of dates) byDate.set(entry.date, entry);
         const kept = Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? -1 : 1));
         if (kept.length !== dates.length) note(plural(dates.length - kept.length, 'date in the calendar had', 'dates in the calendar had') + ' two changes; the later in the list was kept.');
+        else note('The dated changes in the calendar were not in date order and were put in order.');
         dates = kept;
         datesChanged = true;
       }

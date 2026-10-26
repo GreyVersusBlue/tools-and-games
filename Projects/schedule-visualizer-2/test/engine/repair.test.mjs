@@ -699,3 +699,139 @@ test('Cell scale (SV2-73a): a project with none, or not set, comes back as the s
   assert.deepEqual(tidied.project.settings.cellScale, { unit: 'feet', length: 5 });
   assert.deepEqual(tidied.notes, [], 'what is dropped beside the unit and length is nothing the tool reads');
 });
+
+// ---------------------------------------------------------------- ARCHITECTURE 17: the new fields
+
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { withEverything, NEW_BREAKS, A, B, C, ER } from '../fixtures/day-types-calendar.mjs';
+import { dayOn } from '../../engine/calendar.js';
+
+test('a project with every new field in use comes back as the same object with no notes', () => {
+  const project = withEverything();
+  const result = repair(project);
+  assert.equal(result.project, project);
+  assert.deepEqual(result.notes, []);
+});
+
+test('an older project, with none of the new fields, repairs to itself: every rule reads what is absent as its default', () => {
+  const formats = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'formats');
+  const v1 = JSON.parse(readFileSync(path.join(formats, 'project-v1.json'), 'utf8'));
+  for (const project of [school(), v1]) {
+    assert.equal('bellSchedules' in project || 'calendar' in project, false);
+    const result = repair(migrate(project));
+    assert.equal(result.project, project);
+    assert.deepEqual(result.notes, []);
+  }
+  // an older file that needed mending once needs nothing the second time
+  const v0 = repair(migrate(JSON.parse(readFileSync(path.join(formats, 'project-v0.json'), 'utf8')))).project;
+  assert.equal(repair(v0).project, v0);
+  assert.deepEqual(validate(v0), []);
+});
+
+for (const [name, mutate, , silent] of NEW_BREAKS) {
+  test('repairs ' + name + (silent ? ', filling the default' : ', with a note') + ', and a second repair has nothing to do', () => {
+    const project = withEverything();
+    mutate(project);
+    const first = repair(project);
+    assert.deepEqual(validate(first.project), [], name);
+    if (silent) assert.deepEqual(first.notes, [], 'an absent field is not something that was repaired');
+    else assert.ok(first.notes.length > 0, 'no note for ' + name);
+    const again = repair(first.project);
+    assert.equal(again.project, first.project, 'repair(repair(x)) changed ' + name);
+    assert.deepEqual(again.notes, []);
+  });
+}
+
+test('repair\'s fixes, field by field: sameAs to the first, shorts cleared, dangling calendar ids dropped or to the rotation', () => {
+  const project = withEverything();
+  project.dayTypes[2].sameAs = 'dnowhere00';
+  project.dayTypes[3].short = 'c';
+  project.calendar.rotation = [A, 'dnowhere00', B];
+  project.calendar.weekdays[4] = { day: 'dnowhere00', bells: 'bnowhere00' };
+  project.calendar.dates[1].day = 'dnowhere00';
+  project.calendar.dates[0].bells = 'bnowhere00';
+  const { project: fixed, notes } = repair(project);
+  assert.equal(fixed.dayTypes[2].sameAs, null);
+  assert.equal(fixed.dayTypes[3].short, '');
+  assert.deepEqual(fixed.calendar.rotation, [A, B]);
+  assert.deepEqual(fixed.calendar.weekdays[4], { day: 'rotation', bells: null });
+  assert.deepEqual(fixed.calendar.dates.map((entry) => entry.date), ['2026-10-03', '2026-11-26', '2027-01-12', '2027-01-13']);
+  assert.equal(fixed.calendar.dates[0].bells, null);
+  assert.deepEqual(notes, [
+    'C Day was the same as something that is not a day type with its own classes, so it is the same as A Day now.',
+    'The short name "c" of D Day was already used, so it was cleared and is worked out from the name.',
+    'Friday named a day type that is not in the project, so it takes the rotation now.',
+    'Friday named a bell schedule that is not in the project, so it has the regular bells now.',
+    'The rotation named 1 day type not in the project; that entry was removed.',
+    '1 dated change in the calendar named a day type that is not in the project and was removed.',
+    '1 dated change in the calendar named a bell schedule that is not in the project and now follows the weekday\'s bells.',
+  ]);
+});
+
+test('duplicate dates keep the later; a change that says nothing is dropped; a range that runs backwards is turned round', () => {
+  const project = withEverything();
+  project.calendar.dates.push({ date: '2026-11-26', day: B, bells: null, label: 'Open after all' });
+  project.calendar.dates.push({ date: '2026-09-01', day: 'rotation', bells: null, label: '' });
+  [project.calendar.start, project.calendar.end] = [project.calendar.end, project.calendar.start];
+  const { project: fixed, notes } = repair(project);
+  assert.deepEqual(fixed.calendar.dates.find((entry) => entry.date === '2026-11-26'), { date: '2026-11-26', day: B, bells: null, label: 'Open after all' });
+  assert.equal(fixed.calendar.dates.some((entry) => entry.date === '2026-09-01'), false);
+  assert.deepEqual([fixed.calendar.start, fixed.calendar.end], ['2026-08-31', '2027-06-11']);
+  assert.deepEqual(notes, [
+    'The calendar\'s first day was after its last; the two were swapped.',
+    '1 date in the calendar had two changes; the later in the list was kept.',
+    '1 dated change in the calendar said nothing the weekday did not and was removed.',
+  ]);
+});
+
+test('the renamed map follows into sameAs, the rotation, the dates and the weekdays, and a renamed bell schedule into the calendar', () => {
+  const project = withEverything();
+  const swap = (value) => (value === B ? 'B-DAY' : value === ER ? 'ER' : value);
+  project.dayTypes[1].id = 'B-DAY';
+  for (const g of project.groups) g.days = { [A]: g.days[A], 'B-DAY': g.days[B] };
+  project.dayTypes[2].sameAs = 'B-DAY';
+  project.bellSchedules[0].id = 'ER';
+  project.calendar.rotation = project.calendar.rotation.map(swap);
+  project.calendar.weekdays[1] = { day: 'B-DAY', bells: 'ER' };
+  project.calendar.weekdays[2] = { day: 'rotation', bells: 'ER' };
+  project.calendar.dates = project.calendar.dates.map((entry) => ({ ...entry, day: swap(entry.day), bells: swap(entry.bells) }));
+  const { project: fixed } = repair(project);
+  const b = fixed.dayTypes[1].id;
+  const er = fixed.bellSchedules[0].id;
+  assert.ok(isId(b, 'd') && isId(er, 'b'));
+  assert.equal(fixed.dayTypes[2].sameAs, b);
+  assert.deepEqual(fixed.calendar.rotation, [A, b]);
+  assert.deepEqual(fixed.calendar.weekdays[1], { day: b, bells: er });
+  assert.equal(fixed.calendar.weekdays[2].bells, er);
+  assert.equal(fixed.calendar.dates.find((entry) => entry.date === '2027-01-13').day, b);
+  assert.deepEqual(validate(fixed), []);
+  // and the calendar reads the same as before the ids were mended
+  const before = withEverything();
+  before.calendar.weekdays[1] = { day: B, bells: ER };
+  for (const date of ['2026-09-02', '2026-10-14', '2027-01-13', '2027-01-14']) {
+    const was = dayOn(before, date);
+    const now = dayOn(fixed, date);
+    assert.deepEqual([now.dayTypeId === b ? B : now.dayTypeId, now.bellsId === er ? ER : now.bellsId], [was.dayTypeId, was.bellsId], date);
+  }
+});
+
+test('a day type that was the same as another and has days of its own becomes its own copy, and the same as nothing', () => {
+  const project = withEverything();
+  for (const g of project.groups) g.days[C] = g.days[B];
+  const { project: fixed, notes } = repair(project);
+  assert.deepEqual([fixed.dayTypes[2].own, fixed.dayTypes[2].sameAs], [true, null]);
+  assert.ok(notes.includes('C Day is its own copy, so it is the same as nothing; what it said it was the same as was cleared.'));
+  assert.deepEqual(validate(fixed), []);
+});
+
+test('a published model with none of the new fields comes back as it came; one with them is repaired by the same rules', () => {
+  const project = withEverything();
+  project.format = 'sv2-published';
+  delete project.publish;
+  const result = repair(project);
+  assert.equal(result.project, project);
+  project.calendar.rotation = ['dnowhere00'];
+  assert.deepEqual(repair(project).project.calendar.rotation, [A]);
+});

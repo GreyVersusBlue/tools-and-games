@@ -119,3 +119,35 @@ test('round trip: the sample school to JSON, migrate, repair, and nothing has ch
   assert.deepEqual(notes, []);
   assert.equal(JSON.stringify(repaired), JSON.stringify(project));
 });
+
+// ---------------------------------------------------------------- ARCHITECTURE 17: files from before the new fields
+
+import { readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { readProjectFile, writeProjectFile, readBuildingFile, readScheduleFile } from '../../engine/project-file.js';
+import { withEverything } from '../fixtures/day-types-calendar.mjs';
+
+const FORMATS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'formats');
+
+test('every file exported before day types, bell schedules and the calendar still imports', () => {
+  const readers = { 'project-v0.json': readProjectFile, 'project-v1.json': readProjectFile, 'building-v1.json': readBuildingFile, 'schedule-v1.json': readScheduleFile };
+  const refused = ['project-invalid.json', 'project-newer.json', 'project-malformed.txt'];
+  for (const name of readdirSync(FORMATS).filter((file) => /\.(json|txt)$/.test(file))) {
+    const text = readFileSync(path.join(FORMATS, name), 'utf8');
+    if (refused.includes(name)) {
+      assert.throws(() => readProjectFile(text), name + ' is refused as it always was');
+      continue;
+    }
+    assert.ok(readers[name], 'a fixture this test does not know: ' + name);
+    assert.doesNotThrow(() => readers[name](text), name);
+  }
+});
+
+test('a project file with every new field is written and read back as it was', () => {
+  const project = withEverything();
+  const read = readProjectFile(writeProjectFile(project));
+  assert.deepEqual(read.project, project);
+  assert.deepEqual(read.notes, []);
+  assert.equal(writeProjectFile(read.project), writeProjectFile(project));
+});
