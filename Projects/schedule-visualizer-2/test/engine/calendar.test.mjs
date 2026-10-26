@@ -84,16 +84,28 @@ test('a snow day pushes every later day back by one', () => {
   `);
 });
 
-test('a re-sync: the day after the snow day set to B Day keeps the old order from then on', () => {
-  expectTable(project({ start: '2026-08-31', end: '2026-09-07', dates: [{ date: '2026-09-02', day: 'closed', bells: null, label: 'Snow day' }, { date: '2026-09-03', day: B, bells: null, label: '' }] }), `
+test('a re-sync: after a snow day, the next day set to what it would have been keeps the old order from then on', () => {
+  // A, B, C: without the snow day Wednesday would be C, Thursday A, Friday B.
+  // (With a rotation of two, setting a day to the other day type lands the
+  // rotation in the same place whether or not the date moves it, so three
+  // are needed to see the rule.)
+  expectTable(project({ start: '2026-08-31', end: '2026-09-07', rotation: [A, B, C], dates: [{ date: '2026-09-02', day: 'closed', bells: null, label: 'Snow day' }, { date: '2026-09-03', day: A, bells: null, label: '' }] }), `
+    2026-08-31 Mon A  . rotation
+    2026-09-01 Tue B  . rotation
+    2026-09-02 Wed -  . date* Snow day
+    2026-09-03 Thu A  . date*
+    2026-09-04 Fri B  . rotation
+    2026-09-05 Sat -  . weekday
+    2026-09-06 Sun -  . weekday
+    2026-09-07 Mon C  . rotation
+  `);
+  // the same with A and B: the day after the snow day set to B Day
+  expectTable(project({ start: '2026-08-31', end: '2026-09-04', dates: [{ date: '2026-09-02', day: 'closed', bells: null, label: 'Snow day' }, { date: '2026-09-03', day: B, bells: null, label: '' }] }), `
     2026-08-31 Mon A  . rotation
     2026-09-01 Tue B  . rotation
     2026-09-02 Wed -  . date* Snow day
     2026-09-03 Thu B  . date*
     2026-09-04 Fri A  . rotation
-    2026-09-05 Sat -  . weekday
-    2026-09-06 Sun -  . weekday
-    2026-09-07 Mon B  . rotation
   `);
 });
 
