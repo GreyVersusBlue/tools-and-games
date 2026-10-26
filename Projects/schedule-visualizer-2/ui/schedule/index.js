@@ -1,5 +1,5 @@
 // The Schedule section: who is where, period by period. Sub-tabs across the
-// top (Groups, Grid, Teachers, Subjects, Day, Checks, Import), each with its
+// top (Groups, Grid, Teachers, Subjects, Day, Calendar, Checks, Import), each with its
 // own address (#schedule/groups and the rest), and the findings panel in the
 // inspector beside all of them.
 //
@@ -33,6 +33,11 @@
 //   focusAfter(key) the same, for the drawing a change to the project brings
 //   inspect()      draw the inspector's panel again, and nothing else (what is
 //                  selected in a tab changed, and the tab has shown it itself)
+//   side(node)     a part of the tab's own at the top of the inspector, above
+//                  the findings (the calendar's panel); null takes it away
+//
+// A tab whose mount returns `unmount()` has it called when another tab, or
+// another section, takes its place.
 //
 // Drawing again replaces the tab's elements, so every control that can hold
 // focus carries a `data-key`, and focus goes back to the control with the same
@@ -55,6 +60,7 @@ import { mount as grid, GRID_KEYS } from './grid/index.js';
 import { mount as teachers } from './teachers.js';
 import { mount as subjects } from './subjects.js';
 import { mount as day } from './day.js';
+import { mount as calendar, CALENDAR_KEYS } from './calendar.js';
 import { mount as checks } from './checks.js';
 import { mount as importTab } from './import/index.js';
 
@@ -64,6 +70,7 @@ export const SCHEDULE_TABS = [
   { id: 'teachers', label: 'Teachers', mount: teachers },
   { id: 'subjects', label: 'Subjects', mount: subjects },
   { id: 'day', label: 'Day', mount: day },
+  { id: 'calendar', label: 'Calendar', mount: calendar },
   { id: 'checks', label: 'Checks', mount: checks },
   { id: 'import', label: 'Import', mount: importTab },
 ];
@@ -192,6 +199,7 @@ export const section = {
   // so Help has them whichever section is open.
   start(ctx) {
     for (const key of GRID_KEYS) ctx.shortcuts.add({ id: key.id, group: 'Schedule grid', does: key.does, shown: key.shown });
+    for (const key of CALENDAR_KEYS) ctx.shortcuts.add({ id: key.id, group: 'Schedule calendar', does: key.does, shown: key.shown });
   },
   mount(ctx, rest) {
     loadSheet();
@@ -216,7 +224,14 @@ export const section = {
         wantFocus = key;
       },
       inspect: () => inspect(),
+      side(node) {
+        if (node) sideSlot.replaceChildren(node);
+        else sideSlot.replaceChildren();
+        sideSlot.hidden = !node;
+      },
     };
+    // the inspector: a tab's own part (env.side), then the findings
+    const sideSlot = h('div', { class: 'sch-side', hidden: true });
 
     const strip = tabs({
       label: 'Parts of the schedule',
@@ -226,13 +241,18 @@ export const section = {
         id: tab.id,
         label: tab.label,
         panel: () => {
+          // the tab that was on screen leaves the page
+          if (panel && typeof panel.unmount === 'function') panel.unmount();
           panel = tab.mount(env);
           panel.element.dataset.tab = tab.id;
           return panel.element;
         },
       })),
     });
-    const inspector = findingsPanel(env);
+    const findings = findingsPanel(env);
+    // the inspector's element holds the tab's part and the findings; its
+    // update draws the findings again
+    const inspector = { element: h('div', { class: 'sch-inspector' }, sideSlot, findings.element), update: (project) => findings.update(project) };
     const words = periodWords(ctx.store.project.settings);
     const element = h('div', { class: 'sch' },
       intro({
@@ -241,6 +261,14 @@ export const section = {
       }),
       strip.element);
     ctx.setInspector(inspector.element);
+    // Under 900 px the tabs are a row that scrolls sideways (schedule.css):
+    // the tab chosen is brought into view, and so is each one the arrow keys
+    // move to (they focus it, which scrolls it in).
+    const showTab = () => {
+      const chosen = strip.element.querySelector('.tabs__tab[aria-selected="true"]');
+      if (chosen && window.matchMedia(INSPECTOR_SHEET).matches) chosen.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    };
+    requestAnimationFrame(showTab);
     // the tab and the inspector have just been drawn, for this width
     element.dataset.narrow = String(window.matchMedia(GROUPS_NARROW).matches);
 
@@ -412,6 +440,7 @@ export const section = {
       // the section leaves the page: nothing outside it (a window crossing
       // 640 or 900 px, a walk answer) reaches this drawing again
       unmount() {
+        if (panel && typeof panel.unmount === 'function') panel.unmount();
         if (live === handle) live = null;
         if (timer !== null) clearTimeout(timer);
         timer = null;
@@ -423,6 +452,7 @@ export const section = {
         takeAddress(ctx.store.project, next);
         const same = strip.selected === tabId(next);
         strip.select(tabId(next));
+        if (!same) requestAnimationFrame(showTab);
         // A tab that was just put up has drawn itself. The same tab is drawn
         // when the address chose something else in it, and any tab when
         // there is a slot to show (and scroll to). An address that says what
