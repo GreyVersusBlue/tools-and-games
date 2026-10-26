@@ -428,7 +428,7 @@ test('schedule file: the room index lists only rooms the schedule names', () => 
 test('schedule file: a file saved at format 1 still reads, and writes back byte for byte', () => {
   const text = fixture('schedule-v1.json');
   const read = readScheduleFile(text);
-  assert.deepEqual(read.summary, { periods: 8, subjects: 9, teachers: 12, groups: 8, dayTypes: 2 });
+  assert.deepEqual(read.summary, { periods: 8, subjects: 9, teachers: 12, groups: 8, dayTypes: 2, bellSchedules: 0, calendar: false });
   const bare = { ...school(), groups: [] };
   const applied = applySchedule(bare, read.file, { ids: makeIds(9) });
   assert.equal(writeScheduleFile(applied.project), text);
