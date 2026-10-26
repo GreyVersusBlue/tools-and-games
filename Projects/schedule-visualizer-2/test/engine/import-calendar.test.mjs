@@ -318,3 +318,17 @@ test('a row number is the spreadsheet\'s: every line of the text counts, blank o
   const read = readCalendarCsv(project, 'Date,Note\n\n2026-12-21,Winter break\n,\n2026-12-22,"Winter ""long"" break"\n');
   assert.deepEqual(read.rows.map((line) => [line.row, line.date]), [[3, '2026-12-21'], [5, '2026-12-22']]);
 });
+
+test('the file written with the spreadsheet guard reads back without it', () => {
+  const project = withEverything();
+  project.calendar.dates[0].label = '-Make-up';
+  project.bellSchedules[1].name = '@Assembly';
+  assert.deepEqual(validate(project), []);
+  const text = calendarCsv(project, { guard: true });
+  assert.ok(text.includes(",'-Make-up\r\n"), 'the guard is written');
+  const read = readCalendarCsv(project, text);
+  assert.deepEqual(read.changes, [], 'and reads back to no change');
+  const label = readCalendarCsv(withEverything(), csv(['Date,Day type,Note', "2026-10-03,Next in the rotation,'-Make-up"]));
+  assert.deepEqual(label.changes, [{ date: '2026-10-03', day: 'rotation', bells: null, label: '-Make-up' }]);
+  assert.equal(readCalendarCsv(withEverything(), csv(['Date,Note', "2026-12-21,'Tis the season"])).changes[0].label, "'Tis the season", 'an apostrophe before anything else is the note\'s');
+});

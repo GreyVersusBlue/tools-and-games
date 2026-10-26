@@ -851,6 +851,9 @@ name, is enough.
 - Bells: "Regular" (or "Regular bells") or a bell schedule's name, without
   regard to capitals or spaces. Blank leaves the bells as they are. Bells on
   a date with no school say nothing.
+- A cell that starts with ' before =, +, - or @ (the guard the tool writes
+  when asked, so a spreadsheet does not take the cell for a formula) is read
+  without the '. An apostrophe before anything else is part of the cell.
 - Note: at most 60 characters, kept exactly as typed. With a Note column, a
   blank note takes a date's note away.
 

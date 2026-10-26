@@ -168,6 +168,13 @@ function rowLines(text) {
   return lines;
 }
 
+// calendarCsv with `guard` puts a ' before a cell starting with = + - or @,
+// so a spreadsheet does not take it for a formula; read back, it goes.
+const GUARDED = ['=', '+', '-', '@'];
+function unguarded(cell) {
+  return cell.length > 1 && cell[0] === "'" && GUARDED.includes(cell[1]) ? cell.slice(1) : cell;
+}
+
 function quoted(texts) {
   return texts.map((text) => '"' + text + '"').join(', ');
 }
@@ -292,7 +299,7 @@ export function readCalendarCsv(project, text) {
     if (!map.has(textValue)) map.set(textValue, []);
     map.get(textValue).push(row);
   };
-  const cell = (row, role) => (columns[role] === undefined || columns[role] >= row.length ? undefined : row[columns[role]]);
+  const cell = (row, role) => (columns[role] === undefined || columns[role] >= row.length ? undefined : unguarded(row[columns[role]]));
   const seen = new Map();
   const read = [];
   rows.slice(1).forEach((row, index) => {
