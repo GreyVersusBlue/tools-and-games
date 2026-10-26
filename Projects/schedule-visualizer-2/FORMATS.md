@@ -850,7 +850,8 @@ name, is enough.
   "No school"; blank with no note leaves the day as it is.
 - Bells: "Regular" (or "Regular bells") or a bell schedule's name, without
   regard to capitals or spaces. Blank leaves the bells as they are. Bells on
-  a date with no school say nothing.
+  a date with no school say nothing, and a row that closes a date takes away
+  any bells the date's change had.
 - A cell that starts with ' before =, +, - or @ (the guard the tool writes
   when asked, so a spreadsheet does not take the cell for a formula) is read
   without the '. An apostrophe before anything else is part of the cell.

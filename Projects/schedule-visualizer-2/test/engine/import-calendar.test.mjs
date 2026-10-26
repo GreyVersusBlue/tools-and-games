@@ -332,3 +332,12 @@ test('the file written with the spreadsheet guard reads back without it', () => 
   assert.deepEqual(label.changes, [{ date: '2026-10-03', day: 'rotation', bells: null, label: '-Make-up' }]);
   assert.equal(readCalendarCsv(withEverything(), csv(['Date,Note', "2026-12-21,'Tis the season"])).changes[0].label, "'Tis the season", 'an apostrophe before anything else is the note\'s');
 });
+
+test('a row that closes a date takes its bells away', () => {
+  const project = withEverything();
+  const read = readCalendarCsv(project, csv(['Date,Day type', '2026-10-14,No school']));
+  assert.deepEqual(read.changes, [{ date: '2026-10-14', day: 'closed', bells: null, label: 'Assembly' }], 'the Assembly bells go; the note stays');
+  applied(project, read);
+  const holiday = readCalendarCsv(project, csv(['Date,Holiday', '2026-10-14,Teacher training']));
+  assert.deepEqual(holiday.changes, [{ date: '2026-10-14', day: 'closed', bells: null, label: 'Teacher training' }]);
+});

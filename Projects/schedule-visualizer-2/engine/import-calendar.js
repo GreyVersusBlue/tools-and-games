@@ -372,6 +372,8 @@ export function readCalendarCsv(project, text) {
     const entry = had ? { date: item.date, day: had.day, bells: had.bells, label: had.label } : { date: item.date, day: null, bells: null, label: '' };
     const dayMoves = item.day !== undefined && !sameDay(given, item.day);
     if (dayMoves) entry.day = item.day;
+    // a date the row closes keeps no bells of its own
+    if (dayMoves && item.day === DAY_CLOSED) entry.bells = null;
     // bells say nothing on a date with no school
     const closed = dayMoves ? item.day === DAY_CLOSED : !given.school;
     if (item.bells !== undefined && !closed && !sameBells(given, item.bells)) entry.bells = item.bells;
