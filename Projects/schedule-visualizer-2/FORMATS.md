@@ -541,8 +541,8 @@ schedules and says whether it has a calendar.
 
 - **Subjects, teachers, day types and bell schedules** are matched to this
   project's by id, then by name (a subject by code and name together),
-  without regard to capitals or surrounding spaces (a day type's or a bell
-  schedule's without regard to any spaces). One that matches is left exactly
+  without regard to capitals or surrounding spaces (a bell schedule's
+  without regard to any spaces). One that matches is left exactly
   as it is here. One that does not is added, with the file's id when that id
   is free, and with its typed short name when no other here has it (else
   empty, worked out from the name).
@@ -568,7 +568,10 @@ schedules and says whether it has a calendar.
   type), and the file's groups then fill it. A new day type that is its own
   copy gives every group already here a copy of its first day. A new day
   type that is "same as" in the file is the same as the day type here that
-  its own one matched.
+  its own one matched. A file in which no day type has `sameAs` (one written
+  before it existed) is read exactly as it was then: a new day type is its
+  own copy when it is in the file, or when the file's first day type is not
+  this project's first, and none is given a `sameAs`.
 - **The calendar.** When the file has one, it replaces this project's, and
   the summary says so ("the calendar replaced"). Every day type and bell
   schedule it names is re-pointed through the matches above; a reference that
