@@ -294,3 +294,16 @@ test('a "Day type" column is taken before one headed "Day", and a "Day" column o
   const days = readCalendarCsv(project, csv(['Date,Day', '2026-12-02,B Day', '2026-12-03,Thursday']).replace('Thursday', ''));
   assert.deepEqual(days.changes, [{ date: '2026-12-02', day: B, bells: null, label: '' }], 'a "Day" column of day types is the day type');
 });
+
+test('with no Day type or Note column, the one other column is the note; with none, the file is refused', () => {
+  const project = withEverything();
+  for (const [header, row] of [['Date,Name', '2026-12-21,Winter break'], ['Date,Holiday Name', '2026-12-21,Winter break'], ['Weekday,Date,Holiday Name', 'Monday,2026-12-21,Winter break'], ['Date,Day,Name', '2026-12-21,Monday,Winter break']]) {
+    assert.deepEqual(readCalendarCsv(project, csv([header, row])).changes, [{ date: '2026-12-21', day: 'closed', bells: null, label: 'Winter break' }], header);
+  }
+  const nothing = /^This file has no Day type or Note column, so there is nothing to read\.$/;
+  assert.throws(() => readCalendarCsv(project, csv(['Date', '2026-12-21'])), refusal('nothing-to-read', nothing));
+  assert.throws(() => readCalendarCsv(project, csv(['Date,Weekday', '2026-12-21,Monday'])), refusal('nothing-to-read', nothing));
+  assert.throws(() => readCalendarCsv(project, csv(['Date,Name,Place', '2026-12-21,Winter break,Everywhere'])), refusal('nothing-to-read', nothing), 'two others: which is the note is not guessed');
+  // a Bells column is something to read
+  assert.deepEqual(readCalendarCsv(project, csv(['Date,Bells', '2026-12-01,Assembly'])).changes, [{ date: '2026-12-01', day: null, bells: AS, label: '' }]);
+});

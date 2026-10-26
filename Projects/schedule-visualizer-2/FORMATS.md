@@ -834,6 +834,11 @@ name, is enough.
   column headed Day whose every entry is a weekday's name (Monday or Mon) is
   the weekday, and passed over. Any other column is passed over. A blank row
   is passed over.
+- With no Day type and no Note column, a file with exactly one other column
+  besides Date, Weekday and Bells reads that column as the note (Date, Name
+  is a list of holidays). One with neither, and no Bells column either, is
+  refused: "This file has no Day type or Note column, so there is nothing to
+  read."
 - A date is written `YYYY-MM-DD` and is on one row. A date outside the
   calendar is passed over and counted.
 - Day type: a day type's name, "No school" or "Next in the rotation",
@@ -857,7 +862,7 @@ nothing takes the date's change away. So the file the tool wrote reads back
 to no change at all.
 
 Refused whole, with nothing changed: a project with no calendar; a file with
-no header or no Date column; a date that is not one, or that is on two rows;
+no header or no Date column; a file with nothing to read, as above; a date that is not one, or that is on two rows;
 a note over 60 characters (the refusal names the first such row and counts
 them); any day-type or bell-schedule name the project does not have
 (every one is named, with its rows); and a day-type name that could be

@@ -180,7 +180,8 @@ function entryOf(day) {
 //   row does not change; one without gets a change whose day is null (as the
 //   weekday says) when only its bells or note differ.
 //
-// Refused whole: no calendar, a file with no header or no Date column, a row
+// Refused whole: no calendar, a file with no header or no Date column, one
+// with nothing to read (no Day type, Note or Bells column and not one other), a row
 // that is not as above, and any name the project does not have (every one is
 // named, with its rows).
 //
@@ -201,9 +202,18 @@ export function readCalendarCsv(project, text) {
   if (rows.length === 0) throw new CalendarImportError('This file is empty. A calendar CSV has a header row (Date, Weekday, Day type, Bells, Note) and a row for each date.', 'empty');
   const columns = columnsOf(rows[0]);
   if (columns.date === undefined) throw new CalendarImportError('The first row is the header, and it has no Date column. The columns are ' + CALENDAR_HEADER.join(', ') + '; only Date is needed.', 'no-date-column');
+  const passed = new Set();
   if (columns.day !== undefined && headerKey(rows[0][columns.day]) === 'day' && weekdaysOnly(rows.slice(1), columns.day)) {
-    if (columns.weekday === undefined) columns.weekday = columns.day;
+    passed.add(columns.day);
     delete columns.day;
+  }
+  // No Day type and no Note column: a list of dates and one other column
+  // (Date, Name) is a list of notes; with nothing else, nothing is read.
+  if (columns.day === undefined && columns.note === undefined) {
+    for (const role of ['date', 'weekday', 'bells']) if (columns[role] !== undefined) passed.add(columns[role]);
+    const others = rows[0].map((cell, index) => index).filter((index) => !passed.has(index) && rows[0][index].trim() !== '');
+    if (others.length === 1) columns.note = others[0];
+    else if (columns.bells === undefined) throw new CalendarImportError('This file has no Day type or Note column, so there is nothing to read.', 'nothing-to-read');
   }
 
   // A day type's name is matched as written first, then whatever the
