@@ -897,6 +897,120 @@ const SV2_78 = [
   },
 ];
 
+// SV2-80: the Calendar tab. A calendar from 31 August 2026 to 11 June 2027
+// with Early Release Wednesdays, a winter break and a snow day, put in by the
+// store; the sweeps do not pin the clock, so today may be outside it.
+async function calendarMade(page) {
+  await scheduleDrawn(page);
+  await act(page, 'addBellSchedule', { name: 'Early Release' });
+  await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    const { actions } = globalThis.sv2modules;
+    const early = store.project.bellSchedules[0].id;
+    const weekdays = [0, 1, 2, 3, 4, 5, 6].map((w) => ({ day: w < 5 ? 'rotation' : 'closed', bells: w === 2 ? early : null }));
+    store.apply(actions.makeCalendar, { start: '2026-08-31', end: '2027-06-11', weekdays, breaks: [{ from: '2026-12-21', to: '2027-01-01', label: 'Winter break' }] });
+    store.apply(actions.setCalendarDates, { dates: ['2026-10-14'], day: 'closed', label: 'Snow day' });
+  });
+  await page.waitForSelector('.cal-year .cal-day');
+  await scheduleDrawn(page);
+}
+
+async function calendarDialog(page) {
+  await calendarMade(page);
+  await dateDialogOn(page);
+}
+
+// the date dialog on 15 October, once the calendar is on screen
+async function dateDialogOn(page) {
+  await page.$eval('.cal-day[data-date="2026-10-15"]', (el) => el.scrollIntoView({ block: 'center' }));
+  await page.evaluate(() => document.querySelector('.toast__close')?.click());
+  await page.$eval('.cal-day[data-date="2026-10-15"]', (el) => el.click());
+  await page.waitForFunction(() => document.getElementById('calendar-date-dialog')?.open === true && document.getElementById('calendar-date-dialog').getAnimations().every((each) => each.playState === 'finished'));
+}
+
+const SV2_80 = [
+  { id: 'schedule-calendar-empty', hash: '#schedule/calendar', open: scheduleDrawn },
+  {
+    id: 'schedule-calendar-setup',
+    hash: '#schedule/calendar',
+    open: async (page) => {
+      await scheduleDrawn(page);
+      await page.click('[data-action="make-a-calendar"]');
+      await page.waitForSelector('.cal-setup');
+      await page.click('[data-key="cal-setup-add-break"]');
+      await page.waitForSelector('[data-key="cal-setup-break:0:from"]');
+    },
+  },
+  { id: 'schedule-calendar-year', hash: '#schedule/calendar', open: calendarMade },
+  {
+    id: 'schedule-calendar-run',
+    hash: '#schedule/calendar',
+    open: async (page) => {
+      await calendarMade(page);
+      await page.focus('.cal-day[data-date="2026-12-14"]');
+      await page.keyboard.down('Shift');
+      for (let i = 0; i < 4; i += 1) await page.keyboard.press('ArrowRight');
+      await page.keyboard.up('Shift');
+      await page.waitForFunction(() => document.querySelector('.cal-status').textContent !== '');
+    },
+  },
+  { id: 'schedule-calendar-dialog', hash: '#schedule/calendar', open: calendarDialog },
+  {
+    id: 'schedule-calendar-list',
+    hash: '#schedule/calendar',
+    open: async (page) => {
+      await calendarMade(page);
+      await page.click('.cal-list__summary');
+      await page.waitForSelector('.cal-list__table');
+    },
+  },
+  {
+    id: 'schedule-calendar-import',
+    hash: '#schedule/calendar',
+    open: async (page) => {
+      await calendarMade(page);
+      await page.evaluate(() => document.querySelector('.toast__close')?.click());
+      await page.click('[data-action="import-dates"]');
+      await page.waitForSelector('#calendar-import[open]');
+      await page.evaluate(() => document.getElementById('calendar-import').calendarRead('holidays.csv', 'Date,Day type,Note\r\n2026-11-26,No school,Thanksgiving\r\n2026-11-27,,Day after\r\n'));
+      await page.waitForSelector('.cal-import__table');
+    },
+  },
+  {
+    id: 'schedule-calendar-print',
+    hash: '#schedule/calendar',
+    open: async (page) => {
+      await calendarMade(page);
+      await page.evaluate(() => document.querySelector('.toast__close')?.click());
+      await page.click('#print-calendar');
+      await page.waitForSelector('#print-preview[open][data-ready="true"]', { timeout: 30000 });
+    },
+  },
+  { id: 'schedule-calendar-phone', hash: '#schedule/calendar', viewport: { width: 390, height: 844, mobile: true }, open: calendarMade },
+  {
+    id: 'schedule-calendar-dialog-phone',
+    hash: '#schedule/calendar',
+    viewport: { width: 390, height: 844, mobile: true },
+    open: async (page) => {
+      await calendarMade(page);
+      await page.click('[data-key="cal-show-months"]');
+      await page.waitForFunction(() => document.querySelector('.cal-year').hidden === false);
+      await dateDialogOn(page);
+    },
+  },
+  {
+    id: 'staff-publish-calendar',
+    hash: '#schedule/calendar',
+    open: async (page) => {
+      await calendarMade(page);
+      await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.setPublishSetting, { key: 'lastPublishedAt', value: '2026-08-31T12:00:00.000Z' }));
+      await go(page, '#staff');
+      await staffLive(page);
+      await page.waitForFunction(() => document.querySelector('[data-says="calendar-changed"]')?.hidden === false);
+    },
+  },
+];
+
 export const SCREENS = [
   { id: 'building', hash: '#building' },
   { id: 'schedule-groups', hash: '#schedule/groups' },
@@ -1438,5 +1552,6 @@ export const SCREENS = [
     },
   },
   ...SV2_78,
+  ...SV2_80,
   ...SV2_32G1,
 ];
