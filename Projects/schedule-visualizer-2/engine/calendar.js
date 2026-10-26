@@ -140,13 +140,15 @@ function walk(project, calendar, range) {
     return { day: (isRule && dayOf(rule.day)) || DAY_ROTATION, bells: isRule ? bellsOf(rule.bells) : null };
   });
   // one dated change per date, the last of any two; one naming a day type
-  // that is gone is not there (repair removes it, and then keeps the last)
+  // that is gone is not there (repair removes it, and then keeps the last).
+  // A change whose day is null (bells or a note only) keeps day null: the
+  // weekday's rule decides its day.
   const dated = new Map();
   if (Array.isArray(calendar.dates)) {
     for (const entry of calendar.dates) {
       if (!entry || typeof entry !== 'object' || !isCalendarDate(entry.date)) continue;
-      const day = dayOf(entry.day);
-      if (day === null) continue;
+      const day = entry.day === null ? null : dayOf(entry.day);
+      if (day === null && entry.day !== null) continue;
       dated.set(entry.date, { day, bells: entry.bells === BELLS_REGULAR ? BELLS_REGULAR : bellsOf(entry.bells), label: typeof entry.label === 'string' ? entry.label : '' });
     }
   }
@@ -159,16 +161,19 @@ function walk(project, calendar, range) {
     const weekday = (((first + n + 3) % 7) + 7) % 7;
     const rule = weekdays[weekday];
     const change = dated.get(date) || null;
-    const day = change ? change.day : rule.day;
+    // a change with day null decides the day exactly as the weekday does,
+    // with the same effect on p; only its bells and note are its own
+    const byDate = change !== null && change.day !== null;
+    const day = byDate ? change.day : rule.day;
     let dayTypeId = null;
     let why;
     if (day === DAY_CLOSED) {
-      why = change ? 'date' : 'weekday';
+      why = byDate ? 'date' : 'weekday';
     } else if (day === DAY_ROTATION) {
       dayTypeId = rotation[p];
       p = (p + 1) % rotation.length;
       why = 'rotation';
-    } else if (change) {
+    } else if (byDate) {
       dayTypeId = day;
       // a day type in the rotation puts the rotation there: its first place
       // at or after p, wrapping
@@ -199,8 +204,9 @@ function walk(project, calendar, range) {
 
 // Every date of the calendar, first to last: { date, weekday, known: true,
 // school, dayTypeId, bellsId, why, label, changed }. `why` is 'rotation',
-// 'date' (a dated change decided the day) or 'weekday'; `changed` is true
-// when the date has a change of its own (a "rotation" one too). Memoised on
+// 'date' (a dated change decided the day) or 'weekday' (a change with day
+// null leaves it to the weekday, so its why is the weekday's); `changed` is
+// true when the date has a change of its own (a "rotation" one too). Memoised on
 // the calendar, the day types and the bell schedules, so ask freely. Empty
 // with no calendar, or one whose range cannot be walked.
 export function calendarDays(project) {

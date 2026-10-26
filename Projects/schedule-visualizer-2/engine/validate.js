@@ -301,7 +301,7 @@ export function validate(project) {
             if (last !== null && entry.date <= last) add(path + '.date', 'The dated changes are in date order, one for each date; ' + entry.date + ' comes after ' + last + '.');
             last = entry.date;
           }
-          if (!dayValue(entry.day)) add(path + '.day', 'A dated change says "' + DAY_ROTATION + '", "' + DAY_CLOSED + '" or the id of a day type.');
+          if (entry.day !== null && !dayValue(entry.day)) add(path + '.day', 'A dated change says null (as the weekday says), "' + DAY_ROTATION + '", "' + DAY_CLOSED + '" or the id of a day type.');
           if (entry.bells !== null && entry.bells !== BELLS_REGULAR && !bellIds.has(entry.bells)) add(path + '.bells', 'A dated change\'s bells are null (as the weekday says), "' + BELLS_REGULAR + '" or the id of a bell schedule.');
           if (!isString(entry.label) || textLength(entry.label) > DATE_LABEL_MOST) add(path + '.label', 'A dated change\'s note is text of at most ' + DATE_LABEL_MOST + ' characters.');
           return undefined;

@@ -258,8 +258,8 @@ day type, and only the times change.
 school) or a day type id; `bells` is `null` (the day type's regular bells) or
 a bell schedule id.
 
-**DatedChange**: `{ date, day, bells, label }`. `day` as a weekday's;
-`bells` is `null` (as the weekday says), `"regular"` (the day type's own
+**DatedChange**: `{ date, day, bells, label }`. `day` is `null` (as the
+weekday says: a change of bells or note only), or as a weekday's; `bells` is `null` (as the weekday says), `"regular"` (the day type's own
 regular bells) or a bell schedule id; `label` is a note of 0 to 60
 characters ("Thanksgiving").
 
@@ -270,14 +270,20 @@ stays. `"rotation"`: the rotation's day type at its place, and the rotation
 moves on one. A day type id from a dated change: that day type, and if it is
 in the rotation the rotation is put at its first place at or after where it
 stands and moves on one; if not, the rotation stays. A day type id from a
-weekday: that day type, and the rotation stays. The bells are the dated
+weekday: that day type, and the rotation stays. A dated change whose `day`
+is `null` decides the day exactly as its weekday's rule would, with the same
+effect on the rotation; only its bells and note are its own. The bells are the dated
 change's when not `null`, else the weekday's. On load, a weekday naming a
 day type that is gone takes the rotation, a dated change naming one is
 removed, a rotation entry naming one is removed (an empty rotation becomes
 `dayTypes[0]`), a bell schedule that is gone is `null` wherever it was named,
 duplicate dates keep the later, and a dated change that says nothing its
-weekday does not (`"rotation"`, `null`, no note, on a weekday that takes the
-rotation) is removed, each with a note.
+weekday does not (`day` `null`, `bells` `null` and no note; or `"rotation"`,
+`null`, no note, on a weekday that takes the rotation) is removed, each with
+a note. A calendar whose `start` is not a date starts on the earliest of
+`end` and its dated changes' dates, one whose `end` is not a date ends on the
+latest of `start` and those dates (within 731 days of the good end), with a
+note; with neither a date, the calendar is removed.
 
 ### Group
 

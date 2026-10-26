@@ -275,6 +275,14 @@ for (const [name, mutate, where] of NEW_BREAKS) {
   });
 }
 
+test('a dated change may have day null, as the weekday says (SV2-75b); anything else that is not a day is found', () => {
+  const project = withEverything();
+  project.calendar.dates.splice(1, 0, { date: '2026-10-07', day: null, bells: 'bsample0as', label: 'Picture day' });
+  assert.deepEqual(validate(project), []);
+  project.calendar.dates[1].day = undefined;
+  assert.deepEqual(validate(project).map((finding) => finding.path), ['calendar.dates[1].day']);
+});
+
 test('a published model may carry the new fields and is held to the same rules', () => {
   const project = withEverything();
   project.format = 'sv2-published';
