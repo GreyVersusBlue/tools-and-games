@@ -4,7 +4,9 @@
 // checks rerun on each keystroke.
 //
 //   checkSchedule(project, walks) over both day types, the engine call
-//   alone: budget 100 ms (ARCHITECTURE 14). Held on the median of RUNS
+//   alone: budget 100 ms (ARCHITECTURE 14). The same budget holds for the
+//   fixture grown as ARCHITECTURE 17.8 says (test/timing/big-runs.mjs: four
+//   own day types and two bell schedules, twelve runs of walk figures). Held on the median of RUNS
 //   batches of BATCH calls (each batch's time divided by BATCH), and on the
 //   first call of the process, which is the one a person waits for when the
 //   page has just loaded.
@@ -22,7 +24,9 @@ import { routesForSchedule, routingGraph } from '../../engine/routing.js';
 import { simulateSchedule, walkResults } from '../../engine/crowd.js';
 import { checkSchedule } from '../../engine/checks.js';
 import { ownDayTypes } from '../../engine/day-types.js';
+import { routesByRun } from '../../engine/crowd.js';
 import { bigProject, BIG } from '../fixtures/big.mjs';
+import { bigRunsProject, BIG_RUNS } from './big-runs.mjs';
 
 const BUDGET = 100;
 const SLACK = 2;
@@ -69,4 +73,28 @@ test('the schedule checks on the big fixture, both day types: under ' + BUDGET +
   assert.deepEqual(again, cold.value, 'a second run says what the first did');
   assert.ok(median < BUDGET * SLACK, 'the checks took ' + median.toFixed(1) + ' ms at the median, over ' + BUDGET * SLACK);
   assert.ok(cold.ms < BUDGET * SLACK, 'the first run of the checks took ' + cold.ms.toFixed(1) + ' ms, over ' + BUDGET * SLACK);
+});
+
+test('the schedule checks over the twelve runs of the grown fixture: under ' + BUDGET + ' ms', () => {
+  const project = bigRunsProject({ seed: 1 });
+  const graph = routingGraph(project);
+  const crowd = simulateSchedule(project, routesByRun(project, graph), graph);
+  const walks = walkResults(project, crowd, graph);
+  const first = timed(() => checkSchedule(project, walks));
+  const batches = [];
+  for (let run = 0; run < RUNS; run += 1) {
+    const started = performance.now();
+    for (let i = 0; i < BATCH; i += 1) checkSchedule(project, walks);
+    batches.push((performance.now() - started) / BATCH);
+  }
+  batches.sort((a, b) => a - b);
+  const median = batches[Math.floor(batches.length / 2)];
+  const found = first.value.findings;
+  const named = found.filter((finding) => Array.isArray(finding.where.bellsIds));
+  console.log('# checks, twelve runs, first (after the case above in this process): ' + first.ms.toFixed(1) + ' ms; median ' + median.toFixed(1) + ' ms of ' + RUNS + ' batches of ' + BATCH + ' (budget ' + BUDGET + ', fails at ' + BUDGET * SLACK + '); ' + found.length + ' findings, ' + named.length + ' of them walks that name a bell schedule; ' + walks.groups.length + ' + ' + walks.bells.groups.length + ' group walks');
+  assert.equal(ownDayTypes(project).length, BIG_RUNS.ownDayTypes);
+  assert.ok(named.length > 0, 'walks late under a bell schedule are found');
+  assert.ok(named.some((finding) => finding.where.bellsIds.length > 1), 'and some are one finding for several runs');
+  assert.ok(median < BUDGET * SLACK, 'the checks over twelve runs took ' + median.toFixed(1) + ' ms at the median, over ' + BUDGET * SLACK);
+  assert.ok(first.ms < BUDGET * SLACK, 'the first run of them took ' + first.ms.toFixed(1) + ' ms, over ' + BUDGET * SLACK);
 });

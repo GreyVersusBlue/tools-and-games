@@ -3,6 +3,12 @@
 // 80 groups, 10 periods, two own day types).
 //
 //   the whole day of both day types, every transition: budget 500 ms
+//   the twelve runs of the fixture grown as ARCHITECTURE 17.8 says
+//   (test/timing/big-runs.mjs: four own day types, each with its regular
+//   bells, Early Release and Assembly): budget 500 ms too, and a run may
+//   cost no more than one of the two day types does. A bell-schedule run
+//   retimes the regular run's transitions (crowd.js retimeTransition) where
+//   no group reaches a cap, so the four own day types are what costs.
 //
 // The routes are worked out first and are not in the measure (test/timing/
 // routing.mjs has their budget). The suite fails at twice the budget, to
@@ -25,7 +31,9 @@ import { routesForSchedule, routingGraph } from '../../engine/routing.js';
 import { simulateSchedule } from '../../engine/crowd.js';
 import { loads } from '../../engine/load.js';
 import { places } from '../../engine/places.js';
+import { routesByRun } from '../../engine/crowd.js';
 import { bigProject, BIG } from '../fixtures/big.mjs';
+import { bigRunsProject, BIG_RUNS } from './big-runs.mjs';
 
 const BUDGET = 500;
 const SLACK = 2;
@@ -82,4 +90,43 @@ test('loads and places on the big fixture are small beside it', () => {
   console.log('# loads, both day types: ' + both.ms.toFixed(1) + ' ms; places: ' + cut.ms.toFixed(1) + ' ms (' + cut.value.places.length + ' places)');
   assert.ok(both.value.every((load) => load && load.max.busiest > 0));
   assert.ok(both.ms + cut.ms < BUDGET * SLACK, 'loads and places took ' + (both.ms + cut.ms).toFixed(1) + ' ms');
+});
+
+test('the crowd model for the twelve runs of the grown fixture: under 500 ms, and a run costs no more than a day did', () => {
+  const median = (list) => list.slice().sort((a, b) => a - b)[Math.floor(list.length / 2)];
+  const today = bigProject({ seed: 1 });
+  const todayGraph = routingGraph(today);
+  const todayRoutes = routesForSchedule(today, todayGraph);
+  const project = bigRunsProject({ seed: 1 });
+  const graph = routingGraph(project);
+  const routes = routesByRun(project, graph);
+  const first = timed(() => simulateSchedule(project, routes, graph));
+  // warm, both alike: the median of three runs each, in this one process
+  const perDay = median([0, 1, 2].map(() => timed(() => simulateSchedule(today, todayRoutes, todayGraph)).ms)) / BIG.dayTypes;
+  const perRun = median([0, 1, 2].map(() => timed(() => simulateSchedule(project, routes, graph)).ms)) / BIG_RUNS.runs;
+  let walks = 0;
+  let stopped = 0;
+  let retimed = 0;
+  for (const day of first.value.bells) {
+    const regular = first.value.days.find((other) => other.dayTypeId === day.dayTypeId);
+    day.transitions.forEach((transition, t) => {
+      if (!transition.off && transition.groups.length > 0 && transition.groups[0].positions === regular.transitions[t].groups[0].positions) retimed += 1;
+    });
+  }
+  for (const day of first.value.days.concat(first.value.bells)) {
+    for (const transition of day.transitions) {
+      for (const group of transition.groups) {
+        walks += 1;
+        if (!group.arrived) stopped += 1;
+      }
+    }
+  }
+  console.log('# crowd, twelve runs, first (after the cases above in this process): ' + first.ms.toFixed(1) + ' ms (budget ' + BUDGET + ', fails at ' + BUDGET * SLACK + '): ' + walks + ' walks, ' + retimed + ' bell-schedule transitions retimed rather than simulated, ' + stopped + ' did not arrive');
+  console.log('# crowd, warm: ' + perRun.toFixed(2) + ' ms a run of the twelve, against ' + perDay.toFixed(2) + ' ms a day type of the two (a run may cost no more)');
+  assert.equal(first.value.days.length, BIG_RUNS.ownDayTypes);
+  assert.equal(first.value.bells.length, BIG_RUNS.runs - BIG_RUNS.ownDayTypes);
+  assert.equal(stopped, 0);
+  assert.ok(retimed >= BIG_RUNS.ownDayTypes * ((BIG.periods - 1) + (BIG.periods - 1 - BIG_RUNS.offPeriods)), 'every meeting transition of a bell-schedule run was retimed: ' + retimed);
+  assert.ok(perRun <= perDay, 'a run cost ' + perRun.toFixed(2) + ' ms, more than a day type did (' + perDay.toFixed(2) + ' ms): stop and report (ARCHITECTURE 17.8)');
+  assert.ok(first.ms < BUDGET * SLACK, 'the crowd model for twelve runs took ' + first.ms.toFixed(1) + ' ms, over ' + BUDGET * SLACK);
 });
