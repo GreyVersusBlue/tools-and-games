@@ -14,7 +14,8 @@
 // two rooms and a slot whose room is not in the building are all published as
 // they are.
 
-import { PUBLISHED_FORMAT, CURRENT_VERSION, PUBLISH_VIEWS, RANGES, defaultPublish, inRange } from './schema.js';
+import { PUBLISHED_FORMAT, CURRENT_VERSION, PUBLISH_VIEWS, LATER_PUBLISH_VIEWS, RANGES, defaultPublish, inRange, bellSchedulesOf, calendarOf } from './schema.js';
+import { isCalendarDate, addDays } from './calendar.js';
 
 export const PUBLISHED_VERSION = CURRENT_VERSION;
 
@@ -83,23 +84,65 @@ function group(source) {
   return { id: source.id, name: source.name, grade: source.grade, colour: source.colour, days };
 }
 
+function bells(source) {
+  return list(source).map((bell) => (bell ? { start: bell.start, end: bell.end } : null));
+}
+
+// A bell schedule (ARCHITECTURE 17.3), field by field.
+function bellSchedule(source) {
+  return { id: source.id, name: source.name, short: source.short, bells: bells(source.bells), off: list(source.off).slice() };
+}
+
+// The calendar (ARCHITECTURE 17.4), field by field, with changedAt: spec
+// 12.5's "the calendar if any". Null when there is none.
+function calendar(source) {
+  if (source === null) return null;
+  return {
+    start: source.start,
+    end: source.end,
+    weekdays: list(source.weekdays).map((rule) => ({ day: rule.day, bells: rule.bells })),
+    rotation: list(source.rotation).slice(),
+    dates: list(source.dates).map((entry) => ({ date: entry.date, day: entry.day, bells: entry.bells, label: entry.label })),
+    changedAt: source.changedAt === undefined ? null : source.changedAt,
+  };
+}
+
+// When is a file published at `published` (a Date) stale? With a calendar
+// and publish.staleAtCalendarEnd (absent meaning true), the day after the
+// calendar's last date at 12:00 UTC: a date is what the school means, and
+// noon UTC falls on that date from UTC-11 to UTC+11 (ARCHITECTURE 17.4).
+// Otherwise, or when that day is not after the publish time (a calendar
+// that has already ended), publish.stalenessDays after it. Returns
+// { staleAfter, why }: why is 'calendar', 'days', or 'calendar-ended' when a
+// calendar was meant to say and could not, so the publish form can say why.
+export function staleness(project, published) {
+  const publish = project.publish || defaultPublish();
+  const days = inRange(publish.stalenessDays, RANGES.stalenessDays) ? publish.stalenessDays : defaultPublish().stalenessDays;
+  const byDays = new Date(published.getTime() + days * DAY_MS).toISOString();
+  const source = calendarOf(project);
+  if (source === null || publish.staleAtCalendarEnd === false || !isCalendarDate(source.end)) return { staleAfter: byDays, why: 'days' };
+  const atEnd = addDays(source.end, 1) + 'T12:00:00.000Z';
+  if (Date.parse(atEnd) <= published.getTime()) return { staleAfter: byDays, why: 'calendar-ended' };
+  return { staleAfter: atEnd, why: 'calendar' };
+}
+
 // publishedModel(project, { clock }) → the published data. `clock` gives the
-// publish time; the file is stale `publish.stalenessDays` days after it.
+// publish time; staleness() says when the file goes stale.
 export function publishedModel(project, options) {
   const opts = options || {};
   if (typeof opts.clock !== 'function') throw new TypeError('Publishing needs a clock.');
   const published = opts.clock();
   const settings = project.settings;
   const publish = project.publish || defaultPublish();
-  const days = inRange(publish.stalenessDays, RANGES.stalenessDays) ? publish.stalenessDays : defaultPublish().stalenessDays;
+  // every view a project keeps a switch for, the calendar's too; absent is on
   const views = {};
-  for (const view of PUBLISH_VIEWS) views[view] = !publish.views || publish.views[view] !== false;
+  for (const view of PUBLISH_VIEWS.concat(LATER_PUBLISH_VIEWS)) views[view] = !publish.views || publish.views[view] !== false;
   return {
     format: PUBLISHED_FORMAT,
     version: PUBLISHED_VERSION,
     id: project.id,
     publishedAt: published.toISOString(),
-    staleAfter: new Date(published.getTime() + days * DAY_MS).toISOString(),
+    staleAfter: staleness(project, published).staleAfter,
     settings: {
       schoolName: settings.schoolName,
       periods: settings.periods,
@@ -115,12 +158,17 @@ export function publishedModel(project, options) {
     },
     subjects: list(project.subjects).map((subject) => ({ id: subject.id, code: subject.code, name: subject.name, colour: subject.colour })),
     teachers: list(project.teachers).map((teacher) => ({ id: teacher.id, name: teacher.name, subjectId: teacher.subjectId, roomIds: list(teacher.roomIds).slice(), notes: teacher.notes })),
+    // sameAs null and short "" when a project saved before them has none
     dayTypes: list(project.dayTypes).map((dayType) => ({
       id: dayType.id,
       name: dayType.name,
       own: dayType.own,
-      bells: list(dayType.bells).map((bell) => (bell ? { start: bell.start, end: bell.end } : null)),
+      sameAs: typeof dayType.sameAs === 'string' ? dayType.sameAs : null,
+      short: typeof dayType.short === 'string' ? dayType.short : '',
+      bells: bells(dayType.bells),
     })),
+    bellSchedules: bellSchedulesOf(project).map(bellSchedule),
+    calendar: calendar(calendarOf(project)),
     groups: list(project.groups).map(group),
     publish: { views, teacherNamesOnMap: publish.teacherNamesOnMap !== false },
   };
