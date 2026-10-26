@@ -15,6 +15,8 @@ import { openStorage, STORAGE_PREFIX, NOT_KEPT_SENTENCE } from '../../staff/stor
 import { dayText, momentText, isStale, isOlderThanSeen } from '../../staff/dates.js';
 import { readPublished, NEWER_SENTENCE, DAMAGED_SENTENCE, NOT_OURS_SENTENCE, DATA_ELEMENT_ID, PREVIEW_READY, PREVIEW_DATA, PREVIEW_EVERY_MS, watchPreview, inlineData, siblingData } from '../../staff/source.js';
 import { openSchool } from '../../staff/model.js';
+import { DAY_TYPE_KEY, BELLS_KEY, DAY_ON_KEY, todayOf, readDayOn, keepDayOn, chosenDayType, chosenBells } from '../../staff/clock.js';
+import { ME_KEY, NOTES_KEY } from '../../staff/notes.js';
 import { searchIndex, searchSchool, foldText, FIND_LIMIT } from '../../staff/find.js';
 import { publishedModel } from '../../engine/publish-data.js';
 import { lockPublished, unlockPublished } from '../../engine/publish-crypto.js';
@@ -115,11 +117,15 @@ function fakeBackend() {
   };
 }
 
-test('the five keys are sv2staff:<school>:me, notes, day, key and seen', () => {
+// Seven since SV2-81 (on purpose: dayOn, the reader's "Not right?" answer,
+// and bells, chosen by hand beside day; ARCHITECTURE 17.9). The names are the
+// ones the modules write with, so a renamed constant fails here too.
+test('the seven keys are sv2staff:<school>:me, notes, day, key, seen, dayOn and bells', () => {
+  assert.deepEqual([ME_KEY, NOTES_KEY, DAY_TYPE_KEY, DAY_ON_KEY, BELLS_KEY], ['me', 'notes', 'day', 'dayOn', 'bells']);
   const backend = fakeBackend();
   const store = openStorage('psample001', () => backend);
-  for (const name of ['me', 'notes', 'day', 'key', 'seen']) store.set(name, name + '-value');
-  assert.deepEqual(Array.from(backend.items.keys()), ['sv2staff:psample001:me', 'sv2staff:psample001:notes', 'sv2staff:psample001:day', 'sv2staff:psample001:key', 'sv2staff:psample001:seen']);
+  for (const name of ['me', 'notes', 'day', 'key', 'seen', 'dayOn', 'bells']) store.set(name, name + '-value');
+  assert.deepEqual(Array.from(backend.items.keys()), ['sv2staff:psample001:me', 'sv2staff:psample001:notes', 'sv2staff:psample001:day', 'sv2staff:psample001:key', 'sv2staff:psample001:seen', 'sv2staff:psample001:dayOn', 'sv2staff:psample001:bells']);
   assert.equal(STORAGE_PREFIX, 'sv2staff:');
   assert.equal(store.key('me'), 'sv2staff:psample001:me');
   assert.equal(store.get('me'), 'me-value');
@@ -533,4 +539,104 @@ test('the stylesheet is laid out for a phone first, as DESIGN 7 says', () => {
   assert.match(css, /\.gate \{[^}]*justify-content: safe center;/, 'a centred screen that can scroll needs `safe`');
   assert.ok(!/@import/.test(css));
   for (const match of css.matchAll(/url\(([^)]*)\)/g)) assert.match(match[1], /^\.\.\/fonts\/[a-z0-9-]+\.woff2$/, 'the stylesheet asks for ' + match[1]);
+});
+
+// ---------------------------------------------------------------- today (SV2-81)
+
+// A school of A, B and C Day (C its own), an Early Release schedule on
+// Wednesdays, and a calendar from Monday 31 August 2026, the rotation A, B, C
+// on weekdays: Mon 31 Aug A, Tue 1 Sep B, Wed 2 Sep C (Early Release), Thu 3
+// Sep A. Published on `published`.
+function todaySchool(published, change) {
+  const project = sampleSchool();
+  const a = project.dayTypes[0];
+  project.dayTypes.push({ id: 'dtoday000c', name: 'C Day', own: true, sameAs: null, short: '', bells: a.bells.map((bell) => ({ ...bell })) });
+  for (const group of project.groups) group.days.dtoday000c = group.days[a.id].map((slot) => ({ ...slot }));
+  project.bellSchedules = [{ id: 'btodayer00', name: 'Early Release', short: '', bells: a.bells.map((bell) => ({ ...bell })), off: [6, 7] }];
+  project.calendar = {
+    start: '2026-08-31',
+    end: '2027-06-11',
+    weekdays: [0, 1, 2, 3, 4, 5, 6].map((day) => ({ day: day < 5 ? 'rotation' : 'closed', bells: day === 2 ? 'btodayer00' : null })),
+    rotation: [a.id, 'dsample00b', 'dtoday000c'],
+    dates: [{ date: '2026-11-26', day: 'closed', bells: null, label: 'Thanksgiving' }],
+    changedAt: null,
+  };
+  if (change) change(project);
+  return openSchool(publishedModel(project, { clock: () => new Date(published || '2026-08-25T12:00:00Z') }));
+}
+
+// A page's ctx with the clock at a local moment (the zone is UTC: run.mjs
+// sets it) and storage in memory.
+function todayCtx(school, at, kept) {
+  const backend = fakeBackend();
+  const store = openStorage(school.data.id, () => backend);
+  for (const [name, value] of Object.entries(kept || {})) store.set(name, value);
+  return { school, store, now: () => new Date(at), backend };
+}
+
+const said = (today) => [today.date, today.calendar, today.school, today.dayType ? today.dayType.name : null, today.bellsId, today.by];
+
+test('today by the calendar: a rotation day, a Wednesday\'s bells, no school, outside it, and a file with none', () => {
+  const school = todaySchool();
+  assert.deepEqual(said(todayOf(todayCtx(school, '2026-09-01T10:00:00Z'))), ['2026-09-01', 'known', true, 'B Day', null, 'calendar']);
+  assert.deepEqual(said(todayOf(todayCtx(school, '2026-09-02T10:00:00Z'))), ['2026-09-02', 'known', true, 'C Day', 'btodayer00', 'calendar']);
+  const closed = todayOf(todayCtx(school, '2026-11-26T10:00:00Z'));
+  assert.deepEqual(said(closed), ['2026-11-26', 'known', false, null, null, 'calendar']);
+  assert.equal(closed.label, 'Thanksgiving');
+  assert.deepEqual(said(todayOf(todayCtx(school, '2027-07-01T10:00:00Z', { day: 'dsample00b' }))), ['2027-07-01', 'outside', true, 'B Day', null, 'hand']);
+  const none = openSchool(publishedModel(sampleSchool(), { clock: () => new Date('2026-08-25T12:00:00Z') }));
+  assert.deepEqual(said(todayOf(todayCtx(none, '2026-09-01T10:00:00Z'))), ['2026-09-01', 'none', true, 'A Day', null, null]);
+  // where the calendar says, the hand choice is not what a page shows
+  const ctx = todayCtx(school, '2026-09-02T10:00:00Z', { day: 'dsample00a', bells: 'btodayer00' });
+  assert.equal(chosenDayType(ctx).name, 'C Day');
+  assert.equal(chosenBells(ctx), 'btodayer00');
+  const hand = todayCtx(school, '2027-07-01T10:00:00Z', { day: 'dsample00a', bells: 'btodayer00' });
+  assert.equal(chosenDayType(hand).name, 'A Day');
+  assert.equal(chosenBells(hand), 'btodayer00');
+});
+
+test('"Just today" holds for its date only; "follow" moves the rotation on from it', () => {
+  const school = todaySchool();
+  const just = todayCtx(school, '2026-09-01T10:00:00Z');
+  keepDayOn(just, { date: '2026-09-01', dayTypeId: 'dtoday000c', bellsId: null, follow: false });
+  assert.deepEqual(said(todayOf(just)), ['2026-09-01', 'known', true, 'C Day', null, 'reader']);
+  const nextDay = todayCtx(school, '2026-09-03T10:00:00Z', { dayOn: just.store.get('dayOn') });
+  assert.deepEqual(said(todayOf(nextDay)), ['2026-09-03', 'known', true, 'A Day', null, 'calendar'], 'the calendar\'s own day');
+
+  const follow = todayCtx(school, '2026-09-01T10:00:00Z');
+  keepDayOn(follow, { date: '2026-09-01', dayTypeId: 'dtoday000c', bellsId: null, follow: true });
+  const after = todayCtx(school, '2026-09-03T10:00:00Z', { dayOn: follow.store.get('dayOn') });
+  const today = todayOf(after);
+  assert.deepEqual(said(today), ['2026-09-03', 'known', true, 'B Day', null, 'follow'], 'C on the 1st, so A on the 2nd and B on the 3rd');
+  assert.equal(today.since, '2026-09-01');
+  // the Wednesday between keeps its bells: only the day was answered
+  const wednesday = todayCtx(school, '2026-09-02T10:00:00Z', { dayOn: follow.store.get('dayOn') });
+  assert.deepEqual(said(todayOf(wednesday)), ['2026-09-02', 'known', true, 'A Day', 'btodayer00', 'follow']);
+});
+
+test('a follow answer is cleared by a file published after its date, and kept by one published on it or before', () => {
+  const answer = JSON.stringify({ date: '2026-09-01', dayTypeId: 'dtoday000c', bellsId: null, follow: true });
+  const same = todayCtx(todaySchool('2026-09-01T20:00:00Z'), '2026-09-03T10:00:00Z', { dayOn: answer });
+  assert.equal(todayOf(same).by, 'follow');
+  assert.equal(same.store.get('dayOn'), answer);
+  const newer = todayCtx(todaySchool('2026-09-02T07:00:00Z'), '2026-09-03T10:00:00Z', { dayOn: answer });
+  assert.deepEqual(said(todayOf(newer)), ['2026-09-03', 'known', true, 'A Day', null, 'calendar']);
+  assert.equal(newer.store.get('dayOn'), null, 'removed from the device');
+  // a just-today answer is never cleared that way: it only ever holds its own date
+  const justAnswer = JSON.stringify({ date: '2026-09-03', dayTypeId: 'dtoday000c', bellsId: null, follow: false });
+  const justNewer = todayCtx(todaySchool('2026-09-05T07:00:00Z'), '2026-09-03T10:00:00Z', { dayOn: justAnswer });
+  assert.equal(todayOf(justNewer).by, 'reader');
+});
+
+test('whatever was kept under dayOn that is not an answer reads as none and is left as it was', () => {
+  const school = todaySchool();
+  for (const kept of ['not json', '[]', '{}', JSON.stringify({ date: '2026-13-01', dayTypeId: 'dsample00a' }), JSON.stringify({ date: '2026-09-01', dayTypeId: 'dnowhere00' })]) {
+    const ctx = todayCtx(school, '2026-09-01T10:00:00Z', { dayOn: kept });
+    assert.equal(readDayOn(ctx), null, kept);
+    assert.equal(todayOf(ctx).by, 'calendar', kept);
+    assert.equal(ctx.store.get('dayOn'), kept);
+  }
+  // a bell schedule this copy does not have reads as the regular bells
+  const ctx = todayCtx(school, '2026-09-01T10:00:00Z', { dayOn: JSON.stringify({ date: '2026-09-01', dayTypeId: 'dsample00a', bellsId: 'bnowhere00', follow: 'yes' }) });
+  assert.deepEqual(readDayOn(ctx), { date: '2026-09-01', dayTypeId: 'dsample00a', bellsId: null, follow: false });
 });
