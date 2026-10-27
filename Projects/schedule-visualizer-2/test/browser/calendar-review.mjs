@@ -541,8 +541,12 @@ test('at 390 px with touch and the keyboard up: Note and Apply are both reachabl
         const dialog = document.getElementById('calendar-date-dialog');
         return dialog.getBoundingClientRect().height <= window.visualViewport.height;
       });
-      // and the field is reached again, as a tap on it would
-      await p.focus('#calendar-date-dialog input[name="note"]');
+      // the sheet keeps the field being typed in on the visible page by itself
+      await p.waitForFunction(() => {
+        const note = document.querySelector('#calendar-date-dialog input[name="note"]').getBoundingClientRect();
+        const body = document.querySelector('#calendar-date-dialog .cal-dialog__body').getBoundingClientRect();
+        return note.top >= body.top - 1 && note.bottom <= body.bottom + 1;
+      });
       seen = await reach();
       assert.ok(seen.dialog.top >= 0 && seen.dialog.bottom <= seen.visible + 1, height + ': the sheet is on the visible page ' + JSON.stringify(seen));
       assert.ok(seen.apply.bottom <= seen.visible && seen.apply.top >= 0, height + ': Apply is on the visible page ' + JSON.stringify(seen));

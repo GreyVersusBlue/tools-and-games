@@ -167,6 +167,8 @@ export function openDateDialog(options) {
     viewport.addEventListener('resize', fit);
     viewport.addEventListener('scroll', fit);
   }
+  // a browser that makes the window itself shorter for the keyboard
+  window.addEventListener('resize', fit);
 
   function close(focusBack) {
     if (!element.isConnected) return;
@@ -174,6 +176,7 @@ export function openDateDialog(options) {
       viewport.removeEventListener('resize', fit);
       viewport.removeEventListener('scroll', fit);
     }
+    window.removeEventListener('resize', fit);
     element.close();
     element.remove();
     if (open === handle) open = null;
