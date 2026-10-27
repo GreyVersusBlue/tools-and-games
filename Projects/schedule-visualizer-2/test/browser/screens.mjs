@@ -272,6 +272,23 @@ const movementShowing = (patch) => async (page) => {
   await movementDrawn(page);
 };
 
+// SV2-80b (asked for when SV2-79 landed): Movement with a bell schedule named
+// "Early Release", periods 5 to 8 not meeting, chosen in the Bells control.
+async function movementEarlyRelease(page) {
+  await movementDrawn(page);
+  await loadModule(page, 'actions', 'engine/actions.js');
+  await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    const { actions } = globalThis.sv2modules;
+    store.apply(actions.addBellSchedule, { id: 'bsample0er', name: 'Early Release', short: '', fromDayTypeId: store.project.dayTypes[0].id });
+    store.apply(actions.setBellSchedule, { bellScheduleId: 'bsample0er', off: [4, 5, 6, 7] });
+  });
+  await movementDrawn(page);
+  await page.evaluate(() => document.querySelector('.mov').movement.change({ bellsId: 'bsample0er' }));
+  await movementDrawn(page);
+  await page.waitForFunction(() => /with Early Release bells/.test(document.querySelector('#movement-line .mov-line__words')?.textContent || ''));
+}
+
 // SV2-19: playback moved by its scrubber to a second of Period 6 to Period 7,
 // the sample school's long walk, with the settings behind More open or not.
 const playbackAt = (seconds, more) => async (page) => {
@@ -1282,6 +1299,7 @@ export const SCREENS = [
   },
   { id: 'movement-one-group', hash: '#movement', open: movementShowing({ who: 'groups', groupIds: ['gsample08a'], floors: 'fsample001' }) }, // SV2-17
   { id: 'movement-cleared', hash: '#movement', open: movementShowing({ who: 'groups', groupIds: [] }) }, // SV2-17
+  { id: 'movement-early-release', hash: '#movement', open: movementEarlyRelease }, // SV2-80b: the Bells control with Early Release chosen, periods 5 to 8 off
   { id: 'movement-playback', hash: '#movement', open: playbackAt(120, false) }, // SV2-19: half way through a transition, every group a marker
   { id: 'movement-playback-late', hash: '#movement', open: playbackAt(250, true) }, // SV2-19: after the bell, one group late, the settings behind More
   { // SV2-17: the card of the corridor cell the keyboard cursor rests on

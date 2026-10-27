@@ -28,7 +28,7 @@ export const CALENDAR_KEYS = [
   { id: 'calendar-arrows', does: 'Move a day, or a week, through the calendar in date order', shown: 'Arrows' },
   { id: 'calendar-month', does: 'Move a month, keeping the day', shown: 'Page Up, Page Down' },
   { id: 'calendar-week-ends', does: 'Go to the start or the end of the week', shown: 'Home, End' },
-  { id: 'calendar-run', does: 'Choose a run of dates', shown: 'Shift+Arrows' },
+  { id: 'calendar-run', does: 'Choose a run of dates, by days or by months', shown: 'Shift+Arrows, Shift+Page Up, Shift+Page Down' },
   { id: 'calendar-open', does: 'Change the date, or the run chosen', shown: 'Enter, Space' },
 ];
 
