@@ -69,8 +69,8 @@ export const subView = {
       const day = everyTeacherDay(school, dayType.id).get(absent.id).filter((entry) => meets.has(entry.period));
       const cover = coverageFor(school, absent.id, dayType.id).filter((item) => meets.has(item.period));
       const taught = cover.length;
-      says.replaceChildren(typed(absent.name), '\'s day on ', dayWords(school, dayType, bellsId), ': ',
-        taught === 0 ? 'no group to teach.' : taught + ' of ' + day.length + ' ' + school.data.settings.periodWord.toLowerCase() + 's with a group.');
+      says.replaceChildren(h('span', null, typed(absent.name), '\'s day on ', dayWords(school, dayType, bellsId), ': ',
+        taught === 0 ? 'no group to teach.' : taught + ' of ' + day.length + ' ' + school.data.settings.periodWord.toLowerCase() + 's with a group.'));
 
       out.replaceChildren(...[
         h('section', { class: 'card', dataset: { sub: 'day' } },
