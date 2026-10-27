@@ -201,7 +201,7 @@ export function chosenBells(ctx) {
 // today's, where the day type is the one today is (or nothing has said which
 // day today is, so the bells chosen by hand go with the day type chosen by
 // hand), else the regular bells.
-export function bellsFor(ctx, dayTypeId) {
+export function bellsOnPick(ctx, dayTypeId) {
   const today = todayOf(ctx);
   if (!today.known) return today.bellsId;
   return today.school && today.dayType !== null && today.dayType.id === dayTypeId ? today.bellsId : null;

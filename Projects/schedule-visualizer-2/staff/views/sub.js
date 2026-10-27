@@ -14,7 +14,7 @@ import { makeHash } from '../router.js';
 import { pageOf, missingPage, pictureButton } from '../page.js';
 import { dayText } from '../dates.js';
 import { aroundRoom } from '../map.js';
-import { clockNow, dayTypeFor, bellsIdFor, bellsFor, meetingPeriods, dayWords, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
+import { clockNow, dayTypeFor, bellsIdFor, bellsOnPick, meetingPeriods, dayWords, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
 import { coverageFor, teacherChooser } from './coverage.js';
 
 export const SUB_CANDIDATES = 3;
@@ -117,7 +117,7 @@ export const subView = {
 
     const picker = dayTypePicker(ctx, dayType.id, (next) => {
       dayType = next;
-      bellsId = bellsFor(ctx, next.id);
+      bellsId = bellsOnPick(ctx, next.id);
       address();
       draw();
     });

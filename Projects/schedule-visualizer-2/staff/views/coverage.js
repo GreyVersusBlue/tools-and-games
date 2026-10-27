@@ -10,7 +10,7 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, missingPage, printWhen } from '../page.js';
-import { dayTypeFor, bellsIdFor, bellsFor, meetingPeriods, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
+import { dayTypeFor, bellsIdFor, bellsOnPick, meetingPeriods, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
 import { freeTeachers } from './free.js';
 
 // For each period a teacher teaches on a day type, who is free to cover it:
@@ -119,7 +119,7 @@ export const coverageView = {
 
     const chosen = dayTypePicker(ctx, dayType.id, (next) => {
       dayType = next;
-      bellsId = bellsFor(ctx, next.id);
+      bellsId = bellsOnPick(ctx, next.id);
       ctx.replace(makeHash('coverage', absent.id, { d: route.query.d ? dayType.id : '', b: route.query.d ? bellsId : '' }));
       draw();
     });
