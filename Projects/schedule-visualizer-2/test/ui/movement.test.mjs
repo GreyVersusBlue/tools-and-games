@@ -162,7 +162,7 @@ test('the same walk in two transitions is one line, and a route that failed or s
 
 test('the view opens on every group, the first day type and all transitions', () => {
   const choice = defaultChoice(sample.project);
-  assert.deepEqual(choice, { who: 'all', grade: '', groupIds: [], dayTypeId: DAY_A, transition: null, measure: 'busiest', floors: 'auto', labels: true, constantWidth: false });
+  assert.deepEqual(choice, { who: 'all', grade: '', groupIds: [], dayTypeId: DAY_A, bellsId: null, transition: null, measure: 'busiest', floors: 'auto', labels: true, constantWidth: false });
   const shown = picture(sample);
   assert.equal(shown.groups.length, 8);
   assert.equal(shown.mode, 'load');
