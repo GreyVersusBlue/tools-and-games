@@ -110,15 +110,21 @@ export function openDateDialog(options) {
   function reading() {
     const last = lastDate();
     if (last === null) return { refusal: 'Through is a date from ' + dateWords(from) + ' to ' + dateWords(calendar.end) + '.' };
-    const dates = datesFrom(from, last);
+    let dates = datesFrom(from, last);
     const change = {};
     const day = checked(days);
-    if (touched.day) change.day = day === AS_CALENDAR ? null : day;
+    // a run: the day checked is the choice, even when it is the first date's
+    // own (a break that starts on a Saturday), unless only bells were chosen
+    const many = dates.length > 1;
+    const chosen = touched.day ? many || day !== dayNow : many && !touched.bells;
+    if (chosen) change.day = day === AS_CALENDAR ? null : day;
     if (change.day !== null) {
       const chosenBells = checked(bells);
       if (touched.bells && chosenBells !== null) change.bells = chosenBells === AS_WEEKDAY ? null : chosenBells;
       if (touched.note) change.label = note.value;
     }
+    // bells alone are written on school days only, as closing is
+    if (change.day === undefined && change.bells !== undefined && change.label === undefined) dates = dates.filter((date) => (dayEntry(project, date) || {}).school === true);
     return { dates, change };
   }
 
@@ -134,6 +140,12 @@ export function openDateDialog(options) {
       applyButton.textContent = 'Apply';
       return;
     }
+    // Through is a date inside the calendar again: its refusal goes
+    if (through.getAttribute('aria-invalid') === 'true') {
+      through.removeAttribute('aria-invalid');
+      refusal.hidden = true;
+      refusal.textContent = '';
+    }
     const nothing = Object.keys(read.change).length === 0;
     applyButton.textContent = nothing ? 'Apply' : changeWords(project, read.dates, read.change);
   }
@@ -147,15 +159,14 @@ export function openDateDialog(options) {
   }
 
   // a choice put back to what the date has is no change, on one date; on a
-  // run it is what every date of the run is to have
-  const run = () => (lastDate() || from) !== from;
+  // run it is what every date of the run is to have (reading() decides)
   days.addEventListener('change', () => {
-    touched.day = run() || checked(days) !== dayNow;
+    touched.day = true;
     words();
   });
   if (bells) {
     bells.addEventListener('change', () => {
-      touched.bells = run() || checked(bells) !== bellsNow;
+      touched.bells = checked(bells) !== bellsNow || (lastDate() || from) !== from;
       words();
     });
   }
@@ -163,11 +174,13 @@ export function openDateDialog(options) {
     touched.note = note.value !== noteNow;
     words();
   });
-  through.addEventListener('change', () => {
+  const throughChanged = () => {
     const last = lastDate();
     if (last !== null && options.choose) options.choose(from, last);
     words();
-  });
+  };
+  through.addEventListener('change', throughChanged);
+  through.addEventListener('input', throughChanged);
 
   applyButton.addEventListener('click', () => {
     const read = reading();
@@ -180,6 +193,11 @@ export function openDateDialog(options) {
     }
     if (Object.keys(read.change).length === 0) {
       close(true);
+      return;
+    }
+    if (read.dates.length === 0) {
+      refusal.textContent = 'None of these dates is a school day, so there are no bells to change.';
+      refusal.hidden = false;
       return;
     }
     const said = options.apply(read.dates, read.change);

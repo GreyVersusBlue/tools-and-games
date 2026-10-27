@@ -186,11 +186,19 @@ export function createYear(hooks) {
       return;
     } else return;
     event.preventDefault();
-    const stretch = event.shiftKey && !event.key.startsWith('Page');
+    const stretch = event.shiftKey;
     moveTo(next, stretch);
   });
 
+  // A press with Shift stretches the run from the date last focused; the
+  // focus it gives the square must not move the anchor first.
+  let stretching = false;
+  element.addEventListener('mousedown', (event) => {
+    stretching = event.shiftKey && cursor !== null;
+  }, true);
+
   element.addEventListener('click', (event) => {
+    stretching = false;
     const cell = event.target.closest ? event.target.closest('.cal-day') : null;
     if (!cell || cell.getAttribute('aria-disabled') === 'true') return;
     moveTo(cell.dataset.date, event.shiftKey && cursor !== null);
@@ -202,6 +210,7 @@ export function createYear(hooks) {
   element.addEventListener('focusin', (event) => {
     const cell = event.target.closest ? event.target.closest('.cal-day') : null;
     if (!cell || cell.dataset.date === cursor || cell.getAttribute('aria-disabled') === 'true') return;
+    if (stretching) return;
     cursor = cell.dataset.date;
     anchor = null;
     paint();

@@ -271,7 +271,22 @@ export function changeWords(project, dates, change) {
     const dayType = dayTypeOf(project, change.day);
     return 'Set ' + words + ' to ' + (dayType ? dayType.name : '');
   }
+  if (change.bells !== undefined) {
+    // bells alone are written on school days only, as closing is
+    const school = dates.filter((date) => (dayEntry(project, date) || {}).school === true);
+    if (school.length === 0) return 'No school days to change';
+    const on = school.length === 1 ? dateWords(school[0], { year: false }) : count(school.length, 'school day', 'school days');
+    return 'Set ' + on + ' to ' + bellsChoice(project, change.bells);
+  }
   return 'Change ' + words + ' in the calendar';
+}
+
+// "Early Release bells", "regular bells", "the weekday’s bells".
+function bellsChoice(project, bells) {
+  if (bells === null) return 'the weekday’s bells';
+  if (bells === BELLS_REGULAR) return 'Regular bells';
+  const schedule = scheduleOf(project, bells);
+  return (schedule ? schedule.name : '') + ' bells';
 }
 
 // The toast's first sentence for a change made: "No school on 26
