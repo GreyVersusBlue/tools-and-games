@@ -58,7 +58,7 @@ import { differenceOverlay, differenceOf, differenceWords, rankPlaces, apartGrou
 import { applyChanges, editedGroupIds } from '../../engine/scenario.js';
 import { routesForSchedule, routingGraph, createRouteCache } from '../../engine/routing.js';
 import { buildGraph } from '../../engine/graph.js';
-import { periodName } from '../../engine/bells.js';
+import { periodName, findBellSchedule, offPeriods } from '../../engine/bells.js';
 import { unitWord } from '../movement/model.js';
 
 // the card's walks share one route cache, as the movement view's do
@@ -78,9 +78,10 @@ function partsToText(parts) {
 
 // The card's words, in Node as on the page:
 //
-//   whenWords(project, transition, dayTypeId)
+//   whenWords(project, transition, dayTypeId, bellsId)
 //     "at its busiest in one transition, on A Day" for the whole day,
-//     "in Period 2 to Period 3, on A Day" for one transition
+//     "in Period 2 to Period 3, on A Day" for one transition; under a bell
+//     schedule the day says so: "on A Day with Early Release bells"
 //   sidesWords(info)   "Before 12, after 26 students, <when>."
 //   apartLabel(side, transition)
 //     "Walk here only before: " for one transition,
@@ -93,9 +94,10 @@ function partsToText(parts) {
 //   info: { parts, floorName, stairs, words, before, after, unit, when,
 //           transition, excluded,
 //           groups: { onlyBefore, onlyAfter } (groups, by name as typed) or null }
-export function whenWords(project, transition, dayTypeId) {
+export function whenWords(project, transition, dayTypeId, bellsId) {
   const day = project.dayTypes.find((each) => each.id === dayTypeId);
-  const on = day ? ', on ' + day.name : '';
+  const schedule = findBellSchedule(project, bellsId);
+  const on = day ? ', on ' + day.name + (schedule ? ' with ' + schedule.name + ' bells' : '') : '';
   if (transition === null) return 'at its busiest in one transition' + on;
   return 'in ' + periodName(project.settings, transition) + ' to ' + periodName(project.settings, transition + 1) + on;
 }
@@ -124,7 +126,7 @@ export function cardText(info) {
 // Who walks where, before and after, for the card: worked out once an
 // answer.
 //
-//   cardWalks(project, changes, graph, { cache, geometryVersion }?)
+//   cardWalks(project, changes, graph, { cache, geometryVersion, bellsId }?)
 //     project is the real schedule, changes the answer's (reconcile's kept
 //     changes) and graph buildGraph(project). The groups the changes edit
 //     are routed for the real schedule and for it with the changes applied;
@@ -140,7 +142,7 @@ export function cardText(info) {
 //     the group ids that cross the node on that day only before and only
 //     after, in the transition (null: in any transition of the day), each in
 //     the order of the project's groups
-function crossings(routes, graph, edited) {
+function crossings(routes, graph, edited, off) {
   const byDay = new Map();
   for (const day of routes.days) {
     const nodes = new Map();
@@ -148,6 +150,8 @@ function crossings(routes, graph, edited) {
       if (!edited.has(entry.groupId)) continue;
       entry.routes.forEach((found, t) => {
         if (!found || found.ok !== true || found.same === true) return;
+        // under a bell schedule, no walk into or out of a period that does not meet
+        if (off && (off.has(t) || off.has(t + 1))) return;
         for (const place of found.cells) {
           const f = graph.floorIndex.get(place.floorId);
           if (f === undefined) continue;
@@ -175,10 +179,11 @@ export function cardWalks(project, changes, graph, options) {
   const routing = routingGraph(project, graph);
   const opts = options || {};
   const asked = { cache: opts.cache, geometryVersion: opts.geometryVersion };
+  const off = typeof opts.bellsId === 'string' ? offPeriods(project, opts.bellsId) : null;
   return {
     order: new Map(project.groups.map((group, index) => [group.id, index])),
-    before: crossings(routesForSchedule(only(project), routing, asked), graph, edited),
-    after: crossings(routesForSchedule(only(after), routing, asked), graph, edited),
+    before: crossings(routesForSchedule(only(project), routing, asked), graph, edited, off),
+    after: crossings(routesForSchedule(only(after), routing, asked), graph, edited, off),
   };
 }
 
@@ -323,12 +328,14 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
   function compute() {
     const answer = held.answer;
     if (!answer || !held.before || !current()) return;
-    const next = [answer, held.before, memory.dayTypeId, memory.transition];
+    const next = [answer, held.before, memory.dayTypeId, memory.transition, memory.bellsId];
     if (held.key && next.every((each, i) => each === held.key[i])) return;
     held.key = next;
     held.project = store.project;
     held.graph = store.derived.get('graph', ['building'], (project) => buildGraph(project));
-    held.difference = differenceOf(held.before.loads, answer.result.loads, { dayTypeId: memory.dayTypeId, transition: memory.transition, measure: 'busiest' });
+    // the loads of the run chosen: the regular bells' or one bell schedule's
+    const runLoads = (result) => (memory.bellsId === null ? result.loads : (Array.isArray(result.bellLoads) ? result.bellLoads : []).filter((load) => load && load.bellsId === memory.bellsId));
+    held.difference = differenceOf(runLoads(held.before), runLoads(answer.result), { dayTypeId: memory.dayTypeId, transition: memory.transition, measure: 'busiest' });
     held.ranked = held.difference ? rankPlaces(held.difference, answer.result.places, DIFFERENCE_TOP) : { rows: [], changed: 0 };
     element.dataset.differenceMade = String(Number(element.dataset.differenceMade || 0) + 1);
     drawTable();
@@ -422,8 +429,8 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
     const answer = held.answer;
     const project = store.project;
     if (!answer || !sameVersions(answer.versions, { geometry: store.geometryVersion, building: store.buildingVersion, schedule: store.scheduleVersion })) return null;
-    if (!held.walks || held.walks.answer !== answer) {
-      held.walks = { answer, walks: cardWalks(project, answer.changes || [], held.graph, { cache, geometryVersion: store.geometryVersion }) };
+    if (!held.walks || held.walks.answer !== answer || held.walks.bellsId !== memory.bellsId) {
+      held.walks = { answer, bellsId: memory.bellsId, walks: cardWalks(project, answer.changes || [], held.graph, { cache, geometryVersion: store.geometryVersion, bellsId: memory.bellsId }) };
       builds.walks += 1;
     }
     const apart = groupsAt(held.walks.walks, node, dayTypeId, held.difference.transition);
@@ -461,7 +468,7 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
       before: difference.before.cells[node],
       after: difference.after.cells[node],
       unit: difference.unit,
-      when: whenWords(project, difference.transition, dayTypeId),
+      when: whenWords(project, difference.transition, dayTypeId, memory.bellsId),
       transition: difference.transition,
       dayTypeId,
       excluded: Boolean(difference.excluded && difference.excluded[node]),
