@@ -121,11 +121,35 @@ export function mount(env) {
     }
     const outcome = ctx.store.undoOutcome;
     const moved = movedWords(before, after, dates, change, outcome ? outcome.movedFrom : null);
-    ctx.toast({ text: doneWords(after, dates, change) + (moved ? ' ' + moved : ''), action: { label: 'Undo', run: ctx.undo } });
+    // said once the year is drawn (end of update), not now: a message on the
+    // page makes the browser lay the whole year out, and the year is about
+    // to change under it
+    later(() => ctx.toast({ text: doneWords(after, dates, change) + (moved ? ' ' + moved : ''), action: { label: 'Undo', run: ctx.undo } }));
     return null;
   }
 
+  // What is to be said after the next drawing, or after 250 ms if none comes.
+  let said = null;
+  let saidTimer = null;
+  function later(say) {
+    flush();
+    said = say;
+    saidTimer = setTimeout(flush, 250);
+  }
+
+  function flush() {
+    clearTimeout(saidTimer);
+    saidTimer = null;
+    const say = said;
+    said = null;
+    if (say) say();
+  }
+
   function update(project) {
+    // asked before anything is drawn: the root's size is a style the squares
+    // just changed would make the browser work out again
+    const narrow = window.matchMedia(NARROW).matches || enlarged();
+    const sheet = window.matchMedia(INSPECTOR_SHEET).matches;
     const calendar = calendarOf(project);
     const today = todayOf(ctx.clock());
     // a setup begun for another project (one loaded or started since) goes
@@ -154,8 +178,6 @@ export function mount(env) {
     const open = dateDialogOpen();
     if (open && !year.cellOf(open.from)) closeDateDialog(false);
 
-    const narrow = window.matchMedia(NARROW).matches || enlarged();
-    const sheet = window.matchMedia(INSPECTOR_SHEET).matches;
     const listOpen = view.calList === null ? narrow : view.calList;
     if (list.open !== listOpen) {
       opening = listOpen;
@@ -176,6 +198,7 @@ export function mount(env) {
     showMonths.hidden = !narrow;
     slot.replaceChildren(...(sheet ? [panel] : []));
     env.side(sheet ? null : panel);
+    flush();
   }
 
   // drawn now: a tab that comes on screen without a change to the project
@@ -187,6 +210,7 @@ export function mount(env) {
     update,
     // the tab leaves the page: the dialog and the inspector's part go with it
     unmount() {
+      flush();
       closeDateDialog(false);
       env.side(null);
     },

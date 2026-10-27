@@ -5,7 +5,7 @@
 //
 //   todayOf(now)                         the device's own date of a Date, "YYYY-MM-DD"
 //   dayEntry(project, date)              the walk's entry for a date, or null outside the calendar
-//   dateName(project, date, today)       a date's whole sentence, for a screen reader
+//   dateName(project, date, today, entry?) a date's whole sentence, for a screen reader
 //   dayTypeWords / bellsWords / whyWords the parts of a date, as the list and the print show them
 //   monthsOf(start, end, firstDay)       the months of a range as weeks of seven
 //   breaksOf(project)                    the dated "No school" runs, as breaks
@@ -122,9 +122,10 @@ export function changeOn(project, date) {
 // 26 November 2026: no school, Thanksgiving. Changed by hand." A school day
 // says its day type and any bells but the regular ones: "Wednesday 2
 // September 2026: B Day with Early Release bells." Today says so last.
-export function dateName(project, date, today) {
+export function dateName(project, date, today, known) {
   const head = dateWords(date, { weekday: true });
-  const entry = dayEntry(project, date);
+  // the year, which has the walk's entry in hand, hands it over
+  const entry = known === undefined ? dayEntry(project, date) : known;
   if (!entry) return head + ': not in the calendar.';
   let body;
   if (!entry.school) {

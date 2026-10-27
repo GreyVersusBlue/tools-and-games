@@ -17,9 +17,9 @@
 // change does not take the square that has the focus from under it.
 
 import { h, uid } from '../../components/dom.js';
-import { addDays, daysBetween, weekdayOf, isCalendarDate } from '../../../engine/calendar.js';
+import { addDays, daysBetween, weekdayOf, isCalendarDate, datesFrom } from '../../../engine/calendar.js';
 import { calendarDays } from '../../../engine/calendar.js';
-import { calendarOf } from '../../../engine/schema.js';
+import { calendarOf, bellSchedulesOf } from '../../../engine/schema.js';
 import { monthsOf, firstDayOf, dateName, dayTypeWords, shortOfDay, shortOfBells, tintOf, closedWord, runWords, WEEKDAY_NAMES } from './model.js';
 
 const SHORT_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -64,6 +64,8 @@ export function createYear(hooks) {
     firstDay = firstDayOf(locale());
     const order = Array.from({ length: 7 }, (unused, i) => (firstDay + i) % 7);
     cells = new Map();
+    drawn = new Map();
+    marked = { from: null, to: null, cursor: null };
     const months = monthsOf(calendar.start, calendar.end, firstDay).map((month) => {
       const headingId = uid('cal-month');
       const table = h('table', { class: 'cal-month__grid', role: 'grid', 'aria-labelledby': headingId, 'aria-multiselectable': 'true' },
@@ -84,53 +86,113 @@ export function createYear(hooks) {
     element.replaceChildren(...months);
   }
 
+  // What a square shows comes from its date's walk entry and the words the
+  // project gives (day type and bell schedule names, the tints); what marks it
+  // (selected, the roving stop, today) comes from the cursor and the run.
+  // A change of the project draws every square that differs from what it
+  // shows; an arrow touches only the squares whose marks changed.
+  let words = null;
+  let drawn = new Map();
+  let marked = { from: null, to: null, cursor: null };
+
+  function drawCell(date, cell, day) {
+    const signature = day
+      ? [day.school, day.dayTypeId, day.bellsId, day.changed, day.label, day.why, date === today].join('\u0001')
+      : 'out' + (date === today);
+    if (drawn.get(date) === signature) return;
+    drawn.set(date, signature);
+    const t = cell.children[2];
+    const b = cell.children[3];
+    cell.className = 'cal-day';
+    cell.style.removeProperty('--tint');
+    if (!day) {
+      cell.classList.add('is-out');
+      cell.setAttribute('aria-disabled', 'true');
+      cell.removeAttribute('aria-selected');
+      t.textContent = '';
+      t.classList.remove('is-long');
+      b.textContent = '';
+      delete cell.dataset.day;
+      delete cell.dataset.type;
+    } else {
+      cell.removeAttribute('aria-disabled');
+      if (day.school) {
+        const short = shortOfDay(project, day.dayTypeId);
+        t.textContent = short;
+        t.classList.toggle('is-long', short.length >= 3);
+        b.textContent = day.bellsId === null ? '' : shortOfBells(project, day.bellsId);
+        const tint = tintOf(project, day.dayTypeId);
+        if (tint) cell.style.setProperty('--tint', tint);
+        cell.classList.add('is-school');
+        cell.dataset.day = day.dayTypeId;
+      } else {
+        t.textContent = closedWord(day);
+        t.classList.toggle('is-long', t.textContent.length >= 3);
+        b.textContent = '';
+        cell.classList.add('is-closed');
+        delete cell.dataset.day;
+      }
+      if (day.changed) cell.classList.add('is-changed');
+      cell.dataset.type = dayTypeWords(project, day);
+    }
+    if (date === today) cell.setAttribute('aria-current', 'date');
+    else cell.removeAttribute('aria-current');
+    const name = dateName(project, date, today, day);
+    if (cell.firstChild.textContent !== name) cell.firstChild.textContent = name;
+  }
+
+  function markCell(date, chosen) {
+    const cell = cells.get(date);
+    if (!cell) return;
+    if (!cell.classList.contains('is-out')) {
+      const selected = String(chosen !== null && date >= chosen.from && date <= chosen.to);
+      if (cell.getAttribute('aria-selected') !== selected) cell.setAttribute('aria-selected', selected);
+    }
+    const stop = date === cursor ? 0 : -1;
+    if (cell.tabIndex !== stop) cell.tabIndex = stop;
+  }
+
+  // The squares whose marks differ from what was last marked: the old and the
+  // new run (their ends, when a run only stretched) and the old and the new
+  // roving stop. `all` marks every square.
+  function paintMarks(all) {
+    const chosen = run();
+    if (all) {
+      for (const date of cells.keys()) markCell(date, chosen);
+    } else {
+      const touch = new Set();
+      const before = marked.from === null ? null : { from: marked.from, to: marked.to };
+      const lo = [before && before.from, chosen && chosen.from].filter(Boolean).sort()[0];
+      const hi = [before && before.to, chosen && chosen.to].filter(Boolean).sort().pop();
+      if (lo) {
+        const inRun = (r, date) => r !== null && date >= r.from && date <= r.to;
+        for (const date of datesFrom(lo, hi)) {
+          if (inRun(before, date) !== inRun(chosen, date)) touch.add(date);
+        }
+      }
+      if (marked.cursor !== null) touch.add(marked.cursor);
+      if (cursor !== null) touch.add(cursor);
+      for (const date of touch) markCell(date, chosen);
+    }
+    marked = { from: chosen ? chosen.from : null, to: chosen ? chosen.to : null, cursor };
+    const selected = chosen && chosen.from !== chosen.to ? daysBetween(chosen.from, chosen.to) + 1 : 0;
+    hooks.status(selected > 1 ? selected + ' dates selected, ' + runWords(chosen.from, chosen.to) : '');
+  }
+
+  // Every square drawn from the project again; those that already say the
+  // same are left as they are.
   function paint() {
     const days = calendarDays(project);
     const byDate = new Map(days.map((day) => [day.date, day]));
-    const chosen = run();
-    for (const [date, cell] of cells) {
-      const day = byDate.get(date) || null;
-      const t = cell.children[2];
-      const b = cell.children[3];
-      cell.className = 'cal-day';
-      cell.style.removeProperty('--tint');
-      if (!day) {
-        cell.classList.add('is-out');
-        cell.setAttribute('aria-disabled', 'true');
-        cell.removeAttribute('aria-selected');
-        t.textContent = '';
-        b.textContent = '';
-      } else {
-        cell.removeAttribute('aria-disabled');
-        if (day.school) {
-          const short = shortOfDay(project, day.dayTypeId);
-          t.textContent = short;
-          t.classList.toggle('is-long', short.length >= 3);
-          b.textContent = day.bellsId === null ? '' : shortOfBells(project, day.bellsId);
-          const tint = tintOf(project, day.dayTypeId);
-          if (tint) cell.style.setProperty('--tint', tint);
-          cell.classList.add('is-school');
-          cell.dataset.day = day.dayTypeId;
-        } else {
-          t.textContent = closedWord(day);
-          t.classList.toggle('is-long', t.textContent.length >= 3);
-          b.textContent = '';
-          cell.classList.add('is-closed');
-          delete cell.dataset.day;
-        }
-        if (day.changed) cell.classList.add('is-changed');
-        const selected = chosen !== null && date >= chosen.from && date <= chosen.to;
-        cell.setAttribute('aria-selected', String(selected));
-        cell.dataset.type = dayTypeWords(project, day);
-      }
-      if (date === today) cell.setAttribute('aria-current', 'date');
-      else cell.removeAttribute('aria-current');
-      const name = dateName(project, date, today);
-      if (cell.firstChild.textContent !== name) cell.firstChild.textContent = name;
-      cell.tabIndex = date === cursor ? 0 : -1;
+    // the words a square is made of: the day types and the bell schedules
+    // (compared by what they say: a change to the calendar may hand back new arrays)
+    const given = JSON.stringify([project.dayTypes, bellSchedulesOf(project)].map((list) => list.map((one) => (one ? [one.id, one.name, one.short] : null))));
+    if (words !== given) {
+      drawn = new Map();
+      words = given;
     }
-    const selected = chosen && chosen.from !== chosen.to ? daysBetween(chosen.from, chosen.to) + 1 : 0;
-    hooks.status(selected > 1 ? selected + ' dates selected, ' + runWords(chosen.from, chosen.to) : '');
+    for (const [date, cell] of cells) drawCell(date, cell, byDate.get(date) || null);
+    paintMarks(true);
   }
 
   // Put the cursor (and with `stretch`, the end of the run) on a date.
@@ -143,7 +205,7 @@ export function createYear(hooks) {
       anchor = null;
     }
     cursor = next;
-    paint();
+    paintMarks(false);
     cells.get(cursor).focus();
   }
 
@@ -213,7 +275,7 @@ export function createYear(hooks) {
     if (stretching) return;
     cursor = cell.dataset.date;
     anchor = null;
-    paint();
+    paintMarks(false);
   });
 
   return {
@@ -248,13 +310,13 @@ export function createYear(hooks) {
       if (!cells.has(from)) return;
       anchor = from;
       cursor = cells.has(to) ? to : from;
-      paint();
+      paintMarks(false);
     },
     focusDate(date) {
       if (!cells.has(date)) return;
       cursor = date;
       anchor = null;
-      paint();
+      paintMarks(false);
       cells.get(date).focus();
     },
   };
