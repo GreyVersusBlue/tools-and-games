@@ -152,6 +152,7 @@ export const GROUPS = {
     'browser/publish.mjs', // SV2-24
     'browser/m4-pass.mjs', // SV2-45
     'browser/movement.mjs', // SV2-17
+    'browser/movement-bells.mjs', // SV2-79
     'browser/hotspots.mjs', // SV2-18
     'browser/playback.mjs', // SV2-19
     'browser/m3-pass.mjs', // SV2-43

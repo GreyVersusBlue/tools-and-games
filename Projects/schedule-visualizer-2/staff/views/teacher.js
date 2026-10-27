@@ -126,15 +126,26 @@ export function dayKindsOf(school, describe) {
   return kinds;
 }
 
-// The period the clock is in on this kind of day, or -1. It is only known
-// when the day is: every day type is the same, or the reader has said which
-// day type today is (kept on the device under `day`). With a calendar that
-// knows today, dayCardsOf() marks today's card instead.
-export function nowPeriodOf(ctx, kinds, kind) {
-  const chosen = ctx.store ? ctx.store.get('day') : null;
-  if (kinds.length !== 1 && !kind.dayTypes.some((dayType) => dayType.id === chosen)) return -1;
-  const moment = momentOf(ctx.school, kind.first.id, clockNow(ctx));
-  return moment.state === 'in' ? moment.period : -1;
+// The kind of day the clock is read against, and under which bells, or null
+// where "now" is not known:
+//
+//   today settled by the calendar or the reader   that day type, today's bells
+//   a date with no school                        nothing: no period is now,
+//                                                whatever was chosen by hand
+//   otherwise                                    the kind every day type is,
+//                                                or the one the reader chose
+//                                                (kept under `day`), with the
+//                                                bells chosen beside it
+//                                                (kept under `bells`)
+export function liveKindOf(ctx, kinds) {
+  const today = todayOf(ctx);
+  if (today.known && !today.school) return null;
+  if (today.known) {
+    const kind = today.dayType === null ? null : kinds.find((each) => each.dayTypes.some((dayType) => dayType.id === today.dayType.id)) || null;
+    return kind === null ? null : { kind, bellsId: today.bellsId };
+  }
+  const kind = kinds.length === 1 ? kinds[0] : today.by === 'hand' ? kinds.find((each) => each.dayTypes.some((dayType) => dayType.id === today.dayType.id)) || null : null;
+  return kind === null ? null : { kind, bellsId: today.bellsId };
 }
 
 // The names of a kind of day: "A Day", or "A Day and B Day" when they are the
@@ -163,11 +174,14 @@ export function dayCardsOf(ctx, kinds, rowOf) {
   const school = ctx.school;
   const today = todayOf(ctx);
   const settled = today.known && today.school && today.dayType !== null;
-  const todayKind = settled ? kinds.find((kind) => kind.dayTypes.some((dayType) => dayType.id === today.dayType.id)) || null : null;
-  const ownCard = todayKind !== null && today.bellsId !== null;
+  const live = liveKindOf(ctx, kinds);
+  const todayKind = settled && live !== null ? live.kind : null;
+  // a card of its own for the bells in force, whoever said so
+  const ownCard = live !== null && live.bellsId !== null;
   const ordered = todayKind !== null && !ownCard ? [todayKind].concat(kinds.filter((kind) => kind !== todayKind)) : kinds;
 
   const cardOf = (kind, bellsId, isToday, open) => {
+    const own = bellsId !== null;
     const bells = school.bells(kind.first.id, bellsId);
     const schedule = bellsId ? school.bellSchedule(bellsId) : null;
     const rows = bells.map((bell, period) => {
@@ -182,22 +196,22 @@ export function dayCardsOf(ctx, kinds, rowOf) {
     });
     const title = [
       h('h2', { class: 'card__title' }, kindName(kind)),
-      isToday ? h('span', { class: 'day__tag' }, 'Today') : null,
+      isToday ? h('span', { class: 'day__tag' }, kind.dayTypes.length > 1 ? ['Today: ', typed(today.dayType.name)] : 'Today') : null,
       schedule ? h('p', { class: 'day__bells' }, typed(schedule.name), ' bells') : null,
     ];
     // (dom.js writes a dataset's value as it is, so what a card is not is left off)
     const dataset = { days: kind.dayTypes.map((dayType) => dayType.id).join(' ') };
     if (isToday) dataset.today = 'true';
     if (bellsId) dataset.bells = bellsId;
-    if (ownCard && isToday) dataset.own = 'true';
-    const attrs = { class: 'card day' + (ownCard && isToday ? ' no-print' : ''), dataset };
+    if (own) dataset.own = 'true';
+    const attrs = { class: 'card day' + (own ? ' no-print' : ''), dataset };
     const list = h('ol', { class: 'rows' }, rows);
     if (open) return h('section', attrs, h('div', { class: 'day__head' }, title), list);
     return h('details', attrs, h('summary', { class: 'day__head' }, title), list);
   };
 
   const cards = [];
-  if (ownCard) cards.push(cardOf(todayKind, today.bellsId, true, true));
+  if (ownCard) cards.push(cardOf(live.kind, live.bellsId, settled, true));
   for (const kind of ordered) cards.push(cardOf(kind, null, !ownCard && kind === todayKind, true));
   if (cards.length > DAY_CARDS_OPEN_MOST) {
     for (let at = 1; at < cards.length; at += 1) {
@@ -207,19 +221,16 @@ export function dayCardsOf(ctx, kinds, rowOf) {
   }
   const days = h('div', { class: 'days', dataset: { count: String(cards.length), paper: String(kinds.length) } }, cards);
 
-  // the current period: on today's card when today is known, else as before
+  // the current period, on the card of the kind of day it is and under the
+  // bells it rings
+  const liveDays = live === null ? null : live.kind.dayTypes.map((dayType) => dayType.id).join(' ');
   const mark = () => {
     const now = clockNow(ctx);
     for (const card of days.querySelectorAll('.day')) {
-      const kind = kinds.find((each) => each.dayTypes.map((dayType) => dayType.id).join(' ') === card.dataset.days);
       let current = -1;
-      if (settled) {
-        if (card.dataset.today === 'true') {
-          const moment = momentOf(school, kind.first.id, now, today.bellsId);
-          current = moment.state === 'in' ? moment.period : -1;
-        }
-      } else {
-        current = nowPeriodOf(ctx, kinds, kind);
+      if (live !== null && card.dataset.days === liveDays && (card.dataset.bells || null) === live.bellsId) {
+        const moment = momentOf(school, live.kind.first.id, now, live.bellsId);
+        current = moment.state === 'in' ? moment.period : -1;
       }
       for (const row of card.querySelectorAll('.row')) {
         const here = Number(row.dataset.period) === current;

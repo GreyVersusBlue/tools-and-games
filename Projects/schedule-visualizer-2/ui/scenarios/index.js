@@ -62,13 +62,14 @@ export const SCENARIO_KEYS = [
 
 // What is chosen here, kept for the open project while the page is open
 // (in memory: no storage key, and nothing new in project.scenario).
-const memory = { projectId: null, form: freshForm(), dayTypeId: null, transition: null, floors: 'auto', file: null };
+const memory = { projectId: null, form: freshForm(), dayTypeId: null, bellsId: null, transition: null, floors: 'auto', file: null };
 
 function adopt(project) {
   if (memory.projectId === project.id) return;
   memory.projectId = project.id;
   memory.form = freshForm();
   memory.dayTypeId = null;
+  memory.bellsId = null;
   memory.transition = null;
   memory.floors = 'auto';
   memory.file = null;
@@ -300,11 +301,11 @@ export const section = {
 
     // ---- the comparison, asked of the scenario lane
     function laneKey() {
-      return { scenario: store.project.scenario, counters: store.geometryVersion + ':' + store.buildingVersion + ':' + store.scheduleVersion, dayTypeId: memory.dayTypeId, transition: memory.transition };
+      return { scenario: store.project.scenario, counters: store.geometryVersion + ':' + store.buildingVersion + ':' + store.scheduleVersion, dayTypeId: memory.dayTypeId, bellsId: memory.bellsId, transition: memory.transition };
     }
 
     function sameKey(a, b) {
-      return Boolean(a) && Boolean(b) && a.scenario === b.scenario && a.counters === b.counters && a.dayTypeId === b.dayTypeId && a.transition === b.transition;
+      return Boolean(a) && Boolean(b) && a.scenario === b.scenario && a.counters === b.counters && a.dayTypeId === b.dayTypeId && a.bellsId === b.bellsId && a.transition === b.transition;
     }
 
     // asks again only when what the answer is for has changed
@@ -327,7 +328,7 @@ export const section = {
       drawCompare();
       // drawn first: the options settle to the project (a day type gone is none)
       lane.key = laneKey();
-      store.derived.scenario({ dayTypeId: memory.dayTypeId, transition: memory.transition }).then((answer) => {
+      store.derived.scenario({ dayTypeId: memory.dayTypeId, ...(memory.bellsId === null ? {} : { bellsId: memory.bellsId }), transition: memory.transition }).then((answer) => {
         if (gone || token !== lane.asked) return;
         lane.pending = false;
         lane.answer = answer;

@@ -52,7 +52,7 @@ import { count } from '../components/words.js';
 import { hotspots } from '../../engine/places.js';
 import { bandOf } from '../../engine/load.js';
 import { formatDuration } from '../../engine/findings.js';
-import { unitWord } from './model.js';
+import { unitWord, runOf } from './model.js';
 
 // How many places carry a ring on the map.
 export const PULSE_TOP = 3;
@@ -73,17 +73,20 @@ function loadIn(load, period) {
 }
 
 // The ranking for anything that can say what it wants ranked:
-//   asked = { dayTypeId, groups, load (loads()'s result for those groups),
+//   asked = { dayTypeId, bellsId (null for regular bells), groups, load (loads()'s result for those groups),
 //             max (the load the relative bands are fifths of),
 //             transition (a period, or null), measure, transitions (transitionsOf()) }
 export function rankedPlaces(project, results, graph, asked) {
   if (!project || !results || !graph || !asked || !asked.load || !results.places) return [];
-  const day = results.routes && Array.isArray(results.routes.days) ? results.routes.days.find((each) => each.dayTypeId === asked.dayTypeId) : null;
+  const bellsId = typeof asked.bellsId === 'string' ? asked.bellsId : null;
+  const run = runOf(results, asked.dayTypeId, bellsId);
+  const day = run.routes;
   if (!day) return [];
   const shown = new Set(asked.groups.map((group) => group.id));
-  const mine = { days: [{ dayTypeId: asked.dayTypeId, groups: day.groups.filter((entry) => shown.has(entry.groupId)) }] };
+  // hotspots() (engine/places.js) asks for the contributors of a day type's regular run; the run's own entry stands in for it, since the load is handed in
+  const mine = { days: [{ ...day, groups: day.groups.filter((entry) => shown.has(entry.groupId)) }] };
   const period = Number.isInteger(asked.transition) ? asked.transition : null;
-  const crowd = results.crowd && Array.isArray(results.crowd.days) ? results.crowd.days.find((each) => each.dayTypeId === asked.dayTypeId) : null;
+  const crowd = run.crowd;
   const ranked = hotspots(project, mine, asked.dayTypeId, {
     graph,
     places: results.places,
@@ -115,7 +118,7 @@ export function rankedPlaces(project, results, graph, asked) {
       unit: row.unit,
       band: bandOf(row.load, scale, asked.max),
       peak: row.peak,
-      when: row.peak === null || !asked.transitions[row.peak] ? '' : asked.transitions[row.peak].name,
+      when: row.peak === null ? '' : (asked.transitions.find((each) => each.period === row.peak) || { name: '' }).name,
       groups: row.groups.filter((each) => groups.has(each.groupId)).map((each) => ({ group: groups.get(each.groupId), times: each.times, count: each.count })),
       delay: row.delay,
       dayDelay: row.dayDelay,
@@ -133,6 +136,7 @@ function ranking(project, results, graph, picture) {
   if (held) return held;
   const all = rankedPlaces(project, results, graph, {
     dayTypeId: picture.dayTypeId,
+    bellsId: picture.bellsId,
     groups: picture.groups,
     load: picture.load.source,
     max: picture.load.max,

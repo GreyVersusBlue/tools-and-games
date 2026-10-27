@@ -8,6 +8,7 @@
 //     grade,                 the grade shown when who is 'grade'
 //     groupIds,              the groups compared when who is 'groups' (none: nothing is shown)
 //     dayTypeId,
+//     bellsId,               null for the day type's regular bells, or a bell schedule's id (ARCHITECTURE 17.8)
 //     transition,            null for all of the day, or the period walked out of
 //     measure: 'busiest' | 'total',   what the colours count over a whole day
 //     floors: 'auto' | 'side' | 'stacked' | a floor id,
@@ -22,7 +23,11 @@
 //   shownGroups(project, choice)       the groups on screen, in the project's order
 //   addGroup(choice, groupId)          -> { choice, refused } (COMPARE_LIMIT at most; COMPARE_REASON says why)
 //   gradesOf(project)                  the grades there are, as typed, sorted
-//   transitionsOf(project, dayTypeId)  [{ period, name, short, from, to, times, seconds }]
+//   transitionsOf(project, dayTypeId, bellsId)  [{ period, name, short, from, to, times, seconds }]: the
+//                                      walks between periods that both meet
+//   offWords(project, bellsId)         "Periods 5 to 8 do not meet", or '' when every period meets
+//   runOf(results, dayTypeId, bellsId) one run's parts of the results: { routes, crowd, loads, walks }
+//   routesOfRun(routes, entry, groups) a routes object of the entry's run for these groups alone (engine/load.js reads it)
 //   pictureOf(project, results, graph, choice)   everything the map and the legend draw
 //   sentenceOf(project, picture, health)         the screen's first line, in pieces
 //   groupRows(project, results, picture)         the legend of the groups on screen
@@ -30,9 +35,12 @@
 //   foldHealth(health)                           the same as it is listed: one line for failures one change puts right
 //   cellCard(project, results, graph, picture, floorId, cell)   what a corridor cell's card says
 
-import { findDayType, effectiveDayType, effectiveSchedule, ownDayTypes } from '../../engine/day-types.js';
-import { bellsFor, periodName, periodLabel, formatTime } from '../../engine/bells.js';
-import { resolveSlotRoom } from '../../engine/schema.js';
+import { findDayType, effectiveDayType, ownDayTypes } from '../../engine/day-types.js';
+import { bellsFor, periodName, periodLabel, formatTime, findBellSchedule, offPeriods } from '../../engine/bells.js';
+import { resolveSlotRoom, bellSchedulesOf } from '../../engine/schema.js';
+import { meetingSlots } from '../../engine/runs.js';
+import { runResults } from '../../engine/worker.js';
+import { periodWords } from '../components/words.js';
 import { loads, contributors, indexRoutes, bandOf, bandEdges } from '../../engine/load.js';
 import { describeFailure, startsAsTyped } from '../../engine/directions.js';
 import { placeAt } from '../../engine/places.js';
@@ -59,7 +67,7 @@ export function compareFull(limit) {
 export const COMPARE_REASON = compareReason(COMPARE_LIMIT);
 
 export function defaultChoice(project) {
-  return { who: 'all', grade: '', groupIds: [], dayTypeId: project.dayTypes[0].id, transition: null, measure: 'busiest', floors: 'auto', labels: true, constantWidth: false };
+  return { who: 'all', grade: '', groupIds: [], dayTypeId: project.dayTypes[0].id, bellsId: null, transition: null, measure: 'busiest', floors: 'auto', labels: true, constantWidth: false };
 }
 
 export function gradesOf(project) {
@@ -70,6 +78,7 @@ export function gradesOf(project) {
 export function settleChoice(project, choice) {
   const next = { ...defaultChoice(project), ...choice };
   if (!findDayType(project, next.dayTypeId)) next.dayTypeId = project.dayTypes[0].id;
+  if (!findBellSchedule(project, next.bellsId)) next.bellsId = null;
   const known = new Set(project.groups.map((group) => group.id));
   // each group once, in the order chosen
   next.groupIds = Array.from(new Set((Array.isArray(next.groupIds) ? next.groupIds : []).filter((id) => known.has(id)))).slice(0, COMPARE_LIMIT);
@@ -79,8 +88,8 @@ export function settleChoice(project, choice) {
     if (grades.length === 0) next.who = 'all';
     else next.grade = grades[0];
   }
-  const transitions = Math.max(0, project.settings.periods - 1);
-  if (!(Number.isInteger(next.transition) && next.transition >= 0 && next.transition < transitions)) next.transition = null;
+  // a transition is one between two periods that meet under the bells chosen
+  if (!transitionsOf(project, next.dayTypeId, next.bellsId).some((each) => each.period === next.transition)) next.transition = null;
   if (!['busiest', 'total'].includes(next.measure)) next.measure = 'busiest';
   if (!['auto', 'side', 'stacked'].includes(next.floors) && !project.building.floors.some((floor) => floor.id === next.floors)) next.floors = 'auto';
   next.labels = next.labels !== false;
@@ -103,11 +112,13 @@ export function addGroup(choice, groupId) {
 // One entry per transition of the day: the walk from period `period` into the
 // next. `times` is the passing time as the clock has it ("8:42 to 8:46"), or
 // '' when the bells are not entered.
-export function transitionsOf(project, dayTypeId) {
+export function transitionsOf(project, dayTypeId, bellsId) {
   const settings = project.settings;
-  const bells = bellsFor(project, dayTypeId);
+  const bells = bellsFor(project, dayTypeId, bellsId);
   const list = [];
   for (let period = 0; period + 1 < settings.periods; period += 1) {
+    // no walk into or out of a period that does not meet
+    if (bells[period].off || bells[period + 1].off) continue;
     const from = bells[period] ? bells[period].end : null;
     const to = bells[period + 1] ? bells[period + 1].start : null;
     const clock = from && to && bells[period].passingFromBells;
@@ -124,12 +135,57 @@ export function transitionsOf(project, dayTypeId) {
   return list;
 }
 
+// Where `period` stands among the transitions shown (a strip that leaves
+// periods out is shorter than the day), or -1 for All or a period not there.
+export function positionOf(transitions, period) {
+  return Number.isInteger(period) ? transitions.findIndex((each) => each.period === period) : -1;
+}
+
+// Is the walk out of `period` one of the transitions shown?
+function meets(transitions, period) {
+  return transitions.some((each) => each.period === period);
+}
+
 function byId(list) {
   return new Map(list.map((each) => [each.id, each]));
 }
 
-function dayRoutes(results, dayTypeId) {
-  return results && results.routes && Array.isArray(results.routes.days) ? results.routes.days.find((day) => day.dayTypeId === dayTypeId) || null : null;
+function dayRoutes(results, dayTypeId, bellsId) {
+  return runOf(results, dayTypeId, bellsId).routes;
+}
+
+// One run's parts of the results (engine/worker.js runResults): the routes
+// and the crowd model's transitions, the loads, and the walks that carry the
+// run's day type and bells. Nothing of a run that is not there (no results
+// yet, or no bell schedule of that id) is made up.
+export function runOf(results, dayTypeId, bellsId) {
+  return results ? runResults(results, dayTypeId, bellsId) : { routes: null, crowd: null, loads: null, walks: { groups: [], teachers: [] } };
+}
+
+// A routes object (engine/load.js reads it) holding one run's routes of some
+// groups alone. `entry` is the run's whole entry.
+export function routesOfRun(entry, groups) {
+  const mine = { ...entry, groups };
+  return typeof entry.bellsId === 'string' ? { days: [], bells: [mine] } : { days: [mine] };
+}
+
+// "Periods 5 to 8 do not meet": the periods the bell schedule leaves out, in
+// the school's word and short form; '' when every period meets.
+export function offWords(project, bellsId) {
+  const off = Array.from(offPeriods(project, bellsId)).sort((a, b) => a - b);
+  if (off.length === 0) return '';
+  const settings = project.settings;
+  const words = periodWords(settings);
+  const parts = [];
+  for (let i = 0; i < off.length;) {
+    let j = i;
+    while (j + 1 < off.length && off[j + 1] === off[j] + 1) j += 1;
+    if (j - i >= 2) parts.push(periodLabel(settings, off[i]) + ' to ' + periodLabel(settings, off[j]));
+    else for (let k = i; k <= j; k += 1) parts.push(periodLabel(settings, off[k]));
+    i = j + 1;
+  }
+  const listed = parts.length === 1 ? parts[0] : parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1];
+  return off.length === 1 ? words.One + ' ' + listed + ' does not meet' : words.Many + ' ' + listed + ' do not meet';
 }
 
 // "1", "1–3", "1, 4–6": the periods a group is in a room, in the short form.
@@ -179,12 +235,12 @@ export function shownFloors(project, choice) {
 // The load of the groups on screen. With every group shown it is the
 // pipeline's own answer; for some of them it is the same rule, loads(), given
 // only their routes.
-function loadFor(project, results, graph, dayType, groups, routes) {
+function loadFor(project, results, graph, dayType, bellsId, groups, routes) {
   const all = groups.length === project.groups.length;
-  const kept = all && Array.isArray(results.loads) ? results.loads.find((load) => load && load.dayTypeId === dayType.id) : null;
+  const kept = all ? runOf(results, dayType.id, bellsId).loads : null;
   if (kept && kept.cells.busiest.length === graph.count) return kept;
   const wanted = new Set(groups.map((group) => group.id));
-  return loads(project, { days: [{ dayTypeId: dayType.id, groups: routes.groups.filter((entry) => wanted.has(entry.groupId)) }] }, dayType.id, graph);
+  return loads(project, routesOfRun(routes, routes.groups.filter((entry) => wanted.has(entry.groupId))), dayType.id, graph, bellsId);
 }
 
 // How many exclusion zones leave something out of the scale on screen: the
@@ -214,16 +270,23 @@ export function pictureOf(project, results, graph, input) {
   const groups = shownGroups(project, choice);
   const floors = shownFloors(project, choice);
   const floorIds = new Set(floors.map((floor) => floor.id));
-  const transitions = transitionsOf(project, choice.dayTypeId);
+  const transitions = transitionsOf(project, choice.dayTypeId, choice.bellsId);
+  const bellSchedule = findBellSchedule(project, choice.bellsId);
   const picture = {
     choice,
     ready: Boolean(results),
     dayTypeId: dayType.id,
-    dayTypeName: chosenDay.name,
+    bellsId: bellSchedule ? bellSchedule.id : null,
+    bellsName: bellSchedule ? bellSchedule.name : null,
+    offWords: offWords(project, choice.bellsId),
+    // what the picture is of, as every heading and caption says it: "A Day",
+    // or "A Day with Early Release bells"; dayName is the day type alone
+    dayName: chosenDay.name,
+    dayTypeName: bellSchedule ? chosenDay.name + ' with ' + bellSchedule.name + ' bells' : chosenDay.name,
     groups,
     floors,
     transitions,
-    transition: choice.transition === null ? null : transitions[choice.transition],
+    transition: choice.transition === null ? null : transitions.find((each) => each.period === choice.transition) || null,
     mode: groups.length === 0 ? 'empty' : groups.length === 1 ? 'single' : 'load',
     drawn: 0,
     same: 0,
@@ -244,7 +307,7 @@ export function pictureOf(project, results, graph, input) {
   // the room markers: where each group on screen is, period by period
   const rooms = new Map();
   for (const group of groups) {
-    const slots = effectiveSchedule(project, group.id, dayType.id) || [];
+    const slots = meetingSlots(project, group.id, dayType.id, picture.bellsId) || [];
     for (let p = firstPeriod; p < Math.min(slots.length, firstPeriod + periods); p += 1) {
       const room = resolveSlotRoom(project, slots[p]).room;
       if (!room) continue;
@@ -268,10 +331,11 @@ export function pictureOf(project, results, graph, input) {
     picture.markers.set(floor.id, list);
   }
 
-  const routes = dayRoutes(results, dayType.id);
+  const run = runOf(results, dayType.id, picture.bellsId);
+  const routes = run.routes;
   if (!results || !routes || !graph) return picture;
   // who crosses which cell, worked out with the picture and kept (engine/load.js): the first cell card is then as quick as the rest
-  indexRoutes(project, results.routes, dayType.id, graph);
+  indexRoutes(project, results.routes, dayType.id, graph, picture.bellsId);
 
   // the routes on screen
   const entries = [];
@@ -280,6 +344,8 @@ export function pictureOf(project, results, graph, input) {
     if (!shown.has(entry.groupId)) continue;
     entry.routes.forEach((route, t) => {
       if (choice.transition !== null && t !== choice.transition) return;
+      // a walk into or out of a period that does not meet is not one
+      if (!meets(transitions, t)) return;
       if (!route || route.ok !== true) {
         if (route) picture.failed.push({ groupId: entry.groupId, period: t, route });
         return;
@@ -300,9 +366,9 @@ export function pictureOf(project, results, graph, input) {
   }
 
   // who is late, by the crowd model's own rule
-  if (results.walks && Array.isArray(results.walks.groups)) {
-    for (const walk of results.walks.groups) {
-      if (walk.late !== true || walk.dayTypeId !== dayType.id || !shown.has(walk.groupId)) continue;
+  {
+    for (const walk of run.walks.groups) {
+      if (walk.late !== true || !shown.has(walk.groupId)) continue;
       if (choice.transition !== null && walk.period !== choice.transition) continue;
       picture.late.push(walk);
     }
@@ -311,7 +377,7 @@ export function pictureOf(project, results, graph, input) {
   // the load of what is on screen. One group alone is not coloured by it
   // (spec 7.3), but its card and the summary still give the numbers.
   if (picture.mode === 'empty') return picture;
-  const load = loadFor(project, results, graph, dayType, groups, routes);
+  const load = loadFor(project, results, graph, dayType, picture.bellsId, groups, routes);
   if (!load) return picture;
   const cells = choice.transition !== null ? load.cells.byTransition[choice.transition] : choice.measure === 'total' ? load.cells.total : load.cells.busiest;
   const links = choice.transition !== null ? load.connections.byTransition[choice.transition] : choice.measure === 'total' ? load.connections.total : load.connections.busiest;
@@ -547,7 +613,9 @@ export function sentenceOf(project, picture, health) {
   if (n === 1) parts.push({ text: picture.groups[0].name, name: true });
   else if (picture.choice.who === 'grade') parts.push({ text: plural(n, 'group') + ' of grade ' }, { text: picture.choice.grade === '' ? '(none)' : picture.choice.grade, name: picture.choice.grade !== '' });
   else parts.push({ text: plural(n, 'group') });
-  parts.push({ text: ' on ' }, { text: picture.dayTypeName, name: true }, { text: picture.transition ? ', ' + picture.transition.name + (picture.transition.times ? ' (' + picture.transition.times + ')' : '') + '. ' : ', all transitions. ' });
+  parts.push({ text: ' on ' }, { text: picture.dayName, name: true });
+  if (picture.bellsName !== null) parts.push({ text: ' with ' }, { text: picture.bellsName, name: true }, { text: ' bells' });
+  parts.push({ text: picture.transition ? ', ' + picture.transition.name + (picture.transition.times ? ' (' + picture.transition.times + ')' : '') + '. ' : ', all transitions. ' });
   if (!picture.ready) {
     parts.push({ text: 'Working out the routes.' });
     return { parts, showMe: false };
@@ -574,24 +642,27 @@ export function sentenceOf(project, picture, health) {
 //   failed    how many of its routes failed
 //   late      how many transitions it cannot make in time
 export function groupRows(project, results, picture) {
-  const routes = dayRoutes(results, picture.dayTypeId);
-  const crowd = results && results.crowd && Array.isArray(results.crowd.days) ? results.crowd.days.find((day) => day.dayTypeId === picture.dayTypeId) : null;
-  const walks = results && results.walks && Array.isArray(results.walks.groups) ? results.walks.groups : [];
+  const run = runOf(results, picture.dayTypeId, picture.bellsId);
+  const routes = run.routes;
+  const crowd = run.crowd;
+  const walks = run.walks.groups;
   return picture.groups.map((group) => {
     const row = { group, walking: 0, waiting: 0, stairs: false, failed: 0, late: 0, walks: 0 };
     const entry = routes ? routes.groups.find((each) => each.groupId === group.id) : null;
-    for (const route of entry ? entry.routes : []) {
+    (entry ? entry.routes : []).forEach((route, t) => {
+      if (!meets(picture.transitions, t)) return;
       if (!route || route.ok !== true) row.failed += 1;
       else if (!route.same && (route.connections || []).length > 0) row.stairs = true;
-    }
+    });
     for (const transition of crowd ? crowd.transitions : []) {
+      if (transition.off === true) continue;
       const walker = transition.groups.find((each) => each.groupId === group.id);
       if (!walker) continue;
       row.walks += 1;
       row.walking += walker.walking;
       row.waiting += walker.waiting;
     }
-    row.late = walks.filter((walk) => walk.late === true && walk.dayTypeId === picture.dayTypeId && walk.groupId === group.id).length;
+    row.late = walks.filter((walk) => walk.late === true && walk.groupId === group.id).length;
     return row;
   });
 }
@@ -654,11 +725,11 @@ export function cellCard(project, results, graph, picture, floorId, cell) {
   if (!place) return null;
   const f = graph.floorIndex.get(floorId);
   const node = graph.floors[f].nodeOfCell[cell];
-  const routes = dayRoutes(results, picture.dayTypeId);
+  const routes = dayRoutes(results, picture.dayTypeId, picture.bellsId);
   const shown = new Set(picture.groups.map((group) => group.id));
-  const mine = routes ? { days: [{ dayTypeId: picture.dayTypeId, groups: routes.groups.filter((entry) => shown.has(entry.groupId)) }] } : null;
+  const mine = routes ? routesOfRun(routes, routes.groups.filter((entry) => shown.has(entry.groupId))) : null;
   const period = picture.choice.transition;
-  const crossing = mine ? contributors(project, mine, picture.dayTypeId, { nodes: [node] }, graph, period === null ? undefined : { period }) : [];
+  const crossing = mine ? contributors(project, mine, picture.dayTypeId, { nodes: [node] }, graph, { bellsId: picture.bellsId, ...(period === null ? {} : { period }) }) : [];
   const groups = byId(project.groups);
   return {
     place,

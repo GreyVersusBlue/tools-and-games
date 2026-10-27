@@ -162,7 +162,7 @@ test('the same walk in two transitions is one line, and a route that failed or s
 
 test('the view opens on every group, the first day type and all transitions', () => {
   const choice = defaultChoice(sample.project);
-  assert.deepEqual(choice, { who: 'all', grade: '', groupIds: [], dayTypeId: DAY_A, transition: null, measure: 'busiest', floors: 'auto', labels: true, constantWidth: false });
+  assert.deepEqual(choice, { who: 'all', grade: '', groupIds: [], dayTypeId: DAY_A, bellsId: null, transition: null, measure: 'busiest', floors: 'auto', labels: true, constantWidth: false });
   const shown = picture(sample);
   assert.equal(shown.groups.length, 8);
   assert.equal(shown.mode, 'load');
@@ -1279,4 +1279,125 @@ test('SV2-55 item 3: on a stage taller than the keep the keep is 48 px each way,
   const small = keepShift({ x: -100, y: 0, width: 400, height: 300, size: 1 }, { width: 20, height: 20 }, 48);
   assert.deepEqual(small, { dx: 100, dy: 0 }, 'a box under 48 px is not brought all onto the stage (to x 0)');
   assert.deepEqual(keepShift({ x: 0, y: 0, width: 0, height: 0, size: 1 }, { width: 20, height: 20 }, 48), { dx: 0, dy: 0 }, 'a stage not yet measured is moved');
+});
+
+// ---------------------------------------------------------------- bell schedules (SV2-79)
+
+const ER = 'bsample0er';
+
+// Early Release: half-hour periods with 3 minutes between, periods 5 to 8
+// (indexes 4 to 7) not meeting.
+function withEarlyRelease(off) {
+  const project = school();
+  const at = (minutes) => String(Math.floor(minutes / 60)).padStart(2, '0') + ':' + String(minutes % 60).padStart(2, '0');
+  const bells = [];
+  for (let p = 0; p < 8; p += 1) bells.push(off.includes(p) ? null : { start: at(480 + 33 * p), end: at(510 + 33 * p) });
+  project.bellSchedules = [{ id: ER, name: 'Early Release', short: '', bells, off }];
+  return project;
+}
+
+const early = derive(withEarlyRelease([4, 5, 6, 7]));
+
+test('SV2-79: the strip under a bell schedule leaves out every transition into or out of a period that does not meet', () => {
+  assert.deepEqual(transitionsOf(early.project, DAY_A, null).map((each) => each.period), [0, 1, 2, 3, 4, 5, 6], 'regular bells: all seven');
+  assert.deepEqual(transitionsOf(early.project, DAY_A, ER).map((each) => each.period), [0, 1, 2], 'periods 5 to 8 do not meet: the walk out of period 4 is not one');
+  const first = transitionsOf(early.project, DAY_A, ER)[0];
+  assert.equal(first.times, '8:30 to 8:33', 'the schedule\'s own times');
+  assert.equal(first.seconds, 180);
+  assert.equal(transitionsOf(early.project, DAY_B, ER).length, 3, 'B Day has the same classes\' bells');
+});
+
+test('SV2-79: the strip says which periods do not meet, in the school\'s word', () => {
+  const words = (off, word) => {
+    const project = withEarlyRelease(off);
+    if (word) project.settings.periodWord = word;
+    return model.offWords(project, ER);
+  };
+  assert.equal(words([4, 5, 6, 7]), 'Periods 5 to 8 do not meet');
+  assert.equal(words([7]), 'Period 8 does not meet');
+  assert.equal(words([4, 5]), 'Periods 5 and 6 do not meet');
+  assert.equal(words([1, 4, 5]), 'Periods 2, 5 and 6 do not meet');
+  assert.equal(words([5, 6, 7], 'Block'), 'Blocks F to H do not meet');
+  assert.equal(words([]), '', 'every period meets: nothing to say');
+  assert.equal(model.offWords(early.project, null), '', 'regular bells: nothing to say');
+});
+
+test('SV2-79: a choice keeps a bell schedule that exists, drops one that does not, and drops a transition that no longer meets', () => {
+  assert.equal(defaultChoice(early.project).bellsId, null);
+  assert.equal(settleChoice(early.project, { bellsId: ER }).bellsId, ER);
+  assert.equal(settleChoice(early.project, { bellsId: 'bgone' }).bellsId, null);
+  assert.equal(settleChoice(sample.project, { bellsId: ER }).bellsId, null, 'a project with no bell schedules has only the regular bells');
+  assert.equal(settleChoice(early.project, { bellsId: null, transition: 5 }).transition, 5);
+  assert.equal(settleChoice(early.project, { bellsId: ER, transition: 5 }).transition, null, 'period 6 into 7 does not exist under Early Release');
+  assert.equal(settleChoice(early.project, { bellsId: ER, transition: 2 }).transition, 2);
+});
+
+test('SV2-79: the picture under a bell schedule draws only the walks that happen, and no route that "failed" into a period that does not meet', () => {
+  const regular = pictureOf(early.project, early.results, early.graph, defaultChoice(early.project));
+  const shown = pictureOf(early.project, early.results, early.graph, { ...defaultChoice(early.project), bellsId: ER });
+  assert.equal(regular.drawn, 56, 'the regular picture is what it was');
+  assert.equal(regular.failed.length, 0);
+  assert.equal(shown.bellsId, ER);
+  assert.equal(shown.drawn + shown.same, 8 * 3, 'eight groups, three transitions that happen');
+  assert.equal(shown.failed.length, 0, 'the walks out of an empty period are not failed routes');
+  assert.deepEqual(shown.late.filter((walk) => walk.bellsId !== ER || walk.period > 2), [], 'the late walks are the bell run\'s own, none from a period that does not meet');
+  assert.deepEqual(regular.late.map((walk) => walk.period), [5], 'while the regular run has its late walk');
+  assert.equal(shown.transitions.length, 3);
+  assert.equal(shown.offWords, 'Periods 5 to 8 do not meet');
+  assert.equal(shown.dayTypeName, 'A Day with Early Release bells', 'every caption says the bells');
+  assert.equal(words(sentenceOf(early.project, shown, routeHealth(early.project, early.results))), 'Showing 8 groups on A Day with Early Release bells, all transitions. No route failed.');
+  const one = pictureOf(early.project, early.results, early.graph, { ...defaultChoice(early.project), bellsId: ER, transition: 1 });
+  assert.equal(words(sentenceOf(early.project, one, [])), 'Showing 8 groups on A Day with Early Release bells, Period 2 to Period 3 (8:33 to 8:36). No route failed.'.replace('8:33 to 8:36', one.transition.times));
+  assert.equal(one.transition.times, '9:03 to 9:06', 'the clock range is the schedule\'s');
+});
+
+test('SV2-79: markers under a bell schedule are the periods that meet', () => {
+  const shown = pictureOf(early.project, early.results, early.graph, { ...defaultChoice(early.project), bellsId: ER });
+  const periods = new Set();
+  for (const list of shown.markers.values()) for (const marker of list) for (const pill of marker.pills) for (const p of pill.periods) periods.add(p);
+  assert.deepEqual(Array.from(periods).sort(), [0, 1, 2, 3], 'nobody is in a room in a period that does not meet');
+});
+
+test('SV2-79: the legend\'s figures and the load under a bell schedule are that run\'s, and the regular run is unchanged by having one', () => {
+  const plain = derive(school());
+  const regularWith = pictureOf(early.project, early.results, early.graph, defaultChoice(early.project));
+  const regularWithout = pictureOf(plain.project, plain.results, plain.graph, defaultChoice(plain.project));
+  assert.equal(regularWith.load.max, regularWithout.load.max, 'the busiest load');
+  assert.deepEqual(groupRows(early.project, early.results, regularWith).map((row) => [row.walking, row.waiting, row.late]), groupRows(plain.project, plain.results, regularWithout).map((row) => [row.walking, row.waiting, row.late]));
+  const shown = pictureOf(early.project, early.results, early.graph, { ...defaultChoice(early.project), bellsId: ER });
+  const rows = groupRows(early.project, early.results, shown);
+  const crowd = early.results.crowd.bells.find((day) => day.dayTypeId === DAY_A && day.bellsId === ER);
+  const expected = crowd.transitions.filter((transition) => transition.off !== true).flatMap((transition) => transition.groups).reduce((sum, walker) => sum + walker.walking, 0);
+  assert.equal(rows.reduce((sum, row) => sum + row.walking, 0), expected, 'the walking is the bell run\'s, not the regular run\'s');
+  assert.ok(rows.every((row) => row.walks === 3), 'three walks a group');
+  assert.ok(shown.load.max > 0 && shown.load.source.bellsId === ER, 'the load is the bell run\'s');
+});
+
+test('SV2-79: a cell\'s card under a bell schedule counts only that run\'s walks', () => {
+  const shown = pictureOf(early.project, early.results, early.graph, { ...defaultChoice(early.project), bellsId: ER });
+  const floor = early.project.building.floors[0];
+  let found = null;
+  for (let cell = 0; cell < floor.width * floor.height && !found; cell += 1) {
+    const card = cellCard(early.project, early.results, early.graph, shown, floor.id, cell);
+    if (card && card.load > 0) found = card;
+  }
+  assert.ok(found, 'a busy cell has a card');
+  assert.ok(found.groups.length > 0 && found.groups.every((each) => each.times <= 3), 'at most the three transitions that happen');
+});
+
+test('SV2-79: the travel tables, their heading and the CSV files are by run', async () => {
+  const { travelDay, transitionRows, dayRows, transitionsCsv, dayCsv } = await import('../../ui/movement/tables.js');
+  const follower = withEarlyRelease([4, 5, 6, 7]);
+  follower.dayTypes[1].own = false;
+  for (const each of follower.groups) delete each.days[DAY_B];
+  assert.deepEqual(travelDay(follower, DAY_B), { id: DAY_A, name: 'B Day', heading: 'B Day (same as A Day)' }, 'regular bells: the shape is what it was');
+  assert.deepEqual(travelDay(follower, DAY_B, ER), { id: DAY_A, bellsId: ER, name: 'B Day', heading: 'B Day (same as A Day) with Early Release bells' });
+  assert.ok(transitionRows(early.project, early.results, DAY_A, 1, ER).rows.length > 0);
+  assert.equal(transitionRows(early.project, early.results, DAY_A, 5, ER).rows.length, 0, 'no walk where a period does not meet');
+  assert.ok(dayRows(early.project, early.results, DAY_A, ER).every((row) => row.walks === 3));
+  const csv = transitionsCsv(early.project, early.results, DAY_A, ER);
+  assert.equal(csv.length, 1 + 8 * 3, 'a header and every walk that happens');
+  assert.equal(csv[1][0], 'A Day with Early Release bells');
+  assert.equal(dayCsv(early.project, early.results, DAY_A, ER)[1][0], 'A Day with Early Release bells');
+  assert.equal(transitionsCsv(early.project, early.results, DAY_A).length, 1 + 8 * 7, 'regular bells: all seven');
 });

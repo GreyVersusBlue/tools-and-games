@@ -5,7 +5,7 @@
 // the figures are its compareResults as the lane hands them over.
 
 import { baseDayType, isOwnCopy } from '../../engine/day-types.js';
-import { periodName } from '../../engine/bells.js';
+import { periodName, offPeriods } from '../../engine/bells.js';
 import { resolveSlotRoom, nameOfRoom } from '../../engine/schema.js';
 import { formatDuration } from '../../engine/findings.js';
 import { reconcile, changeWords, changeSlots } from '../../engine/scenario.js';
@@ -244,10 +244,13 @@ export function placeRow(row, unit) {
   return { placeId: row.placeId, parts: row.parts || [{ text: row.name }], before: row.before, after: row.after, change: signed(row.difference), unit };
 }
 
-// The transitions a comparison can be narrowed to: period p into p + 1.
-export function transitionChoices(project) {
+// The transitions a comparison can be narrowed to: period p into p + 1. Under
+// a bell schedule, only those between periods that both meet.
+export function transitionChoices(project, bellsId) {
   const out = [];
+  const off = offPeriods(project, bellsId);
   for (let period = 0; period + 1 < project.settings.periods; period += 1) {
+    if (off.has(period) || off.has(period + 1)) continue;
     out.push({ value: String(period), label: periodName(project.settings, period) + ' to ' + periodName(project.settings, period + 1) });
   }
   return out;

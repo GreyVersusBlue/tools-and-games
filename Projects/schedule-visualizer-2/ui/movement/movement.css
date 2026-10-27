@@ -249,6 +249,22 @@
   white-space: nowrap;
 }
 
+.mov-ctl[hidden] {
+  display: none;
+}
+
+/* the periods that do not meet, said under the strip that leaves their transitions out */
+.mov-strip__note {
+  margin: 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  color: var(--ink-2);
+}
+
+.mov-strip__note[hidden] {
+  display: none;
+}
+
 .mov-ctl--options {
   grid-template-columns: auto auto;
   align-items: center;

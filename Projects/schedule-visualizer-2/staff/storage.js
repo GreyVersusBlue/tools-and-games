@@ -6,8 +6,9 @@
 //                              does not say (or the file has none)
 //   sv2staff:<schoolId>:key    the key the passcode made, so it is asked once
 //   sv2staff:<schoolId>:seen   the newest publish time opened here
-//   sv2staff:<schoolId>:dayOn  the reader's "Not right?" answer: { date,
-//                              dayTypeId, bellsId, follow } as JSON (SV2-81)
+//   sv2staff:<schoolId>:dayOn  the reader's "Not right?" answers as JSON:
+//                              { just, follow }, each null or { date,
+//                              dayTypeId, bellsId, at } (SV2-81, SV2-81b)
 //   sv2staff:<schoolId>:bells  the bell schedule chosen by hand beside `day`
 //                              (SV2-81)
 //

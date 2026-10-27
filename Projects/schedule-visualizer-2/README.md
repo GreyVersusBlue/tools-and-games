@@ -240,6 +240,7 @@ row names a file it does not run.
 | `test/browser/m3-pass.mjs` | The movement view after the walk-through of it: the map first, the page that does not scroll, the toast above the dock |
 | `test/browser/m4-pass.mjs` | The published file on a phone after the walk-through: M1 to M8 |
 | `test/browser/movement.mjs` | The movement view: who, the day type, the transition, the lanes and the legend |
+| `test/browser/movement-bells.mjs` | Movement and the scenario lab with a bell schedule: the Bells choice, the first line, the strip without periods that do not meet, followers named, tables and prints by run |
 | `test/browser/hotspots.mjs` | The movement view's inspector: hotspots, travel time, summary, export |
 | `test/browser/playback.mjs` | Playback: play, the scrubber, pace, the markers, the Late line |
 | `test/browser/plan-map.mjs` | The plan map mounted through its module as Scenarios and Safety will: their stubs as they were, the toast clearance of two maps, the keep on the stage and the stage's least; no painted cell under the zoom buttons at Fit in all three sections at four sizes, a foot with no box, Enter as its own kind, a renderer read off the page, and the stage measured again when the zoom buttons change size |

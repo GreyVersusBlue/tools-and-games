@@ -10,7 +10,7 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, missingPage, printWhen } from '../page.js';
-import { dayTypeFor, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
+import { dayTypeFor, bellsIdFor, bellsOnPick, meetingPeriods, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
 import { freeTeachers } from './free.js';
 
 // For each period a teacher teaches on a day type, who is free to cover it:
@@ -75,6 +75,7 @@ export const coverageView = {
     if (!absent) return teacherChooser(ctx, 'coverage', 'Coverage', 'Who is free to cover each period of a teacher who is out.');
 
     let dayType = dayTypeFor(ctx, route);
+    let bellsId = bellsIdFor(ctx, route);
     const says = h('p', { class: 'lede', role: 'status' });
     const picker = h('div', { class: 'controls' });
     const out = h('div', { class: 'stack', dataset: { out: 'coverage' } });
@@ -82,19 +83,21 @@ export const coverageView = {
     const word = school.data.settings.periodWord.toLowerCase();
 
     const draw = () => {
-      const periods = coverageFor(school, absent.id, dayType.id);
+      // today's bells: a period that does not meet has nobody to cover
+      const meets = meetingPeriods(school, dayType.id, bellsId);
+      const periods = coverageFor(school, absent.id, dayType.id).filter((item) => meets.has(item.period));
       const nobody = periods.filter((item) => item.candidates.length === 0);
       const name = typed(absent.name);
       let sentence;
-      if (periods.length === 0) sentence = [name, ' teaches no group on ', typed(dayType.name), ', so there is nothing to cover.'];
+      if (periods.length === 0) sentence = [name, ' teaches no group on ', dayWords(school, dayType, bellsId), ', so there is nothing to cover.'];
       else {
-        sentence = [name, ' teaches ', String(periods.length), ' of ', String(school.data.settings.periods), ' ', word, 's on ', typed(dayType.name), '. ',
+        sentence = [name, ' teaches ', String(periods.length), ' of ', String(meets.size), ' ', word, 's on ', dayWords(school, dayType, bellsId), '. ',
           nobody.length === 0 ? 'Somebody is free in every one of them.' : ['Nobody is free in ', listOf(nobody.map((item) => school.periodName(item.period))), '.']];
       }
       says.replaceChildren(h('span', null, sentence));
 
       out.replaceChildren(...periods.map((item) => {
-        const times = periodTimes(school, dayType.id, item.period);
+        const times = periodTimes(school, dayType.id, item.period, bellsId);
         return h('section', { class: 'card', dataset: { period: String(item.period) } },
           h('h2', { class: 'card__title' }, school.periodName(item.period), times ? h('span', { class: 'card__when' }, times) : null),
           h('p', null, entryWords(school, item.entry)),
@@ -109,14 +112,15 @@ export const coverageView = {
       }));
 
       links.replaceChildren(...[
-        school.has('sub') ? h('a', { class: 'btn', href: makeHash('sub', absent.id, { d: dayType.id }) }, 'Substitute plan') : null,
+        school.has('sub') ? h('a', { class: 'btn', href: makeHash('sub', absent.id, { d: dayType.id, b: bellsId }) }, 'Substitute plan') : null,
         school.has('teacher') ? h('a', { class: 'btn', href: makeHash('teacher', absent.id) }, 'The teacher\'s page') : null,
       ].filter(Boolean));
     };
 
     const chosen = dayTypePicker(ctx, dayType.id, (next) => {
       dayType = next;
-      ctx.replace(makeHash('coverage', absent.id, { d: route.query.d ? dayType.id : '' }));
+      bellsId = bellsOnPick(ctx, next.id);
+      ctx.replace(makeHash('coverage', absent.id, { d: route.query.d ? dayType.id : '', b: route.query.d ? bellsId : '' }));
       draw();
     });
     if (chosen) picker.appendChild(chosen);
