@@ -197,6 +197,25 @@ export function chosenBells(ctx) {
   return bellsById(ctx.school, ctx.store.get(BELLS_KEY));
 }
 
+// The bells a day type rings when it is picked on a page that asked for none:
+// today's, where the day type is the one today is (or nothing has said which
+// day today is, so the bells chosen by hand go with the day type chosen by
+// hand), else the regular bells.
+export function bellsFor(ctx, dayTypeId) {
+  const today = todayOf(ctx);
+  if (!today.known) return today.bellsId;
+  return today.school && today.dayType !== null && today.dayType.id === dayTypeId ? today.bellsId : null;
+}
+
+// The periods that meet under these bells, as a Set of indexes.
+export function meetingPeriods(school, dayTypeId, bellsId) {
+  const meets = new Set();
+  school.bells(dayTypeId, bellsId).forEach((bell, period) => {
+    if (!bell || bell.off !== true) meets.add(period);
+  });
+  return meets;
+}
+
 export function rememberDayType(ctx, dayTypeId) {
   if (ctx.school.dayTypes.some((dayType) => dayType.id === dayTypeId)) ctx.store.set(DAY_TYPE_KEY, dayTypeId);
 }
