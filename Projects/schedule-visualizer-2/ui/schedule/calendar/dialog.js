@@ -150,8 +150,27 @@ export function openDateDialog(options) {
     applyButton.textContent = nothing ? 'Apply' : changeWords(project, read.dates, read.change);
   }
 
+  // The sheet is sized to what can be seen: the visual viewport's height
+  // (the keyboard takes part of it), and lifted by the part of the page the
+  // keyboard covers, so Note and Apply are both reachable with it up.
+  const viewport = window.visualViewport;
+  function fit() {
+    if (!viewport) return;
+    const covered = Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
+    element.style.setProperty('--sheet-lift', covered + 'px');
+    element.style.setProperty('--sheet-max', Math.round(viewport.height * 0.92) + 'px');
+  }
+  if (viewport) {
+    viewport.addEventListener('resize', fit);
+    viewport.addEventListener('scroll', fit);
+  }
+
   function close(focusBack) {
     if (!element.isConnected) return;
+    if (viewport) {
+      viewport.removeEventListener('resize', fit);
+      viewport.removeEventListener('scroll', fit);
+    }
     element.close();
     element.remove();
     if (open === handle) open = null;
@@ -221,6 +240,7 @@ export function openDateDialog(options) {
   });
 
   words();
+  fit();
   document.body.append(element);
   element.show();
   const first = days.querySelector('input:checked') || days.querySelector('input');

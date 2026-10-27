@@ -68,7 +68,7 @@ export function calendarPanel(env, project, today) {
   }, commitRange);
 
   // ---- the weekdays: what each says, and its bells
-  const weekdays = h('table', { class: 'cal-rules', data: { part: 'weekdays' } },
+  const weekdays = h('table', { class: 'cal-rules' + (schedules.length > 0 ? ' cal-rules--bells' : ''), data: { part: 'weekdays' } },
     h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Weekday'), h('th', { scope: 'col' }, 'Day'), schedules.length > 0 ? h('th', { scope: 'col' }, 'Bells') : null)),
     h('tbody', null, WEEKDAY_NAMES.map((name, index) => {
       const rule = calendar.weekdays[index] || { day: DAY_ROTATION, bells: null };
