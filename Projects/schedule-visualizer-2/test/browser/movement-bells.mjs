@@ -251,8 +251,8 @@ test('the two prints take the same choices: the congestion report and the travel
   assert.ok(!report.text.includes('Period 5 to Period 6'), 'no transition that does not happen');
   await closeSheet();
   await page.click('#inspector [role="tab"]:not([aria-selected="true"])[data-tab="tables"]');
-  await page.waitForSelector('#inspector [data-panel="tables"] [data-action="print-travel-time"]');
-  await page.click('#inspector [data-action="print-travel-time"]');
+  await page.waitForSelector('#inspector [data-panel="tables"] #print-travel-time');
+  await page.click('#inspector #print-travel-time');
   const travel = await sheet();
   assert.deepEqual(travel.headings.filter((each) => /^Period/.test(each)), ['Period 1 to Period 2', 'Period 2 to Period 3', 'Period 3 to Period 4']);
   assert.ok(travel.text.includes('A Day with Early Release bells'));
