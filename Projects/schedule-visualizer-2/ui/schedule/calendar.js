@@ -145,6 +145,9 @@ export function mount(env) {
     if (say) say();
   }
 
+  // Whether the calendar was there at the last drawing: null before the first.
+  let hadCalendar = null;
+
   function update(project) {
     // asked before anything is drawn: the root's size is a style the squares
     // just changed would make the browser work out again
@@ -155,6 +158,7 @@ export function mount(env) {
     // a setup begun for another project (one loaded or started since) goes
     if (view.calSetup && view.calSetup.projectId !== project.id) view.calSetup = null;
     if (!calendar || calendarDays(project).length === 0) {
+      hadCalendar = false;
       closeDateDialog(false);
       env.side(null);
       year.update(project, today);
@@ -174,6 +178,13 @@ export function mount(env) {
       return;
     }
     year.update(project, today);
+    // the calendar is back (Undo of Remove): the focus goes to the year's
+    // roving date, not to a field that was there before
+    if (hadCalendar === false) {
+      const stop = year.selection();
+      if (stop) env.focusAfter('cal:' + stop.from);
+    }
+    hadCalendar = true;
     // a dialog open on a date the change took away from the calendar goes
     const open = dateDialogOpen();
     if (open && !year.cellOf(open.from)) closeDateDialog(false);
