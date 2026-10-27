@@ -26,12 +26,16 @@
 //   options.movement   { project, results, graph }: the movement view's own
 //             state, forwarded by the preview sheet. Given, the report's
 //             day sections are of that project with those results.
+//   options.bellsId   the bell schedule chosen beside the day type on the map:
+//             every day section is then of its day type under those bells
+//             ("A Day with Early Release bells"), with no transition into or
+//             out of a period that does not meet. Left out, regular bells.
 //   and what every output takes (document.js)
 //
-//   worstTransitions(project, results, dayTypeId) → [{ period, name, times, seconds, walks, waiting, late }]
+//   worstTransitions(project, results, dayTypeId, bellsId) → [{ period, name, times, seconds, walks, waiting, late }]
 //     every transition somebody walks in, worst first: most waiting, then
 //     most late walks, then the earlier one
-//   lateWalks(project, results, dayTypeId) → the late walks as tables.js rows, slowest first
+//   lateWalks(project, results, dayTypeId, bellsId) → the late walks as tables.js rows, slowest first
 //   scenarioSection(project, comparison) → markup, '' with no scenario open
 //     comparison   undefined while it is being worked out; SCENARIO_UNAVAILABLE
 //                  when nothing on the page can work it out (no engine); null
@@ -52,8 +56,9 @@ import { blankName, NEW_SCENARIO_NAME } from '../../engine/actions.js';
 import { timeFigures, durationWords } from '../scenarios/model.js';
 import { sortFindings, SEVERITIES } from '../../engine/findings.js';
 import { loads } from '../../engine/load.js';
+import { findBellSchedule } from '../../engine/bells.js';
 import { count, list } from '../components/words.js';
-import { transitionsOf, unitWord } from '../movement/model.js';
+import { transitionsOf, unitWord, runOf } from '../movement/model.js';
 import { rankedPlaces } from '../movement/hotspots.js';
 import { transitionRows, lateWords } from '../movement/tables.js';
 import { esc, frame } from './document.js';
@@ -69,16 +74,12 @@ export const SCENARIO_PLACES = 5;
 // derived.scenario when the page has nothing to work the comparison out with
 export const SCENARIO_UNAVAILABLE = Object.freeze({ unavailable: true });
 
-function crowdDay(results, dayTypeId) {
-  return results.crowd && Array.isArray(results.crowd.days) ? results.crowd.days.find((day) => day.dayTypeId === dayTypeId) || null : null;
-}
-
-export function worstTransitions(project, results, dayTypeId) {
-  const day = crowdDay(results, dayTypeId);
-  const transitions = transitionsOf(project, dayTypeId);
+export function worstTransitions(project, results, dayTypeId, bellsId) {
+  const day = runOf(results, dayTypeId, bellsId).crowd;
+  const transitions = transitionsOf(project, dayTypeId, bellsId);
   const found = [];
   for (const transition of day ? day.transitions : []) {
-    const named = transitions[transition.period];
+    const named = transitions.find((each) => each.period === transition.period);
     if (!named || transition.groups.length === 0) continue;
     let waiting = 0;
     let late = 0;
@@ -91,17 +92,16 @@ export function worstTransitions(project, results, dayTypeId) {
   return found.sort((a, b) => b.waiting - a.waiting || b.late - a.late || a.period - b.period);
 }
 
-export function lateWalks(project, results, dayTypeId) {
+export function lateWalks(project, results, dayTypeId, bellsId) {
   const found = [];
-  for (let period = 0; period + 1 < project.settings.periods; period += 1) {
-    for (const row of transitionRows(project, results, dayTypeId, period).rows) if (row.late) found.push(row);
+  for (const { period } of transitionsOf(project, dayTypeId, bellsId)) {
+    for (const row of transitionRows(project, results, dayTypeId, period, bellsId).rows) if (row.late) found.push(row);
   }
   return found.sort((a, b) => b.over - a.over || b.total - a.total || a.period - b.period);
 }
 
-function dayLoad(project, results, graph, dayTypeId) {
-  const held = Array.isArray(results.loads) ? results.loads.find((load) => load && load.dayTypeId === dayTypeId) : null;
-  return held || loads(project, results.routes, dayTypeId, graph);
+function dayLoad(project, results, graph, dayTypeId, bellsId) {
+  return runOf(results, dayTypeId, bellsId).loads || loads(project, results.routes, dayTypeId, graph, bellsId);
 }
 
 function place(row) {
@@ -114,22 +114,25 @@ function place(row) {
 // (SV2-72d2). Plain spaces: these tables are the movement prints' kind.
 const time = (n) => durationWords(n);
 
-function daySection(project, results, graph, dayType, first) {
-  const transitions = transitionsOf(project, dayType.id);
-  const load = dayLoad(project, results, graph, dayType.id);
-  const ask = (transition) => ({ dayTypeId: dayType.id, groups: project.groups, load, max: load ? load.max.busiest : 0, transition, measure: 'busiest', transitions });
+function daySection(project, results, graph, dayType, first, bellsId) {
+  const transitions = transitionsOf(project, dayType.id, bellsId);
+  const schedule = findBellSchedule(project, bellsId);
+  // "A Day", or "A Day with Early Release bells"
+  const heading = schedule ? dayType.name + ' with ' + schedule.name + ' bells' : dayType.name;
+  const load = dayLoad(project, results, graph, dayType.id, bellsId);
+  const ask = (transition) => ({ dayTypeId: dayType.id, bellsId: schedule ? schedule.id : null, groups: project.groups, load, max: load ? load.max.busiest : 0, transition, measure: 'busiest', transitions });
   const places = load ? rankedPlaces(project, results, graph, ask(null)) : [];
-  const worst = worstTransitions(project, results, dayType.id);
-  const late = lateWalks(project, results, dayType.id);
+  const worst = worstTransitions(project, results, dayType.id, bellsId);
+  const late = lateWalks(project, results, dayType.id, bellsId);
   const lateGroups = new Set(late.map((row) => row.group.id)).size;
 
-  const out = ['<section class="doc-section' + (first ? '' : ' new-sheet') + '">', '<h2>' + esc(dayType.name) + '</h2>'];
+  const out = ['<section class="doc-section' + (first ? '' : ' new-sheet') + '">', '<h2>' + esc(heading) + '</h2>'];
   if (places.length === 0) {
-    out.push('<p class="doc-lead">' + esc('Nobody crosses a corridor on ' + dayType.name + ' yet, so there is nothing to report.') + '</p>', '</section>');
+    out.push('<p class="doc-lead">' + esc('Nobody crosses a corridor on ' + heading + ' yet, so there is nothing to report.') + '</p>', '</section>');
     return out.join('\n');
   }
   const top = places[0];
-  out.push('<p class="doc-lead">On ' + esc(dayType.name) + ' the busiest place is ' + place(top) + ': ' + top.load + ' ' + unitWord(top.unit, top.load) + (top.when ? ' in ' + esc(top.when) : '') + '. '
+  out.push('<p class="doc-lead">On ' + esc(heading) + ' the busiest place is ' + place(top) + ': ' + top.load + ' ' + unitWord(top.unit, top.load) + (top.when ? ' in ' + esc(top.when) : '') + '. '
     + esc(late.length === 0
       ? 'Every group arrives in time.'
       : count(lateGroups, 'group') + ' cannot arrive in time, on ' + count(late.length, 'walk') + '.')
@@ -161,14 +164,14 @@ function daySection(project, results, graph, dayType, first) {
   // who is late
   out.push('<h2>Groups that cannot arrive in time</h2>');
   if (late.length === 0) {
-    out.push('<p class="doc-none">Every group arrives in time on ' + esc(dayType.name) + '.</p>');
+    out.push('<p class="doc-none">Every group arrives in time on ' + esc(heading) + '.</p>');
   } else {
     out.push('<table class="doc-table doc-table--late">',
       '<thead><tr><th scope="col">Group</th><th scope="col">Transition</th><th scope="col">From</th><th scope="col">To</th><th scope="col" class="is-number">Walking</th><th scope="col" class="is-number">Waiting</th><th scope="col" class="is-number">Total</th><th scope="col" class="is-number">Passing time</th><th scope="col">Late</th></tr></thead>',
       '<tbody>');
     for (const row of late) {
       out.push('<tr><th scope="row">' + esc(row.group.name) + '</th>'
-        + '<td>' + esc(transitions[row.period] ? transitions[row.period].name : '') + '</td>'
+        + '<td>' + esc((transitions.find((each) => each.period === row.period) || { name: '' }).name) + '</td>'
         + '<td>' + esc(row.from) + '</td><td>' + esc(row.to) + '</td>'
         + '<td class="is-number">' + esc(time(row.walking)) + '</td>'
         + '<td class="is-number">' + (row.waiting === 0 ? 'none' : esc(time(row.waiting))) + '</td>'
@@ -412,7 +415,7 @@ export function render(given, derived, options) {
   const opts = options || {};
   const { project, results, graph } = printedFrom(given, derived, opts);
   const own = ownDayTypes(project);
-  const body = own.map((dayType, index) => daySection(project, results, graph, dayType, index === 0));
+  const body = own.map((dayType, index) => daySection(project, results, graph, dayType, index === 0, opts.bellsId));
   const followers = project.dayTypes.filter((dayType) => !own.includes(dayType));
   if (followers.length > 0) {
     body.push('<p class="doc-meaning">' + esc(list(followers.map((dayType) => dayType.name)) + (followers.length === 1 ? ' is' : ' are') + ' the same as ' + project.dayTypes[0].name + ' and ' + (followers.length === 1 ? 'has' : 'have') + ' no figures of ' + (followers.length === 1 ? 'its' : 'their') + ' own.') + '</p>');

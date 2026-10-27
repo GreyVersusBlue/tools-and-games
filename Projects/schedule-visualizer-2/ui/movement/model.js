@@ -135,6 +135,12 @@ export function transitionsOf(project, dayTypeId, bellsId) {
   return list;
 }
 
+// Where `period` stands among the transitions shown (a strip that leaves
+// periods out is shorter than the day), or -1 for All or a period not there.
+export function positionOf(transitions, period) {
+  return Number.isInteger(period) ? transitions.findIndex((each) => each.period === period) : -1;
+}
+
 // Is the walk out of `period` one of the transitions shown?
 function meets(transitions, period) {
   return transitions.some((each) => each.period === period);
@@ -273,7 +279,10 @@ export function pictureOf(project, results, graph, input) {
     bellsId: bellSchedule ? bellSchedule.id : null,
     bellsName: bellSchedule ? bellSchedule.name : null,
     offWords: offWords(project, choice.bellsId),
-    dayTypeName: chosenDay.name,
+    // what the picture is of, as every heading and caption says it: "A Day",
+    // or "A Day with Early Release bells"; dayName is the day type alone
+    dayName: chosenDay.name,
+    dayTypeName: bellSchedule ? chosenDay.name + ' with ' + bellSchedule.name + ' bells' : chosenDay.name,
     groups,
     floors,
     transitions,
@@ -604,7 +613,7 @@ export function sentenceOf(project, picture, health) {
   if (n === 1) parts.push({ text: picture.groups[0].name, name: true });
   else if (picture.choice.who === 'grade') parts.push({ text: plural(n, 'group') + ' of grade ' }, { text: picture.choice.grade === '' ? '(none)' : picture.choice.grade, name: picture.choice.grade !== '' });
   else parts.push({ text: plural(n, 'group') });
-  parts.push({ text: ' on ' }, { text: picture.dayTypeName, name: true });
+  parts.push({ text: ' on ' }, { text: picture.dayName, name: true });
   if (picture.bellsName !== null) parts.push({ text: ' with ' }, { text: picture.bellsName, name: true }, { text: ' bells' });
   parts.push({ text: picture.transition ? ', ' + picture.transition.name + (picture.transition.times ? ' (' + picture.transition.times + ')' : '') + '. ' : ', all transitions. ' });
   if (!picture.ready) {

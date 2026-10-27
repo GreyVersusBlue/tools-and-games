@@ -81,7 +81,7 @@ import { dialogIsOpen } from '../components/dialog.js';
 import { count } from '../components/words.js';
 import { parse, readable } from '../colour.js';
 import { bandText } from './legend.js';
-import { unitWord } from './model.js';
+import { unitWord, positionOf } from './model.js';
 import { hotspotRows, placeWords } from './hotspots.js';
 import { layoutFloors, bestLayout, FIT_MARGIN } from '../surface/plan-layout.js';
 import { CELL, MIN_ZOOM, MAX_ZOOM } from '../surface/viewport.js';
@@ -707,7 +707,9 @@ export function presentMode({ ctx, plan, env, bar, root, places }) {
     const picture = movement && movement.picture;
     if (!presenting || !picture) return;
     const n = picture.transitions.length;
-    const to = stepTo(picture.choice.transition, by, n, wrap);
+    const at = positionOf(picture.transitions, picture.choice.transition);
+    const toAt = stepTo(at === -1 ? null : at, by, n, wrap);
+    const to = toAt === null ? null : picture.transitions[toAt].period;
     if (to === null) {
       say(n === 0 ? 'This day has no transition to show.' : by > 0 ? 'This is the last transition of the day.' : 'This is the first transition of the day.');
     } else {

@@ -75,6 +75,7 @@ import { choice as segmented } from '../components/choice.js';
 import { icon } from '../components/icons.js';
 import { periodWords } from '../components/words.js';
 import { formatTime, parseTime } from '../../engine/bells.js';
+import { positionOf, runOf } from './model.js';
 import { routingGraph } from '../../engine/routing.js';
 import { routePath, isLate } from '../../engine/crowd.js';
 import { readPlayback, writePlayback, playbackWith, PLAYBACK_SPEEDS, readMovement, writeMovement } from '../../storage/device.js';
@@ -266,9 +267,10 @@ export function playbackBar(env) {
     const period = picture.choice.transition;
     const results = state.results;
     if (period === null || !picture.transition || !results || !state.graph) return null;
-    const crowdDay = results.crowd && Array.isArray(results.crowd.days) ? results.crowd.days.find((day) => day.dayTypeId === picture.dayTypeId) : null;
+    const run = runOf(results, picture.dayTypeId, picture.bellsId);
+    const crowdDay = run.crowd;
     const crowd = crowdDay && crowdDay.transitions ? crowdDay.transitions[period] : null;
-    const routesDay = results.routes && Array.isArray(results.routes.days) ? results.routes.days.find((day) => day.dayTypeId === picture.dayTypeId) : null;
+    const routesDay = run.routes;
     if (!crowd || !routesDay) return null;
     const routing = routingGraph(state.project, state.graph);
     const walkers = [];
@@ -384,7 +386,7 @@ export function playbackBar(env) {
         seconds = 0;
       } else if (prefs.loop === 'day' && count() > 0) {
         seconds = 0;
-        const following = (chosen() + 1) % count();
+        const following = state.picture.transitions[(positionOf(state.picture.transitions, chosen()) + 1) % count()].period;
         // update() comes back with the next transition before this returns; a card the reader is holding open stays
         if (following !== chosen()) env.change({ transition: following }, { keepCard: true });
       } else {
@@ -399,7 +401,7 @@ export function playbackBar(env) {
 
   function play() {
     if (reduce.matches || count() === 0 || !state || !state.results) return;
-    if (chosen() === null) env.change({ transition: 0 });
+    if (chosen() === null) env.change({ transition: state.picture.transitions[0].period });
     if (!scene) return;
     if (seconds >= end()) seconds = 0;
     started = true;
@@ -437,10 +439,10 @@ export function playbackBar(env) {
 
   function step(by) {
     if (count() === 0) return;
-    const at = chosen();
-    const to = at === null ? (by > 0 ? 0 : null) : at + by;
+    const at = positionOf(state.picture.transitions, chosen());
+    const to = at === -1 ? (by > 0 ? 0 : null) : at + by;
     if (to === null || to < 0 || to >= count()) return;
-    env.change({ transition: to });
+    env.change({ transition: state.picture.transitions[to].period });
   }
 
   function set(patch) {
@@ -533,8 +535,9 @@ export function playbackBar(env) {
     setText(playButton, playing ? 'Pause' : 'Play');
     const ready = Boolean(state && state.results) && count() > 0;
     able(playButton, ready && !reduce.matches, reduce.matches ? 'Reduced motion is on: use the scrubber.' : null);
-    able(previous, ready && chosen() !== null && chosen() > 0);
-    able(next, ready && (chosen() === null || chosen() + 1 < count()));
+    const at = ready ? positionOf(state.picture.transitions, chosen()) : -1;
+    able(previous, ready && at > 0);
+    able(next, ready && (at === -1 || at + 1 < count()));
     speed.disabled = reduce.matches;
     loop.disabled = reduce.matches;
     if (speed.value !== String(prefs.speed)) speed.value = String(prefs.speed);
@@ -687,7 +690,7 @@ export function playbackBar(env) {
     update(given) {
       state = given;
       const picture = state.picture;
-      const walk = picture.dayTypeId + ':' + picture.choice.transition;
+      const walk = picture.dayTypeId + ':' + picture.bellsId + ':' + picture.choice.transition;
       const key = walk + ':' + picture.groups.map((group) => group.id).join(',');
       if (scene === null || key !== sceneKey || scene.results !== state.results || scene.graph !== state.graph) {
         scene = build();

@@ -18,6 +18,10 @@
 //                      not a day type of the project, every day type that is
 //                      its own copy, each starting a sheet, and a line for
 //                      those that are the same as the first.
+//   options.bellsId   the bell schedule chosen on the map with it: the tables
+//                      of that day type under those bells, headed "B Day with
+//                      Early Release bells", with no transition into or out
+//                      of a period that does not meet. Left out, regular bells.
 //   and what every output takes (document.js)
 //
 // A day's transitions flow one after another, each table under its own
@@ -76,9 +80,9 @@ function names(groups) {
 
 // The pages of one day type: its transitions, then its whole day.
 function dayPages(project, results, day) {
-  const transitions = transitionsOf(project, day.id);
+  const transitions = transitionsOf(project, day.id, day.bellsId);
   const margin = project.settings.checks ? project.settings.checks.passingMarginSeconds : 0;
-  const walks = transitions.map((transition) => ({ transition, found: transitionRows(project, results, day.id, transition.period) }));
+  const walks = transitions.map((transition) => ({ transition, found: transitionRows(project, results, day.id, transition.period, day.bellsId) }));
   if (walks.every((each) => each.found.rows.length === 0)) {
     return [{ what: name + ': ' + day.heading, body: '<p class="doc-lead">' + esc('Nobody walks anywhere on ' + day.heading + ' yet: give a group a room in two periods that follow each other.') + '</p>' }];
   }
@@ -96,7 +100,7 @@ function dayPages(project, results, day) {
     if (rest.length > 0) body.push('<p class="doc-meaning">' + esc(rest.join(' ')) + '</p>');
     body.push('</section>');
   }
-  const rows = dayRows(project, results, day.id);
+  const rows = dayRows(project, results, day.id, day.bellsId);
   const lateGroups = rows.filter((row) => row.late > 0).length;
   body.push('<section class="doc-section doc-section--travel-day new-sheet">');
   body.push('<h2>' + esc('Each group over the whole of ' + day.heading) + '</h2>');
@@ -110,7 +114,7 @@ export function render(given, derived, options) {
   const opts = options || {};
   const { project, results } = printedFrom(given, derived, opts);
   const chosen = opts.dayTypeId ? findDayType(project, opts.dayTypeId) : null;
-  const days = chosen ? [travelDay(project, chosen.id)] : ownDayTypes(project).map((dayType) => travelDay(project, dayType.id));
+  const days = chosen ? [travelDay(project, chosen.id, opts.bellsId)] : ownDayTypes(project).map((dayType) => travelDay(project, dayType.id));
   const pages = days.flatMap((day) => dayPages(project, results, day));
   if (!chosen) {
     const own = ownDayTypes(project);
