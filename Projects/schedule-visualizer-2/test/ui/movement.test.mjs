@@ -1340,6 +1340,8 @@ test('SV2-79: the picture under a bell schedule draws only the walks that happen
   assert.equal(shown.bellsId, ER);
   assert.equal(shown.drawn + shown.same, 8 * 3, 'eight groups, three transitions that happen');
   assert.equal(shown.failed.length, 0, 'the walks out of an empty period are not failed routes');
+  assert.deepEqual(shown.late.filter((walk) => walk.bellsId !== ER || walk.period > 2), [], 'the late walks are the bell run\'s own, none from a period that does not meet');
+  assert.deepEqual(regular.late.map((walk) => walk.period), [5], 'while the regular run has its late walk');
   assert.equal(shown.transitions.length, 3);
   assert.equal(shown.offWords, 'Periods 5 to 8 do not meet');
   assert.equal(shown.dayTypeName, 'A Day with Early Release bells', 'every caption says the bells');
