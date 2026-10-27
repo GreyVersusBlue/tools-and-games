@@ -113,7 +113,7 @@ export function publishedRecord(project) {
   return record && typeof record.at === 'string' && typeof record.calendar === 'boolean' ? record : null;
 }
 
-function notePublishedCalendar(project, at, calendar) {
+export function notePublishedCalendar(project, at, calendar) {
   try {
     const noted = readDevice().published;
     const all = noted && typeof noted === 'object' && !Array.isArray(noted) ? { ...noted } : {};

@@ -159,6 +159,9 @@ export function openDateDialog(options) {
     const covered = Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
     element.style.setProperty('--sheet-lift', covered + 'px');
     element.style.setProperty('--sheet-max', Math.round(viewport.height * 0.92) + 'px');
+    // the field being typed in stays in view when the keyboard has made the sheet shorter
+    const field = document.activeElement;
+    if (field && field !== document.body && element.contains(field) && field.scrollIntoView) field.scrollIntoView({ block: 'nearest' });
   }
   if (viewport) {
     viewport.addEventListener('resize', fit);
