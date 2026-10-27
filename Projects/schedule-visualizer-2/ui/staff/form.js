@@ -43,6 +43,7 @@ import { pageReader, failureSentence } from './assemble.js';
 import { publishDocument, deviceRandom, fileTarget } from './targets.js';
 import { readerSeesChange } from './preview.js';
 import { readerSentences, readerSummary, NOTHING_REMAINS as NOTHING } from './readers.js';
+import { readDevice, writeDevice } from '../../storage/device.js';
 
 // What each view is called on the form, in the order of spec 12.2.
 export const VIEW_LABELS = {
@@ -57,6 +58,7 @@ export const VIEW_LABELS = {
   sub: 'Substitute plan',
   directions: 'Directions',
   staffing: 'Staffing overview',
+  calendar: 'Calendar',
 };
 
 export const PASSCODE_TRUTH = 'A short or guessable passcode stops a casual look, not someone set on guessing it. Tell staff this passcode: the file asks for it once on each device.';
@@ -84,13 +86,45 @@ export const MOVED_ON = 'The schedule changed while the file was being made. The
 export const CHECKS_WORDS_AFTER_MS = 400;
 export const STALE_LABEL = 'Days until the file counts as out of date';
 export const STALE_AT_END_LABEL = 'Out of date the day after the calendar ends';
-// SV2-80 (ARCHITECTURE 17.4): a calendar changed since the last file went out
-export function calendarChangedWords(project) {
+// SV2-80 (ARCHITECTURE 17.4): a calendar changed since the last file went out.
+// `record` is what this device noted when that file was made ({ at, calendar },
+// publishedRecord below): when it says the copies had no calendar, or had
+// one that the project no longer has, the sentence says that instead.
+export const CALENDAR_REMOVED_WORDS = 'The calendar was removed after your last publish. Staff copies still have it.';
+export const CALENDAR_NONE_YET_WORDS = 'Staff copies have no calendar yet.';
+export function calendarChangedWords(project, record) {
   const calendar = calendarOf(project);
   const last = project.publish ? project.publish.lastPublishedAt : null;
-  if (!calendar || typeof calendar.changedAt !== 'string' || typeof last !== 'string') return '';
-  if (Date.parse(calendar.changedAt) <= Date.parse(last)) return '';
+  if (typeof last !== 'string') return '';
+  const noted = record && record.at === last ? record.calendar : null;
+  if (!calendar) return noted === true ? CALENDAR_REMOVED_WORDS : '';
+  if (noted === false) return CALENDAR_NONE_YET_WORDS;
+  if (typeof calendar.changedAt !== 'string' || Date.parse(calendar.changedAt) <= Date.parse(last)) return '';
   return 'The calendar changed after your last publish on ' + printDate(last) + '. Staff copies still have the old one.';
+}
+
+// What this device noted when the project's last file was made: { at,
+// calendar } (whether it carried a calendar), or null. Kept on the device
+// ("sv2:device", key `published`, by project id, the last 20) because the
+// project cannot say what staff copies hold once the calendar is gone.
+export function publishedRecord(project) {
+  const noted = readDevice().published;
+  const record = noted && typeof noted === 'object' && !Array.isArray(noted) ? noted[project.id] : null;
+  return record && typeof record.at === 'string' && typeof record.calendar === 'boolean' ? record : null;
+}
+
+function notePublishedCalendar(project, at, calendar) {
+  try {
+    const noted = readDevice().published;
+    const all = noted && typeof noted === 'object' && !Array.isArray(noted) ? { ...noted } : {};
+    delete all[project.id];
+    all[project.id] = { at, calendar };
+    const ids = Object.keys(all);
+    for (const id of ids.slice(0, Math.max(0, ids.length - 20))) delete all[id];
+    writeDevice({ published: all });
+  } catch (error) {
+    // a browser that keeps nothing: the sentence is then the project's alone
+  }
 }
 export const NOTES_LINE = 'Teacher notes are published: the substitute plan shows them.';
 export const MAIL_LINE = 'On a phone, open the file in Safari or Chrome, or save it to Files first; a mail app’s preview will not work.';
@@ -185,6 +219,10 @@ export function publishForm(ctx, hooks) {
 
   const views = PUBLISH_VIEWS.map((view) => ({ view, ...check('view-' + view, VIEW_LABELS[view] || view, (on) => change('views.' + view, on)) }));
   for (const each of views) each.box.dataset.view = each.view;
+  // the calendar view's own tick, with a calendar only
+  const calendarView = { view: 'calendar', ...check('view-calendar', VIEW_LABELS.calendar, (on) => change('views.calendar', on)) };
+  calendarView.box.dataset.view = 'calendar';
+  const viewList = h('div', { class: 'pub__list' }, views.map((each) => each.element));
   const names = check('names', 'Show teacher names on the map', (on) => change('teacherNamesOnMap', on));
 
   // ---- staleness
@@ -383,6 +421,7 @@ export function publishForm(ctx, hooks) {
       if (noted === true) {
         try {
           store.apply(notePublished, { at: published.model.publishedAt });
+          notePublishedCalendar(project, published.model.publishedAt, Boolean(calendarOf(project)) && project.publish.views.calendar !== false);
         } catch (error) {
           console.warn('Schedule Visualizer 2: the file was made, and the project could not record it.', error);
           noted = NOT_NOTED;
@@ -425,7 +464,7 @@ export function publishForm(ctx, hooks) {
   const foldSays = h('span', { class: 'pub__fold-says', data: { says: 'views' } });
   const fold = h('details', { class: 'pub__fold', id: 'publish-contents' },
     h('summary', { class: 'pub__fold-title' }, h('span', { class: 'eyebrow' }, 'What is in it'), ' · ', foldSays),
-    group('Views to include', h('div', { class: 'pub__list' }, views.map((each) => each.element))),
+    group('Views to include', viewList),
     group('The map', names.element));
 
   const element = h('div', { class: 'pub', data: { checks: '0' } },
@@ -447,10 +486,15 @@ export function publishForm(ctx, hooks) {
 
   function update(project) {
     const publish = project.publish;
+    const withCalendar = Boolean(calendarOf(project));
+    if (withCalendar && !viewList.contains(calendarView.element)) viewList.append(calendarView.element);
+    else if (!withCalendar && viewList.contains(calendarView.element)) calendarView.element.remove();
+    calendarView.box.checked = publish.views.calendar !== false;
+    const shown = withCalendar ? views.concat([calendarView]) : views;
     for (const each of views) each.box.checked = publish.views[each.view] !== false;
-    const held = views.filter((each) => each.box.checked).length;
+    const held = shown.filter((each) => each.box.checked).length;
     names.box.checked = publish.teacherNamesOnMap !== false;
-    foldSays.textContent = (held === views.length ? 'All ' + views.length + ' views' : held + ' of ' + views.length + ' views') + (names.box.checked ? '' : ', no teacher names on the map');
+    foldSays.textContent = (held === shown.length ? 'All ' + shown.length + ' views' : held + ' of ' + shown.length + ' views') + (names.box.checked ? '' : ', no teacher names on the map');
     stale.set(publish.stalenessDays);
     const now = ctx.clock();
     const until = printDate(new Date(now.getTime() + publish.stalenessDays * DAY_MS));
@@ -469,7 +513,7 @@ export function publishForm(ctx, hooks) {
     } else {
       staleSays.textContent = 'Readers see a notice once the file is older than this. Published today, it is current until ' + until + '. ' + days;
     }
-    const changedWords = calendarChangedWords(project);
+    const changedWords = calendarChangedWords(project, publishedRecord(project));
     changedSays.textContent = changedWords;
     changedSays.hidden = changedWords === '';
 
