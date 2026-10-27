@@ -15,14 +15,35 @@
 
 import { calendarDays, dateWords } from '../../engine/calendar.js';
 import { calendarOf, bellSchedulesOf } from '../../engine/schema.js';
-import { esc, frame, paperOf } from './document.js';
+import { esc, frame, paperOf, printableBox } from './document.js';
 import { monthsOf, shortOfDay, shortOfBells, tintOf, closedWord, WEEKDAY_NAMES } from '../schedule/calendar/model.js';
 
 export const id = 'calendar';
 export const name = 'Calendar';
+// the preview opens on a landscape sheet (print-preview.js)
+export const orientation = 'landscape';
 
 const SHORT_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 export const MONTHS_A_SHEET = 12;
+
+// What a sheet spends besides the months, in millimetres: the header (school,
+// title, rule), the summary, the key (up to two lines), the closing line a
+// browser with no page boxes prints, and some air. The months share the rest.
+const SPENT_MM = 54;
+const MONTH_HEAD_MM = 9.6;
+const MONTH_GAP_MM = 4;
+const CELL_MOST_MM = 7.5;
+const CELL_LEAST_MM = 4;
+
+// The height of a day's square so that twelve months, and the weeks of the
+// tallest (six), fit the sheet: 3 rows of months across a landscape sheet,
+// 4 down an upright one.
+export function cellHeightMm(paper) {
+  const rows = paper.orientation === 'landscape' ? 3 : 4;
+  const left = printableBox(paper).height - SPENT_MM - MONTH_GAP_MM * (rows - 1);
+  const cell = (left / rows - MONTH_HEAD_MM) / 6;
+  return Math.max(CELL_LEAST_MM, Math.min(CELL_MOST_MM, Math.floor(cell * 10) / 10));
+}
 
 // The sheet's own rules: print.css is shared by every output and knows
 // nothing of months.
@@ -33,12 +54,12 @@ const STYLE = [
   '.cal-print__month h2 { margin: 0 0 1mm; font-size: 10pt; }',
   '.cal-print__month table { width: 100%; table-layout: fixed; border-collapse: collapse; font-variant-numeric: tabular-nums; }',
   '.cal-print__month th { font-size: 6.5pt; font-weight: 500; color: #515761; padding: 0 0 0.5mm; }',
-  '.cal-print__month td { position: relative; height: 7.5mm; border: 0.2mm solid #b9b3a7; text-align: center; vertical-align: middle; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }',
+  '.cal-print__month td { position: relative; height: var(--cal-cell, 7.5mm); border: 0.2mm solid #b9b3a7; text-align: center; vertical-align: middle; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }',
   '.cal-print__month td.is-blank { border: 0; }',
   '.cal-print__month td.is-out { border-style: dotted; }',
   '.cal-print__n { position: absolute; top: 0.3mm; left: 0.6mm; font-size: 5pt; line-height: 1; }',
-  '.cal-print__t { display: block; padding-top: 1.6mm; font-size: 8pt; font-weight: 600; line-height: 1; }',
-  '.cal-print__b { display: block; font-size: 5.5pt; line-height: 1.1; }',
+  '.cal-print__t { display: block; font-size: 8pt; font-weight: 600; line-height: 1; }',
+  '.cal-print__b { position: absolute; right: 0.6mm; bottom: 0.3mm; font-size: 5pt; line-height: 1; }',
   '.cal-print__month td.is-closed { background: repeating-linear-gradient(135deg, transparent 0 1.2mm, #d8d3c8 1.2mm 1.45mm); }',
   '.cal-print__month td.is-closed .cal-print__t { font-size: 6pt; font-weight: 500; }',
   '.cal-print__mark { position: absolute; top: 0; right: 0; width: 0; height: 0; border-top: 2mm solid #1f2328; border-left: 2mm solid transparent; }',
@@ -105,7 +126,8 @@ export function render(project, derived, options) {
   const order = Array.from({ length: 7 }, (unused, i) => (firstDay + i) % 7);
   const byDate = new Map(days.map((day) => [day.date, day]));
   const months = monthsOf(days[0].date, days[days.length - 1].date, firstDay);
-  const wide = paperOf(project, opts).orientation === 'landscape';
+  const paper = paperOf(project, opts);
+  const wide = paper.orientation === 'landscape';
   const school = days.filter((day) => day.school).length;
   const summary = '<p class="cal-print__summary">' + school + (school === 1 ? ' school day' : ' school days') + ' from ' + esc(dateWords(days[0].date)) + ' to ' + esc(dateWords(days[days.length - 1].date)) + '.</p>';
   const key = keyMarkup(project, days);
@@ -115,7 +137,7 @@ export function render(project, derived, options) {
     pages.push({
       what: months.length > MONTHS_A_SHEET ? 'Calendar, ' + some[0].name + (some.length > 1 ? ' to ' + some[some.length - 1].name : '') : null,
       body: (i === 0 ? '<style>' + STYLE + '</style>' + summary : '') + key
-        + '<div class="cal-print ' + (wide ? 'cal-print--wide' : 'cal-print--tall') + '">' + some.map((month) => monthMarkup(project, month, byDate, order)).join('') + '</div>',
+        + '<div class="cal-print ' + (wide ? 'cal-print--wide' : 'cal-print--tall') + '" style="--cal-cell: ' + cellHeightMm(paper) + 'mm">' + some.map((month) => monthMarkup(project, month, byDate, order)).join('') + '</div>',
     });
   }
   return frame(project, { output: id, what: 'Calendar', options: opts, pages });
