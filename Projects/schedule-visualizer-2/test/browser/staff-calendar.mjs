@@ -59,6 +59,10 @@ const OUTSIDE = '2027-07-01T14:00:00Z';
 const LATE_ON_1_SEP = '2026-09-02T02:30:00Z'; // 22:30 on 1 September in New York, already the 2nd in UTC
 const NEXT_MORNING = '2026-09-02T12:00:00Z'; // 8:00 on the 2nd
 
+// A name with markup in it: shown as typed, never as markup.
+const HOSTILE = '<img src=x onerror=alert(1)>';
+const BELLS_KEY = 'sv2staff:psample001:bells';
+
 const SIZES = [{ name: 'phone', width: 390, height: 844 }, { name: 'desktop', width: 1280, height: 800 }];
 
 // Bells moved `minutes` later.
@@ -71,12 +75,13 @@ function later(bells, minutes) {
 }
 
 // The sample, with the day types, the bells and the calendar of the header.
-function manyDays() {
+function manyDays(opts) {
+  const evil = opts && opts.evil ? HOSTILE : null;
   const project = sampleSchool();
   project.publish.passcode = '';
   const a = project.dayTypes[0];
   project.dayTypes.push(
-    { id: C, name: 'C Day', own: true, sameAs: null, short: '', bells: a.bells.map((bell) => ({ ...bell })) },
+    { id: C, name: evil || 'C Day', own: true, sameAs: null, short: '', bells: a.bells.map((bell) => ({ ...bell })) },
     { id: 'dfixture0d', name: 'D Day', own: false, sameAs: C, short: '', bells: a.bells.map(() => null) },
     { id: 'dfixture0t', name: 'Testing Day', own: false, sameAs: C, short: '', bells: a.bells.map(() => null) },
     { id: 'dfixture0f', name: 'F Day', own: false, sameAs: 'dsample00b', short: '', bells: a.bells.map(() => null) },
@@ -89,7 +94,7 @@ function manyDays() {
   }
   project.bellSchedules = [{
     id: ER,
-    name: 'Early Release',
+    name: evil || 'Early Release',
     short: '',
     bells: [['08:00', '08:40'], ['08:44', '09:24'], ['09:28', '10:08'], ['10:12', '10:52'], null, null, null, null].map((times) => (times ? { start: times[0], end: times[1] } : null)),
     off: [4, 5, 6, 7],
@@ -109,7 +114,7 @@ function manyDays() {
     rotation: [a.id, 'dsample00b', C],
     dates: [
       { date: '2026-10-30', day: 'dfixture0h', bells: null, label: 'Conferences' },
-      { date: '2026-11-26', day: 'closed', bells: null, label: 'Thanksgiving' },
+      { date: '2026-11-26', day: 'closed', bells: null, label: evil || 'Thanksgiving' },
       { date: '2026-12-08', day: 'closed', bells: null, label: 'Snow day' },
       { date: '2026-12-09', day: a.id, bells: null, label: '' },
     ],
@@ -134,6 +139,9 @@ before(async () => {
   await write('many', manyDays(), '2026-08-25T12:00:00Z');
   // the same school, published again on 2 September: a newer file
   await write('newer', manyDays(), '2026-09-02T11:00:00Z');
+  // published the afternoon of 2 September: a correction from the office the day a reader answered
+  await write('sameday', manyDays(), '2026-09-02T18:00:00Z');
+  await write('evil', manyDays({ evil: true }), '2026-08-25T12:00:00Z');
   const plain = sampleSchool();
   plain.publish.passcode = '';
   await write('plain', plain, '2026-08-25T12:00:00Z');
@@ -155,17 +163,23 @@ async function openPage(options) {
   const page = await context.newPage();
   const phone = size.width < 640;
   await page.setViewport({ width: size.width, height: size.height, deviceScaleFactor: 1, hasTouch: phone, isMobile: phone });
-  await page.emulateTimezone(ZONE);
-  await page.evaluateOnNewDocument((at, every, kept) => {
+  await page.emulateTimezone(opts.zone || ZONE);
+  await page.evaluateOnNewDocument((at, every, kept, noStorage) => {
     globalThis.sv2Pinned = at;
     globalThis.sv2StaffClock = { now: () => globalThis.sv2Pinned, every };
     globalThis.print = () => {};
+    globalThis.__alerts = 0;
+    globalThis.alert = () => {
+      globalThis.__alerts += 1;
+    };
     try {
       for (const [key, value] of Object.entries(kept)) localStorage.setItem(key, value);
     } catch (error) {
       // nothing to keep
     }
-  }, opts.at || ROTATION, opts.every || 3600000, opts.kept || {});
+    // a device that refuses to say what it keeps: asking is itself an error
+    if (noStorage) Object.defineProperty(window, 'localStorage', { get() { throw new Error('SecurityError'); } });
+  }, opts.at || ROTATION, opts.every || 3600000, opts.kept || {}, opts.noStorage === true);
   const errors = [];
   page.on('pageerror', (error) => errors.push('page error: ' + error.message));
   page.on('console', (message) => {
@@ -289,7 +303,7 @@ test('the lock-screen image of a teacher with four kinds of day holds them all, 
   const kinds = kindsOf(many);
   assert.equal(kinds.length, 11);
   const eleven = check(lockScreenLayout(many, many.teacher('tsample007'), kinds, at), 'eleven kinds');
-  assert.ok(eleven.includes('And 2 more kinds of day: print the schedule for every one.'), 'nine fit three bands of eight periods: ' + eleven.filter((text) => text.startsWith('And')));
+  assert.ok(eleven.slice(eleven.findIndex((text) => text.startsWith('And ')), -2).join(' ') === 'And 2 more kinds of day: Extra 6 and Extra 7. Print the schedule for every one.', 'nine fit three bands of eight periods: ' + eleven.filter((text) => text.startsWith('And')));
   assert.equal(eleven.filter((text) => /^Extra \d$/.test(text)).length, 5, 'the first nine kinds: four of the school\'s and five extras');
 });
 
@@ -320,7 +334,7 @@ for (const size of SIZES) {
       assert.equal(await line(page), 'Today is a B Day. Not right?');
       assert.deepEqual(await texts(page, '.day .card__title'), ['B Day and F Day', 'A Day', 'C Day, D Day and Testing Day', 'Late Start']);
       assert.deepEqual(await page.evaluate(() => Array.from(document.querySelectorAll('.day'), (day) => [day.tagName, day.getAttribute('data-today') || ''])), [['SECTION', 'true'], ['DETAILS', ''], ['DETAILS', ''], ['DETAILS', '']], 'four cards: today\'s open, the rest folded');
-      assert.deepEqual(await texts(page, '.day__tag'), ['Today']);
+      assert.deepEqual(await texts(page, '.day__tag'), ['Today: B Day'], 'the card is shared by B Day and F Day: it says which one today is');
       assert.deepEqual(await page.evaluate(() => Array.from(document.querySelectorAll('.row--now'), (row) => [row.closest('.day').dataset.today, row.dataset.period])), [['true', '1']], 'Period 2 is marked on today\'s card only');
       // a folded card opens by keyboard
       await page.focus('details.day summary');
@@ -468,7 +482,7 @@ test('"Not right?" by keyboard: Just today holds for today only', async () => {
     await page.keyboard.press('Enter');
     await lineIs(page, 'Today is a C Day with Early Release bells. You said so on this device. Not right?');
     assert.equal(await focused(page), 'today__says', 'focus on the line, rewritten');
-    assert.deepEqual(JSON.parse(await kept(page, DAY_ON_KEY)), { date: '2026-09-01', dayTypeId: C, bellsId: ER, follow: false });
+    assert.deepEqual(JSON.parse(await kept(page, DAY_ON_KEY)), { just: { date: '2026-09-01', dayTypeId: C, bellsId: ER, at: ROTATION.replace('Z', '.000Z') }, follow: null });
     assert.match(await lede(page), /on C Day with Early Release bells/);
 
     // the next morning the calendar is back: 2 September is C Day with Early Release anyway, so look at the 3rd
@@ -492,7 +506,7 @@ test('"Not right?": the days after follow on from it, until a newer file is open
     await press(page, '[data-today="follow"]');
     await lineIs(page, 'Today is an A Day. You said so on this device. Not right?');
     assert.deepEqual(await texts(page, '.day[data-today="true"] .card__title'), ['A Day']);
-    assert.deepEqual(JSON.parse(await kept(page, DAY_ON_KEY)), { date: '2026-09-01', dayTypeId: 'dsample00a', bellsId: null, follow: true });
+    assert.deepEqual(JSON.parse(await kept(page, DAY_ON_KEY)), { just: null, follow: { date: '2026-09-01', dayTypeId: 'dsample00a', bellsId: null, at: ROTATION.replace('Z', '.000Z') } });
 
     // the next day follows on from A: B Day, and Wednesday's bells
     await page.evaluate(() => {
@@ -663,4 +677,347 @@ test('a file with no calendar is as it was: no line, the day chosen by hand, no 
   } finally {
     await session.close();
   }
+});
+
+// ---------------------------------------------------------------- SV2-81b: what the review found
+
+const FRIDAY = '2026-09-04T14:00:00Z'; // Fri 10:00: D Day, the same as C Day and Testing Day
+const school81 = () => openSchool(publishedModel(manyDays(), { clock: () => new Date('2026-08-25T12:00:00Z') }));
+const dayName = (school, date) => {
+  const day = school.dayOn(date);
+  return day.school ? school.dayTypes.find((dayType) => dayType.id === day.dayTypeId).name : null;
+};
+const SAYS = (name) => (name === null ? /^No school today/ : new RegExp('^Today is an? ' + name + '[ .]'));
+
+test('two answers: "Just today" never removes a standing follow answer', async () => {
+  const session = await openPage({ at: ROTATION, every: 150 });
+  try {
+    const { page } = session;
+    await goto(page, files.many, '#/free');
+    // Tuesday: C Day, and the days after follow on from it
+    await press(page, '[data-today="not-right"]');
+    await press(page, '[data-pick="today-day"] input[value="' + C + '"]');
+    await press(page, '[data-today="follow"]');
+    await lineIs(page, 'Today is a C Day. You said so on this device. Not right?');
+    // Wednesday follows on: A Day (with the Wednesday bells). Just today, it is B Day
+    await page.evaluate(() => {
+      globalThis.sv2Pinned = '2026-09-02T13:00:00Z';
+    });
+    await lineIs(page, 'Today is an A Day with Early Release bells. It follows on from what you said on 1 September. Not right?');
+    await press(page, '[data-today="not-right"]');
+    await press(page, '[data-pick="today-day"] input[value="dsample00b"]');
+    await press(page, '[data-today="just"]');
+    await lineIs(page, 'Today is a B Day with Early Release bells. You said so on this device. Not right?');
+    const both = JSON.parse(await kept(page, DAY_ON_KEY));
+    assert.equal(both.follow.dayTypeId, C, 'the follow answer is still kept');
+    assert.equal(both.just.dayTypeId, 'dsample00b');
+    assert.equal(both.follow.at, '2026-09-01T13:50:00.000Z');
+    assert.equal(both.just.at, '2026-09-02T13:00:00.000Z');
+    // Thursday follows on from Tuesday's answer, not from Wednesday's
+    await page.evaluate(() => {
+      globalThis.sv2Pinned = '2026-09-03T13:00:00Z';
+    });
+    await lineIs(page, 'Today is a B Day. It follows on from what you said on 1 September. Not right?');
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('a file published after the answer was given clears a follow answer, the same day too', async () => {
+  const answer = JSON.stringify({ just: null, follow: { date: '2026-09-02', dayTypeId: 'dsample00b', bellsId: null, at: '2026-09-02T13:00:00.000Z' } });
+  const at = '2026-09-03T13:00:00Z';
+  const standing = await openPage({ at, kept: { [DAY_ON_KEY]: answer } });
+  try {
+    await goto(standing.page, files.many, '#/free');
+    assert.equal(await line(standing.page), 'Today is a C Day. It follows on from what you said on 2 September. Not right?', 'a file from before the answer: kept');
+    assert.deepEqual(standing.errors, []);
+  } finally {
+    await standing.close();
+  }
+  const corrected = await openPage({ at, kept: { [DAY_ON_KEY]: answer } });
+  try {
+    await goto(corrected.page, files.sameday, '#/free');
+    assert.equal(await line(corrected.page), 'Today is an A Day. Not right?', 'the office republished at 2 pm that day: its calendar is the newer word');
+    assert.equal(await kept(corrected.page, DAY_ON_KEY), null, 'nothing else was kept, so nothing is');
+    assert.deepEqual(corrected.errors, []);
+  } finally {
+    await corrected.close();
+  }
+});
+
+test('an answer is stored under the date of the click, not the date the line was drawn with', async () => {
+  // drawn at 23:58 on 1 September in New York; the timer is asleep (an hour) and the click is at 00:05 on the 2nd
+  const session = await openPage({ at: '2026-09-02T03:58:00Z' });
+  try {
+    const { page } = session;
+    await goto(page, files.many, '#/free');
+    assert.equal(await line(page), 'Today is a B Day. Not right?');
+    await press(page, '[data-today="not-right"]');
+    await page.evaluate(() => {
+      globalThis.sv2Pinned = '2026-09-02T04:05:00Z';
+    });
+    await press(page, '[data-pick="today-day"] input[value="dsample00a"]');
+    await press(page, '[data-today="just"]');
+    await lineIs(page, 'Today is an A Day. You said so on this device. Not right?');
+    const answer = JSON.parse(await kept(page, DAY_ON_KEY)).just;
+    assert.equal(answer.date, '2026-09-02', 'the date of the click');
+    assert.equal(answer.at, '2026-09-02T04:05:00.000Z');
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('a date with no school marks no period "Now" anywhere, whatever the day chosen by hand', async () => {
+  const session = await openPage({ at: NO_SCHOOL, kept: { [DAY_KEY]: 'dsample00a', [BELLS_KEY]: ER } });
+  try {
+    const { page } = session;
+    await goto(page, files.many, '#/free');
+    assert.equal(await page.evaluate(() => document.querySelector('.lede').dataset.moment), 'closed');
+    assert.doesNotMatch(await lede(page), /^It is /);
+    await move(page, '#/now?t=tsample007');
+    assert.equal(await page.evaluate(() => document.querySelector('.lede').dataset.moment), 'closed');
+    assert.doesNotMatch(await lede(page), /right now/);
+    await move(page, '#/teacher/tsample007');
+    assert.equal(await count(page, '.row--now'), 0);
+    assert.equal(await count(page, '.row__mark'), 0);
+    await move(page, '#/group/gsample001');
+    assert.equal(await count(page, '.row--now'), 0);
+    await move(page, '#/room/rsample001');
+    assert.equal(await count(page, '.row--now'), 0);
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('#/calendar?m= with a month that is not 01 to 12 shows today\'s month, as other bad values do', async () => {
+  const session = await openPage({ at: ROTATION });
+  try {
+    const { page } = session;
+    await goto(page, files.many, '#/calendar');
+    for (const bad of ['2026-13', '2026-00', '2026-99', '2026-1', 'x', '']) {
+      await move(page, '#/calendar?m=' + bad);
+      assert.equal(await page.evaluate(() => document.querySelector('.cal__month').textContent), 'September 2026', 'm=' + bad);
+    }
+    await move(page, '#/calendar?m=2026-12');
+    assert.equal(await page.evaluate(() => document.querySelector('.cal__month').textContent), 'December 2026');
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('Previous and Next month keep the focus on the pressed control and say the new month', async () => {
+  const session = await openPage({ at: RESYNCED });
+  try {
+    const { page } = session;
+    await goto(page, files.many, '#/calendar');
+    await page.focus('.cal__step[data-step="next"]');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('[data-says="month"]')?.textContent === 'January 2027');
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.step), 'next');
+    assert.equal(await page.evaluate(() => document.querySelector('[data-says="month"]').getAttribute('role')), 'status');
+    await page.focus('.cal__step[data-step="previous"]');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('[data-says="month"]')?.textContent === 'December 2026');
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.step), 'previous');
+    // the last month has no next: the focus goes to the control that is left
+    await move(page, '#/calendar?m=2027-05');
+    await page.focus('.cal__step[data-step="next"]');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('[data-says="month"]')?.textContent === 'June 2027');
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.step), 'previous');
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('a card shared by several day types marks which one is today', async () => {
+  const session = await openPage({ at: FRIDAY });
+  try {
+    const { page } = session;
+    await goto(page, files.many, '#/teacher/tsample007');
+    assert.equal(await line(page), 'Today is a D Day. Not right?');
+    assert.deepEqual(await texts(page, '.day[data-today="true"] .card__title'), ['C Day, D Day and Testing Day']);
+    assert.deepEqual(await texts(page, '.day__tag'), ['Today: D Day']);
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('hand-chosen bells set the times and "Now" on day cards; Coverage and the substitute plan use them and leave out periods that do not meet', async () => {
+  // 1 July 2027 is outside the calendar: the day and the bells are the reader's
+  const session = await openPage({ at: OUTSIDE, kept: { [DAY_KEY]: 'dsample00b', [BELLS_KEY]: ER } });
+  try {
+    const { page } = session;
+    await goto(page, files.many, '#/teacher/tsample007');
+    assert.deepEqual(await texts(page, '.day[data-own="true"] .day__bells'), ['Early Release bells']);
+    assert.equal(await count(page, '.day__tag'), 0, 'nothing here says it is today');
+    assert.deepEqual(await page.evaluate(() => Array.from(document.querySelectorAll('.row--now'), (row) => [row.closest('.day').dataset.bells || '', row.dataset.period])), [[ER, '2']], '10:00 is Period 3 under Early Release bells');
+    assert.equal(await page.evaluate(() => document.querySelector('.day[data-own="true"] .row .row__time').textContent), '8:00 AM to 8:40 AM');
+    await move(page, '#/coverage/tsample007');
+    assert.match(await lede(page), /of 4 periods on B Day with Early Release bells\./);
+    assert.equal(await count(page, 'section[data-period]') > 0, true);
+    assert.deepEqual(await page.evaluate(() => Array.from(document.querySelectorAll('section[data-period]'), (card) => Number(card.dataset.period)).filter((period) => period > 3)), []);
+    assert.equal(await page.evaluate(() => document.querySelector('section[data-period="0"] .card__when').textContent), '8:00 AM to 8:40 AM');
+    await move(page, '#/sub/tsample007');
+    assert.deepEqual(await page.evaluate(() => Array.from(document.querySelectorAll('[data-sub="day"] .row'), (row) => Number(row.dataset.period))), [0, 1, 2, 3]);
+    assert.deepEqual(await page.evaluate(() => Array.from(document.querySelectorAll('[data-sub="cover"] li'), (li) => Number(li.dataset.period)).filter((period) => period > 3)), []);
+    assert.equal(await page.evaluate(() => document.querySelector('[data-sub="day"] .row .row__when').textContent), 'Period 18:00 AM to 8:40 AM');
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+  // on an Early Release Wednesday it is today's bells, with no choice by hand
+  const today = await openPage({ at: EARLY });
+  try {
+    const { page } = today;
+    await goto(page, files.many, '#/coverage/tsample007');
+    assert.match(await lede(page), /of 4 periods on C Day with Early Release bells\./);
+    await goto(page, files.many, '#/sub/tsample007');
+    assert.equal(await count(page, '[data-sub="day"] .row'), 4);
+    assert.deepEqual(today.errors, []);
+  } finally {
+    await today.close();
+  }
+});
+
+test('Search\'s More row lists Calendar when the school has one, and not otherwise', async () => {
+  const session = await openPage({ at: ROTATION });
+  try {
+    const { page } = session;
+    await goto(page, files.many, '#/search');
+    assert.ok((await texts(page, '.more .list__name')).includes('Calendar'));
+    assert.equal(await page.evaluate(() => document.querySelector('.more a[href="#/calendar"]') !== null), true);
+    await goto(page, files.plain, '#/search');
+    assert.equal((await texts(page, '.more .list__name')).includes('Calendar'), false);
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+// ---------------------------------------------------------------- what the tests missed
+
+for (const [zone, name] of [['America/New_York', 'New York'], ['Pacific/Auckland', 'Auckland']]) {
+  test('the date is the reader\'s own at 23:30 and 00:30 in ' + name + ', and across the clocks changing', async () => {
+    const school = school81();
+    // [instant, the reader's date there]
+    const moments = zone === 'America/New_York'
+      ? [['2026-09-02T03:30:00Z', '2026-09-01'], ['2026-09-02T04:30:00Z', '2026-09-02'], // summer time
+        ['2026-11-02T04:30:00Z', '2026-11-01'], ['2026-11-02T05:30:00Z', '2026-11-02'], // the night the clocks went back
+        ['2027-03-15T03:30:00Z', '2027-03-14'], ['2027-03-15T04:30:00Z', '2027-03-15']] // the night they went forward, 14 March 2027, 2 am
+      : [['2026-09-01T11:30:00Z', '2026-09-01'], ['2026-09-01T12:30:00Z', '2026-09-02'], // winter time, UTC+12
+        ['2026-09-28T10:30:00Z', '2026-09-28'], ['2026-09-28T11:30:00Z', '2026-09-29'], // after the clocks went forward, UTC+13
+        ['2027-04-04T10:30:00Z', '2027-04-04'], ['2027-04-04T12:30:00Z', '2027-04-05']]; // the night they went back (UTC+13 then +12)
+    for (const [at, date] of moments) {
+      const session = await openPage({ at, zone });
+      try {
+        const { page } = session;
+        await goto(page, files.many, '#/free');
+        const want = dayName(school, date);
+        const said = await line(page);
+        if (want === null) assert.match(said, SAYS(null), zone + ' ' + at + ' is ' + date);
+        else assert.match(said, SAYS(want), zone + ' ' + at + ' is ' + date + ', ' + want + ': ' + said);
+        assert.deepEqual(session.errors, []);
+      } finally {
+        await session.close();
+      }
+    }
+  });
+}
+
+test('with storage unavailable the answer holds for as long as the page is open, and nothing breaks', async () => {
+  const session = await openPage({ at: ROTATION, every: 150, noStorage: true });
+  try {
+    const { page } = session;
+    await goto(page, files.many, '#/free');
+    assert.equal(await line(page), 'Today is a B Day. Not right?');
+    await press(page, '[data-today="not-right"]');
+    await press(page, '[data-pick="today-day"] input[value="' + C + '"]');
+    await press(page, '[data-today="follow"]');
+    await lineIs(page, 'Today is a C Day. You said so on this device. Not right?');
+    await move(page, '#/teacher/tsample007');
+    assert.equal(await line(page), 'Today is a C Day. You said so on this device. Not right?');
+    assert.equal(await count(page, '[data-band="notkept"], .band'), 1, 'the reader is told it is not kept');
+    await page.evaluate(() => {
+      globalThis.sv2Pinned = '2026-09-02T13:00:00Z';
+    });
+    await lineIs(page, 'Today is an A Day with Early Release bells. It follows on from what you said on 1 September. Not right?');
+    await move(page, '#/calendar');
+    assert.equal(await count(page, '.cal__item'), 22);
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('names with markup in them are shown as typed on the new pages, and the key holds no name', async () => {
+  const session = await openPage({ at: EARLY });
+  try {
+    const { page } = session;
+    for (const hash of ['#/free', '#/now?t=tsample007', '#/teacher/tsample007', '#/calendar?m=2026-09', '#/calendar?m=2026-11', '#/coverage/tsample007', '#/sub/tsample007', '#/staffing', '#/search']) {
+      await goto(page, files.evil, hash);
+      assert.equal(await count(page, 'main img'), 0, hash + ': no element came of a name');
+    }
+    await goto(page, files.evil, '#/free');
+    assert.ok((await line(page)).includes(HOSTILE + ' with ' + HOSTILE + ' bells'), 'the day type and the bells, as typed: ' + await line(page));
+    await goto(page, files.evil, '#/calendar?m=2026-11');
+    assert.ok((await texts(page, '.cal__item')).some((item) => item.includes('No school, ' + HOSTILE)), 'the note of a date, as typed');
+    await goto(page, files.evil, '#/free');
+    await press(page, '[data-today="not-right"]');
+    await press(page, '[data-today="just"]');
+    await page.waitForFunction((key) => localStorage.getItem(key) !== null, {}, DAY_ON_KEY);
+    assert.equal((await kept(page, DAY_ON_KEY)).includes('<'), false, 'ids, not names, are kept');
+    assert.equal(await page.evaluate(() => globalThis.__alerts), 0);
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('a file with no calendar shows no today line and writes no dayOn, whichever pages are opened', async () => {
+  const session = await openPage({ at: ROTATION });
+  try {
+    const { page } = session;
+    for (const hash of ['#/free', '#/now', '#/teacher/tsample007', '#/group/gsample001', '#/room/rsample001', '#/staffing', '#/search']) {
+      await goto(page, files.plain, hash);
+      assert.equal(await count(page, '.today'), 0, hash);
+    }
+    assert.deepEqual(await page.evaluate(() => Object.keys(localStorage).filter((key) => key.endsWith(':dayOn'))), []);
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('twelve kinds of day on the lock-screen image: today\'s is there, and the closing line names the ones left out', () => {
+  const project = manyDays();
+  for (let n = 0; n < 8; n += 1) {
+    const id = 'dextra000' + n;
+    project.dayTypes.push({ id, name: 'Extra ' + (n + 1), own: true, sameAs: null, short: '', bells: later(project.dayTypes[0].bells, n + 1) });
+    for (const group of project.groups) group.days[id] = group.days.dsample00a.map((slot) => ({ ...slot, teacherIds: slot.teacherIds.slice() }));
+  }
+  const many = openSchool(publishedModel(project, { clock: () => new Date('2026-08-25T12:00:00Z') }));
+  const teacher = many.teacher('tsample007');
+  const kinds = dayKindsOf(many, (dayType) => (many.teacherDay(teacher.id, dayType.id) || []).map((entry) => entry.groups.map((taught) => [taught.groupId, taught.roomId])));
+  assert.equal(kinds.length, 12);
+  const names = (layout) => layout.items.filter((item) => item.kind === 'text').map((item) => item.text);
+  // the closing line, over the lines it is set in: from "And" to the school's name
+  const closing = (texts) => texts.slice(texts.findIndex((text) => text.startsWith('And ')), -2).join(' ');
+  const plain = names(lockScreenLayout(many, teacher, kinds, { locale: 'en-GB', zone: 'UTC' }));
+  assert.equal(plain.includes('Extra 8'), false, 'the last kind does not fit');
+  const line = closing(plain);
+  assert.match(line, /^And 3 more kinds of day: Extra 6, Extra 7 and Extra 8\. Print the schedule for every one\.$/);
+  // today is the last of them: it stays, and another is named instead
+  const today = names(lockScreenLayout(many, teacher, kinds, { locale: 'en-GB', zone: 'UTC', today: 'dextra0007' }));
+  assert.ok(today.includes('Extra 8'), 'today\'s kind of day is on the image');
+  const said = closing(today);
+  assert.match(said, /^And 3 more kinds of day: Extra 5, Extra 6 and Extra 7\. Print the schedule for every one\.$/);
+  // nothing left out, no line
+  assert.equal(names(lockScreenLayout(many, teacher, kinds.slice(0, 3), { locale: 'en-GB', zone: 'UTC', today: 'dextra0007' })).some((text) => text.startsWith('And ')), false);
 });

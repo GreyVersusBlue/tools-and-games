@@ -7,6 +7,7 @@ import { h, typed } from './dom.js';
 import { makeHash } from './router.js';
 import { searchIndex, searchSchool } from './find.js';
 import { pageOf, printGate } from './page.js';
+import { hasCalendar } from './clock.js';
 
 const MORE = [
   ['directions', 'Directions', 'From one room to another'],
@@ -14,6 +15,7 @@ const MORE = [
   ['coverage', 'Coverage', 'Who is free when a teacher is out'],
   ['sub', 'Substitute plan', 'One page for a substitute'],
   ['staffing', 'Staffing', 'Teachers and taught periods by subject'],
+  ['calendar', 'Calendar', 'Which day type each day is'],
 ];
 
 const indexes = new WeakMap();
@@ -116,7 +118,7 @@ export const searchView = {
       else found[at - 1].focus();
     });
 
-    const more = MORE.filter(([view]) => school.has(view));
+    const more = MORE.filter(([view]) => (view === 'calendar' ? hasCalendar(school) : school.has(view)));
     draw();
     return gate.on(pageOf('Search', 'Find a teacher, a group or a room.',
       h('div', { class: 'field field--search', role: 'search' },

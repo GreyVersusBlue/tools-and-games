@@ -20,6 +20,7 @@ import { makeHash } from './router.js';
 import { dayText } from './dates.js';
 import { printButton, handOver } from './page.js';
 import { isMe, chooseMe, forgetMe, dayListWords } from './notes.js';
+import { todayOf } from './clock.js';
 
 export const LOCK_WIDTH = 1170;
 export const LOCK_HEIGHT = 2532;
@@ -37,7 +38,13 @@ const MAX_COLUMNS = 3;
 // more there are (a school with many day types, DESIGN 11.8). Sixteen
 // periods fit two bands of three; eight or ten fit three.
 export const LOCK_ROW_LEAST = 9;
-const MORE_LINE = 18;
+// The closing line about the kinds of day left out names them, over as many
+// lines as it takes, to this many; it is set at LEFT_SIZE with about this many
+// characters to a line (nothing is measured here)
+const MORE_LINES = 2;
+const MORE_LINE = 13;
+const LEFT_SIZE = 11;
+const LEFT_CHARS = 60;
 
 // "Ms. Okafor" → "ms-okafor-schedule.png". Letters and digits of any script
 // are kept; everything else is a hyphen.
@@ -73,8 +80,11 @@ function entryText(school, entry) {
 // width the text has (the painter shortens what is longer, with an ellipsis).
 // `kinds` is dayKindsOf()'s answer for the teacher: the day types, with those
 // that are the same day put together. `when` is { locale, zone } for the
-// tests; left out, the date is in the reader's own language and zone.
+// tests; left out, the date is in the reader's own language and zone. With
+// `when.today`, a day type's id, the kind of day that day type is is never
+// left out, whatever else is.
 export function lockScreenLayout(school, teacher, kinds, when) {
+  const options = when || {};
   const width = LOCK_WIDTH / LOCK_SCALE;
   const height = LOCK_HEIGHT / LOCK_SCALE;
   const items = [];
@@ -98,10 +108,13 @@ export function lockScreenLayout(school, teacher, kinds, when) {
   let shown = kinds;
   let bottom = LOCK_BOTTOM;
   if (kinds.length > 1 && !fits(kinds.length, LOCK_BOTTOM)) {
-    bottom = LOCK_BOTTOM - MORE_LINE;
+    bottom = LOCK_BOTTOM - MORE_LINE * MORE_LINES - 4;
     let count = kinds.length - 1;
     while (count > 1 && !fits(count, bottom)) count -= 1;
     shown = kinds.slice(0, count);
+    // today's kind of day is on the image, in the place of the last that fits
+    const todays = options.today ? kinds.find((kind) => kind.dayTypes.some((dayType) => dayType.id === options.today)) : null;
+    if (todays && !shown.includes(todays)) shown = kinds.filter((kind) => kind === todays || shown.slice(0, -1).includes(kind));
   }
   const bands = [];
   for (let at = 0; at < shown.length; at += MAX_COLUMNS) bands.push(shown.slice(at, at + MAX_COLUMNS));
@@ -133,10 +146,25 @@ export function lockScreenLayout(school, teacher, kinds, when) {
     });
   });
 
-  const left = kinds.length - shown.length;
-  if (left > 0) text('And ' + left + ' more ' + (left === 1 ? 'kind of day' : 'kinds of day') + ': print the schedule for every one.', SIDE, LOCK_BOTTOM - 4, 11, { tone: 'soft' });
+  const left = kinds.filter((kind) => !shown.includes(kind));
+  if (left.length > 0) {
+    const names = left.map((kind) => dayListWords(kind.dayTypes.map((dayType) => dayType.name)));
+    const said = names.some((name) => name.includes(' and ')) ? names.join('; ') : dayListWords(names);
+    const sentence = 'And ' + left.length + ' more ' + (left.length === 1 ? 'kind of day' : 'kinds of day') + ': ' + said + '. Print the schedule for every one.';
+    // broken into lines at spaces; what does not fit the last line is
+    // shortened by the painter, the printing advice first
+    const lines = [];
+    let line = '';
+    for (const word of sentence.split(' ')) {
+      if (line !== '' && Array.from(line + ' ' + word).length > LEFT_CHARS && lines.length < MORE_LINES - 1) {
+        lines.push(line);
+        line = word;
+      } else line = line === '' ? word : line + ' ' + word;
+    }
+    lines.push(line);
+    lines.forEach((each, at) => text(each, SIDE, LOCK_BOTTOM - 4 - (lines.length - 1 - at) * MORE_LINE, LEFT_SIZE, { tone: 'soft' }));
+  }
 
-  const options = when || {};
   text(school.name, width / 2, LOCK_BOTTOM + 28, 11, { weight: 600, align: 'center', fit: 220 });
   text('Published ' + dayText(school.data.publishedAt, null, options.locale, options.zone), width / 2, LOCK_BOTTOM + 44, 10, { tone: 'soft', align: 'center', fit: 220 });
   return { width, height, items };
@@ -203,13 +231,13 @@ function facesThere(fonts) {
 // The teacher's schedule as a PNG, as a Blob. The faces are waited for only
 // when they are not there yet: a share sheet opens only for a while after the
 // tap that asked for it, and a wait that was not needed can use that up.
-export async function lockScreenImage(school, teacher, kinds) {
+export async function lockScreenImage(school, teacher, kinds, today) {
   if (document.fonts && document.fonts.load && !facesThere(document.fonts)) {
     await Promise.all(LOCK_FACES.map((face) => document.fonts.load(face))).catch(() => {
       // drawn in the device's own face where the school's cannot be loaded
     });
   }
-  const canvas = paintLockScreen(document.createElement('canvas'), lockScreenLayout(school, teacher, kinds), themeNow());
+  const canvas = paintLockScreen(document.createElement('canvas'), lockScreenLayout(school, teacher, kinds, { today }), themeNow());
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);
@@ -231,7 +259,9 @@ export function teacherOutputs(ctx, teacher, kinds) {
   image.addEventListener('click', () => {
     const name = imageName(teacher.name);
     says.textContent = 'Making the image…';
-    lockScreenImage(school, teacher, kinds).then((blob) => handOver(blob, name, teacher.name + ' · ' + school.name)).then((how) => {
+    // today's kind of day is on the image whatever else is left off
+    const settled = todayOf(ctx);
+    lockScreenImage(school, teacher, kinds, settled.known && settled.dayType ? settled.dayType.id : null).then((blob) => handOver(blob, name, teacher.name + ' · ' + school.name)).then((how) => {
       if (how === 'shared') says.textContent = 'Shared. Save it to your photos, then set it as your lock screen.';
       else if (how === 'saved') says.textContent = 'Saved as ' + name + '. Set it as your lock screen from your photos or files.';
       else says.textContent = '';

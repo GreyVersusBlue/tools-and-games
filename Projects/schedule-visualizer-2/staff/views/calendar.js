@@ -16,7 +16,7 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, printWhen } from '../page.js';
-import { todayOf, todayKey, todayLine, readDayOn, nowTabs, hasCalendar, localDate, watchClock } from '../clock.js';
+import { todayOf, todayKey, todayLine, readDayOn, answerFor, nowTabs, hasCalendar, localDate, watchClock } from '../clock.js';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -42,7 +42,7 @@ export function weekStartOf(locale) {
 
 // "2026-11" → the month's first date, "2026-11-01"; null for anything else.
 function monthStart(text) {
-  return typeof text === 'string' && /^\d{4}-\d{2}$/.test(text) ? text + '-01' : null;
+  return typeof text === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(text) ? text + '-01' : null;
 }
 
 function monthOf(date) {
@@ -66,17 +66,23 @@ function stepMonth(month, by) {
 // reader has it: { date → { school, dayTypeId, bellsId, label, why, changed } }.
 function daysByDate(ctx) {
   const school = ctx.school;
-  const answer = readDayOn(ctx);
+  const answers = readDayOn(ctx);
   const byDate = new Map();
   for (const day of school.calendarDays()) {
-    const own = answer && answer.follow && answer.date <= day.date ? school.dayOn(day.date, answer) : day;
+    const own = answers.follow !== null && answers.follow.date <= day.date ? school.dayOn(day.date, answers.follow) : day;
     byDate.set(day.date, own);
   }
-  if (answer && !answer.follow && byDate.has(answer.date)) {
-    byDate.set(answer.date, { ...byDate.get(answer.date), school: true, dayTypeId: answer.dayTypeId, bellsId: answer.bellsId });
+  // the answer given last for a date settles that date
+  for (const answer of [answers.follow, answers.just]) {
+    if (answer !== null && byDate.has(answer.date) && answerFor(answers, answer.date) === answer) {
+      byDate.set(answer.date, { ...byDate.get(answer.date), school: true, dayTypeId: answer.dayTypeId, bellsId: answer.bellsId });
+    }
   }
   return byDate;
 }
+
+// The step control pressed last, until the page it led to has been drawn.
+let pressed = null;
 
 export const calendarView = {
   id: 'calendar',
@@ -185,11 +191,24 @@ export const calendarView = {
       const to = stepMonth(month, by);
       const inside = to >= first && to <= last;
       return inside
-        ? h('a', { class: 'btn cal__step', href: makeHash('calendar', '', { m: to }), dataset: { step: by < 0 ? 'previous' : 'next' } }, name, h('span', { class: 'visually-hidden' }, ': ' + monthWords(to)))
+        ? h('a', { class: 'btn cal__step', href: makeHash('calendar', '', { m: to }), dataset: { step: by < 0 ? 'previous' : 'next' }, onclick: () => { pressed = by < 0 ? 'previous' : 'next'; } }, name, h('span', { class: 'visually-hidden' }, ': ' + monthWords(to)))
         : h('span', { class: 'btn cal__step', 'aria-disabled': 'true', dataset: { step: by < 0 ? 'previous' : 'next' } }, name);
     };
     const heading = h('h2', { class: 'cal__month', id: 'cal-month' }, monthWords(month));
-    const nav = h('div', { class: 'cal__nav no-print' }, step(-1, 'Previous month'), step(1, 'Next month'));
+    const says = h('span', { class: 'visually-hidden', role: 'status', dataset: { says: 'month' } });
+    const nav = h('div', { class: 'cal__nav no-print' }, step(-1, 'Previous month'), step(1, 'Next month'), says);
+    // Previous or Next drew the page again: the focus stays on the control
+    // that was pressed (the other one where the month is the first or last
+    // there is) and the new month is said once the page is on screen
+    const used = pressed;
+    pressed = null;
+    if (used !== null) {
+      Promise.resolve().then(() => {
+        const control = nav.querySelector('a[data-step=' + used + ']') || nav.querySelector('a[data-step]');
+        if (control && control.isConnected) control.focus({ preventScroll: true });
+        says.textContent = monthWords(month);
+      });
+    }
 
     // the day the file was made, in the reader's zone, in the calendar's own words
     const made = Date.parse(school.data.publishedAt);
