@@ -187,3 +187,23 @@ test('the print button is the Travel time tab\'s', () => {
   assert.equal(outputFor('travel-time').name, 'Travel time');
   assert.deepEqual(printButtons.filter((entry) => entry.output === 'travel-time').map((entry) => [entry.id, entry.screen, entry.label]), [['print-travel-time', '#movement', 'Print the travel times']]);
 });
+
+// ---------------------------------------------------------------- by bells (SV2-79)
+
+test('SV2-79: the travel-time paper under a bell schedule is that run\'s tables, headed with the bells, with no transition that does not happen', () => {
+  const project = school();
+  const times = (p) => String(8 + Math.floor((33 * p) / 60)).padStart(2, '0') + ':' + String((33 * p) % 60).padStart(2, '0');
+  const end = (p) => String(8 + Math.floor((33 * p + 30) / 60)).padStart(2, '0') + ':' + String((33 * p + 30) % 60).padStart(2, '0');
+  project.bellSchedules = [{ id: 'bsample0er', name: 'Early Release', short: '', bells: Array.from({ length: 8 }, (_, p) => (p < 4 ? { start: times(p), end: end(p) } : null)), off: [4, 5, 6, 7] }];
+  const world = derive(project);
+  const { html } = renderOutput('travel-time', project, null, { ...NOW, dayTypeId: DAY_A, bellsId: 'bsample0er', movement: world });
+  const sections = sectionsOf(html).filter((section) => section.classes === 'doc-section--travel');
+  assert.deepEqual(sections.map((section) => section.heading), ['Period 1 to Period 2', 'Period 2 to Period 3', 'Period 3 to Period 4'], 'three transitions happen');
+  assert.ok(html.includes('A Day with Early Release bells'), 'the heading names the bells');
+  const file = transitionsCsv(project, world.results, DAY_A, 'bsample0er').slice(1);
+  assert.equal(sections.reduce((sum, section) => sum + section.rows.length, 0), file.length, 'every walk in the file is on paper once');
+  // without the choice the paper is the regular bells', as before
+  const regular = renderOutput('travel-time', project, null, { ...NOW, dayTypeId: DAY_A, movement: world }).html;
+  assert.ok(!regular.includes('Early Release'), 'regular bells say nothing of the schedule');
+  assert.equal(sectionsOf(regular).filter((section) => section.classes === 'doc-section--travel').length, 7);
+});
