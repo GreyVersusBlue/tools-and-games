@@ -155,7 +155,7 @@ test('a change of bells or a note alone leaves the day to the weekday (day null)
   assert.equal(scheduleOutcome(p).movedFrom, null);
   assert.equal(whyWords(p, dayEntry(p, '2026-09-03')), 'rotation; changed by hand');
   // the same change named in the dialog's words
-  assert.equal(changeWords(p, ['2026-09-03'], { bells: BELLS_REGULAR }), 'Change 3 September in the calendar');
+  assert.equal(changeWords(p, ['2026-09-03'], { bells: BELLS_REGULAR }), 'Set 3 September to Regular bells');
 });
 
 test('why a date is what it is, in words the list shows', () => {
@@ -212,4 +212,79 @@ test('a snow day: the button’s words, the toast’s, and the rotation moving b
   assert.equal(doneWords(synced, ['2026-10-19'], resync), '19 October is A Day.');
   assert.equal(movedWords(made, synced, ['2026-10-19'], resync, scheduleOutcome(synced).movedFrom), 'Later dates follow on from it, from 20 October.');
   assert.equal(changeWords(synced, ['2026-10-14'], { day: null }), 'Set 14 October as the calendar says');
+});
+
+// ---------------------------------------------------------------- SV2-80b
+
+const FORMS = await import('../../ui/staff/form.js');
+const { printableBox } = await import('../../ui/prints/document.js');
+
+test('a year fits one sheet in Letter and A4, both ways: the squares are as tall as the sheet leaves room for', () => {
+  const { p } = withCalendar();
+  for (const size of ['letter', 'a4']) {
+    for (const orientation of ['landscape', 'portrait']) {
+      const paper = { size, orientation };
+      const cell = calendarPrint.cellHeightMm(paper);
+      const rows = orientation === 'landscape' ? 3 : 4;
+      // three or four rows of months, each a heading, the weekday names and six weeks, and what the sheet spends besides
+      const used = rows * (9.6 + 6 * cell) + 4 * (rows - 1) + 54;
+      assert.ok(used <= printableBox(paper).height, size + ' ' + orientation + ': ' + used.toFixed(1) + ' mm is more than the ' + printableBox(paper).height.toFixed(1) + ' mm a sheet holds');
+      assert.ok(cell >= 4 && cell <= 7.5, size + ' ' + orientation + ': a square of ' + cell + ' mm');
+      const { html } = calendarPrint.render(p, null, { ...NOW, paper });
+      assert.equal(countOf(html, '<section class="page">'), 1, size + ' ' + orientation + ': eleven months are one sheet');
+      assert.ok(html.includes('--cal-cell: ' + cell + 'mm'), 'the sheet carries its square’s height');
+    }
+  }
+  assert.ok(calendarPrint.cellHeightMm({ size: 'a0', orientation: 'portrait' }) === 7.5, 'a poster keeps the roomy square');
+});
+
+test('a two-year calendar of 24 months is two sheets in every paper and way up; the print asks to open on a landscape sheet', () => {
+  const p = makeCalendar(school(), { start: '2026-08-01', end: '2028-07-31' }, ctx());
+  assert.equal(calendarDays(p).length, 731);
+  for (const size of ['letter', 'a4']) {
+    for (const orientation of ['landscape', 'portrait']) {
+      assert.equal(countOf(calendarPrint.render(p, null, { ...NOW, paper: { size, orientation } }).html, '<section class="page">'), 2);
+    }
+  }
+  assert.equal(calendarPrint.orientation, 'landscape');
+  assert.deepEqual(OUTPUTS.filter((output) => output.orientation !== undefined).map((output) => output.id), ['calendar'], 'only the calendar names an orientation');
+});
+
+test('a run of bells alone is named in the dialog’s words and counts school days only', () => {
+  const { p, early } = withCalendar();
+  const week = ['2026-10-19', '2026-10-20', '2026-10-21', '2026-10-22', '2026-10-23', '2026-10-24', '2026-10-25'];
+  assert.equal(changeWords(p, week, { bells: early }), 'Set 5 school days to Early Release bells');
+  assert.equal(changeWords(p, ['2026-10-24', '2026-10-25'], { bells: early }), 'No school days to change');
+  assert.equal(changeWords(p, ['2026-10-21'], { bells: early }), 'Set 21 October to Early Release bells');
+  assert.equal(changeWords(p, week, { bells: null }), 'Set 5 school days to the weekday’s bells');
+  assert.equal(changeWords(p, week, { day: DAY_CLOSED }), 'Set 5 school days to No school');
+  assert.equal(changeWords(p, ['2027-03-13', '2027-03-14', '2027-03-15', '2027-03-16', '2027-03-17', '2027-03-18', '2027-03-19', '2027-03-20', '2027-03-21'], { day: DAY_CLOSED }), 'Set 5 school days to No school', 'a run that starts on a Saturday counts its school days');
+});
+
+test('breaks: dates side by side are one, a weekend inside a run of days keeps it one, single days either side of one stay two', () => {
+  let { p } = withCalendar();
+  const snow = (dates) => (p = setCalendarDates(p, { dates, day: DAY_CLOSED, label: 'Snow day' }, ctx()));
+  snow(['2026-10-14']);
+  snow(['2026-10-16']); // a Friday
+  snow(['2026-10-19']); // the Monday after: its own snow day
+  snow(['2026-11-03', '2026-11-04']);
+  const words = breaksOf(p).filter((each) => each.label === 'Snow day').map((each) => [each.from, each.to, each.schoolDays]);
+  assert.deepEqual(words, [['2026-10-14', '2026-10-14', 1], ['2026-10-16', '2026-10-16', 1], ['2026-10-19', '2026-10-19', 1], ['2026-11-03', '2026-11-04', 2]]);
+  assert.deepEqual(breaksOf(p).filter((each) => each.label === 'Winter break').map((each) => [each.from, each.to, each.schoolDays]), [['2026-12-21', '2027-01-01', 10]], 'the winter break is one, its weekend inside it');
+});
+
+test('the publish form says what staff copies hold: the calendar removed since, or none yet, from what this device noted', () => {
+  const { p } = withCalendar();
+  const at = '2026-09-02T12:00:00.000Z';
+  const published = { ...p, publish: { ...p.publish, lastPublishedAt: at } };
+  const removed = { ...published, calendar: null };
+  assert.equal(FORMS.calendarChangedWords(removed, { at, calendar: true }), 'The calendar was removed after your last publish. Staff copies still have it.');
+  assert.equal(FORMS.calendarChangedWords(removed, { at, calendar: false }), '', 'copies without a calendar lose nothing');
+  assert.equal(FORMS.calendarChangedWords(removed, null), '', 'nothing noted: nothing to say');
+  assert.equal(FORMS.calendarChangedWords(removed, { at: '2026-09-01T00:00:00.000Z', calendar: true }), '', 'a note of an older publish is not about the last');
+  assert.equal(FORMS.calendarChangedWords(published, { at, calendar: false }), 'Staff copies have no calendar yet.');
+  // without the note, the project’s own change time still speaks
+  const changed = { ...published, calendar: { ...published.calendar, changedAt: '2026-09-03T00:00:00.000Z' } };
+  assert.match(FORMS.calendarChangedWords(changed, null), /^The calendar changed after your last publish on /);
+  assert.equal(FORMS.calendarChangedWords({ ...changed, publish: { ...changed.publish, lastPublishedAt: null } }, { at, calendar: true }), '', 'never published: nothing');
 });

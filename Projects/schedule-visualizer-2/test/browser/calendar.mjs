@@ -263,7 +263,7 @@ test('a change of bells alone writes day null (as the weekday says) and moves no
   const early = await page.evaluate(() => globalThis.sv2.store.project.bellSchedules[0].id);
   await openDate('2026-10-22');
   await chooseRadio('bells', early);
-  assert.equal(await text('[data-action="apply-date"]'), 'Change 22 October in the calendar');
+  assert.equal(await text('[data-action="apply-date"]'), 'Set 22 October to Early Release bells');
   await page.click('[data-action="apply-date"]');
   await dialogGone();
   await toastSays('22 October has Early Release bells.');
@@ -439,6 +439,9 @@ test('Remove the calendar, and Undo brings it back', async () => {
   await undoFromToast();
   await page.waitForSelector('.cal-year .cal-day');
   assert.equal(await exists('#inspector .cal-panel'), true);
+  // the focus is on the year's roving date, not on a field
+  await shows(() => document.activeElement?.classList.contains('cal-day'));
+  assert.equal(await page.evaluate(() => document.activeElement.getAttribute('tabindex')), '0');
 });
 
 test('the tab row is one row at 1024 px with the inspector open', async () => {
