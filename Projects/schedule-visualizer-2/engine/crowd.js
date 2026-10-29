@@ -159,12 +159,15 @@
 // simulateDayTransition adds dayTypeId and period (the one walked out of),
 // and for a bell-schedule run bellsId between them; a transition of such a
 // run into or out of a period that does not meet also has off: true and a
-// passingSeconds of null.
+// passingSeconds of null. A walk across periods that do not meet (Period 2
+// to Period 4 under an assembly in Period 3) is kept under the period it
+// leaves and has toPeriod, the period it reaches, and the gap between the
+// two as its passing time; a transition that goes next door has no toPeriod.
 
 import { DOOR_SIDES, STUDENTS_PER_LANE_CELL, RANGES, inRange, defaultSettings } from './schema.js';
-import { routingGraph, route, createRouteCache, routesForSchedule, runRoutes } from './routing.js';
+import { routingGraph, route, createRouteCache, routesForSchedule, runRoutes, walkTarget } from './routing.js';
 import { effectiveDayType } from './day-types.js';
-import { bellsFor, offPeriods } from './bells.js';
+import { bellsFor, offPeriods, parseTime } from './bells.js';
 import { teacherDays, teacherMoves } from './teacher-day.js';
 import { runsOf, meetingSlots } from './runs.js';
 
@@ -553,6 +556,24 @@ function runTransition(project, routing, found, period, passingSeconds) {
   return { ...runHead(found, period), ...result };
 }
 
+// What the transition kept under `period` is under these bells (bellsFor's
+// list): null when it moves nobody (a period that does not meet leaves it,
+// or nothing meets after it), else { to, passing }, the period walked into
+// and the passing time. Next door that is the bells' own passing time; past
+// periods that do not meet (an assembly in Period 3: Period 2 to Period 4) it
+// is the gap between the two by the bells, the school default when either
+// has no time or the gap is none (ARCHITECTURE 17.3).
+export function transitionPlan(project, bells, period) {
+  const off = new Set();
+  bells.forEach((bell, p) => { if (bell.off === true) off.add(p); });
+  const to = walkTarget(off, bells.length, period);
+  if (to === null) return null;
+  if (to === period + 1) return { to, passing: bells[period].passingAfter };
+  const end = parseTime(bells[period].end);
+  const start = parseTime(bells[to].start);
+  return { to, passing: end !== null && start !== null && start > end ? (start - end) * 60 : project.settings.defaultPassingSeconds };
+}
+
 // A transition into or out of a period that does not meet: nobody walks.
 function offTransition(project, routing, found, period) {
   const marginSeconds = project.settings.checks ? project.settings.checks.passingMarginSeconds : 0;
@@ -563,8 +584,13 @@ function offTransition(project, routing, found, period) {
 // handed in and can be (`regular`, the same period's transition of the
 // regular run of this day type), or simulated.
 function transitionOf(project, routing, found, period, bells, regular) {
-  if (bells[period].off === true || bells[period + 1].off === true) return offTransition(project, routing, found, period);
-  const passingSeconds = bells[period].passingAfter;
+  const plan = transitionPlan(project, bells, period);
+  if (plan === null) return offTransition(project, routing, found, period);
+  const passingSeconds = plan.passing;
+  if (plan.to !== period + 1) {
+    // a walk across periods that do not meet is no regular transition retimed
+    return { ...runHead(found, period), toPeriod: plan.to, ...simulated(runTransition(project, routing, found, period, passingSeconds)) };
+  }
   if (regular) {
     const marginSeconds = project.settings.checks ? project.settings.checks.passingMarginSeconds : 0;
     const retimed = retimeTransition(regular, passingSeconds, marginSeconds);
@@ -687,6 +713,7 @@ function groupWalks(days) {
           ...head,
           groupId: group.groupId,
           period: transition.period,
+          ...(transition.toPeriod === undefined ? {} : { toPeriod: transition.toPeriod }),
           fromRoomId: group.fromRoomId,
           toRoomId: group.toRoomId,
           passingSeconds: transition.passingSeconds,

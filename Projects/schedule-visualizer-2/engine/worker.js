@@ -109,7 +109,7 @@
 import { bellsFor } from './bells.js';
 import { runsOf } from './runs.js';
 import { routingGraph, runRoutes, createRouteCache } from './routing.js';
-import { simulateDayTransition, walkResults, routesByRun, retimeTransition, transitionAs } from './crowd.js';
+import { simulateDayTransition, walkResults, routesByRun, retimeTransition, transitionAs, transitionPlan } from './crowd.js';
 import { loads } from './load.js';
 import { places } from './places.js';
 import { checkSchedule } from './checks.js';
@@ -240,11 +240,14 @@ export function createPipeline(options) {
       const transitions = [];
       let dayKept = wasDay !== undefined && wasDay.transitions.length === settings.periods - 1;
       for (let period = 0; period + 1 < settings.periods; period += 1) {
-        const walkers = walkKey(project, dayRoutes, period, headCounts);
-        const off = bells[period].off === true || bells[period + 1].off === true;
-        const passing = off ? 'off' : bells[period].passingAfter;
+        const rooms = walkKey(project, dayRoutes, period, headCounts);
+        const plan = transitionPlan(project, bells, period);
+        const passing = plan === null ? 'off' : plan.passing;
+        // a walk across periods that do not meet is its own kind of
+        // transition: never a next-door one retimed, and kept per period reached
+        const walkers = plan !== null && plan.to !== period + 1 ? rooms + '@' + plan.to : rooms;
         const slotKey = passing + '|' + margin + '|' + walkers;
-        walkKeys.push(walkers);
+        walkKeys.push(rooms);
         dayKeys.transitions.push(slotKey);
         work.transitions += 1;
         if (wasDay && was.transitions[period] === slotKey && wasDay.transitions[period]) {

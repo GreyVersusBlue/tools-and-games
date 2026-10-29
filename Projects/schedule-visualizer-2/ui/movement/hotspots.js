@@ -83,8 +83,9 @@ export function rankedPlaces(project, results, graph, asked) {
   const day = run.routes;
   if (!day) return [];
   const shown = new Set(asked.groups.map((group) => group.id));
-  // hotspots() (engine/places.js) asks for the contributors of a day type's regular run; the run's own entry stands in for it, since the load is handed in
-  const mine = { days: [{ ...day, groups: day.groups.filter((entry) => shown.has(entry.groupId)) }] };
+  // the routes of the groups shown, in the shape routesByRun gives: the run's own entry, under bells when there are some
+  const mine = { days: [], bells: [] };
+  (bellsId === null ? mine.days : mine.bells).push({ ...day, groups: day.groups.filter((entry) => shown.has(entry.groupId)) });
   const period = Number.isInteger(asked.transition) ? asked.transition : null;
   const crowd = run.crowd;
   const ranked = hotspots(project, mine, asked.dayTypeId, {
@@ -93,6 +94,7 @@ export function rankedPlaces(project, results, graph, asked) {
     load: period === null ? asked.load : loadIn(asked.load, period),
     crowd: crowd || undefined,
     measure: period === null && asked.measure === 'total' ? 'total' : 'busiest',
+    bellsId,
   });
 
   const names = new Map();

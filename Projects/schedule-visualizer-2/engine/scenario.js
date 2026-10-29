@@ -575,6 +575,17 @@ function findingsOf(result) {
   return result && result.findings && Array.isArray(result.findings.findings) ? result.findings.findings : [];
 }
 
+// Does this finding belong to the run under bells `bellsId` (null for the
+// regular bells)? A walk that is late is a figure of the runs it is late in
+// (where.bellsIds, with null for the regular run; none at all when only the
+// regular run has it); every other finding is about the day type's classes
+// and is the same under any bells.
+function inRun(finding, bellsId) {
+  if (finding.kind !== 'group-walk' && finding.kind !== 'teacher-walk') return true;
+  const runs = finding.where && Array.isArray(finding.where.bellsIds) ? finding.where.bellsIds : [null];
+  return runs.includes(bellsId);
+}
+
 // A place's load on one day: the highest of its members outside the zones,
 // in the one transition asked for, or in its busiest transition.
 function placeLoad(load, place, transition, measure) {
@@ -609,8 +620,9 @@ function sameGeometry(before, after) {
 // options:
 //   dayTypeId   one own day type, or null (the default) for all of them
 //   bellsId     the bell schedule whose runs are compared, or null (the
-//               default) for the regular bells. The findings are the day
-//               type's whatever the bells: they are the schedule's.
+//               default) for the regular bells. The findings are those of
+//               that run: a walk that is late is counted where it is late
+//               under these bells, the other kinds are the day type's.
 //   transition  for the places: one transition (the period walked out of),
 //               or null for the whole day
 //   measure     for the places over the whole day: 'busiest' (the default)
@@ -671,8 +683,8 @@ export function compareResults(before, after, options) {
   const walksAfter = walkFigures(now, dayTypeId, bellsId);
   const busyBefore = busiestOf(was, dayTypeId, bellsId);
   const busyAfter = busiestOf(now, dayTypeId, bellsId);
-  const findingsBefore = findingsOf(was).filter((finding) => dayTypeId === null || finding.where.dayTypeId === null || finding.where.dayTypeId === dayTypeId);
-  const findingsAfter = findingsOf(now).filter((finding) => dayTypeId === null || finding.where.dayTypeId === null || finding.where.dayTypeId === dayTypeId);
+  const findingsBefore = findingsOf(was).filter((finding) => inRun(finding, bellsId) && (dayTypeId === null || finding.where.dayTypeId === null || finding.where.dayTypeId === dayTypeId));
+  const findingsAfter = findingsOf(now).filter((finding) => inRun(finding, bellsId) && (dayTypeId === null || finding.where.dayTypeId === null || finding.where.dayTypeId === dayTypeId));
   const countsBefore = countBySeverity(findingsBefore);
   const countsAfter = countBySeverity(findingsAfter);
   const bySeverity = {};

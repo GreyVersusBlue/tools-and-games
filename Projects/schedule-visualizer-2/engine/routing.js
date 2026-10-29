@@ -47,6 +47,7 @@
 // routeToExit(graph, fromRoomId, options?)
 // routesForSchedule(project, graph?, options?)
 // runRoutes(routes, dayTypeId, bellsId?)
+// walkTarget(off, periods, period)
 // createRouteCache(limit?)
 //
 // options, all optional:
@@ -88,6 +89,7 @@
 import { DOOR_SIDES, defaultSettings, resolveSlotRoom } from './schema.js';
 import { buildGraph } from './graph.js';
 import { ownDayTypes, effectiveSchedule } from './day-types.js';
+import { offPeriods } from './bells.js';
 
 export const HEADING_NONE = 4;
 export const FIELD_LIMIT = 64;
@@ -589,6 +591,20 @@ export function routeToExit(graph, fromRoomId, options) {
 // A slot with no room gives 'no-room'; a slot whose room is not in the
 // building gives 'room-missing' with `text`, the number the slot remembers.
 // With options.cache the second call for the same geometry searches nothing.
+// The period the walk out of `period` ends in under a bell schedule whose
+// `off` periods (a Set) do not meet: period + 1 when that meets; when it and
+// the periods after it do not, the first period after them that does (an
+// assembly in Period 3 makes the walk out of Period 2 a walk into Period 4);
+// null when `period` does not meet itself or nothing meets after it, since
+// the leading and trailing periods that do not meet move nobody
+// (ARCHITECTURE 17.3). The walk is kept under the period it leaves.
+export function walkTarget(off, periods, period) {
+  if (!Number.isInteger(period) || period < 0 || period + 1 >= periods || off.has(period)) return null;
+  let to = period + 1;
+  while (to < periods && off.has(to)) to += 1;
+  return to < periods ? to : null;
+}
+
 export function routesForSchedule(project, graph, options) {
   const opts = options || {};
   const routing = routingGraph(project, graph);
@@ -614,6 +630,7 @@ export function routesForSchedule(project, graph, options) {
   for (const run of runs) {
     const bellsId = typeof run.bellsId === 'string' ? run.bellsId : null;
     const plain = bellsId === null ? null : regular.get(run.dayTypeId);
+    const off = bellsId === null ? null : offPeriods(project, bellsId);
     const groups = [];
     project.groups.forEach((group, g) => {
       const slots = slotsOf(project, group.id, run.dayTypeId, bellsId);
@@ -622,13 +639,16 @@ export function routesForSchedule(project, graph, options) {
       const was = plain ? plain[g] : null;
       for (let t = 0; slots && t + 1 < slots.length; t += 1) {
         transitions += 1;
-        if (was && was.slots[t] === slots[t] && was.slots[t + 1] === slots[t + 1]) {
+        // the period walked into: the next one, or past the ones that do not meet
+        const target = off === null || off.size === 0 ? null : walkTarget(off, slots.length, t);
+        const to = target === null ? t + 1 : target;
+        if (to === t + 1 && was && was.slots[t] === slots[t] && was.slots[t + 1] === slots[t + 1]) {
           walks.push(null);
           same.push(t);
           continue;
         }
         const a = ends(slots[t]);
-        const b = ends(slots[t + 1]);
+        const b = ends(slots[to]);
         walks.push([a, b]);
         if (a.id && b.id && a.id !== b.id) {
           if (!wanted.has(a.id)) wanted.set(a.id, new Set());

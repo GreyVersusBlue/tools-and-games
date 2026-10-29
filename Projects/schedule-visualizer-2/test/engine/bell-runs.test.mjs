@@ -15,18 +15,18 @@ import assert from 'node:assert/strict';
 import { createStore } from '../../engine/store.js';
 import { createIds, seededRandom } from '../../engine/ids.js';
 import * as actions from '../../engine/actions.js';
-import { routingGraph, routesForSchedule } from '../../engine/routing.js';
+import { routingGraph, routesForSchedule, walkTarget } from '../../engine/routing.js';
 import { routesByRun, simulateSchedule, simulateDayTransition, simulateTransition, retimeTransition, transitionAs, walkResults, teacherWalks, crowdCap } from '../../engine/crowd.js';
 import { loads, contributors } from '../../engine/load.js';
-import { places } from '../../engine/places.js';
+import { places, hotspots } from '../../engine/places.js';
 import { checkSchedule } from '../../engine/checks.js';
 import { buildingChecks } from '../../engine/building-checks.js';
-import { ownDayTypes } from '../../engine/day-types.js';
+import { ownDayTypes, effectiveSchedule } from '../../engine/day-types.js';
 import { runsOf } from '../../engine/runs.js';
 import { createPipeline, pack, unpack, runResults, scenarioRun } from '../../engine/worker.js';
 import { trimResult, compareResults, loadDifference } from '../../engine/scenario.js';
 import { suggest } from '../../engine/suggest.js';
-import { newAcceptedFinding } from '../../engine/schema.js';
+import { newAcceptedFinding, resolveSlotRoom } from '../../engine/schema.js';
 import { splitAccepted } from '../../engine/findings.js';
 import { followAcceptedWalks } from '../../engine/checks.js';
 import { sampleSchool } from '../../data/sample-school.js';
@@ -219,24 +219,190 @@ test('simulateSchedule: every bell-schedule run, with the periods that do not me
 // ARCHITECTURE 17.3: an off period moves nobody, and that holds in the
 // middle of the day too. The walk from Period 2's room to Period 4's room,
 // around an off Period 3, is not simulated: both transitions are off.
-test('a middle off period moves nobody: the walk from Period 2\'s room to Period 4\'s room is not simulated', () => {
-  const project = sampleSchool();
-  project.bellSchedules = [{ id: ER, name: 'Assembly', short: '', bells: project.dayTypes[0].bells.map((bell) => (bell ? { ...bell } : null)), off: [2] }];
+// An assembly in Period 3 (index 2): the regular times, so the walk from
+// Period 2 to Period 4 has the gap between them (09:40 to 10:36, 56 minutes)
+// for its passing time.
+function assemblyIn(project, off) {
+  project.bellSchedules = [{ id: ER, name: 'Assembly', short: '', bells: project.dayTypes[0].bells.map((bell) => (bell ? { ...bell } : null)), off: off || [2] }];
+  return project;
+}
+
+test('a middle off period is a walk across it: Period 2 to Period 4, its passing time the gap by the bells, and nobody walks into or out of Period 3', () => {
+  const project = assemblyIn(sampleSchool());
   const result = createPipeline().run(project);
   assert.deepEqual(result.crowd, fresh(project).crowd);
   for (const day of result.crowd.bells) {
-    assert.deepEqual(day.transitions.map((transition) => transition.off === true), [false, true, true, false, false, false, false], day.dayTypeId);
-    for (const transition of day.transitions.slice(1, 3)) {
-      assert.deepEqual(transition.groups, []);
-      assert.equal(transition.passingSeconds, null);
+    assert.deepEqual(day.transitions.map((transition) => transition.off === true), [false, false, true, false, false, false, false], day.dayTypeId);
+    const across = day.transitions[1];
+    assert.equal(across.period, 1);
+    assert.equal(across.toPeriod, 3);
+    assert.equal(across.passingSeconds, 56 * 60);
+    assert.ok(across.groups.length > 0, 'the groups that change rooms between Period 2 and Period 4 are simulated');
+    assert.deepEqual(day.transitions[2].groups, []);
+    assert.equal(day.transitions[2].passingSeconds, null);
+    for (const transition of [day.transitions[0], ...day.transitions.slice(3)]) assert.equal(transition.toPeriod, undefined);
+  }
+  // the routes: Period 2's room to Period 4's room, under the period it leaves
+  const day = routesByRun(project).bells.find((entry) => entry.dayTypeId === A);
+  const slots = (id) => effectiveSchedule(project, id, A);
+  for (const group of day.groups) {
+    const from = resolveSlotRoom(project, slots(group.groupId)[1]).room;
+    const to = resolveSlotRoom(project, slots(group.groupId)[3]).room;
+    const found = group.routes[1];
+    if (!from || !to) continue;
+    assert.equal(found.fromRoomId, from.id, group.groupId);
+    assert.equal(found.toRoomId, to.id, group.groupId);
+    assert.equal(group.routes[2].ok, false);
+    assert.equal(group.routes[2].reason, 'no-room');
+  }
+  // the walk figures: one per walking group, named for both periods, none out of or into Period 3
+  const mine = result.walks.bells.groups.filter((walk) => walk.bellsId === ER && walk.dayTypeId === A);
+  assert.ok(mine.some((walk) => walk.period === 1 && walk.toPeriod === 3 && walk.passingSeconds === 56 * 60));
+  assert.deepEqual(mine.filter((walk) => walk.period === 2), []);
+  assert.ok(mine.filter((walk) => walk.period !== 1).every((walk) => walk.toPeriod === undefined));
+  // the regular run is as it was: Period 2 to Period 3 next door, no toPeriod
+  assert.equal(result.crowd.days.some((day) => day.transitions.some((transition) => transition.toPeriod !== undefined)), false);
+  // and no late finding names a period the group does not walk into
+  assert.equal(result.findings.findings.some((finding) => finding.kind === 'group-walk' && finding.where.period === 2), false);
+});
+
+test('a walk across a middle off period is loaded: its cells carry the groups that walk it, in the transition it is kept under', () => {
+  const project = assemblyIn(sampleSchool());
+  const routes = routesByRun(project);
+  const load = loads(project, routes, A, undefined, ER);
+  const regular = loads(project, routes, A);
+  assert.equal(load.transitions, 7);
+  const sum = (counts) => counts.reduce((total, value) => total + value, 0);
+  assert.ok(sum(load.cells.byTransition[1]) > 0, 'the walk across is in transition 1');
+  assert.equal(sum(load.cells.byTransition[2]), 0, 'nothing leaves the period that does not meet');
+  assert.deepEqual(Array.from(load.cells.byTransition[0]), Array.from(regular.cells.byTransition[0]));
+  assert.deepEqual(Array.from(load.cells.byTransition[3]), Array.from(regular.cells.byTransition[3]));
+  // the contributors of that transition are the groups whose Period 2 and Period 4 rooms differ
+  const everywhere = { nodes: load.cells.byTransition[1].map((value, node) => (value > 0 ? node : -1)).filter((node) => node >= 0) };
+  const who = contributors(project, routes, A, everywhere, undefined, { period: 1, bellsId: ER });
+  assert.ok(who.length > 0);
+  assert.equal(who.every((entry) => entry.transitions.every((t) => t === 1)), true);
+});
+
+test('leading and trailing periods that do not meet move nobody, a walk across is only between two that meet', () => {
+  for (const off of [[0], [0, 1], [6, 7], [7], [0, 7], [0, 2, 7]]) {
+    const project = assemblyIn(sampleSchool(), off);
+    const result = createPipeline().run(project);
+    assert.deepEqual(result.crowd, fresh(project).crowd, JSON.stringify(off));
+    const set = new Set(off);
+    for (const day of result.crowd.bells) {
+      day.transitions.forEach((transition, period) => {
+        const next = [1, 2, 3, 4, 5, 6, 7].map((to) => period + to).find((to) => to < 8 && !set.has(to));
+        const moves = !set.has(period) && next !== undefined;
+        assert.equal(transition.off === true, !moves, JSON.stringify(off) + ' period ' + period);
+        assert.equal(transition.toPeriod, moves && next !== period + 1 ? next : undefined, JSON.stringify(off) + ' period ' + period);
+      });
     }
   }
-  // no walk figure into or out of Period 3, nor one from Period 2 to Period 4
-  const early = result.walks.bells.groups.filter((walk) => walk.bellsId === ER);
-  assert.ok(early.length > 0);
-  assert.deepEqual(early.filter((walk) => walk.period === 1 || walk.period === 2), []);
-  // and a group whose Period 2 and Period 4 rooms differ has no late walk between them under Assembly
-  assert.equal(result.findings.findings.some((finding) => finding.kind === 'group-walk' && Array.isArray(finding.where.bellsIds) && finding.where.bellsIds.includes(ER) && (finding.where.period === 1 || finding.where.period === 2)), false);
+});
+
+test('a schedule with no middle off period gives what it gave before: nothing in it names a period reached', () => {
+  const project = withBells();
+  const result = createPipeline().run(project);
+  const text = JSON.stringify({ crowd: result.crowd, walks: result.walks }, (key, value) => (ArrayBuffer.isView(value) ? undefined : value));
+  assert.equal(text.includes('toPeriod'), false);
+  const lead = assemblyIn(sampleSchool(), [0, 7]);
+  const leading = createPipeline().run(lead);
+  assert.equal(JSON.stringify(leading.crowd, (key, value) => (ArrayBuffer.isView(value) ? undefined : value)).includes('toPeriod'), false);
+});
+
+test('the gap with no times is the school default, and with times it is by the bells', () => {
+  const project = assemblyIn(sampleSchool());
+  project.bellSchedules[0].bells[3] = null;
+  const first = createPipeline().run(project);
+  const day = first.crowd.bells.find((entry) => entry.dayTypeId === A);
+  assert.equal(day.transitions[1].toPeriod, 3);
+  assert.equal(day.transitions[1].passingSeconds, project.settings.defaultPassingSeconds);
+  // Period 4 starting before Period 2 ends is no gap either
+  const crossed = assemblyIn(sampleSchool());
+  crossed.bellSchedules[0].bells[3] = { start: '09:00', end: '09:40' };
+  const second = createPipeline().run(crossed);
+  assert.equal(second.crowd.bells.find((entry) => entry.dayTypeId === A).transitions[1].passingSeconds, crossed.settings.defaultPassingSeconds);
+});
+
+test('a walk across is never a next-door transition retimed, and what the pipeline keeps is what a fresh run works out', () => {
+  const project = assemblyIn(sampleSchool());
+  const pipeline = createPipeline();
+  const counters = { geometry: 1, building: 1, schedule: 1 };
+  const first = pipeline.run(project, counters);
+  assert.deepEqual(first.crowd, fresh(project).crowd);
+  assert.equal(pipeline.run(project, counters), first);
+  // a longer assembly moves the walk across to Period 5, and what the pipeline gives is what a fresh run gives
+  const moved = assemblyIn(sampleSchool(), [2, 3]);
+  const next = pipeline.run(moved, { geometry: 1, building: 1, schedule: 2 });
+  assert.deepEqual(next.crowd, fresh(moved).crowd);
+  // the regular runs hold no toPeriod, however many walks have the same rooms and passing time
+  assert.equal(next.crowd.days.every((day) => day.transitions.every((transition) => transition.toPeriod === undefined)), true);
+  // the walk across and a next-door walk of the same rooms are different transitions to the cache
+  const day = next.crowd.bells.find((entry) => entry.dayTypeId === A);
+  assert.equal(day.transitions[1].toPeriod, 4);
+  assert.equal(day.transitions[0].toPeriod, undefined);
+  assert.equal(day.transitions[1].passingSeconds, (11 * 60 + 28 - (9 * 60 + 40)) * 60);
+});
+
+test('compareResults: the findings are those of the run chosen', () => {
+  const base = trimResult(createPipeline().run(withBells()));
+  const finding = (id, kind, severity, where) => ({ id, kind, severity, where: { dayTypeId: null, ...where }, text: id });
+  const having = (findings) => ({ ...base, findings: { ...base.findings, findings } });
+  const list = (ids) => [finding('f1', 'group-walk', 'warning', ids === undefined ? {} : { bellsIds: ids }), finding('f2', 'double-booking', 'problem', {})];
+  const compare = (ids, options) => compareResults(having(list(ids)), having(list(ids)), options);
+  assert.equal(compare(undefined, {}).findings.unchanged.length, 2);
+  // a walk late only under Early Release is not a finding of the regular run
+  const regular = compare([ER], {});
+  assert.deepEqual(regular.findings.unchanged.map((one) => one.id), ['f2']);
+  assert.equal(regular.figures.findings.warning.after, 0);
+  const early = compare([ER], { bellsId: ER });
+  assert.deepEqual(early.findings.unchanged.map((one) => one.id).sort(), ['f1', 'f2']);
+  assert.equal(early.figures.findings.warning.after, 1);
+  // late under both: it counts under each; late under another schedule only, under neither
+  assert.equal(compare([null, ER], { bellsId: ER }).figures.findings.warning.after, 1);
+  assert.equal(compare([null, ER], {}).figures.findings.warning.after, 1);
+  assert.equal(compare([TS], { bellsId: ER }).figures.findings.warning.after, 0);
+  // new and resolved are of the run too
+  const changed = compareResults(having(list([ER])), having([finding('f3', 'group-walk', 'warning', { bellsIds: [TS] })]), { bellsId: ER });
+  assert.deepEqual(changed.findings.resolved.map((one) => one.id).sort(), ['f1', 'f2']);
+  assert.deepEqual(changed.findings.new, []);
+});
+
+test('walkTarget: the period a walk out of a period ends in, past the ones that do not meet', () => {
+  const set = (...list) => new Set(list);
+  assert.equal(walkTarget(set(), 8, 0), 1);
+  assert.equal(walkTarget(set(2), 8, 1), 3);
+  assert.equal(walkTarget(set(2, 3), 8, 1), 4);
+  assert.equal(walkTarget(set(2), 8, 2), null, 'a period that does not meet is walked out of by nobody');
+  assert.equal(walkTarget(set(0), 8, 0), null);
+  assert.equal(walkTarget(set(6, 7), 8, 5), null, 'nothing meets after');
+  assert.equal(walkTarget(set(7), 8, 6), null);
+  assert.equal(walkTarget(set(), 8, 7), null, 'the last period is walked out of by nobody');
+  assert.equal(walkTarget(set(), 8, -1), null);
+});
+
+test('hotspots with a bellsId rank the run under that schedule: the walk across is in the table, by the transition it is kept under', () => {
+  const project = assemblyIn(sampleSchool());
+  const routes = routesByRun(project);
+  const graph = routingGraph(project);
+  const cut = places(project, graph);
+  const crowd = simulateSchedule(project, routes, graph);
+  const run = crowd.bells.find((day) => day.dayTypeId === A);
+  const options = { graph, places: cut, crowd: run };
+  const plain = hotspots(project, routes, A, { ...options, crowd: crowd.days.find((day) => day.dayTypeId === A) });
+  const under = hotspots(project, routes, A, { ...options, bellsId: ER });
+  assert.ok(under.length > 0);
+  // it ranks the loads of the run under the schedule, whether or not they are handed in
+  const given = hotspots(project, routes, A, { ...options, bellsId: ER, load: loads(project, routes, A, graph, ER) });
+  assert.deepEqual(under, given);
+  const peaks = new Set(under.map((row) => row.peak));
+  assert.equal(peaks.has(2), false, 'nothing is busy in the transition out of the period that does not meet');
+  for (const row of under) for (const who of row.groups) assert.ok(who.times > 0);
+  assert.notDeepEqual(under.map((row) => [row.place.id, row.load, row.peak]), plain.map((row) => [row.place.id, row.load, row.peak]));
+  // total over the day carries the schedule too
+  const total = hotspots(project, routes, A, { ...options, bellsId: ER, measure: 'total' });
+  assert.ok(total.length > 0 && total.every((row) => row.groups.length > 0));
 });
 
 test('walkResults: the bell-schedule runs\' walks are in bells, each with its bellsId; the regular lists are as without them', () => {
