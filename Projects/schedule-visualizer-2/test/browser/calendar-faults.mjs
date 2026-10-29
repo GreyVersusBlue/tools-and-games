@@ -98,6 +98,10 @@ async function click(selector) {
   await page.click(selector);
 }
 
+async function chooseRadio(value) {
+  await page.$eval('#calendar-date-dialog [data-part="day"] input[value="' + value + '"]', (input) => input.click());
+}
+
 async function closeDialog() {
   await page.keyboard.press('Escape');
   await dialogGone();
@@ -282,4 +286,31 @@ test('a 731-day calendar with "Every date as a list" open: Apply settles in unde
   assert.ok(Math.min(...times) < 300 * SLOW, 'Apply settles in ' + times.map((each) => each.toFixed(0)).join(', ') + ' ms');
   await click('.cal-list__summary');
   await shows(() => document.querySelector('.cal-list__table') === null);
+});
+
+test('a Shift-run over dates already closed says "No school days to close"', async () => {
+  await fresh(YEAR);
+  await openDate('2026-11-02');
+  await setValue('#calendar-date-dialog input[name="through"]', '2026-11-06');
+  await page.$eval('#calendar-date-dialog input[value="closed"]', (input) => input.click());
+  assert.equal(await dialogApply(), 'Set 5 school days to No school');
+  await page.click('#calendar-date-dialog [data-action="apply-date"]');
+  await dialogGone();
+  await settled();
+  await closeToast();
+  // the same five dates by Shift+Arrows and Enter
+  await page.focus(cell('2026-11-02'));
+  await page.keyboard.down('Shift');
+  for (let i = 0; i < 4; i += 1) await page.keyboard.press('ArrowRight');
+  await page.keyboard.up('Shift');
+  await page.keyboard.press('Enter');
+  await dialogOpen();
+  assert.equal(await text('#calendar-date-dialog .dialog__title'), '2 to 6 November');
+  assert.equal(await page.$eval('#calendar-date-dialog [data-part="day"] input:checked', (input) => input.value), 'closed', 'No school is already checked');
+  assert.equal(await dialogApply(), 'Apply', 'nothing chosen: the run holds no school day to close');
+  // the reader picks another day and then No school again: the run is to be closed
+  await chooseRadio('rotation');
+  await chooseRadio('closed');
+  assert.equal(await dialogApply(), 'No school days to close');
+  await closeDialog();
 });

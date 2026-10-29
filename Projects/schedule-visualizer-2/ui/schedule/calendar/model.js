@@ -249,14 +249,10 @@ export function summaryWords(project, today) {
   return head + ' Today is ' + article + ' ' + name + (on.bellsId === null ? '' : ' with ' + bellsWords(project, on) + ' bells') + '.';
 }
 
-// The school days among `dates`, and those closed by a change of their own.
+// The school days among `dates`: what closing them changes. Dates already
+// closed are not counted; there is nothing to close on them.
 function closable(project, dates) {
-  return dates.filter((date) => {
-    const entry = dayEntry(project, date);
-    if (!entry) return false;
-    const own = changeOn(project, date);
-    return entry.school || (own !== null && own.day === DAY_CLOSED);
-  });
+  return dates.filter((date) => (dayEntry(project, date) || {}).school === true);
 }
 
 // The words of the date dialog's Apply button, naming the change as the
@@ -268,7 +264,11 @@ export function changeWords(project, dates, change) {
   const counted = closing ? closable(project, dates) : dates;
   const words = counted.length === 1 ? dateWords(counted[0], { year: false }) : closing ? count(counted.length, 'school day', 'school days') : count(counted.length, 'date', 'dates');
   if (change.day === null) return 'Set ' + words + ' as the calendar says';
-  if (closing) return counted.length === 0 ? 'No school days to close' : 'Set ' + words + ' to ' + NO_SCHOOL;
+  if (closing) {
+    // dates already closed: a note typed with it is all there is to change
+    if (counted.length === 0) return change.label === undefined ? 'No school days to close' : 'Change ' + count(dates.length, 'date', 'dates') + ' in the calendar';
+    return 'Set ' + words + ' to ' + NO_SCHOOL;
+  }
   if (change.day === DAY_ROTATION) return 'Set ' + words + ' to ' + NEXT_IN_ROTATION;
   if (change.day !== undefined) {
     const dayType = dayTypeOf(project, change.day);

@@ -261,6 +261,18 @@ test('a run of bells alone is named in the dialog’s words and counts school da
   assert.equal(changeWords(p, ['2027-03-13', '2027-03-14', '2027-03-15', '2027-03-16', '2027-03-17', '2027-03-18', '2027-03-19', '2027-03-20', '2027-03-21'], { day: DAY_CLOSED }), 'Set 5 school days to No school', 'a run that starts on a Saturday counts its school days');
 });
 
+test('Apply over dates already closed says there are no school days to close, not that it sets them', () => {
+  let { p } = withCalendar();
+  const week = ['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06'];
+  assert.equal(changeWords(p, week, { day: DAY_CLOSED }), 'Set 5 school days to No school');
+  p = setCalendarDates(p, { dates: week, day: DAY_CLOSED, label: 'Spirit week' }, ctx());
+  assert.equal(changeWords(p, week, { day: DAY_CLOSED }), 'No school days to close', 'a Shift-run over closed dates');
+  assert.equal(changeWords(p, ['2026-11-04'], { day: DAY_CLOSED }), 'No school days to close', 'one closed date');
+  assert.equal(changeWords(p, week, { day: DAY_CLOSED, label: 'Fair' }), 'Change 5 dates in the calendar', 'a new note on them is the change');
+  assert.equal(changeWords(p, ['2026-11-06', '2026-11-07', '2026-11-08', '2026-11-09'], { day: DAY_CLOSED }), 'Set 9 November to No school', 'closed dates beside a school day are not counted');
+  assert.equal(changeWords(p, ['2026-11-04', '2026-11-05', '2026-11-09', '2026-11-10'], { day: DAY_CLOSED }), 'Set 2 school days to No school');
+});
+
 test('breaks: dates side by side are one; a shared note joins across weekends and closed weekdays, never across a school day; no note joins only side by side', () => {
   let { p } = withCalendar();
   const closed = (dates, label) => (p = setCalendarDates(p, { dates, day: DAY_CLOSED, label }, ctx()));
