@@ -421,7 +421,7 @@ export function publishForm(ctx, hooks) {
       if (noted === true) {
         try {
           store.apply(notePublished, { at: published.model.publishedAt });
-          notePublishedCalendar(project, published.model.publishedAt, Boolean(calendarOf(project)) && project.publish.views.calendar !== false);
+          notePublishedCalendar(project, published.model.publishedAt, Boolean(calendarOf(project)));
         } catch (error) {
           console.warn('Schedule Visualizer 2: the file was made, and the project could not record it.', error);
           noted = NOT_NOTED;

@@ -261,16 +261,40 @@ test('a run of bells alone is named in the dialog’s words and counts school da
   assert.equal(changeWords(p, ['2027-03-13', '2027-03-14', '2027-03-15', '2027-03-16', '2027-03-17', '2027-03-18', '2027-03-19', '2027-03-20', '2027-03-21'], { day: DAY_CLOSED }), 'Set 5 school days to No school', 'a run that starts on a Saturday counts its school days');
 });
 
-test('breaks: dates side by side are one, a weekend inside a run of days keeps it one, single days either side of one stay two', () => {
+test('Apply over dates already closed says there are no school days to close, not that it sets them', () => {
   let { p } = withCalendar();
-  const snow = (dates) => (p = setCalendarDates(p, { dates, day: DAY_CLOSED, label: 'Snow day' }, ctx()));
-  snow(['2026-10-14']);
-  snow(['2026-10-16']); // a Friday
-  snow(['2026-10-19']); // the Monday after: its own snow day
-  snow(['2026-11-03', '2026-11-04']);
-  const words = breaksOf(p).filter((each) => each.label === 'Snow day').map((each) => [each.from, each.to, each.schoolDays]);
-  assert.deepEqual(words, [['2026-10-14', '2026-10-14', 1], ['2026-10-16', '2026-10-16', 1], ['2026-10-19', '2026-10-19', 1], ['2026-11-03', '2026-11-04', 2]]);
-  assert.deepEqual(breaksOf(p).filter((each) => each.label === 'Winter break').map((each) => [each.from, each.to, each.schoolDays]), [['2026-12-21', '2027-01-01', 10]], 'the winter break is one, its weekend inside it');
+  const week = ['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06'];
+  assert.equal(changeWords(p, week, { day: DAY_CLOSED }), 'Set 5 school days to No school');
+  p = setCalendarDates(p, { dates: week, day: DAY_CLOSED, label: 'Spirit week' }, ctx());
+  assert.equal(changeWords(p, week, { day: DAY_CLOSED }), 'No school days to close', 'a Shift-run over closed dates');
+  assert.equal(changeWords(p, ['2026-11-04'], { day: DAY_CLOSED }), 'No school days to close', 'one closed date');
+  assert.equal(changeWords(p, week, { day: DAY_CLOSED, label: 'Fair' }), 'Change 5 dates in the calendar', 'a new note on them is the change');
+  assert.equal(changeWords(p, ['2026-11-06', '2026-11-07', '2026-11-08', '2026-11-09'], { day: DAY_CLOSED }), 'Set 9 November to No school', 'closed dates beside a school day are not counted');
+  assert.equal(changeWords(p, ['2026-11-04', '2026-11-05', '2026-11-09', '2026-11-10'], { day: DAY_CLOSED }), 'Set 2 school days to No school');
+});
+
+test('breaks: dates side by side are one; a shared note joins across weekends and closed weekdays, never across a school day; no note joins only side by side', () => {
+  let { p } = withCalendar();
+  const closed = (dates, label) => (p = setCalendarDates(p, { dates, day: DAY_CLOSED, label }, ctx()));
+  const named = (label) => breaksOf(p).filter((each) => each.label === label).map((each) => [each.from, each.to, each.schoolDays]);
+  closed(['2026-10-14'], 'Snow day');
+  closed(['2026-10-16'], 'Snow day'); // a Friday, the Thursday between is a school day
+  closed(['2026-10-19'], 'Snow day'); // the Monday after: the weekend between is not
+  closed(['2026-11-03', '2026-11-04'], 'Snow day');
+  assert.deepEqual(named('Snow day'), [['2026-10-14', '2026-10-14', 1], ['2026-10-16', '2026-10-19', 2], ['2026-11-03', '2026-11-04', 2]]);
+  assert.deepEqual(named('Winter break'), [['2026-12-21', '2027-01-01', 10]], 'the winter break is one, its weekend inside it');
+  // a spring break that starts on a Friday (p10)
+  closed(['2027-04-09', '2027-04-12', '2027-04-13', '2027-04-14', '2027-04-15', '2027-04-16'], 'Spring break');
+  assert.deepEqual(named('Spring break'), [['2027-04-09', '2027-04-16', 6]], 'one break across the weekend');
+  // no note: side by side only
+  closed(['2027-02-05'], '');
+  closed(['2027-02-08'], '');
+  closed(['2027-02-09'], '');
+  assert.deepEqual(named(''), [['2027-02-05', '2027-02-05', 1], ['2027-02-08', '2027-02-09', 2]], 'dates with no note do not join across a weekend');
+  // a different note ends a break
+  closed(['2027-05-07'], 'Fair');
+  closed(['2027-05-10'], 'Picnic');
+  assert.deepEqual([named('Fair'), named('Picnic')], [[['2027-05-07', '2027-05-07', 1]], [['2027-05-10', '2027-05-10', 1]]]);
 });
 
 test('the publish form says what staff copies hold: the calendar removed since, or none yet, from what this device noted', () => {
