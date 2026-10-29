@@ -15,6 +15,14 @@
 // a first paint or a fixed sleep. Screenshots, when SV2_SHOTS names a
 // folder: Movement with Early Release chosen at 1280 by 800 and 390 by 844,
 // light and dark.
+//
+// SV2-79b adds an Assembly schedule in which Period 3 does not meet (the walk
+// out of Period 2 is a walk into Period 4: the strip, the first line, the
+// Travel tab and its print, the playback bar and its loop of the day), a
+// schedule in which no period meets ("No period meets under Closed bells."
+// on the first line, the Travel tab and its print, Hotspots and the bar), and
+// a bell schedule deleted while it is chosen (a polite status, and Undo
+// brings the choice back).
 
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -23,6 +31,8 @@ import { openPlanner, go, launch, startServer, loadModule } from './harness.mjs'
 
 const DAY_A = 'dsample00a';
 const ER = 'bsample0er';
+const AS = 'bsample0as';
+const NO = 'bsample0no';
 
 let server;
 let browser;
@@ -313,6 +323,233 @@ test('the scenario lab\'s comparison has its own Bells choice, and its Places li
   await page.select('#scenario-compare-bells', '');
   await ready();
   assert.equal((await page.$$eval('#scenario-compare-when option', (all) => all.length)), 8);
+  await page.evaluate(async () => {
+    const { discardScenario } = await import('./engine/actions.js');
+    globalThis.sv2.store.apply(discardScenario, {});
+  });
+});
+
+
+// ---------------------------------------------------------------- SV2-79b
+
+async function openMovement() {
+  await go(page, '#movement');
+  await settled();
+}
+
+async function addSchedule(id, name, off) {
+  await page.evaluate((scheduleId, scheduleName, offList) => {
+    const { store } = globalThis.sv2;
+    const { actions } = globalThis.sv2modules;
+    store.apply(actions.addBellSchedule, { id: scheduleId, name: scheduleName, short: '', fromDayTypeId: store.project.dayTypes[0].id });
+    store.apply(actions.setBellSchedule, { bellScheduleId: scheduleId, off: offList });
+  }, id, name, off);
+  await settled();
+}
+
+const tab = async (label) => {
+  await page.evaluate((word) => Array.from(document.querySelectorAll('#inspector [role="tab"]')).find((each) => new RegExp(word).test(each.textContent)).click(), label);
+  await settled();
+};
+
+test('a middle off period: the strip has the walk "Period 2 to Period 4", leaves out Period 3, and says so', async () => {
+  await openMovement();
+  await addSchedule(AS, 'Assembly', [2]);
+  await change({ ...OPEN, bellsId: AS });
+  assert.deepEqual(await stripItems(), ['all:true', '0:false', '1:false', '3:false', '4:false', '5:false', '6:false']);
+  assert.equal(await text('.mov-strip__note'), 'Period 3 does not meet');
+  assert.ok((await stripNames()).some((name) => /Period 2 to Period 4/.test(name)), (await stripNames()).join(' | '));
+  assert.ok((await stripNames()).every((name) => !/Period 2 to Period 3|Period 3 to Period 4/.test(name)));
+  await page.click('.mov-strip__item[data-transition="1"]');
+  await settled();
+  assert.equal(await line(), 'Showing 8 groups on A Day with Assembly bells, Period 2 to Period 4 (9:40 to 10:36). No route failed.');
+  assert.ok(await page.evaluate(() => document.querySelector('.mov').movement.picture.drawn > 0), 'the walk across is drawn');
+  // by keyboard: the walk across is followed by Period 4 to Period 5, not by Period 3
+  await page.focus('.mov-strip__item[aria-checked="true"]');
+  await page.keyboard.press('ArrowRight');
+  await settled();
+  assert.equal((await stripItems()).find((item) => item.endsWith(':true')), '3:true');
+  await page.keyboard.press('ArrowLeft');
+  await settled();
+  assert.equal((await stripItems()).find((item) => item.endsWith(':true')), '1:true');
+});
+
+test('a middle off period: the Travel tab, its CSV rows and its print are the run\'s walks, figures against runResults', async () => {
+  await change({ ...OPEN, bellsId: AS });
+  await tab('Travel time');
+  assert.deepEqual(await page.$$eval('[data-travel="pick"] option', (all) => all.map((each) => each.textContent)).then((all) => all.map((each) => each.replace(/ \(.*\)$/, ''))), ['Period 1 to Period 2', 'Period 2 to Period 4', 'Period 4 to Period 5', 'Period 5 to Period 6', 'Period 6 to Period 7', 'Period 7 to Period 8']);
+  await page.select('[data-travel="pick"]', '1');
+  await settled();
+  const figures = await page.evaluate(async () => {
+    const { runResults } = await import('./engine/worker.js');
+    const { transitionsCsv, dayCsv } = await import('./ui/movement/tables.js');
+    const movement = document.querySelector('.mov').movement;
+    const { project, results } = movement.state;
+    const run = runResults(results, 'dsample00a', 'bsample0as');
+    const sum = (list) => list.reduce((total, each) => total + each, 0);
+    const across = run.walks.groups.filter((walk) => walk.period === 1);
+    const one = Array.from(document.querySelectorAll('[data-travel="transition"] tbody')).map((each) => Number(each.dataset.total));
+    const day = Array.from(document.querySelectorAll('[data-travel="day"] tbody')).map((each) => Number(each.dataset.total));
+    const csv = transitionsCsv(project, results, 'dsample00a', 'bsample0as');
+    return {
+      oneRows: one.length, oneWant: across.length, oneTotal: sum(one), oneWantTotal: sum(across.map((walk) => walk.total)),
+      dayTotal: sum(day), dayWant: sum(run.walks.groups.map((walk) => walk.total)),
+      csvRows: csv.length - 1, csvWant: run.walks.groups.length, csvTotal: sum(csv.slice(1).map((row) => row[8])),
+      csvNames: Array.from(new Set(csv.slice(1).map((row) => row[1]))),
+      dayNames: dayCsv(project, results, 'dsample00a', 'bsample0as').slice(1).every((row) => /^Period \d to Period \d$/.test(row[7])),
+    };
+  });
+  assert.ok(figures.oneRows > 0);
+  assert.equal(figures.oneRows, figures.oneWant);
+  assert.equal(figures.oneTotal, figures.oneWantTotal);
+  assert.equal(figures.dayTotal, figures.dayWant);
+  assert.equal(figures.csvRows, figures.csvWant);
+  assert.equal(figures.csvTotal, figures.dayWant);
+  assert.deepEqual(figures.csvNames, ['Period 1 to Period 2', 'Period 2 to Period 4', 'Period 4 to Period 5', 'Period 5 to Period 6', 'Period 6 to Period 7', 'Period 7 to Period 8']);
+  assert.equal(figures.dayNames, true);
+  // the print: one section for the walk across, with the rows the tab has
+  await page.click('#inspector #print-travel-time');
+  const travel = await sheet();
+  assert.deepEqual(travel.headings.filter((each) => /^Period/.test(each)), ['Period 1 to Period 2', 'Period 2 to Period 4', 'Period 4 to Period 5', 'Period 5 to Period 6', 'Period 6 to Period 7', 'Period 7 to Period 8']);
+  assert.ok(travel.text.includes('A Day with Assembly bells'));
+  await closeSheet();
+  // the Hotspots tab ranks the run: its first place is the run's busiest load
+  await tab('Hotspots');
+  const top = await page.evaluate(async () => {
+    const { runResults } = await import('./engine/worker.js');
+    const movement = document.querySelector('.mov').movement;
+    const run = runResults(movement.state.results, 'dsample00a', 'bsample0as');
+    const first = document.querySelector('#inspector [data-panel="hotspots"] [data-place]');
+    return { want: run.loads.max.busiest, got: first ? Number(first.dataset.load) : null };
+  });
+  assert.ok(top.want > 0);
+  assert.equal(top.got, top.want, 'the first place is the run\'s busiest');
+});
+
+test('a middle off period: the playback bar steps over Period 3, and the loop of the day wraps by the strip', async () => {
+  await openMovement();
+  await change({ ...OPEN, bellsId: AS, transition: 1 });
+  const press = async (word) => {
+    await page.evaluate((w) => Array.from(document.querySelectorAll('.mov-bar button')).find((each) => new RegExp(w).test(each.getAttribute('aria-label') || each.textContent)).click(), word);
+    await settled();
+  };
+  const at = () => page.evaluate(() => document.querySelector('.mov').movement.choice.transition);
+  await press('Next');
+  assert.equal(await at(), 3, 'after Period 2 to Period 4 comes Period 4 to Period 5');
+  await press('Previous');
+  assert.equal(await at(), 1);
+  // the loop of the whole day, on the last transition, with the playback clock handed frames by the test
+  await change({ ...OPEN, bellsId: AS, transition: 6 });
+  await page.evaluate(() => {
+    const bar = document.querySelector('[data-bar="playback"]');
+    bar.playback.set({ loop: 'day', speed: 4 });
+    let waiting = null;
+    let clock = 0;
+    bar.playback.frames({ request: (fn) => { waiting = fn; return 1; }, cancel: () => { waiting = null; } });
+    globalThis.__frames = (count) => {
+      for (let i = 0; i < count && waiting; i += 1) {
+        const fn = waiting;
+        waiting = null;
+        clock += 1000;
+        fn(clock);
+      }
+      return waiting !== null;
+    };
+    bar.playback.play();
+  });
+  // frame by frame, until the choice moves on from the last transition
+  const moved = await page.evaluate(() => {
+    const movement = document.querySelector('.mov').movement;
+    for (let i = 0; i < 4000; i += 1) {
+      globalThis.__frames(1);
+      if (movement.choice.transition !== 6) return movement.choice.transition;
+    }
+    return 'never';
+  });
+  assert.equal(moved, 0, 'the last transition goes on to the first, not to a period that does not meet');
+  await settled();
+  assert.equal(await at(), 0, 'the last transition goes on to the first, not to a period that does not meet');
+  await page.evaluate(() => { const bar = document.querySelector('[data-bar="playback"]'); bar.playback.pause(); bar.playback.frames(null); bar.playback.set({ loop: 'once', speed: 1 }); });
+  await change({ ...OPEN });
+});
+
+test('no period meets: the first line, the Travel tab, its print, Hotspots and the playback bar say so, not advice about rooms', async () => {
+  await addSchedule(NO, 'Closed', [0, 1, 2, 3, 4, 5, 6, 7]);
+  await change({ ...OPEN, bellsId: NO });
+  const saying = 'No period meets under Closed bells.';
+  assert.equal(await line(), 'Showing 8 groups on A Day with Closed bells, all transitions. ' + saying);
+  assert.deepEqual(await stripItems(), ['all:true']);
+  await tab('Travel time');
+  assert.equal(await text('[data-travel="lead"]'), saying);
+  assert.equal(await visible('[data-travel="transition"]'), false, 'no table');
+  await page.click('#inspector #print-travel-time');
+  const travel = await sheet();
+  assert.ok(travel.text.includes(saying), travel.text.slice(0, 300));
+  assert.ok(!/Nobody walks anywhere/.test(travel.text));
+  await closeSheet();
+  await tab('Hotspots');
+  assert.equal(await text('#inspector [data-hotspots="lead"]'), saying);
+  assert.ok((await page.$eval('#inspector [data-panel="hotspots"]', (el) => el.textContent)).includes(saying));
+  assert.ok((await page.$eval('[data-bar="playback"]', (el) => el.querySelector('[data-part="note"]').textContent)).includes(saying));
+  assert.ok(!/nothing to play/.test(await page.$eval('[data-bar="playback"]', (el) => el.textContent)));
+  // the congestion report, once, for each day type
+  await page.click('#inspector [role="tab"][data-tab="export"]');
+  await page.waitForSelector('#inspector [data-panel="export"] [data-action="print-congestion"]');
+  await page.click('#inspector [data-action="print-congestion"]');
+  const report = await sheet();
+  assert.equal(report.text.split(saying).length - 1, 2, report.text.slice(0, 300));
+  assert.ok(!/Nobody crosses a corridor/.test(report.text));
+  await closeSheet();
+  await change({ ...OPEN });
+});
+
+test('a bell schedule deleted while it is chosen: a polite status says the view shows regular bells, and Undo brings the choice back', async () => {
+  await change({ ...OPEN, bellsId: AS });
+  const said = () => page.$eval('#announcer', (el) => el.textContent);
+  await page.evaluate((id) => globalThis.sv2.store.apply(globalThis.sv2modules.actions.deleteBellSchedule, { bellScheduleId: id }), AS);
+  await settled();
+  assert.equal(await said(), 'Assembly bells were deleted, so the view now shows regular bells.');
+  assert.equal(await page.$eval('#announcer', (el) => el.getAttribute('aria-live')), 'polite');
+  assert.equal(await line(), 'Showing 8 groups on A Day, all transitions. No route failed.');
+  await page.evaluate(() => { document.getElementById('announcer').textContent = ''; globalThis.sv2.store.undo(); });
+  await settled();
+  assert.equal(await line(), 'Showing 8 groups on A Day with Assembly bells, all transitions. No route failed.');
+  assert.equal(await said(), 'Assembly bells are back, so the view shows them again.');
+  assert.equal(await page.$eval('[data-control="bells"]', (el) => el.value), AS);
+  // other bells chosen after the delete are not put aside by the undo
+  await page.evaluate((id) => globalThis.sv2.store.apply(globalThis.sv2modules.actions.deleteBellSchedule, { bellScheduleId: id }), AS);
+  await settled();
+  await change({ bellsId: ER });
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  await settled();
+  assert.equal(await line(), 'Showing 8 groups on A Day with Early Release bells, all transitions. No route failed.');
+  await change({ ...OPEN });
+});
+
+test('the lab\'s findings are those of the run chosen: under Early Release a walk late only under other bells is not listed', async () => {
+  await go(page, '#scenarios');
+  await page.evaluate(async () => {
+    const { newScenario, addScenarioChange } = await import('./engine/actions.js');
+    const { store } = globalThis.sv2;
+    store.apply(newScenario, { name: 'Findings' });
+    store.apply(addScenarioChange, { change: { kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample07a', period: 2, roomId: 'rsample101' } });
+  });
+  const ready = () => page.waitForFunction(() => {
+    const el = document.querySelector('.scn');
+    return Boolean(el) && el.dataset.styled === 'true' && Boolean(el.scenarios) && el.scenarios.plan.project === globalThis.sv2.store.project && el.dataset.compare === 'ready' && !el.scenarios.pending;
+  }, { timeout: 30000 });
+  await ready();
+  const inRun = (bellsId) => page.evaluate((id) => {
+    const found = document.querySelector('.scn').scenarios.compare.findings;
+    const all = found.new.concat(found.resolved, found.unchanged);
+    return all.every((finding) => (finding.kind !== 'group-walk' && finding.kind !== 'teacher-walk') || (Array.isArray(finding.where.bellsIds) ? finding.where.bellsIds : [null]).includes(id));
+  }, bellsId);
+  assert.equal(await inRun(null), true, 'regular: only walks late under the regular bells');
+  await page.select('#scenario-compare-bells', ER);
+  await ready();
+  assert.equal(await inRun(ER), true, 'Early Release: only walks late under Early Release');
+  await page.select('#scenario-compare-bells', '');
+  await ready();
   await page.evaluate(async () => {
     const { discardScenario } = await import('./engine/actions.js');
     globalThis.sv2.store.apply(discardScenario, {});

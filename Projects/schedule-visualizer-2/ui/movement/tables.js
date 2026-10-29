@@ -257,7 +257,10 @@ export function tablesPanel(env) {
     const transitions = transitionsOf(project, day.id, day.bellsId);
     const any = walksOf(results, day.id, day.bellsId).length > 0;
     element.dataset.day = day.id;
-    tables.hidden = !any;
+    // with every period off the print stays, to say so on paper; the tables go
+    const printOnly = !any && nothingMeets(project, day.bellsId);
+    tables.hidden = !any && !printOnly;
+    for (const part of [oneTitle, picker, oneLine, one, oneRest, dayTitle, whole]) part.hidden = printOnly || (part === oneRest && part.hidden);
     if (!results) {
       lead.textContent = 'Working out the routes.';
       return;
