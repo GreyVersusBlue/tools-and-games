@@ -38,13 +38,16 @@ const MAX_COLUMNS = 3;
 // more there are (a school with many day types, DESIGN 11.8). Sixteen
 // periods fit two bands of three; eight or ten fit three.
 export const LOCK_ROW_LEAST = 9;
-// The closing line about the kinds of day left out names them, over as many
-// lines as it takes, to this many; it is set at LEFT_SIZE with about this many
-// characters to a line (nothing is measured here)
+// The closing line about the kinds of day left out is set over at most this
+// many lines of LEFT_SIZE, broken by how wide the words are (`measure`, below).
+// Every name it gives is whole; when they do not all fit it names as many as
+// do and says "and N more".
 const MORE_LINES = 2;
 const MORE_LINE = 13;
 const LEFT_SIZE = 11;
-const LEFT_CHARS = 60;
+// How wide a text is when nothing can measure it (the tests of the layout, in
+// Node): this many em to a character, which is wider than most faces' average.
+const EM_PER_CHARACTER = 0.55;
 
 // "Ms. Okafor" → "ms-okafor-schedule.png". Letters and digits of any script
 // are kept; everything else is a hyphen.
@@ -70,6 +73,47 @@ function entryText(school, entry) {
   return groups.join(', ') + (rooms.length > 0 ? ' · ' + rooms.join(', ') : '');
 }
 
+// The closing line about the kinds of day left out, as the lines it is set in.
+// `names` are the kinds' names as they read ("C Day", "A Day and B Day").
+// The most that fits MORE_LINES lines of `room` wide is said, in this order of
+// giving up: the advice to print goes before a name does, and names go from
+// the end, the rest counted ("and 2 more"). A name is never shortened; a name
+// with a word too wide for a line by itself is counted, not cut.
+function leftOutLines(names, measure, room) {
+  const head = 'And ' + names.length + ' more ' + (names.length === 1 ? 'kind of day' : 'kinds of day');
+  const apart = names.some((name) => name.includes(' and ')) ? '; ' : ', ';
+  const advice = ' Print the schedule for every one.';
+  // the names that could be given at all: every word of one fits a line
+  const whole = names.filter((name) => name.split(' ').every((word) => measure(word, LEFT_SIZE, 400) <= room));
+  const sentence = (named, withAdvice) => {
+    let said;
+    if (named === names.length) said = head + ': ' + (apart === '; ' ? names.join('; ') : dayListWords(names)) + '.';
+    else if (named === 0) said = head + '.';
+    else said = head + ': ' + whole.slice(0, named).join(apart) + (apart === '; ' ? '; and ' : ' and ') + (names.length - named) + ' more.';
+    return withAdvice ? said + advice : said;
+  };
+  // broken at spaces; null where there are more lines than there is room for
+  const broken = (value) => {
+    const lines = [];
+    let line = '';
+    for (const word of value.split(' ')) {
+      if (line !== '' && measure(line + ' ' + word, LEFT_SIZE, 400) > room) {
+        lines.push(line);
+        line = word;
+      } else line = line === '' ? word : line + ' ' + word;
+    }
+    lines.push(line);
+    return lines.length <= MORE_LINES && lines.every((each) => measure(each, LEFT_SIZE, 400) <= room) ? lines : null;
+  };
+  for (let named = whole.length; named >= 0; named -= 1) {
+    for (const withAdvice of [true, false]) {
+      const lines = broken(sentence(named, withAdvice));
+      if (lines !== null) return lines;
+    }
+  }
+  return [head + '.'];
+}
+
 // Everything the image says and where, in the 390 by 844 space:
 //
 //   { width, height, items: [
@@ -82,7 +126,9 @@ function entryText(school, entry) {
 // that are the same day put together. `when` is { locale, zone } for the
 // tests; left out, the date is in the reader's own language and zone. With
 // `when.today`, a day type's id, the kind of day that day type is is never
-// left out, whatever else is.
+// left out, whatever else is. `when.measure(text, size, weight)` is how wide
+// the painter will draw a text, in the layout's units (lockScreenImage gives
+// the canvas's); the closing line is broken by it.
 export function lockScreenLayout(school, teacher, kinds, when) {
   const options = when || {};
   const width = LOCK_WIDTH / LOCK_SCALE;
@@ -148,21 +194,8 @@ export function lockScreenLayout(school, teacher, kinds, when) {
 
   const left = kinds.filter((kind) => !shown.includes(kind));
   if (left.length > 0) {
-    const names = left.map((kind) => dayListWords(kind.dayTypes.map((dayType) => dayType.name)));
-    const said = names.some((name) => name.includes(' and ')) ? names.join('; ') : dayListWords(names);
-    const sentence = 'And ' + left.length + ' more ' + (left.length === 1 ? 'kind of day' : 'kinds of day') + ': ' + said + '. Print the schedule for every one.';
-    // broken into lines at spaces; what does not fit the last line is
-    // shortened by the painter, the printing advice first
-    const lines = [];
-    let line = '';
-    for (const word of sentence.split(' ')) {
-      if (line !== '' && Array.from(line + ' ' + word).length > LEFT_CHARS && lines.length < MORE_LINES - 1) {
-        lines.push(line);
-        line = word;
-      } else line = line === '' ? word : line + ' ' + word;
-    }
-    lines.push(line);
-    lines.forEach((each, at) => text(each, SIDE, LOCK_BOTTOM - 4 - (lines.length - 1 - at) * MORE_LINE, LEFT_SIZE, { tone: 'soft' }));
+    const lines = leftOutLines(left.map((kind) => dayListWords(kind.dayTypes.map((dayType) => dayType.name))), typeof options.measure === 'function' ? options.measure : (value, size) => Array.from(value).length * size * EM_PER_CHARACTER, width - SIDE * 2);
+    lines.forEach((each, at) => text(each, SIDE, LOCK_BOTTOM - 4 - (lines.length - 1 - at) * MORE_LINE, LEFT_SIZE, { tone: 'soft', fit: width - SIDE * 2 + 1 }));
   }
 
   text(school.name, width / 2, LOCK_BOTTOM + 28, 11, { weight: 600, align: 'center', fit: 220 });
@@ -237,7 +270,15 @@ export async function lockScreenImage(school, teacher, kinds, today) {
       // drawn in the device's own face where the school's cannot be loaded
     });
   }
-  const canvas = paintLockScreen(document.createElement('canvas'), lockScreenLayout(school, teacher, kinds, { today }), themeNow());
+  const canvas = document.createElement('canvas');
+  const theme = themeNow();
+  // the closing line is broken by how wide this canvas draws it, in the face it will be drawn in
+  const g = canvas.getContext('2d');
+  const measure = (value, size, weight) => {
+    g.font = weight + ' ' + size + 'px ' + theme.ui;
+    return g.measureText(value).width;
+  };
+  paintLockScreen(canvas, lockScreenLayout(school, teacher, kinds, { today, measure }), theme);
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);
