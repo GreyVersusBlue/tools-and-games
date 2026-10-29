@@ -113,7 +113,7 @@ export function addGroup(choice, groupId) {
 }
 
 // One entry per transition of the day: the walk from period `period` into the
-// next one that meets. `toPeriod` is the period reached: the next one, or, past
+// next one that meets. `toPeriod`, only when it is not the next one, is the period reached: past
 // periods that do not meet, the first after them ("Period 2 to Period 4"
 // under an assembly in Period 3), the passing time then the gap between the
 // two. `times` is the passing time as the clock has it ("8:42 to 8:46"), or
@@ -132,7 +132,7 @@ export function transitionsOf(project, dayTypeId, bellsId) {
     const clock = from && to && (toPeriod === period + 1 ? bells[period].passingFromBells : parseTime(to) > parseTime(from));
     list.push({
       period,
-      toPeriod,
+      ...(toPeriod === period + 1 ? {} : { toPeriod }),
       name: periodName(settings, period) + ' to ' + periodName(settings, toPeriod),
       short: periodLabel(settings, period) + ' to ' + periodLabel(settings, toPeriod),
       from,
@@ -195,6 +195,12 @@ export function nothingMeetsParts(project, bellsId) {
 // periods out is shorter than the day), or -1 for All or a period not there.
 export function positionOf(transitions, period) {
   return Number.isInteger(period) ? transitions.findIndex((each) => each.period === period) : -1;
+}
+
+// The period the walk out of `period` reaches when it is not the next one, else undefined.
+function reached(transitions, period) {
+  const found = transitions.find((each) => each.period === period);
+  return found ? found.toPeriod : undefined;
 }
 
 // Is the walk out of `period` one of the transitions shown?
@@ -403,7 +409,7 @@ export function pictureOf(project, results, graph, input) {
       // a walk into or out of a period that does not meet is not one
       if (!meets(transitions, t)) return;
       if (!route || route.ok !== true) {
-        if (route) picture.failed.push({ groupId: entry.groupId, period: t, toPeriod: transitions.find((each) => each.period === t).toPeriod, route });
+        if (route) picture.failed.push({ groupId: entry.groupId, period: t, ...(Number.isInteger(reached(transitions, t)) ? { toPeriod: reached(transitions, t) } : {}), route });
         return;
       }
       if (route.same === true) {

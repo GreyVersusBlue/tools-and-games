@@ -75,7 +75,7 @@ import { choice as segmented } from '../components/choice.js';
 import { icon } from '../components/icons.js';
 import { periodWords } from '../components/words.js';
 import { formatTime, parseTime } from '../../engine/bells.js';
-import { positionOf, runOf } from './model.js';
+import { positionOf, runOf, nothingMeets, nothingMeetsParts } from './model.js';
 import { routingGraph } from '../../engine/routing.js';
 import { routePath, isLate } from '../../engine/crowd.js';
 import { readPlayback, writePlayback, playbackWith, PLAYBACK_SPEEDS, readMovement, writeMovement } from '../../storage/device.js';
@@ -515,6 +515,7 @@ export function playbackBar(env) {
 
   function noteText() {
     if (!state) return '';
+    if (nothingMeets(state.project, state.picture.bellsId)) return nothingMeetsParts(state.project, state.picture.bellsId).map((part) => part.text).join('');
     if (count() === 0) return 'There is nothing to play: the day has one ' + periodWords(state.project.settings).one + '.';
     if (!state.results) return 'Working out the routes.';
     // how to start: said until it has been done once on this device

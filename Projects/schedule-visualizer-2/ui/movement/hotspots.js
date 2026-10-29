@@ -52,7 +52,7 @@ import { count } from '../components/words.js';
 import { hotspots } from '../../engine/places.js';
 import { bandOf } from '../../engine/load.js';
 import { formatDuration } from '../../engine/findings.js';
-import { unitWord, runOf } from './model.js';
+import { unitWord, runOf, nothingMeets, nothingMeetsParts } from './model.js';
 
 // How many places carry a ring on the map.
 export const PULSE_TOP = 3;
@@ -456,6 +456,8 @@ export function hotspotsPanel(env) {
     scroller.hidden = rows.length === 0;
     if (!picture.ready) {
       lead.textContent = 'Working out the routes.';
+    } else if (nothingMeets(state.project, picture.bellsId)) {
+      lead.replaceChildren(...nothingMeetsParts(state.project, picture.bellsId).map((part) => (part.name ? h('bdi', null, part.text) : part.text)));
     } else if (picture.mode === 'empty') {
       lead.textContent = 'Nothing is shown, so there is nothing to rank. Choose a group, a grade or every group.';
     } else if (rows.length === 0) {

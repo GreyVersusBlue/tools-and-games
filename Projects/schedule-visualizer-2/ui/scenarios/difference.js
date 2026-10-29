@@ -58,7 +58,10 @@ import { differenceOverlay, differenceOf, differenceWords, rankPlaces, apartGrou
 import { applyChanges, editedGroupIds } from '../../engine/scenario.js';
 import { routesForSchedule, routingGraph, createRouteCache } from '../../engine/routing.js';
 import { buildGraph } from '../../engine/graph.js';
-import { periodName, findBellSchedule, offPeriods } from '../../engine/bells.js';
+import { findBellSchedule } from '../../engine/bells.js';
+import { ownDayTypes } from '../../engine/day-types.js';
+import { meetingSlots } from '../../engine/runs.js';
+import { transitionName } from './model.js';
 import { unitWord } from '../movement/model.js';
 
 // the card's walks share one route cache, as the movement view's do
@@ -99,7 +102,7 @@ export function whenWords(project, transition, dayTypeId, bellsId) {
   const schedule = findBellSchedule(project, bellsId);
   const on = day ? ', on ' + day.name + (schedule ? ' with ' + schedule.name + ' bells' : '') : '';
   if (transition === null) return 'at its busiest in one transition' + on;
-  return 'in ' + periodName(project.settings, transition) + ' to ' + periodName(project.settings, transition + 1) + on;
+  return 'in ' + transitionName(project, bellsId, transition) + on;
 }
 
 export function sidesWords(info) {
@@ -142,16 +145,14 @@ export function cardText(info) {
 //     the group ids that cross the node on that day only before and only
 //     after, in the transition (null: in any transition of the day), each in
 //     the order of the project's groups
-function crossings(routes, graph, edited, off) {
+function crossings(routes, graph, edited, bellsId) {
   const byDay = new Map();
-  for (const day of routes.days) {
+  for (const day of (bellsId === null ? routes.days : routes.bells || [])) {
     const nodes = new Map();
     for (const entry of day.groups) {
       if (!edited.has(entry.groupId)) continue;
       entry.routes.forEach((found, t) => {
         if (!found || found.ok !== true || found.same === true) return;
-        // under a bell schedule, no walk into or out of a period that does not meet
-        if (off && (off.has(t) || off.has(t + 1))) return;
         for (const place of found.cells) {
           const f = graph.floorIndex.get(place.floorId);
           if (f === undefined) continue;
@@ -179,11 +180,13 @@ export function cardWalks(project, changes, graph, options) {
   const routing = routingGraph(project, graph);
   const opts = options || {};
   const asked = { cache: opts.cache, geometryVersion: opts.geometryVersion };
-  const off = typeof opts.bellsId === 'string' ? offPeriods(project, opts.bellsId) : null;
+  const bellsId = typeof opts.bellsId === 'string' ? opts.bellsId : null;
+  // the run under the bells chosen: its routes put each group where meetingSlots does, a walk across periods that do not meet included
+  const routesOf = (whole) => routesForSchedule(only(whole), routing, bellsId === null ? asked : { ...asked, runs: ownDayTypes(whole).map((dayType) => ({ dayTypeId: dayType.id, bellsId })), meetingSlots });
   return {
     order: new Map(project.groups.map((group, index) => [group.id, index])),
-    before: crossings(routesForSchedule(only(project), routing, asked), graph, edited, off),
-    after: crossings(routesForSchedule(only(after), routing, asked), graph, edited, off),
+    before: crossings(routesOf(project), graph, edited, bellsId),
+    after: crossings(routesOf(after), graph, edited, bellsId),
   };
 }
 
@@ -283,7 +286,7 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
     const unit = difference.unit;
     title.textContent = difference.transition === null
       ? 'Corridors that change most over the day'
-      : 'Corridors that change most in ' + periodName(project.settings, difference.transition) + ' to ' + periodName(project.settings, difference.transition + 1);
+      : 'Corridors that change most in ' + transitionName(project, memory.bellsId, difference.transition);
     key.replaceChildren('On the map: ', swatch('problem', 3), 'busier, ', swatch('accent', 3), 'quieter. ',
       difference.largest > 0 ? 'The stronger the colour, the larger the change; the largest is ' + difference.largest + ' ' + unitWord(unit, difference.largest) + '. A place with no change is not coloured.' : 'Nothing on the map changes.');
     // the day type is named on a row only when the rows come from more than one

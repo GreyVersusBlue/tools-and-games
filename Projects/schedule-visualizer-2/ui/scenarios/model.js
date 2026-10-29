@@ -6,6 +6,7 @@
 
 import { baseDayType, isOwnCopy } from '../../engine/day-types.js';
 import { periodName, offPeriods } from '../../engine/bells.js';
+import { walkTarget } from '../../engine/routing.js';
 import { resolveSlotRoom, nameOfRoom } from '../../engine/schema.js';
 import { formatDuration } from '../../engine/findings.js';
 import { reconcile, changeWords, changeSlots } from '../../engine/scenario.js';
@@ -244,14 +245,23 @@ export function placeRow(row, unit) {
   return { placeId: row.placeId, parts: row.parts || [{ text: row.name }], before: row.before, after: row.after, change: signed(row.difference), unit };
 }
 
-// The transitions a comparison can be narrowed to: period p into p + 1. Under
-// a bell schedule, only those between periods that both meet.
+// The words for the walk kept under `period` (the one out of it) under these
+// bells: "Period 2 to Period 3", or past periods that do not meet "Period 2
+// to Period 4" (ARCHITECTURE 17.3).
+export function transitionName(project, bellsId, period) {
+  const to = walkTarget(offPeriods(project, bellsId), project.settings.periods, period);
+  return periodName(project.settings, period) + ' to ' + periodName(project.settings, to === null ? period + 1 : to);
+}
+
+// The transitions a comparison can be narrowed to: the walk out of each
+// period that meets into the next one that does. Under a bell schedule, the
+// periods that do not meet are left out, and a walk across them is one.
 export function transitionChoices(project, bellsId) {
   const out = [];
   const off = offPeriods(project, bellsId);
   for (let period = 0; period + 1 < project.settings.periods; period += 1) {
-    if (off.has(period) || off.has(period + 1)) continue;
-    out.push({ value: String(period), label: periodName(project.settings, period) + ' to ' + periodName(project.settings, period + 1) });
+    if (walkTarget(off, project.settings.periods, period) === null) continue;
+    out.push({ value: String(period), label: transitionName(project, bellsId, period) });
   }
   return out;
 }

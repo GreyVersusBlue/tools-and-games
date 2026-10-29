@@ -94,7 +94,7 @@ function rowOf(project, walk, group, numbers) {
   return {
     group,
     period: walk.period,
-    toPeriod: Number.isInteger(walk.toPeriod) ? walk.toPeriod : walk.period + 1,
+    ...(Number.isInteger(walk.toPeriod) ? { toPeriod: walk.toPeriod } : {}),
     from: numbers.get(walk.fromRoomId) || '',
     to: numbers.get(walk.toRoomId) || '',
     passingSeconds: walk.passingSeconds,
