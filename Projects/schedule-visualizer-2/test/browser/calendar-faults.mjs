@@ -194,3 +194,32 @@ test('the panel’s Breaks: a spring break that starts on a Friday is one break,
   const breaks = () => page.$$eval('[data-part="breaks"] li > span', (all) => all.map((each) => each.textContent));
   assert.deepEqual(await breaks(), ['Spring break: 9 to 16 April, 6 school days'], 'one break across the weekend');
 });
+
+test('a file made with the calendar view unticked still carried the calendar, and the device notes that', async () => {
+  await fresh(YEAR);
+  await go(page, '#staff');
+  await page.waitForSelector('.pub');
+  await page.$eval('input[data-view="calendar"]', (box) => box.click());
+  await shows(() => document.querySelector('[data-says="views"]').textContent === '11 of 12 views');
+  const made = await page.evaluate(async () => {
+    const view = document.querySelector('.stf').staff;
+    let got = null;
+    view.hooks.deliver = (published) => {
+      got = { at: published.model.publishedAt, calendar: Boolean(published.model.calendar) };
+      return { fileName: published.fileName, bytes: published.html.length };
+    };
+    try {
+      await view.form.publish();
+    } finally {
+      view.hooks.deliver = null;
+    }
+    return got;
+  });
+  assert.equal(made.calendar, true, 'the file holds the calendar whatever the view tick says');
+  const record = await page.evaluate(async () => (await import('./ui/staff/form.js')).publishedRecord(globalThis.sv2.store.project));
+  assert.deepEqual(record, { at: made.at, calendar: true });
+  await page.$eval('input[data-view="calendar"]', (box) => box.click());
+  await shows(() => document.querySelector('[data-says="views"]').textContent === 'All 12 views');
+  await go(page, '#schedule/calendar');
+  await settled();
+});
