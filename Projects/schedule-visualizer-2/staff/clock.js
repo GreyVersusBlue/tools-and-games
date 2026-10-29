@@ -16,7 +16,9 @@
 //      days after follow on from it", each with the moment it was given);
 //   2. the calendar, with an earlier answer that said "the days after follow
 //      on from it" laid over it as a dated change of the reader's own, until
-//      a file published after that date is opened, which clears it;
+//      a file published after the one that was open when it was given is
+//      opened, which clears it (a file's time is compared with a file's
+//      time, never with the phone's clock);
 //   3. where the calendar does not say (no calendar, or a date outside it),
 //      the day type chosen by hand (sv2staff:<schoolId>:day) and the bells
 //      chosen beside it (sv2staff:<schoolId>:bells), as before there was a
@@ -75,8 +77,10 @@ function bellsById(school, id) {
 }
 
 // The reader's "Not right?" answers as they were kept: { just, follow }, each
-// null or { date, dayTypeId, bellsId, at } (`at`, the moment it was given as
-// an ISO string, or null on an answer from before it was recorded). "Just
+// null or { date, dayTypeId, bellsId, at, seenFile } (`at`, the moment it was
+// given as an ISO string, or null on an answer from before it was recorded;
+// `seenFile`, on a follow answer, the `publishedAt` of the file that was open
+// when it was given, or null on one from before it was recorded). "Just
 // today" and "the days after follow on from it" are two answers and neither
 // removes the other. The shape this key had first, one answer with
 // `follow: true | false`, reads as whichever it was. Anything kept that is
@@ -96,7 +100,8 @@ function keptAnswers(ctx) {
 
 function answerOf(school, raw) {
   if (raw === null || !school.isDate(raw.date) || !dayTypeById(school, raw.dayTypeId)) return null;
-  return { date: raw.date, dayTypeId: raw.dayTypeId, bellsId: bellsById(school, raw.bellsId), at: typeof raw.at === 'string' && Number.isFinite(Date.parse(raw.at)) ? raw.at : null };
+  const moment = (value) => (typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null);
+  return { date: raw.date, dayTypeId: raw.dayTypeId, bellsId: bellsById(school, raw.bellsId), at: moment(raw.at), seenFile: moment(raw.seenFile) };
 }
 
 function writeAnswers(ctx, kept) {
@@ -104,18 +109,25 @@ function writeAnswers(ctx, kept) {
   else ctx.store.set(DAY_ON_KEY, JSON.stringify({ just: kept.just, follow: kept.follow }));
 }
 
-// The follow answer is cleared here once a file published after it was given
-// is open: that file's calendar is the office's newer word, and a correction
-// made the same day counts. An answer from before `at` was recorded is
-// compared by its date.
+// The follow answer is cleared here once a file published after the one that
+// was open when it was given is open: that file's calendar is the office's
+// newer word, and a correction made the same day counts. Two files' times are
+// compared, never a file's with the phone's clock, which may be minutes off.
+// An answer from before the file was recorded takes the file open now as the
+// one it was given under.
 export function readDayOn(ctx) {
   const school = ctx.school;
   const kept = keptAnswers(ctx);
   let follow = answerOf(school, kept.follow);
   const published = Date.parse(school.data.publishedAt);
-  if (follow !== null && Number.isFinite(published) && (follow.at !== null ? published > Date.parse(follow.at) : localDate(new Date(published)) > follow.date)) {
-    writeAnswers(ctx, { just: kept.just, follow: null });
-    follow = null;
+  if (follow !== null && Number.isFinite(published)) {
+    if (follow.seenFile === null) {
+      follow = { ...follow, seenFile: school.data.publishedAt };
+      writeAnswers(ctx, { just: kept.just, follow });
+    } else if (published > Date.parse(follow.seenFile)) {
+      writeAnswers(ctx, { just: kept.just, follow: null });
+      follow = null;
+    }
   }
   return { just: answerOf(school, kept.just), follow };
 }
@@ -135,11 +147,16 @@ export function answerFor(answers, date) {
 export function keepDayOn(ctx, kind, answer) {
   const kept = keptAnswers(ctx);
   kept[kind] = { date: answer.date, dayTypeId: answer.dayTypeId, bellsId: answer.bellsId, at: answer.at };
+  // a standing answer remembers the file it was given under
+  if (kind === 'follow') kept[kind].seenFile = ctx.school.data.publishedAt;
   writeAnswers(ctx, kept);
 }
 
-export function forgetDayOn(ctx) {
-  ctx.store.remove(DAY_ON_KEY);
+// Takes back one answer, "just" or "follow", and leaves the other.
+export function forgetDayOn(ctx, kind) {
+  const kept = keptAnswers(ctx);
+  kept[kind] = null;
+  writeAnswers(ctx, kept);
 }
 
 // Which day today is, and who says so:
@@ -193,6 +210,9 @@ export function chosenDayType(ctx) {
 // Today's bells in the same way: null for the regular bells.
 export function chosenBells(ctx) {
   const today = todayOf(ctx);
+  // a date with no school has no bells of its own: the regular bells, which
+  // leave out no period, whatever was chosen by hand
+  if (today.known && !today.school) return null;
   if (today.known && today.dayType) return today.bellsId;
   return bellsById(ctx.school, ctx.store.get(BELLS_KEY));
 }
@@ -205,6 +225,26 @@ export function bellsOnPick(ctx, dayTypeId) {
   const today = todayOf(ctx);
   if (!today.known) return today.bellsId;
   return today.school && today.dayType !== null && today.dayType.id === dayTypeId ? today.bellsId : null;
+}
+
+// The day type and bells a page shows for `date` when nobody picked either
+// for it: { dayType, bellsId }.
+//
+//   today          what the page shows for today (chosenDayType, chosenBells)
+//   another date   what the calendar says of it, with the reader's answers
+//                  laid over it as every other page has them; where the
+//                  calendar does not know the date (or it has no school) the
+//                  school's first day type with the regular bells. What was
+//                  chosen by hand is for today, and is not looked at.
+export function dayOnDate(ctx, date) {
+  const school = ctx.school;
+  if (!school.isDate(date) || date === todayDate(ctx)) return { dayType: chosenDayType(ctx), bellsId: chosenBells(ctx) };
+  const answers = readDayOn(ctx);
+  const answer = answerFor(answers, date);
+  if (answer !== null) return { dayType: dayTypeById(school, answer.dayTypeId), bellsId: answer.bellsId };
+  const day = school.dayOn(date, answers.follow !== null && answers.follow.date < date ? answers.follow : null);
+  const dayType = day.known && day.school ? dayTypeById(school, day.dayTypeId) : null;
+  return dayType === null ? { dayType: school.dayTypes[0], bellsId: null } : { dayType, bellsId: bellsById(school, day.bellsId) };
 }
 
 // The periods that meet under these bells, as a Set of indexes.
@@ -370,8 +410,9 @@ let serial = 0;
 
 // "Day type": one button a day type, the chosen one marked. Choosing one keeps
 // it on the device and calls onChoose(dayType). A school with one day type
-// has nothing to choose and gets no picker.
-export function dayTypePicker(ctx, chosenId, onChoose) {
+// has nothing to choose and gets no picker. A page choosing for another date
+// than today passes { remember: false }: what is chosen by hand is today's.
+export function dayTypePicker(ctx, chosenId, onChoose, options) {
   const school = ctx.school;
   if (school.dayTypes.length < 2) return null;
   serial += 1;
@@ -382,7 +423,7 @@ export function dayTypePicker(ctx, chosenId, onChoose) {
       const input = h('input', { class: 'pick__input', type: 'radio', name: group, value: dayType.id, checked: dayType.id === chosenId });
       input.addEventListener('change', () => {
         if (!input.checked) return;
-        rememberDayType(ctx, dayType.id);
+        if (!options || options.remember !== false) rememberDayType(ctx, dayType.id);
         onChoose(dayType);
       });
       return h('label', { class: 'pick__item' }, input, h('span', { class: 'pick__name' }, typed(dayType.name)));
@@ -487,11 +528,15 @@ export function nowTabs(school, current) {
 // "Not right?" opens, in place, the day types (and the bells, where the
 // school has other bell schedules) and two buttons: "Just today", and "Today,
 // and the days after follow on from it" (the rotation follows on from the
-// answer). With an answer kept, a third goes back to the calendar.
+// answer). The two answers are separate: "As the calendar says" takes back
+// today's "just today" and nothing else, and "Forget what I said on 1
+// September" takes back the standing one.
 export function todayLine(ctx, onChange) {
   const school = ctx.school;
   const today = todayOf(ctx);
-  const answered = today.by === 'reader' || today.by === 'follow';
+  const answers = readDayOn(ctx);
+  const justToday = answers.just !== null && answers.just.date === today.date;
+  const answered = today.by === 'reader' || today.by === 'follow' || justToday || answers.follow !== null;
   if (today.calendar === 'none' && !answered) return null;
   if (today.calendar === 'outside' && !answered) {
     const calendar = school.calendar;
@@ -539,12 +584,16 @@ export function todayLine(ctx, onChange) {
   };
   const just = h('button', { class: 'btn', type: 'button', dataset: { today: 'just' }, onclick: () => answer('just') }, 'Just today');
   const follow = h('button', { class: 'btn', type: 'button', dataset: { today: 'follow' }, onclick: () => answer('follow') }, 'Today, and the days after follow on from it');
-  const back = answered ? h('button', { class: 'btn', type: 'button', dataset: { today: 'calendar' }, onclick: () => {
-    forgetDayOn(ctx);
+  const back = justToday ? h('button', { class: 'btn', type: 'button', dataset: { today: 'calendar' }, onclick: () => {
+    forgetDayOn(ctx, 'just');
     settle();
   } }, 'As the calendar says') : null;
+  const forget = answers.follow !== null ? h('button', { class: 'btn', type: 'button', dataset: { today: 'forget' }, onclick: () => {
+    forgetDayOn(ctx, 'follow');
+    settle();
+  } }, 'Forget what I said on ', school.dateWords(answers.follow.date, { year: false })) : null;
   const panel = h('div', { class: 'today__panel', id: panelId, hidden: true, role: 'group', 'aria-label': 'Which day is today?' },
-    dayChoice, bellsChoice, h('p', { class: 'actions' }, just, follow, back));
+    dayChoice, bellsChoice, h('p', { class: 'actions' }, just, follow, back, forget));
 
   const close = () => {
     panel.hidden = true;

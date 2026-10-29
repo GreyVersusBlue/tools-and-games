@@ -8,7 +8,10 @@
 //   sv2staff:<schoolId>:seen   the newest publish time opened here
 //   sv2staff:<schoolId>:dayOn  the reader's "Not right?" answers as JSON:
 //                              { just, follow }, each null or { date,
-//                              dayTypeId, bellsId, at } (SV2-81, SV2-81b)
+//                              dayTypeId, bellsId, at } (SV2-81, SV2-81b); a
+//                              follow answer also holds `seenFile`, the
+//                              publish time of the file open when it was
+//                              given (SV2-81c)
 //   sv2staff:<schoolId>:bells  the bell schedule chosen by hand beside `day`
 //                              (SV2-81)
 //

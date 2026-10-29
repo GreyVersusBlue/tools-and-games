@@ -259,7 +259,7 @@ test('Undo of Remove puts the focus on the year’s roving date, by the toast an
   }
 });
 
-test('the panel’s Breaks list joins side-by-side dates and a weekend inside a run, and keeps single snow days apart', async () => {
+test('the panel’s Breaks list joins side-by-side dates and a weekend inside a run, a shared note across a weekend, and keeps snow days a school day apart', async () => {
   await fresh({ ...YEAR, breaks: [{ from: '2026-12-21', to: '2027-01-01', label: 'Winter break' }] });
   await page.evaluate(() => {
     const store = globalThis.sv2.store;
@@ -269,8 +269,7 @@ test('the panel’s Breaks list joins side-by-side dates and a weekend inside a 
   await settled();
   assert.deepEqual(await page.$$eval('#inspector [data-part="breaks"] li > span', (all) => all.map((el) => el.textContent)), [
     'Snow day: 14 October, 1 school day',
-    'Snow day: 16 October, 1 school day',
-    'Snow day: 19 October, 1 school day',
+    'Snow day: 16 to 19 October, 2 school days',
     'Snow day: 3 to 4 November, 2 school days',
     'Winter break: 21 December 2026 to 1 January 2027, 10 school days',
   ]);

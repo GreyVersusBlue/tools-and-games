@@ -81,8 +81,48 @@ function daysByDate(ctx) {
   return byDate;
 }
 
-// The step control pressed last, until the page it led to has been drawn.
-let pressed = null;
+// The one place the month is said in. It is on the page before its words
+// change (a live region put on the page already holding words is not
+// announced), and the same one serves every month: the page is drawn again
+// for each, and a region drawn with it would be new each time.
+const SAID_FOR_MS = 10000;
+let saidTimer = 0;
+
+function monthStatus() {
+  let region = document.querySelector('[data-says="month"]');
+  if (!region) {
+    region = h('span', { class: 'visually-hidden', role: 'status', dataset: { says: 'month' } });
+    document.body.appendChild(region);
+  }
+  return region;
+}
+
+function sayMonth(region, words) {
+  globalThis.clearTimeout(saidTimer);
+  region.textContent = words;
+  // said once, then not left to be read as part of some other page
+  saidTimer = globalThis.setTimeout(() => {
+    region.textContent = '';
+  }, SAID_FOR_MS);
+}
+
+// Was this page reached by pressing Previous or Next month on the calendar
+// page it replaces? That page says so on its own step control when it is
+// pressed (an unmodified click that nothing stopped), which is gone with the
+// page: nothing is remembered once it has been left, so a click that went
+// nowhere, or opened elsewhere, leads no later visit to take the focus.
+function reachedByStep(month) {
+  const from = document.querySelector('.cal__nav[data-to]');
+  return from && from.dataset.to === month ? from.dataset.pressed : null;
+}
+
+function pressedStep(event, by, to) {
+  if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  const nav = event.currentTarget.closest('.cal__nav');
+  if (!nav) return;
+  nav.dataset.pressed = by < 0 ? 'previous' : 'next';
+  nav.dataset.to = to;
+}
 
 export const calendarView = {
   id: 'calendar',
@@ -191,22 +231,24 @@ export const calendarView = {
       const to = stepMonth(month, by);
       const inside = to >= first && to <= last;
       return inside
-        ? h('a', { class: 'btn cal__step', href: makeHash('calendar', '', { m: to }), dataset: { step: by < 0 ? 'previous' : 'next' }, onclick: () => { pressed = by < 0 ? 'previous' : 'next'; } }, name, h('span', { class: 'visually-hidden' }, ': ' + monthWords(to)))
+        ? h('a', { class: 'btn cal__step', href: makeHash('calendar', '', { m: to }), dataset: { step: by < 0 ? 'previous' : 'next' }, onclick: (event) => pressedStep(event, by, to) }, name, h('span', { class: 'visually-hidden' }, ': ' + monthWords(to)))
         : h('span', { class: 'btn cal__step', 'aria-disabled': 'true', dataset: { step: by < 0 ? 'previous' : 'next' } }, name);
     };
     const heading = h('h2', { class: 'cal__month', id: 'cal-month' }, monthWords(month));
-    const says = h('span', { class: 'visually-hidden', role: 'status', dataset: { says: 'month' } });
-    const nav = h('div', { class: 'cal__nav no-print' }, step(-1, 'Previous month'), step(1, 'Next month'), says);
+    const nav = h('div', { class: 'cal__nav no-print' }, step(-1, 'Previous month'), step(1, 'Next month'));
     // Previous or Next drew the page again: the focus stays on the control
     // that was pressed (the other one where the month is the first or last
     // there is) and the new month is said once the page is on screen
-    const used = pressed;
-    pressed = null;
-    if (used !== null) {
+    const says = monthStatus();
+    const used = reachedByStep(month);
+    if (used === null) {
+      globalThis.clearTimeout(saidTimer);
+      says.textContent = '';
+    } else {
       Promise.resolve().then(() => {
         const control = nav.querySelector('a[data-step=' + used + ']') || nav.querySelector('a[data-step]');
         if (control && control.isConnected) control.focus({ preventScroll: true });
-        says.textContent = monthWords(month);
+        sayMonth(says, monthWords(month));
       });
     }
 

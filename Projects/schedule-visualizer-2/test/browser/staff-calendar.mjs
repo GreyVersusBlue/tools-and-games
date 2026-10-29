@@ -62,6 +62,8 @@ const NEXT_MORNING = '2026-09-02T12:00:00Z'; // 8:00 on the 2nd
 // A name with markup in it: shown as typed, never as markup.
 const HOSTILE = '<img src=x onerror=alert(1)>';
 const BELLS_KEY = 'sv2staff:psample001:bells';
+// when the files were published (the answers remember the file they were given under)
+const MANY_PUBLISHED = '2026-08-25T12:00:00.000Z';
 
 const SIZES = [{ name: 'phone', width: 390, height: 844 }, { name: 'desktop', width: 1280, height: 800 }];
 
@@ -123,6 +125,18 @@ function manyDays(opts) {
   return project;
 }
 
+// The school with eight more kinds of day, each its own bells and a name wide in every letter: twelve kinds on the lock-screen image, three left out.
+const WIDE = 'WWWWWWWWWW ';
+function lockDays() {
+  const project = manyDays();
+  for (let n = 0; n < 8; n += 1) {
+    const id = 'dwide0000' + n;
+    project.dayTypes.push({ id, name: WIDE + (n + 1), own: true, sameAs: null, short: '', bells: later(project.dayTypes[0].bells, n + 1) });
+    for (const group of project.groups) group.days[id] = group.days.dsample00a.map((slot) => ({ ...slot, teacherIds: slot.teacherIds.slice() }));
+  }
+  return project;
+}
+
 const scratch = mkdtempSync(path.join(os.tmpdir(), 'sv2-staff-calendar-'));
 const read = diskReader();
 const files = {};
@@ -142,6 +156,9 @@ before(async () => {
   // published the afternoon of 2 September: a correction from the office the day a reader answered
   await write('sameday', manyDays(), '2026-09-02T18:00:00Z');
   await write('evil', manyDays({ evil: true }), '2026-08-25T12:00:00Z');
+  // the office's computer was 30 seconds ahead of the phone's clock
+  await write('skew', manyDays(), '2026-09-02T13:00:30Z');
+  await write('lock', lockDays(), '2026-08-25T12:00:00Z');
   const plain = sampleSchool();
   plain.publish.passcode = '';
   await write('plain', plain, '2026-08-25T12:00:00Z');
@@ -506,7 +523,7 @@ test('"Not right?": the days after follow on from it, until a newer file is open
     await press(page, '[data-today="follow"]');
     await lineIs(page, 'Today is an A Day. You said so on this device. Not right?');
     assert.deepEqual(await texts(page, '.day[data-today="true"] .card__title'), ['A Day']);
-    assert.deepEqual(JSON.parse(await kept(page, DAY_ON_KEY)), { just: null, follow: { date: '2026-09-01', dayTypeId: 'dsample00a', bellsId: null, at: ROTATION.replace('Z', '.000Z') } });
+    assert.deepEqual(JSON.parse(await kept(page, DAY_ON_KEY)), { just: null, follow: { date: '2026-09-01', dayTypeId: 'dsample00a', bellsId: null, at: ROTATION.replace('Z', '.000Z'), seenFile: MANY_PUBLISHED } });
 
     // the next day follows on from A: B Day, and Wednesday's bells
     await page.evaluate(() => {
@@ -520,9 +537,11 @@ test('"Not right?": the days after follow on from it, until a newer file is open
     assert.equal(list[1], 'Wednesday 2 September: B Day, Early Release bells Today');
     assert.equal(list[2], 'Thursday 3 September: C Day');
 
-    // "As the calendar says" takes the answer away
+    // a standing answer is taken back by name: "As the calendar says" is for today's "just today"
     await press(page, '[data-today="not-right"]');
-    await press(page, '[data-today="calendar"]');
+    assert.equal(await count(page, '[data-today="calendar"]'), 0);
+    assert.deepEqual(await texts(page, '[data-today="forget"]'), ['Forget what I said on 1 September']);
+    await press(page, '[data-today="forget"]');
     await lineIs(page, 'Today is a C Day with Early Release bells. Not right?');
     assert.equal(await kept(page, DAY_ON_KEY), null);
 
@@ -725,7 +744,7 @@ test('two answers: "Just today" never removes a standing follow answer', async (
 });
 
 test('a file published after the answer was given clears a follow answer, the same day too', async () => {
-  const answer = JSON.stringify({ just: null, follow: { date: '2026-09-02', dayTypeId: 'dsample00b', bellsId: null, at: '2026-09-02T13:00:00.000Z' } });
+  const answer = JSON.stringify({ just: null, follow: { date: '2026-09-02', dayTypeId: 'dsample00b', bellsId: null, at: '2026-09-02T13:00:00.000Z', seenFile: MANY_PUBLISHED } });
   const at = '2026-09-03T13:00:00Z';
   const standing = await openPage({ at, kept: { [DAY_ON_KEY]: answer } });
   try {
@@ -1020,4 +1039,328 @@ test('twelve kinds of day on the lock-screen image: today\'s is there, and the c
   assert.match(said, /^And 3 more kinds of day: Extra 5, Extra 6 and Extra 7\. Print the schedule for every one\.$/);
   // nothing left out, no line
   assert.equal(names(lockScreenLayout(many, teacher, kinds.slice(0, 3), { locale: 'en-GB', zone: 'UTC', today: 'dextra0007' })).some((text) => text.startsWith('And ')), false);
+});
+
+// ---------------------------------------------------------------- SV2-81c: the review of SV2-81b
+
+const SKEW_AT = '2026-09-02T13:00:00Z'; // the phone's clock, 30 seconds before the time the file says
+
+test('skew: an answer given just after opening a file whose time is ahead of the phone\'s clock is kept the next day', async () => {
+  const session = await openPage({ at: SKEW_AT, every: 150 });
+  try {
+    const { page } = session;
+    await goto(page, files.skew, '#/free');
+    await press(page, '[data-today="not-right"]');
+    await press(page, '[data-pick="today-day"] input[value="dsample00a"]');
+    await press(page, '[data-today="follow"]');
+    await lineIs(page, 'Today is an A Day with Early Release bells. You said so on this device. Not right?');
+    const follow = JSON.parse(await kept(page, DAY_ON_KEY)).follow;
+    assert.equal(follow.seenFile, '2026-09-02T13:00:30.000Z', 'the file that was open');
+    assert.equal(follow.at, '2026-09-02T13:00:00.000Z', 'and the moment, which is before the file\'s own time');
+    // the next day: A on the 2nd, so B on the 3rd; the answer was not cleared by the file it was given under
+    await page.evaluate(() => {
+      globalThis.sv2Pinned = '2026-09-03T13:00:00Z';
+    });
+    await lineIs(page, 'Today is a B Day. It follows on from what you said on 2 September. Not right?');
+    assert.notEqual(await kept(page, DAY_ON_KEY), null);
+    // a file published after that one is what clears it
+    await goto(page, files.sameday, '#/free');
+    assert.equal(await line(page), 'Today is a C Day with Early Release bells. Not right?', 'opened at the phone\'s 2 September: the newer file\'s own calendar, not the answer');
+    assert.equal(await kept(page, DAY_ON_KEY), null);
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('followJust: "As the calendar says" takes back only today\'s just answer, and "Forget what I said on 1 September" takes back the standing one', async () => {
+  const session = await openPage({ at: ROTATION, every: 150 });
+  try {
+    const { page } = session;
+    await goto(page, files.many, '#/free');
+    const buttons = () => texts(page, '.today__panel .actions .btn');
+    await press(page, '[data-today="not-right"]');
+    assert.deepEqual(await buttons(), ['Just today', 'Today, and the days after follow on from it'], 'nothing answered: nothing to take back');
+    await press(page, '[data-pick="today-day"] input[value="' + C + '"]');
+    await press(page, '[data-today="follow"]');
+    await lineIs(page, 'Today is a C Day. You said so on this device. Not right?');
+    await press(page, '[data-today="not-right"]');
+    assert.deepEqual(await buttons(), ['Just today', 'Today, and the days after follow on from it', 'Forget what I said on 1 September'], 'a standing answer offers to be forgotten, and the calendar button is not for it');
+    // Wednesday: just today, B Day
+    await page.evaluate(() => {
+      globalThis.sv2Pinned = '2026-09-02T13:00:00Z';
+    });
+    await lineIs(page, 'Today is an A Day with Early Release bells. It follows on from what you said on 1 September. Not right?');
+    await press(page, '[data-today="not-right"]');
+    await press(page, '[data-pick="today-day"] input[value="dsample00b"]');
+    await press(page, '[data-today="just"]');
+    await lineIs(page, 'Today is a B Day with Early Release bells. You said so on this device. Not right?');
+    await press(page, '[data-today="not-right"]');
+    assert.deepEqual(await buttons(), ['Just today', 'Today, and the days after follow on from it', 'As the calendar says', 'Forget what I said on 1 September']);
+    // "As the calendar says": today's answer goes, the standing one stays and shows
+    await press(page, '[data-today="calendar"]');
+    await lineIs(page, 'Today is an A Day with Early Release bells. It follows on from what you said on 1 September. Not right?');
+    const now = JSON.parse(await kept(page, DAY_ON_KEY));
+    assert.equal(now.just, null);
+    assert.equal(now.follow.dayTypeId, C, 'the follow answer is still kept');
+    await page.evaluate(() => {
+      globalThis.sv2Pinned = '2026-09-03T13:00:00Z';
+    });
+    await lineIs(page, 'Today is a B Day. It follows on from what you said on 1 September. Not right?');
+    // forgetting it leaves the calendar
+    await press(page, '[data-today="not-right"]');
+    await press(page, '[data-today="forget"]');
+    await lineIs(page, 'Today is an A Day. Not right?');
+    assert.equal(await kept(page, DAY_ON_KEY), null);
+    assert.equal(await page.evaluate(() => document.activeElement.className), 'today__says', 'the focus is on the line');
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('on a date with no school Coverage and the substitute plan use the regular bells and leave out no period, whatever bells were chosen by hand', async () => {
+  const session = await openPage({ at: NO_SCHOOL, kept: { [DAY_KEY]: 'dsample00a', [BELLS_KEY]: ER } });
+  try {
+    const { page } = session;
+    await goto(page, files.many, '#/coverage/tsample007');
+    assert.match(await lede(page), /of 8 periods on A Day\./, 'eight periods meet, under no bell schedule');
+    assert.deepEqual(await page.evaluate(() => Array.from(document.querySelectorAll('section[data-period]'), (card) => Number(card.dataset.period)).some((period) => period > 3)), true, 'a period Early Release leaves out is there');
+    assert.equal(await page.evaluate(() => document.querySelector('a.btn[href^="#/sub/"]').getAttribute('href')), '#/sub/tsample007?d=dsample00a');
+    await move(page, '#/sub/tsample007');
+    assert.equal(await count(page, '[data-sub="day"] .row'), 8);
+    assert.deepEqual(await texts(page, '[data-sub="day"] .card__title'), ['The day: A Day']);
+    assert.equal(await page.evaluate(() => document.querySelector('[data-sub="day"] .row .row__when').textContent), 'Period 18:00 AM to 8:48 AM', 'the regular first bell, not Early Release\'s');
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('a substitute plan for another date takes that date\'s day and bells from the calendar, else the regular bells; the hand choice is for today', async () => {
+  const session = await openPage({ at: EARLY, kept: { [DAY_KEY]: 'dsample00b', [BELLS_KEY]: ER } });
+  try {
+    const { page } = session;
+    const title = async () => (await texts(page, '[data-sub="day"] .card__title'))[0];
+    const rows = () => count(page, '[data-sub="day"] .row');
+    // today is Wednesday 2 September: C Day with Early Release bells
+    await goto(page, files.many, '#/sub/tsample007');
+    assert.equal(await title(), 'The day: C Day with Early Release bells');
+    assert.equal(await rows(), 4);
+    // Thursday 3 September, from the address: A Day, the regular bells
+    await goto(page, files.many, '#/sub/tsample007?date=2026-09-03');
+    assert.equal(await title(), 'The day: A Day');
+    assert.equal(await rows(), 8);
+    // a date with no school, and a date outside the calendar: the first day type, the regular bells
+    await goto(page, files.many, '#/sub/tsample007?date=2026-11-26');
+    assert.equal(await title(), 'The day: A Day');
+    assert.equal(await rows(), 8);
+    await goto(page, files.many, '#/sub/tsample007?date=2027-07-01');
+    assert.equal(await title(), 'The day: A Day', 'B Day with Early Release was chosen by hand for today');
+    assert.equal(await rows(), 8);
+    // changing the date on the page changes the day, and back to today gives today's own
+    await move(page, '#/sub/tsample007');
+    const setDate = (value) => page.evaluate((to) => {
+      const input = document.getElementById('sub-date');
+      input.value = to;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }, value);
+    await setDate('2026-09-04');
+    assert.equal(await title(), 'The day: D Day');
+    assert.equal(await page.evaluate(() => document.querySelector('[data-pick="day"] input:checked').value), 'dfixture0d', 'the picker follows');
+    assert.equal(await page.evaluate(() => location.hash), '#/sub/tsample007?date=2026-09-04');
+    await setDate('2026-09-02');
+    assert.equal(await title(), 'The day: C Day with Early Release bells');
+    assert.equal(await page.evaluate(() => location.hash), '#/sub/tsample007');
+    // a day type picked for another date holds when the date changes, takes that date's bells where it is that day, and is not kept as today's
+    await setDate('2026-09-09');
+    assert.equal(await title(), 'The day: A Day with Early Release bells', 'Wednesday 9 September: the rotation has gone round to A, and Wednesday\'s bells');
+    await press(page, '[data-pick="day"] input[value="dsample00b"]');
+    assert.equal(await title(), 'The day: B Day');
+    await setDate('2026-09-03');
+    assert.equal(await title(), 'The day: B Day', 'picked, so it holds');
+    assert.equal(await kept(page, DAY_KEY), 'dsample00b', 'the hand choice for today is as it was');
+    assert.equal(await page.evaluate(() => location.hash), '#/sub/tsample007?d=dsample00b&date=2026-09-03');
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('the calendar page\'s focus on the step applies only to a page the step led to', async () => {
+  const session = await openPage({ at: ROTATION });
+  try {
+    const { page } = session;
+    await goto(page, files.many, '#/calendar?m=2026-10');
+    const stepFocus = () => page.evaluate(() => (document.activeElement.dataset.step || '') + '|' + document.querySelector('[data-says="month"]').textContent);
+    // a click that something else stopped goes nowhere; a later visit to the page it named is not a step
+    await page.evaluate(() => {
+      const next = document.querySelector('a[data-step="next"]');
+      next.addEventListener('click', (event) => event.preventDefault(), { once: true });
+      next.click();
+    });
+    await move(page, '#/free');
+    await move(page, '#/calendar?m=2026-11');
+    assert.equal(await stepFocus(), '|', 'no step control has the focus and nothing is said');
+    // the same with a click that held a modifier key (it opens elsewhere)
+    await move(page, '#/calendar?m=2026-10');
+    await page.evaluate(() => {
+      const next = document.querySelector('a[data-step="next"]');
+      next.addEventListener('click', (event) => event.preventDefault(), { once: true });
+      next.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }));
+    });
+    await move(page, '#/calendar?m=2026-11');
+    assert.equal(await stepFocus(), '|');
+    // a real step still takes the focus with it and says the month
+    await page.focus('a[data-step="next"]');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('[data-says="month"]').textContent === 'December 2026');
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.step), 'next');
+    // coming back to it with the browser's Back button is not a step
+    await page.evaluate(() => history.back());
+    await page.waitForFunction(() => document.querySelector('.cal__month').textContent === 'November 2026');
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.step || ''), '', 'Back is not a press of Previous');
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('the month status is one live region, on the page before its words change, and the same one for every month', async () => {
+  const session = await openPage({ at: ROTATION });
+  try {
+    const { page } = session;
+    await goto(page, files.many, '#/calendar?m=2026-10');
+    const region = () => page.evaluate(() => {
+      const found = document.querySelectorAll('[data-says="month"]');
+      return { count: found.length, role: found[0].getAttribute('role'), text: found[0].textContent, same: found[0] === globalThis.sv2Region, inPage: Boolean(found[0].closest('.page')) };
+    });
+    await page.evaluate(() => {
+      globalThis.sv2Region = document.querySelector('[data-says="month"]');
+    });
+    assert.deepEqual(await region(), { count: 1, role: 'status', text: '', same: true, inPage: false }, 'there before anything is said, and outside the page that is drawn again');
+    await page.focus('a[data-step="next"]');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('[data-says="month"]').textContent === 'November 2026');
+    assert.deepEqual(await region(), { count: 1, role: 'status', text: 'November 2026', same: true, inPage: false }, 'the same element, now with words');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('[data-says="month"]').textContent === 'December 2026');
+    assert.equal((await region()).same, true);
+    // a month that was not stepped to says nothing
+    await move(page, '#/free');
+    await move(page, '#/calendar?m=2027-03');
+    assert.deepEqual(await region(), { count: 1, role: 'status', text: '', same: true, inPage: false }, 'and the last month\'s words are not left behind');
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+// A stand-in for the canvas's measureText: a letter is this many ems wide, a
+// wide letter (W, M) and a character of any East Asian script more.
+const widthOf = (text, size) => Array.from(text).reduce((sum, letter) => sum + size * (/[WM]/.test(letter) ? 0.95 : /[　-鿿]/.test(letter) ? 1 : letter === ' ' ? 0.28 : 0.52), 0);
+// the closing line's room: the image is 390 wide with 24 at each side
+const ROOM = 1170 / 3 - 24 * 2;
+
+test('the lock-screen image\'s closing line is broken by measured width, never cuts a name, and says "and N more" when it cannot name them all', () => {
+  const build = (nameOf, count) => {
+    const project = manyDays();
+    for (let n = 0; n < count; n += 1) {
+      const id = 'dwide0000' + n;
+      project.dayTypes.push({ id, name: nameOf(n), own: true, sameAs: null, short: '', bells: later(project.dayTypes[0].bells, n + 1) });
+      for (const group of project.groups) group.days[id] = group.days.dsample00a.map((slot) => ({ ...slot, teacherIds: slot.teacherIds.slice() }));
+    }
+    const school = openSchool(publishedModel(project, { clock: () => new Date('2026-08-25T12:00:00Z') }));
+    const teacher = school.teacher('tsample007');
+    const kinds = dayKindsOf(school, (dayType) => (school.teacherDay(teacher.id, dayType.id) || []).map((entry) => entry.groups.map((taught) => [taught.groupId, taught.roomId])));
+    return { school, teacher, kinds };
+  };
+  // the lines from "And" to the school's name, and what each was drawn with
+  const closing = (layout) => {
+    const items = layout.items.filter((item) => item.kind === 'text');
+    const at = items.findIndex((item) => item.text.startsWith('And '));
+    return at < 0 ? [] : items.slice(at, -2);
+  };
+  const cases = [
+    ['short names', (n) => 'X' + (n + 1), 8, 'all of them, and the advice'],
+    ['wide names', (n) => 'WWWWWWWWWW ' + (n + 1), 8, 'wide names: fewer are named'],
+    ['names of a script with no spaces', (n) => '特別日程のとても長い日' + (n + 1), 8, 'no space to break a name at'],
+    ['one name wider than a line', (n) => (n === 5 ? 'M'.repeat(40) : 'Day ' + (n + 1)), 8, 'a name that cannot be set in a line at all'],
+  ];
+  for (const [label, nameOf, count] of cases) {
+    const { school, teacher, kinds } = build(nameOf, count);
+    const measure = (text, size) => widthOf(text, size);
+    const layout = lockScreenLayout(school, teacher, kinds, { locale: 'en-GB', zone: 'UTC', measure });
+    const lines = closing(layout);
+    const shown = layout.items.filter((item) => item.kind === 'text' && item.size === 13 && item.weight === 700).length;
+    const left = kinds.length - shown;
+    assert.ok(left > 0 && lines.length > 0, label + ': some kinds are left out');
+    assert.ok(lines.length <= 2, label + ': ' + lines.length + ' lines');
+    for (const item of lines) assert.ok(widthOf(item.text, item.size) <= ROOM, label + ': "' + item.text + '" is ' + widthOf(item.text, item.size) + ' wide in a line of ' + ROOM);
+    for (const item of lines) assert.ok(item.fit >= ROOM, label + ': the painter is not asked to shorten "' + item.text + '"');
+    const said = lines.map((item) => item.text).join(' ');
+    assert.ok(!said.includes('…'), label + ': nothing is cut');
+    assert.match(said, new RegExp('^And ' + left + ' more kinds? of day'), label + ': the count is of the kinds left out');
+    // every name the line gives is whole, and the rest are counted
+    const heads = layout.items.filter((item) => item.kind === 'text' && item.size === 13 && item.weight === 700).map((item) => item.text);
+    const leftNames = Array.from({ length: count }, (unused, n) => nameOf(n)).filter((name) => !heads.includes(name));
+    assert.equal(leftNames.length, left, label + ': the kinds left out are the extras that are not a heading');
+    const named = leftNames.filter((name) => said.includes(name));
+    const more = /and (\d+) more\./.exec(said);
+    assert.equal(named.length + (more ? Number(more[1]) : 0), leftNames.length, label + ': every left-out kind is named or counted, once: ' + said);
+    if (!more) assert.equal(named.length, leftNames.length, label + ': nothing counted, so all named');
+    // a name is whole or absent: no name's first word without the rest
+    let rest = said;
+    for (const name of leftNames) rest = rest.split(name).join('');
+    for (const name of leftNames) assert.ok(!rest.includes(name.split(' ')[0]), label + ': "' + name + '" is never cut: ' + said);
+  }
+  // measured, not counted: the same words in a narrow face take fewer lines than in a wide one
+  const { school, teacher, kinds } = build((n) => 'Day ' + (n + 1), 8);
+  const narrow = closing(lockScreenLayout(school, teacher, kinds, { locale: 'en-GB', zone: 'UTC', measure: (text, size) => text.length * size * 0.3 })).map((item) => item.text).join(' ');
+  const wide = closing(lockScreenLayout(school, teacher, kinds, { locale: 'en-GB', zone: 'UTC', measure: (text, size) => text.length * size * 0.9 })).map((item) => item.text).join(' ');
+  assert.match(narrow, /Print the schedule for every one\.$/, 'room for the advice');
+  assert.ok(!/Print the schedule/.test(wide), 'no room for the advice: the names come first');
+});
+
+test('the image made in the browser is laid out by the canvas\'s own measure: no line is shortened, none is wider than the room, and the count is honest', async () => {
+  const session = await openPage({ at: ROTATION });
+  try {
+    const { page } = session;
+    await page.evaluateOnNewDocument(() => {
+      globalThis.__drawn = [];
+      const original = CanvasRenderingContext2D.prototype.fillText;
+      CanvasRenderingContext2D.prototype.fillText = function (text, x, y, ...rest) {
+        globalThis.__drawn.push({ text: String(text), font: this.font, width: this.measureText(String(text)).width, align: this.textAlign });
+        return original.call(this, text, x, y, ...rest);
+      };
+      navigator.canShare = () => true;
+      navigator.share = () => Promise.resolve();
+    });
+    await goto(page, files.lock, '#/teacher/tsample007');
+    await press(page, '[data-output="image"]');
+    await page.waitForFunction(() => document.querySelector('[data-says="image"]').textContent.startsWith('Shared.'), { timeout: 20000 });
+    const drawn = await page.evaluate(() => globalThis.__drawn);
+    const heads = drawn.filter((item) => /^(bold|700) 13px/.test(item.font)).map((item) => item.text);
+    const at = drawn.findIndex((item) => item.text.startsWith('And '));
+    assert.ok(at >= 0, 'a closing line');
+    const lines = drawn.slice(at, -2);
+    assert.ok(lines.length >= 1 && lines.length <= 2, 'lines: ' + lines.length);
+    for (const item of lines) {
+      assert.ok(item.width <= 342 + 0.01, '"' + item.text + '" is ' + item.width + ' wide');
+      assert.ok(!item.text.includes('…'), 'not shortened: ' + item.text);
+    }
+    const said = lines.map((item) => item.text).join(' ');
+    // the four kinds of the school come first, then the extras in order (a column's
+    // heading is shortened in its column, so the names are told by how many are shown)
+    const names = Array.from({ length: 8 }, (unused, n) => WIDE + (n + 1));
+    const leftNames = names.slice(heads.length - 4);
+    assert.match(said, new RegExp('^And ' + leftNames.length + ' more kinds of day'));
+    const more = /and (\d+) more\./.exec(said);
+    const named = leftNames.filter((name) => said.includes(name));
+    assert.equal(named.length + (more ? Number(more[1]) : 0), leftNames.length, said);
+    assert.equal((said.match(/W{10} \d/g) || []).length, named.length, 'every name that is in the line is whole: ' + said);
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
 });

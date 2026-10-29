@@ -113,10 +113,13 @@ export function openDateDialog(options) {
     let dates = datesFrom(from, last);
     const change = {};
     const day = checked(days);
-    // a run: the day checked is the choice, even when it is the first date's
-    // own (a break that starts on a Saturday), unless only bells were chosen
+    // a run: the day counts as chosen only when the reader picks it, so a note
+    // or bells alone never pin day types. The one exception is "No school",
+    // already checked, on a run that holds school days: a break that starts
+    // on a Saturday
     const many = dates.length > 1;
-    const chosen = touched.day ? many || day !== dayNow : many && !touched.bells;
+    const closesRun = many && !touched.bells && day === DAY_CLOSED && dates.some((date) => (dayEntry(project, date) || {}).school === true);
+    const chosen = touched.day ? many || day !== dayNow : closesRun;
     if (chosen) change.day = day === AS_CALENDAR ? null : day;
     if (change.day !== null) {
       const chosenBells = checked(bells);
