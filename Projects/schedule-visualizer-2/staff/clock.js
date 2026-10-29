@@ -16,7 +16,9 @@
 //      days after follow on from it", each with the moment it was given);
 //   2. the calendar, with an earlier answer that said "the days after follow
 //      on from it" laid over it as a dated change of the reader's own, until
-//      a file published after that date is opened, which clears it;
+//      a file published after the one that was open when it was given is
+//      opened, which clears it (a file's time is compared with a file's
+//      time, never with the phone's clock);
 //   3. where the calendar does not say (no calendar, or a date outside it),
 //      the day type chosen by hand (sv2staff:<schoolId>:day) and the bells
 //      chosen beside it (sv2staff:<schoolId>:bells), as before there was a
@@ -75,8 +77,10 @@ function bellsById(school, id) {
 }
 
 // The reader's "Not right?" answers as they were kept: { just, follow }, each
-// null or { date, dayTypeId, bellsId, at } (`at`, the moment it was given as
-// an ISO string, or null on an answer from before it was recorded). "Just
+// null or { date, dayTypeId, bellsId, at, seenFile } (`at`, the moment it was
+// given as an ISO string, or null on an answer from before it was recorded;
+// `seenFile`, on a follow answer, the `publishedAt` of the file that was open
+// when it was given, or null on one from before it was recorded). "Just
 // today" and "the days after follow on from it" are two answers and neither
 // removes the other. The shape this key had first, one answer with
 // `follow: true | false`, reads as whichever it was. Anything kept that is
@@ -96,7 +100,8 @@ function keptAnswers(ctx) {
 
 function answerOf(school, raw) {
   if (raw === null || !school.isDate(raw.date) || !dayTypeById(school, raw.dayTypeId)) return null;
-  return { date: raw.date, dayTypeId: raw.dayTypeId, bellsId: bellsById(school, raw.bellsId), at: typeof raw.at === 'string' && Number.isFinite(Date.parse(raw.at)) ? raw.at : null };
+  const moment = (value) => (typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null);
+  return { date: raw.date, dayTypeId: raw.dayTypeId, bellsId: bellsById(school, raw.bellsId), at: moment(raw.at), seenFile: moment(raw.seenFile) };
 }
 
 function writeAnswers(ctx, kept) {
@@ -104,18 +109,25 @@ function writeAnswers(ctx, kept) {
   else ctx.store.set(DAY_ON_KEY, JSON.stringify({ just: kept.just, follow: kept.follow }));
 }
 
-// The follow answer is cleared here once a file published after it was given
-// is open: that file's calendar is the office's newer word, and a correction
-// made the same day counts. An answer from before `at` was recorded is
-// compared by its date.
+// The follow answer is cleared here once a file published after the one that
+// was open when it was given is open: that file's calendar is the office's
+// newer word, and a correction made the same day counts. Two files' times are
+// compared, never a file's with the phone's clock, which may be minutes off.
+// An answer from before the file was recorded takes the file open now as the
+// one it was given under.
 export function readDayOn(ctx) {
   const school = ctx.school;
   const kept = keptAnswers(ctx);
   let follow = answerOf(school, kept.follow);
   const published = Date.parse(school.data.publishedAt);
-  if (follow !== null && Number.isFinite(published) && (follow.at !== null ? published > Date.parse(follow.at) : localDate(new Date(published)) > follow.date)) {
-    writeAnswers(ctx, { just: kept.just, follow: null });
-    follow = null;
+  if (follow !== null && Number.isFinite(published)) {
+    if (follow.seenFile === null) {
+      follow = { ...follow, seenFile: school.data.publishedAt };
+      writeAnswers(ctx, { just: kept.just, follow });
+    } else if (published > Date.parse(follow.seenFile)) {
+      writeAnswers(ctx, { just: kept.just, follow: null });
+      follow = null;
+    }
   }
   return { just: answerOf(school, kept.just), follow };
 }
@@ -135,11 +147,16 @@ export function answerFor(answers, date) {
 export function keepDayOn(ctx, kind, answer) {
   const kept = keptAnswers(ctx);
   kept[kind] = { date: answer.date, dayTypeId: answer.dayTypeId, bellsId: answer.bellsId, at: answer.at };
+  // a standing answer remembers the file it was given under
+  if (kind === 'follow') kept[kind].seenFile = ctx.school.data.publishedAt;
   writeAnswers(ctx, kept);
 }
 
-export function forgetDayOn(ctx) {
-  ctx.store.remove(DAY_ON_KEY);
+// Takes back one answer, "just" or "follow", and leaves the other.
+export function forgetDayOn(ctx, kind) {
+  const kept = keptAnswers(ctx);
+  kept[kind] = null;
+  writeAnswers(ctx, kept);
 }
 
 // Which day today is, and who says so:
@@ -487,11 +504,15 @@ export function nowTabs(school, current) {
 // "Not right?" opens, in place, the day types (and the bells, where the
 // school has other bell schedules) and two buttons: "Just today", and "Today,
 // and the days after follow on from it" (the rotation follows on from the
-// answer). With an answer kept, a third goes back to the calendar.
+// answer). The two answers are separate: "As the calendar says" takes back
+// today's "just today" and nothing else, and "Forget what I said on 1
+// September" takes back the standing one.
 export function todayLine(ctx, onChange) {
   const school = ctx.school;
   const today = todayOf(ctx);
-  const answered = today.by === 'reader' || today.by === 'follow';
+  const answers = readDayOn(ctx);
+  const justToday = answers.just !== null && answers.just.date === today.date;
+  const answered = today.by === 'reader' || today.by === 'follow' || justToday || answers.follow !== null;
   if (today.calendar === 'none' && !answered) return null;
   if (today.calendar === 'outside' && !answered) {
     const calendar = school.calendar;
@@ -539,12 +560,16 @@ export function todayLine(ctx, onChange) {
   };
   const just = h('button', { class: 'btn', type: 'button', dataset: { today: 'just' }, onclick: () => answer('just') }, 'Just today');
   const follow = h('button', { class: 'btn', type: 'button', dataset: { today: 'follow' }, onclick: () => answer('follow') }, 'Today, and the days after follow on from it');
-  const back = answered ? h('button', { class: 'btn', type: 'button', dataset: { today: 'calendar' }, onclick: () => {
-    forgetDayOn(ctx);
+  const back = justToday ? h('button', { class: 'btn', type: 'button', dataset: { today: 'calendar' }, onclick: () => {
+    forgetDayOn(ctx, 'just');
     settle();
   } }, 'As the calendar says') : null;
+  const forget = answers.follow !== null ? h('button', { class: 'btn', type: 'button', dataset: { today: 'forget' }, onclick: () => {
+    forgetDayOn(ctx, 'follow');
+    settle();
+  } }, 'Forget what I said on ', school.dateWords(answers.follow.date, { year: false })) : null;
   const panel = h('div', { class: 'today__panel', id: panelId, hidden: true, role: 'group', 'aria-label': 'Which day is today?' },
-    dayChoice, bellsChoice, h('p', { class: 'actions' }, just, follow, back));
+    dayChoice, bellsChoice, h('p', { class: 'actions' }, just, follow, back, forget));
 
   const close = () => {
     panel.hidden = true;
