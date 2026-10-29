@@ -92,6 +92,12 @@ async function openDate(date) {
   await dialogOpen();
 }
 
+async function click(selector) {
+  await settled();
+  await closeToast();
+  await page.click(selector);
+}
+
 async function closeDialog() {
   await page.keyboard.press('Escape');
   await dialogGone();
@@ -222,4 +228,58 @@ test('a file made with the calendar view unticked still carried the calendar, an
   await shows(() => document.querySelector('[data-says="views"]').textContent === 'All 12 views');
   await go(page, '#schedule/calendar');
   await settled();
+});
+
+test('a 731-day calendar with "Every date as a list" open: Apply settles in under 300 ms, and the list writes only the rows that changed', async () => {
+  await fresh({ start: '2026-08-01', end: '2028-07-31', breaks: [{ from: '2026-12-21', to: '2027-01-01', label: 'Winter break' }] });
+  await click('.cal-list__summary');
+  await page.waitForSelector('.cal-list__table');
+  assert.equal(await page.$$eval('.cal-list__table tbody tr', (all) => all.length), 731);
+  // a note on one date: one row of the 731 is written
+  await openDate('2027-02-10');
+  await page.focus('#calendar-date-dialog input[name="note"]');
+  await page.keyboard.type('Picture day');
+  const touched = await page.evaluate(() => new Promise((resolve) => {
+    const rows = new Set();
+    const watcher = new MutationObserver((records) => {
+      for (const record of records) {
+        const row = record.target.closest ? record.target.closest('tr') : record.target.parentElement.closest('tr');
+        if (row) rows.add(row.dataset.date);
+      }
+    });
+    watcher.observe(document.querySelector('.cal-list__table tbody'), { subtree: true, childList: true, characterData: true, attributes: true });
+    document.querySelector('#calendar-date-dialog [data-action="apply-date"]').click();
+    const wait = () => requestAnimationFrame(() => {
+      if (document.querySelector('.sch').dataset.pending === 'true' || document.getElementById('calendar-date-dialog')) wait();
+      else {
+        watcher.disconnect();
+        resolve(Array.from(rows));
+      }
+    });
+    wait();
+  }));
+  assert.deepEqual(touched, ['2027-02-10'], 'only the changed row was written');
+  assert.equal(await page.$eval('.cal-list__table tr[data-date="2027-02-10"] td:last-child', (el) => el.textContent), 'Picture day');
+  // Apply from the click to the section drawn again, the best of three
+  const times = [];
+  for (const date of ['2026-10-14', '2027-02-17', '2027-05-12']) {
+    await settled();
+    await closeToast();
+    await openDate(date);
+    await page.$eval('#calendar-date-dialog input[value="closed"]', (input) => input.click());
+    times.push(await page.evaluate(() => new Promise((resolve) => {
+      const t0 = performance.now();
+      document.querySelector('#calendar-date-dialog [data-action="apply-date"]').click();
+      const wait = () => requestAnimationFrame(() => {
+        const section = document.querySelector('.sch');
+        if (section.dataset.pending === 'true' || document.getElementById('calendar-date-dialog')) wait();
+        else resolve(performance.now() - t0);
+      });
+      wait();
+    })));
+  }
+  assert.equal(await page.$eval('.cal-list__table tr[data-date="2027-05-12"] td:nth-child(3)', (el) => el.textContent), 'No school', 'the list says what the year says');
+  assert.ok(Math.min(...times) < 300 * SLOW, 'Apply settles in ' + times.map((each) => each.toFixed(0)).join(', ') + ' ms');
+  await click('.cal-list__summary');
+  await shows(() => document.querySelector('.cal-list__table') === null);
 });

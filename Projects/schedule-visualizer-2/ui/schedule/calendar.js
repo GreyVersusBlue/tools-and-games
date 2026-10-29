@@ -29,7 +29,7 @@ import { createYear } from './calendar/year.js';
 import { openDateDialog, closeDateDialog, dateDialogOpen } from './calendar/dialog.js';
 import { setupCard, freshSetup } from './calendar/setup.js';
 import { calendarPanel } from './calendar/panel.js';
-import { dateTable } from './calendar/list.js';
+import { dateTable, patchTable } from './calendar/list.js';
 import { todayOf, doneWords, movedWords } from './calendar/model.js';
 
 export { CALENDAR_KEYS } from './calendar/year.js';
@@ -73,7 +73,10 @@ export function mount(env) {
       if (table) table.remove();
       return;
     }
-    const made = dateTable(project, todayOf(ctx.clock()));
+    const today = todayOf(ctx.clock());
+    // the rows that changed are written; a new range is a new table
+    if (table && patchTable(table, project, today)) return;
+    const made = dateTable(project, today);
     if (table) table.replaceWith(made);
     else list.append(made);
   }
