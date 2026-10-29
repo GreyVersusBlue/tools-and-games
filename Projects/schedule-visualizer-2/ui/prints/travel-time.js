@@ -28,9 +28,9 @@
 // heading; the whole day starts a sheet of its own.
 
 import { ownDayTypes, findDayType } from '../../engine/day-types.js';
-import { periodName } from '../../engine/bells.js';
-import { count, list } from '../components/words.js';
-import { transitionsOf } from '../movement/model.js';
+import { findBellSchedule } from '../../engine/bells.js';
+import { count, list, periodWords } from '../components/words.js';
+import { transitionsOf, walkWords, nothingMeets, followerWords } from '../movement/model.js';
 import { travelDay, transitionRows, dayRows, lateWords } from '../movement/tables.js';
 import { durationWords } from '../scenarios/model.js';
 import { esc, frame } from './document.js';
@@ -57,7 +57,7 @@ export function transitionCells(row) {
 // The slowest walk is its transition and its time: "Period 3 to Period 4, 1 min 20 s".
 export function dayCells(project, row) {
   const settings = project.settings;
-  const slowest = periodName(settings, row.slowest.period) + ' to ' + periodName(settings, row.slowest.period + 1) + ', ' + time(row.slowest.total);
+  const slowest = walkWords(settings, row.slowest.period, row.slowest.toPeriod) + ', ' + time(row.slowest.total);
   return [row.group.name, String(row.walks), time(row.walking), row.waiting === 0 ? 'none' : time(row.waiting), time(row.total), row.late === 0 ? 'none' : String(row.late), slowest];
 }
 
@@ -83,6 +83,9 @@ function dayPages(project, results, day) {
   const transitions = transitionsOf(project, day.id, day.bellsId);
   const margin = project.settings.checks ? project.settings.checks.passingMarginSeconds : 0;
   const walks = transitions.map((transition) => ({ transition, found: transitionRows(project, results, day.id, transition.period, day.bellsId) }));
+  if (nothingMeets(project, day.bellsId)) {
+    return [{ what: name + ': ' + day.heading, body: '<p class="doc-lead">' + esc('No ' + periodWords(project.settings).one + ' meets under ' + findBellSchedule(project, day.bellsId).name + ' bells.') + '</p>' }];
+  }
   if (walks.every((each) => each.found.rows.length === 0)) {
     return [{ what: name + ': ' + day.heading, body: '<p class="doc-lead">' + esc('Nobody walks anywhere on ' + day.heading + ' yet: give a group a room in two periods that follow each other.') + '</p>' }];
   }
@@ -114,13 +117,14 @@ export function render(given, derived, options) {
   const opts = options || {};
   const { project, results } = printedFrom(given, derived, opts);
   const chosen = opts.dayTypeId ? findDayType(project, opts.dayTypeId) : null;
-  const days = chosen ? [travelDay(project, chosen.id, opts.bellsId)] : ownDayTypes(project).map((dayType) => travelDay(project, dayType.id));
+  // the bells chosen go with every day type printed, with a day type chosen or without
+  const days = chosen ? [travelDay(project, chosen.id, opts.bellsId)] : ownDayTypes(project).map((dayType) => travelDay(project, dayType.id, opts.bellsId));
   const pages = days.flatMap((day) => dayPages(project, results, day));
   if (!chosen) {
     const own = ownDayTypes(project);
     const followers = project.dayTypes.filter((dayType) => !own.includes(dayType));
     if (followers.length > 0) {
-      pages[pages.length - 1].body += '\n<p class="doc-meaning">' + esc(list(followers.map((dayType) => dayType.name)) + (followers.length === 1 ? ' is' : ' are') + ' the same as ' + project.dayTypes[0].name + ' and ' + (followers.length === 1 ? 'has' : 'have') + ' the same travel times.') + '</p>';
+      pages[pages.length - 1].body += '\n<p class="doc-meaning">' + esc(followerWords(project, followers, opts.bellsId, 'times')) + '</p>';
     }
   }
   return frame(project, { output: id, what: name, pages, options: opts });

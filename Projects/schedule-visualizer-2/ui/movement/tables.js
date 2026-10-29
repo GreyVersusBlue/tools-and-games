@@ -35,7 +35,7 @@
 //     bell schedule "B Day (same as A Day) with Early Release bells")
 //   transitionRows(project, results, dayTypeId, period, bellsId)
 //     -> { rows, still, failed }
-//     rows    [{ group, period, from, to, passingSeconds, walking, waiting, total, late, arrived, over }]
+//     rows    [{ group, period, toPeriod, from, to, passingSeconds, walking, waiting, total, late, arrived, over }]
 //             slowest first; `from` and `to` are the rooms' numbers as typed;
 //             `over` is by how many seconds a late walk misses
 //     still   the groups that stay in their room; failed  the groups with no route
@@ -50,7 +50,8 @@
 //
 // Every function takes `bellsId` last, null or left out for the regular
 // bells, and reads that run's walks (engine/worker.js runResults); the
-// transitions it lists are those between periods that both meet.
+// transitions it lists are the walks between meeting periods, past the ones
+// that do not meet ("Period 2 to Period 4"; each row has toPeriod).
 //
 // transitionRows, dayRows and slowestPeriod take the id of a day type that is
 // its own copy: travelDay(...).id.
@@ -58,11 +59,10 @@
 import { h, uid } from '../components/dom.js';
 import { count } from '../components/words.js';
 import { formatDuration } from '../../engine/findings.js';
-import { periodName } from '../../engine/bells.js';
 import { findDayType, effectiveDayType } from '../../engine/day-types.js';
 import { findBellSchedule } from '../../engine/bells.js';
 import { parse } from '../colour.js';
-import { transitionsOf, runOf } from './model.js';
+import { transitionsOf, runOf, walkWords, nothingMeets, nothingMeetsParts } from './model.js';
 import { printButtons } from '../prints/index.js';
 import { printButton } from '../components/print-preview.js';
 
@@ -94,6 +94,7 @@ function rowOf(project, walk, group, numbers) {
   return {
     group,
     period: walk.period,
+    toPeriod: Number.isInteger(walk.toPeriod) ? walk.toPeriod : walk.period + 1,
     from: numbers.get(walk.fromRoomId) || '',
     to: numbers.get(walk.toRoomId) || '',
     passingSeconds: walk.passingSeconds,
@@ -166,17 +167,17 @@ export function lateWords(row) {
   return row.late ? 'Late by ' + formatDuration(row.over) : 'In time';
 }
 
-function transitionName(settings, period) {
-  return periodName(settings, period) + ' to ' + periodName(settings, period + 1);
+function transitionName(settings, period, toPeriod) {
+  return walkWords(settings, period, toPeriod);
 }
 
 // Every walk of the day, transition by transition, slowest first in each.
 export function transitionsCsv(project, results, dayTypeId, bellsId) {
   const day = travelDay(project, dayTypeId, bellsId);
   const table = [['Day type', 'Transition', 'Passing time (seconds)', 'Group', 'From room', 'To room', 'Walking (seconds)', 'Waiting (seconds)', 'Total (seconds)', 'Late', 'Late by (seconds)']];
-  for (const { period } of transitionsOf(project, day.id, day.bellsId)) {
+  for (const { period, toPeriod } of transitionsOf(project, day.id, day.bellsId)) {
     for (const row of transitionRows(project, results, day.id, period, day.bellsId).rows) {
-      table.push([day.heading, transitionName(project.settings, period), row.passingSeconds, row.group.name, row.from, row.to, row.walking, row.waiting, row.total, !row.arrived ? 'did not arrive' : row.late ? 'late' : 'in time', row.late ? row.over : '']);
+      table.push([day.heading, transitionName(project.settings, period, toPeriod), row.passingSeconds, row.group.name, row.from, row.to, row.walking, row.waiting, row.total, !row.arrived ? 'did not arrive' : row.late ? 'late' : 'in time', row.late ? row.over : '']);
     }
   }
   return table;
@@ -186,7 +187,7 @@ export function dayCsv(project, results, dayTypeId, bellsId) {
   const day = travelDay(project, dayTypeId, bellsId);
   const table = [['Day type', 'Group', 'Walks', 'Walking (seconds)', 'Waiting (seconds)', 'Total (seconds)', 'Late walks', 'Slowest walk', 'Slowest walk (seconds)']];
   for (const row of dayRows(project, results, day.id, day.bellsId)) {
-    table.push([day.heading, row.group.name, row.walks, row.walking, row.waiting, row.total, row.late, transitionName(project.settings, row.slowest.period), row.slowest.total]);
+    table.push([day.heading, row.group.name, row.walks, row.walking, row.waiting, row.total, row.late, transitionName(project.settings, row.slowest.period, row.slowest.toPeriod), row.slowest.total]);
   }
   return table;
 }
@@ -259,6 +260,10 @@ export function tablesPanel(env) {
     tables.hidden = !any;
     if (!results) {
       lead.textContent = 'Working out the routes.';
+      return;
+    }
+    if (nothingMeets(project, day.bellsId)) {
+      lead.replaceChildren(...nothingMeetsParts(project, day.bellsId).map((part) => (part.name ? h('bdi', null, part.text) : part.text)));
       return;
     }
     if (!any) {

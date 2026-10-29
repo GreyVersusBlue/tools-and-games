@@ -23,8 +23,10 @@
 //   shownGroups(project, choice)       the groups on screen, in the project's order
 //   addGroup(choice, groupId)          -> { choice, refused } (COMPARE_LIMIT at most; COMPARE_REASON says why)
 //   gradesOf(project)                  the grades there are, as typed, sorted
-//   transitionsOf(project, dayTypeId, bellsId)  [{ period, name, short, from, to, times, seconds }]: the
-//                                      walks between periods that both meet
+//   transitionsOf(project, dayTypeId, bellsId)  [{ period, toPeriod, name, short, from, to, times, seconds }]: the
+//                                      walks between meeting periods, past the ones that do not meet ("Period 2 to Period 4")
+//   walkWords(settings, period, toPeriod)  "Period 2 to Period 4"
+//   nothingMeets(project, bellsId), nothingMeetsParts(project, bellsId)   every period off under these bells; "No period meets under Early Release bells."
 //   offWords(project, bellsId)         "Periods 5 to 8 do not meet", or '' when every period meets
 //   runOf(results, dayTypeId, bellsId) one run's parts of the results: { routes, crowd, loads, walks }
 //   routesOfRun(routes, entry, groups) a routes object of the entry's run for these groups alone (engine/load.js reads it)
@@ -36,11 +38,12 @@
 //   cellCard(project, results, graph, picture, floorId, cell)   what a corridor cell's card says
 
 import { findDayType, effectiveDayType, ownDayTypes } from '../../engine/day-types.js';
-import { bellsFor, periodName, periodLabel, formatTime, findBellSchedule, offPeriods } from '../../engine/bells.js';
+import { bellsFor, periodName, periodLabel, formatTime, findBellSchedule, offPeriods, parseTime } from '../../engine/bells.js';
+import { transitionPlan } from '../../engine/crowd.js';
 import { resolveSlotRoom, bellSchedulesOf } from '../../engine/schema.js';
 import { meetingSlots } from '../../engine/runs.js';
 import { runResults } from '../../engine/worker.js';
-import { periodWords } from '../components/words.js';
+import { periodWords, list } from '../components/words.js';
 import { loads, contributors, indexRoutes, bandOf, bandEdges } from '../../engine/load.js';
 import { describeFailure, startsAsTyped } from '../../engine/directions.js';
 import { placeAt } from '../../engine/places.js';
@@ -110,29 +113,82 @@ export function addGroup(choice, groupId) {
 }
 
 // One entry per transition of the day: the walk from period `period` into the
-// next. `times` is the passing time as the clock has it ("8:42 to 8:46"), or
+// next one that meets. `toPeriod` is the period reached: the next one, or, past
+// periods that do not meet, the first after them ("Period 2 to Period 4"
+// under an assembly in Period 3), the passing time then the gap between the
+// two. `times` is the passing time as the clock has it ("8:42 to 8:46"), or
 // '' when the bells are not entered.
 export function transitionsOf(project, dayTypeId, bellsId) {
   const settings = project.settings;
   const bells = bellsFor(project, dayTypeId, bellsId);
   const list = [];
   for (let period = 0; period + 1 < settings.periods; period += 1) {
-    // no walk into or out of a period that does not meet
-    if (bells[period].off || bells[period + 1].off) continue;
+    // no walk out of a period that does not meet, nor into the leading or trailing ones
+    const plan = transitionPlan(project, bells, period);
+    if (plan === null) continue;
+    const toPeriod = plan.to;
     const from = bells[period] ? bells[period].end : null;
-    const to = bells[period + 1] ? bells[period + 1].start : null;
-    const clock = from && to && bells[period].passingFromBells;
+    const to = bells[toPeriod] ? bells[toPeriod].start : null;
+    const clock = from && to && (toPeriod === period + 1 ? bells[period].passingFromBells : parseTime(to) > parseTime(from));
     list.push({
       period,
-      name: periodName(settings, period) + ' to ' + periodName(settings, period + 1),
-      short: periodLabel(settings, period) + ' to ' + periodLabel(settings, period + 1),
+      toPeriod,
+      name: periodName(settings, period) + ' to ' + periodName(settings, toPeriod),
+      short: periodLabel(settings, period) + ' to ' + periodLabel(settings, toPeriod),
       from,
       to,
       times: clock ? formatTime(from, settings.timeFormat, { suffix: false }) + ' to ' + formatTime(to, settings.timeFormat, { suffix: false }) : '',
-      seconds: bells[period] ? bells[period].passingAfter : settings.defaultPassingSeconds,
+      seconds: plan.passing === null || plan.passing === undefined ? settings.defaultPassingSeconds : plan.passing,
     });
   }
   return list;
+}
+
+// The words for the walk out of `period` into `toPeriod` (the next one when
+// that is left out): "Period 2 to Period 4".
+export function walkWords(settings, period, toPeriod) {
+  return periodName(settings, period) + ' to ' + periodName(settings, Number.isInteger(toPeriod) ? toPeriod : period + 1);
+}
+
+// "Period 2 to Period 4" for the walk kept under `period` in this list of
+// transitions (picture.transitions, transitionsOf()); the next period when it
+// is not in the list.
+export function walkNamed(settings, transitions, period) {
+  const found = transitions.find((each) => each.period === period);
+  return walkWords(settings, period, found ? found.toPeriod : undefined);
+}
+
+// The line under a print of day types that are the same as another: who
+// follows whom, and, when a bell schedule is chosen, that the figures above
+// are that schedule's run. `what` is what a follower has no copy of:
+// 'figures' ("have no figures of their own") or 'times' ("have the same
+// travel times"). Plain text; the print escapes it.
+export function followerWords(project, followers, bellsId, what) {
+  const as = followers.map((dayType) => effectiveDayType(project, dayType.id));
+  const one = followers.length === 1;
+  const sameAsOne = as.every((own) => own.id === as[0].id);
+  const tail = what === 'times' ? ' the same travel times.' : ' no figures of ' + (one ? 'its' : 'their') + ' own.';
+  const who = sameAsOne ? followers.map((dayType) => dayType.name) : followers.map((dayType, index) => dayType.name + ' (the same as ' + as[index].name + ')');
+  let text = (sameAsOne ? list(who) + (one ? ' is' : ' are') + ' the same as ' + as[0].name + ' and ' : list(who) + ' ') + (one ? 'has' : 'have') + tail;
+  const schedule = findBellSchedule(project, bellsId);
+  if (schedule) {
+    const owns = Array.from(new Set(as.map((own) => own.name)));
+    text += ' ' + (one ? 'Its' : 'Their') + ' figures are the ' + schedule.name + ' bells run\u2019s of ' + list(owns) + '.';
+  }
+  return text;
+}
+
+// Does no period meet under these bells? A bell schedule with every period in
+// its `off` has nothing to draw, to time or to print; the screens then say so
+// in place of advice about giving groups rooms.
+export function nothingMeets(project, bellsId) {
+  return findBellSchedule(project, bellsId) !== null && offPeriods(project, bellsId).size >= project.settings.periods;
+}
+
+// "No period meets under Early Release bells." in pieces ({ text, name }).
+export function nothingMeetsParts(project, bellsId) {
+  const schedule = findBellSchedule(project, bellsId);
+  return [{ text: 'No ' + periodWords(project.settings).one + ' meets under ' }, { text: schedule ? schedule.name : '', name: true }, { text: ' bells.' }];
 }
 
 // Where `period` stands among the transitions shown (a strip that leaves
@@ -347,7 +403,7 @@ export function pictureOf(project, results, graph, input) {
       // a walk into or out of a period that does not meet is not one
       if (!meets(transitions, t)) return;
       if (!route || route.ok !== true) {
-        if (route) picture.failed.push({ groupId: entry.groupId, period: t, route });
+        if (route) picture.failed.push({ groupId: entry.groupId, period: t, toPeriod: transitions.find((each) => each.period === t).toPeriod, route });
         return;
       }
       if (route.same === true) {
@@ -479,7 +535,7 @@ export function failureParts(project, failure, withDay) {
 // Which slot to open to put a failed route right: the period of the end the
 // router named, or the period walked out of.
 export function failurePeriod(failure) {
-  return failure.route && failure.route.end === 'to' ? failure.period + 1 : failure.period;
+  return failure.route && failure.route.end === 'to' ? (Number.isInteger(failure.toPeriod) ? failure.toPeriod : failure.period + 1) : failure.period;
 }
 
 // What the screen stands on. `derived` is what the view keeps of the engine's
@@ -618,6 +674,10 @@ export function sentenceOf(project, picture, health) {
   parts.push({ text: picture.transition ? ', ' + picture.transition.name + (picture.transition.times ? ' (' + picture.transition.times + ')' : '') + '. ' : ', all transitions. ' });
   if (!picture.ready) {
     parts.push({ text: 'Working out the routes.' });
+    return { parts, showMe: false };
+  }
+  if (nothingMeets(project, picture.bellsId)) {
+    parts.push(...nothingMeetsParts(project, picture.bellsId));
     return { parts, showMe: false };
   }
   const failed = picture.failed.length;

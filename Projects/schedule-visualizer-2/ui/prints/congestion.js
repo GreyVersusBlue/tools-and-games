@@ -57,8 +57,8 @@ import { timeFigures, durationWords } from '../scenarios/model.js';
 import { sortFindings, SEVERITIES } from '../../engine/findings.js';
 import { loads } from '../../engine/load.js';
 import { findBellSchedule } from '../../engine/bells.js';
-import { count, list } from '../components/words.js';
-import { transitionsOf, unitWord, runOf } from '../movement/model.js';
+import { count, list, periodWords } from '../components/words.js';
+import { transitionsOf, unitWord, runOf, followerWords, nothingMeets } from '../movement/model.js';
 import { rankedPlaces } from '../movement/hotspots.js';
 import { transitionRows, lateWords } from '../movement/tables.js';
 import { esc, frame } from './document.js';
@@ -127,6 +127,10 @@ function daySection(project, results, graph, dayType, first, bellsId) {
   const lateGroups = new Set(late.map((row) => row.group.id)).size;
 
   const out = ['<section class="doc-section' + (first ? '' : ' new-sheet') + '">', '<h2>' + esc(heading) + '</h2>'];
+  if (nothingMeets(project, bellsId)) {
+    out.push('<p class="doc-lead">' + esc('No ' + periodWords(project.settings).one + ' meets under ' + schedule.name + ' bells.') + '</p>', '</section>');
+    return out.join('\n');
+  }
   if (places.length === 0) {
     out.push('<p class="doc-lead">' + esc('Nobody crosses a corridor on ' + heading + ' yet, so there is nothing to report.') + '</p>', '</section>');
     return out.join('\n');
@@ -418,7 +422,7 @@ export function render(given, derived, options) {
   const body = own.map((dayType, index) => daySection(project, results, graph, dayType, index === 0, opts.bellsId));
   const followers = project.dayTypes.filter((dayType) => !own.includes(dayType));
   if (followers.length > 0) {
-    body.push('<p class="doc-meaning">' + esc(list(followers.map((dayType) => dayType.name)) + (followers.length === 1 ? ' is' : ' are') + ' the same as ' + project.dayTypes[0].name + ' and ' + (followers.length === 1 ? 'has' : 'have') + ' no figures of ' + (followers.length === 1 ? 'its' : 'their') + ' own.') + '</p>');
+    body.push('<p class="doc-meaning">' + esc(followerWords(project, followers, opts.bellsId, 'figures')) + '</p>');
   }
   // the scenario is the one open now, in the project given: the same
   // whether the day sections are the movement view's or worked out here
