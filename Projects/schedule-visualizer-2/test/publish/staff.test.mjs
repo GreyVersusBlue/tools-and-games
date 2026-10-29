@@ -15,7 +15,7 @@ import { openStorage, STORAGE_PREFIX, NOT_KEPT_SENTENCE } from '../../staff/stor
 import { dayText, momentText, isStale, isOlderThanSeen } from '../../staff/dates.js';
 import { readPublished, NEWER_SENTENCE, DAMAGED_SENTENCE, NOT_OURS_SENTENCE, DATA_ELEMENT_ID, PREVIEW_READY, PREVIEW_DATA, PREVIEW_EVERY_MS, watchPreview, inlineData, siblingData } from '../../staff/source.js';
 import { openSchool } from '../../staff/model.js';
-import { DAY_TYPE_KEY, BELLS_KEY, DAY_ON_KEY, todayOf, todayDate, clockNow, readDayOn, keepDayOn, forgetDayOn, chosenDayType, chosenBells } from '../../staff/clock.js';
+import { DAY_TYPE_KEY, BELLS_KEY, DAY_ON_KEY, todayOf, todayDate, clockNow, readDayOn, keepDayOn, forgetDayOn, chosenDayType, chosenBells, dayOnDate, meetingPeriods } from '../../staff/clock.js';
 import { ME_KEY, NOTES_KEY } from '../../staff/notes.js';
 import { searchIndex, searchSchool, foldText, FIND_LIMIT } from '../../staff/find.js';
 import { publishedModel } from '../../engine/publish-data.js';
@@ -718,6 +718,39 @@ test('followJust: "As the calendar says" takes back today\'s just answer and the
   forgetDayOn(both, 'follow');
   assert.equal(JSON.parse(both.store.get('dayOn')).just.dayTypeId, 'dsample00b');
   assert.equal(JSON.parse(both.store.get('dayOn')).follow, null);
+});
+
+test('on a date with no school the bells are the regular bells and no period is left out, whatever was chosen by hand', () => {
+  const school = todaySchool();
+  const hand = { day: 'dsample00a', bells: 'btodayer00' };
+  const closed = todayCtx(school, '2026-11-26T10:00:00Z', hand);
+  assert.equal(chosenBells(closed), null);
+  assert.equal(meetingPeriods(school, chosenDayType(closed).id, chosenBells(closed)).size, school.data.settings.periods, 'every period meets');
+  // the same hand choice on a school day or outside the calendar is kept
+  assert.equal(chosenBells(todayCtx(school, '2027-07-01T10:00:00Z', hand)), 'btodayer00');
+  assert.equal(chosenBells(todayCtx(school, '2026-09-02T10:00:00Z', hand)), 'btodayer00', 'and the Wednesday\'s own');
+});
+
+test('the day another date is: the calendar\'s when it knows the date, else the first day type with the regular bells; the hand choice is for today', () => {
+  const school = todaySchool();
+  const hand = { day: 'dsample00b', bells: 'btodayer00' };
+  const ctx = todayCtx(school, '2026-09-01T10:00:00Z', hand);
+  const of = (date) => { const day = dayOnDate(ctx, date); return [day.dayType.name, day.bellsId]; };
+  assert.deepEqual(of('2026-09-01'), ['B Day', null], 'today: what the page shows for today');
+  assert.deepEqual(of('2026-09-02'), ['C Day', 'btodayer00'], 'a Wednesday in the calendar');
+  assert.deepEqual(of('2026-09-03'), ['A Day', null]);
+  assert.deepEqual(of('2026-11-26'), ['A Day', null], 'no school: the first day type, the regular bells');
+  assert.deepEqual(of('2027-07-01'), ['A Day', null], 'outside the calendar: the hand choice (B Day with Early Release) is not used');
+  assert.deepEqual(of(''), ['B Day', null], 'no date is today');
+  // the reader\'s follow answer carries on to later dates, and an answer for the date itself settles it
+  keepDayOn(ctx, 'follow', answered('2026-09-01', 'dtoday000c'));
+  assert.deepEqual(of('2026-09-03'), ['B Day', null], 'C on the 1st, so A, then B');
+  assert.deepEqual(of('2026-09-01'), ['C Day', null]);
+  // a hand choice with no calendar: today\'s, and no other date\'s
+  const none = openSchool(publishedModel(sampleSchool(), { clock: () => new Date('2026-08-25T12:00:00Z') }));
+  const bare = todayCtx(none, '2026-09-01T10:00:00Z', { day: 'dsample00b' });
+  assert.equal(dayOnDate(bare, '2026-09-01').dayType.name, 'B Day');
+  assert.equal(dayOnDate(bare, '2026-09-02').dayType.name, 'A Day');
 });
 
 test('an answer is dated by the moment of the click, in the reader\'s zone, and is not lost when storage is unavailable', () => {

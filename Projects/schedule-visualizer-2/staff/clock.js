@@ -210,6 +210,9 @@ export function chosenDayType(ctx) {
 // Today's bells in the same way: null for the regular bells.
 export function chosenBells(ctx) {
   const today = todayOf(ctx);
+  // a date with no school has no bells of its own: the regular bells, which
+  // leave out no period, whatever was chosen by hand
+  if (today.known && !today.school) return null;
   if (today.known && today.dayType) return today.bellsId;
   return bellsById(ctx.school, ctx.store.get(BELLS_KEY));
 }
@@ -222,6 +225,26 @@ export function bellsOnPick(ctx, dayTypeId) {
   const today = todayOf(ctx);
   if (!today.known) return today.bellsId;
   return today.school && today.dayType !== null && today.dayType.id === dayTypeId ? today.bellsId : null;
+}
+
+// The day type and bells a page shows for `date` when nobody picked either
+// for it: { dayType, bellsId }.
+//
+//   today          what the page shows for today (chosenDayType, chosenBells)
+//   another date   what the calendar says of it, with the reader's answers
+//                  laid over it as every other page has them; where the
+//                  calendar does not know the date (or it has no school) the
+//                  school's first day type with the regular bells. What was
+//                  chosen by hand is for today, and is not looked at.
+export function dayOnDate(ctx, date) {
+  const school = ctx.school;
+  if (!school.isDate(date) || date === todayDate(ctx)) return { dayType: chosenDayType(ctx), bellsId: chosenBells(ctx) };
+  const answers = readDayOn(ctx);
+  const answer = answerFor(answers, date);
+  if (answer !== null) return { dayType: dayTypeById(school, answer.dayTypeId), bellsId: answer.bellsId };
+  const day = school.dayOn(date, answers.follow !== null && answers.follow.date < date ? answers.follow : null);
+  const dayType = day.known && day.school ? dayTypeById(school, day.dayTypeId) : null;
+  return dayType === null ? { dayType: school.dayTypes[0], bellsId: null } : { dayType, bellsId: bellsById(school, day.bellsId) };
 }
 
 // The periods that meet under these bells, as a Set of indexes.
@@ -387,8 +410,9 @@ let serial = 0;
 
 // "Day type": one button a day type, the chosen one marked. Choosing one keeps
 // it on the device and calls onChoose(dayType). A school with one day type
-// has nothing to choose and gets no picker.
-export function dayTypePicker(ctx, chosenId, onChoose) {
+// has nothing to choose and gets no picker. A page choosing for another date
+// than today passes { remember: false }: what is chosen by hand is today's.
+export function dayTypePicker(ctx, chosenId, onChoose, options) {
   const school = ctx.school;
   if (school.dayTypes.length < 2) return null;
   serial += 1;
@@ -399,7 +423,7 @@ export function dayTypePicker(ctx, chosenId, onChoose) {
       const input = h('input', { class: 'pick__input', type: 'radio', name: group, value: dayType.id, checked: dayType.id === chosenId });
       input.addEventListener('change', () => {
         if (!input.checked) return;
-        rememberDayType(ctx, dayType.id);
+        if (!options || options.remember !== false) rememberDayType(ctx, dayType.id);
         onChoose(dayType);
       });
       return h('label', { class: 'pick__item' }, input, h('span', { class: 'pick__name' }, typed(dayType.name)));

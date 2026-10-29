@@ -14,7 +14,7 @@ import { makeHash } from '../router.js';
 import { pageOf, missingPage, pictureButton } from '../page.js';
 import { dayText } from '../dates.js';
 import { aroundRoom } from '../map.js';
-import { clockNow, dayTypeFor, bellsIdFor, bellsOnPick, meetingPeriods, dayWords, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
+import { clockNow, todayDate, dayOnDate, dayTypeFor, bellsIdFor, meetingPeriods, dayWords, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
 import { coverageFor, teacherChooser } from './coverage.js';
 
 export const SUB_CANDIDATES = 3;
@@ -48,18 +48,42 @@ export const subView = {
     if (route.id && !absent) return missingPage('teacher');
     if (!absent) return teacherChooser(ctx, 'sub', 'Substitute plan', 'One page to print for a substitute.');
 
-    let dayType = dayTypeFor(ctx, route);
-    let bellsId = bellsIdFor(ctx, route);
     const now = clockNow(ctx);
     const says = h('p', { class: 'lede' });
     const out = h('div', { class: 'stack', dataset: { out: 'sub' } });
     const based = (absent.roomIds || []).map((id) => school.room(id)).filter(Boolean);
 
     const date = h('input', { class: 'field__input', id: 'sub-date', type: 'date', value: /^\d{4}-\d{2}-\d{2}$/.test(route.query.date || '') ? route.query.date : localDay(now) });
+    // A day type in the address, or picked on this page, is the reader's own
+    // word and holds whatever the date is. Without one the date settles the
+    // day type and the bells: the calendar's for the date it knows, else the
+    // regular bells (today's hand choice is for today).
+    let picked = Boolean(route.query.d && school.dayTypes.some((each) => each.id === route.query.d));
+    const found = () => dayOnDate(ctx, date.value);
+    let dayType = picked ? dayTypeFor(ctx, route) : found().dayType;
+    let bellsId = picked ? bellsIdFor(ctx, route) : found().bellsId;
     const dated = h('p', { class: 'print-only sub__date', dataset: { sub: 'date' } }, 'Date: ', subDateWords(date.value));
-    const address = () => ctx.replace(makeHash('sub', absent.id, { d: route.query.d ? dayType.id : '', b: route.query.d ? bellsId : '', date: date.value !== localDay(now) ? date.value : '' }));
+    const address = () => ctx.replace(makeHash('sub', absent.id, { d: picked ? dayType.id : '', b: picked ? bellsId : '', date: date.value !== localDay(now) ? date.value : '' }));
+    const picker = h('div', { class: 'no-print' });
+    const drawPicker = () => {
+      const chosen = dayTypePicker(ctx, dayType.id, (next) => {
+        picked = true;
+        dayType = next;
+        // the bells that go with the day type are the date's, where it is that day type
+        const day = found();
+        bellsId = day.dayType.id === next.id ? day.bellsId : null;
+        address();
+        draw();
+      }, { remember: date.value === '' || date.value === todayDate(ctx) });
+      picker.replaceChildren(...(chosen ? [chosen] : []));
+    };
     date.addEventListener('change', () => {
       dated.replaceChildren('Date: ', subDateWords(date.value));
+      if (!picked) {
+        ({ dayType, bellsId } = found());
+        drawPicker();
+        draw();
+      }
       address();
     });
 
@@ -115,18 +139,13 @@ export const subView = {
       ]);
     };
 
-    const picker = dayTypePicker(ctx, dayType.id, (next) => {
-      dayType = next;
-      bellsId = bellsOnPick(ctx, next.id);
-      address();
-      draw();
-    });
+    drawPicker();
     draw();
     return pageOf(['Substitute plan: ', typed(absent.name)], null, says,
       dated,
       h('div', { class: 'controls' },
         h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'sub-date' }, 'Date'), date),
-        h('div', { class: 'no-print' }, picker)),
+        picker),
       out,
       h('p', { class: 'actions no-print' },
         h('button', { class: 'btn btn--primary', type: 'button', dataset: { sub: 'print', print: 'page' }, onclick: () => globalThis.print() }, 'Print this page'),
