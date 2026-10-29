@@ -180,3 +180,17 @@ test('a note or bells alone on a run write no day type; the picked day, and "No 
   assert.equal((await ownChange('2027-03-17')).day, 'closed');
   assert.equal(await ownChange('2027-03-14') === null || (await ownChange('2027-03-14')).day === null, true, 'the Sunday inside it is not given a day');
 });
+
+test('the panel’s Breaks: a spring break that starts on a Friday is one break, where the engine’s test holds the rest (p10)', async () => {
+  await fresh(YEAR);
+  await openDate('2027-04-09');
+  await setValue('#calendar-date-dialog input[name="through"]', '2027-04-16');
+  await page.$eval('#calendar-date-dialog input[value="closed"]', (input) => input.click());
+  await page.focus('#calendar-date-dialog input[name="note"]');
+  await page.keyboard.type('Spring break');
+  await page.click('#calendar-date-dialog [data-action="apply-date"]');
+  await dialogGone();
+  await settled();
+  const breaks = () => page.$$eval('[data-part="breaks"] li > span', (all) => all.map((each) => each.textContent));
+  assert.deepEqual(await breaks(), ['Spring break: 9 to 16 April, 6 school days'], 'one break across the weekend');
+});

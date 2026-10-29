@@ -186,11 +186,11 @@ export function firstDayOf(locale) {
 }
 
 // The calendar's breaks: runs of dates closed by a change of their own with
-// the same note. Dates side by side are one break; a gap of dates that are not
-// school days (a weekend inside a winter break) keeps it one only when the
-// break so far is already two dates or more, so two snow days on a Friday and
-// the Monday after stay two. [{ from, to, label, dates, schoolDays }], in date
-// order.
+// the same note. Dates side by side are one break. Dates that share a note
+// that says something are one break across the weekends and closed weekdays
+// between them (a spring break that starts on a Friday is one), but not across
+// a school day; dates with no note join only when side by side.
+// [{ from, to, label, dates, schoolDays }], in date order.
 export function breaksOf(project) {
   const calendar = calendarOf(project);
   if (!calendar || !Array.isArray(calendar.dates)) return [];
@@ -207,7 +207,7 @@ export function breaksOf(project) {
     const last = breaks[breaks.length - 1];
     const label = typeof change.label === 'string' ? change.label : '';
     const between = last ? datesFrom(last.to, change.date).slice(1, -1) : [];
-    if (last && last.label === label && between.every((date) => !at(date).school) && (between.length === 0 || last.dates.length > 1)) {
+    if (last && last.label === label && (between.length === 0 || (label !== '' && between.every((date) => !at(date).school)))) {
       last.to = change.date;
       last.dates.push(change.date);
     } else {
