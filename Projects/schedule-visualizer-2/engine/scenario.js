@@ -620,9 +620,14 @@ function sameGeometry(before, after) {
 // options:
 //   dayTypeId   one own day type, or null (the default) for all of them
 //   bellsId     the bell schedule whose runs are compared, or null (the
-//               default) for the regular bells. The findings are those of
-//               that run: a walk that is late is counted where it is late
-//               under these bells, the other kinds are the day type's.
+//               default) for the regular bells. The findings are the day
+//               type's whatever the bells, unless runFindings is true.
+//   runFindings true: the findings (new, resolved, unchanged, and the counts)
+//               are those of the run chosen, as the walking and the loads
+//               are: a walk that is late is counted where it is late under
+//               these bells, the other kinds are the day type's. The lab
+//               asks for this; suggest() does not, since a suggestion that
+//               makes a walk late under other bells has a cost to report.
 //   transition  for the places: one transition (the period walked out of),
 //               or null for the whole day
 //   measure     for the places over the whole day: 'busiest' (the default)
@@ -672,6 +677,7 @@ export function compareResults(before, after, options) {
   const bellsId = typeof opts.bellsId === 'string' ? opts.bellsId : null;
   const transition = Number.isInteger(opts.transition) ? opts.transition : null;
   const measure = opts.measure === 'total' ? 'total' : 'busiest';
+  const runFindings = opts.runFindings === true;
   const limit = Number.isInteger(opts.limit) && opts.limit >= 0 ? opts.limit : 10;
   const floorIds = Array.isArray(opts.floorIds) ? new Set(opts.floorIds) : null;
   const was = trimResult(before);
@@ -683,8 +689,8 @@ export function compareResults(before, after, options) {
   const walksAfter = walkFigures(now, dayTypeId, bellsId);
   const busyBefore = busiestOf(was, dayTypeId, bellsId);
   const busyAfter = busiestOf(now, dayTypeId, bellsId);
-  const findingsBefore = findingsOf(was).filter((finding) => inRun(finding, bellsId) && (dayTypeId === null || finding.where.dayTypeId === null || finding.where.dayTypeId === dayTypeId));
-  const findingsAfter = findingsOf(now).filter((finding) => inRun(finding, bellsId) && (dayTypeId === null || finding.where.dayTypeId === null || finding.where.dayTypeId === dayTypeId));
+  const findingsBefore = findingsOf(was).filter((finding) => (!runFindings || inRun(finding, bellsId)) && (dayTypeId === null || finding.where.dayTypeId === null || finding.where.dayTypeId === dayTypeId));
+  const findingsAfter = findingsOf(now).filter((finding) => (!runFindings || inRun(finding, bellsId)) && (dayTypeId === null || finding.where.dayTypeId === null || finding.where.dayTypeId === dayTypeId));
   const countsBefore = countBySeverity(findingsBefore);
   const countsAfter = countBySeverity(findingsAfter);
   const bySeverity = {};

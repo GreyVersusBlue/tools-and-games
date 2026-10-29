@@ -350,7 +350,7 @@ test('compareResults: the findings are those of the run chosen', () => {
   const finding = (id, kind, severity, where) => ({ id, kind, severity, where: { dayTypeId: null, ...where }, text: id });
   const having = (findings) => ({ ...base, findings: { ...base.findings, findings } });
   const list = (ids) => [finding('f1', 'group-walk', 'warning', ids === undefined ? {} : { bellsIds: ids }), finding('f2', 'double-booking', 'problem', {})];
-  const compare = (ids, options) => compareResults(having(list(ids)), having(list(ids)), options);
+  const compare = (ids, options) => compareResults(having(list(ids)), having(list(ids)), { runFindings: true, ...options });
   assert.equal(compare(undefined, {}).findings.unchanged.length, 2);
   // a walk late only under Early Release is not a finding of the regular run
   const regular = compare([ER], {});
@@ -364,9 +364,13 @@ test('compareResults: the findings are those of the run chosen', () => {
   assert.equal(compare([null, ER], {}).figures.findings.warning.after, 1);
   assert.equal(compare([TS], { bellsId: ER }).figures.findings.warning.after, 0);
   // new and resolved are of the run too
-  const changed = compareResults(having(list([ER])), having([finding('f3', 'group-walk', 'warning', { bellsIds: [TS] })]), { bellsId: ER });
+  const changed = compareResults(having(list([ER])), having([finding('f3', 'group-walk', 'warning', { bellsIds: [TS] })]), { bellsId: ER, runFindings: true });
   assert.deepEqual(changed.findings.resolved.map((one) => one.id).sort(), ['f1', 'f2']);
   assert.deepEqual(changed.findings.new, []);
+  // without runFindings the findings are the day type's whatever the bells, as suggest() reads them
+  const whole = compareResults(having(list([ER])), having(list([ER])), { bellsId: null });
+  assert.deepEqual(whole.findings.unchanged.map((one) => one.id).sort(), ['f1', 'f2']);
+  assert.equal(whole.figures.findings.warning.after, 1);
 });
 
 test('walkTarget: the period a walk out of a period ends in, past the ones that do not meet', () => {

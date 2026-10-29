@@ -95,6 +95,7 @@ export const GROUPS = {
     'ui/helpers.test.mjs', // SV2-02
     'ui/building-inspector.test.mjs', // SV2-07
     'ui/movement.test.mjs', // SV2-17
+    'ui/movement-across.test.mjs', // SV2-79b
     'ui/playback.test.mjs', // SV2-44
     'ui/room-picker.test.mjs', // SV2-48
     'ui/schedule-address.test.mjs', // SV2-54

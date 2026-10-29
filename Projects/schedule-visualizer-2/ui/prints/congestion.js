@@ -419,10 +419,12 @@ export function render(given, derived, options) {
   const opts = options || {};
   const { project, results, graph } = printedFrom(given, derived, opts);
   const own = ownDayTypes(project);
-  const body = own.map((dayType, index) => daySection(project, results, graph, dayType, index === 0, opts.bellsId));
+  // bells the project no longer has are the regular bells
+  const bellsId = findBellSchedule(project, opts.bellsId) ? opts.bellsId : null;
+  const body = own.map((dayType, index) => daySection(project, results, graph, dayType, index === 0, bellsId));
   const followers = project.dayTypes.filter((dayType) => !own.includes(dayType));
   if (followers.length > 0) {
-    body.push('<p class="doc-meaning">' + esc(followerWords(project, followers, opts.bellsId, 'figures')) + '</p>');
+    body.push('<p class="doc-meaning">' + esc(followerWords(project, followers, bellsId, 'figures')) + '</p>');
   }
   // the scenario is the one open now, in the project given: the same
   // whether the day sections are the movement view's or worked out here

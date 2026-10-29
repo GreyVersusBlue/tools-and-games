@@ -328,7 +328,7 @@ export const section = {
       drawCompare();
       // drawn first: the options settle to the project (a day type gone is none)
       lane.key = laneKey();
-      store.derived.scenario({ dayTypeId: memory.dayTypeId, ...(memory.bellsId === null ? {} : { bellsId: memory.bellsId }), transition: memory.transition }).then((answer) => {
+      store.derived.scenario({ dayTypeId: memory.dayTypeId, ...(memory.bellsId === null ? {} : { bellsId: memory.bellsId }), transition: memory.transition, runFindings: true }).then((answer) => {
         if (gone || token !== lane.asked) return;
         lane.pending = false;
         lane.answer = answer;
