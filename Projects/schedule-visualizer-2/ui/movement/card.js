@@ -14,7 +14,7 @@ import { unitWord, walkNamed } from './model.js';
 
 const SHOWN = 8;
 
-function loadWords(card, picture, settings) {
+export function loadWords(card, picture, settings) {
   const n = card.load;
   const unit = unitWord(card.unit, n);
   if (n === 0) return 'Nobody on screen crosses here.';
