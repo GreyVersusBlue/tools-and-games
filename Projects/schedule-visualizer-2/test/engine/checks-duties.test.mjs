@@ -326,3 +326,17 @@ test('a day type the same as A Day that a mark names is checked on its own', () 
     ['empty-period:' + B + ':3:gtest00001', '9Z has no room in Period 4 on B Day.'],
   ], 'C Day has the lunch mark, so no note for it; A Day is no longer said to include it');
 });
+
+// ---------------------------------------------------------------- finding ids
+
+test('a project with bell schedules and a calendar, no marks and no duties: every finding id is what it was (named case, walk across included)', async () => {
+  const { createPipeline } = await import('../../engine/worker.js');
+  const { withEverything } = await import('../fixtures/day-types-calendar.mjs');
+  const project = withEverything();
+  const before = createPipeline().run(project).findings.findings.map((finding) => finding.id + '|' + finding.text);
+  assert.ok(before.length > 0);
+  const lists = { ...project, marks: [], duties: [] };
+  assert.deepEqual(createPipeline().run(lists).findings.findings.map((finding) => finding.id + '|' + finding.text), before);
+  assert.ok(before.some((line) => /^[a-z-]+:[a-z0-9]+:\d+:/.test(line)), 'the ids keep their form: kind, day type, period, who');
+  assert.ok(before.every((line) => !/^duty-/.test(line)), 'no duty finding without a duty');
+});
