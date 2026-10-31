@@ -1746,3 +1746,38 @@ test('notePublished records whether the file had a calendar, quietly; the publis
 test('every action that adds or changes a mark or a duty bumps SCHEDULE, and moves nothing in the building', () => {
   for (const name of ['addMark', 'setMark', 'deleteMark', 'addDuty', 'setDuty', 'deleteDuty']) assert.deepEqual(actions[name].bumps, [SCHEDULE], name);
 });
+
+// ---- SV2-83b
+
+test('deleteGroup, deleteTeacher and deleteSubject say how many marks they removed and duties they left with nobody', () => {
+  const p = withMarksAndDuties();
+  // mtest00001 (lunch) and mtest00004 (no class) name only gsample06a among groups: deleting 06b removes none, then 06a removes both
+  const one = actions.scheduleOutcome(run(actions.deleteGroup, p, { id: 'gsample06b' }));
+  assert.deepEqual([one.marks, one.duties], [0, 0]);
+  const two = actions.scheduleOutcome(run(actions.deleteGroup, run(actions.deleteGroup, p, { id: 'gsample06b' }), { id: 'gsample06a' }));
+  assert.equal(two.marks, 2);
+  assert.match(two.text, /^Deleted .*, 2 marked periods removed$/);
+  // utest00003 names tsample001 alone: it stays, with nobody on it
+  const teacher = actions.scheduleOutcome(run(actions.deleteTeacher, p, { id: 'tsample001' }));
+  assert.deepEqual([teacher.marks, teacher.duties], [0, 1]);
+  assert.match(teacher.text, /, 1 duty left with nobody$/);
+  // a duty that names only the subject is left with nobody; utest00001 still has two teachers
+  let q = run(actions.addDuty, p, { kind: 'duty', id: 'utest00004', teacherIds: [], subjectIds: ['ssample003'] });
+  const subject = actions.scheduleOutcome(run(actions.deleteSubject, q, { id: 'ssample003' }));
+  assert.deepEqual([subject.marks, subject.duties], [0, 1]);
+  assert.match(subject.text, /, 1 duty left with nobody$/);
+  assert.equal(actions.scheduleOutcome(run(actions.deleteSubject, school(), { id: 'ssample003' })).text.includes('nobody'), false, 'nothing to say with no duties');
+});
+
+test('raising the period count deletes nothing, even a mark kept past the old end, and the sentence counts none', () => {
+  const p = school();
+  const n = p.settings.periods;
+  const q = { ...p, marks: [{ id: 'mtest0past', kind: 'lunch', label: '', period: n + 1, dayTypeIds: [], scope: 'school', grades: [], groupIds: [] }], duties: [{ id: 'utest0past', kind: 'duty', label: '', when: 'period', period: n + 1, start: '', end: '', dayTypeIds: [], weekdays: [], from: '', to: '', roomId: null, place: '', teacherIds: [], subjectIds: [], everyone: true }] };
+  const info = actions.describePeriodChange(q, n + 1);
+  assert.deepEqual([info.marks, info.duties, info.marksAndDutiesWords], [0, 0, []]);
+  const raised = run(actions.setPeriods, q, { periods: n + 1 });
+  assert.equal(raised.marks.length, 1);
+  assert.equal(raised.duties.length, 1);
+  // lowering still takes them
+  assert.equal(run(actions.setPeriods, q, { periods: n - 1 }).marks.length, 0);
+});

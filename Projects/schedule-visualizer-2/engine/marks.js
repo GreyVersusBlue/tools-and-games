@@ -127,6 +127,7 @@ export function dutyTeachers(project, duty) {
 
 // Does the duty hold only on some days (weekdays or dates set)?
 export function dutyIsSometimes(duty) {
+  if (!duty || typeof duty !== 'object') return false;
   const weekdays = Array.isArray(duty.weekdays) ? duty.weekdays : [];
   return weekdays.length > 0 || isCalendarDate(duty.from) || isCalendarDate(duty.to);
 }
@@ -134,6 +135,7 @@ export function dutyIsSometimes(duty) {
 // Does the duty hold on this date? A malformed date matches only a duty that
 // is not sometimes.
 export function dutyHoldsOn(duty, date) {
+  if (!duty || typeof duty !== 'object') return false;
   if (!dutyIsSometimes(duty)) return true;
   if (!isCalendarDate(date)) return false;
   const weekdays = Array.isArray(duty.weekdays) ? duty.weekdays : [];
@@ -159,9 +161,20 @@ export function dutiesOn(project, dayTypeId, date) {
 
 // Every teacher's duties on D in one pass: a Map of teacher id to
 // { before, byPeriod, after } as teacherDuties gives, for the teachers who
-// have any. Null when D is not a day type of this project.
+// have any. Null when D is not a day type of this project. Kept per project
+// object and per day type and date, so a second ask is a Map read; the lists
+// in it are frozen because they are shared between asks.
+const dutyIndexes = new WeakMap();
+
 export function dutiesByTeacher(project, dayTypeId, date) {
   if (!findDayType(project, dayTypeId)) return null;
+  const key = dayTypeId + '\u0000' + (typeof date === 'string' ? date : '');
+  let cache = dutyIndexes.get(project);
+  if (!cache) {
+    cache = new Map();
+    dutyIndexes.set(project, cache);
+  }
+  if (cache.has(key)) return cache.get(key);
   const periods = project.settings.periods;
   const found = new Map();
   for (const duty of dutiesOn(project, dayTypeId, date)) {
@@ -173,6 +186,14 @@ export function dutiesByTeacher(project, dayTypeId, date) {
       else mine.byPeriod[duty.period].push(duty);
     }
   }
+  for (const mine of found.values()) {
+    Object.freeze(mine.before);
+    Object.freeze(mine.after);
+    for (const list of mine.byPeriod) Object.freeze(list);
+    Object.freeze(mine.byPeriod);
+    Object.freeze(mine);
+  }
+  cache.set(key, found);
   return found;
 }
 

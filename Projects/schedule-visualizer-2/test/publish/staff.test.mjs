@@ -773,6 +773,19 @@ test('the day another date is: the calendar\'s when it knows the date, else the 
 });
 
 test('an answer is dated by the moment of the click, in the reader\'s zone, and is not lost when storage is unavailable', () => {
+  // the date is read in the zone of the process, so the test sets its own: 00:30 UTC on the 2nd is 12:30 on the 2nd at UTC+12,
+  // and the 1st at UTC-8, which the machine's own zone must not decide
+  const zone = process.env.TZ;
+  process.env.TZ = 'Pacific/Auckland';
+  try {
+    answeredByClick();
+  } finally {
+    if (zone === undefined) delete process.env.TZ;
+    else process.env.TZ = zone;
+  }
+});
+
+function answeredByClick() {
   const school = todaySchool();
   // the page was drawn on the 1st; the click is on the 2nd
   const ctx = todayCtx(school, '2026-09-02T00:30:00Z');
@@ -783,7 +796,7 @@ test('an answer is dated by the moment of the click, in the reader\'s zone, and 
   keepDayOn(refused, 'follow', answered('2026-09-01', 'dtoday000c'));
   assert.equal(todayOf(refused).dayType.name, 'C Day');
   assert.equal(refused.store.kept, false);
-});
+}
 
 test('whatever was kept under dayOn that is not an answer reads as none and is left as it was', () => {
   const school = todaySchool();
