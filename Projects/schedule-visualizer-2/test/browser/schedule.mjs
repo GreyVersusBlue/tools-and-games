@@ -164,6 +164,9 @@ test('a group is entered from scratch by keyboard, and focus is never lost on th
   assert.match(await activeKey(), /^swatch:/);
   await page.keyboard.press('Tab');
   await keyIs('group-colour');
+  // (SV2-78b) A Day’s column has Copy classes from… too, now it is the same on every column
+  await page.keyboard.press('Tab');
+  await keyIs('copy:' + DAY_A);
   await page.keyboard.press('Tab');
   for (let period = 0; period < plan.length; period += 1) {
     await keyIs('slot:' + DAY_A + ':' + period + ':room');
@@ -459,7 +462,7 @@ test('Copy classes from… fills the group’s B Day from A Day, and a teacher n
   await page.click('#group-copy-dialog .btn--primary');
   await shows((day) => document.querySelector('.sch-group[aria-selected="true"] .sch-bar[data-day="' + day + '"]').dataset.done === '8', DAY_B);
   assert.equal(await toastText(), 'Copied 8Z’s A Day to B Day.');
-  assert.equal(await exists('.sch-day[data-day="' + DAY_A + '"] [data-action="copy-day"]'), false, 'the first day type is copied onto from the Day tab, for every group');
+  assert.equal(await exists('.sch-day[data-day="' + DAY_A + '"] [data-action="copy-day"]'), true, 'Copy classes from… is on the first day type’s column too (SV2-78b)');
   await click(slot(DAY_A, 4, 'teacher'));
   await page.keyboard.type('Dunmore');
   await page.keyboard.press('Enter');

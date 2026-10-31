@@ -261,6 +261,20 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* The day by day behind the one bar, as text for a touch or the keys; the
+   title is for a mouse. */
+.sch-bar__detail {
+  display: none;
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+}
+
+.sch-group:focus .sch-bar__detail,
+.sch-group:focus-within .sch-bar__detail,
+.sch-group[aria-selected="true"] .sch-bar__detail {
+  display: block;
+}
+
 .sch-bar__track {
   height: 6px;
   border: var(--border-width) solid var(--line-strong);
@@ -1176,7 +1190,7 @@
 }
 
 .sch-bsched__off {
-  margin: 0;
+  margin: var(--s-2) 0 0;
 }
 
 .sch-bsched__add {
@@ -1223,7 +1237,8 @@
   cursor: pointer;
 }
 
-.sch-show__chip[aria-pressed="true"] {
+.sch-show__chip[aria-pressed="true"],
+.sch-show__chip[aria-checked="true"] {
   border-color: var(--accent);
   background: var(--accent-soft);
   font-weight: var(--w-semibold);
@@ -1919,4 +1934,21 @@
 .cal-rules--bells td {
   display: block;
   padding: 0;
+}
+
+/* A bell table on a narrow screen (day.js): a disclosure headed by its name. */
+.sch-fold {
+  min-width: 0;
+}
+
+.sch-fold__summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  font-weight: var(--w-semibold);
+}
+
+.sch-fold__summary .sch-daytype__title {
+  display: inline;
 }

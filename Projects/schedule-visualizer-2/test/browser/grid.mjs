@@ -447,8 +447,18 @@ test('the bulk actions are staged too: clear a day, Copy classes from… A Day t
   // From A Day, To B Day to start with; a choice of the same two names no copy
   assert.equal(await text('#grid-copy-dialog .btn--primary'), 'Copy A Day to B Day for every group');
   await page.click('#grid-copy-dialog fieldset[data-which="to"] input[value="' + DAY_A + '"]');
-  assert.equal(await text('#grid-copy-dialog .btn--primary'), 'Choose two different day types');
+  // (SV2-78b) the button is off and the reason is under the sets; pressing it copies nothing and the dialog stays
+  assert.equal(await text('#grid-copy-dialog .btn--primary'), 'Copy classes for every group');
+  assert.equal(await page.$eval('#grid-copy-dialog .btn--primary', (el) => el.getAttribute('aria-disabled')), 'true');
+  assert.equal(await page.$eval('#grid-copy-dialog .grd-copy__reason', (el) => !el.hidden && el.textContent), 'From and To are the same day type. Choose two different ones.');
+  assert.equal(await page.$eval('#grid-copy-dialog .btn--primary', (el) => document.getElementById(el.getAttribute('aria-describedby')).className.includes('grd-copy__reason')), true);
+  await page.click('#grid-copy-dialog .btn--primary');
+  assert.equal(await exists('#grid-copy-dialog[open]'), true, 'pressing the button that is off closes nothing');
+  assert.equal(await page.$eval('.grd', (el) => el.dataset.staged), 'true', 'and stages nothing more (the Clear B Day before it is all that waits)');
+  assert.equal(await shown(slot(A6, DAY_B, 0)), '', 'B Day is still clear');
   await page.click('#grid-copy-dialog fieldset[data-which="to"] input[value="' + DAY_B + '"]');
+  assert.equal(await page.$eval('#grid-copy-dialog .btn--primary', (el) => el.hasAttribute('aria-disabled')), false, 'two different day types turn it on');
+  assert.equal(await page.$eval('#grid-copy-dialog .grd-copy__reason', (el) => el.hidden), true);
   await page.click('#grid-copy-dialog .btn--primary');
   await shows(() => document.querySelector('#grid-copy-dialog') === null);
   await settled();
@@ -525,4 +535,89 @@ test('an empty project says what the grid is for, and a block pasted there becom
   await stagedIs(false);
   assert.deepEqual(await page.evaluate(() => globalThis.sv2.store.project.groups.map((group) => [group.name, group.grade, group.headCount])), [['7-1', '7', 24], ['7-2', '7', null], [HOSTILE, '8', 30]]);
   assert.equal(await count('.grd img'), 0);
+});
+
+// ---------------------------------------------------------------- SV2-78b
+
+const deviceDay = () => page.evaluate(() => { const device = JSON.parse(localStorage.getItem('sv2:device') || '{}'); return device.grid ? device.grid.day : undefined; });
+
+test('the grid’s Day type, when the chosen day type is made the same as another or deleted, says so in its hint line and the device’s id is cleared (SV2-78b)', async () => {
+  await session.close();
+  session = await openPlanner({ server, browser, hash: '#schedule/grid', theme: 'light', width: 1280, height: 900 });
+  page = session.page;
+  await settled();
+  await page.evaluate(() => globalThis.sv2.ctx.loadSample());
+  await shows(() => globalThis.sv2.store.project.groups.length === 8);
+  await loadModule(page, 'actions', 'engine/actions.js');
+  await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    const { actions } = globalThis.sv2modules;
+    store.apply(actions.addDayType, { name: 'C Day', own: true });
+    store.apply(actions.addDayType, { name: 'D Day', own: true });
+  });
+  await settled();
+  const [, , dayC, dayD] = await page.evaluate(() => globalThis.sv2.store.project.dayTypes.map((dayType) => dayType.id));
+  assert.equal(await exists('.grd-gone'), false, 'nothing to say while the choice stands');
+  await page.select('.grd-day', dayC);
+  await settled();
+  assert.equal(await deviceDay(), dayC);
+  // C Day is made the same as A Day while the grid shows it
+  await page.evaluate((id, a) => globalThis.sv2.store.apply(globalThis.sv2modules.actions.setDayTypeKind, { dayTypeId: id, own: false, sameAs: a }), dayC, DAY_A);
+  await shows(() => document.querySelector('.sch')?.dataset.pending !== 'true' && document.querySelector('.grd-gone') !== null);
+  assert.equal(await text('.grd-gone'), 'C Day is now the same as A Day, so the grid shows A Day.');
+  assert.equal(await page.$eval('.grd-day', (el) => el.value), DAY_A);
+  assert.equal(await deviceDay(), '', 'the stale id is cleared on the device');
+  // D Day chosen, then deleted
+  await page.select('.grd-day', dayD);
+  await settled();
+  assert.equal(await exists('.grd-gone'), false, 'choosing again takes the line away');
+  assert.equal(await deviceDay(), dayD);
+  await page.evaluate((id) => globalThis.sv2.store.apply(globalThis.sv2modules.actions.deleteDayType, { dayTypeId: id }), dayD);
+  await shows(() => document.querySelector('.sch')?.dataset.pending !== 'true' && document.querySelector('.grd-gone') !== null);
+  assert.equal(await text('.grd-gone'), 'D Day was deleted, so the grid shows every day type.');
+  assert.equal(await page.$eval('.grd-day', (el) => el.value), 'all');
+  assert.equal(await deviceDay(), '');
+});
+
+test('a day type made the same as another on the Day tab while the grid was away: the grid opens with the line (SV2-78b)', async () => {
+  await page.select('.grd-day', DAY_B);
+  await settled();
+  assert.equal(await deviceDay(), DAY_B);
+  await go(page, '#schedule/day');
+  await settled();
+  await page.evaluate((b, a) => globalThis.sv2.store.apply(globalThis.sv2modules.actions.setDayTypeKind, { dayTypeId: b, own: false, sameAs: a }), DAY_B, DAY_A);
+  await settled();
+  await go(page, '#schedule/grid');
+  await shows(() => document.querySelector('.grd-gone') !== null);
+  assert.equal(await text('.grd-gone'), 'B Day is now the same as A Day, so the grid shows every day type.');
+  assert.equal(await deviceDay(), '');
+});
+
+test('the grid’s print follows its Day type select: one day type chosen prints that one’s sheets, All prints them all (SV2-78b)', async () => {
+  await session.close();
+  session = await openPlanner({ server, browser, hash: '#schedule/grid', theme: 'light', width: 1280, height: 900 });
+  page = session.page;
+  await settled();
+  await page.evaluate(() => globalThis.sv2.ctx.loadSample());
+  await shows(() => globalThis.sv2.store.project.groups.length === 8);
+  await settled();
+  const sheets = async () => {
+    await page.click('#print-grid-groups');
+    await page.waitForSelector('#print-preview[data-ready="true"]');
+    const what = await page.evaluate(() => Array.from(document.querySelector('#print-preview iframe').contentDocument.querySelectorAll('.doc-head__what'), (el) => el.textContent));
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.getElementById('print-preview') === null);
+    await settled();
+    return what;
+  };
+  assert.deepEqual(await sheets(), ['Groups: A Day', 'Groups: B Day'], 'All');
+  await page.select('.grd-day', DAY_B);
+  await settled();
+  assert.deepEqual(await sheets(), ['Groups: B Day']);
+  await page.select('.grd-day', DAY_A);
+  await settled();
+  assert.deepEqual(await sheets(), ['Groups: A Day']);
+  await page.select('.grd-day', 'all');
+  await settled();
+  assert.deepEqual(await sheets(), ['Groups: A Day', 'Groups: B Day']);
 });

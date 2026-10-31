@@ -15,7 +15,8 @@
 //                 come last, said so
 //
 // Each grid is a sheet of its own, under the print header, for each day type
-// that is its own copy. A day type that is the same as the first has no grid
+// that is its own copy (or for the one the Grid tab's Day type select names,
+// `options.dayTypeId`). A day type that is the same as the first has no grid
 // of its own and the last sheet says so (the files leave its slots empty, or
 // repeat the first day's, which is the same thing). A grid taller than the
 // sheet runs on to the next with its head row repeated (print.css).
@@ -191,7 +192,12 @@ function gridHead(project, dayTypeId, first, part) {
 function gridPages(project, name, spec, options) {
   const paper = paperOf(project, options);
   const parts = periodParts(paper, project.settings.periods);
-  const own = ownDayTypes(project);
+  // The Grid tab's Day type (DESIGN 11.9): `options.dayTypeId` is one day type
+  // with its own classes, and then it is the only one printed; 'all', or
+  // anything else (a day type since gone), prints them all.
+  const every = ownDayTypes(project);
+  const only = options && typeof options.dayTypeId === 'string' ? every.find((dayType) => dayType.id === options.dayTypeId) : null;
+  const own = only ? [only] : every;
   const pages = [];
   for (const dayType of own) {
     parts.forEach((part, index) => {
@@ -213,7 +219,7 @@ function gridPages(project, name, spec, options) {
       pages.push({ what, body: body.join('\n') });
     });
   }
-  const followers = project.dayTypes.filter((dayType) => !own.includes(dayType));
+  const followers = only ? [] : project.dayTypes.filter((dayType) => !own.includes(dayType));
   if (followers.length > 0 && pages.length > 0) {
     const names = list(followers.map((dayType) => dayType.name));
     pages[pages.length - 1].body += '\n<p class="doc-meaning">' + esc(names + (followers.length === 1 ? ' is' : ' are') + ' the same as ' + project.dayTypes[0].name + ' and ' + (followers.length === 1 ? 'has' : 'have') + ' no grid of ' + (followers.length === 1 ? 'its' : 'their') + ' own.') + '</p>';

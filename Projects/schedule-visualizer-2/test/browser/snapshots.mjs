@@ -695,7 +695,7 @@ test('clear the building: beside its button it says what it removes and keeps; p
 
 test('clear the schedule: a double press clears once with one snapshot; the groups and teachers go at once; the building stays', async () => {
   await dismissToast();
-  assert.equal(await text('#clear [data-keeps="schedule"]'), 'The building stays with its rooms, which no longer have teachers. The subjects, the day types with their bell times, and the settings stay too.');
+  assert.equal(await text('#clear [data-keeps="schedule"]'), 'The building stays with its rooms, which no longer have teachers. The subjects, the day types with their bell times, the other bell schedules, the calendar and the settings stay too.');
   await page.$eval('#clear [data-action="clear-schedule"]', (button) => {
     button.click();
     button.click();
