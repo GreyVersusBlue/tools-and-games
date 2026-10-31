@@ -64,14 +64,14 @@ function ofKind(result, kind) {
 
 test('a late group walk across a middle off period names both periods and the room at each end, with the schedule in its id', () => {
   const { found } = findings(testing(school(), 1));
-  const walk = ofKind(found, 'group-walk').find((finding) => finding.id === 'group-walk:' + A + ':1:gsample07a:' + TS);
+  const walk = ofKind(found, 'group-walk').find((finding) => finding.id === 'group-walk:' + A + ':1:gsample07a:' + TS + ':to3');
   assert.ok(walk, 'a finding for 7A\'s walk out of Period 2');
   assert.equal(walk.text, '7A needs 2 min 27 s to get from Room 302 after Period 2 to Room 102 for Period 4 on A Day with Testing bells, and the passing time is 1 min.');
   assert.equal(walk.where.period, 1);
   assert.equal(walk.where.roomId, 'rsample102', 'Show goes to the room it walks to');
   assert.deepEqual(walk.where.bellsIds, [TS]);
   // a walk that waits in the crowd says so, the same way a next-door walk does
-  const crowded = ofKind(found, 'group-walk').find((finding) => finding.id === 'group-walk:' + A + ':1:gsample07c:' + TS);
+  const crowded = ofKind(found, 'group-walk').find((finding) => finding.id === 'group-walk:' + A + ':1:gsample07c:' + TS + ':to3');
   assert.match(crowded.text, /^7C needs 1 min 5 s to get from Room 203 after Period 2 to Room 201 for Period 4 on A Day with Testing bells, 20 s of it waiting in crowded corridors, and the passing time is 1 min\.$/);
 });
 
@@ -88,7 +88,7 @@ test('a teacher\'s walk across a middle off period is a walk, named by both peri
   const { results, found } = findings(project);
   const across = results.walks.bells.teachers.filter((walk) => walk.teacherId === COACH && walk.toPeriod !== undefined);
   assert.deepEqual(across.map((walk) => [walk.period, walk.toPeriod, walk.passingSeconds, walk.late]), [[1, 3, 60, true]]);
-  const walk = ofKind(found, 'teacher-walk').find((finding) => finding.id === 'teacher-walk:' + A + ':1:' + COACH + ':' + TS);
+  const walk = ofKind(found, 'teacher-walk').find((finding) => finding.id === 'teacher-walk:' + A + ':1:' + COACH + ':' + TS + ':to3');
   assert.ok(walk, 'a teacher finding');
   assert.equal(walk.text, 'Mr. Brightwater needs 2 min 27 s to walk from Room 302 after Period 2 to Room 102 for Period 4 on A Day with Testing bells, before any crowding, and the passing time is 1 min.');
   assert.equal(walk.where.roomId, 'rsample102');
@@ -116,7 +116,7 @@ test('a walk late next door under the regular bells and across under Testing are
   const made = checkSchedule(project, { groups: [{ ...regular, late: true, total: 500, waiting: 0 }], teachers: [], bells: results.walks.bells });
   const mine = ofKind(made, 'group-walk').filter((finding) => finding.where.period === 1 && finding.where.dayTypeId === A && finding.text.startsWith('7A'));
   assert.equal(mine.length, 2, JSON.stringify(mine.map((finding) => [finding.id, finding.text])));
-  assert.deepEqual(mine.map((finding) => finding.id).sort(), ['group-walk:' + A + ':1:gsample07a', 'group-walk:' + A + ':1:gsample07a:' + TS]);
+  assert.deepEqual(mine.map((finding) => finding.id).sort(), ['group-walk:' + A + ':1:gsample07a', 'group-walk:' + A + ':1:gsample07a:' + TS + ':to3']);
 });
 
 // Findings are stored as accepted by their id, so a project with no walk across
