@@ -79,6 +79,7 @@ async function addByStore(own, same) {
 // Back to the sample school as it loads.
 async function freshSample() {
   await page.evaluate(() => globalThis.sv2.ctx.loadSample());
+  await shows(() => document.querySelector('dialog[open] .btn--danger, dialog[open] .btn--primary') !== null || globalThis.sv2.store.project.dayTypes.length === 2);
   await page.evaluate(() => document.querySelector('dialog[open] .btn--danger, dialog[open] .btn--primary')?.click());
   await shows(() => globalThis.sv2.store.project.dayTypes.length === 2 && globalThis.sv2.store.project.groups.length === 8);
   await settled();
@@ -581,4 +582,95 @@ test('the Day tab by keyboard alone: add a day type, change what it is, move it,
   await shows(() => document.querySelectorAll('.sch-bells tr[data-off="true"]').length === 4);
   assert.equal(await text('.sch-bsched__off'), 'Period 5, Period 6, Period 7 and Period 8 do not meet.');
   assert.deepEqual(await page.evaluate(() => [window.sv2Pointers, window.sv2Lost]), [0, 0], 'no pointer event, and the focus never fell to the page');
+});
+
+// ---------------------------------------------------------------- SV2-78b
+
+// Eight changes staged in the grid onto one day type, as a person's typing
+// would leave them: a label on each period of one group.
+async function stageOn(dayTypeId) {
+  await loadModule(page, 'staged', 'ui/schedule/grid/staged.js');
+  await page.evaluate((id, group) => {
+    const { staged } = globalThis.sv2modules;
+    const projectId = globalThis.sv2.store.project.id;
+    for (let period = 0; period < 8; period += 1) staged.stageSlot(projectId, group, id, period, { label: 'Lab ' + period });
+    staged.touch(projectId);
+  }, dayTypeId, GROUP);
+}
+
+const waiting = (dayTypeId) => page.evaluate((id) => globalThis.sv2modules.staged.unappliedOn(globalThis.sv2.store.project, id), dayTypeId);
+
+test('making a day type the same as another says what the grid has not applied, before and in the toast, and Undo does not bring it back (SV2-78b)', async () => {
+  // (a page still holding the sample school keeps it: a new one starts empty)
+  await session.close();
+  session = await openPlanner({ server, browser, hash: '#schedule/day', theme: 'light', width: 1280, height: 900 });
+  page = session.page;
+  await settled();
+  await freshSample();
+  await addByStore(['C Day']);
+  const dayC = (await dayIds())[2];
+  await stageOn(dayC);
+  assert.equal(await waiting(dayC), 8);
+  await click('[data-key="daytype:' + dayC + ':change"]');
+  await page.waitForSelector('#day-kind-dialog[open]');
+  await page.click('#day-kind-dialog input[value="' + DAY_A + '"]');
+  assert.match(await text('#day-kind-dialog .btn--primary'), /^Make C Day the same as A Day \(.*Undo brings them back, but not the 8 unapplied grid changes on it\)$/);
+  await page.click('#day-kind-dialog .btn--primary');
+  await shows((id) => document.querySelector('.sch-dtrow[data-day="' + id + '"] .sch-dtrow__kind')?.textContent === 'Same as A Day', dayC);
+  assert.match(await toastText(), /8 unapplied grid changes on C Day went too, and Undo does not bring them back\.$/);
+  assert.equal(await waiting(dayC), 0, 'they are gone at once, not when the grid is next drawn');
+  await click('.toast .toast__action');
+  await keyIs('daytype:' + dayC + ':change');
+  assert.equal(await text('.sch-dtrow[data-day="' + dayC + '"] .sch-dtrow__kind'), 'Its own classes', 'Undo brings the day type back');
+  assert.equal(await waiting(dayC), 0, 'and not the unapplied changes');
+});
+
+test('deleting a day type says what the grid has not applied in the menu and the toast; Undo puts the focus on the row (SV2-78b)', async () => {
+  const dayC = (await dayIds())[2];
+  await stageOn(dayC);
+  await click('[data-key="daytype:' + dayC + ':menu"]');
+  await page.waitForSelector('.menu[role="menu"]');
+  assert.ok((await menuItems()).includes('Delete, and 8 unapplied grid changes on it'), (await menuItems()).join(' | '));
+  await page.evaluate(() => Array.from(document.querySelectorAll('.menu__item')).find((item) => item.textContent.startsWith('Delete')).click());
+  await shows(() => document.querySelectorAll('.sch-dtrow').length === 2);
+  assert.match(await toastText(), /It had 8 unapplied grid changes, which Undo does not bring back\.$/);
+  await click('.toast .toast__action');
+  await keyIs('daytype:' + dayC + ':menu');
+  assert.equal((await dayIds()).length, 3);
+  assert.equal(await waiting(dayC), 0);
+  // a day type with nothing waiting says nothing of it
+  await click('[data-key="daytype:' + dayC + ':menu"]');
+  await page.waitForSelector('.menu[role="menu"]');
+  assert.ok((await menuItems()).includes('Delete'));
+  await page.keyboard.press('Escape');
+});
+
+test('Undo from every other toast of the Day tab puts the focus on the control that made the change (SV2-78b)', async () => {
+  const dayC = (await dayIds())[2];
+  // adding a day type
+  await page.focus('[data-key="daytype-add-name"]');
+  await click('.sch-dtadd [data-action="add-day-type"]');
+  await shows(() => document.querySelectorAll('.sch-dtrow').length === 4);
+  await click('.toast .toast__action');
+  await keyIs('daytype-add-name');
+  // copying classes onto C Day
+  await pickFromMenu('[data-key="daytype:' + dayC + ':menu"]', 'Copy classes from…');
+  await page.waitForSelector('#day-copy-dialog[open]');
+  await page.click('#day-copy-dialog input[value="' + DAY_B + '"]');
+  await page.click('#day-copy-dialog .btn--primary');
+  await shows(() => /^Copied /.test(document.querySelector('.toast .toast__text')?.textContent || ''));
+  await click('.toast .toast__action');
+  await keyIs('daytype:' + dayC + ':menu');
+  // adding and deleting a bell schedule
+  await click('[data-key="bsched-add"]');
+  await shows(() => document.querySelectorAll('.sch-bsched').length === 1);
+  await click('.toast .toast__action');
+  await keyIs('bsched-add');
+  await click('[data-key="bsched-add"]');
+  await shows(() => document.querySelectorAll('.sch-bsched').length === 1);
+  const id = await page.evaluate(() => globalThis.sv2.store.project.bellSchedules[0].id);
+  await click('[data-key="bsched:' + id + ':delete"]');
+  await shows(() => document.querySelectorAll('.sch-bsched').length === 0);
+  await click('.toast .toast__action');
+  await keyIs('bsched:' + id + ':delete');
 });

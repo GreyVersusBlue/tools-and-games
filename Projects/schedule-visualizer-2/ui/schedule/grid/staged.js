@@ -134,6 +134,28 @@ export function reconcile(project, draft) {
   }
 }
 
+// How many staged slot changes a project has waiting on one day type. The
+// Day tab says so before a delete or a change of kind takes the day type's
+// own classes away, since the staged layer is outside the undo history
+// (SV2-78b): Undo brings the day type back and not these.
+export function unappliedOn(project, dayTypeId) {
+  const draft = drafts.get(project.id);
+  if (!draft) return 0;
+  reconcile(project, draft);
+  let n = 0;
+  for (const key of draft.slots.keys()) if (key.split('|')[1] === dayTypeId) n += 1;
+  return n;
+}
+
+// Drop now what the project just made pointless, rather than when the grid
+// is next drawn, so that "they do not come back" is true at once.
+export function dropPointless(project) {
+  const draft = drafts.get(project.id);
+  if (!draft) return;
+  reconcile(project, draft);
+  touch(project.id);
+}
+
 // A draft as the payload applyGridEdits takes.
 export function payloadOf(draft) {
   return {

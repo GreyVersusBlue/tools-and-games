@@ -31,6 +31,7 @@ import { bellsFor, bellFindings, periodName, formatTime } from '../../engine/bel
 import { formatDuration } from '../../engine/findings.js';
 import { PERIOD_WORDS, RANGES, DAY_TYPES_MOST, BELL_SCHEDULES_MOST, bellSchedulesOf } from '../../engine/schema.js';
 import { fill, apply, button, keyed, freeName, dragRows, grip } from './common.js';
+import { unappliedOn, dropPointless } from './grid/staged.js';
 
 // What a person types for a time, as "HH:MM" on the 24-hour clock; '' is no
 // time. "8:05", "805", "2:10 pm" and "14:10" are all read. With the 12-hour
@@ -70,8 +71,9 @@ export function nextDayTypeName(project) {
 // The words on the Change… dialog's button, which say exactly what it does
 // (DESIGN 11.3): "Make C Day the same as A Day (14 groups’ days on C Day go;
 // Undo brings them back)". `wanted` is { own: true } or { own: false,
-// sameAs }; what goes is the engine's describeDayTypeKind.
-export function kindButtonWords(project, dayType, wanted) {
+// sameAs }; what goes is the engine's describeDayTypeKind. `unapplied` is the
+// grid's staged changes on the day type, which Undo does not bring back.
+export function kindButtonWords(project, dayType, wanted, unapplied) {
   const own = isOwnCopy(project, dayType.id);
   if (wanted.own === true) {
     if (own) return 'Keep ' + dayType.name + ' as it is';
@@ -87,7 +89,8 @@ export function kindButtonWords(project, dayType, wanted) {
   const parts = [];
   if (going.length > 0) parts.push(list(going) + ' go');
   if (info.followers.length > 0) parts.push(list(info.followers) + (info.followers.length === 1 ? ' follows ' : ' follow ') + target.name + ' too');
-  parts.push(going.length > 0 ? 'Undo brings them back' : 'Undo brings it back');
+  const lost = unapplied > 0 ? ', but not the ' + count(unapplied, 'unapplied grid change') + ' on it' : '';
+  parts.push((going.length > 0 ? 'Undo brings them back' : 'Undo brings it back') + lost);
   return 'Make ' + dayType.name + ' the same as ' + target.name + ' (' + parts.join('; ') + ')';
 }
 
@@ -304,14 +307,16 @@ export function mount(env) {
       legend: 'What ' + dayType.name + ' is',
       options,
       chosen: options.find((option) => option.value === current),
-      words: (option) => kindButtonWords(ctx.store.project, dayType, option.wanted),
+      words: (option) => kindButtonWords(ctx.store.project, dayType, option.wanted, unappliedOn(ctx.store.project, dayType.id)),
       action: 'change-kind',
       opener,
     });
     if (!chosen || chosen.value === current) return;
     const before = ctx.store.project;
     const info = describeDayTypeKind(before, { dayTypeId: dayType.id, ...chosen.wanted });
+    const unapplied = !chosen.wanted.own && own ? unappliedOn(before, dayType.id) : 0;
     if (!apply(env, setDayTypeKind, { dayTypeId: dayType.id, ...chosen.wanted })) return;
+    if (unapplied > 0) dropPointless(ctx.store.project);
     let text;
     if (chosen.wanted.own) {
       text = dayType.name + ' has its own classes now, starting as a copy of ' + info.from + '’s.';
@@ -320,8 +325,9 @@ export function mount(env) {
       text = dayType.name + ' is the same as ' + target + ' now.';
       if (info.groups > 0) text += ' Its own classes for ' + count(info.groups, 'group') + ' went with that.';
       if (info.followers.length > 0) text += ' ' + list(info.followers) + (info.followers.length === 1 ? ' follows ' : ' follow ') + target + ' too.';
+      if (unapplied > 0) text += ' ' + count(unapplied, 'unapplied grid change') + ' on ' + dayType.name + ' went too, and Undo does not bring ' + (unapplied === 1 ? 'it' : 'them') + ' back.';
     }
-    ctx.toast({ text, action: { label: 'Undo', run: ctx.undo } });
+    ctx.toast({ text, action: { label: 'Undo', run: undoTo('daytype:' + dayType.id + ':change') } });
   }
 
   // Copy classes from…: any day type with its own classes into this one, for
@@ -347,7 +353,16 @@ export function mount(env) {
     const before = ctx.store.project;
     if (!apply(env, copyDay, { fromDayTypeId: chosen.value, toDayTypeId: dayType.id })) return;
     if (ctx.store.project === before) ctx.toast({ text: dayType.name + ' already has ' + chosen.label + '’s classes for every group.' });
-    else ctx.toast({ text: 'Copied ' + chosen.label + '’s classes onto ' + dayType.name + ' for every group.', action: { label: 'Undo', run: ctx.undo } });
+    else ctx.toast({ text: 'Copied ' + chosen.label + '’s classes onto ' + dayType.name + ' for every group.', action: { label: 'Undo', run: undoTo('daytype:' + dayType.id + ':menu') } });
+  }
+
+  // Undo from a toast, with the focus on the control the change was made
+  // from (DESIGN 11.2), not left on the surface.
+  function undoTo(key) {
+    return () => {
+      ctx.undo();
+      env.render(key);
+    };
   }
 
   function moveDayType(dayType, toIndex) {
@@ -361,9 +376,12 @@ export function mount(env) {
   function removeDayType(dayType) {
     const project = ctx.store.project;
     const index = project.dayTypes.indexOf(dayType);
+    const unapplied = unappliedOn(project, dayType.id);
     if (!apply(env, deleteDayType, { dayTypeId: dayType.id })) return;
+    if (unapplied > 0) dropPointless(ctx.store.project);
     const outcome = ctx.store.undoOutcome;
-    ctx.toast({ text: (outcome && outcome.text ? outcome.text : 'Deleted ' + dayType.name) + '.', action: { label: 'Undo', run: ctx.undo } });
+    const lost = unapplied > 0 ? ' It had ' + count(unapplied, 'unapplied grid change') + ', which Undo does not bring back.' : '';
+    ctx.toast({ text: (outcome && outcome.text ? outcome.text : 'Deleted ' + dayType.name) + '.' + lost, action: { label: 'Undo', run: undoTo('daytype:' + dayType.id + ':menu') } });
     // the focus on the row that took its place, or the one above it
     const left = ctx.store.project.dayTypes;
     const next = left[Math.min(index, left.length - 1)];
@@ -382,7 +400,10 @@ export function mount(env) {
       items.push({ label: 'Move down', disabled: index >= project.dayTypes.length - 1, run: () => moveDayType(dayType, index + 1) });
     }
     if (isOwnCopy(project, dayType.id)) items.push({ label: 'Copy classes from…', disabled: ownDayTypes(project).length < 2, run: () => copyClasses(dayType.id, opener) });
-    if (!base) items.push('separator', { label: 'Delete', danger: true, run: () => removeDayType(dayType) });
+    if (!base) {
+      const unapplied = unappliedOn(project, dayType.id);
+      items.push('separator', { label: unapplied > 0 ? 'Delete, and ' + count(unapplied, 'unapplied grid change') + ' on it' : 'Delete', danger: true, run: () => removeDayType(dayType) });
+    }
     openMenu({ items, anchor: opener, label: dayType.name });
   }
 
@@ -481,7 +502,7 @@ export function mount(env) {
       }
       const after = ctx.store.project;
       const added = after.dayTypes[after.dayTypes.length - 1];
-      ctx.toast({ text: 'Added ' + added.name + (payload.own ? ', a copy of ' + base.name + '.' : ', the same as ' + effectiveDayType(after, added.id).name + '.'), action: { label: 'Undo', run: ctx.undo } });
+      ctx.toast({ text: 'Added ' + added.name + (payload.own ? ', a copy of ' + base.name + '.' : ', the same as ' + effectiveDayType(after, added.id).name + '.'), action: { label: 'Undo', run: undoTo('daytype-add-name') } });
       view.dayAdd = { name: null, kind: state.kind, refusal: '' };
       env.render(after.dayTypes.length >= DAY_TYPES_MOST ? 'daytype-add' : 'daytype-add-name');
     };
@@ -547,7 +568,7 @@ export function mount(env) {
     if (!apply(env, addBellSchedule, { name })) return;
     const all = bellSchedulesOf(ctx.store.project);
     const added = all[all.length - 1];
-    ctx.toast({ text: 'Added ' + added.name + ', a copy of ' + baseDayType(project).name + '’s regular bells. Give it a name of its own.', action: { label: 'Undo', run: ctx.undo } });
+    ctx.toast({ text: 'Added ' + added.name + ', a copy of ' + baseDayType(project).name + '’s regular bells. Give it a name of its own.', action: { label: 'Undo', run: undoTo('bsched-add') } });
     env.render('bsched:' + added.id + ':name');
   }
 
@@ -555,7 +576,7 @@ export function mount(env) {
     const index = bellSchedulesOf(ctx.store.project).indexOf(schedule);
     if (!apply(env, deleteBellSchedule, { bellScheduleId: schedule.id })) return;
     const outcome = ctx.store.undoOutcome;
-    ctx.toast({ text: (outcome && outcome.text ? outcome.text : 'Deleted ' + schedule.name) + '.', action: { label: 'Undo', run: ctx.undo } });
+    ctx.toast({ text: (outcome && outcome.text ? outcome.text : 'Deleted ' + schedule.name) + '.', action: { label: 'Undo', run: undoTo('bsched:' + schedule.id + ':delete') } });
     const left = bellSchedulesOf(ctx.store.project);
     const next = left[Math.min(index, left.length - 1)];
     env.render(next ? 'bsched:' + next.id + ':delete' : 'bsched-add');
