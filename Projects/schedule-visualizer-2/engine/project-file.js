@@ -29,7 +29,7 @@ import { migrate, MigrateError, versionOf, NEWER_VERSION_MESSAGE, NOT_A_PROJECT_
 import { repair } from './repair.js';
 import { validate } from './validate.js';
 import { collectIds, isId } from './ids.js';
-import { mergeGroups } from './import-groups.js';
+import { mergeGroups, ImportError, CLASH_POLICIES } from './import-groups.js';
 import { isOwnCopy, effectiveDayType, findDayType } from './day-types.js';
 
 export const BUILDING_FORMAT = 'sv2-building';
@@ -625,8 +625,12 @@ const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // - The calendar, when the file has one, replaces this project's, with every
 //   day type and bell schedule it names re-pointed through the matches above.
 //   A reference that matches nothing is dropped and counted.
-// - Marks and duties are matched by id: one that is here is left as it is,
-//   one that is not is added (with the file's id when it is free), and every
+// - Marks and duties are matched by id, and a clash is answered by `policy`
+//   as a group's is (`all`, or `per[id]` for one): skip leaves the one here as
+//   it is, overwrite replaces it in place with the file's (same id), rename
+//   adds the file's under a new id. The summary counts those kept and those
+//   replaced. One that is not here is added (with the file's id when it is
+//   free), and every
 //   reference in it is re-pointed through the matches above (groups by name,
 //   as the groups are, rooms as a slot's are). A reference that matches
 //   nothing is dropped and counted: only a duty's room can fail to match,
@@ -642,7 +646,7 @@ const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // have the old one; without it the file's changedAt is kept.
 export function applySchedule(project, file, options) {
   const ids = options.ids;
-  const summary = { subjectsAdded: [], teachersAdded: [], dayTypesAdded: [], bellSchedulesAdded: [], madeOwn: [], periodsRaised: null, settingsTaken: [], unknownRooms: [], roomsLeftOff: 0, calendarReplaced: false, referencesDropped: 0, marksAdded: 0, dutiesAdded: 0 };
+  const summary = { subjectsAdded: [], teachersAdded: [], dayTypesAdded: [], bellSchedulesAdded: [], madeOwn: [], periodsRaised: null, settingsTaken: [], unknownRooms: [], roomsLeftOff: 0, calendarReplaced: false, referencesDropped: 0, marksAdded: 0, dutiesAdded: 0, marksKept: 0, marksReplaced: 0, dutiesKept: 0, dutiesReplaced: 0 };
   const fileSchedules = Array.isArray(file.bellSchedules) ? file.bellSchedules : [];
   const fileCalendar = isObject(file.calendar) ? file.calendar : null;
   const fileMarks = Array.isArray(file.marks) ? file.marks : [];
@@ -926,16 +930,49 @@ export function applySchedule(project, file, options) {
       }
       return out;
     };
-    const marksHere = marksOf(result);
+    // a clash on an id is answered as a group's name is: `per[id]`, else `all`, else skip
+    const answer = (id) => {
+      const policy = options.policy;
+      const per = policy && policy.per && Object.prototype.hasOwnProperty.call(policy.per, id) ? policy.per[id] : undefined;
+      const chosen = per === undefined ? (policy && policy.all !== undefined ? policy.all : 'skip') : per;
+      if (!CLASH_POLICIES.includes(chosen)) throw new ImportError('A name clash is answered with one of: ' + CLASH_POLICIES.join(', ') + '.', 'bad-policy');
+      return chosen;
+    };
+    let marksHere = marksOf(result);
     const addedMarks = [];
+    let changedMarks = false;
     for (const mark of fileMarks) {
-      if (marksHere.some((candidate) => candidate.id === mark.id)) continue;
-      addedMarks.push({ ...mark, id: keepOrMake(mark.id, 'm', taken, ids), dayTypeIds: through(mark.dayTypeIds, dayMap), groupIds: through(mark.groupIds, groupMap) });
+      const clash = marksHere.findIndex((candidate) => candidate.id === mark.id);
+      const pointed = { ...mark, dayTypeIds: through(mark.dayTypeIds, dayMap), groupIds: through(mark.groupIds, groupMap) };
+      if (clash >= 0) {
+        const choice = answer(mark.id);
+        if (choice === 'skip' || sameJson(marksHere[clash], pointed)) {
+          summary.marksKept += 1;
+          continue;
+        }
+        if (choice === 'overwrite') {
+          marksHere = marksHere.slice();
+          marksHere[clash] = pointed;
+          changedMarks = true;
+          summary.marksReplaced += 1;
+          continue;
+        }
+      }
+      addedMarks.push({ ...pointed, id: keepOrMake(mark.id, 'm', taken, ids) });
     }
-    const dutiesHere = dutiesOf(result);
+    let dutiesHere = dutiesOf(result);
     const addedDuties = [];
+    let changedDuties = false;
     for (const duty of fileDuties) {
-      if (dutiesHere.some((candidate) => candidate.id === duty.id)) continue;
+      const clash = dutiesHere.findIndex((candidate) => candidate.id === duty.id);
+      let choice = 'add';
+      if (clash >= 0) {
+        choice = answer(duty.id);
+        if (choice === 'skip') {
+          summary.dutiesKept += 1;
+          continue;
+        }
+      }
       let roomId = null;
       let place = duty.place;
       if (duty.roomId !== null) {
@@ -945,10 +982,22 @@ export function applySchedule(project, file, options) {
           if (place === '') place = numberOf.get(duty.roomId) || '';
         }
       }
-      addedDuties.push({ ...duty, id: keepOrMake(duty.id, 'u', taken, ids), dayTypeIds: through(duty.dayTypeIds, dayMap), roomId, place, teacherIds: through(duty.teacherIds, teacherMap), subjectIds: through(duty.subjectIds, subjectMap) });
+      const pointed = { ...duty, dayTypeIds: through(duty.dayTypeIds, dayMap), roomId, place, teacherIds: through(duty.teacherIds, teacherMap), subjectIds: through(duty.subjectIds, subjectMap) };
+      if (clash >= 0 && sameJson(dutiesHere[clash], pointed)) {
+        summary.dutiesKept += 1;
+        continue;
+      }
+      if (choice === 'overwrite') {
+        dutiesHere = dutiesHere.slice();
+        dutiesHere[clash] = pointed;
+        changedDuties = true;
+        summary.dutiesReplaced += 1;
+        continue;
+      }
+      addedDuties.push({ ...pointed, id: keepOrMake(duty.id, 'u', taken, ids) });
     }
-    if (addedMarks.length > 0) result = { ...result, marks: marksHere.concat(addedMarks) };
-    if (addedDuties.length > 0) result = { ...result, duties: dutiesHere.concat(addedDuties) };
+    if (addedMarks.length > 0 || changedMarks) result = { ...result, marks: marksHere.concat(addedMarks) };
+    if (addedDuties.length > 0 || changedDuties) result = { ...result, duties: dutiesHere.concat(addedDuties) };
     summary.marksAdded = addedMarks.length;
     summary.dutiesAdded = addedDuties.length;
   }

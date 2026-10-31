@@ -494,6 +494,20 @@ test('a run of teaching with a duty in the middle is one run, and the suggestion
   assert.ok(apart.every((candidate) => candidate.change.groupId !== 'gsample07a'), 'with no duty the run is Periods 6 to 8 and 7A is not in it');
 });
 
+test('a school Lunch under an always duty ends the run for the suggestions too', () => {
+  // Periods 3 and 4, then a duty and a school Lunch in 5, then 6 to 8: with the limit at 1 the first run is Periods 3 and 4 only
+  const sample = school();
+  const id = teacherId(sample, 'Mr. Pennywhistle');
+  const duty = { id: 'utest00002', kind: 'duty', label: 'Hall', when: 'period', period: 4, start: '', end: '', dayTypeIds: [A], weekdays: [], from: '', to: '', roomId: null, place: '', teacherIds: [id], subjectIds: [], everyone: false };
+  const lunch = { id: 'mtest00001', kind: 'lunch', label: '', period: 4, dayTypeIds: [], scope: 'school', grades: [], groupIds: [] };
+  const project = { ...sample, duties: [duty], marks: [lunch], settings: { ...sample.settings, checks: { ...sample.settings.checks, consecutiveLimit: 1 } } };
+  const finding = findingOf(project, 'consecutive:' + A + ':2:' + id);
+  assert.match(finding.text, /teaches 2 periods in a row/);
+  const groups = new Set(suggestionCandidates(project, finding).map((candidate) => candidate.change.groupId));
+  assert.ok(groups.size > 0, 'the run has classes in it');
+  assert.ok(!groups.has('gsample07c'), 'a class after the Lunch is not in the run: ' + Array.from(groups).join(', '));
+});
+
 test('stage 2: a candidate the pipeline says leaves the finding is never offered, whatever the static checks said', () => {
   // the pipeline is told to report the finding still there for the first
   // suggestion's change; a room finding passes the static checks first, so
