@@ -391,6 +391,35 @@ test('a duty with nobody on it carries a note, and Undo of a delete brings the d
   await settled();
 });
 
+test('lowering the periods says how many marked periods and duties would go, on the Day tab and in Settings, and Escape keeps them', async () => {
+  const marks = (await project()).marks.filter((mark) => mark.period >= 7).length;
+  const duties = (await project()).duties.filter((duty) => duty.when === 'period' && duty.period >= 7).length;
+  assert.deepEqual([marks, duties], [1, 1], 'a No class mark and the science meeting are in Period 8');
+  await go(page, '#schedule/day');
+  await settled();
+  await page.click(key('day-periods'), { clickCount: 3 });
+  await page.keyboard.type('7');
+  await page.keyboard.press('Enter');
+  await shows(() => document.querySelector('dialog[open]'));
+  const body = () => page.$eval('dialog[open] .dialog__body', (el) => el.textContent);
+  assert.match(await body(), /That takes away .*1 marked period and 1 duty\./);
+  await page.keyboard.press('Escape');
+  await shows(() => !document.querySelector('dialog[open]'));
+  assert.equal((await project()).settings.periods, 8, 'Escape kept them');
+  await go(page, '#project');
+  await page.waitForSelector('#settings input[name="periods"]');
+  await page.click('#settings input[name="periods"]', { clickCount: 3 });
+  await page.keyboard.type('7');
+  await page.keyboard.press('Enter');
+  await shows(() => document.querySelector('dialog[open]'));
+  assert.match(await body(), /That takes away .*1 marked period and 1 duty\./);
+  await page.keyboard.press('Escape');
+  await shows(() => !document.querySelector('dialog[open]'));
+  assert.equal((await project()).settings.periods, 8);
+  await go(page, '#schedule/day');
+  await settled();
+});
+
 test('the grid’s Teachers table shows duties in italic, with an After column, and the Rooms table skips a No class period', async () => {
   await go(page, '#schedule/grid');
   await page.waitForSelector('.grd-table');
