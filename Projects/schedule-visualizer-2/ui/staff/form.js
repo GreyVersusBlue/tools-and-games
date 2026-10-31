@@ -96,7 +96,9 @@ export function calendarChangedWords(project, record) {
   const calendar = calendarOf(project);
   const last = project.publish ? project.publish.lastPublishedAt : null;
   if (typeof last !== 'string') return '';
-  const noted = record && record.at === last ? record.calendar : null;
+  // the project's own note first (it travels with the project), this device's second
+  const own = project.publish ? project.publish.lastPublishedHadCalendar : null;
+  const noted = typeof own === 'boolean' ? own : record && record.at === last ? record.calendar : null;
   if (!calendar) return noted === true ? CALENDAR_REMOVED_WORDS : '';
   if (noted === false) return CALENDAR_NONE_YET_WORDS;
   if (typeof calendar.changedAt !== 'string' || Date.parse(calendar.changedAt) <= Date.parse(last)) return '';
@@ -420,7 +422,7 @@ export function publishForm(ctx, hooks) {
       let noted = readOnly() ? READ_ONLY_MADE : true;
       if (noted === true) {
         try {
-          store.apply(notePublished, { at: published.model.publishedAt });
+          store.apply(notePublished, { at: published.model.publishedAt, calendar: Boolean(calendarOf(project)) });
           notePublishedCalendar(project, published.model.publishedAt, Boolean(calendarOf(project)));
         } catch (error) {
           console.warn('Schedule Visualizer 2: the file was made, and the project could not record it.', error);
