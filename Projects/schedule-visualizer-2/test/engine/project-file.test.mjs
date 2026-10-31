@@ -1029,6 +1029,44 @@ test('schedule file: a mark or a duty already here, by id, is left as it is and 
   assert.equal(twice.project, once, 'the second import finds them by id');
 });
 
+test('schedule file: a mark or a duty with an id already here follows the clash policy, and the summary counts those kept and replaced', () => {
+  const file = readScheduleFile(writeScheduleFile(withMarksAndDuties())).file;
+  const edited = () => {
+    const here = withMarksAndDuties();
+    here.marks[0] = { ...here.marks[0], label: 'Here' };
+    here.duties[0] = { ...here.duties[0], label: 'Here too' };
+    return here;
+  };
+  const counts = (summary) => [summary.marksAdded, summary.marksKept, summary.marksReplaced, summary.dutiesAdded, summary.dutiesKept, summary.dutiesReplaced];
+  const total = file.marks.length;
+
+  const skipped = applySchedule(edited(), file, { policy: { all: 'skip' }, ids: makeIds(9) });
+  assert.deepEqual(counts(skipped.summary), [0, total, 0, 0, file.duties.length, 0]);
+  assert.equal(skipped.project.marks[0].label, 'Here');
+
+  const replaced = applySchedule(edited(), file, { policy: { all: 'overwrite' }, ids: makeIds(9) });
+  assertValid(replaced.project);
+  assert.deepEqual(counts(replaced.summary), [0, total - 1, 1, 0, file.duties.length - 1, 1], 'only the two that differ are replaced; the rest are the same and kept');
+  assert.equal(replaced.project.marks[0].label, file.marks[0].label);
+  assert.equal(replaced.project.marks[0].id, file.marks[0].id, 'replaced in place, under the same id');
+  assert.equal(replaced.project.duties[0].label, file.duties[0].label);
+  assert.equal(replaced.project.marks.length, total);
+  assert.equal(replaced.project.duties.length, file.duties.length);
+
+  const renamed = applySchedule(edited(), file, { policy: { all: 'rename' }, ids: makeIds(9) });
+  assertValid(renamed.project);
+  // the groups are renamed too, so the mark that follows them is no longer the same as the one here
+  assert.deepEqual(counts(renamed.summary), [2, total - 2, 0, 1, file.duties.length - 1, 0]);
+  assert.equal(renamed.project.marks[0].label, 'Here');
+  assert.notEqual(renamed.project.marks[total].id, file.marks[0].id, 'the file\'s mark is added under a new id');
+  assert.equal(renamed.project.marks[total].label, file.marks[0].label);
+
+  const perId = applySchedule(edited(), file, { policy: { all: 'skip', per: { [file.marks[0].id]: 'overwrite' } }, ids: makeIds(9) });
+  assert.deepEqual(counts(perId.summary), [0, total - 1, 1, 0, file.duties.length, 0], 'per[id] overrides all, for that one');
+
+  assert.throws(() => applySchedule(edited(), file, { policy: { all: 'merge' }, ids: makeIds(9) }), /name clash is answered with one of/);
+});
+
 test('schedule file: an id the project has for something else is not reused', () => {
   const file = readScheduleFile(writeScheduleFile(withMarksAndDuties())).file;
   const there = reId(school());
