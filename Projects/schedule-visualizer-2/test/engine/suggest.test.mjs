@@ -480,6 +480,20 @@ test('stage 1: a candidate the static checks say leaves the finding, or adds a p
   for (const next of seen) assert.ok(!ruledOut.some((out) => sameDays(out, next)), 'the pipeline ran a candidate the static checks ruled out');
 });
 
+test('a run of teaching with a duty in the middle is one run, and the suggestions reach the classes on both sides of the duty', () => {
+  // Mr. Pennywhistle teaches Periods 3, 4, 6, 7 and 8 on A Day and is free in 5; with a duty there the five classes are one run
+  const sample = school();
+  const duty = { id: 'utest00001', kind: 'duty', label: 'Hall', when: 'period', period: 4, start: '', end: '', dayTypeIds: [A], weekdays: [], from: '', to: '', roomId: null, place: '', teacherIds: [teacherId(sample, 'Mr. Pennywhistle')], subjectIds: [], everyone: false };
+  const project = { ...sample, duties: [duty], settings: { ...sample.settings, checks: { ...sample.settings.checks, consecutiveLimit: 2 } } };
+  const finding = findingOf(project, 'consecutive:' + A + ':2:' + teacherId(project, 'Mr. Pennywhistle'));
+  assert.match(finding.text, /teaches 5 periods in a row/);
+  const groups = new Set(suggestionCandidates(project, finding).map((candidate) => candidate.change.groupId));
+  assert.ok(groups.has('gsample07a') && groups.has('gsample07c'), 'a class before the duty and one after it are both in the run: ' + Array.from(groups).join(', '));
+  const without = { ...project, duties: [] };
+  const apart = suggestionCandidates(without, findingOf(without, 'consecutive:' + A + ':5:' + teacherId(without, 'Mr. Pennywhistle')));
+  assert.ok(apart.every((candidate) => candidate.change.groupId !== 'gsample07a'), 'with no duty the run is Periods 6 to 8 and 7A is not in it');
+});
+
 test('stage 2: a candidate the pipeline says leaves the finding is never offered, whatever the static checks said', () => {
   // the pipeline is told to report the finding still there for the first
   // suggestion's change; a room finding passes the static checks first, so
