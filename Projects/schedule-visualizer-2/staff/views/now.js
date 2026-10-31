@@ -11,7 +11,7 @@ import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, printGate } from '../page.js';
 import { aroundRoom } from '../map.js';
-import { clockNow, dayTypeFor, bellsIdFor, chosenDayType, chosenBells, todayOf, todayKey, todayLine, dayWords, momentOf, momentKey, momentWords, periodTimes, periodFor, watchClock, everyTeacherDay, dayTypePicker, bellsPicker, periodPicker, viewLink, nowTabs, entryWords } from '../clock.js';
+import { clockNow, dutyDate, groupSlots, groupMark, markWords, takenBy, dayTypeFor, bellsIdFor, chosenDayType, chosenBells, todayOf, todayKey, todayLine, dayWords, momentOf, momentKey, momentWords, periodTimes, periodFor, watchClock, everyTeacherDay, dayTypePicker, bellsPicker, periodPicker, viewLink, nowTabs, entryWords } from '../clock.js';
 
 // The teachers who have a group in a period, by the engine's rule.
 function teachersOf(school, groupId, dayTypeId, period) {
@@ -89,12 +89,17 @@ export const nowView = {
 
     const groupCard = (period, when) => {
       const group = school.group(state.group);
-      const slot = school.groupDay(group.id, state.dayType.id)[period];
+      const slot = groupSlots(school, group.id, state.dayType.id, state.bellsId)[period];
+      const mark = groupMark(school, group.id, state.dayType.id, period);
       const room = slot && slot.room ? school.room(slot.room) : null;
       const who = teachersOf(school, group.id, state.dayType.id, period);
       const name = viewLink(school, 'group', group.id, typed(group.name));
       let sentence;
-      if (room) sentence = [name, ' is in ', viewLink(school, 'room', room.id, typed(school.roomName(room))), who.length > 0 ? [' with ', names(school, 'teacher', who, (teacher) => teacher.name)] : null, when, '.'];
+      // a No class mark books no room and a Lunch mark has no teacher: the
+      // card says which it is rather than that the group has nowhere to be
+      if (mark && mark.kind === 'noclass') sentence = [name, ' has no class', when, '.'];
+      else if (mark && mark.kind === 'lunch') sentence = [name, ' is at ', typed(markWords(mark)), when, room ? [' in ', viewLink(school, 'room', room.id, typed(school.roomName(room)))] : null, '.'];
+      else if (room) sentence = [name, ' is in ', viewLink(school, 'room', room.id, typed(school.roomName(room))), who.length > 0 ? [' with ', names(school, 'teacher', who, (teacher) => teacher.name)] : null, when, '.'];
       else if (slot && slot.roomText) sentence = [name, ' is in ', typed(slot.roomText), ', which is not in the building', when, '.'];
       else sentence = [name, ' has no room', when, '.'];
       return [
@@ -106,14 +111,23 @@ export const nowView = {
 
     const teacherCard = (period, when) => {
       const teacher = school.teacher(state.teacher);
-      const entry = everyTeacherDay(school, state.dayType.id).get(teacher.id)[period];
+      const date = dutyDate(ctx, state.dayType.id);
+      const entry = everyTeacherDay(school, state.dayType.id, date).get(teacher.id)[period];
       const name = viewLink(school, 'teacher', teacher.id, typed(teacher.name));
+      const taken = takenBy(school, entry, state.dayType.id, date);
       const based = (teacher.roomIds || []).map((id) => school.room(id)).filter(Boolean);
       if (entry && entry.kind === 'teaching') {
         const rooms = entry.groups.map((taught) => taught.roomId).filter((id, index, all) => id !== null && all.indexOf(id) === index).map((id) => school.room(id));
         return [
           h('p', { class: 'card__title', dataset: { where: 'sentence' } }, name, ' has ', entryWords(school, entry), when, '.'),
           rooms.map((room) => whereRoom(ctx, room)),
+        ];
+      }
+      if (taken !== null) {
+        // a duty or a meeting is where the teacher is, not a free period
+        return [
+          h('p', { class: 'card__title', dataset: { where: 'sentence' } }, name, ' has ', typed(taken.title), when, taken.place ? [' in ', typed(taken.place)] : null, taken.times ? ', ' + taken.times : null, '.'),
+          based.length > 0 ? h('p', null, 'Based in ', names(school, 'room', based, (room) => school.roomName(room)), '.') : null,
         ];
       }
       return [

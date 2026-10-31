@@ -10,29 +10,29 @@
 // the page can be shared and Back returns to it, and then a day type can be
 // picked to look at any day.
 //
-// A teacher is free when engine/teacher-day.js says the period is planning; a
-// room is empty when no group's day puts a group in it. Rooms can be narrowed
+// A teacher is free when engine/teacher-day.js says so (isFree: planning, and
+// no duty or mark takes the period; a duty that holds on some days counts on
+// today's date only); a room is empty when no group's meeting slots put a
+// group in it (engine/runs.js: a No class period books nothing). Rooms can be narrowed
 // by seats, subject and wing (?seats=40&subject=…&wing=…).
 
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf } from '../page.js';
-import { clockNow, dayTypeFor, bellsIdFor, chosenDayType, chosenBells, todayOf, todayKey, todayLine, dayWords, momentOf, momentKey, momentWords, periodTimes, periodFor, watchClock, everyTeacherDay, dayTypePicker, bellsPicker, periodPicker, viewLink, nowTabs, sectionHeading, teacherDetail } from '../clock.js';
+import { isFree } from '../../engine/teacher-day.js';
+import { clockNow, dutyDate, groupSlots, dayTypeFor, bellsIdFor, chosenDayType, chosenBells, todayOf, todayKey, todayLine, dayWords, momentOf, momentKey, momentWords, periodTimes, periodFor, watchClock, everyTeacherDay, dayTypePicker, bellsPicker, periodPicker, viewLink, nowTabs, sectionHeading, teacherDetail } from '../clock.js';
 
 // The teachers with no group in a period, in the school's own order.
-export function freeTeachers(school, dayTypeId, period) {
-  const days = everyTeacherDay(school, dayTypeId);
-  return school.teachers.filter((teacher) => {
-    const entry = days.get(teacher.id)[period];
-    return Boolean(entry) && entry.kind === 'planning';
-  });
+export function freeTeachers(school, dayTypeId, period, date) {
+  const days = everyTeacherDay(school, dayTypeId, date);
+  return school.teachers.filter((teacher) => isFree(days.get(teacher.id)[period]));
 }
 
 // The rooms no group is in during a period, in the building's own order.
-export function emptyRooms(school, dayTypeId, period) {
+export function emptyRooms(school, dayTypeId, period, bellsId) {
   const used = new Set();
   for (const group of school.groups) {
-    const slot = school.groupDay(group.id, dayTypeId)[period];
+    const slot = groupSlots(school, group.id, dayTypeId, bellsId)[period];
     if (slot && slot.room) used.add(slot.room);
   }
   return school.rooms.filter((room) => !used.has(room.id));
@@ -106,7 +106,7 @@ export const freeView = {
     };
 
     const drawRooms = (period) => {
-      const empty = emptyRooms(school, state.dayType.id, period);
+      const empty = emptyRooms(school, state.dayType.id, period, state.bellsId);
       const unknown = state.seats > 0 ? empty.filter((room) => typeof room.capacity !== 'number').length : 0;
       const shown = empty.filter((room) => (state.seats === 0 || (typeof room.capacity === 'number' && room.capacity >= state.seats))
         && (state.subject === '' || room.subjectId === state.subject)
@@ -143,12 +143,16 @@ export const freeView = {
         says.dataset.moment = 'off';
         return;
       }
-      const free = freeTeachers(school, state.dayType.id, period);
+      const date = dutyDate(ctx, state.dayType.id);
+      const free = freeTeachers(school, state.dayType.id, period, date);
+      // teachers a duty, a meeting or a mark has, who are not free but have no group
+      const days = everyTeacherDay(school, state.dayType.id, date);
+      const taken = school.teachers.filter((teacher) => days.get(teacher.id)[period] && days.get(teacher.id)[period].kind === 'planning' && !isFree(days.get(teacher.id)[period])).length;
 
       teachersOut.replaceChildren(
         sectionHeading('Teachers free', free.length),
         free.length === 0
-          ? h('p', { class: 'muted' }, 'Every teacher has a group.')
+          ? h('p', { class: 'muted' }, taken > 0 ? 'Every teacher has a group, a duty or a meeting.' : 'Every teacher has a group.')
           : h('ul', { class: 'list', dataset: { list: 'teachers' } }, free.map((teacher) => h('li', null,
             viewLink(school, 'teacher', teacher.id, [
               h('span', { class: 'list__name' }, typed(teacher.name)),
