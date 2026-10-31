@@ -668,8 +668,22 @@ export function routesByRun(project, graph, options) {
 // With options.bells true, the same for every bell-schedule run instead
 // (runsOf's order), each entry with bellsId after dayTypeId: the teacher's
 // day is the day type's, less the periods that do not meet under the
-// schedule, so a walk into or out of one of those is not one, and every
-// other walk is timed against the schedule's passing time.
+// schedule. A walk into or out of the leading or trailing ones is not one;
+// a walk across the ones in the middle is kept under the period it leaves,
+// has toPeriod (the period it reaches) and the gap between the two as its
+// passing time, as a group's does; every other walk is timed against the
+// schedule's passing time.
+export function bellMoves(day, off) {
+  if (off === null || off.size === 0) return teacherMoves(day);
+  const meets = [];
+  for (let period = 0; period < day.length; period += 1) if (!off.has(period)) meets.push(period);
+  return teacherMoves(meets.map((period) => day[period])).map((move) => ({
+    ...move,
+    period: meets[move.period],
+    ...(meets[move.period + 1] === meets[move.period] + 1 ? {} : { toPeriod: meets[move.period + 1] }),
+  }));
+}
+
 export function teacherWalks(project, graph, options) {
   const routing = routingGraph(project, graph);
   const cache = options && options.cache ? options.cache : createRouteCache();
@@ -690,13 +704,12 @@ export function teacherWalks(project, graph, options) {
     for (const teacher of project.teachers) {
       const day = days.get(teacher.id);
       if (!day) continue;
-      for (const move of teacherMoves(day)) {
-        if (off !== null && (off.has(move.period) || off.has(move.period + 1))) continue;
+      for (const move of bellMoves(day, off)) {
         const walking = walkingSeconds(routing, route(routing, move.fromRoomId, move.toRoomId, routeOptions));
         if (walking === null) continue;
-        const passingSeconds = bells[move.period].passingAfter;
+        const passingSeconds = move.toPeriod === undefined ? bells[move.period].passingAfter : transitionPlan(project, bells, move.period).passing;
         const head = bellsId === null ? { dayTypeId: run.dayTypeId } : { dayTypeId: run.dayTypeId, bellsId };
-        walks.push({ ...head, teacherId: teacher.id, period: move.period, fromRoomId: move.fromRoomId, toRoomId: move.toRoomId, passingSeconds, walking, late: isLate(walking, passingSeconds, marginSeconds) });
+        walks.push({ ...head, teacherId: teacher.id, period: move.period, ...(move.toPeriod === undefined ? {} : { toPeriod: move.toPeriod }), fromRoomId: move.fromRoomId, toRoomId: move.toRoomId, passingSeconds, walking, late: isLate(walking, passingSeconds, marginSeconds) });
       }
     }
   }

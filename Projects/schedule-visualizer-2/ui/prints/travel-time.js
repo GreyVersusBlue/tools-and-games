@@ -31,7 +31,7 @@ import { ownDayTypes, findDayType } from '../../engine/day-types.js';
 import { findBellSchedule } from '../../engine/bells.js';
 import { count, list, periodWords } from '../components/words.js';
 import { transitionsOf, walkWords, nothingMeets, followerWords } from '../movement/model.js';
-import { travelDay, transitionRows, dayRows, lateWords } from '../movement/tables.js';
+import { travelDay, transitionRows, dayRows, lateWords, nothingBetweenParts } from '../movement/tables.js';
 import { durationWords } from '../scenarios/model.js';
 import { esc, frame } from './document.js';
 import { printedFrom } from './movement.js';
@@ -85,6 +85,10 @@ function dayPages(project, results, day) {
   const walks = transitions.map((transition) => ({ transition, found: transitionRows(project, results, day.id, transition.period, day.bellsId) }));
   if (nothingMeets(project, day.bellsId)) {
     return [{ what: name + ': ' + day.heading, body: '<p class="doc-lead">' + esc('No ' + periodWords(project.settings).one + ' meets under ' + findBellSchedule(project, day.bellsId).name + ' bells.') + '</p>' }];
+  }
+  const between = nothingBetweenParts(project, day.bellsId);
+  if (between && walks.every((each) => each.found.rows.length === 0)) {
+    return [{ what: name + ': ' + day.heading, body: '<p class="doc-lead">' + esc(between.map((part) => part.text).join('')) + '</p>' }];
   }
   if (walks.every((each) => each.found.rows.length === 0)) {
     return [{ what: name + ': ' + day.heading, body: '<p class="doc-lead">' + esc('Nobody walks anywhere on ' + day.heading + ' yet: give a group a room in two periods that follow each other.') + '</p>' }];

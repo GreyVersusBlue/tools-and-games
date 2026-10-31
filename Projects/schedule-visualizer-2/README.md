@@ -185,6 +185,7 @@ row names a file it does not run.
 | `test/ui/building-inspector.test.mjs` | The building inspector's plain functions and the traced image's arithmetic |
 | `test/ui/movement.test.mjs` | The movement view's plain functions: lanes, the choice, the legend |
 | `test/ui/movement-across.test.mjs` | A walk across periods that do not meet ("Period 2 to Period 4") in the strip, tables, CSV files, load and prints; a bell schedule with no period meeting; the prints' bells and followers; the lab's transition names |
+| `test/ui/walk-across.test.mjs` | A late walk across a period that does not meet in the checks (groups and teachers, both periods named, stable ids), the cell card's walk name, and the Travel tab and print when one period meets; a project with no middle off period gives byte-identical findings |
 | `test/ui/playback.test.mjs` | Playback's plain functions: what the device keeps, where a marker is |
 | `test/ui/room-picker.test.mjs` | The room picker's rules and the Groups tab's addresses, with no browser |
 | `test/ui/picker.test.mjs` | The lists a finger picks from, with no browser: the general picker, the Building search's results and the grid sheet's rooms pick on a click of the main button, never on a press or a swipe; a drawing that hands a picker's list over keeps its highlight or none, never the first; a read-only field picks nothing |
