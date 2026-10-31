@@ -247,12 +247,13 @@ test('the teacher grid: Before and After columns appear after the periods, only 
   assert.equal(hallorans(rows)[10], 'Bus loop');
   assert.equal(rows.find((candidate) => candidate[0] === 'Mr. Brightwater')[10], '');
   assert.equal(rows.every((line) => line.length === rows[0].length), true);
-  project.duties.push(dutyOf({ label: 'Gate', when: 'after', teacherIds: [HALLORAN_ID], dayTypeIds: [B] }));
-  rows = teacherGridRows(project);
+  // a changed project is a new object, as the actions make it (marks.js indexes per project object)
+  const gated = { ...project, duties: project.duties.concat([dutyOf({ label: 'Gate', when: 'after', teacherIds: [HALLORAN_ID], dayTypeIds: [B] })]) };
+  rows = teacherGridRows(gated);
   assert.deepEqual(rows[0].slice(-3), ['Period 8', 'Before', 'After']);
   assert.equal(hallorans(rows)[11], '', 'the Gate duty is for B Day');
   assert.equal(hallorans(rows, 'B Day')[11], 'Gate');
-  const onlyA = teacherGridRows(project, A);
+  const onlyA = teacherGridRows(gated, A);
   assert.equal(onlyA[0].includes('After'), false, 'no teacher has an After duty on A Day');
 });
 
