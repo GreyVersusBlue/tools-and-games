@@ -1419,8 +1419,9 @@ function needRotation(project, rotation) {
 
 function needDateLabel(value) {
   if (typeof value !== 'string') refuse('A note is text.', 'bad-value');
-  if (textLength(value) > DATE_LABEL_MOST) refuse('A note on a date is at most ' + DATE_LABEL_MOST + ' characters.', 'too-long');
-  return value;
+  const trimmed = value.trim();
+  if (textLength(trimmed) > DATE_LABEL_MOST) refuse('A note on a date is at most ' + DATE_LABEL_MOST + ' characters.', 'too-long');
+  return trimmed;
 }
 
 // A dated change that says nothing its weekday does not (the weekday's
@@ -1645,10 +1646,10 @@ export const importCalendarDates = action(
   },
   (project, payload, ctx) => {
     const calendar = needCalendar(project);
-    const changes = payload.changes;
-    if (!Array.isArray(changes)) refuse('There are no dates to import. Choose a calendar CSV first.', 'bad-value');
+    if (!Array.isArray(payload.changes)) refuse('There are no dates to import. Choose a calendar CSV first.', 'bad-value');
     const seen = new Set();
-    for (const change of changes) {
+    const changes = [];
+    for (const change of payload.changes) {
       if (!change || typeof change !== 'object') refuse('A date to import is a date with its day type, bells and note.', 'bad-value');
       needDate(change.date, 'A date');
       if (seen.has(change.date)) refuse(dateWords(change.date) + ' is in the list twice. Each date is imported once.', 'bad-value');
@@ -1656,7 +1657,7 @@ export const importCalendarDates = action(
       if (change.date < calendar.start || change.date > calendar.end) refuse(dateWords(change.date) + ' is outside the calendar, which runs from ' + dateWords(calendar.start) + ' to ' + dateWords(calendar.end) + '.', 'outside');
       if (change.day !== null) needDayValue(project, change.day);
       needCalendarBells(project, change.bells, true);
-      needDateLabel(change.label);
+      changes.push({ ...change, label: needDateLabel(change.label) });
     }
     const next = importedCalendar(project, changes);
     if (sameJson(tidyDates(next).dates, calendar.dates)) return project;

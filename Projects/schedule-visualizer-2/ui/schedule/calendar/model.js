@@ -205,7 +205,7 @@ export function breaksOf(project) {
   const breaks = [];
   for (const change of closed) {
     const last = breaks[breaks.length - 1];
-    const label = typeof change.label === 'string' ? change.label : '';
+    const label = typeof change.label === 'string' ? change.label.trim() : '';
     const between = last ? datesFrom(last.to, change.date).slice(1, -1) : [];
     if (last && last.label === label && (between.length === 0 || (label !== '' && between.every((date) => !at(date).school)))) {
       last.to = change.date;

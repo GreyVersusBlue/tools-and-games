@@ -64,6 +64,7 @@ export function openDateDialog(options) {
   if (own && own.day !== null) dayNow = own.day;
   else if (entry && !entry.school) dayNow = DAY_CLOSED;
   else dayNow = entry ? entry.dayTypeId : project.dayTypes[0].id;
+  const closedByWeekday = dayNow === DAY_CLOSED && !!entry && !entry.school && !(own && own.day !== null);
   const days = radioSet(base + '-day', 'Day', project.dayTypes.map((dayType) => ({ value: dayType.id, label: dayType.name })).concat([
     { value: DAY_CLOSED, label: NO_SCHOOL },
     { value: DAY_ROTATION, label: NEXT_IN_ROTATION },
@@ -113,18 +114,19 @@ export function openDateDialog(options) {
     let dates = datesFrom(from, last);
     const change = {};
     const day = checked(days);
-    // a run: the day counts as chosen only when the reader picks it, so a note
-    // or bells alone never pin day types. The one exception is "No school",
-    // already checked, on a run that holds school days: a break that starts
-    // on a Saturday
+    // a run: the day counts as chosen only when the reader picks it (a click on
+    // the radio already checked is a pick), so a note or bells alone never pin
+    // day types. The one default: a run that starts on a date closed by its
+    // weekday rule (a weekend), with nothing touched but Through, closes its
+    // school days. A date closed by a change of its own gives no default.
     const many = dates.length > 1;
-    const closesRun = many && !touched.bells && day === DAY_CLOSED && dates.some((date) => (dayEntry(project, date) || {}).school === true);
+    const closesRun = many && !touched.day && !touched.bells && !touched.note && closedByWeekday && day === DAY_CLOSED && dates.some((date) => (dayEntry(project, date) || {}).school === true);
     const chosen = touched.day ? many || day !== dayNow : closesRun;
     if (chosen) change.day = day === AS_CALENDAR ? null : day;
     if (change.day !== null) {
       const chosenBells = checked(bells);
       if (touched.bells && chosenBells !== null) change.bells = chosenBells === AS_WEEKDAY ? null : chosenBells;
-      if (touched.note) change.label = note.value;
+      if (touched.note) change.label = note.value.trim();
     }
     // bells alone are written on school days only, as closing is
     if (change.day === undefined && change.bells !== undefined && change.label === undefined) dates = dates.filter((date) => (dayEntry(project, date) || {}).school === true);
@@ -188,9 +190,14 @@ export function openDateDialog(options) {
 
   // a choice put back to what the date has is no change, on one date; on a
   // run it is what every date of the run is to have (reading() decides)
-  days.addEventListener('change', () => {
+  const pickedDay = () => {
     touched.day = true;
     words();
+  };
+  days.addEventListener('change', pickedDay);
+  // a click on the radio already checked fires no change
+  days.addEventListener('click', (event) => {
+    if (event.target instanceof HTMLInputElement) pickedDay();
   });
   if (bells) {
     bells.addEventListener('change', () => {
@@ -199,7 +206,7 @@ export function openDateDialog(options) {
     });
   }
   note.addEventListener('input', () => {
-    touched.note = note.value !== noteNow;
+    touched.note = note.value.trim() !== noteNow.trim();
     words();
   });
   const throughChanged = () => {
