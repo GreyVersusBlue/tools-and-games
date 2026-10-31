@@ -155,7 +155,7 @@ row names a file it does not run.
 | `test/engine/publish-crypto.test.mjs` | The lock on a published file: the key, the round trip, a wrong passcode |
 | `test/publish/linker.test.mjs` | The linker rule, each form it refuses, and the assembled script |
 | `test/publish/manifest.test.mjs` | `staff/manifest.js` against what the staff browser really loads |
-| `test/publish/staff.test.mjs` | The staff browser's plain functions, and its tokens against the planner's |
+| `test/publish/staff.test.mjs` | The staff browser's plain functions, and its tokens against the planner's; marks and duties in its views (free, rooms, coverage, the batch print and the checks report grid), and the frozen file reading as none |
 | `test/publish/baseline.mjs` | The recorded baseline of what staff receive: data, locked data and code |
 | `test/engine/presets.test.mjs` | The group colour presets, held equal in their two places |
 | `test/engine/worker.test.mjs` | The derived pipeline and the client that asks it |
