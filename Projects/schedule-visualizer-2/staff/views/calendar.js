@@ -108,20 +108,43 @@ function sayMonth(region, words) {
 
 // Was this page reached by pressing Previous or Next month on the calendar
 // page it replaces? That page says so on its own step control when it is
-// pressed (an unmodified click that nothing stopped), which is gone with the
-// page: nothing is remembered once it has been left, so a click that went
-// nowhere, or opened elsewhere, leads no later visit to take the focus.
+// pressed (an unmodified click), which is gone with the page: nothing is
+// remembered once it has been left, so a click that went nowhere, or opened
+// elsewhere, leads no later visit to take the focus. Whether a later listener
+// of the same click cancelled it is read here, once the click's dispatch has
+// ended, and not by the control's own listener, which runs before the others.
+const pressedBy = new WeakMap();
+
 function reachedByStep(month) {
   const from = document.querySelector('.cal__nav[data-to]');
-  return from && from.dataset.to === month ? from.dataset.pressed : null;
+  if (!from || from.dataset.to !== month) return null;
+  const click = pressedBy.get(from);
+  return click && !click.defaultPrevented ? from.dataset.pressed : null;
 }
 
 function pressedStep(event, by, to) {
-  if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
   const nav = event.currentTarget.closest('.cal__nav');
   if (!nav) return;
   nav.dataset.pressed = by < 0 ? 'previous' : 'next';
   nav.dataset.to = to;
+  pressedBy.set(nav, event);
+}
+
+// The month's words are not left to be read as part of another page: they go
+// when the address leaves the calendar (a page drawn for the calendar sets
+// this up the first time).
+let leaving = false;
+
+function sayNothingOnLeaving() {
+  if (leaving || typeof globalThis.addEventListener !== 'function') return;
+  leaving = true;
+  globalThis.addEventListener('hashchange', () => {
+    if (/^#\/calendar(?:[?/]|$)/.test(globalThis.location.hash)) return;
+    globalThis.clearTimeout(saidTimer);
+    const region = document.querySelector('[data-says="month"]');
+    if (region) region.textContent = '';
+  });
 }
 
 export const calendarView = {
@@ -240,6 +263,7 @@ export const calendarView = {
     // that was pressed (the other one where the month is the first or last
     // there is) and the new month is said once the page is on screen
     const says = monthStatus();
+    sayNothingOnLeaving();
     const used = reachedByStep(month);
     if (used === null) {
       globalThis.clearTimeout(saidTimer);
