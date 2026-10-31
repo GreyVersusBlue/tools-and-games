@@ -77,6 +77,12 @@ export const EMPTY_SCREENS = [
     buttons: ['Make a calendar'], opens: '.cal-setup',
   },
   {
+    // SV2-85: a project has no duties list until the first is added
+    id: 'duties', project: 'empty', hash: '#schedule/duties',
+    text: 'No duties or meetings yet. Put bus duty, lunch duty and standing meetings here, and they show on each teacher’s day.',
+    buttons: ['Add a duty', 'Add a meeting'], adds: 'duties',
+  },
+  {
     id: 'checks', project: 'empty', hash: '#schedule/checks',
     text: 'Nothing to check yet. Checks look through the schedule for problems, warnings and notes: two groups in one room, a teacher in two places, a walk too long for the passing time. Add a group first.',
     buttons: ['Go to Groups'], goes: '#schedule/groups',
@@ -274,9 +280,9 @@ for (const screen of EMPTY_SCREENS) {
       await page.waitForFunction((hash) => location.hash === hash, {}, screen.goes);
       await page.waitForFunction((section) => document.querySelector('.surface__layout')?.dataset.section === section, {}, screen.goes.slice(1).split('/')[0]);
     } else if (screen.adds) {
-      const before = await page.evaluate((what) => globalThis.sv2.store.project[what].length, screen.adds);
+      const before = await page.evaluate((what) => (globalThis.sv2.store.project[what] || []).length, screen.adds);
       await page.click('#surface [data-empty="' + screen.id + '"] .btn--primary');
-      await page.waitForFunction((what, n) => globalThis.sv2.store.project[what].length === n + 1, {}, screen.adds, before);
+      await page.waitForFunction((what, n) => (globalThis.sv2.store.project[what] || []).length === n + 1, {}, screen.adds, before);
       await page.waitForFunction((id) => document.querySelector('#surface [data-empty="' + id + '"]') === null, {}, screen.id);
     } else if (screen.opens) {
       await page.click('#surface [data-empty="' + screen.id + '"] .btn--primary');
