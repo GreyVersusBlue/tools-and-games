@@ -22,9 +22,12 @@
 // on it when the tab is drawn again (ui/schedule/index.js).
 
 import { h, uid } from '../../components/dom.js';
-import { ownDayTypes, effectiveSchedule } from '../../../engine/day-types.js';
+import { ownDayTypes } from '../../../engine/day-types.js';
 import { periodName } from '../../../engine/bells.js';
-import { teacherDays } from '../../../engine/teacher-day.js';
+import { teacherDays, isFree } from '../../../engine/teacher-day.js';
+import { dutiesByTeacher, schoolMarkFor } from '../../../engine/marks.js';
+import { meetingSlots } from '../../../engine/runs.js';
+import { dutyNamed, sometimesWords, MARK_AS_NAMED } from '../../../engine/checks.js';
 import { allRooms, findRoom, resolveSlotRoom } from '../../../engine/schema.js';
 import { roomName } from '../../../engine/findings.js';
 import { collator, SEVERITY_WORDS } from '../common.js';
@@ -103,10 +106,15 @@ function placeWhy(cell, frame) {
   cell.style.setProperty('--why-y', Math.round(y - at.top - cell.clientTop) + 'px');
 }
 
-// rows: [{ id, name, free, cell(dayTypeId, period) → { text, findings } }]
+// rows: [{ id, name, free, cell(dayTypeId, period) → { text, findings, duty },
+// extra(dayTypeId, which) → text }]
 // `dayTypeIds`: the day types shown (the grid's Day type choice); left out,
-// every day type that is its own copy.
-function shell(project, caption, first, rows, dayTypeIds) {
+// every day type that is its own copy. `extras`: columns after a day type's
+// periods ('before', 'after': a teacher's duties before and after school,
+// DESIGN 11.5), each { id, label }. `duty` on a cell is a duty or a mark that
+// takes the period: its words are drawn in italic.
+function shell(project, caption, first, rows, dayTypeIds, extras) {
+  const after = extras || [];
   const days = ownDayTypes(project).filter((dayType) => !Array.isArray(dayTypeIds) || dayTypeIds.includes(dayType.id));
   const periods = project.settings.periods;
   // one line for each finding, however many cells it is on
@@ -117,8 +125,8 @@ function shell(project, caption, first, rows, dayTypeIds) {
   };
   const marks = [];
   const cellOf = (row, r, dayTypeId, c, period) => {
-    const { text, findings } = row.cell(dayTypeId, period);
-    const cell = h('td', { class: 'grd-cell grd-cell--read' + (text === '' ? ' is-free' : '') }, text === '' ? h('span', { class: 'vh' }, row.free) : text);
+    const { text, findings, duty } = row.cell(dayTypeId, period);
+    const cell = h('td', { class: 'grd-cell grd-cell--read' + (text === '' ? ' is-free' : '') + (duty ? ' is-duty' : '') }, text === '' ? h('span', { class: 'vh' }, row.free) : text);
     if (findings.length === 0) return cell;
     const worst = findings[0].severity;
     const words = findingWords(findings);
@@ -141,14 +149,20 @@ function shell(project, caption, first, rows, dayTypeIds) {
     h('thead', null,
       h('tr', null,
         h('th', { scope: 'col', rowspan: '2', class: 'grd-head grd-head--name' }, first),
-        days.map((dayType) => h('th', { scope: 'colgroup', colspan: String(periods), class: 'grd-head grd-head--day' }, dayType.name))),
-      h('tr', null, days.map(() => Array.from({ length: periods }, (unused, period) => h('th', {
+        days.map((dayType) => h('th', { scope: 'colgroup', colspan: String(periods + after.length), class: 'grd-head grd-head--day' }, dayType.name))),
+      h('tr', null, days.map(() => [Array.from({ length: periods }, (unused, period) => h('th', {
         scope: 'col',
         class: 'grd-head grd-head--period' + (period === 0 ? ' grd-head--first' : ''),
-      }, periodName(project.settings, period)))))),
+      }, periodName(project.settings, period))), after.map((extra) => h('th', { scope: 'col', class: 'grd-head grd-head--period grd-head--extra' }, extra.label))]))),
     h('tbody', null, rows.map((row, r) => h('tr', { class: 'grd-row' },
       h('th', { scope: 'row', class: 'grd-cell grd-cell--name' }, h('span', { class: 'grd-cell__text' }, row.name)),
-      days.map((dayType, d) => Array.from({ length: periods }, (unused, period) => cellOf(row, r, dayType.id, d * periods + period, period)))))));
+      days.map((dayType, d) => [
+        Array.from({ length: periods }, (unused, period) => cellOf(row, r, dayType.id, d * (periods + after.length) + period, period)),
+        after.map((extra) => {
+          const words = row.extra(dayType.id, extra.id);
+          return h('td', { class: 'grd-cell grd-cell--read is-duty' + (words === '' ? ' is-free' : '') }, words === '' ? h('span', { class: 'vh' }, 'No duty') : words);
+        }),
+      ])))));
   const markOf = (node) => marks.findIndex((mark) => mark.cell === node);
   // a region that scrolls sideways has to be reachable by keyboard
   const frame = h('div', { class: 'grd-scroll', tabindex: '0', role: 'region', 'aria-label': caption }, table, h('div', { class: 'vh grd-why' }, Array.from(lines.values())));
@@ -245,23 +259,46 @@ function groupNames(project, ids) {
 // One row per teacher: "7-1 in 204". `findings` is the grid model's: slot key
 // to the findings on that slot. `dayTypeIds` as shell's.
 export function teacherTable(project, findings, dayTypeIds) {
-  const days = new Map(ownDayTypes(project).map((dayType) => [dayType.id, teacherDays(project, dayType.id)]));
+  const own = ownDayTypes(project);
+  const days = new Map(own.map((dayType) => [dayType.id, teacherDays(project, dayType.id)]));
+  const duties = new Map(own.map((dayType) => [dayType.id, dutiesByTeacher(project, dayType.id)]));
+  const shown = own.filter((dayType) => !Array.isArray(dayTypeIds) || dayTypeIds.includes(dayType.id));
+  // "Before" and "After" are columns when any teacher has such a duty
+  const some = (when) => shown.some((dayType) => Array.from(duties.get(dayType.id).values()).some((mine) => mine[when].length > 0));
+  const extras = [].concat(some('before') ? [{ id: 'before', label: 'Before' }] : [], some('after') ? [{ id: 'after', label: 'After' }] : []);
   const numberOf = (roomId) => {
     const room = roomId ? findRoom(project, roomId) : null;
     return room ? (room.number.trim() === '' ? roomName(room) : room.number) : 'a room not in the building';
   };
+  // "Lunch duty", or "Bus duty (on Wednesdays)" for one that holds some days
+  const dutyWords = (duty) => dutyNamed(duty) + (sometimesWords(duty) === '' ? '' : ' (' + sometimesWords(duty) + ')');
   return shell(project, 'Every teacher, one row each. For reading.', 'Teacher', project.teachers.map((teacher) => ({
     id: teacher.id,
     name: teacher.name,
     free: 'Planning',
     cell: (dayTypeId, period) => {
-      const taught = days.get(dayTypeId).get(teacher.id)[period].groups;
-      return {
-        text: taught.map((each) => groupNames(project, [each.groupId])[0] + ' in ' + numberOf(each.roomId)).join(', '),
-        findings: findingsOf(findings, taught.map((each) => each.groupId), dayTypeId, period),
-      };
+      const entry = days.get(dayTypeId).get(teacher.id)[period];
+      const taught = entry.groups;
+      const extra = entry.duties.map(dutyWords);
+      if (entry.kind === 'teaching') {
+        return {
+          text: taught.map((each) => groupNames(project, [each.groupId])[0] + ' in ' + numberOf(each.roomId)).concat(extra).join(', '),
+          findings: findingsOf(findings, taught.map((each) => each.groupId), dayTypeId, period),
+          duty: false,
+        };
+      }
+      if (isFree(entry)) return { text: extra.join(', '), findings: [], duty: extra.length > 0 };
+      // an always duty takes the period, or else the school's mark does
+      const always = entry.duties.filter((duty) => sometimesWords(duty) === '').map(dutyWords);
+      const mark = schoolMarkFor(project, dayTypeId, period);
+      const taken = always.length > 0 ? always : [mark && mark.label !== '' ? mark.label : MARK_AS_NAMED[entry.marked]];
+      return { text: taken.concat(entry.duties.filter((duty) => sometimesWords(duty) !== '').map(dutyWords)).join(', '), findings: [], duty: true };
     },
-  })), dayTypeIds);
+    extra: (dayTypeId, which) => {
+      const mine = duties.get(dayTypeId).get(teacher.id);
+      return mine ? mine[which].map(dutyWords).join(', ') : '';
+    },
+  })), dayTypeIds, extras);
 }
 
 // One row per room: the groups in it.
@@ -270,7 +307,8 @@ export function roomTable(project, findings, dayTypeIds) {
   const inRoom = new Map();
   for (const dayType of ownDayTypes(project)) {
     for (const group of project.groups) {
-      effectiveSchedule(project, group.id, dayType.id).forEach((slot, period) => {
+      // a period marked No class does not meet: its room is not in use then
+      meetingSlots(project, group.id, dayType.id).forEach((slot, period) => {
         const room = resolveSlotRoom(project, slot).room;
         if (!room) return;
         const key = room.id + '|' + dayType.id + '|' + period;

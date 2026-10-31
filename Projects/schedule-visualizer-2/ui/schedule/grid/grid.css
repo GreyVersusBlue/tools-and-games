@@ -458,3 +458,13 @@
     min-height: 44px;
   }
 }
+
+/* A duty or a mark that takes a teacher's period, and the columns before and
+   after school (SV2-85, DESIGN 11.5): the words are in italic. */
+.grd-cell--read.is-duty {
+  font-style: italic;
+}
+
+.grd-head--extra {
+  border-left: var(--border);
+}
