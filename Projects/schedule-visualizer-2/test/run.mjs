@@ -101,6 +101,7 @@ export const GROUPS = {
     'ui/walk-across.test.mjs', // SV2-79c
     'ui/playback.test.mjs', // SV2-44
     'ui/room-picker.test.mjs', // SV2-48
+    'ui/marks-duties.test.mjs', // SV2-85
     'ui/schedule-address.test.mjs', // SV2-54
     'ui/staff-pass.test.mjs', // SV2-45
     'ui/engine-client.test.mjs', // SV2-49

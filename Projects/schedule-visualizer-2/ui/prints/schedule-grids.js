@@ -170,7 +170,7 @@ function swatch(colour) {
 
 // The head row of a grid: the name column, then each period of the part with
 // its bell times under it.
-function gridHead(project, dayTypeId, first, part) {
+function gridHead(project, dayTypeId, first, part, tail) {
   const settings = project.settings;
   const bells = bellsFor(project, dayTypeId);
   const cells = ['<th scope="col">' + esc(first) + '</th>'];
@@ -179,6 +179,7 @@ function gridHead(project, dayTypeId, first, part) {
     const times = bell && bell.start && bell.end ? formatTime(bell.start, settings.timeFormat, { suffix: false }) + '–' + formatTime(bell.end, settings.timeFormat, { suffix: false }) : '';
     cells.push('<th scope="col"><span class="doc-grid__period">' + esc(periodName(settings, period)) + '</span>' + (times === '' ? '' : '<span class="doc-grid__time">' + esc(times) + '</span>') + '</th>');
   }
+  for (const label of tail || []) cells.push('<th scope="col"><span class="doc-grid__period">' + esc(label) + '</span></th>');
   return '<thead><tr>' + cells.join('') + '</tr></thead>';
 }
 
@@ -187,7 +188,9 @@ function gridHead(project, dayTypeId, first, part) {
 //   spec  { first: the name column's head, lead(dayType): the first sheet's
 //           sentence, empty: the sentence for a day with no rows,
 //           rows(dayType, part, marks): the body's rows as markup, each
-//           marked cell through marks.cell (sheetMarks) }
+//           marked cell through marks.cell (sheetMarks),
+//           tail(dayType): the heads of columns after the periods, on the
+//           last part, whose cells rows() then ends with }
 // → frame()'s pages
 function gridPages(project, name, spec, options) {
   const paper = paperOf(project, options);
@@ -211,7 +214,9 @@ function gridPages(project, name, spec, options) {
         body.push('<p class="doc-none">' + esc(spec.empty) + '</p>');
       } else {
         body.push('<table class="doc-table doc-grid" data-day="' + esc(dayType.id) + '" data-from="' + part.from + '" data-to="' + part.to + '">');
-        body.push(gridHead(project, dayType.id, spec.first, part));
+        // columns past the periods (a teacher's duties before and after school)
+        // sit at the end of the last part
+        body.push(gridHead(project, dayType.id, spec.first, part, spec.tail && index === parts.length - 1 ? spec.tail(dayType) : []));
         body.push('<tbody>', rows.join('\n'), '</tbody></table>');
         const notes = marks.notes();
         if (notes !== '') body.push(notes);
@@ -353,8 +358,12 @@ function renderTeacherGrid(project, derived, options) {
     first: 'Teacher',
     lead: (dayType) => 'Each teacher\'s ' + words.many + ' on ' + dayType.name + ': the groups they have, and the room, or Planning.',
     empty: '',
+    // "Before" and "After" when some teacher has such a duty, as the file's
+    // columns after the periods
+    tail: (dayType) => teacherGridRows(project, dayType.id)[0].slice(2 + project.settings.periods),
     rows: (dayType, part, marks) => {
       const days = teacherDays(project, dayType.id);
+      const last = part.to === project.settings.periods;
       return teacherGridTable(project, dayType.id).map((row, index) => {
         const teacher = project.teachers[index];
         const day = days.get(teacher.id);
@@ -366,6 +375,9 @@ function renderTeacherGrid(project, derived, options) {
             ? marks.cell(['is-planning'], '<span class="doc-grid__planning">' + esc(row[1 + period]) + '</span>', [])
             : marks.cell(['is-teaching'], '<span class="doc-grid__slot">' + esc(row[1 + period]) + '</span>' + taughtNotes(project, dayType.id, period, taught),
               findingsOn(findings, taught.map((each) => each.groupId), dayType.id, period)));
+        }
+        if (last) {
+          for (const text of row.slice(1 + project.settings.periods)) cells.push(marks.cell([], text === '' ? '' : '<span class="doc-grid__slot">' + esc(text) + '</span>', []));
         }
         return '<tr data-teacher="' + esc(teacher.id) + '">' + nameCell(row[0], '') + cells.join('') + '</tr>';
       });
