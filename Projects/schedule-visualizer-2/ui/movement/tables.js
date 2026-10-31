@@ -57,10 +57,10 @@
 // its own copy: travelDay(...).id.
 
 import { h, uid } from '../components/dom.js';
-import { count } from '../components/words.js';
+import { count, periodWords } from '../components/words.js';
 import { formatDuration } from '../../engine/findings.js';
 import { findDayType, effectiveDayType } from '../../engine/day-types.js';
-import { findBellSchedule } from '../../engine/bells.js';
+import { findBellSchedule, offPeriods, periodName } from '../../engine/bells.js';
 import { parse } from '../colour.js';
 import { transitionsOf, runOf, walkWords, nothingMeets, nothingMeetsParts } from './model.js';
 import { printButtons } from '../prints/index.js';
@@ -72,6 +72,22 @@ function roomNumbers(project) {
     for (const space of floor.spaces) if (space.kind === 'room') numbers.set(space.id, typeof space.number === 'string' ? space.number : '');
   }
   return numbers;
+}
+
+// When exactly one period meets (a one-period day, or every other period off
+// under the bells), the bells leave nothing to walk between; the Travel tab
+// and its print say so in place of advice about giving groups rooms. In
+// pieces ({ text, name }), or null when two or more meet, or none does
+// (nothingMeets says that).
+export function nothingBetweenParts(project, bellsId) {
+  const periods = project.settings.periods;
+  const schedule = findBellSchedule(project, bellsId);
+  const off = schedule ? offPeriods(project, bellsId) : new Set();
+  const meeting = [];
+  for (let period = 0; period < periods; period += 1) if (!off.has(period)) meeting.push(period);
+  if (meeting.length !== 1) return null;
+  if (!schedule) return [{ text: 'The day has one ' + periodWords(project.settings).one + ', so the bells leave nothing to walk between.' }];
+  return [{ text: 'Only ' + periodName(project.settings, meeting[0]) + ' meets under ' }, { text: schedule.name, name: true }, { text: ' bells, so they leave nothing to walk between.' }];
 }
 
 // The one source of a day type's travel times: the day type that answers for
@@ -258,7 +274,8 @@ export function tablesPanel(env) {
     const any = walksOf(results, day.id, day.bellsId).length > 0;
     element.dataset.day = day.id;
     // with every period off the print stays, to say so on paper; the tables go
-    const printOnly = !any && nothingMeets(project, day.bellsId);
+    const between = nothingBetweenParts(project, day.bellsId);
+    const printOnly = !any && (nothingMeets(project, day.bellsId) || between !== null);
     tables.hidden = !any && !printOnly;
     for (const part of [oneTitle, picker, oneLine, one, oneRest, dayTitle, whole]) part.hidden = printOnly || (part === oneRest && part.hidden);
     if (!results) {
@@ -267,6 +284,10 @@ export function tablesPanel(env) {
     }
     if (nothingMeets(project, day.bellsId)) {
       lead.replaceChildren(...nothingMeetsParts(project, day.bellsId).map((part) => (part.name ? h('bdi', null, part.text) : part.text)));
+      return;
+    }
+    if (between && !any) {
+      lead.replaceChildren(...between.map((part) => (part.name ? h('bdi', null, part.text) : part.text)));
       return;
     }
     if (!any) {

@@ -10,8 +10,7 @@
 //   height after it was shown (playback's line in `extra`).
 
 import { h } from '../components/dom.js';
-import { periodName } from '../../engine/bells.js';
-import { unitWord } from './model.js';
+import { unitWord, walkNamed } from './model.js';
 
 const SHOWN = 8;
 
@@ -21,7 +20,7 @@ function loadWords(card, picture, settings) {
   if (n === 0) return 'Nobody on screen crosses here.';
   if (card.measure === 'transition') return n + ' ' + unit + ' in ' + picture.transition.name + '.';
   if (card.measure === 'total') return n + ' ' + unit + ' over the day.';
-  return n + ' ' + unit + ' at its busiest' + (card.peak !== null ? ', ' + periodName(settings, card.peak) + ' to ' + periodName(settings, card.peak + 1) : '') + '.';
+  return n + ' ' + unit + ' at its busiest' + (card.peak !== null ? ', ' + walkNamed(settings, picture.transitions, card.peak) : '') + '.';
 }
 
 function times(n) {
