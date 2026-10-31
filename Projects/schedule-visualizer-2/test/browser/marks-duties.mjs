@@ -271,7 +271,7 @@ test('the Duties tab starts empty; Add a duty puts a row in with the focus on it
   assert.match(await text('.sch-duties__nobody'), /^Nobody yet$/);
   await type(key('duty:' + id + ':label'), 'Bus duty');
   await choose(key('duty:' + id + ':when'), 'after');
-  assert.match(await status(), /Moved to after school\./);
+  assert.match(await status(), /Moved to After school\./);
   assert.equal(await activeKey(), 'duty:' + id + ':when', 'the focus stays in the When field');
   await type(key('duty:' + id + ':start'), '3:05');
   await type(key('duty:' + id + ':end'), '3:25');

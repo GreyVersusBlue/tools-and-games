@@ -7,7 +7,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addDuty, addMark } from '../../engine/actions.js';
+import { addDuty } from '../../engine/actions.js';
 import { renderOutput } from '../../ui/prints/index.js';
 import { teacherGridRows } from '../../engine/exports.js';
 import { school, ctx, PINNED } from '../engine/helpers.mjs';
@@ -48,4 +48,18 @@ test('the import says how many marks and duties were added, replaced and kept', 
   assert.equal(alsoText(base, words), '', 'a file with none says nothing');
   assert.equal(alsoText({ ...base, marksAdded: 2, marksKept: 1, marksReplaced: 3 }, words), ' Also: 2 marked periods added, 3 marked periods replaced and 1 marked period kept as it was.');
   assert.equal(alsoText({ ...base, dutiesAdded: 1, dutiesKept: 2, dutiesReplaced: 1 }, words), ' Also: 1 duty or meeting added, 1 duty or meeting replaced and 2 duties and meetings kept as they were.');
+});
+
+test('the publish form reads what the project noted about the last file first, and the device’s record second', async () => {
+  const FORMS = await import('../../ui/staff/form.js');
+  const { makeCalendar } = await import('../../engine/actions.js');
+  const at = '2026-09-02T12:00:00.000Z';
+  const plain = school();
+  const dated = makeCalendar(plain, { start: '2026-08-31', end: '2027-06-11', weekdays: [0, 1, 2, 3, 4, 5, 6].map((day) => ({ day: day < 5 ? 'rotation' : 'closed', bells: null })), breaks: [] }, shared);
+  const had = (project, hadCalendar) => ({ ...project, publish: { ...project.publish, lastPublishedAt: at, lastPublishedHadCalendar: hadCalendar } });
+  const removed = { ...had(dated, true), calendar: null };
+  assert.equal(FORMS.calendarChangedWords(removed, null), 'The calendar was removed after your last publish. Staff copies still have it.', 'the project says so with no record on this device');
+  assert.equal(FORMS.calendarChangedWords(removed, { at, calendar: false }), 'The calendar was removed after your last publish. Staff copies still have it.', 'and the project wins over a record that differs');
+  assert.equal(FORMS.calendarChangedWords(had(dated, false), { at, calendar: true }), 'Staff copies have no calendar yet.', 'a file made without one, whatever this device noted');
+  assert.equal(FORMS.calendarChangedWords({ ...had(dated, null), calendar: null }, { at, calendar: true }), 'The calendar was removed after your last publish. Staff copies still have it.', 'nothing in the project: the device record speaks');
 });

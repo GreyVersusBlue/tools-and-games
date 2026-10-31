@@ -200,7 +200,7 @@ export function mount(env) {
       const payload = value === 'before' || value === 'after' ? { id: duty.id, when: value } : { id: duty.id, when: 'period', period: Number(value.slice(1)) };
       if (!apply(env, setDuty, payload)) return;
       const next = dutiesOf(ctx.store.project).find((candidate) => candidate.id === duty.id);
-      if (next) ctx.announce('Moved to ' + (next.when === 'before' ? 'before school' : next.when === 'after' ? 'after school' : periodName(ctx.store.project.settings, next.period)) + '.');
+      if (next) ctx.announce('Moved to ' + (next.when === 'before' ? 'Before school' : next.when === 'after' ? 'After school' : periodName(ctx.store.project.settings, next.period)) + '.');
     });
     return h('td', { data: { label: 'When' } }, select, h('div', { class: 'sch-duties__times', role: 'group', 'aria-label': 'Times, if the ' + words.one + ' is not the time' }, clockField(project, duty, 'start').element, clockField(project, duty, 'end').element));
   }
