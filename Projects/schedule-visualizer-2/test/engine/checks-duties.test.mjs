@@ -212,7 +212,7 @@ test('no-planning: a duty that holds only on some days does not take the period'
 
 const LARKSPUR = 'tsample011'; // A Day: a group in every period but two, when he is free
 
-test('no-planning: a duty's words are lower-case mid-sentence, a typed label stays as typed', () => {
+test('no-planning: the words of a duty are lower-case mid-sentence, a typed label stays as typed', () => {
   const project = withLists(null, [duty({ when: 'period', period: 3, teacherIds: [LARKSPUR] }), duty({ kind: 'lunch', when: 'period', period: 6, teacherIds: [LARKSPUR] })]);
   const found = ofKind(checkSchedule(project, null), 'no-planning').filter((finding) => finding.where.teacherId === LARKSPUR && finding.where.dayTypeId === A);
   assert.equal(found.length, 1);
