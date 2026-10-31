@@ -445,11 +445,6 @@ test('a 731-day calendar: 24 months; an arrow answers in under 50 ms (Apply is t
   const middle = arrows[Math.floor(arrows.length / 2)];
   assert.ok(middle < 50 * SLOW, 'an arrow takes ' + middle.toFixed(1) + ' ms (the middle of 15; the slowest ' + arrows[arrows.length - 1].toFixed(1) + ')');
 });
-      wait();
-    })));
-  }
-  assert.ok(Math.min(...times) < 300 * SLOW, 'Apply settles in ' + times.map((each) => each.toFixed(0)).join(', ') + ' ms');
-});
 
 test('the print: a year is one sheet in Letter and A4 both ways up, a 731-day calendar two, a one-day calendar one', async () => {
   await fresh(YEAR);
