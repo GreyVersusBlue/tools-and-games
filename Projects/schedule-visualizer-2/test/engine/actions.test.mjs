@@ -1773,9 +1773,9 @@ test('raising the period count deletes nothing, even a mark kept past the old en
   const p = school();
   const n = p.settings.periods;
   const q = { ...p, marks: [{ id: 'mtest0past', kind: 'lunch', label: '', period: n + 1, dayTypeIds: [], scope: 'school', grades: [], groupIds: [] }], duties: [{ id: 'utest0past', kind: 'duty', label: '', when: 'period', period: n + 1, start: '', end: '', dayTypeIds: [], weekdays: [], from: '', to: '', roomId: null, place: '', teacherIds: [], subjectIds: [], everyone: true }] };
-  const info = actions.describePeriodChange(q, n + 3);
+  const info = actions.describePeriodChange(q, n + 1);
   assert.deepEqual([info.marks, info.duties, info.marksAndDutiesWords], [0, 0, []]);
-  const raised = run(actions.setPeriods, q, { periods: n + 3 });
+  const raised = run(actions.setPeriods, q, { periods: n + 1 });
   assert.equal(raised.marks.length, 1);
   assert.equal(raised.duties.length, 1);
   // lowering still takes them
