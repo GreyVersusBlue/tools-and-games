@@ -42,9 +42,16 @@
 //                        its slots kept.
 //   over-capacity        a group has more students than its room seats. In a
 //                        shared space the groups there together are counted.
-//   no-planning          a teacher has a group in every period of the day.
+//   no-planning          a teacher has no free period in a day: a group, or
+//                        an always duty or a school mark, takes every one
+//                        (isFree, teacher-day.js).
 //   consecutive          a teacher has a group in more periods in a row than
-//                        the school's limit.
+//                        the school's limit. Only teaching counts; a duty or
+//                        a meeting in between neither adds to the run nor
+//                        ends it, while a lunch (their own, or a school
+//                        mark) or a No class period ends it.
+//   duty-clash           a teacher has a duty or a meeting in a period in
+//                        which they teach, always or on some days.
 //   teacher-walk,        a walk the figures handed in call late, when the
 //   group-walk           figure is for the walk as it is now: the same two
 //                        rooms and the same passing time.
@@ -60,14 +67,22 @@
 //   room-no-subject      a numbered room has no subject.
 //   room-no-teacher      a room has a group in it and neither the room nor
 //                        the slot names a teacher. One note a room.
+//   duty-nobody          a duty or meeting that no teacher is on.
+//
+// A mark on a slot (lunch, advisory, activity, no class) stops the empty
+// period note for it. A day type that is the same as another but is named
+// directly by a mark or a duty is checked on its own, since its meeting slots
+// or its duties differ.
 //
 // Head counts fall back to the school default, as everywhere else.
 
-import { allRooms, findRoom, findById, resolveSlotRoom } from './schema.js';
+import { allRooms, findRoom, findById, resolveSlotRoom, marksOf, dutiesOf, WEEKDAY_NAMES } from './schema.js';
 import { ownDayTypes, isOwnCopy, findDayType, followersOf } from './day-types.js';
 import { bellsFor, periodName, findBellSchedule, offPeriods } from './bells.js';
 import { meetingSlots } from './runs.js';
-import { teacherDays, slotTeacherIds, entryPlaces } from './teacher-day.js';
+import { teacherDays, slotTeacherIds, entryPlaces, isFree } from './teacher-day.js';
+import { hasMarks, markFor, schoolMarkFor, dutiesOn, dutyTeachers, dutyIsSometimes } from './marks.js';
+import { dateWords } from './calendar.js';
 import { bellMoves, transitionPlan } from './crowd.js';
 import { makeFinding, sortFindings, splitAccepted, countWord, listWords, periodWord, roomName, formatDuration } from './findings.js';
 
@@ -75,8 +90,50 @@ import { makeFinding, sortFindings, splitAccepted, countWord, listWords, periodW
 // own day type, then the day types the same as it (followersOf, which reads
 // `sameAs`), in the school's order.
 function onDays(project, dayType) {
-  const names = [dayType.name].concat(followersOf(project, dayType.id).map((follower) => follower.name));
+  const apart = markedFollowers(project);
+  const names = [dayType.name].concat(followersOf(project, dayType.id).filter((follower) => !apart.has(follower.id)).map((follower) => follower.name));
   return 'on ' + listWords(names);
+}
+
+// The day types that are the same as another but are named directly by a mark
+// or a duty: their meeting slots or their duties can differ, so they are
+// checked on their own (runsOf, runs.js, makes the same exception for
+// movement).
+function markedFollowers(project) {
+  const named = new Set();
+  for (const entry of marksOf(project).concat(dutiesOf(project))) {
+    if (entry && Array.isArray(entry.dayTypeIds)) for (const id of entry.dayTypeIds) if (typeof id === 'string') named.add(id);
+  }
+  return new Set(project.dayTypes.filter((dayType) => named.has(dayType.id) && !isOwnCopy(project, dayType.id)).map((dayType) => dayType.id));
+}
+
+const DUTY_AS_SAID = { duty: 'a duty', meeting: 'a meeting', lunch: 'their own lunch' };
+const DUTY_AS_NAMED = { duty: 'Duty', meeting: 'Meeting', lunch: 'Their own lunch' };
+export const MARK_AS_NAMED = { lunch: 'Lunch', advisory: 'Advisory', activity: 'Activity', noclass: 'No class' };
+const MARK_AS_SAID = { lunch: 'lunch', advisory: 'advisory', activity: 'an activity', noclass: 'no class' };
+
+// "Lunch duty" as typed, else the kind's words: "a duty", "a meeting".
+function dutySaid(duty) {
+  return typeof duty.label === 'string' && duty.label.trim() !== '' ? duty.label : DUTY_AS_SAID[duty.kind] || 'a duty';
+}
+
+export function dutyNamed(duty) {
+  return typeof duty.label === 'string' && duty.label.trim() !== '' ? duty.label : DUTY_AS_NAMED[duty.kind] || 'Duty';
+}
+
+// "on Mondays and Wednesdays" or "from 1 December to 18 December", for a duty
+// that holds only on some days; '' for one that holds on every day.
+export function sometimesWords(duty) {
+  if (!dutyIsSometimes(duty)) return '';
+  const days = Array.isArray(duty.weekdays) ? duty.weekdays.filter((day) => Number.isInteger(day) && day >= 0 && day < 7).sort((a, b) => a - b) : [];
+  const parts = [];
+  if (days.length > 0) parts.push('on ' + listWords(days.map((day) => WEEKDAY_NAMES[day] + 's')));
+  const from = dateWords(duty.from, { year: false });
+  const to = dateWords(duty.to, { year: false });
+  if (from !== '' && to !== '') parts.push('from ' + from + ' to ' + to);
+  else if (from !== '') parts.push('from ' + from);
+  else if (to !== '') parts.push('until ' + to);
+  return parts.join(', ');
 }
 
 // The runs a walk finding names, after onDays: nothing for the regular bells
@@ -94,6 +151,30 @@ function runOrder(project, bellsId) {
   if (bellsId === null) return -1;
   const schedules = Array.isArray(project.bellSchedules) ? project.bellSchedules : [];
   return schedules.findIndex((schedule) => schedule && schedule.id === bellsId);
+}
+
+// What takes a period no group does, in the middle of a sentence: the always
+// duty's words ("a duty", or the label as typed), else the mark's.
+function takenWords(entry) {
+  const duty = entry.duties.find((candidate) => !dutyIsSometimes(candidate));
+  return duty ? dutySaid(duty) : MARK_AS_SAID[entry.marked] || 'taken';
+}
+
+// The last teaching period of the run that starts at `start` in a teacher's
+// day. A duty or a meeting between two classes neither adds to the run nor
+// ends it; a free period, a lunch (their own, or a school mark) or a No class
+// period ends it. With no duties it is the plain run of teaching periods.
+// `schoolMarks`, when given, is the kind of the school's mark in each period
+// (or null): a school Lunch or No class ends the run whatever else the teacher
+// has there, which an always duty in `marked` would otherwise hide.
+export function teachingRunEnd(day, start, schoolMarks) {
+  let end = start;
+  for (let next = start + 1; next < day.length; next += 1) {
+    if (day[next].kind === 'teaching') end = next;
+    else if (schoolMarks && (schoolMarks[next] === 'lunch' || schoolMarks[next] === 'noclass')) break;
+    else if (day[next].marked !== 'duty' && day[next].marked !== 'meeting') break;
+  }
+  return end;
 }
 
 function isNumbered(room) {
@@ -133,7 +214,10 @@ export function checkSchedule(project, walkResults) {
 
   // room id -> the first slot found there with no teacher, for room-no-teacher
   const untaught = new Map();
-  const ownDays = ownDayTypes(project);
+  // each own day type, and each day type the same as another that a mark names
+  const apart = markedFollowers(project);
+  const ownDays = apart.size === 0 ? ownDayTypes(project) : project.dayTypes.filter((dayType) => isOwnCopy(project, dayType.id) || apart.has(dayType.id));
+  const marked = hasMarks(project);
 
   ownDays.forEach((dayType, dayIndex) => {
     const d = dayType.id;
@@ -145,6 +229,8 @@ export function checkSchedule(project, walkResults) {
     for (const group of project.groups) {
       const day = meetingSlots(project, group.id, d, null);
       const empty = [];
+      // slots with no room at all, a mark on them or not
+      let bare = 0;
       for (let p = 0; p < periods; p += 1) {
         const slot = day[p];
         const resolved = resolveSlotRoom(project, slot);
@@ -165,10 +251,12 @@ export function checkSchedule(project, walkResults) {
             group.name + ' is scheduled into ' + named + ' in ' + periodName(settings, p) + ' ' + on + ', and that room is not in the building. Pick a room that is in the building, or draw this one.',
             { dayTypeId: d, period: p, groupIds: [group.id] });
         } else {
-          empty.push(p);
+          bare += 1;
+          // any mark on a slot (lunch, advisory, activity, no class) says why it is bare
+          if (!(marked && markFor(project, group.id, d, p))) empty.push(p);
         }
       }
-      if (empty.length === periods) {
+      if (bare === periods && empty.length > 0) {
         add('empty-period', [d, group.id],
           group.name + ' has no room in any ' + word + ' ' + on + '.',
           { dayTypeId: d, groupIds: [group.id] });
@@ -222,6 +310,13 @@ export function checkSchedule(project, walkResults) {
     }
 
     const days = teacherDays(project, d);
+    const schoolMarks = marked ? Array.from({ length: periods }, (unused, p) => { const mark = schoolMarkFor(project, d, p); return mark ? mark.kind : null; }) : null;
+    // the day types this check speaks for: this one and those the same as it
+    // (not those a mark names, checked on their own)
+    const members = [dayType].concat(followersOf(project, dayType.id).filter((follower) => !apart.has(follower.id)));
+    const dutyDays = members.map((member) => new Set(dutiesOn(project, member.id)));
+    // each period duty with the members of the group it holds on
+    const clashes = dutiesOf(project).filter((duty) => duty && duty.when === 'period').map((duty) => [duty, dutyDays.map((set, index) => (set.has(duty) ? index : -1)).filter((index) => index >= 0)]);
     const basedIn = new Map();
     for (const teacher of project.teachers) {
       const day = days.get(teacher.id);
@@ -242,10 +337,33 @@ export function checkSchedule(project, walkResults) {
           { dayTypeId: d, period: entry.period, groupIds: places.flatMap((place) => place.groupIds), roomId: roomIds.length > 0 ? roomIds[0] : null, teacherId: teacher.id });
       }
 
-      if (day.every((entry) => entry.kind === 'teaching')) {
+      if (day.some((entry) => entry.kind === 'teaching') && !day.some(isFree)) {
+        // an always duty or a school mark takes the periods that no group does
+        const taken = day.filter((entry) => entry.kind !== 'teaching');
         add('no-planning', [d, teacher.id],
-          teacher.name + ' has no planning ' + word + ' ' + on + ': there is a group in every ' + word + '.',
+          taken.length === 0
+            ? teacher.name + ' has no planning ' + word + ' ' + on + ': there is a group in every ' + word + '.'
+            : teacher.name + ' has no planning ' + word + ' ' + on + ': ' + listWords(taken.map((entry) => periodName(settings, entry.period) + ' is ' + takenWords(entry))) + ', and there is a group in every other ' + word + '.',
           { dayTypeId: d, teacherId: teacher.id });
+      }
+
+      for (const [duty, applies] of clashes) {
+        if (applies.length === 0) continue;
+        const entry = day[duty.period];
+        if (!entry || entry.kind !== 'teaching' || !dutyTeachers(project, duty).includes(teacher.id)) continue;
+        const clashDays = applies.map((index) => members[index]);
+        const roomIds = entry.groups.filter((taught) => taught.roomId !== null).map((taught) => taught.roomId);
+        const teaches = entry.groups.map((taught) => {
+          const taughtGroup = findById(project.groups, taught.groupId);
+          if (taught.roomId !== null) return taughtGroup.name + ' in ' + roomName(findRoom(project, taught.roomId), false);
+          return taught.roomText !== '' ? taughtGroup.name + ' in "' + taught.roomText + '" (not in the building)' : taughtGroup.name;
+        });
+        const sometimes = sometimesWords(duty);
+        add('duty-clash', [clashDays[0].id, duty.period, teacher.id, duty.id],
+          teacher.name + ' has ' + dutySaid(duty) + ' in ' + periodName(settings, duty.period) + ' on ' + listWords(clashDays.map((dayType) => dayType.name)) + (sometimes === '' ? '' : ' (' + sometimes + ')')
+            + ', but teaches ' + listWords(teaches) + ' then. One of them needs to move.',
+          { dayTypeId: clashDays[0].id, period: duty.period, groupIds: entry.groups.map((taught) => taught.groupId), roomId: roomIds.length > 0 ? roomIds[0] : null, teacherId: teacher.id },
+          [teacher.id].concat(entry.groups.map((taught) => taught.groupId)));
       }
 
       let start = 0;
@@ -254,9 +372,8 @@ export function checkSchedule(project, walkResults) {
           start += 1;
           continue;
         }
-        let end = start;
-        while (end + 1 < periods && day[end + 1].kind === 'teaching') end += 1;
-        const length = end - start + 1;
+        const end = teachingRunEnd(day, start, schoolMarks);
+        const length = day.slice(start, end + 1).filter((entry) => entry.kind === 'teaching').length;
         if (length > limit) {
           const run = add('consecutive', [d, start, teacher.id],
             teacher.name + ' teaches ' + length + ' ' + periodWord(settings, true) + ' in a row ' + on + ', ' + periodName(settings, start) + ' to ' + periodName(settings, end) + '. The limit set for this school is ' + limit + '.',
@@ -294,6 +411,18 @@ export function checkSchedule(project, walkResults) {
         { dayTypeId: d, roomId: room.id });
     }
   });
+
+  const periodsOfDay = project.settings.periods;
+  for (const duty of dutiesOf(project)) {
+    if (!duty || typeof duty !== 'object' || (duty.when !== 'before' && duty.when !== 'after' && !(duty.when === 'period' && Number.isInteger(duty.period) && duty.period >= 0 && duty.period < periodsOfDay))) continue;
+    if (dutyTeachers(project, duty).length > 0) continue;
+    const when = duty.when === 'before' ? 'before school' : duty.when === 'after' ? 'after school' : 'in ' + periodName(settings, duty.period);
+    const ofDays = Array.isArray(duty.dayTypeIds) ? duty.dayTypeIds.map((id) => findDayType(project, id)).filter(Boolean).map((dayType) => dayType.name) : [];
+    const sometimes = sometimesWords(duty);
+    add('duty-nobody', [duty.id],
+      dutyNamed(duty) + ' ' + when + (ofDays.length > 0 ? ' on ' + listWords(ofDays) : '') + (sometimes === '' ? '' : ' (' + sometimes + ')') + ' has nobody on it.',
+      {});
+  }
 
   for (const teacher of project.teachers) {
     const based = (Array.isArray(teacher.roomIds) ? teacher.roomIds : []).map((roomId) => findRoom(project, roomId)).filter(Boolean);

@@ -15,7 +15,7 @@ import { openStorage, STORAGE_PREFIX, NOT_KEPT_SENTENCE } from '../../staff/stor
 import { dayText, momentText, isStale, isOlderThanSeen } from '../../staff/dates.js';
 import { readPublished, NEWER_SENTENCE, DAMAGED_SENTENCE, NOT_OURS_SENTENCE, DATA_ELEMENT_ID, PREVIEW_READY, PREVIEW_DATA, PREVIEW_EVERY_MS, watchPreview, inlineData, siblingData } from '../../staff/source.js';
 import { openSchool } from '../../staff/model.js';
-import { DAY_TYPE_KEY, BELLS_KEY, DAY_ON_KEY, todayOf, todayDate, clockNow, readDayOn, keepDayOn, forgetDayOn, chosenDayType, chosenBells, dayOnDate, meetingPeriods } from '../../staff/clock.js';
+import { DAY_TYPE_KEY, BELLS_KEY, DAY_ON_KEY, todayOf, todayDate, clockNow, readDayOn, keepDayOn, forgetDayOn, dropFollowOnNewer, chosenDayType, chosenBells, dayOnDate, meetingPeriods } from '../../staff/clock.js';
 import { ME_KEY, NOTES_KEY } from '../../staff/notes.js';
 import { searchIndex, searchSchool, foldText, FIND_LIMIT } from '../../staff/find.js';
 import { publishedModel } from '../../engine/publish-data.js';
@@ -596,7 +596,7 @@ test('today by the calendar: a rotation day, a Wednesday\'s bells, no school, ou
 });
 
 // An answer as the page keeps it: the date and the moment of the click.
-const answered = (date, dayTypeId, at, bellsId, seenFile) => ({ date, dayTypeId, bellsId: bellsId || null, at: at || date + 'T10:00:00.000Z', ...(seenFile ? { seenFile } : {}) });
+const answered = (date, dayTypeId, at, bellsId) => ({ date, dayTypeId, bellsId: bellsId || null, at: at || date + 'T10:00:00.000Z' });
 
 test('"Just today" holds for its date only; "follow" moves the rotation on from it', () => {
   const school = todaySchool();
@@ -647,54 +647,73 @@ test('the one-answer shape dayOn had reads as whichever it was', () => {
   const school = todaySchool();
   const old = (follow) => JSON.stringify({ date: '2026-09-01', dayTypeId: 'dtoday000c', bellsId: null, follow });
   const just = readDayOn(todayCtx(school, '2026-09-01T10:00:00Z', { dayOn: old(false) }));
-  assert.deepEqual(just, { just: { date: '2026-09-01', dayTypeId: 'dtoday000c', bellsId: null, at: null, seenFile: null }, follow: null });
+  assert.deepEqual(just, { just: { date: '2026-09-01', dayTypeId: 'dtoday000c', bellsId: null, at: null }, follow: null });
   const follow = readDayOn(todayCtx(school, '2026-09-03T10:00:00Z', { dayOn: old(true) }));
-  // an answer from before the file was recorded takes the file open now as its own
-  assert.deepEqual(follow, { just: null, follow: { date: '2026-09-01', dayTypeId: 'dtoday000c', bellsId: null, at: null, seenFile: school.data.publishedAt } });
+  assert.deepEqual(follow, { just: null, follow: { date: '2026-09-01', dayTypeId: 'dtoday000c', bellsId: null, at: null } });
   assert.equal(todayOf(todayCtx(school, '2026-09-03T10:00:00Z', { dayOn: old(true) })).by, 'follow');
 });
 
-test('a follow answer is cleared by a file published after the one open when it was given, and by nothing else', () => {
-  const FIRST = '2026-09-01T14:00:00.000Z';
-  const answer = JSON.stringify({ just: null, follow: answered('2026-09-01', 'dtoday000c', '2026-09-01T15:00:00.000Z', null, FIRST) });
-  // the same file, or an older one, again: kept
-  const same = todayCtx(todaySchool(FIRST), '2026-09-03T10:00:00Z', { dayOn: answer });
-  assert.equal(todayOf(same).by, 'follow');
-  assert.equal(same.store.get('dayOn'), answer);
-  assert.equal(todayOf(todayCtx(todaySchool('2026-09-01T09:00:00Z'), '2026-09-03T10:00:00Z', { dayOn: answer })).by, 'follow');
-  // the office republished at 18:00 the day the reader answered at 15:00: its calendar is the newer word
-  const sameDay = todayCtx(todaySchool('2026-09-01T18:00:00Z'), '2026-09-03T10:00:00Z', { dayOn: answer });
-  assert.deepEqual(said(todayOf(sameDay)), ['2026-09-03', 'known', true, 'A Day', null, 'calendar']);
-  assert.equal(sameDay.store.get('dayOn'), null, 'removed from the device');
-  assert.equal(todayOf(todayCtx(todaySchool('2026-09-02T07:00:00Z'), '2026-09-03T10:00:00Z', { dayOn: answer })).by, 'calendar');
-  // an answer from before the file was recorded takes the file open when it is next read, and a later file clears it
-  const dated = JSON.stringify({ date: '2026-09-01', dayTypeId: 'dtoday000c', bellsId: null, follow: true });
-  const adopted = todayCtx(todaySchool('2026-09-01T20:00:00Z'), '2026-09-03T10:00:00Z', { dayOn: dated });
-  assert.equal(todayOf(adopted).by, 'follow');
-  assert.equal(JSON.parse(adopted.store.get('dayOn')).follow.seenFile, '2026-09-01T20:00:00.000Z');
-  assert.equal(todayOf(todayCtx(todaySchool('2026-09-02T07:00:00Z'), '2026-09-03T10:00:00Z', { dayOn: adopted.store.get('dayOn') })).by, 'calendar');
-  // the just answer stays when the follow answer goes: it only ever holds its own date
-  const both = JSON.stringify({ just: answered('2026-09-03', 'dtoday000c', '2026-09-03T09:00:00.000Z'), follow: answered('2026-09-01', 'dtoday000c', '2026-09-01T15:00:00.000Z', null, FIRST) });
-  const kept = todayCtx(todaySchool('2026-09-02T07:00:00Z'), '2026-09-03T10:00:00Z', { dayOn: both });
-  assert.equal(todayOf(kept).by, 'reader');
-  assert.deepEqual(Object.keys(JSON.parse(kept.store.get('dayOn'))).sort(), ['follow', 'just']);
-  assert.equal(JSON.parse(kept.store.get('dayOn')).follow, null);
+test('reading a follow answer compares no files: any number of reads, whatever file is open, leaves it where it is', () => {
+  const answer = JSON.stringify({ just: null, follow: answered('2026-09-01', 'dtoday000c', '2026-09-01T15:00:00.000Z') });
+  // the probe's first case: an answer from before `seenFile`, the device's `seen` older than the open file
+  const ctx = todayCtx(todaySchool('2026-09-02T07:00:00Z'), '2026-09-03T10:00:00Z', { dayOn: answer, seen: '2026-09-01T00:00:00.000Z' });
+  ctx.store.set('seen', ctx.school.data.publishedAt); // what the shell does
+  assert.notEqual(readDayOn(ctx).follow, null, 'first read');
+  assert.notEqual(readDayOn(ctx).follow, null, 'second read');
+  assert.equal(todayOf(ctx).by, 'follow');
+  assert.equal(ctx.store.get('dayOn'), answer, 'nothing written by reading');
+  // a field `seenFile` kept by an earlier copy is read past, and a new answer does not write one
+  const old = JSON.stringify({ just: null, follow: { ...answered('2026-09-01', 'dtoday000c'), seenFile: '2026-09-01T14:00:00.000Z' } });
+  const read = readDayOn(todayCtx(todaySchool(), '2026-09-03T10:00:00Z', { dayOn: old })).follow;
+  assert.equal('seenFile' in read, false);
+  const given = todayCtx(todaySchool(), '2026-09-01T10:00:00Z');
+  keepDayOn(given, 'follow', answered('2026-09-01', 'dtoday000c'));
+  assert.equal('seenFile' in JSON.parse(given.store.get('dayOn')).follow, false);
 });
 
-test('skew: a follow answer given just after opening a file whose time is ahead of the phone\'s clock is not cleared by that file', () => {
+test('dropFollowOnNewer: a file newer than the device\'s seen ends a follow answer, a file no newer clears nothing, and "just" stays', () => {
+  const both = JSON.stringify({ just: answered('2026-09-03', 'dtoday000c', '2026-09-03T09:00:00.000Z'), follow: answered('2026-09-01', 'dtoday000c', '2026-09-01T15:00:00.000Z') });
+  const SEEN = '2026-09-01T14:00:00.000Z';
+  const attempt = (publishedAt, seen) => {
+    const ctx = todayCtx(todaySchool(publishedAt), '2026-09-03T10:00:00Z', { dayOn: both });
+    dropFollowOnNewer(ctx, publishedAt, seen);
+    return ctx;
+  };
+  for (const [name, publishedAt, seen] of [['the same file', SEEN, SEEN], ['an older copy', '2026-09-01T09:00:00.000Z', SEEN], ['a device that had opened nothing', SEEN, null], ['a damaged seen', SEEN, 'yesterday']]) {
+    assert.equal(attempt(publishedAt, seen).store.get('dayOn'), both, name);
+  }
+  const newer = attempt('2026-09-01T14:00:01.000Z', SEEN);
+  const kept = JSON.parse(newer.store.get('dayOn'));
+  assert.equal(kept.follow, null, 'the follow answer is gone');
+  assert.equal(kept.just.dayTypeId, 'dtoday000c', 'the just answer is not');
+  assert.equal(todayOf(newer).by, 'reader');
+  // with nothing but a follow answer, the key goes
+  const alone = todayCtx(todaySchool('2026-09-02T07:00:00Z'), '2026-09-03T10:00:00Z', { dayOn: JSON.stringify({ just: null, follow: answered('2026-09-01', 'dtoday000c') }) });
+  dropFollowOnNewer(alone, '2026-09-02T07:00:00.000Z', SEEN);
+  assert.equal(alone.store.get('dayOn'), null);
+  assert.equal(todayOf(alone).by, 'calendar');
+  // storage the browser refuses: the answer lives in memory, and goes from memory
+  const refused = openStorage('s', () => ({ getItem: () => null, setItem: () => { throw new Error('full'); }, removeItem: () => { throw new Error('full'); } }), () => {});
+  const mem = { school: todaySchool('2026-09-02T07:00:00Z'), store: refused, now: () => new Date('2026-09-03T10:00:00Z') };
+  keepDayOn(mem, 'follow', answered('2026-09-01', 'dtoday000c'));
+  assert.notEqual(readDayOn(mem).follow, null);
+  dropFollowOnNewer(mem, '2026-09-02T07:00:00.000Z', SEEN);
+  assert.equal(readDayOn(mem).follow, null);
+});
+
+test('a follow answer given just after opening a file whose time is ahead of the phone\'s clock stays until a newer file moves seen', () => {
   // the office's computer was 30 seconds ahead of the phone: the file says it
   // was published at 13:00:30, and the phone answers at 13:00:00
   const school = todaySchool('2026-09-02T13:00:30Z');
-  const ctx = todayCtx(school, '2026-09-02T13:00:00Z');
+  const ctx = todayCtx(school, '2026-09-02T13:00:00Z', { seen: school.data.publishedAt });
   keepDayOn(ctx, 'follow', answered('2026-09-02', 'dsample00a', '2026-09-02T13:00:00.000Z'));
-  assert.equal(JSON.parse(ctx.store.get('dayOn')).follow.seenFile, '2026-09-02T13:00:30.000Z', 'the file that was open');
   assert.equal(todayOf(ctx).by, 'reader', 'today');
   const next = todayCtx(school, '2026-09-03T13:00:00Z', { dayOn: ctx.store.get('dayOn') });
   assert.deepEqual(said(todayOf(next)), ['2026-09-03', 'known', true, 'B Day', null, 'follow'], 'A on the 2nd, so B on the 3rd');
-  assert.notEqual(next.store.get('dayOn'), null);
-  // the same file opened on another day, or a file published a second later, is what clears it
-  const later = todayCtx(todaySchool('2026-09-02T13:00:31Z'), '2026-09-03T13:00:00Z', { dayOn: ctx.store.get('dayOn') });
-  assert.equal(todayOf(later).by, 'calendar');
+  dropFollowOnNewer(next, school.data.publishedAt, school.data.publishedAt);
+  assert.notEqual(next.store.get('dayOn'), null, 'the same file again');
+  dropFollowOnNewer(next, '2026-09-02T13:00:31.000Z', school.data.publishedAt);
+  assert.equal(todayOf(next).by, 'calendar', 'a file a second later');
 });
 
 test('followJust: "As the calendar says" takes back today\'s just answer and the follow answer stays, until it is forgotten', () => {
@@ -754,6 +773,19 @@ test('the day another date is: the calendar\'s when it knows the date, else the 
 });
 
 test('an answer is dated by the moment of the click, in the reader\'s zone, and is not lost when storage is unavailable', () => {
+  // the date is read in the zone of the process, so the test sets its own: 00:30 UTC on the 2nd is 12:30 on the 2nd at UTC+12,
+  // and the 1st at UTC-8, which the machine's own zone must not decide
+  const zone = process.env.TZ;
+  process.env.TZ = 'Pacific/Auckland';
+  try {
+    answeredByClick();
+  } finally {
+    if (zone === undefined) delete process.env.TZ;
+    else process.env.TZ = zone;
+  }
+});
+
+function answeredByClick() {
   const school = todaySchool();
   // the page was drawn on the 1st; the click is on the 2nd
   const ctx = todayCtx(school, '2026-09-02T00:30:00Z');
@@ -764,7 +796,7 @@ test('an answer is dated by the moment of the click, in the reader\'s zone, and 
   keepDayOn(refused, 'follow', answered('2026-09-01', 'dtoday000c'));
   assert.equal(todayOf(refused).dayType.name, 'C Day');
   assert.equal(refused.store.kept, false);
-});
+}
 
 test('whatever was kept under dayOn that is not an answer reads as none and is left as it was', () => {
   const school = todaySchool();
@@ -777,5 +809,5 @@ test('whatever was kept under dayOn that is not an answer reads as none and is l
   }
   // a bell schedule this copy does not have reads as the regular bells
   const ctx = todayCtx(school, '2026-09-01T10:00:00Z', { dayOn: JSON.stringify({ date: '2026-09-01', dayTypeId: 'dsample00a', bellsId: 'bnowhere00', follow: 'yes' }) });
-  assert.deepEqual(readDayOn(ctx), { just: { date: '2026-09-01', dayTypeId: 'dsample00a', bellsId: null, at: null, seenFile: null }, follow: null });
+  assert.deepEqual(readDayOn(ctx), { just: { date: '2026-09-01', dayTypeId: 'dsample00a', bellsId: null, at: null }, follow: null });
 });

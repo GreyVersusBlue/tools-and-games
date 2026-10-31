@@ -86,6 +86,14 @@ export const DAY_CLOSED = 'closed';
 // A dated change's bells: null is as the weekday says; this is the day
 // type's own regular bells.
 export const BELLS_REGULAR = 'regular';
+// Marked periods and duties (ARCHITECTURE 17.5, 17.6). Absent lists are none.
+export const MARK_KINDS = ['lunch', 'advisory', 'activity', 'noclass'];
+export const MARK_SCOPES = ['school', 'grades', 'groups'];
+export const MARK_LABEL_MOST = 40;
+export const DUTY_KINDS = ['duty', 'meeting', 'lunch'];
+export const DUTY_WHEN = ['before', 'period', 'after'];
+export const DUTY_LABEL_MOST = 60;
+export const DUTY_PLACE_MOST = 60;
 // Index 0 is Monday.
 export const WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -99,6 +107,7 @@ export const CHECK_KINDS = [
   'consecutive',
   'teacher-walk',
   'group-walk',
+  'duty-clash',
   'room-missing',
   'empty-period',
   'teacher-multi-room',
@@ -106,6 +115,7 @@ export const CHECK_KINDS = [
   'room-unused',
   'room-no-subject',
   'room-no-teacher',
+  'duty-nobody',
 ];
 
 export const CELL_EMPTY = '.';
@@ -350,6 +360,25 @@ export function defaultWeekdays() {
 // Every rule asks through here, since the staff browser never runs repair.
 export function bellSchedulesOf(project) {
   return project && Array.isArray(project.bellSchedules) ? project.bellSchedules : [];
+}
+
+// The project's marks and duties: absent, or anything but a list, is none.
+export function marksOf(project) {
+  return project && Array.isArray(project.marks) ? project.marks : [];
+}
+
+export function dutiesOf(project) {
+  return project && Array.isArray(project.duties) ? project.duties : [];
+}
+
+// A mark, as the actions make one: every day type, the whole school.
+export function newMark(id, kind, period) {
+  return { id, kind, label: '', period, dayTypeIds: [], scope: 'school', grades: [], groupIds: [] };
+}
+
+// A duty, as the actions make one: before school, every day, nobody on it.
+export function newDuty(id, kind) {
+  return { id, kind, label: '', when: 'before', period: 0, start: '', end: '', dayTypeIds: [], weekdays: [], from: '', to: '', roomId: null, place: '', teacherIds: [], subjectIds: [], everyone: false };
 }
 
 // The project's calendar, or null: absent, or anything but an object, is none.

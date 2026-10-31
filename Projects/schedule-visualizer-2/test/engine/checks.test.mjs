@@ -81,6 +81,11 @@ function everything() {
   for (const g of project.groups) {
     g.days[B] = g.days[B].map((s) => (s.room === 'rsample303' || s.room === 'rsamplecaf' ? emptySlot() : s)); // teacher-room-unused, room-unused
   }
+  const dutyBase = { kind: 'duty', label: '', when: 'before', period: 0, start: '', end: '', dayTypeIds: [], weekdays: [], from: '', to: '', roomId: null, place: '', teacherIds: [], subjectIds: [], everyone: false };
+  project.duties = [
+    { ...dutyBase, id: 'utest00001', label: 'Hall', when: 'period', period: 0, teacherIds: [BRIGHTWATER], dayTypeIds: [A] }, // duty-clash: he teaches 8A in Period 1 on A Day
+    { ...dutyBase, id: 'utest00002', label: 'Bus duty', when: 'after' }, // duty-nobody
+  ];
   const walks = { groups: [LONG_WALK], teachers: [COACH_WALK] };
   return { project, walks };
 }
@@ -513,8 +518,8 @@ test('one project can hold every kind of finding, and each kind is the severity 
   assert.deepEqual(CHECK_KINDS.filter((kind) => !kinds.has(kind)), []);
   const expected = {
     'room-double': 'problem', 'teacher-double': 'problem',
-    'over-capacity': 'warning', 'no-planning': 'warning', 'consecutive': 'warning', 'teacher-walk': 'warning', 'group-walk': 'warning', 'room-missing': 'warning',
-    'empty-period': 'note', 'teacher-multi-room': 'note', 'teacher-room-unused': 'note', 'room-unused': 'note', 'room-no-subject': 'note', 'room-no-teacher': 'note',
+    'over-capacity': 'warning', 'no-planning': 'warning', 'consecutive': 'warning', 'teacher-walk': 'warning', 'group-walk': 'warning', 'duty-clash': 'warning', 'room-missing': 'warning',
+    'empty-period': 'note', 'teacher-multi-room': 'note', 'teacher-room-unused': 'note', 'room-unused': 'note', 'room-no-subject': 'note', 'room-no-teacher': 'note', 'duty-nobody': 'note',
   };
   assert.deepEqual(Object.keys(expected), CHECK_KINDS, 'the kinds, in the order of the table');
   assert.deepEqual(KIND_SEVERITY, expected);

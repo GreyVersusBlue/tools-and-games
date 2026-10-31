@@ -290,3 +290,71 @@ test('a published model may carry the new fields and is held to the same rules',
   project.calendar.rotation = [];
   assert.ok(validate(project).some((finding) => finding.path === 'calendar.rotation'));
 });
+
+// ---------------------------------------------------------------- marks and duties (SV2-83)
+
+const goodMark = () => ({ id: 'mtest00001', kind: 'lunch', label: '', period: 3, dayTypeIds: [], scope: 'school', grades: [], groupIds: [] });
+const goodDuty = () => ({ id: 'utest00001', kind: 'duty', label: 'Bus duty', when: 'after', period: 0, start: '14:45', end: '15:05', dayTypeIds: [], weekdays: [0, 2], from: '', to: '', roomId: null, place: 'Bus loop', teacherIds: [], subjectIds: [], everyone: true });
+const paths = (project) => validate(project).map((finding) => finding.path);
+
+test('a project with no marks, no duties and no lastPublishedHadCalendar is valid: absent is the default', () => {
+  const project = school();
+  assert.equal('marks' in project, false);
+  assert.deepEqual(validate(project), []);
+});
+
+test('well-formed marks and duties, and a mark past the period count, have no findings', () => {
+  const project = school();
+  project.marks = [goodMark(), { ...goodMark(), id: 'mtest00002', period: 40, scope: 'groups', groupIds: [project.groups[0].id] }, { ...goodMark(), id: 'mtest00003', scope: 'grades', grades: ['6th'], dayTypeIds: [project.dayTypes[0].id] }];
+  project.duties = [goodDuty(), { ...goodDuty(), id: 'utest00002', when: 'period', period: 2, kind: 'meeting', roomId: room(project, '101').id, teacherIds: [project.teachers[0].id], subjectIds: [project.subjects[0].id], everyone: false, from: '2026-12-01', to: '2026-12-18' }];
+  assert.deepEqual(validate(project), []);
+});
+
+for (const [name, mutate, where] of [
+  ['marks that are not a list', (p) => { p.marks = {}; }, /^marks$/],
+  ['a mark that is not an object', (p) => { p.marks = [5]; }, /^marks\[0\]$/],
+  ['a mark with an id of the wrong kind', (p) => { p.marks = [{ ...goodMark(), id: 'dtest00001' }]; }, /^marks\[0\]\.id$/],
+  ['two marks with one id', (p) => { p.marks = [goodMark(), goodMark()]; }, /^marks\[1\]\.id$/],
+  ['a mark of an unknown kind', (p) => { p.marks = [{ ...goodMark(), kind: 'recess' }]; }, /^marks\[0\]\.kind$/],
+  ['a mark label over 40 characters', (p) => { p.marks = [{ ...goodMark(), label: 'x'.repeat(41) }]; }, /^marks\[0\]\.label$/],
+  ['a mark with a negative period', (p) => { p.marks = [{ ...goodMark(), period: -1 }]; }, /^marks\[0\]\.period$/],
+  ['a mark with a fractional period', (p) => { p.marks = [{ ...goodMark(), period: 1.5 }]; }, /^marks\[0\]\.period$/],
+  ['a mark naming a day type that is not there', (p) => { p.marks = [{ ...goodMark(), dayTypeIds: ['dnowhere00'] }]; }, /^marks\[0\]\.dayTypeIds\[0\]$/],
+  ['a mark naming a day type twice', (p) => { p.marks = [{ ...goodMark(), dayTypeIds: [p.dayTypes[0].id, p.dayTypes[0].id] }]; }, /^marks\[0\]\.dayTypeIds\[1\]$/],
+  ['a mark of an unknown scope', (p) => { p.marks = [{ ...goodMark(), scope: 'building' }]; }, /^marks\[0\]\.scope$/],
+  ['a mark for groups with none', (p) => { p.marks = [{ ...goodMark(), scope: 'groups' }]; }, /^marks\[0\]\.groupIds$/],
+  ['a mark naming a group that is not there', (p) => { p.marks = [{ ...goodMark(), scope: 'groups', groupIds: ['gnowhere00'] }]; }, /^marks\[0\]\.groupIds\[0\]$/],
+  ['a mark for grades with none', (p) => { p.marks = [{ ...goodMark(), scope: 'grades' }]; }, /^marks\[0\]\.grades$/],
+  ['grades that are not text', (p) => { p.marks = [{ ...goodMark(), scope: 'grades', grades: [6] }]; }, /^marks\[0\]\.grades$/],
+  ['duties that are not a list', (p) => { p.duties = 'no'; }, /^duties$/],
+  ['a duty with an id of the wrong kind', (p) => { p.duties = [{ ...goodDuty(), id: 'mtest00001' }]; }, /^duties\[0\]\.id$/],
+  ['a duty of an unknown kind', (p) => { p.duties = [{ ...goodDuty(), kind: 'nap' }]; }, /^duties\[0\]\.kind$/],
+  ['a duty label over 60 characters', (p) => { p.duties = [{ ...goodDuty(), label: 'x'.repeat(61) }]; }, /^duties\[0\]\.label$/],
+  ['a duty at an unknown time of day', (p) => { p.duties = [{ ...goodDuty(), when: 'noon' }]; }, /^duties\[0\]\.when$/],
+  ['a duty start that is not a time', (p) => { p.duties = [{ ...goodDuty(), start: '25:00' }]; }, /^duties\[0\]\.start$/],
+  ['weekdays out of order', (p) => { p.duties = [{ ...goodDuty(), weekdays: [2, 0] }]; }, /^duties\[0\]\.weekdays$/],
+  ['a weekday of 7', (p) => { p.duties = [{ ...goodDuty(), weekdays: [7] }]; }, /^duties\[0\]\.weekdays$/],
+  ['a from that is not a date', (p) => { p.duties = [{ ...goodDuty(), from: 'December' }]; }, /^duties\[0\]\.from$/],
+  ['a duty that ends before it starts', (p) => { p.duties = [{ ...goodDuty(), from: '2026-12-18', to: '2026-12-01' }]; }, /^duties\[0\]\.to$/],
+  ['a duty that ends when it starts', (p) => { p.duties = [{ ...goodDuty(), start: '07:30', end: '07:30' }]; }, /^duties\[0\]\.end$/],
+  ['a duty that ends before its time starts', (p) => { p.duties = [{ ...goodDuty(), start: '15:00', end: '14:00' }]; }, /^duties\[0\]\.end$/],
+  ['a duty room that is not there', (p) => { p.duties = [{ ...goodDuty(), roomId: 'rnowhere00' }]; }, /^duties\[0\]\.roomId$/],
+  ['a duty naming a teacher that is not there', (p) => { p.duties = [{ ...goodDuty(), teacherIds: ['tnowhere00'] }]; }, /^duties\[0\]\.teacherIds\[0\]$/],
+  ['a duty naming a subject that is not there', (p) => { p.duties = [{ ...goodDuty(), subjectIds: ['snowhere00'] }]; }, /^duties\[0\]\.subjectIds\[0\]$/],
+  ['everyone that is not true or false', (p) => { p.duties = [{ ...goodDuty(), everyone: 1 }]; }, /^duties\[0\]\.everyone$/],
+  ['a lastPublishedHadCalendar that is not true or false', (p) => { p.publish.lastPublishedHadCalendar = 'yes'; }, /^publish\.lastPublishedHadCalendar$/],
+]) {
+  test('finds ' + name, () => {
+    const project = school();
+    mutate(project);
+    assert.ok(paths(project).some((path) => where.test(path)), 'no finding at ' + where + '; got ' + JSON.stringify(paths(project)));
+  });
+}
+
+test('lastPublishedHadCalendar true or false is valid', () => {
+  for (const value of [true, false]) {
+    const project = school();
+    project.publish.lastPublishedHadCalendar = value;
+    assert.deepEqual(validate(project), []);
+  }
+});

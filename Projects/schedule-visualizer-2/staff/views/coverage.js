@@ -10,7 +10,7 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, missingPage, printWhen } from '../page.js';
-import { dayTypeFor, bellsIdFor, bellsOnPick, meetingPeriods, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
+import { dayOnDate, dayTypeFor, bellsIdFor, bellsOnPick, longDate, meetingPeriods, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
 import { freeTeachers } from './free.js';
 
 // For each period a teacher teaches on a day type, who is free to cover it:
@@ -74,8 +74,20 @@ export const coverageView = {
     if (route.id && !absent) return missingPage('teacher');
     if (!absent) return teacherChooser(ctx, 'coverage', 'Coverage', 'Who is free to cover each period of a teacher who is out.');
 
-    let dayType = dayTypeFor(ctx, route);
-    let bellsId = bellsIdFor(ctx, route);
+    // A date in the address (from the substitute plan) settles the day as the
+    // plan does: a day type in the address holds, else the date's own, and the
+    // bells are the date's where the day type is the date's, else the regular
+    // ones. Without a date the address may still name its bells (`b`), as
+    // older links do.
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(route.query.date || '') && school.isDate(route.query.date) ? route.query.date : '';
+    let picked = Boolean(route.query.d && school.dayTypes.some((each) => each.id === route.query.d));
+    let dayType = picked || date === '' ? dayTypeFor(ctx, route) : dayOnDate(ctx, date).dayType;
+    const bellsOf = () => {
+      const day = dayOnDate(ctx, date);
+      return day.dayType.id === dayType.id ? day.bellsId : null;
+    };
+    let bellsId = date === '' ? bellsIdFor(ctx, route) : bellsOf();
+    const dated = date === '' ? null : h('p', { class: 'muted', dataset: { coverage: 'date' } }, 'For ', longDate(date), '.');
     const says = h('p', { class: 'lede', role: 'status' });
     const picker = h('div', { class: 'controls' });
     const out = h('div', { class: 'stack', dataset: { out: 'coverage' } });
@@ -112,19 +124,25 @@ export const coverageView = {
       }));
 
       links.replaceChildren(...[
-        school.has('sub') ? h('a', { class: 'btn', href: makeHash('sub', absent.id, { d: dayType.id, b: bellsId }) }, 'Substitute plan') : null,
+        school.has('sub') ? h('a', { class: 'btn', href: makeHash('sub', absent.id, { d: date === '' || picked ? dayType.id : '', date }) }, 'Substitute plan') : null,
         school.has('teacher') ? h('a', { class: 'btn', href: makeHash('teacher', absent.id) }, 'The teacher\'s page') : null,
       ].filter(Boolean));
     };
 
     const chosen = dayTypePicker(ctx, dayType.id, (next) => {
       dayType = next;
-      bellsId = bellsOnPick(ctx, next.id);
-      ctx.replace(makeHash('coverage', absent.id, { d: route.query.d ? dayType.id : '', b: route.query.d ? bellsId : '' }));
+      picked = true;
+      if (date === '') {
+        bellsId = bellsOnPick(ctx, next.id);
+        ctx.replace(makeHash('coverage', absent.id, { d: route.query.d ? dayType.id : '', b: route.query.d ? bellsId : '' }));
+      } else {
+        bellsId = bellsOf();
+        ctx.replace(makeHash('coverage', absent.id, { d: dayType.id, date }));
+      }
       draw();
     });
     if (chosen) picker.appendChild(chosen);
     draw();
-    return pageOf(['Coverage: ', typed(absent.name)], null, says, picker, out, links);
+    return pageOf(['Coverage: ', typed(absent.name)], null, says, dated, picker, out, links);
   },
 };

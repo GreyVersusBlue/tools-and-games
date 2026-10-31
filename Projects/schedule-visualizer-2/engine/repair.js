@@ -44,6 +44,7 @@ import { defaultSettings, defaultPublish, defaultOnboarding, emptyCells, emptySl
 import { LATER_PUBLISH_VIEWS, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DAYS_MOST, ROTATION_RANGE, DATE_LABEL_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, WEEKDAY_NAMES, defaultWeekdays, spacelessKey, textLength } from './schema.js';
 import { DEFAULT_PASSCODE } from './publish-defaults.js';
 import { createIds, seededRandom, collectIds, isId } from './ids.js';
+import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST } from './schema.js';
 import { isCalendarDate, daysBetween, addDays, weekdayOf, dateWords } from './calendar.js';
 
 const FALLBACK_DATE = '1970-01-01T00:00:00.000Z';
@@ -1101,6 +1102,132 @@ export function repair(input, options) {
     }
   }
 
+  // ---- marked periods (ARCHITECTURE 17.5) and duties (17.6). Absent stays
+  // absent. A mark whose period is past the period count is kept: the rules
+  // ignore it, and a setting never truncates data.
+  const allDayIds = new Set(project.dayTypes.map((dayType) => dayType.id));
+  const allGroupIds = new Set(project.groups.map((group) => group.id));
+  const allRoomIds = new Set();
+  for (const floor of project.building.floors) for (const space of floor.spaces) if (space.kind === 'room') allRoomIds.add(space.id);
+  // A list of ids of one kind: the ones that name something, once each, after
+  // following renamed ids. `dropped` counts what was removed.
+  const idsOf = (list, prefix, known) => {
+    const dropped = { count: 0 };
+    if (!Array.isArray(list)) return { kept: [], dropped, unreadable: list !== undefined };
+    const kept = [];
+    for (const raw of list) {
+      const id = follow(prefix, raw);
+      if (typeof id === 'string' && known.has(id) && !kept.includes(id)) kept.push(id);
+      else dropped.count += 1;
+    }
+    return { kept, dropped, unreadable: false };
+  };
+  const cut = (value, most) => Array.from(value).slice(0, most).join('');
+  const labelOf = (thing, key, most, what) => {
+    if (typeof thing[key] !== 'string') {
+      if (thing[key] !== undefined) note(what + ' was not text and was cleared.');
+      thing[key] = '';
+    } else if (textLength(thing[key]) > most) {
+      note(what + ' was longer than ' + most + ' characters and was cut.');
+      thing[key] = cut(thing[key], most);
+    }
+  };
+  const idListOf = (thing, key, prefix, known, what, noun) => {
+    const result = idsOf(thing[key], prefix, known);
+    if (result.unreadable) note(what + ' could not be read and was emptied.');
+    else if (result.dropped.count > 0) note(what + ' named ' + plural(result.dropped.count, noun, noun + 's') + ' that ' + (result.dropped.count === 1 ? 'is' : 'are') + ' not in the project, or the same one twice; ' + (result.dropped.count === 1 ? 'it was' : 'they were') + ' removed.');
+    const had = Array.isArray(thing[key]) ? thing[key].length : 0;
+    thing[key] = result.kept;
+    return { had, left: result.kept.length };
+  };
+
+  if (source.marks !== undefined) {
+    project.marks = objects(source.marks, 'marked periods').map((raw, i) => ({ raw, i })).map(({ raw, i }) => {
+      const mark = { ...raw };
+      const what = 'Marked period ' + (i + 1);
+      mark.id = claimId(mark, 'm', what);
+      if (!MARK_KINDS.includes(mark.kind)) return note(what + ' was not a lunch, advisory, activity or no-class mark and was removed.');
+      if (!MARK_SCOPES.includes(mark.scope)) return note(what + ' was not for the school, grades or groups and was removed.');
+      if (!Number.isInteger(mark.period) || mark.period < 0) return note(what + ' had no period that can be read and was removed.');
+      labelOf(mark, 'label', MARK_LABEL_MOST, 'The label of ' + what);
+      const days = idListOf(mark, 'dayTypeIds', 'd', allDayIds, 'The day types of ' + what, 'day type');
+      if (days.had > 0 && days.left === 0) return note(what + ' named only day types that are not in the project and was removed.');
+      const groups = idListOf(mark, 'groupIds', 'g', allGroupIds, 'The groups of ' + what, 'group');
+      if (!Array.isArray(mark.grades)) {
+        if (mark.grades !== undefined) note('The grades of ' + what + ' could not be read and were emptied.');
+        mark.grades = [];
+      } else {
+        const grades = mark.grades.filter((grade) => typeof grade === 'string');
+        if (grades.length !== mark.grades.length) note('The grades of ' + what + ' had entries that are not text; they were removed.');
+        mark.grades = grades;
+      }
+      if (mark.scope === 'groups' && groups.left === 0) return note(what + ' is for groups and none of its groups is in the project, so it was removed.');
+      if (mark.scope === 'grades' && mark.grades.length === 0) return note(what + ' is for grades and names none, so it was removed.');
+      return mark;
+    }).filter((mark) => isObject(mark));
+  }
+
+  if (source.duties !== undefined) {
+    project.duties = objects(source.duties, 'duties').map((raw, i) => ({ raw, i })).map(({ raw, i }) => {
+      const duty = { ...raw };
+      const what = 'Duty ' + (i + 1);
+      duty.id = claimId(duty, 'u', what);
+      if (!DUTY_KINDS.includes(duty.kind)) return note(what + ' was not a duty, meeting or lunch and was removed.');
+      if (!DUTY_WHEN.includes(duty.when)) return note(what + ' did not say whether it is before school, in a period or after school, and was removed.');
+      if (!Number.isInteger(duty.period) || duty.period < 0) {
+        if (duty.period !== undefined) note('The period of ' + what + ' could not be read and is now the first.');
+        duty.period = 0;
+      }
+      labelOf(duty, 'label', DUTY_LABEL_MOST, 'The label of ' + what);
+      labelOf(duty, 'place', DUTY_PLACE_MOST, 'The place of ' + what);
+      for (const edge of ['start', 'end']) {
+        if (duty[edge] === undefined || duty[edge] === '' ) duty[edge] = '';
+        else if (!isBellTime(duty[edge])) {
+          note('The ' + edge + ' time of ' + what + ' could not be read and was cleared.');
+          duty[edge] = '';
+        }
+      }
+      for (const edge of ['from', 'to']) {
+        if (duty[edge] === undefined || duty[edge] === '') duty[edge] = '';
+        else if (!isCalendarDate(duty[edge])) {
+          note('The ' + edge + ' date of ' + what + ' could not be read and was cleared.');
+          duty[edge] = '';
+        }
+      }
+      if (duty.from !== '' && duty.to !== '' && duty.to < duty.from) {
+        note('Duty ' + (i + 1) + ' ended before it started; the two dates were swapped.');
+        [duty.from, duty.to] = [duty.to, duty.from];
+      }
+      if (duty.start !== '' && duty.end !== '' && duty.end <= duty.start) {
+        note('The end time of ' + what + ' was not after its start and was cleared.');
+        duty.end = '';
+      }
+      const days = idListOf(duty, 'dayTypeIds', 'd', allDayIds, 'The day types of ' + what, 'day type');
+      if (days.had > 0 && days.left === 0) return note(what + ' named only day types that are not in the project and was removed.');
+      if (!Array.isArray(duty.weekdays)) {
+        if (duty.weekdays !== undefined) note('The weekdays of ' + what + ' could not be read; it holds every day now.');
+        duty.weekdays = [];
+      } else {
+        const days = Array.from(new Set(duty.weekdays.filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))).sort((a, b) => a - b);
+        if (days.length !== duty.weekdays.length || days.some((day, k) => day !== duty.weekdays[k])) note('The weekdays of ' + what + ' had entries that are not a weekday, or the same one twice, or were out of order; they were put right.');
+        duty.weekdays = days;
+      }
+      if (duty.roomId === undefined) duty.roomId = null;
+      else if (duty.roomId !== null) {
+        const roomId = follow('r', duty.roomId);
+        if (typeof roomId === 'string' && allRoomIds.has(roomId)) duty.roomId = roomId;
+        else {
+          note('The room of ' + what + ' is not in the project; it now has no room.');
+          duty.roomId = null;
+        }
+      }
+      idListOf(duty, 'teacherIds', 't', teacherIds, 'The teachers of ' + what, 'teacher');
+      idListOf(duty, 'subjectIds', 's', subjectIds, 'The subjects of ' + what, 'subject');
+      flag(duty, 'everyone', false, 'Whether ' + what + ' is for all staff');
+      return duty;
+    }).filter((duty) => isObject(duty));
+  }
+
   if (!published) {
     // ---- accepted findings
     const accepted = objects(source.accepted, 'accepted findings');
@@ -1183,6 +1310,7 @@ export function repair(input, options) {
     for (const view of LATER_PUBLISH_VIEWS) if (views[view] !== undefined) flag(views, view, true, 'Whether the ' + view + ' view is published');
     flag(publish, 'teacherNamesOnMap', publishDefaults.teacherNamesOnMap, 'Teacher names on the map');
     if (publish.staleAtCalendarEnd !== undefined) flag(publish, 'staleAtCalendarEnd', publishDefaults.staleAtCalendarEnd, 'Whether a published file is stale after the calendar\'s last day');
+    if (publish.lastPublishedHadCalendar !== undefined) flag(publish, 'lastPublishedHadCalendar', false, 'Whether the last published file had a calendar');
     if (publish.lastPublishedAt !== null && !isIsoDate(publish.lastPublishedAt)) {
       if (publish.lastPublishedAt !== undefined) note('The last published time could not be read and was cleared.');
       publish.lastPublishedAt = null;

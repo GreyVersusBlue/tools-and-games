@@ -14,7 +14,7 @@
 // two rooms and a slot whose room is not in the building are all published as
 // they are.
 
-import { PUBLISHED_FORMAT, CURRENT_VERSION, PUBLISH_VIEWS, LATER_PUBLISH_VIEWS, RANGES, defaultPublish, inRange, bellSchedulesOf, calendarOf } from './schema.js';
+import { PUBLISHED_FORMAT, CURRENT_VERSION, PUBLISH_VIEWS, LATER_PUBLISH_VIEWS, RANGES, defaultPublish, inRange, bellSchedulesOf, calendarOf, marksOf, dutiesOf } from './schema.js';
 import { isCalendarDate, addDays } from './calendar.js';
 
 export const PUBLISHED_VERSION = CURRENT_VERSION;
@@ -107,6 +107,44 @@ function calendar(source) {
   };
 }
 
+// A marked period (ARCHITECTURE 17.5), field by field.
+function mark(source) {
+  return {
+    id: source.id,
+    kind: source.kind,
+    label: source.label,
+    period: source.period,
+    dayTypeIds: list(source.dayTypeIds).slice(),
+    scope: source.scope,
+    grades: list(source.grades).slice(),
+    groupIds: list(source.groupIds).slice(),
+  };
+}
+
+// A duty or standing meeting (ARCHITECTURE 17.6), field by field. Where it is
+// and who is on it are published as they are; a duty with nobody on it is
+// published with nobody on it.
+function duty(source) {
+  return {
+    id: source.id,
+    kind: source.kind,
+    label: source.label,
+    when: source.when,
+    period: source.period,
+    start: source.start,
+    end: source.end,
+    dayTypeIds: list(source.dayTypeIds).slice(),
+    weekdays: list(source.weekdays).slice(),
+    from: source.from,
+    to: source.to,
+    roomId: source.roomId,
+    place: source.place,
+    teacherIds: list(source.teacherIds).slice(),
+    subjectIds: list(source.subjectIds).slice(),
+    everyone: source.everyone,
+  };
+}
+
 // When is a file published at `published` (a Date) stale? With a calendar
 // and publish.staleAtCalendarEnd (absent meaning true), the day after the
 // calendar's last date at 12:00 UTC: a date is what the school means, and
@@ -169,6 +207,8 @@ export function publishedModel(project, options) {
     })),
     bellSchedules: bellSchedulesOf(project).map(bellSchedule),
     calendar: calendar(calendarOf(project)),
+    marks: marksOf(project).filter((item) => item && typeof item === 'object').map(mark),
+    duties: dutiesOf(project).filter((item) => item && typeof item === 'object').map(duty),
     groups: list(project.groups).map(group),
     publish: { views, teacherNamesOnMap: publish.teacherNamesOnMap !== false },
   };

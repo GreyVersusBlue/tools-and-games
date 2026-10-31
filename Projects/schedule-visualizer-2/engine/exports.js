@@ -18,8 +18,11 @@
 import { write } from './csv.js';
 import { allRooms, floorOfRoom, resolveSlotRoom } from './schema.js';
 import { periodName } from './bells.js';
-import { effectiveSchedule, isOwnCopy } from './day-types.js';
-import { teacherDays } from './teacher-day.js';
+import { isOwnCopy } from './day-types.js';
+import { teacherDays, isFree } from './teacher-day.js';
+import { meetingSlots } from './runs.js';
+import { dutiesByTeacher, schoolMarkFor } from './marks.js';
+import { dutyNamed, sometimesWords, MARK_AS_NAMED } from './checks.js';
 import { writeProjectFile, writeBuildingFile, writeScheduleFile } from './project-file.js';
 import { calendarRows } from './import-calendar.js';
 
@@ -138,27 +141,57 @@ function chosenDayTypes(project, dayTypeId) {
   return project.dayTypes.filter((dayType) => dayType.id === dayTypeId);
 }
 
+function dutyWords(duty) {
+  const sometimes = sometimesWords(duty);
+  return dutyNamed(duty) + (sometimes === '' ? '' : ' (' + sometimes + ')');
+}
+
 // Teachers down, periods across, one row per teacher per day type. A cell is
-// "7-1 · 204" for each group taught, or "Planning". The day is the one rule
-// in teacher-day.js; a day type that is the same as the first reads the same.
+// "7-1 · 204" for each group taught, or "Planning" for a free period. A period
+// that a duty or a school mark takes reads as it ("Lunch duty", "Lunch"), and
+// a duty that holds on some days only is added to the cell with its days. A
+// "Before" and an "After" column follow the periods, and only when some
+// teacher has such a duty (so a reader of the period cells by position, from
+// the third cell on, finds them where they were).
+// The day is the one rule in teacher-day.js; a day type that is the same as
+// the first reads the same.
 export function teacherGridRows(project, dayTypeId) {
-  const rows = [gridHeader(project, ['Teacher'])];
-  for (const dayType of chosenDayTypes(project, dayTypeId)) {
+  const chosen = chosenDayTypes(project, dayTypeId);
+  const duties = new Map(chosen.map((dayType) => [dayType.id, dutiesByTeacher(project, dayType.id)]));
+  const some = (when) => chosen.some((dayType) => Array.from(duties.get(dayType.id).values()).some((mine) => mine[when].length > 0));
+  const hasBefore = some('before');
+  const hasAfter = some('after');
+  const header = gridHeader(project, ['Teacher']);
+  const rows = [header];
+  if (hasBefore) header.push('Before');
+  if (hasAfter) header.push('After');
+  for (const dayType of chosen) {
     const days = teacherDays(project, dayType.id);
     for (const teacher of project.teachers) {
       const row = [teacher.name, dayType.name];
+      const mine = duties.get(dayType.id).get(teacher.id);
       for (const entry of days.get(teacher.id)) {
-        if (entry.kind !== 'teaching') {
-          row.push(PLANNING);
-          continue;
+        const extra = entry.duties.map(dutyWords);
+        if (entry.kind === 'teaching') {
+          const taught = entry.groups.map((one) => {
+            const group = project.groups.find((candidate) => candidate.id === one.groupId);
+            const slot = meetingSlots(project, one.groupId, dayType.id)[entry.period];
+            const where = slotText(project, slot);
+            return where === '' ? group.name : group.name + ' · ' + where;
+          });
+          row.push(taught.concat(extra).join(LIST_SEPARATOR));
+        } else if (isFree(entry)) {
+          row.push([PLANNING].concat(extra).join(LIST_SEPARATOR));
+        } else {
+          // an always duty comes first among the duties, as teacherDays chose it
+          const always = entry.duties.filter((duty) => sometimesWords(duty) === '');
+          const mark = schoolMarkFor(project, dayType.id, entry.period);
+          const taken = always.length > 0 ? always.map(dutyWords) : [mark && mark.label !== '' ? mark.label : MARK_AS_NAMED[entry.marked]];
+          row.push(taken.concat(entry.duties.filter((duty) => sometimesWords(duty) !== '').map(dutyWords)).join(LIST_SEPARATOR));
         }
-        row.push(entry.groups.map((taught) => {
-          const group = project.groups.find((candidate) => candidate.id === taught.groupId);
-          const slot = effectiveSchedule(project, taught.groupId, dayType.id)[entry.period];
-          const where = slotText(project, slot);
-          return where === '' ? group.name : group.name + ' · ' + where;
-        }).join(LIST_SEPARATOR));
       }
+      if (hasBefore) row.push(mine ? mine.before.map(dutyWords).join(LIST_SEPARATOR) : '');
+      if (hasAfter) row.push(mine ? mine.after.map(dutyWords).join(LIST_SEPARATOR) : '');
       rows.push(row);
     }
   }
@@ -175,7 +208,7 @@ export function roomGridRows(project, dayTypeId) {
     const inRoom = new Map();
     const elsewhere = new Map();
     for (const group of project.groups) {
-      const day = effectiveSchedule(project, group.id, dayType.id);
+      const day = meetingSlots(project, group.id, dayType.id);
       for (let period = 0; period < periods; period += 1) {
         const resolved = resolveSlotRoom(project, day[period]);
         let cells;

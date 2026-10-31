@@ -10,6 +10,7 @@ import { validate } from '../../engine/validate.js';
 import { repair } from '../../engine/repair.js';
 import { teacherDay } from '../../engine/teacher-day.js';
 import { bellsFor } from '../../engine/bells.js';
+import { meetingSlots } from '../../engine/runs.js';
 import { effectiveSchedule } from '../../engine/day-types.js';
 import { buildGraph } from '../../engine/graph.js';
 import { routingGraph, route } from '../../engine/routing.js';
@@ -21,7 +22,7 @@ import { seededRandom } from '../../engine/ids.js';
 import { publishDocument } from '../../ui/staff/targets.js';
 import { MODULES } from '../../staff/manifest.js';
 import { diskReader, partsOf } from '../publish/reader.mjs';
-import { school, clock, clone, room, group, teacher } from './helpers.mjs';
+import { school, clock, clone, room, group, teacher, assertValid } from './helpers.mjs';
 import { staleness } from '../../engine/publish-data.js';
 import { withEverything, B, C, D, ER } from '../fixtures/day-types-calendar.mjs';
 import { dayOn, calendarDays } from '../../engine/calendar.js';
@@ -30,8 +31,9 @@ const keys = (value) => Object.keys(value).sort();
 const published = (project) => publishedModel(project || school(), { clock });
 
 // SV2-77 added bellSchedules, calendar, the day-type fields sameAs and short,
-// and the calendar view, on purpose (ARCHITECTURE 17.9).
-const TOP = ['bellSchedules', 'building', 'calendar', 'dayTypes', 'format', 'groups', 'id', 'publish', 'publishedAt', 'settings', 'staleAfter', 'subjects', 'teachers', 'version'];
+// and the calendar view, on purpose (ARCHITECTURE 17.9); SV2-84 added marks
+// and duties.
+const TOP = ['bellSchedules', 'building', 'calendar', 'dayTypes', 'duties', 'format', 'groups', 'id', 'marks', 'publish', 'publishedAt', 'settings', 'staleAfter', 'subjects', 'teachers', 'version'];
 const SETTINGS = ['defaultPassingSeconds', 'periodWord', 'periods', 'schoolName', 'secondsPerCell', 'secondsPerStair', 'timeFormat'];
 const FLOOR = ['cells', 'corridors', 'exits', 'height', 'id', 'level', 'name', 'spaces', 'width'];
 const ROOM = ['capacity', 'cells', 'doors', 'id', 'kind', 'number', 'shared', 'subjectId', 'teacherIds', 'wing'];
@@ -39,6 +41,8 @@ const OTHER = ['cells', 'colour', 'id', 'kind', 'label', 'otherKind'];
 const VIEWS = ['calendar', 'common', 'coverage', 'directions', 'free', 'group', 'map', 'now', 'room', 'staffing', 'sub', 'teacher'];
 const DAY_TYPE = ['bells', 'id', 'name', 'own', 'sameAs', 'short'];
 const BELL_SCHEDULE = ['bells', 'id', 'name', 'off', 'short'];
+const MARK = ['dayTypeIds', 'grades', 'groupIds', 'id', 'kind', 'label', 'period', 'scope'];
+const DUTY = ['dayTypeIds', 'end', 'everyone', 'from', 'id', 'kind', 'label', 'period', 'place', 'roomId', 'start', 'subjectIds', 'teacherIds', 'to', 'weekdays', 'when'];
 const CALENDAR = ['changedAt', 'dates', 'end', 'rotation', 'start', 'weekdays'];
 
 test('the published model has exactly the keys of ARCHITECTURE 6.7 at every level', () => {
@@ -316,6 +320,85 @@ test('bell schedules, the calendar and the day-type fields are published key by 
   assert.equal(model.publish.views.calendar, false, 'the fixture switches the calendar page off');
   assert.deepEqual(validate(model), []);
   assert.equal(repair(model, { clock }).project, model, 'repair hands it back as it came');
+});
+
+// ---------------------------------------------------------------- marks and duties (SV2-84)
+
+const markOf = (extra) => ({ id: 'mpub000001', kind: 'lunch', label: '', period: 3, dayTypeIds: [], scope: 'school', grades: [], groupIds: [], ...extra });
+const dutyOf = (extra) => ({ id: 'upub000001', kind: 'duty', label: '', when: 'before', period: 0, start: '', end: '', dayTypeIds: [], weekdays: [], from: '', to: '', roomId: null, place: '', teacherIds: [], subjectIds: [], everyone: false, ...extra });
+
+function withMarksAndDuties() {
+  const project = school();
+  project.marks = [
+    markOf({ id: 'mpub000001', kind: 'lunch', scope: 'grades', grades: ['6'] }),
+    markOf({ id: 'mpub000002', kind: 'noclass', label: 'Testing', period: 5, scope: 'groups', groupIds: ['gsample06a'], dayTypeIds: ['dsample00b'] }),
+    markOf({ id: 'mpub000003', kind: 'activity', period: 12 }),
+  ];
+  project.duties = [
+    dutyOf({ id: 'upub000001', label: 'Bus duty', when: 'after', start: '14:45', end: '15:05', teacherIds: ['tsample001'], roomId: 'rsample101', weekdays: [2], from: '2026-12-01', to: '2026-12-18' }),
+    dutyOf({ id: 'upub000002', kind: 'meeting', label: 'Science', when: 'period', period: 6, subjectIds: ['ssample003'], place: 'Library annex' }),
+    dutyOf({ id: 'upub000003', kind: 'lunch', when: 'period', period: 3, everyone: true }),
+    dutyOf({ id: 'upub000004', label: 'Nobody on it', when: 'before' }),
+  ];
+  assertValid(project);
+  return project;
+}
+
+test('a project with no marks and no duties publishes two empty lists', () => {
+  const model = published();
+  assert.deepEqual([model.marks, model.duties], [[], []]);
+  const odd = school();
+  odd.marks = 'marks';
+  odd.duties = [null, 5, 'x'];
+  const strange = published(odd);
+  assert.deepEqual([strange.marks, strange.duties], [[], []], 'a malformed list is none, and nothing throws');
+});
+
+test('marks and duties are published key by key, as they are, with every period and every duty kept', () => {
+  const project = withMarksAndDuties();
+  const model = published(project);
+  assert.deepEqual(keys(model), TOP);
+  assert.equal(model.marks.length, 3);
+  assert.equal(model.duties.length, 4);
+  for (const mark of model.marks) assert.deepEqual(keys(mark), MARK, mark.id);
+  for (const duty of model.duties) assert.deepEqual(keys(duty), DUTY, duty.id);
+  assert.deepEqual(model.marks, project.marks);
+  assert.deepEqual(model.duties, project.duties);
+  assert.equal(model.marks[2].period, 12, 'a mark past the end of the day is kept: a setting never truncates data');
+  assert.deepEqual(model.duties[3].teacherIds, [], 'a duty with nobody on it is published with nobody on it');
+  assert.deepEqual(validate(model), []);
+  assert.equal(repair(model, { clock }).project, model, 'repair hands it back as it came');
+});
+
+test('the lists are copies: changing the planner\'s later does not change a model made earlier', () => {
+  const project = withMarksAndDuties();
+  const model = published(project);
+  project.marks[0].grades.push('7');
+  project.duties[0].teacherIds.push('tsample002');
+  assert.deepEqual(model.marks[0].grades, ['6']);
+  assert.deepEqual(model.duties[0].teacherIds, ['tsample001']);
+});
+
+test('what the planner adds to a mark or a duty later is not published until it is named', () => {
+  const project = withMarksAndDuties();
+  project.marks[0].secret = 'staff party';
+  project.duties[0].note = 'Ms. Halloran dislikes this';
+  const text = JSON.stringify(published(project));
+  for (const leaked of ['staff party', 'dislikes']) assert.ok(!text.includes(leaked), leaked);
+});
+
+test('the engine gives the same marks, duties and teacher days on the published model as on the project', () => {
+  const project = withMarksAndDuties();
+  const model = published(project);
+  for (const dayType of project.dayTypes) {
+    for (const one of project.teachers) {
+      assert.deepEqual(teacherDay(model, one.id, dayType.id), teacherDay(project, one.id, dayType.id), one.name + ' ' + dayType.name);
+      assert.deepEqual(teacherDay(model, one.id, dayType.id, { date: '2026-12-02' }), teacherDay(project, one.id, dayType.id, { date: '2026-12-02' }));
+    }
+    for (const one of project.groups) {
+      assert.deepEqual(meetingSlots(model, one.id, dayType.id), meetingSlots(project, one.id, dayType.id), one.name + ' ' + dayType.name);
+    }
+  }
 });
 
 test('a view the project has no switch for yet is on, the calendar\'s too', () => {

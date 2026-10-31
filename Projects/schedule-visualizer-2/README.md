@@ -128,6 +128,7 @@ row names a file it does not run.
 | `test/engine/bells.test.mjs` | Period names, times, passing times, the bell schedule checks |
 | `test/engine/calendar.test.mjs` | The calendar walk as a wall planner, whole-day dates, breaks counted in school days, deletions, the 731-day limit |
 | `test/engine/runs.test.mjs` | Meeting slots under a bell schedule's periods that do not meet, and the runs movement needs |
+| `test/engine/marks.test.mjs` | Marked periods and duties: which mark applies and why, meeting slots and runs with marks, who a duty covers, a teacher's duties by weekday, date and subject |
 | `test/engine/runs-today.test.mjs` | A project with none of the new fields gives byte for byte the results it gave before the engines worked by run |
 | `test/engine/bell-runs.test.mjs` | The engines by run: routes, crowd, loads, walk checks, the pipeline's transition cache, scenario and suggestions under bell schedules |
 | `test/engine/actions.test.mjs` | Every action on a frozen project: what changes, what is shared, the undo label |
@@ -140,6 +141,7 @@ row names a file it does not run.
 | `test/engine/building-checks.test.mjs` | Each building check, found where it is, with its sentence |
 | `test/engine/teacher-day.test.mjs` | The one rule for a teacher's day |
 | `test/engine/checks.test.mjs` | The schedule checks of spec 5.7 |
+| `test/engine/checks-duties.test.mjs` | The checks with marks and duties: duty-clash, duty-nobody, no-planning and consecutive when a duty or a mark takes a period, the empty-period note under a mark |
 | `test/engine/routing.test.mjs` | Routes: the quickest, the tie-breaks, the options, the named failures |
 | `test/engine/directions.test.mjs` | A route in words, the reader's "squares", the plain no-stairs refusal |
 | `test/engine/load.test.mjs` | What each group adds to the cells it crosses |
