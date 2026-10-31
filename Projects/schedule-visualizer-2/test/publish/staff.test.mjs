@@ -595,6 +595,20 @@ test('today by the calendar: a rotation day, a Wednesday\'s bells, no school, ou
   assert.equal(chosenBells(hand), 'btodayer00');
 });
 
+// The day a clock reads is the device's zone's, so a case that is written in UTC
+// pins UTC for its body and puts the machine's zone back (the moment-of-the-click
+// case below does the same with its own zone).
+function inZone(zone, body) {
+  const was = process.env.TZ;
+  process.env.TZ = zone;
+  try {
+    body();
+  } finally {
+    if (was === undefined) delete process.env.TZ;
+    else process.env.TZ = was;
+  }
+}
+
 // An answer as the page keeps it: the date and the moment of the click.
 const answered = (date, dayTypeId, at, bellsId) => ({ date, dayTypeId, bellsId: bellsId || null, at: at || date + 'T10:00:00.000Z' });
 
@@ -618,29 +632,31 @@ test('"Just today" holds for its date only; "follow" moves the rotation on from 
 });
 
 test('dayOn holds two answers: "Just today" never removes a standing follow answer', () => {
-  const school = todaySchool();
-  const ctx = todayCtx(school, '2026-09-01T10:00:00Z');
-  keepDayOn(ctx, 'follow', answered('2026-09-01', 'dtoday000c', '2026-09-01T10:00:00.000Z'));
-  // the next day the reader says just that day is B
-  const wednesday = todayCtx(school, '2026-09-02T10:00:00Z', { dayOn: ctx.store.get('dayOn') });
-  keepDayOn(wednesday, 'just', answered('2026-09-02', 'dsample00b', '2026-09-02T10:00:00.000Z'));
-  const kept = JSON.parse(wednesday.store.get('dayOn'));
-  assert.deepEqual(Object.keys(kept).sort(), ['follow', 'just']);
-  assert.equal(kept.follow.dayTypeId, 'dtoday000c');
-  assert.equal(kept.just.dayTypeId, 'dsample00b');
-  assert.deepEqual(said(todayOf(wednesday)), ['2026-09-02', 'known', true, 'B Day', null, 'reader'], 'the answer for today');
-  // the day after, the follow answer from the 1st still holds: C, A, B
-  const thursday = todayCtx(school, '2026-09-03T10:00:00Z', { dayOn: wednesday.store.get('dayOn') });
-  assert.deepEqual(said(todayOf(thursday)), ['2026-09-03', 'known', true, 'B Day', null, 'follow']);
-  // the same day, the answer given last settles it, and the follow still holds for the days after
-  const both = todayCtx(school, '2026-09-01T12:00:00Z');
-  keepDayOn(both, 'follow', answered('2026-09-01', 'dtoday000c', '2026-09-01T10:00:00.000Z'));
-  keepDayOn(both, 'just', answered('2026-09-01', 'dsample00a', '2026-09-01T11:00:00.000Z'));
-  assert.equal(todayOf(both).dayType.name, 'A Day', 'just, given later');
-  keepDayOn(both, 'follow', answered('2026-09-01', 'dtoday000c', '2026-09-01T11:30:00.000Z'));
-  assert.equal(todayOf(both).dayType.name, 'C Day', 'follow, given later');
-  assert.equal(JSON.parse(both.store.get('dayOn')).just.dayTypeId, 'dsample00a', 'and the other is still there');
-  assert.deepEqual(said(todayOf(todayCtx(school, '2026-09-02T10:00:00Z', { dayOn: both.store.get('dayOn') }))), ['2026-09-02', 'known', true, 'A Day', 'btodayer00', 'follow']);
+  inZone('UTC', () => {
+    const school = todaySchool();
+    const ctx = todayCtx(school, '2026-09-01T10:00:00Z');
+    keepDayOn(ctx, 'follow', answered('2026-09-01', 'dtoday000c', '2026-09-01T10:00:00.000Z'));
+    // the next day the reader says just that day is B
+    const wednesday = todayCtx(school, '2026-09-02T10:00:00Z', { dayOn: ctx.store.get('dayOn') });
+    keepDayOn(wednesday, 'just', answered('2026-09-02', 'dsample00b', '2026-09-02T10:00:00.000Z'));
+    const kept = JSON.parse(wednesday.store.get('dayOn'));
+    assert.deepEqual(Object.keys(kept).sort(), ['follow', 'just']);
+    assert.equal(kept.follow.dayTypeId, 'dtoday000c');
+    assert.equal(kept.just.dayTypeId, 'dsample00b');
+    assert.deepEqual(said(todayOf(wednesday)), ['2026-09-02', 'known', true, 'B Day', null, 'reader'], 'the answer for today');
+    // the day after, the follow answer from the 1st still holds: C, A, B
+    const thursday = todayCtx(school, '2026-09-03T10:00:00Z', { dayOn: wednesday.store.get('dayOn') });
+    assert.deepEqual(said(todayOf(thursday)), ['2026-09-03', 'known', true, 'B Day', null, 'follow']);
+    // the same day, the answer given last settles it, and the follow still holds for the days after
+    const both = todayCtx(school, '2026-09-01T12:00:00Z');
+    keepDayOn(both, 'follow', answered('2026-09-01', 'dtoday000c', '2026-09-01T10:00:00.000Z'));
+    keepDayOn(both, 'just', answered('2026-09-01', 'dsample00a', '2026-09-01T11:00:00.000Z'));
+    assert.equal(todayOf(both).dayType.name, 'A Day', 'just, given later');
+    keepDayOn(both, 'follow', answered('2026-09-01', 'dtoday000c', '2026-09-01T11:30:00.000Z'));
+    assert.equal(todayOf(both).dayType.name, 'C Day', 'follow, given later');
+    assert.equal(JSON.parse(both.store.get('dayOn')).just.dayTypeId, 'dsample00a', 'and the other is still there');
+    assert.deepEqual(said(todayOf(todayCtx(school, '2026-09-02T10:00:00Z', { dayOn: both.store.get('dayOn') }))), ['2026-09-02', 'known', true, 'A Day', 'btodayer00', 'follow']);
+  });
 });
 
 test('the one-answer shape dayOn had reads as whichever it was', () => {
@@ -702,41 +718,45 @@ test('dropFollowOnNewer: a file newer than the device\'s seen ends a follow answ
 });
 
 test('a follow answer given just after opening a file whose time is ahead of the phone\'s clock stays until a newer file moves seen', () => {
-  // the office's computer was 30 seconds ahead of the phone: the file says it
-  // was published at 13:00:30, and the phone answers at 13:00:00
-  const school = todaySchool('2026-09-02T13:00:30Z');
-  const ctx = todayCtx(school, '2026-09-02T13:00:00Z', { seen: school.data.publishedAt });
-  keepDayOn(ctx, 'follow', answered('2026-09-02', 'dsample00a', '2026-09-02T13:00:00.000Z'));
-  assert.equal(todayOf(ctx).by, 'reader', 'today');
-  const next = todayCtx(school, '2026-09-03T13:00:00Z', { dayOn: ctx.store.get('dayOn') });
-  assert.deepEqual(said(todayOf(next)), ['2026-09-03', 'known', true, 'B Day', null, 'follow'], 'A on the 2nd, so B on the 3rd');
-  dropFollowOnNewer(next, school.data.publishedAt, school.data.publishedAt);
-  assert.notEqual(next.store.get('dayOn'), null, 'the same file again');
-  dropFollowOnNewer(next, '2026-09-02T13:00:31.000Z', school.data.publishedAt);
-  assert.equal(todayOf(next).by, 'calendar', 'a file a second later');
+  inZone('UTC', () => {
+    // the office's computer was 30 seconds ahead of the phone: the file says it
+    // was published at 13:00:30, and the phone answers at 13:00:00
+    const school = todaySchool('2026-09-02T13:00:30Z');
+    const ctx = todayCtx(school, '2026-09-02T13:00:00Z', { seen: school.data.publishedAt });
+    keepDayOn(ctx, 'follow', answered('2026-09-02', 'dsample00a', '2026-09-02T13:00:00.000Z'));
+    assert.equal(todayOf(ctx).by, 'reader', 'today');
+    const next = todayCtx(school, '2026-09-03T13:00:00Z', { dayOn: ctx.store.get('dayOn') });
+    assert.deepEqual(said(todayOf(next)), ['2026-09-03', 'known', true, 'B Day', null, 'follow'], 'A on the 2nd, so B on the 3rd');
+    dropFollowOnNewer(next, school.data.publishedAt, school.data.publishedAt);
+    assert.notEqual(next.store.get('dayOn'), null, 'the same file again');
+    dropFollowOnNewer(next, '2026-09-02T13:00:31.000Z', school.data.publishedAt);
+    assert.equal(todayOf(next).by, 'calendar', 'a file a second later');
+  });
 });
 
 test('followJust: "As the calendar says" takes back today\'s just answer and the follow answer stays, until it is forgotten', () => {
-  const school = todaySchool();
-  const ctx = todayCtx(school, '2026-09-01T13:50:00Z');
-  keepDayOn(ctx, 'follow', answered('2026-09-01', 'dtoday000c', '2026-09-01T13:50:00.000Z'));
-  const wednesday = todayCtx(school, '2026-09-02T13:00:00Z', { dayOn: ctx.store.get('dayOn') });
-  keepDayOn(wednesday, 'just', answered('2026-09-02', 'dsample00b', '2026-09-02T13:00:00.000Z'));
-  forgetDayOn(wednesday, 'just');
-  const kept = JSON.parse(wednesday.store.get('dayOn'));
-  assert.equal(kept.just, null);
-  assert.equal(kept.follow.dayTypeId, 'dtoday000c');
-  assert.deepEqual(said(todayOf(wednesday)), ['2026-09-02', 'known', true, 'A Day', 'btodayer00', 'follow'], 'C on the 1st, so A on the 2nd');
-  const thursday = todayCtx(school, '2026-09-03T13:00:00Z', { dayOn: wednesday.store.get('dayOn') });
-  assert.deepEqual(said(todayOf(thursday)), ['2026-09-03', 'known', true, 'B Day', null, 'follow'], 'the follow answer still holds');
-  forgetDayOn(thursday, 'follow');
-  assert.equal(thursday.store.get('dayOn'), null, 'nothing is left: the key goes');
-  assert.equal(todayOf(thursday).by, 'calendar');
-  // forgetting the follow answer leaves a just answer
-  const both = todayCtx(school, '2026-09-03T13:00:00Z', { dayOn: JSON.stringify({ just: answered('2026-09-03', 'dsample00b'), follow: answered('2026-09-01', 'dtoday000c', null, null, school.data.publishedAt) }) });
-  forgetDayOn(both, 'follow');
-  assert.equal(JSON.parse(both.store.get('dayOn')).just.dayTypeId, 'dsample00b');
-  assert.equal(JSON.parse(both.store.get('dayOn')).follow, null);
+  inZone('UTC', () => {
+    const school = todaySchool();
+    const ctx = todayCtx(school, '2026-09-01T13:50:00Z');
+    keepDayOn(ctx, 'follow', answered('2026-09-01', 'dtoday000c', '2026-09-01T13:50:00.000Z'));
+    const wednesday = todayCtx(school, '2026-09-02T13:00:00Z', { dayOn: ctx.store.get('dayOn') });
+    keepDayOn(wednesday, 'just', answered('2026-09-02', 'dsample00b', '2026-09-02T13:00:00.000Z'));
+    forgetDayOn(wednesday, 'just');
+    const kept = JSON.parse(wednesday.store.get('dayOn'));
+    assert.equal(kept.just, null);
+    assert.equal(kept.follow.dayTypeId, 'dtoday000c');
+    assert.deepEqual(said(todayOf(wednesday)), ['2026-09-02', 'known', true, 'A Day', 'btodayer00', 'follow'], 'C on the 1st, so A on the 2nd');
+    const thursday = todayCtx(school, '2026-09-03T13:00:00Z', { dayOn: wednesday.store.get('dayOn') });
+    assert.deepEqual(said(todayOf(thursday)), ['2026-09-03', 'known', true, 'B Day', null, 'follow'], 'the follow answer still holds');
+    forgetDayOn(thursday, 'follow');
+    assert.equal(thursday.store.get('dayOn'), null, 'nothing is left: the key goes');
+    assert.equal(todayOf(thursday).by, 'calendar');
+    // forgetting the follow answer leaves a just answer
+    const both = todayCtx(school, '2026-09-03T13:00:00Z', { dayOn: JSON.stringify({ just: answered('2026-09-03', 'dsample00b'), follow: answered('2026-09-01', 'dtoday000c', null, null, school.data.publishedAt) }) });
+    forgetDayOn(both, 'follow');
+    assert.equal(JSON.parse(both.store.get('dayOn')).just.dayTypeId, 'dsample00b');
+    assert.equal(JSON.parse(both.store.get('dayOn')).follow, null);
+  });
 });
 
 test('on a date with no school the bells are the regular bells and no period is left out, whatever was chosen by hand', () => {
