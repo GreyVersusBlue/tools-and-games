@@ -46,6 +46,8 @@
 //                                      there, the one whose id sorts first)
 //   room-unused:d:<room>               room-no-subject:<room>
 //   room-no-teacher:<room>
+//   duty-clash:d:p:<teacher>:<duty>    (d is the first day type it holds on)
+//   duty-nobody:<duty>
 //
 // Walk results. The two walk-time checks do no routing and no timing of their
 // own: they are handed the figures, so this module and checks.js never need
@@ -91,6 +93,7 @@ export const KIND_SEVERITY = {
   'consecutive': 'warning',
   'teacher-walk': 'warning',
   'group-walk': 'warning',
+  'duty-clash': 'warning',
   'room-missing': 'warning',
   'empty-period': 'note',
   'teacher-multi-room': 'note',
@@ -98,6 +101,7 @@ export const KIND_SEVERITY = {
   'room-unused': 'note',
   'room-no-subject': 'note',
   'room-no-teacher': 'note',
+  'duty-nobody': 'note',
 };
 
 // The kinds a reordered day or a different room could clear.

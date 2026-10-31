@@ -67,6 +67,8 @@ every rule on this page and `engine/repair.js` enforces them on every load.
 | `dayTypes` | DayType[] | At least one. `dayTypes[0]` is the base day type ("A Day"). |
 | `bellSchedules` | BellSchedule[] | Optional, 0 to 12; absent is none. Other sets of times for the same classes. |
 | `calendar` | Calendar or `null` | Optional; absent or `null` is no calendar. Which dates are which day type. |
+| `marks` | Mark[] | Optional; absent is none. Periods marked Lunch, Advisory, Activity or No class, for the school, some grades or some groups. |
+| `duties` | Duty[] | Optional; absent is none. Duties, standing meetings and teachers' own lunches, laid over teachers' days. |
 | `accepted` | AcceptedFinding[] | Findings the user has accepted. |
 | `scenario` | Scenario or `null` | The one open scenario. |
 | `publish` | PublishSettings | |
@@ -246,6 +248,44 @@ day type, and only the times change.
 | `bells` | (Bell or `null`)[] | One entry per period, as a day type's. |
 | `off` | integer[] | The periods that do not meet under these bells, from 0, in order, each once, each below `settings.periods`. They book no room, move nobody and have no passing time into or out of them. |
 
+### Mark
+
+A period marked for the school, for some grades or for some groups. The slot
+keeps what it holds and the mark lies over it. Which mark applies to a group
+in a period on a day type (`markFor` in `engine/marks.js`): No class wins
+outright, then a mark naming day types over an every-day one, then groups over
+grades over the school, then the earlier in the list.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `id` | id, `m…` | |
+| `kind` | `"lunch"`, `"advisory"`, `"activity"` or `"noclass"` | Shown as Lunch, Advisory, Activity (non-instructional: an assembly, clubs) and No class. No class empties the slot for the groups it takes (`meetingSlots`); Lunch also means the group is not teaching then. |
+| `label` | text | 0 to 40 characters, shown instead of the kind's word when set ("Assembly"). |
+| `period` | integer | From 0. A period past `settings.periods` is kept (a setting never truncates data) and the rules ignore it; the actions refuse to make one, and lowering the period count deletes them in the same undo step. |
+| `dayTypeIds` | id[] | Empty means every day type; otherwise these day types and the day types the same as them. A mark left with none by a deleted day type is deleted instead. |
+| `scope` | `"school"`, `"grades"` or `"groups"` | |
+| `grades` | text[] | With `"grades"` scope, at least one, matched to a group's `grade` ignoring case and spaces. Empty otherwise. |
+| `groupIds` | id[] | With `"groups"` scope, at least one; deleting a group removes it, and a mark left with none is deleted. Empty otherwise. |
+
+### Duty
+
+An overlay on teachers' days. It never moves a group and is never routed.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `id` | id, `u…` | |
+| `kind` | `"duty"`, `"meeting"` or `"lunch"` | Shown as Duty, Meeting and Their own lunch. |
+| `label` | text | 0 to 60 characters; empty shows the kind's word. |
+| `when` | `"before"`, `"period"` or `"after"` | Before school, in a period, or after school. |
+| `period` | integer | From 0; used when `when` is `"period"`. Past `settings.periods` it is kept and ignored by the rules; lowering the period count deletes period duties past the end. |
+| `start`, `end` | `HH:MM` or `""` | Optional, 24-hour clock, for any `when`; `end` is after `start` when both are set. |
+| `dayTypeIds` | id[] | As for a mark. |
+| `weekdays` | integer[] | Empty means every day; otherwise 0 (Monday) to 6 (Sunday), each once, in order. |
+| `from`, `to` | date or `""` | Optional bounds, both included; `to` is not before `from`. A duty with weekdays or dates holds only on some days. |
+| `roomId` | id or `null` | A room. When the room leaves the building the id is cleared and the room's number is written into `place` unless `place` already has text. |
+| `place` | text | 0 to 60 characters. |
+| `teacherIds`, `subjectIds`, `everyone` | id[], id[], boolean | Who: these teachers, everyone teaching these subjects, or all staff (`dutyTeachers`). Deleting a teacher or subject removes it; the duty stays even with nobody on it. Merging teachers swaps the merged one for the kept one. |
+
 ### Calendar
 
 | Field | Type | Meaning |
@@ -351,6 +391,7 @@ removed on load: the scenario lab reconciles it and says what it dropped.
 | `teacherNamesOnMap` | boolean | `true` | |
 | `lastPublishedAt` | date or `null` | `null` | |
 | `staleAtCalendarEnd` | boolean | `true` | Optional, absent meaning `true`. With a calendar, a published file is stale the day after the calendar's last date. |
+| `lastPublishedHadCalendar` | boolean | absent, meaning `false` | Optional. Set by `notePublished`: whether the file last published had a calendar, so the publish form's "removed after your last publish" line holds on every device. |
 
 ### Onboarding
 
@@ -363,7 +404,7 @@ removed on load: the scenario lab reconciles it and says what it dropped.
 |---|---|
 | 0 | Data with no `version`. A scenario held one `dayTypeId` for all of its changes. |
 | 1 | `format` and `version` are in the object. Each scenario change has its own `dayTypeId`. `Floor.level` exists. |
-| 1, unchanged | Added without a version step, every one optional: `DayType.sameAs` and `short`, `bellSchedules`, `calendar`, `PublishSettings.staleAtCalendarEnd` and `views.calendar`. A file without them reads exactly as before; a copy of the tool from before them keeps them through its own repair, which copies what it does not know. |
+| 1, unchanged | Added without a version step, every one optional: `DayType.sameAs` and `short`, `bellSchedules`, `calendar`, `marks`, `duties`, `PublishSettings.staleAtCalendarEnd`, `PublishSettings.lastPublishedHadCalendar` and `views.calendar`. A file without them reads exactly as before; a copy of the tool from before them keeps them through its own repair, which copies what it does not know. |
 
 ### What is never in a project
 
@@ -516,7 +557,9 @@ Format name `sv2-schedule`, version **1**. `writeScheduleFile`,
   "groups": Group[],
   "dayTypes": DayType[],
   "bellSchedules": BellSchedule[],
-  "calendar": Calendar
+  "calendar": Calendar,
+  "marks": Mark[],
+  "duties": Duty[]
 }
 ```
 
@@ -527,17 +570,19 @@ Format name `sv2-schedule`, version **1**. `writeScheduleFile`,
 | `subjects`, `teachers`, `groups`, `dayTypes` | As in the project object, unchanged, a day type's `sameAs` and `short` with it. A slot's `room` and a teacher's `roomIds` are ids found in `rooms`. |
 | `bellSchedules` | Optional. As in the project object. Written only when the project has a bell schedule; absent is none. |
 | `calendar` | Optional. As in the project object, `changedAt` with it. Written only when the project has a calendar; absent is none. |
+| `marks`, `duties` | Optional. As in the project object (Mark, Duty). Written only when the project has any; absent is none. A duty's `roomId` is an id found in `rooms`, which lists it. |
 
-A project with no bell schedules and no calendar writes the file exactly as a
-planner from before them did.
+A project with no bell schedules, no calendar, no marks and no duties writes
+the file exactly as a planner from before them did.
 
 **Reading.** JSON; `format` is `sv2-schedule`; `version` is 1; every field
 above that is not optional is present; then the settings, subjects, teachers,
-groups, day types, bell schedules and calendar have to pass every rule of the
-project object, with `rooms` standing for the building: a slot or a teacher
-naming a room that is not in the index is a refusal, and so are two index
-entries with one number. The summary of what a file holds counts its bell
-schedules and says whether it has a calendar.
+groups, day types, bell schedules, calendar, marks and duties have to pass
+every rule of the project object, with `rooms` standing for the building: a
+slot, a teacher or a duty naming a room that is not in the index is a refusal,
+and so are two index entries with one number. The summary of what a file holds
+counts its bell schedules, marks and duties and says whether it has a
+calendar (`marks` and `duties` are `0` for a file without any).
 
 **Importing** brings the schedule into the project. The rules:
 
@@ -582,6 +627,20 @@ schedules and says whether it has a calendar.
   and counted. A calendar that is the same as the one here is left, with its
   `changedAt`; a replaced one is stamped with the time of the import when the
   importer passes a clock, else keeps the file's `changedAt`.
+- **Marks and duties.** Matched by id: one that is here is left exactly as it
+  is here (importing a file twice adds nothing the second time), one that is
+  not is added, with the file's id when that id is free, at the end of the
+  list. Every reference in an added one is re-pointed through the matches
+  above: day types and subjects and teachers as they were matched or added,
+  groups by name as the groups are (a group imported under a new name by
+  `rename` is the one the mark follows; a group skipped is the group of that
+  name here), a duty's room as a slot's is. A duty's room that is not in this
+  building becomes `roomId: null` and its number becomes its `place`, unless
+  the duty already has a `place`; the reference is counted as dropped. Nothing
+  else can fail to match, since every day type, group, teacher and subject of
+  the file is matched or added. The summary counts `marksAdded` and
+  `dutiesAdded`. A mark past the end of the project's school day cannot come
+  in, since the school day is raised to the file's first.
 - **Limits.** A file that would bring the project to more than 12 day types,
   or more than 12 bell schedules, is refused whole.
 - **Settings.** The period word and the two defaults are taken from the file
@@ -781,13 +840,14 @@ to the same names.
 | Teachers | Teacher, Subject code, Subject, Rooms, Notes | one per teacher. Rooms are room numbers joined by "; ". |
 | Subjects | Code, Subject, Colour | one per subject, in the list's order. Colour is `#rrggbb`. |
 | Rooms | Room, Floor, Teachers, Subject code, Subject, Wing, Capacity, Shared space, Doors | one per room, floor by floor. Teachers are names joined by "; ", main teacher first. Shared space is Yes or No. Doors is a count. |
-| Teachers by period | Teacher, Day type, then one column per period | one per teacher per day type. A cell is "group · room number" for each group taught, joined by "; ", or "Planning". |
-| Rooms by period | Room, Floor, Day type, then one column per period | one per room per day type. A cell is the groups in the room, joined by "; ". Room numbers that slots name and the building does not have come last, with "not in the building" as the floor. |
+| Teachers by period | Teacher, Day type, then one column per period, then Before and After when any teacher has such a duty | one per teacher per day type. A cell is "group · room number" for each group taught, joined by "; ", or "Planning" for a free period. A period that an always duty or a school mark takes reads as it ("Lunch duty", "Their own lunch", "Lunch", or a mark's own label such as "Testing") instead of "Planning". A duty that holds on some days only is added to the cell with its days ("Planning; Bus duty (on Wednesdays)"), and a duty in a period the teacher teaches is listed after the groups. Before and After hold the duties before and after school, in the columns after the last period (a reader of the period cells by position from the third cell is not moved); a column is there only when some teacher has such a duty on one of the day types in the file. |
+| Rooms by period | Room, Floor, Day type, then one column per period | one per room per day type. A cell is the groups in the room, joined by "; ". A group does not appear in a period it does not meet (a No class mark; a Lunch mark keeps the group in the room it is scheduled into). Room numbers that slots name and the building does not have come last, with "not in the building" as the floor. |
 | Calendar | as "The calendar CSV" | one per date of the calendar; the header alone with no calendar |
 
 The two grids come from the same rules as every screen: a teacher's day from
-`engine/teacher-day.js`, and a day type that is the same as the first reads
-the same as the first.
+`engine/teacher-day.js`, where a group is from `meetingSlots`
+(`engine/runs.js`), and a day type that is the same as the first reads the
+same as the first.
 
 **File names.** Every export is named `<school> - <what> - <date>.<ext>`,
 for example `Marrowby Middle School (sample) - groups - 2026-09-01.csv`. The
@@ -978,6 +1038,8 @@ run on it unchanged, and `validate` and `repair` accept it.
 | `dayTypes` | list | `id`, `name`, `own`, `sameAs` (`null` when absent in the project), `short` (`""` when absent), `bells`. |
 | `bellSchedules` | list | As in the project: `id`, `name`, `short`, `bells`, `off`. Empty when there are none. |
 | `calendar` | object or `null` | As in the project: `start`, `end`, `weekdays`, `rotation`, `dates`, `changedAt`. `null` when there is none. |
+| `marks` | list | As in the project, every field: `id`, `kind`, `label`, `period`, `dayTypeIds`, `scope`, `grades`, `groupIds`. A mark past the end of the day is published, since the rules ignore it. Empty when there are none. |
+| `duties` | list | As in the project, every field: `id`, `kind`, `label`, `when`, `period`, `start`, `end`, `dayTypeIds`, `weekdays`, `from`, `to`, `roomId`, `place`, `teacherIds`, `subjectIds`, `everyone`. A duty with nobody on it is published with nobody on it. Empty when there are none. |
 | `groups` | list | `id`, `name`, `grade`, `colour`, `days`. |
 | `publish` | object | `views` (one true or false for each view, `calendar` included; one the project has no switch for is true) and `teacherNamesOnMap`. |
 

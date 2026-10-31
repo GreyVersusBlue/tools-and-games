@@ -1430,6 +1430,8 @@
   ],
   "bellSchedules": [],
   "calendar": null,
+  "marks": [],
+  "duties": [],
   "groups": [
     {
       "id": "gsample06a",

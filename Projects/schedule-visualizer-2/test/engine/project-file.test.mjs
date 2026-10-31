@@ -431,7 +431,7 @@ test('schedule file: the room index lists only rooms the schedule names', () => 
 test('schedule file: a file saved at format 1 still reads, and writes back byte for byte', () => {
   const text = fixture('schedule-v1.json');
   const read = readScheduleFile(text);
-  assert.deepEqual(read.summary, { periods: 8, subjects: 9, teachers: 12, groups: 8, dayTypes: 2, bellSchedules: 0, calendar: false });
+  assert.deepEqual(read.summary, { periods: 8, subjects: 9, teachers: 12, groups: 8, dayTypes: 2, bellSchedules: 0, calendar: false, marks: 0, duties: 0 });
   const bare = { ...school(), groups: [] };
   const applied = applySchedule(bare, read.file, { ids: makeIds(9) });
   assert.equal(writeScheduleFile(applied.project), text);
@@ -923,4 +923,201 @@ test('no reader or writer changes what it is given', () => {
   writeProjectFile(project, { images: IMAGES });
   assert.deepEqual(project, before);
   assert.deepEqual([building.file, schedule.file], frozen);
+});
+
+// ---------------------------------------------------------------- the schedule file: marks and duties
+
+const markOf = (extra) => ({ id: 'mfile00001', kind: 'lunch', label: '', period: 3, dayTypeIds: [], scope: 'school', grades: [], groupIds: [], ...extra });
+const dutyOf = (extra) => ({ id: 'ufile00001', kind: 'duty', label: '', when: 'before', period: 0, start: '', end: '', dayTypeIds: [], weekdays: [], from: '', to: '', roomId: null, place: '', teacherIds: [], subjectIds: [], everyone: false, ...extra });
+
+// The sample school with a mark of every scope and duties that name a teacher,
+// a subject, a day type and a room.
+function withMarksAndDuties() {
+  const project = school();
+  project.marks = [
+    markOf({ id: 'mfile00001', kind: 'lunch', period: 3, scope: 'grades', grades: ['6'] }),
+    markOf({ id: 'mfile00002', kind: 'noclass', label: 'Testing', period: 5, scope: 'groups', groupIds: ['gsample06a', 'gsample06b'], dayTypeIds: [B] }),
+    markOf({ id: 'mfile00003', kind: 'advisory', period: 0 }),
+  ];
+  project.duties = [
+    dutyOf({ id: 'ufile00001', label: 'Bus duty', when: 'after', teacherIds: ['tsample001', 'tsample002'], roomId: 'rsample101', weekdays: [2], dayTypeIds: [A, B] }),
+    dutyOf({ id: 'ufile00002', kind: 'meeting', label: 'Math meeting', when: 'period', period: 6, subjectIds: ['ssample001'], place: 'Library annex' }),
+    dutyOf({ id: 'ufile00003', kind: 'lunch', when: 'period', period: 3, everyone: true }),
+  ];
+  assertValid(project);
+  return project;
+}
+
+// The same school under other ids, as another device's copy of it would be.
+function reId(project) {
+  return JSON.parse(JSON.stringify(project).replace(/"([a-z])sample([a-z0-9]{3})"/g, '"$1xmpl00$2"'));
+}
+
+test('schedule file: a project with no marks and no duties writes neither, and a file without them reads as none', () => {
+  const value = JSON.parse(writeScheduleFile(school()));
+  assert.equal('marks' in value, false);
+  assert.equal('duties' in value, false);
+  const read = readScheduleFile(writeScheduleFile(school()));
+  assert.deepEqual([read.file.marks, read.file.duties, read.summary.marks, read.summary.duties], [[], [], 0, 0]);
+  const empty = school();
+  empty.marks = [];
+  empty.duties = [];
+  assert.equal(writeScheduleFile(empty), writeScheduleFile(school()));
+});
+
+test('schedule file: marks and duties are written after the calendar, with a duty\'s room in the room index', () => {
+  const project = withMarksAndDuties();
+  const value = JSON.parse(writeScheduleFile(project));
+  assert.deepEqual(Object.keys(value), ['format', 'version', 'settings', 'rooms', 'subjects', 'teachers', 'groups', 'dayTypes', 'marks', 'duties']);
+  assert.deepEqual(value.marks, project.marks);
+  assert.deepEqual(value.duties, project.duties);
+  const duty = withMarksAndDuties();
+  duty.groups = duty.groups.map((one) => ({ ...one, days: { [A]: one.days[A].map((slot) => ({ ...slot, room: null })), [B]: one.days[B].map((slot) => ({ ...slot, room: null })) } }));
+  duty.teachers = duty.teachers.map((one) => ({ ...one, roomIds: [] }));
+  assert.deepEqual(JSON.parse(writeScheduleFile(duty)).rooms, [{ id: 'rsample101', number: '101' }], 'only the duty names a room');
+  assert.equal(readScheduleFile(writeScheduleFile(project)).summary.marks, 3);
+  assert.equal(readScheduleFile(writeScheduleFile(project)).summary.duties, 3);
+});
+
+test('schedule file: into a project with the same ids, marks and duties come back as they were', () => {
+  const project = withMarksAndDuties();
+  const bare = { ...school(), groups: [] };
+  const applied = applySchedule(bare, readScheduleFile(writeScheduleFile(project)).file, { ids: makeIds(9) });
+  assertValid(applied.project);
+  assert.deepEqual(applied.project.marks, project.marks);
+  assert.deepEqual(applied.project.duties, project.duties);
+  assert.deepEqual([applied.summary.marksAdded, applied.summary.dutiesAdded, applied.summary.referencesDropped], [3, 3, 0]);
+});
+
+test('schedule file: into another device\'s copy, every reference is re-pointed through the matches', () => {
+  const file = readScheduleFile(writeScheduleFile(withMarksAndDuties())).file;
+  const there = reId(school());
+  assertValid(there);
+  const applied = applySchedule(there, file, { ids: makeIds(9) });
+  assertValid(applied.project);
+  const [one, two, three] = applied.project.marks;
+  assert.deepEqual([one.id, one.grades, one.groupIds, one.dayTypeIds], ['mfile00001', ['6'], [], []]);
+  assert.deepEqual([two.groupIds, two.dayTypeIds, two.label], [['gxmpl0006a', 'gxmpl0006b'], ['dxmpl0000b'], 'Testing']);
+  assert.equal(three.id, 'mfile00003');
+  const [bus, meeting, own] = applied.project.duties;
+  assert.deepEqual([bus.teacherIds, bus.roomId, bus.dayTypeIds, bus.weekdays], [['txmpl00001', 'txmpl00002'], 'rxmpl00101', ['dxmpl0000a', 'dxmpl0000b'], [2]]);
+  assert.deepEqual([meeting.subjectIds, meeting.place, meeting.roomId], [['sxmpl00001'], 'Library annex', null]);
+  assert.deepEqual([own.everyone, own.kind], [true, 'lunch']);
+  assert.deepEqual([applied.summary.marksAdded, applied.summary.dutiesAdded, applied.summary.referencesDropped], [3, 3, 0]);
+  assert.equal(applied.project.groups.length, there.groups.length, 'the groups were matched by name, not added');
+});
+
+test('schedule file: a group imported under a new name is the one the mark follows', () => {
+  const file = readScheduleFile(writeScheduleFile(withMarksAndDuties())).file;
+  const there = reId(school());
+  const applied = applySchedule(there, file, { policy: { all: 'rename' }, ids: makeIds(9) });
+  assertValid(applied.project);
+  const added = applied.project.groups.find((one) => one.name === '6A (2)');
+  assert.ok(added);
+  assert.deepEqual(applied.project.marks[1].groupIds, [added.id, applied.project.groups.find((one) => one.name === '6B (2)').id]);
+});
+
+test('schedule file: a mark or a duty already here, by id, is left as it is and not added again', () => {
+  const file = readScheduleFile(writeScheduleFile(withMarksAndDuties())).file;
+  const here = withMarksAndDuties();
+  here.marks[0] = { ...here.marks[0], label: 'Here' };
+  const applied = applySchedule(here, file, { ids: makeIds(9) });
+  assert.equal(applied.project, here, 'nothing changed');
+  assert.deepEqual([applied.summary.marksAdded, applied.summary.dutiesAdded], [0, 0]);
+  const once = applySchedule(reId(school()), file, { ids: makeIds(9) }).project;
+  const twice = applySchedule(once, file, { ids: makeIds(9) });
+  assert.equal(twice.project, once, 'the second import finds them by id');
+});
+
+test('schedule file: a mark or a duty with an id already here follows the clash policy, and the summary counts those kept and replaced', () => {
+  const file = readScheduleFile(writeScheduleFile(withMarksAndDuties())).file;
+  const edited = () => {
+    const here = withMarksAndDuties();
+    here.marks[0] = { ...here.marks[0], label: 'Here' };
+    here.duties[0] = { ...here.duties[0], label: 'Here too' };
+    return here;
+  };
+  const counts = (summary) => [summary.marksAdded, summary.marksKept, summary.marksReplaced, summary.dutiesAdded, summary.dutiesKept, summary.dutiesReplaced];
+  const total = file.marks.length;
+
+  const skipped = applySchedule(edited(), file, { policy: { all: 'skip' }, ids: makeIds(9) });
+  assert.deepEqual(counts(skipped.summary), [0, total, 0, 0, file.duties.length, 0]);
+  assert.equal(skipped.project.marks[0].label, 'Here');
+
+  const replaced = applySchedule(edited(), file, { policy: { all: 'overwrite' }, ids: makeIds(9) });
+  assertValid(replaced.project);
+  assert.deepEqual(counts(replaced.summary), [0, total - 1, 1, 0, file.duties.length - 1, 1], 'only the two that differ are replaced; the rest are the same and kept');
+  assert.equal(replaced.project.marks[0].label, file.marks[0].label);
+  assert.equal(replaced.project.marks[0].id, file.marks[0].id, 'replaced in place, under the same id');
+  assert.equal(replaced.project.duties[0].label, file.duties[0].label);
+  assert.equal(replaced.project.marks.length, total);
+  assert.equal(replaced.project.duties.length, file.duties.length);
+
+  const renamed = applySchedule(edited(), file, { policy: { all: 'rename' }, ids: makeIds(9) });
+  assertValid(renamed.project);
+  // the groups are renamed too, so the mark that follows them is no longer the same as the one here
+  assert.deepEqual(counts(renamed.summary), [2, total - 2, 0, 1, file.duties.length - 1, 0]);
+  assert.equal(renamed.project.marks[0].label, 'Here');
+  assert.notEqual(renamed.project.marks[total].id, file.marks[0].id, 'the file\'s mark is added under a new id');
+  assert.equal(renamed.project.marks[total].label, file.marks[0].label);
+
+  const perId = applySchedule(edited(), file, { policy: { all: 'skip', per: { [file.marks[0].id]: 'overwrite' } }, ids: makeIds(9) });
+  assert.deepEqual(counts(perId.summary), [0, total - 1, 1, 0, file.duties.length, 0], 'per[id] overrides all, for that one');
+
+  assert.throws(() => applySchedule(edited(), file, { policy: { all: 'merge' }, ids: makeIds(9) }), /name clash is answered with one of/);
+});
+
+test('schedule file: an id the project has for something else is not reused', () => {
+  const file = readScheduleFile(writeScheduleFile(withMarksAndDuties())).file;
+  const there = reId(school());
+  there.marks = [markOf({ id: 'mother0001', period: 1 })];
+  there.duties = [dutyOf({ id: 'ufile00001', kind: 'meeting', when: 'after', everyone: true })];
+  const applied = applySchedule(there, { ...file, marks: file.marks.map((one) => ({ ...one, id: one.id === 'mfile00001' ? 'mother0001' : one.id })) }, { ids: makeIds(9) });
+  assert.equal(applied.project.marks.length, 3, 'one matched by id, two added');
+  assert.equal(applied.project.duties.length, 3, 'the duty with the id here is the one here: two added');
+  assert.equal(applied.project.duties[0].kind, 'meeting');
+});
+
+test('schedule file: a duty\'s room that is not in this building is dropped, counted, and its number kept as its place', () => {
+  const file = readScheduleFile(writeScheduleFile(withMarksAndDuties())).file;
+  const there = reId(school());
+  room(there, '101').number = '1-01';
+  const applied = applySchedule(there, file, { ids: makeIds(9) });
+  assertValid(applied.project);
+  const bus = applied.project.duties[0];
+  assert.deepEqual([bus.roomId, bus.place, applied.summary.referencesDropped >= 1], [null, '101', true]);
+  const typed = withMarksAndDuties();
+  typed.duties[0] = { ...typed.duties[0], place: 'Bus loop' };
+  const kept = applySchedule(there, readScheduleFile(writeScheduleFile(typed)).file, { ids: makeIds(9) });
+  assert.equal(kept.project.duties[0].place, 'Bus loop', 'a place already typed is not overwritten');
+});
+
+test('schedule file: marks and duties that fail the project\'s rules refuse the whole file, naming where', () => {
+  const value = JSON.parse(writeScheduleFile(withMarksAndDuties()));
+  value.marks[0].kind = 'nap';
+  value.duties[1].subjectIds = ['snobody001'];
+  assert.throws(() => readScheduleFile(JSON.stringify(value)), (error) => error instanceof FileError && error.code === 'invalid' && error.findings.some((finding) => finding.path === 'marks[0].kind') && error.findings.some((finding) => /^duties\[1\]/.test(finding.path)));
+});
+
+test('schedule file: a longer school day in the file raises the periods and keeps a mark in its period', () => {
+  const longer = withMarksAndDuties();
+  longer.settings.periods = 10;
+  longer.dayTypes = longer.dayTypes.map((dayType) => ({ ...dayType, bells: dayType.bells.concat([null, null]) }));
+  longer.groups = longer.groups.map((one) => ({ ...one, days: { [A]: one.days[A].concat([emptySlotOf(), emptySlotOf()]), [B]: one.days[B].concat([emptySlotOf(), emptySlotOf()]) } }));
+  longer.marks[2] = { ...longer.marks[2], period: 9 };
+  assertValid(longer);
+  const applied = applySchedule(school(), readScheduleFile(writeScheduleFile(longer)).file, { ids: makeIds(9) });
+  assert.equal(applied.project.settings.periods, 10);
+  assert.equal(applied.project.marks[2].period, 9);
+});
+
+function emptySlotOf() {
+  return { room: null, roomText: '', label: '', teacherIds: [] };
+}
+
+test('the project file carries marks and duties and reads them back as they were', () => {
+  const project = withMarksAndDuties();
+  const back = readProjectFile(writeProjectFile(project), { ids: makeIds(3), clock: clock });
+  assert.deepEqual(back.project.marks, project.marks);
+  assert.deepEqual(back.project.duties, project.duties);
 });

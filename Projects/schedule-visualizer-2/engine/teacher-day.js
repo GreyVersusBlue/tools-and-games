@@ -8,14 +8,21 @@
 // apart. A slot that names several teachers is co-teaching, and counts for
 // each of them.
 //
-// A period in which no slot counts is planning.
+// A period in which no slot counts is planning. A slot the group does not meet
+// in (a No class mark, or a bell schedule's off period) and a slot under a
+// Lunch mark do not count either (marks.js, runs.js). Planning is "free" only
+// when nothing else takes it: an entry's `marked` says what does, and
+// isFree(entry) is the one rule for it (ARCHITECTURE 17.6).
 //
 // Every screen, check, print and published file asks through here. This
 // module is one of those a published file carries, so it keeps to the linker
 // rule: one-line named imports, `export` only directly before a declaration.
 
 import { findRoom, findById, roomNumberKey } from './schema.js';
-import { effectiveSchedule, findDayType } from './day-types.js';
+import { findDayType } from './day-types.js';
+import { offPeriods } from './bells.js';
+import { meetingSlots } from './runs.js';
+import { markFor, schoolMarkFor, dutiesByTeacher, dutyIsSometimes } from './marks.js';
 
 // The teachers a slot counts for, by the rule above. Ids as stored; the
 // caller decides what to do with an id that names nobody.
@@ -27,26 +34,38 @@ export function slotTeacherIds(project, slot) {
 }
 
 // Every teacher's day on day type D in one pass: a Map of teacher id to one
-// entry per period, { period, groups: [{ groupId, roomId, roomText }], kind },
-// where kind is "teaching" or "planning". Groups are in the school's own
-// order. When the slot's room is not in the building roomId is null and
-// roomText is the number the slot kept; otherwise roomText is "". Null when D
-// is not a day type of this project.
-export function teacherDays(project, dayTypeId) {
+// entry per period, { period, groups: [{ groupId, roomId, roomText }], kind,
+// duties, marked }, where kind is "teaching" or "planning". Groups are in the
+// school's own order. When the slot's room is not in the building roomId is
+// null and roomText is the number the slot kept; otherwise roomText is "".
+// `duties` is every duty the teacher has in the period, always or sometimes.
+// `marked` is set only on planning entries, to what takes the period: an
+// always duty's kind ("duty", "meeting", "lunch"), else a school mark's kind
+// ("lunch", "advisory", "activity", "noclass"), else null; a duty that holds
+// only on some days counts as always only when `options.date` is given and
+// matches. `options.bellsId` is a bell schedule whose off periods do not
+// meet. Null when D is not a day type of this project.
+export function teacherDays(project, dayTypeId, options) {
   if (!findDayType(project, dayTypeId)) return null;
+  const date = options && typeof options.date === 'string' ? options.date : null;
+  const bellsId = options && typeof options.bellsId === 'string' ? options.bellsId : null;
   const periods = project.settings.periods;
+  const duties = dutiesByTeacher(project, dayTypeId, date);
   const days = new Map();
   for (const teacher of project.teachers) {
     const day = [];
-    for (let period = 0; period < periods; period += 1) day.push({ period, groups: [], kind: 'planning' });
+    const mine = duties.get(teacher.id);
+    for (let period = 0; period < periods; period += 1) day.push({ period, groups: [], kind: 'planning', duties: mine ? mine.byPeriod[period] : [], marked: null });
     days.set(teacher.id, day);
   }
   for (const group of project.groups) {
-    const schedule = effectiveSchedule(project, group.id, dayTypeId);
+    const schedule = meetingSlots(project, group.id, dayTypeId, bellsId);
     for (let period = 0; period < periods; period += 1) {
       const slot = schedule[period];
       const teacherIds = slotTeacherIds(project, slot);
       if (teacherIds.length === 0) continue;
+      const mark = markFor(project, group.id, dayTypeId, period);
+      if (mark && mark.kind === 'lunch') continue;
       const roomId = slot.room && findRoom(project, slot.room) ? slot.room : null;
       const roomText = roomId === null && typeof slot.roomText === 'string' ? slot.roomText : '';
       for (const teacherId of teacherIds) {
@@ -59,15 +78,35 @@ export function teacherDays(project, dayTypeId) {
       }
     }
   }
+  const off = offPeriods(project, bellsId);
+  const schoolMarks = [];
+  for (let period = 0; period < periods; period += 1) {
+    const mark = off.has(period) ? { kind: 'noclass' } : schoolMarkFor(project, dayTypeId, period);
+    schoolMarks.push(mark ? mark.kind : null);
+  }
+  for (const day of days.values()) {
+    for (const entry of day) {
+      if (entry.kind !== 'planning') continue;
+      const always = entry.duties.find((duty) => !dutyIsSometimes(duty) || date !== null);
+      entry.marked = always ? always.kind : schoolMarks[entry.period];
+    }
+  }
   return days;
 }
 
 // What is teacher T doing in each period on day type D? One entry per period
-// as above. Null when the teacher or the day type does not exist.
-export function teacherDay(project, teacherId, dayTypeId) {
+// as above; `options` as above. Null when the teacher or the day type does
+// not exist.
+export function teacherDay(project, teacherId, dayTypeId, options) {
   if (!findById(project.teachers, teacherId)) return null;
-  const days = teacherDays(project, dayTypeId);
+  const days = teacherDays(project, dayTypeId, options);
   return days ? days.get(teacherId) : null;
+}
+
+// Is the teacher free in this entry? Planning, and nothing else takes the
+// period. The one rule for "free"; every screen and check asks it.
+export function isFree(entry) {
+  return Boolean(entry) && entry.kind === 'planning' && !entry.marked;
 }
 
 // The rooms a teacher is in during one period of their day, each once, in the

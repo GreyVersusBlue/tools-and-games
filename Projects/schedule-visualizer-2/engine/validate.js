@@ -21,6 +21,7 @@ import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_F
 import { isId, ID_LENGTH } from './ids.js';
 import { roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isCellScale, CELL_SCALE_UNITS, CELL_LENGTH_MOST } from './schema.js';
 import { LATER_PUBLISH_VIEWS, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DAYS_MOST, ROTATION_RANGE, DATE_LABEL_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, spacelessKey, textLength } from './schema.js';
+import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST } from './schema.js';
 import { isCalendarDate, daysBetween } from './calendar.js';
 
 function isObject(value) {
@@ -692,6 +693,70 @@ export function validate(project) {
     }
   }
 
+  // ---- marked periods (ARCHITECTURE 17.5) and duties (17.6): strict when
+  // present, never asked for when absent. A mark past the period count is
+  // kept (a setting never truncates data), so the period is not bounded by it.
+  const groupIdSet = new Set(Array.isArray(project.groups) ? project.groups.filter(isObject).map((group) => group.id) : []);
+  const idList = (path, value, known, what) => {
+    if (!Array.isArray(value)) return add(path, 'This is a list of ' + what + ' ids.');
+    const seen = new Set();
+    value.forEach((id, k) => {
+      if (!known.has(id)) add(path + '[' + k + ']', 'There is no ' + what + ' with the id "' + id + '".');
+      else if (seen.has(id)) add(path + '[' + k + ']', 'A ' + what + ' is listed once.');
+      seen.add(id);
+    });
+    return undefined;
+  };
+  if (project.marks !== undefined) {
+    if (!Array.isArray(project.marks)) {
+      add('marks', 'The marked periods are a list.');
+    } else {
+      project.marks.forEach((mark, i) => {
+        const path = 'marks[' + i + ']';
+        if (!isObject(mark)) return add(path, 'A marked period is an object.');
+        checkId(path, mark, 'm');
+        if (!MARK_KINDS.includes(mark.kind)) add(path + '.kind', 'A mark is one of ' + MARK_KINDS.join(', ') + '.');
+        if (!isString(mark.label) || textLength(mark.label) > MARK_LABEL_MOST) add(path + '.label', 'A mark\'s label is text of at most ' + MARK_LABEL_MOST + ' characters.');
+        if (!Number.isInteger(mark.period) || mark.period < 0) add(path + '.period', 'A mark\'s period is a whole number from 0.');
+        idList(path + '.dayTypeIds', mark.dayTypeIds, dayTypeIds, 'day type');
+        if (!MARK_SCOPES.includes(mark.scope)) add(path + '.scope', 'A mark is for ' + MARK_SCOPES.join(', ') + '.');
+        if (!Array.isArray(mark.grades) || !mark.grades.every((grade) => isString(grade))) add(path + '.grades', 'The grades of a mark are a list of text.');
+        idList(path + '.groupIds', mark.groupIds, groupIdSet, 'group');
+        if (mark.scope === 'grades' && Array.isArray(mark.grades) && mark.grades.length === 0) add(path + '.grades', 'A mark for grades names at least one.');
+        if (mark.scope === 'groups' && Array.isArray(mark.groupIds) && mark.groupIds.length === 0) add(path + '.groupIds', 'A mark for groups names at least one.');
+        return undefined;
+      });
+    }
+  }
+  if (project.duties !== undefined) {
+    if (!Array.isArray(project.duties)) {
+      add('duties', 'The duties are a list.');
+    } else {
+      const subjectSet = subjectIds;
+      project.duties.forEach((duty, i) => {
+        const path = 'duties[' + i + ']';
+        if (!isObject(duty)) return add(path, 'A duty is an object.');
+        checkId(path, duty, 'u');
+        if (!DUTY_KINDS.includes(duty.kind)) add(path + '.kind', 'A duty is one of ' + DUTY_KINDS.join(', ') + '.');
+        if (!isString(duty.label) || textLength(duty.label) > DUTY_LABEL_MOST) add(path + '.label', 'A duty\'s label is text of at most ' + DUTY_LABEL_MOST + ' characters.');
+        if (!DUTY_WHEN.includes(duty.when)) add(path + '.when', 'A duty is ' + DUTY_WHEN.join(', ') + ' (before school, in a period, after school).');
+        if (!Number.isInteger(duty.period) || duty.period < 0) add(path + '.period', 'A duty\'s period is a whole number from 0.');
+        for (const edge of ['start', 'end']) if (duty[edge] !== '' && !isBellTime(duty[edge])) add(path + '.' + edge, 'A duty\'s ' + edge + ' is empty or a time written HH:MM on the 24-hour clock.');
+        if (isBellTime(duty.start) && isBellTime(duty.end) && duty.end <= duty.start) add(path + '.end', 'A duty ends after it starts.');
+        idList(path + '.dayTypeIds', duty.dayTypeIds, dayTypeIds, 'day type');
+        if (!Array.isArray(duty.weekdays) || !duty.weekdays.every((day, k) => Number.isInteger(day) && day >= 0 && day <= 6 && (k === 0 || day > duty.weekdays[k - 1]))) add(path + '.weekdays', 'The weekdays of a duty are a list of numbers from 0 (Monday) to 6 (Sunday), each once, in order; empty means every day.');
+        for (const edge of ['from', 'to']) if (duty[edge] !== '' && !isCalendarDate(duty[edge])) add(path + '.' + edge, 'A duty\'s ' + edge + ' date is empty or written YYYY-MM-DD.');
+        if (isCalendarDate(duty.from) && isCalendarDate(duty.to) && duty.to < duty.from) add(path + '.to', 'A duty does not end before it starts.');
+        if (duty.roomId !== null && !roomIds.has(duty.roomId)) add(path + '.roomId', 'A duty\'s room is null or the id of a room.');
+        if (!isString(duty.place) || textLength(duty.place) > DUTY_PLACE_MOST) add(path + '.place', 'A duty\'s place is text of at most ' + DUTY_PLACE_MOST + ' characters.');
+        idList(path + '.teacherIds', duty.teacherIds, teacherIds, 'teacher');
+        idList(path + '.subjectIds', duty.subjectIds, subjectSet, 'subject');
+        if (typeof duty.everyone !== 'boolean') add(path + '.everyone', 'Everyone is true or false.');
+        return undefined;
+      });
+    }
+  }
+
   // ---- publish settings
   const publish = project.publish;
   if (!isObject(publish)) {
@@ -706,6 +771,7 @@ export function validate(project) {
       for (const view of LATER_PUBLISH_VIEWS) if (publish.views[view] !== undefined && typeof publish.views[view] !== 'boolean') add('publish.views.' + view, 'Each published view is switched on or off, true or false.');
     }
     if (publish.staleAtCalendarEnd !== undefined && typeof publish.staleAtCalendarEnd !== 'boolean') add('publish.staleAtCalendarEnd', 'Whether a published file is stale after the calendar\'s last day is true or false.');
+    if (publish.lastPublishedHadCalendar !== undefined && typeof publish.lastPublishedHadCalendar !== 'boolean') add('publish.lastPublishedHadCalendar', 'Whether the last published file had a calendar is true or false.');
     if (typeof publish.teacherNamesOnMap !== 'boolean') add('publish.teacherNamesOnMap', 'Teacher names on the map is true or false.');
     if (publish.lastPublishedAt !== null && !isIsoDate(publish.lastPublishedAt)) add('publish.lastPublishedAt', 'The last published time is null or an ISO date in UTC.');
   }

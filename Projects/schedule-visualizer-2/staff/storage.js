@@ -9,10 +9,10 @@
 //   sv2staff:<schoolId>:dayOn  the reader's "Not right?" answers as JSON:
 //                              { just, follow }, each null or { date,
 //                              dayTypeId, bellsId, at } (SV2-81, SV2-81b); a
-//                              follow answer also holds `seenFile`, the
-//                              publish time of the file open when it was
-//                              given (SV2-81c; the later of that and `seen`
-//                              when it was given, SV2-81d)
+//                              follow answer is removed when `seen` moves to
+//                              a newer file (SV2-81e). An older copy of the
+//                              key may hold `seenFile` on a follow answer;
+//                              it is read past and no longer written.
 //   sv2staff:<schoolId>:bells  the bell schedule chosen by hand beside `day`
 //                              (SV2-81)
 //
@@ -29,8 +29,6 @@ export const NOT_KEPT_SENTENCE = 'This browser does not keep settings for files 
 // device's storage (it may throw: asking is itself refused in some places).
 export function openStorage(schoolId, getBackend, onFallback) {
   const memory = new Map();
-  // what a key held when this page first wrote to it
-  const before = new Map();
   let backend = null;
   let told = false;
   try {
@@ -60,14 +58,7 @@ export function openStorage(schoolId, getBackend, onFallback) {
         return null;
       }
     },
-    // What `name` held before this page first changed it: the value on
-    // opening, which a later write to the key (the shell moves `seen` on as it
-    // opens a file) does not take away. The key's own value until it is written.
-    earlier(name) {
-      return before.has(name) ? before.get(name) : this.get(name);
-    },
     set(name, value) {
-      if (!before.has(name)) before.set(name, this.get(name));
       const text = String(value);
       if (backend !== null) {
         try {
@@ -85,7 +76,6 @@ export function openStorage(schoolId, getBackend, onFallback) {
       return false;
     },
     remove(name) {
-      if (!before.has(name)) before.set(name, this.get(name));
       memory.delete(name);
       if (backend === null) return;
       try {

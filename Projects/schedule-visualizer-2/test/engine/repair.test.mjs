@@ -940,3 +940,138 @@ test('a published model with none of the new fields comes back as it came; one w
   project.calendar.rotation = ['dnowhere00'];
   assert.deepEqual(repair(project).project.calendar.rotation, [A]);
 });
+
+// ---------------------------------------------------------------- marks and duties (SV2-83)
+
+const mk = (extra) => ({ id: 'mtest00001', kind: 'lunch', label: '', period: 3, dayTypeIds: [], scope: 'school', grades: [], groupIds: [], ...extra });
+const du = (extra) => ({ id: 'utest00001', kind: 'duty', label: '', when: 'after', period: 0, start: '', end: '', dayTypeIds: [], weekdays: [], from: '', to: '', roomId: null, place: '', teacherIds: [], subjectIds: [], everyone: true, ...extra });
+
+test('a project with no marks, duties or lastPublishedHadCalendar keeps them absent', () => {
+  const project = school();
+  const { project: fixed } = repair(project);
+  assert.equal(fixed, project);
+  assert.equal('marks' in fixed || 'duties' in fixed || 'lastPublishedHadCalendar' in fixed.publish, false);
+});
+
+test('valid marks and duties come back as the same project with no notes', () => {
+  const project = school();
+  project.marks = [mk(), mk({ id: 'mtest00002', period: 40 })];
+  project.duties = [du()];
+  project.publish.lastPublishedHadCalendar = true;
+  const result = repair(project);
+  assert.equal(result.project, project);
+  assert.deepEqual(result.notes, []);
+});
+
+test('a mark past the period count is kept', () => {
+  const project = school();
+  project.marks = [mk({ period: 40 })];
+  const result = repair(project);
+  assert.equal(result.project.marks.length, 1);
+  assert.equal(result.project.marks[0].period, 40);
+});
+
+test('marks that cannot be read are removed with a note each; ones that can lose only what dangles', () => {
+  const project = school();
+  const dayA = project.dayTypes[0].id;
+  project.marks = [
+    mk({ id: 'mtest00001', kind: 'recess' }),
+    mk({ id: 'mtest00002', scope: 'building' }),
+    mk({ id: 'mtest00003', period: -2 }),
+    mk({ id: 'mtest00004', dayTypeIds: ['dnowhere00'] }),
+    mk({ id: 'mtest00005', dayTypeIds: [dayA, 'dnowhere00', dayA] }),
+    mk({ id: 'mtest00006', scope: 'groups', groupIds: ['gnowhere00'] }),
+    mk({ id: 'mtest00007', scope: 'groups', groupIds: [project.groups[0].id, 'gnowhere00'] }),
+    mk({ id: 'mtest00008', scope: 'grades', grades: [] }),
+    mk({ id: 'mtest00009', label: 'x'.repeat(50) }),
+    7,
+  ];
+  const result = repair(project);
+  assert.deepEqual(result.project.marks.map((mark) => mark.id), ['mtest00005', 'mtest00007', 'mtest00009']);
+  assert.deepEqual(result.project.marks[0].dayTypeIds, [dayA]);
+  assert.deepEqual(result.project.marks[1].groupIds, [project.groups[0].id]);
+  assert.equal(result.project.marks[2].label.length, 40);
+  assert.equal(result.notes.length >= 9, true);
+  assert.deepEqual(validate(result.project), []);
+});
+
+test('a mark with an id of the wrong form gets a new one, and a duplicate id too', () => {
+  const project = school();
+  project.marks = [mk({ id: 'm1' }), mk({ id: 'mtest00001' }), mk({ id: 'mtest00001' })];
+  const result = repair(project, { ids: makeIds(3), clock });
+  const found = result.project.marks.map((mark) => mark.id);
+  assert.equal(new Set(found).size, 3);
+  assert.ok(found.every((id) => isId(id, 'm')));
+});
+
+test('a duty that is not a list entry we can read is removed; the others are put right field by field', () => {
+  const project = school();
+  const teacherId = project.teachers[0].id;
+  project.duties = [
+    du({ id: 'utest00001', kind: 'nap' }),
+    du({ id: 'utest00002', when: 'noon' }),
+    du({ id: 'utest00003', period: 'x', start: '25:61', end: '9:5', from: 'soon', to: '2026-12-18', weekdays: [4, 0, 0, 9], roomId: 'rnowhere00', teacherIds: [teacherId, 'tnowhere00'], subjectIds: ['snowhere00'], everyone: 'yes', place: 'p'.repeat(70) }),
+    du({ id: 'utest00004', from: '2026-12-18', to: '2026-12-01' }),
+    'junk',
+  ];
+  const { project: fixed, notes } = repair(project);
+  assert.deepEqual(fixed.duties.map((duty) => duty.id), ['utest00003', 'utest00004']);
+  const three = fixed.duties[0];
+  assert.equal(three.period, 0);
+  assert.equal(three.start, '');
+  assert.equal(three.end, '');
+  assert.equal(three.from, '');
+  assert.deepEqual(three.weekdays, [0, 4]);
+  assert.equal(three.roomId, null);
+  assert.deepEqual(three.teacherIds, [teacherId]);
+  assert.deepEqual(three.subjectIds, []);
+  assert.equal(three.everyone, false);
+  assert.equal(three.place.length, 60);
+  assert.deepEqual([fixed.duties[1].from, fixed.duties[1].to], ['2026-12-01', '2026-12-18'], 'dates swapped');
+  assert.ok(notes.length >= 8);
+  assert.deepEqual(validate(fixed), []);
+});
+
+test('a duty that names things by an id repair renamed follows them', () => {
+  const project = school();
+  const who = project.teachers[0];
+  const oldId = who.id;
+  who.id = 'T1';
+  for (const r of project.building.floors[0].spaces) if (r.kind === 'room') r.teacherIds = r.teacherIds.map((id) => (id === oldId ? 'T1' : id));
+  for (const g of project.groups) for (const day of Object.values(g.days)) for (const slot of day) slot.teacherIds = slot.teacherIds.map((id) => (id === oldId ? 'T1' : id));
+  project.duties = [du({ everyone: false, teacherIds: ['T1'] })];
+  const { project: fixed } = repair(project, { ids: makeIds(5), clock });
+  assert.equal(fixed.duties[0].teacherIds.length, 1);
+  assert.equal(fixed.duties[0].teacherIds[0], fixed.teachers[0].id);
+});
+
+test('lastPublishedHadCalendar: kept when a flag, reset with a note when not, absent when absent', () => {
+  const project = school();
+  project.publish.lastPublishedHadCalendar = 3;
+  const { project: fixed, notes } = repair(project);
+  assert.equal(fixed.publish.lastPublishedHadCalendar, false);
+  assert.ok(notes.length >= 1);
+});
+
+test('a duty whose day types are all gone is removed with a note, as a mark is; a duty with one left keeps it', () => {
+  const project = school();
+  project.duties = [
+    du({ id: 'utest00001', dayTypeIds: ['dgone00000'] }),
+    du({ id: 'utest00002', dayTypeIds: ['dgone00000', project.dayTypes[0].id] }),
+    du({ id: 'utest00003' }),
+  ];
+  const { project: fixed, notes } = repair(project);
+  assert.deepEqual(fixed.duties.map((duty) => duty.id), ['utest00002', 'utest00003']);
+  assert.deepEqual(fixed.duties[0].dayTypeIds, [project.dayTypes[0].id]);
+  assert.ok(notes.some((note) => /named only day types that are not in the project and was removed/.test(note) && /^Duty 1/.test(note)));
+  assert.deepEqual(validate(fixed), []);
+});
+
+test('a duty that ends when it starts or before loses its end time, with a note', () => {
+  const project = school();
+  project.duties = [du({ id: 'utest00001', start: '08:00', end: '08:00' }), du({ id: 'utest00002', start: '15:30', end: '15:00' }), du({ id: 'utest00003', start: '07:30', end: '07:55' })];
+  const { project: fixed, notes } = repair(project);
+  assert.deepEqual(fixed.duties.map((duty) => [duty.start, duty.end]), [['08:00', ''], ['15:30', ''], ['07:30', '07:55']]);
+  assert.equal(notes.filter((note) => /end time of Duty \d was not after its start/.test(note)).length, 2);
+  assert.deepEqual(validate(fixed), []);
+});

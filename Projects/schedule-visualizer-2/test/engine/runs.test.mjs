@@ -58,3 +58,26 @@ test('runsOf: each own day type with its regular bells, then each with each bell
   assert.deepEqual(runsOf(school()), [{ dayTypeId: 'dsample00a', bellsId: null }, { dayTypeId: 'dsample00b', bellsId: null }]);
   assert.deepEqual(runsOf(emptyProject()), [{ dayTypeId: emptyProject().dayTypes[0].id, bellsId: null }]);
 });
+
+// ---- SV2-83b: a follower gets a run only for a No class mark
+
+function followerMark(kind, dayTypeIds) {
+  const project = school();
+  project.dayTypes.push({ id: 'dsample00c', name: 'C Day', own: false, sameAs: 'dsample00a', short: '', bells: Array(8).fill(null) });
+  project.marks = [{ id: 'maaaaaaaa1', kind, label: '', period: 2, dayTypeIds, scope: 'school', grades: [], groupIds: [] }];
+  return project;
+}
+
+test('runsOf: a No class mark naming a follower gives it a run; an advisory, lunch or activity mark does not', () => {
+  assert.deepEqual(runsOf(followerMark('noclass', ['dsample00c'])).map((r) => r.dayTypeId), ['dsample00a', 'dsample00b', 'dsample00c']);
+  for (const kind of ['advisory', 'lunch', 'activity']) {
+    assert.deepEqual(runsOf(followerMark(kind, ['dsample00c'])).map((r) => r.dayTypeId), ['dsample00a', 'dsample00b'], kind);
+  }
+});
+
+test('runsOf: with no marks, or marks that name no follower, the runs are the own day types exactly as before', () => {
+  const plain = school();
+  assert.deepEqual(runsOf(plain), [{ dayTypeId: 'dsample00a', bellsId: null }, { dayTypeId: 'dsample00b', bellsId: null }]);
+  assert.deepEqual(runsOf(followerMark('noclass', [])).map((r) => r.dayTypeId), ['dsample00a', 'dsample00b']);
+  assert.deepEqual(runsOf(followerMark('noclass', ['dsample00a'])).map((r) => r.dayTypeId), ['dsample00a', 'dsample00b']);
+});

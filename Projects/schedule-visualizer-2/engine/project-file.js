@@ -23,13 +23,13 @@
 // `images` is { [imageId]: { data, type } } both ways: the page passes what
 // it holds to a writer, and stores what a reader hands back.
 
-import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, defaultSettings, defaultPublish, defaultOnboarding, emptyBells, emptySlot, emptyDay, roomNumberKey, nameKey, spacelessKey, allRooms, findRoom, bellSchedulesOf, calendarOf, DAY_TYPES_MOST, BELL_SCHEDULES_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR } from './schema.js';
+import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, defaultSettings, defaultPublish, defaultOnboarding, emptyBells, emptySlot, emptyDay, roomNumberKey, nameKey, spacelessKey, allRooms, findRoom, bellSchedulesOf, calendarOf, marksOf, dutiesOf, DAY_TYPES_MOST, BELL_SCHEDULES_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR } from './schema.js';
 import { DEFAULT_PASSCODE } from './publish-defaults.js';
 import { migrate, MigrateError, versionOf, NEWER_VERSION_MESSAGE, NOT_A_PROJECT_MESSAGE } from './migrate.js';
 import { repair } from './repair.js';
 import { validate } from './validate.js';
 import { collectIds, isId } from './ids.js';
-import { mergeGroups } from './import-groups.js';
+import { mergeGroups, ImportError, CLASH_POLICIES } from './import-groups.js';
 import { isOwnCopy, effectiveDayType, findDayType } from './day-types.js';
 
 export const BUILDING_FORMAT = 'sv2-building';
@@ -461,13 +461,19 @@ export function applyBuilding(project, file, options) {
 // and day types, the bell schedules and the calendar when the project has
 // them, and an index of the rooms they name, so the file can be read against
 // a building whose rooms have other ids. A project with no bell schedules
-// and no calendar writes the file exactly as before they existed.
+// and no calendar writes the file exactly as before they existed. The same
+// holds for the marked periods and the duties (ARCHITECTURE 17.5, 17.6): a
+// duty's room is in the index of rooms, so the file can be read against a
+// building whose rooms have other ids.
 export function writeScheduleFile(project) {
   const named = new Set();
   for (const teacher of project.teachers) for (const roomId of teacher.roomIds) named.add(roomId);
   for (const group of project.groups) {
     for (const dayTypeId of Object.keys(group.days)) for (const slot of group.days[dayTypeId]) if (slot.room !== null) named.add(slot.room);
   }
+  const marks = marksOf(project);
+  const duties = dutiesOf(project);
+  for (const duty of duties) if (typeof duty.roomId === 'string') named.add(duty.roomId);
   const settings = {};
   for (const key of SCHEDULE_SETTINGS) settings[key] = project.settings[key];
   const file = {
@@ -484,6 +490,8 @@ export function writeScheduleFile(project) {
   if (schedules.length > 0) file.bellSchedules = schedules;
   const calendar = calendarOf(project);
   if (calendar !== null) file.calendar = calendar;
+  if (marks.length > 0) file.marks = marks;
+  if (duties.length > 0) file.duties = duties;
   return stringify(file);
 }
 
@@ -529,6 +537,8 @@ export function readScheduleFile(text) {
   const stood = scaffold({ settings, building: { floors: [floor], connections: [], zones: [] }, subjects: value.subjects, teachers: value.teachers, groups: value.groups, dayTypes: value.dayTypes });
   if (value.bellSchedules !== undefined) stood.bellSchedules = value.bellSchedules;
   if (value.calendar !== undefined) stood.calendar = value.calendar;
+  if (value.marks !== undefined) stood.marks = value.marks;
+  if (value.duties !== undefined) stood.duties = value.duties;
   for (const finding of validate(stood)) {
     findings.push({ path: finding.path.replace(/^building\.floors\[0\]\.spaces\[(\d+)\]/, 'rooms[$1]'), message: finding.message });
   }
@@ -538,8 +548,10 @@ export function readScheduleFile(text) {
   // reads as one with neither.
   const bellSchedules = value.bellSchedules === undefined ? [] : value.bellSchedules;
   const calendar = value.calendar === undefined ? null : value.calendar;
-  const file = { format: SCHEDULE_FORMAT, version: value.version, settings: value.settings, rooms: value.rooms, subjects: value.subjects, teachers: value.teachers, groups: value.groups, dayTypes: value.dayTypes, bellSchedules, calendar };
-  return { file, summary: { periods: value.settings.periods, subjects: value.subjects.length, teachers: value.teachers.length, groups: value.groups.length, dayTypes: value.dayTypes.length, bellSchedules: bellSchedules.length, calendar: calendar !== null } };
+  const marks = value.marks === undefined ? [] : value.marks;
+  const duties = value.duties === undefined ? [] : value.duties;
+  const file = { format: SCHEDULE_FORMAT, version: value.version, settings: value.settings, rooms: value.rooms, subjects: value.subjects, teachers: value.teachers, groups: value.groups, dayTypes: value.dayTypes, bellSchedules, calendar, marks, duties };
+  return { file, summary: { periods: value.settings.periods, subjects: value.subjects.length, teachers: value.teachers.length, groups: value.groups.length, dayTypes: value.dayTypes.length, bellSchedules: bellSchedules.length, calendar: calendar !== null, marks: marks.length, duties: duties.length } };
 }
 
 function padTo(list, length, make) {
@@ -613,6 +625,18 @@ const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // - The calendar, when the file has one, replaces this project's, with every
 //   day type and bell schedule it names re-pointed through the matches above.
 //   A reference that matches nothing is dropped and counted.
+// - Marks and duties are matched by id, and a clash is answered by `policy`
+//   as a group's is (`all`, or `per[id]` for one): skip leaves the one here as
+//   it is, overwrite replaces it in place with the file's (same id), rename
+//   adds the file's under a new id. The summary counts those kept and those
+//   replaced. One that is not here is added (with the file's id when it is
+//   free), and every
+//   reference in it is re-pointed through the matches above (groups by name,
+//   as the groups are, rooms as a slot's are). A reference that matches
+//   nothing is dropped and counted: only a duty's room can fail to match,
+//   since every day type, group, teacher and subject of the file is matched
+//   or added. A duty whose room is not in this building keeps its number as
+//   its place.
 // - The period word and the two defaults are taken only when `takeSettings`
 //   is true.
 // - At most DAY_TYPES_MOST day types and BELL_SCHEDULES_MOST bell schedules:
@@ -622,11 +646,13 @@ const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // have the old one; without it the file's changedAt is kept.
 export function applySchedule(project, file, options) {
   const ids = options.ids;
-  const summary = { subjectsAdded: [], teachersAdded: [], dayTypesAdded: [], bellSchedulesAdded: [], madeOwn: [], periodsRaised: null, settingsTaken: [], unknownRooms: [], roomsLeftOff: 0, calendarReplaced: false, referencesDropped: 0 };
+  const summary = { subjectsAdded: [], teachersAdded: [], dayTypesAdded: [], bellSchedulesAdded: [], madeOwn: [], periodsRaised: null, settingsTaken: [], unknownRooms: [], roomsLeftOff: 0, calendarReplaced: false, referencesDropped: 0, marksAdded: 0, dutiesAdded: 0, marksKept: 0, marksReplaced: 0, dutiesKept: 0, dutiesReplaced: 0 };
   const fileSchedules = Array.isArray(file.bellSchedules) ? file.bellSchedules : [];
   const fileCalendar = isObject(file.calendar) ? file.calendar : null;
+  const fileMarks = Array.isArray(file.marks) ? file.marks : [];
+  const fileDuties = Array.isArray(file.duties) ? file.duties : [];
   const taken = new Set(collectIds(project));
-  reserve(ids, collectIds({ subjects: file.subjects, teachers: file.teachers, groups: file.groups, dayTypes: file.dayTypes, bellSchedules: fileSchedules }));
+  reserve(ids, collectIds({ subjects: file.subjects, teachers: file.teachers, groups: file.groups, dayTypes: file.dayTypes, bellSchedules: fileSchedules, marks: fileMarks, duties: fileDuties }));
   let next = project;
 
   // the school day
@@ -883,8 +909,101 @@ export function applySchedule(project, file, options) {
   summary.madeOwn = madeOwn;
   summary.unknownRooms = Array.from(unknown);
 
-  if (merged.project === project) return { project, summary };
-  const findings = validate(merged.project);
+  let result = merged.project;
+
+  // marks and duties, now that every group is here: matched by id, otherwise
+  // added, with their references re-pointed
+  if (fileMarks.length > 0 || fileDuties.length > 0) {
+    const groupMap = new Map();
+    for (const group of file.groups) {
+      const renamed = merged.summary.renamed.find((entry) => entry.from === group.name);
+      const found = result.groups.find((candidate) => nameKey(candidate.name) === nameKey(renamed ? renamed.to : group.name));
+      if (found) groupMap.set(group.id, found.id);
+    }
+    // a list of ids through a map: the ids that matched, each once
+    const through = (list, map) => {
+      const out = [];
+      for (const id of list) {
+        const mapped = map.get(id);
+        if (mapped === undefined) summary.referencesDropped += 1;
+        else if (!out.includes(mapped)) out.push(mapped);
+      }
+      return out;
+    };
+    // a clash on an id is answered as a group's name is: `per[id]`, else `all`, else skip
+    const answer = (id) => {
+      const policy = options.policy;
+      const per = policy && policy.per && Object.prototype.hasOwnProperty.call(policy.per, id) ? policy.per[id] : undefined;
+      const chosen = per === undefined ? (policy && policy.all !== undefined ? policy.all : 'skip') : per;
+      if (!CLASH_POLICIES.includes(chosen)) throw new ImportError('A name clash is answered with one of: ' + CLASH_POLICIES.join(', ') + '.', 'bad-policy');
+      return chosen;
+    };
+    let marksHere = marksOf(result);
+    const addedMarks = [];
+    let changedMarks = false;
+    for (const mark of fileMarks) {
+      const clash = marksHere.findIndex((candidate) => candidate.id === mark.id);
+      const pointed = { ...mark, dayTypeIds: through(mark.dayTypeIds, dayMap), groupIds: through(mark.groupIds, groupMap) };
+      if (clash >= 0) {
+        const choice = answer(mark.id);
+        if (choice === 'skip' || sameJson(marksHere[clash], pointed)) {
+          summary.marksKept += 1;
+          continue;
+        }
+        if (choice === 'overwrite') {
+          marksHere = marksHere.slice();
+          marksHere[clash] = pointed;
+          changedMarks = true;
+          summary.marksReplaced += 1;
+          continue;
+        }
+      }
+      addedMarks.push({ ...pointed, id: keepOrMake(mark.id, 'm', taken, ids) });
+    }
+    let dutiesHere = dutiesOf(result);
+    const addedDuties = [];
+    let changedDuties = false;
+    for (const duty of fileDuties) {
+      const clash = dutiesHere.findIndex((candidate) => candidate.id === duty.id);
+      let choice = 'add';
+      if (clash >= 0) {
+        choice = answer(duty.id);
+        if (choice === 'skip') {
+          summary.dutiesKept += 1;
+          continue;
+        }
+      }
+      let roomId = null;
+      let place = duty.place;
+      if (duty.roomId !== null) {
+        roomId = resolveRoom(duty.roomId);
+        if (roomId === null) {
+          summary.referencesDropped += 1;
+          if (place === '') place = numberOf.get(duty.roomId) || '';
+        }
+      }
+      const pointed = { ...duty, dayTypeIds: through(duty.dayTypeIds, dayMap), roomId, place, teacherIds: through(duty.teacherIds, teacherMap), subjectIds: through(duty.subjectIds, subjectMap) };
+      if (clash >= 0 && sameJson(dutiesHere[clash], pointed)) {
+        summary.dutiesKept += 1;
+        continue;
+      }
+      if (choice === 'overwrite') {
+        dutiesHere = dutiesHere.slice();
+        dutiesHere[clash] = pointed;
+        changedDuties = true;
+        summary.dutiesReplaced += 1;
+        continue;
+      }
+      addedDuties.push({ ...pointed, id: keepOrMake(duty.id, 'u', taken, ids) });
+    }
+    if (addedMarks.length > 0 || changedMarks) result = { ...result, marks: marksHere.concat(addedMarks) };
+    if (addedDuties.length > 0 || changedDuties) result = { ...result, duties: dutiesHere.concat(addedDuties) };
+    summary.marksAdded = addedMarks.length;
+    summary.dutiesAdded = addedDuties.length;
+  }
+
+  if (result === project) return { project, summary };
+  const findings = validate(result);
   if (findings.length > 0) throw new FileError(invalidMessage('schedule', findings), 'invalid', findings);
-  return { project: merged.project, summary };
+  return { project: result, summary };
 }

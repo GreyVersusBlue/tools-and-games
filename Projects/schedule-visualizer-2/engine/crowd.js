@@ -166,7 +166,7 @@
 
 import { DOOR_SIDES, STUDENTS_PER_LANE_CELL, RANGES, inRange, defaultSettings } from './schema.js';
 import { routingGraph, route, createRouteCache, routesForSchedule, runRoutes, walkTarget } from './routing.js';
-import { effectiveDayType } from './day-types.js';
+import { effectiveDayType, findDayType } from './day-types.js';
 import { bellsFor, offPeriods, parseTime } from './bells.js';
 import { teacherDays, teacherMoves } from './teacher-day.js';
 import { runsOf, meetingSlots } from './runs.js';
@@ -508,10 +508,12 @@ export function retimeTransition(result, passingSeconds, marginSeconds) {
   return { ...result, passingSeconds: passing, marginSeconds: margin, cap, groups };
 }
 
-// The routes of run (dayTypeId, bellsId), with the own day type its classes
-// are: a day type that is the same as A Day is answered from A Day.
+// The routes of run (dayTypeId, bellsId). A day type that is the same as A Day
+// is answered from A Day, unless it has a run of its own (runsOf gives one to
+// a follower a No class mark names): then it is answered from that run.
 function dayOf(project, routes, dayTypeId, bellsId) {
-  const dayType = effectiveDayType(project, dayTypeId);
+  const own = findDayType(project, dayTypeId);
+  const dayType = own && runRoutes(routes, own.id, bellsId) ? own : effectiveDayType(project, dayTypeId);
   if (!dayType) return null;
   const day = runRoutes(routes, dayType.id, bellsId);
   return day ? { dayType, day, bellsId: typeof bellsId === 'string' ? bellsId : null } : null;
