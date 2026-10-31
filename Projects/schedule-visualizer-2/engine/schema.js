@@ -107,6 +107,7 @@ export const CHECK_KINDS = [
   'consecutive',
   'teacher-walk',
   'group-walk',
+  'duty-clash',
   'room-missing',
   'empty-period',
   'teacher-multi-room',
@@ -114,6 +115,7 @@ export const CHECK_KINDS = [
   'room-unused',
   'room-no-subject',
   'room-no-teacher',
+  'duty-nobody',
 ];
 
 export const CELL_EMPTY = '.';

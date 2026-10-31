@@ -120,7 +120,7 @@ import { isOwnCopy, effectiveSchedule } from './day-types.js';
 import { meetingSlots } from './runs.js';
 import { periodName } from './bells.js';
 import { slotTeacherIds, teacherDays } from './teacher-day.js';
-import { checkSchedule } from './checks.js';
+import { checkSchedule, teachingRunEnd } from './checks.js';
 import { countWord } from './findings.js';
 import { applyChanges, normalise, changeWords, compareResults } from './scenario.js';
 import { createPipeline } from './worker.js';
@@ -302,7 +302,7 @@ function findingSlots(project, finding) {
     if (finding.kind === 'consecutive') {
       from = where.period;
       to = where.period;
-      while (to + 1 < periods && day[to + 1].kind === 'teaching') to += 1;
+      to = teachingRunEnd(day, to);
     } else if (finding.kind === 'teacher-walk') {
       from = where.period;
       to = reach;

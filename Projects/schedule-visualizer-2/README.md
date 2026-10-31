@@ -141,6 +141,7 @@ row names a file it does not run.
 | `test/engine/building-checks.test.mjs` | Each building check, found where it is, with its sentence |
 | `test/engine/teacher-day.test.mjs` | The one rule for a teacher's day |
 | `test/engine/checks.test.mjs` | The schedule checks of spec 5.7 |
+| `test/engine/checks-duties.test.mjs` | The checks with marks and duties: duty-clash, duty-nobody, no-planning and consecutive when a duty or a mark takes a period, the empty-period note under a mark |
 | `test/engine/routing.test.mjs` | Routes: the quickest, the tie-breaks, the options, the named failures |
 | `test/engine/directions.test.mjs` | A route in words, the reader's "squares", the plain no-stairs refusal |
 | `test/engine/load.test.mjs` | What each group adds to the cells it crosses |
