@@ -1,4 +1,4 @@
-// The Day tab (DESIGN 11.3): four cards, top to bottom.
+// The Day tab (DESIGN 11.3): five cards, top to bottom.
 //
 //   1. The school day     how many periods, and what the school calls one.
 //   2. Day types          which classes meet: one row each, with its name, its
@@ -11,6 +11,9 @@
 //   4. Other bell         another set of times for the same classes (early
 //      schedules          release, assembly, testing), each period with a No
 //                         class tick.
+//   5. Marked periods     Lunch, Advisory, Activity and No class in a period,
+//                         for the school, some grades or some groups: a
+//                         sentence a mark, each opening its editor in place.
 //
 // Every rule is the engine's (engine/actions.js and engine/day-types.js): the
 // limits on names and counts, what a change of kind takes with it, what a
@@ -24,13 +27,16 @@ import { count, list, periodWords } from '../components/words.js';
 import {
   setPeriods, setSetting, describePeriodChange, renameDayType, setBell,
   addDayType, deleteDayType, reorderDayType, setDayTypeKind, setDayTypeShort, describeDayTypeKind, copyDay,
-  addBellSchedule, setBellSchedule, deleteBellSchedule,
+  addBellSchedule, setBellSchedule, deleteBellSchedule, addMark, setMark, deleteMark,
 } from '../../engine/actions.js';
+import { picker } from '../components/picker.js';
+import { icon } from '../components/icons.js';
+import { markFor } from '../../engine/marks.js';
 import { isOwnCopy, baseDayType, effectiveDayType, ownDayTypes, dayShort, bellsShort } from '../../engine/day-types.js';
 import { bellsFor, bellFindings, periodName, formatTime } from '../../engine/bells.js';
 import { formatDuration } from '../../engine/findings.js';
-import { PERIOD_WORDS, RANGES, DAY_TYPES_MOST, BELL_SCHEDULES_MOST, bellSchedulesOf } from '../../engine/schema.js';
-import { fill, apply, button, keyed, freeName, dragRows, grip } from './common.js';
+import { PERIOD_WORDS, RANGES, DAY_TYPES_MOST, BELL_SCHEDULES_MOST, MARK_KINDS, MARK_LABEL_MOST, bellSchedulesOf, marksOf, spacelessKey } from '../../engine/schema.js';
+import { fill, apply, button, keyed, freeName, dragRows, grip, collator } from './common.js';
 import { unappliedOn, dropPointless } from './grid/staged.js';
 
 // What a person types for a time, as "HH:MM" on the 24-hour clock; '' is no
@@ -153,6 +159,83 @@ export function offSentence(settings, name, off, periods) {
     return hours ? span + ' ' + words.Many : words.Many + ' ' + span;
   });
   return list(pieces) + (off.length === 1 ? ' does' : ' do') + ' not meet.';
+}
+
+// ---------------------------------------------------------------- marked periods (DESIGN 11.3, card 5)
+
+export const MARK_WORDS = { lunch: 'Lunch', advisory: 'Advisory', activity: 'Activity', noclass: 'No class' };
+
+// The groups a mark takes, by its scope (ARCHITECTURE 17.5), in the project's
+// order: every group, those of the grades (matched ignoring case and spaces),
+// or those it names.
+export function markGroups(project, mark) {
+  if (mark.scope === 'groups') return project.groups.filter((group) => mark.groupIds.includes(group.id));
+  if (mark.scope === 'grades') {
+    const wanted = new Set(mark.grades.map(spacelessKey));
+    return project.groups.filter((group) => typeof group.grade === 'string' && group.grade.trim() !== '' && wanted.has(spacelessKey(group.grade)));
+  }
+  return project.groups;
+}
+
+// The day types a mark takes: all when it names none, else those it names and
+// those that are the same as one it names.
+export function markDayTypes(project, mark) {
+  if (mark.dayTypeIds.length === 0) return project.dayTypes;
+  return project.dayTypes.filter((dayType) => {
+    if (mark.dayTypeIds.includes(dayType.id)) return true;
+    const own = effectiveDayType(project, dayType.id);
+    return own !== null && mark.dayTypeIds.includes(own.id);
+  });
+}
+
+// The groups for which another mark wins somewhere this one would apply
+// ("7-3 has its own"), in the project's order. `id` is the mark's own id, ''
+// for one not added yet.
+export function markBeatenFor(project, mark, id) {
+  const days = markDayTypes(project, mark);
+  return markGroups(project, mark).filter((group) => days.some((dayType) => {
+    const winner = markFor(project, group.id, dayType.id, mark.period);
+    return winner !== null && winner.id !== id;
+  }));
+}
+
+// "Lunch for grade 7 in Period 5, every day type (4 groups)" as plain parts:
+// { word, kindWord, rest, groups, beaten }. `word` is the label or the kind's
+// word, `kindWord` the kind's word when a label stands in front of it.
+export function markParts(project, mark, id) {
+  const settings = project.settings;
+  const taken = markGroups(project, mark);
+  let who;
+  if (mark.scope === 'school') who = 'the whole school';
+  else if (mark.scope === 'grades') who = (mark.grades.length === 1 ? 'grade ' : 'grades ') + list(mark.grades);
+  else who = taken.length <= 3 ? list(taken.map((group) => group.name)) : count(taken.length, 'group');
+  const pastEnd = mark.period >= settings.periods;
+  const days = mark.dayTypeIds.length === 0 ? ', every day type' : ' on ' + list(project.dayTypes.filter((dayType) => mark.dayTypeIds.includes(dayType.id)).map((dayType) => dayType.name));
+  const beaten = id === undefined ? [] : markBeatenFor(project, mark, id);
+  return {
+    word: mark.label !== '' ? mark.label : MARK_WORDS[mark.kind],
+    kindWord: mark.label !== '' ? MARK_WORDS[mark.kind] : '',
+    rest: ' for ' + who + ' in ' + periodName(settings, mark.period) + (pastEnd ? ' (past the end of the day)' : '') + days,
+    groups: mark.scope === 'school' ? null : taken.length + (taken.length === 1 ? ' group' : ' groups'),
+    beaten: beaten.length === 0 ? '' : beaten.length <= 2 ? list(beaten.map((group) => group.name)) + (beaten.length === 1 ? ' has its own' : ' have their own') : beaten.length + ' groups have their own',
+  };
+}
+
+// The same, as one sentence of text.
+export function markSentence(project, mark, id) {
+  const parts = markParts(project, mark, id);
+  return parts.word + (parts.kindWord === '' ? '' : ' (' + parts.kindWord + ')') + parts.rest + (parts.groups === null ? '' : ' (' + parts.groups + ')');
+}
+
+// The grades the groups are in, once each as first typed, in order.
+export function gradesInUse(project) {
+  const seen = new Map();
+  for (const group of project.groups) {
+    if (typeof group.grade !== 'string' || group.grade.trim() === '') continue;
+    const key = spacelessKey(group.grade);
+    if (!seen.has(key)) seen.set(key, group.grade.trim());
+  }
+  return Array.from(seen.values()).sort(collator.compare);
 }
 
 export function mount(env) {
@@ -680,6 +763,231 @@ export function mount(env) {
         full ? h('p', { class: 'sch-hint', id: countId }, all.length + ' of ' + BELL_SCHEDULES_MOST + '. A project has at most ' + BELL_SCHEDULES_MOST + ' bell schedules; delete one to add another.') : null));
   }
 
+  // ------------------------------------------------------------ 5. marked periods
+
+  // What is open in the card: null, or a draft { id, kind, label, period,
+  // daysMode, dayTypeIds, scope, grades, groupIds }. `id` is null for a mark
+  // not added yet, which is added by its own button; one that is added is
+  // changed as each field is left, once the draft says something the engine
+  // takes (a scope of grades with no grade ticked yet waits).
+  if (view.markEdit === undefined) view.markEdit = null;
+
+  function draftOf(mark) {
+    return {
+      id: mark ? mark.id : null,
+      kind: mark ? mark.kind : 'lunch',
+      label: mark ? mark.label : '',
+      period: mark ? mark.period : 0,
+      daysMode: mark && mark.dayTypeIds.length > 0 ? 'some' : 'all',
+      dayTypeIds: mark ? mark.dayTypeIds.slice() : [],
+      scope: mark ? mark.scope : 'school',
+      grades: mark ? mark.grades.slice() : [],
+      groupIds: mark ? mark.groupIds.slice() : [],
+    };
+  }
+
+  // The fields the actions take.
+  function payloadOf(edit) {
+    return {
+      kind: edit.kind,
+      label: edit.label,
+      period: edit.period,
+      dayTypeIds: edit.daysMode === 'all' ? [] : edit.dayTypeIds,
+      scope: edit.scope,
+      grades: edit.scope === 'grades' ? edit.grades : [],
+      groupIds: edit.scope === 'groups' ? edit.groupIds : [],
+    };
+  }
+
+  // What is still missing before the engine can take the draft, or ''.
+  function missing(edit) {
+    if (edit.daysMode === 'some' && edit.dayTypeIds.length === 0) return 'Tick a day type to finish.';
+    if (edit.scope === 'grades' && edit.grades.length === 0) return 'Tick a grade to finish.';
+    if (edit.scope === 'groups' && edit.groupIds.length === 0) return 'Add a group to finish.';
+    return '';
+  }
+
+  function openMark(mark) {
+    view.markEdit = draftOf(mark);
+    env.render('mark:' + mark.id + ':kind:' + mark.kind);
+  }
+
+  function startMark() {
+    view.markEdit = draftOf(null);
+    env.render('mark:new:kind:lunch');
+  }
+
+  function closeMark() {
+    const edit = view.markEdit;
+    view.markEdit = null;
+    env.render(edit && edit.id !== null ? 'mark:' + edit.id + ':open' : 'mark-new');
+  }
+
+  // A field of the draft changed; `key` is the control to keep the focus on.
+  function change(patch, key) {
+    const edit = view.markEdit;
+    if (!edit) return;
+    Object.assign(edit, patch);
+    if (edit.id !== null && missing(edit) === '') apply(env, setMark, { id: edit.id, ...payloadOf(edit) });
+    env.render(key);
+  }
+
+  function addThisMark() {
+    const edit = view.markEdit;
+    if (!edit || missing(edit) !== '') return;
+    if (!apply(env, addMark, payloadOf(edit))) return;
+    view.markEdit = null;
+    const marks = marksOf(ctx.store.project);
+    const added = marks[marks.length - 1];
+    ctx.announce('Added ' + markSentence(ctx.store.project, added, added.id) + '.');
+    env.render('mark:' + added.id + ':open');
+  }
+
+  function removeMark(mark) {
+    const project = ctx.store.project;
+    const sentence = markSentence(project, mark, mark.id);
+    if (!apply(env, deleteMark, { id: mark.id })) return;
+    view.markEdit = null;
+    ctx.toast({ text: 'Deleted ' + sentence + '.', action: { label: 'Undo', run: ctx.undo } });
+    env.render('mark-new');
+  }
+
+  // A row of radios in a fieldset with a legend, 44 px under 640 px (11.2).
+  function radios(legend, name, options, value, onChange, key) {
+    return h('fieldset', { class: 'sch-fieldset sch-markedit__set' }, h('legend', null, legend),
+      options.map((option) => {
+        const input = keyed(h('input', { type: 'radio', name, value: option.value }), key(option.value));
+        input.checked = option.value === value;
+        input.addEventListener('change', () => input.checked && onChange(option.value));
+        return h('label', { class: 'sch-radio' }, input, h('span', null, option.label));
+      }));
+  }
+
+  function markEditor(project, edit) {
+    const id = edit.id === null ? 'new' : edit.id;
+    const key = (part) => 'mark:' + id + ':' + part;
+    const words = periodWords(project.settings);
+    const kindLegend = uid('mark-kind');
+    const kind = choice({
+      name: uid('mark-kind'),
+      labelledBy: kindLegend,
+      options: MARK_KINDS.map((value) => ({ value, label: MARK_WORDS[value] })),
+      value: edit.kind,
+      onChange: (value) => change({ kind: value }, key('kind:' + value)),
+    });
+    kind.element.querySelectorAll('input').forEach((input) => keyed(input, key('kind:' + input.value)));
+
+    const says = h('p', { class: 'sch-markedit__says', 'aria-live': 'polite' });
+    const draftMark = () => ({ id: edit.id === null ? '' : edit.id, ...payloadOf(edit) });
+    const sayIt = () => {
+      says.textContent = markSentence(project, draftMark(), edit.id === null ? '' : edit.id);
+    };
+    sayIt();
+
+    const label = field({
+      label: 'Label (optional)',
+      value: edit.label,
+      name: 'markLabel',
+      placeholder: MARK_WORDS[edit.kind],
+      commit: (value) => {
+        const next = { ...edit, label: value.trim() };
+        if (edit.id !== null && missing(next) === '') ctx.store.apply(setMark, { id: edit.id, ...payloadOf(next) });
+        edit.label = next.label;
+        sayIt();
+      },
+    });
+    keyed(label.input, key('label'));
+    label.input.maxLength = MARK_LABEL_MOST * 2;
+    label.input.setAttribute('aria-describedby', uid('mark-label-hint'));
+    const labelHint = h('p', { class: 'sch-hint', id: label.input.getAttribute('aria-describedby') }, 'Shown in place of ' + MARK_WORDS[edit.kind] + ', such as Assembly or Testing. Up to ' + MARK_LABEL_MOST + ' characters.');
+
+    const period = keyed(h('select', { class: 'field__input', id: uid('mark-period') }, Array.from({ length: Math.max(project.settings.periods, edit.period + 1) }, (_, at) => h('option', { value: String(at) }, periodName(project.settings, at) + (at >= project.settings.periods ? ' (not in the day)' : '')))), key('period'));
+    period.value = String(edit.period);
+    period.addEventListener('change', () => change({ period: Number(period.value) }, key('period')));
+
+    const days = [radios('Day types', uid('mark-days'), [{ value: 'all', label: 'Every day type' }, { value: 'some', label: 'Only these…' }], edit.daysMode,
+      (value) => change({ daysMode: value, dayTypeIds: value === 'all' ? [] : edit.dayTypeIds }, key('days:' + value)), (value) => key('days:' + value))];
+    if (edit.daysMode === 'some') {
+      days.push(h('div', { class: 'sch-markedit__ticks', role: 'group', 'aria-label': 'Day types this mark is on' }, project.dayTypes.map((dayType) => {
+        const box = keyed(h('input', { type: 'checkbox' }), key('day:' + dayType.id));
+        box.checked = edit.dayTypeIds.includes(dayType.id);
+        box.addEventListener('change', () => change({ dayTypeIds: box.checked ? edit.dayTypeIds.concat([dayType.id]) : edit.dayTypeIds.filter((other) => other !== dayType.id) }, key('day:' + dayType.id)));
+        return h('label', { class: 'sch-radio' }, box, h('span', null, dayType.name));
+      })));
+    }
+
+    const who = [radios('Who', uid('mark-who'), [{ value: 'school', label: 'The whole school' }, { value: 'grades', label: 'Grades…' }, { value: 'groups', label: 'Groups…' }], edit.scope,
+      (value) => change({ scope: value }, key('who:' + value)), (value) => key('who:' + value))];
+    if (edit.scope === 'grades') {
+      const keys = new Set(edit.grades.map(spacelessKey));
+      const grades = gradesInUse(project);
+      for (const grade of edit.grades) if (!grades.some((other) => spacelessKey(other) === spacelessKey(grade))) grades.push(grade);
+      who.push(grades.length === 0
+        ? h('p', { class: 'sch-hint' }, 'No group has a grade yet. Give groups a grade on the Groups tab.')
+        : h('div', { class: 'sch-markedit__chips', role: 'group', 'aria-label': 'Grades' }, grades.map((grade) => {
+          const pressed = keys.has(spacelessKey(grade));
+          return keyed(h('button', { type: 'button', class: 'sch-show__chip', 'aria-pressed': String(pressed), data: { grade }, on: { click: () => change({
+            grades: pressed ? edit.grades.filter((other) => spacelessKey(other) !== spacelessKey(grade)) : edit.grades.concat([grade]),
+          }, key('grade:' + spacelessKey(grade))) } }, 'Grade ' + grade), key('grade:' + spacelessKey(grade)));
+        })));
+    }
+    if (edit.scope === 'groups') {
+      const chosen = edit.groupIds.map((groupId) => project.groups.find((group) => group.id === groupId)).filter(Boolean);
+      const add = picker({
+        placeholder: chosen.length === 0 ? 'Add a group' : 'Add another group',
+        listLabel: 'Groups',
+        emptyText: project.groups.length === 0 ? 'No groups yet.' : 'No group matches.',
+        options: () => ctx.store.project.groups.filter((group) => !edit.groupIds.includes(group.id)).map((group) => ({ id: group.id, label: group.name })),
+        onPick: (option) => change({ groupIds: edit.groupIds.concat([option.id]) }, key('group-add')),
+      });
+      add.input.setAttribute('aria-label', 'Add a group to this mark');
+      keyed(add.input, key('group-add'));
+      who.push(h('div', { class: 'sch-markedit__chips' },
+        chosen.map((group) => h('span', { class: 'chip' }, h('span', null, group.name), keyed(h('button', { type: 'button', class: 'chip__remove', 'aria-label': 'Take ' + group.name + ' off this mark', on: {
+          click: () => change({ groupIds: edit.groupIds.filter((other) => other !== group.id) }, key('group-add')),
+        } }, icon('close', 14)), key('group:' + group.id)))), add.element));
+    }
+
+    const hint = missing(edit);
+    const added = edit.id === null ? null : marksOf(project).find((mark) => mark.id === edit.id);
+    return h('div', { class: 'sch-markedit', role: 'group', 'aria-label': edit.id === null ? 'The new mark' : 'The mark: ' + (added ? markSentence(project, added, added.id) : '') },
+      h('div', { class: 'sch-markedit__kind' }, h('p', { class: 'sch-markedit__legend', id: kindLegend }, 'Kind'), kind.element),
+      h('div', { class: 'sch-markedit__grid' }, h('div', null, label.element, labelHint), h('div', { class: 'field' }, h('label', { class: 'field__label', for: period.id }, words.One), period)),
+      h('div', { class: 'sch-markedit__grid' }, h('div', null, days), h('div', null, who)),
+      h('p', { class: 'sch-markedit__label' }, 'This reads:'),
+      says,
+      hint === '' ? null : h('p', { class: 'sch-hint sch-markedit__missing', role: 'status' }, hint + (edit.id === null ? '' : ' Nothing changes until then.')),
+      h('div', { class: 'sch-toolbar' },
+        edit.id === null
+          ? [button('Add this mark', addThisMark, { primary: true, key: key('add'), action: 'add-mark' }), button('Cancel', closeMark, { key: key('cancel'), action: 'cancel-mark' })]
+          : [button('Done', closeMark, { primary: true, key: key('done'), action: 'done-mark' }), button('Delete this mark', () => removeMark(added), { key: key('delete'), action: 'delete-mark' })]));
+  }
+
+  function markLine(project, mark) {
+    const parts = markParts(project, mark, mark.id);
+    return h('li', { class: 'sch-marks__item', data: { mark: mark.id } },
+      keyed(h('button', { type: 'button', class: 'sch-marks__line', 'aria-expanded': 'false', on: { click: () => openMark(mark) } },
+        h('strong', null, parts.word), parts.kindWord === '' ? null : ' (' + parts.kindWord + ')', parts.rest,
+        parts.groups === null ? null : [' (', h('span', { class: parts.groups.startsWith('0 ') ? 'sch-marks__none' : null }, parts.groups), ')']), 'mark:' + mark.id + ':open'),
+      parts.beaten === '' ? null : h('span', { class: 'sch-marks__beaten' }, parts.beaten));
+  }
+
+  function marksCard(project) {
+    const marks = marksOf(project);
+    const edit = view.markEdit && (view.markEdit.id === null || marks.some((mark) => mark.id === view.markEdit.id)) ? view.markEdit : null;
+    if (view.markEdit && !edit) view.markEdit = null;
+    const add = button('Mark a period', startMark, { primary: marks.length === 0, key: 'mark-new', action: 'mark-period' });
+    add.disabled = edit !== null && edit.id === null;
+    return h('section', { class: 'sch-card', 'aria-labelledby': 'sch-card-marks', data: { card: 'marks' } },
+      h('h2', { class: 'sch-card__title', id: 'sch-card-marks' }, 'Marked periods'),
+      h('p', { class: 'sch-hint' }, 'Lunch, advisory, an assembly or no class in a ' + periodWords(project.settings).one + ', for the whole school, some grades or some groups. No class beats every other mark. A teacher with nothing in a ' + periodWords(project.settings).one + ' the school has marked shows the mark instead of Planning.'),
+      marks.length === 0 && edit === null
+        ? h('p', { class: 'sch-marks__empty' }, 'Nothing is marked. Mark lunch by grade, an assembly or a no-class period here, and the groups, teachers and checks follow.')
+        : h('ul', { class: 'sch-marks' }, marks.map((mark) => (edit && edit.id === mark.id ? h('li', { class: 'sch-marks__item is-open', data: { mark: mark.id } }, markEditor(project, edit)) : markLine(project, mark)))),
+      edit !== null && edit.id === null ? markEditor(project, edit) : null,
+      h('div', { class: 'sch-toolbar' }, add));
+  }
+
   // ------------------------------------------------------------ drawing
 
   function draw(project) {
@@ -691,7 +999,8 @@ export function mount(env) {
         dayBasics(project)),
       dayTypesCard(project),
       regularBellsCard(project),
-      otherBellsCard(project));
+      otherBellsCard(project),
+      marksCard(project));
   }
 
   draw(ctx.store.project);

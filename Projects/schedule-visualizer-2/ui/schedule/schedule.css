@@ -1952,3 +1952,113 @@
 .sch-fold__summary .sch-daytype__title {
   display: inline;
 }
+
+/* ---------- SV2-85: marked periods (the Day tab's fifth card) and the Duties tab ----------
+   DESIGN 11.3 card 5, 11.5, 11.6. A mark is a sentence that is a button; it
+   opens its editor in place. Chips, ticks, radios and row buttons are 44 px
+   on a coarse pointer or under 640 px (11.2). */
+
+.sch-marks {
+  display: grid;
+  gap: var(--s-1);
+  margin: var(--s-3) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sch-marks__empty {
+  margin: var(--s-3) 0;
+  color: var(--ink-2);
+}
+
+.sch-marks__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-1) var(--s-3);
+}
+
+.sch-marks__item.is-open {
+  display: block;
+}
+
+.sch-marks__line {
+  padding: var(--s-1) var(--s-2);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-height: 32px;
+}
+
+.sch-marks__line:hover {
+  background: var(--accent-soft);
+}
+
+.sch-marks__none,
+.sch-marks__beaten {
+  color: var(--note);
+}
+
+.sch-marks__beaten {
+  font-size: var(--t-sm);
+}
+
+.sch-markedit {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-2);
+  background: var(--paper);
+}
+
+.sch-markedit__legend,
+.sch-markedit__label {
+  margin: 0 0 var(--s-1);
+  font-size: var(--t-sm);
+  font-weight: var(--w-semibold);
+}
+
+.sch-markedit__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--s-3);
+}
+
+.sch-markedit__says {
+  margin: 0;
+  max-width: 46rem;
+}
+
+.sch-markedit__ticks,
+.sch-markedit__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-2);
+  margin-top: var(--s-1);
+}
+
+.sch-markedit__set + .sch-markedit__ticks {
+  margin-top: var(--s-1);
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+  .sch-marks__line,
+  .sch-markedit .seg__label,
+  .sch-markedit .chip__remove,
+  .sch-markedit .btn,
+  .sch-duties .btn,
+  .sch-duties .chip__remove,
+  .sch-duties .sch-show__chip {
+    min-height: 44px;
+  }
+
+  .sch-markedit .chip__remove,
+  .sch-duties .chip__remove {
+    min-width: 44px;
+  }
+}
