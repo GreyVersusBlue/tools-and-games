@@ -20,7 +20,7 @@ import { makeHash } from './router.js';
 import { dayText } from './dates.js';
 import { printButton, handOver } from './page.js';
 import { isMe, chooseMe, forgetMe, dayListWords } from './notes.js';
-import { todayOf } from './clock.js';
+import { todayOf, takenBy, edgeDuties, dutyWords, dutyPlace, dutyTimes, sometimesWords } from './clock.js';
 
 export const LOCK_WIDTH = 1170;
 export const LOCK_HEIGHT = 2532;
@@ -57,9 +57,13 @@ export function imageName(name) {
 }
 
 // What a teacher has in a period, as plain words for the image:
-// "6A · 101", "6C, 7C · 203", "Planning".
-function entryText(school, entry) {
-  if (!entry || entry.kind !== 'teaching') return 'Planning';
+// "6A · 101", "6C, 7C · 203", "Planning", "Lunch duty · Cafeteria".
+function entryText(school, entry, dayTypeId) {
+  if (!entry || entry.kind !== 'teaching') {
+    // a free period that a duty or a mark takes says what takes it
+    const taken = takenBy(school, entry, dayTypeId, null);
+    return taken === null ? 'Planning' : taken.title + (taken.place === '' ? '' : ' · ' + taken.place);
+  }
   const groups = entry.groups.map((taught) => {
     const group = school.group(taught.groupId);
     return group ? group.name : 'a group';
@@ -146,7 +150,9 @@ export function lockScreenLayout(school, teacher, kinds, when) {
   // leave each period a row of LOCK_ROW_LEAST
   const top = LOCK_TOP + 68;
   const head = 22;
-  const periods = Math.max(1, ...kinds.map((kind) => (school.teacherDay(teacher.id, kind.first.id) || []).length));
+  // duties before and after the school day are rows above and below the periods
+  const edgesOf = (kind) => edgeDuties(school, teacher.id, kind.first.id, null);
+  const periods = Math.max(1, ...kinds.map((kind) => (school.teacherDay(teacher.id, kind.first.id) || []).length + edgesOf(kind).before.length + edgesOf(kind).after.length));
   const fits = (count, bottom) => {
     const many = Math.ceil(count / MAX_COLUMNS);
     return ((bottom - top - GAP * (many - 1)) / many - head) / periods >= LOCK_ROW_LEAST;
@@ -172,22 +178,28 @@ export function lockScreenLayout(school, teacher, kinds, when) {
       const x = SIDE + columnAt * (columnWidth + GAP);
       const day = school.teacherDay(teacher.id, kind.first.id) || [];
       const bells = school.bells(kind.first.id);
-      const rowHeight = Math.min(34, (bandHeight - head) / Math.max(1, day.length));
+      const edges = edgesOf(kind);
+      const edgeLine = (duty, label) => ({ label, time: dutyTimes(school, duty), text: [dutyWords(duty) + (sometimesWords(school, duty) === '' ? '' : ' (' + sometimesWords(school, duty) + ')'), dutyPlace(school, duty)].filter((part) => part !== '').join(' · '), teaching: false });
+      const lines = edges.before.map((duty) => edgeLine(duty, 'Bef'))
+        .concat(day.map((entry) => {
+          const bell = bells[entry.period];
+          const time = bell && bell.start && bell.end ? (band.length === 1 ? school.time(bell.start) + ' to ' + school.time(bell.end) : school.time(bell.start)) : '';
+          return { label: school.periodLabel(entry.period), time, text: entryText(school, entry, kind.first.id), teaching: entry.kind === 'teaching' };
+        }))
+        .concat(edges.after.map((duty) => edgeLine(duty, 'Aft')));
+      const rowHeight = Math.min(34, (bandHeight - head) / Math.max(1, lines.length));
       const size = Math.max(7, Math.min(14, Math.floor(rowHeight * 0.54)));
       text(dayListWords(kind.dayTypes.map((dayType) => dayType.name)), x, bandTop + 13, 13, { weight: 700, tone: 'accent', fit: columnWidth });
       items.push({ kind: 'rule', x, y: bandTop + head - 3, w: columnWidth });
-      const labelWidth = Math.max(...day.map((entry) => school.periodLabel(entry.period).length), 1) * size * 0.62 + 6;
+      const labelWidth = Math.max(...lines.map((line) => line.label.length), 1) * size * 0.62 + 6;
       // a lone column has room for the whole time; side by side, the start
       const wide = band.length === 1;
       const timeWidth = size * (wide ? 9.6 : 4.6);
-      day.forEach((entry, rowAt) => {
+      lines.forEach((line, rowAt) => {
         const y = bandTop + head + rowAt * rowHeight + rowHeight * 0.68;
-        const bell = bells[entry.period];
-        let time = '';
-        if (bell && bell.start && bell.end) time = wide ? school.time(bell.start) + ' to ' + school.time(bell.end) : school.time(bell.start);
-        text(school.periodLabel(entry.period), x, y, size, { weight: 600, face: 'plan', fit: labelWidth });
-        if (time !== '') text(time, x + labelWidth, y, size, { tone: 'soft', fit: timeWidth });
-        text(entryText(school, entry), x + labelWidth + timeWidth, y, size, { weight: entry.kind === 'teaching' ? 600 : 400, tone: entry.kind === 'teaching' ? 'ink' : 'soft', fit: columnWidth - labelWidth - timeWidth });
+        text(line.label, x, y, size, { weight: 600, face: 'plan', fit: labelWidth });
+        if (line.time !== '') text(line.time, x + labelWidth, y, size, { tone: 'soft', fit: timeWidth });
+        text(line.text, x + labelWidth + timeWidth, y, size, { weight: line.teaching ? 600 : 400, tone: line.teaching ? 'ink' : 'soft', fit: columnWidth - labelWidth - timeWidth });
       });
     });
   });
