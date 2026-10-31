@@ -127,11 +127,41 @@ export async function radioDialog(ctx, { id, title, legend, options, chosen, wor
   return (await dialog.closed) === 'go' ? picked : null;
 }
 
+// Under 640 px (the width at which the Groups tab takes turns too).
+const NARROW = '(max-width: 640px)';
+
+// The sentence under a bell schedule's table for the periods ticked No class
+// (`off`, from 0, sorted): "Every period meets.", "Period 3 does not meet.",
+// "Periods 5 to 8 do not meet.", "Period 2 and Periods 5 to 8 do not meet.",
+// and, with every period ticked, "Nothing meets under Early Release."
+export function offSentence(settings, name, off, periods) {
+  const words = periodWords(settings);
+  if (off.length === 0) return 'Every ' + words.one + ' meets.';
+  if (off.length >= periods) return 'Nothing meets under ' + name + '.';
+  const runs = [];
+  for (const period of off) {
+    const last = runs[runs.length - 1];
+    if (last && last[1] === period - 1) last[1] = period;
+    else runs.push([period, period]);
+  }
+  // "Period 5" without its word, "C" for Block C, "2nd" for the 2nd Hour
+  const bare = (period) => periodName(settings, period).replace(/^(Period|Mod|Block) /, '').replace(/ Hour$/, '');
+  const hours = settings.periodWord === 'Hour';
+  const pieces = runs.map(([from, to]) => {
+    if (from === to) return periodName(settings, from);
+    const span = bare(from) + (to === from + 1 ? ' and ' : ' to ') + bare(to);
+    return hours ? span + ' ' + words.Many : words.Many + ' ' + span;
+  });
+  return list(pieces) + (off.length === 1 ? ' does' : ' do') + ' not meet.';
+}
+
 export function mount(env) {
   const { ctx, view } = env;
   const element = h('div', { class: 'sch-daytab' });
   // a start typed with no end yet (or the other way round) waits here
   if (!view.halfBells) view.halfBells = new Map();
+  // which bell tables are open on a narrow screen: key -> open
+  if (!view.bellFold) view.bellFold = new Map();
   // what is typed and chosen in "Add a day type", until it is added
   if (!view.dayAdd) view.dayAdd = { name: null, kind: 'own', refusal: '' };
   // (name null: nothing typed, and the next free name is suggested afresh)
@@ -528,13 +558,10 @@ export function mount(env) {
     // Drag to reorder, by mouse or pen. A finger does not drag (it scrolls
     // the page); Move up and Move down in the row's menu always work
     // (DESIGN 11.2).
-    rows.addEventListener('pointerdown', (event) => {
-      if (event.pointerType === 'touch') event.stopImmediatePropagation();
-    }, true);
     dragRows(rows, (from, to) => {
       const dayType = ctx.store.project.dayTypes[from];
       if (dayType) moveDayType(dayType, Math.max(1, to));
-    });
+    }, { touch: false });
     return h('section', { class: 'sch-card', 'aria-labelledby': 'sch-card-daytypes', data: { card: 'day-types' } },
       h('h2', { class: 'sch-card__title', id: 'sch-card-daytypes' }, 'Day types'),
       h('p', { class: 'sch-hint' }, 'A day type says which classes meet. One with its own classes has a room for every group in every ' + periodWords(project.settings).one + '; one that is the same as another follows it in everything.'),
@@ -544,12 +571,33 @@ export function mount(env) {
 
   // ------------------------------------------------------------ 3. regular bells
 
+  // Under 640 px a bell table is a disclosure headed by its day type's or
+  // schedule's name, folded when there are more than two tables in the card
+  // (the page would be a long scroll of tables); wider, the table is just
+  // there. What a person opened or shut stays so through the next drawing.
+  // `title` is the heading's text node(s), `table` the scrolling table.
+  function bellFold(key, many, heading, table, headed) {
+    if (!window.matchMedia(NARROW).matches) return headed ? [heading, table] : [table];
+    const details = h('details', { class: 'sch-fold', data: { fold: key } },
+      h('summary', { class: 'sch-fold__summary' }, heading), table);
+    const fallback = many <= 2;
+    details.open = view.bellFold.has(key) ? view.bellFold.get(key) : fallback;
+    // (the toggle event fires for setting `open` above as well: only a
+    // difference from the usual is something a person did)
+    details.addEventListener('toggle', () => {
+      if (details.open === fallback) view.bellFold.delete(key);
+      else view.bellFold.set(key, details.open);
+    });
+    return [details];
+  }
+
   function regularBellsCard(project) {
     const tables = ownDayTypes(project).map((dayType) => {
       const titleId = uid('bells');
       return h('section', { class: 'sch-daytype', 'aria-labelledby': titleId, data: { day: dayType.id } },
-        h('h3', { class: 'sch-daytype__title', id: titleId }, dayType.name),
-        h('div', { class: 'sch-scroll' }, bellTable(project, { kind: 'day', id: dayType.id, name: dayType.name, bells: dayType.bells }, true)));
+        bellFold('day:' + dayType.id, ownDayTypes(project).length,
+          h('h3', { class: 'sch-daytype__title', id: titleId }, dayType.name),
+          h('div', { class: 'sch-scroll' }, bellTable(project, { kind: 'day', id: dayType.id, name: dayType.name, bells: dayType.bells }, true)), true));
     });
     const followers = project.dayTypes.filter((dayType) => !isOwnCopy(project, dayType.id));
     return h('section', { class: 'sch-card', 'aria-labelledby': 'sch-card-regular', data: { card: 'regular-bells' } },
@@ -603,14 +651,15 @@ export function mount(env) {
     short.input.setAttribute('aria-label', 'Short name of ' + schedule.name + ', up to 4 characters' + (schedule.short ? '' : '. Left empty, it is ' + derived));
     keyed(short.input, 'bsched:' + schedule.id + ':short');
     const off = Array.isArray(schedule.off) ? schedule.off.filter((p) => p < project.settings.periods) : [];
-    const words = periodWords(project.settings);
     return h('section', { class: 'sch-bsched', 'aria-labelledby': titleId, data: { bells: schedule.id } },
       h('div', { class: 'sch-bsched__head' },
         h('h3', { class: 'sch-daytype__title', id: titleId }, schedule.name),
         button('Delete', () => removeSchedule(schedule), { small: true, key: 'bsched:' + schedule.id + ':delete', action: 'delete-bells', more: ' the ' + schedule.name + ' bell schedule' })),
       h('div', { class: 'sch-bsched__fields' }, name.element, short.element),
-      h('p', { class: 'sch-hint sch-bsched__off' }, off.length === 0 ? 'Every ' + words.one + ' meets.' : list(off.map((p) => periodName(project.settings, p))) + (off.length === 1 ? ' does' : ' do') + ' not meet.'),
-      h('div', { class: 'sch-scroll' }, bellTable(project, { kind: 'bells', id: schedule.id, name: schedule.name, bells: schedule.bells }, true)));
+      bellFold('bells:' + schedule.id, all.length,
+        h('span', { class: 'sch-fold__name' }, schedule.name + ': bell times'),
+        h('div', { class: 'sch-scroll' }, bellTable(project, { kind: 'bells', id: schedule.id, name: schedule.name, bells: schedule.bells }, true)), false),
+      h('p', { class: 'sch-hint sch-bsched__off' }, offSentence(project.settings, schedule.name, off, project.settings.periods)));
   }
 
   function otherBellsCard(project) {

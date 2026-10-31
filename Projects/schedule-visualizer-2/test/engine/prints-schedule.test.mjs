@@ -221,6 +221,34 @@ test('a day type that is the same as the first has no sheet of its own, and the 
   }
 });
 
+test('the grids print the one day type the Grid tab’s Day type select names, and every one for All or a day type that has gone (SV2-78b)', () => {
+  const project = school();
+  const [a, b] = ownDayTypes(project);
+  for (const id of ['groups', 'teacher-grid', 'room-grid']) {
+    const all = tablesOf(renderOutput(id, project, null, NOW).html);
+    assert.deepEqual(all.map((table) => table.day), [a.id, b.id], id);
+    for (const [asked, wanted] of [[b.id, [b.id]], [a.id, [a.id]], ['all', [a.id, b.id]], ['dgone00000', [a.id, b.id]]]) {
+      const { html, title } = renderOutput(id, project, null, { ...NOW, dayTypeId: asked });
+      const tables = tablesOf(html);
+      assert.deepEqual(tables.map((table) => table.day), wanted, id + ' for ' + asked);
+      if (wanted.length === 1) {
+        const only = tables[0];
+        const same = all.find((table) => table.day === only.day);
+        assert.deepEqual(only.rows, same.rows, id + ': the sheet is the one it was among them');
+        assert.ok(html.includes(': ' + (only.day === a.id ? a.name : b.name)), id + ' names the day type in its header');
+      }
+    }
+  }
+  // B Day the same as A Day: the select cannot name it, and the line about it
+  // is for the sheets that are all of them
+  const following = followingB();
+  const [first] = ownDayTypes(following);
+  const one = renderOutput('groups', following, null, { ...NOW, dayTypeId: first.id }).html;
+  assert.equal(tablesOf(one).length, 1);
+  assert.ok(!one.includes('has no grid of its own'), 'a sheet chosen alone does not talk about the others');
+  assert.ok(renderOutput('groups', following, null, NOW).html.includes('has no grid of its own'));
+});
+
 // ---------------------------------------------------------------- the teacher list
 
 test('the teacher list prints the teachers file: its head and every row, in its order', () => {

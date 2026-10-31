@@ -137,7 +137,7 @@ export function scheduleWords(project) {
   return {
     empty: parts.length === 0,
     removes: parts.length === 0 ? 'There are no groups, teachers, accepted findings or scenario, so there is nothing to clear.' : 'Removes ' + list(parts) + '.',
-    keeps: 'The building stays with its rooms, which no longer have teachers. The subjects, the day types with their bell times, and the settings stay too.',
+    keeps: 'The building stays with its rooms, which no longer have teachers. The subjects, the day types with their bell times, the other bell schedules, the calendar and the settings stay too.',
   };
 }
 

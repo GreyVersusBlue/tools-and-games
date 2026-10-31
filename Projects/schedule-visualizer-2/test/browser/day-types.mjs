@@ -307,7 +307,7 @@ test('an Early Release bell schedule: added as a copy of A Day’s bells, named,
   await page.focus('[data-key="bsched:' + id + ':7:off"]');
   await page.keyboard.press('Space');
   await shows((selector) => document.querySelector(selector + ' tr[data-period="7"]')?.dataset.off === 'true', table);
-  assert.equal(await text('.sch-bsched__off'), 'Period 5, Period 6, Period 7 and Period 8 do not meet.');
+  assert.equal(await text('.sch-bsched__off'), 'Periods 5 to 8 do not meet.');
   assert.deepEqual(await page.$$eval(table + ' tbody tr', (rows) => rows.map((row) => row.cells[2].textContent)), ['', '', '', '', 'No class', 'No class', 'No class', 'No class'], 'a period that does not meet reads No class');
   assert.equal(await count(table + ' tr[data-off="true"] input[name^="bell"]'), 0, 'its times are not asked for');
   assert.equal(await page.$eval(table + ' tr[data-period="3"]', (row) => row.cells[4].textContent), '', 'no passing time into a period that does not meet');
@@ -371,7 +371,7 @@ test('the group editor with more than two day types of their own: Show chips, th
   // the list: one bar for them all, the day by day in its title
   assert.equal(await count('.sch-group[data-group="' + GROUP + '"] .sch-bar'), 1);
   assert.match(await page.$eval('.sch-group[data-group="' + GROUP + '"] .sch-bar--all', (el) => el.title), /^A Day 8 of 8, B Day 8 of 8, D Day 8 of 8, C Day 8 of 8, /);
-  assert.match(await page.$eval('.sch-group[data-group="' + GROUP + '"] .sch-bar--all .vh', (el) => el.textContent), /^Complete on \d+ of 10 day types\. $/);
+  assert.match(await page.$eval('.sch-group[data-group="' + GROUP + '"] .sch-bar--all .vh', (el) => el.textContent), /^Complete on \d+ of 10 day types: A Day 8 of 8, B Day 8 of 8, .* J Day 8 of 8\. $/, 'the row’s name carries the day by day (SV2-78b)');
   // a slot's address on a day type not shown shows it
   await go(page, '#schedule/groups/' + GROUP + '/' + ids[5] + '/2');
   await keyIs('slot:' + ids[5] + ':2:room');
@@ -471,11 +471,26 @@ test('at 390 px with touch: rows stack, every target is 44 px, Move down by a ta
   await go(page, '#schedule/groups/' + GROUP);
   await settled();
   assert.equal(await count('.sch-days > .sch-day'), 1);
-  assert.equal(await count('.sch-show__chip[aria-pressed="true"]'), 1);
+  assert.equal(await count('.sch-show__chip[aria-checked="true"]'), 1);
   assert.equal(await page.$$eval('.sch-show__chip, .sch-same-lines button', (all) => all.every((el) => { const b = el.getBoundingClientRect(); return b.height >= 43.5 && b.width >= 43.5; })), true, 'chips and their buttons are 44 px');
   await page.$eval('.sch-show__chip[data-day="' + ids[6] + '"]', (el) => el.scrollIntoView({ block: 'center' }));
   await tap('.sch-show__chip[data-day="' + ids[6] + '"]');
-  await shows((id) => document.querySelectorAll('.sch-show__chip[aria-pressed="true"]').length === 1 && document.querySelector('.sch-show__chip[aria-pressed="true"]').dataset.day === id && document.querySelector('.sch-days > .sch-day').dataset.day === id, ids[6]);
+  await shows((id) => document.querySelectorAll('.sch-show__chip[aria-checked="true"]').length === 1 && document.querySelector('.sch-show__chip[aria-checked="true"]').dataset.day === id && document.querySelector('.sch-days > .sch-day').dataset.day === id, ids[6]);
+  // (SV2-78b) the single choice is a radio group: one Tab stop, the arrows move and make the choice
+  assert.equal(await page.$eval('.sch-show', (el) => el.getAttribute('role')), 'radiogroup');
+  assert.equal(await count('.sch-show__chip[role="radio"]'), 10);
+  assert.equal(await count('.sch-show__chip[aria-pressed]'), 0, 'not toggles any more');
+  assert.equal(await count('.sch-show__chip:not([tabindex="-1"])'), 1, 'one Tab stop');
+  const chipIds = await page.$$eval('.sch-show__chip', (all) => all.map((el) => el.dataset.day));
+  const next = chipIds[chipIds.indexOf(ids[6]) + 1];
+  await keyIs('show:' + ids[6]);
+  await page.keyboard.press('ArrowRight');
+  await keyIs('show:' + next);
+  assert.equal(await page.$eval('.sch-show__chip[data-day="' + next + '"]', (el) => el.getAttribute('aria-checked')), 'true');
+  assert.equal(await page.$eval('.sch-days > .sch-day', (el) => el.dataset.day), next);
+  await page.keyboard.press('ArrowUp');
+  await keyIs('show:' + ids[6]);
+  assert.equal(await count('.sch-show__chip:not([tabindex="-1"])'), 1);
   await page.evaluate(() => globalThis.sv2.storage.flush());
   await session.close();
   session = await openPlanner({ server, browser, hash: '#schedule/day', theme: 'light', width: 1280, height: 900 });
@@ -580,7 +595,7 @@ test('the Day tab by keyboard alone: add a day type, change what it is, move it,
     await shows((key) => document.querySelector('[data-key="' + key + '"]')?.checked === true, 'bsched:' + id + ':' + period + ':off');
   }
   await shows(() => document.querySelectorAll('.sch-bells tr[data-off="true"]').length === 4);
-  assert.equal(await text('.sch-bsched__off'), 'Period 5, Period 6, Period 7 and Period 8 do not meet.');
+  assert.equal(await text('.sch-bsched__off'), 'Periods 5 to 8 do not meet.');
   assert.deepEqual(await page.evaluate(() => [window.sv2Pointers, window.sv2Lost]), [0, 0], 'no pointer event, and the focus never fell to the page');
 });
 
@@ -673,4 +688,152 @@ test('Undo from every other toast of the Day tab puts the focus on the control t
   await shows(() => document.querySelectorAll('.sch-bsched').length === 0);
   await click('.toast .toast__action');
   await keyIs('bsched:' + id + ':delete');
+});
+
+test('the sentence under a bell schedule’s table: runs read “Periods 5 to 8”, every period off reads “Nothing meets under …”, and a name is shown as typed (SV2-78b)', async () => {
+  await session.close();
+  session = await openPlanner({ server, browser, hash: '#schedule/day', theme: 'light', width: 1280, height: 900 });
+  page = session.page;
+  await settled();
+  await freshSample();
+  await loadModule(page, 'actions', 'engine/actions.js');
+  const evil = '<img src=x onerror=alert(1)>';
+  await page.evaluate((name) => globalThis.sv2.store.apply(globalThis.sv2modules.actions.addBellSchedule, { name }), evil);
+  await settled();
+  const id = await page.evaluate(() => globalThis.sv2.store.project.bellSchedules[0].id);
+  const sentence = async (off, setting) => {
+    await page.evaluate((scheduleId, ticked, periodWord) => {
+      const { store } = globalThis.sv2;
+      const { actions } = globalThis.sv2modules;
+      if (periodWord) store.apply(actions.setSetting, { key: 'periodWord', value: periodWord });
+      store.apply(actions.setBellSchedule, { bellScheduleId: scheduleId, off: ticked });
+    }, id, off, setting || null);
+    await settled();
+    return text('.sch-bsched__off');
+  };
+  assert.equal(await sentence([]), 'Every period meets.');
+  assert.equal(await sentence([2]), 'Period 3 does not meet.');
+  assert.equal(await sentence([4, 5, 6, 7]), 'Periods 5 to 8 do not meet.');
+  assert.equal(await sentence([0, 1]), 'Periods 1 and 2 do not meet.');
+  assert.equal(await sentence([1, 4, 5, 6, 7]), 'Period 2 and Periods 5 to 8 do not meet.');
+  assert.equal(await sentence([0, 2, 4]), 'Period 1, Period 3 and Period 5 do not meet.', 'no run, no range');
+  assert.equal(await sentence([0, 1, 2, 3, 4, 5, 6, 7]), 'Nothing meets under ' + evil + '.', 'every period off, the name as typed');
+  assert.equal(await count('img[src="x"]'), 0, 'the name is text');
+  assert.equal(await page.$eval('.sch-bsched__off', (el) => el.previousElementSibling.querySelector('table') !== null), true, 'under the table');
+  assert.equal(await sentence([2, 3, 4], 'Block'), 'Blocks C to E do not meet.');
+  assert.equal(await sentence([1, 2, 3], 'Hour'), '2nd to 4th Hours do not meet.');
+  assert.equal(await sentence([], 'Period'), 'Every period meets.');
+});
+
+test('at 390 px each bell table is a disclosure headed by its name, folded when a card has more than two; what a person opened stays open (SV2-78b)', async () => {
+  await session.close();
+  session = await openPlanner({ server, browser, hash: '#schedule/day', theme: 'light', width: 390, height: 844, mobile: true });
+  page = session.page;
+  await settled();
+  await freshSample();
+  await loadModule(page, 'actions', 'engine/actions.js');
+  // two day types and no other schedule: tables just open
+  assert.equal(await count('details.sch-fold'), 2);
+  assert.equal(await count('details.sch-fold[open]'), 2, 'two or fewer are not folded');
+  await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    const { actions } = globalThis.sv2modules;
+    for (const name of ['C Day', 'D Day']) store.apply(actions.addDayType, { name, own: true });
+    for (const name of ['Early Release', 'Assembly', 'Testing']) store.apply(actions.addBellSchedule, { name });
+  });
+  await settled();
+  assert.deepEqual(await page.$$eval('.sch-card[data-card="regular-bells"] details.sch-fold > summary', (all) => all.map((el) => el.textContent)), ['A Day', 'B Day', 'C Day', 'D Day'], 'headed by the day type’s name');
+  assert.deepEqual(await page.$$eval('.sch-card[data-card="other-bells"] details.sch-fold > summary', (all) => all.map((el) => el.textContent)), ['Early Release: bell times', 'Assembly: bell times', 'Testing: bell times']);
+  assert.equal(await count('details.sch-fold[open]'), 0, 'folded: more than two in each card');
+  assert.equal(await page.$$eval('details.sch-fold > summary', (all) => all.every((el) => el.getBoundingClientRect().height >= 43.5)), true, 'a summary is 44 px');
+  // open one by the keys; type a time; the drawing after it keeps it open
+  const dayB = await page.evaluate(() => globalThis.sv2.store.project.dayTypes[1].id);
+  await page.focus('.sch-daytype[data-day="' + dayB + '"] summary');
+  await page.keyboard.press('Enter');
+  await shows((id) => document.querySelector('.sch-daytype[data-day="' + id + '"] details').open, dayB);
+  await page.focus('[data-key="bell:' + dayB + ':0:start"]');
+  await page.keyboard.down('Control');
+  await page.keyboard.press('a');
+  await page.keyboard.up('Control');
+  await page.keyboard.type('7:55');
+  await page.keyboard.press('Enter');
+  await shows((id) => document.querySelector('.sch-daytype[data-day="' + id + '"] details').open && document.querySelector('[data-key="bell:' + id + ':0:start"]').value === '7:55 AM', dayB);
+  await settled();
+  assert.equal(await count('details.sch-fold[open]'), 1, 'only the one a person opened');
+  // a table that is shut is not in the way of Tab
+  assert.equal(await page.$$eval('details.sch-fold:not([open]) input', (all) => all.filter((el) => el.checkVisibility()).length), 0);
+  // wide: no disclosures at all
+  await session.close();
+  session = await openPlanner({ server, browser, hash: '#schedule/day', theme: 'light', width: 1280, height: 900 });
+  page = session.page;
+  await settled();
+  await freshSample();
+  assert.equal(await count('details.sch-fold'), 0);
+});
+
+test('the list’s single bar shows its day by day as text on a focus or a tap, and a screen reader has it in the row’s name (SV2-78b)', async () => {
+  await session.close();
+  session = await openPlanner({ server, browser, hash: '#schedule/day', theme: 'light', width: 1280, height: 900 });
+  page = session.page;
+  await settled();
+  await freshSample();
+  await addByStore(['C Day', 'D Day']);
+  await go(page, '#schedule/groups');
+  await settled();
+  assert.equal(await count('.sch-bar--all'), 8);
+  const detail = '.sch-group:nth-child(3) .sch-bar__detail';
+  assert.equal(await page.$eval(detail, (el) => getComputedStyle(el).display), 'none', 'a mouse has the title; the text waits for a focus');
+  assert.match(await page.$eval('.sch-group:nth-child(3) .sch-bar--all', (el) => el.title), /^A Day \d of 8, B Day \d of 8, C Day \d of 8, D Day \d of 8$/);
+  await page.focus('.sch-group:nth-child(3)');
+  assert.equal(await page.$eval(detail, (el) => getComputedStyle(el).display), 'block');
+  assert.equal(await text(detail), await page.$eval('.sch-group:nth-child(3) .sch-bar--all', (el) => el.title));
+  assert.equal(await page.$eval(detail, (el) => el.getAttribute('aria-hidden')), 'true');
+  assert.ok((await page.$eval('.sch-group:nth-child(3) .vh', (el) => el.closest('.sch-group').textContent)).includes('C Day'), 'the row’s name carries the day by day');
+  await page.evaluate(() => document.activeElement.blur());
+  assert.equal(await page.$eval(detail, (el) => getComputedStyle(el).display), 'none');
+});
+
+test('a finger on a period row’s grip in the group editor drags nothing; the mouse still does (SV2-78b)', async () => {
+  await session.close();
+  session = await openPlanner({ server, browser, hash: '#schedule/groups/' + GROUP, theme: 'light', width: 390, height: 844, mobile: true });
+  page = session.page;
+  await settled();
+  await freshSample();
+  await go(page, '#schedule/groups/' + GROUP);
+  await settled();
+  await page.waitForSelector('.sch-day[data-day="' + DAY_A + '"] tr[data-period="0"] .sch-grip');
+  const rooms = () => page.evaluate((group, day) => globalThis.sv2.store.project.groups.find((each) => each.id === group).days[day].map((slot) => slot.room), GROUP, DAY_A);
+  const before = await rooms();
+  assert.ok(before[0] !== before[1], 'the sample has different rooms to tell a move by');
+  const grip = '.sch-day[data-day="' + DAY_A + '"] tr[data-period="0"] .sch-grip';
+  const onto = '.sch-day[data-day="' + DAY_A + '"] tr[data-period="1"] .sch-slot__period';
+  // both in the window, then measured
+  const places = async () => {
+    await page.$eval(grip, (el) => el.scrollIntoView({ block: 'start' }));
+    const centre = (selector) => page.$eval(selector, (el) => { const r = el.getBoundingClientRect(); return { x: r.left + Math.min(r.width / 2, 20), y: r.top + r.height / 2 }; });
+    return { start: await centre(grip), end: await centre(onto) };
+  };
+  const client = await page.target().createCDPSession();
+  const { start: from, end: to } = await places();
+  await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [from] });
+  for (let step = 1; step <= 8; step += 1) await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: from.x, y: from.y + ((to.y - from.y) * step) / 8 }] });
+  await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await settled();
+  assert.deepEqual(await rooms(), before, 'a finger moved nothing');
+  assert.equal(await count('tr.is-dragging, tr.is-drop'), 0, 'and picked nothing up');
+  // the mouse: period 1 dropped on period 2 moves its assignment
+  await session.close();
+  session = await openPlanner({ server, browser, hash: '#schedule/groups/' + GROUP, theme: 'light', width: 1280, height: 900 });
+  page = session.page;
+  await settled();
+  await freshSample();
+  await go(page, '#schedule/groups/' + GROUP);
+  await settled();
+  const moved = await places();
+  await page.mouse.move(moved.start.x, moved.start.y);
+  await page.mouse.down();
+  await page.mouse.move(moved.end.x, moved.end.y, { steps: 6 });
+  await page.mouse.up();
+  await shows((room, day, group) => globalThis.sv2.store.project.groups.find((each) => each.id === group).days[day][0].room !== room, before[0], DAY_A, GROUP);
+  assert.deepEqual((await rooms()).slice(0, 2), [before[1], before[0]], 'the mouse swapped the two');
 });

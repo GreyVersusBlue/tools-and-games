@@ -421,7 +421,8 @@ export function mount(env) {
     const has = rows === 'teachers' ? project.teachers.length > 0 : rows === 'rooms' ? allRooms(project).length > 0 || project.groups.length > 0 : project.groups.length > 0;
     if (!has) return null;
     const entry = printButtons.find((each) => each.id === 'print-grid-' + rows);
-    const element = keyed(printButton(ctx, { ...entry, label: buttonLabel(entry, project.settings) }), 'grid-print');
+    // (the Day type the select shows is the one printed, DESIGN 11.9)
+    const element = keyed(printButton(ctx, { ...entry, label: buttonLabel(entry, project.settings) }, () => ({ dayTypeId: gridDayOf(ctx.store.project, state.day) })), 'grid-print');
     if (gridEditsPending(project.id)) element.title = 'Prints the schedule as it is applied. The changes not applied yet are not on it.';
     return element;
   }

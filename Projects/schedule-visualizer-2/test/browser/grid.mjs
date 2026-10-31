@@ -592,3 +592,32 @@ test('a day type made the same as another on the Day tab while the grid was away
   assert.equal(await text('.grd-gone'), 'B Day is now the same as A Day, so the grid shows every day type.');
   assert.equal(await deviceDay(), '');
 });
+
+test('the grid’s print follows its Day type select: one day type chosen prints that one’s sheets, All prints them all (SV2-78b)', async () => {
+  await session.close();
+  session = await openPlanner({ server, browser, hash: '#schedule/grid', theme: 'light', width: 1280, height: 900 });
+  page = session.page;
+  await settled();
+  await page.evaluate(() => globalThis.sv2.ctx.loadSample());
+  await shows(() => globalThis.sv2.store.project.groups.length === 8);
+  await settled();
+  const sheets = async () => {
+    await page.click('#print-grid-groups');
+    await page.waitForSelector('#print-preview[data-ready="true"]');
+    const what = await page.evaluate(() => Array.from(document.querySelector('#print-preview iframe').contentDocument.querySelectorAll('.doc-head__what'), (el) => el.textContent));
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.getElementById('print-preview') === null);
+    await settled();
+    return what;
+  };
+  assert.deepEqual(await sheets(), ['Groups: A Day', 'Groups: B Day'], 'All');
+  await page.select('.grd-day', DAY_B);
+  await settled();
+  assert.deepEqual(await sheets(), ['Groups: B Day']);
+  await page.select('.grd-day', DAY_A);
+  await settled();
+  assert.deepEqual(await sheets(), ['Groups: A Day']);
+  await page.select('.grd-day', 'all');
+  await settled();
+  assert.deepEqual(await sheets(), ['Groups: A Day', 'Groups: B Day']);
+});
