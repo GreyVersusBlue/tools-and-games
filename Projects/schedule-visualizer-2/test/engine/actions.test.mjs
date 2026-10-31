@@ -1517,3 +1517,232 @@ test('importCalendarDates: no change makes no step, and it is refused with no ca
   refused(actions.importCalendarDates, project, { changes: [{ ...change, day: null, bells: 'bnowhere00' }] }, 'missing');
   refused(actions.importCalendarDates, project, { changes: [{ ...change, label: 'x'.repeat(61) }] }, 'too-long');
 });
+
+// ---------------------------------------------------------------- marks and duties (SV2-83)
+
+const DAY_A = 'dsample00a';
+const DAY_B = 'dsample00b';
+
+test('addMark makes a school-wide mark on every day type, validates, bumps SCHEDULE and is one undo step', () => {
+  const before = school();
+  assert.equal('marks' in before, false);
+  const after = run(actions.addMark, before, { kind: 'lunch', period: 3 });
+  assert.equal(after.marks.length, 1);
+  const [mark] = after.marks;
+  assert.match(mark.id, /^m[a-z0-9]{9}$/);
+  assert.deepEqual({ ...mark, id: '' }, { id: '', kind: 'lunch', label: '', period: 3, dayTypeIds: [], scope: 'school', grades: [], groupIds: [] });
+  assert.deepEqual(actions.addMark.bumps, [SCHEDULE]);
+  assert.equal(actions.describeAction(actions.addMark, before, { kind: 'lunch', period: 3 }, after).label, 'Add Lunch');
+  assert.equal(actions.describeAction(actions.addMark, before, { kind: 'noclass', period: 3, label: ' Assembly ' }, after).label, 'Add Assembly');
+  const store = createStore({ project: before, ids: makeIds(9), clock });
+  store.apply(actions.addMark, { kind: 'advisory', period: 0 });
+  assert.equal(store.project.marks.length, 1);
+  store.undo();
+  assert.equal('marks' in store.project, false, 'one undo step takes it back');
+});
+
+test('addMark for groups and for grades keeps only what the scope uses, in the project\'s own order', () => {
+  const groups = run(actions.addMark, school(), { kind: 'activity', period: 2, scope: 'groups', groupIds: ['gsample07a', 'gsample06a'], grades: ['6'] });
+  assert.deepEqual(groups.marks[0].groupIds, ['gsample06a', 'gsample07a']);
+  assert.deepEqual(groups.marks[0].grades, [], 'grades are not kept for a group mark');
+  const grades = run(actions.addMark, school(), { kind: 'lunch', period: 3, scope: 'grades', grades: [' 6 ', '6', ' 7'], groupIds: ['gsample06a'] });
+  assert.deepEqual(grades.marks[0].grades, ['6', '7'], 'trimmed, each once');
+  assert.deepEqual(grades.marks[0].groupIds, []);
+});
+
+test('addMark and setMark refuse what cannot be a mark', () => {
+  const p = school();
+  refused(actions.addMark, p, { kind: 'recess', period: 3 }, 'bad-value');
+  refused(actions.addMark, p, { kind: 'lunch' }, 'bad-value');
+  refused(actions.addMark, p, { kind: 'lunch', period: 8 }, 'bad-value');
+  refused(actions.addMark, p, { kind: 'lunch', period: -1 }, 'bad-value');
+  refused(actions.addMark, p, { kind: 'lunch', period: 1.5 }, 'bad-value');
+  refused(actions.addMark, p, { kind: 'lunch', period: 3, label: 'x'.repeat(41) }, 'too-long');
+  refused(actions.addMark, p, { kind: 'lunch', period: 3, label: 5 }, 'bad-value');
+  refused(actions.addMark, p, { kind: 'lunch', period: 3, scope: 'building' }, 'bad-value');
+  refused(actions.addMark, p, { kind: 'lunch', period: 3, scope: 'groups' }, 'bad-value');
+  refused(actions.addMark, p, { kind: 'lunch', period: 3, scope: 'grades', grades: [' '] }, 'bad-value');
+  refused(actions.addMark, p, { kind: 'lunch', period: 3, dayTypeIds: ['dnowhere00'] }, 'missing');
+  refused(actions.addMark, p, { kind: 'lunch', period: 3, scope: 'groups', groupIds: ['gnowhere00'] }, 'missing');
+  refused(actions.addMark, p, { kind: 'lunch', period: 3, id: 'dsample00a' }, 'bad-id');
+  refused(actions.addMark, p, { kind: 'lunch', period: 3, id: 'tsample001' }, 'bad-id');
+  refused(actions.setMark, p, { id: 'mnowhere00', label: 'x' }, 'missing');
+});
+
+test('setMark changes only what is given, and changing nothing returns the very project', () => {
+  const one = run(actions.addMark, school(), { kind: 'lunch', period: 3, id: 'mtest00001' });
+  const renamed = run(actions.setMark, one, { id: 'mtest00001', label: 'Lunch A', dayTypeIds: [DAY_B] });
+  assert.equal(renamed.marks[0].label, 'Lunch A');
+  assert.deepEqual(renamed.marks[0].dayTypeIds, [DAY_B]);
+  assert.equal(renamed.marks[0].period, 3);
+  assert.equal(actions.setMark(freeze(renamed), { id: 'mtest00001', label: 'Lunch A' }, shared), renamed);
+  const scoped = run(actions.setMark, renamed, { id: 'mtest00001', scope: 'groups', groupIds: ['gsample06a'] });
+  const back = run(actions.setMark, scoped, { id: 'mtest00001', scope: 'school' });
+  assert.deepEqual(back.marks[0].groupIds, []);
+  refused(actions.setMark, one, { id: 'mtest00001', scope: 'groups' }, 'bad-value');
+  assert.equal(actions.describeAction(actions.setMark, renamed, { id: 'mtest00001' }, renamed).label, 'Change Lunch A');
+});
+
+test('deleteMark takes one mark out and leaves an empty list, not an absent one', () => {
+  const one = run(actions.addMark, school(), { kind: 'lunch', period: 3, id: 'mtest00001' });
+  const none = run(actions.deleteMark, one, { id: 'mtest00001' });
+  assert.deepEqual(none.marks, []);
+  refused(actions.deleteMark, none, { id: 'mtest00001' }, 'missing');
+});
+
+test('addDuty makes a duty before school, every day, with nobody on it; every field is checked', () => {
+  const after = run(actions.addDuty, school(), { kind: 'duty', label: 'Bus duty' });
+  assert.deepEqual({ ...after.duties[0], id: '' }, { id: '', kind: 'duty', label: 'Bus duty', when: 'before', period: 0, start: '', end: '', dayTypeIds: [], weekdays: [], from: '', to: '', roomId: null, place: '', teacherIds: [], subjectIds: [], everyone: false });
+  assert.match(after.duties[0].id, /^u[a-z0-9]{9}$/);
+  assert.deepEqual(actions.addDuty.bumps, [SCHEDULE]);
+  const full = run(actions.addDuty, school(), { kind: 'meeting', label: 'Science department', when: 'period', period: 7, start: '14:45', end: '15:05', dayTypeIds: [DAY_B, DAY_A], weekdays: [4, 2, 2], from: '2026-12-01', to: '2026-12-18', roomId: room(school(), '101').id, place: 'Room 101', teacherIds: ['tsample002', 'tsample001'], subjectIds: ['ssample003'], everyone: false });
+  assert.deepEqual(full.duties[0].dayTypeIds, [DAY_A, DAY_B]);
+  assert.deepEqual(full.duties[0].weekdays, [2, 4]);
+  assert.deepEqual(full.duties[0].teacherIds, ['tsample001', 'tsample002']);
+  const p = school();
+  refused(actions.addDuty, p, { kind: 'nap' }, 'bad-value');
+  refused(actions.addDuty, p, { kind: 'duty', when: 'noon' }, 'bad-value');
+  refused(actions.addDuty, p, { kind: 'duty', when: 'period' }, 'bad-value');
+  refused(actions.addDuty, p, { kind: 'duty', when: 'period', period: 8 }, 'bad-value');
+  refused(actions.addDuty, p, { kind: 'duty', label: 'x'.repeat(61) }, 'too-long');
+  refused(actions.addDuty, p, { kind: 'duty', place: 'x'.repeat(61) }, 'too-long');
+  refused(actions.addDuty, p, { kind: 'duty', start: '25:00' }, 'bad-value');
+  refused(actions.addDuty, p, { kind: 'duty', start: '15:00', end: '14:00' }, 'bad-value');
+  refused(actions.addDuty, p, { kind: 'duty', start: '15:00', end: '15:00' }, 'bad-value');
+  refused(actions.addDuty, p, { kind: 'duty', weekdays: [7] }, 'bad-value');
+  refused(actions.addDuty, p, { kind: 'duty', from: 'December' }, 'bad-value');
+  refused(actions.addDuty, p, { kind: 'duty', from: '2026-12-18', to: '2026-12-01' }, 'bad-value');
+  refused(actions.addDuty, p, { kind: 'duty', roomId: 'rnowhere00' }, 'missing');
+  refused(actions.addDuty, p, { kind: 'duty', teacherIds: ['tnowhere00'] }, 'missing');
+  refused(actions.addDuty, p, { kind: 'duty', subjectIds: ['snowhere00'] }, 'missing');
+  refused(actions.addDuty, p, { kind: 'duty', dayTypeIds: ['dnowhere00'] }, 'missing');
+  refused(actions.addDuty, p, { kind: 'duty', everyone: 'yes' }, 'bad-value');
+});
+
+test('setDuty changes what is given; a duty moved to a period must say which', () => {
+  const one = run(actions.addDuty, school(), { kind: 'duty', id: 'utest00001', teacherIds: ['tsample001'] });
+  const changed = run(actions.setDuty, one, { id: 'utest00001', everyone: true, weekdays: [2] });
+  assert.equal(changed.duties[0].everyone, true);
+  assert.deepEqual(changed.duties[0].teacherIds, ['tsample001']);
+  assert.equal(actions.setDuty(freeze(changed), { id: 'utest00001', weekdays: [2] }, shared), changed);
+  refused(actions.setDuty, one, { id: 'utest00001', when: 'period' }, 'bad-value');
+  const inPeriod = run(actions.setDuty, one, { id: 'utest00001', when: 'period', period: 4 });
+  assert.equal(inPeriod.duties[0].period, 4);
+  const none = run(actions.deleteDuty, inPeriod, { id: 'utest00001' });
+  assert.deepEqual(none.duties, []);
+  refused(actions.deleteDuty, none, { id: 'utest00001' }, 'missing');
+});
+
+function withMarksAndDuties() {
+  let p = school();
+  p = run(actions.addMark, p, { kind: 'lunch', period: 3, id: 'mtest00001', scope: 'groups', groupIds: ['gsample06a', 'gsample06b'] });
+  p = run(actions.addMark, p, { kind: 'advisory', period: 7, id: 'mtest00002', dayTypeIds: [DAY_B] });
+  p = run(actions.addMark, p, { kind: 'activity', period: 2, id: 'mtest00003', dayTypeIds: [DAY_A, DAY_B] });
+  p = run(actions.addMark, p, { kind: 'noclass', period: 5, id: 'mtest00004', scope: 'groups', groupIds: ['gsample06a'] });
+  p = run(actions.addDuty, p, { kind: 'duty', id: 'utest00001', teacherIds: ['tsample001', 'tsample002'], subjectIds: ['ssample003'], roomId: room(p, '101').id, dayTypeIds: [DAY_B] });
+  p = run(actions.addDuty, p, { kind: 'meeting', id: 'utest00002', when: 'period', period: 6, everyone: true });
+  p = run(actions.addDuty, p, { kind: 'lunch', id: 'utest00003', when: 'period', period: 3, teacherIds: ['tsample001'], dayTypeIds: [DAY_A] });
+  return p;
+}
+
+test('deleteGroup takes the group out of marks, and a mark for groups left with none goes', () => {
+  const p = withMarksAndDuties();
+  const one = run(actions.deleteGroup, p, { id: 'gsample06b' });
+  assert.deepEqual(one.marks.find((m) => m.id === 'mtest00001').groupIds, ['gsample06a']);
+  const two = run(actions.deleteGroup, one, { id: 'gsample06a' });
+  assert.deepEqual(two.marks.map((m) => m.id), ['mtest00002', 'mtest00003'], 'both group marks are gone');
+  const untouched = run(actions.deleteGroup, p, { id: 'gsample08a' });
+  assert.equal(untouched.marks, p.marks, 'no mark named it: the very same list');
+  assert.equal('marks' in run(actions.deleteGroup, school(), { id: 'gsample08a' }), false, 'an absent list stays absent');
+});
+
+test('deleteTeacher takes the teacher out of duties and leaves the duty, even with nobody on it', () => {
+  const p = withMarksAndDuties();
+  const after = run(actions.deleteTeacher, p, { id: 'tsample001' });
+  assert.deepEqual(after.duties.find((d) => d.id === 'utest00001').teacherIds, ['tsample002']);
+  assert.deepEqual(after.duties.find((d) => d.id === 'utest00003').teacherIds, [], 'the duty stays, with nobody on it');
+  assert.equal(after.duties.length, 3);
+});
+
+test('mergeTeachers swaps the merged teacher for the kept one in duties, once', () => {
+  const p = withMarksAndDuties();
+  const after = run(actions.mergeTeachers, p, { keepId: 'tsample002', mergeId: 'tsample001' });
+  assert.deepEqual(after.duties.find((d) => d.id === 'utest00001').teacherIds, ['tsample002'], 'both were on it: the kept one once');
+  assert.deepEqual(after.duties.find((d) => d.id === 'utest00003').teacherIds, ['tsample002']);
+});
+
+test('deleteSubject takes the subject out of duties', () => {
+  const p = withMarksAndDuties();
+  const after = run(actions.deleteSubject, p, { id: 'ssample003' });
+  assert.deepEqual(after.duties.find((d) => d.id === 'utest00001').subjectIds, []);
+  assert.equal(after.duties.find((d) => d.id === 'utest00002'), p.duties[1], 'a duty that did not name it is the very same object');
+});
+
+test('a room leaving the building clears a duty\'s room and writes its number into the place, unless the duty has a place of its own', () => {
+  const p = withMarksAndDuties();
+  const roomId = room(p, '101').id;
+  const plain = actions.detachRooms(freeze(p), [room(p, '101')]);
+  assert.equal(plain.duties.find((d) => d.id === 'utest00001').roomId, null);
+  assert.equal(plain.duties.find((d) => d.id === 'utest00001').place, '101');
+  const placed = run(actions.setDuty, p, { id: 'utest00001', place: 'By the stairs' });
+  const kept = actions.detachRooms(freeze(placed), [room(placed, '101')]);
+  assert.equal(kept.duties.find((d) => d.id === 'utest00001').place, 'By the stairs');
+  assert.equal(kept.duties.find((d) => d.id === 'utest00001').roomId, null);
+  assert.equal(actions.detachRooms(freeze(p), []), p);
+  assert.ok(roomId);
+  const viaFloor = run(actions.deleteFloor, p, { id: p.building.floors[0].id });
+  assert.equal(viaFloor.duties.find((d) => d.id === 'utest00001').roomId, null, 'deleteFloor goes through detachRooms');
+});
+
+test('deleteDayType takes the day type out of marks and duties; one left with none is deleted, and the sentence counts them', () => {
+  const p = withMarksAndDuties();
+  const outcome = actions.describeDayTypeDelete(p, DAY_B);
+  assert.equal(outcome.marks, 1);
+  assert.equal(outcome.duties, 1);
+  assert.match(outcome.text, /1 marked period and 1 duty/);
+  const after = run(actions.deleteDayType, p, { dayTypeId: DAY_B });
+  assert.deepEqual(after.marks.map((m) => m.id), ['mtest00001', 'mtest00003', 'mtest00004'], 'the mark on B Day alone is gone');
+  assert.deepEqual(after.marks.find((m) => m.id === 'mtest00003').dayTypeIds, [DAY_A]);
+  assert.deepEqual(after.duties.map((d) => d.id), ['utest00002', 'utest00003']);
+  assert.equal(actions.scheduleOutcome(after).marks, 1);
+});
+
+test('setPeriods lowering the count deletes marks and period duties past the end, and undo brings them back', () => {
+  const p = withMarksAndDuties();
+  const info = actions.describePeriodChange(p, 4);
+  assert.equal(info.marks, 2, 'periods 5 and 7');
+  assert.equal(info.duties, 1, 'the meeting in period 6; a before-school duty has no period');
+  assert.equal(info.losesData, true);
+  assert.deepEqual(info.marksAndDutiesWords, ['2 marked periods', '1 duty']);
+  const after = run(actions.setPeriods, p, { periods: 4 });
+  assert.deepEqual(after.marks.map((m) => m.id), ['mtest00001', 'mtest00003']);
+  assert.deepEqual(after.duties.map((d) => d.id), ['utest00001', 'utest00003']);
+  const store = createStore({ project: p, ids: makeIds(9), clock });
+  store.apply(actions.setPeriods, { periods: 4 });
+  store.undo();
+  assert.equal(store.project.marks.length, 4);
+  assert.equal(store.project.duties.length, 3);
+  assert.equal(actions.describePeriodChange(school(), 7).marks, 0);
+  assert.equal(actions.describePeriodChange(school(), 7).losesData, true, 'the sample school has a slot in period 8');
+});
+
+test('raising the period count keeps every mark and duty, and setPeriods on a project with none leaves them absent', () => {
+  const p = withMarksAndDuties();
+  assert.equal(run(actions.setPeriods, p, { periods: 10 }).marks.length, 4);
+  assert.equal('marks' in run(actions.setPeriods, school(), { periods: 6 }), false);
+  assert.equal('duties' in run(actions.setPeriods, school(), { periods: 6 }), false);
+});
+
+test('notePublished records whether the file had a calendar, quietly; the publish setting is validated', () => {
+  const after = run(actions.notePublished, school(), { at: '2026-10-31T10:00:00.000Z', calendar: true });
+  assert.equal(after.publish.lastPublishedHadCalendar, true);
+  assert.equal(after.publish.lastPublishedAt, '2026-10-31T10:00:00.000Z');
+  assert.equal(actions.notePublished.quiet, true);
+  const without = run(actions.notePublished, school(), { at: '2026-10-31T10:00:00.000Z' });
+  assert.equal('lastPublishedHadCalendar' in without.publish, false, 'not told, not recorded');
+  refused(actions.setPublishSetting, school(), { key: 'lastPublishedHadCalendar', value: 'yes' }, 'bad-value');
+});
+
+test('every action that adds or changes a mark or a duty bumps SCHEDULE, and moves nothing in the building', () => {
+  for (const name of ['addMark', 'setMark', 'deleteMark', 'addDuty', 'setDuty', 'deleteDuty']) assert.deepEqual(actions[name].bumps, [SCHEDULE], name);
+});
