@@ -25,6 +25,7 @@ import { pageOf, leftOutPage, printWhen, UNKNOWN_PAGE_SENTENCE } from './page.js
 import { unmountMaps } from './map.js';
 import { ME_KEY } from './notes.js';
 import { unlockScreen } from './passcode.js';
+import { dropFollowOnNewer } from './clock.js';
 import { viewFor, isView } from './views.js';
 import { unlockPublished, unlockWithKey, toBase64, fromBase64 } from '../engine/publish-crypto.js';
 
@@ -195,7 +196,11 @@ export function mountShell(root, env) {
 
     drawBands();
     const seen = store.get('seen');
-    if (!isOlderThanSeen(data, seen) && seen !== data.publishedAt) store.set('seen', data.publishedAt);
+    if (!isOlderThanSeen(data, seen) && seen !== data.publishedAt) {
+      // the one moment a standing "Not right?" answer ends: the device moves on to a newer file
+      dropFollowOnNewer(ctxFor(open), data.publishedAt, seen);
+      store.set('seen', data.publishedAt);
+    }
 
     // A reader who chose themselves opens on their own page. The address is
     // replaced, not added, so Back leaves the file instead of looping.

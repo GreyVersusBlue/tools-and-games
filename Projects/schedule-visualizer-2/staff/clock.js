@@ -16,9 +16,9 @@
 //      days after follow on from it", each with the moment it was given);
 //   2. the calendar, with an earlier answer that said "the days after follow
 //      on from it" laid over it as a dated change of the reader's own, until
-//      a file published after the one that was open when it was given is
-//      opened, which clears it (a file's time is compared with a file's
-//      time, never with the phone's clock);
+//      the shell clears it, at the moment it moves the device's `seen` on to
+//      a newer file (a file's time is compared with a file's time, never with
+//      the phone's clock; reading an answer compares nothing);
 //   3. where the calendar does not say (no calendar, or a date outside it),
 //      the day type chosen by hand (sv2staff:<schoolId>:day) and the bells
 //      chosen beside it (sv2staff:<schoolId>:bells), as before there was a
@@ -78,10 +78,8 @@ function bellsById(school, id) {
 }
 
 // The reader's "Not right?" answers as they were kept: { just, follow }, each
-// null or { date, dayTypeId, bellsId, at, seenFile } (`at`, the moment it was
-// given as an ISO string, or null on an answer from before it was recorded;
-// `seenFile`, on a follow answer, the `publishedAt` of the file that was open
-// when it was given, or null on one from before it was recorded). "Just
+// null or { date, dayTypeId, bellsId, at } (`at`, the moment it was given as
+// an ISO string, or null on an answer from before it was recorded). "Just
 // today" and "the days after follow on from it" are two answers and neither
 // removes the other. The shape this key had first, one answer with
 // `follow: true | false`, reads as whichever it was. Anything kept that is
@@ -102,7 +100,7 @@ function keptAnswers(ctx) {
 function answerOf(school, raw) {
   if (raw === null || !school.isDate(raw.date) || !dayTypeById(school, raw.dayTypeId)) return null;
   const moment = (value) => (typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null);
-  return { date: raw.date, dayTypeId: raw.dayTypeId, bellsId: bellsById(school, raw.bellsId), at: moment(raw.at), seenFile: moment(raw.seenFile) };
+  return { date: raw.date, dayTypeId: raw.dayTypeId, bellsId: bellsById(school, raw.bellsId), at: moment(raw.at) };
 }
 
 function writeAnswers(ctx, kept) {
@@ -110,47 +108,25 @@ function writeAnswers(ctx, kept) {
   else ctx.store.set(DAY_ON_KEY, JSON.stringify({ just: kept.just, follow: kept.follow }));
 }
 
-// The newest publish time this device had opened before this page began, as
-// the shell keeps it under `seen` (it moves the key on as it opens a file, so
-// the key read now already names the file that is open): null when none.
-function openedBefore(ctx) {
-  const value = typeof ctx.store.earlier === 'function' ? ctx.store.earlier(SEEN_KEY) : ctx.store.get(SEEN_KEY);
-  return typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null;
-}
-
-// The later of two publish times, either of which may be null.
-function laterOf(first, second) {
-  if (first === null) return second;
-  if (second === null) return first;
-  return Date.parse(second) > Date.parse(first) ? second : first;
-}
-
-// The follow answer is cleared here once a file is open that was published
-// after the later of the file it was given under (`seenFile`) and every file
-// this device had opened before this page: that file's calendar is the
-// office's newer word, and a correction made the same day counts. A copy
-// older than one already opened clears nothing, and opening the newest one
-// again is not newer than itself. Two files' times are compared, never a
-// file's with the phone's clock, which may be minutes off. An answer from
-// before the file was recorded takes the newest file this device had opened
-// as the one it was given under, never the file that happens to be open now
-// (which may be an older copy).
+// The reader's answers as they stand. Nothing is cleared here: a follow answer
+// is removed by the shell, once, where it moves `seen` forward to a newer open
+// file (`dropFollowOnNewer`), so what is read cannot depend on which page was
+// opened, how many tabs are open or how many times this was called.
 export function readDayOn(ctx) {
-  const school = ctx.school;
   const kept = keptAnswers(ctx);
-  let follow = answerOf(school, kept.follow);
-  const published = Date.parse(school.data.publishedAt);
-  if (follow !== null && Number.isFinite(published)) {
-    const device = openedBefore(ctx);
-    if (follow.seenFile === null) {
-      follow = { ...follow, seenFile: device !== null ? device : school.data.publishedAt };
-      writeAnswers(ctx, { just: kept.just, follow });
-    } else if (published > Date.parse(laterOf(follow.seenFile, device))) {
-      writeAnswers(ctx, { just: kept.just, follow: null });
-      follow = null;
-    }
-  }
-  return { just: answerOf(school, kept.just), follow };
+  return { just: answerOf(ctx.school, kept.just), follow: answerOf(ctx.school, kept.follow) };
+}
+
+// Called by the shell with the file now open and the `seen` the device held
+// before it. A newer file than any this device had opened ends a kept follow
+// answer (the office's newer word on the calendar, and a correction made the
+// same day counts); a copy no newer clears nothing, and a device that had
+// opened nothing has nothing to be newer than.
+export function dropFollowOnNewer(ctx, publishedAt, seen) {
+  const newer = Date.parse(publishedAt);
+  const before = typeof seen === 'string' ? Date.parse(seen) : NaN;
+  if (!Number.isFinite(newer) || !Number.isFinite(before) || newer <= before) return;
+  if (keptAnswers(ctx).follow !== null) forgetDayOn(ctx, 'follow');
 }
 
 // The answer that settles `date` itself, if either does: the one given last
@@ -168,9 +144,6 @@ export function answerFor(answers, date) {
 export function keepDayOn(ctx, kind, answer) {
   const kept = keptAnswers(ctx);
   kept[kind] = { date: answer.date, dayTypeId: answer.dayTypeId, bellsId: answer.bellsId, at: answer.at };
-  // a standing answer remembers the newest file this device has opened: a
-  // copy older than one already seen is not the file it was given under
-  if (kind === 'follow') kept[kind].seenFile = laterOf(ctx.school.data.publishedAt, ctx.store.get(SEEN_KEY));
   writeAnswers(ctx, kept);
 }
 
