@@ -5,6 +5,7 @@
 // Each action carries three things the store reads:
 //   label  what the undo entry is called: text, or (before, payload, after) → text
 //   bumps  which of the store's counters the change moves: a list of
+import { dutyTeachers } from './marks.js';
 //          GEOMETRY, BUILDING, SCHEDULE, or (before, payload, after) → list
 //   focus  optional (before, payload, after) → where the change was, for "Show"
 //   quiet  true for a change that is not the user's work on the school (the
@@ -313,7 +314,7 @@ export function describePeriodChange(project, periods) {
       if (used.some((value) => value >= periods)) scenarioChanges += 1;
     }
   }
-  const past = countPastPeriods(project, periods);
+  const past = periods < from ? countPastPeriods(project, periods) : { marks: 0, duties: 0 };
   // the sentence's words for what the change takes, in the order the screen says it
   const lostWords = [];
   if (past.marks > 0) lostWords.push(count(past.marks, 'marked period', 'marked periods'));
@@ -335,7 +336,10 @@ export const setPeriods = action(
     const periods = payload.periods;
     if (!inRange(periods, RANGES.periods)) refuse('Periods per day is a whole number from ' + RANGES.periods[0] + ' to ' + RANGES.periods[1] + '.', 'bad-value');
     if (periods === project.settings.periods) return project;
-    return dropPastPeriods(resizeDays(patch(project, ['settings', 'periods'], () => periods), periods), periods);
+    const resized = resizeDays(patch(project, ['settings', 'periods'], () => periods), periods);
+    // raising the count deletes nothing: a mark or duty kept past the old end
+    // (repair keeps them) is a period that exists now
+    return periods < project.settings.periods ? dropPastPeriods(resized, periods) : resized;
   },
 );
 
@@ -489,11 +493,12 @@ export const reorderSubject = action(
 export const deleteSubject = action(
   { label: (before, payload) => 'Delete subject ' + (before.subjects.find((subject) => subject.id === payload.id) || { name: '' }).name, bumps: [BUILDING, SCHEDULE], focus: () => ({ section: 'schedule', tab: 'subjects' }) },
   (project, payload) => {
-    need(project.subjects, payload.id, 'subject');
-    let next = { ...project, subjects: project.subjects.filter((subject) => subject.id !== payload.id) };
+    const gone = need(project.subjects, payload.id, 'subject');
+    let next = { ...project, subjects: project.subjects.filter((subject) => subject !== gone) };
     next = mapRooms(next, (room) => (room.subjectId === payload.id ? { ...room, subjectId: null } : room));
     next = withKey(next, 'teachers', mapShared(next.teachers, (teacher) => (teacher.subjectId === payload.id ? { ...teacher, subjectId: null } : teacher)));
-    return dropSubjectFromDuties(next, payload.id);
+    next = dropSubjectFromDuties(next, payload.id);
+    return reportingDeleted(project, next, gone.name);
   },
 );
 
@@ -616,8 +621,8 @@ function dropTeacherRefs(project, teacherId) {
 export const deleteTeacher = action(
   { label: (before, payload) => 'Delete teacher ' + teacherName(before, payload.id), bumps: [BUILDING, SCHEDULE], focus: () => ({ section: 'schedule', tab: 'teachers' }) },
   (project, payload) => {
-    need(project.teachers, payload.id, 'teacher');
-    return dropTeacherRefs({ ...project, teachers: project.teachers.filter((teacher) => teacher.id !== payload.id) }, payload.id);
+    const teacher = need(project.teachers, payload.id, 'teacher');
+    return reportingDeleted(project, dropTeacherRefs({ ...project, teachers: project.teachers.filter((candidate) => candidate !== teacher) }, payload.id), teacher.name);
   },
 );
 
@@ -738,8 +743,8 @@ export const duplicateGroup = action(
 export const deleteGroup = action(
   { label: (before, payload) => 'Delete group ' + groupName(before, payload.id), bumps: [SCHEDULE], focus: () => ({ section: 'schedule', tab: 'groups' }) },
   (project, payload) => {
-    need(project.groups, payload.id, 'group');
-    return dropGroupFromMarks({ ...project, groups: project.groups.filter((group) => group.id !== payload.id) }, payload.id);
+    const gone = need(project.groups, payload.id, 'group');
+    return reportingDeleted(project, dropGroupFromMarks({ ...project, groups: project.groups.filter((group) => group !== gone) }, payload.id), gone.name);
   },
 );
 
@@ -3139,6 +3144,19 @@ function changeDuties(project, fn) {
     if (result !== null) duties.push(result);
   }
   return changed ? { ...project, duties } : project;
+}
+
+// What a delete of a group, teacher or subject did to marks and duties, said
+// as the entry's outcome: { marks, duties, text }. marks is the marks it
+// deleted (a mark for groups left with none); duties is the duties it left
+// covering nobody, which stay (a duty is not deleted for having no one on it).
+function reportingDeleted(project, next, name) {
+  const marks = marksOf(project).length - marksOf(next).length;
+  const duties = dutiesOf(next).filter((duty, at) => dutyTeachers(next, duty).length === 0 && dutyTeachers(project, dutiesOf(project)[at]).length > 0).length;
+  const parts = [];
+  if (marks > 0) parts.push(count(marks, 'marked period', 'marked periods') + ' removed');
+  if (duties > 0) parts.push(count(duties, 'duty', 'duties') + ' left with nobody');
+  return reporting(project, next, { marks, duties, text: 'Deleted ' + name + (parts.length > 0 ? ', ' + listWords(parts) : '') });
 }
 
 // A group is gone: out of every mark's groups, and a mark for groups left
