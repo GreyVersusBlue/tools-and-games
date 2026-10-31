@@ -20,7 +20,15 @@ import { ME_KEY, NOTES_KEY } from '../../staff/notes.js';
 import { searchIndex, searchSchool, foldText, FIND_LIMIT } from '../../staff/find.js';
 import { publishedModel } from '../../engine/publish-data.js';
 import { lockPublished, unlockPublished } from '../../engine/publish-crypto.js';
-import { teacherDay } from '../../engine/teacher-day.js';
+import { teacherDay, isFree } from '../../engine/teacher-day.js';
+import { newMark, newDuty } from '../../engine/schema.js';
+import { validate } from '../../engine/validate.js';
+import { effectiveSchedule } from '../../engine/day-types.js';
+import { everyTeacherDay, groupSlots, groupMark, takenBy, takingDuty, sometimesIn, sometimesWords, dutyTimes, dutyPlace, edgeDuties, entryWords } from '../../staff/clock.js';
+import { freeTeachers, emptyRooms } from '../../staff/views/free.js';
+import { coverageFor } from '../../staff/views/coverage.js';
+import { roomUse } from '../../staff/views/room.js';
+import { commonPeriods } from '../../staff/views/common.js';
 import { seededRandom } from '../../engine/ids.js';
 import { sampleSchool } from '../../data/sample-school.js';
 import { readTool, toolFile, partsOf } from './reader.mjs';
@@ -830,4 +838,175 @@ test('whatever was kept under dayOn that is not an answer reads as none and is l
   // a bell schedule this copy does not have reads as the regular bells
   const ctx = todayCtx(school, '2026-09-01T10:00:00Z', { dayOn: JSON.stringify({ date: '2026-09-01', dayTypeId: 'dsample00a', bellsId: 'bnowhere00', follow: 'yes' }) });
   assert.deepEqual(readDayOn(ctx), { just: { date: '2026-09-01', dayTypeId: 'dsample00a', bellsId: null, at: null }, follow: null });
+});
+
+
+// ---------------------------------------------------------------- marks and duties in the views (SV2-86)
+
+// The invented sample with marks and duties laid on it (periods count from 0;
+// A Day, tsample001 teaches periods 1 and 2 and is free in the rest):
+//
+//   Lunch for grade 6, every day type, period 3 (6A is then in the cafeteria)
+//   No class for 6A on A Day, period 1
+//   An assembly (an activity mark, the whole school) on B Day, period 7
+//   tsample001: "Lunch duty" in period 3 at the cafeteria, every day
+//   tsample001 and tsample002: "Bus duty" after school, 15:05 to 15:25
+//   tsample002: "Door duty" before school, 07:40 to 07:55
+//   the science teachers: a Wednesday meeting in period 4
+const A = 'dsample00a';
+const B = 'dsample00b';
+function dutySchool(change) {
+  const project = sampleSchool();
+  const lunch = newMark('mduty00001', 'lunch', 3);
+  lunch.scope = 'grades';
+  lunch.grades = ['6'];
+  const noclass = newMark('mduty00002', 'noclass', 1);
+  noclass.scope = 'groups';
+  noclass.groupIds = ['gsample06a'];
+  noclass.dayTypeIds = [A];
+  const assembly = newMark('mduty00003', 'activity', 7);
+  assembly.label = 'Assembly';
+  assembly.dayTypeIds = [B];
+  project.marks = [lunch, noclass, assembly];
+  const lunchDuty = newDuty('uduty00001', 'duty');
+  Object.assign(lunchDuty, { label: 'Lunch duty', when: 'period', period: 3, place: 'Cafeteria', teacherIds: ['tsample001'] });
+  const bus = newDuty('uduty00002', 'duty');
+  Object.assign(bus, { label: 'Bus duty', when: 'after', start: '15:05', end: '15:25', place: 'Bus loop', teacherIds: ['tsample001', 'tsample002'] });
+  const door = newDuty('uduty00003', 'duty');
+  Object.assign(door, { label: 'Door duty', when: 'before', start: '07:40', end: '07:55', place: 'Front door', teacherIds: ['tsample002'] });
+  const meeting = newDuty('uduty00004', 'meeting');
+  Object.assign(meeting, { label: 'Science department', when: 'period', period: 4, weekdays: [2], subjectIds: ['ssample003'] });
+  project.duties = [lunchDuty, bus, door, meeting];
+  if (change) change(project);
+  return project;
+}
+const dutyModel = (change) => openSchool(publishedModel(dutySchool(change), { clock }));
+
+test('the marks and duties fixture is a valid project', () => {
+  assert.deepEqual(validate(dutySchool()), []);
+});
+
+test('a teacher on duty is not free: Free right now lists the others, and a Wednesday duty takes the period on a Wednesday only', () => {
+  const school = dutyModel();
+  const names3 = (date) => freeTeachers(school, A, 3, date).map((teacher) => teacher.id);
+  assert.ok(!names3(null).includes('tsample001'), 'the lunch duty takes period 3');
+  const plain = openSchool(publishedModel(sampleSchool(), { clock }));
+  assert.ok(freeTeachers(plain, A, 3).some((teacher) => teacher.id === 'tsample001'), 'free without the duty');
+  // the science meeting is on Wednesdays only
+  const free4 = (date) => freeTeachers(school, A, 4, date).map((teacher) => teacher.id);
+  assert.ok(free4(null).includes('tsample003'), 'no date: a duty that holds on some days takes nothing');
+  assert.ok(free4('2026-09-03').includes('tsample003'), 'a Thursday');
+  assert.ok(!free4('2026-09-02').includes('tsample003'), 'a Wednesday: at the meeting');
+  assert.ok(!free4('2026-09-02').includes('tsample010'), 'every science teacher, by subject');
+  // the assembly takes period 7 on B Day for everyone who has no class then
+  assert.deepEqual(freeTeachers(school, B, 7).map((teacher) => teacher.id), [], 'the whole school is at the assembly or teaching');
+});
+
+test('a free period that a duty or a mark takes reads as it, with the reason Coverage gives', () => {
+  const school = dutyModel();
+  const entry = (teacherId, dayTypeId, period, date) => everyTeacherDay(school, dayTypeId, date).get(teacherId)[period];
+  const lunch = takenBy(school, entry('tsample001', A, 3), A, null);
+  assert.deepEqual(lunch, { eyebrow: 'Duty', title: 'Lunch duty', place: 'Cafeteria', times: '', reason: 'On duty: Lunch duty' });
+  const assembly = takenBy(school, entry('tsample004', B, 7), B, null);
+  assert.equal(assembly.title, 'Assembly');
+  assert.equal(assembly.reason, 'At an activity: Assembly');
+  assert.equal(takenBy(school, entry('tsample001', A, 4), A, null), null, 'a free period nothing takes');
+  assert.equal(takenBy(school, entry('tsample001', A, 1), A, null), null, 'a class is not taken by anything');
+  const meeting = takenBy(school, entry('tsample003', A, 4, '2026-09-02'), A, '2026-09-02');
+  assert.deepEqual([meeting.eyebrow, meeting.title, meeting.reason], ['Meeting', 'Science department', 'At a meeting: Science department']);
+  // (the words of a taken period are nodes, read in the browser case; a free one is plain)
+  assert.equal(entryWords(school, entry('tsample001', A, 4), { dayTypeId: A }).join(''), 'Planning');
+  // a duty with no label shows its kind's word, and the reason has no colon
+  const bare = dutyModel((project) => { project.duties[0].label = ''; });
+  assert.equal(takenBy(bare, everyTeacherDay(bare, A).get('tsample001')[3], A, null).reason, 'On duty');
+});
+
+test('duties before and after the day are the teacher\'s own edges, with their times and places', () => {
+  const school = dutyModel();
+  const edges = edgeDuties(school, 'tsample002', A, null);
+  assert.deepEqual(edges.before.map((duty) => [duty.label, dutyTimes(school, duty), dutyPlace(school, duty)]), [['Door duty', '7:40 AM to 7:55 AM', 'Front door']]);
+  assert.deepEqual(edges.after.map((duty) => [duty.label, dutyTimes(school, duty), dutyPlace(school, duty)]), [['Bus duty', '3:05 PM to 3:25 PM', 'Bus loop']]);
+  assert.deepEqual(edgeDuties(school, 'tsample003', A, null), { before: [], after: [] });
+  // only a start, only an end, neither
+  assert.equal(dutyTimes(school, { start: '07:40', end: '' }), 'from 7:40 AM');
+  assert.equal(dutyTimes(school, { start: '', end: '07:55' }), 'until 7:55 AM');
+  assert.equal(dutyTimes(school, { start: '', end: '' }), '');
+});
+
+test('a duty that holds on some days is listed with its days where no date settles it', () => {
+  const school = dutyModel();
+  const meeting = school.data.duties.find((duty) => duty.id === 'uduty00004');
+  assert.equal(sometimesWords(school, meeting), 'Wednesdays');
+  assert.equal(sometimesWords(school, { weekdays: [0, 4] }), 'Mondays and Fridays');
+  assert.equal(sometimesWords(school, { weekdays: [], from: '2026-12-01', to: '2026-12-18' }), 'from 1 December to 18 December');
+  assert.equal(sometimesWords(school, school.data.duties[0]), '', 'an every-day duty has no days');
+  const day = everyTeacherDay(school, A).get('tsample003')[4];
+  assert.deepEqual(sometimesIn(day, null).map((duty) => duty.id), ['uduty00004'], 'listed under the free period');
+  assert.equal(takingDuty(day, null), null);
+  const wednesday = everyTeacherDay(school, A, '2026-09-02').get('tsample003')[4];
+  assert.equal(takingDuty(wednesday, '2026-09-02').id, 'uduty00004', 'taking it on the Wednesday');
+  assert.deepEqual(sometimesIn(wednesday, '2026-09-02'), []);
+});
+
+test('rooms and groups: a No class period books no room; a lunch keeps its room', () => {
+  const school = dutyModel();
+  const plain = openSchool(publishedModel(sampleSchool(), { clock }));
+  const room103 = (from) => emptyRooms(from, A, 1).some((room) => room.id === 'rsample103');
+  assert.equal(room103(plain), false, '6A is in Room 103 in period 1');
+  assert.equal(room103(school), true, 'with 6A at No class it is empty');
+  assert.deepEqual(roomUse(school, 'rsample103', A)[1], [], 'the room page says empty');
+  assert.equal(roomUse(plain, 'rsample103', A)[1].length, 1);
+  assert.equal(groupMark(school, 'gsample06a', A, 1).kind, 'noclass');
+  assert.equal(groupSlots(school, 'gsample06a', A)[1].room, null, 'an empty slot');
+  // lunch: the group is still in the cafeteria
+  assert.equal(groupSlots(school, 'gsample06a', A)[3].room, 'rsamplecaf');
+  assert.equal(roomUse(school, 'rsamplecaf', A)[3].find((use) => use.group.id === 'gsample06a').mark.kind, 'lunch');
+  // with bells that leave the period out, nobody is anywhere
+  assert.equal(groupSlots(school, 'gsample06b', A, null).length, 8);
+});
+
+test('Coverage lists a teacher on duty under Not free with the reason, and not as a candidate', () => {
+  const school = dutyModel();
+  const cover = coverageFor(school, 'tsample002', A);
+  const lunch = cover.find((item) => item.period === 3);
+  assert.ok(lunch, 'Mr. Brightwater teaches in period 3');
+  assert.ok(!lunch.candidates.some((candidate) => candidate.teacher.id === 'tsample001'), 'not a candidate');
+  assert.deepEqual(lunch.notFree.filter((one) => one.teacher.id === 'tsample001').map((one) => one.reason), ['On duty: Lunch duty']);
+  // the same page for the school without the duty has her as a candidate and nobody under Not free
+  const plain = coverageFor(openSchool(publishedModel(sampleSchool(), { clock })), 'tsample002', A).find((item) => item.period === 3);
+  assert.ok(plain.candidates.some((candidate) => candidate.teacher.id === 'tsample001'));
+  assert.deepEqual(plain.notFree, []);
+});
+
+test('common planning: a teacher on duty is not free with the others', () => {
+  const school = dutyModel();
+  const plain = openSchool(publishedModel(sampleSchool(), { clock }));
+  const both = (from) => commonPeriods(from, ['tsample001', 'tsample002'], A);
+  assert.ok(!both(school).includes(3));
+  assert.deepEqual(both(plain).filter((period) => period !== 3), both(school));
+});
+
+test('a file published before marks existed has neither list, and every view reads that as none', async () => {
+  const data = JSON.parse(partsOf(readTool('test/publish/frozen/sv2-m4.html')).data);
+  const opened = await unlockPublished(data, 'bulldogs2015');
+  assert.equal(opened.model.marks, undefined, 'the frozen file has no marks');
+  assert.equal(opened.model.duties, undefined, 'the frozen file has no duties');
+  const school = openSchool(readPublished(opened.model).model);
+  for (const dayType of school.dayTypes) {
+    const days = everyTeacherDay(school, dayType.id);
+    for (const teacher of school.teachers) {
+      const day = days.get(teacher.id);
+      assert.deepEqual(day.map((entry) => entry.kind), teacherDay(school.data, teacher.id, dayType.id).map((entry) => entry.kind));
+      assert.ok(day.every((entry) => entry.marked === null && entry.duties.length === 0), 'nothing is marked');
+      assert.ok(day.every((entry) => entry.kind === 'teaching' || isFree(entry)), 'every planning period is free');
+      assert.ok(day.every((entry) => takenBy(school, entry, dayType.id, null) === null));
+      assert.deepEqual(edgeDuties(school, teacher.id, dayType.id, null), { before: [], after: [] });
+    }
+    for (const group of school.groups) {
+      assert.deepEqual(groupSlots(school, group.id, dayType.id), effectiveSchedule(school.data, group.id, dayType.id));
+      assert.ok(groupSlots(school, group.id, dayType.id).every((slot, period) => groupMark(school, group.id, dayType.id, period) === null));
+    }
+    const a = school.teachers[0];
+    assert.deepEqual(coverageFor(school, a.id, dayType.id).flatMap((item) => item.notFree), []);
+  }
 });
