@@ -10,8 +10,7 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, missingPage, printWhen } from '../page.js';
-import { isFree } from '../../engine/teacher-day.js';
-import { dayOnDate, dutyDate, takenBy, dayWords, dayTypeFor, bellsIdFor, bellsOnPick, longDate, meetingPeriods, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
+import { dayOnDate, dutyDate, entryIsFree, takenBy, dayWords, dayTypeFor, bellsIdFor, bellsOnPick, longDate, meetingPeriods, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
 import { freeTeachers } from './free.js';
 
 // For each period a teacher teaches on a day type, who is free to cover it:
@@ -35,7 +34,7 @@ export function coverageFor(school, teacherId, dayTypeId, date) {
     const notFree = [];
     for (const teacher of school.teachers) {
       const theirs = days.get(teacher.id)[entry.period];
-      if (teacher.id === teacherId || !theirs || theirs.kind !== 'planning' || isFree(theirs)) continue;
+      if (teacher.id === teacherId || !theirs || theirs.kind !== 'planning' || entryIsFree(theirs)) continue;
       const taken = takenBy(school, theirs, dayTypeId, date);
       notFree.push({ teacher, reason: taken ? taken.reason : 'Busy' });
     }

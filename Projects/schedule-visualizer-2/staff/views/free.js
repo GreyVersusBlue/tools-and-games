@@ -19,13 +19,12 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf } from '../page.js';
-import { isFree } from '../../engine/teacher-day.js';
-import { clockNow, dutyDate, groupSlots, dayTypeFor, bellsIdFor, chosenDayType, chosenBells, todayOf, todayKey, todayLine, dayWords, momentOf, momentKey, momentWords, periodTimes, periodFor, watchClock, everyTeacherDay, dayTypePicker, bellsPicker, periodPicker, viewLink, nowTabs, sectionHeading, teacherDetail } from '../clock.js';
+import { clockNow, dutyDate, entryIsFree, groupSlots, dayTypeFor, bellsIdFor, chosenDayType, chosenBells, todayOf, todayKey, todayLine, dayWords, momentOf, momentKey, momentWords, periodTimes, periodFor, watchClock, everyTeacherDay, dayTypePicker, bellsPicker, periodPicker, viewLink, nowTabs, sectionHeading, teacherDetail } from '../clock.js';
 
 // The teachers with no group in a period, in the school's own order.
 export function freeTeachers(school, dayTypeId, period, date) {
   const days = everyTeacherDay(school, dayTypeId, date);
-  return school.teachers.filter((teacher) => isFree(days.get(teacher.id)[period]));
+  return school.teachers.filter((teacher) => entryIsFree(days.get(teacher.id)[period]));
 }
 
 // The rooms no group is in during a period, in the building's own order.
@@ -147,7 +146,7 @@ export const freeView = {
       const free = freeTeachers(school, state.dayType.id, period, date);
       // teachers a duty, a meeting or a mark has, who are not free but have no group
       const days = everyTeacherDay(school, state.dayType.id, date);
-      const taken = school.teachers.filter((teacher) => days.get(teacher.id)[period] && days.get(teacher.id)[period].kind === 'planning' && !isFree(days.get(teacher.id)[period])).length;
+      const taken = school.teachers.filter((teacher) => days.get(teacher.id)[period] && days.get(teacher.id)[period].kind === 'planning' && !entryIsFree(days.get(teacher.id)[period])).length;
 
       teachersOut.replaceChildren(
         sectionHeading('Teachers free', free.length),

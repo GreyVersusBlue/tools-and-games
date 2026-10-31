@@ -14,8 +14,7 @@ import { makeHash } from '../router.js';
 import { pageOf, missingPage, pictureButton } from '../page.js';
 import { dayText } from '../dates.js';
 import { aroundRoom } from '../map.js';
-import { teacherDuties } from '../../engine/marks.js';
-import { clockNow, dutyWords, dutyPlace, dutyTimes, longDate, todayDate, dayOnDate, dayTypeFor, meetingPeriods, dayWords, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
+import { clockNow, teacherDutyDay, dutyWords, dutyPlace, dutyTimes, longDate, todayDate, dayOnDate, dayTypeFor, meetingPeriods, dayWords, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
 import { coverageFor, teacherChooser } from './coverage.js';
 
 export const SUB_CANDIDATES = 3;
@@ -98,7 +97,7 @@ export const subView = {
       const day = everyTeacherDay(school, dayType.id, on).get(absent.id).filter((entry) => meets.has(entry.period));
       const cover = coverageFor(school, absent.id, dayType.id, on).filter((item) => meets.has(item.period));
       // the substitute covers the duties too: where and when each is
-      const mine = teacherDuties(school.data, absent.id, dayType.id, on === null ? undefined : { date: on });
+      const mine = teacherDutyDay(school, absent.id, dayType.id, on);
       const duties = [];
       const addDuty = (when, duty) => duties.push({ when, text: [dutyWords(duty), dutyPlace(school, duty), dutyTimes(school, duty)].filter((part) => part !== '').join(' · ') });
       if (mine) {

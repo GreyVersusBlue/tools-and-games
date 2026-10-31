@@ -30,7 +30,7 @@
 
 import { h, typed } from './dom.js';
 import { makeHash } from './router.js';
-import { teacherDays } from '../engine/teacher-day.js';
+import { teacherDays, isFree } from '../engine/teacher-day.js';
 import { meetingSlots } from '../engine/runs.js';
 import { markFor, schoolMarkFor, dutyIsSometimes, teacherDuties } from '../engine/marks.js';
 
@@ -532,8 +532,21 @@ export function dutyLine(school, duty) {
 // date: { before, after } lists of duties (a duty that holds only on some
 // days is in the list for a date that matches, and for no date at all).
 export function edgeDuties(school, teacherId, dayTypeId, date) {
+  const found = teacherDutyDay(school, teacherId, dayTypeId, date);
+  return { before: found.before, after: found.after };
+}
+
+// Is the teacher free in this entry? engine/teacher-day.js's one rule, asked
+// through here so that the views ask the engine through one door.
+export function entryIsFree(entry) {
+  return isFree(entry);
+}
+
+// All of a teacher's duties on a day type and date: { before, byPeriod, after },
+// each a list of duties; none for a teacher or day type the file does not have.
+export function teacherDutyDay(school, teacherId, dayTypeId, date) {
   const found = teacherDuties(school.data, teacherId, dayTypeId, typeof date === 'string' ? { date } : undefined);
-  return found ? { before: found.before, after: found.after } : { before: [], after: [] };
+  return found || { before: [], byPeriod: [], after: [] };
 }
 
 let serial = 0;

@@ -15,8 +15,7 @@ import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, missingPage } from '../page.js';
 import { floorMap, besideMap } from '../map.js';
-import { isFree } from '../../engine/teacher-day.js';
-import { everyTeacherDay, groupSlots, takingDuty, dutyWords, dutyPlace, dutyTimes, sometimesWords, sometimesIn, takenBy, edgeDuties, clockNow, momentOf, todayOf, todayKey, todayLine, watchClock } from '../clock.js';
+import { everyTeacherDay, entryIsFree, groupSlots, takingDuty, dutyWords, dutyPlace, dutyTimes, sometimesWords, sometimesIn, takenBy, edgeDuties, clockNow, momentOf, todayOf, todayKey, todayLine, watchClock } from '../clock.js';
 import { isMe, noteFields } from '../notes.js';
 import { teacherOutputs } from '../outputs.js';
 
@@ -341,7 +340,7 @@ export function slotWhere(school, slot) {
 export function teacherSummaryOf(school, teacherId) {
   const days = school.dayTypes.map((dayType) => {
     const day = everyTeacherDay(school, dayType.id).get(teacherId) || [];
-    return { name: dayType.name, classes: day.filter((entry) => entry.kind === 'teaching').length, planning: day.filter((entry) => isFree(entry)).map((entry) => entry.period) };
+    return { name: dayType.name, classes: day.filter((entry) => entry.kind === 'teaching').length, planning: day.filter((entry) => entryIsFree(entry)).map((entry) => entry.period) };
   });
   if (days.length === 0 || days.every((day) => day.classes === 0)) return ['Has no classes in this schedule.'];
   const parts = [];

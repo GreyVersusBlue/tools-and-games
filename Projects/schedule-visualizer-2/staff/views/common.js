@@ -8,8 +8,7 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, printGate } from '../page.js';
-import { isFree } from '../../engine/teacher-day.js';
-import { everyTeacherDay, dutyDate, periodTimes, dayTypeNames, viewLink, entryWords } from '../clock.js';
+import { everyTeacherDay, dutyDate, entryIsFree, periodTimes, dayTypeNames, viewLink, entryWords } from '../clock.js';
 import { dayKindsOf } from './teacher.js';
 
 function chosenFrom(school, text) {
@@ -25,7 +24,7 @@ export function commonPeriods(school, teacherIds, dayTypeId, date) {
   const days = everyTeacherDay(school, dayTypeId, date);
   const periods = [];
   for (let period = 0; period < school.data.settings.periods; period += 1) {
-    if (teacherIds.every((id) => isFree(days.get(id)[period]))) periods.push(period);
+    if (teacherIds.every((id) => entryIsFree(days.get(id)[period]))) periods.push(period);
   }
   return periods;
 }
@@ -69,7 +68,7 @@ export const commonView = {
           h('th', { scope: 'row' }, school.periodName(period), times ? h('span', { class: 'table__sub' }, times) : null),
           chosen.map((id) => {
             const entry = days.get(id)[period];
-            return h('td', null, isFree(entry) ? 'Free' : entryWords(school, entry, { dayTypeId, date }));
+            return h('td', null, entryIsFree(entry) ? 'Free' : entryWords(school, entry, { dayTypeId, date }));
           }),
           h('td', null, all ? h('strong', null, 'All free') : null)));
       }
