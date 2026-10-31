@@ -139,6 +139,13 @@ export function mount(env) {
   // device) and the hint line says what the grid shows instead, until a Day
   // type is chosen again.
   const settleDay = (project) => {
+    // The hint is about a day type (`goneId`): when it is its own again (Undo
+    // brought it back) there is nothing left to say. The device's choice stays
+    // cleared, so the grid does not jump back to it.
+    if (state.gone && state.goneId && ownDayTypes(project).some((dayType) => dayType.id === state.goneId)) {
+      state.gone = null;
+      state.goneId = null;
+    }
     const kept = state.day;
     if (kept === null || kept === 'all') return;
     const own = ownDayTypes(project).find((dayType) => dayType.id === kept);
@@ -152,6 +159,7 @@ export function mount(env) {
     const name = was ? was.name : state.dayName;
     const sentence = was ? name + ' is now the same as ' + effectiveDayType(project, was.id).name : (name ? name + ' was deleted' : 'The day type chosen here was deleted');
     state.gone = sentence + ', so the grid shows ' + instead + '.';
+    state.goneId = kept;
     state.day = null;
     state.dayName = null;
     try {
@@ -401,6 +409,7 @@ export function mount(env) {
     select.addEventListener('change', () => {
       state.day = select.value;
       state.gone = null;
+      state.goneId = null;
       try {
         writeGridDay(select.value);
       } catch (error) {
