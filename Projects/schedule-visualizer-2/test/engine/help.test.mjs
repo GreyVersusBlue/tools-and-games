@@ -152,7 +152,7 @@ test('a shortcut group Help has no sentence for still shows, saying so', () => {
 // Spec 2, the vocabulary table, in its order.
 const SPEC_WORDS = ['Project', 'Floor', 'Cell', 'Room', 'Other space', 'Corridor', 'Stairs', 'Elevator', 'Exit', 'Door', 'Period', 'Day type', 'Passing time', 'Transition', 'Group', 'Teacher', 'Subject', 'Load', 'Scenario', 'Finding'];
 // DESIGN 11.1's words, after spec 2's (SV2-80): No class beside No school.
-const DESIGN_WORDS = ['Bell schedule', 'Regular bells', 'Calendar', 'Rotation', 'No school', 'No class', 'Next in the rotation'];
+const DESIGN_WORDS = ['Bell schedule', 'Regular bells', 'Calendar', 'Rotation', 'No school', 'No class', 'Marked period', 'Duty', 'Meeting', 'Their own lunch', 'Next in the rotation'];
 const ALL_WORDS = SPEC_WORDS.concat(DESIGN_WORDS);
 test('every word of spec 2 is explained, in the spec’s order, with the school’s own period word', () => {
   assert.deepEqual(words(defaultSettings()).map((each) => each.term), ALL_WORDS);
@@ -455,4 +455,20 @@ test('the gestures and the numbers say what the code does', () => {
   assert.match(parts.travel, /charged to the cell or the flight of stairs/, 'waiting is charged to a connection too (crowd.js connectionDelay)');
   assert.match(parts.late, /Where the bells give no gap, because a time is missing or the next period starts no later than this one ends, the default/, 'bells.js uses the default where the bells give no gap, not only where they say nothing');
   assert.match(parts.late, /is stopped, reported as did not arrive, and counted as late\./, 'a group stopped at the cap is late (crowd.js)');
+});
+
+// SV2-85: Help tells of the Duties tab and the marked periods (DESIGN 11.10),
+// in the school's own word for a period, and the four new words are in the
+// vocabulary.
+test('Help’s schedule part tells of marked periods and the Duties tab; the vocabulary has Marked period, Duty, Meeting and Their own lunch', () => {
+  const more = SECTION_HELP.schedule.more(periodWordsOf('Block'));
+  assert.match(more, /Day ends with Marked periods: Lunch, Advisory, Activity or No class on one block of the day, for the whole school, some grades or some groups\./);
+  assert.match(more, /Any block marked No class does not meet for those groups, and it beats every other mark\./);
+  assert.match(more, /shows the mark instead of Planning\./);
+  assert.match(more, /Duties lists bus duty, lunch duty and standing meetings: when, which days, where and who/);
+  assert.match(more, /Checks warns when a teacher’s duty falls when they are teaching\./);
+  assert.doesNotMatch(more, /—/);
+  const terms = words(defaultSettings()).map((each) => each.term);
+  for (const term of ['Marked period', 'Duty', 'Meeting', 'Their own lunch']) assert.ok(terms.includes(term), term + ' is not explained');
+  assert.match(words({ ...defaultSettings(), periodWord: 'Mod' }).find((each) => each.term === 'Marked period').meaning, /^Lunch, Advisory, Activity or No class, set on one mod of the day/);
 });
