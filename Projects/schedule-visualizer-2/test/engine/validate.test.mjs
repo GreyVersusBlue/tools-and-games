@@ -336,6 +336,8 @@ for (const [name, mutate, where] of [
   ['a weekday of 7', (p) => { p.duties = [{ ...goodDuty(), weekdays: [7] }]; }, /^duties\[0\]\.weekdays$/],
   ['a from that is not a date', (p) => { p.duties = [{ ...goodDuty(), from: 'December' }]; }, /^duties\[0\]\.from$/],
   ['a duty that ends before it starts', (p) => { p.duties = [{ ...goodDuty(), from: '2026-12-18', to: '2026-12-01' }]; }, /^duties\[0\]\.to$/],
+  ['a duty that ends when it starts', (p) => { p.duties = [{ ...goodDuty(), start: '07:30', end: '07:30' }]; }, /^duties\[0\]\.end$/],
+  ['a duty that ends before its time starts', (p) => { p.duties = [{ ...goodDuty(), start: '15:00', end: '14:00' }]; }, /^duties\[0\]\.end$/],
   ['a duty room that is not there', (p) => { p.duties = [{ ...goodDuty(), roomId: 'rnowhere00' }]; }, /^duties\[0\]\.roomId$/],
   ['a duty naming a teacher that is not there', (p) => { p.duties = [{ ...goodDuty(), teacherIds: ['tnowhere00'] }]; }, /^duties\[0\]\.teacherIds\[0\]$/],
   ['a duty naming a subject that is not there', (p) => { p.duties = [{ ...goodDuty(), subjectIds: ['snowhere00'] }]; }, /^duties\[0\]\.subjectIds\[0\]$/],

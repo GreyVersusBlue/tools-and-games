@@ -1052,3 +1052,26 @@ test('lastPublishedHadCalendar: kept when a flag, reset with a note when not, ab
   assert.equal(fixed.publish.lastPublishedHadCalendar, false);
   assert.ok(notes.length >= 1);
 });
+
+test('a duty whose day types are all gone is removed with a note, as a mark is; a duty with one left keeps it', () => {
+  const project = school();
+  project.duties = [
+    du({ id: 'utest00001', dayTypeIds: ['dgone00000'] }),
+    du({ id: 'utest00002', dayTypeIds: ['dgone00000', project.dayTypes[0].id] }),
+    du({ id: 'utest00003' }),
+  ];
+  const { project: fixed, notes } = repair(project);
+  assert.deepEqual(fixed.duties.map((duty) => duty.id), ['utest00002', 'utest00003']);
+  assert.deepEqual(fixed.duties[0].dayTypeIds, [project.dayTypes[0].id]);
+  assert.ok(notes.some((note) => /named only day types that are not in the project and was removed/.test(note) && /^Duty 1/.test(note)));
+  assert.deepEqual(validate(fixed), []);
+});
+
+test('a duty that ends when it starts or before loses its end time, with a note', () => {
+  const project = school();
+  project.duties = [du({ id: 'utest00001', start: '08:00', end: '08:00' }), du({ id: 'utest00002', start: '15:30', end: '15:00' }), du({ id: 'utest00003', start: '07:30', end: '07:55' })];
+  const { project: fixed, notes } = repair(project);
+  assert.deepEqual(fixed.duties.map((duty) => [duty.start, duty.end]), [['08:00', ''], ['15:30', ''], ['07:30', '07:55']]);
+  assert.equal(notes.filter((note) => /end time of Duty \d was not after its start/.test(note)).length, 2);
+  assert.deepEqual(validate(fixed), []);
+});

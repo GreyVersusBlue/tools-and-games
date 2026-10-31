@@ -742,6 +742,7 @@ export function validate(project) {
         if (!DUTY_WHEN.includes(duty.when)) add(path + '.when', 'A duty is ' + DUTY_WHEN.join(', ') + ' (before school, in a period, after school).');
         if (!Number.isInteger(duty.period) || duty.period < 0) add(path + '.period', 'A duty\'s period is a whole number from 0.');
         for (const edge of ['start', 'end']) if (duty[edge] !== '' && !isBellTime(duty[edge])) add(path + '.' + edge, 'A duty\'s ' + edge + ' is empty or a time written HH:MM on the 24-hour clock.');
+        if (isBellTime(duty.start) && isBellTime(duty.end) && duty.end <= duty.start) add(path + '.end', 'A duty ends after it starts.');
         idList(path + '.dayTypeIds', duty.dayTypeIds, dayTypeIds, 'day type');
         if (!Array.isArray(duty.weekdays) || !duty.weekdays.every((day, k) => Number.isInteger(day) && day >= 0 && day <= 6 && (k === 0 || day > duty.weekdays[k - 1]))) add(path + '.weekdays', 'The weekdays of a duty are a list of numbers from 0 (Monday) to 6 (Sunday), each once, in order; empty means every day.');
         for (const edge of ['from', 'to']) if (duty[edge] !== '' && !isCalendarDate(duty[edge])) add(path + '.' + edge, 'A duty\'s ' + edge + ' date is empty or written YYYY-MM-DD.');

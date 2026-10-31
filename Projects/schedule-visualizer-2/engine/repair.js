@@ -1198,7 +1198,12 @@ export function repair(input, options) {
         note('Duty ' + (i + 1) + ' ended before it started; the two dates were swapped.');
         [duty.from, duty.to] = [duty.to, duty.from];
       }
-      idListOf(duty, 'dayTypeIds', 'd', allDayIds, 'The day types of ' + what, 'day type');
+      if (duty.start !== '' && duty.end !== '' && duty.end <= duty.start) {
+        note('The end time of ' + what + ' was not after its start and was cleared.');
+        duty.end = '';
+      }
+      const days = idListOf(duty, 'dayTypeIds', 'd', allDayIds, 'The day types of ' + what, 'day type');
+      if (days.had > 0 && days.left === 0) return note(what + ' named only day types that are not in the project and was removed.');
       if (!Array.isArray(duty.weekdays)) {
         if (duty.weekdays !== undefined) note('The weekdays of ' + what + ' could not be read; it holds every day now.');
         duty.weekdays = [];

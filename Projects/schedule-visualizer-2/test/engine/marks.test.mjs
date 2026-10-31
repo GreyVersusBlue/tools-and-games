@@ -5,7 +5,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { markFor, schoolMarkFor, dutyTeachers, teacherDuties, dutiesByTeacher, hasMarks } from '../../engine/marks.js';
+import { markFor, schoolMarkFor, dutyTeachers, teacherDuties, dutiesByTeacher, dutyHoldsOn, dutyIsSometimes, hasMarks } from '../../engine/marks.js';
 import { meetingSlots, runsOf } from '../../engine/runs.js';
 import { effectiveSchedule } from '../../engine/day-types.js';
 import { emptySlot } from '../../engine/schema.js';
@@ -180,9 +180,11 @@ test('meetingSlots applies marks and a bell schedule\'s off periods together', (
   assert.notDeepEqual(regular[2], emptySlot());
 });
 
-test('runsOf adds a day type that is the same as another only when a mark names it', () => {
+test('runsOf adds a day type that is the same as another only when a No class mark names it', () => {
   assert.deepEqual(runsOf(withMarks([mark()])).map((run) => run.dayTypeId), [A, B]);
-  const named = withMarks([mark({ dayTypeIds: [C] })]);
+  assert.deepEqual(runsOf(withMarks([mark({ dayTypeIds: [C] })])).map((run) => run.dayTypeId), [A, B], 'a lunch mark changes no slot');
+  assert.deepEqual(runsOf(withMarks([mark({ kind: 'advisory', dayTypeIds: [C] })])).map((run) => run.dayTypeId), [A, B]);
+  const named = withMarks([mark({ kind: 'noclass', dayTypeIds: [C] })]);
   assert.deepEqual(runsOf(named), [{ dayTypeId: A, bellsId: null }, { dayTypeId: B, bellsId: null }, { dayTypeId: C, bellsId: null }]);
   named.bellSchedules = [{ id: 'bsample0er', name: 'Early Release', short: '', bells: named.dayTypes[0].bells.slice(), off: [] }];
   assert.deepEqual(runsOf(named).map((run) => run.dayTypeId + '/' + run.bellsId), [A + '/null', B + '/null', C + '/null', A + '/bsample0er', B + '/bsample0er', C + '/bsample0er']);
@@ -262,4 +264,27 @@ test('dutiesByTeacher answers for every teacher in one pass and null for a day t
   assert.equal(dutiesByTeacher(project, A).size, project.teachers.length);
   assert.equal(dutiesByTeacher(project, 'dnowhere00'), null);
   assert.equal(dutiesByTeacher(school(), A).size, 0);
+});
+
+test('dutyHoldsOn and dutyIsSometimes treat a non-object as a duty that holds nowhere, as dutiesOn does', () => {
+  for (const bad of [null, undefined, 'x', 7, true]) {
+    assert.equal(dutyIsSometimes(bad), false, String(bad));
+    assert.equal(dutyHoldsOn(bad, '2026-09-08'), false, String(bad));
+    assert.equal(dutyHoldsOn(bad, undefined), false, String(bad));
+  }
+  assert.equal(dutyHoldsOn(duty({}), '2026-09-08'), true, 'a duty that is not sometimes holds');
+});
+
+test('teacherDuties reads a per-project index: the same lists on a second ask, a new project object a new index, dates their own', () => {
+  const project = withMarks([], [duty({ id: 'uweekday01', teacherIds: [HALLORAN], weekdays: [1] }), duty({ id: 'uevery0001', teacherIds: [HALLORAN] })]);
+  const first = teacherDuties(project, HALLORAN, A);
+  assert.equal(teacherDuties(project, HALLORAN, A), first, 'the very same answer');
+  assert.equal(dutiesByTeacher(project, A), dutiesByTeacher(project, A));
+  assert.deepEqual(first.before.map((d) => d.id), ['uweekday01', 'uevery0001']);
+  assert.deepEqual(teacherDuties(project, HALLORAN, A, { date: '2026-09-08' }).before.map((d) => d.id), ['uweekday01', 'uevery0001'], 'a Tuesday');
+  assert.deepEqual(teacherDuties(project, HALLORAN, A, { date: '2026-09-09' }).before.map((d) => d.id), ['uevery0001'], 'a Wednesday: not the first answer');
+  assert.deepEqual(teacherDuties(project, HALLORAN, A).before.map((d) => d.id), ['uweekday01', 'uevery0001'], 'and the first answer is unchanged');
+  const edited = { ...project, duties: [project.duties[1]] };
+  assert.deepEqual(teacherDuties(edited, HALLORAN, A).before.map((d) => d.id), ['uevery0001'], 'an edited project is read afresh');
+  assert.throws(() => first.before.push(project.duties[0]), TypeError, 'the shared lists cannot be changed by a caller');
 });
