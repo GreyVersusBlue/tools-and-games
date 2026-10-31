@@ -325,6 +325,12 @@ export function checkSchedule(project, walkResults) {
       if (!fromBells) return null;
       return typeof walk.bellsId === 'string' && findBellSchedule(project, walk.bellsId) ? walk.bellsId : undefined;
     };
+    // makeFinding keeps a fixed set of `where` keys (findings.js is the staff
+    // browser's, which does not change for this), so a walk across adds the
+    // period it reaches to the finding it made
+    const named = (finding, across, toPeriod) => {
+      if (finding && across) finding.where.toPeriod = toPeriod;
+    };
     const bellsOf = new Map();
     // the walk out of `period` under these bells: { to, passing }, the period
     // it reaches (past the ones that do not meet) and the time it has; null
@@ -355,10 +361,14 @@ export function checkSchedule(project, walkResults) {
       return Array.from(byKey.values());
     };
     // the runs, as they are said and as they go into the id and `where`
-    const runParts = (list, parts) => {
+    // A walk across periods that do not meet ends its id with the period it
+    // reaches (`to4`), so an acceptance never carries to a walk that goes
+    // elsewhere; a next-door walk's id has no such part.
+    const runParts = (list, parts, period, toPeriod) => {
       const bellsIds = list.map((entry) => entry.bellsId);
       const regular = bellsIds[0] === null;
-      return { bellsIds, id: regular ? parts : parts.concat([bellsIds[0]]), where: bellsIds.length === 1 && regular ? {} : { bellsIds } };
+      const id = (regular ? parts : parts.concat([bellsIds[0]])).concat(toPeriod === period + 1 ? [] : ['to' + toPeriod]);
+      return { bellsIds, id, where: bellsIds.length === 1 && regular ? {} : { bellsIds } };
     };
     // the late runs whose figures read alike, together: the first set is the
     // sentence, every other set a sentence of its own after it
@@ -419,8 +429,8 @@ export function checkSchedule(project, walkResults) {
         const walk = set.entries[0].walk;
         text += ' With ' + bellsNames(set.entries) + ' bells it ' + said(walk) + ', and ' + passingText(walk.passingSeconds) + '.';
       }
-      const run = runParts(list, [dayType.id, period, group.id]);
-      add('group-walk', run.id, text, { dayTypeId: dayType.id, period, groupIds: [group.id], roomId: to.id, ...run.where });
+      const run = runParts(list, [dayType.id, period, group.id], period, toPeriod);
+      named(add('group-walk', run.id, text, { dayTypeId: dayType.id, period, groupIds: [group.id], roomId: to.id, ...run.where }), across, toPeriod);
     }
 
     const daysOf = new Map();
@@ -455,9 +465,9 @@ export function checkSchedule(project, walkResults) {
         const walk = set.entries[0].walk;
         text += ' With ' + bellsNames(set.entries) + ' bells it needs ' + formatDuration(walk.walking) + ', and ' + passingText(walk.passingSeconds) + '.';
       }
-      const run = runParts(list, [dayType.id, period, teacher.id]);
-      add('teacher-walk', run.id, text,
-        { dayTypeId: dayType.id, period, groupIds: day[toPeriod].groups.map((taught) => taught.groupId), roomId: move.toRoomId, teacherId: teacher.id, ...run.where }, [teacher.id]);
+      const run = runParts(list, [dayType.id, period, teacher.id], period, toPeriod);
+      named(add('teacher-walk', run.id, text,
+        { dayTypeId: dayType.id, period, groupIds: day[toPeriod].groups.map((taught) => taught.groupId), roomId: move.toRoomId, teacherId: teacher.id, ...run.where }, [teacher.id]), across, toPeriod);
     }
   }
 
@@ -486,11 +496,15 @@ export function followAcceptedWalks(findings, acceptedRecords) {
   const renamed = new Map();
   for (const record of records) {
     const parts = String(record.findingId).split(':');
+    // a walk across ends its id with the period it reaches; the record follows
+    // only a finding that reaches the same one
+    const reach = /^to\d+$/.test(parts[parts.length - 1]) ? parts.pop() : '';
     if ((parts[0] !== 'group-walk' && parts[0] !== 'teacher-walk') || parts.length !== 5 || ids.has(record.findingId)) continue;
     const base = parts.slice(0, 4).join(':');
     const match = findings.find((finding) => {
       if (finding.kind !== parts[0] || recordIds.has(finding.id) || renamed.has(finding.id)) return false;
       const own = finding.id.split(':');
+      if ((/^to\d+$/.test(own[own.length - 1]) ? own.pop() : '') !== reach) return false;
       if (own.length !== 5 || own.slice(0, 4).join(':') !== base) return false;
       const bellsIds = Array.isArray(finding.where.bellsIds) ? finding.where.bellsIds : [];
       return !bellsIds.includes(null) && bellsIds.includes(parts[4]);

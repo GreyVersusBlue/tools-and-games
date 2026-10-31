@@ -291,6 +291,8 @@ function findingSlots(project, finding) {
     out.push({ groupId, period });
   };
   const groupIds = Array.isArray(where.groupIds) ? where.groupIds : [];
+  // a walk across periods that do not meet names the period it reaches
+  const reach = Number.isInteger(where.toPeriod) ? where.toPeriod : where.period + 1;
   if (finding.kind === 'no-planning' || finding.kind === 'consecutive' || finding.kind === 'teacher-walk') {
     const days = teacherDays(project, d);
     const day = days ? days.get(where.teacherId) : null;
@@ -303,7 +305,7 @@ function findingSlots(project, finding) {
       while (to + 1 < periods && day[to + 1].kind === 'teaching') to += 1;
     } else if (finding.kind === 'teacher-walk') {
       from = where.period;
-      to = where.period + 1;
+      to = reach;
     }
     for (let p = from; p <= to && p < periods; p += 1) {
       for (const taught of day[p].groups) add(taught.groupId, p);
@@ -313,7 +315,7 @@ function findingSlots(project, finding) {
   if (finding.kind === 'group-walk') {
     for (const groupId of groupIds) {
       add(groupId, where.period);
-      add(groupId, where.period + 1);
+      add(groupId, reach);
     }
     return out;
   }
@@ -348,9 +350,10 @@ export function suggestionCandidates(project, finding, options) {
   // a: reorder the group's own day
   const swaps = [];
   if (isWalk && Number.isInteger(where.period)) {
+    const reach = Number.isInteger(where.toPeriod) ? where.toPeriod : where.period + 1;
     for (const slot of slots) {
-      if (slot.period === where.period && slots.some((other) => other.groupId === slot.groupId && other.period === where.period + 1)) {
-        swaps.push({ groupId: slot.groupId, a: where.period, b: where.period + 1, distance: 0 });
+      if (slot.period === where.period && slots.some((other) => other.groupId === slot.groupId && other.period === reach)) {
+        swaps.push({ groupId: slot.groupId, a: where.period, b: reach, distance: 0 });
       }
     }
   }

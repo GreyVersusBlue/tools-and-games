@@ -86,7 +86,8 @@ export function nothingBetweenParts(project, bellsId) {
   const meeting = [];
   for (let period = 0; period < periods; period += 1) if (!off.has(period)) meeting.push(period);
   if (meeting.length !== 1) return null;
-  if (!schedule) return [{ text: 'The day has one ' + periodWords(project.settings).one + ', so the bells leave nothing to walk between.' }];
+  // a day of one period has one whatever the bells: "only Period 1 meets" would say a period was dropped
+  if (!schedule || periods === 1) return [{ text: 'The day has one ' + periodWords(project.settings).one + ', so the bells leave nothing to walk between.' }];
   return [{ text: 'Only ' + periodName(project.settings, meeting[0]) + ' meets under ' }, { text: schedule.name, name: true }, { text: ' bells, so they leave nothing to walk between.' }];
 }
 

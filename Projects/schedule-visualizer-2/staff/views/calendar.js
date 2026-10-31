@@ -131,20 +131,13 @@ function pressedStep(event, by, to) {
   pressedBy.set(nav, event);
 }
 
-// The month's words are not left to be read as part of another page: they go
-// when the address leaves the calendar (a page drawn for the calendar sets
-// this up the first time).
-let leaving = false;
-
-function sayNothingOnLeaving() {
-  if (leaving || typeof globalThis.addEventListener !== 'function') return;
-  leaving = true;
-  globalThis.addEventListener('hashchange', () => {
-    if (/^#\/calendar(?:[?/]|$)/.test(globalThis.location.hash)) return;
-    globalThis.clearTimeout(saidTimer);
-    const region = document.querySelector('[data-says="month"]');
-    if (region) region.textContent = '';
-  });
+// The month's words are not left to be read as part of another page: the
+// shell calls leave() when the calendar goes, however it goes (another page
+// drawn, the address replaced, the frame replaced by a card).
+function sayNothing() {
+  globalThis.clearTimeout(saidTimer);
+  const region = document.querySelector('[data-says="month"]');
+  if (region) region.textContent = '';
 }
 
 export const calendarView = {
@@ -154,6 +147,7 @@ export const calendarView = {
   title() {
     return 'Calendar';
   },
+  leave: sayNothing,
   render(ctx, route) {
     const school = ctx.school;
     if (!hasCalendar(school)) {
@@ -263,7 +257,6 @@ export const calendarView = {
     // that was pressed (the other one where the month is the first or last
     // there is) and the new month is said once the page is on screen
     const says = monthStatus();
-    sayNothingOnLeaving();
     const used = reachedByStep(month);
     if (used === null) {
       globalThis.clearTimeout(saidTimer);

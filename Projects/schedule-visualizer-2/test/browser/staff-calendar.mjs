@@ -49,6 +49,7 @@ const C = 'dfixture0c';
 const DAY_KEY = 'sv2staff:psample001:day';
 const DAY_ON_KEY = 'sv2staff:psample001:dayOn';
 const ME_KEY = 'sv2staff:psample001:me';
+const SEEN_KEY = 'sv2staff:psample001:seen';
 
 // New York is four hours behind UTC until 1 November, then five.
 const ROTATION = '2026-09-01T13:50:00Z'; // Tue 9:50: B Day, Period 2 (9:12 to 10:00)
@@ -174,7 +175,8 @@ after(async () => {
 
 // A page in a profile of its own, in New York, its clock pinned at `at` and
 // read again every `every` milliseconds (an hour when left out: a timer that
-// never fires during a case). `kept` is put in storage before the page runs.
+// never fires during a case). `kept` is put in storage before the page runs,
+// on every load, or on the first only with `once`.
 async function openPage(options) {
   const opts = options || {};
   const size = opts.size || SIZES[0];
@@ -183,7 +185,7 @@ async function openPage(options) {
   const phone = size.width < 640;
   await page.setViewport({ width: size.width, height: size.height, deviceScaleFactor: 1, hasTouch: phone, isMobile: phone });
   await page.emulateTimezone(opts.zone || ZONE);
-  await page.evaluateOnNewDocument((at, every, kept, noStorage) => {
+  await page.evaluateOnNewDocument((at, every, kept, noStorage, once) => {
     globalThis.sv2Pinned = at;
     globalThis.sv2StaffClock = { now: () => globalThis.sv2Pinned, every };
     globalThis.print = () => {};
@@ -192,13 +194,15 @@ async function openPage(options) {
       globalThis.__alerts += 1;
     };
     try {
-      for (const [key, value] of Object.entries(kept)) localStorage.setItem(key, value);
+      // `once`: what the page writes itself is not put back by the next file it opens
+      if (!once || sessionStorage.getItem('sv2Seeded') === null) for (const [key, value] of Object.entries(kept)) localStorage.setItem(key, value);
+      sessionStorage.setItem('sv2Seeded', 'yes');
     } catch (error) {
       // nothing to keep
     }
     // a device that refuses to say what it keeps: asking is itself an error
     if (noStorage) Object.defineProperty(window, 'localStorage', { get() { throw new Error('SecurityError'); } });
-  }, opts.at || ROTATION, opts.every || 3600000, opts.kept || {}, opts.noStorage === true);
+  }, opts.at || ROTATION, opts.every || 3600000, opts.kept || {}, opts.noStorage === true, opts.once === true);
   const errors = [];
   page.on('pageerror', (error) => errors.push('page error: ' + error.message));
   page.on('console', (message) => {
@@ -525,7 +529,7 @@ test('"Not right?": the days after follow on from it, until a newer file is open
     await press(page, '[data-today="follow"]');
     await lineIs(page, 'Today is an A Day. You said so on this device. Not right?');
     assert.deepEqual(await texts(page, '.day[data-today="true"] .card__title'), ['A Day']);
-    assert.deepEqual(JSON.parse(await kept(page, DAY_ON_KEY)), { just: null, follow: { date: '2026-09-01', dayTypeId: 'dsample00a', bellsId: null, at: ROTATION.replace('Z', '.000Z'), seenFile: MANY_PUBLISHED } });
+    assert.deepEqual(JSON.parse(await kept(page, DAY_ON_KEY)), { just: null, follow: { date: '2026-09-01', dayTypeId: 'dsample00a', bellsId: null, at: ROTATION.replace('Z', '.000Z') } });
 
     // the next day follows on from A: B Day, and Wednesday's bells
     await page.evaluate(() => {
@@ -746,9 +750,10 @@ test('two answers: "Just today" never removes a standing follow answer', async (
 });
 
 test('a file published after the answer was given clears a follow answer, the same day too', async () => {
-  const answer = JSON.stringify({ just: null, follow: { date: '2026-09-02', dayTypeId: 'dsample00b', bellsId: null, at: '2026-09-02T13:00:00.000Z', seenFile: MANY_PUBLISHED } });
+  const answer = JSON.stringify({ just: null, follow: { date: '2026-09-02', dayTypeId: 'dsample00b', bellsId: null, at: '2026-09-02T13:00:00.000Z' } });
   const at = '2026-09-03T13:00:00Z';
-  const standing = await openPage({ at, kept: { [DAY_ON_KEY]: answer } });
+  // the device had opened the 25 August copy before the answer was given
+  const standing = await openPage({ at, kept: { [DAY_ON_KEY]: answer, [SEEN_KEY]: MANY_PUBLISHED } });
   try {
     await goto(standing.page, files.many, '#/free');
     assert.equal(await line(standing.page), 'Today is a C Day. It follows on from what you said on 2 September. Not right?', 'a file from before the answer: kept');
@@ -756,7 +761,7 @@ test('a file published after the answer was given clears a follow answer, the sa
   } finally {
     await standing.close();
   }
-  const corrected = await openPage({ at, kept: { [DAY_ON_KEY]: answer } });
+  const corrected = await openPage({ at, kept: { [DAY_ON_KEY]: answer, [SEEN_KEY]: MANY_PUBLISHED } });
   try {
     await goto(corrected.page, files.sameday, '#/free');
     assert.equal(await line(corrected.page), 'Today is an A Day. Not right?', 'the office republished at 2 pm that day: its calendar is the newer word');
@@ -1057,7 +1062,7 @@ test('skew: an answer given just after opening a file whose time is ahead of the
     await press(page, '[data-today="follow"]');
     await lineIs(page, 'Today is an A Day with Early Release bells. You said so on this device. Not right?');
     const follow = JSON.parse(await kept(page, DAY_ON_KEY)).follow;
-    assert.equal(follow.seenFile, '2026-09-02T13:00:30.000Z', 'the file that was open');
+    assert.equal('seenFile' in follow, false, 'no file is recorded with the answer');
     assert.equal(follow.at, '2026-09-02T13:00:00.000Z', 'and the moment, which is before the file\'s own time');
     // the next day: A on the 2nd, so B on the 3rd; the answer was not cleared by the file it was given under
     await page.evaluate(() => {
@@ -1266,65 +1271,97 @@ test('the month status is one live region, on the page before its words change, 
 const SAMEDAY_PUBLISHED = '2026-09-02T18:00:00.000Z';
 const THURSDAY = '2026-09-03T13:00:00Z';
 
-test('faults 2 and 3: a follow answer is cleared only by a file newer than every file this device had opened, and a legacy answer takes the file it was given under from the device, not from the file open now', async () => {
+test('SV2-81e: a follow answer ends where the device\'s seen moves to a newer file, whatever page that file opens on, and an older copy clears nothing', async () => {
   const answer = (extra) => JSON.stringify({ just: null, follow: { date: '2026-09-02', dayTypeId: C, bellsId: null, at: '2026-09-02T19:00:00.000Z', ...extra } });
-  const SEEN = 'sv2staff:psample001:seen';
   const KEPT = 'Today is an A Day. It follows on from what you said on 2 September. Not right?';
 
-  // given under the older copy while a newer one had been opened here: opening that newer copy again is not newer than itself
-  const older = await openPage({ at: THURSDAY, kept: { [DAY_ON_KEY]: answer({ seenFile: MANY_PUBLISHED }), [SEEN]: SAMEDAY_PUBLISHED } });
+  // a file newer than the device's seen: the answer is gone, though the page opened never reads it
+  const away = await openPage({ at: THURSDAY, kept: { [DAY_ON_KEY]: answer({}), [SEEN_KEY]: MANY_PUBLISHED } });
   try {
+    await goto(away.page, files.sameday, '#/search');
+    assert.equal(await kept(away.page, DAY_ON_KEY), null, 'cleared where seen moved, with the search page open');
+    assert.equal(await kept(away.page, SEEN_KEY), SAMEDAY_PUBLISHED);
+    await move(away.page, '#/free');
+    assert.equal(await line(away.page), 'Today is an A Day. Not right?');
+    assert.deepEqual(away.errors, []);
+  } finally {
+    await away.close();
+  }
+
+  // an older copy than the device's seen moves nothing and clears nothing, however often it is opened and read
+  const older = await openPage({ at: THURSDAY, once: true, kept: { [DAY_ON_KEY]: answer({ seenFile: MANY_PUBLISHED }), [SEEN_KEY]: SAMEDAY_PUBLISHED } });
+  try {
+    await goto(older.page, files.many, '#/free');
+    assert.equal(await line(older.page), KEPT, 'the device had opened a newer copy');
+    await goto(older.page, files.many, '#/free');
     await goto(older.page, files.sameday, '#/free');
-    assert.equal(await line(older.page), KEPT, 'the device had opened this copy before: not a newer file');
-    assert.equal(JSON.parse(await kept(older.page, DAY_ON_KEY)).follow.seenFile, MANY_PUBLISHED, 'nothing was rewritten');
-    // a file newer than the device's newest clears it
-    await goto(older.page, files.latest, '#/free');
-    assert.equal(await line(older.page), 'Today is an A Day. Not right?');
+    assert.equal(await line(older.page), KEPT, 'and the copy it opened is not newer than itself');
+    assert.equal(await kept(older.page, SEEN_KEY), SAMEDAY_PUBLISHED);
+    // the next newer file moves seen, and that is the one moment
+    await goto(older.page, files.latest, '#/search');
     assert.equal(await kept(older.page, DAY_ON_KEY), null);
+    await goto(older.page, files.latest, '#/free');
+    assert.equal(await line(older.page), 'Today is an A Day. Not right?', 'reading it again cannot bring it back');
     assert.deepEqual(older.errors, []);
   } finally {
     await older.close();
   }
 
-  // an answer given on the older copy records the newest file the device has opened
-  const given = await openPage({ at: THURSDAY, kept: { [SEEN]: SAMEDAY_PUBLISHED } });
+  // a device that had opened nothing has nothing to be newer than
+  const first = await openPage({ at: THURSDAY, kept: { [DAY_ON_KEY]: answer({}) } });
   try {
-    await goto(given.page, files.many, '#/free');
-    await press(given.page, '[data-today="not-right"]');
-    await press(given.page, '[data-pick="today-day"] input[value="dsample00b"]');
-    await press(given.page, '[data-today="follow"]');
-    await lineIs(given.page, 'Today is a B Day. You said so on this device. Not right?');
-    assert.equal(JSON.parse(await kept(given.page, DAY_ON_KEY)).follow.seenFile, SAMEDAY_PUBLISHED, 'the later of the open file and the device\'s newest');
-    assert.deepEqual(given.errors, []);
+    await goto(first.page, files.many, '#/free');
+    assert.equal(await line(first.page), KEPT);
+    assert.deepEqual(first.errors, []);
   } finally {
-    await given.close();
+    await first.close();
   }
+});
 
-  // an answer from before the file was recorded
-  const legacy = await openPage({ at: THURSDAY, kept: { [DAY_ON_KEY]: answer({}), [SEEN]: SAMEDAY_PUBLISHED } });
+test('SV2-81e: a second tab that opens a newer file ends the answer for the first, which was left open on an older one', async () => {
+  const answer = JSON.stringify({ just: null, follow: { date: '2026-09-02', dayTypeId: C, bellsId: null, at: '2026-09-02T19:00:00.000Z' } });
+  const first = await openPage({ at: THURSDAY, once: true, kept: { [DAY_ON_KEY]: answer, [SEEN_KEY]: MANY_PUBLISHED } });
+  let second = null;
   try {
-    await goto(legacy.page, files.many, '#/free');
-    assert.equal(await line(legacy.page), KEPT, 'an older copy is open now, and the device had opened the newer');
-    assert.equal(JSON.parse(await kept(legacy.page, DAY_ON_KEY)).follow.seenFile, SAMEDAY_PUBLISHED, 'taken from the device, not from the copy open now');
-    await goto(legacy.page, files.sameday, '#/free');
-    assert.equal(await line(legacy.page), KEPT, 'and the copy it was given under is not newer than itself');
-    assert.deepEqual(legacy.errors, []);
+    await goto(first.page, files.many, '#/free');
+    assert.equal(await line(first.page), 'Today is an A Day. It follows on from what you said on 2 September. Not right?');
+    // the same device, another tab: an older copy first (moves nothing), then a newer one
+    second = await first.context.newPage();
+    await second.goto(files.newer.url + '#/search', { waitUntil: 'load' });
+    await second.waitForFunction(() => document.documentElement.dataset.ready === 'true' && document.getElementById('app').dataset.state === 'open', { timeout: 30000 });
+    assert.equal(await kept(first.page, SEEN_KEY), '2026-09-02T11:00:00.000Z', 'the second tab moved seen');
+    assert.equal(await kept(first.page, DAY_ON_KEY), null, 'and ended the answer, though it never read it');
+    // the first tab, still on the older file, now reads none
+    await move(first.page, '#/now');
+    await move(first.page, '#/free');
+    assert.equal(await line(first.page), 'Today is an A Day. Not right?');
+    assert.deepEqual(first.errors, []);
   } finally {
-    await legacy.close();
+    if (second) await second.close();
+    await first.close();
   }
-  const fresh = await openPage({ at: THURSDAY, kept: { [DAY_ON_KEY]: answer({}), [SEEN]: MANY_PUBLISHED } });
+});
+
+test('SV2-81e: with storage unavailable a newer file leaves the page working, and an answer given stays for as long as the page is open', async () => {
+  const session = await openPage({ at: THURSDAY, noStorage: true });
   try {
-    await goto(fresh.page, files.sameday, '#/free');
-    assert.equal(await line(fresh.page), 'Today is an A Day. Not right?', 'the device had only opened the 25 August copy: this one is newer than that');
-    assert.equal(await kept(fresh.page, DAY_ON_KEY), null);
-    assert.deepEqual(fresh.errors, []);
+    const { page } = session;
+    await goto(page, files.sameday, '#/free');
+    await press(page, '[data-today="not-right"]');
+    await press(page, '[data-pick="today-day"] input[value="dsample00b"]');
+    await press(page, '[data-today="follow"]');
+    await lineIs(page, 'Today is a B Day. You said so on this device. Not right?');
+    await move(page, '#/search');
+    await move(page, '#/free');
+    await lineIs(page, 'Today is a B Day. You said so on this device. Not right?');
+    assert.deepEqual(session.errors, []);
   } finally {
-    await fresh.close();
+    await session.close();
   }
 });
 
 test('fault 1: outside the calendar, or with no calendar, a standing answer asserts no day type, and "Forget what I said on" is offered', async () => {
-  const stands = (id) => JSON.stringify({ just: null, follow: { date: id === 'plain' ? '2026-09-01' : '2027-06-10', dayTypeId: id === 'plain' ? 'dsample00b' : C, bellsId: null, at: '2027-06-10T13:00:00.000Z', seenFile: MANY_PUBLISHED } });
+  const stands = (id) => JSON.stringify({ just: null, follow: { date: id === 'plain' ? '2026-09-01' : '2027-06-10', dayTypeId: id === 'plain' ? 'dsample00b' : C, bellsId: null, at: '2027-06-10T13:00:00.000Z' } });
   const outside = await openPage({ at: OUTSIDE, kept: { [DAY_ON_KEY]: stands('many'), [DAY_KEY]: 'dsample00b' } });
   try {
     const { page } = outside;
@@ -1427,6 +1464,77 @@ test('fault 6: the month status is emptied when the calendar page is left', asyn
     await page.waitForFunction(() => document.querySelector('[data-says="month"]').textContent === 'November 2026');
     await move(page, '#/free');
     assert.equal(await page.evaluate(() => document.querySelector('[data-says="month"]').textContent), '', 'gone with the page, not after ten seconds');
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('SV2-81e: the plan\'s Coverage link and Coverage\'s plan link carry the date, so going there and back keeps the date and its bells; an old address with b and no date still opens', async () => {
+  // today is Tuesday 1 September; the date is Wednesday 9 September: A Day with Early Release bells
+  const session = await openPage({ at: ROTATION });
+  try {
+    const { page } = session;
+    const title = async () => (await texts(page, '[data-sub="day"] .card__title'))[0];
+    const href = (selector) => page.evaluate((s) => document.querySelector(s).getAttribute('href'), selector);
+    await goto(page, files.many, '#/sub/tsample007?date=2026-09-09');
+    assert.equal(await title(), 'The day: A Day with Early Release bells');
+    assert.equal(await href('a[href^="#/coverage/"]'), '#/coverage/tsample007?date=2026-09-09', 'the date, and no day type the reader did not pick');
+    await press(page, 'a[href^="#/coverage/"]');
+    await viewDrawn(page, '#/coverage');
+    assert.match(await lede(page), /of 4 periods on A Day with Early Release bells\./, 'the date\'s bells');
+    assert.match((await texts(page, '[data-coverage="date"]'))[0], /^For .*9.*2026\.$/);
+    assert.equal(await count(page, 'section[data-period]') > 0, true);
+    assert.deepEqual(await page.evaluate(() => Array.from(document.querySelectorAll('section[data-period]'), (card) => Number(card.dataset.period)).filter((period) => period > 3)), [], 'a period Early Release leaves out is not covered');
+    assert.equal(await href('a.btn[href^="#/sub/"]'), '#/sub/tsample007?date=2026-09-09');
+    await press(page, 'a.btn[href^="#/sub/"]');
+    await viewDrawn(page, '#/sub');
+    assert.equal(await page.evaluate(() => document.getElementById('sub-date').value), '2026-09-09', 'back on the plan, the same date');
+    assert.equal(await title(), 'The day: A Day with Early Release bells');
+
+    // a day type picked on Coverage holds with the date, and takes the date\'s bells only where it is that day
+    await move(page, '#/coverage/tsample007?date=2026-09-09');
+    await press(page, '[data-pick="day"] input[value="dsample00b"]');
+    await page.waitForFunction(() => location.hash === '#/coverage/tsample007?d=dsample00b&date=2026-09-09');
+    assert.match(await lede(page), /of 8 periods on B Day\./, 'B Day is not the day of 9 September: the regular bells');
+    assert.equal(await href('a.btn[href^="#/sub/"]'), '#/sub/tsample007?d=dsample00b&date=2026-09-09');
+    await press(page, '[data-pick="day"] input[value="dsample00a"]');
+    assert.match(await lede(page), /of 4 periods on A Day with Early Release bells\./, 'A Day is the date\'s own again');
+
+    // an address from before there was a date: b with no date, the bells of the day shown; and no date line
+    await move(page, '#/coverage/tsample007?d=dsample00b&b=' + ER);
+    assert.match(await lede(page), /of 4 periods on B Day with Early Release bells\./);
+    assert.equal(await count(page, '[data-coverage="date"]'), 0);
+    // a date that is not a date is not one
+    await move(page, '#/coverage/tsample007?date=2026-13-45');
+    assert.equal(await count(page, '[data-coverage="date"]'), 0);
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('SV2-81e: the month status is emptied on any leaving of the calendar page: another page, an address that names no page', async () => {
+  const session = await openPage({ at: ROTATION });
+  try {
+    const { page } = session;
+    const said = () => page.evaluate(() => document.querySelector('[data-says="month"]').textContent);
+    const month = async () => {
+      await move(page, '#/calendar?m=2026-10');
+      await page.focus('a[data-step="next"]');
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => document.querySelector('[data-says="month"]').textContent === 'November 2026');
+    };
+    await goto(page, files.many, '#/calendar?m=2026-10');
+    await month();
+    await move(page, '#/free');
+    assert.equal(await said(), '', 'to a page');
+    await month();
+    await page.evaluate(() => {
+      location.hash = '#/nonsense';
+    });
+    await viewDrawn(page, '#/search');
+    assert.equal(await said(), '', 'to an address that names no page');
     assert.deepEqual(session.errors, []);
   } finally {
     await session.close();
