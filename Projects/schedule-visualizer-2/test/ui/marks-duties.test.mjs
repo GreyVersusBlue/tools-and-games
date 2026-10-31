@@ -40,3 +40,12 @@ test('the teachers by period print gives Before and After a head and a cell each
   const bus = html.match(/<tr data-teacher="[^"]*">(?:(?!<\/tr>).)*Bus duty.*?<\/tr>/s)[0];
   assert.equal((bus.match(/<td/g) || []).length, next.settings.periods + 2, 'a cell for each period, then Before and After');
 });
+
+test('the import says how many marks and duties were added, replaced and kept', async () => {
+  const { alsoText } = await import('../../ui/schedule/import/schedule-file.js');
+  const base = { subjectsAdded: [], teachersAdded: [], dayTypesAdded: [], unknownRooms: [], periodsRaised: null, marksAdded: 0, dutiesAdded: 0, marksKept: 0, marksReplaced: 0, dutiesKept: 0, dutiesReplaced: 0 };
+  const words = { one: 'period', many: 'periods' };
+  assert.equal(alsoText(base, words), '', 'a file with none says nothing');
+  assert.equal(alsoText({ ...base, marksAdded: 2, marksKept: 1, marksReplaced: 3 }, words), ' Also: 2 marked periods added, 3 marked periods replaced and 1 marked period kept as it was.');
+  assert.equal(alsoText({ ...base, dutiesAdded: 1, dutiesKept: 2, dutiesReplaced: 1 }, words), ' Also: 1 duty or meeting added, 1 duty or meeting replaced and 2 duties and meetings kept as they were.');
+});
