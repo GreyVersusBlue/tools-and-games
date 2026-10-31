@@ -23,6 +23,7 @@ import assert from 'node:assert/strict';
 import { routesForSchedule, routingGraph } from '../../engine/routing.js';
 import { simulateSchedule, walkResults } from '../../engine/crowd.js';
 import { checkSchedule } from '../../engine/checks.js';
+import { validate } from '../../engine/validate.js';
 import { ownDayTypes } from '../../engine/day-types.js';
 import { routesByRun } from '../../engine/crowd.js';
 import { bigProject, BIG } from '../fixtures/big.mjs';
@@ -97,4 +98,53 @@ test('the schedule checks over the twelve runs of the grown fixture: under ' + B
   assert.ok(named.some((finding) => finding.where.bellsIds.length > 1), 'and some are one finding for several runs');
   assert.ok(median < BUDGET * SLACK, 'the checks over twelve runs took ' + median.toFixed(1) + ' ms at the median, over ' + BUDGET * SLACK);
   assert.ok(first.ms < BUDGET * SLACK, 'the first run of them took ' + first.ms.toFixed(1) + ' ms, over ' + BUDGET * SLACK);
+});
+
+test('the schedule checks on the big fixture with 90 marks and 60 duties, cold and warm: under ' + BUDGET + ' ms', () => {
+  const project = bigProject({ seed: 1 });
+  const graph = routingGraph(project);
+  const routes = routesForSchedule(project, graph);
+  const crowd = simulateSchedule(project, routes, graph);
+  const walks = walkResults(project, crowd, graph);
+  const own = ownDayTypes(project);
+  const periods = project.settings.periods;
+  // 90 marks: school lunches and advisories, grade and group marks, a few on one day type
+  const kinds = ['lunch', 'advisory', 'activity', 'noclass'];
+  project.marks = Array.from({ length: 90 }, (unused, i) => {
+    const scope = i % 3 === 0 ? 'school' : i % 3 === 1 ? 'grades' : 'groups';
+    return {
+      id: 'mbig' + String(i + 1).padStart(6, '0'), kind: kinds[i % 4], label: '', period: i % periods,
+      dayTypeIds: i % 2 === 0 ? [] : [own[i % own.length].id], scope,
+      grades: scope === 'grades' ? [project.groups[i % project.groups.length].grade] : [],
+      groupIds: scope === 'groups' ? [project.groups[i % project.groups.length].id] : [],
+    };
+  });
+  // 60 duties: period, before and after school, for named teachers, a subject, or everyone
+  const when = ['period', 'before', 'after'];
+  project.duties = Array.from({ length: 60 }, (unused, i) => ({
+    id: 'ubig' + String(i + 1).padStart(6, '0'), kind: ['duty', 'meeting', 'lunch'][i % 3], label: '', when: when[i % 3], period: when[i % 3] === 'period' ? (i * 7) % periods : 0,
+    start: '', end: '', dayTypeIds: i % 4 === 0 ? [own[i % own.length].id] : [], weekdays: i % 5 === 0 ? [1 + (i % 4)] : [], from: '', to: '', roomId: null, place: '',
+    teacherIds: i % 6 === 5 ? [] : [project.teachers[(i * 11) % project.teachers.length].id, project.teachers[(i * 13 + 1) % project.teachers.length].id], subjectIds: [], everyone: false,
+  }));
+  assert.deepEqual(validate(project), [], 'the marks and duties are valid');
+
+  const cold = timed(() => checkSchedule(project, walks));
+  const batches = [];
+  for (let run = 0; run < RUNS; run += 1) {
+    const started = performance.now();
+    for (let i = 0; i < BATCH; i += 1) checkSchedule(project, walks);
+    batches.push((performance.now() - started) / BATCH);
+  }
+  batches.sort((a, b) => a - b);
+  const median = batches[Math.floor(batches.length / 2)];
+  const found = cold.value.findings;
+  const counts = new Map();
+  for (const finding of found) counts.set(finding.kind, (counts.get(finding.kind) || 0) + 1);
+  console.log('# checks, 90 marks and 60 duties, first call: ' + cold.ms.toFixed(1) + ' ms; median ' + median.toFixed(1) + ' ms of ' + RUNS + ' batches of ' + BATCH + ' (budget ' + BUDGET + ', fails at ' + BUDGET * SLACK + '); ' + found.length + ' findings: ' + Array.from(counts, ([kind, n]) => kind + ' ' + n).join(', '));
+
+  assert.ok(counts.has('duty-nobody'), 'the duty checks ran: a duty with nobody on it is found');
+  assert.ok(counts.has('duty-clash') || counts.has('consecutive') || counts.has('no-planning'), 'and the teacher checks that read duties and marks');
+  assert.deepEqual(checkSchedule(project, walks), cold.value, 'a second run says what the first did');
+  assert.ok(median < BUDGET * SLACK, 'the checks with marks and duties took ' + median.toFixed(1) + ' ms at the median, over ' + BUDGET * SLACK);
+  assert.ok(cold.ms < BUDGET * SLACK, 'the first run of them took ' + cold.ms.toFixed(1) + ' ms, over ' + BUDGET * SLACK);
 });
