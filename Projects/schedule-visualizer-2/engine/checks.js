@@ -325,6 +325,12 @@ export function checkSchedule(project, walkResults) {
       if (!fromBells) return null;
       return typeof walk.bellsId === 'string' && findBellSchedule(project, walk.bellsId) ? walk.bellsId : undefined;
     };
+    // makeFinding keeps a fixed set of `where` keys (findings.js is the staff
+    // browser's, which does not change for this), so a walk across adds the
+    // period it reaches to the finding it made
+    const named = (finding, across, toPeriod) => {
+      if (finding && across) finding.where.toPeriod = toPeriod;
+    };
     const bellsOf = new Map();
     // the walk out of `period` under these bells: { to, passing }, the period
     // it reaches (past the ones that do not meet) and the time it has; null
@@ -424,7 +430,7 @@ export function checkSchedule(project, walkResults) {
         text += ' With ' + bellsNames(set.entries) + ' bells it ' + said(walk) + ', and ' + passingText(walk.passingSeconds) + '.';
       }
       const run = runParts(list, [dayType.id, period, group.id], period, toPeriod);
-      add('group-walk', run.id, text, { dayTypeId: dayType.id, period, ...(across ? { toPeriod } : {}), groupIds: [group.id], roomId: to.id, ...run.where });
+      named(add('group-walk', run.id, text, { dayTypeId: dayType.id, period, groupIds: [group.id], roomId: to.id, ...run.where }), across, toPeriod);
     }
 
     const daysOf = new Map();
@@ -460,8 +466,8 @@ export function checkSchedule(project, walkResults) {
         text += ' With ' + bellsNames(set.entries) + ' bells it needs ' + formatDuration(walk.walking) + ', and ' + passingText(walk.passingSeconds) + '.';
       }
       const run = runParts(list, [dayType.id, period, teacher.id], period, toPeriod);
-      add('teacher-walk', run.id, text,
-        { dayTypeId: dayType.id, period, ...(across ? { toPeriod } : {}), groupIds: day[toPeriod].groups.map((taught) => taught.groupId), roomId: move.toRoomId, teacherId: teacher.id, ...run.where }, [teacher.id]);
+      named(add('teacher-walk', run.id, text,
+        { dayTypeId: dayType.id, period, groupIds: day[toPeriod].groups.map((taught) => taught.groupId), roomId: move.toRoomId, teacherId: teacher.id, ...run.where }, [teacher.id]), across, toPeriod);
     }
   }
 

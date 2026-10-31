@@ -13,14 +13,16 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 
 import { createPipeline } from '../../engine/worker.js';
-import { checkSchedule } from '../../engine/checks.js';
+import { checkSchedule, followAcceptedWalks } from '../../engine/checks.js';
+import { suggestionCandidates, suggest } from '../../engine/suggest.js';
+import { acceptFinding } from '../../engine/actions.js';
 import { teacherWalks, bellMoves } from '../../engine/crowd.js';
 import { buildGraph } from '../../engine/graph.js';
 import { defaultChoice, pictureOf, transitionsOf } from '../../ui/movement/model.js';
 import { loadWords } from '../../ui/movement/card.js';
 import { nothingBetweenParts } from '../../ui/movement/tables.js';
 import { renderOutput } from '../../ui/prints/index.js';
-import { school, PINNED } from '../engine/helpers.mjs';
+import { school, ctx, PINNED } from '../engine/helpers.mjs';
 
 const A = 'dsample00a';
 const B = 'dsample00b';
@@ -161,4 +163,125 @@ test('with one period meeting the Travel tab and its print say the bells leave n
   const html = renderOutput('travel-time', project, null, { now: PINNED, dayTypeId: A, bellsId: ER, movement: { project, results, graph } }).html;
   assert.ok(html.includes('Only Period 7 meets under Early Release bells, so they leave nothing to walk between.'), html.slice(0, 300));
   assert.equal(html.includes('give a group a room'), false, 'no advice about rooms');
+});
+
+// SV2-79d, from SV2-79c's review (probe3.mjs): the id of a walk across ends with
+// the period it reaches. Three projects whose Testing bells put Period 7A's
+// next meeting at Period 4, 5 and 6 would all have had one id before.
+function reaching(offs, reach) {
+  const project = school();
+  const bells = project.dayTypes[0].bells.map((bell) => ({ ...bell }));
+  for (const off of offs) bells[off] = null;
+  bells[reach] = { start: time(9 * 60 + 41), end: time(10 * 60 + 30) };
+  project.bellSchedules = [{ id: TS, name: 'Testing', short: '', bells, off: offs }];
+  return project;
+}
+
+const REACHES = [[[2], 3], [[2, 3], 4], [[2, 3, 4], 5]];
+
+test('a walk across ends its id with the period it reaches, so an acceptance does not carry to a walk that goes elsewhere', () => {
+  const idOf = (project) => {
+    const { found } = findings(project);
+    const mine = ofKind(found, 'group-walk').filter((finding) => finding.where.period === 1 && finding.where.dayTypeId === A && finding.where.groupIds[0] === 'gsample07a');
+    assert.equal(mine.length, 1);
+    return mine[0].id;
+  };
+  const ids = REACHES.map(([offs, reach]) => idOf(reaching(offs, reach)));
+  assert.deepEqual(ids, ['group-walk:' + A + ':1:gsample07a:' + TS + ':to3', 'group-walk:' + A + ':1:gsample07a:' + TS + ':to4', 'group-walk:' + A + ':1:gsample07a:' + TS + ':to5']);
+  // the walk to Period 4 accepted, the project then walks to Period 5 instead
+  const accepted = acceptFinding(reaching([2], 3), { findingId: ids[0], reason: 'Early start' }, ctx());
+  const same = checkSchedule(accepted, findings(accepted).results.walks);
+  assert.deepEqual(same.accepted.map((finding) => finding.id), [ids[0]], 'the walk that was accepted stays accepted');
+  const moved = { ...reaching([2, 3], 4), accepted: accepted.accepted };
+  const after = checkSchedule(moved, findings(moved).results.walks);
+  assert.deepEqual(after.accepted, [], 'a walk to Period 5 is not the walk accepted');
+  assert.ok(after.findings.some((finding) => finding.id === ids[1]), 'it counts on its own');
+  assert.deepEqual(after.gone.map((record) => record.findingId), [ids[0]], 'the old acceptance is listed as gone');
+  // a record follows a finding only to the same period
+  const record = [{ findingId: 'group-walk:' + A + ':1:gsample07a:' + ER + ':to4', reason: 'x', at: PINNED }];
+  const finding = (id, bellsIds) => ({ id, kind: 'group-walk', where: { bellsIds } });
+  assert.equal(followAcceptedWalks([finding('group-walk:' + A + ':1:gsample07a:' + TS + ':to4', [ER])], record)[0].id, 'group-walk:' + A + ':1:gsample07a:' + ER + ':to4', 'the same period: followed');
+  assert.equal(followAcceptedWalks([finding('group-walk:' + A + ':1:gsample07a:' + TS + ':to5', [ER])], record)[0].id, 'group-walk:' + A + ':1:gsample07a:' + TS + ':to5', 'another period: not followed');
+  assert.equal(followAcceptedWalks([finding('group-walk:' + A + ':1:gsample07a:' + TS, [ER])], record)[0].id, 'group-walk:' + A + ':1:gsample07a:' + TS, 'a next-door walk: not followed');
+});
+
+test('a walk across carries toPeriod in where, and its suggestions swap and move toward the period it reaches', () => {
+  for (const [offs, reach] of REACHES) {
+    const project = reaching(offs, reach);
+    const { found } = findings(project);
+    const walks = found.findings.filter((finding) => finding.kind === 'group-walk' && finding.where.toPeriod !== undefined);
+    assert.ok(walks.length > 0);
+    for (const walk of walks) {
+      assert.equal(walk.where.toPeriod, reach, walk.id);
+      assert.ok(walk.id.endsWith(':to' + reach), walk.id);
+      const candidates = suggestionCandidates(project, walk);
+      const first = candidates[0].change;
+      assert.deepEqual([first.kind, first.periodA, first.periodB], ['swapPeriods', walk.where.period, reach], 'the first swap is the walk\'s own two ends: ' + walk.id);
+    }
+  }
+  // a next-door walk has no toPeriod
+  const { found } = findings(school());
+  assert.deepEqual(ofKind(found, 'group-walk').filter((finding) => finding.where.toPeriod !== undefined), []);
+});
+
+test('with Testing bells every suggestion for a walk across names the period it reaches, never the period that does not meet', () => {
+  const project = testing(school(), 1);
+  const { found } = findings(project);
+  const walk = ofKind(found, 'group-walk').find((finding) => finding.id === 'group-walk:' + A + ':1:gsample07a:' + TS + ':to3');
+  const slots = suggestionCandidates(project, walk).map((candidate) => candidate.change);
+  assert.deepEqual(slots.slice(0, 1).map((change) => [change.periodA, change.periodB]), [[1, 3]], 'Period 2 and Period 4');
+  const said = suggest(project, walk).suggestions;
+  assert.ok(said.length > 0);
+  for (const suggestion of said) assert.equal(/Period 3\b/.test(suggestion.text), false, suggestion.text);
+});
+
+test('a teacher walk across with late: false makes no finding, and with late: true makes one', () => {
+  const project = withTeacher(testing(school(), 1), [1, 3]);
+  const { results } = findings(project);
+  const quiet = (late) => ({ groups: results.walks.groups, teachers: results.walks.teachers, bells: { groups: [], teachers: results.walks.bells.teachers.map((walk) => (walk.teacherId === COACH && walk.toPeriod !== undefined ? { ...walk, late } : walk)) } });
+  assert.equal(ofKind(checkSchedule(project, quiet(true)), 'teacher-walk').length, 1, 'the control');
+  assert.deepEqual(ofKind(checkSchedule(project, quiet(false)), 'teacher-walk'), []);
+});
+
+test('a teacher with a free meeting period between the two taught periods has no walk across', () => {
+  const teacher = 'tsample012';
+  const across = (periods) => {
+    const project = testing(school(), 1);
+    const group = project.groups.find((each) => each.id === 'gsample07a');
+    for (const period of periods) group.days[A][period].teacherIds = [teacher];
+    const { results, found } = findings(project);
+    return {
+      figures: results.walks.bells.teachers.filter((walk) => walk.teacherId === teacher && walk.toPeriod !== undefined),
+      found: ofKind(found, 'teacher-walk').filter((finding) => finding.where.teacherId === teacher && finding.where.toPeriod !== undefined),
+    };
+  };
+  const control = across([1, 3]);
+  assert.equal(control.figures.length, 1, 'taught in Period 2 and Period 4, Period 3 off: a walk across');
+  assert.equal(control.found.length, 1);
+  const free = across([1, 4]);
+  assert.deepEqual(free.figures, [], 'Period 4 meets and is free: the time is the teacher\'s, no walk across');
+  assert.deepEqual(free.found, []);
+});
+
+test('the same room at both ends of a walk across is no walk', () => {
+  const project = withTeacher(testing(school(), 1), [1, 3]);
+  const group = project.groups.find((each) => each.id === 'gsample07a');
+  const isAcross = (finding) => finding.where.dayTypeId === A && finding.where.period === 1 && finding.where.toPeriod !== undefined;
+  const before = findings(project);
+  assert.ok(ofKind(before.found, 'group-walk').some((finding) => isAcross(finding) && finding.where.groupIds[0] === 'gsample07a'), 'the control');
+  assert.ok(ofKind(before.found, 'teacher-walk').some(isAcross), 'the control, a teacher');
+  group.days[A][3].room = group.days[A][1].room;
+  const after = findings(project);
+  assert.deepEqual(ofKind(after.found, 'group-walk').filter((finding) => isAcross(finding) && finding.where.groupIds[0] === 'gsample07a'), []);
+  assert.deepEqual(ofKind(after.found, 'teacher-walk').filter(isAcross), []);
+});
+
+test('a one-period day with a bell schedule chosen takes the one-period sentence', () => {
+  const text = (parts) => parts.map((part) => part.text).join('');
+  const oneDay = earlyRelease(school(), []);
+  oneDay.settings.periods = 1;
+  assert.equal(text(nothingBetweenParts(oneDay, ER)), 'The day has one period, so the bells leave nothing to walk between.');
+  assert.equal(text(nothingBetweenParts(oneDay, null)), 'The day has one period, so the bells leave nothing to walk between.');
+  // and an eight-period day with seven off still says which one meets
+  assert.equal(text(nothingBetweenParts(earlyRelease(school(), [0, 1, 2, 3, 4, 5, 7]), ER)), 'Only Period 7 meets under Early Release bells, so they leave nothing to walk between.');
 });
