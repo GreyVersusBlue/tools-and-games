@@ -230,3 +230,31 @@ test('ARCHITECTURE 17: the limits, the new project\'s fields, and the readers th
   assert.equal(schema.spacelessKey(' Early  Release '), 'earlyrelease');
   assert.equal(schema.textLength('Τρίτη 😀'), 7);
 });
+
+// ---------------------------------------------------------------- marks and duties (SV2-83)
+
+test('newProject has no marks and no duties: they are absent until the first is added', () => {
+  const project = emptyProject();
+  assert.equal('marks' in project, false);
+  assert.equal('duties' in project, false);
+  assert.deepEqual(schema.marksOf(project), []);
+  assert.deepEqual(schema.dutiesOf(project), []);
+  assert.deepEqual(schema.marksOf({ marks: 'x' }), []);
+  assert.deepEqual(schema.dutiesOf(null), []);
+});
+
+test('newMark and newDuty are valid in a project, with the defaults the actions rely on', () => {
+  const project = school();
+  project.marks = [schema.newMark('mtest00001', 'lunch', 3)];
+  project.duties = [schema.newDuty('utest00001', 'duty')];
+  assert.deepEqual(validate(project), []);
+  assert.deepEqual(project.marks[0], { id: 'mtest00001', kind: 'lunch', label: '', period: 3, dayTypeIds: [], scope: 'school', grades: [], groupIds: [] });
+  assert.equal(project.duties[0].when, 'before');
+  assert.equal(project.duties[0].everyone, false);
+  assert.deepEqual(schema.MARK_KINDS, ['lunch', 'advisory', 'activity', 'noclass']);
+  assert.deepEqual(schema.DUTY_KINDS, ['duty', 'meeting', 'lunch']);
+});
+
+test('lastPublishedHadCalendar is not in the defaults: absent reads as no', () => {
+  assert.equal('lastPublishedHadCalendar' in schema.defaultPublish(''), false);
+});
