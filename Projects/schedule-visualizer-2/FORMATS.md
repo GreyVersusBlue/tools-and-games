@@ -557,7 +557,9 @@ Format name `sv2-schedule`, version **1**. `writeScheduleFile`,
   "groups": Group[],
   "dayTypes": DayType[],
   "bellSchedules": BellSchedule[],
-  "calendar": Calendar
+  "calendar": Calendar,
+  "marks": Mark[],
+  "duties": Duty[]
 }
 ```
 
@@ -568,17 +570,19 @@ Format name `sv2-schedule`, version **1**. `writeScheduleFile`,
 | `subjects`, `teachers`, `groups`, `dayTypes` | As in the project object, unchanged, a day type's `sameAs` and `short` with it. A slot's `room` and a teacher's `roomIds` are ids found in `rooms`. |
 | `bellSchedules` | Optional. As in the project object. Written only when the project has a bell schedule; absent is none. |
 | `calendar` | Optional. As in the project object, `changedAt` with it. Written only when the project has a calendar; absent is none. |
+| `marks`, `duties` | Optional. As in the project object (Mark, Duty). Written only when the project has any; absent is none. A duty's `roomId` is an id found in `rooms`, which lists it. |
 
-A project with no bell schedules and no calendar writes the file exactly as a
-planner from before them did.
+A project with no bell schedules, no calendar, no marks and no duties writes
+the file exactly as a planner from before them did.
 
 **Reading.** JSON; `format` is `sv2-schedule`; `version` is 1; every field
 above that is not optional is present; then the settings, subjects, teachers,
-groups, day types, bell schedules and calendar have to pass every rule of the
-project object, with `rooms` standing for the building: a slot or a teacher
-naming a room that is not in the index is a refusal, and so are two index
-entries with one number. The summary of what a file holds counts its bell
-schedules and says whether it has a calendar.
+groups, day types, bell schedules, calendar, marks and duties have to pass
+every rule of the project object, with `rooms` standing for the building: a
+slot, a teacher or a duty naming a room that is not in the index is a refusal,
+and so are two index entries with one number. The summary of what a file holds
+counts its bell schedules, marks and duties and says whether it has a
+calendar (`marks` and `duties` are `0` for a file without any).
 
 **Importing** brings the schedule into the project. The rules:
 
@@ -623,6 +627,20 @@ schedules and says whether it has a calendar.
   and counted. A calendar that is the same as the one here is left, with its
   `changedAt`; a replaced one is stamped with the time of the import when the
   importer passes a clock, else keeps the file's `changedAt`.
+- **Marks and duties.** Matched by id: one that is here is left exactly as it
+  is here (importing a file twice adds nothing the second time), one that is
+  not is added, with the file's id when that id is free, at the end of the
+  list. Every reference in an added one is re-pointed through the matches
+  above: day types and subjects and teachers as they were matched or added,
+  groups by name as the groups are (a group imported under a new name by
+  `rename` is the one the mark follows; a group skipped is the group of that
+  name here), a duty's room as a slot's is. A duty's room that is not in this
+  building becomes `roomId: null` and its number becomes its `place`, unless
+  the duty already has a `place`; the reference is counted as dropped. Nothing
+  else can fail to match, since every day type, group, teacher and subject of
+  the file is matched or added. The summary counts `marksAdded` and
+  `dutiesAdded`. A mark past the end of the project's school day cannot come
+  in, since the school day is raised to the file's first.
 - **Limits.** A file that would bring the project to more than 12 day types,
   or more than 12 bell schedules, is refused whole.
 - **Settings.** The period word and the two defaults are taken from the file
@@ -822,13 +840,14 @@ to the same names.
 | Teachers | Teacher, Subject code, Subject, Rooms, Notes | one per teacher. Rooms are room numbers joined by "; ". |
 | Subjects | Code, Subject, Colour | one per subject, in the list's order. Colour is `#rrggbb`. |
 | Rooms | Room, Floor, Teachers, Subject code, Subject, Wing, Capacity, Shared space, Doors | one per room, floor by floor. Teachers are names joined by "; ", main teacher first. Shared space is Yes or No. Doors is a count. |
-| Teachers by period | Teacher, Day type, then one column per period | one per teacher per day type. A cell is "group · room number" for each group taught, joined by "; ", or "Planning". |
-| Rooms by period | Room, Floor, Day type, then one column per period | one per room per day type. A cell is the groups in the room, joined by "; ". Room numbers that slots name and the building does not have come last, with "not in the building" as the floor. |
+| Teachers by period | Teacher, Day type, then one column per period, then Before and After when any teacher has such a duty | one per teacher per day type. A cell is "group · room number" for each group taught, joined by "; ", or "Planning" for a free period. A period that an always duty or a school mark takes reads as it ("Lunch duty", "Their own lunch", "Lunch", or a mark's own label such as "Testing") instead of "Planning". A duty that holds on some days only is added to the cell with its days ("Planning; Bus duty (on Wednesdays)"), and a duty in a period the teacher teaches is listed after the groups. Before and After hold the duties before and after school, in the columns after the last period (a reader of the period cells by position from the third cell is not moved); a column is there only when some teacher has such a duty on one of the day types in the file. |
+| Rooms by period | Room, Floor, Day type, then one column per period | one per room per day type. A cell is the groups in the room, joined by "; ". A group does not appear in a period it does not meet (a No class mark; a Lunch mark keeps the group in the room it is scheduled into). Room numbers that slots name and the building does not have come last, with "not in the building" as the floor. |
 | Calendar | as "The calendar CSV" | one per date of the calendar; the header alone with no calendar |
 
 The two grids come from the same rules as every screen: a teacher's day from
-`engine/teacher-day.js`, and a day type that is the same as the first reads
-the same as the first.
+`engine/teacher-day.js`, where a group is from `meetingSlots`
+(`engine/runs.js`), and a day type that is the same as the first reads the
+same as the first.
 
 **File names.** Every export is named `<school> - <what> - <date>.<ext>`,
 for example `Marrowby Middle School (sample) - groups - 2026-09-01.csv`. The
@@ -1019,6 +1038,8 @@ run on it unchanged, and `validate` and `repair` accept it.
 | `dayTypes` | list | `id`, `name`, `own`, `sameAs` (`null` when absent in the project), `short` (`""` when absent), `bells`. |
 | `bellSchedules` | list | As in the project: `id`, `name`, `short`, `bells`, `off`. Empty when there are none. |
 | `calendar` | object or `null` | As in the project: `start`, `end`, `weekdays`, `rotation`, `dates`, `changedAt`. `null` when there is none. |
+| `marks` | list | As in the project, every field: `id`, `kind`, `label`, `period`, `dayTypeIds`, `scope`, `grades`, `groupIds`. A mark past the end of the day is published, since the rules ignore it. Empty when there are none. |
+| `duties` | list | As in the project, every field: `id`, `kind`, `label`, `when`, `period`, `start`, `end`, `dayTypeIds`, `weekdays`, `from`, `to`, `roomId`, `place`, `teacherIds`, `subjectIds`, `everyone`. A duty with nobody on it is published with nobody on it. Empty when there are none. |
 | `groups` | list | `id`, `name`, `grade`, `colour`, `days`. |
 | `publish` | object | `views` (one true or false for each view, `calendar` included; one the project has no switch for is true) and `teacherNamesOnMap`. |
 
