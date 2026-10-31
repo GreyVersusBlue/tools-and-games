@@ -459,7 +459,7 @@ test('Copy classes from… fills the group’s B Day from A Day, and a teacher n
   await page.click('#group-copy-dialog .btn--primary');
   await shows((day) => document.querySelector('.sch-group[aria-selected="true"] .sch-bar[data-day="' + day + '"]').dataset.done === '8', DAY_B);
   assert.equal(await toastText(), 'Copied 8Z’s A Day to B Day.');
-  assert.equal(await exists('.sch-day[data-day="' + DAY_A + '"] [data-action="copy-day"]'), false, 'the first day type is copied onto from the Day tab, for every group');
+  assert.equal(await exists('.sch-day[data-day="' + DAY_A + '"] [data-action="copy-day"]'), true, 'Copy classes from… is on the first day type’s column too (SV2-78b)');
   await click(slot(DAY_A, 4, 'teacher'));
   await page.keyboard.type('Dunmore');
   await page.keyboard.press('Enter');

@@ -120,7 +120,7 @@ export function mount(env) {
   watchPage();
   // `fields`: are Grade, Head count and Colour shown on a narrow screen. Kept
   // while the page is open, like the cursor.
-  if (!view.grid) view.grid = { rows: 'groups', at: null, anchor: null, fields: false, day: null };
+  if (!view.grid) view.grid = { rows: 'groups', at: null, anchor: null, fields: false, day: null, dayName: null, gone: null };
   const state = view.grid;
   // this device's Day type, read once a visit; the page's when it keeps none
   try {
@@ -134,6 +134,34 @@ export function mount(env) {
     const day = gridDayOf(project, state.day);
     return day === 'all' ? ownDayTypes(project).map((dayType) => dayType.id) : [day];
   };
+  // The Day type this device chose can stop being one: deleted, or made the
+  // same as another day type. The choice is then cleared (here and on the
+  // device) and the hint line says what the grid shows instead, until a Day
+  // type is chosen again.
+  const settleDay = (project) => {
+    const kept = state.day;
+    if (kept === null || kept === 'all') return;
+    const own = ownDayTypes(project).find((dayType) => dayType.id === kept);
+    if (own) {
+      state.dayName = own.name;
+      return;
+    }
+    const was = project.dayTypes.find((dayType) => dayType.id === kept);
+    const shown = gridDayOf(project, null);
+    const instead = shown === 'all' ? 'every day type' : ownDayTypes(project).find((dayType) => dayType.id === shown).name;
+    const name = was ? was.name : state.dayName;
+    const sentence = was ? name + ' is now the same as ' + effectiveDayType(project, was.id).name : (name ? name + ' was deleted' : 'The day type chosen here was deleted');
+    state.gone = sentence + ', so the grid shows ' + instead + '.';
+    state.day = null;
+    state.dayName = null;
+    try {
+      writeGridDay('');
+    } catch (error) {
+      // the page has already let go of it
+    }
+    ctx.announce(state.gone);
+  };
+
   const element = h('div', { class: 'grd' });
   const status = h('p', { class: 'grd-status' });
   let model = null;
@@ -255,7 +283,10 @@ export function mount(env) {
     const own = ownDayTypes(model.after);
     if (own.length < 2) return;
     const pick = { from: own[0], to: own[1] };
-    const words = () => (pick.from === pick.to ? 'Choose two different day types' : 'Copy ' + pick.from.name + ' to ' + pick.to.name + ' for every group');
+    const same = () => pick.from === pick.to;
+    const words = () => (same() ? 'Copy classes for every group' : 'Copy ' + pick.from.name + ' to ' + pick.to.name + ' for every group');
+    const reasonId = uid('grid-copy-reason');
+    const reason = h('p', { class: 'sch-hint grd-copy__reason', id: reasonId, hidden: true }, 'From and To are the same day type. Choose two different ones.');
     const set = (which, legend) => {
       const name = uid('grid-copy-' + which);
       return h('fieldset', { class: 'sch-fieldset', data: { which } }, h('legend', null, legend), own.map((dayType) => {
@@ -268,17 +299,36 @@ export function mount(env) {
     const to = set('to', 'To');
     const dialog = ctx.openDialog({
       title: 'Copy classes for every group',
-      body: [h('div', { class: 'grd-copy' }, from, to), h('p', { class: 'sch-hint' }, 'It waits in the grid with your other changes until Apply.')],
+      body: [h('div', { class: 'grd-copy' }, from, to), reason, h('p', { class: 'sch-hint' }, 'It waits in the grid with your other changes until Apply.')],
       opener,
       id: 'grid-copy-dialog',
       buttons: [{ label: words(), value: 'go', kind: 'primary' }, { label: 'Cancel', value: null }],
     });
     const go = dialog.element.querySelector('.dialog__buttons .btn--primary');
     go.dataset.action = 'copy-classes';
+    // With From equal to To the button is off and the reason is under the
+    // sets (it stays in the tab order, as a button that is off does).
+    const settle = () => {
+      go.textContent = words();
+      reason.hidden = !same();
+      if (same()) {
+        go.setAttribute('aria-disabled', 'true');
+        go.setAttribute('aria-describedby', reasonId);
+      } else {
+        go.removeAttribute('aria-disabled');
+        go.removeAttribute('aria-describedby');
+      }
+    };
+    dialog.element.querySelector('.dialog__buttons').addEventListener('click', (event) => {
+      if (go.getAttribute('aria-disabled') === 'true' && go.contains(event.target)) {
+        event.stopPropagation();
+        event.preventDefault();
+      }
+    }, true);
     dialog.element.addEventListener('change', (event) => {
       const which = event.target.closest('fieldset').dataset.which;
       pick[which] = own.find((dayType) => dayType.id === event.target.value) || pick[which];
-      go.textContent = words();
+      settle();
     });
     from.querySelector('input:checked').focus();
     if ((await dialog.closed) !== 'go' || pick.from === pick.to) return;
@@ -350,6 +400,7 @@ export function mount(env) {
     select.value = day;
     select.addEventListener('change', () => {
       state.day = select.value;
+      state.gone = null;
       try {
         writeGridDay(select.value);
       } catch (error) {
@@ -422,6 +473,7 @@ export function mount(env) {
   element.append(above, sheet.element, below, status);
 
   function draw(project) {
+    settleDay(project);
     const staged = preview(project, project.id, ctx);
     const pending = gridEditsPending(project.id);
     model = sheetModel(project, staged.project, draftFor(project.id), shownIds(staged.project));
@@ -434,6 +486,7 @@ export function mount(env) {
     const same = sheetShown && gridDayOf(project, state.day) === 'all' ? project.dayTypes.filter((dayType) => !isOwnCopy(project, dayType.id)) : [];
     fill(above,
       toolbar(),
+      state.gone ? h('p', { class: 'sch-hint grd-gone' }, state.gone) : null,
       sheetShown ? keyHint() : null,
       pending ? bar(staged) : null,
       same.length === 0 ? null : h('p', { class: 'sch-hint grd-same' }, list(same.map((dayType) => dayType.name + ' is the same as ' + effectiveDayType(project, dayType.id).name)) + ', so ' + (same.length === 1 ? 'it has' : 'they have') + ' no columns of ' + (same.length === 1 ? 'its' : 'their') + ' own here. Change that on the Day tab.'));

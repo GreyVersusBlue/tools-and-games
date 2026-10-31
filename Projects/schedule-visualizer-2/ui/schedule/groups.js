@@ -601,9 +601,9 @@ export function mount(env) {
       if (apply(env, moveSlot, { groupId: group.id, dayTypeId: dayType.id, from, to })) ctx.announce('Moved ' + periodName(project.settings, from) + '’s assignment to ' + periodName(project.settings, to) + '.');
     });
     const whole = model.byDay.get(group.id + '|' + dayType.id) || [];
-    // as "Copy A Day to B Day" was: on each day type after the first (the
-    // Day tab's row menu copies onto the first, for every group)
-    const others = dayType !== project.dayTypes[0] && ownDayTypes(project).length > 1;
+    // on every column with its own classes, the first included, whenever
+    // there is another day type with its own classes to copy from
+    const others = ownDayTypes(project).length > 1;
     let copy = null;
     if (others) {
       copy = button('Copy classes from…', (opener) => copyClassesFor(group, dayType, opener), { small: true, key: 'copy:' + dayType.id, action: 'copy-day', more: ' onto ' + group.name + '’s ' + dayType.name });
