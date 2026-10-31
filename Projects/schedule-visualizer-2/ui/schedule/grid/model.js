@@ -9,6 +9,7 @@ import { periodName } from '../../../engine/bells.js';
 import { allRooms, resolveSlotRoom, roomNumberKey, nameKey, isHexColour, emptySlot, nextGroupColour, RANGES } from '../../../engine/schema.js';
 import { roomName } from '../../../engine/findings.js';
 import { checkSchedule } from '../../../engine/checks.js';
+import { markFor } from '../../../engine/marks.js';
 import { slotKeyOf } from './staged.js';
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
@@ -96,15 +97,16 @@ function slotOf(row, column) {
   return (day && day[column.period]) || emptySlot();
 }
 
-// What a cell shows: { text, unknown, staged, findings }. `unknown` is a room
-// that is not in the building, shown as it was typed. `staged` is a cell the
-// edits waiting to be applied would change.
+// What a cell shows: { text, unknown, staged, findings, mark }. `unknown` is a
+// room that is not in the building, shown as it was typed. `staged` is a cell
+// the edits waiting to be applied would change. `mark` is the marked period
+// that applies to the slot (engine/marks.js markFor), or null.
 export function cellState(model, row, column) {
-  if (column.kind === 'actions') return { text: '', unknown: false, staged: false, findings: [] };
+  if (column.kind === 'actions') return { text: '', unknown: false, staged: false, findings: [], mark: null };
   if (column.kind === 'field') {
     const value = row.group[column.field];
     const staged = !row.removed && (row.added || row.original[column.field] !== value);
-    return { text: value === null ? '' : String(value), unknown: false, staged, findings: [] };
+    return { text: value === null ? '' : String(value), unknown: false, staged, findings: [], mark: null };
   }
   const slot = slotOf(row, column);
   const resolved = resolveSlotRoom(model.after, slot);
@@ -112,7 +114,7 @@ export function cellState(model, row, column) {
   const key = slotKeyOf(row.id, column.dayTypeId, column.period);
   const before = row.original && row.original.days[column.dayTypeId] ? row.original.days[column.dayTypeId][column.period] : null;
   const staged = !row.removed && (row.added ? model.draft.slots.has(key) : before !== slot);
-  return { text, unknown: resolved.missing, staged, findings: row.removed ? [] : model.findings.get(key) || [] };
+  return { text, unknown: resolved.missing, staged, findings: row.removed ? [] : model.findings.get(key) || [], mark: row.removed ? null : markFor(model.after, row.id, column.dayTypeId, column.period) };
 }
 
 export function cellText(model, row, column) {

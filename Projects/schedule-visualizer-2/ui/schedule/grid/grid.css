@@ -468,3 +468,11 @@
 .grd-head--extra {
   border-left: var(--border);
 }
+
+.grd-cell__markword {
+  color: var(--ink-2);
+}
+
+.grd-cell.is-noclass {
+  background-image: repeating-linear-gradient(135deg, transparent 0, transparent 4px, var(--grid) 4px, var(--grid) 5px);
+}

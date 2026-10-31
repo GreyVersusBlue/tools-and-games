@@ -38,6 +38,7 @@ import { formatDuration } from '../../engine/findings.js';
 import { PERIOD_WORDS, RANGES, DAY_TYPES_MOST, BELL_SCHEDULES_MOST, MARK_KINDS, MARK_LABEL_MOST, bellSchedulesOf, marksOf, spacelessKey } from '../../engine/schema.js';
 import { fill, apply, button, keyed, freeName, dragRows, grip, collator } from './common.js';
 import { unappliedOn, dropPointless } from './grid/staged.js';
+import { MARK_WORDS } from './grid/words.js';
 
 // What a person types for a time, as "HH:MM" on the 24-hour clock; '' is no
 // time. "8:05", "805", "2:10 pm" and "14:10" are all read. With the 12-hour
@@ -163,7 +164,7 @@ export function offSentence(settings, name, off, periods) {
 
 // ---------------------------------------------------------------- marked periods (DESIGN 11.3, card 5)
 
-export const MARK_WORDS = { lunch: 'Lunch', advisory: 'Advisory', activity: 'Activity', noclass: 'No class' };
+export { MARK_WORDS };
 
 // The groups a mark takes, by its scope (ARCHITECTURE 17.5), in the project's
 // order: every group, those of the grades (matched ignoring case and spaces),

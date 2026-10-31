@@ -2160,3 +2160,23 @@
     color: var(--ink-2);
   }
 }
+
+/* Marked periods in the group editor and the grid (DESIGN 11.6): the mark's
+   word beside the period, a No class row greyed and a No class cell hatched. */
+.sch-slot__mark {
+  margin-left: var(--s-2);
+  padding: 0 var(--s-2);
+  color: var(--ink-2);
+}
+
+.sch-slot.is-noclass > th,
+.sch-slot.is-noclass > td {
+  background: var(--paper);
+  color: var(--ink-2);
+}
+
+.sch-slot__noclass {
+  margin: var(--s-1) 0 0;
+  font-size: var(--t-sm);
+  color: var(--ink-2);
+}

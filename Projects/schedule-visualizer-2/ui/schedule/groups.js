@@ -38,7 +38,8 @@ import { fill, apply, button, keyed, emptyState, marksFor, freeName, deletedText
 import { slotKey } from './model.js';
 import { roomPicker } from './room-picker.js';
 import { GROUPS_HASH, groupHash, writtenAsList, groupOf, namesGoneGroup } from './address.js';
-import { radioDialog } from './day.js';
+import { radioDialog, MARK_WORDS } from './day.js';
+import { markFor } from '../../engine/marks.js';
 import { readShownDays, writeShownDays, SHOWN_DAYS_MOST } from '../../storage/device.js';
 
 const WHAT = 'A group is a set of students who travel together all day.';
@@ -547,11 +548,18 @@ export function mount(env) {
       }) },
     }, '⋯'), keyBase + 'menu');
 
+    // the mark that lies over this slot (Lunch, Assembly…): its word beside the
+    // period; No class greys the row, the room field still editable
+    const mark = markFor(project, group.id, dayType.id, period);
+    const markWord = mark ? (mark.label !== '' ? mark.label : MARK_WORDS[mark.kind]) : '';
+    const noClass = mark !== null && mark.kind === 'noclass';
     const shown = view.shown && view.shown.groupId === group.id && view.shown.dayTypeId === dayType.id && view.shown.period === period;
     const time = bell.start && bell.end ? formatTime(bell.start, settings.timeFormat, { suffix: false }) + '–' + formatTime(bell.end, settings.timeFormat) : '';
-    return h('tr', { class: 'sch-slot', role: 'row', data: { index: String(period), period: String(period), shown: shown ? 'true' : null } },
-      h('th', { scope: 'row', role: 'rowheader', class: 'sch-slot__period' }, grip(), h('span', { class: 'sch-slot__name' }, pName), time === '' ? null : h('span', { class: 'sch-slot__time' }, time)),
+    return h('tr', { class: 'sch-slot' + (noClass ? ' is-noclass' : ''), role: 'row', data: { index: String(period), period: String(period), shown: shown ? 'true' : null, mark: mark ? mark.kind : null } },
+      h('th', { scope: 'row', role: 'rowheader', class: 'sch-slot__period' }, grip(), h('span', { class: 'sch-slot__name' }, pName),
+        mark ? h('span', { class: 'chip sch-slot__mark', title: MARK_WORDS[mark.kind] + (markWord === MARK_WORDS[mark.kind] ? '' : ': ' + markWord) }, markWord) : null, time === '' ? null : h('span', { class: 'sch-slot__time' }, time)),
       h('td', { class: 'sch-slot__room', role: 'cell' }, room.element,
+        noClass ? h('p', { class: 'sch-slot__noclass' }, 'No class: this room is kept but not used') : null,
         h('div', { class: 'sch-slot__extra' }, label.element, h('div', { class: 'sch-slot__teacher' }, chips.length > 0 ? h('div', { class: 'chips' }, chips) : null, teacher.element)),
         found.length > 0 ? h('div', { id: findingsId, class: 'sch-slot__findings' }, found.map((finding) => h('p', { class: 'sch-finding-line sch-finding-line--' + finding.severity, data: { finding: finding.id } },
           h('span', { class: 'sch-finding-line__word' }, SEVERITY_WORDS[finding.severity].glyph + ' ' + finding.severity.charAt(0).toUpperCase() + finding.severity.slice(1) + ': '), finding.text))) : null),

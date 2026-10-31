@@ -19,7 +19,7 @@ import { h, uid } from '../../components/dom.js';
 import { SEVERITY_WORDS } from '../common.js';
 import { cellState, cellText, readCell, planPaste, namesOf } from './model.js';
 import { parseTsv, writeTsv } from './tsv.js';
-import { findingWords, worstFirst } from './words.js';
+import { findingWords, worstFirst, MARK_WORDS } from './words.js';
 
 const LIST_LIMIT = 60;
 
@@ -177,7 +177,11 @@ export function sheet(options) {
     parts.push(h('span', { class: 'grd-cell__text' + (column.field === 'colour' ? ' vh' : '') }, state.text));
     if (column.field === 'name' && row.removed) parts.push(h('span', { class: 'grd-tag' }, 'will be removed'));
     if (column.field === 'name' && row.added) parts.push(h('span', { class: 'grd-tag' }, 'new'));
-    if (column.kind === 'slot' && state.text === '') parts.push(h('span', { class: 'vh' }, 'No room'));
+    // a marked period with no room says its word, in the muted ink; one with a
+    // room has the word for a screen reader only
+    const word = state.mark ? (state.mark.label !== '' ? state.mark.label : MARK_WORDS[state.mark.kind]) : '';
+    if (column.kind === 'slot' && state.text === '') parts.push(word === '' ? h('span', { class: 'vh' }, 'No room') : h('span', { class: 'grd-cell__markword', data: { mark: state.mark.kind } }, word));
+    else if (word !== '') parts.push(h('span', { class: 'vh' }, ' (' + word + ')'));
     if (state.unknown) parts.push(h('span', { class: 'vh' }, ' (not in the building)'));
     if (state.findings.length > 0) {
       const worst = worstFirst(state.findings)[0].severity;
@@ -197,7 +201,7 @@ export function sheet(options) {
     const header = column.field === 'name';
     const cell = h(header ? 'th' : 'td', {
       class: 'grd-cell grd-cell--' + (column.kind === 'field' ? column.field : column.kind)
-        + (state.staged ? ' is-staged' : '') + (state.unknown ? ' is-unknown' : ''),
+        + (state.staged ? ' is-staged' : '') + (state.unknown ? ' is-unknown' : '') + (state.mark && state.mark.kind === 'noclass' ? ' is-noclass' : ''),
       role: header ? 'rowheader' : 'gridcell',
       scope: header ? 'row' : null,
       tabindex: '-1',
