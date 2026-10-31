@@ -179,6 +179,7 @@ export function mount(env) {
       if (info.slots > 0) lost.push(count(info.slots, 'room entry', 'room entries') + ' in ' + count(info.groups.length, 'group'));
       if (info.bells > 0) lost.push(count(info.bells, 'bell time'));
       if (info.scenarioChanges > 0) lost.push(count(info.scenarioChanges, 'scenario change'));
+      lost.push(...info.marksAndDutiesWords);
       const ok = await ctx.confirm({
         title: 'Remove ' + what + ' from every day?',
         body: 'That takes away ' + list(lost) + '. Undo brings them back.',
