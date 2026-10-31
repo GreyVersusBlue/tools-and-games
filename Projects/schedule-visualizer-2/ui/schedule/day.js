@@ -950,6 +950,8 @@ export function mount(env) {
     }
 
     const hint = missing(edit);
+    const addButton = button('Add this mark', addThisMark, { primary: true, key: key('add'), action: 'add-mark' });
+    addButton.disabled = hint !== '';
     const added = edit.id === null ? null : marksOf(project).find((mark) => mark.id === edit.id);
     return h('div', { class: 'sch-markedit', role: 'group', 'aria-label': edit.id === null ? 'The new mark' : 'The mark: ' + (added ? markSentence(project, added, added.id) : '') },
       h('div', { class: 'sch-markedit__kind' }, h('p', { class: 'sch-markedit__legend', id: kindLegend }, 'Kind'), kind.element),
@@ -960,7 +962,7 @@ export function mount(env) {
       hint === '' ? null : h('p', { class: 'sch-hint sch-markedit__missing', role: 'status' }, hint + (edit.id === null ? '' : ' Nothing changes until then.')),
       h('div', { class: 'sch-toolbar' },
         edit.id === null
-          ? [button('Add this mark', addThisMark, { primary: true, key: key('add'), action: 'add-mark' }), button('Cancel', closeMark, { key: key('cancel'), action: 'cancel-mark' })]
+          ? [addButton, button('Cancel', closeMark, { key: key('cancel'), action: 'cancel-mark' })]
           : [button('Done', closeMark, { primary: true, key: key('done'), action: 'done-mark' }), button('Delete this mark', () => removeMark(added), { key: key('delete'), action: 'delete-mark' })]));
   }
 

@@ -987,11 +987,16 @@ async function dutiesMade(page) {
   await act(page, 'addDuty', { kind: 'duty', label: 'Lunch duty', when: 'period', period: 4 });
   await act(page, 'addDuty', { kind: 'duty', label: 'Morning arrival', when: 'before', start: '07:15', end: '07:35', everyone: true });
   await scheduleDrawn(page);
+}
+
+// the same, on the Duties tab, once its table is drawn
+async function dutiesListed(page) {
+  await dutiesMade(page);
   await page.waitForSelector('.sch-duties__table');
 }
 
 async function dutyDays(page) {
-  await dutiesMade(page);
+  await dutiesListed(page);
   await page.click('[data-key$=":days"]');
   await page.waitForSelector('.sch-duties__days');
   await scheduleDrawn(page);
@@ -1018,10 +1023,10 @@ const SV2_85 = [
     await marksMade(page);
     await gridDrawn(page);
   } },
-  { id: 'schedule-duties-empty', hash: '#schedule/duties', open: scheduleEmpty('duties') },
-  { id: 'schedule-duties', hash: '#schedule/duties', open: dutiesMade },
+  { id: 'schedule-duties-empty', hash: '#project', open: scheduleEmpty('duties') },
+  { id: 'schedule-duties', hash: '#schedule/duties', open: dutiesListed },
   { id: 'schedule-duties-days', hash: '#schedule/duties', open: dutyDays },
-  { id: 'schedule-duties-phone', hash: '#schedule/duties', viewport: PHONE, open: dutiesMade },
+  { id: 'schedule-duties-phone', hash: '#schedule/duties', viewport: PHONE, open: dutiesListed },
   { id: 'schedule-duties-days-phone', hash: '#schedule/duties', viewport: PHONE, open: dutyDays },
   { id: 'schedule-teachers-duties', hash: '#schedule/teachers', open: dutiesMade },
   { id: 'schedule-grid-teachers-duties', hash: '#schedule/grid', open: async (page) => {

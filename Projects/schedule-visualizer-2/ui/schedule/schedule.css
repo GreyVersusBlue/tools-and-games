@@ -2058,8 +2058,15 @@
   }
 
   .sch-markedit .chip__remove,
-  .sch-duties .chip__remove {
+  .sch-duties .chip__remove,
+  .sch-duties .sch-show__chip {
     min-width: 44px;
+  }
+
+  .sch-markedit .field__input,
+  .sch-duties__table .field__input,
+  .sch-duties__table select {
+    height: 44px;
   }
 }
 
@@ -2067,10 +2074,30 @@
   vertical-align: top;
 }
 
+.sch-duties__table {
+  min-width: 56rem;
+}
+
 .sch-duties__table select,
 .sch-duties__table .field__input:not([type="date"]) {
+  box-sizing: border-box;
   width: 100%;
   min-width: 7rem;
+  max-width: 100%;
+}
+
+.sch-duties__table .picker,
+.sch-duties__table .field {
+  max-width: 100%;
+}
+
+.sch-duties__findrow > td {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.sch-duties__findrow .sch-finding-line {
+  margin: 0 0 var(--s-1);
 }
 
 .sch-duties__table td > .field,
@@ -2129,6 +2156,9 @@
   .sch-duties__table tr,
   .sch-duties__table td {
     display: block;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .sch-duties__table thead {

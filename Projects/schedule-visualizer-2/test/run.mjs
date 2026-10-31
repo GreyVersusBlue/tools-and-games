@@ -141,6 +141,7 @@ export const GROUPS = {
     'browser/day-types.mjs', // SV2-78
     'browser/calendar.mjs', // SV2-80
     'browser/calendar-review.mjs', // SV2-80b
+    'browser/marks-duties.mjs', // SV2-85
     'browser/calendar-faults.mjs', // SV2-80c
     'browser/grid-pass.mjs', // SV2-40, SV2-46
     'browser/m2-pass.mjs', // SV2-38

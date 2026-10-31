@@ -30,7 +30,7 @@ import { formatTime, periodName } from '../../engine/bells.js';
 import { dutiesOf, allRooms, findRoom, WEEKDAY_NAMES, DUTY_KINDS, DUTY_LABEL_MOST, DUTY_PLACE_MOST } from '../../engine/schema.js';
 import { roomName } from '../../engine/findings.js';
 import { parseClock } from './day.js';
-import { fill, apply, button, keyed, emptyState, marksFor, roomLabel, collator } from './common.js';
+import { fill, apply, button, keyed, emptyState, marksFor, roomLabel, collator, SEVERITY_WORDS } from './common.js';
 
 export const DUTY_WORDS = { duty: 'Duty', meeting: 'Meeting', lunch: 'Their own lunch' };
 const WHAT = 'Put bus duty, lunch duty and standing meetings here, and they show on each teacher’s day.';
@@ -210,10 +210,10 @@ export function mount(env) {
     const key = (part) => 'duty:' + duty.id + ':' + part;
     const chips = h('div', { class: 'sch-duties__chips', role: 'group', 'aria-label': 'Weekdays' }, WEEKDAY_NAMES.map((name, day) => {
       const on = duty.weekdays.includes(day);
-      return keyed(h('button', { type: 'button', class: 'sch-show__chip', 'aria-pressed': String(on), 'aria-label': name, on: { click: () => {
+      return keyed(h('button', { type: 'button', class: 'sch-show__chip', 'aria-pressed': String(on), on: { click: () => {
         env.focusAfter(key('weekday:' + day));
         apply(env, setDuty, { id: duty.id, weekdays: on ? duty.weekdays.filter((other) => other !== day) : duty.weekdays.concat([day]) });
-      } } }, name.slice(0, 3)), key('weekday:' + day));
+      } } }, name.slice(0, 3), h('span', { class: 'vh' }, name.slice(3))), key('weekday:' + day));
     }));
     const name = uid('duty-days');
     const some = duty.dayTypeIds.length > 0;
@@ -358,10 +358,13 @@ export function mount(env) {
     const open = view.dutyDays === duty.id;
     const main = h('tr', { data: { duty: duty.id, open: open ? 'true' : null } },
       whatCell(duty), whenCell(project, duty), daysCell(project, duty), whereCell(project, duty), whoCell(project, duty),
-      h('td', { class: 'sch-duties__marks', data: { label: 'Checks' } }, found.length > 0 ? marksFor(found) : null,
-        found.map((finding) => h('p', { class: 'sch-finding-line sch-finding-line--' + finding.severity }, finding.text))),
+      h('td', { class: 'sch-duties__marks', data: { label: 'Checks' } }, found.length > 0 ? marksFor(found) : null),
       h('td', { class: 'sch-duties__delete' }, button('Delete', () => remove(duty, order), { small: true, key: 'duty:' + duty.id + ':delete', action: 'delete', more: ' ' + dutyName(duty) })));
-    return open ? [main, h('tr', { class: 'sch-duties__editrow', data: { daysOf: duty.id } }, h('td', { colspan: '7' }, daysEditor(project, duty)))] : main;
+    // what the checks say about it, a line each, in a row of its own under it
+    const says = found.length === 0 ? null : h('tr', { class: 'sch-duties__findrow', data: { findingsOf: duty.id } }, h('td', { colspan: '7' },
+      found.map((finding) => h('p', { class: 'sch-finding-line sch-finding-line--' + finding.severity, data: { finding: finding.id } }, h('span', { class: 'sch-finding-line__word' }, SEVERITY_WORDS[finding.severity].glyph + ' ' + finding.severity.charAt(0).toUpperCase() + finding.severity.slice(1) + ': '), finding.text))));
+    const days = open ? h('tr', { class: 'sch-duties__editrow', data: { daysOf: duty.id } }, h('td', { colspan: '7' }, daysEditor(project, duty))) : null;
+    return [main, says, days];
   }
 
   function draw(project) {
