@@ -945,6 +945,91 @@ async function dateDialogOn(page) {
   await page.waitForFunction(() => document.getElementById('calendar-date-dialog')?.open === true && document.getElementById('calendar-date-dialog').getAnimations().every((each) => each.playState === 'finished'));
 }
 
+
+// SV2-85: marked periods and the Duties tab. `marksMade`: Lunch for grade 7
+// in Period 5 on every day type (beaten for 7A, which has an Advisory of its
+// own there), an Assembly on B Day for the whole school, and No class for
+// 7A in Period 8. `dutiesMade`: bus duty after school with two teachers and
+// times, the Wednesday science meeting by subject, hall duty in a period its
+// teacher teaches (a clash), lunch duty with nobody on it, and arrival duty
+// for all staff before school.
+async function marksMade(page) {
+  await scheduleDrawn(page);
+  await act(page, 'addMark', { kind: 'lunch', period: 4, scope: 'grades', grades: ['7'] });
+  await act(page, 'addMark', { kind: 'activity', label: 'Assembly', period: 2, scope: 'school', dayTypeIds: ['dsample00b'] });
+  await act(page, 'addMark', { kind: 'advisory', period: 4, scope: 'groups', groupIds: ['gsample07a'] });
+  await act(page, 'addMark', { kind: 'noclass', period: 7, scope: 'groups', groupIds: ['gsample07a'] });
+  await scheduleDrawn(page);
+}
+
+async function marksEditor(page) {
+  await marksMade(page);
+  await page.click('.sch-marks__line');
+  await page.waitForSelector('.sch-markedit');
+  await scheduleDrawn(page);
+}
+
+async function newMarkEditor(page) {
+  await scheduleDrawn(page);
+  await page.click('[data-key="mark-new"]');
+  await page.waitForSelector('.sch-markedit');
+  await page.click('[data-key="mark:new:who:grades"]');
+  await page.waitForSelector('.sch-markedit__chips button');
+  await page.click('.sch-markedit__chips button');
+  await scheduleDrawn(page);
+}
+
+async function dutiesMade(page) {
+  await scheduleDrawn(page);
+  await act(page, 'addDuty', { kind: 'duty', label: 'Bus duty', when: 'after', start: '15:05', end: '15:25', place: 'Bus loop', teacherIds: ['tsample004', 'tsample009'] });
+  await act(page, 'addDuty', { kind: 'meeting', label: 'Science department', when: 'period', period: 7, weekdays: [2], roomId: 'rsample101', subjectIds: ['ssample003'] });
+  await act(page, 'addDuty', { kind: 'duty', label: 'Hall duty', when: 'period', period: 0, teacherIds: ['tsample002'] });
+  await act(page, 'addDuty', { kind: 'duty', label: 'Lunch duty', when: 'period', period: 4 });
+  await act(page, 'addDuty', { kind: 'duty', label: 'Morning arrival', when: 'before', start: '07:15', end: '07:35', everyone: true });
+  await scheduleDrawn(page);
+  await page.waitForSelector('.sch-duties__table');
+}
+
+async function dutyDays(page) {
+  await dutiesMade(page);
+  await page.click('[data-key$=":days"]');
+  await page.waitForSelector('.sch-duties__days');
+  await scheduleDrawn(page);
+}
+
+const PHONE = { width: 390, height: 844, mobile: true };
+
+// SV2-78b owed this one: the bell tables folded at 390 px, one of them open
+async function bellsFolded(page) {
+  await manyDays(page);
+  await page.click('.sch-fold[data-fold] .sch-fold__summary');
+  await scheduleDrawn(page);
+}
+
+const SV2_85 = [
+  { id: 'schedule-day-bells-folded-phone', hash: '#schedule/day', viewport: PHONE, open: bellsFolded },
+  { id: 'schedule-marks', hash: '#schedule/day', open: marksMade },
+  { id: 'schedule-marks-editor', hash: '#schedule/day', open: marksEditor },
+  { id: 'schedule-marks-new', hash: '#schedule/day', open: newMarkEditor },
+  { id: 'schedule-marks-phone', hash: '#schedule/day', viewport: PHONE, open: marksEditor },
+  { id: 'schedule-marks-new-phone', hash: '#schedule/day', viewport: PHONE, open: newMarkEditor },
+  { id: 'schedule-marks-group', hash: '#schedule/groups/gsample07a', open: marksMade },
+  { id: 'schedule-marks-grid', hash: '#schedule/grid', open: async (page) => {
+    await marksMade(page);
+    await gridDrawn(page);
+  } },
+  { id: 'schedule-duties-empty', hash: '#schedule/duties', open: scheduleEmpty('duties') },
+  { id: 'schedule-duties', hash: '#schedule/duties', open: dutiesMade },
+  { id: 'schedule-duties-days', hash: '#schedule/duties', open: dutyDays },
+  { id: 'schedule-duties-phone', hash: '#schedule/duties', viewport: PHONE, open: dutiesMade },
+  { id: 'schedule-duties-days-phone', hash: '#schedule/duties', viewport: PHONE, open: dutyDays },
+  { id: 'schedule-teachers-duties', hash: '#schedule/teachers', open: dutiesMade },
+  { id: 'schedule-grid-teachers-duties', hash: '#schedule/grid', open: async (page) => {
+    await dutiesMade(page);
+    await gridRows('teachers')(page);
+  } },
+];
+
 const SV2_80 = [
   { id: 'schedule-calendar-empty', hash: '#schedule/calendar', open: scheduleDrawn },
   {
@@ -1571,5 +1656,6 @@ export const SCREENS = [
   },
   ...SV2_78,
   ...SV2_80,
+  ...SV2_85,
   ...SV2_32G1,
 ];
