@@ -2569,3 +2569,42 @@ details[open] > summary.day__head {
 }
 
 /* ---------- SV2-81: end ---------- */
+
+/* ---- marks and duties (DESIGN 11.8) ---------------------------------------
+    .row__eyebrow          the small word over a duty's title: "Duty", "Meeting"
+    .row__also             a duty that holds on some days only, under its row
+    .row--edge             a duty before or after the school day: no period
+    .notfree               Coverage's folded list of teachers who are busy
+*/
+.row__eyebrow {
+  display: block;
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  font-weight: var(--w-bold);
+  letter-spacing: 0.08em;
+  line-height: var(--lh-xs);
+  text-transform: uppercase;
+}
+
+.row__also {
+  display: block;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  font-weight: var(--w-regular);
+}
+
+.row--edge .row__period {
+  color: var(--ink-2);
+}
+
+.notfree {
+  margin-top: var(--s-2);
+}
+
+.notfree__summary {
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  color: var(--ink-2);
+  cursor: pointer;
+}
