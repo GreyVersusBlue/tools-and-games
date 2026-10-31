@@ -29,6 +29,8 @@ import { freeTeachers, emptyRooms } from '../../staff/views/free.js';
 import { coverageFor } from '../../staff/views/coverage.js';
 import { roomUse } from '../../staff/views/room.js';
 import { commonPeriods } from '../../staff/views/common.js';
+import { render as renderBatch } from '../../ui/prints/batch.js';
+import { render as renderChecks } from '../../ui/prints/checks-report.js';
 import { seededRandom } from '../../engine/ids.js';
 import { sampleSchool } from '../../data/sample-school.js';
 import { readTool, toolFile, partsOf } from './reader.mjs';
@@ -1009,4 +1011,41 @@ test('a file published before marks existed has neither list, and every view rea
     const a = school.teachers[0];
     assert.deepEqual(coverageFor(school, a.id, dayType.id).flatMap((item) => item.notFree), []);
   }
+});
+
+test('every teacher\'s schedule in the batch print carries duties as rows, and marks as the free period\'s words', () => {
+  const pinned = new Date('2026-09-01T12:00:00Z');
+  const html = renderBatch(dutySchool(), null, { now: pinned, batch: 'teachers' }).html;
+  const sheet = (id) => {
+    const at = html.indexOf('data-sheet="teacher" data-id="' + id + '"');
+    const next = html.indexOf('data-sheet="teacher"', at + 10);
+    return html.slice(at, next === -1 ? html.length : next);
+  };
+  const two = sheet('tsample002');
+  assert.match(two, /batch-day__edge"><th scope="row">Before school<span class="batch-day__time">7:40 AM to 7:55 AM<\/span><\/th><td>Door duty<\/td><td>Front door<\/td>/);
+  assert.match(two, /batch-day__edge"><th scope="row">After school<span class="batch-day__time">3:05 PM to 3:25 PM<\/span><\/th><td>Bus duty<\/td><td>Bus loop<\/td>/);
+  assert.ok(two.indexOf('Before school') < two.indexOf('Period 1'), 'above the first period');
+  assert.ok(two.lastIndexOf('After school') > two.lastIndexOf('Period 8'), 'below the last');
+  const one = sheet('tsample001');
+  assert.match(one, /<td>Lunch duty<\/td><td>Cafeteria<\/td>/, 'a free period a duty takes');
+  assert.match(one, /<span class="batch-day__quiet">Planning<\/span>/, 'the free ones are still planning');
+  const three = sheet('tsample003');
+  assert.match(three, /Science department <span class="batch-day__quiet">\(Wednesdays\)<\/span>/, 'a Wednesday duty is listed with its day');
+  // a name with markup is text
+  const hostile = renderBatch(dutySchool((project) => { project.duties[0].label = '<img src=x onerror=alert(1)>'; }), null, { now: pinned, batch: 'teachers' }).html;
+  assert.ok(hostile.includes('&lt;img src=x onerror=alert(1)&gt;') && !hostile.includes('<img src=x'));
+  // a project with neither list prints as it did
+  assert.ok(!renderBatch(sampleSchool(), null, { now: pinned, batch: 'teachers' }).html.includes('batch-day__edge'));
+});
+
+test('the checks report\'s teacher grid names what takes a free period, and a free one stays Planning', () => {
+  const html = renderChecks(dutySchool(), null, { now: new Date('2026-09-01T12:00:00Z') }).html;
+  const row = (name) => {
+    const at = html.indexOf('>' + name);
+    return html.slice(at, html.indexOf('</tr>', at));
+  };
+  const halloran = row('Ms. Halloran');
+  assert.ok(halloran.includes('<span class="doc-grid__planning">Lunch duty</span>'), 'period 4 is the lunch duty');
+  assert.ok(halloran.includes('<span class="doc-grid__planning">Planning</span>'), 'the others are planning');
+  assert.ok(html.includes('<span class="doc-grid__planning">Assembly</span>'), 'a school mark with a label of its own is named as typed');
 });

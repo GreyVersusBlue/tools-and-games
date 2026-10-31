@@ -22,6 +22,7 @@ import { teacherDays, entryRoomIds, isFree } from '../../engine/teacher-day.js';
 import { ownDayTypes, findDayType } from '../../engine/day-types.js';
 import { bellsFor, periodName, formatTime } from '../../engine/bells.js';
 import { findRoom } from '../../engine/schema.js';
+import { schoolMarkFor } from '../../engine/marks.js';
 import { count, list } from '../components/words.js';
 import { esc, frame, printDate } from './document.js';
 
@@ -167,7 +168,8 @@ function teacherGrid(project, dayType, entries) {
       if (slot.kind === 'planning') {
         // a free period that a duty or a school mark takes says what takes it
         const always = slot.duties.find((duty) => sometimesWords(duty) === '');
-        const taken = isFree(slot) ? 'Planning' : always ? dutyNamed(always) : MARK_AS_NAMED[slot.marked] || 'Planning';
+        const mark = isFree(slot) || always ? null : schoolMarkFor(project, dayType.id, slot.period);
+        const taken = isFree(slot) ? 'Planning' : always ? dutyNamed(always) : mark && mark.label !== '' ? mark.label : MARK_AS_NAMED[slot.marked] || 'Planning';
         inside = '<span class="doc-grid__planning">' + esc(taken) + '</span>';
       } else {
         inside = slot.groups.map((taught) => {
