@@ -14,7 +14,7 @@ import { makeHash } from '../router.js';
 import { pageOf, missingPage, pictureButton } from '../page.js';
 import { dayText } from '../dates.js';
 import { aroundRoom } from '../map.js';
-import { clockNow, todayDate, dayOnDate, dayTypeFor, bellsIdFor, meetingPeriods, dayWords, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
+import { clockNow, todayDate, dayOnDate, dayTypeFor, meetingPeriods, dayWords, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
 import { coverageFor, teacherChooser } from './coverage.js';
 
 export const SUB_CANDIDATES = 3;
@@ -56,22 +56,25 @@ export const subView = {
     const date = h('input', { class: 'field__input', id: 'sub-date', type: 'date', value: /^\d{4}-\d{2}-\d{2}$/.test(route.query.date || '') ? route.query.date : localDay(now) });
     // A day type in the address, or picked on this page, is the reader's own
     // word and holds whatever the date is. Without one the date settles the
-    // day type and the bells: the calendar's for the date it knows, else the
-    // regular bells (today's hand choice is for today).
+    // day type. The bells are always the date's: where the day type is the
+    // one the date has, that date's bells (the calendar's for a date it knows,
+    // today's hand choice for today), else the regular bells.
     let picked = Boolean(route.query.d && school.dayTypes.some((each) => each.id === route.query.d));
     const found = () => dayOnDate(ctx, date.value);
     let dayType = picked ? dayTypeFor(ctx, route) : found().dayType;
-    let bellsId = picked ? bellsIdFor(ctx, route) : found().bellsId;
+    const bellsOf = () => {
+      const day = found();
+      return day.dayType.id === dayType.id ? day.bellsId : null;
+    };
+    let bellsId = bellsOf();
     const dated = h('p', { class: 'print-only sub__date', dataset: { sub: 'date' } }, 'Date: ', subDateWords(date.value));
-    const address = () => ctx.replace(makeHash('sub', absent.id, { d: picked ? dayType.id : '', b: picked ? bellsId : '', date: date.value !== localDay(now) ? date.value : '' }));
+    const address = () => ctx.replace(makeHash('sub', absent.id, { d: picked ? dayType.id : '', date: date.value !== localDay(now) ? date.value : '' }));
     const picker = h('div', { class: 'no-print' });
     const drawPicker = () => {
       const chosen = dayTypePicker(ctx, dayType.id, (next) => {
         picked = true;
         dayType = next;
-        // the bells that go with the day type are the date's, where it is that day type
-        const day = found();
-        bellsId = day.dayType.id === next.id ? day.bellsId : null;
+        bellsId = bellsOf();
         address();
         draw();
       }, { remember: date.value === '' || date.value === todayDate(ctx) });
@@ -80,10 +83,11 @@ export const subView = {
     date.addEventListener('change', () => {
       dated.replaceChildren('Date: ', subDateWords(date.value));
       if (!picked) {
-        ({ dayType, bellsId } = found());
+        dayType = found().dayType;
         drawPicker();
-        draw();
       }
+      bellsId = bellsOf();
+      draw();
       address();
     });
 
