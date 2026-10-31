@@ -67,7 +67,8 @@ import { allRooms, findRoom, findById, resolveSlotRoom } from './schema.js';
 import { ownDayTypes, isOwnCopy, findDayType, followersOf } from './day-types.js';
 import { bellsFor, periodName, findBellSchedule, offPeriods } from './bells.js';
 import { meetingSlots } from './runs.js';
-import { teacherDays, slotTeacherIds, entryPlaces, teacherMoves } from './teacher-day.js';
+import { teacherDays, slotTeacherIds, entryPlaces } from './teacher-day.js';
+import { bellMoves, transitionPlan } from './crowd.js';
 import { makeFinding, sortFindings, splitAccepted, countWord, listWords, periodWord, roomName, formatDuration } from './findings.js';
 
 // "on A Day", or "on A Day and B Day" when B Day is the same as A Day: the
@@ -325,11 +326,16 @@ export function checkSchedule(project, walkResults) {
       return typeof walk.bellsId === 'string' && findBellSchedule(project, walk.bellsId) ? walk.bellsId : undefined;
     };
     const bellsOf = new Map();
-    const passingFor = (dayTypeId, bellsId, period) => {
+    // the walk out of `period` under these bells: { to, passing }, the period
+    // it reaches (past the ones that do not meet) and the time it has; null
+    // when it moves nobody
+    const planFor = (dayTypeId, bellsId, period) => {
       const key = dayTypeId + '\u0000' + bellsId;
       if (!bellsOf.has(key)) bellsOf.set(key, bellsId === null ? bellsFor(project, dayTypeId) : bellsFor(project, dayTypeId, bellsId));
-      return bellsOf.get(key)[period].passingAfter;
+      return transitionPlan(project, bellsOf.get(key), period);
     };
+    // where a figure says the walk ends: the next period unless it names another
+    const reached = (walk) => (Number.isInteger(walk.toPeriod) ? walk.toPeriod : walk.period + 1);
     const lists = (part) => {
       const out = [];
       for (const walk of Array.isArray(walkResults[part]) ? walkResults[part] : []) out.push({ walk, bellsId: runOf(walk, false) });
@@ -377,28 +383,37 @@ export function checkSchedule(project, walkResults) {
       const group = findById(project.groups, walk.groupId);
       if (!dayType || !group) continue;
       const day = meetingSlots(project, group.id, dayType.id, entry.bellsId);
+      const plan = planFor(dayType.id, entry.bellsId, walk.period);
+      // a walk across periods that do not meet is a figure for that walk only
+      // while the bells still leave those periods off
+      if (!plan || plan.to !== reached(walk)) continue;
       const from = resolveSlotRoom(project, day[walk.period]).room;
-      const to = resolveSlotRoom(project, day[walk.period + 1]).room;
+      const to = resolveSlotRoom(project, day[plan.to]).room;
       if (!from || !to || from === to) continue;
       // a figure for other rooms, or decided against another passing time,
       // is not a figure for this walk
       if (walk.fromRoomId !== from.id || walk.toRoomId !== to.id) continue;
-      if (walk.passingSeconds !== passingFor(dayType.id, entry.bellsId, walk.period)) continue;
-      groupEntries.push({ ...entry, dayType, group, from, to });
+      if (walk.passingSeconds !== plan.passing) continue;
+      groupEntries.push({ ...entry, dayType, group, from, to, toPeriod: plan.to });
     }
-    for (const list of gather(groupEntries, (entry) => entry.dayType.id + '\u0000' + entry.walk.period + '\u0000' + entry.group.id)) {
-      const { dayType, group, from, to } = list[0];
+    for (const list of gather(groupEntries, (entry) => entry.dayType.id + '\u0000' + entry.walk.period + (entry.toPeriod === entry.walk.period + 1 ? '' : '\u0000' + entry.toPeriod) + '\u0000' + entry.group.id)) {
+      const { dayType, group, from, to, toPeriod } = list[0];
       const period = list[0].walk.period;
       const sets = alike(list, (walk) => walk.total + '|' + walk.waiting + '|' + walk.passingSeconds + '|' + (walk.arrived === false));
-      const after = ' after ' + periodName(settings, period) + ' ' + onDays(project, dayType);
+      const across = toPeriod !== period + 1;
+      // across periods that do not meet both periods are named: "from Room 101
+      // after Period 2 to Room 204 for Period 4 on A Day"
+      const fromText = roomName(from, false) + (across ? ' after ' + periodName(settings, period) : '');
+      const toText = roomName(to, false) + (across ? ' for ' + periodName(settings, toPeriod) : '');
+      const after = (across ? '' : ' after ' + periodName(settings, period)) + ' ' + onDays(project, dayType);
       const said = (walk) => (walk.arrived === false
         ? 'was still on the way after ' + formatDuration(walk.total)
         : 'needs ' + formatDuration(walk.total) + (isWholeSeconds(walk.waiting) && walk.waiting > 0 ? ', ' + formatDuration(walk.waiting) + ' of it waiting in crowded corridors' : ''));
       const first = sets[0].entries[0].walk;
       const runs = runWords(project, sets[0].entries.map((entry) => entry.bellsId));
       let text = first.arrived === false
-        ? group.name + ' did not arrive at ' + roomName(to, false) + ' from ' + roomName(from, false) + after + runs + ': it was still on the way after ' + formatDuration(first.total) + ', and ' + passingText(first.passingSeconds) + '.'
-        : group.name + ' needs ' + formatDuration(first.total) + ' to get from ' + roomName(from, false) + ' to ' + roomName(to, false) + after + runs
+        ? group.name + ' did not arrive at ' + toText + ' from ' + fromText + after + runs + ': it was still on the way after ' + formatDuration(first.total) + ', and ' + passingText(first.passingSeconds) + '.'
+        : group.name + ' needs ' + formatDuration(first.total) + ' to get from ' + fromText + ' to ' + toText + after + runs
           + (isWholeSeconds(first.waiting) && first.waiting > 0 ? ', ' + formatDuration(first.waiting) + ' of it waiting in crowded corridors' : '') + ', and ' + passingText(first.passingSeconds) + '.';
       for (const set of sets.slice(1)) {
         const walk = set.entries[0].walk;
@@ -419,29 +434,30 @@ export function checkSchedule(project, walkResults) {
       if (!dayType || !teacher) continue;
       if (!daysOf.has(dayType.id)) daysOf.set(dayType.id, teacherDays(project, dayType.id));
       const day = daysOf.get(dayType.id).get(teacher.id);
-      const move = teacherMoves(day).find((candidate) => candidate.period === walk.period);
+      const move = bellMoves(day, entry.bellsId === null ? null : offPeriods(project, entry.bellsId)).find((candidate) => candidate.period === walk.period);
       if (!move || walk.fromRoomId !== move.fromRoomId || walk.toRoomId !== move.toRoomId) continue;
-      if (entry.bellsId !== null) {
-        const off = offPeriods(project, entry.bellsId);
-        if (off.has(walk.period) || off.has(walk.period + 1)) continue;
-      }
-      if (walk.passingSeconds !== passingFor(dayType.id, entry.bellsId, walk.period)) continue;
-      teacherEntries.push({ ...entry, dayType, teacher, day, move });
+      // a figure for a walk across periods that do not meet names where it
+      // ends, and is for that walk only while the bells leave those periods off
+      const plan = planFor(dayType.id, entry.bellsId, walk.period);
+      if (!plan || plan.to !== reached(walk) || plan.to !== (move.toPeriod === undefined ? walk.period + 1 : move.toPeriod)) continue;
+      if (walk.passingSeconds !== plan.passing) continue;
+      teacherEntries.push({ ...entry, dayType, teacher, day, move, toPeriod: plan.to });
     }
-    for (const list of gather(teacherEntries, (entry) => entry.dayType.id + '\u0000' + entry.walk.period + '\u0000' + entry.teacher.id)) {
-      const { dayType, teacher, day, move } = list[0];
+    for (const list of gather(teacherEntries, (entry) => entry.dayType.id + '\u0000' + entry.walk.period + (entry.toPeriod === entry.walk.period + 1 ? '' : '\u0000' + entry.toPeriod) + '\u0000' + entry.teacher.id)) {
+      const { dayType, teacher, day, move, toPeriod } = list[0];
       const period = list[0].walk.period;
       const sets = alike(list, (walk) => walk.walking + '|' + walk.passingSeconds);
       const first = sets[0].entries[0].walk;
-      let text = teacher.name + ' needs ' + formatDuration(first.walking) + ' to walk from ' + roomName(findRoom(project, move.fromRoomId), false) + ' to ' + roomName(findRoom(project, move.toRoomId), false)
-        + ' after ' + periodName(settings, period) + ' ' + onDays(project, dayType) + runWords(project, sets[0].entries.map((entry) => entry.bellsId)) + ', before any crowding, and ' + passingText(first.passingSeconds) + '.';
+      const across = toPeriod !== period + 1;
+      let text = teacher.name + ' needs ' + formatDuration(first.walking) + ' to walk from ' + roomName(findRoom(project, move.fromRoomId), false) + (across ? ' after ' + periodName(settings, period) : '')
+        + ' to ' + roomName(findRoom(project, move.toRoomId), false) + (across ? ' for ' + periodName(settings, toPeriod) : ' after ' + periodName(settings, period)) + ' ' + onDays(project, dayType) + runWords(project, sets[0].entries.map((entry) => entry.bellsId)) + ', before any crowding, and ' + passingText(first.passingSeconds) + '.';
       for (const set of sets.slice(1)) {
         const walk = set.entries[0].walk;
         text += ' With ' + bellsNames(set.entries) + ' bells it needs ' + formatDuration(walk.walking) + ', and ' + passingText(walk.passingSeconds) + '.';
       }
       const run = runParts(list, [dayType.id, period, teacher.id]);
       add('teacher-walk', run.id, text,
-        { dayTypeId: dayType.id, period, groupIds: day[period + 1].groups.map((taught) => taught.groupId), roomId: move.toRoomId, teacherId: teacher.id, ...run.where }, [teacher.id]);
+        { dayTypeId: dayType.id, period, groupIds: day[toPeriod].groups.map((taught) => taught.groupId), roomId: move.toRoomId, teacherId: teacher.id, ...run.where }, [teacher.id]);
     }
   }
 

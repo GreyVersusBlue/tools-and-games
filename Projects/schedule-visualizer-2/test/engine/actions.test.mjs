@@ -1489,6 +1489,17 @@ test('importCalendarDates puts a calendar CSV\'s changes in place: one step, its
   assert.deepEqual(actions.importCalendarDates.bumps, [SCHEDULE]);
 });
 
+test('setCalendarDates and importCalendarDates store a note without the spaces around it, and count the length after trimming', () => {
+  const project = withEverything();
+  const set = step(project, actions.setCalendarDates, { dates: ['2026-11-25'], day: 'closed', label: '  Snow day \t' });
+  assert.equal(set.after.calendar.dates.find((entry) => entry.date === '2026-11-25').label, 'Snow day');
+  const long = ' ' + 'a'.repeat(60) + ' ';
+  assert.equal(step(project, actions.setCalendarDates, { dates: ['2026-11-25'], day: 'closed', label: long }).after.calendar.dates.find((entry) => entry.date === '2026-11-25').label, 'a'.repeat(60), 'sixty characters and spaces fit');
+  refused(actions.setCalendarDates, project, { dates: ['2026-11-25'], day: 'closed', label: 'a'.repeat(61) }, 'too-long');
+  const imported = step(project, actions.importCalendarDates, { changes: [{ date: '2026-11-25', day: 'closed', bells: null, label: '  Snow day ' }] });
+  assert.equal(imported.after.calendar.dates.find((entry) => entry.date === '2026-11-25').label, 'Snow day');
+});
+
 test('importCalendarDates: no change makes no step, and it is refused with no calendar or a change that no longer fits', () => {
   const project = withEverything();
   const store = createStore({ project, clock, ids: makeIds(3) });

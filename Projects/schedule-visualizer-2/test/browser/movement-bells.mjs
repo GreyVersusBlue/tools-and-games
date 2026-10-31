@@ -33,6 +33,7 @@ const DAY_A = 'dsample00a';
 const ER = 'bsample0er';
 const AS = 'bsample0as';
 const NO = 'bsample0no';
+const ONE = 'bsample0on';
 
 let server;
 let browser;
@@ -501,6 +502,23 @@ test('no period meets: the first line, the Travel tab, its print, Hotspots and t
   assert.ok(!/Nobody crosses a corridor/.test(report.text));
   await closeSheet();
   await change({ ...OPEN });
+});
+
+test('one period meets: the Travel tab and its print say the bells leave nothing to walk between, not advice about rooms', async () => {
+  await addSchedule(ONE, 'Single <i>', [0, 1, 2, 3, 4, 6, 7]);
+  await change({ ...OPEN, bellsId: ONE });
+  const saying = 'Only Period 6 meets under Single <i> bells, so they leave nothing to walk between.';
+  await tab('Travel time');
+  assert.equal(await text('[data-travel="lead"]'), saying);
+  assert.equal(await visible('[data-travel="transition"]'), false, 'no table');
+  await page.click('#inspector #print-travel-time');
+  const travel = await sheet();
+  assert.ok(travel.text.includes(saying), travel.text.slice(0, 300));
+  assert.ok(!/Nobody walks anywhere|give a group a room/.test(travel.text));
+  await closeSheet();
+  await change({ ...OPEN });
+  await page.evaluate((id) => globalThis.sv2.store.apply(globalThis.sv2modules.actions.deleteBellSchedule, { bellScheduleId: id }), ONE);
+  await settled();
 });
 
 test('a bell schedule deleted while it is chosen: a polite status says the view shows regular bells, and Undo brings the choice back', async () => {

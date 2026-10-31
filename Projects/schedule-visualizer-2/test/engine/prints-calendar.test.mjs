@@ -297,6 +297,14 @@ test('breaks: dates side by side are one; a shared note joins across weekends an
   assert.deepEqual([named('Fair'), named('Picnic')], [[['2027-05-07', '2027-05-07', 1]], [['2027-05-10', '2027-05-10', 1]]]);
 });
 
+test('breaks: notes compare trimmed, so a note stored with spaces by an older copy joins its neighbour', () => {
+  const { p } = withCalendar();
+  const dates = (label) => ({ day: DAY_CLOSED, bells: null, label });
+  const loose = { ...p, calendar: { ...p.calendar, dates: [...p.calendar.dates, { date: '2027-02-05', ...dates(' Snow ') }, { date: '2027-02-08', ...dates('Snow') }] } };
+  const snow = breaksOf(loose).filter((each) => each.label === 'Snow').map((each) => [each.from, each.to]);
+  assert.deepEqual(snow, [['2027-02-05', '2027-02-08']]);
+});
+
 test('the publish form says what staff copies hold: the calendar removed since, or none yet, from what this device noted', () => {
   const { p } = withCalendar();
   const at = '2026-09-02T12:00:00.000Z';
