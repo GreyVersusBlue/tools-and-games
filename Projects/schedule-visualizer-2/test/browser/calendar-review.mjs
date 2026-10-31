@@ -241,6 +241,27 @@ test('a run writes a day type only when the reader picks one: a note or bells ne
   await closeDialog();
 });
 
+test('a run from a school day: Space on the checked day radio is no pick (the browser sends no click), a click on its label is one', async () => {
+  const run = ['2027-03-16', '2027-03-17', '2027-03-18'];
+  await fresh(YEAR);
+  await openDate('2027-03-16');
+  await throughTo('2027-03-18');
+  const own = await dayChecked();
+  assert.equal(await dialogApply(), 'Apply', 'nothing touched yet');
+  // Chromium fires keydown and keyup for Space on a radio already checked, and no click or change
+  await page.focus(dayOf(own));
+  await page.keyboard.press('Space');
+  assert.equal(await dayChecked(), own, 'the radio stays checked');
+  assert.equal(await dialogApply(), 'Apply', 'Space on the checked radio picks nothing');
+  // the label of the same radio: a click on it clicks the input, and that is a pick
+  await page.click('#calendar-date-dialog [data-part="day"] label:has(input[value="' + own + '"])');
+  assert.notEqual(await dialogApply(), 'Apply', 'a click on the checked radio\'s label is a pick');
+  await page.click('#calendar-date-dialog [data-action="apply-date"]');
+  await dialogGone();
+  await settled();
+  assert.deepEqual(await dayTypesIn(run), [own, own, own], 'the day type goes on every date');
+});
+
 test('the one default: a run that starts on a weekday-closed date and touches only Through closes its school days; a date closed by its own change gives none', async () => {
   await fresh(YEAR);
   await openDate('2027-03-13');

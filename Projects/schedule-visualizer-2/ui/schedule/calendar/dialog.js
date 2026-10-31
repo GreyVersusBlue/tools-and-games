@@ -120,7 +120,7 @@ export function openDateDialog(options) {
     // weekday rule (a weekend), with nothing touched but Through, closes its
     // school days. A date closed by a change of its own gives no default.
     const many = dates.length > 1;
-    const closesRun = many && !touched.day && !touched.bells && !touched.note && closedByWeekday && day === DAY_CLOSED && dates.some((date) => (dayEntry(project, date) || {}).school === true);
+    const closesRun = many && !touched.bells && !touched.note && closedByWeekday && day === DAY_CLOSED && dates.some((date) => (dayEntry(project, date) || {}).school === true);
     const chosen = touched.day ? many || day !== dayNow : closesRun;
     if (chosen) change.day = day === AS_CALENDAR ? null : day;
     if (change.day !== null) {

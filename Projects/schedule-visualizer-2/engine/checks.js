@@ -177,6 +177,14 @@ export function teachingRunEnd(day, start, schoolMarks) {
   return end;
 }
 
+// The kind of the school's mark in each period of a day type (or null), or null
+// when the project has no marks at all. What teachingRunEnd takes as its third
+// argument; checkSchedule and suggest both build it here.
+export function schoolMarksOf(project, dayTypeId, periods) {
+  if (!hasMarks(project)) return null;
+  return Array.from({ length: periods }, (unused, p) => { const mark = schoolMarkFor(project, dayTypeId, p); return mark ? mark.kind : null; });
+}
+
 function isNumbered(room) {
   return typeof room.number === 'string' && room.number.trim() !== '';
 }
@@ -310,7 +318,7 @@ export function checkSchedule(project, walkResults) {
     }
 
     const days = teacherDays(project, d);
-    const schoolMarks = marked ? Array.from({ length: periods }, (unused, p) => { const mark = schoolMarkFor(project, d, p); return mark ? mark.kind : null; }) : null;
+    const schoolMarks = marked ? schoolMarksOf(project, d, periods) : null;
     // the day types this check speaks for: this one and those the same as it
     // (not those a mark names, checked on their own)
     const members = [dayType].concat(followersOf(project, dayType.id).filter((follower) => !apart.has(follower.id)));
