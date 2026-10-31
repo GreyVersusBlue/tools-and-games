@@ -124,8 +124,8 @@ test('the schedule sub-tabs have addresses, and the arrow keys move between them
   assert.equal(await page.evaluate(() => location.hash), '#schedule/day');
   assert.match(await text('#surface [role="tabpanel"]'), /The day is 8 periods long/);
   await page.keyboard.press('ArrowRight');
-  assert.equal(await page.evaluate(() => location.hash), '#schedule/calendar');
-  assert.equal(await page.evaluate(() => document.activeElement.dataset.tab), 'calendar');
+  assert.equal(await page.evaluate(() => location.hash), '#schedule/duties');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.tab), 'duties');
   await page.keyboard.press('Home');
   assert.equal(await page.evaluate(() => location.hash), '#schedule/groups');
   assert.equal(await page.$$eval('#surface [role="tab"][tabindex="0"]', (all) => all.length), 1, 'one Tab stop in the tab list');
@@ -468,7 +468,7 @@ test('fewer periods asks first, with buttons that name the action and the safe o
 test('the picker narrows as you type; a check is switched off and back on', async () => {
   const input = '#settings .picker__input';
   await page.click(input);
-  assert.equal(await page.$$eval('#settings .picker__option', (all) => all.length), 14);
+  assert.equal(await page.$$eval('#settings .picker__option', (all) => all.length), 16);
   await page.keyboard.type('WALK');
   assert.deepEqual(await page.$$eval('#settings .picker__option', (all) => all.map((el) => el.textContent)), ['A teacher’s walk that is too long', 'A group’s walk that is too long']);
   assert.equal(await page.$eval(input, (el) => el.getAttribute('aria-expanded')), 'true');
