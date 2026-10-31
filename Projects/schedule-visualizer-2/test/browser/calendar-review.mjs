@@ -241,6 +241,50 @@ test('a run writes a day type only when the reader picks one: a note or bells ne
   await closeDialog();
 });
 
+test('a run from a school day: Space on the checked day radio is a pick like the click, arrow keys pick once, a click on its label is one', async () => {
+  const run = ['2027-03-16', '2027-03-17', '2027-03-18'];
+  await fresh(YEAR);
+  await openDate('2027-03-16');
+  await throughTo('2027-03-18');
+  const own = await dayChecked();
+  assert.equal(await dialogApply(), 'Apply', 'nothing touched yet');
+  // Chromium fires keydown and keyup for Space on a radio already checked, and no click or change
+  await page.focus(dayOf(own));
+  await page.keyboard.press('Space');
+  assert.equal(await dayChecked(), own, 'the radio stays checked');
+  const afterSpace = await dialogApply();
+  assert.notEqual(afterSpace, 'Apply', 'Space on the checked radio is a pick');
+  await closeDialog();
+  await openDate('2027-03-16');
+  await throughTo('2027-03-18');
+  await page.click(dayOf(own));
+  assert.equal(afterSpace, await dialogApply(), 'Space names the change the same way the click does');
+  await closeDialog();
+  await openDate('2027-03-16');
+  await throughTo('2027-03-18');
+  assert.equal(await dialogApply(), 'Apply', 'a fresh dialog: nothing touched');
+  // arrow keys move between radios: one pick, the other radio checked
+  await page.focus(dayOf(own));
+  await page.keyboard.press('ArrowDown');
+  const moved = await dayChecked();
+  assert.notEqual(moved, own, 'an arrow key moves the selection');
+  assert.notEqual(await dialogApply(), 'Apply', 'an arrow key is a pick');
+  await page.keyboard.press('ArrowUp');
+  assert.equal(await dayChecked(), own, 'and back');
+  await closeDialog();
+  await openDate('2027-03-16');
+  await throughTo('2027-03-18');
+  await page.focus(dayOf(own));
+  await page.keyboard.press('Space');
+  // the label of the same radio: a click on it clicks the input, and that is a pick
+  await page.click('#calendar-date-dialog [data-part="day"] label:has(input[value="' + own + '"])');
+  assert.notEqual(await dialogApply(), 'Apply', 'a click on the checked radio\'s label is a pick');
+  await page.click('#calendar-date-dialog [data-action="apply-date"]');
+  await dialogGone();
+  await settled();
+  assert.deepEqual(await dayTypesIn(run), [own, own, own], 'the day type goes on every date');
+});
+
 test('the one default: a run that starts on a weekday-closed date and touches only Through closes its school days; a date closed by its own change gives none', async () => {
   await fresh(YEAR);
   await openDate('2027-03-13');

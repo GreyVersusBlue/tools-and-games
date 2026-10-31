@@ -325,7 +325,10 @@ export function mount(env) {
       const breakdown = own.map((dayType) => dayType.name + ' ' + doneOn(dayType) + ' of ' + periods).join(', ');
       bars = [h('span', { class: 'sch-bar sch-bar--all', title: breakdown, data: { complete: String(complete), of: String(own.length) } },
         h('span', { class: 'sch-bar__track' }, h('span', { class: 'sch-bar__fill', style: 'width:' + Math.round((100 * complete) / own.length) + '%' })),
-        h('span', { class: 'sch-bar__text' }, seen(complete + ' of ' + own.length + ' complete'), said('Complete on ' + complete + ' of ' + own.length + ' day types. ')))];
+        h('span', { class: 'sch-bar__text' }, seen(complete + ' of ' + own.length + ' complete'), said('Complete on ' + complete + ' of ' + own.length + ' day types: ' + breakdown + '. ')))];
+      // the day by day as text, when the row is touched or focused (the
+      // title is for a mouse); a screen reader has it in the row's name
+      bars.push(h('span', { class: 'sch-bar__detail', 'aria-hidden': 'true' }, breakdown));
     } else {
       // a bar for each day type, and a line for each that is the same as
       // another while they all fit in three
@@ -599,11 +602,11 @@ export function mount(env) {
     const body = h('tbody', { role: 'rowgroup' }, day.map((slot, period) => slotRow(project, model, group, dayType, period, slot, bells[period])));
     dragRows(body, (from, to) => {
       if (apply(env, moveSlot, { groupId: group.id, dayTypeId: dayType.id, from, to })) ctx.announce('Moved ' + periodName(project.settings, from) + '’s assignment to ' + periodName(project.settings, to) + '.');
-    });
+    }, { touch: false });
     const whole = model.byDay.get(group.id + '|' + dayType.id) || [];
-    // as "Copy A Day to B Day" was: on each day type after the first (the
-    // Day tab's row menu copies onto the first, for every group)
-    const others = dayType !== project.dayTypes[0] && ownDayTypes(project).length > 1;
+    // on every column with its own classes, the first included, whenever
+    // there is another day type with its own classes to copy from
+    const others = ownDayTypes(project).length > 1;
     let copy = null;
     if (others) {
       copy = button('Copy classes from…', (opener) => copyClassesFor(group, dayType, opener), { small: true, key: 'copy:' + dayType.id, action: 'copy-day', more: ' onto ' + group.name + '’s ' + dayType.name });
@@ -635,18 +638,33 @@ export function mount(env) {
     const own = ownDayTypes(project);
     const narrow = window.matchMedia(NARROW).matches;
     const labelId = uid('show');
+    const choose = (dayType) => {
+      chooseShownDay(ctx.store.project, view, dayType.id);
+      ctx.announce(narrow ? 'Showing ' + dayType.name + '.' : 'Showing ' + dayType.name + ' beside the others shown.');
+      env.render('show:' + dayType.id);
+    };
+    // Under NARROW the one choice is a radio group: one Tab stop, the arrow
+    // keys move the choice and make it. Wider, the chips are toggles.
+    const chosen = shown[0] || own[0];
     const chips = own.map((dayType) => {
       const pressed = shown.includes(dayType);
       return keyed(h('button', {
         type: 'button',
         class: 'sch-show__chip',
-        'aria-pressed': String(pressed),
+        role: narrow ? 'radio' : null,
+        'aria-pressed': narrow ? null : String(pressed),
+        'aria-checked': narrow ? String(dayType === chosen) : null,
+        tabindex: narrow && dayType !== chosen ? '-1' : null,
         data: { day: dayType.id },
-        on: { click: () => {
-          chooseShownDay(ctx.store.project, view, dayType.id);
-          ctx.announce(narrow ? 'Showing ' + dayType.name + '.' : 'Showing ' + dayType.name + ' beside the others shown.');
-          env.render('show:' + dayType.id);
-        } },
+        on: {
+          click: () => choose(dayType),
+          keydown: narrow ? (event) => {
+            const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+            if (!step) return;
+            event.preventDefault();
+            choose(own[(own.indexOf(dayType) + step + own.length) % own.length]);
+          } : null,
+        },
       }, dayType.name), 'show:' + dayType.id);
     });
     const followers = project.dayTypes.filter((dayType) => !isOwnCopy(project, dayType.id));
@@ -654,7 +672,7 @@ export function mount(env) {
     const done = own.map((dayType) => ({ dayType, done: effectiveSchedule(project, group.id, dayType.id).filter(filled).length }));
     const complete = done.filter((each) => each.done === periods).length;
     return [
-      h('div', { class: 'sch-show', role: 'group', 'aria-labelledby': labelId },
+      h('div', { class: 'sch-show', role: narrow ? 'radiogroup' : 'group', 'aria-labelledby': labelId },
         h('span', { class: 'sch-show__label', id: labelId }, 'Show:'), chips),
       followers.length === 0 ? null : h('ul', { class: 'sch-same-lines' }, followers.map((dayType) => h('li', { data: { day: dayType.id } },
         h('span', null, dayType.name + ': same as ' + effectiveDayType(project, dayType.id).name + ' · '),

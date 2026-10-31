@@ -31,6 +31,7 @@ import { bellsFor, bellFindings, periodName, formatTime } from '../../engine/bel
 import { formatDuration } from '../../engine/findings.js';
 import { PERIOD_WORDS, RANGES, DAY_TYPES_MOST, BELL_SCHEDULES_MOST, bellSchedulesOf } from '../../engine/schema.js';
 import { fill, apply, button, keyed, freeName, dragRows, grip } from './common.js';
+import { unappliedOn, dropPointless } from './grid/staged.js';
 
 // What a person types for a time, as "HH:MM" on the 24-hour clock; '' is no
 // time. "8:05", "805", "2:10 pm" and "14:10" are all read. With the 12-hour
@@ -70,8 +71,9 @@ export function nextDayTypeName(project) {
 // The words on the Change… dialog's button, which say exactly what it does
 // (DESIGN 11.3): "Make C Day the same as A Day (14 groups’ days on C Day go;
 // Undo brings them back)". `wanted` is { own: true } or { own: false,
-// sameAs }; what goes is the engine's describeDayTypeKind.
-export function kindButtonWords(project, dayType, wanted) {
+// sameAs }; what goes is the engine's describeDayTypeKind. `unapplied` is the
+// grid's staged changes on the day type, which Undo does not bring back.
+export function kindButtonWords(project, dayType, wanted, unapplied) {
   const own = isOwnCopy(project, dayType.id);
   if (wanted.own === true) {
     if (own) return 'Keep ' + dayType.name + ' as it is';
@@ -87,7 +89,8 @@ export function kindButtonWords(project, dayType, wanted) {
   const parts = [];
   if (going.length > 0) parts.push(list(going) + ' go');
   if (info.followers.length > 0) parts.push(list(info.followers) + (info.followers.length === 1 ? ' follows ' : ' follow ') + target.name + ' too');
-  parts.push(going.length > 0 ? 'Undo brings them back' : 'Undo brings it back');
+  const lost = unapplied > 0 ? ', but not the ' + count(unapplied, 'unapplied grid change') + ' on it' : '';
+  parts.push((going.length > 0 ? 'Undo brings them back' : 'Undo brings it back') + lost);
   return 'Make ' + dayType.name + ' the same as ' + target.name + ' (' + parts.join('; ') + ')';
 }
 
@@ -124,11 +127,41 @@ export async function radioDialog(ctx, { id, title, legend, options, chosen, wor
   return (await dialog.closed) === 'go' ? picked : null;
 }
 
+// Under 640 px (the width at which the Groups tab takes turns too).
+const NARROW = '(max-width: 640px)';
+
+// The sentence under a bell schedule's table for the periods ticked No class
+// (`off`, from 0, sorted): "Every period meets.", "Period 3 does not meet.",
+// "Periods 5 to 8 do not meet.", "Period 2 and Periods 5 to 8 do not meet.",
+// and, with every period ticked, "Nothing meets under Early Release."
+export function offSentence(settings, name, off, periods) {
+  const words = periodWords(settings);
+  if (off.length === 0) return 'Every ' + words.one + ' meets.';
+  if (off.length >= periods) return 'Nothing meets under ' + name + '.';
+  const runs = [];
+  for (const period of off) {
+    const last = runs[runs.length - 1];
+    if (last && last[1] === period - 1) last[1] = period;
+    else runs.push([period, period]);
+  }
+  // "Period 5" without its word, "C" for Block C, "2nd" for the 2nd Hour
+  const bare = (period) => periodName(settings, period).replace(/^(Period|Mod|Block) /, '').replace(/ Hour$/, '');
+  const hours = settings.periodWord === 'Hour';
+  const pieces = runs.map(([from, to]) => {
+    if (from === to) return periodName(settings, from);
+    const span = bare(from) + (to === from + 1 ? ' and ' : ' to ') + bare(to);
+    return hours ? span + ' ' + words.Many : words.Many + ' ' + span;
+  });
+  return list(pieces) + (off.length === 1 ? ' does' : ' do') + ' not meet.';
+}
+
 export function mount(env) {
   const { ctx, view } = env;
   const element = h('div', { class: 'sch-daytab' });
   // a start typed with no end yet (or the other way round) waits here
   if (!view.halfBells) view.halfBells = new Map();
+  // which bell tables are open on a narrow screen: key -> open
+  if (!view.bellFold) view.bellFold = new Map();
   // what is typed and chosen in "Add a day type", until it is added
   if (!view.dayAdd) view.dayAdd = { name: null, kind: 'own', refusal: '' };
   // (name null: nothing typed, and the next free name is suggested afresh)
@@ -304,14 +337,16 @@ export function mount(env) {
       legend: 'What ' + dayType.name + ' is',
       options,
       chosen: options.find((option) => option.value === current),
-      words: (option) => kindButtonWords(ctx.store.project, dayType, option.wanted),
+      words: (option) => kindButtonWords(ctx.store.project, dayType, option.wanted, unappliedOn(ctx.store.project, dayType.id)),
       action: 'change-kind',
       opener,
     });
     if (!chosen || chosen.value === current) return;
     const before = ctx.store.project;
     const info = describeDayTypeKind(before, { dayTypeId: dayType.id, ...chosen.wanted });
+    const unapplied = !chosen.wanted.own && own ? unappliedOn(before, dayType.id) : 0;
     if (!apply(env, setDayTypeKind, { dayTypeId: dayType.id, ...chosen.wanted })) return;
+    if (unapplied > 0) dropPointless(ctx.store.project);
     let text;
     if (chosen.wanted.own) {
       text = dayType.name + ' has its own classes now, starting as a copy of ' + info.from + '’s.';
@@ -320,8 +355,9 @@ export function mount(env) {
       text = dayType.name + ' is the same as ' + target + ' now.';
       if (info.groups > 0) text += ' Its own classes for ' + count(info.groups, 'group') + ' went with that.';
       if (info.followers.length > 0) text += ' ' + list(info.followers) + (info.followers.length === 1 ? ' follows ' : ' follow ') + target + ' too.';
+      if (unapplied > 0) text += ' ' + count(unapplied, 'unapplied grid change') + ' on ' + dayType.name + ' went too, and Undo does not bring ' + (unapplied === 1 ? 'it' : 'them') + ' back.';
     }
-    ctx.toast({ text, action: { label: 'Undo', run: ctx.undo } });
+    ctx.toast({ text, action: { label: 'Undo', run: undoTo('daytype:' + dayType.id + ':change') } });
   }
 
   // Copy classes from…: any day type with its own classes into this one, for
@@ -347,7 +383,16 @@ export function mount(env) {
     const before = ctx.store.project;
     if (!apply(env, copyDay, { fromDayTypeId: chosen.value, toDayTypeId: dayType.id })) return;
     if (ctx.store.project === before) ctx.toast({ text: dayType.name + ' already has ' + chosen.label + '’s classes for every group.' });
-    else ctx.toast({ text: 'Copied ' + chosen.label + '’s classes onto ' + dayType.name + ' for every group.', action: { label: 'Undo', run: ctx.undo } });
+    else ctx.toast({ text: 'Copied ' + chosen.label + '’s classes onto ' + dayType.name + ' for every group.', action: { label: 'Undo', run: undoTo('daytype:' + dayType.id + ':menu') } });
+  }
+
+  // Undo from a toast, with the focus on the control the change was made
+  // from (DESIGN 11.2), not left on the surface.
+  function undoTo(key) {
+    return () => {
+      ctx.undo();
+      env.render(key);
+    };
   }
 
   function moveDayType(dayType, toIndex) {
@@ -361,9 +406,12 @@ export function mount(env) {
   function removeDayType(dayType) {
     const project = ctx.store.project;
     const index = project.dayTypes.indexOf(dayType);
+    const unapplied = unappliedOn(project, dayType.id);
     if (!apply(env, deleteDayType, { dayTypeId: dayType.id })) return;
+    if (unapplied > 0) dropPointless(ctx.store.project);
     const outcome = ctx.store.undoOutcome;
-    ctx.toast({ text: (outcome && outcome.text ? outcome.text : 'Deleted ' + dayType.name) + '.', action: { label: 'Undo', run: ctx.undo } });
+    const lost = unapplied > 0 ? ' It had ' + count(unapplied, 'unapplied grid change') + ', which Undo does not bring back.' : '';
+    ctx.toast({ text: (outcome && outcome.text ? outcome.text : 'Deleted ' + dayType.name) + '.' + lost, action: { label: 'Undo', run: undoTo('daytype:' + dayType.id + ':menu') } });
     // the focus on the row that took its place, or the one above it
     const left = ctx.store.project.dayTypes;
     const next = left[Math.min(index, left.length - 1)];
@@ -382,7 +430,10 @@ export function mount(env) {
       items.push({ label: 'Move down', disabled: index >= project.dayTypes.length - 1, run: () => moveDayType(dayType, index + 1) });
     }
     if (isOwnCopy(project, dayType.id)) items.push({ label: 'Copy classes from…', disabled: ownDayTypes(project).length < 2, run: () => copyClasses(dayType.id, opener) });
-    if (!base) items.push('separator', { label: 'Delete', danger: true, run: () => removeDayType(dayType) });
+    if (!base) {
+      const unapplied = unappliedOn(project, dayType.id);
+      items.push('separator', { label: unapplied > 0 ? 'Delete, and ' + count(unapplied, 'unapplied grid change') + ' on it' : 'Delete', danger: true, run: () => removeDayType(dayType) });
+    }
     openMenu({ items, anchor: opener, label: dayType.name });
   }
 
@@ -481,7 +532,7 @@ export function mount(env) {
       }
       const after = ctx.store.project;
       const added = after.dayTypes[after.dayTypes.length - 1];
-      ctx.toast({ text: 'Added ' + added.name + (payload.own ? ', a copy of ' + base.name + '.' : ', the same as ' + effectiveDayType(after, added.id).name + '.'), action: { label: 'Undo', run: ctx.undo } });
+      ctx.toast({ text: 'Added ' + added.name + (payload.own ? ', a copy of ' + base.name + '.' : ', the same as ' + effectiveDayType(after, added.id).name + '.'), action: { label: 'Undo', run: undoTo('daytype-add-name') } });
       view.dayAdd = { name: null, kind: state.kind, refusal: '' };
       env.render(after.dayTypes.length >= DAY_TYPES_MOST ? 'daytype-add' : 'daytype-add-name');
     };
@@ -507,13 +558,10 @@ export function mount(env) {
     // Drag to reorder, by mouse or pen. A finger does not drag (it scrolls
     // the page); Move up and Move down in the row's menu always work
     // (DESIGN 11.2).
-    rows.addEventListener('pointerdown', (event) => {
-      if (event.pointerType === 'touch') event.stopImmediatePropagation();
-    }, true);
     dragRows(rows, (from, to) => {
       const dayType = ctx.store.project.dayTypes[from];
       if (dayType) moveDayType(dayType, Math.max(1, to));
-    });
+    }, { touch: false });
     return h('section', { class: 'sch-card', 'aria-labelledby': 'sch-card-daytypes', data: { card: 'day-types' } },
       h('h2', { class: 'sch-card__title', id: 'sch-card-daytypes' }, 'Day types'),
       h('p', { class: 'sch-hint' }, 'A day type says which classes meet. One with its own classes has a room for every group in every ' + periodWords(project.settings).one + '; one that is the same as another follows it in everything.'),
@@ -523,12 +571,33 @@ export function mount(env) {
 
   // ------------------------------------------------------------ 3. regular bells
 
+  // Under 640 px a bell table is a disclosure headed by its day type's or
+  // schedule's name, folded when there are more than two tables in the card
+  // (the page would be a long scroll of tables); wider, the table is just
+  // there. What a person opened or shut stays so through the next drawing.
+  // `title` is the heading's text node(s), `table` the scrolling table.
+  function bellFold(key, many, heading, table, headed) {
+    if (!window.matchMedia(NARROW).matches) return headed ? [heading, table] : [table];
+    const details = h('details', { class: 'sch-fold', data: { fold: key } },
+      h('summary', { class: 'sch-fold__summary' }, heading), table);
+    const fallback = many <= 2;
+    details.open = view.bellFold.has(key) ? view.bellFold.get(key) : fallback;
+    // (the toggle event fires for setting `open` above as well: only a
+    // difference from the usual is something a person did)
+    details.addEventListener('toggle', () => {
+      if (details.open === fallback) view.bellFold.delete(key);
+      else view.bellFold.set(key, details.open);
+    });
+    return [details];
+  }
+
   function regularBellsCard(project) {
     const tables = ownDayTypes(project).map((dayType) => {
       const titleId = uid('bells');
       return h('section', { class: 'sch-daytype', 'aria-labelledby': titleId, data: { day: dayType.id } },
-        h('h3', { class: 'sch-daytype__title', id: titleId }, dayType.name),
-        h('div', { class: 'sch-scroll' }, bellTable(project, { kind: 'day', id: dayType.id, name: dayType.name, bells: dayType.bells }, true)));
+        bellFold('day:' + dayType.id, ownDayTypes(project).length,
+          h('h3', { class: 'sch-daytype__title', id: titleId }, dayType.name),
+          h('div', { class: 'sch-scroll' }, bellTable(project, { kind: 'day', id: dayType.id, name: dayType.name, bells: dayType.bells }, true)), true));
     });
     const followers = project.dayTypes.filter((dayType) => !isOwnCopy(project, dayType.id));
     return h('section', { class: 'sch-card', 'aria-labelledby': 'sch-card-regular', data: { card: 'regular-bells' } },
@@ -547,7 +616,7 @@ export function mount(env) {
     if (!apply(env, addBellSchedule, { name })) return;
     const all = bellSchedulesOf(ctx.store.project);
     const added = all[all.length - 1];
-    ctx.toast({ text: 'Added ' + added.name + ', a copy of ' + baseDayType(project).name + '’s regular bells. Give it a name of its own.', action: { label: 'Undo', run: ctx.undo } });
+    ctx.toast({ text: 'Added ' + added.name + ', a copy of ' + baseDayType(project).name + '’s regular bells. Give it a name of its own.', action: { label: 'Undo', run: undoTo('bsched-add') } });
     env.render('bsched:' + added.id + ':name');
   }
 
@@ -555,7 +624,7 @@ export function mount(env) {
     const index = bellSchedulesOf(ctx.store.project).indexOf(schedule);
     if (!apply(env, deleteBellSchedule, { bellScheduleId: schedule.id })) return;
     const outcome = ctx.store.undoOutcome;
-    ctx.toast({ text: (outcome && outcome.text ? outcome.text : 'Deleted ' + schedule.name) + '.', action: { label: 'Undo', run: ctx.undo } });
+    ctx.toast({ text: (outcome && outcome.text ? outcome.text : 'Deleted ' + schedule.name) + '.', action: { label: 'Undo', run: undoTo('bsched:' + schedule.id + ':delete') } });
     const left = bellSchedulesOf(ctx.store.project);
     const next = left[Math.min(index, left.length - 1)];
     env.render(next ? 'bsched:' + next.id + ':delete' : 'bsched-add');
@@ -582,14 +651,15 @@ export function mount(env) {
     short.input.setAttribute('aria-label', 'Short name of ' + schedule.name + ', up to 4 characters' + (schedule.short ? '' : '. Left empty, it is ' + derived));
     keyed(short.input, 'bsched:' + schedule.id + ':short');
     const off = Array.isArray(schedule.off) ? schedule.off.filter((p) => p < project.settings.periods) : [];
-    const words = periodWords(project.settings);
     return h('section', { class: 'sch-bsched', 'aria-labelledby': titleId, data: { bells: schedule.id } },
       h('div', { class: 'sch-bsched__head' },
         h('h3', { class: 'sch-daytype__title', id: titleId }, schedule.name),
         button('Delete', () => removeSchedule(schedule), { small: true, key: 'bsched:' + schedule.id + ':delete', action: 'delete-bells', more: ' the ' + schedule.name + ' bell schedule' })),
       h('div', { class: 'sch-bsched__fields' }, name.element, short.element),
-      h('p', { class: 'sch-hint sch-bsched__off' }, off.length === 0 ? 'Every ' + words.one + ' meets.' : list(off.map((p) => periodName(project.settings, p))) + (off.length === 1 ? ' does' : ' do') + ' not meet.'),
-      h('div', { class: 'sch-scroll' }, bellTable(project, { kind: 'bells', id: schedule.id, name: schedule.name, bells: schedule.bells }, true)));
+      bellFold('bells:' + schedule.id, all.length,
+        h('span', { class: 'sch-fold__name' }, schedule.name + ': bell times'),
+        h('div', { class: 'sch-scroll' }, bellTable(project, { kind: 'bells', id: schedule.id, name: schedule.name, bells: schedule.bells }, true)), false),
+      h('p', { class: 'sch-hint sch-bsched__off' }, offSentence(project.settings, schedule.name, off, project.settings.periods)));
   }
 
   function otherBellsCard(project) {

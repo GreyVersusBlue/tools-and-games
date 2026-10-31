@@ -120,7 +120,7 @@ export function openDateDialog(options) {
     // weekday rule (a weekend), with nothing touched but Through, closes its
     // school days. A date closed by a change of its own gives no default.
     const many = dates.length > 1;
-    const closesRun = many && !touched.day && !touched.bells && !touched.note && closedByWeekday && day === DAY_CLOSED && dates.some((date) => (dayEntry(project, date) || {}).school === true);
+    const closesRun = many && !touched.bells && !touched.note && closedByWeekday && day === DAY_CLOSED && dates.some((date) => (dayEntry(project, date) || {}).school === true);
     const chosen = touched.day ? many || day !== dayNow : closesRun;
     if (chosen) change.day = day === AS_CALENDAR ? null : day;
     if (change.day !== null) {
@@ -198,6 +198,19 @@ export function openDateDialog(options) {
   // a click on the radio already checked fires no change
   days.addEventListener('click', (event) => {
     if (event.target instanceof HTMLInputElement) pickedDay();
+  });
+  // Space on the radio already checked sends keydown and keyup and no click or
+  // change in Chromium. Space on an unchecked one is a click, so only the
+  // checked one is counted here. The keydown has to land on the radio too: a
+  // dialog opened with Space gets that Space's keyup on the focused radio.
+  let spaceDownOn = null;
+  days.addEventListener('keydown', (event) => {
+    spaceDownOn = event.key === ' ' && !event.repeat ? event.target : null;
+  });
+  days.addEventListener('keyup', (event) => {
+    const down = spaceDownOn;
+    spaceDownOn = null;
+    if (event.key === ' ' && down === event.target && event.target instanceof HTMLInputElement && event.target.checked) pickedDay();
   });
   if (bells) {
     bells.addEventListener('change', () => {

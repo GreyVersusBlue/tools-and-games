@@ -113,7 +113,10 @@ export function download(fileName, mime, text) {
 // row up; the row under the pointer is marked; letting go calls
 // onDrop(from, to) with the two rows' `data-index`. Mouse, finger and pen all
 // come through Pointer Events, and the grip sets touch-action: none.
-export function dragRows(body, onDrop) {
+// `options.touch` false: a finger does not drag (it scrolls the page, DESIGN
+// 11.2) and Move up and Move down in the row's menu are the way.
+export function dragRows(body, onDrop, options) {
+  const touch = !options || options.touch !== false;
   let from = null;
   let over = null;
 
@@ -132,6 +135,7 @@ export function dragRows(body, onDrop) {
 
   body.addEventListener('pointerdown', (event) => {
     const grip = event.target.closest ? event.target.closest('.sch-grip') : null;
+    if (event.pointerType === 'touch' && !touch) return;
     if (!grip || !body.contains(grip) || (event.pointerType === 'mouse' && event.button !== 0)) return;
     from = grip.closest('[data-index]');
     if (!from) return;
