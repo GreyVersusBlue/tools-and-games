@@ -8,7 +8,8 @@ import { picker } from '../components/picker.js';
 import { icon } from '../components/icons.js';
 import { count } from '../components/words.js';
 import { addTeacher, editTeacher, deleteTeacher, mergeTeachers, findNearDuplicateTeachers } from '../../engine/actions.js';
-import { allRooms, findRoom } from '../../engine/schema.js';
+import { allRooms, findRoom, dutiesOf } from '../../engine/schema.js';
+import { dutyTeachers } from '../../engine/marks.js';
 import { roomName } from '../../engine/findings.js';
 import { buildExport } from '../../engine/exports.js';
 import { printButtons } from '../prints/index.js';
@@ -47,7 +48,7 @@ export function mount(env) {
     });
   }
 
-  function row(project, model, teacher, alike) {
+  function row(project, model, teacher, alike, dutyCounts) {
     const key = 'teacher:' + teacher.id + ':';
     const name = field({ value: teacher.name, name: 'teacherName', commit: (value) => {
       ctx.store.apply(editTeacher, { id: teacher.id, name: value });
@@ -100,6 +101,7 @@ export function mount(env) {
         }, icon('close', 14)), key + 'chip:' + room.id)))) : null,
         addRoom.element),
       h('td', null, notes.element),
+      h('td', { class: 'sch-teachers__duties' }, duties(teacher, dutyCounts.get(teacher.id) || 0)),
       h('td', null, button('Delete', () => {
         const index = project.teachers.indexOf(teacher);
         if (!apply(env, deleteTeacher, { id: teacher.id })) return;
@@ -110,8 +112,19 @@ export function mount(env) {
       }, { small: true, key: key + 'delete', action: 'delete', more: ' ' + teacher.name })));
   }
 
+  // The Duties column: how many duties and meetings the teacher is on, a link
+  // to the Duties tab with that teacher chosen (DESIGN 11.5).
+  function duties(teacher, n) {
+    if (n === 0) return h('span', { class: 'sch-teachers__none' }, 'None');
+    return h('a', { href: '#schedule/duties', data: { teacherDuties: teacher.id }, on: { click: () => {
+      view.dutyTeacher = teacher.id;
+    } } }, count(n, 'duty or meeting', 'duties and meetings'), h('span', { class: 'vh' }, ' for ' + teacher.name));
+  }
+
   function draw(project) {
     const model = env.model();
+    const dutyCounts = new Map();
+    for (const duty of dutiesOf(project)) for (const id of dutyTeachers(project, duty)) dutyCounts.set(id, (dutyCounts.get(id) || 0) + 1);
     const addButton = button('Add a teacher', add, { primary: true, key: 'teacher-add', action: 'add-teacher' });
     if (project.teachers.length === 0) {
       fill(element, emptyState('No teachers yet. ' + WHAT.slice(0, -1) + ', and this is the list of them. Add the first teacher to begin.', addButton, 'teachers'));
@@ -128,8 +141,8 @@ export function mount(env) {
       duplicates(project),
       h('div', { class: 'sch-scroll' }, h('table', { class: 'table sch-edit-table' },
         h('caption', { class: 'vh' }, 'Teachers'),
-        h('thead', null, h('tr', null, ['Name', 'Subject', 'Rooms', 'Notes'].map((label) => h('th', { scope: 'col' }, label)), h('th', { scope: 'col' }, h('span', { class: 'vh' }, 'Delete')))),
-        h('tbody', null, project.teachers.map((teacher) => row(project, model, teacher, alike.has(teacher.id)))))));
+        h('thead', null, h('tr', null, ['Name', 'Subject', 'Rooms', 'Notes', 'Duties'].map((label) => h('th', { scope: 'col' }, label)), h('th', { scope: 'col' }, h('span', { class: 'vh' }, 'Delete')))),
+        h('tbody', null, project.teachers.map((teacher) => row(project, model, teacher, alike.has(teacher.id), dutyCounts))))));
   }
 
   draw(ctx.store.project);

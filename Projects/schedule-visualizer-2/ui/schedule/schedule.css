@@ -2062,3 +2062,101 @@
     min-width: 44px;
   }
 }
+
+.sch-duties__table td {
+  vertical-align: top;
+}
+
+.sch-duties__table select,
+.sch-duties__table .field__input:not([type="date"]) {
+  width: 100%;
+  min-width: 7rem;
+}
+
+.sch-duties__table td > .field,
+.sch-duties__table td > select,
+.sch-duties__table td > .picker {
+  margin-bottom: var(--s-1);
+}
+
+.sch-duties__times {
+  display: flex;
+  gap: var(--s-1);
+}
+
+.sch-duties__times .field__input {
+  min-width: 5.5rem;
+}
+
+.sch-duties__nobody {
+  margin: 0 0 var(--s-1);
+  color: var(--note);
+}
+
+.sch-duties__filter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.sch-duties__editrow > td {
+  background: var(--paper);
+}
+
+.sch-duties__days {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--s-3);
+  align-items: start;
+}
+
+.sch-duties__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-2);
+  margin-top: var(--s-1);
+}
+
+.sch-duties__dates {
+  display: grid;
+  gap: var(--s-2);
+}
+
+/* Under 640 px a duty is a card: its lines labelled, one under another. */
+@media (max-width: 640px) {
+  .sch-duties__table,
+  .sch-duties__table tbody,
+  .sch-duties__table tr,
+  .sch-duties__table td {
+    display: block;
+  }
+
+  .sch-duties__table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .sch-duties__table tr {
+    margin-bottom: var(--s-3);
+    padding: var(--s-2) var(--s-3);
+    border: var(--border);
+    border-radius: var(--r-2);
+    background: var(--card);
+  }
+
+  .sch-duties__table td {
+    padding: var(--s-1) 0;
+    border: 0;
+  }
+
+  .sch-duties__table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: var(--t-sm);
+    font-weight: var(--w-semibold);
+    color: var(--ink-2);
+  }
+}

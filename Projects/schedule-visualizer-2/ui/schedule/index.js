@@ -1,5 +1,5 @@
 // The Schedule section: who is where, period by period. Sub-tabs across the
-// top (Groups, Grid, Teachers, Subjects, Day, Calendar, Checks, Import), each with its
+// top (Groups, Grid, Teachers, Subjects, Day, Duties, Calendar, Checks, Import), each with its
 // own address (#schedule/groups and the rest), and the findings panel in the
 // inspector beside all of them.
 //
@@ -60,6 +60,7 @@ import { mount as grid, GRID_KEYS } from './grid/index.js';
 import { mount as teachers } from './teachers.js';
 import { mount as subjects } from './subjects.js';
 import { mount as day } from './day.js';
+import { mount as duties } from './duties.js';
 import { mount as calendar, CALENDAR_KEYS } from './calendar.js';
 import { mount as checks } from './checks.js';
 import { mount as importTab } from './import/index.js';
@@ -70,6 +71,7 @@ export const SCHEDULE_TABS = [
   { id: 'teachers', label: 'Teachers', mount: teachers },
   { id: 'subjects', label: 'Subjects', mount: subjects },
   { id: 'day', label: 'Day', mount: day },
+  { id: 'duties', label: 'Duties', mount: duties },
   { id: 'calendar', label: 'Calendar', mount: calendar },
   { id: 'checks', label: 'Checks', mount: checks },
   { id: 'import', label: 'Import', mount: importTab },
