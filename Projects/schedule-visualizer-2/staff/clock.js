@@ -35,6 +35,7 @@ export const CLOCK_EVERY_MS = 30000;
 export const DAY_TYPE_KEY = 'day';
 export const BELLS_KEY = 'bells';
 export const DAY_ON_KEY = 'dayOn';
+export const SEEN_KEY = 'seen';
 
 function hook() {
   const given = globalThis.sv2StaffClock;
@@ -109,22 +110,42 @@ function writeAnswers(ctx, kept) {
   else ctx.store.set(DAY_ON_KEY, JSON.stringify({ just: kept.just, follow: kept.follow }));
 }
 
-// The follow answer is cleared here once a file published after the one that
-// was open when it was given is open: that file's calendar is the office's
-// newer word, and a correction made the same day counts. Two files' times are
-// compared, never a file's with the phone's clock, which may be minutes off.
-// An answer from before the file was recorded takes the file open now as the
-// one it was given under.
+// The newest publish time this device had opened before this page began, as
+// the shell keeps it under `seen` (it moves the key on as it opens a file, so
+// the key read now already names the file that is open): null when none.
+function openedBefore(ctx) {
+  const value = typeof ctx.store.earlier === 'function' ? ctx.store.earlier(SEEN_KEY) : ctx.store.get(SEEN_KEY);
+  return typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null;
+}
+
+// The later of two publish times, either of which may be null.
+function laterOf(first, second) {
+  if (first === null) return second;
+  if (second === null) return first;
+  return Date.parse(second) > Date.parse(first) ? second : first;
+}
+
+// The follow answer is cleared here once a file is open that was published
+// after the later of the file it was given under (`seenFile`) and every file
+// this device had opened before this page: that file's calendar is the
+// office's newer word, and a correction made the same day counts. A copy
+// older than one already opened clears nothing, and opening the newest one
+// again is not newer than itself. Two files' times are compared, never a
+// file's with the phone's clock, which may be minutes off. An answer from
+// before the file was recorded takes the newest file this device had opened
+// as the one it was given under, never the file that happens to be open now
+// (which may be an older copy).
 export function readDayOn(ctx) {
   const school = ctx.school;
   const kept = keptAnswers(ctx);
   let follow = answerOf(school, kept.follow);
   const published = Date.parse(school.data.publishedAt);
   if (follow !== null && Number.isFinite(published)) {
+    const device = openedBefore(ctx);
     if (follow.seenFile === null) {
-      follow = { ...follow, seenFile: school.data.publishedAt };
+      follow = { ...follow, seenFile: device !== null ? device : school.data.publishedAt };
       writeAnswers(ctx, { just: kept.just, follow });
-    } else if (published > Date.parse(follow.seenFile)) {
+    } else if (published > Date.parse(laterOf(follow.seenFile, device))) {
       writeAnswers(ctx, { just: kept.just, follow: null });
       follow = null;
     }
@@ -147,8 +168,9 @@ export function answerFor(answers, date) {
 export function keepDayOn(ctx, kind, answer) {
   const kept = keptAnswers(ctx);
   kept[kind] = { date: answer.date, dayTypeId: answer.dayTypeId, bellsId: answer.bellsId, at: answer.at };
-  // a standing answer remembers the file it was given under
-  if (kind === 'follow') kept[kind].seenFile = ctx.school.data.publishedAt;
+  // a standing answer remembers the newest file this device has opened: a
+  // copy older than one already seen is not the file it was given under
+  if (kind === 'follow') kept[kind].seenFile = laterOf(ctx.school.data.publishedAt, ctx.store.get(SEEN_KEY));
   writeAnswers(ctx, kept);
 }
 
@@ -538,10 +560,23 @@ export function todayLine(ctx, onChange) {
   const justToday = answers.just !== null && answers.just.date === today.date;
   const answered = today.by === 'reader' || today.by === 'follow' || justToday || answers.follow !== null;
   if (today.calendar === 'none' && !answered) return null;
-  if (today.calendar === 'outside' && !answered) {
+  // Where the calendar does not say (a date outside it, or no calendar) and
+  // the reader has not answered for today, nothing asserts which day it is,
+  // whatever standing answer is kept: the sentence below stands, or nothing
+  // does, and a kept standing answer can still be taken back by name.
+  if (today.calendar !== 'known' && today.by !== 'reader') {
+    const forgetting = answers.follow !== null ? h('p', { class: 'actions' },
+      h('button', { class: 'btn', type: 'button', dataset: { today: 'forget' }, onclick: () => {
+        forgetDayOn(ctx, 'follow');
+        onChange();
+        const again = document.querySelector('.today__says');
+        if (again) again.focus();
+      } }, 'Forget what I said on ', school.dateWords(answers.follow.date, { year: false }))) : null;
     const calendar = school.calendar;
-    return h('div', { class: 'today', dataset: { today: 'outside' } },
-      h('p', { class: 'today__says', tabindex: '-1' }, 'Today, ', school.dateWords(today.date), ', is not in this schedule\'s calendar, which runs from ', school.dateWords(calendar.start), ' to ', school.dateWords(calendar.end), '.'));
+    const outside = today.calendar === 'outside'
+      ? h('p', { class: 'today__says', tabindex: '-1' }, 'Today, ', school.dateWords(today.date), ', is not in this schedule\'s calendar, which runs from ', school.dateWords(calendar.start), ' to ', school.dateWords(calendar.end), '.')
+      : null;
+    return h('div', { class: 'today', dataset: { today: 'outside' } }, outside, forgetting);
   }
   const says = today.school
     ? ['Today is ', articleFor(today.dayType.name), ' ', dayWords(school, today.dayType, today.bellsId), today.label ? [': ', typed(today.label)] : null, '.']
