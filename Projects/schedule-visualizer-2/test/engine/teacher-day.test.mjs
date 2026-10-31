@@ -312,9 +312,10 @@ test('a No class mark for the group empties the lesson on the day types it names
   project.marks = [mark({ kind: 'noclass', period: 1, scope: 'groups', groupIds: ['gsample08b'], dayTypeIds: [A] })];
   assert.equal(teacherDay(project, HALLORAN, A)[1].kind, 'planning', 'A Day');
   assert.equal(teacherDay(project, HALLORAN, B)[1].kind, 'planning', 'B Day is the same as A Day, which the mark names');
-  project.marks[0].dayTypeIds = [B];
-  assert.equal(teacherDay(project, HALLORAN, A)[1].kind, 'teaching', 'a mark naming B reaches B alone');
-  assert.equal(teacherDay(project, HALLORAN, B)[1].kind, 'planning');
+  // the marks are indexed once per project object, so a changed project is a new object
+  const named = { ...project, marks: [{ ...project.marks[0], dayTypeIds: [B] }] };
+  assert.equal(teacherDay(named, HALLORAN, A)[1].kind, 'teaching', 'a mark naming B reaches B alone');
+  assert.equal(teacherDay(named, HALLORAN, B)[1].kind, 'planning');
 });
 
 test('an always duty marks a free period with its kind, before a school mark', () => {
