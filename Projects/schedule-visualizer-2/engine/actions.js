@@ -23,6 +23,7 @@ import { isOwnCopy, findDayType, baseDayType, effectiveDayType, followersOf } fr
 import { periodName } from './bells.js';
 import { DAY_TYPES_MOST, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DAYS_MOST, ROTATION_RANGE, DATE_LABEL_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, WEEKDAY_NAMES, LATER_PUBLISH_VIEWS } from './schema.js';
 import { spacelessKey, textLength, bellSchedulesOf, calendarOf, newBellSchedule, defaultWeekdays } from './schema.js';
+import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST, marksOf, dutiesOf, newMark, newDuty } from './schema.js';
 import { isCalendarDate, daysBetween, datesFrom, weekdayOf, dateWords, calendarDays } from './calendar.js';
 import { isId, collectIds } from './ids.js';
 import { importedCalendar, calendarImportText } from './import-calendar.js';
@@ -312,12 +313,18 @@ export function describePeriodChange(project, periods) {
       if (used.some((value) => value >= periods)) scenarioChanges += 1;
     }
   }
-  return { from, to: periods, removedPeriods, slots, bells, groups, dayTypes, bellSchedules, scenarioChanges, losesData: slots + bells + offLost + scenarioChanges > 0 };
+  const past = countPastPeriods(project, periods);
+  // the sentence's words for what the change takes, in the order the screen says it
+  const lostWords = [];
+  if (past.marks > 0) lostWords.push(count(past.marks, 'marked period', 'marked periods'));
+  if (past.duties > 0) lostWords.push(count(past.duties, 'duty', 'duties'));
+  return { from, to: periods, removedPeriods, slots, bells, groups, dayTypes, bellSchedules, scenarioChanges, marks: past.marks, duties: past.duties, marksAndDutiesWords: lostWords, losesData: slots + bells + offLost + scenarioChanges + past.marks + past.duties > 0 };
 }
 
 // Periods per day. Going down removes the later periods from every day, every
 // day type's bells and every bell schedule, and the later periods from each
-// schedule's list of those that do not meet; undo brings them back.
+// schedule's list of those that do not meet, and the marks and duties past
+// the end; undo brings them back.
 export const setPeriods = action(
   {
     label: (before, payload) => 'Change periods per day to ' + payload.periods,
@@ -328,7 +335,7 @@ export const setPeriods = action(
     const periods = payload.periods;
     if (!inRange(periods, RANGES.periods)) refuse('Periods per day is a whole number from ' + RANGES.periods[0] + ' to ' + RANGES.periods[1] + '.', 'bad-value');
     if (periods === project.settings.periods) return project;
-    return resizeDays(patch(project, ['settings', 'periods'], () => periods), periods);
+    return dropPastPeriods(resizeDays(patch(project, ['settings', 'periods'], () => periods), periods), periods);
   },
 );
 
@@ -369,6 +376,7 @@ const PUBLISH = {
   teacherNamesOnMap: (value) => (typeof value === 'boolean' ? null : 'Teacher names on the map is on or off.'),
   lastPublishedAt: (value) => (value === null || isIsoDate(value) ? null : 'The last published time is a date.'),
   staleAtCalendarEnd: (value) => (typeof value === 'boolean' ? null : 'Whether a published file is stale the day after the calendar ends is on or off.'),
+  lastPublishedHadCalendar: (value) => (typeof value === 'boolean' ? null : 'Whether the last published file had a calendar is yes or no.'),
 };
 
 // One publish setting. payload: { key, value }; key is passcode,
@@ -392,12 +400,18 @@ export const setPublishSetting = action(
   },
 );
 
-// When a file was last published. payload: { at }, an ISO time. Quiet: when
+// When a file was last published. payload: { at }, an ISO time, and
+// optionally { calendar }, whether that file had a calendar (kept in the
+// project so the publish form's "removed after your last publish" line holds
+// on every device). Quiet: when
 // the file was made is not the user's work on the school, so it is not an
 // undo step, and undoing something else does not bring an older time back.
 export const notePublished = action(
   { label: 'Note when the file was published', bumps: [], quiet: true },
-  (project, payload) => setPublishSetting(project, { key: 'lastPublishedAt', value: payload.at }),
+  (project, payload) => {
+    const next = setPublishSetting(project, { key: 'lastPublishedAt', value: payload.at });
+    return typeof payload.calendar === 'boolean' ? setPublishSetting(next, { key: 'lastPublishedHadCalendar', value: payload.calendar }) : next;
+  },
 );
 
 // Getting started. payload: any of { step, dismissed, neverShow }. Quiet:
@@ -479,7 +493,7 @@ export const deleteSubject = action(
     let next = { ...project, subjects: project.subjects.filter((subject) => subject.id !== payload.id) };
     next = mapRooms(next, (room) => (room.subjectId === payload.id ? { ...room, subjectId: null } : room));
     next = withKey(next, 'teachers', mapShared(next.teachers, (teacher) => (teacher.subjectId === payload.id ? { ...teacher, subjectId: null } : teacher)));
-    return next;
+    return dropSubjectFromDuties(next, payload.id);
   },
 );
 
@@ -596,7 +610,7 @@ export const setRoomTeachers = action(
 function dropTeacherRefs(project, teacherId) {
   const without = (list) => (list.includes(teacherId) ? list.filter((id) => id !== teacherId) : list);
   const next = mapRooms(project, (room) => withKey(room, 'teacherIds', without(room.teacherIds)));
-  return mapSlots(next, (slot) => withKey(slot, 'teacherIds', without(slot.teacherIds)));
+  return dropTeacherFromDuties(mapSlots(next, (slot) => withKey(slot, 'teacherIds', without(slot.teacherIds))), teacherId);
 }
 
 export const deleteTeacher = action(
@@ -630,7 +644,7 @@ export const mergeTeachers = action(
       notes,
     };
     next = { ...next, teachers: next.teachers.filter((teacher) => teacher.id !== gone.id).map((teacher) => (teacher.id === keep.id ? merged : teacher)) };
-    return next;
+    return swapTeacherInDuties(next, gone.id, keep.id);
   },
 );
 
@@ -725,7 +739,7 @@ export const deleteGroup = action(
   { label: (before, payload) => 'Delete group ' + groupName(before, payload.id), bumps: [SCHEDULE], focus: () => ({ section: 'schedule', tab: 'groups' }) },
   (project, payload) => {
     need(project.groups, payload.id, 'group');
-    return { ...project, groups: project.groups.filter((group) => group.id !== payload.id) };
+    return dropGroupFromMarks({ ...project, groups: project.groups.filter((group) => group.id !== payload.id) }, payload.id);
   },
 );
 
@@ -1164,9 +1178,12 @@ export function describeDayTypeDelete(project, dayTypeId) {
   if (weekdays.length > 0) parts.push(listWords(weekdays.map((w) => WEEKDAY_NAMES[w] + 's')) + ' in the calendar');
   if (rotation > 0) parts.push('its place in the rotation');
   if (scenarioChanges > 0) parts.push(count(scenarioChanges, 'change', 'changes') + ' in the scenario');
+  const left = marksAndDutiesLeftNoDayType(project, dayTypeId);
+  if (left.marks > 0) parts.push(count(left.marks, 'marked period', 'marked periods'));
+  if (left.duties > 0) parts.push(count(left.duties, 'duty', 'duties'));
   let text = 'Deleted ' + dayType.name + (parts.length > 0 ? ', ' + listWords(parts) : '');
   if (followers.length > 0) text += '. ' + listWords(followers) + (followers.length === 1 ? ' is' : ' are') + ' now the same as ' + baseDayType(project).name;
-  return { dayTypeId, name: dayType.name, own, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, dates, weekdays, rotation, text };
+  return { dayTypeId, name: dayType.name, own, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, dates, weekdays, rotation, marks: left.marks, duties: left.duties, text };
 }
 
 // payload: { dayTypeId }. The first day type cannot be deleted. The outcome
@@ -1184,6 +1201,7 @@ export const deleteDayType = action(
       dayTypes: project.dayTypes.filter((candidate) => candidate !== dayType).map((candidate) => (followers.has(candidate) ? { ...candidate, sameAs: null } : candidate)),
       groups: withoutDays(project.groups, dayType.id),
     };
+    next = dropDayTypeFromMarksAndDuties(next, dayType.id);
     const calendar = calendarOf(project);
     if (calendar && (outcome.dates > 0 || outcome.weekdays.length > 0 || outcome.rotation > 0)) {
       const rotation = calendar.rotation.filter((id) => id !== dayType.id);
@@ -1693,7 +1711,7 @@ export function detachRooms(project, rooms) {
   const numbers = new Map(rooms.map((room) => [room.id, room.number.trim() === '' ? UNNUMBERED_ROOM_TEXT : room.number]));
   let next = mapSlots(project, (slot) => (slot.room !== null && numbers.has(slot.room) ? { ...slot, room: null, roomText: numbers.get(slot.room) } : slot));
   next = withKey(next, 'teachers', mapShared(next.teachers, (teacher) => withKey(teacher, 'roomIds', filterShared(teacher.roomIds, (roomId) => !numbers.has(roomId)))));
-  return next;
+  return detachRoomsFromDuties(next, numbers);
 }
 
 // A new floor at the end, the size of the floor being looked at, one level
@@ -2898,3 +2916,296 @@ export const removeScenarioChanges = action(
 );
 
 // ================================================================ SV2-72d: removeScenarioChanges (end)
+
+// ================================================================ SV2-83: marked periods and duties (start)
+//
+// ARCHITECTURE 17.5 and 17.6. Every action here is one undo step and bumps
+// SCHEDULE, since findings and movement read marks and a teacher's day reads
+// duties. The limits live here and nowhere else (17.1): validate only checks
+// that a stored list is well formed, and repair keeps a mark past the period
+// count, but these actions refuse to make one. A project with no `marks` or
+// `duties` has them absent until the first is added; every reference action
+// leaves an absent list absent.
+
+const MARK_WORDS = { lunch: 'Lunch', advisory: 'Advisory', activity: 'Activity', noclass: 'No class' };
+const DUTY_WORDS = { duty: 'Duty', meeting: 'Meeting', lunch: 'Their own lunch' };
+
+function marksFocus(before, payload, after) {
+  return { section: 'schedule', tab: 'day', markId: payload.id || (after.marks && after.marks.length > 0 ? after.marks[after.marks.length - 1].id : undefined) };
+}
+
+function dutiesFocus(before, payload, after) {
+  return { section: 'schedule', tab: 'duties', dutyId: payload.id || (after.duties && after.duties.length > 0 ? after.duties[after.duties.length - 1].id : undefined) };
+}
+
+function markWords(mark) {
+  return mark.label !== '' ? mark.label : MARK_WORDS[mark.kind];
+}
+
+function dutyWords(duty) {
+  return duty.label !== '' ? duty.label : DUTY_WORDS[duty.kind];
+}
+
+function needChoice(value, allowed, what) {
+  if (!allowed.includes(value)) refuse(what + ' is one of: ' + allowed.join(', ') + '.', 'bad-value');
+  return value;
+}
+
+function needLabel(value, most, what) {
+  if (typeof value !== 'string') refuse(what + ' is text.', 'bad-value');
+  const trimmed = value.trim();
+  if (textLength(trimmed) > most) refuse(what + ' is at most ' + most + ' characters.', 'too-long');
+  return trimmed;
+}
+
+// A list of ids of things that exist, each once, in the order the project
+// keeps them (`order`, the project's own list) so the same choice is the same
+// list however it was clicked.
+function needIdList(value, order, what) {
+  if (!Array.isArray(value)) refuse(what + ' is a list.', 'bad-value');
+  for (const id of value) if (!order.some((item) => item.id === id)) refuse('Something in ' + what.toLowerCase() + ' is no longer in the project.', 'missing');
+  const wanted = new Set(value);
+  return order.filter((item) => wanted.has(item.id)).map((item) => item.id);
+}
+
+function needDayTypeIds(project, value) {
+  return needIdList(value, project.dayTypes, 'The day types');
+}
+
+function jsonSame(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function readMark(project, base, payload) {
+  const has = (key) => payload[key] !== undefined;
+  const mark = { ...base };
+  if (has('kind')) mark.kind = needChoice(payload.kind, MARK_KINDS, 'A mark');
+  if (has('label')) mark.label = needLabel(payload.label, MARK_LABEL_MOST, 'A mark\'s label');
+  if (has('period')) mark.period = needPeriod(project, payload.period);
+  if (has('dayTypeIds')) mark.dayTypeIds = needDayTypeIds(project, payload.dayTypeIds);
+  if (has('scope')) mark.scope = needChoice(payload.scope, MARK_SCOPES, 'A mark\'s scope');
+  if (has('groupIds')) mark.groupIds = needIdList(payload.groupIds, project.groups, 'The groups');
+  if (has('grades')) {
+    if (!Array.isArray(payload.grades) || payload.grades.some((grade) => typeof grade !== 'string')) refuse('The grades are a list of text.', 'bad-value');
+    const seen = new Set();
+    mark.grades = payload.grades.map((grade) => grade.trim()).filter((grade) => grade !== '' && !seen.has(spacelessKey(grade)) && seen.add(spacelessKey(grade)));
+    if (mark.grades.some((grade) => textLength(grade) > NAME_MOST)) refuse('A grade is at most ' + NAME_MOST + ' characters.', 'too-long');
+  }
+  // what the scope does not use is not kept
+  if (mark.scope !== 'groups') mark.groupIds = [];
+  if (mark.scope !== 'grades') mark.grades = [];
+  if (mark.scope === 'groups' && mark.groupIds.length === 0) refuse('A mark for groups names at least one group.', 'bad-value');
+  if (mark.scope === 'grades' && mark.grades.length === 0) refuse('A mark for grades names at least one grade.', 'bad-value');
+  return mark;
+}
+
+// payload: { kind, period } and any of label, dayTypeIds, scope, grades,
+// groupIds, and optionally id. A mark with no day types is for every day
+// type; scope is the school until said otherwise.
+export const addMark = action(
+  { label: (before, payload) => 'Add ' + (typeof payload.label === 'string' && payload.label.trim() !== '' ? payload.label.trim() : MARK_WORDS[payload.kind] || 'mark'), bumps: [SCHEDULE], focus: marksFocus },
+  (project, payload, ctx) => {
+    needChoice(payload.kind, MARK_KINDS, 'A mark');
+    if (payload.period === undefined) refuse('Say which period the mark is on.', 'bad-value');
+    const mark = readMark(project, newMark(newId(project, payload, ctx, 'm'), payload.kind, needPeriod(project, payload.period)), payload);
+    return { ...project, marks: marksOf(project).concat([mark]) };
+  },
+);
+
+// payload: { id } and any of kind, label, period, dayTypeIds, scope, grades,
+// groupIds. Changing nothing makes no step.
+export const setMark = action(
+  { label: (before, payload) => 'Change ' + (marksOf(before).some((mark) => mark.id === payload.id) ? markWords(marksOf(before).find((mark) => mark.id === payload.id)) : 'mark'), bumps: [SCHEDULE], focus: marksFocus },
+  (project, payload) => {
+    const old = need(marksOf(project), payload.id, 'mark');
+    const mark = readMark(project, old, payload);
+    if (jsonSame(mark, old)) return project;
+    return { ...project, marks: marksOf(project).map((candidate) => (candidate === old ? mark : candidate)) };
+  },
+);
+
+// payload: { id }.
+export const deleteMark = action(
+  { label: (before, payload) => 'Delete ' + (marksOf(before).some((mark) => mark.id === payload.id) ? markWords(marksOf(before).find((mark) => mark.id === payload.id)) : 'mark'), bumps: [SCHEDULE], focus: () => ({ section: 'schedule', tab: 'day' }) },
+  (project, payload) => {
+    const old = need(marksOf(project), payload.id, 'mark');
+    return { ...project, marks: marksOf(project).filter((candidate) => candidate !== old) };
+  },
+);
+
+function needClock(value, what) {
+  if (value !== '' && !isBellTime(value)) refuse(what + ' is a time written HH:MM on the 24-hour clock, or empty.', 'bad-value');
+  return value;
+}
+
+function needDutyDate(value, what) {
+  if (value !== '' && !isCalendarDate(value)) refuse(what + ' is a date written YYYY-MM-DD, or empty.', 'bad-value');
+  return value;
+}
+
+function readDuty(project, base, payload) {
+  const has = (key) => payload[key] !== undefined;
+  const duty = { ...base };
+  if (has('kind')) duty.kind = needChoice(payload.kind, DUTY_KINDS, 'A duty');
+  if (has('label')) duty.label = needLabel(payload.label, DUTY_LABEL_MOST, 'A duty\'s label');
+  if (has('when')) duty.when = needChoice(payload.when, DUTY_WHEN, 'When a duty is');
+  if (has('period')) duty.period = needPeriod(project, payload.period);
+  if (has('start')) duty.start = needClock(payload.start, 'A duty\'s start');
+  if (has('end')) duty.end = needClock(payload.end, 'A duty\'s end');
+  if (duty.start !== '' && duty.end !== '' && duty.end <= duty.start) refuse('A duty ends after it starts.', 'bad-value');
+  if (has('dayTypeIds')) duty.dayTypeIds = needDayTypeIds(project, payload.dayTypeIds);
+  if (has('weekdays')) {
+    if (!Array.isArray(payload.weekdays) || payload.weekdays.some((day) => !Number.isInteger(day) || day < 0 || day > 6)) refuse('The weekdays are numbers from 0 (Monday) to 6 (Sunday).', 'bad-value');
+    duty.weekdays = Array.from(new Set(payload.weekdays)).sort((a, b) => a - b);
+  }
+  if (has('from')) duty.from = needDutyDate(payload.from, 'A duty\'s first date');
+  if (has('to')) duty.to = needDutyDate(payload.to, 'A duty\'s last date');
+  if (duty.from !== '' && duty.to !== '' && duty.to < duty.from) refuse('A duty\'s last date is not before its first.', 'bad-value');
+  if (has('roomId')) {
+    if (payload.roomId !== null && !findRoom(project, payload.roomId)) refuse('That room is no longer in the project.', 'missing');
+    duty.roomId = payload.roomId;
+  }
+  if (has('place')) duty.place = needLabel(payload.place, DUTY_PLACE_MOST, 'A duty\'s place');
+  if (has('teacherIds')) duty.teacherIds = needIdList(payload.teacherIds, project.teachers, 'The teachers');
+  if (has('subjectIds')) duty.subjectIds = needIdList(payload.subjectIds, project.subjects, 'The subjects');
+  if (has('everyone')) {
+    if (typeof payload.everyone !== 'boolean') refuse('Everyone is on or off.', 'bad-value');
+    duty.everyone = payload.everyone;
+  }
+  return duty;
+}
+
+// payload: { kind } and any of label, when, period, start, end, dayTypeIds,
+// weekdays, from, to, roomId, place, teacherIds, subjectIds, everyone, and
+// optionally id. A new duty is before school, every day, and nobody is on it
+// until the planner says who (the duty-nobody note says so). `when: "period"`
+// needs a period of the school day.
+export const addDuty = action(
+  { label: (before, payload) => 'Add ' + (typeof payload.label === 'string' && payload.label.trim() !== '' ? payload.label.trim() : DUTY_WORDS[payload.kind] || 'duty'), bumps: [SCHEDULE], focus: dutiesFocus },
+  (project, payload, ctx) => {
+    needChoice(payload.kind, DUTY_KINDS, 'A duty');
+    if (payload.when === 'period' && payload.period === undefined) refuse('Say which period the duty is in.', 'bad-value');
+    const duty = readDuty(project, newDuty(newId(project, payload, ctx, 'u'), payload.kind), payload);
+    return { ...project, duties: dutiesOf(project).concat([duty]) };
+  },
+);
+
+// payload: { id } and any of the fields addDuty takes. Changing nothing makes
+// no step. A duty switched to `when: "period"` with no period of the day in
+// it is refused, since period 0 may not be what was meant.
+export const setDuty = action(
+  { label: (before, payload) => 'Change ' + (dutiesOf(before).some((duty) => duty.id === payload.id) ? dutyWords(dutiesOf(before).find((duty) => duty.id === payload.id)) : 'duty'), bumps: [SCHEDULE], focus: dutiesFocus },
+  (project, payload) => {
+    const old = need(dutiesOf(project), payload.id, 'duty');
+    if (payload.when === 'period' && old.when !== 'period' && payload.period === undefined) refuse('Say which period the duty is in.', 'bad-value');
+    const duty = readDuty(project, old, payload);
+    if (jsonSame(duty, old)) return project;
+    return { ...project, duties: dutiesOf(project).map((candidate) => (candidate === old ? duty : candidate)) };
+  },
+);
+
+// payload: { id }.
+export const deleteDuty = action(
+  { label: (before, payload) => 'Delete ' + (dutiesOf(before).some((duty) => duty.id === payload.id) ? dutyWords(dutiesOf(before).find((duty) => duty.id === payload.id)) : 'duty'), bumps: [SCHEDULE], focus: () => ({ section: 'schedule', tab: 'duties' }) },
+  (project, payload) => {
+    const old = need(dutiesOf(project), payload.id, 'duty');
+    return { ...project, duties: dutiesOf(project).filter((candidate) => candidate !== old) };
+  },
+);
+
+// ---- what other actions do to marks and duties (17.5, 17.6). Each leaves an
+// absent list absent and an untouched item the very same object.
+
+// fn(item) gives the item, a changed copy, or null to delete it.
+function changeMarks(project, fn) {
+  if (!Array.isArray(project.marks)) return project;
+  let changed = false;
+  const marks = [];
+  for (const mark of project.marks) {
+    const result = fn(mark);
+    if (result !== mark) changed = true;
+    if (result !== null) marks.push(result);
+  }
+  return changed ? { ...project, marks } : project;
+}
+
+function changeDuties(project, fn) {
+  if (!Array.isArray(project.duties)) return project;
+  let changed = false;
+  const duties = [];
+  for (const duty of project.duties) {
+    const result = fn(duty);
+    if (result !== duty) changed = true;
+    if (result !== null) duties.push(result);
+  }
+  return changed ? { ...project, duties } : project;
+}
+
+// A group is gone: out of every mark's groups, and a mark for groups left
+// with none is deleted.
+function dropGroupFromMarks(project, groupId) {
+  return changeMarks(project, (mark) => {
+    if (!Array.isArray(mark.groupIds) || !mark.groupIds.includes(groupId)) return mark;
+    const groupIds = mark.groupIds.filter((id) => id !== groupId);
+    return mark.scope === 'groups' && groupIds.length === 0 ? null : { ...mark, groupIds };
+  });
+}
+
+// A day type is gone: out of every mark's and duty's day types; one left
+// with none would mean every day type, so it is deleted instead.
+function dropDayTypeFromMarksAndDuties(project, dayTypeId) {
+  const drop = (item) => {
+    if (!Array.isArray(item.dayTypeIds) || !item.dayTypeIds.includes(dayTypeId)) return item;
+    const dayTypeIds = item.dayTypeIds.filter((id) => id !== dayTypeId);
+    return dayTypeIds.length === 0 ? null : { ...item, dayTypeIds };
+  };
+  return changeDuties(changeMarks(project, drop), drop);
+}
+
+// How many marks and duties deleting day type D deletes (they name it alone).
+function marksAndDutiesLeftNoDayType(project, dayTypeId) {
+  const alone = (item) => Array.isArray(item.dayTypeIds) && item.dayTypeIds.length === 1 && item.dayTypeIds[0] === dayTypeId;
+  return { marks: marksOf(project).filter(alone).length, duties: dutiesOf(project).filter(alone).length };
+}
+
+// A teacher is gone, or merged into another.
+function dropTeacherFromDuties(project, teacherId) {
+  return changeDuties(project, (duty) => (Array.isArray(duty.teacherIds) && duty.teacherIds.includes(teacherId) ? { ...duty, teacherIds: duty.teacherIds.filter((id) => id !== teacherId) } : duty));
+}
+
+function swapTeacherInDuties(project, goneId, keepId) {
+  return changeDuties(project, (duty) => (Array.isArray(duty.teacherIds) && duty.teacherIds.includes(goneId) ? { ...duty, teacherIds: Array.from(new Set(duty.teacherIds.map((id) => (id === goneId ? keepId : id)))) } : duty));
+}
+
+function dropSubjectFromDuties(project, subjectId) {
+  return changeDuties(project, (duty) => (Array.isArray(duty.subjectIds) && duty.subjectIds.includes(subjectId) ? { ...duty, subjectIds: duty.subjectIds.filter((id) => id !== subjectId) } : duty));
+}
+
+// Rooms leave the building: a duty in one keeps the room's number as its
+// place (as a slot keeps it as text), unless it already says a place of its
+// own, which then stays.
+function detachRoomsFromDuties(project, numbers) {
+  return changeDuties(project, (duty) => {
+    if (duty.roomId === null || duty.roomId === undefined || !numbers.has(duty.roomId)) return duty;
+    return { ...duty, roomId: null, place: typeof duty.place === 'string' && duty.place !== '' ? duty.place : cutText(numbers.get(duty.roomId), DUTY_PLACE_MOST) };
+  });
+}
+
+function cutText(value, most) {
+  return Array.from(value).slice(0, most).join('');
+}
+
+// Fewer periods: marks past the end, and duties in a period past the end,
+// are deleted in the same step. The undo entry holds them.
+function dropPastPeriods(project, periods) {
+  return changeDuties(changeMarks(project, (mark) => (Number.isInteger(mark.period) && mark.period >= periods ? null : mark)), (duty) => (duty.when === 'period' && Number.isInteger(duty.period) && duty.period >= periods ? null : duty));
+}
+
+function countPastPeriods(project, periods) {
+  return {
+    marks: marksOf(project).filter((mark) => Number.isInteger(mark.period) && mark.period >= periods).length,
+    duties: dutiesOf(project).filter((duty) => duty.when === 'period' && Number.isInteger(duty.period) && duty.period >= periods).length,
+  };
+}
+
+// ================================================================ SV2-83: marked periods and duties (end)
