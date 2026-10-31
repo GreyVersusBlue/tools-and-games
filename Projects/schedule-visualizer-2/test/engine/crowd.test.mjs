@@ -19,6 +19,7 @@ import { emptySlot, emptyBells, GROUP_COLOUR_PRESETS } from '../../engine/schema
 import { checkSchedule } from '../../engine/checks.js';
 import { isLate, crowdCap, columnLength, routePath, walkingSeconds, simulateTransition, simulateDayTransition, simulateDay, simulateSchedule, teacherWalks, walkResults, CAP_MINIMUM_SECONDS, CROSSING_WAIT_MAX } from '../../engine/crowd.js';
 import { SAMPLE_PROBLEMS } from '../../data/sample-school.js';
+import { meetingSlots, runsOf } from '../../engine/runs.js';
 import { school, clone, assertValid } from './helpers.mjs';
 import { planProject, threeFloors, splitLevel, twoRooms, cellAt, floorId, roomId } from '../fixtures/buildings/plans.mjs';
 import { bigProject } from '../fixtures/big.mjs';
@@ -561,4 +562,43 @@ test('a teacher\'s walk is timed by walking alone and judged by the same late ru
   const findings = checkSchedule(project, walks).findings.filter((finding) => finding.kind === 'teacher-walk');
   assert.equal(findings.length, 1);
   assert.match(findings[0].text, /Mx\. Tarn/);
+});
+
+// ---- SV2-83b: a follower that has its own run is simulated with its own slots
+
+function followerSchool(kind) {
+  const project = school();
+  project.dayTypes.push({ id: 'dsample00c', name: 'C Day', own: false, sameAs: 'dsample00a', short: '', bells: Array(project.settings.periods).fill(null) });
+  project.marks = [{ id: 'maaaaaaaa1', kind, label: '', period: 2, dayTypeIds: ['dsample00c'], scope: 'school', grades: [], groupIds: [] }];
+  return project;
+}
+
+function simulate(project) {
+  const graph = routingGraph(project);
+  const routes = routesForSchedule(project, graph, { runs: runsOf(project), meetingSlots });
+  const crowd = simulateSchedule(project, routes, graph);
+  return { crowd, walks: walkResults(project, crowd, graph) };
+}
+
+test('a No class mark naming a follower: the follower is simulated on its own slots, once, and A Day is untouched', () => {
+  const marked = simulate(followerSchool('noclass'));
+  const plain = simulate(school());
+  const ids = marked.crowd.days.map((day) => day.dayTypeId);
+  assert.deepEqual(ids, ['dsample00a', 'dsample00b', 'dsample00c']);
+  assert.equal(new Set(ids).size, ids.length);
+  const [a, , c] = marked.crowd.days;
+  // A Day's transitions are what they were without the mark
+  assert.deepEqual(a, plain.crowd.days[0]);
+  // C Day's transition out of period 1 (into the unmet period 2) differs from A Day's
+  assert.notDeepEqual(c.transitions[1].groups, a.transitions[1].groups);
+  const keys = marked.walks.groups.map((w) => [w.dayTypeId, w.bellsId || '', w.period, w.groupId, w.toPeriod === undefined ? '' : w.toPeriod].join('|'));
+  assert.equal(new Set(keys).size, keys.length, 'walkResults holds no duplicate key');
+  assert.ok(marked.walks.groups.some((w) => w.dayTypeId === 'dsample00c'));
+});
+
+test('an advisory mark naming a follower adds no run: the follower is answered from its base, as it was', () => {
+  const marked = simulate(followerSchool('advisory'));
+  assert.deepEqual(marked.crowd.days.map((day) => day.dayTypeId), ['dsample00a', 'dsample00b']);
+  assert.deepEqual(marked.crowd.days, simulate(school()).crowd.days);
+  assert.deepEqual(simulateDay(followerSchool('advisory'), routesForSchedule(followerSchool('advisory'), routingGraph(followerSchool('advisory')), { runs: runsOf(followerSchool('advisory')), meetingSlots }), 'dsample00c').dayTypeId, 'dsample00a');
 });

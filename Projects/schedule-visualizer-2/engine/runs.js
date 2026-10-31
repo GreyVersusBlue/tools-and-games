@@ -34,13 +34,14 @@ export function meetingSlots(project, groupId, dayTypeId, bellsId) {
 
 // The runs movement and the checks need: each own day type with its regular
 // bells, in display order, and each day type that is the same as another but
-// is named directly by a mark (its meeting slots can differ); then each of
+// is named directly by a No class mark (the one kind that changes who meets,
+// so its meeting slots can differ); then each of
 // those with each bell schedule, day type by day type. A project with no
 // bell schedules and no such mark has exactly one run per own day type.
 export function runsOf(project) {
   const named = new Set();
   for (const mark of marksOf(project)) {
-    if (mark && Array.isArray(mark.dayTypeIds)) for (const id of mark.dayTypeIds) if (typeof id === 'string') named.add(id);
+    if (mark && mark.kind === 'noclass' && Array.isArray(mark.dayTypeIds)) for (const id of mark.dayTypeIds) if (typeof id === 'string') named.add(id);
   }
   const days = project.dayTypes.filter((dayType) => isOwnCopy(project, dayType.id) || named.has(dayType.id)).map((dayType) => dayType.id);
   const schedules = bellSchedulesOf(project).filter((schedule) => schedule && typeof schedule.id === 'string');
