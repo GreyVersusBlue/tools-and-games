@@ -178,11 +178,9 @@ test('a note or bells alone on a run write no day type; the picked day, and "No 
   await page.$eval('#calendar-date-dialog [data-part="day"] input[value="' + own + '"]', (input) => input.click());
   assert.equal(await dialogApply(), 'Set 3 dates to ' + await page.evaluate((id) => globalThis.sv2.store.project.dayTypes.find((each) => each.id === id).name, own));
   await closeDialog();
-  // "No school" already checked on a run that starts on a Saturday and holds school days, with a note: the break closes
+  // "No school" already checked on a run that starts on a Saturday and holds school days, with Through only: the break closes
   await openDate('2027-03-13');
   await setValue('#calendar-date-dialog input[name="through"]', '2027-03-21');
-  await page.focus('#calendar-date-dialog input[name="note"]');
-  await page.keyboard.type('Spring break');
   assert.equal(await dialogApply(), 'Set 5 school days to No school');
   await page.click('#calendar-date-dialog [data-action="apply-date"]');
   await dialogGone();
@@ -264,7 +262,7 @@ test('a 731-day calendar with "Every date as a list" open: Apply settles in unde
   }));
   assert.deepEqual(touched, ['2027-02-10'], 'only the changed row was written');
   assert.equal(await page.$eval('.cal-list__table tr[data-date="2027-02-10"] td:last-child', (el) => el.textContent), 'Picture day');
-  // Apply from the click to the section drawn again, the best of three
+  // Apply from the click to the section drawn again, every run of three
   const times = [];
   for (const date of ['2026-10-14', '2027-02-17', '2027-05-12']) {
     await settled();
@@ -283,7 +281,7 @@ test('a 731-day calendar with "Every date as a list" open: Apply settles in unde
     })));
   }
   assert.equal(await page.$eval('.cal-list__table tr[data-date="2027-05-12"] td:nth-child(3)', (el) => el.textContent), 'No school', 'the list says what the year says');
-  assert.ok(Math.min(...times) < 300 * SLOW, 'Apply settles in ' + times.map((each) => each.toFixed(0)).join(', ') + ' ms');
+  assert.ok(Math.max(...times) < 300 * SLOW, 'Apply settles in ' + times.map((each) => each.toFixed(0)).join(', ') + ' ms');
   await click('.cal-list__summary');
   await shows(() => document.querySelector('.cal-list__table') === null);
 });

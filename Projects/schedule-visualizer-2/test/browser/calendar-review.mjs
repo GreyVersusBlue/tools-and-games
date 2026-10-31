@@ -4,7 +4,7 @@
 // starts on a Saturday, Shift-click and Shift+Page keys, a run of bells alone,
 // Through's aria-invalid, Undo of Remove and the focus it leaves, separate
 // snow days in the panel's Breaks, an arrow touching only the squares that
-// change, the timings of a 731-day calendar, the print's sheets counted from
+// change, the arrow's timing on a 731-day calendar, the print's sheets counted from
 // a real PDF in Letter and A4 both ways up, a one-day calendar, hostile names
 // on every calendar surface, the publish form's calendar tick and lines, and
 // at 390 and 320 px the date sheet with the keyboard up (the window made short
@@ -178,6 +178,132 @@ test('a run that starts on a Saturday counts the checked day: Through names the 
   await closeDialog();
 });
 
+// SV2-80d: the run rule. A day type is written only when the reader picks one.
+const dayOf = (value) => '#calendar-date-dialog [data-part="day"] input[value="' + value + '"]';
+async function dayChecked() {
+  return page.$eval('#calendar-date-dialog [data-part="day"] input:checked', (input) => input.value);
+}
+async function throughTo(date) {
+  await setValue('#calendar-date-dialog input[name="through"]', date);
+}
+async function typeNote(words) {
+  await page.focus('#calendar-date-dialog input[name="note"]');
+  await page.keyboard.down('Control');
+  await page.keyboard.press('a');
+  await page.keyboard.up('Control');
+  await page.keyboard.type(words);
+}
+const dayTypesIn = async (dates) => Promise.all(dates.map(async (date) => (await ownChange(date))?.day ?? null));
+
+test('a run writes a day type only when the reader picks one: a note or bells never close or pin anything, a pick on the radio already checked counts', async () => {
+  await fresh(YEAR);
+  const week = ['2027-03-13', '2027-03-14', '2027-03-15', '2027-03-16', '2027-03-17', '2027-03-18', '2027-03-19'];
+  // a Saturday-start run with a note only: the note is written, no day type
+  await openDate('2027-03-13');
+  await throughTo('2027-03-19');
+  await typeNote('Book fair');
+  assert.equal(await dialogApply(), 'Change 7 dates in the calendar');
+  await page.click('#calendar-date-dialog [data-action="apply-date"]');
+  await dialogGone();
+  await settled();
+  assert.deepEqual(await dayTypesIn(week), week.map(() => null), 'a note closes nothing');
+  assert.equal((await ownChange('2027-03-16')).label, 'Book fair');
+  // the same run with bells only
+  await fresh(YEAR);
+  const early = await page.evaluate(() => globalThis.sv2.store.project.bellSchedules[0].id);
+  await openDate('2027-03-13');
+  await throughTo('2027-03-19');
+  await page.$eval('#calendar-date-dialog [data-part="bells"] input[value="' + early + '"]', (input) => input.click());
+  await page.click('#calendar-date-dialog [data-action="apply-date"]');
+  await dialogGone();
+  await settled();
+  assert.deepEqual(await dayTypesIn(week), week.map(() => null), 'bells close nothing');
+  assert.equal((await ownChange('2027-03-16')).bells, early);
+  // a run from a school day, the radio already checked clicked: that day type goes on every date
+  await fresh(YEAR);
+  await openDate('2027-03-16');
+  await throughTo('2027-03-18');
+  const own = await dayChecked();
+  assert.equal(await dialogApply(), 'Apply', 'nothing touched: nothing to apply');
+  await page.click(dayOf(own));
+  assert.notEqual(await dialogApply(), 'Apply', 'a click on the checked radio is a pick');
+  await page.click('#calendar-date-dialog [data-action="apply-date"]');
+  await dialogGone();
+  await settled();
+  assert.deepEqual(await dayTypesIn(['2027-03-16', '2027-03-17', '2027-03-18']), [own, own, own]);
+  // "No school" already checked on a Saturday-start run and clicked: it closes the school days, as picked
+  await fresh(YEAR);
+  await openDate('2027-03-13');
+  await throughTo('2027-03-19');
+  assert.equal(await dayChecked(), 'closed');
+  await page.click(dayOf('closed'));
+  assert.equal(await dialogApply(), 'Set 5 school days to No school');
+  await closeDialog();
+});
+
+test('the one default: a run that starts on a weekday-closed date and touches only Through closes its school days; a date closed by its own change gives none', async () => {
+  await fresh(YEAR);
+  await openDate('2027-03-13');
+  await throughTo('2027-03-19');
+  assert.equal(await dialogApply(), 'Set 5 school days to No school');
+  await closeDialog();
+  // a Monday closed by a change of its own, then a run from it with Through only, and with a note
+  await openDate('2027-03-15');
+  await page.click(dayOf('closed'));
+  await typeNote('Snow');
+  await page.click('#calendar-date-dialog [data-action="apply-date"]');
+  await dialogGone();
+  await settled();
+  await openDate('2027-03-15');
+  assert.equal(await dayChecked(), 'closed');
+  await throughTo('2027-03-19');
+  assert.equal(await dialogApply(), 'Apply', 'closed by its own change: no default');
+  await typeNote('Snow week');
+  assert.equal(await dialogApply(), 'Change 5 dates in the calendar');
+  await page.click('#calendar-date-dialog [data-action="apply-date"]');
+  await dialogGone();
+  await settled();
+  assert.deepEqual(await dayTypesIn(['2027-03-16', '2027-03-17', '2027-03-18', '2027-03-19']), [null, null, null, null], 'the note went on, no day type with it');
+  assert.equal((await ownChange('2027-03-16')).label, 'Snow week');
+});
+
+test('a Shift-run over dates all already closed, with "No school" picked, says "No school days to close"', async () => {
+  await fresh(YEAR);
+  await openDate('2026-12-21');
+  await throughTo('2026-12-25');
+  await page.click(dayOf('closed'));
+  await typeNote('Winter break');
+  await page.click('#calendar-date-dialog [data-action="apply-date"]');
+  await dialogGone();
+  await settled();
+  await closeToast();
+  await page.focus(cell('2026-12-21'));
+  await page.keyboard.down('Shift');
+  for (let i = 0; i < 6; i += 1) await page.keyboard.press('ArrowRight');
+  await page.keyboard.up('Shift');
+  await page.keyboard.press('Enter');
+  await dialogOpen();
+  assert.equal(await dayChecked(), 'closed');
+  assert.equal(await dialogApply(), 'Apply');
+  await page.click(dayOf('closed'));
+  assert.equal(await dialogApply(), 'No school days to close');
+  await closeDialog();
+});
+
+test('a note is stored without the spaces around it, and the panel joins breaks by the trimmed note', async () => {
+  await fresh(YEAR);
+  for (const [date, words] of [['2027-02-05', '  Snow '], ['2027-02-08', 'Snow']]) {
+    await openDate(date);
+    await page.click(dayOf('closed'));
+    await typeNote(words);
+    await page.click('#calendar-date-dialog [data-action="apply-date"]');
+    await dialogGone();
+    await settled();
+  }
+  assert.equal((await ownChange('2027-02-05')).label, 'Snow', 'trimmed when stored');
+  assert.equal(await page.evaluate(async () => (await import('./ui/schedule/calendar/model.js')).breaksOf(globalThis.sv2.store.project).length), 1, 'Friday and Monday with the same note are one break');
+});
+
 test('Shift-click selects a run from the date last focused; Shift+Page Down and Page Up extend and shorten it', async () => {
   await fresh(YEAR);
   await settled();
@@ -301,7 +427,7 @@ test('an arrow touches only the squares that change: the one it leaves and the o
   assert.equal((await count(['PageDown'], false)).length <= 4, true, 'a month on: the squares of the run and the two stops, never the year');
 });
 
-test('a 731-day calendar: 24 months; an arrow answers in under 50 ms and Apply settles in under 300 ms', async () => {
+test('a 731-day calendar: 24 months; an arrow answers in under 50 ms (Apply is timed with the list open, in calendar-faults.mjs)', async () => {
   await fresh({ start: '2026-08-01', end: '2028-07-31', breaks: [{ from: '2026-12-21', to: '2027-01-01', label: 'Winter break' }] });
   assert.equal(await page.$$eval('.cal-month', (all) => all.length), 24);
   await page.focus(cell('2026-09-01'));
@@ -318,21 +444,7 @@ test('a 731-day calendar: 24 months; an arrow answers in under 50 ms and Apply s
   });
   const middle = arrows[Math.floor(arrows.length / 2)];
   assert.ok(middle < 50 * SLOW, 'an arrow takes ' + middle.toFixed(1) + ' ms (the middle of 15; the slowest ' + arrows[arrows.length - 1].toFixed(1) + ')');
-  // Apply: from the click to the section drawn again, the best of three
-  const times = [];
-  for (const date of ['2026-10-14', '2027-02-10', '2027-05-12']) {
-    await settled();
-    await closeToast();
-    await openDate(date);
-    await page.$eval('#calendar-date-dialog input[value="closed"]', (input) => input.click());
-    times.push(await page.evaluate(() => new Promise((resolve) => {
-      const t0 = performance.now();
-      document.querySelector('#calendar-date-dialog [data-action="apply-date"]').click();
-      const wait = () => requestAnimationFrame(() => {
-        const section = document.querySelector('.sch');
-        if (section.dataset.pending === 'true' || document.getElementById('calendar-date-dialog')) wait();
-        else resolve(performance.now() - t0);
-      });
+});
       wait();
     })));
   }
