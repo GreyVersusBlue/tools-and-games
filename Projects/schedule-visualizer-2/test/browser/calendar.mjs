@@ -135,7 +135,7 @@ test('the clock is pinned: the page’s today is Tuesday 1 September 2026', asyn
 });
 
 test('with no calendar the tab says what one is for, with one button; the tab sits after Day', async () => {
-  assert.deepEqual(await page.$$eval('.sch .tabs__tab', (all) => all.map((tab) => tab.textContent)), ['Groups', 'Grid', 'Teachers', 'Subjects', 'Day', 'Calendar', 'Checks', 'Import']);
+  assert.deepEqual(await page.$$eval('.sch .tabs__tab', (all) => all.map((tab) => tab.textContent)), ['Groups', 'Grid', 'Teachers', 'Subjects', 'Day', 'Duties', 'Calendar', 'Checks', 'Import']);
   assert.equal(await text('[data-empty="calendar"] .sch-empty__text'), 'No calendar yet. A calendar says which day type each date is, so the staff browser knows what today is.');
   assert.deepEqual(await page.$$eval('[data-empty="calendar"] button', (all) => all.map((el) => el.textContent)), ['Make a calendar']);
 });
