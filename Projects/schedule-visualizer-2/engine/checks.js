@@ -107,20 +107,20 @@ function markedFollowers(project) {
 
 const DUTY_AS_SAID = { duty: 'a duty', meeting: 'a meeting', lunch: 'their own lunch' };
 const DUTY_AS_NAMED = { duty: 'Duty', meeting: 'Meeting', lunch: 'Their own lunch' };
-const MARK_AS_NAMED = { lunch: 'Lunch', advisory: 'Advisory', activity: 'Activity', noclass: 'No class' };
+export const MARK_AS_NAMED = { lunch: 'Lunch', advisory: 'Advisory', activity: 'Activity', noclass: 'No class' };
 
 // "Lunch duty" as typed, else the kind's words: "a duty", "a meeting".
 function dutySaid(duty) {
   return typeof duty.label === 'string' && duty.label.trim() !== '' ? duty.label : DUTY_AS_SAID[duty.kind] || 'a duty';
 }
 
-function dutyNamed(duty) {
+export function dutyNamed(duty) {
   return typeof duty.label === 'string' && duty.label.trim() !== '' ? duty.label : DUTY_AS_NAMED[duty.kind] || 'Duty';
 }
 
 // "on Mondays and Wednesdays" or "from 1 December to 18 December", for a duty
 // that holds only on some days; '' for one that holds on every day.
-function sometimesWords(duty) {
+export function sometimesWords(duty) {
   if (!dutyIsSometimes(duty)) return '';
   const days = Array.isArray(duty.weekdays) ? duty.weekdays.filter((day) => Number.isInteger(day) && day >= 0 && day < 7).sort((a, b) => a - b) : [];
   const parts = [];
