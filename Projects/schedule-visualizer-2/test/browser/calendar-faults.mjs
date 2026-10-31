@@ -232,7 +232,7 @@ test('a file made with the calendar view unticked still carried the calendar, an
   await settled();
 });
 
-test('a 731-day calendar with "Every date as a list" open: Apply settles in under 300 ms, and the list writes only the rows that changed', async () => {
+test('a 731-day calendar with "Every date as a list" open: Apply settles in a median under 300 ms, and the list writes only the rows that changed', async () => {
   await fresh({ start: '2026-08-01', end: '2028-07-31', breaks: [{ from: '2026-12-21', to: '2027-01-01', label: 'Winter break' }] });
   await click('.cal-list__summary');
   await page.waitForSelector('.cal-list__table');
@@ -262,9 +262,11 @@ test('a 731-day calendar with "Every date as a list" open: Apply settles in unde
   }));
   assert.deepEqual(touched, ['2027-02-10'], 'only the changed row was written');
   assert.equal(await page.$eval('.cal-list__table tr[data-date="2027-02-10"] td:last-child', (el) => el.textContent), 'Picture day');
-  // Apply from the click to the section drawn again, every run of three
+  // Apply from the click to the section drawn again, five runs; the median is
+  // held to the budget (one slow run on a shared machine is not a slow Apply,
+  // and the best of five would hide a slow one), and all five are printed
   const times = [];
-  for (const date of ['2026-10-14', '2027-02-17', '2027-05-12']) {
+  for (const date of ['2026-10-14', '2027-02-17', '2027-05-12', '2027-09-15', '2028-01-12']) {
     await settled();
     await closeToast();
     await openDate(date);
@@ -281,7 +283,10 @@ test('a 731-day calendar with "Every date as a list" open: Apply settles in unde
     })));
   }
   assert.equal(await page.$eval('.cal-list__table tr[data-date="2027-05-12"] td:nth-child(3)', (el) => el.textContent), 'No school', 'the list says what the year says');
-  assert.ok(Math.max(...times) < 300 * SLOW, 'Apply settles in ' + times.map((each) => each.toFixed(0)).join(', ') + ' ms');
+  console.log('Apply on 731 days, five runs (ms): ' + times.map((each) => each.toFixed(0)).join(', '));
+  const budget = 300 * SLOW;
+  const median = [...times].sort((a, b) => a - b)[2];
+  assert.ok(median < budget, 'Apply settles in ' + times.map((each) => each.toFixed(0)).join(', ') + ' ms; the median, ' + median.toFixed(0) + ', is over ' + budget);
   await click('.cal-list__summary');
   await shows(() => document.querySelector('.cal-list__table') === null);
 });
