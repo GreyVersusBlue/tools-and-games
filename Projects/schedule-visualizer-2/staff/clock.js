@@ -273,6 +273,14 @@ export function bellsIdFor(ctx, route) {
   return chosenBells(ctx);
 }
 
+// "Tuesday, 1 September 2026" from "2026-09-01", in the reader's own language;
+// null when the text is not a date.
+export function longDate(value) {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
+  if (!parts) return null;
+  return new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])));
+}
+
 // "A Day", or "A Day with Early Release bells": pieces for a sentence.
 export function dayWords(school, dayType, bellsId) {
   const schedule = bellsId ? school.bellSchedule(bellsId) : null;

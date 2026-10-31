@@ -14,7 +14,7 @@ import { makeHash } from '../router.js';
 import { pageOf, missingPage, pictureButton } from '../page.js';
 import { dayText } from '../dates.js';
 import { aroundRoom } from '../map.js';
-import { clockNow, todayDate, dayOnDate, dayTypeFor, meetingPeriods, dayWords, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
+import { clockNow, longDate, todayDate, dayOnDate, dayTypeFor, meetingPeriods, dayWords, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
 import { coverageFor, teacherChooser } from './coverage.js';
 
 export const SUB_CANDIDATES = 3;
@@ -29,9 +29,7 @@ function localDay(date) {
 // "Tuesday, 1 September 2026" from a date field's "2026-09-01", in the
 // reader's own language; a blank line to write on when the field is empty.
 export function subDateWords(value) {
-  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
-  if (!parts) return '________________';
-  return new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])));
+  return longDate(value) || '________________';
 }
 
 export const subView = {
@@ -120,7 +118,7 @@ export const subView = {
                 viewLink(school, 'teacher', candidate.teacher.id, typed(candidate.teacher.name)),
                 candidate.sameSubject ? ' (same subject)' : null)),
               item.candidates.length > SUB_CANDIDATES ? h('span', { class: 'no-print', dataset: { sub: 'more' } }, ', and ' + (item.candidates.length - SUB_CANDIDATES) + ' more') : null))),
-          school.has('coverage') ? h('p', { class: 'no-print' }, h('a', { href: makeHash('coverage', absent.id, { d: dayType.id, b: bellsId }) }, 'Everyone who is free, period by period')) : null),
+          school.has('coverage') ? h('p', { class: 'no-print' }, h('a', { href: makeHash('coverage', absent.id, { d: picked ? dayType.id : '', date: date.value }) }, 'Everyone who is free, period by period')) : null),
 
         h('section', { class: 'card', dataset: { sub: 'room' } },
           sectionHeading(based.length > 1 ? 'Where the rooms are' : 'Where the room is'),
