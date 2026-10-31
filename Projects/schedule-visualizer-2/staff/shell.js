@@ -48,6 +48,15 @@ export function mountShell(root, env) {
   let open = null; // { data, school, store, main, bar, bands, top, foot, notKept }
   let gate = null; // the unlock screen in hand: { schoolId, envelope }
   let firstOpen = true;
+  let showing = null; // the view on screen, which may have a leave() to run when it goes
+
+  // A page that keeps something outside itself (the calendar's month status is
+  // one element of the document) is told when it goes: by another page being
+  // drawn, by the address being replaced with another page's, or by the frame
+  // giving way to a card. Told again, it does nothing more.
+  function leaving(next) {
+    if (showing !== null && showing !== next && typeof showing.leave === 'function') showing.leave();
+  }
 
   const setTitle = (text) => {
     doc.title = text;
@@ -58,6 +67,8 @@ export function mountShell(root, env) {
   function card(state, title, ...body) {
     // a schedule's page may be leaving for this card: its maps stop listening
     unmountMaps();
+    leaving(null);
+    showing = null;
     open = null;
     gate = null;
     delete root.dataset.view;
@@ -94,6 +105,8 @@ export function mountShell(root, env) {
         } catch (error) {
           // an address that cannot be rewritten here is left as it is
         }
+        // no hashchange follows a replaced address, so the page on screen is told here
+        leaving(viewFor(parseHash(hash).view));
       },
       redraw() {
         draw(false);
@@ -117,6 +130,8 @@ export function mountShell(root, env) {
       ctx.replace('#/search');
     }
     const view = viewFor(route.view);
+    leaving(view);
+    showing = view;
     const left = view.flag !== null && !current.school.has(view.flag);
     let title = 'Staff schedule';
     let page;
@@ -281,6 +296,8 @@ export function mountShell(root, env) {
       gate.envelope = envelope;
       return undefined;
     }
+    leaving(null);
+    showing = null;
     open = null;
     gate = { schoolId: envelope.schoolId, envelope };
     const screen = unlockScreen({
