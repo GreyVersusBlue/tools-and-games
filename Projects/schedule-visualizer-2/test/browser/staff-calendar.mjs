@@ -1470,6 +1470,77 @@ test('fault 6: the month status is emptied when the calendar page is left', asyn
   }
 });
 
+test('SV2-81e: the plan\'s Coverage link and Coverage\'s plan link carry the date, so going there and back keeps the date and its bells; an old address with b and no date still opens', async () => {
+  // today is Tuesday 1 September; the date is Wednesday 9 September: A Day with Early Release bells
+  const session = await openPage({ at: ROTATION });
+  try {
+    const { page } = session;
+    const title = async () => (await texts(page, '[data-sub="day"] .card__title'))[0];
+    const href = (selector) => page.evaluate((s) => document.querySelector(s).getAttribute('href'), selector);
+    await goto(page, files.many, '#/sub/tsample007?date=2026-09-09');
+    assert.equal(await title(), 'The day: A Day with Early Release bells');
+    assert.equal(await href('a[href^="#/coverage/"]'), '#/coverage/tsample007?date=2026-09-09', 'the date, and no day type the reader did not pick');
+    await press(page, 'a[href^="#/coverage/"]');
+    await viewDrawn(page, '#/coverage');
+    assert.match(await lede(page), /of 4 periods on A Day with Early Release bells\./, 'the date\'s bells');
+    assert.match((await texts(page, '[data-coverage="date"]'))[0], /^For .*9.*2026\.$/);
+    assert.equal(await count(page, 'section[data-period]') > 0, true);
+    assert.deepEqual(await page.evaluate(() => Array.from(document.querySelectorAll('section[data-period]'), (card) => Number(card.dataset.period)).filter((period) => period > 3)), [], 'a period Early Release leaves out is not covered');
+    assert.equal(await href('a.btn[href^="#/sub/"]'), '#/sub/tsample007?date=2026-09-09');
+    await press(page, 'a.btn[href^="#/sub/"]');
+    await viewDrawn(page, '#/sub');
+    assert.equal(await page.evaluate(() => document.getElementById('sub-date').value), '2026-09-09', 'back on the plan, the same date');
+    assert.equal(await title(), 'The day: A Day with Early Release bells');
+
+    // a day type picked on Coverage holds with the date, and takes the date\'s bells only where it is that day
+    await move(page, '#/coverage/tsample007?date=2026-09-09');
+    await press(page, '[data-pick="day"] input[value="dsample00b"]');
+    await page.waitForFunction(() => location.hash === '#/coverage/tsample007?d=dsample00b&date=2026-09-09');
+    assert.match(await lede(page), /of 8 periods on B Day\./, 'B Day is not the day of 9 September: the regular bells');
+    assert.equal(await href('a.btn[href^="#/sub/"]'), '#/sub/tsample007?d=dsample00b&date=2026-09-09');
+    await press(page, '[data-pick="day"] input[value="dsample00a"]');
+    assert.match(await lede(page), /of 4 periods on A Day with Early Release bells\./, 'A Day is the date\'s own again');
+
+    // an address from before there was a date: b with no date, the bells of the day shown; and no date line
+    await move(page, '#/coverage/tsample007?d=dsample00b&b=' + ER);
+    assert.match(await lede(page), /of 4 periods on B Day with Early Release bells\./);
+    assert.equal(await count(page, '[data-coverage="date"]'), 0);
+    // a date that is not a date is not one
+    await move(page, '#/coverage/tsample007?date=2026-13-45');
+    assert.equal(await count(page, '[data-coverage="date"]'), 0);
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('SV2-81e: the month status is emptied on any leaving of the calendar page: another page, an address that names no page', async () => {
+  const session = await openPage({ at: ROTATION });
+  try {
+    const { page } = session;
+    const said = () => page.evaluate(() => document.querySelector('[data-says="month"]').textContent);
+    const month = async () => {
+      await move(page, '#/calendar?m=2026-10');
+      await page.focus('a[data-step="next"]');
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => document.querySelector('[data-says="month"]').textContent === 'November 2026');
+    };
+    await goto(page, files.many, '#/calendar?m=2026-10');
+    await month();
+    await move(page, '#/free');
+    assert.equal(await said(), '', 'to a page');
+    await month();
+    await page.evaluate(() => {
+      location.hash = '#/nonsense';
+    });
+    await viewDrawn(page, '#/search');
+    assert.equal(await said(), '', 'to an address that names no page');
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
 // A stand-in for the canvas's measureText: a letter is this many ems wide, a
 // wide letter (W, M) and a character of any East Asian script more.
 const widthOf = (text, size) => Array.from(text).reduce((sum, letter) => sum + size * (/[WM]/.test(letter) ? 0.95 : /[　-鿿]/.test(letter) ? 1 : letter === ' ' ? 0.28 : 0.52), 0);
