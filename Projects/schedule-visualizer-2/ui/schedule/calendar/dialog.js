@@ -199,6 +199,19 @@ export function openDateDialog(options) {
   days.addEventListener('click', (event) => {
     if (event.target instanceof HTMLInputElement) pickedDay();
   });
+  // Space on the radio already checked sends keydown and keyup and no click or
+  // change in Chromium. Space on an unchecked one is a click, so only the
+  // checked one is counted here. The keydown has to land on the radio too: a
+  // dialog opened with Space gets that Space's keyup on the focused radio.
+  let spaceDownOn = null;
+  days.addEventListener('keydown', (event) => {
+    spaceDownOn = event.key === ' ' && !event.repeat ? event.target : null;
+  });
+  days.addEventListener('keyup', (event) => {
+    const down = spaceDownOn;
+    spaceDownOn = null;
+    if (event.key === ' ' && down === event.target && event.target instanceof HTMLInputElement && event.target.checked) pickedDay();
+  });
   if (bells) {
     bells.addEventListener('change', () => {
       touched.bells = checked(bells) !== bellsNow || (lastDate() || from) !== from;

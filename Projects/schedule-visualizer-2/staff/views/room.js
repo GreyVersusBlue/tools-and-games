@@ -8,17 +8,20 @@ import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, missingPage } from '../page.js';
 import { floorMap, besideMap } from '../map.js';
+import { groupSlots, groupMark, markWords } from '../clock.js';
 import { wordsJoined, partsToNodes, countOf, linkToTeacher, linkToGroup, subjectChipOf, teachersOfSlot, dayKindsOf, dayCardsOf } from './teacher.js';
 
 // Who is in a room in each period of a day type: one list per period of
-// { group, label, teachers }, in the school's own order of groups. Two groups
-// in one period are both there: a double-booking is shown as it is.
+// { group, label, teachers, mark }, in the school's own order of groups. Two
+// groups in one period are both there: a double-booking is shown as it is. A
+// period a group does not meet in (No class) books nothing (engine/runs.js's
+// meetingSlots); `mark` is the group's Lunch, Advisory or Activity mark there.
 export function roomUse(school, roomId, dayTypeId) {
   const periods = school.bells(dayTypeId).map(() => []);
   for (const group of school.groups) {
-    school.groupDay(group.id, dayTypeId).forEach((slot, period) => {
+    groupSlots(school, group.id, dayTypeId).forEach((slot, period) => {
       if (!slot || slot.room !== roomId || !periods[period]) return;
-      periods[period].push({ group, label: slot.label, teachers: teachersOfSlot(school, dayTypeId, group.id, period) });
+      periods[period].push({ group, label: slot.label, teachers: teachersOfSlot(school, dayTypeId, group.id, period), mark: groupMark(school, group.id, dayTypeId, period) });
     });
   }
   return periods;
@@ -71,7 +74,7 @@ export const roomView = {
         floor ? fact('Floor', school.has('map') ? h('a', { href: makeHash('map', floor.id) }, typed(floor.name)) : typed(floor.name)) : null));
 
     const uses = new Map(school.dayTypes.map((dayType) => [dayType.id, roomUse(school, room.id, dayType.id)]));
-    const kinds = dayKindsOf(school, (dayType) => uses.get(dayType.id).map((period) => period.map((use) => [use.group.id, use.label, use.teachers.map((teacher) => teacher.id)])));
+    const kinds = dayKindsOf(school, (dayType) => uses.get(dayType.id).map((period) => period.map((use) => [use.group.id, use.label, use.teachers.map((teacher) => teacher.id), use.mark ? use.mark.id : null])));
     const days = dayCardsOf(ctx, kinds, (dayType, period) => {
       const here = uses.get(dayType.id)[period];
       if (here.length === 0) return { what: h('span', { class: 'muted' }, 'Empty'), where: null };
@@ -82,7 +85,7 @@ export const roomView = {
         }
       }
       return {
-        what: wordsJoined(here.map((use) => h('span', null, linkToGroup(school, use.group), use.label ? [' ', h('span', { class: 'muted' }, typed(use.label))] : null))),
+        what: wordsJoined(here.map((use) => h('span', null, linkToGroup(school, use.group), use.label ? [' ', h('span', { class: 'muted' }, typed(use.label))] : null, use.mark ? [' ', h('span', { class: 'muted', dataset: { mark: use.mark.kind } }, typed(markWords(use.mark)))] : null))),
         where: who.length === 0 ? h('span', { class: 'muted' }, 'No teacher') : wordsJoined(who.map((teacher) => linkToTeacher(school, teacher))),
       };
     });

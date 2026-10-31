@@ -8,7 +8,7 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, printGate } from '../page.js';
-import { everyTeacherDay, periodTimes, dayTypeNames, viewLink, entryWords } from '../clock.js';
+import { everyTeacherDay, dutyDate, entryIsFree, periodTimes, dayTypeNames, viewLink, entryWords } from '../clock.js';
 import { dayKindsOf } from './teacher.js';
 
 function chosenFrom(school, text) {
@@ -20,11 +20,11 @@ function chosenFrom(school, text) {
 }
 
 // The periods in which every one of the teachers is free, on one day type.
-export function commonPeriods(school, teacherIds, dayTypeId) {
-  const days = everyTeacherDay(school, dayTypeId);
+export function commonPeriods(school, teacherIds, dayTypeId, date) {
+  const days = everyTeacherDay(school, dayTypeId, date);
   const periods = [];
   for (let period = 0; period < school.data.settings.periods; period += 1) {
-    if (teacherIds.every((id) => days.get(id)[period].kind === 'planning')) periods.push(period);
+    if (teacherIds.every((id) => entryIsFree(days.get(id)[period]))) periods.push(period);
   }
   return periods;
 }
@@ -56,8 +56,9 @@ export const commonView = {
 
     const dayCard = (set) => {
       const dayTypeId = set.first.id;
-      const days = everyTeacherDay(school, dayTypeId);
-      const together = commonPeriods(school, chosen, dayTypeId);
+      const date = dutyDate(ctx, dayTypeId);
+      const days = everyTeacherDay(school, dayTypeId, date);
+      const together = commonPeriods(school, chosen, dayTypeId, date);
       const everyone = chosen.length === 2 ? 'Both are' : 'All ' + chosen.length + ' are';
       const rows = [];
       for (let period = 0; period < school.data.settings.periods; period += 1) {
@@ -67,7 +68,7 @@ export const commonView = {
           h('th', { scope: 'row' }, school.periodName(period), times ? h('span', { class: 'table__sub' }, times) : null),
           chosen.map((id) => {
             const entry = days.get(id)[period];
-            return h('td', null, entry.kind === 'planning' ? 'Free' : entryWords(school, entry));
+            return h('td', null, entryIsFree(entry) ? 'Free' : entryWords(school, entry, { dayTypeId, date }));
           }),
           h('td', null, all ? h('strong', null, 'All free') : null)));
       }
@@ -111,8 +112,8 @@ export const commonView = {
         out.replaceChildren();
         return;
       }
-      const sets = dayKindsOf(school, (dayType) => chosen.map((id) => everyTeacherDay(school, dayType.id).get(id)));
-      const found = sets.map((set) => ({ set, periods: commonPeriods(school, chosen, set.first.id) })).filter((part) => part.periods.length > 0);
+      const sets = dayKindsOf(school, (dayType) => chosen.map((id) => everyTeacherDay(school, dayType.id, dutyDate(ctx, dayType.id)).get(id)));
+      const found = sets.map((set) => ({ set, periods: commonPeriods(school, chosen, set.first.id, dutyDate(ctx, set.first.id)) })).filter((part) => part.periods.length > 0);
       says.replaceChildren(h('span', null, found.length === 0
         ? (chosen.length === 2 ? 'These two teachers are' : 'These ' + chosen.length + ' teachers are') + ' never all free in the same ' + school.data.settings.periodWord.toLowerCase() + '.'
         : [chosen.length === 2 ? 'Both are' : 'All ' + chosen.length + ' are', ' free in ', found.map((part, index) => [

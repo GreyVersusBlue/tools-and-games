@@ -43,6 +43,7 @@ import { publishDocument } from '../../ui/staff/targets.js';
 import { publishedModel } from '../../engine/publish-data.js';
 import { seededRandom } from '../../engine/ids.js';
 import { sampleSchool } from '../../data/sample-school.js';
+import { newMark, newDuty } from '../../engine/schema.js';
 import { VIEWS } from '../../staff/views.js';
 import { WRONG_PASSCODE_SENTENCE } from '../../staff/passcode.js';
 import { NEWER_SENTENCE, DAMAGED_SENTENCE } from '../../staff/source.js';
@@ -86,6 +87,12 @@ const ADDRESSES = [
   ['#/coverage', 'coverage', 'Coverage'],
   ['#/coverage/tsample003', 'coverage', 'Coverage: Dr. Quillfeather'],
   ['#/sub/tsample007', 'sub', 'Substitute plan: Ms. Vandermeer'],
+  ['#/teacher/tsample002', 'teacher', 'Mr. Brightwater'], // SV2-86: a duty before and one after school
+  ['#/teacher/tsample003', 'teacher', 'Dr. Quillfeather'], // SV2-86: a duty that holds on Wednesdays
+  ['#/now?t=tsample001&p=3&d=dsample00a', 'now', 'Where right now'], // SV2-86: on duty
+  ['#/now?g=gsample06a&p=1&d=dsample00a', 'now', 'Where right now'], // SV2-86: No class
+  ['#/coverage/tsample002', 'coverage', 'Coverage: Mr. Brightwater'], // SV2-86: a Not free list
+  ['#/sub/tsample001', 'sub', 'Substitute plan: Ms. Halloran'], // SV2-86: the duties to cover
   ['#/directions', 'directions', 'Directions'],
   ['#/directions?from=rsample101&to=rsample303', 'directions', 'Directions'],
   ['#/directions?from=rsample101&to=rsample303&stepfree=1', 'directions', 'Directions'],
@@ -158,6 +165,29 @@ function withCalendar(project) {
     changedAt: null,
   };
   project.publish.staleAtCalendarEnd = false;
+  return withDuties(project);
+}
+
+// SV2-86: marks and duties, so the pages that show them are swept with them:
+// a lunch for grade 6, 6A's No class, a school assembly, a lunch duty, duties
+// before and after school, and a Wednesday science meeting.
+function withDuties(project) {
+  const lunch = newMark('maxe000001', 'lunch', 3);
+  lunch.scope = 'grades';
+  lunch.grades = ['6'];
+  const noclass = newMark('maxe000002', 'noclass', 1);
+  noclass.scope = 'groups';
+  noclass.groupIds = ['gsample06a'];
+  noclass.dayTypeIds = [project.dayTypes[0].id];
+  const assembly = newMark('maxe000003', 'activity', 7);
+  assembly.label = 'Assembly';
+  assembly.dayTypeIds = [project.dayTypes[1].id];
+  project.marks = [lunch, noclass, assembly];
+  const lunchDuty = Object.assign(newDuty('uaxe000001', 'duty'), { label: 'Lunch duty', when: 'period', period: 3, place: 'Cafeteria', teacherIds: ['tsample001'] });
+  const bus = Object.assign(newDuty('uaxe000002', 'duty'), { label: 'Bus duty', when: 'after', start: '15:05', end: '15:25', place: 'Bus loop', teacherIds: ['tsample001', 'tsample002'] });
+  const door = Object.assign(newDuty('uaxe000003', 'duty'), { label: 'Door duty', when: 'before', start: '07:40', end: '07:55', place: 'Front door', teacherIds: ['tsample002'] });
+  const meeting = Object.assign(newDuty('uaxe000004', 'meeting'), { label: 'Science department', when: 'period', period: 4, weekdays: [2], subjectIds: ['ssample003'] });
+  project.duties = [lunchDuty, bus, door, meeting];
   return project;
 }
 

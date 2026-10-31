@@ -14,7 +14,7 @@ import { makeHash } from '../router.js';
 import { pageOf, missingPage, pictureButton } from '../page.js';
 import { dayText } from '../dates.js';
 import { aroundRoom } from '../map.js';
-import { clockNow, longDate, todayDate, dayOnDate, dayTypeFor, meetingPeriods, dayWords, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
+import { clockNow, teacherDutyDay, dutyWords, dutyPlace, dutyTimes, longDate, todayDate, dayOnDate, dayTypeFor, meetingPeriods, dayWords, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
 import { coverageFor, teacherChooser } from './coverage.js';
 
 export const SUB_CANDIDATES = 3;
@@ -92,8 +92,21 @@ export const subView = {
     const draw = () => {
       // today's bells: a period that does not meet is left out of the day and of the cover
       const meets = meetingPeriods(school, dayType.id, bellsId);
-      const day = everyTeacherDay(school, dayType.id).get(absent.id).filter((entry) => meets.has(entry.period));
-      const cover = coverageFor(school, absent.id, dayType.id).filter((item) => meets.has(item.period));
+      // the date settles a duty that holds on some days only
+      const on = school.isDate(date.value) ? date.value : null;
+      const day = everyTeacherDay(school, dayType.id, on).get(absent.id).filter((entry) => meets.has(entry.period));
+      const cover = coverageFor(school, absent.id, dayType.id, on).filter((item) => meets.has(item.period));
+      // the substitute covers the duties too: where and when each is
+      const mine = teacherDutyDay(school, absent.id, dayType.id, on);
+      const duties = [];
+      const addDuty = (when, duty) => duties.push({ when, text: [dutyWords(duty), dutyPlace(school, duty), dutyTimes(school, duty)].filter((part) => part !== '').join(' · ') });
+      if (mine) {
+        mine.before.forEach((duty) => addDuty('Before school', duty));
+        mine.byPeriod.forEach((list, period) => {
+          if (meets.has(period)) list.forEach((duty) => addDuty(school.periodName(period), duty));
+        });
+        mine.after.forEach((duty) => addDuty('After school', duty));
+      }
       const taught = cover.length;
       says.replaceChildren(h('span', null, typed(absent.name), '\'s day on ', dayWords(school, dayType, bellsId), ': ',
         taught === 0 ? 'no group to teach.' : taught + ' of ' + day.length + ' ' + school.data.settings.periodWord.toLowerCase() + 's with a group.'));
@@ -104,7 +117,11 @@ export const subView = {
           h('p', { class: 'muted' }, teacherDetail(school, absent)),
           h('div', { class: 'rows' }, day.map((entry) => h('div', { class: 'row row--plan', dataset: { period: String(entry.period) } },
             h('span', { class: 'row__when' }, school.periodName(entry.period), h('br'), periodTimes(school, dayType.id, entry.period, bellsId)),
-            h('span', { class: entry.kind === 'teaching' ? 'row__what' : 'row__what muted' }, entryWords(school, entry)))))),
+            h('span', { class: entry.kind === 'teaching' ? 'row__what' : 'row__what muted' }, entryWords(school, entry, { dayTypeId: dayType.id, date: on })))))),
+
+        duties.length === 0 ? null : h('section', { class: 'card', dataset: { sub: 'duties' } },
+          sectionHeading('Duties to cover'),
+          h('ul', { class: 'plain' }, duties.map((duty) => h('li', { dataset: { duty: duty.when } }, h('strong', null, duty.when, ': '), typed(duty.text))))),
 
         h('section', { class: 'card', dataset: { sub: 'cover' } },
           sectionHeading('Who could cover'),
@@ -138,7 +155,7 @@ export const subView = {
             : h('p', { class: 'muted' }, 'No notes were left in this schedule.')),
 
         h('p', { class: 'reminder', dataset: { sub: 'check' } }, h('strong', null, SUB_CHECK_SENTENCE), ' This schedule was published on ' + dayText(school.data.publishedAt, now) + ' and may have changed since.'),
-      ]);
+      ].filter(Boolean));
     };
 
     drawPicker();

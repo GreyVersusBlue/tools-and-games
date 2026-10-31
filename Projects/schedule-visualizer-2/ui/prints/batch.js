@@ -42,6 +42,7 @@ import { count } from '../components/words.js';
 import { publishedModel } from '../../engine/publish-data.js';
 import { openSchool } from '../../staff/model.js';
 import { wordsJoined, partsToText, dayKindsOf, teacherSummaryOf } from '../../staff/views/teacher.js';
+import { groupSlots, everyTeacherDay, takenBy, sometimesIn, sometimesWords, edgeDuties, dutyWords, dutyPlace, dutyTimes } from '../../staff/clock.js';
 import { doorSignMarkup } from '../../staff/views/door-sign.js';
 import { roomUse, roomSummaryOf } from '../../staff/views/room.js';
 import { esc, frame, paperOf, printDate, schoolName } from './document.js';
@@ -74,16 +75,22 @@ function when(school, bell) {
 }
 
 // One kind of day as a table. `rowOf(dayType, period)` gives the cells after
-// the period's own, each already markup.
-function dayTable(school, kind, heads, rowOf) {
+// the period's own, each already markup. `edgesOf(dayType)`, when given, gives
+// { before, after }: rows ({ label, time, cells }) above the first period and
+// below the last, for the duties of the school day's edges.
+function dayTable(school, kind, heads, rowOf, edgesOf) {
   const bells = school.bells(kind.first.id);
   const out = ['<section class="batch-day">', '<h2 class="batch-day__name">' + esc(kindTitle(kind)) + '</h2>', '<table class="batch-day__table">'];
   out.push('<thead><tr>' + heads.map((head) => '<th scope="col">' + esc(head) + '</th>').join('') + '</tr></thead>', '<tbody>');
+  const edges = edgesOf ? edgesOf(kind.first) : { before: [], after: [] };
+  const edgeRow = (row) => '<tr class="batch-day__edge"><th scope="row">' + esc(row.label) + (row.time === '' ? '' : '<span class="batch-day__time">' + esc(row.time) + '</span>') + '</th>' + row.cells.map((cell) => '<td>' + cell + '</td>').join('') + '</tr>';
+  edges.before.forEach((row) => out.push(edgeRow(row)));
   bells.forEach((bell, period) => {
     const time = when(school, bell);
     out.push('<tr><th scope="row">' + esc(school.periodName(period)) + (time === '' ? '' : '<span class="batch-day__time">' + esc(time) + '</span>') + '</th>'
       + rowOf(kind.first, period).map((cell) => '<td>' + cell + '</td>').join('') + '</tr>');
   });
+  edges.after.forEach((row) => out.push(edgeRow(row)));
   out.push('</tbody>', '</table>', '</section>');
   return out.join('\n');
 }
@@ -112,14 +119,31 @@ function slotRoom(school, slot) {
 function teacherSheet(project, school, teacher, options) {
   const subject = school.subject(teacher.subjectId);
   const rooms = (teacher.roomIds || []).map((roomId) => school.room(roomId)).filter(Boolean);
-  const slotOf = (dayType, taught, period) => school.groupDay(taught.groupId, dayType.id)[period];
-  const kinds = dayKindsOf(school, (dayType) => (school.teacherDay(teacher.id, dayType.id) || []).map((entry) => entry.groups.map((taught) => {
+  const slotOf = (dayType, taught, period) => groupSlots(school, taught.groupId, dayType.id)[period];
+  const dayOf = (dayType) => everyTeacherDay(school, dayType.id).get(teacher.id) || [];
+  // days alike in their classes and in what takes the free periods are one table
+  const kinds = dayKindsOf(school, (dayType) => dayOf(dayType).map((entry) => [entry.marked, entry.duties.map((duty) => duty.id), entry.groups.map((taught) => {
     const slot = slotOf(dayType, taught, entry.period);
     return [taught.groupId, taught.roomId, slot.label, slot.roomText];
-  })));
+  })]).concat([(() => {
+    const edges = edgeDuties(school, teacher.id, dayType.id, null);
+    return [edges.before.map((duty) => duty.id), edges.after.map((duty) => duty.id)];
+  })()]));
+  const dutyCell = (duty) => esc(dutyWords(duty)) + (sometimesWords(school, duty) === '' ? '' : ' ' + quiet('(' + sometimesWords(school, duty) + ')'));
+  const edgeRows = (dayType) => {
+    const edges = edgeDuties(school, teacher.id, dayType.id, null);
+    const row = (label) => (duty) => ({ label, time: dutyTimes(school, duty), cells: [dutyCell(duty), dutyPlace(school, duty) === '' ? '' : esc(dutyPlace(school, duty))] });
+    return { before: edges.before.map(row('Before school')), after: edges.after.map(row('After school')) };
+  };
   const tables = kinds.map((kind) => dayTable(school, kind, [school.data.settings.periodWord, 'Group', 'Room'], (dayType, period) => {
-    const entry = school.teacherDay(teacher.id, dayType.id)[period];
-    if (!entry || entry.kind === 'planning') return [quiet('Planning'), ''];
+    const entry = dayOf(dayType)[period];
+    // duties that hold on some days only are added, with their days
+    const also = entry ? sometimesIn(entry, null).map((duty) => dutyCell(duty) + (dutyPlace(school, duty) === '' ? '' : ' · ' + esc(dutyPlace(school, duty)))) : [];
+    if (!entry || entry.kind === 'planning') {
+      const taken = takenBy(school, entry, dayType.id, null);
+      if (taken === null) return [also.length > 0 ? joined(also) : quiet('Planning'), ''];
+      return [esc(taken.title) + (also.length > 0 ? '; ' + joined(also) : ''), taken.place === '' && taken.times === '' ? '' : esc([taken.place, taken.times].filter((part) => part !== '').join(' · '))];
+    }
     const what = [];
     const where = [];
     for (const taught of entry.groups) {
@@ -130,8 +154,8 @@ function teacherSheet(project, school, teacher, options) {
       const text = place === null ? quiet('No room') : esc(place);
       if (!where.includes(text)) where.push(text);
     }
-    return [joined(what), joined(where)];
-  }));
+    return [joined(what.concat(also)), joined(where)];
+  }, edgeRows));
   const facts = [
     subject ? subject.name : null,
     rooms.length === 0 ? 'No room of their own' : joined(rooms.map((room) => school.roomName(room, true))),

@@ -225,7 +225,7 @@ function subjectOf(school, room, teachers) {
 
 function dayOf(school, room) {
   const uses = new Map(school.dayTypes.map((dayType) => [dayType.id, roomUse(school, room.id, dayType.id)]));
-  const kinds = dayKindsOf(school, (dayType) => uses.get(dayType.id).map((period) => period.map((use) => [use.group.id, use.label, use.teachers.map((teacher) => teacher.id)])));
+  const kinds = dayKindsOf(school, (dayType) => uses.get(dayType.id).map((period) => period.map((use) => [use.group.id, use.label, use.teachers.map((teacher) => teacher.id), use.mark ? use.mark.id : null])));
   return el('div', { class: 'sign__day', 'data-sign': 'day', 'data-count': String(kinds.length) }, kinds.map((kind) => {
     const bells = school.bells(kind.first.id);
     return el('section', { class: 'sign__kind' },

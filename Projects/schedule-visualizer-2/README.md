@@ -155,7 +155,7 @@ row names a file it does not run.
 | `test/engine/publish-crypto.test.mjs` | The lock on a published file: the key, the round trip, a wrong passcode |
 | `test/publish/linker.test.mjs` | The linker rule, each form it refuses, and the assembled script |
 | `test/publish/manifest.test.mjs` | `staff/manifest.js` against what the staff browser really loads |
-| `test/publish/staff.test.mjs` | The staff browser's plain functions, and its tokens against the planner's |
+| `test/publish/staff.test.mjs` | The staff browser's plain functions, and its tokens against the planner's; marks and duties in its views (free, rooms, coverage, the batch print and the checks report grid), and the frozen file reading as none |
 | `test/publish/baseline.mjs` | The recorded baseline of what staff receive: data, locked data and code |
 | `test/engine/presets.test.mjs` | The group colour presets, held equal in their two places |
 | `test/engine/worker.test.mjs` | The derived pipeline and the client that asks it |
@@ -243,6 +243,7 @@ row names a file it does not run.
 | `test/browser/staff-outputs.mjs` | My schedule, notes, the lock-screen image, the door sign, every page on paper, batch sheets |
 | `test/browser/staff-pictures.mjs` | Every staff page and the door sign saved as an image, held square by square to a screenshot of the page |
 | `test/browser/staff-calendar.mjs` | The staff browser's today: the calendar's day and bells on Free right now, Where right now and the day cards, "Not right?" (just today, and the days after following on, cleared by a newer file), no school, a date outside the calendar, a date change and a page coming back into view; many day types in cards, folded cards and on paper; the calendar page and its print; staffing's "same as"; the lock-screen image with many day types; at 390 and 1280 px and by keyboard |
+| `test/browser/staff-duties.mjs` | Marks and duties in the staff browser: a duty or a meeting taking a free period ("Duty" over it), duties before and after school as rows without a period, a Wednesday duty on a Wednesday's card and listed with its day on the others, Free right now and common planning without the teacher on duty, Where right now for No class, lunch and duty, a group's No class and Lunch, a room empty in a No class period (page and door sign), Coverage's folded Not free list with the reason, the substitute plan's duties, names with markup shown as typed, the lock-screen image, paper, and a file with neither list; at 390 and 1280 px and by keyboard |
 | `test/browser/publish.mjs` | The Staff browser section: the preview, the publish form, a file published and opened from disk, batch printing |
 | `test/browser/m3-pass.mjs` | The movement view after the walk-through of it: the map first, the page that does not scroll, the toast above the dock |
 | `test/browser/m4-pass.mjs` | The published file on a phone after the walk-through: M1 to M8 |

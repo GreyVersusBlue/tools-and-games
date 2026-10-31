@@ -10,26 +10,39 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, missingPage, printWhen } from '../page.js';
-import { dayOnDate, dayTypeFor, bellsIdFor, bellsOnPick, longDate, meetingPeriods, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
+import { dayOnDate, dutyDate, entryIsFree, takenBy, dayWords, dayTypeFor, bellsIdFor, bellsOnPick, longDate, meetingPeriods, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
 import { freeTeachers } from './free.js';
 
 // For each period a teacher teaches on a day type, who is free to cover it:
 //
-//   [{ period, entry, candidates: [{ teacher, sameSubject }] }]
+//   [{ period, entry, candidates: [{ teacher, sameSubject }], notFree: [{ teacher, reason }] }]
+//
+// A teacher on duty, at a meeting or under a mark is not a candidate: they
+// are listed in `notFree` with the reason ("On duty: Lunch duty"). `date`
+// settles a duty that holds on some days only.
 //
 // Same-subject teachers come first; within each part the order is the
 // school's own. A teacher with no subject is the same subject as nobody.
-export function coverageFor(school, teacherId, dayTypeId) {
+export function coverageFor(school, teacherId, dayTypeId, date) {
   const absent = school.teacher(teacherId);
-  const day = everyTeacherDay(school, dayTypeId).get(teacherId) || [];
+  const days = everyTeacherDay(school, dayTypeId, date);
+  const day = days.get(teacherId) || [];
   const periods = [];
   for (const entry of day) {
     if (entry.kind !== 'teaching') continue;
-    const free = freeTeachers(school, dayTypeId, entry.period).filter((teacher) => teacher.id !== teacherId);
+    const free = freeTeachers(school, dayTypeId, entry.period, date).filter((teacher) => teacher.id !== teacherId);
+    const notFree = [];
+    for (const teacher of school.teachers) {
+      const theirs = days.get(teacher.id)[entry.period];
+      if (teacher.id === teacherId || !theirs || theirs.kind !== 'planning' || entryIsFree(theirs)) continue;
+      const taken = takenBy(school, theirs, dayTypeId, date);
+      notFree.push({ teacher, reason: taken ? taken.reason : 'Busy' });
+    }
     const same = (teacher) => Boolean(absent.subjectId) && teacher.subjectId === absent.subjectId;
     periods.push({
       period: entry.period,
       entry,
+      notFree,
       candidates: free.filter(same).map((teacher) => ({ teacher, sameSubject: true })).concat(free.filter((teacher) => !same(teacher)).map((teacher) => ({ teacher, sameSubject: false }))),
     });
   }
@@ -97,7 +110,8 @@ export const coverageView = {
     const draw = () => {
       // today's bells: a period that does not meet has nobody to cover
       const meets = meetingPeriods(school, dayType.id, bellsId);
-      const periods = coverageFor(school, absent.id, dayType.id).filter((item) => meets.has(item.period));
+      const when = date !== '' ? date : dutyDate(ctx, dayType.id);
+      const periods = coverageFor(school, absent.id, dayType.id, when).filter((item) => meets.has(item.period));
       const nobody = periods.filter((item) => item.candidates.length === 0);
       const name = typed(absent.name);
       let sentence;
@@ -112,7 +126,7 @@ export const coverageView = {
         const times = periodTimes(school, dayType.id, item.period, bellsId);
         return h('section', { class: 'card', dataset: { period: String(item.period) } },
           h('h2', { class: 'card__title' }, school.periodName(item.period), times ? h('span', { class: 'card__when' }, times) : null),
-          h('p', null, entryWords(school, item.entry)),
+          h('p', null, entryWords(school, item.entry, { dayTypeId: dayType.id, date: when })),
           sectionHeading('Free to cover', item.candidates.length),
           item.candidates.length === 0
             ? h('p', { class: 'muted' }, 'Nobody is free this ' + word + '.')
@@ -120,7 +134,14 @@ export const coverageView = {
               viewLink(school, 'teacher', candidate.teacher.id, [
                 h('span', { class: 'list__name' }, typed(candidate.teacher.name), candidate.sameSubject ? h('span', { class: 'tag' }, 'Same subject') : null),
                 h('span', { class: 'list__detail' }, teacherDetail(school, candidate.teacher)),
-              ], 'list__link')))));
+              ], 'list__link')))),
+          item.notFree.length === 0 ? null : h('details', { class: 'notfree', dataset: { notfree: String(item.period) } },
+            h('summary', { class: 'notfree__summary' }, 'Not free (' + item.notFree.length + ')'),
+            h('ul', { class: 'list', dataset: { list: 'notfree' } }, item.notFree.map((one) => h('li', { dataset: { teacher: one.teacher.id } },
+              viewLink(school, 'teacher', one.teacher.id, [
+                h('span', { class: 'list__name' }, typed(one.teacher.name)),
+                h('span', { class: 'list__detail' }, one.reason),
+              ], 'list__link'))))));
       }));
 
       links.replaceChildren(...[

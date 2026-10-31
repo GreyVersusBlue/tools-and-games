@@ -30,6 +30,9 @@
 
 import { h, typed } from './dom.js';
 import { makeHash } from './router.js';
+import { teacherDays, isFree } from '../engine/teacher-day.js';
+import { meetingSlots } from '../engine/runs.js';
+import { markFor, schoolMarkFor, dutyIsSometimes, teacherDuties } from '../engine/marks.js';
 
 export const CLOCK_EVERY_MS = 30000;
 export const DAY_TYPE_KEY = 'day';
@@ -394,19 +397,156 @@ export function watchClock(node, tick) {
   watching = mine;
 }
 
-// Every teacher's day on a day type, worked out once per school and day type:
-// a Map of teacher id to the day engine/teacher-day.js gives.
+// Every teacher's day on a day type, worked out once per school, day type and
+// date: a Map of teacher id to the day engine/teacher-day.js gives. With a
+// date, a duty that holds only on some days takes the period when the date
+// matches it and is left out when not; without one it is listed with its
+// words and takes nothing (ARCHITECTURE 17.6).
 const days = new WeakMap();
 
-export function everyTeacherDay(school, dayTypeId) {
+export function everyTeacherDay(school, dayTypeId, date) {
   if (!days.has(school)) days.set(school, new Map());
   const kept = days.get(school);
-  if (!kept.has(dayTypeId)) {
+  const key = dayTypeId + '|' + (typeof date === 'string' ? date : '');
+  if (!kept.has(key)) {
+    const found = teacherDays(school.data, dayTypeId, typeof date === 'string' ? { date } : undefined);
     const made = new Map();
-    for (const teacher of school.teachers) made.set(teacher.id, school.teacherDay(teacher.id, dayTypeId) || []);
-    kept.set(dayTypeId, made);
+    for (const teacher of school.teachers) made.set(teacher.id, (found && found.get(teacher.id)) || []);
+    kept.set(key, made);
   }
-  return kept.get(dayTypeId);
+  return kept.get(key);
+}
+
+// The date a page applies a day type's sometimes-duties for: today's, when
+// the calendar or the reader has settled today and the day type is today's;
+// otherwise none, and such a duty is listed with its words.
+export function dutyDate(ctx, dayTypeId) {
+  const today = todayOf(ctx);
+  return today.known && today.school && today.dayType !== null && today.dayType.id === dayTypeId ? today.date : null;
+}
+
+// Where is group G on day type D, for the bells given (none: the regular
+// ones)? engine/runs.js's one answer: a No class period or one the bells
+// leave out is an empty slot.
+export function groupSlots(school, groupId, dayTypeId, bellsId) {
+  return meetingSlots(school.data, groupId, dayTypeId, bellsId || null) || [];
+}
+
+// The mark a group has in a period, or null. A school without marks has none.
+export function groupMark(school, groupId, dayTypeId, period) {
+  return markFor(school.data, groupId, dayTypeId, period);
+}
+
+const MARK_WORDS = { lunch: 'Lunch', advisory: 'Advisory', activity: 'Activity', noclass: 'No class' };
+const DUTY_WORDS = { duty: 'Duty', meeting: 'Meeting', lunch: 'Their own lunch' };
+const WEEKDAYS = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
+
+// A mark's words as typed, else its kind's: "Lunch", "Homeroom", "No class".
+export function markWords(mark) {
+  if (!mark) return '';
+  return typeof mark.label === 'string' && mark.label.trim() !== '' ? mark.label : MARK_WORDS[mark.kind] || '';
+}
+
+// A duty's words as typed, else its kind's: "Lunch duty", "Duty".
+export function dutyWords(duty) {
+  return typeof duty.label === 'string' && duty.label.trim() !== '' ? duty.label : DUTY_WORDS[duty.kind] || 'Duty';
+}
+
+// Where a duty is: its room's name, or the words kept for a place.
+export function dutyPlace(school, duty) {
+  const room = typeof duty.roomId === 'string' ? school.room(duty.roomId) : null;
+  if (room) return school.roomName(room, true);
+  return typeof duty.place === 'string' ? duty.place : '';
+}
+
+// When a duty runs, in the school's time format: "2:45 PM to 3:05 PM",
+// "from 2:45 PM", "until 3:05 PM", or '' when it gives no times.
+export function dutyTimes(school, duty) {
+  const start = typeof duty.start === 'string' && duty.start !== '' ? school.time(duty.start) : '';
+  const end = typeof duty.end === 'string' && duty.end !== '' ? school.time(duty.end) : '';
+  if (start !== '' && end !== '') return start + ' to ' + end;
+  if (start !== '') return 'from ' + start;
+  return end === '' ? '' : 'until ' + end;
+}
+
+// The days a duty that holds only on some days holds on: "Wednesdays",
+// "Mondays and Fridays, from 1 December to 18 December"; '' for one that
+// holds every day.
+export function sometimesWords(school, duty) {
+  if (!dutyIsSometimes(duty)) return '';
+  const names = (Array.isArray(duty.weekdays) ? duty.weekdays : []).filter((day) => Number.isInteger(day) && day >= 0 && day < 7).sort((a, b) => a - b).map((day) => WEEKDAYS[day]);
+  const parts = [];
+  if (names.length > 0) parts.push(names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1]);
+  const from = school.isDate(duty.from) ? school.dateWords(duty.from, { year: false }) : '';
+  const to = school.isDate(duty.to) ? school.dateWords(duty.to, { year: false }) : '';
+  if (from !== '' && to !== '') parts.push('from ' + from + ' to ' + to);
+  else if (from !== '') parts.push('from ' + from);
+  else if (to !== '') parts.push('until ' + to);
+  return parts.join(', ');
+}
+
+// What takes a free period, or null when nothing does (or the entry is a
+// class): { eyebrow, title, place, times, reason } as plain text.
+//
+//   an always duty (or, with `date`, one that holds that day) comes first,
+//   then a school mark. `eyebrow` is the small word over a duty's title
+//   ("Duty", "Meeting"), '' for a mark. `reason` is why the teacher is not
+//   free, for Coverage's list: "On duty: Lunch duty", "At lunch".
+export function takenBy(school, entry, dayTypeId, date) {
+  if (!entry || entry.kind !== 'planning' || !entry.marked) return null;
+  const duty = takingDuty(entry, date);
+  if (duty) {
+    const title = dutyWords(duty);
+    const named = typeof duty.label === 'string' && duty.label.trim() !== '';
+    const lead = { duty: 'On duty', meeting: 'At a meeting', lunch: 'At their own lunch' }[duty.kind] || 'On duty';
+    return { eyebrow: DUTY_WORDS[duty.kind] === title ? '' : DUTY_WORDS[duty.kind], title, place: dutyPlace(school, duty), times: dutyTimes(school, duty), reason: named ? lead + ': ' + title : lead };
+  }
+  const mark = schoolMarkFor(school.data, dayTypeId, entry.period);
+  const title = mark ? markWords(mark) : MARK_WORDS[entry.marked] || 'Taken';
+  const lead = { lunch: 'At lunch', advisory: 'In advisory', activity: 'At an activity', noclass: 'No class' }[entry.marked] || 'Busy';
+  return { eyebrow: '', title, place: '', times: '', reason: title === MARK_WORDS[entry.marked] ? lead : lead + ': ' + title };
+}
+
+// The duty that takes a free period, by teacher-day.js's order: an always
+// duty first, and with a date also one that holds that day.
+export function takingDuty(entry, date) {
+  if (!entry || entry.kind !== 'planning' || !entry.marked) return null;
+  return (entry.duties || []).find((each) => !dutyIsSometimes(each) || typeof date === 'string') || null;
+}
+
+// The duties in a period that hold on some days only and are not what takes
+// the period: listed with their words ("Lunch duty (Wednesdays)").
+export function sometimesIn(entry, date) {
+  const taking = takingDuty(entry, date);
+  return (entry && entry.duties ? entry.duties : []).filter((duty) => dutyIsSometimes(duty) && duty !== taking);
+}
+
+// One duty as a line of text: "Lunch duty · Cafeteria · 12:00 PM to 12:30 PM",
+// with "(Wednesdays)" after a duty that holds on some days only.
+export function dutyLine(school, duty) {
+  const sometimes = sometimesWords(school, duty);
+  return [dutyWords(duty) + (sometimes === '' ? '' : ' (' + sometimes + ')'), dutyPlace(school, duty), dutyTimes(school, duty)].filter((part) => part !== '').join(' · ');
+}
+
+// A teacher's duties before and after the school day, on a day type and
+// date: { before, after } lists of duties (a duty that holds only on some
+// days is in the list for a date that matches, and for no date at all).
+export function edgeDuties(school, teacherId, dayTypeId, date) {
+  const found = teacherDutyDay(school, teacherId, dayTypeId, date);
+  return { before: found.before, after: found.after };
+}
+
+// Is the teacher free in this entry? engine/teacher-day.js's one rule, asked
+// through here so that the views ask the engine through one door.
+export function entryIsFree(entry) {
+  return isFree(entry);
+}
+
+// All of a teacher's duties on a day type and date: { before, byPeriod, after },
+// each a list of duties; none for a teacher or day type the file does not have.
+export function teacherDutyDay(school, teacherId, dayTypeId, date) {
+  const found = teacherDuties(school.data, teacherId, dayTypeId, typeof date === 'string' ? { date } : undefined);
+  return found || { before: [], byPeriod: [], after: [] };
 }
 
 let serial = 0;
@@ -654,9 +794,16 @@ export function teacherDetail(school, teacher) {
 }
 
 // What a teacher has in one period of their day, as pieces: "6A in Room 103",
-// "6C and 7C in Room 203", or "Planning".
-export function entryWords(school, entry) {
-  if (!entry || entry.kind !== 'teaching') return ['Planning'];
+// "6C and 7C in Room 203", or "Planning". A free period that a duty or a mark
+// takes reads as it does: "Lunch duty · Cafeteria", "Lunch". `options`
+// ({ dayTypeId, date }) lets a school mark be named as typed and a duty that
+// holds on some days count when the date matches.
+export function entryWords(school, entry, options) {
+  if (!entry || entry.kind !== 'teaching') {
+    const taken = takenBy(school, entry, options && options.dayTypeId, options && options.date);
+    if (taken === null) return ['Planning'];
+    return [typed(taken.title)].concat(taken.place === '' ? [] : [' · ', typed(taken.place)]);
+  }
   const pieces = [];
   const roomIds = [];
   entry.groups.forEach((taught, index) => {
