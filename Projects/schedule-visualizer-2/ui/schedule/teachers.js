@@ -13,7 +13,7 @@ import { roomName } from '../../engine/findings.js';
 import { buildExport } from '../../engine/exports.js';
 import { printButtons } from '../prints/index.js';
 import { printButton } from '../components/print-preview.js';
-import { fill, apply, button, keyed, emptyState, marksFor, freeName, quote, collator, download } from './common.js';
+import { fill, apply, button, keyed, emptyState, marksFor, freeName, deletedText, quote, collator, download } from './common.js';
 
 const WHAT = 'A teacher is a named member of staff, with a subject and one or more rooms.';
 
@@ -103,7 +103,7 @@ export function mount(env) {
       h('td', null, button('Delete', () => {
         const index = project.teachers.indexOf(teacher);
         if (!apply(env, deleteTeacher, { id: teacher.id })) return;
-        ctx.toast({ text: 'Deleted teacher ' + teacher.name + '.', action: { label: 'Undo', run: ctx.undo } });
+        ctx.toast({ text: deletedText(ctx.store.undoOutcome, 'teacher ', teacher.name), action: { label: 'Undo', run: ctx.undo } });
         const left = ctx.store.project.teachers;
         const next = left[Math.min(index, left.length - 1)];
         env.render(next ? 'teacher:' + next.id + ':name' : 'teacher-add');

@@ -34,7 +34,7 @@ import { effectiveSchedule, isOwnCopy, ownDayTypes, effectiveDayType } from '../
 import { bellsFor, periodName, formatTime } from '../../engine/bells.js';
 import { allRooms, resolveSlotRoom, GROUP_COLOUR_PRESETS, RANGES } from '../../engine/schema.js';
 import { NOT_IN_BUILDING } from '../../engine/exports.js';
-import { fill, apply, button, keyed, emptyState, marksFor, freeName, roomLabel, quote, collator, dragRows, grip, SEVERITY_WORDS } from './common.js';
+import { fill, apply, button, keyed, emptyState, marksFor, freeName, deletedText, roomLabel, quote, collator, dragRows, grip, SEVERITY_WORDS } from './common.js';
 import { slotKey } from './model.js';
 import { roomPicker } from './room-picker.js';
 import { GROUPS_HASH, groupHash, writtenAsList, groupOf, namesGoneGroup } from './address.js';
@@ -702,7 +702,7 @@ export function mount(env) {
           button('Delete', () => {
             if (!apply(env, deleteGroup, { id: group.id })) return;
             const left = ctx.store.project.groups;
-            ctx.toast({ text: 'Deleted group ' + group.name + '.', action: { label: 'Undo', run: ctx.undo } });
+            ctx.toast({ text: deletedText(ctx.store.undoOutcome, 'group ', group.name), action: { label: 'Undo', run: ctx.undo } });
             const next = left[Math.min(index, left.length - 1)];
             // on a phone the list comes back: the group that was open is gone
             view.groupId = next ? next.id : null;

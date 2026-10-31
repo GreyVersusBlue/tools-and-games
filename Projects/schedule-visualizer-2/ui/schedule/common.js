@@ -165,3 +165,13 @@ export function dragRows(body, onDrop, options) {
 export function grip() {
   return h('span', { class: 'sch-grip', 'aria-hidden': 'true', title: 'Drag to move' }, '⠿');
 }
+
+// What a delete's toast says: "Deleted group 7-3" and, from the action's
+// outcome ({ marks, duties, text }), what it took with it or left bare:
+// "Deleted group 7-3, 1 marked period removed". `lead` is the words before
+// the name ("group "), `outcome` is store.undoOutcome. Ends with a full stop.
+export function deletedText(outcome, lead, name) {
+  const plain = 'Deleted ' + name;
+  const tail = outcome && typeof outcome.text === 'string' && outcome.text.startsWith(plain) ? outcome.text.slice(plain.length) : '';
+  return 'Deleted ' + lead + name + tail + '.';
+}
