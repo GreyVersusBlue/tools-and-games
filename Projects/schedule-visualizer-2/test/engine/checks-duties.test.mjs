@@ -210,11 +210,34 @@ test('no-planning: a duty that holds only on some days does not take the period'
   assert.deepEqual(ofKind(checkSchedule(project, null), 'no-planning').filter((finding) => finding.where.teacherId === BRIGHTWATER), []);
 });
 
+const LARKSPUR = 'tsample011'; // A Day: a group in every period but two, when he is free
+
+test('no-planning: a duty's words are lower-case mid-sentence, a typed label stays as typed', () => {
+  const project = withLists(null, [duty({ when: 'period', period: 3, teacherIds: [LARKSPUR] }), duty({ kind: 'lunch', when: 'period', period: 6, teacherIds: [LARKSPUR] })]);
+  const found = ofKind(checkSchedule(project, null), 'no-planning').filter((finding) => finding.where.teacherId === LARKSPUR && finding.where.dayTypeId === A);
+  assert.equal(found.length, 1);
+  assert.match(found[0].text, /: Period 4 is a duty and Period 7 is their own lunch, and there is a group in every other period\.$/);
+  const typed = withLists(null, [duty({ label: 'Hall Watch', when: 'period', period: 3, teacherIds: [LARKSPUR] }), duty({ when: 'period', period: 6, teacherIds: [LARKSPUR] })]);
+  const again = ofKind(checkSchedule(typed, null), 'no-planning').filter((finding) => finding.where.teacherId === LARKSPUR && finding.where.dayTypeId === A);
+  assert.match(again[0].text, /: Period 4 is Hall Watch and Period 7 is a duty,/);
+});
+
+test('no-planning and consecutive: a day type a duty names directly is checked on its own, as for a mark', () => {
+  const two = (dayTypeIds) => {
+    const project = withFollower(withLists(null, [duty({ when: 'period', period: 3, teacherIds: [LARKSPUR], dayTypeIds }), duty({ when: 'period', period: 6, teacherIds: [LARKSPUR], dayTypeIds })]));
+    assertValid(project);
+    return ofKind(checkSchedule(project, null), 'no-planning').filter((finding) => finding.where.teacherId === LARKSPUR).map((finding) => [finding.where.dayTypeId, finding.text.replace(/: .*/, '')]);
+  };
+  assert.deepEqual(two([A]), [[A, 'Mr. Larkspur has no planning period on A Day and C Day']], 'named on A alone, C Day is the same as A Day and follows it');
+  assert.deepEqual(two([C]), [[C, 'Mr. Larkspur has no planning period on C Day']], 'named on the follower alone, it gets its own check and A gets none');
+  assert.deepEqual(two([]), [[A, 'Mr. Larkspur has no planning period on A Day and C Day']], 'named on none, the two are one check as before');
+});
+
 test('no-planning: a school mark takes the free period of a teacher with nothing then, and its words are in the sentence', () => {
   // Ms. Vandermeer is free in Periods 5 and 6 on A Day
   const project = withLists([mark({ kind: 'lunch', period: 4 }), mark({ kind: 'advisory', label: 'Homeroom', period: 5 })], null);
   const found = ofKind(checkSchedule(project, null), 'no-planning').filter((finding) => finding.where.teacherId === VANDERMEER);
-  assert.deepEqual(found.map((finding) => [finding.where.dayTypeId, finding.text]), [[A, 'Ms. Vandermeer has no planning period on A Day: Period 5 is Lunch and Period 6 is Advisory, and there is a group in every other period.']]);
+  assert.deepEqual(found.map((finding) => [finding.where.dayTypeId, finding.text]), [[A, 'Ms. Vandermeer has no planning period on A Day: Period 5 is lunch and Period 6 is advisory, and there is a group in every other period.']]);
   assert.equal(isFree(teacherDay(project, VANDERMEER, A)[4]), false);
 });
 
@@ -275,6 +298,30 @@ test('consecutive: teachingRunEnd is the same rule for the checks and for sugges
   assert.equal(teachingRunEnd([t(), gap('lunch'), t()], 0), 0);
   assert.equal(teachingRunEnd([t(), gap('noclass'), t()], 0), 0);
   assert.equal(teachingRunEnd([t(), gap('advisory'), t()], 0), 0);
+});
+
+test('consecutive: a school Lunch or No class in a slot ends the run whatever else the teacher has there', () => {
+  // Mr. Pennywhistle teaches 3, 4, 6, 7, 8 on A Day; Period 5 is free
+  const own = duty({ label: 'Hall', when: 'period', period: 4, teacherIds: [PENNYWHISTLE] });
+  assert.deepEqual(runsOf(checkSchedule(limited(2, null, [own]), null), PENNYWHISTLE), ['Mr. Pennywhistle teaches 5 periods in a row on A Day, Period 3 to Period 8. The limit set for this school is 2.']);
+  for (const kind of ['lunch', 'noclass']) {
+    const project = limited(2, [mark({ kind, period: 4 })], [own]);
+    assert.deepEqual(runsOf(checkSchedule(project, null), PENNYWHISTLE), ['Mr. Pennywhistle teaches 3 periods in a row on A Day, Period 6 to Period 8. The limit set for this school is 2.'], kind + ' ends the run though an always duty is there');
+  }
+  const advisory = limited(2, [mark({ kind: 'advisory', period: 4 })], [own]);
+  assert.equal(runsOf(checkSchedule(advisory, null), PENNYWHISTLE).length, 1, 'an Advisory under the duty does not end it: the duty outranks it');
+  assert.match(runsOf(checkSchedule(advisory, null), PENNYWHISTLE)[0], /5 periods in a row/);
+});
+
+test('consecutive: teachingRunEnd reads the school marks it is given, not the entry\'s marked', () => {
+  const t = () => ({ kind: 'teaching', marked: null, groups: [], duties: [] });
+  const gap = (marked) => ({ kind: 'planning', marked, groups: [], duties: [] });
+  const day = [t(), gap('duty'), t()];
+  assert.equal(teachingRunEnd(day, 0), 2);
+  assert.equal(teachingRunEnd(day, 0, [null, null, null]), 2);
+  assert.equal(teachingRunEnd(day, 0, [null, 'advisory', null]), 2);
+  assert.equal(teachingRunEnd(day, 0, [null, 'lunch', null]), 0);
+  assert.equal(teachingRunEnd(day, 0, [null, 'noclass', null]), 0);
 });
 
 // ---------------------------------------------------------------- empty-period

@@ -71,7 +71,8 @@
 //
 // A mark on a slot (lunch, advisory, activity, no class) stops the empty
 // period note for it. A day type that is the same as another but is named
-// directly by a mark is checked on its own, since its meeting slots differ.
+// directly by a mark or a duty is checked on its own, since its meeting slots
+// or its duties differ.
 //
 // Head counts fall back to the school default, as everywhere else.
 
@@ -80,7 +81,7 @@ import { ownDayTypes, isOwnCopy, findDayType, followersOf } from './day-types.js
 import { bellsFor, periodName, findBellSchedule, offPeriods } from './bells.js';
 import { meetingSlots } from './runs.js';
 import { teacherDays, slotTeacherIds, entryPlaces, isFree } from './teacher-day.js';
-import { hasMarks, markFor, dutiesOn, dutyTeachers, dutyIsSometimes } from './marks.js';
+import { hasMarks, markFor, schoolMarkFor, dutiesOn, dutyTeachers, dutyIsSometimes } from './marks.js';
 import { dateWords } from './calendar.js';
 import { bellMoves, transitionPlan } from './crowd.js';
 import { makeFinding, sortFindings, splitAccepted, countWord, listWords, periodWord, roomName, formatDuration } from './findings.js';
@@ -94,13 +95,14 @@ function onDays(project, dayType) {
   return 'on ' + listWords(names);
 }
 
-// The day types that are the same as another but are named directly by a mark:
-// their meeting slots can differ, so they are checked on their own (runsOf,
-// runs.js, makes the same exception for movement).
+// The day types that are the same as another but are named directly by a mark
+// or a duty: their meeting slots or their duties can differ, so they are
+// checked on their own (runsOf, runs.js, makes the same exception for
+// movement).
 function markedFollowers(project) {
   const named = new Set();
-  for (const mark of marksOf(project)) {
-    if (mark && Array.isArray(mark.dayTypeIds)) for (const id of mark.dayTypeIds) if (typeof id === 'string') named.add(id);
+  for (const entry of marksOf(project).concat(dutiesOf(project))) {
+    if (entry && Array.isArray(entry.dayTypeIds)) for (const id of entry.dayTypeIds) if (typeof id === 'string') named.add(id);
   }
   return new Set(project.dayTypes.filter((dayType) => named.has(dayType.id) && !isOwnCopy(project, dayType.id)).map((dayType) => dayType.id));
 }
@@ -108,6 +110,7 @@ function markedFollowers(project) {
 const DUTY_AS_SAID = { duty: 'a duty', meeting: 'a meeting', lunch: 'their own lunch' };
 const DUTY_AS_NAMED = { duty: 'Duty', meeting: 'Meeting', lunch: 'Their own lunch' };
 export const MARK_AS_NAMED = { lunch: 'Lunch', advisory: 'Advisory', activity: 'Activity', noclass: 'No class' };
+const MARK_AS_SAID = { lunch: 'lunch', advisory: 'advisory', activity: 'an activity', noclass: 'no class' };
 
 // "Lunch duty" as typed, else the kind's words: "a duty", "a meeting".
 function dutySaid(duty) {
@@ -150,20 +153,25 @@ function runOrder(project, bellsId) {
   return schedules.findIndex((schedule) => schedule && schedule.id === bellsId);
 }
 
-// What takes a period no group does: the always duty's words, else the mark's.
+// What takes a period no group does, in the middle of a sentence: the always
+// duty's words ("a duty", or the label as typed), else the mark's.
 function takenWords(entry) {
   const duty = entry.duties.find((candidate) => !dutyIsSometimes(candidate));
-  return duty ? dutyNamed(duty) : MARK_AS_NAMED[entry.marked] || 'taken';
+  return duty ? dutySaid(duty) : MARK_AS_SAID[entry.marked] || 'taken';
 }
 
 // The last teaching period of the run that starts at `start` in a teacher's
 // day. A duty or a meeting between two classes neither adds to the run nor
 // ends it; a free period, a lunch (their own, or a school mark) or a No class
 // period ends it. With no duties it is the plain run of teaching periods.
-export function teachingRunEnd(day, start) {
+// `schoolMarks`, when given, is the kind of the school's mark in each period
+// (or null): a school Lunch or No class ends the run whatever else the teacher
+// has there, which an always duty in `marked` would otherwise hide.
+export function teachingRunEnd(day, start, schoolMarks) {
   let end = start;
   for (let next = start + 1; next < day.length; next += 1) {
     if (day[next].kind === 'teaching') end = next;
+    else if (schoolMarks && (schoolMarks[next] === 'lunch' || schoolMarks[next] === 'noclass')) break;
     else if (day[next].marked !== 'duty' && day[next].marked !== 'meeting') break;
   }
   return end;
@@ -302,6 +310,7 @@ export function checkSchedule(project, walkResults) {
     }
 
     const days = teacherDays(project, d);
+    const schoolMarks = marked ? Array.from({ length: periods }, (unused, p) => { const mark = schoolMarkFor(project, d, p); return mark ? mark.kind : null; }) : null;
     // the day types this check speaks for: this one and those the same as it
     // (not those a mark names, checked on their own)
     const members = [dayType].concat(followersOf(project, dayType.id).filter((follower) => !apart.has(follower.id)));
@@ -363,7 +372,7 @@ export function checkSchedule(project, walkResults) {
           start += 1;
           continue;
         }
-        const end = teachingRunEnd(day, start);
+        const end = teachingRunEnd(day, start, schoolMarks);
         const length = day.slice(start, end + 1).filter((entry) => entry.kind === 'teaching').length;
         if (length > limit) {
           const run = add('consecutive', [d, start, teacher.id],
