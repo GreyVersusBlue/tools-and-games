@@ -417,12 +417,14 @@ export function everyTeacherDay(school, dayTypeId, date) {
   return kept.get(key);
 }
 
-// The date a page applies a day type's sometimes-duties for: today's, when
-// the calendar or the reader has settled today and the day type is today's;
-// otherwise none, and such a duty is listed with its words.
+// The date a page applies a day type's sometimes-duties for: the device's
+// date, whenever the day type is the one today is shown as (the calendar's,
+// the reader's answer, the hand choice, or the first when nobody has said);
+// otherwise none, and such a duty is listed with its words. A school with no
+// calendar, or a date outside it, still has a today (DECISIONS 2026-10-31).
 export function dutyDate(ctx, dayTypeId) {
   const today = todayOf(ctx);
-  return today.known && today.school && today.dayType !== null && today.dayType.id === dayTypeId ? today.date : null;
+  return today.school && today.dayType !== null && today.dayType.id === dayTypeId ? today.date : null;
 }
 
 // Where is group G on day type D, for the bells given (none: the regular

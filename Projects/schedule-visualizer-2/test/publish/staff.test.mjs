@@ -24,7 +24,7 @@ import { teacherDay, isFree } from '../../engine/teacher-day.js';
 import { newMark, newDuty } from '../../engine/schema.js';
 import { validate } from '../../engine/validate.js';
 import { effectiveSchedule } from '../../engine/day-types.js';
-import { everyTeacherDay, groupSlots, groupMark, takenBy, takingDuty, sometimesIn, sometimesWords, dutyTimes, dutyPlace, edgeDuties, entryWords } from '../../staff/clock.js';
+import { dutyDate, everyTeacherDay, groupSlots, groupMark, takenBy, takingDuty, sometimesIn, sometimesWords, dutyTimes, dutyPlace, edgeDuties, entryWords } from '../../staff/clock.js';
 import { freeTeachers, emptyRooms } from '../../staff/views/free.js';
 import { coverageFor } from '../../staff/views/coverage.js';
 import { roomUse } from '../../staff/views/room.js';
@@ -886,6 +886,28 @@ const dutyModel = (change) => openSchool(publishedModel(dutySchool(change), { cl
 
 test('the marks and duties fixture is a valid project', () => {
   assert.deepEqual(validate(dutySchool()), []);
+});
+
+test('a school with no calendar, or a date outside it, still applies a sometimes duty by the device\'s date', () => {
+  const school = dutyModel();
+  assert.equal(school.data.calendar, null, 'the fixture has no calendar');
+  const wednesday = todayCtx(school, '2026-09-02T10:00:00Z');
+  assert.equal(todayOf(wednesday).known, false, 'nobody has said which day it is');
+  assert.equal(dutyDate(wednesday, A), '2026-09-02', 'the day shown is today\'s, so its date decides');
+  assert.equal(dutyDate(wednesday, B), null, 'another day type is not today');
+  const names = (ctx) => freeTeachers(school, A, 4, dutyDate(ctx, A)).map((teacher) => teacher.id);
+  assert.ok(!names(wednesday).includes('tsample003'), 'at the Wednesday meeting right now');
+  assert.ok(names(todayCtx(school, '2026-09-03T10:00:00Z')).includes('tsample003'), 'free on the Thursday');
+  assert.deepEqual(commonPeriods(school, ['tsample003', 'tsample010'], A, dutyDate(wednesday, A)).includes(4), false, 'common planning');
+  // a calendar that does not reach the date is the same
+  const outside = dutyModel((project) => { project.calendar = todaySchool().data.calendar; });
+  const later = todayCtx(outside, '2027-09-01T10:00:00Z');
+  assert.equal(todayOf(later).calendar, 'outside');
+  assert.equal(dutyDate(later, A), '2027-09-01', 'a Wednesday outside the calendar');
+  // the reader's own answer for another day type moves today to that one
+  const chosen = todayCtx(school, '2026-09-02T10:00:00Z', { day: B });
+  assert.equal(dutyDate(chosen, A), null);
+  assert.equal(dutyDate(chosen, B), '2026-09-02');
 });
 
 test('a teacher on duty is not free: Free right now lists the others, and a Wednesday duty takes the period on a Wednesday only', () => {
