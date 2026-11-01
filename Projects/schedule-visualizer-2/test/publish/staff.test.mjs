@@ -28,6 +28,8 @@ import { dutyDate, everyTeacherDay, groupSlots, groupMark, takenBy, takingDuty, 
 import { freeTeachers, emptyRooms } from '../../staff/views/free.js';
 import { coverageFor } from '../../staff/views/coverage.js';
 import { roomUse } from '../../staff/views/room.js';
+import { dayKindsOf } from '../../staff/views/teacher.js';
+import { lockScreenLayout } from '../../staff/outputs.js';
 import { commonPeriods } from '../../staff/views/common.js';
 import { render as renderBatch } from '../../ui/prints/batch.js';
 import { render as renderChecks } from '../../ui/prints/checks-report.js';
@@ -908,6 +910,19 @@ test('a school with no calendar, or a date outside it, still applies a sometimes
   const chosen = todayCtx(school, '2026-09-02T10:00:00Z', { day: B });
   assert.equal(dutyDate(chosen, A), null);
   assert.equal(dutyDate(chosen, B), '2026-09-02');
+});
+
+test('the lock-screen image says a sometimes duty inside a period, with its days, and the always duty still takes the period', () => {
+  const school = dutyModel((project) => { project.duties[3].label = '<b>Science</b>'; });
+  const lines = (teacherId) => {
+    const teacher = school.teacher(teacherId);
+    const kinds = dayKindsOf(school, (dayType) => (school.teacherDay(teacher.id, dayType.id) || []).map((entry) => entry.groups.map((taught) => [taught.groupId, taught.roomId])));
+    return lockScreenLayout(school, teacher, kinds, {}).items.filter((item) => item.kind === 'text').map((item) => item.text);
+  };
+  const three = lines('tsample003');
+  assert.ok(three.includes('Planning · <b>Science</b> (Wednesdays)'), 'the meeting, as typed, with its day: ' + three.filter((text) => /Science/.test(text)));
+  assert.ok(lines('tsample001').includes('Lunch duty · Cafeteria'), 'an every-day duty reads as before, with no days after it');
+  assert.ok(!lines('tsample001').some((text) => /Wednesdays/.test(text)), 'a teacher with no sometimes duty has no days after a period');
 });
 
 test('a teacher on duty is not free: Free right now lists the others, and a Wednesday duty takes the period on a Wednesday only', () => {
