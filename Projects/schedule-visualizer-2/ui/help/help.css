@@ -184,8 +184,20 @@
      under them, so nothing scrolls sideways at 390 px */
   .help__table tr {
     display: grid;
-    grid-template-columns: minmax(5.5rem, max-content) 1fr;
+    grid-template-columns: minmax(5.5rem, 9rem) 1fr;
     border-top: var(--border);
+  }
+
+  /* a long chord (Shift+Arrows, Shift+Page Up, …) wraps inside its column
+     instead of running past the table's edge */
+  .help__table kbd {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
+
+  .help__table td {
+    min-width: 0;
   }
 
   .help__table thead tr {
