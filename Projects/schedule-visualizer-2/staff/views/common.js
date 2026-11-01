@@ -8,7 +8,7 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, printGate } from '../page.js';
-import { everyTeacherDay, dutyDate, entryIsFree, periodTimes, dayTypeNames, viewLink, entryWords } from '../clock.js';
+import { everyTeacherDay, dutyDate, todayOf, todayKey, watchClock, entryIsFree, periodTimes, dayTypeNames, viewLink, entryWords } from '../clock.js';
 import { dayKindsOf } from './teacher.js';
 
 function chosenFrom(school, text) {
@@ -133,8 +133,18 @@ export const commonView = {
     });
 
     draw();
-    return gate.on(pageOf('Common planning', null, says,
+    let lastToday = todayKey(todayOf(ctx));
+    const page = gate.on(pageOf('Common planning', null, says,
       h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'common-add' }, 'Add a teacher'), adder),
       picked, out));
+    // past midnight, or when a newer answer about today arrives, the sometimes
+    // duties are applied by the new date
+    watchClock(page, () => {
+      const key = todayKey(todayOf(ctx));
+      if (key === lastToday) return;
+      lastToday = key;
+      draw();
+    });
+    return page;
   },
 };

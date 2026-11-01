@@ -49,6 +49,8 @@ const A = 'dsample00a';
 const B = 'dsample00b';
 const WED = '2026-09-02T15:40:00Z'; // Wed 11:40: A Day, Period 5
 const THU = '2026-09-03T15:40:00Z'; // Thu 11:40: B Day, Period 5
+const TUE_LATE = '2026-09-02T03:59:00Z'; // Tue 23:59: B Day, two minutes before Wednesday
+const WED_EARLY = '2026-09-02T04:01:00Z'; // Wed 00:01: A Day
 const HOSTILE = '<img src=x onerror=alert(1)>';
 const SIZES = [{ name: 'phone', width: 390, height: 844 }, { name: 'desktop', width: 1280, height: 800 }];
 
@@ -83,6 +85,7 @@ function fixture(opts) {
     dates: [],
     changedAt: null,
   };
+  if (opts && opts.nocal) delete project.calendar;
   return project;
 }
 
@@ -101,6 +104,7 @@ async function write(name, project, at) {
 before(async () => {
   await write('duties', fixture(), '2026-08-25T12:00:00Z');
   await write('evil', fixture({ evil: true }), '2026-08-25T12:00:00Z');
+  await write('nocal', fixture({ nocal: true }), '2026-08-25T12:00:00Z');
   const plain = sampleSchool();
   plain.publish.passcode = '';
   await write('plain', plain, '2026-08-25T12:00:00Z');
@@ -113,7 +117,8 @@ after(async () => {
 });
 
 // A page in a profile of its own, in New York, its clock pinned at `at` and
-// read again only when an hour has passed (never, in a case).
+// read again only when an hour has passed (never, in a case). `every` is how
+// often the page looks at it again; `moveClock` sets it to another moment.
 async function openPage(options) {
   const opts = options || {};
   const size = opts.size || SIZES[0];
@@ -122,10 +127,11 @@ async function openPage(options) {
   const phone = size.width < 640;
   await page.setViewport({ width: size.width, height: size.height, deviceScaleFactor: 1, hasTouch: phone, isMobile: phone });
   await page.emulateTimezone(ZONE);
-  await page.evaluateOnNewDocument((at) => {
-    globalThis.sv2StaffClock = { now: () => at, every: 3600000 };
+  await page.evaluateOnNewDocument((at, every) => {
+    globalThis.sv2At = at;
+    globalThis.sv2StaffClock = { now: () => globalThis.sv2At, every };
     globalThis.print = () => {};
-  }, opts.at || WED);
+  }, opts.at || WED, opts.every || 3600000);
   const errors = [];
   page.on('pageerror', (error) => errors.push('page error: ' + error.message));
   page.on('console', (message) => {
@@ -133,6 +139,8 @@ async function openPage(options) {
   });
   return { page, context, errors, close: () => context.close() };
 }
+
+const moveClock = (page, at) => page.evaluate((to) => { globalThis.sv2At = to; }, at);
 
 async function goto(page, file, hash) {
   await page.goto(file.url + hash, { waitUntil: 'load' });
@@ -543,6 +551,73 @@ test('on paper the duties before and after school are rows of the day', async ()
     const shown = await page.evaluate(() => Array.from(document.querySelectorAll('.day[data-today="true"] .row--edge'), (el) => el.offsetHeight > 0));
     assert.deepEqual(shown, [true, true]);
     await page.emulateMediaType('screen');
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+// ---------------------------------------------------------------- with no calendar, and past midnight
+
+test('with no calendar, a Wednesday meeting takes a teacher out of Free right now and Where right now', async () => {
+  const session = await openPage({ at: WED });
+  try {
+    const { page } = session;
+    await goto(page, files.nocal, '#/free');
+    await freeReady(page);
+    await page.waitForFunction(() => document.querySelector('[data-list="teachers"]'));
+    const free = await texts(page, '[data-list="teachers"] .list__name');
+    assert.ok(free.length > 0 && !free.includes('Dr. Quillfeather') && !free.includes('Ms. Thistlewood'), 'at the science meeting: ' + free.join(', '));
+    // the same school on a Thursday: the meeting does not hold
+    const thursday = await openPage({ at: THU });
+    try {
+      await goto(thursday.page, files.nocal, '#/free');
+      await freeReady(thursday.page);
+      assert.ok((await texts(thursday.page, '[data-list="teachers"] .list__name')).includes('Dr. Quillfeather'), 'free on a Thursday');
+    } finally {
+      await thursday.close();
+    }
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('Common planning and Coverage redraw past midnight, and a duty that holds on the new date applies', async () => {
+  const session = await openPage({ at: TUE_LATE, every: 200 });
+  try {
+    const { page } = session;
+    // Common planning: Tuesday night, the two science teachers are free together in Period 5 on A Day
+    await goto(page, files.duties, '#/common?t=tsample003,tsample010');
+    const cell = '[data-out="common"] .card[data-days~="dsample00a"] tr[data-period="4"]';
+    await page.waitForFunction((s) => document.querySelector(s)?.dataset.all === 'true', { timeout: 10000 }, cell);
+    await moveClock(page, WED_EARLY);
+    await page.waitForFunction((s) => document.querySelector(s) && document.querySelector(s).dataset.all !== 'true', { timeout: 10000 }, cell);
+    assert.match(await one(page, cell), /Science department/, 'the Wednesday meeting');
+    // Coverage with A Day chosen: Dr. Quillfeather is a candidate until Wednesday begins
+    await moveClock(page, TUE_LATE);
+    await goto(page, files.duties, '#/coverage/tsample004?d=dsample00a');
+    const card = '[data-period="4"]';
+    await page.waitForFunction((s) => document.querySelector(s + ' [data-list="candidates"]'), { timeout: 10000 }, card);
+    assert.ok((await texts(page, card + ' [data-list="candidates"] .list__name')).some((name) => name.startsWith('Dr. Quillfeather')), 'free before midnight');
+    await moveClock(page, WED_EARLY);
+    await page.waitForFunction((s) => document.querySelector(s + ' [data-list="notfree"]'), { timeout: 10000 }, card);
+    assert.ok(!(await texts(page, card + ' [data-list="candidates"] .list__name')).some((name) => name.startsWith('Dr. Quillfeather')), 'a candidate no more');
+    assert.ok((await texts(page, card + ' [data-list="notfree"] li')).some((line) => /Dr\. Quillfeather.*At a meeting: Science department/.test(line)));
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
+test('a door sign prints a group\'s mark in the day table', async () => {
+  const session = await openPage();
+  try {
+    const { page } = session;
+    await goto(page, files.duties, '#/door/rsamplecaf?day=1');
+    await page.waitForFunction(() => document.querySelector('[data-sheet="door"]'));
+    const sign = await page.evaluate(() => Array.from(document.querySelectorAll('[data-sheet="door"] tr')).map((tr) => tr.textContent.replace(/\s+/g, ' ').trim()));
+    assert.ok(sign.some((line) => /^Period 4.*6A \(Lunch\)/.test(line)), 'the lunch is printed: ' + sign.slice(0, 5).join(' | '));
     assert.deepEqual(session.errors, []);
   } finally {
     await session.close();

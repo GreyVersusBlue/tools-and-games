@@ -169,7 +169,7 @@ function teacherGrid(project, dayType, entries) {
         // a free period that a duty or a school mark takes says what takes it
         const always = slot.duties.find((duty) => sometimesWords(duty) === '');
         const mark = isFree(slot) || always ? null : schoolMarkFor(project, dayType.id, slot.period);
-        const taken = isFree(slot) ? 'Planning' : always ? dutyNamed(always) : mark && mark.label !== '' ? mark.label : MARK_AS_NAMED[slot.marked] || 'Planning';
+        const taken = isFree(slot) ? 'Planning' : always ? dutyNamed(always) : mark && typeof mark.label === 'string' && mark.label.trim() !== '' ? mark.label : MARK_AS_NAMED[slot.marked] || 'Planning';
         inside = '<span class="doc-grid__planning">' + esc(taken) + '</span>';
       } else {
         inside = slot.groups.map((taught) => {

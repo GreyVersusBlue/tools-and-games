@@ -20,7 +20,7 @@ import { makeHash } from './router.js';
 import { dayText } from './dates.js';
 import { printButton, handOver } from './page.js';
 import { isMe, chooseMe, forgetMe, dayListWords } from './notes.js';
-import { todayOf, takenBy, edgeDuties, dutyWords, dutyPlace, dutyTimes, sometimesWords } from './clock.js';
+import { todayOf, takenBy, edgeDuties, sometimesIn, dutyWords, dutyPlace, dutyTimes, sometimesWords } from './clock.js';
 
 export const LOCK_WIDTH = 1170;
 export const LOCK_HEIGHT = 2532;
@@ -62,7 +62,11 @@ function entryText(school, entry, dayTypeId) {
   if (!entry || entry.kind !== 'teaching') {
     // a free period that a duty or a mark takes says what takes it
     const taken = takenBy(school, entry, dayTypeId, null);
-    return taken === null ? 'Planning' : taken.title + (taken.place === '' ? '' : ' · ' + taken.place);
+    const first = taken === null ? 'Planning' : taken.title + (taken.place === '' ? '' : ' · ' + taken.place);
+    // a duty that holds on some days only is not what takes the period, but
+    // the image says it is there, with its days: "Planning · Science (Wednesdays)"
+    const also = sometimesIn(entry, null).map((duty) => dutyWords(duty) + ' (' + sometimesWords(school, duty) + ')' + (dutyPlace(school, duty) === '' ? '' : ' · ' + dutyPlace(school, duty)));
+    return [first].concat(also).join(' · ');
   }
   const groups = entry.groups.map((taught) => {
     const group = school.group(taught.groupId);
