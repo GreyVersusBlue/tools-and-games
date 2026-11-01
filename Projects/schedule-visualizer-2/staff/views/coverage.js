@@ -10,7 +10,7 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, missingPage, printWhen } from '../page.js';
-import { dayOnDate, dutyDate, entryIsFree, takenBy, dayWords, dayTypeFor, bellsIdFor, bellsOnPick, longDate, meetingPeriods, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
+import { dayOnDate, dutyDate, todayOf, todayKey, watchClock, entryIsFree, takenBy, dayWords, dayTypeFor, bellsIdFor, bellsOnPick, longDate, meetingPeriods, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
 import { freeTeachers } from './free.js';
 
 // For each period a teacher teaches on a day type, who is free to cover it:
@@ -106,6 +106,7 @@ export const coverageView = {
     const out = h('div', { class: 'stack', dataset: { out: 'coverage' } });
     const links = h('p', { class: 'actions' });
     const word = school.data.settings.periodWord.toLowerCase();
+    let lastToday = '';
 
     const draw = () => {
       // today's bells: a period that does not meet has nobody to cover
@@ -150,20 +151,38 @@ export const coverageView = {
       ].filter(Boolean));
     };
 
-    const chosen = dayTypePicker(ctx, dayType.id, (next) => {
-      dayType = next;
-      picked = true;
-      if (date === '') {
-        bellsId = bellsOnPick(ctx, next.id);
-        ctx.replace(makeHash('coverage', absent.id, { d: route.query.d ? dayType.id : '', b: route.query.d ? bellsId : '' }));
-      } else {
-        bellsId = bellsOf();
-        ctx.replace(makeHash('coverage', absent.id, { d: dayType.id, date }));
+    const drawPicker = () => {
+      const chosen = dayTypePicker(ctx, dayType.id, (next) => {
+        dayType = next;
+        picked = true;
+        if (date === '') {
+          bellsId = bellsOnPick(ctx, next.id);
+          ctx.replace(makeHash('coverage', absent.id, { d: route.query.d ? dayType.id : '', b: route.query.d ? bellsId : '' }));
+        } else {
+          bellsId = bellsOf();
+          ctx.replace(makeHash('coverage', absent.id, { d: dayType.id, date }));
+        }
+        draw();
+      });
+      picker.replaceChildren(...(chosen ? [chosen] : []));
+    };
+    drawPicker();
+    draw();
+    lastToday = todayKey(todayOf(ctx));
+    const page = pageOf(['Coverage: ', typed(absent.name)], null, says, dated, picker, out, links);
+    // past midnight, or when a newer answer about today arrives, the sometimes
+    // duties are applied by the new date, and today's day type is today's again
+    watchClock(page, () => {
+      const key = todayKey(todayOf(ctx));
+      if (key === lastToday) return;
+      lastToday = key;
+      if (!picked && date === '') {
+        dayType = dayTypeFor(ctx, route);
+        bellsId = bellsIdFor(ctx, route);
+        drawPicker();
       }
       draw();
     });
-    if (chosen) picker.appendChild(chosen);
-    draw();
-    return pageOf(['Coverage: ', typed(absent.name)], null, says, dated, picker, out, links);
+    return page;
   },
 };
