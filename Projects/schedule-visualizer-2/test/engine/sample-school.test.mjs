@@ -18,6 +18,8 @@ import { isId } from '../../engine/ids.js';
 import { checkSchedule } from '../../engine/checks.js';
 import { dayOn, calendarDays, calendarCounts, weekdayOf, datesFrom } from '../../engine/calendar.js';
 import { findDayType } from '../../engine/day-types.js';
+import { markFor, schoolMarkFor, teacherDuties, dutyTeachers, dutyHoldsOn } from '../../engine/marks.js';
+import { teacherDay, isFree } from '../../engine/teacher-day.js';
 
 const project = sampleSchool();
 const DAYS = ['dsample00a', 'dsample00b'];
@@ -423,4 +425,77 @@ test('the names are invented and include the characters that catch a careless re
   const names = project.teachers.map((t) => t.name).join(' ');
   assert.match(names, /'/, 'an apostrophe');
   assert.match(names, /ê/, 'a letter outside ASCII');
+});
+
+// ---------------------------------------------------------------- marks and duties
+
+test('lunch is marked by grade on the periods the groups really eat in, on every day type', () => {
+  for (const dayTypeId of ['dsample00a', 'dsample00b', 'dsample0as']) {
+    for (const group of project.groups) {
+      const period = group.grade === '6' ? 3 : 4;
+      const mark = markFor(project, group.id, dayTypeId, period);
+      assert.equal(mark && mark.kind, 'lunch', group.name + ' has a lunch mark in Period ' + (period + 1) + ' on ' + findDayType(project, dayTypeId).name);
+      assert.equal(findRoom(project, group.days[dayTypeId === 'dsample0as' ? 'dsample00b' : dayTypeId][period].room).number, 'Cafeteria', group.name + ' is in the Cafeteria then');
+      const wrong = markFor(project, group.id, dayTypeId, group.grade === '6' ? 4 : 3);
+      assert.equal(wrong, null, group.name + ' has no lunch mark in the other lunch');
+    }
+  }
+});
+
+test('the assembly mark is on the Assembly Day only, for the whole school, in its last period', () => {
+  const assembly = schoolMarkFor(project, 'dsample0as', 7);
+  assert.equal(assembly.label, 'Assembly');
+  assert.equal(assembly.kind, 'activity');
+  assert.equal(schoolMarkFor(project, 'dsample00a', 7), null);
+  assert.equal(schoolMarkFor(project, 'dsample00b', 7), null, 'B Day is what Assembly Day is the same as, and the mark does not reach back to it');
+  const dates = project.calendar.dates.filter((change) => change.day === 'dsample0as').map((change) => change.date);
+  assert.deepEqual(dates, ['2026-11-12', '2027-03-11']);
+});
+
+test('three duties and one weekly meeting, each with who, where and when', () => {
+  assert.deepEqual(project.duties.map((duty) => [duty.label, duty.kind, duty.when]), [
+    ['Bus duty', 'duty', 'before'],
+    ['Lunch duty', 'duty', 'period'],
+    ['Car line', 'duty', 'after'],
+    ['Science department', 'meeting', 'after'],
+  ]);
+  const [bus, lunch, car, science] = project.duties;
+  assert.deepEqual([bus.start, bus.end, bus.place], ['07:30', '07:55', 'Bus loop'], 'before school, with times');
+  assert.equal(findRoom(project, lunch.roomId).number, 'Cafeteria');
+  assert.equal(lunch.period, 4, 'Period 5, the second lunch');
+  assert.deepEqual([car.start, car.end], ['15:15', '15:35']);
+  assert.deepEqual(science.weekdays, [2], 'Wednesdays');
+  assert.deepEqual(science.subjectIds, ['ssample003'], 'by subject, not by name');
+  assert.deepEqual(dutyTeachers(project, science), ['tsample003', 'tsample010']);
+  assert.equal(dutyHoldsOn(science, '2026-09-02'), true, '2 September 2026 is a Wednesday');
+  assert.equal(dutyHoldsOn(science, '2026-09-03'), false);
+  for (const duty of project.duties) assert.ok(dutyTeachers(project, duty).length > 0, duty.label + ' has somebody on it');
+});
+
+test('a duty never sits in a period its teacher teaches, so no clash is reported', () => {
+  for (const dayTypeId of DAYS) {
+    for (const teacher of project.teachers) {
+      const duties = teacherDuties(project, teacher.id, dayTypeId);
+      const day = teacherDay(project, teacher.id, dayTypeId);
+      duties.byPeriod.forEach((list, period) => {
+        if (list.length > 0) assert.equal(day[period].kind, 'planning', teacher.name + ' is not teaching in Period ' + (period + 1) + ' on ' + dayTypeId);
+      });
+    }
+  }
+});
+
+test('every teacher still has a free period on every day type once duties and lunch marks are laid over the day', () => {
+  for (const dayTypeId of ['dsample00a', 'dsample00b', 'dsample0as']) {
+    for (const teacher of project.teachers) {
+      assert.ok(teacherDay(project, teacher.id, dayTypeId).some(isFree), teacher.name + ' has a free period on ' + dayTypeId);
+    }
+  }
+});
+
+test('the sample with its lunch marks and duties still validates clean and repairs to itself', () => {
+  assert.deepEqual(validate(sampleSchool()), []);
+  const again = repair(sampleSchool());
+  assert.deepEqual(again.notes || [], []);
+  assert.deepEqual(again.project.marks, sampleSchool().marks);
+  assert.deepEqual(again.project.duties, sampleSchool().duties);
 });

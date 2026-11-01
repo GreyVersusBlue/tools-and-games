@@ -16,7 +16,9 @@
 // on a third day type, Assembly Day, that is the same as B Day). The calendar
 // is an invented school year, 31 August 2026 to 11 June 2027, with a fall
 // break, a winter break, a snow day, a Saturday make-up day and the
-// re-syncs that keep A and B in step.
+// re-syncs that keep A and B in step. Over the day sit three lunch and
+// assembly marks, three duties (before school, lunch, after school) and a
+// Wednesday science meeting.
 //
 // Two things are wrong on purpose, both on A Days, for a new user to find.
 // SAMPLE_PROBLEMS below names them for the tests and the help. The checks
@@ -290,6 +292,33 @@ function sampleCalendar() {
   return { start: '2026-08-31', end: '2027-06-11', weekdays, rotation: [DAY_A, DAY_B], dates, changedAt: SAMPLE_DATE };
 }
 
+// Lunch, by grade, where the slots allow: on both day types Grade 6 eats in
+// Period 4 and Grades 7 and 8 in Period 5 (the Cafeteria slots in the
+// groups below), and a lunch mark lies over each of them. The assembly is an
+// Activity mark in the last period of the Assembly Day, for the whole school.
+// It lies over the slot and takes nobody out of a room.
+function sampleMarks() {
+  return [
+    { id: 'msample001', kind: 'lunch', label: '', period: 3, dayTypeIds: [], scope: 'grades', grades: ['6'], groupIds: [] },
+    { id: 'msample002', kind: 'lunch', label: '', period: 4, dayTypeIds: [], scope: 'grades', grades: ['7', '8'], groupIds: [] },
+    { id: 'msample003', kind: 'activity', label: 'Assembly', period: 7, dayTypeIds: [DAY_ASSEMBLY], scope: 'school', grades: [], groupIds: [] },
+  ];
+}
+
+// Three duties and one meeting, all invented. Bus duty is before school with
+// times and a place; the lunch duty is in Period 5 in the Cafeteria; car line
+// is after school. The Wednesday science meeting names the subject, so a new
+// science teacher is in it without anyone editing it. It is after school
+// because Wednesday is Early Release and Period 5 does not meet.
+function sampleDuties() {
+  return [
+    { id: 'usample001', kind: 'duty', label: 'Bus duty', when: 'before', period: 0, start: '07:30', end: '07:55', dayTypeIds: [], weekdays: [], from: '', to: '', roomId: null, place: 'Bus loop', teacherIds: ['tsample004', 'tsample009'], subjectIds: [], everyone: false },
+    { id: 'usample002', kind: 'duty', label: 'Lunch duty', when: 'period', period: 4, start: '', end: '', dayTypeIds: [], weekdays: [], from: '', to: '', roomId: 'rsamplecaf', place: '', teacherIds: ['tsample001', 'tsample007'], subjectIds: [], everyone: false },
+    { id: 'usample003', kind: 'duty', label: 'Car line', when: 'after', period: 0, start: '15:15', end: '15:35', dayTypeIds: [], weekdays: [], from: '', to: '', roomId: null, place: 'Front drive', teacherIds: ['tsample004', 'tsample005'], subjectIds: [], everyone: false },
+    { id: 'usample004', kind: 'meeting', label: 'Science department', when: 'after', period: 0, start: '11:00', end: '11:45', dayTypeIds: [], weekdays: [2], from: '', to: '', roomId: 'rsample103', place: '', teacherIds: [], subjectIds: ['ssample003'], everyone: false },
+  ];
+}
+
 export function sampleSchool() {
   const subjectByCode = new Map(SUBJECTS.map((subject) => [subject.code, subject.id]));
   const teachersByRoom = new Map(TEACHERS.map((teacher) => [teacher[3], [teacher[0]]]));
@@ -363,6 +392,8 @@ export function sampleSchool() {
       { id: BELLS_ASSEMBLY, name: 'Assembly', short: 'AS', bells: bells(BELLS_ASSEMBLY_DAY), off: [] },
     ],
     calendar: sampleCalendar(),
+    marks: sampleMarks(),
+    duties: sampleDuties(),
     accepted: [],
     scenario: null,
     publish: { passcode: 'bulldogs2015', stalenessDays: 60, views, teacherNamesOnMap: true, lastPublishedAt: null },
