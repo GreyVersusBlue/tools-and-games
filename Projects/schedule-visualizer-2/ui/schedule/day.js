@@ -773,8 +773,18 @@ export function mount(env) {
   // takes (a scope of grades with no grade ticked yet waits).
   if (view.markEdit === undefined) view.markEdit = null;
 
+  // What the project holds for a mark, as one string. The draft of a mark
+  // that is added remembers it (`seen`); a drawing that finds the mark
+  // holding something else knows the project changed under the editor (an
+  // Undo, a Redo), not that the draft was typed.
+  function signature(mark) {
+    return JSON.stringify([mark.kind, mark.label, mark.period, mark.dayTypeIds, mark.scope, mark.grades, mark.groupIds]);
+  }
+
   function draftOf(mark) {
     return {
+      seen: mark ? signature(mark) : null,
+      note: '',
       id: mark ? mark.id : null,
       kind: mark ? mark.kind : 'lunch',
       label: mark ? mark.label : '',
@@ -808,6 +818,34 @@ export function mount(env) {
     return '';
   }
 
+  // The draft made true to the project before it is drawn. A mark that is
+  // added and now holds something other than the draft last saw was changed
+  // by an Undo or a Redo: the draft is read from it again, so the next edit
+  // never puts an undone value back. A draft that names a day type or group
+  // no longer in the project (deleted while the editor was shut on another
+  // tab) lets them go, says so, and Add stays off until it is whole.
+  function syncDraft(project, edit) {
+    if (edit.id !== null) {
+      const now = marksOf(project).find((mark) => mark.id === edit.id);
+      if (now && signature(now) !== edit.seen) {
+        view.markEdit = draftOf(now);
+        view.markEdit.note = 'This mark was changed by an Undo or a Redo. The editor shows it as it is now.';
+        ctx.announce(view.markEdit.note);
+        return view.markEdit;
+      }
+    }
+    const days = edit.dayTypeIds.filter((id) => project.dayTypes.some((dayType) => dayType.id === id));
+    const groups = edit.groupIds.filter((id) => project.groups.some((group) => group.id === id));
+    const gone = (edit.dayTypeIds.length - days.length) + (edit.groupIds.length - groups.length);
+    if (gone > 0) {
+      edit.dayTypeIds = days;
+      edit.groupIds = groups;
+      edit.note = gone === 1 ? 'A day type or group this mark named is gone from the project, so it was taken off.' : gone + ' day types or groups this mark named are gone from the project, so they were taken off.';
+      ctx.announce(edit.note);
+    }
+    return edit;
+  }
+
   function openMark(mark) {
     view.markEdit = draftOf(mark);
     env.render('mark:' + mark.id + ':kind:' + mark.kind);
@@ -829,7 +867,12 @@ export function mount(env) {
     const edit = view.markEdit;
     if (!edit) return;
     Object.assign(edit, patch);
-    if (edit.id !== null && missing(edit) === '') apply(env, setMark, { id: edit.id, ...payloadOf(edit) });
+    edit.note = '';
+    if (edit.id !== null && missing(edit) === '') {
+      apply(env, setMark, { id: edit.id, ...payloadOf(edit) });
+      const now = marksOf(ctx.store.project).find((mark) => mark.id === edit.id);
+      if (now) edit.seen = signature(now);
+    }
     env.render(key);
   }
 
@@ -959,6 +1002,7 @@ export function mount(env) {
       h('div', { class: 'sch-markedit__grid' }, h('div', null, days), h('div', null, who)),
       h('p', { class: 'sch-markedit__label' }, 'This reads:'),
       says,
+      edit.note === '' ? null : h('p', { class: 'sch-hint sch-markedit__note' }, edit.note),
       hint === '' ? null : h('p', { class: 'sch-hint sch-markedit__missing', role: 'status' }, hint + (edit.id === null ? '' : ' Nothing changes until then.')),
       h('div', { class: 'sch-toolbar' },
         edit.id === null
@@ -977,8 +1021,9 @@ export function mount(env) {
 
   function marksCard(project) {
     const marks = marksOf(project);
-    const edit = view.markEdit && (view.markEdit.id === null || marks.some((mark) => mark.id === view.markEdit.id)) ? view.markEdit : null;
+    let edit = view.markEdit && (view.markEdit.id === null || marks.some((mark) => mark.id === view.markEdit.id)) ? view.markEdit : null;
     if (view.markEdit && !edit) view.markEdit = null;
+    if (edit) edit = syncDraft(project, edit);
     const add = button('Mark a period', startMark, { primary: marks.length === 0, key: 'mark-new', action: 'mark-period' });
     add.disabled = edit !== null && edit.id === null;
     return h('section', { class: 'sch-card', 'aria-labelledby': 'sch-card-marks', data: { card: 'marks' } },
