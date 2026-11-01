@@ -517,6 +517,232 @@ test('the grid’s hint for a deleted day type goes when Undo brings it back, an
   await settled();
 });
 
+// ------------------------------------------------------------------ SV2-85b: the review's faults
+
+// What the project's marks and duties are, so a test can put them back.
+const apply = (name, payload) => page.evaluate((action, data) => globalThis.sv2.store.apply(globalThis.sv2modules.actions[action], data), name, payload);
+const undoToast = () => page.evaluate(() => Array.from(document.querySelectorAll('.toast button')).find((button) => button.textContent === 'Undo').click());
+
+test('Undo with a mark editor open reads the draft from the project again, so the next edit never puts the undone value back', async () => {
+  await apply('addMark', { kind: 'lunch', period: 4, scope: 'school' });
+  const id = (await project()).marks.at(-1).id;
+  await go(page, '#schedule/day');
+  await settled();
+  await click(key('mark:' + id + ':open'));
+  await choose(key('mark:' + id + ':period'), '2');
+  assert.equal((await project()).marks.at(-1).period, 2);
+  await click('#undo');
+  assert.equal((await project()).marks.at(-1).period, 4, 'Undo put the period back');
+  assert.equal(await page.$eval(key('mark:' + id + ':period'), (el) => el.value), '4', 'the editor shows the period as it is now');
+  assert.match(await text('.sch-markedit__note'), /changed by an Undo or a Redo/);
+  // the next edit is a different field: the period must stay as Undo left it
+  await click(key('mark:' + id + ':kind:advisory'));
+  const mark = (await project()).marks.at(-1);
+  assert.deepEqual([mark.kind, mark.period], ['advisory', 4], 'the undone period was not applied again');
+  // Undo of that change: the editor takes the kind back, and the next edit leaves it
+  await click('#undo');
+  assert.equal((await project()).marks.at(-1).kind, 'lunch');
+  assert.equal(await page.$eval(key('mark:' + id + ':kind:lunch'), (el) => el.checked), true, 'the editor shows the kind as it is now');
+  await choose(key('mark:' + id + ':period'), '3');
+  const after = (await project()).marks.at(-1);
+  assert.deepEqual([after.kind, after.period], ['lunch', 3], 'the undone kind was not applied again');
+  await click(key('mark:' + id + ':delete'));
+  await closeToast();
+});
+
+test('a new mark’s draft that names a group which is gone drops it, says so, and Add stays off until it is whole', async () => {
+  await go(page, '#schedule/day');
+  await settled();
+  await click(key('mark-new'));
+  await click(key('mark:new:who:groups'));
+  await page.focus(key('mark:new:group-add'));
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await settled();
+  assert.equal(await page.$$eval('.sch-markedit__chips .chip', (all) => all.length), 1);
+  assert.equal(await page.$eval(key('mark:new:add'), (el) => el.disabled), false, 'Add is on with a group');
+  const name = await text('.sch-markedit__chips .chip > span');
+  const before = (await project()).groups;
+  const gone = before.find((group) => group.name === name);
+  await apply('deleteGroup', { id: gone.id });
+  await settled();
+  assert.equal(await page.$$eval('.sch-markedit__chips .chip', (all) => all.length), 0, 'the deleted group is off the draft');
+  assert.match(await text('.sch-markedit__note'), /is gone from the project, so it was taken off/);
+  assert.match(await status(), /gone from the project/);
+  assert.equal(await page.$eval(key('mark:new:add'), (el) => el.disabled), true, 'Add waits for a group again');
+  assert.match(await text('.sch-markedit__missing'), /^Add a group to finish\./);
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  await settled();
+  await click(key('mark:new:cancel'));
+  assert.equal((await project()).groups.length, before.length, 'the group is back');
+});
+
+test('Undo from a toast puts the focus on the restored mark line and the restored duty row, and the top bar’s Undo keeps it on itself', async () => {
+  await apply('addMark', { kind: 'advisory', period: 1, scope: 'school' });
+  const markId = (await project()).marks.at(-1).id;
+  await go(page, '#schedule/day');
+  await settled();
+  await click(key('mark:' + markId + ':open'));
+  await click(key('mark:' + markId + ':delete'));
+  await shows(() => /^Deleted /.test(document.querySelector('.toast .toast__text')?.textContent || ''));
+  await undoToast();
+  await settled();
+  assert.equal((await project()).marks.some((mark) => mark.id === markId), true);
+  await shows((wanted) => document.activeElement?.dataset.key === wanted, 'mark:' + markId + ':open');
+  await apply('deleteMark', { id: markId });
+  await settled();
+  await apply('addDuty', { kind: 'duty', label: 'Focus duty', when: 'after', teacherIds: ['tsample004'] });
+  const dutyId = (await project()).duties.at(-1).id;
+  await go(page, '#schedule/duties');
+  await settled();
+  await click(key('duty:' + dutyId + ':delete'));
+  await shows(() => /^Deleted /.test(document.querySelector('.toast .toast__text')?.textContent || ''));
+  await undoToast();
+  await settled();
+  assert.equal((await project()).duties.some((duty) => duty.id === dutyId), true);
+  await shows((wanted) => document.activeElement?.dataset.key === wanted, 'duty:' + dutyId + ':label');
+  // the top bar's Undo is where the focus already is: it stays there
+  await click(key('duty:' + dutyId + ':kind'));
+  await choose(key('duty:' + dutyId + ':kind'), 'meeting');
+  await page.focus('#undo');
+  await page.keyboard.press('Enter');
+  await settled();
+  assert.equal((await project()).duties.find((duty) => duty.id === dutyId).kind, 'duty');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'undo', 'the focus stays on Undo');
+  await apply('deleteDuty', { id: dutyId });
+  await settled();
+});
+
+test('the Duties table at 1280 px fits its card: findings wrap, one triangle before Warning, and What shows “Science meeting”', async () => {
+  await apply('addDuty', { kind: 'meeting', label: 'Science meeting', when: 'after', weekdays: [2], teacherIds: ['tsample003'] });
+  await apply('addDuty', { kind: 'duty', label: 'Lunch line', when: 'period', period: 2, teacherIds: ['tsample001'] });
+  await apply('addDuty', { kind: 'meeting', label: 'Team call', when: 'period', period: 2, teacherIds: ['tsample001'] });
+  await go(page, '#schedule/duties');
+  await settled();
+  const fit = await page.evaluate(() => {
+    const card = document.querySelector('.sch-duties .sch-scroll');
+    const table = document.querySelector('.sch-duties__table');
+    const science = Array.from(document.querySelectorAll('.sch-duties__table tbody tr[data-duty] input[data-key$=":label"]')).find((el) => el.value === 'Science meeting');
+    const lines = Array.from(document.querySelectorAll('.sch-duties__findrow .sch-finding-line'));
+    const warning = lines.find((el) => el.classList.contains('sch-finding-line--warning'));
+    return {
+      card: [card.scrollWidth, card.clientWidth],
+      right: [Math.round(table.getBoundingClientRect().right), Math.round(card.getBoundingClientRect().right)],
+      science: science ? [science.scrollWidth, science.clientWidth] : null,
+      lines: lines.map((el) => Math.round(el.getBoundingClientRect().right) <= Math.round(card.getBoundingClientRect().right)),
+      warning: warning ? { text: warning.textContent.slice(0, 11), before: getComputedStyle(warning, '::before').content } : null,
+      checks: Array.from(document.querySelectorAll('.sch-duties__table th')).map((el) => Math.round(el.getBoundingClientRect().right) <= Math.round(card.getBoundingClientRect().right)),
+    };
+  });
+  assert.ok(fit.card[0] <= fit.card[1], 'the table does not scroll sideways in its card: ' + fit.card);
+  assert.ok(fit.right[0] <= fit.right[1], 'the table ends inside the card: ' + fit.right);
+  assert.deepEqual(fit.checks.filter((inside) => !inside), [], 'every column heading, Checks and the last one too, is inside the card');
+  assert.ok(fit.science && fit.science[0] <= fit.science[1], 'What shows “Science meeting” whole: ' + fit.science);
+  assert.ok(fit.lines.length > 0 && fit.lines.every(Boolean), 'a finding sentence ends inside the card');
+  assert.deepEqual(fit.warning, { text: '▲ Warning: ', before: 'none' }, 'one triangle before Warning, the one in the word');
+  for (const id of (await project()).duties.filter((duty) => ['Science meeting', 'Lunch line', 'Team call'].includes(duty.label)).map((duty) => duty.id)) await apply('deleteDuty', { id });
+});
+
+test('“Only these…” stays checked when chosen, by click and by arrow key, and the focus stays in the radio group', async () => {
+  await apply('addDuty', { kind: 'duty', label: 'Radio duty', when: 'after', teacherIds: ['tsample004'] });
+  const id = (await project()).duties.at(-1).id;
+  await go(page, '#schedule/duties');
+  await settled();
+  await click(key('duty:' + id + ':days'));
+  await click(key('duty:' + id + ':days:some'));
+  assert.equal(await page.$eval(key('duty:' + id + ':days:some'), (el) => el.checked), true, 'checked after a click');
+  assert.equal(await page.$eval(key('duty:' + id + ':days:all'), (el) => el.checked), false);
+  assert.equal(await activeKey(), 'duty:' + id + ':days:some');
+  assert.match(await text('.sch-duties__days .sch-hint'), /^Tick a day type\./);
+  await click(key('duty:' + id + ':days:all'));
+  assert.equal(await page.$eval(key('duty:' + id + ':days:all'), (el) => el.checked), true);
+  await page.keyboard.press('ArrowDown');
+  await settled();
+  assert.equal(await activeKey(), 'duty:' + id + ':days:some', 'the arrow keeps the focus in the group');
+  assert.equal(await page.$eval(key('duty:' + id + ':days:some'), (el) => el.checked), true, 'and the radio it landed on is checked');
+  await page.keyboard.press('ArrowUp');
+  await settled();
+  assert.equal(await activeKey(), 'duty:' + id + ':days:all');
+  assert.equal(await page.$eval(key('duty:' + id + ':days:all'), (el) => el.checked), true);
+  assert.deepEqual((await project()).duties.find((duty) => duty.id === id).dayTypeIds, [], 'nothing was written until a day type is ticked');
+  await apply('deleteDuty', { id });
+});
+
+test('a grade typed “Grade 7” reads “Grade 7”, not “grade Grade 7”, and the Grades… picker’s empty hint says what a mark for a grade matches', async () => {
+  const groups = (await project()).groups;
+  const first = groups[0];
+  await apply('editGroup', { id: first.id, grade: 'Grade 7' });
+  await apply('addMark', { kind: 'lunch', period: 3, scope: 'grades', grades: ['Grade 7'] });
+  const id = (await project()).marks.at(-1).id;
+  await go(page, '#schedule/day');
+  await settled();
+  const line = await page.$eval(key('mark:' + id + ':open'), (el) => el.textContent);
+  assert.match(line, /^Lunch for Grade 7 in Period 4, every day type \(1 group\)$/);
+  assert.doesNotMatch(line, /grade Grade/i);
+  await click(key('mark:' + id + ':open'));
+  await click(key('mark:' + id + ':who:grades'));
+  assert.ok((await texts('.sch-markedit__chips [data-grade]')).includes('Grade 7'), 'the chip is Grade 7 as typed, not Grade Grade 7');
+  assert.doesNotMatch(await text('.sch-markedit__says'), /grade Grade/i);
+  await click(key('mark:' + id + ':done'));
+  await apply('deleteMark', { id });
+  // with no grade anywhere the picker says how a mark matches
+  const grades = groups.map((group) => ({ id: group.id, grade: group.id === first.id ? 'Grade 7' : group.grade })).filter((group) => group.grade !== '');
+  for (const group of grades) await apply('editGroup', { id: group.id, grade: '' });
+  await click(key('mark-new'));
+  await click(key('mark:new:who:grades'));
+  assert.equal(await text('.sch-markedit__nogrades'), 'No group has a grade yet. A mark for a grade takes the groups whose Grade field matches it, so give groups a grade on the Groups tab first.');
+  await click(key('mark:new:cancel'));
+  for (const group of grades) await apply('editGroup', { id: group.id, grade: group.id === first.id ? first.grade : group.grade });
+});
+
+test('the schedule import says how many marks and duties it replaced when the answer is Overwrite', async () => {
+  await loadModule(page, 'projectFile', 'engine/project-file.js');
+  await apply('addMark', { kind: 'lunch', period: 2, scope: 'school' });
+  await apply('addDuty', { kind: 'duty', label: 'Import duty', when: 'before', teacherIds: ['tsample004'] });
+  const body = await page.evaluate(() => globalThis.sv2modules.projectFile.writeScheduleFile(globalThis.sv2.store.project));
+  const file = JSON.parse(body);
+  const mark = file.marks.at(-1);
+  const duty = file.duties.at(-1);
+  mark.label = 'Changed in the file';
+  duty.label = 'Changed in the file';
+  await go(page, '#schedule/import');
+  await settled();
+  await page.evaluate((contents) => {
+    const input = document.querySelector('input[type="file"][data-file="schedule"]');
+    const data = new DataTransfer();
+    data.items.add(new File([contents], 'school.json'));
+    input.files = data.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }, JSON.stringify(file));
+  await page.waitForSelector('[data-file="schedule"].sch-lead');
+  await click(key('imp-schedule:all:overwrite'));
+  await click(key('imp-schedule-run'));
+  await page.waitForSelector('[data-done="schedule"]');
+  const said = await text('[data-done="schedule"]');
+  assert.ok(said.includes('1 marked period replaced'), said);
+  assert.ok(said.includes('1 duty or meeting replaced'), said);
+  const now = await project();
+  assert.equal(now.marks.find((each) => each.id === mark.id).label, 'Changed in the file');
+  assert.equal(now.duties.find((each) => each.id === duty.id).label, 'Changed in the file');
+  await apply('deleteMark', { id: mark.id });
+  await apply('deleteDuty', { id: duty.id });
+});
+
+test('deleting a teacher says how many duties were left with nobody, and Undo brings the teacher back', async () => {
+  await apply('addDuty', { kind: 'duty', label: 'Only duty', when: 'after', teacherIds: ['tsample009'] });
+  const id = (await project()).duties.at(-1).id;
+  const name = (await project()).teachers.find((teacher) => teacher.id === 'tsample009').name;
+  await go(page, '#schedule/teachers');
+  await settled();
+  await click(key('teacher:tsample009:delete'));
+  await toastSays('Deleted teacher ' + name + ', 1 duty left with nobody.');
+  assert.deepEqual((await project()).duties.find((duty) => duty.id === id).teacherIds, []);
+  await undoToast();
+  await settled();
+  assert.equal((await project()).teachers.some((teacher) => teacher.id === 'tsample009'), true);
+  await apply('deleteDuty', { id });
+});
+
 // ------------------------------------------------------------------ phone
 
 test('at 390 by 844 with touch: marks are added by tap, the Duties tab is cards, and every target is 44 px', async () => {

@@ -978,7 +978,7 @@ export function mount(env) {
       const grades = gradesInUse(project);
       for (const grade of edit.grades) if (!grades.some((other) => spacelessKey(other) === spacelessKey(grade))) grades.push(grade);
       who.push(grades.length === 0
-        ? h('p', { class: 'sch-hint' }, 'No group has a grade yet. A mark for a grade takes the groups whose Grade field matches it, so give groups a grade on the Groups tab first.')
+        ? h('p', { class: 'sch-hint sch-markedit__nogrades' }, 'No group has a grade yet. A mark for a grade takes the groups whose Grade field matches it, so give groups a grade on the Groups tab first.')
         : h('div', { class: 'sch-markedit__chips', role: 'group', 'aria-label': 'Grades' }, grades.map((grade) => {
           const pressed = keys.has(spacelessKey(grade));
           return keyed(h('button', { type: 'button', class: 'sch-show__chip', 'aria-pressed': String(pressed), data: { grade }, on: { click: () => change({
