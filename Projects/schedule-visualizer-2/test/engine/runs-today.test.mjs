@@ -28,7 +28,8 @@ import { checkSchedule } from '../../engine/checks.js';
 import { ownDayTypes } from '../../engine/day-types.js';
 import { createPipeline, pack, scenarioRun, suggestRun } from '../../engine/worker.js';
 import { trimResult, compareResults, loadDifference, applyChanges } from '../../engine/scenario.js';
-import { sampleSchool } from '../../data/sample-school.js';
+// The sample before its calendar, bell schedules, marks and duties (SV2-82): the cases here build their own.
+import { plainSchool as sampleSchool } from '../engine/helpers.mjs';
 import { bigProject } from '../fixtures/big.mjs';
 
 const PRINT = process.env.SV2_RUNS_PRINT === '1';

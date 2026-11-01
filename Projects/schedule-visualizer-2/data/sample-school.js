@@ -11,7 +11,12 @@
 // Main Corridor. Thirteen rooms: ten classrooms, and the Gym, the Cafeteria
 // and the Library, which are shared spaces. Twelve teachers, eight groups,
 // an A Day and a B Day that is its own copy, each with bell times and four
-// minutes of passing time.
+// minutes of passing time. Two bell schedules sit beside them: Early Release
+// (Periods 5 to 8 off, used on Wednesdays) and Assembly (used on two dates,
+// on a third day type, Assembly Day, that is the same as B Day). The calendar
+// is an invented school year, 31 August 2026 to 11 June 2027, with a fall
+// break, a winter break, a snow day, a Saturday make-up day and the
+// re-syncs that keep A and B in step.
 //
 // Two things are wrong on purpose, both on A Days, for a new user to find.
 // SAMPLE_PROBLEMS below names them for the tests and the help. The checks
@@ -53,6 +58,11 @@ export const SAMPLE_SCHOOL_NAME = 'Marrowby Middle School (sample)';
 
 const DAY_A = 'dsample00a';
 const DAY_B = 'dsample00b';
+// The day the two assemblies fall on: the same classes as a B Day, and not
+// in the rotation, so a mark can name it without naming every B Day (the two problems are on A Days).
+const DAY_ASSEMBLY = 'dsample0as';
+const BELLS_EARLY = 'bsample0er';
+const BELLS_ASSEMBLY = 'bsample0as';
 
 // The two things wrong on purpose: `roomDouble` is the problem, `longWalk` the
 // warning. The two notes on the Cafeteria are not listed: nothing is wrong.
@@ -175,6 +185,13 @@ const BELLS_A = [['08:00', '08:48'], ['08:52', '09:40'], ['09:44', '10:32'], ['1
 // B Days start twenty minutes later, after a school-wide advisory.
 const BELLS_B = [['08:20', '09:08'], ['09:12', '10:00'], ['10:04', '10:52'], ['10:56', '11:44'], ['11:48', '12:36'], ['12:40', '13:28'], ['13:32', '14:20'], ['14:24', '15:12']];
 
+// Early Release: four periods of forty minutes, then home. Periods 5 to 8 do
+// not meet, so they have no times.
+const BELLS_EARLY_RELEASE = [['08:00', '08:40'], ['08:44', '09:24'], ['09:28', '10:08'], ['10:12', '10:52'], null, null, null, null];
+// Assembly: every period shortened to 44 minutes except the last, which is
+// the assembly itself.
+const BELLS_ASSEMBLY_DAY = [['08:00', '08:44'], ['08:48', '09:32'], ['09:36', '10:20'], ['10:24', '11:08'], ['11:12', '11:56'], ['12:00', '12:44'], ['12:48', '13:32'], ['13:36', '14:30']];
+
 // name, grade, head count (null uses the school default), colour, then the
 // room for each of the eight periods on A Days and on B Days.
 const GROUPS = [
@@ -249,6 +266,30 @@ function buildFloor(plan, subjectByCode, teachersByRoom) {
   };
 }
 
+// A school year that never happened: 31 August 2026 to 11 June 2027, A Days
+// and B Days taking turns, Wednesdays on Early Release, and the changes a
+// real year has. The rotation steps on every school day, so the snow day
+// pushes every later day back by one and the day after it is set to the day
+// type the snow day would have been; the two assemblies each stand in for a
+// day of the rotation and are followed by a day set the same way.
+function sampleCalendar() {
+  const weekdays = [0, 1, 2, 3, 4, 5, 6].map((index) => ({ day: index < 5 ? 'rotation' : 'closed', bells: index === 2 ? BELLS_EARLY : null }));
+  const closed = (date, label) => ({ date, day: 'closed', bells: null, label });
+  const winter = ['2026-12-21', '2026-12-22', '2026-12-23', '2026-12-24', '2026-12-25', '2026-12-28', '2026-12-29', '2026-12-30', '2026-12-31', '2027-01-01'];
+  const dates = [
+    closed('2026-10-19', 'Fall break'), closed('2026-10-20', 'Fall break'), closed('2026-10-21', 'Fall break'), closed('2026-10-22', 'Fall break'), closed('2026-10-23', 'Fall break'),
+    { date: '2026-11-12', day: DAY_ASSEMBLY, bells: BELLS_ASSEMBLY, label: 'Assembly' },
+    { date: '2026-11-13', day: DAY_B, bells: null, label: 'Back in step after the assembly' },
+    ...winter.map((date) => closed(date, 'Winter break')),
+    closed('2027-01-12', 'Snow day'),
+    { date: '2027-01-13', day: DAY_A, bells: null, label: 'Back in step after the snow day' },
+    { date: '2027-01-30', day: 'rotation', bells: null, label: 'Make-up day for the snow day' },
+    { date: '2027-03-11', day: DAY_ASSEMBLY, bells: BELLS_ASSEMBLY, label: 'Assembly' },
+    { date: '2027-03-12', day: DAY_B, bells: null, label: 'Back in step after the assembly' },
+  ];
+  return { start: '2026-08-31', end: '2027-06-11', weekdays, rotation: [DAY_A, DAY_B], dates, changedAt: SAMPLE_DATE };
+}
+
 export function sampleSchool() {
   const subjectByCode = new Map(SUBJECTS.map((subject) => [subject.code, subject.id]));
   const teachersByRoom = new Map(TEACHERS.map((teacher) => [teacher[3], [teacher[0]]]));
@@ -261,7 +302,7 @@ export function sampleSchool() {
     label: number === 'Cafeteria' ? 'Lunch' : '',
     teacherIds: [],
   }));
-  const bells = (list) => list.map((bell) => ({ start: bell[0], end: bell[1] }));
+  const bells = (list) => list.map((bell) => (bell ? { start: bell[0], end: bell[1] } : null));
   const views = {};
   for (const view of ['teacher', 'group', 'room', 'map', 'free', 'now', 'common', 'coverage', 'sub', 'directions', 'staffing']) views[view] = true;
 
@@ -315,7 +356,13 @@ export function sampleSchool() {
     dayTypes: [
       { id: DAY_A, name: 'A Day', own: true, bells: bells(BELLS_A) },
       { id: DAY_B, name: 'B Day', own: true, bells: bells(BELLS_B) },
+      { id: DAY_ASSEMBLY, name: 'Assembly Day', own: false, sameAs: DAY_B, short: 'AD', bells: Array(8).fill(null) },
     ],
+    bellSchedules: [
+      { id: BELLS_EARLY, name: 'Early Release', short: 'ER', bells: bells(BELLS_EARLY_RELEASE), off: [4, 5, 6, 7] },
+      { id: BELLS_ASSEMBLY, name: 'Assembly', short: 'AS', bells: bells(BELLS_ASSEMBLY_DAY), off: [] },
+    ],
+    calendar: sampleCalendar(),
     accepted: [],
     scenario: null,
     publish: { passcode: 'bulldogs2015', stalenessDays: 60, views, teacherNamesOnMap: true, lastPublishedAt: null },

@@ -35,7 +35,8 @@ import { commonPeriods } from '../../staff/views/common.js';
 import { render as renderBatch } from '../../ui/prints/batch.js';
 import { render as renderChecks } from '../../ui/prints/checks-report.js';
 import { seededRandom } from '../../engine/ids.js';
-import { sampleSchool } from '../../data/sample-school.js';
+// The sample before its calendar, bell schedules, marks and duties (SV2-82): the cases here build their own.
+import { plainSchool as sampleSchool } from '../engine/helpers.mjs';
 import { readTool, toolFile, partsOf } from './reader.mjs';
 
 const clock = () => new Date('2026-09-01T12:00:00Z');

@@ -29,7 +29,8 @@ import { suggest } from '../../engine/suggest.js';
 import { newAcceptedFinding, resolveSlotRoom } from '../../engine/schema.js';
 import { splitAccepted } from '../../engine/findings.js';
 import { followAcceptedWalks } from '../../engine/checks.js';
-import { sampleSchool } from '../../data/sample-school.js';
+// The sample before its calendar, bell schedules, marks and duties (SV2-82): the cases here build their own.
+import { plainSchool as sampleSchool } from '../engine/helpers.mjs';
 
 const A = 'dsample00a';
 const B = 'dsample00b';

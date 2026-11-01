@@ -2,7 +2,7 @@
 // for the validate, repair and migrate tests, and one way to break each rule
 // those fields have. Invented data only.
 
-import { sampleSchool } from '../../data/sample-school.js';
+import { plainSchool } from '../engine/helpers.mjs';
 import { defaultWeekdays } from '../../engine/schema.js';
 
 export const A = 'dsample00a';
@@ -18,7 +18,7 @@ export const AS = 'bsample0as';
 // from 31 August 2026 to 11 June 2027 with a snow day, a re-sync, a
 // Saturday make-up day and Thanksgiving.
 export function withEverything() {
-  const project = sampleSchool();
+  const project = plainSchool();
   const bells = project.dayTypes[0].bells;
   project.dayTypes.push({ id: C, name: 'C Day', own: false, sameAs: B, short: 'C', bells: Array(8).fill(null) });
   project.dayTypes.push({ id: D, name: 'D Day', own: false, bells: Array(8).fill(null) });
