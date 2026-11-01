@@ -120,6 +120,8 @@ export function mount(env) {
   // the filter and the row whose days are open: kept while the page is open
   if (view.dutyTeacher === undefined) view.dutyTeacher = '';
   if (view.dutyDays === undefined) view.dutyDays = null;
+  // the duty whose "Only these…" is chosen with no day type ticked yet
+  if (view.dutyOnly === undefined) view.dutyOnly = null;
 
   function add(kind) {
     const before = dutiesOf(ctx.store.project).length;
@@ -138,7 +140,11 @@ export function mount(env) {
     const sentence = dutySentence(project, duty);
     if (!apply(env, deleteDuty, { id: duty.id })) return;
     if (view.dutyDays === duty.id) view.dutyDays = null;
-    ctx.toast({ text: 'Deleted ' + sentence + '.', action: { label: 'Undo', run: ctx.undo } });
+    // Undo from the toast brings the row back and the focus with it
+    ctx.toast({ text: 'Deleted ' + sentence + '.', action: { label: 'Undo', run: () => {
+      env.focusAfter('duty:' + duty.id + ':label');
+      ctx.undo();
+    } } });
     const left = order.filter((other) => other.id !== duty.id);
     env.render(left.length > 0 ? 'duty:' + left[Math.min(order.indexOf(duty), left.length - 1)].id + ':label' : 'duty-add');
   }
@@ -217,19 +223,23 @@ export function mount(env) {
     }));
     const name = uid('duty-days');
     const some = duty.dayTypeIds.length > 0;
+    const waiting = !some && view.dutyOnly === duty.id;
     const every = keyed(h('input', { type: 'radio', name, value: 'all' }), key('days:all'));
-    every.checked = !some;
+    every.checked = !some && !waiting;
     every.addEventListener('change', () => {
+      view.dutyOnly = null;
       env.focusAfter(key('days:all'));
       apply(env, setDuty, { id: duty.id, dayTypeIds: [] });
     });
     const only = keyed(h('input', { type: 'radio', name, value: 'some' }), key('days:some'));
-    only.checked = some;
+    only.checked = some || waiting;
     // "Only these" with nothing ticked would be every day type again: the
-    // first tick is what makes it so, so the radio only moves the focus
+    // first tick is what makes it so, so until then the choice is kept here,
+    // the radio stays checked and the focus stays on it (an arrow key has
+    // put it there, and the next arrow or Tab goes on from it)
     only.addEventListener('change', () => {
-      env.focusAfter(key('day:' + project.dayTypes[0].id));
-      env.render(key('day:' + project.dayTypes[0].id));
+      view.dutyOnly = duty.id;
+      env.render(key('days:some'));
     });
     const ticks = h('div', { class: 'sch-duties__chips', role: 'group', 'aria-label': 'Day types' }, project.dayTypes.map((dayType) => {
       const box = keyed(h('input', { type: 'checkbox' }), key('day:' + dayType.id));
@@ -253,10 +263,12 @@ export function mount(env) {
       h('div', null, h('p', { class: 'sch-markedit__legend' }, 'Weekdays (none is every day)'), chips),
       h('fieldset', { class: 'sch-fieldset' }, h('legend', null, 'Day types'),
         h('label', { class: 'sch-radio' }, every, h('span', null, 'Every day type')),
-        h('label', { class: 'sch-radio' }, only, h('span', null, 'Only these…')), ticks),
+        h('label', { class: 'sch-radio' }, only, h('span', null, 'Only these…')), ticks,
+        waiting ? h('p', { class: 'sch-hint' }, 'Tick a day type. Until one is ticked, this holds on every day type.') : null),
       h('div', { class: 'sch-duties__dates' }, date('from', 'From (optional)'), date('to', 'Until (optional)')),
       button('Done', () => {
         view.dutyDays = null;
+        view.dutyOnly = null;
         env.render(key('days'));
       }, { primary: true, small: true, key: key('days-done'), action: 'done-days' }));
   }
@@ -265,6 +277,7 @@ export function mount(env) {
     const open = view.dutyDays === duty.id;
     const line = keyed(h('button', { type: 'button', class: 'sch-marks__line', 'aria-expanded': String(open), 'aria-label': 'Days of ' + dutyName(duty) + ': ' + daysWords(project, duty), on: { click: () => {
       view.dutyDays = open ? null : duty.id;
+      view.dutyOnly = null;
       env.render(open ? 'duty:' + duty.id + ':days' : 'duty:' + duty.id + ':weekday:0');
     } } }, daysWords(project, duty)), 'duty:' + duty.id + ':days');
     return h('td', { data: { label: 'Days' } }, line);

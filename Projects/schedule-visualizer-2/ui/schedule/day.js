@@ -166,6 +166,12 @@ export function offSentence(settings, name, off, periods) {
 
 export { MARK_WORDS };
 
+// A grade as the school typed it, with the word in front unless it has its
+// own: "grade 7" for 7, "Grade 7" left as it is (never "grade Grade 7").
+function gradeWords(grade, capital) {
+  return /^grade\s/i.test(grade) ? grade : (capital ? 'Grade ' : 'grade ') + grade;
+}
+
 // The groups a mark takes, by its scope (ARCHITECTURE 17.5), in the project's
 // order: every group, those of the grades (matched ignoring case and spaces),
 // or those it names.
@@ -208,7 +214,7 @@ export function markParts(project, mark, id) {
   const taken = markGroups(project, mark);
   let who;
   if (mark.scope === 'school') who = 'the whole school';
-  else if (mark.scope === 'grades') who = (mark.grades.length === 1 ? 'grade ' : 'grades ') + list(mark.grades);
+  else if (mark.scope === 'grades') who = mark.grades.some((grade) => /^grade\s/i.test(grade)) ? list(mark.grades.map((grade) => gradeWords(grade, false))) : (mark.grades.length === 1 ? 'grade ' : 'grades ') + list(mark.grades);
   else who = taken.length <= 3 ? list(taken.map((group) => group.name)) : count(taken.length, 'group');
   const pastEnd = mark.period >= settings.periods;
   const days = mark.dayTypeIds.length === 0 ? ', every day type' : ' on ' + list(project.dayTypes.filter((dayType) => mark.dayTypeIds.includes(dayType.id)).map((dayType) => dayType.name));
@@ -892,7 +898,12 @@ export function mount(env) {
     const sentence = markSentence(project, mark, mark.id);
     if (!apply(env, deleteMark, { id: mark.id })) return;
     view.markEdit = null;
-    ctx.toast({ text: 'Deleted ' + sentence + '.', action: { label: 'Undo', run: ctx.undo } });
+    // Undo from the toast brings the line back and the focus with it
+    const back = 'mark:' + mark.id + ':open';
+    ctx.toast({ text: 'Deleted ' + sentence + '.', action: { label: 'Undo', run: () => {
+      env.focusAfter(back);
+      ctx.undo();
+    } } });
     env.render('mark-new');
   }
 
@@ -967,12 +978,12 @@ export function mount(env) {
       const grades = gradesInUse(project);
       for (const grade of edit.grades) if (!grades.some((other) => spacelessKey(other) === spacelessKey(grade))) grades.push(grade);
       who.push(grades.length === 0
-        ? h('p', { class: 'sch-hint' }, 'No group has a grade yet. Give groups a grade on the Groups tab.')
+        ? h('p', { class: 'sch-hint' }, 'No group has a grade yet. A mark for a grade takes the groups whose Grade field matches it, so give groups a grade on the Groups tab first.')
         : h('div', { class: 'sch-markedit__chips', role: 'group', 'aria-label': 'Grades' }, grades.map((grade) => {
           const pressed = keys.has(spacelessKey(grade));
           return keyed(h('button', { type: 'button', class: 'sch-show__chip', 'aria-pressed': String(pressed), data: { grade }, on: { click: () => change({
             grades: pressed ? edit.grades.filter((other) => spacelessKey(other) !== spacelessKey(grade)) : edit.grades.concat([grade]),
-          }, key('grade:' + spacelessKey(grade))) } }, 'Grade ' + grade), key('grade:' + spacelessKey(grade)));
+          }, key('grade:' + spacelessKey(grade))) } }, gradeWords(grade, true)), key('grade:' + spacelessKey(grade)));
         })));
     }
     if (edit.scope === 'groups') {
