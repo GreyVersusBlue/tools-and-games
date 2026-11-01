@@ -165,7 +165,7 @@ export function mount(env) {
       name: 'duty' + which,
       format: (value) => (value === '' ? '' : formatTime(value, project.settings.timeFormat, { suffix: false })),
       parse: (typed) => parseClock(typed, project.settings.timeFormat) || '',
-      width: '5.5rem',
+      width: '3.75rem',
       commit: (value) => {
         ctx.store.apply(setDuty, { id: duty.id, [which]: value });
       },

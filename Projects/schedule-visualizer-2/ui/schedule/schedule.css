@@ -2074,16 +2074,38 @@
   vertical-align: top;
 }
 
-.sch-duties__table {
-  min-width: 56rem;
-}
-
+/* The table is as wide as its card at 1280 px with the inspector open (about
+   790 px): the columns share what there is, the controls give way to their
+   column, and the What field keeps room for a label as long as "Science
+   meeting". Narrower than its controls need, the card scrolls it sideways. */
 .sch-duties__table select,
 .sch-duties__table .field__input:not([type="date"]) {
   box-sizing: border-box;
   width: 100%;
-  min-width: 7rem;
+  min-width: 0;
   max-width: 100%;
+}
+
+.sch-duties__table th {
+  padding-inline: var(--s-1);
+  letter-spacing: 0.04em;
+}
+
+.sch-duties__table td:first-child {
+  min-width: 8.5rem;
+}
+
+.sch-duties__table td:nth-child(2) {
+  min-width: 8.5rem;
+}
+
+.sch-duties__table td:nth-child(3) {
+  min-width: 6rem;
+}
+
+.sch-duties__table td:nth-child(4),
+.sch-duties__table td:nth-child(5) {
+  min-width: 7rem;
 }
 
 .sch-duties__table .picker,
@@ -2100,6 +2122,11 @@
   margin: 0 0 var(--s-1);
 }
 
+/* the row's line carries the glyph in its word already: one triangle, not two */
+.sch-duties__findrow .sch-finding-line--warning::before {
+  content: none;
+}
+
 .sch-duties__table td > .field,
 .sch-duties__table td > select,
 .sch-duties__table td > .picker {
@@ -2112,7 +2139,12 @@
 }
 
 .sch-duties__times .field__input {
-  min-width: 5.5rem;
+  min-width: 0;
+}
+
+.sch-duties__times .field {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .sch-duties__nobody {
