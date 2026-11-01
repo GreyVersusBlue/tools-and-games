@@ -28,6 +28,7 @@ import { dutyDate, everyTeacherDay, groupSlots, groupMark, takenBy, takingDuty, 
 import { freeTeachers, emptyRooms } from '../../staff/views/free.js';
 import { coverageFor } from '../../staff/views/coverage.js';
 import { roomUse } from '../../staff/views/room.js';
+import { doorSignMarkup } from '../../staff/views/door-sign.js';
 import { dayKindsOf } from '../../staff/views/teacher.js';
 import { lockScreenLayout } from '../../staff/outputs.js';
 import { commonPeriods } from '../../staff/views/common.js';
@@ -1048,6 +1049,53 @@ test('a file published before marks existed has neither list, and every view rea
     const a = school.teachers[0];
     assert.deepEqual(coverageFor(school, a.id, dayType.id).flatMap((item) => item.notFree), []);
   }
+});
+
+// A third day type that is a copy of A Day, so that nothing but a mark can tell the two apart.
+const COPY = 'dcopy00000';
+function copiedDay(project) {
+  const a = project.dayTypes.find((dayType) => dayType.id === A);
+  project.dayTypes.push({ id: COPY, name: 'A Day again', own: true, sameAs: null, short: '', bells: a.bells.map((bell) => ({ ...bell })) });
+  for (const group of project.groups) group.days[COPY] = group.days[A].map((slot) => ({ ...slot }));
+}
+
+test('the door sign\'s day table prints a group\'s mark, and day types differing only by a mark id share a card unless the printed words differ', () => {
+  const lunchOn = (id, dayTypeId, label) => {
+    const mark = newMark(id, 'lunch', 3);
+    mark.scope = 'grades';
+    mark.grades = ['6'];
+    mark.dayTypeIds = [dayTypeId];
+    mark.label = label;
+    return mark;
+  };
+  const sign = (change) => {
+    const school = dutyModel((project) => { copiedDay(project); project.marks = []; change(project); });
+    const room = school.room('rsamplecaf');
+    const html = doorSignMarkup(school, room, { day: true });
+    return { html, kinds: Number(/data-count="(\d+)"/.exec(html)[1]), rows: html.match(/<tr[^>]*>.*?<\/tr>/g) };
+  };
+  const none = sign(() => {});
+  assert.equal(none.kinds, 2, 'A Day and its copy share a card, B Day has its own');
+  assert.ok(!none.html.includes('(Lunch)'));
+  const alike = sign((project) => { project.marks = [lunchOn('mdoor00001', A, ''), lunchOn('mdoor00002', COPY, '')]; });
+  assert.ok(alike.rows.some((row) => row.includes('Period 4') && row.includes('6A (Lunch)')), 'the mark is printed by the group: ' + alike.rows.slice(3, 5));
+  assert.equal(alike.kinds, 2, 'two marks with different ids and the same words do not split the card');
+  const typed = sign((project) => { project.marks = [lunchOn('mdoor00001', A, '<i>Lunch</i> A'), lunchOn('mdoor00002', COPY, '')]; });
+  assert.ok(typed.html.includes('6A (&lt;i&gt;Lunch&lt;/i&gt; A)') && !typed.html.includes('<i>'), 'a typed label is text, as typed');
+  assert.equal(typed.kinds, 3, 'different words are different cards');
+  // a school without marks has the sign it had
+  const plain = openSchool(publishedModel(sampleSchool(), { clock }));
+  assert.ok(!doorSignMarkup(plain, plain.room('rsamplecaf'), { day: true }).includes('6A ('));
+});
+
+test('the checks report trims a mark\'s label as the views do: a label of spaces falls back to the kind\'s words', () => {
+  const spaces = (project) => { project.marks[2].label = '   '; };
+  const html = renderChecks(dutySchool(spaces), null, { now: new Date('2026-09-01T12:00:00Z') }).html;
+  assert.equal((html.match(/<span class="doc-grid__planning">\s*<\/span>/g) || []).length, 0, 'no blank cell');
+  assert.ok(html.includes('<span class="doc-grid__planning">Activity</span>'), 'it reads Activity, as the views do');
+  const school = dutyModel(spaces);
+  const entry = school.teachers.map((teacher) => everyTeacherDay(school, B).get(teacher.id)[7]).find((each) => each.marked === 'activity');
+  assert.equal(takenBy(school, entry, B, null).title, 'Activity');
 });
 
 test('every teacher\'s schedule in the batch print carries duties as rows, and marks as the free period\'s words', () => {
