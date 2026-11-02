@@ -305,6 +305,62 @@ test('the group editor with three day types keeps every room field 120 px wide o
   assert.ok(narrowest.some((each) => each[2] === 'column') && narrowest.some((each) => each[2] === 'row'), JSON.stringify(narrowest));
 });
 
+// ---------------------------------------------------------------- a toast's Undo
+
+const toastNow = (page) => page.evaluate(() => {
+  const toast = document.querySelector('.toast');
+  return toast ? { text: toast.querySelector('.toast__text').textContent, undo: Boolean(toast.querySelector('.toast__action')) } : null;
+});
+const dutyLabels = (page) => page.evaluate(() => globalThis.sv2.store.project.duties.map((duty) => duty.label));
+const dutyId = (page, label) => page.evaluate((wanted) => globalThis.sv2.store.project.duties.find((duty) => duty.label === wanted)?.id || null, label);
+
+test('a toast\'s Undo stands for its own change: a newer change closes the toast, and the store keeps both changes', async () => {
+  const { page } = sessions.get('desktop');
+  await openTab(page, 'duties');
+  await page.waitForSelector('.sch-duties__table tbody tr[data-duty]');
+  await page.evaluate(() => document.querySelector('.toast__close')?.click());
+  const car = await dutyId(page, 'Car line');
+  const bus = await dutyId(page, 'Bus duty');
+  assert.ok(car && bus);
+  // delete the Car line: the toast offers Undo
+  await page.click('[data-key="duty:' + car + ':delete"]');
+  await page.waitForFunction(() => /^Deleted /.test(document.querySelector('.toast .toast__text')?.textContent || ''), { timeout: 8000 });
+  await settled(page);
+  assert.equal((await toastNow(page)).undo, true);
+  assert.equal(await dutyId(page, 'Car line'), null);
+  // edit another duty's label: the newer change closes the toast
+  await page.click('[data-key="duty:' + bus + ':label"]', { clickCount: 3 });
+  await page.keyboard.type('Bus loop duty');
+  await page.keyboard.press('Enter');
+  // the edit is in the store: the toast, which stays six seconds, is already gone
+  await page.waitForFunction(() => globalThis.sv2.store.project.duties.some((duty) => duty.label === 'Bus loop duty'), { timeout: 8000 });
+  assert.equal(await toastNow(page), null, 'the Undo of the deletion went with the edit that came after it');
+  assert.deepEqual((await dutyLabels(page)).sort(), ['Bus loop duty', 'Lunch duty', 'Science department'], 'both changes stand');
+  assert.equal(await dutyId(page, 'Car line'), null, 'the Car line stays deleted');
+  assert.ok(await dutyId(page, 'Bus loop duty'), 'the label edit stands');
+});
+
+test('a toast\'s Undo still undoes its own change when it is the latest, and the keyboard\'s undo closes the toast it has answered', async () => {
+  const { page } = sessions.get('desktop');
+  await openTab(page, 'duties');
+  const lunch = await dutyId(page, 'Lunch duty');
+  await page.click('[data-key="duty:' + lunch + ':delete"]');
+  await page.waitForFunction(() => /^Deleted /.test(document.querySelector('.toast .toast__text')?.textContent || ''), { timeout: 8000 });
+  await page.evaluate(() => Array.from(document.querySelectorAll('.toast button')).find((button) => button.textContent === 'Undo').click());
+  await page.waitForFunction(() => document.querySelector('.toast') === null, { timeout: 8000 });
+  assert.ok(await dutyId(page, 'Lunch duty'), 'the toast\'s Undo brought the Lunch duty back');
+  // again, and the keyboard takes it back instead
+  await page.click('[data-key="duty:' + lunch + ':delete"]');
+  await page.waitForFunction(() => /^Deleted /.test(document.querySelector('.toast .toast__text')?.textContent || ''), { timeout: 8000 });
+  await page.evaluate(() => document.querySelector('#surface').focus());
+  const gone = await page.evaluate(() => {
+    globalThis.sv2.store.undo();
+    return document.querySelector('.toast') === null;
+  });
+  assert.equal(gone, true, 'the toast is gone the moment the store\'s undo is made, not six seconds later');
+  assert.ok(await dutyId(page, 'Lunch duty'), 'the store\'s undo brought it back, and the toast that offered the same went');
+});
+
 test('plainSample swaps the whole sample for the plain one and writes no save', async () => {
   // a browser of its own: a second tab of one profile would turn this one
   // read-only or failed, and Movement's first visit is itself a change
