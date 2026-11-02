@@ -23,9 +23,12 @@
   margin-top: var(--s-4);
 }
 
-/* Above 900 px the seven tabs are one row: where the room runs short (beside
-   an open inspector on a 920 px window) they take less padding first, and
-   the row scrolls sideways before it would wrap. */
+/* Above 900 px the nine tabs are one row. Beside the 320 px inspector they
+   run short of room from about 1100 px down, so the padding between them
+   falls first (to 2 px a side), then the type (14 px under 1000 px, 13 px
+   under 925 px); the row scrolls sideways before it would wrap, as it does in
+   larger type. Measured at 1100, 1001, 960, 925 and 901 px, 16 px type: the
+   last tab was 45 px out of the row at 1100 px with the seven-tab padding. */
 @media not all and (max-width: 900px) {
   .sch > .tabs > .tabs__list {
     flex-wrap: nowrap;
@@ -35,8 +38,20 @@
 
   .sch > .tabs > .tabs__list > .tabs__tab {
     flex: none;
-    padding: 0 clamp(2px, 3cqi - 8px, var(--s-3));
+    padding: 0 clamp(2px, 8cqi - 42px, var(--s-3));
     white-space: nowrap;
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1000px) {
+  .sch > .tabs > .tabs__list > .tabs__tab {
+    font-size: var(--t-sm);
+  }
+}
+
+@media (min-width: 901px) and (max-width: 925px) {
+  .sch > .tabs > .tabs__list > .tabs__tab {
+    font-size: 0.8125rem;
   }
 }
 
@@ -1362,6 +1377,7 @@
 @media (pointer: coarse) {
   .sch > .tabs > .tabs__list > .tabs__tab {
     min-height: 44px;
+    min-width: 44px;
   }
 }
 
