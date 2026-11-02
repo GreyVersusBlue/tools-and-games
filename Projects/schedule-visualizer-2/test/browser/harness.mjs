@@ -184,14 +184,6 @@ export async function openPlanner(options) {
     // no module worker loads through the interception, and the engine gives
     // up on one only after ~9 s: plainSample must not wait on its answer there
     page.__noWorker = opts.intercept === true;
-    await page.evaluateOnNewDocument(() => {
-      // see plainSample: a page left as the swap made it writes nothing as it goes
-      addEventListener('pagehide', () => {
-        const mine = globalThis.sv2PlainSwap;
-        const sv2 = globalThis.sv2;
-        if (mine && sv2 && sv2.store.version === mine.version && !sv2.storage.pending) sv2.storage.state.readOnly = true;
-      });
-    });
     page.on('request', (request) => {
       const address = request.url();
       requests.push(address);
@@ -260,47 +252,38 @@ export async function openPlanner(options) {
 // place, as a project freshly loaded (the history starts again), and wait for
 // the sections to have worked out the new one.
 //
-// The swap is not the person's change, so it is made while storage reads the
-// tab as read-only: store.replace tells every subscriber, and storage's own
-// would call it an edit and write the plain school over the device's save
-// about a second later (SV2-87b: a reload, or a `keep` page, then opened on
-// that copy). What the swap still does is what loading a saved project does
-// too: storage counts the project as the person's, so a recovery point of it
-// is taken when the timer next comes round. The wait is on what the sections
-// answer from: the engine's results for this very project (the promise the
-// Schedule and Movement sections wait on, which settles after theirs), then
-// no section pending and the plan at rest. A page opened through the
-// interception (`intercept: true`) has no module worker, and the engine's
+// What the swap writes (SV2-87b looked, and the answer is that it must write
+// the save): store.replace tells every subscriber, and storage's own takes it
+// for an edit and saves the plain school over the device's copy about a second
+// later, with a recovery point to follow. Those writes are the app's own for a
+// project that has been loaded, and the tests lean on them: calendar.mjs,
+// calendar-review.mjs, calendar-faults.mjs, m1-pass.mjs, inspector.mjs and the
+// screens in no-offsite.mjs reload the page after opening it (to pin a clock, or
+// to open a second tab), and a reload lands on whatever the device saved. A
+// swap that left no save made every one of them open on the whole sample
+// again, and a swap that left a recovery point and no save made the next tab
+// boot on the question whether to restore it. So the save is made here, not
+// left to a timer: `flush()` writes it now, and plainSample returns when it is
+// written, so no reload can come in the second before it. The wait is on what
+// the sections answer from: the engine's results for this very project (the
+// promise the Schedule and Movement sections wait on, which settles after
+// theirs), then no section pending and the plan at rest. A page opened through
+// the interception (`intercept: true`) has no module worker, and the engine's
 // answer comes ~9 s late there, once it has given the worker up: the wait on
 // the engine is left out for such a page, and the sections' own `data-pending`
 // is what is waited on.
 export async function plainSample(page) {
   const project = JSON.parse(JSON.stringify(plainSchool()));
   const section = await page.evaluate(() => document.querySelector('.surface__layout')?.dataset.section || '');
-  // the theme is the device's, as the app's own Load the sample school keeps it
   const noWorker = page.__noWorker === true;
   await page.evaluate(async (next, skipEngine) => {
     const { store, storage } = globalThis.sv2;
+    // the theme is the device's, as the app's own Load the sample school keeps it
     next.settings.theme = store.project.settings.theme;
-    const state = storage.state;
-    const was = state.readOnly;
-    state.readOnly = true;
-    try {
-      store.replace(next);
-    } finally {
-      state.readOnly = was;
-    }
+    store.replace(next);
     if (store.project !== next) throw new Error('the plain sample is not the store\'s project after the swap');
-    // Storage counts the swapped project as the person's (the same flag a
-    // loaded project sets), so a page that is left untouched would write a
-    // recovery point of it as it goes, and the next load of the profile would
-    // open on the question whether to restore it (SV2-87b: no-offsite's
-    // read-only-tab screen never booted its second tab). While the version is
-    // still the swap's and nothing waits to be saved, leaving writes nothing:
-    // the listener that sees to it is the page's first (openPlanner installs
-    // it before the page loads), so it runs before storage's own.
-    globalThis.sv2PlainSwap = { version: store.version };
     if (!skipEngine) await store.derived.results().catch(() => null);
+    await storage.flush();
   }, project, noWorker);
   await page.waitForFunction(
     (wanted) => document.documentElement.dataset.ready === 'true'

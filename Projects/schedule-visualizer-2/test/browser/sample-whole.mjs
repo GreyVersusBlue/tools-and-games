@@ -23,7 +23,7 @@
 //                  Thursday, the Car line and no Early Release
 //
 // And plainSample() (test/browser/harness.mjs): the swap of the sample for the
-// plain one writes no save, and the page is the plain school once it returns.
+// plain one is saved when it returns, so a reload lands on it.
 //
 // Every wait is on a state the page sets (`data-pending` gone from the
 // section, the section's data-section, a list drawn), never on a first paint
@@ -366,25 +366,7 @@ test('a toast\'s Undo still undoes its own change when it is the latest, and the
   assert.ok(await dutyId(page, 'Lunch duty'), 'the store\'s undo brought it back, and the toast that offered the same went');
 });
 
-test('a page left as plainSample made it writes no recovery point, so the next load of the profile opens at once and has saved nothing', async () => {
-  const own = await launch();
-  const session = await openPlanner({ server, browser: own, hash: '#schedule/day', theme: 'light', width: 1280, height: 800 });
-  try {
-    const { page } = session;
-    const url = page.url();
-    await page.goto('about:blank');
-    await page.goto(url, { waitUntil: 'load' });
-    // a start-up question about a recovery point would keep the planner from booting
-    await page.waitForFunction(() => globalThis.sv2 && globalThis.sv2.storage && document.documentElement.dataset.ready === 'true', { timeout: 15000 });
-    const stored = await page.evaluate(async () => ({ savedAt: globalThis.sv2.storage.state.savedAt, points: (await globalThis.sv2.storage.listRecoveryPoints()).length }));
-    assert.deepEqual(stored, { savedAt: null, points: 0 });
-  } finally {
-    await session.close().catch(() => {});
-    await own.close();
-  }
-});
-
-test('plainSample swaps the whole sample for the plain one and writes no save', async () => {
+test('plainSample swaps the whole sample for the plain one, has it saved when it returns, and a reload lands on it', async () => {
   // a browser of its own: a second tab of one profile would turn this one
   // read-only or failed, and Movement's first visit is itself a change
   const own = await launch();
@@ -408,25 +390,21 @@ test('plainSample swaps the whole sample for the plain one and writes no save', 
     const before = await read();
     assert.deepEqual([before.bellSchedules, before.calendar, before.marks, before.duties], [2, true, 3, 4], 'the page opened on the whole sample');
     assert.deepEqual([before.pending, before.save, before.savedAt], [false, 'off', null], 'and has saved nothing of it');
-    await page.evaluate(() => globalThis.sv2.storage.setTiming({ delay: 50, maxWait: 100 }));
     await plainSample(page);
     const right = await read();
     assert.deepEqual([right.bellSchedules, right.calendar, right.marks, right.duties], [0, false, 0, 0], 'it is the plain sample when plainSample returns');
-    assert.equal(right.pending, false, 'nothing is waiting to be saved');
-    assert.equal(right.readOnly, false, 'the tab is as editable as it was');
+    assert.equal(right.pending, false, 'nothing is waiting to be saved: the swap is written, not left to a timer');
+    assert.equal(right.save, 'saved');
+    assert.notEqual(right.savedAt, null);
+    assert.equal(right.readOnly, false);
     // the sections have answered from the swapped project: the Day tab has none of the new cards
     assert.equal(await page.$$eval('table[data-bells]', (all) => all.length), 0);
     assert.equal(await page.$$eval('.sch-marks__line', (all) => all.length), 0);
-    // an autosave started by the swap would have finished long before this
-    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 600)));
-    const later = await read();
-    assert.deepEqual([later.save, later.savedAt, later.pending], ['off', null, false], 'no save was written for the swap');
-    // a change that is not the swap is saved, so the guard is for the swap alone
-    await page.evaluate(() => {
-      const { store } = globalThis.sv2;
-      store.replace({ ...store.project, modified: store.project.modified });
-    });
-    assert.equal((await read()).pending, true, 'a store change that is not the swap is saved');
+    // and a reload at once, as the tests that pin a clock do, opens on it
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForFunction(() => globalThis.sv2 && globalThis.sv2.storage && document.documentElement.dataset.ready === 'true', { timeout: 15000 });
+    const reloaded = await read();
+    assert.deepEqual([reloaded.bellSchedules, reloaded.calendar, reloaded.marks, reloaded.duties], [0, false, 0, 0], 'the reload opened on the plain sample');
     assert.deepEqual(session.problems().errors, []);
   } finally {
     await session.close().catch(() => {});
