@@ -47,7 +47,7 @@ const editable = (target) => (target || page).waitForFunction(
 
 // A page on a device with nothing saved (or, with keep, on what the last page left).
 async function open(options) {
-  const next = await openPlanner({ hash: '#project', server, browser, ...options });
+  const next = await openPlanner({ hash: '#project', fullSample: true, server, browser, ...options });
   await editable(next.page);
   await prepare(next.page);
   return next;
@@ -473,6 +473,7 @@ test('a crash while saves were failing: the next start offers the recovery point
 test('a device that cannot keep recovery points says so once and carries on saving', async () => {
   use(await openPlanner({
     hash: '#project',
+    fullSample: true,
     server,
     browser,
     device: { theme: 'light' },

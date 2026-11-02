@@ -102,9 +102,9 @@ test('the worker answers for the sample school, with typed arrays and the walk t
   assert.ok(seen.stats.asked >= 1, 'nothing asked');
   assert.equal(seen.stats.remembered, seen.stats.asked - 1, 'every ask after the first should be answered from memory: ' + JSON.stringify(seen.stats));
   assert.deepEqual(seen.loud, ['group-walk:dsample00a:5:gsample08a', 'room-double:dsample00a:1:rsample203']);
-  assert.equal(seen.text, '8A needs 4 min 21 s to get from Gym to Room 303 after Period 6 on A Day, and the passing time is 4 min.');
+  assert.equal(seen.text, '8A needs 4 min 21 s to get from Gym to Room 303 after Period 6 on A Day, regular and Assembly bells, and the passing time is 4 min.');
   assert.deepEqual(seen.walk, [261, 0, 261, true]);
-  assert.equal(seen.routes, 8 * 7 * 2);
+  assert.equal(seen.routes, 8 * 7 * 2 * 3, 'three bell sets: regular, Early Release and Assembly');
   assert.deepEqual(seen.days, [['dsample00a', 7], ['dsample00b', 7]]);
   assert.equal(seen.positions, '[object Int16Array]');
   assert.equal(seen.lastPosition, true, 'the walker ends in the room');
@@ -112,7 +112,7 @@ test('the worker answers for the sample school, with typed arrays and the walk t
   assert.deepEqual(seen.loads, [['dsample00a', 'students', '[object Int32Array]', true], ['dsample00b', 'students', '[object Int32Array]', true]]);
   assert.equal(seen.places, '[object Int32Array]');
   assert.equal(seen.buildingFindings, 0);
-  assert.equal(seen.work.transitionsRun, 14);
+  assert.equal(seen.work.transitionsRun, 15);
 });
 
 test('a worker is running engine/worker.js from this site, and nothing was fetched from anywhere else', () => {

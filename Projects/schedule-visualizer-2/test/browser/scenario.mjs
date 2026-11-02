@@ -80,12 +80,11 @@ async function fresh(page, change) {
     await close.click();
     await page.waitForFunction(() => !document.querySelector('.toast'));
   }
-  await page.evaluate(async (alter) => {
-    const { sampleSchool } = await import('./data/sample-school.js');
-    const project = sampleSchool();
+  await page.evaluate((alter, plain) => {
+    const project = plain;
     if (alter) new Function('project', alter)(project);
     globalThis.sv2.store.replace(project);
-  }, change || null);
+  }, change || null, JSON.parse(JSON.stringify(sampleSchool())));
   await go(page, '#scenarios');
   await ready(page);
 }
