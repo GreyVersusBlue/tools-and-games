@@ -248,13 +248,34 @@ export async function openPlanner(options) {
 // The planner opens on the whole sample school. Put the plain one in its
 // place, as a project freshly loaded (the history starts again), and wait for
 // the sections to have worked out the new one.
+//
+// The swap is not the person's change, so it is made while storage reads the
+// tab as read-only: store.replace tells every subscriber, and storage's own
+// would call it an edit and write the plain school over the device's save
+// about a second later (SV2-87b: a reload, or a `keep` page, then opened on
+// that copy). What the swap still does is what loading a saved project does
+// too: storage counts the project as the person's, so a recovery point of it
+// is taken when the timer next comes round. The wait is on what the sections
+// answer from: the engine's results for this very project (the promise the
+// Schedule and Movement sections wait on, which settles after theirs), then
+// no section pending and the plan at rest.
 export async function plainSample(page) {
   const project = JSON.parse(JSON.stringify(plainSchool()));
   const section = await page.evaluate(() => document.querySelector('.surface__layout')?.dataset.section || '');
   // the theme is the device's, as the app's own Load the sample school keeps it
-  await page.evaluate((next) => {
-    next.settings.theme = globalThis.sv2.store.project.settings.theme;
-    globalThis.sv2.store.replace(next);
+  await page.evaluate(async (next) => {
+    const { store, storage } = globalThis.sv2;
+    next.settings.theme = store.project.settings.theme;
+    const state = storage.state;
+    const was = state.readOnly;
+    state.readOnly = true;
+    try {
+      store.replace(next);
+    } finally {
+      state.readOnly = was;
+    }
+    if (store.project !== next) throw new Error('the plain sample is not the store\'s project after the swap');
+    await store.derived.results().catch(() => null);
   }, project);
   await page.waitForFunction(
     (wanted) => document.documentElement.dataset.ready === 'true'
