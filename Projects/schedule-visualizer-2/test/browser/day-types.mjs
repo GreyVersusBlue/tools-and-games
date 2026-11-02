@@ -15,7 +15,7 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { openPlanner, go, startServer, launch, loadModule } from './harness.mjs';
+import { openPlanner, go, startServer, launch, loadModule, atRest } from './harness.mjs';
 
 const DAY_A = 'dsample00a';
 const DAY_B = 'dsample00b';
@@ -45,6 +45,7 @@ const closeToast = () => page.evaluate(() => document.querySelector('.toast__clo
 async function click(selector) {
   await settled();
   if (!selector.startsWith('.toast')) await closeToast();
+  await atRest(page, selector);
   await page.click(selector);
 }
 
@@ -448,6 +449,7 @@ test('at 390 px with touch: rows stack, every target is 44 px, Move down by a ta
   const tap = async (selector) => {
     await settled();
     await closeToast();
+    await atRest(page, selector);
     const at = await box(selector);
     await page.touchscreen.tap(at.left + at.width / 2, at.top + at.height / 2);
   };

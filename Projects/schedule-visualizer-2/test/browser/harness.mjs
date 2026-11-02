@@ -399,4 +399,36 @@ export async function still(p) {
   assert.ok(rest.ok, 'the plan came to rest within 120 frames: box and view ' + rest.at + (rest.measured ? '' : ', the view not measured to the box'));
 }
 
+// A control at rest: it is on the page and its box is the same two frames
+// running. A press computed from a box read straight after a scroll or a
+// redraw lands where the control was, on a runner slow enough to be between
+// the two (SV2-87d). Resolves to the box; fails after 120 frames.
+export async function atRest(p, selector) {
+  const rest = await p.evaluate((wanted) => new Promise((resolve) => {
+    const read = () => {
+      const el = document.querySelector(wanted);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return [r.left, r.top, r.width, r.height].join(' ');
+    };
+    let last = read();
+    let frames = 0;
+    const next = () => requestAnimationFrame(() => {
+      const now = read();
+      frames += 1;
+      if (now !== null && now === last) {
+        const [left, top, width, height] = now.split(' ').map(Number);
+        resolve({ ok: true, left, top, width, height });
+      } else if (frames >= 120) resolve({ ok: false, at: now });
+      else {
+        last = now;
+        next();
+      }
+    });
+    next();
+  }), selector);
+  assert.ok(rest.ok, selector + ' came to rest within 120 frames, its box ' + rest.at);
+  return rest;
+}
+
 export { launch };
