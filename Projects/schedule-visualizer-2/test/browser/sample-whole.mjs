@@ -289,6 +289,11 @@ test('the group editor with three day types keeps every room field 120 px wide o
         await page.setViewport({ width, height: 900, deviceScaleFactor: 1 });
         await page.waitForFunction((w) => window.innerWidth === w, { timeout: 5000 }, width);
         await settled(page);
+        // the fields are laid out (a field with no box yet is not a narrow one)
+        await page.waitForFunction(() => {
+          const all = document.querySelectorAll('.sch-days .picker__input[data-key$=":room"]');
+          return all.length >= 16 && Array.from(all).every((el) => el.getBoundingClientRect().width > 0);
+        }, { timeout: 8000 });
         const rooms = await page.$$eval('.sch-days .picker__input[data-key$=":room"]', (all) => all.map((el) => el.getBoundingClientRect().width));
         const flow = await page.$eval('.sch-days', (el) => [el.dataset.shown, getComputedStyle(el).gridAutoFlow]);
         assert.ok(rooms.length >= 16, 'the room fields of two day types are there at ' + width + ' px: ' + rooms.length);
@@ -359,6 +364,24 @@ test('a toast\'s Undo still undoes its own change when it is the latest, and the
   });
   assert.equal(gone, true, 'the toast is gone the moment the store\'s undo is made, not six seconds later');
   assert.ok(await dutyId(page, 'Lunch duty'), 'the store\'s undo brought it back, and the toast that offered the same went');
+});
+
+test('a page left as plainSample made it writes no recovery point, so the next load of the profile opens at once and has saved nothing', async () => {
+  const own = await launch();
+  const session = await openPlanner({ server, browser: own, hash: '#schedule/day', theme: 'light', width: 1280, height: 800 });
+  try {
+    const { page } = session;
+    const url = page.url();
+    await page.goto('about:blank');
+    await page.goto(url, { waitUntil: 'load' });
+    // a start-up question about a recovery point would keep the planner from booting
+    await page.waitForFunction(() => globalThis.sv2 && globalThis.sv2.storage && document.documentElement.dataset.ready === 'true', { timeout: 15000 });
+    const stored = await page.evaluate(async () => ({ savedAt: globalThis.sv2.storage.state.savedAt, points: (await globalThis.sv2.storage.listRecoveryPoints()).length }));
+    assert.deepEqual(stored, { savedAt: null, points: 0 });
+  } finally {
+    await session.close().catch(() => {});
+    await own.close();
+  }
 });
 
 test('plainSample swaps the whole sample for the plain one and writes no save', async () => {
