@@ -18,7 +18,7 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { openPlanner, go, startServer, launch, loadModule, assertTouch } from './harness.mjs';
+import { openPlanner, go as goHash, startServer, launch, loadModule, assertTouch } from './harness.mjs';
 
 let server;
 let browser;
@@ -34,6 +34,16 @@ const settled = () => page.waitForFunction(() => document.querySelector('.sch')?
 const project = () => page.evaluate(() => JSON.parse(JSON.stringify(globalThis.sv2.store.project)));
 const activeKey = () => page.evaluate(() => document.activeElement?.dataset.key || null);
 const key = (name) => '[data-key="' + name + '"]';
+
+// The harness's go() waits for the section, and the Schedule section is
+// already the one on screen when only its tab changes: the old tab's controls
+// are still there, or the new tab's are not yet. Wait for the tab the address
+// names to be the one drawn (SV2-87d).
+async function go(p, hash) {
+  await goHash(p, hash);
+  const tab = hash.match(/^#schedule\/([a-z]+)/);
+  if (tab) await p.waitForFunction((wanted) => document.querySelector('.sch [data-tab="' + wanted + '"]:not([role="tab"])') !== null, { timeout: 8000 }, tab[1]);
+}
 const closeToast = () => page.evaluate(() => document.querySelector('.toast__close')?.click());
 
 async function toastSays(words) {
@@ -346,6 +356,7 @@ test('the Teachers tab counts each teacher’s duties and links to the Duties ta
   const total = (await project()).duties.length;
   await click('[data-teacher="tsample003"] .sch-teachers__duties a');
   await shows(() => location.hash === '#schedule/duties');
+  await page.waitForSelector(key('duty-filter'), { timeout: 8000 });
   await settled();
   assert.equal(await page.$eval(key('duty-filter'), (el) => el.value), 'tsample003');
   assert.deepEqual(await texts('.sch-duties__table tbody tr[data-duty] [data-key$=":days"]'), ['Wednesdays, every day type']);
