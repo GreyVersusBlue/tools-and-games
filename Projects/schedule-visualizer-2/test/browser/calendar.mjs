@@ -87,6 +87,8 @@ async function chooseRadio(part, value) {
 }
 
 async function undoFromToast() {
+  // the toast is shown later (after the next drawing), so wait for its Undo
+  await shows(() => Array.from(document.querySelectorAll('.toast button')).some((button) => button.textContent === 'Undo'));
   await page.evaluate(() => Array.from(document.querySelectorAll('.toast button')).find((button) => button.textContent === 'Undo').click());
   await shows(() => (document.querySelector('.toast .toast__text')?.textContent || '').startsWith('Undid: '));
   await settled();
@@ -316,7 +318,7 @@ test('Through: a run of dates without a Shift key, set to No school in one step,
   await page.click('[data-action="apply-date"]');
   await dialogGone();
   assert.equal((await dayOn('2026-11-25')).school, false);
-  assert.match(await page.evaluate(() => document.querySelector('.toast .toast__text').textContent), /^No school on 23 to 29 November\./);
+  await shows(() => (document.querySelector('.toast .toast__text')?.textContent || '').startsWith('No school on 23 to 29 November.'));
   await undoFromToast();
   assert.equal((await dayOn('2026-11-25')).school, true);
 });
