@@ -16,6 +16,10 @@ import { bellsFor, bellFindings } from '../../engine/bells.js';
 import { isOwnCopy, effectiveSchedule } from '../../engine/day-types.js';
 import { isId } from '../../engine/ids.js';
 import { checkSchedule } from '../../engine/checks.js';
+import { dayOn, calendarDays, calendarCounts, weekdayOf, datesFrom } from '../../engine/calendar.js';
+import { findDayType } from '../../engine/day-types.js';
+import { markFor, schoolMarkFor, teacherDuties, dutyTeachers, dutyHoldsOn } from '../../engine/marks.js';
+import { teacherDay, isFree } from '../../engine/teacher-day.js';
 
 const project = sampleSchool();
 const DAYS = ['dsample00a', 'dsample00b'];
@@ -178,7 +182,7 @@ test('eight groups over three grades, each with a different preset colour', () =
 });
 
 test('A and B days, both their own copy, with bells and four minutes of passing time', () => {
-  assert.deepEqual(project.dayTypes.map((d) => d.name), ['A Day', 'B Day']);
+  assert.deepEqual(project.dayTypes.map((d) => d.name), ['A Day', 'B Day', 'Assembly Day']);
   for (const dayTypeId of DAYS) {
     assert.equal(isOwnCopy(project, dayTypeId), true);
     const bells = bellsFor(project, dayTypeId);
@@ -187,6 +191,135 @@ test('A and B days, both their own copy, with bells and four minutes of passing 
     assert.deepEqual(bellFindings(project, dayTypeId), []);
   }
   assert.notDeepEqual(project.dayTypes[0].bells, project.dayTypes[1].bells);
+});
+
+test('Assembly Day is the same as B Day and is not in the rotation, so a mark can name it alone', () => {
+  const assembly = project.dayTypes[2];
+  assert.equal(assembly.own, false);
+  assert.equal(assembly.sameAs, 'dsample00b');
+  assert.equal(project.calendar.rotation.includes(assembly.id), false);
+  assert.equal(findDayType(project, assembly.id), assembly);
+});
+
+test('Early Release has four meeting periods and 5 to 8 off; Assembly has eight of 44 minutes or more', () => {
+  const [early, assembly] = project.bellSchedules;
+  assert.deepEqual([early.name, assembly.name], ['Early Release', 'Assembly']);
+  assert.deepEqual(early.off, [4, 5, 6, 7]);
+  assert.deepEqual(early.bells.slice(4), [null, null, null, null]);
+  assert.deepEqual(early.bells.slice(0, 4).map((bell) => [bell.start, bell.end]), [['08:00', '08:40'], ['08:44', '09:24'], ['09:28', '10:08'], ['10:12', '10:52']]);
+  assert.deepEqual(assembly.off, []);
+  assert.equal(assembly.bells.length, 8);
+  assert.ok(assembly.bells.every((bell) => bell.start < bell.end));
+  for (const schedule of project.bellSchedules) assert.deepEqual(bellFindings(project, 'dsample00a', schedule.id), [], schedule.name);
+});
+
+// The classes a date has: Assembly Day has B Day's, and is not in the rotation.
+const classesOf = (dayTypeId) => (dayTypeId === 'dsample0as' ? 'dsample00b' : dayTypeId);
+
+test('the calendar: 31 August 2026 to 11 June 2027, weekends closed, Wednesdays on Early Release', () => {
+  const calendar = project.calendar;
+  assert.deepEqual([calendar.start, calendar.end], ['2026-08-31', '2027-06-11']);
+  assert.deepEqual(calendar.rotation, ['dsample00a', 'dsample00b']);
+  const early = project.bellSchedules[0].id;
+  for (const date of datesFrom(calendar.start, calendar.end)) {
+    const day = dayOn(project, date);
+    const weekday = weekdayOf(date);
+    const dated = calendar.dates.find((entry) => entry.date === date);
+    if (weekday >= 5 && !(dated && dated.day === 'rotation')) assert.equal(day.school, false, date + ' is a weekend');
+    if (!day.school) continue;
+    if (weekday === 2) assert.equal(day.bellsId, early, date + ' is a Wednesday, set or not');
+    if (!dated && weekday !== 2) assert.equal(day.bellsId, null, date);
+  }
+});
+
+test('the classes alternate A, B on every school day all year except the re-sync after the snow day, across every break, the make-up day and both assemblies', () => {
+  // replayed from the calendar's own output, never from the rule: the classes
+  // of each school day, one after another, must differ from the one before,
+  // except once: 2027-01-13 is set to A to keep the old order, which skips the
+  // snow day's B, so it has the same classes as 2027-01-11 before the snow day
+  const days = calendarDays(project).filter((day) => day.school);
+  assert.equal(days.length, 190);
+  assert.equal(classesOf(days[0].dayTypeId), 'dsample00a', 'the year starts on an A Day');
+  const repeats = [];
+  days.forEach((day, index) => {
+    if (index > 0 && classesOf(day.dayTypeId) === classesOf(days[index - 1].dayTypeId)) repeats.push(day.date + ' follows a day with the same classes');
+  });
+  assert.deepEqual(repeats, ['2027-01-13 follows a day with the same classes']);
+  // and the dates the year is built around really are inside that run
+  const around = (date) => {
+    const at = days.findIndex((day) => day.date === date);
+    assert.ok(at > 0 && at < days.length - 1, date + ' is a school day with a day on either side');
+    return [days[at - 1], days[at], days[at + 1]].map((day) => classesOf(day.dayTypeId).slice(-1) + (day.dayTypeId === 'dsample0as' ? '*' : ''));
+  };
+  assert.deepEqual(around('2026-11-13'), ['a', 'b*', 'a'], 'the first assembly sits on a B turn');
+  assert.deepEqual(around('2027-03-11'), ['a', 'b*', 'a'], 'the second assembly sits on a B turn');
+  assert.deepEqual(around('2027-01-13'), ['a', 'a', 'b'], 'the re-sync: the A after the snow day follows the A before it');
+  assert.deepEqual(around('2027-03-27'), ['a', 'b', 'a'], 'the make-up Saturday, 27 March');
+  const lastBeforeBreak = (label) => {
+    const first = project.calendar.dates.find((entry) => entry.label === label).date;
+    const before = days.filter((day) => day.date < first).pop();
+    const after = days.find((day) => day.date > first && dayOn(project, day.date).label !== label);
+    assert.notEqual(classesOf(before.dayTypeId), classesOf(after.dayTypeId), label + ': the day back follows the day before it');
+  };
+  lastBeforeBreak('Fall break');
+  lastBeforeBreak('Winter break');
+});
+
+test('the alternation check can fail: a run with an assembly on an A turn repeats the classes', () => {
+  // the guard-rail of the test above, shown once on purpose: move the first
+  // assembly to the A turn before it, as the sample used to have it
+  const broken = JSON.parse(JSON.stringify(project));
+  for (const entry of broken.calendar.dates) if (entry.date === '2026-11-13') entry.date = '2026-11-12';
+  const days = calendarDays(broken).filter((day) => day.school);
+  const repeats = days.filter((day, index) => index > 0 && classesOf(day.dayTypeId) === classesOf(days[index - 1].dayTypeId));
+  assert.ok(repeats.length > 0, 'an assembly on the wrong turn leaves classes that repeat');
+});
+
+test('the calendar has a fall break, a winter break, a snow day with a re-sync, a Saturday make-up day and two assemblies', () => {
+  const labelled = (label) => project.calendar.dates.filter((entry) => entry.label === label);
+  assert.equal(labelled('Fall break').length, 5);
+  assert.equal(labelled('Winter break').length, 10);
+  assert.ok([...labelled('Fall break'), ...labelled('Winter break')].every((entry) => entry.day === 'closed'));
+  for (const entry of labelled('Fall break').concat(labelled('Winter break'))) assert.ok(weekdayOf(entry.date) < 5, entry.date + ' is a school day that would otherwise be open');
+  const [snow] = labelled('Snow day');
+  assert.equal(snow.day, 'closed');
+  const after = dayOn(project, '2027-01-13');
+  assert.equal(after.why, 'date');
+  assert.equal(after.label, 'Back in step after the snow day');
+  // a closed day does not step the rotation, so without the set the day after
+  // the snow day would be B (the 12th would have been B). The set keeps the
+  // old order: A, skipping the snow day's B, so 11 and 13 January match
+  assert.equal(dayOn(project, '2027-01-11').dayTypeId, 'dsample00a');
+  const without = JSON.parse(JSON.stringify(project));
+  without.calendar.dates = without.calendar.dates.filter((entry) => entry.date !== '2027-01-13');
+  assert.equal(dayOn(without, '2027-01-13').dayTypeId, 'dsample00b', 'without the set the rotation gives B');
+  assert.equal(after.dayTypeId, 'dsample00a');
+  const makeUp = dayOn(project, '2027-03-27');
+  assert.equal(weekdayOf('2027-03-27'), 5);
+  assert.equal(makeUp.school, true);
+  assert.equal(makeUp.label, 'Make-up day for the snow day');
+  const assemblies = project.calendar.dates.filter((entry) => entry.label === 'Assembly');
+  assert.deepEqual(assemblies.map((entry) => entry.date), ['2026-11-13', '2027-03-11']);
+  for (const entry of assemblies) {
+    const day = dayOn(project, entry.date);
+    assert.equal(day.dayTypeId, 'dsample0as');
+    assert.equal(day.bellsId, project.bellSchedules[1].id);
+    assert.notEqual(weekdayOf(entry.date), 2, 'an assembly is not on an Early Release Wednesday');
+  }
+});
+
+test('the calendar counts: school days by day type and by bells', () => {
+  const counts = calendarCounts(project);
+  const byDay = Object.fromEntries(counts.dayTypes.map((entry) => [entry.dayTypeId, entry.count]));
+  assert.equal(byDay.dsample0as, 2);
+  // Assembly Day has B's classes: with the classes alternating from an A Day
+  // on 190 school days, the two come out nearly even. The re-sync repeats one
+  // A, so A is one more than the even split and B one fewer (96 and 92, counted
+  // from the calendar's own output), with the 2 Assembly Days on B's classes
+  assert.deepEqual(byDay, { dsample00a: 96, dsample00b: 92, dsample0as: 2 });
+  assert.equal(byDay.dsample00a, byDay.dsample00b + byDay.dsample0as + 2, 'A against B and Assembly together: the re-sync repeats one A, which moves A and B one each');
+  assert.equal(counts.schoolDays, calendarDays(project).filter((day) => day.school).length);
+  assert.equal(counts.bells.find((entry) => entry.bellsId === project.bellSchedules[1].id).count, 2);
 });
 
 test('every group is somewhere every period on both day types, and has lunch in the Cafeteria once a day', () => {
@@ -342,4 +475,116 @@ test('the names are invented and include the characters that catch a careless re
   const names = project.teachers.map((t) => t.name).join(' ');
   assert.match(names, /'/, 'an apostrophe');
   assert.match(names, /ê/, 'a letter outside ASCII');
+});
+
+// ---------------------------------------------------------------- marks and duties
+
+test('lunch is marked by grade on the periods the groups really eat in, on every day type', () => {
+  for (const dayTypeId of ['dsample00a', 'dsample00b', 'dsample0as']) {
+    for (const group of project.groups) {
+      const period = group.grade === '6' ? 3 : 4;
+      const mark = markFor(project, group.id, dayTypeId, period);
+      assert.equal(mark && mark.kind, 'lunch', group.name + ' has a lunch mark in Period ' + (period + 1) + ' on ' + findDayType(project, dayTypeId).name);
+      assert.equal(findRoom(project, group.days[dayTypeId === 'dsample0as' ? 'dsample00b' : dayTypeId][period].room).number, 'Cafeteria', group.name + ' is in the Cafeteria then');
+      const wrong = markFor(project, group.id, dayTypeId, group.grade === '6' ? 4 : 3);
+      assert.equal(wrong, null, group.name + ' has no lunch mark in the other lunch');
+    }
+  }
+});
+
+test('the assembly mark is on the Assembly Day only, for the whole school, in its last period', () => {
+  const assembly = schoolMarkFor(project, 'dsample0as', 7);
+  assert.equal(assembly.label, 'Assembly');
+  assert.equal(assembly.kind, 'activity');
+  assert.equal(schoolMarkFor(project, 'dsample00a', 7), null);
+  assert.equal(schoolMarkFor(project, 'dsample00b', 7), null, 'B Day is what Assembly Day is the same as, and the mark does not reach back to it');
+  const dates = project.calendar.dates.filter((change) => change.day === 'dsample0as').map((change) => change.date);
+  assert.deepEqual(dates, ['2026-11-13', '2027-03-11']);
+});
+
+test('three duties and one weekly meeting, each with who, where and when', () => {
+  assert.deepEqual(project.duties.map((duty) => [duty.label, duty.kind, duty.when]), [
+    ['Bus duty', 'duty', 'before'],
+    ['Lunch duty', 'duty', 'period'],
+    ['Car line', 'duty', 'after'],
+    ['Science department', 'meeting', 'after'],
+  ]);
+  const [bus, lunch, car, science] = project.duties;
+  assert.deepEqual([bus.start, bus.end, bus.place], ['07:30', '07:55', 'Bus loop'], 'before school, with times');
+  assert.equal(findRoom(project, lunch.roomId).number, 'Cafeteria');
+  assert.equal(lunch.period, 4, 'Period 5, the second lunch');
+  assert.deepEqual([car.start, car.end], ['15:15', '15:35']);
+  assert.deepEqual(science.weekdays, [2], 'Wednesdays');
+  // Early Release ends at 10:52 and Period 5 does not meet on a Wednesday, so
+  // the Car line and the Lunch duty stand on the four other days
+  assert.deepEqual([lunch.weekdays, car.weekdays], [[0, 1, 3, 4], [0, 1, 3, 4]], 'not on Wednesdays (index 2, as the science meeting)');
+  assert.equal(dutyHoldsOn(lunch, '2026-09-02'), false);
+  assert.equal(dutyHoldsOn(car, '2026-09-02'), false);
+  assert.equal(dutyHoldsOn(lunch, '2026-09-03'), true);
+  assert.equal(dutyHoldsOn(car, '2026-09-04'), true);
+  assert.deepEqual(science.subjectIds, ['ssample003'], 'by subject, not by name');
+  assert.deepEqual(dutyTeachers(project, science), ['tsample003', 'tsample010']);
+  assert.equal(dutyHoldsOn(science, '2026-09-02'), true, '2 September 2026 is a Wednesday');
+  assert.equal(dutyHoldsOn(science, '2026-09-03'), false);
+  for (const duty of project.duties) assert.ok(dutyTeachers(project, duty).length > 0, duty.label + ' has somebody on it');
+});
+
+// Every (day type, bells, weekday) the year really has, with a date that is
+// one of them: the day as a reader on that date sees it.
+function schoolDayKinds() {
+  const seen = new Map();
+  for (const day of calendarDays(project)) {
+    if (!day.school) continue;
+    const key = day.dayTypeId + '|' + day.bellsId + '|' + day.weekday;
+    if (!seen.has(key)) seen.set(key, { date: day.date, dayTypeId: day.dayTypeId, bellsId: day.bellsId, weekday: day.weekday });
+  }
+  return Array.from(seen.values());
+}
+
+test('the year has regular days, Early Release Wednesdays and the Assembly, all of them with their own bells', () => {
+  const kinds = schoolDayKinds();
+  assert.ok(kinds.some((kind) => kind.bellsId === project.bellSchedules[0].id && kind.weekday === 2), 'a Wednesday on Early Release');
+  assert.ok(kinds.some((kind) => kind.bellsId === project.bellSchedules[1].id && kind.dayTypeId === 'dsample0as'), 'an assembly');
+});
+
+test('a duty never sits in a period its teacher teaches, nor in one that does not meet, on any day of the year', () => {
+  for (const kind of schoolDayKinds()) {
+    const where = kind.date + ' (' + kind.dayTypeId + ', bells ' + kind.bellsId + ')';
+    const off = new Set((kind.bellsId === null ? [] : project.bellSchedules.find((schedule) => schedule.id === kind.bellsId).off));
+    for (const teacher of project.teachers) {
+      const duties = teacherDuties(project, teacher.id, kind.dayTypeId, { date: kind.date });
+      const day = teacherDay(project, teacher.id, kind.dayTypeId, { date: kind.date, bellsId: kind.bellsId });
+      duties.byPeriod.forEach((list, period) => {
+        if (list.length === 0) return;
+        assert.equal(day[period].kind, 'planning', teacher.name + ' is not teaching in Period ' + (period + 1) + ' on ' + where);
+        assert.equal(off.has(period), false, teacher.name + ' has a duty in Period ' + (period + 1) + ', which does not meet, on ' + where);
+      });
+    }
+  }
+});
+
+test('every teacher still has a free period on every day of the year once duties and lunch marks are laid over it, and on Early Release but two', () => {
+  // On an Early Release Wednesday only Periods 1 to 4 meet, and two teachers
+  // teach all four of them on one day type: that is the sample as it is, and
+  // it is named here so a third cannot join them unseen.
+  const teachingEveryPeriod = [];
+  for (const kind of schoolDayKinds()) {
+    const early = kind.bellsId === project.bellSchedules[0].id;
+    for (const teacher of project.teachers) {
+      const day = teacherDay(project, teacher.id, kind.dayTypeId, { date: kind.date, bellsId: kind.bellsId });
+      if (day.some(isFree)) continue;
+      assert.ok(early, teacher.name + ' has no free period on ' + kind.date + ' (' + kind.dayTypeId + ')');
+      assert.ok(day.slice(0, 4).every((entry) => entry.kind === 'teaching'), teacher.name + ' has no free period on Early Release and is not teaching all four');
+      teachingEveryPeriod.push(teacher.name + ' ' + kind.dayTypeId);
+    }
+  }
+  assert.deepEqual(teachingEveryPeriod, ['Ms. Vandermeer dsample00a', 'Coach Dunmore dsample00b']);
+});
+
+test('the sample with its lunch marks and duties still validates clean and repairs to itself', () => {
+  assert.deepEqual(validate(sampleSchool()), []);
+  const again = repair(sampleSchool());
+  assert.deepEqual(again.notes || [], []);
+  assert.deepEqual(again.project.marks, sampleSchool().marks);
+  assert.deepEqual(again.project.duties, sampleSchool().duties);
 });

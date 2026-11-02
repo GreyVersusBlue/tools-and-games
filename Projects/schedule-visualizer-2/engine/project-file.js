@@ -9,7 +9,7 @@
 //   readBuildingFile(text)                  → { file, images, summary }
 //   readScheduleFile(text)                  → { file, summary }
 //   applyBuilding(project, file, { ids, unnumberedText }) → { project, summary }
-//   applySchedule(project, file, { policy, takeSettings, ids }) → { project, summary }
+//   applySchedule(project, file, { policy, takeSettings, ids, clock }) → { project, summary }
 //
 // Reading takes nothing on trust. A file is checked in full before anything
 // is returned, and a reader either returns something every other module may
@@ -23,13 +23,14 @@
 // `images` is { [imageId]: { data, type } } both ways: the page passes what
 // it holds to a writer, and stores what a reader hands back.
 
-import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, defaultSettings, defaultPublish, defaultOnboarding, emptyBells, emptySlot, roomNumberKey, nameKey, allRooms, findRoom } from './schema.js';
+import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, defaultSettings, defaultPublish, defaultOnboarding, emptyBells, emptySlot, emptyDay, roomNumberKey, nameKey, spacelessKey, allRooms, findRoom, bellSchedulesOf, calendarOf, marksOf, dutiesOf, DAY_TYPES_MOST, BELL_SCHEDULES_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR } from './schema.js';
 import { DEFAULT_PASSCODE } from './publish-defaults.js';
 import { migrate, MigrateError, versionOf, NEWER_VERSION_MESSAGE, NOT_A_PROJECT_MESSAGE } from './migrate.js';
 import { repair } from './repair.js';
 import { validate } from './validate.js';
 import { collectIds, isId } from './ids.js';
-import { mergeGroups } from './import-groups.js';
+import { mergeGroups, ImportError, CLASH_POLICIES } from './import-groups.js';
+import { isOwnCopy, effectiveDayType, findDayType } from './day-types.js';
 
 export const BUILDING_FORMAT = 'sv2-building';
 export const SCHEDULE_FORMAT = 'sv2-schedule';
@@ -457,17 +458,25 @@ export function applyBuilding(project, file, options) {
 // ---------------------------------------------------------------- the schedule file
 
 // The schedule alone: the school day's settings, subjects, teachers, groups
-// and day types, and an index of the rooms they name, so the file can be read
-// against a building whose rooms have other ids.
+// and day types, the bell schedules and the calendar when the project has
+// them, and an index of the rooms they name, so the file can be read against
+// a building whose rooms have other ids. A project with no bell schedules
+// and no calendar writes the file exactly as before they existed. The same
+// holds for the marked periods and the duties (ARCHITECTURE 17.5, 17.6): a
+// duty's room is in the index of rooms, so the file can be read against a
+// building whose rooms have other ids.
 export function writeScheduleFile(project) {
   const named = new Set();
   for (const teacher of project.teachers) for (const roomId of teacher.roomIds) named.add(roomId);
   for (const group of project.groups) {
     for (const dayTypeId of Object.keys(group.days)) for (const slot of group.days[dayTypeId]) if (slot.room !== null) named.add(slot.room);
   }
+  const marks = marksOf(project);
+  const duties = dutiesOf(project);
+  for (const duty of duties) if (typeof duty.roomId === 'string') named.add(duty.roomId);
   const settings = {};
   for (const key of SCHEDULE_SETTINGS) settings[key] = project.settings[key];
-  return stringify({
+  const file = {
     format: SCHEDULE_FORMAT,
     version: SCHEDULE_VERSION,
     settings,
@@ -476,7 +485,14 @@ export function writeScheduleFile(project) {
     teachers: project.teachers,
     groups: project.groups,
     dayTypes: project.dayTypes,
-  });
+  };
+  const schedules = bellSchedulesOf(project);
+  if (schedules.length > 0) file.bellSchedules = schedules;
+  const calendar = calendarOf(project);
+  if (calendar !== null) file.calendar = calendar;
+  if (marks.length > 0) file.marks = marks;
+  if (duties.length > 0) file.duties = duties;
+  return stringify(file);
 }
 
 const SCAFFOLD_WIDTH = 200;
@@ -498,6 +514,8 @@ export function readScheduleFile(text) {
   if (findings.length > 0) throw new FileError(invalidMessage('schedule', findings), 'invalid', findings);
 
   // Stand the schedule in a building of one-cell rooms, one per index entry.
+  // The bell schedules and the calendar, when the file has them, are checked
+  // there by the project's own rules.
   const count = value.rooms.length;
   const width = Math.max(5, Math.min(SCAFFOLD_WIDTH, count));
   const height = Math.max(5, Math.ceil(count / SCAFFOLD_WIDTH));
@@ -517,13 +535,23 @@ export function readScheduleFile(text) {
   const settings = { ...defaultSettings() };
   for (const key of SCHEDULE_SETTINGS) settings[key] = value.settings[key];
   const stood = scaffold({ settings, building: { floors: [floor], connections: [], zones: [] }, subjects: value.subjects, teachers: value.teachers, groups: value.groups, dayTypes: value.dayTypes });
+  if (value.bellSchedules !== undefined) stood.bellSchedules = value.bellSchedules;
+  if (value.calendar !== undefined) stood.calendar = value.calendar;
+  if (value.marks !== undefined) stood.marks = value.marks;
+  if (value.duties !== undefined) stood.duties = value.duties;
   for (const finding of validate(stood)) {
     findings.push({ path: finding.path.replace(/^building\.floors\[0\]\.spaces\[(\d+)\]/, 'rooms[$1]'), message: finding.message });
   }
   if (findings.length > 0) throw new FileError(invalidMessage('schedule', findings), 'invalid', findings);
 
-  const file = { format: SCHEDULE_FORMAT, version: value.version, settings: value.settings, rooms: value.rooms, subjects: value.subjects, teachers: value.teachers, groups: value.groups, dayTypes: value.dayTypes };
-  return { file, summary: { periods: value.settings.periods, subjects: value.subjects.length, teachers: value.teachers.length, groups: value.groups.length, dayTypes: value.dayTypes.length } };
+  // Absent is none: a file written before bell schedules and the calendar
+  // reads as one with neither.
+  const bellSchedules = value.bellSchedules === undefined ? [] : value.bellSchedules;
+  const calendar = value.calendar === undefined ? null : value.calendar;
+  const marks = value.marks === undefined ? [] : value.marks;
+  const duties = value.duties === undefined ? [] : value.duties;
+  const file = { format: SCHEDULE_FORMAT, version: value.version, settings: value.settings, rooms: value.rooms, subjects: value.subjects, teachers: value.teachers, groups: value.groups, dayTypes: value.dayTypes, bellSchedules, calendar, marks, duties };
+  return { file, summary: { periods: value.settings.periods, subjects: value.subjects.length, teachers: value.teachers.length, groups: value.groups.length, dayTypes: value.dayTypes.length, bellSchedules: bellSchedules.length, calendar: calendar !== null, marks: marks.length, duties: duties.length } };
 }
 
 function padTo(list, length, make) {
@@ -537,12 +565,45 @@ function copySlot(slot) {
   return { room: slot.room, roomText: slot.roomText, label: slot.label, teacherIds: slot.teacherIds.slice() };
 }
 
+function copyBells(bells) {
+  return bells.map((bell) => (bell === null ? null : { ...bell }));
+}
+
+// Is `short` free to be typed on one more item of `list`? Empty always is.
+function shortFree(short, list) {
+  if (typeof short !== 'string' || short === '') return true;
+  const key = short.toLowerCase();
+  return !list.some((item) => typeof item.short === 'string' && item.short !== '' && item.short.toLowerCase() === key);
+}
+
+// A day type in the order of its fields, with `sameAs` and `short` only when
+// they are given (undefined leaves the field out, as a file written before
+// them has it).
+function dayTypeOf(id, name, own, sameAs, short, bells) {
+  const dayType = { id, name, own };
+  if (sameAs !== undefined) dayType.sameAs = sameAs;
+  if (short !== undefined) dayType.short = short;
+  dayType.bells = bells;
+  return dayType;
+}
+
+// Fill each bell that is empty in `here` from `from`; `here` itself when
+// there is nothing to fill.
+function filledBells(here, from) {
+  if (!here.some((bell, period) => bell === null && from[period])) return here;
+  return here.map((bell, period) => (bell === null && from[period] ? { ...from[period] } : bell));
+}
+
+const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
 // What the project would be with the file's schedule brought into it. `file`
 // is what readScheduleFile returned. The rules:
-// - Subjects, teachers and day types are matched to this project's by id,
-//   then by name (a subject by code and name). One that matches is left as
-//   it is here. One that does not is added, with the file's id when that id
-//   is free.
+// - Subjects, teachers, day types and bell schedules are matched to this
+//   project's by id, then by name (a subject by code and name; a day type
+//   whatever the capitals and the spaces at its ends, as before SV2-77; a bell
+//   schedule whatever the capitals and any spaces). One that matches is
+//   left as it is here. One that does not is added, with the file's id when
+//   that id is free, and with its typed short name when no other has it.
 // - A room is matched by id, then by number. A slot whose room is not in
 //   this building keeps the number as text; a teacher's room that is not in
 //   this building is left off the teacher.
@@ -552,15 +613,46 @@ function copySlot(slot) {
 // - A school day in the file longer than the one here makes the day here
 //   longer. A shorter one leaves the later periods as they are.
 // - A bell time already entered here is never changed; one that is empty
-//   here is filled from the file.
+//   here is filled from the file, for day types and bell schedules alike.
+// - A day type that is "same as" here and has classes or bells of its own in
+//   the file (or, in the file, is the same as another day type than here)
+//   becomes its own copy here, starting as a copy of what it was the same as
+//   here (not of the first day type). A day type the file adds as "same as"
+//   is the same as the day type its own one matched. A file in which no day
+//   type has `sameAs` (one written before it) is read as it was then: a day
+//   type it adds is its own copy when the file's first day type is not this
+//   project's first, and no `sameAs` is written for it.
+// - The calendar, when the file has one, replaces this project's, with every
+//   day type and bell schedule it names re-pointed through the matches above.
+//   A reference that matches nothing is dropped and counted.
+// - Marks and duties are matched by id, and a clash is answered by `policy`
+//   as a group's is (`all`, or `per[id]` for one): skip leaves the one here as
+//   it is, overwrite replaces it in place with the file's (same id), rename
+//   adds the file's under a new id. The summary counts those kept and those
+//   replaced. One that is not here is added (with the file's id when it is
+//   free), and every
+//   reference in it is re-pointed through the matches above (groups by name,
+//   as the groups are, rooms as a slot's are). A reference that matches
+//   nothing is dropped and counted: only a duty's room can fail to match,
+//   since every day type, group, teacher and subject of the file is matched
+//   or added. A duty whose room is not in this building keeps its number as
+//   its place.
 // - The period word and the two defaults are taken only when `takeSettings`
 //   is true.
-// options: { policy, takeSettings, ids }.
+// - At most DAY_TYPES_MOST day types and BELL_SCHEDULES_MOST bell schedules:
+//   a file that would bring more is refused whole.
+// options: { policy, takeSettings, ids, clock }. `clock`, when given, stamps
+// a replaced calendar's changedAt, so the publish form knows staff copies
+// have the old one; without it the file's changedAt is kept.
 export function applySchedule(project, file, options) {
   const ids = options.ids;
-  const summary = { subjectsAdded: [], teachersAdded: [], dayTypesAdded: [], periodsRaised: null, settingsTaken: [], unknownRooms: [], roomsLeftOff: 0 };
+  const summary = { subjectsAdded: [], teachersAdded: [], dayTypesAdded: [], bellSchedulesAdded: [], madeOwn: [], periodsRaised: null, settingsTaken: [], unknownRooms: [], roomsLeftOff: 0, calendarReplaced: false, referencesDropped: 0, marksAdded: 0, dutiesAdded: 0, marksKept: 0, marksReplaced: 0, dutiesKept: 0, dutiesReplaced: 0 };
+  const fileSchedules = Array.isArray(file.bellSchedules) ? file.bellSchedules : [];
+  const fileCalendar = isObject(file.calendar) ? file.calendar : null;
+  const fileMarks = Array.isArray(file.marks) ? file.marks : [];
+  const fileDuties = Array.isArray(file.duties) ? file.duties : [];
   const taken = new Set(collectIds(project));
-  reserve(ids, collectIds({ subjects: file.subjects, teachers: file.teachers, groups: file.groups, dayTypes: file.dayTypes }));
+  reserve(ids, collectIds({ subjects: file.subjects, teachers: file.teachers, groups: file.groups, dayTypes: file.dayTypes, bellSchedules: fileSchedules, marks: fileMarks, duties: fileDuties }));
   let next = project;
 
   // the school day
@@ -577,6 +669,7 @@ export function applySchedule(project, file, options) {
         return { ...group, days };
       }),
     };
+    if (Array.isArray(next.bellSchedules)) next = { ...next, bellSchedules: next.bellSchedules.map((schedule) => ({ ...schedule, bells: padTo(schedule.bells, periods, () => null) })) };
   }
   if (options.takeSettings) {
     for (const key of SCHEDULE_SETTINGS) {
@@ -642,67 +735,153 @@ export function applySchedule(project, file, options) {
     };
   }
 
-  // day types
-  const fileBase = file.dayTypes[0];
-  const fileOwn = (dayType) => dayType === fileBase || dayType.own === true;
-  const fileBells = (dayType) => (fileOwn(dayType) ? dayType.bells : fileBase.bells);
-  const fileDay = (group, dayType) => group.days[fileOwn(dayType) ? dayType.id : fileBase.id];
-  const hasRooms = (dayType) => file.groups.some((group) => fileDay(group, dayType).some((slot) => slot.room !== null || slot.roomText !== ''));
+  // day types. In the file, as here, a day type that is not its own copy is
+  // answered from what it is the same as: day-types.js says which.
+  const inFile = { dayTypes: file.dayTypes };
+  const fileOwn = (dayType) => isOwnCopy(inFile, dayType.id);
+  const fileSource = (dayType) => effectiveDayType(inFile, dayType.id);
+  const fileDay = (group, dayType) => group.days[fileSource(dayType).id];
+  const hasData = (dayType) => fileSource(dayType).bells.some((bell) => bell !== null) || file.groups.some((group) => fileDay(group, dayType).some((slot) => slot.room !== null || slot.roomText !== ''));
+  // A file written before "same as" could name a day type (no day type in
+  // it has `sameAs`) is read exactly as it was then: an added day type is its
+  // own copy when it is in the file or when the two first day types do not
+  // match, so no `sameAs` is written into the project for it.
+  const fileHasSameAs = file.dayTypes.some((dayType) => dayType.sameAs !== undefined);
   const dayMap = new Map();
+  const added = new Set();
   for (const dayType of file.dayTypes) {
     const match = project.dayTypes.find((candidate) => candidate.id === dayType.id) || next.dayTypes.find((candidate) => nameKey(candidate.name) === nameKey(dayType.name));
     if (match) dayMap.set(dayType.id, match.id);
   }
-  const basesAgree = dayMap.get(fileBase.id) === project.dayTypes[0].id;
+  const basesAgree = dayMap.get(file.dayTypes[0].id) === project.dayTypes[0].id;
   for (const dayType of file.dayTypes) {
     if (dayMap.has(dayType.id)) continue;
     const id = keepOrMake(dayType.id, 'd', taken, ids);
-    const own = fileOwn(dayType) || !basesAgree;
+    const own = fileOwn(dayType) || (!fileHasSameAs && !basesAgree);
+    // a "same as" day type's sameAs is set below, once every day type is here
+    const sameAs = dayType.sameAs === undefined ? undefined : null;
+    const short = dayType.short === undefined ? undefined : shortFree(dayType.short, next.dayTypes) ? dayType.short : '';
     const base = next.dayTypes[0];
     next = {
       ...next,
-      dayTypes: next.dayTypes.concat([{ id, name: dayType.name, own, bells: own ? padTo(fileBells(dayType).map((bell) => (bell === null ? null : { ...bell })), periods, () => null) : emptyBells(periods) }]),
+      dayTypes: next.dayTypes.concat([dayTypeOf(id, dayType.name, own, sameAs, short, own ? padTo(copyBells(fileSource(dayType).bells), periods, () => null) : emptyBells(periods))]),
       groups: own ? next.groups.map((group) => ({ ...group, days: { ...group.days, [id]: group.days[base.id].map(copySlot) } })) : next.groups,
     };
     dayMap.set(dayType.id, id);
+    added.add(id);
     summary.dayTypesAdded.push(dayType.name);
   }
-  // A day type that has its own bells or rooms in the file, and is the same
-  // as the first day type here, becomes its own copy here.
-  for (const dayType of file.dayTypes) {
-    const id = dayMap.get(dayType.id);
-    const index = next.dayTypes.findIndex((candidate) => candidate.id === id);
-    if (index === 0 || next.dayTypes[index].own) continue;
-    const differs = fileOwn(dayType) || !basesAgree;
-    if (!differs || !(fileBells(dayType).some((bell) => bell !== null) || hasRooms(dayType))) continue;
-    const base = next.dayTypes[0];
+  if (next.dayTypes.length > Math.max(DAY_TYPES_MOST, project.dayTypes.length)) {
+    throw new FileError('This schedule file cannot be imported, and nothing was changed. It would bring the project to ' + next.dayTypes.length + ' day types, and a project has at most ' + DAY_TYPES_MOST + '. Delete the day types you do not need, here or in the file, and import it again.', 'too-many-day-types');
+  }
+  // A day type that is "same as" here becomes its own copy when the file
+  // gives it classes or bells of its own, or makes it the same as another
+  // day type than here. It starts as a copy of what it was the same as here;
+  // the file's groups then fill it. Own day types in the file first, so a
+  // "same as" in the file can follow one made own here.
+  const promote = (id) => {
+    const from = effectiveDayType(next, id);
     next = {
       ...next,
-      dayTypes: next.dayTypes.map((candidate) => (candidate.id === id ? { ...candidate, own: true, bells: base.bells.map((bell) => (bell === null ? null : { ...bell })) } : candidate)),
-      groups: next.groups.map((group) => ({ ...group, days: { ...group.days, [id]: group.days[base.id].map(copySlot) } })),
+      dayTypes: next.dayTypes.map((candidate) => {
+        if (candidate.id !== id) return candidate;
+        return dayTypeOf(candidate.id, candidate.name, true, candidate.sameAs === undefined ? undefined : null, candidate.short, copyBells(from.bells));
+      }),
+      groups: next.groups.map((group) => ({ ...group, days: { ...group.days, [id]: (group.days[from.id] || emptyDay(periods)).map(copySlot) } })),
     };
+  };
+  for (const pass of [true, false]) {
+    for (const dayType of file.dayTypes) {
+      if (fileOwn(dayType) !== pass) continue;
+      const id = dayMap.get(dayType.id);
+      if (added.has(id) || isOwnCopy(next, id)) continue;
+      const differs = fileOwn(dayType) || (fileHasSameAs ? effectiveDayType(next, dayMap.get(fileSource(dayType).id)).id !== effectiveDayType(next, id).id : !basesAgree);
+      if (!differs || !hasData(dayType)) continue;
+      promote(id);
+      summary.madeOwn.push(findDayType(next, id).name);
+    }
+  }
+  // A day type the file adds as "same as" is the same as the day type here
+  // that its own one in the file matched (null for the first).
+  for (const dayType of file.dayTypes) {
+    const id = dayMap.get(dayType.id);
+    if (!added.has(id) || isOwnCopy(next, id)) continue;
+    const target = effectiveDayType(next, dayMap.get(fileSource(dayType).id));
+    const sameAs = target === next.dayTypes[0] ? null : target.id;
+    next = { ...next, dayTypes: next.dayTypes.map((candidate) => (candidate.id === id ? dayTypeOf(id, candidate.name, false, candidate.sameAs === undefined && sameAs === null ? undefined : sameAs, candidate.short, candidate.bells) : candidate)) };
   }
   // bells: fill what is empty here
   for (const dayType of file.dayTypes) {
     const id = dayMap.get(dayType.id);
-    const index = next.dayTypes.findIndex((candidate) => candidate.id === id);
-    const here = next.dayTypes[index];
-    if (index !== 0 && !here.own) continue;
-    const from = fileBells(dayType);
-    if (!here.bells.some((bell, period) => bell === null && from[period])) continue;
-    next = { ...next, dayTypes: next.dayTypes.map((candidate) => (candidate === here ? { ...here, bells: here.bells.map((bell, period) => (bell === null && from[period] ? { ...from[period] } : bell)) } : candidate)) };
+    if (!isOwnCopy(next, id)) continue;
+    const here = findDayType(next, id);
+    const bells = filledBells(here.bells, fileSource(dayType).bells);
+    if (bells !== here.bells) next = { ...next, dayTypes: next.dayTypes.map((candidate) => (candidate === here ? { ...here, bells } : candidate)) };
+  }
+
+  // bell schedules: matched as day types are; an empty bell here is filled
+  const bellMap = new Map();
+  const schedulesHere = bellSchedulesOf(project);
+  const schedulesBefore = bellSchedulesOf(next);
+  let schedules = schedulesBefore;
+  for (const schedule of fileSchedules) {
+    const match = schedulesHere.find((candidate) => candidate.id === schedule.id) || schedules.find((candidate) => spacelessKey(candidate.name) === spacelessKey(schedule.name));
+    if (match) {
+      bellMap.set(schedule.id, match.id);
+      const current = schedules.find((candidate) => candidate.id === match.id);
+      const bells = filledBells(current.bells, schedule.bells);
+      if (bells !== current.bells) schedules = schedules.map((candidate) => (candidate === current ? { ...current, bells } : candidate));
+      continue;
+    }
+    const id = keepOrMake(schedule.id, 'b', taken, ids);
+    const short = shortFree(schedule.short, schedules) ? schedule.short : '';
+    schedules = schedules.concat([{ id, name: schedule.name, short, bells: padTo(copyBells(schedule.bells), periods, () => null), off: schedule.off.slice() }]);
+    bellMap.set(schedule.id, id);
+    summary.bellSchedulesAdded.push(schedule.name);
+  }
+  if (schedules.length > Math.max(BELL_SCHEDULES_MOST, schedulesHere.length)) {
+    throw new FileError('This schedule file cannot be imported, and nothing was changed. It would bring the project to ' + schedules.length + ' bell schedules, and a project has at most ' + BELL_SCHEDULES_MOST + '. Delete the bell schedules you do not need, here or in the file, and import it again.', 'too-many-bell-schedules');
+  }
+  if (schedules !== schedulesBefore) next = { ...next, bellSchedules: schedules };
+
+  // the calendar: the file's replaces this one, re-pointed
+  if (fileCalendar !== null) {
+    const dayRef = (value) => (value === null || value === DAY_ROTATION || value === DAY_CLOSED ? value : dayMap.get(value));
+    const bellsRef = (value) => (value === null || value === BELLS_REGULAR ? value : bellMap.get(value));
+    const dropped = (value) => {
+      if (value === undefined) summary.referencesDropped += 1;
+      return value === undefined;
+    };
+    const weekdays = fileCalendar.weekdays.map((rule) => {
+      const day = dayRef(rule.day);
+      const bells = bellsRef(rule.bells);
+      return { day: dropped(day) ? DAY_ROTATION : day, bells: dropped(bells) ? null : bells };
+    });
+    let rotation = fileCalendar.rotation.map(dayRef).filter((id) => !dropped(id));
+    if (rotation.length === 0) rotation = [next.dayTypes[0].id];
+    const dates = [];
+    for (const entry of fileCalendar.dates) {
+      const day = dayRef(entry.day);
+      if (dropped(day)) continue;
+      const bells = bellsRef(entry.bells);
+      dates.push({ date: entry.date, day, bells: dropped(bells) ? null : bells, label: entry.label });
+    }
+    const calendar = { start: fileCalendar.start, end: fileCalendar.end, weekdays, rotation, dates, changedAt: fileCalendar.changedAt };
+    const here = calendarOf(next);
+    const unchanged = here !== null && sameJson({ ...here, changedAt: null }, { ...calendar, changedAt: null });
+    if (!unchanged) {
+      if (typeof options.clock === 'function') calendar.changedAt = options.clock().toISOString();
+      next = { ...next, calendar };
+      summary.calendarReplaced = true;
+    }
   }
 
   // groups
-  const ownHere = (id) => {
-    const index = next.dayTypes.findIndex((candidate) => candidate.id === id);
-    return index === 0 || next.dayTypes[index].own === true;
-  };
   const incoming = file.groups.map((group) => {
     const days = {};
     for (const dayType of file.dayTypes) {
       const id = dayMap.get(dayType.id);
-      if (!ownHere(id)) continue;
+      if (!isOwnCopy(next, id)) continue;
       if (days[id] !== undefined && !fileOwn(dayType)) continue;
       days[id] = fileDay(group, dayType).map((slot) => {
         let room = slot.room === null ? null : resolveRoom(slot.room);
@@ -725,11 +904,106 @@ export function applySchedule(project, file, options) {
     return { key: nameKey(group.name), name: group.name, id: group.id, fields: { grade: group.grade, headCount: group.headCount, colour: group.colour }, days };
   });
   const merged = mergeGroups(next, incoming, options.policy, ids);
+  const madeOwn = summary.madeOwn.concat(merged.summary.madeOwn);
   Object.assign(summary, merged.summary);
+  summary.madeOwn = madeOwn;
   summary.unknownRooms = Array.from(unknown);
 
-  if (merged.project === project) return { project, summary };
-  const findings = validate(merged.project);
+  let result = merged.project;
+
+  // marks and duties, now that every group is here: matched by id, otherwise
+  // added, with their references re-pointed
+  if (fileMarks.length > 0 || fileDuties.length > 0) {
+    const groupMap = new Map();
+    for (const group of file.groups) {
+      const renamed = merged.summary.renamed.find((entry) => entry.from === group.name);
+      const found = result.groups.find((candidate) => nameKey(candidate.name) === nameKey(renamed ? renamed.to : group.name));
+      if (found) groupMap.set(group.id, found.id);
+    }
+    // a list of ids through a map: the ids that matched, each once
+    const through = (list, map) => {
+      const out = [];
+      for (const id of list) {
+        const mapped = map.get(id);
+        if (mapped === undefined) summary.referencesDropped += 1;
+        else if (!out.includes(mapped)) out.push(mapped);
+      }
+      return out;
+    };
+    // a clash on an id is answered as a group's name is: `per[id]`, else `all`, else skip
+    const answer = (id) => {
+      const policy = options.policy;
+      const per = policy && policy.per && Object.prototype.hasOwnProperty.call(policy.per, id) ? policy.per[id] : undefined;
+      const chosen = per === undefined ? (policy && policy.all !== undefined ? policy.all : 'skip') : per;
+      if (!CLASH_POLICIES.includes(chosen)) throw new ImportError('A name clash is answered with one of: ' + CLASH_POLICIES.join(', ') + '.', 'bad-policy');
+      return chosen;
+    };
+    let marksHere = marksOf(result);
+    const addedMarks = [];
+    let changedMarks = false;
+    for (const mark of fileMarks) {
+      const clash = marksHere.findIndex((candidate) => candidate.id === mark.id);
+      const pointed = { ...mark, dayTypeIds: through(mark.dayTypeIds, dayMap), groupIds: through(mark.groupIds, groupMap) };
+      if (clash >= 0) {
+        const choice = answer(mark.id);
+        if (choice === 'skip' || sameJson(marksHere[clash], pointed)) {
+          summary.marksKept += 1;
+          continue;
+        }
+        if (choice === 'overwrite') {
+          marksHere = marksHere.slice();
+          marksHere[clash] = pointed;
+          changedMarks = true;
+          summary.marksReplaced += 1;
+          continue;
+        }
+      }
+      addedMarks.push({ ...pointed, id: keepOrMake(mark.id, 'm', taken, ids) });
+    }
+    let dutiesHere = dutiesOf(result);
+    const addedDuties = [];
+    let changedDuties = false;
+    for (const duty of fileDuties) {
+      const clash = dutiesHere.findIndex((candidate) => candidate.id === duty.id);
+      let choice = 'add';
+      if (clash >= 0) {
+        choice = answer(duty.id);
+        if (choice === 'skip') {
+          summary.dutiesKept += 1;
+          continue;
+        }
+      }
+      let roomId = null;
+      let place = duty.place;
+      if (duty.roomId !== null) {
+        roomId = resolveRoom(duty.roomId);
+        if (roomId === null) {
+          summary.referencesDropped += 1;
+          if (place === '') place = numberOf.get(duty.roomId) || '';
+        }
+      }
+      const pointed = { ...duty, dayTypeIds: through(duty.dayTypeIds, dayMap), roomId, place, teacherIds: through(duty.teacherIds, teacherMap), subjectIds: through(duty.subjectIds, subjectMap) };
+      if (clash >= 0 && sameJson(dutiesHere[clash], pointed)) {
+        summary.dutiesKept += 1;
+        continue;
+      }
+      if (choice === 'overwrite') {
+        dutiesHere = dutiesHere.slice();
+        dutiesHere[clash] = pointed;
+        changedDuties = true;
+        summary.dutiesReplaced += 1;
+        continue;
+      }
+      addedDuties.push({ ...pointed, id: keepOrMake(duty.id, 'u', taken, ids) });
+    }
+    if (addedMarks.length > 0 || changedMarks) result = { ...result, marks: marksHere.concat(addedMarks) };
+    if (addedDuties.length > 0 || changedDuties) result = { ...result, duties: dutiesHere.concat(addedDuties) };
+    summary.marksAdded = addedMarks.length;
+    summary.dutiesAdded = addedDuties.length;
+  }
+
+  if (result === project) return { project, summary };
+  const findings = validate(result);
   if (findings.length > 0) throw new FileError(invalidMessage('schedule', findings), 'invalid', findings);
-  return { project: merged.project, summary };
+  return { project: result, summary };
 }

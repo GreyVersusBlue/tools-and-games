@@ -1,5 +1,6 @@
 // The schedule checks of spec 5.7. checkSchedule(project, walkResults) runs
-// every kind over every day type that is its own copy and gives
+// every kind over every day type that is its own copy (and the walk kinds
+// over every run the walk results hold) and gives
 //
 //   { findings, accepted, changed, off, gone }
 //
@@ -12,8 +13,24 @@
 // findings.js has the shape of a finding, the ids, and the shape of
 // `walkResults`, which is null until the routes and the crowd model have run.
 //
-// A day type that is "the same as A Day" is not checked a second time: what
-// is true of A Day is reported once, and the sentence names both day types.
+// A day type that is "the same as" another is not checked a second time:
+// what is true of the day type it is the same as (its `sameAs`, or A Day) is
+// reported once, and the sentence names both day types.
+//
+// Where a group is comes from meetingSlots (engine/runs.js) with the regular
+// bells. The checks of a schedule's rooms and teachers are made once a day
+// type, on its regular run: a bell schedule changes only the times, and a
+// period that does not meet under it can only take a finding away. The walk
+// checks are made for every run the walk results hold (ARCHITECTURE 17.8):
+// a group or a teacher late in one transition under several runs of one day
+// type is one finding naming them all ("on A Day, regular and Early Release
+// bells"), whose id is the regular run's when the regular bells are among
+// them, so a finding accepted before bell schedules existed stays accepted;
+// late only under bell schedules, the id gains the first schedule's id (and
+// an acceptance naming schedule X holds while the walk is late under X and
+// not under the regular bells, whatever the id is today:
+// followAcceptedWalks below). The runs are in `where.bellsIds` whenever a bell schedule
+// is among them.
 //
 // The rules, one per kind:
 //
@@ -25,9 +42,16 @@
 //                        its slots kept.
 //   over-capacity        a group has more students than its room seats. In a
 //                        shared space the groups there together are counted.
-//   no-planning          a teacher has a group in every period of the day.
+//   no-planning          a teacher has no free period in a day: a group, or
+//                        an always duty or a school mark, takes every one
+//                        (isFree, teacher-day.js).
 //   consecutive          a teacher has a group in more periods in a row than
-//                        the school's limit.
+//                        the school's limit. Only teaching counts; a duty or
+//                        a meeting in between neither adds to the run nor
+//                        ends it, while a lunch (their own, or a school
+//                        mark) or a No class period ends it.
+//   duty-clash           a teacher has a duty or a meeting in a period in
+//                        which they teach, always or on some days.
 //   teacher-walk,        a walk the figures handed in call late, when the
 //   group-walk           figure is for the walk as it is now: the same two
 //                        rooms and the same passing time.
@@ -43,24 +67,122 @@
 //   room-no-subject      a numbered room has no subject.
 //   room-no-teacher      a room has a group in it and neither the room nor
 //                        the slot names a teacher. One note a room.
+//   duty-nobody          a duty or meeting that no teacher is on.
+//
+// A mark on a slot (lunch, advisory, activity, no class) stops the empty
+// period note for it. A day type that is the same as another but is named
+// directly by a mark or a duty is checked on its own, since its meeting slots
+// or its duties differ.
 //
 // Head counts fall back to the school default, as everywhere else.
 
-import { allRooms, findRoom, findById, resolveSlotRoom } from './schema.js';
-import { ownDayTypes, effectiveSchedule, isOwnCopy, findDayType } from './day-types.js';
-import { bellsFor, periodName } from './bells.js';
-import { teacherDays, slotTeacherIds, entryPlaces, teacherMoves } from './teacher-day.js';
+import { allRooms, findRoom, findById, resolveSlotRoom, marksOf, dutiesOf, WEEKDAY_NAMES } from './schema.js';
+import { ownDayTypes, isOwnCopy, findDayType, followersOf } from './day-types.js';
+import { bellsFor, periodName, findBellSchedule, offPeriods } from './bells.js';
+import { meetingSlots } from './runs.js';
+import { teacherDays, slotTeacherIds, entryPlaces, isFree } from './teacher-day.js';
+import { hasMarks, markFor, schoolMarkFor, dutiesOn, dutyTeachers, dutyIsSometimes } from './marks.js';
+import { dateWords } from './calendar.js';
+import { bellMoves, transitionPlan } from './crowd.js';
 import { makeFinding, sortFindings, splitAccepted, countWord, listWords, periodWord, roomName, formatDuration } from './findings.js';
 
-// "on A Day", or "on A Day and B Day" when B Day is the same as A Day.
+// "on A Day", or "on A Day and B Day" when B Day is the same as A Day: the
+// own day type, then the day types the same as it (followersOf, which reads
+// `sameAs`), in the school's order.
 function onDays(project, dayType) {
-  const names = [dayType.name];
-  if (project.dayTypes[0] === dayType) {
-    for (let i = 1; i < project.dayTypes.length; i += 1) {
-      if (project.dayTypes[i].own !== true) names.push(project.dayTypes[i].name);
-    }
-  }
+  const apart = markedFollowers(project);
+  const names = [dayType.name].concat(followersOf(project, dayType.id).filter((follower) => !apart.has(follower.id)).map((follower) => follower.name));
   return 'on ' + listWords(names);
+}
+
+// The day types that are the same as another but are named directly by a mark
+// or a duty: their meeting slots or their duties can differ, so they are
+// checked on their own (runsOf, runs.js, makes the same exception for
+// movement).
+function markedFollowers(project) {
+  const named = new Set();
+  for (const entry of marksOf(project).concat(dutiesOf(project))) {
+    if (entry && Array.isArray(entry.dayTypeIds)) for (const id of entry.dayTypeIds) if (typeof id === 'string') named.add(id);
+  }
+  return new Set(project.dayTypes.filter((dayType) => named.has(dayType.id) && !isOwnCopy(project, dayType.id)).map((dayType) => dayType.id));
+}
+
+const DUTY_AS_SAID = { duty: 'a duty', meeting: 'a meeting', lunch: 'their own lunch' };
+const DUTY_AS_NAMED = { duty: 'Duty', meeting: 'Meeting', lunch: 'Their own lunch' };
+export const MARK_AS_NAMED = { lunch: 'Lunch', advisory: 'Advisory', activity: 'Activity', noclass: 'No class' };
+const MARK_AS_SAID = { lunch: 'lunch', advisory: 'advisory', activity: 'an activity', noclass: 'no class' };
+
+// "Lunch duty" as typed, else the kind's words: "a duty", "a meeting".
+function dutySaid(duty) {
+  return typeof duty.label === 'string' && duty.label.trim() !== '' ? duty.label : DUTY_AS_SAID[duty.kind] || 'a duty';
+}
+
+export function dutyNamed(duty) {
+  return typeof duty.label === 'string' && duty.label.trim() !== '' ? duty.label : DUTY_AS_NAMED[duty.kind] || 'Duty';
+}
+
+// "on Mondays and Wednesdays" or "from 1 December to 18 December", for a duty
+// that holds only on some days; '' for one that holds on every day.
+export function sometimesWords(duty) {
+  if (!dutyIsSometimes(duty)) return '';
+  const days = Array.isArray(duty.weekdays) ? duty.weekdays.filter((day) => Number.isInteger(day) && day >= 0 && day < 7).sort((a, b) => a - b) : [];
+  const parts = [];
+  if (days.length > 0) parts.push('on ' + listWords(days.map((day) => WEEKDAY_NAMES[day] + 's')));
+  const from = dateWords(duty.from, { year: false });
+  const to = dateWords(duty.to, { year: false });
+  if (from !== '' && to !== '') parts.push('from ' + from + ' to ' + to);
+  else if (from !== '') parts.push('from ' + from);
+  else if (to !== '') parts.push('until ' + to);
+  return parts.join(', ');
+}
+
+// The runs a walk finding names, after onDays: nothing for the regular bells
+// alone, " with Early Release bells" for one schedule, ", regular and Early
+// Release bells" for several. bellsIds are in the order runs are listed.
+function runWords(project, bellsIds) {
+  if (bellsIds.length === 1 && bellsIds[0] === null) return '';
+  const names = bellsIds.map((bellsId) => (bellsId === null ? 'regular' : findBellSchedule(project, bellsId).name));
+  return (bellsIds.length === 1 ? ' with ' : ', ') + listWords(names) + ' bells';
+}
+
+// The position of a run among a day type's runs: the regular bells first,
+// then the bell schedules in the project's order.
+function runOrder(project, bellsId) {
+  if (bellsId === null) return -1;
+  const schedules = Array.isArray(project.bellSchedules) ? project.bellSchedules : [];
+  return schedules.findIndex((schedule) => schedule && schedule.id === bellsId);
+}
+
+// What takes a period no group does, in the middle of a sentence: the always
+// duty's words ("a duty", or the label as typed), else the mark's.
+function takenWords(entry) {
+  const duty = entry.duties.find((candidate) => !dutyIsSometimes(candidate));
+  return duty ? dutySaid(duty) : MARK_AS_SAID[entry.marked] || 'taken';
+}
+
+// The last teaching period of the run that starts at `start` in a teacher's
+// day. A duty or a meeting between two classes neither adds to the run nor
+// ends it; a free period, a lunch (their own, or a school mark) or a No class
+// period ends it. With no duties it is the plain run of teaching periods.
+// `schoolMarks`, when given, is the kind of the school's mark in each period
+// (or null): a school Lunch or No class ends the run whatever else the teacher
+// has there, which an always duty in `marked` would otherwise hide.
+export function teachingRunEnd(day, start, schoolMarks) {
+  let end = start;
+  for (let next = start + 1; next < day.length; next += 1) {
+    if (day[next].kind === 'teaching') end = next;
+    else if (schoolMarks && (schoolMarks[next] === 'lunch' || schoolMarks[next] === 'noclass')) break;
+    else if (day[next].marked !== 'duty' && day[next].marked !== 'meeting') break;
+  }
+  return end;
+}
+
+// The kind of the school's mark in each period of a day type (or null), or null
+// when the project has no marks at all. What teachingRunEnd takes as its third
+// argument; checkSchedule and suggest both build it here.
+export function schoolMarksOf(project, dayTypeId, periods) {
+  if (!hasMarks(project)) return null;
+  return Array.from({ length: periods }, (unused, p) => { const mark = schoolMarkFor(project, dayTypeId, p); return mark ? mark.kind : null; });
 }
 
 function isNumbered(room) {
@@ -100,7 +222,10 @@ export function checkSchedule(project, walkResults) {
 
   // room id -> the first slot found there with no teacher, for room-no-teacher
   const untaught = new Map();
-  const ownDays = ownDayTypes(project);
+  // each own day type, and each day type the same as another that a mark names
+  const apart = markedFollowers(project);
+  const ownDays = apart.size === 0 ? ownDayTypes(project) : project.dayTypes.filter((dayType) => isOwnCopy(project, dayType.id) || apart.has(dayType.id));
+  const marked = hasMarks(project);
 
   ownDays.forEach((dayType, dayIndex) => {
     const d = dayType.id;
@@ -110,8 +235,10 @@ export function checkSchedule(project, walkResults) {
     const used = new Set();
 
     for (const group of project.groups) {
-      const day = effectiveSchedule(project, group.id, d);
+      const day = meetingSlots(project, group.id, d, null);
       const empty = [];
+      // slots with no room at all, a mark on them or not
+      let bare = 0;
       for (let p = 0; p < periods; p += 1) {
         const slot = day[p];
         const resolved = resolveSlotRoom(project, slot);
@@ -132,10 +259,12 @@ export function checkSchedule(project, walkResults) {
             group.name + ' is scheduled into ' + named + ' in ' + periodName(settings, p) + ' ' + on + ', and that room is not in the building. Pick a room that is in the building, or draw this one.',
             { dayTypeId: d, period: p, groupIds: [group.id] });
         } else {
-          empty.push(p);
+          bare += 1;
+          // any mark on a slot (lunch, advisory, activity, no class) says why it is bare
+          if (!(marked && markFor(project, group.id, d, p))) empty.push(p);
         }
       }
-      if (empty.length === periods) {
+      if (bare === periods && empty.length > 0) {
         add('empty-period', [d, group.id],
           group.name + ' has no room in any ' + word + ' ' + on + '.',
           { dayTypeId: d, groupIds: [group.id] });
@@ -189,6 +318,13 @@ export function checkSchedule(project, walkResults) {
     }
 
     const days = teacherDays(project, d);
+    const schoolMarks = marked ? schoolMarksOf(project, d, periods) : null;
+    // the day types this check speaks for: this one and those the same as it
+    // (not those a mark names, checked on their own)
+    const members = [dayType].concat(followersOf(project, dayType.id).filter((follower) => !apart.has(follower.id)));
+    const dutyDays = members.map((member) => new Set(dutiesOn(project, member.id)));
+    // each period duty with the members of the group it holds on
+    const clashes = dutiesOf(project).filter((duty) => duty && duty.when === 'period').map((duty) => [duty, dutyDays.map((set, index) => (set.has(duty) ? index : -1)).filter((index) => index >= 0)]);
     const basedIn = new Map();
     for (const teacher of project.teachers) {
       const day = days.get(teacher.id);
@@ -209,10 +345,33 @@ export function checkSchedule(project, walkResults) {
           { dayTypeId: d, period: entry.period, groupIds: places.flatMap((place) => place.groupIds), roomId: roomIds.length > 0 ? roomIds[0] : null, teacherId: teacher.id });
       }
 
-      if (day.every((entry) => entry.kind === 'teaching')) {
+      if (day.some((entry) => entry.kind === 'teaching') && !day.some(isFree)) {
+        // an always duty or a school mark takes the periods that no group does
+        const taken = day.filter((entry) => entry.kind !== 'teaching');
         add('no-planning', [d, teacher.id],
-          teacher.name + ' has no planning ' + word + ' ' + on + ': there is a group in every ' + word + '.',
+          taken.length === 0
+            ? teacher.name + ' has no planning ' + word + ' ' + on + ': there is a group in every ' + word + '.'
+            : teacher.name + ' has no planning ' + word + ' ' + on + ': ' + listWords(taken.map((entry) => periodName(settings, entry.period) + ' is ' + takenWords(entry))) + ', and there is a group in every other ' + word + '.',
           { dayTypeId: d, teacherId: teacher.id });
+      }
+
+      for (const [duty, applies] of clashes) {
+        if (applies.length === 0) continue;
+        const entry = day[duty.period];
+        if (!entry || entry.kind !== 'teaching' || !dutyTeachers(project, duty).includes(teacher.id)) continue;
+        const clashDays = applies.map((index) => members[index]);
+        const roomIds = entry.groups.filter((taught) => taught.roomId !== null).map((taught) => taught.roomId);
+        const teaches = entry.groups.map((taught) => {
+          const taughtGroup = findById(project.groups, taught.groupId);
+          if (taught.roomId !== null) return taughtGroup.name + ' in ' + roomName(findRoom(project, taught.roomId), false);
+          return taught.roomText !== '' ? taughtGroup.name + ' in "' + taught.roomText + '" (not in the building)' : taughtGroup.name;
+        });
+        const sometimes = sometimesWords(duty);
+        add('duty-clash', [clashDays[0].id, duty.period, teacher.id, duty.id],
+          teacher.name + ' has ' + dutySaid(duty) + ' in ' + periodName(settings, duty.period) + ' on ' + listWords(clashDays.map((dayType) => dayType.name)) + (sometimes === '' ? '' : ' (' + sometimes + ')')
+            + ', but teaches ' + listWords(teaches) + ' then. One of them needs to move.',
+          { dayTypeId: clashDays[0].id, period: duty.period, groupIds: entry.groups.map((taught) => taught.groupId), roomId: roomIds.length > 0 ? roomIds[0] : null, teacherId: teacher.id },
+          [teacher.id].concat(entry.groups.map((taught) => taught.groupId)));
       }
 
       let start = 0;
@@ -221,9 +380,8 @@ export function checkSchedule(project, walkResults) {
           start += 1;
           continue;
         }
-        let end = start;
-        while (end + 1 < periods && day[end + 1].kind === 'teaching') end += 1;
-        const length = end - start + 1;
+        const end = teachingRunEnd(day, start, schoolMarks);
+        const length = day.slice(start, end + 1).filter((entry) => entry.kind === 'teaching').length;
         if (length > limit) {
           const run = add('consecutive', [d, start, teacher.id],
             teacher.name + ' teaches ' + length + ' ' + periodWord(settings, true) + ' in a row ' + on + ', ' + periodName(settings, start) + ' to ' + periodName(settings, end) + '. The limit set for this school is ' + limit + '.',
@@ -262,6 +420,18 @@ export function checkSchedule(project, walkResults) {
     }
   });
 
+  const periodsOfDay = project.settings.periods;
+  for (const duty of dutiesOf(project)) {
+    if (!duty || typeof duty !== 'object' || (duty.when !== 'before' && duty.when !== 'after' && !(duty.when === 'period' && Number.isInteger(duty.period) && duty.period >= 0 && duty.period < periodsOfDay))) continue;
+    if (dutyTeachers(project, duty).length > 0) continue;
+    const when = duty.when === 'before' ? 'before school' : duty.when === 'after' ? 'after school' : 'in ' + periodName(settings, duty.period);
+    const ofDays = Array.isArray(duty.dayTypeIds) ? duty.dayTypeIds.map((id) => findDayType(project, id)).filter(Boolean).map((dayType) => dayType.name) : [];
+    const sometimes = sometimesWords(duty);
+    add('duty-nobody', [duty.id],
+      dutyNamed(duty) + ' ' + when + (ofDays.length > 0 ? ' on ' + listWords(ofDays) : '') + (sometimes === '' ? '' : ' (' + sometimes + ')') + ' has nobody on it.',
+      {});
+  }
+
   for (const teacher of project.teachers) {
     const based = (Array.isArray(teacher.roomIds) ? teacher.roomIds : []).map((roomId) => findRoom(project, roomId)).filter(Boolean);
     if (based.length < 2) continue;
@@ -286,46 +456,198 @@ export function checkSchedule(project, walkResults) {
     const passingText = (seconds) => 'the passing time is ' + formatDuration(seconds) + (margin > 0 ? ' plus a margin of ' + formatDuration(margin) : '');
     const ownDay = (dayTypeId) => (isOwnCopy(project, dayTypeId) ? findDayType(project, dayTypeId) : null);
     const isTransition = (period) => Number.isInteger(period) && period >= 0 && period < periods - 1;
+    // the run an entry is for: null for the regular bells; undefined for a
+    // schedule the project no longer has, whose figures say nothing
+    const runOf = (walk, fromBells) => {
+      if (!fromBells) return null;
+      return typeof walk.bellsId === 'string' && findBellSchedule(project, walk.bellsId) ? walk.bellsId : undefined;
+    };
+    // makeFinding keeps a fixed set of `where` keys (findings.js is the staff
+    // browser's, which does not change for this), so a walk across adds the
+    // period it reaches to the finding it made
+    const named = (finding, across, toPeriod) => {
+      if (finding && across) finding.where.toPeriod = toPeriod;
+    };
+    const bellsOf = new Map();
+    // the walk out of `period` under these bells: { to, passing }, the period
+    // it reaches (past the ones that do not meet) and the time it has; null
+    // when it moves nobody
+    const planFor = (dayTypeId, bellsId, period) => {
+      const key = dayTypeId + '\u0000' + bellsId;
+      if (!bellsOf.has(key)) bellsOf.set(key, bellsId === null ? bellsFor(project, dayTypeId) : bellsFor(project, dayTypeId, bellsId));
+      return transitionPlan(project, bellsOf.get(key), period);
+    };
+    // where a figure says the walk ends: the next period unless it names another
+    const reached = (walk) => (Number.isInteger(walk.toPeriod) ? walk.toPeriod : walk.period + 1);
+    const lists = (part) => {
+      const out = [];
+      for (const walk of Array.isArray(walkResults[part]) ? walkResults[part] : []) out.push({ walk, bellsId: runOf(walk, false) });
+      const bells = walkResults.bells && Array.isArray(walkResults.bells[part]) ? walkResults.bells[part] : [];
+      for (const walk of bells) out.push({ walk, bellsId: runOf(walk, true) });
+      return out;
+    };
+    // one finding per (day type, period, who): the runs it is late in, in run order
+    const gather = (entries, keyOf) => {
+      const byKey = new Map();
+      for (const entry of entries) {
+        const key = keyOf(entry);
+        if (!byKey.has(key)) byKey.set(key, []);
+        if (!byKey.get(key).some((other) => other.bellsId === entry.bellsId)) byKey.get(key).push(entry);
+      }
+      for (const list of byKey.values()) list.sort((a, b) => runOrder(project, a.bellsId) - runOrder(project, b.bellsId));
+      return Array.from(byKey.values());
+    };
+    // the runs, as they are said and as they go into the id and `where`
+    // A walk across periods that do not meet ends its id with the period it
+    // reaches (`to4`), so an acceptance never carries to a walk that goes
+    // elsewhere; a next-door walk's id has no such part.
+    const runParts = (list, parts, period, toPeriod) => {
+      const bellsIds = list.map((entry) => entry.bellsId);
+      const regular = bellsIds[0] === null;
+      const id = (regular ? parts : parts.concat([bellsIds[0]])).concat(toPeriod === period + 1 ? [] : ['to' + toPeriod]);
+      return { bellsIds, id, where: bellsIds.length === 1 && regular ? {} : { bellsIds } };
+    };
+    // the late runs whose figures read alike, together: the first set is the
+    // sentence, every other set a sentence of its own after it
+    const alike = (list, figureKey) => {
+      const sets = [];
+      for (const entry of list) {
+        const key = figureKey(entry.walk);
+        const set = sets.find((candidate) => candidate.key === key);
+        if (set) set.entries.push(entry);
+        else sets.push({ key, entries: [entry] });
+      }
+      return sets;
+    };
+    const bellsNames = (entries) => listWords(entries.map((entry) => (entry.bellsId === null ? 'regular' : findBellSchedule(project, entry.bellsId).name)));
 
-    for (const walk of Array.isArray(walkResults.groups) ? walkResults.groups : []) {
+    const groupEntries = [];
+    for (const entry of lists('groups')) {
+      const walk = entry.walk;
+      if (entry.bellsId === undefined) continue;
       if (!walk || walk.late !== true || !isTransition(walk.period) || !isWholeSeconds(walk.total)) continue;
       const dayType = ownDay(walk.dayTypeId);
       const group = findById(project.groups, walk.groupId);
       if (!dayType || !group) continue;
-      const day = effectiveSchedule(project, group.id, dayType.id);
+      const day = meetingSlots(project, group.id, dayType.id, entry.bellsId);
+      const plan = planFor(dayType.id, entry.bellsId, walk.period);
+      // a walk across periods that do not meet is a figure for that walk only
+      // while the bells still leave those periods off
+      if (!plan || plan.to !== reached(walk)) continue;
       const from = resolveSlotRoom(project, day[walk.period]).room;
-      const to = resolveSlotRoom(project, day[walk.period + 1]).room;
+      const to = resolveSlotRoom(project, day[plan.to]).room;
       if (!from || !to || from === to) continue;
       // a figure for other rooms, or decided against another passing time,
       // is not a figure for this walk
       if (walk.fromRoomId !== from.id || walk.toRoomId !== to.id) continue;
-      if (walk.passingSeconds !== bellsFor(project, dayType.id)[walk.period].passingAfter) continue;
-      const passing = walk.passingSeconds;
-      const after = ' after ' + periodName(settings, walk.period) + ' ' + onDays(project, dayType);
-      const text = walk.arrived === false
-        ? group.name + ' did not arrive at ' + roomName(to, false) + ' from ' + roomName(from, false) + after + ': it was still on the way after ' + formatDuration(walk.total) + ', and ' + passingText(passing) + '.'
-        : group.name + ' needs ' + formatDuration(walk.total) + ' to get from ' + roomName(from, false) + ' to ' + roomName(to, false) + after
-          + (isWholeSeconds(walk.waiting) && walk.waiting > 0 ? ', ' + formatDuration(walk.waiting) + ' of it waiting in crowded corridors' : '') + ', and ' + passingText(passing) + '.';
-      add('group-walk', [dayType.id, walk.period, group.id], text, { dayTypeId: dayType.id, period: walk.period, groupIds: [group.id], roomId: to.id });
+      if (walk.passingSeconds !== plan.passing) continue;
+      groupEntries.push({ ...entry, dayType, group, from, to, toPeriod: plan.to });
+    }
+    for (const list of gather(groupEntries, (entry) => entry.dayType.id + '\u0000' + entry.walk.period + (entry.toPeriod === entry.walk.period + 1 ? '' : '\u0000' + entry.toPeriod) + '\u0000' + entry.group.id)) {
+      const { dayType, group, from, to, toPeriod } = list[0];
+      const period = list[0].walk.period;
+      const sets = alike(list, (walk) => walk.total + '|' + walk.waiting + '|' + walk.passingSeconds + '|' + (walk.arrived === false));
+      const across = toPeriod !== period + 1;
+      // across periods that do not meet both periods are named: "from Room 101
+      // after Period 2 to Room 204 for Period 4 on A Day"
+      const fromText = roomName(from, false) + (across ? ' after ' + periodName(settings, period) : '');
+      const toText = roomName(to, false) + (across ? ' for ' + periodName(settings, toPeriod) : '');
+      const after = (across ? '' : ' after ' + periodName(settings, period)) + ' ' + onDays(project, dayType);
+      const said = (walk) => (walk.arrived === false
+        ? 'was still on the way after ' + formatDuration(walk.total)
+        : 'needs ' + formatDuration(walk.total) + (isWholeSeconds(walk.waiting) && walk.waiting > 0 ? ', ' + formatDuration(walk.waiting) + ' of it waiting in crowded corridors' : ''));
+      const first = sets[0].entries[0].walk;
+      const runs = runWords(project, sets[0].entries.map((entry) => entry.bellsId));
+      let text = first.arrived === false
+        ? group.name + ' did not arrive at ' + toText + ' from ' + fromText + after + runs + ': it was still on the way after ' + formatDuration(first.total) + ', and ' + passingText(first.passingSeconds) + '.'
+        : group.name + ' needs ' + formatDuration(first.total) + ' to get from ' + fromText + ' to ' + toText + after + runs
+          + (isWholeSeconds(first.waiting) && first.waiting > 0 ? ', ' + formatDuration(first.waiting) + ' of it waiting in crowded corridors' : '') + ', and ' + passingText(first.passingSeconds) + '.';
+      for (const set of sets.slice(1)) {
+        const walk = set.entries[0].walk;
+        text += ' With ' + bellsNames(set.entries) + ' bells it ' + said(walk) + ', and ' + passingText(walk.passingSeconds) + '.';
+      }
+      const run = runParts(list, [dayType.id, period, group.id], period, toPeriod);
+      named(add('group-walk', run.id, text, { dayTypeId: dayType.id, period, groupIds: [group.id], roomId: to.id, ...run.where }), across, toPeriod);
     }
 
     const daysOf = new Map();
-    for (const walk of Array.isArray(walkResults.teachers) ? walkResults.teachers : []) {
+    const teacherEntries = [];
+    for (const entry of lists('teachers')) {
+      const walk = entry.walk;
+      if (entry.bellsId === undefined) continue;
       if (!walk || walk.late !== true || !isTransition(walk.period) || !isWholeSeconds(walk.walking)) continue;
       const dayType = ownDay(walk.dayTypeId);
       const teacher = findById(project.teachers, walk.teacherId);
       if (!dayType || !teacher) continue;
       if (!daysOf.has(dayType.id)) daysOf.set(dayType.id, teacherDays(project, dayType.id));
       const day = daysOf.get(dayType.id).get(teacher.id);
-      const move = teacherMoves(day).find((candidate) => candidate.period === walk.period);
+      const move = bellMoves(day, entry.bellsId === null ? null : offPeriods(project, entry.bellsId)).find((candidate) => candidate.period === walk.period);
       if (!move || walk.fromRoomId !== move.fromRoomId || walk.toRoomId !== move.toRoomId) continue;
-      if (walk.passingSeconds !== bellsFor(project, dayType.id)[walk.period].passingAfter) continue;
-      add('teacher-walk', [dayType.id, walk.period, teacher.id],
-        teacher.name + ' needs ' + formatDuration(walk.walking) + ' to walk from ' + roomName(findRoom(project, move.fromRoomId), false) + ' to ' + roomName(findRoom(project, move.toRoomId), false)
-          + ' after ' + periodName(settings, walk.period) + ' ' + onDays(project, dayType) + ', before any crowding, and ' + passingText(walk.passingSeconds) + '.',
-        { dayTypeId: dayType.id, period: walk.period, groupIds: day[walk.period + 1].groups.map((taught) => taught.groupId), roomId: move.toRoomId, teacherId: teacher.id }, [teacher.id]);
+      // a figure for a walk across periods that do not meet names where it
+      // ends, and is for that walk only while the bells leave those periods off
+      const plan = planFor(dayType.id, entry.bellsId, walk.period);
+      if (!plan || plan.to !== reached(walk) || plan.to !== (move.toPeriod === undefined ? walk.period + 1 : move.toPeriod)) continue;
+      if (walk.passingSeconds !== plan.passing) continue;
+      teacherEntries.push({ ...entry, dayType, teacher, day, move, toPeriod: plan.to });
+    }
+    for (const list of gather(teacherEntries, (entry) => entry.dayType.id + '\u0000' + entry.walk.period + (entry.toPeriod === entry.walk.period + 1 ? '' : '\u0000' + entry.toPeriod) + '\u0000' + entry.teacher.id)) {
+      const { dayType, teacher, day, move, toPeriod } = list[0];
+      const period = list[0].walk.period;
+      const sets = alike(list, (walk) => walk.walking + '|' + walk.passingSeconds);
+      const first = sets[0].entries[0].walk;
+      const across = toPeriod !== period + 1;
+      let text = teacher.name + ' needs ' + formatDuration(first.walking) + ' to walk from ' + roomName(findRoom(project, move.fromRoomId), false) + (across ? ' after ' + periodName(settings, period) : '')
+        + ' to ' + roomName(findRoom(project, move.toRoomId), false) + (across ? ' for ' + periodName(settings, toPeriod) : ' after ' + periodName(settings, period)) + ' ' + onDays(project, dayType) + runWords(project, sets[0].entries.map((entry) => entry.bellsId)) + ', before any crowding, and ' + passingText(first.passingSeconds) + '.';
+      for (const set of sets.slice(1)) {
+        const walk = set.entries[0].walk;
+        text += ' With ' + bellsNames(set.entries) + ' bells it needs ' + formatDuration(walk.walking) + ', and ' + passingText(walk.passingSeconds) + '.';
+      }
+      const run = runParts(list, [dayType.id, period, teacher.id], period, toPeriod);
+      named(add('teacher-walk', run.id, text,
+        { dayTypeId: dayType.id, period, groupIds: day[toPeriod].groups.map((taught) => taught.groupId), roomId: move.toRoomId, teacherId: teacher.id, ...run.where }, [teacher.id]), across, toPeriod);
     }
   }
 
-  return splitAccepted(sortFindings(found, project), project.accepted, { off, limit, runs });
+  return splitAccepted(followAcceptedWalks(sortFindings(found, project), project.accepted), project.accepted, { off, limit, runs });
+}
+
+// A walk late only under bell schedules has the first of them (in the
+// project's order) in its id, `group-walk:d:p:<group>:<schedule>`, so
+// reordering the schedules, or deleting one, would change the id and lose
+// an acceptance. The id rule stays; instead a walk record whose id names
+// schedule X, with no finding of its own id, follows the finding of the same
+// kind, day type, period and group or teacher that is still late under X (X
+// among its where.bellsIds), whatever its id is now: the finding takes the
+// record's id, so splitAccepted (findings.js) matches them as ever and
+// taking the acceptance back finds the record. It must still be late only
+// under bell schedules: a walk late under the regular bells as well is worse
+// than the one accepted, has the regular id and counts again (by design).
+// Nor does it follow once X is deleted: the walk is late under X no longer.
+// A record follows one finding, never two, and never one with a record of
+// its own. Here rather than in splitAccepted because findings.js is in the
+// staff browser, whose published code does not change for this.
+export function followAcceptedWalks(findings, acceptedRecords) {
+  const records = Array.isArray(acceptedRecords) ? acceptedRecords : [];
+  const ids = new Set(findings.map((finding) => finding.id));
+  const recordIds = new Set(records.map((record) => record.findingId));
+  const renamed = new Map();
+  for (const record of records) {
+    const parts = String(record.findingId).split(':');
+    // a walk across ends its id with the period it reaches; the record follows
+    // only a finding that reaches the same one
+    const reach = /^to\d+$/.test(parts[parts.length - 1]) ? parts.pop() : '';
+    if ((parts[0] !== 'group-walk' && parts[0] !== 'teacher-walk') || parts.length !== 5 || ids.has(record.findingId)) continue;
+    const base = parts.slice(0, 4).join(':');
+    const match = findings.find((finding) => {
+      if (finding.kind !== parts[0] || recordIds.has(finding.id) || renamed.has(finding.id)) return false;
+      const own = finding.id.split(':');
+      if ((/^to\d+$/.test(own[own.length - 1]) ? own.pop() : '') !== reach) return false;
+      if (own.length !== 5 || own.slice(0, 4).join(':') !== base) return false;
+      const bellsIds = Array.isArray(finding.where.bellsIds) ? finding.where.bellsIds : [];
+      return !bellsIds.includes(null) && bellsIds.includes(parts[4]);
+    });
+    if (match) renamed.set(match.id, record.findingId);
+  }
+  if (renamed.size === 0) return findings;
+  return findings.map((finding) => (renamed.has(finding.id) ? { ...finding, id: renamed.get(finding.id) } : finding));
 }

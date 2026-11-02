@@ -5,6 +5,12 @@
 //   cold   every route for the whole schedule from nothing: budget 700 ms
 //   warm   the same again with the cache filled: budget 50 ms
 //
+// The same two budgets hold for every run of the fixture grown as
+// ARCHITECTURE 17.8 says (test/timing/big-runs.mjs: six day types, four of
+// them own, and two bell schedules, so twelve runs), routed as the pipeline
+// routes them (crowd.js routesByRun): a bell-schedule run takes the regular
+// run's route objects, so it is the four own day types that cost.
+//
 // The suite fails at twice each budget, to leave room for a slow runner, and
 // prints the measured numbers either way. The clock is read here, in the
 // test, never in the engine.
@@ -13,7 +19,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildGraph } from '../../engine/graph.js';
 import { routesForSchedule, routingGraph, createRouteCache } from '../../engine/routing.js';
+import { routesByRun } from '../../engine/crowd.js';
 import { bigProject, BIG } from '../fixtures/big.mjs';
+import { bigRunsProject, BIG_RUNS } from './big-runs.mjs';
 
 const COLD_BUDGET = 700;
 const WARM_BUDGET = 50;
@@ -46,4 +54,20 @@ test('full routing on the big fixture: cold under 700 ms, warm under 50 ms', () 
   assert.deepEqual(warm.value.days, result.days);
   assert.ok(cold.ms < COLD_BUDGET * SLACK, 'cold routing took ' + cold.ms.toFixed(1) + ' ms, over ' + COLD_BUDGET * SLACK);
   assert.ok(warm.ms < WARM_BUDGET * SLACK, 'warm routing took ' + warm.ms.toFixed(1) + ' ms, over ' + WARM_BUDGET * SLACK);
+});
+
+test('full routing for the twelve runs of the grown fixture: cold under 700 ms, warm under 50 ms', () => {
+  const project = bigRunsProject({ seed: 1 });
+  const cache = createRouteCache();
+  const cold = timed(() => routesByRun(project, routingGraph(project, buildGraph(project)), { cache, geometryVersion: 2 }));
+  const graph = routingGraph(project);
+  const warm = timed(() => routesByRun(project, graph, { cache, geometryVersion: 2 }));
+  const result = cold.value;
+  console.log('# routing, twelve runs, cold (after the case above in this process): ' + cold.ms.toFixed(1) + ' ms (budget ' + COLD_BUDGET + ', fails at ' + COLD_BUDGET * SLACK + '): ' + result.transitions + ' transitions, ' + result.pairs + ' journeys, ' + result.searches + ' searches');
+  console.log('# routing, twelve runs, warm: ' + warm.ms.toFixed(1) + ' ms (budget ' + WARM_BUDGET + ', fails at ' + WARM_BUDGET * SLACK + ')');
+  assert.equal(result.days.length + result.bells.length, BIG_RUNS.runs);
+  assert.equal(result.transitions, BIG.groups * (BIG.periods - 1) * BIG_RUNS.runs);
+  assert.equal(warm.value.searches, 0, 'warm searched nothing');
+  assert.ok(cold.ms < COLD_BUDGET * SLACK, 'cold routing of twelve runs took ' + cold.ms.toFixed(1) + ' ms, over ' + COLD_BUDGET * SLACK);
+  assert.ok(warm.ms < WARM_BUDGET * SLACK, 'warm routing of twelve runs took ' + warm.ms.toFixed(1) + ' ms, over ' + WARM_BUDGET * SLACK);
 });

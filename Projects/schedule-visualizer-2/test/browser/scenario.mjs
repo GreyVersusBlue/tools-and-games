@@ -28,7 +28,7 @@ import { pathToFileURL } from 'node:url';
 
 import { openPlanner, go, launch, startServer, TOOL_DIR } from './harness.mjs';
 
-const { sampleSchool } = await import(pathToFileURL(path.join(TOOL_DIR, 'data', 'sample-school.js')).href);
+const { plainSchool: sampleSchool } = await import(pathToFileURL(path.join(TOOL_DIR, 'test', 'engine', 'helpers.mjs')).href);
 const { writeProjectFile } = await import(pathToFileURL(path.join(TOOL_DIR, 'engine', 'project-file.js')).href);
 
 const SCRATCH = path.join(TOOL_DIR, 'test', '.scratch', 'scenario');
@@ -80,12 +80,11 @@ async function fresh(page, change) {
     await close.click();
     await page.waitForFunction(() => !document.querySelector('.toast'));
   }
-  await page.evaluate(async (alter) => {
-    const { sampleSchool } = await import('./data/sample-school.js');
-    const project = sampleSchool();
+  await page.evaluate((alter, plain) => {
+    const project = plain;
     if (alter) new Function('project', alter)(project);
     globalThis.sv2.store.replace(project);
-  }, change || null);
+  }, change || null, JSON.parse(JSON.stringify(sampleSchool())));
   await go(page, '#scenarios');
   await ready(page);
 }

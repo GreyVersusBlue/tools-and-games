@@ -20,6 +20,8 @@ import { choice as segmented } from '../components/choice.js';
 import { picker } from '../components/picker.js';
 import { icon } from '../components/icons.js';
 import { formatDuration } from '../../engine/findings.js';
+import { describeDayType } from '../../engine/day-types.js';
+import { bellSchedulesOf } from '../../engine/schema.js';
 import { COMPARE_LIMIT, COMPARE_REASON, compareFull, gradesOf } from './model.js';
 
 function label(text, id) {
@@ -75,6 +77,11 @@ export function controls(options) {
   const daySelect = h('select', { class: 'field__input mov-ctl__select', id: dayId, data: { control: 'day' }, on: { change: () => options.change({ dayTypeId: daySelect.value }) } });
   const dayBox = h('div', { class: 'mov-ctl' }, h('label', { class: 'mov-ctl__label', for: dayId }, 'Day type'), daySelect);
 
+  // ---- which bells: shown only when there is a bell schedule besides the regular ones
+  const bellsId = uid('mov-bells');
+  const bellsSelect = h('select', { class: 'field__input mov-ctl__select', id: bellsId, data: { control: 'bells' }, on: { change: () => options.change({ bellsId: bellsSelect.value === '' ? null : bellsSelect.value }) } });
+  const bellsBox = h('div', { class: 'mov-ctl', hidden: true, data: { control: 'bells-box' } }, h('label', { class: 'mov-ctl__label', for: bellsId }, 'Bells'), bellsSelect);
+
   // ---- which transition
   const stripId = uid('mov-strip');
   // One Tab stop (DESIGN 5.3): a radio group, as the floors and the
@@ -95,7 +102,9 @@ export function controls(options) {
     if (to !== at) items[to].click();
     items[to].focus();
   });
-  const stripBox = h('div', { class: 'mov-ctl mov-ctl--strip' }, label('Transition', stripId), strip);
+  // the periods that do not meet under the bells chosen, said where the strip leaves them out
+  const stripNote = h('p', { class: 'mov-strip__note', hidden: true, data: { note: 'off' } });
+  const stripBox = h('div', { class: 'mov-ctl mov-ctl--strip' }, label('Transition', stripId), strip, stripNote);
   let stripKey = '';
 
   // ---- the two options, and Clear
@@ -108,7 +117,7 @@ export function controls(options) {
   const clear = h('button', { type: 'button', class: 'btn mov-clear', data: { action: 'clear' }, on: { click: () => options.clear() } }, 'Clear');
   const optionsBox = h('div', { class: 'mov-ctl mov-ctl--options' }, label('Show', null), h('div', { class: 'mov-ctl__checks' }, labels.element, constant.element), clear);
 
-  const box = h('div', { class: 'mov-controls', id: boxId, hidden: folded }, whoBox, dayBox, stripBox, optionsBox);
+  const box = h('div', { class: 'mov-controls', id: boxId, hidden: folded }, whoBox, dayBox, bellsBox, stripBox, optionsBox);
   const element = h('div', { class: 'mov-top', data: { folded: String(folded) } }, line, box);
 
   function setFolded(next) {
@@ -203,7 +212,16 @@ export function controls(options) {
       fill(gradeSelect, grades.map((grade) => [grade, grade === '' ? 'No grade' : 'Grade ' + grade]), choice.grade);
       groupsBox.hidden = choice.who !== 'groups';
       drawChips();
-      fill(daySelect, project.dayTypes.map((dayType) => [dayType.id, dayType.name]), choice.dayTypeId);
+      // a day type that is the same as another says so: "C Day (same as A Day)"
+      fill(daySelect, project.dayTypes.map((dayType) => {
+        const follows = describeDayType(project, dayType.id).follows;
+        return [dayType.id, follows ? dayType.name + ' (same as ' + follows + ')' : dayType.name];
+      }), choice.dayTypeId);
+      const schedules = bellSchedulesOf(project);
+      bellsBox.hidden = schedules.length === 0;
+      fill(bellsSelect, [['', 'Regular']].concat(schedules.map((schedule) => [schedule.id, schedule.name])), choice.bellsId === null ? '' : choice.bellsId);
+      stripNote.hidden = picture.offWords === '';
+      stripNote.textContent = picture.offWords;
       drawStrip();
       labels.input.checked = choice.labels;
       constant.input.checked = choice.constantWidth;

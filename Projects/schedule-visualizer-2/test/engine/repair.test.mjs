@@ -370,6 +370,53 @@ test('when only some groups have a day for it, the others get a copy of their A 
   assert.deepEqual(validate(result.project), []);
 });
 
+// SV2-75b: a C Day marked the same as B Day (an own day type) that has
+// something of its own starts from B Day, not from the first day type
+function withCSameAsB() {
+  const project = school();
+  project.dayTypes.push({ id: 'dsample00c', name: 'C Day', own: false, sameAs: 'dsample00b', short: '', bells: Array(project.settings.periods).fill(null) });
+  return project;
+}
+
+test('a day type the same as another own day type, with bells only, is promoted with that day type\'s classes, and the note names it', () => {
+  const project = withCSameAsB();
+  project.dayTypes[2].bells[0] = { start: '08:00', end: '08:50' };
+  assert.notDeepEqual(group(project, '6A').days.dsample00a, group(project, '6A').days.dsample00b, 'A and B differ, so the case tells them apart');
+  const result = repair(project);
+  const c = result.project.dayTypes[2];
+  assert.equal(c.own, true);
+  assert.equal(c.sameAs, null);
+  for (const g of project.groups) assert.deepEqual(group(result.project, g.name).days.dsample00c, g.days.dsample00b, g.name + ' has its B Day on C Day');
+  assert.ok(result.notes.some((note) => /^C Day was marked the same as B Day .* its own copy now; where it had no classes of its own, it has B Day's\.$/.test(note)), JSON.stringify(result.notes));
+  assert.ok(!result.notes.some((note) => /A Day/.test(note)));
+  assert.deepEqual(validate(result.project), []);
+  assert.equal(repair(result.project).project, result.project, 'and a second repair has nothing to do');
+});
+
+test('a day type the same as another own day type, with some groups\' days, gives the other groups that day type\'s days', () => {
+  const project = withCSameAsB();
+  const own = group(project, '6A').days.dsample00a.map((slot) => ({ ...slot, teacherIds: slot.teacherIds.slice() }));
+  group(project, '6A').days.dsample00c = own;
+  const result = repair(project);
+  assert.equal(result.project.dayTypes[2].own, true);
+  assert.deepEqual(group(result.project, '6A').days.dsample00c, own, 'the day it had is kept');
+  for (const g of project.groups.slice(1)) {
+    assert.deepEqual(group(result.project, g.name).days.dsample00c, g.days.dsample00b, g.name + ' has its B Day');
+    assert.notEqual(group(result.project, g.name).days.dsample00c, group(result.project, g.name).days.dsample00b, 'a copy, not the same list');
+  }
+  assert.ok(result.notes.some((note) => /^C Day was marked the same as B Day and had days of its own/.test(note)));
+  assert.deepEqual(validate(result.project), []);
+});
+
+test('a day type the same as one that is not its own copy is promoted from the first day type', () => {
+  const project = withCSameAsB();
+  project.dayTypes.push({ id: 'dsample00d', name: 'D Day', own: false, sameAs: 'dsample00c', short: '', bells: Array(project.settings.periods).fill(null) });
+  project.dayTypes[3].bells[0] = { start: '08:00', end: '08:50' };
+  const result = repair(project);
+  for (const g of project.groups) assert.deepEqual(group(result.project, g.name).days.dsample00d, g.days.dsample00a);
+  assert.ok(result.notes.some((note) => /^D Day was marked the same as A Day and had bell times/.test(note)));
+});
+
 test('an own day type with a missing day gets an empty one', () => {
   const project = school();
   delete group(project, '8B').days.dsample00b;
@@ -698,4 +745,333 @@ test('Cell scale (SV2-73a): a project with none, or not set, comes back as the s
   const tidied = repair(extra, { ids: makeIds(), clock });
   assert.deepEqual(tidied.project.settings.cellScale, { unit: 'feet', length: 5 });
   assert.deepEqual(tidied.notes, [], 'what is dropped beside the unit and length is nothing the tool reads');
+});
+
+// ---------------------------------------------------------------- ARCHITECTURE 17: the new fields
+
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { withEverything, NEW_BREAKS, A, B, C, ER } from '../fixtures/day-types-calendar.mjs';
+import { dayOn } from '../../engine/calendar.js';
+
+test('a project with every new field in use comes back as the same object with no notes', () => {
+  const project = withEverything();
+  const result = repair(project);
+  assert.equal(result.project, project);
+  assert.deepEqual(result.notes, []);
+});
+
+test('an older project, with none of the new fields, repairs to itself: every rule reads what is absent as its default', () => {
+  const formats = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'formats');
+  const v1 = JSON.parse(readFileSync(path.join(formats, 'project-v1.json'), 'utf8'));
+  for (const project of [school(), v1]) {
+    assert.equal('bellSchedules' in project || 'calendar' in project, false);
+    const result = repair(migrate(project));
+    assert.equal(result.project, project);
+    assert.deepEqual(result.notes, []);
+  }
+  // an older file that needed mending once needs nothing the second time
+  const v0 = repair(migrate(JSON.parse(readFileSync(path.join(formats, 'project-v0.json'), 'utf8')))).project;
+  assert.equal(repair(v0).project, v0);
+  assert.deepEqual(validate(v0), []);
+});
+
+for (const [name, mutate, , silent] of NEW_BREAKS) {
+  test('repairs ' + name + (silent ? ', filling the default' : ', with a note') + ', and a second repair has nothing to do', () => {
+    const project = withEverything();
+    mutate(project);
+    const first = repair(project);
+    assert.deepEqual(validate(first.project), [], name);
+    if (silent) assert.deepEqual(first.notes, [], 'an absent field is not something that was repaired');
+    else assert.ok(first.notes.length > 0, 'no note for ' + name);
+    const again = repair(first.project);
+    assert.equal(again.project, first.project, 'repair(repair(x)) changed ' + name);
+    assert.deepEqual(again.notes, []);
+  });
+}
+
+test('repair\'s fixes, field by field: sameAs to the first, shorts cleared, dangling calendar ids dropped or to the rotation', () => {
+  const project = withEverything();
+  project.dayTypes[2].sameAs = 'dnowhere00';
+  project.dayTypes[3].short = 'c';
+  project.calendar.rotation = [A, 'dnowhere00', B];
+  project.calendar.weekdays[4] = { day: 'dnowhere00', bells: 'bnowhere00' };
+  project.calendar.dates[1].day = 'dnowhere00';
+  project.calendar.dates[0].bells = 'bnowhere00';
+  const { project: fixed, notes } = repair(project);
+  assert.equal(fixed.dayTypes[2].sameAs, null);
+  assert.equal(fixed.dayTypes[3].short, '');
+  assert.deepEqual(fixed.calendar.rotation, [A, B]);
+  assert.deepEqual(fixed.calendar.weekdays[4], { day: 'rotation', bells: null });
+  assert.deepEqual(fixed.calendar.dates.map((entry) => entry.date), ['2026-10-03', '2026-11-26', '2027-01-12', '2027-01-13']);
+  assert.equal(fixed.calendar.dates[0].bells, null);
+  assert.deepEqual(notes, [
+    'C Day was the same as something that is not a day type with its own classes, so it is the same as A Day now.',
+    'The short name "c" of D Day was already used, so it was cleared and is worked out from the name.',
+    'Friday named a day type that is not in the project, so it takes the rotation now.',
+    'Friday named a bell schedule that is not in the project, so it has the regular bells now.',
+    'The rotation named 1 day type not in the project; that entry was removed.',
+    '1 dated change in the calendar named a day type that is not in the project and was removed.',
+    '1 dated change in the calendar named a bell schedule that is not in the project and now follows the weekday\'s bells.',
+  ]);
+});
+
+test('duplicate dates keep the later; a change that says nothing is dropped; a range that runs backwards is turned round', () => {
+  const project = withEverything();
+  project.calendar.dates.push({ date: '2026-11-26', day: B, bells: null, label: 'Open after all' });
+  project.calendar.dates.push({ date: '2026-09-01', day: 'rotation', bells: null, label: '' });
+  [project.calendar.start, project.calendar.end] = [project.calendar.end, project.calendar.start];
+  const { project: fixed, notes } = repair(project);
+  assert.deepEqual(fixed.calendar.dates.find((entry) => entry.date === '2026-11-26'), { date: '2026-11-26', day: B, bells: null, label: 'Open after all' });
+  assert.equal(fixed.calendar.dates.some((entry) => entry.date === '2026-09-01'), false);
+  assert.deepEqual([fixed.calendar.start, fixed.calendar.end], ['2026-08-31', '2027-06-11']);
+  assert.deepEqual(notes, [
+    'The calendar\'s first day was after its last; the two were swapped.',
+    '1 date in the calendar had two changes; the later in the list was kept.',
+    '1 dated change in the calendar said nothing the weekday did not and was removed.',
+  ]);
+});
+
+test('a dated change with day null is kept; one that says nothing (day null, bells null, no note) is removed with a note (SV2-75b)', () => {
+  const project = withEverything();
+  project.calendar.dates.splice(1, 0, { date: '2026-10-07', day: null, bells: ER, label: '' }, { date: '2026-10-08', day: null, bells: null, label: 'Picture day' }, { date: '2026-10-09', day: null, bells: null, label: '' });
+  const { project: fixed, notes } = repair(project);
+  assert.deepEqual(fixed.calendar.dates.slice(1, 3), [{ date: '2026-10-07', day: null, bells: ER, label: '' }, { date: '2026-10-08', day: null, bells: null, label: 'Picture day' }]);
+  assert.equal(fixed.calendar.dates.some((entry) => entry.date === '2026-10-09'), false);
+  assert.deepEqual(notes, ['1 dated change in the calendar said nothing the weekday did not and was removed.']);
+  assert.deepEqual(validate(fixed), []);
+  assert.equal(repair(fixed).project, fixed);
+  // on a fixed weekday too: day null with nothing else says nothing
+  const fixedDay = withEverything();
+  fixedDay.calendar.weekdays[3] = { day: B, bells: null };
+  fixedDay.calendar.dates.splice(1, 0, { date: '2026-10-08', day: null, bells: null, label: '' });
+  assert.equal(repair(fixedDay).project.calendar.dates.some((entry) => entry.date === '2026-10-08'), false);
+});
+
+test('a calendar with one end that is not a date is kept: that end is taken from the other and the dated changes, with a note (SV2-75b)', () => {
+  // a bad first day: the earliest of the last day and the dated changes
+  const start = withEverything();
+  start.calendar.start = '2026-02-30';
+  const fixedStart = repair(start);
+  assert.deepEqual([fixedStart.project.calendar.start, fixedStart.project.calendar.end], ['2026-10-03', '2027-06-11']);
+  assert.equal(fixedStart.project.calendar.dates.length, 5, 'the dated changes are kept');
+  assert.deepEqual(fixedStart.project.calendar.rotation, [A, B]);
+  assert.deepEqual(fixedStart.notes, ['The calendar\'s first day was not a date, so it is now 3 October 2026, the earliest of its last day and its dated changes.']);
+  assert.deepEqual(validate(fixedStart.project), []);
+  assert.equal(repair(fixedStart.project).project, fixedStart.project);
+  // a bad last day: the latest of the first day and the dated changes
+  const end = withEverything();
+  end.calendar.end = '11 June 2027';
+  const fixedEnd = repair(end);
+  assert.deepEqual([fixedEnd.project.calendar.start, fixedEnd.project.calendar.end], ['2026-08-31', '2027-01-13']);
+  assert.deepEqual(fixedEnd.notes, ['The calendar\'s last day was not a date, so it is now 13 January 2027, the latest of its first day and its dated changes.']);
+  assert.deepEqual(validate(fixedEnd.project), []);
+  // no dated changes: the one good day is the whole calendar
+  const alone = withEverything();
+  alone.calendar.end = null;
+  alone.calendar.dates = [];
+  assert.deepEqual([repair(alone).project.calendar.start, repair(alone).project.calendar.end], ['2026-08-31', '2026-08-31']);
+  // a dated change far away: the range stops at 731 days from the good end
+  const far = withEverything();
+  far.calendar.start = 'soon';
+  far.calendar.dates.unshift({ date: '2020-01-06', day: 'closed', bells: null, label: 'Long ago' });
+  const fixedFar = repair(far);
+  assert.deepEqual([fixedFar.project.calendar.start, fixedFar.project.calendar.end], ['2025-06-11', '2027-06-11']);
+  assert.ok(fixedFar.notes[0].endsWith('that is within 731 days of its last day.'), fixedFar.notes[0]);
+  assert.deepEqual(validate(fixedFar.project), []);
+  // both ends bad: removed, as before
+  const both = withEverything();
+  both.calendar.start = 'x';
+  both.calendar.end = 'y';
+  const gone = repair(both);
+  assert.equal(gone.project.calendar, null);
+  assert.deepEqual(gone.notes, ['The calendar had no first or last day that is a date, so it was removed.']);
+});
+
+test('the renamed map follows into sameAs, the rotation, the dates and the weekdays, and a renamed bell schedule into the calendar', () => {
+  const project = withEverything();
+  const swap = (value) => (value === B ? 'B-DAY' : value === ER ? 'ER' : value);
+  project.dayTypes[1].id = 'B-DAY';
+  for (const g of project.groups) g.days = { [A]: g.days[A], 'B-DAY': g.days[B] };
+  project.dayTypes[2].sameAs = 'B-DAY';
+  project.bellSchedules[0].id = 'ER';
+  project.calendar.rotation = project.calendar.rotation.map(swap);
+  project.calendar.weekdays[1] = { day: 'B-DAY', bells: 'ER' };
+  project.calendar.weekdays[2] = { day: 'rotation', bells: 'ER' };
+  project.calendar.dates = project.calendar.dates.map((entry) => ({ ...entry, day: swap(entry.day), bells: swap(entry.bells) }));
+  const { project: fixed } = repair(project);
+  const b = fixed.dayTypes[1].id;
+  const er = fixed.bellSchedules[0].id;
+  assert.ok(isId(b, 'd') && isId(er, 'b'));
+  assert.equal(fixed.dayTypes[2].sameAs, b);
+  assert.deepEqual(fixed.calendar.rotation, [A, b]);
+  assert.deepEqual(fixed.calendar.weekdays[1], { day: b, bells: er });
+  assert.equal(fixed.calendar.weekdays[2].bells, er);
+  assert.equal(fixed.calendar.dates.find((entry) => entry.date === '2027-01-13').day, b);
+  assert.deepEqual(validate(fixed), []);
+  // and the calendar reads the same as before the ids were mended
+  const before = withEverything();
+  before.calendar.weekdays[1] = { day: B, bells: ER };
+  for (const date of ['2026-09-02', '2026-10-14', '2027-01-13', '2027-01-14']) {
+    const was = dayOn(before, date);
+    const now = dayOn(fixed, date);
+    assert.deepEqual([now.dayTypeId === b ? B : now.dayTypeId, now.bellsId === er ? ER : now.bellsId], [was.dayTypeId, was.bellsId], date);
+  }
+});
+
+test('a day type that was the same as another and has days of its own becomes its own copy, and the same as nothing', () => {
+  const project = withEverything();
+  for (const g of project.groups) g.days[C] = g.days[B];
+  const { project: fixed, notes } = repair(project);
+  assert.deepEqual([fixed.dayTypes[2].own, fixed.dayTypes[2].sameAs], [true, null]);
+  // one note says it all, naming what it was the same as (SV2-75b)
+  assert.ok(notes.includes('C Day was marked the same as B Day and had days of its own, so it is its own copy now; where it had no classes of its own, it has B Day\'s.'), JSON.stringify(notes));
+  assert.ok(!notes.some((note) => /C Day is its own copy, so it is the same as nothing/.test(note)));
+  assert.deepEqual(validate(fixed), []);
+});
+
+test('a published model with none of the new fields comes back as it came; one with them is repaired by the same rules', () => {
+  const project = withEverything();
+  project.format = 'sv2-published';
+  delete project.publish;
+  const result = repair(project);
+  assert.equal(result.project, project);
+  project.calendar.rotation = ['dnowhere00'];
+  assert.deepEqual(repair(project).project.calendar.rotation, [A]);
+});
+
+// ---------------------------------------------------------------- marks and duties (SV2-83)
+
+const mk = (extra) => ({ id: 'mtest00001', kind: 'lunch', label: '', period: 3, dayTypeIds: [], scope: 'school', grades: [], groupIds: [], ...extra });
+const du = (extra) => ({ id: 'utest00001', kind: 'duty', label: '', when: 'after', period: 0, start: '', end: '', dayTypeIds: [], weekdays: [], from: '', to: '', roomId: null, place: '', teacherIds: [], subjectIds: [], everyone: true, ...extra });
+
+test('a project with no marks, duties or lastPublishedHadCalendar keeps them absent', () => {
+  const project = school();
+  const { project: fixed } = repair(project);
+  assert.equal(fixed, project);
+  assert.equal('marks' in fixed || 'duties' in fixed || 'lastPublishedHadCalendar' in fixed.publish, false);
+});
+
+test('valid marks and duties come back as the same project with no notes', () => {
+  const project = school();
+  project.marks = [mk(), mk({ id: 'mtest00002', period: 40 })];
+  project.duties = [du()];
+  project.publish.lastPublishedHadCalendar = true;
+  const result = repair(project);
+  assert.equal(result.project, project);
+  assert.deepEqual(result.notes, []);
+});
+
+test('a mark past the period count is kept', () => {
+  const project = school();
+  project.marks = [mk({ period: 40 })];
+  const result = repair(project);
+  assert.equal(result.project.marks.length, 1);
+  assert.equal(result.project.marks[0].period, 40);
+});
+
+test('marks that cannot be read are removed with a note each; ones that can lose only what dangles', () => {
+  const project = school();
+  const dayA = project.dayTypes[0].id;
+  project.marks = [
+    mk({ id: 'mtest00001', kind: 'recess' }),
+    mk({ id: 'mtest00002', scope: 'building' }),
+    mk({ id: 'mtest00003', period: -2 }),
+    mk({ id: 'mtest00004', dayTypeIds: ['dnowhere00'] }),
+    mk({ id: 'mtest00005', dayTypeIds: [dayA, 'dnowhere00', dayA] }),
+    mk({ id: 'mtest00006', scope: 'groups', groupIds: ['gnowhere00'] }),
+    mk({ id: 'mtest00007', scope: 'groups', groupIds: [project.groups[0].id, 'gnowhere00'] }),
+    mk({ id: 'mtest00008', scope: 'grades', grades: [] }),
+    mk({ id: 'mtest00009', label: 'x'.repeat(50) }),
+    7,
+  ];
+  const result = repair(project);
+  assert.deepEqual(result.project.marks.map((mark) => mark.id), ['mtest00005', 'mtest00007', 'mtest00009']);
+  assert.deepEqual(result.project.marks[0].dayTypeIds, [dayA]);
+  assert.deepEqual(result.project.marks[1].groupIds, [project.groups[0].id]);
+  assert.equal(result.project.marks[2].label.length, 40);
+  assert.equal(result.notes.length >= 9, true);
+  assert.deepEqual(validate(result.project), []);
+});
+
+test('a mark with an id of the wrong form gets a new one, and a duplicate id too', () => {
+  const project = school();
+  project.marks = [mk({ id: 'm1' }), mk({ id: 'mtest00001' }), mk({ id: 'mtest00001' })];
+  const result = repair(project, { ids: makeIds(3), clock });
+  const found = result.project.marks.map((mark) => mark.id);
+  assert.equal(new Set(found).size, 3);
+  assert.ok(found.every((id) => isId(id, 'm')));
+});
+
+test('a duty that is not a list entry we can read is removed; the others are put right field by field', () => {
+  const project = school();
+  const teacherId = project.teachers[0].id;
+  project.duties = [
+    du({ id: 'utest00001', kind: 'nap' }),
+    du({ id: 'utest00002', when: 'noon' }),
+    du({ id: 'utest00003', period: 'x', start: '25:61', end: '9:5', from: 'soon', to: '2026-12-18', weekdays: [4, 0, 0, 9], roomId: 'rnowhere00', teacherIds: [teacherId, 'tnowhere00'], subjectIds: ['snowhere00'], everyone: 'yes', place: 'p'.repeat(70) }),
+    du({ id: 'utest00004', from: '2026-12-18', to: '2026-12-01' }),
+    'junk',
+  ];
+  const { project: fixed, notes } = repair(project);
+  assert.deepEqual(fixed.duties.map((duty) => duty.id), ['utest00003', 'utest00004']);
+  const three = fixed.duties[0];
+  assert.equal(three.period, 0);
+  assert.equal(three.start, '');
+  assert.equal(three.end, '');
+  assert.equal(three.from, '');
+  assert.deepEqual(three.weekdays, [0, 4]);
+  assert.equal(three.roomId, null);
+  assert.deepEqual(three.teacherIds, [teacherId]);
+  assert.deepEqual(three.subjectIds, []);
+  assert.equal(three.everyone, false);
+  assert.equal(three.place.length, 60);
+  assert.deepEqual([fixed.duties[1].from, fixed.duties[1].to], ['2026-12-01', '2026-12-18'], 'dates swapped');
+  assert.ok(notes.length >= 8);
+  assert.deepEqual(validate(fixed), []);
+});
+
+test('a duty that names things by an id repair renamed follows them', () => {
+  const project = school();
+  const who = project.teachers[0];
+  const oldId = who.id;
+  who.id = 'T1';
+  for (const r of project.building.floors[0].spaces) if (r.kind === 'room') r.teacherIds = r.teacherIds.map((id) => (id === oldId ? 'T1' : id));
+  for (const g of project.groups) for (const day of Object.values(g.days)) for (const slot of day) slot.teacherIds = slot.teacherIds.map((id) => (id === oldId ? 'T1' : id));
+  project.duties = [du({ everyone: false, teacherIds: ['T1'] })];
+  const { project: fixed } = repair(project, { ids: makeIds(5), clock });
+  assert.equal(fixed.duties[0].teacherIds.length, 1);
+  assert.equal(fixed.duties[0].teacherIds[0], fixed.teachers[0].id);
+});
+
+test('lastPublishedHadCalendar: kept when a flag, reset with a note when not, absent when absent', () => {
+  const project = school();
+  project.publish.lastPublishedHadCalendar = 3;
+  const { project: fixed, notes } = repair(project);
+  assert.equal(fixed.publish.lastPublishedHadCalendar, false);
+  assert.ok(notes.length >= 1);
+});
+
+test('a duty whose day types are all gone is removed with a note, as a mark is; a duty with one left keeps it', () => {
+  const project = school();
+  project.duties = [
+    du({ id: 'utest00001', dayTypeIds: ['dgone00000'] }),
+    du({ id: 'utest00002', dayTypeIds: ['dgone00000', project.dayTypes[0].id] }),
+    du({ id: 'utest00003' }),
+  ];
+  const { project: fixed, notes } = repair(project);
+  assert.deepEqual(fixed.duties.map((duty) => duty.id), ['utest00002', 'utest00003']);
+  assert.deepEqual(fixed.duties[0].dayTypeIds, [project.dayTypes[0].id]);
+  assert.ok(notes.some((note) => /named only day types that are not in the project and was removed/.test(note) && /^Duty 1/.test(note)));
+  assert.deepEqual(validate(fixed), []);
+});
+
+test('a duty that ends when it starts or before loses its end time, with a note', () => {
+  const project = school();
+  project.duties = [du({ id: 'utest00001', start: '08:00', end: '08:00' }), du({ id: 'utest00002', start: '15:30', end: '15:00' }), du({ id: 'utest00003', start: '07:30', end: '07:55' })];
+  const { project: fixed, notes } = repair(project);
+  assert.deepEqual(fixed.duties.map((duty) => [duty.start, duty.end]), [['08:00', ''], ['15:30', ''], ['07:30', '07:55']]);
+  assert.equal(notes.filter((note) => /end time of Duty \d was not after its start/.test(note)).length, 2);
+  assert.deepEqual(validate(fixed), []);
 });

@@ -39,6 +39,11 @@
 // project's orientation is: the sheet shows a sentence where the choice would
 // be, and the project's setting is left alone.
 //
+// An output may name the orientation it opens in (`orientation`: the
+// calendar's is landscape, as a year of months reads best across). It is
+// where the sheet starts; the choice is still the reader's, and the project's
+// setting is not touched until they make one.
+//
 // "About N sheets" is counted from what goes on paper. Each .page starts a
 // sheet and so does each .new-sheet inside it; a stretch longer than the
 // sheet runs on to more. On screen a .new-sheet is drawn with a gap, a dashed
@@ -139,7 +144,8 @@ export function openPrintPreview(ctx, outputId, options) {
   const upright = output.upright === true;
   const sheetPaper = () => {
     const set = paperOf(project(), null);
-    return upright ? { ...set, orientation: 'portrait' } : set;
+    if (upright) return { ...set, orientation: 'portrait' };
+    return ORIENTATIONS[output.orientation] ? { ...set, orientation: output.orientation } : set;
   };
   const state = {
     output: output.id,

@@ -10,10 +10,13 @@
 // Three ways of reading a schedule are swept:
 //
 // 1. Published files opened from disk, assembled here exactly as the planner
-//    assembles them. Every view's address in four states: a current copy, an
+//    assembles them. Every view's address in five states: a current copy, an
 //    old copy (the stale band), a copy older than one this device has opened
-//    (the newer-copy band), and a reader who has chosen themselves and kept
-//    notes, each address's page checked for its heading. Views the publisher
+//    (the newer-copy band), a reader who has chosen themselves and kept
+//    notes, and "Not right?" open (SV2-81), each address's page checked for
+//    its heading. Every file has a calendar and an Early Release schedule
+//    (withCalendar, below), so every page with a day carries the today
+//    line. Views the publisher
 //    switched off. Then the screens that are not a schedule: the unlock screen, a
 //    wrong passcode, a newer format, a damaged file, a page with no
 //    schedule, and a browser that keeps nothing.
@@ -40,6 +43,7 @@ import { publishDocument } from '../../ui/staff/targets.js';
 import { publishedModel } from '../../engine/publish-data.js';
 import { seededRandom } from '../../engine/ids.js';
 import { sampleSchool } from '../../data/sample-school.js';
+import { newMark, newDuty } from '../../engine/schema.js';
 import { VIEWS } from '../../staff/views.js';
 import { WRONG_PASSCODE_SENTENCE } from '../../staff/passcode.js';
 import { NEWER_SENTENCE, DAMAGED_SENTENCE } from '../../staff/source.js';
@@ -83,6 +87,12 @@ const ADDRESSES = [
   ['#/coverage', 'coverage', 'Coverage'],
   ['#/coverage/tsample003', 'coverage', 'Coverage: Dr. Quillfeather'],
   ['#/sub/tsample007', 'sub', 'Substitute plan: Ms. Vandermeer'],
+  ['#/teacher/tsample002', 'teacher', 'Mr. Brightwater'], // SV2-86: a duty before and one after school
+  ['#/teacher/tsample003', 'teacher', 'Dr. Quillfeather'], // SV2-86: a duty that holds on Wednesdays
+  ['#/now?t=tsample001&p=3&d=dsample00a', 'now', 'Where right now'], // SV2-86: on duty
+  ['#/now?g=gsample06a&p=1&d=dsample00a', 'now', 'Where right now'], // SV2-86: No class
+  ['#/coverage/tsample002', 'coverage', 'Coverage: Mr. Brightwater'], // SV2-86: a Not free list
+  ['#/sub/tsample001', 'sub', 'Substitute plan: Ms. Halloran'], // SV2-86: the duties to cover
   ['#/directions', 'directions', 'Directions'],
   ['#/directions?from=rsample101&to=rsample303', 'directions', 'Directions'],
   ['#/directions?from=rsample101&to=rsample303&stepfree=1', 'directions', 'Directions'],
@@ -90,6 +100,8 @@ const ADDRESSES = [
   ['#/door/rsample203', 'door', 'Door sign: Room 203'],
   ['#/door/rsample203?day=1', 'door', 'Door sign: Room 203'],
   ['#/door', 'door', 'Not in this schedule', 'missing'], // no room named
+  ['#/calendar', 'calendar', 'Calendar'], // SV2-81: the month of today
+  ['#/calendar?m=2026-11', 'calendar', 'Calendar'], // a month with no school on a weekday
 ];
 
 // Views the publisher switched off (publish.views), each with the heading its
@@ -134,8 +146,53 @@ function save(name, html) {
   return files[name];
 }
 
+// SV2-81: every sample published here has a calendar and an Early Release
+// bell schedule, so every page carries the today line and the Now tabs their
+// Calendar, and the calendar page has a calendar to show: the rotation A, B
+// from Monday 31 August 2026 (the pinned Tuesday is a B Day), Wednesdays with
+// Early Release bells, and no school on Thanksgiving. Staleness stays the
+// count of days, so the old copy is still old. The frozen file and the
+// planner's preview have no calendar.
+function withCalendar(project) {
+  const a = project.dayTypes[0];
+  project.bellSchedules = [{ id: 'baxeearly0', name: 'Early Release', short: '', bells: a.bells.map((bell, period) => (period < 4 ? { ...bell } : null)), off: [4, 5, 6, 7] }];
+  project.calendar = {
+    start: '2026-08-31',
+    end: '2027-06-11',
+    weekdays: [0, 1, 2, 3, 4, 5, 6].map((day) => ({ day: day < 5 ? 'rotation' : 'closed', bells: day === 2 ? 'baxeearly0' : null })),
+    rotation: [a.id, project.dayTypes[1].id],
+    dates: [{ date: '2026-11-26', day: 'closed', bells: null, label: 'Thanksgiving' }],
+    changedAt: null,
+  };
+  project.publish.staleAtCalendarEnd = false;
+  return withDuties(project);
+}
+
+// SV2-86: marks and duties, so the pages that show them are swept with them:
+// a lunch for grade 6, 6A's No class, a school assembly, a lunch duty, duties
+// before and after school, and a Wednesday science meeting.
+function withDuties(project) {
+  const lunch = newMark('maxe000001', 'lunch', 3);
+  lunch.scope = 'grades';
+  lunch.grades = ['6'];
+  const noclass = newMark('maxe000002', 'noclass', 1);
+  noclass.scope = 'groups';
+  noclass.groupIds = ['gsample06a'];
+  noclass.dayTypeIds = [project.dayTypes[0].id];
+  const assembly = newMark('maxe000003', 'activity', 7);
+  assembly.label = 'Assembly';
+  assembly.dayTypeIds = [project.dayTypes[1].id];
+  project.marks = [lunch, noclass, assembly];
+  const lunchDuty = Object.assign(newDuty('uaxe000001', 'duty'), { label: 'Lunch duty', when: 'period', period: 3, place: 'Cafeteria', teacherIds: ['tsample001'] });
+  const bus = Object.assign(newDuty('uaxe000002', 'duty'), { label: 'Bus duty', when: 'after', start: '15:05', end: '15:25', place: 'Bus loop', teacherIds: ['tsample001', 'tsample002'] });
+  const door = Object.assign(newDuty('uaxe000003', 'duty'), { label: 'Door duty', when: 'before', start: '07:40', end: '07:55', place: 'Front door', teacherIds: ['tsample002'] });
+  const meeting = Object.assign(newDuty('uaxe000004', 'meeting'), { label: 'Science department', when: 'period', period: 4, weekdays: [2], subjectIds: ['ssample003'] });
+  project.duties = [lunchDuty, bus, door, meeting];
+  return project;
+}
+
 async function publish(name, options) {
-  const project = sampleSchool();
+  const project = withCalendar(sampleSchool());
   if (!options.locked) project.publish.passcode = '';
   if (options.off) for (const view of options.off) project.publish.views[view] = false;
   const made = await publishDocument(read, project, { clock: options.clock || recent, random: seededRandom('staff-axe ' + name) });
@@ -152,7 +209,7 @@ before(async () => {
   await publish('old', { clock: past });
   await publish('locked', { locked: true });
   await publish('off', { off: ['staffing', 'map', 'coverage'] });
-  const model = publishedModel(sampleSchool(), { clock: recent });
+  const model = publishedModel(withCalendar(sampleSchool()), { clock: recent });
   await holding('newer', { ...model, version: model.version + 1 });
   await holding('none', null);
   const whole = files.open.html;
@@ -314,6 +371,8 @@ const STATES = [
   // the band of kind 'note' that says so, not the "keeps nothing" note
   { id: 'a newer copy seen', file: 'open', kept: { [SEEN]: '2026-09-05T12:00:00.000Z' }, bands: ['note'], says: [NEWER_COPY] },
   { id: 'notes shown', file: 'open', kept: { 'sv2staff:psample001:me': 'tsample007', 'sv2staff:psample001:notes': NOTES }, bands: [], notes: true },
+  // SV2-81: "Not right?" open on every page that has it, its choices on screen
+  { id: 'Not right? open', file: 'open', bands: [], says: [], opens: '[data-today="not-right"]' },
 ];
 
 for (const size of SIZES) {
@@ -327,6 +386,7 @@ for (const size of SIZES) {
           await state(page, 'open');
           await atRest(page);
           assert.equal(await theme(page), colour, 'the page should follow the device into the ' + colour + ' theme');
+          let opened = 0;
           for (const row of ADDRESSES) {
             const [address, view] = row;
             await move(page, row);
@@ -337,12 +397,29 @@ for (const size of SIZES) {
               assert.equal(bands.length, each.says.length, 'the notices on ' + name);
               each.says.forEach((words, at) => assert.match(bands[at].text, words, 'what the ' + bands[at].kind + ' band says on ' + name));
             }
+            if (each.opens) {
+              const toggle = await page.$(each.opens);
+              if (toggle) {
+                // in the middle of the screen, so a phone's bar is not what is under the finger
+                await toggle.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+                await toggle.click();
+                await page.waitForFunction(() => document.querySelector('.today__panel') && !document.querySelector('.today__panel').hidden, { timeout: 5000 });
+                opened += 1;
+              }
+            }
             if (each.notes && view === 'me') {
               const notes = await page.evaluate(() => Array.from(document.querySelectorAll('.page textarea, .page input[type="text"]'), (field) => field.value).filter(Boolean));
               assert.ok(notes.includes('Hall duty by the gym doors'), 'the kept notes are on My schedule: ' + JSON.stringify(notes));
             }
             await axe(page, name);
           }
+          // the today line is on Free right now (two addresses), Where right
+          // now (five: SV2-86 added one for a teacher on duty and one for a
+          // group with No class), the teacher pages (three: Ms. Vandermeer
+          // and, from SV2-86, Mr. Brightwater and Dr. Quillfeather), the group
+          // and room pages (one each), and the two calendar months: 14,
+          // counted by logging each address the toggle opened on
+          if (each.opens) assert.equal(opened, 14, 'the pages "Not right?" was opened on');
           assert.deepEqual(session.errors, []);
         } finally {
           await session.close();

@@ -19,8 +19,9 @@ import * as congestionReport from './congestion.js'; // SV2-18
 import * as doorCards from './door-cards.js'; // SV2-66
 import { GRIDS } from './schedule-grids.js'; // SV2-32d
 import * as travelTime from './travel-time.js'; // SV2-32d
+import * as calendarPrint from './calendar.js'; // SV2-80
 
-export const OUTPUTS = [floorPlan, roomList, checksReport, ...BATCHES, movementPicture, congestionReport, doorCards, ...GRIDS, travelTime];
+export const OUTPUTS = [floorPlan, roomList, checksReport, ...BATCHES, movementPicture, congestionReport, doorCards, ...GRIDS, travelTime, calendarPrint];
 
 export function outputFor(id) {
   return OUTPUTS.find((output) => output.id === id) || null;

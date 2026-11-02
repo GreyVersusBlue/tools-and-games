@@ -23,9 +23,12 @@
   margin-top: var(--s-4);
 }
 
-/* Above 900 px the seven tabs are one row: where the room runs short (beside
-   an open inspector on a 920 px window) they take less padding first, and
-   the row scrolls sideways before it would wrap. */
+/* Above 900 px the nine tabs are one row. Beside the 320 px inspector they
+   run short of room from about 1100 px down, so the padding between them
+   falls first (to 2 px a side), then the type (14 px under 1000 px, 13 px
+   under 925 px); the row scrolls sideways before it would wrap, as it does in
+   larger type. Measured at 1100, 1001, 960, 925 and 901 px, 16 px type: the
+   last tab was 45 px out of the row at 1100 px with the seven-tab padding. */
 @media not all and (max-width: 900px) {
   .sch > .tabs > .tabs__list {
     flex-wrap: nowrap;
@@ -35,8 +38,20 @@
 
   .sch > .tabs > .tabs__list > .tabs__tab {
     flex: none;
-    padding: 0 clamp(2px, 3cqi - 8px, var(--s-3));
+    padding: 0 clamp(2px, 8cqi - 42px, var(--s-3));
     white-space: nowrap;
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1000px) {
+  .sch > .tabs > .tabs__list > .tabs__tab {
+    font-size: var(--t-sm);
+  }
+}
+
+@media (min-width: 901px) and (max-width: 925px) {
+  .sch > .tabs > .tabs__list > .tabs__tab {
+    font-size: 0.8125rem;
   }
 }
 
@@ -259,6 +274,20 @@
 
 .sch-bar--same {
   grid-template-columns: minmax(0, 1fr);
+}
+
+/* The day by day behind the one bar, as text for a touch or the keys; the
+   title is for a mouse. */
+.sch-bar__detail {
+  display: none;
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+}
+
+.sch-group:focus .sch-bar__detail,
+.sch-group:focus-within .sch-bar__detail,
+.sch-group[aria-selected="true"] .sch-bar__detail {
+  display: block;
 }
 
 .sch-bar__track {
@@ -760,6 +789,18 @@
   }
 }
 
+/* Three day types side by side need more than two do: a room field is 188 px
+   narrower than its column, and the column under 310 px leaves the room
+   under 120 px (30 px at 1440 px with the inspector open, SV2-87b). The
+   editor is the section's width less the list beside it (314 px), so under
+   84rem of section the third goes under the other two: side by side the
+   room is then 145 px or more. */
+@container (max-width: 84rem) {
+  .sch-days[data-shown="3"] {
+    grid-auto-flow: row;
+  }
+}
+
 @container (max-width: 44rem) {
   .sch-groups__cols {
     grid-template-columns: minmax(0, 1fr);
@@ -981,4 +1022,1251 @@
   #fix-dialog .dialog__buttons {
     margin-top: var(--s-3);
   }
+}
+
+/* ---------- SV2-78: the Day tab's cards, and more day types ----------
+   DESIGN 11.3 and 11.6. The Day tab is four cards one under another; the
+   day types are a list of rows that stack under 640 px; the group editor
+   has a row of chips choosing which day types it shows. Every chip, tick,
+   radio and row menu is 44 px on a coarse pointer or under 640 px (11.2). */
+
+.sch-card {
+  margin-top: var(--s-5);
+  padding: var(--s-4);
+  border: var(--border);
+  border-radius: var(--r-2);
+  background: var(--card);
+}
+
+.sch-card__title {
+  font-size: var(--t-lg);
+  line-height: var(--lh-lg);
+}
+
+.sch-card__sub {
+  font-size: var(--t-md);
+  font-weight: var(--w-semibold);
+}
+
+.sch-card > .sch-hint {
+  max-width: 46rem;
+}
+
+.sch-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.sch-fieldset > legend {
+  padding: 0;
+  margin-bottom: var(--s-1);
+  font-size: var(--t-sm);
+  font-weight: var(--w-semibold);
+}
+
+.sch-radio {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 32px;
+  cursor: pointer;
+}
+
+.sch-radio > input,
+.sch-tick > input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.sch-tick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
+  cursor: pointer;
+}
+
+/* The day types, one row each: grip, name, then short and kind, then menu. */
+
+.sch-dtlist {
+  display: grid;
+  gap: var(--s-2);
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sch-dtrow {
+  display: grid;
+  grid-template-columns: 22px auto minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--s-2) var(--s-4);
+  padding: var(--s-2) var(--s-3);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--r-1);
+  background: var(--card);
+}
+
+.sch-dtrow--same {
+  border-style: dashed;
+  border-color: var(--line-strong);
+  background: var(--paper);
+}
+
+.sch-dtrow.is-dragging {
+  opacity: 0.6;
+}
+
+.sch-dtrow.is-drop {
+  box-shadow: inset 0 3px 0 var(--accent);
+}
+
+.sch-dtrow__grip {
+  align-self: center;
+}
+
+.sch-dtrow__more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--s-2) var(--s-4);
+}
+
+.sch-dtrow__kindbox {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 40px;
+}
+
+.sch-dtrow__kind {
+  margin: 0;
+}
+
+.sch-dtrow__kind[data-kind="same"],
+.sch-dtrow__kind[data-kind="base"] {
+  color: var(--ink-2);
+}
+
+.sch-dtrow__menu {
+  align-self: center;
+}
+
+.sch-dtadd {
+  display: grid;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+  padding-top: var(--s-3);
+  border-top: var(--border);
+}
+
+.sch-dtadd__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: var(--s-3) var(--s-6);
+}
+
+.sch-dtadd__go {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.sch-dtadd__count {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.sch-followers {
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-2);
+}
+
+/* Other bell schedules. */
+
+.sch-bsched {
+  display: grid;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+  padding-top: var(--s-3);
+  border-top: var(--border);
+}
+
+.sch-bsched__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.sch-bsched__fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+}
+
+.sch-bsched__off {
+  margin: var(--s-2) 0 0;
+}
+
+.sch-bsched__add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-4);
+}
+
+.sch-bells__off {
+  text-align: center;
+}
+
+.sch-bells__none {
+  color: var(--ink-2);
+  font-style: italic;
+}
+
+/* The group editor's choice of day types, with more than two of their own. */
+
+.sch-show {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+}
+
+.sch-show__label {
+  font-size: var(--t-sm);
+  font-weight: var(--w-semibold);
+}
+
+.sch-show__chip {
+  min-height: 32px;
+  padding: 0 var(--s-3);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+
+.sch-show__chip[aria-pressed="true"],
+.sch-show__chip[aria-checked="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: var(--w-semibold);
+}
+
+.sch-show__chip:hover {
+  border-color: var(--accent);
+}
+
+.sch-same-lines {
+  margin: var(--s-2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-sm);
+}
+
+.sch-same-lines li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-2);
+  min-height: 32px;
+  color: var(--ink-2);
+}
+
+.sch-complete {
+  margin-top: var(--s-2);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+/* three day types side by side only where the window holds them */
+.sch-days[data-shown="3"] {
+  gap: var(--s-4);
+}
+
+@media (max-width: 640px) {
+  .sch-dtrow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .sch-dtrow__grip {
+    display: none;
+  }
+
+  .sch-dtrow__name {
+    grid-column: 1;
+  }
+
+  .sch-dtrow__more {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .sch-dtrow__menu {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+  .sch-radio,
+  .sch-tick,
+  .sch-show__chip,
+  .sch-same-lines li {
+    min-height: 44px;
+  }
+
+  .sch-tick,
+  .sch-show__chip {
+    min-width: 44px;
+  }
+
+  .sch-dtrow .sch-slot__menu,
+  .sch-dtrow .sch-btn--small,
+  .sch-bsched .sch-btn--small,
+  .sch-same-lines .sch-btn--small {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* A finger does not drag a day type: no grip to aim at (Move up and Move
+   down are in the row's menu). */
+@media (pointer: coarse) {
+  .sch-dtrow__grip .sch-grip {
+    display: none;
+  }
+}
+
+/* ---------- SV2-80: the Calendar tab ----------
+   DESIGN 11.4. The tab row scrolls sideways under 900 px; the year is months
+   in a wrapping grid (3 across, 2 under 1100 px, 1 under 640 px), each date a
+   square with its day type's short name on its tint; the date dialog is not
+   modal and is a bottom sheet under 640 px; the panel sits in the inspector
+   or under the year. Targets are 44 px on a coarse pointer or under 640 px
+   (11.2). */
+
+@media (max-width: 900px) {
+  .sch > .tabs > .tabs__list {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    /* room past the last tab, so the fade never lies over one scrolled to the end */
+    padding-right: 24px;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  }
+
+  .sch > .tabs > .tabs__list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sch > .tabs > .tabs__list > .tabs__tab {
+    flex: none;
+    white-space: nowrap;
+  }
+}
+
+@media (pointer: coarse) {
+  .sch > .tabs > .tabs__list > .tabs__tab {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+.cal-lead {
+  margin-bottom: var(--s-4);
+  color: var(--ink-2);
+}
+
+.cal-year {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-5) var(--s-4);
+}
+
+@media (max-width: 1099px) {
+  .cal-year {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .cal-year {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.cal-year[hidden] {
+  display: none;
+}
+
+.cal-month__name {
+  margin-bottom: var(--s-1);
+  font-size: var(--t-md);
+  font-weight: var(--w-semibold);
+}
+
+.cal-month__grid {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 3px;
+}
+
+.cal-month__grid th {
+  padding: 0 0 var(--s-1);
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+  font-weight: var(--w-medium);
+  text-align: center;
+}
+
+.cal-month__grid abbr {
+  text-decoration: none;
+}
+
+.cal-day {
+  position: relative;
+  height: 2.75rem;
+  padding: 0;
+  border-radius: var(--r-1);
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink);
+  text-align: center;
+  vertical-align: middle;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-day.is-school {
+  background: color-mix(in srgb, var(--tint, var(--room-default)) 30%, var(--card));
+}
+
+.cal-day.is-closed {
+  background: repeating-linear-gradient(135deg, transparent 0 5px, var(--line) 5px 6px), var(--paper);
+  color: var(--ink-2);
+}
+
+.cal-day.is-out {
+  background: none;
+  box-shadow: none;
+  color: var(--ink-2);
+  cursor: default;
+}
+
+.cal-day__n {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: var(--t-xs);
+  line-height: 1;
+}
+
+.cal-day__t {
+  display: block;
+  padding-top: 0.6rem;
+  font-family: var(--font-plan);
+  font-size: var(--t-md);
+  font-weight: var(--w-semibold);
+  line-height: 1;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.cal-day__t.is-long {
+  font-size: var(--t-sm);
+}
+
+.cal-day.is-closed .cal-day__t {
+  font-size: var(--t-xs);
+  font-weight: var(--w-medium);
+}
+
+.cal-day__b {
+  display: block;
+  font-family: var(--font-plan);
+  font-size: var(--t-xs);
+  line-height: 1.1;
+}
+
+/* changed by hand: a tick in the corner (the name says so too) */
+.cal-day.is-changed::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  border-top: 9px solid var(--ink-2);
+  border-left: 9px solid transparent;
+  border-top-right-radius: var(--r-1);
+}
+
+/* today: a 2 px ink ring; chosen: a 2 px accent line inside (never the tint alone) */
+.cal-day[aria-current="date"] {
+  box-shadow: 0 0 0 2px var(--ink);
+}
+
+.cal-day[aria-selected="true"] {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.cal-day[aria-current="date"][aria-selected="true"] {
+  box-shadow: 0 0 0 2px var(--ink), inset 0 0 0 2px var(--accent);
+}
+
+.cal-day:focus-visible {
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: 3px;
+  z-index: 1;
+}
+
+.cal-status {
+  min-height: 1.35em;
+  margin-top: var(--s-3);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+.cal-show {
+  margin-bottom: var(--s-3);
+}
+
+.cal-show[hidden] {
+  display: none;
+}
+
+.cal-list {
+  margin-top: var(--s-4);
+}
+
+.cal-list__summary {
+  min-height: 32px;
+  font-weight: var(--w-semibold);
+  cursor: pointer;
+}
+
+.cal-list__table {
+  width: 100%;
+  margin-top: var(--s-2);
+  border-collapse: collapse;
+  font-size: var(--t-sm);
+}
+
+.cal-list__table th,
+.cal-list__table td {
+  padding: var(--s-1) var(--s-2);
+  border-bottom: var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.cal-list__table tbody th {
+  font-weight: var(--w-medium);
+  white-space: nowrap;
+}
+
+.cal-list__table tr.is-closed td,
+.cal-list__table tr.is-closed th {
+  color: var(--ink-2);
+}
+
+.cal-list__table tr[aria-current="date"] th {
+  font-weight: var(--w-bold);
+}
+
+/* the date dialog: beside the year, not over the page. Its body scrolls and
+   Apply and Close stay at its foot; calendar/dialog.js sets --sheet-lift (how
+   far the keyboard covers the page) and --sheet-max (the visual viewport's
+   height) so that Note and Apply are both reachable with the keyboard up. */
+.cal-dialog {
+  position: fixed;
+  inset: auto var(--s-5) calc(var(--s-5) + var(--sheet-lift, 0px)) auto;
+  z-index: 40;
+  width: min(24rem, calc(100vw - 2 * var(--s-5)));
+  max-height: min(calc(100vh - 7rem), var(--sheet-max, 100vh));
+  margin: 0;
+  box-shadow: var(--shadow);
+}
+
+.cal-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.cal-dialog > .dialog__title {
+  flex: none;
+}
+
+.cal-dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  gap: var(--s-3);
+  align-content: start;
+}
+
+.cal-dialog > .dialog__buttons {
+  flex: none;
+  margin-top: var(--s-3);
+  padding-top: var(--s-3);
+  border-top: var(--border);
+  background: var(--card);
+}
+
+.cal-dialog__radio {
+  min-height: 32px;
+}
+
+.cal-dialog .field__input {
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .cal-dialog {
+    inset: auto 0 var(--sheet-lift, 0px) 0;
+    width: 100%;
+    max-width: none;
+    max-height: min(75vh, var(--sheet-max, 75dvh));
+    border-radius: var(--r-2) var(--r-2) 0 0;
+  }
+
+  .cal-dialog .field__input,
+  .cal-dialog input,
+  .cal-dialog select {
+    font-size: 16px;
+  }
+}
+
+/* the setup card and the panel */
+.cal-range,
+.cal-addbreak,
+.cal-break {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--s-2) var(--s-3);
+}
+
+.cal-group {
+  margin-top: var(--s-4);
+}
+
+.cal-weekdays,
+.cal-breaks,
+.cal-breaklist,
+.cal-counts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cal-weekdays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.cal-weekday {
+  display: grid;
+  gap: var(--s-1);
+}
+
+.cal-toggle {
+  min-width: 6.5rem;
+  min-height: 36px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cal-toggle[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-weight: var(--w-semibold);
+}
+
+.cal-toggle[aria-pressed="true"]::before {
+  content: "✓ ";
+}
+
+.cal-select {
+  max-width: 100%;
+}
+
+.cal-rotation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+
+.cal-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cal-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding-left: var(--s-2);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--paper);
+}
+
+.cal-chip__remove {
+  min-width: 32px;
+  min-height: 32px;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cal-chip__remove:hover {
+  color: var(--ink);
+}
+
+.cal-break {
+  margin-bottom: var(--s-2);
+}
+
+.cal-break__count {
+  min-width: 7rem;
+  padding-bottom: var(--s-2);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+.cal-actions,
+.cal-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+}
+
+.cal-panel {
+  padding: var(--s-4);
+}
+
+.cal-slot .cal-panel {
+  margin-top: var(--s-5);
+  padding: var(--s-4) 0 0;
+  border-top: var(--border);
+}
+
+.cal-panel__title {
+  font-size: var(--t-lg);
+  line-height: var(--lh-lg);
+}
+
+.cal-panel__summary {
+  margin-top: var(--s-2);
+}
+
+.cal-panel__sub {
+  margin-top: var(--s-4);
+  margin-bottom: var(--s-1);
+  font-size: var(--t-sm);
+  font-weight: var(--w-semibold);
+}
+
+.cal-counts li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-2);
+  font-size: var(--t-sm);
+}
+
+.cal-counts__n {
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-rules {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-sm);
+}
+
+.cal-rules th,
+.cal-rules td {
+  padding: 2px var(--s-1) 2px 0;
+  text-align: left;
+}
+
+.cal-rules thead th {
+  color: var(--ink-2);
+  font-weight: var(--w-medium);
+}
+
+.cal-rules .cal-select {
+  width: 100%;
+}
+
+.cal-breakline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-1) var(--s-2);
+  margin-bottom: var(--s-1);
+  font-size: var(--t-sm);
+}
+
+.cal-addbreak {
+  margin-top: var(--s-2);
+}
+
+.cal-date {
+  min-width: 9.5rem;
+}
+
+.cal-import__paste {
+  width: 100%;
+  font-family: ui-monospace, monospace;
+}
+
+.cal-import__table {
+  width: 100%;
+  margin-top: var(--s-2);
+  border-collapse: collapse;
+  font-size: var(--t-sm);
+}
+
+.cal-import__table th,
+.cal-import__table td {
+  padding: var(--s-1) var(--s-2);
+  border-bottom: var(--border);
+  text-align: left;
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+  .cal-day {
+    height: 44px;
+  }
+
+  .cal-toggle,
+  .cal-chip,
+  .cal-chip__remove,
+  .cal-dialog__radio,
+  .cal-list__summary,
+  .cal-select,
+  .cal-files .btn,
+  .cal-breakline .sch-btn--small,
+  .cal-break .sch-btn--small {
+    min-height: 44px;
+  }
+
+  .cal-chip__remove {
+    min-width: 44px;
+  }
+}
+
+.cal-rotation .cal-select,
+.cal-weekday .cal-select {
+  width: auto;
+}
+
+/* a weekday a row on a phone: its toggle, then its bells */
+@media (max-width: 640px) {
+  .cal-weekdays {
+    flex-direction: column;
+  }
+
+  .cal-weekday {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .cal-weekday .cal-select {
+    width: 100%;
+  }
+}
+
+/* the weekdays' rules fit the 320 px inspector: the two choices share the row */
+.cal-rules {
+  table-layout: fixed;
+}
+
+.cal-rules th[scope="row"] {
+  width: 6.5rem;
+}
+
+/* with bells to choose, a weekday is two lines (its day, then its bells) so a
+   name like "Early Release" shows whole at 320 px; the header row stays for
+   a screen reader */
+.cal-rules--bells,
+.cal-rules--bells tbody {
+  display: block;
+}
+
+.cal-rules--bells thead {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.cal-rules--bells tr {
+  display: grid;
+  grid-template-columns: 6rem minmax(0, 1fr);
+  gap: 2px var(--s-2);
+  padding: var(--s-1) 0;
+  border-bottom: var(--border);
+}
+
+.cal-rules--bells th[scope="row"] {
+  grid-row: 1 / span 2;
+  align-self: center;
+  width: auto;
+}
+
+.cal-rules--bells td {
+  display: block;
+  padding: 0;
+}
+
+/* A bell table on a narrow screen (day.js): a disclosure headed by its name. */
+.sch-fold {
+  min-width: 0;
+}
+
+.sch-fold__summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  font-weight: var(--w-semibold);
+}
+
+.sch-fold__summary .sch-daytype__title {
+  display: inline;
+}
+
+/* ---------- SV2-85: marked periods (the Day tab's fifth card) and the Duties tab ----------
+   DESIGN 11.3 card 5, 11.5, 11.6. A mark is a sentence that is a button; it
+   opens its editor in place. Chips, ticks, radios and row buttons are 44 px
+   on a coarse pointer or under 640 px (11.2). */
+
+.sch-marks {
+  display: grid;
+  gap: var(--s-1);
+  margin: var(--s-3) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sch-marks__empty {
+  margin: var(--s-3) 0;
+  color: var(--ink-2);
+}
+
+.sch-marks__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-1) var(--s-3);
+}
+
+.sch-marks__item.is-open {
+  display: block;
+}
+
+.sch-marks__line {
+  padding: var(--s-1) var(--s-2);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-height: 32px;
+}
+
+.sch-marks__line:hover {
+  background: var(--accent-soft);
+}
+
+.sch-marks__none,
+.sch-marks__beaten {
+  color: var(--note);
+}
+
+.sch-marks__beaten {
+  font-size: var(--t-sm);
+}
+
+.sch-markedit {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-2);
+  background: var(--paper);
+}
+
+.sch-markedit__legend,
+.sch-markedit__label {
+  margin: 0 0 var(--s-1);
+  font-size: var(--t-sm);
+  font-weight: var(--w-semibold);
+}
+
+.sch-markedit__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--s-3);
+}
+
+.sch-markedit__says {
+  margin: 0;
+  max-width: 46rem;
+}
+
+.sch-markedit__ticks,
+.sch-markedit__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-2);
+  margin-top: var(--s-1);
+}
+
+.sch-markedit__set + .sch-markedit__ticks {
+  margin-top: var(--s-1);
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+  .sch-marks__line,
+  .sch-markedit .seg__label,
+  .sch-markedit .chip__remove,
+  .sch-markedit .btn,
+  .sch-duties .btn,
+  .sch-duties .chip__remove,
+  .sch-duties .sch-show__chip {
+    min-height: 44px;
+  }
+
+  .sch-markedit .chip__remove,
+  .sch-duties .chip__remove,
+  .sch-duties .sch-show__chip {
+    min-width: 44px;
+  }
+
+  .sch-markedit .field__input,
+  .sch-duties__table .field__input,
+  .sch-duties__table select {
+    height: 44px;
+  }
+}
+
+.sch-duties__table td {
+  vertical-align: top;
+}
+
+/* The table is as wide as its card at 1280 px with the inspector open (about
+   790 px): the columns share what there is, the controls give way to their
+   column, and the What field keeps room for a label as long as "Science
+   meeting". Narrower than its controls need, the card scrolls it sideways. */
+.sch-duties__table select,
+.sch-duties__table .field__input:not([type="date"]) {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.sch-duties__table th {
+  padding-inline: var(--s-1);
+  letter-spacing: 0.04em;
+}
+
+.sch-duties__table td:first-child {
+  min-width: 8.5rem;
+}
+
+.sch-duties__table td:nth-child(2) {
+  min-width: 8.5rem;
+}
+
+.sch-duties__table td:nth-child(3) {
+  min-width: 6rem;
+}
+
+.sch-duties__table td:nth-child(4),
+.sch-duties__table td:nth-child(5) {
+  min-width: 7rem;
+}
+
+.sch-duties__table .picker,
+.sch-duties__table .field {
+  max-width: 100%;
+}
+
+.sch-duties__findrow > td {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.sch-duties__findrow .sch-finding-line {
+  margin: 0 0 var(--s-1);
+}
+
+/* the row's line carries the glyph in its word already: one triangle, not two */
+.sch-duties__findrow .sch-finding-line--warning::before {
+  content: none;
+}
+
+.sch-duties__table td > .field,
+.sch-duties__table td > select,
+.sch-duties__table td > .picker {
+  margin-bottom: var(--s-1);
+}
+
+.sch-duties__times {
+  display: flex;
+  gap: var(--s-1);
+}
+
+.sch-duties__times .field__input {
+  min-width: 0;
+}
+
+.sch-duties__times .field {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.sch-duties__nobody {
+  margin: 0 0 var(--s-1);
+  color: var(--note);
+}
+
+.sch-duties__filter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.sch-duties__editrow > td {
+  background: var(--paper);
+}
+
+.sch-duties__days {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--s-3);
+  align-items: start;
+}
+
+.sch-duties__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-2);
+  margin-top: var(--s-1);
+}
+
+.sch-duties__dates {
+  display: grid;
+  gap: var(--s-2);
+}
+
+/* Under 640 px a duty is a card: its lines labelled, one under another. */
+@media (max-width: 640px) {
+  .sch-duties__table,
+  .sch-duties__table tbody,
+  .sch-duties__table tr,
+  .sch-duties__table td {
+    display: block;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .sch-duties__table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .sch-duties__table tr {
+    margin-bottom: var(--s-3);
+    padding: var(--s-2) var(--s-3);
+    border: var(--border);
+    border-radius: var(--r-2);
+    background: var(--card);
+  }
+
+  .sch-duties__table td {
+    padding: var(--s-1) 0;
+    border: 0;
+  }
+
+  .sch-duties__table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: var(--t-sm);
+    font-weight: var(--w-semibold);
+    color: var(--ink-2);
+  }
+}
+
+/* Marked periods in the group editor and the grid (DESIGN 11.6): the mark's
+   word beside the period, a No class row greyed and a No class cell hatched. */
+.sch-slot__mark {
+  margin-left: var(--s-2);
+  padding: 0 var(--s-2);
+  color: var(--ink-2);
+}
+
+.sch-slot.is-noclass > th,
+.sch-slot.is-noclass > td {
+  background: var(--paper);
+  color: var(--ink-2);
+}
+
+.sch-slot__noclass {
+  margin: var(--s-1) 0 0;
+  font-size: var(--t-sm);
+  color: var(--ink-2);
 }

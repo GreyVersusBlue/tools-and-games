@@ -12,6 +12,12 @@
 // A section that docks something along the bottom of the surface (the
 // movement view's playback bar and zoom buttons) says how far it reaches up
 // (--toast-clear on the surface, ui/app.css), and the message sits above it.
+//
+// A toast's Undo stands for the one change it was shown for (SV2-87b). The
+// store's Undo takes back the latest change, whatever the toast says, so when
+// a newer change is made (an edit, an undo, a redo, a project loaded; not a
+// quiet action, which is no step) the toast closes, with its Undo. Every toast
+// whose action is labelled Undo does this, so no caller has to ask.
 
 import { h } from './dom.js';
 import { icon } from './icons.js';
@@ -25,6 +31,7 @@ export function createToasts(host, options) {
   let remaining = 0;
   let startedAt = 0;
   let held = 0;
+  let unwatch = null;
 
   function stop() {
     if (timer !== null) clearTimeout(timer);
@@ -53,6 +60,8 @@ export function createToasts(host, options) {
 
   function dismiss() {
     stop();
+    if (unwatch !== null) unwatch();
+    unwatch = null;
     if (!element) return;
     const hadFocus = element.contains(document.activeElement);
     element.remove();
@@ -121,6 +130,21 @@ export function createToasts(host, options) {
     const atEnd = atEndOf(host.parentElement);
     host.append(element);
     makeRoom(atEnd);
+    // The store is the page's, found when the message is shown: a message
+    // shown before the page has one (start-up) has nothing to follow. The
+    // version tells a change made while this message was being shown from a
+    // newer one.
+    const store = globalThis.sv2 && globalThis.sv2.store;
+    if (options.action && options.action.label === 'Undo' && store && typeof store.subscribe === 'function') {
+      const shownAt = store.version;
+      const mine = element;
+      const stopWatching = store.subscribe((project, change) => {
+        if ((change && change.quiet) || store.version === shownAt) return;
+        stopWatching();
+        if (element === mine) dismiss();
+      });
+      unwatch = stopWatching;
+    }
     held = 0;
     remaining = options.duration === undefined ? TOAST_MS : options.duration;
     run();

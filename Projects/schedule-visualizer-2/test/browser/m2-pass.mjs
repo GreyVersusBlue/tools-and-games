@@ -526,7 +526,7 @@ test('a long message is at most 34rem wide: on the movement view it does not spa
 
 const tabTops = (page) => page.$$eval('.sch > .tabs > .tabs__list > [role="tab"]', (all) => Array.from(new Set(all.map((tab) => Math.round(tab.getBoundingClientRect().top)))));
 
-test('on Schedule the Getting started card is under the schedule card at full width, the seven tabs are one row above 900 px, and the Teachers table is not clipped', async () => {
+test('on Schedule the Getting started card is under the schedule card at full width, the nine tabs are one row above 900 px, and the Teachers table is not clipped', async () => {
   await on('#schedule/teachers', DESK, async (p) => {
     const card = await box(p, '.sch');
     const started = await box(p, '#getting-started');
@@ -545,7 +545,8 @@ test('on Schedule the Getting started card is under the schedule card at full wi
     assert.ok(stepTops.length < 5, 'the five steps are still one under another');
 
     // narrower, down to where the rail folds: still one row
-    for (const width of [1100, 1001, 960, 901]) {
+    for (const width of [1100, 1001, 960, 925, 901]) {
+      // 1100 is where the nine tabs first ran out of room; 901 the narrowest the row is one row at
       await p.setViewport({ width, height: 800, deviceScaleFactor: 1 });
       await shows(p, (w) => window.innerWidth === w, width);
       assert.equal((await tabTops(p)).length, 1, 'the tabs are on more than one row at ' + width + ' px');

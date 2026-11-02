@@ -433,3 +433,46 @@
     scroll-padding-left: 6rem;
   }
 }
+
+/* SV2-78: the grid's Day type choice, at the toolbar's left, and its copy dialog. */
+.grd-toolbar__day {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-right: var(--s-3);
+}
+
+.grd-day {
+  width: auto;
+  min-width: 8rem;
+}
+
+.grd-copy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3) var(--s-6);
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+  .grd-day {
+    min-height: 44px;
+  }
+}
+
+/* A duty or a mark that takes a teacher's period, and the columns before and
+   after school (SV2-85, DESIGN 11.5): the words are in italic. */
+.grd-cell--read.is-duty {
+  font-style: italic;
+}
+
+.grd-head--extra {
+  border-left: var(--border);
+}
+
+.grd-cell__markword {
+  color: var(--ink-2);
+}
+
+.grd-cell.is-noclass {
+  background-image: repeating-linear-gradient(135deg, transparent 0, transparent 4px, var(--grid) 4px, var(--grid) 5px);
+}

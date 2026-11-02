@@ -546,12 +546,12 @@ export function exportPanel(env) {
     });
   }
   const hotspotsFile = csv('csv-hotspots', 'Hotspots', 'hotspots', (state) => hotspotsCsv(state.project, hotspotRows(state.project, state.results, state.graph, state.picture), state.picture));
-  const transitionsFile = csv('csv-transitions', 'Travel time, by transition', 'travel time by transition', (state) => transitionsCsv(state.project, state.results, state.picture.choice.dayTypeId));
-  const dayFile = csv('csv-day', 'Travel time, by group', 'travel time by group', (state) => dayCsv(state.project, state.results, state.picture.choice.dayTypeId));
+  const transitionsFile = csv('csv-transitions', 'Travel time, by transition', 'travel time by transition', (state) => transitionsCsv(state.project, state.results, state.picture.choice.dayTypeId, state.picture.choice.bellsId));
+  const dayFile = csv('csv-day', 'Travel time, by group', 'travel time by group', (state) => dayCsv(state.project, state.results, state.picture.choice.dayTypeId, state.picture.choice.bellsId));
 
   const report = button('print-congestion', 'Print the congestion report', (opener) => {
     status.textContent = '';
-    openPrintPreview(ctx, 'congestion', { opener, movement: { project: last.project, results: last.results, graph: last.graph } });
+    openPrintPreview(ctx, 'congestion', { opener, bellsId: last.picture.choice.bellsId, movement: { project: last.project, results: last.results, graph: last.graph } });
   });
 
   const sizeNote = h('p', { class: 'mov-panel__note', data: { export: 'size' } });

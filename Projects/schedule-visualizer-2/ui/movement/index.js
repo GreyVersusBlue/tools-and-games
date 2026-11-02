@@ -66,6 +66,7 @@ import { ActionError, setSetting, setOnboarding } from '../../engine/actions.js'
 import { MOVEMENT_STEP } from '../help/progress.js';
 import { slotHash, openAddress } from '../schedule/index.js';
 import { readMovement, writeMovement } from '../../storage/device.js';
+import { findBellSchedule } from '../../engine/bells.js';
 import { defaultChoice, settleChoice, addGroup, pictureOf, sentenceOf, routeHealth, cellCard, standingOf, failedSentence, createAsker } from './model.js';
 import { slotAt, placeOf, FIT_MARGIN } from '../surface/plan-layout.js';
 import { controls } from './controls.js';
@@ -104,7 +105,7 @@ export const MOVEMENT_TABS = [
 
 // What is chosen here. It outlives a visit to another section, for the
 // project that is open.
-const memory = { projectId: null, choice: null, tab: 'hotspots', legendFolded: false, controls: null, refused: false };
+const memory = { projectId: null, parked: null, bellsName: '', choice: null, tab: 'hotspots', legendFolded: false, controls: null, refused: false };
 
 // The controls are open from this width and folded under it, until the
 // reader chooses (DESIGN 5.3); under PHONE the floors' row folds with them.
@@ -145,7 +146,10 @@ export const section = {
   },
   mount(ctx) {
     const store = ctx.store;
-    let choice = settleChoice(store.project, memory.projectId === store.project.id && memory.choice ? memory.choice : defaultChoice(store.project));
+    if (memory.projectId !== store.project.id) memory.parked = null;
+    const remembered = memory.projectId === store.project.id && memory.choice ? memory.choice : defaultChoice(store.project);
+    let choice = settleChoice(store.project, remembered);
+    noticeBells(remembered.bellsId);
     // the last answer, the project it was worked out for, and that project's graph
     // The graph of the building as it is: the store keeps one a building (ARCHITECTURE 16, SV2-16).
     const graphNow = () => store.derived.get('graph', ['building'], (project) => buildGraph(project));
@@ -329,11 +333,33 @@ export const section = {
       if (state) panels[inspector.selected].update(state);
     }
 
+    // ---- the bell schedule chosen, deleted and brought back
+    // A bell schedule that is deleted while it is chosen leaves the view on
+    // the regular bells, and says so; if the delete is undone the choice is
+    // put back, unless the reader has chosen other bells since.
+    function noticeBells(wanted) {
+      const project = store.project;
+      const schedule = findBellSchedule(project, choice.bellsId);
+      if (schedule) memory.bellsName = schedule.name;
+      if (typeof wanted === 'string' && !findBellSchedule(project, wanted)) {
+        if (!memory.parked || memory.parked.bellsId !== wanted) {
+          memory.parked = { bellsId: wanted, name: memory.bellsName || '' };
+          ctx.announce((memory.parked.name === '' ? 'The bell schedule' : memory.parked.name + ' bells') + ' ' + (memory.parked.name === '' ? 'was' : 'were') + ' deleted, so the view now shows regular bells.');
+        }
+      } else if (memory.parked && choice.bellsId === null && findBellSchedule(project, memory.parked.bellsId)) {
+        choice = { ...choice, bellsId: memory.parked.bellsId };
+        memory.bellsName = findBellSchedule(project, choice.bellsId).name;
+        memory.parked = null;
+        ctx.announce(memory.bellsName + ' bells are back, so the view shows them again.');
+      }
+    }
+
     // ---- what is chosen
     //   options.keepCard   a card the reader tapped open stays on its cell,
     //                      saying what the new choice makes of it (playback
     //                      going on from one transition to the next)
     function change(patch, options) {
+      if (patch && 'bellsId' in patch) memory.parked = null;
       choice = settleChoice(store.project, { ...choice, ...patch });
       const held = options && options.keepCard === true && !(patch && 'floors' in patch) ? tapped() : null;
       clearPoint();
@@ -375,7 +401,9 @@ export const section = {
     // ---- everything but the canvas
     function refresh() {
       const project = store.project;
+      const wanted = choice.bellsId;
       choice = settleChoice(project, choice);
+      noticeBells(wanted);
       memory.projectId = project.id;
       memory.choice = choice;
       const f = figures(project);

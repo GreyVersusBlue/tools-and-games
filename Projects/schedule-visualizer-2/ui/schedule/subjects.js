@@ -7,7 +7,7 @@ import { field } from '../components/field.js';
 import { count, list } from '../components/words.js';
 import { addSubject, renameSubject, recolourSubject, reorderSubject, deleteSubject, describeSubjectUse } from '../../engine/actions.js';
 import { buildExport } from '../../engine/exports.js';
-import { fill, apply, button, keyed, emptyState, freeName, dragRows, download } from './common.js';
+import { fill, apply, button, keyed, emptyState, freeName, deletedText, dragRows, download } from './common.js';
 
 const WHAT = 'A subject is a department. It has a code, a name and a colour, and the colour is how its rooms are drawn.';
 
@@ -83,7 +83,7 @@ export function mount(env) {
         if (use.teachers > 0) left.push(count(use.teachers, 'teacher'));
         const one = use.rooms + use.teachers === 1;
         ctx.toast({
-          text: 'Deleted ' + called + '.' + (left.length > 0 ? ' ' + list(left).replace(/^./, (c) => c.toUpperCase()) + ' now ' + (one ? 'has' : 'have') + ' no subject.' : ''),
+          text: deletedText(ctx.store.undoOutcome, '', called) + (left.length > 0 ? ' ' + list(left).replace(/^./, (c) => c.toUpperCase()) + ' now ' + (one ? 'has' : 'have') + ' no subject.' : ''),
           action: { label: 'Undo', run: ctx.undo },
         });
         const after = ctx.store.project.subjects;

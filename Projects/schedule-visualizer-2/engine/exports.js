@@ -18,11 +18,15 @@
 import { write } from './csv.js';
 import { allRooms, floorOfRoom, resolveSlotRoom } from './schema.js';
 import { periodName } from './bells.js';
-import { effectiveSchedule } from './day-types.js';
-import { teacherDays } from './teacher-day.js';
+import { isOwnCopy } from './day-types.js';
+import { teacherDays, isFree } from './teacher-day.js';
+import { meetingSlots } from './runs.js';
+import { dutiesByTeacher, schoolMarkFor } from './marks.js';
+import { dutyNamed, sometimesWords, MARK_AS_NAMED } from './checks.js';
 import { writeProjectFile, writeBuildingFile, writeScheduleFile } from './project-file.js';
+import { calendarRows } from './import-calendar.js';
 
-export const EXPORT_KINDS = ['groups', 'groups-template', 'teachers', 'rooms', 'teacher-grid', 'room-grid', 'schedule', 'building', 'project', 'subjects'];
+export const EXPORT_KINDS = ['groups', 'groups-template', 'teachers', 'rooms', 'teacher-grid', 'room-grid', 'schedule', 'building', 'project', 'subjects', 'calendar'];
 
 export const NOT_IN_BUILDING = 'not in the building';
 export const PLANNING = 'Planning';
@@ -36,8 +40,12 @@ export function csvText(rows, options) {
 // ---------------------------------------------------------------- groups
 
 // The header of the groups CSV, and of the template: the four group columns,
-// then every period of every day type. With one day type the period columns
-// are "Period 1"; with more they are "A Day Period 1".
+// then every period of every day type, so every day type with its own
+// classes is listed, however many (ARCHITECTURE 17.9). With one day type the
+// period columns are "Period 1"; with more they are "A Day Period 1". A day
+// type that is the same as another keeps its columns, empty, so the file's
+// shape is as it always was (the groups print finds a day type's cells by
+// its place among them).
 export function groupsHeader(project) {
   const header = ['Group', 'Grade', 'Head count', 'Colour'];
   const many = project.dayTypes.length > 1;
@@ -60,13 +68,13 @@ function slotText(project, slot) {
 }
 
 // One row per group. A cell is the room's number. A day type that is the
-// same as the first has empty cells, so reading the file back leaves it so.
+// same as another has empty cells, so reading the file back leaves it so.
 export function groupsRows(project) {
   const rows = [groupsHeader(project)];
   for (const group of project.groups) {
     const row = [group.name, group.grade, group.headCount === null ? '' : String(group.headCount), group.colour];
-    project.dayTypes.forEach((dayType, index) => {
-      const day = index === 0 || dayType.own ? group.days[dayType.id] : null;
+    project.dayTypes.forEach((dayType) => {
+      const day = isOwnCopy(project, dayType.id) ? group.days[dayType.id] : null;
       for (let period = 0; period < project.settings.periods; period += 1) row.push(day && day[period] ? slotText(project, day[period]) : '');
     });
     rows.push(row);
@@ -133,27 +141,57 @@ function chosenDayTypes(project, dayTypeId) {
   return project.dayTypes.filter((dayType) => dayType.id === dayTypeId);
 }
 
+function dutyWords(duty) {
+  const sometimes = sometimesWords(duty);
+  return dutyNamed(duty) + (sometimes === '' ? '' : ' (' + sometimes + ')');
+}
+
 // Teachers down, periods across, one row per teacher per day type. A cell is
-// "7-1 · 204" for each group taught, or "Planning". The day is the one rule
-// in teacher-day.js; a day type that is the same as the first reads the same.
+// "7-1 · 204" for each group taught, or "Planning" for a free period. A period
+// that a duty or a school mark takes reads as it ("Lunch duty", "Lunch"), and
+// a duty that holds on some days only is added to the cell with its days. A
+// "Before" and an "After" column follow the periods, and only when some
+// teacher has such a duty (so a reader of the period cells by position, from
+// the third cell on, finds them where they were).
+// The day is the one rule in teacher-day.js; a day type that is the same as
+// the first reads the same.
 export function teacherGridRows(project, dayTypeId) {
-  const rows = [gridHeader(project, ['Teacher'])];
-  for (const dayType of chosenDayTypes(project, dayTypeId)) {
+  const chosen = chosenDayTypes(project, dayTypeId);
+  const duties = new Map(chosen.map((dayType) => [dayType.id, dutiesByTeacher(project, dayType.id)]));
+  const some = (when) => chosen.some((dayType) => Array.from(duties.get(dayType.id).values()).some((mine) => mine[when].length > 0));
+  const hasBefore = some('before');
+  const hasAfter = some('after');
+  const header = gridHeader(project, ['Teacher']);
+  const rows = [header];
+  if (hasBefore) header.push('Before');
+  if (hasAfter) header.push('After');
+  for (const dayType of chosen) {
     const days = teacherDays(project, dayType.id);
     for (const teacher of project.teachers) {
       const row = [teacher.name, dayType.name];
+      const mine = duties.get(dayType.id).get(teacher.id);
       for (const entry of days.get(teacher.id)) {
-        if (entry.kind !== 'teaching') {
-          row.push(PLANNING);
-          continue;
+        const extra = entry.duties.map(dutyWords);
+        if (entry.kind === 'teaching') {
+          const taught = entry.groups.map((one) => {
+            const group = project.groups.find((candidate) => candidate.id === one.groupId);
+            const slot = meetingSlots(project, one.groupId, dayType.id)[entry.period];
+            const where = slotText(project, slot);
+            return where === '' ? group.name : group.name + ' · ' + where;
+          });
+          row.push(taught.concat(extra).join(LIST_SEPARATOR));
+        } else if (isFree(entry)) {
+          row.push([PLANNING].concat(extra).join(LIST_SEPARATOR));
+        } else {
+          // an always duty comes first among the duties, as teacherDays chose it
+          const always = entry.duties.filter((duty) => sometimesWords(duty) === '');
+          const mark = schoolMarkFor(project, dayType.id, entry.period);
+          const taken = always.length > 0 ? always.map(dutyWords) : [mark && mark.label !== '' ? mark.label : MARK_AS_NAMED[entry.marked]];
+          row.push(taken.concat(entry.duties.filter((duty) => sometimesWords(duty) !== '').map(dutyWords)).join(LIST_SEPARATOR));
         }
-        row.push(entry.groups.map((taught) => {
-          const group = project.groups.find((candidate) => candidate.id === taught.groupId);
-          const slot = effectiveSchedule(project, taught.groupId, dayType.id)[entry.period];
-          const where = slotText(project, slot);
-          return where === '' ? group.name : group.name + ' · ' + where;
-        }).join(LIST_SEPARATOR));
       }
+      if (hasBefore) row.push(mine ? mine.before.map(dutyWords).join(LIST_SEPARATOR) : '');
+      if (hasAfter) row.push(mine ? mine.after.map(dutyWords).join(LIST_SEPARATOR) : '');
       rows.push(row);
     }
   }
@@ -170,7 +208,7 @@ export function roomGridRows(project, dayTypeId) {
     const inRoom = new Map();
     const elsewhere = new Map();
     for (const group of project.groups) {
-      const day = effectiveSchedule(project, group.id, dayType.id);
+      const day = meetingSlots(project, group.id, dayType.id);
       for (let period = 0; period < periods; period += 1) {
         const resolved = resolveSlotRoom(project, day[period]);
         let cells;
@@ -217,6 +255,8 @@ const BUILDERS = {
   rooms: { what: 'rooms', extension: 'csv', mime: CSV, text: (project, options) => csvText(roomsRows(project), options) },
   'teacher-grid': { what: 'teachers by period', extension: 'csv', mime: CSV, text: (project, options) => csvText(teacherGridRows(project, options.dayTypeId), options) },
   'room-grid': { what: 'rooms by period', extension: 'csv', mime: CSV, text: (project, options) => csvText(roomGridRows(project, options.dayTypeId), options) },
+  // the calendar, one row per date (import-calendar.js reads it back)
+  calendar: { what: 'calendar', extension: 'csv', mime: CSV, text: (project, options) => csvText(calendarRows(project), options) },
   schedule: { what: 'schedule', extension: 'json', mime: JSON_TYPE, text: (project) => writeScheduleFile(project) },
   building: { what: 'building', extension: 'json', mime: JSON_TYPE, text: (project, options) => writeBuildingFile(project, { images: options.images }) },
   project: { what: 'project', extension: 'json', mime: JSON_TYPE, text: (project, options) => writeProjectFile(project, { images: options.images }) },

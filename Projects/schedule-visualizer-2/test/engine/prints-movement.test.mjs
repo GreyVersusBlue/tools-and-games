@@ -895,3 +895,19 @@ test('SV2-43 47f: an image handed over beside a state that cannot be used is lef
   assert.equal(countOf(movementPrint.render(before.project, before, { ...NOW, movement: { picture: image } }).html, '<image '), 1);
   assert.equal(movementPrint.printedFrom(now, null, null).whole, true);
 });
+
+// ---------------------------------------------------------------- by bells (SV2-79)
+
+test('SV2-79: the congestion report under a bell schedule is of that run, named by its bells, and the regular report is unchanged by having one', () => {
+  const project = school();
+  const at = (minutes) => String(Math.floor(minutes / 60)).padStart(2, '0') + ':' + String(minutes % 60).padStart(2, '0');
+  project.bellSchedules = [{ id: 'bsample0er', name: 'Early Release', short: '', bells: Array.from({ length: 8 }, (_, p) => (p < 4 ? { start: at(480 + 33 * p), end: at(510 + 33 * p) } : null)), off: [4, 5, 6, 7] }];
+  const world = derive(project);
+  const plain = derive(school());
+  const regular = renderOutput('congestion', project, null, { ...NOW, movement: world }).html;
+  assert.equal(regular, renderOutput('congestion', plain.project, null, { ...NOW, movement: plain }).html, 'a project with a bell schedule prints the regular report as before');
+  const bells = renderOutput('congestion', project, null, { ...NOW, bellsId: 'bsample0er', movement: world }).html;
+  assert.ok(bells.includes('<h2>A Day with Early Release bells</h2>') && bells.includes('<h2>B Day with Early Release bells</h2>'), 'each day section names the bells');
+  assert.ok(!bells.includes('Period 5 to Period 6'), 'no transition that does not happen is named');
+  assert.notEqual(bells, regular);
+});

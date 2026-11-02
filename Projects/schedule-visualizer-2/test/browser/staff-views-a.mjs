@@ -21,7 +21,7 @@ import { publishDocument } from '../../ui/staff/targets.js';
 import { publishedModel } from '../../engine/publish-data.js';
 import { periodName } from '../../engine/bells.js';
 import { seededRandom } from '../../engine/ids.js';
-import { sampleSchool } from '../../data/sample-school.js';
+import { plainSchool as sampleSchool } from '../engine/helpers.mjs';
 import { mix, labelOn, GROUP_PRESETS } from '../../ui/colour.js';
 import { openSchool } from '../../staff/model.js';
 import { floorExtentOf, planOf, roomsAtTap, mapMix, mapLabelOn, MAP_TAP_RADIUS, MAP_MAX_CELL } from '../../staff/map.js';

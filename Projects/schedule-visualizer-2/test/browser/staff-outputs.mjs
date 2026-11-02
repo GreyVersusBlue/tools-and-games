@@ -29,7 +29,7 @@ import { diskReader } from '../publish/reader.mjs';
 import { publishDocument } from '../../ui/staff/targets.js';
 import { publishedModel } from '../../engine/publish-data.js';
 import { seededRandom } from '../../engine/ids.js';
-import { sampleSchool } from '../../data/sample-school.js';
+import { plainSchool as sampleSchool } from '../engine/helpers.mjs';
 import { MODULES } from '../../staff/manifest.js';
 import { openSchool } from '../../staff/model.js';
 import { openStorage } from '../../staff/storage.js';
@@ -207,7 +207,7 @@ test('the image leaves the lock screen\'s clock and buttons clear, however long 
   // sixteen periods and five kinds of day: two bands of columns
   const long = {
     name: 'Long Day School',
-    data: { publishedAt: '2026-09-12T12:00:00Z' },
+    data: { publishedAt: '2026-09-12T12:00:00Z', dayTypes: [] },
     subject: () => null,
     room: () => null,
     roomName: () => 'a room with no number',
@@ -306,12 +306,12 @@ test('the debts are settled: one of each pair, Share in page.js, the engine\'s a
   assert.equal(sample.parseTime('8.30'), null);
   assert.equal(sample.formatDuration(259), '4 min 19 s');
   assert.deepEqual([0, 2, 7].map((period) => sample.periodLabel(period)), ['1', '3', '8']);
-  // no view asks the engine itself: only the school, the shell and the reader of the file do
+  // no view asks the engine itself: only the school, the clock's one door for the marks and duties (SV2-86), the shell and the reader of the file do
   const asks = [];
   for (const id of MODULES.filter((module) => module.startsWith('staff/'))) {
     if (/from '(\.\.\/)+engine\//.test(readFileSync(path.join(TOOL_DIR, ...id.split('/')), 'utf8'))) asks.push(id);
   }
-  assert.deepEqual(asks, ['staff/source.js', 'staff/model.js', 'staff/shell.js']);
+  assert.deepEqual(asks, ['staff/source.js', 'staff/model.js', 'staff/clock.js', 'staff/shell.js']);
   // SV2-41: the copy of the engine's period label is gone, the shell names the key the way notes.js does,
   // and no comment sends a reader to a stylesheet that does not exist
   assert.equal('shortPeriod' in groupModule, false, 'school.periodLabel is the one short form of a period');

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { teacherDay, teacherDays, slotTeacherIds, entryRoomIds, entryPlaces, teacherMoves } from '../../engine/teacher-day.js';
+import { teacherDay, teacherDays, isFree, slotTeacherIds, entryRoomIds, entryPlaces, teacherMoves } from '../../engine/teacher-day.js';
 import { school, clone, assertValid, room, group, teacher } from './helpers.mjs';
 
 const A = 'dsample00a';
@@ -18,9 +18,9 @@ const QUILLFEATHER = 'tsample003'; // based in 103
 const OYELARAN = 'tsample005'; // based in 201
 const CASTELLANOS = 'tsample006'; // based in 202
 
-const planning = (period) => ({ period, groups: [], kind: 'planning' });
+const planning = (period) => ({ period, groups: [], kind: 'planning', duties: [], marked: null });
 // [group, room] for a room in the building; [group, null, '101'] for one that is not
-const teaching = (period, ...pairs) => ({ period, groups: pairs.map(([groupId, roomId, roomText]) => ({ groupId, roomId, roomText: roomText === undefined ? '' : roomText })), kind: 'teaching' });
+const teaching = (period, ...pairs) => ({ period, groups: pairs.map(([groupId, roomId, roomText]) => ({ groupId, roomId, roomText: roomText === undefined ? '' : roomText })), kind: 'teaching', duties: [], marked: null });
 
 function slot(project, groupName, dayTypeId, period) {
   return group(project, groupName).days[dayTypeId][period];
@@ -66,7 +66,7 @@ test('in the sample school every teacher\'s day is their room\'s day, on both da
       const expected = [];
       for (let p = 0; p < 8; p += 1) {
         const here = project.groups.filter((g) => g.days[dayTypeId][p].room === who.roomIds[0]).map((g) => ({ groupId: g.id, roomId: who.roomIds[0], roomText: '' }));
-        expected.push({ period: p, groups: here, kind: here.length > 0 ? 'teaching' : 'planning' });
+        expected.push({ period: p, groups: here, kind: here.length > 0 ? 'teaching' : 'planning', duties: [], marked: null });
       }
       assert.deepEqual(teacherDay(project, who.id, dayTypeId), expected, who.name);
     }
@@ -262,10 +262,122 @@ test('teacher-day.js keeps to the linker rule', () => {
       assert.match(line, /^export (async function|function|const|let|class) /, line);
     }
   }
-  assert.equal(imports, 2);
-  assert.ok(exports >= 5, 'the five functions are exported');
+  assert.equal(imports, 5);
+  assert.ok(exports >= 6, 'the six functions are exported');
   const code = lines.join('\n');
   assert.doesNotMatch(code, /\bimport\s*\(/);
   assert.doesNotMatch(code, /import\.meta/);
   assert.doesNotMatch(code, /<\/script/i);
+});
+
+// ---------------------------------------------------------------- marks and duties (SV2-83)
+
+const FIRST = 'u000000001';
+const duty = (extra) => ({ id: FIRST, kind: 'duty', label: '', when: 'period', period: 0, start: '', end: '', dayTypeIds: [], weekdays: [], from: '', to: '', roomId: null, place: '', teacherIds: [HALLORAN], subjectIds: [], everyone: false, ...extra });
+const mark = (extra) => ({ id: 'm000000001', kind: 'lunch', label: '', period: 0, dayTypeIds: [], scope: 'school', grades: [], groupIds: [], ...extra });
+
+test('a school mark colours a teacher\'s empty period, each kind its own word', () => {
+  for (const kind of ['lunch', 'advisory', 'activity', 'noclass']) {
+    const project = school();
+    project.marks = [mark({ kind, period: 0 })];
+    const entry = teacherDay(project, HALLORAN, A)[0];
+    assert.equal(entry.marked, kind);
+    assert.equal(entry.kind, 'planning', 'the kind stays planning for callers that know two');
+    assert.equal(isFree(entry), false, kind);
+  }
+});
+
+test('marked is set only on planning entries: a teaching entry\'s is null whatever the school mark', () => {
+  const project = school();
+  project.marks = [mark({ kind: 'advisory', period: 1 })];
+  const entry = teacherDay(project, HALLORAN, A)[1];
+  assert.equal(entry.kind, 'teaching');
+  assert.equal(entry.marked, null);
+  assert.equal(isFree(entry), false, 'teaching is not free');
+});
+
+test('a Lunch mark for the group the teacher teaches takes the lesson away: the teacher is not teaching, and is free', () => {
+  const project = school();
+  project.marks = [mark({ kind: 'lunch', period: 1, scope: 'groups', groupIds: ['gsample08b'] })];
+  const entry = teacherDay(project, HALLORAN, A)[1];
+  assert.equal(entry.kind, 'planning');
+  assert.deepEqual(entry.groups, []);
+  assert.equal(entry.marked, null, 'a group\'s lunch is not the teacher\'s');
+  assert.equal(isFree(entry), true);
+});
+
+test('a No class mark for the group empties the lesson on the day types it names, and B Day, the same as A Day, is its own case', () => {
+  const project = school();
+  project.dayTypes[1] = { ...project.dayTypes[1], own: false, sameAs: null };
+  project.marks = [mark({ kind: 'noclass', period: 1, scope: 'groups', groupIds: ['gsample08b'], dayTypeIds: [A] })];
+  assert.equal(teacherDay(project, HALLORAN, A)[1].kind, 'planning', 'A Day');
+  assert.equal(teacherDay(project, HALLORAN, B)[1].kind, 'planning', 'B Day is the same as A Day, which the mark names');
+  // the marks are indexed once per project object, so a changed project is a new object
+  const named = { ...project, marks: [{ ...project.marks[0], dayTypeIds: [B] }] };
+  assert.equal(teacherDay(named, HALLORAN, A)[1].kind, 'teaching', 'a mark naming B reaches B alone');
+  assert.equal(teacherDay(named, HALLORAN, B)[1].kind, 'planning');
+});
+
+test('an always duty marks a free period with its kind, before a school mark', () => {
+  const project = school();
+  project.duties = [duty({ kind: 'meeting', period: 0 })];
+  project.marks = [mark({ kind: 'lunch', period: 0 })];
+  const entry = teacherDay(project, HALLORAN, A)[0];
+  assert.equal(entry.marked, 'meeting');
+  assert.deepEqual(entry.duties.map((d) => d.id), [FIRST]);
+  assert.equal(isFree(entry), false);
+});
+
+test('a duty in a period the teacher teaches is listed and never marks it', () => {
+  const project = school();
+  project.duties = [duty({ period: 1 })];
+  const entry = teacherDay(project, HALLORAN, A)[1];
+  assert.equal(entry.kind, 'teaching');
+  assert.equal(entry.marked, null);
+  assert.equal(entry.duties.length, 1);
+});
+
+test('a duty that holds on some days is listed without a date and does not take the period from free', () => {
+  const project = school();
+  project.duties = [duty({ weekdays: [2], period: 0 })];
+  const entry = teacherDay(project, HALLORAN, A)[0];
+  assert.equal(entry.duties.length, 1, 'listed');
+  assert.equal(entry.marked, null);
+  assert.equal(isFree(entry), true);
+});
+
+test('given a date, a sometimes duty holds fully when it matches and is left out when not', () => {
+  const project = school();
+  project.duties = [duty({ weekdays: [2], period: 0, from: '2026-12-01', to: '2026-12-18' })];
+  const wednesday = teacherDay(project, HALLORAN, A, { date: '2026-12-02' })[0];
+  assert.equal(wednesday.marked, 'duty');
+  assert.equal(wednesday.duties.length, 1);
+  const thursday = teacherDay(project, HALLORAN, A, { date: '2026-12-03' })[0];
+  assert.equal(thursday.marked, null);
+  assert.deepEqual(thursday.duties, []);
+  const after = teacherDay(project, HALLORAN, A, { date: '2026-12-23' })[0];
+  assert.deepEqual(after.duties, []);
+});
+
+test('a bell schedule\'s off period is No class in a teacher\'s empty period', () => {
+  const project = school();
+  project.bellSchedules = [{ id: 'bsample001', name: 'Testing', short: '', bells: project.dayTypes[0].bells.map(() => null), off: [0] }];
+  assert.equal(teacherDay(project, HALLORAN, A, { bellsId: 'bsample001' })[0].marked, 'noclass');
+  assert.equal(teacherDay(project, HALLORAN, A)[0].marked, null, 'regular bells are untouched');
+});
+
+test('with no marks and no duties the entries are the same as before, apart from the two empty fields', () => {
+  const project = school();
+  const day = teacherDay(project, HALLORAN, A);
+  for (const entry of day) {
+    assert.deepEqual(entry.duties, []);
+    assert.equal(entry.marked, null);
+  }
+});
+
+test('isFree: planning and not marked; an entry from an older shape (no marked) reads as free', () => {
+  assert.equal(isFree({ period: 0, groups: [], kind: 'planning' }), true);
+  assert.equal(isFree({ period: 0, groups: [], kind: 'planning', duties: [], marked: 'lunch' }), false);
+  assert.equal(isFree({ period: 0, groups: [{}], kind: 'teaching', duties: [], marked: null }), false);
+  assert.equal(isFree(undefined), false);
 });

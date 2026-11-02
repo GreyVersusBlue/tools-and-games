@@ -19,7 +19,8 @@ import { h, typed } from './dom.js';
 import { makeHash } from './router.js';
 import { dayText } from './dates.js';
 import { printButton, handOver } from './page.js';
-import { isMe, chooseMe, forgetMe } from './notes.js';
+import { isMe, chooseMe, forgetMe, dayListWords } from './notes.js';
+import { todayOf, takenBy, edgeDuties, sometimesIn, dutyWords, dutyPlace, dutyTimes, sometimesWords } from './clock.js';
 
 export const LOCK_WIDTH = 1170;
 export const LOCK_HEIGHT = 2532;
@@ -32,6 +33,21 @@ export const LOCK_BOTTOM = 728;
 const SIDE = 24;
 const GAP = 14;
 const MAX_COLUMNS = 3;
+// A period's row is never less than this tall: with more kinds of day than
+// that leaves room for, the image holds the first that fit and says how many
+// more there are (a school with many day types, DESIGN 11.8). Sixteen
+// periods fit two bands of three; eight or ten fit three.
+export const LOCK_ROW_LEAST = 9;
+// The closing line about the kinds of day left out is set over at most this
+// many lines of LEFT_SIZE, broken by how wide the words are (`measure`, below).
+// Every name it gives is whole; when they do not all fit it names as many as
+// do and says "and N more".
+const MORE_LINES = 2;
+const MORE_LINE = 13;
+const LEFT_SIZE = 11;
+// How wide a text is when nothing can measure it (the tests of the layout, in
+// Node): this many em to a character, which is wider than most faces' average.
+const EM_PER_CHARACTER = 0.55;
 
 // "Ms. Okafor" → "ms-okafor-schedule.png". Letters and digits of any script
 // are kept; everything else is a hyphen.
@@ -41,9 +57,17 @@ export function imageName(name) {
 }
 
 // What a teacher has in a period, as plain words for the image:
-// "6A · 101", "6C, 7C · 203", "Planning".
-function entryText(school, entry) {
-  if (!entry || entry.kind !== 'teaching') return 'Planning';
+// "6A · 101", "6C, 7C · 203", "Planning", "Lunch duty · Cafeteria".
+function entryText(school, entry, dayTypeId) {
+  if (!entry || entry.kind !== 'teaching') {
+    // a free period that a duty or a mark takes says what takes it
+    const taken = takenBy(school, entry, dayTypeId, null);
+    const first = taken === null ? 'Planning' : taken.title + (taken.place === '' ? '' : ' · ' + taken.place);
+    // a duty that holds on some days only is not what takes the period, but
+    // the image says it is there, with its days: "Planning · Science (Wednesdays)"
+    const also = sometimesIn(entry, null).map((duty) => dutyWords(duty) + ' (' + sometimesWords(school, duty) + ')' + (dutyPlace(school, duty) === '' ? '' : ' · ' + dutyPlace(school, duty)));
+    return [first].concat(also).join(' · ');
+  }
   const groups = entry.groups.map((taught) => {
     const group = school.group(taught.groupId);
     return group ? group.name : 'a group';
@@ -57,6 +81,47 @@ function entryText(school, entry) {
   return groups.join(', ') + (rooms.length > 0 ? ' · ' + rooms.join(', ') : '');
 }
 
+// The closing line about the kinds of day left out, as the lines it is set in.
+// `names` are the kinds' names as they read ("C Day", "A Day and B Day").
+// The most that fits MORE_LINES lines of `room` wide is said, in this order of
+// giving up: the advice to print goes before a name does, and names go from
+// the end, the rest counted ("and 2 more"). A name is never shortened; a name
+// with a word too wide for a line by itself is counted, not cut.
+function leftOutLines(names, measure, room) {
+  const head = 'And ' + names.length + ' more ' + (names.length === 1 ? 'kind of day' : 'kinds of day');
+  const apart = names.some((name) => name.includes(' and ')) ? '; ' : ', ';
+  const advice = ' Print the schedule for every one.';
+  // the names that could be given at all: every word of one fits a line
+  const whole = names.filter((name) => name.split(' ').every((word) => measure(word, LEFT_SIZE, 400) <= room));
+  const sentence = (named, withAdvice) => {
+    let said;
+    if (named === names.length) said = head + ': ' + (apart === '; ' ? names.join('; ') : dayListWords(names)) + '.';
+    else if (named === 0) said = head + '.';
+    else said = head + ': ' + whole.slice(0, named).join(apart) + (apart === '; ' ? '; and ' : ' and ') + (names.length - named) + ' more.';
+    return withAdvice ? said + advice : said;
+  };
+  // broken at spaces; null where there are more lines than there is room for
+  const broken = (value) => {
+    const lines = [];
+    let line = '';
+    for (const word of value.split(' ')) {
+      if (line !== '' && measure(line + ' ' + word, LEFT_SIZE, 400) > room) {
+        lines.push(line);
+        line = word;
+      } else line = line === '' ? word : line + ' ' + word;
+    }
+    lines.push(line);
+    return lines.length <= MORE_LINES && lines.every((each) => measure(each, LEFT_SIZE, 400) <= room) ? lines : null;
+  };
+  for (let named = whole.length; named >= 0; named -= 1) {
+    for (const withAdvice of [true, false]) {
+      const lines = broken(sentence(named, withAdvice));
+      if (lines !== null) return lines;
+    }
+  }
+  return [head + '.'];
+}
+
 // Everything the image says and where, in the 390 by 844 space:
 //
 //   { width, height, items: [
@@ -67,8 +132,13 @@ function entryText(school, entry) {
 // width the text has (the painter shortens what is longer, with an ellipsis).
 // `kinds` is dayKindsOf()'s answer for the teacher: the day types, with those
 // that are the same day put together. `when` is { locale, zone } for the
-// tests; left out, the date is in the reader's own language and zone.
+// tests; left out, the date is in the reader's own language and zone. With
+// `when.today`, a day type's id, the kind of day that day type is is never
+// left out, whatever else is. `when.measure(text, size, weight)` is how wide
+// the painter will draw a text, in the layout's units (lockScreenImage gives
+// the canvas's); the closing line is broken by it.
 export function lockScreenLayout(school, teacher, kinds, when) {
+  const options = when || {};
   const width = LOCK_WIDTH / LOCK_SCALE;
   const height = LOCK_HEIGHT / LOCK_SCALE;
   const items = [];
@@ -80,11 +150,31 @@ export function lockScreenLayout(school, teacher, kinds, when) {
   const under = [subject ? subject.name : null].concat(rooms).filter(Boolean).join(' · ');
   if (under !== '') text(under, SIDE, LOCK_TOP + 48, 13, { tone: 'soft' });
 
-  // the kinds of day, three to a band; bands one under another
+  // the kinds of day, three to a band; bands one under another, as many as
+  // leave each period a row of LOCK_ROW_LEAST
   const top = LOCK_TOP + 68;
+  const head = 22;
+  // duties before and after the school day are rows above and below the periods
+  const edgesOf = (kind) => edgeDuties(school, teacher.id, kind.first.id, null);
+  const periods = Math.max(1, ...kinds.map((kind) => (school.teacherDay(teacher.id, kind.first.id) || []).length + edgesOf(kind).before.length + edgesOf(kind).after.length));
+  const fits = (count, bottom) => {
+    const many = Math.ceil(count / MAX_COLUMNS);
+    return ((bottom - top - GAP * (many - 1)) / many - head) / periods >= LOCK_ROW_LEAST;
+  };
+  let shown = kinds;
+  let bottom = LOCK_BOTTOM;
+  if (kinds.length > 1 && !fits(kinds.length, LOCK_BOTTOM)) {
+    bottom = LOCK_BOTTOM - MORE_LINE * MORE_LINES - 4;
+    let count = kinds.length - 1;
+    while (count > 1 && !fits(count, bottom)) count -= 1;
+    shown = kinds.slice(0, count);
+    // today's kind of day is on the image, in the place of the last that fits
+    const todays = options.today ? kinds.find((kind) => kind.dayTypes.some((dayType) => dayType.id === options.today)) : null;
+    if (todays && !shown.includes(todays)) shown = kinds.filter((kind) => kind === todays || shown.slice(0, -1).includes(kind));
+  }
   const bands = [];
-  for (let at = 0; at < kinds.length; at += MAX_COLUMNS) bands.push(kinds.slice(at, at + MAX_COLUMNS));
-  const bandHeight = bands.length > 0 ? (LOCK_BOTTOM - top - GAP * (bands.length - 1)) / bands.length : 0;
+  for (let at = 0; at < shown.length; at += MAX_COLUMNS) bands.push(shown.slice(at, at + MAX_COLUMNS));
+  const bandHeight = bands.length > 0 ? (bottom - top - GAP * (bands.length - 1)) / bands.length : 0;
   bands.forEach((band, bandAt) => {
     const columnWidth = (width - SIDE * 2 - GAP * (band.length - 1)) / band.length;
     const bandTop = top + bandAt * (bandHeight + GAP);
@@ -92,28 +182,38 @@ export function lockScreenLayout(school, teacher, kinds, when) {
       const x = SIDE + columnAt * (columnWidth + GAP);
       const day = school.teacherDay(teacher.id, kind.first.id) || [];
       const bells = school.bells(kind.first.id);
-      const head = 22;
-      const rowHeight = Math.min(34, (bandHeight - head) / Math.max(1, day.length));
+      const edges = edgesOf(kind);
+      const edgeLine = (duty, label) => ({ label, time: dutyTimes(school, duty), text: [dutyWords(duty) + (sometimesWords(school, duty) === '' ? '' : ' (' + sometimesWords(school, duty) + ')'), dutyPlace(school, duty)].filter((part) => part !== '').join(' · '), teaching: false });
+      const lines = edges.before.map((duty) => edgeLine(duty, 'Bef'))
+        .concat(day.map((entry) => {
+          const bell = bells[entry.period];
+          const time = bell && bell.start && bell.end ? (band.length === 1 ? school.time(bell.start) + ' to ' + school.time(bell.end) : school.time(bell.start)) : '';
+          return { label: school.periodLabel(entry.period), time, text: entryText(school, entry, kind.first.id), teaching: entry.kind === 'teaching' };
+        }))
+        .concat(edges.after.map((duty) => edgeLine(duty, 'Aft')));
+      const rowHeight = Math.min(34, (bandHeight - head) / Math.max(1, lines.length));
       const size = Math.max(7, Math.min(14, Math.floor(rowHeight * 0.54)));
-      text(kind.dayTypes.map((dayType) => dayType.name).join(' and '), x, bandTop + 13, 13, { weight: 700, tone: 'accent', fit: columnWidth });
+      text(dayListWords(kind.dayTypes.map((dayType) => dayType.name)), x, bandTop + 13, 13, { weight: 700, tone: 'accent', fit: columnWidth });
       items.push({ kind: 'rule', x, y: bandTop + head - 3, w: columnWidth });
-      const labelWidth = Math.max(...day.map((entry) => school.periodLabel(entry.period).length), 1) * size * 0.62 + 6;
+      const labelWidth = Math.max(...lines.map((line) => line.label.length), 1) * size * 0.62 + 6;
       // a lone column has room for the whole time; side by side, the start
       const wide = band.length === 1;
       const timeWidth = size * (wide ? 9.6 : 4.6);
-      day.forEach((entry, rowAt) => {
+      lines.forEach((line, rowAt) => {
         const y = bandTop + head + rowAt * rowHeight + rowHeight * 0.68;
-        const bell = bells[entry.period];
-        let time = '';
-        if (bell && bell.start && bell.end) time = wide ? school.time(bell.start) + ' to ' + school.time(bell.end) : school.time(bell.start);
-        text(school.periodLabel(entry.period), x, y, size, { weight: 600, face: 'plan', fit: labelWidth });
-        if (time !== '') text(time, x + labelWidth, y, size, { tone: 'soft', fit: timeWidth });
-        text(entryText(school, entry), x + labelWidth + timeWidth, y, size, { weight: entry.kind === 'teaching' ? 600 : 400, tone: entry.kind === 'teaching' ? 'ink' : 'soft', fit: columnWidth - labelWidth - timeWidth });
+        text(line.label, x, y, size, { weight: 600, face: 'plan', fit: labelWidth });
+        if (line.time !== '') text(line.time, x + labelWidth, y, size, { tone: 'soft', fit: timeWidth });
+        text(line.text, x + labelWidth + timeWidth, y, size, { weight: line.teaching ? 600 : 400, tone: line.teaching ? 'ink' : 'soft', fit: columnWidth - labelWidth - timeWidth });
       });
     });
   });
 
-  const options = when || {};
+  const left = kinds.filter((kind) => !shown.includes(kind));
+  if (left.length > 0) {
+    const lines = leftOutLines(left.map((kind) => dayListWords(kind.dayTypes.map((dayType) => dayType.name))), typeof options.measure === 'function' ? options.measure : (value, size) => Array.from(value).length * size * EM_PER_CHARACTER, width - SIDE * 2);
+    lines.forEach((each, at) => text(each, SIDE, LOCK_BOTTOM - 4 - (lines.length - 1 - at) * MORE_LINE, LEFT_SIZE, { tone: 'soft', fit: width - SIDE * 2 + 1 }));
+  }
+
   text(school.name, width / 2, LOCK_BOTTOM + 28, 11, { weight: 600, align: 'center', fit: 220 });
   text('Published ' + dayText(school.data.publishedAt, null, options.locale, options.zone), width / 2, LOCK_BOTTOM + 44, 10, { tone: 'soft', align: 'center', fit: 220 });
   return { width, height, items };
@@ -180,13 +280,21 @@ function facesThere(fonts) {
 // The teacher's schedule as a PNG, as a Blob. The faces are waited for only
 // when they are not there yet: a share sheet opens only for a while after the
 // tap that asked for it, and a wait that was not needed can use that up.
-export async function lockScreenImage(school, teacher, kinds) {
+export async function lockScreenImage(school, teacher, kinds, today) {
   if (document.fonts && document.fonts.load && !facesThere(document.fonts)) {
     await Promise.all(LOCK_FACES.map((face) => document.fonts.load(face))).catch(() => {
       // drawn in the device's own face where the school's cannot be loaded
     });
   }
-  const canvas = paintLockScreen(document.createElement('canvas'), lockScreenLayout(school, teacher, kinds), themeNow());
+  const canvas = document.createElement('canvas');
+  const theme = themeNow();
+  // the closing line is broken by how wide this canvas draws it, in the face it will be drawn in
+  const g = canvas.getContext('2d');
+  const measure = (value, size, weight) => {
+    g.font = weight + ' ' + size + 'px ' + theme.ui;
+    return g.measureText(value).width;
+  };
+  paintLockScreen(canvas, lockScreenLayout(school, teacher, kinds, { today, measure }), theme);
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);
@@ -208,7 +316,9 @@ export function teacherOutputs(ctx, teacher, kinds) {
   image.addEventListener('click', () => {
     const name = imageName(teacher.name);
     says.textContent = 'Making the image…';
-    lockScreenImage(school, teacher, kinds).then((blob) => handOver(blob, name, teacher.name + ' · ' + school.name)).then((how) => {
+    // today's kind of day is on the image whatever else is left off
+    const settled = todayOf(ctx);
+    lockScreenImage(school, teacher, kinds, settled.known && settled.dayType ? settled.dayType.id : null).then((blob) => handOver(blob, name, teacher.name + ' · ' + school.name)).then((how) => {
       if (how === 'shared') says.textContent = 'Shared. Save it to your photos, then set it as your lock screen.';
       else if (how === 'saved') says.textContent = 'Saved as ' + name + '. Set it as your lock screen from your photos or files.';
       else says.textContent = '';

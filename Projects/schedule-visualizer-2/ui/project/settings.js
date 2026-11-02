@@ -11,9 +11,10 @@ import { picker } from '../components/picker.js';
 import { icon } from '../components/icons.js';
 import { count, list, periodWords } from '../components/words.js';
 import { setSetting, resetSettings, describePeriodChange } from '../../engine/actions.js';
-import { CHECK_KINDS, RANGES, CELL_LENGTH_MOST } from '../../engine/schema.js';
+import { CHECK_KINDS, RANGES, CELL_LENGTH_MOST, DAY_TYPES_MOST, bellSchedulesOf } from '../../engine/schema.js';
 import { readLength, lengthWords } from '../building/scale-tool.js';
-import { isOwnCopy } from '../../engine/day-types.js';
+import { isOwnCopy, effectiveDayType } from '../../engine/day-types.js';
+import { calendarDays, dateWords } from '../../engine/calendar.js';
 
 const LETTER_REGIONS = ['US', 'CA', 'MX', 'PH', 'CL', 'CO', 'VE', 'CR', 'PA', 'GT', 'DO', 'PR', 'SV', 'HN', 'NI', 'BO'];
 
@@ -46,6 +47,8 @@ export function checkLabel(kind, words) {
     'room-unused': 'A room nobody is scheduled into',
     'room-no-subject': 'A room with no subject',
     'room-no-teacher': 'A room with no teacher',
+    'duty-clash': 'A duty or meeting in a ' + words.one + ' a teacher teaches',
+    'duty-nobody': 'A duty or meeting with nobody on it',
   };
   return labels[kind] || kind;
 }
@@ -166,6 +169,7 @@ export function settingsCard(ctx) {
       if (info.slots > 0) lost.push(count(info.slots, 'room entry', 'room entries') + ' in ' + count(info.groups.length, 'group'));
       if (info.bells > 0) lost.push(count(info.bells, 'bell time'));
       if (info.scenarioChanges > 0) lost.push(count(info.scenarioChanges, 'scenario change'));
+      lost.push(...info.marksAndDutiesWords);
       const ok = await ctx.confirm({
         title: 'Remove ' + what + ' from every day?',
         body: 'That takes away ' + list(lost) + '. Undo brings them back.',
@@ -202,16 +206,23 @@ export function settingsCard(ctx) {
   });
   row(day, 'Period word', 'What your school calls one slot of the day. The word you pick is used everywhere.',
     pick('periodWord', (s) => s.periodWord, ['Period', 'Mod', 'Block', 'Hour'].map((word) => ({ value: word, label: word }))));
-  row(day, 'Day types', 'The named patterns of the day. At least two.',
-    summary((project) => list(project.dayTypes.map((dayType, index) => dayType.name + (index > 0 && !isOwnCopy(project, dayType.id) ? ' (same as ' + project.dayTypes[0].name + ')' : ''))), '#schedule/day', 'Edit under Schedule › Day'));
-  row(day, 'Bell schedules', (w) => 'When each ' + w.one + ' starts and ends, for each day type.',
+  row(day, 'Day types', 'The named patterns of the day: which classes meet. Each has its own classes or is the same as another, up to ' + DAY_TYPES_MOST + '.',
+    summary((project) => list(project.dayTypes.map((dayType) => dayType.name + (isOwnCopy(project, dayType.id) ? '' : ' (same as ' + effectiveDayType(project, dayType.id).name + ')'))), '#schedule/day', 'Edit under Schedule › Day'));
+  row(day, 'Bell schedules', (w) => 'When each ' + w.one + ' starts and ends: each day type’s regular bells, and other bell schedules such as an early release.',
     summary((project) => {
       const entered = project.dayTypes.filter((dayType) => isOwnCopy(project, dayType.id) && dayType.bells.some((bell) => bell !== null));
-      return entered.length === 0 ? 'None entered' : 'Entered for ' + list(entered.map((dayType) => dayType.name));
+      const regular = entered.length === 0 ? 'No regular bells entered' : 'Regular bells for ' + list(entered.map((dayType) => dayType.name));
+      const others = bellSchedulesOf(project);
+      return others.length === 0 ? regular : regular + '; ' + count(others.length, 'other bell schedule') + ': ' + list(others.map((schedule) => schedule.name));
     }, '#schedule/day', 'Edit under Schedule › Day'));
   row(day, 'Default passing time', (w) => 'Minutes between one ' + w.one + ' and the next, used wherever the bells do not say. Write 4, or 4:30 for four and a half.',
     text('defaultPassingSeconds', (s) => s.defaultPassingSeconds, { width: '6rem', parse: parsePassing, format: formatPassing }));
-  row(day, 'Calendar', 'Which day type each date of the year is.', wish());
+  row(day, 'Calendar', 'Which day type and which bells each date of the year has, so the staff browser knows what today is.',
+    summary((project) => {
+      const days = calendarDays(project);
+      if (days.length === 0) return 'No calendar';
+      return dateWords(days[0].date) + ' to ' + dateWords(days[days.length - 1].date) + ', ' + count(days.filter((day) => day.school).length, 'school day');
+    }, '#schedule/calendar', 'Edit under Schedule › Calendar'));
   row(day, 'Subjects', 'The departments, each with a code, a name and a colour.',
     summary((project) => count(project.subjects.length, 'subject'), '#schedule/subjects', 'Edit under Schedule › Subjects'));
 

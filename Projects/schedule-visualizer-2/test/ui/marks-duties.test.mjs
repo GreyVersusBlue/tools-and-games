@@ -1,0 +1,65 @@
+// The planner's marked periods and Duties tab, the parts that need no page:
+// the sentences they say, and the print of the teachers by period with duties
+// before and after school (SV2-85). The journey itself is
+// test/browser/marks-duties.mjs.
+//
+//   node test/ui/marks-duties.test.mjs
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { addDuty } from '../../engine/actions.js';
+import { renderOutput } from '../../ui/prints/index.js';
+import { teacherGridRows } from '../../engine/exports.js';
+import { school, ctx, PINNED } from '../engine/helpers.mjs';
+
+const NOW = { now: PINNED };
+const shared = ctx();
+
+function apply(action, project, payload) {
+  return action(project, payload, shared);
+}
+
+function headCells(html) {
+  const head = html.match(/<thead>.*?<\/thead>/s);
+  return head ? Array.from(head[0].matchAll(/<th[^>]*>(.*?)<\/th>/gs), (cell) => cell[1].replace(/<[^>]+>/g, '')) : [];
+}
+
+test('the teachers by period print gives Before and After a head and a cell each, past the periods', () => {
+  const project = school();
+  const file = teacherGridRows(project, project.dayTypes[0].id)[0];
+  assert.equal(file.includes('Before'), false, 'no duty before school: no column');
+  let next = apply(addDuty, project, { kind: 'duty', label: 'Bus duty', when: 'before', teacherIds: [project.teachers[0].id] });
+  next = apply(addDuty, next, { kind: 'duty', label: 'Car line', when: 'after', teacherIds: [project.teachers[1].id] });
+  const rows = teacherGridRows(next, next.dayTypes[0].id);
+  assert.deepEqual(rows[0].slice(-2), ['Before', 'After']);
+  const { html } = renderOutput('teacher-grid', next, null, { ...NOW, dayTypeId: next.dayTypes[0].id });
+  const heads = headCells(html);
+  assert.deepEqual(heads.slice(-2), ['Before', 'After'], 'the heads come last');
+  assert.equal(heads.length, 1 + next.settings.periods + 2);
+  assert.ok(html.includes('Bus duty') && html.includes('Car line'));
+  const bus = html.match(/<tr data-teacher="[^"]*">(?:(?!<\/tr>).)*Bus duty.*?<\/tr>/s)[0];
+  assert.equal((bus.match(/<td/g) || []).length, next.settings.periods + 2, 'a cell for each period, then Before and After');
+});
+
+test('the import says how many marks and duties were added, replaced and kept', async () => {
+  const { alsoText } = await import('../../ui/schedule/import/schedule-file.js');
+  const base = { subjectsAdded: [], teachersAdded: [], dayTypesAdded: [], unknownRooms: [], periodsRaised: null, marksAdded: 0, dutiesAdded: 0, marksKept: 0, marksReplaced: 0, dutiesKept: 0, dutiesReplaced: 0 };
+  const words = { one: 'period', many: 'periods' };
+  assert.equal(alsoText(base, words), '', 'a file with none says nothing');
+  assert.equal(alsoText({ ...base, marksAdded: 2, marksKept: 1, marksReplaced: 3 }, words), ' Also: 2 marked periods added, 3 marked periods replaced and 1 marked period kept as it was.');
+  assert.equal(alsoText({ ...base, dutiesAdded: 1, dutiesKept: 2, dutiesReplaced: 1 }, words), ' Also: 1 duty or meeting added, 1 duty or meeting replaced and 2 duties and meetings kept as they were.');
+});
+
+test('the publish form reads what the project noted about the last file first, and the device’s record second', async () => {
+  const FORMS = await import('../../ui/staff/form.js');
+  const { makeCalendar } = await import('../../engine/actions.js');
+  const at = '2026-09-02T12:00:00.000Z';
+  const plain = school();
+  const dated = makeCalendar(plain, { start: '2026-08-31', end: '2027-06-11', weekdays: [0, 1, 2, 3, 4, 5, 6].map((day) => ({ day: day < 5 ? 'rotation' : 'closed', bells: null })), breaks: [] }, shared);
+  const had = (project, hadCalendar) => ({ ...project, publish: { ...project.publish, lastPublishedAt: at, lastPublishedHadCalendar: hadCalendar } });
+  const removed = { ...had(dated, true), calendar: null };
+  assert.equal(FORMS.calendarChangedWords(removed, null), 'The calendar was removed after your last publish. Staff copies still have it.', 'the project says so with no record on this device');
+  assert.equal(FORMS.calendarChangedWords(removed, { at, calendar: false }), 'The calendar was removed after your last publish. Staff copies still have it.', 'and the project wins over a record that differs');
+  assert.equal(FORMS.calendarChangedWords(had(dated, false), { at, calendar: true }), 'Staff copies have no calendar yet.', 'a file made without one, whatever this device noted');
+  assert.equal(FORMS.calendarChangedWords({ ...had(dated, null), calendar: null }, { at, calendar: true }), 'The calendar was removed after your last publish. Staff copies still have it.', 'nothing in the project: the device record speaks');
+});

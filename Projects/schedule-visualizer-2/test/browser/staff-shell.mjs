@@ -28,7 +28,7 @@ import { publishDocument } from '../../ui/staff/targets.js';
 import { publishedModel } from '../../engine/publish-data.js';
 import { lockPublished } from '../../engine/publish-crypto.js';
 import { seededRandom } from '../../engine/ids.js';
-import { sampleSchool } from '../../data/sample-school.js';
+import { plainSchool as sampleSchool } from '../engine/helpers.mjs';
 
 const AXE = readFileSync(path.join(TOOL_DIR, 'test', 'vendor', 'axe-core', 'axe.min.js'), 'utf8');
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'];
@@ -677,13 +677,14 @@ test('served from the tool\'s folder with no schedule, the page says there is no
 async function openPreview(session) {
   const { page } = session;
   await goto(page, staffUrl(), 'none');
-  await page.evaluate(async (toolPath) => {
+  await page.evaluate(async (toolPath, plain) => {
     const at = (file) => new URL(toolPath + file, location.origin).href;
     const { assemble, pageReader, feedPreview } = await import(at('ui/staff/assemble.js'));
     const { publishedModel } = await import(at('engine/publish-data.js'));
     const { lockPublished } = await import(at('engine/publish-crypto.js'));
     const { seededRandom } = await import(at('engine/ids.js'));
-    const { sampleSchool } = await import(at('data/sample-school.js'));
+    // the sample as the Node side of this suite has it (plainSchool), so the two make the same document
+    const sampleSchool = () => JSON.parse(JSON.stringify(plain));
     const html = await assemble(pageReader(), null);
     const frame = document.createElement('iframe');
     frame.title = 'Preview';
@@ -703,7 +704,7 @@ async function openPreview(session) {
     };
     kit.inside = () => frame.contentDocument;
     globalThis.kit = kit;
-  }, TOOL_PATH);
+  }, TOOL_PATH, JSON.parse(JSON.stringify(sampleSchool())));
 }
 
 const inFrame = (page, wanted) => page.waitForFunction((want) => {

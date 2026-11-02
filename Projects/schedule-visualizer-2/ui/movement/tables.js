@@ -28,35 +28,41 @@
 //
 // The rows, as plain data for the screen, the prints and the CSV files:
 //
-//   travelDay(project, dayTypeId)
-//     -> { id, name, heading }: the day type whose walks and bells answer for
+//   travelDay(project, dayTypeId, bellsId)
+//     -> { id, bellsId (only under a bell schedule), name, heading }: the day type whose walks and bells answer for
 //     the one chosen (itself, or the one it is the same as), the chosen one's
-//     name, and that name as a heading ("B Day (same as A Day)")
-//   transitionRows(project, results, dayTypeId, period)
+//     name, and that name as a heading ("B Day (same as A Day)", and with a
+//     bell schedule "B Day (same as A Day) with Early Release bells")
+//   transitionRows(project, results, dayTypeId, period, bellsId)
 //     -> { rows, still, failed }
-//     rows    [{ group, period, from, to, passingSeconds, walking, waiting, total, late, arrived, over }]
+//     rows    [{ group, period, toPeriod, from, to, passingSeconds, walking, waiting, total, late, arrived, over }]
 //             slowest first; `from` and `to` are the rooms' numbers as typed;
 //             `over` is by how many seconds a late walk misses
 //     still   the groups that stay in their room; failed  the groups with no route
-//   dayRows(project, results, dayTypeId)
+//   dayRows(project, results, dayTypeId, bellsId)
 //     -> [{ group, walks, walking, waiting, total, late, lost, slowest }]
 //     slowest first by total; `lost` counts walks that did not arrive at all;
 //     `slowest` is the group's slowest walk, a row as above
-//   slowestPeriod(results, dayTypeId)   the transition holding the slowest walk, or null
+//   slowestPeriod(results, dayTypeId, bellsId)   the transition holding the slowest walk, or null
 //   lateWords(row)                      "In time", "Late by 21 s", "Did not arrive"
-//   transitionsCsv(project, results, dayTypeId), dayCsv(...)   rows of cells for engine/csv.js;
-//     dayTypeId is the day type chosen, and the files name it as travelDay does
+//   transitionsCsv(project, results, dayTypeId, bellsId), dayCsv(...)   rows of cells for engine/csv.js;
+//     dayTypeId and bellsId are the run chosen, and the files name it as travelDay does
+//
+// Every function takes `bellsId` last, null or left out for the regular
+// bells, and reads that run's walks (engine/worker.js runResults); the
+// transitions it lists are the walks between meeting periods, past the ones
+// that do not meet ("Period 2 to Period 4"; each row has toPeriod).
 //
 // transitionRows, dayRows and slowestPeriod take the id of a day type that is
 // its own copy: travelDay(...).id.
 
 import { h, uid } from '../components/dom.js';
-import { count } from '../components/words.js';
+import { count, periodWords } from '../components/words.js';
 import { formatDuration } from '../../engine/findings.js';
-import { periodName } from '../../engine/bells.js';
 import { findDayType, effectiveDayType } from '../../engine/day-types.js';
+import { findBellSchedule, offPeriods, periodName } from '../../engine/bells.js';
 import { parse } from '../colour.js';
-import { transitionsOf } from './model.js';
+import { transitionsOf, runOf, walkWords, nothingMeets, nothingMeetsParts } from './model.js';
 import { printButtons } from '../prints/index.js';
 import { printButton } from '../components/print-preview.js';
 
@@ -68,17 +74,36 @@ function roomNumbers(project) {
   return numbers;
 }
 
-// The one source of a day type's travel times: the day type that answers for
-// it, by the one rule for "same as" (engine/day-types.js).
-export function travelDay(project, dayTypeId) {
-  const chosen = findDayType(project, dayTypeId) || project.dayTypes[0];
-  const own = effectiveDayType(project, chosen.id) || chosen;
-  return { id: own.id, name: chosen.name, heading: own.id === chosen.id ? chosen.name : chosen.name + ' (same as ' + own.name + ')' };
+// When exactly one period meets (a one-period day, or every other period off
+// under the bells), the bells leave nothing to walk between; the Travel tab
+// and its print say so in place of advice about giving groups rooms. In
+// pieces ({ text, name }), or null when two or more meet, or none does
+// (nothingMeets says that).
+export function nothingBetweenParts(project, bellsId) {
+  const periods = project.settings.periods;
+  const schedule = findBellSchedule(project, bellsId);
+  const off = schedule ? offPeriods(project, bellsId) : new Set();
+  const meeting = [];
+  for (let period = 0; period < periods; period += 1) if (!off.has(period)) meeting.push(period);
+  if (meeting.length !== 1) return null;
+  // a day of one period has one whatever the bells: "only Period 1 meets" would say a period was dropped
+  if (!schedule || periods === 1) return [{ text: 'The day has one ' + periodWords(project.settings).one + ', so the bells leave nothing to walk between.' }];
+  return [{ text: 'Only ' + periodName(project.settings, meeting[0]) + ' meets under ' }, { text: schedule.name, name: true }, { text: ' bells, so they leave nothing to walk between.' }];
 }
 
-function walksOf(results, dayTypeId) {
-  const list = results && results.walks && Array.isArray(results.walks.groups) ? results.walks.groups : [];
-  return list.filter((walk) => walk.dayTypeId === dayTypeId);
+// The one source of a day type's travel times: the day type that answers for
+// it, by the one rule for "same as" (engine/day-types.js).
+export function travelDay(project, dayTypeId, bellsId) {
+  const chosen = findDayType(project, dayTypeId) || project.dayTypes[0];
+  const own = effectiveDayType(project, chosen.id) || chosen;
+  const schedule = findBellSchedule(project, bellsId);
+  const heading = (own.id === chosen.id ? chosen.name : chosen.name + ' (same as ' + own.name + ')') + (schedule ? ' with ' + schedule.name + ' bells' : '');
+  // the regular bells add nothing to the day type's shape
+  return schedule ? { id: own.id, bellsId: schedule.id, name: chosen.name, heading } : { id: own.id, name: chosen.name, heading };
+}
+
+function walksOf(results, dayTypeId, bellsId) {
+  return runOf(results, dayTypeId, bellsId).walks.groups;
 }
 
 function rowOf(project, walk, group, numbers) {
@@ -86,6 +111,7 @@ function rowOf(project, walk, group, numbers) {
   return {
     group,
     period: walk.period,
+    ...(Number.isInteger(walk.toPeriod) ? { toPeriod: walk.toPeriod } : {}),
     from: numbers.get(walk.fromRoomId) || '',
     to: numbers.get(walk.toRoomId) || '',
     passingSeconds: walk.passingSeconds,
@@ -102,17 +128,17 @@ function slowestFirst(order) {
   return (a, b) => b.total - a.total || b.waiting - a.waiting || order.get(a.group.id) - order.get(b.group.id) || (a.period || 0) - (b.period || 0);
 }
 
-export function transitionRows(project, results, dayTypeId, period) {
+export function transitionRows(project, results, dayTypeId, period, bellsId) {
   const numbers = roomNumbers(project);
   const groups = new Map(project.groups.map((group) => [group.id, group]));
   const order = new Map(project.groups.map((group, index) => [group.id, index]));
-  const rows = walksOf(results, dayTypeId)
+  const rows = walksOf(results, dayTypeId, bellsId)
     .filter((walk) => walk.period === period && groups.has(walk.groupId))
     .map((walk) => rowOf(project, walk, groups.get(walk.groupId), numbers))
     .sort(slowestFirst(order));
   const still = [];
   const failed = [];
-  const day = results && results.routes && Array.isArray(results.routes.days) ? results.routes.days.find((each) => each.dayTypeId === dayTypeId) : null;
+  const day = runOf(results, dayTypeId, bellsId).routes;
   for (const entry of day ? day.groups : []) {
     const group = groups.get(entry.groupId);
     const route = entry.routes[period];
@@ -123,10 +149,10 @@ export function transitionRows(project, results, dayTypeId, period) {
   return { rows, still, failed };
 }
 
-export function dayRows(project, results, dayTypeId) {
+export function dayRows(project, results, dayTypeId, bellsId) {
   const numbers = roomNumbers(project);
   const order = new Map(project.groups.map((group, index) => [group.id, index]));
-  const walks = walksOf(results, dayTypeId);
+  const walks = walksOf(results, dayTypeId, bellsId);
   const rows = [];
   for (const group of project.groups) {
     const mine = walks.filter((walk) => walk.groupId === group.id).map((walk) => rowOf(project, walk, group, numbers));
@@ -145,9 +171,9 @@ export function dayRows(project, results, dayTypeId) {
   return rows.sort(slowestFirst(order));
 }
 
-export function slowestPeriod(results, dayTypeId) {
+export function slowestPeriod(results, dayTypeId, bellsId) {
   let best = null;
-  for (const walk of walksOf(results, dayTypeId)) {
+  for (const walk of walksOf(results, dayTypeId, bellsId)) {
     if (!best || walk.total > best.total || (walk.total === best.total && walk.period < best.period)) best = walk;
   }
   return best ? best.period : null;
@@ -158,27 +184,27 @@ export function lateWords(row) {
   return row.late ? 'Late by ' + formatDuration(row.over) : 'In time';
 }
 
-function transitionName(settings, period) {
-  return periodName(settings, period) + ' to ' + periodName(settings, period + 1);
+function transitionName(settings, period, toPeriod) {
+  return walkWords(settings, period, toPeriod);
 }
 
 // Every walk of the day, transition by transition, slowest first in each.
-export function transitionsCsv(project, results, dayTypeId) {
-  const day = travelDay(project, dayTypeId);
+export function transitionsCsv(project, results, dayTypeId, bellsId) {
+  const day = travelDay(project, dayTypeId, bellsId);
   const table = [['Day type', 'Transition', 'Passing time (seconds)', 'Group', 'From room', 'To room', 'Walking (seconds)', 'Waiting (seconds)', 'Total (seconds)', 'Late', 'Late by (seconds)']];
-  for (let period = 0; period + 1 < project.settings.periods; period += 1) {
-    for (const row of transitionRows(project, results, day.id, period).rows) {
-      table.push([day.heading, transitionName(project.settings, period), row.passingSeconds, row.group.name, row.from, row.to, row.walking, row.waiting, row.total, !row.arrived ? 'did not arrive' : row.late ? 'late' : 'in time', row.late ? row.over : '']);
+  for (const { period, toPeriod } of transitionsOf(project, day.id, day.bellsId)) {
+    for (const row of transitionRows(project, results, day.id, period, day.bellsId).rows) {
+      table.push([day.heading, transitionName(project.settings, period, toPeriod), row.passingSeconds, row.group.name, row.from, row.to, row.walking, row.waiting, row.total, !row.arrived ? 'did not arrive' : row.late ? 'late' : 'in time', row.late ? row.over : '']);
     }
   }
   return table;
 }
 
-export function dayCsv(project, results, dayTypeId) {
-  const day = travelDay(project, dayTypeId);
+export function dayCsv(project, results, dayTypeId, bellsId) {
+  const day = travelDay(project, dayTypeId, bellsId);
   const table = [['Day type', 'Group', 'Walks', 'Walking (seconds)', 'Waiting (seconds)', 'Total (seconds)', 'Late walks', 'Slowest walk', 'Slowest walk (seconds)']];
-  for (const row of dayRows(project, results, day.id)) {
-    table.push([day.heading, row.group.name, row.walks, row.walking, row.waiting, row.total, row.late, transitionName(project.settings, row.slowest.period), row.slowest.total]);
+  for (const row of dayRows(project, results, day.id, day.bellsId)) {
+    table.push([day.heading, row.group.name, row.walks, row.walking, row.waiting, row.total, row.late, transitionName(project.settings, row.slowest.period, row.slowest.toPeriod), row.slowest.total]);
   }
   return table;
 }
@@ -226,6 +252,7 @@ export function tablesPanel(env) {
   // what the tables are drawn from, handed to the print whole
   const print = printButton(env.ctx, printButtons.find((entry) => entry.id === 'print-travel-time'), () => ({
     dayTypeId: last.picture.choice.dayTypeId,
+    bellsId: last.picture.choice.bellsId,
     movement: { project: last.project, results: last.results, graph: last.graph },
   }));
   const tables = h('div', { class: 'mov-travel__tables' }, h('div', { class: 'mov-export__buttons' }, print), oneTitle, picker, oneLine, one, oneRest, dayTitle, whole);
@@ -243,13 +270,25 @@ export function tablesPanel(env) {
     const picture = state.picture;
     const results = state.results;
     // the bells, the walks and the name all from the one day type that answers for the one chosen
-    const day = travelDay(project, picture.choice.dayTypeId);
-    const transitions = transitionsOf(project, day.id);
-    const any = walksOf(results, day.id).length > 0;
+    const day = travelDay(project, picture.choice.dayTypeId, picture.choice.bellsId);
+    const transitions = transitionsOf(project, day.id, day.bellsId);
+    const any = walksOf(results, day.id, day.bellsId).length > 0;
     element.dataset.day = day.id;
-    tables.hidden = !any;
+    // with every period off the print stays, to say so on paper; the tables go
+    const between = nothingBetweenParts(project, day.bellsId);
+    const printOnly = !any && (nothingMeets(project, day.bellsId) || between !== null);
+    tables.hidden = !any && !printOnly;
+    for (const part of [oneTitle, picker, oneLine, one, oneRest, dayTitle, whole]) part.hidden = printOnly || (part === oneRest && part.hidden);
     if (!results) {
       lead.textContent = 'Working out the routes.';
+      return;
+    }
+    if (nothingMeets(project, day.bellsId)) {
+      lead.replaceChildren(...nothingMeetsParts(project, day.bellsId).map((part) => (part.name ? h('bdi', null, part.text) : part.text)));
+      return;
+    }
+    if (between && !any) {
+      lead.replaceChildren(...between.map((part) => (part.name ? h('bdi', null, part.text) : part.text)));
       return;
     }
     if (!any) {
@@ -263,9 +302,9 @@ export function tablesPanel(env) {
       mapTransition = picture.choice.transition;
       picked = null;
     }
-    if (picked !== null && !transitions[picked]) picked = null;
-    const slowest = slowestPeriod(results, day.id);
-    const period = mapTransition !== null ? mapTransition : picked !== null ? picked : slowest !== null ? slowest : 0;
+    if (picked !== null && !transitions.some((each) => each.period === picked)) picked = null;
+    const slowest = slowestPeriod(results, day.id, day.bellsId);
+    const period = mapTransition !== null ? mapTransition : picked !== null ? picked : slowest !== null ? slowest : transitions.length > 0 ? transitions[0].period : 0;
 
     const nextKey = JSON.stringify(transitions.map((each) => [each.name, each.times]));
     if (nextKey !== pickKey) {
@@ -274,8 +313,8 @@ export function tablesPanel(env) {
     }
     pick.value = String(period);
 
-    const found = transitionRows(project, results, day.id, period);
-    const transition = transitions[period];
+    const found = transitionRows(project, results, day.id, period, day.bellsId);
+    const transition = transitions.find((each) => each.period === period);
     const margin = project.settings.checks ? project.settings.checks.passingMarginSeconds : 0;
     oneLine.textContent = transition
       ? 'Passing time ' + formatDuration(transition.seconds) + (margin > 0 ? ', and ' + formatDuration(margin) + ' of margin before a walk counts as late.' : '.')
@@ -297,7 +336,7 @@ export function tablesPanel(env) {
     oneRest.replaceChildren(...rest);
     oneRest.hidden = rest.length === 0;
 
-    whole.replaceChildren(travelTable('Each group over the whole of ' + day.heading + ', slowest first', dayRows(project, results, day.id).map((row) => ({
+    whole.replaceChildren(travelTable('Each group over the whole of ' + day.heading + ', slowest first', dayRows(project, results, day.id, day.bellsId).map((row) => ({
       row,
       who: [
         h('span', { class: 'mov-travel__rooms' }, count(row.walks, 'walk') + ', the slowest ' + formatDuration(row.slowest.total)),

@@ -37,6 +37,11 @@ export const GROUPS = {
     'engine/repair.test.mjs',
     'engine/day-types.test.mjs',
     'engine/bells.test.mjs',
+    'engine/calendar.test.mjs',
+    'engine/runs.test.mjs',
+    'engine/marks.test.mjs', // SV2-83
+    'engine/runs-today.test.mjs', // SV2-76
+    'engine/bell-runs.test.mjs', // SV2-76
     'engine/actions.test.mjs',
     'engine/history.test.mjs',
     'engine/store.test.mjs',
@@ -47,6 +52,7 @@ export const GROUPS = {
     'engine/building-checks.test.mjs', // SV2-04
     'engine/teacher-day.test.mjs', // SV2-09
     'engine/checks.test.mjs', // SV2-09
+    'engine/checks-duties.test.mjs', // SV2-84
     'engine/routing.test.mjs', // SV2-05
     'engine/directions.test.mjs', // SV2-05
     'engine/load.test.mjs', // SV2-15
@@ -55,6 +61,7 @@ export const GROUPS = {
     'engine/import-groups.test.mjs', // SV2-10
     'engine/exports.test.mjs', // SV2-10
     'engine/project-file.test.mjs', // SV2-10
+    'engine/import-calendar.test.mjs', // SV2-77
     'engine/publish-data.test.mjs', // SV2-20
     'engine/publish-crypto.test.mjs', // SV2-20
     'publish/linker.test.mjs', // SV2-20
@@ -76,6 +83,7 @@ export const GROUPS = {
     'engine/evacuation.test.mjs', // SV2-62
     'engine/scenario-actions.test.mjs', // SV2-61
     'engine/prints-door-cards.test.mjs', // SV2-66
+    'engine/prints-calendar.test.mjs', // SV2-80
     'engine/suggest.test.mjs', // SV2-63
     'engine/prints-congestion-scenario.test.mjs', // SV2-71
     'engine/snapshots.test.mjs', // SV2-28
@@ -89,8 +97,11 @@ export const GROUPS = {
     'ui/helpers.test.mjs', // SV2-02
     'ui/building-inspector.test.mjs', // SV2-07
     'ui/movement.test.mjs', // SV2-17
+    'ui/movement-across.test.mjs', // SV2-79b
+    'ui/walk-across.test.mjs', // SV2-79c
     'ui/playback.test.mjs', // SV2-44
     'ui/room-picker.test.mjs', // SV2-48
+    'ui/marks-duties.test.mjs', // SV2-85
     'ui/schedule-address.test.mjs', // SV2-54
     'ui/staff-pass.test.mjs', // SV2-45
     'ui/engine-client.test.mjs', // SV2-49
@@ -127,8 +138,14 @@ export const GROUPS = {
     'browser/tabs.mjs', // SV2-03
     'browser/schedule.mjs', // SV2-11
     'browser/grid.mjs', // SV2-12
+    'browser/day-types.mjs', // SV2-78
+    'browser/calendar.mjs', // SV2-80
+    'browser/calendar-review.mjs', // SV2-80b
+    'browser/marks-duties.mjs', // SV2-85
+    'browser/calendar-faults.mjs', // SV2-80c
     'browser/grid-pass.mjs', // SV2-40, SV2-46
     'browser/m2-pass.mjs', // SV2-38
+    'browser/sample-whole.mjs', // SV2-87b
     'browser/import.mjs', // SV2-13
     'browser/project-file.mjs', // SV2-13
     'browser/worker.mjs', // SV2-16
@@ -139,9 +156,12 @@ export const GROUPS = {
     'browser/staff-views-b.mjs', // SV2-22
     'browser/staff-outputs.mjs', // SV2-23
     'browser/staff-pictures.mjs', // SV2-32e
+    'browser/staff-calendar.mjs', // SV2-81
+    'browser/staff-duties.mjs', // SV2-86
     'browser/publish.mjs', // SV2-24
     'browser/m4-pass.mjs', // SV2-45
     'browser/movement.mjs', // SV2-17
+    'browser/movement-bells.mjs', // SV2-79
     'browser/hotspots.mjs', // SV2-18
     'browser/playback.mjs', // SV2-19
     'browser/m3-pass.mjs', // SV2-43
@@ -189,7 +209,7 @@ export const GROUPS = {
 // Folders whose every .mjs is a suite and has to be in a group above, apart
 // from the helpers named here, which the suites import. A *.test.mjs has to
 // be in a group wherever under test/ it is.
-export const SUITE_FOLDERS = { browser: ['harness.mjs', 'screens.mjs'], a11y: [], timing: [] };
+export const SUITE_FOLDERS = { browser: ['harness.mjs', 'screens.mjs'], a11y: [], timing: ['big-runs.mjs'] };
 // Groups whose suites take `--base <url>`.
 const TAKES_BASE = ['browser', 'a11y'];
 

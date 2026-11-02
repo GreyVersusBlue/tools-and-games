@@ -14,7 +14,7 @@ import { makeHash } from '../router.js';
 import { pageOf, missingPage, pictureButton } from '../page.js';
 import { dayText } from '../dates.js';
 import { aroundRoom } from '../map.js';
-import { clockNow, dayTypeFor, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
+import { clockNow, teacherDutyDay, dutyWords, dutyPlace, dutyTimes, longDate, todayDate, dayOnDate, dayTypeFor, meetingPeriods, dayWords, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
 import { coverageFor, teacherChooser } from './coverage.js';
 
 export const SUB_CANDIDATES = 3;
@@ -29,9 +29,7 @@ function localDay(date) {
 // "Tuesday, 1 September 2026" from a date field's "2026-09-01", in the
 // reader's own language; a blank line to write on when the field is empty.
 export function subDateWords(value) {
-  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
-  if (!parts) return '________________';
-  return new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])));
+  return longDate(value) || '________________';
 }
 
 export const subView = {
@@ -48,34 +46,82 @@ export const subView = {
     if (route.id && !absent) return missingPage('teacher');
     if (!absent) return teacherChooser(ctx, 'sub', 'Substitute plan', 'One page to print for a substitute.');
 
-    let dayType = dayTypeFor(ctx, route);
     const now = clockNow(ctx);
     const says = h('p', { class: 'lede' });
     const out = h('div', { class: 'stack', dataset: { out: 'sub' } });
     const based = (absent.roomIds || []).map((id) => school.room(id)).filter(Boolean);
 
     const date = h('input', { class: 'field__input', id: 'sub-date', type: 'date', value: /^\d{4}-\d{2}-\d{2}$/.test(route.query.date || '') ? route.query.date : localDay(now) });
+    // A day type in the address, or picked on this page, is the reader's own
+    // word and holds whatever the date is. Without one the date settles the
+    // day type. The bells are always the date's: where the day type is the
+    // one the date has, that date's bells (the calendar's for a date it knows,
+    // today's hand choice for today), else the regular bells.
+    let picked = Boolean(route.query.d && school.dayTypes.some((each) => each.id === route.query.d));
+    const found = () => dayOnDate(ctx, date.value);
+    let dayType = picked ? dayTypeFor(ctx, route) : found().dayType;
+    const bellsOf = () => {
+      const day = found();
+      return day.dayType.id === dayType.id ? day.bellsId : null;
+    };
+    let bellsId = bellsOf();
     const dated = h('p', { class: 'print-only sub__date', dataset: { sub: 'date' } }, 'Date: ', subDateWords(date.value));
-    const address = () => ctx.replace(makeHash('sub', absent.id, { d: route.query.d ? dayType.id : '', date: date.value !== localDay(now) ? date.value : '' }));
+    const address = () => ctx.replace(makeHash('sub', absent.id, { d: picked ? dayType.id : '', date: date.value !== localDay(now) ? date.value : '' }));
+    const picker = h('div', { class: 'no-print' });
+    const drawPicker = () => {
+      const chosen = dayTypePicker(ctx, dayType.id, (next) => {
+        picked = true;
+        dayType = next;
+        bellsId = bellsOf();
+        address();
+        draw();
+      }, { remember: date.value === '' || date.value === todayDate(ctx) });
+      picker.replaceChildren(...(chosen ? [chosen] : []));
+    };
     date.addEventListener('change', () => {
       dated.replaceChildren('Date: ', subDateWords(date.value));
+      if (!picked) {
+        dayType = found().dayType;
+        drawPicker();
+      }
+      bellsId = bellsOf();
+      draw();
       address();
     });
 
     const draw = () => {
-      const day = everyTeacherDay(school, dayType.id).get(absent.id);
-      const cover = coverageFor(school, absent.id, dayType.id);
+      // today's bells: a period that does not meet is left out of the day and of the cover
+      const meets = meetingPeriods(school, dayType.id, bellsId);
+      // the date settles a duty that holds on some days only
+      const on = school.isDate(date.value) ? date.value : null;
+      const day = everyTeacherDay(school, dayType.id, on).get(absent.id).filter((entry) => meets.has(entry.period));
+      const cover = coverageFor(school, absent.id, dayType.id, on).filter((item) => meets.has(item.period));
+      // the substitute covers the duties too: where and when each is
+      const mine = teacherDutyDay(school, absent.id, dayType.id, on);
+      const duties = [];
+      const addDuty = (when, duty) => duties.push({ when, text: [dutyWords(duty), dutyPlace(school, duty), dutyTimes(school, duty)].filter((part) => part !== '').join(' · ') });
+      if (mine) {
+        mine.before.forEach((duty) => addDuty('Before school', duty));
+        mine.byPeriod.forEach((list, period) => {
+          if (meets.has(period)) list.forEach((duty) => addDuty(school.periodName(period), duty));
+        });
+        mine.after.forEach((duty) => addDuty('After school', duty));
+      }
       const taught = cover.length;
-      says.replaceChildren(typed(absent.name), '\'s day on ', typed(dayType.name), ': ',
-        taught === 0 ? 'no group to teach.' : taught + ' of ' + day.length + ' ' + school.data.settings.periodWord.toLowerCase() + 's with a group.');
+      says.replaceChildren(h('span', null, typed(absent.name), '\'s day on ', dayWords(school, dayType, bellsId), ': ',
+        taught === 0 ? 'no group to teach.' : taught + ' of ' + day.length + ' ' + school.data.settings.periodWord.toLowerCase() + 's with a group.'));
 
       out.replaceChildren(...[
         h('section', { class: 'card', dataset: { sub: 'day' } },
-          h('h2', { class: 'card__title' }, 'The day: ', typed(dayType.name)),
+          h('h2', { class: 'card__title' }, 'The day: ', dayWords(school, dayType, bellsId)),
           h('p', { class: 'muted' }, teacherDetail(school, absent)),
           h('div', { class: 'rows' }, day.map((entry) => h('div', { class: 'row row--plan', dataset: { period: String(entry.period) } },
-            h('span', { class: 'row__when' }, school.periodName(entry.period), h('br'), periodTimes(school, dayType.id, entry.period)),
-            h('span', { class: entry.kind === 'teaching' ? 'row__what' : 'row__what muted' }, entryWords(school, entry)))))),
+            h('span', { class: 'row__when' }, school.periodName(entry.period), h('br'), periodTimes(school, dayType.id, entry.period, bellsId)),
+            h('span', { class: entry.kind === 'teaching' ? 'row__what' : 'row__what muted' }, entryWords(school, entry, { dayTypeId: dayType.id, date: on })))))),
+
+        duties.length === 0 ? null : h('section', { class: 'card', dataset: { sub: 'duties' } },
+          sectionHeading('Duties to cover'),
+          h('ul', { class: 'plain' }, duties.map((duty) => h('li', { dataset: { duty: duty.when } }, h('strong', null, duty.when, ': '), typed(duty.text))))),
 
         h('section', { class: 'card', dataset: { sub: 'cover' } },
           sectionHeading('Who could cover'),
@@ -89,7 +135,7 @@ export const subView = {
                 viewLink(school, 'teacher', candidate.teacher.id, typed(candidate.teacher.name)),
                 candidate.sameSubject ? ' (same subject)' : null)),
               item.candidates.length > SUB_CANDIDATES ? h('span', { class: 'no-print', dataset: { sub: 'more' } }, ', and ' + (item.candidates.length - SUB_CANDIDATES) + ' more') : null))),
-          school.has('coverage') ? h('p', { class: 'no-print' }, h('a', { href: makeHash('coverage', absent.id, { d: dayType.id }) }, 'Everyone who is free, period by period')) : null),
+          school.has('coverage') ? h('p', { class: 'no-print' }, h('a', { href: makeHash('coverage', absent.id, { d: picked ? dayType.id : '', date: date.value }) }, 'Everyone who is free, period by period')) : null),
 
         h('section', { class: 'card', dataset: { sub: 'room' } },
           sectionHeading(based.length > 1 ? 'Where the rooms are' : 'Where the room is'),
@@ -109,20 +155,16 @@ export const subView = {
             : h('p', { class: 'muted' }, 'No notes were left in this schedule.')),
 
         h('p', { class: 'reminder', dataset: { sub: 'check' } }, h('strong', null, SUB_CHECK_SENTENCE), ' This schedule was published on ' + dayText(school.data.publishedAt, now) + ' and may have changed since.'),
-      ]);
+      ].filter(Boolean));
     };
 
-    const picker = dayTypePicker(ctx, dayType.id, (next) => {
-      dayType = next;
-      address();
-      draw();
-    });
+    drawPicker();
     draw();
     return pageOf(['Substitute plan: ', typed(absent.name)], null, says,
       dated,
       h('div', { class: 'controls' },
         h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'sub-date' }, 'Date'), date),
-        h('div', { class: 'no-print' }, picker)),
+        picker),
       out,
       h('p', { class: 'actions no-print' },
         h('button', { class: 'btn btn--primary', type: 'button', dataset: { sub: 'print', print: 'page' }, onclick: () => globalThis.print() }, 'Print this page'),

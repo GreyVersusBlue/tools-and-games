@@ -2,8 +2,26 @@
 // of each transition, and the inline checks on a bell schedule. Times are
 // stored as 24-hour "HH:MM" and shown in the school's chosen form.
 
-import { isBellTime } from './schema.js';
+import { isBellTime, bellSchedulesOf } from './schema.js';
 import { effectiveDayType } from './day-types.js';
+
+// Bell schedule B of this project, or null. A day type's own bells are its
+// regular bells; a bell schedule is another set of times for the same
+// classes, with the periods in its `off` not meeting (ARCHITECTURE 17.3).
+export function findBellSchedule(project, bellsId) {
+  if (typeof bellsId !== 'string') return null;
+  return bellSchedulesOf(project).find((schedule) => schedule && schedule.id === bellsId) || null;
+}
+
+// The periods that do not meet under schedule B, as a Set; empty for regular
+// bells. Anything in `off` that is not a period of the day is left out.
+export function offPeriods(project, bellsId) {
+  const schedule = findBellSchedule(project, bellsId);
+  const off = new Set();
+  if (!schedule || !Array.isArray(schedule.off)) return off;
+  for (const period of schedule.off) if (Number.isInteger(period) && period >= 0 && period < project.settings.periods) off.add(period);
+  return off;
+}
 
 // A gap between two periods longer than this is pointed out, since the
 // passing time worked out from it is too long to mean anything.
@@ -81,13 +99,26 @@ export function formatTime(value, timeFormat, options) {
 // last period. It comes from the bells when both times are entered and the
 // next period starts after this one ends; otherwise it is the school default,
 // and passingFromBells is false.
-export function bellsFor(project, dayTypeId) {
+//
+// With B, the id of a bell schedule, the times are B's and the classes are
+// still D's: a period in B's `off` is { start: null, end: null, passingAfter:
+// null, passingFromBells: false, off: true }, and there is no passing time
+// into it or out of it. Without B, or with an id that names no bell
+// schedule, D's regular bells, exactly as before there were bell schedules.
+export function bellsFor(project, dayTypeId, bellsId) {
   const dayType = effectiveDayType(project, dayTypeId);
   const periods = project.settings.periods;
   const fallback = project.settings.defaultPassingSeconds;
-  const bells = dayType && Array.isArray(dayType.bells) ? dayType.bells : [];
+  const schedule = findBellSchedule(project, bellsId);
+  const off = schedule ? offPeriods(project, bellsId) : new Set();
+  const source = schedule ? schedule.bells : dayType ? dayType.bells : null;
+  const bells = Array.isArray(source) ? source : [];
   const result = [];
   for (let p = 0; p < periods; p += 1) {
+    if (off.has(p)) {
+      result.push({ start: null, end: null, passingAfter: null, passingFromBells: false, off: true });
+      continue;
+    }
     const bell = bells[p] || null;
     result.push({
       start: bell && isBellTime(bell.start) ? bell.start : null,
@@ -97,6 +128,7 @@ export function bellsFor(project, dayTypeId) {
     });
   }
   for (let p = 0; p < periods - 1; p += 1) {
+    if (off.has(p) || off.has(p + 1)) continue;
     const end = parseTime(result[p].end);
     const next = parseTime(result[p + 1].start);
     if (end !== null && next !== null && next > end) {
@@ -109,20 +141,23 @@ export function bellsFor(project, dayTypeId) {
   return result;
 }
 
-// The inline checks on one day type's bell schedule. They warn and never
-// block. Each finding is { path, message, kind, period } with kind one of
-// 'end-before-start', 'overlap', 'gap'.
-export function bellFindings(project, dayTypeId) {
-  const dayType = effectiveDayType(project, dayTypeId);
-  if (!dayType) return [];
+// The inline checks on one day type's bell schedule, or with B on bell
+// schedule B. They warn and never block. Each finding is { path, message,
+// kind, period } with kind one of 'end-before-start', 'overlap', 'gap'. A
+// period that does not meet under B is skipped: it has no times to check,
+// and no gap is pointed out on either side of it.
+export function bellFindings(project, dayTypeId, bellsId) {
+  const schedule = findBellSchedule(project, bellsId);
+  const dayType = schedule ? null : effectiveDayType(project, dayTypeId);
+  if (!schedule && !dayType) return [];
   const settings = project.settings;
-  const index = project.dayTypes.indexOf(dayType);
-  const bells = bellsFor(project, dayTypeId);
+  const where = schedule ? 'bellSchedules[' + bellSchedulesOf(project).indexOf(schedule) + ']' : 'dayTypes[' + project.dayTypes.indexOf(dayType) + ']';
+  const bells = schedule ? bellsFor(project, project.dayTypes[0].id, bellsId) : bellsFor(project, dayTypeId);
   const findings = [];
   const add = (kind, period, message) => {
-    findings.push({ path: 'dayTypes[' + index + '].bells[' + period + ']', message, kind, period });
+    findings.push({ path: where + '.bells[' + period + ']', message, kind, period });
   };
-  const times = bells.map((bell) => ({ start: parseTime(bell.start), end: parseTime(bell.end) }));
+  const times = bells.map((bell) => ({ start: parseTime(bell.start), end: parseTime(bell.end), off: bell.off === true }));
   const entered = times.map((time) => time.start !== null && time.end !== null);
   const sound = times.map((time, p) => entered[p] && time.end > time.start);
   const show = (minutes) => formatTime(minutes, settings.timeFormat);
@@ -142,7 +177,7 @@ export function bellFindings(project, dayTypeId) {
   }
   if (entered.some(Boolean)) {
     for (let p = 0; p < times.length; p += 1) {
-      if (!entered[p]) {
+      if (!entered[p] && !times[p].off) {
         add('gap', p, periodName(settings, p) + ' has no times. The passing time around it uses the default of ' + settings.defaultPassingSeconds + ' seconds.');
       }
     }

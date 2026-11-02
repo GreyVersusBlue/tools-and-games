@@ -54,7 +54,7 @@ async function blurAll() {
 }
 
 before(async () => {
-  session = await openPlanner({ theme: 'light' });
+  session = await openPlanner({ theme: 'light', fullSample: true });
   page = session.page;
 });
 
@@ -124,8 +124,8 @@ test('the schedule sub-tabs have addresses, and the arrow keys move between them
   assert.equal(await page.evaluate(() => location.hash), '#schedule/day');
   assert.match(await text('#surface [role="tabpanel"]'), /The day is 8 periods long/);
   await page.keyboard.press('ArrowRight');
-  assert.equal(await page.evaluate(() => location.hash), '#schedule/checks');
-  assert.equal(await page.evaluate(() => document.activeElement.dataset.tab), 'checks');
+  assert.equal(await page.evaluate(() => location.hash), '#schedule/duties');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.tab), 'duties');
   await page.keyboard.press('Home');
   assert.equal(await page.evaluate(() => location.hash), '#schedule/groups');
   assert.equal(await page.$$eval('#surface [role="tab"][tabindex="0"]', (all) => all.length), 1, 'one Tab stop in the tab list');
@@ -374,7 +374,7 @@ test('Getting started has the five steps as links, ticks what the project has, h
 test('the Project section shows the sample school in figures and every setting with its one line', async () => {
   await go(page, '#project');
   const figures = Object.fromEntries(await page.$$eval('.figures__item', (all) => all.map((el) => [el.dataset.figure, el.querySelector('dd').textContent])));
-  assert.deepEqual(figures, { floors: '3', rooms: '13', teachers: '12', groups: '8', subjects: '9', dayTypes: '2', exits: '2' });
+  assert.deepEqual(figures, { floors: '3', rooms: '13', teachers: '12', groups: '8', subjects: '9', dayTypes: '3', exits: '2' });
   const rows = await page.$$eval('#settings .setting', (all) => all.map((row) => [row.querySelector('.setting__label').textContent, row.querySelector('.setting__hint').textContent.length]));
   assert.deepEqual(rows.map((row) => row[0]), [
     'School name', 'Periods per day', 'Period word', 'Day types', 'Bell schedules', 'Default passing time', 'Calendar', 'Subjects',
@@ -445,7 +445,7 @@ test('fewer periods asks first, with buttons that name the action and the safe o
   await page.keyboard.press('Enter');
   await page.waitForSelector('dialog.dialog[open]');
   assert.equal(await text('dialog .dialog__title'), 'Remove Period 7 and Period 8 from every day?');
-  assert.match(await text('dialog .dialog__body'), /^That takes away 32 room entries in 8 groups and 4 bell times\. Undo brings them back\.$/);
+  assert.match(await text('dialog .dialog__body'), /^That takes away 32 room entries in 8 groups, 6 bell times and 1 marked period\. Undo brings them back\.$/);
   assert.deepEqual(await page.$$eval('dialog .dialog__buttons button', (all) => all.map((el) => el.textContent)), ['Remove Period 7 and Period 8', 'Keep 8 periods']);
   assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Keep 8 periods');
   await page.keyboard.press('Escape');
@@ -468,7 +468,7 @@ test('fewer periods asks first, with buttons that name the action and the safe o
 test('the picker narrows as you type; a check is switched off and back on', async () => {
   const input = '#settings .picker__input';
   await page.click(input);
-  assert.equal(await page.$$eval('#settings .picker__option', (all) => all.length), 14);
+  assert.equal(await page.$$eval('#settings .picker__option', (all) => all.length), 16);
   await page.keyboard.type('WALK');
   assert.deepEqual(await page.$$eval('#settings .picker__option', (all) => all.map((el) => el.textContent)), ['A teacher’s walk that is too long', 'A group’s walk that is too long']);
   assert.equal(await page.$eval(input, (el) => el.getAttribute('aria-expanded')), 'true');

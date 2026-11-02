@@ -272,6 +272,23 @@ const movementShowing = (patch) => async (page) => {
   await movementDrawn(page);
 };
 
+// SV2-80b (asked for when SV2-79 landed): Movement with a bell schedule named
+// "Early Release", periods 5 to 8 not meeting, chosen in the Bells control.
+async function movementEarlyRelease(page) {
+  await movementDrawn(page);
+  await loadModule(page, 'actions', 'engine/actions.js');
+  await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    const { actions } = globalThis.sv2modules;
+    store.apply(actions.addBellSchedule, { id: 'bsample0er', name: 'Early Release', short: '', fromDayTypeId: store.project.dayTypes[0].id });
+    store.apply(actions.setBellSchedule, { bellScheduleId: 'bsample0er', off: [4, 5, 6, 7] });
+  });
+  await movementDrawn(page);
+  await page.evaluate(() => document.querySelector('.mov').movement.change({ bellsId: 'bsample0er' }));
+  await movementDrawn(page);
+  await page.waitForFunction(() => /with Early Release bells/.test(document.querySelector('#movement-line .mov-line__words')?.textContent || ''));
+}
+
 // SV2-19: playback moved by its scrubber to a second of Period 6 to Period 7,
 // the sample school's long walk, with the settings behind More open or not.
 const playbackAt = (seconds, more) => async (page) => {
@@ -798,6 +815,309 @@ const SV2_32G1 = [
   } },
 ];
 
+// SV2-78: more day types. `manyDays` gives the sample a C Day and a D Day
+// with their own classes, a Testing Day the same as B Day, and an Early
+// Release bell schedule whose periods 5 to 8 do not meet; `twelveDays` fills
+// the list to the most a project has.
+async function manyDays(page) {
+  await scheduleDrawn(page);
+  await act(page, 'addDayType', { name: 'C Day', own: true });
+  await act(page, 'addDayType', { name: 'D Day', own: true });
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.addDayType, { name: 'Testing Day', own: false, sameAs: globalThis.sv2.store.project.dayTypes[1].id }));
+  await act(page, 'addBellSchedule', { name: 'Early Release' });
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.setBellSchedule, { bellScheduleId: globalThis.sv2.store.project.bellSchedules[0].id, off: [4, 5, 6, 7] }));
+  await scheduleDrawn(page);
+}
+
+async function twelveDays(page) {
+  await manyDays(page);
+  for (const name of ['E Day', 'F Day', 'G Day', 'H Day', 'I Day', 'J Day', 'K Day']) await act(page, 'addDayType', { name, own: true });
+  await scheduleDrawn(page);
+}
+
+// SV2-78: B Day made the same as A Day through its Change… dialog.
+async function sameAsA(page) {
+  await page.click('[data-key="daytype:dsample00b:change"]');
+  await page.waitForSelector('#day-kind-dialog[open]');
+  await page.click('#day-kind-dialog input[value="dsample00a"]');
+  await page.click('#day-kind-dialog .btn--primary');
+  await page.waitForSelector('.sch-dtrow--same');
+}
+
+const dayTypeId = (page, index) => page.evaluate((at) => globalThis.sv2.store.project.dayTypes[at].id, index);
+
+const SV2_78 = [
+  { id: 'schedule-day-types', hash: '#schedule/day', open: manyDays },
+  {
+    id: 'schedule-day-kind-dialog',
+    hash: '#schedule/day',
+    open: async (page) => {
+      await manyDays(page);
+      await page.click('[data-key="daytype:' + (await dayTypeId(page, 2)) + ':change"]');
+      await page.waitForSelector('#day-kind-dialog[open]');
+      await page.click('#day-kind-dialog input[value="' + (await dayTypeId(page, 0)) + '"]');
+    },
+  },
+  {
+    id: 'schedule-day-row-menu',
+    hash: '#schedule/day',
+    open: async (page) => {
+      await manyDays(page);
+      await page.click('[data-key="daytype:' + (await dayTypeId(page, 2)) + ':menu"]');
+      await page.waitForSelector('.menu[role="menu"]');
+    },
+  },
+  {
+    id: 'schedule-day-copy-dialog',
+    hash: '#schedule/day',
+    open: async (page) => {
+      await manyDays(page);
+      await page.click('[data-key="daytype:' + (await dayTypeId(page, 2)) + ':menu"]');
+      await page.waitForSelector('.menu[role="menu"]');
+      await page.evaluate(() => Array.from(document.querySelectorAll('.menu__item')).find((item) => item.textContent === 'Copy classes from…').click());
+      await page.waitForSelector('#day-copy-dialog[open]');
+    },
+  },
+  { id: 'schedule-day-twelve', hash: '#schedule/day', open: twelveDays },
+  { id: 'schedule-day-phone', hash: '#schedule/day', viewport: { width: 390, height: 844, mobile: true }, open: manyDays },
+  { id: 'schedule-group-day-chips', hash: '#schedule/groups/gsample06a', open: manyDays },
+  { id: 'schedule-group-day-chips-phone', hash: '#schedule/groups/gsample06a', viewport: { width: 390, height: 844, mobile: true }, open: manyDays },
+  {
+    id: 'schedule-group-copy-dialog',
+    hash: '#schedule/groups/gsample06a',
+    open: async (page) => {
+      await scheduleDrawn(page);
+      await page.click('.sch-day[data-day="dsample00b"] [data-action="copy-day"]');
+      await page.waitForSelector('#group-copy-dialog[open]');
+    },
+  },
+  {
+    id: 'schedule-grid-day-type',
+    hash: '#schedule/grid',
+    open: async (page) => {
+      await manyDays(page);
+      await gridDrawn(page);
+      await page.waitForSelector('[data-key="grid-day"]');
+    },
+  },
+  {
+    id: 'schedule-grid-copy-dialog',
+    hash: '#schedule/grid',
+    open: async (page) => {
+      await manyDays(page);
+      await gridDrawn(page);
+      await page.click('.grd-toolbar [data-action="bulk"]');
+      await page.waitForSelector('.menu[role="menu"]');
+      await page.evaluate(() => Array.from(document.querySelectorAll('.menu__item')).find((item) => item.textContent === 'Copy classes from…').click());
+      await page.waitForSelector('#grid-copy-dialog[open]');
+    },
+  },
+];
+
+// SV2-80: the Calendar tab. A calendar from 31 August 2026 to 11 June 2027
+// with Early Release Wednesdays, a winter break and a snow day, put in by the
+// store; the sweeps do not pin the clock, so today may be outside it.
+async function calendarMade(page) {
+  await scheduleDrawn(page);
+  await act(page, 'addBellSchedule', { name: 'Early Release' });
+  await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    const { actions } = globalThis.sv2modules;
+    const early = store.project.bellSchedules[0].id;
+    const weekdays = [0, 1, 2, 3, 4, 5, 6].map((w) => ({ day: w < 5 ? 'rotation' : 'closed', bells: w === 2 ? early : null }));
+    store.apply(actions.makeCalendar, { start: '2026-08-31', end: '2027-06-11', weekdays, breaks: [{ from: '2026-12-21', to: '2027-01-01', label: 'Winter break' }] });
+    store.apply(actions.setCalendarDates, { dates: ['2026-10-14'], day: 'closed', label: 'Snow day' });
+  });
+  await page.waitForSelector('.cal-year .cal-day');
+  await scheduleDrawn(page);
+}
+
+async function calendarDialog(page) {
+  await calendarMade(page);
+  await dateDialogOn(page);
+}
+
+// the date dialog on 15 October, once the calendar is on screen
+async function dateDialogOn(page) {
+  await page.$eval('.cal-day[data-date="2026-10-15"]', (el) => el.scrollIntoView({ block: 'center' }));
+  await page.evaluate(() => document.querySelector('.toast__close')?.click());
+  await page.$eval('.cal-day[data-date="2026-10-15"]', (el) => el.click());
+  await page.waitForFunction(() => document.getElementById('calendar-date-dialog')?.open === true && document.getElementById('calendar-date-dialog').getAnimations().every((each) => each.playState === 'finished'));
+}
+
+
+// SV2-85: marked periods and the Duties tab. `marksMade`: Lunch for grade 7
+// in Period 5 on every day type (beaten for 7A, which has an Advisory of its
+// own there), an Assembly on B Day for the whole school, and No class for
+// 7A in Period 8. `dutiesMade`: bus duty after school with two teachers and
+// times, the Wednesday science meeting by subject, hall duty in a period its
+// teacher teaches (a clash), lunch duty with nobody on it, and arrival duty
+// for all staff before school.
+async function marksMade(page) {
+  await scheduleDrawn(page);
+  await act(page, 'addMark', { kind: 'lunch', period: 4, scope: 'grades', grades: ['7'] });
+  await act(page, 'addMark', { kind: 'activity', label: 'Assembly', period: 2, scope: 'school', dayTypeIds: ['dsample00b'] });
+  await act(page, 'addMark', { kind: 'advisory', period: 4, scope: 'groups', groupIds: ['gsample07a'] });
+  await act(page, 'addMark', { kind: 'noclass', period: 7, scope: 'groups', groupIds: ['gsample07a'] });
+  await scheduleDrawn(page);
+}
+
+async function marksEditor(page) {
+  await marksMade(page);
+  await page.click('.sch-marks__line');
+  await page.waitForSelector('.sch-markedit');
+  await scheduleDrawn(page);
+}
+
+async function newMarkEditor(page) {
+  await scheduleDrawn(page);
+  await page.click('[data-key="mark-new"]');
+  await page.waitForSelector('.sch-markedit');
+  await page.click('[data-key="mark:new:who:grades"]');
+  await page.waitForSelector('.sch-markedit__chips button');
+  await page.click('.sch-markedit__chips button');
+  await scheduleDrawn(page);
+}
+
+async function dutiesMade(page) {
+  await scheduleDrawn(page);
+  await act(page, 'addDuty', { kind: 'duty', label: 'Bus duty', when: 'after', start: '15:05', end: '15:25', place: 'Bus loop', teacherIds: ['tsample004', 'tsample009'] });
+  await act(page, 'addDuty', { kind: 'meeting', label: 'Science department', when: 'period', period: 7, weekdays: [2], roomId: 'rsample101', subjectIds: ['ssample003'] });
+  await act(page, 'addDuty', { kind: 'duty', label: 'Hall duty', when: 'period', period: 0, teacherIds: ['tsample002'] });
+  await act(page, 'addDuty', { kind: 'duty', label: 'Lunch duty', when: 'period', period: 4 });
+  await act(page, 'addDuty', { kind: 'duty', label: 'Morning arrival', when: 'before', start: '07:15', end: '07:35', everyone: true });
+  await scheduleDrawn(page);
+}
+
+// the same, on the Duties tab, once its table is drawn
+async function dutiesListed(page) {
+  await dutiesMade(page);
+  await page.waitForSelector('.sch-duties__table');
+}
+
+async function dutyDays(page) {
+  await dutiesListed(page);
+  await page.click('[data-key$=":days"]');
+  await page.waitForSelector('.sch-duties__days');
+  await scheduleDrawn(page);
+}
+
+const PHONE = { width: 390, height: 844, mobile: true };
+
+// SV2-78b owed this one: the bell tables folded at 390 px, one of them open
+async function bellsFolded(page) {
+  await manyDays(page);
+  await page.click('.sch-fold[data-fold] .sch-fold__summary');
+  await scheduleDrawn(page);
+}
+
+const SV2_85 = [
+  { id: 'schedule-day-bells-folded-phone', hash: '#schedule/day', viewport: PHONE, open: bellsFolded },
+  { id: 'schedule-marks', hash: '#schedule/day', open: marksMade },
+  { id: 'schedule-marks-editor', hash: '#schedule/day', open: marksEditor },
+  { id: 'schedule-marks-new', hash: '#schedule/day', open: newMarkEditor },
+  { id: 'schedule-marks-phone', hash: '#schedule/day', viewport: PHONE, open: marksEditor },
+  { id: 'schedule-marks-new-phone', hash: '#schedule/day', viewport: PHONE, open: newMarkEditor },
+  { id: 'schedule-marks-group', hash: '#schedule/groups/gsample07a', open: marksMade },
+  { id: 'schedule-marks-grid', hash: '#schedule/grid', open: async (page) => {
+    await marksMade(page);
+    await gridDrawn(page);
+  } },
+  { id: 'schedule-duties-empty', hash: '#project', open: scheduleEmpty('duties') },
+  { id: 'schedule-duties', hash: '#schedule/duties', open: dutiesListed },
+  { id: 'schedule-duties-days', hash: '#schedule/duties', open: dutyDays },
+  { id: 'schedule-duties-phone', hash: '#schedule/duties', viewport: PHONE, open: dutiesListed },
+  { id: 'schedule-duties-days-phone', hash: '#schedule/duties', viewport: PHONE, open: dutyDays },
+  { id: 'schedule-teachers-duties', hash: '#schedule/teachers', open: dutiesMade },
+  { id: 'schedule-grid-teachers-duties', hash: '#schedule/grid', open: async (page) => {
+    await dutiesMade(page);
+    await gridRows('teachers')(page);
+  } },
+];
+
+const SV2_80 = [
+  { id: 'schedule-calendar-empty', hash: '#schedule/calendar', open: scheduleDrawn },
+  {
+    id: 'schedule-calendar-setup',
+    hash: '#schedule/calendar',
+    open: async (page) => {
+      await scheduleDrawn(page);
+      await page.click('[data-action="make-a-calendar"]');
+      await page.waitForSelector('.cal-setup');
+      await page.click('[data-key="cal-setup-add-break"]');
+      await page.waitForSelector('[data-key="cal-setup-break:0:from"]');
+    },
+  },
+  { id: 'schedule-calendar-year', hash: '#schedule/calendar', open: calendarMade },
+  {
+    id: 'schedule-calendar-run',
+    hash: '#schedule/calendar',
+    open: async (page) => {
+      await calendarMade(page);
+      await page.focus('.cal-day[data-date="2026-12-14"]');
+      await page.keyboard.down('Shift');
+      for (let i = 0; i < 4; i += 1) await page.keyboard.press('ArrowRight');
+      await page.keyboard.up('Shift');
+      await page.waitForFunction(() => document.querySelector('.cal-status').textContent !== '');
+    },
+  },
+  { id: 'schedule-calendar-dialog', hash: '#schedule/calendar', open: calendarDialog },
+  {
+    id: 'schedule-calendar-list',
+    hash: '#schedule/calendar',
+    open: async (page) => {
+      await calendarMade(page);
+      await page.click('.cal-list__summary');
+      await page.waitForSelector('.cal-list__table');
+    },
+  },
+  {
+    id: 'schedule-calendar-import',
+    hash: '#schedule/calendar',
+    open: async (page) => {
+      await calendarMade(page);
+      await page.evaluate(() => document.querySelector('.toast__close')?.click());
+      await page.click('[data-action="import-dates"]');
+      await page.waitForSelector('#calendar-import[open]');
+      await page.evaluate(() => document.getElementById('calendar-import').calendarRead('holidays.csv', 'Date,Day type,Note\r\n2026-11-26,No school,Thanksgiving\r\n2026-11-27,,Day after\r\n'));
+      await page.waitForSelector('.cal-import__table');
+    },
+  },
+  {
+    id: 'schedule-calendar-print',
+    hash: '#schedule/calendar',
+    open: async (page) => {
+      await calendarMade(page);
+      await page.evaluate(() => document.querySelector('.toast__close')?.click());
+      await page.click('#print-calendar');
+      await page.waitForSelector('#print-preview[open][data-ready="true"]', { timeout: 30000 });
+    },
+  },
+  { id: 'schedule-calendar-phone', hash: '#schedule/calendar', viewport: { width: 390, height: 844, mobile: true }, open: calendarMade },
+  {
+    id: 'schedule-calendar-dialog-phone',
+    hash: '#schedule/calendar',
+    viewport: { width: 390, height: 844, mobile: true },
+    open: async (page) => {
+      await calendarMade(page);
+      await page.click('[data-key="cal-show-months"]');
+      await page.waitForFunction(() => document.querySelector('.cal-year').hidden === false);
+      await dateDialogOn(page);
+    },
+  },
+  {
+    id: 'staff-publish-calendar',
+    hash: '#schedule/calendar',
+    open: async (page) => {
+      await calendarMade(page);
+      await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.setPublishSetting, { key: 'lastPublishedAt', value: '2026-08-31T12:00:00.000Z' }));
+      await go(page, '#staff');
+      await staffLive(page);
+      await page.waitForFunction(() => document.querySelector('[data-says="calendar-changed"]')?.hidden === false);
+    },
+  },
+];
+
 export const SCREENS = [
   { id: 'building', hash: '#building' },
   { id: 'schedule-groups', hash: '#schedule/groups' },
@@ -914,8 +1234,7 @@ export const SCREENS = [
     hash: '#schedule/day',
     open: async (page) => {
       await scheduleDrawn(page);
-      await page.click('.sch-daytype [data-action="revert"]');
-      await page.waitForSelector('.sch-daytype--same');
+      await sameAsA(page);
       await scheduleDrawn(page);
     },
   },
@@ -924,8 +1243,7 @@ export const SCREENS = [
     hash: '#schedule/day',
     open: async (page) => {
       await scheduleDrawn(page);
-      await page.click('.sch-daytype [data-action="revert"]');
-      await page.waitForSelector('.sch-daytype--same');
+      await sameAsA(page);
       await page.evaluate(() => {
         location.hash = '#schedule/groups';
       });
@@ -1071,6 +1389,7 @@ export const SCREENS = [
   },
   { id: 'movement-one-group', hash: '#movement', open: movementShowing({ who: 'groups', groupIds: ['gsample08a'], floors: 'fsample001' }) }, // SV2-17
   { id: 'movement-cleared', hash: '#movement', open: movementShowing({ who: 'groups', groupIds: [] }) }, // SV2-17
+  { id: 'movement-early-release', hash: '#movement', open: movementEarlyRelease }, // SV2-80b: the Bells control with Early Release chosen, periods 5 to 8 off
   { id: 'movement-playback', hash: '#movement', open: playbackAt(120, false) }, // SV2-19: half way through a transition, every group a marker
   { id: 'movement-playback-late', hash: '#movement', open: playbackAt(250, true) }, // SV2-19: after the bell, one group late, the settings behind More
   { // SV2-17: the card of the corridor cell the keyboard cursor rests on
@@ -1340,5 +1659,8 @@ export const SCREENS = [
       await page.waitForFunction(() => document.querySelector('.sfy').dataset.mode === 'empty');
     },
   },
+  ...SV2_78,
+  ...SV2_80,
+  ...SV2_85,
   ...SV2_32G1,
 ];

@@ -5,6 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parse } from '../../engine/csv.js';
+import { withEverything, C } from '../fixtures/day-types-calendar.mjs';
 import { EXPORT_KINDS, NOT_IN_BUILDING, PLANNING, buildExport, csvText, exportFileName, groupsHeader, groupsRows, templateRows, teachersRows, roomsRows, teacherGridRows, roomGridRows } from '../../engine/exports.js';
 import { guessColumns, previewImport, applyGroupImport } from '../../engine/import-groups.js';
 import { readProjectFile, readBuildingFile, readScheduleFile } from '../../engine/project-file.js';
@@ -63,6 +64,35 @@ test('the template matches the current periods and day types, for every period w
       assert.deepEqual(mapping.filter((item) => item.role === 'period').map((item) => [item.dayTypeId, item.period]), project.dayTypes.flatMap((dayType) => Array.from({ length: periods }, (unused, period) => [dayType.id, period])));
     }
   }
+});
+
+test('the template and the export list every day type with its own classes, and a day type the same as B Day has empty cells', () => {
+  const project = withEverything();
+  // a third day type with its own classes, after B Day and before D Day
+  project.dayTypes[2] = { ...project.dayTypes[2], own: true, sameAs: null, bells: project.dayTypes[1].bells.map((bell) => (bell ? { ...bell } : null)) };
+  project.dayTypes[3] = { ...project.dayTypes[3], sameAs: C };
+  for (const one of project.groups) one.days[C] = one.days[B].map((slot) => ({ ...slot, teacherIds: slot.teacherIds.slice() }));
+  group(project, '6A').days[C][0] = { room: 'rsamplegym', roomText: '', label: '', teacherIds: [] };
+  assertValid(project);
+  const header = templateRows(project)[0];
+  assert.equal(header.length, 4 + 4 * 8);
+  assert.deepEqual([header[4], header[12], header[20], header[28]], ['A Day Period 1', 'B Day Period 1', 'C Day Period 1', 'D Day Period 1']);
+  const rows = groupsRows(project);
+  assert.equal(row(rows, '6A')[20], 'Gym', 'C Day has its own classes');
+  assert.deepEqual(row(rows, '6A').slice(28), Array(8).fill(''), 'D Day is the same as C Day: empty, not C Day\'s rooms');
+  const back = parse(csvText(rows)).rows;
+  assert.equal(applyGroupImport(project, back, guessColumns(back[0], project), { all: 'overwrite' }, makeIds(2)).project, project, 'it reads back to the same project');
+});
+
+test('twelve day types: the template understands every column it writes', () => {
+  const project = school();
+  for (let i = 2; i < 12; i += 1) project.dayTypes.push({ id: 'dmany000' + String(i).padStart(2, '0'), name: 'Day ' + String.fromCharCode(65 + i), own: i % 2 === 0, sameAs: null, short: '', bells: Array(8).fill(null) });
+  for (const one of project.groups) for (const dayType of project.dayTypes.slice(2)) if (dayType.own) one.days[dayType.id] = one.days[A].map((slot) => ({ ...slot, teacherIds: slot.teacherIds.slice() }));
+  assertValid(project);
+  const header = templateRows(project)[0];
+  assert.equal(header.length, 4 + 12 * 8);
+  const mapping = guessColumns(header, project);
+  assert.deepEqual(mapping.filter((item) => item.role === 'period').map((item) => item.dayTypeId), project.dayTypes.flatMap((dayType) => Array(8).fill(dayType.id)));
 });
 
 test('the template opens cleanly in a spreadsheet: a byte-order mark, CRLF, one line', () => {
@@ -171,6 +201,94 @@ test('the teacher grid shows a teacher named on a slot, two groups at once, and 
   assert.equal(line[2], '6A · Annex 4; 6B · 203');
 });
 
+const HALLORAN_ID = 'tsample001';
+let counter = 0;
+const markOf = (extra) => ({ id: 'm' + String(counter += 1).padStart(9, '0'), kind: 'lunch', label: '', period: 3, dayTypeIds: [], scope: 'school', grades: [], groupIds: [], ...extra });
+const dutyOf = (extra) => ({ id: 'u' + String(counter += 1).padStart(9, '0'), kind: 'duty', label: '', when: 'before', period: 0, start: '', end: '', dayTypeIds: [], weekdays: [], from: '', to: '', roomId: null, place: '', teacherIds: [], subjectIds: [], everyone: false, ...extra });
+const hallorans = (rows, day) => rows.find((candidate) => candidate[0] === 'Ms. Halloran' && candidate[1] === (day || 'A Day'));
+
+test('the teacher grid with no marks and no duties is as it was, whether the lists are absent or empty', () => {
+  const plain = teacherGridRows(school());
+  const empty = school();
+  empty.marks = [];
+  empty.duties = [];
+  assert.deepEqual(teacherGridRows(empty), plain);
+  assert.equal(plain[0].includes('Before'), false);
+  assert.equal(plain[0].includes('After'), false);
+});
+
+test('the teacher grid: a free period that an always duty or a school mark takes reads as it, not "Planning"', () => {
+  const project = school();
+  // Ms. Halloran is free in Periods 1, 4, 5, 6, 7 and 8 on A Day
+  project.duties = [dutyOf({ label: 'Lunch duty', when: 'period', period: 0, teacherIds: [HALLORAN_ID] }), dutyOf({ kind: 'meeting', when: 'period', period: 3, teacherIds: [HALLORAN_ID] }), dutyOf({ kind: 'lunch', when: 'period', period: 4, teacherIds: [HALLORAN_ID] })];
+  project.marks = [markOf({ kind: 'lunch', period: 5 }), markOf({ kind: 'noclass', label: 'Testing', period: 6 }), markOf({ kind: 'activity', period: 7 })];
+  assertValid(project);
+  assert.deepEqual(hallorans(teacherGridRows(project)).slice(2), ['Lunch duty', '8B · 101', '6A · 101', 'Meeting', 'Their own lunch', 'Lunch', 'Testing', 'Activity']);
+});
+
+test('the teacher grid: a duty that holds on some days only is added to the cell with its days, and takes nothing away', () => {
+  const project = school();
+  project.duties = [dutyOf({ label: 'Bus duty', when: 'period', period: 0, teacherIds: [HALLORAN_ID], weekdays: [2] })];
+  assert.equal(hallorans(teacherGridRows(project))[2], 'Planning; Bus duty (on Wednesdays)');
+});
+
+test('the teacher grid: a duty in a period the teacher teaches is listed after the groups, so the clash is not hidden', () => {
+  const project = school();
+  project.duties = [dutyOf({ label: 'Hall', when: 'period', period: 1, teacherIds: [HALLORAN_ID], dayTypeIds: [A] })];
+  assert.equal(hallorans(teacherGridRows(project))[3], '8B · 101; Hall');
+  assert.equal(hallorans(teacherGridRows(project), 'B Day')[3], '7B · 101', 'B Day has no such duty');
+});
+
+test('the teacher grid: Before and After columns appear after the periods, only when some teacher has such a duty', () => {
+  const project = school();
+  project.duties = [dutyOf({ label: 'Bus loop', when: 'before', teacherIds: [HALLORAN_ID] })];
+  let rows = teacherGridRows(project);
+  assert.deepEqual(rows[0].slice(-2), ['Period 8', 'Before']);
+  assert.equal(hallorans(rows)[10], 'Bus loop');
+  assert.equal(rows.find((candidate) => candidate[0] === 'Mr. Brightwater')[10], '');
+  assert.equal(rows.every((line) => line.length === rows[0].length), true);
+  // a changed project is a new object, as the actions make it (marks.js indexes per project object)
+  const gated = { ...project, duties: project.duties.concat([dutyOf({ label: 'Gate', when: 'after', teacherIds: [HALLORAN_ID], dayTypeIds: [B] })]) };
+  rows = teacherGridRows(gated);
+  assert.deepEqual(rows[0].slice(-3), ['Period 8', 'Before', 'After']);
+  assert.equal(hallorans(rows)[11], '', 'the Gate duty is for B Day');
+  assert.equal(hallorans(rows, 'B Day')[11], 'Gate');
+  const onlyA = teacherGridRows(gated, A);
+  assert.equal(onlyA[0].includes('After'), false, 'no teacher has an After duty on A Day');
+});
+
+test('the teacher grid writes a duty\'s name exactly as typed', () => {
+  const project = school();
+  project.duties = [dutyOf({ label: '<b>"Hall"</b>, =1+1', when: 'period', period: 0, teacherIds: [HALLORAN_ID] })];
+  const rows = teacherGridRows(project);
+  assert.equal(hallorans(rows)[2], '<b>"Hall"</b>, =1+1');
+  const text = csvText(rows);
+  assert.equal(parse(text).rows.find((line) => line[0] === 'Ms. Halloran')[2], '<b>"Hall"</b>, =1+1');
+});
+
+test('the room grid: a No class period empties the slot, a Lunch period with a room keeps it', () => {
+  const plain = row(roomGridRows(school(), A), 'Cafeteria');
+  assert.equal(plain[3 + 3], '6A; 6B; 6C');
+  const lunch = school();
+  lunch.marks = [markOf({ kind: 'lunch', period: 3 })];
+  assert.equal(row(roomGridRows(lunch, A), 'Cafeteria')[3 + 3], '6A; 6B; 6C');
+  const none = school();
+  none.marks = [markOf({ kind: 'noclass', period: 3, scope: 'groups', groupIds: ['gsample06b'] })];
+  assert.equal(row(roomGridRows(none, A), 'Cafeteria')[3 + 3], '6A; 6C');
+  const all = school();
+  all.marks = [markOf({ kind: 'noclass', period: 3 })];
+  assert.equal(row(roomGridRows(all, A), 'Cafeteria')[3 + 3], '');
+  assert.equal(row(roomGridRows(all, B), 'Cafeteria')[3 + 3], '', 'B Day too: the mark is for every day type');
+});
+
+test('the room grid lists a group in the room that the teacher grid puts it in', () => {
+  const project = school();
+  project.marks = [markOf({ kind: 'noclass', period: 1, scope: 'groups', groupIds: ['gsample08b'] })];
+  // 8B is in Room 101 in Period 2 on A Day with Ms. Halloran; with No class it is in neither grid
+  assert.equal(hallorans(teacherGridRows(project))[3], 'Planning');
+  assert.equal(row(roomGridRows(project, A), '101')[3 + 1].includes('8B'), false);
+});
+
 test('the room grid lists the groups in each room, a double-booking as it is', () => {
   const rows = roomGridRows(school(), A);
   assert.deepEqual(rows[0].slice(0, 4), ['Room', 'Floor', 'Day type', 'Period 1']);
@@ -255,6 +373,7 @@ test('every export is named with the school, what it is and the date', () => {
     'Marrowby Middle School (sample) - building - 2026-09-01.json',
     'Marrowby Middle School (sample) - project - 2026-09-01.json',
     'Marrowby Middle School (sample) - subjects - 2026-09-01.csv',
+    'Marrowby Middle School (sample) - calendar - 2026-09-01.csv',
   ]);
 });
 

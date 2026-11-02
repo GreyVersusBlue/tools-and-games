@@ -10,26 +10,39 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, missingPage, printWhen } from '../page.js';
-import { dayTypeFor, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
+import { dayOnDate, dutyDate, todayOf, todayKey, watchClock, entryIsFree, takenBy, dayWords, dayTypeFor, bellsIdFor, bellsOnPick, longDate, meetingPeriods, periodTimes, everyTeacherDay, dayTypePicker, viewLink, sectionHeading, teacherDetail, entryWords } from '../clock.js';
 import { freeTeachers } from './free.js';
 
 // For each period a teacher teaches on a day type, who is free to cover it:
 //
-//   [{ period, entry, candidates: [{ teacher, sameSubject }] }]
+//   [{ period, entry, candidates: [{ teacher, sameSubject }], notFree: [{ teacher, reason }] }]
+//
+// A teacher on duty, at a meeting or under a mark is not a candidate: they
+// are listed in `notFree` with the reason ("On duty: Lunch duty"). `date`
+// settles a duty that holds on some days only.
 //
 // Same-subject teachers come first; within each part the order is the
 // school's own. A teacher with no subject is the same subject as nobody.
-export function coverageFor(school, teacherId, dayTypeId) {
+export function coverageFor(school, teacherId, dayTypeId, date) {
   const absent = school.teacher(teacherId);
-  const day = everyTeacherDay(school, dayTypeId).get(teacherId) || [];
+  const days = everyTeacherDay(school, dayTypeId, date);
+  const day = days.get(teacherId) || [];
   const periods = [];
   for (const entry of day) {
     if (entry.kind !== 'teaching') continue;
-    const free = freeTeachers(school, dayTypeId, entry.period).filter((teacher) => teacher.id !== teacherId);
+    const free = freeTeachers(school, dayTypeId, entry.period, date).filter((teacher) => teacher.id !== teacherId);
+    const notFree = [];
+    for (const teacher of school.teachers) {
+      const theirs = days.get(teacher.id)[entry.period];
+      if (teacher.id === teacherId || !theirs || theirs.kind !== 'planning' || entryIsFree(theirs)) continue;
+      const taken = takenBy(school, theirs, dayTypeId, date);
+      notFree.push({ teacher, reason: taken ? taken.reason : 'Busy' });
+    }
     const same = (teacher) => Boolean(absent.subjectId) && teacher.subjectId === absent.subjectId;
     periods.push({
       period: entry.period,
       entry,
+      notFree,
       candidates: free.filter(same).map((teacher) => ({ teacher, sameSubject: true })).concat(free.filter((teacher) => !same(teacher)).map((teacher) => ({ teacher, sameSubject: false }))),
     });
   }
@@ -74,30 +87,47 @@ export const coverageView = {
     if (route.id && !absent) return missingPage('teacher');
     if (!absent) return teacherChooser(ctx, 'coverage', 'Coverage', 'Who is free to cover each period of a teacher who is out.');
 
-    let dayType = dayTypeFor(ctx, route);
+    // A date in the address (from the substitute plan) settles the day as the
+    // plan does: a day type in the address holds, else the date's own, and the
+    // bells are the date's where the day type is the date's, else the regular
+    // ones. Without a date the address may still name its bells (`b`), as
+    // older links do.
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(route.query.date || '') && school.isDate(route.query.date) ? route.query.date : '';
+    let picked = Boolean(route.query.d && school.dayTypes.some((each) => each.id === route.query.d));
+    let dayType = picked || date === '' ? dayTypeFor(ctx, route) : dayOnDate(ctx, date).dayType;
+    const bellsOf = () => {
+      const day = dayOnDate(ctx, date);
+      return day.dayType.id === dayType.id ? day.bellsId : null;
+    };
+    let bellsId = date === '' ? bellsIdFor(ctx, route) : bellsOf();
+    const dated = date === '' ? null : h('p', { class: 'muted', dataset: { coverage: 'date' } }, 'For ', longDate(date), '.');
     const says = h('p', { class: 'lede', role: 'status' });
     const picker = h('div', { class: 'controls' });
     const out = h('div', { class: 'stack', dataset: { out: 'coverage' } });
     const links = h('p', { class: 'actions' });
     const word = school.data.settings.periodWord.toLowerCase();
+    let lastToday = '';
 
     const draw = () => {
-      const periods = coverageFor(school, absent.id, dayType.id);
+      // today's bells: a period that does not meet has nobody to cover
+      const meets = meetingPeriods(school, dayType.id, bellsId);
+      const when = date !== '' ? date : dutyDate(ctx, dayType.id);
+      const periods = coverageFor(school, absent.id, dayType.id, when).filter((item) => meets.has(item.period));
       const nobody = periods.filter((item) => item.candidates.length === 0);
       const name = typed(absent.name);
       let sentence;
-      if (periods.length === 0) sentence = [name, ' teaches no group on ', typed(dayType.name), ', so there is nothing to cover.'];
+      if (periods.length === 0) sentence = [name, ' teaches no group on ', dayWords(school, dayType, bellsId), ', so there is nothing to cover.'];
       else {
-        sentence = [name, ' teaches ', String(periods.length), ' of ', String(school.data.settings.periods), ' ', word, 's on ', typed(dayType.name), '. ',
+        sentence = [name, ' teaches ', String(periods.length), ' of ', String(meets.size), ' ', word, 's on ', dayWords(school, dayType, bellsId), '. ',
           nobody.length === 0 ? 'Somebody is free in every one of them.' : ['Nobody is free in ', listOf(nobody.map((item) => school.periodName(item.period))), '.']];
       }
       says.replaceChildren(h('span', null, sentence));
 
       out.replaceChildren(...periods.map((item) => {
-        const times = periodTimes(school, dayType.id, item.period);
+        const times = periodTimes(school, dayType.id, item.period, bellsId);
         return h('section', { class: 'card', dataset: { period: String(item.period) } },
           h('h2', { class: 'card__title' }, school.periodName(item.period), times ? h('span', { class: 'card__when' }, times) : null),
-          h('p', null, entryWords(school, item.entry)),
+          h('p', null, entryWords(school, item.entry, { dayTypeId: dayType.id, date: when })),
           sectionHeading('Free to cover', item.candidates.length),
           item.candidates.length === 0
             ? h('p', { class: 'muted' }, 'Nobody is free this ' + word + '.')
@@ -105,22 +135,54 @@ export const coverageView = {
               viewLink(school, 'teacher', candidate.teacher.id, [
                 h('span', { class: 'list__name' }, typed(candidate.teacher.name), candidate.sameSubject ? h('span', { class: 'tag' }, 'Same subject') : null),
                 h('span', { class: 'list__detail' }, teacherDetail(school, candidate.teacher)),
-              ], 'list__link')))));
+              ], 'list__link')))),
+          item.notFree.length === 0 ? null : h('details', { class: 'notfree', dataset: { notfree: String(item.period) } },
+            h('summary', { class: 'notfree__summary' }, 'Not free (' + item.notFree.length + ')'),
+            h('ul', { class: 'list', dataset: { list: 'notfree' } }, item.notFree.map((one) => h('li', { dataset: { teacher: one.teacher.id } },
+              viewLink(school, 'teacher', one.teacher.id, [
+                h('span', { class: 'list__name' }, typed(one.teacher.name)),
+                h('span', { class: 'list__detail' }, one.reason),
+              ], 'list__link'))))));
       }));
 
       links.replaceChildren(...[
-        school.has('sub') ? h('a', { class: 'btn', href: makeHash('sub', absent.id, { d: dayType.id }) }, 'Substitute plan') : null,
+        school.has('sub') ? h('a', { class: 'btn', href: makeHash('sub', absent.id, { d: date === '' || picked ? dayType.id : '', date }) }, 'Substitute plan') : null,
         school.has('teacher') ? h('a', { class: 'btn', href: makeHash('teacher', absent.id) }, 'The teacher\'s page') : null,
       ].filter(Boolean));
     };
 
-    const chosen = dayTypePicker(ctx, dayType.id, (next) => {
-      dayType = next;
-      ctx.replace(makeHash('coverage', absent.id, { d: route.query.d ? dayType.id : '' }));
+    const drawPicker = () => {
+      const chosen = dayTypePicker(ctx, dayType.id, (next) => {
+        dayType = next;
+        picked = true;
+        if (date === '') {
+          bellsId = bellsOnPick(ctx, next.id);
+          ctx.replace(makeHash('coverage', absent.id, { d: route.query.d ? dayType.id : '', b: route.query.d ? bellsId : '' }));
+        } else {
+          bellsId = bellsOf();
+          ctx.replace(makeHash('coverage', absent.id, { d: dayType.id, date }));
+        }
+        draw();
+      });
+      picker.replaceChildren(...(chosen ? [chosen] : []));
+    };
+    drawPicker();
+    draw();
+    lastToday = todayKey(todayOf(ctx));
+    const page = pageOf(['Coverage: ', typed(absent.name)], null, says, dated, picker, out, links);
+    // past midnight, or when a newer answer about today arrives, the sometimes
+    // duties are applied by the new date, and today's day type is today's again
+    watchClock(page, () => {
+      const key = todayKey(todayOf(ctx));
+      if (key === lastToday) return;
+      lastToday = key;
+      if (!picked && date === '') {
+        dayType = dayTypeFor(ctx, route);
+        bellsId = bellsIdFor(ctx, route);
+        drawPicker();
+      }
       draw();
     });
-    if (chosen) picker.appendChild(chosen);
-    draw();
-    return pageOf(['Coverage: ', typed(absent.name)], null, says, picker, out, links);
+    return page;
   },
 };

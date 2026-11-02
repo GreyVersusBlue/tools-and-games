@@ -46,6 +46,8 @@
 // route(graph, fromRoomId, toRoomId, options?)
 // routeToExit(graph, fromRoomId, options?)
 // routesForSchedule(project, graph?, options?)
+// runRoutes(routes, dayTypeId, bellsId?)
+// walkTarget(off, periods, period)
 // createRouteCache(limit?)
 //
 // options, all optional:
@@ -87,6 +89,7 @@
 import { DOOR_SIDES, defaultSettings, resolveSlotRoom } from './schema.js';
 import { buildGraph } from './graph.js';
 import { ownDayTypes, effectiveSchedule } from './day-types.js';
+import { offPeriods } from './bells.js';
 
 export const HEADING_NONE = 4;
 export const FIELD_LIMIT = 64;
@@ -559,17 +562,49 @@ export function routeToExit(graph, fromRoomId, options) {
   };
 }
 
-// Every transition's route, for every group, on every day type that is its
-// own copy. Transition t is the walk from period t into period t + 1.
+// Every transition's route, for every group, in every run. Transition t is
+// the walk from period t into period t + 1.
 //
 //   { days: [{ dayTypeId, groups: [{ groupId, routes: [one result per transition] }] }],
+//     bells: [{ dayTypeId, bellsId, groups }],   only when a run has a bell schedule
 //     transitions,   how many results there are
 //     pairs,         how many different (from room, to room) journeys they come to
 //     searches }     how many distance fields this call had to work out
 //
+// A run is { dayTypeId, bellsId }: a day type's classes under one set of
+// bells, bellsId null for the day type's regular bells (ARCHITECTURE 17.8).
+// A run with regular bells is in `days`, keyed and shaped exactly as before
+// bell schedules existed; a run with a bell schedule is in `bells`, in the
+// order the runs were given. options.runs is the list of runs and
+// options.meetingSlots(project, groupId, dayTypeId, bellsId) says where a
+// group is in one (engine/runs.js's runsOf and meetingSlots: crowd.js's
+// routesByRun hands both in). This module is carried by the published file
+// and runs.js is not, so they come in as options. Left out, every own day
+// type with its regular bells and effectiveSchedule's slots, which is what
+// meetingSlots gives for a run with regular bells and no marks.
+//
+// A transition of a bell-schedule run whose two slots are the very slots of
+// the same day type's regular run is that run's route object: the same
+// rooms give the same walk. A period that does not meet under the schedule
+// is an empty slot there, so a walk into it or out of it is 'no-room'.
+//
 // A slot with no room gives 'no-room'; a slot whose room is not in the
 // building gives 'room-missing' with `text`, the number the slot remembers.
 // With options.cache the second call for the same geometry searches nothing.
+// The period the walk out of `period` ends in under a bell schedule whose
+// `off` periods (a Set) do not meet: period + 1 when that meets; when it and
+// the periods after it do not, the first period after them that does (an
+// assembly in Period 3 makes the walk out of Period 2 a walk into Period 4);
+// null when `period` does not meet itself or nothing meets after it, since
+// the leading and trailing periods that do not meet move nobody
+// (ARCHITECTURE 17.3). The walk is kept under the period it leaves.
+export function walkTarget(off, periods, period) {
+  if (!Number.isInteger(period) || period < 0 || period + 1 >= periods || off.has(period)) return null;
+  let to = period + 1;
+  while (to < periods && off.has(to)) to += 1;
+  return to < periods ? to : null;
+}
+
 export function routesForSchedule(project, graph, options) {
   const opts = options || {};
   const routing = routingGraph(project, graph);
@@ -577,6 +612,8 @@ export function routesForSchedule(project, graph, options) {
   syncCache(cache, routing, opts);
   const plan = planFor(routing, opts);
   const searchesBefore = cache.searches;
+  const runs = Array.isArray(opts.runs) ? opts.runs : ownDayTypes(project).map((dayType) => ({ dayTypeId: dayType.id, bellsId: null }));
+  const slotsOf = typeof opts.meetingSlots === 'function' ? opts.meetingSlots : (of, groupId, dayTypeId) => effectiveSchedule(of, groupId, dayTypeId);
 
   const ends = (slot) => {
     const found = resolveSlotRoom(project, slot);
@@ -588,25 +625,40 @@ export function routesForSchedule(project, graph, options) {
   // each start room's field is worked out once however small the cache is
   const wanted = new Map();
   const days = [];
+  const regular = new Map();
   let transitions = 0;
-  for (const dayType of ownDayTypes(project)) {
+  for (const run of runs) {
+    const bellsId = typeof run.bellsId === 'string' ? run.bellsId : null;
+    const plain = bellsId === null ? null : regular.get(run.dayTypeId);
+    const off = bellsId === null ? null : offPeriods(project, bellsId);
     const groups = [];
-    for (const group of project.groups) {
-      const slots = effectiveSchedule(project, group.id, dayType.id);
+    project.groups.forEach((group, g) => {
+      const slots = slotsOf(project, group.id, run.dayTypeId, bellsId);
       const walks = [];
-      for (let t = 0; t + 1 < slots.length; t += 1) {
-        const a = ends(slots[t]);
-        const b = ends(slots[t + 1]);
-        walks.push([a, b]);
+      const same = [];
+      const was = plain ? plain[g] : null;
+      for (let t = 0; slots && t + 1 < slots.length; t += 1) {
         transitions += 1;
+        // the period walked into: the next one, or past the ones that do not meet
+        const target = off === null || off.size === 0 ? null : walkTarget(off, slots.length, t);
+        const to = target === null ? t + 1 : target;
+        if (to === t + 1 && was && was.slots[t] === slots[t] && was.slots[t + 1] === slots[t + 1]) {
+          walks.push(null);
+          same.push(t);
+          continue;
+        }
+        const a = ends(slots[t]);
+        const b = ends(slots[to]);
+        walks.push([a, b]);
         if (a.id && b.id && a.id !== b.id) {
           if (!wanted.has(a.id)) wanted.set(a.id, new Set());
           wanted.get(a.id).add(b.id);
         }
       }
-      groups.push({ groupId: group.id, walks });
-    }
-    days.push({ dayTypeId: dayType.id, groups });
+      groups.push({ groupId: group.id, slots, walks, was });
+    });
+    if (bellsId === null && !regular.has(run.dayTypeId)) regular.set(run.dayTypeId, groups);
+    days.push({ dayTypeId: run.dayTypeId, bellsId, groups });
   }
 
   let pairs = 0;
@@ -618,20 +670,38 @@ export function routesForSchedule(project, graph, options) {
   }
 
   const missing = (end, which, a, b) => ({ ...failure(end.missing ? 'room-missing' : 'no-room', which, null, null, a.id, b.id, plan), text: end.text });
-  return {
-    days: days.map((day) => ({
-      dayTypeId: day.dayTypeId,
-      groups: day.groups.map((group) => ({
-        groupId: group.groupId,
-        routes: group.walks.map(([a, b]) => {
-          if (!a.id) return missing(a, 'from', a, b);
-          if (!b.id) return missing(b, 'to', a, b);
-          return findRoute(routing, a.id, b.id, plan, cache);
-        }),
-      })),
-    })),
-    transitions,
-    pairs,
-    searches: cache.searches - searchesBefore,
-  };
+  const routed = new Map();
+  const groupsOf = (day) => day.groups.map((group) => {
+    const routes = group.walks.map((walk, t) => {
+      if (walk === null) return routed.get(group.was)[t];
+      const [a, b] = walk;
+      if (!a.id) return missing(a, 'from', a, b);
+      if (!b.id) return missing(b, 'to', a, b);
+      return findRoute(routing, a.id, b.id, plan, cache);
+    });
+    routed.set(group, routes);
+    return { groupId: group.groupId, routes };
+  });
+  const result = { days: [] };
+  const bells = [];
+  for (const day of days) {
+    if (day.bellsId === null) result.days.push({ dayTypeId: day.dayTypeId, groups: groupsOf(day) });
+    else bells.push({ dayTypeId: day.dayTypeId, bellsId: day.bellsId, groups: groupsOf(day) });
+  }
+  if (bells.length > 0) result.bells = bells;
+  result.transitions = transitions;
+  result.pairs = pairs;
+  result.searches = cache.searches - searchesBefore;
+  return result;
+}
+
+// The routes of one run in a routesForSchedule() result: the entry of
+// `days` keyed by dayTypeId, or with bellsId (a bell schedule's id) the
+// entry of `bells` for that day type under that schedule. dayTypeId is the
+// id the run is keyed by, the own day type for a day type that is the same
+// as another (the caller asks effectiveDayType). Null when it is not there.
+export function runRoutes(routes, dayTypeId, bellsId) {
+  if (!routes || !Array.isArray(routes.days)) return null;
+  if (typeof bellsId !== 'string') return routes.days.find((day) => day.dayTypeId === dayTypeId) || null;
+  return Array.isArray(routes.bells) ? routes.bells.find((day) => day.dayTypeId === dayTypeId && day.bellsId === bellsId) || null : null;
 }

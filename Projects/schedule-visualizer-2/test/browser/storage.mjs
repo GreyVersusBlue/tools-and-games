@@ -73,7 +73,7 @@ async function reload() {
 }
 
 before(async () => {
-  session = await openPlanner({ hash: '#project' });
+  session = await openPlanner({ hash: '#project', fullSample: true });
   page = session.page;
   await withActions();
 });
@@ -844,7 +844,7 @@ test('a save never overwrites a record newer than the one this tab read: it stop
 // this one read-only within 2 s, and taking it away hands the edit back.
 test('a tab that edits again after another tab swept an image its project names writes the image back', async () => {
   const main = { session, page };
-  const other = await openPlanner({ hash: '#project' });
+  const other = await openPlanner({ hash: '#project', fullSample: true });
   try {
     await other.page.evaluateOnNewDocument(() => {
       Object.defineProperty(Navigator.prototype, 'locks', { get: () => undefined, configurable: true });

@@ -19,3 +19,7 @@ export function findingWords(findings) {
     .map((finding) => SEVERITY_WORDS[finding.severity].one.replace(/^./, (first) => first.toUpperCase()) + ': ' + finding.text)
     .join(' ');
 }
+
+// The words for a marked period's kind, as the Day tab, the group editor and
+// the grid say them (the mark's own label stands in front of them).
+export const MARK_WORDS = { lunch: 'Lunch', advisory: 'Advisory', activity: 'Activity', noclass: 'No class' };

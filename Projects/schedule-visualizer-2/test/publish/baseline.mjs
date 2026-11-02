@@ -112,7 +112,8 @@ test('the recorded files hold no wall-clock time and nothing from this machine',
   const all = recorded('published.json') + recorded('locked.json') + recorded('code.txt');
   const dates = all.match(/\d{4}-\d{2}-\d{2}T[0-9:.]+Z/g) || [];
   assert.ok(dates.length >= 3);
-  for (const date of dates) assert.ok(['2026-09-01T12:00:00.000Z', '2026-10-31T12:00:00.000Z'].includes(date), date + ' is not the pinned clock or 60 days after it');
+  // the third is the stale date the sample's calendar gives: the day after its last date (2027-06-11), at noon; the data sets it, not the clock
+  for (const date of dates) assert.ok(['2026-09-01T12:00:00.000Z', '2026-10-31T12:00:00.000Z', '2027-06-12T12:00:00.000Z'].includes(date), date + ' is not the pinned clock, 60 days after it or the day after the sample calendar\'s end');
   assert.ok(!/\/home\/|\\Users\\|C:\\/.test(all), 'a path from a machine');
 });
 

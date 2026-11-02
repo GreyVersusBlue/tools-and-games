@@ -4,7 +4,15 @@
 import { h } from '../components/dom.js';
 import { card } from '../components/card.js';
 import { count, figures, list } from '../components/words.js';
-import { SAMPLE_PROJECT_ID } from '../../data/sample-school.js';
+import { SAMPLE_PROJECT_ID, sampleSchool } from '../../data/sample-school.js';
+
+// The sample's day types as a phrase ("A Day and B Day"), read from the
+// sample itself, so the card says what loading it brings.
+let sampleDays = null;
+function sampleDayWords() {
+  if (sampleDays === null) sampleDays = list(sampleSchool().dayTypes.map((dayType) => dayType.name));
+  return sampleDays;
+}
 
 export function sampleCard(ctx) {
   const lead = h('p', { class: 'card__lead' });
@@ -27,7 +35,7 @@ export function sampleCard(ctx) {
       button.textContent = 'Remove the sample school';
     } else {
       lead.textContent = 'A complete invented school, so every part of the tool can be explored in the first minute.';
-      detail.textContent = 'Three floors, thirteen rooms, twelve teachers, eight groups, an A Day and a B Day with bell times, two exits, and two deliberate problems to find. It replaces what is in this project now.';
+      detail.textContent = 'Three floors, thirteen rooms, twelve teachers, eight groups, its day types (' + sampleDayWords() + ') with their bell times, two exits, and two deliberate problems to find. It replaces what is in this project now.';
       button.textContent = 'Load the sample school';
     }
   }

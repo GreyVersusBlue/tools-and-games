@@ -18,6 +18,7 @@ import { makeHash } from '../router.js';
 import { pageOf, missingPage, printButton, pictureButton } from '../page.js';
 import { dayKindsOf } from './teacher.js';
 import { roomUse } from './room.js';
+import { markWords } from '../clock.js';
 
 // Scripts whose characters are set a full square wide (Chinese, Japanese,
 // Korean, the leading consonants of Hangul written in parts, the fullwidth
@@ -225,7 +226,7 @@ function subjectOf(school, room, teachers) {
 
 function dayOf(school, room) {
   const uses = new Map(school.dayTypes.map((dayType) => [dayType.id, roomUse(school, room.id, dayType.id)]));
-  const kinds = dayKindsOf(school, (dayType) => uses.get(dayType.id).map((period) => period.map((use) => [use.group.id, use.label, use.teachers.map((teacher) => teacher.id)])));
+  const kinds = dayKindsOf(school, (dayType) => uses.get(dayType.id).map((period) => period.map((use) => [use.group.id, use.label, use.teachers.map((teacher) => teacher.id), use.mark ? markWords(use.mark) : null])));
   return el('div', { class: 'sign__day', 'data-sign': 'day', 'data-count': String(kinds.length) }, kinds.map((kind) => {
     const bells = school.bells(kind.first.id);
     return el('section', { class: 'sign__kind' },
@@ -246,7 +247,7 @@ function dayOf(school, room) {
           return el('tr', { role: 'row' },
             el('th', { scope: 'row', role: 'rowheader' }, school.periodName(period)),
             el('td', { role: 'cell' }, bell && bell.start && bell.end ? school.time(bell.start) + ' to ' + school.time(bell.end) : ''),
-            el('td', { role: 'cell' }, here.length === 0 ? 'Empty' : namesListed(here.map((use) => use.group.name))),
+            el('td', { role: 'cell' }, here.length === 0 ? 'Empty' : namesListed(here.map((use) => use.group.name + (use.mark ? ' (' + markWords(use.mark) + ')' : '')))),
             el('td', { role: 'cell' }, namesListed(who.map((teacher) => teacher.name))));
         }))));
   }));

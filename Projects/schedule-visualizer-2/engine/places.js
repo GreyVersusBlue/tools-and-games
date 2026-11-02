@@ -52,7 +52,9 @@
 //     the places ranked busiest first, for the hotspot table. options:
 //     { graph, places (places()'s result), load (loads()'s result),
 //       crowd (simulateDay()'s result, for the delay; may be left out),
-//       measure: 'busiest' (the default) | 'total', limit }
+//       measure: 'busiest' (the default) | 'total', limit,
+//       bellsId: a bell schedule's id, to rank the day type's run under it
+//       (its routes are in routes.bells; null or left out is the regular run) }
 //     Each row is
 //     { place, load, peak, unit, groups, delay, dayDelay, cells }
 //       load     the place's load: the highest load of any of its cells that
@@ -277,7 +279,8 @@ export function hotspots(project, routes, dayTypeId, options) {
   const opts = options || {};
   const graph = opts.graph || buildGraph(project);
   const cut = opts.places || places(project, graph);
-  const load = opts.load || loads(project, routes, dayTypeId, graph);
+  const bellsId = typeof opts.bellsId === 'string' ? opts.bellsId : null;
+  const load = opts.load || (bellsId === null ? loads(project, routes, dayTypeId, graph) : loads(project, routes, dayTypeId, graph, bellsId));
   if (!load) return [];
   const byTotal = opts.measure === 'total';
   const crowd = opts.crowd && Array.isArray(opts.crowd.transitions) ? opts.crowd.transitions : null;
@@ -330,7 +333,7 @@ export function hotspots(project, routes, dayTypeId, options) {
       load: best,
       peak,
       unit: load.unit,
-      groups: contributors(project, routes, dayTypeId, where, graph, byTotal ? undefined : { period: peak }),
+      groups: contributors(project, routes, dayTypeId, where, graph, byTotal ? (bellsId === null ? undefined : { bellsId }) : (bellsId === null ? { period: peak } : { period: peak, bellsId })),
       delay,
       dayDelay,
       cells: isLink ? [] : members

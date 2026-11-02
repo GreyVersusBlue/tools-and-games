@@ -10,6 +10,11 @@
 //   one slot   the same after one group's room in one period has changed:
 //              budget 150 ms (the median of five different edits)
 //
+// Both hold for the fixture grown as ARCHITECTURE 17.8 says too
+// (test/timing/big-runs.mjs: four own day types, two followers, two bell
+// schedules, twelve runs), where a one-slot change runs the two transitions
+// of the day type it is on and retimes them for the bell schedules.
+//
 // The suite fails at twice each budget, to leave room for a slow runner, and
 // prints the measured numbers either way. The clock is read here, in the
 // test, never in the engine.
@@ -28,6 +33,7 @@ import * as actions from '../../engine/actions.js';
 import { allRooms } from '../../engine/schema.js';
 import { engineFor } from '../../ui/engine-client.js';
 import { bigProject, BIG } from '../fixtures/big.mjs';
+import { bigRunsProject, BIG_RUNS } from './big-runs.mjs';
 
 const COLD_BUDGET = 1000;
 const EDIT_BUDGET = 150;
@@ -87,6 +93,29 @@ test('the big fixture end to end on the main thread: cold under 1 s, a one-slot 
   assert.ok(result.work.searches > 100, 'cold really searched: ' + result.work.searches);
   assert.ok(result.walks.groups.length > 1000, 'the fixture really walks: ' + result.walks.groups.length);
   assert.ok(result.findings.findings.some((finding) => finding.kind === 'group-walk'), 'and somebody is late');
+  assert.ok(cold.ms < COLD_BUDGET * SLACK, 'cold took ' + cold.ms.toFixed(1) + ' ms, over ' + COLD_BUDGET * SLACK);
+  assert.ok(median < EDIT_BUDGET * SLACK, 'a one-slot change took ' + median.toFixed(1) + ' ms, over ' + EDIT_BUDGET * SLACK);
+  client.close();
+});
+
+test('the grown fixture, twelve runs, end to end on the main thread: cold under 1 s, a one-slot change under 150 ms', async () => {
+  const store = storeOf(bigRunsProject({ seed: 1 }));
+  const client = engineFor(store, { worker: false });
+  const cold = await timed(() => store.derived.results());
+  const result = cold.value;
+  const edits = [];
+  for (let i = 0; i < 5; i += 1) {
+    // the own day types are A, B, C and D (indexes 0 to 3)
+    moveGroup(store, 7 + i * 11, i % 4, 2 + i, i);
+    const edit = await timed(() => store.derived.results());
+    assert.ok(edit.value.work.transitionsRun <= 2, 'edit ' + i + ' simulated ' + edit.value.work.transitionsRun + ' transitions');
+    edits.push(edit.ms);
+  }
+  const median = edits.slice().sort((a, b) => a - b)[2];
+  console.log('# pipeline, twelve runs, cold (after the case above in this process): ' + cold.ms.toFixed(1) + ' ms (budget ' + COLD_BUDGET + ', fails at ' + COLD_BUDGET * SLACK + '): ' + result.work.transitions + ' transitions, ' + result.work.transitionsRun + ' simulated, ' + result.findings.findings.length + ' findings');
+  console.log('# pipeline, twelve runs, one slot changed: median ' + median.toFixed(1) + ' ms of ' + edits.map((ms) => ms.toFixed(1)).join(', ') + ' (budget ' + EDIT_BUDGET + ', fails at ' + EDIT_BUDGET * SLACK + ')');
+  assert.equal(result.work.transitions, (BIG.periods - 1) * BIG_RUNS.runs);
+  assert.ok(result.work.transitionsRun <= (BIG.periods - 1) * BIG_RUNS.ownDayTypes + 1, 'cold simulated ' + result.work.transitionsRun + ': the bell-schedule runs are retimed');
   assert.ok(cold.ms < COLD_BUDGET * SLACK, 'cold took ' + cold.ms.toFixed(1) + ' ms, over ' + COLD_BUDGET * SLACK);
   assert.ok(median < EDIT_BUDGET * SLACK, 'a one-slot change took ' + median.toFixed(1) + ' ms, over ' + EDIT_BUDGET * SLACK);
   client.close();

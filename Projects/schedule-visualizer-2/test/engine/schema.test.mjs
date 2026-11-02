@@ -77,9 +77,12 @@ test('newProject takes its passcode from the caller, and has every view on and 6
   assert.equal(schema.newProject(makeIds(), clock, { passcode: DEFAULT_PASSCODE }).publish.passcode, 'bulldogs2015');
   assert.equal(schema.defaultPublish(DEFAULT_PASSCODE).passcode, 'bulldogs2015');
   assert.equal(publish.stalenessDays, 60);
-  assert.deepEqual(Object.keys(publish.views), schema.PUBLISH_VIEWS);
+  // the calendar page's switch is kept now and published from SV2-77
+  assert.deepEqual(Object.keys(publish.views), schema.PUBLISH_VIEWS.concat(['calendar']));
+  assert.deepEqual(schema.LATER_PUBLISH_VIEWS, ['calendar']);
   assert.ok(Object.values(publish.views).every((on) => on === true));
   assert.equal(publish.lastPublishedAt, null);
+  assert.equal(publish.staleAtCalendarEnd, true);
   assert.deepEqual(onboarding, { steps: {}, dismissed: false, neverShow: false });
   assert.deepEqual([accepted, scenario], [[], null]);
 });
@@ -210,4 +213,48 @@ test('findRoom, floorOfRoom and allRooms read the building', () => {
   assert.equal(schema.findRoom(project, 'rnowhere00'), null);
   assert.equal(schema.allRooms(project).length, 13);
   assert.equal(schema.findFloor(project, 'fsample003').level, 3);
+});
+
+test('ARCHITECTURE 17: the limits, the new project\'s fields, and the readers that treat absent as none', () => {
+  assert.deepEqual([schema.DAY_TYPES_MOST, schema.BELL_SCHEDULES_MOST, schema.NAME_MOST, schema.SHORT_MOST, schema.CALENDAR_DAYS_MOST, schema.ROTATION_RANGE, schema.DATE_LABEL_MOST], [12, 12, 40, 4, 731, [1, 24], 60]);
+  const project = emptyProject();
+  assert.deepEqual([project.bellSchedules, project.calendar], [[], null]);
+  assert.deepEqual(project.dayTypes.map((d) => [d.own, d.sameAs, d.short]), [[true, null, ''], [false, null, '']]);
+  assert.deepEqual(schema.newBellSchedule('bsample0er', 'Early Release', [null]), { id: 'bsample0er', name: 'Early Release', short: '', bells: [null], off: [] });
+  assert.deepEqual(schema.defaultWeekdays().map((rule) => rule.day), ['rotation', 'rotation', 'rotation', 'rotation', 'rotation', 'closed', 'closed']);
+  assert.deepEqual(schema.bellSchedulesOf({}), []);
+  assert.deepEqual(schema.bellSchedulesOf({ bellSchedules: 'x' }), []);
+  assert.equal(schema.calendarOf({}), null);
+  assert.equal(schema.calendarOf({ calendar: [] }), null);
+  assert.deepEqual(schema.calendarOf({ calendar: { start: 'x' } }), { start: 'x' });
+  assert.equal(schema.spacelessKey(' Early  Release '), 'earlyrelease');
+  assert.equal(schema.textLength('Τρίτη 😀'), 7);
+});
+
+// ---------------------------------------------------------------- marks and duties (SV2-83)
+
+test('newProject has no marks and no duties: they are absent until the first is added', () => {
+  const project = emptyProject();
+  assert.equal('marks' in project, false);
+  assert.equal('duties' in project, false);
+  assert.deepEqual(schema.marksOf(project), []);
+  assert.deepEqual(schema.dutiesOf(project), []);
+  assert.deepEqual(schema.marksOf({ marks: 'x' }), []);
+  assert.deepEqual(schema.dutiesOf(null), []);
+});
+
+test('newMark and newDuty are valid in a project, with the defaults the actions rely on', () => {
+  const project = school();
+  project.marks = [schema.newMark('mtest00001', 'lunch', 3)];
+  project.duties = [schema.newDuty('utest00001', 'duty')];
+  assert.deepEqual(validate(project), []);
+  assert.deepEqual(project.marks[0], { id: 'mtest00001', kind: 'lunch', label: '', period: 3, dayTypeIds: [], scope: 'school', grades: [], groupIds: [] });
+  assert.equal(project.duties[0].when, 'before');
+  assert.equal(project.duties[0].everyone, false);
+  assert.deepEqual(schema.MARK_KINDS, ['lunch', 'advisory', 'activity', 'noclass']);
+  assert.deepEqual(schema.DUTY_KINDS, ['duty', 'meeting', 'lunch']);
+});
+
+test('lastPublishedHadCalendar is not in the defaults: absent reads as no', () => {
+  assert.equal('lastPublishedHadCalendar' in schema.defaultPublish(''), false);
 });

@@ -14,9 +14,9 @@
 //
 //   routing   in a fresh thread with engine/worker.js loaded, the project
 //             posted to it, and then every route of the schedule from
-//             nothing (routingGraph and routesForSchedule, the graph built
-//             inside the measure, as routing.mjs times it), by the routing
-//             module engine/worker.js itself imported: budget 700 ms
+//             nothing (routingGraph and crowd.js routesByRun, every run, the
+//             graph built inside the measure, as routing.mjs times it), by
+//             the modules engine/worker.js itself imported: budget 700 ms
 //             (ARCHITECTURE 14), timed inside the thread
 //   derive    in another fresh thread, the page's first question: a
 //             'sv2-derive' message with the project, answered by
@@ -26,6 +26,10 @@
 //             way). It holds three rows of ARCHITECTURE 14 together, so its
 //             budget is theirs added: routing 700, crowd 500, checks 100,
 //             1300 ms
+//   derive, twelve runs   the same for the fixture grown as ARCHITECTURE
+//             17.8 says (test/timing/big-runs.mjs: four own day types and
+//             two bell schedules), under the same 1300 ms: the cold figure
+//             for a school with bell schedules, since every thread is new
 //
 // Each is held on the median of RUNS batches (one fresh thread each). The
 // suite fails at twice each budget (SLACK 2, as every timing file here: a
@@ -48,13 +52,14 @@ if (!isMainThread) {
   globalThis.WorkerGlobalScope = WorkerGlobalScope;
   globalThis.self = scope;
   // the same module instance engine/worker.js imports, so what is timed is its routing
-  const { routingGraph, routesForSchedule, createRouteCache } = await import('../../engine/routing.js');
+  const { routingGraph, createRouteCache } = await import('../../engine/routing.js');
+  const { routesByRun } = await import('../../engine/crowd.js');
   const { buildGraph } = await import('../../engine/graph.js');
   parentPort.on('message', (message) => {
     if (!message || message.type !== ROUTE_REQUEST) return;
     const project = message.project;
     const started = performance.now();
-    const routes = routesForSchedule(project, routingGraph(project, buildGraph(project)), { cache: createRouteCache(), geometryVersion: 1 });
+    const routes = routesByRun(project, routingGraph(project, buildGraph(project)), { cache: createRouteCache(), geometryVersion: 1 });
     const ms = performance.now() - started;
     let ok = 0;
     for (const day of routes.days) for (const group of day.groups) for (const found of group.routes) if (found.ok && !found.same) ok += 1;
@@ -67,6 +72,7 @@ if (!isMainThread) {
   const { default: assert } = await import('node:assert/strict');
   const { READY, REQUEST, ANSWER } = await import('../../engine/worker.js');
   const { bigProject, BIG } = await import('../fixtures/big.mjs');
+  const { bigRunsProject, BIG_RUNS } = await import('./big-runs.mjs');
 
   const ROUTING_BUDGET = 700;
   const DERIVE_BUDGET = 700 + 500 + 100;
@@ -173,5 +179,30 @@ if (!isMainThread) {
     assert.deepEqual(answer.kept, [], 'nothing was left out of a first answer');
     assert.ok(answer.walks.groups.length > 1000, 'the fixture really walks: ' + answer.walks.groups.length);
     assert.ok(at < DERIVE_BUDGET * SLACK, 'the first derive in the worker took ' + at.toFixed(1) + ' ms at the median, over ' + DERIVE_BUDGET * SLACK);
+  });
+
+  test('the page\'s first question to a cold worker for the twelve runs of the grown fixture: under ' + DERIVE_BUDGET + ' ms', async () => {
+    const project = bigRunsProject({ seed: 1 });
+    const versions = { geometry: 1, building: 1, schedule: 1 };
+    const each = [];
+    let last = null;
+    for (let run = 0; run < RUNS; run += 1) {
+      const { thread, ready } = startThread();
+      try {
+        await ready;
+        const started = performance.now();
+        last = await ask(thread, { type: REQUEST, generation: run + 1, project, versions }, ANSWER);
+        each.push(performance.now() - started);
+      } finally {
+        await thread.terminate();
+      }
+    }
+    const at = median(each);
+    assert.equal(last.ok, true, 'the worker answered: ' + last.error);
+    const answer = last.answer;
+    console.log('# worker derive, twelve runs, cold, post to answer: median ' + at.toFixed(1) + ' ms of ' + each.map((ms) => ms.toFixed(1)).join(', ') + ' (budget ' + DERIVE_BUDGET + ', fails at ' + DERIVE_BUDGET * SLACK + '); ' + answer.work.transitions + ' transitions, ' + answer.work.transitionsRun + ' simulated, ' + (answer.walks.groups.length + answer.walks.bells.groups.length) + ' group walks, ' + answer.findings.findings.length + ' findings');
+    assert.equal(answer.work.transitions, (BIG.periods - 1) * BIG_RUNS.runs);
+    assert.equal(answer.crowdBells.length, BIG_RUNS.runs - BIG_RUNS.ownDayTypes);
+    assert.ok(at < DERIVE_BUDGET * SLACK, 'the first derive of twelve runs took ' + at.toFixed(1) + ' ms at the median, over ' + DERIVE_BUDGET * SLACK);
   });
 }

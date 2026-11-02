@@ -7,13 +7,14 @@
 // the panel says so and keeps the last answer, marked as old.
 //
 // comparePanel(env) -> { element, update(state) }
-//   env.ctx, env.memory (memory.dayTypeId, memory.transition), env.ask()
+//   env.ctx, env.memory (memory.dayTypeId, memory.bellsId, memory.transition), env.ask()
 //   (ask the lane again with the memory's options)
 //   state: { project, compare (or null), scenario (open or not), pending, old, failed }
 
 import { h } from '../components/dom.js';
 import { count } from '../components/words.js';
 import { ownDayTypes } from '../../engine/day-types.js';
+import { bellSchedulesOf } from '../../engine/schema.js';
 import { figureRows, groupRows, placeRow, transitionChoices } from './model.js';
 
 const SEVERITY = { problem: 'Problem', warning: 'Warning', note: 'Note' };
@@ -32,17 +33,25 @@ export function comparePanel(env) {
   const memory = env.memory;
   const title = h('h2', { class: 'scn-compare__title' }, 'Before and after');
   const daySelect = h('select', { class: 'field__input', id: 'scenario-compare-day', data: { key: 'scenario-compare-day' } });
+  // which bells: shown only when the project has a bell schedule ("Regular" first)
+  const bellsSelect = h('select', { class: 'field__input', id: 'scenario-compare-bells', data: { key: 'scenario-compare-bells' } });
   const whenSelect = h('select', { class: 'field__input', id: 'scenario-compare-when', data: { key: 'scenario-compare-when' } });
   daySelect.addEventListener('change', () => {
     memory.dayTypeId = daySelect.value === '' ? null : daySelect.value;
+    env.ask();
+  });
+  bellsSelect.addEventListener('change', () => {
+    memory.bellsId = bellsSelect.value === '' ? null : bellsSelect.value;
     env.ask();
   });
   whenSelect.addEventListener('change', () => {
     memory.transition = whenSelect.value === '' ? null : Number(whenSelect.value);
     env.ask();
   });
+  const bellsField = h('div', { class: 'field', hidden: true, data: { field: 'bells' } }, h('label', { class: 'field__label', for: 'scenario-compare-bells' }, 'Bells'), bellsSelect);
   const options = h('div', { class: 'scn-compare__options' },
     h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'scenario-compare-day' }, 'Day type'), daySelect),
+    bellsField,
     h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'scenario-compare-when' }, 'Places: the whole day or one transition'), whenSelect));
   const status = h('p', { class: 'scn-compare__status', role: 'status', data: { part: 'status' } });
   const body = h('div', { class: 'scn-compare__body', data: { part: 'body' } });
@@ -51,16 +60,21 @@ export function comparePanel(env) {
   let optionsKey = '';
   function drawOptions(project) {
     const days = ownDayTypes(project);
-    const transitions = transitionChoices(project);
-    const key = JSON.stringify([days.map((day) => [day.id, day.name]), transitions.map((each) => each.label)]);
+    const schedules = bellSchedulesOf(project);
+    if (memory.bellsId !== null && !schedules.some((schedule) => schedule.id === memory.bellsId)) memory.bellsId = null;
+    const transitions = transitionChoices(project, memory.bellsId);
+    const key = JSON.stringify([days.map((day) => [day.id, day.name]), schedules.map((schedule) => [schedule.id, schedule.name]), transitions.map((each) => each.label)]);
     if (key !== optionsKey) {
       optionsKey = key;
       daySelect.replaceChildren(h('option', { value: '' }, 'Every day type'), ...days.map((day) => h('option', { value: day.id }, day.name)));
+      bellsSelect.replaceChildren(h('option', { value: '' }, 'Regular'), ...schedules.map((schedule) => h('option', { value: schedule.id }, schedule.name)));
       whenSelect.replaceChildren(h('option', { value: '' }, 'The whole day'), ...transitions.map((each) => h('option', { value: each.value }, each.label)));
     }
+    bellsField.hidden = schedules.length === 0;
     if (memory.dayTypeId !== null && !days.some((day) => day.id === memory.dayTypeId)) memory.dayTypeId = null;
-    if (memory.transition !== null && !(memory.transition < transitions.length)) memory.transition = null;
+    if (memory.transition !== null && !transitions.some((each) => each.value === String(memory.transition))) memory.transition = null;
     daySelect.value = memory.dayTypeId === null ? '' : memory.dayTypeId;
+    bellsSelect.value = memory.bellsId === null ? '' : memory.bellsId;
     whenSelect.value = memory.transition === null ? '' : String(memory.transition);
   }
 

@@ -27,7 +27,8 @@ import {
 } from '../../ui/project/clear.js';
 import { importSafetyLine } from '../../ui/project/files.js';
 import { bigProject } from '../fixtures/big.mjs';
-import { school, clone, clock, makeIds, assertValid } from './helpers.mjs';
+import { school, clone, clock, makeIds, assertValid, ctx } from './helpers.mjs';
+import { addBellSchedule, makeCalendar } from '../../engine/actions.js';
 
 const HOSTILE = '<img src=x onerror=alert(1)> “Before” & \'7th\' 学年 ‮evil';
 
@@ -255,6 +256,16 @@ test('clearing the schedule takes the groups, teachers, accepted findings and sc
   assert.equal(cleared.id, project.id);
 });
 
+test('clearing the schedule leaves the other bell schedules and the calendar, as its sentence says (SV2-78b)', () => {
+  const made = makeCalendar(addBellSchedule(school(), { name: 'Early Release' }, ctx()), { start: '2026-08-31', end: '2027-06-11' }, ctx());
+  assert.ok(made.bellSchedules.length === 1 && made.calendar, 'the project has both to keep');
+  const cleared = clearedSchedule(made);
+  assertValid(cleared);
+  assert.equal(cleared.bellSchedules, made.bellSchedules);
+  assert.equal(cleared.calendar, made.calendar);
+  assert.match(scheduleWords(made).keeps, /the other bell schedules, the calendar and the settings stay too\.$/);
+});
+
 test('a new project is empty, valid and a project of its own; the theme comes across', () => {
   const project = school();
   project.settings.theme = 'dark';
@@ -276,7 +287,7 @@ test('each clear says exactly what it removes and what stays, and says so when t
   assert.deepEqual(scheduleWords(project), {
     empty: false,
     removes: 'Removes 8 groups with their schedules and 12 teachers.',
-    keeps: 'The building stays with its rooms, which no longer have teachers. The subjects, the day types with their bell times, and the settings stay too.',
+    keeps: 'The building stays with its rooms, which no longer have teachers. The subjects, the day types with their bell times, the other bell schedules, the calendar and the settings stay too.',
   });
   assert.equal(newProjectWords(project).removes, 'Replaces the whole project with an empty one: the building, the schedule, the scenario, the publish settings and every other setting. This project has 3 floors, 13 rooms, 12 teachers, 8 groups, 9 subjects and 2 day types.');
   assert.equal(newProjectWords(project).empty, false, 'a new project can always be started');

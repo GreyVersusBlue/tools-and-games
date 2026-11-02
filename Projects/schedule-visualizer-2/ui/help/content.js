@@ -23,7 +23,7 @@
 // A section, a shortcut group or a setting with no words here still shows,
 // with a sentence saying Help has nothing for it; the Node test fails first.
 
-import { defaultSettings, STUDENTS_PER_LANE_CELL, DOOR_SIDES } from '../../engine/schema.js';
+import { defaultSettings, STUDENTS_PER_LANE_CELL, DOOR_SIDES, DAY_TYPES_MOST, DEFAULT_DAY_TYPE_NAMES } from '../../engine/schema.js';
 import { CROSSING_WAIT_MAX, CAP_FACTOR, CAP_MINIMUM_SECONDS, columnLength, walkingSeconds } from '../../engine/crowd.js';
 import { routingGraph } from '../../engine/routing.js';
 import { LOAD_BANDS, bandEdges } from '../../engine/load.js';
@@ -33,6 +33,9 @@ import { HANDLE_MARGIN } from '../surface/tools/select.js';
 import { periodWords, count } from '../components/words.js';
 
 export const NOTHING_WRITTEN = 'Help has nothing written for this yet.';
+
+// The calendar's rule (ARCHITECTURE 17.4), in plain words.
+export const ROTATION_RULE = 'The rotation moves on one step on every school day it decides. Days with no school, and weekdays that always have the same day type, do not move it. Setting a date to a day type in the rotation puts the rotation there, and the next school day follows on from it. Next in the rotation makes a date (a Saturday make-up day) take the next one. A snow day (No school) pushes every later day back by one; set the day after it to keep the old order instead.';
 
 // What each section is for, and what to do first. Keyed by the section's id
 // in the rail; `more` is a line or two on its tabs.
@@ -44,8 +47,8 @@ export const SECTION_HELP = {
   },
   schedule: {
     purpose: (w) => 'Enter the school day and who is where: the ' + w.many + ' and bells, the subjects, the teachers, and each group’s room for every ' + w.one + ' on every day type.',
-    first: (w) => 'Add teachers under Teachers, then add a group under Groups and pick its room for each ' + w.one + '. Day sets how many ' + w.many + ' there are, what they are called, and the bells.',
-    more: 'Grid is the whole schedule as a spreadsheet: changes there wait for Apply. Checks lists what is wrong (a double-booking, a walk too long for the passing time) with Show, Fix… and Accept. Import reads groups, teachers or subjects from a CSV file. B Day starts as the same as A Day until you make its own copy.',
+    first: (w) => 'Add teachers under Teachers, then add a group under Groups and pick its room for each ' + w.one + '. Day sets how many ' + w.many + ' there are, what they are called, the day types and the bells.',
+    more: (w) => 'Calendar says which day type, and which bells, each date of the year has, so the staff browser knows what today is. Make a calendar with its first and last day, the school weekdays, the rotation and the breaks; then choose any date to change it. ' + ROTATION_RULE + ' Grid is the whole schedule as a spreadsheet: changes there wait for Apply, and its Day type choice shows every day type or one. Checks lists what is wrong (a double-booking, a walk too long for the passing time) with Show, Fix… and Accept. Import reads groups, teachers or subjects from a CSV file. Day holds the day types, up to ' + DAY_TYPES_MOST + ': each has its own classes or is the same as another, and Change… turns one into the other. It also holds the regular bells of each day type, and other bell schedules, such as an early release, where the ' + w.many + ' ticked No class do not meet. When there are more day types of their own than fit side by side, the group editor’s Show chips choose which it shows. Day ends with Marked periods: Lunch, Advisory, Activity or No class on one ' + w.one + ' of the day, for the whole school, some grades or some groups. Any ' + w.one + ' marked No class does not meet for those groups, and it beats every other mark. A group at Lunch is not teaching, and a teacher with nothing in ' + w.many + ' the school has marked shows the mark instead of Planning. Duties lists bus duty, lunch duty and standing meetings: when, which days, where and who, by teacher, by subject or all staff. They show on each teacher’s day, in the Grid’s Teachers table and on printed schedules, and Checks warns when a teacher’s duty falls when they are teaching.',
   },
   movement: {
     purpose: (w) => 'Watch every group walk between one ' + w.one + ' and the next: the routes, where the corridors fill, and who cannot make it in the passing time.',
@@ -80,6 +83,7 @@ export const SHORTCUT_GROUPS = {
   Anywhere: 'Work on every screen.',
   Building: 'Work on the Building plan once it has the keyboard: Tab to it, or press F6 until it is reached.',
   'Schedule grid': 'Work in Schedule › Grid, with a slot chosen.',
+  'Schedule calendar': 'Work in Schedule › Calendar, on a date of the year. A run of dates can also be chosen with Through in a date’s dialog, by touch or with a screen reader.',
   Movement: 'Work on the Movement map once it has the keyboard.',
   'Scenario lab': 'Work on the scenario lab’s map once it has the keyboard.',
   Safety: 'Work on the Safety map once it has the keyboard.',
@@ -108,6 +112,7 @@ export function gestures() {
       'Press and hold for ' + (LONG_PRESS_MS / 1000) + ' seconds, moving less than ' + SLOP + ' px: on the Building plan, the menu for that cell.',
       'A selection can be grabbed up to ' + HANDLE_MARGIN + ' px outside its edge.',
       'A room drawn with a finger is selected, and the on-screen keyboard stays down: tap its number field to type.',
+      'In Schedule › Calendar, tap a date to change it. To change a run of dates, set Through in its dialog to the last one.',
     ] },
     { id: 'pen', device: 'Pen', items: [
       'The tip draws, as one finger does.',
@@ -143,7 +148,7 @@ export function words(settings) {
     { term: 'Exit', meaning: 'A point on a corridor that leads outside. It can have a door name and an assembly point.' },
     { term: 'Door', meaning: 'Where a room opens onto a corridor. A room with no door opens onto every corridor cell beside it.' },
     { term: w.One, meaning: 'One slot of the school day. The school picks the word: Period, Mod, Block or Hour.' + own },
-    { term: 'Day type', meaning: 'A named pattern of the day. There are at least two, A Day and B Day to start with.' },
+    { term: 'Day type', meaning: 'A named pattern of the day: which classes meet. A day type has its own classes, or is the same as another (“same as ' + DEFAULT_DAY_TYPE_NAMES[0] + '”) and follows it in everything. A new project has ' + DEFAULT_DAY_TYPE_NAMES.join(' and ') + ', and a project can have up to ' + DAY_TYPES_MOST + '.' },
     { term: 'Passing time', meaning: 'The gap between the end of one ' + w.one + ' and the start of the next.' },
     { term: 'Transition', meaning: 'The movement between two ' + w.many + ' that follow each other.' },
     { term: 'Group', meaning: 'A set of students who travel together all day. It has a name, and can have a grade and a head count.' },
@@ -152,6 +157,18 @@ export function words(settings) {
     { term: 'Load', meaning: 'How many students (or groups) cross a corridor cell.' },
     { term: 'Scenario', meaning: 'A set of trial changes to the schedule, kept apart from the real schedule until it is applied.' },
     { term: 'Finding', meaning: 'Something a check has noticed: a problem, a warning or a note.' },
+    // DESIGN 11.1's words
+    { term: 'Bell schedule', meaning: 'Which times ring: a start and end for each ' + w.one + '. An early release or an assembly day is another bell schedule for the same classes.' },
+    { term: 'Regular bells', meaning: 'A day type’s own bell schedule, the one it has when the calendar says nothing else.' },
+    { term: 'Calendar', meaning: 'Which day type, and which bells, each date of the school year has, so the staff browser knows what today is.' },
+    { term: 'Rotation', meaning: 'The order the day types come round in, such as A Day, B Day, A Day. It moves on one step on each school day it decides.' },
+    { term: 'No school', meaning: 'A date with no classes at all: a weekend, a holiday, a break or a snow day.' },
+    { term: 'No class', meaning: 'Said of ' + w.many + ' that do not meet on a day that has school, such as the afternoons of an early release.' },
+    { term: 'Marked period', meaning: 'Lunch, Advisory, Activity or No class, set on one ' + w.one + ' of the day for the whole school, some grades or some groups. A marked slot keeps its room, and No class beats every other mark.' },
+    { term: 'Duty', meaning: 'Something a teacher does beside teaching: bus duty, hall duty, lunch duty. It has a time, days, a place and who is on it, and it shows on their day without moving any group.' },
+    { term: 'Meeting', meaning: 'A standing meeting, such as the Wednesday science department meeting. It is listed with the duties and shows on each teacher’s day.' },
+    { term: 'Their own lunch', meaning: 'A teacher’s lunch, put in their day so it is not read as planning time.' },
+    { term: 'Next in the rotation', meaning: 'What a date set this way takes: the day type that comes next, as a Saturday make-up day does.' },
   ];
 }
 

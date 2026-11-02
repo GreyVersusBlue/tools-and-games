@@ -33,6 +33,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, prepPage, serve, SITE } from '../../../../Tools/board-check/harness.mjs';
+import { plainSchool } from '../engine/helpers.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const TOOL_DIR = path.resolve(HERE, '..', '..');
@@ -152,6 +153,11 @@ export const PAGE_CLOSE_MS = 5000;
 //   theme      'light' or 'dark': what the device prefers (prefers-color-scheme)
 //   device     an object to put in localStorage under sv2:device before the page loads
 //   keep       true: load whatever project this browser has saved (a second tab, a reload)
+//   fullSample true: leave the sample school as the planner builds it, with its
+//              Early Release and Assembly bells, calendar, marks and duties
+//              (SV2-82, SV2-87). Without it the page is given the sample as
+//              it was before those: its day types and nothing else, which is
+//              the school most journeys were written on. Ignored with `keep`.
 //   intercept  true: open the page through the site harness's request
 //              interception (no module worker will load; see the top of this file)
 export async function openPlanner(options) {
@@ -175,6 +181,9 @@ export async function openPlanner(options) {
   try {
     if (!browser) browser = await launch();
     page = opts.intercept === true ? await prepPage(browser, server.base, { ...size, dsf: 1 }) : await plainPage(browser, size);
+    // no module worker loads through the interception, and the engine gives
+    // up on one only after ~9 s: plainSample must not wait on its answer there
+    page.__noWorker = opts.intercept === true;
     page.on('request', (request) => {
       const address = request.url();
       requests.push(address);
@@ -202,6 +211,7 @@ export async function openPlanner(options) {
     }
     await page.goto(url(hash), { waitUntil: 'load' });
     await waitForSection(page, (hash.replace(/^#/, '').split('/')[0]) || 'building');
+    if (opts.keep !== true && opts.fullSample !== true) await plainSample(page);
     await page.evaluate(() => document.fonts.ready);
     if (size.mobile) await assertTouch(page, 'openPlanner ' + size.width + ' by ' + size.height + ' at ' + url(hash));
   } catch (error) {
@@ -222,6 +232,7 @@ export async function openPlanner(options) {
     browser,
     server,
     base: server.base,
+    fullSample: opts.fullSample === true,
     url,
     requests,
     offsite,
@@ -235,6 +246,54 @@ export async function openPlanner(options) {
       if (offsite.length > 0) throw new Error('The page asked for ' + offsite.length + ' ' + (offsite.length === 1 ? 'address' : 'addresses') + ' outside ' + server.base + ': ' + offsite.slice(0, 5).join(', '));
     },
   };
+}
+
+// The planner opens on the whole sample school. Put the plain one in its
+// place, as a project freshly loaded (the history starts again), and wait for
+// the sections to have worked out the new one.
+//
+// What the swap writes (SV2-87b looked, and the answer is that it must write
+// the save): store.replace tells every subscriber, and storage's own takes it
+// for an edit and saves the plain school over the device's copy about a second
+// later, with a recovery point to follow. Those writes are the app's own for a
+// project that has been loaded, and the tests lean on them: calendar.mjs,
+// calendar-review.mjs, calendar-faults.mjs, m1-pass.mjs, inspector.mjs and the
+// screens in no-offsite.mjs reload the page after opening it (to pin a clock, or
+// to open a second tab), and a reload lands on whatever the device saved. A
+// swap that left no save made every one of them open on the whole sample
+// again, and a swap that left a recovery point and no save made the next tab
+// boot on the question whether to restore it. So the save is made here, not
+// left to a timer: `flush()` writes it now, and plainSample returns when it is
+// written, so no reload can come in the second before it. The wait is on what
+// the sections answer from: the engine's results for this very project (the
+// promise the Schedule and Movement sections wait on, which settles after
+// theirs), then no section pending and the plan at rest. A page opened through
+// the interception (`intercept: true`) has no module worker, and the engine's
+// answer comes ~9 s late there, once it has given the worker up: the wait on
+// the engine is left out for such a page, and the sections' own `data-pending`
+// is what is waited on.
+export async function plainSample(page) {
+  const project = JSON.parse(JSON.stringify(plainSchool()));
+  const section = await page.evaluate(() => document.querySelector('.surface__layout')?.dataset.section || '');
+  const noWorker = page.__noWorker === true;
+  await page.evaluate(async (next, skipEngine) => {
+    const { store, storage } = globalThis.sv2;
+    // the theme is the device's, as the app's own Load the sample school keeps it
+    next.settings.theme = store.project.settings.theme;
+    store.replace(next);
+    if (store.project !== next) throw new Error('the plain sample is not the store\'s project after the swap');
+    if (!skipEngine) await store.derived.results().catch(() => null);
+    await storage.flush();
+  }, project, noWorker);
+  await page.waitForFunction(
+    (wanted) => document.documentElement.dataset.ready === 'true'
+      && document.querySelector('.surface__layout')?.dataset.section === wanted
+      && document.querySelector('[data-pending="true"]') === null,
+    // without a worker the first answer waits out the engine's ~9 s of patience, then is worked on the main thread
+    { timeout: noWorker ? 60000 : 15000 },
+    section,
+  );
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
 
 // Go to another address in the same page and wait for its section.
@@ -268,6 +327,7 @@ export async function visit(session, screen) {
   }
   await page.goto(session.url(screen.hash), { waitUntil: 'load' });
   await waitForSection(page, screen.hash.replace(/^#/, '').split('/')[0]);
+  if (screen.keep !== true && screen.fullSample !== true && session.fullSample !== true) await plainSample(page);
   await page.evaluate(() => document.fonts.ready);
   if (wanted && wanted.hasTouch) await assertTouch(page, 'visit ' + (screen.id || screen.hash) + ' at ' + wanted.width + ' by ' + wanted.height);
   if (screen.open) await screen.open(page);
@@ -337,6 +397,38 @@ export async function still(p) {
     next();
   }));
   assert.ok(rest.ok, 'the plan came to rest within 120 frames: box and view ' + rest.at + (rest.measured ? '' : ', the view not measured to the box'));
+}
+
+// A control at rest: it is on the page and its box is the same two frames
+// running. A press computed from a box read straight after a scroll or a
+// redraw lands where the control was, on a runner slow enough to be between
+// the two (SV2-87d). Resolves to the box; fails after 120 frames.
+export async function atRest(p, selector) {
+  const rest = await p.evaluate((wanted) => new Promise((resolve) => {
+    const read = () => {
+      const el = document.querySelector(wanted);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return [r.left, r.top, r.width, r.height].join(' ');
+    };
+    let last = read();
+    let frames = 0;
+    const next = () => requestAnimationFrame(() => {
+      const now = read();
+      frames += 1;
+      if (now !== null && now === last) {
+        const [left, top, width, height] = now.split(' ').map(Number);
+        resolve({ ok: true, left, top, width, height });
+      } else if (frames >= 120) resolve({ ok: false, at: now });
+      else {
+        last = now;
+        next();
+      }
+    });
+    next();
+  }), selector);
+  assert.ok(rest.ok, selector + ' came to rest within 120 frames, its box ' + rest.at);
+  return rest;
 }
 
 export { launch };

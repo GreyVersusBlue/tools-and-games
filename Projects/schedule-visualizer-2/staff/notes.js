@@ -116,25 +116,43 @@ export function writeNote(store, dayTypeIds, period, text) {
 
 // ---- on the reader's own day cards
 
-// Put the reader's notes on their day cards (the node dayCardsOf() made), in
+// "A Day", "A Day and C Day", "A Day, C Day and Half Day": the day types a
+// card stands for, as a list.
+export function dayListWords(names) {
+  if (names.length < 2) return names.join('');
+  return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+}
+
+// Put the reader's notes on their day cards (what dayCardsOf() made), in
 // place: under each period its note as text, and, once "Edit my notes" is
-// pressed, a field for each period instead. A card that stands for two day
-// types that are the same shows the first note there is among them (one kept
-// under the second day type alone is still shown), and what is typed there
-// is kept against both. Returns the button and the sentence that go
-// under the cards.
-export function noteFields(ctx, days) {
+// pressed, a field for each period instead. A card that stands for several
+// day types that are the same shows the first note there is among them (one
+// kept under the second day type alone is still shown), and what is typed
+// there is kept against each of them. Today's own card (a day with other
+// bells than its regular ones, DESIGN 11.8) shows the notes and takes none:
+// its periods are the same periods as its day type's card further on, where
+// they are typed, and what is typed there shows on both at once. Returns
+// the button and the sentence that go under the cards.
+export function noteFields(ctx, made) {
   const school = ctx.school;
+  const days = made.matches('.days') ? made : made.querySelector('.days');
   const notes = readNotes(ctx.store);
   const boxes = [];
   for (const card of days.querySelectorAll('.day')) {
     const ids = (card.dataset.days || '').split(' ').filter((id) => id !== '');
-    const names = ids.map((id) => school.dayTypes.find((dayType) => dayType.id === id)).filter(Boolean).map((dayType) => dayType.name).join(' and ');
+    const names = dayListWords(ids.map((id) => school.dayTypes.find((dayType) => dayType.id === id)).filter(Boolean).map((dayType) => dayType.name));
+    const shown = card.dataset.own === 'true';
     for (const row of card.querySelectorAll('.row[data-period]')) {
+      if (row.dataset.off === 'true') continue;
       const period = Number(row.dataset.period);
       const every = ids.map((id) => noteOf(notes, id, period));
       const kept = every.find((text) => !isBlankNote(text)) || every.find((text) => text !== '') || '';
       const paper = h('span', { class: 'note__paper' }, kept);
+      const key = ids[0] + ':' + period;
+      if (shown) {
+        row.appendChild(h('div', { class: 'row__note note', dataset: { note: key, empty: String(isBlankNote(kept)), shown: 'true' } }, paper));
+        continue;
+      }
       const count = h('span', { class: 'note__count', id: 'note-count-' + ids[0] + '-' + period }, noteCountOf(kept));
       const input = h('input', {
         class: 'field__input note__input',
@@ -147,12 +165,15 @@ export function noteFields(ctx, days) {
         'aria-describedby': count.id,
       });
       input.value = kept;
-      const box = h('div', { class: 'row__note note', dataset: { note: ids[0] + ':' + period, empty: String(isBlankNote(kept)) } }, paper, input, count);
+      const box = h('div', { class: 'row__note note', dataset: { note: key, empty: String(isBlankNote(kept)) } }, paper, input, count);
       input.addEventListener('input', () => {
         writeNote(ctx.store, ids, period, input.value);
-        paper.textContent = input.value;
         count.textContent = noteCountOf(input.value);
-        box.dataset.empty = String(isBlankNote(input.value));
+        for (const each of days.querySelectorAll('.note')) {
+          if (each.dataset.note !== key) continue;
+          each.querySelector('.note__paper').textContent = input.value;
+          each.dataset.empty = String(isBlankNote(input.value));
+        }
       });
       input.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') input.blur();

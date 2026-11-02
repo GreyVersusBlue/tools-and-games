@@ -15,7 +15,7 @@ import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, missingPage } from '../page.js';
 import { floorMap, besideMap } from '../map.js';
-import { everyTeacherDay } from '../clock.js';
+import { everyTeacherDay, entryIsFree, groupSlots, takingDuty, dutyWords, dutyPlace, dutyTimes, sometimesWords, sometimesIn, takenBy, edgeDuties, clockNow, momentOf, todayOf, todayKey, todayLine, watchClock } from '../clock.js';
 import { isMe, noteFields } from '../notes.js';
 import { teacherOutputs } from '../outputs.js';
 
@@ -126,19 +126,26 @@ export function dayKindsOf(school, describe) {
   return kinds;
 }
 
-// The period the clock is in on this kind of day, or -1. It is only known
-// when the day is: every day type is the same, or the reader has said which
-// day type today is (kept on the device under `day`).
-export function nowPeriodOf(ctx, kinds, kind) {
-  const chosen = ctx.store ? ctx.store.get('day') : null;
-  if (kinds.length !== 1 && !kind.dayTypes.some((dayType) => dayType.id === chosen)) return -1;
-  const now = ctx.now();
-  const minute = now.getHours() * 60 + now.getMinutes();
-  return ctx.school.bells(kind.first.id).findIndex((bell) => {
-    const start = ctx.school.parseTime(bell.start);
-    const end = ctx.school.parseTime(bell.end);
-    return start !== null && end !== null && minute >= start && minute < end;
-  });
+// The kind of day the clock is read against, and under which bells, or null
+// where "now" is not known:
+//
+//   today settled by the calendar or the reader   that day type, today's bells
+//   a date with no school                        nothing: no period is now,
+//                                                whatever was chosen by hand
+//   otherwise                                    the kind every day type is,
+//                                                or the one the reader chose
+//                                                (kept under `day`), with the
+//                                                bells chosen beside it
+//                                                (kept under `bells`)
+export function liveKindOf(ctx, kinds) {
+  const today = todayOf(ctx);
+  if (today.known && !today.school) return null;
+  if (today.known) {
+    const kind = today.dayType === null ? null : kinds.find((each) => each.dayTypes.some((dayType) => dayType.id === today.dayType.id)) || null;
+    return kind === null ? null : { kind, bellsId: today.bellsId };
+  }
+  const kind = kinds.length === 1 ? kinds[0] : today.by === 'hand' ? kinds.find((each) => each.dayTypes.some((dayType) => dayType.id === today.dayType.id)) || null : null;
+  return kind === null ? null : { kind, bellsId: today.bellsId };
 }
 
 // The names of a kind of day: "A Day", or "A Day and B Day" when they are the
@@ -147,28 +154,174 @@ export function kindName(kind) {
   return wordsJoined(kind.dayTypes.map((dayType) => typed(dayType.name)));
 }
 
-// The day as cards, one per kind of day. `rowOf(dayType, period)` gives
-// { what, where } for a row: text or nodes.
-export function dayCardsOf(ctx, kinds, rowOf) {
+// A duty's words for a row's "what": a small word over it ("Duty",
+// "Meeting") when the title is the label somebody typed, then the title.
+function dutyWhat(duty) {
+  const kindWord = { duty: 'Duty', meeting: 'Meeting', lunch: 'Lunch' }[duty.kind] || 'Duty';
+  const title = dutyWords(duty);
+  return [title === kindWord || title === 'Their own lunch' ? null : h('span', { class: 'row__eyebrow' }, kindWord), typed(title)];
+}
+
+// A teacher's row for one period of a day: the classes, or what the free
+// period is. A free period that a duty or a mark takes says so, with "Duty"
+// (or "Meeting") as a small word over it; a duty that holds on some days only
+// is added with its days when the card is not today's. { what, where }.
+export function teacherRowOf(school, entry, dayTypeId, date, slotOf) {
+  const extra = sometimesIn(entry, date).map((duty) => h('span', { class: 'row__also', dataset: { also: duty.id } }, typed(dutyWords(duty)), ' (', sometimesWords(school, duty), ')', dutyPlace(school, duty) === '' ? null : [' · ', typed(dutyPlace(school, duty))]));
+  if (entry.kind === 'teaching') {
+    const what = [];
+    const where = [];
+    const seen = new Set();
+    for (const taught of entry.groups) {
+      const group = school.group(taught.groupId);
+      const slot = slotOf(taught, entry.period);
+      what.push(h('span', null, linkToGroup(school, group), slot.label ? [' ', h('span', { class: 'muted' }, typed(slot.label))] : null));
+      const key = taught.roomId || 'text:' + slot.roomText;
+      if (!seen.has(key)) where.push(slotWhere(school, slot));
+      seen.add(key);
+    }
+    return { what: [wordsJoined(what), extra], where: wordsJoined(where) };
+  }
+  const taken = takenBy(school, entry, dayTypeId, date);
+  if (taken === null) return { what: [h('span', { class: 'muted' }, 'Planning'), extra], where: null };
+  const duty = takingDuty(entry, date);
+  return {
+    what: [duty ? dutyWhat(duty) : typed(taken.title), extra],
+    where: taken.place === '' && taken.times === '' ? null : [taken.place === '' ? null : typed(taken.place), taken.times === '' ? null : h('span', { class: 'row__time' }, taken.times)],
+  };
+}
+
+// From this many cards on, only the first is open and the others are
+// disclosures, each headed by its day names (DESIGN 11.8).
+export const DAY_CARDS_OPEN_MOST = 3;
+
+// The day as cards, one per kind of day. `rowOf(dayType, period, date)` gives
+// { what, where } for a row: text or nodes. `date` is today's on today's card
+// and null on every other (a duty that holds on some days then holds fully or
+// is left out on today's card, and is listed with its words on the others).
+// `edgesOf(dayType, date)`, when given, gives { before, after }: the duties
+// before and after the school day, shown as rows above the first period and
+// below the last, with their times and no period number (DESIGN 11.8).
+//
+// When the calendar (or the reader) says which day today is, the line saying
+// so stands over the cards and today's card comes first, tagged "Today", with
+// the current period marked. When today rings other bells than the day
+// type's regular ones (an early release), today's card is a card of its own,
+// with today's times and the periods that do not meet said so, and the day
+// type's own card keeps its regular times further on; that card is for the
+// screen, and paper has the regular cards only. The cards are drawn again
+// when today changes while the page is open (past midnight, or a phone woken
+// the next morning), and the current period moves as time passes.
+export function dayCardsOf(ctx, kinds, rowOf, edgesOf) {
   const school = ctx.school;
-  const cards = kinds.map((kind) => {
-    const bells = school.bells(kind.first.id);
-    const current = nowPeriodOf(ctx, kinds, kind);
+  const today = todayOf(ctx);
+  const settled = today.known && today.school && today.dayType !== null;
+  const live = liveKindOf(ctx, kinds);
+  const todayKind = settled && live !== null ? live.kind : null;
+  // a card of its own for the bells in force, whoever said so
+  const ownCard = live !== null && live.bellsId !== null;
+  const ordered = todayKind !== null && !ownCard ? [todayKind].concat(kinds.filter((kind) => kind !== todayKind)) : kinds;
+
+  const cardOf = (kind, bellsId, isToday, open) => {
+    const own = bellsId !== null;
+    const bells = school.bells(kind.first.id, bellsId);
+    const schedule = bellsId ? school.bellSchedule(bellsId) : null;
+    const date = isToday ? today.date : null;
     const rows = bells.map((bell, period) => {
-      const row = rowOf(kind.first, period);
-      return h('li', { class: period === current ? 'row row--now' : 'row', dataset: { period: String(period) } },
+      const off = bell.off === true;
+      const row = off ? { what: h('span', { class: 'muted' }, 'No class'), where: null } : rowOf(kind.first, period, date);
+      return h('li', { class: 'row', dataset: off ? { period: String(period), off: 'true' } : { period: String(period) } },
         h('span', { class: 'row__when' },
           h('span', { class: 'row__period' }, school.periodName(period)),
-          bell.start && bell.end ? h('span', { class: 'row__time' }, school.time(bell.start) + ' to ' + school.time(bell.end)) : null,
-          period === current ? h('span', { class: 'row__mark' }, 'Now') : null),
+          bell.start && bell.end ? h('span', { class: 'row__time' }, school.time(bell.start) + ' to ' + school.time(bell.end)) : null),
         h('span', { class: 'row__what' }, row.what),
         h('span', { class: 'row__where' }, row.where));
     });
-    return h('section', { class: 'card day', dataset: { days: kind.dayTypes.map((dayType) => dayType.id).join(' ') } },
+    if (typeof edgesOf === 'function') {
+      const edges = edgesOf(kind.first, date);
+      const edgeRow = (duty, which) => {
+        const sometimes = date === null ? sometimesWords(school, duty) : '';
+        const times = dutyTimes(school, duty);
+        return h('li', { class: 'row row--edge', dataset: { edge: which } },
+          h('span', { class: 'row__when' },
+            h('span', { class: 'row__period' }, which === 'before' ? 'Before school' : 'After school'),
+            times ? h('span', { class: 'row__time' }, times) : null),
+          h('span', { class: 'row__what' }, dutyWhat(duty), sometimes === '' ? null : h('span', { class: 'row__also' }, ' (', sometimes, ')')),
+          h('span', { class: 'row__where' }, dutyPlace(school, duty) === '' ? null : typed(dutyPlace(school, duty))));
+      };
+      rows.unshift(...edges.before.map((duty) => edgeRow(duty, 'before')));
+      rows.push(...edges.after.map((duty) => edgeRow(duty, 'after')));
+    }
+    const title = [
       h('h2', { class: 'card__title' }, kindName(kind)),
-      h('ol', { class: 'rows' }, rows));
+      isToday ? h('span', { class: 'day__tag' }, kind.dayTypes.length > 1 ? ['Today: ', typed(today.dayType.name)] : 'Today') : null,
+      schedule ? h('p', { class: 'day__bells' }, typed(schedule.name), ' bells') : null,
+    ];
+    // (dom.js writes a dataset's value as it is, so what a card is not is left off)
+    const dataset = { days: kind.dayTypes.map((dayType) => dayType.id).join(' ') };
+    if (isToday) dataset.today = 'true';
+    if (bellsId) dataset.bells = bellsId;
+    if (own) dataset.own = 'true';
+    const attrs = { class: 'card day' + (own ? ' no-print' : ''), dataset };
+    const list = h('ol', { class: 'rows' }, rows);
+    if (open) return h('section', attrs, h('div', { class: 'day__head' }, title), list);
+    return h('details', attrs, h('summary', { class: 'day__head' }, title), list);
+  };
+
+  const cards = [];
+  if (ownCard) cards.push(cardOf(live.kind, live.bellsId, settled, true));
+  for (const kind of ordered) cards.push(cardOf(kind, null, !ownCard && kind === todayKind, true));
+  if (cards.length > DAY_CARDS_OPEN_MOST) {
+    for (let at = 1; at < cards.length; at += 1) {
+      const kind = ownCard ? ordered[at - 1] : ordered[at];
+      cards[at] = cardOf(kind, null, false, false);
+    }
+  }
+  const days = h('div', { class: 'days', dataset: { count: String(cards.length), paper: String(kinds.length) } }, cards);
+
+  // the current period, on the card of the kind of day it is and under the
+  // bells it rings
+  const liveDays = live === null ? null : live.kind.dayTypes.map((dayType) => dayType.id).join(' ');
+  const mark = () => {
+    const now = clockNow(ctx);
+    for (const card of days.querySelectorAll('.day')) {
+      let current = -1;
+      if (live !== null && card.dataset.days === liveDays && (card.dataset.bells || null) === live.bellsId) {
+        const moment = momentOf(school, live.kind.first.id, now, live.bellsId);
+        current = moment.state === 'in' ? moment.period : -1;
+      }
+      for (const row of card.querySelectorAll('.row')) {
+        const here = Number(row.dataset.period) === current;
+        row.classList.toggle('row--now', here);
+        const was = row.querySelector('.row__mark');
+        if (here && !was) row.querySelector('.row__when').appendChild(h('span', { class: 'row__mark' }, 'Now'));
+        if (!here && was) was.remove();
+      }
+    }
+  };
+  mark();
+
+  const line = todayLine(ctx, () => ctx.redraw());
+  const box = h('div', { class: 'daybox' }, line, days);
+  const key = todayKey(today);
+  watchClock(box, () => {
+    if (todayKey(todayOf(ctx)) !== key) ctx.redraw();
+    else mark();
   });
-  return h('div', { class: 'days', dataset: { count: String(cards.length) } }, cards);
+  return box;
+}
+
+// Every disclosure of the day cards is open on paper, and back as it was after.
+if (typeof globalThis.addEventListener === 'function') {
+  let opened = [];
+  globalThis.addEventListener('beforeprint', () => {
+    opened = Array.from(document.querySelectorAll('details.day:not([open])'));
+    for (const details of opened) details.open = true;
+  });
+  globalThis.addEventListener('afterprint', () => {
+    for (const details of opened) details.open = false;
+    opened = [];
+  });
 }
 
 // Where a slot is, as a room page's link, or the words kept for a room that
@@ -186,8 +339,8 @@ export function slotWhere(school, slot) {
 // Parts, for partsToNodes() and partsToText().
 export function teacherSummaryOf(school, teacherId) {
   const days = school.dayTypes.map((dayType) => {
-    const day = school.teacherDay(teacherId, dayType.id) || [];
-    return { name: dayType.name, classes: day.filter((entry) => entry.kind === 'teaching').length, planning: day.filter((entry) => entry.kind === 'planning').map((entry) => entry.period) };
+    const day = everyTeacherDay(school, dayType.id).get(teacherId) || [];
+    return { name: dayType.name, classes: day.filter((entry) => entry.kind === 'teaching').length, planning: day.filter((entry) => entryIsFree(entry)).map((entry) => entry.period) };
   });
   if (days.length === 0 || days.every((day) => day.classes === 0)) return ['Has no classes in this schedule.'];
   const parts = [];
@@ -253,27 +406,21 @@ export function teacherPageOf(ctx, teacher, heading) {
           return h('span', null, linkToRoom(school, room, true), floor ? [' · ', typed(floor.name)] : null);
         }))))));
 
-  const slotOf = (dayType, taught, period) => school.groupDay(taught.groupId, dayType.id)[period];
-  const kinds = dayKindsOf(school, (dayType) => (school.teacherDay(teacher.id, dayType.id) || []).map((entry) => entry.groups.map((taught) => {
-    const slot = slotOf(dayType, taught, entry.period);
+  const slotAt = (dayType, taught, period) => groupSlots(school, taught.groupId, dayType.id)[period];
+  const dayOf = (dayType, date) => everyTeacherDay(school, dayType.id, date).get(teacher.id) || [];
+  // two days are the same card when their periods, and what takes the free
+  // ones, are: a duty or a mark in one and not the other makes two cards
+  const kinds = dayKindsOf(school, (dayType) => dayOf(dayType, null).map((entry) => [entry.marked, entry.duties.map((duty) => duty.id), entry.groups.map((taught) => {
+    const slot = slotAt(dayType, taught, entry.period);
     return [taught.groupId, taught.roomId, slot.label, slot.roomText];
-  })));
-  const days = dayCardsOf(ctx, kinds, (dayType, period) => {
-    const entry = school.teacherDay(teacher.id, dayType.id)[period];
-    if (entry.kind === 'planning') return { what: h('span', { class: 'muted' }, 'Planning'), where: null };
-    const what = [];
-    const where = [];
-    const seen = new Set();
-    for (const taught of entry.groups) {
-      const group = school.group(taught.groupId);
-      const slot = slotOf(dayType, taught, period);
-      what.push(h('span', null, linkToGroup(school, group), slot.label ? [' ', h('span', { class: 'muted' }, typed(slot.label))] : null));
-      const key = taught.roomId || 'text:' + slot.roomText;
-      if (!seen.has(key)) where.push(slotWhere(school, slot));
-      seen.add(key);
-    }
-    return { what: wordsJoined(what), where: wordsJoined(where) };
-  });
+  })]).concat([(() => {
+    const edges = edgeDuties(school, teacher.id, dayType.id, null);
+    return [edges.before.map((duty) => duty.id), edges.after.map((duty) => duty.id)];
+  })()]));
+  const days = dayCardsOf(ctx, kinds, (dayType, period, date) => {
+    const entry = dayOf(dayType, date)[period];
+    return teacherRowOf(school, entry, dayType.id, date, (taught, at) => slotAt(dayType, taught, at));
+  }, (dayType, date) => edgeDuties(school, teacher.id, dayType.id, date));
 
   const map = rooms.length > 0 && school.has('map') ? floorMap(ctx, {
     floorId: school.floorOfRoom(rooms[0].id).id,

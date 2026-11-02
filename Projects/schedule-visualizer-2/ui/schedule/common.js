@@ -113,7 +113,10 @@ export function download(fileName, mime, text) {
 // row up; the row under the pointer is marked; letting go calls
 // onDrop(from, to) with the two rows' `data-index`. Mouse, finger and pen all
 // come through Pointer Events, and the grip sets touch-action: none.
-export function dragRows(body, onDrop) {
+// `options.touch` false: a finger does not drag (it scrolls the page, DESIGN
+// 11.2) and Move up and Move down in the row's menu are the way.
+export function dragRows(body, onDrop, options) {
+  const touch = !options || options.touch !== false;
   let from = null;
   let over = null;
 
@@ -132,6 +135,7 @@ export function dragRows(body, onDrop) {
 
   body.addEventListener('pointerdown', (event) => {
     const grip = event.target.closest ? event.target.closest('.sch-grip') : null;
+    if (event.pointerType === 'touch' && !touch) return;
     if (!grip || !body.contains(grip) || (event.pointerType === 'mouse' && event.button !== 0)) return;
     from = grip.closest('[data-index]');
     if (!from) return;
@@ -160,4 +164,14 @@ export function dragRows(body, onDrop) {
 
 export function grip() {
   return h('span', { class: 'sch-grip', 'aria-hidden': 'true', title: 'Drag to move' }, '⠿');
+}
+
+// What a delete's toast says: "Deleted group 7-3" and, from the action's
+// outcome ({ marks, duties, text }), what it took with it or left bare:
+// "Deleted group 7-3, 1 marked period removed". `lead` is the words before
+// the name ("group "), `outcome` is store.undoOutcome. Ends with a full stop.
+export function deletedText(outcome, lead, name) {
+  const plain = 'Deleted ' + name;
+  const tail = outcome && typeof outcome.text === 'string' && outcome.text.startsWith(plain) ? outcome.text.slice(plain.length) : '';
+  return 'Deleted ' + lead + name + tail + '.';
 }

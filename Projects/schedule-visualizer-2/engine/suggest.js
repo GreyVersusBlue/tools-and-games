@@ -72,7 +72,11 @@
 // The order: the kind (a, then b and c together, then d), fewer new
 // warnings, fewer new notes, the change in the edited group's walking over
 // day D (the crowd model's `walking`, never a route's seconds; less first),
-// then the period and the room number. The words never say "best": each
+// then the period and the room number. The walking is the regular run's,
+// except for a walk finding that is late only under bell schedules
+// (where.bellsIds has no null), whose walking is its first schedule's run:
+// the run in which the finding is (ARCHITECTURE 17.8). A change is to the
+// day type's classes, so it holds under every bell schedule either way. The words never say "best": each
 // sentence says the trade and the reader chooses.
 //
 // The sentence is built as parts, [{ text, name }] with name true for a
@@ -113,9 +117,10 @@
 
 import { allRooms, findById, resolveSlotRoom, roomNumberKey, nameOfRoom } from './schema.js';
 import { isOwnCopy, effectiveSchedule } from './day-types.js';
+import { meetingSlots } from './runs.js';
 import { periodName } from './bells.js';
 import { slotTeacherIds, teacherDays } from './teacher-day.js';
-import { checkSchedule } from './checks.js';
+import { checkSchedule, teachingRunEnd, schoolMarksOf } from './checks.js';
 import { countWord } from './findings.js';
 import { applyChanges, normalise, changeWords, compareResults } from './scenario.js';
 import { createPipeline } from './worker.js';
@@ -234,11 +239,13 @@ function headCountOf(project, group) {
 }
 
 // The rooms some group uses in (d, p): room id -> the head count of the
-// groups there together.
+// groups there together. Where a group is comes from meetingSlots with the
+// regular bells: a change to the day type's classes holds under every bell
+// schedule, and the regular run is the one in which every period meets.
 function usedRooms(project, dayTypeId, period) {
   const used = new Map();
   for (const group of project.groups) {
-    const slot = effectiveSchedule(project, group.id, dayTypeId)[period];
+    const slot = meetingSlots(project, group.id, dayTypeId, null)[period];
     const resolved = resolveSlotRoom(project, slot);
     if (resolved.room) used.set(resolved.room.id, (used.get(resolved.room.id) || 0) + headCountOf(project, group));
   }
@@ -284,6 +291,8 @@ function findingSlots(project, finding) {
     out.push({ groupId, period });
   };
   const groupIds = Array.isArray(where.groupIds) ? where.groupIds : [];
+  // a walk across periods that do not meet names the period it reaches
+  const reach = Number.isInteger(where.toPeriod) ? where.toPeriod : where.period + 1;
   if (finding.kind === 'no-planning' || finding.kind === 'consecutive' || finding.kind === 'teacher-walk') {
     const days = teacherDays(project, d);
     const day = days ? days.get(where.teacherId) : null;
@@ -293,10 +302,10 @@ function findingSlots(project, finding) {
     if (finding.kind === 'consecutive') {
       from = where.period;
       to = where.period;
-      while (to + 1 < periods && day[to + 1].kind === 'teaching') to += 1;
+      to = teachingRunEnd(day, to, schoolMarksOf(project, d, periods));
     } else if (finding.kind === 'teacher-walk') {
       from = where.period;
-      to = where.period + 1;
+      to = reach;
     }
     for (let p = from; p <= to && p < periods; p += 1) {
       for (const taught of day[p].groups) add(taught.groupId, p);
@@ -306,7 +315,7 @@ function findingSlots(project, finding) {
   if (finding.kind === 'group-walk') {
     for (const groupId of groupIds) {
       add(groupId, where.period);
-      add(groupId, where.period + 1);
+      add(groupId, reach);
     }
     return out;
   }
@@ -341,9 +350,10 @@ export function suggestionCandidates(project, finding, options) {
   // a: reorder the group's own day
   const swaps = [];
   if (isWalk && Number.isInteger(where.period)) {
+    const reach = Number.isInteger(where.toPeriod) ? where.toPeriod : where.period + 1;
     for (const slot of slots) {
-      if (slot.period === where.period && slots.some((other) => other.groupId === slot.groupId && other.period === where.period + 1)) {
-        swaps.push({ groupId: slot.groupId, a: where.period, b: where.period + 1, distance: 0 });
+      if (slot.period === where.period && slots.some((other) => other.groupId === slot.groupId && other.period === reach)) {
+        swaps.push({ groupId: slot.groupId, a: where.period, b: reach, distance: 0 });
       }
     }
   }
@@ -433,6 +443,23 @@ function findingIds(checked) {
   return ids;
 }
 
+// Whether the walk finding `finding` is still there in a checkSchedule()
+// answer under any id. A walk finding's id depends on which runs it is late
+// in (checks.js: the regular run's id, else the first bell schedule's added),
+// so a change that only moves the lateness from one run to another (from
+// Early Release bells to the regular ones, or back) changes the id and fixes
+// nothing: the walk is the same (kind, day type, period, group or teacher),
+// the first four parts of the id.
+function walkRemains(checked, finding) {
+  const base = finding.id.split(':').slice(0, 4).join(':');
+  for (const list of [checked.findings, checked.accepted]) {
+    for (const one of Array.isArray(list) ? list : []) {
+      if (one.kind === finding.kind && one.id.split(':').slice(0, 4).join(':') === base) return true;
+    }
+  }
+  return false;
+}
+
 // The sentence of one candidate (from suggestionCandidates) with its
 // effects, as parts. suggest uses it; it is exported so the words can be
 // read for a slot no finding offers a surviving move from (a group with no
@@ -515,6 +542,8 @@ export function suggest(project, finding, options) {
   if (!findingIds(before.findings).has(finding.id)) return none;
   const d = finding.where.dayTypeId;
   const isWalk = WALK_KINDS.includes(finding.kind);
+  const bellsIds = Array.isArray(finding.where.bellsIds) ? finding.where.bellsIds : [];
+  const run = bellsIds.length > 0 && !bellsIds.includes(null) && typeof bellsIds[0] === 'string' ? bellsIds[0] : null;
   const staticBefore = staticIds(checkOneDay(project, d));
 
   const candidates = suggestionCandidates(project, finding, opts);
@@ -557,7 +586,8 @@ export function suggest(project, finding, options) {
       tried += 1;
       const result = pipeline.run(next, counters());
       if (findingIds(result.findings).has(finding.id)) continue;
-      const compared = compareResults(before, result, { dayTypeId: d, changes: [candidate.change], limit: 0 });
+      if (isWalk && walkRemains(result.findings, finding)) continue;
+      const compared = compareResults(before, result, { dayTypeId: d, bellsId: run, changes: [candidate.change], limit: 0 });
       if (compared.findings.new.some((one) => one.severity === 'problem')) continue;
       if (compared.figures.failed.difference > 0) continue;
       const row = compared.groups.find((entry) => entry.groupId === candidate.change.groupId);

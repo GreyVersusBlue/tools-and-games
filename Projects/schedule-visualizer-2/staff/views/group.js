@@ -8,6 +8,7 @@
 import { h, typed } from '../dom.js';
 import { pageOf, missingPage } from '../page.js';
 import { floorMap, besideMap } from '../map.js';
+import { groupSlots, groupMark, markWords } from '../clock.js';
 import { wordsJoined, partsToNodes, countOf, linkToTeacher, linkToRoom, subjectChipOf, teachersOfSlot, dayKindsOf, dayCardsOf, kindName, slotWhere } from './teacher.js';
 
 const isEmpty = (slot) => !slot || (!slot.room && !slot.roomText && !slot.label);
@@ -19,9 +20,12 @@ export function groupTeaching(school, groupId, kinds) {
   const rows = [];
   const byKey = new Map();
   kinds.forEach((kind, at) => {
-    const day = school.groupDay(groupId, kind.first.id);
+    const day = groupSlots(school, groupId, kind.first.id);
     day.forEach((slot, period) => {
-      if (isEmpty(slot)) return;
+      // a No class period is an empty slot already; a Lunch period has no
+      // teacher and is not teaching
+      const mark = groupMark(school, groupId, kind.first.id, period);
+      if (isEmpty(slot) || (mark && mark.kind === 'lunch')) return;
       const room = slot.room ? school.room(slot.room) : null;
       const teachers = teachersOfSlot(school, kind.first.id, groupId, period);
       for (const teacher of teachers.length > 0 ? teachers : [null]) {
@@ -72,7 +76,7 @@ function teachingTable(school, kinds, rows) {
 // [{ room, periods }] in the order met.
 function visits(school, groupId, kind) {
   const out = [];
-  school.groupDay(groupId, kind.first.id).forEach((slot, period) => {
+  groupSlots(school, groupId, kind.first.id).forEach((slot, period) => {
     const room = slot && slot.room ? school.room(slot.room) : null;
     if (!room) return;
     let visit = out.find((each) => each.room.id === room.id);
@@ -137,7 +141,10 @@ export const groupView = {
     const group = school.group(route.id);
     if (!group) return missingPage('group');
 
-    const kinds = dayKindsOf(school, (dayType) => school.groupDay(group.id, dayType.id).map((slot, period) => [slot.room, slot.roomText, slot.label, teachersOfSlot(school, dayType.id, group.id, period).map((teacher) => teacher.id)]));
+    const kinds = dayKindsOf(school, (dayType) => groupSlots(school, group.id, dayType.id).map((slot, period) => {
+      const mark = groupMark(school, group.id, dayType.id, period);
+      return [slot.room, slot.roomText, slot.label, teachersOfSlot(school, dayType.id, group.id, period).map((teacher) => teacher.id), mark ? [mark.id, mark.kind, mark.label] : null];
+    }));
     const rows = groupTeaching(school, group.id, kinds);
 
     const header = h('section', { class: 'card', 'aria-label': 'About' },
@@ -150,12 +157,18 @@ export const groupView = {
       teachingTable(school, kinds, rows)) : null;
 
     const days = dayCardsOf(ctx, kinds, (dayType, period) => {
-      const slot = school.groupDay(group.id, dayType.id)[period];
+      const slot = groupSlots(school, group.id, dayType.id)[period];
+      const mark = groupMark(school, group.id, dayType.id, period);
+      // a No class period reads "No class" (its room, if the slot keeps one,
+      // is not used); a lunch reads "Lunch", with its room when it has one
+      if (mark && mark.kind === 'noclass') return { what: h('span', { class: 'muted', dataset: { mark: 'noclass' } }, typed(markWords(mark))), where: null };
+      if (mark && mark.kind === 'lunch') return { what: h('span', { dataset: { mark: 'lunch' } }, typed(markWords(mark))), where: isEmpty(slot) || (!slot.room && !slot.roomText) ? null : slotWhere(school, slot) };
       if (isEmpty(slot)) return { what: h('span', { class: 'muted' }, 'Nothing scheduled'), where: null };
       const teachers = teachersOfSlot(school, dayType.id, group.id, period).map((teacher) => linkToTeacher(school, teacher));
       const what = wordsJoined(teachers);
       if (slot.label) what.push(teachers.length > 0 ? ' ' : '', h('span', { class: teachers.length > 0 ? 'muted' : null }, typed(slot.label)));
       if (what.length === 0) what.push(h('span', { class: 'muted' }, 'No teacher'));
+      if (mark) what.push(' ', h('span', { class: 'muted', dataset: { mark: mark.kind } }, typed(markWords(mark))));
       return { what, where: slotWhere(school, slot) };
     });
 

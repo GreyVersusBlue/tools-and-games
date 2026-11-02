@@ -19,7 +19,10 @@
 //             page shows the text with textContent and never as markup.
 //   where     { dayTypeId, period, groupIds, roomId, teacherId }, every key
 //             always present, null (or an empty list) when it does not apply.
-//             Enough for "Show" to jump to the slot.
+//             Enough for "Show" to jump to the slot. A walk finding that a
+//             bell schedule's run is among the runs of also has bellsIds:
+//             the runs it was late in, null for the regular bells first,
+//             then the schedules in the project's order (ARCHITECTURE 17.8).
 //   fixable   true when a change to the schedule of the kinds in spec 5.8
 //             could clear it, so "Fix…" has something to offer.
 //   about     the ids of who the sentence names, sorted: the groups when it
@@ -33,7 +36,9 @@
 //   over-capacity:d:p:<room>           no-planning:d:<teacher>
 //   consecutive:d:p:<teacher>          (p is the first period of the run)
 //   teacher-walk:d:p:<teacher>         group-walk:d:p:<group>
-//                                      (p is the period walked out of)
+//                                      (p is the period walked out of; late
+//                                      only under bell schedules, the
+//                                      first of them is added: :<schedule>)
 //   room-missing:d:p:<group>           empty-period:d:p:<group>
 //   empty-period:d:<group>             (the group has no room all day)
 //   teacher-multi-room:<teacher>       teacher-room-unused:d:<teacher>:<room>
@@ -41,6 +46,8 @@
 //                                      there, the one whose id sorts first)
 //   room-unused:d:<room>               room-no-subject:<room>
 //   room-no-teacher:<room>
+//   duty-clash:d:p:<teacher>:<duty>    (d is the first day type it holds on)
+//   duty-nobody:<duty>
 //
 // Walk results. The two walk-time checks do no routing and no timing of their
 // own: they are handed the figures, so this module and checks.js never need
@@ -50,6 +57,9 @@
 //   {
 //     groups:   [{ dayTypeId, groupId, period, fromRoomId, toRoomId, passingSeconds, total, walking, waiting, late, arrived }],
 //     teachers: [{ dayTypeId, teacherId, period, fromRoomId, toRoomId, passingSeconds, walking, late }],
+//     bells:    { groups, teachers }, the same for the bell-schedule runs,
+//               each entry with `bellsId` after dayTypeId; there only when
+//               the project has a bell schedule
 //   }
 //
 //   period    the period walked out of: the walk is from `period` into
@@ -83,6 +93,7 @@ export const KIND_SEVERITY = {
   'consecutive': 'warning',
   'teacher-walk': 'warning',
   'group-walk': 'warning',
+  'duty-clash': 'warning',
   'room-missing': 'warning',
   'empty-period': 'note',
   'teacher-multi-room': 'note',
@@ -90,6 +101,7 @@ export const KIND_SEVERITY = {
   'room-unused': 'note',
   'room-no-subject': 'note',
   'room-no-teacher': 'note',
+  'duty-nobody': 'note',
 };
 
 // The kinds a reordered day or a different room could clear.
@@ -121,6 +133,7 @@ export function makeFinding(kind, parts, text, where, about) {
       groupIds: at.groupIds === undefined ? [] : at.groupIds,
       roomId: at.roomId === undefined ? null : at.roomId,
       teacherId: at.teacherId === undefined ? null : at.teacherId,
+      ...(Array.isArray(at.bellsIds) ? { bellsIds: at.bellsIds } : {}),
     },
     fixable: FIXABLE_KINDS.includes(kind),
     about: named.slice().sort(),

@@ -34,8 +34,26 @@ export function emptyProject() {
   return newProject(makeIds(), clock);
 }
 
+// The sample school as it was before it gained bell schedules, a calendar,
+// marks and duties (SV2-82, SV2-87): an A Day and a B Day, nothing else. The
+// suites that count day types, runs and findings, or that build their own
+// calendar on it, start here, so each keeps the case it was written for.
+export function plainSchool() {
+  const project = sampleSchool();
+  const kept = project.dayTypes.filter((dayType) => dayType.own);
+  for (const group of project.groups) {
+    for (const id of Object.keys(group.days)) if (!kept.some((dayType) => dayType.id === id)) delete group.days[id];
+  }
+  project.dayTypes = kept;
+  delete project.bellSchedules;
+  delete project.calendar;
+  delete project.marks;
+  delete project.duties;
+  return project;
+}
+
 export function school() {
-  return sampleSchool();
+  return plainSchool();
 }
 
 export function clone(value) {

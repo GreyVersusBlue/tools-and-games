@@ -16,7 +16,7 @@ import { formatDuration } from '../../engine/findings.js';
 import { periodName } from '../../engine/bells.js';
 import { findDayType, ownDayTypes } from '../../engine/day-types.js';
 import { floorOfRoom } from '../../engine/schema.js';
-import { failureParts, foldHealth, groupRows, unitWord } from './model.js';
+import { failureParts, foldHealth, groupRows, unitWord, walkNamed } from './model.js';
 
 function parts(list) {
   return list.map((part) => (part.name ? h('bdi', null, part.text) : part.text));
@@ -62,7 +62,7 @@ export function summaryPanel(env) {
       const b = picture.busiest;
       const where = b.place ? parts(b.place.parts) : ['A corridor'];
       const floor = b.floorName && b.place && b.place.kind !== 'connection' && b.place.name !== b.floorName ? [' on ', h('bdi', null, b.floorName)] : [];
-      const when = b.period !== null && picture.load.measure === 'busiest' ? [', ' + periodName(settings, b.period) + ' to ' + periodName(settings, b.period + 1)] : [];
+      const when = b.period !== null && picture.load.measure === 'busiest' ? [', ' + walkNamed(settings, picture.transitions, b.period)] : [];
       list.push(figure('busiest', picture.load.measure === 'total' ? 'Highest total over the day' : 'Busiest load', b.load + ' ' + unitWord(b.unit, b.load), [...where, ...floor, ...when, '.']));
     } else {
       list.push(figure('busiest', 'Busiest load', 'None', picture.mode === 'empty' ? null : ['Nobody on screen crosses a corridor.']));
@@ -76,7 +76,7 @@ export function summaryPanel(env) {
     for (const [groupId, periods] of late) {
       const group = project.groups.find((each) => each.id === groupId);
       if (lateWords.length > 0) lateWords.push('; ');
-      lateWords.push(h('bdi', null, group ? group.name : '?'), ': ' + periods.map((period) => periodName(settings, period) + ' to ' + periodName(settings, period + 1)).join(', '));
+      lateWords.push(h('bdi', null, group ? group.name : '?'), ': ' + periods.map((period) => walkNamed(settings, picture.transitions, period)).join(', '));
     }
     list.push(figure('late', 'Cannot make a transition in time', late.size === 0 ? 'None' : count(late.size, 'group'), late.size === 0 ? null : [...lateWords, '.']));
     list.push(figure('failed', 'Routes that failed', picture.failed.length === 0 ? 'None' : String(picture.failed.length), picture.failed.length === 0 ? null : ['Named under Route health, below.']));
