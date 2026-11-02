@@ -200,7 +200,7 @@ test('sv2-derive-scenario answers the trimmed result of the project with its sce
   const before = structuredClone(store.project);
   const [reply] = scope.handle({ type: SCENARIO_REQUEST, generation: 3, project: store.project, versions: { ...versionsOf(store), schedule: 1 } });
   assert.deepEqual([reply.type, reply.generation, reply.ok], [SCENARIO_ANSWER, 3, true]);
-  assert.deepEqual(Object.keys(reply.answer).sort(), ['failedWalks', 'findings', 'loads', 'places', 'walks']);
+  assert.deepEqual(Object.keys(reply.answer).sort(), ['bellLoads', 'failedWalks', 'findings', 'loads', 'places', 'walks']);
   assert.deepEqual(reply.answer, expectedScenario(store.project));
   assert.deepEqual(store.project, before, 'the real project is as it was');
   const ids = reply.answer.findings.findings.map((finding) => finding.id);
