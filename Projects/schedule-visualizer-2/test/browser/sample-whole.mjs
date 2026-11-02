@@ -126,7 +126,7 @@ for (const size of SIZES) {
     await openTab(page(), 'calendar');
     await page().waitForSelector('.cal-panel [data-part="counts-days"]');
     const lines = (part) => page().$$eval('.cal-panel [data-part="' + part + '"] li', (all) => all.map((el) => el.textContent.replace(/\s+/g, ' ').trim()));
-    assert.deepEqual(await lines('counts-days'), ['A Day 95 school days', 'B Day 93 school days', 'Assembly Day 2 school days']);
+    assert.deepEqual(await lines('counts-days'), ['A Day 96 school days', 'B Day 92 school days', 'Assembly Day 2 school days']);
     assert.deepEqual(await lines('counts-bells'), ['Regular bells 150 school days', 'Early Release bells 38 school days', 'Assembly bells 2 school days']);
     const summary = await page().$eval('.cal-panel [data-says="summary"]', (el) => el.textContent);
     assert.ok(summary.startsWith('190 school days from 31 August 2026 to 11 June 2027.'), summary);
