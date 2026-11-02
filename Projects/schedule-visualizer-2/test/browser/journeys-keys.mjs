@@ -642,7 +642,10 @@ for (let run = 1; run <= REPEAT; run += 1) {
       await next.goto(server.base + TOOL_PATH + '#building', { waitUntil: 'load' });
       await next.waitForSelector('#recovery-dialog[open]');
       await dialogsNamed(next);
-      assert.deepEqual(next.__keysDialogs, [{ id: 'recovery-dialog', title: 'No saved project was found, but there is a recovery point.' }]);
+      // plainSample has the plain school saved by now (SV2-87b: it used to be
+      // saved or not by a race with this test's setTiming), so the saved
+      // project is older than the point holding the school name
+      assert.deepEqual(next.__keysDialogs, [{ id: 'recovery-dialog', title: 'A recovery point is newer than the saved project.' }]);
       // the dialog has the keyboard; Tab goes round its buttons to Restore
       assert.equal(await next.evaluate(() => document.getElementById('recovery-dialog').contains(document.activeElement)), true, 'the dialog has the focus: ' + (await focused(next)));
       await tabTo(next, { selector: '#recovery-dialog button', name: 'Restore the recovery point' }, { most: 6 });
