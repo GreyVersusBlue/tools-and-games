@@ -414,9 +414,12 @@ for (const size of SIZES) {
             await axe(page, name);
           }
           // the today line is on Free right now (two addresses), Where right
-          // now (three), the teacher, group and room pages (one each), and
-          // the two calendar months
-          if (each.opens) assert.equal(opened, 10, 'the pages "Not right?" was opened on');
+          // now (five: SV2-86 added one for a teacher on duty and one for a
+          // group with No class), the teacher pages (three: Ms. Vandermeer
+          // and, from SV2-86, Mr. Brightwater and Dr. Quillfeather), the group
+          // and room pages (one each), and the two calendar months: 14,
+          // counted by logging each address the toggle opened on
+          if (each.opens) assert.equal(opened, 14, 'the pages "Not right?" was opened on');
           assert.deepEqual(session.errors, []);
         } finally {
           await session.close();
