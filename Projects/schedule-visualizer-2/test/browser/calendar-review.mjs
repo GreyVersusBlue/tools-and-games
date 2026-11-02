@@ -16,7 +16,7 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { openPlanner, go, startServer, launch, loadModule, assertTouch } from './harness.mjs';
+import { openPlanner, go, startServer, launch, loadModule, assertTouch, atRest } from './harness.mjs';
 
 let server;
 let browser;
@@ -657,6 +657,7 @@ test('at 390 px with touch and the keyboard up: Note and Apply are both reachabl
     await p.click('[data-key="cal-show-months"]');
     await p.waitForFunction(() => document.querySelector('.cal-year').hidden === false && document.querySelector('.sch').dataset.pending !== 'true');
     await p.$eval('.cal-day[data-date="2026-09-03"]', (el) => el.scrollIntoView({ block: 'center' }));
+    await atRest(p, '.cal-day[data-date="2026-09-03"]');
     const square = await (await p.$('.cal-day[data-date="2026-09-03"]')).boundingBox();
     await p.touchscreen.tap(square.x + square.width / 2, square.y + square.height / 2);
     await p.waitForFunction(() => document.getElementById('calendar-date-dialog')?.open === true);
@@ -689,8 +690,11 @@ test('at 390 px with touch and the keyboard up: Note and Apply are both reachabl
       await p.waitForFunction((wanted) => Math.round(window.visualViewport.height) === wanted, {}, height);
       await p.waitForFunction(() => {
         const dialog = document.getElementById('calendar-date-dialog');
-        return dialog.getBoundingClientRect().height <= window.visualViewport.height;
+        const box = dialog.getBoundingClientRect();
+        return box.height <= window.visualViewport.height && box.top >= 0 && box.bottom <= window.visualViewport.height + 1;
       });
+      // and its box the same two frames running: the sheet is placed again a frame after the page's size changes
+      await atRest(p, '#calendar-date-dialog');
       // the sheet keeps the field being typed in on the visible page by itself
       await p.waitForFunction(() => {
         const note = document.querySelector('#calendar-date-dialog input[name="note"]').getBoundingClientRect();
