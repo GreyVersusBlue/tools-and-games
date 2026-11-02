@@ -251,7 +251,11 @@ export async function openPlanner(options) {
 export async function plainSample(page) {
   const project = JSON.parse(JSON.stringify(plainSchool()));
   const section = await page.evaluate(() => document.querySelector('.surface__layout')?.dataset.section || '');
-  await page.evaluate((next) => globalThis.sv2.store.replace(next), project);
+  // the theme is the device's, as the app's own Load the sample school keeps it
+  await page.evaluate((next) => {
+    next.settings.theme = globalThis.sv2.store.project.settings.theme;
+    globalThis.sv2.store.replace(next);
+  }, project);
   await page.waitForFunction(
     (wanted) => document.documentElement.dataset.ready === 'true'
       && document.querySelector('.surface__layout')?.dataset.section === wanted
