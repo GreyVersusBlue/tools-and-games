@@ -789,6 +789,18 @@
   }
 }
 
+/* Three day types side by side need more than two do: a room field is 188 px
+   narrower than its column, and the column under 310 px leaves the room
+   under 120 px (30 px at 1440 px with the inspector open, SV2-87b). The
+   editor is the section's width less the list beside it (314 px), so under
+   84rem of section the third goes under the other two: side by side the
+   room is then 145 px or more. */
+@container (max-width: 84rem) {
+  .sch-days[data-shown="3"] {
+    grid-auto-flow: row;
+  }
+}
+
 @container (max-width: 44rem) {
   .sch-groups__cols {
     grid-template-columns: minmax(0, 1fr);

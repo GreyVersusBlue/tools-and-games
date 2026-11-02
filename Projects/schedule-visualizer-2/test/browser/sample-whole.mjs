@@ -272,6 +272,39 @@ for (const size of SIZES) {
   });
 }
 
+test('the group editor with three day types keeps every room field 120 px wide or more at every window from 1100 to 1920 px, the inspector open and shut', async () => {
+  const { page } = sessions.get('desktop');
+  await openTab(page, 'groups');
+  await page.waitForSelector('.sch-days[data-shown="3"] .picker__input');
+  const inspectorOpen = () => page.$eval('#inspector', (el) => el.dataset.open === 'true');
+  const wasOpen = await inspectorOpen();
+  const narrowest = [];
+  try {
+    for (const open of [true, false]) {
+      if ((await inspectorOpen()) !== open) {
+        await page.click('#inspector .inspector__toggle');
+        await page.waitForFunction((want) => document.getElementById('inspector').dataset.open === String(want), { timeout: 5000 }, open);
+      }
+      for (let width = 1100; width <= 1920; width += 20) {
+        await page.setViewport({ width, height: 900, deviceScaleFactor: 1 });
+        await page.waitForFunction((w) => window.innerWidth === w, { timeout: 5000 }, width);
+        await settled(page);
+        const rooms = await page.$$eval('.sch-days .picker__input[data-key$=":room"]', (all) => all.map((el) => el.getBoundingClientRect().width));
+        const flow = await page.$eval('.sch-days', (el) => [el.dataset.shown, getComputedStyle(el).gridAutoFlow]);
+        assert.ok(rooms.length >= 16, 'the room fields of two day types are there at ' + width + ' px: ' + rooms.length);
+        const least = Math.min(...rooms);
+        narrowest.push([open, width, flow[1], Math.round(least)]);
+        assert.ok(least >= 120, 'a room field is ' + least + ' px wide at ' + width + ' px with the inspector ' + (open ? 'open' : 'shut') + ', ' + flow.join(' '));
+      }
+    }
+  } finally {
+    await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
+    if ((await inspectorOpen()) !== wasOpen) await page.click('#inspector .inspector__toggle');
+  }
+  // the walk takes in both arrangements: the three side by side, and stacked
+  assert.ok(narrowest.some((each) => each[2] === 'column') && narrowest.some((each) => each[2] === 'row'), JSON.stringify(narrowest));
+});
+
 test('plainSample swaps the whole sample for the plain one and writes no save', async () => {
   // a browser of its own: a second tab of one profile would turn this one
   // read-only or failed, and Movement's first visit is itself a change
