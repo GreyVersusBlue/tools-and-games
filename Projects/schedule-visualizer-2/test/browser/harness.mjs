@@ -33,6 +33,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, prepPage, serve, SITE } from '../../../../Tools/board-check/harness.mjs';
+import { plainSchool } from '../engine/helpers.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const TOOL_DIR = path.resolve(HERE, '..', '..');
@@ -152,6 +153,11 @@ export const PAGE_CLOSE_MS = 5000;
 //   theme      'light' or 'dark': what the device prefers (prefers-color-scheme)
 //   device     an object to put in localStorage under sv2:device before the page loads
 //   keep       true: load whatever project this browser has saved (a second tab, a reload)
+//   fullSample true: leave the sample school as the planner builds it, with its
+//              Early Release and Assembly bells, calendar, marks and duties
+//              (SV2-82, SV2-87). Without it the page is given the sample as
+//              it was before those: its day types and nothing else, which is
+//              the school most journeys were written on. Ignored with `keep`.
 //   intercept  true: open the page through the site harness's request
 //              interception (no module worker will load; see the top of this file)
 export async function openPlanner(options) {
@@ -202,6 +208,7 @@ export async function openPlanner(options) {
     }
     await page.goto(url(hash), { waitUntil: 'load' });
     await waitForSection(page, (hash.replace(/^#/, '').split('/')[0]) || 'building');
+    if (opts.keep !== true && opts.fullSample !== true) await plainSample(page);
     await page.evaluate(() => document.fonts.ready);
     if (size.mobile) await assertTouch(page, 'openPlanner ' + size.width + ' by ' + size.height + ' at ' + url(hash));
   } catch (error) {
@@ -235,6 +242,23 @@ export async function openPlanner(options) {
       if (offsite.length > 0) throw new Error('The page asked for ' + offsite.length + ' ' + (offsite.length === 1 ? 'address' : 'addresses') + ' outside ' + server.base + ': ' + offsite.slice(0, 5).join(', '));
     },
   };
+}
+
+// The planner opens on the whole sample school. Put the plain one in its
+// place, as a project freshly loaded (the history starts again), and wait for
+// the sections to have worked out the new one.
+export async function plainSample(page) {
+  const project = JSON.parse(JSON.stringify(plainSchool()));
+  const section = await page.evaluate(() => document.querySelector('.surface__layout')?.dataset.section || '');
+  await page.evaluate((next) => globalThis.sv2.store.replace(next), project);
+  await page.waitForFunction(
+    (wanted) => document.documentElement.dataset.ready === 'true'
+      && document.querySelector('.surface__layout')?.dataset.section === wanted
+      && document.querySelector('[data-pending="true"]') === null,
+    { timeout: 15000 },
+    section,
+  );
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
 
 // Go to another address in the same page and wait for its section.
