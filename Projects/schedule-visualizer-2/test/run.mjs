@@ -145,6 +145,7 @@ export const GROUPS = {
     'browser/calendar-faults.mjs', // SV2-80c
     'browser/grid-pass.mjs', // SV2-40, SV2-46
     'browser/m2-pass.mjs', // SV2-38
+    'browser/sample-whole.mjs', // SV2-87b
     'browser/import.mjs', // SV2-13
     'browser/project-file.mjs', // SV2-13
     'browser/worker.mjs', // SV2-16
