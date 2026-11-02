@@ -289,13 +289,37 @@ test('the group editor with three day types keeps every room field 120 px wide o
         await page.setViewport({ width, height: 900, deviceScaleFactor: 1 });
         await page.waitForFunction((w) => window.innerWidth === w, { timeout: 5000 }, width);
         await settled(page);
-        // the fields are laid out (a field with no box yet is not a narrow one)
-        await page.waitForFunction(() => {
-          const all = document.querySelectorAll('.sch-days .picker__input[data-key$=":room"]');
-          return all.length >= 16 && Array.from(all).every((el) => el.getBoundingClientRect().width > 0);
-        }, { timeout: 8000 });
-        const rooms = await page.$$eval('.sch-days .picker__input[data-key$=":room"]', (all) => all.map((el) => el.getBoundingClientRect().width));
-        const flow = await page.$eval('.sch-days', (el) => [el.dataset.shown, getComputedStyle(el).gridAutoFlow]);
+        // the fields are laid out and the layout has come to rest: every room
+        // field has a box, and the widths and the arrangement are the same two
+        // frames running (a read between the resize and the redraw is not the
+        // layout at that width)
+        const rest = await page.evaluate(() => new Promise((resolve) => {
+          const read = () => {
+            const all = Array.from(document.querySelectorAll('.sch-days .picker__input[data-key$=":room"]'));
+            const days = document.querySelector('.sch-days');
+            return {
+              rooms: all.map((el) => el.getBoundingClientRect().width),
+              flow: [days.dataset.shown, getComputedStyle(days).gridAutoFlow],
+              open: document.getElementById('inspector').getBoundingClientRect().width,
+            };
+          };
+          const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+          let last = read();
+          let frames = 0;
+          const next = () => requestAnimationFrame(() => {
+            const now = read();
+            frames += 1;
+            if (now.rooms.length >= 16 && now.rooms.every((w) => w > 0) && same(now, last)) resolve({ ok: true, ...now });
+            else if (frames >= 240) resolve({ ok: false, ...now });
+            else {
+              last = now;
+              next();
+            }
+          });
+          next();
+        }));
+        const { rooms, flow } = rest;
+        assert.ok(rest.ok, 'the room fields came to rest within 240 frames at ' + width + ' px: ' + JSON.stringify(rest));
         assert.ok(rooms.length >= 16, 'the room fields of two day types are there at ' + width + ' px: ' + rooms.length);
         const least = Math.min(...rooms);
         narrowest.push([open, width, flow[1], Math.round(least)]);
