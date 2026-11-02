@@ -270,24 +270,27 @@ function buildFloor(plan, subjectByCode, teachersByRoom) {
 
 // A school year that never happened: 31 August 2026 to 11 June 2027, A Days
 // and B Days taking turns, Wednesdays on Early Release, and the changes a
-// real year has. The rotation steps on every school day, so the snow day
-// pushes every later day back by one and the day after it is set to the day
-// type the snow day would have been; the two assemblies each stand in for a
-// day of the rotation and are followed by a day set the same way.
+// real year has. The rotation steps on every school day and a closed day does
+// not step it, so after the snow day the classes carry on A, B as before; the
+// day after it is set to what that day would have been anyway, to show the
+// calendar's Set day type on a date. Assembly Day is not in the rotation, so an
+// assembly does not step it: each assembly sits on a date that is a B turn
+// (it has B's classes) and the school day after it is set to A, which puts the
+// rotation back in step. Classes alternate A, B on every school day all year.
 function sampleCalendar() {
   const weekdays = [0, 1, 2, 3, 4, 5, 6].map((index) => ({ day: index < 5 ? 'rotation' : 'closed', bells: index === 2 ? BELLS_EARLY : null }));
   const closed = (date, label) => ({ date, day: 'closed', bells: null, label });
   const winter = ['2026-12-21', '2026-12-22', '2026-12-23', '2026-12-24', '2026-12-25', '2026-12-28', '2026-12-29', '2026-12-30', '2026-12-31', '2027-01-01'];
   const dates = [
     closed('2026-10-19', 'Fall break'), closed('2026-10-20', 'Fall break'), closed('2026-10-21', 'Fall break'), closed('2026-10-22', 'Fall break'), closed('2026-10-23', 'Fall break'),
-    { date: '2026-11-12', day: DAY_ASSEMBLY, bells: BELLS_ASSEMBLY, label: 'Assembly' },
-    { date: '2026-11-13', day: DAY_B, bells: null, label: 'Back in step after the assembly' },
+    { date: '2026-11-13', day: DAY_ASSEMBLY, bells: BELLS_ASSEMBLY, label: 'Assembly' },
+    { date: '2026-11-16', day: DAY_A, bells: null, label: 'Back in step after the assembly' },
     ...winter.map((date) => closed(date, 'Winter break')),
     closed('2027-01-12', 'Snow day'),
-    { date: '2027-01-13', day: DAY_A, bells: null, label: 'Back in step after the snow day' },
+    { date: '2027-01-13', day: DAY_B, bells: null, label: 'Back in step after the snow day' },
     { date: '2027-01-30', day: 'rotation', bells: null, label: 'Make-up day for the snow day' },
     { date: '2027-03-11', day: DAY_ASSEMBLY, bells: BELLS_ASSEMBLY, label: 'Assembly' },
-    { date: '2027-03-12', day: DAY_B, bells: null, label: 'Back in step after the assembly' },
+    { date: '2027-03-12', day: DAY_A, bells: null, label: 'Back in step after the assembly' },
   ];
   return { start: '2026-08-31', end: '2027-06-11', weekdays, rotation: [DAY_A, DAY_B], dates, changedAt: SAMPLE_DATE };
 }
@@ -313,8 +316,8 @@ function sampleMarks() {
 function sampleDuties() {
   return [
     { id: 'usample001', kind: 'duty', label: 'Bus duty', when: 'before', period: 0, start: '07:30', end: '07:55', dayTypeIds: [], weekdays: [], from: '', to: '', roomId: null, place: 'Bus loop', teacherIds: ['tsample004', 'tsample009'], subjectIds: [], everyone: false },
-    { id: 'usample002', kind: 'duty', label: 'Lunch duty', when: 'period', period: 4, start: '', end: '', dayTypeIds: [], weekdays: [], from: '', to: '', roomId: 'rsamplecaf', place: '', teacherIds: ['tsample001', 'tsample007'], subjectIds: [], everyone: false },
-    { id: 'usample003', kind: 'duty', label: 'Car line', when: 'after', period: 0, start: '15:15', end: '15:35', dayTypeIds: [], weekdays: [], from: '', to: '', roomId: null, place: 'Front drive', teacherIds: ['tsample004', 'tsample005'], subjectIds: [], everyone: false },
+    { id: 'usample002', kind: 'duty', label: 'Lunch duty', when: 'period', period: 4, start: '', end: '', dayTypeIds: [], weekdays: [0, 1, 3, 4], from: '', to: '', roomId: 'rsamplecaf', place: '', teacherIds: ['tsample001', 'tsample007'], subjectIds: [], everyone: false },
+    { id: 'usample003', kind: 'duty', label: 'Car line', when: 'after', period: 0, start: '15:15', end: '15:35', dayTypeIds: [], weekdays: [0, 1, 3, 4], from: '', to: '', roomId: null, place: 'Front drive', teacherIds: ['tsample004', 'tsample005'], subjectIds: [], everyone: false },
     { id: 'usample004', kind: 'meeting', label: 'Science department', when: 'after', period: 0, start: '11:00', end: '11:45', dayTypeIds: [], weekdays: [2], from: '', to: '', roomId: 'rsample103', place: '', teacherIds: [], subjectIds: ['ssample003'], everyone: false },
   ];
 }
