@@ -26,7 +26,7 @@ import { buildingChecks } from '../../engine/building-checks.js';
 import { ownDayTypes } from '../../engine/day-types.js';
 import { createPipeline, pack, unpack, REQUEST, ANSWER, READY } from '../../engine/worker.js';
 import { createEngineClient, engineFor } from '../../ui/engine-client.js';
-import { sampleSchool } from '../../data/sample-school.js';
+import { plainSchool as sampleSchool } from './helpers.mjs';
 import { bigProject, BIG } from '../fixtures/big.mjs';
 
 const TRANSITIONS = (BIG.periods - 1) * BIG.dayTypes;
