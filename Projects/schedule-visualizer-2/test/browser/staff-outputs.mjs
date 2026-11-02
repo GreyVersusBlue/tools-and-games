@@ -29,7 +29,7 @@ import { diskReader } from '../publish/reader.mjs';
 import { publishDocument } from '../../ui/staff/targets.js';
 import { publishedModel } from '../../engine/publish-data.js';
 import { seededRandom } from '../../engine/ids.js';
-import { sampleSchool } from '../../data/sample-school.js';
+import { plainSchool as sampleSchool } from '../engine/helpers.mjs';
 import { MODULES } from '../../staff/manifest.js';
 import { openSchool } from '../../staff/model.js';
 import { openStorage } from '../../staff/storage.js';

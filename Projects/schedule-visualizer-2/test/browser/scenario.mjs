@@ -28,7 +28,7 @@ import { pathToFileURL } from 'node:url';
 
 import { openPlanner, go, launch, startServer, TOOL_DIR } from './harness.mjs';
 
-const { sampleSchool } = await import(pathToFileURL(path.join(TOOL_DIR, 'data', 'sample-school.js')).href);
+const { plainSchool: sampleSchool } = await import(pathToFileURL(path.join(TOOL_DIR, 'test', 'engine', 'helpers.mjs')).href);
 const { writeProjectFile } = await import(pathToFileURL(path.join(TOOL_DIR, 'engine', 'project-file.js')).href);
 
 const SCRATCH = path.join(TOOL_DIR, 'test', '.scratch', 'scenario');

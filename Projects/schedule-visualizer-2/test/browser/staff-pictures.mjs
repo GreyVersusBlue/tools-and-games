@@ -23,7 +23,7 @@ import { launch } from './harness.mjs';
 import { diskReader } from '../publish/reader.mjs';
 import { publishDocument } from '../../ui/staff/targets.js';
 import { seededRandom } from '../../engine/ids.js';
-import { sampleSchool } from '../../data/sample-school.js';
+import { plainSchool as sampleSchool } from '../engine/helpers.mjs';
 import { pictureName, pictureScale, fileWords, PICTURE_SCALE, PICTURE_WIDE_SCALE, PICTURE_MOST_SIDE, PICTURE_TOO_LONG, PICTURE_SAVED } from '../../staff/page.js';
 
 const ZONE = 'America/New_York';

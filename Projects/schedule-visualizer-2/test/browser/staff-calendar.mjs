@@ -37,7 +37,7 @@ import { publishDocument } from '../../ui/staff/targets.js';
 import { publishedModel } from '../../engine/publish-data.js';
 import { validate } from '../../engine/validate.js';
 import { seededRandom } from '../../engine/ids.js';
-import { sampleSchool } from '../../data/sample-school.js';
+import { plainSchool as sampleSchool } from '../engine/helpers.mjs';
 import { openSchool } from '../../staff/model.js';
 import { lockScreenLayout, LOCK_TOP, LOCK_BOTTOM, LOCK_ROW_LEAST } from '../../staff/outputs.js';
 import { dayKindsOf } from '../../staff/views/teacher.js';

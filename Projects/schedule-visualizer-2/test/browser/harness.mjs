@@ -229,6 +229,7 @@ export async function openPlanner(options) {
     browser,
     server,
     base: server.base,
+    fullSample: opts.fullSample === true,
     url,
     requests,
     offsite,
@@ -292,6 +293,7 @@ export async function visit(session, screen) {
   }
   await page.goto(session.url(screen.hash), { waitUntil: 'load' });
   await waitForSection(page, screen.hash.replace(/^#/, '').split('/')[0]);
+  if (screen.keep !== true && screen.fullSample !== true && session.fullSample !== true) await plainSample(page);
   await page.evaluate(() => document.fonts.ready);
   if (wanted && wanted.hasTouch) await assertTouch(page, 'visit ' + (screen.id || screen.hash) + ' at ' + wanted.width + ' by ' + wanted.height);
   if (screen.open) await screen.open(page);

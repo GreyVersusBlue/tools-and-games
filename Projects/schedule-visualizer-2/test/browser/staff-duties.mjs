@@ -39,7 +39,7 @@ import { publishedModel } from '../../engine/publish-data.js';
 import { validate } from '../../engine/validate.js';
 import { seededRandom } from '../../engine/ids.js';
 import { newMark, newDuty } from '../../engine/schema.js';
-import { sampleSchool } from '../../data/sample-school.js';
+import { plainSchool as sampleSchool } from '../engine/helpers.mjs';
 import { openSchool } from '../../staff/model.js';
 import { lockScreenLayout } from '../../staff/outputs.js';
 import { dayKindsOf } from '../../staff/views/teacher.js';

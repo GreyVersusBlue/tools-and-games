@@ -28,7 +28,7 @@ import { pathToFileURL } from 'node:url';
 import { launch, TOOL_DIR } from './harness.mjs';
 import { diskReader } from '../publish/reader.mjs';
 import { publishDocument } from '../../ui/staff/targets.js';
-import { sampleSchool } from '../../data/sample-school.js';
+import { plainSchool as sampleSchool } from '../engine/helpers.mjs';
 import { seededRandom } from '../../engine/ids.js';
 import { planOf } from '../../staff/map.js';
 
