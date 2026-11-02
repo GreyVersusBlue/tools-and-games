@@ -3,7 +3,7 @@
   "version": 1,
   "id": "psample001",
   "publishedAt": "2026-09-01T12:00:00.000Z",
-  "staleAfter": "2026-10-31T12:00:00.000Z",
+  "staleAfter": "2027-06-12T12:00:00.000Z",
   "settings": {
     "schoolName": "Marrowby Middle School (sample)",
     "periods": 8,
@@ -1426,12 +1426,399 @@
           "end": "15:12"
         }
       ]
+    },
+    {
+      "id": "dsample0as",
+      "name": "Assembly Day",
+      "own": false,
+      "sameAs": "dsample00b",
+      "short": "AD",
+      "bells": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
     }
   ],
-  "bellSchedules": [],
-  "calendar": null,
-  "marks": [],
-  "duties": [],
+  "bellSchedules": [
+    {
+      "id": "bsample0er",
+      "name": "Early Release",
+      "short": "ER",
+      "bells": [
+        {
+          "start": "08:00",
+          "end": "08:40"
+        },
+        {
+          "start": "08:44",
+          "end": "09:24"
+        },
+        {
+          "start": "09:28",
+          "end": "10:08"
+        },
+        {
+          "start": "10:12",
+          "end": "10:52"
+        },
+        null,
+        null,
+        null,
+        null
+      ],
+      "off": [
+        4,
+        5,
+        6,
+        7
+      ]
+    },
+    {
+      "id": "bsample0as",
+      "name": "Assembly",
+      "short": "AS",
+      "bells": [
+        {
+          "start": "08:00",
+          "end": "08:44"
+        },
+        {
+          "start": "08:48",
+          "end": "09:32"
+        },
+        {
+          "start": "09:36",
+          "end": "10:20"
+        },
+        {
+          "start": "10:24",
+          "end": "11:08"
+        },
+        {
+          "start": "11:12",
+          "end": "11:56"
+        },
+        {
+          "start": "12:00",
+          "end": "12:44"
+        },
+        {
+          "start": "12:48",
+          "end": "13:32"
+        },
+        {
+          "start": "13:36",
+          "end": "14:30"
+        }
+      ],
+      "off": []
+    }
+  ],
+  "calendar": {
+    "start": "2026-08-31",
+    "end": "2027-06-11",
+    "weekdays": [
+      {
+        "day": "rotation",
+        "bells": null
+      },
+      {
+        "day": "rotation",
+        "bells": null
+      },
+      {
+        "day": "rotation",
+        "bells": "bsample0er"
+      },
+      {
+        "day": "rotation",
+        "bells": null
+      },
+      {
+        "day": "rotation",
+        "bells": null
+      },
+      {
+        "day": "closed",
+        "bells": null
+      },
+      {
+        "day": "closed",
+        "bells": null
+      }
+    ],
+    "rotation": [
+      "dsample00a",
+      "dsample00b"
+    ],
+    "dates": [
+      {
+        "date": "2026-10-19",
+        "day": "closed",
+        "bells": null,
+        "label": "Fall break"
+      },
+      {
+        "date": "2026-10-20",
+        "day": "closed",
+        "bells": null,
+        "label": "Fall break"
+      },
+      {
+        "date": "2026-10-21",
+        "day": "closed",
+        "bells": null,
+        "label": "Fall break"
+      },
+      {
+        "date": "2026-10-22",
+        "day": "closed",
+        "bells": null,
+        "label": "Fall break"
+      },
+      {
+        "date": "2026-10-23",
+        "day": "closed",
+        "bells": null,
+        "label": "Fall break"
+      },
+      {
+        "date": "2026-11-12",
+        "day": "dsample0as",
+        "bells": "bsample0as",
+        "label": "Assembly"
+      },
+      {
+        "date": "2026-11-13",
+        "day": "dsample00b",
+        "bells": null,
+        "label": "Back in step after the assembly"
+      },
+      {
+        "date": "2026-12-21",
+        "day": "closed",
+        "bells": null,
+        "label": "Winter break"
+      },
+      {
+        "date": "2026-12-22",
+        "day": "closed",
+        "bells": null,
+        "label": "Winter break"
+      },
+      {
+        "date": "2026-12-23",
+        "day": "closed",
+        "bells": null,
+        "label": "Winter break"
+      },
+      {
+        "date": "2026-12-24",
+        "day": "closed",
+        "bells": null,
+        "label": "Winter break"
+      },
+      {
+        "date": "2026-12-25",
+        "day": "closed",
+        "bells": null,
+        "label": "Winter break"
+      },
+      {
+        "date": "2026-12-28",
+        "day": "closed",
+        "bells": null,
+        "label": "Winter break"
+      },
+      {
+        "date": "2026-12-29",
+        "day": "closed",
+        "bells": null,
+        "label": "Winter break"
+      },
+      {
+        "date": "2026-12-30",
+        "day": "closed",
+        "bells": null,
+        "label": "Winter break"
+      },
+      {
+        "date": "2026-12-31",
+        "day": "closed",
+        "bells": null,
+        "label": "Winter break"
+      },
+      {
+        "date": "2027-01-01",
+        "day": "closed",
+        "bells": null,
+        "label": "Winter break"
+      },
+      {
+        "date": "2027-01-12",
+        "day": "closed",
+        "bells": null,
+        "label": "Snow day"
+      },
+      {
+        "date": "2027-01-13",
+        "day": "dsample00a",
+        "bells": null,
+        "label": "Back in step after the snow day"
+      },
+      {
+        "date": "2027-01-30",
+        "day": "rotation",
+        "bells": null,
+        "label": "Make-up day for the snow day"
+      },
+      {
+        "date": "2027-03-11",
+        "day": "dsample0as",
+        "bells": "bsample0as",
+        "label": "Assembly"
+      },
+      {
+        "date": "2027-03-12",
+        "day": "dsample00b",
+        "bells": null,
+        "label": "Back in step after the assembly"
+      }
+    ],
+    "changedAt": "2026-09-01T12:00:00.000Z"
+  },
+  "marks": [
+    {
+      "id": "msample001",
+      "kind": "lunch",
+      "label": "",
+      "period": 3,
+      "dayTypeIds": [],
+      "scope": "grades",
+      "grades": [
+        "6"
+      ],
+      "groupIds": []
+    },
+    {
+      "id": "msample002",
+      "kind": "lunch",
+      "label": "",
+      "period": 4,
+      "dayTypeIds": [],
+      "scope": "grades",
+      "grades": [
+        "7",
+        "8"
+      ],
+      "groupIds": []
+    },
+    {
+      "id": "msample003",
+      "kind": "activity",
+      "label": "Assembly",
+      "period": 7,
+      "dayTypeIds": [
+        "dsample0as"
+      ],
+      "scope": "school",
+      "grades": [],
+      "groupIds": []
+    }
+  ],
+  "duties": [
+    {
+      "id": "usample001",
+      "kind": "duty",
+      "label": "Bus duty",
+      "when": "before",
+      "period": 0,
+      "start": "07:30",
+      "end": "07:55",
+      "dayTypeIds": [],
+      "weekdays": [],
+      "from": "",
+      "to": "",
+      "roomId": null,
+      "place": "Bus loop",
+      "teacherIds": [
+        "tsample004",
+        "tsample009"
+      ],
+      "subjectIds": [],
+      "everyone": false
+    },
+    {
+      "id": "usample002",
+      "kind": "duty",
+      "label": "Lunch duty",
+      "when": "period",
+      "period": 4,
+      "start": "",
+      "end": "",
+      "dayTypeIds": [],
+      "weekdays": [],
+      "from": "",
+      "to": "",
+      "roomId": "rsamplecaf",
+      "place": "",
+      "teacherIds": [
+        "tsample001",
+        "tsample007"
+      ],
+      "subjectIds": [],
+      "everyone": false
+    },
+    {
+      "id": "usample003",
+      "kind": "duty",
+      "label": "Car line",
+      "when": "after",
+      "period": 0,
+      "start": "15:15",
+      "end": "15:35",
+      "dayTypeIds": [],
+      "weekdays": [],
+      "from": "",
+      "to": "",
+      "roomId": null,
+      "place": "Front drive",
+      "teacherIds": [
+        "tsample004",
+        "tsample005"
+      ],
+      "subjectIds": [],
+      "everyone": false
+    },
+    {
+      "id": "usample004",
+      "kind": "meeting",
+      "label": "Science department",
+      "when": "after",
+      "period": 0,
+      "start": "11:00",
+      "end": "11:45",
+      "dayTypeIds": [],
+      "weekdays": [
+        2
+      ],
+      "from": "",
+      "to": "",
+      "roomId": "rsample103",
+      "place": "",
+      "teacherIds": [],
+      "subjectIds": [
+        "ssample003"
+      ],
+      "everyone": false
+    }
+  ],
   "groups": [
     {
       "id": "gsample06a",
