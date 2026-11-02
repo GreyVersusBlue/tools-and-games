@@ -457,9 +457,9 @@ async function forgetDevice() {
 
 // A fresh planner on the phone, listening: nothing kept on the device from
 // an earlier journey or repeat.
-async function phonePlanner(hash) {
+async function phonePlanner(hash, more) {
   await forgetDevice();
-  const session = await openPlanner({ server, browser, hash: hash || '#building', theme: 'light', ...PHONE });
+  const session = await openPlanner({ server, browser, hash: hash || '#building', theme: 'light', ...PHONE, ...more });
   await cdpOf(session.page);
   await hear(session.page);
   return session;
@@ -851,7 +851,8 @@ async function crash(session) {
 
 for (let run = 1; run <= REPEAT; run += 1) {
   test('recover after a crash by touch: the work is in a recovery point, the page dies, and a tap on the start-up dialog brings it back (run ' + run + ' of ' + REPEAT + ')', async () => {
-    const session = await phonePlanner('#project');
+    // the whole sample, as a new device opens it: nothing saved until the first change
+    const session = await phonePlanner('#project', { fullSample: true });
     const { page } = session;
     await page.waitForFunction(() => globalThis.sv2.storage && globalThis.sv2.storage.state.available && !globalThis.sv2.storage.state.readOnly, { timeout: 15000 });
     // The crash comes after the recovery point and before the save: the
