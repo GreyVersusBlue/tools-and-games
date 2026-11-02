@@ -142,7 +142,7 @@ for (const size of SIZES) {
     const snow = await row('2027-01-12');
     assert.deepEqual([snow[0], snow[2], snow[5]], ['12 January 2027', 'No school', 'Snow day']);
     const after = await row('2027-01-13');
-    assert.deepEqual([after[2], after[5]], ['B Day', 'Back in step after the snow day']);
+    assert.deepEqual([after[2], after[5]], ['A Day', 'Back in step after the snow day']);
     assert.deepEqual([(await row('2026-11-16'))[2], (await row('2026-11-16'))[5]], ['A Day', 'Back in step after the assembly']);
     assert.deepEqual([(await row('2027-03-12'))[2], (await row('2027-03-12'))[5]], ['A Day', 'Back in step after the assembly']);
     if (!wasOpen) await page().click('.cal-list__summary');

@@ -271,12 +271,14 @@ function buildFloor(plan, subjectByCode, teachersByRoom) {
 // A school year that never happened: 31 August 2026 to 11 June 2027, A Days
 // and B Days taking turns, Wednesdays on Early Release, and the changes a
 // real year has. The rotation steps on every school day and a closed day does
-// not step it, so after the snow day the classes carry on A, B as before; the
-// day after it is set to what that day would have been anyway, to show the
-// calendar's Set day type on a date. Assembly Day is not in the rotation, so an
+// not step it, so a snow day pushes every later day back by one. The day after
+// the snow day is set to A, the day the old order had: keeping the old order
+// skips the snow day's B, so the A before the snow day and the A after it have
+// the same classes, on purpose. That is the re-sync, and the one place the
+// classes repeat. Assembly Day is not in the rotation, so an
 // assembly does not step it: each assembly sits on a date that is a B turn
 // (it has B's classes) and the school day after it is set to A, which puts the
-// rotation back in step. Classes alternate A, B on every school day all year.
+// rotation back in step. Everywhere else the classes alternate A, B.
 function sampleCalendar() {
   const weekdays = [0, 1, 2, 3, 4, 5, 6].map((index) => ({ day: index < 5 ? 'rotation' : 'closed', bells: index === 2 ? BELLS_EARLY : null }));
   const closed = (date, label) => ({ date, day: 'closed', bells: null, label });
@@ -287,10 +289,10 @@ function sampleCalendar() {
     { date: '2026-11-16', day: DAY_A, bells: null, label: 'Back in step after the assembly' },
     ...winter.map((date) => closed(date, 'Winter break')),
     closed('2027-01-12', 'Snow day'),
-    { date: '2027-01-13', day: DAY_B, bells: null, label: 'Back in step after the snow day' },
-    { date: '2027-01-30', day: 'rotation', bells: null, label: 'Make-up day for the snow day' },
+    { date: '2027-01-13', day: DAY_A, bells: null, label: 'Back in step after the snow day' },
     { date: '2027-03-11', day: DAY_ASSEMBLY, bells: BELLS_ASSEMBLY, label: 'Assembly' },
     { date: '2027-03-12', day: DAY_A, bells: null, label: 'Back in step after the assembly' },
+    { date: '2027-03-27', day: 'rotation', bells: null, label: 'Make-up day for the snow day' },
   ];
   return { start: '2026-08-31', end: '2027-06-11', weekdays, rotation: [DAY_A, DAY_B], dates, changedAt: SAMPLE_DATE };
 }

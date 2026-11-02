@@ -1668,15 +1668,9 @@
       },
       {
         "date": "2027-01-13",
-        "day": "dsample00b",
+        "day": "dsample00a",
         "bells": null,
         "label": "Back in step after the snow day"
-      },
-      {
-        "date": "2027-01-30",
-        "day": "rotation",
-        "bells": null,
-        "label": "Make-up day for the snow day"
       },
       {
         "date": "2027-03-11",
@@ -1689,6 +1683,12 @@
         "day": "dsample00a",
         "bells": null,
         "label": "Back in step after the assembly"
+      },
+      {
+        "date": "2027-03-27",
+        "day": "rotation",
+        "bells": null,
+        "label": "Make-up day for the snow day"
       }
     ],
     "changedAt": "2026-09-01T12:00:00.000Z"

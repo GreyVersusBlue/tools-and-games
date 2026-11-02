@@ -232,9 +232,11 @@ test('the calendar: 31 August 2026 to 11 June 2027, weekends closed, Wednesdays 
   }
 });
 
-test('the classes alternate A, B on every school day all year, across every break, the snow day, the make-up day and both assemblies', () => {
+test('the classes alternate A, B on every school day all year except the re-sync after the snow day, across every break, the make-up day and both assemblies', () => {
   // replayed from the calendar's own output, never from the rule: the classes
-  // of each school day, one after another, must differ from the one before
+  // of each school day, one after another, must differ from the one before,
+  // except once: 2027-01-13 is set to A to keep the old order, which skips the
+  // snow day's B, so it has the same classes as 2027-01-11 before the snow day
   const days = calendarDays(project).filter((day) => day.school);
   assert.equal(days.length, 190);
   assert.equal(classesOf(days[0].dayTypeId), 'dsample00a', 'the year starts on an A Day');
@@ -242,7 +244,7 @@ test('the classes alternate A, B on every school day all year, across every brea
   days.forEach((day, index) => {
     if (index > 0 && classesOf(day.dayTypeId) === classesOf(days[index - 1].dayTypeId)) repeats.push(day.date + ' follows a day with the same classes');
   });
-  assert.deepEqual(repeats, []);
+  assert.deepEqual(repeats, ['2027-01-13 follows a day with the same classes']);
   // and the dates the year is built around really are inside that run
   const around = (date) => {
     const at = days.findIndex((day) => day.date === date);
@@ -251,8 +253,8 @@ test('the classes alternate A, B on every school day all year, across every brea
   };
   assert.deepEqual(around('2026-11-13'), ['a', 'b*', 'a'], 'the first assembly sits on a B turn');
   assert.deepEqual(around('2027-03-11'), ['a', 'b*', 'a'], 'the second assembly sits on a B turn');
-  assert.deepEqual(around('2027-01-13'), ['a', 'b', 'a'], 'the day after the snow day');
-  assert.deepEqual(around('2027-01-30'), ['b', 'a', 'b'], 'the make-up Saturday');
+  assert.deepEqual(around('2027-01-13'), ['a', 'a', 'b'], 'the re-sync: the A after the snow day follows the A before it');
+  assert.deepEqual(around('2027-03-27'), ['a', 'b', 'a'], 'the make-up Saturday, 27 March');
   const lastBeforeBreak = (label) => {
     const first = project.calendar.dates.find((entry) => entry.label === label).date;
     const before = days.filter((day) => day.date < first).pop();
@@ -284,15 +286,16 @@ test('the calendar has a fall break, a winter break, a snow day with a re-sync, 
   const after = dayOn(project, '2027-01-13');
   assert.equal(after.why, 'date');
   assert.equal(after.label, 'Back in step after the snow day');
-  // a closed day does not step the rotation, so the day after the snow day is
-  // set to what it would have been anyway: B, after A on 11 January
+  // a closed day does not step the rotation, so without the set the day after
+  // the snow day would be B (the 12th would have been B). The set keeps the
+  // old order: A, skipping the snow day's B, so 11 and 13 January match
   assert.equal(dayOn(project, '2027-01-11').dayTypeId, 'dsample00a');
   const without = JSON.parse(JSON.stringify(project));
   without.calendar.dates = without.calendar.dates.filter((entry) => entry.date !== '2027-01-13');
-  assert.equal(dayOn(without, '2027-01-13').dayTypeId, after.dayTypeId, 'the date set changes nothing');
-  assert.equal(after.dayTypeId, 'dsample00b');
-  const makeUp = dayOn(project, '2027-01-30');
-  assert.equal(weekdayOf('2027-01-30'), 5);
+  assert.equal(dayOn(without, '2027-01-13').dayTypeId, 'dsample00b', 'without the set the rotation gives B');
+  assert.equal(after.dayTypeId, 'dsample00a');
+  const makeUp = dayOn(project, '2027-03-27');
+  assert.equal(weekdayOf('2027-03-27'), 5);
   assert.equal(makeUp.school, true);
   assert.equal(makeUp.label, 'Make-up day for the snow day');
   const assemblies = project.calendar.dates.filter((entry) => entry.label === 'Assembly');
@@ -310,9 +313,11 @@ test('the calendar counts: school days by day type and by bells', () => {
   const byDay = Object.fromEntries(counts.dayTypes.map((entry) => [entry.dayTypeId, entry.count]));
   assert.equal(byDay.dsample0as, 2);
   // Assembly Day has B's classes: with the classes alternating from an A Day
-  // on 190 school days, the two come out exactly even
-  assert.deepEqual(byDay, { dsample00a: 95, dsample00b: 93, dsample0as: 2 });
-  assert.equal(byDay.dsample00a, byDay.dsample00b + byDay.dsample0as, 'A against B and Assembly together');
+  // on 190 school days, the two come out nearly even. The re-sync repeats one
+  // A, so A is one more than the even split and B one fewer (96 and 92, counted
+  // from the calendar's own output), with the 2 Assembly Days on B's classes
+  assert.deepEqual(byDay, { dsample00a: 96, dsample00b: 92, dsample0as: 2 });
+  assert.equal(byDay.dsample00a, byDay.dsample00b + byDay.dsample0as + 2, 'A against B and Assembly together: the re-sync repeats one A, which moves A and B one each');
   assert.equal(counts.schoolDays, calendarDays(project).filter((day) => day.school).length);
   assert.equal(counts.bells.find((entry) => entry.bellsId === project.bellSchedules[1].id).count, 2);
 });
