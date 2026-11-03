@@ -481,6 +481,21 @@ test('a connection in avoidConnections is closed whatever its way, and a closed 
   assert.deepEqual([cut.reason, cut.avoiding], ['unreachable', ['corridors']]);
 });
 
+test('plan.avoiding names corridors only when a shut cell resolves to a node (SV2-90b)', () => {
+  const project = threeFloors();
+  const id = project.building.connections[0].id;
+  const graph = routingGraph(project);
+  const up = { ways: { [id]: 'ab' } };
+  const nowhere = [{ floorId: 'fnowhere', cell: 3 }, null, { floorId: project.building.floors[0].id, cell: -5 }];
+  const said = route(graph, roomId('2A'), roomId('1A'), { ...up, shutCells: nowhere });
+  assert.deepEqual([said.reason, said.avoiding], ['unreachable', []], 'cells that are on no node shut nothing, so nothing was avoided');
+  assert.deepEqual(route(graph, roomId('2A'), roomId('1A'), { ...up, shutCells: [] }).avoiding, []);
+  // one cell on a node among the rest: it is named
+  const here = project.building.floors[0].cells.indexOf('#');
+  const real = route(graph, roomId('2A'), roomId('1A'), { ...up, shutCells: nowhere.concat([{ floorId: project.building.floors[0].id, cell: here }]) });
+  assert.deepEqual(real.avoiding, ['corridors']);
+});
+
 test('a cached distance field is never served across a closure, a way or undirected', () => {
   const project = planProject(WAYS_PLAN);
   const graph = routingGraph(project);

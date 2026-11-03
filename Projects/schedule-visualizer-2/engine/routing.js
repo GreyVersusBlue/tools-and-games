@@ -215,16 +215,20 @@ function planFor(graph, options) {
   // closed cells (a scenario's closed corridor) join the same list of shut
   // nodes, so a closure means one thing however it was asked for
   if (Array.isArray(opts.shutCells) && opts.shutCells.length > 0) {
+    let resolved = false;
     for (const place of opts.shutCells) {
       const node = place ? nodeAt(graph, place.floorId, place.cell) : -1;
       if (node === -1) continue;
+      resolved = true;
       if (!nodeShut) nodeShut = new Uint8Array(graph.count);
       if (!nodeShut[node]) {
         nodeShut[node] = 1;
         shutNodes.push(node);
       }
     }
-    if (!avoiding.includes('corridors')) avoiding.push('corridors');
+    // a cell that is on no walkable node shuts nothing, and a failed route
+    // does not say it was avoiding corridors (SV2-90b)
+    if (resolved && !avoiding.includes('corridors')) avoiding.push('corridors');
   }
   shutNodes.sort((a, b) => a - b);
 
