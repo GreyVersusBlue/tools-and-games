@@ -1021,7 +1021,7 @@ export function mount(env) {
       h('p', { class: 'sch-markedit__label' }, 'This reads:'),
       says,
       edit.note === '' ? null : h('p', { class: 'sch-hint sch-markedit__note' }, edit.note),
-      hint === '' ? null : h('p', { class: 'sch-hint sch-markedit__missing', role: 'status' }, hint + (edit.id === null ? '' : ' Nothing changes until then.')),
+      hintSlot,
       h('div', { class: 'sch-toolbar' },
         edit.id === null
           ? [addButton, button('Cancel', closeMark, { key: key('cancel'), action: 'cancel-mark' })]
@@ -1063,6 +1063,9 @@ export function mount(env) {
   if (view.releaseEdit === undefined) view.releaseEdit = null;
   // the sentence under the editor, which a typed field rewrites in place
   let releaseSays = null;
+  // the line that says what is missing and the button that adds, which a typed field rereads in place
+  let releaseHint = null;
+  let releaseAdd = null;
 
   function openRelease(entry) {
     view.releaseEdit = releaseDraftOf(entry);
@@ -1083,6 +1086,25 @@ export function mount(env) {
   function sayRelease() {
     const edit = view.releaseEdit;
     if (releaseSays && edit) releaseSays.textContent = releaseSentence(ctx.store.project, releaseEntryOf(edit), edit.id === null ? '' : edit.id);
+  }
+
+  // What is missing before the draft can be taken, as the line under the editor (or null).
+  function missingLine(edit) {
+    const hint = releaseMissing(edit);
+    return hint === '' ? null : h('p', { class: 'sch-hint sch-markedit__missing', role: 'status' }, hint + (edit.id === null ? '' : ' Nothing changes until then.'));
+  }
+
+  // A typed field leaves the focus where it is: what is missing, and whether Add
+  // may be pressed, are read from the draft again in place.
+  function rereadRelease() {
+    const edit = view.releaseEdit;
+    if (!edit) return;
+    if (releaseHint) {
+      const line = missingLine(edit);
+      releaseHint.replaceChildren(...(line ? [line] : []));
+      releaseHint.hidden = line === null;
+    }
+    if (releaseAdd) releaseAdd.disabled = releaseMissing(edit) !== '';
   }
 
   // A field of the draft changed. `key` is the control to keep the focus on;
@@ -1113,8 +1135,10 @@ export function mount(env) {
     } else {
       Object.assign(edit, next, { note: '' });
     }
-    if (typed) sayRelease();
-    else env.render(key);
+    if (typed) {
+      sayRelease();
+      rereadRelease();
+    } else env.render(key);
   }
 
   function addThisRelease() {
@@ -1150,9 +1174,12 @@ export function mount(env) {
     const says = h('p', { class: 'sch-markedit__says', 'aria-live': 'polite' });
     releaseSays = says;
     sayRelease();
-    const hint = releaseMissing(edit);
+    const line = missingLine(edit);
+    const hintSlot = h('div', { class: 'sch-markedit__hint', hidden: line === null }, line);
     const addButton = button('Add this staggered dismissal', addThisRelease, { primary: true, key: key('add'), action: 'add-release' });
-    addButton.disabled = hint !== '';
+    addButton.disabled = line !== null;
+    releaseHint = hintSlot;
+    releaseAdd = addButton;
     const added = edit.id === null ? null : releaseOf(project).find((entry) => entry.id === edit.id);
     return h('div', { class: 'sch-markedit sch-releaseedit', role: 'group', 'aria-label': edit.id === null ? 'The new staggered dismissal' : 'The staggered dismissal: ' + (added ? releaseSentence(project, added, added.id) : '') },
       editor.element,
@@ -1178,7 +1205,15 @@ export function mount(env) {
   function releaseCard(project) {
     const entries = releaseOf(project);
     let edit = view.releaseEdit && (view.releaseEdit.id === null || entries.some((entry) => entry.id === view.releaseEdit.id)) ? view.releaseEdit : null;
-    if (view.releaseEdit && !edit) view.releaseEdit = null;
+    if (view.releaseEdit && !edit) {
+      // the entry under the editor is gone (a deletion, or the Undo of its Add): the focus it had goes to the card's Add button
+      const had = element.querySelector('.sch-releaseedit');
+      view.releaseEdit = null;
+      if (had && had.contains(document.activeElement)) {
+        env.focusAfter('release-new');
+        ctx.announce('The staggered dismissal you were editing is gone from the project.');
+      }
+    }
     if (edit) {
       edit = syncReleaseDraft(project, edit, ctx.announce);
       view.releaseEdit = edit;

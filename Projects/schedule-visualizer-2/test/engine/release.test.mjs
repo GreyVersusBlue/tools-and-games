@@ -676,3 +676,89 @@ test('the published key set is unchanged: nothing about release is in the publis
   assert.equal(JSON.stringify(withIt).includes('lrelease01'), false);
   assert.equal(JSON.stringify(withIt), JSON.stringify(without));
 });
+
+// ---------------------------------------------------------------- the Day tab's editor (SV2-93b)
+// The editor's functions are plain ones (ui/schedule/release.js); the browser
+// file test/browser/release.mjs has the same promises on the page.
+
+const HOSTILE = ['<b>x</b>', 'Q"uote\'s', 'Fish & Chips', '=SUM(1)', '&lt;i&gt;'];
+
+test('releaseMissing: a typed time the engine would refuse is missing, 315 s and 0 s included; only a groups entry on the bell may be 0', async () => {
+  const { releaseDraftOf, releaseMissing } = await import('../../ui/schedule/release.js');
+  const saved = entry('lsaved0001', { grade: '7' }, 120);
+  const draft = releaseDraftOf(saved);
+  assert.equal(releaseMissing(draft), '');
+  assert.equal(releaseMissing({ ...draft, seconds: 315 }), 'Choose a time from 15 s to 5 min after the bell to finish.', '5 min and 15 s is past the limit');
+  assert.equal(releaseMissing({ ...draft, seconds: 300 }), '', 'the limit itself is allowed');
+  assert.equal(releaseMissing({ ...draft, seconds: 0 }), 'Choose a time from 15 s to 5 min after the bell to finish.', '0 min and 0 s is no time for a grade');
+  assert.equal(releaseMissing({ ...draft, kind: 'wing', wing: 'East', seconds: 0 }) !== '', true, 'nor for a wing');
+  assert.equal(releaseMissing({ ...draft, seconds: 10 }) !== '', true, 'under the least');
+  const named = { ...releaseDraftOf(entry('lsaved0002', { groups: ['gsample07a'] }, 0)) };
+  assert.equal(named.onBell, true);
+  assert.equal(releaseMissing(named), '', 'a group on the bell is 0 by design');
+  assert.equal(releaseMissing({ ...named, onBell: false, seconds: 0 }) !== '', true, 'but 0 with On the bell off is not a time');
+});
+
+test('grades: the card, the chip and the crowd group "Grade 7" and "Grade7" the same way, as two grades', async () => {
+  const { gradesOf, releaseParts } = await import('../../ui/schedule/release.js');
+  const project = withRelease([entry('lgrade0001', { grade: 'Grade 7' }, 120)]);
+  project.groups = project.groups.map((group, index) => ({ ...group, grade: index === 0 ? 'Grade 7' : index === 1 ? 'Grade7' : index === 2 ? ' grade 7 ' : 'Grade 8' }));
+  assert.deepEqual(gradesOf(project).filter((grade) => /7/.test(grade)), ['Grade 7', 'Grade7'], 'two grades, as Movement\'s picker has them; case and outer spaces do not make a third');
+  const parts = releaseParts(project, project.release[0], 'lgrade0001');
+  const crowd = project.groups.filter((group) => releaseDelay(project, group.id, A, 0, null) > 0).length;
+  assert.equal(crowd, 2, 'the crowd model delays "Grade 7" and " grade 7 "');
+  assert.equal(parts.groups, '2 groups', 'the card says what the crowd does');
+  const joined = withRelease([entry('lgrade0002', { grade: 'Grade7' }, 120)], project);
+  assert.equal(releaseParts(joined, joined.release[0], 'lgrade0002').groups, '1 group');
+  assert.equal(project.groups.filter((group) => releaseDelay(joined, group.id, A, 0, null) > 0).length, 1);
+});
+
+test('syncReleaseDraft: an entry changed because a group, day type or period went says so; an Undo or a Redo says that; neither is said for the other', async () => {
+  const { releaseDraftOf, syncReleaseDraft } = await import('../../ui/schedule/release.js');
+  const undoNote = 'This staggered dismissal was changed by an Undo or a Redo. The editor shows it as it is now.';
+  const base = withRelease([entry('lsync00001', { groups: ['gsample07a', 'gsample07b'] }, 120, { dayTypeIds: [A, B] })]);
+  const draft = releaseDraftOf(base.release[0]);
+  const heard = [];
+  // a group deleted
+  const lessGroup = run(actions.deleteGroup, base, { id: 'gsample07b' });
+  assert.deepEqual(lessGroup.release[0].who.groups, ['gsample07a']);
+  const afterGroup = syncReleaseDraft(lessGroup, { ...draft }, (words) => heard.push(words));
+  assert.equal(afterGroup.note, 'A group, day type or period this staggered dismissal named is gone from the project, so it was taken off.');
+  assert.deepEqual(afterGroup.groupIds, ['gsample07a']);
+  // a day type deleted
+  const lessDay = run(actions.deleteDayType, base, { dayTypeId: B });
+  assert.equal(syncReleaseDraft(lessDay, { ...draft }, null).note, 'A group, day type or period this staggered dismissal named is gone from the project, so it was taken off.');
+  // a change that is not a deletion is an Undo or a Redo
+  const changed = run(actions.setRelease, base, { id: 'lsync00001', seconds: 90 });
+  assert.equal(syncReleaseDraft(changed, { ...draft }, null).note, undoNote);
+  // bringing back what a deletion took (the Undo of it) is an Undo
+  const back = syncReleaseDraft(base, { ...releaseDraftOf(lessGroup.release[0]) }, null);
+  assert.equal(back.note, undoNote);
+  assert.deepEqual(heard, [afterGroup.note], 'what is told to a screen reader is the note');
+});
+
+test('hostile names: a group, a grade and a wing typed as markup, quotes, an ampersand or a formula read back exactly as typed in the sentence', async () => {
+  const { releaseSentence, gradesOf, wingsOf } = await import('../../ui/schedule/release.js');
+  for (const name of HOSTILE) {
+    const project = withRelease([entry('lhost00001', { grade: name }, 120), entry('lhost00002', { wing: name }, 60), entry('lhost00003', { groups: ['gsample07a'] }, 0)]);
+    project.groups = project.groups.map((group) => (group.id === 'gsample07a' ? { ...group, name, grade: name } : group));
+    project.building = JSON.parse(JSON.stringify(project.building));
+    const sentences = project.release.map((each) => releaseSentence(project, each, each.id));
+    assert.ok(sentences[0].startsWith(/^grade\s/i.test(name) ? name : 'grade ' + name), 'the grade as typed: ' + sentences[0]);
+    assert.ok(sentences[1].includes(name), 'the wing as typed: ' + sentences[1]);
+    assert.ok(sentences[2].startsWith(name + ' leaves on the bell'), 'the group as typed: ' + sentences[2]);
+    assert.ok(gradesOf(project).includes(name));
+    assert.equal(typeof wingsOf(project).length, 'number');
+  }
+});
+
+test('alsoText: the schedule file import says its staggered dismissals by count, with the nouns right for one and many', async () => {
+  const { alsoText } = await import('../../ui/schedule/import/schedule-file.js');
+  const none = { subjectsAdded: [], teachersAdded: [], dayTypesAdded: [], periodsRaised: null, marksAdded: 0, marksKept: 0, marksReplaced: 0, dutiesAdded: 0, dutiesKept: 0, dutiesReplaced: 0, releaseAdded: 0, releaseKept: 0, releaseReplaced: 0, releaseDropped: 0, unknownRooms: [] };
+  const words = { many: 'periods' };
+  assert.equal(alsoText(none, words), '', 'a file with none says nothing');
+  assert.equal(alsoText({ ...none, releaseAdded: 1 }, words), ' Also: 1 staggered dismissal added.');
+  assert.equal(alsoText({ ...none, releaseAdded: 2, releaseReplaced: 1, releaseKept: 3 }, words), ' Also: 2 staggered dismissals added, 1 staggered dismissal replaced and 3 staggered dismissals kept as they were.');
+  assert.equal(alsoText({ ...none, releaseDropped: 1 }, words), ' Also: 1 staggered dismissal left out because it names nothing here.');
+  assert.equal(alsoText({ ...none, releaseDropped: 2 }, words), ' Also: 2 staggered dismissals left out because they name nothing here.');
+});
