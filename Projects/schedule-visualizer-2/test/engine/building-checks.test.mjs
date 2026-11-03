@@ -165,11 +165,14 @@ test('no exit marked is one warning, and then no room is told it has no route to
   assert.equal(findings[0].id, 'no-exit:building');
 });
 
-test('a one-way connection that only leads up leaves the upper rooms with no route to an exit', () => {
+test('a one-way connection that only leads up leaves the upper rooms with a route to an exit: evacuation uses every stair', () => {
   const project = clone(threeFloors());
   project.building.connections[1].direction = 'ab'; // Floor 2 up to Floor 3 only
-  const findings = buildingChecks(project);
-  assert.deepEqual(findings.map((finding) => [finding.kind, finding.where.roomId]), [['room-no-exit-route', roomId('3A')], ['room-no-exit-route', roomId('3B')]]);
+  assert.deepEqual(buildingChecks(project), [], 'a rule for passing time does not strand anyone in an emergency');
+  // and the stranding that is real is still found
+  const cut = clone(project);
+  cut.building.connections.splice(1, 1);
+  assert.deepEqual(buildingChecks(cut).filter((finding) => finding.kind === 'room-no-exit-route').map((finding) => finding.where.roomId), [roomId('3A'), roomId('3B')]);
 });
 
 test('a name with markup or another script goes into the sentence exactly as typed', () => {

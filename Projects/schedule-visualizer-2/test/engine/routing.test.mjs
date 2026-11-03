@@ -517,6 +517,12 @@ test('undirected uses every stairs connection both ways and is in the key only w
   route(graph, roomId('1A'), roomId('2A'), { cache, geometryVersion: 1, undirected: true });
   assert.equal(cache.searches, 2, 'the up-only plan and the undirected plan are two fields');
   assert.deepEqual(fieldKeys(cache), [roomId('1A') + '|3|8|0||', roomId('1A') + '|3|8|0|||u']);
+  // a building with no one-way connection: undirected is the plain plan
+  const plain = threeFloors();
+  const alike = createRouteCache();
+  route(routingGraph(plain), roomId('1A'), roomId('2A'), { cache: alike, geometryVersion: 1 });
+  route(routingGraph(plain), roomId('1A'), roomId('2A'), { cache: alike, geometryVersion: 1, undirected: true });
+  assert.equal(alike.searches, 1, 'with every connection both ways there is nothing to ignore, so one field serves both');
   // routeToExit takes it too
   const exit = routeToExit(graph, roomId('2A'), { undirected: true });
   assert.equal(exit.ok, true, 'the exit is on Floor 1 and the way there is down an up-only stair');

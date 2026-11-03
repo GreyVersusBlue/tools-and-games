@@ -9,7 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildGraph } from '../../engine/graph.js';
-import { routeToExit, routingGraph, routesForSchedule, createRouteCache } from '../../engine/routing.js';
+import { route, routeToExit, routingGraph, routesForSchedule, createRouteCache } from '../../engine/routing.js';
 import { directions, describeFailure } from '../../engine/directions.js';
 import { evacuationRoutes, byExit, noRoute, doorCard, cardSteps, elevatorConnections, ELEVATOR_KIND, CROP_MARGIN } from '../../engine/evacuation.js';
 import { school, clone } from './helpers.mjs';
@@ -262,27 +262,56 @@ test('two exits tied: the one with the lower id is taken, whatever order the flo
   assert.equal(doorCard(traded, null, route).exit.doorName, 'West Door');
 });
 
-test('one-way stairs: a stairwell that only goes up is not walked down, and with no way down the rooms on floor 2 are listed', () => {
+test('one-way stairs: evacuation takes an up-only stair down, as it would any stair (ARCHITECTURE 18.4)', () => {
   const project = twoStairs();
   const both = entryOf(evacuationRoutes(project), roomId('2A')).route;
   assert.deepEqual(both.connections, ['cplan00001'], 'both ways open: the near stairs');
 
   const upOnly = clone(project);
   upOnly.building.connections[0].direction = 'ab'; // floor 1 to floor 2 only
-  const around = entryOf(evacuationRoutes(upOnly), roomId('2A')).route;
-  assert.deepEqual(around.connections, ['cplan00002'], 'stairs A only go up: the far stairs');
-  assert.ok(around.seconds > both.seconds);
-  assert.deepEqual(path(upOnly, around, true).slice(0, 2), ['2:2,2', '2:3,2']);
+  // passing time still keeps to the rule: the near stairs are not taken down
+  const walking = route(routingGraph(upOnly), roomId('2A'), roomId('1A'));
+  assert.deepEqual(walking.connections, ['cplan00002'], 'a walk between classes goes round to the far stairs');
+  const out = entryOf(evacuationRoutes(upOnly), roomId('2A')).route;
+  assert.deepEqual(out.connections, ['cplan00001'], 'a door card sends the room down the up-only stairs');
+  assert.equal(out.seconds, both.seconds);
+  assert.deepEqual(path(upOnly, out, true), path(project, both, true));
+  const card = doorCard(upOnly, null, out);
+  assert.ok(card.steps.some((step) => /stairs/i.test(step.text) && /down/i.test(step.text)), card.text);
 
   const downOnly = clone(project);
   downOnly.building.connections[0].direction = 'ba'; // floor 2 to floor 1 only
   assert.deepEqual(entryOf(evacuationRoutes(downOnly), roomId('2A')).route.connections, ['cplan00001']);
 
+  // both stairs up only: the passing-time walk has no way down, evacuation does
   const noWayDown = clone(upOnly);
   noWayDown.building.connections[1].direction = 'ab';
+  assert.equal(route(routingGraph(noWayDown), roomId('2A'), roomId('1A')).reason, 'unreachable');
   const evacuation = evacuationRoutes(noWayDown);
-  assert.deepEqual(noRoute(noWayDown, evacuation), [{ roomId: roomId('2A'), floorId: F2, reason: 'unreachable', sentence: 'There is no way through from Room 2A on Floor 2 to an exit.', onlyByElevator: false }]);
+  assert.deepEqual(noRoute(noWayDown, evacuation), [], 'every room has a way out');
+  assert.equal(entryOf(evacuation, roomId('2A')).route.ok, true);
   assert.equal(entryOf(evacuation, roomId('1A')).route.ok, true);
+});
+
+test('evacuation shares no distance field with the movement view where a stair is one-way, and all of them where none is', () => {
+  const project = twoStairs();
+  const graph = routingGraph(project);
+  const cache = createRouteCache();
+  const rooms = project.building.floors.flatMap((floor) => floor.spaces.filter((space) => space.kind === 'room')).length;
+  const other = (id) => (id === roomId('1A') ? roomId('2A') : roomId('1A'));
+  for (const room of project.building.floors.flatMap((floor) => floor.spaces.filter((space) => space.kind === 'room'))) route(graph, room.id, other(room.id), { cache, geometryVersion: 1 });
+  const before = cache.searches;
+  evacuationRoutes(project, graph, { cache, geometryVersion: 1 });
+  assert.equal(cache.searches, before, 'no one-way stair: every field is the movement view\'s');
+
+  const upOnly = clone(project);
+  upOnly.building.connections[0].direction = 'ab';
+  const oneWay = routingGraph(upOnly);
+  const shared = createRouteCache();
+  for (const floor of upOnly.building.floors) for (const space of floor.spaces) if (space.kind === 'room') route(oneWay, space.id, other(space.id), { cache: shared, geometryVersion: 1 });
+  const had = shared.searches;
+  evacuationRoutes(upOnly, oneWay, { cache: shared, geometryVersion: 1 });
+  assert.equal(shared.searches - had, rooms, 'one extra search per room with an up-only stair: the undirected fields');
 });
 
 test('elevators are never used: a connection of the elevator kind built by hand is avoided, though the graph keeps it as a link', () => {

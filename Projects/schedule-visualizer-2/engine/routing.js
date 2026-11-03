@@ -65,7 +65,9 @@
 //                        like the cells of avoidCorridorNames (a closed corridor)
 //   undirected           true: every connection runs both ways, the building's
 //                        `direction` and `ways` ignored (an evacuation uses every
-//                        stair, ARCHITECTURE 18.4). In the plan's key only when true.
+//                        stair, ARCHITECTURE 18.4). In the plan's key only when true
+//                        and some connection of the building is one-way; otherwise
+//                        the plan is the plain one and shares its fields.
 //   avoidExits           routeToExit only: a Set or list of exit ids
 //   cache                a cache from createRouteCache(); without one every
 //                        call searches afresh
@@ -234,9 +236,12 @@ function planFor(graph, options) {
   // direction mean anything, and none at all when every connection is used
   // both ways. Each part is added only when it is there, so a plan with
   // neither has the key it had before they existed.
-  const undirected = opts.undirected === true;
+  // undirected means something only where a connection is one-way, so in a
+  // building with none the plan, and every field kept for it, is the plain one
+  const wantsUndirected = opts.undirected === true;
+  const undirected = wantsUndirected && graph.links.some((link) => link.direction !== 'both');
   let linkWay = null;
-  if (!undirected && opts.ways && typeof opts.ways === 'object') {
+  if (!wantsUndirected && opts.ways && typeof opts.ways === 'object') {
     const named = [];
     graph.links.forEach((link, index) => {
       const way = opts.ways[link.id];
