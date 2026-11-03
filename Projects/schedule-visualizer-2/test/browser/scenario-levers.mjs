@@ -92,6 +92,29 @@ async function chooseKind(p, kind) {
   await p.waitForFunction((k) => document.querySelector('.scn-form').dataset.kind === k, {}, kind);
 }
 
+// How much of an element is on the screen: its box cut to the window and to every
+// ancestor that clips it (the section, and the page around it, which may be scrolled
+// too), and nothing else. A stage scrolled off the top is tall and seen not at all.
+const visibleHeight = (p, selector) => p.$eval(selector, (el) => {
+  const box = el.getBoundingClientRect();
+  let top = Math.max(0, box.top);
+  let bottom = Math.min(window.innerHeight, box.bottom);
+  for (let up = el.parentElement; up; up = up.parentElement) {
+    if (getComputedStyle(up).overflowY === 'visible') continue;
+    const clip = up.getBoundingClientRect();
+    top = Math.max(top, clip.top);
+    bottom = Math.min(bottom, clip.bottom);
+  }
+  return Math.max(0, bottom - top);
+});
+
+// Is this control on the screen, and not under the pinned stage or the bar? What is at its middle is it (or in it).
+const reachableAt = (p, selector) => p.$eval(selector, (el) => {
+  const box = el.getBoundingClientRect();
+  const at = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+  return Boolean(at) && (at === el || el.contains(at));
+});
+
 const text = (selector) => page.$eval(selector, (el) => el.textContent);
 const texts = (selector) => page.$$eval(selector, (all) => all.map((el) => el.textContent));
 const value = (selector) => page.$eval(selector, (el) => el.value);
@@ -496,6 +519,8 @@ test('Stairs and corridors: a stair by select with its four choices; Up only, th
   await fresh(page);
   await start(page, 'Stairs');
   await chooseKind(page, 'building');
+  await page.click('.scn-seats__what input[value="stair"] + .seg__label');
+  await page.waitForSelector('#scenario-building-stair');
   assert.deepEqual(await texts('#scenario-building-stair option'), ['Stairs A: Floor 1 to Floor 2', 'Stairs B: Floor 2 to Floor 3']);
   await page.select('#scenario-building-stair', 'csample00b');
   assert.deepEqual(await texts('.scn-way .seg__label'), ['Both ways', 'Up only, towards Floor 3', 'Down only, towards Floor 2', 'Closed']);
@@ -821,6 +846,37 @@ test('Apply offers its snapshot when it writes levers, and the line counts what 
   await page.waitForFunction(() => ['taken', 'not-taken'].includes(document.querySelector('.scn').dataset.snapshot));
 });
 
+test('Apply with a one-way stair and closures: the summary has the trial band, and the building after is unchanged but for the direction', async () => {
+  await fresh(page, `
+    const floor = project.building.floors[0];
+    project.scenario = { name: 'Building', compared: null, changes: [], levers: [
+      { kind: 'way', connectionId: 'csample00a', way: 'ab' },
+      { kind: 'way', connectionId: 'csample00b', way: 'closed' },
+      { kind: 'corridor', floorId: floor.id, cells: project.building.floors[0].corridors[0].cells, name: 'Main Corridor' },
+    ] };`);
+  const before = await projectOf();
+  await page.click('[data-action="apply"]');
+  await page.waitForSelector('#scenario-apply[open]');
+  const dialog = await page.$eval('#scenario-apply', (el) => ({
+    list: Array.from(el.querySelectorAll('[data-part="applies"] li'), (li) => li.textContent),
+    kinds: Array.from(el.querySelectorAll('[data-part="kinds"] li'), (li) => li.textContent),
+    trial: el.querySelector('[data-part="trial"]').textContent,
+    buttons: Array.from(el.querySelectorAll('.dialog__buttons button'), (button) => button.textContent),
+  }));
+  assert.deepEqual(dialog.list, ['Stairs A: up only']);
+  assert.deepEqual(dialog.kinds, ['Stairs A becomes up only.']);
+  assert.equal(dialog.trial, 'Closing Stairs B and Main Corridor is a trial: Apply leaves the building as it is.');
+  assert.deepEqual(dialog.buttons, ['Apply 1 of 3 changes', 'Keep it as a scenario']);
+  await page.click('#scenario-apply .btn--primary');
+  await page.waitForFunction(() => globalThis.sv2.store.project.scenario === null);
+  await ready(page);
+  const now = await projectOf();
+  const same = (project) => JSON.stringify([project.building.floors.map((floor) => [floor.id, floor.cells, floor.corridors, floor.spaces, floor.exits]), project.building.connections.map((connection) => [connection.id, connection.a, connection.b])]);
+  assert.equal(same(now), same(before), 'the cells, corridors, rooms, exits and the stairs\' ends are as they were');
+  assert.deepEqual(now.building.connections.map((connection) => [connection.id, connection.direction]), [['csample00a', 'ab'], ['csample00b', 'both']], 'only the direction changed, and the stairs that was closed is open');
+  assert.equal(await page.$eval('.scn', (el) => el.dataset.closedDrawn), '0', 'nothing is hatched once the scenario is gone');
+});
+
 test('Apply writes the changes and levers as one undo step, closes the scenario with its closures, and the focus goes to the name field; Undo brings it all back', async () => {
   await fresh(page, APPLY_BODY);
   const before = await projectOf();
@@ -917,6 +973,20 @@ for (const theme of ['light', 'dark']) {
     await check('Staggered dismissal, a grade with ticks');
     await page.click('[data-key="scenario-release:who:wing"]');
     await check('Staggered dismissal, a wing');
+    await chooseKind(page, 'building');
+    await page.click('.scn-seats__what input[value="stair"] + .seg__label');
+    await page.waitForSelector('#scenario-building-stair');
+    await check('Stairs and corridors, a stair');
+    await page.click('.scn-way input[value="closed"] + .seg__label');
+    await check('Stairs and corridors, Closed chosen');
+    await page.click('.scn-seats__what input[value="corridor"] + .seg__label');
+    await page.waitForSelector('[data-key="scenario-building-pick"]');
+    await check('Stairs and corridors, a corridor');
+    await page.click('[data-key="scenario-building-pick"]');
+    await page.waitForFunction(() => document.querySelector('.scn').dataset.picking === 'true');
+    await check('the picking state: the banner and the plan', '.scn');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.querySelector('.scn').dataset.picking === undefined);
     await chooseKind(page, 'seats');
     await check('Capacity');
     await page.click('.scn-seats__what input[value="headCount"] + .seg__label');
@@ -964,21 +1034,14 @@ test('at 390 by 844 with touch: the forms are used by tap, every target is 44 px
       await p.waitForFunction((k) => document.querySelector('.scn-form').dataset.kind === k, {}, kind);
       assert.deepEqual(await small(sheet), [], kind + ': every control is 44 px tall');
       // the form's first field brought into view, as a finger would; then how much of the
-      // stage is on the screen (its height cut to the window and to the section that holds
-      // it), not how tall it is: a stage scrolled off the top is tall and seen not at all
+      // stage is on the screen (its box cut to the window and to what clips it), not how tall
+      // it is: a stage scrolled off the top is tall and seen not at all
       await p.$eval('.scn-form select, .scn-form .field__input', (el) => el.scrollIntoView({ block: 'center' }));
       await p.waitForFunction(() => document.querySelector('.scn').dataset.compare === 'ready');
-      const shape = await p.evaluate(() => {
-        const box = (el) => el.getBoundingClientRect();
-        const stage = box(document.querySelector('.scn .mov-stage'));
-        const section = box(document.querySelector('.scn'));
-        const top = Math.max(stage.top, section.top, 0);
-        const bottom = Math.min(stage.bottom, section.bottom, window.innerHeight);
-        const first = box(document.querySelector('.scn-form select, .scn-form .field__input'));
-        return { stage: stage.height, seen: Math.max(0, bottom - top), field: first.top >= section.top && first.bottom <= Math.min(section.bottom, window.innerHeight), wide: document.documentElement.scrollWidth - window.innerWidth };
-      });
-      assert.ok(shape.field, kind + ': the form\'s first field is on the screen');
-      assert.ok(shape.seen >= 160 - 0.5, kind + ': at least 160 px of the stage is on the screen with the first field in view: ' + shape.seen + ' of ' + shape.stage);
+      const seen = await visibleHeight(p, '.scn .mov-stage');
+      const shape = await p.evaluate(() => ({ stage: document.querySelector('.scn .mov-stage').getBoundingClientRect().height, wide: document.documentElement.scrollWidth - window.innerWidth }));
+      assert.ok(await reachableAt(p, '.scn-form select, .scn-form .field__input'), kind + ': the form\'s first field is on the screen, clear of the stage and the bar');
+      assert.ok(seen >= 160 - 0.5, kind + ': at least 160 px of the stage is on the screen with the first field in view: ' + seen + ' of ' + shape.stage);
       assert.ok(shape.wide <= 0, kind + ': nothing scrolls sideways: ' + shape.wide);
     }
     // a lever by tap: a capacity
@@ -994,6 +1057,39 @@ test('at 390 by 844 with touch: the forms are used by tap, every target is 44 px
     await ready(p);
     assert.equal(await p.$$eval('.scn-chip', (all) => all.length), 0);
     assert.equal(await p.evaluate(() => document.activeElement === document.querySelector('.scn-kind input:checked')), true, 'the focus is on the Kind of change fieldset');
+    // a corridor picked on the map by a tap: the banner and its Cancel are a finger's size, the stage keeps its 160 px
+    await tap('.scn-kind input[value="building"] + .seg__label');
+    await tap('.scn-seats__what input[value="corridor"] + .seg__label');
+    await tap('[data-key="scenario-building-pick"]');
+    await p.waitForFunction(() => document.querySelector('.scn').dataset.picking === 'true');
+    assert.deepEqual(await small('.scn-pick button'), [], 'Cancel is 44 px');
+    assert.deepEqual(await small('[data-key="scenario-building-pick"]'), []);
+    const seen = await visibleHeight(p, '.scn .mov-stage');
+    assert.ok(seen >= 160 - 0.5, 'the stage keeps 160 px while picking: ' + seen);
+    // the page and the section scrolled back to their tops, as a person would to see the whole plan
+    await p.evaluate(() => {
+      document.querySelector('.scn').scrollTop = 0;
+      document.querySelector('.surface').scrollTop = 0;
+    });
+    const floorOne = await p.evaluate(() => globalThis.sv2.store.project.building.floors[0]);
+    const cells = floorOne.corridors[0].cells;
+    let spot = null;
+    for (const cell of cells) {
+      spot = await p.evaluate((f, c) => {
+        const plan = document.querySelector('.scn').scenarios.plan;
+        const at = plan.cellAt(f, c);
+        const box = plan.canvas.getBoundingClientRect();
+        const x = box.left + at.x;
+        const y = box.top + at.y;
+        return document.elementFromPoint(x, y) === plan.canvas && x > 0 && x < window.innerWidth && y > 0 && y < window.innerHeight ? { x, y } : null;
+      }, floorOne.id, cell);
+      if (spot) break;
+    }
+    assert.ok(spot, 'a corridor cell can be touched on the phone');
+    await p.touchscreen.tap(spot.x, spot.y);
+    await ready(p);
+    await p.waitForSelector('.scn-chip[data-kind="corridor"]');
+    assert.equal(await p.evaluate(() => document.querySelector('.scn').dataset.picking), undefined, 'the tap ended the mode');
     assert.deepEqual(phone.problems().errors, []);
   } finally {
     await phone.close();
