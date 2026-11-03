@@ -116,7 +116,7 @@ import { loads } from './load.js';
 import { places } from './places.js';
 import { checkSchedule } from './checks.js';
 import { buildingChecks } from './building-checks.js';
-import { applyChanges, applyLevers, reconcile, trimResult } from './scenario.js';
+import { applyChanges, applyLevers, leverRouteOptions, reconcile, trimResult } from './scenario.js';
 import { suggest } from './suggest.js';
 
 export const REQUEST = 'sv2-derive';
@@ -130,11 +130,31 @@ export const SUGGEST_ANSWER = 'sv2-suggested';
 // The parts of a result that are kept or sent whole.
 export const WHOLE_PARTS = ['places', 'walks', 'findings', 'buildingFindings'];
 
+// The counters a run is worked out for. Three are the store's (geometry,
+// building, schedule); a fourth, `levers`, is the scenario lane's alone
+// (ARCHITECTURE 18.3): it moves when the building levers' route options do,
+// and the other lanes leave it out, which reads as 0 and is not added to the
+// counters handed back, so their answers' `versions` are what they were.
+// All that are given must be integers.
 function countersOf(versions) {
   if (!versions) return null;
   const { geometry, building, schedule } = versions;
-  if (![geometry, building, schedule].every((value) => Number.isInteger(value))) return null;
-  return { geometry, building, schedule };
+  const given = versions.levers !== undefined;
+  if (![geometry, building, schedule].concat(given ? [versions.levers] : []).every((value) => Number.isInteger(value))) return null;
+  return given ? { geometry, building, schedule, levers: versions.levers } : { geometry, building, schedule };
+}
+
+// The route options a lane's building levers mean, as routing.js takes them:
+// leverRouteOptions' { ways, shutLinks, shutCells } with the closed
+// connections as avoidConnections. Nothing for none, so a lane without
+// building levers hands routing exactly the options it always did.
+function leverOptionsOf(levers) {
+  if (!levers) return {};
+  const options = {};
+  if (levers.ways && Object.keys(levers.ways).length > 0) options.ways = levers.ways;
+  if (Array.isArray(levers.shutLinks) && levers.shutLinks.length > 0) options.avoidConnections = levers.shutLinks;
+  if (Array.isArray(levers.shutCells) && levers.shutCells.length > 0) options.shutCells = levers.shutCells;
+  return options;
 }
 
 // Who walks where in one transition of one day, and how many they are: the
@@ -181,10 +201,15 @@ export function createPipeline(options) {
   let held = null;
   let runs = 0;
 
-  function run(project, versions) {
+  // run(project, versions, levers?): `levers` is leverRouteOptions' answer for
+  // the building levers of this project's scenario, or left out. The routes
+  // and the walks of teachers are worked out under them, and the geometry
+  // that "the same" means includes them: the `levers` counter says whether
+  // they are the ones the last run had.
+  function run(project, versions, levers) {
     const counters = countersOf(versions);
     const before = held && held.counters && counters ? held : null;
-    const sameGeometry = before !== null && before.counters.geometry === counters.geometry;
+    const sameGeometry = before !== null && before.counters.geometry === counters.geometry && (before.counters.levers || 0) === (counters.levers || 0);
     const sameBuilding = sameGeometry && before.counters.building === counters.building;
     const sameSchedule = before !== null && before.counters.schedule === counters.schedule;
     if (sameBuilding && sameSchedule) return before.result;
@@ -193,7 +218,7 @@ export function createPipeline(options) {
     const work = { run: runs, searches: 0, transitions: 0, transitionsRun: 0, loadsRun: 0, routesRun: false, buildingRun: !sameBuilding };
 
     const graph = sameBuilding ? before.graph : routingGraph(project);
-    const routeOptions = counters ? { cache, geometryVersion: counters.geometry } : { cache };
+    const routeOptions = { ...(counters ? { cache, geometryVersion: counters.geometry } : { cache }), ...leverOptionsOf(levers) };
 
     let routes;
     if (sameGeometry && sameSchedule) {
@@ -367,14 +392,17 @@ export function runResults(result, dayTypeId, bellsId) {
 
 // The scenario lane's answer: the project with its open scenario's changes
 // applied and then its levers (applyLevers: bells, leaving late, seats and
-// head counts). Only those that still apply go in (reconcile, which leaves
+// head counts), run with the building levers as route options
+// (leverRouteOptions: a stair one way or closed, closed corridor cells; the
+// building itself is never edited, ARCHITECTURE 18.3). Only those that still apply go in (reconcile, which leaves
 // out a change or lever whose group, room, day type or period is gone, one a
 // later one replaces, and one the schedule already has), run on `pipeline`, trimmed
 // to what compareResults reads. The project handed in is not changed. With
 // no scenario open, the project as it is.
 export function scenarioRun(pipeline, project, versions) {
   const kept = reconcile(project, project.scenario);
-  return trimResult(pipeline.run(applyLevers(applyChanges(project, kept.changes), kept.levers || []), versions));
+  const levers = kept.levers || [];
+  return trimResult(pipeline.run(applyLevers(applyChanges(project, kept.changes), levers), versions, leverRouteOptions(project, levers)));
 }
 
 // The suggestion lane's answer: suggest() run on `pipeline`, which must not

@@ -676,6 +676,8 @@ export function routesByRun(project, graph, options) {
 // walking alone, with no crowd. One entry per walk teacherMoves() names, on
 // every own day type, in the shape checkSchedule takes. A walk with no way
 // through has no figure and is left out. options.cache is a route cache.
+// options.ways, options.avoidConnections and options.shutCells are routing's
+// (the scenario's building levers) and pass through to every route.
 //
 // With options.bells true, the same for every bell-schedule run instead
 // (runsOf's order), each entry with bellsId after dayTypeId: the teacher's
@@ -701,6 +703,11 @@ export function teacherWalks(project, graph, options) {
   const cache = options && options.cache ? options.cache : createRouteCache();
   const routeOptions = { cache };
   if (options && options.geometryVersion !== undefined) routeOptions.geometryVersion = options.geometryVersion;
+  // the scenario's building levers (a stair one way or closed, closed cells)
+  // reach a teacher as they reach a class (ARCHITECTURE 18.3)
+  if (options && options.ways) routeOptions.ways = options.ways;
+  if (options && options.avoidConnections) routeOptions.avoidConnections = options.avoidConnections;
+  if (options && options.shutCells) routeOptions.shutCells = options.shutCells;
   const marginSeconds = project.settings.checks ? project.settings.checks.passingMarginSeconds : 0;
   const bellRuns = Boolean(options && options.bells === true);
   const runs = runsOf(project).filter((run) => (run.bellsId !== null) === bellRuns);
