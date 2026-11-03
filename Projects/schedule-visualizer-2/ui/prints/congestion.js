@@ -60,7 +60,7 @@ import { findBellSchedule } from '../../engine/bells.js';
 import { count, list, periodWords } from '../components/words.js';
 import { transitionsOf, unitWord, runOf, followerWords, nothingMeets } from '../movement/model.js';
 import { rankedPlaces } from '../movement/hotspots.js';
-import { transitionRows, lateWords } from '../movement/tables.js';
+import { transitionRows, lateWords, heldBackWords } from '../movement/tables.js';
 import { esc, frame } from './document.js';
 import { printedFrom, placesTable, PLACES_ON_PAPER } from './movement.js';
 
@@ -140,7 +140,7 @@ function daySection(project, results, graph, dayType, first, bellsId) {
     + esc(late.length === 0
       ? 'Every group arrives in time.'
       : count(lateGroups, 'group') + ' cannot arrive in time, on ' + count(late.length, 'walk') + '.')
-    + '</p>');
+    + esc(heldBackWords(project, results, dayType.id, bellsId) ? ' ' + heldBackWords(project, results, dayType.id, bellsId) : '') + '</p>');
 
   // the worst transitions
   out.push('<h2>The ' + (worst.length < WORST_TRANSITIONS ? '' : WORST_TRANSITIONS + ' ') + 'worst transitions</h2>');

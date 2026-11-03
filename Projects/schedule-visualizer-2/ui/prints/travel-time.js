@@ -31,7 +31,7 @@ import { ownDayTypes, findDayType } from '../../engine/day-types.js';
 import { findBellSchedule } from '../../engine/bells.js';
 import { count, list, periodWords } from '../components/words.js';
 import { transitionsOf, walkWords, nothingMeets, followerWords } from '../movement/model.js';
-import { travelDay, transitionRows, dayRows, lateWords, nothingBetweenParts } from '../movement/tables.js';
+import { travelDay, transitionRows, dayRows, lateWords, nothingBetweenParts, anyHeldBack } from '../movement/tables.js';
 import { durationWords } from '../scenarios/model.js';
 import { esc, frame } from './document.js';
 import { printedFrom } from './movement.js';
@@ -47,23 +47,26 @@ export function roomWords(number) {
 }
 
 // One transition's rows as the paper prints them: the cells in order.
-//   [group, from, to, walking, waiting, total, fits]
-export function transitionCells(row) {
-  return [row.group.name, roomWords(row.from), roomWords(row.to), time(row.walking), row.waiting === 0 ? 'none' : time(row.waiting), time(row.total), lateWords(row)];
+//   [group, from, to, walking, waiting, (left after the bell,) total, fits]
+// `held` puts the "left after the bell" cell in, as the table has the column
+// only when some group of the day leaves after the bell.
+export function transitionCells(row, held) {
+  return [row.group.name, roomWords(row.from), roomWords(row.to), time(row.walking), row.waiting === 0 ? 'none' : time(row.waiting)].concat(held ? [row.released > 0 ? time(row.released) : 'none'] : [], [time(row.total), lateWords(row)]);
 }
 
 // One group's day as the paper prints it.
-//   [group, walks, walking, waiting, total, late walks, slowest walk]
+//   [group, walks, walking, waiting, (left after the bell,) total, late walks, slowest walk]
 // The slowest walk is its transition and its time: "Period 3 to Period 4, 1 min 20 s".
-export function dayCells(project, row) {
+export function dayCells(project, row, held) {
   const settings = project.settings;
   const slowest = walkWords(settings, row.slowest.period, row.slowest.toPeriod) + ', ' + time(row.slowest.total);
-  return [row.group.name, String(row.walks), time(row.walking), row.waiting === 0 ? 'none' : time(row.waiting), time(row.total), row.late === 0 ? 'none' : String(row.late), slowest];
+  return [row.group.name, String(row.walks), time(row.walking), row.waiting === 0 ? 'none' : time(row.waiting)].concat(held ? [row.released > 0 ? time(row.released) : 'none'] : [], [time(row.total), row.late === 0 ? 'none' : String(row.late), slowest]);
 }
 
-const TRANSITION_HEAD = ['Group', 'From', 'To', 'Walking', 'Waiting', 'Total', 'Fits the passing time'];
-const DAY_HEAD = ['Group', 'Walks', 'Walking', 'Waiting', 'Total', 'Late walks', 'Slowest walk'];
-const NUMBERS = new Set(['Walks', 'Walking', 'Waiting', 'Total', 'Late walks']);
+const LEFT = 'Left after the bell';
+const transitionHead = (held) => ['Group', 'From', 'To', 'Walking', 'Waiting'].concat(held ? [LEFT] : [], ['Total', 'Fits the passing time']);
+const dayHead = (held) => ['Group', 'Walks', 'Walking', 'Waiting'].concat(held ? [LEFT] : [], ['Total', 'Late walks', 'Slowest walk']);
+const NUMBERS = new Set(['Walks', 'Walking', 'Waiting', LEFT, 'Total', 'Late walks']);
 
 function table(head, rows, late) {
   const out = ['<table class="doc-table doc-table--travel">', '<thead><tr>' + head.map((label) => '<th scope="col"' + (NUMBERS.has(label) ? ' class="is-number"' : '') + '>' + esc(label) + '</th>').join('') + '</tr></thead>', '<tbody>'];
@@ -93,14 +96,16 @@ function dayPages(project, results, day) {
   if (walks.every((each) => each.found.rows.length === 0)) {
     return [{ what: name + ': ' + day.heading, body: '<p class="doc-lead">' + esc('Nobody walks anywhere on ' + day.heading + ' yet: give a group a room in two periods that follow each other.') + '</p>' }];
   }
+  const held = anyHeldBack(results, day.id, day.bellsId);
   const body = ['<p class="doc-lead">' + esc('How long every group takes on ' + day.heading + ', slowest first. Walking is the time in an empty corridor; waiting is the time lost to the crowd.'
+    + (held ? ' Left after the bell is the time a group was held back by a staggered dismissal; it counts in the total, so the group has less of the passing time to walk in.' : '')
     + (margin > 0 ? ' A walk is late when it takes longer than the passing time and ' + time(margin) + ' of margin.' : ' A walk is late when it takes longer than the passing time.')) + '</p>'];
   for (const { transition, found } of walks) {
     body.push('<section class="doc-section doc-section--travel" data-period="' + transition.period + '">');
     body.push('<h2>' + esc(transition.name) + '</h2>');
     body.push('<p class="doc-meaning">' + esc('Passing time ' + time(transition.seconds) + (transition.times ? ', ' + transition.times : '') + '.') + '</p>');
     if (found.rows.length === 0) body.push('<p class="doc-none">Nobody walks in this transition.</p>');
-    else body.push(table(TRANSITION_HEAD, found.rows.map(transitionCells), found.rows.map((row) => row.late)));
+    else body.push(table(transitionHead(held), found.rows.map((row) => transitionCells(row, held)), found.rows.map((row) => row.late)));
     const rest = [];
     if (found.still.length > 0) rest.push(names(found.still) + (found.still.length === 1 ? ' stays in its room.' : ' stay in their rooms.'));
     if (found.failed.length > 0) rest.push(names(found.failed) + (found.failed.length === 1 ? ' has no route.' : ' have no route.'));
@@ -112,7 +117,7 @@ function dayPages(project, results, day) {
   body.push('<section class="doc-section doc-section--travel-day new-sheet">');
   body.push('<h2>' + esc('Each group over the whole of ' + day.heading) + '</h2>');
   body.push('<p class="doc-meaning">' + esc('Slowest first, by the time spent walking and waiting over the day. ' + (lateGroups === 0 ? 'No group is late.' : count(lateGroups, 'group') + (lateGroups === 1 ? ' is' : ' are') + ' late at least once.')) + '</p>');
-  body.push(table(DAY_HEAD, rows.map((row) => dayCells(project, row)), rows.map((row) => row.late > 0)));
+  body.push(table(dayHead(held), rows.map((row) => dayCells(project, row, held)), rows.map((row) => row.late > 0)));
   body.push('</section>');
   return [{ what: name + ': ' + day.heading, body: body.join('\n') }];
 }
