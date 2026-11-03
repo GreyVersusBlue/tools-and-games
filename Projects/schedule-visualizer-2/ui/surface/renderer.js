@@ -174,7 +174,7 @@ export function createRenderer(canvas) {
   const dark = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : { matches: false };
   const fills = new Map();
   const labels = new Map();
-  let letters = { connections: null, floorId: null, byCell: new Map() };
+  let letters = { connections: null, floors: null, floorId: null, byCell: new Map(), ways: new Map() };
   let surnames = { teachers: null, byId: new Map() };
 
   // The colours are kept once read, until the theme changes. A canvas that
@@ -240,16 +240,31 @@ export function createRenderer(canvas) {
 
   function connectionLetters(project, floor) {
     const connections = project.building.connections;
-    if (letters.connections === connections && letters.floorId === floor.id) return letters.byCell;
+    const floors = project.building.floors;
+    if (letters.connections === connections && letters.floors === floors && letters.floorId === floor.id) return letters.byCell;
     const byCell = new Map();
+    const ways = new Map();
+    const levelOf = (id) => {
+      const found = floors.find((each) => each.id === id);
+      return found ? found.level : 0;
+    };
     for (const connection of connections) {
-      for (const end of [connection.a, connection.b]) {
+      for (const [index, end] of [connection.a, connection.b].entries()) {
         if (end.floorId !== floor.id) continue;
         if (!byCell.has(end.cell)) byCell.set(end.cell, []);
         if (!byCell.get(end.cell).includes(connection.label)) byCell.get(end.cell).push(connection.label);
+        // the way it may be walked, drawn beside the letter at both ends: 'up'
+        // or 'down' between floors; on one floor the end it is walked from is
+        // 'down' (in) and the end it comes out at is 'up' (out)
+        if ((connection.direction === 'ab' || connection.direction === 'ba') && !ways.has(end.cell)) {
+          const from = connection.direction === 'ab' ? connection.a : connection.b;
+          const to = connection.direction === 'ab' ? connection.b : connection.a;
+          const rise = levelOf(to.floorId) - levelOf(from.floorId);
+          ways.set(end.cell, rise > 0 ? 'up' : rise < 0 ? 'down' : (index === 0) === (connection.direction === 'ab') ? 'down' : 'up');
+        }
       }
     }
-    letters = { connections, floorId: floor.id, byCell };
+    letters = { connections, floors, floorId: floor.id, byCell, ways };
     return byCell;
   }
 
@@ -442,10 +457,37 @@ export function createRenderer(canvas) {
         g.stroke();
       }
       if (lettered) {
-        const s = fitSize(letter, 600, Math.max(MIN_LABEL, w * 0.42 * large), w - 4);
+        const way = letters.ways.get(cell);
+        // a one-way connection leaves room beside the letter for its chevron
+        const mark = way ? w * 0.26 : 0;
+        const s = fitSize(letter, 600, Math.max(MIN_LABEL, w * 0.42 * large), w - 4 - mark);
         if (s > 0) {
           g.fillStyle = stairsLabel;
-          g.fillText(letter, left + w / 2, top + w * 0.68);
+          const wide = g.measureText(letter).width;
+          const start = left + w / 2 - (wide + mark) / 2;
+          if (way) {
+            g.textAlign = 'left';
+            g.fillText(letter, start, top + w * 0.68);
+            g.textAlign = 'center';
+            // a bold chevron, a second stroke in the ink so it reads on any fill
+            const mx = start + wide + mark * 0.55;
+            const my = top + w * 0.68;
+            const reach = mark * 0.36;
+            const tip = way === 'up' ? -reach : reach;
+            g.beginPath();
+            g.moveTo(mx - reach, my - tip / 2);
+            g.lineTo(mx, my + tip / 2);
+            g.lineTo(mx + reach, my - tip / 2);
+            g.strokeStyle = stairsLabel;
+            g.lineWidth = Math.max(1.5, w / 9);
+            g.lineCap = 'round';
+            g.lineJoin = 'round';
+            g.stroke();
+            g.lineJoin = 'miter';
+            g.lineCap = 'butt';
+          } else {
+            g.fillText(letter, left + w / 2, top + w * 0.68);
+          }
         }
       }
       if (letter === '') {
