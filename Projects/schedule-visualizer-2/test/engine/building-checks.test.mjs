@@ -168,7 +168,7 @@ test('no exit marked is one warning, and then no room is told it has no route to
 test('a one-way connection that only leads up leaves the upper rooms with a route to an exit: evacuation uses every stair', () => {
   const project = clone(threeFloors());
   project.building.connections[1].direction = 'ab'; // Floor 2 up to Floor 3 only
-  assert.deepEqual(buildingChecks(project), [], 'a rule for passing time does not strand anyone in an emergency');
+  assert.deepEqual(kinds(buildingChecks(project)), ['one-way-trap'], 'a rule for passing time does not strand anyone in an emergency: the only finding is the trap it makes in passing time');
   // and the stranding that is real is still found
   const cut = clone(project);
   cut.building.connections.splice(1, 1);
@@ -212,4 +212,47 @@ test('findings come out in the order of the kinds list', () => {
   const order = kinds(buildingChecks(project)).map((kind) => BUILDING_CHECK_KINDS.indexOf(kind));
   assert.deepEqual(order, order.slice().sort((a, b) => a - b));
   assert.equal(order[0], 0);
+});
+
+// ARCHITECTURE 18.4: the one-way-trap warning.
+const C2 = 'cplan00002';
+
+test('one-way-trap: an up-only stair to the top floor is a warning that names the floor and the stairs, with Show', () => {
+  const project = clone(threeFloors());
+  project.building.connections[1].direction = 'ab';
+  const [finding] = only(buildingChecks(project), 'one-way-trap');
+  assert.equal(finding.severity, 'warning');
+  assert.equal(finding.text, 'Nothing on Floor 3 can get back down: Stairs B is up only and no other way leads down.');
+  assert.equal(finding.id, 'one-way-trap:' + floorId(3) + ':' + C2);
+  assert.equal(finding.where.floorId, floorId(3));
+  assert.equal(finding.where.connectionId, C2);
+  assert.ok(finding.where.cells.length > 0 && finding.where.cells.every((cell) => Number.isInteger(cell)));
+  assert.equal(finding.fixable, false);
+});
+
+test('one-way-trap: the same stair made down only strands nobody who can be entered, and both ways is none', () => {
+  const down = clone(threeFloors());
+  down.building.connections[1].direction = 'ba'; // Floor 3 down to Floor 2 only: Floor 3 is not entered, so it is not a trap
+  assert.deepEqual(only(buildingChecks(down), 'one-way-trap'), []);
+  const both = clone(threeFloors());
+  assert.deepEqual(only(buildingChecks(both), 'one-way-trap'), []);
+});
+
+test('one-way-trap: a second way back down ends the trap', () => {
+  const project = planProject([['.AA.BB.', '.AA.BB.', 'S#####S', '.......', '.......'], ['.AA.BB.', '.AA.BB.', 'S#####S', '.......', '.......']], { connections: [[1, 0, 2, 2, 0, 2], [1, 6, 2, 2, 6, 2]], exits: [[1, 3, 2, 'Main Door']] });
+  project.building.connections[0].direction = 'ab';
+  assert.deepEqual(only(buildingChecks(project), 'one-way-trap'), [], 'Stairs B, both ways, leads down');
+  project.building.connections[1].direction = 'ab';
+  const [finding] = only(buildingChecks(project), 'one-way-trap');
+  assert.equal(finding.text, 'Nothing on Floor 2 can get back down: Stairs A and B are up only and no other way leads down.');
+});
+
+test('one-way-trap: a same-floor one-way connection says "out", and no exit marked says nothing of traps', () => {
+  const project = clone(splitLevel());
+  project.building.connections[0].direction = 'ab'; // from the west end to the east end only; the exit is at the west
+  const [finding] = only(buildingChecks(project), 'one-way-trap');
+  assert.equal(finding.text, 'Nothing on Floor 1 can get back out: Stairs A is one way and no other way leads out.');
+  const noExit = clone(project);
+  noExit.building.floors[0].exits = [];
+  assert.deepEqual(only(buildingChecks(noExit), 'one-way-trap'), []);
 });

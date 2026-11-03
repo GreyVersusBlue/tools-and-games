@@ -12,6 +12,7 @@ import { findingId } from '../../engine/findings.js';
 import { CHECK_KINDS } from '../../engine/schema.js';
 import { isId } from '../../engine/ids.js';
 import { school } from './helpers.mjs';
+import { threeFloors } from '../fixtures/buildings/plans.mjs';
 
 // The sample school with one of everything the building checks look for.
 function brokenBuilding() {
@@ -45,8 +46,10 @@ function assertForm(finding) {
   assert.equal(finding.id, findingId(finding.kind, ...parts), 'and it is what findingId builds');
 }
 
-test('every building finding\'s id has the form findings.js gives the schedule findings, for all nine kinds', () => {
-  const findings = buildingChecks(brokenBuilding()).concat(buildingChecks(noExits()));
+test('every building finding\'s id has the form findings.js gives the schedule findings, for all ten kinds', () => {
+  const oneWay = threeFloors();
+  oneWay.building.connections[1].direction = 'ab';
+  const findings = buildingChecks(brokenBuilding()).concat(buildingChecks(noExits()), buildingChecks(oneWay));
   assert.deepEqual(BUILDING_CHECK_KINDS.filter((kind) => !findings.some((finding) => finding.kind === kind)), [], 'every kind is among the findings checked');
   for (const finding of findings) assertForm(finding);
   assert.equal(new Set(findings.map((finding) => finding.id)).size, findings.length, 'and no two share one');

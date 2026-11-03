@@ -28,6 +28,7 @@ export const BUILDING_CHECK_KINDS = [
   'floor-unconnected',
   'no-exit',
   'room-no-exit-route',
+  'one-way-trap',
 ];
 
 const SIDE_WORDS = { n: 'north', e: 'east', s: 'south', w: 'west' };
@@ -173,6 +174,79 @@ export function buildingChecks(project, graph) {
       const entries = g.rooms.get(room.id).entries;
       if (entries.length === 0 || entries.some((entry) => canLeave[entry.node])) continue;
       add('room-no-exit-route', 'problem', [room.id], nameOfRoom(room, true) + ' on ' + floor.name + ' has no route to any exit. Join its corridor to one that leads to an exit, or mark an exit it can reach.', { floorId: floor.id, roomId: room.id, cells: room.cells });
+    }
+  }
+
+  // one-way traps (ARCHITECTURE 18.4): cells that can be walked to from an
+  // exit, in passing time, and have no directed way back to one. Evacuation
+  // ignores one-way, so this is the check that sees what a one-way rule does
+  // to the way people move between classes.
+  if (g.exits.length > 0 && g.links.some((link) => link.direction !== 'both')) {
+    const exitNodes = g.exits.map((exit) => exit.node);
+    const forward = reachable(g, exitNodes);
+    const back = reachable(g, exitNodes, { reverse: true });
+    const trapped = new Uint8Array(g.count);
+    let any = false;
+    for (let node = 0; node < g.count; node += 1) {
+      if (forward[node] && !back[node]) {
+        trapped[node] = 1;
+        any = true;
+      }
+    }
+    if (any) {
+      const seen = new Uint8Array(g.count);
+      for (let start = 0; start < g.count; start += 1) {
+        if (!trapped[start] || seen[start]) continue;
+        // one trap: the trapped cells that touch, by a step or a connection
+        const nodes = [start];
+        seen[start] = 1;
+        for (let i = 0; i < nodes.length; i += 1) {
+          const node = nodes[i];
+          for (let h = 0; h < 4; h += 1) {
+            const next = g.neighbours[node * 4 + h];
+            if (next !== -1 && trapped[next] && !seen[next]) {
+              seen[next] = 1;
+              nodes.push(next);
+            }
+          }
+          for (let k = g.linkStart[node]; k < g.linkStart[node + 1]; k += 1) {
+            const link = g.links[g.linkList[k]];
+            const next = link.a === node ? link.b : link.a;
+            if (trapped[next] && !seen[next]) {
+              seen[next] = 1;
+              nodes.push(next);
+            }
+          }
+        }
+        const inTrap = new Set(nodes);
+        // the one-way connections that lead in: walkable into the trap from
+        // a cell outside it
+        const doors = [];
+        for (const link of g.links) {
+          if (link.direction === 'both') continue;
+          const from = link.direction === 'ab' ? link.a : link.b;
+          const to = link.direction === 'ab' ? link.b : link.a;
+          if (inTrap.has(to) && !inTrap.has(from)) doors.push({ link, rising: g.floors[g.nodeFloor[to]].level > g.floors[g.nodeFloor[from]].level, falling: g.floors[g.nodeFloor[to]].level < g.floors[g.nodeFloor[from]].level });
+        }
+        const onFloor = new Map();
+        for (const node of nodes) {
+          const f = g.nodeFloor[node];
+          if (!onFloor.has(f)) onFloor.set(f, []);
+          onFloor.get(f).push(g.nodeCell[node]);
+        }
+        const floorsOf = Array.from(onFloor.keys()).sort((a, b) => a - b);
+        const first = floorsOf[0];
+        const names = floorsOf.map((f) => g.floors[f].name);
+        const way = doors.length > 0 && doors.every((door) => door.rising) ? 'down' : doors.length > 0 && doors.every((door) => door.falling) ? 'up' : null;
+        const phrase = (door) => (door.rising ? 'up only' : door.falling ? 'down only' : 'one way');
+        const same = doors.every((door) => phrase(door) === phrase(doors[0]));
+        const what = same && doors.length > 1 ? 'Stairs ' + list(doors.map((door) => door.link.label)) + ' are ' + phrase(doors[0]) : list(doors.map((door) => 'Stairs ' + door.link.label + ' is ' + phrase(door)));
+        const out = way === null ? 'out' : way;
+        const text = 'Nothing on ' + list(names) + ' can get back ' + out + ': ' + what + ' and no other way leads ' + out + '.';
+        const where = { floorId: g.floors[first].id, cells: onFloor.get(first).sort((a, b) => a - b), connectionIds: doors.map((door) => door.link.id) };
+        if (doors.length > 0) where.connectionId = doors[0].link.id;
+        add('one-way-trap', 'warning', [g.floors[first].id, ...doors.map((door) => door.link.id).sort()], text, where);
+      }
     }
   }
 
