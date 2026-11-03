@@ -463,13 +463,14 @@ export function createRenderer(canvas) {
         const s = fitSize(letter, 600, Math.max(MIN_LABEL, w * 0.42 * large), w - 4 - mark);
         if (s > 0) {
           g.fillStyle = stairsLabel;
-          const wide = g.measureText(letter).width;
-          const start = left + w / 2 - (wide + mark) / 2;
           if (way) {
+            // only a one-way stair measures its letter: every other draws as it always did
+            const wide = g.measureText(letter).width;
+            const start = left + w / 2 - (wide + mark) / 2;
             g.textAlign = 'left';
             g.fillText(letter, start, top + w * 0.68);
             g.textAlign = 'center';
-            // a bold chevron, a second stroke in the ink so it reads on any fill
+            // a bold chevron in the letter's colour, which is chosen to read on the fill
             const mx = start + wide + mark * 0.55;
             const my = top + w * 0.68;
             const reach = mark * 0.36;

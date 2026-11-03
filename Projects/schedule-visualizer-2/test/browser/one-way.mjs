@@ -124,6 +124,27 @@ function difference(one, two) {
   return { changed, contrast: best };
 }
 
+// A cell large enough to carry a letter and its chevron (18 px): zoom with
+// Ctrl and the wheel about the stairs, which keeps them where they are.
+async function zoomOnto(p, x, y, side) {
+  for (let turns = 0; turns < 12; turns += 1) {
+    const size = await p.evaluate(() => document.querySelector('.bld').editor.view.size);
+    if (size >= side) break;
+    const at = await p.evaluate((cx, cy) => {
+      const editor = document.querySelector('.bld').editor;
+      const box = editor.canvas.getBoundingClientRect();
+      const spot = editor.view.toScreen(cx + 0.5, cy + 0.5);
+      return { x: box.left + spot.x, y: box.top + spot.y };
+    }, x, y);
+    await p.mouse.move(at.x, at.y);
+    await p.keyboard.down('Control');
+    await p.mouse.wheel({ deltaY: -200 });
+    await p.keyboard.up('Control');
+    await still(p);
+  }
+  assert.ok((await p.evaluate(() => document.querySelector('.bld').editor.view.size)) >= side, 'the plan is zoomed to a cell of ' + side + ' px');
+}
+
 // The planner's plan, as in "a chevron beside the letter at both ends": the
 // stairs B cell (column 34, row 9) on Floor 2 and on Floor 3, with the
 // connection both ways and then up only.
@@ -132,6 +153,7 @@ async function chevronEvidence(p) {
   for (const floor of ['Floor 2', 'Floor 3']) {
     await goFloor(p, floor);
     await setDirection(p, B, 'both');
+    await zoomOnto(p, 33, 8, 28);
     const plain = await cellPixels(p, 33, 8);
     await setDirection(p, B, 'ab');
     const one = await cellPixels(p, 33, 8);
@@ -298,7 +320,7 @@ async function publishedMap(name, direction) {
   const project = plainSchool();
   project.publish.passcode = '';
   project.building.connections.find((each) => each.id === B).direction = direction;
-  const published = await publishDocument(diskReader(), project, { clock: future, random: seededRandom('one-way ' + name) });
+  const published = await publishDocument(diskReader(), project, { clock: future, random: seededRandom('one-way') });
   const file = path.join(scratch, name + '.html');
   writeFileSync(file, published.html);
   return pathToFileURL(file).href;
@@ -318,7 +340,28 @@ async function mapPixels(url, theme) {
       const canvas = document.querySelector('.map canvas');
       return Boolean(canvas) && canvas.width > 0 && document.querySelector('.map').dataset.drawn !== 'false';
     }, { timeout: 15000 });
-    await staff.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    // the stairs are at the floor's east side: zoom in to the cell that carries a
+    // letter and a chevron, then move the floor all the way to its east end
+    for (let step = 0; step < 3; step += 1) await staff.click('.map__zoom[aria-label="Zoom in"]');
+    await staff.waitForFunction(() => document.querySelector('.map').dataset.zoom === '3', { timeout: 8000 });
+    const box = await staff.$eval('.map canvas', (canvas) => {
+      const r = canvas.getBoundingClientRect();
+      return { x: r.left, y: r.top, w: r.width, h: r.height };
+    });
+    // a drag sideways is at most one picture wide: drag until the floor's east end is there
+    for (let drag = 0; drag < 6; drag += 1) {
+      await staff.mouse.move(box.x + box.w - 6, box.y + box.h / 2);
+      await staff.mouse.down();
+      await staff.mouse.move(box.x + 6, box.y + box.h / 2, { steps: 6 });
+      await staff.mouse.up();
+    }
+    // at rest: the canvas is the same two frames running
+    await staff.waitForFunction(() => new Promise((resolve) => {
+      const canvas = document.querySelector('.map canvas');
+      const read = () => canvas.toDataURL().length + ':' + canvas.toDataURL().slice(-200);
+      const first = read();
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve(read() === first)));
+    }), { timeout: 8000 });
     return await staff.evaluate(() => {
       const canvas = document.querySelector('.map canvas');
       const g = canvas.getContext('2d');
@@ -338,23 +381,17 @@ for (const theme of ['light', 'dark']) {
     assert.deepEqual([plain.width, plain.height], [marked.width, marked.height]);
     assert.equal(plain.label.includes('up only'), false, 'both ways says nothing');
     assert.match(marked.label, /Stairs B is up only\./);
-    let changed = 0;
-    let minX = Infinity;
-    let maxX = -1;
-    let minY = Infinity;
-    let maxY = -1;
+    const spots = [];
     for (let i = 0; i < plain.data.length; i += 4) {
       if (plain.data[i] === marked.data[i] && plain.data[i + 1] === marked.data[i + 1] && plain.data[i + 2] === marked.data[i + 2]) continue;
-      changed += 1;
-      const px = (i / 4) % plain.width;
-      const py = Math.floor(i / 4 / plain.width);
-      minX = Math.min(minX, px);
-      maxX = Math.max(maxX, px);
-      minY = Math.min(minY, py);
-      maxY = Math.max(maxY, py);
+      spots.push([(i / 4) % plain.width, Math.floor(i / 4 / plain.width)]);
     }
-    assert.ok(changed > 6, 'the map draws a chevron (' + changed + ' pixels differ)');
-    assert.ok(maxX - minX < plain.width / 8 && maxY - minY < plain.height / 4, 'and only at the stairs: the changed pixels fit one cell, ' + (maxX - minX + 1) + ' by ' + (maxY - minY + 1) + ' px');
+    // the chevron is a cluster of changed pixels inside one cell; a pixel here and there
+    // at a room's corner is the picture's own sub-pixel rounding from one load to the next
+    let best = 0;
+    for (const [x, y] of spots) best = Math.max(best, spots.filter(([sx, sy]) => sx >= x && sx < x + 24 && sy >= y && sy < y + 24).length);
+    assert.ok(best >= 40, 'the map draws a chevron: ' + best + ' changed pixels in one cell');
+    assert.ok(best >= spots.length * 0.75, 'and it is what changed: ' + best + ' of ' + spots.length + ' pixels are in that cell');
   });
 }
 

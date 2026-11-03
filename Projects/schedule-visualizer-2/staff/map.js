@@ -446,20 +446,20 @@ function paint(canvas, school, floor, plan, theme, marks, lines) {
       }
       // the letter and a bold chevron beside it, the pair centred in the cell
       const wide = g.measureText(letter).width;
-      const mark = cell * 0.3;
+      const mark = cell * 0.4;
       const start = left + cell / 2 - (wide + mark) / 2;
       g.textAlign = 'left';
       g.fillText(letter, start, mid);
       g.textAlign = 'center';
       const mx = start + wide + mark * 0.6;
-      const reach = mark * 0.36;
+      const reach = mark * 0.32;
       const tip = way === 'up' ? -reach : reach;
       g.beginPath();
       g.moveTo(mx - reach, mid - tip / 2);
       g.lineTo(mx, mid + tip / 2);
       g.lineTo(mx + reach, mid - tip / 2);
       g.strokeStyle = g.fillStyle;
-      g.lineWidth = Math.max(1.5, cell / 9);
+      g.lineWidth = Math.max(1.5, cell / 8);
       g.lineCap = 'round';
       g.lineJoin = 'round';
       g.stroke();
