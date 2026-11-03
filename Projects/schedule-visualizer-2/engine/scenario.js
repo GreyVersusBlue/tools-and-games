@@ -58,6 +58,14 @@
 //       { changes, dropped: [{ change, parts, sentence }] }
 //   changeWords(project, change)
 //       { parts, text, teachers: [{ groupId, from, to }] } for a chip
+//   leverRouteOptions(project, levers)
+//       { ways, shutLinks, shutCells }: the building's levers as routing.js
+//       takes them (ways, avoidConnections, shutCells); leverOptionsKey of
+//       that is '' for none, and what the page compares to move the lane's
+//       `levers` counter
+//   trialOnlyWords(project, levers)
+//       { parts, text } for what Apply leaves out ("Closing Stairs B and
+//       North Corridor is a trial: Apply leaves the building as it is."), or null
 //   trimResult(result)
 //       { places, loads, bellLoads?, walks, findings, failedWalks }: what
 //       compareResults reads of a pipeline result, and nothing else
