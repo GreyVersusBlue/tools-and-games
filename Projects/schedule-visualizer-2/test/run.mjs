@@ -170,6 +170,7 @@ export const GROUPS = {
     'browser/plan-map.mjs', // SV2-65b
     'browser/safety.mjs', // SV2-67
     'browser/scenario.mjs', // SV2-68
+    'browser/scenario-levers.mjs', // SV2-92
     'browser/congestion-scenario.mjs', // SV2-71
     'browser/difference.mjs', // SV2-69
     'browser/fix.mjs', // SV2-70
