@@ -26,6 +26,7 @@ import { DAY_TYPES_MOST, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DA
 import { spacelessKey, textLength, bellSchedulesOf, calendarOf, newBellSchedule, defaultWeekdays } from './schema.js';
 import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST, marksOf, dutiesOf, newMark, newDuty } from './schema.js';
 import { RELEASE_MOST, RELEASE_SECONDS, RELEASE_WHO_KINDS, releaseOf, newRelease } from './schema.js';
+import { CELL_CORRIDOR, CELL_STAIRS } from './schema.js';
 import { releaseKind } from './release.js';
 import { formatDuration } from './findings.js';
 import { isCalendarDate, daysBetween, datesFrom, weekdayOf, dateWords, calendarDays } from './calendar.js';
@@ -2727,7 +2728,7 @@ export const applyGridEdits = action(
 // scenario's own change objects, so a chip finds its index with indexOf.
 
 import { CHANGE_KINDS } from './schema.js';
-import { applyChanges, normalise, reconcile, scenarioFromDiff, changeWords, applyLevers, layReleases, normaliseLevers, isWrittenWay, trialOnlyWords, SCHEDULE_LEVER_KINDS } from './scenario.js';
+import { applyChanges, normalise, reconcile, scenarioFromDiff, changeWords, applyLevers, layReleases, normaliseLevers, isWrittenWay, trialOnlyWords, SCHEDULE_LEVER_KINDS, LEVER_KINDS } from './scenario.js';
 
 export const NEW_SCENARIO_NAME = 'New scenario';
 
@@ -2867,8 +2868,10 @@ export const removeScenarioChange = action(
 
 // ---- the schedule levers (ARCHITECTURE 18.3; SV2-89). scenario.levers is a
 // second list beside `changes`, absent until the first lever is added. The
-// four kinds here are the schedule's: release, bell, capacity, headCount;
-// the building's (way, corridor) are SV2-90's and are not added here.
+// kinds are the schedule's (release, bell, capacity, headCount) and the
+// building's (way, corridor; SV2-90 made them, SV2-91 opened them here).
+// The building's never change the building: Apply writes only a way of both,
+// ab or ba, and the lab runs the rest as route options.
 
 function leversWord(n) {
   return n + (n === 1 ? ' lever' : ' levers');
@@ -2883,8 +2886,27 @@ function leversIn(scenario) {
 // of the four kinds with every field it needs. `who` is ordered as the
 // project orders its groups, and `after`, `dayTypeIds` are null for every.
 function scenarioLever(project, lever) {
-  const bad = () => refuse('A scenario lever is a staggered dismissal, a bell time, a room\'s capacity or a group\'s head count, with every field it needs.', 'bad-value');
-  if (!lever || typeof lever !== 'object' || !SCHEDULE_LEVER_KINDS.includes(lever.kind)) bad();
+  const bad = () => refuse('A scenario lever is a staggered dismissal, a bell time, a stairs\' way, a closed corridor, a room\'s capacity or a group\'s head count, with every field it needs.', 'bad-value');
+  if (!lever || typeof lever !== 'object' || !LEVER_KINDS.includes(lever.kind)) bad();
+  if (lever.kind === 'way') {
+    const connection = typeof lever.connectionId === 'string' ? project.building.connections.find((each) => each.id === lever.connectionId) : undefined;
+    if (!connection) refuse('That stairs connection is no longer in the building.', 'missing');
+    const stairsAt = (end) => {
+      const floor = project.building.floors.find((each) => each.id === end.floorId);
+      return Boolean(floor) && floor.cells[end.cell] === CELL_STAIRS;
+    };
+    if (!stairsAt(connection.a) || !stairsAt(connection.b)) refuse('Stairs ' + connection.label + ' no longer has stairs at both ends, so it has no way to change.', 'missing');
+    if (!['both', 'ab', 'ba', 'closed'].includes(lever.way)) refuse('A stairs\' way is both ways, one way only from its A end or from its B end, or closed.', 'bad-value');
+    return { kind: 'way', connectionId: connection.id, way: lever.way };
+  }
+  if (lever.kind === 'corridor') {
+    const floor = typeof lever.floorId === 'string' ? project.building.floors.find((each) => each.id === lever.floorId) : undefined;
+    if (!floor) refuse('That floor is no longer in the building.', 'missing');
+    if (!Array.isArray(lever.cells) || lever.cells.length === 0 || !lever.cells.every((cell) => Number.isInteger(cell) && cell >= 0)) refuse('A closed corridor names the cells it closes.', 'bad-value');
+    if (!lever.cells.every((cell) => cell < floor.cells.length && floor.cells[cell] === CELL_CORRIDOR)) refuse('Only corridor can be closed, and some of those cells on ' + floor.name + ' are not corridor.', 'bad-value');
+    if (lever.name !== undefined && typeof lever.name !== 'string') refuse('A closed corridor\'s name is text.', 'bad-value');
+    return { kind: 'corridor', floorId: floor.id, cells: Array.from(new Set(lever.cells)).sort((a, b) => a - b), name: lever.name === undefined ? '' : lever.name };
+  }
   if (lever.kind === 'release') {
     const who = needReleaseWho(project, lever.who);
     const seconds = needReleaseSeconds(lever.seconds, who);

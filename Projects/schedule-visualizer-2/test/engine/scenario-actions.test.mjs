@@ -597,7 +597,7 @@ test('addScenarioLever: a lever is refused in words, and nothing changes: no sce
   const refused = (lever, code, text) => assert.throws(() => store.apply(addScenarioLever, { lever }), (error) => refusedWith(code)(error) && (text === undefined || text.test(error.message)), JSON.stringify(lever));
   refused(undefined, 'bad-value', /staggered dismissal, a bell time/);
   refused({ kind: 'move' }, 'bad-value');
-  refused({ kind: 'way', connectionId: 'c', way: 'closed' }, 'bad-value', /staggered dismissal/);
+  refused({ kind: 'way', connectionId: 'c', way: 'closed' }, 'missing', /stairs connection is no longer in the building/);
   refused({ ...L_HEAD, headCount: 0 }, 'bad-value', /head count is a whole number from 1 to 999/);
   refused({ ...L_HEAD, headCount: undefined }, 'bad-value');
   refused({ ...L_HEAD, groupId: 'ggone00000' }, 'missing', /no longer in the project/);
@@ -885,6 +885,8 @@ const way = (connectionId, how) => ({ kind: 'way', connectionId, way: how });
 
 // A store whose scenario already holds building levers: addScenarioLever takes
 // the four schedule kinds only, so these arrive as a project file brings them.
+// (SV2-91 opened addScenarioLever for them too; these cases still start from a
+// file so that Apply is tested on its own.)
 function withBuildingLevers(levers, changes) {
   const project = school();
   const corridor = project.building.floors[0].corridors.find((entry) => entry.id === 'ksample001');
@@ -975,4 +977,88 @@ test('applyScenario: a stairs name that is markup is named exactly as typed in w
   const store = storeOf({ ...project, scenario: { name: 'Trial', changes: [], levers: [way(STAIRS_B, 'closed')], compared: null } });
   store.apply(applyScenario, {});
   assert.equal(store.undoOutcome.leftOutText, 'Closing Stairs <b>B & "C"</b> is a trial: Apply leaves the building as it is.');
+});
+
+// ================================================================ SV2-91: the building levers by addScenarioLever
+
+function corridorLever(cells, floorId) {
+  const project = school();
+  const entry = project.building.floors[0].corridors.find((each) => each.id === 'ksample001');
+  return { kind: 'corridor', floorId: floorId || 'fsample001', cells: cells || entry.cells.slice(0, 3), name: 'Main Corridor' };
+}
+
+test('addScenarioLever: a way and a corridor are stored with their own fields, in words that name the stairs and the corridor', () => {
+  const store = withChanges([]);
+  store.apply(addScenarioLever, { lever: { ...way(STAIRS_A, 'ab'), extra: 1 } });
+  store.apply(addScenarioLever, { lever: way(STAIRS_B, 'closed') });
+  const corridor = corridorLever();
+  store.apply(addScenarioLever, { lever: { ...corridor, cells: corridor.cells.slice().reverse().concat(corridor.cells[0]) } });
+  assert.deepEqual(store.project.scenario.levers, [way(STAIRS_A, 'ab'), way(STAIRS_B, 'closed'), corridor], 'own fields only; cells sorted, once each');
+  assert.match(store.undoLabel, /Main Corridor/);
+  store.undo();
+  assert.match(store.undoLabel, /^Add to scenario Trial: Close Stairs B/);
+  store.undo();
+  assert.match(store.undoLabel, /^Add to scenario Trial: Stairs A: /);
+  assert.deepEqual(counters(store), counters(withChanges([])), 'the counters of the building do not move for a lever');
+  assertValid(store.project);
+});
+
+test('addScenarioLever: a way or a corridor that is not in the building is refused in words, and nothing changes', () => {
+  const store = withChanges([]);
+  const before = store.project;
+  const refused = (lever, code, text) => assert.throws(() => store.apply(addScenarioLever, { lever }), (error) => refusedWith(code)(error) && text.test(error.message), JSON.stringify(lever));
+  refused(way('cgone00000', 'ab'), 'missing', /stairs connection is no longer in the building/);
+  refused({ kind: 'way', way: 'ab' }, 'missing', /stairs connection is no longer in the building/);
+  refused(way(STAIRS_A, 'up'), 'bad-value', /both ways, one way only from its A end or from its B end, or closed/);
+  refused(way(STAIRS_A, undefined), 'bad-value', /both ways/);
+  refused(corridorLever(undefined, 'fgone00000'), 'missing', /floor is no longer in the building/);
+  refused({ ...corridorLever(), cells: [] }, 'bad-value', /names the cells it closes/);
+  refused({ ...corridorLever(), cells: [1.5] }, 'bad-value', /names the cells it closes/);
+  refused({ ...corridorLever(), cells: [99999] }, 'bad-value', /Only corridor can be closed.*Floor 1.*not corridor/);
+  refused({ ...corridorLever(), cells: [0] }, 'bad-value', /Only corridor can be closed/);
+  refused({ ...corridorLever(), name: 5 }, 'bad-value', /name is text/);
+  assert.equal(store.project, before, 'nothing changed');
+  // a connection whose end is no longer stairs has no way to change
+  const broken = withChanges([]);
+  const changed = clone(broken.project);
+  const end = changed.building.connections[0].a;
+  const floor = changed.building.floors.find((each) => each.id === end.floorId);
+  floor.cells = floor.cells.slice(0, end.cell) + '#' + floor.cells.slice(end.cell + 1);
+  const store2 = storeOf(changed);
+  assert.throws(() => store2.apply(addScenarioLever, { lever: way(STAIRS_A, 'ab') }), (error) => refusedWith('missing')(error) && /no longer has stairs at both ends/.test(error.message));
+});
+
+test('addScenarioLever: a way equal to the stairs\' own direction removes itself with no undo step; a later way of the stairs replaces an earlier', () => {
+  const store = withChanges([]);
+  const entries = store.history.past.length;
+  store.apply(addScenarioLever, { lever: way(STAIRS_A, 'both') });
+  assert.equal(store.history.past.length, entries, 'both ways is what the stairs already is: no step, no lever');
+  assert.equal('levers' in store.project.scenario && store.project.scenario.levers.length > 0, false);
+  store.apply(addScenarioLever, { lever: way(STAIRS_A, 'ab') });
+  store.apply(addScenarioLever, { lever: way(STAIRS_A, 'ba') });
+  assert.deepEqual(store.project.scenario.levers, [way(STAIRS_A, 'ba')], 'a later way of the same stairs replaces');
+  store.apply(addScenarioLever, { lever: way(STAIRS_A, 'both') });
+  assert.deepEqual(store.project.scenario.levers, [], 'putting it back takes the earlier lever out as well');
+  assert.match(store.undoLabel, /which puts back the schedule there and takes 1 lever out of the scenario$/);
+  const oneWay = school();
+  oneWay.building.connections[0].direction = 'ab';
+  const second = storeOf({ ...oneWay, scenario: { name: 'Trial', changes: [], compared: null } });
+  second.apply(addScenarioLever, { lever: way(STAIRS_A, 'ab') });
+  assert.deepEqual(second.project.scenario.levers || [], [], 'a stairs already up only: up only is no lever');
+});
+
+test('addScenarioLever: a closed corridor is never removed by itself, and closing the same cells again replaces it; Apply still leaves it out', () => {
+  const store = withChanges([]);
+  store.apply(addScenarioLever, { lever: corridorLever() });
+  const entries = store.history.past.length;
+  store.apply(addScenarioLever, { lever: corridorLever() });
+  assert.equal(store.history.past.length, entries, 'the same corridor again changes nothing');
+  assert.equal(store.project.scenario.levers.length, 1);
+  store.apply(addScenarioLever, { lever: { ...corridorLever(), name: 'Other name' } });
+  assert.equal(store.project.scenario.levers.length, 1, 'one lever per floor and cells');
+  assert.equal(store.project.scenario.levers[0].name, 'Other name');
+  const outcomeBefore = store.project;
+  store.apply(applyScenario, {});
+  assert.equal(store.project.building, outcomeBefore.building, 'the building is the very same object');
+  assert.equal(store.undoOutcome.leftOut, 1);
 });
