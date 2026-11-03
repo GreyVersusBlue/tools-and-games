@@ -399,7 +399,14 @@ export function createEngineClient(store, options) {
     if (key !== scenarioKey) {
       scenarioKey = key;
       scenarioCounter += 1;
-      const optionsKey = leverOptionsKey(leverRouteOptions(project, reconcile(project, project.scenario).levers));
+      // a project the lane cannot read is a failure of the lane's own answer,
+      // as it always was; it has no route options to key here
+      let optionsKey = '';
+      try {
+        optionsKey = leverOptionsKey(leverRouteOptions(project, reconcile(project, project.scenario).levers));
+      } catch (error) {
+        optionsKey = '';
+      }
       if (optionsKey !== leversKey) {
         leversKey = optionsKey;
         leversCounter += 1;
