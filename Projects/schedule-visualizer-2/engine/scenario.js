@@ -703,8 +703,9 @@ function stairsParts(project, connection) {
 export function wayWords(project, connection, way) {
   if (way === 'both') return 'both ways';
   if (way === 'closed') return 'closed';
-  const a = connection ? floorOf(project, connection.a.floorId) : null;
-  const b = connection ? floorOf(project, connection.b.floorId) : null;
+  if (!connection) return 'one way only';
+  const a = floorOf(project, connection.a.floorId);
+  const b = floorOf(project, connection.b.floorId);
   if (!a || !b || a.level === b.level) return way === 'ab' ? 'from the A end only' : 'from the B end only';
   const toHigher = (a.level < b.level) === (way === 'ab');
   return toHigher ? 'up only' : 'down only';

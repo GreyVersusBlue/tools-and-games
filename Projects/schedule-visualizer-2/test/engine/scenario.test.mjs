@@ -8,13 +8,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as scenarioModule from '../../engine/scenario.js';
-import { applyLevers, normaliseLevers, reconcileLevers, leverKey, leverGroupIds, isReadableLever, LEVER_KINDS } from '../../engine/scenario.js';
+import { applyLevers, normaliseLevers, reconcileLevers, leverKey, leverGroupIds, isReadableLever, leverRouteOptions, leverOptionsKey, hasBuildingLevers, wayWords, LEVER_KINDS } from '../../engine/scenario.js';
 import { CHANGE_KINDS } from '../../engine/schema.js';
 import { releaseDelay } from '../../engine/release.js';
 import { addBellSchedule, deleteBellSchedule, revertToBase as revertDay } from '../../engine/actions.js';
 import { applyChanges, normalise, reconcile, compareResults, loadDifference, scenarioFromDiff, changeWords, changeSlots, editedGroupIds, trimResult } from '../../engine/scenario.js';
 import { createPipeline } from '../../engine/worker.js';
-import { deleteGroup, deleteSpaces, revertToBase, setPeriods, setSlot, ActionError } from '../../engine/actions.js';
+import { deleteGroup, deleteSpaces, revertToBase, setPeriods, setSlot, ActionError, disconnectStairs, deleteFloor } from '../../engine/actions.js';
 import { SAMPLE_PROBLEMS } from '../../data/sample-school.js';
 import { allRooms } from '../../engine/schema.js';
 import { seededRandom } from '../../engine/ids.js';
@@ -955,4 +955,141 @@ test('property: applying what reconcileLevers keeps never throws, in any order, 
     assert.equal(reconcileLevers(project, kept).levers.length, kept.length, 'reconciling again drops nothing');
     assert.doesNotThrow(() => applyLevers(project, kept.slice().reverse()));
   }
+});
+
+// ================================================================ SV2-90: the building levers
+
+const F1 = 'fsample001';
+const F2 = 'fsample002';
+const WAY_A = 'csample00a'; // Stairs A, Floor 1 to Floor 2
+const WAY_B = 'csample00b'; // Stairs B, Floor 2 to Floor 3
+const way = (connectionId, how) => ({ kind: 'way', connectionId, way: how });
+const shut = (floorId, cells, name) => ({ kind: 'corridor', floorId, cells, name: name === undefined ? '' : name });
+
+// some cells of a named corridor of the sample school
+function mainCorridor(project, count) {
+  return project.building.floors[0].corridors.find((corridor) => corridor.id === 'ksample001').cells.slice(0, count);
+}
+
+test('way and corridor levers: one lever per key, a way by connection, a corridor by floor and its cells sorted', () => {
+  assert.equal(leverKey(way(WAY_A, 'ab')), leverKey(way(WAY_A, 'closed')), 'a later way for the same stairs replaces the earlier');
+  assert.notEqual(leverKey(way(WAY_A, 'ab')), leverKey(way(WAY_B, 'ab')));
+  assert.equal(leverKey(shut(F1, [9, 3, 5])), leverKey(shut(F1, [3, 5, 9, 5], 'Other name')), 'cells in any order, the name is not the key');
+  assert.notEqual(leverKey(shut(F1, [3, 5])), leverKey(shut(F1, [3, 6])));
+  assert.notEqual(leverKey(shut(F1, [3, 5])), leverKey(shut(F2, [3, 5])));
+  assert.equal(leverKey(way('', 'ab')), null, 'a way with no connection cannot be read');
+  assert.equal(leverKey(way(WAY_A, 'sideways')), null);
+  assert.equal(leverKey(shut(F1, [])), null, 'a corridor lever with no cells cannot be read');
+  assert.equal(leverKey(shut(F1, [-1])), null);
+  const list = normaliseLevers(school(), [way(WAY_A, 'ab'), way(WAY_B, 'ba'), way(WAY_A, 'closed')]);
+  assert.deepEqual(list, [way(WAY_B, 'ba'), way(WAY_A, 'closed')], 'one lever per key, the later one in its place');
+});
+
+test('way levers: a way equal to the connection\'s own direction removes itself; a closure never does', () => {
+  const project = school();
+  assert.deepEqual(normaliseLevers(project, [way(WAY_A, 'both')]), [], 'the added one that changes nothing goes');
+  assert.deepEqual(normaliseLevers(project, [way(WAY_A, 'ab')]), [way(WAY_A, 'ab')]);
+  assert.deepEqual(normaliseLevers(project, [way(WAY_A, 'closed')]), [way(WAY_A, 'closed')], 'closing is always a change');
+  assert.deepEqual(normaliseLevers(project, [shut(F1, mainCorridor(project, 2), 'Main Corridor')]).length, 1);
+  // the building catches up with an older lever: it stays, and reconcile hides it
+  const oneWay = clone(project);
+  oneWay.building.connections[0].direction = 'ab';
+  assert.equal(normaliseLevers(oneWay, [way(WAY_A, 'ab'), way(WAY_B, 'ab')]).length, 2);
+  const result = reconcileLevers(oneWay, [way(WAY_A, 'ab'), way(WAY_B, 'ab')]);
+  assert.deepEqual(result.levers, [way(WAY_B, 'ab')]);
+  assert.deepEqual(result.dropped.map((entry) => entry.sentence), ['Stairs A: up only: the building already has this.']);
+});
+
+test('way and corridor levers: reconcile gives each reason in its own sentence and trims a corridor lever as a release lever is', () => {
+  const reasons = (project, levers) => reconcileLevers(project, levers).dropped.map((entry) => entry.sentence);
+  const levers = [way(WAY_A, 'ab'), shut(F1, mainCorridor(school(), 2), 'Main Corridor')];
+  let project = disconnectStairs(school(), { connectionId: WAY_A });
+  assert.deepEqual(reasons(project, levers), ['Stairs no longer in the building: one way only: the stairs connection is no longer in the building.']);
+  assert.deepEqual(reconcileLevers(project, levers).levers, [levers[1]]);
+  project = deleteFloor(school(), { id: F1 });
+  assert.deepEqual(reasons(project, [shut(F1, [10], 'Main Corridor')]), ['Close Main Corridor: its floor is no longer in the building.']);
+  // cells that are no longer corridor leave the lever; with none left it goes
+  const cells = mainCorridor(school(), 3);
+  project = clone(school());
+  const floor = project.building.floors[0];
+  floor.cells = floor.cells.slice(0, cells[0]) + '.' + floor.cells.slice(cells[0] + 1);
+  const trimmed = reconcileLevers(project, [shut(F1, cells, 'Main Corridor')]);
+  assert.deepEqual(trimmed.levers, [shut(F1, [cells[1], cells[2]], 'Main Corridor')], 'two of the three cells are still corridor');
+  assert.deepEqual(trimmed.dropped, []);
+  assert.deepEqual(reasons(project, [shut(F1, [cells[0]], 'Main Corridor')]), ['Close Main Corridor: its cells are no longer corridor.']);
+  // a stairs cell is not corridor either
+  assert.deepEqual(reasons(school(), [shut(F1, [332], 'Stairs')]), ['Close Stairs: its cells are no longer corridor.'], 'cell 332 is the stairs of connection A');
+  // the trimmed lever is the one the lane and Apply see, and its key is its cells\'
+  assert.notEqual(leverKey(trimmed.levers[0]), leverKey(shut(F1, cells, 'Main Corridor')));
+  // a later lever of the same key replaces an earlier one, among the buildings\' too
+  assert.match(reasons(school(), [way(WAY_A, 'ab'), way(WAY_A, 'ba')])[0], /a later lever of the same kind for the same thing replaces it\.$/);
+  assert.match(reasons(school(), [{ kind: 'way', connectionId: WAY_A }])[0], /^A lever could not be read: /);
+});
+
+test('way and corridor levers: the words a chip says, names as typed', () => {
+  const project = school();
+  const text = (lever) => changeWords(project, lever).text;
+  assert.equal(text(way(WAY_A, 'ab')), 'Stairs A: up only');
+  assert.equal(text(way(WAY_A, 'ba')), 'Stairs A: down only');
+  assert.equal(text(way(WAY_B, 'ab')), 'Stairs B: up only');
+  assert.equal(text(way(WAY_A, 'both')), 'Stairs A: both ways');
+  assert.equal(text(way(WAY_A, 'closed')), 'Close Stairs A');
+  assert.equal(text(way('cgone00000', 'ab')), 'Stairs no longer in the building: one way only');
+  assert.equal(text(shut(F1, [10, 11], 'North Corridor')), 'Close North Corridor');
+  assert.equal(text(shut(F1, [10, 11])), 'Close 2 corridor cells on Floor 1');
+  assert.equal(text(shut(F1, [10])), 'Close 1 corridor cell on Floor 1');
+  assert.equal(text(shut('fgone00000', [10, 11])), 'Close 2 corridor cells on a floor no longer in the building');
+  // up and down are by the floors' levels, not by which end is a
+  const swapped = clone(project);
+  swapped.building.connections[0] = { ...swapped.building.connections[0], a: swapped.building.connections[0].b, b: swapped.building.connections[0].a };
+  assert.equal(changeWords(swapped, way(WAY_A, 'ab')).text, 'Stairs A: down only', 'ab runs from a to b, and a is the upper floor now');
+  // a same-floor connection is worded by its ends
+  const split = clone(project);
+  split.building.connections[0] = { ...split.building.connections[0], b: { floorId: F1, cell: 333 } };
+  assert.equal(wayWords(split, split.building.connections[0], 'ab'), 'from the A end only');
+  assert.equal(wayWords(split, split.building.connections[0], 'ba'), 'from the B end only');
+  // typed pieces are marked as names and nothing is made into markup
+  const odd = clone(project);
+  odd.building.connections[0].label = '<b>"Ünï"</b>';
+  const parts = changeWords(odd, way(WAY_A, 'ab')).parts;
+  assert.deepEqual(parts.filter((part) => part.name).map((part) => part.text), ['<b>"Ünï"</b>']);
+  assert.equal(changeWords(odd, way(WAY_A, 'ab')).text, 'Stairs <b>"Ünï"</b>: up only');
+  const named = changeWords(project, shut(F1, [10], '<i>Hall</i> & "co"')).parts;
+  assert.deepEqual(named.filter((part) => part.name).map((part) => part.text), ['<i>Hall</i> & "co"']);
+  assert.equal(changeWords(project, way(WAY_A, 'ab')).teachers.length, 0);
+});
+
+test('leverRouteOptions: the building\'s levers as routing\'s options, only what changes something, sorted', () => {
+  const project = school();
+  assert.deepEqual(leverRouteOptions(project, []), { ways: {}, shutLinks: [], shutCells: [] });
+  assert.deepEqual(leverRouteOptions(project, null), { ways: {}, shutLinks: [], shutCells: [] });
+  assert.deepEqual(leverRouteOptions(project, [L_HEAD, L_GRADE]), { ways: {}, shutLinks: [], shutCells: [] }, 'the schedule\'s levers are not the building\'s');
+  assert.deepEqual(leverRouteOptions(project, [way(WAY_B, 'ba'), way(WAY_A, 'ab')]), { ways: { [WAY_A]: 'ab', [WAY_B]: 'ba' }, shutLinks: [], shutCells: [] });
+  assert.deepEqual(leverRouteOptions(project, [way(WAY_A, 'closed')]), { ways: {}, shutLinks: [WAY_A], shutCells: [] }, 'closed goes to shutLinks');
+  assert.deepEqual(leverRouteOptions(project, [way(WAY_A, 'both')]), { ways: {}, shutLinks: [], shutCells: [] }, 'a way equal to the connection\'s own is left out');
+  assert.deepEqual(leverRouteOptions(project, [way('cgone00000', 'ab'), shut('fgone00000', [3])]), { ways: {}, shutLinks: [], shutCells: [] }, 'what the building does not have is left out');
+  assert.deepEqual(leverRouteOptions(project, [shut(F2, [30, 20]), shut(F1, [9, 3]), shut(F1, [3, 4])]), { ways: {}, shutLinks: [], shutCells: [{ floorId: F1, cell: 3 }, { floorId: F1, cell: 4 }, { floorId: F1, cell: 9 }, { floorId: F2, cell: 20 }, { floorId: F2, cell: 30 }] }, 'floors in the building\'s order, cells ascending, none twice');
+  const oneWay = clone(project);
+  oneWay.building.connections[0].direction = 'ab';
+  assert.deepEqual(leverRouteOptions(oneWay, [way(WAY_A, 'both')]).ways, { [WAY_A]: 'both' }, 'both is a change where the connection is one-way');
+  // it reads a scenario as well as a list
+  assert.deepEqual(leverRouteOptions(project, { levers: [way(WAY_A, 'closed')] }).shutLinks, [WAY_A]);
+  // the key is the same for the same options and empty for none
+  assert.equal(leverOptionsKey(leverRouteOptions(project, [])), '');
+  assert.equal(leverOptionsKey(null), '');
+  assert.equal(leverOptionsKey(leverRouteOptions(project, [way(WAY_A, 'ab'), way(WAY_B, 'ba')])), leverOptionsKey(leverRouteOptions(project, [way(WAY_B, 'ba'), way(WAY_A, 'ab')])));
+  assert.notEqual(leverOptionsKey(leverRouteOptions(project, [way(WAY_A, 'ab')])), leverOptionsKey(leverRouteOptions(project, [way(WAY_A, 'ba')])));
+  assert.notEqual(leverOptionsKey(leverRouteOptions(project, [way(WAY_A, 'closed')])), leverOptionsKey(leverRouteOptions(project, [shut(F1, [3])])));
+  assert.equal(hasBuildingLevers(project, [L_HEAD, way(WAY_A, 'both')]), false);
+  assert.equal(hasBuildingLevers(project, [L_HEAD, way(WAY_A, 'ba')]), true);
+});
+
+test('applyLevers leaves the building levers out: the project\'s building is the very object it was', () => {
+  const project = school();
+  const next = applyLevers(project, [way(WAY_A, 'ab'), way(WAY_B, 'closed'), shut(F1, mainCorridor(project, 3), 'Main Corridor')]);
+  assert.equal(next, project);
+  const mixed = applyLevers(project, [way(WAY_A, 'ab'), L_HEAD]);
+  assert.equal(mixed.building, project.building);
+  assert.equal(mixed.building.connections[0].direction, 'both');
+  assert.equal(mixed.groups.find((candidate) => candidate.id === G6A).headCount, 999);
 });
