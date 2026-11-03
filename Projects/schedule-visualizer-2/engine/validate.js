@@ -21,7 +21,7 @@ import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_F
 import { isId, ID_LENGTH } from './ids.js';
 import { roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isCellScale, CELL_SCALE_UNITS, CELL_LENGTH_MOST } from './schema.js';
 import { LATER_PUBLISH_VIEWS, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DAYS_MOST, ROTATION_RANGE, DATE_LABEL_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, spacelessKey, textLength } from './schema.js';
-import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST } from './schema.js';
+import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST, RELEASE_MOST, RELEASE_SECONDS, RELEASE_WHO_KINDS } from './schema.js';
 import { isCalendarDate, daysBetween } from './calendar.js';
 
 function isObject(value) {
@@ -752,6 +752,46 @@ export function validate(project) {
         idList(path + '.teacherIds', duty.teacherIds, teacherIds, 'teacher');
         idList(path + '.subjectIds', duty.subjectIds, subjectSet, 'subject');
         if (typeof duty.everyone !== 'boolean') add(path + '.everyone', 'Everyone is true or false.');
+        return undefined;
+      });
+    }
+  }
+
+  // ---- staggered dismissal (ARCHITECTURE 18.2): strict when present, never
+  // asked for when absent. A period past the period count is not refused
+  // here: repair trims it, as setPeriods does.
+  if (project.release !== undefined) {
+    if (!Array.isArray(project.release)) {
+      add('release', 'The staggered dismissals are a list.');
+    } else {
+      if (project.release.length > RELEASE_MOST) add('release', 'There are at most ' + RELEASE_MOST + ' staggered dismissals, and this list has ' + project.release.length + '.');
+      project.release.forEach((entry, i) => {
+        const path = 'release[' + i + ']';
+        if (!isObject(entry)) return add(path, 'A staggered dismissal is an object.');
+        checkId(path, entry, 'l');
+        let kind = null;
+        if (!isObject(entry.who)) {
+          add(path + '.who', 'Who a staggered dismissal is for is an object with one of: ' + RELEASE_WHO_KINDS.join(', ') + '.');
+        } else {
+          const keys = Object.keys(entry.who);
+          kind = keys.length === 1 && RELEASE_WHO_KINDS.includes(keys[0]) ? keys[0] : null;
+          if (kind === null) add(path + '.who', 'Who a staggered dismissal is for has exactly one of: ' + RELEASE_WHO_KINDS.join(', ') + '.');
+          else if (kind === 'groups') {
+            if (Array.isArray(entry.who.groups) && entry.who.groups.length === 0) add(path + '.who.groups', 'A staggered dismissal for groups names at least one.');
+            else idList(path + '.who.groups', entry.who.groups, groupIdSet, 'group');
+          } else if (!isString(entry.who[kind]) || entry.who[kind].trim() === '' || textLength(entry.who[kind]) > NAME_MOST) {
+            add(path + '.who.' + kind, 'The ' + kind + ' of a staggered dismissal is text that is not empty, at most ' + NAME_MOST + ' characters.');
+          }
+        }
+        const low = kind === 'groups' ? 0 : RELEASE_SECONDS[0];
+        if (!Number.isInteger(entry.seconds) || entry.seconds > RELEASE_SECONDS[1] || entry.seconds < low) add(path + '.seconds', 'A staggered dismissal is a whole number of seconds from ' + RELEASE_SECONDS[0] + ' to ' + RELEASE_SECONDS[1] + (kind === 'groups' ? ', or 0 for a group that leaves on the bell' : '') + '.');
+        if (entry.after !== null) {
+          if (!Array.isArray(entry.after) || entry.after.length === 0 || !entry.after.every((period, k) => Number.isInteger(period) && period >= 0 && (k === 0 || period > entry.after[k - 1]))) add(path + '.after', 'The periods a staggered dismissal follows are null (every period) or a list of whole numbers from 0, each once, in order.');
+        }
+        if (entry.dayTypeIds !== null) {
+          if (Array.isArray(entry.dayTypeIds) && entry.dayTypeIds.length === 0) add(path + '.dayTypeIds', 'The day types of a staggered dismissal are null (every day type) or a list of at least one.');
+          else idList(path + '.dayTypeIds', entry.dayTypeIds, dayTypeIds, 'day type');
+        }
         return undefined;
       });
     }

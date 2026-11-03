@@ -94,6 +94,12 @@ export const DUTY_KINDS = ['duty', 'meeting', 'lunch'];
 export const DUTY_WHEN = ['before', 'period', 'after'];
 export const DUTY_LABEL_MOST = 60;
 export const DUTY_PLACE_MOST = 60;
+// Staggered dismissal (ARCHITECTURE 18.2): at most RELEASE_MOST entries, each
+// a whole number of seconds from RELEASE_SECONDS[0] to RELEASE_SECONDS[1]; an
+// entry for named groups may also be 0, "leaves on the bell".
+export const RELEASE_MOST = 50;
+export const RELEASE_SECONDS = [15, 300];
+export const RELEASE_WHO_KINDS = ['groups', 'grade', 'wing'];
 // Index 0 is Monday.
 export const WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -369,6 +375,17 @@ export function marksOf(project) {
 
 export function dutiesOf(project) {
   return project && Array.isArray(project.duties) ? project.duties : [];
+}
+
+// The project's staggered dismissals: absent, or anything but a list, is none.
+export function releaseOf(project) {
+  return project && Array.isArray(project.release) ? project.release : [];
+}
+
+// A staggered dismissal, as the actions make one: after every period, on
+// every day type.
+export function newRelease(id, who, seconds) {
+  return { id, who, seconds, after: null, dayTypeIds: null };
 }
 
 // A mark, as the actions make one: every day type, the whole school.

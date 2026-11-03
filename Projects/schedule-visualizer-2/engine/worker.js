@@ -109,6 +109,8 @@
 import { bellsFor } from './bells.js';
 import { runsOf } from './runs.js';
 import { routingGraph, runRoutes, createRouteCache } from './routing.js';
+import { releaseOf } from './schema.js';
+import { releaseDelay } from './release.js';
 import { simulateDayTransition, walkResults, routesByRun, retimeTransition, transitionAs, transitionPlan } from './crowd.js';
 import { loads } from './load.js';
 import { places } from './places.js';
@@ -143,6 +145,22 @@ function walkKey(project, dayRoutes, period, headCounts) {
     const way = entry.routes[period];
     if (!headCounts.has(entry.groupId) || !way || way.ok !== true || way.same === true) continue;
     pieces.push(entry.groupId + ':' + headCounts.get(entry.groupId) + ':' + way.fromRoomId + '>' + way.toRoomId);
+  }
+  return pieces.join(';');
+}
+
+// How long each walking group waits after the bell in one transition of one
+// day (staggered dismissal, ARCHITECTURE 18.2), as the part of the walkers'
+// key the delay adds: '' when nobody waits, so a project with no release keeps
+// the keys it always had. It is not in walkKey, which also keys the loads: a
+// delay moves no load.
+function delayKey(project, dayRoutes, dayTypeId, period) {
+  const pieces = [];
+  for (const entry of dayRoutes.groups) {
+    const way = entry.routes[period];
+    if (!way || way.ok !== true || way.same === true) continue;
+    const delay = releaseDelay(project, entry.groupId, dayTypeId, period, way.fromRoomId);
+    if (delay > 0) pieces.push(entry.groupId + ':' + delay);
   }
   return pieces.join(';');
 }
@@ -198,6 +216,7 @@ export function createPipeline(options) {
     // the same in two runs, or in two day types, is worked out once, and one
     // under another passing time is retimed when nothing but `late` changes.
     const contents = new Map();
+    const hasRelease = releaseOf(project).length > 0;
     const earlier = sameGeometry ? before.contents : null;
     const contentOf = (walkers, passing, make) => {
       const what = margin + '|' + walkers;
@@ -245,7 +264,9 @@ export function createPipeline(options) {
         const passing = plan === null ? 'off' : plan.passing;
         // a walk across periods that do not meet is its own kind of
         // transition: never a next-door one retimed, and kept per period reached
-        const walkers = plan !== null && plan.to !== period + 1 ? rooms + '@' + plan.to : rooms;
+        const delays = hasRelease ? delayKey(project, dayRoutes, dayTypeId, period) : '';
+        const held = delays === '' ? rooms : rooms + '#' + delays;
+        const walkers = plan !== null && plan.to !== period + 1 ? held + '@' + plan.to : held;
         const slotKey = passing + '|' + margin + '|' + walkers;
         walkKeys.push(rooms);
         dayKeys.transitions.push(slotKey);

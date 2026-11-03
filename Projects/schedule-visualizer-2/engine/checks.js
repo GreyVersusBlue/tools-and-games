@@ -546,7 +546,11 @@ export function checkSchedule(project, walkResults) {
     for (const list of gather(groupEntries, (entry) => entry.dayType.id + '\u0000' + entry.walk.period + (entry.toPeriod === entry.walk.period + 1 ? '' : '\u0000' + entry.toPeriod) + '\u0000' + entry.group.id)) {
       const { dayType, group, from, to, toPeriod } = list[0];
       const period = list[0].walk.period;
-      const sets = alike(list, (walk) => walk.total + '|' + walk.waiting + '|' + walk.passingSeconds + '|' + (walk.arrived === false));
+      const sets = alike(list, (walk) => walk.total + '|' + walk.waiting + '|' + walk.passingSeconds + '|' + (walk.arrived === false) + (isWholeSeconds(walk.released) && walk.released > 0 ? '|' + walk.released : ''));
+      // a group held back by a staggered dismissal says so: it is late with
+      // the time it waited for the bell counted in (ARCHITECTURE 18.2)
+      const heldBack = (walk) => (isWholeSeconds(walk.released) && walk.released > 0 ? formatDuration(walk.released) + ' after the bell' : '');
+      const including = (walk) => (heldBack(walk) === '' ? '' : ', including leaving ' + heldBack(walk));
       const across = toPeriod !== period + 1;
       // across periods that do not meet both periods are named: "from Room 101
       // after Period 2 to Room 204 for Period 4 on A Day"
@@ -554,14 +558,14 @@ export function checkSchedule(project, walkResults) {
       const toText = roomName(to, false) + (across ? ' for ' + periodName(settings, toPeriod) : '');
       const after = (across ? '' : ' after ' + periodName(settings, period)) + ' ' + onDays(project, dayType);
       const said = (walk) => (walk.arrived === false
-        ? 'was still on the way after ' + formatDuration(walk.total)
-        : 'needs ' + formatDuration(walk.total) + (isWholeSeconds(walk.waiting) && walk.waiting > 0 ? ', ' + formatDuration(walk.waiting) + ' of it waiting in crowded corridors' : ''));
+        ? 'was still on the way after ' + formatDuration(walk.total) + (heldBack(walk) === '' ? '' : ', having left ' + heldBack(walk))
+        : 'needs ' + formatDuration(walk.total) + (isWholeSeconds(walk.waiting) && walk.waiting > 0 ? ', ' + formatDuration(walk.waiting) + ' of it waiting in crowded corridors' : '') + including(walk));
       const first = sets[0].entries[0].walk;
       const runs = runWords(project, sets[0].entries.map((entry) => entry.bellsId));
       let text = first.arrived === false
-        ? group.name + ' did not arrive at ' + toText + ' from ' + fromText + after + runs + ': it was still on the way after ' + formatDuration(first.total) + ', and ' + passingText(first.passingSeconds) + '.'
+        ? group.name + ' did not arrive at ' + toText + ' from ' + fromText + after + runs + ': it was still on the way after ' + formatDuration(first.total) + (heldBack(first) === '' ? '' : ', having left ' + heldBack(first)) + ', and ' + passingText(first.passingSeconds) + '.'
         : group.name + ' needs ' + formatDuration(first.total) + ' to get from ' + fromText + ' to ' + toText + after + runs
-          + (isWholeSeconds(first.waiting) && first.waiting > 0 ? ', ' + formatDuration(first.waiting) + ' of it waiting in crowded corridors' : '') + ', and ' + passingText(first.passingSeconds) + '.';
+          + (isWholeSeconds(first.waiting) && first.waiting > 0 ? ', ' + formatDuration(first.waiting) + ' of it waiting in crowded corridors' : '') + including(first) + ', and ' + passingText(first.passingSeconds) + '.';
       for (const set of sets.slice(1)) {
         const walk = set.entries[0].walk;
         text += ' With ' + bellsNames(set.entries) + ' bells it ' + said(walk) + ', and ' + passingText(walk.passingSeconds) + '.';
