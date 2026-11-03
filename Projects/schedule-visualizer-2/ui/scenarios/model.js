@@ -5,13 +5,14 @@
 // the figures are its compareResults as the lane hands them over.
 
 import { baseDayType, isOwnCopy } from '../../engine/day-types.js';
-import { periodName, offPeriods } from '../../engine/bells.js';
+import { periodName, offPeriods, bellsFor, parseTime, formatTime } from '../../engine/bells.js';
 import { walkTarget } from '../../engine/routing.js';
-import { resolveSlotRoom, nameOfRoom } from '../../engine/schema.js';
+import { resolveSlotRoom, nameOfRoom, bellSchedulesOf } from '../../engine/schema.js';
 import { formatDuration } from '../../engine/findings.js';
-import { reconcile, changeWords, changeSlots } from '../../engine/scenario.js';
+import { reconcile, changeWords, changeSlots, leverKey, isTrialOnly, isWrittenWay, trialOnlyWords, applyLevers } from '../../engine/scenario.js';
+import { releaseDelay } from '../../engine/release.js';
 import { NEW_SCENARIO_NAME, blankName } from '../../engine/actions.js';
-import { count, list } from '../components/words.js';
+import { count, list, periodWords } from '../components/words.js';
 
 // The scenario's name as the screen says it: as typed, or "New scenario"
 // where a file left it blank (the actions' own rule for their labels).
@@ -58,27 +59,67 @@ export function slotWords(project, dayTypeId, groupId, period) {
 
 // The open scenario as the lab shows it: reconcile's kept changes, each
 // with its words and its index in scenario.changes (the chips' ×), and the
-// dropped ones with their sentences.
+// dropped ones with their sentences. The levers (ARCHITECTURE 18.3) are the
+// same: `levers` the kept ones, each with its index in scenario.levers, its
+// words, whether it is a trial only (a closure) and, for a staggered
+// dismissal that replaces a real one, what the real one says; `droppedLevers`
+// the ones that no longer apply. `total` counts every chip: changes and levers.
 export function scenarioView(project) {
   const scenario = project.scenario;
   if (!scenario) return null;
   const found = reconcile(project, scenario);
   const indexOf = (change) => scenario.changes.indexOf(change);
+  const stored = Array.isArray(scenario.levers) ? scenario.levers : [];
+  // reconcile trims a lever it keeps (a copy, not the stored object): the
+  // stored lever is the last one of its key, as reconcile's own rule has it
+  const leverIndex = (lever) => {
+    const same = stored.lastIndexOf(lever);
+    if (same >= 0) return same;
+    const key = leverKey(lever);
+    for (let i = stored.length - 1; i >= 0; i -= 1) if (leverKey(stored[i]) === key) return i;
+    return -1;
+  };
+  const levers = (found.levers || []).map((lever) => ({ lever, index: leverIndex(lever), words: changeWords(project, lever), trial: isTrialOnly(lever), instead: insteadOf(project, lever) }));
+  const droppedLevers = (found.droppedLevers || []).map((each) => ({ lever: each.lever, index: stored.indexOf(each.lever), parts: each.parts, sentence: each.sentence }));
   return {
     name: scenarioName(scenario),
     changes: scenario.changes,
     kept: found.changes.map((change) => ({ change, index: indexOf(change), words: changeWords(project, change) })),
     dropped: found.dropped.map((each) => ({ change: each.change, index: indexOf(each.change), parts: each.parts, sentence: each.sentence })),
+    levers,
+    droppedLevers,
+    total: found.changes.length + levers.length,
+    droppedTotal: found.dropped.length + droppedLevers.length,
     compared: scenario.compared || null,
   };
+}
+
+// A trial staggered dismissal for exactly the groups, grade or wing, periods
+// and day types of a real one replaces it in the trial (DESIGN 12.4); its
+// chip says so: "instead of 2 min". Null for every other lever.
+export function insteadOf(project, lever) {
+  if (!lever || lever.kind !== 'release' || !Array.isArray(project.release)) return null;
+  const key = leverKey(lever);
+  const real = project.release.find((entry) => leverKey({ kind: 'release', who: entry.who, seconds: entry.seconds, after: entry.after, dayTypeIds: entry.dayTypeIds }) === key);
+  if (!real || real.seconds === lever.seconds) return null;
+  return real.seconds === 0 ? 'on the bell' : formatDuration(real.seconds);
+}
+
+// Every chip: changes and levers (a view built by hand may have changes only).
+function totalOf(view) {
+  return view.kept.length + (view.levers ? view.levers.length : 0);
+}
+
+function droppedOf(view) {
+  return view.dropped.length + (view.droppedLevers ? view.droppedLevers.length : 0);
 }
 
 // The screen's first line, as parts ({ text, name }: name for typed text).
 export function firstLine(project, view) {
   if (!view) return [{ text: 'No scenario is open. Start one to try changes to the schedule without touching it; the real schedule changes only when you apply.' }];
-  const n = view.kept.length;
+  const n = totalOf(view);
   const parts = [{ text: 'Trying ' }, { text: view.name, name: true }, { text: ': ' + count(n, 'change') + ', not applied' }];
-  if (view.dropped.length > 0) parts.push({ text: '; ' + count(view.dropped.length, 'change') + ' no longer ' + (view.dropped.length === 1 ? 'applies' : 'apply') });
+  if (droppedOf(view) > 0) parts.push({ text: '; ' + count(droppedOf(view), 'change') + ' no longer ' + (droppedOf(view) === 1 ? 'applies' : 'apply') });
   parts.push({ text: '. The real schedule is untouched until you apply.' });
   return parts;
 }
@@ -87,7 +128,7 @@ export function firstLine(project, view) {
 // work says so on screen).
 export function barWords(view) {
   if (!view) return '';
-  return 'Not applied yet: ' + count(view.kept.length, 'change') + (view.dropped.length > 0 ? ', ' + view.dropped.length + ' skipped' : '');
+  return 'Not applied yet: ' + count(totalOf(view), 'change') + (droppedOf(view) > 0 ? ', ' + droppedOf(view) + ' skipped' : '');
 }
 
 // Did adding `change` cancel it? normalise drops the added change when it
@@ -203,7 +244,7 @@ export function busiestPlaces(compare) {
 // One group's row: its name, edited or not, its travel before and after,
 // and the change, in words. A row whose walks with no way through changed
 // is worded by that (compareResults' rule): its times add up different walks.
-export function groupRow(project, row) {
+export function groupRow(project, row, held) {
   const group = project.groups.find((each) => each.id === row.groupId);
   const name = group ? group.name : 'A group no longer in the project';
   // both sides walk: the three cells are timeFigures', so Before and After
@@ -219,7 +260,8 @@ export function groupRow(project, row) {
   else if (moved === null) change = '—';
   else change = times ? times.difference : signedDuration(moved);
   const worse = row.failedChange !== 0 ? row.failedChange > 0 : moved === null || moved === 0 ? null : moved > 0;
-  return { groupId: row.groupId, name, typed: Boolean(group), edited: row.edited, before: total(row.before, times && times.before), after: total(row.after, times && times.after), change, worse };
+  const late = Boolean(row.after) && row.after.late > 0;
+  return { groupId: row.groupId, name, typed: Boolean(group), edited: row.edited, late, held: late && held && held.has(row.groupId) ? held.get(row.groupId) : null, before: total(row.before, times && times.before), after: total(row.after, times && times.after), change, worse };
 }
 
 // The groups whose travel changes as printed, in compareResults' order
@@ -232,8 +274,9 @@ export function groupRow(project, row) {
 // and nothing says it walks as before.
 export function groupRows(project, compare) {
   const rows = [];
+  const held = heldNotes(project);
   for (const row of compare.groups) {
-    const shown = groupRow(project, row);
+    const shown = groupRow(project, row, held);
     if (shown.change === NO_CHANGE) continue;
     if (shown.change === '—' && !row.edited) continue;
     rows.push(shown);
@@ -291,14 +334,175 @@ export function appliedSlots(view) {
 // skipped (the changes that no longer apply, the groups only in a compared
 // file, which a scenario cannot add or take away). `slots` is appliedSlots,
 // and `snapshot` whether that is enough to keep a snapshot first.
+//
+// The levers: `levers` the ones Apply writes (a closed stairs and a closed
+// corridor are a trial only and are left out, ARCHITECTURE 18.3), `kinds` a
+// line per kind of what it writes, `trial` the pre-Apply line for what it
+// leaves out (the engine's trialOnlyWords) or null, and the counts the
+// button says: `writes` of `total` ("Apply 4 of 6 changes").
 export function applySummary(project, view) {
   const slots = appliedSlots(view);
+  const written = view.levers.filter((each) => !each.trial);
+  const left = view.levers.filter((each) => each.trial);
+  const writes = view.kept.length + written.length;
+  const kinds = [];
+  const byKind = (kind) => written.filter((each) => each.lever.kind === kind).length;
+  if (byKind('bell') > 0) kinds.push('Bell times: ' + count(byKind('bell'), 'change') + '.');
+  if (byKind('release') > 0) kinds.push('Staggered dismissal: ' + count(byKind('release'), 'rule') + '.');
+  if (byKind('capacity') > 0) kinds.push('Room capacities: ' + count(byKind('capacity'), 'change') + '.');
+  if (byKind('headCount') > 0) kinds.push('Head counts: ' + count(byKind('headCount'), 'change') + '.');
+  for (const each of written) if (each.lever.kind === 'way' && isWrittenWay(each.lever)) kinds.push(each.words.text.replace(': ', ' becomes ') + '.');
   return {
     slots,
     snapshot: slots > SCENARIO_SNAPSHOT_SLOTS,
     changes: view.kept.map((each) => each.words),
-    skipped: view.dropped.map((each) => each.sentence),
+    levers: written.map((each) => each.words),
+    kinds,
+    trial: left.length > 0 ? trialOnlyWords(project, left.map((each) => each.lever)) : null,
+    writes,
+    total: writes + left.length,
+    skipped: view.dropped.map((each) => each.sentence).concat(view.droppedLevers.map((each) => each.sentence)),
     added: view.compared ? view.compared.addedGroups || [] : [],
     removed: view.compared ? view.compared.removedGroups || [] : [],
   };
+}
+
+// The button of the Apply question, naming what it writes.
+export function applyButtonWords(summary) {
+  const { writes, total } = summary;
+  if (total === 0) return 'Close the scenario: no change of it applies';
+  if (total > writes) return 'Apply ' + writes + ' of ' + total + ' changes';
+  return writes === 1 ? 'Apply 1 change' : 'Apply ' + writes + ' changes';
+}
+
+// ---- what the staggered dismissals of the scenario hold back
+
+// The groups the open scenario holds back, each with how, as the late rows
+// say it: "leaves 2 min after the bell", or "leaves up to 2 min after the
+// bell" where the delay differs by day type or period. A Map of group id to
+// words; empty when the scenario has no staggered dismissal. The rule is
+// the engine's own (releaseDelay), asked of the project with the levers laid
+// over it; a group the real schedule holds back just as long is not named.
+export function heldNotes(project) {
+  const notes = new Map();
+  if (!project.scenario) return notes;
+  let kept;
+  try {
+    kept = reconcile(project, project.scenario);
+  } catch (error) {
+    return notes;
+  }
+  const releases = (kept.levers || []).filter((lever) => lever.kind === 'release');
+  if (releases.length === 0) return notes;
+  const trial = applyLevers(project, releases);
+  const days = project.dayTypes.filter((day) => isOwnCopy(project, day.id));
+  for (const group of project.groups) {
+    const seen = new Set();
+    let changed = false;
+    for (const day of days) {
+      const slots = group.days ? group.days[day.id] : undefined;
+      for (let period = 0; period < project.settings.periods; period += 1) {
+        const slot = Array.isArray(slots) ? slots[period] : undefined;
+        const room = slot ? resolveSlotRoom(project, slot).room : null;
+        const from = room ? room.id : null;
+        const now = releaseDelay(trial, group.id, day.id, period, from);
+        if (now !== releaseDelay(project, group.id, day.id, period, from)) changed = true;
+        if (now > 0) seen.add(now);
+      }
+    }
+    if (!changed || seen.size === 0) continue;
+    const most = Math.max(...seen);
+    notes.set(group.id, 'leaves ' + (seen.size > 1 ? 'up to ' : '') + formatDuration(most) + ' after the bell');
+  }
+  return notes;
+}
+
+// ---- levers: did adding one cancel it? And Apply's lines for them
+
+// The counterpart of `cancelled` for a lever: null when the lever is among
+// the scenario's levers now, else { taken }, the earlier levers of its key
+// that went with it (a lever that leaves the schedule as it is replaces the
+// earlier lever of its key, then goes itself).
+export function leverCancelled(before, after, lever) {
+  const had = before && Array.isArray(before.levers) ? before.levers : [];
+  const has = after && Array.isArray(after.levers) ? after.levers : [];
+  const text = JSON.stringify(lever);
+  if (has.some((each) => JSON.stringify(each) === text)) return null;
+  return { taken: Math.max(0, had.length - has.length) };
+}
+
+export function leverCancelledSentence(words, taken) {
+  return 'That puts the schedule back as it is: ' + words + '. Nothing is added' + (taken > 0 ? ', and ' + count(taken, 'earlier change') + ' to the same thing ' + (taken === 1 ? 'is' : 'are') + ' taken out' : '') + '.';
+}
+
+// The sets of bells the Bell times form can name: each own day type's
+// regular bells, and each bell schedule. value: "d:<id>" or "b:<id>".
+export function bellSets(project) {
+  const sets = dayChoices(project).map((day) => ({ value: 'd:' + day.value, label: day.label, kind: 'day', id: day.value }));
+  for (const schedule of bellSchedulesOf(project)) sets.push({ value: 'b:' + schedule.id, label: schedule.name + ' bells', kind: 'bells', id: schedule.id });
+  return sets;
+}
+
+// The lever a Bell times form stands for, or { why }.
+export function bellLever(project, form) {
+  const set = bellSets(project).find((each) => each.value === form.setId);
+  if (!set) return { why: 'There is no day type or bell schedule to change.' };
+  if (!form.start || !form.end) return { why: 'Enter both times. Empty them in the Day tab to take a ' + periodWords(project.settings).one + ' away.' };
+  const start = parseTime(form.start);
+  const end = parseTime(form.end);
+  if (start === null || end === null) return { why: 'Enter both times, like 8:05 or 2:10 pm.' };
+  if (end <= start) return { why: 'A ' + periodWords(project.settings).one + ' ends after it starts.' };
+  const lever = { kind: 'bell', period: form.period, start: form.start, end: form.end };
+  if (set.kind === 'day') lever.dayTypeId = set.id;
+  else lever.bellsId = set.id;
+  return { lever };
+}
+
+// The real times of the set and period, or null.
+export function realBellOf(project, set, period) {
+  if (!set) return null;
+  const run = set.kind === 'day' ? bellsFor(project, set.id) : bellsFor(project, project.dayTypes[0] ? project.dayTypes[0].id : null, set.id);
+  const bell = run[period];
+  return bell && bell.start && bell.end ? { start: bell.start, end: bell.end } : null;
+}
+
+// The passing time into `period`, in seconds, as the bells give it, under
+// the project given, or null where nothing is passed into (the first period,
+// a period that does not meet, a time missing).
+export function passingBefore(project, set, period) {
+  if (!set || period < 1) return null;
+  const run = set.kind === 'day' ? bellsFor(project, set.id) : bellsFor(project, project.dayTypes[0] ? project.dayTypes[0].id : null, set.id);
+  const before = run[period - 1];
+  const here = run[period];
+  if (!before || !here || before.off || here.off || !before.passingFromBells) return null;
+  return before.passingAfter;
+}
+
+// The words under the Bell times form: the passing time it would make.
+//   "Passing before Period 3: 6 min (was 4 min)"
+// plus, with the lever applied, the period's times if they moved.
+export function bellPassingWords(project, set, period, lever) {
+  const name = periodName(project.settings, period);
+  if (period < 1) return 'Nothing is passed into ' + name + ': it is the first of the day.';
+  const was = passingBefore(project, set, period);
+  const now = lever ? passingBefore(applyLevers(project, [lever]), set, period) : was;
+  if (now === null && was === null) return 'No passing time into ' + name + ' from the bells: it uses the school’s ' + formatDuration(project.settings.defaultPassingSeconds) + '.';
+  const show = (seconds) => (seconds === null ? 'the school’s ' + formatDuration(project.settings.defaultPassingSeconds) : formatDuration(seconds));
+  return 'Passing before ' + name + ': ' + show(now) + ' (was ' + show(was) + ')';
+}
+
+// Lengthen the passing before a period by `minutes`: the start later and the
+// end kept. { start, end, sentence } or { why }.
+export function lengthenPassing(project, set, period, form, minutes) {
+  const name = periodName(project.settings, period);
+  if (period < 1) return { why: 'There is no passing time before ' + name + '.' };
+  const real = realBellOf(project, set, period);
+  const start = parseTime(form.start || (real ? real.start : ''));
+  const end = parseTime(form.end || (real ? real.end : ''));
+  if (start === null || end === null) return { why: 'Enter both times first.' };
+  const moved = start + minutes;
+  if (moved >= end) return { why: name + ' would start after it ends.' };
+  const text = (value) => formatTime(value, project.settings.timeFormat);
+  const wasText = real ? text(real.start) + ' to ' + text(real.end) : 'not set';
+  return { start: formatTime(moved, '24h'), end: formatTime(end, '24h'), sentence: name + ' then runs ' + text(moved) + ' to ' + text(end) + ', was ' + wasText };
 }
