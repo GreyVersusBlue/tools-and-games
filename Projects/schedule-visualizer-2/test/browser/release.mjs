@@ -374,6 +374,34 @@ test('Movement: with grade 7 held back 2 min the Travel time tab and both CSV fi
   await settled();
 });
 
+// ------------------------------------------------------------------ the periods warning
+
+test('taking a period away says what it takes of staggered dismissal too: a scenario lever and a rule that names the last period', async () => {
+  await go(page, '#schedule/day');
+  await settled();
+  await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    const { actions } = globalThis.sv2modules;
+    store.apply(actions.newScenario, { name: 'Trial' });
+    store.apply(actions.addScenarioLever, { lever: { kind: 'release', who: { grade: '8' }, seconds: 90, after: [7], dayTypeIds: null } });
+    store.apply(actions.addRelease, { who: { grade: '7' }, seconds: 60, after: [7], dayTypeIds: null });
+  });
+  await settled();
+  await atRest(page, key('day-periods'));
+  await page.click(key('day-periods'), { clickCount: 3 });
+  await page.keyboard.type('7');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('dialog.dialog[open]');
+  assert.equal(await text('dialog.dialog .dialog__title'), 'Remove Period 8 from every day?');
+  assert.match(await text('dialog.dialog .dialog__body'), /^That takes away [\s\S]*, 1 scenario lever(?:,| and )[\s\S]*1 staggered dismissal[\s\S]*\. Undo brings them back\.$/);
+  await page.keyboard.press('Escape');
+  await shows(() => document.querySelector('dialog.dialog') === null);
+  assert.equal((await release()).length, 1, 'Keep leaves everything as it was');
+  for (const each of await release()) await page.evaluate((id) => globalThis.sv2.store.apply(globalThis.sv2modules.actions.removeRelease, { id }), each.id);
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.discardScenario, {}));
+  await settled();
+});
+
 // ------------------------------------------------------------------ axe
 
 for (const theme of ['light', 'dark']) {
