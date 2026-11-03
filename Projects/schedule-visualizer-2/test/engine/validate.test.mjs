@@ -388,6 +388,22 @@ test('scenario levers: well formed ones of every kind are valid', () => {
   ])), [], 'a lever pointing at nothing is not invalid: reconcile says so');
 });
 
+test('scenario levers: a corridor lever holds no more cells than its floor has and a name of at most 40 characters (SV2-90b)', () => {
+  const project = lv([]);
+  const floor = project.building.floors[0];
+  const all = Array.from({ length: floor.cells.length }, (value, i) => i);
+  const corridor = (cells, name) => ({ kind: 'corridor', floorId: floor.id, cells, name });
+  const withOne = (lever) => { const copy = lv([lever]); return copy; };
+  assert.deepEqual(validate(withOne(corridor(all, 'x'.repeat(40)))), [], 'as many cells as the floor has and a name of 40 is the most');
+  const tooMany = validate(withOne(corridor(all.concat([0]), 'North')));
+  assert.deepEqual(tooMany.map((finding) => finding.path), ['scenario.levers[0]'], 'one cell more than the floor has');
+  const tooLong = validate(withOne(corridor([1], 'x'.repeat(41))));
+  assert.deepEqual(tooLong.map((finding) => finding.path), ['scenario.levers[0]'], 'a name of 41');
+  // a floor that is not there is held to the largest a floor can be
+  const gone = lv([{ kind: 'corridor', floorId: 'fnowhere00', cells: Array.from({ length: 40001 }, (value, i) => i), name: '' }]);
+  assert.deepEqual(validate(gone).map((finding) => finding.path), ['scenario.levers[0]']);
+});
+
 test('scenario levers: each way to break one is found at its own place', () => {
   const cases = [
     ['levers that are not a list', 'x', /^scenario\.levers$/],
