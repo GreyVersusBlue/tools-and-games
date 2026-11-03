@@ -2074,7 +2074,27 @@
   margin-top: var(--s-1);
 }
 
+/* Staggered dismissal (DESIGN 12.2): the editor is the marks editor's kind;
+   the minutes and seconds sit side by side. */
+.sch-release__time {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-3);
+  align-items: flex-start;
+  margin-bottom: var(--s-1);
+}
+
+.sch-markedit__nowings,
+.sch-markedit__nogrades {
+  margin: var(--s-1) 0 0;
+}
+
 @media (max-width: 640px), (pointer: coarse) {
+  .sch-releaseedit .sch-show__chip {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
   .sch-marks__line,
   .sch-markedit .seg__label,
   .sch-markedit .chip__remove,
