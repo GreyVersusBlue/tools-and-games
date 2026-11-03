@@ -264,7 +264,7 @@ function travelTable(caption, entries, held) {
   const base = uid('travel');
   const labels = held ? ['Walking', 'Waiting', 'Left after the bell', 'Total'] : ['Walking', 'Waiting', 'Total'];
   const heads = labels.map((label, index) => h('th', { scope: 'col', class: 'table__num', id: base + '-c' + index }, label));
-  return h('table', { class: 'table mov-travel__table' },
+  return h('table', { class: 'table mov-travel__table' + (held ? ' mov-travel__table--held' : '') },
     h('caption', { class: 'vh' }, caption),
     h('thead', null, h('tr', null, heads)),
     entries.map((entry, index) => {

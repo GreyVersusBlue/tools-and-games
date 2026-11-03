@@ -91,6 +91,16 @@ export function summaryPanel(env) {
     if (rows.length === 0) return;
     // a column for the delay only when some group of this run has one: a school with none sees today's table
     const held = anyHeldBack(results, picture.dayTypeId, picture.bellsId);
+    // with the column the table may be wider than the panel: its scroller is then a place the keyboard can reach
+    if (held) {
+      groups.tabIndex = 0;
+      groups.setAttribute('role', 'region');
+      groups.setAttribute('aria-label', 'Groups on screen, with the time each was held back');
+    } else {
+      groups.removeAttribute('tabindex');
+      groups.removeAttribute('role');
+      groups.removeAttribute('aria-label');
+    }
     groups.replaceChildren(h('table', { class: 'table mov-groups__table' },
       h('caption', { class: 'vh' }, 'The groups on screen, over the whole of ' + picture.dayTypeName),
       h('thead', null, h('tr', null,

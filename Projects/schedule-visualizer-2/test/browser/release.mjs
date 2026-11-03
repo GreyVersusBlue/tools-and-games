@@ -374,6 +374,177 @@ test('Movement: with grade 7 held back 2 min the Travel time tab and both CSV fi
   await settled();
 });
 
+// ------------------------------------------------------------------ SV2-93b: Summary, the late cell, the follower sentence
+
+const noRelease = () => page.evaluate(() => { const { store } = globalThis.sv2; for (const each of store.project.release || []) store.apply(globalThis.sv2modules.actions.removeRelease, { id: each.id }); });
+const heldSeven = () => page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.addRelease, { who: { grade: '7' }, seconds: 120 }));
+const go390 = async (p, hash) => { await goHash(p, hash); };
+const GROUP_HEADS = ['Group', 'Walking', 'Lost to crowds', 'Stairs'];
+
+// Whole: no late sentence reaches past the edge of its cell or of the panel, and no scroller around it has anything to scroll.
+async function lateCellsWhole(p, where) {
+  const found = await p.evaluate(() => {
+    const out = { cells: 0, held: 0, clipped: [], scrolls: [] };
+    const panel = document.querySelector('#inspector [data-panel="tables"]');
+    for (const span of panel.querySelectorAll('[data-travel="transition"] .mov-groups__late')) {
+      out.cells += 1;
+      if (span.textContent.includes('after the bell')) out.held += 1;
+      const cell = span.closest('th');
+      const box = span.getBoundingClientRect();
+      const edge = cell.getBoundingClientRect();
+      const lines = span.getClientRects();
+      for (const line of lines) {
+        if (line.right > edge.right + 0.5 || line.left < edge.left - 0.5) out.clipped.push([span.textContent, Math.round(line.right), Math.round(edge.right)]);
+      }
+      if (cell.scrollWidth > cell.clientWidth) out.scrolls.push(['cell', cell.scrollWidth, cell.clientWidth]);
+      const table = cell.closest('table');
+      if (table.scrollWidth > table.clientWidth) out.scrolls.push(['table', table.scrollWidth, table.clientWidth]);
+      for (let el = table.parentElement; el && el !== document.body; el = el.parentElement) {
+        if (el.scrollWidth > el.clientWidth && getComputedStyle(el).overflowX !== 'visible') out.scrolls.push([el.className, el.scrollWidth, el.clientWidth]);
+        if (el.scrollWidth > el.clientWidth && getComputedStyle(el).overflowX === 'visible' && el.getBoundingClientRect().right < box.right) out.clipped.push([span.textContent, 'past ' + el.className]);
+      }
+    }
+    out.panel = [panel.scrollWidth, panel.clientWidth];
+    return out;
+  });
+  assert.ok(found.held > 0, where + ': a held group is late in this transition (' + found.cells + ' late cells)');
+  assert.deepEqual(found.clipped, [], where + ': no late sentence is cut at its edge');
+  assert.deepEqual(found.scrolls, [], where + ': nothing around the cell scrolls sideways');
+  assert.ok(found.panel[0] <= found.panel[1], where + ': the panel does not scroll sideways, ' + found.panel);
+}
+
+// A transition where a held group is late: the picker names it.
+async function pickHeldTransition(p) {
+  const periods = await p.$$eval('#inspector [data-travel="pick"] option', (all) => all.map((el) => el.value));
+  for (const period of periods) {
+    await p.select('#inspector [data-travel="pick"]', period);
+    await p.waitForFunction((wanted) => document.querySelector('#inspector [data-travel="transition"]')?.dataset.period === wanted, { timeout: 8000 }, period);
+    if (await p.$('#inspector [data-travel="transition"] .mov-groups__late')) return period;
+  }
+  throw new Error('no transition has a late group');
+}
+
+test('Movement, Summary tab: Left after the bell stands in the group table only when a group is held back; the late label names the cause; with none the table is as it was', async () => {
+  await go(page, '#schedule/day');
+  await settled();
+  await goHash(page, '#movement');
+  await movementSettled();
+  await page.click('#inspector [role="tab"][data-tab="summary"]');
+  await page.waitForSelector('#inspector [data-panel="summary"] .mov-groups__table');
+  const plainHtml = await page.$eval('#inspector [data-summary="groups"]', (el) => el.innerHTML);
+  assert.deepEqual(await texts('#inspector [data-summary="groups"] thead th'), GROUP_HEADS, 'no delay, no new column');
+  assert.equal(await exists('#inspector [data-summary="groups"] [data-cell="released"]'), false);
+  assert.equal(plainHtml.includes('after the bell'), false);
+  // hold grade 7 back 2 min: the column arrives, in one redraw
+  await heldSeven();
+  await movementSettled();
+  await shows(() => document.querySelector('#inspector [data-summary="groups"] thead th:nth-child(4)')?.textContent === 'Left after the bell');
+  assert.deepEqual(await texts('#inspector [data-summary="groups"] thead th'), ['Group', 'Walking', 'Lost to crowds', 'Left after the bell', 'Stairs']);
+  const rows = await page.$$eval('#inspector [data-summary="groups"] tbody tr', (all) => all.map((tr) => [tr.querySelector('bdi').textContent, tr.querySelector('[data-cell="released"]').textContent, tr.querySelector('.mov-groups__late')?.textContent || '']));
+  assert.ok(rows.length > 0);
+  for (const [name, released, late] of rows) {
+    if (name.startsWith('7')) {
+      assert.match(released, /^\d+ min( \d+ s)?$/, name + ' was held back by at least the 2 min of each walk');
+      if (late) assert.match(late, /^late (once|\d+ times) · left 2 min after the bell$/, name + ': the late label names the cause as the tables do');
+    } else {
+      assert.equal(released, 'none', name + ' was not held back');
+      assert.equal(late.includes('after the bell'), false, name + ': a group that was not held back is late for its own reasons');
+    }
+  }
+  assert.ok(rows.some(([name, , late]) => name.startsWith('7') && late.includes('left 2 min after the bell')), 'a held group is late and says why');
+  // the sentence is the Travel time tab's, word for word
+  await page.click('#inspector [role="tab"][data-tab="tables"]');
+  await page.waitForSelector('#inspector [data-panel="tables"] .mov-travel__group');
+  const cause = await page.$$eval('#inspector [data-travel="transition"] .mov-groups__late', (all) => all.map((el) => el.textContent.match(/ · left .* after the bell$/)?.[0]).filter(Boolean));
+  assert.ok(cause.includes(' · left 2 min after the bell'), 'the Travel time tab words the cause the same way');
+  // take it away: the table is byte for byte what it was
+  await page.evaluate(() => globalThis.sv2.ctx.undo());
+  await movementSettled();
+  await page.click('#inspector [role="tab"][data-tab="summary"]');
+  await shows(() => document.querySelector('#inspector [data-summary="groups"] [data-cell="released"]') === null);
+  assert.equal(await page.$eval('#inspector [data-summary="groups"]', (el) => el.innerHTML), plainHtml, 'a school with no delay sees today\'s table, byte for byte');
+});
+
+test('Movement, Summary tab, by keyboard: the tab is reached by arrows, the new column is read in order, and axe finds nothing in light and dark', async () => {
+  await heldSeven();
+  await movementSettled();
+  await page.focus('#inspector [role="tab"][data-tab="tables"]');
+  await page.keyboard.press('ArrowRight');
+  await shows(() => document.querySelector('#inspector [role="tab"][data-tab="summary"]')?.getAttribute('aria-selected') === 'true');
+  await page.waitForSelector('#inspector [data-summary="groups"] [data-cell="released"]');
+  // a table that scrolls sideways is a tab stop; one that does not need not be
+  const scrolls = await page.$eval('#inspector [data-summary="groups"]', (el) => el.scrollWidth > el.clientWidth);
+  if (scrolls) {
+    await page.focus('#inspector [data-summary="groups"]');
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.summary), 'groups', 'a scrolling table is focusable');
+  }
+  const order = await page.$eval('#inspector [data-summary="groups"] table', (table) => Array.from(table.querySelectorAll('tbody tr:first-child > *'), (cell) => cell.tagName.toLowerCase() + (cell.dataset.cell ? ':' + cell.dataset.cell : '')));
+  assert.deepEqual(order, ['th', 'td', 'td', 'td:released', 'td'], 'the column stands between lost to crowds and stairs, as its heading does');
+  await page.addScriptTag({ path: AXE });
+  for (const theme of ['light', 'dark']) {
+    await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: theme }]);
+    await page.evaluate(() => Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => undefined))));
+    const found = await page.evaluate((tags) => globalThis.axe.run(document.querySelector('#inspector [data-panel="summary"]'), { runOnly: { type: 'tag', values: tags } }), TAGS);
+    assert.ok(found.passes.length > 5, 'axe ran very few rules');
+    assert.deepEqual(found.violations.map((violation) => violation.id + ': ' + violation.nodes.map((node) => node.target.join(' ')).join(', ')), [], 'the Summary tab with a delay, ' + theme);
+  }
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
+});
+
+test('Movement, Travel time tab at 1280 by 900: a held group\'s Late cell is whole, wrapping between words, never cut at the panel\'s edge', async () => {
+  await page.click('#inspector [role="tab"][data-tab="tables"]');
+  await page.waitForSelector('#inspector [data-panel="tables"] .mov-travel__group');
+  await pickHeldTransition(page);
+  const width = await page.$eval('#inspector', (el) => Math.round(el.getBoundingClientRect().width));
+  assert.ok(width <= 340, 'the inspector is at its usual width, ' + width);
+  const words = await page.$$eval('#inspector [data-travel="transition"] .mov-groups__late', (all) => all.map((el) => el.textContent).filter((text) => text.includes('after the bell')));
+  assert.ok(words.some((text) => /^Late by [\d a-z]+ · left 2 min after the bell$/.test(text)), 'the cell says how late and why: ' + words.join(' | '));
+  await lateCellsWhole(page, '1280 by 900');
+});
+
+test('Day tab card: a day type that is the same as another is named in the editor\'s day list, and ticking the one it follows covers it', async () => {
+  await go(page, '#schedule/day');
+  await settled();
+  await noRelease();
+  // the sample school has two own day types; add a third that is the same as B Day
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.addDayType, { name: 'Assembly Day', short: 'S', own: false, sameAs: 'dsample00b' }));
+  await heldSeven();
+  await settled();
+  await page.waitForSelector('[data-card="release"] .sch-marks__line');
+  const [entry] = await release();
+  await click('[data-card="release"] .sch-marks__line');
+  await page.waitForSelector('.sch-releaseedit');
+  await click(key('release:' + entry.id + ':days:some'));
+  await page.waitForSelector('.sch-markedit__ticks[aria-label="Day types this staggered dismissal is on"] input');
+  const followers = await page.evaluate(() => globalThis.sv2.store.project.dayTypes.filter((dayType, index) => index > 0 && dayType.own !== true).map((dayType) => dayType.name));
+  assert.ok(followers.length > 0, 'the sample school has a day type that is the same as another');
+  const sentence = await page.evaluate(() => Array.from(document.querySelectorAll('.sch-releaseedit .sch-hint'), (el) => el.textContent).find((text) => text.includes('follows it')) || null);
+  assert.equal(sentence, followers.join(' and ') + (followers.length === 1 ? ' is' : ' are') + ' the same as another day type and follows it, so ticking the day type it follows covers ' + (followers.length === 1 ? 'it' : 'them') + '.');
+  const labels = await texts('.sch-markedit__ticks[aria-label="Day types this staggered dismissal is on"] .sch-radio span');
+  assert.ok(labels.length > 0 && labels.every((label) => !label.includes('(same as') || !followers.some((name) => label === name)), 'the day list says which one a day type follows');
+  assert.equal(await exists('.sch-markedit__ticks[aria-label="Day types this staggered dismissal is on"] input[disabled]'), false, 'ticking is not blocked');
+  // the follower is covered through the day type it follows: the rule applies on both
+  await click(key('release:' + entry.id + ':day:dsample00b'));
+  await shows(() => JSON.stringify(globalThis.sv2.store.project.release[0].dayTypeIds) === '["dsample00b"]');
+  await loadModule(page, 'release', 'engine/release.js');
+  const covers = await page.evaluate(() => {
+    const { releaseDelay } = globalThis.sv2modules.release;
+    const project = globalThis.sv2.store.project;
+    const group = project.groups.find((each) => each.name.startsWith('7'));
+    const follower = project.dayTypes.find((dayType) => dayType.name === 'Assembly Day');
+    return { follower: releaseDelay(project, group.id, follower.id, 0, null) > 0, other: releaseDelay(project, group.id, 'dsample00a', 0, null) };
+  });
+  assert.equal(covers.follower, true, 'a day type that follows B Day is held back with it');
+  assert.equal(covers.other, 0, 'A Day is not');
+  await click(key('release:' + entry.id + ':done'));
+  await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    store.apply(globalThis.sv2modules.actions.removeRelease, { id: store.project.release[0].id });
+    store.apply(globalThis.sv2modules.actions.deleteDayType, { dayTypeId: store.project.dayTypes.find((dayType) => dayType.name === 'Assembly Day').id });
+  });
+  await settled();
+});
+
 // ------------------------------------------------------------------ the periods warning
 
 test('taking a period away says what it takes of staggered dismissal too: a scenario lever and a rule that names the last period', async () => {
@@ -467,4 +638,40 @@ test('at 390 by 844 with touch: an entry is added by tap, every control is 44 px
   // the line is a target of 44 px too
   await p.$eval('[data-card="release"] .sch-marks__line', (el) => el.scrollIntoView({ block: 'center' }));
   assert.ok(await p.$eval('[data-card="release"] .sch-marks__line', (el) => el.getBoundingClientRect().height >= 44), 'the sentence is a 44 px button');
+});
+
+test('Movement at 390 by 844 with touch: the Late cell is whole there too, and the Summary tab\'s new column is read by tap', async () => {
+  // the phone page the last test opened (one page at a time shares the saved project, so the desktop page is gone)
+  const p = phone.page;
+  await go390(p, '#movement');
+  await loadModule(p, 'actions', 'engine/actions.js');
+  await p.evaluate(() => {
+    const { store } = globalThis.sv2;
+    for (const each of store.project.release || []) store.apply(globalThis.sv2modules.actions.removeRelease, { id: each.id });
+    store.apply(globalThis.sv2modules.actions.addRelease, { who: { grade: '7' }, seconds: 120 });
+  });
+  await p.waitForFunction(() => {
+    const section = document.querySelector('.mov');
+    return section && section.dataset.styled === 'true' && section.dataset.pending !== 'true' && section.movement.state !== null && section.movement.state.results !== null && section.movement.state.project === globalThis.sv2.store.project;
+  }, { timeout: 15000 });
+  const open = async (tab) => {
+    // on a phone the inspector is a sheet: open it first
+    if ((await p.$eval('#inspector-toggle', (el) => el.getAttribute('aria-expanded'))) !== 'true') {
+      await p.tap('#inspector-toggle');
+      await p.waitForFunction(() => document.querySelector('#inspector-toggle')?.getAttribute('aria-expanded') === 'true', { timeout: 8000 });
+    }
+    await p.$eval('#inspector [role="tab"][data-tab="' + tab + '"]', (el) => el.scrollIntoView({ block: 'center' }));
+    await p.tap('#inspector [role="tab"][data-tab="' + tab + '"]');
+    await p.waitForFunction((wanted) => document.querySelector('#inspector [role="tab"][data-tab="' + wanted + '"]')?.getAttribute('aria-selected') === 'true', { timeout: 8000 }, tab);
+  };
+  await open('summary');
+  await p.waitForSelector('#inspector [data-summary="groups"] [data-cell="released"]');
+  assert.equal((await p.$$eval('#inspector [data-summary="groups"] thead th', (all) => all.map((el) => el.textContent))).includes('Left after the bell'), true);
+  assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, 'the Summary tab does not scroll the page sideways');
+  const reach = await p.$eval('#inspector [data-summary="groups"]', (el) => ({ cells: el.querySelectorAll('[data-cell="released"]').length, reachable: el.scrollWidth <= el.clientWidth || el.tabIndex === 0 }));
+  assert.ok(reach.cells > 0 && reach.reachable, 'the new column is in the table, which can be reached when it scrolls');
+  await open('tables');
+  await p.waitForSelector('#inspector [data-panel="tables"] .mov-travel__group');
+  await pickHeldTransition(p);
+  await lateCellsWhole(p, '390 by 844');
 });
