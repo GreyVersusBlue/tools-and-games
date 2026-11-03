@@ -757,6 +757,25 @@ function leverWords(project, lever) {
 
 // ---- reconcile
 
+// A release lever with what the project no longer has taken out of it: the
+// groups, day types and periods that are gone (a period is gone when it is
+// past the school day). The very same lever when nothing was; only called
+// for a lever whyLeverGone found something left in.
+function trimLever(project, lever) {
+  if (lever.kind !== 'release') return lever;
+  let who = lever.who;
+  let after = lever.after;
+  let dayTypeIds = lever.dayTypeIds;
+  if (Array.isArray(who.groups)) {
+    const groups = who.groups.filter((id) => findById(project.groups, id));
+    if (groups.length !== who.groups.length) who = { groups };
+  }
+  if (Array.isArray(after) && after.some((period) => period >= project.settings.periods)) after = after.filter((period) => period < project.settings.periods);
+  if (Array.isArray(dayTypeIds) && dayTypeIds.some((id) => !findDayType(project, id))) dayTypeIds = dayTypeIds.filter((id) => findDayType(project, id));
+  if (who === lever.who && after === lever.after && dayTypeIds === lever.dayTypeIds) return lever;
+  return { ...lever, who, after, dayTypeIds };
+}
+
 // Why a lever cannot apply to this project, as parts to follow its words, or
 // null when nothing it names is gone. A lever of the building is not judged.
 function whyLeverGone(project, lever) {
@@ -789,8 +808,12 @@ function whyLeverGone(project, lever) {
 // has it. The levers of the building (way, corridor) are kept as they are:
 // their reasons are the building lever's. Pure.
 export function reconcileLevers(project, scenario) {
-  const list = leversOf(scenario);
-  const gone = list.map((lever) => (isReadableLever(lever) ? whyLeverGone(project, lever) : [words('it is not a lever this version can read.')]));
+  const original = leversOf(scenario);
+  const gone = original.map((lever) => (isReadableLever(lever) ? whyLeverGone(project, lever) : [words('it is not a lever this version can read.')]));
+  // what a release lever names that is gone is trimmed, as a real entry's is
+  // when its group, day type or period is deleted; so the lane and Apply
+  // (which writes this list) see one lever
+  const list = original.map((lever, index) => (gone[index] === null ? trimLever(project, lever) : lever));
   const replaced = new Array(list.length).fill(false);
   const later = new Set();
   for (let index = list.length - 1; index >= 0; index -= 1) {

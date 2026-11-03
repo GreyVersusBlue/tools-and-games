@@ -317,13 +317,13 @@ export function describePeriodChange(project, periods) {
       if (used.some((value) => value >= periods)) scenarioChanges += 1;
     }
   }
-  // the open scenario's levers that name a period past the new end: a bell lever's, or a release lever that follows one
+  // the open scenario's levers that name a period past the new end: a bell lever's, or a release lever that follows only such periods (one that follows a period that is left is trimmed, not lost)
   let scenarioLevers = 0;
   if (project.scenario && Array.isArray(project.scenario.levers)) {
     for (const lever of project.scenario.levers) {
       if (!lever || typeof lever !== 'object') continue;
       if (lever.kind === 'bell' && lever.period >= periods) scenarioLevers += 1;
-      if (lever.kind === 'release' && Array.isArray(lever.after) && lever.after.some((period) => period >= periods)) scenarioLevers += 1;
+      if (lever.kind === 'release' && Array.isArray(lever.after) && lever.after.length > 0 && lever.after.every((period) => period >= periods)) scenarioLevers += 1;
     }
   }
   const past = periods < from ? countPastPeriods(project, periods) : { marks: 0, duties: 0, release: 0 };
@@ -757,7 +757,7 @@ export const deleteGroup = action(
   { label: (before, payload) => 'Delete group ' + groupName(before, payload.id), bumps: [SCHEDULE], focus: () => ({ section: 'schedule', tab: 'groups' }) },
   (project, payload) => {
     const gone = need(project.groups, payload.id, 'group');
-    return reportingDeleted(project, dropGroupFromRelease(dropGroupFromMarks({ ...project, groups: project.groups.filter((group) => group !== gone) }, payload.id), payload.id), gone.name);
+    return reportingDeleted(project, dropGroupFromLevers(dropGroupFromRelease(dropGroupFromMarks({ ...project, groups: project.groups.filter((group) => group !== gone) }, payload.id), payload.id), payload.id), gone.name);
   },
 );
 
@@ -1100,34 +1100,40 @@ export function describeDayTypeKind(project, payload) {
   const followers = followersOf(project, dayType.id).map((follower) => follower.name);
   // the scenario's changes on its own days go with them, as deleteDayType's do
   const scenarioChanges = scenarioChangesOn(project, dayType.id);
-  const scenarioLevers = scenarioLeversOn(project, dayType.id);
-  return { from: null, to: target.name, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, ...(scenarioLevers > 0 ? { scenarioLevers } : {}), losesData: revert.losesData || scenarioChanges > 0 || scenarioLevers > 0 };
+  const levers = leverKeys(project, dayType.id);
+  return { from: null, to: target.name, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, ...levers, losesData: revert.losesData || scenarioChanges > 0 || levers.scenarioLevers > 0 };
 }
 
 function scenarioChangesOn(project, dayTypeId) {
   return project.scenario ? project.scenario.changes.filter((change) => change.dayTypeId === dayTypeId).length : 0;
 }
 
-// The open scenario's levers that name `dayTypeId`: a bell lever on it, and
-// a release lever that lists it (ARCHITECTURE 18.7).
-function leverNamesDay(lever, dayTypeId) {
-  if (!lever || typeof lever !== 'object') return false;
-  if (lever.kind === 'bell') return lever.dayTypeId === dayTypeId;
-  return lever.kind === 'release' && Array.isArray(lever.dayTypeIds) && lever.dayTypeIds.includes(dayTypeId);
+// The open scenario's levers that name `dayTypeId`, as { changed, removed }:
+// a bell lever on it goes whole; a release lever that lists it loses that
+// day type only, and goes when none is left (ARCHITECTURE 18.7).
+function scenarioLeverChanges(project, dayTypeId) {
+  return leverChanges(project, dropDayTypeFromLevers(project, dayTypeId));
 }
 
 function scenarioLeversOn(project, dayTypeId) {
-  return project.scenario && Array.isArray(project.scenario.levers) ? project.scenario.levers.filter((lever) => leverNamesDay(lever, dayTypeId)).length : 0;
+  return scenarioLeverChanges(project, dayTypeId).changed;
+}
+
+// The outcome keys for the levers a day type takes: `scenarioLevers` the
+// number changed or removed, `scenarioLeversRemoved` the number removed,
+// both left out when none.
+function leverKeys(project, dayTypeId) {
+  const { changed, removed } = scenarioLeverChanges(project, dayTypeId);
+  return changed > 0 ? { scenarioLevers: changed, scenarioLeversRemoved: removed } : {};
 }
 
 // The project with the open scenario's changes and levers on `dayTypeId`
 // taken out. A scenario with no `levers` keeps none, as it was.
 function withoutScenarioChanges(project, dayTypeId) {
   const changes = scenarioChangesOn(project, dayTypeId);
-  const levers = scenarioLeversOn(project, dayTypeId);
-  if (changes === 0 && levers === 0) return project;
-  const scenario = { ...project.scenario, changes: project.scenario.changes.filter((change) => change.dayTypeId !== dayTypeId) };
-  if (levers > 0) scenario.levers = project.scenario.levers.filter((lever) => !leverNamesDay(lever, dayTypeId));
+  const trimmed = dropDayTypeFromLevers(project, dayTypeId);
+  if (changes === 0 && trimmed === project) return project;
+  const scenario = { ...trimmed.scenario, changes: project.scenario.changes.filter((change) => change.dayTypeId !== dayTypeId) };
   return { ...project, scenario };
 }
 
@@ -1203,7 +1209,7 @@ export function describeDayTypeDelete(project, dayTypeId) {
   const revert = own ? describeRevert(project, dayTypeId) : { slots: 0, groups: 0, bells: 0 };
   const followers = own ? followersOf(project, dayTypeId).map((follower) => follower.name) : [];
   const scenarioChanges = scenarioChangesOn(project, dayTypeId);
-  const scenarioLevers = scenarioLeversOn(project, dayTypeId);
+  const levers = scenarioLeverChanges(project, dayTypeId);
   const calendar = calendarOf(project);
   const dates = calendar && Array.isArray(calendar.dates) ? calendar.dates.filter((entry) => entry.day === dayTypeId).length : 0;
   const weekdays = calendar && Array.isArray(calendar.weekdays) ? calendar.weekdays.map((rule, w) => (rule && rule.day === dayTypeId ? w : -1)).filter((w) => w !== -1) : [];
@@ -1215,7 +1221,8 @@ export function describeDayTypeDelete(project, dayTypeId) {
   if (weekdays.length > 0) parts.push(listWords(weekdays.map((w) => WEEKDAY_NAMES[w] + 's')) + ' in the calendar');
   if (rotation > 0) parts.push('its place in the rotation');
   if (scenarioChanges > 0) parts.push(count(scenarioChanges, 'change', 'changes') + ' in the scenario');
-  if (scenarioLevers > 0) parts.push(count(scenarioLevers, 'lever', 'levers') + ' in the scenario');
+  if (levers.removed > 0) parts.push(count(levers.removed, 'lever', 'levers') + ' in the scenario');
+  if (levers.changed > levers.removed) parts.push(count(levers.changed - levers.removed, 'lever', 'levers') + ' in the scenario changed');
   const left = marksAndDutiesLeftNoDayType(project, dayTypeId);
   if (left.marks > 0) parts.push(count(left.marks, 'marked period', 'marked periods'));
   if (left.duties > 0) parts.push(count(left.duties, 'duty', 'duties'));
@@ -1223,7 +1230,7 @@ export function describeDayTypeDelete(project, dayTypeId) {
   if (releases.changed > 0) parts.push(count(releases.changed, 'staggered dismissal', 'staggered dismissals') + (releases.removed === releases.changed ? ' removed' : ' changed'));
   let text = 'Deleted ' + dayType.name + (parts.length > 0 ? ', ' + listWords(parts) : '');
   if (followers.length > 0) text += '. ' + listWords(followers) + (followers.length === 1 ? ' is' : ' are') + ' now the same as ' + baseDayType(project).name;
-  return { dayTypeId, name: dayType.name, own, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, ...(scenarioLevers > 0 ? { scenarioLevers } : {}), dates, weekdays, rotation, marks: left.marks, duties: left.duties, release: releases.changed, releaseRemoved: releases.removed, text };
+  return { dayTypeId, name: dayType.name, own, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, ...leverKeys(project, dayTypeId), dates, weekdays, rotation, marks: left.marks, duties: left.duties, release: releases.changed, releaseRemoved: releases.removed, text };
 }
 
 // payload: { dayTypeId }. The first day type cannot be deleted. The outcome
@@ -3570,6 +3577,49 @@ function dropPastPeriodsFromRelease(project, periods) {
     const after = entry.after.filter((period) => period < periods);
     return after.length === 0 ? null : { ...entry, after };
   });
+}
+
+// ---- what other actions do to the open scenario's levers (SV2-89b). A
+// release lever is trimmed as a real entry is, and goes only when nothing is
+// left; a bell lever on a day type goes with it. A scenario with no `levers`
+// keeps none, and an untouched lever is the very same object.
+
+function changeLevers(project, fn) {
+  if (!project.scenario || !Array.isArray(project.scenario.levers)) return project;
+  let changed = false;
+  const levers = [];
+  for (const lever of project.scenario.levers) {
+    const result = lever && typeof lever === 'object' ? fn(lever) : lever;
+    if (result !== lever) changed = true;
+    if (result !== null) levers.push(result);
+  }
+  return changed ? { ...project, scenario: { ...project.scenario, levers } } : project;
+}
+
+function dropGroupFromLevers(project, groupId) {
+  return changeLevers(project, (lever) => {
+    if (lever.kind !== 'release' || !lever.who || !Array.isArray(lever.who.groups) || !lever.who.groups.includes(groupId)) return lever;
+    const groups = lever.who.groups.filter((id) => id !== groupId);
+    return groups.length === 0 ? null : { ...lever, who: { groups } };
+  });
+}
+
+function dropDayTypeFromLevers(project, dayTypeId) {
+  return changeLevers(project, (lever) => {
+    if (lever.kind === 'bell') return lever.dayTypeId === dayTypeId ? null : lever;
+    if (lever.kind !== 'release' || !Array.isArray(lever.dayTypeIds) || !lever.dayTypeIds.includes(dayTypeId)) return lever;
+    const dayTypeIds = lever.dayTypeIds.filter((id) => id !== dayTypeId);
+    return dayTypeIds.length === 0 ? null : { ...lever, dayTypeIds };
+  });
+}
+
+// How many levers `next` changed or removed against `project`: { changed,
+// removed }, removed counted in changed.
+function leverChanges(project, next) {
+  const before = project.scenario && Array.isArray(project.scenario.levers) ? project.scenario.levers : [];
+  const after = next.scenario && Array.isArray(next.scenario.levers) ? next.scenario.levers : [];
+  const kept = new Set(after);
+  return { changed: before.filter((lever) => !kept.has(lever)).length, removed: before.length - after.length };
 }
 
 // ================================================================ SV2-88 (end)
