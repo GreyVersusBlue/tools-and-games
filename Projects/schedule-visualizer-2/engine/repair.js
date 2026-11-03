@@ -1396,23 +1396,32 @@ export function repair(input, options) {
               }
               return levers.push(JSON.stringify({ kind: lever.kind, who: lever.who, seconds: lever.seconds, after: lever.after, dayTypeIds: lever.dayTypeIds }) === JSON.stringify(raw) ? raw : { kind: 'release', who: lever.who, seconds: lever.seconds, after: lever.after, dayTypeIds: lever.dayTypeIds });
             }
+            // a lever is kept with its own fields and no others, as addScenarioLever
+            // writes it; a null for the key a bell lever does not use is no key at all
+            let clean;
             if (lever.kind === 'bell') {
+              const unused = (value) => value === undefined || value === null;
               const one = (text(lever.dayTypeId) ? 1 : 0) + (text(lever.bellsId) ? 1 : 0);
-              if (one !== 1 || !whole(lever.period) || !isBellTime(lever.start) || !isBellTime(lever.end)) return lost.push(what + ' was a bell without its day type or bell schedule, period and times');
+              if (one !== 1 || !(unused(lever.dayTypeId) || text(lever.dayTypeId)) || !(unused(lever.bellsId) || text(lever.bellsId)) || !whole(lever.period) || !isBellTime(lever.start) || !isBellTime(lever.end)) return lost.push(what + ' was a bell without its day type or bell schedule, period and times');
               follow1('d', 'dayTypeId');
               follow1('b', 'bellsId');
+              clean = { kind: 'bell', ...(text(lever.dayTypeId) ? { dayTypeId: lever.dayTypeId } : { bellsId: lever.bellsId }), period: lever.period, start: lever.start, end: lever.end };
             } else if (lever.kind === 'capacity') {
               if (!text(lever.roomId) || lever.capacity === undefined || !seat(lever.capacity, RANGES.capacity)) return lost.push(what + ' was a capacity without a room and a whole number of seats');
               follow1('r', 'roomId');
+              clean = { kind: 'capacity', roomId: lever.roomId, capacity: lever.capacity };
             } else if (lever.kind === 'headCount') {
               if (!text(lever.groupId) || lever.headCount === undefined || !seat(lever.headCount, RANGES.headCount)) return lost.push(what + ' was a head count without a group and a whole number of students');
               follow1('g', 'groupId');
+              clean = { kind: 'headCount', groupId: lever.groupId, headCount: lever.headCount };
             } else if (lever.kind === 'way') {
               if (!text(lever.connectionId) || !['both', 'ab', 'ba', 'closed'].includes(lever.way)) return lost.push(what + ' was a stair connection without its way');
-            } else if (!text(lever.floorId) || !Array.isArray(lever.cells) || lever.cells.length === 0 || !lever.cells.every(whole) || typeof lever.name !== 'string') {
-              return lost.push(what + ' was a closed corridor without its floor and cells');
+              clean = { kind: 'way', connectionId: lever.connectionId, way: lever.way };
+            } else {
+              if (!text(lever.floorId) || !Array.isArray(lever.cells) || lever.cells.length === 0 || !lever.cells.every(whole) || typeof lever.name !== 'string') return lost.push(what + ' was a closed corridor without its floor and cells');
+              clean = { kind: 'corridor', floorId: lever.floorId, cells: lever.cells, name: lever.name };
             }
-            return levers.push(Object.keys(lever).every((key) => lever[key] === raw[key]) ? raw : lever);
+            return levers.push(Object.keys(clean).length === Object.keys(raw).length && Object.keys(clean).every((key) => clean[key] === raw[key]) ? raw : clean);
           });
           if (lost.length > 0) note(plural(lost.length, 'lever', 'levers') + ' of the scenario could not be read and ' + (lost.length === 1 ? 'was' : 'were') + ' removed: ' + lost.join('; ') + '.');
           if (lost.length > 0 || levers.some((lever, i) => lever !== scenario.levers[i])) scenario.levers = levers;

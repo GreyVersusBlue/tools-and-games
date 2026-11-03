@@ -762,7 +762,7 @@ test('deleteDayType, setDayTypeKind and setPeriods follow the levers: bell lever
   assert.deepEqual(same.project.scenario.levers, [L_HEAD, { ...L_GRADE, who: { grade: '8' } }]);
 
   const periods = describePeriodChange(base, 5);
-  assert.equal(periods.scenarioLevers, 2, 'a bell on Period 7 and a release that follows Period 8');
+  assert.equal(periods.scenarioLevers, 1, 'a bell on Period 7; the release that follows Periods 1 and 7 keeps Period 1 and is only trimmed (SV2-89b)');
   assert.equal(periods.losesData, true);
   assert.equal(describePeriodChange(base, 8).scenarioLevers, undefined, 'nothing lost, nothing said');
 });
@@ -800,4 +800,79 @@ test('a scenario with levers survives the project file: written, read and valida
   const read = readProjectFile(writeProjectFile(store.project, { images: {} }), { ids: makeIds(9), clock });
   assert.deepEqual(read.project.scenario.levers, store.project.scenario.levers);
   assert.deepEqual(validate(read.project), []);
+});
+
+// ---------------------------------------------------------------- SV2-89b: levers follow deletions as real release entries do
+
+const L_PAIR = { kind: 'release', who: { groups: [G6C, G7C] }, seconds: 60, after: [1], dayTypeIds: null };
+const L_TWO_DAYS = { kind: 'release', who: { grade: '7' }, seconds: 90, after: [1, 2], dayTypeIds: [A, B] };
+
+test('SV2-89b item 1: a release lever on two groups loses a deleted group, and Apply then writes a valid project', () => {
+  const store = withLevers([L_PAIR]);
+  store.apply(deleteGroup, { id: G6C });
+  assert.deepEqual(store.project.scenario.levers[0].who, { groups: [G7C] }, 'deleteGroup trims the lever as it trims a real entry');
+  store.apply(applyScenario, {});
+  assert.deepEqual(validate(store.project), [], 'validate holds after Apply');
+  assert.deepEqual(releaseOf(store.project).map((entry) => entry.who), [{ groups: [G7C] }]);
+});
+
+test('SV2-89b item 1: a release lever on one group goes with the group; a lever Apply meets with a stale id is trimmed the same way as reconcile shows it', () => {
+  const store = withLevers([{ ...L_PAIR, who: { groups: [G6C] } }]);
+  store.apply(deleteGroup, { id: G6C });
+  assert.deepEqual(store.project.scenario.levers, [], 'nothing left, so the lever is dropped');
+  // a lever left stale some other way (a file, an older tool): reconcile trims it, so the lane and Apply see one lever
+  const stale = clone(withLevers([L_PAIR]).project);
+  stale.groups = stale.groups.filter((group) => group.id !== G6C);
+  const kept = reconcile(stale, stale.scenario);
+  assert.deepEqual(kept.levers[0].who, { groups: [G7C] });
+  assert.equal(kept.droppedLevers.length, 0);
+  const applied = storeOf(stale);
+  applied.apply(applyScenario, {});
+  assert.deepEqual(validate(applied.project), []);
+});
+
+test('SV2-89b item 1: deleteDayType and setDayTypeKind trim a lever\'s day types, dropping it only when none is left; validate holds after Apply', () => {
+  for (const act of ['delete', 'same']) {
+    const store = withLevers([L_TWO_DAYS]);
+    if (act === 'delete') store.apply(deleteDayType, { dayTypeId: B });
+    else store.apply(setDayTypeKind, { dayTypeId: B, own: false, sameAs: A });
+    assert.deepEqual(store.project.scenario.levers[0].dayTypeIds, [A], act);
+    store.apply(applyScenario, {});
+    assert.deepEqual(validate(store.project), [], act);
+  }
+  const only = withLevers([{ ...L_TWO_DAYS, dayTypeIds: [B] }]);
+  only.apply(deleteDayType, { dayTypeId: B });
+  assert.deepEqual(only.project.scenario.levers, []);
+});
+
+test('SV2-89b item 2: a multi-day release lever loses only the deleted day type, and the outcome counts it as changed, not removed', () => {
+  const base = withLevers([L_TWO_DAYS, { ...L_BELL, dayTypeId: B }]).project;
+  const info = describeDayTypeDelete(base, B);
+  assert.equal(info.scenarioLevers, 2);
+  assert.equal(info.scenarioLeversRemoved, 1, 'only the bell lever goes whole');
+  assert.match(info.text, /1 lever in the scenario and 1 lever in the scenario changed/);
+  const store = storeOf(base);
+  store.apply(deleteDayType, { dayTypeId: B });
+  assert.deepEqual(store.project.scenario.levers, [{ ...L_TWO_DAYS, dayTypeIds: [A] }]);
+  assert.equal(store.undoOutcome.scenarioLevers, 2);
+  assert.equal(store.undoOutcome.scenarioLeversRemoved, 1);
+  const kind = describeDayTypeKind(base, { dayTypeId: B, own: false, sameAs: A });
+  assert.equal(kind.scenarioLevers, 2);
+  assert.equal(kind.scenarioLeversRemoved, 1);
+});
+
+test('SV2-89b item 3: describePeriodChange counts a release lever lost only when every period it follows is past the new end, and Apply writes none past the end', () => {
+  const lever = { kind: 'release', who: { grade: '7' }, seconds: 90, after: [1, 6], dayTypeIds: null };
+  const base = withLevers([lever]).project;
+  assert.equal(describePeriodChange(base, 5).scenarioLevers, undefined, 'Period 1 is still there, so the lever is kept (trimmed)');
+  assert.equal(describePeriodChange(withLevers([{ ...lever, after: [6, 7] }]).project, 5).scenarioLevers, 1, 'every period it follows is gone');
+  const store = storeOf(base);
+  store.apply(setPeriods, { periods: 5 });
+  assert.deepEqual(reconcile(store.project, store.project.scenario).levers[0].after, [1], 'reconcile trims what is past the end');
+  store.apply(applyScenario, {});
+  assert.deepEqual(releaseOf(store.project).map((entry) => entry.after), [[1]], 'Apply never writes an after past the day\'s end');
+  assert.deepEqual(validate(store.project), []);
+  const lost = storeOf(withLevers([{ ...lever, after: [6, 7] }]).project);
+  lost.apply(setPeriods, { periods: 5 });
+  assert.equal(reconcile(lost.project, lost.project.scenario).droppedLevers.length, 1, 'reconcile drops it, as the count says');
 });

@@ -761,4 +761,19 @@ test('alsoText: the schedule file import says its staggered dismissals by count,
   assert.equal(alsoText({ ...none, releaseAdded: 2, releaseReplaced: 1, releaseKept: 3 }, words), ' Also: 2 staggered dismissals added, 1 staggered dismissal replaced and 3 staggered dismissals kept as they were.');
   assert.equal(alsoText({ ...none, releaseDropped: 1 }, words), ' Also: 1 staggered dismissal left out because it names nothing here.');
   assert.equal(alsoText({ ...none, releaseDropped: 2 }, words), ' Also: 2 staggered dismissals left out because they name nothing here.');
+
+// ================================================================ SV2-89b: a missing `after` or `dayTypeIds` reads as null (DECISIONS 2026-11-03)
+
+test('validate reads a missing after or dayTypeIds on a real release entry as null, as repair does; a schedule file with only {id, who, seconds} is read', () => {
+  const project = withRelease([{ id: 'lrelease01', who: { grade: '7' }, seconds: 60 }], school());
+  assert.deepEqual(validate(project), [], 'validate');
+  assert.deepEqual(repair(project).project.release, [{ id: 'lrelease01', who: { grade: '7' }, seconds: 60, after: null, dayTypeIds: null }], 'repair fills both with null');
+  const value = JSON.parse(writeScheduleFile(withRelease([entry('lrelease01', { grade: '7' }, 60)], sampleSchool())));
+  value.release = [{ id: 'lrelease01', who: { grade: '7' }, seconds: 60 }];
+  const read = readScheduleFile(JSON.stringify(value));
+  assert.equal(read.summary.release, 1);
+  assert.equal(releaseDelay(project, 'gsample07a', 'dsample00a', 3, null), 60, 'and the rule reads it as every day and every period');
+  // a value that is there and wrong is still found
+  project.release[0].after = [];
+  assert.equal(validate(project).some((finding) => /^release\[0\]\.after$/.test(finding.path)), true);
 });

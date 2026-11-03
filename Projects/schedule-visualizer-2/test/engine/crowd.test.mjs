@@ -743,3 +743,37 @@ test('teachers\' walks are not delayed: a teacher leaves with the class or not a
   const graph = routingGraph(plain);
   assert.deepEqual(teacherWalks(held, graph), teacherWalks(plain, graph));
 });
+
+// ---- SV2-89b: DECISIONS 2026-11-03. A staggered dismissal names own day
+// types; one naming a follower applies only to that follower's own run (one a
+// No class mark gives it), so it delays nobody on its base's run.
+
+function heldFollowerSchool(withRun) {
+  const project = withRun ? followerSchool('noclass') : followerSchool('advisory');
+  project.release = [{ id: 'lfollow001', who: { grade: '7' }, seconds: 90, after: null, dayTypeIds: ['dsample00c'] }];
+  return project;
+}
+
+function releasedIn(day) {
+  return day.transitions.flatMap((transition) => transition.groups).filter((group) => 'released' in group).length;
+}
+
+test('an entry naming only a follower day type delays nobody on its base\'s run, whether or not the follower has a run of its own', () => {
+  for (const withRun of [false, true]) {
+    const held = simulate(heldFollowerSchool(withRun));
+    const without = simulate({ ...heldFollowerSchool(withRun), release: undefined });
+    const [aHeld] = held.crowd.days;
+    assert.deepEqual(aHeld, without.crowd.days[0], 'A Day is exactly what it is without the entry (own run: ' + withRun + ')');
+    assert.equal(releasedIn(aHeld), 0, 'nobody on A Day is held');
+    assert.equal(held.walks.groups.filter((walk) => walk.dayTypeId === 'dsample00a' && 'released' in walk).length, 0, 'and no walk of A Day says it was');
+  }
+});
+
+test('an entry naming a follower delays the follower\'s own run, the one a No class mark gives it', () => {
+  const held = simulate(heldFollowerSchool(true));
+  const c = held.crowd.days.find((day) => day.dayTypeId === 'dsample00c');
+  assert.ok(releasedIn(c) > 0, 'C Day\'s own run holds grade 7');
+  assert.ok(held.walks.groups.some((walk) => walk.dayTypeId === 'dsample00c' && walk.released === 90));
+  const none = simulate(heldFollowerSchool(false));
+  assert.equal(none.crowd.days.length, 2, 'with no run of its own the follower adds none, and so holds nobody');
+});
