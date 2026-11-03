@@ -318,6 +318,30 @@
   }
 }
 
+/* ---------- On a phone: the stage stays in view (DESIGN 12.4, 5.4) ---------- */
+
+/* Below the wide layout the panel stands under the map, and a form brought
+   into view used to carry the stage off the top of the section (0 px of it
+   visible with Bell times open at 390 by 844). With a scenario open the stage
+   is pinned to the top of the section at a height of its own (between 160 and
+   280 px, 30 % of the window), and the panel, the forms in it, scrolls under
+   it, as its own region: scroll-padding keeps a field brought into view clear
+   of the stage and the bar. A window under 600 px tall (a phone on its side)
+   keeps the plan map's own rule, the first line scrolled away instead. */
+@media (max-width: 1199.98px) and (min-height: 600px) {
+  .scn[data-mode="open"] {
+    --scn-pin: clamp(160px, 30dvh, 280px);
+    scroll-padding-top: var(--scn-pin);
+  }
+
+  .scn[data-mode="open"] .mov-map > .mov-stage {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    flex: 0 0 var(--scn-pin);
+  }
+}
+
 /* ---------- The comparison, in the inspector ---------- */
 
 .scn-compare {

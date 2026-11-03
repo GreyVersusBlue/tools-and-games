@@ -585,8 +585,22 @@ test('at 390 by 844 with touch: the forms are used by tap, every target is 44 px
       await tap('.scn-kind input[value="' + kind + '"] + .seg__label');
       await p.waitForFunction((k) => document.querySelector('.scn-form').dataset.kind === k, {}, kind);
       assert.deepEqual(await small(sheet), [], kind + ': every control is 44 px tall');
-      const shape = await p.evaluate(() => ({ stage: document.querySelector('.scn .mov-stage').getBoundingClientRect().height, wide: document.documentElement.scrollWidth - window.innerWidth }));
-      assert.ok(shape.stage >= 160 - 0.5, kind + ': the stage keeps its 160 px: ' + shape.stage);
+      // the form's first field brought into view, as a finger would; then how much of the
+      // stage is on the screen (its height cut to the window and to the section that holds
+      // it), not how tall it is: a stage scrolled off the top is tall and seen not at all
+      await p.$eval('.scn-form select, .scn-form .field__input', (el) => el.scrollIntoView({ block: 'center' }));
+      await p.waitForFunction(() => document.querySelector('.scn').dataset.compare === 'ready');
+      const shape = await p.evaluate(() => {
+        const box = (el) => el.getBoundingClientRect();
+        const stage = box(document.querySelector('.scn .mov-stage'));
+        const section = box(document.querySelector('.scn'));
+        const top = Math.max(stage.top, section.top, 0);
+        const bottom = Math.min(stage.bottom, section.bottom, window.innerHeight);
+        const first = box(document.querySelector('.scn-form select, .scn-form .field__input'));
+        return { stage: stage.height, seen: Math.max(0, bottom - top), field: first.top >= section.top && first.bottom <= Math.min(section.bottom, window.innerHeight), wide: document.documentElement.scrollWidth - window.innerWidth };
+      });
+      assert.ok(shape.field, kind + ': the form\'s first field is on the screen');
+      assert.ok(shape.seen >= 160 - 0.5, kind + ': at least 160 px of the stage is on the screen with the first field in view: ' + shape.seen + ' of ' + shape.stage);
       assert.ok(shape.wide <= 0, kind + ': nothing scrolls sideways: ' + shape.wide);
     }
     // a lever by tap: a capacity
