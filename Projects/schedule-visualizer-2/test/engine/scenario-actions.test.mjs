@@ -10,10 +10,12 @@ import assert from 'node:assert/strict';
 import * as actions from '../../engine/actions.js';
 import { createStore } from '../../engine/store.js';
 import { applyChanges, reconcile, changeWords } from '../../engine/scenario.js';
+import { releaseOf } from '../../engine/schema.js';
+import { validate } from '../../engine/validate.js';
 import { writeProjectFile, readProjectFile } from '../../engine/project-file.js';
 import { school, clone, clock, makeIds, assertValid } from './helpers.mjs';
 
-const { newScenario, renameScenario, addScenarioChange, removeScenarioChange, removeScenarioChanges, discardScenario, setScenarioFromFile, applyScenario, setSlot, deleteGroup, revertToBase, ActionError, SCHEDULE, NEW_SCENARIO_NAME } = actions;
+const { addScenarioLever, removeScenarioLever, deleteDayType, setDayTypeKind, describeDayTypeDelete, describeDayTypeKind, describePeriodChange, setPeriods, newScenario, renameScenario, addScenarioChange, removeScenarioChange, removeScenarioChanges, discardScenario, setScenarioFromFile, applyScenario, setSlot, deleteGroup, revertToBase, ActionError, SCHEDULE, NEW_SCENARIO_NAME } = actions;
 
 const A = 'dsample00a';
 const B = 'dsample00b';
@@ -60,7 +62,9 @@ test('the six scenario-only actions carry a label and bumps [] and move no count
     assert.ok(typeof act.label === 'function' || typeof act.label === 'string', 'a label on every action');
     assert.notEqual(act.quiet, true, 'each is an undo step');
   }
-  assert.deepEqual(applyScenario.bumps, [SCHEDULE]);
+  assert.equal(typeof applyScenario.bumps, 'function', 'applyScenario\'s bumps are worked out from what it writes (SV2-89)');
+  assert.deepEqual(applyScenario.bumps(withChanges([]).project), [SCHEDULE]);
+  assert.deepEqual(applyScenario.bumps(withChanges([move(G7C, 1, 'rsample204')]).project), [SCHEDULE]);
 
   const other = school();
   slot(other, G7C, A, 1).room = 'rsample204';
@@ -540,4 +544,260 @@ test('a project file round-trips with an open scenario and with compared set', (
   const again = readProjectFile(writeProjectFile(compared, { images: {} }), { ids: makeIds(9), clock });
   assert.deepEqual(again.project, compared, 'compared comes back as it was');
   assert.deepEqual(again.project.scenario.compared, { fileName: 'next "year".json', addedGroups: ['9A'], removedGroups: ['8B'] });
+});
+
+// ================================================================ SV2-89: the schedule levers
+
+const L_BELL = { kind: 'bell', dayTypeId: A, period: 6, start: '13:20', end: '14:08' };
+const L_HEAD = { kind: 'headCount', groupId: 'gsample06a', headCount: 40 };
+const L_SEATS = { kind: 'capacity', roomId: 'rsample203', capacity: 12 };
+const L_GRADE = { kind: 'release', who: { grade: '7' }, seconds: 120, after: null, dayTypeIds: null };
+
+function withLevers(levers, changes) {
+  const store = withChanges(changes || [], 'Trial');
+  for (const lever of levers) store.apply(addScenarioLever, { lever });
+  return store;
+}
+
+test('levers: the two actions are undo steps that move no counter, and a scenario with none keeps no `levers` key', () => {
+  for (const act of [addScenarioLever, removeScenarioLever]) {
+    assert.deepEqual(act.bumps, [], 'bumps of ' + act.name);
+    assert.ok(typeof act.label === 'function');
+    assert.notEqual(act.quiet, true);
+  }
+  const store = withChanges([move(G7C, 1, 'rsample204')]);
+  assert.equal('levers' in store.project.scenario, false, 'absent until the first lever is added');
+  const start = counters(store);
+  store.apply(addScenarioLever, { lever: L_HEAD });
+  store.apply(addScenarioLever, { lever: L_BELL });
+  store.apply(removeScenarioLever, { index: 0 });
+  assert.deepEqual(counters(store), start);
+  assert.deepEqual(store.project.scenario.levers, [L_BELL]);
+  store.undo();
+  assert.deepEqual(store.project.scenario.levers, [L_HEAD, L_BELL]);
+  assert.deepEqual(store.project.scenario.changes.length, 1, 'the changes were not touched');
+  assertValid(store.project);
+});
+
+test('addScenarioLever: each kind is stored with its own fields and no others, in words that name what was added', () => {
+  const store = withLevers([{ ...L_HEAD, extra: 1 }, { ...L_SEATS, extra: 1 }, { ...L_BELL, extra: 1 }, { ...L_GRADE, extra: 1 }]);
+  assert.deepEqual(store.project.scenario.levers, [L_HEAD, L_SEATS, L_BELL, L_GRADE]);
+  assert.equal(store.undoLabel, 'Add to scenario Trial: Grade 7 leaves 2 min after the bell');
+  store.undo();
+  assert.equal(store.undoLabel, 'Add to scenario Trial: A Day, Period 7: 1:20 PM to 2:08 PM (was 1:12 PM to 2:00 PM)');
+  store.undo();
+  assert.equal(store.undoLabel, 'Add to scenario Trial: Room 203 seats 12 (was 30)');
+  store.undo();
+  assert.equal(store.undoLabel, 'Add to scenario Trial: 6A: 40 students (was 24)');
+});
+
+test('addScenarioLever: a lever is refused in words, and nothing changes: no scenario, a bad kind, a bad value, a group or room that is not there, a "same as" day', () => {
+  const store = withChanges([]);
+  const before = store.project;
+  const refused = (lever, code, text) => assert.throws(() => store.apply(addScenarioLever, { lever }), (error) => refusedWith(code)(error) && (text === undefined || text.test(error.message)), JSON.stringify(lever));
+  refused(undefined, 'bad-value', /staggered dismissal, a bell time/);
+  refused({ kind: 'move' }, 'bad-value');
+  refused({ kind: 'way', connectionId: 'c', way: 'closed' }, 'bad-value', /staggered dismissal/);
+  refused({ ...L_HEAD, headCount: 0 }, 'bad-value', /head count is a whole number from 1 to 999/);
+  refused({ ...L_HEAD, headCount: undefined }, 'bad-value');
+  refused({ ...L_HEAD, groupId: 'ggone00000' }, 'missing', /no longer in the project/);
+  refused({ ...L_SEATS, capacity: 1000 }, 'bad-value', /capacity is a whole number from 1 to 999/);
+  refused({ ...L_SEATS, roomId: 'rgone00000' }, 'missing', /room is no longer in the building/);
+  refused({ ...L_BELL, start: '9:50' }, 'bad-value', /bell time/);
+  refused({ ...L_BELL, period: 9 }, 'bad-value', /not in the school day/);
+  refused({ ...L_BELL, dayTypeId: 'dgone00000' }, 'missing');
+  refused({ ...L_BELL, bellsId: 'bgone00000' }, 'bad-value', /one day type or one bell schedule/);
+  refused({ kind: 'bell', bellsId: 'bgone00000', period: 1, start: '09:00', end: '09:40' }, 'missing', /bell schedule is no longer/);
+  refused({ ...L_GRADE, seconds: 10 }, 'bad-value', /whole number of seconds from 15 to 300/);
+  refused({ ...L_GRADE, who: { grade: '7', wing: 'N' } }, 'bad-value', /one of some groups, a grade or a wing/);
+  refused({ ...L_GRADE, after: [] }, 'bad-value');
+  refused({ ...L_GRADE, after: [9] }, 'bad-value');
+  refused({ ...L_GRADE, dayTypeIds: ['dgone00000'] }, 'missing');
+  assert.equal(store.project, before, 'nothing changed');
+  const same = withChanges([]);
+  same.apply(revertToBase, { dayTypeId: B });
+  assert.throws(() => same.apply(addScenarioLever, { lever: { ...L_BELL, dayTypeId: B } }), refusedWith('same-as-base'));
+  const none = storeOf();
+  assert.throws(() => none.apply(addScenarioLever, { lever: L_HEAD }), (error) => refusedWith('no-scenario')(error) && error.message === 'There is no scenario open. Start one first.');
+  assert.throws(() => none.apply(removeScenarioLever, { index: 0 }), refusedWith('no-scenario'));
+});
+
+test('addScenarioLever: a lever that puts things back as they are removes itself, with no undo step; one of the same key replaces the earlier', () => {
+  const store = withLevers([L_SEATS]);
+  const entries = store.history.past.length;
+  store.apply(addScenarioLever, { lever: { kind: 'headCount', groupId: 'gsample06a', headCount: 24 } });
+  store.apply(addScenarioLever, { lever: { kind: 'bell', dayTypeId: A, period: 6, start: '13:12', end: '14:00' } });
+  store.apply(addScenarioLever, { lever: { kind: 'release', who: { groups: [G7C] }, seconds: 0, after: null, dayTypeIds: null } });
+  assert.equal(store.history.past.length, entries, 'changing nothing makes no step');
+  store.apply(addScenarioLever, { lever: L_SEATS });
+  assert.equal(store.history.past.length, entries, 'nor does adding what is already there');
+  store.apply(addScenarioLever, { lever: { ...L_SEATS, capacity: 20 } });
+  assert.deepEqual(store.project.scenario.levers, [{ ...L_SEATS, capacity: 20 }], 'a later lever of the key replaces');
+  assert.match(store.undoLabel, /^Add to scenario Trial: Room 203 seats 20 \(was 30\)$/);
+  store.apply(addScenarioLever, { lever: { kind: 'capacity', roomId: 'rsample203', capacity: 30 } });
+  assert.deepEqual(store.project.scenario.levers, [], 'putting the capacity back takes the earlier lever out as well');
+  assert.equal(store.undoLabel, 'Add to scenario Trial: Room 203 seats 30 (was 30), which puts back the schedule there and takes 1 lever out of the scenario');
+});
+
+test('removeScenarioLever: takes one lever out by place; a place that is not there is refused', () => {
+  const store = withLevers([L_HEAD, L_SEATS]);
+  assert.throws(() => store.apply(removeScenarioLever, { index: 2 }), (error) => refusedWith('missing')(error) && error.message === 'That lever is no longer in the scenario.');
+  assert.throws(() => store.apply(removeScenarioLever, { index: -1 }), refusedWith('missing'));
+  assert.throws(() => store.apply(removeScenarioLever, {}), refusedWith('missing'));
+  store.apply(removeScenarioLever, { index: 0 });
+  assert.equal(store.undoLabel, 'Remove from scenario Trial: 6A: 40 students (was 24)');
+  assert.deepEqual(store.project.scenario.levers, [L_SEATS]);
+  store.apply(removeScenarioLever, { index: 0 });
+  assert.deepEqual(store.project.scenario.levers, [], 'an empty list stays a list');
+});
+
+test('every lever action reads a null payload as {}, so its own refusal applies and never a TypeError', () => {
+  const store = withLevers([L_HEAD]);
+  for (const act of [addScenarioLever, removeScenarioLever]) assert.throws(() => store.apply(act, null), (error) => error instanceof ActionError, act.name);
+});
+
+test('applyScenario: levers go in after the changes in the same one undo step; capacity bumps the building too; a release becomes a real entry', () => {
+  const store = withLevers([L_HEAD, L_SEATS, L_BELL, L_GRADE], [move(G7C, 1, 'rsample204')]);
+  const before = store.project;
+  const counts = { ...counters(store) };
+  const entries = store.history.past.length;
+  assert.deepEqual(applyScenario.bumps(before), [SCHEDULE, actions.BUILDING]);
+  assert.equal(applyScenario.label(before), 'Apply scenario Trial: 1 change and 4 levers');
+
+  store.apply(applyScenario, {});
+  const after = store.project;
+  assert.equal(store.history.past.length, entries + 1, 'one undo step');
+  assert.equal(store.undoLabel, 'Apply scenario Trial: 1 change and 4 levers');
+  assert.equal(after.scenario, null);
+  assert.equal(slot(after, G7C, A, 1).room, 'rsample204', 'the change');
+  assert.equal(after.groups.find((g) => g.id === 'gsample06a').headCount, 40);
+  assert.equal(after.building.floors.flatMap((f) => f.spaces).find((sp) => sp.id === 'rsample203').capacity, 12);
+  assert.deepEqual(after.dayTypes[0].bells[6], { start: '13:20', end: '14:08' });
+  assert.equal(releaseOf(after).length, 1);
+  assert.match(releaseOf(after)[0].id, /^l[a-z0-9]{9}$/, 'a real id');
+  assert.deepEqual({ who: releaseOf(after)[0].who, seconds: releaseOf(after)[0].seconds, after: releaseOf(after)[0].after, dayTypeIds: releaseOf(after)[0].dayTypeIds }, { who: { grade: '7' }, seconds: 120, after: null, dayTypeIds: null });
+  assert.equal(store.scheduleVersion, counts.schedule + 1);
+  assert.equal(store.buildingVersion, counts.building + 1, 'a capacity moves the building counter');
+  assert.equal(store.geometryVersion, counts.geometry, 'and not the geometry');
+  assert.deepEqual(validate(after), []);
+  assertValid(after);
+  assert.deepEqual(store.undoOutcome, { text: 'Applied scenario Trial: 1 change, 1 staggered dismissal, 1 bell, 1 room capacity and 1 head count', changes: 1, levers: 4, byKind: { headCount: 1, capacity: 1, bell: 1, release: 1 } });
+
+  store.undo();
+  assert.equal(store.project.scenario, before.scenario, 'undo brings the scenario back whole, levers and all');
+  assert.equal(store.project.groups, before.groups);
+  assert.equal(store.project.building, before.building);
+  assert.deepEqual(store.project.dayTypes, before.dayTypes);
+});
+
+test('applyScenario: a release lever replaces the real entry of its key; a head-count lever alone bumps only the schedule', () => {
+  const project = school();
+  project.release = [{ id: 'lsample001', who: { grade: '7' }, seconds: 60, after: null, dayTypeIds: null }, { id: 'lsample002', who: { wing: 'North' }, seconds: 45, after: [1], dayTypeIds: null }];
+  const store = storeOf(project);
+  store.apply(newScenario, { name: 'Trial' });
+  store.apply(addScenarioLever, { lever: L_GRADE });
+  store.apply(addScenarioLever, { lever: L_HEAD });
+  assert.deepEqual(applyScenario.bumps(store.project), [SCHEDULE]);
+  store.apply(applyScenario, {});
+  assert.deepEqual(store.project.release.map((entry) => [entry.who, entry.seconds]), [[{ wing: 'North' }, 45], [{ grade: '7' }, 120]], 'the grade-7 entry was replaced, the wing entry stays');
+  assert.equal(store.project.release[0], project.release[1], 'an untouched entry is the very same object');
+  assert.equal(store.undoOutcome.byKind.release, 1);
+  assert.equal(store.undoLabel, 'Apply scenario Trial: 0 changes and 2 levers');
+});
+
+test('applyScenario: a lever that no longer applies is left out, and the outcome counts what went in by kind', () => {
+  const store = withLevers([L_HEAD, L_SEATS, L_GRADE]);
+  store.apply(deleteGroup, { id: 'gsample06a' });
+  store.apply(actions.deleteSpaces, { spaceIds: ['rsample203'] });
+  const kept = reconcile(store.project, store.project.scenario);
+  assert.equal(kept.levers.length, 1);
+  assert.equal(kept.droppedLevers.length, 2);
+  store.apply(applyScenario, {});
+  assert.deepEqual(store.undoOutcome, { text: 'Applied scenario Trial: 0 changes and 1 staggered dismissal', changes: 0, levers: 1, byKind: { release: 1 } });
+});
+
+test('applyScenario: the project\'s limit on staggered dismissals refuses the whole step and changes nothing', () => {
+  const project = school();
+  project.release = Array.from({ length: 50 }, (unused, i) => ({ id: 'l' + String(i).padStart(9, '0'), who: { wing: 'W' + i }, seconds: 30, after: null, dayTypeIds: null }));
+  const store = storeOf(project);
+  store.apply(newScenario, { name: 'Trial' });
+  store.apply(addScenarioLever, { lever: L_GRADE });
+  const before = store.project;
+  const entries = store.history.past.length;
+  assert.throws(() => store.apply(applyScenario, {}), refusedWith('limit'));
+  assert.equal(store.project, before);
+  assert.equal(store.history.past.length, entries);
+});
+
+test('applyScenario: a scenario with no levers writes exactly what it wrote before, the building the very same object', () => {
+  const store = withChanges([move(G7C, 1, 'rsample204')]);
+  const before = store.project;
+  store.apply(applyScenario, {});
+  assert.equal(store.project.building, before.building);
+  assert.equal(store.project.release, before.release);
+  assert.equal(store.undoLabel, 'Apply scenario Trial: 1 change');
+  assert.equal(store.undoOutcome.levers, 0);
+});
+
+test('deleteDayType, setDayTypeKind and setPeriods follow the levers: bell levers on a day type go with it, release levers that list it too', () => {
+  const lever = { kind: 'release', who: { grade: '7' }, seconds: 90, after: [1, 7], dayTypeIds: [B] };
+  const base = withLevers([{ ...L_BELL, dayTypeId: B }, lever, L_HEAD, { ...L_GRADE, who: { grade: '8' } }]).project;
+  assert.equal(base.scenario.levers.length, 4);
+
+  const info = describeDayTypeDelete(base, B);
+  assert.equal(info.scenarioLevers, 2);
+  assert.match(info.text, /2 levers in the scenario/);
+  const store = storeOf(base);
+  store.apply(deleteDayType, { dayTypeId: B });
+  assert.deepEqual(store.project.scenario.levers, [L_HEAD, { ...L_GRADE, who: { grade: '8' } }]);
+  assert.equal(store.undoOutcome.scenarioLevers, 2);
+  store.undo();
+  assert.equal(store.project.scenario.levers.length, 4, 'undo brings them back');
+
+  const kind = describeDayTypeKind(base, { dayTypeId: B, own: false, sameAs: A });
+  assert.equal(kind.scenarioLevers, 2);
+  assert.equal(kind.losesData, true);
+  const same = storeOf(base);
+  same.apply(setDayTypeKind, { dayTypeId: B, own: false, sameAs: A });
+  assert.deepEqual(same.project.scenario.levers, [L_HEAD, { ...L_GRADE, who: { grade: '8' } }]);
+
+  const periods = describePeriodChange(base, 5);
+  assert.equal(periods.scenarioLevers, 2, 'a bell on Period 7 and a release that follows Period 8');
+  assert.equal(periods.losesData, true);
+  assert.equal(describePeriodChange(base, 8).scenarioLevers, undefined, 'nothing lost, nothing said');
+});
+
+test('deleteDayType and setDayTypeKind leave a scenario with no levers exactly as before: no `levers` key, the same outcome keys', () => {
+  const base = withChanges([move(G8A, 2, 'rsample201', B)]).project;
+  const info = describeDayTypeDelete(base, B);
+  assert.equal('scenarioLevers' in info, false);
+  assert.equal(info.scenarioChanges, 1);
+  const store = storeOf(base);
+  store.apply(deleteDayType, { dayTypeId: B });
+  assert.equal('levers' in store.project.scenario, false);
+  assert.equal(store.project.scenario.changes.length, 0);
+  assert.equal('scenarioLevers' in describeDayTypeKind(base, { dayTypeId: B, own: false, sameAs: A }), false);
+  assert.equal('scenarioLevers' in describePeriodChange(base, 5), false);
+});
+
+test('setScenarioFromFile: replaces the scenario whole, levers included, and its outcome counts the levers it dropped', () => {
+  const store = withLevers([L_HEAD, L_SEATS]);
+  const other = school();
+  slot(other, G7C, A, 1).room = 'rsample204';
+  assert.throws(() => store.apply(setScenarioFromFile, { project: other }), refusedWith('scenario-open'));
+  store.apply(setScenarioFromFile, { project: other, fileName: 'next.json', replace: true });
+  assert.equal('levers' in store.project.scenario, false, 'the file\'s scenario has none');
+  assert.deepEqual(store.undoOutcome, { text: 'The scenario it replaced held 2 levers, which went with it. Undo brings them back.', leversDropped: 2 });
+  store.undo();
+  assert.deepEqual(store.project.scenario.levers, [L_HEAD, L_SEATS]);
+  const quiet = withChanges([]);
+  quiet.apply(setScenarioFromFile, { project: other, replace: true });
+  assert.equal(quiet.undoOutcome, null, 'no levers dropped, nothing to say');
+});
+
+test('a scenario with levers survives the project file: written, read and validated again', () => {
+  const store = withLevers([L_HEAD, L_SEATS, L_BELL, L_GRADE], [move(G7C, 1, 'rsample204')]);
+  const read = readProjectFile(writeProjectFile(store.project, { images: {} }), { ids: makeIds(9), clock });
+  assert.deepEqual(read.project.scenario.levers, store.project.scenario.levers);
+  assert.deepEqual(validate(read.project), []);
 });
