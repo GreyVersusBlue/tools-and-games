@@ -26,7 +26,10 @@ import { buildGraph } from '../../engine/graph.js';
 import { routingGraph, route } from '../../engine/routing.js';
 import { loads } from '../../engine/load.js';
 import { planProject, roomId, floorId, threeFloors, disconnectedWing } from '../fixtures/buildings/plans.mjs';
-import { school, group, clone } from './../engine/helpers.mjs';
+import { school, group, clone, makeIds, clock } from './../engine/helpers.mjs';
+import { createStore } from '../../engine/store.js';
+import * as actions from '../../engine/actions.js';
+import { anyHeldBack, heldWords } from '../../ui/movement/tables.js';
 
 const DAY_A = 'dsample00a';
 const DAY_B = 'dsample00b';
@@ -1400,4 +1403,32 @@ test('SV2-79: the travel tables, their heading and the CSV files are by run', as
   assert.equal(csv[1][0], 'A Day with Early Release bells');
   assert.equal(dayCsv(early.project, early.results, DAY_A, ER)[1][0], 'A Day with Early Release bells');
   assert.equal(transitionsCsv(early.project, early.results, DAY_A).length, 1 + 8 * 7, 'regular bells: all seven');
+});
+
+// SV2-93b: the Summary tab's group table gains "Left after the bell" only when some group of the run was held back.
+function held(seconds) {
+  const store = createStore({ project: school(), clock, ids: makeIds(31) });
+  if (seconds > 0) store.apply(actions.addRelease, { who: { grade: '7' }, seconds });
+  return derive(store.project);
+}
+
+test('SV2-93b groupRows: released sums what each group was held back over the day, and a school with none has 0 and no delay to say', () => {
+  const plain = derive(school());
+  const shown = picture(plain);
+  assert.equal(anyHeldBack(plain.results, shown.dayTypeId, shown.bellsId), false);
+  assert.ok(groupRows(plain.project, plain.results, shown).every((row) => row.released === 0 && row.lateHeld === 0), 'none held, none to name');
+  const world = held(120);
+  const day = picture(world);
+  assert.equal(anyHeldBack(world.results, day.dayTypeId, day.bellsId), true);
+  const rows = groupRows(world.project, world.results, day);
+  const sevens = rows.filter((row) => row.group.name.startsWith('7'));
+  assert.ok(sevens.length > 0);
+  for (const row of rows) {
+    if (row.group.name.startsWith('7')) assert.ok(row.released > 0 && row.released % 120 === 0, row.group.name + ' was held back 2 min a walk');
+    else assert.equal(row.released, 0, row.group.name + ' was not');
+  }
+  assert.ok(sevens.some((row) => row.late > 0 && row.lateHeld === 120), 'a held group that is late names how long it was held');
+  assert.ok(rows.filter((row) => !row.group.name.startsWith('7')).every((row) => row.lateHeld === 0));
+  assert.equal(heldWords(120), ' · left 2 min after the bell');
+  assert.equal(heldWords(0), '');
 });

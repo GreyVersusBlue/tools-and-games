@@ -194,7 +194,12 @@ export function lateWords(row) {
   if (!row.arrived) return 'Did not arrive';
   if (!row.late) return 'In time';
   // a group held back has less of the passing time to walk in: say so where "late" is said
-  return 'Late by ' + formatDuration(row.over) + (row.released > 0 ? ' · left ' + formatDuration(row.released) + ' after the bell' : '');
+  return 'Late by ' + formatDuration(row.over) + heldWords(row.released);
+}
+
+// The cause of a late walk that was held back, " · left 2 min after the bell"; '' with none.
+export function heldWords(released) {
+  return released > 0 ? ' · left ' + formatDuration(released) + ' after the bell' : '';
 }
 
 // Whether any walk of the run (a day type under a bell schedule) left after the bell.
