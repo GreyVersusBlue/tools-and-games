@@ -12,7 +12,7 @@ import { createPipeline } from '../../engine/worker.js';
 import { buildGraph } from '../../engine/graph.js';
 import { repair } from '../../engine/repair.js';
 import { ownDayTypes } from '../../engine/day-types.js';
-import { transitionsCsv, dayCsv, travelDay } from '../../ui/movement/tables.js';
+import { transitionsCsv, dayCsv, travelDay, anyHeldBack, heldBackWords } from '../../ui/movement/tables.js';
 import { durationWords } from '../../ui/scenarios/model.js';
 import { renderOutput, outputFor, printButtons } from '../../ui/prints/index.js';
 import { esc } from '../../ui/prints/document.js';
@@ -206,4 +206,92 @@ test('SV2-79: the travel-time paper under a bell schedule is that run\'s tables,
   const regular = renderOutput('travel-time', project, null, { ...NOW, dayTypeId: DAY_A, movement: world }).html;
   assert.ok(!regular.includes('Early Release'), 'regular bells say nothing of the schedule');
   assert.equal(sectionsOf(regular).filter((section) => section.classes === 'doc-section--travel').length, 7);
+});
+
+// ---------------------------------------------------------------- staggered dismissal (SV2-93)
+
+// grade 7 held back two minutes after every period, every day type
+function held(seconds) {
+  const project = school();
+  project.release = [{ id: 'lsample001', who: { grade: '7' }, seconds, after: null, dayTypeIds: null }];
+  return derive(project);
+}
+
+test('SV2-93: a school with no staggered dismissal has no "Left after the bell" anywhere: the tables, the files and the report are what they were', () => {
+  const html = renderOutput('travel-time', sample.project, null, { ...NOW, movement: sample }).html;
+  assert.equal(html.includes('Left after the bell'), false, 'the print');
+  assert.equal(html.includes('staggered'), false, 'and not a word about staggering');
+  assert.deepEqual(transitionsCsv(sample.project, sample.results, DAY_A)[0], ['Day type', 'Transition', 'Passing time (seconds)', 'Group', 'From room', 'To room', 'Walking (seconds)', 'Waiting (seconds)', 'Total (seconds)', 'Late', 'Late by (seconds)']);
+  assert.deepEqual(dayCsv(sample.project, sample.results, DAY_A)[0], ['Day type', 'Group', 'Walks', 'Walking (seconds)', 'Waiting (seconds)', 'Total (seconds)', 'Late walks', 'Slowest walk', 'Slowest walk (seconds)']);
+  const report = renderOutput('congestion', sample.project, null, { ...NOW, movement: sample }).html;
+  assert.equal(report.includes('Staggered dismissal is in force'), false);
+  assert.equal(anyHeldBack(sample.results, DAY_A), false);
+  assert.equal(heldBackWords(sample.project, sample.results, DAY_A), '');
+});
+
+test('SV2-93: a groups entry on the bell (0 s) is no delay: no column, the same paper and files', () => {
+  // a delay of 0 on the bell is no delay: no column
+  const project = school();
+  project.release = [{ id: 'lsample002', who: { groups: ['gsample07a'] }, seconds: 0, after: null, dayTypeIds: null }];
+  const world = derive(project);
+  assert.equal(anyHeldBack(world.results, DAY_A), false);
+  assert.equal(renderOutput('travel-time', project, null, { ...NOW, movement: world }).html, renderOutput('travel-time', sample.project, null, { ...NOW, movement: sample }).html, 'the same paper');
+  assert.deepEqual(transitionsCsv(project, world.results, DAY_A), transitionsCsv(sample.project, sample.results, DAY_A), 'the same file');
+});
+
+test('SV2-93: with a delay the column stands between Waiting and Total on paper and in both files, and the total adds up', () => {
+  const world = held(120);
+  assert.equal(anyHeldBack(world.results, DAY_A), true);
+  const html = renderOutput('travel-time', world.project, null, { ...NOW, dayTypeId: DAY_A, movement: world }).html;
+  const file = transitionsCsv(world.project, world.results, DAY_A);
+  assert.deepEqual(file[0], ['Day type', 'Transition', 'Passing time (seconds)', 'Group', 'From room', 'To room', 'Walking (seconds)', 'Waiting (seconds)', 'Left after the bell (seconds)', 'Total (seconds)', 'Late', 'Late by (seconds)']);
+  const sections = sectionsOf(html).filter((section) => section.classes === 'doc-section--travel');
+  const withRows = sections.filter((section) => section.rows.length > 0);
+  assert.ok(withRows.length > 0);
+  for (const section of withRows) {
+    assert.deepEqual(section.head, ['Group', 'From', 'To', 'Walking', 'Waiting', 'Left after the bell', 'Total', 'Fits the passing time'], section.heading);
+    const mine = file.slice(1).filter((row) => row[1] === section.heading);
+    assert.deepEqual(section.rows.map((row) => row.slice(0, 6)), mine.map((row) => [row[3], roomOf(row[4]), roomOf(row[5]), time(row[6]), orNone(row[7]), orNone(row[8])]), section.heading);
+  }
+  const rows = file.slice(1);
+  assert.ok(rows.some((row) => row[8] === 120), 'grade 7 left two minutes after the bell');
+  assert.ok(rows.every((row) => (row[3].startsWith('7') ? row[8] === 120 : row[8] === 0)), 'and nobody else was held');
+  for (const row of rows) assert.equal(row[6] + row[7] + row[8], row[9], row[3] + ': total = left after the bell + walking + waiting');
+  const day = dayCsv(world.project, world.results, DAY_A);
+  assert.deepEqual(day[0], ['Day type', 'Group', 'Walks', 'Walking (seconds)', 'Waiting (seconds)', 'Left after the bell (seconds)', 'Total (seconds)', 'Late walks', 'Slowest walk', 'Slowest walk (seconds)']);
+  const wholeDay = sectionsOf(html).find((section) => section.classes.includes('doc-section--travel-day'));
+  assert.deepEqual(wholeDay.head, ['Group', 'Walks', 'Walking', 'Waiting', 'Left after the bell', 'Total', 'Late walks', 'Slowest walk']);
+  for (const row of day.slice(1)) {
+    assert.equal(row[3] + row[4] + row[5], row[6], row[1] + ': the day adds up too');
+    assert.equal(row[5] > 0, row[1].startsWith('7'), row[1]);
+  }
+  assert.ok(html.includes('Left after the bell is the time a group was held back by a staggered dismissal'));
+});
+
+test('SV2-93: a held group that is late says why in its Late cell, on paper and in the report; one that is on time says nothing of it', () => {
+  const world = held(120);
+  const file = transitionsCsv(world.project, world.results, DAY_A).slice(1);
+  const lateHeld = file.filter((row) => row[10] === 'late' && row[8] > 0);
+  assert.ok(lateHeld.length > 0, 'holding grade 7 back makes some of its walks late');
+  const html = renderOutput('travel-time', world.project, null, { ...NOW, dayTypeId: DAY_A, movement: world }).html;
+  for (const row of lateHeld) assert.ok(html.includes('Late by ' + time(row[11]) + ' · left 2 min after the bell'), row[3] + ' ' + row[1]);
+  const onTime = file.filter((row) => row[10] === 'in time');
+  assert.ok(onTime.length > 0);
+  assert.equal(html.includes('In time ·'), false, 'in time says only that');
+  const late = file.filter((row) => row[10] === 'late' && row[8] === 0);
+  for (const row of late) assert.equal(html.includes('Late by ' + time(row[11]) + ' ·'), false, 'a late walk that was not held back names no cause');
+  const report = renderOutput('congestion', world.project, null, { ...NOW, dayTypeId: DAY_A, movement: world }).html;
+  assert.ok(report.includes('Late by ' + time(lateHeld[0][11]) + ' · left 2 min after the bell'), 'the report\'s late walks too');
+});
+
+test('SV2-93: the congestion report\'s first line names the staggered dismissal in force, from the walks', () => {
+  const world = held(120);
+  const report = renderOutput('congestion', world.project, null, { ...NOW, dayTypeId: DAY_A, movement: world }).html;
+  const lead = report.match(/<p class="doc-lead">On A Day the busiest place[\s\S]*?<\/p>/)[0];
+  assert.ok(text(lead).endsWith('Staggered dismissal is in force: 3 groups leave up to 2 min after the bell.'), text(lead));
+  assert.equal(heldBackWords(world.project, world.results, DAY_A), 'Staggered dismissal is in force: 3 groups leave up to 2 min after the bell.');
+  const one = school();
+  one.release = [{ id: 'lsample003', who: { groups: ['gsample07a'] }, seconds: 45, after: [0], dayTypeIds: null }];
+  const single = derive(one);
+  assert.equal(heldBackWords(single.project, single.results, DAY_A), 'Staggered dismissal is in force: 1 group leaves up to 45 s after the bell.');
 });
