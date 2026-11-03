@@ -129,14 +129,14 @@ async function setLevers(levers) {
 
 // ------------------------------------------------------------------ the fieldset
 
-test('Kind of change is a fieldset of six radio chips, one form open at a time, the chosen chip marked by a shape and bold', async () => {
+test('Kind of change is a fieldset of seven radio chips, one form open at a time, the chosen chip marked by a shape and bold', async () => {
   await fresh(page);
   await start(page, 'Chips');
   assert.equal(await text('.scn-kind legend'), 'Kind of change');
   assert.equal(await page.$eval('.scn-kind', (el) => el.tagName), 'FIELDSET');
-  assert.deepEqual(await texts('.scn-kind .seg__label'), ['Move a group', 'Swap two periods', 'Swap two groups’ rooms', 'Bell times', 'Staggered dismissal', 'Capacity and head counts']);
-  assert.deepEqual(await page.$$eval('.scn-kind input', (all) => all.map((el) => el.value)), ['move', 'swapPeriods', 'swapRooms', 'bells', 'release', 'seats']);
-  for (const kind of ['bells', 'release', 'seats', 'move']) {
+  assert.deepEqual(await texts('.scn-kind .seg__label'), ['Move a group', 'Swap two periods', 'Swap two groups’ rooms', 'Bell times', 'Staggered dismissal', 'Stairs and corridors', 'Capacity and head counts']);
+  assert.deepEqual(await page.$$eval('.scn-kind input', (all) => all.map((el) => el.value)), ['move', 'swapPeriods', 'swapRooms', 'bells', 'release', 'building', 'seats']);
+  for (const kind of ['bells', 'release', 'building', 'seats', 'move']) {
     await chooseKind(page, kind);
     assert.equal(await page.$$eval('.scn-form', (all) => all.length), 1, 'one form at a time');
     assert.equal(await page.$eval('.scn-kind input:checked', (el) => el.value), kind);
@@ -391,50 +391,327 @@ test('a release lever that reconcile trimmed (a group it named deleted) keeps a 
   assert.match(await status(), /^Removed: .* leaves 1 min 30 s after the bell\. no changes\.$/);
 });
 
-test('Remove them takes what is dropped; a step refused part way is counted as what it did, with what is still listed', async () => {
+test('Remove them takes dropped changes and dropped levers in one undo step; a step refused says none went and what is still listed', async () => {
   await fresh(page);
-  await setLevers([
-    { kind: 'headCount', groupId: 'gsample07a', headCount: 31 },
-    { kind: 'headCount', groupId: 'gsample07c', headCount: 29 },
-    { kind: 'headCount', groupId: 'gsample06a', headCount: 28 },
-  ]);
+  await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    const project = JSON.parse(JSON.stringify(store.project));
+    project.scenario = { name: 'Gone', compared: null,
+      changes: [{ kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample07a', period: 1, roomId: 'rsample204' }],
+      levers: [
+        { kind: 'headCount', groupId: 'gsample07a', headCount: 31 },
+        { kind: 'headCount', groupId: 'gsample07c', headCount: 29 },
+        { kind: 'headCount', groupId: 'gsample06a', headCount: 28 },
+      ] };
+    store.replace(project);
+  });
+  await go(page, '#scenarios');
+  await ready(page);
   await page.evaluate(() => {
     const { store } = globalThis.sv2;
     for (const id of ['gsample07a', 'gsample07c', 'gsample06a']) store.apply(globalThis.sv2modules.actions.deleteGroup, { id });
   });
   await ready(page);
-  assert.equal(await page.$$eval('.scn-dropped__item', (all) => all.length), 3);
-  // the second lever to go is refused, as a stale index or a locked project would
+  assert.equal(await page.$$eval('.scn-dropped__item', (all) => all.length), 4, 'a change and three levers are dropped');
+  // the step is refused, as a stale index or a locked project would: nothing goes and it is said
   await page.evaluate(() => {
     const { store } = globalThis.sv2;
     const { actions } = globalThis.sv2modules;
     const real = store.apply.bind(store);
-    let asked = 0;
     globalThis.sv2.restoreApply = () => { store.apply = real; };
     store.apply = (action, payload) => {
-      if (action === actions.removeScenarioLever || action === actions.removeScenarioLevers) {
-        asked += 1;
-        if (asked === 2) throw new actions.ActionError('The lever could not be removed just now.', 'bad-value');
-      }
+      if (action === actions.removeScenarioChanges) throw new actions.ActionError('The scenario could not be changed just now.', 'bad-value');
       return real(action, payload);
     };
   });
   await page.click('[data-action="remove-dropped"]');
-  await ready(page);
+  await page.waitForFunction(() => /^Removed none of the 4 changes/.test(document.querySelector('.scn-status').textContent));
   await page.evaluate(() => globalThis.sv2.restoreApply());
-  const left = await page.$$eval('.scn-dropped__item', (all) => all.length);
-  const said = await status();
-  assert.equal(left, 2, 'the first went, the second was refused and the third was not tried');
-  assert.equal((await scenarioOf()).levers.length, left, 'the list and the scenario agree');
-  assert.doesNotMatch(said, /^Removed 3 changes/, 'it does not say it removed all three: ' + said);
-  assert.match(said, /^Removed 1 of 3 changes that no longer applied\. 2 are still listed\. /);
-  assert.match(said, /The lever could not be removed just now\./);
-  // with nothing refused, what is left goes and the words say all of it
+  assert.equal(await status(), 'Removed none of the 4 changes that no longer applied. 4 are still listed. The scenario could not be changed just now.');
+  assert.equal(await page.$$eval('.scn-dropped__item', (all) => all.length), 4);
+  const kept = await scenarioOf();
+  assert.equal(kept.changes.length + kept.levers.length, 4, 'the scenario is as it was');
+  // not refused: all four go, as one step
   await page.click('[data-action="remove-dropped"]');
   await ready(page);
   assert.equal(await page.$$eval('.scn-dropped__item', (all) => all.length), 0);
-  assert.deepEqual((await scenarioOf()).levers, []);
-  assert.match(await status(), /^Removed \d+ changes? that no longer applied\.$/);
+  const after = await scenarioOf();
+  assert.deepEqual([after.changes.length, after.levers.length], [0, 0]);
+  assert.equal(await status(), 'Removed 4 changes that no longer applied.');
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  await ready(page);
+  assert.equal(await page.$$eval('.scn-dropped__item', (all) => all.length), 4, 'one Undo brings the change and the three levers back together');
+});
+
+// ------------------------------------------------------------------ Stairs and corridors
+
+const FLOOR1 = 'fsample001';
+
+// A cell of a floor on the page: where a pointer is put to touch it, or null off the stage
+const pointOf = (p, floorId, cell) => p.evaluate((f, c) => {
+  const plan = document.querySelector('.scn').scenarios.plan;
+  const at = plan.cellAt(f, c);
+  if (!at) return null;
+  const box = plan.canvas.getBoundingClientRect();
+  const x = box.left + at.x;
+  const y = box.top + at.y;
+  // it must be the plan under the point, not the banner or a button over it
+  return document.elementFromPoint(x, y) === plan.canvas ? { x, y } : null;
+}, floorId, cell);
+
+// The first of these cells that the pointer can reach
+async function reachable(p, floorId, cells) {
+  for (const cell of cells) {
+    const at = await pointOf(p, floorId, cell);
+    if (at) return { cell, ...at };
+  }
+  throw new Error('no cell of the list can be reached on the plan');
+}
+
+const leversNow = async () => (await scenarioOf()).levers || [];
+const announced = () => text('#announcer');
+const corridorCells = async (floorId, corridorId) => {
+  const project = await projectOf();
+  const floor = project.building.floors.find((each) => each.id === floorId);
+  return floor.corridors.find((each) => each.id === corridorId).cells;
+};
+
+// How much of a cell of the plan is dark: the ink of a hatch, against the corridor's pale ground
+const inkIn = (p, floorId, cell) => p.evaluate((f, c) => {
+  const plan = document.querySelector('.scn').scenarios.plan;
+  const at = plan.cellAt(f, c);
+  const ratio = window.devicePixelRatio || 1;
+  const size = plan.view.size;
+  const g = plan.canvas.getContext('2d');
+  const left = Math.round((at.x - size / 2) * ratio);
+  const top = Math.round((at.y - size / 2) * ratio);
+  const side = Math.max(1, Math.round(size * ratio));
+  const data = g.getImageData(left, top, side, side).data;
+  let dark = 0;
+  for (let i = 0; i < data.length; i += 4) if (data[i] + data[i + 1] + data[i + 2] < 300) dark += 1;
+  return dark;
+}, floorId, cell);
+
+test('Stairs and corridors: a stair by select with its four choices; Up only, then Closed replaces it; a way equal to the real one adds nothing', async () => {
+  await fresh(page);
+  await start(page, 'Stairs');
+  await chooseKind(page, 'building');
+  assert.deepEqual(await texts('#scenario-building-stair option'), ['Stairs A: Floor 1 to Floor 2', 'Stairs B: Floor 2 to Floor 3']);
+  await page.select('#scenario-building-stair', 'csample00b');
+  assert.deepEqual(await texts('.scn-way .seg__label'), ['Both ways', 'Up only, towards Floor 3', 'Down only, towards Floor 2', 'Closed']);
+  assert.equal(await text('.scn-way legend'), 'Which way');
+  assert.equal(await page.$eval('.scn-way input:checked', (el) => el.value), 'both', 'it starts from the way it has');
+  assert.match(await text('[data-part="now"]'), /^Now: Both ways\.$/);
+  // a way equal to the real one adds nothing, and says the building is as it was
+  await addByPointer();
+  assert.match(await status(), /^That puts the building back as it is: Stairs B: both ways\. Nothing is added\.$/);
+  assert.deepEqual((await leversNow()), []);
+  await page.click('.scn-way input[value="ab"] + .seg__label');
+  await page.waitForFunction(() => /Stairs B: up only/.test(document.querySelector('[data-part="preview"]').textContent));
+  await addByPointer();
+  assert.deepEqual((await leversNow()), [{ kind: 'way', connectionId: 'csample00b', way: 'ab' }]);
+  assert.deepEqual(await chipTexts(), ['Stairs B: up only']);
+  assert.equal(await page.$$eval('.scn-chip .scn-tag', (all) => all.length), 0, 'a direction is written by Apply: not a trial only');
+  assert.equal(await page.$eval('.scn-legend', (el) => el.hidden), true, 'nothing is closed: no legend');
+  await page.click('.scn-way input[value="closed"] + .seg__label');
+  await addByPointer();
+  assert.deepEqual((await leversNow()), [{ kind: 'way', connectionId: 'csample00b', way: 'closed' }], 'a later way of the same stairs replaces the earlier');
+  assert.deepEqual(await chipTexts(), ['Close Stairs B']);
+  assert.deepEqual(await texts('.scn-chip .scn-tag'), ['Trial only']);
+  assert.equal(await page.$eval('.scn-legend', (el) => el.hidden), false);
+  assert.equal(await text('.scn-legend'), 'Closed in this trial');
+});
+
+test('closed stairs and corridors are hatched on the lab\'s plan while the scenario is open, and not when it is gone', async () => {
+  await fresh(page);
+  await start(page, 'Hatch');
+  const cells = await corridorCells(FLOOR1, 'ksample001');
+  const open = await reachable(page, FLOOR1, cells);
+  const before = await inkIn(page, FLOOR1, open.cell);
+  await setLevers([{ kind: 'corridor', floorId: FLOOR1, cells, name: 'Main Corridor' }, { kind: 'way', connectionId: 'csample00a', way: 'closed' }]);
+  await page.waitForFunction(() => Number(document.querySelector('.scn').dataset.closedDrawn) > 0);
+  // the hatch is ink over the cell, a pattern and not a tint
+  const after = await inkIn(page, FLOOR1, open.cell);
+  assert.ok(after > before * 2 + 3, 'the closed corridor cell is hatched in ink: ' + before + ' dark pixels before, ' + after + ' after');
+  // the stairs' two ends too
+  const ends = await page.evaluate(() => Number(document.querySelector('.scn').dataset.closedDrawn));
+  assert.ok(ends > cells.length * 0 + 2, 'corridor cells and the two ends of Stairs A were hatched: ' + ends);
+  // the chip is the text alternative
+  assert.deepEqual(await chipTexts(), ['Close Main Corridor', 'Close Stairs A']);
+  // an open scenario with them out: nothing drawn
+  await page.click('.scn-chip:nth-child(2) [data-action="remove"]');
+  await page.click('.scn-chip:nth-child(1) [data-action="remove"]');
+  await ready(page);
+  await page.waitForFunction(() => Number(document.querySelector('.scn').dataset.closedDrawn) === 0);
+  assert.ok(await inkIn(page, FLOOR1, open.cell) <= before + 1, 'and the cell is as it was');
+});
+
+test('a corridor closed by name from the select: its chip is a Trial only sentence and its cells are the corridor\'s', async () => {
+  await fresh(page);
+  await start(page, 'By name');
+  await chooseKind(page, 'building');
+  await page.click('.scn-seats__what input[value="corridor"] + .seg__label');
+  await page.waitForSelector('#scenario-building-corridor');
+  assert.deepEqual(await texts('#scenario-building-corridor option'), ['Main Corridor, Floor 1', 'Front Hall, Floor 1', 'Upper Corridor, Floor 2', 'Music Wing, Floor 3', 'Top Corridor, Floor 3']);
+  await page.select('#scenario-building-corridor', 'ksample003');
+  await page.waitForFunction(() => /Close Upper Corridor/.test(document.querySelector('[data-part="preview"]').textContent));
+  await addByPointer();
+  const levers = (await leversNow());
+  assert.deepEqual(levers.map((lever) => [lever.kind, lever.floorId, lever.name]), [['corridor', 'fsample002', 'Upper Corridor']]);
+  assert.deepEqual(levers[0].cells, await corridorCells('fsample002', 'ksample003'));
+  assert.deepEqual(await chipTexts(), ['Close Upper Corridor']);
+  assert.equal(await status(), 'Added: Close Upper Corridor.');
+});
+
+test('Pick on the map by pointer: a banner with Cancel, a click closes the place, the mode ends with focus on the button, and a second click on it opens it again', async () => {
+  await fresh(page);
+  await start(page, 'Pointer');
+  await chooseKind(page, 'building');
+  await page.click('.scn-seats__what input[value="corridor"] + .seg__label');
+  await page.waitForSelector('[data-key="scenario-building-pick"]');
+  assert.equal(await page.$eval('.scn-pick', (el) => el.hidden), true, 'no banner until the mode starts');
+  await page.click('[data-key="scenario-building-pick"]');
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.picking === 'true');
+  const banner = await page.$eval('.scn-pick', (el) => ({ hidden: el.hidden, role: el.getAttribute('role'), text: el.querySelector('.scn-pick__text').textContent, cancel: el.querySelector('button').textContent, height: el.querySelector('button').getBoundingClientRect().height }));
+  assert.deepEqual([banner.hidden, banner.role, banner.text, banner.cancel], [false, 'status', 'Tap or click a corridor to close it.', 'Cancel']);
+  assert.ok(banner.height >= 44, 'Cancel is 44 px: ' + banner.height);
+  assert.equal(await page.$eval('[data-key="scenario-building-pick"]', (el) => el.getAttribute('aria-pressed')), 'true');
+  assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('.scn').scenarios.plan.canvas), true, 'the plan takes the focus');
+  // a click on something that is not a corridor is said and the mode goes on
+  const cells = await corridorCells(FLOOR1, 'ksample001');
+  const empty = await reachable(page, FLOOR1, [0, 1, 2, 3, 40, 41, 42, 80, 81, 82]);
+  await page.mouse.click(empty.x, empty.y);
+  await page.waitForFunction(() => /not a corridor/.test(document.querySelector('#announcer').textContent));
+  assert.equal(await page.evaluate(() => document.querySelector('.scn').dataset.picking), 'true');
+  assert.deepEqual((await leversNow()), []);
+  // a click on the corridor closes the whole corridor
+  const at = await reachable(page, FLOOR1, cells);
+  await page.mouse.click(at.x, at.y);
+  await ready(page);
+  const levers = (await leversNow());
+  assert.deepEqual(levers.map((lever) => [lever.kind, lever.name]), [['corridor', 'Main Corridor']]);
+  assert.deepEqual(levers[0].cells, cells);
+  assert.equal(await announced(), 'Main Corridor closed in this trial.');
+  assert.equal(await page.evaluate(() => document.querySelector('.scn').dataset.picking), undefined, 'the mode has ended');
+  assert.equal(await page.$eval('.scn-pick', (el) => el.hidden), true);
+  assert.equal(await activeKey(), 'scenario-building-pick', 'the focus is back on Pick on the map');
+  assert.deepEqual(await chipTexts(), ['Close Main Corridor']);
+  // picking a place that is closed opens it again
+  await page.click('[data-key="scenario-building-pick"]');
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.picking === 'true');
+  const again = await reachable(page, FLOOR1, cells);
+  await page.mouse.click(again.x, again.y);
+  await ready(page);
+  assert.deepEqual((await leversNow()), []);
+  assert.equal(await announced(), 'Main Corridor is open again.');
+  assert.equal(await activeKey(), 'scenario-building-pick');
+  // Cancel ends the mode and adds nothing
+  await page.click('[data-key="scenario-building-pick"]');
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.picking === 'true');
+  await page.click('.scn-pick__cancel');
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.picking === undefined);
+  assert.equal(await announced(), 'Picking cancelled.');
+  assert.equal(await activeKey(), 'scenario-building-pick');
+  assert.deepEqual((await leversNow()), []);
+});
+
+test('a corridor with no name is picked as the stretch between junctions, and its chip says how many cells', async () => {
+  await fresh(page, 'for (const floor of project.building.floors) floor.corridors = [];');
+  await start(page, 'Stretch');
+  await chooseKind(page, 'building');
+  await page.click('.scn-seats__what input[value="corridor"] + .seg__label');
+  await page.waitForSelector('[data-part="none"]');
+  assert.match(await text('[data-part="none"]'), /^No corridor has a name\. Pick one on the map/);
+  await page.click('[data-key="scenario-building-pick"]');
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.picking === 'true');
+  const project = await projectOf();
+  const floor = project.building.floors[0];
+  const row = [];
+  for (let i = 281; i < 281 + 39; i += 1) row.push(i);
+  const at = await reachable(page, FLOOR1, row);
+  await page.mouse.click(at.x, at.y);
+  await ready(page);
+  const lever = (await leversNow())[0];
+  assert.equal(lever.kind, 'corridor');
+  assert.equal(lever.name, '');
+  assert.ok(lever.cells.length > 1 && lever.cells.includes(at.cell), 'the stretch, not the one cell: ' + lever.cells.length);
+  assert.ok(lever.cells.every((cell) => floor.cells[cell] === '#'));
+  assert.match((await chipTexts())[0], new RegExp('^Close ' + lever.cells.length + ' corridor cells on Floor 1$'));
+});
+
+test('Pick on the map by keyboard: the plan is one stop, the cursor says the place under it, Enter picks, Escape cancels and does nothing else', async () => {
+  await fresh(page);
+  await start(page, 'Keys pick');
+  await chooseKind(page, 'building');
+  await page.click('.scn-seats__what input[value="corridor"] + .seg__label');
+  await page.waitForSelector('[data-key="scenario-building-pick"]');
+  const cells = await corridorCells(FLOOR1, 'ksample001');
+  const upper = await corridorCells('fsample002', 'ksample003');
+  // the cursor put on a cell of a floor (as a person would arrive at it with the arrows)
+  const cursorOn = (floorId, cell) => page.evaluate((f, c) => {
+    const plan = document.querySelector('.scn').scenarios.plan;
+    const at = plan.cellAt(f, c);
+    plan.cursor.moveTo(Math.floor((at.x - plan.view.x) / plan.view.size), Math.floor((at.y - plan.view.y) / plan.view.size), true);
+  }, floorId, cell);
+  // started from the keyboard: the button pressed with Enter
+  await page.focus('[data-key="scenario-building-pick"]');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.picking === 'true');
+  assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('.scn').scenarios.plan.canvas), true);
+  await cursorOn(FLOOR1, cells[10]);
+  await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(() => /^Main Corridor, open$/.test(document.querySelector('#announcer').textContent));
+  // Escape: the mode ends, nothing is added, the focus is back on the button
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.picking === undefined);
+  assert.equal(await announced(), 'Picking cancelled.');
+  assert.equal(await activeKey(), 'scenario-building-pick');
+  assert.deepEqual((await leversNow()), []);
+  assert.equal(await page.evaluate(() => document.querySelector('.scn').dataset.mode), 'open', 'Escape did nothing else: the scenario is open');
+  // Enter picks
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.picking === 'true');
+  await cursorOn(FLOOR1, cells[10]);
+  await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(() => /^Main Corridor, open$/.test(document.querySelector('#announcer').textContent));
+  await page.keyboard.press('Enter');
+  await ready(page);
+  assert.deepEqual((await leversNow()).map((lever) => lever.name), ['Main Corridor']);
+  assert.equal(await announced(), 'Main Corridor closed in this trial.');
+  assert.equal(await activeKey(), 'scenario-building-pick');
+  // on a place that is closed the cursor says so
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.picking === 'true');
+  await cursorOn(FLOOR1, cells[10]);
+  await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(() => /^Main Corridor, closed$/.test(document.querySelector('#announcer').textContent));
+  // Space let go alone picks; Space with an arrow moves the map and picks nothing
+  await cursorOn('fsample002', upper[10]);
+  await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(() => /^Upper Corridor, open$/.test(document.querySelector('#announcer').textContent));
+  await page.keyboard.down('Space');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.up('Space');
+  assert.deepEqual((await leversNow()).map((lever) => lever.name), ['Main Corridor'], 'Space with an arrow only moves the map');
+  await cursorOn('fsample002', upper[10]);
+  await page.keyboard.press('Space');
+  await ready(page);
+  assert.deepEqual((await leversNow()).map((lever) => lever.name), ['Main Corridor', 'Upper Corridor']);
+  assert.equal(await announced(), 'Upper Corridor closed in this trial.');
+});
+
+test('a closure that strands a group shows it in the failed walks, by name, in the comparison', async () => {
+  await fresh(page);
+  await setLevers([{ kind: 'way', connectionId: 'csample00b', way: 'closed' }]);
+  await page.waitForFunction(() => document.querySelector('.scn-figures [data-figure="failed"]'));
+  const failed = await figure('failed');
+  assert.equal(failed[0], '0');
+  assert.ok(Number(failed[1]) > 0 && failed[2].startsWith('+'), 'walks with no way through appear: ' + failed);
+  const rows = await page.$$eval('[data-part="groups"] tr[data-group]', (all) => all.map((row) => ({ name: row.querySelector('th bdi, th').textContent, change: row.querySelectorAll('td')[2] ? row.querySelectorAll('td')[2].textContent : row.textContent })));
+  const stranded = rows.filter((row) => /more with no way through/.test(row.change));
+  assert.ok(stranded.length > 0, 'a group is named with its walks with no way through: ' + JSON.stringify(rows));
+  const project = await projectOf();
+  for (const row of stranded) assert.ok(project.groups.some((group) => group.name === row.name), row.name + ' is a group of the school');
 });
 
 // ------------------------------------------------------------------ the report
@@ -582,7 +859,7 @@ test('by keyboard: the kind chips by arrows, a field typed and committed with En
   await start(page, 'Keys');
   await chooseKind(page, 'move');
   await page.focus('.scn-kind input:checked');
-  for (const kind of ['swapPeriods', 'swapRooms', 'bells', 'release', 'seats']) {
+  for (const kind of ['swapPeriods', 'swapRooms', 'bells', 'release', 'building', 'seats']) {
     await page.keyboard.press('ArrowRight');
     await page.waitForFunction((k) => document.querySelector('.scn-form').dataset.kind === k, {}, kind);
     assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('.scn-kind input:checked')), true, 'the chip keeps the focus as the form is drawn');
@@ -682,7 +959,7 @@ test('at 390 by 844 with touch: the forms are used by tap, every target is 44 px
       .filter((el) => el.getClientRects().length > 0)
       .map((el) => [el.className || el.tagName, el.textContent.slice(0, 24), Math.round(el.getBoundingClientRect().height)]).filter(([, , height]) => height < 44), selector);
     const sheet = '.scn-form .btn, .scn-form .field__input, .scn-form .sch-radio, .scn-form .sch-show__chip, .scn-form .chip__remove, .scn-kind .seg__option, .scn-seats__what .seg__option';
-    for (const kind of ['bells', 'release', 'seats']) {
+    for (const kind of ['bells', 'release', 'building', 'seats']) {
       await tap('.scn-kind input[value="' + kind + '"] + .seg__label');
       await p.waitForFunction((k) => document.querySelector('.scn-form').dataset.kind === k, {}, kind);
       assert.deepEqual(await small(sheet), [], kind + ': every control is 44 px tall');

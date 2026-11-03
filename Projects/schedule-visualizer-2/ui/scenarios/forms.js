@@ -651,6 +651,9 @@ export function formsPanel(env) {
       bellSets(project).map((each) => each.value + each.label),
       project.bellSchedules,
       project.release,
+      // the stairs and the named corridors the Stairs and corridors form offers, and the ways it words
+      project.building.connections,
+      project.building.floors.map((floor) => [floor.id, floor.name, floor.level, (floor.corridors || []).map((corridor) => [corridor.id, corridor.name, corridor.cells.length])]),
       // a room's name and label too: the picker shows the label of the room picked
       allRooms(project).map((room) => [room.id, room.number, room.name, roomLabel(project, room), room.teacherIds.join(','), room.capacity, room.wing]),
     ]);
