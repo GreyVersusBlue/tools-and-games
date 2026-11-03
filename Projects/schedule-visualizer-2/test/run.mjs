@@ -40,6 +40,7 @@ export const GROUPS = {
     'engine/calendar.test.mjs',
     'engine/runs.test.mjs',
     'engine/marks.test.mjs', // SV2-83
+    'engine/release.test.mjs', // SV2-88
     'engine/runs-today.test.mjs', // SV2-76
     'engine/bell-runs.test.mjs', // SV2-76
     'engine/actions.test.mjs',

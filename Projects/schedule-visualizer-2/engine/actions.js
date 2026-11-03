@@ -3254,8 +3254,8 @@ function releaseFocus(before, payload, after) {
 function releaseWho(project, entry) {
   const kind = releaseKind(entry.who);
   if (kind === 'groups') return listWords(entry.who.groups.map((id) => groupName(project, id) || 'a group that is gone'));
-  if (kind === 'grade') return 'grade ' + entry.who.grade;
-  if (kind === 'wing') return 'the ' + entry.who.wing + ' wing';
+  if (kind === 'grade') return 'grade ' + String(entry.who.grade).trim();
+  if (kind === 'wing') return 'the ' + String(entry.who.wing).trim() + ' wing';
   return 'a staggered dismissal';
 }
 
