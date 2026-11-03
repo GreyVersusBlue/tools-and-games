@@ -24,7 +24,7 @@ import { places } from '../../engine/places.js';
 import { checkSchedule } from '../../engine/checks.js';
 import { buildingChecks } from '../../engine/building-checks.js';
 import { ownDayTypes } from '../../engine/day-types.js';
-import { createPipeline, pack, unpack, scenarioRun, REQUEST, ANSWER, READY } from '../../engine/worker.js';
+import { createPipeline, pack, unpack, scenarioRun, REQUEST, ANSWER, READY, SCENARIO_REQUEST } from '../../engine/worker.js';
 import { applyChanges, applyLevers, leverRouteOptions, reconcile, trimResult } from '../../engine/scenario.js';
 import { createEngineClient, engineFor } from '../../ui/engine-client.js';
 import { plainSchool as sampleSchool } from './helpers.mjs';
@@ -776,4 +776,54 @@ test('scenarioRun: a lever naming a connection or cells the building no longer h
   const answer = scenarioRun(createPipeline(), withLevers(project, levers), { geometry: 1, building: 1, schedule: 1, levers: 0 });
   assert.deepEqual(walkedParts(answer), walkedParts(trimResult(createPipeline().run(project))));
   assert.deepEqual(leverRouteOptions(project, levers), { ways: {}, shutLinks: [], shutCells: [] });
+});
+
+test('the client: the scenario lane\'s `levers` counter moves with the building levers\' route options and nowhere else; compareResults gets the levers', async () => {
+  const project = sampleSchool();
+  const headCount = { kind: 'headCount', groupId: 'gsample06a', headCount: 40 };
+  const open = (levers) => ({ ...project, scenario: { name: 'Trial', changes: [], levers, compared: null } });
+  const store = storeOf(open([headCount]));
+  const worker = await standInWorker();
+  const client = createEngineClient(store, { worker: () => worker });
+  worker.load();
+  const sent = [];
+  async function ask() {
+    const promise = client.scenario();
+    let done = false;
+    promise.then(() => { done = true; }, () => { done = true; });
+    for (let turn = 0; turn < 400 && !done; turn += 1) {
+      while (worker.inbox.length > 0) {
+        if (worker.inbox[0].type === SCENARIO_REQUEST) sent.push(worker.inbox[0].versions);
+        worker.work();
+      }
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    return promise;
+  }
+  const first = await ask();
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].levers, 0, 'no building lever: the counter stands at 0');
+  assert.equal(first.compare.groups.find((row) => row.groupId === 'gsample06a').edited, true, 'a head-count lever marks its group edited: the levers reach compareResults');
+  assert.equal(first.compare.groups.filter((row) => row.edited).length, 1);
+
+  store.replace(open([headCount, { kind: 'way', connectionId: STAIRS_A, way: 'ab' }]));
+  await ask();
+  assert.equal(sent.at(-1).levers, 1, 'a stairs made up only moves it');
+  assert.equal(sent.at(-1).geometry, store.geometryVersion, 'and the geometry counter is the store\'s, whatever the lane does');
+
+  store.replace(open([{ kind: 'way', connectionId: STAIRS_A, way: 'ab' }, { ...headCount, headCount: 30 }]));
+  await ask();
+  assert.equal(sent.at(-1).levers, 1, 'the same route options in another scenario: the counter stays');
+  assert.ok(sent.at(-1).schedule > sent[1].schedule, 'while the lane\'s schedule counter moves with the scenario');
+
+  store.replace(open([{ kind: 'way', connectionId: STAIRS_A, way: 'closed' }]));
+  await ask();
+  assert.equal(sent.at(-1).levers, 2);
+  store.replace(open([]));
+  await ask();
+  assert.equal(sent.at(-1).levers, 3, 'taking the last one away moves it too');
+  store.replace(open([{ kind: 'way', connectionId: STAIRS_A, way: 'both' }]));
+  await ask();
+  assert.equal(sent.at(-1).levers, 3, 'a way equal to the connection\'s own is no route option, so it is the same key as none');
+  client.close();
 });
