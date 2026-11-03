@@ -725,7 +725,8 @@ function leverWords(project, lever) {
     else if (kind === 'grade') parts.push(words('Grade '), typed(String(lever.who.grade).trim()));
     else if (kind === 'wing') parts.push(typed(String(lever.who.wing).trim()), words(' wing'));
     else parts.push(words('A staggered dismissal'));
-    parts.push(words(lever.seconds === 0 ? ' leaves on the bell' : ' leaves ' + formatDuration(lever.seconds) + ' after the bell'));
+    const verb = kind === 'groups' && lever.who.groups.length > 1 ? ' leave' : ' leaves';
+    parts.push(words(lever.seconds === 0 ? verb + ' on the bell' : verb + ' ' + formatDuration(lever.seconds) + ' after the bell'));
     if (Array.isArray(lever.after)) parts.push(words(', after ' + listWords(lever.after.map((period) => periodName(project.settings, period)))));
     if (Array.isArray(lever.dayTypeIds)) parts.push(words(', on '), ...dayTypeNameParts(project, lever.dayTypeIds));
   } else if (lever.kind === 'bell') {
