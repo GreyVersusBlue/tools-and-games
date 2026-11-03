@@ -3,7 +3,9 @@
 // "Kind of change". Move a group's room for a period on a day type; swap two
 // of a group's periods; swap two groups' rooms for a period (changes); Bell
 // times, Staggered dismissal, and Capacity and head counts (levers,
-// ARCHITECTURE 18.3: the stairs and corridors form is SV2-92b's). The Staggered
+// ARCHITECTURE 18.3), and Stairs and corridors (a stair's way by select and four
+// choices; a corridor by name, or picked on the lab's map, which the section
+// does: env.pick*). The Staggered
 // dismissal form uses the Day tab's editor (ui/schedule/release.js), imported.
 // The day types offered are those that are their own copy, with the ones
 // that follow them named ("A Day (B Day is the same)"). The room is picked
@@ -13,8 +15,11 @@
 //
 // formsPanel(env) -> { element, update(project) }
 //   env.ctx, env.memory (the lab's memory: memory.form), env.add(change) and
-//   env.addLever(lever) (true when added; they say what happened)
+//   env.addLever(lever) (true when added; they say what happened),
+//   env.pickStart() / env.pickStop(refocus) / env.picking(): the lab's map in
+//   picking mode, for "Pick on the map"
 //   focusKinds() puts the focus on the Kind of change fieldset
+//   focusPick() puts the focus on "Pick on the map" (after a pick, or Cancel)
 
 import { h } from '../components/dom.js';
 import { choice } from '../components/choice.js';
@@ -28,7 +33,8 @@ import { parseClock } from '../schedule/day.js';
 import { releaseOf } from '../../engine/schema.js';
 import { periodName, formatTime } from '../../engine/bells.js';
 import { periodWords } from '../components/words.js';
-import { dayChoices, periodChoices, groupChoices, slotWords, TEACHERS_FOLLOW, bellSets, bellLever, realBellOf, bellPassingWords, lengthenPassing } from './model.js';
+import { wayChoices } from '../building/inspector/floor.js';
+import { dayChoices, periodChoices, groupChoices, slotWords, TEACHERS_FOLLOW, bellSets, bellLever, realBellOf, bellPassingWords, lengthenPassing, connectionChoices, corridorChoices, corridorLever } from './model.js';
 
 export const FORM_KINDS = [
   { value: 'move', label: 'Move a group' },
@@ -36,6 +42,7 @@ export const FORM_KINDS = [
   { value: 'swapRooms', label: 'Swap two groups’ rooms' },
   { value: 'bells', label: 'Bell times' },
   { value: 'release', label: 'Staggered dismissal' },
+  { value: 'building', label: 'Stairs and corridors' },
   { value: 'seats', label: 'Capacity and head counts' },
 ];
 
@@ -53,6 +60,8 @@ export function freshForm() {
     // times as "HH:MM", or '' where there are none yet
     bells: { setId: null, period: 0, start: '', end: '', lengthened: '' },
     release: releaseDraftOf(null),
+    // a stair (a connection and the way it is given) or a corridor (a named one, or picked on the map)
+    building: { what: 'stair', connectionId: null, way: 'both', corridorId: null, seeded: '' },
     // capacity and headCount: a whole number, or null for "none set" / "the school's default"
     seats: { what: 'capacity', roomId: null, capacity: null, groupId: null, headCount: null, seeded: '' },
   };
@@ -93,6 +102,20 @@ function settle(project, form) {
   if (!roomIds.includes(form.seats.roomId)) form.seats.roomId = sortedRooms(project)[0] ? sortedRooms(project)[0].id : null;
   form.seats.groupId = group(form.seats.groupId);
   seedSeats(project, form.seats);
+  const connections = connectionChoices(project);
+  if (!connections.some((each) => each.value === form.building.connectionId)) form.building.connectionId = connections[0] ? connections[0].value : null;
+  const corridors = corridorChoices(project);
+  if (!corridors.some((each) => each.value === form.building.corridorId)) form.building.corridorId = corridors[0] ? corridors[0].value : null;
+  seedWay(project, form.building);
+}
+
+// A stairs connection chosen: the way starts from the one it has.
+function seedWay(project, building) {
+  const key = String(building.connectionId);
+  if (building.seeded === key) return;
+  building.seeded = key;
+  const connection = (project.building.connections || []).find((each) => each.id === building.connectionId);
+  building.way = connection ? connection.direction : 'both';
 }
 
 // A set of bells and a period chosen: the form starts from the times the
@@ -122,6 +145,12 @@ export function formChange(form, project) {
   if (form.kind === 'release') {
     const missing = releaseMissing(form.release);
     return missing === '' ? { lever: { kind: 'release', ...releasePayload(form.release) } } : { why: missing };
+  }
+  if (form.kind === 'building') {
+    const f = form.building;
+    if (f.what === 'stair') return f.connectionId ? { lever: { kind: 'way', connectionId: f.connectionId, way: f.way } } : { why: 'There are no stairs to change.' };
+    const lever = project ? corridorLever(project, f.corridorId) : null;
+    return lever ? { lever } : { why: 'There is no named corridor to close. Pick one on the map.' };
   }
   if (form.kind === 'seats') {
     const f = form.seats;
@@ -165,6 +194,8 @@ export function formsPanel(env) {
     options: FORM_KINDS,
     onChange(value) {
       memory.form.kind = value;
+      // another kind chosen while the map is picking: picking ends, the focus stays on the chips
+      if (env.picking && env.picking()) env.pickStop(false);
       draw(ctx.store.project, true);
     },
   });
@@ -214,6 +245,11 @@ export function formsPanel(env) {
       const real = realBellOf(project, set, form.bells.period);
       const text = (time) => formatTime(time, project.settings.timeFormat);
       now.textContent = set ? 'Now: ' + periodName(project.settings, form.bells.period) + ', ' + (real ? text(real.start) + ' to ' + text(real.end) : 'no times') + '.' : '';
+    }
+    else if (form.kind === 'building' && form.building.what === 'stair') {
+      const connection = (project.building.connections || []).find((each) => each.id === form.building.connectionId);
+      const has = connection ? wayChoices(project, connection).find((each) => each.value === connection.direction) : null;
+      now.textContent = has ? 'Now: ' + has.label + '.' : '';
     }
     const made = formChange(form, project);
     const said = made.change ? changeWords(project, made.change) : made.lever ? changeWords(project, made.lever) : null;
@@ -446,6 +482,72 @@ export function formsPanel(env) {
     return [pick, h('div', { class: 'scn-form__fields' }, fields), h('p', { class: 'scn-form__hint scn-seats__move', data: { part: 'seats-move' } }, SEATS_MOVE)];
   }
 
+  // ---- Stairs and corridors (spec 9.1; DESIGN 12.4)
+  function buildingBody(project) {
+    const f = memory.form.building;
+    const what = choice({
+      name: 'scenario-building-what',
+      labelledBy: 'scenario-building-legend',
+      value: f.what,
+      options: [{ value: 'stair', label: 'A stair' }, { value: 'corridor', label: 'A corridor' }],
+      onChange(value) {
+        f.what = value;
+        if (env.picking && env.picking()) env.pickStop(false);
+        redraw('scenario-building-' + (value === 'stair' ? 'stair' : 'corridor'));
+      },
+    });
+    const pick = h('fieldset', { class: 'scn-seats__what' }, h('legend', { id: 'scenario-building-legend' }, 'What to close or turn'), what.element);
+    const fields = [];
+    if (f.what === 'stair') {
+      const connections = connectionChoices(project);
+      if (connections.length === 0) {
+        fields.push(h('p', { class: 'scn-form__hint', data: { part: 'none' } }, 'The building has no stairs connecting floors yet.'));
+      } else {
+        fields.push(select('scenario-building-stair', 'Stairs', connections, f.connectionId, (value) => {
+          f.connectionId = value;
+          f.seeded = '';
+          seedWay(ctx.store.project, f);
+          redraw('scenario-building-stair');
+        }));
+        const connection = (project.building.connections || []).find((each) => each.id === f.connectionId);
+        const ways = connection ? wayChoices(project, connection).concat([{ value: 'closed', label: 'Closed' }]) : [];
+        const group = choice({
+          name: 'scenario-building-way',
+          labelledBy: 'scenario-building-way-legend',
+          value: f.way,
+          options: ways,
+          onChange(value) {
+            f.way = value;
+            line.textContent = '';
+            follows();
+          },
+        });
+        fields.push(h('fieldset', { class: 'scn-way', data: { part: 'ways' } }, h('legend', { class: 'field__label', id: 'scenario-building-way-legend' }, 'Which way'), group.element));
+      }
+    } else {
+      const corridors = corridorChoices(project);
+      if (corridors.length === 0) {
+        fields.push(h('p', { class: 'scn-form__hint', data: { part: 'none' } }, 'No corridor has a name. Pick one on the map, or name them in the Floor tab.'));
+      } else {
+        fields.push(select('scenario-building-corridor', 'Named corridor', corridors, f.corridorId, (value) => {
+          f.corridorId = value;
+          line.textContent = '';
+          follows();
+        }));
+      }
+      const pickButton = h('button', {
+        type: 'button',
+        class: 'btn scn-pick-button',
+        'aria-pressed': String(Boolean(env.picking && env.picking())),
+        data: { key: 'scenario-building-pick', action: 'pick' },
+        on: { click: () => env.pickStart() },
+      }, 'Pick on the map');
+      fields.push(h('div', { class: 'scn-pick-row' }, pickButton));
+      fields.push(h('p', { class: 'scn-form__hint' }, 'A pick closes the place: the named corridor, or the stretch between junctions. Pick a closed place again to open it.'));
+    }
+    return [pick, h('div', { class: 'scn-form__fields' }, fields)];
+  }
+
   function draw(project, focusKinds) {
     const form = memory.form;
     settle(project, form);
@@ -519,6 +621,8 @@ export function formsPanel(env) {
       after = bellsExtras(project);
     } else if (form.kind === 'release') {
       before = releaseBody(project);
+    } else if (form.kind === 'building') {
+      before = buildingBody(project);
     } else {
       before = seatsBody(project);
     }
@@ -573,6 +677,21 @@ export function formsPanel(env) {
     focusKinds() {
       const checked = kinds.element.querySelector('input:checked');
       if (checked) checked.focus();
+    },
+    // "Pick on the map" takes the focus back, after a pick or Cancel
+    focusPick() {
+      const button = body.querySelector('[data-key="scenario-building-pick"]');
+      if (button) {
+        button.setAttribute('aria-pressed', 'false');
+        button.focus();
+        return true;
+      }
+      return false;
+    },
+    // the button follows the map's mode
+    picked(on) {
+      const button = body.querySelector('[data-key="scenario-building-pick"]');
+      if (button) button.setAttribute('aria-pressed', String(on));
     },
   };
 }

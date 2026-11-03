@@ -71,7 +71,9 @@ export function changesPanel(env) {
   const removeDropped = h('button', { type: 'button', class: 'btn', data: { action: 'remove-dropped' }, on: { click: removeThem } }, 'Remove them');
   const dropped = h('div', { class: 'scn-dropped', hidden: true, data: { part: 'dropped' } }, droppedTitle, droppedNote, droppedList, removeDropped);
 
-  const open = h('div', { class: 'scn-open', data: { part: 'open' } }, naming, chipsTitle, none, chips, status, dropped);
+  // what the cross-hatch on the plan means (a closed corridor or stairs), shown while one is closed
+  const legend = h('p', { class: 'scn-legend', hidden: true, data: { part: 'legend' } }, h('span', { class: 'scn-legend__swatch', 'aria-hidden': 'true' }), 'Closed in this trial');
+  const open = h('div', { class: 'scn-open', data: { part: 'open' } }, naming, chipsTitle, none, chips, legend, status, dropped);
   const element = h('div', { class: 'scn-changes' }, starting, open);
 
   let view = null;
@@ -177,6 +179,7 @@ export function changesPanel(env) {
     nameSet = stored;
     if (stored !== view.name) nameInput.placeholder = view.name;
     none.hidden = view.total > 0;
+    legend.hidden = !view.levers.some((each) => each.trial);
     chips.hidden = view.total === 0;
     const sentence = (each) => [h('span', { class: 'scn-chip__words', dir: 'auto' }, words(each.words.parts), each.instead ? ', instead of ' + each.instead : ''), each.trial ? h('span', { class: 'scn-tag', data: { tag: 'trial' } }, 'Trial only') : null];
     const removeOf = (each, at, lever) => h('button', { type: 'button', class: 'scn-chip__remove', 'aria-label': 'Remove: ' + each.words.text, title: 'Remove this change', data: { action: 'remove' }, on: { click: () => remove(each.index, at, lever) } }, '×');

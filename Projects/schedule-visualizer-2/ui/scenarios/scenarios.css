@@ -748,3 +748,96 @@
   border-radius: var(--r-1);
   font-weight: 600;
 }
+
+/* ---------- Stairs and corridors, and picking on the map (DESIGN 12.4) ---------- */
+
+.scn-way {
+  display: grid;
+  gap: var(--s-1);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* four ways to choose from; a radio chip wraps and is a finger's size */
+.scn-way .seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.scn-pick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.scn-pick-button {
+  min-height: 44px;
+}
+
+.scn-pick-button[aria-pressed="true"] {
+  font-weight: 700;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* the banner on the stage while a corridor is being picked: over the plan's
+   top edge, under the zoom buttons' side, a Cancel at a finger's size */
+.scn-pick {
+  position: absolute;
+  top: var(--s-2);
+  left: var(--s-2);
+  right: var(--s-2);
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  border-left-width: 4px;
+  border-radius: var(--r-1);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.scn-pick[hidden] {
+  display: none;
+}
+
+.scn-pick__cancel {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.scn[data-picking="true"] .mov-plan {
+  cursor: crosshair;
+}
+
+/* what the cross-hatch on the plan means */
+.scn-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  font-size: var(--t-sm);
+}
+
+.scn-legend[hidden] {
+  display: none;
+}
+
+.scn-legend__swatch {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 1px solid var(--ink);
+  background:
+    repeating-linear-gradient(45deg, transparent 0 3px, var(--ink) 3px 4px),
+    repeating-linear-gradient(-45deg, transparent 0 3px, var(--ink) 3px 4px);
+}

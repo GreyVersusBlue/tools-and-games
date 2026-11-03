@@ -7,7 +7,7 @@
 import { baseDayType, isOwnCopy } from '../../engine/day-types.js';
 import { periodName, offPeriods, bellsFor, parseTime, formatTime } from '../../engine/bells.js';
 import { walkTarget } from '../../engine/routing.js';
-import { resolveSlotRoom, nameOfRoom, bellSchedulesOf } from '../../engine/schema.js';
+import { resolveSlotRoom, nameOfRoom, bellSchedulesOf, CELL_CORRIDOR } from '../../engine/schema.js';
 import { formatDuration } from '../../engine/findings.js';
 import { reconcile, reconcileLevers, changeWords, changeSlots, leverKey, isTrialOnly, isWrittenWay, trialOnlyWords, applyLevers } from '../../engine/scenario.js';
 import { releaseDelay } from '../../engine/release.js';
@@ -480,8 +480,8 @@ export function leverCancelled(before, after, lever) {
   return { taken: Math.max(0, had.length - has.length) };
 }
 
-export function leverCancelledSentence(words, taken) {
-  return 'That puts the schedule back as it is: ' + words + '. Nothing is added' + (taken > 0 ? ', and ' + count(taken, 'earlier change') + ' to the same thing ' + (taken === 1 ? 'is' : 'are') + ' taken out' : '') + '.';
+export function leverCancelledSentence(words, taken, thing) {
+  return 'That puts the ' + (thing || 'schedule') + ' back as it is: ' + words + '. Nothing is added' + (taken > 0 ? ', and ' + count(taken, 'earlier change') + ' to the same thing ' + (taken === 1 ? 'is' : 'are') + ' taken out' : '') + '.';
 }
 
 // The sets of bells the Bell times form can name: each own day type's
@@ -554,4 +554,79 @@ export function lengthenPassing(project, set, period, form, minutes) {
   const text = (value) => formatTime(value, project.settings.timeFormat);
   const wasText = real ? text(real.start) + ' to ' + text(real.end) : 'not set';
   return { start: formatTime(moved, '24h'), end: formatTime(end, '24h'), sentence: name + ' then runs ' + text(moved) + ' to ' + text(end) + ', was ' + wasText };
+}
+
+// ---- Stairs and corridors (spec 9.1, DESIGN 12.4)
+
+// The stairs connections the form offers: "Stairs B: Floor 1 to Floor 2" (the
+// lower floor first), "Stairs B: on Floor 1" where both ends are on one floor.
+export function connectionChoices(project) {
+  const floors = project.building.floors;
+  return (project.building.connections || []).map((connection) => {
+    const a = floors.find((floor) => floor.id === connection.a.floorId);
+    const b = floors.find((floor) => floor.id === connection.b.floorId);
+    const label = 'Stairs ' + (typeof connection.label === 'string' ? connection.label : '');
+    let where = 'a floor no longer in the building';
+    if (a && b) {
+      const [low, high] = a.level <= b.level ? [a, b] : [b, a];
+      where = a.id === b.id ? 'on ' + a.name : low.name + ' to ' + high.name;
+    }
+    return { value: connection.id, label: label.trim() + ': ' + where };
+  });
+}
+
+// The corridors that have a name, on every floor, that the form can close by
+// name: "North Corridor, Floor 1". A corridor with none of its cells still
+// corridor is not offered.
+export function corridorChoices(project) {
+  const out = [];
+  for (const floor of project.building.floors) {
+    for (const corridor of floor.corridors || []) {
+      if (typeof corridor.name !== 'string' || corridor.name.trim() === '') continue;
+      if (!corridor.cells.some((cell) => floor.cells[cell] === CELL_CORRIDOR)) continue;
+      out.push({ value: corridor.id, label: corridor.name + ', ' + floor.name, floorId: floor.id });
+    }
+  }
+  return out;
+}
+
+// The lever that closes a named corridor, or null when it is gone.
+export function corridorLever(project, corridorId) {
+  for (const floor of project.building.floors) {
+    const corridor = (floor.corridors || []).find((each) => each.id === corridorId);
+    if (!corridor) continue;
+    const cells = corridor.cells.filter((cell) => floor.cells[cell] === CELL_CORRIDOR).sort((a, b) => a - b);
+    return cells.length === 0 ? null : { kind: 'corridor', floorId: floor.id, cells, name: corridor.name };
+  }
+  return null;
+}
+
+// What a cell of a floor is, for picking: { place, lever } where `place` is how
+// to say it ("North Corridor", "a stretch of corridor on Floor 2") and `lever`
+// the lever that closes the place (the named corridor, or the stretch between
+// junctions), or { why } for a cell that is no corridor. `found` is the
+// engine's place at the cell (engine/places.js placeAt) or null.
+export function pickedPlace(project, floor, cell, found) {
+  if (!floor || floor.cells[cell] !== CELL_CORRIDOR) {
+    return { why: floor && floor.cells[cell] === 'S' ? 'That is a stairs landing. Close the stairs from A stair.' : 'That is not a corridor.' };
+  }
+  const corridor = found && found.corridorId ? (floor.corridors || []).find((each) => each.id === found.corridorId) : null;
+  const named = corridor && typeof corridor.name === 'string' && corridor.name.trim() !== '';
+  const cells = (found ? found.cells : [cell]).filter((at) => floor.cells[at] === CELL_CORRIDOR).sort((a, b) => a - b);
+  const lever = { kind: 'corridor', floorId: floor.id, cells: cells.length > 0 ? cells : [cell], name: named ? corridor.name : '' };
+  return { named: named ? corridor.name : null, floorName: floor.name, lever };
+}
+
+// "North Corridor" or "a stretch of corridor on Floor 2", with whether it is
+// closed in this trial: the polite words a cursor on the lab's plan says.
+export function pickWords(picked, closed) {
+  if (picked.why) return picked.why;
+  return (picked.named === null ? 'A stretch of corridor on ' + picked.floorName : picked.named) + ', ' + (closed ? 'closed' : 'open');
+}
+
+// The corridor lever of the open scenario that has this cell, as a view's
+// lever entry ({ lever, index }), or null: picking it again reopens it.
+export function closedAt(view, floorId, cell) {
+  if (!view) return null;
+  return view.levers.find((each) => each.lever.kind === 'corridor' && each.lever.floorId === floorId && each.lever.cells.includes(cell)) || null;
 }
