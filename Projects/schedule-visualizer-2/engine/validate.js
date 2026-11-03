@@ -823,10 +823,11 @@ export function validate(project) {
         }
         const low = kind === 'groups' ? 0 : RELEASE_SECONDS[0];
         if (!Number.isInteger(entry.seconds) || entry.seconds > RELEASE_SECONDS[1] || entry.seconds < low) add(path + '.seconds', 'A staggered dismissal is a whole number of seconds from ' + RELEASE_SECONDS[0] + ' to ' + RELEASE_SECONDS[1] + (kind === 'groups' ? ', or 0 for a group that leaves on the bell' : '') + '.');
-        if (entry.after !== null) {
+        // a missing `after` or `dayTypeIds` reads as null, as repair does (DECISIONS 2026-11-03)
+        if (entry.after !== null && entry.after !== undefined) {
           if (!Array.isArray(entry.after) || entry.after.length === 0 || !entry.after.every((period, k) => Number.isInteger(period) && period >= 0 && (k === 0 || period > entry.after[k - 1]))) add(path + '.after', 'The periods a staggered dismissal follows are null (every period) or a list of whole numbers from 0, each once, in order.');
         }
-        if (entry.dayTypeIds !== null) {
+        if (entry.dayTypeIds !== null && entry.dayTypeIds !== undefined) {
           if (Array.isArray(entry.dayTypeIds) && entry.dayTypeIds.length === 0) add(path + '.dayTypeIds', 'The day types of a staggered dismissal are null (every day type) or a list of at least one.');
           else idList(path + '.dayTypeIds', entry.dayTypeIds, dayTypeIds, 'day type');
         }

@@ -656,7 +656,11 @@ function isNoLever(project, lever) {
   }
   if (lever.kind === 'headCount') {
     const group = findById(project.groups, lever.groupId);
-    return Boolean(group) && (group.headCount === undefined ? null : group.headCount) === lever.headCount;
+    if (!group) return false;
+    // a group with no head count of its own has the school's, so the lever
+    // that says that number (or none) leaves things as they are
+    const standard = project.settings.defaultHeadCount;
+    return (Number.isInteger(group.headCount) ? group.headCount : standard) === (lever.headCount === null ? standard : lever.headCount);
   }
   if (lever.kind === 'release') return releaseChangesNothing(project, lever);
   return false;

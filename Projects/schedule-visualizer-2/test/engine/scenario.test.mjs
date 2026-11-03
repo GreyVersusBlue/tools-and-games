@@ -827,7 +827,9 @@ test('normaliseLevers: a later lever of a key replaces the earlier whole; the ad
   assert.deepEqual(normaliseLevers(project, [{ kind: 'capacity', roomId: 'rsample203', capacity: 30 }]), [], 'a capacity equal to the real one');
   assert.deepEqual(normaliseLevers(project, [{ kind: 'headCount', groupId: G6A, headCount: 24 }]), [], 'a head count equal to the real one');
   assert.deepEqual(normaliseLevers(project, [{ kind: 'headCount', groupId: 'gsample08b', headCount: null }]), [], 'a group with no head count, left with none');
-  assert.deepEqual(normaliseLevers(project, [{ kind: 'headCount', groupId: 'gsample08b', headCount: 25 }]).length, 1, 'but 25 written down is not "none"');
+  assert.deepEqual(normaliseLevers(project, [{ kind: 'headCount', groupId: 'gsample08b', headCount: 25 }]), [], 'and so is the school default written down: a group with none has 25, SV2-89b');
+  assert.equal(normaliseLevers(project, [{ kind: 'headCount', groupId: 'gsample08b', headCount: 26 }]).length, 1, 'but 26 is a change');
+  assert.deepEqual(normaliseLevers(project, [{ kind: 'headCount', groupId: G6A, headCount: null }]).length, 1, 'and "the school\'s 25" for a group of 24 is one too');
   assert.deepEqual(normaliseLevers(project, [{ kind: 'release', who: { groups: [G7C] }, seconds: 0, after: null, dayTypeIds: null }]), [], 'a group on the bell when nobody is held back is no change');
   assert.equal(normaliseLevers(project, [L_GRADE, { kind: 'release', who: { grade: '8' }, seconds: 30, after: null, dayTypeIds: null }]).length, 2, 'two releases with different keys both stay');
   assert.deepEqual(normaliseLevers(project, [L_GRADE], { added: null }), [L_GRADE]);

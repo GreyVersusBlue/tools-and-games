@@ -676,3 +676,19 @@ test('the published key set is unchanged: nothing about release is in the publis
   assert.equal(JSON.stringify(withIt).includes('lrelease01'), false);
   assert.equal(JSON.stringify(withIt), JSON.stringify(without));
 });
+
+// ================================================================ SV2-89b: a missing `after` or `dayTypeIds` reads as null (DECISIONS 2026-11-03)
+
+test('validate reads a missing after or dayTypeIds on a real release entry as null, as repair does; a schedule file with only {id, who, seconds} is read', () => {
+  const project = withRelease([{ id: 'lrelease01', who: { grade: '7' }, seconds: 60 }], school());
+  assert.deepEqual(validate(project), [], 'validate');
+  assert.deepEqual(repair(project).project.release, [{ id: 'lrelease01', who: { grade: '7' }, seconds: 60, after: null, dayTypeIds: null }], 'repair fills both with null');
+  const value = JSON.parse(writeScheduleFile(withRelease([entry('lrelease01', { grade: '7' }, 60)], sampleSchool())));
+  value.release = [{ id: 'lrelease01', who: { grade: '7' }, seconds: 60 }];
+  const read = readScheduleFile(JSON.stringify(value));
+  assert.equal(read.summary.release, 1);
+  assert.equal(releaseDelay(project, 'gsample07a', 'dsample00a', 3, null), 60, 'and the rule reads it as every day and every period');
+  // a value that is there and wrong is still found
+  project.release[0].after = [];
+  assert.equal(validate(project).some((finding) => /^release\[0\]\.after$/.test(finding.path)), true);
+});
