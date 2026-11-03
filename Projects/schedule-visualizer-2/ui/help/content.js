@@ -43,7 +43,7 @@ export const SECTION_HELP = {
   building: {
     purpose: 'Draw the school once: each floor on a grid of cells, its corridors, its rooms with their numbers, other spaces, stairs between floors, and the exits. Every other section works from this drawing.',
     first: 'Draw a corridor with the Corridor tool (C), then rooms along it with the Room tool (R), and type each room’s number in the inspector. To draw over a photo of a floor plan, open the Floor tab and trace it.',
-    more: 'The inspector has five tabs: Properties for what is selected, Rooms for this floor’s rooms, Floor for its name, size and traced image, Checks for what the building checks found, and Exits. Right-click a cell, or press and hold it, for what can be done there, a door included.',
+    more: 'The inspector has five tabs: Properties for what is selected, Rooms for this floor’s rooms, Floor for its name, size and traced image, Checks for what the building checks found, and Exits. Right-click a cell, or press and hold it, for what can be done there, a door included. Each stairs connection on the Floor tab has a Which way choice: Both ways, Up only or Down only. A one-way stair is walked only that way in passing time, so routes, walking times and the Movement view never send anyone against it, and a chevron beside the stairs’ letter shows the way on the plan and on the staff browser’s map. Evacuation ignores it: in an emergency every stair is used both ways. Checks warns when a one-way stair leaves part of the building that people can enter but cannot walk out of.',
   },
   schedule: {
     purpose: (w) => 'Enter the school day and who is where: the ' + w.many + ' and bells, the subjects, the teachers, and each group’s room for every ' + w.one + ' on every day type.',
@@ -143,7 +143,7 @@ export function words(settings) {
     { term: 'Room', meaning: 'A space a group can be scheduled into. It has a room number.' },
     { term: 'Other space', meaning: 'A space nobody is scheduled into: a bathroom, an office, storage, a courtyard. It is shown and labelled, and routes do not pass through it.' },
     { term: 'Corridor', meaning: 'Hallway cells people walk along. A corridor can be named, such as North Corridor.' },
-    { term: 'Stairs', meaning: 'A connection between two points, normally on different floors.' },
+    { term: 'Stairs', meaning: 'A connection between two points, normally on different floors. It can be made one way, up only or down only; evacuation ignores that.' },
     { term: 'Elevator', meaning: 'A step-free connection between floors. It is planned, and not built yet.' },
     { term: 'Exit', meaning: 'A point on a corridor that leads outside. It can have a door name and an assembly point.' },
     { term: 'Door', meaning: 'Where a room opens onto a corridor. A room with no door opens onto every corridor cell beside it.' },
