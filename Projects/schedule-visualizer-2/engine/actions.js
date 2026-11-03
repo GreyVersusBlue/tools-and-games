@@ -2893,7 +2893,7 @@ function scenarioLever(project, lever) {
     return { kind: 'release', who, seconds, after, dayTypeIds };
   }
   if (lever.kind === 'bell') {
-    const named = [lever.dayTypeId, lever.bellsId].filter((value) => value !== undefined);
+    const named = [lever.dayTypeId, lever.bellsId].filter((value) => value !== undefined && value !== null);
     if (named.length !== 1 || typeof named[0] !== 'string') refuse('A bell lever names one day type or one bell schedule.', 'bad-value');
     const period = needPeriod(project, lever.period);
     const bell = needBell({ start: lever.start, end: lever.end });

@@ -708,7 +708,7 @@ export function validate(project) {
               sound = sound && (lever.after === null || (Array.isArray(lever.after) && lever.after.length > 0 && lever.after.every(whole)));
               sound = sound && (lever.dayTypeIds === null || (Array.isArray(lever.dayTypeIds) && lever.dayTypeIds.length > 0 && lever.dayTypeIds.every(text)));
             } else if (lever.kind === 'bell') {
-              sound = ((text(lever.dayTypeId) ? 1 : 0) + (text(lever.bellsId) ? 1 : 0)) === 1 && whole(lever.period) && isBellTime(lever.start) && isBellTime(lever.end);
+              sound = ((text(lever.dayTypeId) ? 1 : 0) + (text(lever.bellsId) ? 1 : 0)) === 1 && (lever.dayTypeId === undefined || lever.dayTypeId === null || text(lever.dayTypeId)) && (lever.bellsId === undefined || lever.bellsId === null || text(lever.bellsId)) && whole(lever.period) && isBellTime(lever.start) && isBellTime(lever.end);
             } else if (lever.kind === 'capacity') {
               sound = text(lever.roomId) && (lever.capacity === null || (Number.isInteger(lever.capacity) && inRange(lever.capacity, RANGES.capacity)));
             } else if (lever.kind === 'headCount') {

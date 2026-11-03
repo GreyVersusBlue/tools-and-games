@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { repair, UNKNOWN_ROOM_TEXT } from '../../engine/repair.js';
 import { validate } from '../../engine/validate.js';
+import { isReadableLever } from '../../engine/scenario.js';
 import { migrate } from '../../engine/migrate.js';
 import { PAPER_SIZES } from '../../engine/schema.js';
 import { seededRandom, isId } from '../../engine/ids.js';
@@ -1176,4 +1177,49 @@ test('scenario levers: repairing twice changes nothing more', () => {
   const twice = repair(once.project);
   assert.deepEqual(twice.project, once.project);
   assert.deepEqual(twice.notes.filter((text) => /lever/i.test(text)), []);
+});
+
+// ================================================================ SV2-89b: repair, validate and isReadableLever agree on every lever shape
+
+const BELL_D = { kind: 'bell', dayTypeId: 'dsample00a', period: 6, start: '13:20', end: '14:08' };
+const BELL_B = { kind: 'bell', bellsId: 'bsample001', period: 2, start: '09:00', end: '09:40' };
+
+test('scenario levers (SV2-89b): repair, validate and isReadableLever agree on a bell lever with a null or a numeric other key', () => {
+  const shapes = [
+    ['dayTypeId only', BELL_D, true],
+    ['bellsId only', BELL_B, true],
+    ['dayTypeId and a null bellsId', { ...BELL_D, bellsId: null }, true],
+    ['bellsId and a null dayTypeId', { ...BELL_B, dayTypeId: null }, true],
+    ['dayTypeId and a numeric bellsId', { ...BELL_D, bellsId: 5 }, false],
+    ['a numeric dayTypeId and a bellsId', { ...BELL_B, dayTypeId: 5 }, false],
+    ['both named', { ...BELL_D, bellsId: 'bsample001' }, false],
+    ['neither named', { kind: 'bell', period: 1, start: '09:00', end: '09:40' }, false],
+    ['a null bellsId and nothing else', { kind: 'bell', bellsId: null, period: 1, start: '09:00', end: '09:40' }, false],
+  ];
+  for (const [name, lever, readable] of shapes) {
+    const project = withLevers([lever]);
+    assert.equal(isReadableLever(lever), readable, name + ': isReadableLever');
+    assert.equal(validate(project).length === 0, readable, name + ': validate');
+    const result = repair(project);
+    const kept = result.project.scenario.levers;
+    assert.equal(kept.length === 1, readable, name + ': repair keeps what is readable and drops the rest');
+    if (readable) {
+      assert.equal(isReadableLever(kept[0]), true, name);
+      assert.deepEqual(validate(result.project), [], name);
+      assert.equal('dayTypeId' in kept[0] && 'bellsId' in kept[0], false, name + ': the key that is not used is not kept');
+    }
+  }
+});
+
+test('scenario levers (SV2-89b): repair strips unknown keys from a lever of every kind, as addScenarioLever does, and keeps a clean one as it is', () => {
+  for (const lever of LEVERS) {
+    const dirty = { ...lever, extra: 1, seconds2: 'x' };
+    const result = repair(withLevers([dirty]));
+    assert.deepEqual(result.project.scenario.levers, [lever], lever.kind);
+    assert.equal(isReadableLever(dirty), true, lever.kind + ': a reader ignores keys it does not know');
+    assert.deepEqual(validate(withLevers([dirty])), [], lever.kind);
+  }
+  const clean = withLevers(LEVERS);
+  const result = repair(clean);
+  result.project.scenario.levers.forEach((lever, i) => assert.equal(lever, LEVERS[i], 'a clean ' + lever.kind + ' lever is the very same object'));
 });

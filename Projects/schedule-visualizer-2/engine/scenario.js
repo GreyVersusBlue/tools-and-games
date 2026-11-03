@@ -515,7 +515,7 @@ export function isReadableLever(lever) {
   }
   if (lever.kind === 'bell') {
     const one = (isText(lever.dayTypeId) ? 1 : 0) + (isText(lever.bellsId) ? 1 : 0);
-    const clean = (lever.dayTypeId === undefined || isText(lever.dayTypeId)) && (lever.bellsId === undefined || isText(lever.bellsId));
+    const clean = (lever.dayTypeId === undefined || lever.dayTypeId === null || isText(lever.dayTypeId)) && (lever.bellsId === undefined || lever.bellsId === null || isText(lever.bellsId));
     return one === 1 && clean && wholeFrom(lever.period, 0) && isBellTime(lever.start) && isBellTime(lever.end);
   }
   if (lever.kind === 'capacity') return isText(lever.roomId) && (lever.capacity === null || (Number.isInteger(lever.capacity) && inRange(lever.capacity, RANGES.capacity)));
