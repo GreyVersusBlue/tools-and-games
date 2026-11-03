@@ -692,6 +692,36 @@ export function isBuildingLever(lever) {
   return isObject(lever) && (lever.kind === 'way' || lever.kind === 'corridor');
 }
 
+// Does Apply write this lever into the building? A way of both, ab or ba sets
+// the connection's direction; a closed stairs and a closed corridor are
+// trials only (ARCHITECTURE 18.3) and Apply leaves them out.
+export function isWrittenWay(lever) {
+  return isObject(lever) && lever.kind === 'way' && (lever.way === 'both' || lever.way === 'ab' || lever.way === 'ba');
+}
+
+export function isTrialOnly(lever) {
+  return isObject(lever) && ((lever.kind === 'way' && lever.way === 'closed') || lever.kind === 'corridor');
+}
+
+// What Apply leaves out, in a line of its own: "Closing Stairs B and North
+// Corridor is a trial: Apply leaves the building as it is." Names as typed.
+// { parts, text } for the closed stairs and the closed corridors among the
+// levers, in the order given; null when there are none.
+export function trialOnlyWords(project, levers) {
+  const items = [];
+  for (const lever of leversOf(levers)) {
+    if (!isReadableLever(lever) || !isTrialOnly(lever)) continue;
+    if (lever.kind === 'way') items.push(stairsParts(project, connectionOf(project, lever.connectionId)));
+    else {
+      const floor = floorOf(project, lever.floorId);
+      items.push(lever.name.trim() !== '' ? [typed(lever.name)] : [words(lever.cells.length + (lever.cells.length === 1 ? ' corridor cell' : ' corridor cells') + ' on '), floor ? typed(floor.name) : words('a floor no longer in the building')]);
+    }
+  }
+  if (items.length === 0) return null;
+  const parts = [words('Closing '), ...joinedParts(items), words(' is a trial: Apply leaves the building as it is.')];
+  return { parts, text: joinParts(parts) };
+}
+
 // A connection as a lever says it: "Stairs B". With no label, "Stairs".
 function stairsParts(project, connection) {
   return connection ? [words('Stairs '), typed(typeof connection.label === 'string' ? connection.label : '')] : [words('Stairs no longer in the building')];

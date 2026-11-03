@@ -2727,7 +2727,7 @@ export const applyGridEdits = action(
 // scenario's own change objects, so a chip finds its index with indexOf.
 
 import { CHANGE_KINDS } from './schema.js';
-import { applyChanges, normalise, reconcile, scenarioFromDiff, changeWords, applyLevers, layReleases, normaliseLevers, SCHEDULE_LEVER_KINDS } from './scenario.js';
+import { applyChanges, normalise, reconcile, scenarioFromDiff, changeWords, applyLevers, layReleases, normaliseLevers, isWrittenWay, trialOnlyWords, SCHEDULE_LEVER_KINDS } from './scenario.js';
 
 export const NEW_SCENARIO_NAME = 'New scenario';
 
@@ -3024,14 +3024,17 @@ export const setScenarioFromFile = action(
 // (scheduleOutcome): { text, changes, levers, byKind }.
 function applyBumps(before) {
   const kept = reconcile(before, before.scenario);
+  const levers = kept.levers || [];
   const bumps = [SCHEDULE];
-  if ((kept.levers || []).some((lever) => lever.kind === 'capacity')) bumps.push(BUILDING);
+  // a way written to a connection's direction moves the routes (18.3)
+  if (levers.some(isWrittenWay)) bumps.push(GEOMETRY);
+  if (levers.some((lever) => lever.kind === 'capacity')) bumps.push(BUILDING);
   return bumps;
 }
 
 function applyLabel(before) {
   const kept = reconcile(before, before.scenario);
-  const levers = (kept.levers || []).filter((lever) => SCHEDULE_LEVER_KINDS.includes(lever.kind)).length;
+  const levers = (kept.levers || []).filter((lever) => SCHEDULE_LEVER_KINDS.includes(lever.kind) || isWrittenWay(lever)).length;
   const parts = [changesWord(kept.changes.length)];
   if (levers > 0) parts.push(leversWord(levers));
   return 'Apply scenario ' + scenarioName(before) + ': ' + parts.join(' and ');
@@ -3042,6 +3045,7 @@ const LEVER_KIND_WORDS = {
   bell: ['bell', 'bells'],
   capacity: ['room capacity', 'room capacities'],
   headCount: ['head count', 'head counts'],
+  way: ['stairs direction', 'stairs directions'],
 };
 
 export const applyScenario = action(
@@ -3054,11 +3058,22 @@ export const applyScenario = action(
     next = applyLevers(next, levers.filter((lever) => lever.kind !== 'release'));
     next = layReleases(next, levers.filter((lever) => lever.kind === 'release'), () => ctx.ids('l'));
     if (releaseOf(next).length > RELEASE_MOST) refuse('A project has at most ' + RELEASE_MOST + ' staggered dismissals; applying this scenario would make ' + releaseOf(next).length + '. Remove some first.', 'limit');
+    // the building's levers: a way of both, ab or ba is written to the
+    // connection's direction (setConnection's rule); a closed stairs and a
+    // closed corridor are a trial only and go with the scenario
+    const ways = (kept.levers || []).filter(isWrittenWay);
+    for (const lever of ways) next = inBuilding(next, (building) => geometry.setConnection(building, { connectionId: lever.connectionId, direction: lever.way }));
     const byKind = {};
-    for (const lever of levers) byKind[lever.kind] = (byKind[lever.kind] || 0) + 1;
+    for (const lever of levers.concat(ways)) byKind[lever.kind] = (byKind[lever.kind] || 0) + 1;
     const said = [changesWord(kept.changes.length)];
     for (const kind of Object.keys(LEVER_KIND_WORDS)) if (byKind[kind]) said.push(count(byKind[kind], LEVER_KIND_WORDS[kind][0], LEVER_KIND_WORDS[kind][1]));
-    const outcome = { text: 'Applied scenario ' + scenarioName(project) + ': ' + listWords(said), changes: kept.changes.length, levers: levers.length, byKind };
+    const trial = trialOnlyWords(project, kept.levers || []);
+    const outcome = { text: 'Applied scenario ' + scenarioName(project) + ': ' + listWords(said) + (trial ? '. ' + trial.text : ''), changes: kept.changes.length, levers: levers.length + ways.length, byKind };
+    // what was left out is said, and counted, in the outcome
+    if (trial) {
+      outcome.leftOut = (kept.levers || []).filter((lever) => lever.kind === 'corridor' || (lever.kind === 'way' && lever.way === 'closed')).length;
+      outcome.leftOutText = trial.text;
+    }
     return reporting(project, withScenario(next, null), outcome);
   },
 );

@@ -876,3 +876,103 @@ test('SV2-89b item 3: describePeriodChange counts a release lever lost only when
   lost.apply(setPeriods, { periods: 5 });
   assert.equal(reconcile(lost.project, lost.project.scenario).droppedLevers.length, 1, 'reconcile drops it, as the count says');
 });
+
+// ================================================================ SV2-90: the building levers in Apply
+
+const STAIRS_A = 'csample00a';
+const STAIRS_B = 'csample00b';
+const way = (connectionId, how) => ({ kind: 'way', connectionId, way: how });
+
+// A store whose scenario already holds building levers: addScenarioLever takes
+// the four schedule kinds only, so these arrive as a project file brings them.
+function withBuildingLevers(levers, changes) {
+  const project = school();
+  const corridor = project.building.floors[0].corridors.find((entry) => entry.id === 'ksample001');
+  const given = levers.map((lever) => (lever === 'corridor' ? { kind: 'corridor', floorId: 'fsample001', cells: corridor.cells.slice(0, 3), name: 'Main Corridor' } : lever));
+  return storeOf({ ...project, scenario: { name: 'Trial', changes: changes || [], levers: given, compared: null } });
+}
+
+test('applyScenario: a way of ab, ba or both is written to the connection\'s direction, in the one step, and bumps GEOMETRY', () => {
+  const store = withBuildingLevers([way(STAIRS_A, 'ab'), way(STAIRS_B, 'ba')]);
+  const before = store.project;
+  const counts = { ...counters(store) };
+  assert.deepEqual(applyScenario.bumps(before), [SCHEDULE, actions.GEOMETRY]);
+  assert.equal(applyScenario.label(before), 'Apply scenario Trial: 0 changes and 2 levers');
+  const entries = store.history.past.length;
+
+  store.apply(applyScenario, {});
+  const after = store.project;
+  assert.equal(store.history.past.length, entries + 1, 'one undo step');
+  assert.equal(after.scenario, null);
+  assert.deepEqual(after.building.connections.map((connection) => [connection.id, connection.direction]), [[STAIRS_A, 'ab'], [STAIRS_B, 'ba']]);
+  assert.equal(store.geometryVersion, counts.geometry + 1, 'the routes move');
+  assert.equal(store.scheduleVersion, counts.schedule + 1);
+  assert.equal(validate(after).length, 0);
+  assert.deepEqual(store.undoOutcome, { text: 'Applied scenario Trial: 0 changes and 2 stairs directions', changes: 0, levers: 2, byKind: { way: 2 } });
+
+  store.undo();
+  assert.equal(store.project.scenario, before.scenario, 'undo brings the scenario back whole');
+  assert.equal(store.project.building, before.building, 'and the building as it was');
+  assert.deepEqual(store.project.building.connections.map((connection) => connection.direction), ['both', 'both']);
+  store.redo();
+  assert.equal(store.project.building.connections[0].direction, 'ab');
+});
+
+test('applyScenario: a way back to both is written too, where the connection is one-way', () => {
+  const project = school();
+  project.building.connections[0].direction = 'ab';
+  const store = storeOf({ ...project, scenario: { name: 'Trial', changes: [], levers: [way(STAIRS_A, 'both')], compared: null } });
+  assert.deepEqual(applyScenario.bumps(store.project), [SCHEDULE, actions.GEOMETRY]);
+  store.apply(applyScenario, {});
+  assert.equal(store.project.building.connections[0].direction, 'both');
+});
+
+test('applyScenario: a closed stairs and a closed corridor are a trial only: left out, the outcome says which, and no counter of the building moves', () => {
+  const store = withBuildingLevers([way(STAIRS_B, 'closed'), 'corridor'], [move(G7C, 1, 'rsample204')]);
+  const before = store.project;
+  const counts = { ...counters(store) };
+  assert.deepEqual(applyScenario.bumps(before), [SCHEDULE], 'nothing of the building is written');
+  assert.equal(applyScenario.label(before), 'Apply scenario Trial: 1 change');
+  store.apply(applyScenario, {});
+  const after = store.project;
+  assert.equal(after.building, before.building, 'the building is the very same object');
+  assert.equal(after.scenario, null, 'the scenario closes as it always does, and the closures go with it');
+  assert.equal(slot(after, G7C, A, 1).room, 'rsample204', 'the change went in');
+  assert.equal(store.geometryVersion, counts.geometry);
+  assert.equal(store.buildingVersion, counts.building);
+  const outcome = store.undoOutcome;
+  assert.equal(outcome.leftOut, 2);
+  assert.equal(outcome.leftOutText, 'Closing Stairs B and Main Corridor is a trial: Apply leaves the building as it is.');
+  assert.equal(outcome.text, 'Applied scenario Trial: 1 change. Closing Stairs B and Main Corridor is a trial: Apply leaves the building as it is.');
+  assert.equal(outcome.levers, 0);
+  store.undo();
+  assert.equal(store.project.scenario, before.scenario, 'Undo brings the scenario back whole, closures and all');
+});
+
+test('applyScenario: ways and closures together — the ways go in, the closures stay out and are named', () => {
+  const store = withBuildingLevers([way(STAIRS_A, 'ba'), way(STAIRS_B, 'closed')], []);
+  const counts = { ...counters(store) };
+  store.apply(applyScenario, {});
+  assert.deepEqual(store.project.building.connections.map((connection) => connection.direction), ['ba', 'both'], 'Stairs B is not closed, and not made anything');
+  assert.equal(store.geometryVersion, counts.geometry + 1);
+  assert.match(store.undoOutcome.text, /1 stairs direction\. Closing Stairs B is a trial/);
+  assert.deepEqual(store.undoOutcome.byKind, { way: 1 });
+  assert.equal(store.undoOutcome.leftOut, 1);
+});
+
+test('applyScenario: a way the building already has, or one whose stairs are gone, is not written (reconcile drops it first)', () => {
+  const store = withBuildingLevers([way(STAIRS_A, 'both'), way('cgone00000', 'ab')]);
+  assert.deepEqual(applyScenario.bumps(store.project), [SCHEDULE], 'nothing to write, so no geometry bump');
+  const counts = { ...counters(store) };
+  store.apply(applyScenario, {});
+  assert.equal(store.geometryVersion, counts.geometry);
+  assert.deepEqual(store.undoOutcome, { text: 'Applied scenario Trial: 0 changes', changes: 0, levers: 0, byKind: {} });
+});
+
+test('applyScenario: a stairs name that is markup is named exactly as typed in what was left out', () => {
+  const project = school();
+  project.building.connections[1].label = '<b>B & "C"</b>';
+  const store = storeOf({ ...project, scenario: { name: 'Trial', changes: [], levers: [way(STAIRS_B, 'closed')], compared: null } });
+  store.apply(applyScenario, {});
+  assert.equal(store.undoOutcome.leftOutText, 'Closing Stairs <b>B & "C"</b> is a trial: Apply leaves the building as it is.');
+});
