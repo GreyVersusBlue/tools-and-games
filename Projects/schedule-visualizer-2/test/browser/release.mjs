@@ -545,6 +545,174 @@ test('Day tab card: a day type that is the same as another is named in the edito
   await settled();
 });
 
+// ------------------------------------------------------------------ SV2-93b: the editor's faults
+
+const HOSTILE = ['<b>x</b>', 'Q"uote\'s', 'Fish & Chips', '=SUM(1)', '&lt;i&gt;'];
+const GONE_WORDS = 'A group, day type or period this staggered dismissal named is gone from the project, so it was taken off.';
+const UNDO_WORDS = 'This staggered dismissal was changed by an Undo or a Redo. The editor shows it as it is now.';
+
+test('a typed Minutes or Seconds rereads what is missing in place: 5 min 15 s and 0 s say so, Add follows, and nothing is drawn again', async () => {
+  await go(page, '#schedule/day');
+  await settled();
+  await noRelease();
+  await settled();
+  // a new entry: grade 7, then 5 min + 15 s
+  await click(key('release-new'));
+  await page.waitForSelector('.sch-releaseedit');
+  await click(key('release:new:who:grade'));
+  await click('.sch-markedit__chips [data-grade="7"]');
+  assert.equal(await page.$eval(key('release:new:add'), (el) => el.disabled), false);
+  assert.equal(await exists('.sch-markedit__missing'), false);
+  await page.evaluate(() => { document.querySelector('[data-key="release:new:add"]').dataset.sameNode = 'yes'; });
+  const MISSING = 'Choose a time from 15 s to 5 min after the bell to finish.';
+  await typeInto(key('release:new:minutes'), '5', 'Enter');
+  await typeInto(key('release:new:seconds'), '15', 'Enter');
+  await shows((wanted) => document.querySelector('.sch-markedit__missing')?.textContent === wanted, MISSING);
+  assert.equal(await page.$eval(key('release:new:add'), (el) => [el.disabled, el.dataset.sameNode]).then((found) => found.join(' ')), 'true yes', 'Add waits, and it is the same button');
+  assert.equal(await activeKey(), 'release:new:seconds', 'the focus stayed in the field that was typed in');
+  assert.equal(await text('.sch-markedit__says'), 'grade 7 leaves 5 min 15 s after the bell, after every period, every day type (3 groups)');
+  assert.equal((await release()).length, 0, 'Add pressed now would have added nothing: it cannot be pressed');
+  await typeInto(key('release:new:seconds'), '0', 'Enter');
+  await shows(() => document.querySelector('.sch-markedit__missing') === null);
+  assert.equal(await page.$eval(key('release:new:add'), (el) => [el.disabled, el.dataset.sameNode]).then((found) => found.join(' ')), 'false yes', 'the line goes and Add may be pressed');
+  await typeInto(key('release:new:minutes'), '0', 'Enter');
+  await shows((wanted) => document.querySelector('.sch-markedit__missing')?.textContent === wanted, MISSING);
+  assert.equal(await page.$eval(key('release:new:add'), (el) => el.disabled), true, '0 min and 0 s is no time');
+  await click(key('release:new:cancel'));
+  // a saved entry: 0 min + 0 s says so, and says nothing changes until a time is typed
+  await heldSeven();
+  await settled();
+  await page.waitForSelector('[data-card="release"] .sch-marks__line');
+  const [saved] = await release();
+  await click('[data-card="release"] .sch-marks__line');
+  await page.waitForSelector('.sch-releaseedit');
+  await typeInto(key('release:' + saved.id + ':minutes'), '0', 'Enter');
+  await typeInto(key('release:' + saved.id + ':seconds'), '0', 'Enter');
+  await shows((wanted) => document.querySelector('.sch-markedit__missing')?.textContent === wanted + ' Nothing changes until then.', MISSING);
+  assert.equal((await release())[0].seconds, 120, 'the saved time stands until a good one is typed');
+  await typeInto(key('release:' + saved.id + ':seconds'), '30', 'Enter');
+  await shows(() => document.querySelector('.sch-markedit__missing') === null);
+  assert.equal((await release())[0].seconds, 30);
+  await click(key('release:' + saved.id + ':done'));
+  await noRelease();
+  await settled();
+});
+
+test('an entry under an open editor that changes because a group went says so, not "an Undo or a Redo"; Undo says that; a vanished entry leaves the focus on Add', async () => {
+  await go(page, '#schedule/day');
+  await settled();
+  await noRelease();
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.addRelease, { who: { groups: ['gsample07a', 'gsample07b'] }, seconds: 90 }));
+  await settled();
+  await page.waitForSelector('[data-card="release"] .sch-marks__line');
+  await click('[data-card="release"] .sch-marks__line');
+  await page.waitForSelector('.sch-releaseedit');
+  await page.focus(key('release:' + (await release())[0].id + ':on-bell'));
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.deleteGroup, { id: 'gsample07b' }));
+  await settled();
+  await shows((wanted) => document.querySelector('.sch-markedit__note')?.textContent === wanted, GONE_WORDS);
+  assert.deepEqual((await release())[0].who.groups, ['gsample07a']);
+  // Undo of the deletion brings the group back into the entry: that is an Undo
+  await page.evaluate(() => globalThis.sv2.ctx.undo());
+  await settled();
+  await shows((wanted) => document.querySelector('.sch-markedit__note')?.textContent === wanted, UNDO_WORDS);
+  assert.equal((await release())[0].who.groups.length, 2);
+  // the open entry goes: the last group it names is deleted with it
+  await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    store.apply(globalThis.sv2modules.actions.setRelease, { id: store.project.release[0].id, who: { groups: ['gsample07a'] } });
+  });
+  await settled();
+  await page.waitForSelector(key('release:' + (await release())[0].id + ':on-bell'));
+  await page.focus(key('release:' + (await release())[0].id + ':on-bell'));
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.deleteGroup, { id: 'gsample07a' }));
+  await settled();
+  await shows(() => document.querySelector('.sch-releaseedit') === null);
+  assert.equal((await release()).length, 0, 'the entry named only that group and went with it');
+  assert.equal(await activeKey(), 'release-new', 'the focus is on the card\'s Add button, not lost');
+  await page.evaluate(() => { globalThis.sv2.ctx.undo(); });
+  await settled();
+  // the Undo of an Add, with the editor open on it
+  await noRelease();
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.addRelease, { who: { grade: '7' }, seconds: 60 }));
+  await settled();
+  await page.waitForSelector('[data-card="release"] .sch-marks__line');
+  await click('[data-card="release"] .sch-marks__line');
+  await page.waitForSelector('.sch-releaseedit');
+  await page.focus(key('release:' + (await release())[0].id + ':minutes'));
+  await page.evaluate(() => globalThis.sv2.ctx.undo());
+  await settled();
+  await shows(() => document.querySelector('.sch-releaseedit') === null);
+  assert.equal(await activeKey(), 'release-new', 'Undo of the Add leaves the focus on Add too');
+  await shows(() => document.querySelector('[data-card="release"] .sch-marks__empty') !== null);
+  // a focus that was somewhere else is left there
+  await page.evaluate(() => globalThis.sv2.ctx.redo());
+  await settled();
+  await noRelease();
+  await settled();
+});
+
+for (const name of HOSTILE) {
+  test('a hostile name ' + JSON.stringify(name) + ' as a group, a grade and a wing is the same text in the card, the toast, the group heading, the Late cell and the CSV', async () => {
+    await go(page, '#schedule/day');
+    await settled();
+    await noRelease();
+    const gradeSentence = (/^grade\s/i.test(name) ? name : 'grade ' + name) + ' leaves 2 min after the bell, after every period, every day type (1 group)';
+    const wingSentence = (/\bwing$/i.test(name) ? name : name + ' wing') + ' leaves 2 min after the bell, after every period, every day type';
+    await page.evaluate((hostile) => {
+      const { store } = globalThis.sv2;
+      const { actions } = globalThis.sv2modules;
+      store.apply(actions.editGroup, { id: 'gsample07a', name: hostile, grade: hostile });
+      store.apply(actions.setRoomFields, { roomId: 'rsample101', wing: hostile });
+      store.apply(actions.addRelease, { who: { grade: hostile }, seconds: 120 });
+      store.apply(actions.addRelease, { who: { wing: hostile }, seconds: 120 });
+    }, name);
+    await settled();
+    await page.waitForSelector('[data-card="release"] .sch-marks__line');
+    const lines = await page.$$eval('[data-card="release"] .sch-marks__line', (all) => all.map((el) => [el.textContent, el.querySelectorAll('*:not(strong):not(span)').length, el.innerHTML.includes('<b>')]));
+    assert.deepEqual(lines.map(([words]) => words), [gradeSentence, wingSentence], 'the card says each as typed');
+    assert.deepEqual(lines.map(([, other, raw]) => [other, raw]), [[0, false], [0, false]], 'and no markup ran');
+    // the toast of a remove, and of its Undo
+    await click('[data-card="release"] .sch-marks__line');
+    await click(key('release:' + (await release())[0].id + ':remove'));
+    await toastSays('Removed: ' + gradeSentence + '.');
+    assert.equal(await page.$eval('.toast .toast__text', (el) => el.children.length), 0, 'the toast holds text only');
+    await page.click('.toast .toast__action');
+    await shows(() => (globalThis.sv2.store.project.release || []).length === 2);
+    // Movement: the group's heading, its Late cell, the file
+    await goHash(page, '#movement');
+    await movementSettled();
+    await page.click('#inspector [role="tab"][data-tab="tables"]');
+    await page.waitForSelector('#inspector [data-panel="tables"] .mov-travel__group');
+    await pickHeldTransition(page);
+    const heading = await page.$eval('#inspector [data-travel="transition"] .mov-travel__group[data-group="gsample07a"]', (group) => ({
+      name: group.querySelector('.mov-travel__name').textContent,
+      late: group.querySelector('.mov-groups__late, .mov-travel__fits').textContent,
+      elements: group.querySelectorAll('b, i, script').length,
+    }));
+    assert.equal(heading.name, name, 'the heading is the name as typed');
+    assert.match(heading.late, /^(In time|Late by [\d a-z]+ · left 2 min after the bell)$/, 'the Late cell says its words, whatever the name');
+    assert.equal(heading.elements, 0, 'no markup ran in the table');
+    await page.click('#inspector [role="tab"][data-tab="export"]');
+    await page.waitForSelector('#inspector [data-panel="export"] [data-action="csv-transitions"]');
+    const file = await delivered('csv-transitions');
+    const { parse } = await import('../../engine/csv.js');
+    const rows = parse(file.text).rows;
+    assert.ok(rows.some((row) => row[3] === name), 'the file holds the name as typed in the Group column');
+    assert.ok(rows.every((row) => !row.some((cell) => cell.startsWith("'") && cell.slice(1) === name)), 'and not guarded into another text');
+    // put the school back
+    await page.evaluate(() => {
+      const { store } = globalThis.sv2;
+      const { actions } = globalThis.sv2modules;
+      for (const each of store.project.release || []) store.apply(actions.removeRelease, { id: each.id });
+      store.apply(actions.editGroup, { id: 'gsample07a', name: '7A', grade: '7' });
+      store.apply(actions.setRoomFields, { roomId: 'rsample101', wing: 'West' });
+    });
+    await goHash(page, '#schedule/day');
+    await settled();
+  });
+}
+
 // ------------------------------------------------------------------ the periods warning
 
 test('taking a period away says what it takes of staggered dismissal too: a scenario lever and a rule that names the last period', async () => {

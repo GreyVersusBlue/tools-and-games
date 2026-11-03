@@ -1186,7 +1186,7 @@ export function mount(env) {
       h('p', { class: 'sch-markedit__label' }, 'This reads:'),
       says,
       edit.note === '' ? null : h('p', { class: 'sch-hint sch-markedit__note' }, edit.note),
-      hint === '' ? null : h('p', { class: 'sch-hint sch-markedit__missing', role: 'status' }, hint + (edit.id === null ? '' : ' Nothing changes until then.')),
+      hintSlot,
       h('div', { class: 'sch-toolbar' },
         edit.id === null
           ? [addButton, button('Cancel', closeRelease, { key: key('cancel'), action: 'cancel-release' })]
