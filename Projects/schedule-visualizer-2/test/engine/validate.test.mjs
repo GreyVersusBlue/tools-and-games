@@ -358,3 +358,61 @@ test('lastPublishedHadCalendar true or false is valid', () => {
     assert.deepEqual(validate(project), []);
   }
 });
+
+// ================================================================ SV2-89: scenario.levers
+
+const lv = (levers) => {
+  const project = school();
+  project.scenario = { name: 'Trial', changes: [], levers, compared: null };
+  return project;
+};
+const atPath = (project, pattern) => validate(project).some((finding) => pattern.test(finding.path));
+
+test('scenario levers: absent is never asked for; a scenario of an older tool is valid', () => {
+  const project = school();
+  project.scenario = { name: 'Trial', changes: [], compared: null };
+  assert.deepEqual(validate(project), []);
+});
+
+test('scenario levers: well formed ones of every kind are valid', () => {
+  assert.deepEqual(validate(lv([
+    { kind: 'bell', dayTypeId: 'dsample00a', period: 6, start: '13:20', end: '14:08' },
+    { kind: 'bell', bellsId: 'bsample001', period: 0, start: '08:00', end: '08:40' },
+    { kind: 'headCount', groupId: 'gsample06a', headCount: 40 },
+    { kind: 'headCount', groupId: 'gsample06a', headCount: null },
+    { kind: 'capacity', roomId: 'rsample203', capacity: 12 },
+    { kind: 'release', who: { groups: ['gsample07a'] }, seconds: 0, after: null, dayTypeIds: null },
+    { kind: 'release', who: { wing: 'North' }, seconds: 300, after: [0, 5], dayTypeIds: ['dgone00000'] },
+    { kind: 'way', connectionId: 'csample001', way: 'closed' },
+    { kind: 'corridor', floorId: 'fsample001', cells: [1], name: '' },
+  ])), [], 'a lever pointing at nothing is not invalid: reconcile says so');
+});
+
+test('scenario levers: each way to break one is found at its own place', () => {
+  const cases = [
+    ['levers that are not a list', 'x', /^scenario\.levers$/],
+    ['a lever that is not an object', [3], /^scenario\.levers\[0\]$/],
+    ['a lever of a kind that does not exist', [{ kind: 'teleport' }], /^scenario\.levers\[0\]$/],
+    ['a lever of a change kind', [{ kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample06a', period: 1, roomId: 'rsample101' }], /^scenario\.levers\[0\]$/],
+    ['a bell naming both a day type and a bell schedule', [{ kind: 'bell', dayTypeId: 'dsample00a', bellsId: 'b', period: 1, start: '08:00', end: '09:00' }], /^scenario\.levers\[0\]$/],
+    ['a bell with a time that is not HH:MM', [{ kind: 'bell', dayTypeId: 'dsample00a', period: 1, start: '8am', end: '09:00' }], /^scenario\.levers\[0\]$/],
+    ['a head count of 0', [{ kind: 'headCount', groupId: 'gsample06a', headCount: 0 }], /^scenario\.levers\[0\]$/],
+    ['a head count left out', [{ kind: 'headCount', groupId: 'gsample06a' }], /^scenario\.levers\[0\]$/],
+    ['a capacity of 1000', [{ kind: 'capacity', roomId: 'rsample203', capacity: 1000 }], /^scenario\.levers\[0\]$/],
+    ['a release with two who keys', [{ kind: 'release', who: { grade: '7', wing: 'N' }, seconds: 60, after: null, dayTypeIds: null }], /^scenario\.levers\[0\]$/],
+    ['a release of 10 s for a grade', [{ kind: 'release', who: { grade: '7' }, seconds: 10, after: null, dayTypeIds: null }], /^scenario\.levers\[0\]$/],
+    ['a release of 0 s for a grade', [{ kind: 'release', who: { grade: '7' }, seconds: 0, after: null, dayTypeIds: null }], /^scenario\.levers\[0\]$/],
+    ['a release with no periods list', [{ kind: 'release', who: { grade: '7' }, seconds: 60, dayTypeIds: null }], /^scenario\.levers\[0\]$/],
+    ['a release with empty day types', [{ kind: 'release', who: { grade: '7' }, seconds: 60, after: null, dayTypeIds: [] }], /^scenario\.levers\[0\]$/],
+    ['a way that is not a way', [{ kind: 'way', connectionId: 'c', way: 'up' }], /^scenario\.levers\[0\]$/],
+    ['a corridor with no cells', [{ kind: 'corridor', floorId: 'f', cells: [], name: '' }], /^scenario\.levers\[0\]$/],
+  ];
+  for (const [name, levers, where] of cases) {
+    const project = lv(levers);
+    assert.equal(atPath(project, where), true, name + ': ' + JSON.stringify(validate(project)));
+    assert.equal(isValid(project), false, name);
+  }
+  const two = validate(lv([{ kind: 'headCount', groupId: 'gsample06a', headCount: 5 }, { kind: 'headCount', headCount: 5 }]));
+  assert.deepEqual(two.map((finding) => finding.path), ['scenario.levers[1]'], 'only the lever that is wrong, by its place');
+  assert.match(two[0].message, /^This headCount lever is missing one of its fields, or one holds a value it cannot\.$/);
+});
