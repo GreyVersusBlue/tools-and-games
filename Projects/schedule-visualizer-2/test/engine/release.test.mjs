@@ -609,6 +609,20 @@ test('importing a schedule file: the policy answers a clash on an entry\'s id as
   assert.equal(rename.summary.releaseAdded, 1);
 });
 
+test('importing a schedule file: an id made for a renamed entry is never one the file already uses', () => {
+  const here = withRelease([entry('lbbbbbbbbb', { grade: '7' }, 60)], sampleSchool());
+  const fileProject = withRelease([entry('laaaaaaaaa', { grade: '8' }, 90), entry('lbbbbbbbbb', { grade: '7' }, 200)], sampleSchool());
+  const file = readScheduleFile(writeScheduleFile(fileProject)).file;
+  // a source of ids whose first try is the id the file's first entry keeps
+  let calls = 0;
+  const ids = createIds(() => (calls++ < 9 ? 0 : (calls * 0.6180339) % 1));
+  const applied = applySchedule(here, file, { ids, policy: { all: 'skip', per: { lbbbbbbbbb: 'rename' } } });
+  const made = applied.project.release.map((item) => item.id);
+  assert.equal(new Set(made).size, made.length, 'no id twice: ' + made.join(', '));
+  assert.deepEqual(made.slice(0, 2), ['lbbbbbbbbb', 'laaaaaaaaa']);
+  assertValid(applied.project);
+});
+
 test('importing a schedule file: a file that would take the project past 50 entries is refused whole', () => {
   const many = [];
   for (let i = 0; i < 30; i += 1) many.push(entry('l' + String(i).padStart(9, '0'), { grade: String(i) }, 60));
