@@ -452,7 +452,7 @@ export function floorPanel(env) {
                 if (!input.checked) return;
                 const latest = state.project.building.connections.find((each) => each.id === now.id);
                 if (!latest || latest.direction === option.value) return;
-                const said = 'Stairs ' + latest.label + ' now ' + (option.value === 'both' ? 'runs both ways' : 'is ' + option.label.charAt(0).toLowerCase() + option.label.slice(1)) + '.';
+                const said = 'Stairs ' + latest.label + (option.value === 'both' ? ' now runs both ways.' : ' is now ' + option.label.charAt(0).toLowerCase() + option.label.slice(1) + '.');
                 ed().commit(setConnection, { connectionId: now.id, direction: option.value }, { done: () => said, toast: () => said });
               });
               wayHost.append(h('label', { class: 'bi-way__chip' }, input, h('span', { class: 'bi-way__text' }, option.label)));

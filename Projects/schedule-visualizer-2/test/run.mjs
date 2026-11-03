@@ -144,6 +144,7 @@ export const GROUPS = {
     'browser/calendar-review.mjs', // SV2-80b
     'browser/marks-duties.mjs', // SV2-85
     'browser/release.mjs', // SV2-93
+    'browser/one-way.mjs', // SV2-91
     'browser/calendar-faults.mjs', // SV2-80c
     'browser/grid-pass.mjs', // SV2-40, SV2-46
     'browser/m2-pass.mjs', // SV2-38
