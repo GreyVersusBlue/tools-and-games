@@ -23,7 +23,7 @@
 // `images` is { [imageId]: { data, type } } both ways: the page passes what
 // it holds to a writer, and stores what a reader hands back.
 
-import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, defaultSettings, defaultPublish, defaultOnboarding, emptyBells, emptySlot, emptyDay, roomNumberKey, nameKey, spacelessKey, allRooms, findRoom, bellSchedulesOf, calendarOf, marksOf, dutiesOf, DAY_TYPES_MOST, BELL_SCHEDULES_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR } from './schema.js';
+import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, defaultSettings, defaultPublish, defaultOnboarding, emptyBells, emptySlot, emptyDay, roomNumberKey, nameKey, spacelessKey, allRooms, findRoom, bellSchedulesOf, calendarOf, marksOf, dutiesOf, releaseOf, RELEASE_MOST, DAY_TYPES_MOST, BELL_SCHEDULES_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR } from './schema.js';
 import { DEFAULT_PASSCODE } from './publish-defaults.js';
 import { migrate, MigrateError, versionOf, NEWER_VERSION_MESSAGE, NOT_A_PROJECT_MESSAGE } from './migrate.js';
 import { repair } from './repair.js';
@@ -464,7 +464,9 @@ export function applyBuilding(project, file, options) {
 // and no calendar writes the file exactly as before they existed. The same
 // holds for the marked periods and the duties (ARCHITECTURE 17.5, 17.6): a
 // duty's room is in the index of rooms, so the file can be read against a
-// building whose rooms have other ids.
+// building whose rooms have other ids. The staggered dismissals (18.2) are
+// written only when the project has some, so an older project's file is
+// byte-identical.
 export function writeScheduleFile(project) {
   const named = new Set();
   for (const teacher of project.teachers) for (const roomId of teacher.roomIds) named.add(roomId);
@@ -473,6 +475,7 @@ export function writeScheduleFile(project) {
   }
   const marks = marksOf(project);
   const duties = dutiesOf(project);
+  const release = releaseOf(project);
   for (const duty of duties) if (typeof duty.roomId === 'string') named.add(duty.roomId);
   const settings = {};
   for (const key of SCHEDULE_SETTINGS) settings[key] = project.settings[key];
@@ -492,6 +495,7 @@ export function writeScheduleFile(project) {
   if (calendar !== null) file.calendar = calendar;
   if (marks.length > 0) file.marks = marks;
   if (duties.length > 0) file.duties = duties;
+  if (release.length > 0) file.release = release;
   return stringify(file);
 }
 
@@ -539,6 +543,7 @@ export function readScheduleFile(text) {
   if (value.calendar !== undefined) stood.calendar = value.calendar;
   if (value.marks !== undefined) stood.marks = value.marks;
   if (value.duties !== undefined) stood.duties = value.duties;
+  if (value.release !== undefined) stood.release = value.release;
   for (const finding of validate(stood)) {
     findings.push({ path: finding.path.replace(/^building\.floors\[0\]\.spaces\[(\d+)\]/, 'rooms[$1]'), message: finding.message });
   }
@@ -550,8 +555,9 @@ export function readScheduleFile(text) {
   const calendar = value.calendar === undefined ? null : value.calendar;
   const marks = value.marks === undefined ? [] : value.marks;
   const duties = value.duties === undefined ? [] : value.duties;
-  const file = { format: SCHEDULE_FORMAT, version: value.version, settings: value.settings, rooms: value.rooms, subjects: value.subjects, teachers: value.teachers, groups: value.groups, dayTypes: value.dayTypes, bellSchedules, calendar, marks, duties };
-  return { file, summary: { periods: value.settings.periods, subjects: value.subjects.length, teachers: value.teachers.length, groups: value.groups.length, dayTypes: value.dayTypes.length, bellSchedules: bellSchedules.length, calendar: calendar !== null, marks: marks.length, duties: duties.length } };
+  const release = value.release === undefined ? [] : value.release;
+  const file = { format: SCHEDULE_FORMAT, version: value.version, settings: value.settings, rooms: value.rooms, subjects: value.subjects, teachers: value.teachers, groups: value.groups, dayTypes: value.dayTypes, bellSchedules, calendar, marks, duties, release };
+  return { file, summary: { periods: value.settings.periods, subjects: value.subjects.length, teachers: value.teachers.length, groups: value.groups.length, dayTypes: value.dayTypes.length, bellSchedules: bellSchedules.length, calendar: calendar !== null, marks: marks.length, duties: duties.length, release: release.length } };
 }
 
 function padTo(list, length, make) {
@@ -637,6 +643,13 @@ const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 //   since every day type, group, teacher and subject of the file is matched
 //   or added. A duty whose room is not in this building keeps its number as
 //   its place.
+// - Staggered dismissals (ARCHITECTURE 18.2) are matched by id and answered
+//   by `policy` as marks are. A groups entry's groups are re-pointed through
+//   the groups' matches and its day types through the day types'; one left
+//   naming no group, or no day type, is dropped and counted in
+//   `releaseDropped`. The summary counts `releaseAdded`, `releaseKept` and
+//   `releaseReplaced`. A file that would bring the project past RELEASE_MOST
+//   is refused whole.
 // - The period word and the two defaults are taken only when `takeSettings`
 //   is true.
 // - At most DAY_TYPES_MOST day types and BELL_SCHEDULES_MOST bell schedules:
@@ -646,13 +659,14 @@ const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // have the old one; without it the file's changedAt is kept.
 export function applySchedule(project, file, options) {
   const ids = options.ids;
-  const summary = { subjectsAdded: [], teachersAdded: [], dayTypesAdded: [], bellSchedulesAdded: [], madeOwn: [], periodsRaised: null, settingsTaken: [], unknownRooms: [], roomsLeftOff: 0, calendarReplaced: false, referencesDropped: 0, marksAdded: 0, dutiesAdded: 0, marksKept: 0, marksReplaced: 0, dutiesKept: 0, dutiesReplaced: 0 };
+  const summary = { subjectsAdded: [], teachersAdded: [], dayTypesAdded: [], bellSchedulesAdded: [], madeOwn: [], periodsRaised: null, settingsTaken: [], unknownRooms: [], roomsLeftOff: 0, calendarReplaced: false, referencesDropped: 0, marksAdded: 0, dutiesAdded: 0, marksKept: 0, marksReplaced: 0, dutiesKept: 0, dutiesReplaced: 0, releaseAdded: 0, releaseKept: 0, releaseReplaced: 0, releaseDropped: 0 };
   const fileSchedules = Array.isArray(file.bellSchedules) ? file.bellSchedules : [];
   const fileCalendar = isObject(file.calendar) ? file.calendar : null;
   const fileMarks = Array.isArray(file.marks) ? file.marks : [];
   const fileDuties = Array.isArray(file.duties) ? file.duties : [];
+  const fileRelease = Array.isArray(file.release) ? file.release : [];
   const taken = new Set(collectIds(project));
-  reserve(ids, collectIds({ subjects: file.subjects, teachers: file.teachers, groups: file.groups, dayTypes: file.dayTypes, bellSchedules: fileSchedules, marks: fileMarks, duties: fileDuties }));
+  reserve(ids, collectIds({ subjects: file.subjects, teachers: file.teachers, groups: file.groups, dayTypes: file.dayTypes, bellSchedules: fileSchedules, marks: fileMarks, duties: fileDuties, release: fileRelease }));
   let next = project;
 
   // the school day
@@ -913,7 +927,7 @@ export function applySchedule(project, file, options) {
 
   // marks and duties, now that every group is here: matched by id, otherwise
   // added, with their references re-pointed
-  if (fileMarks.length > 0 || fileDuties.length > 0) {
+  if (fileMarks.length > 0 || fileDuties.length > 0 || fileRelease.length > 0) {
     const groupMap = new Map();
     for (const group of file.groups) {
       const renamed = merged.summary.renamed.find((entry) => entry.from === group.name);
@@ -1000,6 +1014,41 @@ export function applySchedule(project, file, options) {
     if (addedDuties.length > 0 || changedDuties) result = { ...result, duties: dutiesHere.concat(addedDuties) };
     summary.marksAdded = addedMarks.length;
     summary.dutiesAdded = addedDuties.length;
+
+    // staggered dismissals, matched by id as marks are
+    let releaseHere = releaseOf(result);
+    const addedRelease = [];
+    let changedRelease = false;
+    for (const entry of fileRelease) {
+      const groups = Array.isArray(entry.who.groups) ? through(entry.who.groups, groupMap) : null;
+      const days = Array.isArray(entry.dayTypeIds) ? through(entry.dayTypeIds, dayMap) : null;
+      if ((groups !== null && groups.length === 0) || (days !== null && days.length === 0)) {
+        summary.releaseDropped += 1;
+        continue;
+      }
+      const pointed = { ...entry, who: groups === null ? entry.who : { groups }, dayTypeIds: days };
+      const clash = releaseHere.findIndex((candidate) => candidate.id === entry.id);
+      if (clash >= 0) {
+        const choice = answer(entry.id);
+        if (choice === 'skip' || sameJson(releaseHere[clash], pointed)) {
+          summary.releaseKept += 1;
+          continue;
+        }
+        if (choice === 'overwrite') {
+          releaseHere = releaseHere.slice();
+          releaseHere[clash] = pointed;
+          changedRelease = true;
+          summary.releaseReplaced += 1;
+          continue;
+        }
+      }
+      addedRelease.push({ ...pointed, id: keepOrMake(entry.id, 'l', taken, ids) });
+    }
+    if (releaseHere.length + addedRelease.length > Math.max(RELEASE_MOST, releaseOf(project).length)) {
+      throw new FileError('This schedule file cannot be imported, and nothing was changed. It would bring the project to ' + (releaseHere.length + addedRelease.length) + ' staggered dismissals, and a project has at most ' + RELEASE_MOST + '. Remove the ones you do not need, here or in the file, and import it again.', 'too-many-release');
+    }
+    if (addedRelease.length > 0 || changedRelease) result = { ...result, release: releaseHere.concat(addedRelease) };
+    summary.releaseAdded = addedRelease.length;
   }
 
   if (result === project) return { project, summary };

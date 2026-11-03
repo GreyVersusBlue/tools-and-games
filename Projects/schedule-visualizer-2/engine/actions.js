@@ -25,6 +25,9 @@ import { periodName } from './bells.js';
 import { DAY_TYPES_MOST, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DAYS_MOST, ROTATION_RANGE, DATE_LABEL_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, WEEKDAY_NAMES, LATER_PUBLISH_VIEWS } from './schema.js';
 import { spacelessKey, textLength, bellSchedulesOf, calendarOf, newBellSchedule, defaultWeekdays } from './schema.js';
 import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST, marksOf, dutiesOf, newMark, newDuty } from './schema.js';
+import { RELEASE_MOST, RELEASE_SECONDS, RELEASE_WHO_KINDS, releaseOf, newRelease } from './schema.js';
+import { releaseKind } from './release.js';
+import { formatDuration } from './findings.js';
 import { isCalendarDate, daysBetween, datesFrom, weekdayOf, dateWords, calendarDays } from './calendar.js';
 import { isId, collectIds } from './ids.js';
 import { importedCalendar, calendarImportText } from './import-calendar.js';
@@ -314,12 +317,13 @@ export function describePeriodChange(project, periods) {
       if (used.some((value) => value >= periods)) scenarioChanges += 1;
     }
   }
-  const past = periods < from ? countPastPeriods(project, periods) : { marks: 0, duties: 0 };
+  const past = periods < from ? countPastPeriods(project, periods) : { marks: 0, duties: 0, release: 0 };
   // the sentence's words for what the change takes, in the order the screen says it
   const lostWords = [];
   if (past.marks > 0) lostWords.push(count(past.marks, 'marked period', 'marked periods'));
   if (past.duties > 0) lostWords.push(count(past.duties, 'duty', 'duties'));
-  return { from, to: periods, removedPeriods, slots, bells, groups, dayTypes, bellSchedules, scenarioChanges, marks: past.marks, duties: past.duties, marksAndDutiesWords: lostWords, losesData: slots + bells + offLost + scenarioChanges + past.marks + past.duties > 0 };
+  if (past.release > 0) lostWords.push(count(past.release, 'staggered dismissal', 'staggered dismissals'));
+  return { from, to: periods, removedPeriods, slots, bells, groups, dayTypes, bellSchedules, scenarioChanges, marks: past.marks, duties: past.duties, release: past.release, marksAndDutiesWords: lostWords, losesData: slots + bells + offLost + scenarioChanges + past.marks + past.duties + past.release > 0 };
 }
 
 // Periods per day. Going down removes the later periods from every day, every
@@ -744,7 +748,7 @@ export const deleteGroup = action(
   { label: (before, payload) => 'Delete group ' + groupName(before, payload.id), bumps: [SCHEDULE], focus: () => ({ section: 'schedule', tab: 'groups' }) },
   (project, payload) => {
     const gone = need(project.groups, payload.id, 'group');
-    return reportingDeleted(project, dropGroupFromMarks({ ...project, groups: project.groups.filter((group) => group !== gone) }, payload.id), gone.name);
+    return reportingDeleted(project, dropGroupFromRelease(dropGroupFromMarks({ ...project, groups: project.groups.filter((group) => group !== gone) }, payload.id), payload.id), gone.name);
   },
 );
 
@@ -1186,9 +1190,11 @@ export function describeDayTypeDelete(project, dayTypeId) {
   const left = marksAndDutiesLeftNoDayType(project, dayTypeId);
   if (left.marks > 0) parts.push(count(left.marks, 'marked period', 'marked periods'));
   if (left.duties > 0) parts.push(count(left.duties, 'duty', 'duties'));
+  const releases = releaseChanges(project, dropDayTypeFromRelease(project, dayTypeId));
+  if (releases.changed > 0) parts.push(count(releases.changed, 'staggered dismissal', 'staggered dismissals') + (releases.removed === releases.changed ? ' removed' : ' changed'));
   let text = 'Deleted ' + dayType.name + (parts.length > 0 ? ', ' + listWords(parts) : '');
   if (followers.length > 0) text += '. ' + listWords(followers) + (followers.length === 1 ? ' is' : ' are') + ' now the same as ' + baseDayType(project).name;
-  return { dayTypeId, name: dayType.name, own, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, dates, weekdays, rotation, marks: left.marks, duties: left.duties, text };
+  return { dayTypeId, name: dayType.name, own, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, dates, weekdays, rotation, marks: left.marks, duties: left.duties, release: releases.changed, releaseRemoved: releases.removed, text };
 }
 
 // payload: { dayTypeId }. The first day type cannot be deleted. The outcome
@@ -1206,7 +1212,7 @@ export const deleteDayType = action(
       dayTypes: project.dayTypes.filter((candidate) => candidate !== dayType).map((candidate) => (followers.has(candidate) ? { ...candidate, sameAs: null } : candidate)),
       groups: withoutDays(project.groups, dayType.id),
     };
-    next = dropDayTypeFromMarksAndDuties(next, dayType.id);
+    next = dropDayTypeFromRelease(dropDayTypeFromMarksAndDuties(next, dayType.id), dayType.id);
     const calendar = calendarOf(project);
     if (calendar && (outcome.dates > 0 || outcome.weekdays.length > 0 || outcome.rotation > 0)) {
       const rotation = calendar.rotation.filter((id) => id !== dayType.id);
@@ -3156,7 +3162,10 @@ function reportingDeleted(project, next, name) {
   const parts = [];
   if (marks > 0) parts.push(count(marks, 'marked period', 'marked periods') + ' removed');
   if (duties > 0) parts.push(count(duties, 'duty', 'duties') + ' left with nobody');
-  return reporting(project, next, { marks, duties, text: 'Deleted ' + name + (parts.length > 0 ? ', ' + listWords(parts) : '') });
+  // a staggered dismissal that named the group: changed, or removed when it named only that group
+  const releases = releaseChanges(project, next);
+  if (releases.changed > 0) parts.push(count(releases.changed, 'staggered dismissal', 'staggered dismissals') + (releases.removed === releases.changed ? ' removed' : ' changed'));
+  return reporting(project, next, { marks, duties, ...(releases.changed > 0 ? { release: releases.changed, releaseRemoved: releases.removed } : {}), text: 'Deleted ' + name + (parts.length > 0 ? ', ' + listWords(parts) : '') });
 }
 
 // A group is gone: out of every mark's groups, and a mark for groups left
@@ -3216,14 +3225,185 @@ function cutText(value, most) {
 // Fewer periods: marks past the end, and duties in a period past the end,
 // are deleted in the same step. The undo entry holds them.
 function dropPastPeriods(project, periods) {
-  return changeDuties(changeMarks(project, (mark) => (Number.isInteger(mark.period) && mark.period >= periods ? null : mark)), (duty) => (duty.when === 'period' && Number.isInteger(duty.period) && duty.period >= periods ? null : duty));
+  return dropPastPeriodsFromRelease(changeDuties(changeMarks(project, (mark) => (Number.isInteger(mark.period) && mark.period >= periods ? null : mark)), (duty) => (duty.when === 'period' && Number.isInteger(duty.period) && duty.period >= periods ? null : duty)), periods);
 }
 
 function countPastPeriods(project, periods) {
   return {
     marks: marksOf(project).filter((mark) => Number.isInteger(mark.period) && mark.period >= periods).length,
     duties: dutiesOf(project).filter((duty) => duty.when === 'period' && Number.isInteger(duty.period) && duty.period >= periods).length,
+    release: releaseChanges(project, dropPastPeriodsFromRelease(project, periods)).changed,
   };
 }
 
 // ================================================================ SV2-83: marked periods and duties (end)
+
+// ================================================================ SV2-88: staggered dismissal
+//
+// project.release (ARCHITECTURE 18.2): groups, a grade or a wing leave a
+// little after the bell. SCHEDULE, since the crowd's figures and the walk-late
+// findings read it. A project with no `release` has it absent until the first
+// is added; every reference action leaves an absent list absent.
+
+function releaseFocus(before, payload, after) {
+  const list = releaseOf(after);
+  return { section: 'schedule', tab: 'day', releaseId: payload.id || (list.length > 0 ? list[list.length - 1].id : undefined) };
+}
+
+// Who an entry is for, in words: "7-1 and 7-2", "grade 7", "the North wing".
+function releaseWho(project, entry) {
+  const kind = releaseKind(entry.who);
+  if (kind === 'groups') return listWords(entry.who.groups.map((id) => groupName(project, id) || 'a group that is gone'));
+  if (kind === 'grade') return 'grade ' + entry.who.grade;
+  if (kind === 'wing') return 'the ' + entry.who.wing + ' wing';
+  return 'a staggered dismissal';
+}
+
+function releaseWords(project, entry) {
+  return releaseWho(project, entry) + ' ' + (entry.seconds === 0 ? 'on the bell' : formatDuration(entry.seconds) + ' after the bell');
+}
+
+// The groups, a grade or a wing an entry is for, as the payload gives it:
+// exactly one of { groups: [ids] }, { grade }, { wing }.
+function needReleaseWho(project, who) {
+  const given = who !== null && typeof who === 'object' && !Array.isArray(who) ? RELEASE_WHO_KINDS.filter((kind) => who[kind] !== undefined) : [];
+  if (given.length !== 1) refuse('Say who leaves late: one of some groups, a grade or a wing.', 'bad-value');
+  const kind = given[0];
+  if (kind === 'groups') {
+    if (!Array.isArray(who.groups) || who.groups.length === 0) refuse('Choose at least one group.', 'bad-value');
+    return { groups: needIdList(who.groups, project.groups, 'The groups') };
+  }
+  if (typeof who[kind] !== 'string' || who[kind].trim() === '') refuse('Type the ' + kind + ' that leaves late.', 'bad-value');
+  const text = who[kind].trim();
+  if (textLength(text) > NAME_MOST) refuse('A ' + kind + ' is at most ' + NAME_MOST + ' characters.', 'too-long');
+  return { [kind]: text };
+}
+
+function needReleaseSeconds(seconds, who) {
+  const low = releaseKind(who) === 'groups' ? 0 : RELEASE_SECONDS[0];
+  if (!Number.isInteger(seconds) || seconds < low || seconds > RELEASE_SECONDS[1]) {
+    refuse('Leaving late is a whole number of seconds from ' + RELEASE_SECONDS[0] + ' to ' + RELEASE_SECONDS[1] + (low === 0 ? ', or 0 for groups that leave on the bell' : '') + '. A longer wait than ' + formatDuration(RELEASE_SECONDS[1]) + ' would leave the group no time to walk.', 'bad-value');
+  }
+  return seconds;
+}
+
+// null (every period) or a list of periods of the school day, each once, in order.
+function needReleaseAfter(project, after) {
+  if (after === null) return null;
+  if (!Array.isArray(after) || after.length === 0) refuse('Choose at least one period to follow, or leave it for every period.', 'bad-value');
+  for (const period of after) needPeriod(project, period);
+  return Array.from(new Set(after)).sort((a, b) => a - b);
+}
+
+function needReleaseDays(project, dayTypeIds) {
+  if (dayTypeIds === null) return null;
+  if (!Array.isArray(dayTypeIds) || dayTypeIds.length === 0) refuse('Choose at least one day type, or leave it for every day type.', 'bad-value');
+  return needDayTypeIds(project, dayTypeIds);
+}
+
+function readRelease(project, base, payload) {
+  const has = (key) => payload[key] !== undefined;
+  const entry = { ...base };
+  if (has('who')) entry.who = needReleaseWho(project, payload.who);
+  if (has('seconds')) entry.seconds = payload.seconds;
+  if (has('after')) entry.after = needReleaseAfter(project, payload.after);
+  if (has('dayTypeIds')) entry.dayTypeIds = needReleaseDays(project, payload.dayTypeIds);
+  // checked against the kind the entry ends up with, so a groups entry on the bell
+  // cannot become a grade entry of nothing
+  needReleaseSeconds(entry.seconds, entry.who);
+  return entry;
+}
+
+// payload: { who, seconds } and any of after, dayTypeIds, and optionally id.
+// who is one of { groups: [ids] }, { grade }, { wing }. seconds is whole,
+// 15 to 300 (0 for groups, who then leave on the bell). after is a list of
+// periods (0 is the first) or null for every period; dayTypeIds a list or
+// null for every day type. At most RELEASE_MOST entries.
+export const addRelease = action(
+  { label: (before, payload) => 'Add staggered dismissal' + (payload && payload.who && typeof payload.seconds === 'number' ? ' for ' + releaseWho(before, { who: payload.who }) : ''), bumps: [SCHEDULE], focus: releaseFocus },
+  (project, payload, ctx) => {
+    const list = releaseOf(project);
+    if (list.length >= RELEASE_MOST) refuse('A project has at most ' + RELEASE_MOST + ' staggered dismissals, and this one has ' + list.length + '. Remove one to add another.', 'limit');
+    const who = needReleaseWho(project, payload.who);
+    needReleaseSeconds(payload.seconds, who);
+    const entry = readRelease(project, newRelease(newId(project, payload, ctx, 'l'), who, payload.seconds), payload);
+    return { ...project, release: list.concat([entry]) };
+  },
+);
+
+// payload: { id } and any of who, seconds, after, dayTypeIds. Changing
+// nothing makes no step.
+export const setRelease = action(
+  { label: (before, payload) => 'Change staggered dismissal' + (releaseOf(before).some((entry) => entry.id === payload.id) ? ' for ' + releaseWho(before, releaseOf(before).find((entry) => entry.id === payload.id)) : ''), bumps: [SCHEDULE], focus: releaseFocus },
+  (project, payload) => {
+    const old = need(releaseOf(project), payload.id, 'staggered dismissal');
+    const entry = readRelease(project, old, payload);
+    if (jsonSame(entry, old)) return project;
+    return { ...project, release: releaseOf(project).map((candidate) => (candidate === old ? entry : candidate)) };
+  },
+);
+
+// payload: { id }.
+export const removeRelease = action(
+  { label: (before, payload) => 'Remove staggered dismissal' + (releaseOf(before).some((entry) => entry.id === payload.id) ? ' for ' + releaseWho(before, releaseOf(before).find((entry) => entry.id === payload.id)) : ''), bumps: [SCHEDULE], focus: () => ({ section: 'schedule', tab: 'day' }) },
+  (project, payload) => {
+    const old = need(releaseOf(project), payload.id, 'staggered dismissal');
+    return { ...project, release: releaseOf(project).filter((candidate) => candidate !== old) };
+  },
+);
+
+// ---- what other actions do to release (ARCHITECTURE 18.2, 18.7). Each leaves
+// an absent list absent and an untouched entry the very same object.
+
+// fn(entry) gives the entry, a changed copy, or null to remove it.
+function changeRelease(project, fn) {
+  if (!Array.isArray(project.release)) return project;
+  let changed = false;
+  const release = [];
+  for (const entry of project.release) {
+    const result = fn(entry);
+    if (result !== entry) changed = true;
+    if (result !== null) release.push(result);
+  }
+  return changed ? { ...project, release } : project;
+}
+
+// How many entries `next` changed or removed against `project`: { changed,
+// removed }, removed counted in changed.
+function releaseChanges(project, next) {
+  const before = releaseOf(project);
+  const after = new Set(releaseOf(next));
+  const kept = new Set(releaseOf(next).map((entry) => entry.id));
+  return { changed: before.filter((entry) => !after.has(entry)).length, removed: before.filter((entry) => !kept.has(entry.id)).length };
+}
+
+// A group is gone: out of every entry's groups; an entry left with none is removed.
+function dropGroupFromRelease(project, groupId) {
+  return changeRelease(project, (entry) => {
+    if (!entry.who || !Array.isArray(entry.who.groups) || !entry.who.groups.includes(groupId)) return entry;
+    const groups = entry.who.groups.filter((id) => id !== groupId);
+    return groups.length === 0 ? null : { ...entry, who: { groups } };
+  });
+}
+
+// A day type is gone: out of every entry's day types; an entry left with none
+// would mean every day type, so it is removed instead.
+function dropDayTypeFromRelease(project, dayTypeId) {
+  return changeRelease(project, (entry) => {
+    if (!Array.isArray(entry.dayTypeIds) || !entry.dayTypeIds.includes(dayTypeId)) return entry;
+    const dayTypeIds = entry.dayTypeIds.filter((id) => id !== dayTypeId);
+    return dayTypeIds.length === 0 ? null : { ...entry, dayTypeIds };
+  });
+}
+
+// Fewer periods: the periods an entry follows past the end go (an entry that
+// followed only those is removed). Undo brings them back.
+function dropPastPeriodsFromRelease(project, periods) {
+  return changeRelease(project, (entry) => {
+    if (!Array.isArray(entry.after) || !entry.after.some((period) => period >= periods)) return entry;
+    const after = entry.after.filter((period) => period < periods);
+    return after.length === 0 ? null : { ...entry, after };
+  });
+}
+
+// ================================================================ SV2-88 (end)
