@@ -56,6 +56,16 @@
 //   avoidCorridorNames   a Set or list of named-corridor ids (the "k…" id of
 //                        an entry in a floor's `corridors`) whose cells are
 //                        not to be walked on
+//   ways                 an object, connection id → 'both' | 'ab' | 'ba': for this
+//                        call the connection runs that way, whatever its
+//                        `direction` says (a scenario's one-way lever, ARCHITECTURE
+//                        18.3). A way equal to the connection's own changes nothing
+//                        and is left out of the plan's key.
+//   shutCells            a list of { floorId, cell }: cells not to be walked on,
+//                        like the cells of avoidCorridorNames (a closed corridor)
+//   undirected           true: every connection runs both ways, the building's
+//                        `direction` and `ways` ignored (an evacuation uses every
+//                        stair, ARCHITECTURE 18.4). In the plan's key only when true.
 //   avoidExits           routeToExit only: a Set or list of exit ids
 //   cache                a cache from createRouteCache(); without one every
 //                        call searches afresh
@@ -87,7 +97,7 @@
 // treat it as read-only.
 
 import { DOOR_SIDES, defaultSettings, resolveSlotRoom } from './schema.js';
-import { buildGraph } from './graph.js';
+import { buildGraph, nodeAt } from './graph.js';
 import { ownDayTypes, effectiveSchedule } from './day-types.js';
 import { offPeriods } from './bells.js';
 
@@ -200,19 +210,54 @@ function planFor(graph, options) {
     }
     avoiding.push('corridors');
   }
+  // closed cells (a scenario's closed corridor) join the same list of shut
+  // nodes, so a closure means one thing however it was asked for
+  if (Array.isArray(opts.shutCells) && opts.shutCells.length > 0) {
+    for (const place of opts.shutCells) {
+      const node = place ? nodeAt(graph, place.floorId, place.cell) : -1;
+      if (node === -1) continue;
+      if (!nodeShut) nodeShut = new Uint8Array(graph.count);
+      if (!nodeShut[node]) {
+        nodeShut[node] = 1;
+        shutNodes.push(node);
+      }
+    }
+    if (!avoiding.includes('corridors')) avoiding.push('corridors');
+  }
   shutNodes.sort((a, b) => a - b);
 
   // the shut nodes themselves are in the key, not the corridor ids: a named
   // corridor can be redrawn without the geometry counter moving
-  const key = [graph.secondsPerCell, graph.secondsPerStair, avoidStairs ? 1 : 0, shutLinks.sort().join(','), shutNodes.join(',')].join('|');
-  return { key, avoidStairs, linkShut, nodeShut, avoiding };
+  const parts = [graph.secondsPerCell, graph.secondsPerStair, avoidStairs ? 1 : 0, shutLinks.sort().join(','), shutNodes.join(',')];
+
+  // one-way overrides; only those that differ from the connection's own
+  // direction mean anything, and none at all when every connection is used
+  // both ways. Each part is added only when it is there, so a plan with
+  // neither has the key it had before they existed.
+  const undirected = opts.undirected === true;
+  let linkWay = null;
+  if (!undirected && opts.ways && typeof opts.ways === 'object') {
+    const named = [];
+    graph.links.forEach((link, index) => {
+      const way = opts.ways[link.id];
+      if ((way !== 'both' && way !== 'ab' && way !== 'ba') || way === link.direction) return;
+      if (!linkWay) linkWay = new Array(graph.links.length).fill(null);
+      linkWay[index] = way;
+      named.push(link.id + '=' + way);
+    });
+    if (named.length > 0) parts.push('w:' + named.sort().join(','));
+  }
+  if (undirected) parts.push('u');
+  return { key: parts.join('|'), avoidStairs, linkShut, nodeShut, avoiding, linkWay, undirected };
 }
 
 function linkOpen(link, index, from, plan) {
   if (plan.avoidStairs) return false;
   if (plan.linkShut && plan.linkShut[index]) return false;
-  if (link.direction === 'both') return true;
-  return from === link.a ? link.direction === 'ab' : link.direction === 'ba';
+  if (plan.undirected) return true;
+  const direction = plan.linkWay && plan.linkWay[index] ? plan.linkWay[index] : link.direction;
+  if (direction === 'both') return true;
+  return from === link.a ? direction === 'ab' : direction === 'ba';
 }
 
 // A room's ways in and out, in a fixed order: by cell, then by side.

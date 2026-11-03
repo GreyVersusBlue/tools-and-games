@@ -401,6 +401,140 @@ test('a one-way connection is taken only its own way', () => {
   assert.equal(between(project, '2A', '1A').ok, true);
 });
 
+// ---- the building levers: ways, shutCells, undirected (ARCHITECTURE 18.3, 18.4)
+
+const WAYS_PLAN = [[
+  'A...B',
+  '#####',
+  '#...#',
+  '#####',
+]];
+
+function fieldKeys(cache) {
+  return Array.from(cache.fields.keys());
+}
+
+test('routing key with neither ways nor shutCells is byte-identical to the key before they existed', () => {
+  const project = planProject(WAYS_PLAN);
+  const graph = routingGraph(project);
+  const cache = createRouteCache();
+  route(graph, roomId('1A'), roomId('1B'), { cache, geometryVersion: 1 });
+  const today = roomId('1A') + '|3|8|0||';
+  assert.deepEqual(fieldKeys(cache), [today], 'secondsPerCell|secondsPerStair|avoidStairs|shut links|shut nodes, nothing after');
+  // options that say nothing leave the key as it was
+  for (const options of [{ ways: {} }, { shutCells: [] }, { undirected: false }, { ways: { cnowhere: 'ab' } }, { shutCells: [{ floorId: 'fnowhere', cell: 3 }] }]) {
+    const beside = createRouteCache();
+    route(graph, roomId('1A'), roomId('1B'), { cache: beside, geometryVersion: 1, ...options });
+    assert.deepEqual(fieldKeys(beside).map((key) => key.replace(/\|[^|]*$/, '')), [today.replace(/\|[^|]*$/, '')], JSON.stringify(options));
+  }
+  const stepFree = createRouteCache();
+  route(graph, roomId('1A'), roomId('1B'), { cache: stepFree, geometryVersion: 1, avoidStairs: true });
+  assert.deepEqual(fieldKeys(stepFree), [roomId('1A') + '|3|8|1||'], 'the other options keep their keys too');
+});
+
+test('a ways entry runs a connection one way for that call only, and joins the key', () => {
+  const project = threeFloors();
+  const id = project.building.connections[0].id;
+  const graph = routingGraph(project);
+  assert.equal(project.building.connections[0].direction, 'both');
+  assert.equal(route(graph, roomId('2A'), roomId('1A'), { ways: { [id]: 'ab' } }).reason, 'unreachable', 'up only: nothing comes down');
+  assert.equal(route(graph, roomId('1A'), roomId('2A'), { ways: { [id]: 'ab' } }).ok, true);
+  assert.equal(route(graph, roomId('1A'), roomId('2A'), { ways: { [id]: 'ba' } }).reason, 'unreachable', 'down only: nothing goes up');
+  assert.equal(route(graph, roomId('2A'), roomId('1A'), { ways: { [id]: 'ba' } }).ok, true);
+  assert.equal(route(graph, roomId('2A'), roomId('1A')).ok, true, 'the building itself is as it was');
+  assert.equal(project.building.connections[0].direction, 'both');
+
+  // one-way in the building, both ways for the call
+  project.building.connections[0].direction = 'ab';
+  const oneWay = routingGraph(project);
+  assert.equal(route(oneWay, roomId('2A'), roomId('1A')).reason, 'unreachable');
+  assert.equal(route(oneWay, roomId('2A'), roomId('1A'), { ways: { [id]: 'both' } }).ok, true, 'a way overrides the connection\'s direction');
+
+  const cache = createRouteCache();
+  route(graph, roomId('1A'), roomId('2A'), { cache, geometryVersion: 1 });
+  route(graph, roomId('1A'), roomId('2A'), { cache, geometryVersion: 1, ways: { [id]: 'ab' } });
+  route(graph, roomId('1A'), roomId('2A'), { cache, geometryVersion: 1, ways: { [id]: 'both' } });
+  assert.equal(cache.searches, 2, 'a way equal to the connection\'s own is the plan it already was');
+  assert.deepEqual(fieldKeys(cache), [roomId('1A') + '|3|8|0||', roomId('1A') + '|3|8|0|||w:' + id + '=ab']);
+});
+
+test('a connection in avoidConnections is closed whatever its way, and a closed cell is not walked on', () => {
+  const project = planProject(WAYS_PLAN);
+  const graph = routingGraph(project);
+  const open = between(project, '1A', '1B');
+  assert.deepEqual(path(project, open), ['0,1', '1,1', '2,1', '3,1', '4,1']);
+  const shut = [{ floorId: F1, cell: cellAt(project, 1, 2, 1) }];
+  const around = route(graph, roomId('1A'), roomId('1B'), { shutCells: shut });
+  assert.deepEqual(path(project, around), ['0,1', '0,2', '0,3', '1,3', '2,3', '3,3', '4,3', '4,2', '4,1'], 'the same detour a closed named corridor gives');
+  assert.deepEqual(around.cells, route(graph, roomId('1A'), roomId('1B'), { shutCells: shut }).cells);
+  // the same cells shut by name and by cell are one plan
+  const floor = project.building.floors[0];
+  floor.corridors.push({ id: 'kplan00001', name: 'North Hall', cells: [cellAt(project, 1, 2, 1)] });
+  const named = createRouteCache();
+  const bare = createRouteCache();
+  const byName = route(routingGraph(project), roomId('1A'), roomId('1B'), { cache: named, geometryVersion: 1, avoidCorridorNames: ['kplan00001'] });
+  const byCell = route(routingGraph(project), roomId('1A'), roomId('1B'), { cache: bare, geometryVersion: 1, shutCells: shut });
+  assert.deepEqual(fieldKeys(named), fieldKeys(bare));
+  assert.deepEqual(byName.cells, byCell.cells);
+  // a closure that cuts the only way through says so
+  const cut = route(routingGraph(project), roomId('1A'), roomId('1B'), { shutCells: [{ floorId: F1, cell: cellAt(project, 1, 0, 1) }] });
+  assert.deepEqual([cut.reason, cut.avoiding], ['unreachable', ['corridors']]);
+});
+
+test('a cached distance field is never served across a closure, a way or undirected', () => {
+  const project = planProject(WAYS_PLAN);
+  const graph = routingGraph(project);
+  const cache = createRouteCache();
+  const options = { cache, geometryVersion: 1 };
+  assert.equal(route(graph, roomId('1A'), roomId('1B'), options).seconds, 15);
+  const shut = [{ floorId: F1, cell: cellAt(project, 1, 2, 1) }];
+  assert.equal(route(graph, roomId('1A'), roomId('1B'), { ...options, shutCells: shut }).seconds, 27, 'warm without the closure, yet the closure is worked out');
+  assert.equal(route(graph, roomId('1A'), roomId('1B'), options).seconds, 15, 'and the open plan is still held');
+  assert.equal(cache.searches, 2);
+
+  const stairs = threeFloors();
+  const id = stairs.building.connections[0].id;
+  const g = routingGraph(stairs);
+  const c = createRouteCache();
+  assert.equal(route(g, roomId('2A'), roomId('1A'), { cache: c, geometryVersion: 1 }).ok, true);
+  assert.equal(route(g, roomId('2A'), roomId('1A'), { cache: c, geometryVersion: 1, ways: { [id]: 'ab' } }).ok, false, 'the stairs are up only for this plan');
+  assert.equal(route(g, roomId('2A'), roomId('1A'), { cache: c, geometryVersion: 1 }).ok, true);
+});
+
+test('undirected uses every stairs connection both ways and is in the key only when true', () => {
+  const project = threeFloors();
+  project.building.connections[0].direction = 'ab';
+  const id = project.building.connections[0].id;
+  const graph = routingGraph(project);
+  assert.equal(route(graph, roomId('2A'), roomId('1A')).reason, 'unreachable');
+  const down = route(graph, roomId('2A'), roomId('1A'), { undirected: true });
+  assert.equal(down.ok, true);
+  assert.deepEqual(down.connections, [id]);
+  assert.equal(route(graph, roomId('2A'), roomId('1A'), { undirected: true, ways: { [id]: 'ab' } }).ok, true, 'undirected beats a way');
+
+  const cache = createRouteCache();
+  route(graph, roomId('1A'), roomId('2A'), { cache, geometryVersion: 1 });
+  route(graph, roomId('1A'), roomId('2A'), { cache, geometryVersion: 1, undirected: true });
+  assert.equal(cache.searches, 2, 'the up-only plan and the undirected plan are two fields');
+  assert.deepEqual(fieldKeys(cache), [roomId('1A') + '|3|8|0||', roomId('1A') + '|3|8|0|||u']);
+  // routeToExit takes it too
+  const exit = routeToExit(graph, roomId('2A'), { undirected: true });
+  assert.equal(exit.ok, true, 'the exit is on Floor 1 and the way there is down an up-only stair');
+  assert.equal(routeToExit(graph, roomId('2A')).ok, false);
+});
+
+test('routesForSchedule passes ways and shutCells through to every journey', () => {
+  const project = school();
+  const graph = routingGraph(project);
+  const open = routesForSchedule(project, graph, { cache: createRouteCache(), geometryVersion: 1 });
+  const connection = project.building.connections[0];
+  const cache = createRouteCache();
+  const shut = routesForSchedule(project, graph, { cache, geometryVersion: 1, avoidConnections: [connection.id] });
+  const down = routesForSchedule(project, graph, { cache, geometryVersion: 1, ways: { [connection.id]: connection.direction === 'ab' ? 'ba' : 'ab' } });
+  assert.equal(shut.transitions, open.transitions);
+  assert.ok(shut.searches > 0 && down.searches > 0, 'each plan searched afresh in one cache');
+});
+
 // ---- entries
 
 test('adjacent rooms that share an entry cell: the route is that one cell', () => {

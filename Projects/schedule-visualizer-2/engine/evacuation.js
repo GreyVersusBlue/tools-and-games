@@ -26,6 +26,10 @@
 //   routingGraph's; options are { cache, geometryVersion, avoidExits,
 //   avoidConnections, avoidStairs } and pass through to routeToExit, the
 //   caller's avoidConnections merged with the elevators, never replaced.
+//   Every search is `undirected`: a stairs connection set to one way is used
+//   both ways here, since the rule is for passing time, not an emergency
+//   (ARCHITECTURE 18.4). Where a building has a one-way stair these searches
+//   share no distance field with the movement view's.
 //
 // byExit(project, evacuation)
 //   → [{ exitId, floorId, doorName, assembly, roomIds, rooms, people, uncounted }]
@@ -131,7 +135,9 @@ export function evacuationRoutes(project, graph, options) {
   const avoided = elevatorConnections(project);
   const callerConnections = idList(opts.avoidConnections);
   const asked = { avoidConnections: callerConnections, avoidStairs: opts.avoidStairs === true, avoidExits: idList(opts.avoidExits) };
-  const plain = { cache: opts.cache, geometryVersion: opts.geometryVersion, avoidExits: opts.avoidExits, avoidStairs: asked.avoidStairs };
+  // every stair is used in an emergency: a one-way rule is for passing time
+  // (ARCHITECTURE 18.4), so the search ignores direction
+  const plain = { cache: opts.cache, geometryVersion: opts.geometryVersion, avoidExits: opts.avoidExits, avoidStairs: asked.avoidStairs, undirected: true };
   if (callerConnections.length > 0) plain.avoidConnections = callerConnections;
   // the elevators added to what the caller avoids; left as the caller's when
   // there is no elevator, so the search is the plain one and a cache's

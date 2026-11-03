@@ -168,7 +168,7 @@ export function buildingChecks(project, graph) {
   if (g.exits.length === 0) {
     if (drawn) add('no-exit', 'warning', ['building'], 'No exit is marked. Mark a corridor cell on the building\'s edge as an exit so that evacuation routes can be worked out.', { floorId: building.floors[0].id, cells: [] });
   } else {
-    const canLeave = reachable(g, g.exits.map((exit) => exit.node), { reverse: true });
+    const canLeave = reachable(g, g.exits.map((exit) => exit.node), { reverse: true, undirected: true });
     for (const { room, floor } of rooms) {
       const entries = g.rooms.get(room.id).entries;
       if (entries.length === 0 || entries.some((entry) => canLeave[entry.node])) continue;
