@@ -685,6 +685,44 @@ export function validate(project) {
           return undefined;
         });
       }
+      // levers (ARCHITECTURE 18.3): strict when present, never asked for when absent
+      if (scenario.levers !== undefined) {
+        if (!Array.isArray(scenario.levers)) {
+          add('scenario.levers', 'The levers of a scenario are a list.');
+        } else {
+          const whole = (value) => Number.isInteger(value) && value >= 0;
+          const text = (value) => isString(value) && value !== '';
+          scenario.levers.forEach((lever, i) => {
+            const path = 'scenario.levers[' + i + ']';
+            const kinds = ['release', 'bell', 'way', 'corridor', 'capacity', 'headCount'];
+            if (!isObject(lever) || !kinds.includes(lever.kind)) return add(path, 'A lever is one of ' + kinds.join(', ') + '.');
+            let sound = true;
+            if (lever.kind === 'release') {
+              const keys = isObject(lever.who) ? Object.keys(lever.who) : [];
+              const kind = keys.length === 1 && RELEASE_WHO_KINDS.includes(keys[0]) ? keys[0] : null;
+              if (kind === null) sound = false;
+              else if (kind === 'groups') sound = Array.isArray(lever.who.groups) && lever.who.groups.length > 0 && lever.who.groups.every(text);
+              else sound = isString(lever.who[kind]) && lever.who[kind].trim() !== '' && textLength(lever.who[kind]) <= NAME_MOST;
+              const low = kind === 'groups' ? 0 : RELEASE_SECONDS[0];
+              sound = sound && Number.isInteger(lever.seconds) && lever.seconds >= low && lever.seconds <= RELEASE_SECONDS[1];
+              sound = sound && (lever.after === null || (Array.isArray(lever.after) && lever.after.length > 0 && lever.after.every(whole)));
+              sound = sound && (lever.dayTypeIds === null || (Array.isArray(lever.dayTypeIds) && lever.dayTypeIds.length > 0 && lever.dayTypeIds.every(text)));
+            } else if (lever.kind === 'bell') {
+              sound = ((text(lever.dayTypeId) ? 1 : 0) + (text(lever.bellsId) ? 1 : 0)) === 1 && whole(lever.period) && isBellTime(lever.start) && isBellTime(lever.end);
+            } else if (lever.kind === 'capacity') {
+              sound = text(lever.roomId) && (lever.capacity === null || (Number.isInteger(lever.capacity) && inRange(lever.capacity, RANGES.capacity)));
+            } else if (lever.kind === 'headCount') {
+              sound = text(lever.groupId) && (lever.headCount === null || (Number.isInteger(lever.headCount) && inRange(lever.headCount, RANGES.headCount)));
+            } else if (lever.kind === 'way') {
+              sound = text(lever.connectionId) && ['both', 'ab', 'ba', 'closed'].includes(lever.way);
+            } else {
+              sound = text(lever.floorId) && Array.isArray(lever.cells) && lever.cells.length > 0 && lever.cells.every(whole) && isString(lever.name);
+            }
+            if (!sound) add(path, 'This ' + lever.kind + ' lever is missing one of its fields, or one holds a value it cannot.');
+            return undefined;
+          });
+        }
+      }
       const compared = scenario.compared;
       if (compared !== null) {
         const names = (list) => Array.isArray(list) && list.every(isString);

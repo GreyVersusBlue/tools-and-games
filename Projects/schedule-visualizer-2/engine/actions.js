@@ -317,13 +317,22 @@ export function describePeriodChange(project, periods) {
       if (used.some((value) => value >= periods)) scenarioChanges += 1;
     }
   }
+  // the open scenario's levers that name a period past the new end: a bell lever's, or a release lever that follows one
+  let scenarioLevers = 0;
+  if (project.scenario && Array.isArray(project.scenario.levers)) {
+    for (const lever of project.scenario.levers) {
+      if (!lever || typeof lever !== 'object') continue;
+      if (lever.kind === 'bell' && lever.period >= periods) scenarioLevers += 1;
+      if (lever.kind === 'release' && Array.isArray(lever.after) && lever.after.some((period) => period >= periods)) scenarioLevers += 1;
+    }
+  }
   const past = periods < from ? countPastPeriods(project, periods) : { marks: 0, duties: 0, release: 0 };
   // the sentence's words for what the change takes, in the order the screen says it
   const lostWords = [];
   if (past.marks > 0) lostWords.push(count(past.marks, 'marked period', 'marked periods'));
   if (past.duties > 0) lostWords.push(count(past.duties, 'duty', 'duties'));
   if (past.release > 0) lostWords.push(count(past.release, 'staggered dismissal', 'staggered dismissals'));
-  return { from, to: periods, removedPeriods, slots, bells, groups, dayTypes, bellSchedules, scenarioChanges, marks: past.marks, duties: past.duties, release: past.release, marksAndDutiesWords: lostWords, losesData: slots + bells + offLost + scenarioChanges + past.marks + past.duties + past.release > 0 };
+  return { from, to: periods, removedPeriods, slots, bells, groups, dayTypes, bellSchedules, scenarioChanges, ...(scenarioLevers > 0 ? { scenarioLevers } : {}), marks: past.marks, duties: past.duties, release: past.release, marksAndDutiesWords: lostWords, losesData: slots + bells + offLost + scenarioChanges + scenarioLevers + past.marks + past.duties + past.release > 0 };
 }
 
 // Periods per day. Going down removes the later periods from every day, every
@@ -1091,17 +1100,35 @@ export function describeDayTypeKind(project, payload) {
   const followers = followersOf(project, dayType.id).map((follower) => follower.name);
   // the scenario's changes on its own days go with them, as deleteDayType's do
   const scenarioChanges = scenarioChangesOn(project, dayType.id);
-  return { from: null, to: target.name, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, losesData: revert.losesData || scenarioChanges > 0 };
+  const scenarioLevers = scenarioLeversOn(project, dayType.id);
+  return { from: null, to: target.name, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, ...(scenarioLevers > 0 ? { scenarioLevers } : {}), losesData: revert.losesData || scenarioChanges > 0 || scenarioLevers > 0 };
 }
 
 function scenarioChangesOn(project, dayTypeId) {
   return project.scenario ? project.scenario.changes.filter((change) => change.dayTypeId === dayTypeId).length : 0;
 }
 
-// The project with the open scenario's changes on `dayTypeId` taken out.
+// The open scenario's levers that name `dayTypeId`: a bell lever on it, and
+// a release lever that lists it (ARCHITECTURE 18.7).
+function leverNamesDay(lever, dayTypeId) {
+  if (!lever || typeof lever !== 'object') return false;
+  if (lever.kind === 'bell') return lever.dayTypeId === dayTypeId;
+  return lever.kind === 'release' && Array.isArray(lever.dayTypeIds) && lever.dayTypeIds.includes(dayTypeId);
+}
+
+function scenarioLeversOn(project, dayTypeId) {
+  return project.scenario && Array.isArray(project.scenario.levers) ? project.scenario.levers.filter((lever) => leverNamesDay(lever, dayTypeId)).length : 0;
+}
+
+// The project with the open scenario's changes and levers on `dayTypeId`
+// taken out. A scenario with no `levers` keeps none, as it was.
 function withoutScenarioChanges(project, dayTypeId) {
-  if (scenarioChangesOn(project, dayTypeId) === 0) return project;
-  return { ...project, scenario: { ...project.scenario, changes: project.scenario.changes.filter((change) => change.dayTypeId !== dayTypeId) } };
+  const changes = scenarioChangesOn(project, dayTypeId);
+  const levers = scenarioLeversOn(project, dayTypeId);
+  if (changes === 0 && levers === 0) return project;
+  const scenario = { ...project.scenario, changes: project.scenario.changes.filter((change) => change.dayTypeId !== dayTypeId) };
+  if (levers > 0) scenario.levers = project.scenario.levers.filter((lever) => !leverNamesDay(lever, dayTypeId));
+  return { ...project, scenario };
 }
 
 // The one rule for turning a day type into its own copy or into "same as":
@@ -1176,6 +1203,7 @@ export function describeDayTypeDelete(project, dayTypeId) {
   const revert = own ? describeRevert(project, dayTypeId) : { slots: 0, groups: 0, bells: 0 };
   const followers = own ? followersOf(project, dayTypeId).map((follower) => follower.name) : [];
   const scenarioChanges = scenarioChangesOn(project, dayTypeId);
+  const scenarioLevers = scenarioLeversOn(project, dayTypeId);
   const calendar = calendarOf(project);
   const dates = calendar && Array.isArray(calendar.dates) ? calendar.dates.filter((entry) => entry.day === dayTypeId).length : 0;
   const weekdays = calendar && Array.isArray(calendar.weekdays) ? calendar.weekdays.map((rule, w) => (rule && rule.day === dayTypeId ? w : -1)).filter((w) => w !== -1) : [];
@@ -1187,6 +1215,7 @@ export function describeDayTypeDelete(project, dayTypeId) {
   if (weekdays.length > 0) parts.push(listWords(weekdays.map((w) => WEEKDAY_NAMES[w] + 's')) + ' in the calendar');
   if (rotation > 0) parts.push('its place in the rotation');
   if (scenarioChanges > 0) parts.push(count(scenarioChanges, 'change', 'changes') + ' in the scenario');
+  if (scenarioLevers > 0) parts.push(count(scenarioLevers, 'lever', 'levers') + ' in the scenario');
   const left = marksAndDutiesLeftNoDayType(project, dayTypeId);
   if (left.marks > 0) parts.push(count(left.marks, 'marked period', 'marked periods'));
   if (left.duties > 0) parts.push(count(left.duties, 'duty', 'duties'));
@@ -1194,7 +1223,7 @@ export function describeDayTypeDelete(project, dayTypeId) {
   if (releases.changed > 0) parts.push(count(releases.changed, 'staggered dismissal', 'staggered dismissals') + (releases.removed === releases.changed ? ' removed' : ' changed'));
   let text = 'Deleted ' + dayType.name + (parts.length > 0 ? ', ' + listWords(parts) : '');
   if (followers.length > 0) text += '. ' + listWords(followers) + (followers.length === 1 ? ' is' : ' are') + ' now the same as ' + baseDayType(project).name;
-  return { dayTypeId, name: dayType.name, own, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, dates, weekdays, rotation, marks: left.marks, duties: left.duties, release: releases.changed, releaseRemoved: releases.removed, text };
+  return { dayTypeId, name: dayType.name, own, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, ...(scenarioLevers > 0 ? { scenarioLevers } : {}), dates, weekdays, rotation, marks: left.marks, duties: left.duties, release: releases.changed, releaseRemoved: releases.removed, text };
 }
 
 // payload: { dayTypeId }. The first day type cannot be deleted. The outcome
@@ -2680,6 +2709,8 @@ export const applyGridEdits = action(
 //   renameScenario        { name }
 //   addScenarioChange     { change }
 //   removeScenarioChange  { index }, an index into project.scenario.changes
+//   addScenarioLever      { lever }, a lever of the schedule (SV2-89)
+//   removeScenarioLever   { index }, an index into project.scenario.levers
 //   discardScenario       {}
 //   setScenarioFromFile   { project, fileName?, name?, replace? }
 //   applyScenario         {}
@@ -2689,7 +2720,7 @@ export const applyGridEdits = action(
 // scenario's own change objects, so a chip finds its index with indexOf.
 
 import { CHANGE_KINDS } from './schema.js';
-import { applyChanges, normalise, reconcile, scenarioFromDiff, changeWords } from './scenario.js';
+import { applyChanges, normalise, reconcile, scenarioFromDiff, changeWords, applyLevers, layReleases, normaliseLevers, SCHEDULE_LEVER_KINDS } from './scenario.js';
 
 export const NEW_SCENARIO_NAME = 'New scenario';
 
@@ -2827,6 +2858,105 @@ export const removeScenarioChange = action(
   },
 );
 
+// ---- the schedule levers (ARCHITECTURE 18.3; SV2-89). scenario.levers is a
+// second list beside `changes`, absent until the first lever is added. The
+// four kinds here are the schedule's: release, bell, capacity, headCount;
+// the building's (way, corridor) are SV2-90's and are not added here.
+
+function leversWord(n) {
+  return n + (n === 1 ? ' lever' : ' levers');
+}
+
+function leversIn(scenario) {
+  return scenario && Array.isArray(scenario.levers) ? scenario.levers : [];
+}
+
+// A lever as the scenario keeps it: its own fields and no others, with the
+// project's own checks on every value, refused in words when it is not one
+// of the four kinds with every field it needs. `who` is ordered as the
+// project orders its groups, and `after`, `dayTypeIds` are null for every.
+function scenarioLever(project, lever) {
+  const bad = () => refuse('A scenario lever is a staggered dismissal, a bell time, a room\'s capacity or a group\'s head count, with every field it needs.', 'bad-value');
+  if (!lever || typeof lever !== 'object' || !SCHEDULE_LEVER_KINDS.includes(lever.kind)) bad();
+  if (lever.kind === 'release') {
+    const who = needReleaseWho(project, lever.who);
+    const seconds = needReleaseSeconds(lever.seconds, who);
+    const after = lever.after === undefined ? null : needReleaseAfter(project, lever.after);
+    const dayTypeIds = lever.dayTypeIds === undefined ? null : needReleaseDays(project, lever.dayTypeIds);
+    return { kind: 'release', who, seconds, after, dayTypeIds };
+  }
+  if (lever.kind === 'bell') {
+    const named = [lever.dayTypeId, lever.bellsId].filter((value) => value !== undefined);
+    if (named.length !== 1 || typeof named[0] !== 'string') refuse('A bell lever names one day type or one bell schedule.', 'bad-value');
+    const period = needPeriod(project, lever.period);
+    const bell = needBell({ start: lever.start, end: lever.end });
+    if (lever.bellsId !== undefined) {
+      need(bellSchedulesOf(project), lever.bellsId, 'bell schedule');
+      return { kind: 'bell', bellsId: lever.bellsId, period, start: bell.start, end: bell.end };
+    }
+    needOwnDayType(project, lever.dayTypeId);
+    return { kind: 'bell', dayTypeId: lever.dayTypeId, period, start: bell.start, end: bell.end };
+  }
+  if (lever.kind === 'capacity') {
+    if (typeof lever.roomId !== 'string' || !findRoom(project, lever.roomId)) refuse('That room is no longer in the building.', 'missing');
+    if (lever.capacity !== null && !(Number.isInteger(lever.capacity) && inRange(lever.capacity, RANGES.capacity))) refuse('A capacity is a whole number from ' + RANGES.capacity[0] + ' to ' + RANGES.capacity[1] + ', or empty.', 'bad-value');
+    return { kind: 'capacity', roomId: lever.roomId, capacity: lever.capacity };
+  }
+  need(project.groups, lever.groupId, 'group');
+  return { kind: 'headCount', groupId: lever.groupId, headCount: needHeadCount(lever.headCount === undefined ? bad() : lever.headCount) };
+}
+
+function leverText(project, lever) {
+  return changeWords(project, lever).text;
+}
+
+// One more lever. It is refused in the schedule editor's words when it
+// could not be applied to the schedule as it is now (a "same as" day type, a
+// group, period or room that is not there). Then the levers are normalised
+// with this one as the one added: a later lever of its key replaces an
+// earlier one, and this one goes when it leaves things as the real schedule
+// has them (a bell at its real times, a capacity or head count equal to the
+// real one, a release that gives every group what it already gets). Adding
+// what changes nothing makes no undo step, and neither does adding a lever
+// the scenario already holds. payload: { lever }.
+export const addScenarioLever = action(
+  {
+    label: (before, payload, after) => {
+      const name = scenarioName(before);
+      const lever = scenarioLever(before, payloadOf(payload).lever);
+      const list = leversIn(after.scenario);
+      const added = 'Add to scenario ' + name + ': ' + leverText(before, lever);
+      if (list.length > 0 && jsonSame(list[list.length - 1], lever)) return added;
+      const gone = leversIn(before.scenario).filter((old) => !list.includes(old));
+      return added + ', which puts back the schedule there and takes ' + leversWord(gone.length) + ' out of the scenario';
+    },
+    bumps: [],
+    focus: scenarioFocus,
+  },
+  (project, payload) => {
+    const scenario = needScenario(project);
+    const lever = scenarioLever(project, payloadOf(payload).lever);
+    applyLevers(project, [lever]);
+    const old = leversIn(scenario);
+    const list = old.concat([lever]);
+    const levers = normaliseLevers(project, list, { added: list.length - 1 });
+    if (levers.length === old.length && levers.every((kept, i) => jsonSame(kept, old[i]))) return project;
+    return withScenario(project, { ...scenario, levers });
+  },
+);
+
+// payload: { index }, the lever's place in project.scenario.levers.
+export const removeScenarioLever = action(
+  { label: (before, payload) => 'Remove from scenario ' + scenarioName(before) + ': ' + (leversIn(before.scenario)[payloadOf(payload).index] ? leverText(before, leversIn(before.scenario)[payloadOf(payload).index]) : 'a lever'), bumps: [], focus: scenarioFocus },
+  (project, payload) => {
+    const scenario = needScenario(project);
+    const index = payloadOf(payload).index;
+    const levers = leversIn(scenario);
+    if (!Number.isInteger(index) || index < 0 || index >= levers.length) refuse('That lever is no longer in the scenario.', 'missing');
+    return withScenario(project, { ...scenario, levers: levers.filter((lever, i) => i !== index) });
+  },
+);
+
 // The scenario goes, changes and all; undo brings it back. With none open
 // this changes nothing.
 export const discardScenario = action(
@@ -2869,24 +2999,60 @@ export const setScenarioFromFile = action(
     if (!readableProject(other)) refuse('This file is not a project file this tool can read, so there is nothing to compare with.', 'bad-value');
     const options = { fileName: typeof given.fileName === 'string' ? given.fileName : '' };
     if (typeof given.name === 'string' && !blankName(given.name)) options.name = given.name;
-    return withScenario(project, scenarioFromDiff(project, other, options).scenario);
+    const next = withScenario(project, scenarioFromDiff(project, other, options).scenario);
+    // the scenario it replaces goes whole, levers with it: the outcome says how many
+    const dropped = leversIn(project.scenario).length;
+    if (dropped === 0) return next;
+    return reporting(project, next, { text: 'The scenario it replaced held ' + leversWord(dropped) + ', which went with it. Undo brings them back.', leversDropped: dropped });
   },
 );
 
 // Write the scenario into the real schedule as one undo step, and close it.
 // Only the changes that still apply go in (reconcile); each is applied by
-// setSlot or moveSlot (applyChanges). Any refusal refuses the whole step and
-// nothing changes. Undo brings back the schedule and the scenario together.
+// setSlot or moveSlot (applyChanges). The levers that still apply go in
+// after them: a release lever becomes a real entry, replacing a real one of
+// its key; a bell lever sets the bell; a capacity and a head count are set.
+// Any refusal refuses the whole step and nothing changes. Undo brings back
+// the schedule and the scenario together. The outcome counts what went in
+// (scheduleOutcome): { text, changes, levers, byKind }.
+function applyBumps(before) {
+  const kept = reconcile(before, before.scenario);
+  const bumps = [SCHEDULE];
+  if ((kept.levers || []).some((lever) => lever.kind === 'capacity')) bumps.push(BUILDING);
+  return bumps;
+}
+
+function applyLabel(before) {
+  const kept = reconcile(before, before.scenario);
+  const levers = (kept.levers || []).filter((lever) => SCHEDULE_LEVER_KINDS.includes(lever.kind)).length;
+  const parts = [changesWord(kept.changes.length)];
+  if (levers > 0) parts.push(leversWord(levers));
+  return 'Apply scenario ' + scenarioName(before) + ': ' + parts.join(' and ');
+}
+
+const LEVER_KIND_WORDS = {
+  release: ['staggered dismissal', 'staggered dismissals'],
+  bell: ['bell', 'bells'],
+  capacity: ['room capacity', 'room capacities'],
+  headCount: ['head count', 'head counts'],
+};
+
 export const applyScenario = action(
-  {
-    label: (before) => 'Apply scenario ' + scenarioName(before) + ': ' + changesWord(reconcile(before, before.scenario).changes.length),
-    bumps: [SCHEDULE],
-    focus: scenarioFocus,
-  },
-  (project) => {
+  { label: applyLabel, bumps: applyBumps, focus: scenarioFocus },
+  (project, payload, ctx) => {
     const scenario = needScenario(project);
-    const applied = applyChanges(project, reconcile(project, scenario).changes);
-    return withScenario(applied, null);
+    const kept = reconcile(project, scenario);
+    let next = applyChanges(project, kept.changes);
+    const levers = (kept.levers || []).filter((lever) => SCHEDULE_LEVER_KINDS.includes(lever.kind));
+    next = applyLevers(next, levers.filter((lever) => lever.kind !== 'release'));
+    next = layReleases(next, levers.filter((lever) => lever.kind === 'release'), () => ctx.ids('l'));
+    if (releaseOf(next).length > RELEASE_MOST) refuse('A project has at most ' + RELEASE_MOST + ' staggered dismissals; applying this scenario would make ' + releaseOf(next).length + '. Remove some first.', 'limit');
+    const byKind = {};
+    for (const lever of levers) byKind[lever.kind] = (byKind[lever.kind] || 0) + 1;
+    const said = [changesWord(kept.changes.length)];
+    for (const kind of Object.keys(LEVER_KIND_WORDS)) if (byKind[kind]) said.push(count(byKind[kind], LEVER_KIND_WORDS[kind][0], LEVER_KIND_WORDS[kind][1]));
+    const outcome = { text: 'Applied scenario ' + scenarioName(project) + ': ' + listWords(said), changes: kept.changes.length, levers: levers.length, byKind };
+    return reporting(project, withScenario(next, null), outcome);
   },
 );
 

@@ -116,7 +116,7 @@ import { loads } from './load.js';
 import { places } from './places.js';
 import { checkSchedule } from './checks.js';
 import { buildingChecks } from './building-checks.js';
-import { applyChanges, reconcile, trimResult } from './scenario.js';
+import { applyChanges, applyLevers, reconcile, trimResult } from './scenario.js';
 import { suggest } from './suggest.js';
 
 export const REQUEST = 'sv2-derive';
@@ -366,14 +366,15 @@ export function runResults(result, dayTypeId, bellsId) {
 }
 
 // The scenario lane's answer: the project with its open scenario's changes
-// applied, those that still apply (reconcile, which leaves out a change
-// whose group, room, day type or period is gone, one a later change
-// replaces, and one the schedule already has), run on `pipeline`, trimmed
+// applied and then its levers (applyLevers: bells, leaving late, seats and
+// head counts). Only those that still apply go in (reconcile, which leaves
+// out a change or lever whose group, room, day type or period is gone, one a
+// later one replaces, and one the schedule already has), run on `pipeline`, trimmed
 // to what compareResults reads. The project handed in is not changed. With
 // no scenario open, the project as it is.
 export function scenarioRun(pipeline, project, versions) {
-  const kept = reconcile(project, project.scenario).changes;
-  return trimResult(pipeline.run(applyChanges(project, kept), versions));
+  const kept = reconcile(project, project.scenario);
+  return trimResult(pipeline.run(applyLevers(applyChanges(project, kept.changes), kept.levers || []), versions));
 }
 
 // The suggestion lane's answer: suggest() run on `pipeline`, which must not
