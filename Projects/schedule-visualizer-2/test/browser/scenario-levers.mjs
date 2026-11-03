@@ -377,6 +377,66 @@ test('a lever that no longer applies is listed with why, and Remove them takes i
   assert.equal((await scenarioOf()).levers.length, 1);
 });
 
+test('a release lever that reconcile trimmed (a group it named deleted) keeps a × that removes it', async () => {
+  await fresh(page);
+  await setLevers([{ kind: 'release', who: { groups: ['gsample07a', 'gsample07c'] }, seconds: 90, after: null, dayTypeIds: null }]);
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2modules.actions.deleteGroup, { id: 'gsample07a' }));
+  await ready(page);
+  assert.equal((await chipTexts()).length, 1, 'the lever still applies to the group left');
+  assert.equal(await page.$$eval('.scn-dropped__item', (all) => all.length), 0);
+  await page.click('.scn-chip [data-action="remove"]');
+  await ready(page);
+  assert.deepEqual((await scenarioOf()).levers, [], 'the stored lever went, though the chip showed a trimmed copy of it');
+  assert.equal((await chipTexts()).length, 0);
+  assert.match(await status(), /^Removed: .* leaves 1 min 30 s after the bell\. no changes\.$/);
+});
+
+test('Remove them takes what is dropped; a step refused part way is counted as what it did, with what is still listed', async () => {
+  await fresh(page);
+  await setLevers([
+    { kind: 'headCount', groupId: 'gsample07a', headCount: 31 },
+    { kind: 'headCount', groupId: 'gsample07c', headCount: 29 },
+    { kind: 'headCount', groupId: 'gsample06a', headCount: 28 },
+  ]);
+  await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    for (const id of ['gsample07a', 'gsample07c', 'gsample06a']) store.apply(globalThis.sv2modules.actions.deleteGroup, { id });
+  });
+  await ready(page);
+  assert.equal(await page.$$eval('.scn-dropped__item', (all) => all.length), 3);
+  // the second lever to go is refused, as a stale index or a locked project would
+  await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    const { actions } = globalThis.sv2modules;
+    const real = store.apply.bind(store);
+    let asked = 0;
+    globalThis.sv2.restoreApply = () => { store.apply = real; };
+    store.apply = (action, payload) => {
+      if (action === actions.removeScenarioLever || action === actions.removeScenarioLevers) {
+        asked += 1;
+        if (asked === 2) throw new actions.ActionError('The lever could not be removed just now.', 'bad-value');
+      }
+      return real(action, payload);
+    };
+  });
+  await page.click('[data-action="remove-dropped"]');
+  await ready(page);
+  await page.evaluate(() => globalThis.sv2.restoreApply());
+  const left = await page.$$eval('.scn-dropped__item', (all) => all.length);
+  const said = await status();
+  assert.equal(left, 2, 'the first went, the second was refused and the third was not tried');
+  assert.equal((await scenarioOf()).levers.length, left, 'the list and the scenario agree');
+  assert.doesNotMatch(said, /^Removed 3 changes/, 'it does not say it removed all three: ' + said);
+  assert.match(said, /^Removed 1 of 3 changes that no longer applied\. 2 are still listed\. /);
+  assert.match(said, /The lever could not be removed just now\./);
+  // with nothing refused, what is left goes and the words say all of it
+  await page.click('[data-action="remove-dropped"]');
+  await ready(page);
+  assert.equal(await page.$$eval('.scn-dropped__item', (all) => all.length), 0);
+  assert.deepEqual((await scenarioOf()).levers, []);
+  assert.match(await status(), /^Removed \d+ changes? that no longer applied\.$/);
+});
+
 // ------------------------------------------------------------------ the report
 
 test('the congestion report lists the levers in the chips\' words', async () => {
@@ -443,6 +503,47 @@ test('Apply: the summary lists what is written and a line per kind, the closures
   await page.waitForFunction(() => !document.querySelector('#scenario-apply[open]'));
 });
 
+test('Apply: the button never reads "0 of 1"; with nothing it can write it says so and is disabled; the counts are in good grammar', async () => {
+  await fresh(page);
+  await setLevers([{ kind: 'way', connectionId: 'csample00b', way: 'closed' }]);
+  await page.click('[data-action="apply"]');
+  await page.waitForSelector('#scenario-apply[open]');
+  const only = await page.$eval('#scenario-apply', (el) => ({
+    buttons: Array.from(el.querySelectorAll('.dialog__buttons button'), (button) => [button.textContent, button.disabled]),
+    body: el.querySelector('.dialog__body').textContent,
+  }));
+  assert.deepEqual(only.buttons, [['Nothing here can be applied', true], ['Keep it as a scenario', false]]);
+  assert.match(only.body, /there is nothing to apply\. Discard the scenario to close it\./);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('#scenario-apply[open]'));
+  assert.notEqual((await scenarioOf()), null, 'the scenario is still open');
+  // one thing it writes beside one it leaves out: "1 of 2"; and "1 change" alone
+  await setLevers([{ kind: 'way', connectionId: 'csample00b', way: 'closed' }, { kind: 'capacity', roomId: 'rsample204', capacity: 12 }]);
+  await page.click('[data-action="apply"]');
+  await page.waitForSelector('#scenario-apply[open]');
+  assert.deepEqual(await page.$$eval('#scenario-apply .dialog__buttons button', (all) => all.map((b) => [b.textContent, b.disabled])), [['Apply 1 of 2 changes', false], ['Keep it as a scenario', false]]);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('#scenario-apply[open]'));
+});
+
+test('Apply offers its snapshot when it writes levers, and the line counts what it changes', async () => {
+  await fresh(page);
+  await setLevers([{ kind: 'capacity', roomId: 'rsample204', capacity: 12 }, { kind: 'headCount', groupId: 'gsample06a', headCount: 31 }]);
+  await page.click('[data-action="apply"]');
+  await page.waitForSelector('#scenario-apply[open]');
+  assert.equal(await text('#scenario-apply [data-part="snapshot"]'), 'It changes 2 other changes, so a snapshot of the project as it is now is kept as well, and can be restored from Snapshots in the Project section.');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('#scenario-apply[open]'));
+  // a move and a lever: both are counted
+  await fresh(page, APPLY_BODY);
+  await page.click('[data-action="apply"]');
+  await page.waitForSelector('#scenario-apply[open]');
+  assert.equal(await text('#scenario-apply [data-part="snapshot"]'), 'It changes 1 period of the groups\' days and 4 other changes, so a snapshot of the project as it is now is kept as well, and can be restored from Snapshots in the Project section.');
+  await page.click('#scenario-apply .btn--primary');
+  await page.waitForFunction(() => globalThis.sv2.store.project.scenario === null);
+  await page.waitForFunction(() => ['taken', 'not-taken'].includes(document.querySelector('.scn').dataset.snapshot));
+});
+
 test('Apply writes the changes and levers as one undo step, closes the scenario with its closures, and the focus goes to the name field; Undo brings it all back', async () => {
   await fresh(page, APPLY_BODY);
   const before = await projectOf();
@@ -462,7 +563,7 @@ test('Apply writes the changes and levers as one undo step, closes the scenario 
   const shape = (project) => JSON.stringify([project.building.connections, project.building.floors.map((floor) => floor.cells)]);
   assert.equal(shape(now), shape(before), 'the closures went with the scenario: the stairs and corridors are as they were');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'scenario-start-name', 'the focus is on the first control of the section with nothing open');
-  assert.match(await page.$eval('.toast .toast__text', (el) => el.textContent), /^Applied “Everything”: 5 changes made to the schedule\. Closing Stairs B and North Corridor is a trial: Apply leaves the building as it is\.$/);
+  assert.match(await page.$eval('.toast .toast__text', (el) => el.textContent), /^Applied “Everything”: 5 changes made to the schedule\. Closing Stairs B and North Corridor is a trial: Apply leaves the building as it is\.( The snapshot “.*” has what was there\.)?$/);
   // one undo step brings the scenario back whole, closures included
   await page.evaluate(() => globalThis.sv2.store.undo());
   await ready(page);

@@ -38,7 +38,7 @@ import { ActionError, addScenarioChange, addScenarioLever, applyScenario, discar
 import { changeWords } from '../../engine/scenario.js';
 import { nameOfRoom } from '../../engine/schema.js';
 import { snapshotAfter, snapshotRoom, undoForStep } from '../../storage/snapshots.js';
-import { scenarioView, firstLine, barWords, cancelled, cancelledSentence, leverCancelled, leverCancelledSentence, applySummary, applyButtonWords } from './model.js';
+import { scenarioView, firstLine, barWords, cancelled, cancelledSentence, leverCancelled, leverCancelledSentence, applySummary, applyButtonWords, snapshotWords } from './model.js';
 import { changesPanel } from './changes.js';
 import { formsPanel, freshForm } from './forms.js';
 import { filePanel } from './file.js';
@@ -378,16 +378,13 @@ export const section = {
       const summary = applySummary(project, current);
       const n = summary.writes;
       const skipped = summary.skipped.length;
-      const slots = count(summary.slots, (project.settings.periodWord || 'Period').toLowerCase());
       const none = summary.snapshot ? await noSnapshotBecause(ctx) : null;
       if (gone) return;
       const readOnly = Boolean(ctx.storage && ctx.storage.state.readOnly);
-      const snapshotLine = none === null
-        ? 'It changes ' + slots + ' of the groups\' days, so a snapshot of the project as it is now is kept as well, and can be restored from Snapshots in the Project section.'
-        : 'It changes ' + slots + ' of the groups\' days, which would keep a snapshot of the project as it is now, but none will be kept: ' + none + (readOnly ? '' : ' Undo still brings the schedule back while this tab stays open.');
+      const snapshotLine = snapshotWords(summary, (project.settings.periodWord || 'Period').toLowerCase(), none, readOnly);
       const sentences = summary.changes.concat(summary.levers);
       const body = [
-        h('p', null, n === 0 ? (summary.trial ? 'Nothing in this scenario writes to the schedule or the building. Applying it closes it.' : 'Nothing in this scenario applies to the schedule as it is now. Applying it closes it and changes no slot.') : (n === 1 ? 'This change goes' : 'These ' + n + ' changes go') + ' into the real schedule:'),
+        h('p', null, n === 0 ? (summary.trial ? 'Nothing in this scenario writes to the schedule or the building, so there is nothing to apply. Discard the scenario to close it.' : 'Nothing in this scenario applies to the schedule as it is now. Applying it closes it and changes no slot.') : (n === 1 ? 'This change goes' : 'These ' + n + ' changes go') + ' into the real schedule:'),
         n > 0 ? h('ul', { class: 'scn-summary__list', data: { part: 'applies' } }, sentences.map((said) => h('li', { dir: 'auto' }, words(said.parts)))) : null,
         summary.kinds.length > 0 ? h('ul', { class: 'scn-summary__list scn-summary__kinds', data: { part: 'kinds' } }, summary.kinds.map((text) => h('li', { dir: 'auto' }, text))) : null,
         summary.changes.some((said) => said.teachers.length > 0) ? h('p', null, 'Teachers follow rooms: where a group moves to another room, who teaches it changes as the list says.') : null,
@@ -409,6 +406,12 @@ export const section = {
         // with nothing that applies the button says what it does: it closes the scenario
         buttons: [{ label: applyButtonWords(summary), value: 'apply', kind: 'primary' }, { label: 'Keep it as a scenario', value: null }],
       });
+      // with nothing it can write the button says so and does nothing
+      if (!summary.canApply && summary.total > 0) {
+        const primary = dialog.element.querySelector('.btn--primary');
+        primary.disabled = true;
+        primary.setAttribute('aria-disabled', 'true');
+      }
       const answer = await dialog.closed;
       if (answer !== 'apply' || gone) return;
       // what is applied is reconciled again now: the question may have stood open

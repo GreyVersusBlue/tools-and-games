@@ -118,18 +118,43 @@ export function changesPanel(env) {
   // Remove them: the dropped changes out, as one step of undo
   // (removeScenarioChanges, SV2-72d); one Undo brings them all back. The
   // dropped levers go one at a time, last first (there is no action that
-  // takes several), each its own step.
+  // takes several), each its own step. What is said is what was done: a step
+  // that is refused part way stops the rest, and the status counts what went
+  // and says what is still listed, with the refusal after it.
   function removeThem() {
     if (!view || view.dropped.length + view.droppedLevers.length === 0) return;
+    const all = view.dropped.length + view.droppedLevers.length;
     const indexes = view.dropped.map((each) => each.index).filter((index) => index >= 0);
     const leverIndexes = view.droppedLevers.map((each) => each.index).filter((index) => index >= 0).sort((a, b) => b - a);
-    const n = indexes.length + leverIndexes.length;
-    if (indexes.length > 0 && !env.apply(removeScenarioChanges, { indexes })) return;
-    for (const index of leverIndexes) if (!env.apply(removeScenarioLever, { index })) return;
-    const text = 'Removed ' + count(n, 'change') + ' that no longer applied.';
+    status.textContent = '';
+    let removed = 0;
+    let refused = false;
+    if (indexes.length > 0) {
+      if (env.apply(removeScenarioChanges, { indexes })) removed += indexes.length;
+      else refused = true;
+    }
+    if (!refused) {
+      for (const index of leverIndexes) {
+        if (!env.apply(removeScenarioLever, { index })) {
+          refused = true;
+          break;
+        }
+        removed += 1;
+      }
+    }
+    if (!refused && removed === all) {
+      const text = 'Removed ' + count(removed, 'change') + ' that no longer applied.';
+      status.textContent = text;
+      ctx.announce(text);
+      env.home();
+      return;
+    }
+    // part way: the refusal was said by env.apply as it happened; the status
+    // keeps it and says what is left
+    const left = all - removed;
+    const text = (removed > 0 ? 'Removed ' + removed + ' of ' + count(all, 'change') + ' that no longer applied. ' : 'Removed none of the ' + count(all, 'change') + ' that no longer applied. ') + left + (left === 1 ? ' is' : ' are') + ' still listed.' + (status.textContent !== '' ? ' ' + status.textContent : '');
     status.textContent = text;
     ctx.announce(text);
-    env.home();
   }
 
   function update(next) {

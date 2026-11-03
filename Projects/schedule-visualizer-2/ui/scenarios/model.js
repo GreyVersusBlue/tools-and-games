@@ -9,7 +9,7 @@ import { periodName, offPeriods, bellsFor, parseTime, formatTime } from '../../e
 import { walkTarget } from '../../engine/routing.js';
 import { resolveSlotRoom, nameOfRoom, bellSchedulesOf } from '../../engine/schema.js';
 import { formatDuration } from '../../engine/findings.js';
-import { reconcile, changeWords, changeSlots, leverKey, isTrialOnly, isWrittenWay, trialOnlyWords, applyLevers } from '../../engine/scenario.js';
+import { reconcile, reconcileLevers, changeWords, changeSlots, leverKey, isTrialOnly, isWrittenWay, trialOnlyWords, applyLevers } from '../../engine/scenario.js';
 import { releaseDelay } from '../../engine/release.js';
 import { NEW_SCENARIO_NAME, blankName } from '../../engine/actions.js';
 import { count, list, periodWords } from '../components/words.js';
@@ -70,17 +70,12 @@ export function scenarioView(project) {
   const found = reconcile(project, scenario);
   const indexOf = (change) => scenario.changes.indexOf(change);
   const stored = Array.isArray(scenario.levers) ? scenario.levers : [];
-  // reconcile trims a lever it keeps (a copy, not the stored object): the
-  // stored lever is the last one of its key, as reconcile's own rule has it
-  const leverIndex = (lever) => {
-    const same = stored.lastIndexOf(lever);
-    if (same >= 0) return same;
-    const key = leverKey(lever);
-    for (let i = stored.length - 1; i >= 0; i -= 1) if (leverKey(stored[i]) === key) return i;
-    return -1;
-  };
-  const levers = (found.levers || []).map((lever) => ({ lever, index: leverIndex(lever), words: changeWords(project, lever), trial: isTrialOnly(lever), instead: insteadOf(project, lever) }));
-  const droppedLevers = (found.droppedLevers || []).map((each) => ({ lever: each.lever, index: stored.indexOf(each.lever), parts: each.parts, sentence: each.sentence }));
+  // reconcile trims a lever it keeps (a copy, not the stored object: a release
+  // lever loses the group it named that was deleted), so a kept or dropped
+  // lever is matched to the stored one it came from (leverIndexes)
+  const where = leverIndexes(project, stored, found.levers || [], found.droppedLevers || []);
+  const levers = (found.levers || []).map((lever, at) => ({ lever, index: where.kept[at], words: changeWords(project, lever), trial: isTrialOnly(lever), instead: insteadOf(project, lever) }));
+  const droppedLevers = (found.droppedLevers || []).map((each, at) => ({ lever: each.lever, index: where.dropped[at], parts: each.parts, sentence: each.sentence }));
   return {
     name: scenarioName(scenario),
     changes: scenario.changes,
@@ -92,6 +87,36 @@ export function scenarioView(project) {
     droppedTotal: found.dropped.length + droppedLevers.length,
     compared: scenario.compared || null,
   };
+}
+
+// Where in scenario.levers each lever reconcile kept or dropped came from:
+// { kept: [index], dropped: [index] }, -1 for one that cannot be placed. The
+// lever reconcile hands back is the stored object, or a copy of it with what
+// is gone taken out (trimLever), so the stored lever is found by what each
+// would become alone (reconcileLevers on it by itself), last of a key first, as
+// the kept lever of a key is the last one stored.
+function leverIndexes(project, stored, kept, dropped) {
+  const out = { kept: new Array(kept.length).fill(-1), dropped: new Array(dropped.length).fill(-1) };
+  let k = kept.length - 1;
+  let d = dropped.length - 1;
+  for (let i = stored.length - 1; i >= 0; i -= 1) {
+    let alone;
+    try {
+      alone = reconcileLevers(project, { levers: [stored[i]] });
+    } catch (error) {
+      continue;
+    }
+    const became = alone.levers.length > 0 ? alone.levers[0] : alone.dropped.length > 0 ? alone.dropped[0].lever : stored[i];
+    const same = (one) => one === stored[i] || JSON.stringify(one) === JSON.stringify(became);
+    if (k >= 0 && same(kept[k])) {
+      out.kept[k] = i;
+      k -= 1;
+    } else if (d >= 0 && same(dropped[d].lever)) {
+      out.dropped[d] = i;
+      d -= 1;
+    }
+  }
+  return out;
 }
 
 // A trial staggered dismissal for exactly the groups, grade or wing, periods
@@ -354,7 +379,12 @@ export function applySummary(project, view) {
   for (const each of written) if (each.lever.kind === 'way' && isWrittenWay(each.lever)) kinds.push(each.words.text.replace(': ', ' becomes ') + '.');
   return {
     slots,
-    snapshot: slots > SCENARIO_SNAPSHOT_SLOTS,
+    // a snapshot is kept for more than ten slots, and whenever a lever is written: a
+    // bell time, a staggered dismissal, a capacity, a head count or a direction
+    // moves more than the slots it names (ARCHITECTURE 18.3)
+    snapshot: slots > SCENARIO_SNAPSHOT_SLOTS || written.length > 0,
+    leversWritten: written.length,
+    canApply: writes > 0,
     changes: view.kept.map((each) => each.words),
     levers: written.map((each) => each.words),
     kinds,
@@ -367,12 +397,29 @@ export function applySummary(project, view) {
   };
 }
 
-// The button of the Apply question, naming what it writes.
+// The button of the Apply question, naming what it writes. It never counts
+// "0 of 1": with a closure and nothing else there is nothing to write, which
+// the button says and which it is disabled for (`canApply` false); with no
+// change that applies at all it closes the scenario, as it always has.
 export function applyButtonWords(summary) {
   const { writes, total } = summary;
   if (total === 0) return 'Close the scenario: no change of it applies';
+  if (writes === 0) return 'Nothing here can be applied';
   if (total > writes) return 'Apply ' + writes + ' of ' + total + ' changes';
   return writes === 1 ? 'Apply 1 change' : 'Apply ' + writes + ' changes';
+}
+
+// The snapshot line of the Apply question: what it changes (the groups' days,
+// and the levers it writes), then the snapshot that is kept, or the reason
+// none will be. `none` is null where one will be kept.
+export function snapshotWords(summary, periodWord, none, readOnly) {
+  const parts = [];
+  if (summary.slots > 0) parts.push(count(summary.slots, periodWord) + ' of the groups\' days');
+  if (summary.leversWritten > 0) parts.push(count(summary.leversWritten, 'other change'));
+  const what = parts.length > 0 ? 'It changes ' + parts.join(' and ') : 'It changes the schedule';
+  return none === null
+    ? what + ', so a snapshot of the project as it is now is kept as well, and can be restored from Snapshots in the Project section.'
+    : what + ', which would keep a snapshot of the project as it is now, but none will be kept: ' + none + (readOnly ? '' : ' Undo still brings the schedule back while this tab stays open.');
 }
 
 // ---- what the staggered dismissals of the scenario hold back
