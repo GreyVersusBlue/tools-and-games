@@ -405,6 +405,19 @@ test('compareResults: a walk that fails after the scenario is never time saved, 
   assert.equal(back.groups[1].groupId, G7A);
 });
 
+test('compareResults: a teacher with no way through after a closure is a failed walk, not a vanished one (SV2-90b)', () => {
+  const project = shutOff204();
+  const stranded = { dayTypeId: 'dsample00a', teacherId: 'tsample004', period: 2, fromRoomId: 'rsamplegym', toRoomId: 'rsamplecaf', passingSeconds: 240, failed: true, late: true };
+  const open = run(project);
+  const walk = { dayTypeId: 'dsample00a', teacherId: 'tsample004', period: 2, fromRoomId: 'rsamplegym', toRoomId: 'rsamplecaf', passingSeconds: 240, walking: 100, late: false };
+  const was = { ...open, walks: { ...open.walks, teachers: [walk] } };
+  const now = { ...open, walks: { ...open.walks, teachers: [stranded] } };
+  const compared = compareResults(was, now, {});
+  assert.deepEqual(compared.figures.failed, { before: open.failedWalks ? open.failedWalks.length : 20, after: (open.failedWalks ? open.failedWalks.length : 20) + 1, difference: 1 }, 'one more walk with no way through');
+  assert.ok(compared.groups.every((row) => row.failedChange === 0), 'and no group row takes it');
+  assert.equal(compareResults(now, was, {}).figures.failed.difference, -1, 'the other way round, one fewer');
+});
+
 test('compareResults reads only places, loads, walks, findings and the failed walks: no crowd, no routes', () => {
   const project = shutOff204();
   const changes = [move(G8A, 2, 'rsample204'), swapPeriods(G8A, 5, 6)];

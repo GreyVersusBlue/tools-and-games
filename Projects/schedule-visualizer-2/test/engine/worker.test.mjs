@@ -711,7 +711,12 @@ test('scenarioRun: teachers\' walks honour the levers: a closed stairs sends the
   assert.deepEqual(through, teacherWalks(edited(project, lever), routingGraph(edited(project, lever)), {}));
   assert.notDeepEqual(through, plain);
   const oneWay = teacherWalks(project, graph, { ways: { [STAIRS_A]: 'ab', cextra0001: 'ab', [STAIRS_B]: 'ab' } });
-  assert.ok(oneWay.length < plain.length, 'with every stairs up only the walks down are gone');
+  // a walk with no way through is a failed walk, not a missing one (SV2-90b)
+  assert.equal(oneWay.length, plain.length, 'with every stairs up only the walks down are still there, as failed walks');
+  const downs = oneWay.filter((walk) => walk.failed === true);
+  assert.ok(downs.length > 0, 'with every stairs up only the walks down are failed walks');
+  assert.ok(downs.every((walk) => walk.late === true && walk.walking === undefined), 'a failed walk is late and has no walking time');
+  assert.ok(plain.every((walk) => walk.failed === undefined), 'and an open building has none');
   const cut = teacherWalks(project, graph, { shutCells: [{ floorId: FLOOR_1, cell: 7 * 40 + 12 }] });
   assert.notDeepEqual(cut, plain, 'a closed cell reaches a teacher');
 });
