@@ -40,8 +40,11 @@ function withScenario(project, name, changes) {
 function comparisonOf(project) {
   const main = createPipeline().run(project);
   const result = scenarioRun(createPipeline(), project, undefined);
-  const changes = reconcile(project, project.scenario).changes;
-  return { result, compare: compareResults(trimResult(main), result, { changes }), changes, versions: null, where: 'main', generation: 1 };
+  const kept = reconcile(project, project.scenario);
+  const changes = kept.changes;
+  // the levers too (SV2-92): the answer says which it was worked out with
+  const levers = kept.levers || [];
+  return { result, compare: compareResults(trimResult(main), result, { changes, levers }), changes, levers, versions: null, where: 'main', generation: 1 };
 }
 
 function sectionOf(html) {
@@ -397,4 +400,103 @@ test('SV2-72d2: the day sections print a time of an hour or more in hours and mi
   // and the rule is the scenario table's own: a time and its row agree
   const figures = Object.fromEntries(rowsAfter(congestionPrint.scenarioSection(sample, withFigures({ walking: { before: 3900, after: 3900, difference: 0 } })), 'Before and after').map((row) => [row[0], row.slice(1)]));
   assert.equal(figures['Walking, all walks together'][0], long[1].split(', ')[1], 'the scenario table prints 3900 s as the day section does');
+});
+
+// ---------------------------------------------------------------- SV2-92: the levers
+
+function withLevers(levers, changes) {
+  const project = school();
+  project.scenario = { name: 'Levers', changes: changes || [], compared: null, levers };
+  return project;
+}
+
+const LEVER_CASES = {
+  bell: { kind: 'bell', dayTypeId: DAY_A, period: 3, start: '10:34', end: '11:24' },
+  release: { kind: 'release', who: { grade: '7' }, seconds: 120, after: null, dayTypeIds: null },
+  capacity: { kind: 'capacity', roomId: 'rsample204', capacity: 5 },
+  headCount: { kind: 'headCount', groupId: 'gsample07a', headCount: 90 },
+};
+
+test('SV2-92 the report lists a lever\'s sentence after the changes\', numbered on, and counts both', () => {
+  const project = withLevers([LEVER_CASES.capacity, LEVER_CASES.release], twoChanges());
+  const section = congestionPrint.scenarioSection(project, comparisonOf(project));
+  const rows = rowsAfter(section, 'Its changes');
+  assert.deepEqual(rows.map((row) => row[0]), ['1', '2', '3', '4']);
+  assert.equal(rows[2][1], changeWords(project, LEVER_CASES.capacity).text);
+  assert.equal(rows[3][1], 'Grade 7 leaves 2 min after the bell');
+  assert.ok(section.includes('<h3>Its changes <span class="doc-count">4</span></h3>'));
+});
+
+test('SV2-92 the comparison moves for a bell time: a shorter passing time makes a late walk and a warning', () => {
+  const project = withLevers([LEVER_CASES.bell]);
+  const answer = comparisonOf(project);
+  const f = answer.compare.figures;
+  assert.deepEqual([f.late.before, f.late.after, f.findings.warning.difference], [1, 2, 1]);
+  const section = congestionPrint.scenarioSection(project, answer);
+  assert.equal(rowsAfter(section, 'Its changes')[0][1], 'A Day, Period 4: 10:34 AM to 11:24 AM (was 10:36 AM to 11:24 AM)');
+  assert.deepEqual(Object.fromEntries(rowsAfter(section, 'Before and after').map((row) => [row[0], row.slice(1)]))['Late walks'], ['1', '2', '+1']);
+});
+
+test('SV2-92 the comparison moves for a staggered dismissal: the held groups are edited, crowding falls and late walks rise', () => {
+  const project = withLevers([LEVER_CASES.release]);
+  const answer = comparisonOf(project);
+  const f = answer.compare.figures;
+  assert.equal(f.crowding.difference < 0, true, 'the corridors clear');
+  assert.equal(f.late.difference > 0, true, 'a held group has less of the passing time');
+  assert.deepEqual(answer.compare.groups.filter((row) => row.edited).map((row) => row.groupId).sort(), ['gsample07a', 'gsample07b', 'gsample07c'], 'a grade rule marks its groups from the walks');
+});
+
+test('SV2-92 the comparison moves for a room\'s capacity: new warnings, the walks as they were', () => {
+  const project = withLevers([LEVER_CASES.capacity]);
+  const f = comparisonOf(project).compare.figures;
+  assert.equal(f.findings.warning.difference, 11);
+  assert.equal(f.walking.difference, 0);
+});
+
+test('SV2-92 the comparison moves for a head count: the group is edited, crowding and the busiest load rise', () => {
+  const project = withLevers([LEVER_CASES.headCount]);
+  const answer = comparisonOf(project);
+  const f = answer.compare.figures;
+  assert.equal(f.crowding.difference > 0, true);
+  assert.equal(f.busiest.difference > 0, true);
+  assert.deepEqual(answer.compare.groups.filter((row) => row.edited).map((row) => row.groupId), ['gsample07a']);
+});
+
+test('SV2-92 a comparison worked out for other levers than the scenario has now is stale and never printed', () => {
+  const project = withLevers([LEVER_CASES.capacity]);
+  const answer = comparisonOf(project);
+  assert.equal(countOf(congestionPrint.scenarioSection(project, answer), '<table') > 0, true, 'current: the figures print');
+  // a lever edited after the comparison was made: a new levers list, as every scenario action makes
+  const edited = { ...project, scenario: { ...project.scenario, levers: [{ ...LEVER_CASES.capacity, capacity: 6 }] } };
+  const section = congestionPrint.scenarioSection(edited, answer);
+  assert.ok(section.includes('The scenario has changed since its effect was worked out, so nothing of it is printed.'));
+  assert.equal(countOf(section, '<table'), 0);
+  // a lever more, and a lever fewer
+  const more = { ...project, scenario: { ...project.scenario, levers: [LEVER_CASES.capacity, LEVER_CASES.headCount] } };
+  assert.equal(countOf(congestionPrint.scenarioSection(more, answer), '<table'), 0);
+  const fewer = { ...project, scenario: { ...project.scenario, levers: [] } };
+  assert.equal(countOf(congestionPrint.scenarioSection(fewer, answer), '<table'), 0);
+  // a lever reconcile trims is a new object each time: the same lever still reads as current
+  const held = withLevers([{ kind: 'release', who: { groups: ['gsample07a', 'gnobody000'] }, seconds: 60, after: null, dayTypeIds: null }]);
+  const heldAnswer = comparisonOf(held);
+  assert.equal(countOf(congestionPrint.scenarioSection(held, heldAnswer), '<table') > 0, true, 'a trimmed lever is current');
+  // an answer that does not say its levers cannot be told apart and is taken as it is
+  assert.equal(countOf(congestionPrint.scenarioSection(project, { ...answer, levers: undefined }), '<table') > 0, true);
+});
+
+test('SV2-92 a scenario with levers and no changes is not "no changes yet"; a lever that no longer applies is listed with the dropped', () => {
+  const only = withLevers([LEVER_CASES.capacity]);
+  const section = congestionPrint.scenarioSection(only, comparisonOf(only));
+  assert.equal(countOf(section, 'has no changes yet'), 0);
+  assert.equal(rowsAfter(section, 'Its changes').length, 1);
+  const lost = withLevers([{ kind: 'capacity', roomId: 'rgonegone00', capacity: 9 }]);
+  const lostSection = congestionPrint.scenarioSection(lost, comparisonOf(lost));
+  assert.equal(countOf(lostSection, 'has no changes yet'), 0);
+  assert.ok(lostSection.includes('1 change no longer applies and is left out:'));
+});
+
+test('SV2-92 a closure is said to be a trial only, in the report\'s own words', () => {
+  const project = withLevers([{ kind: 'way', connectionId: 'csample00b', way: 'closed' }]);
+  const section = congestionPrint.scenarioSection(project, comparisonOf(project));
+  assert.equal(rowsAfter(section, 'Its changes')[0][1], 'Close Stairs B (a trial only: Apply leaves it out)');
 });

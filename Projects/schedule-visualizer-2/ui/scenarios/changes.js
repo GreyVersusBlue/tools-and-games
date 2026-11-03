@@ -6,10 +6,12 @@
 //
 // changesPanel(env) -> { element, update(view), said(text) }
 //   env.ctx, env.project(), env.apply(action, payload) (false when refused,
-//   and said), env.home() (where the focus goes when what held it is gone)
+//   and said), env.home() (where the focus goes when what held it is gone),
+//   env.focusKinds() (where the focus goes when the last chip is taken out:
+//   the Kind of change fieldset, DESIGN 12.4)
 
 import { h } from '../components/dom.js';
-import { newScenario, renameScenario, removeScenarioChange, removeScenarioChanges } from '../../engine/actions.js';
+import { newScenario, renameScenario, removeScenarioChange, removeScenarioChanges, removeScenarioLever } from '../../engine/actions.js';
 import { count } from '../components/words.js';
 
 function words(parts) {
@@ -92,14 +94,17 @@ export function changesPanel(env) {
     else nameInput.value = current;
   }
 
-  // the × of a chip: the change out by its index in scenario.changes; the
-  // focus to the chip now in its place, else the one before, else the list's heading
-  // Said in the same live region as an added change.
-  function remove(index, at) {
-    const chip = view ? view.kept.find((each) => each.index === index) : null;
-    if (!env.apply(removeScenarioChange, { index })) return;
+  // the × of a chip: the change out by its index in scenario.changes (a
+  // lever by its index in scenario.levers); the focus to the chip now in its
+  // place, else the one before, else the Kind of change fieldset. Said in
+  // the same live region as an added change, with how many are left.
+  function remove(index, at, lever) {
+    const chip = view ? (lever ? view.levers.find((each) => each.index === index) : view.kept.find((each) => each.index === index)) : null;
+    if (!env.apply(lever ? removeScenarioLever : removeScenarioChange, { index })) return;
     if (chip) {
-      const text = 'Removed: ' + chip.words.text + '.';
+      // the panel is drawn again by now: view counts what is left
+      const left = view.total;
+      const text = 'Removed: ' + chip.words.text + '. ' + count(left, 'change') + '.';
       status.textContent = text;
       ctx.announce(text);
     }
@@ -107,16 +112,20 @@ export function changesPanel(env) {
     const buttons = chips.querySelectorAll('[data-action="remove"]');
     const next = buttons[Math.min(at, buttons.length - 1)];
     if (next) next.focus();
-    else env.home();
+    else env.focusKinds();
   }
 
   // Remove them: the dropped changes out, as one step of undo
-  // (removeScenarioChanges, SV2-72d); one Undo brings them all back.
+  // (removeScenarioChanges, SV2-72d); one Undo brings them all back. The
+  // dropped levers go one at a time, last first (there is no action that
+  // takes several), each its own step.
   function removeThem() {
-    if (!view || view.dropped.length === 0) return;
+    if (!view || view.dropped.length + view.droppedLevers.length === 0) return;
     const indexes = view.dropped.map((each) => each.index).filter((index) => index >= 0);
-    const n = indexes.length;
-    if (!env.apply(removeScenarioChanges, { indexes })) return;
+    const leverIndexes = view.droppedLevers.map((each) => each.index).filter((index) => index >= 0).sort((a, b) => b - a);
+    const n = indexes.length + leverIndexes.length;
+    if (indexes.length > 0 && !env.apply(removeScenarioChanges, { indexes })) return;
+    for (const index of leverIndexes) if (!env.apply(removeScenarioLever, { index })) return;
     const text = 'Removed ' + count(n, 'change') + ' that no longer applied.';
     status.textContent = text;
     ctx.announce(text);
@@ -142,14 +151,17 @@ export function changesPanel(env) {
     }
     nameSet = stored;
     if (stored !== view.name) nameInput.placeholder = view.name;
-    none.hidden = view.kept.length > 0;
-    chips.hidden = view.kept.length === 0;
-    chips.replaceChildren(...view.kept.map((each, at) => h('li', { class: 'scn-chip', data: { index: String(each.index), kind: each.change.kind } },
-      h('span', { class: 'scn-chip__words', dir: 'auto' }, words(each.words.parts)),
-      h('button', { type: 'button', class: 'scn-chip__remove', 'aria-label': 'Remove: ' + each.words.text, title: 'Remove this change', data: { action: 'remove' }, on: { click: () => remove(each.index, at) } }, '×'))));
-    dropped.hidden = view.dropped.length === 0;
-    droppedList.replaceChildren(...view.dropped.map((each) => h('li', { class: 'scn-dropped__item', data: { index: String(each.index) } }, h('span', { dir: 'auto' }, words(each.parts)))));
-    removeDropped.textContent = view.dropped.length === 1 ? 'Remove it' : 'Remove them';
+    none.hidden = view.total > 0;
+    chips.hidden = view.total === 0;
+    const sentence = (each) => [h('span', { class: 'scn-chip__words', dir: 'auto' }, words(each.words.parts), each.instead ? ', instead of ' + each.instead : ''), each.trial ? h('span', { class: 'scn-tag', data: { tag: 'trial' } }, 'Trial only') : null];
+    const removeOf = (each, at, lever) => h('button', { type: 'button', class: 'scn-chip__remove', 'aria-label': 'Remove: ' + each.words.text, title: 'Remove this change', data: { action: 'remove' }, on: { click: () => remove(each.index, at, lever) } }, '×');
+    chips.replaceChildren(
+      ...view.kept.map((each, at) => h('li', { class: 'scn-chip', data: { index: String(each.index), kind: each.change.kind } }, h('span', { class: 'scn-chip__words', dir: 'auto' }, words(each.words.parts)), removeOf(each, at, false))),
+      ...view.levers.map((each, at) => h('li', { class: 'scn-chip', data: { lever: String(each.index), kind: each.lever.kind, trial: String(each.trial) } }, ...sentence(each), removeOf(each, view.kept.length + at, true))));
+    const droppedAll = view.dropped.concat(view.droppedLevers);
+    dropped.hidden = droppedAll.length === 0;
+    droppedList.replaceChildren(...droppedAll.map((each) => h('li', { class: 'scn-dropped__item', data: { index: String(each.index) } }, h('span', { dir: 'auto' }, words(each.parts)))));
+    removeDropped.textContent = droppedAll.length === 1 ? 'Remove it' : 'Remove them';
   }
 
   return {

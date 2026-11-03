@@ -195,3 +195,160 @@ test('SV2-72d: timeFigures: the difference is that of the two times as printed, 
   const row = groupRow(project, { groupId: 'g1', edited: true, before: sideOf(9228), after: sideOf(9240), difference: 12, failedChange: 0 });
   assert.deepEqual([row.change, row.worse], ['no change', null], 'a group\'s row agrees with its printed times');
 });
+
+// ---------------------------------------------------------------- SV2-92: the levers
+
+import {
+  scenarioView, applySummary, applyButtonWords, firstLine, heldNotes, leverCancelled, leverCancelledSentence,
+  bellSets, bellLever, bellPassingWords, lengthenPassing, insteadOf,
+} from '../../ui/scenarios/model.js';
+import { school } from '../engine/helpers.mjs';
+
+const DAY_A = 'dsample00a';
+
+function open(levers, changes) {
+  const project = school();
+  project.scenario = { name: 'Levers', changes: changes || [], compared: null, levers };
+  return project;
+}
+
+const bellLeverOf = (start, end) => ({ kind: 'bell', dayTypeId: DAY_A, period: 2, start, end });
+const capacity = { kind: 'capacity', roomId: 'rsample204', capacity: 12 };
+const headCount = { kind: 'headCount', groupId: 'gsample07a', headCount: 31 };
+const grade7 = { kind: 'release', who: { grade: '7' }, seconds: 120, after: null, dayTypeIds: null };
+const closed = { kind: 'way', connectionId: 'csample00b', way: 'closed' };
+const oneWay = { kind: 'way', connectionId: 'csample00a', way: 'ab' };
+
+test('SV2-92 chips: a lever is a chip with its own index and the engine\'s sentence; a closure is marked a trial only', () => {
+  const project = open([bellLeverOf('09:46', '10:32'), capacity, closed]);
+  const view = scenarioView(project);
+  assert.deepEqual(view.levers.map((each) => [each.index, each.lever.kind, each.trial]), [[0, 'bell', false], [1, 'capacity', false], [2, 'way', true]]);
+  assert.equal(view.levers[0].words.text, 'A Day, Period 3: 9:46 AM to 10:32 AM (was 9:44 AM to 10:32 AM)');
+  assert.equal(view.levers[1].words.text, 'Room 204 seats 12 (was 30)'.replace('30', String(school().building.floors.flatMap((f) => f.spaces).find((s) => s.id === 'rsample204').capacity)));
+  assert.equal(view.total, 3);
+  assert.equal(view.kept.length, 0, 'the changes list is the changes only');
+});
+
+test('SV2-92 chips: a lever a later one replaces keeps the later one\'s index, and a lever that no longer applies is listed as dropped with its index', () => {
+  const project = open([{ ...capacity, capacity: 10 }, headCount, capacity]);
+  const view = scenarioView(project);
+  assert.deepEqual(view.levers.map((each) => each.index), [1, 2], 'the earlier capacity for the room is replaced');
+  assert.equal(view.droppedLevers.length, 1);
+  assert.equal(view.droppedLevers[0].index, 0);
+  assert.match(view.droppedLevers[0].sentence, /a later lever of the same kind for the same thing replaces it\.$/);
+  const gone = open([{ kind: 'capacity', roomId: 'rnowhere', capacity: 9 }]);
+  assert.equal(scenarioView(gone).droppedLevers.length, 1);
+  assert.equal(scenarioView(gone).total, 0);
+  assert.equal(scenarioView(gone).droppedTotal, 1);
+});
+
+test('SV2-92 chips: a trial staggered dismissal that replaces a real one says what it replaces', () => {
+  const project = open([{ ...grade7, seconds: 180 }]);
+  project.release = [{ id: 'lreal', who: { grade: '7' }, seconds: 120, after: null, dayTypeIds: null }];
+  assert.equal(insteadOf(project, project.scenario.levers[0]), '2 min');
+  assert.equal(scenarioView(project).levers[0].instead, '2 min');
+  assert.equal(insteadOf(project, { ...grade7, who: { grade: '8' } }), null, 'another grade replaces nothing');
+  assert.equal(insteadOf(project, { ...grade7, after: [1] }), null, 'other periods replace nothing');
+  assert.equal(insteadOf(project, capacity), null);
+  project.release = [{ id: 'lreal', who: { groups: ['gsample07a'] }, seconds: 0, after: null, dayTypeIds: null }];
+  assert.equal(insteadOf(project, { kind: 'release', who: { groups: ['gsample07a'] }, seconds: 60, after: null, dayTypeIds: null }), 'on the bell');
+});
+
+test('SV2-92 words: the first line and the bar count changes and levers together, and the skipped ones of both', () => {
+  const project = open([capacity, { kind: 'capacity', roomId: 'rnowhere', capacity: 9 }], [{ kind: 'move', dayTypeId: DAY_A, groupId: 'gsample07c', period: 1, roomId: 'rsample204' }]);
+  const view = scenarioView(project);
+  assert.equal(barWords(view), 'Not applied yet: 2 changes, 1 skipped');
+  assert.equal(firstLine(project, view).map((part) => part.text).join(''), 'Trying Levers: 2 changes, not applied; 1 change no longer applies. The real schedule is untouched until you apply.');
+});
+
+test('SV2-92 Apply: a line per kind, the closures left out in a band of their own, and the button says "n of m"', () => {
+  const project = open([bellLeverOf('09:46', '10:32'), grade7, capacity, headCount, oneWay, closed, { kind: 'corridor', floorId: project0Floor(), cells: corridorCells(), name: 'North Corridor' }],
+    [{ kind: 'move', dayTypeId: DAY_A, groupId: 'gsample07c', period: 1, roomId: 'rsample204' }]);
+  const summary = applySummary(project, scenarioView(project));
+  assert.equal(summary.writes, 6, 'one change, a bell, a staggered dismissal, a capacity, a head count and a way that is written');
+  assert.equal(summary.total, 8, 'the closed stairs and the closed corridor are counted but not written');
+  assert.deepEqual(summary.kinds, ['Bell times: 1 change.', 'Staggered dismissal: 1 rule.', 'Room capacities: 1 change.', 'Head counts: 1 change.', 'Stairs A becomes up only.']);
+  assert.match(summary.trial.text, /^Closing Stairs B and North Corridor is a trial: Apply leaves the building as it is\.$/);
+  assert.equal(applyButtonWords(summary), 'Apply 6 of 8 changes');
+});
+
+function project0Floor() {
+  return school().building.floors[0].id;
+}
+
+// two cells of the first floor that are corridor
+function corridorCells() {
+  const cells = school().building.floors[0].cells;
+  const found = [];
+  for (let i = 0; i < cells.length && found.length < 2; i += 1) if (cells[i] === '#') found.push(i);
+  return found;
+}
+
+test('SV2-92 Apply: with no closure the button is "Apply n changes" as before, and with nothing it closes the scenario', () => {
+  const one = open([capacity]);
+  assert.equal(applyButtonWords(applySummary(one, scenarioView(one))), 'Apply 1 change');
+  const two = open([capacity, headCount]);
+  assert.equal(applyButtonWords(applySummary(two, scenarioView(two))), 'Apply 2 changes');
+  const none = open([]);
+  assert.equal(applyButtonWords(applySummary(none, scenarioView(none))), 'Close the scenario: no change of it applies');
+  assert.equal(applySummary(none, scenarioView(none)).trial, null);
+  const only = open([closed]);
+  assert.equal(applyButtonWords(applySummary(only, scenarioView(only))), 'Apply 0 of 1 changes');
+});
+
+test('SV2-92 Apply: a dropped lever is skipped in the summary with the changes that were dropped', () => {
+  const project = open([{ kind: 'headCount', groupId: 'gnowhere', headCount: 9 }]);
+  const summary = applySummary(project, scenarioView(project));
+  assert.equal(summary.skipped.length, 1);
+  assert.match(summary.skipped[0], /no longer in the project/);
+});
+
+test('SV2-92 late rows: a group held back by a trial dismissal and late is named with the delay; one held as before is not', () => {
+  const project = open([grade7]);
+  const notes = heldNotes(project);
+  assert.deepEqual(Array.from(notes.keys()).sort(), ['gsample07a', 'gsample07b', 'gsample07c']);
+  assert.equal(notes.get('gsample07a'), 'leaves 2 min after the bell');
+  const mixed = open([{ ...grade7, after: [1] }, { kind: 'release', who: { groups: ['gsample07a'] }, seconds: 45, after: [3], dayTypeIds: null }]);
+  assert.equal(heldNotes(mixed).get('gsample07a'), 'leaves up to 2 min after the bell');
+  const real = open([grade7]);
+  real.release = [{ id: 'lreal', who: { grade: '7' }, seconds: 120, after: null, dayTypeIds: null }];
+  assert.equal(heldNotes(real).size, 0, 'the real schedule already holds them as long');
+  assert.equal(heldNotes(school()).size, 0, 'no scenario, no note');
+  const late = (held) => groupRow(open([grade7]), { groupId: 'gsample07a', edited: true, before: { total: 100, late: 0 }, after: { total: 220, late: 2 }, difference: 120, failedChange: 0 }, held);
+  assert.equal(late(notes).held, 'leaves 2 min after the bell');
+  assert.equal(groupRow(open([grade7]), { groupId: 'gsample07a', edited: true, before: { total: 100, late: 0 }, after: { total: 220, late: 0 }, difference: 120, failedChange: 0 }, notes).held, null, 'not late: nothing to explain');
+});
+
+test('SV2-92 Bell times: the sets are each own day type\'s bells and each bell schedule, and the lever is one or the other', () => {
+  const project = school();
+  project.bellSchedules = [{ id: 'bearly', name: 'Early Release', off: [], bells: project.dayTypes[0].bells.map((bell) => ({ ...bell })) }];
+  assert.deepEqual(bellSets(project).map((each) => each.value), ['d:dsample00a', 'd:dsample00b', 'b:bearly']);
+  assert.deepEqual(bellLever(project, { setId: 'd:dsample00a', period: 2, start: '09:46', end: '10:32' }), { lever: { kind: 'bell', dayTypeId: DAY_A, period: 2, start: '09:46', end: '10:32' } });
+  assert.deepEqual(bellLever(project, { setId: 'b:bearly', period: 2, start: '09:46', end: '10:32' }), { lever: { kind: 'bell', bellsId: 'bearly', period: 2, start: '09:46', end: '10:32' } });
+  assert.match(bellLever(project, { setId: 'd:dsample00a', period: 2, start: '', end: '10:32' }).why, /Enter both times/);
+  assert.match(bellLever(project, { setId: 'd:dsample00a', period: 2, start: '10:40', end: '10:32' }).why, /ends after it starts/);
+  assert.match(bellLever(project, { setId: 'd:gone', period: 2, start: '09:46', end: '10:32' }).why, /no day type or bell schedule/);
+});
+
+test('SV2-92 Bell times: the passing time it would make, and the Lengthen passing row keeps the end and says so', () => {
+  const project = school();
+  const set = bellSets(project)[0];
+  assert.equal(bellPassingWords(project, set, 2, null), 'Passing before Period 3: 4 min (was 4 min)');
+  assert.equal(bellPassingWords(project, set, 2, bellLeverOf('09:46', '10:32')), 'Passing before Period 3: 6 min (was 4 min)');
+  assert.equal(bellPassingWords(project, set, 0, null), 'Nothing is passed into Period 1: it is the first of the day.');
+  const made = lengthenPassing(project, set, 2, { start: '', end: '' }, 2);
+  assert.deepEqual([made.start, made.end], ['09:46', '10:32']);
+  assert.equal(made.sentence, 'Period 3 then runs 9:46 AM to 10:32 AM, was 9:44 AM to 10:32 AM');
+  // from the times the form holds now, so two presses add up
+  assert.equal(lengthenPassing(project, set, 2, { start: '09:46', end: '10:32' }, 5).start, '09:51');
+  assert.match(lengthenPassing(project, set, 2, { start: '10:30', end: '10:32' }, 5).why, /would start after it ends/);
+  assert.match(lengthenPassing(project, set, 0, { start: '08:00', end: '08:48' }, 1).why, /no passing time before Period 1/);
+});
+
+test('SV2-92 adding: a lever that is in the list now is no cancel; one that is not says how many earlier levers went with it', () => {
+  assert.equal(leverCancelled({ levers: [] }, { levers: [{ ...capacity }] }, capacity), null);
+  assert.deepEqual(leverCancelled({ levers: [capacity, headCount] }, { levers: [headCount] }, { ...capacity, capacity: 30 }), { taken: 1 });
+  assert.deepEqual(leverCancelled({ levers: [] }, { levers: [] }, capacity), { taken: 0 });
+  assert.equal(leverCancelledSentence('Room 204 seats 30 (was 30)', 0), 'That puts the schedule back as it is: Room 204 seats 30 (was 30). Nothing is added.');
+  assert.equal(leverCancelledSentence('x', 2), 'That puts the schedule back as it is: x. Nothing is added, and 2 earlier changes to the same thing are taken out.');
+});

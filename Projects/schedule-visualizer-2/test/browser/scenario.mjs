@@ -368,13 +368,13 @@ test('× takes a chip out, and the focus goes to the chip now in its place', asy
   assert.deepEqual(left.changes.map((change) => change.groupId), ['gsample07a', 'gsample07c']);
   await page.waitForFunction(() => document.activeElement && document.activeElement.dataset.action === 'remove');
   assert.equal(await page.evaluate(() => document.activeElement.closest('.scn-chip').dataset.index), '1', 'the focus is on the chip now in its place');
-  // the last one out leaves the focus on the panel's first control
+  // the last one out leaves the focus on the Kind of change fieldset (DESIGN 12.4, SV2-92)
   await page.keyboard.press('Enter');
   await ready(page);
   await page.waitForFunction(() => document.activeElement && document.activeElement.dataset.action === 'remove');
   await page.keyboard.press('Enter');
   await ready(page);
-  await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'scenario-name');
+  await page.waitForFunction(() => document.activeElement && document.activeElement === document.querySelector('.scn-kind input:checked'));
   assert.match(await seen(page, '.scn-none'), /No changes yet/);
 });
 

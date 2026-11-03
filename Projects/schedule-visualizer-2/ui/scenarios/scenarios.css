@@ -562,3 +562,165 @@
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+
+/* ---------- The Kind of change fieldset and the lever forms (DESIGN 12.4) ---------- */
+
+/* seven chips (six here, the stairs and corridors one is SV2-92b's), 44 px,
+   wrapping; the chosen one is a filled shape and bold, never colour alone */
+.scn-kind {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.scn-kind__legend {
+  padding: 0;
+  margin-bottom: var(--s-1);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.scn-kind .seg,
+.scn-seats__what .seg {
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+
+.scn-kind .seg__option,
+.scn-seats__what .seg__option {
+  min-height: 44px;
+}
+
+.scn-kind .seg__input:checked + .seg__label,
+.scn-seats__what .seg__input:checked + .seg__label {
+  font-weight: 700;
+}
+
+.scn-kind .seg__input:checked + .seg__label::before,
+.scn-seats__what .seg__input:checked + .seg__label::before {
+  content: '';
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  margin-right: 0.4em;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.scn-seats__what {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.scn-seats__what legend {
+  padding: 0;
+  margin-bottom: var(--s-1);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+/* the form scrolls inside the panel, so a long editor never takes the stage */
+.scn-form {
+  min-width: 0;
+}
+
+.scn-form__passing,
+.scn-form__lengthen,
+.scn-form__trial,
+.scn-form__hint,
+.scn-seats__now {
+  margin: 0;
+  font-size: var(--t-sm);
+  overflow-wrap: anywhere;
+}
+
+.scn-form__passing {
+  font-weight: 600;
+}
+
+.scn-form__lengthen:empty,
+.scn-form__passing:empty {
+  display: none;
+}
+
+.scn-form__trial {
+  color: var(--note);
+  font-weight: 600;
+}
+
+.scn-lengthen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.scn-lengthen__label {
+  font-size: var(--t-sm);
+}
+
+.scn-lengthen__button {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.scn-force {
+  display: grid;
+  gap: var(--s-1);
+}
+
+.scn-force__title {
+  margin: 0;
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.scn-force__none {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--ink-2);
+}
+
+.scn-force__list {
+  margin: 0;
+  padding-left: var(--s-5);
+  font-size: var(--t-sm);
+  overflow-wrap: anywhere;
+}
+
+/* the Day tab's editor, inside the panel: its fields stack */
+.scn-form .sch-release__fields,
+.scn-form .sch-markedit__grid {
+  display: grid;
+  gap: var(--s-3);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.scn-form .sch-radio,
+.scn-form .sch-show__chip,
+.scn-form .chip__remove {
+  min-height: 44px;
+}
+
+/* a closure's chip carries "Trial only"; a held group's row says why it is late */
+.scn-chip .scn-tag {
+  margin-left: var(--s-2);
+}
+
+.scn-held {
+  display: block;
+  font-size: var(--t-xs);
+  color: var(--note);
+  font-weight: 400;
+}
+
+.scn-summary__trial {
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line-strong);
+  border-left-width: 4px;
+  border-radius: var(--r-1);
+  font-weight: 600;
+}
