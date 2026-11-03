@@ -24,7 +24,8 @@ import { places } from '../../engine/places.js';
 import { checkSchedule } from '../../engine/checks.js';
 import { buildingChecks } from '../../engine/building-checks.js';
 import { ownDayTypes } from '../../engine/day-types.js';
-import { createPipeline, pack, unpack, REQUEST, ANSWER, READY } from '../../engine/worker.js';
+import { createPipeline, pack, unpack, scenarioRun, REQUEST, ANSWER, READY } from '../../engine/worker.js';
+import { applyChanges, applyLevers, reconcile, trimResult } from '../../engine/scenario.js';
 import { createEngineClient, engineFor } from '../../ui/engine-client.js';
 import { plainSchool as sampleSchool } from './helpers.mjs';
 import { bigProject, BIG } from '../fixtures/big.mjs';
@@ -543,3 +544,67 @@ test('the transition cache is keyed by the delay: two day types with the same wa
 
 const A_DAY = 'dsample00a';
 const B_DAY = 'dsample00b';
+
+// -------------------------------------------------------------- the scenario lane's levers (SV2-89)
+
+test('scenarioRun: the levers are applied after the changes, and the answer is what a fresh run of that project works out', () => {
+  const store = storeOf(sampleSchool());
+  const change = { kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample07c', period: 1, roomId: 'rsample204' };
+  const levers = [
+    { kind: 'bell', dayTypeId: 'dsample00a', period: 6, start: '13:20', end: '14:08' },
+    { kind: 'headCount', groupId: 'gsample06a', headCount: 60 },
+    { kind: 'capacity', roomId: 'rsample203', capacity: 12 },
+    { kind: 'release', who: { grade: '7' }, seconds: 120, after: null, dayTypeIds: null },
+  ];
+  store.apply(actions.newScenario, { name: 'Trial' });
+  store.apply(actions.addScenarioChange, { change });
+  for (const lever of levers) store.apply(actions.addScenarioLever, { lever });
+  const project = store.project;
+  const expected = applyLevers(applyChanges(project, [change]), levers);
+  const answer = scenarioRun(createPipeline(), project, versionsOf(store));
+  assert.deepEqual(trimmedParts(answer), trimmedParts(fresh(expected)), 'a fresh run of the project with both applied');
+  const noLevers = scenarioRun(createPipeline(), { ...project, scenario: { ...project.scenario, levers: undefined } }, versionsOf(store));
+  assert.notDeepEqual(noLevers.walks, answer.walks, 'and the levers do change the answer');
+  assert.deepEqual(noLevers.walks, trimResult(createPipeline().run(applyChanges(project, [change]))).walks, 'a scenario without levers answers as it did');
+});
+
+test('scenarioRun: a lever that no longer applies is left out, as a change is', () => {
+  const store = storeOf(sampleSchool());
+  store.apply(actions.newScenario, { name: 'Trial' });
+  store.apply(actions.addScenarioLever, { lever: { kind: 'headCount', groupId: 'gsample06a', headCount: 60 } });
+  store.apply(actions.addScenarioLever, { lever: { kind: 'capacity', roomId: 'rsample203', capacity: 12 } });
+  store.apply(actions.deleteGroup, { id: 'gsample06a' });
+  const project = store.project;
+  assert.equal(reconcile(project, project.scenario).levers.length, 1);
+  const answer = scenarioRun(createPipeline(), project, versionsOf(store));
+  const expected = applyLevers(project, reconcile(project, project.scenario).levers);
+  assert.deepEqual(answer.findings, trimResult(createPipeline().run(expected)).findings);
+});
+
+test('scenarioRun: a pipeline kept between runs still answers as a fresh run does after every lever change, the lane\'s schedule counter moving with each new scenario object', () => {
+  const store = storeOf(sampleSchool());
+  const base = versionsOf(store);
+  const pipeline = createPipeline();
+  const project = store.project;
+  let step = 0;
+  const steps = [
+    [],
+    [{ kind: 'headCount', groupId: 'gsample06a', headCount: 200 }],
+    [{ kind: 'headCount', groupId: 'gsample06a', headCount: 200 }, { kind: 'bell', dayTypeId: 'dsample00a', period: 6, start: '13:20', end: '14:08' }],
+    [{ kind: 'bell', dayTypeId: 'dsample00a', period: 6, start: '13:20', end: '14:08' }, { kind: 'release', who: { wing: 'East' }, seconds: 45, after: null, dayTypeIds: null }],
+    [{ kind: 'release', who: { grade: '7' }, seconds: 120, after: [2], dayTypeIds: null }, { kind: 'capacity', roomId: 'rsample203', capacity: 12 }],
+    [{ kind: 'release', who: { grade: '7' }, seconds: 180, after: [2], dayTypeIds: null }],
+    [],
+  ];
+  for (const levers of steps) {
+    const open = { ...project, scenario: { name: 'Trial', changes: [], levers, compared: null } };
+    step += 1;
+    const answer = scenarioRun(pipeline, open, { ...base, schedule: base.schedule + step });
+    assert.deepEqual(trimmedParts(answer), trimmedParts(fresh(applyLevers(project, levers))), JSON.stringify(levers));
+  }
+});
+
+// What the scenario lane sends back, and what a fresh run has of the same.
+function trimmedParts(result) {
+  return { loads: result.loads, places: result.places, walks: result.walks, findings: result.findings };
+}

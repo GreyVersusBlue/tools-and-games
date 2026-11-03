@@ -1350,6 +1350,74 @@ export function repair(input, options) {
         if (compared !== undefined) note('The record of the file the scenario was compared with could not be read and was removed.');
         scenario.compared = null;
       }
+      // ---- levers (ARCHITECTURE 18.3): strict when present, never asked for
+      // when absent, so a scenario without them comes through as it was.
+      if (scenario.levers !== undefined) {
+        if (!Array.isArray(scenario.levers)) {
+          note('The levers of the scenario could not be read and were removed.');
+          scenario.levers = [];
+        } else {
+          const lost = [];
+          const levers = [];
+          const whole = (value) => Number.isInteger(value) && value >= 0;
+          const text = (value) => typeof value === 'string' && value !== '';
+          const seat = (value, range) => value === null || (Number.isInteger(value) && inRange(value, range));
+          scenario.levers.forEach((raw, i) => {
+            const what = 'Lever ' + (i + 1) + ' of the scenario';
+            if (!isObject(raw)) return lost.push(what + ' was not an object');
+            if (!['release', 'bell', 'way', 'corridor', 'capacity', 'headCount'].includes(raw.kind)) return lost.push(what + ' was of a kind this version does not know');
+            const lever = { ...raw };
+            const follow1 = (prefix, key) => {
+              if (renamed[prefix].has(lever[key])) lever[key] = renamed[prefix].get(lever[key]);
+            };
+            if (lever.kind === 'release') {
+              const kinds = isObject(lever.who) ? RELEASE_WHO_KINDS.filter((kind) => lever.who[kind] !== undefined) : [];
+              if (kinds.length !== 1) return lost.push(what + ' did not say exactly one of groups, a grade or a wing');
+              const kind = kinds[0];
+              if (kind === 'groups') {
+                if (!Array.isArray(lever.who.groups) || lever.who.groups.length === 0 || !lever.who.groups.every(text)) return lost.push(what + ' had no list of groups');
+                const groups = lever.who.groups.map((id) => follow('g', id));
+                lever.who = { groups: Array.from(new Set(groups)) };
+              } else {
+                if (typeof lever.who[kind] !== 'string' || lever.who[kind].trim() === '' || textLength(lever.who[kind]) > NAME_MOST) return lost.push(what + ' had a ' + kind + ' that is not text, or is empty or too long');
+                lever.who = { [kind]: lever.who[kind] };
+              }
+              const low = kind === 'groups' ? 0 : RELEASE_SECONDS[0];
+              if (!Number.isInteger(lever.seconds) || lever.seconds < low || lever.seconds > RELEASE_SECONDS[1]) return lost.push(what + ' did not have a whole number of seconds from ' + low + ' to ' + RELEASE_SECONDS[1]);
+              if (lever.after === undefined) lever.after = null;
+              if (lever.after !== null) {
+                if (!Array.isArray(lever.after) || lever.after.length === 0 || !lever.after.every(whole)) return lost.push(what + ' had periods that are not whole numbers from 0');
+                lever.after = Array.from(new Set(lever.after)).sort((a, b) => a - b);
+              }
+              if (lever.dayTypeIds === undefined) lever.dayTypeIds = null;
+              if (lever.dayTypeIds !== null) {
+                if (!Array.isArray(lever.dayTypeIds) || lever.dayTypeIds.length === 0 || !lever.dayTypeIds.every(text)) return lost.push(what + ' had day types that cannot be read');
+                lever.dayTypeIds = Array.from(new Set(lever.dayTypeIds.map((id) => follow('d', id))));
+              }
+              return levers.push(JSON.stringify({ kind: lever.kind, who: lever.who, seconds: lever.seconds, after: lever.after, dayTypeIds: lever.dayTypeIds }) === JSON.stringify(raw) ? raw : { kind: 'release', who: lever.who, seconds: lever.seconds, after: lever.after, dayTypeIds: lever.dayTypeIds });
+            }
+            if (lever.kind === 'bell') {
+              const one = (text(lever.dayTypeId) ? 1 : 0) + (text(lever.bellsId) ? 1 : 0);
+              if (one !== 1 || !whole(lever.period) || !isBellTime(lever.start) || !isBellTime(lever.end)) return lost.push(what + ' was a bell without its day type or bell schedule, period and times');
+              follow1('d', 'dayTypeId');
+              follow1('b', 'bellsId');
+            } else if (lever.kind === 'capacity') {
+              if (!text(lever.roomId) || lever.capacity === undefined || !seat(lever.capacity, RANGES.capacity)) return lost.push(what + ' was a capacity without a room and a whole number of seats');
+              follow1('r', 'roomId');
+            } else if (lever.kind === 'headCount') {
+              if (!text(lever.groupId) || lever.headCount === undefined || !seat(lever.headCount, RANGES.headCount)) return lost.push(what + ' was a head count without a group and a whole number of students');
+              follow1('g', 'groupId');
+            } else if (lever.kind === 'way') {
+              if (!text(lever.connectionId) || !['both', 'ab', 'ba', 'closed'].includes(lever.way)) return lost.push(what + ' was a stair connection without its way');
+            } else if (!text(lever.floorId) || !Array.isArray(lever.cells) || lever.cells.length === 0 || !lever.cells.every(whole) || typeof lever.name !== 'string') {
+              return lost.push(what + ' was a closed corridor without its floor and cells');
+            }
+            return levers.push(Object.keys(lever).every((key) => lever[key] === raw[key]) ? raw : lever);
+          });
+          if (lost.length > 0) note(plural(lost.length, 'lever', 'levers') + ' of the scenario could not be read and ' + (lost.length === 1 ? 'was' : 'were') + ' removed: ' + lost.join('; ') + '.');
+          if (lost.length > 0 || levers.some((lever, i) => lever !== scenario.levers[i])) scenario.levers = levers;
+        }
+      }
       project.scenario = scenario;
     }
 
