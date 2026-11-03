@@ -2986,6 +2986,46 @@ export const removeScenarioLever = action(
   },
 );
 
+// payload: { indexes }, places in project.scenario.levers, each once, in any
+// order: several levers out as one step of undo (SV2-90b), as
+// removeScenarioChanges does for changes. A list with no index makes no
+// entry; an index that is not a lever of the scenario refuses the whole step.
+// removeScenarioChanges also takes `leverIndexes`, so a lab's "Remove them"
+// takes dropped changes and dropped levers in one step.
+export const removeScenarioLevers = action(
+  {
+    label: (before, payload) => {
+      const indexes = payloadOf(payload).indexes;
+      const name = scenarioName(before);
+      const levers = leversIn(before.scenario);
+      if (Array.isArray(indexes) && indexes.length === 1 && levers[indexes[0]]) return 'Remove from scenario ' + name + ': ' + leverText(before, levers[indexes[0]]);
+      return 'Remove from scenario ' + name + ': ' + changesWord(Array.isArray(indexes) ? indexes.length : 0);
+    },
+    bumps: [],
+    focus: scenarioFocus,
+  },
+  (project, payload) => {
+    const scenario = needScenario(project);
+    const indexes = payloadOf(payload).indexes;
+    if (!Array.isArray(indexes)) refuse('Say which levers to take out of the scenario.', 'bad-value');
+    if (indexes.length === 0) return project;
+    const levers = leversIn(scenario);
+    const out = takenOut(indexes, levers.length, 'lever');
+    return withScenario(project, { ...scenario, levers: levers.filter((lever, i) => !out.has(i)) });
+  },
+);
+
+// The places named, checked: whole numbers inside the list, each once.
+function takenOut(indexes, length, noun) {
+  const out = new Set();
+  for (const index of indexes) {
+    if (!Number.isInteger(index) || index < 0 || index >= length) refuse('That ' + noun + ' is no longer in the scenario.', 'missing');
+    if (out.has(index)) refuse('Each ' + noun + ' is taken out once: the same one is named twice.', 'bad-value');
+    out.add(index);
+  }
+  return out;
+}
+
 // The scenario goes, changes and all; undo brings it back. With none open
 // this changes nothing.
 export const discardScenario = action(
@@ -3114,9 +3154,14 @@ export const removeScenarioChanges = action(
   {
     label: (before, payload) => {
       const indexes = payloadOf(payload).indexes;
+      const leverIndexes = Array.isArray(payloadOf(payload).leverIndexes) ? payloadOf(payload).leverIndexes : [];
       const name = scenarioName(before);
-      if (indexes.length === 1) return 'Remove from scenario ' + name + ': ' + chipText(before, before.scenario.changes[indexes[0]]);
-      return 'Remove from scenario ' + name + ': ' + changesWord(indexes.length);
+      if (indexes.length + leverIndexes.length === 1) {
+        if (indexes.length === 1) return 'Remove from scenario ' + name + ': ' + chipText(before, before.scenario.changes[indexes[0]]);
+        const lever = leversIn(before.scenario)[leverIndexes[0]];
+        if (lever) return 'Remove from scenario ' + name + ': ' + leverText(before, lever);
+      }
+      return 'Remove from scenario ' + name + ': ' + changesWord(indexes.length + leverIndexes.length);
     },
     bumps: [],
     focus: scenarioFocus,
@@ -3125,14 +3170,18 @@ export const removeScenarioChanges = action(
     const scenario = needScenario(project);
     const indexes = payloadOf(payload).indexes;
     if (!Array.isArray(indexes)) refuse('Say which changes to take out of the scenario.', 'bad-value');
-    if (indexes.length === 0) return project;
-    const out = new Set();
-    for (const index of indexes) {
-      if (!Number.isInteger(index) || index < 0 || index >= scenario.changes.length) refuse('That change is no longer in the scenario.', 'missing');
-      if (out.has(index)) refuse('Each change is taken out once: the same one is named twice.', 'bad-value');
-      out.add(index);
-    }
-    return withScenario(project, { ...scenario, changes: scenario.changes.filter((change, i) => !out.has(i)) });
+    // `leverIndexes` (SV2-90b): places in project.scenario.levers, taken out
+    // in the same step; absent reads as none
+    const given = payloadOf(payload).leverIndexes;
+    if (given !== undefined && !Array.isArray(given)) refuse('Say which levers to take out of the scenario.', 'bad-value');
+    const leverIndexes = given || [];
+    if (indexes.length === 0 && leverIndexes.length === 0) return project;
+    const out = takenOut(indexes, scenario.changes.length, 'change');
+    const levers = leversIn(scenario);
+    const outLevers = takenOut(leverIndexes, levers.length, 'lever');
+    const next = { ...scenario, changes: out.size === 0 ? scenario.changes : scenario.changes.filter((change, i) => !out.has(i)) };
+    if (outLevers.size > 0) next.levers = levers.filter((lever, i) => !outLevers.has(i));
+    return withScenario(project, next);
   },
 );
 

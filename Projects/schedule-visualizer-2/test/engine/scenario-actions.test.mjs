@@ -15,7 +15,7 @@ import { validate } from '../../engine/validate.js';
 import { writeProjectFile, readProjectFile } from '../../engine/project-file.js';
 import { school, clone, clock, makeIds, assertValid } from './helpers.mjs';
 
-const { addScenarioLever, removeScenarioLever, deleteDayType, setDayTypeKind, describeDayTypeDelete, describeDayTypeKind, describePeriodChange, setPeriods, newScenario, renameScenario, addScenarioChange, removeScenarioChange, removeScenarioChanges, discardScenario, setScenarioFromFile, applyScenario, setSlot, deleteGroup, revertToBase, ActionError, SCHEDULE, NEW_SCENARIO_NAME } = actions;
+const { addScenarioLever, removeScenarioLever, removeScenarioLevers, deleteDayType, setDayTypeKind, describeDayTypeDelete, describeDayTypeKind, describePeriodChange, setPeriods, newScenario, renameScenario, addScenarioChange, removeScenarioChange, removeScenarioChanges, discardScenario, setScenarioFromFile, applyScenario, setSlot, deleteGroup, revertToBase, ActionError, SCHEDULE, NEW_SCENARIO_NAME } = actions;
 
 const A = 'dsample00a';
 const B = 'dsample00b';
@@ -649,6 +649,59 @@ test('removeScenarioLever: takes one lever out by place; a place that is not the
   assert.deepEqual(store.project.scenario.levers, [L_SEATS]);
   store.apply(removeScenarioLever, { index: 0 });
   assert.deepEqual(store.project.scenario.levers, [], 'an empty list stays a list');
+});
+
+test('removeScenarioLevers: several levers out as one undo entry, in any order; a bad or repeated place refuses the whole step (SV2-90b)', () => {
+  const store = withLevers([L_HEAD, L_SEATS, L_BELL]);
+  const list = store.project.scenario.levers;
+  const entries = store.history.past.length;
+  assert.deepEqual(removeScenarioLevers.bumps, []);
+  store.apply(removeScenarioLevers, { indexes: [2, 0] });
+  assert.deepEqual(store.project.scenario.levers, [L_SEATS]);
+  assert.equal(store.history.past.length, entries + 1, 'one undo entry for both');
+  assert.equal(store.undoLabel, 'Remove from scenario Trial: 2 changes');
+  store.undo();
+  assert.equal(store.project.scenario.levers, list, 'one Undo brings both back, in their places');
+  store.redo();
+  store.undo();
+  const after = store.history.past.length;
+  store.apply(removeScenarioLevers, { indexes: [] });
+  assert.equal(store.history.past.length, after, 'no place, no entry');
+  for (const bad of [[3], [-1], [0.5], ['0'], [0, 3]]) assert.throws(() => store.apply(removeScenarioLevers, { indexes: bad }), (error) => refusedWith('missing')(error) && error.message === 'That lever is no longer in the scenario.', JSON.stringify(bad));
+  assert.throws(() => store.apply(removeScenarioLevers, { indexes: [1, 1] }), refusedWith('bad-value'));
+  assert.throws(() => store.apply(removeScenarioLevers, { indexes: 1 }), refusedWith('bad-value'));
+  assert.throws(() => store.apply(removeScenarioLevers, null), refusedWith('bad-value'));
+  assert.equal(store.project.scenario.levers, list, 'a refusal changed nothing');
+  store.apply(removeScenarioLevers, { indexes: [0] });
+  assert.equal(store.undoLabel, 'Remove from scenario Trial: 6A: 40 students (was 24)');
+  store.apply(discardScenario, {});
+  assert.throws(() => store.apply(removeScenarioLevers, { indexes: [0] }), refusedWith('no-scenario'));
+});
+
+test('removeScenarioChanges with leverIndexes takes changes and levers out in one undo step (SV2-90b)', () => {
+  const store = withLevers([L_HEAD, L_SEATS], [move(G7C, 1, 'rsample204'), swapPeriods(G8A, 5, 6)]);
+  const changes = store.project.scenario.changes;
+  const levers = store.project.scenario.levers;
+  const entries = store.history.past.length;
+  store.apply(removeScenarioChanges, { indexes: [1], leverIndexes: [0] });
+  assert.deepEqual(store.project.scenario.changes, [changes[0]]);
+  assert.deepEqual(store.project.scenario.levers, [L_SEATS]);
+  assert.equal(store.history.past.length, entries + 1, 'one step for both');
+  assert.equal(store.undoLabel, 'Remove from scenario Trial: 2 changes');
+  store.undo();
+  assert.equal(store.project.scenario.changes, changes);
+  assert.equal(store.project.scenario.levers, levers, 'one Undo brings both back');
+  // only levers: no changes named
+  store.apply(removeScenarioChanges, { indexes: [], leverIndexes: [1] });
+  assert.deepEqual(store.project.scenario.levers, [L_HEAD]);
+  assert.equal(store.project.scenario.changes, changes, 'the changes are the very same list');
+  assert.equal(store.undoLabel, 'Remove from scenario Trial: Room 203 seats 12 (was 30)');
+  store.undo();
+  // a bad lever place refuses the whole step, the changes too
+  assert.throws(() => store.apply(removeScenarioChanges, { indexes: [0], leverIndexes: [5] }), (error) => refusedWith('missing')(error) && error.message === 'That lever is no longer in the scenario.');
+  assert.throws(() => store.apply(removeScenarioChanges, { indexes: [0], leverIndexes: 1 }), refusedWith('bad-value'));
+  assert.equal(store.project.scenario.changes, changes, 'a refusal changed nothing');
+  assert.equal(store.project.scenario.levers, levers);
 });
 
 test('every lever action reads a null payload as {}, so its own refusal applies and never a TypeError', () => {
