@@ -17,15 +17,15 @@ import { createStore } from '../../engine/store.js';
 import { createIds, seededRandom } from '../../engine/ids.js';
 import * as actions from '../../engine/actions.js';
 import { allRooms } from '../../engine/schema.js';
-import { routesForSchedule, routingGraph } from '../../engine/routing.js';
-import { simulateSchedule, walkResults } from '../../engine/crowd.js';
+import { routesForSchedule, routingGraph, createRouteCache } from '../../engine/routing.js';
+import { simulateSchedule, walkResults, teacherWalks } from '../../engine/crowd.js';
 import { loads } from '../../engine/load.js';
 import { places } from '../../engine/places.js';
 import { checkSchedule } from '../../engine/checks.js';
 import { buildingChecks } from '../../engine/building-checks.js';
 import { ownDayTypes } from '../../engine/day-types.js';
 import { createPipeline, pack, unpack, scenarioRun, REQUEST, ANSWER, READY } from '../../engine/worker.js';
-import { applyChanges, applyLevers, reconcile, trimResult } from '../../engine/scenario.js';
+import { applyChanges, applyLevers, leverRouteOptions, reconcile, trimResult } from '../../engine/scenario.js';
 import { createEngineClient, engineFor } from '../../ui/engine-client.js';
 import { plainSchool as sampleSchool } from './helpers.mjs';
 import { bigProject, BIG } from '../fixtures/big.mjs';
@@ -608,3 +608,172 @@ test('scenarioRun: a pipeline kept between runs still answers as a fresh run doe
 function trimmedParts(result) {
   return { loads: result.loads, places: result.places, walks: result.walks, findings: result.findings };
 }
+
+// -------------------------------------------------------------- the scenario lane's building levers (SV2-90)
+//
+// A building lever is never an edit of the scenario's copy of the building
+// (ARCHITECTURE 18.1), so the oracle here is the building edited by hand: the
+// connection's `direction` set, the connection taken out, the cells made
+// empty. The lane, run on the unedited building with the lever, must answer
+// what a fresh run of the edited building answers.
+
+const STAIRS_A = 'csample00a';
+const STAIRS_B = 'csample00b';
+const FLOOR_1 = 'fsample001';
+
+// The sample school with a second stairs, C, between Floors 1 and 2 at the
+// far end of the corridor, so closing A sends the crossings to C.
+function twoStairs() {
+  const project = JSON.parse(JSON.stringify(sampleSchool()));
+  const cell = 8 * 40 + 36;
+  for (const floor of project.building.floors.slice(0, 2)) floor.cells = floor.cells.slice(0, cell) + 'S' + floor.cells.slice(cell + 1);
+  project.building.connections.push({ id: 'cextra0001', label: 'C', a: { floorId: FLOOR_1, cell }, b: { floorId: 'fsample002', cell }, direction: 'both' });
+  return project;
+}
+
+// …and one teacher who is named on a Floor 2 and then a Floor 1 class in a
+// row, so that a teacher has a walk between floors to time (the sample
+// school's teachers each stay in a room)
+function withCrossingTeacher(project) {
+  const next = JSON.parse(JSON.stringify(project));
+  next.teachers.push({ id: 'tcross00001', name: 'Ms. Cross', subjectId: next.teachers[0].subjectId, roomIds: [], notes: '' });
+  const slots = next.groups[0].days[A_DAY];
+  slots[0] = { ...slots[0], teacherIds: ['tcross00001'] };
+  slots[1] = { ...slots[1], teacherIds: ['tcross00001'] };
+  return next;
+}
+
+// the building as a lever makes it, edited by hand
+function edited(project, levers) {
+  const next = JSON.parse(JSON.stringify(project));
+  for (const lever of levers) {
+    if (lever.kind === 'way' && lever.way === 'closed') next.building.connections = next.building.connections.filter((connection) => connection.id !== lever.connectionId);
+    else if (lever.kind === 'way') next.building.connections.find((connection) => connection.id === lever.connectionId).direction = lever.way;
+    else if (lever.kind === 'corridor') {
+      const floor = next.building.floors.find((candidate) => candidate.id === lever.floorId);
+      for (const cell of lever.cells) floor.cells = floor.cells.slice(0, cell) + '.' + floor.cells.slice(cell + 1);
+    }
+  }
+  return next;
+}
+
+function withLevers(project, levers) {
+  return { ...project, scenario: { name: 'Trial', changes: [], levers, compared: null } };
+}
+
+// what a scenario answer says about walking, whichever way it was got
+function walkedParts(result) {
+  return { walks: result.walks, findings: result.findings, failedWalks: result.failedWalks };
+}
+
+const SIDE_LEVERS = {
+  'a stairs made up only': [{ kind: 'way', connectionId: STAIRS_A, way: 'ab' }],
+  'a stairs made down only': [{ kind: 'way', connectionId: STAIRS_A, way: 'ba' }],
+  'both stairs up only': [{ kind: 'way', connectionId: STAIRS_A, way: 'ab' }, { kind: 'way', connectionId: STAIRS_B, way: 'ab' }],
+  'a stairs closed': [{ kind: 'way', connectionId: STAIRS_B, way: 'closed' }],
+  'a stretch of corridor closed': [{ kind: 'corridor', floorId: FLOOR_1, cells: [7 * 40 + 20, 7 * 40 + 21], name: 'Main Corridor' }],
+};
+
+for (const [name, levers] of Object.entries(SIDE_LEVERS)) {
+  test('scenarioRun: ' + name + ' answers what a fresh run of the building so edited answers, the building untouched', () => {
+    const project = sampleSchool();
+    const store = storeOf(project);
+    const open = withLevers(project, levers);
+    const before = JSON.stringify(project.building);
+    const answer = scenarioRun(createPipeline(), open, { ...versionsOf(store), levers: 1 });
+    assert.equal(JSON.stringify(project.building), before, 'the project handed in is not changed');
+    const oracle = trimResult(createPipeline().run(edited(project, levers)));
+    assert.deepEqual(walkedParts(answer), walkedParts(oracle));
+    const plain = scenarioRun(createPipeline(), withLevers(project, []), { ...versionsOf(store), levers: 0 });
+    assert.notDeepEqual(walkedParts(answer), walkedParts(plain), 'and the lever does change what the lane says');
+  });
+}
+
+test('scenarioRun: a way lever leaves the loads of the edited building too, since the graph is the same', () => {
+  const project = sampleSchool();
+  const levers = SIDE_LEVERS['a stairs made up only'];
+  const answer = scenarioRun(createPipeline(), withLevers(project, levers), { geometry: 1, building: 1, schedule: 1, levers: 1 });
+  assert.deepEqual(answer.loads, trimResult(createPipeline().run(edited(project, levers))).loads);
+});
+
+test('scenarioRun: teachers\' walks honour the levers: a closed stairs sends the teacher the long way', () => {
+  const project = withCrossingTeacher(twoStairs());
+  const lever = [{ kind: 'way', connectionId: STAIRS_A, way: 'closed' }];
+  const open = scenarioRun(createPipeline(), withLevers(project, []), { geometry: 1, building: 1, schedule: 1, levers: 0 });
+  const closed = scenarioRun(createPipeline(), withLevers(project, lever), { geometry: 1, building: 1, schedule: 2, levers: 1 });
+  assert.deepEqual(closed.walks.teachers, trimResult(createPipeline().run(edited(project, lever))).walks.teachers, 'the teachers\' walks are the edited building\'s');
+  assert.ok(open.walks.teachers.some((walk) => walk.teacherId === 'tcross00001'), 'the teacher has a walk');
+  assert.notDeepEqual(closed.walks.teachers, open.walks.teachers, 'and not the open building\'s: C is further than A, so the walk takes longer');
+  // teacherWalks itself, and the bell runs
+  const graph = routingGraph(project);
+  const plain = teacherWalks(project, graph, {});
+  const through = teacherWalks(project, graph, { avoidConnections: [STAIRS_A] });
+  assert.deepEqual(through, teacherWalks(edited(project, lever), routingGraph(edited(project, lever)), {}));
+  assert.notDeepEqual(through, plain);
+  const oneWay = teacherWalks(project, graph, { ways: { [STAIRS_A]: 'ab', cextra0001: 'ab', [STAIRS_B]: 'ab' } });
+  assert.ok(oneWay.length < plain.length, 'with every stairs up only the walks down are gone');
+  const cut = teacherWalks(project, graph, { shutCells: [{ floorId: FLOOR_1, cell: 7 * 40 + 12 }] });
+  assert.notDeepEqual(cut, plain, 'a closed cell reaches a teacher');
+});
+
+test('the levers counter: the lane\'s transition results are never served across a closure', () => {
+  const project = twoStairs();
+  const lever = [{ kind: 'way', connectionId: STAIRS_A, way: 'closed' }];
+  const pipeline = createPipeline();
+  // the same building, the same walkers, another way round: only `levers` says so
+  const open = scenarioRun(pipeline, withLevers(project, []), { geometry: 1, building: 1, schedule: 1, levers: 0 });
+  const closed = scenarioRun(pipeline, withLevers(project, lever), { geometry: 1, building: 1, schedule: 2, levers: 1 });
+  assert.deepEqual(walkedParts(closed), walkedParts(trimResult(createPipeline().run(edited(project, lever)))), 'worked out for the closure, not kept from the open building');
+  assert.notDeepEqual(walkedParts(closed).walks.groups, walkedParts(open).walks.groups);
+  const back = scenarioRun(pipeline, withLevers(project, []), { geometry: 1, building: 1, schedule: 3, levers: 2 });
+  assert.deepEqual(walkedParts(back), walkedParts(open), 'and the other way, the closure is not kept either');
+});
+
+test('the counters: the three are the store\'s, a fourth `levers` is the scenario lane\'s, and all that are given are whole numbers', () => {
+  const project = sampleSchool();
+  const first = createPipeline().run(project, { geometry: 1, building: 1, schedule: 1, levers: 0.5 });
+  assert.equal(first.versions, null, 'a counter that is not a whole number means no counters');
+  assert.equal(createPipeline().run(project, { geometry: 1, building: 1, schedule: 1, levers: '1' }).versions, null);
+  assert.deepEqual(createPipeline().run(project, { geometry: 1, building: 1, schedule: 1 }).versions, { geometry: 1, building: 1, schedule: 1 }, 'the main lane\'s answer says what it always said');
+  assert.deepEqual(createPipeline().run(project, { geometry: 1, building: 1, schedule: 1, levers: 3 }).versions, { geometry: 1, building: 1, schedule: 1, levers: 3 });
+  // a run for the same geometry, building and schedule with another levers counter is a run again
+  const pipeline = createPipeline();
+  const one = pipeline.run(project, { geometry: 1, building: 1, schedule: 1, levers: 0 });
+  assert.equal(pipeline.run(project, { geometry: 1, building: 1, schedule: 1, levers: 0 }), one, 'all four equal: the very same result');
+  assert.equal(pipeline.run(project, { geometry: 1, building: 1, schedule: 1 }), one, 'left out reads as 0');
+  assert.notEqual(pipeline.run(project, { geometry: 1, building: 1, schedule: 1, levers: 1 }), one, 'another levers counter works it all out again');
+});
+
+test('the main lane\'s routes are still warm after a scenario run: the lane never gives the shared cache a geometry of its own', () => {
+  const project = twoStairs();
+  const main = createPipeline();
+  const lane = createPipeline({ cache: main.cache });
+  const counters = { geometry: 7, building: 3, schedule: 5 };
+  const first = main.run(project, counters);
+  const searched = main.cache.searches;
+  assert.equal(first.work.routesRun, true);
+  assert.equal(main.cache.stamp, 'v7');
+  // a scenario with a closure, on the lane\'s own schedule counter and the levers counter
+  const open = withLevers(project, [{ kind: 'way', connectionId: STAIRS_A, way: 'closed' }]);
+  scenarioRun(lane, open, { geometry: 7, building: 3, schedule: 1, levers: 1 });
+  assert.equal(main.cache.stamp, 'v7', 'the one stamp the three pipelines share is the store\'s geometry');
+  assert.ok(main.cache.searches > searched, 'the closure was worked out');
+  // the main lane asked again for the same geometry, a schedule edit later: no field is searched again
+  const again = main.run(project, { ...counters, schedule: 6 });
+  assert.equal(again.work.routesRun, true, 'the schedule moved, so the routes are laid out again');
+  assert.equal(again.work.searches, 0, '…from fields the scenario run left in the cache');
+  assert.deepEqual(again.routes.days, first.routes.days);
+  // and the scenario lane itself keeps its own routes warm on the next run
+  const before = main.cache.searches;
+  scenarioRun(lane, open, { geometry: 7, building: 3, schedule: 2, levers: 1 });
+  assert.equal(main.cache.searches, before, 'the closure\'s fields are the ones already searched');
+});
+
+test('scenarioRun: a lever naming a connection or cells the building no longer has changes nothing, as reconcile leaves it out', () => {
+  const project = sampleSchool();
+  const levers = [{ kind: 'way', connectionId: 'cgone00000', way: 'closed' }, { kind: 'corridor', floorId: 'fgone00000', cells: [3], name: '' }];
+  assert.equal(reconcile(project, { name: 'T', changes: [], levers, compared: null }).levers.length, 0);
+  const answer = scenarioRun(createPipeline(), withLevers(project, levers), { geometry: 1, building: 1, schedule: 1, levers: 0 });
+  assert.deepEqual(walkedParts(answer), walkedParts(trimResult(createPipeline().run(project))));
+  assert.deepEqual(leverRouteOptions(project, levers), { ways: {}, shutLinks: [], shutCells: [] });
+});
