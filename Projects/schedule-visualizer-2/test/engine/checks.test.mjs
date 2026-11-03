@@ -929,3 +929,32 @@ test('the words: counts, lists, the period word, room names and lengths of time'
   assert.equal(roomName({ number: '  ' }, false), 'a room with no number');
   assert.deepEqual([0, 45, 60, 240, 275, 720, 259.6].map(formatDuration), ['0 s', '45 s', '1 min', '4 min', '4 min 35 s', '12 min', '4 min 20 s']);
 });
+
+// ---------------------------------------------------------------- staggered dismissal (SV2-88)
+
+test('a staggered group\'s walk-late sentence names its delay, and the sentence of a group on the bell is the one it always was', () => {
+  const project = clean();
+  const held = { ...LONG_WALK, walking: 255, waiting: 0, released: 130, total: 385 };
+  assert.equal(ofKind(checkSchedule(project, { groups: [held], teachers: [] }), 'group-walk')[0].text, '8A needs 6 min 25 s to get from Gym to Room 303 after Period 6 on A Day, including leaving 2 min 10 s after the bell, and the passing time is 4 min.');
+  const waiting = { ...held, walking: 240, waiting: 15 };
+  assert.equal(ofKind(checkSchedule(project, { groups: [waiting], teachers: [] }), 'group-walk')[0].text, '8A needs 6 min 25 s to get from Gym to Room 303 after Period 6 on A Day, 15 s of it waiting in crowded corridors, including leaving 2 min 10 s after the bell, and the passing time is 4 min.');
+  for (const none of [{}, { released: 0 }, { released: undefined }]) {
+    assert.equal(ofKind(checkSchedule(project, { groups: [{ ...LONG_WALK, ...none }], teachers: [] }), 'group-walk')[0].text, '8A needs 4 min 35 s to get from Gym to Room 303 after Period 6 on A Day, 16 s of it waiting in crowded corridors, and the passing time is 4 min.');
+  }
+});
+
+test('a staggered group that did not arrive says how long it waited for the bell', () => {
+  const project = clean();
+  const stopped = { ...LONG_WALK, total: 720, waiting: 300, walking: 290, released: 130, arrived: false };
+  const found = ofKind(checkSchedule(project, { groups: [stopped], teachers: [] }), 'group-walk');
+  assert.equal(found[0].text, '8A did not arrive at Room 303 from Gym after Period 6 on A Day: it was still on the way after 12 min, having left 2 min 10 s after the bell, and the passing time is 4 min.');
+});
+
+test('a group held back is still late, and it is the same finding with the same id as the group on the bell', () => {
+  const project = clean();
+  const onBell = ofKind(checkSchedule(project, { groups: [LONG_WALK], teachers: [] }), 'group-walk')[0];
+  const held = ofKind(checkSchedule(project, { groups: [{ ...LONG_WALK, released: 60, total: 335, waiting: 16, walking: 259 }], teachers: [] }), 'group-walk')[0];
+  assert.equal(held.id, onBell.id, 'an acceptance of this walk still holds');
+  assert.equal(held.severity, 'warning');
+  assert.notEqual(held.text, onBell.text);
+});

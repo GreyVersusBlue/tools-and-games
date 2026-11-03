@@ -602,3 +602,144 @@ test('an advisory mark naming a follower adds no run: the follower is answered f
   assert.deepEqual(marked.crowd.days, simulate(school()).crowd.days);
   assert.deepEqual(simulateDay(followerSchool('advisory'), routesForSchedule(followerSchool('advisory'), routingGraph(followerSchool('advisory')), { runs: runsOf(followerSchool('advisory')), meetingSlots }), 'dsample00c').dayTypeId, 'dsample00a');
 });
+
+// ---------------------------------------------------------------- staggered dismissal (SV2-88, ARCHITECTURE 18.2)
+//
+// A delayed group's first readyAt is its delay and nothing else changes in the
+// rules. Arrival is counted from the bell, so total = released + walking +
+// waiting. `released` is on a group's figures only when it was held.
+
+// run() with a fifth entry per walk: the group's delay in seconds.
+function runHeld(project, walks, options) {
+  const graph = routingGraph(project);
+  const walkers = walks.map(([id, from, to, headCount, delay]) => ({ id, headCount, delay, route: route(graph, roomId(from), roomId(to)) }));
+  const result = simulateTransition(graph, walkers, { passingSeconds: 240, marginSeconds: 0, ...options });
+  return { graph, result, byId: Object.fromEntries(result.groups.map((group) => [group.groupId, group])) };
+}
+
+test('a delayed group starts at its delay: released is its own figure, and total = released + walking + waiting', () => {
+  const project = planProject([['A#####B']]);
+  const { byId } = runHeld(project, [['g1', '1A', '1B', 25, 40]]);
+  const group = byId.g1;
+  assert.deepEqual({ released: group.released, walking: group.walking, waiting: group.waiting, total: group.total, arrived: group.arrived }, { released: 40, walking: 15, waiting: 0, total: 55, arrived: true });
+  assert.equal(group.total, group.released + group.walking + group.waiting);
+  assert.equal(group.positions[39], -1, 'still in the room on the tick before its delay is up');
+  assert.equal(group.positions[40], 0, 'and takes its first slot on the tick it is released');
+  assert.equal(group.positions[43], 1);
+  // the cap is counted from the bell and the passing time is the same one: late is judged against 240
+  assert.equal(runHeld(project, [['g1', '1A', '1B', 25, 40]], { passingSeconds: 54 }).byId.g1.late, true);
+  assert.equal(runHeld(project, [['g1', '1A', '1B', 25, 40]], { passingSeconds: 55 }).byId.g1.late, false);
+});
+
+test('a group with no delay, or a delay of 0, has no `released` and the figures it always had', () => {
+  const project = planProject([['A#####B']]);
+  const plain = runHeld(project, [['g1', '1A', '1B', 25], ['g2', '1A', '1B', 25, 0]]);
+  assert.equal('released' in plain.byId.g1, false);
+  assert.equal('released' in plain.byId.g2, false);
+  const unheld = run(project, [['g1', '1A', '1B', 25], ['g2', '1A', '1B', 25]]);
+  assert.deepEqual(plain.result.groups, unheld.result.groups, 'every figure and every position');
+  assert.deepEqual(Object.keys(plain.byId.g1), Object.keys(unheld.byId.g1));
+});
+
+test('a delayed group frees a jammed corridor, so the group behind it arrives earlier', () => {
+  const project = planProject([['A#####B']]);
+  const jam = runHeld(project, [['g1', '1A', '1B', 25], ['g2', '1A', '1B', 25]]);
+  assert.deepEqual([jam.byId.g2.waiting, jam.byId.g2.total], [16, 31], 'with no delay g2 waits for g1\'s column of 5');
+  const held = runHeld(project, [['g1', '1A', '1B', 25, 30], ['g2', '1A', '1B', 25]]);
+  assert.deepEqual(figures(held.byId.g2), { walking: 15, waiting: 0, total: 15, late: false, arrived: true }, 'g2 goes first and arrives 16 seconds earlier');
+  assert.deepEqual([held.byId.g1.released, held.byId.g1.waiting, held.byId.g1.total], [30, 0, 45], 'g1 finds the corridor clear when it is released');
+  assert.equal(held.result.cellDelay.reduce((sum, value) => sum + value, 0), 0, 'nobody was refused a step');
+});
+
+test('a delay shorter than the jam only shortens it: the delayed group waits the rest', () => {
+  const project = planProject([['A#####B']]);
+  // g2 leaves at 0 (id order does not matter once g1 is held); g1 is released at 8 and meets g2's column still in the door
+  const { byId } = runHeld(project, [['g1', '1A', '1B', 25, 8], ['g2', '1A', '1B', 25]]);
+  assert.equal(byId.g2.waiting, 0);
+  assert.deepEqual([byId.g1.released, byId.g1.waiting, byId.g1.total], [8, 8, 31], '8 + 15 walking + 8 waiting: g2 clears the first slot on tick 15, g1 reads it free on 16');
+  assert.equal(byId.g1.total, byId.g1.released + byId.g1.walking + byId.g1.waiting);
+});
+
+test('the release order does not depend on the order the walkers are given in', () => {
+  const project = planProject([['A#####B']]);
+  const walks = [['g3', '1A', '1B', 25, 20], ['g1', '1A', '1B', 25, 20], ['g2', '1A', '1B', 25]];
+  const first = runHeld(project, walks);
+  const second = runHeld(project, walks.slice().reverse());
+  assert.deepEqual(second.result.groups, first.result.groups);
+  assert.deepEqual(first.result.groups.map((group) => group.groupId), ['g1', 'g2', 'g3']);
+});
+
+test('a held group still reaches its room: the delay is at most 300 and the cap at least 600, counted from the bell', () => {
+  const project = planProject([['A' + '#'.repeat(73) + 'B']]);
+  project.settings.secondsPerCell = 5;
+  // 73 slots at 5 seconds is 365 s of walking: released at 300 it is 665, past the cap of 600 under a passing time of 100
+  const { byId } = runHeld(project, [['g1', '1A', '1B', 6, 300]], { passingSeconds: 100 });
+  assert.equal(byId.g1.arrived, false);
+  assert.equal(byId.g1.total, 600, 'stopped at the cap, which counts from the bell');
+  const roomy = runHeld(project, [['g1', '1A', '1B', 6, 200]], { passingSeconds: 100 });
+  assert.deepEqual([roomy.byId.g1.arrived, roomy.byId.g1.total], [true, 565]);
+});
+
+test('a day: the crowd looks the delay up with the day type, the period and the room the group leaves', () => {
+  const project = withSchedule(planProject([['A#####B', '.......']]), { North: ['1A', '1B', '1A'], South: ['1A', '1B', '1A'] }, { North: 6, South: 6 });
+  project.groups[0].grade = '7';
+  project.groups[1].grade = '8';
+  const dayId = project.dayTypes[0].id;
+  project.release = [{ id: 'lcrowd0001', who: { grade: '7' }, seconds: 60, after: [1], dayTypeIds: [dayId] }];
+  const { crowd } = everything(project);
+  const [first, second] = crowd.days[0].transitions;
+  const north = (transition) => transition.groups.find((group) => group.groupId === project.groups[0].id);
+  const south = (transition) => transition.groups.find((group) => group.groupId === project.groups[1].id);
+  assert.equal('released' in north(first), false, 'after period 1 only');
+  assert.equal(north(second).released, 60);
+  assert.equal(north(second).total, 60 + north(second).walking + north(second).waiting);
+  assert.equal('released' in south(second), false, 'grade 8 is not held');
+  assert.equal(south(second).waiting, 0, 'and the held group is out of its way when it leaves');
+});
+
+test('a group is late only because of its delay: the walks carry released, and the walk-late finding says why', () => {
+  const project = withSchedule(planProject([['A#####B']]), { North: ['1A', '1B'] }, { North: 6 });
+  project.settings.defaultPassingSeconds = 20;
+  const dayId = project.dayTypes[0].id;
+  const without = everything(project);
+  const walkedWithout = walkResults(project, without.crowd, without.graph);
+  assert.deepEqual(walkedWithout.groups.map((walk) => [walk.total, walk.late]), [[15, false]], '15 seconds of walking against 20: in time');
+  assert.equal(checkSchedule(project, walkedWithout).findings.filter((finding) => finding.kind === 'group-walk').length, 0);
+
+  project.release = [{ id: 'lcrowd0001', who: { groups: [project.groups[0].id] }, seconds: 15, after: null, dayTypeIds: null }];
+  assert.ok(dayId);
+  const held = everything(project);
+  const walked = walkResults(project, held.crowd, held.graph);
+  assert.deepEqual(walked.groups.map((walk) => [walk.released, walk.walking, walk.waiting, walk.total, walk.late]), [[15, 15, 0, 30, true]], 'late, with the 15 seconds counted in');
+  const keys = Object.keys(walked.groups[0]);
+  assert.deepEqual(keys, ['dayTypeId', 'groupId', 'period', 'fromRoomId', 'toRoomId', 'passingSeconds', 'total', 'walking', 'waiting', 'released', 'late', 'arrived']);
+  const findings = checkSchedule(project, walked).findings.filter((finding) => finding.kind === 'group-walk');
+  assert.equal(findings.length, 1, 'still late, so still a finding');
+  assert.match(findings[0].text, /needs 30 s to get from Room 1A to Room 1B after Period 1 on A Day and B Day, including leaving 15 s after the bell, and the passing time is 20 s\./);
+});
+
+test('deterministic: the sample school with staggered dismissals gives identical figures with the groups reversed', () => {
+  const project = school();
+  project.release = [
+    { id: 'lcrowd0001', who: { grade: '7' }, seconds: 90, after: null, dayTypeIds: null },
+    { id: 'lcrowd0002', who: { groups: ['gsample07a'] }, seconds: 0, after: null, dayTypeIds: null },
+    { id: 'lcrowd0003', who: { wing: 'East' }, seconds: 30, after: [1, 2, 3], dayTypeIds: null },
+  ];
+  const first = everything(project);
+  const reversed = clone(project);
+  reversed.groups.reverse();
+  const third = everything(reversed);
+  assert.deepEqual(third.crowd, first.crowd, 'every figure, every position, every second of delay');
+  let held = 0;
+  for (const day of first.crowd.days) for (const transition of day.transitions) for (const group of transition.groups) if (group.released > 0) held += 1;
+  assert.ok(held > 20, 'the release is not trivially quiet: ' + held + ' held walks');
+  const unheld = everything(school());
+  assert.notDeepEqual(first.crowd, unheld.crowd);
+});
+
+test('teachers\' walks are not delayed: a teacher leaves with the class or not at all', () => {
+  const plain = school();
+  const held = { ...school(), release: [{ id: 'lcrowd0001', who: { grade: '6' }, seconds: 120, after: null, dayTypeIds: null }, { id: 'lcrowd0002', who: { wing: 'West' }, seconds: 120, after: null, dayTypeIds: null }] };
+  const graph = routingGraph(plain);
+  assert.deepEqual(teacherWalks(held, graph), teacherWalks(plain, graph));
+});

@@ -472,3 +472,74 @@ test('a failure in the worker rejects that request and the next change starts cl
   worker.work();
   assert.deepEqual(parts(await good), fresh(store.project));
 });
+
+// -------------------------------------------------------------- staggered dismissal (SV2-88)
+
+test('what the pipeline keeps is what a fresh run works out, after every change to release', () => {
+  const store = storeOf(sampleSchool());
+  const pipeline = createPipeline();
+  const check = (label) => {
+    const result = pipeline.run(store.project, versionsOf(store));
+    assert.deepEqual(parts(result), fresh(store.project), label);
+    return result;
+  };
+  const cold = check('cold');
+  store.apply(actions.addRelease, { who: { grade: '7' }, seconds: 90, after: [2] });
+  const added = check('a release added');
+  assert.ok(added.work.transitionsRun > 0 && added.work.transitionsRun <= 2, 'only the transition out of period 3, on each of two days, was run: ' + added.work.transitionsRun + ' of ' + cold.work.transitionsRun);
+  assert.equal(added.work.loadsRun, 0, 'a delay moves no load: the loads are kept (the delay is not in walkKey)');
+  assert.equal(added.work.searches, 0);
+  assert.equal(added.loads.every((load, index) => load === cold.loads[index]), true);
+  assert.notEqual(added.crowd, cold.crowd);
+  store.apply(actions.setRelease, { id: store.project.release[0].id, seconds: 150 });
+  check('the delay changed');
+  store.apply(actions.setRelease, { id: store.project.release[0].id, after: [2, 3] });
+  check('the periods it follows changed');
+  store.apply(actions.addRelease, { who: { groups: ['gsample07a'] }, seconds: 0 });
+  check('a group put on the bell');
+  store.apply(actions.addRelease, { who: { wing: 'East' }, seconds: 45 });
+  check('a wing');
+  store.apply(actions.deleteGroup, { id: 'gsample07a' });
+  check('a group a release names deleted');
+  store.apply(actions.removeRelease, { id: store.project.release[0].id });
+  check('a release removed');
+  store.apply(actions.setPeriods, { periods: 6 });
+  check('fewer periods');
+  store.undo();
+  store.undo();
+  store.undo();
+  check('and put back');
+  const empty = createStore({ project: sampleSchool(), clock, ids: createIds(seededRandom(17)) });
+  const kept = createPipeline();
+  const first = kept.run(empty.project, versionsOf(empty));
+  empty.apply(actions.addRelease, { who: { grade: '7' }, seconds: 90 });
+  empty.apply(actions.removeRelease, { id: empty.project.release[0].id });
+  const back = kept.run(empty.project, versionsOf(empty));
+  assert.deepEqual(parts(back), parts(first), 'the last one removed gives the results of a project that never had one');
+});
+
+test('the transition cache is keyed by the delay: two day types with the same walkers and different delays are not given one result', () => {
+  const project = sampleSchool();
+  // B Day is a copy of A Day, so every transition has the same walkers on both
+  for (const group of project.groups) group.days[B_DAY] = JSON.parse(JSON.stringify(group.days[A_DAY]));
+  project.dayTypes = project.dayTypes.map((dayType) => (dayType.id === B_DAY ? { ...dayType, bells: JSON.parse(JSON.stringify(project.dayTypes[0].bells)) } : dayType));
+  project.release = [{ id: 'lworker001', who: { grade: '7' }, seconds: 120, after: null, dayTypeIds: [A_DAY] }];
+  const store = storeOf(project);
+  const pipeline = createPipeline();
+  const result = pipeline.run(store.project, versionsOf(store));
+  assert.deepEqual(parts(result), fresh(store.project), 'as a fresh run has it');
+  const [a, b] = result.crowd.days;
+  assert.deepEqual([a.dayTypeId, b.dayTypeId], [A_DAY, B_DAY]);
+  const held = (day) => day.transitions.reduce((sum, transition) => sum + transition.groups.filter((group) => group.released > 0).length, 0);
+  assert.ok(held(a) > 0, 'A Day holds grade 7');
+  assert.equal(held(b), 0, 'B Day does not');
+  // and the other way round, after a change that moves the delay to the other day type
+  store.apply(actions.setRelease, { id: 'lworker001', dayTypeIds: [B_DAY] });
+  const moved = pipeline.run(store.project, versionsOf(store));
+  assert.deepEqual(parts(moved), fresh(store.project));
+  assert.equal(held(moved.crowd.days[0]), 0);
+  assert.ok(held(moved.crowd.days[1]) > 0);
+});
+
+const A_DAY = 'dsample00a';
+const B_DAY = 'dsample00b';
