@@ -468,6 +468,17 @@ test('a teacher\'s walk: a warning naming both rooms, from the teacher\'s own da
   assert.deepEqual(ofKind(checkSchedule(project, walks), 'teacher-walk'), []);
 });
 
+test('a teacher with no way through is a finding naming the teacher, both rooms and the period (SV2-90b)', () => {
+  const project = clean();
+  slot(project, '6A', A, 3).teacherIds = [DUNMORE];
+  const stranded = { dayTypeId: A, teacherId: DUNMORE, period: 2, fromRoomId: 'rsamplegym', toRoomId: 'rsamplecaf', passingSeconds: 240, failed: true, late: true };
+  const found = ofKind(checkSchedule(project, { groups: [], teachers: [stranded] }), 'teacher-walk');
+  assert.deepEqual(found.map((f) => [f.id, f.severity, f.text]), [['teacher-walk:dsample00a:2:tsample004', 'warning', 'Coach Dunmore has no way through to walk from Gym to Cafeteria after Period 3 on A Day, and the passing time is 4 min.']]);
+  assert.deepEqual(found[0].where, { dayTypeId: A, period: 2, groupIds: ['gsample06a'], roomId: 'rsamplecaf', teacherId: DUNMORE });
+  // one whose rooms are no longer the walk's is passed over, as a figure is
+  assert.deepEqual(ofKind(checkSchedule(project, { groups: [], teachers: [{ ...stranded, toRoomId: 'rsample302' }] }), 'teacher-walk'), []);
+});
+
 test('figures that are out of date are passed over', () => {
   const project = clean();
   const stale = {

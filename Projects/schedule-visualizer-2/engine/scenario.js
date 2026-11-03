@@ -1027,6 +1027,8 @@ function runOfEntry(entry) {
 // model's, against the transition's passing time and the school's margin,
 // and a group stopped before it arrived is late. A walk with no way through
 // is not in walks at all: it is counted in `failed`, and in nothing else.
+// A teacher's is in walks.teachers with `failed: true`, and counts in the
+// total `failed` only.
 function emptyFigures() {
   return { walking: 0, waiting: 0, total: 0, late: 0, walks: 0, failed: 0 };
 }
@@ -1056,6 +1058,15 @@ function walkFigures(view, dayTypeId, bellsId) {
     if (dayTypeId !== null && failed.dayTypeId !== dayTypeId) continue;
     if (runOfEntry(failed) !== bellsId) continue;
     for (const figures of into(failed.groupId)) figures.failed += 1;
+  }
+  // a teacher with no way through is a failed walk too, counted in all and in
+  // no group's row (SV2-90b), so a closure that strands a teacher shows
+  const stranded = source && Array.isArray(source.teachers) ? source.teachers : [];
+  for (const walk of stranded) {
+    if (walk.failed !== true) continue;
+    if (dayTypeId !== null && walk.dayTypeId !== dayTypeId) continue;
+    if (bellsId !== null && walk.bellsId !== bellsId) continue;
+    all.failed += 1;
   }
   return { groups, all };
 }

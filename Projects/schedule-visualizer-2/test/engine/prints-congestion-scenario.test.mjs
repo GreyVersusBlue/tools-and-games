@@ -480,8 +480,11 @@ test('SV2-92 a comparison worked out for other levers than the scenario has now 
   const held = withLevers([{ kind: 'release', who: { groups: ['gsample07a', 'gnobody000'] }, seconds: 60, after: null, dayTypeIds: null }]);
   const heldAnswer = comparisonOf(held);
   assert.equal(countOf(congestionPrint.scenarioSection(held, heldAnswer), '<table') > 0, true, 'a trimmed lever is current');
-  // an answer that does not say its levers cannot be told apart and is taken as it is
-  assert.equal(countOf(congestionPrint.scenarioSection(project, { ...answer, levers: undefined }), '<table') > 0, true);
+  // an answer that does not say its levers was worked out without any: stale
+  // when the scenario has some (SV2-90b), current when it has none
+  assert.equal(countOf(congestionPrint.scenarioSection(project, { ...answer, levers: undefined }), '<table'), 0);
+  const bare = withLevers([], twoChanges());
+  assert.equal(countOf(congestionPrint.scenarioSection(bare, { ...comparisonOf(bare), levers: undefined }), '<table') > 0, true);
 });
 
 test('SV2-92 a scenario with levers and no changes is not "no changes yet"; a lever that no longer applies is listed with the dropped', () => {

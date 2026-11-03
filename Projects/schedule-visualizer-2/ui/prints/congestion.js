@@ -218,14 +218,16 @@ function changeCell(n, words) {
 
 // Whether a comparison is for the scenario as it is now: the changes it was
 // worked out with are the very changes reconcile keeps today, in order; and
-// so are its levers (ARCHITECTURE 18.3), when the comparison says which it was
-// worked out with (`comparison.levers`). A lever reconcile trims is a new
-// object each time, so levers are compared by what they say, not by identity.
+// so are its levers (ARCHITECTURE 18.3): the comparison says which it was
+// worked out with (`comparison.levers`), and one that does not say was worked
+// out without any, so it is stale when the scenario has some now (SV2-90b). A
+// lever reconcile trims is a new object each time, so levers are compared by
+// what they say, not by identity.
 function current(comparison, kept, levers) {
   const changes = comparison && Array.isArray(comparison.changes) ? comparison.changes : null;
   if (changes === null || changes.length !== kept.length || !changes.every((change, i) => change === kept[i])) return false;
-  if (!Array.isArray(comparison.levers)) return true;
   const now = Array.isArray(levers) ? levers : [];
+  if (!Array.isArray(comparison.levers)) return now.length === 0;
   return comparison.levers.length === now.length && comparison.levers.every((lever, i) => JSON.stringify(lever) === JSON.stringify(now[i]));
 }
 

@@ -568,7 +568,7 @@ export function createEngineClient(store, options) {
         const changes = kept.changes;
         // the levers too, so a head-count or a staggered dismissal marks its groups
         const compare = compareResults(trimResult(main), run.answer, { ...asked, changes, levers: kept.levers || [] });
-        return { result: run.answer, compare, changes, versions: run.storeVersions, where: run.where, generation: run.generation };
+        return { result: run.answer, compare, changes, levers: kept.levers || [], versions: run.storeVersions, where: run.where, generation: run.generation };
       })));
       job.compares.set(askedKey, promise);
       // a comparison that failed is not remembered either

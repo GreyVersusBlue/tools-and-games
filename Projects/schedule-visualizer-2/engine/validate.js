@@ -716,7 +716,12 @@ export function validate(project) {
             } else if (lever.kind === 'way') {
               sound = text(lever.connectionId) && ['both', 'ab', 'ba', 'closed'].includes(lever.way);
             } else {
-              sound = text(lever.floorId) && Array.isArray(lever.cells) && lever.cells.length > 0 && lever.cells.every(whole) && isString(lever.name);
+              // at most as many cells as a floor has (the floor's own, or the
+              // largest a floor can be) and a name of at most NAME_MOST
+              const floors = project.building && Array.isArray(project.building.floors) ? project.building.floors : [];
+              const floorOf = floors.find((candidate) => isObject(candidate) && candidate.id === lever.floorId);
+              const most = floorOf && isString(floorOf.cells) ? floorOf.cells.length : RANGES.floorSize[1] * RANGES.floorSize[1];
+              sound = text(lever.floorId) && Array.isArray(lever.cells) && lever.cells.length > 0 && lever.cells.length <= most && lever.cells.every(whole) && isString(lever.name) && textLength(lever.name) <= NAME_MOST;
             }
             if (!sound) add(path, 'This ' + lever.kind + ' lever is missing one of its fields, or one holds a value it cannot.');
             return undefined;

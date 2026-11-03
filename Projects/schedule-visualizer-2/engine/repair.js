@@ -1358,6 +1358,7 @@ export function repair(input, options) {
           scenario.levers = [];
         } else {
           const lost = [];
+          const trimmed = [];
           const levers = [];
           const whole = (value) => Number.isInteger(value) && value >= 0;
           const text = (value) => typeof value === 'string' && value !== '';
@@ -1419,11 +1420,18 @@ export function repair(input, options) {
               clean = { kind: 'way', connectionId: lever.connectionId, way: lever.way };
             } else {
               if (!text(lever.floorId) || !Array.isArray(lever.cells) || lever.cells.length === 0 || !lever.cells.every(whole) || typeof lever.name !== 'string') return lost.push(what + ' was a closed corridor without its floor and cells');
-              clean = { kind: 'corridor', floorId: lever.floorId, cells: lever.cells, name: lever.name };
+              // a lever holds at most as many cells as its floor has (the
+              // largest a floor can be when the floor is not there) and a
+              // name of at most NAME_MOST characters; more is cut, not lost
+              const floorOf = Array.isArray(project.building && project.building.floors) ? project.building.floors.find((candidate) => candidate && candidate.id === lever.floorId) : null;
+              const most = floorOf && typeof floorOf.cells === 'string' ? floorOf.cells.length : RANGES.floorSize[1] * RANGES.floorSize[1];
+              clean = { kind: 'corridor', floorId: lever.floorId, cells: lever.cells.length > most ? lever.cells.slice(0, most) : lever.cells, name: textLength(lever.name) > NAME_MOST ? Array.from(lever.name).slice(0, NAME_MOST).join('') : lever.name };
+              if (clean.cells !== lever.cells || clean.name !== lever.name) trimmed.push(what);
             }
             return levers.push(Object.keys(clean).length === Object.keys(raw).length && Object.keys(clean).every((key) => clean[key] === raw[key]) ? raw : clean);
           });
           if (lost.length > 0) note(plural(lost.length, 'lever', 'levers') + ' of the scenario could not be read and ' + (lost.length === 1 ? 'was' : 'were') + ' removed: ' + lost.join('; ') + '.');
+          if (trimmed.length > 0) note(plural(trimmed.length, 'closed corridor', 'closed corridors') + ' of the scenario held more cells than a floor has or a name that was too long, and ' + (trimmed.length === 1 ? 'was' : 'were') + ' cut to fit: ' + trimmed.join('; ') + '.');
           if (lost.length > 0 || levers.some((lever, i) => lever !== scenario.levers[i])) scenario.levers = levers;
         }
       }

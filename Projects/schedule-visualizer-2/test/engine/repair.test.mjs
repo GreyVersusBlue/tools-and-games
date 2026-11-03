@@ -1147,6 +1147,22 @@ test('scenario levers: one that cannot be read is dropped with a note that says 
   assert.deepEqual(validate(result.project), []);
 });
 
+test('scenario levers: a corridor lever is cut to the cells its floor has and a name of 40, with a note (SV2-90b)', () => {
+  const project = school();
+  const floor = project.building.floors[0];
+  const all = Array.from({ length: floor.cells.length }, (value, i) => i);
+  project.scenario = { name: 'Trial', changes: [], levers: [{ kind: 'corridor', floorId: floor.id, cells: all.concat([0, 1]), name: 'N'.repeat(55) }, { kind: 'corridor', floorId: floor.id, cells: [1], name: 'North' }], compared: null };
+  const result = repair(project);
+  const [cut, fine] = result.project.scenario.levers;
+  assert.equal(cut.cells.length, floor.cells.length);
+  assert.deepEqual(cut.cells, all);
+  assert.equal(cut.name, 'N'.repeat(40));
+  assert.deepEqual(fine, { kind: 'corridor', floorId: floor.id, cells: [1], name: 'North' });
+  assert.equal(fine, project.scenario.levers[1], 'one within the limits is the very same object');
+  assert.ok(result.notes.some((note) => /^1 closed corridor of the scenario held more cells than a floor has or a name that was too long, and was cut to fit: Lever 1 of the scenario\.$/.test(note)), JSON.stringify(result.notes));
+  assert.deepEqual(validate(result.project), [], 'and what comes out is valid');
+});
+
 test('scenario levers: a list that is not a list is removed with a note; a release lever gets its defaults and its lists put in order', () => {
   const project = school();
   project.scenario = { name: 'Trial', changes: [], levers: 'x', compared: null };

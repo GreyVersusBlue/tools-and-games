@@ -13,6 +13,8 @@ import { setTraceImage, reducedSize, fitPlacement, tracePlacement, MAX_SIDE, DEF
 import { searchResults, searchIndex, searchAddress, parseBuildingRest } from '../../ui/building/search.js';
 import { corridorRun } from '../../ui/building/menu.js';
 import { SIZE_PRESETS } from '../../ui/building/inspector/floor.js';
+import { stairsWords, cellWords } from '../../ui/building/index.js';
+import { sampleSchool } from '../../data/sample-school.js';
 import { ActionError, BUILDING } from '../../engine/actions.js';
 import { createStore } from '../../engine/store.js';
 import { validate } from '../../engine/validate.js';
@@ -224,4 +226,28 @@ test('the sizes offered are small, medium and large, all inside the range a floo
   for (const preset of SIZE_PRESETS) {
     for (const side of [preset.width, preset.height]) assert.ok(side >= RANGES.floorSize[0] && side <= RANGES.floorSize[1]);
   }
+});
+
+test('the planner\'s cursor line says a one-way stair\'s way beside its letter (SV2-90b, DESIGN 12.6)', () => {
+  const project = sampleSchool();
+  const [a, b] = project.building.connections;
+  assert.equal(stairsWords(project, [a]), 'Stairs A', 'a stair that runs both ways is as it was');
+  assert.equal(stairsWords(project, [{ ...b, direction: 'ab' }]), 'Stairs B (up only)');
+  assert.equal(stairsWords(project, [{ ...b, direction: 'ba' }]), 'Stairs B (down only)');
+  assert.equal(stairsWords(project, [a, { ...b, direction: 'ab' }]), 'Stairs A, B (up only)', 'two on one cell');
+  // on one floor it names the end
+  const flat = { ...b, direction: 'ab', b: { ...b.b, floorId: b.a.floorId } };
+  assert.match(stairsWords(project, [flat]), /^Stairs B \(only from the end by .+\)$/);
+});
+
+test('the cursor line over a one-way stair\'s cell reads its way (SV2-90b)', () => {
+  const project = sampleSchool();
+  const b = project.building.connections[1];
+  const at = (end) => [end.floorId, end.cell];
+  const [floorId, cell] = at(b.b);
+  assert.equal(cellWords(project, floorId, cell), 'Stairs B', 'a stair that runs both ways reads as it did');
+  project.building.connections[1] = { ...b, direction: 'ab' };
+  assert.equal(cellWords(project, floorId, cell), 'Stairs B (up only)');
+  project.building.connections[1] = { ...b, direction: 'ba' };
+  assert.equal(cellWords(project, floorId, cell), 'Stairs B (down only)');
 });

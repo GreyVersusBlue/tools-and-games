@@ -35,6 +35,7 @@ import { toolStrip } from './strip.js';
 import { floorTabs } from './floors.js';
 import { statusLine } from './status.js';
 import { buildingInspector } from './inspector.js';
+import { wayLine } from './inspector/floor.js';
 import { buildingMenu } from './menu.js';
 import { createConnect } from './connect.js';
 import { createTrace } from './trace.js';
@@ -78,6 +79,29 @@ const FIRST_EMPTY = 'Draw each floor here: a corridor first, then rooms along it
 const NOTE_TRACED = 'Draw over the image: a corridor first, then rooms along it.';
 const NOTE_STYLE = 'top: var(--s-2); transform: translateX(-50%); width: auto; max-width: calc(100% - var(--s-4)); padding: var(--s-1) var(--s-3); text-align: center; font-size: var(--t-sm); line-height: var(--lh-sm)';
 const KEYS = 'Arrow keys move the cursor one cell. Enter does what a click would. Hold Shift and press the arrows to drag; let go of Shift to finish. Hold Space and press the arrows to move the map. Escape cancels. Page Up and Page Down change floor.';
+
+// The words for the stairs on a cell: "Stairs B", and for a one-way stair its
+// way beside the letter, "Stairs B (up only)" (SV2-90b, DESIGN 12.6), as the
+// planner's cursor line and status read it. Two connections on one cell are
+// joined by ", ".
+export function stairsWords(project, connections) {
+  return 'Stairs ' + connections.map((connection) => {
+    const way = connection.direction === 'both' || connection.direction === undefined ? '' : wayLine(project, connection).replace(/, towards .*$/, '');
+    return connection.label + (way === '' ? '' : ' (' + way + ')');
+  }).join(', ');
+}
+
+// What is on a cell, in a word or two: the planner's cursor line and the
+// announcement of a move.
+export function cellWords(project, floorId, cell) {
+  const at = describeCell(project.building, floorId, cell);
+  if (!at) return '';
+  if (at.kind === 'corridor') return 'Corridor' + (at.corridorName === '' ? '' : ', ' + at.corridorName) + (at.exit ? ', exit' + (at.exit.doorName === '' ? '' : ' ' + at.exit.doorName) : '');
+  if (at.kind === 'stairs') return at.connections.length > 0 ? stairsWords(project, at.connections) : 'Stairs, not connected';
+  if (at.kind === 'room') return roomName(at.space, true);
+  if (at.kind === 'other') return at.space.label.trim() === '' ? 'Other space' : at.space.label;
+  return 'Empty';
+}
 
 // The keys of the plan. The plan answers them itself, so they are listed for
 // Help only (spec 3.15): section.start, below, hands them to the shell's list.
@@ -288,13 +312,7 @@ export const section = {
 
     // What is on a cell, in a word or two.
     function whatIsAt(cell) {
-      const at = describeCell(project.building, floor.id, cell);
-      if (!at) return '';
-      if (at.kind === 'corridor') return 'Corridor' + (at.corridorName === '' ? '' : ', ' + at.corridorName) + (at.exit ? ', exit' + (at.exit.doorName === '' ? '' : ' ' + at.exit.doorName) : '');
-      if (at.kind === 'stairs') return at.connections.length > 0 ? 'Stairs ' + at.connections.map((connection) => connection.label).join(', ') : 'Stairs, not connected';
-      if (at.kind === 'room') return roomName(at.space, true);
-      if (at.kind === 'other') return at.space.label.trim() === '' ? 'Other space' : at.space.label;
-      return 'Empty';
+      return cellWords(project, floor.id, cell);
     }
 
     function showCell(ev) {

@@ -675,7 +675,8 @@ export function routesByRun(project, graph, options) {
 // A teacher's walk between rooms is routed like a group's and timed by
 // walking alone, with no crowd. One entry per walk teacherMoves() names, on
 // every own day type, in the shape checkSchedule takes. A walk with no way
-// through has no figure and is left out. options.cache is a route cache.
+// through has no figure: it is there with `failed: true` and `late: true` and
+// no `walking` (SV2-90b). options.cache is a route cache.
 // options.ways, options.avoidConnections and options.shutCells are routing's
 // (the scenario's building levers) and pass through to every route.
 //
@@ -724,10 +725,19 @@ export function teacherWalks(project, graph, options) {
       const day = days.get(teacher.id);
       if (!day) continue;
       for (const move of bellMoves(day, off)) {
-        const walking = walkingSeconds(routing, route(routing, move.fromRoomId, move.toRoomId, routeOptions));
-        if (walking === null) continue;
+        const found = route(routing, move.fromRoomId, move.toRoomId, routeOptions);
+        const walking = walkingSeconds(routing, found);
+        // a walk with no way through (a closure or a one-way stair in the
+        // building or the scenario) is a failed walk, as a group's is, never
+        // a walk that is not there; a room not placed has no walk to fail
+        const stranded = walking === null && found && found.ok === false && found.reason === 'unreachable';
+        if (walking === null && !stranded) continue;
         const passingSeconds = move.toPeriod === undefined ? bells[move.period].passingAfter : transitionPlan(project, bells, move.period).passing;
         const head = bellsId === null ? { dayTypeId: run.dayTypeId } : { dayTypeId: run.dayTypeId, bellsId };
+        if (stranded) {
+          walks.push({ ...head, teacherId: teacher.id, period: move.period, ...(move.toPeriod === undefined ? {} : { toPeriod: move.toPeriod }), fromRoomId: move.fromRoomId, toRoomId: move.toRoomId, passingSeconds, failed: true, late: true });
+          continue;
+        }
         walks.push({ ...head, teacherId: teacher.id, period: move.period, ...(move.toPeriod === undefined ? {} : { toPeriod: move.toPeriod }), fromRoomId: move.fromRoomId, toRoomId: move.toRoomId, passingSeconds, walking, late: isLate(walking, passingSeconds, marginSeconds) });
       }
     }

@@ -18,6 +18,7 @@ import { publishedModel } from '../../engine/publish-data.js';
 import { watchPreview, PREVIEW_READY, PREVIEW_DATA } from '../../staff/source.js';
 import { school, clock } from '../engine/helpers.mjs';
 import { diskReader } from '../publish/reader.mjs';
+import { oneWayStairs } from '../../staff/views/map.js';
 import { openSchool } from '../../staff/model.js';
 import { signFit, signWidth } from '../../staff/views/door-sign.js';
 import { directionsView } from '../../staff/views/directions.js';
@@ -895,4 +896,21 @@ test('a door sign is never laid on its side: asked for landscape the batch is po
     ['room-schedules', false, null],
     ['whole-school', true, UPRIGHT_ALL_SENTENCE],
   ]);
+});
+
+test('the staff map\'s list says a one-way stair\'s way: "Stairs B (up only)", on each floor it joins (SV2-90b, DESIGN 12.6)', () => {
+  const project = school();
+  const data = publishedModel(project, { clock });
+  const [a, b] = data.building.connections;
+  const floors = data.building.floors;
+  assert.deepEqual(floors.map((floor) => oneWayStairs(data, floor)), floors.map(() => []), 'stairs that run both ways are not listed');
+  b.direction = 'ab';
+  const [one, two, three] = floors;
+  assert.deepEqual(oneWayStairs(data, one), []);
+  assert.deepEqual(oneWayStairs(data, two), [{ id: b.id, text: 'Stairs B (up only)' }], 'the stair joins this floor');
+  assert.deepEqual(oneWayStairs(data, three), [{ id: b.id, text: 'Stairs B (up only)' }], 'and this one');
+  b.direction = 'ba';
+  assert.equal(oneWayStairs(data, two)[0].text, 'Stairs B (down only)');
+  a.direction = 'ab';
+  assert.deepEqual(oneWayStairs(data, two).map((each) => each.text), ['Stairs A (up only)', 'Stairs B (down only)'], 'in the building\'s order');
 });
