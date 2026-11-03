@@ -1065,7 +1065,7 @@ export function mount(env) {
 
   function openRelease(entry) {
     view.releaseEdit = releaseDraftOf(entry);
-    env.render('release:' + entry.id + ':open-editor');
+    env.render('release:' + entry.id + ':who:' + view.releaseEdit.kind);
   }
 
   function startRelease() {

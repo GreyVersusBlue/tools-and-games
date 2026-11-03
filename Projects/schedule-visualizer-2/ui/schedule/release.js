@@ -78,6 +78,12 @@ function gradeWords(grade) {
   return /^grade\s/i.test(grade) ? grade : 'grade ' + grade;
 }
 
+// "North wing", and "Music Wing" left as it is (never "Music Wing wing").
+function wingWords(wing) {
+  const name = String(wing).trim();
+  return /\bwing$/i.test(name) ? name : name + ' wing';
+}
+
 // The groups of a grade, matched ignoring case and spaces.
 function groupsOfGrade(project, grade) {
   const wanted = spacelessKey(grade);
@@ -143,7 +149,7 @@ export function releaseParts(project, entry, id) {
     const taken = groupsOfGrade(project, entry.who.grade);
     groups = count(taken.length, 'group');
   } else if (kind === 'wing') {
-    who = String(entry.who.wing).trim() + ' wing';
+    who = wingWords(entry.who.wing);
   } else {
     who = 'Nobody';
   }
@@ -331,7 +337,7 @@ export function releaseEditor(options) {
         ? h('p', { class: 'sch-hint sch-markedit__nowings' }, 'No rooms have a wing yet. ', h('a', { href: options.buildingHref || '#building' }, 'Give rooms a wing in the Building section'), ' and a rule can follow them.')
         : h('div', { class: 'sch-markedit__chips', role: 'group', 'aria-label': 'Wings' }, wings.map((wing) => {
           const pressed = nameKey(wing) === nameKey(draft.wing);
-          return keyed(h('button', { type: 'button', class: 'sch-show__chip', 'aria-pressed': String(pressed), data: { wing }, on: { click: () => change({ wing: pressed ? '' : wing }, key('wing:' + nameKey(wing))) } }, wing + ' wing'), key('wing:' + nameKey(wing)));
+          return keyed(h('button', { type: 'button', class: 'sch-show__chip', 'aria-pressed': String(pressed), data: { wing }, on: { click: () => change({ wing: pressed ? '' : wing }, key('wing:' + nameKey(wing))) } }, wingWords(wing)), key('wing:' + nameKey(wing)));
         })));
     }
     top.push(h('div', null, who));
