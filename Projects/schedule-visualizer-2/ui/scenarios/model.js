@@ -426,8 +426,10 @@ export function heldNotes(project) {
 export function leverCancelled(before, after, lever) {
   const had = before && Array.isArray(before.levers) ? before.levers : [];
   const has = after && Array.isArray(after.levers) ? after.levers : [];
-  const text = JSON.stringify(lever);
-  if (has.some((each) => JSON.stringify(each) === text)) return null;
+  // by what the lever says, whatever the order its fields were written in
+  const said = (each) => JSON.stringify(Object.keys(each).sort().map((key) => [key, each[key]]));
+  const text = said(lever);
+  if (has.some((each) => said(each) === text)) return null;
   return { taken: Math.max(0, had.length - has.length) };
 }
 

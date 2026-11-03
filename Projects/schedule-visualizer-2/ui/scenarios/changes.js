@@ -102,7 +102,8 @@ export function changesPanel(env) {
     const chip = view ? (lever ? view.levers.find((each) => each.index === index) : view.kept.find((each) => each.index === index)) : null;
     if (!env.apply(lever ? removeScenarioLever : removeScenarioChange, { index })) return;
     if (chip) {
-      const left = view.total - 1;
+      // the panel is drawn again by now: view counts what is left
+      const left = view.total;
       const text = 'Removed: ' + chip.words.text + '. ' + count(left, 'change') + '.';
       status.textContent = text;
       ctx.announce(text);

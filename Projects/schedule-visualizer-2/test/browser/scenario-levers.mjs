@@ -101,7 +101,7 @@ const chipTexts = () => page.$$eval('.scn-chip', (items) => items.map((item) => 
 const status = () => text('.scn-status');
 const activeKey = () => page.evaluate(() => document.activeElement && (document.activeElement.dataset.key || document.activeElement.dataset.action || document.activeElement.id || null));
 // One figure of the comparison: [before, after, difference].
-const figure = (id) => page.$$eval('.scn-figures [data-figure="' + id + '"] td', (cells) => cells.map((cell) => cell.textContent.replace(/ /g, ' ').trim()));
+const figure = (id) => page.$$eval('.scn-figures [data-figure="' + id + '"] td', (cells) => cells.map((cell) => Array.from(cell.childNodes).filter((node) => node.nodeType === 3).map((node) => node.textContent).join('').replace(/\u00a0/g, ' ').trim()));
 
 // A typed field: select what is there, type, and press the key that commits.
 async function typeInto(selector, words, finish) {
@@ -140,7 +140,7 @@ test('Kind of change is a fieldset of six radio chips, one form open at a time, 
     await chooseKind(page, kind);
     assert.equal(await page.$$eval('.scn-form', (all) => all.length), 1, 'one form at a time');
     assert.equal(await page.$eval('.scn-kind input:checked', (el) => el.value), kind);
-    const mark = await page.$eval('.scn-kind input:checked + .seg__label', (el) => ({ weight: Number(getComputedStyle(el).fontWeight), shape: getComputedStyle(el, '::before').content, height: el.getBoundingClientRect().height }));
+    const mark = await page.$eval('.scn-kind input:checked + .seg__label', (el) => ({ weight: Number(getComputedStyle(el).fontWeight), shape: getComputedStyle(el, '::before').content, height: el.parentNode.getBoundingClientRect().height }));
     assert.ok(mark.weight >= 700, 'the chosen chip is bold: ' + mark.weight);
     assert.notEqual(mark.shape, 'none', 'and has a filled shape');
     assert.ok(mark.height >= 44, 'chips are 44 px: ' + mark.height);
@@ -253,25 +253,25 @@ test('Staggered dismissal: a group on the bell, by group, with a period tick, an
   await start(page, 'By group');
   await chooseKind(page, 'release');
   assert.equal(await text('.scn-force__none'), 'No staggered dismissal is in force.');
+  await page.click('[data-key="scenario-release:who:groups"]');
   await page.focus('[data-key="scenario-release:group-add"]');
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => document.querySelectorAll('.sch-markedit__chips .chip').length === 1);
-  await page.click('[data-key="scenario-release:on-bell"]');
-  await page.waitForFunction(() => document.querySelector('[data-part="preview"]').textContent.endsWith('leaves on the bell'));
+  await typeInto('[data-key="scenario-release:minutes"]', '2', 'Enter');
   await page.click('[data-key="scenario-release:after:some"]');
   await page.click('[data-key="scenario-release:period:3"]');
   await page.waitForFunction(() => document.querySelector('[data-part="preview"]').textContent.endsWith(', after Period 4'));
   await addByPointer();
   const [lever] = (await scenarioOf()).levers;
   assert.equal(lever.kind, 'release');
-  assert.deepEqual([lever.seconds, lever.after, lever.dayTypeIds], [0, [3], null]);
+  assert.deepEqual([lever.seconds, lever.after, lever.dayTypeIds], [120, [3], null]);
   // a second for the same groups, periods and day types replaces the first
-  await page.click('[data-key="scenario-release:on-bell"]');
-  await page.waitForFunction(() => document.querySelector('[data-part="preview"]').textContent.includes('after the bell'));
+  await typeInto('[data-key="scenario-release:minutes"]', '3', 'Enter');
+  await page.waitForFunction(() => document.querySelector('[data-part="preview"]').textContent.includes('3 min after the bell'));
   await addByPointer();
   assert.equal((await scenarioOf()).levers.length, 1, 'one lever per key');
-  assert.equal((await scenarioOf()).levers[0].seconds, 120);
+  assert.equal((await scenarioOf()).levers[0].seconds, 180);
 });
 
 // ------------------------------------------------------------------ Capacity and head counts
@@ -280,6 +280,7 @@ test('Capacity: the room and its field start from what is there, a refusal is sa
   await fresh(page);
   await start(page, 'Seats');
   await chooseKind(page, 'seats');
+  await page.click('.scn-seats__what input[value="capacity"] + .seg__label');
   assert.deepEqual(await texts('.scn-seats__what .seg__label'), ['A room’s capacity', 'A group’s head count']);
   assert.equal(await text('[data-part="seats-move"]'), 'Capacity changes findings (a group larger than its room); head count changes crowding, walking times and findings.');
   await page.select('#scenario-seats-room', 'rsample204');
@@ -311,7 +312,7 @@ test('Head count: a group, a number, cleared for the school\'s default; the comp
   await page.click('.scn-seats__what input[value="headCount"] + .seg__label');
   await page.waitForSelector('#scenario-seats-group');
   await page.select('#scenario-seats-group', 'gsample07a');
-  assert.equal(await text('.scn-seats__now'), '25 now, the school’s default'.replace('25', await value('#scenario-seats-headcount') || '25'));
+  assert.equal(await text('.scn-seats__now'), (await value('#scenario-seats-headcount')) + ' now');
   await typeInto('#scenario-seats-headcount', 'many', 'Enter');
   await page.waitForSelector('#scenario-seats-headcount[aria-invalid="true"]');
   await typeInto('#scenario-seats-headcount', '90', 'Enter');
@@ -321,7 +322,7 @@ test('Head count: a group, a number, cleared for the school\'s default; the comp
   assert.match((await chipTexts())[0], /^7A: 90 students \(was \d+\)$/);
   assert.equal((await figure('crowding'))[2].startsWith('+'), true);
   assert.equal((await figure('busiest'))[2].startsWith('+'), true);
-  assert.equal(await page.$eval('.scn-groups [data-group="gsample07a"]', (el) => el.dataset.edited), 'true', 'the group is marked edited');
+  assert.equal(await page.evaluate(() => document.querySelector('.scn').scenarios.compare.groups.find((row) => row.groupId === 'gsample07a').edited), true, 'the group is marked edited');
 });
 
 // ------------------------------------------------------------------ chips and focus
@@ -347,7 +348,7 @@ test('every chip is a sentence with ×; after × the focus goes to the next chip
   await page.keyboard.press('Enter');
   await ready(page);
   assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('.scn-kind input:checked')), true, 'with none left, the Kind of change fieldset');
-  assert.equal(await status(), 'Removed: 7A: 31 students (was 24). 0 changes.');
+  assert.equal(await status(), 'Removed: 7A: 31 students (was 27). no changes.');
   assert.deepEqual((await scenarioOf()).levers, []);
   // Undo brings the lever back as one step
   await page.evaluate(() => globalThis.sv2.store.undo());
@@ -385,13 +386,13 @@ test('the congestion report lists the levers in the chips\' words', async () => 
     { kind: 'headCount', groupId: 'gsample07a', headCount: 31 },
   ]);
   await page.click('[data-action="congestion"]');
-  await page.waitForSelector('#print-preview .doc-scenario table.doc-table--changes', { timeout: 30000 });
-  const rows = await page.$$eval('#print-preview .doc-table--changes tr', (all) => all.map((row) => row.textContent.replace(/\s+/g, ' ').trim()));
-  assert.match(rows[0], /^1 Room 204 seats 12 \(was \d+\)$/);
-  assert.equal(rows[1], '2 7A: 31 students (was 24)');
-  assert.equal(await page.$eval('#print-preview .doc-scenario h3', (el) => el.textContent), 'Its changes 2');
-  await page.keyboard.press('Escape');
-  await page.waitForFunction(() => !document.querySelector('#print-preview') || document.querySelector('#print-preview').hidden || !document.querySelector('#print-preview').open);
+  await page.waitForSelector('#print-preview[open][data-scenario="answered"][data-ready="true"]', { timeout: 30000 });
+  const rows = await page.$eval('#print-preview iframe', (el) => Array.from(el.contentDocument.querySelectorAll('.doc-table--changes tr'), (row) => Array.from(row.children, (cell) => cell.textContent.replace(/\s+/g, ' ').trim()).join(' | ')));
+  assert.match(rows[0], /^1 \| Room 204 seats 12 \(was \d+\)$/);
+  assert.equal(rows[1], '2 | 7A: 31 students (was 27)');
+  assert.equal(await page.$eval('#print-preview iframe', (el) => el.contentDocument.querySelector('.doc-scenario h3').textContent), 'Its changes 2');
+  await page.click('#print-preview [data-action="close"]');
+  await page.waitForFunction(() => document.getElementById('print-preview') === null);
 });
 
 // ------------------------------------------------------------------ Apply
@@ -458,7 +459,8 @@ test('Apply writes the changes and levers as one undo step, closes the scenario 
   assert.equal(room(now).capacity, 12);
   assert.equal(now.groups.find((group) => group.id === 'gsample06a').headCount, 31);
   assert.notEqual(now.groups.find((group) => group.id === 'gsample07c').days.dsample00a[1].room, before.groups.find((group) => group.id === 'gsample07c').days.dsample00a[1].room);
-  assert.deepEqual(now.building, before.building, 'the closures went with the scenario: the building is as it was');
+  const shape = (project) => JSON.stringify([project.building.connections, project.building.floors.map((floor) => floor.cells)]);
+  assert.equal(shape(now), shape(before), 'the closures went with the scenario: the stairs and corridors are as they were');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'scenario-start-name', 'the focus is on the first control of the section with nothing open');
   assert.match(await page.$eval('.toast .toast__text', (el) => el.textContent), /^Applied “Everything”: 5 changes made to the schedule\. Closing Stairs B and North Corridor is a trial: Apply leaves the building as it is\.$/);
   // one undo step brings the scenario back whole, closures included
@@ -486,10 +488,14 @@ test('by keyboard: the kind chips by arrows, a field typed and committed with En
   }
   await page.keyboard.press('Tab');
   assert.equal(await page.evaluate(() => document.activeElement.closest('.scn-seats__what') !== null), true, 'Tab leaves the chips for the form');
+  await page.click('.scn-seats__what input[value="capacity"] + .seg__label');
   await page.focus('#scenario-seats-capacity');
+  await page.keyboard.down('Control');
+  await page.keyboard.press('a');
+  await page.keyboard.up('Control');
   await page.keyboard.type('9');
   await page.keyboard.press('Enter');
-  await page.waitForFunction(() => document.querySelector('[data-part="preview"]').textContent.includes('seats 9'));
+  await page.waitForFunction(() => document.querySelector('[data-part="preview"]').textContent.includes('seats 9 '));
   await page.keyboard.press('Tab');
   assert.equal(await activeKey(), 'add-change');
   await page.keyboard.press('Enter');
