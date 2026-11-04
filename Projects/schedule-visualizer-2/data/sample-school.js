@@ -4,7 +4,8 @@
 // have one complete project to run against.
 //
 // The building has three floors of 40 by 14 cells, each with one corridor
-// along the middle. Stairs A join Floor 1 and Floor 2 near the west end;
+// along the middle. Stairs A join Floor 1 and Floor 2 near the west end, with
+// stairs C (up only) a little further west;
 // stairs B join Floor 2 and Floor 3 near the east end. So a walk between
 // Floor 1 and Floor 3 crosses most of Floor 2. There are two exits on
 // Floor 1: Door A at the end of the Front Hall, Door B at the east end of the
