@@ -130,8 +130,11 @@ for (const size of SIZES) {
     assert.equal(await page().$$eval('[data-card="release"] .sch-marks__beaten', (all) => all.length), 0, 'no other rule beats it');
   });
 
-  // SV2-94: Stairs C, the sample's up-only stair, on the Floor tab.
-  test(where + ': the Floor tab says Stairs C is up only, towards Floor 2, and Stairs A both ways', async () => {
+  // SV2-94: Stairs C, the sample's up-only stair: in the project at both sizes,
+  // and on the Floor tab where the inspector is beside the plan (a phone keeps it in a drawer).
+  test(where + ': Stairs C is up only, towards Floor 2, and Stairs A both ways', async () => {
+    assert.deepEqual(await page().evaluate(() => globalThis.sv2.store.project.building.connections.map((each) => [each.label, each.direction])), [['A', 'both'], ['B', 'both'], ['C', 'ab']]);
+    if (size.mobile) return;
     await go(page(), '#building');
     await page().waitForSelector('#inspector [data-tab="floor"]', { timeout: 15000 });
     await page().click('#inspector [data-tab="floor"]');
