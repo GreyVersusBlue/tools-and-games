@@ -806,16 +806,19 @@ test('Apply: the summary lists what is written and a line per kind, the closures
   await page.waitForFunction(() => !document.querySelector('#scenario-apply[open]'));
 });
 
-test('Apply: the button never reads "0 of 1"; with nothing it can write it says so and is disabled; the counts are in good grammar', async () => {
+test('Apply: the button never reads "0 of 1"; with nothing it can write it offers no Apply; the counts are in good grammar', async () => {
   await fresh(page);
   await setLevers([{ kind: 'way', connectionId: 'csample00b', way: 'closed' }]);
   await page.click('[data-action="apply"]');
   await page.waitForSelector('#scenario-apply[open]');
   const only = await page.$eval('#scenario-apply', (el) => ({
-    buttons: Array.from(el.querySelectorAll('.dialog__buttons button'), (button) => [button.textContent, button.disabled]),
+    buttons: Array.from(el.querySelectorAll('.dialog__buttons button'), (button) => [button.textContent, button.disabled, button.classList.contains('btn--primary'), button === document.activeElement]),
     body: el.querySelector('.dialog__body').textContent,
+    trial: Boolean(el.querySelector('[data-part="trial"]')),
   }));
-  assert.deepEqual(only.buttons, [['Nothing here can be applied', true], ['Keep it as a scenario', false]]);
+  assert.deepEqual(only.buttons, [['Keep it as a scenario', false, true, true]], 'no Apply; Keep it is primary and focused');
+  assert.ok(only.trial, 'the trial band stays');
+  assert.doesNotMatch(only.body, /It is one step/);
   assert.match(only.body, /there is nothing to apply\. Discard the scenario to close it\./);
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => !document.querySelector('#scenario-apply[open]'));

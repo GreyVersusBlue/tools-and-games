@@ -293,7 +293,7 @@ test('SV2-92 Apply: with no closure the button is "Apply n changes" as before, a
   assert.equal(applyButtonWords(applySummary(none, scenarioView(none))), 'Close the scenario: no change of it applies');
   assert.equal(applySummary(none, scenarioView(none)).trial, null);
   const only = open([closed]);
-  // SV2-92b: never "Apply 0 of 1 changes": with nothing it can write the button says so, and Apply is disabled
+  // SV2-92b: never "Apply 0 of 1 changes": with nothing it can write the button says so, and the dialog offers no Apply
   assert.equal(applyButtonWords(applySummary(only, scenarioView(only))), 'Nothing here can be applied');
   assert.equal(applySummary(only, scenarioView(only)).canApply, false);
 });

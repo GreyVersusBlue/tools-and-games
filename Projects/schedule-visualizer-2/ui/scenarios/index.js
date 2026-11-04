@@ -530,6 +530,8 @@ export const section = {
       if (gone) return;
       const readOnly = Boolean(ctx.storage && ctx.storage.state.readOnly);
       const snapshotLine = snapshotWords(summary, (project.settings.periodWord || 'Period').toLowerCase(), none, readOnly);
+      // with closures alone nothing is written: no Apply, and no line about its undo
+      const nothingToWrite = !summary.canApply && summary.total > 0;
       const sentences = summary.changes.concat(summary.levers);
       const body = [
         h('p', null, n === 0 ? (summary.trial ? 'Nothing in this scenario writes to the schedule or the building, so there is nothing to apply. Discard the scenario to close it.' : 'Nothing in this scenario applies to the schedule as it is now. Applying it closes it and changes no slot.') : (n === 1 ? 'This change goes' : 'These ' + n + ' changes go') + ' into the real schedule:'),
@@ -540,7 +542,7 @@ export const section = {
         skipped > 0 ? h('ul', { class: 'scn-summary__list', data: { part: 'skipped' } }, summary.skipped.map((text) => h('li', { dir: 'auto' }, text))) : null,
         summary.added.length > 0 || summary.removed.length > 0 ? h('p', { data: { part: 'groups' } }, 'Groups only in one of the two files are not added or removed: a scenario changes rooms, not the list of groups.') : null,
         summary.trial ? h('p', { class: 'scn-summary__trial', role: 'note', data: { part: 'trial' } }, words(summary.trial.parts)) : null,
-        h('p', null, 'It is one step: Undo brings back the schedule and the scenario together.'),
+        nothingToWrite ? null : h('p', null, 'It is one step: Undo brings back the schedule and the scenario together.'),
         summary.snapshot ? h('p', { data: { part: 'snapshot' } }, snapshotLine) : null,
       ];
       const dialog = ctx.openDialog({
@@ -552,14 +554,8 @@ export const section = {
         class: 'scn-apply',
         opener: applyButton,
         // with nothing that applies the button says what it does: it closes the scenario
-        buttons: [{ label: applyButtonWords(summary), value: 'apply', kind: 'primary' }, { label: 'Keep it as a scenario', value: null }],
+        buttons: nothingToWrite ? [{ label: 'Keep it as a scenario', value: null, kind: 'primary' }] : [{ label: applyButtonWords(summary), value: 'apply', kind: 'primary' }, { label: 'Keep it as a scenario', value: null }],
       });
-      // with nothing it can write the button says so and does nothing
-      if (!summary.canApply && summary.total > 0) {
-        const primary = dialog.element.querySelector('.btn--primary');
-        primary.disabled = true;
-        primary.setAttribute('aria-disabled', 'true');
-      }
       const answer = await dialog.closed;
       if (answer !== 'apply' || gone) return;
       // what is applied is reconciled again now: the question may have stood open
