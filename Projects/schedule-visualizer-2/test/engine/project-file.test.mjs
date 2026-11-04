@@ -1121,3 +1121,18 @@ test('the project file carries marks and duties and reads them back as they were
   assert.deepEqual(back.project.marks, project.marks);
   assert.deepEqual(back.project.duties, project.duties);
 });
+
+test('a corridor closed in the lab under a 50-character name exports and reopens, name as typed (SV2-94b)', () => {
+  const project = school();
+  const floor = project.building.floors[0];
+  const name = 'Main corridor between the science wing and the gym';
+  assert.equal(Array.from(name).length, 50);
+  floor.corridors.find((entry) => entry.id === 'ksample001').name = name;
+  const cells = floor.corridors.find((entry) => entry.id === 'ksample001').cells.slice(0, 3);
+  project.scenario = { name: 'Trial', changes: [], levers: [{ kind: 'corridor', floorId: floor.id, cells, name }], compared: null };
+  assertValid(project);
+  const text = writeProjectFile(project);
+  const read = readProjectFile(text);
+  assert.deepEqual(read.project.scenario.levers, [{ kind: 'corridor', floorId: floor.id, cells, name }]);
+  assert.equal(writeProjectFile(read.project, { images: read.images }), text, 'and it writes the same again');
+});

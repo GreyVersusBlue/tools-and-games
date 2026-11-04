@@ -1147,7 +1147,7 @@ test('scenario levers: one that cannot be read is dropped with a note that says 
   assert.deepEqual(validate(result.project), []);
 });
 
-test('scenario levers: a corridor lever is cut to the cells its floor has and a name of 40, with a note (SV2-90b)', () => {
+test('scenario levers: a corridor lever is cut to the cells its floor has and keeps its whole name, with a note (SV2-90b)', () => {
   const project = school();
   const floor = project.building.floors[0];
   const all = Array.from({ length: floor.cells.length }, (value, i) => i);
@@ -1156,10 +1156,10 @@ test('scenario levers: a corridor lever is cut to the cells its floor has and a 
   const [cut, fine] = result.project.scenario.levers;
   assert.equal(cut.cells.length, floor.cells.length);
   assert.deepEqual(cut.cells, all);
-  assert.equal(cut.name, 'N'.repeat(40));
+  assert.equal(cut.name, 'N'.repeat(55), 'a name is never cut');
   assert.deepEqual(fine, { kind: 'corridor', floorId: floor.id, cells: [1], name: 'North' });
   assert.equal(fine, project.scenario.levers[1], 'one within the limits is the very same object');
-  assert.ok(result.notes.some((note) => /^1 closed corridor of the scenario held more cells than a floor has or a name that was too long, and was cut to fit: Lever 1 of the scenario\.$/.test(note)), JSON.stringify(result.notes));
+  assert.ok(result.notes.some((note) => /^1 closed corridor of the scenario held more cells than a floor has, and was cut to fit: Lever 1 of the scenario\.$/.test(note)), JSON.stringify(result.notes));
   assert.deepEqual(validate(result.project), [], 'and what comes out is valid');
 });
 
