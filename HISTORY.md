@@ -1898,6 +1898,8 @@ Generator.
 
 **#1015. Golden Hour's gull wing check reads the widest swing over every frame of its 0.2 s, from a start the clip has already posed.** The check stepped simulated time (six frames of 1/30 s), so the runner's speed was never in it. It compared the wing's rest pose with its pose at the end: a wing held still passed (the first frame alone moves it 0.13 rad off rest), and a random start phase and flap rate could end the window near rest, which read 0.01 rad on tools-and-games#575. *Golden Hour, TG-29.*
 
+**#1018. A room's daylight reflectance is its own surfaces once any finish is set, each read as 0.5 times its colour's LRV over its default's.** LRV is the sRGB colour's CIE Y (`accentLuminance`, shapes.js). A raw LRV would put the default room (off-white walls, VCT) near 0.79 and double its daylight factor the moment one wall is painted; scaled against each surface's default, the default colour reads exactly the stated 0.5, so a finish moves a room only by how far it is from the default, and a room with nothing set keeps `ROOM_R`/`BACK_R` exactly. The ceiling has no finish and stays 0.5; glass counts as the wall it sits in; the back half for the depth rule is half the floor and ceiling plus each wall face past half the depth. *School Generator, TG-41.*
+
 **#1005. Reserved: #976 to #1005 are held for sessions on Huginn (the Selector loop); anyone else numbers from #1006.**
 
 **#1035. Reserved: #1006 to #1035 are held for sessions on Huginn (the Selector loop); anyone else numbers from #1036.**
@@ -3567,3 +3569,14 @@ Worker TG-29-goldenflake of the audit's line TG-29, under Opus 5.5 on huginn in 
 
 **Checks.** `test/animals.mjs` 35 of 35, exit 0, three runs under the suites lock (0.52, 0.23 and 0.85 rad), the third with eight `node` busy loops on huginn's eight cores (load 9.0). Breaks in place, each one run: orbit `timeScale` 0 failed it on `isRunning()` (and "when the crumbs are gone it leaves, flapping" with it); the mixer stepped by 0 in orbit, the wings held still with the clip running, failed it alone at 0.00 rad; that same break with the first frame taken out passed at 0.13 rad, so the old check could not see still wings. `test/smoke.mjs` 158, `test/props.mjs` 29, `test/gltf-loader.mjs` 400, each exit 0. `npm run check`, `social:check` and `ci-check.mjs` each exit 0 under the lock. Nobody else's list or file needs updating for this.
 
+## School Generator: the daylight factor reads each room's finishes, 2026-11-04 (TG-41)
+
+Worker TG-41 of the audit's line TG-41, under Opus 5.5 on huginn in a worktree (`sel/TG-41`), no subagents; decision #1018. Source: the WISHLIST's Analysis bullet ("one reflectance serves every room whatever its finishes are").
+
+**Change.** `js/daylight.js` gains `roomReflectance`: floor at its finish's colour, ceiling 0.5, each wall face in the colour `facePainter` gives the room's own side (so an accent is its own area), all over the perimeter at the 10 ft ceiling (#1008). The average daylight factor uses it for R and the limiting-depth rule uses the back half's for Rb. Rows carry `reflect`, `reflectFrom` ('finishes' or 'stated') and `backReflect`. The dim and deep findings say the figure and where it came from; `reportCSV`'s room table gains one column, `Reflectance` ("0.5 stated", "0.39 from finishes"). No save field, no SAVE_VERSION bump.
+
+**What moved.** Every room with nothing set reads 0.5 exactly, so every sample classroom is unchanged (2.16, 2.57, 2.67, 3.06). The sample's four finished rooms move: the Learning Commons' maple 10.96 to 10.21, both Stair Halls' terrazzo 2.16 to 2.07, and the Office (carpet, #dfe7ea) and Media Center (carpet) 2.16 to 1.91 and 1.94, so the sample now has two dim-room notes where it had none; `curtain-height` and `daylight` tests carry the new numbers. Roof and takeoff do not read daylight.js, so the 108-case fixtures were not re-hashed.
+
+**Checks.** `node --test 'test/*.test.mjs'` 2591 to 2597, exit 0 (six new in `daylight.test.mjs`: unset, default paint on purpose, white walls, carpet floor, a navy accent wall with its back half, the finding's text; arithmetic written out with LRVs worked by hand). `tools/blender/validate.mjs` 630, exit 0. Seven breaks in place, each caught by the test that claims it: raw LRV on walls, a floor that ignores its finish, accents ignored, no fallback, back half read as the whole, the ADF on the constant, the CSV cell blanked.
+
+**Left.** The ceiling has no finish to read. Glass is not given its own reflectance. Neighbours and terrain as obstructions, and drawing any of it on the plan, stay on the WISHLIST.
