@@ -607,7 +607,7 @@ export function reportCSV(report) {
   const cpRows = new Map(((report.egress.common && report.egress.common.rows) || []).map((r) => [r.id, r]));
   rows.push(['Rooms', 'Level', 'Use', 'Use from', 'Area ft²', 'Occupants',
     'Load from', 'Travel ft', 'Common path ft', 'Doors', 'Clear door in', 'Glazing %',
-    'Daylight factor %', 'Sky seen °', 'Glass faces', 'Sun h 8 to 4',
+    'Daylight factor %', 'Sky seen °', 'Glass faces', 'Sun h 8 to 4', 'Reflectance',
     'RT60 s', 'RT60 low–high', 'Accessible']);
   for (const r of report.occupancy.rooms) {
     const e = eg.get(r.id);
@@ -636,6 +636,9 @@ export function reportCSV(report) {
       d && d.glazed > 0 ? Math.round(d.sky) : '',
       d && d.glazed > 0 ? (d.facing || 'several ways') : '',
       d && d.glazed > 0 ? round(d.sunHours, 2) : '',
+      // The reflectance the daylight factor was read at, and from what (TG-41).
+      d && Number.isFinite(d.reflect)
+        ? `${round(d.reflect, 2)} ${d.reflectFrom === 'finishes' ? 'from finishes' : 'stated'}` : '',
       a ? round(a.rt60, 2) : '',
       a ? fmtRange({ low: a.rt60Low, high: a.rt60High }, { fmt: (v) => round(v, 2) }) : '',
       x ? (x.rollable ? 'yes' : 'stairs only') : '',
