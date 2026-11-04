@@ -1387,7 +1387,8 @@ the third are built; the rewrite has its third increment (#894, #899, #937).
    **PF1e wording** on the page, in the copied text and in the Foundry file's
    notes. Every DC, attack bonus and damage figure a rule writes is the
    converter's own for that creature at its new level. Seventeen rules, counted
-   over the 57 fixtures, which are every PF1e stat block the repo has:
+   over the 57 fixtures, which are every PF1e stat block the repo has
+   (108 abilities since #1019 listed three second listings once; 111 before):
    affliction (a poison or disease stat line, 7), constrict (4), limit (a name
    and a per-day limit, 3), throw-rock (3), breath (2), channel (2),
    death-burst (the balor's Death Throes, both layouts, 2), distraction (2),
@@ -1395,7 +1396,7 @@ the third are built; the rewrite has its third increment (#894, #899, #937).
    paralysis (1), pull (1), rake (1), trample (1), whirlwind (the djinni's, 1).
    The table is `converter-assets/data/ability-patterns.md`, written by
    `measure-abilities.mjs`; `converter-assets/README.md` says where each
-   number comes from. What is left, 61 abilities in PF1e wording and 7 bare
+   number comes from. What is left, 61 abilities in PF1e wording and 4 bare
    names:
    - **A save inside a sentence, 21 abilities. Closed: these stay PF1e
      wording.** Devon, 2026-10-07, asked whether an ability may be shown part
@@ -1436,13 +1437,10 @@ the third are built; the rewrite has its third increment (#894, #899, #937).
    - The suite's hash is still of the 98 entries no rule wrote on 2026-10-05
      (89 of the 111 and the 9 the 111 leaves out: seven Reactive Strikes, a
      regeneration, a fast healing). #899's rules took 11 and #937's took 4;
-     the suite writes them back in as they stood, so 83 are held. 37 and 83
-     are of 120.
-   - Seen, not fixed: an aura PF1e also describes under SPECIAL ABILITIES is
-     listed twice, once as a bare aura and once as text (the balor's Flaming
-     Body), and a defensive ability the same way (the mouther's Amorphous).
-     The succubus's "The DC is 22 for the Fortitude save" is not rescaled,
-     because the DC and its number are two words apart.
+     the suite writes them back in as they stood. #1019 took three more out
+     (second listings of Flaming Body, twice, and Amorphous) and rescaled the
+     succubus's "The DC is 22"; those go back in as they stood too, so 79 are
+     held to the same bytes.
 3. **A Foundry VTT actor export: built (#892, 2026-10-05), and imported by
    Devon (2026-10-07: "The foundry import seems to work fine").** The
    **Foundry JSON** button beside Copy and Print saves
@@ -1464,10 +1462,6 @@ the third are built; the rewrite has its third increment (#894, #899, #937).
    - No fixture is a troop, and no fixture's ranged attack parses with a
      range increment, so a ranged Strike imports as melee with a note; the
      suite covers the range by hand.
-   - Seen while building, not fixed: a class caster's spell can be listed
-     twice at one rank (the storm sorcerer's Light), because `convertList`
-     compares a stored `''` frequency with an `undefined` one. It is the
-     converter's output, so the export carries both.
 4. **Two pairs sat on a per-monster bound; both are investigated (#829,
    2026-10-03) and saves now stop at extreme (#831, 2026-10-04).** The
    medusa's AC converts to 20 against Paizo's 25 (bound 5), and the
