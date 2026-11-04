@@ -19,6 +19,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { openPlanner, launch, startServer, TOOL_DIR } from './harness.mjs';
+import { plainSchool } from '../engine/helpers.mjs';
 
 const { mix } = await import(pathToFileURL(path.join(TOOL_DIR, 'ui', 'colour.js')).href);
 const { DIFFERENCE_ALPHA } = await import(pathToFileURL(path.join(TOOL_DIR, 'ui', 'surface', 'overlays', 'difference.js')).href);
@@ -54,23 +55,23 @@ async function painted(page) {
   }, { timeout: 30000 });
 }
 
-// The sample school with nothing open, then a scenario of these changes, painted.
+// The plain sample school (the sample before SV2-94, as the other suites open it) with nothing open, then a scenario of these changes, painted.
 async function open(page, changes, name) {
   await page.mouse.move(1, 1);
   await page.waitForFunction(() => document.querySelector('.scn') && document.querySelector('.scn').dataset.styled === 'true', { timeout: 20000 });
-  await page.evaluate(async (list, title) => {
+  const plain = JSON.parse(JSON.stringify(plainSchool()));
+  await page.evaluate(async (list, title, school) => {
     const { newScenario, addScenarioChange, discardScenario } = await import(new URL('engine/actions.js', location.href).href);
-    const { sampleSchool } = await import(new URL('data/sample-school.js', location.href).href);
     const store = globalThis.sv2.store;
     // the lab's choices back to every day type and the whole day
     const memory = document.querySelector('.scn').scenarios.memory;
     memory.dayTypeId = null;
     memory.transition = null;
-    store.replace(sampleSchool());
+    store.replace(school);
     if (store.project.scenario) store.apply(discardScenario, {});
     store.apply(newScenario, { name: title });
     for (const change of list) store.apply(addScenarioChange, { change });
-  }, changes, name || 'Library move');
+  }, changes, name || 'Library move', plain);
   await painted(page);
 }
 
