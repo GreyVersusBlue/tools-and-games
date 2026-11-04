@@ -380,12 +380,12 @@ function paint(canvas, school, floor, plan, theme, marks, lines) {
 
   // corridors and stairs, then a hairline where one meets something else
   const walkable = (x, y) => x >= 0 && y >= 0 && x < floor.width && y < floor.height && floor.cells[y * floor.width + x] !== '.';
-  const letters = new Map();
-  // the way a one-way connection may be walked, beside its letter at both ends:
+  // each stair cell's connections, letter by letter, with the way each may be
+  // walked, so a chevron stands by its own letter and by no other's:
   // 'up' or 'down' between floors; on one floor the end it is walked from is
   // 'down' (in) and the end it comes out at is 'up' (out). The planner's plan
   // draws the same (ui/surface/renderer.js).
-  const ways = new Map();
+  const letters = new Map();
   const levelOf = (id) => {
     const found = school.data.building.floors.find((each) => each.id === id);
     return found ? found.level : 0;
@@ -393,13 +393,17 @@ function paint(canvas, school, floor, plan, theme, marks, lines) {
   for (const link of school.data.building.connections) {
     for (const [at, end] of [link.a, link.b].entries()) {
       if (end.floorId !== floor.id) continue;
-      if (!letters.has(end.cell)) letters.set(end.cell, link.label);
-      if ((link.direction === 'ab' || link.direction === 'ba') && !ways.has(end.cell)) {
+      if (!letters.has(end.cell)) letters.set(end.cell, []);
+      const here = letters.get(end.cell);
+      if (here.some((entry) => entry.letter === link.label)) continue;
+      let way = null;
+      if (link.direction === 'ab' || link.direction === 'ba') {
         const from = link.direction === 'ab' ? link.a : link.b;
         const to = link.direction === 'ab' ? link.b : link.a;
         const rise = levelOf(to.floorId) - levelOf(from.floorId);
-        ways.set(end.cell, rise > 0 ? 'up' : rise < 0 ? 'down' : (at === 0) === (link.direction === 'ab') ? 'down' : 'up');
+        way = rise > 0 ? 'up' : rise < 0 ? 'down' : (at === 0) === (link.direction === 'ab') ? 'down' : 'up';
       }
+      here.push({ letter: link.label, way });
     }
   }
   for (let index = 0; index < floor.cells.length; index += 1) {
@@ -435,36 +439,42 @@ function paint(canvas, school, floor, plan, theme, marks, lines) {
   if (cell >= 10) {
     g.font = font(Math.min(14, Math.round(cell * 0.8)));
     g.fillStyle = mapLabelOn(theme.stairs, theme.ink, theme.paper);
-    for (const [index, letter] of letters) {
+    for (const [index, entries] of letters) {
       if (floor.cells[index] !== 'S') continue;
       const left = plan.px(index % floor.width);
       const mid = plan.py(Math.floor(index / floor.width)) + cell / 2 + 0.5;
-      const way = ways.get(index);
-      if (!way || cell < 16) {
-        g.fillText(letter, left + cell / 2, mid);
+      if (cell < 16 || entries.every((entry) => !entry.way)) {
+        g.fillText(entries.map((entry) => entry.letter).join(' '), left + cell / 2, mid);
         continue;
       }
-      // the letter and a bold chevron beside it, the pair centred in the cell
-      const wide = g.measureText(letter).width;
+      // each letter with its own bold chevron beside it, the row centred in the cell
       const mark = cell * 0.4;
-      const start = left + cell / 2 - (wide + mark) / 2;
+      const gap = g.measureText(' ').width;
+      const widths = entries.map((entry) => g.measureText(entry.letter).width + (entry.way ? mark : 0));
+      let start = left + cell / 2 - (widths.reduce((sum, w) => sum + w, 0) + gap * (entries.length - 1)) / 2;
       g.textAlign = 'left';
-      g.fillText(letter, start, mid);
+      entries.forEach((entry, i) => {
+        const wide = g.measureText(entry.letter).width;
+        g.fillText(entry.letter, start, mid);
+        if (entry.way) {
+          const mx = start + wide + mark * 0.6;
+          const reach = mark * 0.32;
+          const tip = entry.way === 'up' ? -reach : reach;
+          g.beginPath();
+          g.moveTo(mx - reach, mid - tip / 2);
+          g.lineTo(mx, mid + tip / 2);
+          g.lineTo(mx + reach, mid - tip / 2);
+          g.strokeStyle = g.fillStyle;
+          g.lineWidth = Math.max(1.5, cell / 8);
+          g.lineCap = 'round';
+          g.lineJoin = 'round';
+          g.stroke();
+          g.lineJoin = 'miter';
+          g.lineCap = 'butt';
+        }
+        start += widths[i] + gap;
+      });
       g.textAlign = 'center';
-      const mx = start + wide + mark * 0.6;
-      const reach = mark * 0.32;
-      const tip = way === 'up' ? -reach : reach;
-      g.beginPath();
-      g.moveTo(mx - reach, mid - tip / 2);
-      g.lineTo(mx, mid + tip / 2);
-      g.lineTo(mx + reach, mid - tip / 2);
-      g.strokeStyle = g.fillStyle;
-      g.lineWidth = Math.max(1.5, cell / 8);
-      g.lineCap = 'round';
-      g.lineJoin = 'round';
-      g.stroke();
-      g.lineJoin = 'miter';
-      g.lineCap = 'butt';
     }
   }
 
