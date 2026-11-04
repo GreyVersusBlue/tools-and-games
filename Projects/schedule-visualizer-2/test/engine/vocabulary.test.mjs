@@ -216,3 +216,16 @@ test('engine/csv.js\'s notes say "entry" for a field of the imported file, never
   assert.deepEqual(hits, [], 'a note engine/csv.js shows says "cell" where SV2-32f\'s import rules say "entry" (or add it to ALLOWED_CELL with why):\n' + hits.join('\n'));
   assert.deepEqual(unused, [], 'an allowed "cell" in engine/csv.js no longer exists: take its line out of ALLOWED_CELL');
 });
+
+// DESIGN 12.1 (SV2-94): the rule is "staggered dismissal" and a delay reads
+// "2 min after the bell"; "release delay" is the code's word, never a reader's.
+test('Help knows "Staggered dismissal", and no string a reader sees says "release delay"', async () => {
+  const { words } = await import('../../ui/help/content.js');
+  const { defaultSettings } = await import('../../engine/schema.js');
+  assert.ok(words(defaultSettings()).some((each) => each.term === 'Staggered dismissal'));
+  const hits = [];
+  for (const file of ['ui', 'staff', 'engine'].flatMap(filesUnder)) {
+    for (const { text, line } of stringsOf(readFileSync(path.join(TOOL, file), 'utf8'))) if (/release delay/i.test(text)) hits.push(file + ':' + line);
+  }
+  assert.deepEqual(hits, [], 'a string says "release delay" where DESIGN 12.1 says "staggered dismissal"');
+});
