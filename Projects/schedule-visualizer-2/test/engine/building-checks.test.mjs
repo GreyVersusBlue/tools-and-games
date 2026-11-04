@@ -256,3 +256,25 @@ test('one-way-trap: a same-floor one-way connection says "out", and no exit mark
   noExit.building.floors[0].exits = [];
   assert.deepEqual(only(buildingChecks(noExit), 'one-way-trap'), []);
 });
+
+// SV2-91b: the trap is judged against the part it was entered from, not any exit.
+test('one-way-trap: an up-only stair to a floor with its own fire exit still warns that nothing there can get back down', () => {
+  const project = clone(threeFloors());
+  project.building.connections[1].direction = 'ab';
+  project.building.floors[2].exits.push({ id: 'xtop000001', cell: 6 * 0 + 2 * project.building.floors[2].width + 6, doorName: 'Fire escape', assembly: '' });
+  const [finding] = only(buildingChecks(project), 'one-way-trap');
+  assert.ok(finding, 'Floor 3 has an exit of its own, and the warning stands');
+  assert.equal(finding.text, 'Nothing on Floor 3 can get back down: Stairs B is up only and no other way leads down.');
+  assert.deepEqual(only(buildingChecks(project), 'room-no-exit-route'), [], 'evacuation still ignores one-way: nobody is told they have no way out');
+});
+
+test('one-way-trap: a trap across floors puts every trapped floor\'s cells in where', () => {
+  const project = clone(threeFloors());
+  project.building.connections[0].direction = 'ab'; // Floor 1 up to Floor 2 only; Floor 2 to 3 both ways
+  const [finding] = only(buildingChecks(project), 'one-way-trap');
+  assert.equal(finding.text, 'Nothing on Floor 2 and Floor 3 can get back down: Stairs A is up only and no other way leads down.');
+  assert.deepEqual(finding.where.floors.map((entry) => entry.floorId), [floorId(2), floorId(3)]);
+  assert.ok(finding.where.floors.every((entry) => entry.cells.length > 0), 'cells on each floor');
+  assert.equal(finding.where.floorId, floorId(2), 'the first floor still leads, as before');
+  assert.deepEqual(finding.where.cells, finding.where.floors[0].cells);
+});

@@ -193,6 +193,25 @@ export function buildingChecks(project, graph) {
         any = true;
       }
     }
+    // A part with an exit of its own is a trap too: judged against the part
+    // it was entered from, not against any exit. For each one-way connection
+    // that can be taken from the exit-connected part, what it leads to and
+    // what cannot walk back to the end it was taken from.
+    for (const link of g.links) {
+      if (link.direction === 'both') continue;
+      const from = link.direction === 'ab' ? link.a : link.b;
+      const to = link.direction === 'ab' ? link.b : link.a;
+      if (!forward[from]) continue;
+      const toward = reachable(g, to);
+      if (toward[from]) continue;
+      const homeward = reachable(g, from, { reverse: true });
+      for (let node = 0; node < g.count; node += 1) {
+        if (toward[node] && !homeward[node] && !trapped[node]) {
+          trapped[node] = 1;
+          any = true;
+        }
+      }
+    }
     if (any) {
       const seen = new Uint8Array(g.count);
       for (let start = 0; start < g.count; start += 1) {
@@ -244,6 +263,8 @@ export function buildingChecks(project, graph) {
         const out = way === null ? 'out' : way;
         const text = 'Nothing on ' + list(names) + ' can get back ' + out + ': ' + what + ' and no other way leads ' + out + '.';
         const where = { floorId: g.floors[first].id, cells: onFloor.get(first).sort((a, b) => a - b), connectionIds: doors.map((door) => door.link.id) };
+        // every trapped floor's cells, so Show can light them all
+        where.floors = floorsOf.map((f) => ({ floorId: g.floors[f].id, cells: onFloor.get(f).sort((a, b) => a - b) }));
         if (doors.length > 0) where.connectionId = doors[0].link.id;
         add('one-way-trap', 'warning', [g.floors[first].id, ...doors.map((door) => door.link.id).sort()], text, where);
       }
