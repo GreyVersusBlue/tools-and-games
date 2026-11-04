@@ -833,7 +833,7 @@ test('Apply offers its snapshot when it writes levers, and the line counts what 
   await setLevers([{ kind: 'capacity', roomId: 'rsample204', capacity: 12 }, { kind: 'headCount', groupId: 'gsample06a', headCount: 31 }]);
   await page.click('[data-action="apply"]');
   await page.waitForSelector('#scenario-apply[open]');
-  assert.equal(await text('#scenario-apply [data-part="snapshot"]'), 'It changes 2 other changes, so a snapshot of the project as it is now is kept as well, and can be restored from Snapshots in the Project section.');
+  assert.equal(await text('#scenario-apply [data-part="snapshot"]'), 'It changes 2 settings, so a snapshot of the project as it is now is kept as well, and can be restored from Snapshots in the Project section.');
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => !document.querySelector('#scenario-apply[open]'));
   // a move and a lever: both are counted

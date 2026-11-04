@@ -415,7 +415,8 @@ export function applyButtonWords(summary) {
 export function snapshotWords(summary, periodWord, none, readOnly) {
   const parts = [];
   if (summary.slots > 0) parts.push(count(summary.slots, periodWord) + ' of the groups\' days');
-  if (summary.leversWritten > 0) parts.push(count(summary.leversWritten, 'other change'));
+  // "1 other change" after some periods, "1 setting" where there are none: "It changes 1 other change" was the fault
+  if (summary.leversWritten > 0) parts.push(count(summary.leversWritten, summary.slots > 0 ? 'other change' : 'setting'));
   const what = parts.length > 0 ? 'It changes ' + parts.join(' and ') : 'It changes the schedule';
   return none === null
     ? what + ', so a snapshot of the project as it is now is kept as well, and can be restored from Snapshots in the Project section.'
@@ -608,13 +609,68 @@ export function corridorLever(project, corridorId) {
 // engine's place at the cell (engine/places.js placeAt) or null.
 export function pickedPlace(project, floor, cell, found) {
   if (!floor || floor.cells[cell] !== CELL_CORRIDOR) {
-    return { why: floor && floor.cells[cell] === 'S' ? 'That is a stairs landing. Close the stairs from A stair.' : 'That is not a corridor.' };
+    return { why: floor && floor.cells[cell] === 'S' ? 'That is a stairs landing. Close it with "A stair" above.' : 'That is not a corridor.' };
   }
   const corridor = found && found.corridorId ? (floor.corridors || []).find((each) => each.id === found.corridorId) : null;
   const named = corridor && typeof corridor.name === 'string' && corridor.name.trim() !== '';
-  const cells = (found ? found.cells : [cell]).filter((at) => floor.cells[at] === CELL_CORRIDOR).sort((a, b) => a - b);
+  let cells = (found ? found.cells : [cell]).filter((at) => floor.cells[at] === CELL_CORRIDOR).sort((a, b) => a - b);
+  if (!named) cells = boundedStretch(floor.width, cells, cell);
   const lever = { kind: 'corridor', floorId: floor.id, cells: cells.length > 0 ? cells : [cell], name: named ? corridor.name : '' };
   return { named: named ? corridor.name : null, floorName: floor.name, lever };
+}
+
+// What a closed place is called after a pick: the corridor's name, or the
+// words the chip and Apply's band use for an unnamed stretch, "6 corridor
+// cells on Floor 1" (one set of words, SV2-94b).
+export function pickedName(picked) {
+  if (picked.named !== null) return picked.named;
+  const n = picked.lever.cells.length;
+  return n + (n === 1 ? ' corridor cell on ' : ' corridor cells on ') + picked.floorName;
+}
+
+// The stretch a tap closes in an unnamed corridor. The engine's place is the
+// stretch between junctions, but where a hall is more than one cell wide every
+// cell of it is a junction, and the whole connected hall is one place (an L of
+// two-wide halls was 27 of 32 cells). So in a hall with a 2 by 2 block the
+// stretch is the straight run the tap is on: the band of the hall's own width
+// along the longer way through the tap, up to where that width changes (a
+// branch, a bend or the end). Of the band along the row and the band along the
+// column, the smaller is taken. A corridor one cell wide is the engine's place
+// as it is. `cells` are the place's corridor cells, sorted; `cell` the tap.
+export function boundedStretch(width, cells, cell) {
+  const inside = new Set(cells);
+  const has = (x, y) => x >= 0 && x < width && y >= 0 && inside.has(y * width + x);
+  const wide = cells.some((at) => has((at % width) + 1, Math.floor(at / width)) && has(at % width, Math.floor(at / width) + 1) && has((at % width) + 1, Math.floor(at / width) + 1));
+  if (!wide) return cells;
+  const x0 = cell % width;
+  const y0 = Math.floor(cell / width);
+  const band = (horizontal) => {
+    // the cells across the band's way at (x, y), as offsets from it
+    const span = (x, y) => {
+      const at = (k) => (horizontal ? has(x, y + k) : has(x + k, y));
+      let low = 0;
+      let high = 0;
+      while (at(low - 1)) low -= 1;
+      while (at(high + 1)) high += 1;
+      return [low, high];
+    };
+    const [low, high] = span(x0, y0);
+    const out = [];
+    for (const direction of [1, -1]) {
+      for (let step = direction === 1 ? 0 : 1; ; step += 1) {
+        const x = horizontal ? x0 + direction * step : x0;
+        const y = horizontal ? y0 : y0 + direction * step;
+        if (!has(x, y)) break;
+        const [l, h] = span(x, y);
+        if (l !== low || h !== high) break;
+        for (let k = low; k <= high; k += 1) out.push(horizontal ? y * width + x + k * width : y * width + x + k);
+      }
+    }
+    return out.sort((a, b) => a - b);
+  };
+  const along = band(true);
+  const down = band(false);
+  return down.length < along.length ? down : along;
 }
 
 // "North Corridor" or "a stretch of corridor on Floor 2", with whether it is

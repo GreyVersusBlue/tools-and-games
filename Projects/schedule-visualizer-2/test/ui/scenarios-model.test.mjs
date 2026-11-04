@@ -9,7 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { timeFigures, duration, cancelled, figureRows, groupRow, groupRows, barWords } from '../../ui/scenarios/model.js';
+import { timeFigures, duration, cancelled, figureRows, groupRow, groupRows, barWords, pickedPlace, pickedName, boundedStretch, snapshotWords } from '../../ui/scenarios/model.js';
 
 const MINUS = '−';
 const NBSP = ' ';
@@ -353,4 +353,67 @@ test('SV2-92 adding: a lever that is in the list now is no cancel; one that is n
   assert.deepEqual(leverCancelled({ levers: [] }, { levers: [] }, capacity), { taken: 0 });
   assert.equal(leverCancelledSentence('Room 204 seats 30 (was 30)', 0), 'That puts the schedule back as it is: Room 204 seats 30 (was 30). Nothing is added.');
   assert.equal(leverCancelledSentence('x', 2), 'That puts the schedule back as it is: x. Nothing is added, and 2 earlier changes to the same thing are taken out.');
+});
+
+// ---------------------------------------------------------------- SV2-94b: a pick, and the Apply question
+
+// An L of two-wide unnamed halls: a 10 wide, 12 high plan, the arm along the top
+// (rows 1 and 2, columns 1 to 8) and the arm down the left (columns 1 and 2, rows 1 to 10)
+function ell() {
+  const width = 10;
+  const rows = [];
+  for (let y = 0; y < 12; y += 1) {
+    let row = '';
+    for (let x = 0; x < width; x += 1) row += ((y === 1 || y === 2) && x >= 1 && x <= 8) || ((x === 1 || x === 2) && y >= 1 && y <= 10) ? '#' : '.';
+    rows.push(row);
+  }
+  const floor = { id: 'f1', name: 'Floor 1', width, height: 12, cells: rows.join(''), corridors: [] };
+  const all = [];
+  for (let at = 0; at < floor.cells.length; at += 1) if (floor.cells[at] === '#') all.push(at);
+  return { floor, all, width };
+}
+
+test('pickedPlace: a tap in a two-wide hall closes the straight run it is on, never the whole connected hall', () => {
+  const { floor, all, width } = ell();
+  assert.equal(all.length, 32, 'the review\'s L: 32 corridor cells');
+  const tap = 1 * width + 8; // the east end of the top arm
+  const picked = pickedPlace({}, floor, tap, { cells: all });
+  const cells = picked.lever.cells;
+  assert.ok(cells.length < all.length / 2, 'a bounded stretch: ' + cells.length + ' of ' + all.length);
+  assert.ok(cells.includes(tap) && cells.includes(tap + width), 'the tap and the lane beside it');
+  assert.deepEqual(cells, [3, 4, 5, 6, 7, 8].flatMap((x) => [width + x, 2 * width + x]).sort((a, b) => a - b), 'columns 3 to 8, both lanes: the corner block (columns 1 and 2, where the other arm joins) is a junction');
+  // the long arm down
+  const down = pickedPlace({}, floor, 8 * width + 1, { cells: all }).lever.cells;
+  assert.deepEqual(down, [3, 4, 5, 6, 7, 8, 9, 10].flatMap((y) => [y * width + 1, y * width + 2]).sort((a, b) => a - b));
+});
+
+test('pickedPlace: a corridor one cell wide is the engine\'s place as it is', () => {
+  const width = 8;
+  const cells = [];
+  for (let x = 1; x < 7; x += 1) cells.push(2 * width + x);
+  const floor = { id: 'f1', name: 'Floor 1', width, height: 5, cells: '.'.repeat(5 * width).split('').map((c, i) => (cells.includes(i) ? '#' : c)).join(''), corridors: [] };
+  assert.deepEqual(pickedPlace({}, floor, cells[2], { cells }).lever.cells, cells);
+  assert.deepEqual(boundedStretch(width, cells, cells[2]), cells);
+});
+
+test('pickedPlace: a stairs landing says to close it with "A stair" above, and names are as typed', () => {
+  const floor = { id: 'f1', name: 'Floor 1', width: 3, height: 1, cells: '#S.', corridors: [] };
+  assert.equal(pickedPlace({}, floor, 1, null).why, 'That is a stairs landing. Close it with "A stair" above.');
+  assert.equal(pickedPlace({}, floor, 2, null).why, 'That is not a corridor.');
+});
+
+test('pickedName: an unnamed stretch is called by the words the chip and Apply use; a named one by its name', () => {
+  const floor = { id: 'f1', name: 'Floor <2>', width: 3, height: 1, cells: '###', corridors: [] };
+  assert.equal(pickedName(pickedPlace({}, floor, 0, { cells: [0, 1, 2] })), '3 corridor cells on Floor <2>');
+  assert.equal(pickedName(pickedPlace({}, floor, 0, { cells: [0] })), '1 corridor cell on Floor <2>');
+  const named = { ...floor, corridors: [{ id: 'k1', name: 'Main <b>', cells: [0, 1, 2] }] };
+  assert.equal(pickedName(pickedPlace({}, named, 0, { corridorId: 'k1', cells: [0, 1, 2] })), 'Main <b>');
+});
+
+test('snapshotWords: a lever-only Apply does not say "1 other change"', () => {
+  const kept = (summary) => snapshotWords(summary, 'period', null, false).split(',')[0];
+  assert.equal(kept({ slots: 0, leversWritten: 1 }), 'It changes 1 setting');
+  assert.equal(kept({ slots: 0, leversWritten: 2 }), 'It changes 2 settings');
+  assert.equal(kept({ slots: 1, leversWritten: 4 }), 'It changes 1 period of the groups\' days and 4 other changes');
+  assert.equal(kept({ slots: 3, leversWritten: 0 }), 'It changes 3 periods of the groups\' days');
 });

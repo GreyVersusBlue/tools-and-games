@@ -40,7 +40,7 @@ import { places, placeAt } from '../../engine/places.js';
 import { changeWords } from '../../engine/scenario.js';
 import { nameOfRoom } from '../../engine/schema.js';
 import { snapshotAfter, snapshotRoom, undoForStep } from '../../storage/snapshots.js';
-import { scenarioView, firstLine, barWords, cancelled, cancelledSentence, leverCancelled, leverCancelledSentence, applySummary, applyButtonWords, snapshotWords, pickedPlace, pickWords, closedAt } from './model.js';
+import { scenarioView, firstLine, barWords, cancelled, cancelledSentence, leverCancelled, leverCancelledSentence, applySummary, applyButtonWords, snapshotWords, pickedPlace, pickedName, pickWords, closedAt } from './model.js';
 import { changesPanel } from './changes.js';
 import { formsPanel, freshForm } from './forms.js';
 import { filePanel } from './file.js';
@@ -312,11 +312,12 @@ export const section = {
         return;
       }
       const shut = closedAt(view, target.floor.id, target.cell);
-      const name = picked.named === null ? 'A stretch of corridor on ' + picked.floorName : picked.named;
+      const name = pickedName(picked);
       if (shut) {
         if (!run(removeScenarioLever, { index: shut.index })) return;
-        changes.said('Reopened: ' + name + '.');
-        stopPicking(true, name + ' is open again.');
+        const was = pickedName({ ...picked, lever: shut.lever });
+        changes.said('Reopened: ' + was + '.');
+        stopPicking(true, was + ' is open again.');
         return;
       }
       if (!addLever(picked.lever)) return;
