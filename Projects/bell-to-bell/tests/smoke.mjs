@@ -3716,10 +3716,11 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
     opts: { bandwidth: 0 } });
   const st = r.state;
   const { obs } = mkObs();
-  obs.resolveConference(st, 'engagement', 'turnAndTalk');
-  obs.resolveConference(st, 'when', 'inClass');
+  // the costliest path through the tree: -1 then -3
+  check('the costliest answers resolve', obs.resolveConference(st, 'engagement', 'hollow') &&
+    obs.resolveConference(st, 'goal', 'reframe'));
   check('a drained period that answered her really is below the floor (the path the report has to survive)',
-    st.bandwidth < 0);
+    st.bandwidth <= -4);
   check('and the report still shows Bandwidth left 0, not a negative number',
     Math.round(reportValue(st, 'bandwidth')) === 0);
   const full = { ...createState(), fidelity: 103 };
