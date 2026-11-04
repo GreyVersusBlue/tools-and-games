@@ -1,4 +1,5 @@
 import { dom } from './dom.js';
+import { clamp01to100 } from '../state.js';
 
 export function pickEnding(state, endings) {
   for (const e of endings) {
@@ -16,6 +17,13 @@ export function pickEnding(state, endings) {
   }
   return endings[endings.length - 1];
 }
+
+// What a report row reads off a meter. Every row is a 0 to 100 meter, but the
+// post-conference runs after the bell, after the last tickMeters clamp, and its
+// answers cost up to 3 Bandwidth: a drained period that answered her printed
+// "Bandwidth left -1" (root HISTORY.md #940, TG-32). The state is left as it
+// is; the report shows the floor.
+export const reportValue = (state, key) => clamp01to100(state[key]);
 
 export function tierText(value, tiers) {
   for (const [threshold, text] of tiers) if (value > threshold) return text;
@@ -61,10 +69,10 @@ export function showReport(state, data, extra = {}) {
   const students = extra.students || [];
 
   const rows = data.reportLines.map(line => {
-    const v = Math.round(state[line.key]);
+    const v = reportValue(state, line.key);
     return `<div class="rubricline"><b>${line.label}</b>` +
-      `<span style="text-align:right"><span class="mono">${v}</span><br>` +
-      `${tierText(state[line.key], line.tiers)}</span></div>`;
+      `<span style="text-align:right"><span class="mono">${Math.round(v)}</span><br>` +
+      `${tierText(v, line.tiers)}</span></div>`;
   }).join('');
 
   const seat = extra.seating;

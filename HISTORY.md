@@ -1898,6 +1898,8 @@ Generator.
 
 **#1015. Golden Hour's gull wing check reads the widest swing over every frame of its 0.2 s, from a start the clip has already posed.** The check stepped simulated time (six frames of 1/30 s), so the runner's speed was never in it. It compared the wing's rest pose with its pose at the end: a wing held still passed (the first frame alone moves it 0.13 rad off rest), and a random start phase and flap rate could end the window near rest, which read 0.01 rad on tools-and-games#575. *Golden Hour, TG-29.*
 
+**#1016. Bell to Bell's period report reads each meter through `reportValue`, clamped to 0 to 100; the state is not clamped.** The "Bandwidth left -1" #940's probe printed was the post-conference, not Withitness: `tickMeters` clamps every frame, but the conference runs after the bell and its answers cost 1 to 3 Bandwidth each through an unclamped `applyEffects`, so a drained period that answered her ended at -1 to -4. Clamped at the report rather than the state because nothing else reads the raw value wrongly (the day carry and the semester record clamp already, and Withitness is off by then), the headless sim never goes below 0, and the conference can push Fidelity past 100 the same way. To reverse it, read `state[line.key]` in `showReport` again. *Bell to Bell, TG-32.*
+
 **#1018. A room's daylight reflectance is its own surfaces once any finish is set, each read as 0.5 times its colour's LRV over its default's.** LRV is the sRGB colour's CIE Y (`accentLuminance`, shapes.js). A raw LRV would put the default room (off-white walls, VCT) near 0.79 and double its daylight factor the moment one wall is painted; scaled against each surface's default, the default colour reads exactly the stated 0.5, so a finish moves a room only by how far it is from the default, and a room with nothing set keeps `ROOM_R`/`BACK_R` exactly. The ceiling has no finish and stays 0.5; glass counts as the wall it sits in; the back half for the depth rule is half the floor and ceiling plus each wall face past half the depth. *School Generator, TG-41.*
 
 **#1005. Reserved: #976 to #1005 are held for sessions on Huginn (the Selector loop); anyone else numbers from #1006.**
@@ -3568,6 +3570,16 @@ Worker TG-29-goldenflake of the audit's line TG-29, under Opus 5.5 on huginn in 
 **Change.** `test/animals.mjs` only: one frame stepped before the start is read, and `moved` is the widest angle off it over the 0.2 s. The threshold stays 0.02. No `js/` file changed; the page had no bug.
 
 **Checks.** `test/animals.mjs` 35 of 35, exit 0, three runs under the suites lock (0.52, 0.23 and 0.85 rad), the third with eight `node` busy loops on huginn's eight cores (load 9.0). Breaks in place, each one run: orbit `timeScale` 0 failed it on `isRunning()` (and "when the crumbs are gone it leaves, flapping" with it); the mixer stepped by 0 in orbit, the wings held still with the clip running, failed it alone at 0.00 rad; that same break with the first frame taken out passed at 0.13 rad, so the old check could not see still wings. `test/smoke.mjs` 158, `test/props.mjs` 29, `test/gltf-loader.mjs` 400, each exit 0. `npm run check`, `social:check` and `ci-check.mjs` each exit 0 under the lock. Nobody else's list or file needs updating for this.
+
+## Bell to Bell: the period report never prints a negative meter, 2026-11-04 (TG-32)
+
+Worker TG-32 of the audit's line TG-32, under Opus 5.5 on huginn in a worktree (`sel/TG-32`), no subagents; decision #1016.
+
+**Reproduced first.** The headless sim never goes below 0: every period, all five days, six styles, from carried pools of null, 60, 40, 20, 10, 5, 2 and 0, minimum 0. The audit's guess that Withitness drains past the floor was wrong; `tickMeters` clamps after `scanCosts` every frame. The path is the post-conference: `resolveConference` applies its answers' costs after the bell, so `turnAndTalk` alone from a drained period leaves `state.bandwidth` at -1, the number #940's probe printed, and `hollow` then `reframe` at -4.
+
+**Change.** `src/ui/report.js` reads every report row, number and tier, through a new `reportValue(state, key)`, clamped to 0 to 100 (#1016). `data/assets.json`'s `_comment` now says the kit's other 136 `.glb` files are a deliberate catalog (the game places 4 of 140), and the WISHLIST's "Weight and plumbing" bullet no longer says nothing does.
+
+**Checks.** `tests/smoke.mjs` 893 to 897, exit 0: a drained `hypervigilant` period through the costliest two answers is at -4 in the state and 0 on the report, and Fidelity 103 reads 100. Break on purpose: `reportValue` returning the raw value failed the two report assertions (2 FAILURES, exit 1). A third assertion, the bottom tier line, stayed green under that break (the bottom tier reads the same at -4 and 0) and was deleted (#34). The test reaches `reportValue`, not `showReport`'s HTML (`ui/dom.js` needs a page), so `showReport` reading the raw value again would pass it. `balance.mjs` the same 130 lines apart from timing; `assets.mjs` green. Not played in a browser.
 
 ## School Generator: the daylight factor reads each room's finishes, 2026-11-04 (TG-41)
 
