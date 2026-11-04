@@ -35,6 +35,13 @@
 //    of passing time. The warning is there once walk figures are (the
 //    movement engines have run); the schedule checks alone cannot see it.
 //
+// Two things are done right on purpose, for the movement view and the scenario
+// lab to show. Grade 6 leaves a minute after the bell from Period 3, the
+// period before its lunch (a staggered dismissal, project.release). And
+// Stairs C, a second way between Floors 1 and 2 beside Room 102, are up
+// only: Stairs A carry everything coming down, so the one-way rule traps
+// nobody and the checks say nothing about either.
+//
 // The checks also report two notes, and nothing else. Both are about the
 // Cafeteria, both are true of a lunch room, and they stay: it has no subject,
 // and it has groups scheduled into it and no teacher.
@@ -110,7 +117,7 @@ const FLOORS = [
     name: 'Floor 1',
     level: 1,
     corridor: [[1, CORRIDOR_ROW, 39, 1], [20, 8, 1, 6]],
-    stairs: [[12, 8]],
+    stairs: [[8, 8], [12, 8]],
     rooms: [
       { id: 'rsample101', number: '101', x: 1, y: 3, w: 5, h: 4, doors: [3], subject: 'MATH', capacity: 30, wing: 'West' },
       { id: 'rsample102', number: '102', x: 7, y: 3, w: 5, h: 4, doors: [9], subject: 'MATH', capacity: 30, wing: 'West' },
@@ -138,7 +145,7 @@ const FLOORS = [
     name: 'Floor 2',
     level: 2,
     corridor: [[1, CORRIDOR_ROW, 38, 1]],
-    stairs: [[12, 8], [33, 8]],
+    stairs: [[8, 8], [12, 8], [33, 8]],
     rooms: [
       { id: 'rsample201', number: '201', x: 1, y: 3, w: 6, h: 4, doors: [3], subject: 'ENG', capacity: 30, wing: 'West' },
       { id: 'rsample202', number: '202', x: 8, y: 3, w: 6, h: 4, doors: [10], subject: 'ENG', capacity: 30, wing: 'West' },
@@ -181,6 +188,10 @@ const FLOORS = [
 const CONNECTIONS = [
   { id: 'csample00a', label: 'A', a: ['fsample001', 12, 8], b: ['fsample002', 12, 8] },
   { id: 'csample00b', label: 'B', a: ['fsample002', 33, 8], b: ['fsample003', 33, 8] },
+  // Stairs C: a second way between Floors 1 and 2, by Room 102, up only (the
+  // connection's `a` is Floor 1). Stairs A, beside it, carry everything coming
+  // down, so the one-way rule traps nobody.
+  { id: 'csample00c', label: 'C', a: ['fsample001', 8, 8], b: ['fsample002', 8, 8], direction: 'ab' },
 ];
 
 const BELLS_A = [['08:00', '08:48'], ['08:52', '09:40'], ['09:44', '10:32'], ['10:36', '11:24'], ['11:28', '12:16'], ['12:20', '13:08'], ['13:12', '14:00'], ['14:04', '14:52']];
@@ -310,6 +321,13 @@ function sampleMarks() {
   ];
 }
 
+// One staggered dismissal: Grade 6 leaves a minute after the bell from the
+// period before its lunch (Period 3, which is 2 when counted from 0), so the
+// three Grade 6 groups do not meet the whole of Floor 1 at the Cafeteria doors.
+function sampleRelease() {
+  return [{ id: 'lsample001', who: { grade: '6' }, seconds: 60, after: [2], dayTypeIds: null }];
+}
+
 // Three duties and one meeting, all invented. Bus duty is before school with
 // times and a place; the lunch duty is in Period 5 in the Cafeteria; car line
 // is after school. The Wednesday science meeting names the subject, so a new
@@ -367,7 +385,7 @@ export function sampleSchool() {
         label: connection.label,
         a: { floorId: connection.a[0], cell: connection.a[2] * WIDTH + connection.a[1] },
         b: { floorId: connection.b[0], cell: connection.b[2] * WIDTH + connection.b[1] },
-        direction: 'both',
+        direction: connection.direction || 'both',
       })),
       zones: [{ id: 'zsample001', floorId: 'fsample001', label: 'Cafeteria doors', x: 19, y: CORRIDOR_ROW, w: 9, h: 1 }],
     },
@@ -398,6 +416,7 @@ export function sampleSchool() {
     ],
     calendar: sampleCalendar(),
     marks: sampleMarks(),
+    release: sampleRelease(),
     duties: sampleDuties(),
     accepted: [],
     scenario: null,
