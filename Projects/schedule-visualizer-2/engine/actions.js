@@ -1926,6 +1926,50 @@ function inBuilding(project, run) {
   return next;
 }
 
+// A floor resize that also moves the scenario's closed corridors: a corridor
+// lever keeps cell indexes (y * width + x), so when the floor's width changes
+// or its top or left edge moves, each index is worked out again the way the
+// building's own cell references are; a lever whose cells are all cut away
+// goes. The outcome counts the levers that went (`leversLost`) so the label
+// can say so. (SV2-94b: a closure had moved from x 13-16 to x 6-9.)
+function resizingFloor(project, resize) {
+  const old = project.building.floors.find((floor) => floor.id === resize.floorId);
+  const next = inBuilding(project, (building) => geometry.resizeFloor(building, resize));
+  const scenario = project.scenario;
+  if (next === project || !old || !scenario || !Array.isArray(scenario.levers)) return next;
+  const left = resize.left || 0;
+  const top = resize.top || 0;
+  const width = old.width + left + (resize.right || 0);
+  const height = old.height + top + (resize.bottom || 0);
+  const move = (cell) => {
+    const x = (cell % old.width) + left;
+    const y = Math.floor(cell / old.width) + top;
+    return x < 0 || y < 0 || x >= width || y >= height ? -1 : y * width + x;
+  };
+  let lost = 0;
+  let changed = false;
+  const levers = [];
+  for (const lever of scenario.levers) {
+    if (lever.kind !== 'corridor' || lever.floorId !== old.id) {
+      levers.push(lever);
+      continue;
+    }
+    const cells = lever.cells.map(move).filter((cell) => cell !== -1);
+    if (cells.length === 0) {
+      lost += 1;
+      changed = true;
+    } else if (cells.length !== lever.cells.length || cells.some((cell, i) => cell !== lever.cells[i])) {
+      levers.push({ ...lever, cells });
+      changed = true;
+    } else levers.push(lever);
+  }
+  if (!changed) return next;
+  const outcome = outcomes.get(next);
+  const followed = { ...next, scenario: { ...scenario, levers } };
+  outcomes.set(followed, { ...outcome, leversLost: lost });
+  return followed;
+}
+
 // What building.js reported for a project an action here returned: the loss,
 // the new space's id, the cells. Null for any other project.
 export function buildingOutcome(project) {
@@ -2308,12 +2352,13 @@ export const resizeFloor = action(
   {
     label: (before, payload, after) => {
       const outcome = outcomes.get(after);
-      return 'Resize ' + floorName(before, payload.floorId) + (outcome ? ' to ' + outcome.width + ' by ' + outcome.height : '') + replacing(after, 'removing');
+      const lost = outcome && outcome.leversLost ? outcome.leversLost : 0;
+      return 'Resize ' + floorName(before, payload.floorId) + (outcome ? ' to ' + outcome.width + ' by ' + outcome.height : '') + replacing(after, 'removing') + (lost > 0 ? ', and the scenario loses ' + lost + ' closed corridor' + (lost === 1 ? '' : 's') + ' that ' + (lost === 1 ? 'is' : 'are') + ' cut away' : '');
     },
     bumps: geometryBumps,
     focus: buildingFocus,
   },
-  (project, payload) => inBuilding(project, (building) => geometry.resizeFloor(building, payload)),
+  (project, payload) => resizingFloor(project, payload),
 );
 
 // ---- the traced image
@@ -2498,7 +2543,7 @@ export const fitFloorToImage = action(
     const resize = { floorId: floor.id, left: edges.left, right: edges.right, top: edges.top, bottom: edges.bottom };
     const described = describing(() => geometry.describeResize(project.building, resize));
     if (described.losesData) refuse('Fitting ' + floor.name + ' to the image would cut ' + geometry.lossText(described.loss) + ', outside the image. Move them over the image first, or resize the floor by its edges instead.', 'cuts');
-    return inBuilding(project, (building) => geometry.resizeFloor(building, resize));
+    return resizingFloor(project, resize);
   },
 );
 

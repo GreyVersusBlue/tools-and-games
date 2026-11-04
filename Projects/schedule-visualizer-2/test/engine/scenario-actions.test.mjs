@@ -13,7 +13,7 @@ import { applyChanges, reconcile, changeWords } from '../../engine/scenario.js';
 import { releaseOf } from '../../engine/schema.js';
 import { validate } from '../../engine/validate.js';
 import { writeProjectFile, readProjectFile } from '../../engine/project-file.js';
-import { school, clone, clock, makeIds, assertValid } from './helpers.mjs';
+import { school, emptyProject, clone, clock, makeIds, assertValid } from './helpers.mjs';
 
 const { addScenarioLever, removeScenarioLever, removeScenarioLevers, deleteDayType, setDayTypeKind, describeDayTypeDelete, describeDayTypeKind, describePeriodChange, setPeriods, newScenario, renameScenario, addScenarioChange, removeScenarioChange, removeScenarioChanges, discardScenario, setScenarioFromFile, applyScenario, setSlot, deleteGroup, revertToBase, ActionError, SCHEDULE, NEW_SCENARIO_NAME } = actions;
 
@@ -1114,4 +1114,66 @@ test('addScenarioLever: a closed corridor is never removed by itself, and closin
   store.apply(applyScenario, {});
   assert.equal(store.project.building, outcomeBefore.building, 'the building is the very same object');
   assert.equal(store.undoOutcome.leftOut, 1);
+});
+
+// ================================================================ SV2-94b: a resize and the closed corridors of a scenario
+
+function closedOnRow7() {
+  // the review's probe: Main Corridor's cells x 13 to 16 on row 7 of Floor 1
+  const cells = [13, 14, 15, 16].map((x) => 7 * 40 + x);
+  const project = school();
+  const entry = project.building.floors[0].corridors.find((each) => each.id === 'ksample001');
+  assert.ok(cells.every((cell) => entry.cells.includes(cell)), 'the cells are Main Corridor');
+  return storeOf({ ...project, scenario: { name: 'Trial', changes: [], levers: [{ kind: 'corridor', floorId: 'fsample001', cells, name: 'Main Corridor' }], compared: null } });
+}
+
+test('resizeFloor: a column added on the right, or one on the left, keeps a closure on the same corridor cells', () => {
+  const right = closedOnRow7();
+  right.apply(actions.resizeFloor, { floorId: 'fsample001', right: 1 });
+  assert.deepEqual(right.project.scenario.levers[0].cells, [13, 14, 15, 16].map((x) => 7 * 41 + x), 'width 41: the same cells, indexed again');
+  const left = closedOnRow7();
+  left.apply(actions.resizeFloor, { floorId: 'fsample001', left: 2, top: 1 });
+  assert.deepEqual(left.project.scenario.levers[0].cells, [13, 14, 15, 16].map((x) => 8 * 42 + x + 2), 'moved with the building');
+  for (const store of [right, left]) {
+    const floor = store.project.building.floors[0];
+    assert.ok(store.project.scenario.levers[0].cells.every((cell) => floor.cells[cell] === '#'), 'every closed cell is still a corridor cell');
+    assertValid(store.project);
+  }
+});
+
+test('resizeFloor: a closure cut in part keeps what is left; a closure cut away goes, and the label and the outcome count it', () => {
+  const part = closedOnRow7();
+  part.apply(actions.resizeFloor, { floorId: 'fsample001', left: -15 });
+  assert.deepEqual(part.project.scenario.levers[0].cells, [15, 16].map((x) => 7 * 25 + x - 15), 'x 15 and 16 are left');
+  const gone = closedOnRow7();
+  gone.apply(actions.resizeFloor, { floorId: 'fsample001', left: -17 });
+  assert.deepEqual(gone.project.scenario.levers, []);
+  assert.match(gone.undoLabel, /, and the scenario loses 1 closed corridor that is cut away$/);
+  assert.equal(gone.undoOutcome.leversLost, 1);
+  gone.undo();
+  assert.equal(gone.project.scenario.levers.length, 1, 'one undo brings the closure back');
+  assertValid(part.project);
+});
+
+test('resizeFloor: a lever on another floor, or a way, is not touched; no scenario is fine', () => {
+  const other = closedOnRow7();
+  other.apply(actions.resizeFloor, { floorId: 'fsample002', left: 3 });
+  assert.deepEqual(other.project.scenario.levers[0].cells, [13, 14, 15, 16].map((x) => 7 * 40 + x));
+  const none = storeOf(school());
+  none.apply(actions.resizeFloor, { floorId: 'fsample001', right: 1 });
+  assert.equal(none.project.building.floors[0].width, 41);
+});
+
+test('fitFloorToImage, the other path to a resize, moves a closure with its cells too', () => {
+  const IMAGE = { imageId: 'isample001', width: 1600, height: 1200, scale: 0.01, x: 3, y: 2, rotation: 0, opacity: 0.4, visible: true, locked: false, missing: false };
+  let project = emptyProject();
+  const floorId = project.building.floors[0].id;
+  const ctx = () => ({ ids: makeIds(), now: clock() });
+  project = actions.setTraceImage(project, { floorId, image: IMAGE }, ctx());
+  project = actions.paintCorridor(project, { floorId, cells: [4 * 40 + 5, 4 * 40 + 6] }, ctx());
+  project = { ...project, scenario: { name: 'Trial', changes: [], levers: [{ kind: 'corridor', floorId, cells: [4 * 40 + 5, 4 * 40 + 6], name: '' }], compared: null, } };
+  const after = actions.fitFloorToImage(project, { floorId }, ctx());
+  assert.equal(after.building.floors[0].width, 16);
+  assert.deepEqual(after.scenario.levers[0].cells, [2 * 16 + 2, 2 * 16 + 3], 'the cells the corridor moved to');
+  assert.ok(after.scenario.levers[0].cells.every((cell) => after.building.floors[0].cells[cell] === '#'));
 });
