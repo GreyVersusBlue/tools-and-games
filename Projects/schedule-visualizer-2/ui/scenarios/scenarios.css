@@ -320,6 +320,10 @@
 
 /* ---------- On a phone: the stage stays in view (DESIGN 12.4, 5.4) ---------- */
 
+/* Phone widths only (under 600 px): on a tablet or a narrow laptop window the
+   stacked layout has room, and the plan keeps the height it has with no
+   scenario open (DESIGN 5.4's floor) whether or not a form is open. */
+
 /* Below the wide layout the panel stands under the map, and a form brought
    into view used to carry the stage off the top of the section (0 px of it
    visible with Bell times open at 390 by 844). With a scenario open the stage
@@ -329,7 +333,7 @@
    it, as its own region: scroll-padding keeps a field brought into view clear
    of the stage and the bar. A window under 600 px tall (a phone on its side)
    keeps the plan map's own rule, the first line scrolled away instead. */
-@media (max-width: 1199.98px) and (min-height: 600px) {
+@media (max-width: 599.98px) and (min-height: 600px) {
   .scn[data-mode="open"] {
     --scn-pin: clamp(180px, 31dvh, 280px);
     scroll-padding-top: var(--scn-pin);

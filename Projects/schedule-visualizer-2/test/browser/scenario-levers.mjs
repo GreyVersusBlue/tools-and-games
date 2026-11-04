@@ -662,6 +662,7 @@ test('a corridor with no name is picked as the stretch between junctions, and it
   assert.ok(lever.cells.length > 1 && lever.cells.includes(at.cell), 'the stretch, not the one cell: ' + lever.cells.length);
   assert.ok(lever.cells.every((cell) => floor.cells[cell] === '#'));
   assert.match((await chipTexts())[0], new RegExp('^Close ' + lever.cells.length + ' corridor cells on Floor 1$'));
+  assert.equal(await announced(), lever.cells.length + ' corridor cells on Floor 1 closed in this trial.', 'the announcement and the chip say it in one set of words (SV2-94b)');
 });
 
 test('Pick on the map by keyboard: the plan is one stop, the cursor says the place under it, Enter picks, Escape cancels and does nothing else', async () => {
@@ -1095,4 +1096,37 @@ test('at 390 by 844 with touch: the forms are used by tap, every target is 44 px
   } finally {
     await phone.close();
   }
+});
+
+// SV2-94b (the W3 review, finding 4): the stage was pinned to 31 % of the window,
+// 280 px at most, under every width below 1200 px, so a scenario open on a tablet
+// took a third or more off the plan. The pin is for phone widths only.
+test('with a scenario open the stage keeps the height it has with none at 768 by 1024, 1024 by 768 and 1100 by 820, and is pinned at 390 by 844', async () => {
+  const stageHeight = async (p) => {
+    const box = await atRest(p, '.scn .mov-stage');
+    return box.height;
+  };
+  const measure = async (width, height, mobile) => {
+    const view = await openPlanner({ server, browser, hash: '#scenarios', theme: 'light', width, height, mobile });
+    const p = view.page;
+    try {
+      await loadModule(p, 'actions', 'engine/actions.js');
+      await fresh(p);
+      await p.waitForFunction(() => document.querySelector('.scn').dataset.mode === 'none');
+      const none = await stageHeight(p);
+      await start(p, 'Tablet');
+      const open = await stageHeight(p);
+      assert.deepEqual(view.problems().errors, []);
+      return { none, open };
+    } finally {
+      await view.close();
+    }
+  };
+  for (const [width, height] of [[768, 1024], [1024, 768], [1100, 820]]) {
+    const { none, open } = await measure(width, height, false);
+    assert.ok(none > 200, width + ' by ' + height + ': a stage with none open: ' + none);
+    assert.ok(Math.abs(open - none) <= 0.5, width + ' by ' + height + ': the stage with a scenario open is ' + open + ' px; with none it is ' + none + ' px');
+  }
+  const phone = await measure(390, 844, true);
+  assert.ok(phone.open < phone.none - 20, 'on a phone the pin still holds the stage down: ' + phone.open + ' against ' + phone.none);
 });
