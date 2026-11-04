@@ -3705,5 +3705,26 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
 }
 
 
+// TG-32: a drained-out period that answers the post-conference reports 0
+// Bandwidth, not -1. The conference runs after the bell, so its costs land
+// after the last tickMeters clamp. report.js reads every row through
+// reportValue; ui/dom.js reads `document` as it loads, hence the stub.
+{
+  globalThis.document ??= { getElementById: () => null };
+  const { reportValue } = await import('../src/ui/report.js');
+  const r = runPeriod({ period: periodFor('p4', bundle), data: bundle, style: STYLES.hypervigilant,
+    opts: { bandwidth: 0 } });
+  const st = r.state;
+  const { obs } = mkObs();
+  obs.resolveConference(st, 'engagement', 'turnAndTalk');
+  obs.resolveConference(st, 'when', 'inClass');
+  check('a drained period that answered her really is below the floor (the path the report has to survive)',
+    st.bandwidth < 0);
+  check('and the report still shows Bandwidth left 0, not a negative number',
+    Math.round(reportValue(st, 'bandwidth')) === 0);
+  const full = { ...createState(), fidelity: 103 };
+  check('a meter past the top reads 100 on the report, too', reportValue(full, 'fidelity') === 100);
+}
+
 console.log(fails? `\n${fails} FAILURES` : '\nall green');
 process.exit(fails?1:0);
