@@ -437,6 +437,23 @@ test('a walk figure worked out for other rooms is passed over, for a group and f
 // time is passed over; so no sentence here can show which of the two was
 // printed, and this case does not claim to. What it pins is that `late` was
 // decided against the passing time the sentence states.
+test('a teacher with no way through is a finding of its own id: accepting a late walk does not silence it (SV2-94b)', () => {
+  const project = clean();
+  slot(project, '6A', A, 3).teacherIds = [DUNMORE];
+  const late = ofKind(checkSchedule(project, { groups: [], teachers: [{ ...COACH_WALK }] }), 'teacher-walk')[0];
+  const stranded = { dayTypeId: A, teacherId: DUNMORE, period: 2, fromRoomId: 'rsamplegym', toRoomId: 'rsamplecaf', passingSeconds: 240, failed: true, late: true };
+  const none = ofKind(checkSchedule(project, { groups: [], teachers: [stranded] }), 'teacher-walk')[0];
+  assert.notEqual(none.id, late.id, 'two ids');
+  assert.equal(none.id, 'teacher-walk:dsample00a:2:tsample004:stranded');
+  // accept the late one, then a closure strands the walk: the stronger finding stands
+  const accepted = acceptFinding(project, { findingId: late.id, reason: 'Four minutes is enough' }, ctx());
+  const result = checkSchedule(accepted, { groups: [], teachers: [stranded] });
+  assert.deepEqual(ofKind(result, 'teacher-walk').map((f) => f.id), [none.id], 'it is still a finding');
+  assert.match(ofKind(result, 'teacher-walk')[0].text, /has no way through/);
+  // and the late one stays accepted while it is late
+  const still = checkSchedule(accepted, { groups: [], teachers: [{ ...COACH_WALK }] });
+  assert.deepEqual(ofKind(still, 'teacher-walk'), []);
+});
 test('a walk figure decided against another passing time is passed over; the sentence states the one the figure was decided against', () => {
   const project = clean();
   slot(project, '6A', A, 3).teacherIds = [DUNMORE];
@@ -473,7 +490,7 @@ test('a teacher with no way through is a finding naming the teacher, both rooms 
   slot(project, '6A', A, 3).teacherIds = [DUNMORE];
   const stranded = { dayTypeId: A, teacherId: DUNMORE, period: 2, fromRoomId: 'rsamplegym', toRoomId: 'rsamplecaf', passingSeconds: 240, failed: true, late: true };
   const found = ofKind(checkSchedule(project, { groups: [], teachers: [stranded] }), 'teacher-walk');
-  assert.deepEqual(found.map((f) => [f.id, f.severity, f.text]), [['teacher-walk:dsample00a:2:tsample004', 'warning', 'Coach Dunmore has no way through to walk from Gym to Cafeteria after Period 3 on A Day, and the passing time is 4 min.']]);
+  assert.deepEqual(found.map((f) => [f.id, f.severity, f.text]), [['teacher-walk:dsample00a:2:tsample004:stranded', 'warning', 'Coach Dunmore has no way through to walk from Gym to Cafeteria after Period 3 on A Day, and the passing time is 4 min.']]);
   assert.deepEqual(found[0].where, { dayTypeId: A, period: 2, groupIds: ['gsample06a'], roomId: 'rsamplecaf', teacherId: DUNMORE });
   // one whose rooms are no longer the walk's is passed over, as a figure is
   assert.deepEqual(ofKind(checkSchedule(project, { groups: [], teachers: [{ ...stranded, toRoomId: 'rsample302' }] }), 'teacher-walk'), []);

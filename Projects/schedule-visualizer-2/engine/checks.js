@@ -596,7 +596,7 @@ export function checkSchedule(project, walkResults) {
       if (walk.passingSeconds !== plan.passing) continue;
       teacherEntries.push({ ...entry, dayType, teacher, day, move, toPeriod: plan.to });
     }
-    for (const list of gather(teacherEntries, (entry) => entry.dayType.id + '\u0000' + entry.walk.period + (entry.toPeriod === entry.walk.period + 1 ? '' : '\u0000' + entry.toPeriod) + '\u0000' + entry.teacher.id)) {
+    for (const list of gather(teacherEntries, (entry) => entry.dayType.id + '\u0000' + entry.walk.period + (entry.toPeriod === entry.walk.period + 1 ? '' : '\u0000' + entry.toPeriod) + '\u0000' + entry.teacher.id + (entry.walk.failed === true ? '\u0000stranded' : ''))) {
       const { dayType, teacher, day, move, toPeriod } = list[0];
       const period = list[0].walk.period;
       const sets = alike(list, (walk) => (walk.failed === true ? 'none' : walk.walking) + '|' + walk.passingSeconds);
@@ -612,7 +612,9 @@ export function checkSchedule(project, walkResults) {
         const walk = set.entries[0].walk;
         text += ' With ' + bellsNames(set.entries) + (walk.failed === true ? ' bells it has no way through' : ' bells it needs ' + formatDuration(walk.walking)) + ', and ' + passingText(walk.passingSeconds) + '.';
       }
-      const run = runParts(list, [dayType.id, period, teacher.id], period, toPeriod);
+      // a teacher with no way through is a finding of its own id, so that
+      // accepting a late walk does not silence it (DECISIONS 2026-11-03)
+      const run = runParts(list, first.failed === true ? [dayType.id, period, teacher.id, 'stranded'] : [dayType.id, period, teacher.id], period, toPeriod);
       named(add('teacher-walk', run.id, text,
         { dayTypeId: dayType.id, period, groupIds: day[toPeriod].groups.map((taught) => taught.groupId), roomId: move.toRoomId, teacherId: teacher.id, ...run.where }, [teacher.id]), across, toPeriod);
     }

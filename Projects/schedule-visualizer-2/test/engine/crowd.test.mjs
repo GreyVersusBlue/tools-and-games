@@ -543,6 +543,22 @@ test('waiting is total − walking for a group that arrived, and every second of
   }
 });
 
+test('a teacher walk to a room that opens onto no corridor is failed and late, as one with no way through is (SV2-94b)', () => {
+  const project = withSchedule(planProject([[
+    'A#####B',
+    '.......',
+    '..C....',
+  ]]), { One: ['1A', '1C', '1C'] });
+  project.teachers = [{ id: 'tplan00001', name: 'Mx. Tarn', subjectId: null, roomIds: [roomId('1A'), roomId('1C')], notes: '' }];
+  for (const space of project.building.floors[0].spaces) if (space.kind === 'room') space.teacherIds = space.id === roomId('1B') ? [] : ['tplan00001'];
+  assertValid(project);
+  const graph = routingGraph(project);
+  assert.equal(route(graph, roomId('1A'), roomId('1C')).reason, 'no-entry', 'the room has no corridor edge');
+  const walks = teacherWalks(project, graph);
+  assert.equal(walks.length, 1, 'the walk is there, not dropped');
+  assert.deepEqual(walks[0], { dayTypeId: project.dayTypes[0].id, teacherId: 'tplan00001', period: 0, fromRoomId: roomId('1A'), toRoomId: roomId('1C'), passingSeconds: walks[0].passingSeconds, failed: true, late: true });
+});
+
 test('a teacher\'s walk is timed by walking alone and judged by the same late rule', () => {
   const project = withSchedule(twoRooms(), { One: ['1A', '1B', '1B'] });
   project.teachers = [{ id: 'tplan00001', name: 'Mx. Tarn', subjectId: null, roomIds: [roomId('1A'), roomId('1B')], notes: '' }];

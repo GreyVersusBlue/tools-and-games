@@ -728,9 +728,10 @@ export function teacherWalks(project, graph, options) {
         const found = route(routing, move.fromRoomId, move.toRoomId, routeOptions);
         const walking = walkingSeconds(routing, found);
         // a walk with no way through (a closure or a one-way stair in the
-        // building or the scenario) is a failed walk, as a group's is, never
-        // a walk that is not there; a room not placed has no walk to fail
-        const stranded = walking === null && found && found.ok === false && found.reason === 'unreachable';
+        // building or the scenario, or a room that opens onto no corridor) is
+        // a failed walk, as a group's is, never a walk that is not there; a
+        // room not placed has no walk to fail
+        const stranded = walking === null && found && found.ok === false && (found.reason === 'unreachable' || found.reason === 'no-entry');
         if (walking === null && !stranded) continue;
         const passingSeconds = move.toPeriod === undefined ? bells[move.period].passingAfter : transitionPlan(project, bells, move.period).passing;
         const head = bellsId === null ? { dayTypeId: run.dayTypeId } : { dayTypeId: run.dayTypeId, bellsId };
