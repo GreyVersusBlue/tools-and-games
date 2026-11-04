@@ -8,7 +8,9 @@
 // list saying the way); the same by keyboard; the chevron beside the letter at
 // both ends of the stairs on the plan, read back from the canvas, in both
 // themes; the Checks tab's one-way-trap warning and its Show me; a connection
-// on one floor worded by its ends; the staff browser's map from a published
+// on one floor worded by its ends; the floor plan print and its picture, which
+// draw the chevron too (looked at in pixels), and a chained stairwell on the
+// staff map, each letter with its own chevron; the staff browser's map from a published
 // file (the chevron at the stairs, the picture's text saying "up only"); axe on
 // the Floor tab and the Checks tab in both themes; and the whole at 390 by 844
 // with touch, every chip 44 px. Every wait is on a state the page sets (the
@@ -28,6 +30,7 @@ import { diskReader } from '../publish/reader.mjs';
 import { publishDocument } from '../../ui/staff/targets.js';
 import { seededRandom } from '../../engine/ids.js';
 import { plainSchool } from '../engine/helpers.mjs';
+import { planSvg, planStyleText } from '../../ui/prints/plan-svg.js';
 import { splitLevel } from '../fixtures/buildings/plans.mjs';
 
 const AXE = path.join(TOOL_DIR, 'test', 'vendor', 'axe-core', 'axe.min.js');
@@ -314,6 +317,130 @@ test('a connection on one floor names its ends by place: the nearest room, and o
   assert.equal(await text('[data-connection="cplan00001"] .bld-inspector__small'), 'Joins two places on Floor 1: column 4, row 3 and column 7, row 3. Stairs A is only from the end by Room 1B.');
 });
 
+
+// ------------------------------------------------------------------ the printed plan (SV2-91b)
+
+// The ink of the chevron on one printed floor plan, as the width of the ink in
+// its top quarter and in its bottom quarter: an up chevron narrows at the top,
+// a down chevron at the bottom. Read from pixels of the real print preview,
+// and of the plan drawn alone as the PNG is.
+function ink(p, clip, shot) {
+  return p.evaluate(async (box, encoded) => {
+    const img = new Image();
+    img.src = 'data:image/png;base64,' + encoded;
+    await img.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const g = canvas.getContext('2d');
+    g.drawImage(img, 0, 0);
+    const data = g.getImageData(0, 0, canvas.width, canvas.height).data;
+    const dark = (x, y) => data[(y * canvas.width + x) * 4] < 170;
+    const span = (from, to) => {
+      let lo = Infinity;
+      let hi = -Infinity;
+      let count = 0;
+      for (let y = from; y < to; y += 1) {
+        for (let x = 0; x < canvas.width; x += 1) {
+          if (!dark(x, y)) continue;
+          count += 1;
+          lo = Math.min(lo, x);
+          hi = Math.max(hi, x);
+        }
+      }
+      return count === 0 ? 0 : hi - lo + 1;
+    };
+    const quarter = Math.floor(canvas.height / 4);
+    return { top: span(0, quarter), bottom: span(canvas.height - quarter, canvas.height), total: span(0, canvas.height) };
+  }, clip, shot);
+}
+
+// The three printed plans (two-way, up only, down only) of the sample's Stairs
+// B on Floor 3, each as the page's own print preview lays it out.
+async function printedChevron(direction) {
+  await setDirection(page, B, direction);
+  await page.evaluate(async (floorId) => {
+    const at = (file) => new URL(file, location.href).href;
+    const { openPrintPreview } = await import(at('ui/components/print-preview.js'));
+    const sheet = openPrintPreview(globalThis.sv2.ctx, 'floor-plan', { floorId });
+    globalThis.sv2test = { sheet };
+    await sheet.ready();
+  }, 'fsample003');
+  await page.waitForSelector('#print-preview[open][data-ready="true"]');
+  const found = await page.evaluate(() => {
+    const frame = document.querySelector('#print-preview iframe');
+    const mark = frame.contentDocument.querySelector('.plan__oneway');
+    if (!mark) return { marks: frame.contentDocument.querySelectorAll('.plan__oneway').length, caption: frame.contentDocument.querySelector('.plan-figure__caption').textContent };
+    mark.scrollIntoView({ block: 'center' });
+    const box = mark.getBoundingClientRect();
+    const outer = frame.getBoundingClientRect();
+    return {
+      marks: frame.contentDocument.querySelectorAll('.plan__oneway').length,
+      caption: frame.contentDocument.querySelector('.plan-figure__caption').textContent,
+      clip: { x: outer.left + box.left, y: outer.top + box.top, width: box.width, height: box.height },
+    };
+  });
+  let width = null;
+  if (found.clip) {
+    const shot = await page.screenshot({ clip: found.clip, encoding: 'base64' });
+    width = await ink(page, found.clip, shot);
+  }
+  await page.evaluate(() => globalThis.sv2test.sheet.close());
+  await page.waitForFunction(() => document.getElementById('print-preview') === null);
+  return { ...found, width };
+}
+
+test('the floor plan print draws a one-way stair\'s chevron by its letter, pointing up or down, and a two-way stair as it always did', async () => {
+  await page.evaluate((project) => {
+    globalThis.sv2.store.apply(globalThis.sv2modules.actions.replaceProject, { project, label: 'Open the sample school' });
+  }, JSON.parse(JSON.stringify(plainSchool())));
+  await shows(() => globalThis.sv2.store.project.building.floors.length === 3);
+  await still(page);
+  await page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 4 });
+  await still(page);
+  const both = await printedChevron('both');
+  const up = await printedChevron('ab');
+  const down = await printedChevron('ba');
+  await setDirection(page, B, 'both');
+  await page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 1 });
+  assert.equal(both.marks, 0, 'a two-way stair has no way mark on paper');
+  assert.doesNotMatch(both.caption, /only/);
+  assert.equal(up.marks, 1, 'Floor 3 has Stairs B only: one mark');
+  assert.match(up.caption, /Stairs B is up only\./);
+  assert.match(down.caption, /Stairs B is down only\./);
+  assert.ok(up.width.total > 0 && down.width.total > 0, 'there is ink to read');
+  assert.ok(up.width.top < up.width.bottom, 'up only narrows at the top: ' + JSON.stringify(up.width));
+  assert.ok(down.width.top > down.width.bottom, 'down only narrows at the bottom: ' + JSON.stringify(down.width));
+});
+
+test('the plan drawn alone, as the PNG draws it, points the same way', async () => {
+  const project = plainSchool();
+  const probe = await browser.createBrowserContext();
+  const p = await probe.newPage();
+  try {
+    for (const [direction, want] of [['ab', 'up'], ['ba', 'down']]) {
+      project.building.connections.find((each) => each.id === B).direction = direction;
+      const floor = project.building.floors.find((each) => each.id === 'fsample003');
+      const { svg } = planSvg(project, floor, { xml: true });
+      const style = '<style>' + planStyleText() + '</style>';
+      const standalone = svg.replace(/^<svg /, '<svg xmlns="http://www.w3.org/2000/svg" ').replace(/>/, '>' + style);
+      await p.setViewport({ width: 1600, height: 1200, deviceScaleFactor: 8 });
+      await p.setContent('<body style="margin:0;background:#fff">' + standalone + '</body>');
+      const clip = await p.evaluate(() => {
+        const mark = document.querySelector('.plan__oneway');
+        const box = mark.getBoundingClientRect();
+        return { x: box.left, y: box.top, width: box.width, height: box.height };
+      });
+      const shot = await p.screenshot({ clip, encoding: 'base64' });
+      const width = await ink(p, clip, shot);
+      if (want === 'up') assert.ok(width.top < width.bottom, 'up: ' + JSON.stringify(width));
+      else assert.ok(width.top > width.bottom, 'down: ' + JSON.stringify(width));
+    }
+  } finally {
+    await probe.close();
+  }
+});
+
 // ------------------------------------------------------------------ the staff browser
 
 async function publishedMap(name, direction) {
@@ -326,12 +453,32 @@ async function publishedMap(name, direction) {
   return pathToFileURL(file).href;
 }
 
-async function mapPixels(url, theme) {
+async function mapPixels(url, theme, withLog) {
   const context = await browser.createBrowserContext();
   const staff = await context.newPage();
   try {
     await staff.setViewport({ width: 1100, height: 900, deviceScaleFactor: 1 });
     await staff.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: theme }, { name: 'prefers-reduced-motion', value: 'reduce' }]);
+    if (withLog) {
+      // every letter and every path's first point of the map's last paint, in order
+      await staff.evaluateOnNewDocument(() => {
+        const proto = CanvasRenderingContext2D.prototype;
+        globalThis.sv2Draw = [];
+        const { fillText, moveTo, fillRect } = proto;
+        proto.fillRect = function (x, y, w, h) {
+          if (x === 0 && y === 0 && w > 200) globalThis.sv2Draw = [];
+          return fillRect.call(this, x, y, w, h);
+        };
+        proto.fillText = function (t, x, y) {
+          globalThis.sv2Draw.push(['text', String(t), x, y]);
+          return fillText.call(this, t, x, y);
+        };
+        proto.moveTo = function (x, y) {
+          globalThis.sv2Draw.push(['move', x, y]);
+          return moveTo.call(this, x, y);
+        };
+      });
+    }
     await staff.evaluateOnNewDocument(() => {
       globalThis.sv2StaffClock = { now: () => new Date('2026-09-01T13:50:00Z'), every: 3600000 };
     });
@@ -365,7 +512,7 @@ async function mapPixels(url, theme) {
     return await staff.evaluate(() => {
       const canvas = document.querySelector('.map canvas');
       const g = canvas.getContext('2d');
-      return { width: canvas.width, height: canvas.height, label: canvas.getAttribute('aria-label'), data: Array.from(g.getImageData(0, 0, canvas.width, canvas.height).data) };
+      return { width: canvas.width, height: canvas.height, label: canvas.getAttribute('aria-label'), draw: globalThis.sv2Draw || null, data: Array.from(g.getImageData(0, 0, canvas.width, canvas.height).data) };
     });
   } finally {
     await context.close();
@@ -394,6 +541,54 @@ for (const theme of ['light', 'dark']) {
     assert.ok(best >= spots.length * 0.75, 'and it is what changed: ' + best + ' of ' + spots.length + ' pixels are in that cell');
   });
 }
+
+
+// A chained stairwell on the staff map: the middle floor's stair cell joins
+// Stairs A below and Stairs B above. Each letter has its own chevron.
+async function publishedChain(name, wayA, wayB) {
+  const project = plainSchool();
+  project.publish.passcode = '';
+  const a = project.building.connections.find((each) => each.id === A);
+  const b = project.building.connections.find((each) => each.id === B);
+  a.b = { ...b.a };
+  a.direction = wayA;
+  b.direction = wayB;
+  const published = await publishDocument(diskReader(), project, { clock: future, random: seededRandom('one-way') });
+  const file = path.join(scratch, name + '.html');
+  writeFileSync(file, published.html);
+  return pathToFileURL(file).href;
+}
+
+test('on a shared stair cell the staff map puts each letter beside its own connection\'s chevron', async () => {
+  // read from the map's drawing calls: after a letter, the first path point drawn
+  // before the next letter is that letter's chevron
+  const order = (map) => {
+    const calls = map.draw.filter((call) => call[0] === 'move' || call[1] === 'A' || call[1] === 'B');
+    const last = calls.map((call) => call[1]).lastIndexOf('B');
+    assert.ok(last > 0, 'the letters A and B are both drawn on the shared cell');
+    const letters = [];
+    for (let i = Math.max(0, last - 40); i < calls.length; i += 1) if (calls[i][1] === 'A' || calls[i][1] === 'B') letters.push(i);
+    const tail = letters.slice(-2);
+    // a chevron is the move drawn right after its letter, within a cell of it
+    return tail.map((at) => {
+      const next = calls[at + 1];
+      const near = next && next[0] === 'move' && Math.abs(next[1] - calls[at][2]) < 48 && Math.abs(next[2] - calls[at][3]) < 10;
+      return { letter: calls[at][1], x: calls[at][2], chevron: near ? next : null };
+    });
+  };
+  const onB = await mapPixels(await publishedChain('chain-b', 'both', 'ab'), 'light', true);
+  const onA = await mapPixels(await publishedChain('chain-a', 'ab', 'both'), 'light', true);
+  const withB = order(onB);
+  assert.deepEqual(withB.map((entry) => entry.letter), ['A', 'B'], 'A and B, in that order');
+  assert.equal(withB[0].chevron, null, 'A is both ways: no chevron by it');
+  assert.ok(withB[1].chevron && withB[1].chevron[1] > withB[1].x, 'B is up only: its chevron stands to the right of B');
+  const withA = order(onA);
+  assert.deepEqual(withA.map((entry) => entry.letter), ['A', 'B']);
+  assert.ok(withA[0].chevron && withA[0].chevron[1] > withA[0].x && withA[0].chevron[1] < withA[1].x, 'A is up only: its chevron stands between A and B');
+  assert.equal(withA[1].chevron, null, 'B is both ways: no chevron by it');
+  assert.match(onB.label, /Stairs B is up only\./);
+  assert.doesNotMatch(onB.label, /Stairs A is/);
+});
 
 // ------------------------------------------------------------------ axe
 

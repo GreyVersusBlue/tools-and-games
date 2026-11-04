@@ -418,6 +418,18 @@ test('a one-way stair on one floor points in at the end it is walked from and ou
   assert.ok(!/plan__oneway/.test(middle.svg.slice(first - 200, middle.svg.indexOf('>B</text>'))), 'none by A');
 });
 
+test('the sheet\'s sentence and the picture say which stairs are one way, in words', () => {
+  const project = planProject([['AA#S', 'AA##'], ['BB#S', 'BB##']], { connections: [[1, 3, 0, 2, 3, 0]] });
+  const said = (direction) => {
+    project.building.connections[0].direction = direction;
+    return renderOutput('floor-plan', project, null, { ...NOW, floorId: project.building.floors[0].id }).html;
+  };
+  assert.ok(said('both').includes('stairs A.</figcaption>'));
+  assert.ok(said('ab').includes('stairs A. Stairs A is up only.</figcaption>'));
+  project.building.connections[0].direction = 'ba';
+  assert.ok(planImage(project, { now: NOW.now }).svg.includes('Stairs A is down only.'));
+});
+
 test('a route map, which is what a door card draws, keeps the plain stair mark: evacuation ignores one-way', () => {
   const make = (direction) => {
     const project = planProject([['AA#S', 'AA##'], ['BB#S', 'BB##']], { connections: [[1, 3, 0, 2, 3, 0]] });
