@@ -1,5 +1,5 @@
 {
-  "_comment": "Content, not code — swap any path here and nothing in src/ needs to change.",
+  "_comment": "Content, not code — swap any path here and nothing in src/ needs to change. The other 136 .glb files in Assets/models/kenney_furniture-kit/ are a deliberate catalog to swap in from, not leftovers: the game places 4 of the kit's 140, and tests/assets.mjs counts the rest as unreferenced under _budget.",
   "textures": {
     "floor": {
       "dir": "Assets/textures/Floor/interior_tiles_1k.gltf/textures",

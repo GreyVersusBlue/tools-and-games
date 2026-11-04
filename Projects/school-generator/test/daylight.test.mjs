@@ -8,14 +8,14 @@ import assert from 'node:assert/strict';
 import { createState, addFloor, CELL, WALL_H } from '../js/grid.js';
 import { setTile, edgeHIdx, edgeVIdx, EDGE_WALL, EDGE_DOOR, EDGE_GLASS, EDGE_WINDOW } from '../js/lattice.js';
 import { sheet } from './build.mjs';
-import { addShape, addOpening, setSegWall, OP_WINDOW, SEG_GLASS } from '../js/shapes.js';
+import { addShape, addOpening, setSegWall, setSegAccent, OP_WINDOW, SEG_GLASS } from '../js/shapes.js';
 import { gridOpeningWidth, GRID_WINDOW_W } from '../js/lattice.js';
 import { WINDOW_H } from '../js/shapes.js';
 import { buildSampleSchool } from '../js/sample.js';
 import { buildNav } from '../js/navgraph.js';
 import {
   daylightOnFloor, daylightAnalysis, MIN_RATIO, GOOD_RATIO, NEEDS_LIGHT,
-  skyBand, bearingOf, compassOf,
+  skyBand, bearingOf, compassOf, ROOM_R, BACK_R,
 } from '../js/daylight.js';
 import { reportCSV, buildReport } from '../js/report.js';
 
@@ -355,7 +355,17 @@ test('a dim room is one with enough glass and too little sky, and it is a note',
 test('the sample school: the middle room clears 2%, and the deep rooms are named', () => {
   const r = daylightAnalysis(buildSampleSchool());
   assert.ok(r.summary.adf > 2 && r.summary.adf < 3, `${r.summary.adf}`);
-  assert.equal(r.summary.dim, 0);
+  // Two rooms dim, and both for their finishes (TG-41): the Office's carpet
+  // and the Media Center's carpet take each under 2%, where the stated 0.5
+  // had them at 2.16 with every classroom of the same glass.
+  assert.equal(r.summary.dim, 2);
+  const dim = r.rooms.filter((x) => x.dim).map((x) => x.name).sort();
+  assert.deepEqual(dim, ['Media Center', 'Office']);
+  for (const x of r.rooms) {
+    if (!x.dim) continue;
+    assert.equal(x.reflectFrom, 'finishes');
+    assert.ok(x.reflect < ROOM_R, `${x.name} ${x.reflect}`);
+  }
   assert.ok(r.summary.deep > 0);
   const f = r.findings.find((x) => x.code === 'deep-room');
   assert.equal(f.level, 'note');
@@ -374,6 +384,100 @@ test('the room sheet carries the four new columns under their own headings', () 
   assert.equal(room[at + 1], '90');
   assert.equal(room[at + 2], 'north');
   assert.equal(room[at + 3], '0');
+  // And the reflectance it was read at, with where that came from (TG-41).
+  assert.equal(head[at + 4], 'Reflectance');
+  assert.equal(room[at + 4], '0.5 stated');
+  const office = lines.find((l) => l[0] === 'Office');
+  assert.equal(office[at + 4], '0.39 from finishes');
+});
+
+// ---------- what the room's finishes reflect (TG-41) ----------
+
+// A 30 × 20 room glazed along its 30 ft north wall, in an open field: 300 ft²
+// of glass seeing 90° of sky, T = 0.68 × 0.9, so the numerator is
+// 0.612 × 300 × 90 = 16524. Surfaces are 600 floor + 600 ceiling + 100 ft of
+// perimeter at the 10 ft ceiling = 1000 of wall, 2200 in all. The light
+// reflectance values below are the sRGB colours' CIE Y, worked out by hand
+// (IEC 61966-2-1, 0.2126 R + 0.7152 G + 0.0722 B):
+//   #f2f0ec (the default wall) 0.872536    #d8d4cb (VCT, the default floor) 0.659977
+//   #ffffff 1                              #7d8794 (carpet tile) 0.238260
+//   #1f2a44 0.023646
+// A surface reads as 0.5 × its LRV over its default's, the ceiling as 0.5.
+function lit(opts = {}) {
+  const { s, shape } = hall(30, 20);
+  setSegWall(shape, 0, 0, SEG_GLASS);
+  if (opts.fin) shape.fin = opts.fin;
+  if (opts.paint) shape.paint = opts.paint;
+  if (opts.accent) setSegAccent(shape, 0, 2, opts.accent);
+  return roomRow(daylightOnFloor(s, 0), 'Room 101');
+}
+
+test('a room with no finish set is read at the stated constants, exactly', () => {
+  const row = lit();
+  assert.equal(row.reflectFrom, 'stated');
+  assert.equal(row.reflect, ROOM_R);
+  assert.equal(row.backReflect, BACK_R);
+  // 16524 / (2200 × 0.75), the open-field test's number.
+  near(row.adf, 10.014545, 1e-5, 'adf');
+  // 2 / (1 − 0.5) over 1/30 + 1/10.
+  near(row.reach, 30, 1e-9, 'reach');
+});
+
+test('painting a room its default colour on purpose changes nothing', () => {
+  const row = lit({ paint: '#f2f0ec' });
+  assert.equal(row.reflectFrom, 'finishes');
+  near(row.reflect, 0.5, 1e-12, 'R');
+  near(row.adf, 10.014545, 1e-5, 'adf');
+});
+
+test('an all-white room: white walls reflect more than the off-white default', () => {
+  // Walls 0.5 / 0.872536 = 0.573043; R = (600 × 0.5 + 600 × 0.5 + 1000 ×
+  // 0.573043) / 2200 = 0.533201; ADF = 16524 / (2200 × (1 − 0.533201²)).
+  const row = lit({ paint: '#ffffff' });
+  assert.equal(row.reflectFrom, 'finishes');
+  near(row.reflect, 0.533201, 1e-6, 'R');
+  near(row.adf, 10.494545, 1e-5, 'adf');
+});
+
+test('a dark floor: carpet tile pulls the room down by its floor area alone', () => {
+  // Floor 0.5 × 0.238260 / 0.659977 = 0.180507; R = (600 × 0.180507 +
+  // 600 × 0.5 + 1000 × 0.5) / 2200 = 0.412865; ADF 16524 / (2200 × (1 − R²)).
+  const row = lit({ fin: 'carpet' });
+  assert.equal(row.reflectFrom, 'finishes');
+  near(row.reflect, 0.412865, 1e-6, 'R');
+  near(row.adf, 9.054283, 1e-5, 'adf');
+  // The walls are the default, and the back half has the same shares of floor
+  // and wall as the whole room (half of each side wall, all of the back), so
+  // a rectangle's back half reads the same.
+  near(row.backReflect, 0.412865, 1e-6, 'Rb');
+});
+
+test('one accent wall: the face facePainter says is navy is navy, and the rest is not', () => {
+  // The back (south) wall's own face, 30 × 10 = 300 ft², is #1f2a44:
+  // 0.5 × 0.023646 / 0.872536 = 0.013550. R = (600 + 700 × 0.5 + 300 ×
+  // 0.013550) / 2200 = 0.433666, ADF 16524 / (2200 × (1 − R²)) = 9.250641.
+  const row = lit({ accent: '#1f2a44' });
+  assert.equal(row.reflectFrom, 'finishes');
+  near(row.reflect, 0.433666, 1e-6, 'R');
+  near(row.adf, 9.250641, 1e-5, 'adf');
+  // The back half, 10 ft and more from the glass: half the floor and ceiling
+  // (300 × 0.5 each), the back 10 ft of each side wall (100 ft² × 0.5 each)
+  // and all of the navy wall: Rb = (300 + 100 + 300 × 0.013550) / 1100 =
+  // 0.367332, and daylight carries 2 / (1 − Rb) / (1/30 + 1/10) = 23.709 ft.
+  near(row.backReflect, 0.367332, 1e-6, 'Rb');
+  near(row.reach, 23.709112, 1e-5, 'reach');
+});
+
+test('the reflectance a dim room was read at is in its finding', () => {
+  const { s, shape } = hall();
+  for (const t of [0.2, 0.5, 0.8]) addOpening(shape, 0, 0, t, 6, { k: OP_WINDOW });
+  const stated = daylightAnalysis(s).findings.find((x) => x.code === 'daylight-factor');
+  assert.match(stated.detail, /reflecting 0\.50, the stated default with no finish set/);
+  shape.fin = 'carpet';
+  const carpet = daylightAnalysis(s).findings.find((x) => x.code === 'daylight-factor');
+  // 40 × 20: floor 800 × 0.180507, ceiling 800 × 0.5, walls 1200 × 0.5,
+  // over 2800: 0.408716.
+  assert.match(carpet.detail, /reflecting 0\.41, from its finishes/);
 });
 
 // ---------- a wall that runs past a neighbour ----------
