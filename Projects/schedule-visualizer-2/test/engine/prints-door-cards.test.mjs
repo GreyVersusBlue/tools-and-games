@@ -701,7 +701,7 @@ test('door cards: every label a map\'s window holds whole is kept and none it wo
     for (const figure of cards.get(id).matchAll(/<figure class="card__map"[\s\S]*?<\/figure>/g)) {
       const svg = figure[0].match(/<svg[\s\S]*?<\/svg>/)[0];
       const floor = floors.get(unescape(svg.match(/aria-label="([^"]+)"/)[1]));
-      const got = judged(planSvg(project, floor).svg, svg);
+      const got = judged(planSvg(project, floor, { route: { cells: [], start: null, exit: null } }).svg, svg);
       labels += got.labels;
       lost.push(...got.lost.map((each) => id + ': ' + each));
       cut.push(...got.cut.map((each) => id + ': ' + each));
