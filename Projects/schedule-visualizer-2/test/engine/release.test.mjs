@@ -24,11 +24,29 @@ import { createIds, seededRandom, ID_PREFIXES, collectIds } from '../../engine/i
 import { RELEASE_MOST, releaseOf } from '../../engine/schema.js';
 import { writeScheduleFile, readScheduleFile, applySchedule, writeProjectFile, readProjectFile } from '../../engine/project-file.js';
 import { createPipeline } from '../../engine/worker.js';
-import { sampleSchool } from '../../data/sample-school.js';
+import { sampleSchool as realSample } from '../../data/sample-school.js';
 import { school, clone, makeIds, ctx, clock, assertValid } from './helpers.mjs';
 import { bigProject } from '../fixtures/big.mjs';
 
 const { ActionError, SCHEDULE } = actions;
+// The sample without its staggered dismissal (SV2-94): these cases are about a project that has none.
+function sampleSchool() {
+  const project = realSample();
+  delete project.release;
+  return project;
+}
+
+// The sample without Stairs C, up only (SV2-94): the building it had at 180edab7.
+function withoutStairsC(project) {
+  const stairs = project.building.connections.find((connection) => connection.id === 'csample0up');
+  project.building.connections = project.building.connections.filter((connection) => connection !== stairs);
+  for (const end of [stairs.a, stairs.b]) {
+    const floor = project.building.floors.find((candidate) => candidate.id === end.floorId);
+    floor.cells = floor.cells.slice(0, end.cell) + '.' + floor.cells.slice(end.cell + 1);
+  }
+  return project;
+}
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 const A = 'dsample00a';
@@ -650,11 +668,13 @@ function digest(project) {
 
 // test/fixtures/release-baseline.json holds these digests as sv2 gave them at
 // 180edab7, the commit before SV2-88, taken by running the pipeline there on
-// the three projects below. If a later unit changes the crowd model, the
+// the projects below. SV2-94 gave the sample a third stair, so `sample` was
+// recorded again on purpose, and `sampleBeforeStairsC` holds the old digests. If a later unit changes the crowd model, the
 // checks or the routes on purpose, it records the file again, and says so.
 test('a project with no release gives byte-identical pipeline results to sv2 before this unit', () => {
   const baseline = JSON.parse(readFileSync(path.join(HERE, '..', 'fixtures', 'release-baseline.json'), 'utf8'));
-  const projects = { sample: sampleSchool(), plain: school(), big: bigProject({ seed: 3 }) };
+  // `sampleBeforeStairsC` is the sample as it was at 180edab7, so the old digests still prove the promise on a school with a calendar, bell schedules and marks
+  const projects = { sample: sampleSchool(), sampleBeforeStairsC: withoutStairsC(sampleSchool()), plain: school(), big: bigProject({ seed: 3 }) };
   for (const [name, project] of Object.entries(projects)) {
     assert.equal('release' in project, false, name + ' has no release');
     assert.deepEqual(digest(project), baseline[name], name + ': every part of the result is the one sv2 gave before');

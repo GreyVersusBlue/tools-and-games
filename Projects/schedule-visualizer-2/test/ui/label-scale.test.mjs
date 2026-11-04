@@ -19,6 +19,7 @@ import { createRenderer } from '../../ui/surface/renderer.js';
 import { createViewport, drawnBox, CELL } from '../../ui/surface/viewport.js';
 import { lanesOverlay, drawStairLink } from '../../ui/surface/overlays/lanes.js';
 import { sampleSchool } from '../../data/sample-school.js';
+import { plainSchool } from '../engine/helpers.mjs';
 import { placeRanks, ringRadius, RANK_RADIUS } from '../../ui/movement/hotspots.js';
 
 // the light theme's tokens (ui/tokens.css), as the canvas reads them
@@ -207,7 +208,7 @@ const BASELINE = {
   "a stair link to another floor": "aa6a3b0c6b09885e 34",
 };
 
-const MODULES = { createRenderer, createViewport, drawnBox, CELL, lanesOverlay, drawStairLink, sampleSchool };
+const MODULES = { createRenderer, createViewport, drawnBox, CELL, lanesOverlay, drawStairLink, sampleSchool: plainSchool };
 const digest = (log) => createHash('sha256').update(log.join('\n')).digest('hex').slice(0, 16) + ' ' + log.length;
 
 test('labelScale 1, and no labelScale, tell the canvas call for call what be5f4c88 did, before the option existed', () => {

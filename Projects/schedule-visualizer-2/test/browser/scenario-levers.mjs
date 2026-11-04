@@ -874,6 +874,7 @@ test('Apply with a one-way stair and closures: the summary has the trial band, a
   const same = (project) => JSON.stringify([project.building.floors.map((floor) => [floor.id, floor.cells, floor.corridors, floor.spaces, floor.exits]), project.building.connections.map((connection) => [connection.id, connection.a, connection.b])]);
   assert.equal(same(now), same(before), 'the cells, corridors, rooms, exits and the stairs\' ends are as they were');
   assert.deepEqual(now.building.connections.map((connection) => [connection.id, connection.direction]), [['csample00a', 'ab'], ['csample00b', 'both']], 'only the direction changed, and the stairs that was closed is open');
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.closedDrawn === '0');
   assert.equal(await page.$eval('.scn', (el) => el.dataset.closedDrawn), '0', 'nothing is hatched once the scenario is gone');
 });
 

@@ -21,6 +21,7 @@ import { roomRows, sortRoomRows } from '../../ui/prints/room-list.js';
 import { evacuationRoutes, noRoute, doorCard, ELEVATOR_KIND } from '../../engine/evacuation.js';
 import { routingGraph } from '../../engine/routing.js';
 import { sampleSchool } from '../../data/sample-school.js';
+import { plainSchool } from './helpers.mjs';
 import { planProject, threeFloors, twoRooms, disconnectedWing, splitLevel, floorId, roomId } from '../fixtures/buildings/plans.mjs';
 import { PINNED } from './helpers.mjs';
 
@@ -551,7 +552,7 @@ const FLOOR_PLAN_HASH = '3056d4f45082739594125ef31fd1edb91c1363d47229950e8492f75
 
 test('with neither option, planSvg and the floor plan print are byte for byte what they were', () => {
   const hash = createHash('sha256');
-  for (const project of [sampleSchool(), threeFloors(), twoRooms(), disconnectedWing(), splitLevel()]) {
+  for (const project of [plainSchool(), threeFloors(), twoRooms(), disconnectedWing(), splitLevel()]) {
     for (const floor of project.building.floors) {
       const plain = planSvg(project, floor);
       hash.update(JSON.stringify(plain));
@@ -562,7 +563,7 @@ test('with neither option, planSvg and the floor plan print are byte for byte wh
   }
   assert.equal(hash.digest('hex'), PLAN_HASH);
   const print = createHash('sha256');
-  for (const paper of [{ size: 'letter', orientation: 'portrait' }, { size: 'a4', orientation: 'landscape' }]) print.update(floorPlan(sampleSchool(), null, { ...NOW, paper }).html);
+  for (const paper of [{ size: 'letter', orientation: 'portrait' }, { size: 'a4', orientation: 'landscape' }]) print.update(floorPlan(plainSchool(), null, { ...NOW, paper }).html);
   assert.equal(print.digest('hex'), FLOOR_PLAN_HASH);
 });
 

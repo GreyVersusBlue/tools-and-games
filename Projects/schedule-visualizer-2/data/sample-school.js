@@ -192,7 +192,7 @@ const CONNECTIONS = [
   // Stairs C: a second way between Floors 1 and 2, by Room 102, up only (the
   // connection's `a` is Floor 1). Stairs A, beside it, carry everything coming
   // down, so the one-way rule traps nobody.
-  { id: 'csample00c', label: 'C', a: ['fsample001', 8, 8], b: ['fsample002', 8, 8], direction: 'ab' },
+  { id: 'csample0up', label: 'C', a: ['fsample001', 8, 8], b: ['fsample002', 8, 8], direction: 'ab' },
 ];
 
 const BELLS_A = [['08:00', '08:48'], ['08:52', '09:40'], ['09:44', '10:32'], ['10:36', '11:24'], ['11:28', '12:16'], ['12:20', '13:08'], ['13:12', '14:00'], ['14:04', '14:52']];
