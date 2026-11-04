@@ -6,9 +6,9 @@
 // close together) don't cut each other off. Loops (ambience, QTE sizzle/pour)
 // keep a single persistent element that gets started/stopped/faded instead.
 //
+// Where each file came from is audio/SOURCES.md.
+//
 // NOT WIRED (no source file yet, left as TODO so gaps don't get lost):
-//   - crowd cheer on a Mules win (only crowd-groan.mp3 exists — a loss plays,
-//     a win currently stays silent beyond the final-whistle stinger)
 //   - footsteps (audio/sfx/footsteps/ is empty)
 //   - music (audio/music/ is empty — Phase 1 item, later sprint)
 
@@ -23,7 +23,8 @@ const SFX = {
   uiClose:        "sfx/ui/ui-station-close.ogg",
   qteHit:         "sfx/qte/qte-hit-perfect.ogg",
   qteMiss:        "sfx/qte/qte-miss.ogg",
-  crowdGroan:     "sfx/events/crowd-groan.mp3",
+  crowdGroan:     "sfx/events/crowd-groan.ogg",
+  crowdCheer:     "sfx/events/crowd-cheer.ogg",
   stormOut:       "sfx/events/patron-storm-out.ogg",
   stingerKickoff: "sfx/events/stinger-kickoff.ogg",
   stingerFinal:   "sfx/events/stinger-final-whistle.ogg",
@@ -63,6 +64,9 @@ export const TRIM = {
   // the crowd, each of the three 12 to 13 dB down on what it was. A walkout
   // is 13 seconds long and three can be sounding at once.
   crowdGroan:     0.25,
+  // the cheer on a Mules win: added after that cut, never heard, and set
+  // level with the groan it stands in for (within 0.1 dB)
+  crowdCheer:     0.34,
   stormOut:       0.22,
   barBed:         0.08,
   // the two QTE loops, level with each other and as they were (0.55)
