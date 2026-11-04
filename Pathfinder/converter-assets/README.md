@@ -120,19 +120,23 @@ Foundry file's private notes. Nothing is rewritten on a guess.
 
 `data/ability-patterns.md` is the measurement, written by
 `node Pathfinder/converter-assets/measure-abilities.mjs` over the 57 stat
-blocks in `Pathfinder/tests/fixtures/pf1`. On 2026-10-10, of 111 abilities:
+blocks in `Pathfinder/tests/fixtures/pf1`. On 2026-11-04, of 108 abilities:
 
 | How the text was written | Abilities | Share |
 | --- | ---: | ---: |
-| By a rule | 37 | 33% |
-| The converter's wording for a universal ability (`UMR_TEXT`), with nothing left over | 6 | 5% |
-| PF1e wording, marked | 61 | 55% |
-| A bare name, no text in the stat block | 7 | 6% |
+| By a rule | 37 | 34% |
+| The converter's wording for a universal ability (`UMR_TEXT`), with nothing left over | 6 | 6% |
+| PF1e wording, marked | 61 | 56% |
+| A bare name, no text in the stat block | 4 | 4% |
 
 Before the rules it was 1, 6, 97 and 7: the one was the red dragon's breath,
 and the hell hound's breath read "6d4 rounds damage". After the first set of
 rules (2026-10-05) it was 22, 6, 76 and 7, and after the second (2026-10-06)
-33, 6, 65 and 7.
+33, 6, 65 and 7, and after the third (2026-10-10) 37, 6, 61 and 7 of 111. The
+three bare names that went on 2026-11-04 were each a second listing: an aura
+or a defensive ability that SPECIAL ABILITIES also describes (the balor's
+Flaming Body, twice, and the gibbering mouther's Amorphous) is listed once
+now, as that text in PF1e wording, and its stat-line name is not listed again.
 
 The 57 fixtures are every PF1e stat block in the repo. The converter ships
 spell data and PF2e tables and no creatures of its own, so there is no wider
@@ -248,7 +252,7 @@ energy drain. One is left that a rule could read whole and does not:
 figure the tables do not have. A name with only a DC (`dominate (DC 22)`) has
 no effect to write.
 
-`Pathfinder/tests/converter-abilities.test.mjs` holds all of it, 234 checks:
+`Pathfinder/tests/converter-abilities.test.mjs` holds all of it, 241 checks:
 36 real abilities to the letter, the DCs against the table, 42 made-up blocks
 one step away from a rule and 28 more a rule must read to the letter, and a
 hash of everything no rule wrote, taken from the converter as it stood before
@@ -256,8 +260,12 @@ the rules. That hash still covers 98 entries: the 89 of the 111 that no rule
 wrote on 2026-10-05, and the 9 the count leaves out (seven Reactive Strikes,
 the troll's regeneration, the vampire's fast healing). The second set of
 rules took 11 of the 98 and the third took 4. The suite writes those 15 back
-in as they stood and asks for the same hash, so the 83 left are held to the
-same bytes.
+in as they stood and asks for the same hash. On 2026-11-04 three more left it
+(the three second listings above) and one changed: the succubus's "The DC is
+22 for the Fortitude save", which reads DC 29 now like the DC 22 Will save
+before it, because a DC two words from its number is rescaled too. Those four
+go back in as they stood as well, so the 79 left are held to the same bytes
+and the same places.
 
 ## The rest of the folder
 

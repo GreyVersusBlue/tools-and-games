@@ -375,28 +375,78 @@ const TAKEN = [
   ["djinni.txt|off|1", "Whirlwind", "", "", "PF1e: 1/10 minutes, 10-50 ft. tall, 1d8+4 damage, DC 24."],
   ["vampire.txt|off|4", "Drain Life", "", "", "On a hit, the target becomes drained 1 (drained 2 on a critical hit), and the monster gains temporary Hit Points equal to its level. PF1e: 2 levels, DC 32."],
 ];
+// TG-33 took three more out and changed one, and no rule wrote any of the
+// four. Three were a name listed twice: an aura and a defensive ability that
+// SPECIAL ABILITIES also describes are listed once now, as that text, so the
+// bare lines below are gone and everything after them on their list moved up
+// one. One DC two words from its number ("The DC is 22") is rescaled now. Each
+// goes back in as it stood, in its old place, so the hash still holds the 94
+// others to the same bytes and in the same places.
+const GONE = [
+  ["balor-collapsed.txt|off|1", "Flaming Body", "", "aura", ""],
+  ["balor.txt|off|1", "Flaming Body", "", "aura", ""],
+  ["gibbering-mouther.txt|def|0", "Amorphous", "", "", ""],
+];
+const RESCALED = [
+  [["succubus.txt|off|0", "Drain Life", "", "", "A succubus drains energy from a mortal she lures into an act of passion, such as a kiss. An unwilling victim must be grappled before the succubus can use this ability. The succubus's kiss bestows one drained 1. The kiss also has the effect of a suggestion spell, asking the victim to accept another act of passion from the succubus. The victim must succeed on a DC 29 Will to negate the suggestion. The DC is 22 for the Fortitude to remove a drained 1. These save DCs are Charisma-based."], 'The DC is 22 ', 'The DC is 29 '],
+];
 const kept = [];
 let restSame = true;
+const rescaledAs = [];
 for (const f of FILES) {
   const o = CREATURES[f];
   for (const [k, list] of [['def', o.defAbilities], ['off', o.offAbilities], ['oth', o.otherAbilities]]) {
-    list.forEach((a, i) => {
+    const slots = [...list];
+    for (const g of GONE.filter((g) => g[0].startsWith(`${f}.txt|${k}|`)).sort((a, b) => Number(a[0].split('|')[2]) - Number(b[0].split('|')[2]))) slots.splice(Number(g[0].split('|')[2]), 0, g);
+    slots.forEach((a, i) => {
+      if (GONE.includes(a)) { kept.push(a); return; }
       const key = `${f}.txt|${k}|${i}`;
       const was = TAKEN.find((t) => t[0] === key);
-      if (a.wording !== 'rule') kept.push([key, a.name, a.actions || '', (a.traits || []).join(','), a.text || '']);
+      const re = RESCALED.find((r) => r[0][0] === key);
+      const row = [key, a.name, a.actions || '', (a.traits || []).join(','), a.text || ''];
+      if (a.wording !== 'rule' && re) { rescaledAs.push(JSON.stringify(row) === JSON.stringify(re[0]).replace(re[1], re[2])); kept.push(re[0]); }
+      else if (a.wording !== 'rule') kept.push(row);
       else if (was) kept.push(was);
     });
   }
   if (all(o).concat(o.defAbilities).some((a) => !['rule', 'umr', 'pf1e', 'name', 'number'].includes(a.wording))) restSame = false;
 }
-const keep = kept.filter((r) => !TAKEN.includes(r));
-ok(kept.length === BEFORE.count && sha(kept) === BEFORE.sha && keep.length === BEFORE.count - TAKEN.length,
-  `the ${BEFORE.count - TAKEN.length} abilities no rule wrote are byte for byte what the converter gave before the rules, and the ${TAKEN.length} taken since are the ones named`, `${keep.length} left, ${kept.length} with the taken, ${sha(kept).slice(0, 12)}`);
+const keep = kept.filter((r) => !TAKEN.includes(r) && !GONE.includes(r) && !RESCALED.some((x) => x[0] === r));
+ok(kept.length === BEFORE.count && sha(kept) === BEFORE.sha && keep.length === BEFORE.count - TAKEN.length - GONE.length - RESCALED.length,
+  `the ${keep.length} abilities no rule wrote are byte for byte what the converter gave before the rules, and the ${TAKEN.length} taken, ${GONE.length} gone and ${RESCALED.length} rescaled since are the ones named`, `${keep.length} left, ${kept.length} with the rest, ${sha(kept).slice(0, 12)}`);
+ok(rescaledAs.length === RESCALED.length && rescaledAs.every(Boolean), 'and the one rescaled differs from what it was by its DC alone', `${rescaledAs.length} found`);
 ok(TAKEN.every(([key]) => { const [f, k, i] = key.split('|'); const o = CREATURES[f.replace(/\.txt$/, '')]; return ({ def: o.defAbilities, off: o.offAbilities, oth: o.otherAbilities })[k][Number(i)]?.wording === 'rule'; }),
   'each of the fifteen taken is a rule\'s now, in the place it had');
 ok(restSame, 'every ability says how it is worded: rule, umr, pf1e, name, or number for regeneration and fast healing');
 const ruled = FILES.flatMap((f) => all(CREATURES[f]).filter((a) => a.wording === 'rule').map((a) => [f, a]));
 ok(ruled.length === 37 && ruled.length === EXPECT.length + 1, 'rules wrote 37 abilities in the fixtures, and all but the third giant\'s Throw Rock are spelled out above', `${ruled.length} written, ${EXPECT.length} above`);
+
+// ---- listed once, and a DC two words from its number (TG-33) -----------------
+console.log('listed once');
+{
+  // Anything on a creature listed twice under one name, across its three lists.
+  const doubled = FILES.flatMap((f) => { const o = CREATURES[f]; const ns = [...o.defAbilities, ...all(o)].map((a) => a.name.toLowerCase()); return ns.filter((x, i) => ns.indexOf(x) !== i).map((x) => `${f}: ${x}`); });
+  ok(doubled.length === 0, 'no creature of the 57 lists an ability twice under one name', doubled.join('; '));
+  const named = (o, n) => [...o.defAbilities, ...all(o)].filter((a) => a.name === n);
+  for (const f of ['balor', 'balor-collapsed']) {
+    const fb = named(CREATURES[f], 'Flaming Body');
+    ok(fb.length === 1 && CREATURES[f].otherAbilities.includes(fb[0]) && fb[0].kind === 'Su' && fb[0].wording === 'pf1e' && fb[0].text.startsWith("A balor's body is covered in dancing flames.")
+      && named(CREATURES[f], 'Unholy Aura').length === 1 && CREATURES[f].offAbilities[0].name === 'Unholy Aura',
+      `${f}: Flaming Body is listed once, as its SPECIAL ABILITIES text in PF1e wording; Unholy Aura, which that section does not describe, stays an aura`, fb.map((a) => `${a.wording} ${a.text.slice(0, 40)}`).join(' | '));
+  }
+  const am = named(CREATURES['gibbering-mouther'], 'Amorphous');
+  ok(am.length === 1 && CREATURES['gibbering-mouther'].otherAbilities.includes(am[0]) && am[0].kind === 'Ex' && am[0].wording === 'pf1e' && am[0].text.startsWith("A gibbering mouther's body is malleable"),
+    'gibbering mouther: Amorphous is listed once, as its SPECIAL ABILITIES text in PF1e wording', am.map((a) => `${a.wording} ${a.text.slice(0, 40)}`).join(' | '));
+  // Made up: a defensive ability and an aura with no SPECIAL ABILITIES text keep their lines.
+  const lone = convertText(raw('gibbering-mouther').replace(/^Amorphous \(Ex\).*$/m, ''));
+  ok(named(lone, 'Amorphous').length === 1 && lone.defAbilities.some((a) => a.name === 'Amorphous' && a.wording === 'name'),
+    'made up: with its SPECIAL ABILITIES text cut, the mouther\'s Amorphous is a bare defensive ability again');
+  // The succubus's Fortitude DC is the same PF1e 22 as her Will DC, so it reads the same rescaled number.
+  const dl = find(CREATURES.succubus, 'Drain Life');
+  const dcs = [...dl.text.matchAll(/\bDC (?:is )?(\d+)/g)].map((x) => Number(x[1]));
+  ok(dl.wording === 'pf1e' && dl.text.includes('The DC is 29 for the Fortitude to remove a drained 1.') && dcs.length === 2 && dcs[0] === dcs[1] && !/\b22\b/.test(dl.text),
+    'succubus: "The DC is 22 for the Fortitude save" is rescaled with her other DC 22, and the ability stays in PF1e wording', dl.text.slice(-130));
+}
 
 // ---- running a rule on its own output ----------------------------------------
 console.log('twice changes nothing more');
@@ -474,8 +524,8 @@ console.log('the table');
   const have = fs.readFileSync(path.join(PF, 'converter-assets', 'data', 'ability-patterns.md'), 'utf8');
   ok(M.render(m) === have, 'data/ability-patterns.md is what measure-abilities.mjs writes today');
   const n = (w) => m.rows.filter((r) => r.wording === w).length;
-  ok(m.rows.length === 111 && n('rule') === 37 && n('umr') === 6 && n('pf1e') === 61 && n('name') === 7,
-    '111 abilities: 37 by rule, 6 universal, 61 in PF1e wording, 7 bare names', `${m.rows.length}: ${n('rule')}/${n('umr')}/${n('pf1e')}/${n('name')}`);
+  ok(m.rows.length === 108 && n('rule') === 37 && n('umr') === 6 && n('pf1e') === 61 && n('name') === 4,
+    '108 abilities: 37 by rule, 6 universal, 61 in PF1e wording, 4 bare names (7 until TG-33 listed Flaming Body and Amorphous once)', `${m.rows.length}: ${n('rule')}/${n('umr')}/${n('pf1e')}/${n('name')}`);
 }
 
 console.log(`\n${checks} checks, ${failures ? failures + ' FAILED' : 'all passed'}`);
