@@ -8,6 +8,11 @@
 //   node test/run.mjs --timing   the budgets at the promised size (plain Node, and timing/page.mjs in Chromium) // SV2-05, SV2-32i
 //   node test/run.mjs --browser --base http://127.0.0.1:8123
 //                                against a server that is already running
+//   node test/run.mjs --browser --shard 1/2
+//                                the first of two parts of the browser group (CI runs
+//                                both, one job each); every file is in exactly one part
+//   node test/run.mjs --browser --list
+//                                print the files a run would execute, run none
 //
 // The files are listed here by hand (`node --test dir/` fails on Node 22). A
 // test file on disk that is missing from the list is itself a failure, so a
@@ -210,6 +215,106 @@ export const GROUPS = {
   ],
 };
 
+// How long each browser suite took on CI's runner (seconds, from the green run
+// of 2026-11-04 18:01 UTC, https://github.com/GreyVersusBlue/tools-and-games
+// actions run 41882849430), which is what `--shard` balances by. Only the split
+// reads it: a file missing here is given DEFAULT_SECONDS, and a file listed here
+// that is not in the browser group fails runner.test.mjs, so the table cannot
+// go stale unnoticed. Re-read it from a CI log when a suite's cost changes much.
+export const BROWSER_SECONDS = {
+  'browser/no-offsite.mjs': 1104,
+  'a11y/axe.mjs': 705,
+  'a11y/staff-axe.mjs': 299,
+  'browser/publish.mjs': 119,
+  'browser/m3-pass.mjs': 106,
+  'browser/transfer.mjs': 75,
+  'browser/m2-pass.mjs': 58,
+  'browser/present.mjs': 57,
+  'browser/m5-pass.mjs': 42,
+  'browser/staff-outputs.mjs': 36,
+  'browser/journeys-touch.mjs': 36,
+  'browser/journeys-keys.mjs': 27,
+  'browser/hotspots.mjs': 27,
+  'browser/plan-map.mjs': 26,
+  'browser/storage.mjs': 24,
+  'browser/recovery.mjs': 23,
+  'browser/scenario.mjs': 21,
+  'browser/fix.mjs': 21,
+  'browser/safety.mjs': 20,
+  'browser/scenario-levers.mjs': 20,
+  'browser/playback.mjs': 19,
+  'browser/shell.mjs': 19,
+  'browser/sample-whole.mjs': 19,
+  'browser/day-types.mjs': 19,
+  'browser/print.mjs': 18,
+  'browser/staff-pictures.mjs': 16,
+  'browser/staff-shell.mjs': 16,
+  'browser/help.mjs': 16,
+  'browser/getting-started.mjs': 15,
+  'browser/release.mjs': 14,
+  'browser/staff-calendar.mjs': 13,
+  'browser/movement.mjs': 13,
+  'browser/staff-views-a.mjs': 13,
+  'browser/calendar-review.mjs': 13,
+  'browser/snapshots.mjs': 12,
+  'browser/tabs.mjs': 12,
+  'browser/auto-snapshots.mjs': 12,
+  'browser/trace-scale.mjs': 12,
+  'browser/one-way.mjs': 12,
+  'browser/draw-pointer.mjs': 12,
+  'browser/staff-views-b.mjs': 11,
+  'browser/schedule.mjs': 11,
+  'browser/marks-duties.mjs': 11,
+  'browser/grid-pass.mjs': 10,
+  'browser/movement-bells.mjs': 10,
+  'browser/draw-keyboard.mjs': 9,
+  'browser/grid.mjs': 9,
+  'browser/inspector.mjs': 7,
+  'browser/m4-pass.mjs': 7,
+  'browser/calendar.mjs': 6,
+  'browser/import.mjs': 6,
+  'browser/draw-touch.mjs': 6,
+  'browser/difference.mjs': 6,
+  'browser/staff-duties.mjs': 5,
+  'browser/calendar-faults.mjs': 5,
+  'browser/doors-stairs.mjs': 5,
+  'browser/m1-pass.mjs': 5,
+  'browser/congestion-scenario.mjs': 5,
+  'browser/shell-owed.mjs': 4,
+  'browser/building-files.mjs': 4,
+  'browser/empty-states.mjs': 4,
+  'browser/shell-lines.mjs': 4,
+  'browser/search.mjs': 3,
+  'browser/project-file.mjs': 2,
+  'browser/worker.mjs': 1,
+};
+export const DEFAULT_SECONDS = 30;
+
+// The `index`th (1-based) of `count` parts of `files`: heaviest first, each file
+// to the part with the least so far (the lower-numbered on a tie), so the same
+// list always splits the same way; the part comes back in the list's own order.
+// Every file is in exactly one part.
+export function shardOf(files, index, count, seconds = BROWSER_SECONDS) {
+  const load = new Array(count).fill(0);
+  const part = new Map();
+  const weight = (file) => (file in seconds ? seconds[file] : DEFAULT_SECONDS);
+  const order = files.map((file, at) => ({ file, at })).sort((a, b) => weight(b.file) - weight(a.file) || a.at - b.at);
+  for (const { file } of order) {
+    let lightest = 0;
+    for (let n = 1; n < count; n += 1) if (load[n] < load[lightest]) lightest = n;
+    load[lightest] += weight(file);
+    part.set(file, lightest + 1);
+  }
+  return files.filter((file) => part.get(file) === index);
+}
+
+// '2/3' as { index: 2, count: 3 }, or null when it is not one.
+export function parseShard(text) {
+  const match = /^([1-9]\d*)\/([1-9]\d*)$/.exec(text || '');
+  if (!match || Number(match[1]) > Number(match[2])) return null;
+  return { index: Number(match[1]), count: Number(match[2]) };
+}
+
 // Folders whose every .mjs is a suite and has to be in a group above, apart
 // from the helpers named here, which the suites import. A *.test.mjs has to
 // be in a group wherever under test/ it is.
@@ -268,6 +373,19 @@ function main(argv) {
     }
     flags.splice(baseAt, 2);
   }
+  let shard = null;
+  const shardAt = flags.indexOf('--shard');
+  if (shardAt !== -1) {
+    shard = parseShard(flags[shardAt + 1]);
+    if (!shard) {
+      console.error('--shard needs a part and a count after it, for example --shard 1/2 (the part is 1 to the count)');
+      return 2;
+    }
+    flags.splice(shardAt, 2);
+  }
+  const listAt = flags.indexOf('--list');
+  const listOnly = listAt !== -1;
+  if (listOnly) flags.splice(listAt, 1);
   const unknown = flags.filter((flag) => !flag.startsWith('--') || !(flag.slice(2) in GROUPS));
   if (unknown.length > 0) {
     console.error('Unknown argument: ' + unknown.join(' ') + '. Use any of ' + Object.keys(GROUPS).map((name) => '--' + name).join(', ') + ', or nothing for every group.');
@@ -275,21 +393,35 @@ function main(argv) {
   }
   const chosen = flags.length === 0 ? Object.keys(GROUPS) : Object.keys(GROUPS).filter((name) => flags.includes('--' + name));
 
+  if (shard && (chosen.length !== 1 || chosen[0] !== 'browser')) {
+    console.error('--shard splits the browser group, so it goes with --browser and no other group.');
+    return 2;
+  }
+
   let failed = 0;
   let ran = 0;
   let cases = 0;
 
-  for (const file of unlisted(filesUnder(TEST_DIR), GROUPS, SUITE_FOLDERS)) {
-    console.log('FAIL  ' + file + '  is on disk and not listed in test/run.mjs');
-    failed += 1;
+  // The unlisted-file rule looks at the whole of test/, not at a part: with a
+  // shard it runs in part 1 only, so a forgotten file fails once, not once per part.
+  if (!shard || shard.index === 1) {
+    for (const file of unlisted(filesUnder(TEST_DIR), GROUPS, SUITE_FOLDERS)) {
+      console.log('FAIL  ' + file + '  is on disk and not listed in test/run.mjs');
+      failed += 1;
+    }
   }
 
   const done = new Set();
 
   for (const group of chosen) {
-    for (const file of GROUPS[group]) {
+    const files = shard ? shardOf(GROUPS[group], shard.index, shard.count) : GROUPS[group];
+    for (const file of files) {
       if (done.has(file)) continue;
       done.add(file);
+      if (listOnly) {
+        console.log(file);
+        continue;
+      }
       const started = process.hrtime.bigint();
       const args = ['--test-reporter=tap', path.join(TEST_DIR, ...file.split('/'))];
       if (base && TAKES_BASE.includes(group)) args.push('--base', base);
@@ -315,8 +447,19 @@ function main(argv) {
     }
   }
 
+  if (listOnly) {
+    console.log('');
+    console.log(done.size + ' test files would run (' + chosen.map((name) => '--' + name).join(' ') + (shard ? ' --shard ' + shard.index + '/' + shard.count : '') + ')');
+    return failed === 0 ? 0 : 1;
+  }
+
+  if (ran === 0) {
+    console.log('FAIL  no test file ran: a run that checks nothing is not a pass');
+    failed += 1;
+  }
+
   console.log('');
-  console.log(ran + ' test files, ' + cases + ' cases passed, ' + failed + ' failed (' + chosen.map((name) => '--' + name).join(' ') + ')');
+  console.log(ran + ' test files, ' + cases + ' cases passed, ' + failed + ' failed (' + chosen.map((name) => '--' + name).join(' ') + (shard ? ' --shard ' + shard.index + '/' + shard.count : '') + ')');
   return failed === 0 ? 0 : 1;
 }
 

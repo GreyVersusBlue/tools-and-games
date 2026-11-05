@@ -10,7 +10,11 @@
 #              (test/timing/page.mjs times the planner in the harness's
 #              Chromium, so this job installs Tools/board-check too)
 #   --browser  the journeys and the axe sweep in the harness's Chromium
-#              (install: Tools/board-check), about twenty minutes
+#              (install: Tools/board-check). One run took 55 to 68 minutes, so
+#              the job is two, `--shard 1/2` and `--shard 2/2`: test/run.mjs
+#              splits the group by each file's recorded time (about 27 minutes
+#              each), every file runs in exactly one part, and part 1 also
+#              checks that no test file on disk is missing from the list
 #
 # Path-filtered on purpose: site-ci.yml runs every PR with no filter, and this
 # suite is long. Tools/board-check/harness.mjs is in the filter because the
@@ -51,11 +55,15 @@ jobs:
         node test/run.mjs --timing
 
   browser:
-    name: journeys and axe
+    name: journeys and axe (part ${{ matrix.shard }} of 2)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     uses: ./.github/workflows/suite.yml
     with:
       working-directory: Projects/schedule-visualizer-2
       install: Tools/board-check
-      timeout-minutes: 120
+      timeout-minutes: 90
       commands: |
-        node test/run.mjs --browser
+        node test/run.mjs --browser --shard ${{ matrix.shard }}/2

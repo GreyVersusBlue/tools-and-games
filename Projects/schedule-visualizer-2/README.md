@@ -95,6 +95,8 @@ node test/run.mjs            every suite
 node test/run.mjs --node     the plain-Node suites: nothing to install
 node test/run.mjs --timing   the budgets at the size the tool promises (page.mjs in Chromium)
 node test/run.mjs --browser  the journeys in Chromium, and the axe sweep
+node test/run.mjs --browser --shard 1/2   one of two balanced parts of that (CI runs 1/2 and 2/2)
+node test/run.mjs --browser --list        the files a run would execute; runs none (works with --shard)
 node test/engine/repair.test.mjs     one file
 ```
 
@@ -106,6 +108,10 @@ run them one at a time.
 going after a failure, prints one line per file and exits non-zero if any
 failed. The files are listed inside it by hand; a test file on disk that is
 not on the list is a failure, and so is a file that runs and reports no test.
+`--shard i/n` splits the browser group for CI, heaviest file first onto the
+lightest part by the times recorded in `run.mjs`; every file is in exactly one
+part. The not-on-the-list check runs in part 1 only, the no-test-case check in
+every part, and a part that runs no file at all fails.
 
 No test reads the machine's clock or time zone. The clock is pinned at
 `2026-09-01T12:00:00Z` and ids come from a seeded source.
@@ -160,7 +166,7 @@ row names a file it does not run.
 | `test/publish/baseline.mjs` | The recorded baseline of what staff receive: data, locked data and code |
 | `test/engine/presets.test.mjs` | The group colour presets, held equal in their two places |
 | `test/engine/worker.test.mjs` | The derived pipeline and the client that asks it |
-| `test/engine/runner.test.mjs` | The two rules `test/run.mjs` holds every suite to |
+| `test/engine/runner.test.mjs` | The two rules `test/run.mjs` holds every suite to, and its `--shard` split of the browser group: disjoint parts that together are the whole group for 2 and 3, balanced within 25% on CI's times |
 | `test/engine/import-teachers.test.mjs` | The teacher list from a CSV file |
 | `test/engine/finding-ids.test.mjs` | One form for every finding's id |
 | `test/engine/prints.test.mjs` | The print documents: the frame, the floor plan, the room list, the checks report |
