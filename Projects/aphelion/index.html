@@ -161,6 +161,9 @@
     color: var(--amber); letter-spacing: 0.2em;
     border: 1px solid rgba(255,179,103,0.4); padding: 10px 26px; border-radius: 3px;
   }
+  #title .touch-note { display: none; max-width: 300px; text-align: center; line-height: 1.7; color: var(--amber); }
+  @media (max-width: 600px) { #title p { padding: 0 16px; text-align: center; } }
+  @media (pointer: coarse) { #title .touch-note { display: block; } }
   #title.hidden { display: none; }
 
   @media (prefers-reduced-motion: reduce) {
@@ -207,6 +210,7 @@
     <p>a quiet life, far from anywhere</p>
     <div class="go">CLICK TO BOARD</div>
     <p style="margin-top:26px">WASD move · mouse or arrow keys look · E interact · TAB logbook</p>
+    <p class="touch-note">best on a computer with a keyboard and mouse</p>
   </div>
 
   <script type="module" src="./src/main.js"></script>
