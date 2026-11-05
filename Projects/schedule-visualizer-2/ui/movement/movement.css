@@ -1317,6 +1317,12 @@
   text-align: right;
 }
 
+/* four columns, not three: a third each would be a third more than the panel (SV2-93b) */
+.mov-travel__table--held thead th {
+  width: 25%;
+  white-space: normal;
+}
+
 .mov-hot__table thead .table__num {
   text-align: right;
 }

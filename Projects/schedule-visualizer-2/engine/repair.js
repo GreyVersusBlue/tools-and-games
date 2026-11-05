@@ -44,7 +44,7 @@ import { defaultSettings, defaultPublish, defaultOnboarding, emptyCells, emptySl
 import { LATER_PUBLISH_VIEWS, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DAYS_MOST, ROTATION_RANGE, DATE_LABEL_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, WEEKDAY_NAMES, defaultWeekdays, spacelessKey, textLength } from './schema.js';
 import { DEFAULT_PASSCODE } from './publish-defaults.js';
 import { createIds, seededRandom, collectIds, isId } from './ids.js';
-import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST } from './schema.js';
+import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST, RELEASE_MOST, RELEASE_SECONDS, RELEASE_WHO_KINDS } from './schema.js';
 import { isCalendarDate, daysBetween, addDays, weekdayOf, dateWords } from './calendar.js';
 
 const FALLBACK_DATE = '1970-01-01T00:00:00.000Z';
@@ -81,7 +81,7 @@ export function repair(input, options) {
   // id can follow it. The old id is never an id of that kind, so it cannot
   // also be the id of a thing of that kind that kept its own.
   const seenIds = new Set();
-  const renamed = { s: new Map(), t: new Map(), d: new Map(), f: new Map(), r: new Map(), g: new Map(), b: new Map() };
+  const renamed = { s: new Map(), t: new Map(), d: new Map(), f: new Map(), r: new Map(), g: new Map(), b: new Map(), l: new Map() };
   const claimId = (thing, prefix, what) => {
     const id = thing.id;
     if (isId(id, prefix) && !seenIds.has(id)) {
@@ -1228,6 +1228,63 @@ export function repair(input, options) {
     }).filter((duty) => isObject(duty));
   }
 
+  // ---- staggered dismissal (ARCHITECTURE 18.2). Absent stays absent. Strict:
+  // an entry that cannot be read as it was meant is removed, with a note,
+  // rather than guessed at. A group that is gone leaves the entry's groups;
+  // an entry left with none goes. Periods past the period count are trimmed,
+  // as setPeriods trims them.
+  if (source.release !== undefined) {
+    const listed = objects(source.release, 'staggered dismissals');
+    project.release = listed.map((raw, i) => ({ raw, i })).map(({ raw, i }) => {
+      const entry = { ...raw };
+      const what = 'Staggered dismissal ' + (i + 1);
+      entry.id = claimId(entry, 'l', what);
+      if (i >= RELEASE_MOST) return note(what + ' was past the limit of ' + RELEASE_MOST + ' and was removed.');
+      const kinds = isObject(raw.who) ? RELEASE_WHO_KINDS.filter((kind) => raw.who[kind] !== undefined) : [];
+      if (kinds.length !== 1) return note(what + ' did not say exactly one of groups, a grade or a wing, and was removed.');
+      const kind = kinds[0];
+      if (kind === 'groups') {
+        if (!Array.isArray(raw.who.groups)) return note(what + ' had no list of groups and was removed.');
+        const groups = idsOf(raw.who.groups, 'g', allGroupIds);
+        if (groups.kept.length === 0) return note(what + ' named no group that is in the project and was removed.');
+        if (groups.dropped.count > 0) note(what + ' named ' + plural(groups.dropped.count, 'group', 'groups') + ' that ' + (groups.dropped.count === 1 ? 'is' : 'are') + ' not in the project, or the same one twice; ' + (groups.dropped.count === 1 ? 'it was' : 'they were') + ' removed from it.');
+        if (groups.dropped.count > 0 || groups.kept.some((id, k) => id !== raw.who.groups[k]) || Object.keys(raw.who).length !== 1) entry.who = { groups: groups.kept };
+        else entry.who = raw.who;
+      } else {
+        const value = raw.who[kind];
+        if (typeof value !== 'string' || value.trim() === '') return note(what + ' had a ' + kind + ' that is not text, or is empty, and was removed.');
+        if (textLength(value) > NAME_MOST) {
+          note('The ' + kind + ' of ' + what + ' was longer than ' + NAME_MOST + ' characters and was cut.');
+          entry.who = { [kind]: cut(value, NAME_MOST) };
+        } else {
+          entry.who = Object.keys(raw.who).length === 1 ? raw.who : { [kind]: value };
+        }
+      }
+      const low = kind === 'groups' ? 0 : RELEASE_SECONDS[0];
+      if (!Number.isInteger(entry.seconds) || entry.seconds < low || entry.seconds > RELEASE_SECONDS[1]) return note(what + ' did not have a whole number of seconds from ' + low + ' to ' + RELEASE_SECONDS[1] + ' and was removed.');
+      if (entry.after === undefined) entry.after = null;
+      if (entry.after !== null) {
+        if (!Array.isArray(entry.after) || !entry.after.every((period) => Number.isInteger(period) && period >= 0)) return note(what + ' had periods that are not whole numbers from 0 and was removed.');
+        const within = Array.from(new Set(entry.after)).sort((a, b) => a - b);
+        const periods = project.settings.periods;
+        const kept = within.filter((period) => period < periods);
+        if (kept.length === 0) return note(what + ' followed only periods past the end of the day and was removed.');
+        if (kept.length !== within.length) note(plural(within.length - kept.length, 'period', 'periods') + ' of ' + what + ' ' + (within.length - kept.length === 1 ? 'is' : 'are') + ' past the end of the day and ' + (within.length - kept.length === 1 ? 'was' : 'were') + ' removed from it.');
+        else if (within.length !== entry.after.length || within.some((period, k) => period !== entry.after[k])) note('The periods of ' + what + ' were put in order, each once.');
+        if (kept.length !== entry.after.length || kept.some((period, k) => period !== entry.after[k])) entry.after = kept;
+      }
+      if (entry.dayTypeIds === undefined) entry.dayTypeIds = null;
+      if (entry.dayTypeIds !== null) {
+        if (!Array.isArray(entry.dayTypeIds) || entry.dayTypeIds.length === 0) return note(what + ' had no day types that can be read and was removed.');
+        const followed = entry.dayTypeIds.map((id) => follow('d', id));
+        if (!followed.every((id) => typeof id === 'string' && allDayIds.has(id))) return note(what + ' named a day type that is not in the project and was removed.');
+        const days = Array.from(new Set(followed));
+        if (days.length !== entry.dayTypeIds.length || days.some((id, k) => id !== entry.dayTypeIds[k])) entry.dayTypeIds = days;
+      }
+      return entry;
+    }).filter((entry) => isObject(entry));
+  }
+
   if (!published) {
     // ---- accepted findings
     const accepted = objects(source.accepted, 'accepted findings');
@@ -1292,6 +1349,92 @@ export function repair(input, options) {
       if (compared !== null && !(isObject(compared) && isText(compared.fileName) && names(compared.addedGroups) && names(compared.removedGroups))) {
         if (compared !== undefined) note('The record of the file the scenario was compared with could not be read and was removed.');
         scenario.compared = null;
+      }
+      // ---- levers (ARCHITECTURE 18.3): strict when present, never asked for
+      // when absent, so a scenario without them comes through as it was.
+      if (scenario.levers !== undefined) {
+        if (!Array.isArray(scenario.levers)) {
+          note('The levers of the scenario could not be read and were removed.');
+          scenario.levers = [];
+        } else {
+          const lost = [];
+          const trimmed = [];
+          const levers = [];
+          const whole = (value) => Number.isInteger(value) && value >= 0;
+          const text = (value) => typeof value === 'string' && value !== '';
+          const seat = (value, range) => value === null || (Number.isInteger(value) && inRange(value, range));
+          scenario.levers.forEach((raw, i) => {
+            const what = 'Lever ' + (i + 1) + ' of the scenario';
+            if (!isObject(raw)) return lost.push(what + ' was not an object');
+            if (!['release', 'bell', 'way', 'corridor', 'capacity', 'headCount'].includes(raw.kind)) return lost.push(what + ' was of a kind this version does not know');
+            const lever = { ...raw };
+            const follow1 = (prefix, key) => {
+              if (renamed[prefix].has(lever[key])) lever[key] = renamed[prefix].get(lever[key]);
+            };
+            if (lever.kind === 'release') {
+              const kinds = isObject(lever.who) ? RELEASE_WHO_KINDS.filter((kind) => lever.who[kind] !== undefined) : [];
+              if (kinds.length !== 1) return lost.push(what + ' did not say exactly one of groups, a grade or a wing');
+              const kind = kinds[0];
+              if (kind === 'groups') {
+                if (!Array.isArray(lever.who.groups) || lever.who.groups.length === 0 || !lever.who.groups.every(text)) return lost.push(what + ' had no list of groups');
+                const groups = lever.who.groups.map((id) => follow('g', id));
+                lever.who = { groups: Array.from(new Set(groups)) };
+              } else {
+                if (typeof lever.who[kind] !== 'string' || lever.who[kind].trim() === '' || textLength(lever.who[kind]) > NAME_MOST) return lost.push(what + ' had a ' + kind + ' that is not text, or is empty or too long');
+                lever.who = { [kind]: lever.who[kind] };
+              }
+              const low = kind === 'groups' ? 0 : RELEASE_SECONDS[0];
+              if (!Number.isInteger(lever.seconds) || lever.seconds < low || lever.seconds > RELEASE_SECONDS[1]) return lost.push(what + ' did not have a whole number of seconds from ' + low + ' to ' + RELEASE_SECONDS[1]);
+              if (lever.after === undefined) lever.after = null;
+              if (lever.after !== null) {
+                if (!Array.isArray(lever.after) || lever.after.length === 0 || !lever.after.every(whole)) return lost.push(what + ' had periods that are not whole numbers from 0');
+                lever.after = Array.from(new Set(lever.after)).sort((a, b) => a - b);
+              }
+              if (lever.dayTypeIds === undefined) lever.dayTypeIds = null;
+              if (lever.dayTypeIds !== null) {
+                if (!Array.isArray(lever.dayTypeIds) || lever.dayTypeIds.length === 0 || !lever.dayTypeIds.every(text)) return lost.push(what + ' had day types that cannot be read');
+                lever.dayTypeIds = Array.from(new Set(lever.dayTypeIds.map((id) => follow('d', id))));
+              }
+              return levers.push(JSON.stringify({ kind: lever.kind, who: lever.who, seconds: lever.seconds, after: lever.after, dayTypeIds: lever.dayTypeIds }) === JSON.stringify(raw) ? raw : { kind: 'release', who: lever.who, seconds: lever.seconds, after: lever.after, dayTypeIds: lever.dayTypeIds });
+            }
+            // a lever is kept with its own fields and no others, as addScenarioLever
+            // writes it; a null for the key a bell lever does not use is no key at all
+            let clean;
+            if (lever.kind === 'bell') {
+              const unused = (value) => value === undefined || value === null;
+              const one = (text(lever.dayTypeId) ? 1 : 0) + (text(lever.bellsId) ? 1 : 0);
+              if (one !== 1 || !(unused(lever.dayTypeId) || text(lever.dayTypeId)) || !(unused(lever.bellsId) || text(lever.bellsId)) || !whole(lever.period) || !isBellTime(lever.start) || !isBellTime(lever.end)) return lost.push(what + ' was a bell without its day type or bell schedule, period and times');
+              follow1('d', 'dayTypeId');
+              follow1('b', 'bellsId');
+              clean = { kind: 'bell', ...(text(lever.dayTypeId) ? { dayTypeId: lever.dayTypeId } : { bellsId: lever.bellsId }), period: lever.period, start: lever.start, end: lever.end };
+            } else if (lever.kind === 'capacity') {
+              if (!text(lever.roomId) || lever.capacity === undefined || !seat(lever.capacity, RANGES.capacity)) return lost.push(what + ' was a capacity without a room and a whole number of seats');
+              follow1('r', 'roomId');
+              clean = { kind: 'capacity', roomId: lever.roomId, capacity: lever.capacity };
+            } else if (lever.kind === 'headCount') {
+              if (!text(lever.groupId) || lever.headCount === undefined || !seat(lever.headCount, RANGES.headCount)) return lost.push(what + ' was a head count without a group and a whole number of students');
+              follow1('g', 'groupId');
+              clean = { kind: 'headCount', groupId: lever.groupId, headCount: lever.headCount };
+            } else if (lever.kind === 'way') {
+              if (!text(lever.connectionId) || !['both', 'ab', 'ba', 'closed'].includes(lever.way)) return lost.push(what + ' was a stair connection without its way');
+              clean = { kind: 'way', connectionId: lever.connectionId, way: lever.way };
+            } else {
+              if (!text(lever.floorId) || !Array.isArray(lever.cells) || lever.cells.length === 0 || !lever.cells.every(whole) || typeof lever.name !== 'string') return lost.push(what + ' was a closed corridor without its floor and cells');
+              // a lever holds at most as many cells as its floor has (the
+              // largest a floor can be when the floor is not there); more is
+              // cut, not lost. The name is never cut: it is display text frozen
+              // from a corridor name, which has no cap
+              const floorOf = Array.isArray(project.building && project.building.floors) ? project.building.floors.find((candidate) => candidate && candidate.id === lever.floorId) : null;
+              const most = floorOf && typeof floorOf.cells === 'string' ? floorOf.cells.length : RANGES.floorSize[1] * RANGES.floorSize[1];
+              clean = { kind: 'corridor', floorId: lever.floorId, cells: lever.cells.length > most ? lever.cells.slice(0, most) : lever.cells, name: lever.name };
+              if (clean.cells !== lever.cells) trimmed.push(what);
+            }
+            return levers.push(Object.keys(clean).length === Object.keys(raw).length && Object.keys(clean).every((key) => clean[key] === raw[key]) ? raw : clean);
+          });
+          if (lost.length > 0) note(plural(lost.length, 'lever', 'levers') + ' of the scenario could not be read and ' + (lost.length === 1 ? 'was' : 'were') + ' removed: ' + lost.join('; ') + '.');
+          if (trimmed.length > 0) note(plural(trimmed.length, 'closed corridor', 'closed corridors') + ' of the scenario held more cells than a floor has, and ' + (trimmed.length === 1 ? 'was' : 'were') + ' cut to fit: ' + trimmed.join('; ') + '.');
+          if (lost.length > 0 || levers.some((lever, i) => lever !== scenario.levers[i])) scenario.levers = levers;
+        }
       }
       project.scenario = scenario;
     }

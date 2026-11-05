@@ -8,9 +8,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as scenarioModule from '../../engine/scenario.js';
+import { applyLevers, normaliseLevers, reconcileLevers, leverKey, leverGroupIds, isReadableLever, leverRouteOptions, leverOptionsKey, hasBuildingLevers, wayWords, LEVER_KINDS } from '../../engine/scenario.js';
+import { CHANGE_KINDS } from '../../engine/schema.js';
+import { releaseDelay } from '../../engine/release.js';
+import { addBellSchedule, deleteBellSchedule, revertToBase as revertDay } from '../../engine/actions.js';
 import { applyChanges, normalise, reconcile, compareResults, loadDifference, scenarioFromDiff, changeWords, changeSlots, editedGroupIds, trimResult } from '../../engine/scenario.js';
 import { createPipeline } from '../../engine/worker.js';
-import { deleteGroup, deleteSpaces, revertToBase, setPeriods, setSlot, ActionError } from '../../engine/actions.js';
+import { deleteGroup, deleteSpaces, revertToBase, setPeriods, setSlot, ActionError, disconnectStairs, deleteFloor } from '../../engine/actions.js';
 import { SAMPLE_PROBLEMS } from '../../data/sample-school.js';
 import { allRooms } from '../../engine/schema.js';
 import { seededRandom } from '../../engine/ids.js';
@@ -401,6 +405,19 @@ test('compareResults: a walk that fails after the scenario is never time saved, 
   assert.equal(back.groups[1].groupId, G7A);
 });
 
+test('compareResults: a teacher with no way through after a closure is a failed walk, not a vanished one (SV2-90b)', () => {
+  const project = shutOff204();
+  const stranded = { dayTypeId: 'dsample00a', teacherId: 'tsample004', period: 2, fromRoomId: 'rsamplegym', toRoomId: 'rsamplecaf', passingSeconds: 240, failed: true, late: true };
+  const open = run(project);
+  const walk = { dayTypeId: 'dsample00a', teacherId: 'tsample004', period: 2, fromRoomId: 'rsamplegym', toRoomId: 'rsamplecaf', passingSeconds: 240, walking: 100, late: false };
+  const was = { ...open, walks: { ...open.walks, teachers: [walk] } };
+  const now = { ...open, walks: { ...open.walks, teachers: [stranded] } };
+  const compared = compareResults(was, now, {});
+  assert.deepEqual(compared.figures.failed, { before: open.failedWalks ? open.failedWalks.length : 20, after: (open.failedWalks ? open.failedWalks.length : 20) + 1, difference: 1 }, 'one more walk with no way through');
+  assert.ok(compared.groups.every((row) => row.failedChange === 0), 'and no group row takes it');
+  assert.equal(compareResults(now, was, {}).figures.failed.difference, -1, 'the other way round, one fewer');
+});
+
 test('compareResults reads only places, loads, walks, findings and the failed walks: no crowd, no routes', () => {
   const project = shutOff204();
   const changes = [move(G8A, 2, 'rsample204'), swapPeriods(G8A, 5, 6)];
@@ -732,4 +749,360 @@ test('property: on the sample school as it is, reconcile keeps exactly the scena
     assert.deepEqual(reconcile(project, built), { changes: built, dropped: [] }, JSON.stringify(list));
     assert.deepEqual(reconcile(project, list).changes, built, JSON.stringify(list));
   }
+});
+
+// ================================================================ SV2-89: the schedule levers
+
+const L_BELL = { kind: 'bell', dayTypeId: A, period: 6, start: '13:20', end: '14:08' };
+const L_HEAD = { kind: 'headCount', groupId: G6A, headCount: 999 };
+const L_SEATS = { kind: 'capacity', roomId: 'rsample203', capacity: 12 };
+const L_GRADE = { kind: 'release', who: { grade: '7' }, seconds: 120, after: null, dayTypeIds: null };
+
+function withBellSchedule() {
+  return addBellSchedule(school(), { name: 'Early Release', id: 'bsample001' });
+}
+
+test('levers: CHANGE_KINDS did not move, and the levers are a list of their own', () => {
+  assert.deepEqual(CHANGE_KINDS, ['move', 'swapPeriods', 'swapRooms']);
+  assert.deepEqual(LEVER_KINDS, ['release', 'bell', 'way', 'corridor', 'capacity', 'headCount']);
+});
+
+test('levers: a lever is read only with every field its kind needs', () => {
+  for (const good of [L_BELL, L_HEAD, L_SEATS, L_GRADE, { ...L_HEAD, headCount: null }, { ...L_SEATS, capacity: null }, { kind: 'release', who: { groups: [G6A] }, seconds: 0, after: [1], dayTypeIds: [A] }]) assert.equal(isReadableLever(good), true, JSON.stringify(good));
+  const bad = [null, 'x', {}, { kind: 'move' }, { ...L_BELL, start: '9:50' }, { ...L_BELL, dayTypeId: undefined }, { ...L_BELL, bellsId: 'bsample001' }, { ...L_HEAD, headCount: 0 }, { ...L_HEAD, headCount: 1000 }, { ...L_HEAD, headCount: 2.5 }, { ...L_SEATS, capacity: 0 }, { ...L_GRADE, seconds: 10 }, { ...L_GRADE, seconds: 301 }, { ...L_GRADE, seconds: 0 }, { ...L_GRADE, after: [] }, { ...L_GRADE, after: undefined }, { ...L_GRADE, who: { grade: ' ' } }, { ...L_GRADE, who: { grade: '7', wing: 'N' } }];
+  for (const lever of bad) assert.equal(isReadableLever(lever), false, JSON.stringify(lever));
+});
+
+test('levers: one lever per key (release by who, periods and days together; bell by set and period; capacity by room; head count by group)', () => {
+  assert.equal(leverKey({ ...L_GRADE, who: { grade: ' 7 ' } }), leverKey(L_GRADE), 'a grade is the same ignoring case and spaces');
+  assert.equal(leverKey({ kind: 'release', who: { groups: [G6B, G6A] }, seconds: 30, after: [3, 1], dayTypeIds: [B, A] }), leverKey({ kind: 'release', who: { groups: [G6A, G6B] }, seconds: 90, after: [1, 3], dayTypeIds: [A, B] }), 'order and seconds are not the key');
+  assert.notEqual(leverKey(L_GRADE), leverKey({ ...L_GRADE, after: [1] }));
+  assert.notEqual(leverKey(L_GRADE), leverKey({ ...L_GRADE, dayTypeIds: [A] }));
+  assert.notEqual(leverKey(L_GRADE), leverKey({ ...L_GRADE, who: { wing: '7' } }));
+  assert.notEqual(leverKey(L_BELL), leverKey({ ...L_BELL, period: 5 }));
+  assert.notEqual(leverKey(L_BELL), leverKey({ kind: 'bell', bellsId: 'bsample001', period: 6, start: '13:20', end: '14:08' }));
+  assert.equal(leverKey({ ...L_BELL, start: '13:25' }), leverKey(L_BELL));
+  assert.equal(leverKey({ ...L_SEATS, capacity: 5 }), leverKey(L_SEATS));
+  assert.equal(leverKey({ ...L_HEAD, headCount: 5 }), leverKey(L_HEAD));
+  assert.equal(leverKey({ kind: 'bell' }), null, 'an unreadable lever has no key');
+});
+
+test('applyLevers: a bell, a capacity and a head count are set; the project handed in is not changed', () => {
+  const project = deepFreeze(school());
+  const after = applyLevers(project, [L_BELL, L_HEAD, L_SEATS]);
+  assert.deepEqual(after.dayTypes[0].bells[6], { start: '13:20', end: '14:08' });
+  assert.equal(group(after, '6A').headCount, 999);
+  assert.equal(room(after, '203').capacity, 12);
+  assert.deepEqual(project.dayTypes[0].bells[6], { start: '13:12', end: '14:00' });
+  assert.equal(group(project, '6A').headCount, 24);
+  assert.equal(applyLevers(project, []), project, 'no levers is the project itself');
+  assert.deepEqual(after.building.floors.map((floor) => floor.corridors), project.building.floors.map((floor) => floor.corridors), 'the corridors are the building\'s');
+});
+
+test('applyLevers: a bell on a bell schedule sets that schedule\'s bell and not the day type\'s', () => {
+  const project = withBellSchedule();
+  const after = applyLevers(project, [{ kind: 'bell', bellsId: 'bsample001', period: 2, start: '09:50', end: '10:38' }]);
+  assert.deepEqual(after.bellSchedules[0].bells[2], { start: '09:50', end: '10:38' });
+  assert.deepEqual(after.dayTypes[0].bells[2], project.dayTypes[0].bells[2]);
+});
+
+test('applyLevers: a lever that cannot apply throws the editor\'s words and changes nothing; the scenario is read when no list is given', () => {
+  const project = revertToBase(school(), { dayTypeId: B });
+  assert.throws(() => applyLevers(project, [{ ...L_BELL, dayTypeId: B }]), { code: 'same-as-base' });
+  assert.throws(() => applyLevers(project, [{ ...L_SEATS, roomId: 'rgone00000' }]));
+  assert.throws(() => applyLevers(project, [{ kind: 'teleport' }]), { code: 'bad-value' });
+  const open = { ...school(), scenario: { name: 'Try', changes: [], levers: [L_HEAD], compared: null } };
+  assert.equal(group(applyLevers(open), '6A').headCount, 999);
+  assert.equal(applyLevers({ ...school(), scenario: null, release: undefined }, []).release, undefined);
+});
+
+test('applyLevers: a trial release lays over the real entry of its key, and is otherwise one more under the ranking', () => {
+  const project = school();
+  project.release = [{ id: 'lsample001', who: { grade: '7' }, seconds: 60, after: null, dayTypeIds: null }, { id: 'lsample002', who: { wing: 'North' }, seconds: 45, after: null, dayTypeIds: null }];
+  const over = applyLevers(project, [L_GRADE]);
+  assert.equal(over.release.length, 2, 'the grade-7 entry of the same key is replaced, not added to');
+  assert.equal(over.release.find((entry) => entry.who.grade === '7').seconds, 120);
+  assert.equal(project.release[0].seconds, 60, 'the real entry is as it was');
+  const delay = (p, groupId) => releaseDelay(p, groupId, A, 0, 'rsample302');
+  assert.equal(delay(project, 'gsample07c'), 60);
+  assert.equal(delay(over, 'gsample07c'), 120);
+  const onTheBell = applyLevers(project, [L_GRADE, { kind: 'release', who: { groups: ['gsample07a'] }, seconds: 0, after: null, dayTypeIds: null }]);
+  assert.equal(delay(onTheBell, 'gsample07a'), 0, 'a groups entry of 0 beats the grade\'s 120');
+  assert.equal(delay(onTheBell, 'gsample07b'), 120);
+});
+
+test('normaliseLevers: a later lever of a key replaces the earlier whole; the added one that changes nothing goes', () => {
+  const project = school();
+  assert.deepEqual(normaliseLevers(project, [L_BELL, { ...L_BELL, start: '13:25', end: '14:10' }]), [{ ...L_BELL, start: '13:25', end: '14:10' }]);
+  const list = [L_HEAD, L_SEATS];
+  assert.equal(normaliseLevers(project, list), list, 'the list itself when nothing went');
+  assert.deepEqual(normaliseLevers(project, [L_HEAD, { kind: 'bell', dayTypeId: A, period: 6, start: '13:12', end: '14:00' }]), [L_HEAD], 'a bell at its real times');
+  assert.deepEqual(normaliseLevers(project, [{ kind: 'capacity', roomId: 'rsample203', capacity: 30 }]), [], 'a capacity equal to the real one');
+  assert.deepEqual(normaliseLevers(project, [{ kind: 'headCount', groupId: G6A, headCount: 24 }]), [], 'a head count equal to the real one');
+  assert.deepEqual(normaliseLevers(project, [{ kind: 'headCount', groupId: 'gsample08b', headCount: null }]), [], 'a group with no head count, left with none');
+  assert.deepEqual(normaliseLevers(project, [{ kind: 'headCount', groupId: 'gsample08b', headCount: 25 }]), [], 'and so is the school default written down: a group with none has 25, SV2-89b');
+  assert.equal(normaliseLevers(project, [{ kind: 'headCount', groupId: 'gsample08b', headCount: 26 }]).length, 1, 'but 26 is a change');
+  assert.deepEqual(normaliseLevers(project, [{ kind: 'headCount', groupId: G6A, headCount: null }]).length, 1, 'and "the school\'s 25" for a group of 24 is one too');
+  assert.deepEqual(normaliseLevers(project, [{ kind: 'release', who: { groups: [G7C] }, seconds: 0, after: null, dayTypeIds: null }]), [], 'a group on the bell when nobody is held back is no change');
+  assert.equal(normaliseLevers(project, [L_GRADE, { kind: 'release', who: { grade: '8' }, seconds: 30, after: null, dayTypeIds: null }]).length, 2, 'two releases with different keys both stay');
+  assert.deepEqual(normaliseLevers(project, [L_GRADE], { added: null }), [L_GRADE]);
+  assert.throws(() => normaliseLevers(project, [L_GRADE], { added: 'x' }), TypeError);
+});
+
+test('normaliseLevers: a release that gives every group what the real entries already give is no change; an older one the schedule caught up with stays', () => {
+  const project = school();
+  project.release = [{ id: 'lsample001', who: { grade: '7' }, seconds: 120, after: null, dayTypeIds: null }];
+  assert.deepEqual(normaliseLevers(project, [L_GRADE]), [], 'the same as the real entry');
+  assert.equal(normaliseLevers(project, [{ ...L_GRADE, seconds: 180 }]).length, 1);
+  assert.equal(normaliseLevers(project, [{ kind: 'release', who: { groups: [G7C] }, seconds: 0, after: null, dayTypeIds: null }]).length, 1, '7C on the bell under a grade that leaves late is a change');
+  assert.equal(normaliseLevers(project, [L_GRADE, L_HEAD]).length, 2, 'an older lever the schedule has caught up with stays (reconcile hides it)');
+  assert.deepEqual(reconcileLevers(project, [L_GRADE, L_HEAD]).levers, [L_HEAD]);
+});
+
+test('reconcileLevers: each lever that cannot apply is dropped for its own reason, in a sentence', () => {
+  const reasons = (project, levers) => reconcileLevers(project, levers).dropped.map((entry) => entry.sentence);
+  let project = deleteGroup(school(), { id: G6A });
+  assert.deepEqual(reasons(project, [L_HEAD]), ['a group no longer in the project: 999 students (was 25): its group is no longer in the project.']);
+  assert.deepEqual(reasons(project, [{ kind: 'release', who: { groups: [G6A] }, seconds: 30, after: null, dayTypeIds: null }]).map((text) => text.replace(/^.*: /, '')), ['its group is no longer in the project.']);
+  assert.equal(reconcileLevers(project, [{ kind: 'release', who: { groups: [G6A, G7C] }, seconds: 30, after: null, dayTypeIds: null }]).levers.length, 1, 'one group left keeps the lever');
+  project = deleteSpaces(school(), { spaceIds: ['rsample203'] });
+  assert.match(reasons(project, [L_SEATS])[0], /the room is no longer in the building\.$/);
+  project = revertToBase(school(), { dayTypeId: B });
+  assert.deepEqual(reasons(project, [{ ...L_BELL, dayTypeId: B }]), ['B Day, Period 7: 1:20 PM to 2:08 PM (was no bell): B Day is the same as A Day again, so it has no bells of its own to change.']);
+  assert.match(reasons({ ...project, dayTypes: project.dayTypes.slice(0, 1) }, [{ ...L_BELL, dayTypeId: B }])[0], /its day type is no longer in the project\.$/);
+  project = setPeriods(school(), { periods: 6 });
+  assert.match(reasons(project, [L_BELL])[0], /Period 7 is no longer in the school day, which has 6\.$/);
+  assert.match(reasons(project, [{ ...L_GRADE, after: [6, 7] }])[0], /its periods are no longer in the school day, which has 6\.$/);
+  assert.equal(reconcileLevers(project, [{ ...L_GRADE, after: [1, 7] }]).levers.length, 1, 'a period left keeps the lever');
+  project = deleteBellSchedule(withBellSchedule(), { bellScheduleId: 'bsample001' });
+  assert.match(reasons(project, [{ kind: 'bell', bellsId: 'bsample001', period: 2, start: '09:50', end: '10:38' }])[0], /its bell schedule is no longer in the project\.$/);
+  assert.match(reasons(school(), [{ kind: 'bell' }])[0], /^A lever could not be read: it is not a lever this version can read\.$/);
+  assert.match(reasons(school(), [{ ...L_HEAD, headCount: 5 }, L_HEAD])[0], /a later lever of the same kind for the same thing replaces it\.$/);
+  assert.match(reasons(school(), [{ kind: 'headCount', groupId: G6A, headCount: 24 }])[0], /the schedule already has this\.$/);
+  assert.match(reasons(school(), [{ kind: 'release', who: { grade: '7' }, seconds: 120, after: [1], dayTypeIds: [A] }, { kind: 'release', who: { grade: '7' }, seconds: 90, after: [1], dayTypeIds: [A] }])[0], /a later lever/);
+});
+
+test('reconcile: levers are reconciled only for a scenario that carries them, so every other answer is as it was', () => {
+  const project = school();
+  assert.deepEqual(Object.keys(reconcile(project, { changes: [] })), ['changes', 'dropped']);
+  assert.deepEqual(Object.keys(reconcile(project, [])), ['changes', 'dropped']);
+  assert.deepEqual(Object.keys(reconcile(project, null)), ['changes', 'dropped']);
+  const result = reconcile(project, { changes: [], levers: [L_HEAD, { ...L_SEATS, roomId: 'rgone00000' }] });
+  assert.deepEqual(result.levers, [L_HEAD]);
+  assert.equal(result.droppedLevers.length, 1);
+  assert.equal(result.droppedLevers[0].lever.roomId, 'rgone00000');
+  assert.deepEqual(reconcile(project, { changes: [], levers: [] }).levers, []);
+});
+
+test('changeWords: a sentence for each schedule lever, names as typed, times as the school shows them', () => {
+  const project = withBellSchedule();
+  const text = (lever) => changeWords(project, lever).text;
+  assert.equal(text(L_GRADE), 'Grade 7 leaves 2 min after the bell');
+  assert.equal(text({ ...L_GRADE, after: [1, 3], dayTypeIds: [A] }), 'Grade 7 leaves 2 min after the bell, after Period 2 and Period 4, on A Day');
+  assert.equal(text({ kind: 'release', who: { wing: 'North' }, seconds: 45, after: null, dayTypeIds: null }), 'North wing leaves 45 s after the bell');
+  assert.equal(text({ kind: 'release', who: { groups: [G7C] }, seconds: 0, after: null, dayTypeIds: null }), '7C leaves on the bell');
+  assert.equal(text({ kind: 'release', who: { groups: ['gsample07a', 'gsample07b'] }, seconds: 90, after: null, dayTypeIds: null }), '7A and 7B leave 1 min 30 s after the bell');
+  assert.equal(text({ kind: 'bell', dayTypeId: A, period: 2, start: '09:50', end: '10:38' }), 'A Day, Period 3: 9:50 AM to 10:38 AM (was 9:44 AM to 10:32 AM)');
+  assert.equal(text({ kind: 'bell', bellsId: 'bsample001', period: 2, start: '09:50', end: '10:38' }), 'Early Release bells, Period 3: 9:50 AM to 10:38 AM (was 9:44 AM to 10:32 AM)');
+  assert.equal(text({ kind: 'capacity', roomId: 'rsample203', capacity: 24 }), 'Room 203 seats 24 (was 30)');
+  assert.equal(text({ kind: 'capacity', roomId: 'rsample203', capacity: null }), 'Room 203 has no capacity set (was 30)');
+  assert.equal(text(L_HEAD), '6A: 999 students (was 24)');
+  assert.equal(text({ kind: 'headCount', groupId: 'gsample08b', headCount: null }), '8B: the school\'s 25 students (was 25)');
+  assert.equal(text({ kind: 'headCount', groupId: 'gone', headCount: 30 }), 'a group no longer in the project: 30 students (was 25)');
+  assert.equal(changeWords(project, { ...L_HEAD, headCount: 0 }).text, 'A lever that could not be read');
+  const typedParts = changeWords(project, L_GRADE).parts.filter((part) => part.name).map((part) => part.text);
+  assert.deepEqual(typedParts, ['7'], 'what the user typed is marked as a name');
+  const markup = { ...project, groups: project.groups.map((g) => (g.id === G6A ? { ...g, name: '<b>6A</b>' } : g)) };
+  assert.equal(changeWords(markup, L_HEAD).text, '<b>6A</b>: 999 students (was 24)', 'a name is text, never markup');
+});
+
+test('leverGroupIds: a head-count lever\'s group and a release lever\'s groups, each once', () => {
+  assert.deepEqual(leverGroupIds([L_HEAD, L_GRADE, { kind: 'release', who: { groups: [G6A, G7C] }, seconds: 0, after: null, dayTypeIds: null }, L_SEATS]), [G6A, G7C]);
+  assert.deepEqual(leverGroupIds({ levers: [L_HEAD] }), [G6A]);
+  assert.deepEqual(leverGroupIds(null), []);
+});
+
+test('compareResults: a bell lever that lengthens the passing time into Period 7 turns 8A\'s late walk on time', () => {
+  const project = school();
+  const was = run(project);
+  const now = run(applyLevers(project, [L_BELL]));
+  const compared = compareResults(was, now, { dayTypeId: A, levers: [L_BELL] });
+  assert.deepEqual(compared.figures.late, { before: 1, after: 0, difference: -1 });
+  assert.equal(compared.figures.walking.difference, 0, 'the walking is the same: only the passing time moved');
+  assert.equal(compared.groups.find((row) => row.groupId === G8A).after.late, 0);
+  assert.equal(compared.groups.find((row) => row.groupId === G8A).edited, false, 'a bell names no group');
+});
+
+test('compareResults: a head-count lever makes the crowd wait longer, and marks its group edited', () => {
+  const project = school();
+  const was = run(project);
+  const now = run(applyLevers(project, [L_HEAD]));
+  const compared = compareResults(was, now, { dayTypeId: A, levers: [L_HEAD] });
+  assert.deepEqual(compared.figures.crowding, { before: 205, after: 3474, difference: 3269 });
+  assert.deepEqual(compared.figures.late, { before: 1, after: 8, difference: 7 });
+  assert.deepEqual(compared.groups.filter((row) => row.edited).map((row) => row.groupId), [G6A]);
+  const unmarked = compareResults(was, now, { dayTypeId: A });
+  assert.deepEqual(unmarked.groups.filter((row) => row.edited), [], 'without the levers nothing is marked');
+  assert.deepEqual(compareResults(was, now, { dayTypeId: A, levers: { levers: [L_HEAD] } }).groups.filter((row) => row.edited).map((row) => row.groupId), [G6A], 'the scenario itself is taken');
+});
+
+test('compareResults: a staggered dismissal for a grade marks the groups it held back, and shows the crowd thinning', () => {
+  const project = school();
+  const was = run(project);
+  const now = run(applyLevers(project, [L_GRADE]));
+  const compared = compareResults(was, now, { dayTypeId: A, levers: [L_GRADE] });
+  assert.deepEqual(compared.groups.filter((row) => row.edited).map((row) => row.groupId).sort(), ['gsample07a', 'gsample07b', 'gsample07c']);
+  assert.ok(compared.figures.crowding.difference < 0, 'a held-back grade crowds the corridors less');
+  assert.ok(compared.figures.late.difference > 0, 'and is late for the cost of waiting');
+  assert.deepEqual(compareResults(was, now, { dayTypeId: A }).groups.filter((row) => row.edited), []);
+});
+
+test('property: applying what reconcileLevers keeps never throws, in any order, however the levers pile up', () => {
+  const random = seededRandom(89);
+  const pool = [L_BELL, { ...L_BELL, period: 4, start: '12:25', end: '13:10' }, L_HEAD, { ...L_HEAD, groupId: G7C, headCount: 60 }, L_SEATS, { ...L_SEATS, roomId: 'rsample204', capacity: 5 }, L_GRADE, { ...L_GRADE, who: { grade: '8' }, seconds: 30 }, { kind: 'release', who: { groups: [G6A] }, seconds: 0, after: [1], dayTypeIds: [A] }];
+  for (let round = 0; round < 25; round += 1) {
+    const list = pool.filter(() => random() < 0.5);
+    const project = random() < 0.5 ? school() : deleteGroup(school(), { id: G7C });
+    const kept = reconcileLevers(project, list).levers;
+    assert.doesNotThrow(() => applyLevers(project, kept));
+    assert.equal(reconcileLevers(project, kept).levers.length, kept.length, 'reconciling again drops nothing');
+    assert.doesNotThrow(() => applyLevers(project, kept.slice().reverse()));
+  }
+});
+
+// ================================================================ SV2-90: the building levers
+
+const F1 = 'fsample001';
+const F2 = 'fsample002';
+const WAY_A = 'csample00a'; // Stairs A, Floor 1 to Floor 2
+const WAY_B = 'csample00b'; // Stairs B, Floor 2 to Floor 3
+const way = (connectionId, how) => ({ kind: 'way', connectionId, way: how });
+const shut = (floorId, cells, name) => ({ kind: 'corridor', floorId, cells, name: name === undefined ? '' : name });
+
+// some cells of a named corridor of the sample school
+function mainCorridor(project, count) {
+  return project.building.floors[0].corridors.find((corridor) => corridor.id === 'ksample001').cells.slice(0, count);
+}
+
+test('way and corridor levers: one lever per key, a way by connection, a corridor by floor and its cells sorted', () => {
+  assert.equal(leverKey(way(WAY_A, 'ab')), leverKey(way(WAY_A, 'closed')), 'a later way for the same stairs replaces the earlier');
+  assert.notEqual(leverKey(way(WAY_A, 'ab')), leverKey(way(WAY_B, 'ab')));
+  assert.equal(leverKey(shut(F1, [9, 3, 5])), leverKey(shut(F1, [3, 5, 9, 5], 'Other name')), 'cells in any order, the name is not the key');
+  assert.notEqual(leverKey(shut(F1, [3, 5])), leverKey(shut(F1, [3, 6])));
+  assert.notEqual(leverKey(shut(F1, [3, 5])), leverKey(shut(F2, [3, 5])));
+  assert.equal(leverKey(way('', 'ab')), null, 'a way with no connection cannot be read');
+  assert.equal(leverKey(way(WAY_A, 'sideways')), null);
+  assert.equal(leverKey(shut(F1, [])), null, 'a corridor lever with no cells cannot be read');
+  assert.equal(leverKey(shut(F1, [-1])), null);
+  const list = normaliseLevers(school(), [way(WAY_A, 'ab'), way(WAY_B, 'ba'), way(WAY_A, 'closed')]);
+  assert.deepEqual(list, [way(WAY_B, 'ba'), way(WAY_A, 'closed')], 'one lever per key, the later one in its place');
+});
+
+test('way levers: a way equal to the connection\'s own direction removes itself; a closure never does', () => {
+  const project = school();
+  assert.deepEqual(normaliseLevers(project, [way(WAY_A, 'both')]), [], 'the added one that changes nothing goes');
+  assert.deepEqual(normaliseLevers(project, [way(WAY_A, 'ab')]), [way(WAY_A, 'ab')]);
+  assert.deepEqual(normaliseLevers(project, [way(WAY_A, 'closed')]), [way(WAY_A, 'closed')], 'closing is always a change');
+  assert.deepEqual(normaliseLevers(project, [shut(F1, mainCorridor(project, 2), 'Main Corridor')]).length, 1);
+  // the building catches up with an older lever: it stays, and reconcile hides it
+  const oneWay = clone(project);
+  oneWay.building.connections[0].direction = 'ab';
+  assert.equal(normaliseLevers(oneWay, [way(WAY_A, 'ab'), way(WAY_B, 'ab')]).length, 2);
+  const result = reconcileLevers(oneWay, [way(WAY_A, 'ab'), way(WAY_B, 'ab')]);
+  assert.deepEqual(result.levers, [way(WAY_B, 'ab')]);
+  assert.deepEqual(result.dropped.map((entry) => entry.sentence), ['Stairs A: up only: the building already has this.']);
+});
+
+test('way and corridor levers: reconcile gives each reason in its own sentence and trims a corridor lever as a release lever is', () => {
+  const reasons = (project, levers) => reconcileLevers(project, levers).dropped.map((entry) => entry.sentence);
+  const levers = [way(WAY_A, 'ab'), shut(F1, mainCorridor(school(), 2), 'Main Corridor')];
+  let project = disconnectStairs(school(), { connectionId: WAY_A });
+  assert.deepEqual(reasons(project, levers), ['Stairs no longer in the building: one way only: the stairs connection is no longer in the building.']);
+  assert.deepEqual(reconcileLevers(project, levers).levers, [levers[1]]);
+  project = deleteFloor(school(), { id: F1 });
+  assert.deepEqual(reasons(project, [shut(F1, [10], 'Main Corridor')]), ['Close Main Corridor: its floor is no longer in the building.']);
+  // cells that are no longer corridor leave the lever; with none left it goes
+  const cells = mainCorridor(school(), 3);
+  project = clone(school());
+  const floor = project.building.floors[0];
+  floor.cells = floor.cells.slice(0, cells[0]) + '.' + floor.cells.slice(cells[0] + 1);
+  const trimmed = reconcileLevers(project, [shut(F1, cells, 'Main Corridor')]);
+  assert.deepEqual(trimmed.levers, [shut(F1, [cells[1], cells[2]], 'Main Corridor')], 'two of the three cells are still corridor');
+  assert.deepEqual(trimmed.dropped, []);
+  assert.deepEqual(reasons(project, [shut(F1, [cells[0]], 'Main Corridor')]), ['Close Main Corridor: its cells are no longer corridor.']);
+  // a stairs cell is not corridor either
+  assert.deepEqual(reasons(school(), [shut(F1, [332], 'Stairs')]), ['Close Stairs: its cells are no longer corridor.'], 'cell 332 is the stairs of connection A');
+  // the trimmed lever is the one the lane and Apply see, and its key is its cells\'
+  assert.notEqual(leverKey(trimmed.levers[0]), leverKey(shut(F1, cells, 'Main Corridor')));
+  // a later lever of the same key replaces an earlier one, among the buildings\' too
+  assert.match(reasons(school(), [way(WAY_A, 'ab'), way(WAY_A, 'ba')])[0], /a later lever of the same kind for the same thing replaces it\.$/);
+  assert.match(reasons(school(), [{ kind: 'way', connectionId: WAY_A }])[0], /^A lever could not be read: /);
+});
+
+test('way and corridor levers: the words a chip says, names as typed', () => {
+  const project = school();
+  const text = (lever) => changeWords(project, lever).text;
+  assert.equal(text(way(WAY_A, 'ab')), 'Stairs A: up only');
+  assert.equal(text(way(WAY_A, 'ba')), 'Stairs A: down only');
+  assert.equal(text(way(WAY_B, 'ab')), 'Stairs B: up only');
+  assert.equal(text(way(WAY_A, 'both')), 'Stairs A: both ways');
+  assert.equal(text(way(WAY_A, 'closed')), 'Close Stairs A');
+  assert.equal(text(way('cgone00000', 'ab')), 'Stairs no longer in the building: one way only');
+  assert.equal(text(shut(F1, [10, 11], 'North Corridor')), 'Close North Corridor');
+  assert.equal(text(shut(F1, [10, 11])), 'Close 2 corridor cells on Floor 1');
+  assert.equal(text(shut(F1, [10])), 'Close 1 corridor cell on Floor 1');
+  assert.equal(text(shut('fgone00000', [10, 11])), 'Close 2 corridor cells on a floor no longer in the building');
+  // up and down are by the floors' levels, not by which end is a
+  const swapped = clone(project);
+  swapped.building.connections[0] = { ...swapped.building.connections[0], a: swapped.building.connections[0].b, b: swapped.building.connections[0].a };
+  assert.equal(changeWords(swapped, way(WAY_A, 'ab')).text, 'Stairs A: down only', 'ab runs from a to b, and a is the upper floor now');
+  // a same-floor connection is worded by its ends
+  const split = clone(project);
+  split.building.connections[0] = { ...split.building.connections[0], b: { floorId: F1, cell: 333 } };
+  assert.equal(wayWords(split, split.building.connections[0], 'ab'), 'from the A end only');
+  assert.equal(wayWords(split, split.building.connections[0], 'ba'), 'from the B end only');
+  // typed pieces are marked as names and nothing is made into markup
+  const odd = clone(project);
+  odd.building.connections[0].label = '<b>"Ünï"</b>';
+  const parts = changeWords(odd, way(WAY_A, 'ab')).parts;
+  assert.deepEqual(parts.filter((part) => part.name).map((part) => part.text), ['<b>"Ünï"</b>']);
+  assert.equal(changeWords(odd, way(WAY_A, 'ab')).text, 'Stairs <b>"Ünï"</b>: up only');
+  const named = changeWords(project, shut(F1, [10], '<i>Hall</i> & "co"')).parts;
+  assert.deepEqual(named.filter((part) => part.name).map((part) => part.text), ['<i>Hall</i> & "co"']);
+  assert.equal(changeWords(project, way(WAY_A, 'ab')).teachers.length, 0);
+});
+
+test('leverRouteOptions: the building\'s levers as routing\'s options, only what changes something, sorted', () => {
+  const project = school();
+  assert.deepEqual(leverRouteOptions(project, []), { ways: {}, shutLinks: [], shutCells: [] });
+  assert.deepEqual(leverRouteOptions(project, null), { ways: {}, shutLinks: [], shutCells: [] });
+  assert.deepEqual(leverRouteOptions(project, [L_HEAD, L_GRADE]), { ways: {}, shutLinks: [], shutCells: [] }, 'the schedule\'s levers are not the building\'s');
+  assert.deepEqual(leverRouteOptions(project, [way(WAY_B, 'ba'), way(WAY_A, 'ab')]), { ways: { [WAY_A]: 'ab', [WAY_B]: 'ba' }, shutLinks: [], shutCells: [] });
+  assert.deepEqual(leverRouteOptions(project, [way(WAY_A, 'closed')]), { ways: {}, shutLinks: [WAY_A], shutCells: [] }, 'closed goes to shutLinks');
+  assert.deepEqual(leverRouteOptions(project, [way(WAY_A, 'both')]), { ways: {}, shutLinks: [], shutCells: [] }, 'a way equal to the connection\'s own is left out');
+  assert.deepEqual(leverRouteOptions(project, [way('cgone00000', 'ab'), shut('fgone00000', [3])]), { ways: {}, shutLinks: [], shutCells: [] }, 'what the building does not have is left out');
+  assert.deepEqual(leverRouteOptions(project, [shut(F2, [30, 20]), shut(F1, [9, 3]), shut(F1, [3, 4])]), { ways: {}, shutLinks: [], shutCells: [{ floorId: F1, cell: 3 }, { floorId: F1, cell: 4 }, { floorId: F1, cell: 9 }, { floorId: F2, cell: 20 }, { floorId: F2, cell: 30 }] }, 'floors in the building\'s order, cells ascending, none twice');
+  const oneWay = clone(project);
+  oneWay.building.connections[0].direction = 'ab';
+  assert.deepEqual(leverRouteOptions(oneWay, [way(WAY_A, 'both')]).ways, { [WAY_A]: 'both' }, 'both is a change where the connection is one-way');
+  // it reads a scenario as well as a list
+  assert.deepEqual(leverRouteOptions(project, { levers: [way(WAY_A, 'closed')] }).shutLinks, [WAY_A]);
+  // the key is the same for the same options and empty for none
+  assert.equal(leverOptionsKey(leverRouteOptions(project, [])), '');
+  assert.equal(leverOptionsKey(null), '');
+  assert.equal(leverOptionsKey(leverRouteOptions(project, [way(WAY_A, 'ab'), way(WAY_B, 'ba')])), leverOptionsKey(leverRouteOptions(project, [way(WAY_B, 'ba'), way(WAY_A, 'ab')])));
+  assert.notEqual(leverOptionsKey(leverRouteOptions(project, [way(WAY_A, 'ab')])), leverOptionsKey(leverRouteOptions(project, [way(WAY_A, 'ba')])));
+  assert.notEqual(leverOptionsKey(leverRouteOptions(project, [way(WAY_A, 'closed')])), leverOptionsKey(leverRouteOptions(project, [shut(F1, [3])])));
+  assert.equal(hasBuildingLevers(project, [L_HEAD, way(WAY_A, 'both')]), false);
+  assert.equal(hasBuildingLevers(project, [L_HEAD, way(WAY_A, 'ba')]), true);
+});
+
+test('applyLevers leaves the building levers out: the project\'s building is the very object it was', () => {
+  const project = school();
+  const next = applyLevers(project, [way(WAY_A, 'ab'), way(WAY_B, 'closed'), shut(F1, mainCorridor(project, 3), 'Main Corridor')]);
+  assert.equal(next, project);
+  const mixed = applyLevers(project, [way(WAY_A, 'ab'), L_HEAD]);
+  assert.equal(mixed.building, project.building);
+  assert.equal(mixed.building.connections[0].direction, 'both');
+  assert.equal(mixed.groups.find((candidate) => candidate.id === G6A).headCount, 999);
 });

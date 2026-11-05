@@ -368,13 +368,13 @@ test('× takes a chip out, and the focus goes to the chip now in its place', asy
   assert.deepEqual(left.changes.map((change) => change.groupId), ['gsample07a', 'gsample07c']);
   await page.waitForFunction(() => document.activeElement && document.activeElement.dataset.action === 'remove');
   assert.equal(await page.evaluate(() => document.activeElement.closest('.scn-chip').dataset.index), '1', 'the focus is on the chip now in its place');
-  // the last one out leaves the focus on the panel's first control
+  // the last one out leaves the focus on the Kind of change fieldset (DESIGN 12.4, SV2-92)
   await page.keyboard.press('Enter');
   await ready(page);
   await page.waitForFunction(() => document.activeElement && document.activeElement.dataset.action === 'remove');
   await page.keyboard.press('Enter');
   await ready(page);
-  await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'scenario-name');
+  await page.waitForFunction(() => document.activeElement && document.activeElement === document.querySelector('.scn-kind input:checked'));
   assert.match(await seen(page, '.scn-none'), /No changes yet/);
 });
 
@@ -1018,6 +1018,8 @@ for (const size of [{ width: 390, height: 844 }, { width: 844, height: 390 }]) {
       const option = await page.evaluateHandle(() => Array.from(document.querySelectorAll('.scn-field--room .picker__option')).find((each) => each.textContent.startsWith('101')));
       await option.evaluate((el) => el.scrollIntoView({ block: 'center' }));
       await option.tap();
+      // brought clear of the bar and of the pinned stage, as the section's scroll-padding does (SV2-92b)
+      await page.$eval('[data-action="add-change"]', (el) => el.scrollIntoView({ block: 'nearest' }));
       await page.tap('[data-action="add-change"]');
       await ready(page);
       assert.equal((await chips(page)).length, 1);
@@ -1038,7 +1040,10 @@ for (const size of [{ width: 390, height: 844 }, { width: 844, height: 390 }]) {
       const stage = await page.evaluate(() => {
         const root = document.querySelector('.scn');
         const room = parseFloat(root.style.getPropertyValue('--mov-room'));
-        const floor = Math.min(Math.max(0.45 * innerHeight, 320), room);
+        // with a scenario open on a tall phone the stage is pinned at 180 to 280 px, 31 % of the window
+        // (scenarios.css, SV2-92b), in place of the 45 % floor, so a form brought into view leaves it on screen
+        const pinned = Math.min(Math.max(180, 0.31 * innerHeight), 280);
+        const floor = Math.min(Math.max(0.45 * innerHeight, 320), room, innerWidth < 1200 && innerHeight >= 600 ? pinned : Infinity);
         return { height: document.querySelector('.scn .mov-stage').getBoundingClientRect().height, floor, room };
       });
       assert.ok(stage.room > 0 && stage.height >= stage.floor - 1, 'the stage keeps its room: ' + JSON.stringify(stage));

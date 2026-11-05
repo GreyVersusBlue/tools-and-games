@@ -69,6 +69,7 @@ every rule on this page and `engine/repair.js` enforces them on every load.
 | `calendar` | Calendar or `null` | Optional; absent or `null` is no calendar. Which dates are which day type. |
 | `marks` | Mark[] | Optional; absent is none. Periods marked Lunch, Advisory, Activity or No class, for the school, some grades or some groups. |
 | `duties` | Duty[] | Optional; absent is none. Duties, standing meetings and teachers' own lunches, laid over teachers' days. |
+| `release` | Release[] | Optional; absent is none; at most 50. Staggered dismissal: groups, a grade or a wing that leave a little after the bell. Not published. |
 | `accepted` | AcceptedFinding[] | Findings the user has accepted. |
 | `scenario` | Scenario or `null` | The one open scenario. |
 | `publish` | PublishSettings | |
@@ -286,6 +287,35 @@ An overlay on teachers' days. It never moves a group and is never routed.
 | `place` | text | 0 to 60 characters. |
 | `teacherIds`, `subjectIds`, `everyone` | id[], id[], boolean | Who: these teachers, everyone teaching these subjects, or all staff (`dutyTeachers`). Deleting a teacher or subject removes it; the duty stays even with nobody on it. Merging teachers swaps the merged one for the kept one. |
 
+### Release
+
+One staggered dismissal (spec 8.2). It changes only when a group may start
+walking: the crowd model's first `readyAt` for that group is the delay, and
+nothing else about the walk changes. Arrival is still counted from the bell,
+so a group held back keeps its own passing time to walk in and can be late
+because of it. Teachers' walks are not delayed. Never published: travel times
+are not.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `id` | id, `l…` | |
+| `who` | object with exactly one key | `{ "groups": [id…] }` (at least one, each once), `{ "grade": text }` (matched to a group's `grade` ignoring case and surrounding spaces) or `{ "wing": text }` (matched to the `wing` of the room the group is leaving, the same way; a group leaving a room with no wing matches none). Text is not empty and at most 80 characters. |
+| `seconds` | integer | 15 to 300. A `groups` entry may also be 0: the group leaves on the bell. |
+| `after` | integer[] or `null` | The periods it follows, the transition out of each (0 is the first period), each once, in order. `null` is after every period. Lowering the period count removes the ones past the end, and an entry left with none is removed; repair does the same. |
+| `dayTypeIds` | id[] or `null` | Day types, own or the same as another; at least one, each once. `null` is every day type. An entry names a day type directly or through the day type it is the same as. Deleting a day type removes it from the list, and an entry left with none is removed. |
+
+`releaseDelay(project, groupId, dayTypeId, period, fromRoomId)` in
+`engine/release.js` is the one rule. The entries that match are ranked: a
+`groups` entry, then a `grade` entry, then a `wing` entry. The most specific
+rank that has a match wins, and within a rank the largest `seconds` does. So
+"seventh grade two minutes late, 7-1 on the bell" is a grade entry of 120 and a
+groups entry of 0. Deleting a group removes it from every `groups` list, and
+an entry left with none is removed.
+
+A figure for a group that was held back has `released` (seconds) beside
+`walking`, `waiting` and `total`; `total = released + walking + waiting` for a
+group that arrived. A group that was not held has no `released`.
+
 ### Calendar
 
 | Field | Type | Meaning |
@@ -404,7 +434,7 @@ removed on load: the scenario lab reconciles it and says what it dropped.
 |---|---|
 | 0 | Data with no `version`. A scenario held one `dayTypeId` for all of its changes. |
 | 1 | `format` and `version` are in the object. Each scenario change has its own `dayTypeId`. `Floor.level` exists. |
-| 1, unchanged | Added without a version step, every one optional: `DayType.sameAs` and `short`, `bellSchedules`, `calendar`, `marks`, `duties`, `PublishSettings.staleAtCalendarEnd`, `PublishSettings.lastPublishedHadCalendar` and `views.calendar`. A file without them reads exactly as before; a copy of the tool from before them keeps them through its own repair, which copies what it does not know. |
+| 1, unchanged | Added without a version step, every one optional: `DayType.sameAs` and `short`, `bellSchedules`, `calendar`, `marks`, `duties`, `release`, `PublishSettings.staleAtCalendarEnd`, `PublishSettings.lastPublishedHadCalendar` and `views.calendar`. A file without them reads exactly as before; a copy of the tool from before them keeps them through its own repair, which copies what it does not know. |
 
 ### What is never in a project
 
@@ -559,7 +589,8 @@ Format name `sv2-schedule`, version **1**. `writeScheduleFile`,
   "bellSchedules": BellSchedule[],
   "calendar": Calendar,
   "marks": Mark[],
-  "duties": Duty[]
+  "duties": Duty[],
+  "release": Release[]
 }
 ```
 
@@ -571,9 +602,10 @@ Format name `sv2-schedule`, version **1**. `writeScheduleFile`,
 | `bellSchedules` | Optional. As in the project object. Written only when the project has a bell schedule; absent is none. |
 | `calendar` | Optional. As in the project object, `changedAt` with it. Written only when the project has a calendar; absent is none. |
 | `marks`, `duties` | Optional. As in the project object (Mark, Duty). Written only when the project has any; absent is none. A duty's `roomId` is an id found in `rooms`, which lists it. |
+| `release` | Optional. As in the project object (Release). Written only when the project has any; absent is none. |
 
-A project with no bell schedules, no calendar, no marks and no duties writes
-the file exactly as a planner from before them did.
+A project with no bell schedules, no calendar, no marks, no duties and no
+staggered dismissals writes the file exactly as a planner from before them did.
 
 **Reading.** JSON; `format` is `sv2-schedule`; `version` is 1; every field
 above that is not optional is present; then the settings, subjects, teachers,
@@ -581,8 +613,9 @@ groups, day types, bell schedules, calendar, marks and duties have to pass
 every rule of the project object, with `rooms` standing for the building: a
 slot, a teacher or a duty naming a room that is not in the index is a refusal,
 and so are two index entries with one number. The summary of what a file holds
-counts its bell schedules, marks and duties and says whether it has a
-calendar (`marks` and `duties` are `0` for a file without any).
+counts its bell schedules, marks, duties and staggered dismissals and says
+whether it has a calendar (`marks`, `duties` and `release` are `0` for a file
+without any).
 
 **Importing** brings the schedule into the project. The rules:
 
@@ -641,8 +674,16 @@ calendar (`marks` and `duties` are `0` for a file without any).
   the file is matched or added. The summary counts `marksAdded` and
   `dutiesAdded`. A mark past the end of the project's school day cannot come
   in, since the school day is raised to the file's first.
+- **Staggered dismissals.** Matched by id and answered by the same policy as
+  marks: skip leaves the one here, overwrite replaces it in place, rename adds
+  the file's under a new id. One that is not here is added. A `groups` entry's
+  groups are re-pointed through the groups' matches and its `dayTypeIds`
+  through the day types'; an entry left naming no group or no day type is
+  dropped and counted. The summary counts `releaseAdded`, `releaseKept`,
+  `releaseReplaced` and `releaseDropped`.
 - **Limits.** A file that would bring the project to more than 12 day types,
-  or more than 12 bell schedules, is refused whole.
+  more than 12 bell schedules or more than 50 staggered dismissals is refused
+  whole.
 - **Settings.** The period word and the two defaults are taken from the file
   only when the user asks (`takeSettings`).
 

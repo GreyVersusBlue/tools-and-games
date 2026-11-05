@@ -101,8 +101,8 @@ after(async () => {
   if (problems) assert.deepEqual(problems, { errors: [], blocked: [], shimmed: [] });
 });
 
-test('the Day tab is five cards: the school day, day types, regular bells, other bell schedules, marked periods', async () => {
-  assert.deepEqual(await page.$$eval('.sch-daytab .sch-card__title', (all) => all.map((el) => el.textContent)), ['The school day', 'Day types', 'Regular bells', 'Other bell schedules', 'Marked periods']);
+test('the Day tab is six cards: the school day, day types, regular bells, other bell schedules, marked periods, staggered dismissal', async () => {
+  assert.deepEqual(await page.$$eval('.sch-daytab .sch-card__title', (all) => all.map((el) => el.textContent)), ['The school day', 'Day types', 'Regular bells', 'Other bell schedules', 'Marked periods', 'Staggered dismissal']);
   assert.deepEqual(await rowOrder(), ['A Day', 'B Day']);
   assert.equal(await text('.sch-dtrow[data-day="' + DAY_A + '"] .sch-dtrow__kind'), 'A Day comes first');
   assert.equal(await exists('.sch-dtrow[data-day="' + DAY_A + '"] .sch-grip'), false, 'the first day type does not move');

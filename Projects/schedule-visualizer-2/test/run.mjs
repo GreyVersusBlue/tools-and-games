@@ -40,6 +40,7 @@ export const GROUPS = {
     'engine/calendar.test.mjs',
     'engine/runs.test.mjs',
     'engine/marks.test.mjs', // SV2-83
+    'engine/release.test.mjs', // SV2-88
     'engine/runs-today.test.mjs', // SV2-76
     'engine/bell-runs.test.mjs', // SV2-76
     'engine/actions.test.mjs',
@@ -142,6 +143,8 @@ export const GROUPS = {
     'browser/calendar.mjs', // SV2-80
     'browser/calendar-review.mjs', // SV2-80b
     'browser/marks-duties.mjs', // SV2-85
+    'browser/release.mjs', // SV2-93
+    'browser/one-way.mjs', // SV2-91
     'browser/calendar-faults.mjs', // SV2-80c
     'browser/grid-pass.mjs', // SV2-40, SV2-46
     'browser/m2-pass.mjs', // SV2-38
@@ -168,6 +171,7 @@ export const GROUPS = {
     'browser/plan-map.mjs', // SV2-65b
     'browser/safety.mjs', // SV2-67
     'browser/scenario.mjs', // SV2-68
+    'browser/scenario-levers.mjs', // SV2-92
     'browser/congestion-scenario.mjs', // SV2-71
     'browser/difference.mjs', // SV2-69
     'browser/fix.mjs', // SV2-70

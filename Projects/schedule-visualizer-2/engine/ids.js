@@ -25,6 +25,7 @@ export const ID_PREFIXES = {
   bellSchedule: 'b',
   mark: 'm',
   duty: 'u',
+  release: 'l',
 };
 
 const ID_PATTERN = /^[a-z][a-z0-9]{9}$/;
@@ -118,5 +119,6 @@ export function collectIds(project) {
   each(project.bellSchedules, push);
   each(project.marks, push);
   each(project.duties, push);
+  each(project.release, push);
   return found;
 }

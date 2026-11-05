@@ -470,28 +470,68 @@ export function planSvg(project, floor, options) {
   }
   if (walls.length > 0) out.push('<path class="plan__wall" d="' + linesPath(walls) + '"/>');
 
-  // stairs: a chevron and the letters of the connections that land there
+  // stairs: a chevron and the letters of the connections that land there. A
+  // one-way connection's letter has a second, bolder chevron beside it, 'up'
+  // or 'down' between floors and, on one floor, 'down' at the end it is
+  // walked from and 'up' at the end it comes out at, as the planner's screen
+  // draws it (ARCHITECTURE 18.4). A route map (a door card) keeps the plain
+  // stair mark: evacuation ignores one-way.
+  const showWays = !(options && options.route && typeof options.route === 'object');
+  const levelOf = (id) => {
+    const found = project.building.floors.find((each) => each.id === id);
+    return found ? found.level : 0;
+  };
   const lettersAt = new Map();
   for (const connection of project.building.connections) {
-    for (const end of [connection.a, connection.b]) {
-      if (end.floorId !== floor.id) continue;
+    [connection.a, connection.b].forEach((end, index) => {
+      if (end.floorId !== floor.id) return;
       if (!lettersAt.has(end.cell)) lettersAt.set(end.cell, []);
-      if (!lettersAt.get(end.cell).includes(connection.label)) lettersAt.get(end.cell).push(connection.label);
-    }
+      const here = lettersAt.get(end.cell);
+      if (here.some((entry) => entry.label === connection.label)) return;
+      let way = null;
+      if (showWays && (connection.direction === 'ab' || connection.direction === 'ba')) {
+        const from = connection.direction === 'ab' ? connection.a : connection.b;
+        const to = connection.direction === 'ab' ? connection.b : connection.a;
+        const rise = levelOf(to.floorId) - levelOf(from.floorId);
+        way = rise > 0 ? 'up' : rise < 0 ? 'down' : (index === 0) === (connection.direction === 'ab') ? 'down' : 'up';
+      }
+      here.push({ label: connection.label, way });
+    });
   }
   const letters = [];
   for (const cell of shownStairs) {
     const x = (cell % width) * U;
     const y = Math.floor(cell / width) * U;
-    const here = lettersAt.get(cell) || [];
-    for (const letter of here) if (!letters.includes(letter)) letters.push(letter);
-    const label = here.join(' ');
+    const entries = lettersAt.get(cell) || [];
+    for (const entry of entries) if (!letters.includes(entry.label)) letters.push(entry.label);
+    const label = entries.map((entry) => entry.label).join(' ');
     const cy = y + (label === '' ? U * 0.5 : U * 0.3);
     out.push('<path class="plan__chevron" d="M' + n(x + U * 0.3) + ' ' + n(cy + U * 0.1) + 'L' + n(x + U * 0.5) + ' ' + n(cy - U * 0.1) + 'L' + n(x + U * 0.7) + ' ' + n(cy + U * 0.1) + '"/>');
-    if (label !== '') {
+    if (label === '') continue;
+    if (!entries.some((entry) => entry.way)) {
       const size = fit(textEms(label), U - 2, 8);
       put(text(x + U / 2, y + U * 0.72, size, 'plan__letter', label), labelBox(label, x + U / 2, y + U * 0.72, size));
+      continue;
     }
+    // each letter with its own chevron, the row centred in the cell
+    const mark = (entry) => (entry.way ? 0.5 : 0);
+    const ems = entries.reduce((sum, entry, i) => sum + textEms(entry.label) + mark(entry) + (i > 0 ? 0.3 : 0), 0);
+    const size = fit(ems, U - 2, 8);
+    let at = x + U / 2 - (ems * size) / 2;
+    const cyText = y + U * 0.72;
+    entries.forEach((entry, i) => {
+      if (i > 0) at += 0.3 * size;
+      const wide = textEms(entry.label) * size;
+      put(text(at + wide / 2, cyText, size, 'plan__letter', entry.label), labelBox(entry.label, at + wide / 2, cyText, size));
+      at += wide;
+      if (entry.way) {
+        const mx = at + 0.25 * size;
+        const reach = 0.17 * size;
+        const tip = entry.way === 'up' ? -reach : reach;
+        put('<path class="plan__chevron plan__oneway" style="stroke-width:' + n(Math.max(1.5, size * 0.16)) + ';stroke-linecap:round;stroke-linejoin:round" d="M' + n(mx - reach) + ' ' + n(cyText - tip / 2) + 'L' + n(mx) + ' ' + n(cyText + tip / 2) + 'L' + n(mx + reach) + ' ' + n(cyText - tip / 2) + '"/>', { left: mx - reach, right: mx + reach, top: cyText - reach, bottom: cyText + reach });
+        at += mark(entry) * size;
+      }
+    });
   }
 
   // other spaces, then rooms: the fill, the outline with its door gaps, the label

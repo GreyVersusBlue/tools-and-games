@@ -339,8 +339,52 @@ test('two exits, both on Floor 1', () => {
   assert.ok(project.building.floors[0].exits.every((x) => x.assembly !== ''));
 });
 
-test('two stair connections: A joins Floors 1 and 2, B joins Floors 2 and 3', () => {
-  assert.deepEqual(project.building.connections.map((c) => [c.label, c.a.floorId, c.b.floorId, c.direction]), [['A', 'fsample001', 'fsample002', 'both'], ['B', 'fsample002', 'fsample003', 'both']]);
+test('three stair connections: A joins Floors 1 and 2, B joins Floors 2 and 3, and C joins Floors 1 and 2 up only', () => {
+  assert.deepEqual(project.building.connections.map((c) => [c.label, c.a.floorId, c.b.floorId, c.direction]), [['A', 'fsample001', 'fsample002', 'both'], ['B', 'fsample002', 'fsample003', 'both'], ['C', 'fsample001', 'fsample002', 'ab']]);
+  const levels = new Map(project.building.floors.map((floor) => [floor.id, floor.level]));
+  const c = project.building.connections[2];
+  assert.ok(levels.get(c.a.floorId) < levels.get(c.b.floorId), '`ab` is up when a is the lower floor');
+});
+
+test('one staggered dismissal: Grade 6 leaves a minute after the bell, after Period 3 (the period before its lunch), on every day type', () => {
+  assert.deepEqual(project.release, [{ id: 'lsample001', who: { grade: '6' }, seconds: 60, after: [2], dayTypeIds: null }]);
+  const lunch = project.marks.find((mark) => mark.kind === 'lunch' && mark.grades.includes('6'));
+  assert.equal(project.release[0].after[0], lunch.period - 1, 'the period before the grade\'s lunch');
+});
+
+// The real pipeline over the sample, to check what the two additions do.
+async function pipeline(p) {
+  const { buildGraph } = await import('../../engine/graph.js');
+  const { routesByRun, simulateSchedule, walkResults } = await import('../../engine/crowd.js');
+  const { buildingChecks } = await import('../../engine/building-checks.js');
+  const graph = buildGraph(p);
+  const crowd = simulateSchedule(p, routesByRun(p, graph), graph);
+  const walks = walkResults(p, crowd, graph);
+  return { walks, findings: checkSchedule(p, walks).findings.map((finding) => finding.severity + ' ' + finding.id), building: buildingChecks(p, graph) };
+}
+const groupsKey = (walks) => JSON.stringify(walks.groups);
+
+test('the staggered dismissal and the up-only stair add no finding, in the schedule or the building', async () => {
+  const { findings, building } = await pipeline(sampleSchool());
+  assert.deepEqual(findings, ['problem room-double:dsample00a:1:rsample203', 'warning group-walk:dsample00a:5:gsample08a', 'note room-no-subject:rsamplecaf', 'note room-no-teacher:rsamplecaf']);
+  assert.deepEqual(building, [], 'no one-way trap, and nothing else in the building');
+});
+
+test('Movement shows the staggered dismissal: Grade 6 groups carry a minute "left after the bell" out of Period 3, and nobody else does', async () => {
+  const { walks } = await pipeline(sampleSchool());
+  const held = walks.groups.filter((walk) => walk.released > 0);
+  assert.ok(held.length > 0);
+  assert.ok(held.every((walk) => walk.released === 60 && walk.period === 2 && /^gsample06/.test(walk.groupId)), JSON.stringify(held.map((w) => [w.groupId, w.period, w.released])));
+  const without = sampleSchool();
+  without.release = [];
+  assert.notEqual(groupsKey(walks), groupsKey((await pipeline(without)).walks));
+});
+
+test('Movement shows the up-only stair: the walks differ from the same building with Stairs C both ways', async () => {
+  const { walks } = await pipeline(sampleSchool());
+  const both = sampleSchool();
+  both.building.connections[2].direction = 'both';
+  assert.notEqual(groupsKey(walks), groupsKey((await pipeline(both)).walks));
 });
 
 test('every room can be walked to from every other room', () => {

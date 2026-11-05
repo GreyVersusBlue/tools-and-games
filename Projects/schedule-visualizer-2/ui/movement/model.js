@@ -707,13 +707,15 @@ export function sentenceOf(project, picture, health) {
 //   stairs    does any of its walks use a stairs connection?
 //   failed    how many of its routes failed
 //   late      how many transitions it cannot make in time
+//   released  seconds it was held back by a staggered dismissal, over the day (0 with none)
+//   lateHeld  the longest it was held back on a walk that is late (0 when no late walk was held back)
 export function groupRows(project, results, picture) {
   const run = runOf(results, picture.dayTypeId, picture.bellsId);
   const routes = run.routes;
   const crowd = run.crowd;
   const walks = run.walks.groups;
   return picture.groups.map((group) => {
-    const row = { group, walking: 0, waiting: 0, stairs: false, failed: 0, late: 0, walks: 0 };
+    const row = { group, walking: 0, waiting: 0, stairs: false, failed: 0, late: 0, walks: 0, released: 0, lateHeld: 0 };
     const entry = routes ? routes.groups.find((each) => each.groupId === group.id) : null;
     (entry ? entry.routes : []).forEach((route, t) => {
       if (!meets(picture.transitions, t)) return;
@@ -728,7 +730,14 @@ export function groupRows(project, results, picture) {
       row.walking += walker.walking;
       row.waiting += walker.waiting;
     }
-    row.late = walks.filter((walk) => walk.late === true && walk.groupId === group.id).length;
+    for (const walk of walks) {
+      if (walk.groupId !== group.id) continue;
+      row.released += walk.released || 0;
+      if (walk.late === true) {
+        row.late += 1;
+        row.lateHeld = Math.max(row.lateHeld, walk.released || 0);
+      }
+    }
     return row;
   });
 }

@@ -21,7 +21,7 @@ import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_F
 import { isId, ID_LENGTH } from './ids.js';
 import { roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isCellScale, CELL_SCALE_UNITS, CELL_LENGTH_MOST } from './schema.js';
 import { LATER_PUBLISH_VIEWS, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DAYS_MOST, ROTATION_RANGE, DATE_LABEL_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, spacelessKey, textLength } from './schema.js';
-import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST } from './schema.js';
+import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST, RELEASE_MOST, RELEASE_SECONDS, RELEASE_WHO_KINDS } from './schema.js';
 import { isCalendarDate, daysBetween } from './calendar.js';
 
 function isObject(value) {
@@ -685,6 +685,50 @@ export function validate(project) {
           return undefined;
         });
       }
+      // levers (ARCHITECTURE 18.3): strict when present, never asked for when absent
+      if (scenario.levers !== undefined) {
+        if (!Array.isArray(scenario.levers)) {
+          add('scenario.levers', 'The levers of a scenario are a list.');
+        } else {
+          const whole = (value) => Number.isInteger(value) && value >= 0;
+          const text = (value) => isString(value) && value !== '';
+          scenario.levers.forEach((lever, i) => {
+            const path = 'scenario.levers[' + i + ']';
+            const kinds = ['release', 'bell', 'way', 'corridor', 'capacity', 'headCount'];
+            if (!isObject(lever) || !kinds.includes(lever.kind)) return add(path, 'A lever is one of ' + kinds.join(', ') + '.');
+            let sound = true;
+            if (lever.kind === 'release') {
+              const keys = isObject(lever.who) ? Object.keys(lever.who) : [];
+              const kind = keys.length === 1 && RELEASE_WHO_KINDS.includes(keys[0]) ? keys[0] : null;
+              if (kind === null) sound = false;
+              else if (kind === 'groups') sound = Array.isArray(lever.who.groups) && lever.who.groups.length > 0 && lever.who.groups.every(text);
+              else sound = isString(lever.who[kind]) && lever.who[kind].trim() !== '' && textLength(lever.who[kind]) <= NAME_MOST;
+              const low = kind === 'groups' ? 0 : RELEASE_SECONDS[0];
+              sound = sound && Number.isInteger(lever.seconds) && lever.seconds >= low && lever.seconds <= RELEASE_SECONDS[1];
+              sound = sound && (lever.after === null || (Array.isArray(lever.after) && lever.after.length > 0 && lever.after.every(whole)));
+              sound = sound && (lever.dayTypeIds === null || (Array.isArray(lever.dayTypeIds) && lever.dayTypeIds.length > 0 && lever.dayTypeIds.every(text)));
+            } else if (lever.kind === 'bell') {
+              sound = ((text(lever.dayTypeId) ? 1 : 0) + (text(lever.bellsId) ? 1 : 0)) === 1 && (lever.dayTypeId === undefined || lever.dayTypeId === null || text(lever.dayTypeId)) && (lever.bellsId === undefined || lever.bellsId === null || text(lever.bellsId)) && whole(lever.period) && isBellTime(lever.start) && isBellTime(lever.end);
+            } else if (lever.kind === 'capacity') {
+              sound = text(lever.roomId) && (lever.capacity === null || (Number.isInteger(lever.capacity) && inRange(lever.capacity, RANGES.capacity)));
+            } else if (lever.kind === 'headCount') {
+              sound = text(lever.groupId) && (lever.headCount === null || (Number.isInteger(lever.headCount) && inRange(lever.headCount, RANGES.headCount)));
+            } else if (lever.kind === 'way') {
+              sound = text(lever.connectionId) && ['both', 'ab', 'ba', 'closed'].includes(lever.way);
+            } else {
+              // at most as many cells as a floor has (the floor's own, or the
+              // largest a floor can be); the name is display text frozen from a
+              // corridor name, which has no cap, so it has none here
+              const floors = project.building && Array.isArray(project.building.floors) ? project.building.floors : [];
+              const floorOf = floors.find((candidate) => isObject(candidate) && candidate.id === lever.floorId);
+              const most = floorOf && isString(floorOf.cells) ? floorOf.cells.length : RANGES.floorSize[1] * RANGES.floorSize[1];
+              sound = text(lever.floorId) && Array.isArray(lever.cells) && lever.cells.length > 0 && lever.cells.length <= most && lever.cells.every(whole) && isString(lever.name);
+            }
+            if (!sound) add(path, 'This ' + lever.kind + ' lever is missing one of its fields, or one holds a value it cannot.');
+            return undefined;
+          });
+        }
+      }
       const compared = scenario.compared;
       if (compared !== null) {
         const names = (list) => Array.isArray(list) && list.every(isString);
@@ -752,6 +796,47 @@ export function validate(project) {
         idList(path + '.teacherIds', duty.teacherIds, teacherIds, 'teacher');
         idList(path + '.subjectIds', duty.subjectIds, subjectSet, 'subject');
         if (typeof duty.everyone !== 'boolean') add(path + '.everyone', 'Everyone is true or false.');
+        return undefined;
+      });
+    }
+  }
+
+  // ---- staggered dismissal (ARCHITECTURE 18.2): strict when present, never
+  // asked for when absent. A period past the period count is not refused
+  // here: repair trims it, as setPeriods does.
+  if (project.release !== undefined) {
+    if (!Array.isArray(project.release)) {
+      add('release', 'The staggered dismissals are a list.');
+    } else {
+      if (project.release.length > RELEASE_MOST) add('release', 'There are at most ' + RELEASE_MOST + ' staggered dismissals, and this list has ' + project.release.length + '.');
+      project.release.forEach((entry, i) => {
+        const path = 'release[' + i + ']';
+        if (!isObject(entry)) return add(path, 'A staggered dismissal is an object.');
+        checkId(path, entry, 'l');
+        let kind = null;
+        if (!isObject(entry.who)) {
+          add(path + '.who', 'Who a staggered dismissal is for is an object with one of: ' + RELEASE_WHO_KINDS.join(', ') + '.');
+        } else {
+          const keys = Object.keys(entry.who);
+          kind = keys.length === 1 && RELEASE_WHO_KINDS.includes(keys[0]) ? keys[0] : null;
+          if (kind === null) add(path + '.who', 'Who a staggered dismissal is for has exactly one of: ' + RELEASE_WHO_KINDS.join(', ') + '.');
+          else if (kind === 'groups') {
+            if (Array.isArray(entry.who.groups) && entry.who.groups.length === 0) add(path + '.who.groups', 'A staggered dismissal for groups names at least one.');
+            else idList(path + '.who.groups', entry.who.groups, groupIdSet, 'group');
+          } else if (!isString(entry.who[kind]) || entry.who[kind].trim() === '' || textLength(entry.who[kind]) > NAME_MOST) {
+            add(path + '.who.' + kind, 'The ' + kind + ' of a staggered dismissal is text that is not empty, at most ' + NAME_MOST + ' characters.');
+          }
+        }
+        const low = kind === 'groups' ? 0 : RELEASE_SECONDS[0];
+        if (!Number.isInteger(entry.seconds) || entry.seconds > RELEASE_SECONDS[1] || entry.seconds < low) add(path + '.seconds', 'A staggered dismissal is a whole number of seconds from ' + RELEASE_SECONDS[0] + ' to ' + RELEASE_SECONDS[1] + (kind === 'groups' ? ', or 0 for a group that leaves on the bell' : '') + '.');
+        // a missing `after` or `dayTypeIds` reads as null, as repair does (DECISIONS 2026-11-03)
+        if (entry.after !== null && entry.after !== undefined) {
+          if (!Array.isArray(entry.after) || entry.after.length === 0 || !entry.after.every((period, k) => Number.isInteger(period) && period >= 0 && (k === 0 || period > entry.after[k - 1]))) add(path + '.after', 'The periods a staggered dismissal follows are null (every period) or a list of whole numbers from 0, each once, in order.');
+        }
+        if (entry.dayTypeIds !== null && entry.dayTypeIds !== undefined) {
+          if (Array.isArray(entry.dayTypeIds) && entry.dayTypeIds.length === 0) add(path + '.dayTypeIds', 'The day types of a staggered dismissal are null (every day type) or a list of at least one.');
+          else idList(path + '.dayTypeIds', entry.dayTypeIds, dayTypeIds, 'day type');
+        }
         return undefined;
       });
     }

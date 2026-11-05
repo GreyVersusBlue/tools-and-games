@@ -32,13 +32,15 @@ import { intro } from '../components/card.js';
 import { count, figures } from '../components/words.js';
 import { openPrintPreview } from '../components/print-preview.js';
 import { createPlanMap } from '../surface/plan-map.js';
+import { closedOverlay, closedMarks } from '../surface/overlays/closed.js';
 import { slotAt } from '../surface/plan-layout.js';
 import { buildGraph } from '../../engine/graph.js';
-import { ActionError, addScenarioChange, applyScenario, discardScenario } from '../../engine/actions.js';
+import { ActionError, addScenarioChange, addScenarioLever, applyScenario, discardScenario, removeScenarioLever } from '../../engine/actions.js';
+import { places, placeAt } from '../../engine/places.js';
 import { changeWords } from '../../engine/scenario.js';
 import { nameOfRoom } from '../../engine/schema.js';
 import { snapshotAfter, snapshotRoom, undoForStep } from '../../storage/snapshots.js';
-import { scenarioView, firstLine, barWords, cancelled, cancelledSentence, applySummary } from './model.js';
+import { scenarioView, firstLine, barWords, cancelled, cancelledSentence, leverCancelled, leverCancelledSentence, applySummary, applyButtonWords, snapshotWords, pickedPlace, pickedName, pickWords, closedAt } from './model.js';
 import { changesPanel } from './changes.js';
 import { formsPanel, freshForm } from './forms.js';
 import { filePanel } from './file.js';
@@ -47,7 +49,6 @@ import { mountDifference } from './difference.js';
 
 const HEADLINE = 'This is the scenario lab.';
 // Apply's button when nothing in the scenario applies: it closes the scenario.
-const APPLY_NOTHING = 'Close the scenario: no change of it applies';
 const KEYS = 'Arrow keys move the cursor one cell and say what is under it. Hold Space and press the arrows to move the map. = and - zoom in and out, 0 fits the map to the window. The comparison is in the inspector.';
 
 // The keys of the lab's map. The map answers them itself, so they are listed
@@ -168,8 +169,15 @@ export const section = {
       project: () => store.project,
       apply: run,
       add,
+      addLever,
+      // the Kind of change fieldset: where the focus goes when the last chip is taken out
+      focusKinds: () => forms.focusKinds(),
       // where the focus goes when what held it is gone: the panel's first control
       home: () => changes.focusName(),
+      // the lab's map picking a corridor (Stairs and corridors, "Pick on the map")
+      pickStart: () => startPicking(),
+      pickStop: (refocus) => stopPicking(refocus, ''),
+      picking: () => pick.on,
       ask,
       // false once the section has been taken off the page
       mounted: () => !gone,
@@ -183,6 +191,14 @@ export const section = {
       h('p', { class: 'scn-report__lead' }, 'The movement view’s report on paper, with what the open scenario does to it.'),
       congestion);
     const panel = h('section', { class: 'scn-panel', 'aria-label': 'The scenario and its changes', data: { part: 'panel' } }, changes.element, forms.element, file.element, report);
+
+    // ---- picking a corridor on the map (DESIGN 12.4): a banner on the stage with
+    // Cancel; a tap or click, or Enter (or Space let go alone) at the keyboard's
+    // cursor, picks the place; Escape cancels and does nothing else
+    const pick = { on: false, preview: null, spaceDown: false, spaceMoved: false };
+    const pickText = h('span', { class: 'scn-pick__text' });
+    const pickCancel = h('button', { type: 'button', class: 'btn scn-pick__cancel', data: { action: 'pick-cancel' }, on: { click: () => stopPicking(true, 'Picking cancelled.') } }, 'Cancel');
+    const pickBanner = h('div', { class: 'scn-pick', role: 'status', hidden: true, data: { part: 'pick-banner' } }, pickText, pickCancel);
 
     const plan = createPlanMap({
       ctx,
@@ -199,7 +215,7 @@ export const section = {
           refresh();
         },
       },
-      frame: () => ({ before: [headline, top], after: [panel, bar], head: top, line, foot: bar }),
+      frame: () => ({ before: [headline, top], inside: [pickBanner], after: [panel, bar], head: top, line, foot: bar }),
     });
     const element = plan.root;
     element.classList.add('scn');
@@ -215,6 +231,7 @@ export const section = {
     // difference card's when the cursor is on a cell that has one (it names
     // the floor and corridor or stairs too), else the lab's own line
     plan.onCell((ev) => {
+      if (pick.on) return pickEvent(ev);
       if (ev.kind !== 'keyboard') return false;
       const card = difference.cursorWords();
       if (card) {
@@ -234,6 +251,139 @@ export const section = {
       ctx.announce(floor.name + ': ' + what + '.');
       return false;
     });
+
+    // ---- picking: what is under the pointer or the cursor, and the pick
+    const placesNow = () => store.derived.get('lab-places', ['building'], (project) => places(project, graphNow()));
+
+    // the floor, cell and place at a cell of the map ({ x, y } in the map's cells), or null between floors
+    function targetAt(x, y) {
+      if (!plan.world || !plan.project || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+      const found = slotAt(plan.world, x, y);
+      if (!found) return null;
+      const floor = found.slot.floor;
+      const cut = placesNow();
+      const place = placeAt(cut, graphNow(), floor.id, found.cell);
+      return { floor, cell: found.cell, picked: pickedPlace(store.project, floor, found.cell, place) };
+    }
+
+    function startPicking() {
+      if (!view || gone || pick.on) return;
+      pick.on = true;
+      pick.preview = null;
+      element.dataset.picking = 'true';
+      pickText.textContent = '';
+      pickBanner.hidden = false;
+      pickText.textContent = 'Tap or click a corridor to close it.';
+      forms.picked(true);
+      ctx.announce('Pick a corridor to close. Tap or click it, or move the cursor with the arrow keys and press Enter. Escape cancels.');
+      plan.focus();
+      plan.paint();
+    }
+
+    // refocus: the focus goes back to "Pick on the map"; `said` is announced
+    function stopPicking(refocus, said) {
+      if (!pick.on) return;
+      pick.on = false;
+      pick.preview = null;
+      pick.spaceDown = false;
+      delete element.dataset.picking;
+      pickBanner.hidden = true;
+      pickText.textContent = '';
+      plan.paint();
+      if (refocus && !forms.focusPick()) changes.focusName();
+      else forms.picked(false);
+      if (said) ctx.announce(said);
+    }
+
+    function previewOf(target) {
+      if (!target || target.picked.why) return null;
+      return { floorId: target.picked.lever.floorId, cells: target.picked.lever.cells };
+    }
+
+    // the place chosen: closed, or opened again when it is closed already
+    function choose(target) {
+      if (!target) {
+        ctx.announce('Between floors. Tap or click a corridor to close it.');
+        return;
+      }
+      const picked = target.picked;
+      if (picked.why) {
+        ctx.announce(picked.why + ' Tap or click a corridor to close it.');
+        return;
+      }
+      const shut = closedAt(view, target.floor.id, target.cell);
+      const name = pickedName(picked);
+      if (shut) {
+        if (!run(removeScenarioLever, { index: shut.index })) return;
+        const was = pickedName({ ...picked, lever: shut.lever });
+        changes.said('Reopened: ' + was + '.');
+        stopPicking(true, was + ' is open again.');
+        return;
+      }
+      if (!addLever(picked.lever)) return;
+      stopPicking(true, name + ' closed in this trial.');
+    }
+
+    function pickEvent(ev) {
+      if (ev.kind === 'escape') {
+        stopPicking(true, 'Picking cancelled.');
+        return true;
+      }
+      if (ev.kind === 'tap' || ev.kind === 'enter') {
+        choose(targetAt(ev.x, ev.y));
+        return true;
+      }
+      if (ev.kind === 'hover' || ev.kind === 'keyboard') {
+        const target = ev.kind === 'hover' && ev.inside === false ? null : targetAt(ev.x, ev.y);
+        const next = previewOf(target);
+        const was = pick.preview;
+        const same = JSON.stringify(next) === JSON.stringify(was);
+        pick.preview = next;
+        if (!same) plan.paint();
+        if (ev.kind === 'keyboard') {
+          if (!target) ctx.announce('Between floors.');
+          else ctx.announce(pickWords(target.picked, Boolean(closedAt(view, target.floor.id, target.cell))));
+        }
+        return false;
+      }
+      return false;
+    }
+
+    // Space let go with no arrow pressed while it was down picks at the cursor
+    // (Space with the arrows moves the map, as ever); Escape anywhere in the
+    // section cancels, before anything else hears it
+    plan.canvas.addEventListener('keydown', (event) => {
+      if (!pick.on) return;
+      if (event.key === ' ' && !event.repeat) {
+        pick.spaceDown = true;
+        pick.spaceMoved = false;
+      } else if (pick.spaceDown && event.key.startsWith('Arrow')) {
+        pick.spaceMoved = true;
+      }
+    });
+    plan.canvas.addEventListener('keyup', (event) => {
+      if (event.key !== ' ') return;
+      const picking = pick.on && pick.spaceDown && !pick.spaceMoved;
+      pick.spaceDown = false;
+      if (picking) choose(targetAt(plan.cursor.x, plan.cursor.y));
+    });
+    element.addEventListener('keydown', (event) => {
+      if (!pick.on || event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      stopPicking(true, 'Picking cancelled.');
+    }, true);
+
+    // the closed corridors and stairs, hatched over the plan (ui/surface/overlays/closed.js)
+    let marks = null;
+    const drawClosed = closedOverlay(() => (view ? { marks, preview: pick.preview } : null));
+    const hatched = new Map();
+    plan.overlays.push((g, v, floor, theme) => {
+      drawClosed(g, v, floor, theme);
+      hatched.set(floor.id, drawClosed.drawn);
+      element.dataset.closedDrawn = String(Array.from(hatched.values()).reduce((sum, n) => sum + n, 0));
+    });
+
 
     // ---- where the shell's messages start (SV2-72d): from 1200 px the panel
     // is a column on the left of the map, and a message lying over its forms
@@ -299,6 +449,26 @@ export const section = {
       return true;
     }
 
+    // a lever from the forms (a bell time, a staggered dismissal, a capacity or
+    // a head count); one that puts the schedule back as it is says so
+    function addLever(lever) {
+      const project = store.project;
+      const said = changeWords(project, lever).text;
+      let refused = false;
+      const made = run(addScenarioLever, { lever }, (message) => {
+        refused = true;
+        changes.said(message);
+        ctx.toast({ kind: 'problem', text: message });
+      });
+      if (refused) return false;
+      const undone = leverCancelled(project.scenario, made ? store.project.scenario : project.scenario, lever);
+      const instead = made && !undone ? scenarioView(store.project).levers.find((each) => each.index === store.project.scenario.levers.length - 1) : null;
+      const text = undone ? leverCancelledSentence(said, undone.taken, lever.kind === 'way' || lever.kind === 'corridor' ? 'building' : 'schedule') : made ? 'Added: ' + said + (instead && instead.instead ? ', instead of ' + instead.instead : '') + '.' : 'The scenario already has this: ' + said + '.';
+      changes.said(text);
+      ctx.announce(text);
+      return true;
+    }
+
     // ---- the comparison, asked of the scenario lane
     function laneKey() {
       return { scenario: store.project.scenario, counters: store.geometryVersion + ':' + store.buildingVersion + ':' + store.scheduleVersion, dayTypeId: memory.dayTypeId, bellsId: memory.bellsId, transition: memory.transition };
@@ -354,23 +524,25 @@ export const section = {
       const current = scenarioView(project);
       if (!current) return;
       const summary = applySummary(project, current);
-      const n = summary.changes.length;
+      const n = summary.writes;
       const skipped = summary.skipped.length;
-      const slots = count(summary.slots, (project.settings.periodWord || 'Period').toLowerCase());
       const none = summary.snapshot ? await noSnapshotBecause(ctx) : null;
       if (gone) return;
       const readOnly = Boolean(ctx.storage && ctx.storage.state.readOnly);
-      const snapshotLine = none === null
-        ? 'It changes ' + slots + ' of the groups\' days, so a snapshot of the project as it is now is kept as well, and can be restored from Snapshots in the Project section.'
-        : 'It changes ' + slots + ' of the groups\' days, which would keep a snapshot of the project as it is now, but none will be kept: ' + none + (readOnly ? '' : ' Undo still brings the schedule back while this tab stays open.');
+      const snapshotLine = snapshotWords(summary, (project.settings.periodWord || 'Period').toLowerCase(), none, readOnly);
+      // with closures alone nothing is written: no Apply, and no line about its undo
+      const nothingToWrite = !summary.canApply && summary.total > 0;
+      const sentences = summary.changes.concat(summary.levers);
       const body = [
-        h('p', null, n === 0 ? 'Nothing in this scenario applies to the schedule as it is now. Applying it closes it and changes no slot.' : (n === 1 ? 'This change goes' : 'These ' + n + ' changes go') + ' into the real schedule:'),
-        n > 0 ? h('ul', { class: 'scn-summary__list', data: { part: 'applies' } }, summary.changes.map((said) => h('li', { dir: 'auto' }, words(said.parts)))) : null,
+        h('p', null, n === 0 ? (summary.trial ? 'Nothing in this scenario writes to the schedule or the building, so there is nothing to apply. Discard the scenario to close it.' : 'Nothing in this scenario applies to the schedule as it is now. Applying it closes it and changes no slot.') : (n === 1 ? 'This change goes' : 'These ' + n + ' changes go') + ' into the real schedule:'),
+        n > 0 ? h('ul', { class: 'scn-summary__list', data: { part: 'applies' } }, sentences.map((said) => h('li', { dir: 'auto' }, words(said.parts)))) : null,
+        summary.kinds.length > 0 ? h('ul', { class: 'scn-summary__list scn-summary__kinds', data: { part: 'kinds' } }, summary.kinds.map((text) => h('li', { dir: 'auto' }, text))) : null,
         summary.changes.some((said) => said.teachers.length > 0) ? h('p', null, 'Teachers follow rooms: where a group moves to another room, who teaches it changes as the list says.') : null,
         skipped > 0 ? h('p', null, 'Skipped, because the schedule has changed under ' + (skipped === 1 ? 'it' : 'them') + ':') : null,
         skipped > 0 ? h('ul', { class: 'scn-summary__list', data: { part: 'skipped' } }, summary.skipped.map((text) => h('li', { dir: 'auto' }, text))) : null,
         summary.added.length > 0 || summary.removed.length > 0 ? h('p', { data: { part: 'groups' } }, 'Groups only in one of the two files are not added or removed: a scenario changes rooms, not the list of groups.') : null,
-        h('p', null, 'It is one step: Undo brings back the schedule and the scenario together.'),
+        summary.trial ? h('p', { class: 'scn-summary__trial', role: 'note', data: { part: 'trial' } }, words(summary.trial.parts)) : null,
+        nothingToWrite ? null : h('p', null, 'It is one step: Undo brings back the schedule and the scenario together.'),
         summary.snapshot ? h('p', { data: { part: 'snapshot' } }, snapshotLine) : null,
       ];
       const dialog = ctx.openDialog({
@@ -382,7 +554,7 @@ export const section = {
         class: 'scn-apply',
         opener: applyButton,
         // with nothing that applies the button says what it does: it closes the scenario
-        buttons: [{ label: n === 0 ? APPLY_NOTHING : n === 1 ? 'Apply 1 change' : 'Apply ' + n + ' changes', value: 'apply', kind: 'primary' }, { label: 'Keep it as a scenario', value: null }],
+        buttons: nothingToWrite ? [{ label: 'Keep it as a scenario', value: null, kind: 'primary' }] : [{ label: applyButtonWords(summary), value: 'apply', kind: 'primary' }, { label: 'Keep it as a scenario', value: null }],
       });
       const answer = await dialog.closed;
       if (answer !== 'apply' || gone) return;
@@ -396,7 +568,7 @@ export const section = {
       // the dialog gave the focus back to Apply, which the drawing has just
       // hidden: it goes on to the start field now, never by way of the page
       changes.focusName();
-      const text = n === 0 ? 'Closed ' + quote(current.name) + ': no change of it applied, and the schedule is as it was.' : 'Applied ' + quote(current.name) + ': ' + count(n, 'change') + ' made to the schedule.';
+      const text = n === 0 ? 'Closed ' + quote(current.name) + ': no change of it applied, and the schedule is as it was.' : 'Applied ' + quote(current.name) + ': ' + count(n, 'change') + ' made to the schedule.' + (summary.trial ? ' ' + summary.trial.text : '');
       // Undo from the message brings the scenario back, and the focus to its
       // name field, its first control (the message and its button are gone)
       const offer = { label: 'Undo', run: () => {
@@ -425,7 +597,7 @@ export const section = {
       if (!current) return;
       const ok = await ctx.confirm({
         title: 'Discard the scenario ' + quote(current.name) + '?',
-        body: [h('p', null, 'Its ' + count(current.changes.length, 'change') + (current.changes.length === 1 ? ' goes' : ' go') + ', and the real schedule stays as it is. Undo brings the scenario back while this tab stays open.')],
+        body: [h('p', null, 'Its ' + count(current.changes.length + (Array.isArray(current.levers) ? current.levers.length + current.droppedLevers.length : 0), 'change') + (current.changes.length + current.levers.length + current.droppedLevers.length === 1 ? ' goes' : ' go') + ', and the real schedule stays as it is. Undo brings the scenario back while this tab stays open.')],
         action: 'Discard the scenario',
         keep: 'Keep the scenario',
         danger: true,
@@ -471,6 +643,10 @@ export const section = {
       // panel's first control, rather than letting it fall to the page
       const held = panel.contains(document.activeElement) ? document.activeElement : null;
       view = scenarioView(project);
+      if (!view) stopPicking(false, '');
+      // the closures the plan hatches: the levers reconcile kept
+      marks = view ? closedMarks(project, view.levers.map((each) => each.lever)) : null;
+      hatched.clear();
       element.dataset.mode = view ? 'open' : 'none';
       lineWords.replaceChildren(...words(firstLine(project, view)));
       openBar(Boolean(view));

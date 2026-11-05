@@ -20,7 +20,7 @@ import { strengthOf, tintOf, differenceOf, differenceWords, rankPlaces, apartGro
 import { apart } from '../../ui/surface/overlays/evacuation.js';
 import { whenWords, sidesWords, cardText, apartLabel, cardWalks, groupsAt } from '../../ui/scenarios/difference.js';
 import { contrast, mix } from '../../ui/colour.js';
-import { sampleSchool } from '../../data/sample-school.js';
+import { plainSchool as sampleSchool } from '../engine/helpers.mjs';
 import { buildGraph } from '../../engine/graph.js';
 import { createPipeline, scenarioRun } from '../../engine/worker.js';
 import { loadDifference, applyChanges, editedGroupIds } from '../../engine/scenario.js';

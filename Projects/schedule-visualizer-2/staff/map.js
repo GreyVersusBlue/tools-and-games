@@ -355,6 +355,15 @@ function paintRoute(g, floor, plan, theme, lines) {
   }
 }
 
+// "up only", "down only", or "one way only" on one floor, for a connection
+// that is one-way.
+function wayOf(school, link) {
+  const floors = school.data.building.floors;
+  const level = (id) => (floors.find((each) => each.id === id) || { level: 0 }).level;
+  const rise = link.direction === 'ab' ? level(link.b.floorId) - level(link.a.floorId) : level(link.a.floorId) - level(link.b.floorId);
+  return rise > 0 ? 'up only' : rise < 0 ? 'down only' : 'one way only';
+}
+
 function paint(canvas, school, floor, plan, theme, marks, lines) {
   const ratio = Math.max(1, globalThis.devicePixelRatio || 1);
   canvas.width = Math.max(1, Math.round(plan.width * ratio));
@@ -371,10 +380,30 @@ function paint(canvas, school, floor, plan, theme, marks, lines) {
 
   // corridors and stairs, then a hairline where one meets something else
   const walkable = (x, y) => x >= 0 && y >= 0 && x < floor.width && y < floor.height && floor.cells[y * floor.width + x] !== '.';
+  // each stair cell's connections, letter by letter, with the way each may be
+  // walked, so a chevron stands by its own letter and by no other's:
+  // 'up' or 'down' between floors; on one floor the end it is walked from is
+  // 'down' (in) and the end it comes out at is 'up' (out). The planner's plan
+  // draws the same (ui/surface/renderer.js).
   const letters = new Map();
+  const levelOf = (id) => {
+    const found = school.data.building.floors.find((each) => each.id === id);
+    return found ? found.level : 0;
+  };
   for (const link of school.data.building.connections) {
-    for (const end of [link.a, link.b]) {
-      if (end.floorId === floor.id && !letters.has(end.cell)) letters.set(end.cell, link.label);
+    for (const [at, end] of [link.a, link.b].entries()) {
+      if (end.floorId !== floor.id) continue;
+      if (!letters.has(end.cell)) letters.set(end.cell, []);
+      const here = letters.get(end.cell);
+      if (here.some((entry) => entry.letter === link.label)) continue;
+      let way = null;
+      if (link.direction === 'ab' || link.direction === 'ba') {
+        const from = link.direction === 'ab' ? link.a : link.b;
+        const to = link.direction === 'ab' ? link.b : link.a;
+        const rise = levelOf(to.floorId) - levelOf(from.floorId);
+        way = rise > 0 ? 'up' : rise < 0 ? 'down' : (at === 0) === (link.direction === 'ab') ? 'down' : 'up';
+      }
+      here.push({ letter: link.label, way });
     }
   }
   for (let index = 0; index < floor.cells.length; index += 1) {
@@ -410,9 +439,42 @@ function paint(canvas, school, floor, plan, theme, marks, lines) {
   if (cell >= 10) {
     g.font = font(Math.min(14, Math.round(cell * 0.8)));
     g.fillStyle = mapLabelOn(theme.stairs, theme.ink, theme.paper);
-    for (const [index, letter] of letters) {
+    for (const [index, entries] of letters) {
       if (floor.cells[index] !== 'S') continue;
-      g.fillText(letter, plan.px(index % floor.width) + cell / 2, plan.py(Math.floor(index / floor.width)) + cell / 2 + 0.5);
+      const left = plan.px(index % floor.width);
+      const mid = plan.py(Math.floor(index / floor.width)) + cell / 2 + 0.5;
+      if (cell < 16 || entries.every((entry) => !entry.way)) {
+        g.fillText(entries.map((entry) => entry.letter).join(' '), left + cell / 2, mid);
+        continue;
+      }
+      // each letter with its own bold chevron beside it, the row centred in the cell
+      const mark = cell * 0.4;
+      const gap = g.measureText(' ').width;
+      const widths = entries.map((entry) => g.measureText(entry.letter).width + (entry.way ? mark : 0));
+      let start = left + cell / 2 - (widths.reduce((sum, w) => sum + w, 0) + gap * (entries.length - 1)) / 2;
+      g.textAlign = 'left';
+      entries.forEach((entry, i) => {
+        const wide = g.measureText(entry.letter).width;
+        g.fillText(entry.letter, start, mid);
+        if (entry.way) {
+          const mx = start + wide + mark * 0.6;
+          const reach = mark * 0.32;
+          const tip = entry.way === 'up' ? -reach : reach;
+          g.beginPath();
+          g.moveTo(mx - reach, mid - tip / 2);
+          g.lineTo(mx, mid + tip / 2);
+          g.lineTo(mx + reach, mid - tip / 2);
+          g.strokeStyle = g.fillStyle;
+          g.lineWidth = Math.max(1.5, cell / 8);
+          g.lineCap = 'round';
+          g.lineJoin = 'round';
+          g.stroke();
+          g.lineJoin = 'miter';
+          g.lineCap = 'butt';
+        }
+        start += widths[i] + gap;
+      });
+      g.textAlign = 'center';
     }
   }
 
@@ -559,7 +621,8 @@ export function floorMap(ctx, options) {
 
   function chrome() {
     const floor = state.floor;
-    canvas.setAttribute('aria-label', (opts.label || 'Floor plan') + ': ' + floor.name + '. The rooms are listed in words on this page.');
+    const oneWay = school.data.building.connections.filter((link) => (link.direction === 'ab' || link.direction === 'ba') && (link.a.floorId === floor.id || link.b.floorId === floor.id)).map((link) => 'Stairs ' + link.label + ' is ' + wayOf(school, link) + '.');
+    canvas.setAttribute('aria-label', (opts.label || 'Floor plan') + ': ' + floor.name + '. The rooms are listed in words on this page.' + (oneWay.length > 0 ? ' ' + oneWay.join(' ') : ''));
     tabs.replaceChildren(...(near ? [] : school.floors).map((each) => {
       const current = each.id === floor.id;
       if (opts.floorHref) return h('a', { class: 'tab', href: opts.floorHref(each), 'aria-current': current ? 'page' : null, dataset: { floor: each.id } }, typed(each.name));

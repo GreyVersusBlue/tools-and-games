@@ -102,7 +102,7 @@
 // counts each lane: asked, remembered, sent, answered, dropped, failed.
 
 import { createPipeline, unpack, scenarioRun, suggestRun, REQUEST, ANSWER, READY, SCENARIO_REQUEST, SCENARIO_ANSWER, SUGGEST_REQUEST, SUGGEST_ANSWER } from '../engine/worker.js';
-import { reconcile, trimResult, compareResults } from '../engine/scenario.js';
+import { reconcile, trimResult, compareResults, leverRouteOptions, leverOptionsKey } from '../engine/scenario.js';
 import { NO_SUGGESTION } from '../engine/suggest.js';
 
 // How long a new worker has to say it has loaded before it is given up on.
@@ -176,6 +176,12 @@ export function createEngineClient(store, options) {
   let scenarioIdNext = 0;
   let scenarioKey = null;
   let scenarioCounter = 0;
+  // the scenario lane's fourth counter (ARCHITECTURE 18.3): it moves when the
+  // building levers' route options do, so the lane's transition results are
+  // never served across a closure. The geometry counter stays the store's:
+  // the three lanes share one route cache and one stamp.
+  let leversKey = '';
+  let leversCounter = 0;
 
   function stopWaitingForReady() {
     if (readyTimer !== null) clearTimeout(readyTimer);
@@ -393,13 +399,25 @@ export function createEngineClient(store, options) {
     if (key !== scenarioKey) {
       scenarioKey = key;
       scenarioCounter += 1;
+      // a project the lane cannot read is a failure of the lane's own answer,
+      // as it always was; it has no route options to key here
+      let optionsKey = '';
+      try {
+        optionsKey = leverOptionsKey(leverRouteOptions(project, reconcile(project, project.scenario).levers));
+      } catch (error) {
+        optionsKey = '';
+      }
+      if (optionsKey !== leversKey) {
+        leversKey = optionsKey;
+        leversCounter += 1;
+      }
     }
     const job = laneJob(lane, {
       key,
       subject: 'scenario',
       project,
       storeVersions: versions,
-      versions: { geometry: versions.geometry, building: versions.building, schedule: scenarioCounter },
+      versions: { geometry: versions.geometry, building: versions.building, schedule: scenarioCounter, levers: leversCounter },
       ready: true,
       compares: new Map(),
     });
@@ -546,9 +564,11 @@ export function createEngineClient(store, options) {
           lane.stats.dropped += 1;
           return client.scenario(options);
         }
-        const changes = reconcile(run.project, run.project.scenario).changes;
-        const compare = compareResults(trimResult(main), run.answer, { ...asked, changes });
-        return { result: run.answer, compare, changes, versions: run.storeVersions, where: run.where, generation: run.generation };
+        const kept = reconcile(run.project, run.project.scenario);
+        const changes = kept.changes;
+        // the levers too, so a head-count or a staggered dismissal marks its groups
+        const compare = compareResults(trimResult(main), run.answer, { ...asked, changes, levers: kept.levers || [] });
+        return { result: run.answer, compare, changes, levers: kept.levers || [], versions: run.storeVersions, where: run.where, generation: run.generation };
       })));
       job.compares.set(askedKey, promise);
       // a comparison that failed is not remembered either

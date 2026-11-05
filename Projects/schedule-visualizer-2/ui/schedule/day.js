@@ -1,4 +1,4 @@
-// The Day tab (DESIGN 11.3): five cards, top to bottom.
+// The Day tab (DESIGN 11.3 and 12.2): six cards, top to bottom.
 //
 //   1. The school day     how many periods, and what the school calls one.
 //   2. Day types          which classes meet: one row each, with its name, its
@@ -14,6 +14,9 @@
 //   5. Marked periods     Lunch, Advisory, Activity and No class in a period,
 //                         for the school, some grades or some groups: a
 //                         sentence a mark, each opening its editor in place.
+//   6. Staggered          groups, a grade or a wing that leave a little after
+//      dismissal          the bell: a sentence an entry, each opening its
+//                         editor in place (./release.js).
 //
 // Every rule is the engine's (engine/actions.js and engine/day-types.js): the
 // limits on names and counts, what a change of kind takes with it, what a
@@ -32,6 +35,9 @@ import {
 import { picker } from '../components/picker.js';
 import { icon } from '../components/icons.js';
 import { markFor } from '../../engine/marks.js';
+import { releaseOf, RELEASE_MOST } from '../../engine/schema.js';
+import { addRelease, setRelease, removeRelease } from '../../engine/actions.js';
+import { releaseEditor, releaseParts, releaseSentence, releaseDraftOf, releasePayload, releaseMissing, releaseEntryOf, syncReleaseDraft, signature as releaseSignature } from './release.js';
 import { isOwnCopy, baseDayType, effectiveDayType, ownDayTypes, dayShort, bellsShort } from '../../engine/day-types.js';
 import { bellsFor, bellFindings, periodName, formatTime } from '../../engine/bells.js';
 import { formatDuration } from '../../engine/findings.js';
@@ -269,6 +275,7 @@ export function mount(env) {
       if (info.slots > 0) lost.push(count(info.slots, 'room entry', 'room entries') + ' in ' + count(info.groups.length, 'group'));
       if (info.bells > 0) lost.push(count(info.bells, 'bell time'));
       if (info.scenarioChanges > 0) lost.push(count(info.scenarioChanges, 'scenario change'));
+      if (info.scenarioLevers > 0) lost.push(count(info.scenarioLevers, 'scenario lever'));
       lost.push(...info.marksAndDutiesWords);
       const ok = await ctx.confirm({
         title: 'Remove ' + what + ' from every day?',
@@ -1047,6 +1054,184 @@ export function mount(env) {
       h('div', { class: 'sch-toolbar' }, add));
   }
 
+  // ------------------------------------------------------------ 6. staggered dismissal
+
+  // What is open in the card: null, or a draft (./release.js releaseDraftOf).
+  // `id` is null for an entry not added yet, which is added by its own
+  // button; one that is added is changed as each field is left, once the
+  // draft says something the engine takes.
+  if (view.releaseEdit === undefined) view.releaseEdit = null;
+  // the sentence under the editor, which a typed field rewrites in place
+  let releaseSays = null;
+  // the line that says what is missing and the button that adds, which a typed field rereads in place
+  let releaseHint = null;
+  let releaseAdd = null;
+
+  function openRelease(entry) {
+    view.releaseEdit = releaseDraftOf(entry);
+    env.render('release:' + entry.id + ':who:' + view.releaseEdit.kind);
+  }
+
+  function startRelease() {
+    view.releaseEdit = releaseDraftOf(null);
+    env.render('release:new:who:groups');
+  }
+
+  function closeRelease() {
+    const edit = view.releaseEdit;
+    view.releaseEdit = null;
+    env.render(edit && edit.id !== null ? 'release:' + edit.id + ':open' : 'release-new');
+  }
+
+  function sayRelease() {
+    const edit = view.releaseEdit;
+    if (releaseSays && edit) releaseSays.textContent = releaseSentence(ctx.store.project, releaseEntryOf(edit), edit.id === null ? '' : edit.id);
+  }
+
+  // What is missing before the draft can be taken, as the line under the editor (or null).
+  function missingLine(edit) {
+    const hint = releaseMissing(edit);
+    return hint === '' ? null : h('p', { class: 'sch-hint sch-markedit__missing', role: 'status' }, hint + (edit.id === null ? '' : ' Nothing changes until then.'));
+  }
+
+  // A typed field leaves the focus where it is: what is missing, and whether Add
+  // may be pressed, are read from the draft again in place.
+  function rereadRelease() {
+    const edit = view.releaseEdit;
+    if (!edit) return;
+    if (releaseHint) {
+      const line = missingLine(edit);
+      releaseHint.replaceChildren(...(line ? [line] : []));
+      releaseHint.hidden = line === null;
+    }
+    if (releaseAdd) releaseAdd.disabled = releaseMissing(edit) !== '';
+  }
+
+  // A field of the draft changed. `key` is the control to keep the focus on;
+  // null for a typed field, which still has it. A field that is left with a
+  // value the engine refuses throws, and the field says why.
+  function changeRelease(patch, key) {
+    const edit = view.releaseEdit;
+    if (!edit) return;
+    const next = { ...edit, ...patch };
+    // a kind chosen from the groups entry's "On the bell" leaves a time the other kinds can use
+    if (patch.kind !== undefined && patch.kind !== 'groups') next.onBell = false;
+    const typed = key === null;
+    if (edit.id !== null && releaseMissing(next) === '') {
+      const before = releaseOf(ctx.store.project).find((entry) => entry.id === edit.id);
+      const payload = { id: edit.id, ...releasePayload(next) };
+      if (typed) ctx.store.apply(setRelease, payload);
+      else if (!apply(env, setRelease, payload)) {
+        env.render(key);
+        return;
+      }
+      const now = releaseOf(ctx.store.project).find((entry) => entry.id === edit.id);
+      Object.assign(edit, next, { note: '' });
+      if (now) {
+        const changed = !before || releaseSignature(now) !== releaseSignature(before);
+        edit.seen = releaseSignature(now);
+        if (changed) ctx.toast({ text: 'Changed to: ' + releaseSentence(ctx.store.project, now, now.id) + '.', action: { label: 'Undo', run: ctx.undo } });
+      }
+    } else {
+      Object.assign(edit, next, { note: '' });
+    }
+    if (typed) {
+      sayRelease();
+      rereadRelease();
+    } else env.render(key);
+  }
+
+  function addThisRelease() {
+    const edit = view.releaseEdit;
+    if (!edit || releaseMissing(edit) !== '') return;
+    if (!apply(env, addRelease, releasePayload(edit))) return;
+    view.releaseEdit = null;
+    const entries = releaseOf(ctx.store.project);
+    const added = entries[entries.length - 1];
+    const sentence = releaseSentence(ctx.store.project, added, added.id);
+    ctx.announce('Added ' + sentence + '.');
+    ctx.toast({ text: 'Added: ' + sentence + '.', action: { label: 'Undo', run: ctx.undo } });
+    env.render('release:' + added.id + ':open');
+  }
+
+  function removeThisRelease(entry) {
+    const sentence = releaseSentence(ctx.store.project, entry);
+    if (!apply(env, removeRelease, { id: entry.id })) return;
+    view.releaseEdit = null;
+    // Undo from the toast brings the line back and the focus with it
+    const back = 'release:' + entry.id + ':open';
+    ctx.toast({ text: 'Removed: ' + sentence + '.', action: { label: 'Undo', run: () => {
+      env.focusAfter(back);
+      ctx.undo();
+    } } });
+    env.render('release-new');
+  }
+
+  function releaseEditorBox(project, edit) {
+    const id = edit.id === null ? 'new' : edit.id;
+    const key = (part) => 'release:' + id + ':' + part;
+    const editor = releaseEditor({ project, draft: edit, change: changeRelease, key, announce: ctx.announce, buildingHref: '#building' });
+    const says = h('p', { class: 'sch-markedit__says', 'aria-live': 'polite' });
+    releaseSays = says;
+    sayRelease();
+    const line = missingLine(edit);
+    const hintSlot = h('div', { class: 'sch-markedit__hint', hidden: line === null }, line);
+    const addButton = button('Add this staggered dismissal', addThisRelease, { primary: true, key: key('add'), action: 'add-release' });
+    addButton.disabled = line !== null;
+    releaseHint = hintSlot;
+    releaseAdd = addButton;
+    const added = edit.id === null ? null : releaseOf(project).find((entry) => entry.id === edit.id);
+    return h('div', { class: 'sch-markedit sch-releaseedit', role: 'group', 'aria-label': edit.id === null ? 'The new staggered dismissal' : 'The staggered dismissal: ' + (added ? releaseSentence(project, added, added.id) : '') },
+      editor.element,
+      h('p', { class: 'sch-markedit__label' }, 'This reads:'),
+      says,
+      edit.note === '' ? null : h('p', { class: 'sch-hint sch-markedit__note' }, edit.note),
+      hintSlot,
+      h('div', { class: 'sch-toolbar' },
+        edit.id === null
+          ? [addButton, button('Cancel', closeRelease, { key: key('cancel'), action: 'cancel-release' })]
+          : [button('Done', closeRelease, { primary: true, key: key('done'), action: 'done-release' }), button('Remove this staggered dismissal', () => removeThisRelease(added), { key: key('remove'), action: 'remove-release' })]));
+  }
+
+  function releaseLine(project, entry) {
+    const parts = releaseParts(project, entry, entry.id);
+    return h('li', { class: 'sch-marks__item', data: { release: entry.id } },
+      keyed(h('button', { type: 'button', class: 'sch-marks__line', 'aria-expanded': 'false', on: { click: () => openRelease(entry) } },
+        h('strong', null, parts.who), ' ', h('strong', null, parts.how), parts.rest,
+        parts.groups === null ? null : [' (', h('span', { class: parts.groups.startsWith('no ') ? 'sch-marks__none' : null }, parts.groups), ')']), 'release:' + entry.id + ':open'),
+      parts.beaten === '' ? null : h('span', { class: 'sch-marks__beaten' }, '(' + parts.beaten + ')'));
+  }
+
+  function releaseCard(project) {
+    const entries = releaseOf(project);
+    let edit = view.releaseEdit && (view.releaseEdit.id === null || entries.some((entry) => entry.id === view.releaseEdit.id)) ? view.releaseEdit : null;
+    if (view.releaseEdit && !edit) {
+      // the entry under the editor is gone (a deletion, or the Undo of its Add): the focus it had goes to the card's Add button
+      const had = element.querySelector('.sch-releaseedit');
+      view.releaseEdit = null;
+      if (had && had.contains(document.activeElement)) {
+        env.focusAfter('release-new');
+        ctx.announce('The staggered dismissal you were editing is gone from the project.');
+      }
+    }
+    if (edit) {
+      edit = syncReleaseDraft(project, edit, ctx.announce);
+      view.releaseEdit = edit;
+    }
+    const full = entries.length >= RELEASE_MOST;
+    const add = button('Add a staggered dismissal', startRelease, { primary: entries.length === 0, key: 'release-new', action: 'add-release-start' });
+    add.disabled = full || (edit !== null && edit.id === null);
+    return h('section', { class: 'sch-card', 'aria-labelledby': 'sch-card-release', data: { card: 'release' } },
+      h('h2', { class: 'sch-card__title', id: 'sch-card-release' }, 'Staggered dismissal'),
+      h('p', { class: 'sch-hint' }, 'The wing is the wing of the room the group leaves. A rule for named groups beats a wing’s or a grade’s; between a grade and a wing, the grade’s wins.'),
+      entries.length === 0 && edit === null
+        ? h('p', { class: 'sch-marks__empty' }, 'Hold some groups back a minute or two so the corridors clear. A group held back has less time to walk, and Movement and the checks count that.')
+        : h('ul', { class: 'sch-marks', data: { list: 'release' } }, entries.map((entry) => (edit && edit.id === entry.id ? h('li', { class: 'sch-marks__item is-open', data: { release: entry.id } }, releaseEditorBox(project, edit)) : releaseLine(project, entry)))),
+      edit !== null && edit.id === null ? releaseEditorBox(project, edit) : null,
+      full ? h('p', { class: 'sch-hint' }, 'A project has at most ' + RELEASE_MOST + ' staggered dismissals. Remove one to add another.') : null,
+      h('div', { class: 'sch-toolbar' }, add));
+  }
+
   // ------------------------------------------------------------ drawing
 
   function draw(project) {
@@ -1059,7 +1244,8 @@ export function mount(env) {
       dayTypesCard(project),
       regularBellsCard(project),
       otherBellsCard(project),
-      marksCard(project));
+      marksCard(project),
+      releaseCard(project));
   }
 
   draw(ctx.store.project);

@@ -59,7 +59,7 @@ test('clearFloorWords counts what is drawn, in the words the button stands besid
   const floor = project.building.floors[1];
   const words = clearFloorWords(project, floor);
   assert.equal(words.empty, false);
-  assert.equal(words.removes, 'Removes everything drawn on Floor 2: 5 rooms, 3 other spaces, 38 corridor cells, 2 stairs cells, 1 corridor name and 2 stairs connections.');
+  assert.equal(words.removes, 'Removes everything drawn on Floor 2: 5 rooms, 3 other spaces, 38 corridor cells, 3 stairs cells, 1 corridor name and 3 stairs connections.');
   assert.match(words.keeps, /^The floor stays, empty, with its name, level, size, traced image and the areas left out of the colour scale\./);
   // it promises no snapshot: the device may have no room for one (SV2-28d)
   assert.match(words.keeps, /Undo brings it all back, and a snapshot of the project as it was is kept too when this device has room for one\.$/);

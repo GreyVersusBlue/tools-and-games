@@ -574,6 +574,77 @@
   }
 }
 
+/* ---------- The Floor tab: which way a stairs connection may be walked ---------- */
+
+/* Three radio chips, each a full sentence that wraps and never truncates. The
+   chosen one has a bar under it as well as the soft accent, so it does not
+   rest on colour. */
+.bi-way {
+  min-width: 0;
+  margin: var(--s-2) 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.bi-way__legend {
+  padding: 0;
+  margin-bottom: var(--s-1);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  font-weight: var(--w-medium);
+}
+
+.bi-way__chip {
+  position: relative;
+  display: block;
+  margin-top: var(--s-1);
+  cursor: pointer;
+}
+
+.bi-way__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.bi-way__text {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: var(--s-1) var(--s-3);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--r-1);
+  background: var(--card);
+  font-weight: var(--w-medium);
+  overflow-wrap: anywhere;
+}
+
+.bi-way__input:hover + .bi-way__text {
+  background: var(--paper);
+}
+
+.bi-way__input:checked + .bi-way__text {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+
+.bi-way__input:focus-visible + .bi-way__text {
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: var(--focus-offset);
+}
+
+@media (pointer: coarse) {
+  .bi-way__text {
+    min-height: 44px;
+  }
+}
+
 @media print {
   .bld-strip,
   .bld-status,

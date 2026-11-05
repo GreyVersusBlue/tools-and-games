@@ -99,8 +99,8 @@ after(async () => {
 
 // ------------------------------------------------------------------ marks
 
-test('the Day tab has a fifth card, Marked periods, that says nothing is marked until it is', async () => {
-  assert.deepEqual(await texts('.sch-daytab .sch-card__title'), ['The school day', 'Day types', 'Regular bells', 'Other bell schedules', 'Marked periods']);
+test('the Day tab has Marked periods as its fifth card, that says nothing is marked until it is', async () => {
+  assert.deepEqual(await texts('.sch-daytab .sch-card__title'), ['The school day', 'Day types', 'Regular bells', 'Other bell schedules', 'Marked periods', 'Staggered dismissal']);
   assert.match(await text('.sch-marks__empty'), /^Nothing is marked\./);
   assert.equal(await exists('.sch-marks__line'), false);
 });

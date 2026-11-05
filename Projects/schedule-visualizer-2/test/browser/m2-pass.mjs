@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { openPlanner, go, startServer, launch, waitForSection, visit, TOOL_DIR, loadModule } from './harness.mjs';
+import { openPlanner, go, startServer, launch, atRest, waitForSection, visit, TOOL_DIR, loadModule } from './harness.mjs';
 import { SCREENS } from './screens.mjs';
 
 const DAY_A = 'dsample00a';
@@ -97,10 +97,27 @@ const reachable = (page, selector) => page.waitForFunction((wanted) => {
   return Boolean(hit) && el.contains(hit);
 }, { timeout: 5000 }, selector);
 // A finger's tap on the middle of what a selector finds, where it is now.
+// The box is read once it has held for two frames, and the press is only sent
+// if what is at its middle is still the control: a box read straight after a
+// scroll or a redraw lands where the control was, on a runner slow enough to
+// be between the two (SV2-87e).
 async function tapAt(page, selector) {
-  await reachable(page, selector);
-  const at = await box(page, selector);
-  await page.touchscreen.tap(at.left + at.width / 2, at.top + at.height / 2);
+  for (let tries = 0; ; tries += 1) {
+    await reachable(page, selector);
+    const at = await atRest(page, selector);
+    const x = at.left + at.width / 2;
+    const y = at.top + at.height / 2;
+    const hit = await page.evaluate(([px, py, wanted]) => {
+      const el = document.querySelector(wanted);
+      const over = document.elementFromPoint(px, py);
+      return Boolean(el && over && el.contains(over));
+    }, [x, y, selector]);
+    if (hit) {
+      await page.touchscreen.tap(x, y);
+      return;
+    }
+    assert.ok(tries < 20, selector + ' was not under its own middle after 20 tries');
+  }
 }
 // The same, brought to the middle of the window first (a phone's inspector
 // handle and bottom bar are over its foot).
