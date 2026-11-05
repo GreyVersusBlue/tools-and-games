@@ -15,6 +15,8 @@
 //   - every .html is claimed by an area in ownership.json
 //   - no page or browser module loads a .mjs (the live server serves it as
 //     application/octet-stream, which browsers refuse; see mjs-guard.mjs)
+//   - every relative <a href> in every .html points at a file that exists
+//     (see link-guard.mjs; offsite and mailto/tel/#fragment links are skipped)
 //
 // Exit code 1 on any failure.
 
@@ -23,6 +25,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { SITE } from './harness.mjs';
 import { findBrowserMjs, selfTest as mjsSelfTest } from './mjs-guard.mjs';
+import { findBrokenLinks, selfTest as linkSelfTest, EXEMPT as LINK_EXEMPT } from './link-guard.mjs';
 
 const SKIP = ['node_modules', '/tools/board-check/three-', '/libs/'];
 
@@ -287,6 +290,44 @@ for (const p of files.filter(f => /\.(html|js)$/.test(f))) {
   const src = fs.readFileSync(p, 'utf8');
   for (const h of findBrowserMjs(p.endsWith('.html') ? 'html' : 'js', src)) {
     fail(p, `line ${h.line} makes the browser load a .mjs, which the live server serves as application/octet-stream: ${h.text}`);
+  }
+}
+
+// --- local <a href> targets exist --------------------------------------------
+// The offsite sweep above deliberately ignores <a>: a link to another site is
+// not a request the page makes. A link to a file on this site is a different
+// matter, and was the one thing nothing looked at: Pathfinder's campaigns and
+// characters pages sent "Back to greyversusblue.com" to Pathfinder/index.html,
+// which never existed (TG-60). The resolver and its fixtures live in
+// link-guard.mjs; selfTest() runs every time, so a resolver that stopped
+// resolving fails here (#34). Exemptions are listed in link-guard.mjs's EXEMPT
+// and each one is held to still being a real, broken link on that page.
+for (const problem of linkSelfTest()) {
+  checked++;
+  fail(path.join(SITE, 'Tools/board-check/link-guard.mjs'), `self-test: ${problem}`);
+}
+{
+  const fsx = {
+    exists: p => fs.existsSync(p),
+    isDir: p => { try { return fs.statSync(p).isDirectory(); } catch { return false; } },
+  };
+  const exemptSeen = new Set();
+  for (const p of files.filter(f => f.endsWith('.html'))) {
+    checked++;
+    const r = rel(p).replace(/\\/g, '/');
+    const exempt = LINK_EXEMPT[r] || {};
+    for (const h of findBrokenLinks(p, SITE, fs.readFileSync(p, 'utf8'), fsx)) {
+      if (Object.hasOwn(exempt, h.href)) { exemptSeen.add(`${r}\0${h.href}`); continue; }
+      fail(p, `line ${h.line} links to a page that is not on this site (${h.why}): ${h.href}`);
+    }
+  }
+  for (const [page, hrefs] of Object.entries(LINK_EXEMPT)) {
+    for (const href of Object.keys(hrefs)) {
+      if (!exemptSeen.has(`${page}\0${href}`)) {
+        checked++;
+        fail(path.join(SITE, 'Tools/board-check/link-guard.mjs'), `EXEMPT lists ${href} on ${page}, but that link is not broken there any more: delete the line`);
+      }
+    }
   }
 }
 
