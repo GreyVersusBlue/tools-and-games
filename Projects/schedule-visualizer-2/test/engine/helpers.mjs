@@ -35,7 +35,7 @@ export function emptyProject() {
 }
 
 // The sample school as it was before it gained bell schedules, a calendar,
-// marks and duties (SV2-82, SV2-87): an A Day and a B Day, nothing else. The
+// marks and duties (SV2-82, SV2-87), and without the staggered dismissal and the up-only stair (SV2-94): an A Day and a B Day, nothing else. The
 // suites that count day types, runs and findings, or that build their own
 // calendar on it, start here, so each keeps the case it was written for.
 export function plainSchool() {
@@ -49,6 +49,14 @@ export function plainSchool() {
   delete project.calendar;
   delete project.marks;
   delete project.duties;
+  // ... and before the staggered dismissal and Stairs C, up only (SV2-94)
+  delete project.release;
+  const stairsC = project.building.connections.find((connection) => connection.id === 'csample0up');
+  project.building.connections = project.building.connections.filter((connection) => connection !== stairsC);
+  for (const end of [stairsC.a, stairsC.b]) {
+    const floor = project.building.floors.find((candidate) => candidate.id === end.floorId);
+    floor.cells = floor.cells.slice(0, end.cell) + '.' + floor.cells.slice(end.cell + 1);
+  }
   return project;
 }
 

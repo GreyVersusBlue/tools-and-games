@@ -1118,6 +1118,128 @@ const SV2_80 = [
   },
 ];
 
+
+// SV2-94: wish group 3 (the scenario lab's levers, staggered dismissal,
+// one-way stairs). The sweeps load the plain sample; a screen that shows the
+// sample's own rule or its up-only Stairs C asks for `fullSample`. Every wait is on a state the page sets: a section's
+// `data-pending` gone, the lab's `data-compare` ready, its `data-picking`.
+
+// The Day tab's Staggered dismissal card, with the sample school's own rule.
+async function releaseCard(page) {
+  await scheduleDrawn(page);
+  await page.waitForSelector('[data-card="release"] .sch-marks__line');
+}
+
+// ... its editor open on that rule.
+async function releaseEditor(page) {
+  await releaseCard(page);
+  await page.click('[data-card="release"] .sch-marks__line');
+  await page.waitForSelector('.sch-releaseedit');
+  await scheduleDrawn(page);
+}
+
+// ... a new rule's editor, a grade chosen.
+async function releaseNew(page) {
+  await releaseCard(page);
+  await page.click('[data-key="release-new"]');
+  await page.waitForSelector('.sch-releaseedit');
+  await page.click('[data-key="release:new:who:grade"]');
+  await page.waitForSelector('.sch-markedit__chips button');
+  await page.click('.sch-markedit__chips button');
+  await scheduleDrawn(page);
+}
+
+// ... and with no rule at all (the plain sample has none): what the card is
+// for, and Add as the main button.
+async function releaseEmpty(page) {
+  await scheduleDrawn(page);
+  await page.waitForSelector('[data-card="release"] .sch-marks__empty');
+}
+
+// The lab with a scenario started and one kind of change chosen: its form
+// is the screen. `then` brings up a state of that form.
+const labForm = (kind, then) => async (page) => {
+  await page.waitForFunction(() => document.querySelector('.scn') && document.querySelector('.scn').dataset.styled === 'true', { timeout: 20000 });
+  await page.evaluate(async () => {
+    const { newScenario } = await import(new URL('engine/actions.js', location.href).href);
+    globalThis.sv2.store.apply(newScenario, { name: 'Lab levers' });
+  });
+  await page.waitForFunction(() => {
+    const el = document.querySelector('.scn');
+    return el.dataset.mode === 'open' && el.dataset.compare === 'ready' && !el.scenarios.pending && el.scenarios.plan.project === globalThis.sv2.store.project;
+  }, { timeout: 30000 });
+  await page.$eval('.scn-add .seg input[value="' + kind + '"]', (input) => input.click());
+  await page.waitForFunction((k) => document.querySelector('.scn-form') && document.querySelector('.scn-form').dataset.kind === k, {}, kind);
+  if (then) await then(page);
+};
+
+const labChoice = (value) => async (page) => {
+  await page.$eval('.scn-seats__what input[value="' + value + '"]', (input) => input.click());
+  await page.waitForFunction((v) => document.querySelector('.scn-seats__what input[value="' + v + '"]').checked, {}, value);
+};
+
+// The corridor form in picking mode: the banner up, Cancel in it.
+async function labPicking(page) {
+  await labChoice('corridor')(page);
+  await page.waitForSelector('[data-key="scenario-building-pick"]');
+  await page.$eval('[data-key="scenario-building-pick"]', (button) => button.click());
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.picking === 'true' && !document.querySelector('.scn-pick').hidden);
+}
+
+// A lever of each kind in the lab's list, and Apply's summary with the
+// closure left out (its band and the "n of m" button).
+async function labLevers(page) {
+  await page.waitForFunction(() => document.querySelector('.scn') && document.querySelector('.scn').dataset.styled === 'true', { timeout: 20000 });
+  await page.evaluate(async () => {
+    const { newScenario, addScenarioLever } = await import(new URL('engine/actions.js', location.href).href);
+    const store = globalThis.sv2.store;
+    store.apply(newScenario, { name: 'Every lever' });
+    store.apply(addScenarioLever, { lever: { kind: 'release', who: { grade: '7' }, seconds: 120, after: [2], dayTypeIds: null } });
+    store.apply(addScenarioLever, { lever: { kind: 'bell', dayTypeId: 'dsample00a', period: 2, start: '09:46', end: '10:32' } });
+    store.apply(addScenarioLever, { lever: { kind: 'way', connectionId: 'csample00b', way: 'ab' } });
+    store.apply(addScenarioLever, { lever: { kind: 'way', connectionId: 'csample00a', way: 'closed' } });
+    store.apply(addScenarioLever, { lever: { kind: 'capacity', roomId: 'rsample204', capacity: 12 } });
+    store.apply(addScenarioLever, { lever: { kind: 'headCount', groupId: 'gsample06a', headCount: 31 } });
+  });
+  await page.waitForFunction(() => {
+    const el = document.querySelector('.scn');
+    return el.dataset.mode === 'open' && el.dataset.compare === 'ready' && !el.scenarios.pending && el.scenarios.plan.project === globalThis.sv2.store.project;
+  }, { timeout: 30000 });
+}
+
+async function labLeversApply(page) {
+  await labLevers(page);
+  await page.click('[data-action="apply"]');
+  await page.waitForSelector('#scenario-apply[open]');
+}
+
+// The Floor tab of the inspector: each stairs connection with its Which way
+// chips (the sample's Stairs C is up only), the plan beside it with the chevrons.
+async function floorDirection(page) {
+  await inspectorTab('floor')(page);
+  await page.waitForSelector('#inspector-floor [data-connection] fieldset.bi-way');
+}
+
+const SV2_94 = [
+  { id: 'schedule-day-release-empty', hash: '#schedule/day', open: releaseEmpty }, // the Day tab's card with no rule
+  { id: 'schedule-day-release', fullSample: true, hash: '#schedule/day', open: releaseCard }, // the sample's Grade 6 rule as a sentence
+  { id: 'schedule-day-release-editor', fullSample: true, hash: '#schedule/day', open: releaseEditor },
+  { id: 'schedule-day-release-new', fullSample: true, hash: '#schedule/day', open: releaseNew },
+  { id: 'schedule-day-release-editor-phone', fullSample: true, hash: '#schedule/day', viewport: PHONE, open: releaseEditor },
+  { id: 'scenarios-lab-bells', hash: '#scenarios', open: labForm('bells') },
+  { id: 'scenarios-lab-release', fullSample: true, hash: '#scenarios', open: labForm('release') },
+  { id: 'scenarios-lab-stair', fullSample: true, hash: '#scenarios', open: labForm('building', labChoice('stair')) },
+  { id: 'scenarios-lab-corridor', hash: '#scenarios', open: labForm('building', labChoice('corridor')) },
+  { id: 'scenarios-lab-picking', hash: '#scenarios', open: labForm('building', labPicking) }, // the picking state: the banner and its Cancel
+  { id: 'scenarios-lab-picking-phone', hash: '#scenarios', viewport: PHONE, open: labForm('building', labPicking) },
+  { id: 'scenarios-lab-capacity', hash: '#scenarios', open: labForm('seats', labChoice('capacity')) },
+  { id: 'scenarios-lab-head-count', hash: '#scenarios', open: labForm('seats', labChoice('headCount')) },
+  { id: 'scenarios-lab-bells-phone', hash: '#scenarios', viewport: PHONE, open: labForm('bells') },
+  { id: 'scenarios-lab-levers', hash: '#scenarios', open: labLevers }, // a chip for each kind, a closure tagged Trial only
+  { id: 'scenarios-lab-apply-levers', hash: '#scenarios', open: labLeversApply }, // Apply's lines per kind, the closure's band, "Apply n of m changes"
+  { id: 'building-floor-direction', fullSample: true, hash: '#building', open: floorDirection },
+];
+
 export const SCREENS = [
   { id: 'building', hash: '#building' },
   { id: 'schedule-groups', hash: '#schedule/groups' },
@@ -1663,4 +1785,5 @@ export const SCREENS = [
   ...SV2_80,
   ...SV2_85,
   ...SV2_32G1,
+  ...SV2_94,
 ];

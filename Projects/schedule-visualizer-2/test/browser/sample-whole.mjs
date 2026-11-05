@@ -115,11 +115,34 @@ for (const size of SIZES) {
     assert.equal(assembly.length, 8);
     assert.ok(assembly.every((row) => row[0] === false && row[1].length === 2 && row[1][0] !== '' && row[1][1] !== ''), 'every period of the Assembly bells meets and has times');
     assert.deepEqual(assembly[7][1], ['1:36 PM', '2:30 PM']);
-    assert.deepEqual(await page().$$eval('.sch-marks__line', (all) => all.map((el) => el.textContent)), [
+    assert.deepEqual(await page().$$eval('[data-card="marks"] .sch-marks__line', (all) => all.map((el) => el.textContent)), [
       'Lunch for grade 6 in Period 4, every day type (3 groups)',
       'Lunch for grades 7 and 8 in Period 5, every day type (5 groups)',
       'Assembly (Activity) for the whole school in Period 8 on Assembly Day',
     ]);
+  });
+
+  // SV2-94: the sample's one staggered dismissal, on the Day tab's sixth card.
+  test(where + ': the Day tab\'s Staggered dismissal card has the sample\'s one rule: Grade 6, a minute after the bell, after Period 3', async () => {
+    await openTab(page(), 'day');
+    assert.deepEqual(await page().$$eval('[data-card="release"] .sch-marks__line', (all) => all.map((el) => el.textContent)), ['grade 6 leaves 1 min after the bell, after Period 3, every day type (3 groups)']);
+    assert.equal(await page().$$eval('[data-card="release"] .sch-marks__empty', (all) => all.length), 0, 'the card is not the empty one');
+    assert.equal(await page().$$eval('[data-card="release"] .sch-marks__beaten', (all) => all.length), 0, 'no other rule beats it');
+  });
+
+  // SV2-94: Stairs C, the sample's up-only stair: in the project at both sizes,
+  // and on the Floor tab where the inspector is beside the plan (a phone keeps it in a drawer).
+  test(where + ': Stairs C is up only, towards Floor 2, and Stairs A both ways', async () => {
+    assert.deepEqual(await page().evaluate(() => globalThis.sv2.store.project.building.connections.map((each) => [each.label, each.direction])), [['A', 'both'], ['B', 'both'], ['C', 'ab']]);
+    if (size.mobile) return;
+    await go(page(), '#building');
+    await page().waitForSelector('#inspector [data-tab="floor"]', { timeout: 15000 });
+    await page().click('#inspector [data-tab="floor"]');
+    await page().waitForSelector('#inspector-floor [data-connection="csample0up"] fieldset.bi-way');
+    const checked = (id) => page().$eval('[data-connection="' + id + '"] .bi-way__input:checked', (el) => el.nextElementSibling.textContent);
+    assert.equal(await checked('csample0up'), 'Up only, towards Floor 2');
+    assert.equal(await checked('csample00a'), 'Both ways');
+    assert.match(await page().$eval('#inspector-floor', (el) => el.textContent), /Stairs C/);
   });
 
   test(where + ': the Calendar tab counts the days and names the assemblies, the snow day and the days after them', async () => {

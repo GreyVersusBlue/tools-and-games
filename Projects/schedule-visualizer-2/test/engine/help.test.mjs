@@ -152,7 +152,7 @@ test('a shortcut group Help has no sentence for still shows, saying so', () => {
 // Spec 2, the vocabulary table, in its order.
 const SPEC_WORDS = ['Project', 'Floor', 'Cell', 'Room', 'Other space', 'Corridor', 'Stairs', 'Elevator', 'Exit', 'Door', 'Period', 'Day type', 'Passing time', 'Transition', 'Group', 'Teacher', 'Subject', 'Load', 'Scenario', 'Finding'];
 // DESIGN 11.1's words, after spec 2's (SV2-80): No class beside No school.
-const DESIGN_WORDS = ['Bell schedule', 'Regular bells', 'Calendar', 'Rotation', 'No school', 'No class', 'Marked period', 'Duty', 'Meeting', 'Their own lunch', 'Next in the rotation'];
+const DESIGN_WORDS = ['Bell schedule', 'Regular bells', 'Calendar', 'Rotation', 'No school', 'No class', 'Marked period', 'Duty', 'Meeting', 'Their own lunch', 'Next in the rotation', 'Staggered dismissal'];
 const ALL_WORDS = SPEC_WORDS.concat(DESIGN_WORDS);
 test('every word of spec 2 is explained, in the spec’s order, with the school’s own period word', () => {
   assert.deepEqual(words(defaultSettings()).map((each) => each.term), ALL_WORDS);
@@ -471,4 +471,24 @@ test('Help’s schedule part tells of marked periods and the Duties tab; the voc
   const terms = words(defaultSettings()).map((each) => each.term);
   for (const term of ['Marked period', 'Duty', 'Meeting', 'Their own lunch']) assert.ok(terms.includes(term), term + ' is not explained');
   assert.match(words({ ...defaultSettings(), periodWord: 'Mod' }).find((each) => each.term === 'Marked period').meaning, /^Lunch, Advisory, Activity or No class, set on one mod of the day/);
+});
+
+// SV2-94: Help for the W3 wish group (DESIGN 12.1): the Day tab's staggered
+// dismissal, each lever of the scenario lab, one-way stairs, the trial-only
+// rule for closures, and the sentence about the passing time.
+test('Help covers staggered dismissal, every lab lever, one-way stairs and the trial-only rule for closures', () => {
+  const day = SECTION_HELP.schedule.more(periodWordsOf('Period'));
+  assert.match(day, /Under Marked periods, Day also holds Staggered dismissal/);
+  assert.match(day, /a rule for named groups beats a grade’s or a wing’s, and between a grade and a wing the grade’s wins/);
+  assert.match(day, /the wing of the room the group is leaving/);
+  const lab = SECTION_HELP.scenarios.more;
+  for (const lever of ['Bell times', 'Staggered dismissal', 'Stairs and corridors', 'Capacity and head counts']) assert.ok(lab.includes(lever), lever + ' is not in Help for the lab');
+  assert.ok(SECTION_HELP.scenarios.first.includes('four levers') || lab.includes('four levers'));
+  for (const piece of ['Both ways, Up only, Down only or Closed', 'Pick on the map', 'Escape cancels', 'Closing a stair or a corridor is a trial only: Apply leaves it out', 'Apply 4 of 6 changes', 'Undo after Apply brings the whole scenario back']) assert.ok(lab.includes(piece), piece);
+  assert.match(SECTION_HELP.building.more, /Up only or Down only/);
+  assert.match(SECTION_HELP.building.more, /Evacuation ignores it/);
+  const late = numbers(defaultSettings()).find((part) => part.id === 'late').sentences.join(' ');
+  assert.ok(late.includes('A group held back has less of the passing time to walk in, so it can arrive late.'));
+  const term = words(defaultSettings()).find((each) => each.term === 'Staggered dismissal');
+  assert.match(term.meaning, /leave a little after the bell/);
 });

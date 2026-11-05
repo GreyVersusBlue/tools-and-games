@@ -21,6 +21,15 @@
 //           of 64 rooms or fewer it is nothing, which
 //           test/ui/scenario-lane.test.mjs asserts on the sample school.
 //
+//   closed  (SV2-90, ARCHITECTURE 18.6) the first asking for a scenario with
+//           one building lever, a closed stairs: no distance field the main
+//           lane has can be used, so the scenario's routes are a cold route
+//           set of its own, searched afresh from every start room. Budget
+//           700 ms, the figure the main lane's cold routing has in the worker
+//           (test/timing/worker.mjs); the file also asserts that the main
+//           lane's result is still the very object it was, and that the
+//           lever changed what the lane says.
+//
 // The suite fails at twice the budget (SLACK 2, as every timing file here: a
 // CI runner is not this machine) and prints the measured numbers either way.
 // The clock is read here, in the test, never in the engine.
@@ -47,6 +56,7 @@ import { bigProject } from '../fixtures/big.mjs';
 
 const BUDGET = 100;
 const FIRST_BUDGET = 400;
+const CLOSED_BUDGET = 700;
 // the first asking may search at most this fraction of what the main lane
 // searched (1/FEW); measured 3 of 150, see the header
 const FEW = 10;
@@ -100,6 +110,33 @@ test('the scenario lane on the big fixture: one change added, warm, under ' + BU
   console.log('# scenario lane, warm: median ' + median.toFixed(1) + ' ms of ' + warm.map((ms) => ms.toFixed(1)).join(', ') + ' (budget ' + BUDGET + ', fails at ' + BUDGET * SLACK + '); first asking ' + first.ms.toFixed(1) + ' ms (budget ' + FIRST_BUDGET + ', fails at ' + FIRST_BUDGET * SLACK + ')');
   assert.ok(median < BUDGET * SLACK, 'the scenario lane took ' + median.toFixed(1) + ' ms warm, over ' + BUDGET * SLACK);
   assert.ok(first.ms < FIRST_BUDGET * SLACK, 'the first scenario took ' + first.ms.toFixed(1) + ' ms, over ' + FIRST_BUDGET * SLACK);
+  assert.equal(client.laneStats.scenario.failed, 0);
+  client.close();
+});
+
+test('the scenario lane with one building lever on the big fixture: a closed stairs, a cold route set of its own, under ' + CLOSED_BUDGET + ' ms', async () => {
+  const project = bigProject({ seed: 1 });
+  const store = storeOf(project);
+  const client = engineFor(store, { worker: false });
+  const main = await store.derived.results();
+  const searched = client.searches;
+  // addScenarioLever takes the four schedule kinds; a building lever arrives as a project file brings it
+  const connection = project.building.connections[0];
+  const lever = { kind: 'way', connectionId: connection.id, way: 'closed' };
+  store.replace({ ...project, scenario: { name: 'Trial', changes: [], levers: [lever], compared: null } });
+  const mainAgain = await store.derived.results();
+  const mainSearches = client.searches - searched;
+  const before = client.searches;
+  const closed = await timed(() => store.derived.scenario());
+  const scenarioSearches = client.searches - before;
+  assert.equal(closed.value.changes.length, 0);
+  assert.ok(closed.value.compare.figures.failed.after >= closed.value.compare.figures.failed.before, 'the lane worked under the closure');
+  assert.notDeepEqual(closed.value.result.walks, mainAgain.walks, 'and says something other than the open building');
+  assert.ok(scenarioSearches > 0, 'the closure\'s distance fields are its own: ' + scenarioSearches + ' searched');
+  assert.equal(await store.derived.results(), mainAgain, 'the main lane\'s result is the very one it was');
+  assert.ok(main !== null);
+  console.log('# scenario lane, one closed stairs: first asking ' + closed.ms.toFixed(1) + ' ms with ' + scenarioSearches + ' distance fields searched, the main lane\'s own ' + mainSearches + ' (budget ' + CLOSED_BUDGET + ', fails at ' + CLOSED_BUDGET * SLACK + ')');
+  assert.ok(closed.ms < CLOSED_BUDGET * SLACK, 'the closed-stairs scenario took ' + closed.ms.toFixed(1) + ' ms, over ' + CLOSED_BUDGET * SLACK);
   assert.equal(client.laneStats.scenario.failed, 0);
   client.close();
 });

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { repair, UNKNOWN_ROOM_TEXT } from '../../engine/repair.js';
 import { validate } from '../../engine/validate.js';
+import { isReadableLever } from '../../engine/scenario.js';
 import { migrate } from '../../engine/migrate.js';
 import { PAPER_SIZES } from '../../engine/schema.js';
 import { seededRandom, isId } from '../../engine/ids.js';
@@ -1074,4 +1075,167 @@ test('a duty that ends when it starts or before loses its end time, with a note'
   assert.deepEqual(fixed.duties.map((duty) => [duty.start, duty.end]), [['08:00', ''], ['15:30', ''], ['07:30', '07:55']]);
   assert.equal(notes.filter((note) => /end time of Duty \d was not after its start/.test(note)).length, 2);
   assert.deepEqual(validate(fixed), []);
+});
+
+// ================================================================ SV2-89: scenario.levers
+
+const LEVERS = [
+  { kind: 'bell', dayTypeId: 'dsample00a', period: 6, start: '13:20', end: '14:08' },
+  { kind: 'headCount', groupId: 'gsample06a', headCount: 40 },
+  { kind: 'capacity', roomId: 'rsample203', capacity: null },
+  { kind: 'release', who: { grade: '7' }, seconds: 120, after: [1, 3], dayTypeIds: ['dsample00a'] },
+  { kind: 'way', connectionId: 'csample001', way: 'ab' },
+  { kind: 'corridor', floorId: 'fsample001', cells: [3, 4], name: 'North Corridor' },
+];
+
+function withLevers(levers) {
+  const project = school();
+  project.scenario = { name: 'Trial', changes: [], levers, compared: null };
+  return project;
+}
+
+test('scenario levers: absent stays absent, and a scenario without them comes through as it was', () => {
+  const project = school();
+  project.scenario = { name: 'Trial', changes: [], compared: null };
+  const result = repair(project);
+  assert.equal('levers' in result.project.scenario, false);
+  assert.deepEqual(result.notes.filter((text) => /lever/i.test(text)), []);
+  assert.deepEqual(result.project.scenario, project.scenario);
+});
+
+test('scenario levers: well formed ones are kept as they are, the very same objects, with no note; the change kinds did not move', () => {
+  const project = withLevers(LEVERS);
+  const result = repair(project);
+  assert.deepEqual(result.project.scenario.levers, LEVERS);
+  result.project.scenario.levers.forEach((lever, i) => assert.equal(lever, LEVERS[i], 'lever ' + i + ' untouched'));
+  assert.deepEqual(result.notes.filter((text) => /lever/i.test(text)), []);
+  const withKind = school();
+  withKind.scenario = { name: 'x', changes: [{ kind: 'bell', dayTypeId: 'dsample00a', period: 1, start: '08:00', end: '09:00' }, { kind: 'move', dayTypeId: 'dsample00a', groupId: 'gsample06a', period: 1, roomId: 'rsample101' }], levers: [], compared: null };
+  assert.equal(repair(withKind).project.scenario.changes.length, 1, 'a lever kind in `changes` is still dropped: levers are not Change kinds');
+});
+
+test('scenario levers: one that cannot be read is dropped with a note that says which and why, and the rest are kept', () => {
+  const broken = [
+    null, 'x', { kind: 'teleport' },
+    { kind: 'bell', period: 1, start: '08:00', end: '09:00' },
+    { kind: 'bell', dayTypeId: 'dsample00a', bellsId: 'bsample001', period: 1, start: '08:00', end: '09:00' },
+    { kind: 'bell', dayTypeId: 'dsample00a', period: -1, start: '08:00', end: '09:00' },
+    { kind: 'bell', dayTypeId: 'dsample00a', period: 1, start: '8:00', end: '09:00' },
+    { kind: 'headCount', groupId: 'gsample06a', headCount: 0 },
+    { kind: 'headCount', groupId: 'gsample06a' },
+    { kind: 'capacity', roomId: 'rsample203', capacity: 1000 },
+    { kind: 'capacity', capacity: 5 },
+    { kind: 'release', who: { grade: '7', wing: 'N' }, seconds: 60 },
+    { kind: 'release', who: { grade: '7' }, seconds: 10 },
+    { kind: 'release', who: { grade: '7' }, seconds: 0 },
+    { kind: 'release', who: { grade: ' ' }, seconds: 60 },
+    { kind: 'release', who: { groups: [] }, seconds: 0 },
+    { kind: 'release', who: { grade: '7' }, seconds: 60, after: [] },
+    { kind: 'release', who: { grade: '7' }, seconds: 60, after: [1.5] },
+    { kind: 'release', who: { grade: '7' }, seconds: 60, dayTypeIds: [] },
+    { kind: 'way', connectionId: 'csample001', way: 'sideways' },
+    { kind: 'corridor', floorId: 'fsample001', cells: [], name: 'x' },
+  ];
+  const result = repair(withLevers(broken.concat([LEVERS[1]])));
+  assert.deepEqual(result.project.scenario.levers, [LEVERS[1]]);
+  const note = result.notes.find((text) => /levers? of the scenario/.test(text));
+  assert.match(note, /^21 levers of the scenario could not be read and were removed: Lever 1 of the scenario was not an object; /);
+  assert.match(note, /Lever 3 of the scenario was of a kind this version does not know/);
+  assert.match(note, /Lever 12 of the scenario did not say exactly one of groups, a grade or a wing/);
+  assert.match(note, /Lever 13 of the scenario did not have a whole number of seconds from 15 to 300/);
+  assert.match(note, /Lever 14 of the scenario did not have a whole number of seconds from 15 to 300/);
+  assert.deepEqual(validate(result.project), []);
+});
+
+test('scenario levers: a corridor lever is cut to the cells its floor has and keeps its whole name, with a note (SV2-90b)', () => {
+  const project = school();
+  const floor = project.building.floors[0];
+  const all = Array.from({ length: floor.cells.length }, (value, i) => i);
+  project.scenario = { name: 'Trial', changes: [], levers: [{ kind: 'corridor', floorId: floor.id, cells: all.concat([0, 1]), name: 'N'.repeat(55) }, { kind: 'corridor', floorId: floor.id, cells: [1], name: 'North' }], compared: null };
+  const result = repair(project);
+  const [cut, fine] = result.project.scenario.levers;
+  assert.equal(cut.cells.length, floor.cells.length);
+  assert.deepEqual(cut.cells, all);
+  assert.equal(cut.name, 'N'.repeat(55), 'a name is never cut');
+  assert.deepEqual(fine, { kind: 'corridor', floorId: floor.id, cells: [1], name: 'North' });
+  assert.equal(fine, project.scenario.levers[1], 'one within the limits is the very same object');
+  assert.ok(result.notes.some((note) => /^1 closed corridor of the scenario held more cells than a floor has, and was cut to fit: Lever 1 of the scenario\.$/.test(note)), JSON.stringify(result.notes));
+  assert.deepEqual(validate(result.project), [], 'and what comes out is valid');
+});
+
+test('scenario levers: a list that is not a list is removed with a note; a release lever gets its defaults and its lists put in order', () => {
+  const project = school();
+  project.scenario = { name: 'Trial', changes: [], levers: 'x', compared: null };
+  const result = repair(project);
+  assert.deepEqual(result.project.scenario.levers, []);
+  assert.ok(result.notes.includes('The levers of the scenario could not be read and were removed.'));
+  const loose = repair(withLevers([{ kind: 'release', who: { groups: ['gsample07b', 'gsample07a', 'gsample07a'] }, seconds: 0, after: [3, 1, 3], dayTypeIds: ['dsample00b', 'dsample00a'], extra: 1 }, { kind: 'release', who: { wing: 'North', extra: 1 }, seconds: 45 }]));
+  assert.deepEqual(loose.project.scenario.levers[0], { kind: 'release', who: { groups: ['gsample07b', 'gsample07a'] }, seconds: 0, after: [1, 3], dayTypeIds: ['dsample00b', 'dsample00a'] });
+  assert.deepEqual(loose.project.scenario.levers[1], { kind: 'release', who: { wing: 'North' }, seconds: 45, after: null, dayTypeIds: null });
+  assert.deepEqual(validate(loose.project), []);
+});
+
+test('scenario levers: a lever follows a group, room, day type or bell schedule that was given a new id; one pointing at nothing is kept for reconcile to say so', () => {
+  const dangling = withLevers([{ kind: 'headCount', groupId: 'ggone00000', headCount: 30 }, { kind: 'capacity', roomId: 'rgone00000', capacity: 5 }, { kind: 'bell', bellsId: 'bgone00000', period: 1, start: '08:00', end: '09:00' }]);
+  const kept = repair(dangling);
+  assert.equal(kept.project.scenario.levers.length, 3, 'not reconciled here');
+  const renamed = withLevers([{ kind: 'capacity', roomId: 'tsample001', capacity: 5 }]);
+  renamed.building.floors[0].spaces.find((space) => space.id === 'rsample101').id = 'tsample001';
+  for (const g of renamed.groups) for (const dayId of Object.keys(g.days)) for (const sl of g.days[dayId]) if (sl && sl.room === 'rsample101') sl.room = 'tsample001';
+  const result = repair(renamed);
+  const newRoom = result.project.building.floors[0].spaces.find((space) => space.number === '101').id;
+  assert.notEqual(newRoom, 'tsample001');
+  assert.equal(result.project.scenario.levers[0].roomId, newRoom, 'the lever follows the room to its new id');
+});
+
+test('scenario levers: repairing twice changes nothing more', () => {
+  const once = repair(withLevers(LEVERS.concat([{ kind: 'release', who: { groups: ['gsample07b', 'gsample07a'] }, seconds: 30, after: [3, 1] }])));
+  const twice = repair(once.project);
+  assert.deepEqual(twice.project, once.project);
+  assert.deepEqual(twice.notes.filter((text) => /lever/i.test(text)), []);
+});
+
+// ================================================================ SV2-89b: repair, validate and isReadableLever agree on every lever shape
+
+const BELL_D = { kind: 'bell', dayTypeId: 'dsample00a', period: 6, start: '13:20', end: '14:08' };
+const BELL_B = { kind: 'bell', bellsId: 'bsample001', period: 2, start: '09:00', end: '09:40' };
+
+test('scenario levers (SV2-89b): repair, validate and isReadableLever agree on a bell lever with a null or a numeric other key', () => {
+  const shapes = [
+    ['dayTypeId only', BELL_D, true],
+    ['bellsId only', BELL_B, true],
+    ['dayTypeId and a null bellsId', { ...BELL_D, bellsId: null }, true],
+    ['bellsId and a null dayTypeId', { ...BELL_B, dayTypeId: null }, true],
+    ['dayTypeId and a numeric bellsId', { ...BELL_D, bellsId: 5 }, false],
+    ['a numeric dayTypeId and a bellsId', { ...BELL_B, dayTypeId: 5 }, false],
+    ['both named', { ...BELL_D, bellsId: 'bsample001' }, false],
+    ['neither named', { kind: 'bell', period: 1, start: '09:00', end: '09:40' }, false],
+    ['a null bellsId and nothing else', { kind: 'bell', bellsId: null, period: 1, start: '09:00', end: '09:40' }, false],
+  ];
+  for (const [name, lever, readable] of shapes) {
+    const project = withLevers([lever]);
+    assert.equal(isReadableLever(lever), readable, name + ': isReadableLever');
+    assert.equal(validate(project).length === 0, readable, name + ': validate');
+    const result = repair(project);
+    const kept = result.project.scenario.levers;
+    assert.equal(kept.length === 1, readable, name + ': repair keeps what is readable and drops the rest');
+    if (readable) {
+      assert.equal(isReadableLever(kept[0]), true, name);
+      assert.deepEqual(validate(result.project), [], name);
+      assert.equal('dayTypeId' in kept[0] && 'bellsId' in kept[0], false, name + ': the key that is not used is not kept');
+    }
+  }
+});
+
+test('scenario levers (SV2-89b): repair strips unknown keys from a lever of every kind, as addScenarioLever does, and keeps a clean one as it is', () => {
+  for (const lever of LEVERS) {
+    const dirty = { ...lever, extra: 1, seconds2: 'x' };
+    const result = repair(withLevers([dirty]));
+    assert.deepEqual(result.project.scenario.levers, [lever], lever.kind);
+    assert.equal(isReadableLever(dirty), true, lever.kind + ': a reader ignores keys it does not know');
+    assert.deepEqual(validate(withLevers([dirty])), [], lever.kind);
+  }
+  const clean = withLevers(LEVERS);
+  const result = repair(clean);
+  result.project.scenario.levers.forEach((lever, i) => assert.equal(lever, LEVERS[i], 'a clean ' + lever.kind + ' lever is the very same object'));
 });

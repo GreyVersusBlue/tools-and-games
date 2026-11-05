@@ -29,8 +29,65 @@ import { count, list } from '../../components/words.js';
 import { ActionError, renameFloor, setFloorLevel, reorderFloor, deleteFloor, describeFloorDelete, describeResize, resizeFloor, eraseCells, disconnectStairs, setConnection, renameCorridor, removeCorridorName, setZone, removeZone } from '../../../engine/actions.js';
 import { lossText } from '../../../engine/building.js';
 import { snapshotAfter, undoForStep } from '../../../storage/snapshots.js';
-import { RANGES } from '../../../engine/schema.js';
+import { RANGES, nameOfRoom } from '../../../engine/schema.js';
 import { keyedList, heading, cellWords } from './controls.js';
+
+// ---- which way a stairs connection may be walked (spec 4.5, DESIGN 12.5)
+
+// Where one end of a connection is, in words: the room nearest to it (within
+// six cells), else the corridor it stands in or beside, else its floor's
+// west or east end.
+function endPlace(floor, cell) {
+  const x = cell % floor.width;
+  const y = Math.floor(cell / floor.width);
+  let best = null;
+  for (const space of floor.spaces) {
+    if (space.kind !== 'room') continue;
+    for (const at of space.cells) {
+      const distance = Math.abs((at % floor.width) - x) + Math.abs(Math.floor(at / floor.width) - y);
+      if (distance <= 6 && (best === null || distance < best.distance)) best = { distance, space };
+    }
+  }
+  if (best) return nameOfRoom(best.space, false);
+  const near = [cell, cell - 1, cell + 1, cell - floor.width, cell + floor.width];
+  const corridor = floor.corridors.find((entry) => entry.name !== '' && near.some((at) => entry.cells.includes(at)));
+  if (corridor) return corridor.name;
+  return floor.name + ' ' + (x < floor.width / 2 ? 'west end' : 'east end');
+}
+
+// The three ways of a connection as radio chips: [{ value, label }] with value
+// the direction it writes ('both', 'ab', 'ba'). Between floors the words go by
+// floor level ("Up only, towards Floor 3", "Down only, towards Floor 1"); on
+// one floor they name the end ("Only from the end by Room 104").
+export function wayChoices(project, connection) {
+  const floors = project.building.floors;
+  const a = floors.find((each) => each.id === connection.a.floorId);
+  const b = floors.find((each) => each.id === connection.b.floorId);
+  const both = { value: 'both', label: 'Both ways' };
+  if (!a || !b) return [both, { value: 'ab', label: 'From the A end only' }, { value: 'ba', label: 'From the B end only' }];
+  if (a.level === b.level) {
+    let first = endPlace(a, connection.a.cell);
+    let second = endPlace(b, connection.b.cell);
+    if (first === second) {
+      first += ' (' + cellWords(a, connection.a.cell) + ')';
+      second += ' (' + cellWords(b, connection.b.cell) + ')';
+    }
+    return [both, { value: 'ab', label: 'Only from the end by ' + first }, { value: 'ba', label: 'Only from the end by ' + second }];
+  }
+  const lowToHigh = a.level < b.level ? 'ab' : 'ba';
+  const highToLow = lowToHigh === 'ab' ? 'ba' : 'ab';
+  const higher = a.level < b.level ? b : a;
+  const lower = a.level < b.level ? a : b;
+  return [both, { value: lowToHigh, label: 'Up only, towards ' + higher.name }, { value: highToLow, label: 'Down only, towards ' + lower.name }];
+}
+
+// The connection's way as one line, for the list and for a screen reader:
+// "up only, towards Floor 2"; "" when it runs both ways.
+export function wayLine(project, connection) {
+  if (connection.direction === 'both') return '';
+  const chosen = wayChoices(project, connection).find((choice) => choice.value === connection.direction);
+  return chosen ? chosen.label.charAt(0).toLowerCase() + chosen.label.slice(1) : '';
+}
 
 export const SIZE_PRESETS = [
   { id: 'small', label: 'Small', width: 30, height: 20 },
@@ -378,6 +435,35 @@ export function floorPanel(env) {
         const label = field({ label: 'Letter or name', value: connection.label, commit: (value) => store.apply(setConnection, { connectionId: connection.id, label: value }) });
         label.input.dataset.key = 'connection:' + connection.id;
         const where = h('p', { class: 'bld-inspector__small' });
+        // which way the stairs may be walked: radio chips, rebuilt when the words change
+        const legendId = 'bi-way-legend-' + connection.id;
+        const wayHost = h('fieldset', { class: 'bi-way', data: { way: connection.id } }, h('legend', { class: 'bi-way__legend', id: legendId }, 'Which way'));
+        let wayShown = '';
+        const syncWay = (now) => {
+          const choices = wayChoices(state.project, now);
+          const shown = choices.map((each) => each.value + ':' + each.label).join('|');
+          if (shown !== wayShown) {
+            wayShown = shown;
+            const focused = wayHost.contains(document.activeElement) ? document.activeElement.value : null;
+            Array.from(wayHost.querySelectorAll('.bi-way__chip')).forEach((chip) => chip.remove());
+            for (const option of choices) {
+              const input = h('input', { type: 'radio', class: 'bi-way__input', name: 'way-' + now.id, value: option.value, data: { key: 'way:' + now.id + ':' + option.value } });
+              input.addEventListener('change', () => {
+                if (!input.checked) return;
+                const latest = state.project.building.connections.find((each) => each.id === now.id);
+                if (!latest || latest.direction === option.value) return;
+                const said = 'Stairs ' + latest.label + (option.value === 'both' ? ' now runs both ways.' : ' is now ' + option.label.charAt(0).toLowerCase() + option.label.slice(1) + '.');
+                ed().commit(setConnection, { connectionId: now.id, direction: option.value }, { done: () => said, toast: () => said });
+              });
+              wayHost.append(h('label', { class: 'bi-way__chip' }, input, h('span', { class: 'bi-way__text' }, option.label)));
+            }
+            if (focused !== null) {
+              const again = wayHost.querySelector('input[value="' + focused + '"]');
+              if (again) again.focus();
+            }
+          }
+          for (const input of wayHost.querySelectorAll('.bi-way__input')) input.checked = input.value === now.direction;
+        };
         const buttons = [
           small('Show me', 'show-connection:' + connection.id, 'Show me: stairs ' + connection.label, () => {
             const now = state.project.building.connections.find((each) => each.id === connection.id);
@@ -390,13 +476,16 @@ export function floorPanel(env) {
           }),
         ];
         return {
-          element: h('li', { class: 'bi-row bi-row--stack', data: { connection: connection.id } }, label.element, where, h('div', { class: 'bi-row__buttons' }, buttons)),
+          element: h('li', { class: 'bi-row bi-row--stack', data: { connection: connection.id } }, label.element, where, wayHost, h('div', { class: 'bi-row__buttons' }, buttons)),
           sync: (now) => {
             label.set(now.label);
             const same = now.a.floorId === now.b.floorId;
             where.textContent = same
               ? 'Joins two places on ' + floorName(now.a.floorId) + ': ' + cellWords(floor, now.a.cell) + ' and ' + cellWords(floor, now.b.cell) + '.'
               : 'Joins ' + floorName(now.a.floorId) + ' and ' + floorName(now.b.floorId) + '.';
+            const way = wayLine(state.project, now);
+            if (way !== '') where.textContent += ' Stairs ' + now.label + ' is ' + way + '.';
+            syncWay(now);
           },
         };
       },

@@ -36,10 +36,28 @@ export function largestCell(box) {
   return LARGEST_CELL_MM * Math.max(1, Math.min(box.width, box.height) / LETTER_SHORT_MM);
 }
 
-function sentence(floor, plan) {
+// "Stairs B is up only" for each one-way stair that lands on this floor: the
+// words behind the chevron, for a reader who cannot see it (ARCHITECTURE 18.4).
+function waysOf(project, floor, plan) {
+  const level = (id) => {
+    const found = project.building.floors.find((each) => each.id === id);
+    return found ? found.level : 0;
+  };
+  const said = [];
+  for (const connection of project.building.connections) {
+    if (connection.direction !== 'ab' && connection.direction !== 'ba') continue;
+    if (!plan.letters.includes(connection.label) || said.some((each) => each.label === connection.label)) continue;
+    if (connection.a.floorId !== floor.id && connection.b.floorId !== floor.id) continue;
+    const rise = connection.direction === 'ab' ? level(connection.b.floorId) - level(connection.a.floorId) : level(connection.a.floorId) - level(connection.b.floorId);
+    said.push({ label: connection.label, way: rise > 0 ? 'up only' : rise < 0 ? 'down only' : 'one way only' });
+  }
+  return said.sort((a, b) => (a.label < b.label ? -1 : 1)).map((each) => ' Stairs ' + each.label + ' is ' + each.way + '.').join('');
+}
+
+function sentence(floor, plan, project) {
   const parts = [count(plan.rooms, 'room'), count(plan.exits, 'exit')];
   const stairs = plan.letters.length === 0 ? 'no stairs' : 'stairs ' + list(plan.letters.slice().sort());
-  return floor.name + ': ' + parts.join(', ') + ', ' + stairs + '.';
+  return floor.name + ': ' + parts.join(', ') + ', ' + stairs + '.' + waysOf(project, floor, plan);
 }
 
 export function floorsFor(project, options) {
@@ -70,7 +88,7 @@ export function render(project, derived, options) {
     const cell = Math.min(room.width / plan.width, room.height / plan.height, largestCell(box));
     const figure = '<figure class="plan-figure">'
       + '<div class="plan-figure__plan" style="width: ' + mm(plan.width * cell) + '; height: ' + mm(plan.height * cell) + ';">' + plan.svg + '</div>'
-      + '<figcaption class="plan-figure__caption">' + esc(sentence(floor, plan)) + '</figcaption>'
+      + '<figcaption class="plan-figure__caption">' + esc(sentence(floor, plan, project)) + '</figcaption>'
       + '</figure>';
     return { what, body: figure };
   });
@@ -183,7 +201,7 @@ export function planImage(project, options) {
     const placed = planSvg(project, floor, { xml: true, place: { x: (width - w) / 2, y, width: w, height: h } });
     parts.push(placed.svg);
     y += h + 10;
-    const said = sentence(floor, plan);
+    const said = sentence(floor, plan, project);
     line(said, lineSize(said, 400, 14, 7), 'img__caption');
     y += 24;
   }

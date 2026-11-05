@@ -273,6 +273,23 @@ test('on the main thread the first scenario asking searches nothing: its pipelin
   client.close();
 });
 
+test('the scenario answer carries the levers it was worked out with, so a lever edit is seen on the real page (SV2-90b)', async () => {
+  const store = withScenario(storeOf(sampleSchool()));
+  const client = engineFor(store, { worker: false });
+  const plain = await store.derived.scenario();
+  assert.deepEqual(plain.levers, [], 'a scenario without levers answers an empty list');
+  const lever = { kind: 'headCount', groupId: 'gsample07a', headCount: 40 };
+  store.apply(actions.addScenarioLever, { lever });
+  const withLever = await store.derived.scenario();
+  assert.deepEqual(withLever.levers, [lever], 'the levers the comparison was made with');
+  assert.deepEqual(withLever.levers, reconcile(store.project, store.project.scenario).levers);
+  const edited = { ...lever, headCount: 12 };
+  store.apply(actions.addScenarioLever, { lever: edited });
+  const after = await store.derived.scenario();
+  assert.deepEqual(after.levers, [edited], 'an edit to the lever is in the next answer');
+  client.close();
+});
+
 test('store.derived.scenario() and suggest() refuse until an engine is attached; scenario() is null with no scenario open', async () => {
   const store = storeOf(sampleSchool());
   engineFor(store, { worker: false }).close();

@@ -5,6 +5,12 @@
 //   cold   the graph, every room's way out, byExit, noRoute and a door card
 //          for every room, from nothing: budget 300 ms
 //
+//   up-only  (SV2-90, ARCHITECTURE 18.4) the same with one stairs made up
+//          only, in a cache the movement view has already filled: evacuation
+//          takes every stair, so it shares no distance field with Movement
+//          and searches every room afresh, as many as the main lane did.
+//          Budget 300 ms for the routes alone, as above.
+//
 // Measured by SV2-62b on huginn (2026-10-16), five runs in fresh processes,
 // after the stale-route check, the room's footprint in the crop and the
 // folded steps: 110 to 129 ms, the routes alone 72 to 84 ms (SV2-62 measured
@@ -15,7 +21,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildGraph } from '../../engine/graph.js';
-import { routingGraph } from '../../engine/routing.js';
+import { routingGraph, routesForSchedule, createRouteCache } from '../../engine/routing.js';
 import { evacuationRoutes, byExit, noRoute, doorCard } from '../../engine/evacuation.js';
 import { bigProject, BIG } from '../fixtures/big.mjs';
 
@@ -42,4 +48,23 @@ test('every room\'s way out and door card on the big fixture: under 300 ms cold'
   assert.equal(exits.reduce((sum, row) => sum + row.rooms, 0), BIG.rooms);
   assert.ok(exits.every((row) => row.rooms > 0), 'both exits are used: ' + exits.map((row) => row.rooms).join(', '));
   assert.ok(ms < BUDGET * SLACK, 'evacuation took ' + ms.toFixed(1) + ' ms, over ' + BUDGET * SLACK);
+});
+
+test('every room\'s way out on the big fixture with one stairs up only, beside the movement view\'s fields: its own searches, under 300 ms', () => {
+  const project = bigProject({ seed: 1 });
+  project.building.connections[0].direction = 'ab';
+  const graph = routingGraph(project, buildGraph(project));
+  const cache = createRouteCache(BIG.rooms);
+  const movement = routesForSchedule(project, graph, { cache, geometryVersion: 1 });
+  const before = cache.searches;
+  const started = performance.now();
+  const evacuation = evacuationRoutes(project, graph, { cache, geometryVersion: 1 });
+  const ms = performance.now() - started;
+  const searched = cache.searches - before;
+
+  console.log('# evacuation, one stairs up only: ' + ms.toFixed(1) + ' ms (budget ' + BUDGET + ', fails at ' + BUDGET * SLACK + '), ' + searched + ' distance fields searched beside the ' + movement.searches + ' the movement view needed');
+
+  assert.equal(searched, BIG.rooms, 'one search for every room: none of the movement view\'s fields is the evacuation\'s');
+  assert.deepEqual(noRoute(project, evacuation), [], 'every room has a way out, up-only stairs or not');
+  assert.ok(ms < BUDGET * SLACK, 'evacuation with an up-only stairs took ' + ms.toFixed(1) + ' ms, over ' + BUDGET * SLACK);
 });

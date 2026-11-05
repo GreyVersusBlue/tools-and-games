@@ -189,13 +189,18 @@ export function attachSearch(input, ctx) {
 // createFinder(ed) -> { show(where, say), clear(), overlay, marked }
 //   where: { floorId, roomId, cells }: a room (or other space) by id, or
 //   cells, or both. The floor comes on screen, the place comes to the middle
-//   of the window, a room is selected, and the cells are marked.
+//   of the window, a room is selected, and the cells are marked. When
+//   where.floors is a list of { floorId, cells } (a trap across several
+//   floors) the cells of every floor in it are marked, each shown when its
+//   floor is, and the first floor is the one that comes on screen.
 export function createFinder(ed) {
   let marked = null;
+  let markedAll = [];
 
   function clear() {
     if (!marked) return;
     marked = null;
+    markedAll = [];
     ed.schedule();
   }
 
@@ -212,6 +217,16 @@ export function createFinder(ed) {
     if (space) ed.select([space.id]);
     const cells = Array.isArray(where.cells) && where.cells.length > 0 ? where.cells.filter((cell) => cell >= 0 && cell < floor.width * floor.height) : space ? space.cells : [];
     marked = cells.length > 0 ? { floorId: floor.id, cells } : null;
+    markedAll = marked ? [marked] : [];
+    if (marked && Array.isArray(where.floors)) {
+      // the other floors of the same finding, as they are in the building now
+      for (const each of where.floors) {
+        if (!each || each.floorId === floor.id || !Array.isArray(each.cells)) continue;
+        const other = floors.find((candidate) => candidate.id === each.floorId);
+        const there = other ? each.cells.filter((cell) => cell >= 0 && cell < other.width * other.height) : [];
+        if (there.length > 0) markedAll.push({ floorId: other.id, cells: there });
+      }
+    }
     if (cells.length > 0) {
       let x0 = Infinity;
       let y0 = Infinity;
@@ -237,13 +252,14 @@ export function createFinder(ed) {
   // The mark: a thick outline round the cells, in the accent with a light
   // line under it so it shows on any fill. Never printed: it is the editor's.
   function overlay(g, view, floor, theme) {
-    if (!marked || marked.floorId !== floor.id) return;
-    const inside = new Set(marked.cells);
+    const here = markedAll.find((each) => each.floorId === floor.id);
+    if (!here) return;
+    const inside = new Set(here.cells);
     const size = view.size;
     const X = (column) => Math.round(view.x + column * size);
     const Y = (row) => Math.round(view.y + row * size);
     g.beginPath();
-    for (const cell of marked.cells) {
+    for (const cell of here.cells) {
       const x = cell % floor.width;
       const y = Math.floor(cell / floor.width);
       if (!inside.has(cell - floor.width)) {
@@ -278,6 +294,10 @@ export function createFinder(ed) {
     overlay,
     get marked() {
       return marked;
+    },
+    // every floor marked: [{ floorId, cells }], the floor on screen first
+    get markedFloors() {
+      return markedAll.slice();
     },
   };
 }

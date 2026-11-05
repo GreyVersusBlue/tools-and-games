@@ -51,7 +51,7 @@
 //   SCENARIO_PLACES   how many places busier, and how many quieter, it lists
 
 import { ownDayTypes, findDayType } from '../../engine/day-types.js';
-import { reconcile, changeWords } from '../../engine/scenario.js';
+import { reconcile, changeWords, isTrialOnly } from '../../engine/scenario.js';
 import { blankName, NEW_SCENARIO_NAME } from '../../engine/actions.js';
 import { timeFigures, durationWords } from '../scenarios/model.js';
 import { sortFindings, SEVERITIES } from '../../engine/findings.js';
@@ -60,7 +60,7 @@ import { findBellSchedule } from '../../engine/bells.js';
 import { count, list, periodWords } from '../components/words.js';
 import { transitionsOf, unitWord, runOf, followerWords, nothingMeets } from '../movement/model.js';
 import { rankedPlaces } from '../movement/hotspots.js';
-import { transitionRows, lateWords } from '../movement/tables.js';
+import { transitionRows, lateWords, heldBackWords } from '../movement/tables.js';
 import { esc, frame } from './document.js';
 import { printedFrom, placesTable, PLACES_ON_PAPER } from './movement.js';
 
@@ -140,7 +140,7 @@ function daySection(project, results, graph, dayType, first, bellsId) {
     + esc(late.length === 0
       ? 'Every group arrives in time.'
       : count(lateGroups, 'group') + ' cannot arrive in time, on ' + count(late.length, 'walk') + '.')
-    + '</p>');
+    + esc(heldBackWords(project, results, dayType.id, bellsId) ? ' ' + heldBackWords(project, results, dayType.id, bellsId) : '') + '</p>');
 
   // the worst transitions
   out.push('<h2>The ' + (worst.length < WORST_TRANSITIONS ? '' : WORST_TRANSITIONS + ' ') + 'worst transitions</h2>');
@@ -217,10 +217,18 @@ function changeCell(n, words) {
 }
 
 // Whether a comparison is for the scenario as it is now: the changes it was
-// worked out with are the very changes reconcile keeps today, in order.
-function current(comparison, kept) {
+// worked out with are the very changes reconcile keeps today, in order; and
+// so are its levers (ARCHITECTURE 18.3): the comparison says which it was
+// worked out with (`comparison.levers`), and one that does not say was worked
+// out without any, so it is stale when the scenario has some now (SV2-90b). A
+// lever reconcile trims is a new object each time, so levers are compared by
+// what they say, not by identity.
+function current(comparison, kept, levers) {
   const changes = comparison && Array.isArray(comparison.changes) ? comparison.changes : null;
-  return changes !== null && changes.length === kept.length && changes.every((change, i) => change === kept[i]);
+  if (changes === null || changes.length !== kept.length || !changes.every((change, i) => change === kept[i])) return false;
+  const now = Array.isArray(levers) ? levers : [];
+  if (!Array.isArray(comparison.levers)) return now.length === 0;
+  return comparison.levers.length === now.length && comparison.levers.every((lever, i) => JSON.stringify(lever) === JSON.stringify(now[i]));
 }
 
 function placeHtml(project, row, names) {
@@ -346,11 +354,13 @@ export function scenarioSection(project, comparison) {
   if (typeof comparison !== 'object' || view === null) return failed('');
   if (typeof comparison.failed === 'string') return failed(comparison.failed);
   // nothing kept and nothing dropped: one sentence, not a sheet of "no change"
-  if (view.changes.length === 0 && view.dropped.length === 0) {
+  const levers = Array.isArray(view.levers) ? view.levers : [];
+  const droppedLevers = Array.isArray(view.droppedLevers) ? view.droppedLevers : [];
+  if (view.changes.length === 0 && view.dropped.length === 0 && levers.length === 0 && droppedLevers.length === 0) {
     say(called.charAt(0).toUpperCase() + called.slice(1) + ' has no changes yet, so it changes nothing in this report.');
     return close();
   }
-  if (!current(comparison, view.changes) || !comparison.compare) {
+  if (!current(comparison, view.changes, levers) || !comparison.compare) {
     say('The scenario has changed since its effect was worked out, so nothing of it is printed. Close the report and open it again for its figures.');
     return close();
   }
@@ -388,13 +398,21 @@ function comparisonHtml(project, scenario, comparison, view, called) {
       + (removed.length > 0 ? ' Only in this project: ' + removed.map((each) => '<span dir="auto">' + esc(each) + '</span>').join(', ') + '.' : '') + '</p>');
   }
 
-  // its changes, in the words of the lab's chips
-  out.push('<h3>Its changes <span class="doc-count">' + view.changes.length + '</span></h3>');
-  if (view.changes.length === 0) out.push('<p class="doc-none">No change of it applies to the schedule as it stands.</p>');
-  else out.push('<table class="doc-table doc-table--changes"><tbody>' + view.changes.map((change, i) => '<tr><th scope="row" class="is-number">' + (i + 1) + '</th><td>' + partsHtml(changeWords(project, change).parts) + '</td></tr>').join('') + '</tbody></table>');
-  if (view.dropped.length > 0) {
-    out.push('<p class="doc-meaning">' + esc(count(view.dropped.length, 'change') + (view.dropped.length === 1 ? ' no longer applies' : ' no longer apply') + ' and ' + (view.dropped.length === 1 ? 'is' : 'are') + ' left out:') + '</p>');
-    for (const each of view.dropped) out.push('<p class="doc-dropped">' + partsHtml(each.parts) + '</p>');
+  // its changes and its levers, in the words of the lab's chips
+  const levers = Array.isArray(view.levers) ? view.levers : [];
+  const droppedLevers = Array.isArray(view.droppedLevers) ? view.droppedLevers : [];
+  const total = view.changes.length + levers.length;
+  out.push('<h3>Its changes <span class="doc-count">' + total + '</span></h3>');
+  if (total === 0) out.push('<p class="doc-none">No change of it applies to the schedule as it stands.</p>');
+  else {
+    const rows = view.changes.map((change) => partsHtml(changeWords(project, change).parts))
+      .concat(levers.map((lever) => partsHtml(changeWords(project, lever).parts) + (isTrialOnly(lever) ? ' (a trial only: Apply leaves it out)' : '')));
+    out.push('<table class="doc-table doc-table--changes"><tbody>' + rows.map((html, i) => '<tr><th scope="row" class="is-number">' + (i + 1) + '</th><td>' + html + '</td></tr>').join('') + '</tbody></table>');
+  }
+  const gone = view.dropped.length + droppedLevers.length;
+  if (gone > 0) {
+    out.push('<p class="doc-meaning">' + esc(count(gone, 'change') + (gone === 1 ? ' no longer applies' : ' no longer apply') + ' and ' + (gone === 1 ? 'is' : 'are') + ' left out:') + '</p>');
+    for (const each of view.dropped.concat(droppedLevers)) out.push('<p class="doc-dropped">' + partsHtml(each.parts) + '</p>');
   }
 
   // the figures

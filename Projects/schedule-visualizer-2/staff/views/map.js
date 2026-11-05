@@ -21,6 +21,21 @@ export function roomsInOrder(floor) {
   });
 }
 
+// The one-way stairs that touch a floor, each as the words "Stairs B (up only)"
+// (SV2-90b, DESIGN 12.6): the list in words says what the chevrons on the
+// picture say. Between floors the way goes by floor level; on one floor it is
+// "one way only". A stair that runs both ways draws no chevron and is not
+// listed. [{ id, text }], in the building's order.
+export function oneWayStairs(data, floor) {
+  const floors = data && data.building && Array.isArray(data.building.floors) ? data.building.floors : [];
+  const links = data && data.building && Array.isArray(data.building.connections) ? data.building.connections : [];
+  const level = (id) => (floors.find((each) => each.id === id) || { level: 0 }).level;
+  return links.filter((link) => (link.direction === 'ab' || link.direction === 'ba') && (link.a.floorId === floor.id || link.b.floorId === floor.id)).map((link) => {
+    const rise = link.direction === 'ab' ? level(link.b.floorId) - level(link.a.floorId) : level(link.a.floorId) - level(link.b.floorId);
+    return { id: link.id, text: 'Stairs ' + link.label + ' (' + (rise > 0 ? 'up only' : rise < 0 ? 'down only' : 'one way only') + ')' };
+  });
+}
+
 // The subjects a floor's rooms have, in the school's own order, and whether
 // any room has none.
 export function floorLegend(school, floor) {
@@ -78,7 +93,12 @@ export const mapView = {
       h('h2', { class: 'part__title' }, 'Other spaces on this floor'),
       h('ul', { class: 'plain' }, others.map((space) => h('li', null, space.label ? typed(space.label) : h('span', { class: 'muted' }, 'A space with no name'))))) : null;
 
+    const stairs = oneWayStairs(school.data, floor);
+    const ways = stairs.length > 0 ? h('section', { class: 'part', 'aria-label': 'One-way stairs on this floor' },
+      h('h2', { class: 'part__title' }, 'One-way stairs on this floor'),
+      h('ul', { class: 'plain' }, stairs.map((each) => h('li', { dataset: { stairs: each.id } }, typed(each.text))))) : null;
+
     const lede = [typed(floor.name), ' has ' + countOf(rooms.length, 'room', 'rooms') + '. ', school.has('room') ? 'Tap a room for its page.' : 'The rooms are listed below.'];
-    return pageOf(['Building map: ', typed(floor.name)], lede, besideMap([], h('div', { class: 'part' }, map, key), [list, rest]));
+    return pageOf(['Building map: ', typed(floor.name)], lede, besideMap([], h('div', { class: 'part' }, map, key), [list, ways, rest]));
   },
 };

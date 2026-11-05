@@ -170,6 +170,7 @@ import { effectiveDayType, findDayType } from './day-types.js';
 import { bellsFor, offPeriods, parseTime } from './bells.js';
 import { teacherDays, teacherMoves } from './teacher-day.js';
 import { runsOf, meetingSlots } from './runs.js';
+import { releaseDelay } from './release.js';
 
 export const CAP_FACTOR = 3;
 export const CAP_MINIMUM_SECONDS = 600;
@@ -340,8 +341,15 @@ function byId(a, b) {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-// One transition. `walkers` is [{ id, headCount, route }] in any order; a
-// walker whose route is the same room or failed takes no part (rule 7).
+// One transition. `walkers` is [{ id, headCount, route, delay }] in any order;
+// a walker whose route is the same room or failed takes no part (rule 7).
+// `delay` is the whole seconds a group waits after the bell before its head
+// may try its first step (staggered dismissal, ARCHITECTURE 18.2): it is the
+// group's first `readyAt` and nothing else. Arrival is still counted from the
+// bell, so total = released + walking + waiting, and a group held back keeps
+// its own passing time to walk in. `released` is on a group's figures only
+// when it was held (absent reads as 0), so a project with no staggered
+// dismissal has the figures it always had.
 // options: { passingSeconds, marginSeconds }.
 export function simulateTransition(graph, walkers, options) {
   const numbering = numberingOf(graph);
@@ -356,7 +364,7 @@ export function simulateTransition(graph, walkers, options) {
     const path = walker ? routePath(graph, walker.route) : null;
     if (!path) continue;
     const headCount = headCountOf(walker, null);
-    taking.push({ id: walker.id, route: walker.route, path, headCount, length: columnLength(headCount) });
+    taking.push({ id: walker.id, route: walker.route, path, headCount, length: columnLength(headCount), delay: Number.isInteger(walker.delay) && walker.delay > 0 ? walker.delay : 0 });
   }
   taking.sort(byId);
   const count = taking.length;
@@ -373,6 +381,7 @@ export function simulateTransition(graph, walkers, options) {
   const occupancy = new Int32Array(numbering.slotCount).fill(-1);
   const head = new Int32Array(count).fill(-1);
   const readyAt = new Int32Array(count);
+  for (let g = 0; g < count; g += 1) readyAt[g] = taking[g].delay; // the release-delay wish changes only this
   const waited = new Int32Array(count);
   const refusedAt = new Int32Array(count).fill(-2); // the last tick each group was refused a step
   const crossingWaited = new Int32Array(count); // seconds rule 4 has refused the turn the head is at
@@ -474,6 +483,7 @@ export function simulateTransition(graph, walkers, options) {
       slots: walker.path.length,
       walking: walker.path.length * step, // rule 8
       waiting: waited[g],
+      ...(walker.delay > 0 ? { released: walker.delay } : {}),
       total,
       late: arrived ? isLate(total, passingSeconds, marginSeconds) : true,
       arrived,
@@ -551,7 +561,7 @@ function runTransition(project, routing, found, period, passingSeconds) {
     const group = groupOf.get(entry.groupId);
     const way = entry.routes[period];
     if (!group || !way || way.ok !== true || way.same === true) continue;
-    walkers.push({ id: group.id, headCount: headCountOf(group, settings), route: way });
+    walkers.push({ id: group.id, headCount: headCountOf(group, settings), route: way, delay: releaseDelay(project, group.id, found.dayType.id, period, way.fromRoomId) });
   }
   const marginSeconds = settings.checks ? settings.checks.passingMarginSeconds : 0;
   const result = simulateTransition(routing, walkers, { passingSeconds, marginSeconds });
@@ -665,7 +675,10 @@ export function routesByRun(project, graph, options) {
 // A teacher's walk between rooms is routed like a group's and timed by
 // walking alone, with no crowd. One entry per walk teacherMoves() names, on
 // every own day type, in the shape checkSchedule takes. A walk with no way
-// through has no figure and is left out. options.cache is a route cache.
+// through has no figure: it is there with `failed: true` and `late: true` and
+// no `walking` (SV2-90b). options.cache is a route cache.
+// options.ways, options.avoidConnections and options.shutCells are routing's
+// (the scenario's building levers) and pass through to every route.
 //
 // With options.bells true, the same for every bell-schedule run instead
 // (runsOf's order), each entry with bellsId after dayTypeId: the teacher's
@@ -691,6 +704,11 @@ export function teacherWalks(project, graph, options) {
   const cache = options && options.cache ? options.cache : createRouteCache();
   const routeOptions = { cache };
   if (options && options.geometryVersion !== undefined) routeOptions.geometryVersion = options.geometryVersion;
+  // the scenario's building levers (a stair one way or closed, closed cells)
+  // reach a teacher as they reach a class (ARCHITECTURE 18.3)
+  if (options && options.ways) routeOptions.ways = options.ways;
+  if (options && options.avoidConnections) routeOptions.avoidConnections = options.avoidConnections;
+  if (options && options.shutCells) routeOptions.shutCells = options.shutCells;
   const marginSeconds = project.settings.checks ? project.settings.checks.passingMarginSeconds : 0;
   const bellRuns = Boolean(options && options.bells === true);
   const runs = runsOf(project).filter((run) => (run.bellsId !== null) === bellRuns);
@@ -707,10 +725,20 @@ export function teacherWalks(project, graph, options) {
       const day = days.get(teacher.id);
       if (!day) continue;
       for (const move of bellMoves(day, off)) {
-        const walking = walkingSeconds(routing, route(routing, move.fromRoomId, move.toRoomId, routeOptions));
-        if (walking === null) continue;
+        const found = route(routing, move.fromRoomId, move.toRoomId, routeOptions);
+        const walking = walkingSeconds(routing, found);
+        // a walk with no way through (a closure or a one-way stair in the
+        // building or the scenario, or a room that opens onto no corridor) is
+        // a failed walk, as a group's is, never a walk that is not there; a
+        // room not placed has no walk to fail
+        const stranded = walking === null && found && found.ok === false && (found.reason === 'unreachable' || found.reason === 'no-entry');
+        if (walking === null && !stranded) continue;
         const passingSeconds = move.toPeriod === undefined ? bells[move.period].passingAfter : transitionPlan(project, bells, move.period).passing;
         const head = bellsId === null ? { dayTypeId: run.dayTypeId } : { dayTypeId: run.dayTypeId, bellsId };
+        if (stranded) {
+          walks.push({ ...head, teacherId: teacher.id, period: move.period, ...(move.toPeriod === undefined ? {} : { toPeriod: move.toPeriod }), fromRoomId: move.fromRoomId, toRoomId: move.toRoomId, passingSeconds, failed: true, late: true });
+          continue;
+        }
         walks.push({ ...head, teacherId: teacher.id, period: move.period, ...(move.toPeriod === undefined ? {} : { toPeriod: move.toPeriod }), fromRoomId: move.fromRoomId, toRoomId: move.toRoomId, passingSeconds, walking, late: isLate(walking, passingSeconds, marginSeconds) });
       }
     }
@@ -735,6 +763,7 @@ function groupWalks(days) {
           total: group.total,
           walking: group.walking,
           waiting: group.waiting,
+          ...(group.released > 0 ? { released: group.released } : {}),
           late: group.late,
           arrived: group.arrived,
         });

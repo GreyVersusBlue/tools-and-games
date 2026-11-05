@@ -14,7 +14,7 @@ import { importSchedule } from '../../../engine/actions.js';
 import { button, keyed, quote } from '../common.js';
 import { panel, fileButton, clashChooser, newPolicy, runImport, doneLine, refusal } from './parts.js';
 
-// What an import did to the marks or the duties: "2 marked periods added",
+// What an import did to the marks, the duties or the staggered dismissals: "2 marked periods added",
 // "1 marked period kept as it was", "1 marked period replaced". A mark or duty
 // with an id already here follows the same choice as a group does (kept or
 // replaced); the engine counts each.
@@ -35,6 +35,8 @@ export function alsoText(outcome, words) {
   if (outcome.periodsRaised) parts.push('the day made ' + outcome.periodsRaised.to + ' ' + words.many + ' long');
   parts.push(...listedWords(outcome.marksAdded, outcome.marksKept, outcome.marksReplaced, 'marked period', 'marked periods'));
   parts.push(...listedWords(outcome.dutiesAdded, outcome.dutiesKept, outcome.dutiesReplaced, 'duty or meeting', 'duties and meetings'));
+  parts.push(...listedWords(outcome.releaseAdded, outcome.releaseKept, outcome.releaseReplaced, 'staggered dismissal', 'staggered dismissals'));
+  if (outcome.releaseDropped > 0) parts.push(count(outcome.releaseDropped, 'staggered dismissal') + ' left out because ' + (outcome.releaseDropped === 1 ? 'it names' : 'they name') + ' nothing here');
   if (outcome.unknownRooms.length > 0) parts.push(count(outcome.unknownRooms.length, 'room number') + ' kept as text because ' + (outcome.unknownRooms.length === 1 ? 'it is' : 'they are') + ' not in the building');
   return parts.length === 0 ? '' : ' Also: ' + list(parts) + '.';
 }
@@ -106,7 +108,7 @@ export function schedulePanel(env, state) {
     });
     return panel('schedule', 'The schedule from a schedule file',
       h('p', { class: 'sch-lead', data: { file: 'schedule' } }, quote(loaded.fileName) + ' holds ' + list([count(s.groups, 'group'), count(s.teachers, 'teacher'), count(s.subjects, 'subject'), count(s.dayTypes, 'day type')]
-        .concat(s.marks > 0 ? [count(s.marks, 'marked period')] : [], s.duties > 0 ? [count(s.duties, 'duty or meeting', 'duties and meetings')] : []))
+        .concat(s.marks > 0 ? [count(s.marks, 'marked period')] : [], s.duties > 0 ? [count(s.duties, 'duty or meeting', 'duties and meetings')] : [], s.release > 0 ? [count(s.release, 'staggered dismissal')] : []))
         + ', for a day of ' + s.periods + ' ' + (s.periods === 1 ? words.one : words.many) + '. Nothing changes until you import.'),
       h('p', { class: 'sch-hint' }, 'A subject, teacher or day type already here is left as it is, and one that is not is added. Rooms are matched to this building by number. A bell time already entered here is never changed.'
         + (s.periods > project.settings.periods ? ' The day here has ' + project.settings.periods + ' ' + words.many + '; it would be made ' + s.periods + ' long.' : '')),

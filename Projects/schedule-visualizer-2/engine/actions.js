@@ -25,6 +25,10 @@ import { periodName } from './bells.js';
 import { DAY_TYPES_MOST, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DAYS_MOST, ROTATION_RANGE, DATE_LABEL_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, WEEKDAY_NAMES, LATER_PUBLISH_VIEWS } from './schema.js';
 import { spacelessKey, textLength, bellSchedulesOf, calendarOf, newBellSchedule, defaultWeekdays } from './schema.js';
 import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST, marksOf, dutiesOf, newMark, newDuty } from './schema.js';
+import { RELEASE_MOST, RELEASE_SECONDS, RELEASE_WHO_KINDS, releaseOf, newRelease } from './schema.js';
+import { CELL_CORRIDOR, CELL_STAIRS } from './schema.js';
+import { releaseKind } from './release.js';
+import { formatDuration } from './findings.js';
 import { isCalendarDate, daysBetween, datesFrom, weekdayOf, dateWords, calendarDays } from './calendar.js';
 import { isId, collectIds } from './ids.js';
 import { importedCalendar, calendarImportText } from './import-calendar.js';
@@ -314,12 +318,22 @@ export function describePeriodChange(project, periods) {
       if (used.some((value) => value >= periods)) scenarioChanges += 1;
     }
   }
-  const past = periods < from ? countPastPeriods(project, periods) : { marks: 0, duties: 0 };
+  // the open scenario's levers that name a period past the new end: a bell lever's, or a release lever that follows only such periods (one that follows a period that is left is trimmed, not lost)
+  let scenarioLevers = 0;
+  if (project.scenario && Array.isArray(project.scenario.levers)) {
+    for (const lever of project.scenario.levers) {
+      if (!lever || typeof lever !== 'object') continue;
+      if (lever.kind === 'bell' && lever.period >= periods) scenarioLevers += 1;
+      if (lever.kind === 'release' && Array.isArray(lever.after) && lever.after.length > 0 && lever.after.every((period) => period >= periods)) scenarioLevers += 1;
+    }
+  }
+  const past = periods < from ? countPastPeriods(project, periods) : { marks: 0, duties: 0, release: 0 };
   // the sentence's words for what the change takes, in the order the screen says it
   const lostWords = [];
   if (past.marks > 0) lostWords.push(count(past.marks, 'marked period', 'marked periods'));
   if (past.duties > 0) lostWords.push(count(past.duties, 'duty', 'duties'));
-  return { from, to: periods, removedPeriods, slots, bells, groups, dayTypes, bellSchedules, scenarioChanges, marks: past.marks, duties: past.duties, marksAndDutiesWords: lostWords, losesData: slots + bells + offLost + scenarioChanges + past.marks + past.duties > 0 };
+  if (past.release > 0) lostWords.push(count(past.release, 'staggered dismissal', 'staggered dismissals'));
+  return { from, to: periods, removedPeriods, slots, bells, groups, dayTypes, bellSchedules, scenarioChanges, ...(scenarioLevers > 0 ? { scenarioLevers } : {}), marks: past.marks, duties: past.duties, release: past.release, marksAndDutiesWords: lostWords, losesData: slots + bells + offLost + scenarioChanges + scenarioLevers + past.marks + past.duties + past.release > 0 };
 }
 
 // Periods per day. Going down removes the later periods from every day, every
@@ -744,7 +758,7 @@ export const deleteGroup = action(
   { label: (before, payload) => 'Delete group ' + groupName(before, payload.id), bumps: [SCHEDULE], focus: () => ({ section: 'schedule', tab: 'groups' }) },
   (project, payload) => {
     const gone = need(project.groups, payload.id, 'group');
-    return reportingDeleted(project, dropGroupFromMarks({ ...project, groups: project.groups.filter((group) => group !== gone) }, payload.id), gone.name);
+    return reportingDeleted(project, dropGroupFromLevers(dropGroupFromRelease(dropGroupFromMarks({ ...project, groups: project.groups.filter((group) => group !== gone) }, payload.id), payload.id), payload.id), gone.name);
   },
 );
 
@@ -1087,17 +1101,41 @@ export function describeDayTypeKind(project, payload) {
   const followers = followersOf(project, dayType.id).map((follower) => follower.name);
   // the scenario's changes on its own days go with them, as deleteDayType's do
   const scenarioChanges = scenarioChangesOn(project, dayType.id);
-  return { from: null, to: target.name, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, losesData: revert.losesData || scenarioChanges > 0 };
+  const levers = leverKeys(project, dayType.id);
+  return { from: null, to: target.name, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, ...levers, losesData: revert.losesData || scenarioChanges > 0 || levers.scenarioLevers > 0 };
 }
 
 function scenarioChangesOn(project, dayTypeId) {
   return project.scenario ? project.scenario.changes.filter((change) => change.dayTypeId === dayTypeId).length : 0;
 }
 
-// The project with the open scenario's changes on `dayTypeId` taken out.
+// The open scenario's levers that name `dayTypeId`, as { changed, removed }:
+// a bell lever on it goes whole; a release lever that lists it loses that
+// day type only, and goes when none is left (ARCHITECTURE 18.7).
+function scenarioLeverChanges(project, dayTypeId) {
+  return leverChanges(project, dropDayTypeFromLevers(project, dayTypeId));
+}
+
+function scenarioLeversOn(project, dayTypeId) {
+  return scenarioLeverChanges(project, dayTypeId).changed;
+}
+
+// The outcome keys for the levers a day type takes: `scenarioLevers` the
+// number changed or removed, `scenarioLeversRemoved` the number removed,
+// both left out when none.
+function leverKeys(project, dayTypeId) {
+  const { changed, removed } = scenarioLeverChanges(project, dayTypeId);
+  return changed > 0 ? { scenarioLevers: changed, scenarioLeversRemoved: removed } : {};
+}
+
+// The project with the open scenario's changes and levers on `dayTypeId`
+// taken out. A scenario with no `levers` keeps none, as it was.
 function withoutScenarioChanges(project, dayTypeId) {
-  if (scenarioChangesOn(project, dayTypeId) === 0) return project;
-  return { ...project, scenario: { ...project.scenario, changes: project.scenario.changes.filter((change) => change.dayTypeId !== dayTypeId) } };
+  const changes = scenarioChangesOn(project, dayTypeId);
+  const trimmed = dropDayTypeFromLevers(project, dayTypeId);
+  if (changes === 0 && trimmed === project) return project;
+  const scenario = { ...trimmed.scenario, changes: project.scenario.changes.filter((change) => change.dayTypeId !== dayTypeId) };
+  return { ...project, scenario };
 }
 
 // The one rule for turning a day type into its own copy or into "same as":
@@ -1172,6 +1210,7 @@ export function describeDayTypeDelete(project, dayTypeId) {
   const revert = own ? describeRevert(project, dayTypeId) : { slots: 0, groups: 0, bells: 0 };
   const followers = own ? followersOf(project, dayTypeId).map((follower) => follower.name) : [];
   const scenarioChanges = scenarioChangesOn(project, dayTypeId);
+  const levers = scenarioLeverChanges(project, dayTypeId);
   const calendar = calendarOf(project);
   const dates = calendar && Array.isArray(calendar.dates) ? calendar.dates.filter((entry) => entry.day === dayTypeId).length : 0;
   const weekdays = calendar && Array.isArray(calendar.weekdays) ? calendar.weekdays.map((rule, w) => (rule && rule.day === dayTypeId ? w : -1)).filter((w) => w !== -1) : [];
@@ -1183,12 +1222,16 @@ export function describeDayTypeDelete(project, dayTypeId) {
   if (weekdays.length > 0) parts.push(listWords(weekdays.map((w) => WEEKDAY_NAMES[w] + 's')) + ' in the calendar');
   if (rotation > 0) parts.push('its place in the rotation');
   if (scenarioChanges > 0) parts.push(count(scenarioChanges, 'change', 'changes') + ' in the scenario');
+  if (levers.removed > 0) parts.push(count(levers.removed, 'lever', 'levers') + ' in the scenario');
+  if (levers.changed > levers.removed) parts.push(count(levers.changed - levers.removed, 'lever', 'levers') + ' in the scenario changed');
   const left = marksAndDutiesLeftNoDayType(project, dayTypeId);
   if (left.marks > 0) parts.push(count(left.marks, 'marked period', 'marked periods'));
   if (left.duties > 0) parts.push(count(left.duties, 'duty', 'duties'));
+  const releases = releaseChanges(project, dropDayTypeFromRelease(project, dayTypeId));
+  if (releases.changed > 0) parts.push(count(releases.changed, 'staggered dismissal', 'staggered dismissals') + (releases.removed === releases.changed ? ' removed' : ' changed'));
   let text = 'Deleted ' + dayType.name + (parts.length > 0 ? ', ' + listWords(parts) : '');
   if (followers.length > 0) text += '. ' + listWords(followers) + (followers.length === 1 ? ' is' : ' are') + ' now the same as ' + baseDayType(project).name;
-  return { dayTypeId, name: dayType.name, own, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, dates, weekdays, rotation, marks: left.marks, duties: left.duties, text };
+  return { dayTypeId, name: dayType.name, own, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, ...leverKeys(project, dayTypeId), dates, weekdays, rotation, marks: left.marks, duties: left.duties, release: releases.changed, releaseRemoved: releases.removed, text };
 }
 
 // payload: { dayTypeId }. The first day type cannot be deleted. The outcome
@@ -1206,7 +1249,7 @@ export const deleteDayType = action(
       dayTypes: project.dayTypes.filter((candidate) => candidate !== dayType).map((candidate) => (followers.has(candidate) ? { ...candidate, sameAs: null } : candidate)),
       groups: withoutDays(project.groups, dayType.id),
     };
-    next = dropDayTypeFromMarksAndDuties(next, dayType.id);
+    next = dropDayTypeFromRelease(dropDayTypeFromMarksAndDuties(next, dayType.id), dayType.id);
     const calendar = calendarOf(project);
     if (calendar && (outcome.dates > 0 || outcome.weekdays.length > 0 || outcome.rotation > 0)) {
       const rotation = calendar.rotation.filter((id) => id !== dayType.id);
@@ -1883,6 +1926,50 @@ function inBuilding(project, run) {
   return next;
 }
 
+// A floor resize that also moves the scenario's closed corridors: a corridor
+// lever keeps cell indexes (y * width + x), so when the floor's width changes
+// or its top or left edge moves, each index is worked out again the way the
+// building's own cell references are; a lever whose cells are all cut away
+// goes. The outcome counts the levers that went (`leversLost`) so the label
+// can say so. (SV2-94b: a closure had moved from x 13-16 to x 6-9.)
+function resizingFloor(project, resize) {
+  const old = project.building.floors.find((floor) => floor.id === resize.floorId);
+  const next = inBuilding(project, (building) => geometry.resizeFloor(building, resize));
+  const scenario = project.scenario;
+  if (next === project || !old || !scenario || !Array.isArray(scenario.levers)) return next;
+  const left = resize.left || 0;
+  const top = resize.top || 0;
+  const width = old.width + left + (resize.right || 0);
+  const height = old.height + top + (resize.bottom || 0);
+  const move = (cell) => {
+    const x = (cell % old.width) + left;
+    const y = Math.floor(cell / old.width) + top;
+    return x < 0 || y < 0 || x >= width || y >= height ? -1 : y * width + x;
+  };
+  let lost = 0;
+  let changed = false;
+  const levers = [];
+  for (const lever of scenario.levers) {
+    if (lever.kind !== 'corridor' || lever.floorId !== old.id) {
+      levers.push(lever);
+      continue;
+    }
+    const cells = lever.cells.map(move).filter((cell) => cell !== -1);
+    if (cells.length === 0) {
+      lost += 1;
+      changed = true;
+    } else if (cells.length !== lever.cells.length || cells.some((cell, i) => cell !== lever.cells[i])) {
+      levers.push({ ...lever, cells });
+      changed = true;
+    } else levers.push(lever);
+  }
+  if (!changed) return next;
+  const outcome = outcomes.get(next);
+  const followed = { ...next, scenario: { ...scenario, levers } };
+  outcomes.set(followed, { ...outcome, leversLost: lost });
+  return followed;
+}
+
 // What building.js reported for a project an action here returned: the loss,
 // the new space's id, the cells. Null for any other project.
 export function buildingOutcome(project) {
@@ -2265,12 +2352,13 @@ export const resizeFloor = action(
   {
     label: (before, payload, after) => {
       const outcome = outcomes.get(after);
-      return 'Resize ' + floorName(before, payload.floorId) + (outcome ? ' to ' + outcome.width + ' by ' + outcome.height : '') + replacing(after, 'removing');
+      const lost = outcome && outcome.leversLost ? outcome.leversLost : 0;
+      return 'Resize ' + floorName(before, payload.floorId) + (outcome ? ' to ' + outcome.width + ' by ' + outcome.height : '') + replacing(after, 'removing') + (lost > 0 ? ', and the scenario loses ' + lost + ' closed corridor' + (lost === 1 ? '' : 's') + ' that ' + (lost === 1 ? 'is' : 'are') + ' cut away' : '');
     },
     bumps: geometryBumps,
     focus: buildingFocus,
   },
-  (project, payload) => inBuilding(project, (building) => geometry.resizeFloor(building, payload)),
+  (project, payload) => resizingFloor(project, payload),
 );
 
 // ---- the traced image
@@ -2455,7 +2543,7 @@ export const fitFloorToImage = action(
     const resize = { floorId: floor.id, left: edges.left, right: edges.right, top: edges.top, bottom: edges.bottom };
     const described = describing(() => geometry.describeResize(project.building, resize));
     if (described.losesData) refuse('Fitting ' + floor.name + ' to the image would cut ' + geometry.lossText(described.loss) + ', outside the image. Move them over the image first, or resize the floor by its edges instead.', 'cuts');
-    return inBuilding(project, (building) => geometry.resizeFloor(building, resize));
+    return resizingFloor(project, resize);
   },
 );
 
@@ -2674,6 +2762,8 @@ export const applyGridEdits = action(
 //   renameScenario        { name }
 //   addScenarioChange     { change }
 //   removeScenarioChange  { index }, an index into project.scenario.changes
+//   addScenarioLever      { lever }, a lever of the schedule (SV2-89)
+//   removeScenarioLever   { index }, an index into project.scenario.levers
 //   discardScenario       {}
 //   setScenarioFromFile   { project, fileName?, name?, replace? }
 //   applyScenario         {}
@@ -2683,7 +2773,7 @@ export const applyGridEdits = action(
 // scenario's own change objects, so a chip finds its index with indexOf.
 
 import { CHANGE_KINDS } from './schema.js';
-import { applyChanges, normalise, reconcile, scenarioFromDiff, changeWords } from './scenario.js';
+import { applyChanges, normalise, reconcile, scenarioFromDiff, changeWords, applyLevers, layReleases, normaliseLevers, isWrittenWay, trialOnlyWords, SCHEDULE_LEVER_KINDS, LEVER_KINDS } from './scenario.js';
 
 export const NEW_SCENARIO_NAME = 'New scenario';
 
@@ -2821,6 +2911,166 @@ export const removeScenarioChange = action(
   },
 );
 
+// ---- the schedule levers (ARCHITECTURE 18.3; SV2-89). scenario.levers is a
+// second list beside `changes`, absent until the first lever is added. The
+// kinds are the schedule's (release, bell, capacity, headCount) and the
+// building's (way, corridor; SV2-90 made them, SV2-91 opened them here).
+// The building's never change the building: Apply writes only a way of both,
+// ab or ba, and the lab runs the rest as route options.
+
+function leversWord(n) {
+  return n + (n === 1 ? ' lever' : ' levers');
+}
+
+function leversIn(scenario) {
+  return scenario && Array.isArray(scenario.levers) ? scenario.levers : [];
+}
+
+// A lever as the scenario keeps it: its own fields and no others, with the
+// project's own checks on every value, refused in words when it is not one
+// of the four kinds with every field it needs. `who` is ordered as the
+// project orders its groups, and `after`, `dayTypeIds` are null for every.
+function scenarioLever(project, lever) {
+  const bad = () => refuse('A scenario lever is a staggered dismissal, a bell time, a stairs\' way, a closed corridor, a room\'s capacity or a group\'s head count, with every field it needs.', 'bad-value');
+  if (!lever || typeof lever !== 'object' || !LEVER_KINDS.includes(lever.kind)) bad();
+  if (lever.kind === 'way') {
+    const connection = typeof lever.connectionId === 'string' ? project.building.connections.find((each) => each.id === lever.connectionId) : undefined;
+    if (!connection) refuse('That stairs connection is no longer in the building.', 'missing');
+    const stairsAt = (end) => {
+      const floor = project.building.floors.find((each) => each.id === end.floorId);
+      return Boolean(floor) && floor.cells[end.cell] === CELL_STAIRS;
+    };
+    if (!stairsAt(connection.a) || !stairsAt(connection.b)) refuse('Stairs ' + connection.label + ' no longer has stairs at both ends, so it has no way to change.', 'missing');
+    if (!['both', 'ab', 'ba', 'closed'].includes(lever.way)) refuse('A stairs\' way is both ways, one way only from its A end or from its B end, or closed.', 'bad-value');
+    return { kind: 'way', connectionId: connection.id, way: lever.way };
+  }
+  if (lever.kind === 'corridor') {
+    const floor = typeof lever.floorId === 'string' ? project.building.floors.find((each) => each.id === lever.floorId) : undefined;
+    if (!floor) refuse('That floor is no longer in the building.', 'missing');
+    if (!Array.isArray(lever.cells) || lever.cells.length === 0 || !lever.cells.every((cell) => Number.isInteger(cell) && cell >= 0)) refuse('A closed corridor names the cells it closes.', 'bad-value');
+    if (!lever.cells.every((cell) => cell < floor.cells.length && floor.cells[cell] === CELL_CORRIDOR)) refuse('Only corridor can be closed, and some of those cells on ' + floor.name + ' are not corridor.', 'bad-value');
+    if (lever.name !== undefined && typeof lever.name !== 'string') refuse('A closed corridor\'s name is text.', 'bad-value');
+    return { kind: 'corridor', floorId: floor.id, cells: Array.from(new Set(lever.cells)).sort((a, b) => a - b), name: lever.name === undefined ? '' : lever.name };
+  }
+  if (lever.kind === 'release') {
+    const who = needReleaseWho(project, lever.who);
+    const seconds = needReleaseSeconds(lever.seconds, who);
+    const after = lever.after === undefined ? null : needReleaseAfter(project, lever.after);
+    const dayTypeIds = lever.dayTypeIds === undefined ? null : needReleaseDays(project, lever.dayTypeIds);
+    return { kind: 'release', who, seconds, after, dayTypeIds };
+  }
+  if (lever.kind === 'bell') {
+    const named = [lever.dayTypeId, lever.bellsId].filter((value) => value !== undefined && value !== null);
+    if (named.length !== 1 || typeof named[0] !== 'string') refuse('A bell lever names one day type or one bell schedule.', 'bad-value');
+    const period = needPeriod(project, lever.period);
+    const bell = needBell({ start: lever.start, end: lever.end });
+    if (lever.bellsId !== undefined) {
+      need(bellSchedulesOf(project), lever.bellsId, 'bell schedule');
+      return { kind: 'bell', bellsId: lever.bellsId, period, start: bell.start, end: bell.end };
+    }
+    needOwnDayType(project, lever.dayTypeId);
+    return { kind: 'bell', dayTypeId: lever.dayTypeId, period, start: bell.start, end: bell.end };
+  }
+  if (lever.kind === 'capacity') {
+    if (typeof lever.roomId !== 'string' || !findRoom(project, lever.roomId)) refuse('That room is no longer in the building.', 'missing');
+    if (lever.capacity !== null && !(Number.isInteger(lever.capacity) && inRange(lever.capacity, RANGES.capacity))) refuse('A capacity is a whole number from ' + RANGES.capacity[0] + ' to ' + RANGES.capacity[1] + ', or empty.', 'bad-value');
+    return { kind: 'capacity', roomId: lever.roomId, capacity: lever.capacity };
+  }
+  need(project.groups, lever.groupId, 'group');
+  return { kind: 'headCount', groupId: lever.groupId, headCount: needHeadCount(lever.headCount === undefined ? bad() : lever.headCount) };
+}
+
+function leverText(project, lever) {
+  return changeWords(project, lever).text;
+}
+
+// One more lever. It is refused in the schedule editor's words when it
+// could not be applied to the schedule as it is now (a "same as" day type, a
+// group, period or room that is not there). Then the levers are normalised
+// with this one as the one added: a later lever of its key replaces an
+// earlier one, and this one goes when it leaves things as the real schedule
+// has them (a bell at its real times, a capacity or head count equal to the
+// real one, a release that gives every group what it already gets). Adding
+// what changes nothing makes no undo step, and neither does adding a lever
+// the scenario already holds. payload: { lever }.
+export const addScenarioLever = action(
+  {
+    label: (before, payload, after) => {
+      const name = scenarioName(before);
+      const lever = scenarioLever(before, payloadOf(payload).lever);
+      const list = leversIn(after.scenario);
+      const added = 'Add to scenario ' + name + ': ' + leverText(before, lever);
+      if (list.length > 0 && jsonSame(list[list.length - 1], lever)) return added;
+      const gone = leversIn(before.scenario).filter((old) => !list.includes(old));
+      return added + ', which puts back the schedule there and takes ' + leversWord(gone.length) + ' out of the scenario';
+    },
+    bumps: [],
+    focus: scenarioFocus,
+  },
+  (project, payload) => {
+    const scenario = needScenario(project);
+    const lever = scenarioLever(project, payloadOf(payload).lever);
+    applyLevers(project, [lever]);
+    const old = leversIn(scenario);
+    const list = old.concat([lever]);
+    const levers = normaliseLevers(project, list, { added: list.length - 1 });
+    if (levers.length === old.length && levers.every((kept, i) => jsonSame(kept, old[i]))) return project;
+    return withScenario(project, { ...scenario, levers });
+  },
+);
+
+// payload: { index }, the lever's place in project.scenario.levers.
+export const removeScenarioLever = action(
+  { label: (before, payload) => 'Remove from scenario ' + scenarioName(before) + ': ' + (leversIn(before.scenario)[payloadOf(payload).index] ? leverText(before, leversIn(before.scenario)[payloadOf(payload).index]) : 'a lever'), bumps: [], focus: scenarioFocus },
+  (project, payload) => {
+    const scenario = needScenario(project);
+    const index = payloadOf(payload).index;
+    const levers = leversIn(scenario);
+    if (!Number.isInteger(index) || index < 0 || index >= levers.length) refuse('That lever is no longer in the scenario.', 'missing');
+    return withScenario(project, { ...scenario, levers: levers.filter((lever, i) => i !== index) });
+  },
+);
+
+// payload: { indexes }, places in project.scenario.levers, each once, in any
+// order: several levers out as one step of undo (SV2-90b), as
+// removeScenarioChanges does for changes. A list with no index makes no
+// entry; an index that is not a lever of the scenario refuses the whole step.
+// removeScenarioChanges also takes `leverIndexes`, so a lab's "Remove them"
+// takes dropped changes and dropped levers in one step.
+export const removeScenarioLevers = action(
+  {
+    label: (before, payload) => {
+      const indexes = payloadOf(payload).indexes;
+      const name = scenarioName(before);
+      const levers = leversIn(before.scenario);
+      if (Array.isArray(indexes) && indexes.length === 1 && levers[indexes[0]]) return 'Remove from scenario ' + name + ': ' + leverText(before, levers[indexes[0]]);
+      return 'Remove from scenario ' + name + ': ' + changesWord(Array.isArray(indexes) ? indexes.length : 0);
+    },
+    bumps: [],
+    focus: scenarioFocus,
+  },
+  (project, payload) => {
+    const scenario = needScenario(project);
+    const indexes = payloadOf(payload).indexes;
+    if (!Array.isArray(indexes)) refuse('Say which levers to take out of the scenario.', 'bad-value');
+    if (indexes.length === 0) return project;
+    const levers = leversIn(scenario);
+    const out = takenOut(indexes, levers.length, 'lever');
+    return withScenario(project, { ...scenario, levers: levers.filter((lever, i) => !out.has(i)) });
+  },
+);
+
+// The places named, checked: whole numbers inside the list, each once.
+function takenOut(indexes, length, noun) {
+  const out = new Set();
+  for (const index of indexes) {
+    if (!Number.isInteger(index) || index < 0 || index >= length) refuse('That ' + noun + ' is no longer in the scenario.', 'missing');
+    if (out.has(index)) refuse('Each ' + noun + ' is taken out once: the same one is named twice.', 'bad-value');
+    out.add(index);
+  }
+  return out;
+}
+
 // The scenario goes, changes and all; undo brings it back. With none open
 // this changes nothing.
 export const discardScenario = action(
@@ -2863,24 +3113,75 @@ export const setScenarioFromFile = action(
     if (!readableProject(other)) refuse('This file is not a project file this tool can read, so there is nothing to compare with.', 'bad-value');
     const options = { fileName: typeof given.fileName === 'string' ? given.fileName : '' };
     if (typeof given.name === 'string' && !blankName(given.name)) options.name = given.name;
-    return withScenario(project, scenarioFromDiff(project, other, options).scenario);
+    const next = withScenario(project, scenarioFromDiff(project, other, options).scenario);
+    // the scenario it replaces goes whole, levers with it: the outcome says how many
+    const dropped = leversIn(project.scenario).length;
+    if (dropped === 0) return next;
+    return reporting(project, next, { text: 'The scenario it replaced held ' + leversWord(dropped) + ', which went with it. Undo brings them back.', leversDropped: dropped });
   },
 );
 
 // Write the scenario into the real schedule as one undo step, and close it.
 // Only the changes that still apply go in (reconcile); each is applied by
-// setSlot or moveSlot (applyChanges). Any refusal refuses the whole step and
-// nothing changes. Undo brings back the schedule and the scenario together.
+// setSlot or moveSlot (applyChanges). The levers that still apply go in
+// after them: a release lever becomes a real entry, replacing a real one of
+// its key; a bell lever sets the bell; a capacity and a head count are set.
+// Any refusal refuses the whole step and nothing changes. Undo brings back
+// the schedule and the scenario together. The outcome counts what went in
+// (scheduleOutcome): { text, changes, levers, byKind }.
+function applyBumps(before) {
+  const kept = reconcile(before, before.scenario);
+  const levers = kept.levers || [];
+  const bumps = [SCHEDULE];
+  // a way written to a connection's direction moves the routes (18.3)
+  if (levers.some(isWrittenWay)) bumps.push(GEOMETRY);
+  if (levers.some((lever) => lever.kind === 'capacity')) bumps.push(BUILDING);
+  return bumps;
+}
+
+function applyLabel(before) {
+  const kept = reconcile(before, before.scenario);
+  const levers = (kept.levers || []).filter((lever) => SCHEDULE_LEVER_KINDS.includes(lever.kind) || isWrittenWay(lever)).length;
+  const parts = [changesWord(kept.changes.length)];
+  if (levers > 0) parts.push(leversWord(levers));
+  return 'Apply scenario ' + scenarioName(before) + ': ' + parts.join(' and ');
+}
+
+const LEVER_KIND_WORDS = {
+  release: ['staggered dismissal', 'staggered dismissals'],
+  bell: ['bell', 'bells'],
+  capacity: ['room capacity', 'room capacities'],
+  headCount: ['head count', 'head counts'],
+  way: ['stairs direction', 'stairs directions'],
+};
+
 export const applyScenario = action(
-  {
-    label: (before) => 'Apply scenario ' + scenarioName(before) + ': ' + changesWord(reconcile(before, before.scenario).changes.length),
-    bumps: [SCHEDULE],
-    focus: scenarioFocus,
-  },
-  (project) => {
+  { label: applyLabel, bumps: applyBumps, focus: scenarioFocus },
+  (project, payload, ctx) => {
     const scenario = needScenario(project);
-    const applied = applyChanges(project, reconcile(project, scenario).changes);
-    return withScenario(applied, null);
+    const kept = reconcile(project, scenario);
+    let next = applyChanges(project, kept.changes);
+    const levers = (kept.levers || []).filter((lever) => SCHEDULE_LEVER_KINDS.includes(lever.kind));
+    next = applyLevers(next, levers.filter((lever) => lever.kind !== 'release'));
+    next = layReleases(next, levers.filter((lever) => lever.kind === 'release'), () => ctx.ids('l'));
+    if (releaseOf(next).length > RELEASE_MOST) refuse('A project has at most ' + RELEASE_MOST + ' staggered dismissals; applying this scenario would make ' + releaseOf(next).length + '. Remove some first.', 'limit');
+    // the building's levers: a way of both, ab or ba is written to the
+    // connection's direction (setConnection's rule); a closed stairs and a
+    // closed corridor are a trial only and go with the scenario
+    const ways = (kept.levers || []).filter(isWrittenWay);
+    for (const lever of ways) next = inBuilding(next, (building) => geometry.setConnection(building, { connectionId: lever.connectionId, direction: lever.way }));
+    const byKind = {};
+    for (const lever of levers.concat(ways)) byKind[lever.kind] = (byKind[lever.kind] || 0) + 1;
+    const said = [changesWord(kept.changes.length)];
+    for (const kind of Object.keys(LEVER_KIND_WORDS)) if (byKind[kind]) said.push(count(byKind[kind], LEVER_KIND_WORDS[kind][0], LEVER_KIND_WORDS[kind][1]));
+    const trial = trialOnlyWords(project, kept.levers || []);
+    const outcome = { text: 'Applied scenario ' + scenarioName(project) + ': ' + listWords(said) + (trial ? '. ' + trial.text : ''), changes: kept.changes.length, levers: levers.length + ways.length, byKind };
+    // what was left out is said, and counted, in the outcome
+    if (trial) {
+      outcome.leftOut = (kept.levers || []).filter((lever) => lever.kind === 'corridor' || (lever.kind === 'way' && lever.way === 'closed')).length;
+      outcome.leftOutText = trial.text;
+    }
+    return reporting(project, withScenario(next, null), outcome);
   },
 );
 
@@ -2898,9 +3199,14 @@ export const removeScenarioChanges = action(
   {
     label: (before, payload) => {
       const indexes = payloadOf(payload).indexes;
+      const leverIndexes = Array.isArray(payloadOf(payload).leverIndexes) ? payloadOf(payload).leverIndexes : [];
       const name = scenarioName(before);
-      if (indexes.length === 1) return 'Remove from scenario ' + name + ': ' + chipText(before, before.scenario.changes[indexes[0]]);
-      return 'Remove from scenario ' + name + ': ' + changesWord(indexes.length);
+      if (indexes.length + leverIndexes.length === 1) {
+        if (indexes.length === 1) return 'Remove from scenario ' + name + ': ' + chipText(before, before.scenario.changes[indexes[0]]);
+        const lever = leversIn(before.scenario)[leverIndexes[0]];
+        if (lever) return 'Remove from scenario ' + name + ': ' + leverText(before, lever);
+      }
+      return 'Remove from scenario ' + name + ': ' + changesWord(indexes.length + leverIndexes.length);
     },
     bumps: [],
     focus: scenarioFocus,
@@ -2909,14 +3215,18 @@ export const removeScenarioChanges = action(
     const scenario = needScenario(project);
     const indexes = payloadOf(payload).indexes;
     if (!Array.isArray(indexes)) refuse('Say which changes to take out of the scenario.', 'bad-value');
-    if (indexes.length === 0) return project;
-    const out = new Set();
-    for (const index of indexes) {
-      if (!Number.isInteger(index) || index < 0 || index >= scenario.changes.length) refuse('That change is no longer in the scenario.', 'missing');
-      if (out.has(index)) refuse('Each change is taken out once: the same one is named twice.', 'bad-value');
-      out.add(index);
-    }
-    return withScenario(project, { ...scenario, changes: scenario.changes.filter((change, i) => !out.has(i)) });
+    // `leverIndexes` (SV2-90b): places in project.scenario.levers, taken out
+    // in the same step; absent reads as none
+    const given = payloadOf(payload).leverIndexes;
+    if (given !== undefined && !Array.isArray(given)) refuse('Say which levers to take out of the scenario.', 'bad-value');
+    const leverIndexes = given || [];
+    if (indexes.length === 0 && leverIndexes.length === 0) return project;
+    const out = takenOut(indexes, scenario.changes.length, 'change');
+    const levers = leversIn(scenario);
+    const outLevers = takenOut(leverIndexes, levers.length, 'lever');
+    const next = { ...scenario, changes: out.size === 0 ? scenario.changes : scenario.changes.filter((change, i) => !out.has(i)) };
+    if (outLevers.size > 0) next.levers = levers.filter((lever, i) => !outLevers.has(i));
+    return withScenario(project, next);
   },
 );
 
@@ -3156,7 +3466,10 @@ function reportingDeleted(project, next, name) {
   const parts = [];
   if (marks > 0) parts.push(count(marks, 'marked period', 'marked periods') + ' removed');
   if (duties > 0) parts.push(count(duties, 'duty', 'duties') + ' left with nobody');
-  return reporting(project, next, { marks, duties, text: 'Deleted ' + name + (parts.length > 0 ? ', ' + listWords(parts) : '') });
+  // a staggered dismissal that named the group: changed, or removed when it named only that group
+  const releases = releaseChanges(project, next);
+  if (releases.changed > 0) parts.push(count(releases.changed, 'staggered dismissal', 'staggered dismissals') + (releases.removed === releases.changed ? ' removed' : ' changed'));
+  return reporting(project, next, { marks, duties, ...(releases.changed > 0 ? { release: releases.changed, releaseRemoved: releases.removed } : {}), text: 'Deleted ' + name + (parts.length > 0 ? ', ' + listWords(parts) : '') });
 }
 
 // A group is gone: out of every mark's groups, and a mark for groups left
@@ -3216,14 +3529,228 @@ function cutText(value, most) {
 // Fewer periods: marks past the end, and duties in a period past the end,
 // are deleted in the same step. The undo entry holds them.
 function dropPastPeriods(project, periods) {
-  return changeDuties(changeMarks(project, (mark) => (Number.isInteger(mark.period) && mark.period >= periods ? null : mark)), (duty) => (duty.when === 'period' && Number.isInteger(duty.period) && duty.period >= periods ? null : duty));
+  return dropPastPeriodsFromRelease(changeDuties(changeMarks(project, (mark) => (Number.isInteger(mark.period) && mark.period >= periods ? null : mark)), (duty) => (duty.when === 'period' && Number.isInteger(duty.period) && duty.period >= periods ? null : duty)), periods);
 }
 
 function countPastPeriods(project, periods) {
   return {
     marks: marksOf(project).filter((mark) => Number.isInteger(mark.period) && mark.period >= periods).length,
     duties: dutiesOf(project).filter((duty) => duty.when === 'period' && Number.isInteger(duty.period) && duty.period >= periods).length,
+    release: releaseChanges(project, dropPastPeriodsFromRelease(project, periods)).changed,
   };
 }
 
 // ================================================================ SV2-83: marked periods and duties (end)
+
+// ================================================================ SV2-88: staggered dismissal
+//
+// project.release (ARCHITECTURE 18.2): groups, a grade or a wing leave a
+// little after the bell. SCHEDULE, since the crowd's figures and the walk-late
+// findings read it. A project with no `release` has it absent until the first
+// is added; every reference action leaves an absent list absent.
+
+function releaseFocus(before, payload, after) {
+  const list = releaseOf(after);
+  return { section: 'schedule', tab: 'day', releaseId: payload.id || (list.length > 0 ? list[list.length - 1].id : undefined) };
+}
+
+// Who an entry is for, in words: "7-1 and 7-2", "grade 7", "the North wing".
+function releaseWho(project, entry) {
+  const kind = releaseKind(entry.who);
+  if (kind === 'groups') return listWords(entry.who.groups.map((id) => groupName(project, id) || 'a group that is gone'));
+  if (kind === 'grade') return 'grade ' + String(entry.who.grade).trim();
+  if (kind === 'wing') return 'the ' + String(entry.who.wing).trim() + ' wing';
+  return 'a staggered dismissal';
+}
+
+function releaseWords(project, entry) {
+  return releaseWho(project, entry) + ' ' + (entry.seconds === 0 ? 'on the bell' : formatDuration(entry.seconds) + ' after the bell');
+}
+
+// The groups, a grade or a wing an entry is for, as the payload gives it:
+// exactly one of { groups: [ids] }, { grade }, { wing }.
+function needReleaseWho(project, who) {
+  const given = who !== null && typeof who === 'object' && !Array.isArray(who) ? RELEASE_WHO_KINDS.filter((kind) => who[kind] !== undefined) : [];
+  if (given.length !== 1) refuse('Say who leaves late: one of some groups, a grade or a wing.', 'bad-value');
+  const kind = given[0];
+  if (kind === 'groups') {
+    if (!Array.isArray(who.groups) || who.groups.length === 0) refuse('Choose at least one group.', 'bad-value');
+    return { groups: needIdList(who.groups, project.groups, 'The groups') };
+  }
+  if (typeof who[kind] !== 'string' || who[kind].trim() === '') refuse('Type the ' + kind + ' that leaves late.', 'bad-value');
+  const text = who[kind].trim();
+  if (textLength(text) > NAME_MOST) refuse('A ' + kind + ' is at most ' + NAME_MOST + ' characters.', 'too-long');
+  return { [kind]: text };
+}
+
+function needReleaseSeconds(seconds, who) {
+  const low = releaseKind(who) === 'groups' ? 0 : RELEASE_SECONDS[0];
+  if (!Number.isInteger(seconds) || seconds < low || seconds > RELEASE_SECONDS[1]) {
+    refuse('Leaving late is a whole number of seconds from ' + RELEASE_SECONDS[0] + ' to ' + RELEASE_SECONDS[1] + (low === 0 ? ', or 0 for groups that leave on the bell' : '') + '. A longer wait than ' + formatDuration(RELEASE_SECONDS[1]) + ' would leave the group no time to walk.', 'bad-value');
+  }
+  return seconds;
+}
+
+// null (every period) or a list of periods of the school day, each once, in order.
+function needReleaseAfter(project, after) {
+  if (after === null) return null;
+  if (!Array.isArray(after) || after.length === 0) refuse('Choose at least one period to follow, or leave it for every period.', 'bad-value');
+  for (const period of after) needPeriod(project, period);
+  return Array.from(new Set(after)).sort((a, b) => a - b);
+}
+
+function needReleaseDays(project, dayTypeIds) {
+  if (dayTypeIds === null) return null;
+  if (!Array.isArray(dayTypeIds) || dayTypeIds.length === 0) refuse('Choose at least one day type, or leave it for every day type.', 'bad-value');
+  return needDayTypeIds(project, dayTypeIds);
+}
+
+function readRelease(project, base, payload) {
+  const has = (key) => payload[key] !== undefined;
+  const entry = { ...base };
+  if (has('who')) entry.who = needReleaseWho(project, payload.who);
+  if (has('seconds')) entry.seconds = payload.seconds;
+  if (has('after')) entry.after = needReleaseAfter(project, payload.after);
+  if (has('dayTypeIds')) entry.dayTypeIds = needReleaseDays(project, payload.dayTypeIds);
+  // checked against the kind the entry ends up with, so a groups entry on the bell
+  // cannot become a grade entry of nothing
+  needReleaseSeconds(entry.seconds, entry.who);
+  return entry;
+}
+
+// payload: { who, seconds } and any of after, dayTypeIds, and optionally id.
+// who is one of { groups: [ids] }, { grade }, { wing }. seconds is whole,
+// 15 to 300 (0 for groups, who then leave on the bell). after is a list of
+// periods (0 is the first) or null for every period; dayTypeIds a list or
+// null for every day type. At most RELEASE_MOST entries.
+export const addRelease = action(
+  { label: (before, payload) => 'Add staggered dismissal' + (payload && payload.who && typeof payload.seconds === 'number' ? ' for ' + releaseWho(before, { who: payload.who }) : ''), bumps: [SCHEDULE], focus: releaseFocus },
+  (project, payload, ctx) => {
+    const list = releaseOf(project);
+    if (list.length >= RELEASE_MOST) refuse('A project has at most ' + RELEASE_MOST + ' staggered dismissals, and this one has ' + list.length + '. Remove one to add another.', 'limit');
+    const who = needReleaseWho(project, payload.who);
+    needReleaseSeconds(payload.seconds, who);
+    const entry = readRelease(project, newRelease(newId(project, payload, ctx, 'l'), who, payload.seconds), payload);
+    return { ...project, release: list.concat([entry]) };
+  },
+);
+
+// payload: { id } and any of who, seconds, after, dayTypeIds. Changing
+// nothing makes no step.
+export const setRelease = action(
+  { label: (before, payload) => 'Change staggered dismissal' + (releaseOf(before).some((entry) => entry.id === payload.id) ? ' for ' + releaseWho(before, releaseOf(before).find((entry) => entry.id === payload.id)) : ''), bumps: [SCHEDULE], focus: releaseFocus },
+  (project, payload) => {
+    const old = need(releaseOf(project), payload.id, 'staggered dismissal');
+    const entry = readRelease(project, old, payload);
+    if (jsonSame(entry, old)) return project;
+    return { ...project, release: releaseOf(project).map((candidate) => (candidate === old ? entry : candidate)) };
+  },
+);
+
+// payload: { id }.
+export const removeRelease = action(
+  { label: (before, payload) => 'Remove staggered dismissal' + (releaseOf(before).some((entry) => entry.id === payload.id) ? ' for ' + releaseWho(before, releaseOf(before).find((entry) => entry.id === payload.id)) : ''), bumps: [SCHEDULE], focus: () => ({ section: 'schedule', tab: 'day' }) },
+  (project, payload) => {
+    const old = need(releaseOf(project), payload.id, 'staggered dismissal');
+    return { ...project, release: releaseOf(project).filter((candidate) => candidate !== old) };
+  },
+);
+
+// ---- what other actions do to release (ARCHITECTURE 18.2, 18.7). Each leaves
+// an absent list absent and an untouched entry the very same object.
+
+// fn(entry) gives the entry, a changed copy, or null to remove it.
+function changeRelease(project, fn) {
+  if (!Array.isArray(project.release)) return project;
+  let changed = false;
+  const release = [];
+  for (const entry of project.release) {
+    const result = fn(entry);
+    if (result !== entry) changed = true;
+    if (result !== null) release.push(result);
+  }
+  return changed ? { ...project, release } : project;
+}
+
+// How many entries `next` changed or removed against `project`: { changed,
+// removed }, removed counted in changed.
+function releaseChanges(project, next) {
+  const before = releaseOf(project);
+  const after = new Set(releaseOf(next));
+  const kept = new Set(releaseOf(next).map((entry) => entry.id));
+  return { changed: before.filter((entry) => !after.has(entry)).length, removed: before.filter((entry) => !kept.has(entry.id)).length };
+}
+
+// A group is gone: out of every entry's groups; an entry left with none is removed.
+function dropGroupFromRelease(project, groupId) {
+  return changeRelease(project, (entry) => {
+    if (!entry.who || !Array.isArray(entry.who.groups) || !entry.who.groups.includes(groupId)) return entry;
+    const groups = entry.who.groups.filter((id) => id !== groupId);
+    return groups.length === 0 ? null : { ...entry, who: { groups } };
+  });
+}
+
+// A day type is gone: out of every entry's day types; an entry left with none
+// would mean every day type, so it is removed instead.
+function dropDayTypeFromRelease(project, dayTypeId) {
+  return changeRelease(project, (entry) => {
+    if (!Array.isArray(entry.dayTypeIds) || !entry.dayTypeIds.includes(dayTypeId)) return entry;
+    const dayTypeIds = entry.dayTypeIds.filter((id) => id !== dayTypeId);
+    return dayTypeIds.length === 0 ? null : { ...entry, dayTypeIds };
+  });
+}
+
+// Fewer periods: the periods an entry follows past the end go (an entry that
+// followed only those is removed). Undo brings them back.
+function dropPastPeriodsFromRelease(project, periods) {
+  return changeRelease(project, (entry) => {
+    if (!Array.isArray(entry.after) || !entry.after.some((period) => period >= periods)) return entry;
+    const after = entry.after.filter((period) => period < periods);
+    return after.length === 0 ? null : { ...entry, after };
+  });
+}
+
+// ---- what other actions do to the open scenario's levers (SV2-89b). A
+// release lever is trimmed as a real entry is, and goes only when nothing is
+// left; a bell lever on a day type goes with it. A scenario with no `levers`
+// keeps none, and an untouched lever is the very same object.
+
+function changeLevers(project, fn) {
+  if (!project.scenario || !Array.isArray(project.scenario.levers)) return project;
+  let changed = false;
+  const levers = [];
+  for (const lever of project.scenario.levers) {
+    const result = lever && typeof lever === 'object' ? fn(lever) : lever;
+    if (result !== lever) changed = true;
+    if (result !== null) levers.push(result);
+  }
+  return changed ? { ...project, scenario: { ...project.scenario, levers } } : project;
+}
+
+function dropGroupFromLevers(project, groupId) {
+  return changeLevers(project, (lever) => {
+    if (lever.kind !== 'release' || !lever.who || !Array.isArray(lever.who.groups) || !lever.who.groups.includes(groupId)) return lever;
+    const groups = lever.who.groups.filter((id) => id !== groupId);
+    return groups.length === 0 ? null : { ...lever, who: { groups } };
+  });
+}
+
+function dropDayTypeFromLevers(project, dayTypeId) {
+  return changeLevers(project, (lever) => {
+    if (lever.kind === 'bell') return lever.dayTypeId === dayTypeId ? null : lever;
+    if (lever.kind !== 'release' || !Array.isArray(lever.dayTypeIds) || !lever.dayTypeIds.includes(dayTypeId)) return lever;
+    const dayTypeIds = lever.dayTypeIds.filter((id) => id !== dayTypeId);
+    return dayTypeIds.length === 0 ? null : { ...lever, dayTypeIds };
+  });
+}
+
+// How many levers `next` changed or removed against `project`: { changed,
+// removed }, removed counted in changed.
+function leverChanges(project, next) {
+  const before = project.scenario && Array.isArray(project.scenario.levers) ? project.scenario.levers : [];
+  const after = next.scenario && Array.isArray(next.scenario.levers) ? next.scenario.levers : [];
+  const kept = new Set(after);
+  return { changed: before.filter((lever) => !kept.has(lever)).length, removed: before.length - after.length };
+}
+
+// ================================================================ SV2-88 (end)

@@ -58,6 +58,14 @@
 //       { changes, dropped: [{ change, parts, sentence }] }
 //   changeWords(project, change)
 //       { parts, text, teachers: [{ groupId, from, to }] } for a chip
+//   leverRouteOptions(project, levers)
+//       { ways, shutLinks, shutCells }: the building's levers as routing.js
+//       takes them (ways, avoidConnections, shutCells); leverOptionsKey of
+//       that is '' for none, and what the page compares to move the lane's
+//       `levers` counter
+//   trialOnlyWords(project, levers)
+//       { parts, text } for what Apply leaves out ("Closing Stairs B and
+//       North Corridor is a trial: Apply leaves the building as it is."), or null
 //   trimResult(result)
 //       { places, loads, bellLoads?, walks, findings, failedWalks }: what
 //       compareResults reads of a pipeline result, and nothing else
@@ -107,12 +115,13 @@
 // module's function bodies, never at its top level. Keep it so: no top-level
 // `class extends ActionError`, no constant built from an actions.js export.
 
-import { findRoom, findById, resolveSlotRoom, nameKey, roomNumberKey, allRooms } from './schema.js';
+import { findRoom, findById, resolveSlotRoom, nameKey, roomNumberKey, allRooms, bellSchedulesOf, releaseOf, isBellTime, inRange, RANGES, RELEASE_SECONDS, CELL_CORRIDOR } from './schema.js';
 import { findDayType, isOwnCopy, ownDayTypes, effectiveSchedule, describeDayType } from './day-types.js';
-import { periodName } from './bells.js';
+import { periodName, formatTime } from './bells.js';
 import { slotTeacherIds } from './teacher-day.js';
-import { countBySeverity, SEVERITIES, countWord, listWords, periodWord } from './findings.js';
-import { setSlot, moveSlot, ActionError } from './actions.js';
+import { countBySeverity, SEVERITIES, countWord, listWords, periodWord, formatDuration } from './findings.js';
+import { releaseDelay, releaseKind } from './release.js';
+import { setSlot, moveSlot, setBell, setBellSchedule, setRoomFields, editGroup, ActionError } from './actions.js';
 
 // ---------------------------------------------------------------- slots
 
@@ -336,6 +345,7 @@ export function changeWords(project, change) {
     return out;
   };
   if (!change || typeof change !== 'object') return { parts: [words('A change that could not be read')], text: 'A change that could not be read', teachers };
+  if (LEVER_KINDS.includes(change.kind)) return isReadableLever(change) ? leverWords(project, change) : { parts: [words('A lever that could not be read')], text: 'A lever that could not be read', teachers };
 
   if (change.kind === 'move') {
     const slot = realSlot(project, change.dayTypeId, change.groupId, change.period);
@@ -446,7 +456,551 @@ export function reconcile(project, scenario) {
     const parts = isReadable(change) ?changeWords(project, change).parts.concat([words(': ')], why) : [words('A change could not be read: ')].concat(why);
     dropped.push({ change, parts, sentence: joinParts(parts) });
   });
-  return { changes, dropped };
+  const result = { changes, dropped };
+  // the levers are reconciled only for a scenario that carries them, so a
+  // list of changes, or a scenario with none, answers exactly as before
+  if (scenario && !Array.isArray(scenario) && Array.isArray(scenario.levers)) {
+    const levers = reconcileLevers(project, scenario);
+    result.levers = levers.levers;
+    result.droppedLevers = levers.dropped;
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------- levers
+//
+// The scenario's second list (ARCHITECTURE 18.3): scenario.levers, absent =
+// []. A lever is not a Change (CHANGE_KINDS does not move: an older copy of
+// the tool strips an unknown change kind and refuses a file that holds one).
+// The building's two kinds (way and corridor) never change the building in
+// the scenario's copy: applyLevers leaves them out, and leverRouteOptions
+// turns them into route options for routing.js (18.3).
+//
+//   { kind: 'release',  who, seconds, after, dayTypeIds }    18.2's entry, no id
+//   { kind: 'bell',     dayTypeId | bellsId, period, start, end }
+//   { kind: 'capacity', roomId, capacity: null | 1..999 }
+//   { kind: 'headCount', groupId, headCount: null | 1..999 }
+//   { kind: 'way',      connectionId, way: 'both' | 'ab' | 'ba' | 'closed' }
+//   { kind: 'corridor', floorId, cells: [index, …], name }   closed
+//
+// Wherever a function takes `levers`, it takes a list of levers or a
+// scenario ({ levers }); null is none at all.
+
+export const LEVER_KINDS = ['release', 'bell', 'way', 'corridor', 'capacity', 'headCount'];
+export const SCHEDULE_LEVER_KINDS = ['release', 'bell', 'capacity', 'headCount'];
+const WAYS = ['both', 'ab', 'ba', 'closed'];
+
+function leversOf(scenario) {
+  if (Array.isArray(scenario)) return scenario;
+  return scenario && Array.isArray(scenario.levers) ? scenario.levers : [];
+}
+
+function isObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isText(value) {
+  return typeof value === 'string' && value !== '';
+}
+
+function wholeFrom(value, low) {
+  return Number.isInteger(value) && value >= low;
+}
+
+// Does the lever have every field its kind needs, with a value of the right
+// kind? Whether what it names still exists is for reconcile.
+export function isReadableLever(lever) {
+  if (!isObject(lever) || !LEVER_KINDS.includes(lever.kind)) return false;
+  if (lever.kind === 'release') {
+    const kind = releaseKind(lever.who);
+    if (kind === null) return false;
+    if (kind === 'groups') {
+      if (!Array.isArray(lever.who.groups) || lever.who.groups.length === 0 || !lever.who.groups.every(isText)) return false;
+    } else if (typeof lever.who[kind] !== 'string' || lever.who[kind].trim() === '') {
+      return false;
+    }
+    const low = kind === 'groups' ? 0 : RELEASE_SECONDS[0];
+    if (!Number.isInteger(lever.seconds) || lever.seconds < low || lever.seconds > RELEASE_SECONDS[1]) return false;
+    if (lever.after !== null && !(Array.isArray(lever.after) && lever.after.length > 0 && lever.after.every((period) => wholeFrom(period, 0)))) return false;
+    return lever.dayTypeIds === null || (Array.isArray(lever.dayTypeIds) && lever.dayTypeIds.length > 0 && lever.dayTypeIds.every(isText));
+  }
+  if (lever.kind === 'bell') {
+    const one = (isText(lever.dayTypeId) ? 1 : 0) + (isText(lever.bellsId) ? 1 : 0);
+    const clean = (lever.dayTypeId === undefined || lever.dayTypeId === null || isText(lever.dayTypeId)) && (lever.bellsId === undefined || lever.bellsId === null || isText(lever.bellsId));
+    return one === 1 && clean && wholeFrom(lever.period, 0) && isBellTime(lever.start) && isBellTime(lever.end);
+  }
+  if (lever.kind === 'capacity') return isText(lever.roomId) && (lever.capacity === null || (Number.isInteger(lever.capacity) && inRange(lever.capacity, RANGES.capacity)));
+  if (lever.kind === 'headCount') return isText(lever.groupId) && (lever.headCount === null || (Number.isInteger(lever.headCount) && inRange(lever.headCount, RANGES.headCount)));
+  if (lever.kind === 'way') return isText(lever.connectionId) && WAYS.includes(lever.way);
+  return isText(lever.floorId) && Array.isArray(lever.cells) && lever.cells.length > 0 && lever.cells.every((cell) => wholeFrom(cell, 0)) && typeof lever.name === 'string';
+}
+
+function listKey(list) {
+  return list === null ? '*' : list.slice().sort().join(',');
+}
+
+function releaseWhoKey(who) {
+  const kind = releaseKind(who);
+  if (kind === 'groups') return 'groups:' + listKey(who.groups);
+  return kind === null ? '?' : kind + ':' + nameKey(String(who[kind]));
+}
+
+// What a lever is keyed by: one lever per key, a later one replacing an
+// earlier. Release by who, periods and day types together; bell by set and
+// period; way by connection; corridor by floor and cells; capacity by room;
+// head count by group. Null for a lever that cannot be read.
+export function leverKey(lever) {
+  if (!isReadableLever(lever)) return null;
+  const sep = '\u0000';
+  if (lever.kind === 'release') {
+    const periods = lever.after === null ? '*' : Array.from(new Set(lever.after)).sort((a, b) => a - b).join(',');
+    return ['release', releaseWhoKey(lever.who), periods, listKey(lever.dayTypeIds)].join(sep);
+  }
+  if (lever.kind === 'bell') return ['bell', isText(lever.bellsId) ? 'b:' + lever.bellsId : 'd:' + lever.dayTypeId, lever.period].join(sep);
+  if (lever.kind === 'way') return ['way', lever.connectionId].join(sep);
+  if (lever.kind === 'corridor') return ['corridor', lever.floorId, Array.from(new Set(lever.cells)).sort((a, b) => a - b).join(',')].join(sep);
+  if (lever.kind === 'capacity') return ['capacity', lever.roomId].join(sep);
+  return ['headCount', lever.groupId].join(sep);
+}
+
+// The groups the levers name outright: a head-count lever's group and a
+// release lever's groups. (A release lever for a grade or a wing reaches
+// groups only the project knows; compareResults reads those off the walks.)
+export function leverGroupIds(levers) {
+  const ids = [];
+  const add = (id) => {
+    if (typeof id === 'string' && !ids.includes(id)) ids.push(id);
+  };
+  for (const lever of leversOf(levers)) {
+    if (!isObject(lever)) continue;
+    if (lever.kind === 'headCount') add(lever.groupId);
+    if (lever.kind === 'release' && isObject(lever.who) && Array.isArray(lever.who.groups)) lever.who.groups.forEach(add);
+  }
+  return ids;
+}
+
+// ---- apply
+
+function sameEntryKey(entry, lever) {
+  return leverKey({ kind: 'release', who: entry.who, seconds: lever.seconds, after: entry.after === undefined ? null : entry.after, dayTypeIds: entry.dayTypeIds === undefined ? null : entry.dayTypeIds }) === leverKey(lever);
+}
+
+// The project with these release levers laid over project.release: each
+// replaces the real entries of its own key and is one more entry beside the
+// rest. `idFor(index)` gives the entry its id: a trial id for a run, a real
+// one when Apply writes it.
+export function layReleases(project, releases, idFor) {
+  if (releases.length === 0) return project;
+  const real = releaseOf(project).filter((entry) => !releases.some((lever) => sameEntryKey(entry, lever)));
+  return { ...project, release: real.concat(releases.map((lever, index) => ({ id: idFor(index), who: lever.who, seconds: lever.seconds, after: lever.after, dayTypeIds: lever.dayTypeIds }))) };
+}
+
+function applyBell(project, lever) {
+  const bell = { start: lever.start, end: lever.end };
+  if (isText(lever.bellsId)) return setBellSchedule(project, { bellScheduleId: lever.bellsId, period: lever.period, bell });
+  return setBell(project, { dayTypeId: lever.dayTypeId, period: lever.period, bell });
+}
+
+// The project with exactly these levers applied, as pure data; left out,
+// project.scenario's levers. A trial release entry is laid over
+// project.release: it beats a real entry of its own key and is otherwise one
+// more entry under 18.2's ranking. A bell is set by setBell's and
+// setBellSchedule's rules, a capacity by setRoomFields', a head count by
+// editGroup's. Throws the ActionError one of them gave for a lever that
+// cannot be applied, changing nothing then. The building's levers (way,
+// corridor) are not applied here: they travel as route options.
+export function applyLevers(project, levers) {
+  const list = leversOf(levers === undefined ? project.scenario : levers);
+  let next = project;
+  const trials = [];
+  for (const lever of list) {
+    if (!isObject(lever)) continue;
+    if (lever.kind === 'release') trials.push(lever);
+    else if (lever.kind === 'bell') next = applyBell(next, lever);
+    else if (lever.kind === 'capacity') next = setRoomFields(next, { roomId: lever.roomId, capacity: lever.capacity });
+    else if (lever.kind === 'headCount') next = editGroup(next, { id: lever.groupId, headCount: lever.headCount });
+    else if (lever.kind !== 'way' && lever.kind !== 'corridor') throw new ActionError('A scenario lever is one of release, bell, capacity and headCount, or a way or a corridor in the building.', 'bad-value');
+  }
+  return layReleases(next, trials, (index) => 'trial' + index);
+}
+
+// ---- the building's levers
+
+function connectionOf(project, id) {
+  const building = project.building ? project.building : project;
+  return (building.connections || []).find((connection) => connection && connection.id === id) || null;
+}
+
+function floorOf(project, id) {
+  const building = project.building ? project.building : project;
+  return building.floors.find((floor) => floor.id === id) || null;
+}
+
+// The route options the building's levers mean (ARCHITECTURE 18.3):
+//
+//   { ways: { [connectionId]: 'both' | 'ab' | 'ba' },
+//     shutLinks: [connectionId, …],               a closed stairs connection
+//     shutCells: [{ floorId, cell }, …] }          a closed corridor's cells
+//
+// routing.js takes ways, avoidConnections (= shutLinks) and shutCells. Only
+// what changes something is in them: a lever whose connection or floor is not
+// in the building, or a way equal to the connection's own direction, is left
+// out, and the lists are sorted and without repeats, so options that mean the
+// same thing are the same object to JSON. The building itself is not read
+// further. Pure.
+export function leverRouteOptions(project, levers) {
+  const ways = {};
+  const shutLinks = new Set();
+  const cells = new Map();
+  for (const lever of leversOf(levers)) {
+    if (!isReadableLever(lever)) continue;
+    if (lever.kind === 'way') {
+      const connection = connectionOf(project, lever.connectionId);
+      if (!connection) continue;
+      if (lever.way === 'closed') shutLinks.add(connection.id);
+      else if (lever.way !== connection.direction) ways[connection.id] = lever.way;
+    } else if (lever.kind === 'corridor') {
+      if (!floorOf(project, lever.floorId)) continue;
+      if (!cells.has(lever.floorId)) cells.set(lever.floorId, new Set());
+      for (const cell of lever.cells) cells.get(lever.floorId).add(cell);
+    }
+  }
+  // a closed connection needs no way
+  for (const id of shutLinks) delete ways[id];
+  const sortedWays = {};
+  for (const id of Object.keys(ways).sort()) sortedWays[id] = ways[id];
+  const building = project.building ? project.building : project;
+  const shutCells = [];
+  for (const floor of building.floors) {
+    if (!cells.has(floor.id)) continue;
+    for (const cell of Array.from(cells.get(floor.id)).sort((a, b) => a - b)) shutCells.push({ floorId: floor.id, cell });
+  }
+  return { ways: sortedWays, shutLinks: Array.from(shutLinks).sort(), shutCells };
+}
+
+// A string that is the same for route options that mean the same thing and
+// '' for none: what the page compares to know the scenario lane's `levers`
+// counter must move (ui/engine-client.js).
+export function leverOptionsKey(options) {
+  if (!options) return '';
+  const ways = Object.keys(options.ways || {}).sort().map((id) => id + '=' + options.ways[id]);
+  const links = (options.shutLinks || []).slice().sort();
+  const cells = (options.shutCells || []).map((place) => place.floorId + ':' + place.cell).sort();
+  if (ways.length === 0 && links.length === 0 && cells.length === 0) return '';
+  return ['w', ways.join(','), 'l', links.join(','), 'c', cells.join(',')].join('|');
+}
+
+// Does the scenario carry a lever of the building that reaches routing?
+export function hasBuildingLevers(project, levers) {
+  return leverOptionsKey(leverRouteOptions(project, levers)) !== '';
+}
+
+// Is this a lever of the building (a way or a corridor)?
+export function isBuildingLever(lever) {
+  return isObject(lever) && (lever.kind === 'way' || lever.kind === 'corridor');
+}
+
+// Does Apply write this lever into the building? A way of both, ab or ba sets
+// the connection's direction; a closed stairs and a closed corridor are
+// trials only (ARCHITECTURE 18.3) and Apply leaves them out.
+export function isWrittenWay(lever) {
+  return isObject(lever) && lever.kind === 'way' && (lever.way === 'both' || lever.way === 'ab' || lever.way === 'ba');
+}
+
+export function isTrialOnly(lever) {
+  return isObject(lever) && ((lever.kind === 'way' && lever.way === 'closed') || lever.kind === 'corridor');
+}
+
+// What Apply leaves out, in a line of its own: "Closing Stairs B and North
+// Corridor is a trial: Apply leaves the building as it is." Names as typed.
+// { parts, text } for the closed stairs and the closed corridors among the
+// levers, in the order given; null when there are none.
+export function trialOnlyWords(project, levers) {
+  const items = [];
+  for (const lever of leversOf(levers)) {
+    if (!isReadableLever(lever) || !isTrialOnly(lever)) continue;
+    if (lever.kind === 'way') items.push(stairsParts(project, connectionOf(project, lever.connectionId)));
+    else {
+      const floor = floorOf(project, lever.floorId);
+      items.push(lever.name.trim() !== '' ? [typed(lever.name)] : [words(lever.cells.length + (lever.cells.length === 1 ? ' corridor cell' : ' corridor cells') + ' on '), floor ? typed(floor.name) : words('a floor no longer in the building')]);
+    }
+  }
+  if (items.length === 0) return null;
+  const parts = [words('Closing '), ...joinedParts(items), words(' is a trial: Apply leaves the building as it is.')];
+  return { parts, text: joinParts(parts) };
+}
+
+// A connection as a lever says it: "Stairs B". With no label, "Stairs".
+function stairsParts(project, connection) {
+  return connection ? [words('Stairs '), typed(typeof connection.label === 'string' ? connection.label : '')] : [words('Stairs no longer in the building')];
+}
+
+// What a way means for this connection, by the floors it joins: "up only" when
+// `ab` goes to the higher floor, "down only" when it goes to the lower one; a
+// connection on one floor has "from the A end only" and "from the B end only".
+export function wayWords(project, connection, way) {
+  if (way === 'both') return 'both ways';
+  if (way === 'closed') return 'closed';
+  if (!connection) return 'one way only';
+  const a = floorOf(project, connection.a.floorId);
+  const b = floorOf(project, connection.b.floorId);
+  if (!a || !b || a.level === b.level) return way === 'ab' ? 'from the A end only' : 'from the B end only';
+  const toHigher = (a.level < b.level) === (way === 'ab');
+  return toHigher ? 'up only' : 'down only';
+}
+
+// ---- no-ops
+
+function realBell(project, lever) {
+  if (isText(lever.bellsId)) {
+    const schedule = bellSchedulesOf(project).find((candidate) => candidate.id === lever.bellsId);
+    return schedule ? schedule.bells[lever.period] : undefined;
+  }
+  const dayType = findDayType(project, lever.dayTypeId);
+  return dayType && isOwnCopy(project, dayType.id) ? dayType.bells[lever.period] : undefined;
+}
+
+// A release lever changes nothing when releaseDelay already gives every
+// group, in every day type and period, what it gives with the lever laid over.
+function releaseChangesNothing(project, lever) {
+  const applied = applyLevers(project, [lever]);
+  const periods = project.settings.periods;
+  for (const group of project.groups) {
+    for (const dayType of ownDayTypes(project)) {
+      const day = group.days ? group.days[dayType.id] : undefined;
+      for (let period = 0; period < periods; period += 1) {
+        const slot = Array.isArray(day) ? day[period] : undefined;
+        const room = slot ? resolveSlotRoom(project, slot).room : null;
+        const from = room ? room.id : null;
+        if (releaseDelay(project, group.id, dayType.id, period, from) !== releaseDelay(applied, group.id, dayType.id, period, from)) return false;
+      }
+    }
+  }
+  return true;
+}
+
+// Does this lever leave things as the real schedule has them? False when
+// what it names is not there: that is for reconcile to say.
+function isNoLever(project, lever) {
+  if (lever.kind === 'bell') {
+    const bell = realBell(project, lever);
+    return Boolean(bell) && bell.start === lever.start && bell.end === lever.end;
+  }
+  if (lever.kind === 'capacity') {
+    const room = findRoom(project, lever.roomId);
+    return room !== null && room.capacity === lever.capacity;
+  }
+  if (lever.kind === 'headCount') {
+    const group = findById(project.groups, lever.groupId);
+    if (!group) return false;
+    // a group with no head count of its own has the school's, so the lever
+    // that says that number (or none) leaves things as they are
+    const standard = project.settings.defaultHeadCount;
+    return (Number.isInteger(group.headCount) ? group.headCount : standard) === (lever.headCount === null ? standard : lever.headCount);
+  }
+  if (lever.kind === 'release') return releaseChangesNothing(project, lever);
+  if (lever.kind === 'way') {
+    // closing is always a change; a direction the connection already has is none
+    const connection = connectionOf(project, lever.connectionId);
+    return connection !== null && lever.way === connection.direction;
+  }
+  return false;
+}
+
+// One lever per key, the later replacing the earlier whole; the one being
+// added (options.added, an index, default the last, or null for none, as
+// for a file) goes too when it leaves the schedule as it is. An older lever
+// the schedule has caught up with stays, as a change does. Returns the list
+// it was given when nothing was removed.
+export function normaliseLevers(project, levers, options) {
+  const list = leversOf(levers);
+  const opts = options || {};
+  const added = opts.added === undefined ? list.length - 1 : opts.added;
+  if (added !== null && !Number.isInteger(added)) throw new TypeError('normaliseLevers: options.added is an index into the levers, or null.');
+  const keep = new Array(list.length).fill(true);
+  const owner = new Map();
+  list.forEach((lever, index) => {
+    const key = leverKey(lever);
+    if (key === null) return;
+    if (owner.has(key)) keep[owner.get(key)] = false;
+    owner.set(key, index);
+  });
+  if (added !== null && added >= 0 && added < list.length && keep[added] && isReadableLever(list[added]) && isNoLever(project, list[added])) keep[added] = false;
+  const kept = list.filter((lever, index) => keep[index]);
+  return kept.length === list.length ? list : kept;
+}
+
+// ---- words
+
+function dayTypeNameParts(project, ids) {
+  const parts = [];
+  ids.forEach((id, i) => {
+    if (i > 0) parts.push(words(i === ids.length - 1 ? ' and ' : ', '));
+    const dayType = findDayType(project, id);
+    parts.push(dayType ? typed(dayType.name) : words('a day type no longer in the project'));
+  });
+  return parts;
+}
+
+function joinedParts(items) {
+  const parts = [];
+  items.forEach((item, i) => {
+    if (i > 0) parts.push(words(i === items.length - 1 ? ' and ' : ', '));
+    parts.push(...item);
+  });
+  return parts;
+}
+
+function clockWords(project, bell) {
+  const format = project.settings.timeFormat;
+  return bell ? formatTime(bell.start, format) + ' to ' + formatTime(bell.end, format) : 'no bell';
+}
+
+function seatWords(count) {
+  return count === null || count === undefined ? 'not set' : String(count);
+}
+
+// A lever as a chip says it, as parts like changeWords' ("Room 204 seats 30
+// (was 24)"); `teachers` is always empty, so the answer has changeWords' shape.
+function leverWords(project, lever) {
+  const parts = [];
+  if (lever.kind === 'release') {
+    const kind = releaseKind(lever.who);
+    if (kind === 'groups') parts.push(...joinedParts(lever.who.groups.map((id) => groupParts(project, id))));
+    else if (kind === 'grade') parts.push(words('Grade '), typed(String(lever.who.grade).trim()));
+    else if (kind === 'wing') parts.push(typed(String(lever.who.wing).trim()), words(' wing'));
+    else parts.push(words('A staggered dismissal'));
+    const verb = kind === 'groups' && lever.who.groups.length > 1 ? ' leave' : ' leaves';
+    parts.push(words(lever.seconds === 0 ? verb + ' on the bell' : verb + ' ' + formatDuration(lever.seconds) + ' after the bell'));
+    if (Array.isArray(lever.after)) parts.push(words(', after ' + listWords(lever.after.map((period) => periodName(project.settings, period)))));
+    if (Array.isArray(lever.dayTypeIds)) parts.push(words(', on '), ...dayTypeNameParts(project, lever.dayTypeIds));
+  } else if (lever.kind === 'bell') {
+    if (isText(lever.bellsId)) {
+      const schedule = bellSchedulesOf(project).find((candidate) => candidate.id === lever.bellsId);
+      parts.push(schedule ? typed(schedule.name) : words('A bell schedule no longer in the project'), words(' bells'));
+    } else {
+      const dayType = findDayType(project, lever.dayTypeId);
+      parts.push(dayType ? typed(dayType.name) : words('A day type no longer in the project'));
+    }
+    parts.push(words(', '), ...periodParts(project, lever.period), words(': ' + clockWords(project, lever) + ' (was ' + clockWords(project, realBell(project, lever) || null) + ')'));
+  } else if (lever.kind === 'capacity') {
+    const room = findRoom(project, lever.roomId);
+    parts.push(...(room && typeof room.number === 'string' && room.number.trim() !== '' ? [words('Room '), typed(room.number)] : roomParts(room)));
+    parts.push(words(lever.capacity === null ? ' has no capacity set' : ' seats ' + lever.capacity), words(' (was ' + seatWords(room ? room.capacity : null) + ')'));
+  } else if (lever.kind === 'headCount') {
+    const group = findById(project.groups, lever.groupId);
+    const real = group && Number.isInteger(group.headCount) ? group.headCount : project.settings.defaultHeadCount;
+    parts.push(...groupParts(project, lever.groupId));
+    parts.push(words(lever.headCount === null ? ': the school\'s ' + project.settings.defaultHeadCount + ' students' : ': ' + lever.headCount + ' students'), words(' (was ' + real + ')'));
+  } else if (lever.kind === 'way') {
+    const connection = connectionOf(project, lever.connectionId);
+    if (lever.way === 'closed') parts.push(words('Close '), ...stairsParts(project, connection));
+    else parts.push(...stairsParts(project, connection), words(': ' + wayWords(project, connection, lever.way)));
+  } else if (lever.kind === 'corridor') {
+    const floor = floorOf(project, lever.floorId);
+    if (lever.name.trim() !== '') parts.push(words('Close '), typed(lever.name));
+    else parts.push(words('Close ' + lever.cells.length + (lever.cells.length === 1 ? ' corridor cell' : ' corridor cells') + ' on '), floor ? typed(floor.name) : words('a floor no longer in the building'));
+  } else {
+    parts.push(words('A lever of a kind this version does not know'));
+  }
+  return { parts, text: joinParts(parts), teachers: [] };
+}
+
+// ---- reconcile
+
+// A release lever with what the project no longer has taken out of it: the
+// groups, day types and periods that are gone (a period is gone when it is
+// past the school day). The very same lever when nothing was; only called
+// for a lever whyLeverGone found something left in.
+function trimLever(project, lever) {
+  if (lever.kind === 'corridor') {
+    // the cells that are no longer corridor drop out, as a deleted group
+    // drops out of a release lever; whyLeverGone has said some are left
+    const floor = floorOf(project, lever.floorId);
+    const cells = lever.cells.filter((cell) => floor && cell < floor.cells.length && floor.cells[cell] === CELL_CORRIDOR);
+    return cells.length === lever.cells.length ? lever : { ...lever, cells };
+  }
+  if (lever.kind !== 'release') return lever;
+  let who = lever.who;
+  let after = lever.after;
+  let dayTypeIds = lever.dayTypeIds;
+  if (Array.isArray(who.groups)) {
+    const groups = who.groups.filter((id) => findById(project.groups, id));
+    if (groups.length !== who.groups.length) who = { groups };
+  }
+  if (Array.isArray(after) && after.some((period) => period >= project.settings.periods)) after = after.filter((period) => period < project.settings.periods);
+  if (Array.isArray(dayTypeIds) && dayTypeIds.some((id) => !findDayType(project, id))) dayTypeIds = dayTypeIds.filter((id) => findDayType(project, id));
+  if (who === lever.who && after === lever.after && dayTypeIds === lever.dayTypeIds) return lever;
+  return { ...lever, who, after, dayTypeIds };
+}
+
+// Why a lever cannot apply to this project, as parts to follow its words, or
+// null when nothing it names is gone.
+function whyLeverGone(project, lever) {
+  if (lever.kind === 'release') {
+    if (Array.isArray(lever.who.groups) && !lever.who.groups.some((id) => findById(project.groups, id))) return [words(lever.who.groups.length > 1 ? 'its groups are no longer in the project.' : 'its group is no longer in the project.')];
+    if (Array.isArray(lever.dayTypeIds) && !lever.dayTypeIds.some((id) => findDayType(project, id))) return [words(lever.dayTypeIds.length > 1 ? 'its day types are no longer in the project.' : 'its day type is no longer in the project.')];
+    if (Array.isArray(lever.after) && !lever.after.some((period) => period < project.settings.periods)) return [words('its periods are no longer in the school day, which has ' + project.settings.periods + '.')];
+    return null;
+  }
+  if (lever.kind === 'bell') {
+    if (isText(lever.bellsId)) {
+      if (!bellSchedulesOf(project).some((schedule) => schedule.id === lever.bellsId)) return [words('its bell schedule is no longer in the project.')];
+    } else {
+      const dayType = findDayType(project, lever.dayTypeId);
+      if (!dayType) return [words('its day type is no longer in the project.')];
+      if (!isOwnCopy(project, dayType.id)) return [typed(dayType.name), words(' is the same as '), typed(describeDayType(project, dayType.id).follows), words(' again, so it has no bells of its own to change.')];
+    }
+    if (lever.period >= project.settings.periods) return [words(periodName(project.settings, lever.period) + ' is no longer in the school day, which has ' + project.settings.periods + '.')];
+    return null;
+  }
+  if (lever.kind === 'capacity') return findRoom(project, lever.roomId) ? null : [words('the room is no longer in the building.')];
+  if (lever.kind === 'headCount') return findById(project.groups, lever.groupId) ? null : [words('its group is no longer in the project.')];
+  if (lever.kind === 'way') return connectionOf(project, lever.connectionId) ? null : [words('the stairs connection is no longer in the building.')];
+  if (lever.kind === 'corridor') {
+    const floor = floorOf(project, lever.floorId);
+    if (!floor) return [words('its floor is no longer in the building.')];
+    if (!lever.cells.some((cell) => cell < floor.cells.length && floor.cells[cell] === CELL_CORRIDOR)) return [words('its cells are no longer corridor.')];
+    return null;
+  }
+  return null;
+}
+
+// Which levers no longer apply to the project as it is, and why: { levers,
+// dropped: [{ lever, parts, sentence }] }, in the order given. A lever goes
+// for the first that holds: it cannot be read; what it names is gone
+// (whyLeverGone); a later lever of its key replaces it; the schedule already
+// has it (the building, for a way). A corridor lever loses the cells that are
+// no longer corridor and goes when none is left. Pure.
+export function reconcileLevers(project, scenario) {
+  const original = leversOf(scenario);
+  const gone = original.map((lever) => (isReadableLever(lever) ? whyLeverGone(project, lever) : [words('it is not a lever this version can read.')]));
+  // what a release lever names that is gone is trimmed, as a real entry's is
+  // when its group, day type or period is deleted; so the lane and Apply
+  // (which writes this list) see one lever
+  const list = original.map((lever, index) => (gone[index] === null ? trimLever(project, lever) : lever));
+  const replaced = new Array(list.length).fill(false);
+  const later = new Set();
+  for (let index = list.length - 1; index >= 0; index -= 1) {
+    if (gone[index] !== null) continue;
+    const key = leverKey(list[index]);
+    replaced[index] = later.has(key);
+    later.add(key);
+  }
+  const levers = [];
+  const dropped = [];
+  list.forEach((lever, index) => {
+    let why = gone[index];
+    if (why === null && replaced[index]) why = [words('a later lever of the same kind for the same thing replaces it.')];
+    if (why === null && isNoLever(project, lever)) why = [words(lever.kind === 'way' ? 'the building already has this.' : 'the schedule already has this.')];
+    if (why === null) {
+      levers.push(lever);
+      return;
+    }
+    const parts = isReadableLever(lever) ? leverWords(project, lever).parts.concat([words(': ')], why) : [words('A lever could not be read: ')].concat(why);
+    dropped.push({ lever, parts, sentence: joinParts(parts) });
+  });
+  return { levers, dropped };
 }
 
 // ---------------------------------------------------------------- compare
@@ -473,6 +1027,8 @@ function runOfEntry(entry) {
 // model's, against the transition's passing time and the school's margin,
 // and a group stopped before it arrived is late. A walk with no way through
 // is not in walks at all: it is counted in `failed`, and in nothing else.
+// A teacher's is in walks.teachers with `failed: true`, and counts in the
+// total `failed` only.
 function emptyFigures() {
   return { walking: 0, waiting: 0, total: 0, late: 0, walks: 0, failed: 0 };
 }
@@ -502,6 +1058,15 @@ function walkFigures(view, dayTypeId, bellsId) {
     if (dayTypeId !== null && failed.dayTypeId !== dayTypeId) continue;
     if (runOfEntry(failed) !== bellsId) continue;
     for (const figures of into(failed.groupId)) figures.failed += 1;
+  }
+  // a teacher with no way through is a failed walk too, counted in all and in
+  // no group's row (SV2-90b), so a closure that strands a teacher shows
+  const stranded = source && Array.isArray(source.teachers) ? source.teachers : [];
+  for (const walk of stranded) {
+    if (walk.failed !== true) continue;
+    if (dayTypeId !== null && walk.dayTypeId !== dayTypeId) continue;
+    if (bellsId !== null && walk.bellsId !== bellsId) continue;
+    all.failed += 1;
   }
   return { groups, all };
 }
@@ -635,6 +1200,9 @@ function sameGeometry(before, after) {
 //   floorIds    the floors shown: the places are ranked among those with an
 //               end on one of them; null (the default) ranks the building
 //   changes     the scenario's changes (or the scenario), to mark the edited groups
+//   levers      the scenario's levers (or the scenario): a head-count lever's group, a
+//               release lever's groups, and the groups whose time held back differs
+//               between the two sides (a grade or a wing) are marked edited too
 //   limit       how many places busier and how many quieter (default 10)
 //
 // The answer:
@@ -706,6 +1274,25 @@ export function compareResults(before, after, options) {
 
   // ---- groups
   const edited = new Set(editedGroupIds(opts.changes || []));
+  const levers = leversOf(opts.levers || []);
+  for (const id of leverGroupIds(levers)) edited.add(id);
+  // a staggered dismissal for a grade or a wing names no group: the groups it
+  // held back are those whose time spent held back differs between the sides
+  if (levers.some((lever) => isObject(lever) && lever.kind === 'release')) {
+    const heldOf = (view) => {
+      const held = new Map();
+      for (const source of [view.walks, view.walks && view.walks.bells]) {
+        for (const walk of source && Array.isArray(source.groups) ? source.groups : []) {
+          if ((dayTypeId !== null && walk.dayTypeId !== dayTypeId) || (bellsId !== null && walk.bellsId !== bellsId) || (bellsId === null && walk.bellsId !== undefined)) continue;
+          held.set(walk.groupId, (held.get(walk.groupId) || 0) + (walk.released || 0));
+        }
+      }
+      return held;
+    };
+    const wasHeld = heldOf(was);
+    const nowHeld = heldOf(now);
+    for (const id of new Set([...wasHeld.keys(), ...nowHeld.keys()])) if ((wasHeld.get(id) || 0) !== (nowHeld.get(id) || 0)) edited.add(id);
+  }
   const groupIds = Array.from(new Set([...walksBefore.groups.keys(), ...walksAfter.groups.keys()]));
   const groups = groupIds.map((groupId) => {
     const sideBefore = walksBefore.groups.get(groupId) || null;

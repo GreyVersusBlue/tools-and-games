@@ -109,12 +109,14 @@
 import { bellsFor } from './bells.js';
 import { runsOf } from './runs.js';
 import { routingGraph, runRoutes, createRouteCache } from './routing.js';
+import { releaseOf } from './schema.js';
+import { releaseDelay } from './release.js';
 import { simulateDayTransition, walkResults, routesByRun, retimeTransition, transitionAs, transitionPlan } from './crowd.js';
 import { loads } from './load.js';
 import { places } from './places.js';
 import { checkSchedule } from './checks.js';
 import { buildingChecks } from './building-checks.js';
-import { applyChanges, reconcile, trimResult } from './scenario.js';
+import { applyChanges, applyLevers, leverRouteOptions, reconcile, trimResult } from './scenario.js';
 import { suggest } from './suggest.js';
 
 export const REQUEST = 'sv2-derive';
@@ -128,11 +130,31 @@ export const SUGGEST_ANSWER = 'sv2-suggested';
 // The parts of a result that are kept or sent whole.
 export const WHOLE_PARTS = ['places', 'walks', 'findings', 'buildingFindings'];
 
+// The counters a run is worked out for. Three are the store's (geometry,
+// building, schedule); a fourth, `levers`, is the scenario lane's alone
+// (ARCHITECTURE 18.3): it moves when the building levers' route options do,
+// and the other lanes leave it out, which reads as 0 and is not added to the
+// counters handed back, so their answers' `versions` are what they were.
+// All that are given must be integers.
 function countersOf(versions) {
   if (!versions) return null;
   const { geometry, building, schedule } = versions;
-  if (![geometry, building, schedule].every((value) => Number.isInteger(value))) return null;
-  return { geometry, building, schedule };
+  const given = versions.levers !== undefined;
+  if (![geometry, building, schedule].concat(given ? [versions.levers] : []).every((value) => Number.isInteger(value))) return null;
+  return given ? { geometry, building, schedule, levers: versions.levers } : { geometry, building, schedule };
+}
+
+// The route options a lane's building levers mean, as routing.js takes them:
+// leverRouteOptions' { ways, shutLinks, shutCells } with the closed
+// connections as avoidConnections. Nothing for none, so a lane without
+// building levers hands routing exactly the options it always did.
+function leverOptionsOf(levers) {
+  if (!levers) return {};
+  const options = {};
+  if (levers.ways && Object.keys(levers.ways).length > 0) options.ways = levers.ways;
+  if (Array.isArray(levers.shutLinks) && levers.shutLinks.length > 0) options.avoidConnections = levers.shutLinks;
+  if (Array.isArray(levers.shutCells) && levers.shutCells.length > 0) options.shutCells = levers.shutCells;
+  return options;
 }
 
 // Who walks where in one transition of one day, and how many they are: the
@@ -143,6 +165,22 @@ function walkKey(project, dayRoutes, period, headCounts) {
     const way = entry.routes[period];
     if (!headCounts.has(entry.groupId) || !way || way.ok !== true || way.same === true) continue;
     pieces.push(entry.groupId + ':' + headCounts.get(entry.groupId) + ':' + way.fromRoomId + '>' + way.toRoomId);
+  }
+  return pieces.join(';');
+}
+
+// How long each walking group waits after the bell in one transition of one
+// day (staggered dismissal, ARCHITECTURE 18.2), as the part of the walkers'
+// key the delay adds: '' when nobody waits, so a project with no release keeps
+// the keys it always had. It is not in walkKey, which also keys the loads: a
+// delay moves no load.
+function delayKey(project, dayRoutes, dayTypeId, period) {
+  const pieces = [];
+  for (const entry of dayRoutes.groups) {
+    const way = entry.routes[period];
+    if (!way || way.ok !== true || way.same === true) continue;
+    const delay = releaseDelay(project, entry.groupId, dayTypeId, period, way.fromRoomId);
+    if (delay > 0) pieces.push(entry.groupId + ':' + delay);
   }
   return pieces.join(';');
 }
@@ -163,10 +201,15 @@ export function createPipeline(options) {
   let held = null;
   let runs = 0;
 
-  function run(project, versions) {
+  // run(project, versions, levers?): `levers` is leverRouteOptions' answer for
+  // the building levers of this project's scenario, or left out. The routes
+  // and the walks of teachers are worked out under them, and the geometry
+  // that "the same" means includes them: the `levers` counter says whether
+  // they are the ones the last run had.
+  function run(project, versions, levers) {
     const counters = countersOf(versions);
     const before = held && held.counters && counters ? held : null;
-    const sameGeometry = before !== null && before.counters.geometry === counters.geometry;
+    const sameGeometry = before !== null && before.counters.geometry === counters.geometry && (before.counters.levers || 0) === (counters.levers || 0);
     const sameBuilding = sameGeometry && before.counters.building === counters.building;
     const sameSchedule = before !== null && before.counters.schedule === counters.schedule;
     if (sameBuilding && sameSchedule) return before.result;
@@ -175,7 +218,7 @@ export function createPipeline(options) {
     const work = { run: runs, searches: 0, transitions: 0, transitionsRun: 0, loadsRun: 0, routesRun: false, buildingRun: !sameBuilding };
 
     const graph = sameBuilding ? before.graph : routingGraph(project);
-    const routeOptions = counters ? { cache, geometryVersion: counters.geometry } : { cache };
+    const routeOptions = { ...(counters ? { cache, geometryVersion: counters.geometry } : { cache }), ...leverOptionsOf(levers) };
 
     let routes;
     if (sameGeometry && sameSchedule) {
@@ -198,6 +241,7 @@ export function createPipeline(options) {
     // the same in two runs, or in two day types, is worked out once, and one
     // under another passing time is retimed when nothing but `late` changes.
     const contents = new Map();
+    const hasRelease = releaseOf(project).length > 0;
     const earlier = sameGeometry ? before.contents : null;
     const contentOf = (walkers, passing, make) => {
       const what = margin + '|' + walkers;
@@ -245,7 +289,9 @@ export function createPipeline(options) {
         const passing = plan === null ? 'off' : plan.passing;
         // a walk across periods that do not meet is its own kind of
         // transition: never a next-door one retimed, and kept per period reached
-        const walkers = plan !== null && plan.to !== period + 1 ? rooms + '@' + plan.to : rooms;
+        const delays = hasRelease ? delayKey(project, dayRoutes, dayTypeId, period) : '';
+        const held = delays === '' ? rooms : rooms + '#' + delays;
+        const walkers = plan !== null && plan.to !== period + 1 ? held + '@' + plan.to : held;
         const slotKey = passing + '|' + margin + '|' + walkers;
         walkKeys.push(rooms);
         dayKeys.transitions.push(slotKey);
@@ -345,14 +391,18 @@ export function runResults(result, dayTypeId, bellsId) {
 }
 
 // The scenario lane's answer: the project with its open scenario's changes
-// applied, those that still apply (reconcile, which leaves out a change
-// whose group, room, day type or period is gone, one a later change
-// replaces, and one the schedule already has), run on `pipeline`, trimmed
+// applied and then its levers (applyLevers: bells, leaving late, seats and
+// head counts), run with the building levers as route options
+// (leverRouteOptions: a stair one way or closed, closed corridor cells; the
+// building itself is never edited, ARCHITECTURE 18.3). Only those that still apply go in (reconcile, which leaves
+// out a change or lever whose group, room, day type or period is gone, one a
+// later one replaces, and one the schedule already has), run on `pipeline`, trimmed
 // to what compareResults reads. The project handed in is not changed. With
 // no scenario open, the project as it is.
 export function scenarioRun(pipeline, project, versions) {
-  const kept = reconcile(project, project.scenario).changes;
-  return trimResult(pipeline.run(applyChanges(project, kept), versions));
+  const kept = reconcile(project, project.scenario);
+  const levers = kept.levers || [];
+  return trimResult(pipeline.run(applyLevers(applyChanges(project, kept.changes), levers), versions, leverRouteOptions(project, levers)));
 }
 
 // The suggestion lane's answer: suggest() run on `pipeline`, which must not

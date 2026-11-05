@@ -9,7 +9,7 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { openPlanner, go } from './harness.mjs';
+import { openPlanner, go, loadModule } from './harness.mjs';
 import { planReady, state, floorIs } from './draw-pointer.mjs';
 
 let session;
@@ -219,6 +219,51 @@ test('an address that names a room that is gone shows the floor and marks nothin
   assert.deepEqual((await state(page)).selection, []);
   await go(page, '#building/' + second.id + '?room=' + room.id);
   await assertShown(room);
+});
+
+test('Show on a trap across two floors marks the cells on both: the first floor comes up, the second shows its own when it is opened (SV2-94b)', async () => {
+  await loadModule(page, 'buildingChecks', 'engine/building-checks.js');
+  // Stairs A up only: Floor 2 and Floor 3 have no way back down
+  const where = await page.evaluate(() => {
+    const next = JSON.parse(JSON.stringify(globalThis.sv2.store.project));
+    next.building.connections.find((each) => each.label === 'A').direction = 'ab';
+    globalThis.sv2.store.replace(next);
+    const finding = globalThis.sv2modules.buildingChecks.buildingChecks(next).find((each) => each.kind === 'one-way-trap');
+    return finding ? finding.where : null;
+  });
+  assert.ok(where && where.floors && where.floors.length === 2, 'the finding names two trapped floors');
+  const [first, second] = where.floors;
+  await go(page, '#building/' + (await project()).building.floors[0].id);
+  await planReady(page);
+  // the overlay's lines on a floor: a recording stand-in for the canvas
+  const marks = (floorId) => page.evaluate((id) => {
+    const editor = document.querySelector('.bld').editor;
+    const floor = editor.project.building.floors.find((each) => each.id === id);
+    let lines = 0;
+    const g = { beginPath() {}, moveTo() { lines += 1; }, lineTo() {}, stroke() {}, set lineCap(v) {}, set strokeStyle(v) {}, set lineWidth(v) {} };
+    editor.finder.overlay(g, { x: 0, y: 0, size: 10 }, floor, { card: '#fff', accent: '#00f' });
+    return lines;
+  }, floorId);
+  const seen = await page.evaluate((target) => {
+    const editor = document.querySelector('.bld').editor;
+    const ok = editor.show(target);
+    return { ok, floor: editor.floor.id, all: editor.finder.markedFloors.map((each) => [each.floorId, each.cells.length]) };
+  }, where);
+  assert.equal(seen.ok, true);
+  assert.equal(seen.floor, first.floorId, 'the first floor comes up');
+  assert.deepEqual(seen.all, [[first.floorId, first.cells.length], [second.floorId, second.cells.length]], 'both floors are marked');
+  assert.ok(await marks(first.floorId) > 0, 'the first floor draws its mark');
+  assert.ok(await marks(second.floorId) > 0, 'the second floor draws its mark too');
+  // the mark is as it was before when the finding names one floor only
+  const single = await page.evaluate((target) => {
+    const editor = document.querySelector('.bld').editor;
+    editor.show({ floorId: target.floorId, cells: target.cells });
+    return editor.finder.markedFloors.map((each) => each.floorId);
+  }, { floorId: first.floorId, cells: first.cells });
+  assert.deepEqual(single, [first.floorId]);
+  assert.ok(await marks(second.floorId) === 0, 'and the second floor shows nothing');
+  await page.evaluate(() => document.querySelector('.bld').editor.finder.clear());
+  assert.deepEqual(await page.evaluate(() => document.querySelector('.bld').editor.finder.markedFloors), []);
 });
 
 test('after all of that the page has logged no error', () => {

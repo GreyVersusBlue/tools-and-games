@@ -1119,7 +1119,8 @@ test('a note is typed on the reader\'s own day card, kept as typed, and shown as
     // the empty address sends the reader on to their own teacher page, which
     // is drawn after the file reads as open: wait for that page, not the
     // first one (CI read the note's paper empty there once, #582)
-    await page.waitForFunction(() => document.querySelector('[data-note="dsample00a:1"] .note__paper')?.textContent !== '', { timeout: 5000 }).catch(() => {});
+    // (the field is filled as it is drawn, so its value is the state to wait on)
+    await page.waitForFunction((typed) => document.querySelector('[data-note="dsample00a:1"] .note__paper')?.textContent === typed && document.querySelector('[data-note="dsample00a:1"] input')?.value === typed, { timeout: 10000 }, HOSTILE);
     assert.equal(await text(page, '[data-note="dsample00a:1"] .note__paper'), HOSTILE);
     assert.equal(await page.evaluate(() => document.querySelector('[data-note="dsample00a:1"] input').value), HOSTILE);
 
@@ -1957,6 +1958,9 @@ test('a note of spaces only is an empty note on the page and on paper, and is ke
     // the same when the file is opened again and the spaces are read back
     await page.goto('about:blank');
     await goto(page, files.open.url + '#/me');
+    // the field is drawn after the page says it is open, and filled as it is
+    // drawn: wait for the spaces to be in it, not for the field to exist
+    await page.waitForFunction(() => document.querySelector('[data-note="dsample00a:1"] input')?.value === '   ', { timeout: 10000 });
     assert.equal(await empty(), 'true');
     assert.equal(await page.evaluate(() => document.querySelector('[data-note="dsample00a:1"] input').value), '   ');
     assert.deepEqual(await onPaper(), []);

@@ -370,6 +370,79 @@ test('stairs carry their connection letters, and the caption names them', () => 
   assert.ok(html.includes('Floor 1: 1 room, no exits, stairs A.'));
 });
 
+// SV2-91b: the floor plan print draws a one-way stair as the screen does.
+test('a one-way stair is drawn with its chevron by the letter, up or down as the screen draws it, and a two-way stair as before', () => {
+  const make = (direction) => {
+    const project = planProject([['AA#S', 'AA##'], ['BB#S', 'BB##']], { connections: [[1, 3, 0, 2, 3, 0]] });
+    project.building.connections[0].direction = direction;
+    return project;
+  };
+  const draw = (direction, at) => planSvg(make(direction), make(direction).building.floors[at]).svg;
+  const both = draw('both', 0);
+  const up = draw('ab', 0);
+  const down = draw('ba', 0);
+  assert.equal(countOf(both, 'plan__oneway'), 0, 'a two-way stair has no way mark');
+  assert.equal(countOf(both, 'class="plan__chevron"'), 1, 'and keeps its one stair mark');
+  assert.equal(countOf(up, 'plan__oneway'), 1);
+  assert.equal(countOf(down, 'plan__oneway'), 1);
+  assert.notEqual(up, both);
+  assert.notEqual(down, both);
+  assert.notEqual(up, down, 'up only and down only draw differently');
+  const way = (svg) => /class="plan__chevron plan__oneway"[^>]* d="M([\d.]+) ([\d.]+)L([\d.]+) ([\d.]+)L([\d.]+) ([\d.]+)"/.exec(svg).slice(1).map(Number);
+  const [, ay, , by] = way(up);
+  assert.ok(by < ay, 'up only points up: the tip is above the arms');
+  const [, cy, , dy] = way(down);
+  assert.ok(dy > cy, 'down only points down');
+  // both ends of the stairs say the same: a floor up is "up" from either floor
+  assert.deepEqual(way(draw('ab', 1)), way(up).map((v, i) => (i % 2 === 0 ? v : v)));
+});
+
+test('a one-way stair on one floor points in at the end it is walked from and out at the other; the letters of a shared stair cell each have their own chevron', () => {
+  const project = planProject([['AA#S#S', 'AA####']], { connections: [[1, 3, 0, 1, 5, 0]] });
+  project.building.connections[0].direction = 'ab';
+  const floor = project.building.floors[0];
+  const way = (cell) => /class="plan__chevron plan__oneway"[^>]* d="M[\d.]+ ([\d.]+)L[\d.]+ ([\d.]+)L/.exec(planSvg(project, floor, { crop: { x: cell, y: 0, width: 1, height: 1 } }).svg);
+  const [, in1, in2] = way(3);
+  assert.ok(in2 > in1, 'walked from here: "down", in');
+  const [, out1, out2] = way(5);
+  assert.ok(out2 < out1, 'comes out here: "up", out');
+  // a chained stairwell: A both ways and B up only on one cell
+  const chain = planProject([['AA#S', 'AA##'], ['BB#S', 'BB##'], ['CC#S', 'CC##']], { connections: [[1, 3, 0, 2, 3, 0], [2, 3, 0, 3, 3, 0]] });
+  chain.building.connections[1].direction = 'ab';
+  const middle = planSvg(chain, chain.building.floors[1]);
+  assert.deepEqual(middle.letters, ['A', 'B']);
+  assert.equal(countOf(middle.svg, 'plan__oneway'), 1, 'one chevron, by B only');
+  assert.ok(middle.svg.indexOf('>B</text>') < middle.svg.indexOf('plan__oneway'), 'after B');
+  assert.ok(middle.svg.indexOf('>A</text>') < middle.svg.indexOf('>B</text>'));
+  const first = middle.svg.indexOf('>A</text>');
+  assert.ok(!/plan__oneway/.test(middle.svg.slice(first - 200, middle.svg.indexOf('>B</text>'))), 'none by A');
+});
+
+test('the sheet\'s sentence and the picture say which stairs are one way, in words', () => {
+  const project = planProject([['AA#S', 'AA##'], ['BB#S', 'BB##']], { connections: [[1, 3, 0, 2, 3, 0]] });
+  const said = (direction) => {
+    project.building.connections[0].direction = direction;
+    return renderOutput('floor-plan', project, null, { ...NOW, floorId: project.building.floors[0].id }).html;
+  };
+  assert.ok(said('both').includes('stairs A.</figcaption>'));
+  assert.ok(said('ab').includes('stairs A. Stairs A is up only.</figcaption>'));
+  project.building.connections[0].direction = 'ba';
+  assert.ok(planImage(project, { now: NOW.now }).svg.includes('Stairs A is down only.'));
+});
+
+test('a route map, which is what a door card draws, keeps the plain stair mark: evacuation ignores one-way', () => {
+  const make = (direction) => {
+    const project = planProject([['AA#S', 'AA##'], ['BB#S', 'BB##']], { connections: [[1, 3, 0, 2, 3, 0]] });
+    project.building.connections[0].direction = direction;
+    return project;
+  };
+  const route = { cells: [2, 3], start: null, exit: null };
+  const card = (direction) => planSvg(make(direction), make(direction).building.floors[0], { route }).svg;
+  assert.equal(card('ab'), card('both'));
+  assert.equal(card('ba'), card('both'));
+  assert.equal(countOf(card('ab'), 'plan__oneway'), 0);
+});
+
 test('the sample school prints one sheet a floor, or the one floor asked for', () => {
   const project = school();
   const all = renderOutput('floor-plan', project, null, NOW).html;

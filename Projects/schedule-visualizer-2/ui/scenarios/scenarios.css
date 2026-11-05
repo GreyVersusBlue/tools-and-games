@@ -318,6 +318,35 @@
   }
 }
 
+/* ---------- On a phone: the stage stays in view (DESIGN 12.4, 5.4) ---------- */
+
+/* Phone widths only (under 600 px): on a tablet or a narrow laptop window the
+   stacked layout has room, and the plan keeps the height it has with no
+   scenario open (DESIGN 5.4's floor) whether or not a form is open. */
+
+/* Below the wide layout the panel stands under the map, and a form brought
+   into view used to carry the stage off the top of the section (0 px of it
+   visible with Bell times open at 390 by 844). With a scenario open the stage
+   is pinned to the top of the section at a height of its own (between 180 and
+   280 px, 31 % of the window: the page around the section may be scrolled up
+   to 81 px by the card under it, and 160 px must still show), and the panel, the forms in it, scrolls under
+   it, as its own region: scroll-padding keeps a field brought into view clear
+   of the stage and the bar. A window under 600 px tall (a phone on its side)
+   keeps the plan map's own rule, the first line scrolled away instead. */
+@media (max-width: 599.98px) and (min-height: 600px) {
+  .scn[data-mode="open"] {
+    --scn-pin: clamp(180px, 31dvh, 280px);
+    scroll-padding-top: var(--scn-pin);
+  }
+
+  .scn[data-mode="open"] .mov-map > .mov-stage {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    flex: 0 0 var(--scn-pin);
+  }
+}
+
 /* ---------- The comparison, in the inspector ---------- */
 
 .scn-compare {
@@ -561,4 +590,259 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+/* ---------- The Kind of change fieldset and the lever forms (DESIGN 12.4) ---------- */
+
+/* seven chips (six here, the stairs and corridors one is SV2-92b's), 44 px,
+   wrapping; the chosen one is a filled shape and bold, never colour alone */
+.scn-kind {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.scn-kind__legend {
+  padding: 0;
+  margin-bottom: var(--s-1);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.scn-kind .seg,
+.scn-seats__what .seg {
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+
+.scn-kind .seg__option,
+.scn-seats__what .seg__option {
+  min-height: 44px;
+}
+
+.scn-kind .seg__input:checked + .seg__label,
+.scn-seats__what .seg__input:checked + .seg__label {
+  font-weight: 700;
+}
+
+.scn-kind .seg__input:checked + .seg__label::before,
+.scn-seats__what .seg__input:checked + .seg__label::before {
+  content: '';
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  margin-right: 0.4em;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.scn-seats__what {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.scn-seats__what legend {
+  padding: 0;
+  margin-bottom: var(--s-1);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+/* the form scrolls inside the panel, so a long editor never takes the stage */
+.scn-form {
+  min-width: 0;
+}
+
+.scn-form__passing,
+.scn-form__lengthen,
+.scn-form__trial,
+.scn-form__hint,
+.scn-seats__now {
+  margin: 0;
+  font-size: var(--t-sm);
+  overflow-wrap: anywhere;
+}
+
+.scn-form__passing {
+  font-weight: 600;
+}
+
+.scn-form__lengthen:empty,
+.scn-form__passing:empty {
+  display: none;
+}
+
+.scn-form__trial {
+  color: var(--note);
+  font-weight: 600;
+}
+
+.scn-lengthen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.scn-lengthen__label {
+  font-size: var(--t-sm);
+}
+
+.scn-lengthen__button {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.scn-force {
+  display: grid;
+  gap: var(--s-1);
+}
+
+.scn-force__title {
+  margin: 0;
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.scn-force__none {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--ink-2);
+}
+
+.scn-force__list {
+  margin: 0;
+  padding-left: var(--s-5);
+  font-size: var(--t-sm);
+  overflow-wrap: anywhere;
+}
+
+/* the Day tab's editor, inside the panel: its fields stack */
+.scn-form .sch-release__fields,
+.scn-form .sch-markedit__grid {
+  display: grid;
+  gap: var(--s-3);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.scn-form .sch-radio,
+.scn-form .sch-show__chip,
+.scn-form .chip__remove {
+  min-height: 44px;
+}
+
+/* a closure's chip carries "Trial only"; a held group's row says why it is late */
+.scn-chip .scn-tag {
+  margin-left: var(--s-2);
+}
+
+.scn-held {
+  display: block;
+  font-size: var(--t-xs);
+  color: var(--note);
+  font-weight: 400;
+}
+
+.scn-summary__trial {
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line-strong);
+  border-left-width: 4px;
+  border-radius: var(--r-1);
+  font-weight: 600;
+}
+
+/* ---------- Stairs and corridors, and picking on the map (DESIGN 12.4) ---------- */
+
+.scn-way {
+  display: grid;
+  gap: var(--s-1);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* four ways to choose from; a radio chip wraps and is a finger's size */
+.scn-way .seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.scn-pick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.scn-pick-button {
+  min-height: 44px;
+}
+
+.scn-pick-button[aria-pressed="true"] {
+  font-weight: 700;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* the banner on the stage while a corridor is being picked: over the plan's
+   top edge, under the zoom buttons' side, a Cancel at a finger's size */
+.scn-pick {
+  position: absolute;
+  top: var(--s-2);
+  left: var(--s-2);
+  right: var(--s-2);
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  border-left-width: 4px;
+  border-radius: var(--r-1);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.scn-pick[hidden] {
+  display: none;
+}
+
+.scn-pick__cancel {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.scn[data-picking="true"] .mov-plan {
+  cursor: crosshair;
+}
+
+/* what the cross-hatch on the plan means */
+.scn-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  font-size: var(--t-sm);
+}
+
+.scn-legend[hidden] {
+  display: none;
+}
+
+.scn-legend__swatch {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 1px solid var(--ink);
+  background:
+    repeating-linear-gradient(45deg, transparent 0 3px, var(--ink) 3px 4px),
+    repeating-linear-gradient(-45deg, transparent 0 3px, var(--ink) 3px 4px);
 }
