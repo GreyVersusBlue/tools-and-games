@@ -130,10 +130,10 @@
 
 <!-- modules: the save, then physics + the codec + level packs, then render,
      input, the editor, and the orchestrator, which is loaded last because it
-     owns the state the rest of them read. save.mjs is an ES module, which a
+     owns the state the rest of them read. save.js is an ES module, which a
      browser runs after the page is parsed, so the classic scripts are `defer`
      to keep their place in line behind it: game.js reads the save as it loads. -->
-<script type="module" src="js/save.mjs"></script>
+<script type="module" src="js/save.js"></script>
 <script defer src="js/physics.js"></script>
 <script defer src="js/levels/pack-01-basics.js"></script>
 <script defer src="js/levels/pack-02-deepspace.js"></script>

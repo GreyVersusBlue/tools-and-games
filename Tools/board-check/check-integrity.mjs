@@ -13,6 +13,8 @@
 //   - every .json parses (package-lock excluded, it is huge and generated)
 //   - every local url() in every .html / .css points at a file that exists
 //   - every .html is claimed by an area in ownership.json
+//   - no page or browser module loads a .mjs (the live server serves it as
+//     application/octet-stream, which browsers refuse; see mjs-guard.mjs)
 //
 // Exit code 1 on any failure.
 
@@ -20,6 +22,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { SITE } from './harness.mjs';
+import { findBrowserMjs, selfTest as mjsSelfTest } from './mjs-guard.mjs';
 
 const SKIP = ['node_modules', '/tools/board-check/three-', '/libs/'];
 
@@ -267,6 +270,24 @@ for (const p of files.filter(f => /\.(js|mjs|css)$/.test(f))) {
   }
   for (const h of [...hosts]) if (OWN_HOST.test(h) || RESERVED_HOST.test(h)) hosts.delete(h);
   if (hosts.size) fail(p, `references offsite host(s): ${[...hosts].join(', ')}`);
+}
+
+// --- no browser-loaded .mjs --------------------------------------------------
+// The live nginx serves .mjs as application/octet-stream and a browser will not
+// run a module script of that type; CI's server does, so only the live site
+// showed it (Orbital, Final Grade Checker, Seating Chart; TG-57/TG-58). A page
+// must load `.js`. The detector lives in mjs-guard.mjs and is proved on fixtures
+// every run: if it stops flagging a known-bad case, that is a failure too.
+for (const problem of mjsSelfTest()) {
+  checked++;
+  fail(path.join(SITE, 'Tools/board-check/mjs-guard.mjs'), `self-test: ${problem}`);
+}
+for (const p of files.filter(f => /\.(html|js)$/.test(f))) {
+  checked++;
+  const src = fs.readFileSync(p, 'utf8');
+  for (const h of findBrowserMjs(p.endsWith('.html') ? 'html' : 'js', src)) {
+    fail(p, `line ${h.line} makes the browser load a .mjs, which the live server serves as application/octet-stream: ${h.text}`);
+  }
 }
 
 console.log(`\n${checked} units checked, ${bad} broken`);

@@ -5,7 +5,7 @@ Everything the tool needs that isn't the page itself. The page stays at
 (`/Tools/Seating%20Chart%20Generator.html`) is unchanged.
 
 ```
-seating.mjs         pure logic + the save slot. No DOM. Node runs it as-is.
+seating.js          pure logic + the save slot. No DOM. Node runs it as-is.
 fonts/              the two vendored families, with licences. See fonts/README.md.
 test/smoke-seating.mjs   Node test of the logic and the save slot
 test/drive-seating.mjs   the same tool in a real browser: build, reload, print, import
@@ -25,7 +25,7 @@ browser, and runs headless, so it does not fight `npm run games` for the screen.
 
 ## Why the logic lives in a module
 
-`seating.mjs` holds the seat solver, the constraint checker, `repairState`, the
+`seating.js` holds the seat solver, the constraint checker, `repairState`, the
 roster parser and the layout maths. All of it is arithmetic and string work, which
 is exactly what a Node test can drive without a browser and what a browser test
 would be a slow way to check. The page keeps the DOM and nothing else.

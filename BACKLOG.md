@@ -2414,7 +2414,7 @@ wants, not a placeholder for a "real" save); no `reset` button on the save bar
    2026-10-03, recorded 2026-10-21 (#1008): the touch playtests pass**, and
    the Selector's record counts this one with them.
 3. **The site's save bar. Shipped 2026-10-07** (#925), on Devon's yes to Q52
-   (2026-10-05). `js/save.mjs` holds one slot through `gvb-save.js` on
+   (2026-10-05). `js/save.js` holds one slot through `gvb-save.js` on
    `orbital_progress_v2`, and the sector map has Export and Import; Reset
    progress stays the one button that wipes. A save from before it has no
    `__v`, reads as version 0 and loads key for key: `test/fixtures/progress-eb2806c.json`

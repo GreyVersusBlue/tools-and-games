@@ -107,6 +107,14 @@ procedural fallback and captured a beach nobody saw — and nothing passes it no
 Parses every `.js`/`.mjs`, every inline `<script>`, and every `.json` on the
 site. Exits 1 on any failure.
 
+It also fails any `.html` or `.js` that makes the browser load a `.mjs`
+(`<script src>`, `modulepreload`, `import`/`export ... from`, dynamic
+`import()`, `new Worker`, `serviceWorker.register`). The live nginx serves
+`.mjs` as `application/octet-stream`, which browsers refuse, and CI's server
+does not, so only the live site showed it (TG-57/TG-58). Node-only `.mjs` is
+fine. The detector is `mjs-guard.mjs`; it is proved on fixtures every run, and
+a detector that stops flagging a known-bad case is itself a FAIL line.
+
 This is here because a game's `src/npc.js` contained JSON instead of
 JavaScript, which meant `main.js` could not `import { NPC }` and the game hung
 on its loading screen. (That was Castle Conundrum, which is its own repository
