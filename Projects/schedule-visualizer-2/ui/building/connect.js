@@ -29,16 +29,17 @@ export function createConnect(ed, options) {
   inspectorSheet();
   const ctx = ed.ctx;
   const canvas = ed.canvas;
-  const words = h('p', { class: 'bld-connect__text', id: 'connect-text' });
+  // the words and the note are the live regions; the list of stops is not, or each redraw would be read out
+  const words = h('p', { class: 'bld-connect__text', id: 'connect-text', role: 'status' });
   // a finger's size, whatever the sheet says (the banner's buttons)
   const FINGER = 'min-height: 44px; min-width: 44px';
   const stop = h('button', { type: 'button', class: 'btn', id: 'connect-cancel', style: FINGER, on: { click: () => cancel(true) } }, 'Cancel');
   const another = h('button', { type: 'button', class: 'btn', id: 'connect-another', style: FINGER, hidden: true, on: { click: () => again() } }, 'Connect another floor');
   const finished = h('button', { type: 'button', class: 'btn', id: 'connect-done', style: FINGER, hidden: true, on: { click: () => finish() } }, 'Done');
   // a refusal, in words, where it can be read and heard (the banner is a live region)
-  const note = h('p', { class: 'bld-connect__note', id: 'connect-note', style: 'flex: 1 1 100%; margin: 0', hidden: true });
+  const note = h('p', { class: 'bld-connect__note', id: 'connect-note', role: 'status', style: 'flex: 1 1 100%; margin: 0', hidden: true });
   const stops = h('ul', { class: 'bld-connect__stops', id: 'connect-stops', 'aria-label': 'Elevator stops you can join', style: 'flex: 1 1 100%; margin: 0; padding: 0; list-style: none; display: grid; gap: var(--s-1)', hidden: true });
-  const banner = h('div', { class: 'bld-connect', id: 'connect-banner', role: 'status', tabindex: '-1', hidden: true }, words, stop, another, finished, note, stops);
+  const banner = h('div', { class: 'bld-connect', id: 'connect-banner', role: 'group', 'aria-label': 'Connecting', tabindex: '-1', hidden: true }, words, stop, another, finished, note, stops);
   options.stage.append(banner);
   let from = null;
   let press = null;
@@ -46,6 +47,8 @@ export function createConnect(ed, options) {
   // 'stairs' or 'elevator'; for an elevator, 'picking' a stop or 'joined' with the result on show
   let kind = 'stairs';
   let phase = 'picking';
+  // the other end of the join on show while phase is 'joined'
+  let joinedTo = null;
 
   function label() {
     return nextConnectionLabel(ed.project.building.connections);
@@ -58,8 +61,7 @@ export function createConnect(ed, options) {
 
   // The car the mode started from: its letter (or the letter the next elevator
   // will take), and the floors it stops on.
-  function carOf(end0) {
-    const building = ed.project.building;
+  function carOf(end0, building = ed.project.building) {
     return elevatorCars(building).find((car) => car.stops.some((stop0) => stop0.floorId === end0.floorId && stop0.cell === end0.cell)) || null;
   }
 
@@ -185,6 +187,7 @@ export function createConnect(ed, options) {
   function again() {
     if (from === null || kind !== 'elevator') return;
     phase = 'picking';
+    joinedTo = null;
     note.textContent = '';
     note.hidden = true;
     draw();
@@ -215,8 +218,8 @@ export function createConnect(ed, options) {
 
   // A refusal in an elevator's mode: in the banner, where it is heard, and the mode goes on.
   function refuseHere(message) {
-    note.textContent = message;
     note.hidden = false;
+    note.textContent = message;
   }
 
   async function pick(cell) {
@@ -286,24 +289,43 @@ export function createConnect(ed, options) {
     });
     if (!done) return;
     phase = 'joined';
+    joinedTo = { floorId: floor.id, cell: target.cell };
     words.textContent = 'Elevator ' + done.car + ': ' + floorsWords(done.floors) + '. Connected.';
     draw();
     ed.schedule();
     another.focus({ preventScroll: true });
   }
 
+  // Whether the car this mode started from still has the join it reported.
+  function joinedStill(project) {
+    if (joinedTo === null) return false;
+    const car = carOf(from, project.building);
+    return car !== null && car.stops.some((stop0) => stop0.floorId === joinedTo.floorId && stop0.cell === joinedTo.cell);
+  }
+
   // A click on the plan picks the other end; the tool in hand does not see it.
   function onDown(event) {
     if (from === null || event.button !== 0 || phase !== 'picking') return;
-    event.stopImmediatePropagation();
-    event.preventDefault();
+    // a second finger is not a click: the press is called off and the plan's own
+    // input has the finger, for the two-finger pan and pinch
+    if (!event.isPrimary) {
+      press = null;
+      return;
+    }
+    // a finger goes on to the plan's input as well (it answers false, so no
+    // tool acts), so a second finger can make a pan or a pinch of the two
+    const touch = event.pointerType === 'touch';
+    if (!touch) {
+      event.stopImmediatePropagation();
+      event.preventDefault();
+    }
     canvas.focus({ preventScroll: true });
-    press = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    press = { id: event.pointerId, x: event.clientX, y: event.clientY, touch };
   }
 
   function onUp(event) {
     if (!press || event.pointerId !== press.id) return;
-    event.stopImmediatePropagation();
+    if (!press.touch) event.stopImmediatePropagation();
     const moved = Math.hypot(event.clientX - press.x, event.clientY - press.y);
     press = null;
     if (from === null || event.type !== 'pointerup' || moved > CLICK_SLOP) return;
@@ -343,6 +365,10 @@ export function createConnect(ed, options) {
     get from() {
       return from;
     },
+    // Whether a press on the plan is this mode's to take (the plan's tool must not act on it).
+    get picking() {
+      return from !== null && phase === 'picking';
+    },
     get kind() {
       return from === null ? null : kind;
     },
@@ -354,13 +380,27 @@ export function createConnect(ed, options) {
       const there = floor && floor.cells[from.cell] === CELL_STAIRS && lift === (kind === 'elevator');
       if (!there) {
         const elevator = kind === 'elevator';
+        // the focus was in the banner, which is about to go: it goes to the plan
+        const held = banner.contains(document.activeElement);
         // the mode's own end() would try to return the focus to a stop that is gone
         from = null;
         press = null;
         phase = 'picking';
+        joinedTo = null;
         draw();
         ed.schedule();
         ed.say(elevator ? 'The elevator stop being connected is gone, so connecting has stopped.' : 'The stairs being connected are gone, so connecting has stopped.');
+        if (held) canvas.focus({ preventScroll: true });
+      } else if (kind === 'elevator' && phase === 'joined' && !joinedStill(project)) {
+        // an undo took the join away: the banner says so no more, and picking starts again
+        phase = 'picking';
+        joinedTo = null;
+        note.textContent = '';
+        note.hidden = true;
+        draw();
+        ed.say(words.textContent);
+        ed.schedule();
+        focusBanner();
       } else draw();
     },
     // Marks the stop the mode started from, when its floor is on screen, and

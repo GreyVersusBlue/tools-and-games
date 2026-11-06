@@ -123,6 +123,7 @@ export const GROUPS = {
     'ui/fix-kinds.test.mjs', // SV2-70b
     'ui/lab-fixes.test.mjs', // SV2-72d
     'ui/label-scale.test.mjs', // SV2-31
+    'ui/elevator-plan.test.mjs', // SV2-101e
     'ui/set-view.test.mjs', // SV2-31c
     'ui/auto-snapshots.test.mjs', // SV2-28b
     'ui/scale-tool.test.mjs', // SV2-73a

@@ -12,7 +12,7 @@ import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { openPlanner, still } from './harness.mjs';
-import { startEmpty, planReady, point, click, state, wholeFloor, floorIs, clearToast, pixel } from './draw-pointer.mjs';
+import { startEmpty, planReady, point, click, drag, state, wholeFloor, floorIs, clearToast, pixel } from './draw-pointer.mjs';
 
 let session;
 let page;
@@ -314,6 +314,113 @@ test('Select on a stop or a corridor cell puts it in Properties, Shift adds one 
   await isStop();
 });
 
+// ---------------------------------------------------------------- SV2-101e: mending what SV2-101 left
+
+// Stops on the three floors of threeFloors, placed through the actions (Floor 2's first).
+async function stopsOnAll(order = [1, 2, 0]) {
+  await page.evaluate(async (floors) => {
+    const { store } = globalThis.sv2;
+    const actions = await import('./engine/actions.js');
+    for (const index of floors) store.apply(actions.placeLift, { floorId: store.project.building.floors[index].id, cells: [6 + 10 * 40] });
+  }, order);
+}
+
+const undo = async () => {
+  await page.keyboard.down('Control');
+  await page.keyboard.press('z');
+  await page.keyboard.up('Control');
+};
+
+test('only the note and the words of the banner are live regions, not the list of stops', async () => {
+  await threeFloors();
+  await stopsOnAll();
+  await showFloor('Floor 1');
+  await connectFrom(0, 6, 10);
+  await listed(2);
+  const live = await page.evaluate(() => {
+    const banner = document.getElementById('connect-banner');
+    const inLive = (el) => el.closest('[role="status"], [aria-live]') !== null;
+    return {
+      banner: banner.getAttribute('role'),
+      words: inLive(document.getElementById('connect-text')),
+      note: inLive(document.getElementById('connect-note')),
+      list: inLive(document.getElementById('connect-stops')),
+      buttons: Array.from(banner.querySelectorAll('button')).some(inLive),
+    };
+  });
+  assert.deepEqual(live, { banner: 'group', words: true, note: true, list: false, buttons: false });
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.getElementById('connect-banner').hidden);
+});
+
+test('undo after a join takes the banner back to picking, with the list, and does not leave "Connected." with Done', async () => {
+  await showFloor('Floor 1');
+  await connectFrom(0, 6, 10);
+  await listed(2);
+  await page.click('#connect-stops button');
+  await page.waitForFunction(() => !document.getElementById('connect-done').hidden);
+  assert.equal(await text('#connect-text'), 'Elevator A: Floors 1 and 2. Connected.');
+  await page.focus('#plan');
+  await undo();
+  await page.waitForFunction(() => globalThis.sv2.store.project.building.connections.length === 0);
+  await page.waitForFunction(() => document.getElementById('connect-done').hidden);
+  assert.equal(await shown('#connect-banner'), true, 'the mode ended');
+  assert.equal(await text('#connect-text'), 'Connecting Elevator A: click its stop on another floor.');
+  assert.equal(await shown('#connect-another'), false);
+  assert.equal(await shown('#connect-cancel'), true);
+  await listed(2);
+  // the mode is live again: the list joins
+  await page.click('#connect-stops button');
+  await page.waitForFunction(() => !document.getElementById('connect-done').hidden);
+  await page.click('#connect-done');
+  await page.waitForFunction(() => document.getElementById('connect-banner').hidden);
+});
+
+test('when the stop being connected is undone away, the banner goes and the plan has the focus', async () => {
+  await threeFloors();
+  await stopsOnAll();
+  await showFloor('Floor 1');
+  await connectFrom(0, 6, 10);
+  await bannerHasFocus();
+  await undo();
+  await page.waitForFunction(() => document.getElementById('connect-banner').hidden);
+  assert.equal(((await building()).floors[0].lifts || []).length, 0);
+  assert.equal((await state(page)).focus, 'plan');
+  assert.match(await said(), /The elevator stop being connected is gone/);
+});
+
+test('Shift-click on a stop or a corridor cell keeps the selected spaces, and a Shift-drag that finds nothing keeps the cells in Properties', async () => {
+  await threeFloors();
+  await page.evaluate(async () => {
+    const { store } = globalThis.sv2;
+    const actions = await import('./engine/actions.js');
+    const floorId = store.project.building.floors[0].id;
+    store.apply(actions.placeLift, { floorId, cells: [7 + 10 * 40] });
+    store.apply(actions.placeRoom, { floorId, rect: { x: 20, y: 3, w: 3, h: 3 } });
+  });
+  await showFloor('Floor 1');
+  await page.focus('#plan');
+  await page.keyboard.press('v');
+  await click(page, 21, 4);
+  await page.waitForFunction(() => document.querySelector('.bld').editor.selection.length === 1);
+  const entriesBefore = await entries();
+  await page.keyboard.down('Shift');
+  await click(page, 7, 10);
+  await click(page, 10, 10);
+  await page.keyboard.up('Shift');
+  const now = await state(page);
+  assert.equal(now.selection.length, 1, 'a Shift-click on a cell dropped the space selection');
+  assert.equal(await entries(), entriesBefore);
+  // the cells without Shift, then a Shift-drag over bare floor
+  await click(page, 7, 10);
+  await page.waitForFunction(() => document.getElementById('inspector-title') && /^Elevator.*, not connected$/.test(document.getElementById('inspector-title').textContent));
+  await page.keyboard.down('Shift');
+  await drag(page, [30, 20], [33, 23], undefined);
+  await page.keyboard.up('Shift');
+  await still(page);
+  assert.match(await text('#inspector-title'), /^Elevator.*, not connected$/, 'a Shift-drag that found nothing dropped the cell focus');
+});
+
 // ---------------------------------------------------------------- 390 px, with a finger
 
 test('at 390 px: two rows of six tools, 44 px each, and a stop joined with a finger, Cancel, and a refused stairs tap', async () => {
@@ -390,4 +497,84 @@ test('at 390 px: two rows of six tools, 44 px each, and a stop joined with a fin
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await page.waitForFunction(() => document.getElementById('connect-text').textContent === 'Elevator A: Floors 1 and 2. Connected.');
   assert.equal((await building()).connections.length, 1);
+});
+
+// ---------------------------------------------------------------- 390 px, eight floors, and two fingers
+
+// Eight floors, each with a stop at column 6, row 10; Floor 1 on screen.
+async function eightFloors() {
+  await startEmpty(page);
+  await page.evaluate(async () => {
+    const { store } = globalThis.sv2;
+    const actions = await import('./engine/actions.js');
+    for (let i = 0; i < 7; i += 1) store.apply(actions.addFloor, {});
+    for (const floor of store.project.building.floors) {
+      store.apply(actions.paintCorridor, { floorId: floor.id, from: 5 + 10 * 40, to: 20 + 10 * 40 });
+      store.apply(actions.placeLift, { floorId: floor.id, cells: [6 + 10 * 40] });
+    }
+  });
+  await showFloor('Floor 1');
+}
+
+const swipeBy = async (from, to) => {
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: Math.round(from.x), y: Math.round(from.y), id: 7, radiusX: 4, radiusY: 4, force: 1 }] });
+  for (let i = 1; i <= 6; i += 1) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: Math.round(from.x + ((to.x - from.x) * i) / 6), y: Math.round(from.y + ((to.y - from.y) * i) / 6), id: 7, radiusX: 4, radiusY: 4, force: 1 }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+};
+
+test('at 390 px with eight floors the banner is held to 60% of the stage and every "Connect here" is reached by touch and scrolling', async () => {
+  await eightFloors();
+  await connectFrom(0, 6, 10);
+  await bannerHasFocus();
+  await listed(7);
+  const size = await page.evaluate(() => {
+    const banner = document.getElementById('connect-banner');
+    const stage = banner.parentElement;
+    return { banner: banner.getBoundingClientRect().height, stage: stage.getBoundingClientRect().height, scroll: banner.scrollHeight, client: banner.clientHeight, overflow: getComputedStyle(banner).overflowY };
+  });
+  assert.ok(size.banner <= size.stage * 0.6 + 1, 'the banner is ' + size.banner + ' px of a ' + size.stage + ' px stage');
+  assert.ok(size.scroll > size.client, 'the banner does not overflow, so the test shows nothing: ' + JSON.stringify(size));
+  assert.equal(size.overflow, 'auto');
+  const reach = (index) => page.evaluate((i) => {
+    const button = document.querySelectorAll('#connect-stops button')[i];
+    const banner = document.getElementById('connect-banner');
+    const box = button.getBoundingClientRect();
+    const cage = banner.getBoundingClientRect();
+    const x = box.left + box.width / 2;
+    const y = box.top + box.height / 2;
+    return { x, y, inside: y > cage.top && y < cage.bottom, top: document.elementFromPoint(x, y) === button, cage: { x: cage.left + cage.width / 2, top: cage.top, bottom: cage.bottom } };
+  }, index);
+  for (let index = 0; index < 7; index += 1) {
+    let found = await reach(index);
+    for (let tries = 0; tries < 40 && !(found.inside && found.top); tries += 1) {
+      const before = await page.$eval('#connect-banner', (el) => el.scrollTop);
+      const mid = (found.cage.top + found.cage.bottom) / 2;
+      await swipeBy({ x: found.cage.x, y: mid + 40 }, { x: found.cage.x, y: mid - 40 });
+      await page.waitForFunction((was) => document.getElementById('connect-banner').scrollTop !== was, { timeout: 2000 }, before).catch(() => {});
+      found = await reach(index);
+    }
+    assert.equal(found.inside && found.top, true, 'the ' + (index + 1) + 'th Connect here cannot be reached: ' + JSON.stringify(found));
+  }
+});
+
+test('in connect mode two fingers still pan and pinch the plan, and nothing is connected or drawn', async () => {
+  const before = await entries();
+  const zoom = () => page.evaluate(() => document.querySelector('.bld').editor.view.zoom);
+  const start = await zoom();
+  // two fingers on the bare floor below the banner
+  const box = await page.$eval('#plan', (el) => {
+    const b = el.getBoundingClientRect();
+    return { x: b.left + b.width / 2, y: b.bottom - 30 };
+  });
+  assert.equal(await page.evaluate(([x, y]) => document.elementFromPoint(x, y).id, [box.x, box.y]), 'plan', 'the fingers would not land on the plan');
+  const two = (gap, type) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: [{ x: Math.round(box.x - gap), y: Math.round(box.y), id: 21, radiusX: 4, radiusY: 4, force: 1 }, { x: Math.round(box.x + gap), y: Math.round(box.y), id: 22, radiusX: 4, radiusY: 4, force: 1 }] });
+  await two(20, 'touchStart');
+  for (const gap of [30, 45, 60, 80, 100]) await two(gap, 'touchMove');
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.waitForFunction((was) => document.querySelector('.bld').editor.view.zoom !== was, { timeout: 3000 }, start).catch(() => {});
+  assert.ok((await zoom()) > start, 'the pinch did not zoom: ' + start + ' to ' + (await zoom()));
+  assert.equal(await entries(), before, 'the tool in hand drew something');
+  assert.equal((await building()).connections.length, 0);
+  assert.equal(await shown('#connect-banner'), true, 'the mode ended');
+  await page.evaluate(() => document.querySelector('.bld').editor.connect.cancel(true));
 });

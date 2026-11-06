@@ -61,7 +61,7 @@ function sentence(floor, plan, project) {
   const stairs = plan.letters.length === 0 ? 'no stairs' : 'stairs ' + list(plan.letters.slice().sort());
   // elevators are named only where there are some, so a building without one reads as it did
   const lifts = (plan.elevators || []).slice().sort((a, b) => (a.letter < b.letter ? -1 : 1));
-  const elevators = lifts.length === 0 ? [] : [list(lifts.map((lift) => 'elevator ' + lift.letter + (lift.staffOnly ? ' (staff only)' : '')))];
+  const elevators = lifts.length === 0 ? [] : [list(lifts.map((lift) => 'elevator ' + lift.letter + (lift.staffOnly || lift.connected === false ? ' (' + [lift.staffOnly ? 'staff only' : '', lift.connected === false ? 'not connected' : ''].filter(Boolean).join(', ') + ')' : '')))];
   return floor.name + ': ' + parts.concat(elevators.length === 0 ? [stairs] : [stairs].concat(elevators)).join(', ') + '.' + waysOf(project, floor, plan);
 }
 

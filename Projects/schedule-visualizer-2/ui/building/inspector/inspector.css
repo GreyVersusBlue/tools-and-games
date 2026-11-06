@@ -312,6 +312,11 @@
   padding: var(--s-2) var(--s-4);
   background: var(--accent);
   color: var(--accent-ink);
+  /* a long list of stops scrolls inside the banner and never covers the whole plan */
+  max-height: 60%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
 }
 
 .bld-connect__text {

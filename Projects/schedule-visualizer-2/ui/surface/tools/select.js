@@ -194,6 +194,10 @@ export const tool = {
         const had = ed.selection.includes(gesture.hit);
         ed.select(had ? ed.selection.filter((id) => id !== gesture.hit) : ed.selection.concat([gesture.hit]));
         ed.say(capital(count(ed.selection.length, 'space')) + ' selected.');
+      } else if (marked(ed, cell) && gesture.add && ed.selection.length > 0) {
+        // Shift on a stop or a corridor cell leaves the spaces selected: the
+        // tab can be about spaces or about cells, not both
+        ed.say('Spaces are selected. Click the cell without Shift to see its Properties.');
       } else if (marked(ed, cell)) {
         // a corridor cell or an elevator stop: its Properties; with Shift, one more or one fewer
         const held = cellFocus(ed).get();
@@ -216,6 +220,11 @@ export const tool = {
     const rect = boxOf(gesture, ev);
     const found = inBox(ed, rect);
     const cells = found.length === 0 || !gesture.add ? cellsIn(ed, rect) : [];
+    // a Shift-drag that finds nothing adds nothing: what was selected stays
+    if (gesture.add && found.length === 0 && (cells.length === 0 || ed.selection.length > 0)) {
+      ed.say(cells.length === 0 ? 'Nothing found in the box.' : 'Spaces are selected. Drag without Shift to see the cells\' Properties.');
+      return;
+    }
     if (found.length === 0 && cells.length > 0) {
       const held = cellFocus(ed).get();
       const kept = gesture.add && held && held.floorId === ed.floor.id ? held.cells : [];
