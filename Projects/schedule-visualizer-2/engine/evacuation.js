@@ -54,10 +54,12 @@
 //     exitId  the exit of an 'exit' way, else null; refugeId likewise
 //     reason  for 'none' only: 'only-by-elevator' (a step-free way exists if an
 //             elevator, staff-only included, may be used), 'step-doors' (every
-//             door of the room has a step), 'steps' (a step on the way) or
+//             door of the room has a step), 'step-exits' (every exit it can
+//             reach has a step), 'steps' (a step on the way) or
 //             'no-way'; null for the other ways. why is the reason in
-//             words ("only by elevator", "every door has a step", "a step on
-//             North Corridor", "no step-free way through"); sentence is
+//             words ("only by elevator", "every door has a step", "every exit
+//             has a step", "a step on North Corridor", "no step-free way
+//             through"); sentence is
 //             describeFailure()'s, for a 'none' room.
 //   refuges is [{ refugeId, floorId, name, roomIds }] in building order: the
 //   rooms that wait at each, so a reader can say "Used by 12 rooms" (an empty
@@ -218,7 +220,10 @@ export function stepFreeWaysOut(project, graph, options) {
     } else if (avoided.length > 0 && toExit.reason === 'unreachable' && routeToExit(routing, room.id, lifted).ok) {
       entry.reason = 'only-by-elevator';
       entry.why = 'only by elevator';
-    } else if (toExit.reason === 'unreachable' && Array.isArray(toExit.avoiding) && toExit.avoiding.includes('steps') && entry.sentence.includes(': a step on ')) {
+    } else if (toExit.reason === 'unreachable' && Array.isArray(toExit.avoiding) && toExit.avoiding.includes('step-exits')) {
+      entry.reason = 'step-exits';
+      entry.why = 'every exit has a step';
+    } else if (toExit.reason === 'unreachable' && toExit.stepBlocked === true && entry.sentence.includes(': a step on ')) {
       entry.reason = 'steps';
       entry.why = entry.sentence.slice(entry.sentence.lastIndexOf(': a step on ') + 2).replace(/\.$/, '');
     } else {

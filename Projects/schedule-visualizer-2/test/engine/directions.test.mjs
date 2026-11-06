@@ -445,6 +445,8 @@ function startsAsTypedFor(project, failed) {
 test('a failure that says why: a staff-only car is the only way, every exit has a step; neither is worded as something the reader asked to avoid', () => {
   const project = withCars(planProject([HALL, HALL, HALL]), [{ stops: [[1, 0, 2], [2, 0, 2]], letter: 'D', staffOnly: true }, { stops: [[2, 6, 2], [3, 6, 2]], letter: 'E', staffOnly: true }]);
   const failed = { ok: false, reason: 'unreachable', roomId: roomId('2B'), floorId: project.building.floors[1].id, end: 'to', fromRoomId: roomId('1A'), toRoomId: roomId('2B'), avoiding: ['staff-only'] };
+  // routing names the cars the way is by (staffOnlyCars); a failure without them names none (SV2-100b)
+  failed.staffOnlyCars = project.building.connections.map((connection) => connection.id);
   assert.equal(describeFailure(project, failed), 'There is no way through from Room 1A to Room 2B on Floor 2: the only way is by Elevator D and Elevator E, which are staff and authorised only.');
   project.building.connections.splice(1, 1); // Elevator E is gone
   assert.equal(describeFailure(project, failed), 'There is no way through from Room 1A to Room 2B on Floor 2: the only way is by Elevator D, which is staff and authorised only.');

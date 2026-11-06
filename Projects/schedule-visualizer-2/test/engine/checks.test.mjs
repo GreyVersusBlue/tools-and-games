@@ -1013,7 +1013,7 @@ test('a step-free group with no step-free way for a walk is a finding whose id e
   const found = byId(result, STEP_FREE_ID);
   assert.equal(found.kind, 'group-walk');
   assert.equal(found.severity, 'warning');
-  assert.equal(found.text, '8A needs step-free routes, and has none from Gym to Room 303 after Period 6 on A Day: there is no step-free way through from Gym to Room 303 on Floor 3; Floor 3 has no elevator.');
+  assert.equal(found.text, '8A needs step-free routes, and has none from Gym to Room 303 after Period 6 on A Day: Floor 3 has no elevator.');
   assert.deepEqual(found.where, { dayTypeId: A, period: 5, groupIds: ['gsample08a'], roomId: 'rsample303', teacherId: null });
   assert.deepEqual(ids(result.findings).filter((id) => id.endsWith(':step-free')).length, 6, 'one for each of 8A\'s six walks between floors, on the two day types');
   // another group is not flagged

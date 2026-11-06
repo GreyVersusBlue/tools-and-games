@@ -92,7 +92,7 @@ import { hasMarks, markFor, schoolMarkFor, dutiesOn, dutyTeachers, dutyIsSometim
 import { dateWords } from './calendar.js';
 import { bellMoves, transitionPlan } from './crowd.js';
 import { route, routingGraph } from './routing.js';
-import { describeFailure, startsAsTyped } from './directions.js';
+import { describeFailure, failureCause, startsAsTyped } from './directions.js';
 import { makeFinding, sortFindings, splitAccepted, countWord, listWords, periodWord, roomName, formatDuration } from './findings.js';
 
 // "on A Day", or "on A Day and B Day" when B Day is the same as A Day: the
@@ -651,10 +651,17 @@ export function checkSchedule(project, walkResults) {
             const failed = route(graph, from.id, to.id, { avoidStairs: true });
             if (failed.ok || !route(graph, from.id, to.id).ok) continue;
             const across = plan.to !== period + 1;
-            let sentence = describeFailure(project, failed).replace(/\.$/, '');
-            if (!startsAsTyped(project, failed)) sentence = sentence.charAt(0).toLowerCase() + sentence.slice(1);
-            const why = noElevatorWords(project, from, to);
-            const text = group.name + ' needs step-free routes, and has none from ' + roomName(from, false) + (across ? ' after ' + periodName(settings, period) : '') + ' to ' + roomName(to, false) + (across ? ' for ' + periodName(settings, plan.to) : ' after ' + periodName(settings, period)) + ' ' + onDays(project, dayType) + ': ' + sentence + (why === '' ? '' : '; ' + why) + '.';
+            // the finding says from and to once, in its own words; what follows the colon is the cause
+            // routing found (a step, only when one is to blame) and, between floors, a floor with no elevator.
+            // A failure that is not "no way through" (a room with no step-free door) says itself.
+            let sentence = '';
+            let parts = [];
+            if (failed.reason === 'unreachable') parts = [failureCause(project, failed)];
+            else sentence = describeFailure(project, failed).replace(/\.$/, '');
+            if (sentence !== '' && !startsAsTyped(project, failed)) sentence = sentence.charAt(0).toLowerCase() + sentence.slice(1);
+            if (sentence !== '') parts.unshift(sentence);
+            parts = parts.concat(noElevatorWords(project, from, to)).filter((part) => part !== '');
+            const text = group.name + ' needs step-free routes, and has none from ' + roomName(from, false) + (across ? ' after ' + periodName(settings, period) : '') + ' to ' + roomName(to, false) + (across ? ' for ' + periodName(settings, plan.to) : ' after ' + periodName(settings, period)) + ' ' + onDays(project, dayType) + (parts.length === 0 ? '' : ': ' + parts.join('; ')) + '.';
             named(add('group-walk', [dayType.id, period, group.id].concat(across ? ['to' + plan.to] : [], ['step-free']), text, { dayTypeId: dayType.id, period, groupIds: [group.id], roomId: to.id }), across, plan.to);
           }
         }
