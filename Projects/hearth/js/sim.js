@@ -4,6 +4,7 @@
 /* Phase 7: the ring the children go round has one phase. It is a function of the sim clock and nothing else, so two children who
    retarget at different moments still land on one turning circle, and a reload lands them on the same one (time is packed). */
 const ringPhase=()=>time*.3;
+const KEPT_FIELDS='worked the fields alone, with nobody grown left';
 const ringOf=w=>people.filter(o=>!o.dead&&!o.inside&&isKid(o)&&(o.task==='play'||o.task==='tag')&&Math.hypot(o.x-w.x,o.y-w.y)<4);
 function step(dt){
   const d0=Math.floor(time/dayLen);time+=dt;if(Math.floor(time/dayLen)>d0){dayCount++;newDay()} // > not !==: a backward wobble across a boundary must not run a day twice
@@ -207,6 +208,14 @@ function step(dt){
         // a child with nobody grown left does not only play: someone has to keep the fire
         if(!people.some(q=>q!==p&&!isKid(q))){
           if(!p.keeper){p.keeper=1;say(`${B(p)} builds the fire up alone, the way the grown ones did it.`,true);p.hist.push({d:dayCount,s:'was left to keep the fire alone, and kept it'});addEvent('keeper',`the ${sea()} ${p.name} kept the fire alone`,`Everyone grown was gone, and ${p.name}, a child, kept the fire going alone until a boat should come.`)}
+          // TG-48: and the keeper does what a grown one would with the same morning: the dry field gets its well water, a ripe one is cut
+          // before it spoils, and only then the shore and the fire. The conditions are the ones the grown ones use; no draw is made
+          // unless the ground asks for the work, so a keeper with nothing to do is on the stream the tideline gave them.
+          const lw=dry01>.6&&hasB('well')&&s!=='winter'&&farms.some(f=>f.g<1), lf=farms.find(f=>f.g>=1&&!f.claimed);
+          if(lw||lf){const first=!p.hist.some(h=>h.s===KEPT_FIELDS); /* the life story is the memory, so the save keeps no new field (#37) */
+            if(lw){const w=getB('well');p.wtgt=farms.filter(f=>f.g<1).sort((a,b)=>a.g-b.g)[0];p.waterSt=0;goTo(p,w.x+.5,w.y+1.4,'water',0)}
+            else{lf.claimed=true;p.tgt=lf;p.tx=lf.x+.5;p.ty=lf.y+.5;p.task='harvest'}
+            if(first){p.hist.push({d:dayCount,s:KEPT_FIELDS});addEvent('keeperwork',`the ${sea()} ${p.name} worked the fields alone`,`${p.name}, a child, carried the well water and cut the grain with nobody grown left on the island to do either.`)}break}
           p.tendOut=1;const sh=nearestShore(p.x,p.y)||center;goTo(p,sh.x,sh.y,'tend',rnd(2,4));break}
         p.task='play';p.t=0;break}
         p.t-=dt;if(p.t>0){if(R()<dt*.6){p.tx=p.x+rnd(-2,2);p.ty=p.y+rnd(-2,2)}walk(p,dt);break}

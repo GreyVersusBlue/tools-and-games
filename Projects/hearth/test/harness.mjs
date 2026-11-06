@@ -1022,9 +1022,17 @@ if (mode === 'sixteen') {
       if (k1.task === 'tag' || k2.task === 'tag') tagSeen = true;
     }
     h.setSnow(0.9);
+    // TG-48: a snowman needs ground (freeSpotNear), and the yard beside the fire is built over on some islands: on seed 7 once the
+    // deer flee by dry routes, there was none at all within three tiles of (fire -2, fire +2), so the children stood there for
+    // 3000 steps and the check failed on the island's layout. They stand on the nearest ground that has room instead.
+    let sx = fireSpot.x, sy = fireSpot.y + 2;
+    search: for (let r = 2; r <= 14; r++) for (let a = 0; a < 16; a++) {
+      const x = fireSpot.x + Math.cos(a * Math.PI / 8) * r, y = fireSpot.y + Math.sin(a * Math.PI / 8) * r;
+      if (h.landAt(x, y) && window.freeSpotNear(x, y, 1, 3, 1)) { sx = x; sy = y; break search; }
+    }
     let snowman = 0;
     for (let i = 0; i < 3000 && !snowman; i++) {
-      for (const k of [k1, k2]) if (k.task !== 'snowman') { k.task = 'play'; k.t = 0; k.x = fireSpot.x + (k === k1 ? -2 : 2); k.y = fireSpot.y + 2; k.tx = k.x; k.ty = k.y; }
+      for (const k of [k1, k2]) if (k.task !== 'snowman') { k.task = 'play'; k.t = 0; k.x = sx + (k === k1 ? -.5 : .5); k.y = sy; k.tx = k.x; k.ty = k.y; }
       h.step(0.05);
       snowman = h.snowmen.length;
     }
