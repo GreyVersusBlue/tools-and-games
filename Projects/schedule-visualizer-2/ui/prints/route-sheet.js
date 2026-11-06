@@ -384,9 +384,9 @@ function blockMarkup(project, block, width) {
 
 // "Elevator D is staff and authorised only: arrange access with the office."
 function staffOnlyMarkup(letters) {
-  const names = letters.map((letter) => 'Elevator ' + typed(letter));
-  const joined = names.length <= 1 ? names.join('') : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
-  return '<p class="doc-meaning rs__staff" data-line="staff-only">' + (letters.length === 1 ? joined + ' is' : joined.replace(/^Elevator /, 'Elevators ') + ' are') + ' staff and authorised only: arrange access with the office.</p>';
+  const spans = letters.map((letter) => typed(letter));
+  const joined = spans.length <= 1 ? spans.join('') : spans.slice(0, -1).join(', ') + ' and ' + spans[spans.length - 1];
+  return '<p class="doc-meaning rs__staff" data-line="staff-only">' + (letters.length === 1 ? 'Elevator ' + joined + ' is' : 'Elevators ' + joined + ' are') + ' staff and authorised only: arrange access with the office.</p>';
 }
 
 // The sheets a person's days make: the day type asked for, else each own day
