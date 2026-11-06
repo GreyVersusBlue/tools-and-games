@@ -115,7 +115,7 @@
 // module's function bodies, never at its top level. Keep it so: no top-level
 // `class extends ActionError`, no constant built from an actions.js export.
 
-import { findRoom, findById, resolveSlotRoom, nameKey, roomNumberKey, allRooms, bellSchedulesOf, releaseOf, isBellTime, inRange, RANGES, RELEASE_SECONDS, CELL_CORRIDOR } from './schema.js';
+import { findRoom, findById, resolveSlotRoom, nameKey, roomNumberKey, allRooms, bellSchedulesOf, releaseOf, isBellTime, inRange, RANGES, RELEASE_SECONDS, CELL_CORRIDOR, ELEVATOR_KIND } from './schema.js';
 import { findDayType, isOwnCopy, ownDayTypes, effectiveSchedule, describeDayType } from './day-types.js';
 import { periodName, formatTime } from './bells.js';
 import { slotTeacherIds } from './teacher-day.js';
@@ -656,7 +656,9 @@ export function leverRouteOptions(project, levers) {
     if (!isReadableLever(lever)) continue;
     if (lever.kind === 'way') {
       const connection = connectionOf(project, lever.connectionId);
-      if (!connection) continue;
+      // a car runs both ways and is no W4 lever (ARCHITECTURE 19.5): routing
+      // never sees a way or a closure on an elevator
+      if (!connection || connection.kind === ELEVATOR_KIND) continue;
       if (lever.way === 'closed') shutLinks.add(connection.id);
       else if (lever.way !== connection.direction) ways[connection.id] = lever.way;
     } else if (lever.kind === 'corridor') {
@@ -956,7 +958,12 @@ function whyLeverGone(project, lever) {
   }
   if (lever.kind === 'capacity') return findRoom(project, lever.roomId) ? null : [words('the room is no longer in the building.')];
   if (lever.kind === 'headCount') return findById(project.groups, lever.groupId) ? null : [words('its group is no longer in the project.')];
-  if (lever.kind === 'way') return connectionOf(project, lever.connectionId) ? null : [words('the stairs connection is no longer in the building.')];
+  if (lever.kind === 'way') {
+    const connection = connectionOf(project, lever.connectionId);
+    if (!connection) return [words('the stairs connection is no longer in the building.')];
+    if (connection.kind === ELEVATOR_KIND) return [words('it names an elevator, and only stairs can be closed or made one way here.')];
+    return null;
+  }
   if (lever.kind === 'corridor') {
     const floor = floorOf(project, lever.floorId);
     if (!floor) return [words('its floor is no longer in the building.')];
