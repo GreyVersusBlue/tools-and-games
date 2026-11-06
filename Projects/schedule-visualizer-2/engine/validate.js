@@ -572,10 +572,13 @@ export function validate(project) {
       }
       const cars = elevatorCars(building);
       for (const car of cars) {
-        const seenFloors = new Set();
-        for (const stop of car.stops) {
-          if (seenFloors.has(stop.floorId)) add(connectionPath(connections.find((connection) => connection.id === car.connectionIds[0])), 'Elevator ' + car.label + ' has two stops on one floor; it has one on each.');
-          seenFloors.add(stop.floorId);
+        // the first connection (in building order) that gives the car a second stop on a floor
+        const stopOn = new Map();
+        for (const connection of connections.filter((candidate) => car.connectionIds.includes(candidate.id))) {
+          for (const end of [connection.a, connection.b]) {
+            if (stopOn.has(end.floorId) && stopOn.get(end.floorId) !== end.cell) add(connectionPath(connection), 'Elevator ' + car.label + ' has a second stop on ' + floorById.get(end.floorId).name + '; it has one on each floor.');
+            else stopOn.set(end.floorId, end.cell);
+          }
         }
         const own = connections.filter((connection) => car.connectionIds.includes(connection.id));
         if (new Set(own.map((connection) => connection.staffOnly === true)).size > 1) add(connectionPath(own[0]) + '.staffOnly', 'Every connection of elevator ' + car.label + ' says the same about staff only.');

@@ -86,6 +86,9 @@ every rule on this page and `engine/repair.js` enforces them on every load.
 | `defaultHeadCount` | integer | `25` | 1 to 999. Used for a group with no head count. |
 | `secondsPerCell` | integer | `3` | 1 to 10. Walking time for one corridor cell. |
 | `secondsPerStair` | integer | `8` | 2 to 30. Per level changed on a stair connection. |
+| `elevatorWaitSeconds` | integer, optional | absent reads as `30` | 0 to 300 (0 is allowed). From pressing the button to the doors opening. Read through `elevatorSettings()` in `engine/schema.js`, never from `defaultSettings()`, which does not hold it: a new project, a reset and every recorded baseline are as they were. Out of range is a refusal on import; on load repair removes it, with a note, so the usual figure applies. Travels in the project file only (not in the schedule file or the building file). |
+| `elevatorSecondsPerFloor` | integer, optional | absent reads as `6` | 1 to 60. The ride, for each level changed (at least one). As above. |
+| `elevatorPeoplePerTrip` | integer, optional | absent reads as `8` | 1 to 40. How many fit in one trip, for a group's trips. As above. |
 | `cellScale` | object or null, optional | absent | Cell scale: how long one cell is, `{ "unit": "feet" or "metres", "length": a number above 0 and at most 1000 }` (exactly those two fields). Absent or `null` means not set, so a project saved before the setting existed reads unchanged and a new project has none. One that cannot be read is repaired to `null` with a note. Only the traced image's scaling tool reads it (SV2-73a); a published file does not carry it. |
 | `colourScale.mode` | text | `"relative"` | `"relative"` or `"absolute"`. |
 | `colourScale.bands` | integer[4] | `[10, 25, 50, 100]` | The loads at which bands 2 to 5 begin in absolute mode. Each larger than the one before, 1 to 99999. |
@@ -117,6 +120,9 @@ every rule on this page and `engine/repair.js` enforces them on every load.
 | `spaces` | Space[] | Rooms and other spaces. Their cells are `.` in `cells`. |
 | `corridors` | CorridorName[] | Named runs of corridor cells. |
 | `exits` | Exit[] | |
+| `lifts` | integer[], optional | Absent is none. The `S` cells of this floor that are elevator stops. See "Elevators and step-free marks". |
+| `notStepFree` | integer[], optional | Absent is none. Corridor cells with a step, a kerb or a few treads of stairs: a step-free route does not cross them. |
+| `refuges` | Refuge[], optional | Absent is none. Areas of refuge. |
 | `image` | TraceImage or `null` | The traced floor plan, if any. |
 
 A cell is empty, corridor, stairs, or owned by exactly one space. A space's
@@ -139,9 +145,10 @@ stairs cell under a space is cleared.
 | `shared` | boolean | `false` | True for a gym, cafeteria or library: several groups at once is not a double-booking. |
 | `doors` | Door[] | `[]` | With none, the room is entered from any side that touches a corridor. |
 
-**Door**: `{ cell, side }`. `cell` is one of the room's own cells. `side` is
+**Door**: `{ cell, side, stepFree? }`. `cell` is one of the room's own cells. `side` is
 `"n"`, `"e"`, `"s"` or `"w"`. The cell across that side is a corridor or
-stairs cell. Each door once.
+stairs cell, and not an elevator stop. Each door once. `stepFree` is optional;
+absent means `true`, and `false` says there are steps at this door.
 
 **Other space** (a space with `kind: "other"`)
 
@@ -157,10 +164,11 @@ stairs cell. Each door once.
 **CorridorName**: `{ id, name, cells }`. `id` is `k…`. `cells` are corridor
 cells (`#`), at least one, and a cell has at most one name on its floor.
 
-**Exit**: `{ id, cell, doorName, assembly }`. `id` is `x…`. `cell` is a
+**Exit**: `{ id, cell, doorName, assembly, stepFree? }`. `id` is `x…`. `cell` is a
 corridor cell with at least one side that is empty or off the grid. One exit
 per cell. `doorName` ("Door B") and `assembly` ("Front lawn by the flagpole")
-are text and may be empty.
+are text and may be empty. `stepFree` is optional; absent means `true`, and
+`false` says there are steps outside the door.
 
 **Connection**
 
@@ -169,7 +177,60 @@ are text and may be empty.
 | `id` | id, `c…` | |
 | `label` | text | Not empty. Given at creation from the first unused letter (A to Z, then AA, AB) and never renumbered. |
 | `a`, `b` | `{ floorId, cell }` | The two ends. Each is a stairs cell (`S`) on a floor of this building, and they are not the same cell. The two ends may be on one floor. A stairs cell may carry more than one connection. |
-| `direction` | text | `"both"`. `"ab"` and `"ba"` are reserved for one-way stairs. |
+| `direction` | text | `"both"`. `"ab"` and `"ba"` are reserved for one-way stairs. An elevator is always `"both"`. |
+| `kind` | `"elevator"`, optional | Absent is stairs. See "Elevators and step-free marks". |
+| `staffOnly` | boolean, optional | Only on an elevator connection. Absent is `false`: anyone may use it. |
+| `car` | text, optional | Only on an elevator connection: the elevator's letter, the same on every connection of one elevator. Absent reads as the connection's own `label`. |
+
+**Refuge** (an area of refuge): `{ id, cell, name }`. `id` is `a…`. `cell` is
+a corridor or stairs cell that is not an elevator stop, one refuge per cell.
+`name` is free text (default "Area of refuge"), unique on its floor without
+regard to capitals.
+
+**Elevators and step-free marks** (every field above that mentions them is
+optional, so a project saved before them reads exactly as before, and a copy
+of the tool from before them keeps them through its own repair, which copies
+what it does not know)
+
+An elevator stop is a stairs cell: no new cell character was added, because an
+older copy of the tool refuses any character but `.`, `#` and `S`, and such a
+copy reads an elevator as a stairs connection and opens the file. An elevator
+is a connection with `kind: "elevator"` between `S` cells on different floors,
+`direction` `"both"`. An elevator ("car") is never stored: it is worked out by
+`elevatorCars(building)` in `engine/schema.js` from the cells that elevator
+connections join, so a chain (Floor 1 to 2, 2 to 3) and a star (the lobby to
+each) are one car. A connection's `kind` is the authority for a stop it joins;
+`lifts` only marks a stop that has no connection yet, so a stale index an older
+tool left can never turn a stairs connection into an elevator. `isLiftCell`
+answers "is this cell an elevator stop?" by that rule.
+
+A project with `kind: "elevator"` connections and no `lifts` at all is valid:
+the ends are stops by their connections.
+
+What a project must satisfy, when the fields are there: every `lifts` cell is
+`S`, on the grid, listed once, and carries no stairs connection. An elevator
+connection joins two cells on different floors and runs both ways. No cell
+carries both an elevator and a stairs connection. A car has at most one stop on
+a floor. `staffOnly` is equal across a car, and so is `car` (where given).
+`staffOnly` and `car` appear only on an elevator connection. A door never
+faces a lift cell, and a lift cell is not an exit. `notStepFree` holds corridor
+cells only, each once. A refuge is as above.
+
+What repair does on load, in this order, each with a note: (1) a `lifts` cell
+that is not `S`, off the grid, listed twice or carrying a stairs connection
+leaves `lifts`; (2) an elevator connection between two cells on one floor
+loses `kind`, `staffOnly` and `car`, becoming a stairs connection; (3) a cell
+that carries both kinds keeps its elevator connections and loses the stairs one
+(a stairs connection is removed); (4) a one-way elevator becomes `"both"`;
+(5) a connection that would give an elevator a second stop on a floor is
+dropped, the later one; (6) `staffOnly` is made equal across a car (true wins)
+and `car` the first connection's, or that connection's own `label` when it has
+none (a missing letter is filled in without a note); (7) a door facing a lift
+cell is removed; (8) a refuge or step cell that breaks a rule above is dropped
+(a refuge with no name is called "Area of refuge", a clash of names gets " (2)").
+`lifts` is checked once more after (5), so that what comes back is valid.
+Repair never adds to `lifts` and never sets `kind`. A malformed `kind`,
+`staffOnly`, `car`, `stepFree` or elevator setting is removed with a note.
 
 **Zone**: `{ id, floorId, label, x, y, w, h }`. `id` is `z…`. A rectangle of
 whole cells inside its floor, `w` and `h` at least 1.
@@ -366,6 +427,7 @@ note; with neither a date, the calendar is removed.
 | `grade` | text | `""` | Free text. |
 | `headCount` | integer or `null` | `null` | 1 to 999. `null` uses `settings.defaultHeadCount`. |
 | `colour` | colour | next unused preset | |
+| `stepFree` | boolean, optional | absent is `false` | `true` means the group needs step-free routes. Not in the published file (a flag on a small group can point at a child). |
 | `days` | `{ [dayTypeId]: Slot[] }` | | One key for each day type that is `own`, and no other key. Each list has `settings.periods` slots. |
 
 **Slot**
@@ -435,6 +497,7 @@ removed on load: the scenario lab reconciles it and says what it dropped.
 | 0 | Data with no `version`. A scenario held one `dayTypeId` for all of its changes. |
 | 1 | `format` and `version` are in the object. Each scenario change has its own `dayTypeId`. `Floor.level` exists. |
 | 1, unchanged | Added without a version step, every one optional: `DayType.sameAs` and `short`, `bellSchedules`, `calendar`, `marks`, `duties`, `release`, `PublishSettings.staleAtCalendarEnd`, `PublishSettings.lastPublishedHadCalendar` and `views.calendar`. A file without them reads exactly as before; a copy of the tool from before them keeps them through its own repair, which copies what it does not know. |
+| 1, unchanged | Added without a version step, every one optional (ARCHITECTURE 19.2): `Floor.lifts`, `notStepFree` and `refuges` (id kind `a`), `Door.stepFree`, `Exit.stepFree`, `Connection.kind`, `staffOnly` and `car`, `Group.stepFree`, and the settings `elevatorWaitSeconds`, `elevatorSecondsPerFloor` and `elevatorPeoplePerTrip`. A file without them reads exactly as before. |
 
 ### What is never in a project
 
@@ -535,7 +598,7 @@ Format name `sv2-building`, version **1**. `writeBuildingFile`,
 
 | Field | Meaning |
 |---|---|
-| `building` | The Building of the project object, whole: floors, connections, zones. Traced images carry `data` and `type` as in the project file. |
+| `building` | The Building of the project object, whole: floors, connections, zones, and with them every elevator and step-free field (`lifts`, `notStepFree`, `refuges`, the door and exit flags, a connection's `kind`, `staffOnly` and `car`). Traced images carry `data` and `type` as in the project file. |
 | `subjects` | The subjects the building's rooms use, as in the project object, in the school's order. May be left out. |
 
 A room in the file keeps its `teacherIds` and `subjectId` as they were in the
@@ -630,10 +693,12 @@ without any).
   room is not in this building becomes `{ room: null, roomText: <the number> }`.
   A new teacher's room that is not in this building is left off the teacher.
 - **Groups** are matched by name. A group that is not here is added, with the
-  file's id when that id is free. A clash is answered once for all or group
+  file's id when that id is free, and with its `stepFree` flag when the file's
+  group has it (a CSV has no such column). A clash is answered once for all or group
   by group: **skip** (the default), **overwrite** (the group here keeps its
   id and its name as typed here, and takes the file's grade, head count,
-  colour and days) or **rename** (imported as a new group under " (2)",
+  colour and days; its own `stepFree` flag stays as it is here, whatever the
+  file says) or **rename** (imported as a new group under " (2)",
   " (3)", or a name the user gives).
 - **The school day.** A file with more periods than the project makes the
   project's day that long; nothing is cut. A file with fewer leaves the later
