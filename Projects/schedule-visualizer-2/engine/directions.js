@@ -184,7 +184,7 @@ export function startsAsTyped(project, route) {
 // floor's name. Null when the building marks no step cell. Distance is the
 // walk of the grid (rows plus columns) on the room's own floor, and a step
 // on another floor is named only when the room's floor has none.
-function nearestStep(floors, room) {
+export function nearestStep(floors, room) {
   let best = null;
   const consider = (floor, near) => {
     for (const cell of floor.notStepFree || []) {
