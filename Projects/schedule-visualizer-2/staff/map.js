@@ -27,6 +27,8 @@
 
 import { h, typed } from './dom.js';
 import { makeHash } from './router.js';
+import { isElevatorLink } from './model.js';
+import { REFUGE_DEFAULT_NAME } from '../engine/schema.js';
 
 export const MAP_TAP_RADIUS = 22;
 // Two rooms are "close" when the second is within the radius and less than
@@ -274,6 +276,7 @@ export const MAP_PAPER = {
   grid: '#e8e3d8',
   corridor: '#ffffff',
   stairs: '#d9ece9',
+  warning: '#925d00',
   roomDefault: '#e9e4d9',
 };
 
@@ -295,6 +298,7 @@ function themeOf(element, onPaper) {
     // the staff map's own corridor: 3:1 against the ground where the theme lets a fill be (staff.css)
     corridor: read('--map-corridor', read('--corridor', '#ffffff')),
     stairs: read('--stairs', '#d9ece9'),
+    warning: read('--warning', '#925d00'),
     roomDefault: read('--room-default', '#e9e4d9'),
     font: style.getPropertyValue('--font-plan').trim() || 'sans-serif',
   };
@@ -355,8 +359,51 @@ function paintRoute(g, floor, plan, theme, lines) {
   }
 }
 
+// The elevator stops, steps and areas of refuge a floor has, as words
+// (ARCHITECTURE 19.8, DESIGN 13.8): the list beside the picture and the
+// picture's own label say what the glyphs say. [{ id, kind, text }]:
+// "Elevator D (staff only): stops at Floor 1, Floor 2 and Floor 3", "Area of
+// refuge 2", "Step in North Corridor (3 cells)", "Step at a door of Room
+// 101", "Steps outside exit Door A". A stop with no connection says so. Every
+// name in `text` is as typed and is shown as text, never as markup.
+export function stepFreeNotes(school, floor) {
+  const building = school.data.building;
+  const nameOf = (id) => {
+    const found = building.floors.find((each) => each && each.id === id);
+    return found && typeof found.name === 'string' ? found.name : '';
+  };
+  const list = (value) => (Array.isArray(value) ? value : []);
+  const out = [];
+  for (const car of school.elevators()) {
+    if (!car.stops.some((stop) => stop.floorId === floor.id)) continue;
+    const label = typeof car.label !== 'string' || car.label.trim() === '' ? 'An elevator' : 'Elevator ' + car.label;
+    // a stop on a floor that is not in the file is left out, not named with nothing
+    const names = car.stops.map((stop) => nameOf(stop.floorId)).filter((name) => name !== '');
+    const stops = names.length > 1 ? ': stops at ' + names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : ': a stop here, not connected to another floor';
+    out.push({ id: car.id, kind: 'elevator', label, staffOnly: car.staffOnly, text: label + (car.staffOnly ? ' (staff only)' : '') + stops });
+  }
+  for (const refuge of list(floor.refuges)) out.push({ id: refuge.id, kind: 'refuge', text: typeof refuge.name === 'string' && refuge.name.trim() !== '' ? refuge.name : REFUGE_DEFAULT_NAME });
+  const counted = new Map();
+  let unnamed = 0;
+  for (const cell of list(floor.notStepFree)) {
+    const corridor = list(floor.corridors).find((one) => list(one.cells).includes(cell));
+    if (corridor && typeof corridor.name === 'string' && corridor.name.trim() !== '') counted.set(corridor.name, (counted.get(corridor.name) || 0) + 1);
+    else unnamed += 1;
+  }
+  const cells = (n) => n + (n === 1 ? ' cell' : ' cells');
+  for (const [name, n] of counted) out.push({ id: 'step:' + name, kind: 'step', text: 'Step in ' + name + ' (' + cells(n) + ')' });
+  if (unnamed > 0) out.push({ id: 'step:', kind: 'step', text: 'Step in a corridor with no name (' + cells(unnamed) + ')' });
+  for (const space of list(floor.spaces)) {
+    if (space.kind === 'room' && list(space.doors).some((door) => door.stepFree === false)) out.push({ id: 'door:' + space.id, kind: 'door', text: 'Step at a door of ' + school.roomName(space, true) });
+  }
+  for (const exit of list(floor.exits)) {
+    if (exit.stepFree === false) out.push({ id: 'exit:' + exit.id, kind: 'exit', text: 'Steps outside ' + (typeof exit.doorName === 'string' && exit.doorName.trim() !== '' ? 'exit ' + exit.doorName : 'an exit with no name') });
+  }
+  return out;
+}
+
 // "up only", "down only", or "one way only" on one floor, for a connection
-// that is one-way.
+// that is one-way. Stairs only: an elevator always runs both ways.
 function wayOf(school, link) {
   const floors = school.data.building.floors;
   const level = (id) => (floors.find((each) => each.id === id) || { level: 0 }).level;
@@ -391,6 +438,7 @@ function paint(canvas, school, floor, plan, theme, marks, lines) {
     return found ? found.level : 0;
   };
   for (const link of school.data.building.connections) {
+    if (isElevatorLink(link)) continue;
     for (const [at, end] of [link.a, link.b].entries()) {
       if (end.floorId !== floor.id) continue;
       if (!letters.has(end.cell)) letters.set(end.cell, []);
@@ -405,6 +453,12 @@ function paint(canvas, school, floor, plan, theme, marks, lines) {
       }
       here.push({ letter: link.label, way });
     }
+  }
+  // the elevator's stops on this floor: a stop is a stairs cell the stairs
+  // letters do not claim
+  const stops = new Map();
+  for (const car of school.elevators()) {
+    for (const stop of car.stops) if (stop.floorId === floor.id) stops.set(stop.cell, { letter: car.label, staffOnly: car.staffOnly });
   }
   for (let index = 0; index < floor.cells.length; index += 1) {
     const kind = floor.cells[index];
@@ -440,7 +494,7 @@ function paint(canvas, school, floor, plan, theme, marks, lines) {
     g.font = font(Math.min(14, Math.round(cell * 0.8)));
     g.fillStyle = mapLabelOn(theme.stairs, theme.ink, theme.paper);
     for (const [index, entries] of letters) {
-      if (floor.cells[index] !== 'S') continue;
+      if (floor.cells[index] !== 'S' || stops.has(index)) continue;
       const left = plan.px(index % floor.width);
       const mid = plan.py(Math.floor(index / floor.width)) + cell / 2 + 0.5;
       if (cell < 16 || entries.every((entry) => !entry.way)) {
@@ -478,6 +532,94 @@ function paint(canvas, school, floor, plan, theme, marks, lines) {
     }
   }
 
+  // elevator stops: two triangles, up over down, and the car's letter beside
+  // them; a key on a staff-only stop. The glyph is drawn at every size, the
+  // letter where there is room.
+  for (const [index, stop] of stops) {
+    const left = plan.px(index % floor.width);
+    const top = plan.py(Math.floor(index / floor.width));
+    const withLetter = cell >= 16 && stop.letter !== '';
+    const cx = withLetter ? left + cell * 0.3 : left + cell / 2;
+    const half = cell * (withLetter ? 0.2 : 0.3);
+    const cy = top + cell / 2;
+    g.fillStyle = mapLabelOn(theme.stairs, theme.ink, theme.paper);
+    g.beginPath();
+    g.moveTo(cx, cy - half * 1.1);
+    g.lineTo(cx + half, cy - half * 0.1);
+    g.lineTo(cx - half, cy - half * 0.1);
+    g.closePath();
+    g.moveTo(cx, cy + half * 1.1);
+    g.lineTo(cx + half, cy + half * 0.1);
+    g.lineTo(cx - half, cy + half * 0.1);
+    g.closePath();
+    g.fill();
+    if (withLetter) {
+      g.font = font(Math.min(14, Math.round(cell * 0.6)));
+      g.textAlign = 'center';
+      g.fillText(stop.letter, left + cell * 0.72, cy + 0.5);
+    }
+    if (stop.staffOnly && cell >= 10) {
+      // a small key at the corner: a ring and a stem
+      const kx = left + cell - cell * 0.2;
+      const ky = top + cell * 0.2;
+      g.strokeStyle = g.fillStyle;
+      g.lineWidth = Math.max(1, cell / 14);
+      g.beginPath();
+      g.arc(kx, ky, cell * 0.08, 0, Math.PI * 2);
+      g.moveTo(kx, ky + cell * 0.08);
+      g.lineTo(kx, ky + cell * 0.22);
+      g.stroke();
+    }
+  }
+
+  // corridor cells with a step: two short bars across the cell, in the warning colour
+  g.strokeStyle = theme.warning;
+  g.lineWidth = Math.max(1.5, cell / 8);
+  g.lineCap = 'butt';
+  g.beginPath();
+  for (const index of floor.notStepFree || []) {
+    const left = plan.px(index % floor.width);
+    const top = plan.py(Math.floor(index / floor.width));
+    for (const along of [0.35, 0.65]) {
+      g.moveTo(left + cell * 0.15, top + cell * along);
+      g.lineTo(left + cell * 0.85, top + cell * along);
+    }
+  }
+  g.stroke();
+
+  // areas of refuge: a rounded square outline in the accent with a seated figure
+  g.strokeStyle = theme.accent;
+  g.fillStyle = theme.accent;
+  g.lineWidth = Math.max(1.5, cell / 9);
+  for (const refuge of floor.refuges || []) {
+    const left = plan.px(refuge.cell % floor.width);
+    const top = plan.py(Math.floor(refuge.cell / floor.width));
+    const inset = cell * 0.1;
+    const side = cell - inset * 2;
+    const radius = cell * 0.2;
+    g.beginPath();
+    g.moveTo(left + inset + radius, top + inset);
+    g.arcTo(left + inset + side, top + inset, left + inset + side, top + inset + side, radius);
+    g.arcTo(left + inset + side, top + inset + side, left + inset, top + inset + side, radius);
+    g.arcTo(left + inset, top + inset + side, left + inset, top + inset, radius);
+    g.arcTo(left + inset, top + inset, left + inset + side, top + inset, radius);
+    g.closePath();
+    g.stroke();
+    if (cell >= 10) {
+      // head, a body, a seat and a leg
+      const hx = left + cell * 0.45;
+      g.beginPath();
+      g.arc(hx, top + cell * 0.3, cell * 0.07, 0, Math.PI * 2);
+      g.fill();
+      g.beginPath();
+      g.moveTo(hx, top + cell * 0.4);
+      g.lineTo(hx, top + cell * 0.62);
+      g.lineTo(left + cell * 0.7, top + cell * 0.62);
+      g.lineTo(left + cell * 0.7, top + cell * 0.78);
+      g.stroke();
+    }
+  }
+
   // exits: a thick dash in the accent on the outside edge
   g.strokeStyle = theme.accent;
   g.lineWidth = Math.max(3, cell / 4);
@@ -492,6 +634,30 @@ function paint(canvas, school, floor, plan, theme, marks, lines) {
     else if (open(x + 1, y)) { g.moveTo(left + cell, top); g.lineTo(left + cell, top + cell); }
     else if (open(x - 1, y)) { g.moveTo(left, top); g.lineTo(left, top + cell); }
     else if (open(x, y - 1)) { g.moveTo(left, top); g.lineTo(left + cell, top); }
+  }
+  g.stroke();
+  // an exit with steps outside: two short bars across its dash, in the warning colour
+  g.strokeStyle = theme.warning;
+  g.lineWidth = Math.max(1.5, cell / 8);
+  g.beginPath();
+  for (const exit of floor.exits || []) {
+    if (exit.stepFree !== false) continue;
+    const x = exit.cell % floor.width;
+    const y = Math.floor(exit.cell / floor.width);
+    const left = plan.px(x);
+    const top = plan.py(y);
+    const open = (ax, ay) => ax < 0 || ay < 0 || ax >= floor.width || ay >= floor.height || (floor.cells[ay * floor.width + ax] === '.' && !floor.spaces.some((space) => space.cells.includes(ay * floor.width + ax)));
+    for (const along of [0.3, 0.7]) {
+      if (open(x, y + 1) || open(x, y - 1)) {
+        const edge = open(x, y + 1) ? top + cell : top;
+        g.moveTo(left + cell * along, edge - cell * 0.18);
+        g.lineTo(left + cell * along, edge + cell * 0.18);
+      } else {
+        const edge = open(x + 1, y) ? left + cell : left;
+        g.moveTo(edge - cell * 0.18, top + cell * along);
+        g.lineTo(edge + cell * 0.18, top + cell * along);
+      }
+    }
   }
   g.stroke();
 
@@ -621,8 +787,9 @@ export function floorMap(ctx, options) {
 
   function chrome() {
     const floor = state.floor;
-    const oneWay = school.data.building.connections.filter((link) => (link.direction === 'ab' || link.direction === 'ba') && (link.a.floorId === floor.id || link.b.floorId === floor.id)).map((link) => 'Stairs ' + link.label + ' is ' + wayOf(school, link) + '.');
-    canvas.setAttribute('aria-label', (opts.label || 'Floor plan') + ': ' + floor.name + '. The rooms are listed in words on this page.' + (oneWay.length > 0 ? ' ' + oneWay.join(' ') : ''));
+    const oneWay = school.data.building.connections.filter((link) => !isElevatorLink(link) && (link.direction === 'ab' || link.direction === 'ba') && (link.a.floorId === floor.id || link.b.floorId === floor.id)).map((link) => 'Stairs ' + link.label + ' is ' + wayOf(school, link) + '.');
+    const marked = stepFreeNotes(school, floor).filter((note) => note.kind === 'elevator' || note.kind === 'refuge').map((note) => (note.kind === 'elevator' ? note.label + (note.staffOnly ? ' (staff only)' : '') + '.' : note.text + '.'));
+    canvas.setAttribute('aria-label', (opts.label || 'Floor plan') + ': ' + floor.name + '. The rooms are listed in words on this page.' + (oneWay.length > 0 ? ' ' + oneWay.join(' ') : '') + (marked.length > 0 ? ' ' + marked.join(' ') : ''));
     tabs.replaceChildren(...(near ? [] : school.floors).map((each) => {
       const current = each.id === floor.id;
       if (opts.floorHref) return h('a', { class: 'tab', href: opts.floorHref(each), 'aria-current': current ? 'page' : null, dataset: { floor: each.id } }, typed(each.name));

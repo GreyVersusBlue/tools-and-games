@@ -96,9 +96,10 @@ export function buildingChecks(project, graph) {
 
   // stairs with no connection: one finding per run of touching stairs cells
   // in which no cell is connected. Elevator stops are judged apart from
-  // stairs: a run holds cells of one kind, so a lift cell touching a stairs
-  // cell neither connects it nor is connected by it, and an unconnected stop
-  // is "Elevator stop on Floor 2 is not connected".
+  // stairs, and one cell at a time: a lift cell touching a stairs cell, or
+  // another lift cell (of another elevator, say), neither connects it nor is
+  // connected by it, and an unconnected stop is "Elevator stop on Floor 2 is
+  // not connected".
   const linked = new Uint8Array(g.count);
   for (const link of g.links) {
     linked[link.a] = 1;
@@ -116,9 +117,11 @@ export function buildingChecks(project, graph) {
       let connected = false;
       for (let i = 0; i < run.length; i += 1) {
         if (linked[nodeOfCell[run[i]]]) connected = true;
+        // a lift cell is judged on its own: only stairs cells merge into runs
+        if (lift) break;
         for (const side of DOOR_SIDES) {
           const next = neighbourCell(floor, run[i], side);
-          if (next !== -1 && floor.cells[next] === CELL_STAIRS && !done.has(next) && isLift(next) === lift) {
+          if (next !== -1 && floor.cells[next] === CELL_STAIRS && !done.has(next) && !isLift(next)) {
             done.add(next);
             run.push(next);
           }
@@ -172,7 +175,9 @@ export function buildingChecks(project, graph) {
       }
       const [f, cells] = onFloor[part].entries().next().value;
       const names = roomsOf[part].map((room) => nameOfRoom(room, false));
-      const what = plural(size[part], 'corridor or stairs cell', 'corridor and stairs cells') + (names.length === 0 ? '' : names.length > 4 ? ' with ' + names.length + ' rooms' : ' with ' + list(names));
+      // a part that holds a lift cell says so
+      const hasLift = Array.from(onFloor[part]).some(([floorIndex, list]) => list.some((cell) => g.lifts[g.floors[floorIndex].nodeOfCell[cell]] === 1));
+      const what = (hasLift ? plural(size[part], 'corridor, stairs or elevator cell', 'corridor, stairs and elevator cells') : plural(size[part], 'corridor or stairs cell', 'corridor and stairs cells')) + (names.length === 0 ? '' : names.length > 4 ? ' with ' + names.length + ' rooms' : ' with ' + list(names));
       add('part-unreachable', 'problem', [g.floors[f].id, cells[0]], 'Part of ' + g.floors[f].name + ' cannot be reached from the rest of the building: ' + what + '. Join it with a corridor or a stairs connection.', { floorId: g.floors[f].id, cells, roomIds: roomsOf[part].map((room) => room.id) });
     }
   }

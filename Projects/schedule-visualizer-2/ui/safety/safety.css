@@ -297,12 +297,127 @@
   color: var(--problem);
 }
 
+/* The Everyone / Step-free switch at the top of the inspector (DESIGN 13.6) */
+.sfy-view {
+  margin-bottom: var(--s-3);
+  padding-bottom: var(--s-3);
+  border-bottom: var(--border);
+}
+
+.sfy-view__label {
+  display: block;
+  margin-bottom: var(--s-1);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.sfy-view .seg__option {
+  display: flex;
+}
+
+.sfy-view__line {
+  margin: var(--s-2) 0 0;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+/* the Step-free lists and the report: rows with no tick before them */
+.sfy-way .sfy-row__way,
+.sfy-report .sfy-row__way,
+.sfy-refuge__use {
+  margin-left: 0;
+}
+
+.sfy-way[data-way="none"] .sfy-row__way {
+  color: var(--problem);
+}
+
+.sfy-ways,
+.sfy-floor-report,
+.sfy-day {
+  margin-top: var(--s-3);
+}
+
+.sfy-row__floor {
+  color: var(--ink-2);
+  font-weight: var(--w-regular);
+}
+
+.sfy-refuges {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sfy-refuge {
+  padding: var(--s-2) 0;
+  border-bottom: var(--border);
+}
+
+.sfy-refuge__name {
+  margin: 0;
+  font-size: var(--t-md);
+  line-height: var(--lh-md);
+  font-weight: var(--w-semibold);
+}
+
+.sfy-refuge__use {
+  margin-top: var(--s-1);
+  margin-bottom: 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.sfy-unmarked {
+  margin: var(--s-2) 0;
+  padding: var(--s-2) var(--s-3);
+  border: var(--border);
+  border-left: 4px solid var(--warning);
+  border-radius: var(--r-1);
+  background: var(--card);
+}
+
+.sfy-unmarked .sfy-panel__lead {
+  margin: 0 0 var(--s-2);
+}
+
+.sfy-cards__step {
+  margin-top: var(--s-3);
+}
+
+.sfy-cards__step-label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-weight: var(--w-medium);
+}
+
+.sfy-cards__step-box {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 /* Under 640 px, or on a coarse pointer, every control here takes a finger
    (DESIGN 5.3, Targets): 44 px in its smaller dimension. */
 @media (max-width: 640px), (pointer: coarse) {
   .sfy-room,
-  .sfy-inspector .btn {
+  .sfy-inspector .btn,
+  .sfy-view .seg__label {
     min-height: 44px;
+  }
+
+  .sfy-cards__step-label {
+    min-height: 44px;
+  }
+
+  .sfy-cards__step-box {
+    width: 24px;
+    height: 24px;
   }
 
   .sfy-row__head {

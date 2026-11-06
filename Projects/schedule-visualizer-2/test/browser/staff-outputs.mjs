@@ -385,7 +385,7 @@ test('the map\'s paper colours are the paper rules\' own', () => {
   assert.equal(typeof mapModule.MAP_PAPER, 'object', 'staff/map.js has no paper colours of its own to draw with before the print rules apply');
   assert.deepEqual(mapModule.MAP_PAPER, {
     paper: token('paper'), ink: token('ink'), line: token('line'), edge: token('line-strong'), accent: token('accent'), accentInk: token('accent-ink'),
-    grid: token('grid'), corridor: token('corridor'), stairs: token('stairs'), roomDefault: token('room-default'),
+    grid: token('grid'), corridor: token('corridor'), stairs: token('stairs'), warning: token('warning'), roomDefault: token('room-default'),
   });
 });
 

@@ -701,9 +701,9 @@ test('stepFreeWaysOut: an exit is preferred to an area of refuge however far, an
   const bare = wide({ east: false });
   bare.building.floors[0].refuges = [];
   const none = stepFreeWaysOut(bare);
-  assert.deepEqual(none.rooms.map((entry) => [entry.way, entry.reason, entry.exitId, entry.refugeId]), [['none', 'no-way', null, null], ['none', 'no-way', null, null]]);
+  assert.deepEqual(none.rooms.map((entry) => [entry.way, entry.reason, entry.exitId, entry.refugeId]), [['none', 'step-exits', null, null], ['none', 'step-exits', null, null]], 'both exits have a step: SV2-100b says so, it was \'no-way\'');
   assert.equal(none.rooms[0].route.ok, false);
-  assert.equal(none.rooms[0].why, 'no step-free way through');
+  assert.equal(none.rooms[0].why, 'every exit has a step');
   // an exit with no mark is as step-free as the building says (absent = true)
   const plain = wide();
   delete plain.building.floors[0].exits[0].stepFree;
@@ -744,4 +744,38 @@ test('stepFreeWaysOut: a room whose every door has a step, and a step across the
   assert.deepEqual([across.way, across.reason, across.why], ['none', 'steps', 'a step on North Corridor']);
   assert.equal(across.sentence, 'There is no step-free way through from Room 1B on Floor 1 to an exit: a step on North Corridor.');
   assert.equal(stepFreeWaysOut(step).rooms.find((entry) => entry.roomId === roomId('1A')).way, 'exit', 'the exit in the same part is reached');
+});
+
+// ---------------------------------------------------------------- SV2-100b
+
+test('stepFreeWaysOut: a room whose only exits all have a step is "step-exits", "every exit has a step", from routeToExit\'s own failure', () => {
+  const project = wide({ west: false, east: false });
+  project.building.floors[0].refuges = [];
+  const rooms = stepFreeWaysOut(project).rooms;
+  assert.deepEqual(rooms.map((entry) => [entry.way, entry.reason, entry.why]), [['none', 'step-exits', 'every exit has a step'], ['none', 'step-exits', 'every exit has a step']]);
+  assert.equal(rooms[0].sentence, 'There is no step-free way through from Room 1A on Floor 1 to an exit: every exit has a step.');
+  assert.deepEqual(rooms[0].route.avoiding.filter((what) => what === 'step-exits'), ['step-exits'], 'routing produced it');
+  // a step cell in the way as well as the exits: opening the step cell alone gives no way, so the exits are the reason
+  const both = wide({ west: false, east: false });
+  both.building.floors[0].refuges = [];
+  both.building.floors[0].notStepFree = [2 * both.building.floors[0].width + 3, 2 * both.building.floors[0].width + 4];
+  assert.equal(stepFreeWaysOut(both).rooms[0].reason, 'step-exits');
+});
+
+test('stepFreeWaysOut: a refuge on a step cell is not a way; a building with no exit and a refuge uses the refuge', () => {
+  const stepped = wide({ west: false, east: false });
+  const floor = stepped.building.floors[0];
+  floor.notStepFree = [floor.refuges[0].cell];
+  const rooms = stepFreeWaysOut(stepped);
+  assert.deepEqual(rooms.rooms.map((entry) => [entry.way, entry.reason]), [['none', 'step-exits'], ['none', 'step-exits']], 'nobody can stand on a step');
+  assert.deepEqual(rooms.refuges[0].roomIds, [], 'the refuge is used by nobody');
+  // no exit drawn at all, and a refuge: the refuge is the way, and the failure to an exit is the plain one
+  const none = planProject([ROW]);
+  none.building.floors[0].refuges = [{ id: 'aplan00001', cell: 2 * none.building.floors[0].width + 3, name: 'Refuge by the stairs' }];
+  const found = stepFreeWaysOut(none);
+  assert.deepEqual(found.rooms.map((entry) => [entry.way, entry.refugeId]), [['refuge', 'aplan00001'], ['refuge', 'aplan00001']]);
+  assert.deepEqual(found.refuges[0].roomIds, [roomId('1A'), roomId('1B')]);
+  // and with neither: no way, said plainly
+  const bare = planProject([ROW]);
+  assert.deepEqual(stepFreeWaysOut(bare).rooms.map((entry) => [entry.way, entry.reason, entry.why]), [['none', 'no-way', 'no step-free way through'], ['none', 'no-way', 'no step-free way through']]);
 });

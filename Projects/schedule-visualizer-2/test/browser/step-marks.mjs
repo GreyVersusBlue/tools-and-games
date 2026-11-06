@@ -330,6 +330,8 @@ test('Select this corridor selects the stretch between junctions and the tick is
   assert.equal(await panelTitle(), '16 cells selected');
   assert.equal(await text('label[for="cell-step"]'), 'Step here (blocks step-free routes), 16 cells selected');
   assert.equal((await focusIs()).key, 'step', 'the tick takes the focus so the keyboard can mark them at once');
+  // several cells: the menu is about one cell, so Marks… is not offered (the Step tick covers the selection)
+  assert.equal(await exists('#cell-marks'), false, 'no Marks… with 16 cells selected');
   const before = await entries();
   await page.keyboard.press('Space');
   await saidIs('Marked 16 cells.');
@@ -340,7 +342,23 @@ test('Select this corridor selects the stretch between junctions and the tick is
   // one cell is cleared from the menu: the tick of the whole stretch is now mixed
   await act('setStepCells', { floorId: (await floorIds())[0], cells: [cellOf(12, 10)], stepFree: true });
   await page.waitForFunction(() => document.getElementById('cell-step')?.indeterminate === true);
-  assert.equal(await page.$eval('#cell-step', (el) => el.getAttribute('aria-checked')), 'mixed');
+  // a native checkbox with `indeterminate` is "mixed" to a screen reader: no aria-checked of its own to fall out of step
+  assert.equal(await page.$eval('#cell-step', (el) => el.hasAttribute('aria-checked')), false);
+  // a refused commit: the tick goes back mixed (not plain), still unchecked
+  await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    globalThis.realApply = store.apply;
+    store.apply = () => {
+      throw new Error('Refused on purpose.');
+    };
+  });
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => document.querySelector('#inspector-properties .field__refusal:not([hidden])') !== null);
+  await page.evaluate(() => {
+    globalThis.sv2.store.apply = globalThis.realApply;
+  });
+  assert.deepEqual(await page.$eval('#cell-step', (el) => ({ checked: el.checked, indeterminate: el.indeterminate, aria: el.hasAttribute('aria-checked') })), { checked: false, indeterminate: true, aria: false }, 'a refused tick is mixed again');
+  assert.equal((await building()).floors[0].notStepFree.length, 15, 'nothing was changed');
   await page.keyboard.press('Space');
   await saidIs('Marked 1 cell.');
   assert.equal((await building()).floors[0].notStepFree.length, 16, 'a mixed tick, pressed, marks them all');
@@ -390,7 +408,7 @@ test('an area of refuge is made from the menu, named, refused a name another has
   assert.deepEqual((await building()).floors[0].refuges.map((refuge) => refuge.name), ['Area of refuge', 'Area of refuge 2']);
   await propertiesOf(cellOf(15, 10), 'Properties of this cell');
   assert.equal(await page.$eval('#refuge-name', (el) => el.value), 'Area of refuge');
-  assert.match(await text('#refuge-used'), /^(Used by \d+ rooms?\.|Not used: every room nearby has a step-free exit\.)$/, 'the refuge says how many rooms use it');
+  assert.match(await text('#refuge-used'), /^(Used by \d+ rooms?\.|Not used by any room\.)$/, 'the refuge says how many rooms use it');
   // a name another area has is refused, in words, and the field keeps the user's text
   await page.focus('#refuge-name');
   await page.$eval('#refuge-name', (el) => el.select());
@@ -525,6 +543,287 @@ test('a name typed into a corridor, a refuge or an exit shows as typed in the ne
   assert.equal(await page.$$eval('#floor-steps i', (all) => all.length), 0);
 });
 
+// ---------------------------------------------------------------- the focus after a change that replaces its button
+
+// Take every step and every area of refuge off the first floor, through the actions.
+async function bare() {
+  await page.evaluate(async () => {
+    const actions = await import('./engine/actions.js');
+    const { store } = globalThis.sv2;
+    const floor = store.project.building.floors[0];
+    if ((floor.notStepFree || []).length > 0) store.apply(actions.setStepCells, { floorId: floor.id, cells: floor.notStepFree.slice(), stepFree: true });
+    for (const refuge of (store.project.building.floors[0].refuges || []).slice()) store.apply(actions.removeRefuge, { floorId: floor.id, refugeId: refuge.id });
+  });
+}
+
+// Press Enter on a control that has the focus; wait until the store holds `count` undo entries more.
+async function pressOn(selector, entriesMore) {
+  const before = await entries();
+  await page.focus(selector);
+  await page.keyboard.press('Enter');
+  await page.waitForFunction((count) => globalThis.sv2.store.history.past.length === count, {}, before + entriesMore);
+}
+
+test('Remove refuge and Make refuge in a cell\'s Properties: the focus goes to the panel title, then to the new name field', async () => {
+  await bare();
+  await openFloor(0);
+  const ids = await floorIds();
+  await act('addRefuge', { floorId: ids[0], cell: cellOf(10, 10) });
+  await propertiesOf(cellOf(10, 10), 'Properties of this cell');
+  await pressOn('#inspector-properties [data-action="remove-refuge"]', 1);
+  await page.waitForFunction(() => document.querySelector('#inspector-properties [data-action="make-refuge"]') !== null);
+  assert.equal((await focusIs()).key, 'panel-title', 'after Remove the focus is on the panel\'s title, not the page');
+  await pressOn('#inspector-properties [data-action="make-refuge"]', 1);
+  await page.waitForFunction(() => document.getElementById('refuge-name') !== null);
+  assert.equal((await focusIs()).id, 'refuge-name', 'after Make the focus is on the new area\'s name field');
+  await act('removeRefuge', { floorId: ids[0], refugeId: (await building()).floors[0].refuges[0].id });
+});
+
+test('Disconnect in a stop\'s Properties: the focus goes to the next row\'s Disconnect, else to the panel title', async () => {
+  await openFloor(1);
+  const ids = await floorIds();
+  const car = (await building()).connections.find((connection) => connection.kind === 'elevator').car;
+  await propertiesOf(STOP, 'Properties of elevator ' + car);
+  assert.deepEqual(await page.$$eval('#stop-others li .bi-row__text', (all) => all.map((el) => el.textContent)), ['Floor 1', 'Floor 3']);
+  // Floor 1 goes; Floor 3 is still joined, and its row takes the focus
+  await pressOn('#stop-others [data-key="disconnect-stop:' + ids[0] + '"]', 1);
+  await page.waitForFunction(() => document.querySelectorAll('#stop-others li').length === 1);
+  assert.equal((await focusIs()).key, 'disconnect-stop:' + ids[2]);
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  await page.waitForFunction(() => document.querySelectorAll('#stop-others li').length === 2);
+  // from Floor 1, Floor 2's row cuts both: no row is left and the title takes the focus
+  await openFloor(0);
+  await propertiesOf(STOP, 'Properties of elevator ' + car);
+  await pressOn('#stop-others [data-key="disconnect-stop:' + ids[1] + '"]', 1);
+  await page.waitForFunction(() => document.getElementById('stop-others') === null);
+  assert.equal((await focusIs()).key, 'panel-title');
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  await page.waitForFunction(() => globalThis.sv2.store.project.building.connections.filter((connection) => connection.kind === 'elevator').length === 2);
+});
+
+test('Clear the step on the Floor tab: the focus goes to the next row\'s button, else to the floor name', async () => {
+  await bare();
+  await openFloor(0);
+  const ids = await floorIds();
+  await act('setStepCells', { floorId: ids[0], cells: [cellOf(6, 10)], stepFree: false });
+  await act('setStepCells', { floorId: ids[0], cells: [cellOf(12, 10)], stepFree: false });
+  await tab('floor');
+  await page.waitForFunction(() => document.querySelectorAll('#floor-steps li').length === 2);
+  await pressOn('#floor-steps [data-key="clear-step:' + cellOf(6, 10) + '"]', 1);
+  await page.waitForFunction(() => document.querySelectorAll('#floor-steps li').length === 1);
+  assert.equal((await focusIs()).key, 'clear-step:' + cellOf(12, 10));
+  await pressOn('#floor-steps [data-key="clear-step:' + cellOf(12, 10) + '"]', 1);
+  await page.waitForFunction(() => document.getElementById('floor-no-steps').hidden === false);
+  assert.equal((await focusIs()).id, 'floor-name');
+});
+
+test('Remove on the Exits tab\'s refuge rows: the focus goes to the next row\'s Remove, else to the Exits title', async () => {
+  await bare();
+  const ids = await floorIds();
+  await act('addRefuge', { floorId: ids[0], cell: cellOf(10, 10) });
+  await act('addRefuge', { floorId: ids[0], cell: cellOf(11, 10) });
+  const refuges = (await building()).floors[0].refuges;
+  await tab('exits');
+  await page.waitForFunction(() => document.querySelectorAll('#exits-refuge-list li').length === 2);
+  await pressOn('#exits-refuge-list [data-key="remove-refuge:' + refuges[0].id + '"]', 1);
+  await page.waitForFunction(() => document.querySelectorAll('#exits-refuge-list li').length === 1);
+  assert.equal((await focusIs()).key, 'remove-refuge:' + refuges[1].id, 'the next row\'s Remove, so the next one can be taken off too');
+  await pressOn('#exits-refuge-list [data-key="remove-refuge:' + refuges[1].id + '"]', 1);
+  await page.waitForFunction(() => document.querySelectorAll('#exits-refuge-list li').length === 0);
+  assert.equal((await focusIs()).key, 'panel-title');
+});
+
+// ---------------------------------------------------------------- names, counts and words
+
+// The accessible names of the buttons, inputs, selects and links in a panel, as the page would give them.
+function namesIn(selector) {
+  return page.evaluate((root) => {
+    const words = (el) => (el.textContent || '').replace(/\s+/g, ' ').trim();
+    const nameOf = (el) => {
+      if (el.getAttribute('aria-label')) return el.getAttribute('aria-label');
+      const by = el.getAttribute('aria-labelledby');
+      if (by) return by.split(/\s+/).map((id) => words(document.getElementById(id))).join(' ');
+      if (el.labels && el.labels.length > 0) return Array.from(el.labels).map(words).join(' ');
+      return words(el);
+    };
+    return Array.from(document.querySelector(root).querySelectorAll('button, input, select, textarea, a[href]'))
+      .filter((el) => !el.closest('[hidden]') && el.getClientRects().length > 0 && el.type !== 'hidden')
+      .map((el) => ({ name: nameOf(el), visible: el.tagName === 'BUTTON' || el.tagName === 'A' ? words(el) : el.labels && el.labels.length > 0 ? words(el.labels[0]) : '' }));
+  }, selector);
+}
+
+// No two controls of a panel have one name, and a name that has a visible label says it.
+function assertNamed(list, where) {
+  const names = list.map((entry) => entry.name);
+  assert.ok(names.length > 0, where + ' has no controls');
+  assert.deepEqual(names.filter((name, index) => names.indexOf(name) !== index), [], where + ': two controls are called the same');
+  assert.deepEqual(names.filter((name) => name.trim() === ''), [], where + ': a control has no name');
+  for (const entry of list) {
+    if (entry.visible !== '') assert.ok(entry.name.toLowerCase().includes(entry.visible.toLowerCase()), where + ': "' + entry.name + '" does not contain the visible "' + entry.visible + '"');
+  }
+}
+
+test('accessible names are unique in the Floor tab, the Exits tab, a stop\'s Properties and a room\'s doors, and contain what is visible', async () => {
+  await bare();
+  const ids = await floorIds();
+  await openFloor(0);
+  // two unconnected stops on the first floor, two refuges, two exits, two steps
+  await act('placeLift', { floorId: ids[0], cells: [cellOf(24, 10), cellOf(26, 10)] });
+  await act('addRefuge', { floorId: ids[0], cell: cellOf(10, 10) });
+  await act('addRefuge', { floorId: ids[0], cell: cellOf(11, 10) });
+  await act('markExit', { floorId: ids[0], cell: cellOf(20, 10), doorName: 'Door B' });
+  await act('setStepCells', { floorId: ids[0], cells: [cellOf(6, 10)], stepFree: false });
+  await act('setStepCells', { floorId: ids[0], cells: [cellOf(12, 10)], stepFree: false });
+  await tab('floor');
+  await page.waitForFunction(() => document.querySelectorAll('#floor-steps li').length === 4 && document.querySelectorAll('#floor-elevators li').length === 3);
+  assertNamed(await namesIn('#inspector-floor'), 'the Floor tab');
+  await tab('exits');
+  await page.waitForFunction(() => document.querySelectorAll('#exits-list li').length === 2);
+  assertNamed(await namesIn('#inspector-exits'), 'the Exits tab');
+  // a stop's Properties, a room's doors
+  const car = (await building()).connections.find((connection) => connection.kind === 'elevator').car;
+  await openFloor(1);
+  await propertiesOf(STOP, 'Properties of elevator ' + car);
+  assertNamed(await namesIn('#inspector-properties'), 'a stop\'s Properties');
+  await openFloor(0);
+  await page.evaluate(() => {
+    const editor = document.querySelector('.bld').editor;
+    editor.select([editor.floor.spaces.find((space) => space.number === '101').id]);
+  });
+  await tab('properties');
+  await page.waitForSelector('#room-doors li');
+  assertNamed(await namesIn('#inspector-properties'), 'a room\'s Properties');
+});
+
+test('two unconnected stops on a floor are told apart by their column, and each refuge name field says where its area is', async () => {
+  await tab('floor');
+  const rows = await page.$$eval('#floor-elevators li[data-connected="false"] .bi-row__text', (all) => all.map((el) => el.textContent));
+  assert.deepEqual(rows, ['Floor 1 stop at column 25, row 11: not connected', 'Floor 1 stop at column 27, row 11: not connected']);
+  assert.deepEqual(await page.$$eval('#floor-elevators li[data-connected="false"] [data-action="show-stop"]', (all) => all.map((el) => el.getAttribute('aria-label'))), ['Show me: the elevator stop at column 25, row 11', 'Show me: the elevator stop at column 27, row 11']);
+  await tab('exits');
+  const labels = await page.$$eval('#exits-refuge-list input.field__input', (all) => all.map((el) => el.getAttribute('aria-label')));
+  assert.deepEqual(labels, ['Name of the area of refuge at column 11, row 11 on Floor 1', 'Name of the area of refuge at column 12, row 11 on Floor 1']);
+  assert.equal(await page.$eval('#exits-refuge-list li:first-child [data-action="remove-refuge"]', (el) => el.getAttribute('aria-label')), 'Remove Area of refuge, area of refuge', 'the accessible name holds the visible "Remove"');
+});
+
+test('the Floor tab\'s rows are kept while a floor is renamed and resized, and their words and labels tell the floor as it is', async () => {
+  const ids = await floorIds();
+  await openFloor(0);
+  await tab('floor');
+  await page.waitForFunction(() => document.querySelectorAll('#floor-elevators li[data-connected="false"]').length === 2);
+  const row = () => page.$eval('#floor-elevators li[data-connected="false"] .bi-row__text', (el) => el.textContent);
+  const label = () => page.$eval('#floor-elevators li[data-connected="false"] [data-action="show-stop"]', (el) => el.getAttribute('aria-label'));
+  const size = () => page.evaluate(() => ({ width: globalThis.sv2.store.project.building.floors[0].width, height: globalThis.sv2.store.project.building.floors[0].height }));
+  const first = await size();
+  assert.equal(await row(), 'Floor 1 stop at column 25, row 11: not connected');
+  // the row stays (the stop is the same one) while the name changes under it
+  await act('renameFloor', { id: ids[0], name: 'Annex' });
+  await page.waitForFunction(() => document.querySelector('#floor-elevators li[data-connected="false"] .bi-row__text')?.textContent.startsWith('Annex'));
+  assert.equal(await row(), 'Annex stop at column 25, row 11: not connected');
+  // more rows at the bottom: the stop keeps its cell number and its place
+  await act('resizeFloor', { floorId: ids[0], bottom: 5 });
+  await page.waitForFunction((height) => globalThis.sv2.store.project.building.floors[0].height === height, {}, first.height + 5);
+  assert.equal(await label(), 'Show me: the elevator stop at column 25, row 11');
+  // cells added at the left: the stop is in a new column, and its label says so
+  await act('resizeFloor', { floorId: ids[0], left: 4 });
+  await page.waitForFunction((width) => globalThis.sv2.store.project.building.floors[0].width === width, {}, first.width + 4);
+  await page.waitForFunction(() => document.querySelector('#floor-elevators li[data-connected="false"] [data-action="show-stop"]')?.getAttribute('aria-label').endsWith('column 29, row 11'));
+  assert.equal(await label(), 'Show me: the elevator stop at column 29, row 11');
+  assert.equal(await row(), 'Annex stop at column 29, row 11: not connected');
+  for (let n = 0; n < 3; n += 1) await page.evaluate(() => globalThis.sv2.store.undo());
+  await page.waitForFunction((width) => globalThis.sv2.store.project.building.floors[0].name === 'Floor 1' && globalThis.sv2.store.project.building.floors[0].width === width, {}, first.width);
+});
+
+test('the menu on a middle stop names the other floor in each Disconnect, and the words say it', async () => {
+  await openFloor(1);
+  const car = (await building()).connections.find((connection) => connection.kind === 'elevator').car;
+  const items = (await menuOn(STOP)).filter((item) => item.startsWith('Disconnect'));
+  assert.deepEqual(items, ['Disconnect Elevator ' + car + ' from Floor 1', 'Disconnect Elevator ' + car + ' from Floor 3']);
+  await choose('Disconnect Elevator ' + car + ' from Floor 3');
+  await saidIs('Disconnected Elevator ' + car + ' from Floor 3. The stop stays where it is.');
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  await page.waitForFunction(() => globalThis.sv2.store.project.building.connections.filter((connection) => connection.kind === 'elevator').length === 2);
+});
+
+test('"Used by N rooms" is part of the panel: a room that leaves through the refuge counts, and a tick elsewhere redraws the number', async () => {
+  await bare();
+  const ids = await floorIds();
+  await openFloor(0);
+  // the one exit has a step outside its door, so Room 101 can leave step-free only through the refuge
+  const exits = (await building()).floors[0].exits;
+  for (const exit of exits) if (exit.doorName !== 'Door A') await act('unmarkExit', { floorId: ids[0], exitId: exit.id });
+  const doorA = (await building()).floors[0].exits[0];
+  await act('setExitStepFree', { floorId: ids[0], exitId: doorA.id, stepFree: false });
+  await act('addRefuge', { floorId: ids[0], cell: cellOf(8, 10) });
+  await propertiesOf(cellOf(8, 10), 'Properties of this cell');
+  await page.waitForFunction(() => document.getElementById('refuge-used') !== null);
+  assert.equal(await text('#refuge-used'), 'Used by 1 room.');
+  // the refuge's own Properties: unique names, and "Remove <name>" says its visible words
+  assertNamed(await namesIn('#inspector-properties'), 'a refuge\'s Properties');
+  // the exit is ticked step-free elsewhere (as the Exits tab does): the panel redraws with no room using the refuge
+  await act('setExitStepFree', { floorId: ids[0], exitId: doorA.id, stepFree: true });
+  await page.waitForFunction(() => document.getElementById('refuge-used')?.textContent === 'Not used by any room.');
+  await act('setExitStepFree', { floorId: ids[0], exitId: doorA.id, stepFree: false });
+  await page.waitForFunction(() => document.getElementById('refuge-used')?.textContent === 'Used by 1 room.');
+  await act('setExitStepFree', { floorId: ids[0], exitId: doorA.id, stepFree: true });
+  await bare();
+});
+
+test('the Floor tab\'s rows, and the door and exit ticks, are 44 px at a mouse too', async () => {
+  const heights = (selector) => page.$$eval(selector, (all) => all.map((el) => {
+    const box = el.getBoundingClientRect();
+    return { name: (el.getAttribute('aria-label') || el.textContent).slice(0, 40), width: Math.round(box.width), height: Math.round(box.height) };
+  }));
+  const bigEnough = (list, where) => assert.deepEqual(list.filter((each) => each.height < 44 || each.width < 44), [], where + ' has a target under 44 px');
+  assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), false, 'this page has a mouse');
+  await openFloor(0);
+  await tab('floor');
+  await page.waitForFunction(() => document.querySelector('#floor-elevators li') !== null);
+  bigEnough(await heights('#floor-elevators .bi-small, #floor-steps .bi-small, #floor-connections .bi-small'), 'the Floor tab\'s lists');
+  assert.ok((await heights('#floor-elevators .bi-small')).length > 0);
+  await tab('exits');
+  await page.waitForFunction(() => document.querySelector('#exits-list li') !== null);
+  bigEnough(await heights('#exits-list .bi-small'), 'the Exits tab\'s exits');
+  assert.deepEqual((await heights('#exits-list .bi-check')).filter((each) => each.height < 44), [], 'the exit ticks\' rows are 44 px');
+  assert.ok((await page.$$eval('#exits-list .bi-check__label', (all) => all.every((el) => el.getBoundingClientRect().height >= 36))), 'the label, which is the target, is tall');
+  await page.evaluate(() => {
+    const editor = document.querySelector('.bld').editor;
+    editor.select([editor.floor.spaces.find((space) => space.number === '101').id]);
+  });
+  await tab('properties');
+  await page.waitForSelector('#room-doors li');
+  bigEnough(await heights('#room-doors .bi-small'), 'the door rows\' Remove');
+  assert.deepEqual((await heights('#room-doors .bi-check')).filter((each) => each.height < 44), [], 'the door ticks\' rows are 44 px');
+  assert.deepEqual((await heights('#room-doors li')).filter((each) => each.height < 44), []);
+  // nothing in the panel spills sideways at 1280
+  assert.equal(await page.evaluate(() => { const el = document.querySelector('#inspector-properties'); return el.scrollWidth <= el.clientWidth; }), true);
+});
+
+test('a markup-looking elevator letter shows as text in the panel, the menu and the Floor tab', async () => {
+  const letter = '<b>E</b> & "x"';
+  // a loaded file may carry any letter: the car's letter is written into its connections
+  await page.evaluate((typed) => {
+    const { store } = globalThis.sv2;
+    const project = JSON.parse(JSON.stringify(store.project));
+    for (const connection of project.building.connections) if (connection.kind === 'elevator') connection.car = typed;
+    store.replace(project);
+  }, letter);
+  await page.waitForFunction((typed) => globalThis.sv2.store.project.building.connections.some((connection) => connection.car === typed), {}, letter);
+  await openFloor(1);
+  await propertiesOf(STOP, 'Properties of elevator ' + letter);
+  assert.equal(await panelTitle(), 'Elevator ' + letter);
+  assert.equal(await page.$$eval('#inspector-properties b, #inspector-properties i', (all) => all.length), 0, 'the panel shows it as text');
+  const items = await menuOn(STOP);
+  assert.ok(items.includes('Disconnect Elevator ' + letter + ' from Floor 1'), items.join(' | '));
+  assert.equal(await page.$$eval('.menu b', (all) => all.length), 0, 'the menu shows it as text');
+  await page.keyboard.press('Escape');
+  await tab('floor');
+  await page.waitForFunction(() => document.querySelector('#floor-elevators li') !== null);
+  assert.equal(await text('#floor-elevators li .bi-row__text'), 'Elevator ' + letter + ': Floor 1, Floor 2 and Floor 3 \u00b7 staff only');
+  assert.equal(await page.$$eval('#inspector-floor b', (all) => all.length), 0);
+  assert.equal(await page.$$eval('#floor-elevators li button', (all) => all.some((button) => button.getAttribute('aria-label').includes('<b>'))), false, 'the names are never parsed as markup');
+});
+
 // ---------------------------------------------------------------- 390 px, by touch
 
 // A finger: the browser's own touch pipeline, so the page gets real touch Pointer Events.
@@ -641,12 +940,125 @@ test('at 390 px with touch: a stop\'s Properties, the car-wide tick, Marks…, S
     await saidIs('Marked 16 cells.');
     assert.equal((await building()).floors[0].notStepFree.length, 16);
     // an area of refuge from Marks…
+    // several cells are selected: Marks… is not offered. One cell: it is
+    assert.equal(await page.$('#cell-marks'), null, 'no Marks… with 16 cells selected');
+    await page.evaluate(async (floorId, cell) => {
+      const { focusCells } = await import('./ui/building/inspector/cell-focus.js');
+      focusCells(document.querySelector('.bld').editor, floorId, [cell]);
+    }, (await floorIds())[0], cellOf(12, 10));
+    await page.waitForFunction(() => document.querySelector('#inspector-properties [data-key="panel-title"]')?.textContent === 'Corridor cell' && document.getElementById('cell-marks') !== null);
     await tapOn(page, cdp, '#cell-marks');
     await page.waitForSelector('.menu[role="menu"]');
     await tapOn(page, cdp, '.menu [role="menuitem"]', 'Make this an area of refuge');
     await saidIs('Made the cell Area of refuge, an area of refuge.');
     assert.equal((await building()).floors[0].refuges.length, 1);
     // every pointer the page saw was a finger
+    const types = await page.evaluate(() => globalThis.pointerTypes);
+    assert.ok(types.length > 0 && types.every((type) => type === 'touch'), 'pointers: ' + types.join(', '));
+  } finally {
+    page = kept;
+    await phone.close();
+  }
+});
+
+test('at 390 px with touch: the Floor tab, the door and exit ticks, the Exits tab and Remove are each 44 px and work by a finger, and nothing scrolls sideways', async () => {
+  const phone = await openPlanner({ hash: '#building', width: 390, height: 844, mobile: true });
+  const kept = page;
+  page = phone.page;
+  try {
+    const cdp = typeof page.createCDPSession === 'function' ? await page.createCDPSession() : await page.context().newCDPSession(page);
+    if (!(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) && typeof page.setViewport === 'function') {
+      await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
+      await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
+    }
+    assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), true, 'the page has no coarse pointer');
+    await startEmpty(page);
+    await page.evaluate(async () => {
+      const actions = await import('./engine/actions.js');
+      const { store } = globalThis.sv2;
+      const floor = store.project.building.floors[0];
+      store.apply(actions.paintCorridor, { floorId: floor.id, from: 10 * 40 + 5, to: 10 * 40 + 20 });
+      store.apply(actions.placeLift, { floorId: floor.id, cells: [10 * 40 + 22, 10 * 40 + 24] });
+      store.apply(actions.placeRoom, { floorId: floor.id, rect: { x: 5, y: 7, w: 4, h: 3 }, number: '101' });
+      const room = store.project.building.floors[0].spaces.find((space) => space.number === '101');
+      store.apply(actions.addDoor, { roomId: room.id, cell: 9 * 40 + 6, side: 's' });
+      store.apply(actions.addDoor, { roomId: room.id, cell: 9 * 40 + 7, side: 's' });
+      store.apply(actions.markExit, { floorId: floor.id, cell: 10 * 40 + 5, doorName: 'Door A' });
+      store.apply(actions.markExit, { floorId: floor.id, cell: 10 * 40 + 20, doorName: 'Door B' });
+      store.apply(actions.addRefuge, { floorId: floor.id, cell: 10 * 40 + 10 });
+      store.apply(actions.addRefuge, { floorId: floor.id, cell: 10 * 40 + 11 });
+      store.apply(actions.setStepCells, { floorId: floor.id, cells: [10 * 40 + 14], stepFree: false });
+      store.apply(actions.setStepCells, { floorId: floor.id, cells: [10 * 40 + 17], stepFree: false });
+    });
+    await planReady(page);
+    await still(page);
+    await page.evaluate(() => {
+      globalThis.pointerTypes = [];
+      document.addEventListener('pointerdown', (event) => globalThis.pointerTypes.push(event.pointerType), true);
+    });
+    const noSideways = async (where) => {
+      const wide = await page.evaluate(() => ({
+        page: document.documentElement.scrollWidth - window.innerWidth,
+        panels: Array.from(document.querySelectorAll('.bld-inspector__panel')).filter((el) => el.getClientRects().length > 0).map((el) => el.scrollWidth - el.clientWidth),
+      }));
+      assert.ok(wide.page <= 0, where + ': the page scrolls sideways by ' + wide.page + ' px');
+      assert.ok(wide.panels.every((extra) => extra <= 0), where + ': a panel scrolls sideways: ' + wide.panels.join(', '));
+    };
+    const small = async (selector) => {
+      const all = await page.$$eval(selector, (list) => list.map((el) => {
+        el.scrollIntoView({ block: 'center' });
+        const box = el.getBoundingClientRect();
+        return { name: (el.getAttribute('aria-label') || el.textContent).slice(0, 40), width: Math.round(box.width), height: Math.round(box.height) };
+      }));
+      assert.ok(all.length > 0, 'nothing matches ' + selector);
+      assert.deepEqual(all.filter((each) => each.width < 44 || each.height < 44), [], selector + ' has a target under 44 px');
+    };
+    const inspector = (id) => page.evaluate((wanted) => document.querySelector('.bld').editor.inspector.showTab(wanted), id);
+
+    // the Floor tab
+    await inspector('floor');
+    await page.waitForFunction(() => document.querySelectorAll('#floor-steps li').length === 4);
+    await small('#floor-elevators .bi-small');
+    await small('#floor-steps .bi-small');
+    await noSideways('the Floor tab');
+    const before = await entries();
+    await tapOn(page, cdp, '#floor-steps [data-action="clear-step"]');
+    await page.waitForFunction((count) => globalThis.sv2.store.history.past.length === count, {}, before + 1);
+    assert.equal((await focusIs()).key.startsWith('clear-step:'), true, 'the focus went to the next step\'s button');
+
+    // a room's doors: each tick's row, its words, Remove
+    await page.evaluate(() => {
+      const editor = document.querySelector('.bld').editor;
+      editor.select([editor.floor.spaces.find((space) => space.number === '101').id]);
+    });
+    await inspector('properties');
+    await page.waitForSelector('#room-doors li');
+    await small('#room-doors .bi-small');
+    for (const row of await page.$$eval('#room-doors .bi-check', (all) => all.map((el) => Math.round(el.getBoundingClientRect().height)))) assert.ok(row >= 44, 'a door tick\'s row is ' + row + ' px');
+    await noSideways('a room\'s Properties');
+    const doors = await entries();
+    await tapOn(page, cdp, '#room-doors li:first-child .bi-check__label', undefined, { size: false });
+    await page.waitForFunction((count) => globalThis.sv2.store.history.past.length === count, {}, doors + 1);
+    assert.equal((await building()).floors[0].spaces.find((space) => space.number === '101').doors.filter((door) => door.stepFree === false).length, 1);
+
+    // the Exits tab: the exit ticks, Show me and Remove, the refuge rows
+    await inspector('exits');
+    await page.waitForFunction(() => document.querySelectorAll('#exits-list li').length === 2);
+    await small('#exits-list .bi-small');
+    await small('#exits-refuge-list .bi-small');
+    for (const row of await page.$$eval('#exits-list .bi-check', (all) => all.map((el) => Math.round(el.getBoundingClientRect().height)))) assert.ok(row >= 44, 'an exit tick\'s row is ' + row + ' px');
+    await noSideways('the Exits tab');
+    await tapOn(page, cdp, '#exits-list li:first-child .bi-check__label', undefined, { size: false });
+    await saidIs('The exit has a step outside its door.');
+    const refuges = await entries();
+    await tapOn(page, cdp, '#exits-refuge-list [data-action="remove-refuge"]');
+    await page.waitForFunction((count) => globalThis.sv2.store.history.past.length === count, {}, refuges + 1);
+    assert.equal((await building()).floors[0].refuges.length, 1);
+    assert.equal((await focusIs()).key.startsWith('remove-refuge:'), true, 'the focus went to the other refuge\'s Remove');
+    await tapOn(page, cdp, '#exits-list li:first-child [data-action="remove-exit"]');
+    await page.waitForFunction(() => globalThis.sv2.store.project.building.floors[0].exits.length === 1);
+    assert.equal((await focusIs()).key.startsWith('remove:'), true, 'the focus went to the other exit\'s Remove');
+    await noSideways('the Exits tab after Remove');
     const types = await page.evaluate(() => globalThis.pointerTypes);
     assert.ok(types.length > 0 && types.every((type) => type === 'touch'), 'pointers: ' + types.join(', '));
   } finally {

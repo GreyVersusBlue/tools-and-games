@@ -354,3 +354,21 @@ test('"no route to any exit" leaves elevators out, and says "only by elevator" w
   assert.match(only(buildingChecks(stop), 'room-no-exit-route')[0].text, /\.$/);
   assert.doesNotMatch(only(buildingChecks(stop), 'room-no-exit-route')[0].text, /elevator/);
 });
+
+test('lift cells are judged one at a time: an unconnected stop beside a connected stop of another elevator is reported (SV2-100b)', () => {
+  const project = withCars(planProject([HALL, HALL], { exits: [[1, 6, 2, 'Main Door']] }), [
+    { stops: [[1, 2, 2], [2, 2, 2]], letter: 'D' },
+    { stops: [[1, 3, 2]], letter: 'E' },
+  ]);
+  const found = only(buildingChecks(project), 'stairs-unconnected');
+  assert.deepEqual(found.map((finding) => [finding.text.slice(0, 41), finding.where.cells]), [['Elevator stop on Floor 1 is not connected', [cellAt(project, 1, 3, 2)]]]);
+});
+
+test('a part with a lift cell says "corridor, stairs and elevator cells"; one without keeps "corridor and stairs cells" (SV2-100b)', () => {
+  const rows = ['.AA.BB.', '.AA.BB.', '#######', '.......', '.#.....'];
+  const plain = planProject([rows], { exits: [[1, 6, 2, 'Main Door']] });
+  assert.match(only(buildingChecks(plain), 'part-unreachable')[0].text, /: 1 corridor or stairs cell\./);
+  const lifted = withCars(planProject([['.AA.BB.', '.AA.BB.', '#######', '.......', '.##....']], { exits: [[1, 6, 2, 'Main Door']] }), [{ stops: [[1, 3, 4]], letter: 'D' }]);
+  lifted.building.floors[0].cells = lifted.building.floors[0].cells.slice(0, 3 * 7 + 3) + '.' + lifted.building.floors[0].cells.slice(3 * 7 + 4);
+  assert.match(only(buildingChecks(lifted), 'part-unreachable')[0].text, /: 3 corridor, stairs and elevator cells\./);
+});
