@@ -236,7 +236,8 @@ export function keepElevatorStops(building, removed, resizedFloorId) {
       if (at === -1) continue;
       const floor = floors[at];
       if (floor.cells[end.cell] !== CELL_STAIRS || (Array.isArray(floor.lifts) && floor.lifts.includes(end.cell))) continue;
-      if (building.connections.some((other) => other.kind !== ELEVATOR_KIND && [other.a, other.b].some((x) => x.floorId === end.floorId && x.cell === end.cell))) continue;
+      // a stop another connection still reaches is a stop by that connection
+      if (building.connections.some((other) => [other.a, other.b].some((x) => x.floorId === end.floorId && x.cell === end.cell))) continue;
       floors = floors.map((candidate, i) => (i === at ? { ...candidate, lifts: (candidate.lifts || []).concat([end.cell]).sort((x, y) => x - y) } : candidate));
     }
   }

@@ -1130,3 +1130,32 @@ test('describeCell and describeFloor name elevators, steps and areas of refuge, 
   assert.deepEqual([counted.stairsCells, counted.unconnectedStairs, counted.liftCells, counted.unconnectedLifts, counted.connections, counted.elevatorConnections, counted.elevators, counted.steps, counted.refuges], [1, 1, 4, 1, 0, 2, 1, 3, 2]);
   assert.deepEqual([counted.byFloor[F1].liftCells, counted.byFloor[F1].stairsCells, counted.byFloor[F2].liftCells], [2, 1, 1]);
 });
+
+test('a file whose elevator has connections and no lifts list (an older writer) keeps its stops standing when a connection goes', () => {
+  const drawn = shaft(3);
+  const handBuilt = (project) => {
+    for (const [i, floorIdent] of [F1, F2, F3].entries()) {
+      const target = project.building.floors[i];
+      target.cells = target.cells.slice(0, at(0, 3)) + 'S' + target.cells.slice(at(0, 3) + 1);
+      assert.equal(target.id, floorIdent);
+    }
+    project.building.connections = [
+      { id: 'chand00001', label: 'A', a: stop(F1), b: stop(F2), direction: 'both', kind: 'elevator', car: 'A', staffOnly: true },
+      { id: 'chand00002', label: 'B', a: stop(F2), b: stop(F3), direction: 'both', kind: 'elevator', car: 'A', staffOnly: true },
+    ];
+    return project;
+  };
+  const before = handBuilt(structuredClone(drawn));
+  assertValid(before, 'valid with no lifts list');
+  assert.equal(building.describeCell(before.building, F2, at(0, 3)).kind, 'elevator', 'the connection makes the cell a stop');
+  const disconnected = viaStore(before, actions.disconnectStairs, { connectionId: 'chand00001' }).project;
+  assert.deepEqual(floor(disconnected, 1).lifts, [at(0, 3)], 'the cut-off stop is listed, still a stop');
+  assert.equal(floor(disconnected, 2).lifts, undefined, 'a stop another connection still reaches needs no list');
+  assert.equal(building.describeCell(disconnected.building, F1, at(0, 3)).kind, 'elevator');
+  const noFloor = viaStore(before, actions.deleteFloor, { id: F3 }).project;
+  assert.deepEqual(floor(noFloor, 2).lifts, [at(0, 3)], 'deleting a floor leaves the stop on the floor beside it');
+  assert.equal(building.describeCell(noFloor.building, F2, at(0, 3)).kind, 'elevator');
+  const erased = viaStore(before, actions.eraseCells, { floorId: F3, cells: [at(0, 3)] }).project;
+  assert.deepEqual(floor(erased, 2).lifts, undefined, 'the middle stop is still on connection A');
+  assert.deepEqual(erased.building.connections.map((c) => c.id), ['chand00001']);
+});
