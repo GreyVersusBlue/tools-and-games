@@ -102,11 +102,12 @@
 // The number, door name, assembly point and every name in a step's parts are
 // as typed, in any script; nothing here escapes or interprets them.
 
-import { nameOfRoom, isWalkable } from './schema.js';
+import { nameOfRoom, isWalkable, ELEVATOR_KIND } from './schema.js';
 import { routingGraph, routeToExit } from './routing.js';
 import { directions, describeFailure, CELL_UNITS } from './directions.js';
 
-export const ELEVATOR_KIND = 'elevator';
+// ELEVATOR_KIND lives in schema.js (the staff browser has it); re-exported here.
+export { ELEVATOR_KIND };
 export const CROP_MARGIN = 3;
 
 // The connections a walker leaving in an emergency must not take.

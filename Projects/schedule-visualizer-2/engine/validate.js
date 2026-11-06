@@ -19,7 +19,7 @@
 
 import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CHANGE_KINDS, PUBLISH_VIEWS, CHECK_KINDS, CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY } from './schema.js';
 import { isId, ID_LENGTH } from './ids.js';
-import { roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isCellScale, CELL_SCALE_UNITS, CELL_LENGTH_MOST } from './schema.js';
+import { roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isCellScale, CELL_SCALE_UNITS, CELL_LENGTH_MOST, ELEVATOR_KIND, elevatorCars, isLiftCell } from './schema.js';
 import { LATER_PUBLISH_VIEWS, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DAYS_MOST, ROTATION_RANGE, DATE_LABEL_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, spacelessKey, textLength } from './schema.js';
 import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST, RELEASE_MOST, RELEASE_SECONDS, RELEASE_WHO_KINDS } from './schema.js';
 import { isCalendarDate, daysBetween } from './calendar.js';
@@ -88,6 +88,10 @@ export function validate(project) {
     if (project.format !== PUBLISHED_FORMAT && !inRange(settings.defaultHeadCount, RANGES.headCount)) add('settings.defaultHeadCount', 'The default head count is a whole number from ' + rangeText(RANGES.headCount) + '.');
     if (!inRange(settings.secondsPerCell, RANGES.secondsPerCell)) add('settings.secondsPerCell', 'Seconds per corridor cell is a whole number from ' + rangeText(RANGES.secondsPerCell) + '.');
     if (!inRange(settings.secondsPerStair, RANGES.secondsPerStair)) add('settings.secondsPerStair', 'Seconds per stair connection is a whole number from ' + rangeText(RANGES.secondsPerStair) + '.');
+    // the three elevator timings are optional (ARCHITECTURE 19.2): checked when present
+    for (const [key, what] of [['elevatorWaitSeconds', 'The elevator wait'], ['elevatorSecondsPerFloor', 'The elevator ride'], ['elevatorPeoplePerTrip', 'The people an elevator carries a trip']]) {
+      if (settings[key] !== undefined && !inRange(settings[key], RANGES[key])) add('settings.' + key, what + ' is a whole number from ' + rangeText(RANGES[key]) + ', or absent.');
+    }
     if (project.format !== PUBLISHED_FORMAT) {
       const scale = settings.colourScale;
       if (!isObject(scale)) {
@@ -528,6 +532,130 @@ export function validate(project) {
       });
     }
 
+    // elevators, steps and areas of refuge (ARCHITECTURE 19.2). Every field is
+    // optional and checked when present. A connection's kind is the authority
+    // for a stop it joins; `lifts` matters for a stop with no connection.
+    {
+      const connections = Array.isArray(building.connections) ? building.connections.filter(isObject) : [];
+      const connectionPath = (connection) => 'building.connections[' + building.connections.indexOf(connection) + ']';
+      const whereIs = (end) => (isObject(end) && floorById.has(end.floorId) && Number.isInteger(end.cell) ? end.floorId + ':' + end.cell : null);
+      const kindsAt = new Map();
+      for (const connection of connections) {
+        const path = connectionPath(connection);
+        if (connection.kind !== undefined && connection.kind !== ELEVATOR_KIND) add(path + '.kind', 'A connection\'s kind is "elevator", or absent for stairs.');
+        const elevator = connection.kind === ELEVATOR_KIND;
+        if (connection.staffOnly !== undefined) {
+          if (typeof connection.staffOnly !== 'boolean') add(path + '.staffOnly', 'Staff only is true or false, or absent.');
+          else if (!elevator) add(path + '.staffOnly', 'Only an elevator connection can be staff only.');
+        }
+        if (connection.car !== undefined) {
+          if (isBlank(connection.car)) add(path + '.car', 'An elevator\'s letter is text that is not empty, or absent.');
+          else if (!elevator) add(path + '.car', 'Only an elevator connection has an elevator letter.');
+        }
+        const a = whereIs(connection.a);
+        const b = whereIs(connection.b);
+        if (elevator) {
+          if (a !== null && b !== null && connection.a.floorId === connection.b.floorId) add(path, 'An elevator connection joins cells on two different floors.');
+          if (CONNECTION_DIRECTIONS.includes(connection.direction) && connection.direction !== 'both') add(path + '.direction', 'An elevator runs both ways.');
+        }
+        for (const where of [a, b]) {
+          if (where === null) continue;
+          if (!kindsAt.has(where)) kindsAt.set(where, new Set());
+          kindsAt.get(where).add(elevator ? 'elevator' : 'stairs');
+        }
+      }
+      for (const [where, kinds] of kindsAt) {
+        if (kinds.size > 1) {
+          const cut = where.lastIndexOf(':');
+          add('building.connections', 'Cell ' + where.slice(cut + 1) + ' on ' + floorById.get(where.slice(0, cut)).name + ' carries both an elevator connection and a stairs connection.');
+        }
+      }
+      const cars = elevatorCars(building);
+      for (const car of cars) {
+        const seenFloors = new Set();
+        for (const stop of car.stops) {
+          if (seenFloors.has(stop.floorId)) add(connectionPath(connections.find((connection) => connection.id === car.connectionIds[0])), 'Elevator ' + car.label + ' has two stops on one floor; it has one on each.');
+          seenFloors.add(stop.floorId);
+        }
+        const own = connections.filter((connection) => car.connectionIds.includes(connection.id));
+        if (new Set(own.map((connection) => connection.staffOnly === true)).size > 1) add(connectionPath(own[0]) + '.staffOnly', 'Every connection of elevator ' + car.label + ' says the same about staff only.');
+        if (new Set(own.map((connection) => connection.car).filter((letter) => !isBlank(letter))).size > 1) add(connectionPath(own[0]) + '.car', 'Every connection of one elevator carries the same elevator letter.');
+      }
+
+      (Array.isArray(building.floors) ? building.floors : []).forEach((floor, f) => {
+        if (!isObject(floor) || floorById.get(floor.id) !== floor) return;
+        const path = 'building.floors[' + f + ']';
+        const count = floor.width * floor.height;
+        const inGrid = (cell) => Number.isInteger(cell) && cell >= 0 && cell < count;
+        const lift = (cell) => isLiftCell(building, floor.id, cell);
+        if (floor.lifts !== undefined) {
+          if (!Array.isArray(floor.lifts)) add(path + '.lifts', 'The elevator stops of a floor are a list of cells, or absent.');
+          else {
+            const seen = new Set();
+            floor.lifts.forEach((cell, i) => {
+              const lp = path + '.lifts[' + i + ']';
+              if (!inGrid(cell) || floor.cells[cell] !== CELL_STAIRS) add(lp, 'An elevator stop is a stairs cell; ' + cell + ' is not one.');
+              else if (seen.has(cell)) add(lp, 'Cell ' + cell + ' is listed as an elevator stop twice.');
+              else if (kindsAt.get(floor.id + ':' + cell) && kindsAt.get(floor.id + ':' + cell).has('stairs')) add(lp, 'Cell ' + cell + ' is listed as an elevator stop and carries a stairs connection.');
+              seen.add(cell);
+            });
+          }
+        }
+        if (floor.notStepFree !== undefined) {
+          if (!Array.isArray(floor.notStepFree)) add(path + '.notStepFree', 'The cells with a step are a list of cells, or absent.');
+          else {
+            const seen = new Set();
+            floor.notStepFree.forEach((cell, i) => {
+              const np = path + '.notStepFree[' + i + ']';
+              if (!inGrid(cell) || floor.cells[cell] !== CELL_CORRIDOR) add(np, 'A cell with a step is a corridor cell; ' + cell + ' is not one.');
+              else if (seen.has(cell)) add(np, 'Cell ' + cell + ' is marked as a step twice.');
+              seen.add(cell);
+            });
+          }
+        }
+        if (floor.refuges !== undefined) {
+          if (!Array.isArray(floor.refuges)) add(path + '.refuges', 'The areas of refuge of a floor are a list, or absent.');
+          else {
+            const cells = new Set();
+            const names = new Set();
+            floor.refuges.forEach((refuge, i) => {
+              const rp = path + '.refuges[' + i + ']';
+              if (!isObject(refuge)) return add(rp, 'An area of refuge is an object.');
+              checkId(rp, refuge, 'a');
+              if (!isString(refuge.name)) add(rp + '.name', 'The name of an area of refuge is text.');
+              else if (names.has(nameKey(refuge.name))) add(rp + '.name', 'The area of refuge "' + refuge.name + '" is named twice on one floor, whatever the capitals.');
+              else names.add(nameKey(refuge.name));
+              if (!inGrid(refuge.cell) || (floor.cells[refuge.cell] !== CELL_CORRIDOR && floor.cells[refuge.cell] !== CELL_STAIRS)) add(rp + '.cell', 'An area of refuge is on a corridor or stairs cell.');
+              else if (lift(refuge.cell)) add(rp + '.cell', 'An area of refuge is not on an elevator stop.');
+              else if (cells.has(refuge.cell)) add(rp + '.cell', 'There is already an area of refuge on cell ' + refuge.cell + '.');
+              cells.add(refuge.cell);
+              return undefined;
+            });
+          }
+        }
+        if (Array.isArray(floor.exits)) {
+          floor.exits.forEach((exit, x) => {
+            if (!isObject(exit)) return;
+            if (exit.stepFree !== undefined && typeof exit.stepFree !== 'boolean') add(path + '.exits[' + x + '].stepFree', 'An exit\'s step-free flag is true or false, or absent.');
+            if (inGrid(exit.cell) && lift(exit.cell)) add(path + '.exits[' + x + '].cell', 'An elevator stop is not an exit.');
+          });
+        }
+        if (Array.isArray(floor.spaces)) {
+          floor.spaces.forEach((space, s) => {
+            if (!isObject(space) || space.kind !== 'room' || !Array.isArray(space.doors)) return;
+            space.doors.forEach((door, d) => {
+              if (!isObject(door)) return;
+              const dp = path + '.spaces[' + s + '].doors[' + d + ']';
+              if (door.stepFree !== undefined && typeof door.stepFree !== 'boolean') add(dp + '.stepFree', 'A door\'s step-free flag is true or false, or absent.');
+              if (!DOOR_SIDES.includes(door.side) || !inGrid(door.cell)) return;
+              const across = neighbourCell(floor, door.cell, door.side);
+              if (across !== -1 && lift(across)) add(dp, 'A door faces a corridor, not an elevator stop.');
+            });
+          });
+        }
+      });
+    }
+
     // zones
     if (project.format === PUBLISHED_FORMAT && building.zones === undefined) {
       // a published file carries no zones
@@ -605,6 +733,7 @@ export function validate(project) {
         if (group.headCount !== null && !inRange(group.headCount, RANGES.headCount)) add(path + '.headCount', 'A head count is empty or a whole number from ' + rangeText(RANGES.headCount) + '.');
       }
       if (!isHexColour(group.colour)) add(path + '.colour', 'A colour is written #rrggbb.');
+      if (group.stepFree !== undefined && typeof group.stepFree !== 'boolean') add(path + '.stepFree', 'Needs step-free routes is true or false, or absent.');
       if (!isObject(group.days)) {
         add(path + '.days', 'The days of a group are an object with one list of slots per day type that is its own copy.');
         return undefined;
