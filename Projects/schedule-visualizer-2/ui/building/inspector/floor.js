@@ -26,11 +26,13 @@ import { h } from '../../components/dom.js';
 import { field } from '../../components/field.js';
 import { choice } from '../../components/choice.js';
 import { count, list } from '../../components/words.js';
-import { ActionError, renameFloor, setFloorLevel, reorderFloor, deleteFloor, describeFloorDelete, describeResize, resizeFloor, eraseCells, disconnectStairs, setConnection, renameCorridor, removeCorridorName, setZone, removeZone } from '../../../engine/actions.js';
+import { ActionError, renameFloor, setFloorLevel, reorderFloor, deleteFloor, describeFloorDelete, describeResize, resizeFloor, eraseCells, disconnectStairs, setConnection, renameCorridor, removeCorridorName, setZone, removeZone, setStepCells } from '../../../engine/actions.js';
 import { lossText, counts, describeFloor } from '../../../engine/building.js';
 import { snapshotAfter, undoForStep } from '../../../storage/snapshots.js';
 import { RANGES, nameOfRoom, ELEVATOR_KIND } from '../../../engine/schema.js';
 import { keyedList, heading, cellWords } from './controls.js';
+import { legend } from './legend.js';
+import { focusCells } from './cell-focus.js';
 
 // ---- which way a stairs connection may be walked (spec 4.5, DESIGN 12.5)
 
@@ -346,6 +348,10 @@ export function floorPanel(env) {
 
     const connections = h('ul', { class: 'bi-rows', id: 'floor-connections' });
     const noConnections = h('p', { class: 'bld-inspector__small' });
+    const elevators = h('ul', { class: 'bi-rows', id: 'floor-elevators' });
+    const noElevators = h('p', { class: 'bld-inspector__small', id: 'floor-no-elevators' });
+    const steps = h('ul', { class: 'bi-rows', id: 'floor-steps' });
+    const noSteps = h('p', { class: 'bld-inspector__small', id: 'floor-no-steps' });
     const corridors = h('ul', { class: 'bi-rows', id: 'floor-corridors' });
     const noCorridors = h('p', { class: 'bld-inspector__small' }, 'No corridor on this floor has a name yet. Choose the Name tool (N) and drag along a corridor.');
     const zones = h('ul', { class: 'bi-rows', id: 'floor-zones' });
@@ -375,6 +381,9 @@ export function floorPanel(env) {
         h('div', { class: 'bi-buttons' }, resizeButton)),
       env.trace.controls.element,
       h('section', { class: 'bi-part', 'aria-labelledby': 'floor-connections-heading' }, heading('Stairs connections', 'floor-connections-heading'), connections, noConnections),
+      h('section', { class: 'bi-part', 'aria-labelledby': 'floor-elevators-heading' }, heading('Elevators', 'floor-elevators-heading'), elevators, noElevators),
+      h('section', { class: 'bi-part', 'aria-labelledby': 'floor-steps-heading' }, heading('Steps and areas of refuge', 'floor-steps-heading'), steps, noSteps),
+      h('section', { class: 'bi-part', 'aria-labelledby': 'floor-legend-heading' }, heading('What the marks look like', 'floor-legend-heading'), legend()),
       h('section', { class: 'bi-part', 'aria-labelledby': 'floor-corridors-heading' }, heading('Corridor names', 'floor-corridors-heading'), corridors, noCorridors),
       h('section', { class: 'bi-part', 'aria-labelledby': 'floor-zones-heading' }, heading('Left out of the colour scale', 'floor-zones-heading'), zones, noZones),
       h('section', { class: 'bi-part', 'aria-labelledby': 'floor-clear-heading' }, heading('Clear', 'floor-clear-heading'), clearSays, clearKeeps, h('div', { class: 'bi-buttons' }, clearButton)),
@@ -383,6 +392,8 @@ export function floorPanel(env) {
     parts = {
       name, level, about, earlier, later, width, height, preview: previewLine, resize: resizeButton, sideX: 'right', sideY: 'bottom',
       connections: keyedList(connections), connectionsHost: connections, noConnections,
+      elevators: keyedList(elevators), elevatorsHost: elevators, noElevators,
+      steps: keyedList(steps), stepsHost: steps, noSteps,
       corridors: keyedList(corridors), corridorsHost: corridors, noCorridors,
       zones: keyedList(zones), zonesHost: zones, noZones,
       remove, lastNote, size: floor.width + 'x' + floor.height,
@@ -422,17 +433,90 @@ export function floorPanel(env) {
 
   const small = (label, key, aria, run) => h('button', { type: 'button', class: 'btn btn--quiet bi-small', data: { key, action: key.split(':')[0] }, 'aria-label': aria, on: { click: run } }, label);
 
+  // The elevators, the steps and the areas of refuge of this floor, as words (describeFloor).
+  function syncStepFree(floor, building) {
+    const described = describeFloor(building, floor.id);
+    parts.elevatorsHost.hidden = described.elevators.length === 0;
+    parts.noElevators.hidden = described.elevators.length > 0;
+    parts.noElevators.textContent = 'There is no elevator stop on this floor. Open the menu on a corridor or stairs cell (right-click, or the Menu key) and choose Make this an elevator stop.';
+    parts.elevators.update(described.elevators, {
+      key: (stop) => stop.carId + ':' + stop.cell + ':' + (stop.connected ? 'c' : 'u'),
+      build: (stop) => {
+        const text = h('p', { class: 'bi-row__text' });
+        const buttons = [
+          small('Show me', 'show-stop:' + stop.cell, 'Show me: the elevator stop at ' + cellWords(floor, stop.cell), () => env.show({ floorId: state.floor.id, cells: [stop.cell] })),
+          small('Properties', 'stop-properties:' + stop.cell, 'Properties of the elevator stop at ' + cellWords(floor, stop.cell), () => {
+            env.show({ floorId: state.floor.id, cells: [stop.cell] });
+            focusCells(ed(), state.floor.id, [stop.cell]);
+          }),
+        ];
+        if (!stop.connected) {
+          buttons.push(small('Connect…', 'stop-connect:' + stop.cell, 'Connect the elevator stop at ' + cellWords(floor, stop.cell) + ' to another floor', () => {
+            if (ed().connect) ed().connect.start({ floorId: state.floor.id, cell: stop.cell });
+          }));
+        }
+        return {
+          element: h('li', { class: 'bi-row bi-row--stack', data: { stop: String(stop.cell), connected: String(stop.connected) } }, text, h('div', { class: 'bi-row__buttons' }, buttons)),
+          sync: (now) => {
+            text.textContent = now.connected
+              ? 'Elevator ' + now.label + ': ' + list(now.floors) + (now.staffOnly ? ' · staff only' : '')
+              : floor.name + ' stop: not connected';
+          },
+        };
+      },
+    });
+
+    const none = described.steps.length === 0 && described.refuges.length === 0;
+    parts.stepsHost.hidden = none;
+    parts.noSteps.hidden = !none;
+    parts.noSteps.textContent = 'No step and no area of refuge is marked on this floor. Open the menu on a corridor cell (right-click, or the Menu key) and choose Step here or Make this an area of refuge.';
+    const entries = described.steps.map((run, index) => ({ type: 'step', id: 'step:' + run.cells[0], run, index })).concat(described.refuges.map((refuge) => ({ type: 'refuge', id: 'refuge:' + refuge.id, refuge })));
+    parts.steps.update(entries, {
+      key: (entry) => entry.id,
+      build: (entry) => {
+        const text = h('p', { class: 'bi-row__text' });
+        const show = (cells) => env.show({ floorId: state.floor.id, cells });
+        const buttons = entry.type === 'step'
+          ? [
+            small('Show me', 'show-' + entry.id, 'Show me: the step at ' + cellWords(floor, entry.run.cells[0]), () => {
+              const now = describeFloor(state.project.building, state.floor.id).steps.find((run) => run.cells[0] === entry.run.cells[0]);
+              if (now) show(now.cells);
+            }),
+            small('Clear the step', 'clear-' + entry.id, 'Clear the step at ' + cellWords(floor, entry.run.cells[0]), () => {
+              const now = describeFloor(state.project.building, state.floor.id).steps.find((run) => run.cells[0] === entry.run.cells[0]);
+              if (!now) return;
+              ed().commit(setStepCells, { floorId: state.floor.id, cells: now.cells, stepFree: true }, { done: (made) => 'Cleared the step from ' + count(made.changed, 'cell') + '.' });
+            }),
+          ]
+          : [small('Show me', 'show-' + entry.id, 'Show me: the area of refuge ' + entry.refuge.name, () => {
+            const now = describeFloor(state.project.building, state.floor.id).refuges.find((refuge) => refuge.id === entry.refuge.id);
+            if (now) show([now.cell]);
+          })];
+        return {
+          element: h('li', { class: 'bi-row bi-row--stack', data: { mark: entry.id } }, text, h('div', { class: 'bi-row__buttons' }, buttons)),
+          sync: (now) => {
+            text.textContent = now.type === 'step' ? now.run.text : now.refuge.text;
+          },
+        };
+      },
+    });
+  }
+
   function syncLists() {
     const { project, floor } = state;
     const building = project.building;
     const floorName = (id) => (building.floors.find((each) => each.id === id) || { name: 'a floor that is gone' }).name;
 
-    const links = building.connections.filter((connection) => connection.a.floorId === floor.id || connection.b.floorId === floor.id);
+    // stairs only: an elevator is listed under its own heading below
+    const links = building.connections.filter((connection) => connection.kind !== ELEVATOR_KIND && (connection.a.floorId === floor.id || connection.b.floorId === floor.id));
+    const stairsCells = counts(building).byFloor[floor.id].stairsCells;
     parts.connectionsHost.hidden = links.length === 0;
     parts.noConnections.hidden = links.length > 0;
-    parts.noConnections.textContent = floor.cells.includes('S')
+    parts.noConnections.textContent = stairsCells > 0
       ? 'No stairs on this floor are connected yet. Open the menu on a stairs cell (right-click, or the Menu key) and choose Connect.'
       : 'There are no stairs on this floor yet. Place some with the Stairs tool (S), then connect them to the stairs on another floor.';
+
+    syncStepFree(floor, building);
     parts.connections.update(links, {
       key: (connection) => connection.id,
       build: (connection) => {

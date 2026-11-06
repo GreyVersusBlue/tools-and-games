@@ -11,12 +11,14 @@ import { h } from '../../components/dom.js';
 import { field } from '../../components/field.js';
 import { picker } from '../../components/picker.js';
 import { icon } from '../../components/icons.js';
-import { ActionError, setRoomFields, setRoomTeachers, addTeacher, clearRoomDetails, setOtherSpaceFields, removeDoor } from '../../../engine/actions.js';
+import { ActionError, setRoomFields, setRoomTeachers, addTeacher, clearRoomDetails, setOtherSpaceFields, removeDoor, setDoorStepFree } from '../../../engine/actions.js';
 import { SIDE_WORDS } from '../../../engine/building.js';
 import { OTHER_KINDS, nameKey } from '../../../engine/schema.js';
 import { roomName } from '../../../engine/findings.js';
 import { selectField, checkField, wholeOrEmpty, keepFocus, heading, cellWords } from './controls.js';
-import { deleteSpace } from '../menu.js';
+import { deleteSpace, openCellMenu } from '../menu.js';
+import { cellPanel } from './cell.js';
+import { cellFocus } from './cell-focus.js';
 
 const NO_SUBJECT = '';
 const NEW_TEACHER = 'new-teacher';
@@ -34,6 +36,7 @@ export function propertiesPanel(env) {
   let shown = null;
   let parts = null;
   let state = null;
+  const cells = cellPanel(env);
 
   const current = () => {
     const id = state.selection[0];
@@ -77,6 +80,20 @@ export function propertiesPanel(env) {
     if (!(error instanceof ActionError)) throw error;
     ctx.toast({ kind: 'problem', text: error.message });
     ctx.announce(error.message);
+  }
+
+  // Marks…: the menu of a cell of the selected space, for anyone who cannot
+  // right-click or long-press. The cell is the keyboard cursor's when it is in
+  // the space, else the space's first.
+  function marksButton() {
+    const marks = h('button', { type: 'button', class: 'btn', id: 'cell-marks', 'aria-haspopup': 'menu', 'aria-label': 'Marks and other changes for this space', data: { key: 'marks', action: 'marks' }, on: { click: () => {
+      const space = current();
+      if (!space) return;
+      const ed = env.editor();
+      const at = ed.cursor.showing && space.cells.includes(ed.cursor.cell) ? ed.cursor.cell : space.cells[0];
+      openCellMenu(ed, at, marks);
+    } } }, 'Marks…');
+    return marks;
   }
 
   function buildRoom(room) {
@@ -183,6 +200,7 @@ export function propertiesPanel(env) {
       doors,
       doorsNote,
       h('div', { class: 'bi-buttons' }, clear, remove),
+      h('div', { class: 'bi-buttons bi-buttons--marks' }, marksButton()),
     );
     parts = { kind: 'room', number, teachers, noTeachers, subject, wing, capacity, shared, doors, doorsNote, teachersKey: null, doorsKey: null, subjectsKey: null };
   }
@@ -226,21 +244,43 @@ export function propertiesPanel(env) {
       ))));
     }
 
-    const doorsKey = room.doors.map((door) => door.cell + door.side).join('|') + '@' + floor.width;
+    const doorsKey = room.doors.map((door) => door.cell + door.side + (door.stepFree === false ? '!' : '')).join('|') + '@' + floor.width;
     if (doorsKey !== parts.doorsKey) {
       parts.doorsKey = doorsKey;
       parts.doors.hidden = room.doors.length === 0;
       parts.doorsNote.textContent = room.doors.length === 0
         ? 'No door is drawn, so the room is entered from any side that touches a corridor. To add a door, click an edge of the selected room with the Select tool, or use the menu on one of its cells (right-click, or the Menu key).'
         : 'The room is entered only through ' + (room.doors.length === 1 ? 'this door' : 'these doors') + '. Click an edge of the selected room to add another, or a door to remove it.';
-      keepFocus(parts.doors, () => parts.doors.replaceChildren(...room.doors.map((door) => h('li', { class: 'bi-row', data: { door: door.cell + ':' + door.side } },
-        h('span', { class: 'bi-row__text' }, 'On the ' + SIDE_WORDS[door.side] + ' edge, ' + cellWords(floor, door.cell)),
-        h('button', { type: 'button', class: 'btn btn--quiet bi-small', data: { key: 'door:' + door.cell + door.side, action: 'remove-door' }, 'aria-label': 'Remove the door on the ' + SIDE_WORDS[door.side] + ' edge, ' + cellWords(floor, door.cell), on: { click: () => {
-          const now = current();
-          if (!now) return;
-          env.editor().commit(removeDoor, { roomId: now.id, cell: door.cell, side: door.side }, { done: () => 'Removed the door on the ' + SIDE_WORDS[door.side] + ' edge of ' + roomName(now) + '.' });
-        } } }, 'Remove'),
-      ))));
+      keepFocus(parts.doors, () => parts.doors.replaceChildren(...room.doors.map((door) => {
+        const where = 'on the ' + SIDE_WORDS[door.side] + ' wall';
+        const tick = checkField({
+          id: 'door-step-free-' + door.cell + door.side,
+          label: 'Step-free',
+          name: 'doorStepFree',
+          key: 'door-step-free:' + door.cell + door.side,
+          checked: door.stepFree !== false,
+          commit: (on) => {
+            const now = current();
+            if (!now) return;
+            const outcome = env.editor().commit(setDoorStepFree, { roomId: now.id, door: { cell: door.cell, side: door.side }, stepFree: on }, {
+              done: () => 'The door ' + where + ' of ' + roomName(now) + (on ? ' is step-free.' : ' has a step.'),
+            });
+            if (outcome === null) throw new Error('That could not be changed. The tick is back as it was.');
+          },
+        });
+        // its own name: the door, by its wall, and the room
+        tick.input.setAttribute('aria-label', 'Door ' + where + ', step-free');
+        tick.input.dataset.door = door.cell + ':' + door.side;
+        return h('li', { class: 'bi-row bi-row--door', data: { door: door.cell + ':' + door.side } },
+          h('span', { class: 'bi-row__text' }, 'On the ' + SIDE_WORDS[door.side] + ' edge, ' + cellWords(floor, door.cell)),
+          tick.element,
+          h('button', { type: 'button', class: 'btn btn--quiet bi-small', data: { key: 'door:' + door.cell + door.side, action: 'remove-door' }, 'aria-label': 'Remove the door on the ' + SIDE_WORDS[door.side] + ' edge, ' + cellWords(floor, door.cell), on: { click: () => {
+            const now = current();
+            if (!now) return;
+            env.editor().commit(removeDoor, { roomId: now.id, cell: door.cell, side: door.side }, { done: () => 'Removed the door on the ' + SIDE_WORDS[door.side] + ' edge of ' + roomName(now) + '.' });
+          } } }, 'Remove'),
+        );
+      })));
     }
   }
 
@@ -275,6 +315,7 @@ export function propertiesPanel(env) {
       kind.element,
       h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'space-colour' }, 'Colour'), colour),
       h('div', { class: 'bi-buttons' }, remove),
+      h('div', { class: 'bi-buttons bi-buttons--marks' }, marksButton()),
     );
     parts = { kind: 'other', label, otherKind: kind, colour };
   }
@@ -285,6 +326,20 @@ export function propertiesPanel(env) {
     const spaces = selection.map((id) => floor.spaces.find((space) => space.id === id)).filter(Boolean);
     const key = spaces.map((space) => space.id).join(' ');
     const one = spaces.length === 1 ? spaces[0] : null;
+    // no space selected: the cells asked for with Marks… or the menu, when there are any
+    const focus = cellFocus(env.editor());
+    if (spaces.length > 0) focus.clear();
+    const asked = spaces.length === 0 ? focus.get() : null;
+    if (asked && asked.floorId === floor.id && cells.render(state, asked, element)) {
+      shown = '@cells';
+      parts = null;
+      return;
+    }
+    if (asked && asked.floorId !== floor.id) focus.clear();
+    if (shown === '@cells') {
+      shown = null;
+      cells.forget();
+    }
     if (key !== shown) {
       shown = key;
       parts = null;
