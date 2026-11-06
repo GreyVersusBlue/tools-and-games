@@ -343,3 +343,101 @@ test('startsAsTyped: true where describeFailure’s sentence opens with a room a
   // nothing to describe
   assert.equal(startsAsTyped(project, null), false);
 });
+
+// ---------------------------------------------------------------- SV2-100: rides and the step-free failure words
+
+// Joins stops with elevator connections by hand: cars is [{ stops: [[floor, x, y], …], letter, staffOnly }], a chain.
+function withCars(project, cars) {
+  const at = (number, x, y) => {
+    const floor = project.building.floors[number - 1];
+    return { floorId: floor.id, cell: y * floor.width + x };
+  };
+  let n = project.building.connections.length;
+  for (const car of cars) {
+    for (const [number, x, y] of car.stops) {
+      const floor = project.building.floors[number - 1];
+      const cell = y * floor.width + x;
+      floor.cells = floor.cells.slice(0, cell) + 'S' + floor.cells.slice(cell + 1);
+      floor.lifts = Array.from(new Set([...(floor.lifts || []), cell])).sort((a, b) => a - b);
+    }
+    car.stops.slice(1).forEach((stop, i) => {
+      n += 1;
+      project.building.connections.push({ id: 'celev' + String(n).padStart(5, '0'), label: car.letter + n, a: at(...car.stops[i]), b: at(...stop), direction: 'both', kind: 'elevator', staffOnly: car.staffOnly === true, car: car.letter });
+    });
+  }
+  return project;
+}
+
+const HALL = ['.AA.BB.', '.AA.BB.', '#######', '.......', '.......'];
+
+test('a ride is a step of its own, read from the route\'s cells: "Take Elevator D up to Floor 3", with the car\'s letter, never a connection\'s label', () => {
+  // a chain 1-2, 2-3: the car's id is the first connection's, whose ends are floors 1 and 2, yet the ride is to floor 3
+  const project = withCars(planProject([HALL, HALL, HALL]), [{ stops: [[1, 0, 2], [2, 0, 2], [3, 0, 2]], letter: 'D' }]);
+  const graph = routingGraph(project);
+  const up = directions(project, route(graph, roomId('1A'), roomId('3B'), { avoidStairs: true }));
+  assert.equal(up.ok, true);
+  assert.deepEqual(lines(up), ['Turn right out of the room.', 'Walk 1 cell to Elevator D.', 'Take Elevator D up to Floor 3.', 'Walk 4 cells.', 'Room 3B is on your left.']);
+  const ride = up.steps.find((step) => step.kind === 'ride');
+  assert.deepEqual([ride.car, ride.way, ride.floorId, ride.connections], ['D', 'up', project.building.floors[2].id, [project.building.connections[0].id]]);
+  assert.deepEqual(up.steps.find((step) => step.kind === 'walk').to, 'elevator');
+  const down = directions(project, route(graph, roomId('3B'), roomId('2A'), { avoidStairs: true }));
+  assert.ok(lines(down).includes('Take Elevator D down to Floor 2.'), lines(down).join(' | '));
+  // the letter is typed text, shown as typed and never as markup
+  project.building.connections.forEach((connection) => { connection.car = '<D&>'; });
+  const typedCar = directions(project, route(routingGraph(project), roomId('1A'), roomId('2B'), { avoidStairs: true }));
+  assert.ok(lines(typedCar).includes('Take Elevator <D&> up to Floor 2.'));
+  assert.deepEqual(typedCar.steps.find((step) => step.kind === 'ride').parts.filter((part) => part.name).map((part) => part.text), ['<D&>', 'Floor 2']);
+});
+
+test('a room by the elevator, and stairs then a ride, are steps of their own', () => {
+  const floor = ['.AA.BB.', '.AA.BB.', 'S######', '.......', '.......'];
+  const project = withCars(planProject([floor, floor, floor], { connections: [[1, 0, 2, 2, 0, 2]] }), [{ stops: [[2, 6, 2], [3, 6, 2]], letter: 'E' }]);
+  const stairsThenRide = directions(project, route(routingGraph(project), roomId('1A'), roomId('3B')));
+  assert.deepEqual(stairsThenRide.steps.map((step) => step.kind), ['leave', 'walk', 'stairs', 'walk', 'ride', 'walk', 'arrive']);
+  assert.ok(lines(stairsThenRide).includes('Take stairs A up to Floor 2.'));
+  assert.ok(lines(stairsThenRide).includes('Take Elevator E up to Floor 3.'));
+  const landing = planProject([['A.B..', '#S###'], ['A.B..', '#S###']]);
+  withCars(landing, [{ stops: [[1, 1, 1], [2, 1, 1]], letter: 'D' }]);
+  const by = directions(landing, route(routingGraph(landing), roomId('1A'), roomId('2B')));
+  assert.equal(by.ok, true);
+  assert.ok(lines(by).includes('Take Elevator D up to Floor 2.'), lines(by).join(' | '));
+});
+
+test('the step-free failure words: a room with no step-free door, a step on a named corridor, a step on a floor', () => {
+  // every door of 1A has a step
+  const doors = planProject([['.AAAA.', '.AAAA.', '######', '.BBBB.', '.BBBB.']], { doors: { '1A': [[1, 1, 's'], [4, 1, 's']], '1B': [[2, 3, 'n']] } });
+  const roomA = doors.building.floors[0].spaces.find((space) => space.number === '1A');
+  roomA.doors.forEach((door) => { door.stepFree = false; });
+  const doorFailure = route(routingGraph(doors), roomId('1A'), roomId('1B'), { avoidStairs: true });
+  assert.deepEqual([doorFailure.reason, doorFailure.avoiding], ['no-entry', ['stairs', 'step-doors']]);
+  assert.equal(describeFailure(doors, doorFailure), 'Room 1A on Floor 1 has no step-free door.');
+  assert.equal(directions(doors, doorFailure).text, 'Room 1A on Floor 1 has no step-free door.');
+  assert.equal(startsAsTypedFor(doors, doorFailure), true, 'it opens with the room as typed');
+  // the same words are not said of a room that has no door onto a corridor at all
+  const shut = planProject([['.A.....', '####...', '.....C.']]);
+  shut.building.floors[0].notStepFree = [cellAt(shut, 1, 0, 1)];
+  assert.equal(describeFailure(shut, route(routingGraph(shut), roomId('1A'), roomId('1C'), { avoidStairs: true })), 'Room 1C on Floor 1 does not open onto a corridor.');
+
+  // a step across the only corridor, named
+  const steps = planProject([['A...B', '#####', '.....']]);
+  const floor = steps.building.floors[0];
+  floor.notStepFree = [cellAt(steps, 1, 2, 1)];
+  floor.corridors = [{ id: 'kplan00001', name: 'North Corridor', cells: [5, 6, 7, 8, 9] }];
+  const blocked = route(routingGraph(steps), roomId('1A'), roomId('1B'), { avoidStairs: true });
+  assert.deepEqual([blocked.reason, blocked.avoiding], ['unreachable', ['stairs', 'steps']]);
+  assert.equal(describeFailure(steps, blocked), 'There is no step-free way through from Room 1A to Room 1B on Floor 1: a step on North Corridor.');
+  assert.equal(directions(steps, blocked).text, describeFailure(steps, blocked), 'with steps in the way the plain "without stairs" sentence is not used');
+  // an unnamed corridor: the floor
+  floor.corridors = [];
+  assert.equal(describeFailure(steps, blocked), 'There is no step-free way through from Room 1A to Room 1B on Floor 1: a step on Floor 1.');
+  // a route to an exit
+  const exitFailure = { ...blocked, end: 'from', roomId: roomId('1A'), fromRoomId: roomId('1A'), toRoomId: null };
+  assert.equal(describeFailure(steps, exitFailure), 'There is no step-free way through from Room 1A on Floor 1 to an exit: a step on Floor 1.');
+  // a step-free failure with no step marked in the building keeps today's sentence
+  const bare = threeFloors();
+  assert.equal(directions(bare, route(routingGraph(bare), roomId('1A'), roomId('2B'), { avoidStairs: true })).text, 'There is no way from Room 1A to Room 2B without stairs.');
+});
+
+function startsAsTypedFor(project, failed) {
+  return directionsModule.startsAsTyped(project, failed);
+}
