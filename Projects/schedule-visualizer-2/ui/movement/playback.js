@@ -348,7 +348,7 @@ export function playbackBar(env) {
     return !(walker.arrived && at >= walker.total);
   }
 
-  const mark = markersMark(() => {
+  const markers = markersMark(() => {
     const moment = started ? now() : null;
     if (!moment) return null;
     return {
@@ -359,7 +359,14 @@ export function playbackBar(env) {
     };
   });
 
-  // ---- the markers, among the map's marks: under the hotspot rings and the cursor
+  // ---- the markers, among the map's marks: under the hotspot rings and the cursor.
+  // The ring round the stop a rider rests on is drawn by the same mark, after
+  // the markers, so the map's list of marks stays as it was.
+  const mark = (g, map) => {
+    markers(g, map);
+    ridesRing(g, map);
+  };
+  Object.defineProperty(mark, 'drawn', { get: () => markers.drawn });
   mark.id = 'playback';
   mark.order = 1;
   env.marks.push(mark);
@@ -385,7 +392,7 @@ export function playbackBar(env) {
   // The stop a rider rests on carries a ring in the accent colour. In motion
   // it pulses once a second; with reduced motion it is steady, so the ring is
   // there without any movement. The hotspot row's words are the other signal.
-  const ridesMark = (g, map) => {
+  function ridesRing(g, map) {
     const riders = env.rides ? env.rides.now : [];
     if (riders.length === 0) return;
     const phase = reduce.matches ? 0 : (Date.now() % 1000) / 1000;
@@ -401,10 +408,7 @@ export function playbackBar(env) {
       g.stroke();
     }
     g.globalAlpha = 1;
-  };
-  ridesMark.id = 'rides';
-  ridesMark.order = 2;
-  env.marks.push(ridesMark);
+  }
 
   function publishRides() {
     if (!env.rides) return;
