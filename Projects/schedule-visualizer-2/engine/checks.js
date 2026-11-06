@@ -221,10 +221,11 @@ function planOptions(group) {
 }
 
 // The elevators a walk rides, by their letters as typed, in the order taken:
-// the walk's own route, planned as the group's routes are.
+// the walk's own route, planned as the group's routes are (a teacher's, with no
+// group, is the plain route).
 function carsRidden(project, memo, group, fromRoom, toRoom) {
   const graph = graphFor(project, memo);
-  const found = route(graph, fromRoom.id, toRoom.id, planOptions(group));
+  const found = route(graph, fromRoom.id, toRoom.id, group ? planOptions(group) : {});
   if (!found.ok || found.same) return [];
   const letters = [];
   for (const id of found.connections) {
@@ -693,18 +694,25 @@ export function checkSchedule(project, walkResults) {
     for (const list of gather(teacherEntries, (entry) => entry.dayType.id + '\u0000' + entry.walk.period + (entry.toPeriod === entry.walk.period + 1 ? '' : '\u0000' + entry.toPeriod) + '\u0000' + entry.teacher.id + (entry.walk.failed === true ? '\u0000stranded' : ''))) {
       const { dayType, teacher, day, move, toPeriod } = list[0];
       const period = list[0].walk.period;
-      const sets = alike(list, (walk) => (walk.failed === true ? 'none' : walk.walking) + '|' + walk.passingSeconds);
+      // the time is the walking and the ride together; a ride is named, as a group's is
+      const timeOf = (walk) => walk.walking + (isWholeSeconds(walk.riding) ? walk.riding : 0);
+      const sets = alike(list, (walk) => (walk.failed === true ? 'none' : timeOf(walk) + '|r' + (isWholeSeconds(walk.riding) ? walk.riding : 0)) + '|' + walk.passingSeconds);
       const first = sets[0].entries[0].walk;
+      const rideOf = (walk) => {
+        if (walk.failed === true || !isWholeSeconds(walk.riding) || walk.riding <= 0) return '';
+        const cars = carsRidden(project, memo, null, findRoom(project, move.fromRoomId), findRoom(project, move.toRoomId));
+        return ', including ' + formatDuration(walk.riding) + ' for ' + (cars.length === 0 ? 'an elevator' : listWords(cars.map((car) => 'Elevator ' + car)));
+      };
       const across = toPeriod !== period + 1;
       const where = (cross) => roomName(findRoom(project, move.fromRoomId), false) + (cross ? ' after ' + periodName(settings, period) : '')
         + ' to ' + roomName(findRoom(project, move.toRoomId), false) + (cross ? ' for ' + periodName(settings, toPeriod) : ' after ' + periodName(settings, period));
       let text = first.failed === true
         ? teacher.name + ' has no way through to walk from ' + where(across) + ' ' + onDays(project, dayType) + runWords(project, sets[0].entries.map((entry) => entry.bellsId)) + ', and ' + passingText(first.passingSeconds) + '.'
-        : teacher.name + ' needs ' + formatDuration(first.walking) + ' to walk from ' + roomName(findRoom(project, move.fromRoomId), false) + (across ? ' after ' + periodName(settings, period) : '')
-        + ' to ' + roomName(findRoom(project, move.toRoomId), false) + (across ? ' for ' + periodName(settings, toPeriod) : ' after ' + periodName(settings, period)) + ' ' + onDays(project, dayType) + runWords(project, sets[0].entries.map((entry) => entry.bellsId)) + ', before any crowding, and ' + passingText(first.passingSeconds) + '.';
+        : teacher.name + ' needs ' + formatDuration(timeOf(first)) + ' to walk from ' + roomName(findRoom(project, move.fromRoomId), false) + (across ? ' after ' + periodName(settings, period) : '')
+        + ' to ' + roomName(findRoom(project, move.toRoomId), false) + (across ? ' for ' + periodName(settings, toPeriod) : ' after ' + periodName(settings, period)) + ' ' + onDays(project, dayType) + runWords(project, sets[0].entries.map((entry) => entry.bellsId)) + rideOf(first) + ', before any crowding, and ' + passingText(first.passingSeconds) + '.';
       for (const set of sets.slice(1)) {
         const walk = set.entries[0].walk;
-        text += ' With ' + bellsNames(set.entries) + (walk.failed === true ? ' bells it has no way through' : ' bells it needs ' + formatDuration(walk.walking)) + ', and ' + passingText(walk.passingSeconds) + '.';
+        text += ' With ' + bellsNames(set.entries) + (walk.failed === true ? ' bells it has no way through' : ' bells it needs ' + formatDuration(timeOf(walk)) + rideOf(walk)) + ', and ' + passingText(walk.passingSeconds) + '.';
       }
       // a teacher with no way through is a finding of its own id, so that
       // accepting a late walk does not silence it (DECISIONS 2026-11-03)

@@ -432,6 +432,19 @@ test('a walk figure worked out for other rooms is passed over, for a group and f
   assert.deepEqual(ofKind(checkSchedule(clean(), { groups: [bare] }), 'group-walk'), []);
 });
 
+test('a teacher\'s walk that rides is said with the ride\'s time and the car\'s name; the time is walking plus riding (SV2-100b)', () => {
+  const project = withElevators(clean());
+  slot(project, '6A', A, 3).teacherIds = [DUNMORE];
+  slot(project, '6A', A, 3).room = 'rsample303';
+  const ride = { ...COACH_WALK, toRoomId: 'rsample303', walking: 200, riding: 86 };
+  const text = (walk) => ofKind(checkSchedule(project, { groups: [], teachers: [walk] }), 'teacher-walk')[0].text;
+  assert.match(text(ride), /^[A-Za-z. ]+ needs 4 min 46 s to walk from Gym to Room 303 after Period 3 on A Day, including 1 min 26 s for Elevator D and Elevator E, before any crowding, and the passing time is 4 min\.$/);
+  assert.match(text({ ...ride, riding: undefined, walking: 286 }), /needs 4 min 46 s to walk from Gym to Room 303 after Period 3 on A Day, before any crowding/, 'no riding, no clause');
+  // two bells with the same walking but a different ride are not alike
+  const result = checkSchedule(project, { groups: [], teachers: [ride, { ...ride, riding: 30, bellsId: null }] });
+  assert.ok(ofKind(result, 'teacher-walk').length >= 1);
+});
+
 // SV2-36 item 1. The figure's own passing time and the bells' are the same
 // number whenever a finding is made, because a figure for any other passing
 // time is passed over; so no sentence here can show which of the two was
@@ -1028,7 +1041,7 @@ test('a step-free group with no step-free way for a walk is a finding whose id e
   delete second.car;
   delete second.staffOnly;
   for (const floor of gap.building.floors) floor.lifts = floor.lifts.filter((cell) => ![second.a, second.b].some((end) => end.floorId === floor.id && end.cell === cell));
-  assert.match(byId(checkSchedule(gap, { groups: [], teachers: [] }), STEP_FREE_ID).text, /; Floor 3 has no elevator\.$/);
+  assert.match(byId(checkSchedule(gap, { groups: [], teachers: [] }), STEP_FREE_ID).text, /: Floor 3 has no elevator\.$/);
   // with the checks' own switch off, none
   const off = school();
   group(off, '8A').stepFree = true;

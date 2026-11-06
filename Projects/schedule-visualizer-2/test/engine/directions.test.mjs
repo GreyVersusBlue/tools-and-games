@@ -458,3 +458,65 @@ test('a failure that says why: a staff-only car is the only way, every exit has 
   assert.equal(describeFailure(project, exit), 'There is no step-free way through from Room 1A on Floor 1 to an exit: every exit has a step.');
   assert.equal(describeFailure(project, { ...exit, avoiding: ['connections'] }), 'There is no way through that keeps to what you asked to avoid from Room 1A on Floor 1 to an exit.', 'what the reader asked for is still said');
 });
+
+// ---------------------------------------------------------------- SV2-100b: a step is named only when it is the cause
+
+const STAIRS_ONLY = ['.AA.BB.', '.AA.BB.', 'S######', '......#', '.......'];
+
+test('a step on a dead-end cell is not blamed where the cause is no elevator; a step that blocks is, and routing says which (stepBlocked)', () => {
+  // two floors joined by stairs only; one step on a corner of Floor 1 that nobody needs
+  const project = planProject([STAIRS_ONLY, STAIRS_ONLY], { exits: [[1, 6, 2, 'Main Door']], connections: [[1, 0, 2, 2, 0, 2]] });
+  project.building.floors[0].notStepFree = [cellAt(project, 1, 6, 3)];
+  const failed = route(routingGraph(project), roomId('1A'), roomId('2B'), { avoidStairs: true });
+  assert.deepEqual([failed.reason, failed.avoiding, failed.stepBlocked], ['unreachable', ['stairs', 'steps'], undefined]);
+  assert.equal(describeFailure(project, failed), 'There is no step-free way through from Room 1A to Room 2B on Floor 2.');
+  // a step across the only corridor on one floor is the cause
+  const steps = planProject([['A...B', '#####', '.....']]);
+  steps.building.floors[0].notStepFree = [cellAt(steps, 1, 2, 1)];
+  const blocked = route(routingGraph(steps), roomId('1A'), roomId('1B'), { avoidStairs: true });
+  assert.equal(blocked.stepBlocked, true);
+  assert.match(describeFailure(steps, blocked), /: a step on Floor 1\.$/);
+  // and the same failure from routing without the mark names no step
+  const { stepBlocked, ...unmarked } = blocked;
+  assert.doesNotMatch(describeFailure(steps, unmarked), /step on/);
+  // a success carries nothing extra
+  assert.equal(route(routingGraph(project), roomId('1A'), roomId('1B'), { avoidStairs: true }).stepBlocked, undefined);
+  // a room whose only door has a step: the "no step-free door" words need the step to be the cause
+  const doors = planProject([['.AAAA.', '.AAAA.', '######', '.BBBB.', '.BBBB.']], { doors: { '1A': [[1, 1, 's']], '1B': [[2, 3, 'n']] } });
+  doors.building.floors[0].spaces.find((space) => space.number === '1A').doors.forEach((door) => { door.stepFree = false; });
+  const noDoor = route(routingGraph(doors), roomId('1A'), roomId('1B'), { avoidStairs: true });
+  assert.deepEqual([noDoor.reason, noDoor.stepBlocked], ['no-entry', true]);
+  assert.equal(describeFailure(doors, noDoor), 'Room 1A on Floor 1 has no step-free door.');
+  assert.equal(describeFailure(doors, { ...noDoor, stepBlocked: undefined }), 'Room 1A on Floor 1 does not open onto a corridor.');
+});
+
+test('a staff-only failure names the staff-only elevators the way is by, from real routing, and none of the others', () => {
+  // D joins Floors 1-2, E joins Floors 2-3: both staff-only
+  const project = withCars(planProject([HALL, HALL, HALL], { exits: [[1, 6, 2, 'Main Door']] }), [
+    { stops: [[1, 0, 2], [2, 0, 2]], letter: 'D', staffOnly: true },
+    { stops: [[2, 6, 2], [3, 6, 2]], letter: 'E', staffOnly: true },
+  ]);
+  const graph = routingGraph(project);
+  const up = route(graph, roomId('1A'), roomId('2B'), { studentsOnly: true });
+  assert.deepEqual([up.reason, up.avoiding], ['unreachable', ['staff-only']]);
+  assert.equal(describeFailure(project, up), 'There is no way through from Room 1A to Room 2B on Floor 2: the only way is by Elevator D, which is staff and authorised only.', 'E is not on the way');
+  const top = route(graph, roomId('1A'), roomId('3B'), { studentsOnly: true });
+  assert.match(describeFailure(project, top), /: the only way is by Elevator D and Elevator E, which are staff and authorised only\.$/);
+  // with no way at all, a staff-only car is not the reason and none is named
+  const cut = route(graph, roomId('1A'), roomId('2B'), { studentsOnly: true, avoidConnections: [project.building.connections[0].id] });
+  assert.equal(cut.staffOnlyCars, undefined);
+  assert.doesNotMatch(describeFailure(project, cut), /staff/);
+});
+
+test('every exit has a step: a real routeToExit failure under avoidStairs is worded so, and only when an exit with a step would have given a way', () => {
+  const project = planProject([['.AA.BB.', '.AA.BB.', '#######']], { exits: [[1, 6, 2, 'Main Door']] });
+  project.building.floors[0].exits[0].stepFree = false;
+  const failed = routeToExit(routingGraph(project), roomId('1A'), { avoidStairs: true });
+  assert.deepEqual([failed.reason, failed.end, failed.avoiding], ['unreachable', 'from', ['stairs', 'step-exits']]);
+  assert.equal(describeFailure(project, failed), 'There is no step-free way through from Room 1A on Floor 1 to an exit: every exit has a step.');
+  // a room cut off from the exit anyway is not blamed on its step
+  const cut = planProject([['.AA.BB.', '.AA.BB.', '###.###']], { exits: [[1, 6, 2, 'Far Door']] });
+  cut.building.floors[0].exits[0].stepFree = false;
+  const stuck = routeToExit(routingGraph(cut), roomId('1A'), { avoidStairs: true });
+  assert.equal(stuck.avoiding.includes('step-exits'), false);
+});

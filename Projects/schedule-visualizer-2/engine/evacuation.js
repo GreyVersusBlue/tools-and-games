@@ -188,11 +188,10 @@ export function stepFreeWaysOut(project, graph, options) {
   const opts = options || {};
   const routing = routingGraph(project, graph);
   const avoided = elevatorConnections(project);
-  const stepExits = [];
-  for (const floor of project.building.floors) for (const exit of floor.exits || []) if (exit.stepFree === false) stepExits.push(exit.id);
   const base = { cache: opts.cache, geometryVersion: opts.geometryVersion, avoidStairs: true, undirected: true };
-  // elevators are shut (a car is shut by any connection of it), exits with a step are not used
-  const shut = { ...base, avoidExits: [...idList(opts.avoidExits), ...stepExits] };
+  // elevators are shut (a car is shut by any connection of it); routeToExit leaves out the exits with
+  // a step itself under avoidStairs, and says 'step-exits' when they were all that was left
+  const shut = { ...base, avoidExits: idList(opts.avoidExits) };
   if (avoided.length > 0) shut.avoidConnections = avoided;
   // the same with the elevators let in, to tell "only by elevator" from "no way"
   const lifted = { ...base, avoidExits: shut.avoidExits };
@@ -220,12 +219,12 @@ export function stepFreeWaysOut(project, graph, options) {
     } else if (avoided.length > 0 && toExit.reason === 'unreachable' && routeToExit(routing, room.id, lifted).ok) {
       entry.reason = 'only-by-elevator';
       entry.why = 'only by elevator';
-    } else if (toExit.reason === 'unreachable' && Array.isArray(toExit.avoiding) && toExit.avoiding.includes('step-exits')) {
-      entry.reason = 'step-exits';
-      entry.why = 'every exit has a step';
     } else if (toExit.reason === 'unreachable' && toExit.stepBlocked === true && entry.sentence.includes(': a step on ')) {
       entry.reason = 'steps';
       entry.why = entry.sentence.slice(entry.sentence.lastIndexOf(': a step on ') + 2).replace(/\.$/, '');
+    } else if (toExit.reason === 'unreachable' && Array.isArray(toExit.avoiding) && toExit.avoiding.includes('step-exits')) {
+      entry.reason = 'step-exits';
+      entry.why = 'every exit has a step';
     } else {
       entry.reason = 'no-way';
       entry.why = 'no step-free way through';

@@ -214,11 +214,11 @@ export function failureCause(project, route) {
     const cars = elevatorCars(project.building ? project.building : project).filter((car) => car.staffOnly && route.staffOnlyCars.includes(car.id)).map((car) => 'Elevator ' + car.label);
     return 'the only way is by ' + (cars.length === 0 ? 'an elevator' : listOf(cars)) + ', which ' + (cars.length > 1 ? 'are' : 'is') + ' staff and authorised only';
   }
-  if (avoided.includes('step-exits') && route.end !== 'to') return 'every exit has a step';
   if (avoided.includes('steps') && route.stepBlocked === true) {
     const step = nearestStep(floors, room);
     if (step !== null) return 'a step on ' + step;
   }
+  if (avoided.includes('step-exits') && route.end !== 'to') return 'every exit has a step';
   return '';
 }
 
