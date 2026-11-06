@@ -1937,7 +1937,7 @@ TG-39 on Sonnet 5.5, in its own worktree; decision #1030. `js/paint.js`, `test/p
 
 **Proof.** `test/paint-window.test.mjs` keeps the old `rasterize`, `assignOwners` and `paintCells` as the oracle and strokes seeded random cells (single, drags, blocks; on and off; with and without a name and colour; every ninth stroke an undo that renews every object) over the sample school, the five migrate fixtures and a generated 2,400-student school, comparing the returned counts and the storey's JSON text after every stroke. 11 tests. Broken on purpose: all rooms counted settled (3 fail, the right ones), no spreading to touching rooms (6), no one-cell margin on the box (7), frozen rooms never rasterized (3), the shape cap counting only traced rooms (the cap test, added because the first four left it green).
 
-**Checks.** `node --test 'test/*.test.mjs'` 2591 to 2618 pass, `tools/blender/validate.mjs` 630, `test/tools/run.mjs` see the PR; board-check `npm run check` and `social:check` as run.
+**Checks.** `node --test 'test/*.test.mjs'` 2591 to 2618 pass, `tools/blender/validate.mjs` 630, `test/tools/run.mjs` 62 of 62, board-check `npm run check`, `social:check` and `ci-check.mjs` green.
 
 **Left.** The saving is small on a connected plan; the rest of a stroke's cost is the whole-sheet lattice, `assignOwners`' scan and `ownedRegions`, which the row did not ask to touch.
 
