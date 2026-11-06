@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHistory, record, undo, redo, canUndo, canRedo, peekUndo, peekRedo, HISTORY_LIMIT } from '../../engine/history.js';
+import * as actions from '../../engine/actions.js';
+import { createStore } from '../../engine/store.js';
+import { validate } from '../../engine/validate.js';
+import { school, clock, makeIds } from './helpers.mjs';
 
 const entry = (n) => ({ label: 'Step ' + n, before: { n: n - 1 }, after: { n }, focus: null, bumps: [] });
 
@@ -88,4 +92,60 @@ test('no function changes the history it is given', () => {
   redo(afterUndo.history);
   assert.equal(frozen.past.length, 2);
   assert.equal(frozen.future.length, 0);
+});
+
+// ---------------------------------------------------------------- the step-free actions through the store (SV2-97)
+
+test('every step-free action is one undo step, the project stays valid after each, and undoing them all gives the first project back byte for byte', () => {
+  const store = createStore({ project: school(), clock, ids: makeIds(9) });
+  const bare = (project) => JSON.stringify({ ...project, modified: null });
+  const first = bare(store.project);
+  const [one, two, three] = store.project.building.floors.map((floor) => floor.id);
+  const stop = (floorId, cell) => ({ floorId, cell });
+  const corridorCell = store.project.building.floors[0].corridors[0].cells[0];
+  const roomWithDoor = store.project.building.floors[0].spaces.find((space) => space.kind === 'room' && space.doors.length > 0);
+  const exit = store.project.building.floors[0].exits[0];
+  const steps = [
+    ['placeLift', { floorId: one, cells: [0] }],
+    ['placeLift', { floorId: two, cells: [0] }],
+    ['placeLift', { floorId: three, cells: [0] }],
+    ['connectStairs', { a: stop(one, 0), b: stop(two, 0), id: 'celevator1' }],
+    ['connectStairs', { a: stop(two, 0), b: stop(three, 0), id: 'celevator2' }],
+    ['setElevator', { carId: 'celevator1', staffOnly: false }],
+    ['setDoorStepFree', { roomId: roomWithDoor.id, door: { cell: roomWithDoor.doors[0].cell, side: roomWithDoor.doors[0].side }, stepFree: false }],
+    ['setExitStepFree', { exitId: exit.id, stepFree: false }],
+    ['setStepCells', { floorId: one, cells: [corridorCell], stepFree: false }],
+    ['addRefuge', { floorId: one, cell: corridorCell, name: 'North stair' }],
+    ['setRefuge', { refugeId: null, name: 'North landing' }],
+    ['setSetting', { key: 'elevatorWaitSeconds', value: 20 }],
+    ['setSetting', { key: 'elevatorSecondsPerFloor', value: 5 }],
+    ['setSetting', { key: 'elevatorPeoplePerTrip', value: 10 }],
+    ['addGroup', { name: 'Step-free group', stepFree: true }],
+    ['editGroup', { id: null, stepFree: false }],
+    ['resizeFloor', { floorId: one, left: 1 }],
+    ['removeRefuge', { refugeId: null }],
+    ['disconnectStairs', { connectionId: 'celevator2' }],
+    ['placeStairs', { floorId: two, cells: [1 + 0] }],
+    ['deleteFloor', { id: three }],
+  ];
+  const states = [first];
+  for (const [name, payload] of steps) {
+    if (name === 'setRefuge' || name === 'removeRefuge') payload.refugeId = store.project.building.floors[0].refuges[0].id;
+    if (name === 'editGroup') payload.id = store.project.groups[store.project.groups.length - 1].id;
+    const before = store.history.past.length;
+    store.apply(actions[name], payload);
+    assert.equal(store.history.past.length, before + 1, name + ' is one undo step');
+    const problems = validate(store.project);
+    assert.deepEqual(problems, [], name + ' leaves a valid project: ' + JSON.stringify(problems));
+    states.push(bare(store.project));
+  }
+  assert.equal(new Set(states).size, states.length, 'every step changed the project');
+  for (let n = steps.length - 1; n >= 0; n -= 1) {
+    store.undo();
+    assert.equal(bare(store.project), states[n], 'undoing ' + steps[n][0] + ' gives back the project before it');
+  }
+  for (let n = 1; n <= steps.length; n += 1) {
+    store.redo();
+    assert.equal(bare(store.project), states[n], 'redoing ' + steps[n - 1][0] + ' gives its result back');
+  }
 });
