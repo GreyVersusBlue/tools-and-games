@@ -45,7 +45,8 @@
 //   { kind: 'anchor', cell }       where a two-click line starts
 
 import { mix, labelOn, parse, contrast, ROOM_STRENGTH, OTHER_STRENGTH } from '../colour.js';
-import { CELL_CORRIDOR, CELL_STAIRS } from '../../engine/schema.js';
+import { CELL_CORRIDOR, CELL_STAIRS, ELEVATOR_KIND, elevatorCars } from '../../engine/schema.js';
+import { pendingElevatorLetter } from '../components/words.js';
 
 const TOKENS = ['paper', 'card', 'ink', 'ink-2', 'line', 'line-strong', 'accent', 'accent-ink', 'accent-soft', 'problem', 'warning', 'grid', 'corridor', 'corridor-edge', 'stairs', 'room-default'];
 // Below this many pixels a label is left out rather than drawn unreadable.
@@ -103,6 +104,7 @@ function shapeOf(space, width) {
   if (held && held.width === width) return held;
   const inside = new Set(space.cells);
   const doors = new Set((space.doors || []).map((door) => door.cell + ':' + door.side));
+  const stepDoors = new Set((space.doors || []).filter((door) => door.stepFree === false).map((door) => door.cell + ':' + door.side));
   const cells = space.cells.slice().sort((a, b) => a - b);
   const runs = [];
   const edges = { n: [], e: [], s: [], w: [] };
@@ -131,7 +133,7 @@ function shapeOf(space, width) {
       if (!open[side]) continue;
       // a piece is [fixed line, from, to]: a row line for n and s, a column line for e and w
       const piece = side === 'n' ? [y, x, x + 1] : side === 's' ? [y + 1, x, x + 1] : side === 'w' ? [x, y, y + 1] : [x + 1, y, y + 1];
-      if (doors.has(cell + ':' + side)) doorEdges.push({ side, piece });
+      if (doors.has(cell + ':' + side)) doorEdges.push({ side, piece, step: stepDoors.has(cell + ':' + side) });
       else edges[side].push(piece);
     }
   }
@@ -176,6 +178,7 @@ export function createRenderer(canvas) {
   const labels = new Map();
   let letters = { connections: null, floors: null, floorId: null, byCell: new Map(), ways: new Map() };
   let surnames = { teachers: null, byId: new Map() };
+  let stops = { floors: null, connections: null, byFloor: new Map() };
 
   // The colours are kept once read, until the theme changes. A canvas that
   // is not in the document has no styles of its own: it reads the page's
@@ -238,6 +241,25 @@ export function createRenderer(canvas) {
     return 0;
   }
 
+  // The elevator stops of a floor: cell -> { letter, staffOnly, connected }.
+  // A stop not yet connected shows the letter the next elevator will take.
+  function elevatorStops(project, floor) {
+    const building = project.building;
+    if (stops.floors !== building.floors || stops.connections !== building.connections) {
+      const byFloor = new Map();
+      const cars = elevatorCars(building);
+      const pending = pendingElevatorLetter(building);
+      for (const car of cars) {
+        for (const stop of car.stops) {
+          if (!byFloor.has(stop.floorId)) byFloor.set(stop.floorId, new Map());
+          byFloor.get(stop.floorId).set(stop.cell, { letter: car.label === '' ? pending : car.label, staffOnly: car.staffOnly, connected: car.connectionIds.length > 0 });
+        }
+      }
+      stops = { floors: building.floors, connections: building.connections, byFloor };
+    }
+    return stops.byFloor.get(floor.id) || new Map();
+  }
+
   function connectionLetters(project, floor) {
     const connections = project.building.connections;
     const floors = project.building.floors;
@@ -249,6 +271,8 @@ export function createRenderer(canvas) {
       return found ? found.level : 0;
     };
     for (const connection of connections) {
+      // an elevator's stops carry the car's letter, drawn with their own glyph
+      if (connection.kind === ELEVATOR_KIND) continue;
       for (const [index, end] of [connection.a, connection.b].entries()) {
         if (end.floorId !== floor.id) continue;
         if (!byCell.has(end.cell)) byCell.set(end.cell, []);
@@ -278,6 +302,90 @@ export function createRenderer(canvas) {
       surnames = { teachers: project.teachers, byId };
     }
     return surnames.byId.get(teacherId) || '';
+  }
+
+  // An elevator stop (DESIGN 13.2): two solid triangles, up over down, in the
+  // ink; the car's letter in a pill under them, a key-shaped notch on the pill
+  // when staff only; the red "!" badge when nothing is connected.
+  function drawStop(left, top, w, lift, ink, t, scale) {
+    const cx = left + w / 2;
+    const pill = w >= 18;
+    const cy = top + (pill ? w * 0.32 : w * 0.5);
+    const reach = Math.max(2, w * (pill ? 0.14 : 0.2));
+    g.fillStyle = ink;
+    g.beginPath();
+    g.moveTo(cx, cy - reach * 1.5);
+    g.lineTo(cx + reach, cy - reach * 0.2);
+    g.lineTo(cx - reach, cy - reach * 0.2);
+    g.closePath();
+    g.moveTo(cx, cy + reach * 1.5);
+    g.lineTo(cx + reach, cy + reach * 0.2);
+    g.lineTo(cx - reach, cy + reach * 0.2);
+    g.closePath();
+    g.fill();
+    if (pill) {
+      const s = fitSize(lift.letter, 700, Math.max(MIN_LABEL, w * 0.34 * scale), w - 12 - (lift.staffOnly ? w * 0.2 : 0));
+      if (s > 0) {
+        g.font = font(700, s);
+        const wide = g.measureText(lift.letter).width;
+        const notch = lift.staffOnly ? s * 0.9 : 0;
+        const pw = Math.min(w - 4, wide + s * 0.7 + notch);
+        const ph = s + 4;
+        const px = cx - pw / 2;
+        const py = top + w * 0.7 - ph / 2;
+        g.beginPath();
+        g.roundRect ? g.roundRect(px, py, pw, ph, ph / 2) : g.rect(px, py, pw, ph);
+        g.fillStyle = t.paper;
+        g.fill();
+        g.strokeStyle = ink;
+        g.lineWidth = 1.25;
+        g.stroke();
+        g.fillStyle = ink;
+        g.textAlign = 'center';
+        g.fillText(lift.letter, px + (pw - notch) / 2 + s * 0.15, py + ph / 2 + 0.5);
+        if (lift.staffOnly) {
+          // a key: a small ring and a short shaft with one tooth
+          const kx = px + pw - notch / 2 - s * 0.15;
+          const ky = py + ph / 2;
+          const ring = Math.max(1.4, s * 0.17);
+          g.beginPath();
+          g.arc(kx - s * 0.2, ky, ring, 0, Math.PI * 2);
+          g.moveTo(kx - s * 0.2 + ring, ky);
+          g.lineTo(kx + s * 0.32, ky);
+          g.moveTo(kx + s * 0.22, ky);
+          g.lineTo(kx + s * 0.22, ky + s * 0.22);
+          g.lineWidth = Math.max(1, s / 9);
+          g.stroke();
+        }
+      }
+    }
+    if (!lift.connected) {
+      const r = Math.max(2, Math.min(7, w * 0.2));
+      const bx = left + w - r - 1;
+      const by = top + r + 1;
+      g.beginPath();
+      g.arc(bx, by, r, 0, Math.PI * 2);
+      g.fillStyle = t.problem;
+      g.fill();
+      if (r >= 5) {
+        g.font = font(600, Math.round(r * 1.7));
+        g.fillStyle = labelOf(t.problem);
+        g.textAlign = 'center';
+        g.fillText('!', bx, by + 0.5);
+      }
+    }
+  }
+
+  // Two short parallel bars across a place, in the warning colour (or the ink
+  // where the warning would not read on `under`): a step (DESIGN 13.3).
+  function stepBars(x0, y0, x1, y1, thick, under) {
+    g.strokeStyle = contrast(theme.warning, under) >= 3 ? theme.warning : theme.ink;
+    g.lineWidth = thick;
+    g.lineCap = 'butt';
+    g.beginPath();
+    g.moveTo(x0, y0);
+    g.lineTo(x1, y1);
+    g.stroke();
   }
 
   function draw(scene) {
@@ -432,6 +540,7 @@ export function createRenderer(canvas) {
 
     // stairs: a chevron, the connection letter, and "!" where there is none
     const byCell = connectionLetters(project, floor);
+    const lifts = elevatorStops(project, floor);
     const stairsLabel = labelOf(t.stairs);
     g.textAlign = 'center';
     g.textBaseline = 'middle';
@@ -441,6 +550,11 @@ export function createRenderer(canvas) {
       const left = X(x);
       const top = Y(y);
       const w = X(x + 1) - left;
+      const lift = lifts.get(cell);
+      if (lift) {
+        drawStop(left, top, w, lift, stairsLabel, t, large);
+        continue;
+      }
       const letter = (byCell.get(cell) || []).join(' ');
       const lettered = letter !== '' && w >= 18;
       if (w >= 10) {
@@ -509,6 +623,85 @@ export function createRenderer(canvas) {
       }
     }
 
+    // steps in a corridor: two short bars across the cell, in the warning colour
+    if (size >= 6) {
+      for (const cell of floor.notStepFree || []) {
+        const x = cell % width;
+        const y = Math.floor(cell / width);
+        if (x < seen.x0 || x >= seen.x1 || y < seen.y0 || y >= seen.y1) continue;
+        const bar = Math.max(1.5, size / 12);
+        for (const at of [0.36, 0.64]) stepBars(X(x) + size * 0.2, Y(y) + size * at, X(x) + size * 0.8, Y(y) + size * at, bar, t.corridor);
+      }
+    }
+    // a door with a step: the same two bars across the gap
+    for (const { shape } of onScreen) {
+      for (const door of shape.doorEdges) {
+        if (!door.step) continue;
+        const [at, from, to] = door.piece;
+        const across = door.side === 'n' || door.side === 's';
+        const bar = Math.max(1.5, size / 12);
+        const a = from + (to - from) * 0.15;
+        const b = to - (to - from) * 0.15;
+        for (const off of [-0.12, 0.12]) {
+          if (across) stepBars(X(a), Y(at + off), X(b), Y(at + off), bar, t.corridor);
+          else stepBars(X(at + off), Y(a), X(at + off), Y(b), bar, t.corridor);
+        }
+      }
+    }
+    // areas of refuge: a rounded square in the accent with a seated figure, the name beside it when there is room
+    const refugeNames = [];
+    for (const refuge of floor.refuges || []) {
+      const x = refuge.cell % width;
+      const y = Math.floor(refuge.cell / width);
+      if (x < seen.x0 || x >= seen.x1 || y < seen.y0 || y >= seen.y1) continue;
+      const left = X(x);
+      const top = Y(y);
+      const w = X(x + 1) - left;
+      if (w < 6) continue;
+      const inset = Math.max(1.5, w * 0.08);
+      g.beginPath();
+      if (g.roundRect) g.roundRect(left + inset, top + inset, w - inset * 2, w - inset * 2, w * 0.22);
+      else g.rect(left + inset, top + inset, w - inset * 2, w - inset * 2);
+      g.strokeStyle = t.accent;
+      g.lineWidth = Math.max(1.5, w / 12);
+      g.lineJoin = 'round';
+      g.stroke();
+      if (w >= 12) {
+        // head, back, seat and shin
+        g.beginPath();
+        g.arc(left + w * 0.42, top + w * 0.27, w * 0.07, 0, Math.PI * 2);
+        g.moveTo(left + w * 0.42, top + w * 0.38);
+        g.lineTo(left + w * 0.42, top + w * 0.58);
+        g.lineTo(left + w * 0.64, top + w * 0.58);
+        g.lineTo(left + w * 0.64, top + w * 0.76);
+        g.lineWidth = Math.max(1.2, w / 14);
+        g.lineCap = 'round';
+        g.stroke();
+        g.lineCap = 'butt';
+      }
+      g.lineJoin = 'miter';
+      if (size >= 22 && refuge.name !== '') refugeNames.push({ refuge, x, y });
+    }
+    if (refugeNames.length > 0) {
+      const small = Math.max(MIN_LABEL, Math.min(Math.round(12 * large), Math.round(size * 0.34 * large)));
+      g.font = font(600, small);
+      g.textAlign = 'left';
+      g.textBaseline = 'middle';
+      if ('letterSpacing' in g) g.letterSpacing = '0.06em';
+      g.lineJoin = 'round';
+      for (const { refuge, x, y } of refugeNames) {
+        const text = refuge.name.toUpperCase();
+        g.strokeStyle = t.paper;
+        g.lineWidth = 3;
+        g.strokeText(text, X(x + 1) + 3, Y(y) + size / 2 + 0.5);
+        g.fillStyle = t.accent;
+        g.fillText(text, X(x + 1) + 3, Y(y) + size / 2 + 0.5);
+      }
+      g.lineJoin = 'miter';
+      if ('letterSpacing' in g) g.letterSpacing = '0px';
+      g.textAlign = 'center';
+    }
+
     // exits: a thick dash on the edge that leads outside, the door name beyond it
     // A door name's place: its anchor, alignment and box in pixels, beyond the
     // dash (outside the floor) or, inward, on the floor's side of it; slid
@@ -571,6 +764,15 @@ export function createRenderer(canvas) {
       g.lineWidth = thick;
       g.lineCap = 'butt';
       g.stroke();
+      if (exit.stepFree === false) {
+        // steps outside this door: two thin bars beside the dash
+        const bar = Math.max(1.5, size / 14);
+        const gap = thick / 2 + bar + 1;
+        for (const off of [-gap, gap]) {
+          if (side === 'n' || side === 's') stepBars(X(x + 0.2), (side === 'n' ? Y(y) : Y(y + 1)) + off, X(x + 0.8), (side === 'n' ? Y(y) : Y(y + 1)) + off, bar, t.paper);
+          else stepBars((side === 'w' ? X(x) : X(x + 1)) + off, Y(y + 0.2), (side === 'w' ? X(x) : X(x + 1)) + off, Y(y + 0.8), bar, t.paper);
+        }
+      }
       const s = Math.min(Math.round(MAX_LABEL * large), Math.max(MIN_LABEL, Math.round(size * 0.5 * large)));
       if (exit.doorName !== '' && size >= 12) {
         g.font = font(600, s);

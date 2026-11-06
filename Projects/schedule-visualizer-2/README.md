@@ -227,6 +227,7 @@ row names a file it does not run.
 | `test/browser/draw-keyboard.mjs` | Drawing a building with the keyboard alone |
 | `test/browser/draw-touch.mjs` | Drawing with a finger and with a pen |
 | `test/browser/doors-stairs.mjs` | Doors, stairs connections, exits, corridor names, the cell's menu |
+| `test/browser/elevators.mjs` | The Elevator tool and connect mode for an elevator: by pointer, by keys alone, and at 390 px with a finger |
 | `test/browser/inspector.mjs` | The building inspector's five tabs |
 | `test/browser/search.mjs` | Finding rooms, teachers and groups from the top bar |
 | `test/browser/storage.mjs` | Saving on the device, with a real IndexedDB |

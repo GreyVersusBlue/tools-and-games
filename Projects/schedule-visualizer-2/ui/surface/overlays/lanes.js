@@ -236,7 +236,7 @@ function drawBands(g, view, floor, bands, colours) {
       const cell = y * floor.width + x;
       let now = x < seen.x1 ? bands[cell] : 0;
       if (now === BAND_EXCLUDED) now = 0;
-      // a stairs cell keeps its letter: it gets a frame, below
+      // a stairs cell keeps its letter, and an elevator stop (also "S") its glyph: each gets a frame, below
       const stairs = now !== 0 && floor.cells[cell] === CELL_STAIRS;
       if (stairs) {
         g.fillStyle = colours[now - 1];

@@ -139,6 +139,7 @@ export const GROUPS = {
     'browser/draw-keyboard.mjs', // SV2-06
     'browser/draw-touch.mjs', // SV2-06
     'browser/doors-stairs.mjs', // SV2-07
+    'browser/elevators.mjs', // SV2-101
     'browser/inspector.mjs', // SV2-07
     'browser/search.mjs', // SV2-07
     'browser/storage.mjs', // SV2-03
@@ -285,6 +286,7 @@ export const BROWSER_SECONDS = {
   'browser/staff-duties.mjs': 5,
   'browser/calendar-faults.mjs': 5,
   'browser/doors-stairs.mjs': 5,
+  'browser/elevators.mjs': 6,
   'browser/m1-pass.mjs': 5,
   'browser/congestion-scenario.mjs': 5,
   'browser/shell-owed.mjs': 4,
