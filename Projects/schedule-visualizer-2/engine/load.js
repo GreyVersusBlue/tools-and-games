@@ -105,8 +105,17 @@ function eachCrossed(graph, linkOfId, found, onNode, onLink) {
   }
 }
 
+// A connection's id to its link; a car's id (shared by every link of the car)
+// to the car's one link, `graph.cars[car].link`, never whichever came last, so
+// a ride is charged once, to the car (ARCHITECTURE 19.5).
 function linkIndex(graph) {
-  return new Map(graph.links.map((link, index) => [link.id, index]));
+  const cars = Array.isArray(graph.cars) ? graph.cars : [];
+  const map = new Map();
+  graph.links.forEach((link, index) => {
+    if (link.elevator === true && cars[link.car] && cars[link.car].link !== index) return;
+    map.set(link.id, index);
+  });
+  return map;
 }
 
 // Which nodes lie inside an exclusion zone.

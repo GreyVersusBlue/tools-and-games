@@ -17,7 +17,8 @@ import { buildGraph, nodeAt } from '../../engine/graph.js';
 import { route, routesForSchedule, routingGraph } from '../../engine/routing.js';
 import { emptySlot, emptyBells, GROUP_COLOUR_PRESETS } from '../../engine/schema.js';
 import { checkSchedule } from '../../engine/checks.js';
-import { isLate, crowdCap, columnLength, routePath, walkingSeconds, simulateTransition, simulateDayTransition, simulateDay, simulateSchedule, teacherWalks, walkResults, CAP_MINIMUM_SECONDS, CROSSING_WAIT_MAX } from '../../engine/crowd.js';
+import { validate } from '../../engine/validate.js';
+import { isLate, crowdCap, columnLength, routePath, walkingSeconds, simulateTransition, simulateDayTransition, simulateDay, simulateSchedule, teacherWalks, walkResults, rideFor, CAP_MINIMUM_SECONDS, CROSSING_WAIT_MAX } from '../../engine/crowd.js';
 import { SAMPLE_PROBLEMS } from '../../data/sample-school.js';
 import { meetingSlots, runsOf } from '../../engine/runs.js';
 import { school, clone, assertValid } from './helpers.mjs';
@@ -792,4 +793,204 @@ test('an entry naming a follower delays the follower\'s own run, the one a No cl
   assert.ok(held.walks.groups.some((walk) => walk.dayTypeId === 'dsample00c' && walk.released === 90));
   const none = simulate(heldFollowerSchool(false));
   assert.equal(none.crowd.days.length, 2, 'with no run of its own the follower adds none, and so holds nobody');
+});
+
+
+// ---- elevators (SV2-99, ARCHITECTURE 19.5)
+//
+// Three floors of one hall, the lift at the west end of each corridor. A cell
+// takes 3 seconds, the wait for a car 30 and a floor 6, so a group of 6 (one
+// slot long, one trip) going from 1A to 2A walks 4 cells = 12 s and holds the
+// car for 30 + 6 = 36 s.
+
+function withCars(project, cars) {
+  const at = (number, x, y) => {
+    const floor = project.building.floors[number - 1];
+    return { floorId: floor.id, cell: y * floor.width + x };
+  };
+  let n = project.building.connections.length;
+  cars.forEach((car, index) => {
+    const letter = car.letter || String.fromCharCode(68 + index);
+    for (const [number, x, y] of car.stops) {
+      const floor = project.building.floors[number - 1];
+      const cell = y * floor.width + x;
+      floor.cells = floor.cells.slice(0, cell) + 'S' + floor.cells.slice(cell + 1);
+      floor.lifts = Array.from(new Set([...(floor.lifts || []), cell])).sort((a, b) => a - b);
+    }
+    const pairs = car.mode === 'star' ? car.stops.slice(1).map((stop) => [car.stops[0], stop]) : car.stops.slice(1).map((stop, i) => [car.stops[i], stop]);
+    for (const [a, b] of pairs) {
+      n += 1;
+      project.building.connections.push({ id: 'celev' + String(n).padStart(5, '0'), label: letter + n, a: at(...a), b: at(...b), direction: 'both', kind: 'elevator', staffOnly: car.staffOnly === true, car: letter });
+    }
+  });
+  assert.deepEqual(validate(project), []);
+  return project;
+}
+
+const HALL = ['.AA.BB.', '.AA.BB.', '#######', '.......', '.......'];
+
+function liftHall(mode, settings) {
+  const project = planProject([HALL, HALL, HALL], { exits: [[1, 6, 2, 'Main Door']] });
+  Object.assign(project.settings, settings || {});
+  return withCars(project, [{ stops: [[1, 0, 2], [2, 0, 2], [3, 0, 2]], mode: mode || 'chain' }]);
+}
+
+// Same as run(), with each walker's own options ([id, from, to, headCount, routeOptions]).
+function ride(project, walks, options) {
+  const graph = routingGraph(project);
+  const walkers = walks.map(([id, from, to, headCount, routeOptions]) => ({ id, headCount, route: route(graph, roomId(from), roomId(to), routeOptions) }));
+  const result = simulateTransition(graph, walkers, { passingSeconds: 240, marginSeconds: 0, ...options });
+  return { graph, walkers, result, byId: Object.fromEntries(result.groups.map((group) => [group.groupId, group])) };
+}
+
+test('a ride is one slot of its own: walking leaves it out, riding is what the car held the group, and the total is the sum', () => {
+  const { graph, walkers, byId } = ride(liftHall(), [['g1', '1A', '2A', 6]]);
+  const path = routePath(graph, walkers[0].route);
+  assert.equal(path.length, 5, 'cell, cell, the car, cell, cell');
+  assert.deepEqual(Array.from(path.rides), [0, 0, 1, 0, 0], 'the car slot is the one that changes a floor');
+  const g = byId.g1;
+  assert.equal(g.walking, 12, 'four cells at 3 s: no car slot');
+  assert.equal(g.riding, 36, 'the 30 s wait and 6 s for one floor');
+  assert.equal(g.waiting, 0);
+  assert.equal(g.total, 48);
+  assert.equal(g.total, (g.released || 0) + g.walking + g.riding + g.waiting, 'total = released + walking + riding + waiting');
+  assert.equal(g.arrived, true);
+  assert.equal(g.slots, 5);
+  assert.equal(walkingSeconds(graph, walkers[0].route), 48, 'a walk timed by itself counts the ride as wait + ride');
+  assert.equal(walkers[0].route.seconds, 48, 'and agrees with the router');
+});
+
+test('riding is absent from a group that takes no car, and so are its walks', () => {
+  const project = liftHall();
+  const { byId } = ride(project, [['g1', '1A', '1B', 6]]);
+  assert.equal('riding' in byId.g1, false, 'no ride, no `riding` key');
+  assert.equal(byId.g1.walking, byId.g1.total);
+});
+
+test('a ride changing two floors is wait + 2 floors, and the figure is the car\'s whichever stops it joins', () => {
+  for (const mode of ['chain', 'star']) {
+    const { byId } = ride(liftHall(mode), [['g1', '1A', '3B', 6]]);
+    assert.equal(byId.g1.riding, 30 + 12, mode + ': one ride, 30 s wait and 6 s for each of two floors');
+    assert.equal(byId.g1.walking, 7 * 3, mode + ': seven cells, the lift cells included, and no car slot');
+    assert.equal(byId.g1.total, 63, mode);
+    assert.equal(byId.g1.total, byId.g1.walking + byId.g1.riding, mode);
+  }
+});
+
+test('rideFor: one trip is wait + ride; more people need more trips, less the column\'s own walk out; never under wait + ride', () => {
+  const graph = routingGraph(liftHall());
+  // 25 students: 4 trips of 8, a column of 5 cells. 30 + 6 + 3 × (2 × 6 + 2 × 10) − 4 × 3 = 36 + 96 − 12
+  assert.equal(rideFor(graph, 1, 25), 120);
+  assert.equal(rideFor(graph, 1, 6), 36, 'one trip');
+  assert.equal(rideFor(graph, 1, 8), 36, 'a column of 2 takes 3 s back, but the hold is never under wait + ride');
+  assert.equal(rideFor(graph, 1, 9), 36 + (12 + 20) - 3, 'two trips, a column of 2');
+  assert.equal(rideFor(graph, 2, 9), 30 + 12 + (24 + 20) - 3, 'a ride of two floors: the ride is 12 s each way');
+  const { byId } = ride(liftHall(), [['g1', '1A', '2A', 25]]);
+  assert.equal(byId.g1.riding, 120);
+  assert.equal(byId.g1.walking, 12);
+  assert.equal(byId.g1.total, 132);
+  const small = routingGraph(liftHall('chain', { elevatorPeoplePerTrip: 25 }));
+  assert.equal(rideFor(small, 1, 25), 36, 'a car that holds the whole class takes one trip');
+  const slow = routingGraph(liftHall('chain', { elevatorWaitSeconds: 0, elevatorSecondsPerFloor: 2 }));
+  assert.equal(rideFor(slow, 1, 6), 2, 'a wait of 0 stays 0');
+});
+
+test('two groups wanting one car queue for it, the second waits for the car, and the waiting is charged to the car', () => {
+  const { graph, result, byId } = ride(liftHall(), [['g1', '1A', '2A', 6], ['g2', '1A', '2A', 6]]);
+  // g1 takes the car at tick 6 and holds it 36 s; g2, a slot behind, asks for it
+  // at tick 10, is refused from then until tick 42 (33 s) and takes it at tick 43,
+  // after waiting 4 s for the first slot. It then rides 36 s and walks 6 more.
+  assert.deepEqual(figures(byId.g1), { walking: 12, waiting: 0, total: 48, late: false, arrived: true });
+  assert.deepEqual(figures(byId.g2), { walking: 12, waiting: 37, total: 85, late: false, arrived: true });
+  assert.equal(byId.g2.riding, 36);
+  assert.equal(byId.g2.total, byId.g2.walking + byId.g2.riding + byId.g2.waiting);
+  const car = graph.cars[0].link;
+  assert.equal(result.connectionDelay[car], 33, 'the 33 s at the car are the car\'s delay');
+  assert.equal(result.connectionDelay.reduce((a, b) => a + b, 0), 33, 'and no other link of the car is charged');
+  const first = routePath(graph, graph && ride(liftHall(), [['g1', '1A', '2A', 6]]).walkers[0].route);
+  assert.equal(result.cellDelay[first.nodes[0]], 4, 'the 4 s at the door are the cell\'s');
+});
+
+test('the car is shared by both directions: a group going up and one coming down queue for the one car', () => {
+  const { graph, result, byId } = ride(liftHall(), [['g1', '1A', '2A', 6], ['g2', '2A', '1A', 6]]);
+  // both reach the lift cell on their own floor at tick 6; the car is one slot, so the lower id takes it
+  assert.equal(byId.g1.waiting, 0);
+  assert.ok(byId.g2.waiting >= 36, 'the other waits out the first\'s ride: ' + byId.g2.waiting);
+  assert.ok(result.connectionDelay[graph.cars[0].link] >= 36);
+});
+
+test('a car\'s whole column holds the car until its tail is through: a longer group makes the next wait longer', () => {
+  const short = ride(liftHall(), [['g1', '1A', '2A', 6], ['g2', '1A', '2A', 6]]).byId.g2;
+  const long = ride(liftHall(), [['g1', '1A', '2A', 25], ['g2', '1A', '2A', 6]]).byId.g2;
+  assert.ok(long.waiting > short.waiting, 'the second group waits longer for a class of 25: ' + long.waiting + ' against ' + short.waiting);
+});
+
+test('the elevator figures are the same with the groups in either order', () => {
+  const walks = [['g1', '1A', '2A', 25], ['g2', '1A', '3B', 6], ['g3', '2B', '1A', 12], ['g4', '1B', '2A', 6], ['g5', '3A', '1B', 20]];
+  const forwards = ride(liftHall(), walks).result;
+  const backwards = ride(liftHall(), walks.slice().reverse()).result;
+  assert.deepEqual(backwards.groups, forwards.groups);
+  assert.deepEqual(backwards.connectionDelay, forwards.connectionDelay);
+  assert.deepEqual(backwards.cellDelay, forwards.cellDelay);
+  assert.ok(forwards.groups.some((group) => group.riding > 0));
+});
+
+test('a school with an elevator and its groups reversed gives every figure of every walk the same', () => {
+  const rows = { 'Group 1': ['1A', '2A', '1B'], 'Group 2': ['2B', '1A', '3A'], 'Group 3': ['1A', '3B', '2A'] };
+  const build = (reverse) => {
+    const project = withSchedule(liftHall(), rows, { 'Group 1': 25 });
+    if (reverse) project.groups.reverse();
+    return project;
+  };
+  const outcome = (project) => {
+    const graph = routingGraph(project);
+    const crowd = simulateSchedule(project, routesForSchedule(project, graph), graph);
+    return { crowd, walks: walkResults(project, crowd, graph) };
+  };
+  const a = outcome(build(false));
+  const b = outcome(build(true));
+  assert.deepEqual(b.crowd, a.crowd);
+  const byGroup = (list) => list.slice().sort((x, y) => (x.groupId + x.period < y.groupId + y.period ? -1 : 1));
+  assert.deepEqual(byGroup(b.walks.groups), byGroup(a.walks.groups));
+  assert.ok(a.walks.groups.some((walk) => walk.riding > 0), 'some walk rides');
+});
+
+test('groupWalks and walkResults carry riding, absent when 0', () => {
+  const project = withSchedule(liftHall(), { 'Group 1': ['1A', '2A', '2A'], 'Group 2': ['1B', '1A', '1A'] }, {});
+  project.groups[0].stepFree = true;
+  const graph = routingGraph(project);
+  const crowd = simulateSchedule(project, routesForSchedule(project, graph), graph);
+  const walks = walkResults(project, crowd, graph).groups;
+  const first = walks.find((walk) => walk.groupId === project.groups[0].id && walk.period === 0);
+  const second = walks.find((walk) => walk.groupId === project.groups[1].id && walk.period === 0);
+  assert.ok(first.riding > 0 && first.total === first.walking + first.riding + first.waiting, JSON.stringify(first));
+  assert.equal('riding' in second, false, 'a walk that takes no car has no riding');
+});
+
+test('a teacher\'s walk counts wait + ride and walks without the car slot, and agrees with the router', () => {
+  const project = liftHall();
+  const graph = routingGraph(project);
+  const up = route(graph, roomId('1A'), roomId('2A'));
+  assert.equal(walkingSeconds(graph, up), 4 * 3 + 30 + 6, 'four cells at 3 s, the 30 s wait and 6 s a floor');
+  assert.equal(walkingSeconds(graph, up), up.seconds);
+  const along = route(graph, roomId('1A'), roomId('1B'));
+  assert.equal(walkingSeconds(graph, along), along.seconds, 'a walk with no car is its cells');
+  const slow = routingGraph(liftHall('chain', { elevatorWaitSeconds: 60, elevatorSecondsPerFloor: 10 }));
+  assert.equal(walkingSeconds(slow, route(slow, roomId('1A'), roomId('3B'))), 7 * 3 + 60 + 20, 'the settings are the ride\'s');
+});
+
+test('a project with no elevator: no walker has a car slot, no figure has riding, and the slot numbering is as it was', () => {
+  const STAIRHALL = ['.AA.BB.', '.AA.BB.', 'S######', '.......', '.......'];
+  const project = planProject([STAIRHALL, STAIRHALL], { connections: [[1, 0, 2, 2, 0, 2]], exits: [[1, 6, 2, 'Main Door']] });
+  const graph = routingGraph(project);
+  assert.deepEqual(graph.cars, []);
+  const found = route(graph, roomId('1A'), roomId('2A'));
+  const path = routePath(graph, found);
+  assert.equal(path.rides.every((levels) => levels === 0), true);
+  assert.equal(path.length, 4 + 3, 'four cells and the 8 s stairs as 3 slots');
+  assert.equal(found.stairs, 1);
+  assert.equal(walkingSeconds(graph, found), path.length * 3);
+  const { byId } = ride(project, [['g1', '1A', '2A', 6]]);
+  assert.equal(Object.keys(byId.g1).includes('riding'), false);
+  assert.equal(byId.g1.total, byId.g1.walking);
 });
