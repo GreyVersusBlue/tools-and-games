@@ -1,0 +1,31 @@
+{
+  "commit": "6f84f965",
+  "sample": {
+    "plain": {
+      "routes": 182,
+      "sha256": "fe968cd6fdea0834f0ac459d95e63053193ee9f42cfa514d666ad6c8218a3d75"
+    },
+    "step-free": {
+      "routes": 182,
+      "sha256": "69d6bcfdd41c459772b45a018d9f8ad2da5221e8c807b6958074481264403cca"
+    },
+    "undirected": {
+      "routes": 182,
+      "sha256": "001824cacec9d084fc32c7652b9b333c456890582f05eed47c7d98063a4f575c"
+    }
+  },
+  "big": {
+    "plain": {
+      "routes": 22650,
+      "sha256": "a093ca97db200f4bfe58f5ef660643077993b66839f02f25efebe399a8fbe879"
+    },
+    "step-free": {
+      "routes": 22650,
+      "sha256": "437474dc4d58457ceff2bea9603a4454a2c65dd47b4332101fe2d4a5e28ac316"
+    },
+    "undirected": {
+      "routes": 22650,
+      "sha256": "a093ca97db200f4bfe58f5ef660643077993b66839f02f25efebe399a8fbe879"
+    }
+  }
+}

@@ -37,7 +37,7 @@ export const HEADINGS = DOOR_SIDES;
 //                joined), all with the car's id and { elevator: true, car,
 //                staffOnly }, direction 'both'. Stairs links have no
 //                `elevator` field.
-//   cars         [{ id, label, link, links, stops }] one for each car that has
+//   cars         [{ id, label, link, links, stops, connectionIds }] one for each car that has
 //                links: link is the index of its first link, links all of
 //                them, stops [{ floorId, cell, node }] in floor-level order.
 //                A car with fewer than two stops on walkable cells is left
@@ -123,7 +123,7 @@ export function buildGraph(project) {
       if (node !== -1 && lifts[node] && !stops.some((held) => held.node === node)) stops.push({ floorId: stop.floorId, cell: stop.cell, node });
     }
     if (stops.length < 2) return;
-    const entry = { id: car.id, label: car.label, link: links.length, links: [], stops };
+    const entry = { id: car.id, label: car.label, link: links.length, links: [], stops, connectionIds: car.connectionIds.slice() };
     for (let i = 0; i < stops.length; i += 1) {
       for (let j = i + 1; j < stops.length; j += 1) {
         const difference = Math.abs(floors[nodeFloor[stops[i].node]].level - floors[nodeFloor[stops[j].node]].level);
