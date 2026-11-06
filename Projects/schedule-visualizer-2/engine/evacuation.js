@@ -54,10 +54,12 @@
 //     exitId  the exit of an 'exit' way, else null; refugeId likewise
 //     reason  for 'none' only: 'only-by-elevator' (a step-free way exists if an
 //             elevator, staff-only included, may be used), 'step-doors' (every
-//             door of the room has a step), 'steps' (a step on the way) or
+//             door of the room has a step), 'step-exits' (every exit it can
+//             reach has a step), 'steps' (a step on the way) or
 //             'no-way'; null for the other ways. why is the reason in
-//             words ("only by elevator", "every door has a step", "a step on
-//             North Corridor", "no step-free way through"); sentence is
+//             words ("only by elevator", "every door has a step", "every exit
+//             has a step", "a step on North Corridor", "no step-free way
+//             through"); sentence is
 //             describeFailure()'s, for a 'none' room.
 //   refuges is [{ refugeId, floorId, name, roomIds }] in building order: the
 //   rooms that wait at each, so a reader can say "Used by 12 rooms" (an empty
@@ -186,11 +188,10 @@ export function stepFreeWaysOut(project, graph, options) {
   const opts = options || {};
   const routing = routingGraph(project, graph);
   const avoided = elevatorConnections(project);
-  const stepExits = [];
-  for (const floor of project.building.floors) for (const exit of floor.exits || []) if (exit.stepFree === false) stepExits.push(exit.id);
   const base = { cache: opts.cache, geometryVersion: opts.geometryVersion, avoidStairs: true, undirected: true };
-  // elevators are shut (a car is shut by any connection of it), exits with a step are not used
-  const shut = { ...base, avoidExits: [...idList(opts.avoidExits), ...stepExits] };
+  // elevators are shut (a car is shut by any connection of it); routeToExit leaves out the exits with
+  // a step itself under avoidStairs, and says 'step-exits' when they were all that was left
+  const shut = { ...base, avoidExits: idList(opts.avoidExits) };
   if (avoided.length > 0) shut.avoidConnections = avoided;
   // the same with the elevators let in, to tell "only by elevator" from "no way"
   const lifted = { ...base, avoidExits: shut.avoidExits };
@@ -218,9 +219,12 @@ export function stepFreeWaysOut(project, graph, options) {
     } else if (avoided.length > 0 && toExit.reason === 'unreachable' && routeToExit(routing, room.id, lifted).ok) {
       entry.reason = 'only-by-elevator';
       entry.why = 'only by elevator';
-    } else if (toExit.reason === 'unreachable' && Array.isArray(toExit.avoiding) && toExit.avoiding.includes('steps') && entry.sentence.includes(': a step on ')) {
+    } else if (toExit.reason === 'unreachable' && toExit.stepBlocked === true && entry.sentence.includes(': a step on ')) {
       entry.reason = 'steps';
       entry.why = entry.sentence.slice(entry.sentence.lastIndexOf(': a step on ') + 2).replace(/\.$/, '');
+    } else if (toExit.reason === 'unreachable' && Array.isArray(toExit.avoiding) && toExit.avoiding.includes('step-exits')) {
+      entry.reason = 'step-exits';
+      entry.why = 'every exit has a step';
     } else {
       entry.reason = 'no-way';
       entry.why = 'no step-free way through';

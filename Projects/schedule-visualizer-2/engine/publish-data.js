@@ -10,11 +10,14 @@
 // scenario, accepted findings, the getting-started record, the passcode, the
 // settings only the planner uses, findings, and anything about the device.
 //
+// group.stepFree is not published (DECISIONS 2026-11-06): on a small group it
+// can point at a child, and nothing the staff browser shows needs it.
+//
 // Nothing is dropped from what is named: a double-booked room, a teacher with
 // two rooms and a slot whose room is not in the building are all published as
 // they are.
 
-import { PUBLISHED_FORMAT, CURRENT_VERSION, PUBLISH_VIEWS, LATER_PUBLISH_VIEWS, RANGES, defaultPublish, inRange, bellSchedulesOf, calendarOf, marksOf, dutiesOf } from './schema.js';
+import { PUBLISHED_FORMAT, CURRENT_VERSION, PUBLISH_VIEWS, LATER_PUBLISH_VIEWS, RANGES, defaultPublish, inRange, bellSchedulesOf, calendarOf, marksOf, dutiesOf, elevatorSettings, ELEVATOR_KIND } from './schema.js';
 import { isCalendarDate, addDays } from './calendar.js';
 
 export const PUBLISHED_VERSION = CURRENT_VERSION;
@@ -37,7 +40,7 @@ function space(source) {
       wing: source.wing,
       capacity: source.capacity,
       shared: source.shared,
-      doors: list(source.doors).map((door) => ({ cell: door.cell, side: door.side })),
+      doors: list(source.doors).map((door) => ({ cell: door.cell, side: door.side, stepFree: door.stepFree !== false })),
     };
   }
   return {
@@ -60,18 +63,31 @@ function floor(source) {
     cells: source.cells,
     spaces: list(source.spaces).map(space),
     corridors: list(source.corridors).map((corridor) => ({ id: corridor.id, name: corridor.name, cells: list(corridor.cells).slice() })),
-    exits: list(source.exits).map((exit) => ({ id: exit.id, cell: exit.cell, doorName: exit.doorName, assembly: exit.assembly })),
+    exits: list(source.exits).map((exit) => ({ id: exit.id, cell: exit.cell, doorName: exit.doorName, assembly: exit.assembly, stepFree: exit.stepFree !== false })),
+    // ARCHITECTURE 19.2: elevator stops, corridor cells with a step, areas of refuge
+    lifts: list(source.lifts).slice(),
+    notStepFree: list(source.notStepFree).slice(),
+    refuges: list(source.refuges).map((refuge) => ({ id: refuge.id, cell: refuge.cell, name: refuge.name })),
   };
 }
 
+// kind, staffOnly and car are written only where the project has them, as in
+// the project: validate refuses kind "stairs", and staffOnly and car on a
+// stairs connection, so a published model stays a valid project.
 function connection(source) {
-  return {
+  const out = {
     id: source.id,
     label: source.label,
     a: { floorId: source.a.floorId, cell: source.a.cell },
     b: { floorId: source.b.floorId, cell: source.b.cell },
     direction: source.direction,
   };
+  if (source.kind === ELEVATOR_KIND) {
+    out.kind = ELEVATOR_KIND;
+    if (source.staffOnly === true) out.staffOnly = true;
+    if (typeof source.car === 'string' && source.car !== '') out.car = source.car;
+  }
+  return out;
 }
 
 function slot(source) {
@@ -189,6 +205,11 @@ export function publishedModel(project, options) {
       secondsPerCell: settings.secondsPerCell,
       secondsPerStair: settings.secondsPerStair,
       timeFormat: settings.timeFormat,
+      // Directions' times; the three are read through elevatorSettings(), so a
+      // project that never set them publishes the defaults
+      elevatorWaitSeconds: elevatorSettings(settings).wait,
+      elevatorSecondsPerFloor: elevatorSettings(settings).perFloor,
+      elevatorPeoplePerTrip: elevatorSettings(settings).perTrip,
     },
     building: {
       floors: list(project.building.floors).map(floor),

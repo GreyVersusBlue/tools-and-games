@@ -200,6 +200,28 @@ export function nearestStep(floors, room) {
   return named ? named.name : best.floor.name;
 }
 
+// The cause of a route that failed, in words that follow "because": "a step
+// on North Corridor", "every exit has a step", "the only way is by Elevator D,
+// which is staff and authorised only". '' when none is known. A step is named
+// only when routing says one is the cause (`stepBlocked`), and a staff-only
+// elevator only when the way is by it (`staffOnlyCars`).
+export function failureCause(project, route) {
+  const { floors, rooms } = lookup(project);
+  const room = route.roomId ? rooms.get(route.roomId) : null;
+  const avoided = Array.isArray(route.avoiding) ? route.avoiding : [];
+  if (route.reason !== 'unreachable') return '';
+  if (avoided.includes('staff-only') && Array.isArray(route.staffOnlyCars) && route.staffOnlyCars.length > 0) {
+    const cars = elevatorCars(project.building ? project.building : project).filter((car) => car.staffOnly && route.staffOnlyCars.includes(car.id)).map((car) => 'Elevator ' + car.label);
+    return 'the only way is by ' + (cars.length === 0 ? 'an elevator' : listOf(cars)) + ', which ' + (cars.length > 1 ? 'are' : 'is') + ' staff and authorised only';
+  }
+  if (avoided.includes('steps') && route.stepBlocked === true) {
+    const step = nearestStep(floors, room);
+    if (step !== null) return 'a step on ' + step;
+  }
+  if (avoided.includes('step-exits') && route.end !== 'to') return 'every exit has a step';
+  return '';
+}
+
 // The sentence for a route that failed, naming the room and its floor.
 export function describeFailure(project, route) {
   const { floors, rooms } = lookup(project);
@@ -214,7 +236,7 @@ export function describeFailure(project, route) {
   const avoided = Array.isArray(route.avoiding) ? route.avoiding : [];
   if (route.reason === 'no-entry') {
     // every door with a step: a room with doors, one at least with a step, and a step-free plan
-    const stepDoors = avoided.includes('step-doors') && room && Array.isArray(room.doors) && room.doors.some((door) => door.stepFree === false);
+    const stepDoors = avoided.includes('step-doors') && route.stepBlocked === true && room && Array.isArray(room.doors) && room.doors.some((door) => door.stepFree === false);
     return stepDoors ? where(true) + ' has no step-free door.' : where(true) + ' does not open onto a corridor.';
   }
   const other = route.end === 'to' ? rooms.get(route.fromRoomId) : null;
@@ -222,17 +244,9 @@ export function describeFailure(project, route) {
   const asked = avoided.filter((what) => what !== 'staff-only' && what !== 'step-exits');
   const stepFree = asked.includes('stairs');
   const way = stepFree ? 'no step-free way through' : asked.length > 0 ? 'no way through that keeps to what you asked to avoid' : 'no way through';
-  let because = '';
-  if (avoided.includes('staff-only')) {
-    const cars = elevatorCars(project.building ? project.building : project).filter((car) => car.staffOnly && car.connectionIds.length > 0).map((car) => 'Elevator ' + car.label);
-    because = ': the only way is by ' + (cars.length === 0 ? 'an elevator' : listOf(cars)) + ', which ' + (cars.length > 1 ? 'are' : 'is') + ' staff and authorised only';
-  } else if (avoided.includes('step-exits') && route.end !== 'to') {
-    because = ': every exit has a step';
-  } else if (avoided.includes('steps')) {
-    const step = nearestStep(floors, room);
-    if (step !== null) because = ': a step on ' + step;
-  }
-  if (route.end === 'to') return 'There is ' + way + (other ? ' from ' + roomName(other, false) : '') + ' to ' + where(false) + because + '.';
+  const cause = failureCause(project, route);
+  const because = cause === '' ? '' : ': ' + cause;
+  if (route.end === 'to') return 'There is ' + way + (other ? ' from ' + roomName(other, false) + ' to ' + where(false) : ' to ' + where(false)) + because + '.';
   return 'There is ' + way + ' from ' + where(false) + ' to an exit' + because + '.';
 }
 
