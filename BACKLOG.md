@@ -1694,8 +1694,8 @@ refuses under their floor (CT-1), the investor tour is built (CT-6), and
 memorandum at packet value draws an offer worth taking in a median 20 days against a
 house's 11, at 0.90 of a house listing's gross per slot-day (1.06 on a data room); a
 careful career reaches Broker-Track on a median day 215 and 17 of 20 close a
-building. `tools/smoke.mjs` 703, `tools/browser.mjs` 40 (port 8178, now in
-`site-ci.yml`). **Left: a person's play of it**, and test 20's empty-room half.
+building. `tools/smoke.mjs` 725, `tools/browser.mjs` 47 (port 8178, now in
+`site-ci.yml`). **Left: a person's play of it.** Test 20's empty-room half shipped in #1026.
 It was never in the ranked table. The two things it read in the code on the way were both real and are
 fixed (#956, 2026-10-12): `repairCareer()` puts a client file added since a
 career began on the end of that career's queue, lowest rung first and then by
@@ -1733,12 +1733,20 @@ project's only plan and is being retired from that file:
   house is in a missing neighborhood, and an event naming a missing agent or
   brokerage), says which file names which id in the console, and a save holding
   the listing takes #861's void. `tools/smoke.mjs` fails the build on the same
-  lines and on a manifest that disagrees with the folder. **Still open**: a
-  file the manifest names that is not on the server stops the page at "Failed
-  to load" (CI catches it, the page does not go on without it); the toast is
-  2.6 seconds and nothing on the desk says afterwards that content was left
-  out; a seller dropped this way gets #861's two anonymous deleted-client
-  lines, not one under their name.
+  lines and on a manifest that disagrees with the folder. **The three things it
+  left open are shipped (#1026, 2026-11-06)**: a file the manifest names that is
+  not on the server is one more content error and the page goes on without it
+  (the manifest itself is still fatal); the desk keeps a one-line note with the
+  count and the file names in its title; a dropped seller gets one Ledger line
+  under their name. **One thing is written up and not fixed**: a client file
+  deleted and later put back comes in as a client the career has not met. The
+  repair that removes the record also drops the id from the queue and the used
+  list, so when the file returns it is "new" (end of the queue, a new `recId`,
+  its old satisfaction and Ledger history gone), reproduced in `tools/smoke.mjs`.
+  A fix needs the save to keep a tombstone of the removed record (id, name,
+  satisfaction) to restore from: a shape change in the career, not a few lines,
+  and nothing has been seen to need it. Open only if Devon wants a deleted
+  client to be recoverable.
 
 Two conventions that stay in the README rather than moving here: anything new
 added to `S` belongs in `repairCareer()` the same day it's added, especially if
