@@ -239,7 +239,7 @@ table and this week's fixtures.
   `node test/smoke-settle.mjs`, `node test/smoke-crowd.mjs`,
   `node test/smoke-supply.mjs`, `node test/smoke-staff.mjs`,
   `node test/smoke-shelf.mjs`, `node test/smoke-season.mjs`,
-  `node test/smoke-mix.mjs` (the mix, below) and
+  `node test/smoke-footfalls.mjs`, `node test/smoke-mix.mjs` (the mix, below) and
   `node test/gltf-loader.mjs` (CI runs every `test/*.mjs`).
   `test/crowd-floor.mjs` is the busy floor `smoke-crowd.mjs` runs and is not
   a suite; `test/fixtures/season.mjs` is the bot that plays a seeded season
@@ -336,6 +336,8 @@ with each file's SHA-256, because CI has no decoder.
 | `barBed` | bed | the whole night | `ambience/bar-bed-crowded-pub-loop.ogg` | -26.0 I | -1.5 | 0.28 | -37.1 | 0.064 | -49.9 | -12.8 dB |
 | `sizzle` | work | while searing | `sfx/qte/qte-sizzle-loop.ogg` | -39.1 I | -4.5 | 0.44 | -46.2 | 0.48 | -45.5 | +0.8 dB |
 | `pour` | work | while pouring | `sfx/qte/qte-pour-loop.ogg` | -36.6 I | -8.4 | 0.44 | -43.7 | 0.48 | -42.9 | +0.8 dB |
+| `footstepA` | step | a body in earshot takes a step, at most 3 at a time and 6 a second | `sfx/footsteps/step-wood-a.ogg` | -40.8 | -20.9 | new | new | 0.64 | -44.7 | new |
+| `footstepB` | step | the other take of the same step | `sfx/footsteps/step-wood-b.ogg` | -33.7 | -12.8 | new | new | 0.288 | -44.5 | new |
 
 What the table says about 2026-10-07:
 
@@ -377,6 +379,20 @@ What the table says about 2026-10-07:
   (-7.0 on a loss). **Nobody has heard it.** Where it came from is
   `audio/SOURCES.md`.
 
+- **Footsteps came later** (TG-37, 2026-11-06). Two takes of one wood step
+  (0.24 s and 0.32 s, CC0, `audio/SOURCES.md`) alternate under `audio.playStep()`.
+  A one-shot is a cloned element per play and a peak hour has dozens of
+  bodies walking, so `walk.js`'s `Footfalls` decides who is heard: a body steps
+  once per 0.75 m it has actually covered, only bodies within 9 m of the player
+  count, at most the nearest 3 of those are let through a frame, and the room
+  gets 6 steps a second of real time from a bucket that holds 4. The volume
+  falls with the square of the distance; the mute and the master volume are
+  `playSfx()`'s. Both takes sit at -44.6 LUFS, loudest 400 ms (the short
+  clips read low): 8.4 dB under a walkout and 5.3 dB over the bed's programme
+  loudness, so they are in the room and not on top of it. The player's own
+  feet and the staff at their posts do not make a sound. `test/smoke-footfalls.mjs`
+  (16) holds the throttle in Node. **Nobody has heard them.**
+
 What a gain cannot fix, left as it is: `stinger-kickoff.ogg` peaks at -1.0
 dBFS over a body of -23.6 LUFS, so it is the file that sets the ceiling and
 it plays at 0.85; `ui-click.ogg` is 10 ms long. The loud cues (the ding, the
@@ -385,7 +401,7 @@ than they were, which is the price of levelling to the quiet files: turn the
 speakers up. There is still no volume slider, only
 the mute, and the mute is not saved (it never was).
 
-`test/smoke-mix.mjs` (122) recomputes the table from `levels.json`, from
+`test/smoke-mix.mjs` (135) recomputes the table from `levels.json`, from
 `gainFor()` and from the call sites it reads out of `js/`, and fails when a
 role leaves its band, when a file's hash is not the measured one, or when a
 call site passes a volume it does not know about. After replacing or adding a

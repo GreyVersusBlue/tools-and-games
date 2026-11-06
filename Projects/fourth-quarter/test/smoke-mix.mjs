@@ -60,7 +60,7 @@ const audio = await import("../js/audio.js");
 const FILES = audio.files();
 const KEYS = Object.keys(FILES);
 
-ok(KEYS.length === 16, `audio.js plays 16 sounds (${KEYS.length})`);
+ok(KEYS.length === 18, `audio.js plays 18 sounds (${KEYS.length})`);
 ok(KEYS.every((k) => typeof audio.TRIM[k] === "number" && audio.TRIM[k] > 0 && audio.TRIM[k] <= 1), "every one has a trim over 0 and no more than 1: " + KEYS.filter((k) => !(audio.TRIM[k] > 0 && audio.TRIM[k] <= 1)).join(" "));
 ok(Object.keys(audio.TRIM).every((k) => FILES[k]), "and the trim table names no sound that is not there: " + Object.keys(audio.TRIM).filter((k) => !FILES[k]).join(" "));
 ok(audio.MASTER === 0.8, "the master volume is 0.8, as it was");
@@ -114,7 +114,12 @@ for (const name of readdirSync(join(ROOT, "js")).filter((f) => f.endsWith(".js")
 }
 ok(badCalls.length === 0, "every playSfx and startLoop call in js/ names its sounds and its volume in plain literals: " + badCalls.join("; "));
 ok(calls.length >= 20, `${calls.length} calls read out of js/`);
-ok(KEYS.every((k) => calls.some((c) => c.key === k)), "every sound audio.js has is played somewhere: " + KEYS.filter((k) => !calls.some((c) => c.key === k)).join(" "));
+// The two footsteps are played by audio.playStep(), which picks the take, so a
+// call site names neither. What is pinned for them is that main.js calls it.
+const STEPS = ["footstepA", "footstepB"];
+const stepCalls = readFileSync(join(ROOT, "js", "main.js"), "utf8").match(/audio\.playStep\(\s*f\.vol\s*\)/g) || [];
+ok(KEYS.every((k) => STEPS.includes(k) || calls.some((c) => c.key === k)), "every sound audio.js has is played somewhere: " + KEYS.filter((k) => !STEPS.includes(k) && !calls.some((c) => c.key === k)).join(" "));
+ok(stepCalls.length === 1 && !calls.some((c) => STEPS.includes(c.key)), "and the footsteps are played from one place, main.js's audio.playStep(f.vol), which walk.js's Footfalls feeds");
 ok(calls.every((c) => (c.fn === "startLoop") === FILES[c.key]?.loop), "loops are started and one-shots are fired, never the other way round");
 ok(calls.every((c) => c.vol <= 1), "no call site turns a sound up past its trim");
 const quieter = calls.filter((c) => c.vol !== 1);
@@ -137,7 +142,7 @@ for (const key of KEYS) {
   if (!L) { ok(false, `${file} has no measurement`); continue; }
   const sha = createHash("sha256").update(readFileSync(join(ROOT, file))).digest("hex");
   ok(sha === L.sha256, `${file} is the file that was measured (run tools/measure-audio.mjs if it was replaced)`);
-  ok(L.peak <= 0 && L.momentary < 0 && L.momentary > -40 && (L.seconds < 0.4 ? L.integrated === null : L.integrated <= L.momentary), `${file}'s numbers are a measurement's: peak ${L.peak}, loudest 400 ms ${L.momentary}`);
+  ok(L.peak <= 0 && L.momentary < 0 && L.momentary > -45 && (L.seconds < 0.4 ? L.integrated === null : L.integrated <= L.momentary), `${file}'s numbers are a measurement's: peak ${L.peak}, loudest 400 ms ${L.momentary}`);
 }
 
 // ---- the table ----
@@ -148,6 +153,7 @@ const ROLE = {
   stingerKickoff: "cue", stingerFinal: "cue",
   uiClick: "ui", uiOpen: "ui", uiClose: "ui",
   crowdGroan: "crowd", crowdCheer: "crowd", stormOut: "crowd", barBed: "bed",
+  footstepA: "step", footstepB: "step",
   sizzle: "work", pour: "work",
 };
 // What played on 2026-10-07, when Devon said "Sound levels are a bit all over
@@ -158,13 +164,15 @@ const OFTEN = {
   qteHit: "a QTE landed", qteMiss: "a QTE missed", stingerKickoff: "once a night", stingerFinal: "once a night",
   uiClick: "buttons, mostly by day", uiOpen: "a panel opened", uiClose: "a panel closed",
   crowdGroan: "once, on a loss, with the whistle", crowdCheer: "once, on a win, with the whistle", stormOut: "every walkout, 13 s each, several at once on a bad night",
+  footstepA: "a body in earshot takes a step, at most 3 at a time and 6 a second", footstepB: "the other take of the same step",
   barBed: "the whole night", sizzle: "while searing", pour: "while pouring",
 };
 const rows = [];
 for (const key of KEYS) {
   const L = LEVELS[FILES[key].file];
   if (!L) continue;
-  for (const vol of [...new Set(calls.filter((c) => c.key === key).map((c) => c.vol))].sort((a, b) => b - a)) {
+  // a footstep has no call site of its own: it is judged at its loudest, vol 1
+  for (const vol of STEPS.includes(key) ? [1] : [...new Set(calls.filter((c) => c.key === key).map((c) => c.vol))].sort((a, b) => b - a)) {
     const gain = audio.gainFor(key, vol), was = vol * (HEARD[key] ?? 1) * 0.8;
     const fileLevel = FILES[key].loop ? L.integrated : L.momentary;
     rows.push({ key, vol, role: key === "cashRegister" && vol < 1 ? "cue, staff" : ROLE[key], loop: FILES[key].loop, file: FILES[key].file, fileLevel, gain, was,
@@ -172,7 +180,7 @@ for (const key of KEYS) {
   }
 }
 const row = (key) => rows.find((r) => r.key === key); // the loudest the key is played
-ok(rows.length === 17 && KEYS.every((k) => ROLE[k]), `17 rows, a role for each of the 16 sounds and a second row for the staff's register (${rows.length})`);
+ok(rows.length === 19 && KEYS.every((k) => ROLE[k]), `19 rows, a role for each of the 18 sounds and a second row for the staff's register (${rows.length})`);
 
 // ---- the bands ----
 const CUE = -26; // LUFS, the loudest 400 ms of a foreground one-shot at the master volume
@@ -181,6 +189,7 @@ const BAND = {
   "cue, staff": [CUE - 4.5, CUE - 1.5], // the register when the staff ring it: it fires all night
   ui: [CUE - 5.5, CUE - 2.5],           // panels and buttons, under the game's own cues
   crowd: [CUE - 12, CUE - 6],           // a crowd reaction, clearly under a cue
+  step: [CUE - 20, CUE - 15],           // a footfall, loudest 400 ms; the crowd's own feet, under the crowd
   work: [CUE - 21, CUE - 15],           // the sear and the pour, programme loudness
   bed: [CUE - 26, CUE - 22],            // the room, programme loudness
 };
@@ -208,7 +217,10 @@ ok(["orderDing", "cashRegister", "ticketReady", "qteMiss"].every((k) => CROWD.ev
   "no crowd sound has gained on the order ding, the register, the ticket bell or a missed QTE (to 0.3 dB)");
 ok(row("barBed").level <= row("sizzle").level - 4 && row("barBed").level <= row("pour").level - 4, `the bed is at least 4 dB under the sear and the pour (${(row("sizzle").level - row("barBed").level).toFixed(1)}, ${(row("pour").level - row("barBed").level).toFixed(1)})`);
 ok(row("barBed").before > row("sizzle").before + 9, "where it had been 9 dB over the sear");
-ok(row("barBed").loudest <= Math.min(...rows.filter((r) => !r.loop).map((r) => r.level)) - 5, `the bed's loudest 400 ms (${row("barBed").loudest.toFixed(1)}) is at least 5 dB under the quietest one-shot`);
+// Footsteps are left out: a step is meant to sit in the room, under the bed's
+// loudest 400 ms and over its programme loudness (checked below).
+const quietest = Math.min(...rows.filter((r) => !r.loop && r.role !== "step").map((r) => r.level));
+ok(row("barBed").loudest <= quietest - 5, `the bed's loudest 400 ms (${row("barBed").loudest.toFixed(1)}) is at least 5 dB under the quietest one-shot that is not a step`);
 const three = row("stormOut").level + 10 * Math.log10(3);
 ok(three <= CUE - 5, `three walkouts sounding at once (${three.toFixed(1)}) are still 5 dB under a cue`);
 ok(row("crowdGroan").level <= row("stingerFinal").level - 6, "the groan sits at least 6 dB under the whistle it plays with");
@@ -234,6 +246,16 @@ ok(row("crowdGroan").level <= row("stingerFinal").level - 6, "the groan sits at 
   ok(calls.filter((c) => c.key === "crowdCheer" || c.key === "crowdGroan").every((c) => c.where.startsWith("main.js")) && calls.filter((c) => c.key === "crowdCheer").length === 1,
     "nothing else in js/ plays the cheer or the groan");
 }
+
+// The footsteps (TG-37), never heard. A boot on a board is 0.24 and 0.32 s
+// long, so its loudest 400 ms is spread over silence and reads low; the band
+// above is for that reading. What is pinned beyond the band: the two takes
+// sit within 1 dB so the alternation is not a limp, and a step is under the
+// walkout, the crowd sound it walks with, by at least 6 dB.
+ok(Math.abs(row("footstepA").level - row("footstepB").level) < 1, `the two footstep takes are within 1 dB (${row("footstepA").level.toFixed(1)}, ${row("footstepB").level.toFixed(1)})`);
+ok(Math.max(row("footstepA").level, row("footstepB").level) <= row("stormOut").level - 6, "and both are at least 6 dB under a walkout");
+ok(row("footstepA").level > row("barBed").level && row("footstepA").level < row("barBed").loudest, `a step (${row("footstepA").level.toFixed(1)}) is over the bed's programme loudness (${row("barBed").level.toFixed(1)}) and under its loudest 400 ms (${row("barBed").loudest.toFixed(1)}): in the room, not on top of it`);
+ok(audio.TRIM.footstepA <= 0.9 && audio.TRIM.footstepB <= 0.9, "neither take is at the top of its trim: there is room to turn them up");
 
 // ---- headroom ----
 // The sets below are what the code fires on one tick over what is already
@@ -261,7 +283,7 @@ ok(dB(peakSum(PILE)) <= 6 && dB(peakSum(PILE, "peakBefore")) > 11.9, `the same p
 if (process.argv.includes("--table")) {
   console.log("\n| Sound | Role | Fires | File | File, LUFS | Peak, dBFS | Gain before | Heard before | Gain now | Now, LUFS | Change |");
   console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
-  const NEW = ["crowdCheer"]; // added after 2026-10-07, so never heard at the old gains
+  const NEW = ["crowdCheer", "footstepA", "footstepB"]; // added after 2026-10-07, so never heard at the old gains
   for (const r of rows) { const n = NEW.includes(r.key);
     console.log(`| \`${r.key}\`${r.vol < 1 ? " × " + r.vol : ""} | ${r.role} | ${OFTEN[r.key]}${r.vol < 1 ? ", by staff" : ""} | \`${r.file.replace("audio/", "")}\` | ${r.fileLevel.toFixed(1)}${r.loop ? " I" : ""} | ${LEVELS[r.file].peak.toFixed(1)} | ${n ? "new" : +r.was.toFixed(3)} | ${n ? "new" : r.before.toFixed(1)} | ${+r.gain.toFixed(3)} | ${r.level.toFixed(1)} | ${n ? "new" : f1(r.level - r.before) + " dB"} |`); }
 }
