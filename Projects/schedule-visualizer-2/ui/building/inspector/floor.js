@@ -115,8 +115,18 @@ export function clearFloorWords(project, floor) {
     else otherSpaces += 1;
   }
   for (const character of floor.cells) if (character === '#') corridorCells += 1;
-  // stairs and elevator stops are told apart by what the building says they are
-  const own = counts(project.building).byFloor[floor.id];
+  // stairs and elevator stops are told apart by what the building says they are:
+  // a cell of the floor given, an end of an elevator connection, or listed in `lifts`
+  const elevatorEnds = new Set();
+  for (const connection of project.building.connections) {
+    if (connection.kind !== ELEVATOR_KIND) continue;
+    for (const end of [connection.a, connection.b]) if (end.floorId === floor.id) elevatorEnds.add(end.cell);
+  }
+  const own = { stairsCells: 0, liftCells: 0, steps: (floor.notStepFree || []).length, refuges: (floor.refuges || []).length };
+  for (let cell = floor.cells.indexOf('S'); cell !== -1; cell = floor.cells.indexOf('S', cell + 1)) {
+    if (elevatorEnds.has(cell) || (floor.lifts || []).includes(cell)) own.liftCells += 1;
+    else own.stairsCells += 1;
+  }
   const touching = project.building.connections.filter((connection) => connection.a.floorId === floor.id || connection.b.floorId === floor.id);
   const stairsConnections = touching.filter((connection) => connection.kind !== ELEVATOR_KIND).length;
   const elevatorConnections = touching.length - stairsConnections;
