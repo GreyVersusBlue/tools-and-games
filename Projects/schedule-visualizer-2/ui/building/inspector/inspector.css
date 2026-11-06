@@ -409,6 +409,15 @@
     width: 24px;
     height: 24px;
   }
+
+  /* a tick is a finger's height, its words the target */
+  .bi-check {
+    min-height: 44px;
+  }
+
+  .bi-check__label {
+    padding: var(--s-2) 0;
+  }
 }
 
 @media print {

@@ -521,6 +521,135 @@ test('a name typed into a corridor, a refuge or an exit shows as typed in the ne
   assert.equal(await page.$$eval('#floor-steps i', (all) => all.length), 0);
 });
 
+// ---------------------------------------------------------------- 390 px, by touch
+
+// A finger: the browser's own touch pipeline, so the page gets real touch Pointer Events.
+async function finger(phone, cdp, type, x, y) {
+  await cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: Math.round(x), y: Math.round(y), id: 1, radiusX: 4, radiusY: 4, force: 1 }] });
+}
+
+// The middle of the first element that matches and has these words (any, when none are given),
+// brought into view, and checked: nothing covers its middle, and a finger can hit it (44 px).
+async function target(phone, selector, words) {
+  const at = await phone.evaluate((wanted, label) => {
+    const el = Array.from(document.querySelectorAll(wanted)).find((each) => label === undefined || each.textContent.trim() === label);
+    if (!el) return null;
+    el.scrollIntoView({ block: 'center', inline: 'center' });
+    const box = el.getBoundingClientRect();
+    const x = box.left + box.width / 2;
+    const y = box.top + box.height / 2;
+    const hit = document.elementFromPoint(x, y);
+    return { x, y, width: box.width, height: box.height, covered: !(hit && (hit === el || el.contains(hit) || hit.contains(el))), on: hit ? hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') : 'nothing' };
+  }, selector, words);
+  assert.ok(at, 'nothing matches ' + selector + (words ? ' "' + words + '"' : ''));
+  assert.equal(at.covered, false, selector + ' is covered by ' + at.on);
+  return at;
+}
+
+async function tapOn(phone, cdp, selector, words, options) {
+  const at = await target(phone, selector, words);
+  if (!options || options.size !== false) assert.ok(Math.min(at.width, at.height) >= 44, selector + (words ? ' "' + words + '"' : '') + ' is ' + Math.round(at.width) + ' by ' + Math.round(at.height) + ' px: under a finger\'s 44');
+  await finger(phone, cdp, 'touchStart', at.x, at.y);
+  await finger(phone, cdp, 'touchEnd');
+  return at;
+}
+
+// A finger held on a cell until the page opens its menu.
+async function holdOn(phone, cdp, cell) {
+  const at = await point(phone, cell % WIDTH, Math.floor(cell / WIDTH));
+  await finger(phone, cdp, 'touchStart', at.x, at.y);
+  await phone.waitForSelector('.menu[role="menu"]');
+  await finger(phone, cdp, 'touchEnd');
+}
+
+test('at 390 px with touch: a stop\'s Properties, the car-wide tick, Marks…, Select this corridor and the counted tick, each target 44 px, no pointer but a finger', async () => {
+  const phone = await openPlanner({ hash: '#building', width: 390, height: 844, mobile: true });
+  const kept = page;
+  page = phone.page;
+  try {
+    const cdp = typeof page.createCDPSession === 'function' ? await page.createCDPSession() : await page.context().newCDPSession(page);
+    // a touch device: a coarse pointer, said again if opening the planner cost it
+    if (!(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) && typeof page.setViewport === 'function') {
+      await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
+      await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
+    }
+    assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), true, 'the page has no coarse pointer');
+    await startEmpty(page);
+    await page.evaluate(async () => {
+      const actions = await import('./engine/actions.js');
+      const { store } = globalThis.sv2;
+      store.apply(actions.addFloor, { likeFloorId: store.project.building.floors[0].id });
+      const floors = store.project.building.floors;
+      for (const floor of floors) {
+        store.apply(actions.paintCorridor, { floorId: floor.id, from: 10 * 40 + 5, to: 10 * 40 + 20 });
+        store.apply(actions.placeLift, { floorId: floor.id, cells: [10 * 40 + 22] });
+      }
+      store.apply(actions.connectStairs, { a: { floorId: floors[0].id, cell: 10 * 40 + 22 }, b: { floorId: floors[1].id, cell: 10 * 40 + 22 } });
+    });
+    await planReady(page);
+    await still(page);
+    await page.evaluate(() => {
+      globalThis.pointerTypes = [];
+      document.addEventListener('pointerdown', (event) => globalThis.pointerTypes.push(event.pointerType), true);
+    });
+    const car = (await building()).connections.find((connection) => connection.kind === 'elevator').car;
+
+    // long-press the stop, tap its Properties
+    await holdOn(page, cdp, STOP);
+    await tapOn(page, cdp, '.menu [role="menuitem"]', 'Properties of elevator ' + car);
+    await page.waitForFunction(() => document.getElementById('inspector').dataset.open === 'true');
+    await page.waitForFunction(() => document.querySelector('#inspector-properties [data-key="panel-title"]')?.textContent.startsWith('Elevator'));
+    assert.equal(await text('#stop-floors'), 'Stops at Floor 1 and Floor 2.');
+    // the targets of the panel, each a finger's size
+    for (const selector of ['#cell-marks', '#inspector-properties [data-action="stop-connect"]', '#stop-others [data-action="show-stop"]', '#stop-others [data-action="disconnect-stop"]']) {
+      const at = await target(page, selector);
+      assert.ok(Math.min(at.width, at.height) >= 44, selector + ' is ' + Math.round(at.width) + ' by ' + Math.round(at.height) + ' px');
+    }
+    const row = await target(page, '#inspector-properties .bi-check');
+    assert.ok(row.height >= 44, 'the tick\'s row is ' + Math.round(row.height) + ' px tall');
+    // the car-wide tick, by a finger on its words
+    const before = await entries();
+    await tapOn(page, cdp, 'label[for="stop-staff-only"]', undefined, { size: false });
+    await saidIs('Applied to 2 stops.');
+    assert.equal(await entries(), before + 1);
+    assert.equal((await building()).connections.find((connection) => connection.kind === 'elevator').staffOnly === true, false);
+    // Marks… opens the cell's menu under the finger's reach, and a tap on an item acts
+    await tapOn(page, cdp, '#cell-marks');
+    await page.waitForSelector('.menu[role="menu"]');
+    const items = await page.$$eval('.menu [role="menuitem"]', (all) => all.map((item) => item.textContent.trim()));
+    assert.ok(items.includes('Connect to another floor…'), items.join(' | '));
+    assert.ok(await page.$$eval('.menu [role="menuitem"]', (all) => all.every((item) => item.getBoundingClientRect().height >= 40)), 'the menu\'s items are a finger\'s height');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.querySelector('.menu[role="menu"]') === null);
+
+    // a corridor: the sheet is folded by its handle, a long-press asks for the cell's Properties
+    await tapOn(page, cdp, '#inspector-toggle', undefined, { size: false });
+    await page.waitForFunction(() => document.getElementById('inspector').dataset.open !== 'true');
+    await holdOn(page, cdp, cellOf(12, 10));
+    await tapOn(page, cdp, '.menu [role="menuitem"]', 'Properties of this cell');
+    await page.waitForFunction(() => document.getElementById('inspector').dataset.open === 'true');
+    await page.waitForFunction(() => document.querySelector('#inspector-properties [data-key="panel-title"]')?.textContent === 'Corridor cell');
+    await tapOn(page, cdp, '#inspector-properties [data-action="select-corridor"]');
+    await saidIs('Selected the stretch of corridor between junctions, 16 cells.');
+    await page.waitForFunction(() => document.getElementById('cell-step') !== null && document.querySelector('#inspector-properties [data-key="panel-title"]').textContent === '16 cells selected');
+    await tapOn(page, cdp, 'label[for="cell-step"]', undefined, { size: false });
+    await saidIs('Marked 16 cells.');
+    assert.equal((await building()).floors[0].notStepFree.length, 16);
+    // an area of refuge from Marks…
+    await tapOn(page, cdp, '#cell-marks');
+    await page.waitForSelector('.menu[role="menu"]');
+    await tapOn(page, cdp, '.menu [role="menuitem"]', 'Make this an area of refuge');
+    await saidIs('Made the cell Area of refuge, an area of refuge.');
+    assert.equal((await building()).floors[0].refuges.length, 1);
+    // every pointer the page saw was a finger
+    const types = await page.evaluate(() => globalThis.pointerTypes);
+    assert.ok(types.length > 0 && types.every((type) => type === 'touch'), 'pointers: ' + types.join(', '));
+  } finally {
+    page = kept;
+    await phone.close();
+  }
+});
+
 test('the page made no error and no request outside its own folder', async () => {
   const problems = session.problems();
   assert.deepEqual(problems.errors, []);
