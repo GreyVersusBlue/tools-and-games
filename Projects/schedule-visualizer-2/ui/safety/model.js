@@ -35,7 +35,7 @@
 //     refuges   [{ refugeId, floorId, floorName, name, roomIds, by, use }]  `use` is
 //               refugeUse()'s line
 //   stepFreeWords(counts) -> "41 to an exit, 12 to an area of refuge, 3 with no way out"
-//   refugeUse(roomIds) -> "Used by 12 rooms" | "Not used: every room nearby has a step-free exit"
+//   refugeUse(roomIds) -> "Used by 12 rooms." | "Not used by any room."
 //   stepFreeFirstLine(project, step, picked) -> parts, as firstLine() does, for the Step-free view
 //   stepFreeRoomLine(room, step) -> string  where the room's step-free way goes, in words
 //
@@ -115,7 +115,7 @@ export function firstLine(project, picture, picked) {
 
 export function refugeUse(roomIds) {
   const n = Array.isArray(roomIds) ? roomIds.length : 0;
-  return n === 0 ? 'Not used: every room nearby has a step-free exit' : 'Used by ' + count(n, 'room');
+  return n === 0 ? 'Not used by any room.' : 'Used by ' + count(n, 'room') + '.';
 }
 
 export function stepFreeWords(counts) {

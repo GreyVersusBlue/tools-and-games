@@ -503,7 +503,7 @@ function coverBody(rooms, cards, stepFree) {
   if (stepFree) {
     const none = cards.filter(({ block }) => block && block.kind === 'none');
     const more = cards.filter(({ block }) => block && block.kind !== 'none').length;
-    out.push('<h2 class="card-cover__stepfree-head">' + esc(BLOCK_HEAD + 's') + '</h2>');
+    out.push('<h2 class="card-cover__stepfree-head">Step-free ways out</h2>');
     out.push('<p class="card-cover__stepfree">' + esc('A card whose step-free way out is not its route has a second block, “' + BLOCK_HEAD + '”. ' + (more === 0 ? 'None of these cards needs one.' : count(more, 'card') + (more === 1 ? ' has one.' : ' have one.'))) + '</p>');
     if (none.length > 0) {
       out.push('<p>' + esc(none.length === 1 ? 'A room with no step-free way out:' : count(none.length, 'room') + ' with no step-free way out:') + '</p>');
