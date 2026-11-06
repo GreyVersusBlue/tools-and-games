@@ -38,7 +38,7 @@ import { buildGraph } from '../../engine/graph.js';
 import { ActionError, addScenarioChange, addScenarioLever, applyScenario, discardScenario, removeScenarioLever } from '../../engine/actions.js';
 import { places, placeAt } from '../../engine/places.js';
 import { changeWords } from '../../engine/scenario.js';
-import { nameOfRoom } from '../../engine/schema.js';
+import { nameOfRoom, isLiftCell } from '../../engine/schema.js';
 import { snapshotAfter, snapshotRoom, undoForStep } from '../../storage/snapshots.js';
 import { scenarioView, firstLine, barWords, cancelled, cancelledSentence, leverCancelled, leverCancelledSentence, applySummary, applyButtonWords, snapshotWords, pickedPlace, pickedName, pickWords, closedAt } from './model.js';
 import { changesPanel } from './changes.js';
@@ -247,7 +247,7 @@ export const section = {
       const floor = found.slot.floor;
       const space = floor.spaces.find((each) => each.cells.includes(found.cell));
       const cell = floor.cells[found.cell];
-      const what = space ? (space.kind === 'room' ? nameOfRoom(space) : space.label || 'another space') : cell === '#' ? 'corridor' : cell === 'S' ? 'stairs' : 'nothing here';
+      const what = space ? (space.kind === 'room' ? nameOfRoom(space) : space.label || 'another space') : cell === '#' ? 'corridor' : cell === 'S' ? (isLiftCell(plan.project.building, floor.id, found.cell) ? 'elevator' : 'stairs') : 'nothing here';
       ctx.announce(floor.name + ': ' + what + '.');
       return false;
     });

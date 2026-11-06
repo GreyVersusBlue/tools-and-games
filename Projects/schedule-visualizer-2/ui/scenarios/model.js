@@ -7,7 +7,7 @@
 import { baseDayType, isOwnCopy } from '../../engine/day-types.js';
 import { periodName, offPeriods, bellsFor, parseTime, formatTime } from '../../engine/bells.js';
 import { walkTarget } from '../../engine/routing.js';
-import { resolveSlotRoom, nameOfRoom, bellSchedulesOf, CELL_CORRIDOR } from '../../engine/schema.js';
+import { resolveSlotRoom, nameOfRoom, bellSchedulesOf, CELL_CORRIDOR, ELEVATOR_KIND, isLiftCell } from '../../engine/schema.js';
 import { formatDuration } from '../../engine/findings.js';
 import { reconcile, reconcileLevers, changeWords, changeSlots, leverKey, isTrialOnly, isWrittenWay, trialOnlyWords, applyLevers } from '../../engine/scenario.js';
 import { releaseDelay } from '../../engine/release.js';
@@ -559,11 +559,24 @@ export function lengthenPassing(project, set, period, form, minutes) {
 
 // ---- Stairs and corridors (spec 9.1, DESIGN 12.4)
 
+// The connections that are stairs: an elevator is a connection too
+// (kind 'elevator', ARCHITECTURE 19.1), and a scenario's lever turns a stair,
+// never a car, so every list and lookup of the lab asks for these.
+export function stairsOf(project) {
+  return (project.building.connections || []).filter((connection) => connection && connection.kind !== ELEVATOR_KIND);
+}
+
+// One stairs connection by id; null for an id that is nothing, or an elevator's.
+export function stairsConnection(project, connectionId) {
+  return stairsOf(project).find((connection) => connection.id === connectionId) || null;
+}
+
 // The stairs connections the form offers: "Stairs B: Floor 1 to Floor 2" (the
 // lower floor first), "Stairs B: on Floor 1" where both ends are on one floor.
+// Elevators are not offered.
 export function connectionChoices(project) {
   const floors = project.building.floors;
-  return (project.building.connections || []).map((connection) => {
+  return stairsOf(project).map((connection) => {
     const a = floors.find((floor) => floor.id === connection.a.floorId);
     const b = floors.find((floor) => floor.id === connection.b.floorId);
     const label = 'Stairs ' + (typeof connection.label === 'string' ? connection.label : '');
@@ -609,6 +622,7 @@ export function corridorLever(project, corridorId) {
 // engine's place at the cell (engine/places.js placeAt) or null.
 export function pickedPlace(project, floor, cell, found) {
   if (!floor || floor.cells[cell] !== CELL_CORRIDOR) {
+    if (floor && floor.cells[cell] === 'S' && isLiftCell(project.building, floor.id, cell)) return { why: 'That is an elevator stop. A scenario closes corridors and stairs, not elevators.' };
     return { why: floor && floor.cells[cell] === 'S' ? 'That is a stairs landing. Close it with "A stair" above.' : 'That is not a corridor.' };
   }
   const corridor = found && found.corridorId ? (floor.corridors || []).find((each) => each.id === found.corridorId) : null;
