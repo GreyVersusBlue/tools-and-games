@@ -43,7 +43,9 @@ export const EVACUATION_NO_ELEVATORS = 'An evacuation never uses elevators.';
 export const NO_WAY_SAYS = 'There is no step-free way out from this room.';
 
 export function hasStepMarks(building) {
+  if ((building.connections || []).some((connection) => connection && connection.kind === 'elevator')) return true;
   for (const floor of building.floors) {
+    if ((floor.lifts || []).length > 0) return true;
     if ((floor.refuges || []).length > 0 || (floor.notStepFree || []).length > 0) return true;
     if ((floor.exits || []).some((exit) => exit && exit.stepFree === false)) return true;
     if (floor.spaces.some((space) => space.kind === 'room' && (space.doors || []).some((door) => door && door.stepFree === false))) return true;

@@ -174,9 +174,9 @@ test('stepFreePicture: every room by how it leaves, counts, the refuge used with
   assert.deepEqual(step.rooms.map((room) => room.way), ['refuge', 'refuge', 'none', 'none']);
   assert.deepEqual(step.counts, { exit: 0, refuge: 2, none: 2 });
   assert.equal(step.refuges[0].by, 'Stairs A', 'the stairs it stands by, found from the refuge\'s own cell');
-  assert.equal(step.refuges[0].use, 'Used by 2 rooms');
-  assert.equal(refugeUse([]), 'Not used: every room nearby has a step-free exit');
-  assert.equal(refugeUse(['a']), 'Used by 1 room');
+  assert.equal(step.refuges[0].use, 'Used by 2 rooms.');
+  assert.equal(refugeUse([]), 'Not used by any room.');
+  assert.equal(refugeUse(['a']), 'Used by 1 room.');
   assert.equal(step.exits.length, 0, 'the one exit has a step, so no room goes out by it');
   assert.deepEqual(stepFreeFirstLine(project, step, null), [{ text: 'Step-free ways out: 0 to an exit, 2 to an area of refuge, 2 with no way out.', name: false }]);
   const room = stepFreeFirstLine(project, step, roomId('2A')).map((part) => part.text).join('');
