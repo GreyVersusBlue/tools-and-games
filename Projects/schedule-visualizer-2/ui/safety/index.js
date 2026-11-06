@@ -32,9 +32,10 @@
 // The view on screen is at document.querySelector('.sfy').safety, for the
 // tests and for the console.
 
-import { h } from '../components/dom.js';
+import { h, uid } from '../components/dom.js';
 import { intro } from '../components/card.js';
 import { tabs } from '../components/tabs.js';
+import { choice } from '../components/choice.js';
 import { count, figures } from '../components/words.js';
 import { createPlanMap } from '../surface/plan-map.js';
 import { slotAt } from '../surface/plan-layout.js';
@@ -42,9 +43,12 @@ import { evacuationOverlay, exitColours, exitPalette, runsOf, EXIT_KEY_LEAST, EX
 import { drawStairLink } from '../surface/overlays/lanes.js';
 import { labelOn } from '../colour.js';
 import { buildGraph } from '../../engine/graph.js';
-import { safetyPicture, firstLine } from './model.js';
+import { safetyPicture, firstLine, stepFreePicture, stepFreeFirstLine, stepFreeWords } from './model.js';
 import { exitsPanel } from './exits.js';
 import { doorCardsPanel } from './doorcards.js';
+import { stepFreeWaysPanel, stepFreeReportPanel } from './stepfree.js';
+import { stepFreeOverlay, endsOf } from './stepfree-overlay.js';
+import { EVACUATION_NO_ELEVATORS } from './ways.js';
 
 const HEADLINE = 'This is the safety section.';
 const KEYS = 'Arrow keys move the cursor one cell and say where the room under it goes out. Enter shows that room’s way out alone, Escape shows every room again. Hold Space and press the arrows to move the map. = and - zoom in and out, 0 fits the map to the window. The Door cards tab of the inspector lists every room’s way out in words.';
@@ -61,9 +65,21 @@ export const SAFETY_KEYS = [
 export const SAFETY_TABS = [
   { id: 'exits', label: 'Exits' },
   { id: 'cards', label: 'Door cards' },
+  { id: 'stepfree', label: 'Step-free' },
 ];
 
+// The two views of the evacuation (DESIGN 13.6): a radio group at the top of the inspector.
+export const VIEWS = [
+  { value: 'everyone', label: 'Everyone' },
+  { value: 'step-free', label: 'Step-free' },
+];
+// under the key in the Step-free view: what the marks are
+export const STEP_MARKS_SAY = 'Solid line: a step-free way to an exit, in its colour. Dashed line: a way to an area of refuge, where help comes. A framed room marked × has no step-free way out.';
+
 export const MARKS_SAY = 'Round mark: the door the room is left by. Square mark: the exit.';
+// the picked room's marks in the Step-free view, for an area of refuge and for no way
+export const STEP_REFUGE_MARKS_SAY = 'Round mark: the door the room is left by. Dashed line to the rounded mark: the area of refuge, where it waits for help.';
+export const STEP_LOST_SAYS = 'The picked room is framed. It has no step-free way out, so no route is drawn.';
 // what is drawn for a picked room with no way out: its frame, no route and no marks
 export const LOST_SAYS = 'The picked room is framed. It has no way out, so no route is drawn.';
 // under the key, when the badges are too small to draw (EXIT_KEY_LEAST)
@@ -78,7 +94,12 @@ export const GONE_SAYS = (name) => name + ' is no longer in the building; showin
 
 // The cursor's sentence over a room: its way out, by name and by the number
 // the key and the badges give it, since past the colours a colour repeats.
-export function cursorLine(row, picture) {
+export function cursorLine(row, picture, stepRoom) {
+  if (stepRoom) {
+    if (stepRoom.way === 'exit') return row.name + ': step-free out by ' + stepRoom.exitName + ', number ' + stepRoom.exitNumber + ' in the key. Enter shows its way out.';
+    if (stepRoom.way === 'refuge') return row.name + ': no step-free exit; waits at ' + stepRoom.refugeName + '. Enter shows its way.';
+    return row.name + ': no step-free way out, ' + stepRoom.why + '.';
+  }
   if (!row.ok) return row.name + ': ' + row.sentence;
   const exit = picture.exits.find((each) => each.exitId === row.exitId);
   return row.name + ': out by ' + (exit ? exit.name + ', number ' + exit.number + ' in the key' : 'an exit') + '. Enter shows its way out.';
@@ -86,7 +107,7 @@ export function cursorLine(row, picture) {
 
 // What is chosen here, kept for the open project while the page is open
 // (in memory: no storage key).
-const memory = { projectId: null, picked: null, pickedName: '', chosen: new Set(), floors: 'auto', tab: 'exits' };
+const memory = { projectId: null, picked: null, pickedName: '', chosen: new Set(), floors: 'auto', tab: 'exits', view: 'everyone', stepFree: null };
 
 // A project other than the one the choices were made for lets them go: on
 // mounting, and at every refresh while mounted (a replace, Undo across one).
@@ -97,6 +118,8 @@ function adopt(project) {
   memory.pickedName = '';
   memory.chosen = new Set();
   memory.floors = 'auto';
+  memory.view = 'everyone';
+  memory.stepFree = null;
   return true;
 }
 
@@ -135,6 +158,7 @@ export const section = {
     adopt(store.project);
     let gone = false;
     let picture = null;
+    let step = null;
     let shown = null;
     let colours = [];
     let coloursKey = '';
@@ -142,6 +166,14 @@ export const section = {
     const graphNow = () => store.derived.get('graph', ['building'], (project) => buildGraph(project));
     // once a state of the building: rooms, doors, exits, connections, names
     const pictureNow = () => store.derived.get('safety-picture', ['building'], (project) => safetyPicture(project, graphNow()));
+
+    // the step-free picture is worked out only when the view or the tab needs it
+    const stepNow = () => store.derived.get('safety-step', ['building', 'schedule'], (project) => stepFreePicture(project, graphNow(), pictureNow()));
+    const wantStep = () => memory.view === 'step-free' || memory.tab === 'stepfree';
+    const ensureStep = () => {
+      step = picture && shown && wantStep() ? stepNow() : null;
+    };
+    const stepView = () => memory.view === 'step-free' && step !== null;
 
     // ---- the first line
     const lineWords = h('span', { class: 'mov-line__words', data: { part: 'words' } });
@@ -155,7 +187,8 @@ export const section = {
     const marks = h('p', { class: 'sfy-key__marks', hidden: true }, MARKS_SAY);
     const repeat = h('p', { class: 'sfy-key__note', hidden: true, data: { note: 'repeat' } });
     const zoomNote = h('p', { class: 'sfy-key__note', hidden: true, data: { note: 'zoom' } }, ZOOM_SAYS);
-    const keyLine = h('div', { class: 'sfy-key', data: { part: 'key' } }, h('span', { class: 'sfy-key__title', 'aria-hidden': 'true' }, 'Key'), keyList, marks, repeat, zoomNote);
+    const stepNote = h('p', { class: 'sfy-key__note', hidden: true, data: { note: 'step-free' } }, STEP_MARKS_SAY);
+    const keyLine = h('div', { class: 'sfy-key', data: { part: 'key' } }, h('span', { class: 'sfy-key__title', 'aria-hidden': 'true' }, 'Key'), keyList, marks, repeat, stepNote, zoomNote);
 
     const plan = createPlanMap({
       ctx,
@@ -206,7 +239,7 @@ export const section = {
     // the key says so when the badges are too small to be drawn, as the map is painted
     plan.overlays.push((g, view) => drawZoomNote(view.size));
     plan.overlays.push(evacuationOverlay(() => {
-      if (!picture || !shown) return null;
+      if (!picture || !shown || stepView()) return null;
       const lost = memory.picked ? picture.byRoom.get(memory.picked) : null;
       return {
         mode: memory.picked ? 'one' : 'all',
@@ -215,8 +248,40 @@ export const section = {
         rooms: picture.rows.filter((row) => row.ok).map((row) => ({ roomId: row.roomId, floorId: row.floorId, cells: row.cells, route: row.route, number: row.exitNumber, colour: exitColour(row.exitNumber) })),
       };
     }));
+    // the Step-free view's own drawing (./stepfree-overlay.js); a step-free way keeps to one floor
+    let drawnStep = null;
+    let drawnWith = '';
+    let drawnPicture = null;
+    const stepDrawing = () => {
+      if (!stepView() || !shown) return null;
+      const key = plan.theme().corridor + ':' + coloursKey;
+      if (drawnStep !== step || drawnWith !== key) {
+        const rooms = step.rooms.map((room) => ({
+          roomId: room.roomId,
+          floorId: room.floorId,
+          cells: room.cells,
+          way: room.way,
+          route: room.route,
+          exitId: room.exitId,
+          refugeId: room.refugeId,
+          exitName: room.exitName,
+          refugeName: room.refugeName,
+          colour: room.exitNumber ? exitColour(room.exitNumber) : plan.theme().accent,
+          mark: room.way === 'exit' ? String(room.exitNumber) : room.way === 'refuge' ? 'R' : '×',
+        }));
+        drawnPicture = { rooms, ends: endsOf(rooms, shown, (room) => room.colour) };
+        drawnStep = step;
+        drawnWith = key;
+      }
+      return drawnPicture;
+    };
+    plan.overlays.push(stepFreeOverlay(() => {
+      const drawing = stepDrawing();
+      return drawing ? { ...drawing, picked: memory.picked } : null;
+    }, labelOn));
     // the picked room's stairs, from one floor to the other, over every floor
     plan.across.push((g, given) => {
+      if (stepView()) return;
       const row = picture && memory.picked ? picture.byRoom.get(memory.picked) : null;
       if (!row || !row.ok) return;
       const runs = runsOf(row.route);
@@ -239,9 +304,15 @@ export const section = {
     const env = {
       ctx,
       picture: () => picture,
+      step: () => step,
       project: () => shown,
       picked: () => memory.picked,
       chosen: () => memory.chosen,
+      // the door cards' Step-free ways out: null is the default (on when the building has a refuge or a step mark)
+      stepFree: () => memory.stepFree,
+      setStepFree: (value) => {
+        memory.stepFree = value;
+      },
       swatch,
       themeKey: () => plan.theme().corridor,
       pick(roomId) {
@@ -253,17 +324,49 @@ export const section = {
       // where the focus goes when what held it in a panel is gone: the map
       home: () => plan.focus(),
     };
-    const panels = { exits: exitsPanel(env), cards: doorCardsPanel(env) };
+    // the Exits tab holds the exits' list in the Everyone view and the step-free ways in the other
+    const everyoneExits = exitsPanel(env);
+    const stepWays = stepFreeWaysPanel(env);
+    const exitsHolder = h('div', { class: 'sfy-holder' }, everyoneExits.element);
+    const exitsTab = {
+      element: exitsHolder,
+      update() {
+        const want = stepView() ? stepWays : everyoneExits;
+        if (exitsHolder.firstChild !== want.element) exitsHolder.replaceChildren(want.element);
+        want.update();
+      },
+    };
+    const panels = { exits: exitsTab, cards: doorCardsPanel(env), stepfree: stepFreeReportPanel(env) };
     const inspector = tabs({
       label: 'Ways out and door cards',
       selected: memory.tab,
       onSelect(id) {
         memory.tab = id;
+        ensureStep();
         drawPanel();
       },
       items: SAFETY_TABS.map((tab) => ({ id: tab.id, label: tab.label, panel: () => panels[tab.id].element })),
     });
-    const inspectorBox = h('div', { class: 'mov-inspector sfy-inspector' }, inspector.element);
+    // Everyone / Step-free: one radio group, so Tab passes through it once and the arrows move
+    // the choice with the focus staying on it (DESIGN 13.6)
+    const viewLabel = uid('safety-view');
+    const viewChoice = choice({
+      name: uid('safety-view-name'),
+      labelledBy: viewLabel,
+      options: VIEWS,
+      value: memory.view,
+      onChange(value) {
+        memory.view = value;
+        ensureStep();
+        draw();
+        ctx.announce(value === 'step-free' && step ? 'Step-free: ' + stepFreeWords(step.counts) : 'Everyone: ' + lineWords.textContent);
+      },
+    });
+    const viewBox = h('div', { class: 'sfy-view', data: { part: 'view' } },
+      h('span', { class: 'sfy-view__label', id: viewLabel }, 'Ways out for'),
+      viewChoice.element,
+      h('p', { class: 'sfy-view__line', data: { line: 'no-elevators' } }, EVACUATION_NO_ELEVATORS));
+    const inspectorBox = h('div', { class: 'mov-inspector sfy-inspector' }, viewBox, inspector.element);
     ctx.setInspector(inspectorBox);
     function drawPanel() {
       if (picture && shown) panels[inspector.selected].update();
@@ -311,7 +414,7 @@ export const section = {
         const row = room ? picture.byRoom.get(room.id) : null;
         if (!found) ctx.announce('Between floors.');
         else if (!row) ctx.announce(found.slot.floor.name + ': not a room.');
-        else ctx.announce(cursorLine(row, picture));
+        else ctx.announce(cursorLine(row, picture, stepView() ? step.byRoom.get(row.roomId) : null));
       } else if (ev.kind === 'enter') {
         // Enter over a room picks it
         const { room } = roomUnder(ev.x + 0.5, ev.y + 0.5);
@@ -337,15 +440,33 @@ export const section = {
     function drawKey() {
       const one = Boolean(memory.picked);
       const row = one ? picture.byRoom.get(memory.picked) : null;
+      const stepRoom = one && stepView() ? step.byRoom.get(memory.picked) : null;
       keyList.hidden = one;
       marks.hidden = !one;
-      marks.textContent = row && !row.ok ? LOST_SAYS : MARKS_SAY;
+      marks.textContent = stepRoom ? (stepRoom.way === 'none' ? STEP_LOST_SAYS : stepRoom.way === 'refuge' ? STEP_REFUGE_MARKS_SAY : MARKS_SAY) : row && !row.ok ? LOST_SAYS : MARKS_SAY;
       keyLine.dataset.mode = one ? 'one' : 'all';
       const repeats = !one && picture.exits.length > EXIT_COUNT;
       repeat.hidden = !repeats;
       repeat.textContent = repeats ? REPEAT_SAYS(EXIT_COUNT) : '';
+      stepNote.hidden = one || !stepView();
       drawZoomNote(plan.view.size);
       if (one) return;
+      if (stepView()) {
+        const theme = plan.theme();
+        const items = step.exits.map((exit) => h('li', { class: 'sfy-key__item', data: { exit: exit.exitId, number: String(exit.number) } },
+          h('span', { class: 'sfy-swatch', style: swatch(exit.number), 'aria-hidden': 'true' }, String(exit.number)),
+          h('span', { class: 'vh' }, 'Exit ' + exit.number + ': '),
+          h('span', null, h('bdi', { class: 'sfy-key__name' }, exit.name), ', ' + count(exit.rooms, 'room'))));
+        const refuges = step.refuges.filter((refuge) => refuge.roomIds.length > 0).map((refuge) => h('li', { class: 'sfy-key__item', data: { refuge: refuge.refugeId } },
+          h('span', { class: 'sfy-swatch', style: 'background:' + theme.accent + ';color:' + labelOn(theme.accent, theme.ink, theme.paper), 'aria-hidden': 'true' }, 'R'),
+          h('span', { class: 'vh' }, 'Area of refuge: '),
+          h('span', null, h('bdi', { class: 'sfy-key__name' }, refuge.name), ', ' + count(refuge.roomIds.length, 'room'))));
+        const none = step.counts.none > 0 ? [h('li', { class: 'sfy-key__item', data: { none: String(step.counts.none) } },
+          h('span', { class: 'sfy-swatch', style: 'background:' + theme.problem + ';color:' + labelOn(theme.problem, theme.ink, theme.paper), 'aria-hidden': 'true' }, '×'),
+          h('span', null, 'No step-free way out, ' + count(step.counts.none, 'room')))] : [];
+        keyList.replaceChildren(...items, ...refuges, ...none);
+        return;
+      }
       keyList.replaceChildren(...picture.exits.map((exit) => h('li', { class: 'sfy-key__item', data: { exit: exit.exitId, number: String(exit.number) } },
         h('span', { class: 'sfy-swatch', style: swatch(exit.number), 'aria-hidden': 'true' }, String(exit.number)),
         h('span', { class: 'vh' }, 'Exit ' + exit.number + ': '),
@@ -363,7 +484,9 @@ export const section = {
       if (!picture || gone) return;
       if (memory.picked && !picture.byRoom.has(memory.picked)) memory.picked = null;
       if (memory.picked) memory.pickedName = picture.byRoom.get(memory.picked).name;
-      lineWords.replaceChildren(...words(firstLine(shown, picture, memory.picked)));
+      lineWords.replaceChildren(...words(stepView() ? stepFreeFirstLine(shown, step, memory.picked) : firstLine(shown, picture, memory.picked)));
+      element.dataset.view = memory.view;
+      viewChoice.set(memory.view);
       allButton.hidden = !memory.picked;
       element.dataset.mode = memory.picked ? 'one' : 'all';
       if (memory.picked) element.dataset.picked = memory.picked;
@@ -394,6 +517,7 @@ export const section = {
         picture = null;
         shown = null;
         element.dataset.mode = 'empty';
+        step = null;
         return;
       }
       if (empty.firstChild) {
@@ -411,6 +535,7 @@ export const section = {
         memory.picked = null;
         memory.pickedName = '';
       }
+      ensureStep();
       element.dataset.rooms = String(picture.rows.length);
       element.dataset.missing = String(picture.missing.length);
       draw();
@@ -424,6 +549,19 @@ export const section = {
       plan,
       get picture() { return picture; },
       get picked() { return memory.picked; },
+      get step() { return step; },
+      // the labelled ends of the step-free ways, as drawn: [{ id, floorId, cell, label, colour, kind }]
+      stepEnds: () => {
+        const drawing = stepDrawing();
+        return drawing ? drawing.ends : [];
+      },
+      get view() { return memory.view; },
+      setView(value) {
+        viewChoice.set(value);
+        memory.view = value;
+        ensureStep();
+        draw();
+      },
       get chosen() { return Array.from(memory.chosen); },
       pick: (roomId) => pick(roomId, { bring: true }),
       colour: (number) => exitColour(number),
