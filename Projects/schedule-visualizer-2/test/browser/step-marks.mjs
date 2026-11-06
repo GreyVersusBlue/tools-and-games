@@ -387,6 +387,7 @@ test('an area of refuge is made from the menu, named, refused a name another has
   assert.deepEqual((await building()).floors[0].refuges.map((refuge) => refuge.name), ['Area of refuge', 'Area of refuge 2']);
   await propertiesOf(cellOf(15, 10), 'Properties of this cell');
   assert.equal(await page.$eval('#refuge-name', (el) => el.value), 'Area of refuge');
+  assert.match(await text('#refuge-used'), /^(Used by \d+ rooms?\.|Not used: every room nearby has a step-free exit\.)$/, 'the refuge says how many rooms use it');
   // a name another area has is refused, in words, and the field keeps the user's text
   await page.focus('#refuge-name');
   await page.$eval('#refuge-name', (el) => el.select());
@@ -404,7 +405,7 @@ test('an area of refuge is made from the menu, named, refused a name another has
   assert.deepEqual(exitsRefuges, ['Gym <b>door</b> lawn', 'Area of refuge 2']);
   await tab('floor');
   const lines = await page.$$eval('#floor-steps li .bi-row__text', (all) => all.map((p) => p.textContent));
-  assert.deepEqual(lines, ['Area of refuge, Gym <b>door</b> lawn', 'Area of refuge, Area of refuge 2'], 'describeFloor\'s words: only the default name stands alone');
+  assert.deepEqual(lines, ['Area of refuge, Gym <b>door</b> lawn', 'Area of refuge 2'], 'describeFloor\'s words: a name that already says it stands alone');
   assert.equal(await page.$$eval('#floor-steps b', (all) => all.length), 0, 'a name is text, never markup');
   // removed from Exits
   const before = await entries();
@@ -625,6 +626,7 @@ test('at 390 px with touch: a stop\'s Properties, the car-wide tick, Marks…, S
     // a corridor: the sheet is folded by its handle, a long-press asks for the cell's Properties
     await tapOn(page, cdp, '#inspector-toggle', undefined, { size: false });
     await page.waitForFunction(() => document.getElementById('inspector').dataset.open !== 'true');
+    await still(page);
     await holdOn(page, cdp, cellOf(12, 10));
     await tapOn(page, cdp, '.menu [role="menuitem"]', 'Properties of this cell');
     await page.waitForFunction(() => document.getElementById('inspector').dataset.open === 'true');

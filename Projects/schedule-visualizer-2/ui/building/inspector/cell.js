@@ -21,6 +21,7 @@ import { setElevator, disconnectStairs, setStepCells, addRefuge, setRefuge, remo
 import { checkField, keepFocus, heading, cellWords } from './controls.js';
 import { cellFocus } from './cell-focus.js';
 import { openCellMenu } from '../menu.js';
+import { stepFreeWaysOut } from '../../../engine/evacuation.js';
 
 const SIDES = ['n', 'e', 's', 'w'];
 const OPPOSITE = { n: 's', s: 'n', e: 'w', w: 'e' };
@@ -288,9 +289,18 @@ export function cellPanel(env) {
       },
     });
     name.input.dataset.key = 'refuge-name';
+    // how many rooms wait here (SV2-100's stepFreeWaysOut): worked out when the panel is drawn
+    let used = null;
+    try {
+      const found = stepFreeWaysOut(holder.state.project).refuges.find((each) => each.refugeId === refuge.id);
+      if (found) used = found.roomIds.length;
+    } catch (error) {
+      used = null;
+    }
     return [
       heading('Area of refuge', 'refuge-heading'),
       name.element,
+      used === null ? null : h('p', { class: 'bld-inspector__small', id: 'refuge-used' }, used === 0 ? 'Not used: every room nearby has a step-free exit.' : 'Used by ' + count(used, 'room') + '.'),
       h('div', { class: 'bi-buttons' }, button('Remove ' + refuge.name, 'remove-refuge', () => {
         ed().commit(removeRefuge, { floorId, refugeId: refuge.id }, { done: () => 'Took the area of refuge ' + refuge.name + ' off. The cell stays.' });
       }, { aria: 'Remove the area of refuge ' + refuge.name })),
