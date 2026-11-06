@@ -31,6 +31,7 @@ import {
   reachAnalysis,
 } from '../js/clearance.js';
 import {
+  pairActiveClear, pairActiveRolls, pairLeafFindings,
   TURN_D, TURN_R, PASSAGE_D, PASSAGE_R, clearanceWorld, clearRadiusAt, turningAnalysis,
   doorRect, doorRectBlocker,
   DOOR_PULL_DEPTH, DOOR_PULL_LATCH, DOOR_PUSH_DEPTH, DOOR_PUSH_LATCH,
@@ -730,4 +731,49 @@ test('the chair sees the sample the way the sample is: every number finite, and 
   assert.ok(t.tested > 20 && r.tested > 0);
   assert.ok(ms < 5000, `${ms}ms`);
   assert.equal(CELL, 4);
+});
+
+// ---------- a pair of doors: ADA 404.2.3 at the active leaf (TG-44) ----------
+
+test('a pair is measured at one leaf, by hand: 4 ft is 20 in, 5 ft is 26 in, 6 ft is 32 in', () => {
+  // Each leaf is half the opening and loses CLEAR_LOSS (4 in) to its stop.
+  assert.ok(Math.abs(pairActiveClear(4) * 12 - 20) < 0.05, '24 - 4');
+  assert.ok(Math.abs(pairActiveClear(5) * 12 - 26) < 0.05, '30 - 4');
+  assert.ok(Math.abs(pairActiveClear(6) * 12 - 32) < 0.05, '36 - 4');
+  assert.ok(!pairActiveRolls(4));
+  assert.ok(!pairActiveRolls(5));
+  assert.ok(pairActiveRolls(6), '6 ft is the narrowest pair whose one leaf gives 32 in');
+  assert.ok(!pairActiveRolls(5.9));
+  // The other reading is untouched: with both leaves open all three roll.
+  for (const w of [4, 5, 6]) assert.ok(doorRolls(w, LEAF_DOUBLE), `${w} ft pair, both leaves open`);
+});
+
+test('pair-active-leaf: 4 ft and 5 ft pairs are named, a 6 ft pair is not, nothing moves', () => {
+  for (const [w, want] of [[4, true], [5, true], [6, false]]) {
+    const s = twoRooms(w, LEAF_DOUBLE);
+    const nav = buildNav(s);
+    const fs = pairLeafFindings(nav);
+    assert.equal(fs.length, want ? 1 : 0, `${w} ft pair`);
+    const a = accessibleAnalysis(s);
+    assert.equal(has(a.findings, 'pair-active-leaf'), want);
+    assert.equal(buildNav(s, { accessible: true }).portals.length, 1, 'the accessible graph keeps the pair');
+    assert.ok(!has(a.findings, 'narrow-doors'), 'both leaves open it is wide enough');
+    if (!want) continue;
+    const f = fs[0];
+    assert.equal(f.level, 'note');
+    assert.match(f.cite, /404\.2\.3/);
+    assert.match(f.detail, new RegExp(`${w} ft pair between West and East`));
+    assert.match(f.detail, new RegExp(`${Math.round(pairActiveClear(w) * 12)} in there`));
+    assert.equal(f.doors.length, 1);
+    assert.equal(f.doors[0].w, w);
+  }
+});
+
+test('pair-active-leaf: a single door, a cased opening and a too-narrow pair are not its business', () => {
+  assert.equal(pairLeafFindings(buildNav(twoRooms(3, LEAF_SINGLE))).length, 0);
+  assert.equal(pairLeafFindings(buildNav(twoRooms(4, LEAF_NONE))).length, 0);
+  // 2.8 ft pair fails both readings: narrow-doors has it, this does not count it twice.
+  const s = twoRooms(2.8, LEAF_DOUBLE);
+  assert.equal(pairLeafFindings(buildNav(s)).length, 0);
+  assert.ok(has(accessibleAnalysis(s).findings, 'narrow-doors'));
 });

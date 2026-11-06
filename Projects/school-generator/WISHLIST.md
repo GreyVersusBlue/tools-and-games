@@ -579,8 +579,9 @@ and add to this list rather than starting a new one.
   (60in deep with an 18in latch-side strip on the pull side, 48in and 12in on
   the push side, #1025); the rectangles are not drawn on the plan sheet or the
   minimap, only the door's ring. A pair of doors is judged
-  with both leaves open (the code judges it by the active leaf, so the
-  lattice's 4ft pair passes here and would not on a plan check); the outside of
+  with both leaves open on the route and at its active leaf in a `note`
+  (`pair-active-leaf`, #1034: 4ft gives 20in through one leaf, 6ft is the
+  narrowest that gives 32in); the outside of
   an exterior door is not tested; and knee and toe clearance under a counter is
   not modelled at all.
 - The code edition is applied now (`codes.js`, Phase 41), but two things still

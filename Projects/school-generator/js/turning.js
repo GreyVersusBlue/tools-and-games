@@ -12,7 +12,9 @@ import { floorSolidAt } from './shapes.js';
 import { floorCuts, inFloorCut, stairsOf, stairMetrics, stairSurfaceAt } from './stairs.js';
 import { buildCollider, candidates } from './collide.js';
 import { emptyField } from './terrain.js';
-import { THRESHOLD, inches, roomName, finding } from './clearance.js';
+import { THRESHOLD, CLEAR_LOSS, MIN_CLEAR_W, doorClear, inches, roomName, finding } from './clearance.js';
+import { LEAF_DOUBLE } from './shapes.js';
+import { floorLabel } from './grid.js';
 
 // ---------- the turning circle ----------
 
@@ -536,4 +538,56 @@ function turningFindings(spots, fails) {
       { cite: 'ADA 2010 · §304.3' }));
   }
   return out;
+}
+
+// ---------- a pair of doors ----------
+//
+// ADA 404.2.3 (and its advisory 404.2.2) measures a pair at its active leaf:
+// the other leaf may be bolted, so the opening has to offer 32 in clear through
+// one leaf alone. `doorClear` (clearance.js) is the other reading, both leaves
+// open, which is what the walk does and what the accessible graph keeps, so a
+// pair that passes it stays on the route. This is the plan checker's reading,
+// reported beside it and moving nothing (TG-44, #1034).
+//
+// Each leaf is half the opening, and the leaf parked at 90 degrees and its stop
+// take CLEAR_LOSS (4 in) off its own half, the same loss a single door pays.
+// The data has no astragal or mullion for a pair (the two leaves meet on a
+// LEAF_GAP of 0.06 ft, openings.js), so none is counted. By hand: a 4 ft pair
+// is 24 - 4 = 20 in through one leaf, 5 ft is 30 - 4 = 26 in, and 6 ft is
+// 36 - 4 = 32 in, which is exactly the 32 in 404.2.3 asks: 6 ft is the
+// narrowest pair that passes.
+export const pairActiveClear = (w) => Math.max(0, w / 2 - CLEAR_LOSS);
+export const pairActiveRolls = (w) => pairActiveClear(w) >= MIN_CLEAR_W - 1e-9;
+
+// The pairs whose active leaf is short of 32 in, but which roll with both
+// leaves open: a pair too narrow even then is `narrow-doors` already (egress.js)
+// and is not counted twice. Single doors and cased openings are not asked.
+export function pairLeafFindings(nav) {
+  if (!nav || !nav.portals) return [];
+  const rooms = new Map((nav.rooms || []).map((r) => [r.id, r]));
+  const pairs = nav.portals.filter((p) =>
+    p.leaf === LEAF_DOUBLE && doorClear(p.w, p.leaf) >= MIN_CLEAR_W - 1e-9
+    && !pairActiveRolls(p.w));
+  if (!pairs.length) return [];
+  const label = (p) => {
+    const names = [p.a, p.b].map((id) => (rooms.get(id) || {}).name).filter(Boolean);
+    const who = names.length > 1 && names[0] !== names[1] ? ` between ${names.join(' and ')}`
+      : names.length ? ` at ${names[0]}` : '';
+    return `the ${Math.round(p.w * 12) / 12} ft pair${who}` +
+      ` on ${floorLabel(p.floor)}`;
+  };
+  const worst = pairs.reduce((a, b) => (b.w < a.w ? b : a));
+  const names = [...new Set(pairs.map(label))];
+  const shown = names.slice(0, 4).join('; ');
+  return [finding('note', 'pair-active-leaf',
+    `${pairs.length} pair${pairs.length === 1 ? '' : 's'} of doors short of 32 in through one leaf`,
+    `${shown}${names.length > 4 ? `; and ${names.length - 4} more places` : ''}. Both leaves open they ` +
+    `clear ${inches(doorClear(worst.w, worst.leaf))} at the narrowest (${Math.round(worst.w * 12) / 12} ft) ` +
+    `and the chair route here keeps them, but a plan check measures a pair at its active leaf ` +
+    `alone, which is ${inches(pairActiveClear(worst.w))} there against the 32 in 404.2.3 asks. ` +
+    'A pair wants 6 ft before one leaf alone gives 32 in. Nothing was moved or widened.',
+    {
+      doors: pairs.slice(0, 8).map((p) => ({ id: p.id, floor: p.floor, x: p.x, z: p.z, w: p.w })),
+      cite: 'ADA 2010 · §404.2.3',
+    })];
 }
