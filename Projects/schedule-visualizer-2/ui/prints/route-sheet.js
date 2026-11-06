@@ -9,7 +9,10 @@
 //                       group that needs step-free routes, else the first
 //                       group, else the first teacher. An id that is nobody's
 //                       prints one sheet saying so, never someone else's day.
-//   options.dayTypeId   the day type; the first own day type when left out
+//   options.dayTypeId   the day type: its sheet alone. Left out, or not a day
+//                       type of the project, every day type that is its own
+//                       copy, each starting a sheet, and a line for the day
+//                       types that are the same as another
 //   options.bellsId     a bell schedule: the day under those bells, with no
 //                       walk into or out of a period that does not meet
 //   options.movement    { project, results, graph }: the movement view's own
@@ -52,10 +55,11 @@ import { walkingSeconds, transitionPlan, isLate } from '../../engine/crowd.js';
 import { directions } from '../../engine/directions.js';
 import { cardSteps, CROP_MARGIN } from '../../engine/evacuation.js';
 import { bellsFor, periodName } from '../../engine/bells.js';
-import { findDayType, ownDayTypes } from '../../engine/day-types.js';
+import { findDayType, ownDayTypes, effectiveDayType } from '../../engine/day-types.js';
 import { meetingSlots } from '../../engine/runs.js';
 import { teacherDay, entryPlaces } from '../../engine/teacher-day.js';
 import { ELEVATOR_KIND, elevatorSettings, nameOfRoom } from '../../engine/schema.js';
+import { list } from '../components/words.js';
 import { durationWords } from '../scenarios/model.js';
 import { runOf } from '../movement/model.js';
 import { travelDay } from '../movement/tables.js';
@@ -385,18 +389,49 @@ function staffOnlyMarkup(letters) {
   return '<p class="doc-meaning rs__staff" data-line="staff-only">' + (letters.length === 1 ? joined + ' is' : joined.replace(/^Elevator /, 'Elevators ') + ' are') + ' staff and authorised only: arrange access with the office.</p>';
 }
 
+// The sheets a person's days make: the day type asked for, else each own day
+// type, in order. [{ ...routeSheet, }] with nothing when nobody is there.
+export function routeSheets(project, options) {
+  const opts = options || {};
+  const asked = opts.dayTypeId ? findDayType(project, opts.dayTypeId) : null;
+  const days = asked ? [asked] : ownDayTypes(project);
+  const sheets = days.map((day) => routeSheet(project, { ...opts, dayTypeId: day.id }));
+  return sheets.every((sheet) => sheet.ok) ? sheets : [];
+}
+
+// The line under the sheets of a day with day types that are the same as
+// another: whose route sheet they share.
+export function followerWords(project, followers) {
+  const as = followers.map((dayType) => effectiveDayType(project, dayType.id));
+  const one = followers.length === 1;
+  const sameAsOne = as.every((own) => own.id === as[0].id);
+  const who = sameAsOne ? followers.map((dayType) => dayType.name) : followers.map((dayType, index) => dayType.name + ' (the same as ' + as[index].name + ')');
+  return (sameAsOne ? list(who) + (one ? ' is' : ' are') + ' the same as ' + as[0].name + ' and ' : list(who) + ' ') + (one ? 'has' : 'have') + ' the same route sheet' + (sameAsOne || one ? '' : 's') + '.';
+}
+
+function sheetBody(project, sheet, width) {
+  const body = [];
+  body.push('<p class="doc-lead rs__who" data-line="who" data-kind="' + sheet.kind + '">' + (sheet.kind === 'group' ? 'Group' : 'Teacher') + ' ' + typed(sheet.name) + ' \u00b7 ' + typed(sheet.day.heading) + '</p>');
+  body.push('<p class="doc-meaning" data-line="times">' + esc(TIMES_SAY) + '</p>');
+  if (sheet.staffOnly.length > 0) body.push(staffOnlyMarkup(sheet.staffOnly));
+  if (sheet.walks === 0) body.push('<p class="doc-none" data-line="nothing">' + esc(NOTHING_SAYS) + '</p>');
+  for (const block of sheet.blocks) body.push(blockMarkup(project, block, width));
+  return body.join('\n');
+}
+
 export function render(project, derived, options) {
   const opts = options || {};
   const given = opts.movement && opts.movement.project && opts.movement.results && opts.movement.results.routes ? opts.movement.project : null;
   const made = given || project;
-  const sheet = routeSheet(made, { ...opts, derived });
-  if (!sheet.ok) return frame(project, { output: id, what: name, pages: [{ body: '<p class="doc-lead" data-line="nobody">' + esc(NOBODY_SAYS) + '</p>' }], options: opts });
+  const sheets = routeSheets(made, { ...opts, derived });
+  if (sheets.length === 0) return frame(project, { output: id, what: name, pages: [{ body: '<p class="doc-lead" data-line="nobody">' + esc(NOBODY_SAYS) + '</p>' }], options: opts });
   const width = printableBox(paperOf(project, opts)).width;
-  const body = [];
-  body.push('<p class="doc-lead rs__who" data-line="who" data-kind="' + sheet.kind + '">' + (sheet.kind === 'group' ? 'Group' : 'Teacher') + ' ' + typed(sheet.name) + ' · ' + typed(sheet.day.heading) + '</p>');
-  body.push('<p class="doc-meaning" data-line="times">' + esc(TIMES_SAY) + '</p>');
-  if (sheet.staffOnly.length > 0) body.push(staffOnlyMarkup(sheet.staffOnly));
-  if (sheet.walks === 0) body.push('<p class="doc-none" data-line="nothing">' + esc(NOTHING_SAYS) + '</p>');
-  for (const block of sheet.blocks) body.push(blockMarkup(made, block, width));
-  return frame(made, { output: id, what: name, pages: [{ body: body.join('\n') }], options: opts });
+  const pages = sheets.map((sheet) => ({ what: name, body: sheetBody(made, sheet, width) }));
+  const asked = opts.dayTypeId ? findDayType(made, opts.dayTypeId) : null;
+  if (!asked) {
+    const own = ownDayTypes(made);
+    const followers = made.dayTypes.filter((dayType) => !own.includes(dayType));
+    if (followers.length > 0) pages[pages.length - 1].body += '\n<p class="doc-meaning" data-line="followers">' + esc(followerWords(made, followers)) + '</p>';
+  }
+  return frame(made, { output: id, what: name, pages, options: opts });
 }

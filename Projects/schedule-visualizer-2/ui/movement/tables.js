@@ -79,7 +79,7 @@ import { parse } from '../colour.js';
 import { transitionsOf, runOf, walkWords, nothingMeets, nothingMeetsParts } from './model.js';
 import { ELEVATOR_KIND, elevatorSettings } from '../../engine/schema.js';
 import { printButtons } from '../prints/index.js';
-import { printButton } from '../components/print-preview.js';
+import { printButton, openPrintPreview } from '../components/print-preview.js';
 
 function roomNumbers(project) {
   const numbers = new Map();
@@ -309,7 +309,7 @@ function names(groups) {
 // group is a row group of its own, and each time names both its headings.
 //   entries   [{ row: { group, walking, waiting, released, total, late }, who: [nodes after the name] }]
 //   held      whether a column "Left after the bell" stands between Waiting and Total
-function travelTable(caption, entries, held, rides) {
+function travelTable(caption, entries, held, rides, sheetFor) {
   const base = uid('travel');
   const labels = ['Walking'].concat(rides ? ['Riding'] : [], ['Waiting'], held ? ['Left after the bell'] : [], ['Total']);
   const heads = labels.map((label, index) => h('th', { scope: 'col', class: 'table__num', id: base + '-c' + index }, label));
@@ -328,8 +328,21 @@ function travelTable(caption, entries, held, rides) {
           if (label === 'Waiting') return cell(column, row.waiting === 0 ? 'none' : formatDuration(row.waiting));
           if (label === 'Left after the bell') return cell(column, row.released > 0 ? formatDuration(row.released) : 'none');
           return cell(column, formatDuration(row.total));
-        })));
+        })),
+        // a row of its own under the group's figures, across the table: a column would
+        // move the three headings' widths (the whole-day table's Route sheet button)
+        sheetFor ? h('tr', { class: 'mov-travel__sheet' }, h('td', { colspan: String(labels.length), headers: id }, sheetFor(row.group))) : null);
     }));
+}
+
+// The "Route sheet" button of a group's row in the whole-day table (DESIGN 13.5):
+// opens the print preview of that group's step-free day, on the day type shown.
+// It is not one of ui/prints/index.js's printButtons (a button there has one
+// id on one page); each group's has its own.
+function sheetButton(env, group, options) {
+  const button = h('button', { type: 'button', class: 'btn btn--quiet', id: uid('route-sheet'), 'aria-label': 'Route sheet for ' + group.name, data: { print: 'route-sheet', group: group.id } }, 'Route sheet');
+  button.addEventListener('click', () => openPrintPreview(env.ctx, 'route-sheet', { ...options(group), opener: button }));
+  return button;
 }
 
 export function tablesPanel(env) {
@@ -350,6 +363,13 @@ export function tablesPanel(env) {
     bellsId: last.picture.choice.bellsId,
     movement: { project: last.project, results: last.results, graph: last.graph },
   }));
+  // the sheet of one group on the day type and bells shown, from what the tables are drawn from
+  const sheetOptions = (group) => ({
+    groupId: group.id,
+    dayTypeId: last.picture.choice.dayTypeId,
+    bellsId: last.picture.choice.bellsId,
+    movement: { project: last.project, results: last.results, graph: last.graph },
+  });
   const tables = h('div', { class: 'mov-travel__tables' }, h('div', { class: 'mov-export__buttons' }, print), oneTitle, picker, oneLine, one, oneRest, dayTitle, whole);
   const element = h('div', { class: 'mov-panel', data: { panel: 'tables' } },
     h('h2', { class: 'mov-panel__title' }, 'Travel time'),
@@ -439,7 +459,7 @@ export function tablesPanel(env) {
         h('span', { class: 'mov-travel__rooms' }, count(row.walks, 'walk') + ', the slowest ' + formatDuration(row.slowest.total)),
         row.late > 0 ? h('span', { class: 'mov-groups__late' }, 'late ' + (row.late === 1 ? 'once' : row.late + ' times')) : null,
       ],
-    })), held, rides));
+    })), held, rides, (group) => sheetButton(env, group, sheetOptions)));
   }
 
   pick.addEventListener('change', () => {

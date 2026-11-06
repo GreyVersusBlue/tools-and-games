@@ -27,6 +27,7 @@ import { h, uid } from '../components/dom.js';
 import { field, wholeNumber } from '../components/field.js';
 import { picker } from '../components/picker.js';
 import { openMenu } from '../components/menu.js';
+import { openPrintPreview } from '../components/print-preview.js';
 import { icon } from '../components/icons.js';
 import { count, periodWords } from '../components/words.js';
 import { addGroup, editGroup, duplicateGroup, deleteGroup, setSlot, moveSlot, copyDay, makeOwnCopy } from '../../engine/actions.js';
@@ -441,7 +442,10 @@ export function mount(env) {
   }
 
   // "Needs step-free routes" (spec 11, DESIGN 13.4). The line never suggests a
-  // group of one: the tool holds no student records.
+  // group of one: the tool holds no student records. Its "Route sheet" button
+  // (DESIGN 13.5) prints this group's step-free day on every day type; the
+  // movement results are not at hand here, so it carries no "Movement shows the
+  // whole group late" lines (the travel-time table's button does).
   function stepFreeControl(group) {
     const hintId = uid('stepfree');
     const box = keyed(h('input', { type: 'checkbox', name: 'groupStepFree', 'aria-describedby': hintId }), 'group-stepfree');
@@ -449,7 +453,14 @@ export function mount(env) {
     box.addEventListener('change', () => apply(env, editGroup, { id: group.id, stepFree: box.checked }));
     return h('div', { class: 'field sch-stepfree', data: { part: 'step-free-field' } },
       h('label', { class: 'sch-radio' }, box, h('span', null, 'Needs step-free routes')),
-      h('p', { class: 'sch-hint', id: hintId }, 'Routes for this group use elevators, never stairs. For one person’s day, print a route sheet.'));
+      h('p', { class: 'sch-hint', id: hintId }, 'Routes for this group use elevators, never stairs. For one person’s day, print a route sheet.'),
+      routeSheetButton(group));
+  }
+
+  function routeSheetButton(group) {
+    const sheet = keyed(h('button', { type: 'button', class: 'btn btn--quiet', id: uid('route-sheet'), data: { print: 'route-sheet', group: group.id } }, 'Route sheet'), 'group-route-sheet');
+    sheet.addEventListener('click', () => openPrintPreview(ctx, 'route-sheet', { groupId: group.id, opener: sheet }));
+    return sheet;
   }
 
   function roomOptions(project, model, slot) {
