@@ -850,7 +850,7 @@ export function describeConnect(building, args) {
   if (sameEnd(args.a, args.b)) refuse('A connection joins two different stairs cells. Click the stairs at the other end.', 'same-cell');
   const already = building.connections.find((connection) => (sameEnd(connection.a, args.a) && sameEnd(connection.b, args.b)) || (sameEnd(connection.a, args.b) && sameEnd(connection.b, args.a)));
   if (already) refuse('Those two stairs are already connected, as ' + already.label + '.', 'already-connected');
-  const label = nextConnectionLabel(building.connections);
+  let label = nextConnectionLabel(building.connections);
   const liftA = isLiftCell(building, args.a.floorId, args.a.cell);
   const liftB = isLiftCell(building, args.b.floorId, args.b.cell);
   if (liftA !== liftB) refuse('An elevator stop joins only another elevator stop, and stairs join only stairs. Click ' + (liftA ? 'an elevator stop on another floor' : 'a stairs cell') + ', or choose a cell of the same kind.', 'elevator-stairs');
@@ -870,7 +870,14 @@ export function describeConnect(building, args) {
     }
   }
   const joined = [carA, carB].filter((car) => car.connectionIds.length > 0);
-  const letter = carA.label !== '' ? carA.label : carB.label !== '' ? carB.label : label;
+  // a new elevator takes the first letter that no connection and no elevator
+  // uses (a letter outlives the connection it came from, and two elevators
+  // may not share one); it is the connection's own label too when that is free
+  let letter = carA.label !== '' ? carA.label : carB.label !== '' ? carB.label : '';
+  if (letter === '') {
+    letter = nextConnectionLabel(building.connections.flatMap((connection) => [{ label: connection.label }, { label: connection.car === undefined ? '' : connection.car }]));
+    if (!building.connections.some((connection) => connection.label === letter)) label = letter;
+  }
   return {
     sameFloor: false,
     fromFloor: floorA.name,

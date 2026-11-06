@@ -1172,3 +1172,19 @@ test('an exit on an elevator stop is refused in words (not "undefined"), and an 
   assert.equal(building.counts(stale.building).liftCells, 0);
   refused(actions.markExit, stale, { floorId: F1, cell: 0 }, 'not-corridor', /that cell is stairs\./);
 });
+
+test('a new elevator never takes the letter of one that is already there, though that letter is free as a connection label', () => {
+  let project = shaft(4);
+  const ends = [F1, F2, F3, floorId(4)];
+  for (const floorIdent of ends) project = run(actions.placeLift, project, { floorId: floorIdent, cells: [at(0, 3), at(1, 3)] });
+  project = run(actions.connectStairs, project, { a: stop(F1), b: stop(F2) });
+  project = run(actions.connectStairs, project, { a: stop(F2), b: stop(F3) });
+  assert.deepEqual(project.building.connections.map((c) => [c.label, c.car]), [['A', 'A'], ['B', 'A']]);
+  // the connection that gave the car its letter goes; the letter stays on the car
+  project = run(actions.disconnectStairs, project, { connectionId: project.building.connections[0].id });
+  assert.deepEqual(project.building.connections.map((c) => [c.label, c.car]), [['B', 'A']]);
+  const second = run(actions.connectStairs, project, { a: { floorId: F1, cell: at(1, 3) }, b: { floorId: floorId(4), cell: at(1, 3) } });
+  const added = second.building.connections[1];
+  assert.deepEqual([added.label, added.car], ['C', 'C'], 'not A: Elevator A is still there');
+  assert.deepEqual(schemaCars(second.building).map((car) => car.label).filter((label) => label !== '').sort(), ['A', 'C'], 'two elevators, two letters (the stops no connection reaches are cars of no letter)');
+});
