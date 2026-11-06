@@ -53,8 +53,9 @@
 
 import { FLOOR_H } from './grid.js';
 import {
-  shapesOf, shapeArea, segEnds, isBuilt, isDoorOpening, interiorPoint, shapeAt, openingSpec,
+  shapesOf, shapeArea, segEnds, isBuilt, isDoorOpening, interiorPoint, shapeAt, openingSpec, LEAF_NONE,
 } from './shapes.js';
+import { segThickness } from './walls.js';
 import { meshFloor, tileFor } from './navmesh.js';
 import { meshSite, yardTileFor } from './sitemesh.js';
 import { siteCurbs } from './site.js';
@@ -198,6 +199,7 @@ function makePortal(id, x, z, nx, nz, w, floor, a, b, opts = {}) {
     // How it is hung — none, a single leaf, a pair — which is what decides
     // its clear width (Phase 40, `clearance.js`).
     leaf: Number.isInteger(opts.leaf) ? opts.leaf : 1,
+    hung: opts.hung || null,
   };
 }
 
@@ -310,7 +312,7 @@ export function buildNav(state, opts = {}) {
   // ---- doorways ----
 
   let pn = 0;
-  const joinPortal = (x, z, nx, nz, w, floorIndex, rep, leaf = 1) => {
+  const joinPortal = (x, z, nx, nz, w, floorIndex, rep, leaf = 1, hung = null) => {
     if (accessible ? !doorRolls(w, leaf) : w < minWidth) return null;
     const a = roomIdAt(floorIndex, x + nx * PROBE, z + nz * PROBE);
     const b = roomIdAt(floorIndex, x - nx * PROBE, z - nz * PROBE);
@@ -331,6 +333,7 @@ export function buildNav(state, opts = {}) {
         exterior,
         rep,
         leaf,
+        hung,
         pa,
         pb,
         muster: exterior
@@ -381,8 +384,18 @@ export function buildNav(state, opts = {}) {
           const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
           for (const o of ring.openings) {
             if (o.seg !== s || !isDoorOpening(o)) continue;
+            const spec = openingSpec(o);
+            // How the leaf hangs, as world directions off the door's centre
+            // (clearance.js reads them for ADA 404.2.4's rectangle): `swing`
+            // toward the side it opens to, `latch` toward the jamb it latches
+            // on. A cased opening has no leaf and so no swing.
+            const hung = spec.leaf === LEAF_NONE ? null : {
+              swing: { x: -uz * spec.sw, z: ux * spec.sw },
+              latch: { x: ux * spec.hand, z: uz * spec.hand },
+              half: segThickness(floor, a.x, a.z, b.x, b.z) / 2,
+            };
             joinPortal(a.x + ux * o.t * len, a.z + uz * o.t * len, -uz, ux, o.w, i,
-              undefined, openingSpec(o).leaf);
+              undefined, spec.leaf, hung);
           }
         }
       }

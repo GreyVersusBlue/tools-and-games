@@ -297,6 +297,7 @@ const DEFERRED = [
   'blueprint',                                                   // Phase 42: the printable set
   'session', 'presence', 'wire', 'cloud',                        // Phase 42: the session stack
   'snapshots', 'designdiff',                                     // Phase 34: the history
+  'turning',                                                     // TG-38: the chair's turning space and door rectangles
 ];
 
 // ---------- the checks ----------

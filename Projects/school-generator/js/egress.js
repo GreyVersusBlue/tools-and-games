@@ -52,8 +52,9 @@ import {
   buildNav, egressField, pointField, dischargeField, dischargePath,
 } from './navgraph.js';
 import {
-  clearWidth, doorRolls, rampRolls, turningAnalysis, reachAnalysis, rampLandingFit, stairLandingFit,
+  clearWidth, doorRolls, rampRolls, reachAnalysis, rampLandingFit, stairLandingFit,
 } from './clearance.js';
+import { turningAnalysis } from './turning.js';
 import {
   rampSlope, rampRuns, rampRunRise, rampOverRise, rampMinRuns, stairMetrics, RAMP_CTRL,
 } from './stairs.js';
