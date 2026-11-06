@@ -152,6 +152,7 @@ export const GROUPS = {
     'browser/release.mjs', // SV2-93
     'browser/one-way.mjs', // SV2-91
     'browser/step-marks.mjs', // SV2-101b
+    'browser/step-free-movement.mjs', // SV2-102
     'browser/calendar-faults.mjs', // SV2-80c
     'browser/grid-pass.mjs', // SV2-40, SV2-46
     'browser/m2-pass.mjs', // SV2-38
@@ -264,6 +265,7 @@ export const BROWSER_SECONDS = {
   'browser/trace-scale.mjs': 12,
   'browser/one-way.mjs': 12,
   'browser/step-marks.mjs': 10,
+  'browser/step-free-movement.mjs': 10,
   'browser/draw-pointer.mjs': 12,
   'browser/staff-views-b.mjs': 11,
   'browser/schedule.mjs': 11,
