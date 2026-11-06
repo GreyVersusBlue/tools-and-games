@@ -5,6 +5,8 @@ import { validate } from '../../engine/validate.js';
 import { DEFAULT_PASSCODE } from '../../engine/publish-defaults.js';
 import { subjectsStarter } from '../../data/subjects-starter.js';
 import { emptyProject, school, room, clock, makeIds, PINNED } from './helpers.mjs';
+import { withElevator, F1, F2, F3, paint } from '../fixtures/step-free.mjs';
+import { clone } from './helpers.mjs';
 
 test('newProject is a valid empty project', () => {
   const project = emptyProject();
@@ -257,4 +259,145 @@ test('newMark and newDuty are valid in a project, with the defaults the actions 
 
 test('lastPublishedHadCalendar is not in the defaults: absent reads as no', () => {
   assert.equal('lastPublishedHadCalendar' in schema.defaultPublish(''), false);
+});
+
+// ---- the step-free model (ARCHITECTURE 19.2, SV2-96)
+
+test('step-free: the three elevator settings are read through elevatorSettings() and are not in defaultSettings()', () => {
+  for (const key of ['elevatorWaitSeconds', 'elevatorSecondsPerFloor', 'elevatorPeoplePerTrip']) {
+    assert.equal(key in schema.defaultSettings(), false, key);
+    assert.equal(key in emptyProject().settings, false, key);
+  }
+  assert.deepEqual(schema.elevatorSettings(emptyProject().settings), { wait: 30, perFloor: 6, perTrip: 8 });
+  assert.deepEqual(schema.elevatorSettings(undefined), { wait: 30, perFloor: 6, perTrip: 8 });
+  assert.deepEqual(schema.elevatorSettings({ elevatorWaitSeconds: 45, elevatorSecondsPerFloor: 5, elevatorPeoplePerTrip: 6 }), { wait: 45, perFloor: 5, perTrip: 6 });
+  assert.equal(schema.elevatorSettings({ elevatorWaitSeconds: 0 }).wait, 0, 'a wait of 0 is a wait of 0, not the default');
+  assert.deepEqual(schema.elevatorSettings({ elevatorWaitSeconds: 301, elevatorSecondsPerFloor: 0, elevatorPeoplePerTrip: 41 }), { wait: 30, perFloor: 6, perTrip: 8 }, 'out of range reads as the default');
+  assert.deepEqual(schema.elevatorSettings({ elevatorWaitSeconds: '9', elevatorSecondsPerFloor: 2.5, elevatorPeoplePerTrip: null }), { wait: 30, perFloor: 6, perTrip: 8 });
+  assert.deepEqual([schema.RANGES.elevatorWaitSeconds, schema.RANGES.elevatorSecondsPerFloor, schema.RANGES.elevatorPeoplePerTrip], [[0, 300], [1, 60], [1, 40]]);
+});
+
+test('step-free: the constants are named as ARCHITECTURE 19 names them', () => {
+  assert.equal(schema.ELEVATOR_KIND, 'elevator');
+  assert.equal(schema.ELEVATOR_DOOR_SECONDS, 10);
+});
+
+test('step-free: no cell character was added (an older tool refuses any but . # S)', () => {
+  assert.deepEqual([schema.CELL_EMPTY, schema.CELL_CORRIDOR, schema.CELL_STAIRS], ['.', '#', 'S']);
+  assert.equal(/[^.#S]/.test(withElevator().building.floors.map((floor) => floor.cells).join('')), false);
+});
+
+// a three-stop elevator, as a chain (Floor 1 to 2, 2 to 3) or a star (the lobby to each)
+function threeStops(shape) {
+  const project = school();
+  const [f1, f2, f3] = project.building.floors;
+  for (const [floor, cell] of [[f1, 333], [f2, 333], [f3, 333]]) paint(floor, cell, 'S');
+  project.building.connections = [
+    { id: 'cchain0001', label: 'A', a: { floorId: F1, cell: 333 }, b: { floorId: F2, cell: 333 }, direction: 'both', kind: 'elevator', car: 'A', staffOnly: true },
+    shape === 'chain'
+      ? { id: 'cchain0002', label: 'B', a: { floorId: F2, cell: 333 }, b: { floorId: F3, cell: 333 }, direction: 'both', kind: 'elevator', car: 'A', staffOnly: true }
+      : { id: 'cchain0002', label: 'B', a: { floorId: F1, cell: 333 }, b: { floorId: F3, cell: 333 }, direction: 'both', kind: 'elevator', car: 'A', staffOnly: true },
+  ];
+  return project;
+}
+
+test('step-free: elevatorCars: a chain of three stops is one car, stops in floor-level order, named by its first connection', () => {
+  const cars = schema.elevatorCars(threeStops('chain').building);
+  assert.deepEqual(cars, [{ id: 'cchain0001', label: 'A', stops: [{ floorId: F1, cell: 333 }, { floorId: F2, cell: 333 }, { floorId: F3, cell: 333 }], connectionIds: ['cchain0001', 'cchain0002'], staffOnly: true }]);
+});
+
+test('step-free: elevatorCars: a star from the lobby is the same car as the chain', () => {
+  const star = schema.elevatorCars(threeStops('star').building);
+  assert.equal(star.length, 1);
+  assert.deepEqual(star[0].stops, schema.elevatorCars(threeStops('chain').building)[0].stops);
+  assert.equal(star[0].id, 'cchain0001');
+});
+
+test('step-free: elevatorCars: two connections that meet at a cell are merged into one car, however they were drawn', () => {
+  // drawn in the other order: Floor 2 to 3 first, then Floor 1 to 2
+  const project = threeStops('chain');
+  project.building.connections.reverse();
+  const cars = schema.elevatorCars(project.building);
+  assert.equal(cars.length, 1);
+  assert.equal(cars[0].id, 'cchain0002', 'named by the first connection in building order');
+  assert.deepEqual(cars[0].stops.map((stop) => stop.floorId), [F1, F2, F3], 'stops in floor-level order whatever the order drawn');
+});
+
+test('step-free: elevatorCars: two separate elevators are two cars, in order of their first connection', () => {
+  const project = threeStops('chain');
+  paint(project.building.floors[0], 340, 'S');
+  paint(project.building.floors[1], 340, 'S');
+  project.building.connections.splice(1, 0, { id: 'cother0001', label: 'C', a: { floorId: F1, cell: 340 }, b: { floorId: F2, cell: 340 }, direction: 'both', kind: 'elevator', car: 'C' });
+  const cars = schema.elevatorCars(project.building);
+  assert.deepEqual(cars.map((car) => [car.id, car.label, car.staffOnly]), [['cchain0001', 'A', true], ['cother0001', 'C', false]].concat([]).slice(0, 2));
+});
+
+test('step-free: elevatorCars: an unconnected stop is a car of its own; a stairs connection is no car; staffOnly is true when any connection says so', () => {
+  const project = withElevator();
+  project.building.floors[2].lifts = [];
+  paint(project.building.floors[2], 360, 'S');
+  project.building.floors[2].lifts = [360];
+  const cars = schema.elevatorCars(project.building);
+  assert.deepEqual(cars.map((car) => car.stops.length), [2, 1]);
+  assert.deepEqual(cars[1], { id: 'stop:' + F3 + ':360', label: '', stops: [{ floorId: F3, cell: 360 }], connectionIds: [], staffOnly: false });
+  assert.deepEqual(schema.elevatorCars(school().building), [], 'a building with no elevator has no cars');
+  const mixed = threeStops('chain');
+  delete mixed.building.connections[0].staffOnly;
+  assert.equal(schema.elevatorCars(mixed.building)[0].staffOnly, true);
+});
+
+test('step-free: elevatorCars: the label is the stored car letter, and the connection\'s own label when none is stored', () => {
+  const project = threeStops('chain');
+  project.building.connections[0].car = 'D';
+  project.building.connections[0].label = 'X';
+  assert.equal(schema.elevatorCars(project.building)[0].label, 'D');
+  delete project.building.connections[0].car;
+  assert.equal(schema.elevatorCars(project.building)[0].label, 'X');
+});
+
+test('step-free: elevatorCars survives a building it cannot read', () => {
+  assert.deepEqual(schema.elevatorCars(null), []);
+  assert.deepEqual(schema.elevatorCars({}), []);
+  assert.deepEqual(schema.elevatorCars({ floors: [], connections: [null, { kind: 'elevator' }, { kind: 'elevator', a: 1, b: 2 }] }), []);
+});
+
+test('step-free: isLiftCell: an end of an elevator connection is a lift cell with or without a lifts list', () => {
+  const project = withElevator();
+  assert.equal(schema.isLiftCell(project.building, F1, 332), true);
+  assert.equal(schema.isLiftCell(project.building, F2, 332), true);
+  delete project.building.floors[0].lifts;
+  assert.equal(schema.isLiftCell(project.building, F1, 332), true, 'by the connection');
+  assert.equal(schema.isLiftCell(project.building, F2, 353), false, 'the other stairs are stairs');
+  assert.equal(schema.isLiftCell(project.building, F1, 283), false, 'a corridor cell');
+  assert.equal(schema.isLiftCell(project.building, 'fnowhere00', 332), false);
+});
+
+test('step-free: isLiftCell: a stop in lifts with no connection is a lift cell; a stale index on a stairs connection is not (the kind is the authority)', () => {
+  const project = school();
+  const [f1, , f3] = project.building.floors;
+  paint(f1, 340, 'S');
+  f1.lifts = [340, 5, 332];
+  assert.equal(schema.isLiftCell(project.building, F1, 340), true, 'a stop with no connection yet');
+  assert.equal(schema.isLiftCell(project.building, F1, 5), false, 'not a stairs cell');
+  assert.equal(schema.isLiftCell(project.building, F1, 332), false, 'it carries stairs connection A, which an older tool drew');
+  f3.lifts = [353];
+  assert.equal(schema.isLiftCell(project.building, F3, 353), false);
+});
+
+test('step-free: cellKind answers "elevator" for a lift cell, "stairs" for the others, and the other kinds as before', () => {
+  const project = withElevator();
+  const [f1, f2, f3] = project.building.floors;
+  assert.equal(schema.cellKind(f1, 332, project.building), 'elevator');
+  assert.equal(schema.cellKind(f1, 332), 'elevator', 'by the floor\'s own list when no building is given');
+  assert.equal(schema.cellKind(f2, 353, project.building), 'stairs');
+  assert.equal(schema.cellKind(f3, 353, project.building), 'stairs');
+  assert.equal(schema.cellKind(f1, 283, project.building), 'corridor');
+  assert.equal(schema.cellKind(f1, 70, project.building), 'room');
+  assert.equal(schema.cellKind(f1, 321, project.building), 'other');
+  assert.equal(schema.cellKind(f1, 5, project.building), 'empty');
+  const plain = school().building.floors[0];
+  assert.equal(schema.cellKind(plain, 332), 'stairs', 'no lifts list: stairs');
+  const stale = clone(plain);
+  stale.lifts = [332];
+  assert.equal(schema.cellKind(stale, 332, school().building), 'stairs', 'with the building, a stairs connection wins over a stale list');
 });

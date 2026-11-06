@@ -89,3 +89,20 @@ test('bell schedules, marks and duties have id kinds b, m and u, and collectIds 
   ids.reserve(collectIds({ bellSchedules: [{ id: first }] }));
   assert.notEqual(ids('b'), first);
 });
+
+test('step-free: areas of refuge have the id kind "a", and collectIds finds them', () => {
+  assert.equal(ID_PREFIXES.refuge, 'a');
+  assert.equal(new Set(Object.values(ID_PREFIXES)).size, Object.keys(ID_PREFIXES).length, 'no two kinds share a letter');
+  const project = school();
+  project.building.floors[0].refuges = [{ id: 'asample001', cell: 283, name: 'Area of refuge' }, { id: 'asample002', cell: 282, name: 'By the stairs' }];
+  const found = collectIds(project);
+  assert.ok(found.includes('asample001') && found.includes('asample002'));
+  assert.equal(found.length, collectIds(school()).length + 2);
+  assert.equal(createIds(seededRandom(3))('a')[0], 'a');
+});
+
+test('step-free: collectIds reads a floor whose refuges are not a list without throwing', () => {
+  const project = school();
+  project.building.floors[0].refuges = 'x';
+  assert.equal(collectIds(project).length, collectIds(school()).length);
+});

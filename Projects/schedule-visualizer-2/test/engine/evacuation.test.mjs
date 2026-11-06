@@ -13,6 +13,9 @@ import { route, routeToExit, routingGraph, routesForSchedule, createRouteCache }
 import { directions, describeFailure } from '../../engine/directions.js';
 import { evacuationRoutes, byExit, noRoute, doorCard, cardSteps, elevatorConnections, ELEVATOR_KIND, CROP_MARGIN } from '../../engine/evacuation.js';
 import { school, clone } from './helpers.mjs';
+import { validate } from '../../engine/validate.js';
+import { repair } from '../../engine/repair.js';
+import * as schema from '../../engine/schema.js';
 import { planProject, threeFloors, disconnectedWing, floorId, roomId } from '../fixtures/buildings/plans.mjs';
 
 const F1 = floorId(1);
@@ -606,4 +609,21 @@ test('exits that tie on seconds: fewer turns win before id order', () => {
   assert.ok(turning.turns > straight.turns);
   const card = doorCard(project, graph, evacuationRoutes(project, graph).rooms[0].route);
   assert.deepEqual([card.exit.id, card.exit.doorName], ['xplan00002', 'Straight Door']);
+});
+
+test('step-free: ELEVATOR_KIND is schema.js\'s, re-exported here', () => {
+  assert.equal(ELEVATOR_KIND, schema.ELEVATOR_KIND);
+  assert.equal(ELEVATOR_KIND, 'elevator');
+});
+
+test('step-free: connections of the elevator kind with no lifts list stay valid, and repair leaves them elevators', () => {
+  for (const make of [twoStairs, () => school()]) {
+    const project = make();
+    for (const connection of project.building.connections) connection.kind = ELEVATOR_KIND;
+    assert.deepEqual(validate(project), [], 'valid with no lifts at all (ARCHITECTURE 19.2)');
+    const repaired = repair(project).project;
+    assert.deepEqual(validate(repaired), []);
+    assert.deepEqual(repaired.building.connections.map((connection) => connection.kind), project.building.connections.map(() => ELEVATOR_KIND));
+    assert.deepEqual(elevatorConnections(repaired), elevatorConnections(project), 'evacuation avoids the same connections');
+  }
 });
