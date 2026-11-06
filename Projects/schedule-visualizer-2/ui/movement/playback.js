@@ -262,6 +262,22 @@ export function playbackBar(env) {
     return state ? state.picture.choice.transition : null;
   }
 
+  // A group holding an elevator rests on the stop it boarded at (DESIGN 13.5):
+  // the car's one slot is drawn on that stop, not along a stairs arc, and the
+  // track keeps what each ride is so the bar can say who is riding now.
+  //   track.rides   [{ index, car, label, at: { floorId, cell } }]
+  function restOnStops(routing, path, track) {
+    track.rides = [];
+    for (let p = 0; p < path.length; p += 1) {
+      const link = path.links[p];
+      if (link === -1 || routing.links[link].elevator !== true) continue;
+      const before = track.places[p - 1];
+      if (!before || before.a) continue;
+      track.places[p] = { floorId: before.floorId, cell: before.cell };
+      track.rides.push({ index: p, car: routing.links[link].id, label: typeof routing.links[link].label === 'string' ? routing.links[link].label : '', at: track.places[p] });
+    }
+  }
+
   function build() {
     const picture = state.picture;
     const period = picture.choice.transition;
@@ -280,11 +296,13 @@ export function playbackBar(env) {
       const walker = crowd.groups.find((each) => each.groupId === group.id);
       const entry = routesDay.groups.find((each) => each.groupId === group.id);
       const route = entry ? entry.routes[period] : null;
-      const track = walker ? trackOf(routing, route, routePath(routing, route)) : null;
+      const path = walker ? routePath(routing, route) : null;
+      const track = walker ? trackOf(routing, route, path) : null;
       // a group in the same room, or with no route, has nowhere to be drawn
       if (!track || track.slots !== walker.slots) continue;
+      restOnStops(routing, path, track);
       const span = Math.max(1, walker.arrived ? walker.total : walker.positions.length - 1);
-      walkers.push({ groupId: group.id, name: group.name, colour: group.colour, track, positions: walker.positions, length: walker.length, arrived: walker.arrived === true, late: walker.late === true, total: walker.total, span, offset });
+      walkers.push({ groupId: group.id, name: group.name, colour: group.colour, track, rides: track.rides, positions: walker.positions, length: walker.length, arrived: walker.arrived === true, late: walker.late === true, total: walker.total, span, offset });
       offset += span;
       together = Math.max(together, span);
     }
@@ -345,6 +363,57 @@ export function playbackBar(env) {
   mark.id = 'playback';
   mark.order = 1;
   env.marks.push(mark);
+
+  // ---- who holds an elevator at this second (DESIGN 13.5). The group's tick
+  // on the crowd model's clock says which slot its head is in; a slot that is
+  // a car's is a ride. env.rides.now is shared with the hotspot table, which
+  // says "in use" in words.
+  //   [{ groupId, car, label, at: { floorId, cell } }]
+  function ridersNow() {
+    const moment = started ? now() : null;
+    if (!moment) return [];
+    const found = [];
+    for (const walker of moment.walkers) {
+      if (!walker.rides || walker.rides.length === 0 || walker.positions.length === 0) continue;
+      const index = walker.positions[Math.min(Math.floor(Math.max(0, moment.clock)), walker.positions.length - 1)];
+      const ride = walker.rides.find((each) => each.index === index);
+      if (ride) found.push({ groupId: walker.groupId, car: ride.car, label: ride.label, at: ride.at });
+    }
+    return found;
+  }
+
+  // The stop a rider rests on carries a ring in the accent colour. In motion
+  // it pulses once a second; with reduced motion it is steady, so the ring is
+  // there without any movement. The hotspot row's words are the other signal.
+  const ridesMark = (g, map) => {
+    const riders = env.rides.now;
+    if (riders.length === 0) return;
+    const phase = reduce.matches ? 0 : (Date.now() % 1000) / 1000;
+    const size = map.view.size;
+    g.lineWidth = Math.max(2, Math.round(size / 8));
+    g.strokeStyle = map.theme.accent;
+    for (const rider of riders) {
+      const at = map.point(rider.at.floorId, rider.at.cell);
+      if (!at) continue;
+      g.globalAlpha = reduce.matches ? 1 : 1 - phase * 0.7;
+      g.beginPath();
+      g.arc(at.x, at.y, size * (0.55 + 0.35 * phase), 0, Math.PI * 2);
+      g.stroke();
+    }
+    g.globalAlpha = 1;
+  };
+  ridesMark.id = 'rides';
+  ridesMark.order = 2;
+  env.marks.push(ridesMark);
+
+  function publishRides() {
+    const next = ridersNow();
+    const key = (list) => list.map((each) => each.groupId + ':' + each.car + ':' + each.at.floorId + ':' + each.at.cell).join('|');
+    const changed = key(next) !== key(env.rides.now);
+    env.rides.now = next;
+    element.dataset.riding = [...new Set(next.map((each) => each.label))].join(',');
+    if (changed) for (const listener of env.rides.listeners) listener(next);
+  }
 
   // The markers moved, or changed: the marks are drawn again, the map is not.
   function drawMarks() {
@@ -528,6 +597,7 @@ export function playbackBar(env) {
   function render() {
     const moment = now();
     const total = end();
+    publishRides();
     element.dataset.playing = String(playing);
     element.dataset.started = String(started && scene !== null);
     element.dataset.seconds = String(Math.round(seconds * 1000) / 1000);

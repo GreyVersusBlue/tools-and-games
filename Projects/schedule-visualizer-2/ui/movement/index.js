@@ -199,6 +199,9 @@ export const section = {
       paintMarks: () => plan.paintMarks(),
       layer,
       card,
+      // who holds an elevator at the second playback shows: { now: [{ groupId,
+      // car, label, at }], listeners }; playback writes it, the hotspot table reads it
+      rides: { now: [], listeners: new Set() },
       // a card the reader tapped open ({ floorId, cell }, or null), and
       // putting it back beside its cell after the map moved under it with
       // nothing said (presentation mode leaving, ./present.js)
