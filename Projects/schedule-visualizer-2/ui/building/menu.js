@@ -170,11 +170,11 @@ export function menuItems(ed, deps, cell) {
   } else if (at.kind === 'corridor') {
     if (at.exit) {
       items.push({ label: 'Edit the exit' + (at.exit.doorName.trim() === '' ? '' : ' ' + at.exit.doorName), keepsFocus: true, run: () => deps.inspector().focusExit(at.exit.id) });
+      items.push({ label: 'Take the exit mark off', run: () => ed.commit(unmarkExit, { floorId, exitId: at.exit.id }, { done: () => 'Took the exit mark off. The corridor cell stays.' }) });
       items.push({
         label: at.exit.stepFree === false ? 'The exit is step-free' : 'The exit has a step',
         run: () => ed.commit(setExitStepFree, { floorId, exitId: at.exit.id, stepFree: at.exit.stepFree === false }, { done: () => (at.exit.stepFree === false ? 'The exit is now step-free.' : 'The exit now has a step outside its door.') }),
       });
-      items.push({ label: 'Take the exit mark off', run: () => ed.commit(unmarkExit, { floorId, exitId: at.exit.id }, { done: () => 'Took the exit mark off. The corridor cell stays.' }) });
     } else {
       items.push({ label: 'Mark as an exit', keepsFocus: true, run: () => {
         const outcome = ed.commit(markExit, { floorId, cell }, { done: () => 'Marked an exit. Type its door name.' });
