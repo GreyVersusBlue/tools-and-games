@@ -164,7 +164,7 @@
 // leaves and has toPeriod, the period it reaches, and the gap between the
 // two as its passing time; a transition that goes next door has no toPeriod.
 
-import { DOOR_SIDES, STUDENTS_PER_LANE_CELL, RANGES, inRange, defaultSettings } from './schema.js';
+import { DOOR_SIDES, STUDENTS_PER_LANE_CELL, RANGES, inRange, defaultSettings, ELEVATOR_DOOR_SECONDS } from './schema.js';
 import { routingGraph, route, createRouteCache, routesForSchedule, runRoutes, walkTarget } from './routing.js';
 import { effectiveDayType, findDayType } from './day-types.js';
 import { bellsFor, offPeriods, parseTime } from './bells.js';
@@ -206,7 +206,7 @@ function headCountOf(group, settings) {
 
 // The slot numbering of a graph. A cell slot is node × 4 + heading. After
 // those come the stairs slots: for each connection, k slots one way (from its
-// `a` end) and then k the other.
+// `a` end) and then k the other, and one slot for each elevator car.
 const numberings = new WeakMap();
 
 function numberingOf(graph) {
@@ -217,18 +217,33 @@ function numberingOf(graph) {
   const linkSlots = new Int32Array(graph.links.length);
   const linkBase = new Int32Array(graph.links.length);
   const linkOfId = new Map();
+  const cars = Array.isArray(graph.cars) ? graph.cars : [];
+  // a car is one slot of its own, numbered by car and shared by every link of
+  // the car and by both directions (ARCHITECTURE 19.5); `carBase[car]` is it
+  const carBase = new Int32Array(cars.length).fill(-1);
+  const slotOwner = [];
   let total = 0;
   graph.links.forEach((link, index) => {
+    if (link.elevator === true && cars[link.car]) {
+      if (carBase[link.car] === -1) {
+        carBase[link.car] = total;
+        slotOwner.push(cars[link.car].link);
+        total += 1;
+      }
+      linkSlots[index] = 1;
+      linkBase[index] = carBase[link.car];
+      // a car id is its first link's: never whichever link came last
+      if (index === cars[link.car].link) linkOfId.set(link.id, index);
+      return;
+    }
     const k = Math.max(1, Math.round((graph.secondsPerStair * link.levels) / graph.secondsPerCell));
     linkSlots[index] = k;
     linkBase[index] = total;
+    for (let j = 0; j < 2 * k; j += 1) slotOwner.push(index);
     total += 2 * k;
     linkOfId.set(link.id, index);
   });
-  const linkOfSlot = new Int32Array(total);
-  graph.links.forEach((link, index) => {
-    for (let j = 0; j < 2 * linkSlots[index]; j += 1) linkOfSlot[linkBase[index] + j] = index;
-  });
+  const linkOfSlot = Int32Array.from(slotOwner);
   const numbering = { stairsStart, slotCount: stairsStart + total, linkSlots, linkBase, linkOfId, linkOfSlot };
   numberings.set(graph, numbering);
   return numbering;
@@ -248,7 +263,8 @@ function headingBetween(graph, from, to) {
 //               i + 1 when that step is a left turn (rule 4), or −1
 //     nodes,    Int32Array: the graph node of a cell slot, −1 on the stairs
 //     links,    Int32Array: the index into graph.links of a stairs slot, −1 on a cell
-//     part }    Int32Array: 0 … k − 1 along a stairs connection, 0 on a cell
+//     part,     Int32Array: 0 … k − 1 along a stairs connection, 0 on a cell
+//     rides }   Int32Array: the floors changed at a car's slot (a ride), 0 elsewhere
 export function routePath(graph, found) {
   const numbering = numberingOf(graph);
   if (!found || found.ok !== true || found.same === true || !Array.isArray(found.cells) || found.cells.length === 0) return null;
@@ -306,6 +322,7 @@ export function routePath(graph, found) {
   const nodes = new Int32Array(length).fill(-1);
   const links = new Int32Array(length).fill(-1);
   const part = new Int32Array(length);
+  const rides = new Int32Array(length); // the floors a ride changes at its car slot, 0 elsewhere
   let p = 0;
   for (let i = 0; i < count; i += 1) {
     slots[p] = nodeOf[i] * 4 + lane[i];
@@ -318,23 +335,59 @@ export function routePath(graph, found) {
     const link = linkAfter[i];
     if (link !== -1) {
       const k = numbering.linkSlots[link];
-      const base = numbering.stairsStart + numbering.linkBase[link] + (graph.links[link].a === nodeOf[i] ? 0 : k);
+      // a car's one slot has no direction; a stairs connection's has one each way
+      const base = numbering.stairsStart + numbering.linkBase[link] + (graph.links[link].elevator === true || graph.links[link].a === nodeOf[i] ? 0 : k);
       for (let j = 0; j < k; j += 1) {
         slots[p] = base + j;
         links[p] = link;
         part[p] = j;
+        if (graph.links[link].elevator === true) {
+          // a ride's ends are read from the route, never from the car's first link
+          const from = graph.floors[graph.nodeFloor[nodeOf[i]]].level;
+          const to = graph.floors[graph.nodeFloor[nodeOf[i + 1]]].level;
+          rides[p] = Math.max(1, Math.abs(to - from));
+        }
         p += 1;
       }
     }
   }
-  return { length, slots, cross, nodes, links, part };
+  return { length, slots, cross, nodes, links, part, rides };
 }
 
-// Rule 8: walking = (number of path slots) × secondsPerCell. This is the
-// walking time every screen shows; null when there is no walk to time.
+// The seconds a ride of `levels` floors takes one person: the wait for the
+// car and the ride itself (ARCHITECTURE 19.4's cost, 19.5's trips = 1).
+function rideSeconds(graph, levels) {
+  return graph.elevator.wait + graph.elevator.perFloor * levels;
+}
+
+// How long a group's head holds the car after it takes the car's slot
+// (ARCHITECTURE 19.5): wait + ride, plus, for a group that needs more than
+// one trip, a return and a second ride for each trip after the first, less
+// the walk out of the car that the column's own steps already count; never
+// less than one person's wait + ride.
+export function rideFor(graph, levels, headCount) {
+  const { wait, perFloor, perTrip } = graph.elevator;
+  const ride = perFloor * levels;
+  const trips = Math.max(1, Math.ceil(headCount / perTrip));
+  const held = wait + ride + (trips - 1) * (2 * ride + 2 * ELEVATOR_DOOR_SECONDS) - (columnLength(headCount) - 1) * graph.secondsPerCell;
+  return Math.max(wait + ride, Math.round(held));
+}
+
+// Rule 8: walking = (number of path slots, less a car's) × secondsPerCell,
+// and a ride counts as wait + ride for one person. This is the walking time
+// every screen shows; null when there is no walk to time.
 export function walkingSeconds(graph, found) {
   const path = routePath(graph, found);
-  return path ? path.length * graph.secondsPerCell : null;
+  if (!path) return null;
+  let seconds = 0;
+  for (let p = 0; p < path.length; p += 1) seconds += path.rides[p] > 0 ? rideSeconds(graph, path.rides[p]) : graph.secondsPerCell;
+  return seconds;
+}
+
+function ridesOf(path) {
+  let n = 0;
+  for (let p = 0; p < path.length; p += 1) if (path.rides[p] > 0) n += 1;
+  return n;
 }
 
 function byId(a, b) {
@@ -364,7 +417,17 @@ export function simulateTransition(graph, walkers, options) {
     const path = walker ? routePath(graph, walker.route) : null;
     if (!path) continue;
     const headCount = headCountOf(walker, null);
-    taking.push({ id: walker.id, route: walker.route, path, headCount, length: columnLength(headCount), delay: Number.isInteger(walker.delay) && walker.delay > 0 ? walker.delay : 0 });
+    // holds[p]: the seconds the head stays at slot p before its next step, the
+    // step for a cell and a stairs slot, rideFor for a car's
+    const holds = new Int32Array(path.length).fill(graph.secondsPerCell);
+    let riding = 0;
+    for (let p = 0; p < path.length; p += 1) {
+      if (path.rides[p] > 0) {
+        holds[p] = rideFor(graph, path.rides[p], headCount);
+        riding += holds[p];
+      }
+    }
+    taking.push({ id: walker.id, route: walker.route, path, headCount, length: columnLength(headCount), holds, riding, delay: Number.isInteger(walker.delay) && walker.delay > 0 ? walker.delay : 0 });
   }
   taking.sort(byId);
   const count = taking.length;
@@ -448,7 +511,7 @@ export function simulateTransition(graph, walkers, options) {
       const tail = at - walker.length + 1;
       if (tail >= 0 && tail < path.length) occupancy[path.slots[tail]] = -1;
       head[g] = at + 1;
-      readyAt[g] = tick + step;
+      readyAt[g] = tick + (head[g] < path.length ? walker.holds[head[g]] : step);
       crossingWaited[g] = 0;
       if (head[g] === path.length) arrivedAt[g] = tick; // choice a
       if (head[g] >= path.length + walker.length - 1) {
@@ -481,7 +544,8 @@ export function simulateTransition(graph, walkers, options) {
       headCount: walker.headCount,
       length: walker.length,
       slots: walker.path.length,
-      walking: walker.path.length * step, // rule 8
+      walking: (walker.path.length - ridesOf(walker.path)) * step, // rule 8, no car slot
+      ...(walker.riding > 0 ? { riding: walker.riding } : {}),
       waiting: waited[g],
       ...(walker.delay > 0 ? { released: walker.delay } : {}),
       total,
@@ -762,6 +826,7 @@ function groupWalks(days) {
           passingSeconds: transition.passingSeconds,
           total: group.total,
           walking: group.walking,
+          ...(group.riding > 0 ? { riding: group.riding } : {}),
           waiting: group.waiting,
           ...(group.released > 0 ? { released: group.released } : {}),
           late: group.late,
