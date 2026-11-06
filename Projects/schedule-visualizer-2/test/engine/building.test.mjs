@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import * as actions from '../../engine/actions.js';
 import * as building from '../../engine/building.js';
 import { createStore } from '../../engine/store.js';
-import { findRoom, nextConnectionLabel } from '../../engine/schema.js';
+import { findRoom, nextConnectionLabel, elevatorCars as schemaCars } from '../../engine/schema.js';
 import { emptyProject, school, ctx, clock, makeIds, room, group, teacher, assertValid } from './helpers.mjs';
 import { planProject, twoRooms, threeFloors, cellAt, floorId, roomId } from '../fixtures/buildings/plans.mjs';
 
@@ -691,4 +691,307 @@ test('a building action leaves every floor it did not touch, and the schedule, a
   assert.equal(after.building.connections, before.building.connections);
   assert.equal(after.groups, before.groups);
   assert.equal(after.teachers, before.teachers);
+});
+
+// ================================================================ SV2-97: elevators, steps and areas of refuge
+
+// Three floors of 7 by 5: two rooms over a corridor on row 2, empty cells below.
+const SHAFT = ['.AA.BB.', '.AA.BB.', '#######', '.......', '.......'];
+const F2 = floorId(2);
+const F3 = floorId(3);
+
+function shaft(floors, options) {
+  return planProject(Array.from({ length: floors }, () => SHAFT), options);
+}
+
+const at = (x, y) => y * 7 + x;
+
+// The project as the store holds it, without the stamp every change sets.
+function bare(project) {
+  const { modified, ...rest } = project;
+  return JSON.stringify(rest);
+}
+
+// One action through a store: it is one undo entry, the project is valid,
+// and Undo gives the project back byte for byte (and Redo the result).
+function viaStore(project, action, payload) {
+  const store = createStore({ project: freeze(structuredClone(project)), clock, ids: makeIds(5) });
+  const before = bare(store.project);
+  store.apply(action, payload);
+  assert.equal(store.history.past.length, 1, 'one action, one undo entry');
+  assertValid(store.project, 'valid after the action');
+  const after = bare(store.project);
+  const label = store.undoLabel;
+  store.undo();
+  assert.equal(bare(store.project), before, 'undo gives the project back byte for byte');
+  store.redo();
+  assert.equal(bare(store.project), after, 'redo gives the result back');
+  return { project: store.project, label };
+}
+
+test('an elevator stop is placed on its own path: the cell is "S", listed in lifts, one undo step', () => {
+  const before = shaft(2);
+  const payload = { floorId: F1, cells: [at(0, 3)] };
+  const { project, label } = viaStore(before, actions.placeLift, payload);
+  assert.equal(floor(project, 1).cells[at(0, 3)], 'S');
+  assert.deepEqual(floor(project, 1).lifts, [at(0, 3)]);
+  assert.equal(floor(project, 2).lifts, undefined, 'another floor is untouched');
+  assert.equal(label, 'Place an elevator stop on Floor 1');
+  const direct = actions.placeLift(freeze(before), payload, shared);
+  assert.deepEqual(actions.placeLift.bumps(before, payload, direct), [GEOMETRY], 'geometry, and the schedule only when a room went');
+  assert.equal(building.describeCell(project.building, F1, at(0, 3)).kind, 'elevator');
+});
+
+test('placing a stop over a stop is no change, and a drag lists every cell once', () => {
+  const placed = run(actions.placeLift, shaft(2), { floorId: F1, cells: [at(0, 3), at(1, 3)] });
+  assert.deepEqual(floor(placed, 1).lifts, [at(0, 3), at(1, 3)]);
+  assert.equal(actions.placeLift(freeze(placed), { floorId: F1, cells: [at(0, 3)] }, shared), placed, 'the very same project');
+  const more = run(actions.placeLift, placed, { floorId: F1, cells: [at(1, 3), at(2, 3)] });
+  assert.deepEqual(floor(more, 1).lifts, [at(0, 3), at(1, 3), at(2, 3)]);
+});
+
+test('a stop over a corridor cell replaces it and says what went: its name, step, refuge, and the door facing it', () => {
+  let project = shaft(2, { doors: { '1A': [[1, 1, 's']] } });
+  project = run(actions.nameCorridor, project, { floorId: F1, cells: [at(1, 2)], name: 'Main' });
+  project = run(actions.setStepCells, project, { floorId: F1, cells: [at(1, 2)], stepFree: false });
+  project = run(actions.addRefuge, project, { floorId: F1, cell: at(1, 2) });
+  assert.equal(room(project, '1A').doors.length, 1);
+  const payload = { floorId: F1, cells: [at(1, 2)] };
+  const { project: after, label } = viaStore(project, actions.placeLift, payload);
+  assert.equal(floor(after, 1).cells[at(1, 2)], 'S');
+  assert.deepEqual(floor(after, 1).lifts, [at(1, 2)]);
+  assert.equal(room(after, '1A').doors.length, 0, 'the door that faced the cell is gone');
+  assert.deepEqual([floor(after, 1).corridors, floor(after, 1).notStepFree, floor(after, 1).refuges], [[], undefined, undefined]);
+  assert.equal(label, 'Place an elevator stop on Floor 1, replacing 1 corridor cell, 1 door, the corridor name Main, 1 step mark and the area of refuge Area of refuge');
+});
+
+test('a stop over stairs takes the stairs\' connection with it, said; over a room it cuts the room', () => {
+  const before = planProject([['S####', 'AA...', 'AA...', '.....', '.....'], ['S####', '.....', '.....', '.....', '.....']], { connections: [[1, 0, 0, 2, 0, 0]] });
+  const over = { floorId: F1, cells: [0, 5] };
+  const { project, label } = viaStore(before, actions.placeLift, over);
+  assert.deepEqual(project.building.connections, []);
+  assert.deepEqual(floor(project, 1).lifts, [0, 5]);
+  assert.deepEqual(room(project, '1A').cells, [6, 10, 11]);
+  assert.equal(label, 'Place an elevator stop on Floor 1, replacing 1 cell of Room 1A, 1 stairs cell and stairs connection A');
+});
+
+test('a stop placed with over: refuse leaves what is there alone and says why; skip takes only empty cells', () => {
+  const before = shaft(1);
+  refused(actions.placeLift, before, { floorId: F1, cells: [at(0, 2)], over: 'refuse' }, 'occupied', /replace 1 corridor cell/);
+  const skipped = run(actions.placeLift, before, { floorId: F1, cells: [at(0, 2), at(0, 3)], over: 'skip' });
+  assert.deepEqual(floor(skipped, 1).lifts, [at(0, 3)]);
+  assert.equal(floor(skipped, 1).cells[at(0, 2)], '#');
+});
+
+test('stairs over a stop: the cell leaves lifts and loses its elevator connection, said', () => {
+  let project = run(actions.placeLift, shaft(2), { floorId: F1, cells: [at(0, 3)] });
+  project = run(actions.placeLift, project, { floorId: F2, cells: [at(0, 3)] });
+  project = run(actions.connectStairs, project, { a: { floorId: F1, cell: at(0, 3) }, b: { floorId: F2, cell: at(0, 3) } });
+  const payload = { floorId: F1, cells: [at(0, 3)] };
+  const { project: after, label } = viaStore(project, actions.placeStairs, payload);
+  assert.equal(floor(after, 1).cells[at(0, 3)], 'S');
+  assert.equal(floor(after, 1).lifts, undefined);
+  assert.deepEqual(after.building.connections, []);
+  assert.deepEqual(floor(after, 2).lifts, [at(0, 3)], 'the other stop stays a stop, not connected');
+  assert.equal(building.describeCell(after.building, F1, at(0, 3)).kind, 'stairs');
+  assert.equal(label, 'Place stairs on Floor 1, replacing 1 elevator stop and a connection of elevator A');
+});
+
+// three floors, a stop on each at (0, 3)
+function stops3() {
+  let project = shaft(3);
+  for (const floorIdent of [F1, F2, F3]) project = run(actions.placeLift, project, { floorId: floorIdent, cells: [at(0, 3)] });
+  return project;
+}
+const stop = (floorIdent) => ({ floorId: floorIdent, cell: at(0, 3) });
+
+test('two stops join as an elevator: kind, both ways, the car\'s letter, staff only for a new car', () => {
+  const before = stops3();
+  const payload = { a: stop(F1), b: stop(F2), id: 'cshaft0001' };
+  const described = actions.describeConnect(before, payload);
+  assert.deepEqual({ elevator: described.elevator, car: described.car, staffOnly: described.staffOnly, newCar: described.newCar, merges: described.merges }, { elevator: true, car: 'A', staffOnly: true, newCar: true, merges: [] });
+  const { project, label } = viaStore(before, actions.connectStairs, payload);
+  assert.deepEqual(project.building.connections, [{ id: 'cshaft0001', label: 'A', a: stop(F1), b: stop(F2), direction: 'both', kind: 'elevator', car: 'A', staffOnly: true }]);
+  assert.equal(label, 'Connect elevator A: Floor 1 to Floor 2');
+  assert.equal(building.counts(project.building).elevators, 1);
+});
+
+test('a stop joined to a car is merged into it, with its letter and its access; each connection keeps its own label', () => {
+  let project = run(actions.connectStairs, stops3(), { a: stop(F1), b: stop(F2) });
+  project = run(actions.setElevator, project, { carId: project.building.connections[0].id, staffOnly: false });
+  const { project: chain, label } = viaStore(project, actions.connectStairs, { a: stop(F2), b: stop(F3) });
+  assert.deepEqual(chain.building.connections.map((c) => [c.label, c.car, c.staffOnly, c.kind, c.direction]), [['A', 'A', undefined, 'elevator', 'both'], ['B', 'A', undefined, 'elevator', 'both']]);
+  assert.equal(label, 'Connect elevator A: Floor 2 to Floor 3');
+  const cars = elevatorCarsOf(chain);
+  assert.equal(cars.length, 1);
+  assert.deepEqual(cars[0].stops.map((s) => s.floorId), [F1, F2, F3]);
+  // a star from the lobby: the third stop joins the first
+  const star = run(actions.connectStairs, project, { a: stop(F1), b: stop(F3) });
+  assert.deepEqual(star.building.connections.map((c) => c.car), ['A', 'A']);
+});
+
+function elevatorCarsOf(project) {
+  return schemaCars(project.building);
+}
+
+test('the three refusals of connecting stops: kind mixed, one floor, a floor the car already serves', () => {
+  const base = stops3();
+  const withStairs = run(actions.placeStairs, base, { floorId: F2, cells: [at(1, 3)] });
+  refused(actions.connectStairs, withStairs, { a: stop(F1), b: { floorId: F2, cell: at(1, 3) } }, 'elevator-stairs', /An elevator stop joins only another elevator stop/);
+  refused(actions.connectStairs, withStairs, { a: { floorId: F2, cell: at(1, 3) }, b: stop(F1) }, 'elevator-stairs', /An elevator stop joins only another elevator stop/);
+  const twoOnOne = run(actions.placeLift, base, { floorId: F1, cells: [at(2, 3)] });
+  refused(actions.connectStairs, twoOnOne, { a: stop(F1), b: { floorId: F1, cell: at(2, 3) } }, 'elevator-same-floor', /An elevator joins different floors/);
+  const joined = run(actions.connectStairs, twoOnOne, { a: stop(F1), b: stop(F2) });
+  const elsewhere = run(actions.placeLift, joined, { floorId: F2, cells: [at(3, 3)] });
+  refused(actions.connectStairs, elsewhere, { a: { floorId: F2, cell: at(3, 3) }, b: stop(F1) }, 'elevator-floor-taken', /Elevator A already stops on Floor 2/);
+  refused(actions.connectStairs, elsewhere, { a: stop(F1), b: { floorId: F2, cell: at(3, 3) } }, 'elevator-floor-taken', /Elevator A already stops on Floor 2/);
+  refused(actions.connectStairs, joined, { a: { floorId: F1, cell: at(2, 3) }, b: stop(F2) }, 'elevator-floor-taken', /Elevator A already stops on Floor 1/);
+  const chain = run(actions.connectStairs, joined, { a: stop(F2), b: stop(F3) });
+  refused(actions.connectStairs, chain, { a: stop(F1), b: stop(F3) }, 'already-connected', /already part of Elevator A/);
+});
+
+test('two cars that meet become one: the first stop\'s letter, access true wins, every connection says so', () => {
+  let project = shaft(4);
+  const ends = [[F1, 0], [F2, 0], [F3, 1], [floorId(4), 1]];
+  for (const [floorIdent, x] of ends) project = run(actions.placeLift, project, { floorId: floorIdent, cells: [at(x, 3)] });
+  const end = (n) => ({ floorId: ends[n][0], cell: at(ends[n][1], 3) });
+  let merged = run(actions.connectStairs, project, { a: end(0), b: end(1) });
+  merged = run(actions.setElevator, merged, { carId: merged.building.connections[0].id, staffOnly: false });
+  merged = run(actions.connectStairs, merged, { a: end(2), b: end(3) });
+  assert.deepEqual(merged.building.connections.map((c) => [c.car, c.staffOnly]), [['A', undefined], ['B', true]]);
+  const { project: one, label } = viaStore(merged, actions.connectStairs, { a: end(1), b: end(2) });
+  assert.deepEqual(one.building.connections.map((c) => [c.car, c.staffOnly]), [['A', true], ['A', true], ['A', true]]);
+  assert.equal(label, 'Connect elevator A: Floor 2 to Floor 3, joining elevator B to it');
+  assert.equal(schemaCars(one.building).length, 1);
+  // the other way round, the first stop is B's and B's letter wins
+  const back = run(actions.connectStairs, merged, { a: end(2), b: end(1) });
+  assert.deepEqual(back.building.connections.map((c) => c.car), ['B', 'B', 'B']);
+  // a join that would give the merged car two stops on one floor is refused, naming the car
+  const crowded = run(actions.placeLift, merged, { floorId: F2, cells: [at(4, 3)] });
+  refused(actions.connectStairs, crowded, { a: { floorId: F2, cell: at(4, 3) }, b: end(0) }, 'elevator-floor-taken', /Elevator A already stops on Floor 2/);
+  // two joined cars that both serve one floor cannot meet: car A has Floor 2, and so would the car of a stop beside it
+  const rival = run(actions.placeLift, crowded, { floorId: F3, cells: [at(4, 3)] });
+  const rivals = run(actions.connectStairs, rival, { a: { floorId: F2, cell: at(4, 3) }, b: { floorId: F3, cell: at(4, 3) } });
+  refused(actions.connectStairs, rivals, { a: end(1), b: { floorId: F3, cell: at(4, 3) } }, 'elevator-floor-taken', /Elevator [AC] already stops on Floor [23]/);
+});
+
+test('disconnecting an elevator leaves its stops standing, not connected', () => {
+  const joined = run(actions.connectStairs, stops3(), { a: stop(F1), b: stop(F2) });
+  const { project, label } = viaStore(joined, actions.disconnectStairs, { connectionId: joined.building.connections[0].id });
+  assert.deepEqual(project.building.connections, []);
+  assert.deepEqual([floor(project, 1).lifts, floor(project, 2).lifts], [[at(0, 3)], [at(0, 3)]]);
+  assert.equal(label, 'Disconnect elevator A');
+  const counted = building.counts(project.building);
+  assert.deepEqual([counted.liftCells, counted.unconnectedLifts, counted.elevators, counted.connections], [3, 3, 0, 0]);
+});
+
+test('an elevator takes no direction but both; stairs still take one', () => {
+  const joined = run(actions.connectStairs, stops3(), { a: stop(F1), b: stop(F2) });
+  const id = joined.building.connections[0].id;
+  refused(actions.setConnection, joined, { connectionId: id, direction: 'ab' }, 'elevator-direction', /runs both ways/);
+  refused(actions.setConnection, joined, { connectionId: id, direction: 'ba' }, 'elevator-direction');
+  assert.equal(actions.setConnection(freeze(joined), { connectionId: id, direction: 'both' }, shared), joined, 'both is no change');
+  const stairs = planProject([['S####', '.....', '.....', '.....', '.....'], ['S####', '.....', '.....', '.....', '.....']], { connections: [[1, 0, 0, 2, 0, 0]] });
+  assert.equal(run(actions.setConnection, stairs, { connectionId: stairs.building.connections[0].id, direction: 'ab' }).building.connections[0].direction, 'ab');
+});
+
+test('setElevator writes staff only on every connection of the car and says how many stops it reached', () => {
+  let project = run(actions.connectStairs, stops3(), { a: stop(F1), b: stop(F2) });
+  project = run(actions.connectStairs, project, { a: stop(F2), b: stop(F3) });
+  const carId = project.building.connections[0].id;
+  const open = { carId, staffOnly: false };
+  const { project: after, label } = viaStore(project, actions.setElevator, open);
+  assert.deepEqual(after.building.connections.map((c) => Object.keys(c).includes('staffOnly')), [false, false]);
+  assert.equal(label, 'Open elevator A to everyone');
+  const result = run(actions.setElevator, after, { carId, staffOnly: true });
+  assert.deepEqual(result.building.connections.map((c) => c.staffOnly), [true, true]);
+  assert.equal(info(actions.setElevator, after, { carId, staffOnly: true }, result).label, 'Make elevator A staff and authorised only');
+  assert.equal(info(actions.setElevator, after, { carId, staffOnly: true }, result).outcome.stops, 3);
+  assert.equal(actions.setElevator(freeze(project), { carId, staffOnly: true }, shared), project, 'already staff only: no change');
+  assert.deepEqual(actions.setElevator.bumps, [GEOMETRY]);
+  refused(actions.setElevator, project, { carId: 'cnothing00', staffOnly: true }, 'missing');
+  refused(actions.setElevator, project, { carId, staffOnly: 'yes' }, 'bad-value');
+  refused(actions.setElevator, stops3(), { carId: 'stop:' + F1 + ':' + at(0, 3), staffOnly: true }, 'not-connected', /Connect it first/);
+});
+
+test('a door with a step, an exit with a step: the flag is written false and taken off when true, one undo step each', () => {
+  const before = planProject([['.AA.BB.', '.AA.BB.', '#######', '.......', '.......']], { doors: { '1A': [[1, 1, 's'], [2, 1, 's']] }, exits: [[1, 0, 2, 'West Door']] });
+  const door = { cell: at(1, 1), side: 's' };
+  const { project: stepped, label } = viaStore(before, actions.setDoorStepFree, { roomId: roomId('1A'), door, stepFree: false });
+  assert.deepEqual(room(stepped, '1A').doors, [{ cell: at(1, 1), side: 's', stepFree: false }, { cell: at(2, 1), side: 's' }]);
+  assert.equal(label, 'Mark a door of Room 1A as having a step');
+  const free = run(actions.setDoorStepFree, stepped, { roomId: roomId('1A'), door, stepFree: true });
+  assert.deepEqual(room(free, '1A').doors, room(before, '1A').doors, 'the flag is gone, not set to true');
+  assert.equal(info(actions.setDoorStepFree, stepped, { roomId: roomId('1A'), door, stepFree: true }, free).label, 'Mark a door of Room 1A as step-free');
+  assert.equal(actions.setDoorStepFree(freeze(before), { roomId: roomId('1A'), door, stepFree: true }, shared), before, 'already step-free: no change');
+  refused(actions.setDoorStepFree, before, { roomId: roomId('1A'), door: { cell: at(3, 1), side: 's' }, stepFree: false }, 'missing', /no longer on Room 1A/);
+  refused(actions.setDoorStepFree, before, { roomId: roomId('1A'), door, stepFree: 'no' }, 'bad-value');
+  assert.deepEqual(actions.setDoorStepFree.bumps, [GEOMETRY]);
+
+  const exitId = floor(before, 1).exits[0].id;
+  const { project: kerb, label: exitLabel } = viaStore(before, actions.setExitStepFree, { exitId, stepFree: false });
+  assert.equal(floor(kerb, 1).exits[0].stepFree, false);
+  assert.equal(exitLabel, 'Mark the exit West Door as having a step');
+  assert.deepEqual(floor(run(actions.setExitStepFree, kerb, { exitId, stepFree: true }), 1).exits, floor(before, 1).exits);
+  refused(actions.setExitStepFree, before, { exitId: 'xnothing00', stepFree: false }, 'missing');
+});
+
+test('steps are marked on corridor cells; the rest are skipped and counted, and a selection with no corridor is refused', () => {
+  const before = shaft(1);
+  const cells = [at(0, 2), at(1, 2), at(2, 2), at(1, 0), at(0, 4)];
+  const payload = { floorId: F1, cells, stepFree: false };
+  const { project, label } = viaStore(before, actions.setStepCells, payload);
+  assert.deepEqual(floor(project, 1).notStepFree, [at(0, 2), at(1, 2), at(2, 2)]);
+  assert.equal(label, 'Mark 3 cells as a step on Floor 1, 2 skipped, not corridor');
+  const after = actions.setStepCells(freeze(before), payload, shared);
+  assert.equal(info(actions.setStepCells, before, payload, after).outcome.skipped, 2);
+  const cleared = run(actions.setStepCells, project, { floorId: F1, cells: [at(1, 2)], stepFree: true });
+  assert.deepEqual(floor(cleared, 1).notStepFree, [at(0, 2), at(2, 2)]);
+  assert.equal(floor(run(actions.setStepCells, cleared, { floorId: F1, rect: { x: 0, y: 2, w: 3, h: 1 }, stepFree: true }), 1).notStepFree, undefined, 'no marks left: the key is gone');
+  assert.equal(actions.setStepCells(freeze(project), payload, shared), project, 'nothing changed: the same project');
+  refused(actions.setStepCells, before, { floorId: F1, cells: [at(1, 0), at(0, 4)], stepFree: false }, 'not-corridor', /None of those cells is a corridor cell/);
+  refused(actions.setStepCells, before, { floorId: F1, cells: [at(0, 2)] }, 'bad-value');
+  assert.deepEqual(actions.setStepCells.bumps, [GEOMETRY]);
+});
+
+test('areas of refuge: a corridor or stairs cell, named by default then numbered, names unique on a floor ignoring case', () => {
+  let project = run(actions.placeStairs, shaft(2), { floorId: F1, cells: [at(0, 3)] });
+  const first = run(actions.addRefuge, project, { floorId: F1, cell: at(0, 2) });
+  assert.deepEqual(floor(first, 1).refuges.map((r) => [r.name, r.cell]), [['Area of refuge', at(0, 2)]]);
+  assert.match(floor(first, 1).refuges[0].id, /^a[0-9a-z]{9}$/);
+  const { project: second, label } = viaStore(first, actions.addRefuge, { floorId: F1, cell: at(0, 3) });
+  assert.deepEqual(floor(second, 1).refuges.map((r) => r.name), ['Area of refuge', 'Area of refuge 2'], 'a refuge on a stairs cell is allowed');
+  assert.equal(label, 'Add the area of refuge Area of refuge 2 on Floor 1');
+  const third = run(actions.addRefuge, second, { floorId: F1, cell: at(1, 2), name: '  North LOBBY ' });
+  assert.equal(floor(third, 1).refuges[2].name, '  North LOBBY ', 'a name is kept as typed');
+  assert.equal(floor(run(actions.addRefuge, third, { floorId: F2, cell: at(0, 2), name: 'north lobby' }), 2).refuges[0].name, 'north lobby', 'another floor may reuse a name');
+  refused(actions.addRefuge, third, { floorId: F1, cell: at(2, 2), name: 'north lobby' }, 'duplicate-name', /already an area of refuge called +North LOBBY +on Floor 1/);
+  refused(actions.addRefuge, third, { floorId: F1, cell: at(0, 2) }, 'duplicate-cell');
+  refused(actions.addRefuge, third, { floorId: F1, cell: at(1, 0) }, 'not-corridor', /part of a room/);
+  refused(actions.addRefuge, third, { floorId: F1, cell: at(4, 4) }, 'not-corridor', /that cell is empty/);
+  refused(actions.addRefuge, third, { floorId: F1, cell: at(2, 2), id: 'bnotarefug' }, 'bad-id');
+  const withLift = run(actions.placeLift, project, { floorId: F1, cells: [at(1, 3)] });
+  refused(actions.addRefuge, withLift, { floorId: F1, cell: at(1, 3) }, 'not-corridor', /an elevator stop/);
+  assert.deepEqual(actions.addRefuge.bumps, [GEOMETRY]);
+});
+
+test('an area of refuge is renamed, moved and removed, each one undo step', () => {
+  let project = run(actions.addRefuge, shaft(1), { floorId: F1, cell: at(0, 2) });
+  project = run(actions.addRefuge, project, { floorId: F1, cell: at(3, 2), name: 'Gym lobby' });
+  const [a, b] = floor(project, 1).refuges.map((r) => r.id);
+  const { project: renamed, label } = viaStore(project, actions.setRefuge, { refugeId: a, name: 'West stair' });
+  assert.deepEqual(floor(renamed, 1).refuges.map((r) => r.name), ['West stair', 'Gym lobby']);
+  assert.equal(label, 'Edit the area of refuge Area of refuge');
+  refused(actions.setRefuge, project, { refugeId: a, name: 'GYM LOBBY' }, 'duplicate-name');
+  refused(actions.setRefuge, project, { refugeId: a, name: '  ' }, 'no-name');
+  assert.equal(actions.setRefuge(freeze(project), { refugeId: a, name: 'Area of refuge' }, shared), project, 'same name: no change');
+  const moved = run(actions.setRefuge, project, { refugeId: b, cell: at(5, 2) });
+  assert.equal(floor(moved, 1).refuges[1].cell, at(5, 2));
+  refused(actions.setRefuge, project, { refugeId: b, cell: at(0, 2) }, 'duplicate-cell');
+  refused(actions.setRefuge, project, { refugeId: b, cell: at(1, 1) }, 'not-corridor');
+  const { project: gone, label: removed } = viaStore(project, actions.removeRefuge, { refugeId: a });
+  assert.deepEqual(floor(gone, 1).refuges.map((r) => r.id), [b]);
+  assert.equal(removed, 'Remove the area of refuge Area of refuge');
+  assert.equal(floor(run(actions.removeRefuge, gone, { refugeId: b }), 1).refuges, undefined);
+  refused(actions.removeRefuge, project, { refugeId: 'anothing00' }, 'missing');
 });
