@@ -1,5 +1,5 @@
 // state.js — canonical game state, persistence, career ladder, RNG helpers.
-import { DB, fmtMoney } from "./data.js";
+import { DB, fmtMoney, droppedClients } from "./data.js";
 import { FINANCING, DEFAULT_FINANCING, financingFor } from "./engine/financing.js";
 import { clauseOf } from "./engine/escalation.js";
 import { isBuilding, validCommercialBlock, INVESTORS, PACKET, marketCap, noi, packetIdx, packetCapex } from "./engine/commercial.js";
@@ -253,12 +253,18 @@ export function repairCareer(s) {
 
   // A client record whose content file is gone. contentClient(rec) is
   // DB.clients[rec.clientId] and ui.js reads .name off it on every card.
-  const goneRecIds = new Set();
+  const goneRecIds = new Set(), namedGoneRecIds = new Set();
   s.clients = s.clients.filter(rec => {
     if (!rec || typeof rec !== "object") return false;
     if (rec.clientId in DB.clients) return true;
     goneRecIds.add(rec.recId);
-    note(`A client whose file is no longer in the game has been removed from your book.`);
+    // A seller the loader left out (#879) is known by name, so they get one line
+    // under it and not the two anonymous ones below; a file that was never
+    // there has no name to give and keeps them (#1026).
+    if (droppedClients.has(rec.clientId)) {
+      namedGoneRecIds.add(rec.recId);
+      note(`${droppedClients.get(rec.clientId)}'s file was left out of the game, and ${droppedClients.get(rec.clientId)} with it. Their listing agreement is void and nothing is owed on it.`, rec.recId);
+    } else note(`A client whose file is no longer in the game has been removed from your book.`);
     return false;
   });
   s.clientQueue = s.clientQueue.filter(id => id in DB.clients);
@@ -329,7 +335,7 @@ export function repairCareer(s) {
     if (!goneRecIds.has(pl.clientRecId)) return true;
     deadDealIds.add(pl.id);
     for (const o of Array.isArray(pl.offers) ? pl.offers : []) if (o) deadDealIds.add(o.id);
-    note(`A listing agreement ended: its seller is no longer in the game.`);
+    if (!namedGoneRecIds.has(pl.clientRecId)) note(`A listing agreement ended: its seller is no longer in the game.`);
     return false;
   });
   // The seller side of the same void (#861). pl.acceptedOffer is its own

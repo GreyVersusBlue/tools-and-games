@@ -66,6 +66,7 @@ try {
   const errors = [];
   page.on('pageerror', e => errors.push(String(e.message || e)));
   await enter(page, 'closing-time', { base: BASE });
+  t.ok(await page.evaluate(() => document.getElementById('content-note').hidden), 'the desk shows no content note when nothing was left out');
 
   // A Broker-Track agent with Lorna Petrakis's building taken. Seeded, and the
   // modal queue emptied, so nothing from the day-one deck lands on top.
@@ -244,6 +245,38 @@ try {
   t.ok(spl && spl.status === 'underContract' && spl.acceptedOffer.price === fin && spl.bovWeight === 0.9 && spl.acceptedOffer.investor === 'exchange',
     'a reload keeps the building under contract at the repriced number, its opinion and its buyer', spl ? `${spl.status} ${spl.acceptedOffer.price}` : 'no save');
   t.ok(!errors.length, 'no page errors', errors.slice(0, 2).join(' | '));
+
+  // A file the manifest names that the server does not have (#1026): the page
+  // goes on, the console names the file, and the desk says what was left out
+  // for as long as the desk is up, not for the toast's 2.6 seconds.
+  console.log('\na manifest file missing from the server');
+  const gone = 'data/agents/ag_sal_dimeo.json';
+  const page2 = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
+  try {
+    const errors2 = [], lines = [];
+    page2.on('pageerror', e => errors2.push(String(e.message || e)));
+    page2.on('console', m => { if (m.text().startsWith('Closing Time content error:')) lines.push(m.text()); });
+    // The harness owns request interception on both engines, so the file is
+    // taken away where the page asks for it: its own fetch, before its scripts run.
+    const init = file => { const real = window.fetch; window.fetch = (u, ...a) => String(u).endsWith(file) ? Promise.resolve(new Response('not found', { status: 404 })) : real(u, ...a); };
+    if (browser.__engine === 'playwright') await page2.addInitScript(init, gone);
+    else await page2.evaluateOnNewDocument(init, gone);
+    await enter(page2, 'closing-time', { base: BASE });
+    const note = await page2.evaluate(() => { const n = document.getElementById('content-note'); return { hidden: n.hidden, text: n.textContent, title: n.title }; });
+    t.ok(await page2.$('#nav [data-nav="mls"]'), 'the desk is up without the file');
+    t.ok(!note.hidden && /^6 content errors in data\//.test(note.text), 'the desk says how many were left out', note.text);
+    t.ok(note.title.split('\n')[0] === gone && note.title.split('\n').length === 6, 'and its title names each file once, the missing one first', note.title.replace(/\n/g, ' '));
+    // The last load's lines: the harness navigates once more while the first
+    // load is still fetching, and a page being torn down prints its own.
+    const last = lines.slice(-6);
+    t.ok(last.length === 6 && last[0].includes(gone) && last.slice(1).every(l => /data\/listings\/ls_\d+\.json: listingAgentId/.test(l)),
+      'the console has one line per file, naming the missing one first', last.map(l => l.slice(26, 70)).join(' / '));
+    await wait(3200);
+    t.ok(!(await page2.evaluate(() => document.getElementById('content-note').hidden)), 'the note is still there after the toast is gone');
+    await page2.click('#endDayBtn');
+    await wait(150);
+    t.ok(await page2.evaluate(() => document.querySelector('.stat-val').textContent.includes('Wk')) && !errors2.length, 'a day can end without it', errors2.slice(0, 2).join(' | '));
+  } finally { await page2.close().catch(() => {}); }
 } catch (e) {
   failures++;
   console.log('  FAIL  the run threw: ' + (e && e.stack ? e.stack.split('\n').slice(0, 3).join(' ') : e));
