@@ -21,8 +21,9 @@ import { GRIDS } from './schedule-grids.js'; // SV2-32d
 import * as travelTime from './travel-time.js'; // SV2-32d
 import * as calendarPrint from './calendar.js'; // SV2-80
 import * as stepFreeReport from './step-free.js'; // SV2-104
+import * as routeSheet from './route-sheet.js'; // SV2-103
 
-export const OUTPUTS = [floorPlan, roomList, checksReport, ...BATCHES, movementPicture, congestionReport, doorCards, ...GRIDS, travelTime, calendarPrint, stepFreeReport];
+export const OUTPUTS = [floorPlan, roomList, checksReport, ...BATCHES, movementPicture, congestionReport, doorCards, ...GRIDS, travelTime, calendarPrint, stepFreeReport, routeSheet];
 
 export function outputFor(id) {
   return OUTPUTS.find((output) => output.id === id) || null;
