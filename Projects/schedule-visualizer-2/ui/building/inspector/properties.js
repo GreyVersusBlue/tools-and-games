@@ -86,7 +86,7 @@ export function propertiesPanel(env) {
   // right-click or long-press. The cell is the keyboard cursor's when it is in
   // the space, else the space's first.
   function marksButton() {
-    const marks = h('button', { type: 'button', class: 'btn', id: 'cell-marks', 'aria-haspopup': 'menu', 'aria-label': 'Marks and other changes for this space', data: { key: 'marks', action: 'marks' }, on: { click: () => {
+    const marks = h('button', { type: 'button', class: 'btn', id: 'cell-marks', 'aria-haspopup': 'menu', 'aria-label': 'Marks… and other changes for this space', data: { key: 'marks', action: 'marks' }, on: { click: () => {
       const space = current();
       if (!space) return;
       const ed = env.editor();
