@@ -49,6 +49,9 @@ export function makeShop(seed, mutate) {
       if (e.type !== "toast") return;
       if (/rushed the order/.test(e.text)) { counters.fumbles++; counters.finished++; }
       else if (/finished the order/.test(e.text)) counters.finished++;
+      // The one hook a probe gets (TG-46): nothing happens here unless a
+      // watcher set it, so no existing batch reads a different shop.
+      if (counters.onHandBack) counters.onHandBack(e.text);
     },
   });
   return { sim, state, counters };
@@ -96,6 +99,106 @@ export const DEFAULT_PRIORITY = [
 
 export function shopper(priority = DEFAULT_PRIORITY, name = "shopper") {
   return { name, ready: readyPatient, shop: priority };
+}
+
+/** The shopper's chalkboard with eager hands: serves what the Serve button would let through. */
+export function eagerShopper(priority = DEFAULT_PRIORITY, name = "eager shopper") {
+  return { name, ready: readyEager, shop: priority };
+}
+
+/**
+ * The same player, slower to press Serve: a cup is served once it has been
+ * ready for `ms` of shift time (a person looks, reaches, clicks). Zero is the
+ * autopilot as it always was, the next frame. Wraps a policy and changes
+ * nothing about it but when `ready` first says yes for a slot.
+ */
+export function delayed(policy, ms) {
+  if (!ms) return policy;
+  const since = new WeakMap();
+  return { ...policy, name: `${policy.name} +${ms} ms`, ready(sim, slot) {
+    if (!policy.ready(sim, slot)) { since.delete(slot); return false; }
+    const now = sim.state.shiftElapsed;
+    if (!since.has(slot)) since.set(slot, now);
+    return now - since.get(slot) >= ms;
+  } };
+}
+
+/**
+ * What a shop served, by recipe (TG-46): serves, dollars earned, and ticket
+ * lines, read off scoreServe's own return and getOrderRequirements for the
+ * order served. Wraps `sim.scoreServe` on the object, which is what playDay
+ * calls; the sim's own calls inside the closure are not touched. Returns the
+ * map, filled as the shop plays.
+ */
+export function watchRecipes(sim) {
+  const by = new Map();
+  const score = sim.scoreServe;
+  sim.scoreServe = slot => {
+    const id = slot && !slot.serving && !slot.food ? slot.customer.recipeId : null;
+    const lines = id ? sim.getOrderRequirements(slot.customer).length : 0;
+    const r = score(slot);
+    if (r && id) {
+      const t = by.get(id) || { serves: 0, earned: 0, lines: 0 };
+      t.serves++; t.earned += r.earned; t.lines += lines;
+      by.set(id, t);
+    }
+    return r;
+  };
+  return by;
+}
+
+/**
+ * The barista's hand-back on a cup the player finished (TG-46). runBaristaTick
+ * rolls its fumble whenever the claimed slot's order is complete at the
+ * interval, whoever completed it. A barista claims a cup only with a line left
+ * to make; if the player's hand takes the last line first, the barista still
+ * stands at it and hands it back with a roll. This wraps `advance` to note,
+ * before each step, which working barista's claimed slot is already complete:
+ * a toast from that barista in that step is a hand-back of a cup the barista
+ * did not finish, because a complete cup leaves them no step to take. Then
+ * tallies what the player does about it: `redoSteps` is hand steps spent on a
+ * cup the roll broke, `shortfall` the base price lost on one served short
+ * (0.65 of the price per missing share of its lines; tips left out), and
+ * `handSteps` every hand step, so the cost can be read as a share of the
+ * hands. Nothing here changes what the sim does.
+ */
+export function watchHandBacks(sim, state, counters) {
+  const t = { handBacks: 0, handFumbles: 0, redoSteps: 0, handSteps: 0, shortServes: 0, shortfall: 0 };
+  let flagged = new Map(); // barista name -> the slot they are standing at, already complete
+  const poisoned = new WeakSet();
+  counters.onHandBack = text => {
+    const m = /^(.+?) (rushed|finished) the order/.exec(text);
+    if (!m || !flagged.has(m[1])) return;
+    t.handBacks++;
+    if (m[2] === "rushed") { t.handFumbles++; poisoned.add(flagged.get(m[1])); }
+  };
+  const advance = sim.advance, assist = sim.autoAssistStep, score = sim.scoreServe;
+  sim.advance = dt => {
+    flagged = new Map();
+    for (const b of state.baristas) {
+      if (b.working === false || b.targetSlot == null) continue;
+      const s = state.slots[b.targetSlot];
+      if (s && !s.serving && sim.orderIsComplete(s)) flagged.set(b.name, s);
+    }
+    return advance(dt);
+  };
+  sim.autoAssistStep = slot => {
+    t.handSteps++;
+    if (poisoned.has(slot)) t.redoSteps++;
+    return assist(slot);
+  };
+  sim.scoreServe = slot => {
+    if (slot && !slot.serving && poisoned.has(slot) && !slot.food) {
+      const reqs = sim.getOrderRequirements(slot.customer);
+      const ratio = reqs.length ? reqs.filter(r => r.check(slot)).length / reqs.length : 1;
+      if (ratio < 0.999) {
+        t.shortServes++;
+        t.shortfall += 0.65 * (1 - ratio) * sim.content.RECIPES.find(r => r.id === slot.customer.recipeId).price;
+      }
+    }
+    return score(slot);
+  };
+  return t;
 }
 
 /**
