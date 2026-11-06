@@ -65,6 +65,12 @@ const eq = (got, want, label) =>
   ok(JSON.stringify(got) === JSON.stringify(want), `${label} — got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
 const eq2 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const group = name => console.log("\n── " + name);
+/* A shipped pack the validator rejects makes loadPack throw, and a throw ends
+   the run before the report prints the line that named the pack. This records
+   the validator's message as a FAIL and goes on, so the report still shows it. */
+const loadShipped = (registry, pack, label = pack?.pack?.id) => {
+  try { registry.loadPack(pack); } catch (e) { fails.push(`shipped pack ${label} was rejected by loadPack: ${e.message}`); }
+};
 
 /** An in-memory stand-in for localStorage. */
 function memStore() {
@@ -152,9 +158,9 @@ const core = JSON.parse(sliceLiteral(html, "CORE_PACK"));
 const advPack = JSON.parse(sliceLiteral(html, "ADVENTURE_PACK"));
 const reg = emptyRegistry();
 eq(Validator.validate(core, reg), [], "CORE_PACK validates");
-reg.loadPack(core);
+loadShipped(reg, core);
 eq(Validator.validate(advPack, reg), [], "ADVENTURE_PACK validates");
-reg.loadPack(advPack);
+loadShipped(reg, advPack);
 ok(reg.hasPack("core") && reg.hasPack("bell-of-barrowmoor"), "both inline packs register");
 
 /* ---------------- 3. the bundled library matches its manifest ---------------- */
@@ -599,7 +605,7 @@ group("repair");
    8 + (class HP + 2) x 3. Perception is (rank bonus) + Wis. Class DC is
    10 + (2 + 3 trained) + key. Slots come straight off the class. */
 group("core classes at level 3");
-Registry.loadPack(core);
+loadShipped(Registry, core);
 ok(Registry.hasPack("core"), "the rules-core registry has the core pack");
 eq(CHAR_LEVEL, 3, "CHAR_LEVEL is 3, and since Phase 6 it is only the level a new hero is forged at");
 
@@ -1127,8 +1133,8 @@ group("the campaign record");
 // The shipped campaign, from an empty record to a finished one.
 {
   const creg = emptyRegistry();
-  creg.loadPack(core); creg.loadPack(advPack);
-  creg.loadPack(readPack("thornwake-vigil.json"));
+  loadShipped(creg, core); loadShipped(creg, advPack);
+  loadShipped(creg, readPack("thornwake-vigil.json"));
   // `|| {}` on the lookups below, not defensiveness for its own sake: without
   // it, deleting the campaign turns every assertion in this block into one
   // TypeError and the report says nothing about which guard-rail moved.
@@ -1374,8 +1380,8 @@ group("the validator learned about money");
 group("what the packs ship with a price on it");
 {
   const creg = emptyRegistry();
-  creg.loadPack(core); creg.loadPack(advPack);
-  creg.loadPack(readPack("thornwake-vigil.json"));
+  loadShipped(creg, core); loadShipped(creg, advPack);
+  loadShipped(creg, readPack("thornwake-vigil.json"));
 
   const priced = Object.values(creg.items).filter(i => i.price !== undefined);
   const unpriced = Object.values(creg.items).filter(i => i.price === undefined).map(i => i.id).sort();
@@ -1669,9 +1675,9 @@ group("the scene graph, walked");
   // entered, and every ending reached. This is what would have caught an
   // unreachable shop without opening a browser.
   const walkReg = emptyRegistry();
-  walkReg.loadPack(core); walkReg.loadPack(advPack);
-  walkReg.loadPack(readPack("thornwake-vigil.json"));
-  walkReg.loadPack(readPack("embers-of-the-hold.json"));
+  loadShipped(walkReg, core); loadShipped(walkReg, advPack);
+  loadShipped(walkReg, readPack("thornwake-vigil.json"));
+  loadShipped(walkReg, readPack("embers-of-the-hold.json"));
   const shipped = Object.values(walkReg.adventures);
   eq(shipped.map(a => a.id).sort(), ["barrowmoor", "embers", "thornwake"], "three adventures ship");
   for (const a of shipped) {
@@ -2339,7 +2345,7 @@ group("combat engine: the turn loop");
 }
 
 group("combat engine: start");
-Registry.loadPack(advPack);
+loadShipped(Registry, advPack);
 ok(Registry.hasPack("barrowmoor") || Registry.adventures.barrowmoor, "the adventure pack is in the registry");
 const ADV = Registry.adventures.barrowmoor;
 // `fighter` — a longsword, a crossbow, a chain shirt and a shield — is defined
@@ -5200,6 +5206,18 @@ group("an area stops at a wall (#924)");
     old.eng.cellClick(4, 2);
     eq([old.foe.hp, old.caster.resources.slots[2], old.eng.actions, old.eng.h.toasts.at(-1)], [24, 2, 3, REFUSED],
       "a burst cannot be centred behind a wall: the click that used to burn the hound through it is refused");
+  }
+  {
+    // castAt asked directly, since no click reaches a wall square: stone at
+    // (3,2), a hound at (3,1) on one side of it and the one at (4,2) on the
+    // other. A burst centred on the stone used to burn both.
+    const s = pillar(WIZARD());
+    s.eng.armSpell(s.caster, { sp: FIREBALL, rank: 3, pool: "r2" });
+    const a = s.eng.armed, slots = s.caster.resources.slots[2], acts = s.eng.actions;
+    s.eng.h.toasts.length = 0;
+    pin([20, 5], [20, 5], [20, 5]); s.eng.castAt(s.caster, a, { x: 3, y: 2 });
+    eq([s.near.hp, s.foe.hp, s.caster.resources.slots[2], s.eng.actions, saves(s.eng), s.eng.h.toasts.at(-1)], [24, 24, slots, acts, [], REFUSED],
+      "castAt with a burst centred on a wall square burns neither side, spends nothing and says why");
   }
   {
     // Seek picks its point off the same squares.
