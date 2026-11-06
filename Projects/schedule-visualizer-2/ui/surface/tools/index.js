@@ -17,7 +17,7 @@ import { tool as name } from './name.js';
 import { tool as exit } from './exit.js';
 import { tool as zone } from './zone.js';
 
-export const TOOLS = [select, corridor, room, eraser, pan, line, stairs, elevator, other, name, exit, zone]; // SV2-07: name, exit, zone; SV2-101: elevator
+export const TOOLS = [select, corridor, room, eraser, pan, line, stairs, other, name, exit, zone, elevator]; // SV2-07: name, exit, zone; SV2-101: elevator, the twelfth
 
 export function toolById(id) {
   return TOOLS.find((tool) => tool.id === id) || null;

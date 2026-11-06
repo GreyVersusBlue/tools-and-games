@@ -24,7 +24,7 @@
 import { h } from '../components/dom.js';
 import { singleKeyAllowed, IS_MAC } from '../components/shortcuts.js';
 import { dialogIsOpen } from '../components/dialog.js';
-import { count, figures, list } from '../components/words.js';
+import { count, figures, list, pendingElevatorLetter } from '../components/words.js';
 import { createViewport, drawnBox, ZOOM_STEP } from '../surface/viewport.js';
 import { createRenderer } from '../surface/renderer.js';
 import { attachInput } from '../surface/input.js';
@@ -94,9 +94,9 @@ export function stairsWords(project, connections) {
 // "Elevator D, staff only" for a connected stop, "Elevator D, not connected" for
 // a stop alone (it has its letter from the first placement), plus any step or
 // area of refuge the cell carries. `at` is describeCell's answer.
-export function elevatorWords(at) {
+export function elevatorWords(project, at) {
   const car = at.elevator;
-  const name = car && car.label !== '' ? 'Elevator ' + car.label : 'Elevator stop';
+  const name = 'Elevator ' + (car && car.label !== '' ? car.label : pendingElevatorLetter(project.building));
   return name + (car && car.connected ? '' : ', not connected') + (car && car.staffOnly ? ', staff only' : '');
 }
 
@@ -106,7 +106,7 @@ export function cellWords(project, floorId, cell) {
   const at = describeCell(project.building, floorId, cell);
   if (!at) return '';
   if (at.kind === 'corridor') return 'Corridor' + (at.corridorName === '' ? '' : ', ' + at.corridorName) + (at.exit ? ', exit' + (at.exit.doorName === '' ? '' : ' ' + at.exit.doorName) : '');
-  if (at.kind === 'elevator') return elevatorWords(at);
+  if (at.kind === 'elevator') return elevatorWords(project, at);
   if (at.kind === 'stairs') return at.connections.length > 0 ? stairsWords(project, at.connections) : 'Stairs, not connected';
   if (at.kind === 'room') return roomName(at.space, true);
   if (at.kind === 'other') return at.space.label.trim() === '' ? 'Other space' : at.space.label;
