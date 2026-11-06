@@ -15,6 +15,8 @@ import * as sheet from '../../ui/prints/route-sheet.js';
 import { OUTPUTS, outputFor, renderOutput } from '../../ui/prints/index.js';
 import { esc, printableBox, paperOf } from '../../ui/prints/document.js';
 import { createPipeline } from '../../engine/worker.js';
+import { route, routingGraph } from '../../engine/routing.js';
+import { runOf } from '../../ui/movement/model.js';
 import { buildGraph } from '../../engine/graph.js';
 import { emptySlot, emptyBells, GROUP_COLOUR_PRESETS } from '../../engine/schema.js';
 import { school, assertValid, PINNED } from './helpers.mjs';
@@ -62,11 +64,12 @@ function lifted(settings, options) {
   const drawing = opts.stairs ? STAIRS_HALL : HALL;
   const project = planProject([drawing, drawing, drawing], { exits: [[1, 6, 2, 'Main Door']], connections: opts.stairs ? [[1, 0, 2, 2, 0, 2], [2, 0, 2, 3, 0, 2]] : [] });
   const two = opts.cars === 'two';
-  // a stop is a corridor cell at the end of the corridor: the west end for Elevator D, and for
+  // a stop is a corridor cell: the west end for Elevator D (with stairs at the west end, one cell short of the east
+  // end, so the car does not wall the stairs in), and for
   // Elevator E (cars 'two') the east end, so that the two cars share no stop
   const at = (number, east) => {
     const floor = project.building.floors[number - 1];
-    return { floorId: floor.id, cell: 2 * floor.width + (east ? floor.width - 1 : opts.stairs ? 1 : 0) };
+    return { floorId: floor.id, cell: 2 * floor.width + (east ? floor.width - 1 : opts.stairs ? 5 : 0) };
   };
   const stops = two ? [[1, 2, false], [2, 3, true]] : [[1, 2, false], [2, 3, false]];
   const marked = new Set();
@@ -182,7 +185,9 @@ test('the staff-only line is there once when a route rides a staff-only elevator
   assert.ok(text(one).includes('Elevator D is staff and authorised only: arrange access with the office.'));
   // a route that rides twice is still one line
   const twice = lifted({}, { rows: { Ada: ['1A', '2A', '1A'], Bo: ['1A'] } });
-  assert.equal(countOf(renderOutput('route-sheet', twice, null, { ...NOW, groupId: ADA }).html, 'data-line="staff-only"'), 1);
+  const rode = renderOutput('route-sheet', twice, null, { ...NOW, groupId: ADA }).html;
+  assert.equal(countOf(rode, 'data-line="staff-only"'), 1);
+  assert.ok(text(rode).includes('Elevator D is staff and authorised only'), 'Elevator D once, not "Elevators D and D"');
   // two cars on one route: both, in the order ridden, and the map's label says so
   const joined = lifted({}, { cars: 'two', rows: { Ada: ['1A', '3A', '3A'], Bo: ['1A'] } });
   const both = renderOutput('route-sheet', joined, null, { ...NOW, groupId: ADA }).html;
@@ -196,7 +201,10 @@ test('the staff-only line is there once when a route rides a staff-only elevator
 });
 
 test('a step-free sheet never takes the stairs, whether or not the group has the flag, and the elevator is the way between floors', () => {
-  const project = lifted({}, { stairs: true, rows: { Ada: ['1A', '2A', '2A'], Bo: ['1A', '2A', '2A'] } });
+  // a 5 minute wait (the most a school may set) makes the stairs the quicker way, so only the step-free plan keeps the sheet off them
+  const project = lifted({ elevatorWaitSeconds: 300 }, { stairs: true, rows: { Ada: ['1A', '2A', '2A'], Bo: ['1A', '2A', '2A'] } });
+  const byStairs = route(routingGraph(project), roomId('1A'), roomId('2A'), {});
+  assert.ok(byStairs.ok && byStairs.rides === 0 && byStairs.stairs > 0, 'with no restriction the route is by the stairs, so the check below means something');
   for (const groupId of [ADA, BO]) {
     const model = sheet.routeSheet(project, { groupId });
     const walk = model.blocks[0];
@@ -276,10 +284,12 @@ test('"Movement shows the whole group late here" comes from the crowd\'s walks, 
   // none on hand: no line, and nothing worked out here
   assert.equal(countOf(renderOutput('route-sheet', project, null, { ...NOW, groupId: ADA, dayTypeId: day }).html, 'data-line="movement"'), 0);
   // a group that does not need step-free routes was timed on another route: never the line
-  const plain = lifted();
+  // (here by the stairs, late at a 10 s passing time: the same group, timed on the ordinary route)
+  const plain = lifted({ defaultPassingSeconds: 10 }, { stairs: true });
   plain.groups[0].stepFree = false;
   plain.groups[0].headCount = 20;
   const other = derive(plain);
+  assert.ok(runOf(other.results, day).walks.groups.some((walk) => walk.groupId === ADA && walk.period === 0 && walk.late === true), 'the crowd does time it late, so the missing line is the rule\'s doing');
   assert.equal(countOf(renderOutput('route-sheet', plain, null, { ...NOW, groupId: ADA, dayTypeId: day, movement: other }).html, 'data-line="movement"'), 0);
   // one trip is not "(1 trips)"
   const small = lifted({ elevatorPeoplePerTrip: 40, defaultPassingSeconds: 20 });
