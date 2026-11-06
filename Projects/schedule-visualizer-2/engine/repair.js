@@ -810,6 +810,7 @@ export function repair(input, options) {
 
     // 6. staffOnly equal across a car (true wins), `car` the first connection's, or its own label when it has none
     const byId = new Map(list.map((connection) => [connection.id, connection]));
+    const lettersUsed = new Set();
     for (const car of elevatorCars({ floors: building.floors, connections: list })) {
       if (car.connectionIds.length === 0) continue;
       const own = car.connectionIds.map((id) => byId.get(id));
@@ -817,7 +818,16 @@ export function repair(input, options) {
         note('Elevator ' + car.label + ' was staff only on some connections and not on others; it is staff only on all of them.');
         for (const connection of own) connection.staffOnly = true;
       }
-      const letter = typeof own[0].car === 'string' && own[0].car.trim() !== '' ? own[0].car : own[0].label;
+      let letter = typeof own[0].car === 'string' && own[0].car.trim() !== '' ? own[0].car : own[0].label;
+      if (lettersUsed.has(nameKey(letter))) {
+        // two elevators may not share a letter: the later one takes its first connection's own label
+        let own2 = own[0].label;
+        for (let n = 2; lettersUsed.has(nameKey(own2)); n += 1) own2 = own[0].label + n;
+        note('Elevator ' + car.label + ' had the same letter as an earlier elevator; its letter is now "' + own2 + '".');
+        letter = own2;
+        for (const connection of own) connection.car = letter;
+      }
+      lettersUsed.add(nameKey(letter));
       if (own.some((connection) => typeof connection.car === 'string' && connection.car !== letter)) note('The connections of one elevator carried different letters; they are all "' + letter + '" now.');
       for (const connection of own) connection.car = letter;
     }

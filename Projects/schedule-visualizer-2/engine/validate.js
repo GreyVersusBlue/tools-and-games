@@ -571,16 +571,24 @@ export function validate(project) {
         }
       }
       const cars = elevatorCars(building);
+      const letterAt = new Map();
       for (const car of cars) {
         // the first connection (in building order) that gives the car a second stop on a floor
         const stopOn = new Map();
         for (const connection of connections.filter((candidate) => car.connectionIds.includes(candidate.id))) {
           for (const end of [connection.a, connection.b]) {
+            // an end that names no floor is reported above; it has no stop to count
+            if (!floorById.has(end.floorId)) continue;
             if (stopOn.has(end.floorId) && stopOn.get(end.floorId) !== end.cell) add(connectionPath(connection), 'Elevator ' + car.label + ' has a second stop on ' + floorById.get(end.floorId).name + '; it has one on each floor.');
             else stopOn.set(end.floorId, end.cell);
           }
         }
         const own = connections.filter((connection) => car.connectionIds.includes(connection.id));
+        if (own.length > 0 && !isBlank(car.label)) {
+          const letterKey = nameKey(car.label);
+          if (letterAt.has(letterKey)) add(connectionPath(own[0]) + '.car', 'Elevator ' + car.label + ' has the same letter as the elevator at ' + letterAt.get(letterKey) + '. Each elevator has its own, whatever the capitals and spaces.');
+          else letterAt.set(letterKey, connectionPath(own[0]));
+        }
         if (new Set(own.map((connection) => connection.staffOnly === true)).size > 1) add(connectionPath(own[0]) + '.staffOnly', 'Every connection of elevator ' + car.label + ' says the same about staff only.');
         if (new Set(own.map((connection) => connection.car).filter((letter) => !isBlank(letter))).size > 1) add(connectionPath(own[0]) + '.car', 'Every connection of one elevator carries the same elevator letter.');
       }

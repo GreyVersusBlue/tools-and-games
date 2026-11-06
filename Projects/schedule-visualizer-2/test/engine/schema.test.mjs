@@ -401,3 +401,12 @@ test('step-free: cellKind answers "elevator" for a lift cell, "stairs" for the o
   stale.lifts = [332];
   assert.equal(schema.cellKind(stale, 332, school().building), 'stairs', 'with the building, a stairs connection wins over a stale list');
 });
+
+test('step-free: cellKind(floor, cell, building) does not answer "elevator" for a stale lifts entry whose connection is stairs', () => {
+  const project = school();
+  const floor = project.building.floors[0];
+  floor.lifts = [332];
+  assert.equal(project.building.connections[0].kind, undefined, 'connection A is stairs');
+  assert.equal(schema.cellKind(floor, 332, project.building), 'stairs');
+  assert.equal(schema.cellKind(floor, 332), 'elevator', 'without the building the stale list is believed');
+});
