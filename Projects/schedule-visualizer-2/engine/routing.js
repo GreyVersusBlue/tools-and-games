@@ -12,10 +12,15 @@
 // Time. A route's seconds are
 //
 //   secondsPerCell × (walkable cells on the route)
-//     + secondsPerStair × max(1, |level difference|) for each connection used
+//     + secondsPerStair × max(1, |level difference|) for each stairs connection used
+//     + (elevator wait + elevator seconds per floor × max(1, |level difference|))
+//       for each ride
 //
 // so the first cell outside the door and the stairs cell a connection lands
-// on each count as a cell, like every other.
+// on each count as a cell, like every other. A ride is one link between two
+// stops of a car, so the wait is paid once however the car's stops were
+// joined. A lift cell is never walked through: a route steps onto one to ride
+// from it and steps off one it has ridden to.
 //
 // The search. A state is (walkable cell, heading): the heading is the way the
 // walker was moving when they arrived on the cell, one of north, east, south,
@@ -45,13 +50,20 @@
 //                                 walking speeds and the named corridors
 // route(graph, fromRoomId, toRoomId, options?)
 // routeToExit(graph, fromRoomId, options?)
+// routeToCells(graph, fromRoomId, targets, options?)
 // routesForSchedule(project, graph?, options?)
 // runRoutes(routes, dayTypeId, bellsId?)
 // walkTarget(off, periods, period)
 // createRouteCache(limit?)
 //
 // options, all optional:
-//   avoidStairs          true: use no stairs connection (a step-free route)
+//   avoidStairs          true: a step-free route: no stairs connection, every
+//                        elevator open (staff-only ones too), corridor cells
+//                        marked as having a step not walked on, and doors
+//                        marked as having a step not used
+//   studentsOnly         true: a staff-only elevator is shut (a group's ordinary
+//                        route). Ignored with avoidStairs. In the plan's key only
+//                        when true and the building has a staff-only car.
 //   avoidConnections     a Set or list of connection ids not to use
 //   avoidCorridorNames   a Set or list of named-corridor ids (the "k…" id of
 //                        an entry in a floor's `corridors`) whose cells are
@@ -85,7 +97,10 @@
 //     cells: [{ floorId, cell }],            the walkable cells in order; never empty
 //     connections: ['c…'],                   the stairs connections used, in order
 //     connectionAt: [index],                 connections[i] is taken from cells[connectionAt[i]] to the next cell
-//     seconds, turns, stairs }
+//     seconds, turns,
+//     stairs,                                stairs connections used
+//     rides }                                elevator rides used. A ride is in `connections` by its car's id; its
+//                                            ends are cells[connectionAt[i]] and the next cell, never the connection's own ends
 //
 //   { ok: false, reason, roomId, floorId, end, fromRoomId, toRoomId, avoiding }
 //     reason     'no-room'       no room was given for one end (roomId and floorId are null)
@@ -93,12 +108,14 @@
 //                'no-entry'      the room has no door and touches no corridor, or every door leads nowhere
 //                'unreachable'   no way through; roomId and floorId name the room that cannot be reached
 //     end        'from' or 'to': which end the room named is
-//     avoiding   the options in force, any of 'stairs', 'connections', 'corridors'
+//     avoiding   the options in force, any of 'stairs', 'steps' (step-free, and the
+//                building has corridor cells with a step), 'step-doors' (step-free,
+//                and some door has a step), 'connections', 'corridors'
 //
 // A route object may be handed out more than once (the cache keeps it), so
 // treat it as read-only.
 
-import { DOOR_SIDES, defaultSettings, resolveSlotRoom } from './schema.js';
+import { DOOR_SIDES, CELL_CORRIDOR, defaultSettings, resolveSlotRoom, elevatorSettings } from './schema.js';
 import { buildGraph, nodeAt } from './graph.js';
 import { ownDayTypes, effectiveSchedule } from './day-types.js';
 import { offPeriods } from './bells.js';
@@ -132,9 +149,15 @@ export function routingGraph(project, graph) {
   const defaults = defaultSettings();
   const settings = project.settings || defaults;
   const corridors = new Map();
+  const stepNodes = [];
   for (const floor of building.floors) {
     const f = base.floorIndex.get(floor.id);
     const nodeOfCell = base.floors[f].nodeOfCell;
+    // corridor cells with a step: a step-free route does not cross them
+    for (const cell of Array.isArray(floor.notStepFree) ? floor.notStepFree : []) {
+      const node = Number.isInteger(cell) && cell >= 0 && cell < nodeOfCell.length && floor.cells[cell] === CELL_CORRIDOR ? nodeOfCell[cell] : -1;
+      if (node !== -1 && !stepNodes.includes(node)) stepNodes.push(node);
+    }
     for (const corridor of floor.corridors || []) {
       const nodes = [];
       for (const cell of corridor.cells || []) {
@@ -144,11 +167,27 @@ export function routingGraph(project, graph) {
       corridors.set(corridor.id, { id: corridor.id, name: corridor.name, floorId: floor.id, nodes });
     }
   }
+  stepNodes.sort((a, b) => a - b);
+  const secondsPerCell = wholeSeconds(settings.secondsPerCell, defaults.secondsPerCell);
+  const secondsPerStair = wholeSeconds(settings.secondsPerStair, defaults.secondsPerStair);
+  // a ride's wait may be 0 and stays 0, so it does not go through wholeSeconds
+  const elevator = elevatorSettings(settings);
+  // every link carries its own seconds, so the search and the trace read one
+  // number whatever kind of link it is
+  const links = base.links.map((link) => ({ ...link, seconds: link.elevator ? elevator.wait + elevator.perFloor * link.levels : secondsPerStair * link.levels }));
+  let hasStepDoor = false;
+  for (const room of base.rooms.values()) if (room.entries.some((entry) => entry.stepFree === false)) hasStepDoor = true;
   return {
     ...base,
+    links,
     routing: true,
-    secondsPerCell: wholeSeconds(settings.secondsPerCell, defaults.secondsPerCell),
-    secondsPerStair: wholeSeconds(settings.secondsPerStair, defaults.secondsPerStair),
+    secondsPerCell,
+    secondsPerStair,
+    elevator,
+    hasElevator: links.some((link) => link.elevator === true),
+    hasStaffOnly: links.some((link) => link.elevator === true && link.staffOnly === true),
+    stepNodes,
+    hasStepDoor,
     corridors,
   };
 }
@@ -180,7 +219,15 @@ function planFor(graph, options) {
   const opts = options || {};
   const avoidStairs = opts.avoidStairs === true;
   const avoiding = [];
-  if (avoidStairs) avoiding.push('stairs');
+  if (avoidStairs) {
+    avoiding.push('stairs');
+    if (graph.stepNodes.length > 0) avoiding.push('steps');
+    if (graph.hasStepDoor) avoiding.push('step-doors');
+  }
+  // staff-only elevators are shut to a group's ordinary route; a step-free
+  // route is for anyone who needs it, so it ignores the option. It means
+  // something only where a staff-only car is, so only then is it in the key.
+  const studentsOnly = opts.studentsOnly === true && !avoidStairs && graph.hasStaffOnly;
 
   let linkShut = null;
   const shutLinks = [];
@@ -197,6 +244,13 @@ function planFor(graph, options) {
 
   let nodeShut = null;
   const shutNodes = [];
+  if (avoidStairs) {
+    for (const node of graph.stepNodes) {
+      if (!nodeShut) nodeShut = new Uint8Array(graph.count);
+      nodeShut[node] = 1;
+      shutNodes.push(node);
+    }
+  }
   const corridorIds = listOf(opts.avoidCorridorNames);
   if (corridorIds.length > 0) {
     for (const id of corridorIds) {
@@ -248,6 +302,7 @@ function planFor(graph, options) {
   if (!wantsUndirected && opts.ways && typeof opts.ways === 'object') {
     const named = [];
     graph.links.forEach((link, index) => {
+      if (link.elevator) return; // a car runs both ways, always
       const way = opts.ways[link.id];
       if ((way !== 'both' && way !== 'ab' && way !== 'ba') || way === link.direction) return;
       if (!linkWay) linkWay = new Array(graph.links.length).fill(null);
@@ -257,10 +312,18 @@ function planFor(graph, options) {
     if (named.length > 0) parts.push('w:' + named.sort().join(','));
   }
   if (undirected) parts.push('u');
-  return { key: parts.join('|'), avoidStairs, linkShut, nodeShut, avoiding, linkWay, undirected };
+  // what a ride costs, only where there is a car; and the staff-only rule
+  if (graph.hasElevator) parts.push('e' + graph.elevator.wait + ',' + graph.elevator.perFloor);
+  if (studentsOnly) parts.push('s');
+  return { key: parts.join('|'), avoidStairs, studentsOnly, linkShut, nodeShut, avoiding, linkWay, undirected };
 }
 
 function linkOpen(link, index, from, plan) {
+  if (link.elevator) {
+    if (plan.studentsOnly && link.staffOnly) return false;
+    if (plan.linkShut && plan.linkShut[index]) return false;
+    return true;
+  }
   if (plan.avoidStairs) return false;
   if (plan.linkShut && plan.linkShut[index]) return false;
   if (plan.undirected) return true;
@@ -270,10 +333,17 @@ function linkOpen(link, index, from, plan) {
 }
 
 // A room's ways in and out, in a fixed order: by cell, then by side.
-function entriesOf(room) {
+// A step-free plan leaves out the doors marked as having a step.
+function entriesOf(room, plan) {
   return room.entries
+    .filter((entry) => !(plan.avoidStairs && entry.stepFree === false))
     .map((entry) => ({ node: entry.node, from: entry.from, side: SIDE_INDEX.get(entry.side), door: entry.door === true }))
     .sort((a, b) => a.node - b.node || a.side - b.side);
+}
+
+// Whether a room can be left or entered at all under a plan.
+function hasEntry(room, plan) {
+  return room.entries.some((entry) => !(plan.avoidStairs && entry.stepFree === false));
 }
 
 // The search from one room: Dijkstra over (cell, heading) with a binary heap
@@ -347,7 +417,7 @@ function computeField(graph, room, plan) {
     heapState[i] = state;
   }
 
-  for (const entry of entriesOf(room)) {
+  for (const entry of entriesOf(room, plan)) {
     if (plan.nodeShut && plan.nodeShut[entry.node]) continue;
     const state = entry.node * STATES + entry.side;
     if (cost[state] === 0) continue;
@@ -361,7 +431,7 @@ function computeField(graph, room, plan) {
   const links = graph.links;
   const nodeShut = plan.nodeShut;
   const step = graph.secondsPerCell * SECOND;
-  const stairStep = graph.secondsPerStair * SECOND;
+  const lifts = graph.lifts;
 
   while (size > 0) {
     const key = heapKey[0];
@@ -370,7 +440,12 @@ function computeField(graph, room, plan) {
     if (key > cost[state]) continue; // a later, cheaper push has already been dealt with
     const node = (state / STATES) | 0;
     const heading = state - node * STATES;
+    // a lift cell is never walked through: arrived at on foot (a real
+    // heading) it leads only into a ride, arrived at by a ride (heading none,
+    // which only a link ends in at a lift cell) it leads only out on foot
+    const lift = lifts[node] === 1;
     for (let d = 0; d < 4; d += 1) {
+      if (lift && heading !== HEADING_NONE) break;
       const next = neighbours[node * 4 + d];
       if (next === -1 || (nodeShut && nodeShut[next])) continue;
       const nextKey = key + step + (heading !== HEADING_NONE && heading !== d ? TURN : 0);
@@ -385,10 +460,11 @@ function computeField(graph, room, plan) {
     for (let i = linkStart[node]; i < linkStart[node + 1]; i += 1) {
       const index = linkList[i];
       const link = links[index];
+      if (lift && heading === HEADING_NONE) break;
       if (!linkOpen(link, index, node, plan)) continue;
       const next = link.a === node ? link.b : link.a;
       if (nodeShut && nodeShut[next]) continue;
-      const nextKey = key + stairStep * link.levels + step + STAIR;
+      const nextKey = key + link.seconds * SECOND + step + STAIR;
       const nextState = next * STATES + HEADING_NONE;
       if (nextKey < cost[nextState]) {
         cost[nextState] = nextKey;
@@ -464,6 +540,7 @@ function trace(graph, field, plan, node, heading) {
   const connectionAt = [];
   let turns = 0;
   let seconds = 0;
+  let rides = 0;
   for (let i = 0; i < nodes.length; i += 1) {
     cells.push({ floorId: graph.floors[graph.nodeFloor[nodes[i]]].id, cell: graph.nodeCell[nodes[i]] });
     seconds += graph.secondsPerCell;
@@ -477,14 +554,15 @@ function trace(graph, field, plan, node, heading) {
         if (other !== nodes[i] || !linkOpen(link, index, nodes[i - 1], plan)) continue;
         connections.push(link.id);
         connectionAt.push(i - 1);
-        seconds += graph.secondsPerStair * link.levels;
+        seconds += link.seconds;
+        if (link.elevator) rides += 1;
         break;
       }
     } else if (headings[i - 1] !== HEADING_NONE && headings[i - 1] !== headings[i]) {
       turns += 1;
     }
   }
-  return { nodes, headings, cells, connections, connectionAt, seconds, turns };
+  return { nodes, headings, cells, connections, connectionAt, seconds, turns, rides };
 }
 
 function place(graph, room, entry) {
@@ -499,8 +577,9 @@ function findRoute(graph, fromRoomId, toRoomId, plan, cache) {
   const to = graph.rooms.get(toRoomId);
   if (!to) return failure('room-missing', 'to', toRoomId, null, fromRoomId, toRoomId, plan);
   if (fromRoomId === toRoomId) return { ok: true, same: true, fromRoomId, toRoomId };
-  if (from.entries.length === 0) return failure('no-entry', 'from', fromRoomId, from.floorId, fromRoomId, toRoomId, plan);
-  if (to.entries.length === 0) return failure('no-entry', 'to', toRoomId, to.floorId, fromRoomId, toRoomId, plan);
+  // after the plan is known: a step-free plan may leave a room with no door it can use
+  if (!hasEntry(from, plan)) return failure('no-entry', 'from', fromRoomId, from.floorId, fromRoomId, toRoomId, plan);
+  if (!hasEntry(to, plan)) return failure('no-entry', 'to', toRoomId, to.floorId, fromRoomId, toRoomId, plan);
 
   const routeKey = fromRoomId + '>' + toRoomId + '|' + plan.key;
   if (cache) {
@@ -514,7 +593,7 @@ function findRoute(graph, fromRoomId, toRoomId, plan, cache) {
   let bestOrder = 0;
   let bestEntry = null;
   let bestHeading = -1;
-  for (const entry of entriesOf(to)) {
+  for (const entry of entriesOf(to, plan)) {
     if (plan.nodeShut && plan.nodeShut[entry.node]) continue;
     const into = OPPOSITE[entry.side];
     for (let heading = 0; heading < STATES; heading += 1) {
@@ -535,7 +614,7 @@ function findRoute(graph, fromRoomId, toRoomId, plan, cache) {
     result = failure('unreachable', 'to', toRoomId, to.floorId, fromRoomId, toRoomId, plan);
   } else {
     const path = trace(graph, field, plan, bestEntry.node, bestHeading);
-    const leaving = entriesOf(from).find((entry) => entry.node === path.nodes[0] && entry.side === path.headings[0]);
+    const leaving = entriesOf(from, plan).find((entry) => entry.node === path.nodes[0] && entry.side === path.headings[0]);
     result = {
       ok: true,
       fromRoomId,
@@ -547,7 +626,8 @@ function findRoute(graph, fromRoomId, toRoomId, plan, cache) {
       connectionAt: path.connectionAt,
       seconds: path.seconds,
       turns: path.turns + (bestHeading !== HEADING_NONE && bestHeading !== OPPOSITE[bestEntry.side] ? 1 : 0),
-      stairs: path.connections.length,
+      stairs: path.connections.length - path.rides,
+      rides: path.rides,
     };
   }
   if (cache) cache.routes.set(routeKey, result);
@@ -562,6 +642,60 @@ export function route(graph, fromRoomId, toRoomId, options) {
   return findRoute(graph, fromRoomId, toRoomId, planFor(graph, options), cache);
 }
 
+// The quickest way from a room to any of a list of target nodes: the shared
+// part of routeToExit and routeToCells. `targets` is [{ node, id, … }] in the
+// order ties are settled (a tie goes to the earlier target); returns a
+// failure, or { from, target, path, plan } for the caller to shape.
+function routeToTargets(graph, fromRoomId, targets, options) {
+  const cache = options && options.cache ? options.cache : null;
+  if (cache) syncCache(cache, graph, options);
+  const plan = planFor(graph, options);
+  if (!fromRoomId) return { failed: failure('no-room', 'from', null, null, fromRoomId, null, plan) };
+  const from = graph.rooms.get(fromRoomId);
+  if (!from) return { failed: failure('room-missing', 'from', fromRoomId, null, fromRoomId, null, plan) };
+  if (!hasEntry(from, plan)) return { failed: failure('no-entry', 'from', fromRoomId, from.floorId, fromRoomId, null, plan) };
+
+  const field = fieldFor(graph, from, plan, cache);
+  let best = Infinity;
+  let bestOrder = 0;
+  let bestTarget = null;
+  let bestHeading = -1;
+  for (const target of targets) {
+    if (plan.nodeShut && plan.nodeShut[target.node]) continue;
+    for (let heading = 0; heading < STATES; heading += 1) {
+      const state = target.node * STATES + heading;
+      const total = field.cost[state];
+      if (total < best || (total === best && total !== Infinity && target === bestTarget && field.order[state] < bestOrder)) {
+        best = total;
+        bestOrder = field.order[state];
+        bestTarget = target;
+        bestHeading = heading;
+      }
+    }
+  }
+  if (!bestTarget) return { failed: failure('unreachable', 'from', fromRoomId, from.floorId, fromRoomId, null, plan) };
+
+  const path = trace(graph, field, plan, bestTarget.node, bestHeading);
+  const leaving = entriesOf(from, plan).find((entry) => entry.node === path.nodes[0] && entry.side === path.headings[0]);
+  return { from, plan, target: bestTarget, path, leaving };
+}
+
+function shapeRoute(graph, found, fromRoomId) {
+  const { path } = found;
+  return {
+    ok: true,
+    fromRoomId,
+    from: place(graph, found.from, found.leaving),
+    cells: path.cells,
+    connections: path.connections,
+    connectionAt: path.connectionAt,
+    seconds: path.seconds,
+    turns: path.turns,
+    stairs: path.connections.length - path.rides,
+    rides: path.rides,
+  };
+}
+
 // The quickest way from a room to any exit. The result is a route with
 // `exit: { id, floorId, cell }` and `exitId` in place of `to` and `toRoomId`;
 // a failure is 'no-room', 'room-missing', 'no-entry', or 'unreachable' when
@@ -569,51 +703,33 @@ export function route(graph, fromRoomId, toRoomId, options) {
 // taken in id order.
 export function routeToExit(graph, fromRoomId, options) {
   needRoutingGraph(graph);
-  const cache = options && options.cache ? options.cache : null;
-  if (cache) syncCache(cache, graph, options);
-  const plan = planFor(graph, options);
-  if (!fromRoomId) return failure('no-room', 'from', null, null, fromRoomId, null, plan);
-  const from = graph.rooms.get(fromRoomId);
-  if (!from) return failure('room-missing', 'from', fromRoomId, null, fromRoomId, null, plan);
-  if (from.entries.length === 0) return failure('no-entry', 'from', fromRoomId, from.floorId, fromRoomId, null, plan);
-
   const shut = new Set(listOf(options ? options.avoidExits : null));
-  const field = fieldFor(graph, from, plan, cache);
-  let best = Infinity;
-  let bestOrder = 0;
-  let bestExit = null;
-  let bestHeading = -1;
-  const exits = graph.exits.slice().sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  for (const exit of exits) {
-    if (shut.has(exit.id) || (plan.nodeShut && plan.nodeShut[exit.node])) continue;
-    for (let heading = 0; heading < STATES; heading += 1) {
-      const state = exit.node * STATES + heading;
-      const total = field.cost[state];
-      if (total < best || (total === best && total !== Infinity && exit === bestExit && field.order[state] < bestOrder)) {
-        best = total;
-        bestOrder = field.order[state];
-        bestExit = exit;
-        bestHeading = heading;
-      }
-    }
-  }
-  if (!bestExit) return failure('unreachable', 'from', fromRoomId, from.floorId, fromRoomId, null, plan);
+  const exits = graph.exits.filter((exit) => !shut.has(exit.id)).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const found = routeToTargets(graph, fromRoomId, exits, options);
+  if (found.failed) return found.failed;
+  const result = shapeRoute(graph, found, fromRoomId);
+  return { ok: true, fromRoomId, exitId: found.target.id, from: result.from, exit: { id: found.target.id, floorId: found.target.floorId, cell: found.target.cell }, cells: result.cells, connections: result.connections, connectionAt: result.connectionAt, seconds: result.seconds, turns: result.turns, stairs: result.stairs, rides: result.rides };
+}
 
-  const path = trace(graph, field, plan, bestExit.node, bestHeading);
-  const leaving = entriesOf(from).find((entry) => entry.node === path.nodes[0] && entry.side === path.headings[0]);
-  return {
-    ok: true,
-    fromRoomId,
-    exitId: bestExit.id,
-    from: place(graph, from, leaving),
-    exit: { id: bestExit.id, floorId: bestExit.floorId, cell: bestExit.cell },
-    cells: path.cells,
-    connections: path.connections,
-    connectionAt: path.connectionAt,
-    seconds: path.seconds,
-    turns: path.turns,
-    stairs: path.connections.length,
-  };
+// The quickest way from a room to any of a list of cells, `targets` being
+// [{ floorId, cell, id }] (an area of refuge, say). Like routeToExit, with
+// `target: { id, floorId, cell }` and `targetId` in place of `exit` and
+// `exitId`, the same failures, and ties taken in the order of the list's ids.
+// A target that is on no walkable cell, or on a lift cell, is left out: a
+// route never ends in a car.
+export function routeToCells(graph, fromRoomId, targets, options) {
+  needRoutingGraph(graph);
+  const list = [];
+  for (const target of Array.isArray(targets) ? targets : []) {
+    const node = target ? nodeAt(graph, target.floorId, target.cell) : -1;
+    if (node === -1 || graph.lifts[node]) continue;
+    list.push({ node, id: target.id, floorId: target.floorId, cell: target.cell });
+  }
+  list.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const found = routeToTargets(graph, fromRoomId, list, options);
+  if (found.failed) return found.failed;
+  const result = shapeRoute(graph, found, fromRoomId);
+  return { ...result, targetId: found.target.id, target: { id: found.target.id, floorId: found.target.floorId, cell: found.target.cell } };
 }
 
 // Every transition's route, for every group, in every run. Transition t is
@@ -664,7 +780,11 @@ export function routesForSchedule(project, graph, options) {
   const routing = routingGraph(project, graph);
   const cache = opts.cache || createRouteCache();
   syncCache(cache, routing, opts);
-  const plan = planFor(routing, opts);
+  // a plan for each kind of group: a group that needs step-free routes has
+  // the step-free plan, every other group the plain plan with staff-only cars
+  // shut (ARCHITECTURE 19.4). Both are built from the caller's options.
+  const plans = [planFor(routing, { ...opts, studentsOnly: true }), planFor(routing, { ...opts, avoidStairs: true })];
+  const planOf = (group) => plans[group.stepFree === true ? 1 : 0];
   const searchesBefore = cache.searches;
   const runs = Array.isArray(opts.runs) ? opts.runs : ownDayTypes(project).map((dayType) => ({ dayTypeId: dayType.id, bellsId: null }));
   const slotsOf = typeof opts.meetingSlots === 'function' ? opts.meetingSlots : (of, groupId, dayTypeId) => effectiveSchedule(of, groupId, dayTypeId);
@@ -675,8 +795,9 @@ export function routesForSchedule(project, graph, options) {
     return { id: null, text: found.text, missing: found.missing };
   };
 
-  // first every journey that is wanted, start room by start room, so that
-  // each start room's field is worked out once however small the cache is
+  // first every journey that is wanted, start room by start room, both plans
+  // of a start room one after the other, so that each field is worked out
+  // once however small the cache is
   const wanted = new Map();
   const days = [];
   const regular = new Map();
@@ -705,8 +826,8 @@ export function routesForSchedule(project, graph, options) {
         const b = ends(slots[to]);
         walks.push([a, b]);
         if (a.id && b.id && a.id !== b.id) {
-          if (!wanted.has(a.id)) wanted.set(a.id, new Set());
-          wanted.get(a.id).add(b.id);
+          if (!wanted.has(a.id)) wanted.set(a.id, [new Set(), new Set()]);
+          wanted.get(a.id)[group.stepFree === true ? 1 : 0].add(b.id);
         }
       }
       groups.push({ groupId: group.id, slots, walks, was });
@@ -716,21 +837,24 @@ export function routesForSchedule(project, graph, options) {
   }
 
   let pairs = 0;
-  for (const [fromRoomId, toRoomIds] of wanted) {
-    for (const toRoomId of toRoomIds) {
-      findRoute(routing, fromRoomId, toRoomId, plan, cache);
-      pairs += 1;
-    }
+  for (const [fromRoomId, byPlan] of wanted) {
+    byPlan.forEach((toRoomIds, which) => {
+      for (const toRoomId of toRoomIds) {
+        findRoute(routing, fromRoomId, toRoomId, plans[which], cache);
+        pairs += 1;
+      }
+    });
   }
 
-  const missing = (end, which, a, b) => ({ ...failure(end.missing ? 'room-missing' : 'no-room', which, null, null, a.id, b.id, plan), text: end.text });
+  const missing = (end, which, a, b, plan) => ({ ...failure(end.missing ? 'room-missing' : 'no-room', which, null, null, a.id, b.id, plan), text: end.text });
   const routed = new Map();
-  const groupsOf = (day) => day.groups.map((group) => {
+  const groupsOf = (day) => day.groups.map((group, g) => {
+    const plan = planOf(project.groups[g]);
     const routes = group.walks.map((walk, t) => {
       if (walk === null) return routed.get(group.was)[t];
       const [a, b] = walk;
-      if (!a.id) return missing(a, 'from', a, b);
-      if (!b.id) return missing(b, 'to', a, b);
+      if (!a.id) return missing(a, 'from', a, b, plan);
+      if (!b.id) return missing(b, 'to', a, b, plan);
       return findRoute(routing, a.id, b.id, plan, cache);
     });
     routed.set(group, routes);
