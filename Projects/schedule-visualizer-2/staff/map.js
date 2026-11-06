@@ -28,6 +28,7 @@
 import { h, typed } from './dom.js';
 import { makeHash } from './router.js';
 import { isElevatorLink } from './model.js';
+import { REFUGE_DEFAULT_NAME } from '../engine/schema.js';
 
 export const MAP_TAP_RADIUS = 22;
 // Two rooms are "close" when the second is within the radius and less than
@@ -367,17 +368,21 @@ function paintRoute(g, floor, plan, theme, lines) {
 // name in `text` is as typed and is shown as text, never as markup.
 export function stepFreeNotes(school, floor) {
   const building = school.data.building;
-  const nameOf = (id) => (building.floors.find((each) => each && each.id === id) || { name: '' }).name;
+  const nameOf = (id) => {
+    const found = building.floors.find((each) => each && each.id === id);
+    return found && typeof found.name === 'string' ? found.name : '';
+  };
   const list = (value) => (Array.isArray(value) ? value : []);
   const out = [];
   for (const car of school.elevators()) {
     if (!car.stops.some((stop) => stop.floorId === floor.id)) continue;
-    const label = car.label === '' ? 'Elevator' : 'Elevator ' + car.label;
-    const names = car.stops.map((stop) => nameOf(stop.floorId));
+    const label = typeof car.label !== 'string' || car.label.trim() === '' ? 'An elevator' : 'Elevator ' + car.label;
+    // a stop on a floor that is not in the file is left out, not named with nothing
+    const names = car.stops.map((stop) => nameOf(stop.floorId)).filter((name) => name !== '');
     const stops = names.length > 1 ? ': stops at ' + names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : ': a stop here, not connected to another floor';
     out.push({ id: car.id, kind: 'elevator', label, staffOnly: car.staffOnly, text: label + (car.staffOnly ? ' (staff only)' : '') + stops });
   }
-  for (const refuge of list(floor.refuges)) out.push({ id: refuge.id, kind: 'refuge', text: refuge.name });
+  for (const refuge of list(floor.refuges)) out.push({ id: refuge.id, kind: 'refuge', text: typeof refuge.name === 'string' && refuge.name.trim() !== '' ? refuge.name : REFUGE_DEFAULT_NAME });
   const counted = new Map();
   let unnamed = 0;
   for (const cell of list(floor.notStepFree)) {

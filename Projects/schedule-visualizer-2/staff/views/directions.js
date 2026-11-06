@@ -124,6 +124,32 @@ function sayRoute(words) {
   }, ROUTE_SAID_MS);
 }
 
+// A car with no letter is "an elevator", never "Elevator ." (the engine's
+// steps name the car by its letter; with none, the words are changed here)
+function carWords(label) {
+  return typeof label === 'string' && label.trim() !== '' ? ['Elevator ', typed(label)] : 'an elevator';
+}
+
+export function carText(label) {
+  return typeof label === 'string' && label.trim() !== '' ? 'Elevator ' + label : 'an elevator';
+}
+
+function stepParts(step) {
+  const out = [];
+  const parts = step.parts;
+  for (let at = 0; at < parts.length; at += 1) {
+    const part = parts[at];
+    const next = parts[at + 1];
+    if (part.name !== true && /Elevator $/.test(part.text) && next && next.name === true && next.text.trim() === '') {
+      out.push(part.text.replace(/Elevator $/, 'an elevator'));
+      at += 1;
+      continue;
+    }
+    out.push(part.name ? typed(part.text) : part.text);
+  }
+  return out;
+}
+
 export const directionsView = {
   id: 'directions',
   flag: 'directions',
@@ -140,7 +166,9 @@ export const directionsView = {
       announce: false,
     };
 
-    const says = h('p', { class: 'lede', role: 'status' });
+    // not a live region itself: the polite region of the page (sayRoute) is the
+    // one thing that speaks when the way changes, so a change is read once
+    const says = h('p', { class: 'lede' });
     const out = h('div', { class: 'stack', dataset: { out: 'directions' } });
     const from = roomPicker(school, 'directions-from', 'From', state.from);
     const to = roomPicker(school, 'directions-to', 'To', state.to);
@@ -187,7 +215,7 @@ export const directionsView = {
       const crossings = routeCrossings(school, found);
       const stairs = found.stairs;
       const rides = crossings.filter((each) => each.kind === 'ride');
-      const byOf = (part) => (part.via && part.via.kind === 'ride' ? ['Elevator ', typed(part.via.label)] : part.via && part.via.label ? ['stairs ', typed(part.via.label)] : 'the stairs');
+      const byOf = (part) => (part.via && part.via.kind === 'ride' ? carWords(part.via.label) : part.via && part.via.label ? ['stairs ', typed(part.via.label)] : 'the stairs');
       // the line on each floor, in words: the picture's alternative
       const lineOn = (floor) => {
         const here = floors.map((part, index) => ({ part, index })).filter((each) => each.part.floorId === floor.id);
@@ -200,18 +228,18 @@ export const directionsView = {
           '.',
         ]))];
       };
-      says.replaceChildren(h('span', null, ends, ': ', about(found.seconds), stairs === 0 && rides.length === 0 ? ', all on one floor' : null, stairs > 0 ? ', ' + stairs + (stairs === 1 ? ' flight' : ' flights') + ' of stairs' : null, rides.length > 0 ? [', ', 'by ', rides.map((each, at) => [at > 0 ? ' and ' : null, 'Elevator ', typed(each.label)])] : null, state.stepFree ? ', step-free' : null, '.'));
+      says.replaceChildren(h('span', null, ends, ': ', about(found.seconds), stairs === 0 && rides.length === 0 ? ', all on one floor' : null, stairs > 0 ? ', ' + stairs + (stairs === 1 ? ' flight' : ' flights') + ' of stairs' : null, rides.length > 0 ? [', ', 'by ', rides.map((each, at) => [at > 0 ? ' and ' : null, carWords(each.label)])] : null, state.stepFree ? ', step-free' : null, '.'));
       // after the reader has ticked or unticked Step-free, the new way is announced politely
       if (state.announce) {
-        const takes = [rides.length > 0 ? 'takes ' + rides.map((each) => 'Elevator ' + each.label).join(' and ') : null, stairs > 0 ? 'takes ' + stairs + (stairs === 1 ? ' flight' : ' flights') + ' of stairs' : null].filter(Boolean);
+        const takes = [rides.length > 0 ? 'takes ' + rides.map((each) => carText(each.label)).join(' and ') : null, stairs > 0 ? 'takes ' + stairs + (stairs === 1 ? ' flight' : ' flights') + ' of stairs' : null].filter(Boolean);
         sayRoute('Route updated: ' + (takes.length === 0 ? 'all on one floor' : takes.join(' and ')) + '.');
       }
       out.replaceChildren(
         h('section', { class: 'card', dataset: { directions: 'steps' } },
           sectionHeading('The way', written.steps.length),
           h('ol', { class: 'steps' }, written.steps.map((step) => h('li', { class: 'steps__step', dataset: { kind: step.kind } },
-            step.parts.map((part) => (part.name ? typed(part.text) : part.text))))),
-          h('p', { class: 'muted', dataset: { directions: 'time' } }, 'The walk is ' + school.formatDuration(found.seconds) + ' at the school\'s walking pace' + (rides.length > 0 ? ', including the elevator\'s wait' : '') + ', for an empty corridor. Distances are in cells of the floor plan.')),
+            stepParts(step)))),
+          h('p', { class: 'muted', dataset: { directions: 'time' } }, 'The walk is ' + school.formatDuration(found.seconds) + ' at the school\'s walking pace' + (rides.length > 0 && Number(school.data.settings.elevatorWaitSeconds) > 0 ? ', including the elevator\'s wait' : '') + ', for an empty corridor. Distances are in cells of the floor plan.')),
         h('section', { class: 'card', dataset: { directions: 'floors' } },
           sectionHeading('Floors on the way', floors.length),
           h('ol', { class: 'plain' }, floors.map((part) => h('li', null,

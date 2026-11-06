@@ -21,7 +21,7 @@ import { searchIndex, searchSchool, foldText, FIND_LIMIT } from '../../staff/fin
 import { publishedModel } from '../../engine/publish-data.js';
 import { lockPublished, unlockPublished } from '../../engine/publish-crypto.js';
 import { teacherDay, isFree } from '../../engine/teacher-day.js';
-import { newMark, newDuty } from '../../engine/schema.js';
+import { newMark, newDuty, REFUGE_DEFAULT_NAME } from '../../engine/schema.js';
 import { validate } from '../../engine/validate.js';
 import { effectiveSchedule } from '../../engine/day-types.js';
 import { dutyDate, everyTeacherDay, groupSlots, groupMark, takenBy, takingDuty, sometimesIn, sometimesWords, dutyTimes, dutyPlace, edgeDuties, entryWords } from '../../staff/clock.js';
@@ -37,7 +37,7 @@ import { render as renderChecks } from '../../ui/prints/checks-report.js';
 import { seededRandom } from '../../engine/ids.js';
 import { oneWayStairs } from '../../staff/views/map.js';
 import { stepFreeNotes } from '../../staff/map.js';
-import { routeFloors, routeCrossings } from '../../staff/views/directions.js';
+import { routeFloors, routeCrossings, carText } from '../../staff/views/directions.js';
 import { paint, F2, F3 } from '../fixtures/step-free.mjs';
 // The sample before its calendar, bell schedules, marks and duties (SV2-82): the cases here build their own.
 import { plainSchool as sampleSchool } from '../engine/helpers.mjs';
@@ -1215,4 +1215,103 @@ test('the map\'s list names the stops, steps, step doors, step exits and refuges
   assert.equal(notes[3].text, 'Step at a door of Room 101');
   assert.equal(notes[4].text, 'Steps outside exit Door B');
   assert.deepEqual(stepFreeNotes(school, school.data.building.floors[2]).map((note) => note.kind), ['elevator']);
+});
+
+// ---- SV2-105b: hand-made models, and Directions' words for the cars
+
+const NOON = () => new Date('2026-09-01T12:00:00Z');
+
+test('a refuge with no name, or a blank one, is listed under the default name; a refuge with a name keeps it', () => {
+  const project = chain();
+  project.building.floors[0].refuges = [
+    { id: 'asample001', cell: 283 },
+    { id: 'asample002', cell: 282, name: '   ' },
+    { id: 'asample003', cell: 281, name: 'Quiet room' },
+  ];
+  const school = openSchool(publishedModel(project, { clock: NOON }));
+  const texts = stepFreeNotes(school, school.data.building.floors[0]).filter((note) => note.kind === 'refuge').map((note) => note.text);
+  assert.deepEqual(texts, [REFUGE_DEFAULT_NAME, REFUGE_DEFAULT_NAME, 'Quiet room']);
+  assert.ok(texts.every((text) => !text.includes('undefined')));
+});
+
+test('an elevator stop on a floor that is not in the file is left out of "stops at", not named with nothing', () => {
+  const school = openSchool(publishedModel(chain(), { clock: NOON }));
+  // a hand-made model: the third floor is gone from the file's floors, its stop stays
+  const data = { ...school.data, building: { ...school.data.building, floors: school.data.building.floors.slice(0, 2) } };
+  const fewer = { ...school, data, elevators: () => school.elevators() };
+  const [note] = stepFreeNotes(fewer, data.building.floors[0]);
+  assert.equal(note.text, 'Elevator D (staff only): stops at Floor 1 and Floor 2');
+  // only one floor of three in the file: nothing is named twice or with nothing
+  const one = { ...data, building: { ...data.building, floors: data.building.floors.slice(0, 1) } };
+  const [alone] = stepFreeNotes({ ...fewer, data: one }, one.building.floors[0]);
+  assert.equal(alone.text, 'Elevator D (staff only): a stop here, not connected to another floor');
+});
+
+test('a car with no letter is "an elevator", never "Elevator ."', () => {
+  const school = openSchool(publishedModel(chain(), { clock: NOON }));
+  const nameless = { ...school, elevators: () => school.elevators().map((car) => ({ ...car, label: '' })) };
+  const [note] = stepFreeNotes(nameless, school.data.building.floors[0]);
+  assert.equal(note.text, 'An elevator (staff only): stops at Floor 1, Floor 2 and Floor 3');
+  assert.equal(carText(''), 'an elevator');
+  assert.equal(carText('  '), 'an elevator');
+  assert.equal(carText(undefined), 'an elevator');
+  assert.equal(carText('D'), 'Elevator D');
+  assert.equal('Take ' + carText('') + ' up to Floor 3.', 'Take an elevator up to Floor 3.');
+});
+
+test('a star-shaped elevator, one hub stop joined to two floors, is one car in Directions\' words', () => {
+  const project = sampleSchool();
+  const [f1, f2, f3] = project.building.floors;
+  const [a, b] = project.building.connections;
+  for (const link of [a, b]) link.kind = 'elevator';
+  a.car = 'D';
+  b.car = 'D';
+  a.a = { floorId: f1.id, cell: 332 };
+  a.b = { floorId: F2, cell: 332 };
+  b.a = { floorId: f1.id, cell: 332 };
+  b.b = { floorId: F3, cell: 332 };
+  paint(f3, 332, 'S');
+  for (const floor of [f1, f2, f3]) floor.lifts = [332];
+  const school = openSchool(publishedModel(project, { clock: NOON }));
+  assert.equal(school.elevators().length, 1);
+  assert.deepEqual(school.elevators()[0].stops.map((stop) => stop.floorId), [f1.id, F2, F3]);
+  const found = school.route('rsample101', 'rsample303', { avoidStairs: true });
+  assert.equal(found.ok, true);
+  assert.deepEqual(routeCrossings(school, found).map((each) => [each.kind, each.label, each.toFloorId]), [['ride', 'D', F3]]);
+  const steps = school.directions(found).steps.map((step) => step.text);
+  assert.ok(steps.includes('Take Elevator D up to Floor 3.'), steps.join(' | '));
+  assert.equal(stepFreeNotes(school, f2)[0].text, 'Elevator D: stops at Floor 1, Floor 2 and Floor 3');
+});
+
+test('a merged elevator, two connections of different letters that meet at a stop, is called by one letter in Directions\' words', () => {
+  const project = chain();
+  project.building.connections[1].car = 'E';
+  const school = openSchool(publishedModel(project, { clock: NOON }));
+  assert.equal(school.elevators().length, 1);
+  const found = school.route('rsample101', 'rsample303', { avoidStairs: true });
+  const [crossing] = routeCrossings(school, found);
+  assert.equal(crossing.label, school.elevators()[0].label);
+  const steps = school.directions(found).steps.map((step) => step.text);
+  const taken = steps.filter((text) => /Elevator/.test(text));
+  assert.ok(taken.length > 0 && taken.every((text) => text.includes('Elevator ' + crossing.label)), steps.join(' | '));
+  assert.ok(!steps.some((text) => /Elevator E/.test(text) && crossing.label !== 'E'));
+});
+
+test('a route that rides then takes stairs says the ride, then the stairs, each in its own words', () => {
+  const project = sampleSchool();
+  const [a] = project.building.connections;
+  a.kind = 'elevator';
+  a.car = 'D';
+  project.building.floors[0].lifts = [332];
+  project.building.floors[1].lifts = [332];
+  const school = openSchool(publishedModel(project, { clock: NOON }));
+  const found = school.route('rsample101', 'rsample303');
+  assert.equal(found.ok, true);
+  assert.deepEqual(routeCrossings(school, found).map((each) => [each.kind, each.label]), [['ride', 'D'], ['stairs', 'B']]);
+  assert.deepEqual(routeFloors(school, found).map((part) => part.via && [part.via.kind, part.via.label]), [['ride', 'D'], ['stairs', 'B'], null]);
+  const steps = school.directions(found).steps;
+  assert.ok(steps.some((step) => step.kind === 'ride' && step.text === 'Take Elevator D up to Floor 2.'), steps.map((s) => s.text).join(' | '));
+  assert.ok(steps.some((step) => /stairs B/.test(step.text)));
+  assert.equal(found.rides, 1);
+  assert.ok(found.stairs >= 1);
 });

@@ -79,6 +79,9 @@ before(async () => {
   await write('lift', withLift(false));
   await write('chain', withLift(true));
   await write('blocked', withLift(true, true));
+  const nowait = withLift(true);
+  nowait.settings.elevatorWaitSeconds = 0;
+  await write('nowait', nowait);
   const plain = sampleSchool();
   plain.publish.passcode = '';
   await write('plain', plain);
@@ -115,6 +118,21 @@ const text = (page, selector) => page.evaluate((s) => {
   return found ? found.textContent : null;
 }, selector);
 const says = (page) => text(page, '.page__body > .lede');
+// one live announcement for each change: the live regions on the page whose
+// words are changed by an update are counted by watching them
+const watchLive = (page) => page.evaluate(() => {
+  const live = [...document.querySelectorAll('[role="status"], [role="alert"], [aria-live]:not([aria-live="off"])')];
+  globalThis.__changed = new Set();
+  const seen = new MutationObserver((records) => {
+    for (const record of records) {
+      const hit = live.find((each) => each.contains(record.target));
+      if (hit) globalThis.__changed.add(hit);
+    }
+  });
+  seen.observe(document.body, { childList: true, characterData: true, subtree: true });
+  return live.length;
+});
+const liveChanged = (page) => page.evaluate(() => [...globalThis.__changed].map((each) => each.dataset.says || each.className));
 const hash = (page) => page.evaluate(() => location.hash);
 
 async function goto(page, url) {
@@ -247,6 +265,27 @@ test('Directions counts stairs and rides apart: an elevator then a flight of sta
   }
 });
 
+test('the time line speaks of the elevator\'s wait only when the published wait is above 0', async () => {
+  const session = await openPage();
+  try {
+    const { page } = session;
+    assert.ok(files.chain.model.settings.elevatorWaitSeconds > 0);
+    await goto(page, files.chain.url + '#/directions?from=rsample101&to=rsample303');
+    await page.waitForSelector('[data-directions="time"]');
+    assert.match(await text(page, '[data-directions="time"]'), /walking pace, including the elevator's wait, for an empty corridor/);
+    assert.equal(files.nowait.model.settings.elevatorWaitSeconds, 0);
+    await goto(page, files.nowait.url + '#/directions?from=rsample101&to=rsample303');
+    await page.waitForSelector('[data-directions="time"]');
+    const line = await text(page, '[data-directions="time"]');
+    assert.ok(/by Elevator D/.test(await says(page)), 'the way still rides the elevator');
+    assert.ok(!/wait/.test(line), line);
+    assert.match(line, /walking pace, for an empty corridor/);
+    assert.deepEqual(session.errors, []);
+  } finally {
+    await session.close();
+  }
+});
+
 test('ticking Step-free by keyboard announces the new way in a polite region that was on the page before it spoke', async () => {
   const session = await openPage();
   try {
@@ -258,9 +297,12 @@ test('ticking Step-free by keyboard announces the new way in a polite region tha
       return region ? { text: region.textContent, live: region.getAttribute('aria-live'), role: region.getAttribute('role') } : null;
     });
     assert.deepEqual(before, { text: '', live: 'polite', role: 'status' }, 'the region is there, empty, before anything is said');
+    assert.ok(await watchLive(page) >= 1, 'the polite region is among the live regions on the page');
     await page.focus('#directions-stepfree');
     await page.keyboard.press('Space');
     await page.waitForFunction(() => document.querySelector('[data-says="route"]')?.textContent.startsWith('Route updated'), { timeout: 10000 });
+    assert.deepEqual(await liveChanged(page), ['route'], 'one live region changes for the update, the polite one');
+    assert.equal(await page.evaluate(() => document.querySelector('.page__body > .lede').hasAttribute('role') || document.querySelector('.page__body > .lede').hasAttribute('aria-live')), false, 'the visible line is not live');
     assert.equal(await text(page, '[data-says="route"]'), 'Route updated: takes Elevator D.');
     assert.equal(await hash(page), '#/directions?from=rsample101&to=rsample303&stepfree=1');
     assert.equal(await says(page), 'From Room 101 to Room 303: about 2 minutes, by Elevator D, step-free.');
@@ -278,9 +320,11 @@ test('step-free blocked by a step on Floor 3: the page says why, politely, and o
     const { page } = session;
     await goto(page, files.blocked.url + '#/directions?from=rsample101&to=rsample303');
     await page.waitForFunction(() => document.querySelector('.page__body > .lede')?.dataset.ok !== undefined);
+    assert.ok(await watchLive(page) >= 1);
     await page.focus('#directions-stepfree');
     await page.keyboard.press('Space');
     await page.waitForFunction(() => document.querySelector('[data-says="route"]')?.textContent.startsWith('Route updated'), { timeout: 10000 });
+    assert.deepEqual(await liveChanged(page), ['route']);
     const refusal = 'There is no step-free way through from Room 101 to Room 303 on Floor 3: a step on Music Wing.';
     assert.equal(await says(page), refusal);
     assert.equal(await text(page, '[data-says="route"]'), 'Route updated: ' + refusal);
