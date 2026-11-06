@@ -213,7 +213,7 @@ export function cellPanel(env) {
     const tick = checkField({
       id: 'cell-step',
       label,
-      hint: model.skipped > 0 ? count(model.skipped, 'selected cell') + (model.skipped === 1 ? ' is' : ' are') + ' not corridor and is left out.' : null,
+      hint: model.skipped > 0 ? count(model.skipped, 'selected cell') + (model.skipped === 1 ? ' is' : ' are') + ' not corridor and ' + (model.skipped === 1 ? 'is' : 'are') + ' left out.' : null,
       name: 'cellStep',
       key: 'step',
       checked: model.marked === n,

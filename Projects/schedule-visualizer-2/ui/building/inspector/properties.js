@@ -268,8 +268,9 @@ export function propertiesPanel(env) {
             if (outcome === null) throw new Error('That could not be changed. The tick is back as it was.');
           },
         });
-        // its own name: the door, by its wall, and the room
-        tick.input.setAttribute('aria-label', 'Door ' + where + ', step-free');
+        // its own name: the door, by its wall; two doors on one wall are told apart by their column
+        const sameWall = room.doors.filter((other) => other.side === door.side).length > 1;
+        tick.input.setAttribute('aria-label', 'Door ' + where + (sameWall ? ', column ' + ((door.cell % floor.width) + 1) : '') + ', step-free');
         tick.input.dataset.door = door.cell + ':' + door.side;
         return h('li', { class: 'bi-row bi-row--door', data: { door: door.cell + ':' + door.side } },
           h('span', { class: 'bi-row__text' }, 'On the ' + SIDE_WORDS[door.side] + ' edge, ' + cellWords(floor, door.cell)),
