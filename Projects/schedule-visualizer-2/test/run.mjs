@@ -265,7 +265,7 @@ export const BROWSER_SECONDS = {
   'browser/trace-scale.mjs': 12,
   'browser/one-way.mjs': 12,
   'browser/step-marks.mjs': 10,
-  'browser/step-free-movement.mjs': 10,
+  'browser/step-free-movement.mjs': 11,
   'browser/draw-pointer.mjs': 12,
   'browser/staff-views-b.mjs': 11,
   'browser/schedule.mjs': 11,

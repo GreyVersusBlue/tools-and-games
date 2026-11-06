@@ -333,6 +333,26 @@ test('with the flag off Ada has no way up (the elevator is staff only), nobody r
   await page.waitForFunction((id) => globalThis.sv2.store.project.groups.find((group) => group.id === id).stepFree === true, {}, ada);
 });
 
+// ---------------------------------------------------------------- Clear
+
+test('Clear the building counts the elevator apart from stairs, and empties the lists it marks', async () => {
+  const found = await view(async () => {
+    const { buildingContents, buildingWords, clearedBuilding } = await import(new URL('ui/project/clear.js', location.href).href);
+    const project = globalThis.sv2.store.project;
+    const cleared = clearedBuilding(project);
+    return { counts: buildingContents(project), removes: buildingWords(project).removes, lifts: cleared.building.floors.map((floor) => floor.lifts), after: buildingContents(cleared) };
+  });
+  assert.equal(found.counts.stairsCells, 0, 'the stops are not stairs cells');
+  assert.equal(found.counts.liftCells, 2);
+  assert.equal(found.counts.connections, 0, 'the elevator connection is not a stairs connection');
+  assert.equal(found.counts.elevatorConnections, 1);
+  assert.match(found.removes, /2 elevator stops/);
+  assert.match(found.removes, /1 elevator connection/);
+  assert.doesNotMatch(found.removes, /stairs/);
+  assert.deepEqual(found.lifts, [[], []], 'the stops go with the cells they stood on');
+  assert.equal(found.after.liftCells, 0);
+});
+
 // ---------------------------------------------------------------- Settings
 
 const settingOf = (key) => view((name) => globalThis.sv2.store.project.settings[name], key);
