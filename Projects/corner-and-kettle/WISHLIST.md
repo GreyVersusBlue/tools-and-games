@@ -773,18 +773,91 @@ outside CI on purpose (#353).
     the barista's interval, as before: a first draft let go of that at once
     and `balance.mjs` moved on the shopper's rows (reopening edge 1.063 to
     1.066), so the rule was narrowed and the sweep is line for line what it
-    was. Seen there in the code, not changed and not measured: that hand-back
-    rolls the barista's fumble on a cup the player made.
+    was. Seen there in the code, not changed: that hand-back rolls the
+    barista's fumble on a cup the player made. Measured on 2026-11-06 (#1031,
+    TG-46), below.
     Still unreachable in play (no order names an unbought line since #913),
     so nothing a player does changes. One line is unguarded alone:
     `autoAssistStep`'s `!== false` cannot be broken by itself, because
     `nextStep()` never hands it a line that refuses; with `stocked()`
     removed as well the suite hangs in section 15 instead of failing, which
     is what the comparison is there to stop.
-  - *The sweep does not play Cold Brew, Nitro Cold Brew or Affogato.* No
-    autopilot buys them (the loop's "spends badly" variant gets Cold Brew from
-    the beans). Their prices are unchanged and were not measured; only the
-    lines-per-dollar table in #878's log entry speaks for them.
+  - *The sweep did not play Cold Brew, Nitro Cold Brew or Affogato.* Measured
+    on 2026-11-06 (#1031, TG-46); no price, unlock or recipe moved. Written
+    up below with the hand-back, from one full `balance.mjs` run (the new
+    tables print after the pace table; the 215 lines before them are
+    identical to the run before).
+  - *Measured, #1031: the three recipes bought by money.* The shopper, 30
+    seeds, 30 days, no reopening, buys the chain in order. FIRST puts it ahead
+    of the whole of `DEFAULT_PRIORITY` (every seed bought all three at the
+    first close, day 1); LAST puts it behind the whole list (day 5.8, 6.6 and
+    7.0). Net a day: control $2,792; Cold Brew first $2,771; + Nitro $2,819;
+    + Affogato $2,947; all three last $2,850 (+$59 over control). Per recipe,
+    in the variant that ends the chain at it:
+
+    | recipe | price | unlock | lines a serve | $ a line (tips in) | serves a day | earned a day | edge a day | payback |
+    | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+    | Cold Brew | $42 | $150 | 3.78 | $16.0 | 3.11 | $188 | -$21 | never |
+    | Nitro Cold Brew | $54 | $220 | 3.50 | $22.1 | 2.86 | $221 | +$48 | 4.5 d |
+    | Affogato | $62 | $280 | 3.26 | $27.9 | 6.41 | $584 | +$128 | 2.2 d |
+
+    `edge` is the net a day over the variant one step shorter in the chain,
+    same seeds: what the recipe adds once the customers it replaces are
+    counted, which "earned a day" is not. Price by price:
+    - **Cold Brew ($150) shows no gain to this player.** It is served 3.1 times
+      a day for $188, but those are customers who would have ordered something
+      else at about the same price, and buying it first spends $150 ahead of
+      the first hire (not isolated), so the edge is slightly negative (-$21 on $2,792, 0.8%; the
+      seed spread was not measured, so read it as "no measurable gain", not
+      "a loss"). The unlock is small beside a $51,000 close, so nothing is
+      hurt either. $16.0 a line is the lowest on the menu, as #878 said.
+    - **Nitro Cold Brew ($220) pays back in about 4.5 days.** $22.1 a line,
+      above Cold Brew's: its Whipped Cream line is a $12 price step over Iced
+      Coffee for one more button.
+    - **Affogato ($280) pays back in about 2.2 days and is the strongest of
+      the three by a wide margin:** $27.9 a line, served 6.4 times a day, twice
+      Cold Brew's rate. It is a specialty order since #878 (it carries a
+      syrup), so it competes only with the other specialty orders, and with
+      the chain bought it is the dearest drink in a day-one shop's specialty
+      pool. The chain's cheapest unlock leads to its most valuable one.
+    - **The shape, recorded and left:** prices rise ($150, $220, $280) and so
+      does what each returns ($0, $48, $128 a day), the right order, but the
+      first rung is only a toll for the other two. If a price ever moves it is
+      Cold Brew's (lower, or a step of its own the way Nitro got one).
+  - *Measured, #1031: the barista's hand-back on a cup the player finished.*
+    `runBaristaTick` rolls the fumble whenever the claimed cup is complete at
+    the barista's interval, whoever made the last line. The shopper, 20
+    seeds, 30 days, with the staff it hires, counts those rolls (a toast from a
+    barista whose claimed cup was already complete before the step), at three
+    speeds of Serve, since the autopilot serves the frame after a cup is ready
+    and so gives the barista one 16 ms step to hand it back:
+
+    | hand | serve after | cups a day handed back | by hand | share | fumbled a day | redo steps a day | short a day | short $ a day | net a day |
+    | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+    | patient | 0 ms | 14.9 | 0.38 | 2.6% | 0.007 | 0.005 | 0 | $0 | $2,788 |
+    | patient | 1500 ms | 41.4 | 26.8 | 64.6% | 0.378 | 0.348 | 0 | $0 | $2,774 |
+    | patient | 3000 ms | 47.4 | 33.2 | 70.1% | 0.465 | 0.413 | 0 | $0 | $2,712 |
+    | eager | 0 ms | 0.1 | 0.01 | 7.6% | 0 | 0 | 0 | $0 | $1,148 |
+    | eager | 1500 ms | 30.1 | 18.6 | 62.0% | 0.232 | 0.025 | 0.095 | $1.19 | $2,408 |
+    | eager | 3000 ms | 45.9 | 31.6 | 68.8% | 0.422 | 0.322 | 0.083 | $0.73 | $2,696 |
+
+    **How often:** at the autopilot's instant Serve it is 0.4 cups a day of 15
+    (2.6%), a floor, because a person takes longer than a frame. At a 1.5 s
+    Serve about two thirds of everything a barista hands back is a cup the
+    player had already finished, 27 a day, each with a fumble roll. Hand-backs
+    rise with the delay because a cup waiting on the player holds its station
+    and its barista, so there are more cups for baristas to stand at.
+    **What it costs:** 0.2 to 0.5 broken cups a day. For a patient player that
+    is 0.35 to 0.41 hand steps of redo a day, about 0.4% of the hand's steps,
+    and no tip, since patience stops ticking on a station. For an eager player
+    who serves what the button allows it is $0.7 to $1.2 a day of base price
+    (tips left out, food not counted) on $2,400 to $2,700 net, under 0.05%.
+    Not worth a change, and the sim's rule stays. What the sweep cannot say is
+    whether a person feels a cup they finished going wrong under their hand:
+    a play question, not a number. The probe is `watchHandBacks()` in
+    `test/autopilot.mjs` (nothing in `js/sim.js` changed); `checkProbes()` in
+    `balance.mjs` fails the run if a seed does not buy all three recipes or
+    the watcher sees no player-finished hand-back at 1.5 s.
   - *The names are stand-ins.* The game has no foam, no steep time, no nitro
     tap and no ice cream, so cinnamon, cold milk, whipped cream and vanilla do
     those jobs. A Doppio with whipped cream is a doppio con panna. Each is one
