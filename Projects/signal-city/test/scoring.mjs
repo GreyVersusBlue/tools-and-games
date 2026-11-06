@@ -17,7 +17,7 @@ const { LEVELS, levelById } = await load('levels/pack-01.js');
 const { repair, fresh, recordResult, totalStars, SAVE_KEY } = await load('save.js');
 const { standardPhases } = await load('signals.js');
 const { WAVE } = await load('wave.js');
-const { holdPlatoon, handStep, handOffset, powerBack, played: playedAs } = await import(pathToFileURL(path.join(HERE, '..', 'tools', 'calibrate.mjs')).href);
+const { holdPlatoon, clearAhead, handStep, handOffset, powerBack, played: playedAs } = await import(pathToFileURL(path.join(HERE, '..', 'tools', 'calibrate.mjs')).href);
 
 let passed = 0, failed = 0;
 const ok = (cond, what, detail = '') => {
@@ -609,6 +609,28 @@ group('the save');
   recordResult(st, 'first-light', { stars: 1, points: 1200 });
   ok(st.levels['first-light'].stars === 2 && st.levels['first-light'].best === 1200 && st.levels['first-light'].plays === 2, 'a result keeps the best stars and the best points separately', JSON.stringify(st.levels['first-light']));
   ok(totalStars(st) === 2, 'total stars sums the levels');
+}
+
+group('the hand\'s look-ahead reads a routed ambulance (TG-45, #960)');
+
+{
+  // a made-up row of three boxes on a 15 s rule; one ambulance in from the
+  // west at 20 s, called the moment it is on the map. What clearAhead holds
+  // is read every two seconds while it is on its way, as the boxes' indexes, and the boxes ever held are the answer.
+  const lvl = route => ({ network: { nodes: 3, spacing: 220 }, demand: [{ W: 300, N: 150, S: 150 }, { N: 150, S: 150 }, { E: 300, N: 150, S: 150 }], duration: 240, mix: { standard: 1 }, turns: { T: 1 }, controller: { main: 'EW', rules: [{ when: 'elapsed', seconds: 15, then: 'next' }] }, controllers: [], events: [{ kind: 'ambulance', at: 20, leg: 'W', turn: 'T', within: 200, ...(route ? { route } : {}) }], spawns: [] });
+  const looked = route => {
+    const w = new World(lvl(route), 3);
+    let amb = null; const seen = new Set();
+    for (let i = 0; i < 40 * 60; i++) {
+      w.step();
+      if (!amb && (amb = w.cars.find(c => c.archetype === 'emergency'))) w.requestPriority(amb);
+      if (amb && !amb.done && amb.priority && i % 120 === 0) for (const n of clearAhead(w)) seen.add(n);
+    }
+    return [...seen].sort().join('');
+  };
+  const none = looked(null), through = looked(['T', 'T', 'T']), left = looked(['T', 'L', 'T']), right = looked(['T', 'R', 'T']);
+  ok(none === '12' && through === '12', 'an ambulance with no route, or route T, T, T, has boxes 2 and 3 held for it: the through at each', `no route ${none}, T T T ${through}`);
+  ok(left === '1' && right === '1', 'one routed to turn at box 2 has box 2 held and box 3 left alone: its road does not run on through it', `T L T ${left}, T R T ${right}`);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

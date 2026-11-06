@@ -233,6 +233,29 @@ group('the sandbox: Free Play grown into a district (M9, #614 to #618)');
     }
   }
   ok(!bad.length, 'on 330 districts (seeds 1 to 30, 2 to 12 boxes) both ambulances come in on a leg that spawns, at their own time and turn', bad.slice(0, 4).join(' ') || `${kept} kept their leg, ${moved} moved`);
+  // a scripted route belongs to the street it was written for (TG-45): an
+  // arrival that moved to another box or leg loses it, one that stayed keeps
+  // it. Over a Free Play whose two ambulances carry routes, on the same 330.
+  {
+    const routed = { ...fp, spawns: fp.spawns.map((s, i) => ({ ...s, route: i ? ['T', 'L'] : ['T', 'T', 'L'] })) };
+    const wrong = []; let movedN = 0, stayedN = 0;
+    for (let seed = 1; seed <= 30; seed++) for (let n = 2; n <= 12; n++) {
+      const L = districtLevel(routed, seed, n);
+      L.spawns.forEach((s, i) => {
+        const b = routed.spawns[i], moved = s.node !== (b.node || 0) || s.leg !== b.leg;
+        if (moved) { movedN++; if ('route' in s) wrong.push(`${seed}/${n}#${i} moved, kept ${s.route}`); }
+        else { stayedN++; if (JSON.stringify(s.route) !== JSON.stringify(b.route)) wrong.push(`${seed}/${n}#${i} stayed, route ${s.route}`); }
+        if (s.turn !== b.turn) wrong.push(`${seed}/${n}#${i} turn`);
+      });
+    }
+    ok(!wrong.length && movedN > 0 && stayedN > 0, 'on 330 districts an arrival that moved loses its route and keeps its turn, one that stayed keeps both, and both cases occur', wrong.slice(0, 3).join(' ') || `${movedN} moved, ${stayedN} stayed`);
+    const m = districtLevel(routed, 5, 12);
+    ok(m.spawns[0].node > 0 && !('route' in m.spawns[0]) && m.spawns[0].turn === routed.spawns[0].turn, 'the moved case, pinned: twelve boxes on city 5 put the first ambulance on box ' + (m.spawns[0].node + 1) + ' with its turn and no route', JSON.stringify(m.spawns[0]));
+    let k = null;
+    for (let seed = 1; seed <= 30 && !k; seed++) { const L = districtLevel(routed, seed, 2); if (L.spawns[0].node === 0 && L.spawns[0].leg === routed.spawns[0].leg) k = L.spawns[0]; }
+    ok(k && JSON.stringify(k.route) === JSON.stringify(routed.spawns[0].route), 'the unmoved case, pinned: a two-box district that leaves the first ambulance on box 1 W keeps its route', JSON.stringify(k));
+    ok(routed.spawns.every(s => Array.isArray(s.route)), 'and the base level\'s own spawns are not touched');
+  }
   {
     const L = districtLevel(fp, 5, 12);
     const w = new World(L, 5);
