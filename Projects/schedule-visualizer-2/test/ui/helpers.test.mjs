@@ -157,7 +157,7 @@ test('counts and lists read as a sentence would', () => {
 });
 
 test('the figures of the sample school are counted from its data', () => {
-  assert.deepEqual(figures(sampleSchool()), { floors: 3, rooms: 13, otherSpaces: 10, exits: 2, connections: 3, teachers: 12, groups: 8, subjects: 9, dayTypes: 3 });
+  assert.deepEqual(figures(sampleSchool()), { floors: 3, rooms: 13, otherSpaces: 10, exits: 2, connections: 3, elevators: 0, teachers: 12, groups: 8, subjects: 9, dayTypes: 3 });
 });
 
 // ---------------------------------------------------------------- SV2-08: the Accepted table's model

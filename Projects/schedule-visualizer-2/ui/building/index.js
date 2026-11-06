@@ -91,12 +91,22 @@ export function stairsWords(project, connections) {
   }).join(', ');
 }
 
+// "Elevator D, staff only" for a connected stop, "Elevator D, not connected" for
+// a stop alone (it has its letter from the first placement), plus any step or
+// area of refuge the cell carries. `at` is describeCell's answer.
+export function elevatorWords(at) {
+  const car = at.elevator;
+  const name = car && car.label !== '' ? 'Elevator ' + car.label : 'Elevator stop';
+  return name + (car && car.connected ? '' : ', not connected') + (car && car.staffOnly ? ', staff only' : '');
+}
+
 // What is on a cell, in a word or two: the planner's cursor line and the
 // announcement of a move.
 export function cellWords(project, floorId, cell) {
   const at = describeCell(project.building, floorId, cell);
   if (!at) return '';
   if (at.kind === 'corridor') return 'Corridor' + (at.corridorName === '' ? '' : ', ' + at.corridorName) + (at.exit ? ', exit' + (at.exit.doorName === '' ? '' : ' ' + at.exit.doorName) : '');
+  if (at.kind === 'elevator') return elevatorWords(at);
   if (at.kind === 'stairs') return at.connections.length > 0 ? stairsWords(project, at.connections) : 'Stairs, not connected';
   if (at.kind === 'room') return roomName(at.space, true);
   if (at.kind === 'other') return at.space.label.trim() === '' ? 'Other space' : at.space.label;
@@ -125,7 +135,7 @@ function facts(project) {
   const f = figures(project);
   const first = project.building.floors[0];
   if (f.rooms === 0 && f.exits === 0 && f.floors === 1) return 'Nothing is drawn yet. ' + first.name + ' is ' + first.width + ' × ' + first.height + ' cells.';
-  return 'So far: ' + list([count(f.floors, 'floor'), count(f.rooms, 'room'), count(f.otherSpaces, 'other space'), count(f.connections, 'stairs connection'), count(f.exits, 'exit')]) + '.';
+  return 'So far: ' + list([count(f.floors, 'floor'), count(f.rooms, 'room'), count(f.otherSpaces, 'other space'), count(f.connections, 'stairs connection')].concat(f.elevators > 0 ? [count(f.elevators, 'elevator')] : [], [count(f.exits, 'exit')])) + '.';
 }
 
 // The inspector's tabs as the shell's folded strip shows them: an icon each.
