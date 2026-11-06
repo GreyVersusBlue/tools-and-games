@@ -11,7 +11,11 @@
 //
 // Reachability comes from graph.js. "No route to any exit" is asked of the
 // graph too: a room has a route to an exit exactly when one of the cells it
-// is entered through can reach an exit cell.
+// is entered through can reach an exit cell, with the elevators left out
+// (an evacuation never uses one); a room that can leave only by elevator is
+// told that. An elevator stop with no connection is "Elevator stop on Floor 2
+// is not connected", and stairs and elevator stops are judged in runs of their
+// own kind.
 
 import { roomNumberKey, CELL_STAIRS, neighbourCell, DOOR_SIDES, nameOfRoom } from './schema.js';
 import { buildGraph, reachable, components } from './graph.js';
@@ -91,7 +95,10 @@ export function buildingChecks(project, graph) {
   }
 
   // stairs with no connection: one finding per run of touching stairs cells
-  // in which no cell is connected
+  // in which no cell is connected. Elevator stops are judged apart from
+  // stairs: a run holds cells of one kind, so a lift cell touching a stairs
+  // cell neither connects it nor is connected by it, and an unconnected stop
+  // is "Elevator stop on Floor 2 is not connected".
   const linked = new Uint8Array(g.count);
   for (const link of g.links) {
     linked[link.a] = 1;
@@ -99,9 +106,11 @@ export function buildingChecks(project, graph) {
   }
   building.floors.forEach((floor, f) => {
     const nodeOfCell = g.floors[f].nodeOfCell;
+    const isLift = (cell) => nodeOfCell[cell] !== -1 && g.lifts[nodeOfCell[cell]] === 1;
     const done = new Set();
     for (let start = floor.cells.indexOf(CELL_STAIRS); start !== -1; start = floor.cells.indexOf(CELL_STAIRS, start + 1)) {
       if (done.has(start)) continue;
+      const lift = isLift(start);
       const run = [start];
       done.add(start);
       let connected = false;
@@ -109,7 +118,7 @@ export function buildingChecks(project, graph) {
         if (linked[nodeOfCell[run[i]]]) connected = true;
         for (const side of DOOR_SIDES) {
           const next = neighbourCell(floor, run[i], side);
-          if (next !== -1 && floor.cells[next] === CELL_STAIRS && !done.has(next)) {
+          if (next !== -1 && floor.cells[next] === CELL_STAIRS && !done.has(next) && isLift(next) === lift) {
             done.add(next);
             run.push(next);
           }
@@ -118,6 +127,10 @@ export function buildingChecks(project, graph) {
       if (connected) continue;
       const column = (start % floor.width) + 1;
       const row = Math.floor(start / floor.width) + 1;
+      if (lift) {
+        add('stairs-unconnected', 'warning', [floor.id, start], 'Elevator stop on ' + floor.name + ' is not connected (column ' + column + ', row ' + row + '): it reaches no elevator stop on another floor, so nobody can use it. Connect it to a stop on another floor.', { floorId: floor.id, cell: start, cells: run.sort((a, b) => a - b) });
+        continue;
+      }
       add('stairs-unconnected', 'warning', [floor.id, start], 'The stairs on ' + floor.name + ' at column ' + column + ', row ' + row + ' are not connected to other stairs, so nobody can use them. Connect them to the stairs they lead to.', { floorId: floor.id, cell: start, cells: run.sort((a, b) => a - b) });
     }
   });
@@ -169,11 +182,20 @@ export function buildingChecks(project, graph) {
   if (g.exits.length === 0) {
     if (drawn) add('no-exit', 'warning', ['building'], 'No exit is marked. Mark a corridor cell on the building\'s edge as an exit so that evacuation routes can be worked out.', { floorId: building.floors[0].id, cells: [] });
   } else {
-    const canLeave = reachable(g, g.exits.map((exit) => exit.node), { reverse: true, undirected: true });
+    // An evacuation never uses an elevator (spec 10.1), so the way out is asked
+    // of the graph with the elevators left out. A room whose only way out is a
+    // ride is told so: the building is joined, it is not safe to leave.
+    const exitNodes = g.exits.map((exit) => exit.node);
+    const canLeave = reachable(g, exitNodes, { reverse: true, undirected: true, noElevators: true });
+    const canLeaveByElevator = g.cars.length > 0 ? reachable(g, exitNodes, { reverse: true, undirected: true }) : canLeave;
     for (const { room, floor } of rooms) {
       const entries = g.rooms.get(room.id).entries;
       if (entries.length === 0 || entries.some((entry) => canLeave[entry.node])) continue;
-      add('room-no-exit-route', 'problem', [room.id], nameOfRoom(room, true) + ' on ' + floor.name + ' has no route to any exit. Join its corridor to one that leads to an exit, or mark an exit it can reach.', { floorId: floor.id, roomId: room.id, cells: room.cells });
+      const byElevator = entries.some((entry) => canLeaveByElevator[entry.node]);
+      const text = byElevator
+        ? nameOfRoom(room, true) + ' on ' + floor.name + ' has no route to any exit: its only way out is by elevator, and an evacuation never uses one. Join its corridor to stairs that lead to an exit.'
+        : nameOfRoom(room, true) + ' on ' + floor.name + ' has no route to any exit. Join its corridor to one that leads to an exit, or mark an exit it can reach.';
+      add('room-no-exit-route', 'problem', [room.id], text, { floorId: floor.id, roomId: room.id, cells: room.cells });
     }
   }
 

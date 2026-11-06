@@ -66,3 +66,29 @@ test('every schedule finding\'s id has that form too', () => {
     assertForm(finding);
   }
 });
+
+// SV2-100: the two new ids. An unconnected elevator stop is a `stairs-unconnected` finding like an unconnected
+// stair (the floor and the cell), and a step-free group's failed walk is a `group-walk` finding whose last part is
+// the word `step-free` (as a stranded teacher's is `stranded`), so that accepting the plain walk finding never
+// silences it and a rename never moves it.
+test('an unconnected elevator stop and a step-free group\'s walk have ids of the same form', () => {
+  const project = school();
+  const floor = project.building.floors[0];
+  const free = floor.cells.indexOf('.');
+  floor.cells = floor.cells.slice(0, free) + 'S' + floor.cells.slice(free + 1);
+  floor.lifts = [free];
+  const stop = buildingChecks(project).find((finding) => finding.kind === 'stairs-unconnected');
+  assert.match(stop.text, /^Elevator stop on Floor 1 is not connected/);
+  assertForm(stop);
+  const stepFree = school();
+  stepFree.groups.find((candidate) => candidate.name === '8A').stepFree = true;
+  const walk = checkSchedule(stepFree, { groups: [], teachers: [] }).findings.filter((finding) => finding.id.endsWith(':step-free'));
+  assert.ok(walk.length > 0);
+  for (const finding of walk) {
+    const parts = partsOf(finding);
+    assert.equal(parts.pop(), 'step-free');
+    for (const part of parts) assert.ok(isId(part) || /^\d+$/.test(part), part + ' in ' + finding.id);
+    assert.equal(finding.id, findingId(finding.kind, ...partsOf(finding)));
+  }
+  assert.equal(new Set(walk.map((finding) => finding.id)).size, walk.length);
+});

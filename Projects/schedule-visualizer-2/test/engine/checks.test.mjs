@@ -986,3 +986,84 @@ test('a group held back is still late, and it is the same finding with the same 
   assert.equal(held.severity, 'warning');
   assert.notEqual(held.text, onBell.text);
 });
+
+// ---------------------------------------------------------------- SV2-100: step-free groups and rides
+
+// The sample school's two stairs turned into two elevators, D (Floors 1 to 2) and E (Floors 2 to 3), as the actions would draw them.
+function withElevators(project) {
+  for (const connection of project.building.connections) {
+    connection.kind = 'elevator';
+    connection.car = connection.label === 'A' ? 'D' : 'E';
+    connection.staffOnly = false;
+    for (const end of [connection.a, connection.b]) {
+      const floor = project.building.floors.find((candidate) => candidate.id === end.floorId);
+      floor.lifts = [...(floor.lifts || []), end.cell];
+    }
+  }
+  return project;
+}
+
+const STEP_FREE_ID = 'group-walk:dsample00a:5:gsample08a:step-free';
+
+test('a step-free group with no step-free way for a walk is a finding whose id ends :step-free, with the failure and the floor with no elevator', () => {
+  const project = school();
+  assert.deepEqual(ids(ofKind(checkSchedule(project, { groups: [], teachers: [] }), 'group-walk')).filter((id) => id.endsWith(':step-free')), [], 'no flag, no finding');
+  group(project, '8A').stepFree = true;
+  const result = checkSchedule(project, { groups: [], teachers: [] });
+  const found = byId(result, STEP_FREE_ID);
+  assert.equal(found.kind, 'group-walk');
+  assert.equal(found.severity, 'warning');
+  assert.equal(found.text, '8A needs step-free routes, and has none from Gym to Room 303 after Period 6 on A Day: there is no step-free way through from Gym to Room 303 on Floor 3; Floor 3 has no elevator.');
+  assert.deepEqual(found.where, { dayTypeId: A, period: 5, groupIds: ['gsample08a'], roomId: 'rsample303', teacherId: null });
+  assert.deepEqual(ids(result.findings).filter((id) => id.endsWith(':step-free')).length, 6, 'one for each of 8A\'s six walks between floors, on the two day types');
+  // another group is not flagged
+  assert.ok(ids(result.findings).every((id) => !id.endsWith(':step-free') || id.includes('gsample08a')));
+  // an elevator for each pair of floors: nothing is left to say
+  assert.deepEqual(ids(checkSchedule(withElevators(project), { groups: [], teachers: [] }).findings).filter((id) => id.endsWith(':step-free')), []);
+  // and with the elevators drawn but one floor not reached, the floor is named
+  const gap = withElevators(school());
+  group(gap, '8A').stepFree = true;
+  const second = gap.building.connections[1]; // the stairs to Floor 3 stay stairs: the plain route is there, the step-free one is not
+  delete second.kind;
+  delete second.car;
+  delete second.staffOnly;
+  for (const floor of gap.building.floors) floor.lifts = floor.lifts.filter((cell) => ![second.a, second.b].some((end) => end.floorId === floor.id && end.cell === cell));
+  assert.match(byId(checkSchedule(gap, { groups: [], teachers: [] }), STEP_FREE_ID).text, /; Floor 3 has no elevator\.$/);
+  // with the checks' own switch off, none
+  const off = school();
+  group(off, '8A').stepFree = true;
+  off.settings.checks.off = ['group-walk'];
+  assert.deepEqual(ids(checkSchedule(off, { groups: [], teachers: [] }).findings).filter((id) => id.endsWith(':step-free')), []);
+});
+
+test('accepting the plain walk finding does not carry to the step-free one, and the step-free id is its own', () => {
+  const project = school();
+  group(project, '8A').stepFree = true;
+  const plain = { ...LONG_WALK, total: 300, walking: 300 };
+  const result = checkSchedule(project, { groups: [plain], teachers: [] });
+  assert.deepEqual(ids(result.findings).filter((id) => id.startsWith('group-walk:dsample00a:5:gsample08a')), ['group-walk:dsample00a:5:gsample08a', STEP_FREE_ID]);
+  const split = splitAccepted(result.findings, [{ findingId: 'group-walk:dsample00a:5:gsample08a', reason: 'known' }]);
+  assert.deepEqual(ids(split.findings).filter((id) => id.startsWith('group-walk:dsample00a:5:gsample08a')), [STEP_FREE_ID]);
+  assert.deepEqual(ids(split.accepted), ['group-walk:dsample00a:5:gsample08a'], 'the plain one is the accepted one');
+  assert.deepEqual(split.gone, []);
+});
+
+test('a late walk that rode names the ride: "including 1 min 26 s for Elevator D"; no riding is no clause; held back and riding are one clause', () => {
+  const project = withElevators(school());
+  group(project, '8A').stepFree = true;
+  const base = { dayTypeId: A, groupId: 'gsample08a', period: 0, fromRoomId: 'rsample102', toRoomId: 'rsample202', passingSeconds: 240, late: true, arrived: true, total: 300, walking: 214, waiting: 0 };
+  const text = (walk) => ofKind(checkSchedule(project, { groups: [walk], teachers: [] }), 'group-walk').find((finding) => !finding.id.endsWith(':step-free')).text;
+  assert.equal(text({ ...base, riding: 86 }), '8A needs 5 min to get from Room 102 to Room 202 after Period 1 on A Day, including 1 min 26 s for Elevator D, and the passing time is 4 min.');
+  assert.equal(text(base), '8A needs 5 min to get from Room 102 to Room 202 after Period 1 on A Day, and the passing time is 4 min.', 'riding absent is 0');
+  assert.equal(text({ ...base, riding: 0 }), text(base));
+  assert.equal(text({ ...base, riding: 86, released: 20 }), '8A needs 5 min to get from Room 102 to Room 202 after Period 1 on A Day, including leaving 20 s after the bell and 1 min 26 s for Elevator D, and the passing time is 4 min.');
+  // two cars on one route are both named, in the order taken
+  const twoCars = { ...base, period: 5, fromRoomId: 'rsamplegym', toRoomId: 'rsample303', riding: 130 };
+  assert.match(text(twoCars), /, including 2 min 10 s for Elevator D and Elevator E, and/);
+  // a figure with riding that no route here rides says so without a letter
+  const stairsOnly = school();
+  const stairsText = ofKind(checkSchedule(stairsOnly, { groups: [{ ...base, riding: 40 }], teachers: [] }), 'group-walk')[0].text;
+  assert.match(stairsText, /, including 40 s for an elevator, and the passing time/);
+  // a figure with another riding is a sentence of its own under other bells (the figures read apart)
+  assert.equal(ofKind(checkSchedule(project, { groups: [base, { ...base, riding: 86, bellsId: null }], teachers: [] }), 'group-walk').filter((finding) => !finding.id.endsWith(':step-free')).length, 1);
+});
