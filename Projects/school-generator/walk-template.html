@@ -68523,12 +68523,11 @@ const clearWidth = (w, leafed = true) =>
 
 // The clear width of a doorway *as hung*. A cased opening is all clear; a
 // leaf loses its stop. A pair is measured with both leaves open — which is
-// what the walkthrough does with one, and is the one place this reads more
-// generously than a plan checker would: ADA 404.2.3 measures a pair at its
-// active leaf alone, because the other may be bolted, and by that reading the
-// lattice's 4ft pair (two 2ft leaves, and every generated school's front
-// door) is not an accessible door. It rolls here, with both leaves open, and
-// the backlog says so.
+// what the walkthrough does with one, and the route keeps a pair this wide.
+// ADA 404.2.3 measures a pair at its active leaf alone, because the other may
+// be bolted, so the lattice's 4ft pair (two 2ft leaves, and every generated
+// school's front door) rolls here and fails there: turning.js reports that
+// as `pair-active-leaf` (TG-44) and moves nothing.
 function doorClear(w, leaf = 1) {
   if (leaf === LEAF_NONE) return Math.max(0, w);
   return clearWidth(w);

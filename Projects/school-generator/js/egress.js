@@ -54,7 +54,7 @@ import {
 import {
   clearWidth, doorRolls, rampRolls, reachAnalysis, rampLandingFit, stairLandingFit,
 } from './clearance.js';
-import { turningAnalysis } from './turning.js';
+import { turningAnalysis, pairLeafFindings } from './turning.js';
 import {
   rampSlope, rampRuns, rampRunRise, rampOverRise, rampMinRuns, stairMetrics, RAMP_CTRL,
 } from './stairs.js';
@@ -659,6 +659,7 @@ export function accessibleAnalysis(state, opts = {}) {
         longRamps, rise: metrics.rise, minRuns: rampMinRuns(metrics), tightLandings, narrowRamps,
         stairLandings,
       }),
+      ...pairLeafFindings(nav),
       ...turning.findings,
       ...reach.findings,
     ],
@@ -875,8 +876,8 @@ function accessibleFindings({
     out.push(finding('note', 'narrow-doors',
       `${narrowDoors.length} doorway${narrowDoors.length === 1 ? '' : 's'} too narrow for a chair`,
       'A 3 ft leaf is the narrowest door that leaves 32 in clear with the ' +
-      'leaf open, which is what a wheelchair needs; a pair is measured at one ' +
-      'leaf, so a pair wants 6 ft, and a cased opening wants the 32 in itself.',
+      'leaf open, which is what a wheelchair needs; a pair is judged with both ' +
+      'leaves open, and a cased opening wants the 32 in itself.',
       { doors: narrowDoors.slice(0, 8).map((p) => ({ id: p.id, floor: p.floor, x: p.x, z: p.z, w: p.w })), cite: ADA.door }));
   }
   if (steepRamps.length) {
