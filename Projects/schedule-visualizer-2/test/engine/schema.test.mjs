@@ -329,7 +329,7 @@ test('step-free: elevatorCars: two separate elevators are two cars, in order of 
   paint(project.building.floors[1], 340, 'S');
   project.building.connections.splice(1, 0, { id: 'cother0001', label: 'C', a: { floorId: F1, cell: 340 }, b: { floorId: F2, cell: 340 }, direction: 'both', kind: 'elevator', car: 'C' });
   const cars = schema.elevatorCars(project.building);
-  assert.deepEqual(cars.map((car) => [car.id, car.label, car.staffOnly]), [['cchain0001', 'A', true], ['cother0001', 'C', false]].concat([]).slice(0, 2));
+  assert.deepEqual(cars.map((car) => [car.id, car.label, car.staffOnly]), [['cchain0001', 'A', true], ['cother0001', 'C', false]]);
 });
 
 test('step-free: elevatorCars: an unconnected stop is a car of its own; a stairs connection is no car; staffOnly is true when any connection says so', () => {
