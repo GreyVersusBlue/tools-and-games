@@ -30,7 +30,7 @@ import { ActionError, renameFloor, setFloorLevel, reorderFloor, deleteFloor, des
 import { lossText, counts, describeFloor } from '../../../engine/building.js';
 import { snapshotAfter, undoForStep } from '../../../storage/snapshots.js';
 import { RANGES, nameOfRoom, ELEVATOR_KIND } from '../../../engine/schema.js';
-import { keyedList, heading, cellWords } from './controls.js';
+import { keyedList, heading, cellWords, commitKeepingFocus } from './controls.js';
 import { legend } from './legend.js';
 import { focusCells } from './cell-focus.js';
 
@@ -296,6 +296,7 @@ export function floorPanel(env) {
 
   function build(floor) {
     const name = field({ id: 'floor-name', label: 'Floor name', name: 'floorName', value: floor.name, commit: (value) => store.apply(renameFloor, { id: state.floor.id, name: value }) });
+    name.input.dataset.key = 'floor-name';
     // The storey: a whole number, typed. The words under it say what it is for.
     const level = field({
       id: 'floor-level',
@@ -444,33 +445,44 @@ export function floorPanel(env) {
   const small = (label, key, aria, run) => h('button', { type: 'button', class: 'btn btn--quiet bi-small', data: { key, action: key.split(':')[0] }, 'aria-label': aria, on: { click: run } }, label);
 
   // The elevators, the steps and the areas of refuge of this floor, as words (describeFloor).
+  let crowded = false;
+  // The aria-labels are set in sync(), from the floor as it is now: a resize moves columns
+  // and rows, and the rows are kept (their keys do not hold the width).
   function syncStepFree(floor, building) {
     const described = describeFloor(building, floor.id);
     parts.elevatorsHost.hidden = described.elevators.length === 0;
     parts.noElevators.hidden = described.elevators.length > 0;
     parts.noElevators.textContent = 'There is no elevator stop on this floor. Open the menu on a corridor or stairs cell (right-click, or the Menu key) and choose Make this an elevator stop.';
+    crowded = described.elevators.filter((stop) => !stop.connected).length > 1;
     parts.elevators.update(described.elevators, {
       key: (stop) => stop.carId + ':' + stop.cell + ':' + (stop.connected ? 'c' : 'u'),
       build: (stop) => {
         const text = h('p', { class: 'bi-row__text' });
         const buttons = [
-          small('Show me', 'show-stop:' + stop.cell, 'Show me: the elevator stop at ' + cellWords(floor, stop.cell), () => env.show({ floorId: state.floor.id, cells: [stop.cell] })),
-          small('Properties', 'stop-properties:' + stop.cell, 'Properties of the elevator stop at ' + cellWords(floor, stop.cell), () => {
+          small('Show me', 'show-stop:' + stop.cell, '', () => env.show({ floorId: state.floor.id, cells: [stop.cell] })),
+          small('Properties', 'stop-properties:' + stop.cell, '', () => {
             env.show({ floorId: state.floor.id, cells: [stop.cell] });
             focusCells(ed(), state.floor.id, [stop.cell]);
           }),
         ];
         if (!stop.connected) {
-          buttons.push(small('Connect…', 'stop-connect:' + stop.cell, 'Connect the elevator stop at ' + cellWords(floor, stop.cell) + ' to another floor', () => {
+          buttons.push(small('Connect…', 'stop-connect:' + stop.cell, '', () => {
             if (ed().connect) ed().connect.start({ floorId: state.floor.id, cell: stop.cell });
           }));
         }
         return {
           element: h('li', { class: 'bi-row bi-row--stack', data: { stop: String(stop.cell), connected: String(stop.connected) } }, text, h('div', { class: 'bi-row__buttons' }, buttons)),
           sync: (now) => {
+            const here = state.floor;
+            const where = cellWords(here, now.cell);
             text.textContent = now.connected
               ? 'Elevator ' + now.label + ': ' + list(now.floors) + (now.staffOnly ? ' · staff only' : '')
-              : floor.name + ' stop: not connected';
+              // two stops on one floor that are not connected are told apart by where they are
+              : here.name + ' stop' + (crowded ? ' at ' + where : '') + ': not connected';
+            const [showMe, properties, connect] = buttons;
+            showMe.setAttribute('aria-label', 'Show me: the elevator stop at ' + where);
+            properties.setAttribute('aria-label', 'Properties of the elevator stop at ' + where);
+            if (connect) connect.setAttribute('aria-label', 'Connect… the elevator stop at ' + where + ' to another floor');
           },
         };
       },
@@ -488,17 +500,18 @@ export function floorPanel(env) {
         const show = (cells) => env.show({ floorId: state.floor.id, cells });
         const buttons = entry.type === 'step'
           ? [
-            small('Show me', 'show-' + entry.id, 'Show me: the step at ' + cellWords(floor, entry.run.cells[0]), () => {
+            small('Show me', 'show-' + entry.id, '', () => {
               const now = describeFloor(state.project.building, state.floor.id).steps.find((run) => run.cells[0] === entry.run.cells[0]);
               if (now) show(now.cells);
             }),
-            small('Clear the step', 'clear-' + entry.id, 'Clear the step at ' + cellWords(floor, entry.run.cells[0]), () => {
+            small('Clear the step', 'clear-' + entry.id, '', () => {
               const now = describeFloor(state.project.building, state.floor.id).steps.find((run) => run.cells[0] === entry.run.cells[0]);
               if (!now) return;
-              ed().commit(setStepCells, { floorId: state.floor.id, cells: now.cells, stepFree: true }, { done: (made) => 'Cleared the step from ' + count(made.changed, 'cell') + '.' });
+              // the row is replaced by the redraw: the next row (else the floor's name field) takes the focus
+              commitKeepingFocus(element, ['floor-name'], () => ed().commit(setStepCells, { floorId: state.floor.id, cells: now.cells, stepFree: true }, { done: (made) => 'Cleared the step from ' + count(made.changed, 'cell') + '.' }));
             }),
           ]
-          : [small('Show me', 'show-' + entry.id, 'Show me: the area of refuge ' + entry.refuge.name, () => {
+          : [small('Show me', 'show-' + entry.id, '', () => {
             const now = describeFloor(state.project.building, state.floor.id).refuges.find((refuge) => refuge.id === entry.refuge.id);
             if (now) show([now.cell]);
           })];
@@ -506,6 +519,13 @@ export function floorPanel(env) {
           element: h('li', { class: 'bi-row bi-row--stack', data: { mark: entry.id } }, text, h('div', { class: 'bi-row__buttons' }, buttons)),
           sync: (now) => {
             text.textContent = now.type === 'step' ? now.run.text : now.refuge.text;
+            if (now.type === 'step') {
+              const where = cellWords(state.floor, now.run.cells[0]);
+              buttons[0].setAttribute('aria-label', 'Show me: the step at ' + where);
+              buttons[1].setAttribute('aria-label', 'Clear the step at ' + where);
+            } else {
+              buttons[0].setAttribute('aria-label', 'Show me: the area of refuge ' + now.refuge.name);
+            }
           },
         };
       },

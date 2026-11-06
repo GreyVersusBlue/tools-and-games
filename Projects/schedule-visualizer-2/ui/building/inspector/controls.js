@@ -19,6 +19,56 @@ export function keepFocus(root, draw) {
   if (again && again !== document.activeElement) again.focus();
 }
 
+// The keys the focus may go to when the control that has it is about to be
+// replaced: the other rows of the list the control is in (the ones after it
+// first, then the ones before it, nearest first), each by the same kind of
+// control when the row has one, else its first keyed control; then `fallback`
+// (the panel's title or a name field). Worked out BEFORE the change is made.
+export function heirKeys(control, fallback) {
+  const row = control && control.closest ? control.closest('li') : null;
+  const keys = [];
+  if (row) {
+    const action = control.dataset ? control.dataset.action : undefined;
+    const keyOf = (li) => {
+      const same = action ? Array.from(li.querySelectorAll('[data-key]')).find((el) => el.dataset.action === action) : null;
+      const any = same || li.querySelector('[data-key]');
+      return any ? any.dataset.key : null;
+    };
+    const after = [];
+    for (let li = row.nextElementSibling; li; li = li.nextElementSibling) after.push(li);
+    const before = [];
+    for (let li = row.previousElementSibling; li; li = li.previousElementSibling) before.push(li);
+    for (const li of after.concat(before)) {
+      const key = keyOf(li);
+      if (key) keys.push(key);
+    }
+  }
+  return keys.concat(fallback || []);
+}
+
+// Make a change that replaces the control the focus is on (Remove, Make,
+// Disconnect, Clear): the heir is named first, the change is made, and when
+// the focus has fallen out of `root` the first heir that is drawn takes it.
+// A change that was refused leaves the control, and the focus, where they are.
+// -> what `run` returns
+export function commitKeepingFocus(root, fallback, run) {
+  const active = document.activeElement;
+  const inside = Boolean(active && active !== document.body && root.contains(active));
+  const heirs = inside ? heirKeys(active, fallback) : [];
+  const outcome = run();
+  if (!inside) return outcome;
+  const now = document.activeElement;
+  if (now && now !== document.body && root.contains(now)) return outcome;
+  for (const key of heirs) {
+    const heir = Array.from(root.querySelectorAll('[data-key]')).find((el) => el.dataset.key === key);
+    if (heir) {
+      heir.focus({ preventScroll: false });
+      break;
+    }
+  }
+  return outcome;
+}
+
 // selectField({ id, label, name, key, options: [{ value, label }], value, commit })
 //   commit(value)   may throw; the message is shown under the select and the
 //                   choice goes back
@@ -67,13 +117,18 @@ export function selectField(options) {
   };
 }
 
-// checkField({ id, label, hint, name, key, checked, commit })
-// returns { element, input, set(checked) }
+// checkField({ id, label, hint, name, key, checked, mixed, commit })
+//   mixed   the tick is neither on nor off (`indeterminate`: a native checkbox
+//           says "mixed" to a screen reader by itself, no aria-checked); a
+//           choice that is refused puts the tick back mixed
+// returns { element, input, set(checked), setMixed(mixed) }
 export function checkField(options) {
   const id = options.id || uid('check');
   const hintId = options.hint ? id + '-hint' : null;
   const input = h('input', { type: 'checkbox', class: 'bi-check__box', id, name: options.name, data: options.key ? { key: options.key } : null, 'aria-describedby': hintId });
   input.checked = options.checked === true;
+  let mixed = options.mixed === true;
+  input.indeterminate = mixed;
   const refusal = h('p', { class: 'field__refusal', hidden: true });
   input.addEventListener('change', () => {
     try {
@@ -81,6 +136,7 @@ export function checkField(options) {
       refusal.hidden = true;
     } catch (error) {
       input.checked = !input.checked;
+      input.indeterminate = mixed;
       refusal.textContent = error && error.message ? error.message : 'That could not be saved. Try again.';
       refusal.hidden = false;
     }
@@ -96,6 +152,10 @@ export function checkField(options) {
     input,
     set(checked) {
       input.checked = checked === true;
+    },
+    setMixed(next) {
+      mixed = next === true;
+      input.indeterminate = mixed;
     },
   };
 }

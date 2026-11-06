@@ -204,8 +204,14 @@ export function menuItems(ed, deps, cell) {
     const name = car && car.label !== '' ? 'elevator ' + car.label : 'this elevator stop';
     items.push({ label: 'Properties of ' + name, keepsFocus: true, run: () => focusCells(ed, floorId, [cell]) });
     items.push({ label: 'Connect to another floor…', keepsFocus: true, run: () => deps.connect().start({ floorId, cell }) });
+    // one entry per connection of this stop, each naming the floor at its other end
+    // (a middle stop has two, and "Disconnect Elevator D" twice cannot be told apart)
     for (const connection of at.connections) {
-      items.push({ label: 'Disconnect ' + name, run: () => ed.commit(disconnectStairs, { connectionId: connection.id }, { done: () => 'Disconnected ' + name + '. The stop stays where it is.' }) });
+      const far = [connection.a, connection.b].find((end) => end.floorId !== floorId || end.cell !== cell);
+      const farFloor = far ? ed.project.building.floors.find((each) => each.id === far.floorId) : null;
+      const from = farFloor ? ' from ' + farFloor.name : '';
+      const nameHere = car && car.label !== '' ? 'Elevator ' + car.label : 'this elevator stop';
+      items.push({ label: 'Disconnect ' + nameHere + from, run: () => ed.commit(disconnectStairs, { connectionId: connection.id }, { done: () => 'Disconnected ' + nameHere + from + '. The stop stays where it is.' }) });
     }
     items.push('separator', place.corridor, place.stairs, place.room, place.other, 'separator', eraseCell);
   } else {
