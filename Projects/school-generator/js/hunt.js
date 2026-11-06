@@ -23,7 +23,7 @@
 // and hands positions in; everything here is a function of the design, the
 // seed and where you are standing.
 
-import { rng } from './agents.js';
+import { rng } from './rng.js';
 import { route } from './navgraph.js';
 
 // How many things are hidden, and the bounds a caller may ask for.

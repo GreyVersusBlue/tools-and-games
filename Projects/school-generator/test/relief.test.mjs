@@ -12,7 +12,7 @@ import {
   RELIEF_SIZE, RELIEF_GRAINS, GRAIN_KEYS, hasRelief,
   reliefRng, heightField, normalTexels, reliefFor,
 } from '../js/relief.js';
-import { rng } from '../js/agents.js';
+import { rng } from '../js/rng.js';
 import { FLOOR_FINISHES, FACADE_MATERIALS, ROOF_MEMBRANE, ROOF_SHINGLE } from '../js/finish.js';
 import { SITE_SURFACES } from '../js/site.js';
 

@@ -34,7 +34,7 @@
 
 import { FLOOR_H } from './grid.js';
 import { blockAt } from './schedule.js';
-import { rng } from './agents.js';
+import { rng } from './rng.js';
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 

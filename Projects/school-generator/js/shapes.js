@@ -765,6 +765,22 @@ const roomNumberOf = (name) => {
   return m ? Number(m[1]) : null;
 };
 
+// The trailing number in a room's name. "Room 104" and "104" are the same room
+// to everybody except a string comparison, and a schedule exported from a
+// school office is full of bare room numbers.
+//
+// Lives in shapes.js since TG-40, beside `roomNumberOf` and `nextRoomName`, so
+// signage.js stops pulling the 35 KB timetable in for it. Exported since Phase 31
+// because signage.js needs the same answer: the
+// number a placard puts on a door has to be the number a timetable binds by,
+// or the sign on 104 and the schedule for 104 are about different rooms. One
+// function, one regex, one rule — see the conventions on two numbers that mean
+// the same thing.
+export const roomNumber = (s) => {
+  const m = /(\d{1,4}[a-z]?)\s*$/i.exec(String(s ?? '').trim());
+  return m ? m[1].toLowerCase() : null;
+};
+
 // The storey's hundred-block: 101 on the ground, 201 above it, and so on —
 // the convention `nameFor` in generate.js already numbers a generated school
 // by. Anything past the eighth storey keeps counting rather than wrapping.

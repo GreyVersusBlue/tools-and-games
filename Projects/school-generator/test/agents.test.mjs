@@ -17,8 +17,9 @@ import { buildCollider, supportAt } from '../js/collide.js';
 import { terrainField } from '../js/terrain.js';
 import { buildNav, teachingRooms } from '../js/navgraph.js';
 import { defaultSchedule, blocks, normalizeSchedule, dayEnd } from '../js/schedule.js';
+import { rng } from '../js/rng.js';
 import {
-  rng, seatOf, isSeat, seatsIn, makePopulation, pickLunchroom,
+  seatOf, isSeat, seatsIn, makePopulation, pickLunchroom,
   makeContext, retargetAll, stepAgents, goalRoomFor, speedFor,
   makeCrowdField, crowdAdd, crowdCells, clearCrowd,
   census, drillReport, bodiesOn, bodiesNear,

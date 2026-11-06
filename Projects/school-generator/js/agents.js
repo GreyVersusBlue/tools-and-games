@@ -50,6 +50,7 @@ import {
   liftStop, stepLifts, BOARD_REACH,
 } from './lift.js';
 import { registerRecord } from './records.js';
+import { rng } from './rng.js';
 
 // A body a little narrower than the camera's. Two people have to pass each
 // other in a 3ft doorway without either of them being pushed through a jamb,
@@ -303,19 +304,6 @@ export const isDefaultLife = (life) => {
 };
 
 // ---------- randomness ----------
-
-// mulberry32: thirty-two bits of state, four lines, and the same sequence
-// everywhere. A seeded population is the difference between "watch this again"
-// and "watch something like this again".
-export function rng(seed) {
-  let a = (seed >>> 0) || 1;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 const pick = (rand, list) => list[Math.floor(rand() * list.length) % list.length];
 const facingTo = (dx, dz) => Math.atan2(dx, dz);

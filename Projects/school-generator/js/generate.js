@@ -60,7 +60,7 @@ import { addRegion } from './site.js';
 import { terrainFor, raiseTerrain, smoothTerrain } from './terrain.js';
 import { normalizeRoof } from './roof.js';
 import { FACADE_KEYS } from './finish.js';
-import { rng } from './agents.js';
+import { rng } from './rng.js';
 import { buildProgram, bandEntry, DEFAULT_SCHEME, schemeEntry } from './program.js';
 import { roomOccupancy } from './occupancy.js';
 import { STAIR_IN_PER_OCC } from './egress.js';
