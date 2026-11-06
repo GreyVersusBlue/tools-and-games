@@ -11,6 +11,13 @@
 //                    A floor id that is no floor of the building, and
 //                    roomIds that are not a list, print one sheet saying
 //                    there is nothing to print, never every room.
+//   options.stepFree  true: a card whose step-free way out differs from its
+//                    route carries a second, shorter block under the main one,
+//                    headed "Step-free way out" (DESIGN 13.6), and a room with
+//                    no step-free way out says so there. false: no block.
+//                    Left out: on when the building has an area of refuge or
+//                    any step mark (hasStepMarks), else off. The block is
+//                    worded by ui/safety/ways.js and reserved room in cardFit.
 //   and what every output takes (document.js). The paper and orientation are
 //   the ones chosen in the preview sheet: unlike a door sign, a card is laid
 //   out for either way up.
@@ -58,7 +65,8 @@
 
 import { count } from '../components/words.js';
 import { routingGraph } from '../../engine/routing.js';
-import { evacuationRoutes, doorCard } from '../../engine/evacuation.js';
+import { evacuationRoutes, doorCard, stepFreeWaysOut } from '../../engine/evacuation.js';
+import { hasStepMarks, stepFreeBlock, BLOCK_HEAD } from '../safety/ways.js';
 import { roomRows, sortRoomRows } from './room-list.js';
 import { planSvg } from './plan-svg.js';
 import { esc, frame, mm, paperOf, printableBox, schoolName } from './document.js';
@@ -94,6 +102,8 @@ const CONTINUED_MM = 14;       // the line at the top of a second sheet
 // its rule, a line of 8 pt), on the safe side
 export const FOOT_MM = 12.5;
 const COLUMN_GAP_MM = 6;
+const BLOCK_HEAD_PT = 12;
+const BLOCK_PAD_MM = 6.5;      // the second block's gap, padding and rule
 const LINE_HEIGHT = 1.35;
 const PT_MM = 25.4 / 72;
 // Upright, the maps keep at least this share of the first sheet's room when
@@ -157,16 +167,24 @@ export function roomsFor(project, options) {
   return { rows: sortRoomRows(roomRows(project, floor.id)), where: 'floor', floor };
 }
 
-// Every card's data, in print order: [{ row, card, onlyByElevator }].
+// Every card's data, in print order: [{ row, card, onlyByElevator, block }]
+// (block: ui/safety/ways.js's stepFreeBlock, or null).
 export function cardsFor(project, options) {
   const { rows } = roomsFor(project, options);
   if (rows.length === 0) return [];
   const graph = routingGraph(project);
   const evacuation = evacuationRoutes(project, graph);
   const entries = new Map(evacuation.rooms.map((entry) => [entry.roomId, entry]));
+  const ways = stepFreeOn(project, options) ? new Map(stepFreeWaysOut(project, graph).rooms.map((entry) => [entry.roomId, entry])) : null;
   return rows.map((row) => {
     const entry = entries.get(row.id);
-    return { row, card: doorCard(project, graph, entry.route, { avoidConnections: evacuation.asked.avoidConnections }), onlyByElevator: entry.onlyByElevator === true };
+    const way = ways ? ways.get(row.id) : null;
+    return {
+      row,
+      card: doorCard(project, graph, entry.route, { avoidConnections: evacuation.asked.avoidConnections }),
+      onlyByElevator: entry.onlyByElevator === true,
+      block: way ? stepFreeBlock(project, way, entry) : null,
+    };
   });
 }
 
@@ -207,6 +225,26 @@ function exitMm(card, width) {
   const first = linesOf('Exit ' + (door === null ? 'The exit on ' : door + ', ') + exit.floorName, width, EXIT_PT);
   const second = linesOf('Assembly point ' + (typeof exit.assembly === 'string' && exit.assembly.trim() !== '' ? exit.assembly : 'None is set for this exit.'), width, EXIT_PT);
   return (first + second) * lineMm(EXIT_PT) + EXIT_PAD_MM;
+}
+
+// How tall the step-free block stands in a column `width` mm wide.
+export function blockMm(block, width) {
+  if (!block) return 0;
+  const body = block.kind === 'none' ? linesOf(block.sentence, width, STEP_PT) * lineMm(STEP_PT) + STEP_GAP_MM : block.steps.reduce((sum, step) => sum + stepMm(step, width), 0);
+  return lineMm(BLOCK_HEAD_PT) + body + BLOCK_PAD_MM;
+}
+
+// Whether these cards carry the step-free block: as asked, else when the
+// building has an area of refuge or a step marked.
+export function stepFreeOn(project, options) {
+  const asked = options ? options.stepFree : undefined;
+  return typeof asked === 'boolean' ? asked : hasStepMarks(project.building);
+}
+
+function blockMarkup(block) {
+  if (!block) return '';
+  const body = block.kind === 'none' ? '<p class="card__stepfree-none">' + typed(block.sentence) + '</p>' : stepsList(block.steps, 1);
+  return '<div class="card__exit card__stepfree" data-stepfree="' + block.kind + '"><p class="card__stepfree-head"><span class="card__label">' + esc(BLOCK_HEAD) + '</span></p>' + body + '</div>';
 }
 
 function roomBlock(card, row) {
@@ -351,12 +389,16 @@ export function twoColumnsMm(steps, width) {
 
 // How a card is laid out, worked out from the sizes in print.css: every
 // number the layout comes from, so a test can read them.
+//   options.block  the card's step-free block (blockMm): its height, at the
+//                  width of the column it stands in, is kept out of the room
+//                  the steps and maps have, on every sheet (it stands on the
+//                  last, and a sheet cannot know which that will be)
 //   options.last   this card is the document's last: its sheets keep room
 //                  for the closing line a browser with no page margin boxes
 //                  prints after it (frame() in document.js). It is kept
 //                  whether or not the browser has them, which a print
 //                  document cannot know.
-//   → { side, header, room, foot, key, exit, later, share, columns, steps, sheets,
+//   → { side, header, room, foot, key, exit, block, later, share, columns, steps, sheets,
 //       firstSteps, region, layout, plans }
 export function cardFit(project, row, card, paper, options) {
   const box = printableBox(paper);
@@ -366,7 +408,9 @@ export function cardFit(project, row, card, paper, options) {
   const boxes = plans.map((plan) => ({ width: plan.width, height: plan.height }));
   const header = headerMm(project, box.width);
   const room = box.height - header - roomMm(card, row, box.width) - foot;
-  const later = box.height - CONTINUED_MM - exitMm(card, box.width) - foot;
+  const given = options && options.block ? options.block : null;
+  const blockLater = blockMm(given, box.width);
+  const later = box.height - CONTINUED_MM - exitMm(card, box.width) - foot - blockLater;
   if (side) {
     // the maps on the left take the whole height; the steps on the right,
     // in a column made wider, a few points of the width at a time, when that
@@ -377,9 +421,10 @@ export function cardFit(project, row, card, paper, options) {
       const mapsWidth = (box.width - COLUMN_GAP_MM) * share;
       const exit = exitMm(card, stepsWidth);
       const key = keyMm(mapsWidth);
-      const sheets = sheetsOfSteps(card.steps, room - exit, later, { first: stepsWidth, later: box.width });
+      const blockH = blockMm(given, stepsWidth);
+      const sheets = sheetsOfSteps(card.steps, room - exit - blockH, later, { first: stepsWidth, later: box.width });
       const region = { width: mapsWidth, height: room - key };
-      const tried = { side, header, room, foot, key, exit, later, plans, share: Math.round(share * 100) / 100, columns: 1, steps: stepsWidth, sheets, firstSteps: sheets[0].reduce((sum, step) => sum + stepMm(step, stepsWidth), 0), region };
+      const tried = { side, header, room, foot, key, exit, block: blockH, later, plans, share: Math.round(share * 100) / 100, columns: 1, steps: stepsWidth, sheets, firstSteps: sheets[0].reduce((sum, step) => sum + stepMm(step, stepsWidth), 0), region };
       if (fit === null) fit = tried;
       if (sheets.length === 1) { fit = tried; break; }
     }
@@ -389,49 +434,50 @@ export function cardFit(project, row, card, paper, options) {
   const exit = exitMm(card, stepsWidth);
   const mapsWidth = box.width;
   const key = keyMm(mapsWidth);
-  const out = { side, header, room, foot, key, exit, later, plans, share: 1 };
+  const blockH = blockMm(given, stepsWidth);
+  const out = { side, header, room, foot, key, exit, block: blockH, later, plans, share: 1 };
   // upright, the maps keep a share of the room, or less when they are as
   // large as the sheet's width lets them be in less
   const keeps = (share) => Math.min(room * share, mapLayout(boxes, box.width, room * share).height);
-  const roomFor = (share) => room - keeps(share) - key - MAP_GAP_MM - exit;
+  const roomFor = (share) => room - keeps(share) - key - MAP_GAP_MM - exit - blockH;
   const all = card.steps.reduce((sum, step) => sum + stepMm(step, stepsWidth), 0);
   const firstRoom = all <= roomFor(MAP_LEAST) ? roomFor(MAP_LEAST) : roomFor(MAP_SHARE);
   const sheets = sheetsOfSteps(card.steps, firstRoom, later, { first: stepsWidth, later: box.width });
   const firstSteps = sheets[0].reduce((sum, step) => sum + stepMm(step, stepsWidth), 0);
   // the maps take the height the first sheet's steps leave
-  const region = { width: mapsWidth, height: room - key - MAP_GAP_MM - exit - firstSteps };
+  const region = { width: mapsWidth, height: room - key - MAP_GAP_MM - exit - blockH - firstSteps };
   const one = { ...out, columns: 1, steps: stepsWidth, sheets, firstSteps, region, layout: mapLayout(boxes, region.width, region.height) };
   if (sheets.length > 1 || card.steps.length < 2) return one;
   // every step on the one sheet: in two columns, when that lets the maps be larger
   const half = (box.width - COLUMN_GAP_MM) / 2;
   const twoSteps = twoColumnsMm(card.steps, half);
-  const twoRegion = { width: mapsWidth, height: room - key - MAP_GAP_MM - exit - twoSteps };
+  const twoRegion = { width: mapsWidth, height: room - key - MAP_GAP_MM - exit - blockH - twoSteps };
   const two = mapLayout(boxes, twoRegion.width, twoRegion.height);
   if (two.cell <= one.layout.cell + 1e-9) return one;
   return { ...out, columns: 2, steps: half, sheets, firstSteps: twoSteps, region: twoRegion, layout: two };
 }
 
 // One card's page body.
-function cardBody(project, row, card, paper, entry, last) {
+function cardBody(project, row, card, paper, entry, last, block) {
   const head = roomBlock(card, row);
-  const open = '<div class="card" data-card="' + esc(row.id) + '" data-route="' + (card.ok ? 'ok' : card.stale ? 'stale' : 'none') + '">';
+  const open = '<div class="card" data-card="' + esc(row.id) + '" data-route="' + (card.ok ? 'ok' : card.stale ? 'stale' : 'none') + '"' + (block ? ' data-stepfree="' + block.kind + '"' : '') + '>';
   if (!card.ok) {
     const lift = entry && entry.onlyByElevator ? '<p class="card__lift">' + esc(ELEVATOR_SAYS) + '</p>' : '';
-    return open + head + '<p class="card__none">' + typed(card.sentence) + '</p>' + lift + '<p class="doc-meaning">' + esc(NO_ROUTE_SAYS) + '</p></div>';
+    return open + head + '<p class="card__none">' + typed(card.sentence) + '</p>' + lift + blockMarkup(block) + '<p class="doc-meaning">' + esc(NO_ROUTE_SAYS) + '</p></div>';
   }
-  const fit = cardFit(project, row, card, paper, { last });
+  const fit = cardFit(project, row, card, paper, { last, block });
   const { sheets } = fit;
   const split = fit.side && fit.share !== SIDE_SHARE ? ' style="grid-template-columns: ' + Math.round(fit.share * 100) + 'fr ' + Math.round((1 - fit.share) * 100) + 'fr;"' : '';
   const out = [open, head, '<div class="card__body card__body--' + (fit.side ? 'side' : 'up') + '"' + split + '>',
     '<div class="card__where">' + mapsMarkup(card, fit.plans, fit.layout) + '</div>',
-    '<div class="card__directions">' + stepsList(sheets[0], fit.columns) + exitBlock(card) + '</div>',
+    '<div class="card__directions">' + stepsList(sheets[0], fit.columns) + exitBlock(card) + (sheets.length === 1 ? blockMarkup(block) : '') + '</div>',
     '</div>'];
   const floorName = card.floor ? card.floor.name : row.floor;
   sheets.slice(1).forEach((sheet, index) => {
     const end = index === sheets.length - 2;
     out.push('<div class="card__more new-sheet" data-sheet="' + (index + 2) + '">'
       + '<p class="card__continued">' + typed(card.name) + ' · ' + typed(floorName) + ' · ' + esc(CARD_WHAT + ', continued') + '</p>'
-      + stepsList(sheet, 1) + (end ? exitBlock(card) : '') + '</div>');
+      + stepsList(sheet, 1) + (end ? exitBlock(card) + blockMarkup(block) : '') + '</div>');
   });
   out.push('</div>');
   return out.join('');
@@ -444,7 +490,7 @@ function whereWords(rooms) {
 }
 
 // The first sheet: what follows, the rooms with no way out, the pile in order.
-function coverBody(rooms, cards) {
+function coverBody(rooms, cards, stepFree) {
   const missing = cards.filter(({ card }) => !card.ok);
   const out = ['<p class="doc-lead">' + esc(count(cards.length, 'door card') + ', ' + whereWords(rooms) + ', in room order. Each is one sheet, or more where its directions are long.') + '</p>'];
   if (missing.length === 0) {
@@ -453,6 +499,16 @@ function coverBody(rooms, cards) {
     out.push('<h2>' + esc(missing.length === 1 ? 'A room with no way out' : count(missing.length, 'room') + ' with no way out') + '</h2>');
     out.push('<p>' + esc(missing.length === 1 ? 'It gets a card that says so.' : 'Each gets a card that says so.') + '</p>');
     out.push('<ul class="card-cover__missing">' + missing.map(({ row, card, onlyByElevator }) => '<li data-room="' + esc(row.id) + '">' + typed(card.sentence) + (onlyByElevator ? ' ' + esc(ELEVATOR_SAYS) : '') + '</li>').join('') + '</ul>');
+  }
+  if (stepFree) {
+    const none = cards.filter(({ block }) => block && block.kind === 'none');
+    const more = cards.filter(({ block }) => block && block.kind !== 'none').length;
+    out.push('<h2 class="card-cover__stepfree-head">' + esc(BLOCK_HEAD + 's') + '</h2>');
+    out.push('<p class="card-cover__stepfree">' + esc('A card whose step-free way out is not its route has a second block, “' + BLOCK_HEAD + '”. ' + (more === 0 ? 'None of these cards needs one.' : count(more, 'card') + (more === 1 ? ' has one.' : ' have one.'))) + '</p>');
+    if (none.length > 0) {
+      out.push('<p>' + esc(none.length === 1 ? 'A room with no step-free way out:' : count(none.length, 'room') + ' with no step-free way out:') + '</p>');
+      out.push('<ul class="card-cover__nostep">' + none.map(({ row, card, block }) => '<li data-room="' + esc(row.id) + '">' + typed(card.name) + ', ' + typed(card.floor ? card.floor.name : row.floor) + ' <span class="card-cover__to">' + typed(block.why) + '</span></li>').join('') + '</ul>');
+    }
   }
   out.push('<h2>In this pile</h2>');
   out.push('<ul class="card-cover__list">' + cards.map(({ row, card, onlyByElevator }) => {
@@ -479,7 +535,7 @@ export function render(project, derived, options) {
     return frame(project, { output: id, what: name, pages: [{ body: '<p class="doc-lead">' + esc(emptyWords(rooms)) + '</p>' }], options: opts });
   }
   const pages = [];
-  if (cards.length > 1 || cards.some(({ card }) => !card.ok)) pages.push({ what: name, body: coverBody(rooms, cards) });
-  cards.forEach((entry, i) => pages.push({ what: CARD_WHAT, body: cardBody(project, entry.row, entry.card, paper, entry, i === cards.length - 1) }));
+  if (cards.length > 1 || cards.some(({ card }) => !card.ok)) pages.push({ what: name, body: coverBody(rooms, cards, stepFreeOn(project, opts)) });
+  cards.forEach((entry, i) => pages.push({ what: CARD_WHAT, body: cardBody(project, entry.row, entry.card, paper, entry, i === cards.length - 1, entry.block) }));
   return frame(project, { output: id, what: name, pages, options: opts });
 }

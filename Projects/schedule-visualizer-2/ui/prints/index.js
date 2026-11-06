@@ -20,8 +20,9 @@ import * as doorCards from './door-cards.js'; // SV2-66
 import { GRIDS } from './schedule-grids.js'; // SV2-32d
 import * as travelTime from './travel-time.js'; // SV2-32d
 import * as calendarPrint from './calendar.js'; // SV2-80
+import * as stepFreeReport from './step-free.js'; // SV2-104
 
-export const OUTPUTS = [floorPlan, roomList, checksReport, ...BATCHES, movementPicture, congestionReport, doorCards, ...GRIDS, travelTime, calendarPrint];
+export const OUTPUTS = [floorPlan, roomList, checksReport, ...BATCHES, movementPicture, congestionReport, doorCards, ...GRIDS, travelTime, calendarPrint, stepFreeReport];
 
 export function outputFor(id) {
   return OUTPUTS.find((output) => output.id === id) || null;

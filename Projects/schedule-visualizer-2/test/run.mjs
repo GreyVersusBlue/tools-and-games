@@ -90,6 +90,7 @@ export const GROUPS = {
     'engine/step-free.test.mjs', // SV2-100
     'engine/scenario-actions.test.mjs', // SV2-61
     'engine/prints-door-cards.test.mjs', // SV2-66
+    'engine/prints-step-free.test.mjs', // SV2-104
     'engine/prints-calendar.test.mjs', // SV2-80
     'engine/suggest.test.mjs', // SV2-63
     'engine/prints-congestion-scenario.test.mjs', // SV2-71
