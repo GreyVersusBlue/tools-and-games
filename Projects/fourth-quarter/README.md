@@ -328,7 +328,8 @@ with each file's SHA-256, because CI has no decoder.
 | `uiClose` | ui | a panel closed | `sfx/ui/ui-station-close.ogg` | -11.2 | -1.0 | 0.8 | -13.1 | 0.112 | -30.2 | -17.1 dB |
 | `qteHit` | cue | a QTE landed | `sfx/qte/qte-hit-perfect.ogg` | -9.0 | -1.0 | 0.8 | -10.9 | 0.144 | -25.8 | -14.9 dB |
 | `qteMiss` | cue | a QTE missed | `sfx/qte/qte-miss.ogg` | -19.0 | -1.3 | 0.8 | -21.0 | 0.448 | -26.0 | -5.0 dB |
-| `crowdGroan` | crowd | once, on a loss, with the whistle | `sfx/events/crowd-groan.mp3` | -19.8 | -11.1 | 0.8 | -21.8 | 0.2 | -33.8 | -12.0 dB |
+| `crowdGroan` | crowd | once, on a loss, with the whistle | `sfx/events/crowd-groan.ogg` | -19.8 | -11.2 | 0.8 | -21.7 | 0.2 | -33.8 | -12.0 dB |
+| `crowdCheer` | crowd | once, on a win, with the whistle | `sfx/events/crowd-cheer.ogg` | -22.5 | -0.5 | new | new | 0.272 | -33.8 | new |
 | `stormOut` | crowd | every walkout, 13 s each, several at once on a bad night | `sfx/events/patron-storm-out.ogg` | -21.1 | -11.4 | 0.8 | -23.0 | 0.176 | -36.2 | -13.2 dB |
 | `stingerKickoff` | cue | once a night | `sfx/events/stinger-kickoff.ogg` | -23.6 | -1.0 | 0.8 | -25.5 | 0.68 | -26.9 | -1.4 dB |
 | `stingerFinal` | cue | once a night | `sfx/events/stinger-final-whistle.ogg` | -4.0 | -3.9 | 0.8 | -6.0 | 0.08 | -26.0 | -20.0 dB |
@@ -366,6 +367,16 @@ What the table says about 2026-10-07:
   purpose: it needs nine one-sample peaks on the same sample, and taking it
   under 0 would cost every sound another 6 dB.
 
+- **The cheer came later** (TG-36, 2026-11-04). Before it a Mules win got
+  the whistle alone; now the whistle's case plays the cheer on a win and the
+  groan on a loss, from one call. It was never heard at the old gains, so it
+  has no "before" and is not one of the three sounds cut 12 to 13 dB. It is
+  set level with the groan it stands in for (-33.8 LUFS, a trim of 0.34),
+  7.8 dB under the whistle. Its file peaks at -0.5 dBFS where the groan's
+  peaks at -11.2, so on a win mid-sear the sample peaks sum to -3.8 dBFS
+  (-7.0 on a loss). **Nobody has heard it.** Where it came from is
+  `audio/SOURCES.md`.
+
 What a gain cannot fix, left as it is: `stinger-kickoff.ogg` peaks at -1.0
 dBFS over a body of -23.6 LUFS, so it is the file that sets the ceiling and
 it plays at 0.85; `ui-click.ogg` is 10 ms long. The loud cues (the ding, the
@@ -374,7 +385,7 @@ than they were, which is the price of levelling to the quiet files: turn the
 speakers up. There is still no volume slider, only
 the mute, and the mute is not saved (it never was).
 
-`test/smoke-mix.mjs` (111) recomputes the table from `levels.json`, from
+`test/smoke-mix.mjs` (122) recomputes the table from `levels.json`, from
 `gainFor()` and from the call sites it reads out of `js/`, and fails when a
 role leaves its band, when a file's hash is not the measured one, or when a
 call site passes a volume it does not know about. After replacing or adding a

@@ -1,4 +1,4 @@
-// seating.mjs — the Seating Chart Generator's pure logic and its save slot.
+// seating.js — the Seating Chart Generator's pure logic and its save slot.
 //
 // Everything in here runs under plain Node with no DOM, which is the point: the
 // seat solver, the constraint checker, the roster parser and the repair pass are

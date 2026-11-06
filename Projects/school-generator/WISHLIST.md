@@ -561,10 +561,15 @@ and add to this list rather than starting a new one.
   2026-10-05; it was 10 ft to the daylight), and a section cut through a
   window in one draws wall under the sill and over the head. The room's
   surfaces in the daylight factor still stop at the 10 ft ceiling (Devon,
-  2026-10-21, #1008, SG-daylight: "Stop at 10 ft"). Neighbours, trees and the
-  terrain are not obstructions, one reflectance serves every room
-  whatever its finishes are, a rooflight does not exist, and none of it is
-  drawn on the plan: the numbers are in the report panel and the CSV only.
+  2026-10-21, #1008, SG-daylight: "Stop at 10 ft"). A room with a floor
+  finish, wall paint or an accent set is read at its own area-weighted
+  reflectance, each surface 0.5 times its colour's LRV over its default's
+  (TG-41, #1018); a room with none set keeps the stated 0.5, and the figure
+  used is in the CSV's Reflectance column and the dim and deep findings. The
+  ceiling has no finish and stays 0.5, and glass is read as the wall it sits
+  in. Neighbours, trees and the terrain are not obstructions, a rooflight does
+  not exist, and none of it is drawn on the plan: the numbers are in the
+  report panel and the CSV only.
 - Common path of egress travel is measured (`commonpath.js`, Phase 41), but a
   pair of leaves is one doorway — right — and so is a 12ft cased opening, which
   is arguable; and a stair is a node, so two stairs off one landing count as

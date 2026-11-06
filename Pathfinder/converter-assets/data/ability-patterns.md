@@ -4,7 +4,7 @@ Written by `node Pathfinder/converter-assets/measure-abilities.mjs`. Do not edit
 `converter-abilities.test.mjs` fails when this file is not what the script writes.
 
 57 stat blocks in `Pathfinder/tests/fixtures/pf1` (three are a second layout of a creature
-already there: `balor-collapsed`, `npc-war-priest-wrapped`, `d20pfsrd-owlbear`), 111 abilities on the
+already there: `balor-collapsed`, `npc-war-priest-wrapped`, `d20pfsrd-owlbear`), 108 abilities on the
 converted creatures. Regeneration and fast healing are numbers on the HP line and Reactive
 Strike comes from a feat, so none of the three is counted.
 
@@ -14,10 +14,10 @@ share of these fixtures and of nothing else.
 
 | How the text was written | Abilities | Share |
 | --- | ---: | ---: |
-| A rule in `js/abilities.js`, or the breath weapon rule in `js/convert.js` | 37 | 33% |
-| The converter's wording for a universal ability (`UMR_TEXT`) | 6 | 5% |
-| PF1e wording, DCs and action costs converted, marked "PF1e wording" | 61 | 55% |
-| A name with no text in the stat block | 7 | 6% |
+| A rule in `js/abilities.js`, or the breath weapon rule in `js/convert.js` | 37 | 34% |
+| The converter's wording for a universal ability (`UMR_TEXT`) | 6 | 6% |
+| PF1e wording, DCs and action costs converted, marked "PF1e wording" | 61 | 56% |
+| A name with no text in the stat block | 4 | 4% |
 
 ## By rule
 
@@ -65,21 +65,21 @@ PF1e wording and bare names together, most frequent first.
 
 | Ability | Times | Creatures |
 | --- | ---: | --- |
-| Flaming Body | 4 | balor-collapsed, balor, balor-collapsed, balor |
 | Entangle | 3 | balor-collapsed, balor, erinyes |
 | Unholy Aura | 3 | balor-collapsed, balor, nalfeshnee |
 | +1 On Attack Rolls Against Goblinoid And Orc Humanoids | 2 | npc-war-priest-wrapped, npc-war-priest |
 | All-Around Vision | 2 | gibbering-mouther, medusa |
-| Amorphous | 2 | gibbering-mouther, gibbering-mouther |
 | Breath Weapon | 2 | gorgon, iron-golem |
 | Destructive Smite | 2 | npc-war-priest-wrapped, npc-war-priest |
 | Engulf | 2 | gelatinous-cube, gibbering-mouther |
+| Flaming Body | 2 | balor-collapsed, balor |
 | Immunity To Magic | 2 | iron-golem, stone-golem |
 | Vorpal Strike | 2 | balor-collapsed, balor |
 | Whip Mastery | 2 | balor-collapsed, balor |
 | Acid | 1 | gelatinous-cube |
 | Adhesive | 1 | mimic |
 | Air Mastery | 1 | djinni |
+| Amorphous | 1 | gibbering-mouther |
 | Children Of The Night | 1 | vampire |
 | Cling | 1 | army-ant-swarm |
 | Consume | 1 | army-ant-swarm |

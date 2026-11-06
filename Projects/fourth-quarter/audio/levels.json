@@ -20,14 +20,23 @@
       "momentary": -11.9,
       "peak": -1.39
     },
-    "audio/sfx/events/crowd-groan.mp3": {
-      "sha256": "a29781254e67480b2b2ec52cf5a4154dd7f5782bc32e097599929ae93bf8cd13",
+    "audio/sfx/events/crowd-cheer.ogg": {
+      "sha256": "54e22bea213aacfecbffaec1e93a64a5a19d19c30c4e95abeccf959488731410",
+      "seconds": 4.01,
+      "channels": 1,
+      "rate": 44100,
+      "integrated": -25.36,
+      "momentary": -22.51,
+      "peak": -0.52
+    },
+    "audio/sfx/events/crowd-groan.ogg": {
+      "sha256": "da37f0876d844245ffba0aecb080289a020678c1f3c422e0e33eb65a3fb45128",
       "seconds": 2.52,
       "channels": 2,
       "rate": 44100,
-      "integrated": -23.63,
-      "momentary": -19.82,
-      "peak": -11.13
+      "integrated": -23.62,
+      "momentary": -19.8,
+      "peak": -11.17
     },
     "audio/sfx/events/patron-storm-out.ogg": {
       "sha256": "fd9cbb3b52f555a6930ae340dc424a274e36e5a08d855968a8998ccc8717be0f",

@@ -282,23 +282,25 @@ fourth as #909, the dated shelf, and its fifth as #911, season terms, which
 closed item 3). In the order to take it, each a session of its own: the
 sound, then the texture pop.
 
-1. **The sound.** No crowd cheer on a Mules win (`audio.js` says so, and
-   `main.js` plays the whistle sting alone), nothing in `audio/sfx/footsteps/`
-   or `audio/music/`, and `audio/sfx/events/crowd-groan.mp3` is the last
-   non-OGG file. Vendored CC0 only, with each file's source and licence
-   recorded beside it. It cannot be judged without speakers.
+1. **The sound.** Nothing in `audio/sfx/footsteps/` or `audio/music/`.
+   **The cheer and the groan's OGG shipped on 2026-11-04 (TG-36)**: a Mules
+   win plays `crowd-cheer.ogg` ("Well Done" by qubodup, CC0) after the
+   whistle, level with the groan, and the groan is `crowd-groan.ogg`, so
+   every file is OGG now. Nobody has heard the cheer. Vendored CC0 only, with
+   each file's source and licence in `audio/SOURCES.md`. It cannot be judged
+   without speakers.
    **The mix was levelled on 2026-10-10 (#942)** after Devon's "Sound levels
    are a bit all over the place, crowd is loud" of 2026-10-07: a trim per
    sound in `audio.js`, the seven cues within 1.1 dB of each other where they
    were 19.6 apart, the crowd's three sounds each 12 to 13 dB down,
-   `test/smoke-mix.mjs` (111) holding it. The README's "The mix" has the
+   `test/smoke-mix.mjs` (111 then; 122 with the cheer) holding it. The README's "The mix" has the
    table. **It wanted Devon's ears again, and has them (below)**, and what to
    turn if it is wrong is the `TRIM` table and the bands in that suite.
    **Heard: Devon, 2026-10-21 (#1008), FQ-mix: "Done: sounds fine".** The
    levelled mix stands as shipped (crowd 12 to 13 dB down); nothing to turn. A new
-   sound (the cheer, footsteps, music) needs a trim, a role in the suite and
-   `node tools/measure-audio.mjs` run where a decoder is, or CI is red;
-   re-encoding the groan to OGG needs the same run. Small and not done: a
+   sound (footsteps, music) needs a trim, a role in the suite and
+   `node tools/measure-audio.mjs` run where a decoder is, or CI is red.
+   Small and not done: a
    volume slider (there is only the mute, and it is not saved).
 2. **The texture pop, and a 512 px tier.** A texture that lands after "Take
    the Floor" still pops in, and the 1k tier is one size for every surface.
@@ -498,7 +500,7 @@ it is like to be the boss the room walks round.
   in headless Chromium at 1280×800 only, through the state they draw from
   rather than the pixels.
 - A patron's whole personality is a shirt colour and a Mules-fan flag, and a
-  Mules win has no cheer sound (`audio.js` says so) — just the whistle sting.
+  Mules win's cheer (TG-36) has not been heard by anyone.
 
 **Tooling**
 - No CI workflow. `school-generator-ci.yml` is the only per-project job in

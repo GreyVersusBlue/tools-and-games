@@ -333,6 +333,10 @@ export function convertCreature(c, opts = {}) {
   // Scale a PF1e per-round HP figure (fast healing, regeneration) by the HP ratio.
   const hpRatio = c.hp?.total ? hp.value / c.hp.total : 1;
   const defAbilities = [];
+  // A defensive ability or an aura that SPECIAL ABILITIES also describes is
+  // listed once, as that text (the mouther's Amorphous, the balor's Flaming
+  // Body); its line on the stat block adds only the name.
+  const described = new Set((c.specialAbilities || []).map((sa) => String(sa.name).trim().toLowerCase()));
   for (const raw of c.defensive?.other || []) {
     const s = String(raw);
     const m = s.match(/^(regeneration|fast healing)\s+(\d+)\s*(?:\(([^)]*)\))?/i);
@@ -348,7 +352,7 @@ export function convertCreature(c, opts = {}) {
       // "swarm traits", "undead traits": covered by the traits and immunities.
     } else if (/channel resistance/i.test(s)) {
       note(`${s}: PF2e has no channel resistance; heal and harm target Fortitude or Will like anything else.`);
-    } else {
+    } else if (!described.has(s.trim().toLowerCase())) {
       defAbilities.push({ name: titleCase(s), text: umrText(s), wording: umrText(s) ? 'umr' : 'name' });
     }
   }
@@ -504,6 +508,7 @@ export function convertCreature(c, opts = {}) {
   };
   const convertText = (text) => String(text || '')
     .replace(/\bDC\s*(\d+)/g, (_, d) => `DC ${dcFor(Number(d)).value}`)
+    .replace(/\bDC is (\d+)\b/g, (_, d) => `DC is ${dcFor(Number(d)).value}`) // the succubus's "The DC is 22 for the Fortitude save"
     .replace(/\b(Fortitude|Reflex|Will) save\b/gi, '$1') // not "saves": "additional Fortitude saves" stays a noun
     .replace(/\ban? standard action\b/gi, '2 actions').replace(/\ban? swift action\b/gi, '1 action')
     .replace(/\ban? move action\b/gi, '1 action').replace(/\ban? full-round action\b/gi, '3 actions')
@@ -597,6 +602,7 @@ export function convertCreature(c, opts = {}) {
     otherAbilities.push({ name: titleCase(sa.name), kind: sa.kind, text: convertText(sa.text), why: /DC\s*\d+/.test(sa.text) ? 'DCs rescaled against the PF1e ability DC benchmark for this CR.' : '', wording: 'pf1e' });
   }
   for (const a of c.aura || []) {
+    if (described.has(String(a.name).trim().toLowerCase())) continue;
     const extra = convertText(a.text || '').replace(/\([^)]*\)/g, '').trim();
     offAbilities.unshift({ name: titleCase(a.name), actions: '', traits: ['aura'], wording: umrText(a.name) ? 'umr' : a.range || a.dc ? 'pf1e' : 'name',
       text: [`${a.range ? a.range + ' feet' : ''}${a.dc ? `, DC ${dcFor(a.dc).value}` : ''}`.replace(/^, /, ''), extra.toLowerCase() === String(a.name).toLowerCase() ? '' : extra, umrText(a.name)].filter(Boolean).join('. '),
@@ -635,7 +641,9 @@ export function convertCreature(c, opts = {}) {
         const rank = rankFor({ pf1Level: lvl, pf1Top, pf2Top: blockTop, baseRank: t.rank });
         if (!out.has(rank)) out.set(rank, []);
         const list = out.get(rank);
-        if (list.some((x) => x.name === t.name && x.freq === e.freq)) continue;
+        // A class caster's levels carry no frequency: '' stored and undefined read
+        // are the same none, or a spell two PF1e spells map to is listed twice.
+        if (list.some((x) => x.name === t.name && x.freq === (e.freq || ''))) continue;
         list.push({ name: t.name, target: t, pf1: nm, fit: r.fit, note: r.note, count: s.count || 1, freq: e.freq || '', why: `PF1e ${nm} (level ${lvl}) ${r.fit === 'exact' ? 'is' : r.fit === 'close' ? 'is close to' : 'is partly'} ${t.name}${t.rank ? ` (rank ${t.rank})` : ' (cantrip)'}${r.note ? '. ' + r.note : ''}` });
         if (rank > blockTop && rank > 0) spellNotes.push({ pf1: nm, fit: 'partial', note: `${t.name} is rank ${rank}, above the rank ${blockTop} this caster otherwise tops out at.` });
       }

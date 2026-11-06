@@ -107,6 +107,24 @@ procedural fallback and captured a beach nobody saw — and nothing passes it no
 Parses every `.js`/`.mjs`, every inline `<script>`, and every `.json` on the
 site. Exits 1 on any failure.
 
+It also fails any `.html` or `.js` that makes the browser load a `.mjs`
+(`<script src>`, `modulepreload`, `import`/`export ... from`, dynamic
+`import()`, `new Worker`, `serviceWorker.register`). The live nginx serves
+`.mjs` as `application/octet-stream`, which browsers refuse, and CI's server
+does not, so only the live site showed it (TG-57/TG-58). Node-only `.mjs` is
+fine. The detector is `mjs-guard.mjs`; it is proved on fixtures every run, and
+a detector that stops flagging a known-bad case is itself a FAIL line.
+
+It also fails any relative `<a href>` (or `<area>`) in an `.html` whose target
+is not on the site: `?query` and `#fragment` stripped, `%20` decoded, a leading
+`/` the site root, a directory needing an `index.html`. `http(s):`, `mailto:`,
+`tel:`, `javascript:`, `data:`, `//host`, a bare `#fragment` and a template
+placeholder are skipped, and so is anything inside an HTML comment. The
+resolver is `link-guard.mjs`, proved on fixtures every run; its `EXEMPT` table
+(page, href, reason) is empty, and an entry whose link is no longer broken is a
+FAIL line. Pathfinder's campaigns and characters pages linked "Back to
+greyversusblue.com" to a `Pathfinder/index.html` that never existed (TG-60).
+
 This is here because a game's `src/npc.js` contained JSON instead of
 JavaScript, which meant `main.js` could not `import { NPC }` and the game hung
 on its loading screen. (That was Castle Conundrum, which is its own repository

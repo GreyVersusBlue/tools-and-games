@@ -55,6 +55,9 @@ h1,h2,h3{font-family:var(--disp);letter-spacing:.04em;text-transform:uppercase;f
 #app{max-width:1180px;margin:0 auto;padding:16px}
 .grid{display:grid;grid-template-columns:1fr 340px;gap:16px}
 @media(max-width:900px){.grid{grid-template-columns:1fr}}
+.grid>*{min-width:0}
+@media(max-width:600px){#scorebug{flex-wrap:wrap}.bug{min-width:0;flex:1 1 auto;padding:6px 10px}.bug.brand{flex:1 1 100%;min-width:0;border-bottom:1px solid var(--line)}}
+.tblscroll{overflow-x:auto;max-width:100%}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .panel>.hd{background:var(--panel2);padding:8px 12px;border-bottom:1px solid var(--line);
   display:flex;align-items:center;justify-content:space-between}
@@ -190,7 +193,7 @@ textarea.saveio{width:100%;min-height:110px;background:#0b0805;color:var(--chalk
       <div>
         <div class="panel" id="tab-stock">
           <div class="hd"><h2>Stock Order</h2><span class="hint">Delivered before open. Food spoils — check shelf life.</span></div>
-          <div class="bd"><table id="stockTable"></table>
+          <div class="bd"><div class="tblscroll"><table id="stockTable"></table></div>
             <div class="spread mt"><span class="hint">Order total: <span class="money" id="orderTotal">$0</span> <span id="orderSavings" class="hint"></span></span>
             <span><button class="btn small ghost" id="fillPar" title="Adds enough of each item to bring on-hand + cart up to its Par target">Fill All to Par</button>
             <button class="btn small" id="placeOrder">Place Order</button></span></div>

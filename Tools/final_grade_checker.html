@@ -212,12 +212,12 @@
 </div>
 
 <script type="module">
-// The arithmetic lives in final-grade-checker/grade-math.mjs so that
+// The arithmetic lives in final-grade-checker/grade-math.js so that
 // final-grade-checker/grade-math.test.mjs can import it and check it against
 // hand-worked cases. Do not reimplement any of it here.
 import {
   getLetter, calcFinals, parsePastedData,
-} from './final-grade-checker/grade-math.mjs';
+} from './final-grade-checker/grade-math.js';
 
 function gradeClass(l) { return l ? 'grade-'+l : 'grade-empty'; }
 const letterColor = {A:'#155724',B:'#0c5460',C:'#856404',D:'#7c4700',F:'#721c24'};
@@ -527,7 +527,7 @@ function setStatus(msg, cls) {
   el.className = 'import-status' + (cls ? ' ' + cls : '');
 }
 
-// parseGradeToken and parsePastedData now come from grade-math.mjs, where the
+// parseGradeToken and parsePastedData now come from grade-math.js, where the
 // test suite can reach them. The parser is the part of this tool most likely
 // to be quietly wrong, because a shifted column produces a plausible number
 // rather than an error.

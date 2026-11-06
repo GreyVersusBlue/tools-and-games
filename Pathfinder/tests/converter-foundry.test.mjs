@@ -398,7 +398,27 @@ none('a partial match is marked in the spell\'s name, at the top of its text and
   }
   return '';
 });
-ok(partials.length === 10 && partials.some((p) => p === 'lich: Massacre [partial match]'), 'ten partial matches across the fixtures, the lich\'s Massacre among them', `${partials.length}: ${partials.join('; ')}`);
+// Nine since the vampire's open/close, a partial Telekinetic Hand, stopped
+// being listed beside the Telekinetic Hand its mage hand already is (TG-33).
+ok(partials.length === 9 && partials.some((p) => p === 'lich: Massacre [partial match]'), 'nine partial matches across the fixtures, the lich\'s Massacre among them', `${partials.length}: ${partials.join('; ')}`);
+// Two PF1e spells that map to one PF2e spell at one rank are one spell. A
+// class caster's levels carry no frequency, and the converter once read the
+// '' it stored and the undefined it was handed as two, so the storm sorcerer
+// listed Light twice (dancing lights, light) and the vampire Telekinetic Hand
+// twice (mage hand, open/close), on the page and in the file. The balor's
+// Telekinetic Maneuver at will and 3/day are two, and stay two.
+const twice = (keys) => keys.filter((k, i) => keys.indexOf(k) !== i);
+none('no spell is listed twice at one rank with one frequency, on the creature or in the file', ({ o, f }) => {
+  const onPage = twice(o.spellcasting.flatMap((sc) => sc.ranks.flatMap((r) => r.spells.map((s) => `${sc.name}|${r.rank}|${s.name}|${s.freq || ''}`))));
+  const inFile = twice(of(f, 'spell').map((it) => `${it.system.location.value}|${it.system.location.heightenedLevel ?? it.system.level.value}|${it.name}|${JSON.stringify(it.system.location.uses || null)}`));
+  return onPage.length || inFile.length ? `${onPage.concat(inFile).join('; ')}` : '';
+});
+{
+  const ranks = (n) => pair(n).o.spellcasting.flatMap((sc) => sc.ranks.flatMap((r) => r.spells.map((s) => `${r.rank} ${s.name}${s.freq ? ` (${s.freq})` : ''}`)));
+  const count = (n, x) => ranks(n).filter((y) => y === x).length;
+  ok(count('npc-storm-sorcerer', '0 Light') === 1 && count('vampire', '0 Telekinetic Hand') === 1 && count('balor', '4 Telekinetic Maneuver (at will)') === 1 && count('balor', '4 Telekinetic Maneuver (3/day)') === 1,
+    'the storm sorcerer casts Light once and the vampire Telekinetic Hand once; the balor keeps both its Telekinetic Maneuvers', `${count('npc-storm-sorcerer', '0 Light')}, ${count('vampire', '0 Telekinetic Hand')}`);
+}
 none('a spell\'s data is the Archive\'s own, with only its location and the partial mark added', ({ f }) => {
   for (const it of of(f, 'spell')) {
     const base = it.name.replace(/ \[partial match\]$/, '').replace(/ \((At Will|Constant)\)$/, '');

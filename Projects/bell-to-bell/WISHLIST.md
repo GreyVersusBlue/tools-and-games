@@ -429,8 +429,8 @@ and furniture that stays off a chair (#884).
   unreferenced (3.6 MB)**, inside a budget the suite enforces (13.1 and 4.8).
   The 932 files and 82 MB this bullet used to count went in Phase 6. What is
   left unreferenced is mostly the Kenney kit's 140 `.glb` files, of which the
-  game places four; Phase 6 left them standing as a catalog, and nothing in
-  `assets.json` says so.
+  game places four; Phase 6 left them standing as a catalog, and
+  `assets.json`'s `_comment` says so (TG-32, 2026-11-04).
 - The generator's band check runs two headless periods per attempt at boot,
   about 25 ms each in Node. At the reroll cap of 24 that is a second of boot on
   a bad seed; no seed in 1,400 tried needed more than 3.

@@ -26,8 +26,9 @@
 //
 // What it still does not claim: neighbours, trees and terrain are not in the
 // model, a curtain wall is read at the middle of each stretch that has one
-// neighbour, reflectance and transmittance are one stated constant each, and
-// none of it is an illuminance. The code's line is still the glazing ratio;
+// neighbour, transmittance is one stated constant, and none of it is an
+// illuminance. Reflectance is the room's own once any of its finishes is set
+// (see `roomReflectance` below); a room with none set keeps the constant. The code's line is still the glazing ratio;
 // these are notes, never warnings.
 //
 // **A curtain wall is as high as its storey's wall** (#897): `wallHeightOf`,
@@ -46,13 +47,16 @@
 import { WALL_H, floorLabel, floorBaseY, wallHeightOf } from './grid.js';
 import {
   shapesOf, segEnds, openingSpec, isWindowOpening, SEG_GLASS,
-  crossingsAlong, sideRuns,
+  crossingsAlong, sideRuns, accentLuminance,
 } from './shapes.js';
 import { buildNav, PROBE } from './navgraph.js';
 import { buildingOccupancy } from './occupancy.js';
 import { editionOf, editionEntry, citeFor, DEFAULT_EDITION } from './codes.js';
 import { EAVE, isPitched } from './roof.js';
 import { normalizeEnv, solarPosition, sunVector } from './sky.js';
+import {
+  readFinish, readPaint, finishEntry, facePainter, DEFAULT_FINISH, DEFAULT_PAINT,
+} from './finish.js';
 
 // IBC 1205.2 — the floor of the thing, for a room people occupy. The default
 // edition's number, for a caller with none in hand; since Phase 41 the
@@ -84,6 +88,94 @@ export const ADF_GOOD = 5;
 // Reflectance of the back half of the room, for the limiting-depth rule.
 export const BACK_R = 0.5;
 export const DEPTH_LIMIT = 2 / (1 - BACK_R);
+export const depthLimit = (rb) => 2 / (1 - rb);
+
+// ---------- what the room's own surfaces reflect ----------
+//
+// TG-41. ROOM_R and BACK_R are what a room with nothing chosen is read at, and
+// a room with nothing chosen still is: no floor finish, no wall paint and no
+// accent on any of its faces, and both numbers are the constants exactly. Once
+// any of them is set the room is read off its own surfaces instead, area by
+// area, the way the BRE average asks for: the floor (its area), the ceiling
+// (the same), and each wall face in its own colour, the room's perimeter at
+// the 10 ft ceiling (#1008, "Stop at 10 ft"). Glass is counted as the wall it
+// sits in.
+//
+// **The mapping.** A colour's light reflectance value is its CIE Y, the
+// relative luminance of the sRGB hex (IEC 61966-2-1's linear segment and
+// 2.4 power, then 0.2126 R + 0.7152 G + 0.0722 B), which is what a paint chart
+// prints as LRV. A clean swatch's LRV is not what a furnished, lived-in room
+// reflects, and the constant 0.5 already stands for that room: so a surface is
+// read as ROOM_R times its LRV over the LRV of the default it replaces, the
+// off-white wall (DEFAULT_PAINT) for a face and VCT for a floor. The default
+// colour is therefore exactly 0.5, a white wall a little over, a carpet well
+// under, and a room painted its default colour on purpose reads the same as
+// one that never said. The ceiling has no finish in the model and stays 0.5.
+// shapes.js's `accentLuminance` is that formula already (it picks an accent's
+// ink), so this is it, read as a reflectance.
+export const lrvOf = (hex) => accentLuminance(hex) || 0;
+const WALL_LRV = lrvOf(DEFAULT_PAINT);
+const FLOOR_LRV = lrvOf(finishEntry(DEFAULT_FINISH).color);
+export const wallReflectance = (hex) => ROOM_R * lrvOf(hex || DEFAULT_PAINT) / WALL_LRV;
+export const floorReflectance = (fin) =>
+  ROOM_R * lrvOf(finishEntry(readFinish(fin) || DEFAULT_FINISH).color) / FLOOR_LRV;
+export const CEILING_R = ROOM_R;
+
+// Every face of a room's own walls: [{ a, b, paint }], the stretch of segment
+// that one colour covers. The room is on its ring's left (shapes.js), which is
+// the left face of a run from a to b (finish.js).
+function roomFaces(shape, paintFaces) {
+  const out = [];
+  for (const ring of shape.rings) {
+    for (let i = 0; i < ring.pts.length; i++) {
+      const [a, b] = segEnds(ring, i);
+      if (Math.hypot(b.x - a.x, b.z - a.z) < 1e-6) continue;
+      const at = (t) => ({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
+      for (const run of paintFaces(a.x, a.z, b.x, b.z)) {
+        out.push({ a: at(run.t0), b: at(run.t1), paint: run.left || DEFAULT_PAINT });
+      }
+    }
+  }
+  return out;
+}
+
+// What one room reflects: { r, back, from } where `back(front, depth, n)`
+// answers for the half of it furthest from glass on one wall. `from` is
+// 'finishes' or 'stated', the constant.
+export function roomReflectance(shape, paintFaces, area) {
+  const faces = roomFaces(shape, paintFaces);
+  const chosen = readFinish(shape.fin) || readPaint(shape.paint) ||
+    faces.some((f) => f.paint !== DEFAULT_PAINT);
+  if (!chosen || !(area > 0)) {
+    return { r: ROOM_R, from: 'stated', back: () => BACK_R };
+  }
+  const rf = floorReflectance(shape.fin);
+  const flat = area * (rf + CEILING_R);
+  let wallA = 0, wallRA = 0;
+  for (const f of faces) {
+    const a = Math.hypot(f.b.x - f.a.x, f.b.z - f.a.z) * WALL_H;
+    wallA += a; wallRA += a * wallReflectance(f.paint);
+  }
+  const r = (flat + wallRA) / (2 * area + wallA);
+  // The back half: half the floor and ceiling, and the part of each wall face
+  // more than half the room's depth back from the glass. `n` is the glass's
+  // outward normal and `front` the furthest out a pane stands along it, so a
+  // point's depth behind the glass is front - p·n, as readSky measures it.
+  const back = (front, depth, nx, nz) => {
+    let A = area, RA = area / 2 * (rf + CEILING_R);
+    for (const f of faces) {
+      const da = front - (f.a.x * nx + f.a.z * nz), db = front - (f.b.x * nx + f.b.z * nz);
+      const half = depth / 2;
+      let share;
+      if (Math.abs(db - da) < 1e-9) share = da > half ? 1 : 0;
+      else share = Math.min(1, Math.max(0, (Math.max(da, db) - half) / Math.abs(db - da)));
+      const a = Math.hypot(f.b.x - f.a.x, f.b.z - f.a.z) * WALL_H * share;
+      A += a; RA += a * wallReflectance(f.paint);
+    }
+    return A > 0 ? RA / A : BACK_R;
+  };
+  return { r, from: 'finishes', back };
+}
 // How far out, and how finely, the building is searched for its own bulk.
 export const SKY_REACH = 96;   // ft
 export const SKY_STEP = 2;     // ft, at the wall
@@ -166,7 +258,7 @@ const sunIn = (sun, pane) => {
 };
 
 // Everything a room's exterior panes say together.
-function readSky(row, shape, track, north) {
+function readSky(row, shape, track, north, paintFaces) {
   const panes = row.panes;
   delete row.panes;
   let perimeter = 0;
@@ -184,7 +276,12 @@ function readSky(row, shape, track, north) {
     head = Math.max(head, p.head);
   }
   for (const sun of track) if (panes.some((p) => sunIn(sun, p))) steps++;
-  row.adf = surfaces > 0 ? (GLASS_T * skyArea) / (surfaces * (1 - ROOM_R * ROOM_R)) : 0;
+  const refl = roomReflectance(shape, paintFaces, row.area);
+  const R = refl.r;
+  row.reflect = R;
+  row.reflectFrom = refl.from;
+  row.backReflect = null;
+  row.adf = surfaces > 0 ? (GLASS_T * skyArea) / (surfaces * (1 - R * R)) : 0;
   row.sky = row.glazed > 0 ? skyArea / row.glazed : 0;
   row.sunHours = (steps * SUN_STEP) / 60;
   row.facing = null;
@@ -199,6 +296,7 @@ function readSky(row, shape, track, north) {
   if (!panes.every((p) => p.nx * nx + p.nz * nz >= ONE_WALL)) return;
   row.facing = compassOf(bearingOf(nx, nz, north));
   let depth = 0, t0 = Infinity, t1 = -Infinity;
+  const front = Math.max(...panes.map((p) => p.x * nx + p.z * nz));
   for (const ring of shape.rings) {
     for (const pt of ring.pts) {
       for (const p of panes) depth = Math.max(depth, (p.x - pt.x) * nx + (p.z - pt.z) * nz);
@@ -209,7 +307,8 @@ function readSky(row, shape, track, north) {
   const width = t1 - t0;
   if (!(width > 0) || !(head > 0)) return;
   row.depth = depth;
-  row.reach = DEPTH_LIMIT / (1 / width + 1 / head);
+  row.backReflect = refl.back(front, depth, nx, nz);
+  row.reach = depthLimit(row.backReflect) / (1 / width + 1 / head);
   row.deep = depth > row.reach + 1e-9;
 }
 
@@ -250,6 +349,8 @@ export function daylightOnFloor(state, floorIndex, opts = {}) {
   const track = sunTrack(env);
   // How high a curtain wall on this storey stands (#897).
   const glassH = wallHeightOf(state, floorIndex);
+  // Who paints which face, for the reflectance each room is read at (TG-41).
+  const paintFaces = facePainter(floor);
 
   // Which room is on each side of a boundary, as ids. `null` is the outside.
   const sides = (x, z, nx, nz) => [
@@ -348,7 +449,7 @@ export function daylightOnFloor(state, floorIndex, opts = {}) {
         }
       }
     }
-    if (rows.has(id)) readSky(rows.get(id), shape, track, env.north);
+    if (rows.has(id)) readSky(rows.get(id), shape, track, env.north, paintFaces);
   }
 
   return [...rows.values()];
@@ -419,6 +520,16 @@ export function daylightAnalysis(state, opts = {}) {
   };
 }
 
+// The reflectance a room was read at, and where it came from, in words: the
+// one place the panel, the findings and the sheet say it (TG-41).
+export function reflectNote(row, back = false) {
+  const v = back ? row.backReflect : row.reflect;
+  if (!Number.isFinite(v)) return '';
+  return row.reflectFrom === 'finishes'
+    ? `${v.toFixed(2)}, from its finishes`
+    : `${v.toFixed(2)}, the stated default with no finish set`;
+}
+
 function daylightFindings(rooms, summary, edition) {
   const out = [];
   const pct = (v) => `${(v * 100).toFixed(1)}%`;
@@ -467,7 +578,8 @@ function daylightFindings(rooms, summary, edition) {
         `an average daylight factor under ${ADF_MIN}%`,
       detail: `${name(dim[0])} averages ${dim[0].adf.toFixed(1)}%: its glass sees ` +
         `${Math.round(dim[0].sky)}° of sky out of 90, over ${Math.round(dim[0].area)} ft² ` +
-        'of floor. Under an overcast sky, so the compass does not move it.',
+        `of floor, with its surfaces reflecting ${reflectNote(dim[0])}. ` +
+        'Under an overcast sky, so the compass does not move it.',
       rooms: dim.slice(0, 8),
       cite: 'BS 8206-2 · average daylight factor',
     });
@@ -479,7 +591,8 @@ function daylightFindings(rooms, summary, edition) {
       title: `${deep.length} room${deep.length === 1 ? '' : 's'} deeper than ` +
         `${deep.length === 1 ? 'its' : 'their'} one glazed wall lights`,
       detail: `${name(deep[0])} runs ${Math.round(deep[0].depth)} ft back from glass ` +
-        `facing ${deep[0].facing}, and daylight carries about ${Math.round(deep[0].reach)} ft. ` +
+        `facing ${deep[0].facing}, and daylight carries about ${Math.round(deep[0].reach)} ft ` +
+        `with the back half reflecting ${reflectNote(deep[0], true)}. ` +
         'A taller window head or glass on a second wall reaches further.',
       rooms: deep.slice(0, 8),
       cite: 'BS 8206-2 · limiting depth',

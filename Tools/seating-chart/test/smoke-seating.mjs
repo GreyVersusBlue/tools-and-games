@@ -13,7 +13,7 @@ import {
   zoneNeedMap, deskZoneMap,
   pickNext, parseRoster, gridDesks, rowDesks, nextSpot, contentBox, snap,
   horseshoeDesks, podsDesks, doubleRowDesks, labBenchDesks,
-} from '../seating.mjs';
+} from '../seating.js';
 import { defaultStorage } from '../../../assets/js/gvb-save.js';
 
 let passed = 0, failed = 0;

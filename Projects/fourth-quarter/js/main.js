@@ -310,11 +310,11 @@ function beginNight() {
     scene.add(m);
     return m;
   });
-  // Warm these five now, at the top of the night, rather than the first time
+  // Warm these now, at the top of the night, rather than the first time
   // playSfx()/startLoop() builds their Audio element mid-event — the storm-out
   // clip in particular used to start fetching the moment a patron first gave up,
   // and be asked to play before it had buffered.
-  audio.preload("stormOut", "stingerKickoff", "stingerFinal", "sizzle", "pour");
+  audio.preload("stormOut", "stingerKickoff", "stingerFinal", "crowdGroan", "crowdCheer", "sizzle", "pour");
   passDisplays = new Map();
   broadcast = { gameNight: engine.gameNight, started: false, finished: false, win: null, us: 0, them: 0, clockText: "Q1 15:00", flicker: 0, tick: 0,
     usName: "MULES", themName: tn.opp ? tn.opp.short.toUpperCase() : "", home: tn.home,
@@ -443,9 +443,8 @@ function handleEvents(evts) {
         broadcast.finished = true; broadcast.win = e.win;
         settleScore(e.win);
         audio.playSfx("stingerFinal");
-        // no crowd-cheer asset yet (see audio.js TODO) — a win only gets the
-        // whistle sting; a loss additionally gets the groan
-        if (!e.win) audio.playSfx("crowdGroan");
+        // the room answers the whistle: a cheer on a Mules win, a groan on a loss
+        audio.playSfx(e.win ? "crowdCheer" : "crowdGroan");
         if (e.win) for (const p of patrons) if (p.state !== "gone" && p.mulesFan) p.cheer = 2.5;
         break;
       }
