@@ -28,6 +28,9 @@
 // headings is one turn. The start is one state per way out of the room: the
 // cell outside, heading away from the room. The end is the cheapest of the
 // end room's ways in, counting the step into the room and any turn it takes.
+// Where the building has elevator cars a state also says which car the walker
+// last rode, if any: a walker who has ridden a car does not walk onto one of its
+// lift cells, so riding up and down is never a way round a lift cell in a corridor.
 // The cost of a state is packed into one number,
 //
 //   seconds × 2^20 + turns × 2^10 + stairs
@@ -59,12 +62,14 @@
 // options, all optional:
 //   avoidStairs          true: a step-free route: no stairs connection, every
 //                        elevator open (staff-only ones too), corridor cells
-//                        marked as having a step not walked on, and doors
-//                        marked as having a step not used
+//                        marked as having a step not walked on, doors marked
+//                        as having a step not used, and (routeToExit) no exit
+//                        marked as having a step
 //   studentsOnly         true: a staff-only elevator is shut (a group's ordinary
 //                        route). Ignored with avoidStairs. In the plan's key only
 //                        when true and the building has a staff-only car.
-//   avoidConnections     a Set or list of connection ids not to use
+//   avoidConnections     a Set or list of connection ids not to use; naming any
+//                        connection of an elevator shuts the whole car
 //   avoidCorridorNames   a Set or list of named-corridor ids (the "k…" id of
 //                        an entry in a floor's `corridors`) whose cells are
 //                        not to be walked on
@@ -80,7 +85,8 @@
 //                        stair, ARCHITECTURE 18.4). In the plan's key only when true
 //                        and some connection of the building is one-way; otherwise
 //                        the plan is the plain one and shares its fields.
-//   avoidExits           routeToExit only: a Set or list of exit ids
+//   avoidExits           routeToExit only: a Set or list of exit ids. A step-free
+//                        routeToExit also leaves out every exit whose `stepFree` is false
 //   cache                a cache from createRouteCache(); without one every
 //                        call searches afresh
 //   geometryVersion      the store's counter. The cache is emptied when this
@@ -110,7 +116,9 @@
 //     end        'from' or 'to': which end the room named is
 //     avoiding   the options in force, any of 'stairs', 'steps' (step-free, and the
 //                building has corridor cells with a step), 'step-doors' (step-free,
-//                and some door has a step), 'connections', 'corridors'
+//                and some door has a step), 'step-exits' (routeToExit, step-free,
+//                and an exit with a step was left out), 'staff-only' (studentsOnly,
+//                and the building has a staff-only car), 'connections', 'corridors'
 //
 // A route object may be handed out more than once (the cache keeps it), so
 // treat it as read-only.
@@ -126,6 +134,15 @@ export const FIELD_BYTES = 64 * 1024 * 1024;
 export const ROUTE_FAILURES = ['no-room', 'room-missing', 'no-entry', 'unreachable'];
 
 const STATES = 5;
+
+// A walker who has ridden a car may not walk onto a lift cell of that car (it
+// would cross a corridor by riding up and down). So where the building has cars
+// the search runs over layers of the graph: layer 0, and layer 1 + c for a walker
+// whose last ride was car c. Without a car there is one layer and nothing
+// changes. A state's number is (layer × nodes + node) × STATES + heading.
+function layersOf(graph) {
+  return graph.cars.length > 0 ? 1 + graph.cars.length : 1;
+}
 const SECOND = 1048576; // 2^20
 const TURN = 1024; // 2^10
 const STAIR = 1;
@@ -150,13 +167,17 @@ export function routingGraph(project, graph) {
   const settings = project.settings || defaults;
   const corridors = new Map();
   const stepNodes = [];
+  const stepMarked = new Uint8Array(base.count);
   for (const floor of building.floors) {
     const f = base.floorIndex.get(floor.id);
     const nodeOfCell = base.floors[f].nodeOfCell;
     // corridor cells with a step: a step-free route does not cross them
     for (const cell of Array.isArray(floor.notStepFree) ? floor.notStepFree : []) {
       const node = Number.isInteger(cell) && cell >= 0 && cell < nodeOfCell.length && floor.cells[cell] === CELL_CORRIDOR ? nodeOfCell[cell] : -1;
-      if (node !== -1 && !stepNodes.includes(node)) stepNodes.push(node);
+      if (node !== -1 && stepMarked[node] === 0) {
+        stepMarked[node] = 1;
+        stepNodes.push(node);
+      }
     }
     for (const corridor of floor.corridors || []) {
       const nodes = [];
@@ -229,16 +250,28 @@ function planFor(graph, options) {
   // route is for anyone who needs it, so it ignores the option. It means
   // something only where a staff-only car is, so only then is it in the key.
   const studentsOnly = opts.studentsOnly === true && !avoidStairs && graph.hasStaffOnly;
+  // a reader of a failed route can say why a car was not used
+  if (studentsOnly) avoiding.push('staff-only');
 
   let linkShut = null;
   const shutLinks = [];
   const wanted = new Set(listOf(opts.avoidConnections));
   if (wanted.size > 0) {
+    // naming any connection of an elevator shuts its whole car; the car's id is
+    // listed once, however many links the car has
+    const carShut = new Set();
+    for (const car of graph.cars) {
+      if (wanted.has(car.id) || (car.connectionIds && car.connectionIds.some((id) => wanted.has(id)))) carShut.add(car);
+    }
+    const listed = new Set();
     graph.links.forEach((link, index) => {
-      if (!wanted.has(link.id)) return;
+      if (link.elevator ? !carShut.has(graph.cars[link.car]) : !wanted.has(link.id)) return;
       if (!linkShut) linkShut = new Uint8Array(graph.links.length);
       linkShut[index] = 1;
-      shutLinks.push(link.id);
+      if (!listed.has(link.id)) {
+        listed.add(link.id);
+        shutLinks.push(link.id);
+      }
     });
     avoiding.push('connections');
   }
@@ -350,7 +383,8 @@ function hasEntry(room, plan) {
 // The search from one room: Dijkstra over (cell, heading) with a binary heap
 // that pops equal costs in the order they were pushed.
 function computeField(graph, room, plan) {
-  const states = graph.count * STATES;
+  const count = graph.count;
+  const states = count * layersOf(graph) * STATES;
   const cost = new Float64Array(states).fill(Infinity);
   const prevNode = new Int32Array(states).fill(-1);
   const prevHeading = new Int8Array(states).fill(-1);
@@ -433,14 +467,21 @@ function computeField(graph, room, plan) {
   const nodeShut = plan.nodeShut;
   const step = graph.secondsPerCell * SECOND;
   const lifts = graph.lifts;
+  // the car each lift cell is a stop of, -1 for any other cell
+  const carOfLift = new Int32Array(graph.count).fill(-1);
+  graph.cars.forEach((car, index) => {
+    for (const stop of car.stops) carOfLift[stop.node] = index;
+  });
 
   while (size > 0) {
     const key = heapKey[0];
     const state = heapState[0];
     drop();
     if (key > cost[state]) continue; // a later, cheaper push has already been dealt with
-    const node = (state / STATES) | 0;
-    const heading = state - node * STATES;
+    const vnode = (state / STATES) | 0;
+    const heading = state - vnode * STATES;
+    const node = vnode % count;
+    const layer = (vnode - node) / count;
     // a lift cell is never walked through: arrived at on foot (a real
     // heading) it leads only into a ride, arrived at by a ride (heading none,
     // which only a link ends in at a lift cell) it leads only out on foot
@@ -449,11 +490,13 @@ function computeField(graph, room, plan) {
       if (lift && heading !== HEADING_NONE) break;
       const next = neighbours[node * 4 + d];
       if (next === -1 || (nodeShut && nodeShut[next])) continue;
+      // a walker who has ridden this car may not step onto one of its lift cells
+      if (layer !== 0 && carOfLift[next] === layer - 1) continue;
       const nextKey = key + step + (heading !== HEADING_NONE && heading !== d ? TURN : 0);
-      const nextState = next * STATES + d;
+      const nextState = (layer * count + next) * STATES + d;
       if (nextKey < cost[nextState]) {
         cost[nextState] = nextKey;
-        prevNode[nextState] = node;
+        prevNode[nextState] = vnode;
         prevHeading[nextState] = heading;
         push(nextKey, nextState);
       }
@@ -466,10 +509,10 @@ function computeField(graph, room, plan) {
       const next = link.a === node ? link.b : link.a;
       if (nodeShut && nodeShut[next]) continue;
       const nextKey = key + link.seconds * SECOND + step + STAIR;
-      const nextState = next * STATES + HEADING_NONE;
+      const nextState = ((link.elevator ? 1 + link.car : 0) * count + next) * STATES + HEADING_NONE;
       if (nextKey < cost[nextState]) {
         cost[nextState] = nextKey;
-        prevNode[nextState] = node;
+        prevNode[nextState] = vnode;
         prevHeading[nextState] = heading;
         push(nextKey, nextState);
       }
@@ -525,7 +568,7 @@ function trace(graph, field, plan, node, heading) {
   let at = node;
   let facing = heading;
   for (;;) {
-    nodes.push(at);
+    nodes.push(at % graph.count);
     headings.push(facing);
     const state = at * STATES + facing;
     const before = field.prevNode[state];
@@ -594,18 +637,24 @@ function findRoute(graph, fromRoomId, toRoomId, plan, cache) {
   let bestOrder = 0;
   let bestEntry = null;
   let bestHeading = -1;
+  let bestVnode = -1;
+  const layers = layersOf(graph);
   for (const entry of entriesOf(to, plan)) {
     if (plan.nodeShut && plan.nodeShut[entry.node]) continue;
     const into = OPPOSITE[entry.side];
-    for (let heading = 0; heading < STATES; heading += 1) {
-      const state = entry.node * STATES + heading;
-      if (field.cost[state] === Infinity) continue;
-      const total = field.cost[state] + step + (heading !== HEADING_NONE && heading !== into ? TURN : 0);
-      if (total < best || (total === best && field.order[state] < bestOrder)) {
-        best = total;
-        bestOrder = field.order[state];
-        bestEntry = entry;
-        bestHeading = heading;
+    for (let layer = 0; layer < layers; layer += 1) {
+      for (let heading = 0; heading < STATES; heading += 1) {
+        const vnode = layer * graph.count + entry.node;
+        const state = vnode * STATES + heading;
+        if (field.cost[state] === Infinity) continue;
+        const total = field.cost[state] + step + (heading !== HEADING_NONE && heading !== into ? TURN : 0);
+        if (total < best || (total === best && field.order[state] < bestOrder)) {
+          best = total;
+          bestOrder = field.order[state];
+          bestEntry = entry;
+          bestHeading = heading;
+          bestVnode = vnode;
+        }
       }
     }
   }
@@ -614,7 +663,7 @@ function findRoute(graph, fromRoomId, toRoomId, plan, cache) {
   if (!bestEntry) {
     result = failure('unreachable', 'to', toRoomId, to.floorId, fromRoomId, toRoomId, plan);
   } else {
-    const path = trace(graph, field, plan, bestEntry.node, bestHeading);
+    const path = trace(graph, field, plan, bestVnode, bestHeading);
     const leaving = entriesOf(from, plan).find((entry) => entry.node === path.nodes[0] && entry.side === path.headings[0]);
     result = {
       ok: true,
@@ -661,22 +710,28 @@ function routeToTargets(graph, fromRoomId, targets, options) {
   let bestOrder = 0;
   let bestTarget = null;
   let bestHeading = -1;
+  let bestVnode = -1;
+  const layers = layersOf(graph);
   for (const target of targets) {
     if (plan.nodeShut && plan.nodeShut[target.node]) continue;
-    for (let heading = 0; heading < STATES; heading += 1) {
-      const state = target.node * STATES + heading;
-      const total = field.cost[state];
-      if (total < best || (total === best && total !== Infinity && target === bestTarget && field.order[state] < bestOrder)) {
-        best = total;
-        bestOrder = field.order[state];
-        bestTarget = target;
-        bestHeading = heading;
+    for (let layer = 0; layer < layers; layer += 1) {
+      for (let heading = 0; heading < STATES; heading += 1) {
+        const vnode = layer * graph.count + target.node;
+        const state = vnode * STATES + heading;
+        const total = field.cost[state];
+        if (total < best || (total === best && total !== Infinity && target === bestTarget && field.order[state] < bestOrder)) {
+          best = total;
+          bestOrder = field.order[state];
+          bestTarget = target;
+          bestHeading = heading;
+          bestVnode = vnode;
+        }
       }
     }
   }
   if (!bestTarget) return { failed: failure('unreachable', 'from', fromRoomId, from.floorId, fromRoomId, null, plan) };
 
-  const path = trace(graph, field, plan, bestTarget.node, bestHeading);
+  const path = trace(graph, field, plan, bestVnode, bestHeading);
   const leaving = entriesOf(from, plan).find((entry) => entry.node === path.nodes[0] && entry.side === path.headings[0]);
   return { from, plan, target: bestTarget, path, leaving };
 }
@@ -705,9 +760,22 @@ function shapeRoute(graph, found, fromRoomId) {
 export function routeToExit(graph, fromRoomId, options) {
   needRoutingGraph(graph);
   const shut = new Set(listOf(options ? options.avoidExits : null));
-  const exits = graph.exits.filter((exit) => !shut.has(exit.id)).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  // a step-free plan ends at no exit marked as having a step
+  const stepFree = options ? options.avoidStairs === true : false;
+  let stepExits = 0;
+  const exits = graph.exits.filter((exit) => {
+    if (shut.has(exit.id)) return false;
+    if (stepFree && exit.stepFree === false) {
+      stepExits += 1;
+      return false;
+    }
+    return true;
+  }).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const found = routeToTargets(graph, fromRoomId, exits, options);
-  if (found.failed) return found.failed;
+  if (found.failed) {
+    if (stepExits > 0 && found.failed.reason === 'unreachable') found.failed.avoiding.push('step-exits');
+    return found.failed;
+  }
   const result = shapeRoute(graph, found, fromRoomId);
   return { ok: true, fromRoomId, exitId: found.target.id, from: result.from, exit: { id: found.target.id, floorId: found.target.floorId, cell: found.target.cell }, cells: result.cells, connections: result.connections, connectionAt: result.connectionAt, seconds: result.seconds, turns: result.turns, stairs: result.stairs, rides: result.rides };
 }
