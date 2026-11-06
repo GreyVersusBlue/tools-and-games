@@ -278,3 +278,79 @@ test('one-way-trap: a trap across floors puts every trapped floor\'s cells in wh
   assert.equal(finding.where.floorId, floorId(2), 'the first floor still leads, as before');
   assert.deepEqual(finding.where.cells, finding.where.floors[0].cells);
 });
+
+// ---------------------------------------------------------------- SV2-100: elevators
+
+// Elevator stops by hand: cars is [{ stops: [[floor, x, y], …], letter }], a chain. A car with one stop is an unconnected stop.
+function withCars(project, cars) {
+  const at = (number, x, y) => {
+    const floor = project.building.floors[number - 1];
+    return { floorId: floor.id, cell: y * floor.width + x };
+  };
+  let n = project.building.connections.length;
+  for (const car of cars) {
+    for (const [number, x, y] of car.stops) {
+      const floor = project.building.floors[number - 1];
+      const cell = y * floor.width + x;
+      floor.cells = floor.cells.slice(0, cell) + 'S' + floor.cells.slice(cell + 1);
+      floor.lifts = Array.from(new Set([...(floor.lifts || []), cell])).sort((a, b) => a - b);
+    }
+    car.stops.slice(1).forEach((stop, i) => {
+      n += 1;
+      project.building.connections.push({ id: 'celev' + String(n).padStart(5, '0'), label: car.letter + n, a: at(...car.stops[i]), b: at(...stop), direction: 'both', kind: 'elevator', staffOnly: car.staffOnly === true, car: car.letter });
+    });
+  }
+  return project;
+}
+
+const HALL = ['.AA.BB.', '.AA.BB.', '#######', '.......', '.......'];
+const STAIRS_HALL = ['.AA.BB.', '.AA.BB.', '######S', '.......', '.......'];
+
+test('an elevator stop with no connection is "Elevator stop on Floor 2 is not connected", never "unconnected stairs"', () => {
+  const project = withCars(planProject([STAIRS_HALL, STAIRS_HALL, STAIRS_HALL], { exits: [[1, 4, 2, 'Main Door']], connections: [[1, 6, 2, 2, 6, 2], [2, 6, 2, 3, 6, 2]] }), [{ stops: [[2, 0, 2]], letter: 'D' }]);
+  const found = only(buildingChecks(project), 'stairs-unconnected');
+  assert.equal(found.length, 1);
+  assert.match(found[0].text, /^Elevator stop on Floor 2 is not connected /);
+  assert.doesNotMatch(found[0].text, /stairs/i);
+  assert.deepEqual([found[0].severity, found[0].id, found[0].where.floorId, found[0].where.cells], ['warning', 'stairs-unconnected:' + floorId(2) + ':' + cellAt(project, 2, 0, 2), floorId(2), [cellAt(project, 2, 0, 2)]]);
+  // joined by a car it is no finding
+  const joined = withCars(planProject([STAIRS_HALL, STAIRS_HALL, STAIRS_HALL], { exits: [[1, 4, 2, 'Main Door']], connections: [[1, 6, 2, 2, 6, 2], [2, 6, 2, 3, 6, 2]] }), [{ stops: [[1, 0, 2], [2, 0, 2]], letter: 'D' }]);
+  assert.deepEqual(only(buildingChecks(joined), 'stairs-unconnected'), []);
+});
+
+test('a lift run and a stairs run are judged apart, however they touch', () => {
+  // an unconnected stop beside connected stairs: the stop is a finding, the stairs are not
+  const floors = ['.AA.BB.', '.AA.BB.', '#SS####', '.......', '.......'];
+  const beside = withCars(planProject([floors, floors], { exits: [[1, 6, 2, 'Main Door']], connections: [[1, 1, 2, 2, 1, 2]] }), [{ stops: [[1, 2, 2]], letter: 'D' }]);
+  const first = only(buildingChecks(beside), 'stairs-unconnected');
+  assert.deepEqual(first.map((finding) => finding.text.slice(0, 41)), ['Elevator stop on Floor 1 is not connected']);
+  // connected stops beside unconnected stairs: the stairs are a finding, the stops are not
+  const other = withCars(planProject([floors, floors], { exits: [[1, 6, 2, 'Main Door']] }), [{ stops: [[1, 2, 2], [2, 2, 2]], letter: 'D' }]);
+  const second = only(buildingChecks(other), 'stairs-unconnected');
+  assert.deepEqual(second.map((finding) => finding.text.slice(0, 22)), ['The stairs on Floor 1 ', 'The stairs on Floor 2 ']);
+  assert.deepEqual(second.map((finding) => finding.where.cells), [[cellAt(other, 1, 1, 2)], [cellAt(other, 2, 1, 2)]], 'the stairs run holds the stairs cell only, not the lift beside it');
+});
+
+test('"no route to any exit" leaves elevators out, and says "only by elevator" where that is why', () => {
+  // Floor 2 is joined to the exit floor by an elevator alone
+  const lifted = withCars(planProject([HALL, HALL], { exits: [[1, 6, 2, 'Main Door']] }), [{ stops: [[1, 0, 2], [2, 0, 2]], letter: 'D' }]);
+  const found = only(buildingChecks(lifted), 'room-no-exit-route');
+  assert.deepEqual(found.map((finding) => finding.id), ['room-no-exit-route:' + roomId('2A'), 'room-no-exit-route:' + roomId('2B')]);
+  assert.equal(found[0].text, 'Room 2A on Floor 2 has no route to any exit: its only way out is by elevator, and an evacuation never uses one. Join its corridor to stairs that lead to an exit.');
+  assert.equal(found[0].severity, 'problem');
+  assert.deepEqual(only(buildingChecks(lifted), 'floor-unconnected'), [], 'the floor is joined: walking there is fine');
+  // a staff-only elevator is the same: evacuation uses no elevator
+  const staff = withCars(planProject([HALL, HALL], { exits: [[1, 6, 2, 'Main Door']] }), [{ stops: [[1, 0, 2], [2, 0, 2]], letter: 'D', staffOnly: true }]);
+  assert.equal(only(buildingChecks(staff), 'room-no-exit-route').length, 2);
+  // stairs as well as the elevator: nothing to say
+  const both = withCars(planProject([STAIRS_HALL, STAIRS_HALL], { exits: [[1, 4, 2, 'Main Door']], connections: [[1, 6, 2, 2, 6, 2]] }), [{ stops: [[1, 0, 2], [2, 0, 2]], letter: 'D' }]);
+  assert.deepEqual(buildingChecks(both), []);
+  // joined to nothing, by stairs or by elevator: the plain words
+  const apart = planProject([HALL, HALL], { exits: [[1, 6, 2, 'Main Door']] });
+  const plain = only(buildingChecks(apart), 'room-no-exit-route');
+  assert.equal(plain[0].text, 'Room 2A on Floor 2 has no route to any exit. Join its corridor to one that leads to an exit, or mark an exit it can reach.');
+  // an unconnected stop does not make the way out "by elevator"
+  const stop = withCars(planProject([HALL, HALL], { exits: [[1, 6, 2, 'Main Door']] }), [{ stops: [[1, 0, 2]], letter: 'D' }, { stops: [[2, 0, 2]], letter: 'E' }]);
+  assert.match(only(buildingChecks(stop), 'room-no-exit-route')[0].text, /\.$/);
+  assert.doesNotMatch(only(buildingChecks(stop), 'room-no-exit-route')[0].text, /elevator/);
+});
