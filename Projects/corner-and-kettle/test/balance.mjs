@@ -27,8 +27,8 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { makeShop, playRun, playDay, patient, eager, shopper, spendBeans, bestLayout, DEFAULT_PRIORITY, HAND_MS } from "./autopilot.mjs";
-import { BARISTA_TIERS, SHOP_LAYOUTS, META_UPGRADES, PACES } from "../js/content.js";
+import { makeShop, playRun, playDay, patient, eager, shopper, eagerShopper, delayed, watchRecipes, watchHandBacks, spendBeans, bestLayout, DEFAULT_PRIORITY, HAND_MS } from "./autopilot.mjs";
+import { BARISTA_TIERS, SHOP_LAYOUTS, META_UPGRADES, PACES, RECIPES } from "../js/content.js";
 import { STEP_MS } from "../js/sim.js";
 
 const DEFAULT_RUNS = 100;
@@ -610,6 +610,135 @@ export function checkPace(sweep) {
   return out;
 }
 
+/**
+ * The three recipes no player bought (TG-46). Cold Brew ($150), Nitro Cold
+ * Brew ($220, needs Cold Brew) and Affogato ($280, needs Nitro) are bought by
+ * money only, and no other player's priority list names them, so their prices
+ * were never played: only #878's lines-per-dollar table spoke for them. This
+ * plays the shopper on the same seeds with the chain bought in order, 30 days,
+ * no reopening, in two places in the list: FIRST (ahead of everything, so each
+ * is bought the first close the till allows) and LAST (behind the whole of
+ * DEFAULT_PRIORITY, a shop that has finished shopping). The control is the
+ * shopper as every other table plays it. Nothing is banded: a price that looks
+ * wrong is recorded here and left (the unit's own rule).
+ *
+ * Per recipe it reports what the sim itself counts: serves a day, ticket lines
+ * a serve, dollars earned a day (tips included), and dollars a line. `edge` is
+ * the net a day the variant adds over the one before it in the chain (over
+ * the same seeds), and `payback` the unlock cost over that edge in days: what
+ * the purchase is worth once the customers it takes the place of are counted,
+ * which gross earnings from the recipe are not.
+ */
+export const MENU = { runs: 30, days: 30, chain: ["coldbrew", "nitrocoldbrew", "affogato"] };
+
+export function menuVariant(items, { runs = MENU.runs, days = MENU.days } = {}) {
+  const priority = items.placement === "last"
+    ? [...DEFAULT_PRIORITY, ...items.list.map(id => ({ type: "recipe", id }))]
+    : [...items.list.map(id => ({ type: "recipe", id })), ...DEFAULT_PRIORITY];
+  const by = new Map(), boughtDay = new Map();
+  let net = 0, shifts = 0, crashes = 0, money = 0;
+  for (let i = 0; i < runs; i++) {
+    const { sim, state, counters } = makeShop(0x5EED + i);
+    const seen = watchRecipes(sim);
+    try {
+      playRun(sim, state, { days, policy: shopper(priority), counters }).forEach((r, d) => {
+        net += r.net; shifts++;
+        for (const b of r.bought) if (b.startsWith("recipe:")) {
+          const id = b.slice(7);
+          if (items.list.includes(id)) boughtDay.set(id, [...(boughtDay.get(id) || []), d + 1]);
+        }
+      });
+    } catch (e) { crashes++; continue; }
+    money += state.money;
+    for (const [id, t] of seen) {
+      const a = by.get(id) || { serves: 0, earned: 0, lines: 0 };
+      a.serves += t.serves; a.earned += t.earned; a.lines += t.lines; by.set(id, a);
+    }
+  }
+  const ok = runs - crashes;
+  return {
+    items, runs, days, crashes, netPerDay: shifts ? net / shifts : 0, moneyAtClose: ok ? money / ok : 0,
+    recipes: Object.fromEntries(MENU.chain.map(id => {
+      const t = by.get(id) || { serves: 0, earned: 0, lines: 0 };
+      const d = boughtDay.get(id) || [];
+      return [id, {
+        serves: ok ? t.serves / ok / days : 0, earned: ok ? t.earned / ok / days : 0,
+        lines: t.serves ? t.lines / t.serves : 0, perLine: t.lines ? t.earned / t.lines : 0,
+        boughtBy: d.length, boughtMeanDay: d.length ? d.reduce((a, b) => a + b, 0) / d.length : null,
+      }];
+    })),
+  };
+}
+
+export function menuSweep(opts = {}) {
+  const control = menuVariant({ list: [], placement: "first" }, opts);
+  const first = MENU.chain.map((_, k) => menuVariant({ list: MENU.chain.slice(0, k + 1), placement: "first" }, opts));
+  const last = menuVariant({ list: MENU.chain, placement: "last" }, opts);
+  const cost = id => RECIPES.find(r => r.id === id).unlockCost;
+  const edges = first.map((v, k) => {
+    const prev = k ? first[k - 1] : control;
+    const edge = v.netPerDay - prev.netPerDay, id = MENU.chain[k];
+    return { id, cost: cost(id), edge, payback: edge > 0 ? cost(id) / edge : null };
+  });
+  const lastEdge = last.netPerDay - control.netPerDay;
+  return { control, first, last, edges, lastEdge,
+    crashed: [control, ...first, last].filter(v => v.crashes).map(v => `${v.crashes} of ${v.runs} runs threw`) };
+}
+
+/**
+ * The barista's hand-back on a cup the player finished (TG-46). See
+ * watchHandBacks() in autopilot.mjs for how one is told from a cup the barista
+ * made. The shopper plays 30 days with no reopening, so the staff it hires are
+ * the same ones a real shop has by day 10 and 20. Three speeds of Serve, since
+ * the autopilot serves the frame after a cup is ready and so gives the barista
+ * one 16 ms step in which to hand it back: that count is a floor, and a person
+ * looking at the board for 1.5 s or 3 s is the case that matters. Two kinds of
+ * hand: patient (waits for a complete ticket, so a broken cup is redone and
+ * the cost is hand steps) and eager (serves what the button lets through, so a
+ * broken cup is served short and the cost is dollars).
+ */
+export const HANDBACK = { runs: 20, days: 30, delays: [0, 1500, 3000] };
+
+export function handBackSweep({ runs = HANDBACK.runs, days = HANDBACK.days, delays = HANDBACK.delays } = {}) {
+  const rows = [];
+  for (const mk of [shopper, eagerShopper]) for (const ms of delays) {
+    let t = { handBacks: 0, handFumbles: 0, redoSteps: 0, handSteps: 0, shortServes: 0, shortfall: 0 }, finished = 0, fumbles = 0, net = 0, gross = 0, shifts = 0, crashes = 0;
+    for (let i = 0; i < runs; i++) {
+      const { sim, state, counters } = makeShop(0x5EED + i);
+      const w = watchHandBacks(sim, state, counters);
+      try {
+        playRun(sim, state, { days, policy: delayed(mk(DEFAULT_PRIORITY), ms), counters }).forEach(r => {
+          net += r.net; gross += r.gross; shifts++; finished += r.finished; fumbles += r.fumbles;
+        });
+      } catch (e) { crashes++; continue; }
+      for (const k of Object.keys(t)) t[k] += w[k];
+    }
+    rows.push({ hand: mk === shopper ? "patient" : "eager", delayMs: ms, shifts, crashes, finished: finished / shifts, fumbles: fumbles / shifts,
+      handBacks: t.handBacks / shifts, handFumbles: t.handFumbles / shifts, redoSteps: t.redoSteps / shifts, handSteps: t.handSteps / shifts,
+      shortServes: t.shortServes / shifts, shortfall: t.shortfall / shifts, net: net / shifts, gross: gross / shifts });
+  }
+  return rows;
+}
+
+/**
+ * Not balance rails: the two sweeps above would print plausible tables with a
+ * blind probe (#34). Every seed buys each of the three recipes by money and is
+ * served them, and a person's 1.5 s on Serve produces hand-backs the watcher
+ * sees. Empty when all hold.
+ */
+export function checkProbes(menu, handBack) {
+  const out = [];
+  if (menu.crashed.length) out.push(`menu: ${menu.crashed.join("; ")}`);
+  [...menu.first.map((v, k) => [`first, ${MENU.chain[k]}`, v, MENU.chain[k]]), ["last, affogato", menu.last, "affogato"]].forEach(([label, v, id]) => {
+    if (v.recipes[id].boughtBy !== v.runs) out.push(`menu: ${label} was bought in ${v.recipes[id].boughtBy} of ${v.runs} runs, so its price was not played`);
+    if (!(v.recipes[id].serves > 0)) out.push(`menu: ${label} was never served`);
+  });
+  for (const r of handBack) if (r.crashes) out.push(`hand-back: ${r.crashes} runs threw (${r.hand}, ${r.delayMs} ms)`);
+  const slow = handBack.find(r => r.hand === "patient" && r.delayMs === 1500);
+  if (!(slow && slow.handBacks > 0)) out.push("hand-back: no hand-back of a player-finished cup seen at a 1.5 s Serve, so the watcher is blind");
+  return out;
+}
+
 /* ========================================================================= *
  * Printing                                                                  *
  * ========================================================================= */
@@ -737,6 +866,34 @@ function printPace(sw) {
   console.log("  per day; left = in line or on a station at close; queue = mean line at the door; jammed = share of the shift the line was at its cap; ranOut = customers whose patience reached zero in line");
 }
 
+function printMenu(m) {
+  console.log(`\nthe three recipes no player bought — shopper's hands, ${MENU.runs} seeds × ${MENU.days} days, no reopening, chain bought by money (TG-46)`);
+  console.log(`  ${pad("variant", 26)}${num("net/day", 9)}${num("cash at close", 15)}`);
+  console.log(`  ${pad("control (none)", 26)}${num(money(m.control.netPerDay), 9)}${num(money(m.control.moneyAtClose), 15)}`);
+  const names = ["Cold Brew", "+ Nitro Cold Brew", "+ Affogato"];
+  m.first.forEach((v, k) => console.log(`  ${pad("first: " + names[k], 26)}${num(money(v.netPerDay), 9)}${num(money(v.moneyAtClose), 15)}`));
+  console.log(`  ${pad("last: all three", 26)}${num(money(m.last.netPerDay), 9)}${num(money(m.last.moneyAtClose), 15)}`);
+  console.log(`\n  ${pad("recipe", 17)}${num("price", 6)}${num("unlock", 8)}${num("lines", 7)}${num("$/line", 8)}${num("serves/d", 10)}${num("earned/d", 10)}${num("bought day", 12)}${num("edge/day", 10)}${num("payback", 9)}  (in the variant that ends the chain at it; edge is over the variant before)`);
+  m.first.forEach((v, k) => {
+    const id = MENU.chain[k], r = v.recipes[id], rec = RECIPES.find(x => x.id === id), e = m.edges[k];
+    console.log(`  ${pad(rec.name, 17)}${num("$" + rec.price, 6)}${num("$" + rec.unlockCost, 8)}${num(r.lines.toFixed(2), 7)}${num("$" + r.perLine.toFixed(1), 8)}${num(r.serves.toFixed(2), 10)}${num(money(r.earned), 10)}${num(r.boughtMeanDay == null ? "—" : r.boughtMeanDay.toFixed(1), 12)}${num((e.edge >= 0 ? "+" : "-") + money(Math.abs(e.edge)), 10)}${num(e.payback == null ? "never" : e.payback.toFixed(1) + " d", 9)}`);
+  });
+  const lastR = MENU.chain.map(id => m.last.recipes[id]);
+  console.log(`  bought last, behind the whole shop: day ${lastR.map(r => r.boughtMeanDay == null ? "—" : r.boughtMeanDay.toFixed(1)).join(" / ")} (${lastR.map(r => r.boughtBy).join(" / ")} of ${MENU.runs} seeds), net ${m.lastEdge >= 0 ? "+" : "-"}${money(Math.abs(m.lastEdge))} a day over the control`);
+  console.log("  edge = net a day over the variant before it in the chain, same seeds, so what a recipe is worth after the customers it replaces; payback = unlock cost / edge");
+  if (m.crashed.length) console.log(`  ${m.crashed.join("; ")}`);
+}
+
+function printHandBack(rows) {
+  console.log(`\nthe barista's hand-back on a cup the player finished — shopper's chalkboard, ${HANDBACK.runs} seeds × ${HANDBACK.days} days, no reopening (TG-46)`);
+  console.log(`  ${pad("hand", 9)}${num("serve after", 12)}${num("cups/day", 10)}${num("by hand", 9)}${num("share", 8)}${num("fumbled", 9)}${num("redo steps", 12)}${num("of hand", 9)}${num("short/day", 11)}${num("short $/day", 13)}${num("net/day", 9)}`);
+  for (const r of rows) {
+    console.log(`  ${pad(r.hand, 9)}${num(r.delayMs + " ms", 12)}${num(r.finished.toFixed(1), 10)}${num(r.handBacks.toFixed(2), 9)}${num(pct(r.finished ? r.handBacks / r.finished : 0), 8)}${num(r.handFumbles.toFixed(3), 9)}${num(r.redoSteps.toFixed(3), 12)}${num(pct(r.handSteps ? r.redoSteps / r.handSteps : 0), 9)}${num(r.shortServes.toFixed(3), 11)}${num("$" + r.shortfall.toFixed(2), 13)}${num(money(r.net), 9)}`);
+  }
+  console.log("  cups/day = cups a barista handed back; by hand = of those, the ones whose last line the player's hand had already made; fumbled = the roll broke one, a day;");
+  console.log("  redo steps = hand steps spent putting a broken cup right; short = broken cups served short, and short $ their base price lost (0.65 of the price per missing share of lines, tips left out)");
+}
+
 /* ========================================================================= *
  * The command line                                                          *
  * ========================================================================= */
@@ -795,6 +952,10 @@ if (invokedDirectly) {
   // Both paces, on fixed seed counts of their own for the same reason.
   const paceS = paceSweep();
   printPace(paceS);
+  // After every older table, so the lines above are the lines that were.
+  const menuS = menuSweep(), handBackS = handBackSweep();
+  printMenu(menuS);
+  printHandBack(handBackS);
 
   const bad = [
     ...checkBand(patientS, BAND.run).map(l => `run: ${l}`),
@@ -804,6 +965,7 @@ if (invokedDirectly) {
     ...(hire.worthIt ? [] : [`staff: a junior barista's extra gross (${money(hire.extraGross)}) does not beat its wage (${money(hire.wages)}) by day 3`]),
     ...(wom.good.offeredPerDay > wom.bad.offeredPerDay ? [] : [`word of mouth: a good shop (${wom.good.offeredPerDay.toFixed(1)}/day) does not outdraw a bad one (${wom.bad.offeredPerDay.toFixed(1)}/day)`]),
     ...checkPace(paceS).map(l => `pace: ${l}`),
+    ...checkProbes(menuS, handBackS),
   ];
   const rails = [
     ...Object.entries(BAND.run).map(([k, b]) => `run ${k} ${show(k, patientS[k])} (band ${show(k, b.min)}–${show(k, b.max)})`),
