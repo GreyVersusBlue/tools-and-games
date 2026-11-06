@@ -202,7 +202,11 @@ connections join, so a chain (Floor 1 to 2, 2 to 3) and a star (the lobby to
 each) are one car. A connection's `kind` is the authority for a stop it joins;
 `lifts` only marks a stop that has no connection yet, so a stale index an older
 tool left can never turn a stairs connection into an elevator. `isLiftCell`
-answers "is this cell an elevator stop?" by that rule.
+answers "is this cell an elevator stop?" by that rule. `cellKind(floor, cell)`
+reads only the floor's own `lifts` list, which may be stale: wherever
+connections may be stale (anything read from a file or an older tool's edit),
+give it the building as its third argument, `cellKind(floor, cell, building)`,
+so a stairs connection wins over a stale `lifts` entry.
 
 A project with `kind: "elevator"` connections and no `lifts` at all is valid:
 the ends are stops by their connections.
@@ -211,7 +215,9 @@ What a project must satisfy, when the fields are there: every `lifts` cell is
 `S`, on the grid, listed once, and carries no stairs connection. An elevator
 connection joins two cells on different floors and runs both ways. No cell
 carries both an elevator and a stairs connection. A car has at most one stop on
-a floor. `staffOnly` is equal across a car, and so is `car` (where given).
+a floor. Two different cars never share a `car` letter, compared whatever the
+capitals and spaces (the letter an absent `car` reads as counts). `staffOnly`
+is equal across a car, and so is `car` (where given).
 `staffOnly` and `car` appear only on an elevator connection. A door never
 faces a lift cell, and a lift cell is not an exit. `notStepFree` holds corridor
 cells only, each once. A refuge is as above.
@@ -225,7 +231,10 @@ that carries both kinds keeps its elevator connections and loses the stairs one
 (5) a connection that would give an elevator a second stop on a floor is
 dropped, the later one; (6) `staffOnly` is made equal across a car (true wins)
 and `car` the first connection's, or that connection's own `label` when it has
-none (a missing letter is filled in without a note); (7) a door facing a lift
+none (a missing letter is filled in without a note, so a project with elevator
+connections and no `car` is not returned as the very same object); a car whose
+letter another, earlier car already has is given its first connection's own
+`label` as its letter, with a note; (7) a door facing a lift
 cell is removed; (8) a refuge or step cell that breaks a rule above is dropped
 (a refuge with no name is called "Area of refuge", a clash of names gets " (2)").
 `lifts` is checked once more after (5), so that what comes back is valid.

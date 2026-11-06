@@ -42,6 +42,17 @@ export function withElevator() {
   return project;
 }
 
+// withElevator() with connection B (Floor 2 to Floor 3) a second elevator that
+// carries the letter given (a separate car from A, which is car "A").
+export function withTwoElevators(letterOfB) {
+  const project = withElevator();
+  const b = project.building.connections[1];
+  b.kind = 'elevator';
+  b.staffOnly = true;
+  b.car = letterOfB;
+  return project;
+}
+
 const floor = (project, n) => project.building.floors[n];
 const conn = (project, label) => project.building.connections.find((connection) => connection.label === label);
 

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validate, isValid } from '../../engine/validate.js';
 import { emptyProject, school, clone, room, BREAKS, PINNED } from './helpers.mjs';
-import { withElevator, brokenElevator, STEP_FREE_BREAKS } from '../fixtures/step-free.mjs';
+import { withElevator, withTwoElevators, brokenElevator, STEP_FREE_BREAKS } from '../fixtures/step-free.mjs';
 
 test('the empty project and the sample school have no findings', () => {
   assert.deepEqual(validate(emptyProject()), []);
@@ -507,4 +507,40 @@ test('step-free: a door facing a lift is found, one facing an ordinary corridor 
   assert.deepEqual(validate(project), [], 'a stairs cell is something a door can face');
   floor.lifts.push(across);
   assert.ok(validate(project).some((finding) => /doors\[0\]$/.test(finding.path) && /elevator/.test(finding.message)));
+});
+
+test('step-free: two connection ends naming a floor that does not exist, with different cells, are the ordinary finding and never a throw', () => {
+  const project = withElevator();
+  project.building.connections[0].a = { floorId: 'fzzzzzzzzz', cell: 1 };
+  project.building.connections[0].b = { floorId: 'fzzzzzzzzz', cell: 2 };
+  let findings;
+  assert.doesNotThrow(() => { findings = validate(project); });
+  assert.ok(findings.some((finding) => /connections\[0\]\.a\.floorId$/.test(finding.path) && /no floor with the id/.test(finding.message)), JSON.stringify(findings));
+});
+
+test('step-free: a chain\'s shared stop on a floor that does not exist never throws', () => {
+  const project = withTwoElevators('B');
+  const [a, b] = project.building.connections;
+  a.b = { floorId: 'fzzzzzzzzz', cell: 7 };
+  b.a = { floorId: 'fzzzzzzzzz', cell: 7 };
+  b.b = { floorId: 'fzzzzzzzzz', cell: 8 };
+  let findings;
+  assert.doesNotThrow(() => { findings = validate(project); });
+  assert.ok(findings.some((finding) => /no floor with the id/.test(finding.message)));
+});
+
+test('step-free: two different elevators may not share a letter, whatever the capitals and spaces; the later one is flagged', () => {
+  assert.deepEqual(validate(withTwoElevators('B')), []);
+  const project = withTwoElevators(' a ');
+  const findings = validate(project);
+  const hits = findings.filter((finding) => /same letter/.test(finding.message));
+  assert.equal(hits.length, 1, JSON.stringify(findings));
+  assert.equal(hits[0].path, 'building.connections[1].car');
+  // the letter an absent car reads as counts too
+  const bare = withTwoElevators(undefined);
+  bare.building.connections[0].car = 'B';
+  delete bare.building.connections[1].car;
+  assert.equal(validate(bare).filter((finding) => /same letter/.test(finding.message)).length, 1);
+  // one car whose connections agree is not a clash
+  assert.deepEqual(validate(withElevator()), []);
 });
