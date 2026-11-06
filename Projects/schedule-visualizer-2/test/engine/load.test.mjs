@@ -452,3 +452,20 @@ test('with no elevator the loads are as before: no car, the same rows', () => {
   assert.deepEqual(graph.cars, []);
   assert.equal(load.connections.busiest.length, graph.links.length);
 });
+
+test('a zone over a later stop of a chain excludes the car, whichever stop it is (SV2-99b)', () => {
+  for (const [stopFloor, expected] of [[1, true], [2, true], [3, true]]) {
+    const project = liftSchool('chain');
+    project.building.zones = [{ id: 'zplan00001', floorId: floorId(stopFloor), label: '', x: 0, y: 2, w: 1, h: 1 }];
+    const { graph, load } = loaded(project);
+    const [car] = graph.cars;
+    assert.equal(load.excludedConnections[car.link] === 1, expected, 'zone over the stop on floor ' + stopFloor);
+  }
+  const none = loaded(liftSchool('chain'));
+  assert.equal(none.load.excludedConnections[none.graph.cars[0].link], 0, 'no zone, no exclusion');
+  // a zone that touches no stop leaves it alone
+  const away = liftSchool('chain');
+  away.building.zones = [{ id: 'zplan00001', floorId: floorId(3), label: '', x: 3, y: 3, w: 1, h: 1 }];
+  const kept = loaded(away);
+  assert.equal(kept.load.excludedConnections[kept.graph.cars[0].link], 0);
+});
