@@ -994,3 +994,82 @@ test('a project with no elevator: no walker has a car slot, no figure has riding
   assert.equal(Object.keys(byId.g1).includes('riding'), false);
   assert.equal(byId.g1.total, byId.g1.walking);
 });
+
+// ---- SV2-99b
+
+// the one teacher teaches in every room
+function teaches(project) {
+  const rooms = [];
+  for (const floor of project.building.floors) for (const space of floor.spaces) if (space.kind === 'room') { space.teacherIds = ['tplan00001']; rooms.push(space.id); }
+  project.teachers[0].roomIds = rooms;
+}
+
+test('rideFor at levels 2 and 3: the ride is 6 s a floor each way, the wait is paid once', () => {
+  const graph = routingGraph(liftHall());
+  // wait 30, 6 s a floor, 8 a trip, doors 10 s each way
+  assert.equal(rideFor(graph, 2, 6), 30 + 12, 'level 2, one trip');
+  assert.equal(rideFor(graph, 3, 6), 30 + 18, 'level 3, one trip');
+  // 25 students: 4 trips of 8, a column of 5 cells (4 × 3 s walked out by the column itself)
+  assert.equal(rideFor(graph, 2, 25), 30 + 12 + 3 * (24 + 20) - 4 * 3, 'level 2, four trips');
+  assert.equal(rideFor(graph, 3, 25), 30 + 18 + 3 * (36 + 20) - 4 * 3, 'level 3, four trips');
+  assert.equal(rideFor(graph, 3, 9), 30 + 18 + (36 + 20) - 3, 'level 3, two trips, a column of 2');
+});
+
+test('a group riding two cars in one transition: walking, riding and total against the router\'s seconds', () => {
+  // car D joins floors 1 and 2 at the west end, car E floors 2 and 3 at the east end: no one car does the whole way
+  const project = withCars(planProject([HALL, HALL, HALL], { exits: [[1, 6, 2, 'Main Door']] }), [{ stops: [[1, 0, 2], [2, 0, 2]] }, { stops: [[2, 6, 2], [3, 6, 2]] }]);
+  const { graph, walkers, byId } = ride(project, [['g1', '1A', '3B', 6]]);
+  const found = walkers[0].route;
+  assert.equal(found.rides, 2, 'the router rides both cars');
+  assert.equal(routePath(graph, found).rides.filter((levels) => levels > 0).length, 2);
+  const g = byId.g1;
+  assert.equal(g.riding, 2 * (30 + 6), 'a wait and a floor for each car');
+  assert.equal(g.walking, (g.slots - 2) * 3, 'every slot but the two car slots');
+  assert.equal(g.total, g.walking + g.riding, 'nobody in the way');
+  assert.equal(g.total, found.seconds, 'the router\'s seconds');
+  assert.equal(walkingSeconds(graph, found), found.seconds);
+});
+
+test('a teacher\'s walk carries riding and walks without the car slot: walking + riding is the route\'s seconds', () => {
+  const project = withSchedule(liftHall(), { One: ['1A', '3B', '3B'] }, {});
+  project.teachers = [{ id: 'tplan00001', name: 'Mx. Tarn', subjectId: null, roomIds: [roomId('1A'), roomId('3B')], notes: '' }];
+  teaches(project);
+  assertValid(project);
+  const graph = routingGraph(project);
+  const found = route(graph, roomId('1A'), roomId('3B'));
+  project.settings.defaultPassingSeconds = 600;
+  const [walk] = teacherWalks(project, graph);
+  assert.equal(walk.riding, 30 + 12, 'the wait and two floors');
+  assert.equal(walk.walking, 7 * 3, 'seven cells and no car slot');
+  assert.equal(walk.walking + walk.riding, found.seconds);
+  assert.equal(walk.late, false);
+  // the late rule judges the sum
+  project.settings.defaultPassingSeconds = found.seconds - 1;
+  assert.equal(teacherWalks(project, graph)[0].late, true, 'late by the ride: the walk alone would fit');
+  assert.ok(teacherWalks(project, graph)[0].walking < found.seconds - 1);
+  // a walk with no car has no riding
+  const flat = withSchedule(liftHall(), { One: ['1A', '1B', '1B'] }, {});
+  flat.teachers = [{ ...project.teachers[0] }];
+  teaches(flat);
+  assert.equal('riding' in teacherWalks(flat, routingGraph(flat))[0], false);
+});
+
+test('a teacher\'s walk through a staff-only car: the teacher rides it, and the figures are the same', () => {
+  const build = (staffOnly) => {
+    const project = withCars(planProject([HALL, HALL], { exits: [[1, 6, 2, 'Main Door']] }), [{ stops: [[1, 0, 2], [2, 0, 2]], staffOnly }]);
+    return withSchedule(project, { One: ['1A', '2A', '2A'] }, {});
+  };
+  const project = build(true);
+  project.teachers = [{ id: 'tplan00001', name: 'Mx. Tarn', subjectId: null, roomIds: [roomId('1A'), roomId('2A')], notes: '' }];
+  teaches(project);
+  assertValid(project);
+  const graph = routingGraph(project);
+  const walks = teacherWalks(project, graph);
+  assert.equal(walks.length, 1);
+  assert.equal(walks[0].failed, undefined, 'a teacher has a way through');
+  assert.equal(walks[0].riding, 36);
+  assert.equal(walks[0].walking, 12);
+  // a class cannot take it: a step-free group has no way
+  const walker = route(graph, roomId('1A'), roomId('2A'), { studentsOnly: true });
+  assert.equal(walker.ok, false, 'students are kept out of a staff-only car');
+});

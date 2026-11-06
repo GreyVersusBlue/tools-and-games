@@ -244,7 +244,7 @@ test('the crowd model with two elevators of four stops and ten step-free groups:
   // groups behind it (rule 5). A group that takes no car is only ever stopped in a transition where a
   // step-free group is stopped too: never by itself.
   assert.ok(stopped - stoppedPlain > 0, 'the queue for a car is real: some riders run into the cap');
-  assert.equal(unexplained, 0, unexplained + ' walks of groups that take no car did not arrive in a transition where no rider was stopped');
+  assert.equal(unexplained, 0, unexplained + ' walks of groups that take no car were stopped in a transition where no rider was stopped: the capped walks here are a car\'s queue spilling into the shared lane (a group stopped only where a rider is stopped), not an error');
   assert.deepEqual(warm.value, cold.value, 'the second run gives the same figures');
   assert.ok(cold.ms < BUDGET * SLACK, 'the crowd model with elevators took ' + cold.ms.toFixed(1) + ' ms, over ' + BUDGET * SLACK);
 });
