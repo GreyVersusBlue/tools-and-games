@@ -753,6 +753,8 @@ test('"Used by N rooms" is part of the panel: a room that leaves through the ref
   await propertiesOf(cellOf(8, 10), 'Properties of this cell');
   await page.waitForFunction(() => document.getElementById('refuge-used') !== null);
   assert.equal(await text('#refuge-used'), 'Used by 1 room.');
+  // the refuge's own Properties: unique names, and "Remove <name>" says its visible words
+  assertNamed(await namesIn('#inspector-properties'), 'a refuge\'s Properties');
   // the exit is ticked step-free elsewhere (as the Exits tab does): the panel redraws with no room using the refuge
   await act('setExitStepFree', { floorId: ids[0], exitId: doorA.id, stepFree: true });
   await page.waitForFunction(() => document.getElementById('refuge-used')?.textContent === 'Not used by any room.');
