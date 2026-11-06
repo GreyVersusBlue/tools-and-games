@@ -18,7 +18,7 @@ import { count, list } from '../../components/words.js';
 import { describeCell } from '../../../engine/building.js';
 import { elevatorSettings, elevatorCars, CELL_CORRIDOR, neighbourCell } from '../../../engine/schema.js';
 import { setElevator, disconnectStairs, setStepCells, addRefuge, setRefuge, removeRefuge } from '../../../engine/actions.js';
-import { checkField, keepFocus, heading, cellWords } from './controls.js';
+import { checkField, keepFocus, commitKeepingFocus, heading, cellWords } from './controls.js';
 import { cellFocus } from './cell-focus.js';
 import { openCellMenu } from '../menu.js';
 import { stepFreeWaysOut } from '../../../engine/evacuation.js';
@@ -80,11 +80,28 @@ function reachedThrough(building, car, here) {
   return through;
 }
 
+// How many rooms leave through this area of refuge (SV2-100's stepFreeWaysOut),
+// or null when that cannot be worked out: then nothing is said, and the error is
+// in the console. It is part of the panel's model, so a door or an exit ticked
+// elsewhere redraws the number.
+function refugeUse(project, refugeId) {
+  try {
+    const found = stepFreeWaysOut(project).refuges.find((each) => each.refugeId === refugeId);
+    return found ? found.roomIds.length : 0;
+  } catch (error) {
+    console.error('Could not count the rooms that use an area of refuge:', error);
+    return null;
+  }
+}
+
 export function cellPanel(env) {
   const { store, ctx } = env;
   const ed = () => env.editor();
 
   const button = (label, key, run, extra) => h('button', { type: 'button', class: 'btn' + (extra && extra.quiet ? ' btn--quiet bi-small' : ''), data: { key, action: key.split(':')[0] }, 'aria-label': extra && extra.aria, on: { click: run } }, label);
+
+  // A change that replaces the button that was pressed: the focus goes to the heir
+  const keeping = (fallback, run) => commitKeepingFocus(holder.host || document.body, fallback, run);
 
   // Put the keyboard back in the panel after Show moved the plan to another floor.
   function landInPanel() {
@@ -179,7 +196,7 @@ export function cellPanel(env) {
         h('span', { class: 'bi-row__text' }, stop.floorName),
         button('Show', 'show-stop:' + stop.floorId, () => showStop(stop.floorId, stop.cell, 'Showing the stop of ' + name + ' on ' + stop.floorName + '.'), { quiet: true, aria: 'Show the ' + name + ' stop on ' + stop.floorName }),
         stop.connectionId === null ? null : button('Disconnect', 'disconnect-stop:' + stop.floorId, () => {
-          ed().commit(disconnectStairs, { connectionId: stop.connectionId }, { done: () => 'Disconnected ' + stop.floorName + ' from ' + name + '. The stop stays where it is.' });
+          keeping(['panel-title'], () => ed().commit(disconnectStairs, { connectionId: stop.connectionId }, { done: () => 'Disconnected ' + stop.floorName + ' from ' + name + '. The stop stays where it is.' }));
         }, { quiet: true, aria: 'Disconnect the ' + stop.floorName + ' stop from ' + model.floorName + ' (' + name + ')' }),
       ))));
     }
@@ -203,7 +220,7 @@ export function cellPanel(env) {
       where: focus.cells.length === 1 ? floor.name + ', ' + cellWords(floor, first) : floor.name + ', ' + count(focus.cells.length, 'cell') + ' selected',
       name: at ? at.corridorName : '',
       exit: at && at.exit ? at.exit.doorName : null,
-      refuge: at && at.refuge ? { id: at.refuge.id, name: at.refuge.name } : null,
+      refuge: at && at.refuge ? { id: at.refuge.id, name: at.refuge.name, used: refugeUse(state.project, at.refuge.id) } : null,
       floorId: floor.id,
     };
   }
@@ -218,6 +235,7 @@ export function cellPanel(env) {
       name: 'cellStep',
       key: 'step',
       checked: model.marked === n,
+      mixed: model.marked > 0 && model.marked < n,
       commit: (on) => {
         const outcome = ed().commit(setStepCells, { floorId: model.floorId, cells: model.cells, stepFree: !on }, {
           done: (made) => (on
@@ -228,10 +246,8 @@ export function cellPanel(env) {
         if (outcome === null) throw new Error('The step could not be changed. The tick is back as it was.');
       },
     });
-    const mixed = model.marked > 0 && model.marked < n;
-    tick.input.indeterminate = mixed;
-    tick.input.setAttribute('aria-checked', mixed ? 'mixed' : String(model.marked === n));
-    tick.input.dataset.mixed = String(mixed);
+    // a native checkbox with `indeterminate` is "mixed" to a screen reader; no aria-checked to keep in step
+    tick.input.dataset.mixed = String(model.marked > 0 && model.marked < n);
     return tick;
   }
 
@@ -274,7 +290,7 @@ export function cellPanel(env) {
     const cell = model.cells[0];
     if (!model.refuge) {
       return [h('div', { class: 'bi-buttons' }, button('Make this an area of refuge', 'make-refuge', () => {
-        ed().commit(addRefuge, { floorId, cell }, { done: (made) => 'Made the cell ' + made.name + ', an area of refuge.' });
+        keeping(['refuge-name', 'panel-title'], () => ed().commit(addRefuge, { floorId, cell }, { done: (made) => 'Made the cell ' + made.name + ', an area of refuge.' }));
       }))];
     }
     const refuge = model.refuge;
@@ -289,21 +305,14 @@ export function cellPanel(env) {
       },
     });
     name.input.dataset.key = 'refuge-name';
-    // how many rooms wait here (SV2-100's stepFreeWaysOut): worked out when the panel is drawn
-    let used = null;
-    try {
-      const found = stepFreeWaysOut(holder.state.project).refuges.find((each) => each.refugeId === refuge.id);
-      if (found) used = found.roomIds.length;
-    } catch (error) {
-      used = null;
-    }
+    const used = refuge.used;
     return [
       heading('Area of refuge', 'refuge-heading'),
       name.element,
-      used === null ? null : h('p', { class: 'bld-inspector__small', id: 'refuge-used' }, used === 0 ? 'Not used: every room nearby has a step-free exit.' : 'Used by ' + count(used, 'room') + '.'),
+      used === null ? null : h('p', { class: 'bld-inspector__small', id: 'refuge-used' }, used === 0 ? 'Not used by any room.' : 'Used by ' + count(used, 'room') + '.'),
       h('div', { class: 'bi-buttons' }, button('Remove ' + refuge.name, 'remove-refuge', () => {
-        ed().commit(removeRefuge, { floorId, refugeId: refuge.id }, { done: () => 'Took the area of refuge ' + refuge.name + ' off. The cell stays.' });
-      }, { aria: 'Remove the area of refuge ' + refuge.name })),
+        keeping(['panel-title'], () => ed().commit(removeRefuge, { floorId, refugeId: refuge.id }, { done: () => 'Took the area of refuge ' + refuge.name + ' off. The cell stays.' }));
+      }, { aria: 'Remove ' + refuge.name + ', area of refuge' })),
     ];
   }
 
@@ -317,7 +326,7 @@ export function cellPanel(env) {
       cell,
       where: floor.name + ', ' + cellWords(floor, cell),
       connections: at.connections.map((connection) => connection.label),
-      refuge: at.refuge ? { id: at.refuge.id, name: at.refuge.name } : null,
+      refuge: at.refuge ? { id: at.refuge.id, name: at.refuge.name, used: refugeUse(state.project, at.refuge.id) } : null,
       cells: [cell],
       floorId: floor.id,
     };
@@ -341,13 +350,14 @@ export function cellPanel(env) {
 
   // ---------------------------------------------------------- the whole panel
 
-  const holder = { state: null };
+  const holder = { state: null, host: null };
   let signature = null;
   let marks = null;
 
   // render(state, focus) -> the nodes for the panel, or null when nothing has changed
   function render(state, focus, host) {
     holder.state = state;
+    holder.host = host;
     const building = state.project.building;
     const first = focus.cells[0];
     const at = describeCell(building, state.floor.id, first);
@@ -369,10 +379,15 @@ export function cellPanel(env) {
     if (next === signature) return true;
     signature = next;
     keepFocus(host, () => {
-      marks = button('Marks…', 'marks', () => openCellMenu(ed(), focus.cells[0], marks), { aria: 'Marks and other changes for this cell' });
-      marks.setAttribute('aria-haspopup', 'menu');
-      marks.id = 'cell-marks';
-      host.replaceChildren(...draw(model), h('div', { class: 'bi-buttons bi-buttons--marks' }, marks));
+      // the menu is about one cell: with several selected the Step tick covers them, and Marks… is not offered
+      if (focus.cells.length === 1) {
+        marks = button('Marks…', 'marks', () => openCellMenu(ed(), focus.cells[0], marks), { aria: 'Marks… and other changes for this cell' });
+        marks.setAttribute('aria-haspopup', 'menu');
+        marks.id = 'cell-marks';
+      } else {
+        marks = null;
+      }
+      host.replaceChildren(...draw(model), ...(marks ? [h('div', { class: 'bi-buttons bi-buttons--marks' }, marks)] : []));
     });
     return true;
   }

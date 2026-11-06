@@ -368,6 +368,27 @@
   font-weight: var(--w-regular, normal);
 }
 
+/* 44 px at every pointer (DESIGN 13.3), not only a coarse one: the door's and the exit's
+   tick (its box and its words, which are the target) and the buttons of the Floor and Exits
+   tabs' rows and of a stop's other stops */
+.bi-row--door .bi-check__box,
+.bi-row--stack .bi-check__box {
+  width: 24px;
+  height: 24px;
+}
+
+.bi-row--door .bi-check__label,
+.bi-row--stack .bi-check__label {
+  padding: var(--s-2) 0;
+}
+
+.bi-row--door .bi-small,
+.bi-row--stack .bi-small,
+#stop-others .bi-small {
+  min-width: 44px;
+  min-height: 44px;
+}
+
 .bi-buttons--marks {
   padding-top: var(--s-2);
 }

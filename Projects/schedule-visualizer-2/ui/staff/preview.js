@@ -31,7 +31,7 @@
 // that lands after "Try again" waits for the new page.
 //
 // The frame is told again 250 ms after the last change, and only when
-// something the published file holds has changed: of the settings, the seven
+// something the published file holds has changed: of the settings, the ten
 // publishedModel copies (PUBLISHED_SETTINGS), so a theme or a paper size
 // leaves the frame alone.
 
@@ -55,7 +55,7 @@ export const PREVIEW_NOT_OPEN = 'The preview has not opened. Try again; publishi
 
 // The settings a published file carries: the keys of publishedModel's
 // `settings`, held equal to it by a case in test/browser/publish.mjs.
-export const PUBLISHED_SETTINGS = ['schoolName', 'periods', 'periodWord', 'defaultPassingSeconds', 'secondsPerCell', 'secondsPerStair', 'timeFormat'];
+export const PUBLISHED_SETTINGS = ['schoolName', 'periods', 'periodWord', 'defaultPassingSeconds', 'secondsPerCell', 'secondsPerStair', 'timeFormat', 'elevatorWaitSeconds', 'elevatorSecondsPerFloor', 'elevatorPeoplePerTrip'];
 
 // The parts of a project a published file is made from. The store shares
 // every branch a change did not touch, so "the same parts" is "nothing a

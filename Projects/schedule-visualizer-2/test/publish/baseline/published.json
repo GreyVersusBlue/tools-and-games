@@ -11,7 +11,10 @@
     "defaultPassingSeconds": 240,
     "secondsPerCell": 3,
     "secondsPerStair": 8,
-    "timeFormat": "12h"
+    "timeFormat": "12h",
+    "elevatorWaitSeconds": 30,
+    "elevatorSecondsPerFloor": 6,
+    "elevatorPeoplePerTrip": 8
   },
   "building": {
     "floors": [
@@ -59,7 +62,8 @@
             "doors": [
               {
                 "cell": 243,
-                "side": "s"
+                "side": "s",
+                "stepFree": true
               }
             ]
           },
@@ -99,7 +103,8 @@
             "doors": [
               {
                 "cell": 249,
-                "side": "s"
+                "side": "s",
+                "stepFree": true
               }
             ]
           },
@@ -139,7 +144,8 @@
             "doors": [
               {
                 "cell": 255,
-                "side": "s"
+                "side": "s",
+                "stepFree": true
               }
             ]
           },
@@ -202,11 +208,13 @@
             "doors": [
               {
                 "cell": 261,
-                "side": "s"
+                "side": "s",
+                "stepFree": true
               },
               {
                 "cell": 265,
-                "side": "s"
+                "side": "s",
+                "stepFree": true
               }
             ]
           },
@@ -280,7 +288,8 @@
             "doors": [
               {
                 "cell": 276,
-                "side": "s"
+                "side": "s",
+                "stepFree": true
               }
             ]
           },
@@ -475,15 +484,20 @@
             "id": "xsample00a",
             "cell": 540,
             "doorName": "Door A",
-            "assembly": "Front lawn by the flagpole"
+            "assembly": "Front lawn by the flagpole",
+            "stepFree": true
           },
           {
             "id": "xsample00b",
             "cell": 319,
             "doorName": "Door B",
-            "assembly": "East field by the backstop"
+            "assembly": "East field by the backstop",
+            "stepFree": true
           }
-        ]
+        ],
+        "lifts": [],
+        "notStepFree": [],
+        "refuges": []
       },
       {
         "id": "fsample002",
@@ -533,7 +547,8 @@
             "doors": [
               {
                 "cell": 243,
-                "side": "s"
+                "side": "s",
+                "stepFree": true
               }
             ]
           },
@@ -577,7 +592,8 @@
             "doors": [
               {
                 "cell": 250,
-                "side": "s"
+                "side": "s",
+                "stepFree": true
               }
             ]
           },
@@ -621,7 +637,8 @@
             "doors": [
               {
                 "cell": 257,
-                "side": "s"
+                "side": "s",
+                "stepFree": true
               }
             ]
           },
@@ -665,7 +682,8 @@
             "doors": [
               {
                 "cell": 264,
-                "side": "s"
+                "side": "s",
+                "stepFree": true
               }
             ]
           },
@@ -735,7 +753,8 @@
             "doors": [
               {
                 "cell": 271,
-                "side": "s"
+                "side": "s",
+                "stepFree": true
               }
             ]
           },
@@ -865,7 +884,10 @@
             ]
           }
         ],
-        "exits": []
+        "exits": [],
+        "lifts": [],
+        "notStepFree": [],
+        "refuges": []
       },
       {
         "id": "fsample003",
@@ -926,7 +948,8 @@
             "doors": [
               {
                 "cell": 244,
-                "side": "s"
+                "side": "s",
+                "stepFree": true
               }
             ]
           },
@@ -974,7 +997,8 @@
             "doors": [
               {
                 "cell": 261,
-                "side": "s"
+                "side": "s",
+                "stepFree": true
               }
             ]
           },
@@ -1018,7 +1042,8 @@
             "doors": [
               {
                 "cell": 269,
-                "side": "s"
+                "side": "s",
+                "stepFree": true
               }
             ]
           },
@@ -1146,7 +1171,10 @@
             ]
           }
         ],
-        "exits": []
+        "exits": [],
+        "lifts": [],
+        "notStepFree": [],
+        "refuges": []
       }
     ],
     "connections": [

@@ -35,6 +35,10 @@ import { commonPeriods } from '../../staff/views/common.js';
 import { render as renderBatch } from '../../ui/prints/batch.js';
 import { render as renderChecks } from '../../ui/prints/checks-report.js';
 import { seededRandom } from '../../engine/ids.js';
+import { oneWayStairs } from '../../staff/views/map.js';
+import { stepFreeNotes } from '../../staff/map.js';
+import { routeFloors, routeCrossings } from '../../staff/views/directions.js';
+import { paint, F2, F3 } from '../fixtures/step-free.mjs';
 // The sample before its calendar, bell schedules, marks and duties (SV2-82): the cases here build their own.
 import { plainSchool as sampleSchool } from '../engine/helpers.mjs';
 import { readTool, toolFile, partsOf } from './reader.mjs';
@@ -1134,4 +1138,81 @@ test('the checks report\'s teacher grid names what takes a free period, and a fr
   assert.ok(halloran.includes('<span class="doc-grid__planning">Lunch duty</span>'), 'period 4 is the lunch duty');
   assert.ok(halloran.includes('<span class="doc-grid__planning">Planning</span>'), 'the others are planning');
   assert.ok(html.includes('<span class="doc-grid__planning">Assembly</span>'), 'a school mark with a label of its own is named as typed');
+});
+
+// ---- elevators in the staff browser (SV2-105)
+
+// Elevator D joins Floors 1, 2 and 3 as a chain: the first connection joins
+// Floors 1 and 2, so a ride from Floor 1 to Floor 3 is on a car whose id
+// names connection ends that are not the ride's.
+function chain() {
+  const project = sampleSchool();
+  const [, f2, f3] = project.building.floors;
+  const [a, b] = project.building.connections;
+  a.kind = 'elevator';
+  a.staffOnly = true;
+  a.car = 'D';
+  project.building.floors[0].lifts = [332];
+  f2.lifts = [332];
+  paint(f3, 332, 'S');
+  f3.lifts = [332];
+  b.kind = 'elevator';
+  b.staffOnly = true;
+  b.car = 'D';
+  b.a = { floorId: F2, cell: 332 };
+  b.b = { floorId: F3, cell: 332 };
+  return project;
+}
+
+test('a ride is read from the route\'s cells: Floor 1 to Floor 3 on a car named by its first connection', () => {
+  const school = openSchool(publishedModel(chain(), { clock: () => new Date('2026-09-01T12:00:00Z') }));
+  const found = school.route('rsample101', 'rsample303', { avoidStairs: true });
+  assert.equal(found.ok, true);
+  assert.deepEqual([found.stairs, found.rides, found.connections.length], [0, 1, 1]);
+  const [crossing] = routeCrossings(school, found);
+  assert.deepEqual([crossing.kind, crossing.label, crossing.fromFloorId, crossing.toFloorId], ['ride', 'D', 'fsample001', F3]);
+  const connection = school.data.building.connections.find((item) => item.id === found.connections[0]);
+  assert.equal(connection.b.floorId, F2, 'the car\'s id is the first connection\'s, which joins Floors 1 and 2');
+  const floors = routeFloors(school, found);
+  assert.deepEqual(floors.map((part) => [part.floorId, part.stairs, part.via && part.via.kind]), [['fsample001', 'D', 'ride'], [F3, null, null]]);
+});
+
+test('routeFloors names stairs by their letter and a ride by the car\'s', () => {
+  const project = chain();
+  const school = openSchool(publishedModel(project, { clock: () => new Date('2026-09-01T12:00:00Z') }));
+  const found = school.route('rsample101', 'rsample303');
+  assert.deepEqual(routeCrossings(school, found).map((each) => [each.kind, each.label]), [['ride', 'D']]);
+  // the sample's own building has stairs only
+  const plain = openSchool(publishedModel(sampleSchool(), { clock: () => new Date('2026-09-01T12:00:00Z') }));
+  const walked = plain.route('rsample101', 'rsample303');
+  assert.deepEqual(routeFloors(plain, walked).map((part) => [part.stairs, part.via && part.via.kind]), [['A', 'stairs'], ['B', 'stairs'], [null, null]]);
+});
+
+test('an elevator is never a one-way stairs line, whatever its direction says', () => {
+  const project = chain();
+  project.building.connections[0].direction = 'ab';
+  const data = publishedModel(project, { clock: () => new Date('2026-09-01T12:00:00Z') });
+  assert.deepEqual(oneWayStairs(data, data.building.floors[0]), []);
+  const stairs = sampleSchool();
+  stairs.building.connections[0].direction = 'ab';
+  const plain = publishedModel(stairs, { clock: () => new Date('2026-09-01T12:00:00Z') });
+  assert.deepEqual(oneWayStairs(plain, plain.building.floors[0]).map((each) => each.text), ['Stairs A (up only)']);
+});
+
+test('the map\'s list names the stops, steps, step doors, step exits and refuges of a floor, as typed', () => {
+  const project = chain();
+  const [f1] = project.building.floors;
+  f1.refuges = [{ id: 'asample001', cell: 283, name: '<i>Quiet</i> room' }];
+  f1.notStepFree = [281, 282];
+  f1.spaces[0].doors[0].stepFree = false;
+  f1.exits[1].stepFree = false;
+  const school = openSchool(publishedModel(project, { clock: () => new Date('2026-09-01T12:00:00Z') }));
+  const notes = stepFreeNotes(school, school.data.building.floors[0]);
+  assert.deepEqual(notes.map((note) => note.kind), ['elevator', 'refuge', 'step', 'door', 'exit']);
+  assert.equal(notes[0].text, 'Elevator D (staff only): stops at Floor 1, Floor 2 and Floor 3');
+  assert.equal(notes[1].text, '<i>Quiet</i> room');
+  assert.match(notes[2].text, /^Step in .+ \(2 cells\)$/);
+  assert.equal(notes[3].text, 'Step at a door of Room 101');
+  assert.equal(notes[4].text, 'Steps outside exit Door B');
+  assert.deepEqual(stepFreeNotes(school, school.data.building.floors[2]).map((note) => note.kind), ['elevator']);
 });
