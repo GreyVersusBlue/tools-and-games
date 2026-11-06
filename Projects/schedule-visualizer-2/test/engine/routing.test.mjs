@@ -8,6 +8,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildGraph } from '../../engine/graph.js';
+import * as routingEngine from '../../engine/routing.js';
+import { digestRoutes } from '../fixtures/route-digests.mjs';
 import { readFileSync } from 'node:fs';
 import nodePath from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -920,20 +922,32 @@ test('the key is byte for byte today\'s with no lift and no marks: the sample sc
   assert.deepEqual(Array.from(beside.fields.keys()), keys, 'step marks are in no plain key');
 });
 
-test('a lift cell is never walked through: a corridor cut by one is cut for a walker, and a ride cannot go back down the way it came', () => {
+test('a lift cell is never walked through: a corridor cut by one is cut for a walker, and a ride cannot be used to step round it (SV2-98b: the 2-ride bypass is gone)', () => {
   const floor = ['A...B', '#####'];
   const project = withCars(planProject([floor, floor]), [{ stops: [[1, 2, 1], [2, 2, 1]] }]);
   const graph = routingGraph(project);
+  // west to east is a straight corridor on floor 1 with the lift cell in the middle. SV2-98 let a walker ride up,
+  // step off, step back onto the same car's cell and ride down (two rides, 9 cells); that crossed a wall, so it fails now
   const found = route(graph, roomId('1A'), roomId('1B'));
-  // west to east is a straight corridor on floor 1 with the lift cell in the middle: up, step back on, down
-  assert.equal(found.ok, true, 'by way of the car: up, off, back on, down, out');
-  assert.equal(found.rides, 2);
-  // up, off onto the corridor beside the stop, back on (a ride lands on a lift cell and may not ride again), down, out the east side
-  assert.deepEqual(path(project, found, true), ['1:0,1', '1:1,1', '1:2,1', '2:2,1', '2:3,1', '2:2,1', '1:2,1', '1:3,1', '1:4,1']);
-  assert.equal(found.seconds, 9 * 3 + 2 * 36);
+  assert.equal(found.ok, false, 'up, off, back on, down is not a way across');
+  assert.equal(found.reason, 'unreachable');
   // and no walker crosses: stairs-free, car-free, the same corridor is cut
   const cut = routingGraph(withCars(planProject([floor]), [{ stops: [[1, 2, 1]] }]));
   assert.equal(route(cut, roomId('1A'), roomId('1B')).reason, 'unreachable', 'an unconnected stop is a wall');
+});
+
+test('a walker who has ridden a car may not board it again by walking, however far they walk first; another car\'s cell beside it stays allowed (SV2-98b)', () => {
+  const floor = ['A...B', '#####'];
+  // a corridor three cells wide of room to loop in: ride up, walk away two cells and back, ride down is the same crossing
+  const wide = ['A.....B', '#######'];
+  const project = withCars(planProject([wide, wide]), [{ stops: [[1, 3, 1], [2, 3, 1]] }]);
+  assert.equal(route(routingGraph(project), roomId('1A'), roomId('1B')).reason, 'unreachable', 'a longer walk before stepping back changes nothing');
+  assert.equal(route(routingGraph(project), roomId('1A'), roomId('2A')).rides, 1, 'a plain ride is still one ride');
+  // a ride-arrived walker steps onto the cell beside it when that is another car (the pinned adjacent-lift case below)
+  const upper = ['A.....B', '###SS##'];
+  const two = withCars(planProject([upper, upper]), [{ stops: [[1, 3, 1], [2, 3, 1]], letter: 'D' }, { stops: [[1, 4, 1], [2, 4, 1]], letter: 'E' }]);
+  assert.equal(route(routingGraph(two), roomId('1A'), roomId('1B')).rides, 2);
+  assert.ok(floor);
 });
 
 test('adjacent lift cells: a ride lands on one, steps onto its neighbour and rides again, two cars crossing a corridor', () => {
@@ -1080,7 +1094,7 @@ test('routesForSchedule gives each group its own plan: a step-free group rides t
   const [plain, free] = result.days[0].groups;
   assert.ok(plain.routes.every((found) => found.ok === false && found.reason === 'unreachable'), 'every transition changes floor: a group with no step-free flag cannot use a staff-only car');
   assert.ok(free.routes.every((found) => found.ok === true && found.rides === 1), 'the step-free group rides');
-  assert.deepEqual(plain.routes[0].avoiding, [], 'the plain plan avoids nothing the caller named');
+  assert.deepEqual(plain.routes[0].avoiding, ['staff-only'], 'SV2-98b: the failure says the staff-only car was shut');
   const keys = Array.from(cache.fields.keys());
   assert.ok(keys.some((key) => key.endsWith('|e30,6|s')) && keys.some((key) => key.endsWith('|1|||e30,6')), keys.join(' '));
   // a car anyone may use: the two groups' routes are the same
@@ -1105,6 +1119,110 @@ test('wanted is by plan and start room: both plans of a start room are searched 
   assert.equal(routesForSchedule(project, undefined, { cache: createRouteCache(2), geometryVersion: 1 }).searches, 8);
   assert.equal(result.pairs, 8, 'each plan\'s journeys are counted');
 });
+
+// ---- SV2-98b: five fixes and the plain-plan pin
+
+test('step-free routeToExit never ends at a step exit; with every exit a step exit it fails; plain plans are unchanged (SV2-98b)', () => {
+  const project = planProject([['A.....B', '#######']], { exits: [[1, 0, 1, 'West Door'], [1, 6, 1, 'East Door']] });
+  const [west, east] = project.building.floors[0].exits;
+  west.stepFree = false;
+  const graph = routingGraph(project);
+  assert.equal(routeToExit(graph, roomId('1A')).exitId, west.id, 'a plain plan takes the nearer West step exit');
+  const free = routeToExit(graph, roomId('1A'), { avoidStairs: true });
+  assert.equal(free.ok, true);
+  assert.equal(free.exitId, east.id, 'step-free goes the long way to the East exit');
+  assert.equal(free.exit.id, east.id);
+  east.stepFree = false;
+  const none = routeToExit(routingGraph(project), roomId('1A'), { avoidStairs: true });
+  assert.equal(none.ok, false);
+  assert.equal(none.reason, 'unreachable');
+  assert.ok(none.avoiding.includes('step-exits'), none.avoiding.join());
+  assert.equal(routeToExit(routingGraph(project), roomId('1A')).ok, true, 'a plain plan still leaves');
+  assert.deepEqual(routeToExit(routingGraph(project), roomId('1A'), { avoidStairs: true, avoidExits: [west.id] }).avoiding.includes('step-exits'), true);
+  // a failure that is not about exits does not say so
+  const open = planProject([['A.....B', '#######']], { exits: [[1, 0, 1, 'West Door']] });
+  assert.equal(routeToExit(routingGraph(open), roomId('1A'), { avoidStairs: true, avoidExits: [open.building.floors[0].exits[0].id] }).avoiding.includes('step-exits'), false);
+});
+
+test('routingGraph tests step-cell membership in linear time: 39,600 marked cells on 200 by 200 build in under 200 ms (SV2-98b)', () => {
+  const rows = Array.from({ length: 200 }, () => new Array(200).fill('#'));
+  for (let i = 0; i < 25; i += 1) {
+    const x = 18 + (i % 5) * 40;
+    const y = 18 + Math.floor(i / 5) * 40;
+    for (let dy = 0; dy < 3; dy += 1) for (let dx = 0; dx < 3; dx += 1) rows[y + dy][x + dx] = 'ABCDEFGHIJKLMNOPQRTUVWXYZ'[i];
+  }
+  const project = planProject([rows.map((row) => row.join(''))]);
+  const floor = project.building.floors[0];
+  const marked = [];
+  for (let cell = 0; cell < floor.cells.length && marked.length < 39600; cell += 1) if (floor.cells[cell] === '#') marked.push(cell);
+  assert.equal(marked.length, 39600);
+  floor.notStepFree = marked;
+  const base = buildGraph(project);
+  const started = performance.now();
+  const graph = routingGraph(project, base);
+  const took = performance.now() - started;
+  assert.equal(graph.stepNodes.length, 39600);
+  assert.ok(graph.stepNodes.every((node, i) => i === 0 || graph.stepNodes[i - 1] < node), 'sorted, no repeats');
+  assert.ok(took < 200, 'routingGraph took ' + Math.round(took) + ' ms');
+  // a repeated mark counts once
+  floor.notStepFree = [marked[0], marked[0], marked[1]];
+  assert.equal(routingGraph(project, buildGraph(project)).stepNodes.length, 2);
+});
+
+test('naming any connection of an elevator shuts the whole car, and the key lists the car once (SV2-98b)', () => {
+  const project = threeLifted('chain', false);
+  const graph = routingGraph(project);
+  const [first, second, third] = project.building.connections.map((connection) => connection.id);
+  assert.equal(third, undefined, 'a chain of three stops is two connections');
+  assert.equal(route(graph, roomId('1A'), roomId('2A')).ok, true);
+  for (const named of [first, second]) {
+    assert.equal(route(graph, roomId('1A'), roomId('2A'), { avoidConnections: [named] }).reason, 'unreachable', 'naming ' + named);
+    assert.equal(route(graph, roomId('2A'), roomId('3A'), { avoidConnections: [named] }).reason, 'unreachable', 'naming ' + named);
+  }
+  const keyOf = (avoidConnections) => {
+    const cache = createRouteCache();
+    route(graph, roomId('1A'), roomId('2A'), { cache, geometryVersion: 1, avoidConnections });
+    return Array.from(cache.fields.keys())[0];
+  };
+  assert.equal(keyOf([first]), roomId('1A') + '|3|8|0|' + first + '||e30,6', 'the car id once, though the car has three links');
+  assert.equal(keyOf([second]), keyOf([first]), 'either connection is the same plan');
+  assert.equal(keyOf([first, second]), keyOf([first]));
+  // a stairs connection beside it is untouched
+  const mixed = withCars(threeFloors(), [{ stops: [[1, 1, 3], [2, 1, 3]] }]);
+  const mixedGraph = routingGraph(mixed);
+  assert.equal(route(mixedGraph, roomId('1A'), roomId('2A'), { avoidConnections: ['cplan00001'] }).ok, true, 'the car still runs when only a stairs connection is named');
+});
+
+test('a failed plain route under studentsOnly says staff-only when the graph has a staff-only car, and nothing when it has none (SV2-98b)', () => {
+  const shut = routingGraph(threeLifted('chain', true));
+  const failed = route(shut, roomId('1A'), roomId('2A'), { studentsOnly: true });
+  assert.equal(failed.reason, 'unreachable');
+  assert.deepEqual(failed.avoiding, ['staff-only']);
+  assert.equal(route(shut, roomId('1A'), roomId('2A')).ok, true, 'without the option nothing is shut');
+  assert.deepEqual(route(shut, roomId('1A'), roomId('2A'), { studentsOnly: true, avoidConnections: [shut.cars[0].id] }).avoiding, ['staff-only', 'connections']);
+  const open = routingGraph(threeLifted('chain', false));
+  assert.deepEqual(route(open, roomId('1A'), roomId('2A'), { studentsOnly: true, avoidConnections: [open.cars[0].id] }).avoiding, ['connections'], 'no staff-only car: nothing added');
+  // under a step-free plan the option is ignored and so is the word
+  assert.equal(route(shut, roomId('1A'), roomId('2A'), { studentsOnly: true, avoidStairs: true }).ok, true);
+});
+
+// The routes of the engine at commit 6f84f965, before elevators: the sample school and the big fixture have none,
+// so every route they give must be the same now, apart from the new `rides: 0`. The old engine's code is not kept;
+// route-digests-6f84f965.json holds a sha-256 of its routes for each plan (see test/fixtures/route-digests.mjs).
+const OLD_DIGESTS = JSON.parse(readFileSync(nodePath.join(nodePath.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'route-digests-6f84f965.json'), 'utf8'));
+for (const [name, make] of [['the sample school', sampleSchool], ['the big fixture', bigProject]]) {
+  test('plain, step-free, undirected and routeToExit routes on ' + name + ' are the old engine\'s apart from rides: 0 (SV2-98b)', () => {
+    const project = make();
+    assert.equal(routingGraph(project).links.some((link) => link.elevator), false, 'no elevator');
+    const now = digestRoutes(routingEngine, project);
+    assert.deepEqual(now, OLD_DIGESTS[name === 'the sample school' ? 'sample' : 'big']);
+    const graph = routingGraph(project);
+    const first = Array.from(graph.rooms.keys()).sort()[0];
+    const second = Array.from(graph.rooms.keys()).sort()[1];
+    const found = route(graph, first, second);
+    if (found.ok && !found.same) assert.equal(found.rides, 0);
+  });
+}
 
 // ---- the published file carries these modules
 
