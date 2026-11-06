@@ -176,7 +176,8 @@ export function routingGraph(project, graph) {
   // number whatever kind of link it is
   const links = base.links.map((link) => ({ ...link, seconds: link.elevator ? elevator.wait + elevator.perFloor * link.levels : secondsPerStair * link.levels }));
   let hasStepDoor = false;
-  for (const room of base.rooms.values()) if (room.entries.some((entry) => entry.stepFree === false)) hasStepDoor = true;
+  // (a hand-made base, as Help's stairs figure builds, may have no rooms)
+  if (base.rooms) for (const room of base.rooms.values()) if (room.entries.some((entry) => entry.stepFree === false)) hasStepDoor = true;
   return {
     ...base,
     links,
