@@ -27,7 +27,7 @@
 
 import { h, typed } from './dom.js';
 import { makeHash } from './router.js';
-import { ELEVATOR_KIND, elevatorCars } from '../engine/schema.js';
+import { isElevatorLink } from './model.js';
 
 export const MAP_TAP_RADIUS = 22;
 // Two rooms are "close" when the second is within the radius and less than
@@ -370,7 +370,7 @@ export function stepFreeNotes(school, floor) {
   const nameOf = (id) => (building.floors.find((each) => each && each.id === id) || { name: '' }).name;
   const list = (value) => (Array.isArray(value) ? value : []);
   const out = [];
-  for (const car of elevatorCars(building)) {
+  for (const car of school.elevators()) {
     if (!car.stops.some((stop) => stop.floorId === floor.id)) continue;
     const label = car.label === '' ? 'Elevator' : 'Elevator ' + car.label;
     const names = car.stops.map((stop) => nameOf(stop.floorId));
@@ -433,7 +433,7 @@ function paint(canvas, school, floor, plan, theme, marks, lines) {
     return found ? found.level : 0;
   };
   for (const link of school.data.building.connections) {
-    if (link.kind === ELEVATOR_KIND) continue;
+    if (isElevatorLink(link)) continue;
     for (const [at, end] of [link.a, link.b].entries()) {
       if (end.floorId !== floor.id) continue;
       if (!letters.has(end.cell)) letters.set(end.cell, []);
@@ -452,7 +452,7 @@ function paint(canvas, school, floor, plan, theme, marks, lines) {
   // the elevator's stops on this floor: a stop is a stairs cell the stairs
   // letters do not claim
   const stops = new Map();
-  for (const car of elevatorCars(school.data.building)) {
+  for (const car of school.elevators()) {
     for (const stop of car.stops) if (stop.floorId === floor.id) stops.set(stop.cell, { letter: car.label, staffOnly: car.staffOnly });
   }
   for (let index = 0; index < floor.cells.length; index += 1) {
@@ -782,7 +782,7 @@ export function floorMap(ctx, options) {
 
   function chrome() {
     const floor = state.floor;
-    const oneWay = school.data.building.connections.filter((link) => link.kind !== ELEVATOR_KIND && (link.direction === 'ab' || link.direction === 'ba') && (link.a.floorId === floor.id || link.b.floorId === floor.id)).map((link) => 'Stairs ' + link.label + ' is ' + wayOf(school, link) + '.');
+    const oneWay = school.data.building.connections.filter((link) => !isElevatorLink(link) && (link.direction === 'ab' || link.direction === 'ba') && (link.a.floorId === floor.id || link.b.floorId === floor.id)).map((link) => 'Stairs ' + link.label + ' is ' + wayOf(school, link) + '.');
     const marked = stepFreeNotes(school, floor).filter((note) => note.kind === 'elevator' || note.kind === 'refuge').map((note) => (note.kind === 'elevator' ? note.label + (note.staffOnly ? ' (staff only)' : '') + '.' : note.text + '.'));
     canvas.setAttribute('aria-label', (opts.label || 'Floor plan') + ': ' + floor.name + '. The rooms are listed in words on this page.' + (oneWay.length > 0 ? ' ' + oneWay.join(' ') : '') + (marked.length > 0 ? ' ' + marked.join(' ') : ''));
     tabs.replaceChildren(...(near ? [] : school.floors).map((each) => {

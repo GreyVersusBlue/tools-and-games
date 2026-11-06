@@ -8,7 +8,7 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, missingPage } from '../page.js';
-import { ELEVATOR_KIND } from '../../engine/schema.js';
+import { isElevatorLink } from '../model.js';
 import { floorMap, besideMap, stepFreeNotes } from '../map.js';
 import { countOf, subjectChipOf, listPart } from './teacher.js';
 
@@ -31,7 +31,7 @@ export function oneWayStairs(data, floor) {
   const floors = data && data.building && Array.isArray(data.building.floors) ? data.building.floors : [];
   const links = data && data.building && Array.isArray(data.building.connections) ? data.building.connections : [];
   const level = (id) => (floors.find((each) => each.id === id) || { level: 0 }).level;
-  return links.filter((link) => link.kind !== ELEVATOR_KIND && (link.direction === 'ab' || link.direction === 'ba') && (link.a.floorId === floor.id || link.b.floorId === floor.id)).map((link) => {
+  return links.filter((link) => !isElevatorLink(link) && (link.direction === 'ab' || link.direction === 'ba') && (link.a.floorId === floor.id || link.b.floorId === floor.id)).map((link) => {
     const rise = link.direction === 'ab' ? level(link.b.floorId) - level(link.a.floorId) : level(link.a.floorId) - level(link.b.floorId);
     return { id: link.id, text: 'Stairs ' + link.label + ' (' + (rise > 0 ? 'up only' : rise < 0 ? 'down only' : 'one way only') + ')' };
   });

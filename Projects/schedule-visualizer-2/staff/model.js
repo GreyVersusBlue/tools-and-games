@@ -4,7 +4,7 @@
 // a bell time is engine/bells.js's, a route is engine/routing.js's: the same
 // functions the planner uses, run on the published data.
 
-import { findById, findRoom, floorOfRoom, allRooms, findFloor, bellSchedulesOf, calendarOf, DAY_CLOSED, BELLS_REGULAR } from '../engine/schema.js';
+import { findById, findRoom, floorOfRoom, allRooms, findFloor, bellSchedulesOf, calendarOf, DAY_CLOSED, BELLS_REGULAR, ELEVATOR_KIND, elevatorCars } from '../engine/schema.js';
 import { ownDayTypes, isOwnCopy, effectiveSchedule, effectiveDayType, dayShort, bellsShort } from '../engine/day-types.js';
 import { bellsFor, findBellSchedule, periodName, periodLabel, parseTime, formatTime } from '../engine/bells.js';
 import { dayOn, calendarDays, isCalendarDate, addDays, daysBetween, weekdayOf, dateWords } from '../engine/calendar.js';
@@ -16,6 +16,13 @@ import { directions, CELL_UNITS } from '../engine/directions.js';
 
 export const SCHOOL_FALLBACK_NAME = 'Staff schedule';
 
+// Is this connection an elevator's? Its kind says so (ARCHITECTURE 19.2); a
+// connection with no kind is stairs. The views ask this and never read the
+// kind themselves.
+export function isElevatorLink(link) {
+  return Boolean(link) && link.kind === ELEVATOR_KIND;
+}
+
 export function openSchool(data) {
   let graph = null;
   // the calendar with one reader's answer laid over it (see dayOn below),
@@ -25,6 +32,11 @@ export function openSchool(data) {
     data,
     // The school's name as typed, or the plain words when none was given.
     name: typeof data.settings.schoolName === 'string' && data.settings.schoolName.trim() !== '' ? data.settings.schoolName : SCHOOL_FALLBACK_NAME,
+    // The elevators of the building: [{ id, label, stops: [{ floorId, cell }], connectionIds, staffOnly }]
+    // (engine/schema.js elevatorCars), the stops no connection reaches included.
+    elevators() {
+      return elevatorCars(data.building);
+    },
     teachers: data.teachers,
     groups: data.groups,
     subjects: data.subjects,
