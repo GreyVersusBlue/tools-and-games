@@ -995,3 +995,138 @@ test('an area of refuge is renamed, moved and removed, each one undo step', () =
   assert.equal(floor(run(actions.removeRefuge, gone, { refugeId: b }), 1).refuges, undefined);
   refused(actions.removeRefuge, project, { refugeId: 'anothing00' }, 'missing');
 });
+
+test('erasing or painting over a marked cell takes its step mark, area of refuge and stop with it, and says so', () => {
+  let project = shaft(2);
+  project = run(actions.setStepCells, project, { floorId: F1, cells: [at(0, 2), at(1, 2), at(2, 2)], stepFree: false });
+  project = run(actions.addRefuge, project, { floorId: F1, cell: at(0, 2), name: 'West' });
+  project = run(actions.addRefuge, project, { floorId: F1, cell: at(1, 2), name: 'East' });
+  const erased = viaStore(project, actions.eraseCells, { floorId: F1, cells: [at(0, 2), at(1, 2)] });
+  assert.deepEqual(floor(erased.project, 1).notStepFree, [at(2, 2)]);
+  assert.equal(floor(erased.project, 1).refuges, undefined);
+  assert.equal(erased.label, 'Erase 2 corridor cells, 2 step marks and the areas of refuge West and East on Floor 1');
+  // stairs over a corridor cell: the step goes, the refuge stays (a refuge may be on stairs)
+  const stairs = viaStore(project, actions.placeStairs, { floorId: F1, cells: [at(0, 2)] });
+  assert.deepEqual(floor(stairs.project, 1).notStepFree, [at(1, 2), at(2, 2)]);
+  assert.deepEqual(floor(stairs.project, 1).refuges.map((r) => r.name), ['West', 'East']);
+  assert.equal(stairs.label, 'Place stairs on Floor 1, replacing 1 corridor cell and 1 step mark');
+  // a stop over stairs that hold a refuge: the refuge goes (nobody waits in a car)
+  const lifted = viaStore(stairs.project, actions.placeLift, { floorId: F1, cells: [at(0, 2)] });
+  assert.deepEqual(floor(lifted.project, 1).refuges.map((r) => r.name), ['East']);
+  assert.equal(lifted.label, 'Place an elevator stop on Floor 1, replacing 1 stairs cell and the area of refuge West');
+  // a room over a corridor cell with a refuge
+  const room1 = viaStore(project, actions.placeRoom, { floorId: F1, cells: [at(1, 2)] });
+  assert.deepEqual(floor(room1.project, 1).refuges.map((r) => r.name), ['West']);
+  assert.deepEqual(floor(room1.project, 1).notStepFree, [at(0, 2), at(2, 2)]);
+  // a stop erased takes its elevator connection, and the other stop stays a stop
+  let cars = run(actions.placeLift, shaft(2), { floorId: F1, cells: [at(0, 3)] });
+  cars = run(actions.placeLift, cars, { floorId: F2, cells: [at(0, 3)] });
+  cars = run(actions.connectStairs, cars, { a: stop(F1), b: stop(F2) });
+  const gone = viaStore(cars, actions.eraseCells, { floorId: F1, cells: [at(0, 3)] });
+  assert.deepEqual(gone.project.building.connections, []);
+  assert.equal(floor(gone.project, 1).lifts, undefined);
+  assert.deepEqual(floor(gone.project, 2).lifts, [at(0, 3)]);
+  assert.equal(gone.label, 'Erase 1 elevator stop and a connection of elevator A on Floor 1');
+});
+
+test('a door is refused on a side that faces an elevator stop, and a door the stop lands on goes with a said loss', () => {
+  const lifted = run(actions.placeLift, shaft(1), { floorId: F1, cells: [at(1, 2)] });
+  refused(actions.addDoor, lifted, { roomId: roomId('1A'), cell: at(1, 1), side: 's' }, 'faces-elevator', /An elevator is not a corridor/);
+  const ok = run(actions.addDoor, lifted, { roomId: roomId('1A'), cell: at(2, 1), side: 's' });
+  assert.equal(room(ok, '1A').doors.length, 1);
+  assert.equal(building.describeDoor(lifted.building, { roomId: roomId('1A'), cell: at(2, 1), side: 's' }).leadsTo, 'corridor');
+  // a room moved so that a door faces a stop loses that door, said
+  const wide = planProject([['.AA....', '.AA....', '#######', '.......', '.......']], { doors: { '1A': [[1, 1, 's'], [2, 1, 's']] } });
+  const stopped = run(actions.placeLift, wide, { floorId: F1, cells: [at(3, 2)] });
+  const moved = viaStore(stopped, actions.moveSpaces, { spaceIds: [roomId('1A')], dx: 1, dy: 0 });
+  assert.deepEqual(room(moved.project, '1A').doors, [{ cell: at(2, 1), side: 's' }], 'the door that moved to column 3 now faces the stop and is gone; the other moved to column 2');
+  assert.equal(room(moved.project, '1A').doors.length, 1, 'the door that now faces the stop is gone');
+  assert.match(moved.label, /^Move Room 1A, removing 1 door$/);
+});
+
+test('doors keep their step flag when a room is moved, copied and pasted, and the clip carries it', () => {
+  const before = planProject([['.AA....', '.AA....', '#######', '.......', '.......'], ['.......', '.......', '#######', '.......', '.......']], { doors: { '1A': [[1, 1, 's'], [2, 1, 's']] } });
+  const stepped = run(actions.setDoorStepFree, before, { roomId: roomId('1A'), door: { cell: at(2, 1), side: 's' }, stepFree: false });
+  const expected = [{ cell: at(1, 1), side: 's' }, { cell: at(2, 1), side: 's', stepFree: false }];
+  assert.deepEqual(room(stepped, '1A').doors, expected);
+  const moved = run(actions.moveSpaces, stepped, { spaceIds: [roomId('1A')], dx: 2, dy: 0 });
+  assert.deepEqual(room(moved, '1A').doors, [{ cell: at(3, 1), side: 's' }, { cell: at(4, 1), side: 's', stepFree: false }]);
+  const elsewhere = run(actions.moveSpaces, stepped, { spaceIds: [roomId('1A')], dx: 0, dy: 0, toFloorId: F2 });
+  assert.deepEqual(room(elsewhere, '1A').doors, [{ cell: at(1, 1), side: 's' }, { cell: at(2, 1), side: 's', stepFree: false }]);
+  const clip = building.copySpaces(stepped.building, { spaceIds: [roomId('1A')] });
+  assert.deepEqual(clip.spaces[0].doors, [{ at: [0, 1], side: 's' }, { at: [1, 1], side: 's', stepFree: false }]);
+  const pasted = run(actions.pasteSpaces, stepped, { floorId: F2, clip, x: 1, y: 0 });
+  const copy = floor(pasted, 2).spaces[0];
+  assert.deepEqual(copy.doors, [{ cell: at(1, 1), side: 's' }, { cell: at(2, 1), side: 's', stepFree: false }]);
+  const resized = run(actions.resizeFloor, stepped, { floorId: F1, left: 2, top: 1 });
+  assert.deepEqual(room(resized, '1A').doors, [{ cell: 2 * 9 + 3, side: 's' }, { cell: 2 * 9 + 4, side: 's', stepFree: false }]);
+});
+
+test('resizing a floor moves its stops, steps and areas of refuge, cuts what falls off, and says what it cut', () => {
+  let project = shaft(2);
+  project = run(actions.placeLift, project, { floorId: F1, cells: [at(0, 3), at(6, 3)] });
+  project = run(actions.placeLift, project, { floorId: F2, cells: [at(0, 3)] });
+  project = run(actions.connectStairs, project, { a: stop(F1), b: stop(F2) });
+  project = run(actions.setStepCells, project, { floorId: F1, cells: [at(1, 2), at(6, 2)], stepFree: false });
+  project = run(actions.addRefuge, project, { floorId: F1, cell: at(2, 2), name: 'Mid' });
+  project = run(actions.addRefuge, project, { floorId: F1, cell: at(6, 2), name: 'Far' });
+  const grown = viaStore(project, actions.resizeFloor, { floorId: F1, left: 2, top: 1 });
+  assert.deepEqual(floor(grown.project, 1).lifts, [4 * 9 + 2, 4 * 9 + 8]);
+  assert.deepEqual(floor(grown.project, 1).notStepFree, [3 * 9 + 3, 3 * 9 + 8]);
+  assert.deepEqual(floor(grown.project, 1).refuges.map((r) => [r.name, r.cell]), [['Mid', 3 * 9 + 4], ['Far', 3 * 9 + 8]]);
+  assert.deepEqual(grown.project.building.connections[0].a, { floorId: F1, cell: 4 * 9 + 2 });
+  const described = actions.describeResize(freeze(project), { floorId: F1, right: -2 });
+  assert.equal(described.losesData, true);
+  assert.deepEqual([described.loss.liftCells, described.loss.stepCells, described.loss.refuges.map((r) => r.name)], [1, 1, ['Far']]);
+  const cut = viaStore(project, actions.resizeFloor, { floorId: F1, right: -2 });
+  assert.equal(cut.label, 'Resize Floor 1 to 5 by 5, removing 2 cells of Room 1B, 2 corridor cells, 1 elevator stop, 1 step mark and the area of refuge Far');
+  assert.deepEqual(floor(cut.project, 1).lifts, [3 * 5]);
+  // cutting the connected stop's cell takes the connection and leaves the other stop standing
+  const cutStop = viaStore(project, actions.resizeFloor, { floorId: F1, left: -1 });
+  assert.deepEqual(cutStop.project.building.connections, []);
+  assert.deepEqual(floor(cutStop.project, 2).lifts, [at(0, 3)]);
+  assert.match(cutStop.label, /a connection of elevator A/);
+});
+
+test('deleting a floor drops its stops, steps and areas of refuge; the car\'s other stops stay, not connected', () => {
+  let project = stops3();
+  project = run(actions.connectStairs, project, { a: stop(F1), b: stop(F2) });
+  project = run(actions.connectStairs, project, { a: stop(F2), b: stop(F3) });
+  project = run(actions.addRefuge, project, { floorId: F2, cell: at(0, 2) });
+  const described = actions.describeFloorDelete(freeze(project), F2);
+  assert.deepEqual([described.connections, described.lifts, described.refuges], [2, 1, 1]);
+  const { project: after, label } = viaStore(project, actions.deleteFloor, { id: F2 });
+  assert.deepEqual(after.building.floors.map((f) => f.id), [F1, F3]);
+  assert.deepEqual(after.building.connections, []);
+  assert.deepEqual([floor(after, 1).lifts, floor(after, 2).lifts], [[at(0, 3)], [at(0, 3)]]);
+  assert.equal(building.counts(after.building).unconnectedLifts, 2);
+  assert.equal(label, 'Delete Floor 2');
+});
+
+test('describeCell and describeFloor name elevators, steps and areas of refuge, and counts keeps stairs and stops apart', () => {
+  let project = stops3();
+  project = run(actions.connectStairs, project, { a: stop(F1), b: stop(F2) });
+  project = run(actions.connectStairs, project, { a: stop(F2), b: stop(F3) });
+  project = run(actions.placeLift, project, { floorId: F1, cells: [at(5, 3)] });
+  project = run(actions.placeStairs, project, { floorId: F1, cells: [at(6, 3)] });
+  project = run(actions.nameCorridor, project, { floorId: F1, cells: [at(0, 2), at(1, 2), at(2, 2)], name: 'North Corridor' });
+  project = run(actions.setStepCells, project, { floorId: F1, cells: [at(1, 2), at(2, 2), at(5, 2)], stepFree: false });
+  project = run(actions.addRefuge, project, { floorId: F1, cell: at(6, 2), name: 'Lobby' });
+  project = run(actions.addRefuge, project, { floorId: F1, cell: at(0, 2) });
+  const there = building.describeCell(project.building, F1, at(0, 3));
+  assert.equal(there.kind, 'elevator');
+  assert.deepEqual(there.elevator, { carId: project.building.connections[0].id, label: 'A', staffOnly: true, connected: true, floors: ['Floor 1', 'Floor 2', 'Floor 3'] });
+  assert.equal(building.describeCell(project.building, F1, at(5, 3)).elevator.connected, false);
+  assert.equal(building.describeCell(project.building, F1, at(6, 3)).elevator, null);
+  assert.equal(building.describeCell(project.building, F1, at(1, 2)).step, true);
+  assert.equal(building.describeCell(project.building, F1, at(3, 2)).step, false);
+  assert.equal(building.describeCell(project.building, F1, at(6, 2)).refuge.name, 'Lobby');
+  assert.equal(building.describeCell(project.building, F1, at(6, 2)).corridorName, '');
+  const words = building.describeFloor(project.building, F1);
+  assert.deepEqual(words.elevators.map((e) => e.text), ['Elevator A: Floor 1, Floor 2 and Floor 3, staff and authorised only', 'Elevator stop on Floor 1: not connected']);
+  assert.deepEqual(words.steps.map((s) => s.text), ['A step on North Corridor, 2 cells', 'A step in the corridor, 1 cell']);
+  assert.deepEqual(words.refuges.map((r) => r.text), ['Area of refuge, Lobby', 'Area of refuge']);
+  const counted = building.counts(project.building);
+  assert.deepEqual([counted.stairsCells, counted.unconnectedStairs, counted.liftCells, counted.unconnectedLifts, counted.connections, counted.elevatorConnections, counted.elevators, counted.steps, counted.refuges], [1, 1, 4, 1, 0, 2, 1, 3, 2]);
+  assert.deepEqual([counted.byFloor[F1].liftCells, counted.byFloor[F1].stairsCells, counted.byFloor[F2].liftCells], [2, 1, 1]);
+});

@@ -195,7 +195,9 @@ export function lossText(loss) {
   for (const corridor of loss.corridorNames) if (corridor.removed) parts.push('the corridor name ' + corridor.name);
   if (loss.zones.length > 0) parts.push(plural(loss.zones.length, 'exclusion zone', 'exclusion zones'));
   if (loss.stepCells > 0) parts.push(plural(loss.stepCells, 'step mark', 'step marks'));
-  for (const refuge of loss.refuges || []) parts.push('the area of refuge ' + refuge.name);
+  const refuges = loss.refuges || [];
+  if (refuges.length === 1) parts.push('the area of refuge ' + refuges[0].name);
+  else if (refuges.length > 1) parts.push('the areas of refuge ' + sentenceList(refuges.map((refuge) => refuge.name)));
   return sentenceList(parts);
 }
 
@@ -224,7 +226,7 @@ function lostConnection(connection) {
 // is listed in its floor's `lifts` (a stop an older tool never listed gets
 // listed here). `building` is the building after the removal. Ends on
 // `resizedFloorId` are skipped: their cell numbers belong to the old grid.
-function keepStops(building, removed, resizedFloorId) {
+export function keepElevatorStops(building, removed, resizedFloorId) {
   let floors = building.floors;
   for (const connection of removed) {
     if (connection.kind !== ELEVATOR_KIND) continue;
@@ -307,7 +309,7 @@ function settle(building, index, floor, loss) {
   if (next === building.floors[index] && connections.length === building.connections.length) return building;
   const floors = next === building.floors[index] ? building.floors : building.floors.map((candidate, i) => (i === index ? next : candidate));
   const settled = { ...building, floors, connections: connections.length === building.connections.length ? building.connections : connections };
-  return connections.length === building.connections.length ? settled : keepStops(settled, building.connections.filter((connection) => !connections.includes(connection)));
+  return connections.length === building.connections.length ? settled : keepElevatorStops(settled, building.connections.filter((connection) => !connections.includes(connection)));
 }
 
 // Change one floor. edit has any of:
@@ -934,7 +936,7 @@ export function disconnectStairs(building, args) {
   const connection = needConnection(building, args.connectionId);
   const rest = { ...building, connections: building.connections.filter((candidate) => candidate !== connection) };
   const elevator = connection.kind === ELEVATOR_KIND;
-  return { building: keepStops(rest, [connection]), label: connection.label, floorId: connection.a.floorId, elevator, car: elevator ? connection.car || connection.label : undefined };
+  return { building: keepElevatorStops(rest, [connection]), label: connection.label, floorId: connection.a.floorId, elevator, car: elevator ? connection.car || connection.label : undefined };
 }
 
 // A connection's name and direction. args: { connectionId } and any of
@@ -1356,7 +1358,7 @@ export function resizeFloor(building, args) {
   resized = withList(withList(withList(resized, 'lifts', lifts.sort((a, b) => a - b)), 'notStepFree', notStepFree.sort((a, b) => a - b)), 'refuges', refuges);
   const floors = building.floors.map((candidate, i) => (i === index ? resized : candidate));
   const cut = building.connections.filter((connection) => !connections.some((kept) => kept.id === connection.id));
-  const next = settle(keepStops({ ...building, floors, connections, zones }, cut, floor.id), index, resized, loss);
+  const next = settle(keepElevatorStops({ ...building, floors, connections, zones }, cut, floor.id), index, resized, loss);
   return { building: next, floorId: floor.id, width, height, loss, removedRooms };
 }
 
