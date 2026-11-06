@@ -113,14 +113,20 @@ export function spawningLegs(cells) {
 // leg of box 1, which a district may have joined to a neighbour, and
 // spawnCar never checks: it moves to the first box, in build order, that
 // spawns on that leg, or failing that to the first leg that spawns at
-// all (#616). Nothing a district plays is recorded: it is a sandbox.
+// all (#616). A route (`route: ['T', 'T', 'L']`, #960) is a street's turns
+// box by box, so it goes with the arrival only while the arrival stays on
+// that street: an entry that moved to another box or leg is copied without
+// its route and keeps its `turn`, and one that did not move keeps both
+// (TG-45, #1029). Nothing a district plays is recorded: it is a sandbox.
 export function districtLevel(base, seed, count) {
   if (count === 1) return base;
   const lvl = gridLevel(seed, count, { mix: base.mix, duration: base.duration });
   const open = spawningLegs(lvl.network.cells);
   const spawns = (base.spawns || []).map(s => {
     const at = open.find(o => o.leg === s.leg) || open[0];
-    return { ...s, node: at.node, leg: at.leg };
+    const { route, ...rest } = s;
+    const stayed = at.node === (s.node || 0) && at.leg === s.leg;
+    return { ...rest, ...(stayed && route !== undefined ? { route } : {}), node: at.node, leg: at.leg };
   });
   return {
     ...lvl,
