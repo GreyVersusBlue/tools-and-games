@@ -95,16 +95,16 @@ function scenarioSchool() {
 }
 
 const RECORDED = {
-  'sample school: pipeline': '0291d33e5c9a98b099a513809f9fa5d959dc1c5732ce86b3b32afe7b861137c3',
-  'sample school: engines one by one': '5404d2ec5d5165cf592f6c095b9377bbe3d946c28917c114fff3fc349899a658',
+  'sample school: pipeline': '3b94c7e25c526dff85ef9d97ad17cd3e1b2ccc5393a514ef366cd1f36001fb03',
+  'sample school: engines one by one': '6f02c8f356ab12d008203c5edd9632326e91b6dcd393260b2d379688e0552587',
   'sample school: one transition and one day': '16099535543cb3c911be672a5e9365a46549db860e883e94b1d1163855a27138',
-  'sample school: a one-slot edit kept and packed': '334979613d2e7ae0191af3ab41e1984245ae63f8f7b7d1aab7c060843c728e11',
-  'sample school: passing time, head count and margin edits kept and packed': '4d4230a993adcd86976d7ecb6da708af66732c755ac6569cecee478bf1f2dd6f',
+  'sample school: a one-slot edit kept and packed': '4acf3cc5b5537a459a5dc3edd3d43b104a13d1e45c14d2daa0e3c8aa00ddfe69',
+  'sample school: passing time, head count and margin edits kept and packed': 'cd0744edc9227d6b120f78a57702855a150b92f9aa35194824bbf8c9ae81dd00',
   'sample school: scenario lane and comparison': 'e205ecbb5d5caf96ae0d43e17f6ce08d0f32e5d2e3331c2f2afc69b6bbb5b9aa',
   'sample school: suggestions for the double booking and the long walk': 'ad893b0e9a33abf9fc109dce9cc3761bb88714df3aba3bebcd2a3aeaa5033f1d',
-  'B Day same as A Day, as an older file says it: pipeline': 'da4ea50e951422160fdeb06f144a2999d7e4ee56d19749dc3a5a6809aa7ef9f4',
-  'one teacher walking with 7A: pipeline': '7411307f41d50093fd1d644f94b5df3e24530d5ad8b8f52eb262a8588e4a55af',
-  'the 3.13 fixture: pipeline': 'dd0294ebe4d807667da8d004b6ad9b3194ab390121226ceb8a26a3642ef843e5',
+  'B Day same as A Day, as an older file says it: pipeline': '7e7f1e67dcdc181db1870837951337ad7bd15d12a8c28716fd74617632967e93',
+  'one teacher walking with 7A: pipeline': '8de729e30399103cedb72463d193b32d40406ff96f592055ae08d49925a9a9eb',
+  'the 3.13 fixture: pipeline': '2a90267044e9a1fb28c426e67fd48620c43e2d0d58d5034ff352200d5f65be78',
 };
 
 const seen = {};
