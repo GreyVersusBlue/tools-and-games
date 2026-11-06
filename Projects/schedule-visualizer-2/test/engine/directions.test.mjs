@@ -441,3 +441,18 @@ test('the step-free failure words: a room with no step-free door, a step on a na
 function startsAsTypedFor(project, failed) {
   return directionsModule.startsAsTyped(project, failed);
 }
+
+test('a failure that says why: a staff-only car is the only way, every exit has a step; neither is worded as something the reader asked to avoid', () => {
+  const project = withCars(planProject([HALL, HALL, HALL]), [{ stops: [[1, 0, 2], [2, 0, 2]], letter: 'D', staffOnly: true }, { stops: [[2, 6, 2], [3, 6, 2]], letter: 'E', staffOnly: true }]);
+  const failed = { ok: false, reason: 'unreachable', roomId: roomId('2B'), floorId: project.building.floors[1].id, end: 'to', fromRoomId: roomId('1A'), toRoomId: roomId('2B'), avoiding: ['staff-only'] };
+  assert.equal(describeFailure(project, failed), 'There is no way through from Room 1A to Room 2B on Floor 2: the only way is by Elevator D and Elevator E, which are staff and authorised only.');
+  project.building.connections.splice(1, 1); // Elevator E is gone
+  assert.equal(describeFailure(project, failed), 'There is no way through from Room 1A to Room 2B on Floor 2: the only way is by Elevator D, which is staff and authorised only.');
+  assert.equal(directions(project, failed).text, describeFailure(project, failed));
+  // step-free keeps its own word beside it
+  assert.match(describeFailure(project, { ...failed, avoiding: ['stairs', 'staff-only'] }), /^There is no step-free way through from Room 1A to Room 2B on Floor 2: the only way/);
+  // a route to an exit with every exit stepped
+  const exit = { ok: false, reason: 'unreachable', roomId: roomId('1A'), floorId: project.building.floors[0].id, end: 'from', fromRoomId: roomId('1A'), avoiding: ['stairs', 'step-exits'] };
+  assert.equal(describeFailure(project, exit), 'There is no step-free way through from Room 1A on Floor 1 to an exit: every exit has a step.');
+  assert.equal(describeFailure(project, { ...exit, avoiding: ['connections'] }), 'There is no way through that keeps to what you asked to avoid from Room 1A on Floor 1 to an exit.', 'what the reader asked for is still said');
+});

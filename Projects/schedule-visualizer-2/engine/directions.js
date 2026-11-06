@@ -45,7 +45,7 @@
 // This module is one a published file carries, so it keeps to the linker
 // rule: one-line named imports, `export` only directly before a declaration.
 
-import { DOOR_SIDES, ELEVATOR_KIND, isWalkable, neighbourCell, spaceOwners } from './schema.js';
+import { DOOR_SIDES, ELEVATOR_KIND, elevatorCars, isWalkable, neighbourCell, spaceOwners } from './schema.js';
 import { roomName } from './findings.js';
 
 const NONE = 4;
@@ -218,12 +218,27 @@ export function describeFailure(project, route) {
     return stepDoors ? where(true) + ' has no step-free door.' : where(true) + ' does not open onto a corridor.';
   }
   const other = route.end === 'to' ? rooms.get(route.fromRoomId) : null;
-  const stepFree = avoided.includes('stairs');
-  const way = stepFree ? 'no step-free way through' : avoided.length > 0 ? 'no way through that keeps to what you asked to avoid' : 'no way through';
-  const step = avoided.includes('steps') ? nearestStep(floors, room) : null;
-  const because = step === null ? '' : ': a step on ' + step;
+  // 'staff-only' and 'step-exits' say why a route failed, not what the reader asked to avoid
+  const asked = avoided.filter((what) => what !== 'staff-only' && what !== 'step-exits');
+  const stepFree = asked.includes('stairs');
+  const way = stepFree ? 'no step-free way through' : asked.length > 0 ? 'no way through that keeps to what you asked to avoid' : 'no way through';
+  let because = '';
+  if (avoided.includes('staff-only')) {
+    const cars = elevatorCars(project.building ? project.building : project).filter((car) => car.staffOnly && car.connectionIds.length > 0).map((car) => 'Elevator ' + car.label);
+    because = ': the only way is by ' + (cars.length === 0 ? 'an elevator' : listOf(cars)) + ', which ' + (cars.length > 1 ? 'are' : 'is') + ' staff and authorised only';
+  } else if (avoided.includes('step-exits') && route.end !== 'to') {
+    because = ': every exit has a step';
+  } else if (avoided.includes('steps')) {
+    const step = nearestStep(floors, room);
+    if (step !== null) because = ': a step on ' + step;
+  }
   if (route.end === 'to') return 'There is ' + way + (other ? ' from ' + roomName(other, false) : '') + ' to ' + where(false) + because + '.';
   return 'There is ' + way + ' from ' + where(false) + ' to an exit' + because + '.';
+}
+
+// "Elevator D", "Elevator D and Elevator E", "Elevator D, Elevator E and Elevator F".
+function listOf(names) {
+  return names.length <= 1 ? names.join('') : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
 }
 
 // A way with no stairs was asked for between two rooms, and there is none:
