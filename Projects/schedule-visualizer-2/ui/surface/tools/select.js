@@ -9,12 +9,18 @@
 // refused, and the refusal says why. From the keyboard a door is added from
 // the cell's menu.
 //
+// Cells (DESIGN 13.2, 13.3): the plan's selection holds spaces only, so a click
+// on an elevator stop or a corridor cell puts that cell in the Properties tab
+// (focusCells), a Shift-click adds or takes away one more, and a drag that
+// touches no space but some of these cells puts them all there.
+//
 // From the keyboard: Enter selects what the cursor is on; Shift and the
 // arrows move it when the cursor is on a space, and draw a box when it is not.
 
 import { moveSpaces, addDoor, removeDoor } from '../../../engine/actions.js';
 import { moveSpaces as tryMove, BuildingError, SIDE_WORDS } from '../../../engine/building.js';
 import { cellKind } from '../../../engine/schema.js';
+import { focusCells, cellFocus } from '../../building/inspector/cell-focus.js';
 import { count, shiftWords, capital, replaced, nameOf } from './words.js';
 
 // A finger can grab a selection from this far outside it (DESIGN 6).
@@ -46,6 +52,36 @@ function toggleDoor(ed, space, edge) {
   const has = space.doors.some((door) => door.cell === edge.cell && door.side === edge.side);
   if (has) ed.commit(removeDoor, { roomId: space.id, cell: edge.cell, side: edge.side }, { done: () => 'Removed the door ' + where + '.' });
   else ed.commit(addDoor, { roomId: space.id, cell: edge.cell, side: edge.side }, { done: () => 'Added a door ' + where + '.' });
+}
+
+// Whether Properties has something to say about this cell: a corridor cell (its
+// step, its name, its exit) or an elevator stop.
+function marked(ed, cell) {
+  const kind = cellKind(ed.floor, cell, ed.project.building);
+  return kind === 'corridor' || kind === 'elevator';
+}
+
+// The cells in Properties. focusCells shows the tab; the select([]) after it is
+// what makes the tab read the new cells when it was showing others already.
+function showCells(ed, cells) {
+  focusCells(ed, ed.floor.id, cells);
+  ed.select([]);
+}
+
+function cellsIn(ed, rect) {
+  const width = ed.floor.width;
+  const found = [];
+  for (let y = rect.y; y < rect.y + rect.h; y += 1) {
+    for (let x = rect.x; x < rect.x + rect.w; x += 1) {
+      if (x < width && y < ed.floor.height && marked(ed, y * width + x) && !ed.spaceAt(y * width + x)) found.push(y * width + x);
+    }
+  }
+  return found;
+}
+
+function cellsSaid(ed, cells) {
+  if (cells.length !== 1) return capital(count(cells.length, 'cell')) + ' selected.';
+  return (cellKind(ed.floor, cells[0], ed.project.building) === 'elevator' ? 'Elevator stop' : 'Corridor cell') + ' selected.';
 }
 
 function names(ed, ids) {
@@ -106,6 +142,12 @@ export const tool = {
       return undefined;
     }
     if (keyboard && !ev.shift) {
+      if (marked(ed, ev.index)) {
+        showCells(ed, [ev.index]);
+        ed.say(cellsSaid(ed, [ev.index]));
+        return false;
+      }
+      cellFocus(ed).clear();
       if (ed.selection.length > 0) ed.say('Nothing is selected.');
       ed.select([]);
       return false;
@@ -146,24 +188,51 @@ export const tool = {
       return;
     }
     if (!gesture.moved) {
+      const cell = gesture.y * ed.floor.width + gesture.x;
       // a click with Shift: one more, or one fewer
       if (gesture.hit) {
         const had = ed.selection.includes(gesture.hit);
         ed.select(had ? ed.selection.filter((id) => id !== gesture.hit) : ed.selection.concat([gesture.hit]));
         ed.say(capital(count(ed.selection.length, 'space')) + ' selected.');
+      } else if (marked(ed, cell)) {
+        // a corridor cell or an elevator stop: its Properties; with Shift, one more or one fewer
+        const held = cellFocus(ed).get();
+        const kept = gesture.add && held && held.floorId === ed.floor.id ? held.cells : [];
+        const next = gesture.add && kept.includes(cell) ? kept.filter((each) => each !== cell) : kept.concat([cell]);
+        if (next.length === 0) {
+          cellFocus(ed).clear();
+          ed.select([]);
+          ed.say('Nothing is selected.');
+        } else {
+          showCells(ed, next);
+          ed.say(cellsSaid(ed, next));
+        }
       } else if (!gesture.add) {
+        cellFocus(ed).clear();
         ed.select([]);
       }
       return;
     }
-    const found = inBox(ed, boxOf(gesture, ev));
+    const rect = boxOf(gesture, ev);
+    const found = inBox(ed, rect);
+    const cells = found.length === 0 || !gesture.add ? cellsIn(ed, rect) : [];
+    if (found.length === 0 && cells.length > 0) {
+      const held = cellFocus(ed).get();
+      const kept = gesture.add && held && held.floorId === ed.floor.id ? held.cells : [];
+      const next = Array.from(new Set(kept.concat(cells)));
+      showCells(ed, next);
+      ed.say(cellsSaid(ed, next));
+      return;
+    }
     const next = gesture.add ? Array.from(new Set(ed.selection.concat(found))) : found;
+    cellFocus(ed).clear();
     ed.select(next);
     ed.say(next.length === 0 ? 'Nothing is selected.' : capital(count(next.length, 'space')) + ' selected.');
   },
   // A click on empty floor (the drag that never moved): nothing is selected.
   onTap(ed) {
-    if (ed.selection.length === 0) return;
+    if (ed.selection.length === 0 && !cellFocus(ed).get()) return;
+    cellFocus(ed).clear();
     ed.select([]);
     ed.say('Nothing is selected.');
   },

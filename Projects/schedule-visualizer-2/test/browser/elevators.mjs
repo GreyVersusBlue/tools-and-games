@@ -281,6 +281,39 @@ test('three floors by keys alone: place, start, Tab to the list, Enter, Another 
   assert.deepEqual(now.cursor, [7, 10]);
 });
 
+// ---------------------------------------------------------------- Select on cells
+
+test('Select on a stop or a corridor cell puts it in Properties, Shift adds one more, and Enter does the same from the keys', async () => {
+  await threeFloors();
+  await page.evaluate(async () => {
+    const { store } = globalThis.sv2;
+    const actions = await import('./engine/actions.js');
+    store.apply(actions.placeLift, { floorId: store.project.building.floors[0].id, cells: [7 + 10 * 40] });
+  });
+  await page.focus('#plan');
+  await page.keyboard.press('v');
+  // the stop's Properties are SV2-101b's: the title names an elevator and says it is not connected
+  const isStop = () => page.waitForFunction(() => document.getElementById('inspector-title') && /^Elevator.*, not connected$/.test(document.getElementById('inspector-title').textContent));
+  await click(page, 7, 10);
+  await isStop();
+  await click(page, 10, 10);
+  await page.waitForFunction(() => document.getElementById('inspector-title') && document.getElementById('inspector-title').textContent === 'Corridor cell');
+  await page.keyboard.down('Shift');
+  await click(page, 11, 10);
+  await page.keyboard.up('Shift');
+  await page.waitForFunction(() => document.getElementById('inspector-title') && document.getElementById('inspector-title').textContent === '2 cells selected');
+  // a click on bare floor lets them go
+  await click(page, 30, 25);
+  await page.waitForFunction(() => document.querySelector('#inspector-properties h2').textContent === 'Nothing is selected');
+  // from the keys: the cursor on the stop, Enter
+  await page.focus('#plan');
+  const [cx, cy] = await page.evaluate(() => [document.querySelector('.bld').editor.cursor.x, document.querySelector('.bld').editor.cursor.y]);
+  for (let i = 0; i < Math.abs(7 - cx); i += 1) await page.keyboard.press(7 > cx ? 'ArrowRight' : 'ArrowLeft');
+  for (let i = 0; i < Math.abs(10 - cy); i += 1) await page.keyboard.press(10 > cy ? 'ArrowDown' : 'ArrowUp');
+  await page.keyboard.press('Enter');
+  await isStop();
+});
+
 // ---------------------------------------------------------------- 390 px, with a finger
 
 test('at 390 px: two rows of six tools, 44 px each, and a stop joined with a finger, Cancel, and a refused stairs tap', async () => {
