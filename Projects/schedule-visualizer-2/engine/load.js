@@ -182,6 +182,11 @@ export function loads(project, routes, dayTypeId, graph, bellsId) {
   base.links.forEach((link, index) => {
     if (excluded[link.a] || excluded[link.b]) excludedConnections[index] = 1;
   });
+  // a car is excluded when ANY of its stops lies in a zone (DECISIONS 2026-11-06),
+  // not only the ends of its first link
+  (Array.isArray(base.cars) ? base.cars : []).forEach((car) => {
+    if (car.stops.some((stop) => excluded[stop.node])) excludedConnections[car.link] = 1;
+  });
   const cells = summarise(cellCounts, base.count);
   const connections = summarise(linkCounts, base.links.length);
   const max = { busiest: 0, total: 0 };
