@@ -20,7 +20,7 @@ import {
 import { coneSquares, burstSquares, emanationSquares, octantToward, OCTANTS } from "../js/templates.js";
 import {
   loadPack, loadManifest, fetchPack, fetchManifest, selectPc, ContentError,
-  REACTION_TRIGGERS, REACTION_EFFECTS, INFLICT_ON, AREA_KINDS, RESTORABLE,
+  DIFFICULTY_WORDS, REACTION_TRIGGERS, REACTION_EFFECTS, INFLICT_ON, AREA_KINDS, RESTORABLE,
 } from "../js/content.js";
 import {
   CONDITIONS, CONDITION_IDS, MODIFIER_KINDS, BONUS_TYPES, isCondition,
@@ -236,6 +236,50 @@ throws(() => { const p = clone(); p.pcOptions = []; loadPack(p); }, "content: an
 throws(() => { const p = clone(); delete p.pcOptions[0].id; loadPack(p); }, "content: a build with no id is refused");
 throws(() => { const p = clone(); p.pcOptions[1].id = "wizard"; loadPack(p); }, "content: two builds sharing an id are refused");
 throws(() => { const p = clone(); p.pcOptions[1].commands.push("nope"); loadPack(p); }, "content: a build listing an unknown command is refused");
+/* -- difficulty labels on the picker (TG-55) -------------------------------
+ * Devon, 2026-10-05: the spread between builds "is the design", so the picker
+ * names which build is easier and which harder. The labels are checked against
+ * the autopilot's win rate per build in test/baseline.json, never a number of
+ * their own: a word that disagrees with its rank by more than LABEL_GAP points
+ * fails here, and two builds within LABEL_GAP points must share a word. */
+const LABEL_GAP = 0.03;
+const baselineFile = JSON.parse(fs.readFileSync(path.join(HERE, "baseline.json"), "utf8"));
+function difficultyDisagreements(builds, baseline) {
+  const out = [];
+  const labelled = builds.filter(b => b.difficulty);
+  for (const b of labelled) {
+    if (!baseline.builds[b.id]) out.push(`${b.id} is labelled but has no rate in baseline.json`);
+  }
+  if (out.length) return out;
+  for (let i = 0; i < labelled.length; i++) for (let j = i + 1; j < labelled.length; j++) {
+    const a = labelled[i], b = labelled[j];
+    const gap = baseline.builds[a.id].rate - baseline.builds[b.id].rate;
+    const ra = DIFFICULTY_WORDS.indexOf(a.difficulty.word), rb = DIFFICULTY_WORDS.indexOf(b.difficulty.word);
+    if (Math.abs(gap) <= LABEL_GAP && ra !== rb)
+      out.push(`${a.id} (${a.difficulty.word}) and ${b.id} (${b.difficulty.word}) win within ${LABEL_GAP * 100} points of each other and must share a word`);
+    if (Math.abs(gap) > LABEL_GAP && (gap > 0 ? ra >= rb : rb >= ra))
+      out.push(`${a.id} (${a.difficulty.word}) and ${b.id} (${b.difficulty.word}) are labelled against their win rates`);
+  }
+  return out;
+}
+eq(difficultyDisagreements(content.pcOptions, baselineFile).join("; "), "",
+  "every build's difficulty word agrees with its rank in baseline.json");
+ok(content.pcOptions.every(b => b.difficulty), "all four vault builds carry a difficulty label");
+ok(content.pcOptions.some(b => b.difficulty.word === "Easier") && content.pcOptions.some(b => b.difficulty.word === "Harder"),
+  "the picker names at least one build easier and one harder");
+ok(difficultyDisagreements(
+  content.pcOptions.map(b => b.id === "wizard" ? { ...b, difficulty: { word: "Harder", line: "x" } } : b),
+  baselineFile).length > 0, "the checker catches the best build labelled Harder");
+ok(difficultyDisagreements(
+  content.pcOptions.map(b => b.id === "rogue" ? { ...b, difficulty: { word: "Steady", line: "x" } } : b),
+  baselineFile).length > 0, "the checker catches two builds a point apart given different words");
+eq(loadPack(rawSmall).pcOptions[0].difficulty, null, "the proving ground's one build carries no label, and loads");
+eq(difficultyDisagreements(loadPack(rawSmall).pcOptions, baselineFile).length, 0, "an unlabelled build is never in disagreement");
+throws(() => { const p = clone(); p.pcOptions[0].difficulty = { word: "Brutal", line: "x" }; loadPack(p); }, "content: an unknown difficulty word is refused");
+throws(() => { const p = clone(); p.pcOptions[0].difficulty = { word: "Easier" }; loadPack(p); }, "content: a difficulty with no line is refused");
+throws(() => { const p = clone(); p.pcOptions[0].difficulty = { word: "Easier", line: "Wins 79% of the time." }; loadPack(p); }, "content: a difficulty line quoting a percentage is refused");
+throws(() => { const p = clone(); p.pcOptions[0].difficulty = { word: "Easier", line: "x".repeat(101) }; loadPack(p); }, "content: a difficulty line past 100 characters is refused");
+{ const p = clone(); delete p.pcOptions[0].difficulty; eq(loadPack(p).pcOptions[0].difficulty, null, "a build may omit difficulty"); }
 throws(() => { const p = clone(); p.creatures["shattered-sentinel"].damage = "1d"; loadPack(p); }, "content: a creature with unreadable damage is refused");
 throws(() => { const p = clone(); delete p.creatures["shattered-sentinel"].saves.ref; loadPack(p); }, "content: a creature missing a save is refused");
 throws(() => { const p = clone(); p.areas.vault.rows[3] = "###"; loadPack(p); }, "content: a ragged map row is refused");

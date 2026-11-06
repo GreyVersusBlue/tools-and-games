@@ -1918,11 +1918,23 @@ Generator.
 
 **#1026. A manifest file missing from the server is one more content error and the page goes on; a dropped seller is named in one Ledger line; a client file put back is a new client, written up and not fixed.** `loadAll()` caught nothing: a file the manifest names that the server does not have stopped the page at "Failed to load". It now says so in `contentErrors` (`data/<path>: listed under "<cat>" in data/manifest.json, but it could not be loaded (...). The file is left out of the game.`, first, then what `dropBrokenContent()` finds), prints each once, and what named the missing id takes `dropBrokenContent()`'s road as before. `manifest.json` itself stays fatal: there is nothing to go on with. The desk keeps a one-line `#content-note` (hidden when nothing was left out) with the count, and the file names, once each, as its title (`errorFiles()`), after the 2.6 s toast has gone. A seller `dropBrokenContent()` drops is recorded by id and name in `droppedClients`, and `repairCareer()` writes one Ledger line under their name with their `recId` instead of #861's two anonymous lines; a file that was never there has no name and keeps the two. No storage key, no save field, no engine number. A client file deleted and later put back comes in as a client the career has not met (end of the queue, a new `recId`, satisfaction not carried); fixing it means keeping a tombstone of the removed record in the save, a shape change that is Devon's, so it is reproduced in `tools/smoke.mjs` and written up in `BACKLOG.md`. Reversible: delete the `catch` branch in `loadAll()` and the `droppedClients` read in `repairCareer()`. *TG-53, 2026-11-06.*
 
+**#1027. The Absalom picker names each build Easier, Steady or Harder, and the words are held to `baseline.json` by `smoke.mjs`.** Devon's "it is the design" (2026-10-05) left the picker the place to say so: each `pcOptions` entry may carry `difficulty: { word, line }`, `word` one of `DIFFICULTY_WORDS` (`Easier`, `Steady`, `Harder`) and `line` a sentence of 100 characters or fewer with no percentage, shown above the blurb. Absent is allowed (the proving ground's lone build has nothing to rank). The ranking is the autopilot's rate per build in `test/baseline.json`; a word that disagrees with its rank by more than three points fails, and two builds within three points must share a word, which is why the fighter and the rogue (69.4 and 68.0) are both Harder and the cleric (74.4) alone is Steady. Reversible: drop the field from `vault.json`; the loader, the card and the test all treat it as optional. No engine change; `baseline.json` did not move. *TG-55, 2026-11-06.*
+
 **#1005. Reserved: #976 to #1005 are held for sessions on Huginn (the Selector loop); anyone else numbers from #1006.**
 
 **#1035. Reserved: #1006 to #1035 are held for sessions on Huginn (the Selector loop); anyone else numbers from #1036.**
 
 # The log
+## The Absalom Inheritance: the picker says which build is easier, 2026-11-06 (TG-55)
+
+TG-55 on Sonnet 5.5, alone in the repo; decision #1027. `content/vault.json`, `js/content.js`, `js/ui.js`, the `.pc-diff` rule in `Projects/absalom_inheritance.html`, `test/smoke.mjs`, `test/browser.mjs`, `content-authoring-guide.md`; no engine, no storage key, no `baseline.json` change.
+
+**What shipped.** Each of the four builds carries a word and a half-line (Vesper Easier, the cleric Steady, Kessa and the rogue Harder), rendered on its card above the blurb. `readDifficulty` in the loader refuses an unknown word, a missing or over-long line and a line quoting a percentage, and returns `null` when the field is absent. The authoring guide says a new pack may omit it.
+
+**Checks.** `smoke.mjs` 1,404 to 1,416; `browser.mjs` gains one assertion (the card text equals the pack's). Broken on purpose: the wizard relabelled Harder failed the baseline-ranking assertion and the one-easier-one-harder assertion, and nothing else. Board checks and the balance run: see the audit note.
+
+**Left.** Nothing. A fifth build is labelled after `balance.mjs 2000 --write-baseline`.
+
 
 One paragraph per phase or batch, oldest first within each project. PR and
 decision numbers point into the sections above and into git history.
