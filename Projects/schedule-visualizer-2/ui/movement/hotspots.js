@@ -51,6 +51,7 @@ import { h, uid } from '../components/dom.js';
 import { count } from '../components/words.js';
 import { hotspots } from '../../engine/places.js';
 import { bandOf } from '../../engine/load.js';
+import { elevatorCars } from '../../engine/schema.js';
 import { formatDuration } from '../../engine/findings.js';
 import { unitWord, runOf, nothingMeets, nothingMeetsParts } from './model.js';
 
@@ -104,6 +105,8 @@ export function rankedPlaces(project, results, graph, asked) {
   const floors = new Map(project.building.floors.map((floor) => [floor.id, floor]));
   const groups = new Map(project.groups.map((group) => [group.id, group]));
   const connections = new Map(project.building.connections.map((connection) => [connection.id, connection]));
+  // an elevator is one place with every stop it has: the map goes to a stop, and every stop is ringed
+  const cars = new Map(elevatorCars(project.building).map((car) => [car.id, car]));
   const scale = project.settings.colourScale;
 
   return ranked.map((row, index) => {
@@ -125,7 +128,11 @@ export function rankedPlaces(project, results, graph, asked) {
       delay: row.delay,
       dayDelay: row.dayDelay,
       cells: row.cells.map((cell) => ({ floorId: place.floorId, cell: cell.cell, load: cell.load, excluded: cell.excluded })),
-      ends: connection ? [connection.a, connection.b].map((end) => ({ floorId: end.floorId, cell: end.cell })) : place.cells.map((cell) => ({ floorId: place.floorId, cell })),
+      // an elevator's ends are its stops, not the first connection's two ends (ARCHITECTURE 19.4)
+      ...(place.elevator === true ? { elevator: true } : {}),
+      ends: place.elevator === true && cars.has(place.connectionId)
+        ? cars.get(place.connectionId).stops.map((stop) => ({ floorId: stop.floorId, cell: stop.cell }))
+        : connection ? [connection.a, connection.b].map((end) => ({ floorId: end.floorId, cell: end.cell })) : place.cells.map((cell) => ({ floorId: place.floorId, cell })),
     };
   });
 }
@@ -246,7 +253,7 @@ export function hotspotsCsv(project, rows, picture) {
       row.rank,
       place.name,
       where,
-      place.kind === 'connection' ? 'stairs' : place.kind,
+      place.kind === 'connection' ? (place.elevator === true ? 'elevator' : 'stairs') : place.kind,
       row.load,
       wholeDay ? 'the whole day' : picture && picture.transition ? picture.transition.name : row.when,
       row.delay === null ? '' : row.delay,
@@ -407,6 +414,13 @@ export function hotspotsPanel(env) {
     h('h2', { class: 'mov-panel__title' }, 'Hotspots'),
     lead, scroller, all, elsewhereLine, notes);
 
+  // Is this elevator held by a group at the second playback shows?
+  const inUse = (carId) => Boolean(env.rides) && env.rides.now.some((rider) => rider.car === carId);
+  const refreshUse = () => {
+    for (const mark of element.querySelectorAll('[data-part="in-use"]')) mark.hidden = !inUse(mark.closest('[data-place]').dataset.place);
+  };
+  if (env.rides) env.rides.listeners.add(refreshUse);
+
   let last = null;
   let rows = [];
   let elsewhere = 0;
@@ -521,6 +535,8 @@ export function hotspotsPanel(env) {
           h('span', { class: 'mov-hot__rank', 'aria-hidden': 'true' }, String(row.rank)),
           h('div', null,
             h('button', { type: 'button', class: 'mov-link mov-hot__name', data: { action: 'show' } }, row.parts.map((part) => (part.name ? h('bdi', null, part.text) : part.text))),
+            // the pulse on the map is never the only signal: in words, while a group holds the car at the second shown
+            row.place.elevator === true ? h('span', { class: 'mov-hot__use', role: 'status', hidden: !inUse(row.place.connectionId), data: { part: 'in-use' } }, ', in use') : null,
             row.floorName ? h('span', { class: 'mov-hot__floor' }, ' on ', h('bdi', null, row.floorName)) : null,
             // with one transition on the map there is no other for a place to peak in
             row.when && !picture.transition ? h('span', { class: 'mov-hot__when' }, 'Peaks in ' + row.when) : null,

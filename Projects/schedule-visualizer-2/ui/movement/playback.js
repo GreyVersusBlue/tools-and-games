@@ -386,7 +386,7 @@ export function playbackBar(env) {
   // it pulses once a second; with reduced motion it is steady, so the ring is
   // there without any movement. The hotspot row's words are the other signal.
   const ridesMark = (g, map) => {
-    const riders = env.rides.now;
+    const riders = env.rides ? env.rides.now : [];
     if (riders.length === 0) return;
     const phase = reduce.matches ? 0 : (Date.now() % 1000) / 1000;
     const size = map.view.size;
@@ -407,6 +407,7 @@ export function playbackBar(env) {
   env.marks.push(ridesMark);
 
   function publishRides() {
+    if (!env.rides) return;
     const next = ridersNow();
     const key = (list) => list.map((each) => each.groupId + ':' + each.car + ':' + each.at.floorId + ':' + each.at.cell).join('|');
     const changed = key(next) !== key(env.rides.now);

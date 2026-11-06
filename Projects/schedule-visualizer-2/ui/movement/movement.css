@@ -1246,6 +1246,11 @@
   display: block;
 }
 
+.mov-hot__use {
+  font-weight: var(--w-semibold);
+  color: var(--accent-ink, var(--ink));
+}
+
 .mov-hot__when,
 .mov-hot__groups,
 .mov-travel__rooms,
