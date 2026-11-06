@@ -8,7 +8,8 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, missingPage } from '../page.js';
-import { floorMap, besideMap } from '../map.js';
+import { isElevatorLink } from '../model.js';
+import { floorMap, besideMap, stepFreeNotes } from '../map.js';
 import { countOf, subjectChipOf, listPart } from './teacher.js';
 
 // A floor's rooms in the order a person looks them up: by number, numbers
@@ -30,7 +31,7 @@ export function oneWayStairs(data, floor) {
   const floors = data && data.building && Array.isArray(data.building.floors) ? data.building.floors : [];
   const links = data && data.building && Array.isArray(data.building.connections) ? data.building.connections : [];
   const level = (id) => (floors.find((each) => each.id === id) || { level: 0 }).level;
-  return links.filter((link) => (link.direction === 'ab' || link.direction === 'ba') && (link.a.floorId === floor.id || link.b.floorId === floor.id)).map((link) => {
+  return links.filter((link) => !isElevatorLink(link) && (link.direction === 'ab' || link.direction === 'ba') && (link.a.floorId === floor.id || link.b.floorId === floor.id)).map((link) => {
     const rise = link.direction === 'ab' ? level(link.b.floorId) - level(link.a.floorId) : level(link.a.floorId) - level(link.b.floorId);
     return { id: link.id, text: 'Stairs ' + link.label + ' (' + (rise > 0 ? 'up only' : rise < 0 ? 'down only' : 'one way only') + ')' };
   });
@@ -98,7 +99,12 @@ export const mapView = {
       h('h2', { class: 'part__title' }, 'One-way stairs on this floor'),
       h('ul', { class: 'plain' }, stairs.map((each) => h('li', { dataset: { stairs: each.id } }, typed(each.text))))) : null;
 
+    const notes = stepFreeNotes(school, floor);
+    const marked = notes.length > 0 ? h('section', { class: 'part', 'aria-label': 'Elevators, steps and areas of refuge on this floor' },
+      h('h2', { class: 'part__title' }, 'Elevators, steps and areas of refuge'),
+      h('ul', { class: 'plain' }, notes.map((each) => h('li', { dataset: { mark: each.kind, id: each.id } }, typed(each.text))))) : null;
+
     const lede = [typed(floor.name), ' has ' + countOf(rooms.length, 'room', 'rooms') + '. ', school.has('room') ? 'Tap a room for its page.' : 'The rooms are listed below.'];
-    return pageOf(['Building map: ', typed(floor.name)], lede, besideMap([], h('div', { class: 'part' }, map, key), [list, ways, rest]));
+    return pageOf(['Building map: ', typed(floor.name)], lede, besideMap([], h('div', { class: 'part' }, map, key), [list, ways, marked, rest]));
   },
 };

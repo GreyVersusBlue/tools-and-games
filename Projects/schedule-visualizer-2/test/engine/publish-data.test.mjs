@@ -26,6 +26,7 @@ import { school, clock, clone, room, group, teacher, assertValid } from './helpe
 import { staleness } from '../../engine/publish-data.js';
 import { withEverything, B, C, D, ER } from '../fixtures/day-types-calendar.mjs';
 import { dayOn, calendarDays } from '../../engine/calendar.js';
+import { withElevator, F1 } from '../fixtures/step-free.mjs';
 
 const keys = (value) => Object.keys(value).sort();
 const published = (project) => publishedModel(project || school(), { clock });
@@ -34,8 +35,12 @@ const published = (project) => publishedModel(project || school(), { clock });
 // and the calendar view, on purpose (ARCHITECTURE 17.9); SV2-84 added marks
 // and duties.
 const TOP = ['bellSchedules', 'building', 'calendar', 'dayTypes', 'duties', 'format', 'groups', 'id', 'marks', 'publish', 'publishedAt', 'settings', 'staleAfter', 'subjects', 'teachers', 'version'];
-const SETTINGS = ['defaultPassingSeconds', 'periodWord', 'periods', 'schoolName', 'secondsPerCell', 'secondsPerStair', 'timeFormat'];
-const FLOOR = ['cells', 'corridors', 'exits', 'height', 'id', 'level', 'name', 'spaces', 'width'];
+const SETTINGS = ['defaultPassingSeconds', 'elevatorPeoplePerTrip', 'elevatorSecondsPerFloor', 'elevatorWaitSeconds', 'periodWord', 'periods', 'schoolName', 'secondsPerCell', 'secondsPerStair', 'timeFormat'];
+// SV2-105 added the three elevator timings, the floors' lifts, notStepFree and
+// refuges, the doors' and exits' stepFree, and (on an elevator only) a
+// connection's kind, staffOnly and car, on purpose (ARCHITECTURE 19.8).
+// group.stepFree is not published (DECISIONS 2026-11-06).
+const FLOOR = ['cells', 'corridors', 'exits', 'height', 'id', 'level', 'lifts', 'name', 'notStepFree', 'refuges', 'spaces', 'width'];
 const ROOM = ['capacity', 'cells', 'doors', 'id', 'kind', 'number', 'shared', 'subjectId', 'teacherIds', 'wing'];
 const OTHER = ['cells', 'colour', 'id', 'kind', 'label', 'otherKind'];
 const VIEWS = ['calendar', 'common', 'coverage', 'directions', 'free', 'group', 'map', 'now', 'room', 'staffing', 'sub', 'teacher'];
@@ -59,10 +64,10 @@ test('the published model has exactly the keys of ARCHITECTURE 6.7 at every leve
       if (space.kind === 'room') rooms += 1;
       else others += 1;
       assert.deepEqual(keys(space), space.kind === 'room' ? ROOM : OTHER, floor.name + ' ' + space.id);
-      for (const door of space.doors || []) assert.deepEqual(keys(door), ['cell', 'side']);
+      for (const door of space.doors || []) assert.deepEqual(keys(door), ['cell', 'side', 'stepFree']);
     }
     for (const corridor of floor.corridors) assert.deepEqual(keys(corridor), ['cells', 'id', 'name']);
-    for (const exit of floor.exits) assert.deepEqual(keys(exit), ['assembly', 'cell', 'doorName', 'id']);
+    for (const exit of floor.exits) assert.deepEqual(keys(exit), ['assembly', 'cell', 'doorName', 'id', 'stepFree']);
   }
   assert.equal(rooms, 13, 'every room of the sample school');
   assert.ok(others > 0, 'the sample school has other spaces');
@@ -476,4 +481,56 @@ test('a file locked with the default passcode does not hold that passcode in its
   assert.equal(parts.script.includes(DEFAULT_PASSCODE), false, 'the default passcode can be read in the published file\'s script');
   assert.equal(made.html.includes(DEFAULT_PASSCODE), false, 'the default passcode can be read somewhere in the published file');
   assert.equal(MODULES.includes('engine/publish-defaults.js'), false, 'the module that holds the default is not one a published file carries');
+});
+
+// SV2-105 (ARCHITECTURE 19.8). The fixture carries every new field: an
+// elevator that is staff only, a step run, a refuge, a door and an exit with a
+// step, the three timings and a group that needs step-free routes.
+test('a project with an elevator publishes its stops, steps, refuges, step flags, elevator fields and timings', () => {
+  const model = published(withElevator());
+  const [f1, f2, f3] = model.building.floors;
+  assert.deepEqual([f1.lifts, f2.lifts, f3.lifts], [[332], [332], []]);
+  assert.deepEqual([f1.notStepFree, f2.notStepFree], [[281, 282], []]);
+  assert.deepEqual(f1.refuges, [{ id: 'asample001', cell: 283, name: 'Area of refuge' }]);
+  assert.deepEqual(keys(f1.refuges[0]), ['cell', 'id', 'name']);
+  assert.equal(f1.spaces[0].doors[0].stepFree, false, 'a door with a step');
+  assert.equal(f1.exits[1].stepFree, false, 'an exit with a step');
+  assert.equal(f1.exits[0].stepFree, true, 'absent is published as true');
+  const [a, b] = model.building.connections;
+  assert.deepEqual(keys(a), ['a', 'b', 'car', 'direction', 'id', 'kind', 'label', 'staffOnly']);
+  assert.deepEqual([a.kind, a.car, a.staffOnly], ['elevator', 'A', true]);
+  assert.deepEqual(keys(b), ['a', 'b', 'direction', 'id', 'label'], 'a stairs connection has no kind, staffOnly or car');
+  assert.deepEqual([model.settings.elevatorWaitSeconds, model.settings.elevatorSecondsPerFloor, model.settings.elevatorPeoplePerTrip], [45, 5, 6]);
+});
+
+test('a project that never set the elevator timings publishes the defaults, and none of them appears in its settings', () => {
+  const project = school();
+  assert.equal('elevatorWaitSeconds' in project.settings, false);
+  const model = published(project);
+  assert.deepEqual([model.settings.elevatorWaitSeconds, model.settings.elevatorSecondsPerFloor, model.settings.elevatorPeoplePerTrip], [30, 6, 8]);
+  for (const floor of model.building.floors) assert.deepEqual([floor.lifts, floor.notStepFree, floor.refuges], [[], [], []], floor.name);
+});
+
+test('group.stepFree is not published', () => {
+  const project = withElevator();
+  assert.equal(project.groups[0].stepFree, true);
+  const model = published(project);
+  for (const one of model.groups) assert.deepEqual(keys(one), ['colour', 'days', 'grade', 'id', 'name']);
+  assert.equal(JSON.stringify(model.groups).includes('stepFree'), false, 'no stepFree anywhere in the published groups');
+});
+
+test('a published model with an elevator is a valid project, and a stairs connection never gains a kind', () => {
+  const model = published(withElevator());
+  assertValid(model, 'published model with an elevator');
+  assert.equal(model.building.floors[0].id, F1);
+  assert.equal(JSON.stringify(model.building.connections[1]).includes('kind'), false);
+});
+
+test('the elevator\'s fields are copied, not shared with the project', () => {
+  const project = withElevator();
+  const model = published(project);
+  model.building.floors[0].lifts.push(1);
+  model.building.floors[0].refuges[0].name = 'changed';
+  assert.deepEqual(project.building.floors[0].lifts, [332]);
+  assert.equal(project.building.floors[0].refuges[0].name, 'Area of refuge');
 });

@@ -16,6 +16,7 @@
 //                       it, as does one whose image is hidden or missing.
 //   and what every output takes (document.js)
 
+import { ELEVATOR_KIND } from '../../engine/schema.js';
 import { count, list } from '../components/words.js';
 import { esc, escXml, frame, mm, paperOf, printableBox, printDate, schoolName } from './document.js';
 import { planSvg, planStyleText, textEms, PLAN_INK, PLAN_PAPER } from './plan-svg.js';
@@ -46,6 +47,7 @@ function waysOf(project, floor, plan) {
   const said = [];
   for (const connection of project.building.connections) {
     if (connection.direction !== 'ab' && connection.direction !== 'ba') continue;
+    if (connection.kind === ELEVATOR_KIND) continue;
     if (!plan.letters.includes(connection.label) || said.some((each) => each.label === connection.label)) continue;
     if (connection.a.floorId !== floor.id && connection.b.floorId !== floor.id) continue;
     const rise = connection.direction === 'ab' ? level(connection.b.floorId) - level(connection.a.floorId) : level(connection.a.floorId) - level(connection.b.floorId);
@@ -57,7 +59,10 @@ function waysOf(project, floor, plan) {
 function sentence(floor, plan, project) {
   const parts = [count(plan.rooms, 'room'), count(plan.exits, 'exit')];
   const stairs = plan.letters.length === 0 ? 'no stairs' : 'stairs ' + list(plan.letters.slice().sort());
-  return floor.name + ': ' + parts.join(', ') + ', ' + stairs + '.' + waysOf(project, floor, plan);
+  // elevators are named only where there are some, so a building without one reads as it did
+  const lifts = (plan.elevators || []).slice().sort((a, b) => (a.letter < b.letter ? -1 : 1));
+  const elevators = lifts.length === 0 ? [] : [list(lifts.map((lift) => 'elevator ' + lift.letter + (lift.staffOnly ? ' (staff only)' : '')))];
+  return floor.name + ': ' + parts.concat(elevators.length === 0 ? [stairs] : [stairs].concat(elevators)).join(', ') + '.' + waysOf(project, floor, plan);
 }
 
 export function floorsFor(project, options) {

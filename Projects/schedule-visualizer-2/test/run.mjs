@@ -90,6 +90,7 @@ export const GROUPS = {
     'engine/step-free.test.mjs', // SV2-100
     'engine/scenario-actions.test.mjs', // SV2-61
     'engine/prints-door-cards.test.mjs', // SV2-66
+    'engine/prints-step-free.test.mjs', // SV2-104
     'engine/prints-calendar.test.mjs', // SV2-80
     'engine/suggest.test.mjs', // SV2-63
     'engine/prints-congestion-scenario.test.mjs', // SV2-71
@@ -138,6 +139,7 @@ export const GROUPS = {
     'browser/draw-keyboard.mjs', // SV2-06
     'browser/draw-touch.mjs', // SV2-06
     'browser/doors-stairs.mjs', // SV2-07
+    'browser/elevators.mjs', // SV2-101
     'browser/inspector.mjs', // SV2-07
     'browser/search.mjs', // SV2-07
     'browser/storage.mjs', // SV2-03
@@ -165,6 +167,7 @@ export const GROUPS = {
     'browser/staff-shell.mjs', // SV2-20
     'browser/staff-views-a.mjs', // SV2-21
     'browser/staff-views-b.mjs', // SV2-22
+    'browser/staff-step-free.mjs', // SV2-105
     'browser/staff-outputs.mjs', // SV2-23
     'browser/staff-pictures.mjs', // SV2-32e
     'browser/staff-calendar.mjs', // SV2-81
@@ -178,6 +181,7 @@ export const GROUPS = {
     'browser/m3-pass.mjs', // SV2-43
     'browser/plan-map.mjs', // SV2-65b
     'browser/safety.mjs', // SV2-67
+    'browser/step-free-safety.mjs', // SV2-104
     'browser/scenario.mjs', // SV2-68
     'browser/scenario-levers.mjs', // SV2-92
     'browser/congestion-scenario.mjs', // SV2-71
@@ -244,6 +248,7 @@ export const BROWSER_SECONDS = {
   'browser/scenario.mjs': 21,
   'browser/fix.mjs': 21,
   'browser/safety.mjs': 20,
+  'browser/step-free-safety.mjs': 20,
   'browser/scenario-levers.mjs': 20,
   'browser/playback.mjs': 19,
   'browser/shell.mjs': 19,
@@ -283,6 +288,7 @@ export const BROWSER_SECONDS = {
   'browser/staff-duties.mjs': 5,
   'browser/calendar-faults.mjs': 5,
   'browser/doors-stairs.mjs': 5,
+  'browser/elevators.mjs': 6,
   'browser/m1-pass.mjs': 5,
   'browser/congestion-scenario.mjs': 5,
   'browser/shell-owed.mjs': 4,
