@@ -92,8 +92,8 @@ export function stairsWords(project, connections) {
 }
 
 // "Elevator D, staff only" for a connected stop, "Elevator D, not connected" for
-// a stop alone (it has its letter from the first placement), plus any step or
-// area of refuge the cell carries. `at` is describeCell's answer.
+// a stop alone (it has its letter from the first placement). `at` is
+// describeCell's answer; cellWords adds a step and an area of refuge.
 export function elevatorWords(project, at) {
   const car = at.elevator;
   const name = 'Elevator ' + (car && car.label !== '' ? car.label : pendingElevatorLetter(project.building));
@@ -105,12 +105,13 @@ export function elevatorWords(project, at) {
 export function cellWords(project, floorId, cell) {
   const at = describeCell(project.building, floorId, cell);
   if (!at) return '';
-  if (at.kind === 'corridor') return 'Corridor' + (at.corridorName === '' ? '' : ', ' + at.corridorName) + (at.exit ? ', exit' + (at.exit.doorName === '' ? '' : ' ' + at.exit.doorName) : '');
-  if (at.kind === 'elevator') return elevatorWords(project, at);
-  if (at.kind === 'stairs') return at.connections.length > 0 ? stairsWords(project, at.connections) : 'Stairs, not connected';
-  if (at.kind === 'room') return roomName(at.space, true);
-  if (at.kind === 'other') return at.space.label.trim() === '' ? 'Other space' : at.space.label;
-  return 'Empty';
+  const marks = (at.step ? ', has a step' : '') + (at.refuge ? ', area of refuge' + (typeof at.refuge.name === 'string' && at.refuge.name.trim() !== '' ? ' ' + at.refuge.name.trim() : '') : '');
+  if (at.kind === 'corridor') return 'Corridor' + (at.corridorName === '' ? '' : ', ' + at.corridorName) + (at.exit ? ', exit' + (at.exit.doorName === '' ? '' : ' ' + at.exit.doorName) : '') + marks;
+  if (at.kind === 'elevator') return elevatorWords(project, at) + marks;
+  if (at.kind === 'stairs') return (at.connections.length > 0 ? stairsWords(project, at.connections) : 'Stairs, not connected') + marks;
+  if (at.kind === 'room') return roomName(at.space, true) + marks;
+  if (at.kind === 'other') return (at.space.label.trim() === '' ? 'Other space' : at.space.label) + marks;
+  return 'Empty' + marks;
 }
 
 // The keys of the plan. The plan answers them itself, so they are listed for
@@ -531,6 +532,9 @@ export const section = {
           cursor.moveTo(ev.x, ev.y, false);
           hover = null;
         }
+        // connect mode has the press: a finger is let through to here for a pan
+        // or a pinch, and no tool acts on it
+        if (ev.source === 'pointer' && ed.connect && ed.connect.picking) return false;
         return tool.onDown(ed, ev);
       },
       move(ev) {

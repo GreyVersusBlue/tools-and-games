@@ -690,7 +690,16 @@ export function createRenderer(canvas) {
       if ('letterSpacing' in g) g.letterSpacing = '0.06em';
       g.lineJoin = 'round';
       for (const { refuge, x, y } of refugeNames) {
-        const text = refuge.name.toUpperCase();
+        // fitted to the three cells beside the stop: smaller, to the least readable size, then cut short with an ellipsis
+        const room = size * 3 - 6;
+        let text = refuge.name.toUpperCase();
+        const fitted = fitSize(text, 600, small, room);
+        g.font = font(600, fitted > 0 ? fitted : MIN_LABEL);
+        if (fitted === 0) {
+          let kept = text.length;
+          while (kept > 1 && g.measureText(text.slice(0, kept).trimEnd() + '\u2026').width > room) kept -= 1;
+          text = text.slice(0, kept).trimEnd() + '\u2026';
+        }
         g.strokeStyle = t.paper;
         g.lineWidth = 3;
         g.strokeText(text, X(x + 1) + 3, Y(y) + size / 2 + 0.5);

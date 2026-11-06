@@ -64,7 +64,7 @@
 //     traced   whether the traced image is in the picture
 //     width, height   of the cropped picture, in cells (for fitting it to a page)
 //     rooms, exits, letters   what the caption under the plan counts
-//     elevators   [{ letter, staffOnly }] for the stops drawn; absent when there are none
+//     elevators   [{ letter, staffOnly, connected }] for the stops drawn; absent when there are none
 
 import { mix, labelOn, parse, ROOM_STRENGTH, OTHER_STRENGTH } from '../colour.js';
 import { CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY, ELEVATOR_KIND, elevatorCars, spaceOwners } from '../../engine/schema.js';
@@ -560,7 +560,7 @@ export function planSvg(project, floor, options) {
   for (const car of elevatorCars(project.building)) {
     const stop = car.stops.find((each) => each.floorId === floor.id);
     if (!stop) continue;
-    liftAt.set(stop.cell, { letter: car.label === '' ? pendingElevatorLetter(project.building) : car.label, staffOnly: car.staffOnly });
+    liftAt.set(stop.cell, { letter: car.label === '' ? pendingElevatorLetter(project.building) : car.label, staffOnly: car.staffOnly, connected: car.connectionIds.length > 0 });
   }
   for (const connection of project.building.connections) {
     // an elevator's stops carry the car's letter and their own glyph, below
@@ -586,7 +586,7 @@ export function planSvg(project, floor, options) {
     const y = Math.floor(cell / width) * U;
     const lift = liftAt.get(cell);
     if (lift) {
-      if (!elevators.some((each) => each.letter === lift.letter && each.staffOnly === lift.staffOnly)) elevators.push({ letter: lift.letter, staffOnly: lift.staffOnly });
+      if (!elevators.some((each) => each.letter === lift.letter && each.staffOnly === lift.staffOnly && each.connected === lift.connected)) elevators.push({ letter: lift.letter, staffOnly: lift.staffOnly, connected: lift.connected });
       liftMarkup(lift, x, y, text).forEach((piece) => put(piece.markup, piece.box));
       continue;
     }
