@@ -13,9 +13,10 @@
 //
 //   n      its number, from 1
 //   kind   'leave'   out of the door            + turn: 'left' | 'right' | 'straight' | null
-//          'walk'    along a corridor           + cells (how many), distance (the words), to: 'end' | 'stairs' | null
+//          'walk'    along a corridor           + cells (how many), distance (the words), to: 'end' | 'stairs' | 'elevator' | null
 //          'turn'    a turn between two walks   + turn: 'left' | 'right' | 'around'
 //          'stairs'  one or more connections    + connections: ['c…'], labels, way: 'up' | 'down' | null, floorId
+//          'ride'    one elevator ride          + connections: ['c…'] (the car's id), car (its letter), way, floorId
 //          'arrive'  the room, and which side   + side: 'left' | 'right' | 'ahead' | 'here' | 'behind', roomId
 //          'exit'    out of the building        + exitId
 //          'same'    the same room, no travel
@@ -28,16 +29,23 @@
 //
 // For a route that failed, ok is false, steps is empty and text is the
 // sentence describeFailure() gives, but for a way with no stairs that does
-// not exist between two rooms, which is said plainly (withoutStairs).
+// not exist between two rooms, which is said plainly (withoutStairs). A
+// step-free route that failed on a step says so ("a step on North Corridor")
+// and one that failed because every door has a step says that.
 //
-// Directions after a flight of stairs cannot say left or right, because the
+// A ride is a step of its own ("Take Elevator D up to Floor 3."), read from
+// the route's cells (the cell the ride leaves and the one it arrives at),
+// never from the connection's own two ends: the car's id is its first
+// connection's, whose ends need not be the floors this ride joins.
+//
+// Directions after a flight of stairs or a ride cannot say left or right, because the
 // walker's facing on a landing is not known. Where the landing leads more
 // than one way the walk is given a room to head towards instead.
 //
 // This module is one a published file carries, so it keeps to the linker
 // rule: one-line named imports, `export` only directly before a declaration.
 
-import { DOOR_SIDES, isWalkable, neighbourCell, spaceOwners } from './schema.js';
+import { DOOR_SIDES, ELEVATOR_KIND, elevatorCars, isWalkable, neighbourCell, spaceOwners } from './schema.js';
 import { roomName } from './findings.js';
 
 const NONE = 4;
@@ -101,6 +109,22 @@ function lookup(project) {
   return { floors, connections, rooms };
 }
 
+// The letter a ride is named by: the car's own, which every connection of one
+// elevator carries, else the connection's label.
+function carLetter(connection) {
+  if (!connection) return '';
+  return typeof connection.car === 'string' && connection.car !== '' ? connection.car : typeof connection.label === 'string' ? connection.label : '';
+}
+
+function isRide(connection) {
+  return Boolean(connection) && connection.kind === ELEVATOR_KIND;
+}
+
+// How a crossing is named after "Walk 3 cells to": "stairs A" or "Elevator D".
+function crossingParts(connection) {
+  return isRide(connection) ? [words(' to Elevator '), typed(carLetter(connection))] : [words(' to stairs '), typed(connection ? connection.label : '')];
+}
+
 function headingBetween(floor, a, b) {
   for (let h = 0; h < 4; h += 1) if (neighbourCell(floor, a, DOOR_SIDES[h]) === b) return h;
   return NONE;
@@ -155,6 +179,27 @@ export function startsAsTyped(project, route) {
   return Boolean(room) && typed(room.number);
 }
 
+// The place a step-free route's failure names for a step: the named corridor
+// the step cell nearest to the room lies in ("North Corridor"), else its
+// floor's name. Null when the building marks no step cell. Distance is the
+// walk of the grid (rows plus columns) on the room's own floor, and a step
+// on another floor is named only when the room's floor has none.
+export function nearestStep(floors, room) {
+  let best = null;
+  const consider = (floor, near) => {
+    for (const cell of floor.notStepFree || []) {
+      const distance = near ? Math.abs((cell % floor.width) - (near.cell % floor.width)) + Math.abs(Math.floor(cell / floor.width) - Math.floor(near.cell / floor.width)) : 0;
+      if (best === null || distance < best.distance) best = { floor, cell, distance };
+    }
+  };
+  const own = room ? Array.from(floors.values()).find((floor) => floor.spaces.some((space) => space.id === room.id)) : null;
+  if (own && Array.isArray(own.notStepFree) && own.notStepFree.length > 0) consider(own, { cell: room.cells[0] });
+  else for (const floor of floors.values()) consider(floor, null);
+  if (best === null) return null;
+  const named = (best.floor.corridors || []).find((corridor) => typeof corridor.name === 'string' && corridor.name.trim() !== '' && corridor.cells.includes(best.cell));
+  return named ? named.name : best.floor.name;
+}
+
 // The sentence for a route that failed, naming the room and its floor.
 export function describeFailure(project, route) {
   const { floors, rooms } = lookup(project);
@@ -166,13 +211,34 @@ export function describeFailure(project, route) {
     const text = typeof route.text === 'string' && route.text.trim() !== '' ? route.text : '';
     return text === '' ? 'The room is not in the building.' : roomName({ number: text }, true) + ' is not in the building.';
   }
-  if (route.reason === 'no-entry') return where(true) + ' does not open onto a corridor.';
+  const avoided = Array.isArray(route.avoiding) ? route.avoiding : [];
+  if (route.reason === 'no-entry') {
+    // every door with a step: a room with doors, one at least with a step, and a step-free plan
+    const stepDoors = avoided.includes('step-doors') && room && Array.isArray(room.doors) && room.doors.some((door) => door.stepFree === false);
+    return stepDoors ? where(true) + ' has no step-free door.' : where(true) + ' does not open onto a corridor.';
+  }
   const other = route.end === 'to' ? rooms.get(route.fromRoomId) : null;
-  const stepFree = Array.isArray(route.avoiding) && route.avoiding.includes('stairs');
-  const avoiding = Array.isArray(route.avoiding) && route.avoiding.length > 0;
-  const way = stepFree ? 'no step-free way through' : avoiding ? 'no way through that keeps to what you asked to avoid' : 'no way through';
-  if (route.end === 'to') return 'There is ' + way + (other ? ' from ' + roomName(other, false) : '') + ' to ' + where(false) + '.';
-  return 'There is ' + way + ' from ' + where(false) + ' to an exit.';
+  // 'staff-only' and 'step-exits' say why a route failed, not what the reader asked to avoid
+  const asked = avoided.filter((what) => what !== 'staff-only' && what !== 'step-exits');
+  const stepFree = asked.includes('stairs');
+  const way = stepFree ? 'no step-free way through' : asked.length > 0 ? 'no way through that keeps to what you asked to avoid' : 'no way through';
+  let because = '';
+  if (avoided.includes('staff-only')) {
+    const cars = elevatorCars(project.building ? project.building : project).filter((car) => car.staffOnly && car.connectionIds.length > 0).map((car) => 'Elevator ' + car.label);
+    because = ': the only way is by ' + (cars.length === 0 ? 'an elevator' : listOf(cars)) + ', which ' + (cars.length > 1 ? 'are' : 'is') + ' staff and authorised only';
+  } else if (avoided.includes('step-exits') && route.end !== 'to') {
+    because = ': every exit has a step';
+  } else if (avoided.includes('steps')) {
+    const step = nearestStep(floors, room);
+    if (step !== null) because = ': a step on ' + step;
+  }
+  if (route.end === 'to') return 'There is ' + way + (other ? ' from ' + roomName(other, false) : '') + ' to ' + where(false) + because + '.';
+  return 'There is ' + way + ' from ' + where(false) + ' to an exit' + because + '.';
+}
+
+// "Elevator D", "Elevator D and Elevator E", "Elevator D, Elevator E and Elevator F".
+function listOf(names) {
+  return names.length <= 1 ? names.join('') : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
 }
 
 // A way with no stairs was asked for between two rooms, and there is none:
@@ -226,12 +292,30 @@ export function directions(project, route, units) {
   // 2. the walks, turns and stairs
   let facing = first === NONE ? NONE : first;
   let afterStairs = false;
+  let byRide = false;
   let i = 0;
   while (i < last) {
     if (moves[i] === NONE) {
+      // a ride is a step of its own, one for each ride; stairs in a row are one step
+      if (isRide(connections.get(crossing.get(i)))) {
+        const id = crossing.get(i);
+        const fromFloor = floors.get(cells[i].floorId);
+        const toFloor = floors.get(cells[i + 1].floorId);
+        const way = toFloor.level > fromFloor.level ? 'up' : toFloor.level < fromFloor.level ? 'down' : null;
+        const car = carLetter(connections.get(id));
+        const parts = [words('Take Elevator '), typed(car)];
+        if (toFloor !== fromFloor) parts.push(words((way ? ' ' + way : '') + ' to '), typed(toFloor.name));
+        parts.push(words('.'));
+        finish(steps, 'ride', parts, { connections: [id], car, way, floorId: toFloor.id });
+        i += 1;
+        facing = NONE;
+        afterStairs = true;
+        byRide = true;
+        continue;
+      }
       const ids = [];
       const start = i;
-      while (i < last && moves[i] === NONE) {
+      while (i < last && moves[i] === NONE && !isRide(connections.get(crossing.get(i)))) {
         ids.push(crossing.get(i));
         i += 1;
       }
@@ -248,6 +332,7 @@ export function directions(project, route, units) {
       finish(steps, 'stairs', parts, { connections: ids, labels, way, floorId: toFloor.id });
       facing = NONE;
       afterStairs = true;
+      byRide = false;
       continue;
     }
 
@@ -269,9 +354,9 @@ export function directions(project, route, units) {
     if (corridor) parts.push(words(' along '), typed(corridor.name));
     let to = null;
     if (i < last && moves[i] === NONE) {
-      const label = connections.get(crossing.get(i)) ? connections.get(crossing.get(i)).label : '';
-      parts.push(words(' to stairs '), typed(label));
-      to = 'stairs';
+      const next = connections.get(crossing.get(i));
+      parts.push(...crossingParts(next));
+      to = isRide(next) ? 'elevator' : 'stairs';
     } else if (count > 1 && !walkableAt(floor, neighbourCell(floor, run[run.length - 1], DOOR_SIDES[heading]))) {
       parts.push(words(' to the end of the corridor'));
       to = 'end';
@@ -293,6 +378,7 @@ export function directions(project, route, units) {
     finish(steps, 'walk', parts, { cells: count, distance, to, corridorId: corridor ? corridor.id : null, landmarkId: landmark ? landmark.id : null });
     facing = heading;
     afterStairs = false;
+    byRide = false;
   }
 
   // 3. the end
@@ -305,7 +391,7 @@ export function directions(project, route, units) {
     const room = rooms.get(route.toRoomId);
     const arriving = last > 0 ? facing : out;
     let side = 'here';
-    let tail = ' is by the stairs.';
+    let tail = byRide ? ' is by the elevator.' : ' is by the stairs.';
     if (arriving !== NONE) {
       const turn = relative(arriving, into);
       side = turn === 'straight' ? 'ahead' : turn === 'around' ? 'behind' : turn;

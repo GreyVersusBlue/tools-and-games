@@ -11,10 +11,11 @@
 //                 more walkable neighbours is a junction, and junction cells
 //                 that touch are one place (so is a hall drawn several cells
 //                 wide, where every cell has three neighbours or more)
-//   'connection'  a stairs connection
+//   'connection'  a stairs connection, or an elevator (one place for the whole
+//                 car, however many stops it has; `elevator` is true)
 //
 // Stairs cells are walkable cells like any other here. Every walkable cell is
-// in exactly one place, and every connection is one.
+// in exactly one place, and every stairs connection and every elevator car is one.
 //
 // A place's name comes from, in order:
 //
@@ -27,7 +28,8 @@
 // cells away from a cell of the place, counted along rows and columns; rooms
 // equally near are taken in the order the floor lists them. A connection is
 // "Stairs A, Floor 1 to Floor 2" (the lower level first), or "Stairs A on
-// Floor 1" when both ends are on one floor. Then the exits within
+// Floor 1" when both ends are on one floor, and an elevator car "Elevator D"
+// (its letter, as typed). Then the exits within
 // EXIT_NEAR cells of a cell place are appended: ", by Door B".
 //
 //   places(project, graph?) → { places, placeOfNode, placeOfLink }
@@ -242,8 +244,10 @@ export function places(project, graph) {
     }
   });
 
-  // 3. the stairs connections
+  // 3. the stairs connections, and each elevator car as one place
   base.links.forEach((link, index) => {
+    placeOfLink[index] = -1;
+    if (link.elevator) return;
     const a = base.floors[base.nodeFloor[link.a]];
     const b = base.floors[base.nodeFloor[link.b]];
     placeOfLink[index] = list.length;
@@ -257,6 +261,17 @@ export function places(project, graph) {
     }
     list.push(finish(place, parts));
   });
+  // a car is one place, "Elevator D", at the car's first link: a ride between
+  // any two of its stops is one entry in the load, and its other links
+  // (a pair of stops each) have no place of their own
+  for (const car of base.cars || []) {
+    const link = base.links[car.link];
+    const a = base.floors[base.nodeFloor[link.a]];
+    placeOfLink[car.link] = list.length;
+    const floorIds = car.stops.map((stop) => stop.floorId);
+    const place = { id: car.id, kind: 'connection', elevator: true, floorId: a.id, floorIds, nodes: [], cells: [], corridorId: null, connectionId: car.id, link: car.link, roomId: null, exitIds: [], name: '', parts: [] };
+    list.push(finish(place, [words('Elevator '), typed(typeof car.label === 'string' ? car.label : '')]));
+  }
 
   return { places: list, placeOfNode, placeOfLink };
 }

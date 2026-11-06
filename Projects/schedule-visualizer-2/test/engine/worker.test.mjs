@@ -28,6 +28,8 @@ import { createPipeline, pack, unpack, scenarioRun, REQUEST, ANSWER, READY, SCEN
 import { applyChanges, applyLevers, leverRouteOptions, reconcile, trimResult } from '../../engine/scenario.js';
 import { createEngineClient, engineFor } from '../../ui/engine-client.js';
 import { plainSchool as sampleSchool } from './helpers.mjs';
+import { planProject, roomId } from '../fixtures/buildings/plans.mjs';
+import { emptySlot, emptyBells, GROUP_COLOUR_PRESETS } from '../../engine/schema.js';
 import { bigProject, BIG } from '../fixtures/big.mjs';
 
 const TRANSITIONS = (BIG.periods - 1) * BIG.dayTypes;
@@ -831,4 +833,85 @@ test('the client: the scenario lane\'s `levers` counter moves with the building 
   await ask();
   assert.equal(sent.at(-1).levers, 3, 'a way equal to the connection\'s own is no route option, so it is the same key as none');
   client.close();
+});
+
+
+// ---- elevators and the step-free flag (SV2-99, ARCHITECTURE 19.5)
+
+// Two floors: stairs at the west end of the corridor, a lift at the east end. A group
+// 1A to 2A takes the stairs; a group that needs step-free routes takes the lift.
+const LIFT_HALL = ['.AA.BB.', '.AA.BB.', 'S#####S', '.......', '.......'];
+
+function liftSchool() {
+  const project = planProject([LIFT_HALL, LIFT_HALL], { connections: [[1, 0, 2, 2, 0, 2]], exits: [[1, 3, 2, 'Main Door']] });
+  for (const floor of project.building.floors) floor.lifts = [6 + 2 * floor.width];
+  const lift = (number) => ({ floorId: project.building.floors[number - 1].id, cell: 6 + 2 * project.building.floors[number - 1].width });
+  project.building.connections.push({ id: 'celev00001', label: 'E1', a: lift(1), b: lift(2), direction: 'both', kind: 'elevator', staffOnly: false, car: 'E' });
+  project.settings.periods = 3;
+  for (const dayType of project.dayTypes) dayType.bells = emptyBells(3);
+  const rows = { Alpha: ['1A', '2A', '1A'], Beta: ['1B', '2B', '1B'] };
+  project.groups = Object.keys(rows).map((name, index) => ({
+    id: 'gplan' + String(index + 1).padStart(5, '0'),
+    name,
+    grade: '',
+    headCount: 12,
+    colour: GROUP_COLOUR_PRESETS[index],
+    days: { [project.dayTypes[0].id]: rows[name].map((number) => ({ ...emptySlot(), room: roomId(number) })) },
+  }));
+  return project;
+}
+
+function walkOf(result, groupId, period) {
+  return result.crowd.days[0].transitions[period].groups.find((group) => group.groupId === groupId);
+}
+
+test('a group\'s step-free flag is in the walk key, the walker key and the slot key: flip it and the figures move, with the rooms the same', () => {
+  const store = storeOf(liftSchool());
+  const pipeline = createPipeline();
+  const check = (label) => {
+    const result = pipeline.run(store.project, versionsOf(store));
+    assert.deepEqual(parts(result), fresh(store.project), label + ': what the pipeline keeps is what a fresh run works out');
+    return result;
+  };
+  const alpha = store.project.groups[0].id;
+  const before = check('cold');
+  assert.equal(walkOf(before, alpha, 0).riding, undefined, 'the stairs are quicker: no ride');
+  const plain = walkOf(before, alpha, 0).total;
+  store.apply(actions.editGroup, { id: alpha, stepFree: true });
+  const flipped = check('flag on');
+  const ridden = walkOf(flipped, alpha, 0);
+  assert.ok(ridden.riding > 0, 'the step-free group rides the lift');
+  assert.notEqual(ridden.total, plain, 'and its figures moved though its rooms did not');
+  assert.equal(flipped.work.transitionsRun > 0, true, 'the transitions were run again, not kept: ' + flipped.work.transitionsRun);
+  const figuresOf = ({ positions, ...rest }) => rest; // the transition lasts longer, so its positions run on
+  assert.deepEqual(figuresOf(walkOf(flipped, store.project.groups[1].id, 0)), figuresOf(walkOf(before, store.project.groups[1].id, 0)), 'the other group\'s figures are as they were');
+  const car = routingGraph(store.project).cars[0].link;
+  assert.equal(before.loads[0].connections.total[car], 0, 'nobody rode the car before');
+  assert.equal(flipped.loads[0].connections.total[car], 24, 'the loads moved with the routes: 12 students out and 12 back');
+  store.apply(actions.editGroup, { id: alpha, stepFree: false });
+  const back = check('flag off');
+  assert.deepEqual(parts(back), parts(before), 'turning it off again gives the figures of the group that never had it');
+});
+
+test('a project with no elevator: the pipeline\'s figures have no riding anywhere and are what a fresh run gives (the digests are pinned in runs-today)', () => {
+  const store = storeOf(sampleSchool());
+  const result = createPipeline().run(store.project, versionsOf(store));
+  assert.deepEqual(parts(result), fresh(store.project));
+  for (const day of result.crowd.days) {
+    for (const transition of day.transitions) {
+      for (const group of transition.groups) {
+        assert.deepEqual(Object.keys(group).filter((key) => key !== 'released'), ['groupId', 'fromRoomId', 'toRoomId', 'headCount', 'length', 'slots', 'walking', 'waiting', 'total', 'late', 'arrived', 'positions'], 'a group\'s figures are exactly the old set');
+      }
+    }
+  }
+  assert.equal(JSON.stringify(result.walks).includes('riding'), false, 'no walk says riding');
+});
+
+test('a lone elevator in the pipeline: the car\'s row is the only elevator row in the places and the loads', () => {
+  const store = storeOf(liftSchool());
+  store.apply(actions.editGroup, { id: store.project.groups[0].id, stepFree: true });
+  const result = createPipeline().run(store.project, versionsOf(store));
+  const graph = routingGraph(store.project);
+  assert.equal(graph.cars.length, 1);
+  assert.equal(result.loads[0].connections.total[graph.cars[0].link] > 0, true);
 });

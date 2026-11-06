@@ -1106,3 +1106,38 @@ test('applyLevers leaves the building levers out: the project\'s building is the
   assert.equal(mixed.building.connections[0].direction, 'both');
   assert.equal(mixed.groups.find((candidate) => candidate.id === G6A).headCount, 999);
 });
+
+
+// ---- elevators are no lever (SV2-99, ARCHITECTURE 19.5)
+
+// The sample school with an elevator joining Floor 1 and Floor 2 drawn in by hand: these functions
+// read connections by id and kind, and nothing here routes.
+function withElevator() {
+  const project = clone(school());
+  const [one, two] = project.building.floors;
+  project.building.connections.push({ id: 'celev00001', label: 'E1', a: { floorId: one.id, cell: 0 }, b: { floorId: two.id, cell: 0 }, direction: 'both', kind: 'elevator', staffOnly: false, car: 'E' });
+  return project;
+}
+
+test('leverRouteOptions ignores a way lever on an elevator, closed or one way, and keeps the stairs lever beside it', () => {
+  const project = withElevator();
+  const nothing = { ways: {}, shutLinks: [], shutCells: [] };
+  assert.deepEqual(leverRouteOptions(project, [way('celev00001', 'closed')]), nothing, 'a closed elevator is not a W4 lever');
+  assert.deepEqual(leverRouteOptions(project, [way('celev00001', 'ab')]), nothing, 'nor one way: a car runs both ways');
+  assert.deepEqual(leverRouteOptions(project, [way('celev00001', 'ba'), way(WAY_A, 'ab'), way(WAY_B, 'closed')]), { ways: { [WAY_A]: 'ab' }, shutLinks: [WAY_B], shutCells: [] }, 'the stairs levers beside it mean what they did');
+  assert.equal(leverOptionsKey(leverRouteOptions(project, [way('celev00001', 'closed')])), '', 'and the key is the key of no lever');
+});
+
+test('reconcileLevers drops a way lever on an elevator, with a sentence that says why, and keeps the stairs levers', () => {
+  const project = withElevator();
+  const result = reconcileLevers(project, { levers: [way('celev00001', 'closed'), way(WAY_A, 'ab'), way('celev00001', 'ab')] });
+  assert.deepEqual(result.levers, [way(WAY_A, 'ab')]);
+  assert.equal(result.dropped.length, 2);
+  for (const entry of result.dropped) {
+    assert.match(entry.sentence, /elevator/);
+    assert.match(entry.sentence, /only stairs can be closed or made one way here/);
+  }
+  const plain = reconcileLevers(school(), { levers: [way(WAY_A, 'ab')] });
+  assert.deepEqual(plain.levers, [way(WAY_A, 'ab')], 'a building with no elevator reconciles as it did');
+  assert.deepEqual(plain.dropped, []);
+});
