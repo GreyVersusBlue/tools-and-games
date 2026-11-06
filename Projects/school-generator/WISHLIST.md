@@ -574,9 +574,11 @@ and add to this list rather than starting a new one.
   pair of leaves is one doorway — right — and so is a 12ft cased opening, which
   is arguable; and a stair is a node, so two stairs off one landing count as
   two ways where a plan checker might want them remote from one another.
-- Accessibility reaches past routes now (`clearance.js`, Phase 40), but a
-  door's manoeuvring clearance is a circle beside the door rather than ADA
-  404.2.4's rectangle with its 18in latch-side strip; a pair of doors is judged
+- Accessibility reaches past routes now (`clearance.js`, Phase 40), and a door
+  that swings is asked ADA 404.2.4's rectangle, fixed by its hinge and swing
+  (60in deep with an 18in latch-side strip on the pull side, 48in and 12in on
+  the push side, #1025); the rectangles are not drawn on the plan sheet or the
+  minimap, only the door's ring. A pair of doors is judged
   with both leaves open (the code judges it by the active leaf, so the
   lattice's 4ft pair passes here and would not on a plan check); the outside of
   an exterior door is not tested; and knee and toe clearance under a counter is
