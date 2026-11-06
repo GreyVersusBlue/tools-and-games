@@ -114,6 +114,12 @@
 //                'no-entry'      the room has no door and touches no corridor, or every door leads nowhere
 //                'unreachable'   no way through; roomId and floorId name the room that cannot be reached
 //     end        'from' or 'to': which end the room named is
+//     stepBlocked    true on an 'unreachable' or 'no-entry' failure of a step-free plan only when the same
+//                    search with the step cells and doors let in would have found a way: a step is then
+//                    the cause. Absent otherwise (no step is to blame). Worked out on failure only.
+//     staffOnlyCars  on a failure that was avoiding 'staff-only': the ids of the staff-only elevators
+//                    on the way that the same search with every elevator open finds; absent when that
+//                    search fails too (a staff-only car is then not the cause)
 //     avoiding   the options in force, any of 'stairs', 'steps' (step-free, and the
 //                building has corridor cells with a step), 'step-doors' (step-free,
 //                and some door has a step), 'step-exits' (routeToExit, step-free,
@@ -241,6 +247,9 @@ function planFor(graph, options) {
   const opts = options || {};
   const avoidStairs = opts.avoidStairs === true;
   const avoiding = [];
+  // stepsOpen is for the engine's own re-search, to tell whether a step is
+  // what stopped a step-free route: stairs stay shut, steps are let in
+  const stepsOpen = avoidStairs && opts.stepsOpen === true;
   if (avoidStairs) {
     avoiding.push('stairs');
     if (graph.stepNodes.length > 0) avoiding.push('steps');
@@ -278,7 +287,7 @@ function planFor(graph, options) {
 
   let nodeShut = null;
   const shutNodes = [];
-  if (avoidStairs) {
+  if (avoidStairs && !stepsOpen) {
     for (const node of graph.stepNodes) {
       if (!nodeShut) nodeShut = new Uint8Array(graph.count);
       nodeShut[node] = 1;
@@ -322,7 +331,7 @@ function planFor(graph, options) {
 
   // the shut nodes themselves are in the key, not the corridor ids: a named
   // corridor can be redrawn without the geometry counter moving
-  const parts = [graph.secondsPerCell, graph.secondsPerStair, avoidStairs ? 1 : 0, shutLinks.sort().join(','), shutNodes.join(',')];
+  const parts = [graph.secondsPerCell, graph.secondsPerStair, avoidStairs ? (stepsOpen ? 2 : 1) : 0, shutLinks.sort().join(','), shutNodes.join(',')];
 
   // one-way overrides; only those that differ from the connection's own
   // direction mean anything, and none at all when every connection is used
@@ -349,7 +358,7 @@ function planFor(graph, options) {
   // what a ride costs, only where there is a car; and the staff-only rule
   if (graph.hasElevator) parts.push('e' + graph.elevator.wait + ',' + graph.elevator.perFloor);
   if (studentsOnly) parts.push('s');
-  return { key: parts.join('|'), avoidStairs, studentsOnly, linkShut, nodeShut, avoiding, linkWay, undirected };
+  return { key: parts.join('|'), options: opts, stepsOpen, avoidStairs, studentsOnly, linkShut, nodeShut, avoiding, linkWay, undirected };
 }
 
 function linkOpen(link, index, from, plan) {
@@ -370,14 +379,14 @@ function linkOpen(link, index, from, plan) {
 // A step-free plan leaves out the doors marked as having a step.
 function entriesOf(room, plan) {
   return room.entries
-    .filter((entry) => !(plan.avoidStairs && entry.stepFree === false))
+    .filter((entry) => !(plan.avoidStairs && !plan.stepsOpen && entry.stepFree === false))
     .map((entry) => ({ node: entry.node, from: entry.from, side: SIDE_INDEX.get(entry.side), door: entry.door === true }))
     .sort((a, b) => a.node - b.node || a.side - b.side);
 }
 
 // Whether a room can be left or entered at all under a plan.
 function hasEntry(room, plan) {
-  return room.entries.some((entry) => !(plan.avoidStairs && entry.stepFree === false));
+  return room.entries.some((entry) => !(plan.avoidStairs && !plan.stepsOpen && entry.stepFree === false));
 }
 
 // The search from one room: Dijkstra over (cell, heading) with a binary heap
@@ -613,7 +622,37 @@ function place(graph, room, entry) {
   return { floorId: room.floorId, cell: entry.from, side: DOOR_SIDES[entry.side], door: entry.door };
 }
 
+// Why a search failed, worked out once and only on failure: whether a step is
+// the cause of a step-free failure (`stepBlocked`) and which staff-only cars
+// the way was by (`staffOnlyCars`). `run(options)` repeats the search under
+// other options and gives { ok, connections }.
+const explained = new WeakSet();
+function explain(graph, failed, plan, run) {
+  if (failed.ok || explained.has(failed)) return failed;
+  explained.add(failed);
+  if (failed.reason !== 'unreachable' && failed.reason !== 'no-entry') return failed;
+  const base = plan.options || {};
+  if (plan.avoidStairs && !plan.stepsOpen && (plan.avoiding.includes('steps') || plan.avoiding.includes('step-doors'))) {
+    if (run({ ...base, stepsOpen: true }).ok) failed.stepBlocked = true;
+  }
+  if (plan.studentsOnly && failed.reason === 'unreachable') {
+    const plain = run({ ...base, studentsOnly: false });
+    if (plain.ok) {
+      const staff = new Set(graph.links.filter((link) => link.elevator && link.staffOnly).map((link) => link.id));
+      const used = Array.from(new Set(plain.connections.filter((id) => staff.has(id)))).sort();
+      if (used.length > 0) failed.staffOnlyCars = used;
+    }
+  }
+  return failed;
+}
+
 function findRoute(graph, fromRoomId, toRoomId, plan, cache) {
+  const result = searchRoute(graph, fromRoomId, toRoomId, plan, cache);
+  if (result.ok) return result;
+  return explain(graph, result, plan, (opts) => searchRoute(graph, fromRoomId, toRoomId, planFor(graph, opts), cache));
+}
+
+function searchRoute(graph, fromRoomId, toRoomId, plan, cache) {
   if (!fromRoomId) return failure('no-room', 'from', null, null, fromRoomId, toRoomId, plan);
   if (!toRoomId) return failure('no-room', 'to', null, null, fromRoomId, toRoomId, plan);
   const from = graph.rooms.get(fromRoomId);
@@ -697,6 +736,17 @@ export function route(graph, fromRoomId, toRoomId, options) {
 // order ties are settled (a tie goes to the earlier target); returns a
 // failure, or { from, target, path, plan } for the caller to shape.
 function routeToTargets(graph, fromRoomId, targets, options) {
+  const found = searchTargets(graph, fromRoomId, targets, options);
+  if (!found.failed) return found;
+  const plan = planFor(graph, options);
+  explain(graph, found.failed, plan, (opts) => {
+    const again = searchTargets(graph, fromRoomId, targets, opts);
+    return again.failed ? { ok: false } : { ok: true, connections: again.path.connections };
+  });
+  return found;
+}
+
+function searchTargets(graph, fromRoomId, targets, options) {
   const cache = options && options.cache ? options.cache : null;
   if (cache) syncCache(cache, graph, options);
   const plan = planFor(graph, options);
@@ -773,7 +823,11 @@ export function routeToExit(graph, fromRoomId, options) {
   }).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const found = routeToTargets(graph, fromRoomId, exits, options);
   if (found.failed) {
-    if (stepExits > 0 && found.failed.reason === 'unreachable') found.failed.avoiding.push('step-exits');
+    // 'step-exits' only when letting the exits with a step in would give a way
+    if (stepExits > 0 && found.failed.reason === 'unreachable') {
+      const every = graph.exits.filter((exit) => !shut.has(exit.id)).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      if (!searchTargets(graph, fromRoomId, every, options).failed) found.failed.avoiding.push('step-exits');
+    }
     return found.failed;
   }
   const result = shapeRoute(graph, found, fromRoomId);

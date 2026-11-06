@@ -384,6 +384,20 @@ export function walkingSeconds(graph, found) {
   return seconds;
 }
 
+// walkingSeconds split as a group's figures are: the walk (no car slot) and
+// the rides (wait + ride for each); walking + riding is walkingSeconds.
+function walkParts(graph, found) {
+  const path = routePath(graph, found);
+  if (!path) return null;
+  let walking = 0;
+  let riding = 0;
+  for (let p = 0; p < path.length; p += 1) {
+    if (path.rides[p] > 0) riding += rideSeconds(graph, path.rides[p]);
+    else walking += graph.secondsPerCell;
+  }
+  return { walking, riding };
+}
+
 function ridesOf(path) {
   let n = 0;
   for (let p = 0; p < path.length; p += 1) if (path.rides[p] > 0) n += 1;
@@ -790,7 +804,9 @@ export function teacherWalks(project, graph, options) {
       if (!day) continue;
       for (const move of bellMoves(day, off)) {
         const found = route(routing, move.fromRoomId, move.toRoomId, routeOptions);
-        const walking = walkingSeconds(routing, found);
+        const parts = walkParts(routing, found);
+        const walking = parts === null ? null : parts.walking;
+        const riding = parts === null ? 0 : parts.riding;
         // a walk with no way through (a closure or a one-way stair in the
         // building or the scenario, or a room that opens onto no corridor) is
         // a failed walk, as a group's is, never a walk that is not there; a
@@ -803,7 +819,7 @@ export function teacherWalks(project, graph, options) {
           walks.push({ ...head, teacherId: teacher.id, period: move.period, ...(move.toPeriod === undefined ? {} : { toPeriod: move.toPeriod }), fromRoomId: move.fromRoomId, toRoomId: move.toRoomId, passingSeconds, failed: true, late: true });
           continue;
         }
-        walks.push({ ...head, teacherId: teacher.id, period: move.period, ...(move.toPeriod === undefined ? {} : { toPeriod: move.toPeriod }), fromRoomId: move.fromRoomId, toRoomId: move.toRoomId, passingSeconds, walking, late: isLate(walking, passingSeconds, marginSeconds) });
+        walks.push({ ...head, teacherId: teacher.id, period: move.period, ...(move.toPeriod === undefined ? {} : { toPeriod: move.toPeriod }), fromRoomId: move.fromRoomId, toRoomId: move.toRoomId, passingSeconds, walking, ...(riding > 0 ? { riding } : {}), late: isLate(walking + riding, passingSeconds, marginSeconds) });
       }
     }
   }

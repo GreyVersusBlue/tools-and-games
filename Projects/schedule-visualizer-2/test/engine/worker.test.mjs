@@ -915,3 +915,28 @@ test('a lone elevator in the pipeline: the car\'s row is the only elevator row i
   assert.equal(graph.cars.length, 1);
   assert.equal(result.loads[0].connections.total[graph.cars[0].link] > 0, true);
 });
+
+test('a rider\'s head count changed through the pipeline: the figures are a fresh run\'s, the car held longer (SV2-99b)', () => {
+  const store = storeOf(liftSchool());
+  const pipeline = createPipeline();
+  const check = (label) => {
+    const result = pipeline.run(store.project, versionsOf(store));
+    assert.deepEqual(parts(result), fresh(store.project), label + ': what the pipeline keeps is what a fresh run works out');
+    return result;
+  };
+  const alpha = store.project.groups[0].id;
+  store.apply(actions.editGroup, { id: alpha, stepFree: true });
+  const before = check('twelve riders');
+  const small = walkOf(before, alpha, 0);
+  assert.ok(small.riding > 0);
+  const car = routingGraph(store.project).cars[0].link;
+  assert.equal(before.loads[0].connections.total[car], 24);
+  store.apply(actions.editGroup, { id: alpha, headCount: 25 });
+  const after = check('twenty-five riders');
+  const big = walkOf(after, alpha, 0);
+  assert.equal(big.headCount, 25);
+  assert.ok(big.riding > small.riding, 'more trips hold the car longer: ' + big.riding + ' against ' + small.riding);
+  assert.equal(after.loads[0].connections.total[car], 50, 'the loads count the new head count, once for each ride');
+  store.apply(actions.editGroup, { id: alpha, headCount: 12 });
+  assert.deepEqual(parts(check('back to twelve')), parts(before), 'and back to the first figures');
+});
