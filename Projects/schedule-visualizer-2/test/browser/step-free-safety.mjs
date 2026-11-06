@@ -208,8 +208,9 @@ test('the key in the Step-free view: each exit used, each refuge used, and the r
 test('the ends of the ways are labelled in words on the map, and what is drawn is the section\'s own: a refuge\'s way dashed in the accent, an exit\'s way solid in its colour', async () => {
   const page = wide.page;
   await load(page, 'marked');
+  const was = await drawn(page);
   await page.evaluate(() => document.querySelector('.sfy').safety.setView('step-free'));
-  await ready(page, 0);
+  await ready(page, was);
   const picture = await page.evaluate(() => {
     const view = document.querySelector('.sfy').safety;
     return { ends: view.stepEnds().map((end) => [end.kind, end.label, end.floorId]), ways: view.step.rooms.map((room) => room.way) };
@@ -346,8 +347,9 @@ test('the Step-free tab by keyboard alone: the tab with the arrows, Show with En
   await closePreview(page);
   assert.equal(await page.evaluate(() => document.activeElement.dataset.print), 'step-free');
   // the cursor on the map says the step-free way in the Step-free view
+  const was = await drawn(page);
   await page.evaluate(() => document.querySelector('.sfy').safety.setView('step-free'));
-  await ready(page, 0);
+  await ready(page, was);
   const at = await page.evaluate(() => {
     const view = document.querySelector('.sfy').safety;
     const row = view.picture.byRoom.get('rsample201');
