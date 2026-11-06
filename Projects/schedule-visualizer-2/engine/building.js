@@ -16,7 +16,7 @@
 // stairs are gone. Those are taken out in the same step and reported in
 // `loss`, so nothing goes silently and validate() accepts every result.
 
-import { RANGES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CELL_EMPTY, CELL_CORRIDOR, CELL_STAIRS, DEFAULT_OTHER_COLOUR, ELEVATOR_KIND, REFUGE_DEFAULT_NAME, isLiftCell, elevatorCars } from './schema.js';
+import { RANGES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CELL_EMPTY, CELL_CORRIDOR, CELL_STAIRS, DEFAULT_OTHER_COLOUR, ELEVATOR_KIND, REFUGE_DEFAULT_NAME, NAME_MOST, textLength, isLiftCell, elevatorCars } from './schema.js';
 import { newRoom, newOtherSpace, neighbourCell, spaceOwners, cellKind, isEdgeCorridorCell, isWalkable, inRange, isHexColour, roomNumberKey, nextConnectionLabel, nameOfRoom } from './schema.js';
 
 export class BuildingError extends Error {
@@ -145,7 +145,7 @@ function sameItems(a, b) {
 
 // What a change took out of the building besides what it was asked to change.
 export function emptyLoss() {
-  return { spaces: [], corridorCells: 0, stairsCells: 0, liftCells: 0, stepCells: 0, connections: [], exits: [], doors: [], corridorNames: [], zones: [], refuges: [] };
+  return { spaces: [], corridorCells: 0, stairsCells: 0, liftCells: 0, stepCells: 0, connections: [], exits: [], doors: [], corridorNames: [], zones: [], refuges: [], renamed: [] };
 }
 
 // liftCells counts elevator stops, stepCells the corridor cells that had a
@@ -160,7 +160,7 @@ function addLoss(into, from) {
   into.stairsCells += from.stairsCells;
   into.liftCells += from.liftCells || 0;
   into.stepCells += from.stepCells || 0;
-  for (const key of ['spaces', 'connections', 'exits', 'doors', 'corridorNames', 'zones', 'refuges']) into[key].push(...(from[key] || []));
+  for (const key of ['spaces', 'connections', 'exits', 'doors', 'corridorNames', 'zones', 'refuges', 'renamed']) into[key].push(...(from[key] || []));
   return into;
 }
 
@@ -189,7 +189,21 @@ export function lossText(loss) {
   if (loss.corridorCells > 0) parts.push(plural(loss.corridorCells, 'corridor cell', 'corridor cells'));
   if (loss.stairsCells > 0) parts.push(plural(loss.stairsCells, 'stairs cell', 'stairs cells'));
   if (loss.liftCells > 0) parts.push(plural(loss.liftCells, 'elevator stop', 'elevator stops'));
-  for (const connection of loss.connections) parts.push(connection.kind === ELEVATOR_KIND ? 'a connection of elevator ' + (connection.car || connection.label) : 'stairs connection ' + connection.label);
+  // a car's connections are one phrase: "2 connections of Elevator A"
+  const cars = new Map();
+  for (const connection of loss.connections) {
+    if (connection.kind !== ELEVATOR_KIND) {
+      parts.push('stairs connection ' + connection.label);
+      continue;
+    }
+    const letter = connection.car || connection.label;
+    if (!cars.has(letter)) {
+      cars.set(letter, { count: 0, at: parts.length });
+      parts.push('');
+    }
+    cars.get(letter).count += 1;
+  }
+  for (const [letter, car] of cars) parts[car.at] = car.count === 1 ? 'a connection of elevator ' + letter : car.count + ' connections of Elevator ' + letter;
   for (const exit of loss.exits) parts.push(exit.doorName.trim() === '' ? 'an exit' : 'the exit ' + exit.doorName);
   if (loss.doors.length > 0) parts.push(plural(loss.doors.length, 'door', 'doors'));
   for (const corridor of loss.corridorNames) if (corridor.removed) parts.push('the corridor name ' + corridor.name);
@@ -242,6 +256,59 @@ export function keepElevatorStops(building, removed, resizedFloorId) {
     }
   }
   return floors === building.floors ? building : { ...building, floors };
+}
+
+// A floor list as words: "Floors 3 and 4" when the names are "Floor 3" and
+// "Floor 4", else the names as typed.
+function floorNamesWords(names) {
+  const numbered = names.map((name) => /^Floor (\S+)$/.exec(name));
+  if (names.length > 1 && numbered.every(Boolean)) return 'Floors ' + sentenceList(numbered.map((match) => match[1]));
+  return sentenceList(names);
+}
+
+const letterKey = (letter) => String(letter).trim().toLowerCase();
+
+// Taking connections out of a car can leave two cars with one letter (the
+// letter is stored on every connection, and validate refuses a building with
+// two elevators of one letter). The car whose first connection comes first in
+// building order keeps the letter; every other car that shares it takes the
+// next free one, as describeConnect picks a letter (no connection label and
+// no car letter in use), written to all its connections. Each car renamed is
+// said in `loss.renamed`: { car, was, floors, text }, "Floors 3 and 4 are now
+// Elevator B". A building with no shared letter comes back as it was.
+export function splitCars(building, loss) {
+  const cars = elevatorCars(building).filter((car) => car.connectionIds.length > 0);
+  const seen = new Set();
+  const renamed = new Map();
+  const used = building.connections.flatMap((connection) => [{ label: connection.label }, { label: connection.car === undefined ? '' : connection.car }]);
+  for (const car of cars) {
+    const key = letterKey(car.label);
+    if (!seen.has(key)) {
+      seen.add(key);
+      continue;
+    }
+    const letter = nextConnectionLabel(used);
+    used.push({ label: letter });
+    seen.add(letterKey(letter));
+    renamed.set(car, letter);
+  }
+  if (renamed.size === 0) return building;
+  const letterOf = new Map();
+  for (const [car, letter] of renamed) for (const id of car.connectionIds) letterOf.set(id, letter);
+  const next = { ...building, connections: building.connections.map((connection) => (letterOf.has(connection.id) ? { ...connection, car: letterOf.get(connection.id) } : connection)) };
+  if (loss) {
+    for (const [car, letter] of renamed) {
+      const floors = car.stops.map((stop) => building.floors.find((floor) => floor.id === stop.floorId).name);
+      loss.renamed.push({ car: letter, was: car.label, floors, text: floorNamesWords(floors) + ' are now Elevator ' + letter });
+    }
+  }
+  return next;
+}
+
+// What splitting a car renamed, as a sentence ("Floors 3 and 4 are now
+// Elevator B"); empty when nothing was renamed.
+export function renamedText(loss) {
+  return (loss.renamed || []).map((entry) => entry.text).join('; ');
 }
 
 // After a floor's cells or spaces changed: take out every door, exit,
@@ -310,7 +377,7 @@ function settle(building, index, floor, loss) {
   if (next === building.floors[index] && connections.length === building.connections.length) return building;
   const floors = next === building.floors[index] ? building.floors : building.floors.map((candidate, i) => (i === index ? next : candidate));
   const settled = { ...building, floors, connections: connections.length === building.connections.length ? building.connections : connections };
-  return connections.length === building.connections.length ? settled : keepElevatorStops(settled, building.connections.filter((connection) => !connections.includes(connection)));
+  return connections.length === building.connections.length ? settled : splitCars(keepElevatorStops(settled, building.connections.filter((connection) => !connections.includes(connection))), loss);
 }
 
 // Change one floor. edit has any of:
@@ -501,7 +568,9 @@ export function placeLift(building, args) {
   const characters = now.cells.split('');
   for (const cell of cells) characters[cell] = CELL_STAIRS;
   const lifts = Array.from(new Set((now.lifts || []).concat(cells))).sort((a, b) => a - b);
-  const placed = replaceFloor(cleared.building, index, { ...now, cells: characters.join(''), lifts });
+  const painted = replaceFloor(cleared.building, index, { ...now, cells: characters.join(''), lifts });
+  // a stop fills a cell: an exit beside it may no longer be on the edge
+  const placed = settle(painted, index, painted.floors[index], cleared.loss);
   return { building: placed, floorId: floor.id, cells, loss: cleared.loss, removedRooms: cleared.removedRooms };
 }
 
@@ -847,8 +916,12 @@ function carAt(cars, end) {
 export function describeConnect(building, args) {
   const floorA = needEnd(building, args.a);
   const floorB = needEnd(building, args.b);
-  if (sameEnd(args.a, args.b)) refuse('A connection joins two different stairs cells. Click the stairs at the other end.', 'same-cell');
+  if (sameEnd(args.a, args.b)) {
+    if (isLiftCell(building, args.a.floorId, args.a.cell)) refuse('An elevator joins two different stops. Click a stop on another floor.', 'same-cell');
+    refuse('A connection joins two different stairs cells. Click the stairs at the other end.', 'same-cell');
+  }
   const already = building.connections.find((connection) => (sameEnd(connection.a, args.a) && sameEnd(connection.b, args.b)) || (sameEnd(connection.a, args.b) && sameEnd(connection.b, args.a)));
+  if (already && already.kind === ELEVATOR_KIND) refuse('Those two stops are already joined: Elevator ' + (already.car || already.label) + '.', 'already-connected');
   if (already) refuse('Those two stairs are already connected, as ' + already.label + '.', 'already-connected');
   let label = nextConnectionLabel(building.connections);
   const liftA = isLiftCell(building, args.a.floorId, args.a.cell);
@@ -944,7 +1017,8 @@ export function disconnectStairs(building, args) {
   const connection = needConnection(building, args.connectionId);
   const rest = { ...building, connections: building.connections.filter((candidate) => candidate !== connection) };
   const elevator = connection.kind === ELEVATOR_KIND;
-  return { building: keepElevatorStops(rest, [connection]), label: connection.label, floorId: connection.a.floorId, elevator, car: elevator ? connection.car || connection.label : undefined };
+  const loss = emptyLoss();
+  return { building: splitCars(keepElevatorStops(rest, [connection]), loss), label: connection.label, floorId: connection.a.floorId, elevator, car: elevator ? connection.car || connection.label : undefined, loss };
 }
 
 // A connection's name and direction. args: { connectionId } and any of
@@ -1142,11 +1216,24 @@ function refugeKey(name) {
   return name.trim().toLowerCase();
 }
 
-function needRefugeName(floor, name, exceptId) {
-  if (typeof name !== 'string') refuse('The name of an area of refuge is text.', 'bad-value');
+// A name typed for an area of refuge: trimmed, and at most NAME_MOST
+// characters as the names of floors, groups and the rest are.
+function needRefugeName(floor, typed, exceptId) {
+  if (typeof typed !== 'string') refuse('The name of an area of refuge is text.', 'bad-value');
+  const name = typed.trim();
+  if (name === '') refuse('An area of refuge has a name. Type one.', 'no-name');
+  if (textLength(name) > NAME_MOST) refuse('The name of an area of refuge is at most ' + NAME_MOST + ' characters; this one has ' + textLength(name) + '. Type a shorter one.', 'too-long');
   const taken = (floor.refuges || []).find((refuge) => refuge.id !== exceptId && refugeKey(refuge.name) === refugeKey(name));
   if (taken) refuse('There is already an area of refuge called ' + taken.name + ' on ' + floor.name + '. Names are unique on a floor, whatever the capitals; type a different name.', 'duplicate-name');
   return name;
+}
+
+// "Area of refuge" or "Area of refuge 2" and on: a name the tool gives, so it
+// reads as a name already ("Area of refuge 2") and not "Area of refuge, ...".
+function isDefaultRefugeName(name) {
+  const key = refugeKey(name);
+  const base = refugeKey(REFUGE_DEFAULT_NAME);
+  return key === base || (key.startsWith(base + ' ') && /^[1-9]\d*$/.test(key.slice(base.length + 1)));
 }
 
 // "Area of refuge", then "Area of refuge 2" and on, the first one the floor does not use.
@@ -1366,7 +1453,7 @@ export function resizeFloor(building, args) {
   resized = withList(withList(withList(resized, 'lifts', lifts.sort((a, b) => a - b)), 'notStepFree', notStepFree.sort((a, b) => a - b)), 'refuges', refuges);
   const floors = building.floors.map((candidate, i) => (i === index ? resized : candidate));
   const cut = building.connections.filter((connection) => !connections.some((kept) => kept.id === connection.id));
-  const next = settle(keepElevatorStops({ ...building, floors, connections, zones }, cut, floor.id), index, resized, loss);
+  const next = splitCars(settle(keepElevatorStops({ ...building, floors, connections, zones }, cut, floor.id), index, resized, loss), loss);
   return { building: next, floorId: floor.id, width, height, loss, removedRooms };
 }
 
@@ -1505,6 +1592,6 @@ export function describeFloor(building, floorId) {
     const names = Array.from(new Set(floor.corridors.filter((corridor) => run.some((cell) => corridor.cells.includes(cell))).map((corridor) => corridor.name)));
     steps.push({ cells: run, corridorNames: names, text: 'A step ' + (names.length > 0 ? 'on ' + floorsWords(names) : 'in the corridor') + ', ' + plural(run.length, 'cell', 'cells') });
   }
-  const refuges = (floor.refuges || []).map((refuge) => ({ id: refuge.id, name: refuge.name, cell: refuge.cell, text: refugeKey(refuge.name) === refugeKey(REFUGE_DEFAULT_NAME) ? refuge.name : 'Area of refuge, ' + refuge.name }));
+  const refuges = (floor.refuges || []).map((refuge) => ({ id: refuge.id, name: refuge.name, cell: refuge.cell, text: isDefaultRefugeName(refuge.name) ? refuge.name : 'Area of refuge, ' + refuge.name }));
   return { floorId: floor.id, name: floor.name, elevators, steps, refuges };
 }

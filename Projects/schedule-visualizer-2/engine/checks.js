@@ -55,6 +55,13 @@
 //   teacher-walk,        a walk the figures handed in call late, when the
 //   group-walk           figure is for the walk as it is now: the same two
 //                        rooms and the same passing time.
+//                        A figure with a `riding` (seconds held in an elevator
+//                        car, absent = 0) names the ride: "including 1 min
+//                        26 s for Elevator D". A group that needs step-free
+//                        routes and has no step-free way for a walk is a
+//                        group-walk finding of its own, the id ending
+//                        `:step-free` so that accepting the plain walk
+//                        finding never silences it (ARCHITECTURE 19.5).
 //   room-missing         a slot names a room that is not in the building.
 //   empty-period         a slot with no room at all. A group with no room all
 //                        day gets one note, not one a period.
@@ -76,7 +83,7 @@
 //
 // Head counts fall back to the school default, as everywhere else.
 
-import { allRooms, findRoom, findById, resolveSlotRoom, marksOf, dutiesOf, WEEKDAY_NAMES } from './schema.js';
+import { allRooms, findRoom, findById, resolveSlotRoom, marksOf, dutiesOf, elevatorCars, WEEKDAY_NAMES } from './schema.js';
 import { ownDayTypes, isOwnCopy, findDayType, followersOf } from './day-types.js';
 import { bellsFor, periodName, findBellSchedule, offPeriods } from './bells.js';
 import { meetingSlots } from './runs.js';
@@ -84,6 +91,8 @@ import { teacherDays, slotTeacherIds, entryPlaces, isFree } from './teacher-day.
 import { hasMarks, markFor, schoolMarkFor, dutiesOn, dutyTeachers, dutyIsSometimes } from './marks.js';
 import { dateWords } from './calendar.js';
 import { bellMoves, transitionPlan } from './crowd.js';
+import { route, routingGraph } from './routing.js';
+import { describeFailure, startsAsTyped } from './directions.js';
 import { makeFinding, sortFindings, splitAccepted, countWord, listWords, periodWord, roomName, formatDuration } from './findings.js';
 
 // "on A Day", or "on A Day and B Day" when B Day is the same as A Day: the
@@ -197,7 +206,49 @@ function isWholeSeconds(value) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
+// The routing graph a check asks its routes of: built the first time one is
+// needed in a run of checkSchedule and kept for the rest of that run (a graph
+// is not cheap, and most projects have no group that needs it). Never kept
+// between runs: a run's project may have been edited in place since.
+function graphFor(project, memo) {
+  if (!memo.graph) memo.graph = routingGraph(project);
+  return memo.graph;
+}
+
+// How a group's routes are planned, as routesForSchedule plans them.
+function planOptions(group) {
+  return group.stepFree === true ? { avoidStairs: true } : { studentsOnly: true };
+}
+
+// The elevators a walk rides, by their letters as typed, in the order taken:
+// the walk's own route, planned as the group's routes are.
+function carsRidden(project, memo, group, fromRoom, toRoom) {
+  const graph = graphFor(project, memo);
+  const found = route(graph, fromRoom.id, toRoom.id, planOptions(group));
+  if (!found.ok || found.same) return [];
+  const letters = [];
+  for (const id of found.connections) {
+    const car = graph.cars.find((candidate) => candidate.id === id);
+    if (car && !letters.includes(car.label)) letters.push(car.label);
+  }
+  return letters;
+}
+
+// "Floor 3 has no elevator": a floor of the walk, when the rooms are on two
+// floors and an elevator reaches no stop on this one. '' otherwise.
+function noElevatorWords(project, fromRoom, toRoom) {
+  const floorOf = (room) => project.building.floors.find((floor) => floor.spaces.some((space) => space.id === room.id));
+  const a = floorOf(fromRoom);
+  const b = floorOf(toRoom);
+  if (!a || !b || a === b) return '';
+  const served = new Set();
+  for (const car of elevatorCars(project.building)) if (car.connectionIds.length > 0) for (const stop of car.stops) served.add(stop.floorId);
+  const missing = [b, a].find((floor) => !served.has(floor.id));
+  return missing ? missing.name + ' has no elevator' : '';
+}
+
 export function checkSchedule(project, walkResults) {
+  const memo = { graph: null };
   const settings = project.settings;
   const periods = settings.periods;
   const checks = settings.checks || {};
@@ -546,11 +597,20 @@ export function checkSchedule(project, walkResults) {
     for (const list of gather(groupEntries, (entry) => entry.dayType.id + '\u0000' + entry.walk.period + (entry.toPeriod === entry.walk.period + 1 ? '' : '\u0000' + entry.toPeriod) + '\u0000' + entry.group.id)) {
       const { dayType, group, from, to, toPeriod } = list[0];
       const period = list[0].walk.period;
-      const sets = alike(list, (walk) => walk.total + '|' + walk.waiting + '|' + walk.passingSeconds + '|' + (walk.arrived === false) + (isWholeSeconds(walk.released) && walk.released > 0 ? '|' + walk.released : ''));
+      const sets = alike(list, (walk) => walk.total + '|' + walk.waiting + '|' + walk.passingSeconds + '|' + (walk.arrived === false) + (isWholeSeconds(walk.released) && walk.released > 0 ? '|' + walk.released : '') + (isWholeSeconds(walk.riding) && walk.riding > 0 ? '|r' + walk.riding : ''));
       // a group held back by a staggered dismissal says so: it is late with
       // the time it waited for the bell counted in (ARCHITECTURE 18.2)
       const heldBack = (walk) => (isWholeSeconds(walk.released) && walk.released > 0 ? formatDuration(walk.released) + ' after the bell' : '');
-      const including = (walk) => (heldBack(walk) === '' ? '' : ', including leaving ' + heldBack(walk));
+      // a ride is named: "including 1 min 26 s for Elevator D" (a figure with no `riding` rides nothing)
+      const ridden = (walk) => {
+        if (!isWholeSeconds(walk.riding) || walk.riding <= 0) return '';
+        const cars = carsRidden(project, memo, group, from, to);
+        return formatDuration(walk.riding) + ' for ' + (cars.length === 0 ? 'an elevator' : listWords(cars.map((car) => 'Elevator ' + car)));
+      };
+      const including = (walk) => {
+        const parts = [heldBack(walk) === '' ? '' : 'leaving ' + heldBack(walk), ridden(walk)].filter((part) => part !== '');
+        return parts.length === 0 ? '' : ', including ' + parts.join(' and ');
+      };
       const across = toPeriod !== period + 1;
       // across periods that do not meet both periods are named: "from Room 101
       // after Period 2 to Room 204 for Period 4 on A Day"
@@ -572,6 +632,33 @@ export function checkSchedule(project, walkResults) {
       }
       const run = runParts(list, [dayType.id, period, group.id], period, toPeriod);
       named(add('group-walk', run.id, text, { dayTypeId: dayType.id, period, groupIds: [group.id], roomId: to.id, ...run.where }), across, toPeriod);
+    }
+
+    // a group that needs step-free routes and has none for a walk: a walk
+    // finding of its own, whose id ends `:step-free` (ARCHITECTURE 19.5)
+    if (project.groups.some((group) => group.stepFree === true)) {
+      for (const dayType of ownDays) {
+        for (const group of project.groups) {
+          if (group.stepFree !== true) continue;
+          const day = meetingSlots(project, group.id, dayType.id, null);
+          for (let period = 0; period < periods - 1; period += 1) {
+            const plan = planFor(dayType.id, null, period);
+            if (!plan || !day[period] || !day[plan.to]) continue;
+            const from = resolveSlotRoom(project, day[period]).room;
+            const to = resolveSlotRoom(project, day[plan.to]).room;
+            if (!from || !to || from === to) continue;
+            const graph = graphFor(project, memo);
+            const failed = route(graph, from.id, to.id, { avoidStairs: true });
+            if (failed.ok || !route(graph, from.id, to.id).ok) continue;
+            const across = plan.to !== period + 1;
+            let sentence = describeFailure(project, failed).replace(/\.$/, '');
+            if (!startsAsTyped(project, failed)) sentence = sentence.charAt(0).toLowerCase() + sentence.slice(1);
+            const why = noElevatorWords(project, from, to);
+            const text = group.name + ' needs step-free routes, and has none from ' + roomName(from, false) + (across ? ' after ' + periodName(settings, period) : '') + ' to ' + roomName(to, false) + (across ? ' for ' + periodName(settings, plan.to) : ' after ' + periodName(settings, period)) + ' ' + onDays(project, dayType) + ': ' + sentence + (why === '' ? '' : '; ' + why) + '.';
+            named(add('group-walk', [dayType.id, period, group.id].concat(across ? ['to' + plan.to] : [], ['step-free']), text, { dayTypeId: dayType.id, period, groupIds: [group.id], roomId: to.id }), across, plan.to);
+          }
+        }
+      }
     }
 
     const daysOf = new Map();

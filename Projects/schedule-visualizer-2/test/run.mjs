@@ -87,6 +87,7 @@ export const GROUPS = {
     'engine/import-subjects.test.mjs', // SV2-13
     'engine/scenario.test.mjs', // SV2-60
     'engine/evacuation.test.mjs', // SV2-62
+    'engine/step-free.test.mjs', // SV2-100
     'engine/scenario-actions.test.mjs', // SV2-61
     'engine/prints-door-cards.test.mjs', // SV2-66
     'engine/prints-calendar.test.mjs', // SV2-80
