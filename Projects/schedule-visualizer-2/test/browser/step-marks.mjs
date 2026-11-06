@@ -228,12 +228,15 @@ test('the third stop is joined in connect mode from its own Properties: the stop
   await openFloor(1);
   const at = await point(page, 22, 10);
   await page.mouse.click(at.x, at.y);
+  // SV2-101: the banner stays after a join, with its result and "Done" (DESIGN 13.2)
+  await page.waitForFunction(() => !document.getElementById('connect-done').hidden);
+  assert.match(await text('#connect-text'), /^Elevator \w+: Floors .*\. Connected\.$/);
+  await page.click('#connect-done');
   await page.waitForFunction(() => document.getElementById('connect-banner').hidden);
   const b = await building();
   const elevators = b.connections.filter((connection) => connection.kind === 'elevator');
   assert.equal(elevators.length, 2, 'the mode joined the two stops');
   assert.equal(new Set(elevators.map((connection) => connection.car)).size, 1, 'one elevator, one letter on both connections');
-  assert.match(await said(), /^Connected /);
 });
 
 test('the other stops are listed with Show and Disconnect; Show brings that floor up and Properties follow', async () => {
