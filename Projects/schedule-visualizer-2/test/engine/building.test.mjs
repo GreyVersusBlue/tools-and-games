@@ -654,8 +654,8 @@ test('a zone partly outside the new size is clipped, and one wholly outside is r
 test('counts gives the figures of the status line for the whole building and for each floor', () => {
   const sample = school();
   const total = building.counts(sample.building);
-  assert.deepEqual({ ...total, byFloor: undefined }, { floors: 3, rooms: 13, numberedRooms: 13, otherSpaces: 10, corridorCells: 121, stairsCells: 4, unconnectedStairs: 0, connections: 2, exits: 2, zones: 1, byFloor: undefined });
-  assert.deepEqual(total.byFloor.fsample003, { rooms: 3, numberedRooms: 3, otherSpaces: 3, corridorCells: 38, stairsCells: 1, unconnectedStairs: 0, exits: 0 });
+  assert.deepEqual({ ...total, byFloor: undefined }, { floors: 3, rooms: 13, numberedRooms: 13, otherSpaces: 10, corridorCells: 121, stairsCells: 4, unconnectedStairs: 0, liftCells: 0, unconnectedLifts: 0, steps: 0, refuges: 0, connections: 2, elevatorConnections: 0, elevators: 0, exits: 2, zones: 1, byFloor: undefined });
+  assert.deepEqual(total.byFloor.fsample003, { rooms: 3, numberedRooms: 3, otherSpaces: 3, corridorCells: 38, stairsCells: 1, unconnectedStairs: 0, liftCells: 0, unconnectedLifts: 0, steps: 0, refuges: 0, exits: 0 });
   const edited = run(actions.placeStairs, run(actions.setRoomFields, sample, { roomId: 'rsample101', number: ' ' }), { floorId: 'fsample002', cells: [0] });
   const after = building.counts(edited.building);
   assert.deepEqual([after.rooms, after.numberedRooms, after.stairsCells, after.unconnectedStairs], [13, 12, 5, 1]);
