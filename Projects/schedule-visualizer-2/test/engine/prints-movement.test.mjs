@@ -22,7 +22,10 @@ import { OUTPUTS, outputFor, renderOutput } from '../../ui/prints/index.js';
 import { esc } from '../../ui/prints/document.js';
 import * as movementPrint from '../../ui/prints/movement.js';
 import * as congestionPrint from '../../ui/prints/congestion.js';
-import { school, group, room, PINNED } from './helpers.mjs';
+import { school, group, room, assertValid, PINNED } from './helpers.mjs';
+import { emptySlot, emptyBells, GROUP_COLOUR_PRESETS } from '../../engine/schema.js';
+import { planProject, roomId } from '../fixtures/buildings/plans.mjs';
+import { groupRows } from '../../ui/movement/model.js';
 
 const DAY_A = 'dsample00a';
 const DAY_B = 'dsample00b';
@@ -910,4 +913,77 @@ test('SV2-79: the congestion report under a bell schedule is of that run, named 
   assert.ok(bells.includes('<h2>A Day with Early Release bells</h2>') && bells.includes('<h2>B Day with Early Release bells</h2>'), 'each day section names the bells');
   assert.ok(!bells.includes('Period 5 to Period 6'), 'no transition that does not happen is named');
   assert.notEqual(bells, regular);
+});
+
+// ---------------------------------------------------------------- a school with an elevator (W4)
+//
+// Three floors of one hall with an elevator at the west end of each corridor
+// (Elevator D, staff only). Ada needs step-free routes and has 20 students
+// (3 trips of 8); Bo stays on Floor 1 and needs none.
+function elevatorSchool() {
+  const hall = ['.AA.BB.', '.AA.BB.', '#######', '.......', '.......'];
+  const project = planProject([hall, hall, hall], { exits: [[1, 6, 2, 'Main Door']] });
+  const at = (number) => {
+    const floor = project.building.floors[number - 1];
+    return { floorId: floor.id, cell: 2 * floor.width };
+  };
+  for (const number of [1, 2, 3]) {
+    const floor = project.building.floors[number - 1];
+    const stop = at(number).cell;
+    floor.cells = floor.cells.slice(0, stop) + 'S' + floor.cells.slice(stop + 1);
+    floor.lifts = [stop];
+  }
+  [[1, 2], [2, 3]].forEach(([a, b], index) => {
+    project.building.connections.push({ id: 'celev0000' + (index + 1), label: 'D' + (index + 1), a: at(a), b: at(b), direction: 'both', kind: 'elevator', staffOnly: true, car: 'D' });
+  });
+  project.settings.periods = 3;
+  project.settings.defaultPassingSeconds = 60;
+  for (const dayType of project.dayTypes) dayType.bells = emptyBells(3);
+  const rows = { Ada: ['1A', '2A', '2A'], Bo: ['1A', '1B', '1B'] };
+  project.groups = Object.keys(rows).map((name, index) => ({
+    id: 'gplan0000' + (index + 1),
+    name,
+    grade: '',
+    headCount: index === 0 ? 20 : null,
+    colour: GROUP_COLOUR_PRESETS[index],
+    ...(index === 0 ? { stepFree: true } : {}),
+    days: { [project.dayTypes[0].id]: rows[name].map((number) => ({ ...emptySlot(), room: roomId(number) })) },
+  }));
+  assertValid(project);
+  return project;
+}
+
+test('the elevator is one place with every stop it has, and its CSV row says elevator, not stairs', () => {
+  const world = derive(elevatorSchool());
+  const view = picture(world, { groupIds: world.project.groups.map((each) => each.id) });
+  const rows = hotspotRows(world.project, world.results, world.graph, view);
+  const car = rows.find((row) => row.place.elevator === true);
+  assert.ok(car, 'the car is ranked: ' + rows.map((row) => row.place.name).join(', '));
+  assert.equal(car.place.name, 'Elevator D');
+  assert.deepEqual(car.ends.map((end) => end.floorId), world.project.building.floors.map((floor) => floor.id), 'its ends are its three stops, not the first connection\'s two');
+  assert.equal(car.load, 20, 'the group is charged to the car once');
+  const csv = hotspotsCsv(world.project, rows, view);
+  const row = csv.find((each) => each[1] === 'Elevator D');
+  assert.equal(row[3], 'elevator');
+  assert.equal(csv.some((each) => each[3] === 'stairs'), false, 'nothing here is stairs');
+});
+
+test('the legend counts a ride as a ride and not as stairs, and says step-free after the name', () => {
+  const world = derive(elevatorSchool());
+  const view = picture(world, { groupIds: world.project.groups.map((each) => each.id) });
+  const rows = groupRows(world.project, world.results, view);
+  const ada = rows.find((row) => row.group.name === 'Ada');
+  assert.equal(ada.stairs, false, 'an elevator is not stairs');
+  assert.equal(ada.rides, true);
+  assert.equal(ada.riding, 91 * 1, 'the one ride of the day: 30 s wait, 6 s, two more round trips');
+  assert.equal(rows.find((row) => row.group.name === 'Bo').rides, false);
+  const { html } = movementPrint.render(world.project, null, { ...NOW, movement: { choice: { groupIds: world.project.groups.map((each) => each.id) } } });
+  const table = tableAfter(html, 'Groups on the map');
+  assert.ok(html.includes('Riding over the day'), 'a column for riding, since someone rides');
+  assert.equal(table[0][0], 'Ada (step-free)', 'the flag in words');
+  assert.equal(table[0][2], '1 min 31 s');
+  assert.equal(table[1][2], 'none');
+  assert.equal(table[0][4], 'No', 'Stairs: No for a group that rides');
+  const plain = movementPrint.render(sample.project, null, { ...NOW, movement: {} }).html;
+  assert.equal(plain.includes('Riding'), false, 'no ride in the school, no column');
 });

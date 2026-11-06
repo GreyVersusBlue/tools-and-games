@@ -12,11 +12,13 @@ import { createPipeline } from '../../engine/worker.js';
 import { buildGraph } from '../../engine/graph.js';
 import { repair } from '../../engine/repair.js';
 import { ownDayTypes } from '../../engine/day-types.js';
-import { transitionsCsv, dayCsv, travelDay, anyHeldBack, heldBackWords } from '../../ui/movement/tables.js';
+import { transitionsCsv, dayCsv, travelDay, anyHeldBack, heldBackWords, transitionRows, lateWords } from '../../ui/movement/tables.js';
 import { durationWords } from '../../ui/scenarios/model.js';
 import { renderOutput, outputFor, printButtons } from '../../ui/prints/index.js';
 import { esc } from '../../ui/prints/document.js';
-import { school, emptyProject, PINNED } from './helpers.mjs';
+import { school, emptyProject, assertValid, PINNED } from './helpers.mjs';
+import { emptySlot, emptyBells, GROUP_COLOUR_PRESETS } from '../../engine/schema.js';
+import { planProject, roomId } from '../fixtures/buildings/plans.mjs';
 
 const NOW = { now: PINNED };
 const DAY_A = 'dsample00a';
@@ -294,4 +296,87 @@ test('SV2-93: the congestion report\'s first line names the staggered dismissal 
   one.release = [{ id: 'lsample003', who: { groups: ['gsample07a'] }, seconds: 45, after: [0], dayTypeIds: null }];
   const single = derive(one);
   assert.equal(heldBackWords(single.project, single.results, DAY_A), 'Staggered dismissal is in force: 1 group leaves up to 45 s after the bell.');
+});
+
+// ---------------------------------------------------------------- a school with an elevator (W4)
+//
+// Three floors of one hall with an elevator at the west end of each corridor
+// (Elevator D, staff only). Ada needs step-free routes and has 20 students: a
+// car carries 8, so she rides in 3 trips. Bo needs none and stays on Floor 1.
+// The passing time is 60 s, which three trips cannot make.
+function elevatorSchool(settings) {
+  const hall = ['.AA.BB.', '.AA.BB.', '#######', '.......', '.......'];
+  const project = planProject([hall, hall, hall], { exits: [[1, 6, 2, 'Main Door']] });
+  const at = (number) => {
+    const floor = project.building.floors[number - 1];
+    return { floorId: floor.id, cell: 2 * floor.width };
+  };
+  for (const number of [1, 2, 3]) {
+    const floor = project.building.floors[number - 1];
+    const stop = at(number).cell;
+    floor.cells = floor.cells.slice(0, stop) + 'S' + floor.cells.slice(stop + 1);
+    floor.lifts = [stop];
+  }
+  [[1, 2], [2, 3]].forEach(([a, b], index) => {
+    project.building.connections.push({ id: 'celev0000' + (index + 1), label: 'D' + (index + 1), a: at(a), b: at(b), direction: 'both', kind: 'elevator', staffOnly: true, car: 'D' });
+  });
+  project.settings.periods = 3;
+  project.settings.defaultPassingSeconds = 60;
+  Object.assign(project.settings, settings || {});
+  for (const dayType of project.dayTypes) dayType.bells = emptyBells(3);
+  const rows = { Ada: ['1A', '2A', '2A'], Bo: ['1A', '1B', '1B'] };
+  project.groups = Object.keys(rows).map((name, index) => ({
+    id: 'gplan0000' + (index + 1),
+    name,
+    grade: '',
+    headCount: index === 0 ? 20 : null,
+    colour: GROUP_COLOUR_PRESETS[index],
+    ...(index === 0 ? { stepFree: true } : {}),
+    days: { [project.dayTypes[0].id]: rows[name].map((number) => ({ ...emptySlot(), room: roomId(number) })) },
+  }));
+  assertValid(project);
+  return project;
+}
+
+test('Riding is a column of the tables, the print and both files only when some group rides', () => {
+  const project = elevatorSchool();
+  const world = derive(project);
+  const file = transitionsCsv(project, world.results, project.dayTypes[0].id);
+  assert.deepEqual(file[0].slice(6, 9), ['Walking (seconds)', 'Riding (seconds)', 'Waiting (seconds)'], 'the transition file has it');
+  const ada = file.find((row) => row[3] === 'Ada' && row[1] === 'Period 1 to Period 2');
+  assert.equal(ada[7], 91, 'the 30 s wait, 6 s for a floor and two more round trips of 32 s, less the column\'s walk out');
+  assert.equal(ada[6] + ada[7] + ada[8], ada[9], 'walking + riding + waiting is the total (nobody is held back)');
+  const bo = file.find((row) => row[3] === 'Bo');
+  assert.equal(bo[7], 0, 'a group that takes no car rides 0 s');
+  const days = dayCsv(project, world.results, project.dayTypes[0].id);
+  assert.deepEqual(days[0].slice(3, 6), ['Walking (seconds)', 'Riding (seconds)', 'Waiting (seconds)'], 'the whole-day file has it');
+  const { html } = renderOutput('travel-time', project, null, { ...NOW, dayTypeId: project.dayTypes[0].id, movement: world });
+  const [first] = sectionsOf(html).filter((section) => section.classes === 'doc-section--travel');
+  assert.deepEqual(first.head, ['Group', 'From', 'To', 'Walking', 'Riding', 'Waiting', 'Total', 'Fits the passing time']);
+  const [day] = sectionsOf(html).filter((section) => section.classes.includes('doc-section--travel-day'));
+  assert.deepEqual(day.head, ['Group', 'Walks', 'Walking', 'Riding', 'Waiting', 'Total', 'Late walks', 'Slowest walk']);
+  // a school with no elevator keeps today's shape, whatever else changed
+  const plain = renderOutput('travel-time', sample.project, null, { ...NOW, dayTypeId: project.dayTypes[0].id, movement: sample }).html;
+  assert.equal(plain.includes('Riding'), false, 'no ride, no column');
+  assert.equal(transitionsCsv(sample.project, sample.results, project.dayTypes[0].id)[0].includes('Riding (seconds)'), false);
+});
+
+test('a late walk that rode names the elevator, the trips and the wait; a wait of 0 says so', () => {
+  const project = elevatorSchool();
+  const world = derive(project);
+  const found = transitionRows(project, world.results, project.dayTypes[0].id, 0);
+  const ada = found.rows.find((row) => row.group.name === 'Ada');
+  assert.equal(ada.late, true);
+  assert.deepEqual(ada.ride, { car: 'D', trips: 3, perTrip: 8, wait: 30 });
+  assert.equal(lateWords(ada), 'Late by 43 s · 3 trips of 8 in Elevator D, 30 s wait');
+  assert.equal(found.rows.find((row) => row.group.name === 'Bo').ride, undefined, 'a group that takes no car has no ride');
+  const printed = renderOutput('travel-time', project, null, { ...NOW, dayTypeId: project.dayTypes[0].id, movement: world }).html;
+  assert.ok(text(printed).includes('3 trips of 8 in Elevator D, 30 s wait'), 'on paper too');
+  // one person's trip is one trip, and the school may have set the wait to 0
+  const none = elevatorSchool({ elevatorWaitSeconds: 0, elevatorPeoplePerTrip: 40 });
+  const fast = derive(none);
+  const row = transitionRows(none, fast.results, none.dayTypes[0].id, 0).rows.find((each) => each.group.name === 'Ada');
+  assert.deepEqual(row.ride, { car: 'D', trips: 1, perTrip: 40, wait: 0 });
+  assert.equal(row.riding, 6, 'no wait: just the ride');
+  assert.equal(lateWords({ ...row, late: true, over: 5, arrived: true }), 'Late by 5 s · Elevator D, no wait');
 });
