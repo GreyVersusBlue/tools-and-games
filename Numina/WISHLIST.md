@@ -277,11 +277,12 @@ its files, not repeated here; add to this list rather than starting a second.
   rather than to a write-up. It is the one entry in `KNOWN` in
   `test/smoke.mjs`. It needs somebody who was there to say whether the Reach
   page should name her; the site does not invent it.
-- 63 of the 188 names on `notable-figures.md` point at no page and are not
-  checked: Figures of faith, most of Founders and legends and Figures of
-  history, and nearly all of the Vargoth War. Most are on a page already (the
-  Dovenost Arbiters, the L'Dahn founders) and would be checked the day their
-  entry links it.
+- 18 of the 188 names on `notable-figures.md` point at no page and are not
+  checked (45 were linked on 2026-11-06, #1028): the Vargoth War's Turned and
+  Unwanted Syndicate, Lady Alyssa Deloach and John, Pru, the Forgemother,
+  Lizabetta Faustino and the mercenary Lance. No page carries them; they come
+  from play, and each would be checked the day a page names it and its entry
+  links it.
 - `world.md` is 397 words for "The World of Aeledd", the first stop off the
   home page's second hero button, and it is the whole of what the campaign
   book prints: the Introduction's first paragraph and all of p5 and the top of

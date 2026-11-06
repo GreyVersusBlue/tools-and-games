@@ -1920,11 +1920,21 @@ Generator.
 
 **#1027. The Absalom picker names each build Easier, Steady or Harder, and the words are held to `baseline.json` by `smoke.mjs`.** Devon's "it is the design" (2026-10-05) left the picker the place to say so: each `pcOptions` entry may carry `difficulty: { word, line }`, `word` one of `DIFFICULTY_WORDS` (`Easier`, `Steady`, `Harder`) and `line` a sentence of 100 characters or fewer with no percentage, shown above the blurb. Absent is allowed (the proving ground's lone build has nothing to rank). The ranking is the autopilot's rate per build in `test/baseline.json`; a word that disagrees with its rank by more than three points fails, and two builds within three points must share a word, which is why the fighter and the rogue (69.4 and 68.0) are both Harder and the cleric (74.4) alone is Steady. Reversible: drop the field from `vault.json`; the loader, the card and the test all treat it as optional. No engine change; `baseline.json` did not move. *TG-55, 2026-11-06.*
 
+**#1028. A notable-figures entry links the page that names the person, in the file's own `See [Page](/url/).` form, and an entry whose names the page does not carry stays unlinked.** 45 of the 63 unpointed names now point at a page that was read and names them (Faith & Religion, L'dahn, Ophrailes, Dovenost, Rues, Five Duchies, Spyndelmere, Myos Islands, The Realms, The Story So Far), so `test/smoke.mjs` checks 170 names instead of 125 and counts 18 as pointing nowhere. No description changed and no fact was written. The seven L'Dahn council names were already under a `See` that sat across a line break the smoke check's `See \[` pattern cannot read; the paragraph is reflowed so it reads. Left alone on purpose: `Lance` (the page's "Lance" is a tarot card, not the mercenary), `The Faustino family` (its entry also carries Lizabetta, whom no page names) and the Turned and Unwanted Syndicate names, which come from play. Reversible by deleting the added `See` sentences. *TG-35, 2026-11-06.*
+
 **#1005. Reserved: #976 to #1005 are held for sessions on Huginn (the Selector loop); anyone else numbers from #1006.**
 
 **#1035. Reserved: #1006 to #1035 are held for sessions on Huginn (the Selector loop); anyone else numbers from #1036.**
 
 # The log
+## Numina: notable figures link the pages that name them, 2026-11-06 (TG-35)
+
+TG-35 on Sonnet 5.5, alone in the repo; decision #1028. `Numina/src/lore/notable-figures.md` and `Numina/WISHLIST.md`; no code, no storage key, no test change (the smoke check has no pin on the unpointed count).
+
+**What shipped.** 45 of the 63 unpointed names now link a page that names them, by a `See [Page](/url/).` sentence on the entry (the five Figures of faith by one under the heading). The smoke check went from 125 to 170 names checked, every one on its page; 18 remain unpointed. Each page was searched for the name before the link went in, and the check confirmed it.
+
+**Left.** 18 names no page carries: most of the Vargoth War section (the Turned, the Unwanted Syndicate, Alyssa Deloach and John, Pru, the Forgemother, Lizabetta Faustino) and the tarot-card `Lance`. They come from play. Reach Lord Sarah Jackson stays in `KNOWN`.
+
 ## The Absalom Inheritance: the picker says which build is easier, 2026-11-06 (TG-55)
 
 TG-55 on Sonnet 5.5, alone in the repo; decision #1027. `content/vault.json`, `js/content.js`, `js/ui.js`, the `.pc-diff` rule in `Projects/absalom_inheritance.html`, `test/smoke.mjs`, `test/browser.mjs`, `content-authoring-guide.md`; no engine, no storage key, no `baseline.json` change.

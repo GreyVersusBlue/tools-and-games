@@ -52,6 +52,8 @@ Each Genesori's eternal half, paired with a mortal counterpart. See
 
 ## Figures of faith
 
+See [Faith & Religion](/lore/religion/).
+
 - **Exemplar Alessa of Bahadur** — headstrong, zealous battlefield healer who
   went where the suffering was rather than where the fighting was. Her following
   became the convocation **Alessa's Hand**, known equally as healers and as
@@ -149,8 +151,8 @@ See [Spyndelmere](/lore/nations/spyndelmere/).
 
 ### L'dahn Linenation
 
-The High Council runs fifteen strong — nine Elders and six Primes. See
-[L'dahn Linenation](/lore/nations/ldahn-linenation/).
+The High Council runs fifteen strong — nine Elders and six Primes.
+See [L'dahn Linenation](/lore/nations/ldahn-linenation/).
 
 - Elders **Landry Hale** (Advocate), **Sol Elfrish** (Guardian), and **Arden
   Lockland** (Fixer).
@@ -210,10 +212,10 @@ See [T'barris](/lore/nations/tbarris/).
   Marks still appear on the worthy.
 - **Louis Wenform**, once Louis Tinker — tamed the wilds around Embervale with
   his contraptions, making the city of Thornwen possible, and was granted the
-  name for it.
+  name for it. See [Spyndelmere](/lore/nations/spyndelmere/).
 - **Agnes Shadowseeker**, once Agnes Fletcher — killed a shadow-eyed monster in
   the southern forest and lost her brother **Oliver** to its kin. The name
-  passed to her family and is still held in high regard.
+  passed to her family and is still held in high regard. See [Spyndelmere](/lore/nations/spyndelmere/).
 - **Berolt** and **Elysande** — brother and sister who set out to build their
   legacies together, quarreled, and parted. She founded Valarmore; he founded
   the [Five Duchies](/lore/nations/five-duchies/). They reconciled in old age.
@@ -221,9 +223,9 @@ See [T'barris](/lore/nations/tbarris/).
   travelled all his long life after his home was destroyed and never found a
   place to settle. **Lester Leshon**, his partner and protector, co-founded the
   way and built Dahnhelm after he died; their adopted daughter **Dihnora
-  L'Dahn** expanded its kindness and fairness.
+  L'Dahn** expanded its kindness and fairness. See [L'dahn Linenation](/lore/nations/ldahn-linenation/).
 - **Devan Khoarst** — a L'Dahn Guardian of old who founded the combined-form
-  fighting school that every L'Dahn is said to learn the basics from.
+  fighting school that every L'Dahn is said to learn the basics from. See [L'dahn Linenation](/lore/nations/ldahn-linenation/).
 - **Isidora Delacroix**, "Isidora the Stone" — first leader of the Mellurian
   Leadership Council and architect of its guild system. The Delacroix Cliffs
   carry her name. With her came **Alaric Borges** "the Hammer" (metalworkers'
@@ -235,48 +237,48 @@ See [T'barris](/lore/nations/tbarris/).
   of the Kodel College of Alloys. See [Melluria](/lore/nations/melluria/).
 - **Carolin Myosine** — the adventuring ship captain who sailed blind through a
   storm, found the Myos Islands empty, and declared herself Monarch and her crew
-  Nobles.
+  Nobles. See [Myos Islands](/lore/nations/myos-islands/).
 - **Honor Dante** — a L'Dahn Fixer whose engineering so improved Melluria's
-  mining machinery that the Machinist's Guild invited an outsider to join.
+  mining machinery that the Machinist's Guild invited an outsider to join. See [L'dahn Linenation](/lore/nations/ldahn-linenation/).
 - **Kit Jantith** — a L'Dahn Advocate, known through the Myosi Islands as fair
-  but shrewd, and for over-indulging in the parties after a settlement.
+  but shrewd, and for over-indulging in the parties after a settlement. See [L'dahn Linenation](/lore/nations/ldahn-linenation/).
 
 ## Figures of history
 
 - **Crown Prince Eduard Dales** — the only Crown Prince of Ophrailes ever
   recalled, having nearly caused a civil war two centuries ago. **Prince Alistair
   Leonate** led the recall and founded the Assembly of the People and the
-  peasant-protection laws in its wake.
+  peasant-protection laws in its wake. See [Ophrailes](/lore/nations/ophrailes/).
 - **King Hadley** — the last king before Ophrailes was Ophrailes; his daughter
-  **Pritan** became its first Crown Prince.
+  **Pritan** became its first Crown Prince. See [Ophrailes](/lore/nations/ophrailes/).
 - **Leyla Maral** — a civil engineer who won Dovenost's eighteenth War of
   Ascension after a volcano killed most of the other faction leaders, and whose
-  real legacy is roads, aqueducts, and sewers.
+  real legacy is roads, aqueducts, and sewers. See [Dovenost](/lore/nations/dovenost/).
 - **Martin Henrik** and **Ivan Goran** — the last War of Ascension decided by
   single combat. Goran would not yield and Henrik had to take his head; being
-  dangerously stubborn has been *Goranesque* ever since.
+  dangerously stubborn has been *Goranesque* ever since. See [Dovenost](/lore/nations/dovenost/).
 - **Tomasz Bosko** — won the only bloodless War of Ascension, during a famine
   too severe for anyone to fight, and is reckoned among the worst Arbiters
-  Dovenost ever had.
+  Dovenost ever had. See [Dovenost](/lore/nations/dovenost/).
 - **Sona Zoric** — a young Dovenosti mage who tried to open a Gate to her
   paramour's house and opened one into a spice shop in Myos Cori instead,
   ending her nation's isolation sixty years ago. **Claudia Corlevaro**, the
   Myosian mage who untangled it, came back with her and a trade delegation, and
   **Arbiter Aleksandra Fiala** granted the Myosians their Gates and docking
-  rights.
-- **Queen Azari the First** — ended poverty and starvation in Anbara.
-- **Galifel Dyneley** — original benefactor of the Atheneum at Valarmore.
+  rights. See [Dovenost](/lore/nations/dovenost/).
+- **Queen Azari the First** — ended poverty and starvation in Anbara. See [Rues](/lore/nations/rues/).
+- **Galifel Dyneley** — original benefactor of the Atheneum at Valarmore. See [Five Duchies](/lore/nations/five-duchies/).
 - **Margus Heyworth** — the ranger who found the Howling Cliffs and first hiked
-  the pass.
+  the pass. See [Five Duchies](/lore/nations/five-duchies/).
 - **Olive Molyngton** — first homesteader of the Five Duchies, founder of
-  Northfield in Hare Duchy.
-- **Captain Easten Fawkes** — founded the Foxfall Mercenary Company.
+  Northfield in Hare Duchy. See [Five Duchies](/lore/nations/five-duchies/).
+- **Captain Easten Fawkes** — founded the Foxfall Mercenary Company. See [Five Duchies](/lore/nations/five-duchies/).
 - **Zephora Peckham** — at 122, the oldest inhabitant the Five Duchies has ever
-  had.
+  had. See [Five Duchies](/lore/nations/five-duchies/).
 - **Clay Raynar** — a L'Dahn Prime Guardian killed in the line of duty at
   Fortune's Bend, days from becoming the first Prime in twenty-five years to
   serve a full five. His aunt **Viatrix** was made ambassador between Fortune's
-  Bend and the High Council after his death.
+  Bend and the High Council after his death. See [L'dahn Linenation](/lore/nations/ldahn-linenation/).
 - **Empress Evenia**, **Eviar Leonate**, **Regent Berkeley Evers**, **King
   Y'vain Pelle**, and the renegade Zenith **Ravvin** all appear on the
   [historical timeline](/lore/history/).
@@ -297,7 +299,7 @@ people they take keep their minds, and those are the ones with names.
 
 - **Alice Stormbow** — once among the Vargoth's fiercest opponents, now High
   Herald of the Vargoth Empire and its chief diplomatic voice. The only one of
-  these figures the campaign guide itself names.
+  these figures the campaign guide itself names. See [The Realms](/lore/realms/).
 - **General Kiernan Jowenys** — the war hero who defended Valarmore and called
   the Farthest Star Council, where he was stabbed. He was later confirmed Turned
   and rose to become the Empire's foremost general; he sent Fortune's Bend a
@@ -315,10 +317,10 @@ people they take keep their minds, and those are the ones with names.
   Council, the attack that began the present war.
 - **Malkor** — an Ophralian mage, Atheneum-trained at Valarmore, who twisted the
   ritual that let the Vargoth loose and altered his own Purpose. He is held to
-  be seeking godhood by way of the Husks.
+  be seeking godhood by way of the Husks. See [The Story So Far](/new-to-numina/story-so-far/).
 - **The Sly Fox** — a morphose of Spyndelmere, who banished every Vargoth from
   that nation in exchange for the whole of Fortune's Bend walking the mushroom
-  path and vanishing for a year and a day.
+  path and vanishing for a year and a day. See [The Story So Far](/new-to-numina/story-so-far/).
 - **The Tyrant** — a Celestial who rules the Barred Commots absolutely, and a
   wartime ally whose four cyclical aspects are set out on
   [The Realms](/lore/realms/).
@@ -334,7 +336,7 @@ people they take keep their minds, and those are the ones with names.
 - **Pru** — leads the Unlit Halls, which stayed closed to her for years after a
   betrayal from within. Newcomers need a patron to vouch for them.
 - **Valteraxis**, the Bloodgiver — a corrupted Gargoyle bound up with the
-  consumption of Purpose.
+  consumption of Purpose. See [The Story So Far](/new-to-numina/story-so-far/).
 - **The Forgemother** — a being met in a shared dream, offering the expertise of
   her craft.
 - **The Unwanted Syndicate** — **Alestair Karth** the Ashen Quill, the
