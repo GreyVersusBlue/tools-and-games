@@ -703,30 +703,32 @@ test('two unconnected stops on a floor are told apart by their column, and each 
   assert.equal(await page.$eval('#exits-refuge-list li:first-child [data-action="remove-refuge"]', (el) => el.getAttribute('aria-label')), 'Remove Area of refuge, area of refuge', 'the accessible name holds the visible "Remove"');
 });
 
-test('the row labels of the Floor tab follow the floor shown: a taller, wider floor with a stop at the same cell number', async () => {
+test('the Floor tab\'s rows are kept while a floor is renamed and resized, and their words and labels tell the floor as it is', async () => {
   const ids = await floorIds();
-  const car = (await building()).connections.find((connection) => connection.kind === 'elevator').car;
-  // a fourth floor, 50 wide, with a stop at cell 422 (column 23, row 9): the cell number the first floor's stop has (column 23, row 11 at 40 wide)
-  await act('addFloor', { likeFloorId: ids[0], name: 'Wide floor' });
-  const wide = (await floorIds())[3];
-  await act('resizeFloor', { floorId: wide, right: 10 });
-  await act('placeLift', { floorId: wide, cells: [8 * 50 + 22] });
-  await act('connectStairs', { a: { floorId: ids[0], cell: STOP }, b: { floorId: wide, cell: 8 * 50 + 22 } });
-  assert.equal(8 * 50 + 22, STOP, 'the same cell number');
   await openFloor(0);
   await tab('floor');
-  await page.waitForFunction(() => document.querySelector('#floor-elevators [data-action="show-stop"]') !== null);
-  const label = () => page.$$eval('#floor-elevators li:not([data-connected="false"]) [data-action="show-stop"]', (all) => all.map((el) => el.getAttribute('aria-label')));
-  assert.deepEqual(await label(), ['Show me: the elevator stop at column 23, row 11']);
-  await openFloor(3);
-  await page.waitForFunction(() => document.querySelector('.bld').editor.floor.name === 'Wide floor' && document.querySelector('#floor-elevators li') !== null);
-  assert.deepEqual(await label(), ['Show me: the elevator stop at column 23, row 9'], 'the row was kept, and its label tells the floor as it is');
-  await page.evaluate(() => globalThis.sv2.store.undo());
-  await page.evaluate(() => globalThis.sv2.store.undo());
-  await page.evaluate(() => globalThis.sv2.store.undo());
-  await page.evaluate(() => globalThis.sv2.store.undo());
-  await page.waitForFunction(() => globalThis.sv2.store.project.building.floors.length === 3);
-  assert.ok(car);
+  await page.waitForFunction(() => document.querySelectorAll('#floor-elevators li[data-connected="false"]').length === 2);
+  const row = () => page.$eval('#floor-elevators li[data-connected="false"] .bi-row__text', (el) => el.textContent);
+  const label = () => page.$eval('#floor-elevators li[data-connected="false"] [data-action="show-stop"]', (el) => el.getAttribute('aria-label'));
+  const size = () => page.evaluate(() => ({ width: globalThis.sv2.store.project.building.floors[0].width, height: globalThis.sv2.store.project.building.floors[0].height }));
+  const first = await size();
+  assert.equal(await row(), 'Floor 1 stop at column 25, row 11: not connected');
+  // the row stays (the stop is the same one) while the name changes under it
+  await act('renameFloor', { id: ids[0], name: 'Annex' });
+  await page.waitForFunction(() => document.querySelector('#floor-elevators li[data-connected="false"] .bi-row__text')?.textContent.startsWith('Annex'));
+  assert.equal(await row(), 'Annex stop at column 25, row 11: not connected');
+  // more rows at the bottom: the stop keeps its cell number and its place
+  await act('resizeFloor', { floorId: ids[0], bottom: 5 });
+  await page.waitForFunction((height) => globalThis.sv2.store.project.building.floors[0].height === height, {}, first.height + 5);
+  assert.equal(await label(), 'Show me: the elevator stop at column 25, row 11');
+  // cells added at the left: the stop is in a new column, and its label says so
+  await act('resizeFloor', { floorId: ids[0], left: 4 });
+  await page.waitForFunction((width) => globalThis.sv2.store.project.building.floors[0].width === width, {}, first.width + 4);
+  await page.waitForFunction(() => document.querySelector('#floor-elevators li[data-connected="false"] [data-action="show-stop"]')?.getAttribute('aria-label').endsWith('column 29, row 11'));
+  assert.equal(await label(), 'Show me: the elevator stop at column 29, row 11');
+  assert.equal(await row(), 'Annex stop at column 29, row 11: not connected');
+  for (let n = 0; n < 3; n += 1) await page.evaluate(() => globalThis.sv2.store.undo());
+  await page.waitForFunction((width) => globalThis.sv2.store.project.building.floors[0].name === 'Floor 1' && globalThis.sv2.store.project.building.floors[0].width === width, {}, first.width);
 });
 
 test('the menu on a middle stop names the other floor in each Disconnect, and the words say it', async () => {
