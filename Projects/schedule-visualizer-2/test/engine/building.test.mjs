@@ -1161,3 +1161,14 @@ test('a file whose elevator has connections and no lifts list (an older writer) 
   assert.deepEqual(floor(erased, 2).lifts, undefined, 'the middle stop is still on connection A');
   assert.deepEqual(erased.building.connections.map((c) => c.id), ['chand00001']);
 });
+
+test('an exit on an elevator stop is refused in words (not "undefined"), and an unlisted stop is not read as one', () => {
+  const lifted = run(actions.placeLift, shaft(1), { floorId: F1, cells: [at(0, 3)] });
+  refused(actions.markExit, lifted, { floorId: F1, cell: at(0, 3) }, 'not-corridor', /that cell is an elevator stop\./);
+  // a stale `lifts` entry on a stairs connection (an older tool's resize or repaint) is stairs, not a stop
+  const stale = structuredClone(planProject([['S####', '.....', '.....', '.....', '.....'], ['S####', '.....', '.....', '.....', '.....']], { connections: [[1, 0, 0, 2, 0, 0]] }));
+  stale.building.floors[0].lifts = [0];
+  assert.equal(building.describeCell(stale.building, F1, 0).kind, 'stairs');
+  assert.equal(building.counts(stale.building).liftCells, 0);
+  refused(actions.markExit, stale, { floorId: F1, cell: 0 }, 'not-corridor', /that cell is stairs\./);
+});
