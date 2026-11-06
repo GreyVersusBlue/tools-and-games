@@ -895,7 +895,7 @@ test('a passcode is trimmed, a blank one is refused, and Publish does nothing wh
   });
 });
 
-test('the frame is fed again for the seven settings a file carries and for no other, and "Try again" lets the page before it go', async () => {
+test('the frame is fed again for the ten settings a file carries and for no other, and "Try again" lets the page before it go', async () => {
   await closing(await open(), async (page) => {
     // the list preview.js compares is the list publishedModel copies
     const lists = await page.evaluate(async () => {
@@ -904,7 +904,7 @@ test('the frame is fed again for the seven settings a file carries and for no ot
       return { compared: PUBLISHED_SETTINGS || null, published: Object.keys(publishedModel(globalThis.sv2.store.project, { clock: () => new Date() }).settings) };
     });
     assert.deepEqual(lists.compared, lists.published);
-    assert.equal(lists.published.length, 7);
+    assert.equal(lists.published.length, 10);
 
     // settings only the planner uses: the theme, the paper, a default head count, a check's limit
     const before = await sent(page);

@@ -105,13 +105,14 @@ export function directionsRefusal(school, fromId, toId, stepFree, asked) {
 const ROUTE_SAID_MS = 10000;
 let routeTimer = 0;
 
+let routeRegion = null;
+
 function routeStatus() {
-  let region = document.querySelector('[data-says="route"]');
-  if (!region) {
-    region = h('span', { class: 'visually-hidden', role: 'status', 'aria-live': 'polite', dataset: { says: 'route' } });
-    document.body.appendChild(region);
+  if (routeRegion === null || routeRegion.isConnected === false) {
+    routeRegion = h('span', { class: 'visually-hidden', role: 'status', 'aria-live': 'polite', dataset: { says: 'route' } });
+    if (document.body) document.body.appendChild(routeRegion);
   }
-  return region;
+  return routeRegion;
 }
 
 function sayRoute(words) {
