@@ -1924,6 +1924,8 @@ Generator.
 
 **#1029. A district drops a scripted arrival's `route` when the arrival moves, and keeps it when it does not; the reference hand's `clearAhead` reads the car's route at each box ahead.** `districtLevel` copies a `spawns` entry to the first box and leg that spawn (#616), and a route (`['T', 'T', 'L']`, #960) is the turns of one street, so an entry whose node or leg changed is copied without `route` and keeps its `turn`; one that stayed keeps both. Dropping was chosen over translating because nothing says which box of the new street answers to which turn. In `tools/calibrate.mjs`, `clearAhead` takes `car.route[car.routeAt + hop]` at each hop when the car has one and the box has that way out, else the through, so a hand calibrating a level with a routed ambulance holds the phase that carries the turn it takes and stops at the box it leaves the street. No shipped level names a route: no pinned run, star, timing or level datum moved. Reversible by restoring the `...s` copy and the `through` find. *TG-45, 2026-11-06.*
 
+**#1030. The brush skips a room only when it has traced that room before and nothing has touched it since, and then only when no room that overlaps or touches it (followed all the way out) is in the stroke's reach.** Re-tracing is not a fixed point for a room that came from a file or an older generator: `generated-v10` has a door flush against a corner, and every stroke anywhere on the storey moved it off, so skipping distant rooms outright changed the building (the first oracle run failed on stroke 0). A `WeakMap` in `paint.js` records each traced room's JSON and raster; an unrecorded or edited room is always in play, so the first stroke after a load or an undo is the full pass it always was. Stopping at the neighbours' neighbours also diverged, on the second stroke over `generated-v10`, because shared walls are re-claimed pass after pass down a run of halls. Nothing is saved, no storage key moves. The cost: on a connected building the reach is nearly everything (120 rooms, 1 skipped in 40 strokes), and a 40-stroke drag took 26.6 ms a stroke against 29.1; the saving is for plans with separate buildings. Reversible by passing no `within` to `rasterize`. *TG-39, 2026-11-06.*
+
 **#1031. Corner & Kettle's sweep plays Cold Brew, Nitro Cold Brew and Affogato by money and counts the barista's hand-back on a cup the player finished; nothing in the game moves.** Measured, then written into the WISHLIST: Cold Brew ($150) adds no measurable net, Nitro ($220) about $48 a day (payback 4.5 days), Affogato ($280) about $128 a day (2.2 days), and a hand-back on a player-finished cup is 2.6% of hand-backs at an instant Serve and about two thirds at 1.5 s, costing a patient player under half a hand step a day and an eager one about a dollar. No price, unlock or recipe was changed and `js/sim.js` was not touched: the probes wrap `advance`, `autoAssistStep` and `scoreServe` on the returned object. The new tables print after the pace table, so the 215 older lines are what they were. Reverse by deleting the two sweeps and `checkProbes()`. *Corner & Kettle, TG-46.*
 
 **#1005. Reserved: #976 to #1005 are held for sessions on Huginn (the Selector loop); anyone else numbers from #1006.**
@@ -1931,6 +1933,18 @@ Generator.
 **#1035. Reserved: #1006 to #1035 are held for sessions on Huginn (the Selector loop); anyone else numbers from #1036.**
 
 # The log
+## School Generator: the brush rasterizes only the rooms a stroke can reach, 2026-11-06 (TG-39)
+
+TG-39 on Sonnet 5.5, in its own worktree; decision #1030. `js/paint.js`, `test/paint-window.test.mjs`, `WISHLIST.md`; no storage key, no save field, `SAVE_VERSION` untouched.
+
+**What shipped.** `rasterize(state, floorIndex, within)` takes the box a stroke can reach (its cells plus one cell round) and rasterizes and re-traces only the rooms in play, leaving the rest as the same objects; `paintCells` computes the box, keeps the shape cap counting skipped rooms and records each traced room as settled. Frozen rooms are rasterized only where they touch the box. The brush's refusals, counts and accent handling are unchanged.
+
+**Proof.** `test/paint-window.test.mjs` keeps the old `rasterize`, `assignOwners` and `paintCells` as the oracle and strokes seeded random cells (single, drags, blocks; on and off; with and without a name and colour; every ninth stroke an undo that renews every object) over the sample school, the five migrate fixtures and a generated 2,400-student school, comparing the returned counts and the storey's JSON text after every stroke. 11 tests. Broken on purpose: all rooms counted settled (3 fail, the right ones), no spreading to touching rooms (6), no one-cell margin on the box (7), frozen rooms never rasterized (3), the shape cap counting only traced rooms (the cap test, added because the first four left it green).
+
+**Checks.** `node --test 'test/*.test.mjs'` 2591 to 2618 pass, `tools/blender/validate.mjs` 630, `test/tools/run.mjs` 62 of 62, board-check `npm run check`, `social:check` and `ci-check.mjs` green.
+
+**Left.** The saving is small on a connected plan; the rest of a stroke's cost is the whole-sheet lattice, `assignOwners`' scan and `ownedRegions`, which the row did not ask to touch.
+
 ## Numina: notable figures link the pages that name them, 2026-11-06 (TG-35)
 
 TG-35 on Sonnet 5.5, alone in the repo; decision #1028. `Numina/src/lore/notable-figures.md` and `Numina/WISHLIST.md`; no code, no storage key, no test change (the smoke check has no pin on the unpointed count).

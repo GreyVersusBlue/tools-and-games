@@ -184,17 +184,75 @@ const edgeForSeg = (v) => (v === SEG_GLASS ? EDGE_GLASS : v === SEG_RAIL ? EDGE_
 
 // ---------- rasterizing ----------
 
+// Do two boxes touch? Inclusive: rooms that share a wall have boxes that meet
+// on it, and a room that merely abuts the stroke still has to be re-traced
+// because the wall between them is claimed by whichever of the two comes first.
+const boxesTouch = (a, b) =>
+  a.x0 <= b.x1 + EPS && b.x0 <= a.x1 + EPS && a.z0 <= b.z1 + EPS && b.z0 <= a.z1 + EPS;
+
+// Which rooms the brush itself drew, and exactly what they looked like when it
+// finished (their JSON text, and the raster it drew them on). A repaint
+// re-traces every room on the storey, and a room that was never traced — one
+// that came out of a file, an older generator or another tool — is not always
+// a fixed point of that: a door left flush against a corner is moved off it,
+// for one. Skipping such a room would stop doing that, and a stroke would stop
+// tidying rooms nowhere near it, which is a change to the building the old
+// brush made. So a room is only ever skipped once the brush has traced it and
+// it has not been touched since, and the first stroke after a load is a full
+// pass, as it always was. Nothing is saved: this lives with the objects.
+const settled = new WeakMap();
+const rasterKey = (R) => `${R.pitch},${R.x0},${R.z0}`;
+const printOf = (shape) => JSON.stringify(shape);
+const isSettled = (shape, R, print) => {
+  const was = settled.get(shape);
+  return !!was && was.key === rasterKey(R) && was.print === print;
+};
+
 // The storey, back on a lattice: which cells each aligned room covers, and
 // which edges it built. `owner[i]` indexes `rooms`; -1 is bare lattice.
-export function rasterize(state, floorIndex) {
+//
+// `within` is an optional world-feet box, `{ x0, z0, x1, z1 }`: the part of the
+// storey a stroke can reach. With it, only the rooms the stroke can change are
+// rasterized, and they come back in `rooms`; the rest are `bystanders`, left
+// exactly as they are, and `skipped` says how many aligned rooms that is. A
+// room is in play when its bounding box touches the box, when it is not
+// `settled` (above), or when its box touches that of a room already in play,
+// followed all the way out: rooms that overlap or share a wall decide each
+// other's cells and who builds the wall between them. Frozen rooms are
+// rasterized only where they touch the box, since all `frozenCell` is asked is
+// about the stroke's own cells. Without `within` every room is in play, as it
+// always was.
+export function rasterize(state, floorIndex, within = null) {
   const floor = state && state.floors ? state.floors[floorIndex] : null;
   if (!floor) return null;
   const R = rasterOf(state, floorIndex);
   const lat = createLattice(R.w, R.h, R.pitch, R.x0, R.z0);
   const owner = new Int32Array(R.w * R.h).fill(-1);
   const frozenCell = new Uint8Array(R.w * R.h);
-  const rooms = [], frozen = [];
-  for (const shape of shapesOf(floor)) (latticeAligned(shape, R) ? rooms : frozen).push(shape);
+  const rooms = [], frozen = [], bystanders = new Set();
+  const aligned = [];
+  for (const shape of shapesOf(floor)) (latticeAligned(shape, R) ? aligned : frozen).push(shape);
+  if (!within) {
+    rooms.push(...aligned);
+  } else {
+    const boxes = aligned.map(shapeBBox);
+    const prints = aligned.map(printOf);
+    const live = aligned.map((shape, i) =>
+      boxesTouch(boxes[i], within) || !isSettled(shape, R, prints[i]));
+    // Spread to the rooms that touch a room already in play, until none does.
+    const queue = [];
+    live.forEach((on, i) => { if (on) queue.push(i); });
+    for (let head = 0; head < queue.length; head++) {
+      const j = queue[head];
+      for (let i = 0; i < aligned.length; i++) {
+        if (live[i] || !boxesTouch(boxes[i], boxes[j])) continue;
+        live[i] = true;
+        queue.push(i);
+      }
+    }
+    aligned.forEach((shape, i) => { if (live[i]) rooms.push(shape); else bystanders.add(shape); });
+  }
+  const skipped = aligned.length - rooms.length;
 
   const eachCell = (shape, fn) => {
     const bb = shapeBBox(shape);
@@ -220,7 +278,10 @@ export function rasterize(state, floorIndex) {
     lat.cells[i].fin = shape.fin || null;
     lat.cells[i].paint = shape.paint || null;
   }));
-  for (const shape of frozen) eachCell(shape, (x, y) => { frozenCell[cellIdx(lat, x, y)] = 1; });
+  for (const shape of frozen) {
+    if (within && !boxesTouch(shapeBBox(shape), within)) continue;
+    eachCell(shape, (x, y) => { frozenCell[cellIdx(lat, x, y)] = 1; });
+  }
 
   for (const shape of rooms) {
     for (const ring of shape.rings) {
@@ -248,7 +309,7 @@ export function rasterize(state, floorIndex) {
       }
     }
   }
-  return { floor, lat, owner, rooms, frozen, frozenCell, raster: R };
+  return { floor, lat, owner, rooms, frozen, frozenCell, raster: R, bystanders, skipped };
 }
 
 // ---------- regions, by owner ----------
@@ -441,7 +502,7 @@ const newRoom = (state, opts) => ({
 // Give every cell the stroke drew an owner, by spreading outward from the
 // rooms that already exist. A cell that can reach a room joins it; a cell that
 // can reach nothing starts one.
-function assignOwners(lat, owner, pending, rooms, state, opts, made) {
+function assignOwners(lat, owner, pending, rooms, state, opts, made, skipped = 0) {
   const queue = [];
   for (let y = 0; y < lat.h; y++) {
     for (let x = 0; x < lat.w; x++) {
@@ -466,7 +527,7 @@ function assignOwners(lat, owner, pending, rooms, state, opts, made) {
   // new one.
   for (const i of pending) {
     if (owner[i] >= 0 || !lat.cells[i]) continue;
-    if (rooms.length >= MAX_SHAPES) break;
+    if (rooms.length + skipped >= MAX_SHAPES) break;
     const who = rooms.length;
     rooms.push(newRoom(state, opts));
     made.add(who);
@@ -487,7 +548,30 @@ function assignOwners(lat, owner, pending, rooms, state, opts, made) {
   }
 }
 
+// The world-feet box the cells of one stroke can reach: their own, plus one
+// raster cell all round, which is how far a drawn cell can spread an owner or
+// touch a wall. Cells off the sheet reach nothing and are left out.
+function strokeBox(R, cells) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const c of cells || []) {
+    const x = Math.floor(c.x), y = Math.floor(c.y);
+    if (!(x >= 0 && x < R.w && y >= 0 && y < R.h)) continue;
+    if (x < x0) x0 = x;
+    if (x > x1) x1 = x;
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+  }
+  if (x0 > x1) return { x0: R.x0, z0: R.z0, x1: R.x0, z1: R.z0 };
+  return {
+    x0: R.x0 + (x0 - 1) * R.pitch, z0: R.z0 + (y0 - 1) * R.pitch,
+    x1: R.x0 + (x1 + 2) * R.pitch, z1: R.z0 + (y1 + 2) * R.pitch,
+  };
+}
+
 // Draw or erase a list of raster cells on one storey.
+//
+// Only the rooms the stroke can change are rasterized and traced (see
+// `rasterize`); every other room stays the object it was.
 //
 // Returns `{ changed, refused, frozen, offSheet, rooms, added, removed }` —
 // how many cells the stroke actually moved, how many it declined and for which
@@ -499,9 +583,10 @@ function assignOwners(lat, owner, pending, rooms, state, opts, made) {
 // what every caller before Phase 35 read.
 export function paintCells(state, floorIndex, cells, on = true, opts = {}) {
   const out = { changed: 0, refused: 0, frozen: 0, offSheet: 0, rooms: 0, added: 0, removed: 0, accentsOff: 0 };
-  const R = rasterize(state, floorIndex);
+  const raster = rasterOf(state, floorIndex);
+  const R = rasterize(state, floorIndex, strokeBox(raster, cells));
   if (!R) return out;
-  const { floor, lat, owner, rooms, frozen, frozenCell } = R;
+  const { floor, lat, owner, rooms, frozen, frozenCell, bystanders, skipped } = R;
 
   const pending = new Set();
   for (const c of cells || []) {
@@ -525,7 +610,7 @@ export function paintCells(state, floorIndex, cells, on = true, opts = {}) {
   if (!out.changed) return out;
 
   const made = new Set();
-  assignOwners(lat, owner, pending, rooms, state, opts, made);
+  assignOwners(lat, owner, pending, rooms, state, opts, made, skipped);
 
   // A wall the stroke stranded — nothing on either side of it now — goes with
   // the floor it was bounding, because `traceRegion` only ever writes a wall
@@ -591,7 +676,7 @@ export function paintCells(state, floorIndex, cells, on = true, opts = {}) {
   rooms.forEach((record, ri) => { if (record.id) replaced.set(record.id, built.get(ri) || []); });
   const next = [];
   for (const shape of floor.shapes) {
-    if (frozen.includes(shape)) { next.push(shape); continue; }
+    if (frozen.includes(shape) || bystanders.has(shape)) { next.push(shape); continue; }
     const repl = replaced.get(shape.id);
     if (repl && repl.length) next.push(...repl);
     else out.removed++;
@@ -610,6 +695,13 @@ export function paintCells(state, floorIndex, cells, on = true, opts = {}) {
   // rubs out: one that lays floor takes a room from in front of nothing. A
   // stroke that moved no cell returned above and is not asked either.
   if (!on) out.accentsOff = pruneAccents(floor);
+  // Everything the stroke re-traced is settled now; a room it skipped already
+  // was, and a free-drawn one is not the brush's to settle.
+  const key = rasterKey(R.raster);
+  for (const shape of floor.shapes) {
+    if (frozen.includes(shape) || bystanders.has(shape)) continue;
+    settled.set(shape, { key, print: printOf(shape) });
+  }
   return out;
 }
 
