@@ -1857,7 +1857,7 @@ export function describeFloorDelete(project, floorId) {
 // floor and its zones go with it, and slots in its rooms are kept as "not in
 // the building", all in the one undo step.
 export const deleteFloor = action(
-  { label: (before, payload) => 'Delete ' + floorName(before, payload.id), bumps: [GEOMETRY, SCHEDULE], focus: () => ({ section: 'building' }) },
+  { label: (before, payload, after) => 'Delete ' + floorName(before, payload.id) + renamedWords(after), bumps: [GEOMETRY, SCHEDULE], focus: () => ({ section: 'building' }) },
   (project, payload) => {
     const floors = project.building.floors;
     const floor = need(floors, payload.id, 'floor');
@@ -1871,7 +1871,11 @@ export const deleteFloor = action(
       connections: filterShared(project.building.connections, (connection) => !touching(connection)),
       zones: filterShared(project.building.zones, (zone) => zone.floorId !== floor.id),
     }, project.building.connections.filter(touching), floor.id);
-    return detachRooms({ ...project, building }, floor.spaces.filter((space) => space.kind === 'room'));
+    const loss = geometry.emptyLoss();
+    const split = geometry.splitCars(building, loss);
+    const next = detachRooms({ ...project, building: split }, floor.spaces.filter((space) => space.kind === 'room'));
+    if (split !== building) outcomes.set(next, { floorId: floor.id, loss });
+    return next;
   },
 );
 
@@ -2004,7 +2008,15 @@ export function buildingOutcome(project) {
 function replacing(after, word) {
   const outcome = outcomes.get(after);
   const text = outcome && outcome.loss ? geometry.lossText(outcome.loss) : '';
-  return text === '' ? '' : ', ' + (word || 'replacing') + ' ' + text;
+  return (text === '' ? '' : ', ' + (word || 'replacing') + ' ' + text) + renamedWords(after);
+}
+
+// "Floors 3 and 4 are now Elevator B" when taking something out split an
+// elevator in two; part of the label, after a full stop.
+function renamedWords(after) {
+  const outcome = outcomes.get(after);
+  const text = outcome && outcome.loss ? geometry.renamedText(outcome.loss) : '';
+  return text === '' ? '' : '. ' + text;
 }
 
 function onFloor(before, payload, after) {
@@ -2132,7 +2144,7 @@ export const eraseCells = action(
     label: (before, payload, after) => {
       const outcome = outcomes.get(after);
       const text = outcome ? geometry.lossText(outcome.loss) : '';
-      return 'Erase' + (text === '' ? '' : ' ' + text) + onFloor(before, payload, after);
+      return 'Erase' + (text === '' ? '' : ' ' + text) + onFloor(before, payload, after) + renamedWords(after);
     },
     bumps: geometryBumps,
     focus: buildingFocus,
@@ -2285,7 +2297,7 @@ function connectionWords(project, connectionId) {
 
 // payload: { connectionId }. An elevator's stops stay where they are, not connected.
 export const disconnectStairs = action(
-  { label: (before, payload) => 'Disconnect ' + connectionWords(before, payload.connectionId), bumps: [GEOMETRY], focus: buildingFocus },
+  { label: (before, payload, after) => 'Disconnect ' + connectionWords(before, payload.connectionId) + renamedWords(after), bumps: [GEOMETRY], focus: buildingFocus },
   (project, payload) => inBuilding(project, (building) => geometry.disconnectStairs(building, payload)),
 );
 
@@ -2295,9 +2307,12 @@ export const disconnectStairs = action(
 export const setConnection = action(
   { label: (before, payload) => 'Change ' + (connectionWords(before, payload.connectionId).startsWith('elevator') ? 'an elevator connection' : 'stairs connection ' + connectionLabel(before, payload.connectionId)), bumps: [GEOMETRY], focus: buildingFocus },
   (project, payload) => {
-    if (typeof payload.label === 'string' && project.building.connections.some((other) => other.id !== payload.connectionId && other.label === payload.label)) {
-      refuse('There is already a stairs connection ' + payload.label + '. Each has its own letter or name; type a different one.', 'duplicate-label');
+    const clash = typeof payload.label === 'string' ? project.building.connections.find((other) => other.id !== payload.connectionId && other.label === payload.label) : null;
+    if (clash && clash.kind === ELEVATOR_KIND) {
+      const car = clash.car || clash.label;
+      refuse(car === clash.label ? 'Elevator ' + car + ' already uses that letter. Each has its own letter or name; type a different one.' : 'A connection of Elevator ' + car + ' is already called ' + clash.label + '. Each has its own letter or name; type a different one.', 'duplicate-label');
     }
+    if (clash) refuse('There is already a stairs connection ' + payload.label + '. Each has its own letter or name; type a different one.', 'duplicate-label');
     return inBuilding(project, (building) => geometry.setConnection(building, payload));
   },
 );

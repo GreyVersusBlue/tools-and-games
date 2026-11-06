@@ -149,3 +149,43 @@ test('every step-free action is one undo step, the project stays valid after eac
     assert.equal(bare(store.project), states[n], 'redoing ' + steps[n - 1][0] + ' gives its result back');
   }
 });
+
+// ---------------------------------------------------------------- an elevator chain joined in another order (SV2-97b)
+
+test('an elevator chain joined 2-3 first and then 1-2 goes back and forth byte for byte through undo and redo, the letter and every connection with it', () => {
+  const store = createStore({ project: school(), clock, ids: makeIds(9) });
+  const bare = (project) => JSON.stringify({ ...project, modified: null });
+  const [one, two, three] = store.project.building.floors.map((floor) => floor.id);
+  const stop = (floorId) => ({ floorId, cell: 0 });
+  const steps = [
+    ['placeLift', { floorId: one, cells: [0] }],
+    ['placeLift', { floorId: two, cells: [0] }],
+    ['placeLift', { floorId: three, cells: [0] }],
+    ['connectStairs', { a: stop(two), b: stop(three), id: 'cfirst0001' }],
+    ['connectStairs', { a: stop(one), b: stop(two), id: 'csecond001' }],
+    ['setElevator', { carId: 'cfirst0001', staffOnly: false }],
+    ['disconnectStairs', { connectionId: 'cfirst0001' }],
+  ];
+  const states = [bare(store.project)];
+  for (const [name, payload] of steps) {
+    store.apply(actions[name], payload);
+    assert.deepEqual(validate(store.project), [], name + ' leaves a valid project');
+    states.push(bare(store.project));
+  }
+  const joined = store.history.past.length;
+  assert.equal(joined, steps.length, 'one undo step each');
+  // after 2-3 then 1-2: one letter (the first no stairs connection and no car uses) on both connections
+  store.undo();
+  store.undo();
+  assert.deepEqual(store.project.building.connections.filter((c) => c.kind === 'elevator').map((c) => [c.id, c.car, c.staffOnly === true]), [['cfirst0001', 'C', true], ['csecond001', 'C', true]]);
+  for (let n = 1; n <= 2; n += 1) store.redo();
+  assert.equal(bare(store.project), states[steps.length]);
+  for (let n = steps.length - 1; n >= 0; n -= 1) {
+    store.undo();
+    assert.equal(bare(store.project), states[n], 'undoing ' + steps[n][0] + ' gives back the project before it');
+  }
+  for (let n = 1; n <= steps.length; n += 1) {
+    store.redo();
+    assert.equal(bare(store.project), states[n], 'redoing ' + steps[n - 1][0] + ' gives its result back');
+  }
+});
