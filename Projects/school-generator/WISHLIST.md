@@ -660,9 +660,12 @@ and add to this list rather than starting a new one.
   the lattice" verb would close the loop.
 - Painting merges nothing, and there is no deliberate "join these two rooms"
   verb either.
-- `paint.js` rasterizes every lattice-aligned room on the storey for one
-  cell — wasteful on a large plan; the fix is to rasterize only rooms whose
-  bounding box the stroke touches.
+- `paint.js` rasterizes only the rooms a stroke can reach (#1030), but on a
+  connected building that is nearly all of them: shared walls are re-claimed
+  pass after pass down a run of halls, and a room the brush has not traced
+  before is not known to survive being traced, so neither a box test nor a
+  neighbour test could skip more without changing the building. What is left
+  is the whole-sheet lattice, `assignOwners`' scan and `ownedRegions`.
 
 **The sheet**
 - The drawing surface has a size but no origin, so a plan cannot extend into

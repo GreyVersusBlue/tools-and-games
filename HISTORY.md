@@ -1922,11 +1922,25 @@ Generator.
 
 **#1028. A notable-figures entry links the page that names the person, in the file's own `See [Page](/url/).` form, and an entry whose names the page does not carry stays unlinked.** 45 of the 63 unpointed names now point at a page that was read and names them (Faith & Religion, L'dahn, Ophrailes, Dovenost, Rues, Five Duchies, Spyndelmere, Myos Islands, The Realms, The Story So Far), so `test/smoke.mjs` checks 170 names instead of 125 and counts 18 as pointing nowhere. No description changed and no fact was written. The seven L'Dahn council names were already under a `See` that sat across a line break the smoke check's `See \[` pattern cannot read; the paragraph is reflowed so it reads. Left alone on purpose: `Lance` (the page's "Lance" is a tarot card, not the mercenary), `The Faustino family` (its entry also carries Lizabetta, whom no page names) and the Turned and Unwanted Syndicate names, which come from play. Reversible by deleting the added `See` sentences. *TG-35, 2026-11-06.*
 
+**#1030. The brush skips a room only when it has traced that room before and nothing has touched it since, and then only when no room that overlaps or touches it (followed all the way out) is in the stroke's reach.** Re-tracing is not a fixed point for a room that came from a file or an older generator: `generated-v10` has a door flush against a corner, and every stroke anywhere on the storey moved it off, so skipping distant rooms outright changed the building (the first oracle run failed on stroke 0). A `WeakMap` in `paint.js` records each traced room's JSON and raster; an unrecorded or edited room is always in play, so the first stroke after a load or an undo is the full pass it always was. Stopping at the neighbours' neighbours also diverged, on the second stroke over `generated-v10`, because shared walls are re-claimed pass after pass down a run of halls. Nothing is saved, no storage key moves. The cost: on a connected building the reach is nearly everything (120 rooms, 1 skipped in 40 strokes), and a 40-stroke drag took 26.6 ms a stroke against 29.1; the saving is for plans with separate buildings. Reversible by passing no `within` to `rasterize`. *TG-39, 2026-11-06.*
+
 **#1005. Reserved: #976 to #1005 are held for sessions on Huginn (the Selector loop); anyone else numbers from #1006.**
 
 **#1035. Reserved: #1006 to #1035 are held for sessions on Huginn (the Selector loop); anyone else numbers from #1036.**
 
 # The log
+## School Generator: the brush rasterizes only the rooms a stroke can reach, 2026-11-06 (TG-39)
+
+TG-39 on Sonnet 5.5, in its own worktree; decision #1030. `js/paint.js`, `test/paint-window.test.mjs`, `WISHLIST.md`; no storage key, no save field, `SAVE_VERSION` untouched.
+
+**What shipped.** `rasterize(state, floorIndex, within)` takes the box a stroke can reach (its cells plus one cell round) and rasterizes and re-traces only the rooms in play, leaving the rest as the same objects; `paintCells` computes the box, keeps the shape cap counting skipped rooms and records each traced room as settled. Frozen rooms are rasterized only where they touch the box. The brush's refusals, counts and accent handling are unchanged.
+
+**Proof.** `test/paint-window.test.mjs` keeps the old `rasterize`, `assignOwners` and `paintCells` as the oracle and strokes seeded random cells (single, drags, blocks; on and off; with and without a name and colour; every ninth stroke an undo that renews every object) over the sample school, the five migrate fixtures and a generated 2,400-student school, comparing the returned counts and the storey's JSON text after every stroke. 11 tests. Broken on purpose: all rooms counted settled (3 fail, the right ones), no spreading to touching rooms (6), no one-cell margin on the box (7), frozen rooms never rasterized (3), the shape cap counting only traced rooms (the cap test, added because the first four left it green).
+
+**Checks.** `node --test 'test/*.test.mjs'` 2591 to 2618 pass, `tools/blender/validate.mjs` 630, `test/tools/run.mjs` see the PR; board-check `npm run check` and `social:check` as run.
+
+**Left.** The saving is small on a connected plan; the rest of a stroke's cost is the whole-sheet lattice, `assignOwners`' scan and `ownedRegions`, which the row did not ask to touch.
+
 ## Numina: notable figures link the pages that name them, 2026-11-06 (TG-35)
 
 TG-35 on Sonnet 5.5, alone in the repo; decision #1028. `Numina/src/lore/notable-figures.md` and `Numina/WISHLIST.md`; no code, no storage key, no test change (the smoke check has no pin on the unpointed count).
