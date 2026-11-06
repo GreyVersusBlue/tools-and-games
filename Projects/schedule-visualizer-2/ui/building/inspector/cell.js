@@ -14,7 +14,7 @@
 
 import { h } from '../../components/dom.js';
 import { field } from '../../components/field.js';
-import { count, list } from '../../components/words.js';
+import { count, list, pendingElevatorLetter } from '../../components/words.js';
 import { describeCell } from '../../../engine/building.js';
 import { elevatorSettings, elevatorCars, CELL_CORRIDOR, neighbourCell } from '../../../engine/schema.js';
 import { setElevator, disconnectStairs, setStepCells, addRefuge, setRefuge, removeRefuge } from '../../../engine/actions.js';
@@ -139,7 +139,7 @@ export function cellPanel(env) {
       cell,
       floorName: floor.name,
       carId: car ? car.carId : null,
-      label: car ? car.label : '',
+      label: car && car.label !== '' ? car.label : pendingElevatorLetter(building),
       connected: Boolean(car && car.connected),
       staffOnly: Boolean(car && car.staffOnly),
       floors: car ? car.floors : [floor.name],
@@ -155,7 +155,7 @@ export function cellPanel(env) {
   }
 
   function drawElevator(model) {
-    const name = model.label === '' ? 'Elevator stop' : 'Elevator ' + model.label;
+    const name = 'Elevator ' + model.label;
     const nodes = [
       h('h2', { class: 'bld-inspector__title', id: 'inspector-title', tabindex: '-1', data: { key: 'panel-title' } }, model.connected ? name : name + ', not connected'),
       h('p', { class: 'bi-lead', id: 'stop-floors' }, model.connected ? 'Stops at ' + list(model.floors) + '.' : 'This stop is on ' + model.floorName + ' and is not connected to a stop on another floor yet.'),

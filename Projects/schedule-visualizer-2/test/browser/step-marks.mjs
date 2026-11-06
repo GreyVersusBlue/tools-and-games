@@ -173,6 +173,37 @@ test('the Floor tab lists the elevator apart from the stairs, the unconnected st
   await openFloor(0);
 });
 
+test('the legend\'s step glyph is drawn in the --warning token, in both themes', async () => {
+  await tab('floor');
+  const probe = () => page.evaluate(() => {
+    const token = getComputedStyle(document.documentElement).getPropertyValue('--warning').trim();
+    const probe = document.createElement('span');
+    probe.style.color = token;
+    document.body.append(probe);
+    const want = getComputedStyle(probe).color;
+    probe.remove();
+    const path = document.querySelector('#floor-legend [data-legend="step"] path');
+    return { want, got: getComputedStyle(path).stroke, theme: document.documentElement.dataset.theme };
+  });
+  const seen = [];
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate(async (value) => {
+      const { setSetting } = await import(new URL('engine/actions.js', location.href).href);
+      globalThis.sv2.store.apply(setSetting, { key: 'theme', value });
+    }, theme);
+    await page.waitForFunction((value) => document.documentElement.dataset.theme === value, {}, theme);
+    const { want, got } = await probe();
+    assert.equal(got, want, theme + ': the step glyph\'s stroke is the --warning token');
+    seen.push(want);
+  }
+  assert.notEqual(seen[0], seen[1], 'the token differs between the themes');
+  await page.evaluate(async () => {
+    const { setSetting } = await import(new URL('engine/actions.js', location.href).href);
+    globalThis.sv2.store.apply(setSetting, { key: 'theme', value: 'light' });
+  });
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'light');
+});
+
 test('Clear and Delete on the Floor tab count stairs cells and elevator stops apart', async () => {
   await tab('floor');
   const clearing = await page.evaluate(() => Array.from(document.querySelectorAll('#inspector-floor p')).map((p) => p.textContent).find((words) => words.startsWith('Removes everything drawn on')));
@@ -221,6 +252,11 @@ test('the third stop is joined in connect mode from its own Properties: the stop
   await openFloor(2);
   await propertiesOf(STOP, 'Properties of this elevator stop');
   assert.match(await panelTitle(), /not connected/);
+  const pending = await page.evaluate(async () => {
+    const { pendingElevatorLetter } = await import(new URL('ui/components/words.js', location.href).href);
+    return pendingElevatorLetter(globalThis.sv2.store.project.building);
+  });
+  assert.equal(await panelTitle(), 'Elevator ' + pending + ', not connected', 'the title carries the letter, as the plan and status line do');
   assert.equal(await exists('#inspector-properties [data-key="staff-only"]'), false, 'an unconnected stop has no car to set');
   await page.click('#inspector-properties [data-action="stop-connect"]');
   await page.waitForFunction(() => !document.getElementById('connect-banner').hidden);

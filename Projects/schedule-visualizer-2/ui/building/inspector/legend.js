@@ -36,11 +36,11 @@ const STAFF = () => svg([
 // a step: two short parallel bars across the cell
 const STEP = () => svg([
   ['rect', { x: '2', y: '2', width: '16', height: '16', fill: 'none', stroke: 'currentColor', 'stroke-width': '1', opacity: '0.4' }],
-  ['path', { d: 'M3 8h14 M3 12h14', fill: 'none', stroke: 'var(--warn)', 'stroke-width': '2.5' }],
+  ['path', { d: 'M3 8h14 M3 12h14', fill: 'none', style: 'stroke: var(--warning)', 'stroke-width': '2.5' }],
 ]);
 // an area of refuge: a rounded square outline with a seated figure
 const REFUGE = () => svg([
-  ['rect', { x: '2', y: '2', width: '16', height: '16', rx: '4', fill: 'none', stroke: 'var(--accent)', 'stroke-width': '1.5' }],
+  ['rect', { x: '2', y: '2', width: '16', height: '16', rx: '4', fill: 'none', style: 'stroke: var(--accent)', 'stroke-width': '1.5' }],
   ['circle', { cx: '9', cy: '6.5', r: '1.5', fill: 'currentColor' }],
   ['path', { d: 'M9 8.5V12h4l1 3 M9 10h3.5', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4' }],
 ]);
