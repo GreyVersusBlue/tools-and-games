@@ -1237,3 +1237,19 @@ test('step-free: a schedule file read into a project that has the group keeps th
   assertValid(added.project);
   assert.deepEqual(added.summary.created, ['6A']);
 });
+
+test('step-free: an elevator connection naming a floor that does not exist gives a FileError, never a TypeError', () => {
+  const project = withElevator();
+  project.building.connections[0].a = { floorId: 'fzzzzzzzzz', cell: 1 };
+  project.building.connections[0].b = { floorId: 'fzzzzzzzzz', cell: 2 };
+  assert.throws(() => readProjectFile(writeProjectFile(project)), (error) => error instanceof FileError);
+  assert.throws(() => readBuildingFile(writeBuildingFile(project)), (error) => error instanceof FileError);
+});
+
+test('step-free: two elevators with one letter are refused by the project file as a FileError', () => {
+  const project = withElevator();
+  const b = project.building.connections[1];
+  b.kind = 'elevator';
+  b.car = 'A';
+  assert.throws(() => readProjectFile(writeProjectFile(project)), (error) => error instanceof FileError);
+});
