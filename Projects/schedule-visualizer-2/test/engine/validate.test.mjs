@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validate, isValid } from '../../engine/validate.js';
 import { emptyProject, school, clone, room, BREAKS, PINNED } from './helpers.mjs';
+import { withElevator, brokenElevator, STEP_FREE_BREAKS } from '../fixtures/step-free.mjs';
 
 test('the empty project and the sample school have no findings', () => {
   assert.deepEqual(validate(emptyProject()), []);
@@ -431,4 +432,79 @@ test('scenario levers: each way to break one is found at its own place', () => {
   const two = validate(lv([{ kind: 'headCount', groupId: 'gsample06a', headCount: 5 }, { kind: 'headCount', headCount: 5 }]));
   assert.deepEqual(two.map((finding) => finding.path), ['scenario.levers[1]'], 'only the lever that is wrong, by its place');
   assert.match(two[0].message, /^This headCount lever is missing one of its fields, or one holds a value it cannot\.$/);
+});
+
+// ---- the step-free model (ARCHITECTURE 19.2, SV2-96)
+
+test('step-free: a project with no elevator, and one with every new field sound, have no findings', () => {
+  assert.deepEqual(validate(school()), []);
+  assert.deepEqual(validate(withElevator()), []);
+});
+
+test('step-free: every new field is optional, and absent is not a finding', () => {
+  const project = withElevator();
+  for (const floor of project.building.floors) {
+    delete floor.lifts;
+    delete floor.notStepFree;
+    delete floor.refuges;
+    for (const exit of floor.exits) delete exit.stepFree;
+    for (const space of floor.spaces) if (space.kind === 'room') for (const door of space.doors) delete door.stepFree;
+  }
+  for (const connection of project.building.connections) {
+    delete connection.staffOnly;
+    delete connection.car;
+  }
+  delete project.groups[0].stepFree;
+  for (const key of ['elevatorWaitSeconds', 'elevatorSecondsPerFloor', 'elevatorPeoplePerTrip']) delete project.settings[key];
+  assert.deepEqual(validate(project), [], 'an elevator connection with no lifts list and no letter is still valid');
+});
+
+test('step-free: elevator connections with kind set and no lifts at all are valid (the evacuation tests\' buildings)', () => {
+  const project = school();
+  for (const connection of project.building.connections) connection.kind = 'elevator';
+  assert.deepEqual(validate(project), []);
+});
+
+test('step-free: the elevator figures take the ends of their ranges', () => {
+  const project = withElevator();
+  for (const [wait, ride, trip] of [[0, 1, 1], [300, 60, 40]]) {
+    Object.assign(project.settings, { elevatorWaitSeconds: wait, elevatorSecondsPerFloor: ride, elevatorPeoplePerTrip: trip });
+    assert.deepEqual(validate(project), []);
+  }
+});
+
+for (const [name, mutate, where] of STEP_FREE_BREAKS) {
+  test('step-free: finds ' + name, () => {
+    const project = brokenElevator([name, mutate]);
+    const findings = validate(project);
+    if (where === null) return assert.deepEqual(findings, [], 'an absent letter is not a finding');
+    assert.ok(findings.some((finding) => where.test(finding.path)), 'no finding at ' + where + '; got ' + JSON.stringify(findings));
+    return undefined;
+  });
+}
+
+test('step-free: the breaks are each found only after they are made', () => {
+  const findings = validate(withElevator());
+  for (const [name, , where] of STEP_FREE_BREAKS) if (where) assert.equal(findings.some((finding) => where.test(finding.path)), false, name);
+});
+
+test('step-free: a stairs connection\'s cell that is listed as a lift is found (kind is the authority)', () => {
+  const project = withElevator();
+  project.building.floors[2].lifts = [353];
+  const findings = validate(project);
+  assert.ok(findings.some((finding) => /floors\[2\]\.lifts\[0\]$/.test(finding.path) && /stairs connection/.test(finding.message)), JSON.stringify(findings));
+});
+
+test('step-free: a door facing a lift is found, one facing an ordinary corridor is not', () => {
+  const project = withElevator();
+  assert.deepEqual(validate(project), []);
+  const floor = project.building.floors[0];
+  floor.corridors = [];
+  floor.refuges = [];
+  const at = floor.spaces[0].doors[0];
+  const across = at.cell + 40;
+  floor.cells = floor.cells.slice(0, across) + 'S' + floor.cells.slice(across + 1);
+  assert.deepEqual(validate(project), [], 'a stairs cell is something a door can face');
+  floor.lifts.push(across);
+  assert.ok(validate(project).some((finding) => /doors\[0\]$/.test(finding.path) && /elevator/.test(finding.message)));
 });
