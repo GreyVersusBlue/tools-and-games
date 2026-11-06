@@ -164,6 +164,9 @@ test('a group is entered from scratch by keyboard, and focus is never lost on th
   assert.match(await activeKey(), /^swatch:/);
   await page.keyboard.press('Tab');
   await keyIs('group-colour');
+  // (SV2-102) Needs step-free routes is the next stop after the colour
+  await page.keyboard.press('Tab');
+  await keyIs('group-stepfree');
   // (SV2-78b) A Day’s column has Copy classes from… too, now it is the same on every column
   await page.keyboard.press('Tab');
   await keyIs('copy:' + DAY_A);

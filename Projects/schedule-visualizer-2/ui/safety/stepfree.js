@@ -4,8 +4,8 @@
 //     what the Exits tab holds while the view is Step-free: the rooms listed by
 //     how they leave, "To an exit (41)", "To an area of refuge (12)", "No
 //     step-free way out (3)", each row with where it goes or its reason, and
-//     Show; then the areas of refuge, each with "Used by 12 rooms" or "Not used:
-//     every room nearby has a step-free exit". With nothing step-free marked it
+//     Show; then the areas of refuge, each with "Used by 12 rooms." or "Not used by any room.".
+//     With nothing step-free marked it
 //     opens with the sentence that says so and a button to Building
 //   stepFreeReportPanel(env) -> { element, update() }
 //     the Step-free tab: the report (engine/step-free.js), by floor, each room
@@ -94,7 +94,7 @@ export function stepFreeWaysPanel(env) {
       ? [h('p', { class: 'sfy-missing__none' }, 'No area of refuge is marked. Make one from the context menu on a corridor or stairs cell in Building.')]
       : [h('ul', { class: 'sfy-refuges', 'aria-label': 'Areas of refuge' }, step.refuges.map((refuge) => h('li', { class: 'sfy-refuge', data: { refuge: refuge.refugeId, used: String(refuge.roomIds.length) } },
         h('h4', { class: 'sfy-refuge__name' }, h('bdi', null, refuge.name), ' ', h('span', { class: 'sfy-row__floor' }, '(', h('bdi', null, refuge.floorName), refuge.by ? ', by ' + refuge.by : '', ')')),
-        h('p', { class: 'sfy-refuge__use' }, refuge.use + '.'))))];
+        h('p', { class: 'sfy-refuge__use' }, refuge.use))))];
     element.replaceChildren(
       h('h2', { class: 'mov-panel__title' }, 'Step-free ways out'),
       step.report.marked ? null : unmarked(env),

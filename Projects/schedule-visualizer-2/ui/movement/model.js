@@ -40,7 +40,7 @@
 import { findDayType, effectiveDayType, ownDayTypes } from '../../engine/day-types.js';
 import { bellsFor, periodName, periodLabel, formatTime, findBellSchedule, offPeriods, parseTime } from '../../engine/bells.js';
 import { transitionPlan } from '../../engine/crowd.js';
-import { resolveSlotRoom, bellSchedulesOf } from '../../engine/schema.js';
+import { resolveSlotRoom, bellSchedulesOf, ELEVATOR_KIND, elevatorSettings, ELEVATOR_DOOR_SECONDS } from '../../engine/schema.js';
 import { meetingSlots } from '../../engine/runs.js';
 import { runResults } from '../../engine/worker.js';
 import { periodWords, list } from '../components/words.js';
@@ -424,8 +424,11 @@ export function pictureOf(project, results, graph, input) {
   const connections = byId(project.building.connections);
   for (const [id, groupIds] of picture.lanes.links) {
     const connection = connections.get(id);
-    if (connection) picture.links.push({ id, label: connection.label, a: connection.a, b: connection.b, groupIds });
+    // an elevator's ends are the ride's own, read from the route below: the
+    // car's id is its first connection's, whose ends need not be these floors
+    if (connection && connection.kind !== ELEVATOR_KIND) picture.links.push({ id, label: connection.label, a: connection.a, b: connection.b, groupIds });
   }
+  picture.links.push(...rideLinks(project, connections, entries));
 
   // who is late, by the crowd model's own rule
   {
@@ -504,6 +507,30 @@ export function pictureOf(project, results, graph, input) {
     picture.busiest = { load: max, unit: load.unit, place, floorId: floor ? floor.id : null, floorName: floor ? floor.name : null, cell: maxNode !== -1 ? graph.nodeCell[maxNode] : null, period: Number.isInteger(period) && period >= 0 ? period : null };
   }
   return picture;
+}
+
+// The elevator rides on screen, one link for each pair of stops ridden:
+// { id: the car's, label: 'Elevator D', car: 'D', elevator: true, a, b, groupIds }.
+// The ends are the route's own cells on each side of the ride (ARCHITECTURE
+// 19.4), up or down being one link.
+function rideLinks(project, connections, entries) {
+  const found = new Map();
+  for (const entry of entries) {
+    const route = entry.route;
+    (route.connections || []).forEach((id, i) => {
+      const connection = connections.get(id);
+      if (!connection || connection.kind !== ELEVATOR_KIND) return;
+      const from = route.cells[route.connectionAt[i]];
+      const to = route.cells[route.connectionAt[i] + 1];
+      if (!from || !to) return;
+      const ends = [{ floorId: from.floorId, cell: from.cell }, { floorId: to.floorId, cell: to.cell }];
+      ends.sort((x, y) => (x.floorId < y.floorId ? -1 : x.floorId > y.floorId ? 1 : x.cell - y.cell));
+      const key = id + '|' + ends.map((end) => end.floorId + ':' + end.cell).join('|');
+      if (!found.has(key)) found.set(key, { id, label: 'Elevator ' + (connection.car || connection.label), car: connection.car || connection.label, elevator: true, a: ends[0], b: ends[1], groupIds: [] });
+      if (!found.get(key).groupIds.includes(entry.groupId)) found.get(key).groupIds.push(entry.groupId);
+    });
+  }
+  return [...found.values()];
 }
 
 // ---------------------------------------------------------------- words
@@ -704,7 +731,9 @@ export function sentenceOf(project, picture, health) {
 // { group, walking, waiting, stairs, failed, late, walks }
 //   walking   seconds of walking over the day (the crowd model's figure)
 //   waiting   seconds lost to crowding
-//   stairs    does any of its walks use a stairs connection?
+//   riding    seconds held in an elevator's car over the day (0 with none)
+//   rides     does any of its walks use an elevator?
+//   stairs    does any of its walks use a stairs connection? (an elevator ride is not one)
 //   failed    how many of its routes failed
 //   late      how many transitions it cannot make in time
 //   released  seconds it was held back by a staggered dismissal, over the day (0 with none)
@@ -715,12 +744,17 @@ export function groupRows(project, results, picture) {
   const crowd = run.crowd;
   const walks = run.walks.groups;
   return picture.groups.map((group) => {
-    const row = { group, walking: 0, waiting: 0, stairs: false, failed: 0, late: 0, walks: 0, released: 0, lateHeld: 0 };
+    const row = { group, walking: 0, riding: 0, waiting: 0, stairs: false, rides: false, failed: 0, late: 0, walks: 0, released: 0, lateHeld: 0 };
     const entry = routes ? routes.groups.find((each) => each.groupId === group.id) : null;
     (entry ? entry.routes : []).forEach((route, t) => {
       if (!meets(picture.transitions, t)) return;
       if (!route || route.ok !== true) row.failed += 1;
-      else if (!route.same && (route.connections || []).length > 0) row.stairs = true;
+      else if (!route.same) {
+        // route.stairs counts stairs crossings only; a ride is in `connections` too (ARCHITECTURE 19.4)
+        const rode = route.rides > 0;
+        if (rode) row.rides = true;
+        if (Number.isInteger(route.stairs) ? route.stairs > 0 : (route.connections || []).length - (route.rides || 0) > 0) row.stairs = true;
+      }
     });
     for (const transition of crowd ? crowd.transitions : []) {
       if (transition.off === true) continue;
@@ -728,6 +762,7 @@ export function groupRows(project, results, picture) {
       if (!walker) continue;
       row.walks += 1;
       row.walking += walker.walking;
+      row.riding += walker.riding || 0;
       row.waiting += walker.waiting;
     }
     for (const walk of walks) {

@@ -358,6 +358,8 @@ export function mount(env) {
       h('span', { class: 'sch-dot', style: 'background:' + group.colour }),
       h('span', { class: 'sch-group__name' }, group.name),
       group.grade === '' ? said('. ') : h('span', { class: 'sch-group__grade' }, said(', grade '), group.grade, said('. ')),
+      // in words, never colour or a symbol alone (DESIGN 13.4)
+      group.stepFree === true ? h('span', { class: 'sch-group__stepfree', data: { part: 'step-free' } }, h('span', { 'aria-hidden': 'true' }, '\u267F '), 'step-free', said('. ')) : null,
       h('span', { class: 'sch-group__marks' }, marksFor(found))),
     h('span', { class: 'sch-group__bars' }, bars)), 'group:' + group.id);
   }
@@ -435,7 +437,19 @@ export function mount(env) {
     });
     keyed(head.input, 'group-head');
     head.input.title = 'From ' + RANGES.headCount[0] + ' to ' + RANGES.headCount[1] + '. Left empty, the group counts as ' + project.settings.defaultHeadCount + ', the school’s usual.';
-    return h('div', { class: 'sch-editor__fields' }, name.element, grade.element, head.element, colourControl(group));
+    return h('div', { class: 'sch-editor__fields' }, name.element, grade.element, head.element, colourControl(group), stepFreeControl(group));
+  }
+
+  // "Needs step-free routes" (spec 11, DESIGN 13.4). The line never suggests a
+  // group of one: the tool holds no student records.
+  function stepFreeControl(group) {
+    const hintId = uid('stepfree');
+    const box = keyed(h('input', { type: 'checkbox', name: 'groupStepFree', 'aria-describedby': hintId }), 'group-stepfree');
+    box.checked = group.stepFree === true;
+    box.addEventListener('change', () => apply(env, editGroup, { id: group.id, stepFree: box.checked }));
+    return h('div', { class: 'field sch-stepfree', data: { part: 'step-free-field' } },
+      h('label', { class: 'sch-radio' }, box, h('span', null, 'Needs step-free routes')),
+      h('p', { class: 'sch-hint', id: hintId }, 'Routes for this group use elevators, never stairs. For one person’s day, print a route sheet.'));
   }
 
   function roomOptions(project, model, slot) {

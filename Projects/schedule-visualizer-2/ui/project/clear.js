@@ -35,7 +35,7 @@ import { h } from '../components/dom.js';
 import { card } from '../components/card.js';
 import { count, list } from '../components/words.js';
 import { detachRooms, replaceProject } from '../../engine/actions.js';
-import { newProject, DEFAULT_DAY_TYPE_NAMES } from '../../engine/schema.js';
+import { newProject, DEFAULT_DAY_TYPE_NAMES, ELEVATOR_KIND, isLiftCell } from '../../engine/schema.js';
 import { DEFAULT_PASSCODE } from '../../engine/publish-defaults.js';
 import { pageSnapshots, AUTO_SNAPSHOT_NAMES, READ_ONLY_SENTENCE } from '../../storage/snapshots.js';
 import { keepNeverShow } from '../help/progress.js';
@@ -54,16 +54,29 @@ function quoteName(text) {
 
 // What is drawn in the building, counted.
 export function buildingContents(project) {
-  const found = { floors: project.building.floors.length, rooms: 0, otherSpaces: 0, corridorCells: 0, stairsCells: 0, corridorNames: 0, exits: 0, connections: project.building.connections.length, zones: project.building.zones.length };
+  const found = { floors: project.building.floors.length, rooms: 0, otherSpaces: 0, corridorCells: 0, stairsCells: 0, liftCells: 0, corridorNames: 0, exits: 0, connections: 0, elevatorConnections: 0, steps: 0, refuges: 0, zones: project.building.zones.length };
+  // by kind: an elevator's connection is not a stairs connection (ARCHITECTURE 19.11)
+  for (const connection of project.building.connections) {
+    if (connection.kind === ELEVATOR_KIND) found.elevatorConnections += 1;
+    else found.connections += 1;
+  }
   for (const floor of project.building.floors) {
     for (const space of floor.spaces) {
       if (space.kind === 'room') found.rooms += 1;
       else found.otherSpaces += 1;
     }
-    for (const character of floor.cells) {
+    const lifts = new Set(floor.lifts || []);
+    for (let at = 0; at < floor.cells.length; at += 1) {
+      const character = floor.cells[at];
       if (character === '#') found.corridorCells += 1;
-      else if (character === 'S') found.stairsCells += 1;
+      else if (character === 'S') {
+        // a stop is listed in lifts, or is the end of an elevator connection
+        if (lifts.has(at) || isLiftCell(project.building, floor.id, at)) found.liftCells += 1;
+        else found.stairsCells += 1;
+      }
     }
+    found.steps += (floor.notStepFree || []).length;
+    found.refuges += (floor.refuges || []).length;
     found.corridorNames += floor.corridors.length;
     found.exits += floor.exits.length;
   }
@@ -81,7 +94,15 @@ export function clearedBuilding(project) {
   const rooms = [];
   for (const floor of project.building.floors) for (const space of floor.spaces) if (space.kind === 'room') rooms.push(space);
   const detached = detachRooms(project, rooms);
-  const floors = project.building.floors.map((floor) => ({ ...floor, cells: '.'.repeat(floor.width * floor.height), spaces: [], corridors: [], exits: [] }));
+  // the step-free lists go with the cells they mark; a floor that had none keeps having none
+  const floors = project.building.floors.map((floor) => {
+    const { lifts, notStepFree, refuges, ...rest } = floor;
+    const emptied = { ...rest, cells: '.'.repeat(floor.width * floor.height), spaces: [], corridors: [], exits: [] };
+    if (lifts) emptied.lifts = [];
+    if (notStepFree) emptied.notStepFree = [];
+    if (refuges) emptied.refuges = [];
+    return emptied;
+  });
   return { ...detached, building: { ...project.building, floors, connections: [], zones: [] } };
 }
 
@@ -110,9 +131,13 @@ export function buildingWords(project) {
     c.otherSpaces > 0 ? count(c.otherSpaces, 'other space') : null,
     c.corridorCells > 0 ? count(c.corridorCells, 'corridor cell') : null,
     c.stairsCells > 0 ? count(c.stairsCells, 'stairs cell') : null,
+    c.liftCells > 0 ? count(c.liftCells, 'elevator stop') : null,
     c.corridorNames > 0 ? count(c.corridorNames, 'corridor name') : null,
     c.exits > 0 ? count(c.exits, 'exit') : null,
     c.connections > 0 ? count(c.connections, 'stairs connection') : null,
+    c.elevatorConnections > 0 ? count(c.elevatorConnections, 'elevator connection') : null,
+    c.steps > 0 ? count(c.steps, 'step mark') : null,
+    c.refuges > 0 ? count(c.refuges, 'area of refuge', 'areas of refuge') : null,
     c.zones > 0 ? count(c.zones, 'area left out of the colour scale', 'areas left out of the colour scale') : null,
   ].filter(Boolean);
   return {

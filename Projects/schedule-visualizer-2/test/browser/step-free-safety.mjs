@@ -169,7 +169,7 @@ test('the Step-free view lists the rooms by how they leave with reasons and Show
   assert.deepEqual(refuges.map((item) => [item.id, item.used]), [['arefuge0002', '0'], ['arefuge0001', '5']], 'the refuges are listed floor by floor');
   const byId = new Map(refuges.map((item) => [item.id, item.text]));
   assert.ok(byId.get('arefuge0001').includes('Area of refuge') && byId.get('arefuge0001').includes('by Stairs A') && byId.get('arefuge0001').includes('Used by 5 rooms.'), byId.get('arefuge0001'));
-  assert.ok(byId.get('arefuge0002').includes('Not used: every room nearby has a step-free exit.'), byId.get('arefuge0002'));
+  assert.ok(byId.get('arefuge0002').includes('Not used by any room.'), byId.get('arefuge0002'));
   // Show: the room's way is shown alone, in words in the first line
   const before = await drawn(page);
   await page.click('.sfy-way[data-room="rsample201"] .sfy-row__show');
@@ -398,7 +398,7 @@ test('door cards with Step-free ways out carry the second block where the way di
   const refuge = read.blocks.find((block) => block.kind === 'refuge');
   assert.equal(refuge.steps[refuge.steps.length - 1], 'Wait at Area of refuge, by Stairs A, for help.');
   assert.ok(read.text.includes('There is no step-free way out from this room: no step-free way through.'));
-  assert.ok(read.text.includes('Step-free way outs'), 'the cover names them');
+  assert.ok(read.text.includes('Step-free ways out'), 'the cover names them');
   await closePreview(page);
   // unticked: no second block
   await page.click('[data-option="step-free"]');
@@ -408,6 +408,68 @@ test('door cards with Step-free ways out carry the second block where the way di
   assert.ok(read.cards.every((card) => card.block === null));
   await closePreview(page);
   assert.equal(await page.evaluate(() => document.activeElement.dataset.print), 'all');
+});
+
+// SV2-104b: the second block has its own print rules, so it stands as tall as door-cards.js
+// reserves for it (blockMm), and no card spills onto a sheet the fit did not count. Measured in
+// the preview's frame as laid out (the block's box and the margin above it, in mm), and the sheets
+// of the document printed to PDF by Chromium counted against the sheets the preview says.
+test('the door card\'s Step-free block stands as tall as blockMm reserves (within 1 mm) and no card runs onto an extra sheet', async () => {
+  const page = wide.page;
+  await load(page, 'marked');
+  await tab(page, 'cards');
+  if (!(await page.$eval('[data-option="step-free"]', (el) => el.checked))) await page.click('[data-option="step-free"]');
+  await page.click('.sfy-panel [data-print="all"]');
+  await previewRead(page);
+  const seen = await page.evaluate(async () => {
+    const { blockMm } = await import('./ui/prints/door-cards.js');
+    const sheet = document.getElementById('print-preview');
+    const frame = sheet.querySelector('iframe');
+    const doc = frame.contentDocument;
+    const view = frame.contentWindow;
+    const MM = 96 / 25.4;
+    const blocks = Array.from(doc.querySelectorAll('.card__stepfree')).map((el) => {
+      const kind = el.dataset.stepfree;
+      const none = el.querySelector('.card__stepfree-none');
+      const steps = Array.from(el.querySelectorAll('.card__step')).map((li) => ({ n: Number(li.dataset.n), text: li.querySelector('.card__words').textContent }));
+      const box = el.getBoundingClientRect();
+      const margin = parseFloat(view.getComputedStyle(el).marginTop);
+      const measured = (box.height + margin) / MM;
+      const reserved = blockMm({ kind, steps, sentence: none ? none.textContent : null }, el.clientWidth / MM);
+      return { kind, measured, reserved, steps: steps.length, head: parseFloat(view.getComputedStyle(el.querySelector('.card__stepfree-head')).fontSize) * 72 / 96 };
+    });
+    return {
+      blocks,
+      sheets: Number(sheet.dataset.sheets),
+      pages: doc.querySelectorAll('.page').length,
+      cards: doc.querySelectorAll('.card[data-card]').length,
+      more: doc.querySelectorAll('.card__more').length,
+      html: frame.srcdoc,
+    };
+  });
+  assert.ok(seen.blocks.some((block) => block.kind === 'refuge') && seen.blocks.some((block) => block.kind === 'none'), 'both kinds of block are measured: ' + JSON.stringify(seen.blocks.map((block) => block.kind)));
+  for (const block of seen.blocks) {
+    assert.ok(Math.abs(block.measured - block.reserved) <= 1, block.kind + ' block with ' + block.steps + ' steps: stands ' + block.measured.toFixed(2) + ' mm, blockMm reserves ' + block.reserved.toFixed(2) + ' mm');
+    assert.equal(block.head, 12, 'the heading is 12 pt');
+  }
+  // a cover and a page a card; a card's own continued sheet (data-sheet) is the only sheet beyond that
+  assert.equal(seen.pages, 1 + seen.cards, 'the preview has the cover and a page a card (' + seen.pages + ' pages, ' + seen.cards + ' cards)');
+  const paper = await wide.browser.newPage();
+  try {
+    await paper.goto(wide.url(''), { waitUntil: 'load' });
+    await paper.evaluate((markup) => {
+      document.open();
+      document.write(markup);
+      document.close();
+    }, seen.html);
+    await paper.waitForFunction(() => document.readyState === 'complete' && Array.from(document.querySelectorAll('link[rel="stylesheet"]')).every((link) => link.sheet !== null));
+    await paper.evaluate(() => document.fonts.ready.then(() => true));
+    const pdf = Buffer.from(await paper.pdf({ preferCSSPageSize: true, printBackground: true })).toString('latin1');
+    assert.equal((pdf.match(/\/Type\s*\/Page\b(?!s)/g) || []).length, seen.pages + seen.more, 'Chromium prints a sheet a page and one more for each continued card, so no card spills onto an extra one (' + seen.more + ' continued)');
+  } finally {
+    await paper.close();
+  }
+  await closePreview(page);
 });
 
 // ---- 390 px with touch

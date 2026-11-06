@@ -159,6 +159,7 @@ export const section = {
     let gone = false;
     let picture = null;
     let step = null;
+    let owesCounts = false;
     let shown = null;
     let colours = [];
     let coloursKey = '';
@@ -359,7 +360,10 @@ export const section = {
         memory.view = value;
         ensureStep();
         draw();
-        ctx.announce(value === 'step-free' && step ? 'Step-free: ' + stepFreeWords(step.counts) : 'Everyone: ' + lineWords.textContent);
+        // the Step-free counts are said once they are known; until then it says it is working them out
+        owesCounts = value === 'step-free' && !step;
+        if (value === 'step-free') ctx.announce(step ? 'Step-free: ' + stepFreeWords(step.counts) : 'Step-free: working it out');
+        else ctx.announce('Everyone: ' + lineWords.textContent);
       },
     });
     const viewBox = h('div', { class: 'sfy-view', data: { part: 'view' } },
@@ -539,6 +543,11 @@ export const section = {
       element.dataset.rooms = String(picture.rows.length);
       element.dataset.missing = String(picture.missing.length);
       draw();
+      if (owesCounts && memory.view !== 'step-free') owesCounts = false;
+      if (owesCounts && step) {
+        owesCounts = false;
+        ctx.announce('Step-free: ' + stepFreeWords(step.counts));
+      }
       plan.setProject(project, graph);
       if (lost) ctx.announce(GONE_SAYS(lost));
     }

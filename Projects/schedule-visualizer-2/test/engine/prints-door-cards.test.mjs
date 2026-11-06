@@ -815,7 +815,7 @@ function refuged(name) {
   return project;
 }
 
-test('hasStepMarks: a refuge, a corridor step, a door or an exit with a step, and nothing else, turn the default on', () => {
+test('hasStepMarks: a refuge, a corridor step, a door or an exit with a step, and nothing else, turn the default on (and an elevator stop)', () => {
   assert.equal(hasStepMarks(ends().building), false);
   assert.equal(hasStepMarks(ends({ westStep: true }).building), true, 'an exit with a step');
   const cell = ends();
@@ -827,10 +827,13 @@ test('hasStepMarks: a refuge, a corridor step, a door or an exit with a step, an
   const only = ends();
   only.building.floors[0].refuges = [{ id: 'aplan00009', cell: 2 * only.building.floors[0].width + 3, name: 'Area of refuge' }];
   assert.equal(hasStepMarks(only.building), true, 'a refuge and nothing else');
-  // an elevator alone is not a step mark (DESIGN 13.6)
+  // an elevator stop turns it on too (DECISIONS 2026-11-06)
   const lift = planProject([['.AA.', '.AA.', 'S###', '....', '....']]);
   lift.building.floors[0].lifts = [2 * lift.building.floors[0].width];
-  assert.equal(hasStepMarks(lift.building), false);
+  assert.equal(hasStepMarks(lift.building), true, 'a lift stop');
+  const car = ends();
+  car.building.connections = [{ id: 'cnlift0001', kind: 'elevator', ends: [] }];
+  assert.equal(hasStepMarks(car.building), true, 'an elevator connection');
 });
 
 test('step-free ways out: off with nothing marked, on by default with a mark, and either way as asked', () => {
@@ -907,7 +910,7 @@ test('a refuge named like markup prints as text in the block, in its own directi
 test('the cover says what the second blocks are, counts them and lists the rooms with no step-free way; off, it says nothing of them', () => {
   const project = refuged();
   const html = doorCards.render(project, null, NOW).html;
-  assert.ok(html.includes('<h2 class="card-cover__stepfree-head">Step-free way outs</h2>'));
+  assert.ok(html.includes('<h2 class="card-cover__stepfree-head">Step-free ways out</h2>'));
   assert.ok(html.includes('class="card-cover__nostep"'));
   const list = html.slice(html.indexOf('class="card-cover__nostep"'));
   assert.ok(list.slice(0, list.indexOf('</ul>')).includes('<li data-room="' + roomId('2A') + '">'), 'Room 2A is in the list of rooms with no step-free way');

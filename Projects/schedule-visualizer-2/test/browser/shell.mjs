@@ -378,7 +378,7 @@ test('the Project section shows the sample school in figures and every setting w
   const rows = await page.$$eval('#settings .setting', (all) => all.map((row) => [row.querySelector('.setting__label').textContent, row.querySelector('.setting__hint').textContent.length]));
   assert.deepEqual(rows.map((row) => row[0]), [
     'School name', 'Periods per day', 'Period word', 'Day types', 'Bell schedules', 'Default passing time', 'Calendar', 'Subjects',
-    'Default head count', 'Seconds per corridor cell', 'Seconds per stair connection', 'Cell scale', 'Colour scale', 'Absolute bands',
+    'Default head count', 'Seconds per corridor cell', 'Seconds per stair connection', 'Cell scale', 'Colour scale', 'Absolute bands', 'Wait', 'Ride per floor', 'People per trip',
     'Consecutive-periods limit', 'Passing margin', 'Checks switched off',
     'Time format', 'Paper size', 'Paper orientation', 'Theme', 'North direction',
   ]);
