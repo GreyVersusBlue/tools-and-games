@@ -17,6 +17,7 @@ import { esc, printableBox, paperOf } from '../../ui/prints/document.js';
 import { createPipeline } from '../../engine/worker.js';
 import { route, routingGraph } from '../../engine/routing.js';
 import { runOf } from '../../ui/movement/model.js';
+import { connectionChoices, stairsOf, stairsConnection, pickedPlace } from '../../ui/scenarios/model.js';
 import { buildGraph } from '../../engine/graph.js';
 import { emptySlot, emptyBells, GROUP_COLOUR_PRESETS } from '../../engine/schema.js';
 import { school, assertValid, PINNED } from './helpers.mjs';
@@ -396,4 +397,33 @@ test('the same project and options give the same document byte for byte, with no
   const options = { ...NOW, groupId: ADA, movement: world, paper: { size: 'a4', orientation: 'portrait' } };
   assert.equal(renderOutput('route-sheet', project, null, options).html, renderOutput('route-sheet', project, null, options).html);
   assert.equal(renderOutput('route-sheet', project, null, {}).html.includes('doc-head__date'), false, 'no date given, no date line');
+});
+
+// ---------------------------------------------------------------- the scenario lab lists stairs only
+
+test('the lab\'s stairs list offers stairs and never an elevator, and finds a connection by id only when it is stairs', () => {
+  const both = lifted({}, { stairs: true });
+  assert.deepEqual(connectionChoices(both).map((choice) => choice.label), ['Stairs A: Floor 1 to Floor 2', 'Stairs B: Floor 2 to Floor 3'], 'two stairs, and Elevator D\'s two connections left out');
+  assert.deepEqual(stairsOf(both).map((connection) => connection.label), ['A', 'B']);
+  const elevator = both.building.connections.find((connection) => connection.kind === 'elevator');
+  assert.equal(stairsConnection(both, elevator.id), null, 'an elevator is not a stairs connection to the lab');
+  assert.equal(stairsConnection(both, both.building.connections[0].id).label, 'A');
+  assert.equal(stairsConnection(both, 'cnobody'), null);
+  // a building with an elevator and no stairs has nothing to offer: the form says so
+  assert.deepEqual(connectionChoices(lifted()), []);
+  // an older tool's file, an elevator joined as plain stairs (no kind), is stairs to the lab, as it is to everything that reads it
+  const older = lifted();
+  for (const connection of older.building.connections) delete connection.kind;
+  assert.equal(connectionChoices(older).length, 2);
+});
+
+test('picking a lift stop on the lab\'s map says it is an elevator stop, a stairs landing says it is stairs, and neither is a corridor to close', () => {
+  const project = lifted({}, { stairs: true });
+  const floor = project.building.floors[0];
+  const stop = floor.lifts[0];
+  const landing = floor.cells.indexOf('S');
+  assert.notEqual(landing, stop);
+  assert.equal(pickedPlace(project, floor, stop, null).why, 'That is an elevator stop. A scenario closes corridors and stairs, not elevators.');
+  assert.equal(pickedPlace(project, floor, landing, null).why, 'That is a stairs landing. Close it with "A stair" above.');
+  assert.equal(pickedPlace(project, floor, floor.cells.indexOf('#'), null).why, undefined, 'a corridor is still a place');
 });

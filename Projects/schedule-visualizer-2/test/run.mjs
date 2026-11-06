@@ -91,6 +91,7 @@ export const GROUPS = {
     'engine/scenario-actions.test.mjs', // SV2-61
     'engine/prints-door-cards.test.mjs', // SV2-66
     'engine/prints-step-free.test.mjs', // SV2-104
+    'engine/prints-route-sheet.test.mjs', // SV2-103
     'engine/prints-calendar.test.mjs', // SV2-80
     'engine/suggest.test.mjs', // SV2-63
     'engine/prints-congestion-scenario.test.mjs', // SV2-71
@@ -182,6 +183,7 @@ export const GROUPS = {
     'browser/plan-map.mjs', // SV2-65b
     'browser/safety.mjs', // SV2-67
     'browser/step-free-safety.mjs', // SV2-104
+    'browser/route-sheet.mjs', // SV2-103
     'browser/scenario.mjs', // SV2-68
     'browser/scenario-levers.mjs', // SV2-92
     'browser/congestion-scenario.mjs', // SV2-71
@@ -249,6 +251,7 @@ export const BROWSER_SECONDS = {
   'browser/fix.mjs': 21,
   'browser/safety.mjs': 20,
   'browser/step-free-safety.mjs': 20,
+  'browser/route-sheet.mjs': 10,
   'browser/scenario-levers.mjs': 20,
   'browser/playback.mjs': 19,
   'browser/shell.mjs': 19,

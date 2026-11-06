@@ -264,6 +264,61 @@ test('the group editor\'s Route sheet button prints her day on every day type, w
   assert.equal(await view(() => document.activeElement.dataset.key), 'group-route-sheet', 'the focus is back on the button');
 });
 
+// ---------------------------------------------------------------- 1280: the scenario lab
+
+test('the scenario lab offers no stairs where the building has only an elevator, and its cursor and its pick call a stop an elevator', async () => {
+  await view(() => {
+    location.hash = '#scenarios';
+  });
+  const labReady = () => page.waitForFunction(() => {
+    const el = document.querySelector('.scn');
+    if (!el || el.dataset.styled !== 'true' || !el.scenarios) return false;
+    if (el.dataset.mode === 'empty') return true;
+    if (el.scenarios.plan.project !== globalThis.sv2.store.project) return false;
+    if (el.dataset.mode === 'none') return el.dataset.compare === 'none';
+    return el.dataset.compare === 'ready' && !el.scenarios.pending;
+  }, { timeout: 30000 });
+  await labReady();
+  await page.click('#scenario-start-name');
+  await page.keyboard.type('Lift check');
+  await page.click('[data-action="start"]');
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.mode === 'open');
+  await labReady();
+  await page.click('.scn-add .seg input[value="building"] + .seg__label');
+  await page.waitForFunction(() => document.querySelector('.scn-form').dataset.kind === 'building');
+  // the elevator is not a stair to close or turn: the form has none to offer, and says so
+  assert.equal(await text('.scn-form [data-part="none"]'), 'The building has no stairs connecting floors yet.');
+  assert.equal(await page.$('#scenario-building-stair'), null, 'no list of stairs with an elevator in it');
+  // the cursor on a stop says elevator, never stairs: the difference card speaks on a cell with a node
+  // ("by Room 101, Floor 1, elevator: no change. ..."), and a lift stop has one
+  const floor = await view(() => globalThis.sv2.store.project.building.floors[0]);
+  const stop = floor.lifts[0];
+  const cursorOn = (floorId, cell) => page.evaluate((f, c) => {
+    const plan = document.querySelector('.scn').scenarios.plan;
+    const at = plan.cellAt(f, c);
+    plan.focus();
+    plan.cursor.moveTo(Math.floor((at.x - plan.view.x) / plan.view.size), Math.floor((at.y - plan.view.y) / plan.view.size), true);
+  }, floorId, cell);
+  const said = () => text('#announcer');
+  await cursorOn(floor.id, stop - 1);
+  await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(() => /, elevator: /.test(document.getElementById('announcer').textContent));
+  assert.doesNotMatch(await said(), /stairs/);
+  // picking a corridor by keyboard: the same stop is refused in its own words, and nothing is added
+  await page.click('.scn-seats__what input[value="corridor"] + .seg__label');
+  await page.waitForSelector('[data-key="scenario-building-pick"]');
+  await page.click('[data-key="scenario-building-pick"]');
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.picking === 'true');
+  await cursorOn(floor.id, stop - 1);
+  await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(() => /elevator stop/.test(document.getElementById('announcer').textContent));
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => /elevator stop/.test(document.getElementById('announcer').textContent));
+  assert.equal(await view(() => (globalThis.sv2.store.project.scenarios || []).every((scenario) => (scenario.levers || []).length === 0)), true, 'no lever was made of an elevator stop');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.picking === undefined);
+});
+
 // ---------------------------------------------------------------- 1280: Chromium prints it
 
 test('Chromium prints the sheet on US Letter and on A4: its sheets, the paper\'s size, and every block short enough for one page and told not to split', async () => {
