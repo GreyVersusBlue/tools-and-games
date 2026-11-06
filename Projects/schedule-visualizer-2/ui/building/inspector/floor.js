@@ -27,9 +27,9 @@ import { field } from '../../components/field.js';
 import { choice } from '../../components/choice.js';
 import { count, list } from '../../components/words.js';
 import { ActionError, renameFloor, setFloorLevel, reorderFloor, deleteFloor, describeFloorDelete, describeResize, resizeFloor, eraseCells, disconnectStairs, setConnection, renameCorridor, removeCorridorName, setZone, removeZone } from '../../../engine/actions.js';
-import { lossText } from '../../../engine/building.js';
+import { lossText, counts, describeFloor } from '../../../engine/building.js';
 import { snapshotAfter, undoForStep } from '../../../storage/snapshots.js';
-import { RANGES, nameOfRoom } from '../../../engine/schema.js';
+import { RANGES, nameOfRoom, ELEVATOR_KIND } from '../../../engine/schema.js';
 import { keyedList, heading, cellWords } from './controls.js';
 
 // ---- which way a stairs connection may be walked (spec 4.5, DESIGN 12.5)
@@ -108,24 +108,28 @@ export function clearFloorWords(project, floor) {
   let rooms = 0;
   let otherSpaces = 0;
   let corridorCells = 0;
-  let stairsCells = 0;
   for (const space of floor.spaces) {
     if (space.kind === 'room') rooms += 1;
     else otherSpaces += 1;
   }
-  for (const character of floor.cells) {
-    if (character === '#') corridorCells += 1;
-    else if (character === 'S') stairsCells += 1;
-  }
-  const connections = project.building.connections.filter((connection) => connection.a.floorId === floor.id || connection.b.floorId === floor.id).length;
+  for (const character of floor.cells) if (character === '#') corridorCells += 1;
+  // stairs and elevator stops are told apart by what the building says they are
+  const own = counts(project.building).byFloor[floor.id];
+  const touching = project.building.connections.filter((connection) => connection.a.floorId === floor.id || connection.b.floorId === floor.id);
+  const stairsConnections = touching.filter((connection) => connection.kind !== ELEVATOR_KIND).length;
+  const elevatorConnections = touching.length - stairsConnections;
   const parts = [
     rooms > 0 ? count(rooms, 'room') : null,
     otherSpaces > 0 ? count(otherSpaces, 'other space') : null,
     corridorCells > 0 ? count(corridorCells, 'corridor cell') : null,
-    stairsCells > 0 ? count(stairsCells, 'stairs cell') : null,
+    own.stairsCells > 0 ? count(own.stairsCells, 'stairs cell') : null,
+    own.liftCells > 0 ? count(own.liftCells, 'elevator stop') : null,
     floor.corridors.length > 0 ? count(floor.corridors.length, 'corridor name') : null,
     floor.exits.length > 0 ? count(floor.exits.length, 'exit') : null,
-    connections > 0 ? count(connections, 'stairs connection') : null,
+    stairsConnections > 0 ? count(stairsConnections, 'stairs connection') : null,
+    elevatorConnections > 0 ? count(elevatorConnections, 'elevator connection') : null,
+    own.steps > 0 ? count(own.steps, 'step cell') : null,
+    own.refuges > 0 ? count(own.refuges, 'area of refuge', 'areas of refuge') : null,
   ].filter(Boolean);
   if (parts.length === 0) return { empty: true, removes: 'Nothing is drawn on ' + floor.name + ', so there is nothing to clear.', keeps: '' };
   return {

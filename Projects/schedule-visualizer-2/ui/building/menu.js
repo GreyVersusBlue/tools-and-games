@@ -9,10 +9,11 @@
 import { h } from '../components/dom.js';
 import { openMenu } from '../components/menu.js';
 import { count } from '../components/words.js';
-import { paintCorridor, placeStairs, placeRoom, placeOtherSpace, eraseCells, deleteSpaces, describeSpaceDelete, addDoor, removeDoor, disconnectStairs, nameCorridor, removeCorridorName, markExit, unmarkExit, setZone, removeZone } from '../../engine/actions.js';
+import { paintCorridor, placeStairs, placeLift, placeRoom, placeOtherSpace, eraseCells, deleteSpaces, describeSpaceDelete, addDoor, removeDoor, setDoorStepFree, disconnectStairs, nameCorridor, removeCorridorName, markExit, unmarkExit, setExitStepFree, setStepCells, addRefuge, removeRefuge, setZone, removeZone } from '../../engine/actions.js';
 import { describeCell, SIDE_WORDS } from '../../engine/building.js';
 import { DOOR_SIDES, CELL_CORRIDOR, neighbourCell } from '../../engine/schema.js';
 import { roomName } from '../../engine/findings.js';
+import { focusCells, returnToCell } from './inspector/cell-focus.js';
 
 function spaceWords(space) {
   if (space.kind === 'room') return roomName(space);
@@ -117,21 +118,31 @@ export function menuItems(ed, deps, cell) {
   const place = {
     corridor: { label: 'Make this a corridor cell', run: () => ed.commit(paintCorridor, one, { done: () => 'Made the cell a corridor cell.' }) },
     stairs: { label: 'Make this a stairs cell', run: () => ed.commit(placeStairs, one, { done: () => 'Made the cell a stairs cell. Not connected yet.' }) },
-    room: { label: 'Place a room here', run: () => {
+    lift: { label: 'Make this an elevator stop', run: () => ed.commit(placeLift, one, { done: () => 'Made the cell an elevator stop. Not connected yet.' }) },
+    room: { label: 'Place a room here', keepsFocus: true, run: () => {
       const outcome = ed.commit(placeRoom, rect, { done: () => 'Placed a room, 1 by 1. Type its number.' });
       if (outcome) ed.placedRoom(outcome.spaceId, { pointerType: 'mouse' });
     } },
-    other: { label: 'Place an other space here', run: () => {
+    other: { label: 'Place an other space here', keepsFocus: true, run: () => {
       const outcome = ed.commit(placeOtherSpace, rect, { done: () => 'Placed an other space, 1 by 1.' });
       if (outcome) ed.select([outcome.spaceId]);
     } },
   };
   const eraseCell = { label: 'Erase this cell', danger: true, run: () => ed.commit(eraseCells, one, { done: () => 'Erased the cell.' }) };
+  // Properties of the cell itself: what Marks… in the Properties tab shows
+  const properties = { label: 'Properties of this cell', keepsFocus: true, run: () => focusCells(ed, floorId, [cell]) };
+  // An area of refuge may stand on a corridor or a stairs cell
+  const refugeItems = () => {
+    const refuge = (floor.refuges || []).find((each) => each.cell === cell);
+    return refuge
+      ? [{ label: 'Take ' + refuge.name + ' off (area of refuge)', run: () => ed.commit(removeRefuge, { floorId, refugeId: refuge.id }, { done: () => 'Took the area of refuge ' + refuge.name + ' off. The cell stays.' }) }]
+      : [{ label: 'Make this an area of refuge', run: () => ed.commit(addRefuge, { floorId, cell }, { done: (outcome) => 'Made the cell ' + outcome.name + ', an area of refuge.' }) }];
+  };
 
   if (at.kind === 'room' || at.kind === 'other') {
     const space = at.space;
     const name = spaceWords(space);
-    items.push({ label: 'Edit ' + name, run: () => {
+    items.push({ label: 'Edit ' + name, keepsFocus: true, run: () => {
       ed.select([space.id]);
       if (space.kind === 'room') deps.inspector().focusNumber();
       else deps.inspector().showTab('properties');
@@ -143,38 +154,68 @@ export function menuItems(ed, deps, cell) {
         items.push(has
           ? { label: 'Remove the door on the ' + SIDE_WORDS[side] + ' edge', run: () => ed.commit(removeDoor, { roomId: space.id, cell, side }, { done: () => 'Removed the door on the ' + SIDE_WORDS[side] + ' edge of ' + name + '.' }) }
           : { label: 'Add a door on the ' + SIDE_WORDS[side] + ' edge', run: () => ed.commit(addDoor, { roomId: space.id, cell, side }, { done: () => 'Added a door on the ' + SIDE_WORDS[side] + ' edge of ' + name + '.', same: 'There is a door there already.' }) });
+        // a door that is there can be marked as having a step, or not
+        const door = space.doors.find((each) => each.cell === cell && each.side === side);
+        if (door) {
+          const level = door.stepFree !== false;
+          items.push({
+            label: level ? 'The door on the ' + SIDE_WORDS[side] + ' edge has a step' : 'The door on the ' + SIDE_WORDS[side] + ' edge is step-free',
+            run: () => ed.commit(setDoorStepFree, { roomId: space.id, door: { cell, side }, stepFree: !level }, { done: () => 'The door on the ' + SIDE_WORDS[side] + ' edge of ' + name + (level ? ' now has a step.' : ' is now step-free.') }),
+          });
+        }
       }
     }
     items.push('separator');
     items.push({ label: 'Delete ' + name, danger: true, run: () => deleteSpace(ed, space.id) });
   } else if (at.kind === 'corridor') {
     if (at.exit) {
-      items.push({ label: 'Edit the exit' + (at.exit.doorName.trim() === '' ? '' : ' ' + at.exit.doorName), run: () => deps.inspector().focusExit(at.exit.id) });
+      items.push({ label: 'Edit the exit' + (at.exit.doorName.trim() === '' ? '' : ' ' + at.exit.doorName), keepsFocus: true, run: () => deps.inspector().focusExit(at.exit.id) });
+      items.push({
+        label: at.exit.stepFree === false ? 'The exit is step-free' : 'The exit has a step',
+        run: () => ed.commit(setExitStepFree, { floorId, exitId: at.exit.id, stepFree: at.exit.stepFree === false }, { done: () => (at.exit.stepFree === false ? 'The exit is now step-free.' : 'The exit now has a step outside its door.') }),
+      });
       items.push({ label: 'Take the exit mark off', run: () => ed.commit(unmarkExit, { floorId, exitId: at.exit.id }, { done: () => 'Took the exit mark off. The corridor cell stays.' }) });
     } else {
-      items.push({ label: 'Mark as an exit', run: () => {
+      items.push({ label: 'Mark as an exit', keepsFocus: true, run: () => {
         const outcome = ed.commit(markExit, { floorId, cell }, { done: () => 'Marked an exit. Type its door name.' });
         if (outcome) deps.inspector().focusExit(outcome.exitId);
       } });
     }
     const named = floor.corridors.find((corridor) => corridor.cells.includes(cell));
-    items.push({ label: named ? 'Rename the corridor ' + named.name + '…' : 'Name this corridor…', run: () => nameCells(ed, named ? named.cells : corridorRun(floor, cell)) });
+    items.push({ label: named ? 'Rename the corridor ' + named.name + '…' : 'Name this corridor…', keepsFocus: true, run: () => nameCells(ed, named ? named.cells : corridorRun(floor, cell)) });
     if (named) items.push({ label: 'Take the name ' + named.name + ' off', run: () => ed.commit(removeCorridorName, { floorId, corridorId: named.id }, { done: () => 'Took the name ' + named.name + ' off the corridor.' }) });
-    items.push('separator', place.stairs, place.room, place.other, 'separator', eraseCell);
+    items.push({
+      label: at.step ? 'No step here' : 'Step here',
+      run: () => ed.commit(setStepCells, { floorId, cells: [cell], stepFree: at.step === true }, { done: () => (at.step ? 'Took the step off the cell.' : 'Marked the cell as a step. Step-free routes go round it.') }),
+    });
+    items.push(...refugeItems());
+    items.push(properties);
+    items.push('separator', place.stairs, place.lift, place.room, place.other, 'separator', eraseCell);
   } else if (at.kind === 'stairs') {
     items.push({ label: 'Connect these stairs…', run: () => deps.connect().start({ floorId, cell }) });
     for (const connection of at.connections) {
       items.push({ label: 'Disconnect stairs ' + connection.label, run: () => ed.commit(disconnectStairs, { connectionId: connection.id }, { done: () => 'Disconnected stairs ' + connection.label + '.' }) });
     }
-    items.push('separator', place.corridor, place.room, place.other, 'separator', eraseCell);
+    items.push(...refugeItems());
+    items.push(properties);
+    items.push('separator', place.corridor, place.lift, place.room, place.other, 'separator', eraseCell);
+  } else if (at.kind === 'elevator') {
+    const car = at.elevator;
+    const name = car && car.label !== '' ? 'elevator ' + car.label : 'this elevator stop';
+    items.push({ label: 'Properties of ' + name, keepsFocus: true, run: () => focusCells(ed, floorId, [cell]) });
+    items.push({ label: 'Connect to another floor…', keepsFocus: true, run: () => deps.connect().start({ floorId, cell }) });
+    for (const connection of at.connections) {
+      items.push({ label: 'Disconnect ' + name, run: () => ed.commit(disconnectStairs, { connectionId: connection.id }, { done: () => 'Disconnected ' + name + '. The stop stays where it is.' }) });
+    }
+    items.push('separator', place.corridor, place.stairs, place.room, place.other, 'separator', eraseCell);
   } else {
-    items.push(place.corridor, place.stairs, place.room, place.other);
+    items.push(place.corridor, place.stairs, place.lift, place.room, place.other, 'separator', properties);
   }
 
   for (const zone of zonesAt(ed, cell)) {
     const what = zone.label.trim() === '' ? 'the left-out area here' : 'the left-out area ' + zone.label;
     items.push('separator');
-    items.push({ label: 'Label ' + what + '…', run: async () => {
+    items.push({ label: 'Label ' + what + '…', keepsFocus: true, run: async () => {
       const label = await askText(ed.ctx, { id: 'zone-label-dialog', title: 'What is this left-out area?', label: 'Label', value: zone.label, action: 'Keep the label', keep: 'Leave it as it is', opener: ed.canvas });
       if (label !== null) ed.commit(setZone, { zoneId: zone.id, label }, { done: () => (label === '' ? 'Took the label off the area.' : 'Labelled the area ' + label + '.'), same: 'That is its label already.' });
     } });
@@ -183,11 +224,38 @@ export function menuItems(ed, deps, cell) {
   return items;
 }
 
+// An item that moves the focus itself (into a field, a dialog) says so with
+// `keepsFocus`; every other item leaves the user on the cell it was about
+// (DESIGN 13.3), with the keyboard cursor there.
+function withFocusBack(ed, items, cell, visible) {
+  return items.map((item) => {
+    if (item === 'separator' || item.keepsFocus) return item;
+    return { ...item, run: () => {
+      item.run();
+      // a dialog the action opened has the focus; the plan takes it back only
+      // when no dialog is up
+      if (!document.querySelector('dialog[open]')) returnToCell(ed, cell, visible);
+    } };
+  });
+}
+
+// openCellMenu(ed, cell, opener): the same menu as right-click, from a button
+// ("Marks…" in Properties). Without an action the focus goes back to the opener.
+export function openCellMenu(ed, cell, opener) {
+  const deps = { connect: () => ed.connect, inspector: () => ed.inspector };
+  const items = menuItems(ed, deps, cell);
+  if (items.length === 0) return false;
+  const at = describeCell(ed.project.building, ed.floor.id, cell);
+  const what = at.kind === 'room' || at.kind === 'other' ? spaceWords(at.space) : at.kind === 'empty' ? 'this empty cell' : 'this ' + at.kind + ' cell';
+  openMenu({ items: withFocusBack(ed, items, cell, true), anchor: opener, opener, label: 'What can be done with ' + what });
+  return true;
+}
+
 // buildingMenu(ed, deps) -> (ev) => {}: what index.js sets ed.menu to.
 //   ev is the pointer's event, or the keyboard cursor's (no clientX there).
 export function buildingMenu(ed, deps) {
   return (ev) => {
-    const items = menuItems(ed, deps, ev.index);
+    const items = withFocusBack(ed, menuItems(ed, deps, ev.index), ev.index, typeof ev.clientX !== 'number');
     if (items.length === 0) return;
     let anchor;
     if (typeof ev.clientX === 'number') anchor = { x: ev.clientX, y: ev.clientY };
