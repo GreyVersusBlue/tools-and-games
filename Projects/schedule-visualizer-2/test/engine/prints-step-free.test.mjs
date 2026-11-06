@@ -195,6 +195,10 @@ test('the Step-free overlay: a way to a refuge dashed in the accent, a way to an
   draw(g, { x: 0, y: 0, size: 20 }, floor, THEME);
   const calls = g.calls;
   assert.ok(calls.some((call) => call.name === 'stroke' && call.dash.length > 0 && call.style === THEME.accent), 'a dashed line in the accent');
+  // room 1A picked: its way to the refuge and its frame are both dashed in the accent, two strokes
+  const picked = recorder();
+  stepFreeOverlay(() => ({ rooms, ends, picked: roomId('1A') }), LABEL_ON)(picked, { x: 0, y: 0, size: 20 }, floor, THEME);
+  assert.equal(picked.calls.filter((call) => call.name === 'stroke' && call.dash.length > 0 && call.style === THEME.accent).length, 2, 'the way and the frame, both dashed');
   assert.ok(calls.some((call) => call.name === 'fillText' && call.args[0] === 'R'), 'a refuge room\'s badge says R');
   assert.ok(calls.some((call) => call.name === 'strokeText' && call.args[0] === 'Area of refuge'), 'the end is labelled in words, on a halo');
   assert.ok(calls.some((call) => call.name === 'fillText' && call.args[0] === 'Area of refuge'));
@@ -218,3 +222,14 @@ test('the Step-free overlay: a way to a refuge dashed in the accent, a way to an
   stepFreeOverlay(() => null, LABEL_ON)(none, { x: 0, y: 0, size: 20 }, floor, THEME);
   assert.deepEqual(none.calls, []);
 });
+
+test('where a refuge stands is read from its own cell: the nearer of two stairs, not the last one listed', () => {
+  const hall = ['.AA.BB.', '.AA.BB.', 'S#####S', '.......', '.......'];
+  // the near stairs, by the refuge, are Stairs A and the far ones, listed last, Stairs B
+  const project = planProject([hall, hall], { exits: [[1, 3, 3, 'Main Door']], connections: [[1, 0, 2, 2, 0, 2], [1, 6, 2, 2, 6, 2]] });
+  const floor = project.building.floors[0];
+  floor.exits[0].stepFree = false;
+  floor.refuges = [{ id: 'aplan00001', cell: 2 * floor.width + 1, name: 'Area of refuge' }];
+  const { step } = pictureOf(project);
+  assert.equal(step.refuges[0].by, 'Stairs A');
+}); 

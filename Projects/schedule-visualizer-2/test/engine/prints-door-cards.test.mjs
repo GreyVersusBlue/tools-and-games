@@ -824,7 +824,9 @@ test('hasStepMarks: a refuge, a corridor step, a door or an exit with a step, an
   const door = ends();
   door.building.floors[0].spaces.find((space) => space.kind === 'room').doors = [{ cell: 0, side: 'n', stepFree: false }];
   assert.equal(hasStepMarks(door.building), true, 'a door with a step');
-  assert.equal(hasStepMarks(refuged().building), true, 'a refuge');
+  const only = ends();
+  only.building.floors[0].refuges = [{ id: 'aplan00009', cell: 2 * only.building.floors[0].width + 3, name: 'Area of refuge' }];
+  assert.equal(hasStepMarks(only.building), true, 'a refuge and nothing else');
   // an elevator alone is not a step mark (DESIGN 13.6)
   const lift = planProject([['.AA.', '.AA.', 'S###', '....', '....']]);
   lift.building.floors[0].lifts = [2 * lift.building.floors[0].width];
