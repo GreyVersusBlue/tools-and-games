@@ -462,7 +462,8 @@ test('the menu of a cell inside a left-out area puts it back in the colour scale
 
 test('the menu of an empty cell offers what can be placed there, and each entry is one action', async () => {
   const items = await menuOn(30, 20);
-  assert.deepEqual(items, ['Make this a corridor cell', 'Make this a stairs cell', 'Place a room here', 'Place an other space here']);
+  // SV2-101b: the menu also offers an elevator stop and the cell's Properties
+  assert.deepEqual(items, ['Make this a corridor cell', 'Make this a stairs cell', 'Make this an elevator stop', 'Place a room here', 'Place an other space here', 'Properties of this cell']);
   assert.equal(await page.$eval('.menu[role="menu"]', (el) => el.getAttribute('aria-label')), 'What can be done with this empty cell');
   const before = await entries();
   await choose('Make this a corridor cell');
@@ -473,7 +474,8 @@ test('the menu of an empty cell offers what can be placed there, and each entry 
 
 test('the menu of a corridor cell marks an exit, names the corridor, changes its type and erases it', async () => {
   const items = await menuOn(30, 20);
-  assert.deepEqual(items, ['Mark as an exit', 'Name this corridor…', 'Make this a stairs cell', 'Place a room here', 'Place an other space here', 'Erase this cell']);
+  // SV2-101b: a step, an area of refuge and the cell's Properties, and an elevator stop to place
+  assert.deepEqual(items, ['Mark as an exit', 'Name this corridor…', 'Step here', 'Make this an area of refuge', 'Properties of this cell', 'Make this a stairs cell', 'Make this an elevator stop', 'Place a room here', 'Place an other space here', 'Erase this cell']);
   let before = await entries();
   await choose('Mark as an exit');
   assert.equal((await building()).floors[0].exits.length, 2);
