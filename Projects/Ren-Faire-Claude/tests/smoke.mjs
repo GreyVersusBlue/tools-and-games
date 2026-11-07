@@ -4109,7 +4109,7 @@ function makeMemoryStorage() {
       assert(arc.beats.filter(b => b.when === 'sour').length === 1 && arc.beats.filter(b => b.when === 'devoted').length === 1 && arc.beats.length === 2,
         `${arc.id} has exactly one beat at each edge, so pendingBeats never shows two cards for one act`);
       for (const beat of arc.beats) {
-        assert(beat.choices.some(c => !('cash' in c)), `${beat.id} has an answer that costs nothing, since resolveBeat does not check the till`);
+        assert(beat.choices.some(c => !('cash' in c)), `${beat.id} has an answer that costs nothing, since a free answer is never refused for an empty till`);
         if (beat.when === 'sour') assert(beat.choices.some(c => c.relationship > 0), `${beat.id} has an answer that mends the mood`);
         for (const c of beat.choices) {
           if ('cash' in c) assert(c.cash < 0 && -c.cash <= 2 * act.cost, `${beat.id}/${c.id} costs the house money, and no more than two days of the act’s listed rate ($${-c.cash} against $${act.cost})`);
@@ -4530,6 +4530,57 @@ function makeMemoryStorage() {
     assert(after2.arcBeats.cider_sour === 'cask' && after2.cash === cashBefore - 220 && after2.relationships.vend_cider === 30, 'and it pays for the cask and mends the mood in the save');
     assert(!doc.querySelector('.beat-card'), 'and then no card is left');
     assert(/The next cask is honest/.test(doc.querySelector('#content .warn').textContent), 'and the flash carries the cider’s note now');
+  }
+
+  // --- a paid answer cannot take the till below zero (TG-49) ---
+  {
+    const at = (cash) => ({ ...State.createInitialState(), cash, roster: ['perf_jouster_2'], contracts: { perf_jouster_2: { contractId: 'open', dailyCost: 500, daysRemaining: 0 } }, relationships: { perf_jouster_2: 10 } });
+    const rich = State.resolveBeat(at(5000), 'ysolde_sour', 'purse');
+    assert(!rich.error && rich.state.cash === 4600, 'an affordable paid answer is taken ($5,000 to $4,600)');
+    const exact = State.resolveBeat(at(400), 'ysolde_sour', 'purse');
+    assert(!exact.error && exact.state.cash === 0 && exact.state.arcBeats.ysolde_sour === 'purse', 'an answer exactly the till’s size is taken and leaves $0');
+    const poor = at(399);
+    const refused = State.resolveBeat(poor, 'ysolde_sour', 'purse');
+    assert(refused.error === 'Not enough cash (need $400).' && refused.state === poor, 'one dollar short is refused with the message every other purchase uses, and the state handed back is the one passed in');
+    assert(!poor.arcBeats.ysolde_sour && poor.cash === 399 && poor.relationships.perf_jouster_2 === 10, 'and no number moved: cash, mood and the beat are as they were');
+    const free = State.resolveBeat(at(0), 'ysolde_sour', 'headline');
+    assert(!free.error && free.state.cash === 0, 'a free answer is never refused, even from an empty till');
+    const broke = State.resolveBeat({ ...at(0), cash: -50 }, 'ysolde_sour', 'let_go');
+    assert(!broke.error && broke.state.cash === -50, 'nor from a till already below zero');
+    const paid = at;
+    const { doc, storage } = await boot({ ...paid(399), __v: 2 });
+    click(doc, '[data-tab="backstage"]');
+    const purseBtn = doc.querySelector('[data-action="resolveBeat"][data-id="ysolde_sour"][data-choice="purse"]');
+    assert(purseBtn && purseBtn.disabled && /Not enough cash \(need \$400\)/.test(purseBtn.title), 'the card marks the unaffordable answer disabled and puts its price in the title');
+    const freeBtn = doc.querySelector('[data-action="resolveBeat"][data-id="ysolde_sour"][data-choice="headline"]');
+    assert(freeBtn && !freeBtn.disabled && !/Not enough cash/.test(freeBtn.title), 'while a free answer on the same card stays live');
+    click(doc, '[data-action="resolveBeat"][data-id="ysolde_sour"][data-choice="purse"]');
+    const held = saved(storage);
+    assert(held.cash === 399 && !held.arcBeats.ysolde_sour, 'and clicking it anyway changes nothing in the save');
+    const ok = await boot({ ...paid(400), __v: 2 });
+    click(ok.doc, '[data-tab="backstage"]');
+    assert(!ok.doc.querySelector('[data-action="resolveBeat"][data-choice="purse"]').disabled, 'at exactly $400 the same button is live');
+  }
+
+  // --- the hall of closed seasons on the Office desk (TG-49) ---
+  {
+    const recs = [
+      { run: 1, weekends: 3, days: 9, attendance: 4500, net: 9000, cash: 31000, reputation: 82, renown: 23, renownEarned: 23, won: true, plots: 2, beats: 1 },
+      { run: 2, weekends: 3, days: 9, attendance: 2150, net: -1200, cash: 800, reputation: 44, renown: 31, renownEarned: 8, won: false, plots: 1, beats: 2 },
+    ];
+    const s = State.createInitialState();
+    s.carryover = { ...s.carryover, run: 3, seasons: recs.map(r => ({ ...r })) };
+    const { doc, storage } = await boot({ ...s, __v: 2 });
+    click(doc, '[data-tab="office"]');
+    const rows = [...doc.querySelectorAll('.season-hall tr[data-season]')];
+    assert(rows.length === 2 && rows[0].dataset.season === '1' && rows[1].dataset.season === '2', 'the Office desk lists each closed season, oldest first');
+    assert(/4,500/.test(rows[0].textContent) && /\+\$9,000/.test(rows[0].textContent) && /82/.test(rows[0].textContent) && /23/.test(rows[0].textContent) && /A Legendary Faire/.test(rows[0].textContent), 'season 1 shows its own gate, net, reputation, renown and standing');
+    assert(/2,150/.test(rows[1].textContent) && /\u2212\$1,200/.test(rows[1].textContent) && /\+8/.test(rows[1].textContent) && /Not yet legendary/.test(rows[1].textContent), 'season 2 shows a loss with its minus sign, renown earned and no title');
+    assert(JSON.stringify(saved(storage).carryover.seasons) === JSON.stringify(recs), 'reading the hall saves nothing new: the banked records are untouched');
+    assert(doc.querySelectorAll('.season-hall [data-action]').length === 0, 'and it is read-only: nothing in it is a button');
+    const first = await boot({ ...State.createInitialState(), __v: 2 });
+    click(first.doc, '[data-tab="office"]');
+    assert(!first.doc.querySelector('.season-hall') && !!first.doc.querySelector('.forecast-card'), 'a first season has no hall, and the rest of the desk is there');
   }
 
   // --- negotiating an offer, through the change listener ---

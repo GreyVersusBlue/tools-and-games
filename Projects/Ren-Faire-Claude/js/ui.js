@@ -126,8 +126,35 @@ export function renderOffice(state, warn) {
       ${renderForecast(state)}
 
       ${renderMarketing(state)}
+
+      ${renderSeasonHall(state)}
     </section>
   `;
+}
+
+// The hall of closed seasons: each record closeSeason banked onto
+// state.carryover.seasons, read back as it was written. Nothing here is
+// saved or derived; a faire in its first season has none and gets nothing.
+function renderSeasonHall(state) {
+  const seasons = (state.carryover && state.carryover.seasons) || [];
+  if (seasons.length === 0) return '';
+  const rows = seasons.map(r => `
+        <tr data-season="${r.run}">
+          <td>Season ${r.run}</td>
+          <td class="mono">${r.weekends}</td>
+          <td class="mono">${(r.attendance || 0).toLocaleString()}</td>
+          <td class="mono ${r.net >= 0 ? 'good' : 'bad'}">${r.net >= 0 ? '+' : '\u2212'}${money(Math.abs(r.net))}</td>
+          <td class="mono">${r.reputation}</td>
+          <td class="mono">${r.renown} <span class="hint">(+${r.renownEarned})</span></td>
+          <td>${r.won ? 'A Legendary Faire' : 'Not yet legendary'}</td>
+        </tr>`).join('');
+  return `
+      <div class="season-hall">
+        <h3>Closed seasons</h3>
+        <table class="ledger-table">
+          <tr><th>Season</th><th>Weekends</th><th>Through the gate</th><th>Net</th><th>Reputation</th><th>Renown</th><th>Standing</th></tr>${rows}
+        </table>
+      </div>`;
 }
 
 // A sparkline of the real ticket-revenue-per-guest curve the simulation
@@ -303,8 +330,9 @@ function renderBeatCards(state) {
       if (typeof c.rateMult === 'number' && c.rateMult !== 1) parts.push(`rate ×${c.rateMult}`);
       if ('quirk' in c) parts.push(c.quirk ? `gains ${quirkTitle(c.quirk)}` : 'sheds their quirk');
       if (typeof c.relationship === 'number' && c.relationship !== 0) parts.push(`relationship ${c.relationship > 0 ? '+' : ''}${c.relationship}`);
-      const title = [c.note, parts.join(', ')].filter(Boolean).join(' — ');
-      return `<button class="btn small" data-action="resolveBeat" data-id="${beat.id}" data-choice="${c.id}" title="${title}">${c.label}</button>`;
+      const short = typeof c.cash === 'number' && c.cash < 0 && state.cash < -c.cash;
+      const title = [short ? `Not enough cash (need ${money(-c.cash)})` : '', c.note, parts.join(', ')].filter(Boolean).join(' — ');
+      return `<button class="btn small" data-action="resolveBeat" data-id="${beat.id}" data-choice="${c.id}" title="${title}"${short ? ' disabled' : ''}>${c.label}</button>`;
     }).join('');
     return `
       <div class="beat-card mood-${tier.id}" data-beat="${beat.id}">
