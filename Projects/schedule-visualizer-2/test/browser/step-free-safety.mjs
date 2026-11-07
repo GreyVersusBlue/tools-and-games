@@ -520,6 +520,37 @@ test('at 390 px with touch: the chips, Show, the tick and Print are 44 px, nothi
   }
 });
 
+test('no text node in the Safety inspector reads "null" or "undefined", in both chips and every tab, marked or not', async () => {
+  const page = wide.page;
+  const bad = (view) => page.evaluate((chip) => {
+    const walker = document.createTreeWalker(document.querySelector('.sfy-inspector'), NodeFilter.SHOW_TEXT);
+    const found = [];
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = node.nodeValue.trim();
+      if (text === 'null' || text === 'undefined' || /(^|\s)(null|undefined)(\s|$)/.test(text)) found.push(chip + ': ' + JSON.stringify(text) + ' in ' + (node.parentElement.className || node.parentElement.tagName));
+    }
+    return found;
+  }, view);
+  let tabsSeen = 0;
+  for (const variant of ['plain', 'marked']) {
+    await load(page, variant);
+    const tabs = await page.$$eval('.sfy-inspector .tabs__tab', (all) => all.map((each) => each.dataset.tab));
+    assert.ok(tabs.includes('exits') && tabs.includes('stepfree'), 'the tabs are not the ones this reads: ' + tabs);
+    for (const chip of ['everyone', 'step-free']) {
+      const was = await drawn(page);
+      await page.evaluate((value) => document.querySelector('.sfy').safety.setView(value), chip);
+      await ready(page, was);
+      for (const id of tabs) {
+        await tab(page, id);
+        await page.waitForFunction((wanted) => document.querySelector('.sfy-inspector .tabs__tab[data-tab="' + wanted + '"]').getAttribute('aria-selected') === 'true', {}, id);
+        tabsSeen += 1;
+        assert.deepEqual(await bad(variant + '/' + chip + '/' + id), [], 'a stray word in the inspector');
+      }
+    }
+  }
+  assert.ok(tabsSeen >= 8, 'it looked at too few tabs: ' + tabsSeen);
+});
+
 test('no script error was raised by any of this', async () => {
   assert.deepEqual(wide.problems().errors, []);
 });

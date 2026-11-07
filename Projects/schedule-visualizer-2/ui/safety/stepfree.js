@@ -97,7 +97,7 @@ export function stepFreeWaysPanel(env) {
         h('p', { class: 'sfy-refuge__use' }, refuge.use))))];
     element.replaceChildren(
       h('h2', { class: 'mov-panel__title' }, 'Step-free ways out'),
-      step.report.marked ? null : unmarked(env),
+      ...(step.report.marked ? [] : [unmarked(env)]),
       h('p', { class: 'sfy-panel__lead' }, 'Each room goes out by the step-free exit it reaches soonest, or waits at an area of refuge when it can reach none. ' + EVACUATION_NO_ELEVATORS),
       ...sections,
       h('h3', { class: 'mov-panel__sub', id: 'sfy-refuges' }, 'Areas of refuge'),
@@ -162,7 +162,7 @@ export function stepFreeReportPanel(env) {
     }
     element.replaceChildren(
       h('h2', { class: 'mov-panel__title' }, 'Step-free'),
-      report.marked ? null : unmarked(env),
+      ...(report.marked ? [] : [unmarked(env)]),
       ...parts,
       h('p', { class: 'sfy-panel__lead sfy-views', data: { line: 'views' } }, TWO_VIEWS_SAYS),
       h('div', { class: 'sfy-cards__print' }, printButton));
