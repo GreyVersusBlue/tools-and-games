@@ -14,6 +14,8 @@
 // scene = {
 //   project, floor, view,          the data and the viewport (viewport.js)
 //   selection,                     ids of the selected rooms and spaces
+//   focus,                         optional { floorId, cells }: cells outlined as a selection
+//                                  (default: the building editor's, cell-focus.js)
 //   hover,                         a cell index, or null
 //   cursor,                        a cell index when the keyboard cursor shows, or null
 //   preview,                       what a tool is about to do (below), or null
@@ -47,6 +49,7 @@
 import { mix, labelOn, parse, contrast, ROOM_STRENGTH, OTHER_STRENGTH } from '../colour.js';
 import { CELL_CORRIDOR, CELL_STAIRS, ELEVATOR_KIND, elevatorCars } from '../../engine/schema.js';
 import { pendingElevatorLetter } from '../components/words.js';
+import { cellFocus } from '../building/inspector/cell-focus.js';
 
 const TOKENS = ['paper', 'card', 'ink', 'ink-2', 'line', 'line-strong', 'accent', 'accent-ink', 'accent-soft', 'problem', 'warning', 'grid', 'corridor', 'corridor-edge', 'stairs', 'room-default'];
 // Below this many pixels a label is left out rather than drawn unreadable.
@@ -92,6 +95,13 @@ export function problemRadius(w, large) {
 
 function camel(name) {
   return name.replace(/-(.)/g, (match, letter) => letter.toUpperCase());
+}
+
+// The cells held for Properties by the editor the canvas sits in (the building plan's
+// `.bld` element carries it), or null: a map with no editor has none.
+function focusOf(canvas) {
+  const section = canvas && canvas.closest ? canvas.closest('.bld') : null;
+  return section && section.editor ? cellFocus(section.editor).get() : null;
 }
 
 // The geometry of one room or other space: the rows it fills, its outline as
@@ -324,7 +334,9 @@ export function createRenderer(canvas) {
     g.closePath();
     g.fill();
     if (pill) {
-      const s = fitSize(lift.letter, 700, Math.max(MIN_LABEL, w * 0.34 * scale), w - 12 - (lift.staffOnly ? w * 0.2 : 0));
+      // the pill is padded and carries the key's notch, so the letter alone gets what is left of
+      // the cell: at the planner's default zoom that is still room for the letter at its least size
+      const s = fitSize(lift.letter, 700, Math.max(MIN_LABEL, w * 0.34 * scale), w - 4 - (lift.staffOnly ? w * 0.2 : 0) - Math.min(6, w * 0.2));
       if (s > 0) {
         g.font = font(700, s);
         const wide = g.measureText(lift.letter).width;
@@ -1061,6 +1073,21 @@ export function createRenderer(canvas) {
           g.strokeRect(X(hx) - 3, Y(hy) - 3, 6, 6);
         }
       }
+    }
+
+    // the cells Properties is open on (a stop, corridor cells; cell-focus.js): the selection's
+    // 2 px accent outline round each cell, as a selected room has (DESIGN 5.1). The plan's own
+    // selection holds spaces only, so the focus is read from the editor the canvas belongs to.
+    const asked = scene.focus !== undefined ? scene.focus : focusOf(canvas);
+    if (asked && asked.floorId === floor.id && selected.size === 0 && asked.cells.length > 0) {
+      g.beginPath();
+      for (const cell of asked.cells) {
+        g.rect(X(cell % width) + 1, Y(Math.floor(cell / width)) + 1, X((cell % width) + 1) - X(cell % width) - 2, Y(Math.floor(cell / width) + 1) - Y(Math.floor(cell / width)) - 2);
+      }
+      g.strokeStyle = t.accent;
+      g.lineWidth = 2;
+      g.lineCap = 'butt';
+      g.stroke();
     }
 
     // the hovered cell: a thin outline

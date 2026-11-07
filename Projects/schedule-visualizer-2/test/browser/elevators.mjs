@@ -578,3 +578,89 @@ test('in connect mode two fingers still pan and pinch the plan, and nothing is c
   assert.equal(await shown('#connect-banner'), true, 'the mode ended');
   await page.evaluate(() => document.querySelector('.bld').editor.connect.cancel(true));
 });
+
+// ---------------------------------------------------------------- what the plan shows of a stop
+
+test('at the planner\'s default zoom (83%) the stop carries its car\'s letter in a pill, as the stairs carry theirs, and not where the stairs\' letters are not drawn', async () => {
+  const sample = await openPlanner({ width: 1280, height: 800, theme: 'light', hash: '#building', fullSample: true });
+  try {
+    const p = sample.page;
+    await p.waitForFunction(() => document.querySelector('.bld') && document.querySelector('.bld').editor && document.querySelector('.bld').editor.floor);
+    const lettersAt = (zoom) => p.evaluate((wanted) => {
+      const editor = document.querySelector('.bld').editor;
+      const proto = CanvasRenderingContext2D.prototype;
+      const was = proto.fillText;
+      const log = [];
+      proto.fillText = function (text, x, y) {
+        log.push(String(text));
+        return was.call(this, text, x, y);
+      };
+      try {
+        editor.view.zoom = wanted;
+        editor.drawNow();
+      } finally {
+        proto.fillText = was;
+      }
+      return log.filter((text) => /^[A-Z]$/.test(text)).sort();
+    }, zoom);
+    const car = await p.evaluate(() => {
+      const { building } = globalThis.sv2.store.project;
+      return { lifts: building.floors[0].lifts.length, d: building.connections.length };
+    });
+    assert.ok(car.lifts >= 1, 'the sample has no elevator stop on Floor 1');
+    const letters = await lettersAt(0.83);
+    assert.ok(letters.includes('D'), 'Elevator D\'s letter is not drawn at 83%: ' + JSON.stringify(letters));
+    assert.ok(letters.includes('A') && letters.includes('C'), 'the stairs\' letters are not drawn at 83% either: ' + JSON.stringify(letters));
+    // where the cell is too small for the stairs' letters, the stop's is left out too
+    assert.deepEqual(await lettersAt(0.6), [], 'a letter is drawn at 60%');
+  } finally {
+    await sample.close();
+  }
+});
+
+test('a stop\'s or corridor cells\' Properties draw a 2 px accent outline on those cells in the plan, with no redraw asked for', async () => {
+  await threeFloors();
+  await page.evaluate(async () => {
+    const { store } = globalThis.sv2;
+    const actions = await import('./engine/actions.js');
+    store.apply(actions.placeLift, { floorId: store.project.building.floors[0].id, cells: [7 + 10 * 40] });
+  });
+  await page.focus('#plan');
+  await page.keyboard.press('v');
+  await click(page, 10, 10);
+  await page.waitForFunction(() => document.getElementById('inspector-title') && document.getElementById('inspector-title').textContent === 'Corridor cell');
+  // read the canvas as the page's own frame left it: no drawNow here
+  const edges = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+    const editor = document.querySelector('.bld').editor;
+    const ratio = editor.canvas.width / editor.view.width;
+    const g = editor.canvas.getContext('2d');
+    const read = (cx, cy) => {
+      const at = editor.view.toScreen(cx, cy + 0.5);
+      const data = g.getImageData(Math.round((at.x + 1) * ratio), Math.round(at.y * ratio), 1, 1).data;
+      return '#' + [data[0], data[1], data[2]].map((value) => value.toString(16).padStart(2, '0')).join('');
+    };
+    const root = getComputedStyle(document.documentElement);
+    const probe = document.createElement('canvas').getContext('2d');
+    probe.fillStyle = root.getPropertyValue('--accent').trim();
+    resolve({ focused: read(10, 10), other: read(12, 10), accent: probe.fillStyle });
+  }))));
+  const found = await edges();
+  assert.equal(found.focused, found.accent, 'the focused corridor cell has no accent outline: ' + JSON.stringify(found));
+  assert.notEqual(found.other, found.accent, 'a cell that is not in Properties is outlined too');
+  // the stop, by Enter's twin in the editor: its cell is outlined and the corridor's is not
+  await click(page, 7, 10);
+  await page.waitForFunction(() => /^Elevator.*, not connected$/.test(document.getElementById('inspector-title').textContent));
+  const stop = await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+    const editor = document.querySelector('.bld').editor;
+    const ratio = editor.canvas.width / editor.view.width;
+    const g = editor.canvas.getContext('2d');
+    const at = (cx) => {
+      const place = editor.view.toScreen(cx, 10.5);
+      const data = g.getImageData(Math.round((place.x + 1) * ratio), Math.round(place.y * ratio), 1, 1).data;
+      return '#' + [data[0], data[1], data[2]].map((value) => value.toString(16).padStart(2, '0')).join('');
+    };
+    resolve({ stop: at(7), corridor: at(10) });
+  }))));
+  assert.equal(stop.stop, found.accent, 'the stop in Properties has no outline');
+  assert.notEqual(stop.corridor, found.accent, 'the corridor cell kept its outline');
+});
