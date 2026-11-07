@@ -1307,12 +1307,16 @@ async function safetyStepFreeReport(page) {
   await page.waitForFunction(() => document.querySelector('.sfy-panel[data-panel="stepfree"]')?.getClientRects().length > 0 && document.querySelector('.sfy').safety.step);
 }
 
-// The route sheet of 6A's day, from the button in her row of Movement's travel-time table.
+// The route sheet of 6A's day, from the button in her editor on Schedule › Groups. (Movement's travel-time table has one
+// too, but with 6A's late-by-a-ride sentence in it the table's own box scrolls with no way to focus it, and axe says so: that
+// is Movement's to fix, in ui/movement/tables.js, and is in SV2-106's report.)
 async function routeSheetOfSixA(page) {
-  await movementDrawn(page);
-  await page.click('#inspector [role="tab"][data-tab="tables"]');
-  await page.waitForSelector('#inspector [data-panel="tables"] button[data-group="gsample06a"]');
-  await page.click('#inspector [data-panel="tables"] button[data-group="gsample06a"]');
+  await page.evaluate(() => {
+    location.hash = '#schedule/groups/gsample06a';
+  });
+  await page.waitForFunction(() => document.querySelector('.sch-editor')?.dataset.group === 'gsample06a');
+  await scheduleDrawn(page);
+  await page.click('[data-key="group-route-sheet"]');
   await previewReady(page);
 }
 
@@ -1342,7 +1346,7 @@ const SV2_106 = [
   { id: 'safety-step-free', fullSample: true, hash: '#safety', open: safetyStepFree }, // each room's step-free way, a refuge in the accent, the framed rooms
   { id: 'safety-step-free-phone', fullSample: true, hash: '#safety', viewport: PHONE, open: safetyStepFree },
   { id: 'safety-step-free-report', fullSample: true, hash: '#safety', open: safetyStepFreeReport }, // the report tab: every room can be reached without stairs
-  { id: 'print-route-sheet', fullSample: true, hash: '#movement', open: routeSheetOfSixA }, // 6A's route sheet in the preview
+  { id: 'print-route-sheet', fullSample: true, hash: '#schedule/groups', open: routeSheetOfSixA }, // 6A's route sheet in the preview
   { id: 'staff-map-elevator', fullSample: true, hash: '#staff', open: staffInside('#/map/fsample001', staffMapDrawn) }, // the staff map: stop, step, refuge, in words too
   { id: 'staff-directions-ride', fullSample: true, hash: '#staff', open: staffInside('#/directions?from=rsample101&to=rsample303&stepfree=1', staffRideDrawn) }, // Directions: a ride is a step
 ];
