@@ -516,6 +516,7 @@ test('the numbers say what an elevator costs and how a class rides, from the set
   const travel = (settings) => numbers(settings).find((part) => part.id === 'travel').sentences.join(' ');
   const text = travel(defaultSettings());
   const lift = elevatorSettings(defaultSettings());
+  assert.ok(['elevatorWaitSeconds', 'elevatorSecondsPerFloor', 'elevatorPeoplePerTrip'].every((name) => numbers(defaultSettings()).find((part) => part.id === 'travel').uses.includes(name)), 'the travel part names the three elevator settings it uses');
   assert.match(text, new RegExp('Wait is ' + lift.wait + ' seconds \\(the default\\), from pressing the button to the doors opening'));
   assert.match(text, new RegExp('Ride per floor is ' + lift.perFloor + ' seconds \\(the default\\) for each floor it travels'));
   assert.match(text, new RegExp(lift.perTrip + ' people \\(the default\\) fit in one \\(People per trip\\), so a group of 25 takes 4 trips'));
