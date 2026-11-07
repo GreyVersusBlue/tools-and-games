@@ -21,6 +21,7 @@ import { roomRows, sortRoomRows } from '../../ui/prints/room-list.js';
 import { evacuationRoutes, noRoute, doorCard, ELEVATOR_KIND } from '../../engine/evacuation.js';
 import { routingGraph } from '../../engine/routing.js';
 import { sampleSchool } from '../../data/sample-school.js';
+// SV2-106: four cases below ask the level sample (no elevator, step or refuge). The full sample's cards carry a "Step-free way out" block, which puts the Floor 3 cards on a second sheet in landscape and Room 303's on Letter upright.
 import { plainSchool } from './helpers.mjs';
 import { planProject, threeFloors, twoRooms, disconnectedWing, splitLevel, floorId, roomId } from '../fixtures/buildings/plans.mjs';
 import { PINNED } from './helpers.mjs';
@@ -194,7 +195,7 @@ test('the maps share one scale, and a small route is not blown up past the large
 // ---------------------------------------------------------------- the words
 
 test('the steps are the evacuation engine\'s, numbered, without distances, and the exit and assembly point close the card', () => {
-  const project = sampleSchool();
+  const project = sampleSchool({ level: true });
   const graph = routingGraph(project);
   const evacuation = evacuationRoutes(project, graph);
   const cards = cardsOf(doorCards.render(project, null, NOW).html);
@@ -248,7 +249,7 @@ test('directions that run long flow on to a second sheet: thirty-one steps, ever
 
 test('the sample school\'s cards are one sheet each, upright and on their side, on both papers', () => {
   for (const paper of PAPERS) {
-    const { html } = doorCards.render(sampleSchool(), null, { ...NOW, paper });
+    const { html } = doorCards.render(sampleSchool({ level: true }), null, { ...NOW, paper });
     assert.equal(countOf(html, 'card__more new-sheet'), 0, paper.size + ' ' + paper.orientation);
   }
 });
@@ -387,7 +388,7 @@ function cellIn(markup, plan) {
 }
 
 test('Room 303 upright on Letter: three floors\' maps at least half as large again as the 2.3 mm a cell they were, every step still on the one sheet', () => {
-  const project = sampleSchool();
+  const project = sampleSchool({ level: true });
   const letter = { size: 'letter', orientation: 'portrait' };
   const markup = cardsOf(doorCards.render(project, null, { ...NOW, paper: letter, roomIds: ['rsample303'] }).html).get('rsample303');
   const fit = fitOf(project, 'rsample303', letter, true);
@@ -477,7 +478,7 @@ test('the last card keeps room for the closing line, page boxes or none: winding
   // the document lays out its last card with the room kept, and no other:
   // the sample's Room 204, whose maps are smaller for it, alone and before 303
   const letter = { size: 'letter', orientation: 'portrait' };
-  const sample = sampleSchool();
+  const sample = sampleSchool({ level: true });
   const alone = fitOf(sample, 'rsample204', letter, true);
   const before = fitOf(sample, 'rsample204', letter, false);
   assert.ok(alone.layout.cell < before.layout.cell - 0.1, 'the closing line costs this card: ' + alone.layout.cell + ' against ' + before.layout.cell);

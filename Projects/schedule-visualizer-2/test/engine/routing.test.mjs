@@ -903,9 +903,9 @@ test('a ride\'s cost moves with the elevator settings, a wait of 0 stays 0, and 
 });
 
 test('the key is byte for byte today\'s with no lift and no marks: the sample school\'s whole route set', () => {
-  const project = sampleSchool();
+  const project = sampleSchool({ level: true });
   const graph = routingGraph(project);
-  assert.equal(graph.links.some((link) => link.elevator), false, 'the sample has no elevator');
+  assert.equal(graph.links.some((link) => link.elevator), false, 'the level sample has no elevator');
   const cache = createRouteCache();
   const result = routesForSchedule(project, graph, { cache, geometryVersion: 1 });
   assert.ok(result.searches > 5);
@@ -1210,7 +1210,8 @@ test('a failed plain route under studentsOnly says staff-only when the graph has
 // so every route they give must be the same now, apart from the new `rides: 0`. The old engine's code is not kept;
 // route-digests-6f84f965.json holds a sha-256 of its routes for each plan (see test/fixtures/route-digests.mjs).
 const OLD_DIGESTS = JSON.parse(readFileSync(nodePath.join(nodePath.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'route-digests-6f84f965.json'), 'utf8'));
-for (const [name, make] of [['the sample school', sampleSchool], ['the big fixture', bigProject]]) {
+// the level sample (SV2-106): the full sample has Elevator D now, and these digests are of a school with none
+for (const [name, make] of [['the sample school', () => sampleSchool({ level: true })], ['the big fixture', bigProject]]) {
   test('plain, step-free, undirected and routeToExit routes on ' + name + ' are the old engine\'s apart from rides: 0 (SV2-98b)', () => {
     const project = make();
     assert.equal(routingGraph(project).links.some((link) => link.elevator), false, 'no elevator');

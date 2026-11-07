@@ -59,11 +59,11 @@ test('clearFloorWords counts what is drawn, in the words the button stands besid
   const floor = project.building.floors[1];
   const words = clearFloorWords(project, floor);
   assert.equal(words.empty, false);
-  assert.equal(words.removes, 'Removes everything drawn on Floor 2: 5 rooms, 3 other spaces, 38 corridor cells, 3 stairs cells, 1 corridor name and 3 stairs connections.');
+  assert.equal(words.removes, 'Removes everything drawn on Floor 2: 5 rooms, 3 other spaces, 38 corridor cells, 3 stairs cells, 1 elevator stop, 1 corridor name, 3 stairs connections, 2 elevator connections and 1 area of refuge.');
   assert.match(words.keeps, /^The floor stays, empty, with its name, level, size, traced image and the areas left out of the colour scale\./);
   // it promises no snapshot: the device may have no room for one (SV2-28d)
   assert.match(words.keeps, /Undo brings it all back, and a snapshot of the project as it was is kept too when this device has room for one\.$/);
-  const empty = { ...floor, name: 'Roof <b>deck</b>', cells: '.'.repeat(floor.cells.length), spaces: [], corridors: [], exits: [] };
+  const empty = { ...floor, name: 'Roof <b>deck</b>', cells: '.'.repeat(floor.cells.length), spaces: [], corridors: [], exits: [], refuges: [] };
   const none = { ...project, building: { ...project.building, connections: [] } };
   assert.deepEqual(clearFloorWords(none, empty), { empty: true, removes: 'Nothing is drawn on Roof <b>deck</b>, so there is nothing to clear.', keeps: '' });
 });

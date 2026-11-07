@@ -30,8 +30,9 @@ import { bigProject } from '../fixtures/big.mjs';
 
 const { ActionError, SCHEDULE } = actions;
 // The sample without its staggered dismissal (SV2-94): these cases are about a project that has none.
+// It is also the level sample (SV2-106), so the digests recorded before W4 still hold.
 function sampleSchool() {
-  const project = realSample();
+  const project = realSample({ level: true });
   delete project.release;
   return project;
 }

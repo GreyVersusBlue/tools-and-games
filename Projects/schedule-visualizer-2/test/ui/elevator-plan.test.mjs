@@ -21,13 +21,13 @@ import { createViewport, drawnBox } from '../../ui/surface/viewport.js';
 import { describeCell } from '../../engine/building.js';
 import { sampleSchool } from '../../data/sample-school.js';
 
-// the plan with no stop, step or refuge: the digest of the markup of both floors
+// the level sample's plan, with no stop, step or refuge (SV2-106: the full sample has them now): the digest of the markup of all floors
 const SAMPLE_DIGEST = '6f86fc169479dd3a15d33e517d87763e3ae3fcc01ec9b11b45cb39d7facb63ce';
 
 // The sample school's first floor with a stop (a stairs cell in `lifts`, joined
 // to nothing), a step on a corridor cell and a refuge, all on one corridor.
 function withMarks(name = 'Refuge North') {
-  const project = sampleSchool();
+  const project = sampleSchool({ level: true });
   const floor = project.building.floors[0];
   const corridor = floor.cells.split('').map((c, i) => (c === '#' ? i : -1)).filter((i) => i >= 0);
   const [stop, step, refuge] = [corridor[2], corridor[6], corridor[10]];
@@ -41,7 +41,7 @@ function withMarks(name = 'Refuge North') {
 }
 
 test('the sample school\'s plan, with no stop, step or refuge, is byte for byte what it was, and returns no elevators', () => {
-  const project = sampleSchool();
+  const project = sampleSchool({ level: true });
   const hash = createHash('sha256');
   for (const floor of project.building.floors) {
     const picture = planSvg(project, floor, {});
@@ -83,7 +83,7 @@ test('the cursor and announcement words name a step and an area of refuge, and a
   assert.equal(cellWords(project, floor.id, stop), 'Elevator D, not connected');
   floor.notStepFree.push(stop);
   assert.equal(cellWords(project, floor.id, stop), 'Elevator D, not connected, has a step');
-  const plain = sampleSchool();
+  const plain = sampleSchool({ level: true });
   assert.equal(cellWords(plain, plain.building.floors[0].id, plain.building.floors[0].cells.indexOf('#')), 'Corridor, Main Corridor');
 });
 
@@ -92,7 +92,7 @@ test('the printed floor plan\'s sentence says "not connected" for a stop with no
   const page = (p) => render(p, null, { floorId: p.building.floors[0].id });
   const flat = (pages) => JSON.stringify(pages);
   assert.match(flat(page(project)), /elevator D \(not connected\)/);
-  const plain = sampleSchool();
+  const plain = sampleSchool({ level: true });
   assert.doesNotMatch(flat(page(plain)), /elevator/);
 });
 
