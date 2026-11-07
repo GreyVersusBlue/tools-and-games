@@ -287,7 +287,8 @@ const modulesFetched = (since = 0) =>
 // is exactly the measurement is a budget that fails on a comment.
 // 116 since #967: roof.js imports skeleton.js, because a hipped roof over a
 // curve is drawn at boot like any other roof.
-const BOOT_BUDGET = { bytes: 4 * 1024 * 1024, requests: 116 };
+// 117 since #1045: rng.js is one more request, because main.js still imports agents.js and timetable.js; it earns itself back only when the heavy panels load lazily.
+const BOOT_BUDGET = { bytes: 4 * 1024 * 1024, requests: 117 };
 // Modules the boot must not fetch: each is behind a button, and the phase
 // that put it there is named so the next reader knows what re-pinning costs.
 const DEFERRED = [

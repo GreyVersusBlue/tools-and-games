@@ -715,14 +715,14 @@ and add to this list rather than starting a new one.
 - **What is still on the boot path, and why.** Phase 42 took the first diet —
   4117 KB over 121 requests before, 3805 KB over 109 after, against a 4 MB
   ceiling the harness now holds. This is the table the next diet starts from,
-  checked against the graph:
+  checked against the graph. TG-40 (#1045) then split `rng` and `roomNumber` out; measured after it, the boot is 117 requests, 4086 KB (3838 KB of JavaScript, 93 modules), one request more than the 116 before, because `main.js` still imports `agents.js` and `timetable.js` directly:
 
   | module | pinned by | what it would take |
   | --- | --- | --- |
   | `three.module.js` (1274 KB, a third of the boot) | everything | a minified or gzipped vendored build — the walk export's note about a quarter of the bytes applies to the tool too |
   | `main.js` + `render.js` (678 KB) | they *are* the boot | the audit's split, now that the tool harness exists to hold it |
-  | `agents.js` (85 KB) | `main.js`'s crowd (`stepAgents` per frame), and `hunt.js` (via `render.js`), `murmur.js`, `haunt.js`, `timetable.js` — every one of the four for `rng` alone | `rng` in its own module; the crowd as an object built when the Life panel opens or a walk starts |
-  | `timetable.js` (35 KB) | `render.js` via `signage.js`, for `roomNumber`; `main.js`'s Life panel | `roomNumber` beside `nextRoomName` in `shapes.js`; the day tab of the Life panel async |
+  | `agents.js` (85 KB) | `main.js`'s crowd (`stepAgents` per frame) alone; `rng` now lives in `js/rng.js` (#1045), so `hunt.js`, `murmur.js`, `haunt.js` and `timetable.js` no longer pull it | the crowd as an object built when the Life panel opens or a walk starts; until then `rng.js` costs one request and saves none |
+  | `timetable.js` (35 KB) | `main.js`'s Life panel alone; `roomNumber` now sits beside `nextRoomName` in `shapes.js` (#1045), so `signage.js` and `render.js` no longer pull it | the day tab of the Life panel async |
   | `gltf.js` (29 KB), `hunt.js`, `xr.js`, `models.js` | `render.js` | unchanged: the scene asking for them at the moment it draws one, not at import |
   | `tour.js`, `haunt.js` (37 KB) | `main.js`: the tours panel, and the palette's haunt entry, both read synchronously | the panel async; the palette entry reading `state.haunt` through the registry |
   | `program.js` + `brief.js` (38 KB) | the Generate dialog's bands and schemes, filled at boot | filled on first open, the way the cost sheet's currencies now are |
