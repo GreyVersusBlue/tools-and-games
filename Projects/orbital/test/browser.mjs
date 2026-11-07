@@ -710,6 +710,13 @@ try {
       e.text.endsWith(' None of the census\'s 1,200 launches win, though: the window is narrower than its grid.'),
       'a shot the census never finds reads as winnable with none of 1,200', e.text);
     t.ok(e.steps === 1200, 'after flying all of it', `${e.steps} steps, longest ${e.longest.toFixed(1)} ms`);
+    // A level with wins that would win with no bodies at all says so. The
+    // Curve: 24 wins, 2 of them in an empty field (pinned in test/generator.mjs).
+    await page.evaluate(() => edEnter(JSON.parse(JSON.stringify(LEVELS[1]))));
+    await arm(null);
+    const f = await check();
+    t.ok(VERDICT.test(f.text) && f.text.endsWith(' 2.0% of launches win (24 of 1,200), 2 of them would win with no bodies at all.'),
+      'The Curve names the 2 wins that need no body', f.text);
     await page.evaluate(() => { window.__cenObs.disconnect(); OrbitalGen.makeCensus = OrbitalGen.__raw; edLeave(); });
   });
 

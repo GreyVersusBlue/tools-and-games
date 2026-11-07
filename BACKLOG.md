@@ -2445,7 +2445,8 @@ wants, not a placeholder for a "real" save); no `reset` button on the save bar
    1,200-launch census judge, and the sector map rolls one at Easy, Medium or
    Hard. The census feeds the editor's Check since 2026-10-05 (#877): after
    the verdict it reads `1.4% of launches win (17 of 1,200).`, stepped one
-   launch at a time. **The tier bands were measured on 2026-10-05 and left
+   launch at a time, with `, N of them would win with no bodies at all` added
+   when N is not zero (2026-11-07, #1038). **The tier bands were measured on 2026-10-05 and left
    alone** (#881): seeds 1 to 200 at each tier, every candidate's census kept.
    Win share of the accepted levels, and what the judge refused on the way:
 
