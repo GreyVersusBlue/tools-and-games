@@ -193,12 +193,10 @@ hand-maintained duplication.
   one-line `PATH_PREFIX` change and `site.json`'s `origin` feeds every
   absolute URL — but `test/smoke.mjs` hardcodes both `PREFIX` and `ORIGIN`.~~
   **Answered by Devon, 2026-10-05: "not any time soon"**; the prefix, the
-  origin and the `http://` links stay. **And does `numinalarp.com` serve
-  HTTPS?** *Not answered, still open.* Batch 1 could not verify from its
-  sandbox and neither could Phase 5, which was refused at the network egress
-  before a request left the box. The links stay `http://` until somebody with
-  a browser can say (locked #319); this half of the question needs one person
-  and one page load.
+  origin stay. **And does `numinalarp.com` serve
+  HTTPS?** *Yes, measured 2026-11-07 from Huginn:* HTTP/2 with a valid
+  certificate, and `http://` redirects to it. The two links are `https://`
+  now, at Devon's "Yes to tg-34" (locked #1046, replacing #319).
 - **Is a character builder welcome?** The footer says "Unofficial player
   reference", `expressions.md` sends players to NuminaRules@gmail.com to
   confirm a third-Expression build, and Excellency and Expression purchases
@@ -582,13 +580,9 @@ is a real thing you can attend.** Audit A2 and A7, plus D4's `http://`.
   `data-pagefind-meta` section now. 56 of 57 built pages are in the index; the
   search page is the one that is out, and `smoke.mjs` asserts that it is the
   only one.
-- [ ] **Fix the scheme.** Still `http://`, deliberately, and the reason is a
-  comment in `site.json` now rather than a checkbox here: locked decision #319.
-  The host is blocked at this sandbox's network egress, so the second session
-  in a row could not tell whether it answers on https. A `http://` link to a
-  host that redirects works; a `https://` link to a host that does not serve it
-  fails outright, so the safe reading wins until somebody can load it. That is
-  the whole of this phase that is not done.
+- [x] **Fix the scheme.** Done 2026-11-07 (TG-34): `https://www.numinalarp.com`
+  answers over HTTP/2 with a valid certificate, so `site.json` and
+  `quick-reference.md` link it. Locked decision #1046, which replaces #319.
 
 ## Phase 6 — Excellencies, history, and the timeline — DONE (PR #TBD)
 

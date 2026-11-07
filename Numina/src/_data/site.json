@@ -4,8 +4,8 @@
   "description": "Lore, rules, and player guides for the Numina LARP — Numina III, the Age of Works.",
   "origin": "https://greyversusblue.com",
   "official": {
-    "website": "http://www.numinalarp.com",
-    "websiteSchemeNote": "http, deliberately. Two sessions have now tried to reach the host to see whether it answers on https and both were refused at the network layer before a request went out, so neither could confirm or deny it. A http link to a host that redirects to https still works; a https link to a host that does not serve it fails outright. Upgrade this the day somebody can load it over https, and not before (locked decision #319).",
+    "website": "https://www.numinalarp.com",
+    "websiteSchemeNote": "https, since 2026-11-07 (locked decision #1046). A curl from Huginn found https://www.numinalarp.com answering over HTTP/2 with a valid certificate, redirecting to the Mailchimp site, and http:// redirecting to https://. It replaces the http link kept under #319.",
     "discord": "https://discord.gg/YUbmyK4Ehb",
     "registration": "https://numina.lorelogic.info/"
   }
