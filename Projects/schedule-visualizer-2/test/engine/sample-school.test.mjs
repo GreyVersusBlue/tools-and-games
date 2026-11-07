@@ -39,7 +39,8 @@ function walkTable() {
     const floor = floors.find((f) => node >= offset.get(f.id) && node < offset.get(f.id) + f.width * f.height);
     return { floor, cell: node - offset.get(floor.id) };
   };
-  const walkable = (floor, cell) => floor.cells[cell] === '#' || floor.cells[cell] === 'S';
+  // an elevator stop is not walked through, and Elevator D is staff only, so a group's walk never uses it
+  const walkable = (floor, cell) => floor.cells[cell] === '#' || (floor.cells[cell] === 'S' && !(floor.lifts || []).includes(cell));
   const next = (node) => {
     const { floor, cell } = where(node);
     const out = [];
@@ -47,7 +48,7 @@ function walkTable() {
       const to = neighbourCell(floor, cell, side);
       if (to !== -1 && walkable(floor, to)) out.push([offset.get(floor.id) + to, 0]);
     }
-    for (const connection of project.building.connections) {
+    for (const connection of project.building.connections.filter((candidate) => candidate.kind !== 'elevator')) {
       const a = offset.get(connection.a.floorId) + connection.a.cell;
       const b = offset.get(connection.b.floorId) + connection.b.cell;
       if (a === node) out.push([b, 1]);
@@ -340,9 +341,10 @@ test('two exits, both on Floor 1', () => {
 });
 
 test('three stair connections: A joins Floors 1 and 2, B joins Floors 2 and 3, and C joins Floors 1 and 2 up only', () => {
-  assert.deepEqual(project.building.connections.map((c) => [c.label, c.a.floorId, c.b.floorId, c.direction]), [['A', 'fsample001', 'fsample002', 'both'], ['B', 'fsample002', 'fsample003', 'both'], ['C', 'fsample001', 'fsample002', 'ab']]);
+  const stairs = project.building.connections.filter((c) => c.kind === undefined);
+  assert.deepEqual(stairs.map((c) => [c.label, c.a.floorId, c.b.floorId, c.direction]), [['A', 'fsample001', 'fsample002', 'both'], ['B', 'fsample002', 'fsample003', 'both'], ['C', 'fsample001', 'fsample002', 'ab']]);
   const levels = new Map(project.building.floors.map((floor) => [floor.id, floor.level]));
-  const c = project.building.connections[2];
+  const c = stairs[2];
   assert.ok(levels.get(c.a.floorId) < levels.get(c.b.floorId), '`ab` is up when a is the lower floor');
 });
 
@@ -631,4 +633,144 @@ test('the sample with its lunch marks and duties still validates clean and repai
   assert.deepEqual(again.notes || [], []);
   assert.deepEqual(again.project.marks, sampleSchool().marks);
   assert.deepEqual(again.project.duties, sampleSchool().duties);
+});
+
+// ---------------------------------------------------------------- W4: the elevator, the steps, the refuge and the step-free group (SV2-106)
+
+const FLOOR_1 = 'fsample001';
+const FLOOR_2 = 'fsample002';
+const FLOOR_3 = 'fsample003';
+const cellAt = (x, y) => y * 40 + x;
+
+async function engines() {
+  const { routingGraph, route, routesForSchedule, createRouteCache } = await import('../../engine/routing.js');
+  const { stepFreeWaysOut } = await import('../../engine/evacuation.js');
+  const { stepFreeReport } = await import('../../engine/step-free.js');
+  const { elevatorCars } = await import('../../engine/schema.js');
+  return { routingGraph, route, routesForSchedule, createRouteCache, stepFreeWaysOut, stepFreeReport, elevatorCars };
+}
+
+test('the level sample is the school as it was before W4, byte for byte, and the full sample differs from it only by what W4 adds', async () => {
+  const { createHash } = await import('node:crypto');
+  const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  // recorded by running the sample at d2979316, the commit before this unit
+  assert.equal(hash(sampleSchool({ level: true })), '846ed59f5cff8a772ea74e2326eeeb51e3b05352ebe0b6784a2cd61fb9d0ce09');
+  assert.notEqual(hash(sampleSchool()), hash(sampleSchool({ level: true })));
+  assert.deepEqual(sampleSchool(), sampleSchool({ level: false }));
+  const level = sampleSchool({ level: true });
+  for (const floor of level.building.floors) assert.deepEqual(['lifts', 'notStepFree', 'refuges'].filter((key) => key in floor), [], floor.name + ' has none of the new lists');
+  assert.equal(level.building.connections.some((connection) => 'kind' in connection), false);
+  assert.equal(level.groups.some((group) => 'stepFree' in group), false);
+});
+
+test('Elevator D: one staff-only elevator that stops on every floor, in the cell beside Stairs A, as two connections that share a letter', async () => {
+  const { elevatorCars } = await engines();
+  const lifts = project.building.connections.filter((connection) => connection.kind === 'elevator');
+  assert.deepEqual(lifts.map((c) => [c.label, c.car, c.a.floorId, c.b.floorId, c.direction, c.staffOnly]), [['D', 'D', FLOOR_1, FLOOR_2, 'both', true], ['E', 'D', FLOOR_2, FLOOR_3, 'both', true]]);
+  const cars = elevatorCars(project.building);
+  assert.equal(cars.length, 1);
+  assert.deepEqual([cars[0].label, cars[0].staffOnly, cars[0].stops.map((stop) => stop.floorId)], ['D', true, [FLOOR_1, FLOOR_2, FLOOR_3]]);
+  const stairsA = project.building.connections.find((connection) => connection.label === 'A');
+  for (const floor of project.building.floors) {
+    assert.deepEqual(floor.lifts, [cellAt(13, 8)], floor.name);
+    assert.equal(floor.cells[cellAt(13, 8)], 'S');
+    assert.equal(floor.cells[cellAt(13, 7)], '#', 'the stop opens onto the corridor');
+  }
+  for (const end of [stairsA.a, stairsA.b]) assert.equal(end.cell, cellAt(12, 8), 'Stairs A are the cell beside it, on the floors they join');
+  assert.equal(stairsA.a.cell + 1, project.building.floors[0].lifts[0]);
+  assert.equal(project.settings.elevatorWaitSeconds, undefined, 'the three timings are the school defaults: nothing is set');
+});
+
+test('6A is the one step-free group, and its day crosses floors, so it rides Elevator D', async () => {
+  assert.deepEqual(project.groups.filter((group) => group.stepFree === true).map((group) => group.name), ['6A']);
+  assert.equal(project.groups.filter((group) => 'stepFree' in group).length, 1);
+  const floorOf = new Map();
+  for (const floor of project.building.floors) for (const space of floor.spaces) if (space.kind === 'room') floorOf.set(space.id, floor.id);
+  const six = project.groups.find((group) => group.name === '6A');
+  for (const dayTypeId of DAYS) assert.ok(new Set(six.days[dayTypeId].map((slot) => floorOf.get(slot.room))).size === 3, 'a day on all three floors');
+  const { walks } = await pipeline(sampleSchool());
+  const riding = walks.groups.filter((walk) => walk.groupId === 'gsample06a' && walk.riding > 0);
+  assert.ok(riding.length >= 4, 'it rides in several transitions: ' + riding.length);
+  assert.ok(walks.groups.filter((walk) => walk.groupId !== 'gsample06a').every((walk) => walk.riding === undefined), 'nobody else rides');
+  assert.ok(walks.groups.filter((walk) => walk.groupId === 'gsample06a').every((walk) => walk.late !== true), 'and it is never late');
+});
+
+test('the marks: one step in the Main Corridor, one step door on the Cafeteria, one exit with a step, one area of refuge by Stairs B', () => {
+  const [one, two, three] = project.building.floors;
+  assert.deepEqual([one.notStepFree, two.notStepFree, three.notStepFree], [[cellAt(29, 7)], undefined, undefined]);
+  assert.equal(one.cells[cellAt(29, 7)], '#');
+  assert.ok(one.corridors.find((named) => named.name === 'Main Corridor').cells.includes(cellAt(29, 7)), 'in the Main Corridor');
+  const doors = [];
+  for (const floor of project.building.floors) for (const space of floor.spaces) for (const door of space.doors || []) if (door.stepFree === false) doors.push([space.number, door.cell]);
+  assert.deepEqual(doors, [['Cafeteria', cellAt(21, 6)]]);
+  const cafeteria = findRoom(project, 'rsamplecaf');
+  assert.equal(cafeteria.doors.length, 2, 'the Cafeteria has a second door, which is level');
+  assert.deepEqual(project.building.floors.flatMap((floor) => floor.exits.filter((exit) => exit.stepFree === false).map((exit) => exit.doorName)), ['Door A']);
+  assert.deepEqual(two.refuges, [{ id: 'asample001', cell: cellAt(33, 7), name: 'Area of refuge' }]);
+  assert.deepEqual([one.refuges, three.refuges], [undefined, undefined]);
+  const stairsB = project.building.connections.find((connection) => connection.label === 'B');
+  assert.equal(stairsB.a.cell, cellAt(33, 8), 'the refuge is the corridor cell above the top of Stairs B on Floor 2');
+  assert.equal(stairsB.a.floorId, FLOOR_2);
+  assert.ok(two.level > one.level, 'on an upper floor');
+});
+
+test('a step-free route goes round the step and the step door; remove the marks and it goes straight through (the marks do the work)', async () => {
+  const { routingGraph, route } = await engines();
+  const marked = routingGraph(project);
+  const step = cellAt(29, 7);
+  const through = (found) => found.cells.some((cell) => cell.floorId === FLOOR_1 && cell.cell === step);
+  const gym = route(marked, 'rsample103', 'rsamplegym', { avoidStairs: true });
+  assert.equal(gym.ok, true);
+  assert.equal(through(gym), false, 'round the step, by the bypass under the corridor');
+  assert.ok(gym.cells.some((cell) => cell.floorId === FLOOR_1 && cell.cell === cellAt(29, 8)));
+  assert.equal(through(route(marked, 'rsample103', 'rsamplegym', {})), true, 'everyone else goes straight along the corridor');
+  const caf = route(marked, 'rsample103', 'rsamplecaf', { avoidStairs: true });
+  assert.equal(caf.to.cell, cellAt(25, 6), 'in by the level door, the east one');
+  assert.equal(route(marked, 'rsample103', 'rsamplecaf', {}).to.cell, cellAt(21, 6), 'the quickest way in is the west door with the step');
+  const bare = sampleSchool();
+  for (const floor of bare.building.floors) {
+    delete floor.notStepFree;
+    for (const space of floor.spaces) for (const door of space.doors || []) delete door.stepFree;
+  }
+  const level = routingGraph(bare);
+  assert.equal(through(route(level, 'rsample103', 'rsamplegym', { avoidStairs: true })), true);
+  assert.equal(route(level, 'rsample103', 'rsamplecaf', { avoidStairs: true }).to.cell, cellAt(21, 6));
+});
+
+test('every group but 6A has the very same routes as in the level sample, and so do the teachers\' walks', async () => {
+  const { routingGraph, routesForSchedule, createRouteCache } = await engines();
+  const run = (p) => routesForSchedule(p, routingGraph(p), { cache: createRouteCache(), geometryVersion: 1 });
+  const full = run(sampleSchool());
+  const level = run(sampleSchool({ level: true }));
+  const pick = (found) => JSON.stringify({ ok: found.ok, from: found.from, to: found.to, cells: found.cells, connections: found.connections, seconds: found.seconds });
+  let same = 0;
+  let moved = 0;
+  full.days.forEach((day, i) => day.groups.forEach((entry, j) => {
+    assert.equal(entry.groupId, level.days[i].groups[j].groupId);
+    entry.routes.forEach((found, k) => {
+      const equal = pick(found) === pick(level.days[i].groups[j].routes[k]);
+      if (entry.groupId === 'gsample06a') moved += equal ? 0 : 1;
+      else {
+        assert.equal(equal, true, entry.groupId + ' route ' + k);
+        same += 1;
+      }
+    });
+  }));
+  assert.ok(same > 90, 'routes compared: ' + same);
+  assert.ok(moved >= 8, '6A\'s own routes moved: ' + moved);
+});
+
+test('safety: Floor 1 rooms leave by Door B (Door A has a step), Floor 2 rooms wait at the area of refuge, Floor 3 rooms have no step-free way out, and nothing is unreachable without stairs', async () => {
+  const { routingGraph, stepFreeWaysOut, stepFreeReport } = await engines();
+  const graph = routingGraph(project);
+  const out = stepFreeWaysOut(project, graph);
+  const by = (way) => out.rooms.filter((room) => room.way === way).map((room) => room.roomId);
+  assert.deepEqual(by('exit'), ['rsample101', 'rsample102', 'rsample103', 'rsamplecaf', 'rsamplegym']);
+  assert.ok(out.rooms.filter((room) => room.way === 'exit').every((room) => room.exitId === 'xsample00b'));
+  assert.deepEqual(by('refuge'), ['rsample201', 'rsample202', 'rsample203', 'rsample204', 'rsamplelib']);
+  assert.deepEqual(by('none'), ['rsample303', 'rsample302', 'rsample301']);
+  assert.ok(out.rooms.filter((room) => room.way === 'none').every((room) => room.reason === 'only-by-elevator'));
+  assert.deepEqual(out.refuges.map((refuge) => [refuge.refugeId, refuge.roomIds.length]), [['asample001', 5]]);
+  const report = stepFreeReport(project, graph);
+  assert.deepEqual([report.marked, report.noStepFreeExit, report.rooms, report.groups], [true, false, [], []], 'with the elevator every room can be reached without stairs');
 });

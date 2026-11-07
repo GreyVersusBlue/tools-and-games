@@ -43,6 +43,22 @@
 // only: Stairs A carry everything coming down, so the one-way rule traps
 // nobody and the checks say nothing about either.
 //
+// Elevator D and what goes with it are done right on purpose too, for the
+// step-free features to show. Elevator D stops on all three floors in the cell
+// east of Stairs A, and is staff and authorised only, which is what a new
+// elevator is: no group's ordinary route uses it, and the checks and every
+// other group's route are what they were. Group 6A needs step-free routes, and
+// its day goes up and down all three floors, so it rides. In the Main Corridor
+// there is a step at x 29, with a three-cell bypass under it; the Cafeteria's
+// west door has a step and its east door has none; Door A has a step outside it;
+// and an area of refuge stands in the Floor 2 corridor above Stairs B. So a
+// step-free walk to the Gym goes round the step, one into the Cafeteria goes in
+// by the east door, Floor 1 rooms leave step-free by Door B, Floor 2 rooms wait at the
+// area of refuge, and Floor 3 rooms have no step-free way out, which is true
+// of a building whose upper floors are reached by an elevator an evacuation
+// may not use. Every room can still be reached without stairs.
+// sampleSchool({ level: true }) leaves all of this out.
+//
 // The checks also report two notes, and nothing else. Both are about the
 // Cafeteria, both are true of a lunch room, and they stay: it has no subject,
 // and it has groups scheduled into it and no teacher.
