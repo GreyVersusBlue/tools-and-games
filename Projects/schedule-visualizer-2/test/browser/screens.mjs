@@ -20,7 +20,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { go, loadModule, waitForSection } from './harness.mjs';
+import { go, loadModule, waitForSection, still } from './harness.mjs';
 
 const TRACE_FIXTURE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'images', 'floor-plan.png');
 
@@ -1240,6 +1240,113 @@ const SV2_94 = [
   { id: 'building-floor-direction', fullSample: true, hash: '#building', open: floorDirection },
 ];
 
+// W4 (SV2-106): the elevator, the steps and the area of refuge on the whole sample, and what each section
+// makes of them. Every screen opens the whole sample (`fullSample`): the plain one the sweeps otherwise start
+// from has no elevator. Every wait is on a state the page sets: the plan at rest, a section's `data-pending`
+// gone with its results for the very project in the store, the preview's `data-ready`, the Properties panel's
+// own title, the staff preview's `data-preview="live"` and the frame's own output marker.
+const LIFT_STOP = 8 * 40 + 13; // Elevator D's stop on Floor 1, the cell east of Stairs A
+const STEP_RUN = [27, 28, 29, 30, 31].map((x) => 7 * 40 + x); // five corridor cells of the Main Corridor, the one at x 29 with a step
+
+// Building at rest on Floor 1: the stop, its letter, the step bars across the corridor, the Cafeteria's step door, Door A's step.
+async function buildingElevator(page) {
+  await planReady(page);
+  // the Getting started card covers the plan: put it away, and wait for the plan to be the size it is left
+  if (await page.$('#getting-started:not([hidden]) [data-action="dismiss"]')) {
+    await page.$eval('#getting-started [data-action="dismiss"]', (button) => button.click());
+    await page.waitForFunction(() => document.getElementById('getting-started').hidden);
+  }
+  await still(page);
+}
+
+// Cells put in Properties as the Select tool does (ui/building/inspector/cell-focus.js).
+const cellsInProperties = (cells, title) => async (page) => {
+  await buildingElevator(page);
+  await page.evaluate(async (list) => {
+    const { focusCells } = await import(new URL('ui/building/inspector/cell-focus.js', location.href).href);
+    const editor = document.querySelector('.bld').editor;
+    focusCells(editor, editor.floor.id, list);
+  }, cells);
+  await page.waitForFunction((wanted) => document.querySelector('#inspector-properties [data-key="panel-title"]')?.textContent === wanted, {}, title);
+  await page.waitForFunction(() => document.querySelector('link[data-sheet="building-inspector"]').sheet !== null);
+};
+
+// The Floor tab: the elevators listed apart, the steps and refuges, and the legend.
+async function buildingFloorTab(page) {
+  await buildingElevator(page);
+  await page.click('#inspector [data-tab="floor"]');
+  await page.waitForSelector('#inspector-floor');
+  await page.waitForFunction(() => document.querySelector('link[data-sheet="building-inspector"]').sheet !== null);
+}
+
+// Movement on a transition where 6A rides (Period 4 to Period 5 on A Day: the Cafeteria to Room 302, Floor 1 to Floor 3),
+// and, with `seconds`, playback moved to that second, where the group holds the car.
+const movementRide = (seconds) => async (page) => {
+  await movementShowing({ transition: 3 })(page);
+  if (seconds !== undefined) {
+    await page.click('[data-bar="playback"] [data-action="more"]');
+    await page.$eval('[data-bar="playback"] [data-control="scrubber"]', (el, value) => {
+      el.value = String(value);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }, seconds);
+  }
+};
+
+// Safety on the Step-free chip: every room's step-free way out, the Floor 3 rooms framed with no way.
+async function safetyStepFree(page) {
+  await safetyDrawn(page);
+  const before = await page.$eval('#safety-plan', (el) => Number(el.dataset.drawn || 0));
+  await page.evaluate(() => document.querySelector('.sfy').safety.setView('step-free'));
+  await page.waitForFunction((was) => document.querySelector('.sfy').dataset.view === 'step-free' && Number(document.getElementById('safety-plan').dataset.drawn || 0) > was, { timeout: 20000 }, before);
+}
+
+// ... and the Step-free tab, the report: with the elevator, every room can be reached without stairs.
+async function safetyStepFreeReport(page) {
+  await safetyDrawn(page);
+  await safetyTab('stepfree')(page);
+  await page.waitForFunction(() => document.querySelector('.sfy-panel[data-panel="stepfree"]')?.getClientRects().length > 0 && document.querySelector('.sfy').safety.step);
+}
+
+// The route sheet of 6A's day, from the button in her row of Movement's travel-time table.
+async function routeSheetOfSixA(page) {
+  await movementDrawn(page);
+  await page.click('#inspector [role="tab"][data-tab="tables"]');
+  await page.waitForSelector('#inspector [data-panel="tables"] button[data-group="gsample06a"]');
+  await page.click('#inspector [data-panel="tables"] button[data-group="gsample06a"]');
+  await previewReady(page);
+}
+
+// The staff browser inside the Staff section's preview, at an address of its own.
+const staffInside = (hash, ready) => async (page) => {
+  await staffLive(page);
+  await page.evaluate((next) => {
+    document.querySelector('.stf-frame').contentWindow.location.hash = next;
+  }, hash);
+  await page.waitForFunction(ready, { timeout: 30000 });
+};
+const staffMapDrawn = () => document.querySelector('.stf-frame').contentDocument.querySelector('[data-state="ready"], [data-view="map"]') !== null && document.querySelector('.stf-frame').contentDocument.querySelector('canvas') !== null;
+const staffRideDrawn = () => {
+  const out = document.querySelector('.stf-frame').contentDocument.querySelector('[data-out="directions"]');
+  return out !== null && /Elevator/.test(out.textContent);
+};
+
+const SV2_106 = [
+  { id: 'building-elevator', fullSample: true, hash: '#building', open: buildingElevator }, // Elevator D at 1280: the stop, a step, a step door, a step exit
+  { id: 'building-elevator-phone', fullSample: true, hash: '#building', viewport: PHONE, open: buildingElevator }, // the same at 390 with touch
+  { id: 'building-floor-elevator', fullSample: true, hash: '#building', open: buildingFloorTab }, // the Floor tab's Elevators list, steps, refuges and legend
+  { id: 'building-stop-properties', fullSample: true, hash: '#building', open: cellsInProperties([LIFT_STOP], 'Elevator D') }, // the stop's Properties: staff only, its stops, the timings
+  { id: 'building-stop-properties-phone', fullSample: true, hash: '#building', viewport: PHONE, open: cellsInProperties([LIFT_STOP], 'Elevator D') },
+  { id: 'building-step-marks', fullSample: true, hash: '#building', open: cellsInProperties(STEP_RUN, '5 cells selected') }, // five corridor cells, one with a step: the mixed tick
+  { id: 'movement-ride', fullSample: true, hash: '#movement', open: movementRide() }, // 6A's ride drawn, Riding in the tables
+  { id: 'movement-ride-playback', fullSample: true, hash: '#movement', open: movementRide(80) }, // the dot on the stop while the group holds the car
+  { id: 'safety-step-free', fullSample: true, hash: '#safety', open: safetyStepFree }, // each room's step-free way, a refuge in the accent, the framed rooms
+  { id: 'safety-step-free-phone', fullSample: true, hash: '#safety', viewport: PHONE, open: safetyStepFree },
+  { id: 'safety-step-free-report', fullSample: true, hash: '#safety', open: safetyStepFreeReport }, // the report tab: every room can be reached without stairs
+  { id: 'print-route-sheet', fullSample: true, hash: '#movement', open: routeSheetOfSixA }, // 6A's route sheet in the preview
+  { id: 'staff-map-elevator', fullSample: true, hash: '#staff', open: staffInside('#/map/fsample001', staffMapDrawn) }, // the staff map: stop, step, refuge, in words too
+  { id: 'staff-directions-ride', fullSample: true, hash: '#staff', open: staffInside('#/directions?from=rsample101&to=rsample303&stepfree=1', staffRideDrawn) }, // Directions: a ride is a step
+];
+
 export const SCREENS = [
   { id: 'building', hash: '#building' },
   { id: 'schedule-groups', hash: '#schedule/groups' },
@@ -1786,4 +1893,5 @@ export const SCREENS = [
   ...SV2_85,
   ...SV2_32G1,
   ...SV2_94,
+  ...SV2_106,
 ];
