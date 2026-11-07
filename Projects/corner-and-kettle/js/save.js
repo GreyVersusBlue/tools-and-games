@@ -82,6 +82,10 @@ export function freshSaveData(catalog) {
     // Busy Corner or Quiet Corner: a row of content.js's PACES. A reopening
     // does not touch it, and the page's New Game carries it into the new shop.
     pace: catalog.paces[0],
+    // Whether the first-shift guide (#1042) has been seen. A new game is the
+    // only one that starts it: repairSave reads a save without the field as
+    // seen, so a shop that existed before the guide never gets it.
+    guideSeen: false,
     dailyModifierId: null,
     eventFiredThisShift: false,
     // Rolled by repairSave, which every fresh state goes through too — so
@@ -293,6 +297,10 @@ export function repairSave(s, catalog, rng = Math.random) {
   // The pace. Every save written before the field existed has none, and reads
   // as the first: the game it was saved in. So does an id this build lacks.
   s.pace = catalog.paces.includes(s.pace) ? s.pace : catalog.paces[0];
+  // The guide. Missing is a save from before it existed, and that shop has
+  // been played: seen. The one place a missing field is not the fresh game's
+  // default; freshSaveData writes the false itself.
+  s.guideSeen = typeof s.guideSeen === "boolean" ? s.guideSeen : true;
 
   s.dailyModifierId = catalog.modifiers.has(s.dailyModifierId) ? s.dailyModifierId : null;
   s.eventFiredThisShift = !!s.eventFiredThisShift;
@@ -359,6 +367,7 @@ export function toSaveData(state) {
     meta: { beans: state.meta.beans, unlocks: [...state.meta.unlocks] },
     layoutId: state.layoutId,
     pace: state.pace,
+    guideSeen: state.guideSeen,
     dailyModifierId: state.dailyModifierId,
     eventFiredThisShift: state.eventFiredThisShift,
     eventTriggerAt: state.eventTriggerAt,
@@ -394,6 +403,7 @@ export function applyToState(state, data) {
   state.meta = { beans: data.meta.beans, unlocks: new Set(data.meta.unlocks) };
   state.layoutId = data.layoutId;
   state.pace = data.pace;
+  state.guideSeen = data.guideSeen;
   state.dailyModifierId = data.dailyModifierId;
   state.eventFiredThisShift = data.eventFiredThisShift;
   state.eventTriggerAt = data.eventTriggerAt;
