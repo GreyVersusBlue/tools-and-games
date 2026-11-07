@@ -249,6 +249,8 @@ export function placeInHistory(ctx, view, tab) {
   if (tab === 'groups') placeView(ctx, view);
 }
 
+const ROUTE_SHEET_SCOPE = 'This sheet times one person; open it from Movement › Travel time to see whether the whole group is late.';
+
 export function mount(env) {
   const { ctx, view } = env;
   const element = h('div', { class: 'sch-groups' });
@@ -443,9 +445,10 @@ export function mount(env) {
 
   // "Needs step-free routes" (spec 11, DESIGN 13.4). The line never suggests a
   // group of one: the tool holds no student records. Its "Route sheet" button
-  // (DESIGN 13.5) prints this group's step-free day on every day type; the
-  // movement results are not at hand here, so it carries no "Movement shows the
-  // whole group late" lines (the travel-time table's button does).
+  // (DESIGN 13.5) prints this group's step-free day on every day type. The
+  // print preview holds only the checks' results, never Movement's, so the
+  // sheet carries no "Movement shows the whole group late" lines (the
+  // travel-time table's button does); a plain line by the button says so.
   function stepFreeControl(group) {
     const hintId = uid('stepfree');
     const box = keyed(h('input', { type: 'checkbox', name: 'groupStepFree', 'aria-describedby': hintId }), 'group-stepfree');
@@ -454,6 +457,7 @@ export function mount(env) {
     return h('div', { class: 'field sch-stepfree', data: { part: 'step-free-field' } },
       h('label', { class: 'sch-radio' }, box, h('span', null, 'Needs step-free routes')),
       h('p', { class: 'sch-hint', id: hintId }, 'Routes for this group use elevators, never stairs. For one person’s day, print a route sheet.'),
+      h('p', { class: 'sch-hint', data: { part: 'route-sheet-scope' } }, ROUTE_SHEET_SCOPE),
       routeSheetButton(group));
   }
 

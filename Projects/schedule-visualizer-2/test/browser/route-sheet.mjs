@@ -252,6 +252,8 @@ test('the group editor\'s Route sheet button prints her day on every day type, w
   }, ada);
   await page.waitForFunction((id) => document.querySelector('.sch-editor')?.dataset.group === id, {}, ada);
   assert.equal(await text('[data-key="group-route-sheet"]'), 'Route sheet');
+  // (SV2-103b) the preview holds no Movement results, so a plain line by the button says what the sheet times
+  assert.equal(await text('[data-part="route-sheet-scope"]'), 'This sheet times one person; open it from Movement › Travel time to see whether the whole group is late.');
   await page.click('[data-key="group-route-sheet"]');
   const read = await sheetRead();
   const own = await view(() => globalThis.sv2.store.project.dayTypes.filter((dayType) => dayType.own).length);
@@ -262,6 +264,27 @@ test('the group editor\'s Route sheet button prints her day on every day type, w
   assert.ok(read.blocks.some((block) => block.kind === 'walk' && block.maps.length === 2));
   await closeSheet();
   assert.equal(await view(() => document.activeElement.dataset.key), 'group-route-sheet', 'the focus is back on the button');
+});
+
+// ---------------------------------------------------------------- 1280: the teacher's row
+
+test('SV2-103b: a teacher\'s row has a Route sheet button, named for the teacher, that opens that teacher\'s sheet and gives the focus back', async () => {
+  const teacher = await view(async () => {
+    const actions = await import('./engine/actions.js');
+    const { store } = globalThis.sv2;
+    store.apply(actions.addTeacher, { name: 'Ms. Orchid' });
+    return store.project.teachers.find((each) => each.name === 'Ms. Orchid').id;
+  });
+  await view(() => { location.hash = '#schedule/teachers'; });
+  const key = 'teacher:' + teacher + ':route-sheet';
+  await page.waitForSelector('[data-key="' + key + '"]');
+  assert.equal(await text('[data-key="' + key + '"]'), 'Route sheet for Ms. Orchid');
+  await page.click('[data-key="' + key + '"]');
+  const read = await sheetRead();
+  assert.equal(read.output, 'route-sheet');
+  assert.ok(read.who.length > 0 && read.who.every((who) => who.startsWith('Teacher Ms. Orchid · ')), read.who.join(' | '));
+  await closeSheet();
+  assert.equal(await view(() => document.activeElement.dataset.key), key, 'the focus is back on the button');
 });
 
 // ---------------------------------------------------------------- 1280: the scenario lab

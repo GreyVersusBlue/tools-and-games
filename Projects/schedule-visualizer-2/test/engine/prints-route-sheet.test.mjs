@@ -328,6 +328,71 @@ test('with no day type chosen every own day type has a sheet of its own; one cho
   assert.equal(countOf(followed, '<section class="page">'), own, 'a follower has no sheet of its own');
 });
 
+// SV2-103b: a "same as" day type that a No class mark names has a run of its own (engine/runs.js runsOf), so the sheet gives it
+// one: listed apart from the sheets it is the same as, saying what differs, and read from its own run for the late line.
+function withFriday() {
+  const project = lifted();
+  const base = project.dayTypes[0];
+  project.dayTypes.push({ ...base, id: 'dfriday001', name: 'Fri', own: false, sameAs: base.id, bells: emptyBells(3) });
+  project.marks = [{ id: 'mfriday001', kind: 'noclass', label: 'Assembly', period: 1, scope: 'groups', grades: [], groupIds: [ADA], dayTypeIds: ['dfriday001'] }];
+  assertValid(project);
+  return project;
+}
+
+test('SV2-103b: a same-as day type that a No class mark names gets a sheet of its own, says what differs, and shows the free period', () => {
+  const project = withFriday();
+  const all = renderOutput('route-sheet', project, null, { ...NOW, groupId: ADA }).html;
+  assert.equal(countOf(all, '<section class="page">'), 2, 'the own day type and Fri');
+  // the day type that is only the same as another keeps its line, and Fri is not on it
+  assert.ok(text(all).includes('B Day is the same as A Day and has the same route sheet.'));
+  assert.ok(!text(all).includes('Fri is the same as A Day and has the same route sheet'));
+  assert.ok(!text(all).includes('Fri and'));
+  assert.ok(text(all).includes('Fri is the same as ' + project.dayTypes[0].name + ' except where a No class mark applies: Period 2 differs.'));
+  assert.equal(countOf(all, 'data-line="differs"'), 1, 'said once, on Fri\'s sheet only');
+  // asked for by id: the same sheet, whose period 2 is free
+  const fri = renderOutput('route-sheet', project, null, { ...NOW, groupId: ADA, dayTypeId: 'dfriday001' }).html;
+  assert.equal(blockOf(fri, 0), '<p class="rs__line" data-kind="none" data-period="0">Period 1 → Period 2 · No room in Period 2, so no walk.</p>');
+  assert.ok(text(fri).includes('Fri (same as ' + project.dayTypes[0].name + ')'));
+  assert.equal(blockOf(renderOutput('route-sheet', project, null, { ...NOW, groupId: ADA, dayTypeId: project.dayTypes[0].id }).html, 0).includes('data-kind="walk"'), true, 'the day type it follows still walks in Period 2')
+  // a same-as day type no mark names is still one line
+  const plain = lifted();
+  plain.dayTypes.push({ ...plain.dayTypes[0], id: 'dfriday002', name: 'Thu', own: false, sameAs: plain.dayTypes[0].id });
+  const quiet = renderOutput('route-sheet', plain, null, { ...NOW, groupId: ADA }).html;
+  assert.equal(countOf(quiet, '<section class="page">'), 1);
+  assert.ok(text(quiet).includes('B Day and Thu are the same as A Day and have the same route sheet.'));
+});
+
+test('SV2-103b: the late line of a same-as day type with a run of its own is read from its own run, by the chosen id', () => {
+  const project = withFriday();
+  // the mark is on Period 2 only for Fri, so Ada's first walk is free there and late on the day type it follows; move the mark to Period 3
+  project.marks[0].period = 2;
+  assertValid(project);
+  const world = derive(project);
+  const base = project.dayTypes[0].id;
+  const asked = (dayTypeId) => renderOutput('route-sheet', project, null, { ...NOW, groupId: ADA, dayTypeId, movement: world }).html;
+  assert.equal(countOf(asked(base), 'data-line="movement"'), 1);
+  const own = runOf(world.results, 'dfriday001');
+  const walk = own.walks.groups.find((each) => each.groupId === ADA && each.period === 0);
+  assert.ok(walk && walk.late === true, 'Fri has a run of its own, and Ada is late in it');
+  assert.equal(countOf(asked('dfriday001'), 'data-line="movement"'), 1);
+  // Fri's own run says she is on time: the sheet follows that run, not the base day type's
+  walk.late = false;
+  assert.equal(countOf(asked('dfriday001'), 'data-line="movement"'), 0, 'read from Fri\'s run');
+  assert.equal(countOf(asked(base), 'data-line="movement"'), 1, 'the day type it follows still has its own');
+});
+
+test('SV2-103b: a car with no letter is "an elevator", never "Elevator ."', () => {
+  const project = lifted();
+  for (const connection of project.building.connections) { connection.car = ''; connection.label = ''; }
+  const html = renderOutput('route-sheet', project, null, { ...NOW, groupId: ADA, dayTypeId: project.dayTypes[0].id }).html;
+  const said = text(html);
+  assert.ok(said.includes('An elevator is staff and authorised only: arrange access with the office.'), said);
+  assert.ok(said.includes('Take an elevator up to Floor 2.'), 'the ride step');
+  assert.ok(html.includes('aria-label="Route from Floor 1 to Floor 2 by an elevator"'));
+  assert.doesNotMatch(said, /Elevator\s*[.,:]|Elevator\s{2}| Elevator (up|down|to|is)\b/);
+  assert.equal(countOf(html, 'Elevator '), 0, 'the word with a capital is not left over: ' + said);
+});
+
 test('a bell schedule is followed: no walk into or out of a period that does not meet, and a walk across one is named across', () => {
   const project = lifted({}, { rows: { Ada: ['1A', '2A', '1A'], Bo: ['1A'] } });
   project.settings.periods = 3;

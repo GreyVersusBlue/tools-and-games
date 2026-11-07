@@ -55,8 +55,8 @@ import { walkingSeconds, transitionPlan, isLate } from '../../engine/crowd.js';
 import { directions } from '../../engine/directions.js';
 import { cardSteps, CROP_MARGIN } from '../../engine/evacuation.js';
 import { bellsFor, periodName } from '../../engine/bells.js';
-import { findDayType, ownDayTypes, effectiveDayType } from '../../engine/day-types.js';
-import { meetingSlots } from '../../engine/runs.js';
+import { findDayType, effectiveDayType } from '../../engine/day-types.js';
+import { meetingSlots, runsOf } from '../../engine/runs.js';
 import { teacherDay, entryPlaces } from '../../engine/teacher-day.js';
 import { ELEVATOR_KIND, elevatorSettings, nameOfRoom } from '../../engine/schema.js';
 import { list } from '../components/words.js';
@@ -88,6 +88,18 @@ function upper(text) {
 }
 
 // ---------------------------------------------------------------- who and when
+
+// The day types that get a sheet of their own, in runsOf's order: each own
+// day type, and each "same as" day type a No class mark names (engine/runs.js
+// gives it a run of its own). Read from the engine, never worked out here.
+function sheetDayTypes(project) {
+  const ids = runsOf(project).filter((run) => run.bellsId === null).map((run) => run.dayTypeId);
+  return ids.map((dayTypeId) => findDayType(project, dayTypeId)).filter((dayType) => dayType);
+}
+
+function hasRunOfItsOwn(project, dayTypeId) {
+  return runsOf(project).some((run) => run.dayTypeId === dayTypeId);
+}
 
 function lookup(project) {
   const rooms = new Map();
@@ -188,6 +200,21 @@ function floorsOf(project, found, from, to) {
   return held;
 }
 
+// A car with no letter is "an elevator", never "Elevator ." (directions.js
+// leaves the empty letter out and the word before it stands): "Take an
+// elevator up to Floor 3", "Walk 3 cells to an elevator".
+function unlettered(step) {
+  if (!Array.isArray(step.parts)) return step;
+  let changed = false;
+  const parts = step.parts.map((part, i) => {
+    const next = step.parts[i + 1];
+    if (part.name || !/Elevator $/.test(part.text) || (next && next.name)) return part;
+    changed = true;
+    return { ...part, text: part.text.slice(0, -'Elevator '.length) + 'an elevator' };
+  });
+  return changed ? { ...step, parts, text: parts.map((part) => part.text).join('') } : step;
+}
+
 // The elevators a route rides, once each: [{ letter, staffOnly }], from the
 // connections the route crosses.
 function carsOf(project, found) {
@@ -221,6 +248,9 @@ function lateFrom(project, results, day, person, period, toPeriod) {
 //     { ok: true, kind, name, day, bellsId, blocks, staffOnly, walks }
 //   day         { id, name, heading } as ui/movement/tables.js travelDay
 //   walks       how many blocks are walks
+//   follows     the name of the day type this one is the same as, when it has a
+//               sheet of its own (a No class mark names it); else null
+//   differs     the periods where it differs from that day type (indexes)
 //   staffOnly   the letters of the staff-only cars any route rides
 //   a block     { kind: 'walk', period, toPeriod, from, to, ok, steps, text, seconds,
 //                passing, fits, spare, over, within, cars, floors, late }
@@ -232,11 +262,20 @@ export function routeSheet(project, options) {
   const person = personFor(project, opts);
   if (!person) return { ok: false };
   const asked = opts.dayTypeId ? findDayType(project, opts.dayTypeId) : null;
-  const chosen = asked || ownDayTypes(project)[0] || project.dayTypes[0];
+  const chosen = asked || sheetDayTypes(project)[0] || project.dayTypes[0];
   const bellsId = typeof opts.bellsId === 'string' && opts.bellsId !== '' ? opts.bellsId : undefined;
   const day = travelDay(project, chosen.id, bellsId);
   const rooms = lookup(project);
   const places = placesOf(project, person, chosen.id, bellsId, rooms);
+  // a "same as" day type with a run of its own: Movement's results are kept
+  // under its own id, and its periods may differ from the day type it follows
+  const ownRun = chosen.id !== day.id && hasRunOfItsOwn(project, chosen.id);
+  const runDay = ownRun ? { ...day, id: chosen.id } : day;
+  const differs = [];
+  if (ownRun) {
+    const base = placesOf(project, person, day.id, bellsId, rooms);
+    places.forEach((place, period) => { if (JSON.stringify(place) !== JSON.stringify(base[period])) differs.push(period); });
+  }
   const bells = bellsFor(project, chosen.id, bellsId);
   const graph = routingGraph(project, opts.movement && opts.movement.graph ? opts.movement.graph : undefined);
   const margin = project.settings.checks ? project.settings.checks.passingMarginSeconds : 0;
@@ -272,7 +311,7 @@ export function routeSheet(project, options) {
       continue;
     }
     const seconds = walkingSeconds(graph, found);
-    const steps = cardSteps(directions(project, found).steps);
+    const steps = cardSteps(directions(project, found).steps).map(unlettered);
     const cars = carsOf(project, found);
     for (const car of cars) if (car.staffOnly && !staffOnly.includes(car.letter)) staffOnly.push(car.letter);
     const floors = floorsOf(project, found, from, to);
@@ -290,10 +329,10 @@ export function routeSheet(project, options) {
       margin,
       cars,
       floors: floors.length > 1 ? floors : [],
-      late: lateFrom(project, results, day, person, period, plan.to),
+      late: lateFrom(project, results, runDay, person, period, plan.to),
     });
   }
-  return { ok: true, kind: person.kind, name: person.item.name, day, bellsId: bellsId || null, blocks, staffOnly, walks };
+  return { ok: true, kind: person.kind, name: person.item.name, day, bellsId: bellsId || null, blocks, staffOnly, walks, differs, follows: ownRun ? effectiveDayType(project, chosen.id).name : null };
 }
 
 // ---------------------------------------------------------------- the words
@@ -323,7 +362,7 @@ export function lateWords(late) {
 }
 
 function carWords(cars) {
-  return cars.map((car) => 'Elevator ' + car.letter);
+  return cars.map((car) => (car.letter === '' ? 'an elevator' : 'Elevator ' + car.letter));
 }
 
 // The map's label for a screen reader: "Route from Floor 1 to Floor 3 by Elevator D".
@@ -383,10 +422,16 @@ function blockMarkup(project, block, width) {
 }
 
 // "Elevator D is staff and authorised only: arrange access with the office."
+// A car with no letter is "An elevator".
 function staffOnlyMarkup(letters) {
-  const spans = letters.map((letter) => typed(letter));
-  const joined = spans.length <= 1 ? spans.join('') : spans.slice(0, -1).join(', ') + ' and ' + spans[spans.length - 1];
-  return '<p class="doc-meaning rs__staff" data-line="staff-only">' + (letters.length === 1 ? 'Elevator ' + joined + ' is' : 'Elevators ' + joined + ' are') + ' staff and authorised only: arrange access with the office.</p>';
+  const named = letters.filter((letter) => letter !== '').map((letter) => typed(letter));
+  const bare = letters.length > named.length;
+  const joined = named.length <= 1 ? named.join('') : named.slice(0, -1).join(', ') + ' and ' + named[named.length - 1];
+  let who;
+  if (!bare) who = (named.length === 1 ? 'Elevator ' + joined + ' is' : 'Elevators ' + joined + ' are');
+  else if (named.length === 0) who = 'An elevator is';
+  else who = 'An elevator, and ' + (named.length === 1 ? 'Elevator ' + joined : 'Elevators ' + joined) + ', are';
+  return '<p class="doc-meaning rs__staff" data-line="staff-only">' + who + ' staff and authorised only: arrange access with the office.</p>';
 }
 
 // The sheets a person's days make: the day type asked for, else each own day
@@ -394,7 +439,7 @@ function staffOnlyMarkup(letters) {
 export function routeSheets(project, options) {
   const opts = options || {};
   const asked = opts.dayTypeId ? findDayType(project, opts.dayTypeId) : null;
-  const days = asked ? [asked] : ownDayTypes(project);
+  const days = asked ? [asked] : sheetDayTypes(project);
   const sheets = days.map((day) => routeSheet(project, { ...opts, dayTypeId: day.id }));
   return sheets.every((sheet) => sheet.ok) ? sheets : [];
 }
@@ -413,6 +458,7 @@ function sheetBody(project, sheet, width) {
   const body = [];
   body.push('<p class="doc-lead rs__who" data-line="who" data-kind="' + sheet.kind + '">' + (sheet.kind === 'group' ? 'Group' : 'Teacher') + ' ' + typed(sheet.name) + ' \u00b7 ' + typed(sheet.day.heading) + '</p>');
   body.push('<p class="doc-meaning" data-line="times">' + esc(TIMES_SAY) + '</p>');
+  if (sheet.follows !== null) body.push('<p class="doc-meaning" data-line="differs">' + typed(sheet.day.name) + ' is the same as ' + typed(sheet.follows) + ' except where a No class mark applies: ' + (sheet.differs.length === 0 ? 'no walk changes.' : list(sheet.differs.map((period) => periodName(project.settings, period))) + (sheet.differs.length === 1 ? ' differs.' : ' differ.')) + '</p>');
   if (sheet.staffOnly.length > 0) body.push(staffOnlyMarkup(sheet.staffOnly));
   if (sheet.walks === 0) body.push('<p class="doc-none" data-line="nothing">' + esc(NOTHING_SAYS) + '</p>');
   for (const block of sheet.blocks) body.push(blockMarkup(project, block, width));
@@ -429,7 +475,7 @@ export function render(project, derived, options) {
   const pages = sheets.map((sheet) => ({ what: name, body: sheetBody(made, sheet, width) }));
   const asked = opts.dayTypeId ? findDayType(made, opts.dayTypeId) : null;
   if (!asked) {
-    const own = ownDayTypes(made);
+    const own = sheetDayTypes(made);
     const followers = made.dayTypes.filter((dayType) => !own.includes(dayType));
     if (followers.length > 0) pages[pages.length - 1].body += '\n<p class="doc-meaning" data-line="followers">' + esc(followerWords(made, followers)) + '</p>';
   }
