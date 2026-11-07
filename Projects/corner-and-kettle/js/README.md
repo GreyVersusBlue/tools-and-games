@@ -1,6 +1,6 @@
 # Corner & Kettle's `js/` — module map
 
-Nine ES modules, no bundler, no build step. `../index.html` loads exactly one
+Ten ES modules, no bundler, no build step. `../index.html` loads exactly one
 of them (`<script type="module" src="./js/ui.js">`); the rest are imported.
 `Projects/coffee_shop_sim.html`, where the whole game used to live, is a
 redirect stub.
@@ -101,6 +101,13 @@ upgrade, a promotion or training, or calls a `doUnlock()` again.
   price it prints** (#363), and every click is `buy` — so the rule that enables
   a button, the number on its face and the rule that takes the money are one
   rule (#344).
+- **`guide.js`** — `createGuide({state, sim, onChange, onDone})`: the first-shift
+  guide (#1042). Five one-sentence cues, `CUES`, each finished by what the
+  shop's own state shows (a customer in a station, a base in the cup, the
+  ticket's lines met, the day's served count moving) and, for the last, whether
+  the Menu Board is open. No clock, no dice, no DOM, no write to anything the
+  sim reads; the one field it sets is `state.guideSeen`, which `save.js`
+  carries (a save without it reads as seen). ui.js draws the strip.
 - **`patch.js`** — `patchRows(el, html)`: writes rows of markup into a live
   element without rebuilding what is already there. Rows are matched by a
   `data-row` key and the nodes in a row by position, and a button is kept while
