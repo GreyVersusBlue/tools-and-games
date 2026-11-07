@@ -2476,6 +2476,98 @@ const CHECKS = [
       if (after.json !== before.json) throw new Error('the design is not back to the bytes it started with');
     },
   },
+  // The brush's other refusal for a free-standing wall (#910, #1043): a screen
+  // standing outdoors has no room in front of either face, so the facade would
+  // cover any colour put there, and the click is refused with the status line
+  // saying so. accent-line drives the glass refusal; this drives that one.
+  // test/wall-accent.test.mjs states what the click is told (no room on that
+  // side). One undo step goes on (the wall) and comes off, so `undo-redo`
+  // finds the stack as it was.
+  {
+    name: 'accent-outdoor',
+    what: 'a click on either face of a free-standing wall in the open is refused out loud, and the wall, the colour and the brush stay as they were',
+    async run(d) {
+      const q = (js) => d.page.evaluate(js);
+      // An 8ft screen toward +z in the open: no room within 6ft of any point
+      // along it, nothing else near, and all four of its clicks on the canvas.
+      const aim = await q(`(async () => {
+        const { shapeAt, accentFaceAt } = await import('./js/shapes.js');
+        const { wallLineAt } = await import('./js/wallrun.js');
+        const s = window.app.state, floor = s.floors[s.currentFloor];
+        const { CELL } = await import('./js/grid.js');
+        // The open ground nearest the middle of the screen, where a click is
+        // known to land on the plan.
+        const mid = [s.w * CELL / 2, s.h * CELL / 2];
+        let best = null;
+        for (let x = 8; x <= s.w * CELL - 8; x += 4) {
+          for (let z = 8; z <= s.h * CELL - 8; z += 4) {
+            const pts = [];
+            for (let k = -6; k <= 6; k += 2) for (const o of [-6, -2, 0, 2, 6]) pts.push([x + o, z + k]);
+            if (pts.some(([px, pz]) => shapeAt(floor, px, pz) || accentFaceAt(floor, px, pz, 6) || wallLineAt(floor, px, pz, 6))) continue;
+            if (![[x, z - 4], [x, z + 4], [x - 1, z], [x + 1, z]].every(([px, pz]) => window.__clear(px, pz))) continue;
+            const far = Math.hypot(x - mid[0], z - mid[1]);
+            if (!best || far < best.far) best = { x, z, far, lines: (floor.walls || []).length };
+          }
+        }
+        return best;
+      })()`);
+      if (!aim) throw new Error('no open ground on this storey for a screen');
+      const read = () => q(`(() => {
+        const s = window.app.state, floor = s.floors[s.currentFloor];
+        const line = (floor.walls || []).find((l) => l.ax === ${aim.x} && l.bx === ${aim.x}
+          && Math.min(l.az, l.bz) === ${aim.z - 4} && Math.max(l.az, l.bz) === ${aim.z + 4});
+        return {
+          lines: (floor.walls || []).length,
+          line: line ? { az: line.az, bz: line.bz, kind: line.kind, accents: line.accents ? line.accents.slice() : null } : null,
+          rooms: floor.shapes.some((sh) => sh.rings.some((r) => r.accents)) ? JSON.stringify(floor.shapes.map((sh) => sh.rings.map((r) => r.accents || null))) : null,
+          armed: window.app.editor.accentPaint === undefined ? 'off' : window.app.editor.accentPaint,
+          status: document.getElementById('status').textContent,
+          json: JSON.stringify(s),
+        };
+      })()`);
+      await d.pick('wall');
+      await d.click(aim.x, aim.z - 4);
+      await d.click(aim.x, aim.z + 4);
+      const drawn = await read();
+      await q(`document.querySelector('#accent-swatches [data-paint="#2f5d8a"]').click(); 1`);
+      const armed = await read();
+      await d.click(aim.x - 1, aim.z);
+      const west = await read();
+      await d.click(aim.x + 1, aim.z);
+      const east = await read();
+      // The same two clicks with the other colour armed: still refused, so the
+      // refusal is the face's and not the swatch's.
+      await q(`document.querySelector('#accent-swatches [data-paint="#d9772b"]').click(); 1`);
+      await d.click(aim.x + 1, aim.z);
+      const other = await read();
+      await d.page.keyboard.press('Escape');
+      await q('window.app.editor.undo(); 1');
+      const gone = await read();
+      return { aim, drawn, armed, west, east, other, gone };
+    },
+    expect: ({ ctx, before, after }) => {
+      const { aim } = ctx;
+      const say = (o) => JSON.stringify(o);
+      if (ctx.drawn.lines !== aim.lines + 1 || !ctx.drawn.line || ctx.drawn.line.accents !== null) {
+        throw new Error(`two clicks should draw one unpainted screen in the open: ${say(aim)} ${say(ctx.drawn).slice(0, 80)}`);
+      }
+      if (ctx.armed.armed !== 'harbor-blue') throw new Error(`the swatch did not arm the brush: ${say(ctx.armed)}`);
+      const words = /that side of the wall faces outside, and the facade covers it\. Click from inside a room\./;
+      for (const [which, got, colour] of [['west', ctx.west, 'harbor-blue'], ['east', ctx.east, 'harbor-blue'], ['east again', ctx.other, 'pumpkin']]) {
+        if (!words.test(got.status)) throw new Error(`the ${which} face should be refused with the facade's words: ${got.status}`);
+        if (got.line.accents !== null) throw new Error(`the ${which} face took an accent it cannot show: ${say(got.line)}`);
+        if (got.lines !== ctx.drawn.lines) throw new Error(`the ${which} click changed the number of walls: ${got.lines}`);
+        if (got.rooms !== ctx.drawn.rooms) throw new Error(`the ${which} click painted a room: ${got.rooms}`);
+        if (got.armed !== colour) throw new Error(`the brush should still hold ${colour} after the ${which} click: ${got.armed}`);
+        // Nothing was stored, so nothing is on the undo stack to take back.
+        if (got.json !== ctx.drawn.json) throw new Error(`the ${which} click changed the design`);
+      }
+      if (ctx.gone.line || ctx.gone.lines !== aim.lines) {
+        throw new Error(`one undo should take the screen away, not an accent that was refused: ${say(ctx.gone)}`);
+      }
+      if (after.json !== before.json) throw new Error('the design is not back to the bytes it started with');
+    },
+  },
   // Any other colour (#944). test/accent-free.test.mjs states what is parsed
   // and where it is stored; this types a hex into the Wall panel with the
   // keyboard, paints a wall with it, opens the design in a second page from

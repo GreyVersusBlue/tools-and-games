@@ -459,8 +459,9 @@ and add to this list rather than starting a new one.
   no browser check drives the stroke, and the status line does not say an
   accent came off); `duplicateFloor` copies a storey's free-standing walls,
   faces and doorways with them (#979); the brush's two refusals for
-  a free-standing wall are driven by a browser check for glass and by
-  nothing for the outdoor face; nobody has looked at one by eye;
+  a free-standing wall are driven by a browser check each, glass in
+  `accent-line` and the outdoor face in `accent-outdoor` (#1043); nobody
+  has looked at one by eye;
   paint is counted as one area, so an accent is not a line of its own in
   the takeoff or the cost. The top and the ends
   keep the one-colour rule, and a glazed run's frame is not painted at all.
@@ -513,7 +514,8 @@ and add to this list rather than starting a new one.
   is cut back to the chords, its bitten cells are decked as what is left of
   them, and the takeoff and the estimate count that deck; along the cut the
   parapet is the curved building's, drawn once (#992), and a cut `ringMinus` cannot
-  vouch for (an edge along the other ring) keeps the pair stepped; the site plan's building line is the ground storey's mask, stepped on a curve
+  vouch for (an edge along the other ring) keeps the pair stepped, driven by
+  `test/roof-ringminus.test.mjs` (#1043); the site plan's building line is the ground storey's mask, stepped on a curve
   (it draws the ground storey whatever the roof, so the skeleton path's test
   cannot decide it: drawing it from `roofOutline` moves the site plan of a
   curved school under every roof style and every storey count, a call of its
