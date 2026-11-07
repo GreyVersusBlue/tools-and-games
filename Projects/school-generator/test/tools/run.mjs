@@ -2568,6 +2568,103 @@ const CHECKS = [
       if (after.json !== before.json) throw new Error('the design is not back to the bytes it started with');
     },
   },
+  // A rub-out that takes an accent says so (#964, #1044). test/accent-rubout
+  // .test.mjs states the rule and the words; this lays a room with the floor
+  // brush, draws a screen in it, paints both faces, rubs out a corner that
+  // is in front of neither (no clause), then the half west of the screen
+  // (one accent off, said), and reads the status line, the wall's faces and
+  // the room each time. Undo runs back to the starting bytes, so `undo-redo`
+  // finds the stack as it was.
+  {
+    name: 'accent-rubout',
+    what: 'a rectangle rubbed out in front of a painted face takes its accent and says so in the status line; one in front of none says nothing of it',
+    async run(d) {
+      const q = (js) => d.page.evaluate(js);
+      const start = await q('JSON.stringify(window.app.state)');
+      // Open ground for a 24 x 16ft room and 4ft of margin all round it.
+      const aim = await q(`(async () => {
+        const { shapeAt, accentFaceAt } = await import('./js/shapes.js');
+        const { wallLineAt } = await import('./js/wallrun.js');
+        const { CELL } = await import('./js/grid.js');
+        const s = window.app.state, floor = s.floors[s.currentFloor];
+        const mid = [s.w * CELL / 2, s.h * CELL / 2];
+        let best = null;
+        for (let x = 4; x + 32 <= s.w * CELL; x += 4) {
+          for (let z = 4; z + 24 <= s.h * CELL; z += 4) {
+            let free = true;
+            for (let px = x - 4; px <= x + 28 && free; px += 4) {
+              for (let pz = z - 4; pz <= z + 20; pz += 4) {
+                if (shapeAt(floor, px, pz) || accentFaceAt(floor, px, pz, 6) || wallLineAt(floor, px, pz, 6)) { free = false; break; }
+              }
+            }
+            if (!free) continue;
+            if (![[x, z], [x + 24, z + 16], [x + 12, z + 4], [x + 12, z + 12], [x + 4, z + 8], [x + 20, z + 8]].every(([px, pz]) => window.__clear(px, pz))) continue;
+            const far = Math.hypot(x + 12 - mid[0], z + 8 - mid[1]);
+            if (!best || far < best.far) best = { x, z, far };
+          }
+        }
+        return best;
+      })()`);
+      if (!aim) throw new Error('no open ground on this storey for a 24 x 16ft room');
+      const { x, z } = aim;
+      const read = () => q(`(() => {
+        const s = window.app.state, floor = s.floors[s.currentFloor];
+        const line = (floor.walls || []).find((l) => l.ax === ${x + 12} && l.bx === ${x + 12});
+        return {
+          line: line ? (line.accents ? line.accents.slice() : null) : 'none',
+          rooms: floor.shapes.length,
+          status: document.getElementById('status').textContent,
+        };
+      })()`);
+      const swatch = (hex) => q(`document.querySelector('#accent-swatches [data-paint="${hex}"]').click(); 1`);
+      await d.pick('floor');
+      await q('window.app.editor.setFloorRect(true); 1');
+      await d.drag([[x, z], [x + 24, z + 16]]);
+      const laid = await read();
+      await d.pick('wall');
+      await d.click(x + 12, z + 4);
+      await d.click(x + 12, z + 12);
+      await swatch('#2f5d8a');
+      await d.click(x + 11, z + 8);
+      await swatch('#d9772b');
+      await d.click(x + 13, z + 8);
+      await d.page.keyboard.press('Escape');
+      const painted = await read();
+      // Two tiles at the east end, 8ft from the screen: in front of neither face.
+      await d.pick('erase');
+      await q('window.app.editor.setFloorRect(true); 1');
+      await d.drag([[x + 22, z + 10], [x + 22, z + 14]]);
+      const corner = await read();
+      // The west half, which is all of the room in front of the left face.
+      await d.drag([[x + 2, z + 2], [x + 10, z + 14]]);
+      const west = await read();
+      // Undo runs back to the starting bytes, whatever each stroke stacked.
+      let undone = 0;
+      while (undone < 12 && (await q('JSON.stringify(window.app.state)')) !== start) {
+        await q('window.app.editor.undo(); 1');
+        undone++;
+      }
+      return { aim, laid, painted, corner, west, undone };
+    },
+    expect: ({ ctx, before, after }) => {
+      const say = (o) => JSON.stringify(o);
+      const words = /accent colours? came off with/;
+      if (ctx.laid.rooms < 1) throw new Error(`the brush laid no room: ${say(ctx.laid)}`);
+      if (say(ctx.painted.line) !== say(['harbor-blue', 'pumpkin'])) {
+        throw new Error(`both faces of the screen should be painted before the rub-out: ${say(ctx.painted)}`);
+      }
+      if (words.test(ctx.corner.status)) throw new Error(`a corner in front of no painted face spoke of an accent: ${ctx.corner.status}`);
+      if (say(ctx.corner.line) !== say(['harbor-blue', 'pumpkin'])) throw new Error(`the corner rub-out touched an accent: ${say(ctx.corner)}`);
+      if (!/1 accent colour came off with the wall\./.test(ctx.west.status)) {
+        throw new Error(`the rub-out west of the screen should say one accent came off: ${ctx.west.status}`);
+      }
+      if (say(ctx.west.line) !== say([null, 'pumpkin'])) {
+        throw new Error(`only the left face's accent should be gone: ${say(ctx.west)}`);
+      }
+      if (ctx.undone >= 12) throw new Error('undo never got back to the starting design');
+      if (after.json !== before.json) throw new Error('the design is not back to the bytes it started with');
+    },
+  },
   // Any other colour (#944). test/accent-free.test.mjs states what is parsed
   // and where it is stored; this types a hex into the Wall panel with the
   // keyboard, paints a wall with it, opens the design in a second page from
@@ -3225,7 +3322,12 @@ const CHECKS = [
         const g = window.app.renderApi.scene.getObjectByName('finding-mark');
         return {
           visible: g.visible, floor: window.app.state.currentFloor,
-          parts: g.children.map((m) => ({ kind: m.userData.kind, x: m.position.x, y: m.position.y, z: m.position.z, scale: m.scale.x })),
+          parts: g.children.map((m) => ({
+            kind: m.userData.kind, x: m.position.x, y: m.position.y, z: m.position.z, scale: m.scale.x,
+            pts: m.userData.kind === 'outline'
+              ? Array.from({ length: m.geometry.attributes.position.count }, (_, i) => [m.geometry.attributes.position.getX(i), m.geometry.attributes.position.getZ(i)])
+              : null,
+          })),
           view: { x: window.app.renderApi.editView.x, z: window.app.renderApi.editView.z },
         };
       })()`);
@@ -3256,6 +3358,19 @@ const CHECKS = [
         throw new Error('the view did not pan to the ring');
       }
       if (!(r.scale >= 1.5)) throw new Error(`the ring was never sized to the view: scale ${r.scale}`);
+      // #1044: the ramp's own outline, its run and its top landing, with the
+      // ring at the foot sitting on the near edge of the run.
+      const outlines = ctx.shown.parts.filter((p) => p.kind === 'outline');
+      if (outlines.length !== 2 || outlines.some((o) => o.pts.length !== 4)) {
+        throw new Error(`a one-run ramp is a run and a landing, four corners each: ${JSON.stringify(outlines)}`);
+      }
+      const distTo = (pts) => Math.min(...pts.map((a, i) => {
+        const b = pts[(i + 1) % pts.length];
+        const dx = b[0] - a[0], dz = b[1] - a[1];
+        const t = Math.max(0, Math.min(1, ((r.x - a[0]) * dx + (r.z - a[1]) * dz) / (dx * dx + dz * dz)));
+        return Math.hypot(r.x - (a[0] + t * dx), r.z - (a[1] + t * dz));
+      }));
+      if (distTo(outlines[0].pts) > 1e-6) throw new Error('the ring at the foot is not on the run\'s outline');
       if (ctx.after.visible || ctx.after.parts !== 0 || ctx.after.mark !== null) {
         throw new Error(`deleting the ramp left its mark: ${JSON.stringify(ctx.after)}`);
       }

@@ -5133,7 +5133,7 @@ findingGroup.visible = false;
 renderApi.scene.add(findingGroup);
 
 function showEditMark(f) {
-  const mark = findingMarks({ findings: [f] })[0] || null;
+  const mark = findingMarks({ findings: [f] }, state)[0] || null;
   if (mark && mark.rooms.length) {
     const nav = buildNav(state);
     mark.rooms = mark.rooms.map((r) => ({ ...r, at: nav.node(r.id) })).filter((r) => r.at);
@@ -5172,6 +5172,19 @@ function buildEditMark() {
     m.userData = { scaled, kind };
     findingGroup.add(m);
   };
+  // A ramp's outline: its lanes and decks, as lines (#1044).
+  for (const ramp of here.ramps || []) {
+    for (const part of ramp.parts) {
+      const geo = new THREE.BufferGeometry().setFromPoints(part.pts.map((p) => new THREE.Vector3(p.x, y, p.z)));
+      const line = new THREE.LineLoop(geo, new THREE.LineBasicMaterial({
+        color, transparent: true, opacity: part.kind === 'landing' ? 0.6 : 0.95, depthTest: false,
+      }));
+      line.renderOrder = 504;
+      line.frustumCulled = false;
+      line.userData = { scaled: false, kind: 'outline' };
+      findingGroup.add(line);
+    }
+  }
   for (const d of here.doors) put(new THREE.RingGeometry(0.72, 1, 40), d.x, d.z, 0.95, true, 'ring');
   for (const rm of here.rooms) put(new THREE.CircleGeometry(0.4, 24), rm.at.x, rm.at.z, 0.95, true, 'dot');
   for (const c of here.circles) {

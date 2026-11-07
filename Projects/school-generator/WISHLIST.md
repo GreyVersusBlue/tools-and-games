@@ -394,8 +394,10 @@ and add to this list rather than starting a new one.
   `ramp-rise` or `narrow-ramp` ramp is marked as every finding with a
   position is: a ring at the ramp's foot on the map, and "Show it on the
   plan" pans the edit view there and draws the map's marks in it, a ring at
-  the same foot (#1003), until the next edit. That ring is the mark; the
-  ramp's own outline is not drawn.
+  the same foot (#1003), until the next edit, and the ramp's own outline with
+  it (#1044): its lanes and its landing decks as lines, `rampOutline` in
+  `stairs.js`, handed to the mark by `findingMarks(report, design)`, so the
+  map's marks are unchanged.
 - Curvature isn't stored, so re-bending a wall after a reload starts from its
   chords. Curved walls are chords in the collider too.
 - Wall paint is per face (`facePainter` in `finish.js`, #823): each face is
@@ -455,9 +457,10 @@ and add to this list rather than starting a new one.
   drawn over it; a wall drawn over another one of the same kind loses that
   wall's doorways, as it did before, and keeps its paint; the floor brush
   rubbing a room out from in front of a painted face takes the accent with
-  it now (#964, `paintCells` asks `pruneAccents` after a rub-out; pure Node,
-  no browser check drives the stroke, and the status line does not say an
-  accent came off); `duplicateFloor` copies a storey's free-standing walls,
+  it now (#964, `paintCells` asks `pruneAccents` after a rub-out), and the
+  status line says how many (#1044, `accentsOffPhrase`: "1 accent colour came
+  off with the wall.", none otherwise), driven by `accent-rubout` in
+  `test/tools/run.mjs`; `duplicateFloor` copies a storey's free-standing walls,
   faces and doorways with them (#979); the brush's two refusals for
   a free-standing wall are driven by a browser check each, glass in
   `accent-line` and the outdoor face in `accent-outdoor` (#1043); nobody
