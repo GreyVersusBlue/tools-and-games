@@ -1247,9 +1247,9 @@ If a future round finds something real:
 
 1. **Extend `Pathfinder/tests/anathema.test.mjs`** rather than starting a
    second suite, if this page gets more interaction logic. **The suite says
-   when that happens now** (#626, 2026-09-24): its static section lists all 47
+   when that happens now** (#626, 2026-09-24): its static section lists all 48
    ways the page takes input in `SURFACE` and fails on a new one. That failure
-   is this item coming true; it is not a ranked row until then. **All 47 are
+   is this item coming true; it is not a ranked row until then. **All 48 are
    driven by a scenario** (TG-29, 2026-10-05, #867 and #869; it was 41 undriven,
    then 11): the filters, deep search, the bookmark star with export and import,
    the keyboard, the back button, list scrolling and an edited URL by
@@ -1260,12 +1260,11 @@ If a future round finds something real:
    `window resize` listener by `testWindowResize`, which grows a 420px window
    to 1500px and asks that rows are drawn down to the bottom of the taller
    list. So there is no `''` left in `SURFACE`, and the next one is a new entry
-   point. Not driven, because it is not an entry point: `loadEncounter`'s repair
-   of a stored encounter (a count under 1, a party level past 20, a line with no
-   `_id`), which would take a seeded `aa.encounter` and a reload. Seen and left:
-   a party level or size typed past its limit is held in the total and in
-   storage (20, 12) while the field goes on showing what was typed until the
-   builder is next redrawn. 59 breaks of the page were run against the
+   point. Two things the notes had left are done (TG-52, #1040): `loadEncounter`'s
+   repair of a stored encounter is driven by `testEncounterRepair` from a seeded
+   `aa.encounter` and a reload, and a party level or size typed past its limit
+   shows the held value when the field is left (a `change` listener, the 48th
+   entry in `SURFACE`). 59 breaks of the page were run against the
    two new scenarios and all 59 failed the suite; of their 81 checks, 9 failed
    under none (3 `fixture:` lines and 6 starting states). The
    `waitFor`/`clickCat`/`clickLevelChip` helpers and the `freshPage()` pattern
