@@ -4,7 +4,7 @@
 // a bell time is engine/bells.js's, a route is engine/routing.js's: the same
 // functions the planner uses, run on the published data.
 
-import { findById, findRoom, floorOfRoom, allRooms, findFloor, bellSchedulesOf, calendarOf, DAY_CLOSED, BELLS_REGULAR, ELEVATOR_KIND, elevatorCars } from '../engine/schema.js';
+import { findById, findRoom, floorOfRoom, allRooms, findFloor, bellSchedulesOf, calendarOf, DAY_CLOSED, BELLS_REGULAR, ELEVATOR_KIND, REFUGE_DEFAULT_NAME, elevatorCars } from '../engine/schema.js';
 import { ownDayTypes, isOwnCopy, effectiveSchedule, effectiveDayType, dayShort, bellsShort } from '../engine/day-types.js';
 import { bellsFor, findBellSchedule, periodName, periodLabel, parseTime, formatTime } from '../engine/bells.js';
 import { dayOn, calendarDays, isCalendarDate, addDays, daysBetween, weekdayOf, dateWords } from '../engine/calendar.js';
@@ -36,6 +36,10 @@ export function openSchool(data) {
     // (engine/schema.js elevatorCars), the stops no connection reaches included.
     elevators() {
       return elevatorCars(data.building);
+    },
+    // An area of refuge's name as typed, or the plain words when it has none.
+    refugeName(refuge) {
+      return refuge && typeof refuge.name === 'string' && refuge.name.trim() !== '' ? refuge.name : REFUGE_DEFAULT_NAME;
     },
     teachers: data.teachers,
     groups: data.groups,

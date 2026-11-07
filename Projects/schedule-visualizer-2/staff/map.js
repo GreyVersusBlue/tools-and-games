@@ -28,7 +28,6 @@
 import { h, typed } from './dom.js';
 import { makeHash } from './router.js';
 import { isElevatorLink } from './model.js';
-import { REFUGE_DEFAULT_NAME } from '../engine/schema.js';
 
 export const MAP_TAP_RADIUS = 22;
 // Two rooms are "close" when the second is within the radius and less than
@@ -382,7 +381,7 @@ export function stepFreeNotes(school, floor) {
     const stops = names.length > 1 ? ': stops at ' + names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : ': a stop here, not connected to another floor';
     out.push({ id: car.id, kind: 'elevator', label, staffOnly: car.staffOnly, text: label + (car.staffOnly ? ' (staff only)' : '') + stops });
   }
-  for (const refuge of list(floor.refuges)) out.push({ id: refuge.id, kind: 'refuge', text: typeof refuge.name === 'string' && refuge.name.trim() !== '' ? refuge.name : REFUGE_DEFAULT_NAME });
+  for (const refuge of list(floor.refuges)) out.push({ id: refuge.id, kind: 'refuge', text: school.refugeName(refuge) });
   const counted = new Map();
   let unnamed = 0;
   for (const cell of list(floor.notStepFree)) {

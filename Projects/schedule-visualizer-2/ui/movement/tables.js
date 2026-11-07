@@ -358,10 +358,11 @@ export function tablesPanel(env) {
   const lead = h('p', { class: 'mov-travel__lead', data: { travel: 'lead' } });
   const oneTitle = h('h3', { class: 'mov-panel__sub', data: { travel: 'transition-title' } }, 'One transition');
   const oneLine = h('p', { class: 'mov-panel__note', data: { travel: 'transition-line' } });
-  const one = h('div', { class: 'mov-travel', data: { travel: 'transition' } });
+  // each scrolls sideways when narrow, so each is a named region a keyboard can focus and scroll (SV2-106b)
+  const one = h('div', { class: 'mov-travel', tabindex: '0', role: 'region', data: { travel: 'transition' } });
   const oneRest = h('p', { class: 'mov-panel__note', data: { travel: 'transition-rest' } });
   const dayTitle = h('h3', { class: 'mov-panel__sub', data: { travel: 'day-title' } }, 'The whole day');
-  const whole = h('div', { class: 'mov-travel', data: { travel: 'day' } });
+  const whole = h('div', { class: 'mov-travel', tabindex: '0', role: 'region', data: { travel: 'day' } });
   const picker = h('div', { class: 'mov-travel__choose' }, h('label', { class: 'mov-ctl__label', for: pickId }, 'Transition'), pick);
   let last = null;
   // what the tables are drawn from, handed to the print whole
@@ -445,6 +446,7 @@ export function tablesPanel(env) {
         + (mapTransition === null && picked === null && period === slowest ? ' This transition holds the day\'s slowest walk.' : '')
       : '';
     one.dataset.period = String(period);
+    one.setAttribute('aria-label', 'Travel times, ' + (transition ? transition.name : 'one transition'));
     one.replaceChildren(found.rows.length === 0
       ? h('p', { class: 'mov-panel__note' }, 'Nobody walks in this transition.')
       : travelTable('Each group\'s walk in ' + (transition ? transition.name : 'this transition') + ', slowest first', found.rows.map((row) => ({
@@ -460,6 +462,7 @@ export function tablesPanel(env) {
     oneRest.replaceChildren(...rest);
     oneRest.hidden = rest.length === 0;
 
+    whole.setAttribute('aria-label', 'Travel times, the whole of ' + day.heading);
     whole.replaceChildren(travelTable('Each group over the whole of ' + day.heading + ', slowest first', dayRows(project, results, day.id, day.bellsId).map((row) => ({
       row,
       who: [
