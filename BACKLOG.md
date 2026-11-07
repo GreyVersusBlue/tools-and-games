@@ -1845,7 +1845,8 @@ What's left:
    frames). No
    foam is drawn round the tip of the water where the channel runs dry beside
    the ford, no bird or crab is placed on the bar, the surf sound does not
-   know it, and nothing in a browser suite walks it. The crest sits in a 4 cm
+   know it. A browser check walks it since #1041 (`test/bar.mjs`, port 8179, not yet in
+   Site CI). The crest sits in a 4 cm
    window because the tide's range is 0.36 m against a 0.32 m swash; a bar
    that stood prouder would need a bigger tide, which is the home beach's too.
 

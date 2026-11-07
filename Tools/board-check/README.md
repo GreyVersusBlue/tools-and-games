@@ -300,6 +300,7 @@ taking a new one.
 | 8174 | `Projects/skywings64/test/draws.mjs` |
 | 8175 | `Projects/the-fracture-cycle/test/browser.mjs` |
 | 8177 | `Projects/torchbearer/test/browser.mjs` |
+| 8179 | `Projects/golden-hour-beach/test/bar.mjs` |
 | 8178 | `Projects/Closing Time/tools/browser.mjs` |
 | 8191 | `Projects/throneshard/tools/scripts/vfx_measure.mjs` (`VFX_PORT` moves it) |
 
