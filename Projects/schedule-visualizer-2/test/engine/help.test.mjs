@@ -19,8 +19,8 @@ import { helpModel, numbers, words, gestures, SECTION_HELP, SHORTCUT_GROUPS, NOT
 import { periodWords as periodWordsFor } from '../../ui/components/words.js';
 const periodWordsOf = (periodWord) => periodWordsFor({ periodWord });
 import { createShortcuts } from '../../ui/components/shortcuts.js';
-import { defaultSettings, STUDENTS_PER_LANE_CELL, PERIOD_WORDS } from '../../engine/schema.js';
-import { CROSSING_WAIT_MAX, walkingSeconds } from '../../engine/crowd.js';
+import { defaultSettings, STUDENTS_PER_LANE_CELL, PERIOD_WORDS, elevatorSettings } from '../../engine/schema.js';
+import { CROSSING_WAIT_MAX, walkingSeconds, rideFor, columnLength } from '../../engine/crowd.js';
 import { route, routingGraph } from '../../engine/routing.js';
 import { threeFloors, roomId } from '../fixtures/buildings/plans.mjs';
 
@@ -152,7 +152,9 @@ test('a shortcut group Help has no sentence for still shows, saying so', () => {
 // Spec 2, the vocabulary table, in its order.
 const SPEC_WORDS = ['Project', 'Floor', 'Cell', 'Room', 'Other space', 'Corridor', 'Stairs', 'Elevator', 'Exit', 'Door', 'Period', 'Day type', 'Passing time', 'Transition', 'Group', 'Teacher', 'Subject', 'Load', 'Scenario', 'Finding'];
 // DESIGN 11.1's words, after spec 2's (SV2-80): No class beside No school.
-const DESIGN_WORDS = ['Bell schedule', 'Regular bells', 'Calendar', 'Rotation', 'No school', 'No class', 'Marked period', 'Duty', 'Meeting', 'Their own lunch', 'Next in the rotation', 'Staggered dismissal'];
+const DESIGN_WORDS = ['Bell schedule', 'Regular bells', 'Calendar', 'Rotation', 'No school', 'No class', 'Marked period', 'Duty', 'Meeting', 'Their own lunch', 'Next in the rotation', 'Staggered dismissal',
+  // DESIGN 13.1's words (SV2-106)
+  'Step-free', 'Area of refuge', 'Route sheet'];
 const ALL_WORDS = SPEC_WORDS.concat(DESIGN_WORDS);
 test('every word of spec 2 is explained, in the spec’s order, with the school’s own period word', () => {
   assert.deepEqual(words(defaultSettings()).map((each) => each.term), ALL_WORDS);
@@ -407,6 +409,9 @@ const SHOWN = {
   'checks.passingMarginSeconds': [41, '41 seconds (the default is 0 seconds)'],
   'colourScale.mode': ['absolute', 'absolute (the default is relative)'],
   'colourScale.bands': [[11, 27, 53, 107], '11, 27, 53, 107 (the default is 10, 25, 50, 100)'],
+  elevatorWaitSeconds: [75, '75 seconds (the default is 30 seconds)'],
+  elevatorSecondsPerFloor: [13, '13 seconds (the default is 6 seconds)'],
+  elevatorPeoplePerTrip: [10, '10 people (the default is 8 people)'],
 };
 
 function withSetting(dotted, value) {
@@ -491,4 +496,44 @@ test('Help covers staggered dismissal, every lab lever, one-way stairs and the t
   assert.ok(late.includes('A group held back has less of the passing time to walk in, so it can arrive late.'));
   const term = words(defaultSettings()).find((each) => each.term === 'Staggered dismissal');
   assert.match(term.meaning, /leave a little after the bell/);
+});
+
+// DESIGN 13.1 (SV2-106): Elevator's meaning changes, three words are new, and "how the numbers are worked out" gains the elevator's wait, ride and trips.
+test('Elevator is no longer "planned": ordinary routes, step-free routes and an evacuation are each said; Step-free, Area of refuge and Route sheet are explained', () => {
+  const all = words(defaultSettings());
+  const meaning = (term) => all.find((each) => each.term === term).meaning;
+  assert.equal(meaning('Elevator'), 'A step-free connection between floors. Ordinary routes use it only when it is quicker and not staff only; step-free routes always may; an evacuation never does.');
+  assert.doesNotMatch(all.map((each) => each.meaning).join(' '), /planned, and not built yet/);
+  assert.match(meaning('Step-free'), /^A route with no stairs and no step\./);
+  assert.match(meaning('Area of refuge'), /a place to wait for help in an evacuation/i);
+  assert.match(meaning('Route sheet'), /One person’s day, printed/);
+  assert.equal(all.filter((each) => each.term === 'Elevator').length, 1, 'no new entry for the elevator: its meaning changed');
+  assert.equal(all.length, 35, 'spec 2 has 20 words, DESIGN 11.1 adds 11, DESIGN 12.1 one, DESIGN 13.1 three');
+  assert.doesNotMatch(all.map((each) => each.meaning).join(' '), /\blifts?\b/i, 'the code says lift; Help says elevator');
+});
+
+test('the numbers say what an elevator costs and how a class rides, from the settings the engine reads (wait, ride per floor, people per trip, and the trips of the default head count)', () => {
+  const travel = (settings) => numbers(settings).find((part) => part.id === 'travel').sentences.join(' ');
+  const text = travel(defaultSettings());
+  const lift = elevatorSettings(defaultSettings());
+  assert.match(text, new RegExp('Wait is ' + lift.wait + ' seconds \\(the default\\), from pressing the button to the doors opening'));
+  assert.match(text, new RegExp('Ride per floor is ' + lift.perFloor + ' seconds \\(the default\\) for each floor it travels'));
+  assert.match(text, new RegExp(lift.perTrip + ' people \\(the default\\) fit in one \\(People per trip\\), so a group of 25 takes 4 trips'));
+  assert.match(text, /That is why a step-free class can be late where one person would not\./);
+  assert.match(text, /never one that is staff only; a step-free route always may; an evacuation never does/);
+  // the trips Help says are the trips the crowd model holds the car for: 25 people, 8 a trip, is 4
+  const graph = { elevator: lift, secondsPerCell: 3 };
+  assert.equal(rideFor(graph, 1, lift.perTrip), lift.wait + lift.perFloor, 'one trip is the wait and the ride');
+  const more = rideFor(graph, 1, 25);
+  assert.equal(Math.ceil(25 / lift.perTrip), 4);
+  assert.equal(more, lift.wait + lift.perFloor + 3 * (2 * lift.perFloor + 2 * 10) - (columnLength(25) - 1) * 3, 'the wait and the ride, then three further round trips (a ride down and up and two door times each), less the column\'s walk out: ' + more);
+  // a school's own numbers are said beside the defaults, and move the trips
+  const mine = { ...defaultSettings(), elevatorWaitSeconds: 45, elevatorSecondsPerFloor: 9, elevatorPeoplePerTrip: 5, defaultHeadCount: 26 };
+  const own = travel(mine);
+  assert.match(own, /Wait is 45 seconds \(the default is 30 seconds\)/);
+  assert.match(own, /Ride per floor is 9 seconds \(the default is 6 seconds\)/);
+  assert.match(own, /5 people \(the default is 8 people\) fit in one \(People per trip\), so a group of 26 takes 6 trips/);
+  // Help names the Project › Settings fieldset by the words that page uses
+  const settingsPage = read('ui', 'project', 'settings.js');
+  for (const label of ['Elevators', 'Wait', 'Ride per floor', 'People per trip']) assert.ok(settingsPage.includes("'" + label + "'"), 'Project › Settings has no "' + label + '"');
 });
