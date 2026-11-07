@@ -2323,9 +2323,10 @@ Two things the work turned up. The first is fixed, the second had shipped:
    page's `LOUD_COSTS` constant turns both halves off. No save field, no key.
    `smoke-targets.mjs` 151 to 175, `browser.mjs` 79 to 90. **Nobody looked at
    it**: no person has judged whether copper and one pixel is loud enough,
-   or whether a sentence under the grid is where a player reads. Not built:
-   the sentence does not say which sink it belongs to when two orders are the
-   same number, and the tooltip keeps its older wording (`12 fabricators`).
+   or whether a sentence under the grid is where a player reads. The two
+   small gaps it left are closed (2026-11-07, TG-51, #1039): the sentence
+   names its sink when another sink holds the same order, and the tooltip
+   says tiles. Nothing is open here.
 
 ## The Fracture Cycle
 

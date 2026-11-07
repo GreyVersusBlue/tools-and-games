@@ -222,8 +222,13 @@ export function costStandsOut(n, plan) {
  * read it: the tooltip that used to be the only place the recipe was written is
  * nothing at all without a pointer. `loud` is `costStandsOut`, and a loud line
  * names the count the number suggests next to the one it takes.
+ *
+ * `sinkNo` is the sink's 1-based position, and the caller passes it only when
+ * another sink holds the same order (nothing stops `rollTarget` drawing one
+ * number twice), so two identical sentences can be told apart. Left out, the
+ * sentence is exactly what it always was.
  */
-export function orderReadout(n, plan) {
+export function orderReadout(n, plan, sinkNo) {
   const cells = minCells(n, plan);
   const loud = costStandsOut(n, plan);
   let text;
@@ -234,6 +239,7 @@ export function orderReadout(n, plan) {
          + (loud ? `, not ${n - 1}` : '')
          + `. Cheapest line: ${describeRecipe(recipe(n, plan))}.`;
   }
+  if (sinkNo !== undefined) text = `Sink ${sinkNo}: ${text}`;
   return { target: n, cells, loud, text };
 }
 

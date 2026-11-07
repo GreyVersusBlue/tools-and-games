@@ -571,14 +571,14 @@ function onResize(){
 function orderHint(target, plan, cells){
   if(!Number.isFinite(cells)) return `Order ${target}: this floor cannot build it.`;
   if(cells === 0) return `Order ${target}: run a source straight into this sink.`;
-  return `Order ${target}: ${cells} fabricator${cells === 1 ? '' : 's'} between a source and `
+  return `Order ${target}: ${cells} tile${cells === 1 ? '' : 's'} between a source and `
        + `this sink. Cheapest line: ${describeRecipe(recipe(target, plan))}.`;
 }
 
 /* The same number, short enough to live on the tile.
 
    Until ×2 is bought the order and its cost ARE the same number: an 8x6 floor
-   reaches 47 at most and 47 costs 46 fabricators, so reading the raw number as
+   reaches 47 at most and 47 costs 46 tiles, so reading the raw number as
    the work is right. Buying ×2 takes them apart completely. Every one of the 201
    three-digit orders then costs between 7 and 14 tiles; 100 costs 8 and 47 costs
    9, so the bigger number is routinely the SMALLER job. That is the moment the
@@ -627,6 +627,9 @@ function renderGrid(){
   gridEl.style.gridTemplateColumns = `repeat(${state.cols}, 1fr)`;
   gridEl.innerHTML = '';
   const readout = [];
+  // A sentence names its sink only when another sink holds the same order.
+  const heldBy = new Map();
+  for(const sk of state.sinks) if(sk) heldBy.set(sk.target, (heldBy.get(sk.target) || 0) + 1);
   // Lazily, and once per render rather than once per sink: boardPlan memoises on
   // the board's shape and unlock set, but countSinks still walks the grid.
   let plan = null;
@@ -670,7 +673,7 @@ function renderGrid(){
         // The order is guaranteed buildable now, so it is worth saying how. A
         // target of 11 is eleven +1 tiles and nothing on screen used to hint that.
         div.title = sink ? orderHint(sink.target, getPlan(), cells) : 'No order on this sink yet.';
-        if(sink && LOUD_COSTS) readout[cell.sinkIndex] = orderReadout(sink.target, getPlan());
+        if(sink && LOUD_COSTS) readout[cell.sinkIndex] = orderReadout(sink.target, getPlan(), heldBy.get(sink.target) > 1 ? cell.sinkIndex + 1 : undefined);
         const icon = document.createElement('div');
         icon.className = 'icon'; icon.textContent = '\u25A3';
         div.appendChild(icon);
