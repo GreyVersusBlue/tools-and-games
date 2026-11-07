@@ -394,8 +394,10 @@ and add to this list rather than starting a new one.
   `ramp-rise` or `narrow-ramp` ramp is marked as every finding with a
   position is: a ring at the ramp's foot on the map, and "Show it on the
   plan" pans the edit view there and draws the map's marks in it, a ring at
-  the same foot (#1003), until the next edit. That ring is the mark; the
-  ramp's own outline is not drawn.
+  the same foot (#1003), until the next edit, and the ramp's own outline with
+  it (#1044): its lanes and its landing decks as lines, `rampOutline` in
+  `stairs.js`, handed to the mark by `findingMarks(report, design)`, so the
+  map's marks are unchanged.
 - Curvature isn't stored, so re-bending a wall after a reload starts from its
   chords. Curved walls are chords in the collider too.
 - Wall paint is per face (`facePainter` in `finish.js`, #823): each face is
@@ -455,12 +457,14 @@ and add to this list rather than starting a new one.
   drawn over it; a wall drawn over another one of the same kind loses that
   wall's doorways, as it did before, and keeps its paint; the floor brush
   rubbing a room out from in front of a painted face takes the accent with
-  it now (#964, `paintCells` asks `pruneAccents` after a rub-out; pure Node,
-  no browser check drives the stroke, and the status line does not say an
-  accent came off); `duplicateFloor` copies a storey's free-standing walls,
+  it now (#964, `paintCells` asks `pruneAccents` after a rub-out), and the
+  status line says how many (#1044, `accentsOffPhrase`: "1 accent colour came
+  off with the wall.", none otherwise), driven by `accent-rubout` in
+  `test/tools/run.mjs`; `duplicateFloor` copies a storey's free-standing walls,
   faces and doorways with them (#979); the brush's two refusals for
-  a free-standing wall are driven by a browser check for glass and by
-  nothing for the outdoor face; nobody has looked at one by eye;
+  a free-standing wall are driven by a browser check each, glass in
+  `accent-line` and the outdoor face in `accent-outdoor` (#1043); nobody
+  has looked at one by eye;
   paint is counted as one area, so an accent is not a line of its own in
   the takeoff or the cost. The top and the ends
   keep the one-colour rule, and a glazed run's frame is not painted at all.
@@ -513,7 +517,8 @@ and add to this list rather than starting a new one.
   is cut back to the chords, its bitten cells are decked as what is left of
   them, and the takeoff and the estimate count that deck; along the cut the
   parapet is the curved building's, drawn once (#992), and a cut `ringMinus` cannot
-  vouch for (an edge along the other ring) keeps the pair stepped; the site plan's building line is the ground storey's mask, stepped on a curve
+  vouch for (an edge along the other ring) keeps the pair stepped, driven by
+  `test/roof-ringminus.test.mjs` (#1043); the site plan's building line is the ground storey's mask, stepped on a curve
   (it draws the ground storey whatever the roof, so the skeleton path's test
   cannot decide it: drawing it from `roofOutline` moves the site plan of a
   curved school under every roof style and every storey count, a call of its
@@ -579,8 +584,9 @@ and add to this list rather than starting a new one.
   (60in deep with an 18in latch-side strip on the pull side, 48in and 12in on
   the push side, #1025); the rectangles are not drawn on the plan sheet or the
   minimap, only the door's ring. A pair of doors is judged
-  with both leaves open (the code judges it by the active leaf, so the
-  lattice's 4ft pair passes here and would not on a plan check); the outside of
+  with both leaves open on the route and at its active leaf in a `note`
+  (`pair-active-leaf`, #1034: 4ft gives 20in through one leaf, 6ft is the
+  narrowest that gives 32in); the outside of
   an exterior door is not tested; and knee and toe clearance under a counter is
   not modelled at all.
 - The code edition is applied now (`codes.js`, Phase 41), but two things still

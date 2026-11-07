@@ -59810,6 +59810,26 @@ function topLandingBox(link, metrics) {
   return { x0: -hw, x1: hw, z0: run, z1: run + topLanding(link) };
 }
 
+// A ramp's outline on the plan, in world feet, for the edit view's finding
+// mark: the boxes it stands on, each as a four-corner ring. A folded ramp is
+// its lanes and its landings (the turn decks and the top deck); a straight one
+// is its run and its top landing. `kind` says which, so a drawing can tell the
+// slope from the level deck. Empty for anything that is not a ramp.
+function rampOutline(link, metrics) {
+  if (!link || link.type !== 'ramp') return [];
+  const layout = rampLayout(link, metrics);
+  if (layout) {
+    return [
+      ...layout.runs.map((r) => ({ kind: 'run', pts: rectCorners(link, r.box) })),
+      ...layout.landings.map((l) => ({ kind: 'landing', pts: rectCorners(link, l.box) })),
+    ];
+  }
+  const out = [{ kind: 'run', pts: rectCorners(link, footprintBox(link, metrics)) }];
+  const deck = topLandingBox(link, metrics);
+  if (deck) out.push({ kind: 'landing', pts: rectCorners(link, deck) });
+  return out;
+}
+
 // The same box for a straight ramp alone, which is what the `ramp-landing`
 // finding asks about (ADA 405.7, #904); null for a stair.
 function rampLandingBox(link, metrics) {
@@ -60038,7 +60058,7 @@ function stairFits(state, link) {
   return pts.every((p) => p.x >= -wFt && p.x <= wFt * 2 && p.z >= -hFt && p.z <= hFt * 2);
 }
 
-return { RISER_TARGET, TREAD, MIN_STEPS, STAIR_W, MIN_STAIR_W, MAX_STAIR_W, LANDING, RAMP_LANDING, topLanding, CUT_MARGIN, OPENING_W, OPENING_D, MIN_OPENING, MAX_OPENING, RAMP_SLOPES, ELEV_W, ELEV_D, MIN_ELEV, MAX_ELEV, ELEV_DOOR_W, ELEV_WALL_T, LINK_KINDS, STAIR_TYPES, RUN_TYPES, isRun, isElevator, stairRun, stairMetrics, stairWidth, rampSlope, rampRuns, rampSide, isSwitchback, rampRunRise, rampOverRise, rampMinRuns, setRampFold, RAMP_CTRL, stepRampWidth, stepRampSlope, setRampSize, runPhrase, rampLayout, elevatorSize, runLength, runTravel, runMetrics, openingSize, cutStart, localToWorld, worldToLocal, footprintBox, cutBox, cutColumns, rectCorners, footprintPolygon, cutPolygon, pointInPolygon, stairsOf, linksFrom, floorCuts, inFloorCut, openingRails, rampGuards, rampPath, rampLandingArea, topLandingBox, rampLandingBox, rampTopLanding, rampGuardSegments, rampTopGuardSegments, stairSurfaceAt, stairUnder, elevatorDoorWidth, elevatorWalls, elevatorsOn, elevatorAt, linkAt, linkById, addStair, stairFits, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, MAX_RUNS, RAIL_H, floorSolidAt };
+return { RISER_TARGET, TREAD, MIN_STEPS, STAIR_W, MIN_STAIR_W, MAX_STAIR_W, LANDING, RAMP_LANDING, topLanding, CUT_MARGIN, OPENING_W, OPENING_D, MIN_OPENING, MAX_OPENING, RAMP_SLOPES, ELEV_W, ELEV_D, MIN_ELEV, MAX_ELEV, ELEV_DOOR_W, ELEV_WALL_T, LINK_KINDS, STAIR_TYPES, RUN_TYPES, isRun, isElevator, stairRun, stairMetrics, stairWidth, rampSlope, rampRuns, rampSide, isSwitchback, rampRunRise, rampOverRise, rampMinRuns, setRampFold, RAMP_CTRL, stepRampWidth, stepRampSlope, setRampSize, runPhrase, rampLayout, elevatorSize, runLength, runTravel, runMetrics, openingSize, cutStart, localToWorld, worldToLocal, footprintBox, cutBox, cutColumns, rectCorners, footprintPolygon, cutPolygon, pointInPolygon, stairsOf, linksFrom, floorCuts, inFloorCut, openingRails, rampGuards, rampPath, rampLandingArea, topLandingBox, rampOutline, rampLandingBox, rampTopLanding, rampGuardSegments, rampTopGuardSegments, stairSurfaceAt, stairUnder, elevatorDoorWidth, elevatorWalls, elevatorsOn, elevatorAt, linkAt, linkById, addStair, stairFits, HEADROOM, RAMP_SLOPE, RAMP_W, MIN_RAMP_W, MAX_RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, MAX_RUNS, RAIL_H, floorSolidAt };
 })();
 // ---- js/walls.js ----
 const __m_js_walls_js = (() => {
@@ -68405,12 +68425,11 @@ const clearWidth = (w, leafed = true) =>
 
 // The clear width of a doorway *as hung*. A cased opening is all clear; a
 // leaf loses its stop. A pair is measured with both leaves open — which is
-// what the walkthrough does with one, and is the one place this reads more
-// generously than a plan checker would: ADA 404.2.3 measures a pair at its
-// active leaf alone, because the other may be bolted, and by that reading the
-// lattice's 4ft pair (two 2ft leaves, and every generated school's front
-// door) is not an accessible door. It rolls here, with both leaves open, and
-// the backlog says so.
+// what the walkthrough does with one, and the route keeps a pair this wide.
+// ADA 404.2.3 measures a pair at its active leaf alone, because the other may
+// be bolted, so the lattice's 4ft pair (two 2ft leaves, and every generated
+// school's front door) rolls here and fails there: turning.js reports that
+// as `pair-active-leaf` (TG-44) and moves nothing.
 function doorClear(w, leaf = 1) {
   if (leaf === LEAF_NONE) return Math.max(0, w);
   return clearWidth(w);
@@ -75649,7 +75668,7 @@ function hasCurve(loop) {
 // frustum and the edit camera's standoff.
 const roofTop = (plan) => plan.eaveY + plan.rise;
 
-return { PARAPET_H, COPING_T, EAVE, MIN_PITCH, MAX_PITCH, DEFAULT_PITCH, ROOF_STYLES, ROOF_STYLE_KEYS, roofStyleEntry, isPitched, DEFAULT_ROOF, defaultRoof, normalizeRoof, ensureRoof, isDefaultRoof, roofMask, maskAt, maskCount, maskOutlines, largestRect, maskRects, sideIsOuter, blockRoof, roofPlan, curvedRoofs, curvedLoopsOf, inFootprint, parapetRuns, skeletonRoofsOf, roofCover, roofOutline, hasCurve, roofTop };
+return { PARAPET_H, COPING_T, EAVE, MIN_PITCH, MAX_PITCH, DEFAULT_PITCH, ROOF_STYLES, ROOF_STYLE_KEYS, roofStyleEntry, isPitched, DEFAULT_ROOF, defaultRoof, normalizeRoof, ensureRoof, isDefaultRoof, roofMask, maskAt, maskCount, maskOutlines, largestRect, maskRects, sideIsOuter, blockRoof, roofPlan, curvedRoofs, curvedLoopsOf, inFootprint, parapetRuns, ringMinus, skeletonRoofsOf, roofCover, roofOutline, hasCurve, roofTop };
 })();
 // ---- js/sightline.js ----
 const __m_js_sightline_js = (() => {
@@ -97918,7 +97937,7 @@ return { computeFloorPlan, computeSitePlan, drawClearance, DIFF_INK, drawDiff, d
 })();
 // ---- js/minimap.js ----
 const __m_js_minimap_js = (() => {
-
+const { rampOutline, stairMetrics } = __m_js_stairs_js;
 // minimap.js — where you are, on the plan, while you are walking.
 //
 // The wishlist asks for "a minimap while walking, from the blueprint renderer
@@ -97943,6 +97962,8 @@ const __m_js_minimap_js = (() => {
 // downstream has to know which is on.
 //
 // Everything here is pure: bounds in, pixels out, no canvas, no three.js.
+
+
 
 const MODES = ['fit', 'follow'];
 const ORIENTS = ['north', 'heading'];
@@ -98156,12 +98177,26 @@ const MARK_LINE = {
 const markFill = (level) => MARK_FILL[level] || MARK_FILL.note;
 const markLine = (level) => MARK_LINE[level] || MARK_LINE.note;
 
+// The outline of each ramp a finding's marks stand at the foot of, found by
+// the link id the mark carries (a doorway's id never names a link). On the
+// storey the ramp starts from, which is where its foot is.
+function rampOutlines(doors, design) {
+  const out = [];
+  for (const d of doors) {
+    const link = (design.links || []).find((l) => l.type === 'ramp' && l.id === d.id && l.from === d.floor);
+    if (link && !out.some((o) => o.id === link.id)) {
+      out.push({ id: link.id, floor: d.floor, parts: rampOutline(link, stairMetrics(design)) });
+    }
+  }
+  return out;
+}
+
 // Every finding that points at somewhere on the plan, in the order the report
 // sorted them — worst first. A finding with nothing to point at (three exits
 // where four are needed; a building with no way out at all) is not a mark: it
 // is about the design rather than about a place in it, and drawing it
 // somewhere would be inventing a location the report never claimed.
-function findingMarks(report) {
+function findingMarks(report, design = null) {
   const out = [];
   for (const f of (report && report.findings) || []) {
     const rooms = (f.rooms || [])
@@ -98177,6 +98212,9 @@ function findingMarks(report) {
       .filter((c) => c && Number.isFinite(c.x) && Number.isFinite(c.z) && Number.isFinite(c.r))
       .map((c) => ({ id: c.id, floor: c.floor ?? 0, x: c.x, z: c.z, r: c.r, need: c.need ?? c.r }));
     if (!rooms.length && !doors.length && !circles.length) continue;
+    // The edit view also outlines the ramp a mark's foot belongs to (the
+    // design is only handed over there; the map's marks are unchanged).
+    const ramps = design ? rampOutlines(doors, design) : [];
     out.push({
       code: f.code,
       section: f.section || null,
@@ -98186,6 +98224,7 @@ function findingMarks(report) {
       rooms,
       doors,
       circles,
+      ramps,
       floors: [...new Set([...rooms, ...doors, ...circles].map((t) => t.floor))].sort((a, b) => a - b),
     });
   }
@@ -98207,6 +98246,7 @@ function markOnFloor(mark, floorIndex) {
     rooms: mark.rooms.filter((r) => r.floor === floorIndex),
     doors: mark.doors.filter((d) => d.floor === floorIndex),
     circles: (mark.circles || []).filter((c) => c.floor === floorIndex),
+    ramps: (mark.ramps || []).filter((r) => r.floor === floorIndex),
   };
 }
 

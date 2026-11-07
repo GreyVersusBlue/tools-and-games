@@ -1745,6 +1745,10 @@ export const CombatCore = {
     return sp.rankEffects[keys[0]]||sp.rankEffects[Object.keys(sp.rankEffects)[0]]||{};
   },
   castAt(cb,a,target){
+    // A click never puts an area on a wall (`cellClick` asks `aimable`); a
+    // direct caller gets the same answer, with nothing spent, rather than a
+    // burst centred in stone that reaches both sides of it.
+    if(a.kind==="cell"&&this.walls.has(this.key(target.x,target.y))){ this.toast("No clear line to that square."); return; }
     const sp=a.spell, eff=this.effectFor(sp,a.castRank);
     // What a save against this spell is *against*, for a sheet's conditional
     // `save.all` bonuses. Every spell is magic; the rest are its own traits.

@@ -154,6 +154,7 @@ function newDay(){saidToday=new Set();
       say(`A child is born to ${B(a)} and ${B(b)}. They call the child ${B(k)}${nm?', after '+nm:''}.`);addEvent('birth',`the ${seasonOf(dayCount)} ${k.name} was born`,`A child, ${k.name}, was born to ${a.name} and ${b.name} in the ${seasonOf(dayCount)}.`)}}
   // old age
   for(const p of alive){const a=ageOf(p);if(a<55)continue;const chance=Math.pow((a-54)/18,3);if(R()<chance)die(p)}
+  feudDay(); /* TG-48: and again, because the old die after the first call at the top of this day, and a feud naming somebody just buried is not one for another day. No draw is made here. */
   for(const p of people)trimHist(p); /* a long life earns more lines than anyone reads; the first one and the last HIST_MAX-1 keep */
   autoSaveTick();
 }
@@ -648,6 +649,13 @@ function boatArrive(b){
   else if(b.st==='out')b.gone=true}
 // ---------- wildlife (sprint 4) ----------
 const landAt=(x,y)=>{const t=at(x|0,y|0);return t===GRASS||t===SAND||t===ROCK||t===FARM};
+// TG-48: slide() never wades, so a flight whose straight line crosses water ends at the shore and the deer stands there, looking at it.
+// A route is dry when every half-tile along it is land. Deer used to ask only that the far end was land, so across a narrow neck that
+// was a way across, and they retargeted six times at random and then went anyway.
+const dryRoute=(x0,y0,x1,y1)=>{const n=Math.max(1,Math.ceil(Math.hypot(x1-x0,y1-y0)/.5));for(let i=1;i<=n;i++)if(!landAt(x0+(x1-x0)*i/n,y0+(y1-y0)*i/n))return false;return true};
+// no rnd(): sixteen compass points, two lengths, the dry one that ends farthest from what scared the deer; null when there is none
+function dryFlight(w,th){let best=null,bd=-1;for(const len of[7,3.5])for(let i=0;i<16;i++){const a=i*Math.PI/8,x=w.x+Math.cos(a)*len,y=w.y+Math.sin(a)*len*.7;
+  if(!dryRoute(w.x,w.y,x,y))continue;const d=Math.hypot(x-th.x,y-th.y);if(d>bd){bd=d;best={x,y}}}return best}
 function forestTree(){for(let k=0;k<30;k++){const t=pick(trees);if(t&&t.hp>0&&t.s>.6&&Math.hypot(t.x-center.x,t.y-center.y)>9&&!houses.some(h=>Math.hypot(h.x-t.x,h.y-t.y)<5))return t}return null}
 function spawnWildlife(){wild=[];const nd=Math.min(5,1+((trees.length/45)|0));for(let i=0;i<nd;i++){const t=forestTree();if(t)wild.push({k:'deer',x:t.x+rnd(-1,1),y:t.y+rnd(.5,1.5),tx:0,ty:0,home:t,st:'graze',t:rnd(1,5),chk:R(),f:R()<.5?1:-1})}
   for(let i=0;i<4;i++){const s=freeSpot(6,22);if(s)wild.push({k:'rabbit',x:s.x+.5,y:s.y+.5,tx:0,ty:0,home:{x:s.x+.5,y:s.y+.5},st:'sit',t:rnd(1,3),chk:R(),f:1})}
@@ -671,7 +679,9 @@ function stepWild(dt){const s=sea(),night=isNight();
     if(!landAt(w.x,w.y)&&w.st!=='leave'){if(w.k==='fox'){w.gone=true;continue}const hm=w.home||center;w.x=hm.x;w.y=hm.y;w.tx=hm.x;w.ty=hm.y;w.st=w.k==='deer'?'graze':'sit';w.t=rnd(1,3)}
     if(w.k==='deer'){if(w.chk<=0){w.chk=.35;if(w.st!=='flee'){let th=null;for(const p of people){if(p.inside||p.task==='sleep')continue;const d=Math.hypot(p.x-w.x,p.y-w.y);if(d<(p.task==='chop'?5.5:3.2)){th=p;break}}
           if(!th&&fox&&Math.hypot(fox.x-w.x,fox.y-w.y)<3)th=fox;
-          if(th){w.st='flee';const dx=w.x-th.x,dy=w.y-th.y,d=Math.hypot(dx,dy)||1;let tx=w.x+dx/d*8,ty=w.y+dy/d*6;for(let k=0;k<6&&!landAt(tx,ty);k++){const a=rnd(6.28);tx=w.x+Math.cos(a)*7;ty=w.y+Math.sin(a)*5}w.tx=tx;w.ty=ty;w.f=dx<0?-1:1;if(th.task==='chop'&&R()<.15)say(`A deer breaks from the trees at the sound of the axe and is gone before ${B(th)} has looked up.`,false,'deerflee')}}
+          if(th){w.st='flee';const dx=w.x-th.x,dy=w.y-th.y,d=Math.hypot(dx,dy)||1;let tx=w.x+dx/d*8,ty=w.y+dy/d*6;for(let k=0;k<6&&!dryRoute(w.x,w.y,tx,ty);k++){const a=rnd(6.28);tx=w.x+Math.cos(a)*7;ty=w.y+Math.sin(a)*5}
+            if(!dryRoute(w.x,w.y,tx,ty)){const dry=dryFlight(w,th);if(dry){tx=dry.x;ty=dry.y}} /* TG-48: no dry random pick, so look for one; none at all and the deer goes anyway */
+            w.tx=tx;w.ty=ty;w.f=dx<0?-1:1;if(th.task==='chop'&&R()<.15)say(`A deer breaks from the trees at the sound of the axe and is gone before ${B(th)} has looked up.`,false,'deerflee')}}
         if(w.home&&(w.home.hp<=0||!trees.includes(w.home))){w.home=forestTree()}}
       if(w.st==='graze'){w.t-=dt;if(w.t<=0){w.st='move';const h=w.home||center;let tx=h.x+rnd(-4,4),ty=h.y+rnd(-2.5,3.5);for(let k=0;k<5&&!landAt(tx,ty);k++){tx=h.x+rnd(-4,4);ty=h.y+rnd(-2.5,3.5)}w.tx=tx;w.ty=ty;w.f=tx<w.x?-1:1;if(R()<.12&&w.home){w.home=forestTree()||w.home}}}
       else{const sp=(w.st==='flee'?7:night?.6:1.3)*dt,dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy);if(d<sp){if(landAt(w.tx,w.ty)){w.x=w.tx;w.y=w.ty}w.st='graze';w.t=rnd(2,7)}

@@ -243,12 +243,12 @@ because it could not.
 Open and unclaimed. Add here rather than starting a new list.
 
 **Levelling**
-- **The adventure picker says "Level 3 adventure" and compares it to
-  nothing.** A level-6 Sera walks into Barrowmoor at its level-3 DCs and
-  foes; `minLevel` on individual foes is the only scaling, and none of the
-  three shipped adventures uses it yet. The picker could warn when the hero
-  is two or more levels off, or an adventure's checks could read `levelDC`
-  relative to its `level`.
+- **An adventure's checks do not scale to the hero's level.** A level-6 Sera
+  walks into Barrowmoor at its level-3 DCs and foes; `minLevel` on individual
+  foes is the only scaling, and none of the three shipped adventures uses it
+  yet. The picker now says so on the card ("Written for level 3; your hero is
+  level 6.", two or more levels off, #1033) and changes nothing else; an
+  adventure's checks reading `levelDC` relative to its `level` is the open half.
 - **XP past 10th goes nowhere.** `canLevelUp` stops at `MAX_LEVEL`, and the
   counter keeps climbing with nothing to spend it on; the title screen says
   "the road ends at 10th". Anything past 10 is the later arc.
@@ -304,11 +304,9 @@ Open and unclaimed. Add here rather than starting a new list.
   fire 1 (the 1 its author wrote). Left: a spell's own `persistent` and
   `critPersistent` still push straight onto the target, so they stack, skip
   immunity and print no line when lit, unlike a bucket's; changing that
-  weakens two shipped spells and wants a balance look. And a shipped pack the
-  validator rejects ends `smoke.mjs` in `loadPack`'s throw at the scene-graph
-  group before the report prints, so the named line that caught it ("validates
-  against core") is never shown: exit 1 and the validator's message, but not a
-  FAIL line.
+  weakens two shipped spells and wants a balance look. A shipped pack the
+  validator rejects is a FAIL line now (`loadShipped` in `smoke.mjs`), so the
+  report still names "validates against core" (#1033).
 - **A dead companion rises at the next fight.** (**Devon, 2026-10-07, asked
   what death should mean: "leave it"**, so it stays as pinned.) `finish(true)` restores HP to
   every party member, dead or not (a companion who died at dying 4 leaves the
@@ -336,9 +334,8 @@ Open and unclaimed. Add here rather than starting a new list.
   hits only the heroes it has a line to. `cellClick` refuses a wall and a
   square behind one with "No clear line to that square." and spends nothing;
   those are the squares the page never lit, and the page asks `aimable` now
-  instead of keeping its own copy. Left: `castAt` called directly with a
-  burst's centre on a wall square still reaches both sides (no click gets
-  there); a creature in a doorway between two wall squares is reached, since
+  instead of keeping its own copy. `castAt` called directly with an area
+  on a wall square refuses it the same way (#1033). Left: a creature in a doorway between two wall squares is reached, since
   `losClear` ignores its endpoints, which is the rule a Strike uses; nothing
   in the Chronicle says a wall kept somebody out of an area, because naming
   them would give away a hidden creature.

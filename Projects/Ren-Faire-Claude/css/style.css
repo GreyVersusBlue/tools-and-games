@@ -753,6 +753,8 @@ select {
 /* Phase 5: "200 guests" broke across two lines at every viewport, the one
    figure in the table that is two words. A figure column does not wrap. */
 .ledger-table td:last-child { text-align: right; font-family: var(--font-ui); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.season-hall .ledger-table th { padding: 0.42rem 0.2rem; border-bottom: 1px solid var(--bark-line); font-size: 0.8rem; text-align: left; font-weight: normal; }
+.season-hall .ledger-table td:not(:first-child), .season-hall .ledger-table th:not(:first-child) { text-align: right; }
 .ledger-table td.neg { color: var(--wine-text); }
 .ledger-table .total-row td {
   font-weight: 700;

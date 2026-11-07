@@ -705,6 +705,16 @@ export function paintCells(state, floorIndex, cells, on = true, opts = {}) {
   return out;
 }
 
+// What the status line says of a rub-out that took painted faces with it
+// (#964): nothing for none, the count in plain words otherwise. Counts what
+// `out.accentsOff` counted; it decides nothing about what is dropped.
+export function accentsOffPhrase(n) {
+  if (!(n > 0)) return '';
+  return n === 1
+    ? '1 accent colour came off with the wall.'
+    : `${n} accent colours came off with their walls.`;
+}
+
 // The one-cell case, which is what a pointer used to produce.
 export const paintCell = (state, floorIndex, x, y, on = true, opts = {}) =>
   paintCells(state, floorIndex, [{ x, y }], on, opts);

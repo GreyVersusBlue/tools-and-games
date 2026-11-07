@@ -191,6 +191,26 @@ test('the side of the wall the point is on is the face', () => {
   assert.equal(out.shape, null);
 });
 
+test('a screen in the open has no room on either face, which is what the brush refuses on (#1043)', () => {
+  // editor.js refuses a colour for a face whose `shape` is null: the facade is
+  // drawn over it. The editor needs a browser; test/tools/run.mjs's
+  // accent-outdoor drives the click, and this holds what the click reads.
+  const { s, f } = hallWithAScreen();
+  const garden = addWallLine(s, 0, { x: 40, z: 4 }, { x: 40, z: 12 });
+  for (const [x, side] of [[39, LINE_LEFT], [41, LINE_RIGHT]]) {
+    const face = lineFaceAt(f, x, 8, 3);
+    assert.equal(face.line, garden);
+    assert.equal(face.side, side);
+    assert.equal(face.shape, null, `the click at ${x} stands in no room`);
+    assert.equal(lineFaceInRoom(f, garden, side), false);
+  }
+  // The screen in the hall is the other case: its faces have the hall.
+  assert.equal(lineFaceAt(f, 15, 12, 3).shape.name, 'Hall');
+  assert.equal(lineFaceAt(f, 17, 12, 3).shape.name, 'Hall');
+  // Nothing was painted by looking.
+  assert.equal('accents' in garden, false);
+});
+
 test('a face has a room in front of it or it does not', () => {
   const { s, f, line } = hallWithAScreen();
   assert.equal(lineFaceInRoom(f, line, LINE_LEFT), true);

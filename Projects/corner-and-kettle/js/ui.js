@@ -24,6 +24,7 @@ import { makeSpriteSvg, orderIconsHtml, orderDescriptionHtml, customerLabel, ord
 import { createSound } from "./sound.js";
 import { STATION_TAB_DEFS, createStations } from "./stations.js";
 import { createChalkboard } from "./chalkboard.js";
+import { createGuide, CUES } from "./guide.js";
 import { patchRows } from "./patch.js";
 
 const {
@@ -435,7 +436,41 @@ document.getElementById('modalBtn').onclick = ()=>{
 
 /* ---------- CHALKBOARD TOGGLE ---------- */
 document.getElementById('chalkToggle').onclick = ()=>{
-  document.getElementById('chalkboard').classList.toggle('open');
+  const open = document.getElementById('chalkboard').classList.toggle('open');
+  guide.update({ boardOpen: open });
+  renderGuide();
+};
+
+/* ---------- FIRST-SHIFT GUIDE (#1042) ---------- */
+// guide.js decides which cue is up from the shop's own state; this draws it.
+// The strip is a real button and a sentence. Nothing here moves focus except
+// the one case where the button the keyboard is on is the thing that goes.
+function renderGuide(){
+  const strip = document.getElementById('guideStrip');
+  const cue = guide.cue();
+  const wasOn = !strip.hidden;
+  if(!cue){
+    if(wasOn && document.activeElement === document.getElementById('guideSkip')){
+      (document.querySelector('#queueRow .customer') || document.getElementById('chalkToggle')).focus();
+    }
+    strip.hidden = true;
+    return;
+  }
+  strip.hidden = false;
+  const text = document.getElementById('guideText');
+  if(text.textContent !== cue.text) text.textContent = cue.text;
+  document.getElementById('guideCount').textContent = `${guide.step + 1} of ${CUES.length}`;
+}
+const guide = createGuide({
+  state, sim,
+  onChange: ()=> renderGuide(),
+  onDone: ()=> saveNow(),
+});
+document.getElementById('guideSkip').onclick = ()=>{ guide.skip(); };
+document.getElementById('guideBtn').onclick = ()=>{
+  document.getElementById('chalkboard').classList.remove('open');
+  guide.restart();
+  saveNow();
 };
 
 /* ---------- MUTE TOGGLE ---------- */
@@ -484,6 +519,7 @@ function adoptSave(data){
   state.dayStats = freshDayStats();
   for(let i=0;i<3;i++) state.queue.push(sim.generateOrder());
   sim.resetClock();
+  guide.rewind();
   renderAll();
   renderClock();
   saveNow();
@@ -511,6 +547,8 @@ function renderAll(){
   renderSlots();
   stations.renderStationsAll();
   chalkboard.render();
+  guide.update();
+  renderGuide();
   markDirty();
 }
 
@@ -592,7 +630,7 @@ if(typeof window !== 'undefined'){
     // The open station's panel, key letters and all, the same way (#972).
     stationsHtml: () => stations.panelHtml(),
     queueMax: sim.queueMax,
-    slot: saveSlot, catalog: CATALOG, sim,
+    slot: saveSlot, catalog: CATALOG, sim, guide,
     MARKETING_COST, SAVE_KEY, RANDOM_EVENTS, DAILY_MODIFIERS,
   };
 }

@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { NightEngine, hourName } from "./engine.js";
 import { buildWorld, drawBroadcast, PASS_FOOD_SHELF, PASS_DRINK_SHELF, seats, currentLayout } from "./world.js";
 import { cookSpot, crewHome, standPointsFor } from "./layout.js";
-import { separate } from "./walk.js";
+import { separate, Footfalls } from "./walk.js";
 import { Patron, Server, itemMesh, personMesh } from "./patrons.js";
 import { Player } from "./player.js";
 import { DayPhase } from "./day.js";
@@ -78,6 +78,7 @@ let leavingMoments = [];  // ones answered, walking back out
 let tonightAtOpen = null; // league.js's tonight() as it stood when the doors opened; the box score reads it
 
 const player = new Player(camera, renderer.domElement, null);
+const footfalls = new Footfalls();
 // the boss as walk.separate() sees them: a body that is there and is not moved
 const bossBody = { get pos() { return player.pos; }, walking: false, fixed: true };
 player.onInteract = () => {
@@ -314,7 +315,7 @@ function beginNight() {
   // playSfx()/startLoop() builds their Audio element mid-event — the storm-out
   // clip in particular used to start fetching the moment a patron first gave up,
   // and be asked to play before it had buffered.
-  audio.preload("stormOut", "stingerKickoff", "stingerFinal", "crowdGroan", "crowdCheer", "sizzle", "pour");
+  audio.preload("footstepA", "footstepB", "stormOut", "stingerKickoff", "stingerFinal", "crowdGroan", "crowdCheer", "sizzle", "pour");
   passDisplays = new Map();
   broadcast = { gameNight: engine.gameNight, started: false, finished: false, win: null, us: 0, them: 0, clockText: "Q1 15:00", flicker: 0, tick: 0,
     usName: "MULES", themName: tn.opp ? tn.opp.short.toUpperCase() : "", home: tn.home,
@@ -834,6 +835,8 @@ renderer.setAnimationLoop(() => {
       // is somebody the room walks round.
       separate(currentLayout(), [...patrons, ...(moment ? [moment] : []), ...leavingMoments, ...servers, bossBody], simDt);
       leavingMoments = leavingMoments.filter(m => !m.gone);
+      // the crowd's feet: walk.js decides which few are heard (TG-37)
+      for (const f of footfalls.update([...patrons, ...(moment ? [moment] : []), ...leavingMoments, ...servers], player.pos, dt)) audio.playStep(f.vol);
       syncPassDisplays();
     } else if (phase === "day") {
       day.update(dt);

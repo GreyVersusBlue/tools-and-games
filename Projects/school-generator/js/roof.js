@@ -808,7 +808,7 @@ function cellsReachingInto(mask, loop, first = false) {
 // inside `a`, reversed, chain end to start into the loops. Refused: an edge
 // of one lying along the other or ending on it, `b` wholly inside `a` (a hole
 // is not a loop), and `a` a hole loop of the mask that `b` crosses.
-function ringMinus(a, b) {
+export function ringMinus(a, b) {
   const E = 1e-9;
   const cutsA = a.map(() => []), cutsB = b.map(() => []);
   for (let i = 0; i < a.length; i++) {

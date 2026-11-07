@@ -110,7 +110,12 @@
   function censusLine(cen) {
     if (!cen) return `No census: its ${count(censusGrid().angles * censusGrid().powers)} launches are among those.`;
     if (cen.wins === 0) return `None of the census's ${count(cen.total)} launches win, though: the window is narrower than its grid.`;
-    return `${share(cen)} of launches win (${count(cen.wins)} of ${count(cen.total)}).`;
+    // `anyway` is the wins that also win with every body removed (the judge's
+    // "decoration"). Said only when non-zero; at zero the sentence is the one
+    // #877 shipped, byte for byte.
+    const bare = cen.anyway === 0 ? "" : cen.anyway === cen.wins ? ", all of them would win with no bodies at all"
+      : `, ${count(cen.anyway)} of them would win with no bodies at all`;
+    return `${share(cen)} of launches win (${count(cen.wins)} of ${count(cen.total)})${bare}.`;
   }
 
   // ---- the judge ---------------------------------------------------------

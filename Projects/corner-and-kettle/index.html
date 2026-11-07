@@ -121,6 +121,33 @@ body{
   transition:background 1s linear;
   border-bottom:4px solid var(--espresso);
 }
+/* The first-shift guide (#1042): one cue and a Skip, in the free band above
+   the queue. Nothing in it moves or fades, so there is no reduced-motion line
+   to write: the cue changes when the player does the thing, and that is all. */
+#guideStrip{
+  position:absolute;top:6px;left:16px;right:16px;z-index:5;
+  display:flex;align-items:center;gap:10px;
+  min-height:28px;padding:3px 10px;box-sizing:border-box;
+  background:var(--cream);color:var(--espresso);
+  border:2px solid var(--espresso);border-radius:10px;
+  font-size:0.85rem;font-weight:700;
+}
+#guideStrip[hidden]{display:none;}
+#guideText{flex:1;}
+#guideCount{font-family:'Space Mono',monospace;font-size:0.75rem;font-weight:400;white-space:nowrap;}
+#guideSkip{
+  font:inherit;font-size:0.8rem;cursor:pointer;white-space:nowrap;
+  background:var(--cream-dark);color:var(--espresso);
+  border:2px solid var(--espresso);border-radius:8px;padding:1px 8px;
+}
+#guideSkip:hover{background:#fff;}
+#guideSkip:focus-visible{outline:3px solid #1f6feb;outline-offset:2px;}
+#guideBtn{
+  font-family:'Quicksand',sans-serif;font-weight:700;cursor:pointer;
+  background:#33422f;color:#f2ead7;border:1px solid #7a8a6f;border-radius:8px;
+  padding:6px 10px;margin:0 0 14px 0;width:100%;
+}
+#guideBtn:hover{background:#41563c;}
 #queueRow{
   position:absolute;
   bottom:0;left:0;right:0;
@@ -621,6 +648,11 @@ body{
 
 
   <div id="skystrip">
+    <div id="guideStrip" role="region" aria-label="First shift guide" hidden>
+      <span id="guideText" aria-live="polite"></span>
+      <span id="guideCount"></span>
+      <button type="button" id="guideSkip">Skip guide</button>
+    </div>
     <div id="queueRow"></div>
   </div>
 
@@ -648,6 +680,7 @@ body{
   <h2>Menu Board</h2>
   <button id="newGameBtn" title="Erase saved progress and start over">🗑️ New Game</button>
   <div id="save-bar"></div>
+  <button type="button" id="guideBtn" title="Show the first-shift guide again">❔ Show the first-shift guide</button>
   <div id="paceBox" role="group" aria-labelledby="paceTitle">
     <div id="paceTitle" class="chalk-section">Pace</div>
     <div id="paceRows"></div>

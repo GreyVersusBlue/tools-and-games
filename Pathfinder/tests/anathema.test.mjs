@@ -840,6 +840,13 @@ async function testEncounterBuilder(browser) {
     await setNumber(page, '#encSize', '13');
     await shows(page, 'a party size past 12 is held at 12', encBudgets, budgetLine(120, 220, 240, 360, 480));
     ok((await encInStorage(page))?.partySize === 12, '...and stored as 12', String((await encInStorage(page))?.partySize));
+    ok(await page.$eval('#encSize', el => el.value) === '13', '...while the field still reads what was typed');
+    await page.keyboard.press('Tab');
+    await shows(page, '...until it is left, when the field shows the held 12', p => p.$eval('#encSize', el => el.value), '12');
+    await setNumber(page, '#encLvl', '25');
+    ok(await page.$eval('#encLvl', el => el.value) === '25' && (await encInStorage(page))?.partyLevel === 20, 'a party level typed as 25 is held at 20 and stored so, the field still reading 25');
+    await page.keyboard.press('Tab');
+    await shows(page, '...and on leaving the field shows the held 20', p => p.$eval('#encLvl', el => el.value), '20');
 
     // a reload
     await setNumber(page, '#encSize', '6');
@@ -914,6 +921,61 @@ async function testEncounterBuilder(browser) {
   }
 }
 
+/* A stored encounter is repaired on load (loadEncounter), and each repair is
+   one of the clauses below. Each case seeds aa.encounter with one bad shape
+   beside good ones, loads the page and asserts what the builder then shows. */
+async function testEncounterRepair(browser) {
+  console.log('\na stored encounter is repaired on load: a count under 1, a party past its limits, a line with no _id');
+  const page = await cleanPage(browser, '#npc');
+  const hidden = sel => p => p.$eval(sel, el => el.hidden);
+  const seed = async enc => {
+    await page.evaluate(e => localStorage.setItem('aa.encounter', JSON.stringify(e)), enc);
+    await page.reload({ waitUntil: 'load' });
+    await waitFor(page, () => typeof S !== 'undefined' && !!S.manifest && S.cat === 'npc', { label: 'reloaded with a seeded encounter' });
+    if (await page.$eval('#encBody', el => el.hidden)) await click(page, '#encToggle');
+  };
+  const party = async () => [await page.$eval('#encLvl', el => el.value), await page.$eval('#encSize', el => el.value)];
+  try {
+    const good = { _id: 'g1', name: 'Good One', level: 3, count: 2 };
+    await seed({ list: [good, { _id: 'z0', name: 'Zero Count', level: 1, count: 0 }, { _id: 'n1', name: 'Negative Count', level: 1, count: -4 },
+      { _id: 'w1', name: 'Word Count', level: 1, count: 'many' }], partyLevel: 3, partySize: 4 });
+    await shows(page, 'a count of 0, -4 or a word is read as 1 and a good count is kept', encRows,
+      [['Good One', 'Lv 3', '2'], ['Zero Count', 'Lv 1', '1'], ['Negative Count', 'Lv 1', '1'], ['Word Count', 'Lv 1', '1']]);
+    ok(await textOf(page, '#encN') === '(5)', '...and the bar counts 5', String(await textOf(page, '#encN')));
+    await shows(page, '...and the bar is shown, with the total worked from the repaired counts: 5 creatures, 2 at level 3 (40 each) and 3 at level 1 (20 each) for a level-3 party = 140', encHeadline, '140 XP — Extreme');
+
+    await seed({ list: [good], partyLevel: 99, partySize: 99 });
+    await shows(page, 'a party level 99 and size 99 are held at 20 and 12', party, ['20', '12']);
+    await seed({ list: [good], partyLevel: 0, partySize: -3 });
+    await shows(page, 'a party level 0 reads as 1, and a size of -3 is held at 1', party, ['1', '1']);
+    await seed({ list: [good], partyLevel: 'x', partySize: 'y' });
+    await shows(page, 'a party that is not a number falls back to level 1, four strong', party, ['1', '4']);
+    await seed({ list: [good] });
+    await shows(page, 'a stored encounter with no party falls back to level 1, four strong', party, ['1', '4']);
+
+    await seed({ list: [good, { name: 'No Id', level: 1, count: 1 }, { _id: 'nn', level: 1, count: 1 }, { _id: 'nl', name: 'No Level', count: 1 }, null, 7], partyLevel: 3, partySize: 4 });
+    await shows(page, 'a line with no _id, no name or no level, and entries that are not lines, are dropped', encRows, [['Good One', 'Lv 3', '2']]);
+    ok(await textOf(page, '#encN') === '(2)', '...and the bar counts what is left', String(await textOf(page, '#encN')));
+
+    await seed({ list: [{ _id: 'l0', name: 'Level Zero', level: 0, count: 1 }], partyLevel: 1, partySize: 4 });
+    await shows(page, 'a creature of level 0 is kept: the level test is "not null", not "truthy"', encRows, [['Level Zero', 'Lv 0', '1']]);
+
+    await page.evaluate(() => localStorage.setItem('aa.encounter', '{not json'));
+    await page.reload({ waitUntil: 'load' });
+    await waitFor(page, () => typeof S !== 'undefined' && !!S.manifest && S.cat === 'npc', { label: 'reloaded with unreadable storage' });
+    await shows(page, 'unreadable storage leaves an empty encounter, no bar count', p => textOf(p, '#encN'), '');
+    await shows(page, '...and the bar is still shown in the creature scope', hidden('#encbar'), false);
+    await page.evaluate(() => localStorage.setItem('aa.encounter', JSON.stringify({ list: 'nope', partyLevel: 9 })));
+    await page.reload({ waitUntil: 'load' });
+    await waitFor(page, () => typeof S !== 'undefined' && !!S.manifest && S.cat === 'npc', { label: 'reloaded with a list that is not a list' });
+    if (await page.$eval('#encBody', el => el.hidden)) await click(page, '#encToggle');
+    await shows(page, 'a stored list that is not a list is ignored whole, party and all', party, ['1', '4']);
+  } finally {
+    await page.evaluate(() => localStorage.clear());
+    await page.close();
+  }
+}
+
 /* ============================ 11. resizing the window ============================ */
 /* The list draws only the rows that fit its height, plus ten. The resize
    listener promises one thing: when the window changes size the rows are
@@ -978,6 +1040,7 @@ const SURFACE = {
   '#encToggle click': 'testEncounterBuilder', '#encbar click': 'testEncounterBuilder', '#encbar input': 'testEncounterBuilder',
   'closest [data-enc]': 'testEncounterBuilder', 'data-enc inc': 'testEncounterBuilder', 'data-enc dec': 'testEncounterBuilder',
   'data-enc del': 'testEncounterBuilder', 'data-enc clear': 'testEncounterBuilder',
+  '#encbar change': 'testEncounterBuilder',
   'closest .encadd': 'testEncounterBuilder', 'closest .encaddbtn': 'testEncounterBuilder',
   '#detail click': 'testFilters', 'closest .star': 'testBookmarkRoundTrip', 'closest .trait[data-trait]': 'testFilters',
   'closest a.ref': 'testListNavigation',
@@ -1033,7 +1096,7 @@ async function testInteractionSurface() {
 /* ============================ run ============================ */
 const tests = [testLevelBar, testShardSync, testHashRouting, testBookmarkResolution,
   testFilters, testDeepSearch, testBookmarkRoundTrip, testListNavigation, testCategoryDuringAllLoad,
-  testEncounterBuilder, testWindowResize];
+  testEncounterBuilder, testEncounterRepair, testWindowResize];
 await testInteractionSurface();
 const only = (process.env.ANATHEMA_ONLY || '').split(',').filter(Boolean);
 if (only.length) {

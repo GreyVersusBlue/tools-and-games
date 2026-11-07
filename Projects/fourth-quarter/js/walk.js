@@ -271,3 +271,60 @@ export function separate(desc, bodies, dt) {
   }
   return touching;
 }
+
+// ---- footfalls (TG-37) ----
+//
+// Which of the bodies that are walking should be heard taking a step this
+// frame. Pure logic, no audio: main.js hands the answer to audio.playStep().
+// A one-shot is a cloned <audio> element per play, so a peak hour with fifty
+// bodies on the floor cannot start a clone per stride per body (about 60 a
+// second). Three limits, each its own constant:
+//   - a body steps once per STRIDE metres it actually covers, measured off
+//     its position, so a body held still by separate() is silent and the
+//     sim speed does not change the cadence per metre;
+//   - only bodies inside STEP_EARSHOT metres of the listener count, and of
+//     those due this frame only the STEP_NEAREST nearest;
+//   - the whole room gets STEP_RATE steps a second of real time, as a token
+//     bucket that holds at most STEP_BURST (more than STEP_NEAREST, or the
+//     nearest-few rule would never be the one that bites).
+// The volume multiplier falls with the square of the distance. The numbers
+// were picked without anyone listening.
+
+export const STRIDE = 0.75;
+export const STEP_EARSHOT = 9;
+export const STEP_NEAREST = 3;
+export const STEP_RATE = 6;
+export const STEP_BURST = 4;
+
+export class Footfalls {
+  constructor() { this.seen = new WeakMap(); this.tokens = STEP_BURST; }
+
+  /** bodies: as separate() takes them; listener: {x, z}; realDt: seconds of
+   *  wall clock since the last call. Returns [{ body, d, vol }], nearest first. */
+  update(bodies, listener, realDt) {
+    this.tokens = Math.min(STEP_BURST, this.tokens + STEP_RATE * Math.max(0, realDt));
+    const due = [];
+    for (const b of bodies) {
+      if (b.fixed || b.solid === false || !b.pos) continue;
+      let s = this.seen.get(b);
+      if (!s) { s = { x: b.pos.x, z: b.pos.z, run: 0 }; this.seen.set(b, s); }
+      const moved = Math.hypot(b.pos.x - s.x, b.pos.z - s.z);
+      s.x = b.pos.x; s.z = b.pos.z;
+      // a jump (a body put back on its post) is not a stride
+      if (!b.walking || moved > STRIDE) { s.run = 0; continue; }
+      s.run += moved;
+      if (s.run < STRIDE) continue;
+      s.run %= STRIDE;
+      const d = Math.hypot(b.pos.x - listener.x, b.pos.z - listener.z);
+      if (d < STEP_EARSHOT) due.push({ body: b, d, vol: (1 - d / STEP_EARSHOT) ** 2 });
+    }
+    due.sort((p, q) => p.d - q.d);
+    const out = [];
+    for (const f of due) {
+      if (out.length >= STEP_NEAREST || this.tokens < 1) break;
+      this.tokens -= 1;
+      out.push(f);
+    }
+    return out;
+  }
+}

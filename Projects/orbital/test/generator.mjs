@@ -22,7 +22,7 @@
 //   4. A recipe that cannot make a level inside the candidate cap hands back
 //      null rather than looping, and says how many it tried.
 //   5. The census the editor's Check prints (#877) is this one: the same
-//      draft reads the same figure however it is sliced, three shipped levels'
+//      draft reads the same figure however it is sliced, six shipped levels' lines and two rolled ones'
 //      lines are pinned, and the two zero cases each have their own sentence.
 //
 // Exits non-zero on any failure (locked decision #13).
@@ -226,11 +226,34 @@ console.log("\n6. The census line the editor's Check prints");
     return a === 1 / 1200 && r.progress === 1;
   })());
 
-  const PIN = { 2: "1.4% of launches win (17 of 1,200).", 12: "12.7% of launches win (152 of 1,200).", 17: "0.8% of launches win (9 of 1,200)." };
+  const PIN = { 2: "1.4% of launches win (17 of 1,200).", 12: "12.7% of launches win (152 of 1,200), 27 of them would win with no bodies at all.", 17: "0.8% of launches win (9 of 1,200), all of them would win with no bodies at all." };
   for (const i of Object.keys(PIN)) {
     const line = G.censusLine(i === "2" ? one : G.census(draft(+i)));
     check(`"${LEVELS[i].name}" reads "${PIN[i]}"`, line === PIN[i], line);
   }
+  // The census's second count, said only when it is not zero: wins that would
+  // win with every body removed. Shipped: The Curve (2 of 24) and First Light (all
+  // 18) here, First Portal (27 of 152) and The Long Way (all 9) in PIN above;
+  // rolled: easy seeds 3 and 4. Slingshot's PIN is the zero case, byte for byte.
+  const TAIL = " would win with no bodies at all.";
+  const named = n => LEVELS.find(l => l.name === n);
+  const ANY = {
+    "The Curve": "2.0% of launches win (24 of 1,200), 2 of them" + TAIL,
+    "First Light": "1.5% of launches win (18 of 1,200), all of them" + TAIL
+  };
+  for (const n of Object.keys(ANY)) {
+    const line = G.censusLine(G.census(C.clean(named(n))));
+    check(`"${n}" reads "${ANY[n]}"`, line === ANY[n], line);
+  }
+  const ROLLED_LINE = {
+    "easy seed 3": "23 of 1,200), 2 of them", "easy seed 4": "21 of 1,200), 5 of them"
+  };
+  for (const tag of Object.keys(ROLLED_LINE)) {
+    const line = G.censusLine(made[tag].census);
+    check(`${tag} reads ${ROLLED_LINE[tag]}${TAIL}`, line.endsWith(ROLLED_LINE[tag] + TAIL) && /^\d+\.\d% of launches win \(/.test(line), line);
+  }
+  check("a level whose wins all need a body says nothing of the empty field",
+    !/no bodies/.test(G.censusLine(made["easy seed 1"].census)), G.censusLine(made["easy seed 1"].census));
   // The marker widened from 40 to 60, which is the edit browser.mjs makes.
   const wide = draft(2); wide.goal.r = 60;
   const wl = G.censusLine(G.census(wide));

@@ -226,5 +226,80 @@ section(15, () => {
   check('story walk: the morning after a fire, behind a grown kiln, the rain\'s ground gets its name', out.lp.join() === 'rainscame' && out.spot && out.n === 1 && out.days === 1, JSON.stringify(out));
 });
 
+// ---- a deer across a narrow neck (TG-48) ----
+// Two meadows, 20 by 5 and 8 by 5, with a two-tile strip of sea between them, and a woodcutter on the west one. The flight straight
+// away from the axe ends on the far meadow, which used to be enough: the deer ran to the shore and stood there.
+section(16, () => {
+  const rig = (land) => {
+    const h = fresh();
+    h.ev(`(()=>{tiles.fill(WATER);for(const [x0,x1,y0,y1] of ${JSON.stringify(land)})for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++)tiles[idx(x,y)]=GRASS;
+      trees=[];people=[];wild=[];fires=[];rain=false;storm=false;time=dayLen*.4;snowD=0})()`);
+    return h;
+  };
+  const flee = (h, deer, from) => h.ev(`(()=>{const w={k:'deer',x:${deer[0]},y:${deer[1]},tx:0,ty:0,home:{x:${deer[0]},y:${deer[1]},hp:1},st:'graze',t:9,chk:0,f:1};trees=[w.home];
+    people=[{name:'T',x:${from[0]},y:${from[1]},task:'chop',inside:false,dead:false,child:false}];wild=[w];stepWild(.01);
+    return {st:w.st,tx:w.tx,ty:w.ty,dry:dryRoute(w.x,w.y,w.tx,w.ty)}})()`);
+  let h = rig([[10, 29, 10, 14], [32, 39, 10, 14]]);
+  let o = flee(h, [28.5, 12.5], [25, 12.5]);
+  check('deer: scared at the neck, it picks a flight that stays on land', o.st === 'flee' && o.dry && h.ev(`landAt(${o.tx},${o.ty})`), JSON.stringify(o));
+  check('deer: and the flight is on its own meadow, not the far side of the water', o.tx < 31, JSON.stringify(o));
+  // the same deer with the axe on the east side flees west along the long meadow, as any deer does
+  o = flee(h, [20.5, 12.5], [23, 12.5]);
+  check('deer: with room behind it the flight is the one it always was, straight away', o.st === 'flee' && o.dry && o.tx < 20.5, JSON.stringify(o));
+  // nowhere dry to go at all: one tile of grass in the sea. The old behaviour stays, and nothing throws or goes non-finite.
+  h = rig([[20, 20, 12, 12]]);
+  o = flee(h, [20.5, 12.5], [19, 12.5]);
+  check('deer: on a one-tile island there is no dry route, and it flees anyway', o.st === 'flee' && !o.dry && isFinite(o.tx) && isFinite(o.ty), JSON.stringify(o));
+  check('deer: and no warning was raised', h.warns.length === 0, h.warns.join(';'));
+});
+
+// ---- a lone child (TG-48) ----
+section(17, () => {
+  const lone = (setup) => {
+    const h = fresh();
+    h.ev(`for(let i=0;i<2800*6;i++)step(.05)`);
+    h.ev(`(()=>{const k=addPerson(center.x,center.y,{child:true,age:6,name:'Tam',parents:[],how:'test'});k.age0=6;k.born=dayCount;k.child=true;k.keeper=1;
+      for(const p of people)if(p!==k)p.dead=true;people=[k];arrivalT=1e9;tgt=null;${setup}})()`);
+    return h;
+  };
+  const days = (h, n) => h.ev(`(()=>{const t={};let alone=true;for(let i=0;i<2800*${n};i++){arrivalT=1e9;step(.05);if(people.length!==1){alone=false;break}t[people[0].task]=(t[people[0].task]||0)+1}return {t,alone,n:people.length}})()`);
+  // a dry summer, a well, and a field wanting water: the child fetches it
+  let h = lone(`dry01=1;if(!hasB('well'))bldg.push({kind:'well',x:center.x+3,y:center.y+3,w:2,h:2,done:true});for(const f of farms)f.g=0;`);
+  let r = days(h, 2);
+  check('lone child: a dry field and a well, and the child fetches water', r.alone && (r.t.water || 0) > 0, JSON.stringify(r));
+  // ripe grain: the child cuts it
+  h = lone(`dry01=0;for(const f of farms)f.g=1;`);
+  r = days(h, 1);
+  check('lone child: ripe fields, and the child cuts them', r.alone && (r.t.harvest || 0) > 0, JSON.stringify(r));
+  // the chronicle says it once
+  const e = h.ev(`events.filter(e=>e.kind==='keeperwork').length`);
+  check('lone child: one chronicle line the first time, however many fields', e === 1, String(e));
+  const e2 = days(h, 4) && h.ev(`events.filter(e=>e.kind==='keeperwork').length`);
+  check('lone child: and still one after four more days of it', e2 === 1, String(e2));
+  // nothing to do in the fields: the shore and the fire, as before
+  h = lone(`dry01=0;farms.length=0;`);
+  r = days(h, 1);
+  check('lone child: no fields to work, and they tend the shore and the fire as before', r.alone && (r.t.tend || 0) > 0 && !r.t.water && !r.t.harvest, JSON.stringify(r));
+  // and a child with a grown one on the island plays, as before
+  h = fresh(); h.ev('for(let i=0;i<2800*6;i++)step(.05)');
+  h.ev(`(()=>{const k=addPerson(center.x,center.y,{child:true,age:6,name:'Tam',parents:[],how:'test'});k.age0=6;k.born=dayCount;k.child=true;k.task='idle';k.t=0;
+    for(const f of farms)f.g=1;dry01=1})()`);
+  r = h.ev(`(()=>{const k=byName('Tam'),t={};for(let i=0;i<2800;i++){arrivalT=1e9;step(.05);t[k.task]=(t[k.task]||0)+1}return t})()`);
+  check('lone child: with a grown one about, a child does not cut the grain', !r.harvest && !r.water, JSON.stringify(r));
+  check('lone child: no warnings', h.warns.length === 0, h.warns.join(';'));
+});
+
+// ---- a feud and an old death on one morning (TG-48) ----
+// newDay called feudDay near its top and the old-age deaths ran after it, so a feud whose second name died that same morning stood
+// naming nobody until the next one, and `strain`'s daily audit read it on seed 20260819 day 39 once the deer changed the stream.
+section(18, () => {
+  const { ev } = fresh();
+  ev('for(let i=0;i<2800*4;i++)step(.05)');
+  const o = ev(`(()=>{const ad=people.filter(p=>!isKid(p)&&!p.dead);const a=ad[0],b=ad[1];arrivalT=1e9;
+    a.age0=30;a.born=dayCount;b.age0=95;b.born=dayCount;startFeud(a,b);const names=[a.name,b.name];
+    newDay();return {feud:!!feud,alive:!!byName(names[1]),aliveA:!!byName(names[0])}})()`);
+  check('feud: the old die in newDay after the first feudDay, and the feud ends that morning, not a day on', o.alive === false && o.aliveA && o.feud === false, JSON.stringify(o));
+});
+
 console.log(`${fail ? 'FAIL' : 'PASS'}: ${pass} of ${pass + fail} unit checks`);
 process.exit(fail ? 1 : 0);

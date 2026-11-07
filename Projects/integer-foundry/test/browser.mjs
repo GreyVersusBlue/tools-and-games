@@ -359,7 +359,7 @@ try {
     const needs = await p.$eval('.sink-target', el => el.textContent.trim());
     t.ok(needs === 'NEEDS 47', 'an impossible order is pulled down to the board\'s ceiling on load', needs);
     const hint = await p.$eval('#grid .cell.sink', el => el.title);
-    t.ok(/46 fabricators/.test(hint), 'and the sink says what it would take', hint);
+    t.ok(/46 tiles/.test(hint) && !/fabricator/.test(hint), 'and the sink says what it would take', hint);
     // Read through querySelector rather than $eval: a missing cost line is a
     // failed assertion with a name on it, not an abort that takes the rest of
     // the file with it.
@@ -428,7 +428,7 @@ try {
     t.ok(sink.needs === 'NEEDS 231', 'a three-digit order survives the load with x2 unlocked', sink.needs);
     t.ok(sink.cost === '12 tiles', 'and the tile says what it costs, which is twelve', String(sink.cost));
     t.ok(!sink.clipped, 'the cost line fits the cell');
-    t.ok(/12 fabricators/.test(sink.title), 'the tooltip still carries the recipe', sink.title);
+    t.ok(/12 tiles/.test(sink.title) && !/fabricator/.test(sink.title), 'the tooltip still carries the recipe', sink.title);
 
     // Devon's answer to Q47 (#920): once x2 is owned the cost is the loud number.
     const loud = await readCosts(p);
@@ -635,12 +635,30 @@ try {
       'the new sink asks for something inside the same share', `${second.needs}, ${second.cost}`);
     // One sentence a sink, in sink order, and the cut order's sentence moved with it.
     const both = await readCosts(p);
-    t.ok(both.lines.length === 2 && both.lines[0] === 'Order 23 takes 22 tiles. Cheapest line: 22\u00D7 +1.'
-      && both.lines[1] === `Order ${want} takes ${want - 1} tiles. Cheapest line: ${want - 1}\u00D7 +1.`,
+    // The new sink's roll can land on 23 too, and then both sentences say which sink they are.
+    const pre = n => (want === 23 ? `Sink ${n}: ` : '');
+    t.ok(both.lines.length === 2 && both.lines[0] === pre(1) + 'Order 23 takes 22 tiles. Cheapest line: 22\u00D7 +1.'
+      && both.lines[1] === `${pre(2)}Order ${want} takes ${want - 1} tiles. Cheapest line: ${want - 1}\u00D7 +1.`,
       'the floor has a sentence for each sink, first sink first', both.lines.join(' | '));
     const log = await p.evaluate(() => [...document.querySelectorAll('#log div')].map(e => e.textContent.trim()));
     t.ok(log.includes('Order 47 cut to 23: 2 sinks share the floor now.'),
       'and the log says what happened to the 47', log.slice(0, 3).join(' | '));
+    // Two sinks holding the same number: each sentence names its sink, and only then.
+    await p.evaluate(k => {
+      const set = localStorage.setItem.bind(localStorage);
+      const raw = JSON.parse(localStorage.getItem(k));
+      raw.sinks[0].target = 23; raw.sinks[1].target = 23;
+      localStorage.setItem = () => {};
+      set(k, JSON.stringify(raw));
+    }, KEY);
+    await p.reload({ waitUntil: 'load' });
+    await GAMES['integer-foundry'].open(p);
+    const twins = await readCosts(p);
+    t.ok(twins.lines.length === 2
+      && twins.lines[0] === 'Sink 1: Order 23 takes 22 tiles. Cheapest line: 22\u00D7 +1.'
+      && twins.lines[1] === 'Sink 2: Order 23 takes 22 tiles. Cheapest line: 22\u00D7 +1.'
+      && twins.head[0] === 'Sink 1: Order 23 takes 22 tiles.',
+      'two sinks holding the same order: each sentence names its sink', twins.lines.join(' | '));
     await shot(p, 'second-sink-cut');
   }
 
