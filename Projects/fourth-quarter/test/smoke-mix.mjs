@@ -60,7 +60,7 @@ const audio = await import("../js/audio.js");
 const FILES = audio.files();
 const KEYS = Object.keys(FILES);
 
-ok(KEYS.length === 15, `audio.js plays 15 sounds (${KEYS.length})`);
+ok(KEYS.length === 16, `audio.js plays 16 sounds (${KEYS.length})`);
 ok(KEYS.every((k) => typeof audio.TRIM[k] === "number" && audio.TRIM[k] > 0 && audio.TRIM[k] <= 1), "every one has a trim over 0 and no more than 1: " + KEYS.filter((k) => !(audio.TRIM[k] > 0 && audio.TRIM[k] <= 1)).join(" "));
 ok(Object.keys(audio.TRIM).every((k) => FILES[k]), "and the trim table names no sound that is not there: " + Object.keys(audio.TRIM).filter((k) => !FILES[k]).join(" "));
 ok(audio.MASTER === 0.8, "the master volume is 0.8, as it was");
@@ -147,7 +147,7 @@ const ROLE = {
   orderDing: "cue", ticketReady: "cue", cashRegister: "cue", qteHit: "cue", qteMiss: "cue",
   stingerKickoff: "cue", stingerFinal: "cue",
   uiClick: "ui", uiOpen: "ui", uiClose: "ui",
-  crowdGroan: "crowd", stormOut: "crowd", barBed: "bed",
+  crowdGroan: "crowd", crowdCheer: "crowd", stormOut: "crowd", barBed: "bed",
   sizzle: "work", pour: "work",
 };
 // What played on 2026-10-07, when Devon said "Sound levels are a bit all over
@@ -157,7 +157,7 @@ const OFTEN = {
   orderDing: "every order, and each event card", ticketReady: "every ticket the kitchen finishes", cashRegister: "every sale",
   qteHit: "a QTE landed", qteMiss: "a QTE missed", stingerKickoff: "once a night", stingerFinal: "once a night",
   uiClick: "buttons, mostly by day", uiOpen: "a panel opened", uiClose: "a panel closed",
-  crowdGroan: "once, on a loss, with the whistle", stormOut: "every walkout, 13 s each, several at once on a bad night",
+  crowdGroan: "once, on a loss, with the whistle", crowdCheer: "once, on a win, with the whistle", stormOut: "every walkout, 13 s each, several at once on a bad night",
   barBed: "the whole night", sizzle: "while searing", pour: "while pouring",
 };
 const rows = [];
@@ -172,7 +172,7 @@ for (const key of KEYS) {
   }
 }
 const row = (key) => rows.find((r) => r.key === key); // the loudest the key is played
-ok(rows.length === 16 && KEYS.every((k) => ROLE[k]), `16 rows, a role for each of the 15 sounds and a second row for the staff's register (${rows.length})`);
+ok(rows.length === 17 && KEYS.every((k) => ROLE[k]), `17 rows, a role for each of the 16 sounds and a second row for the staff's register (${rows.length})`);
 
 // ---- the bands ----
 const CUE = -26; // LUFS, the loudest 400 ms of a foreground one-shot at the master volume
@@ -212,14 +212,37 @@ ok(row("barBed").loudest <= Math.min(...rows.filter((r) => !r.loop).map((r) => r
 const three = row("stormOut").level + 10 * Math.log10(3);
 ok(three <= CUE - 5, `three walkouts sounding at once (${three.toFixed(1)}) are still 5 dB under a cue`);
 ok(row("crowdGroan").level <= row("stingerFinal").level - 6, "the groan sits at least 6 dB under the whistle it plays with");
+// The cheer (TG-36) came after the cut and was never heard, so it has no
+// "before" to be 12 dB under. It stands in for the groan on a win, so it is
+// held level with the groan, and under the whistle by the same margin.
+{
+  const cheer = row("crowdCheer") || { level: NaN, loudest: NaN }, groan = row("crowdGroan");
+  ok(Math.abs(cheer.level - groan.level) <= 0.5, `the cheer (${cheer.level.toFixed(1)}) is level with the groan (${groan.level.toFixed(1)}), to 0.5 dB`);
+  ok(cheer.loudest <= groan.loudest + 0.5, "and no louder than the groan at its loudest 400 ms");
+  ok(cheer.level <= row("stingerFinal").level - 6, "the cheer sits at least 6 dB under the whistle it plays with");
+}
+// Which crowd sound answers the whistle. A cheer on a loss reads the same to
+// every number above, so the call itself is pinned: one call in the final
+// whistle's case, after the whistle, picking the cheer when the Mules won.
+{
+  const src = readFileSync(join(ROOT, "js", "main.js"), "utf8");
+  const final = src.slice(src.indexOf('case "final":'), src.indexOf("break;", src.indexOf('case "final":')));
+  const answer = final.match(/audio\.playSfx\(([^)]*"crowd(?:Cheer|Groan)"[^)]*)\)/g) || [];
+  ok(final.indexOf('audio.playSfx("stingerFinal")') >= 0 && answer.length === 1 && final.indexOf(answer[0]) > final.indexOf('audio.playSfx("stingerFinal")'),
+    `the final whistle's case plays the whistle and then one crowd answer (${answer.join("; ") || "none"})`);
+  ok(/^audio\.playSfx\(\s*e\.win\s*\?\s*"crowdCheer"\s*:\s*"crowdGroan"\s*\)$/.test(answer[0] || ""), "and that answer is the cheer when e.win and the groan when not");
+  ok(calls.filter((c) => c.key === "crowdCheer" || c.key === "crowdGroan").every((c) => c.where.startsWith("main.js")) && calls.filter((c) => c.key === "crowdCheer").length === 1,
+    "nothing else in js/ plays the cheer or the groan");
+}
 
 // ---- headroom ----
 // The sets below are what the code fires on one tick over what is already
 // looping. The sum of their sample peaks is the most the output can reach.
-const peakSum = (keys, f = "peak") => keys.reduce((s, k) => s + (typeof k === "string" ? row(k)[f] : k[1] * row(k[0])[f]), 0);
+const peakSum = (keys, f = "peak") => keys.reduce((s, k) => s + (typeof k === "string" ? (row(k) || {})[f] : k[1] * row(k[0])[f]), 0);
 const TICK = {
   "kickoff, mid-sear": ["barBed", "sizzle", "stingerKickoff"],
   "the final whistle on a loss, mid-sear": ["barBed", "sizzle", "stingerFinal", "crowdGroan"],
+  "the final whistle on a win, mid-sear": ["barBed", "sizzle", "stingerFinal", "crowdCheer"],
   "a QTE scored as its loop fades": ["barBed", "sizzle", "qteMiss"],
   "a ticket comes ready, mid-sear": ["barBed", "sizzle", "ticketReady"],
 };
@@ -238,7 +261,9 @@ ok(dB(peakSum(PILE)) <= 6 && dB(peakSum(PILE, "peakBefore")) > 11.9, `the same p
 if (process.argv.includes("--table")) {
   console.log("\n| Sound | Role | Fires | File | File, LUFS | Peak, dBFS | Gain before | Heard before | Gain now | Now, LUFS | Change |");
   console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
-  for (const r of rows) console.log(`| \`${r.key}\`${r.vol < 1 ? " × " + r.vol : ""} | ${r.role} | ${OFTEN[r.key]}${r.vol < 1 ? ", by staff" : ""} | \`${r.file.replace("audio/", "")}\` | ${r.fileLevel.toFixed(1)}${r.loop ? " I" : ""} | ${LEVELS[r.file].peak.toFixed(1)} | ${+r.was.toFixed(3)} | ${r.before.toFixed(1)} | ${+r.gain.toFixed(3)} | ${r.level.toFixed(1)} | ${f1(r.level - r.before)} dB |`);
+  const NEW = ["crowdCheer"]; // added after 2026-10-07, so never heard at the old gains
+  for (const r of rows) { const n = NEW.includes(r.key);
+    console.log(`| \`${r.key}\`${r.vol < 1 ? " × " + r.vol : ""} | ${r.role} | ${OFTEN[r.key]}${r.vol < 1 ? ", by staff" : ""} | \`${r.file.replace("audio/", "")}\` | ${r.fileLevel.toFixed(1)}${r.loop ? " I" : ""} | ${LEVELS[r.file].peak.toFixed(1)} | ${n ? "new" : +r.was.toFixed(3)} | ${n ? "new" : r.before.toFixed(1)} | ${+r.gain.toFixed(3)} | ${r.level.toFixed(1)} | ${n ? "new" : f1(r.level - r.before) + " dB"} |`); }
 }
 
 console.log(`${pass} passed, ${fail} failed`);

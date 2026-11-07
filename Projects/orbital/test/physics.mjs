@@ -13,7 +13,7 @@
 // brute-forces a launch vector for every one of them and fails loudly if it
 // can't find one. Exits non-zero on any failure (locked decision #13).
 //
-// The save checks import js/save.mjs, the module the page itself loads, and
+// The save checks import js/save.js, the module the page itself loads, and
 // hand its slot a Map behind localStorage's three methods. Nothing of the slot
 // or of the v1 carry-over is rebuilt here. `test/fixtures/progress-eb2806c.json`
 // is what the build before the slot (eb2806c, 2026-10-07) wrote for a made-up
@@ -176,7 +176,7 @@ for (const type of ["planet", "star", "rock", "blackhole"]) {
 console.log("\n5. The save");
 {
   const { SAVE_KEY, SAVE_VERSION, makeSlot, loadProgress, repair } =
-    await import(pathToFileURL(path.join(JS, "save.mjs")).href);
+    await import(pathToFileURL(path.join(JS, "save.js")).href);
   const store = () => {
     const m = new Map();
     return { m, getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) };

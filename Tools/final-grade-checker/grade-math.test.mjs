@@ -11,7 +11,7 @@
 import {
   getLetter, getQP, qpToFinalLetter, calcFinals, toScore,
   parseGradeToken, splitRow, parsePastedData, findQuarterWindow, isGradeCell,
-} from './grade-math.mjs';
+} from './grade-math.js';
 
 let passed = 0, failed = 0;
 const fails = [];
@@ -319,7 +319,7 @@ console.log(`${passed} passed, 0 failed`);
 
 // ── BREAKAGE LOG (locked decision #34) ───────────────────────
 //
-// Each of these was applied to grade-math.mjs, the suite run, the failures
+// Each of these was applied to grade-math.js, the suite run, the failures
 // counted, then reverted. A case nobody has watched fail is a case that might
 // not be able to fail.
 //

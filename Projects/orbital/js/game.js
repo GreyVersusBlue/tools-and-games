@@ -16,7 +16,7 @@ PACKS.forEach(p => p.levels.forEach((lv, i) => {
 }));
 
 // ---- persistence (by stable key, so new packs never shift old progress) ----
-// The slot, its key and the v1 carry-over are js/save.mjs, which index.html
+// The slot, its key and the v1 carry-over are js/save.js, which index.html
 // runs ahead of this file. Only the two calls are here.
 let progress = OrbitalSave.load();
 const starsFor = a => a <= 1 ? 3 : a <= 3 ? 2 : 1;

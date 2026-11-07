@@ -167,7 +167,8 @@ test('the sample school: the Learning Commons moves, and nothing without a curta
   const lc = row('Learning Commons');
   near(lc.glazed, 343.58, 0.01, 'glass');
   near(lc.ratio, 0.6118, 0.0001, 'ratio');
-  near(lc.adf, 10.96, 0.01, 'daylight factor');
+  // 10.96 at the stated 0.5; its maple floor reads 0.44 (TG-41).
+  near(lc.adf, 10.21, 0.01, 'daylight factor');
   near(lc.sky, 85.25, 0.01, 'sky');
   // The office's 24 ft glazed front onto the Main Hall: 240 ft² before.
   assert.equal(row('Office').borrowed, 288);
@@ -180,11 +181,13 @@ test('the sample school: the Learning Commons moves, and nothing without a curta
   // no storey over it, where the two heights were always the same 10 ft.
   const same = [
     ['Room 101', 0, 70, 0.1042, 2.16], ['Room 102', 0, 70, 0.1042, 2.16],
-    ['Room 103', 0, 70, 0.1042, 2.16], ['Stair Hall', 0, 70, 0.1042, 2.16],
-    ['Office', 0, 70, 0.1042, 2.16], ['Room 105', 0, 112, 0.1167, 2.57],
+    // The four with a finish set read it (TG-41); each was 2.16 at the
+    // stated 0.5: terrazzo 2.07, the Office's carpet and paint 1.91, carpet 1.94.
+    ['Room 103', 0, 70, 0.1042, 2.16], ['Stair Hall', 0, 70, 0.1042, 2.07],
+    ['Office', 0, 70, 0.1042, 1.91], ['Room 105', 0, 112, 0.1167, 2.57],
     ['Room 106', 0, 126, 0.1193, 2.67], ['Room 201', 1, 70, 0.1042, 2.16],
-    ['Media Center', 1, 70, 0.1042, 2.16], ['Room 203', 1, 70, 0.1042, 2.16],
-    ['Stair Hall', 1, 70, 0.1042, 2.16], ['Room 205', 1, 112, 0.1167, 2.57],
+    ['Media Center', 1, 70, 0.1042, 1.94], ['Room 203', 1, 70, 0.1042, 2.16],
+    ['Stair Hall', 1, 70, 0.1042, 2.07], ['Room 205', 1, 112, 0.1167, 2.57],
     ['Room 206', 1, 224, 0.1296, 3.06],
   ];
   for (const [name, floor, glazed, ratio, adf] of same) {
