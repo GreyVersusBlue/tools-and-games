@@ -868,8 +868,8 @@ outside CI on purpose (#353).
   that moved `spawnFactor()` or `patienceFactor()` would show up, and would
   also be a permanent multiplier stacking on a permanent multiplier, which is
   why this phase did not reach for one.
-- **A tutorial.** The first shift explains nothing; the chalkboard is a wall of
-  prices.
+- **A tutorial.** Done on 2026-11-07 (#1042): five skippable cues on a new
+  game, played by no person. See HISTORY.
 - **Difficulty presets.** Done on 2026-10-10 (#947) to Devon's four answers
   of 2026-10-07, and played by no person:
   - *Two paces.* Busy Corner is the game as it was and what every save

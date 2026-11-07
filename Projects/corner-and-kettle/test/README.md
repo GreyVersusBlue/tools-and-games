@@ -4,10 +4,10 @@ Four suites and an autopilot. All exit non-zero on any failure (locked
 decision #13).
 
 ```
-node Projects/corner-and-kettle/test/smoke-sim.mjs     638 assertions, no browser, seeded
-node Projects/corner-and-kettle/test/smoke-save.mjs    261 assertions, no browser
+node Projects/corner-and-kettle/test/smoke-sim.mjs     664 assertions, no browser, seeded
+node Projects/corner-and-kettle/test/smoke-save.mjs    278 assertions, no browser
 node Projects/corner-and-kettle/test/balance.mjs       100 seeds × 30 days × 3 players, three bands and the two paces, about 7 minutes (3.5 before #1031)
-node Projects/corner-and-kettle/test/drive-save.mjs    297 checks, real browser
+node Projects/corner-and-kettle/test/drive-save.mjs    322 checks, real browser
 ```
 
 `drive-save.mjs --a11y` runs its section 15 alone (31 checks, about six
@@ -31,6 +31,13 @@ three things that panel has and the others do not: a timed button acts on the
 cup in the station when it is clicked and keeps that cup until its bar fills,
 the bar keeps its width across a redraw and empties when it fills, and the
 key map read off the panel is a fresh build's.
+
+`drive-save.mjs --guide` runs its section 20 alone (25 checks): the first-shift
+guide (#1042) done cue by cue with real clicks, Skip by keyboard, back from the
+Menu Board, through a reload, an export and import, New Game and an old save.
+The guide's own logic with a seed, and the whole seeded shift reading the same
+with it on and off, is smoke-sim's section 21; the flag in the save is
+smoke-save's section 13.
 
 `drive-save.mjs --pace` runs its section 16 alone the same way (36 checks):
 the pace switch on the Menu Board (#947), by keyboard mid-shift and by mouse,
