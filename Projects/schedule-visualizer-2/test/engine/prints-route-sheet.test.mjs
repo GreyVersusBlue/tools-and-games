@@ -9,6 +9,7 @@
 process.env.TZ = 'UTC';
 
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 
 import * as sheet from '../../ui/prints/route-sheet.js';
@@ -152,7 +153,7 @@ test('over the passing time says so, with the amount and a word, and inside the 
   const walk = blockOf(html, 0);
   assert.ok(text(walk).includes('48 s · passing time 30 s · over by 18 s'));
   assert.ok(walk.includes('data-fits="false"'));
-  assert.ok(walk.includes('<span class="rs__over" style="font-weight: 700;">over by 18 s</span>'), 'in the warning style, with the word');
+  assert.ok(walk.includes('<span class="rs__over">over by 18 s</span>'), 'in the warning style, with the word');
   assert.equal(text(walk).includes('fits'), false);
   const margin = lifted({ defaultPassingSeconds: 30, checks: { consecutiveLimit: 4, passingMarginSeconds: 20, off: [] } });
   assert.ok(text(blockOf(renderOutput('route-sheet', margin, null, { ...NOW, groupId: ADA }).html, 0)).includes('over by 18 s, inside the 20 s margin'));
@@ -368,7 +369,21 @@ test('letter and A4: the page rule and the paper are the ones asked for, and the
     assert.ok(used <= printableBox(paperOf(project, { paper })).width + 1e-6, paper.size + ' ' + paper.orientation + ': ' + used + ' mm in ' + printableBox(paperOf(project, { paper })).width);
   }
   // a block never splits across a page, and says so in its own markup
-  assert.ok(blockOf(renderOutput('route-sheet', project, null, { ...NOW, groupId: ADA }).html, 0).startsWith('<section class="doc-section rs__block" data-kind="walk" data-ok="true" data-period="0" style="break-inside: avoid;">'));
+  // (SV2-102b: in ui/print.css, not in the markup)
+  const first = renderOutput('route-sheet', project, null, { ...NOW, groupId: ADA }).html;
+  assert.ok(blockOf(first, 0).startsWith('<section class="doc-section rs__block" data-kind="walk" data-ok="true" data-period="0">'));
+  const css = readFileSync(new URL('../../ui/print.css', import.meta.url), 'utf8');
+  assert.match(css, /\.rs__block \{\s*break-inside: avoid;/);
+  assert.match(css, /\.rs__maps \{\s*display: flex;\s*gap: 6mm;/);
+  assert.equal(sheet.MAP_GAP_MM, 6, 'the gap the maps are sized by is the one the stylesheet has');
+});
+
+test('SV2-102b: the sheet\'s own rules live in ui/print.css: the markup keeps only the sizes of the plans (and the page size) as inline style', () => {
+  const html = renderOutput('route-sheet', lifted({}, { cars: 'two', rows: { Ada: ['1A', '3A', '3A'], Bo: ['1A'] } }), null, { ...NOW, groupId: ADA }).html;
+  const styles = Array.from(html.matchAll(/ style="([^"]*)"/g)).map((match) => match[1]).filter((value) => !value.startsWith('--page-'));
+  assert.ok(styles.length > 0);
+  assert.ok(styles.every((value) => /^width: [\d.]+mm; height: [\d.]+mm;$/.test(value)), JSON.stringify(styles.filter((value) => !/^width/.test(value))));
+  for (const word of ['break-inside', 'display: flex', 'font-weight', 'margin-top']) assert.equal(html.includes(word), false, word);
 });
 
 test('names are as typed: a group, a room, a floor, an elevator letter and a day type with markup or a right-to-left script print as text', () => {

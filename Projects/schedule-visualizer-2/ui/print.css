@@ -1175,3 +1175,25 @@
 .print-doc .doc-table .doc-change.is-less {
   border-left: 0.8mm dotted var(--ink);
 }
+
+/* The step-free route sheet (ui/prints/route-sheet.js). */
+.print-doc .rs__block {
+  break-inside: avoid;
+}
+
+.print-doc .rs__over {
+  font-weight: 700;
+}
+
+.print-doc .rs__result {
+  margin-top: 2mm;
+}
+
+/* the gap is MAP_GAP_MM (6), which the script sizes the maps by */
+.print-doc .rs__maps {
+  display: flex;
+  gap: 6mm;
+  justify-content: flex-start;
+  align-items: flex-start;
+  margin-top: 2mm;
+}

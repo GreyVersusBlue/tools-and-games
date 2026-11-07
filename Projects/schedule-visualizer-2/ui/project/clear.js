@@ -65,13 +65,12 @@ export function buildingContents(project) {
       if (space.kind === 'room') found.rooms += 1;
       else found.otherSpaces += 1;
     }
-    const lifts = new Set(floor.lifts || []);
     for (let at = 0; at < floor.cells.length; at += 1) {
       const character = floor.cells[at];
       if (character === '#') found.corridorCells += 1;
       else if (character === 'S') {
-        // a stop is listed in lifts, or is the end of an elevator connection
-        if (lifts.has(at) || isLiftCell(project.building, floor.id, at)) found.liftCells += 1;
+        // a stop is the end of an elevator connection; a stale lifts index on a stairs end is stairs
+        if (isLiftCell(project.building, floor.id, at)) found.liftCells += 1;
         else found.stairsCells += 1;
       }
     }

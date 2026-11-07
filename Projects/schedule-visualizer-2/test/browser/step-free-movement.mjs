@@ -103,7 +103,8 @@ test('the group editor has Needs step-free routes, off for a new group, with its
   // the hint is tied to the tick, so a screen reader reads it with the tick
   const described = await page.$eval('[data-key="group-stepfree"]', (el) => document.getElementById(el.getAttribute('aria-describedby')).textContent);
   assert.match(described, /never stairs/);
-  assert.equal(await exists('[data-action="route-sheet"]'), false, 'the Route sheet button is a later unit\'s: no placeholder');
+  // the Route sheet button follows the tick (SV2-103); its own cases are in schedule.mjs and route-sheet.mjs
+  assert.equal(await text('.sch-stepfree [data-print="route-sheet"]'), 'Route sheet');
 });
 
 test('a tick by pointer sets the flag, one undo step, and the list says step-free in words beside the name', async () => {
@@ -208,13 +209,14 @@ test('Movement draws Ada\'s ride as one link between the stops she rode, from he
   assert.deepEqual(links[0].groups, [ada]);
   await tab('hotspots');
   const letter = await carLetter();
-  const rows = await page.$$eval('#inspector .mov-hot__row', (all) => all.map((row) => ({ kind: row.dataset.kind, name: row.querySelector('.mov-hot__name').textContent.trim(), delay: row.children[2].dataset.delay, load: row.dataset.load, use: row.querySelector('[data-part="in-use"]') ? row.querySelector('[data-part="in-use"]').hidden : null })));
+  const rows = await page.$$eval('#inspector .mov-hot__row', (all) => all.map((row) => ({ kind: row.dataset.kind, name: row.querySelector('.mov-hot__name').textContent.trim(), delay: row.children[2].dataset.delay, load: row.dataset.load, use: row.querySelector('[data-part="in-use"]') ? row.querySelector('[data-part="in-use"]').textContent : null, text: row.querySelector('.mov-hot__place').textContent })));
   const car = rows.find((row) => row.name === 'Elevator ' + letter);
   assert.ok(car, 'the hotspot row Elevator ' + letter + ': ' + JSON.stringify(rows));
   assert.equal(car.kind, 'connection');
   assert.equal(car.load, '20', 'the group is charged to the car once');
   assert.equal(car.delay, '0', 'nobody queues for it: its delay is none');
-  assert.equal(car.use, true, 'with nothing playing, the words "in use" are not shown');
+  assert.equal(car.use, '', 'with nothing playing, the words "in use" are not shown');
+  assert.equal(car.text.includes('in use'), false, 'nor anywhere in the row');
 });
 
 test('the Summary and the travel table have Riding, and the Late cell names the trips, the car and the wait', async () => {
@@ -245,12 +247,14 @@ test('while a group holds the car, the hotspot row says in use, the stop has its
   // before she boards: nothing is held
   await scrubTo(0);
   assert.equal(await bar((el) => el.dataset.riding), '', 'at 0 s nobody holds the car');
-  assert.equal(await page.$eval('#inspector .mov-hot__row[data-kind="connection"] [data-part="in-use"]', (el) => el.hidden), true);
+  assert.equal(await text('#inspector .mov-hot__row[data-kind="connection"] [data-part="in-use"]'), '', 'at 0 s the row does not say in use');
   await scrubTo(mid);
   await page.waitForFunction((wanted) => document.querySelector('[data-bar="playback"]').dataset.riding === wanted, {}, letter);
   const use = '#inspector .mov-hot__row[data-kind="connection"] [data-part="in-use"]';
-  assert.equal(await page.$eval(use, (el) => el.hidden), false, 'in use, said in words');
   assert.equal(await text(use), ', in use');
+  // plain text in the row: no live region that playback would make a screen reader announce every second, and nothing hidden
+  assert.equal(await page.$eval(use, (el) => [el.getAttribute('role'), el.hidden, el.closest('[aria-live], [role="status"], [role="alert"]') === null].join('|')), '|false|true', 'not a live region');
+  assert.match(await text('#inspector .mov-hot__row[data-kind="connection"] .mov-hot__place'), new RegExp('Elevator ' + letter + ', in use'), 'the row\'s own text says Elevator ' + letter + ', in use');
   assert.equal(await text('#inspector .mov-hot__row[data-kind="connection"] .mov-hot__name'), 'Elevator ' + letter);
   // the dot rests on the stop she boarded at
   const at = await view((floorId, cell) => new Promise((resolve) => {
@@ -285,7 +289,7 @@ test('while a group holds the car, the hotspot row says in use, the stop has its
   // after she has left the car, there is none, and the words go
   await scrubTo(now.last + 12);
   await page.waitForFunction(() => document.querySelector('[data-bar="playback"]').dataset.riding === '');
-  assert.equal(await page.$eval(use, (el) => el.hidden), true);
+  assert.equal(await text(use), '', 'the words go');
   // the walker's own tail may cross the same ring of pixels, so the ring's going shows as fewer of them, and the page's own list of riders is empty
   assert.ok(await ring() < during, 'the ring is gone once the car is free');
   assert.equal(await view(() => document.querySelector('.mov').movement.env.rides.now.length), 0);
@@ -310,7 +314,7 @@ test('while a group holds the car, the hotspot row says in use, the stop has its
   const again = [await ring(), await ring()];
   assert.equal(again[0], again[1], 'and steady: the same ring on each draw ' + JSON.stringify(again));
   assert.ok(again[0] >= first, 'it does not shrink either');
-  assert.equal(await page.$eval(use, (el) => el.hidden), false);
+  assert.equal(await text(use), ', in use');
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
 });
 

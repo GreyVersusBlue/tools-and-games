@@ -55,6 +55,8 @@ import { elevatorCars } from '../../engine/schema.js';
 import { formatDuration } from '../../engine/findings.js';
 import { unitWord, runOf, nothingMeets, nothingMeetsParts } from './model.js';
 
+// What a row of a car in use says after the car's name.
+const USE_WORDS = ', in use';
 // How many places carry a ring on the map.
 export const PULSE_TOP = 3;
 // How many rows the table opens with.
@@ -181,7 +183,7 @@ export function placeWords(row) {
 // The groups of a row, each as typed, with "×3" after a group that crosses
 // in more than one transition.
 export function groupWords(row) {
-  return row.groups.map((each) => each.group.name + (each.times > 1 ? ' ×' + each.times : ''));
+  return row.groups.map((each) => each.group.name + (each.group.stepFree === true ? ' (step-free)' : '') + (each.times > 1 ? ' ×' + each.times : ''));
 }
 
 // The headings of the group columns of the hotspots file. A group's column
@@ -417,7 +419,11 @@ export function hotspotsPanel(env) {
   // Is this elevator held by a group at the second playback shows?
   const inUse = (carId) => Boolean(env.rides) && env.rides.now.some((rider) => rider.car === carId);
   const refreshUse = () => {
-    for (const mark of element.querySelectorAll('[data-part="in-use"]')) mark.hidden = !inUse(mark.closest('[data-place]').dataset.place);
+    // plain text in the row, no live region: playback changes it every second or so
+    for (const mark of element.querySelectorAll('[data-part="in-use"]')) {
+      const words = inUse(mark.closest('[data-place]').dataset.place) ? USE_WORDS : '';
+      if (mark.textContent !== words) mark.textContent = words;
+    }
   };
   if (env.rides) env.rides.listeners.add(refreshUse);
 
@@ -536,7 +542,7 @@ export function hotspotsPanel(env) {
           h('div', null,
             h('button', { type: 'button', class: 'mov-link mov-hot__name', data: { action: 'show' } }, row.parts.map((part) => (part.name ? h('bdi', null, part.text) : part.text))),
             // the pulse on the map is never the only signal: in words, while a group holds the car at the second shown
-            row.place.elevator === true ? h('span', { class: 'mov-hot__use', role: 'status', hidden: !inUse(row.place.connectionId), data: { part: 'in-use' } }, ', in use') : null,
+            row.place.elevator === true ? h('span', { class: 'mov-hot__use', data: { part: 'in-use' } }, inUse(row.place.connectionId) ? USE_WORDS : '') : null,
             row.floorName ? h('span', { class: 'mov-hot__floor' }, ' on ', h('bdi', null, row.floorName)) : null,
             // with one transition on the map there is no other for a place to peak in
             row.when && !picture.transition ? h('span', { class: 'mov-hot__when' }, 'Peaks in ' + row.when) : null,
@@ -753,6 +759,7 @@ export function hotspotsPanel(env) {
     // The view is leaving: no timer is left running, and nothing of the panel stays on the map.
     unmount() {
       pulse.stop();
+      if (env.rides) env.rides.listeners.delete(refreshUse);
       if (typeof sheet.removeEventListener === 'function') sheet.removeEventListener('change', onSheet);
       const at = env.marks.indexOf(mark);
       if (at !== -1) env.marks.splice(at, 1);

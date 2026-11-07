@@ -198,7 +198,7 @@ export function columnLength(headCount) {
   return Math.max(1, Math.ceil(headCount / STUDENTS_PER_LANE_CELL));
 }
 
-function headCountOf(group, settings) {
+export function headCountOf(group, settings) {
   if (group && Number.isInteger(group.headCount) && inRange(group.headCount, RANGES.headCount)) return group.headCount;
   const fallback = settings ? settings.defaultHeadCount : undefined;
   return Number.isInteger(fallback) && fallback >= 1 ? fallback : defaultSettings().defaultHeadCount;

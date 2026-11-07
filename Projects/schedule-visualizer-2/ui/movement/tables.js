@@ -78,6 +78,7 @@ import { findBellSchedule, offPeriods, periodName } from '../../engine/bells.js'
 import { parse } from '../colour.js';
 import { transitionsOf, runOf, walkWords, nothingMeets, nothingMeetsParts } from './model.js';
 import { ELEVATOR_KIND, elevatorSettings } from '../../engine/schema.js';
+import { headCountOf } from '../../engine/crowd.js';
 import { printButtons } from '../prints/index.js';
 import { printButton, openPrintPreview } from '../components/print-preview.js';
 
@@ -121,18 +122,24 @@ function walksOf(results, dayTypeId, bellsId) {
   return runOf(results, dayTypeId, bellsId).walks.groups;
 }
 
-// Why a walk that rides takes what it does: the elevator it used (the first
-// one on the route), how many trips the group's head count needs, and the
-// school's wait. null when the route has no ride.
+// Why a walk that rides takes what it does: the elevators it used (each car
+// the route rides, in the order ridden, once each; `car` is the first), how
+// many trips the group's head count needs (the crowd model's own head-count
+// rule), and the school's wait. null when the route has no ride.
 function rideOf(project, route, group) {
   if (!route || route.ok !== true || !(route.rides > 0)) return null;
   const connections = new Map(project.building.connections.map((connection) => [connection.id, connection]));
-  const id = (route.connections || []).find((each) => connections.has(each) && connections.get(each).kind === ELEVATOR_KIND);
-  if (id === undefined) return null;
-  const car = connections.get(id);
+  const cars = [];
+  for (const id of route.connections || []) {
+    const connection = connections.get(id);
+    if (!connection || connection.kind !== ELEVATOR_KIND) continue;
+    const name = connection.car || connection.label;
+    if (!cars.includes(name)) cars.push(name);
+  }
+  if (cars.length === 0) return null;
   const { wait, perTrip } = elevatorSettings(project.settings);
-  const heads = Number.isInteger(group.headCount) ? group.headCount : project.settings.defaultHeadCount;
-  return { car: car.car || car.label, trips: Math.max(1, Math.ceil(heads / perTrip)), perTrip, wait };
+  const heads = headCountOf(group, project.settings);
+  return { car: cars[0], cars, trips: Math.max(1, Math.ceil(heads / perTrip)), perTrip, wait };
 }
 
 function routeOf(results, dayTypeId, bellsId, groupId, period) {
@@ -230,7 +237,7 @@ export function lateWords(row) {
 export function rideWords(ride) {
   if (!ride) return '';
   const wait = ride.wait === 0 ? 'no wait' : formatDuration(ride.wait) + ' wait';
-  return ' · ' + (ride.trips > 1 ? ride.trips + ' trips of ' + ride.perTrip + ' in ' : '') + 'Elevator ' + ride.car + ', ' + wait;
+  return ' · ' + (ride.trips > 1 ? ride.trips + ' trips of ' + ride.perTrip + ' in ' : '') + (ride.cars || [ride.car]).map((car) => 'Elevator ' + car).join(', then ') + ', ' + wait;
 }
 
 // Whether any walk of the run rode an elevator.

@@ -77,7 +77,7 @@ export const NOTHING_SAYS = 'Nobody walks anywhere on this day: no two periods t
 // at most, in millimetres; the gap between two maps.
 export const CELL_MM = 4.2;
 export const MAP_TALL_MM = 62;
-export const MAP_GAP_MM = 6;
+export const MAP_GAP_MM = 6; // the gap of .rs__maps in ui/print.css
 
 function typed(value) {
   return '<span dir="auto">' + esc(value) + '</span>';
@@ -361,25 +361,25 @@ function mapsMarkup(project, block, width) {
   const cell = Math.max(0.1, Math.min(CELL_MM, (width - (plans.length - 1) * MAP_GAP_MM) / across, MAP_TALL_MM / tall));
   const figures = block.floors.map((held, i) => {
     const what = held.start !== null && held.end !== null ? ' · start and end' : held.start !== null ? ' · start' : held.end !== null ? ' · end' : '';
-    return '<figure class="card__map rs__map" data-floor="' + esc(held.floorId) + '" style="margin: 0;">'
+    return '<figure class="card__map rs__map" data-floor="' + esc(held.floorId) + '">'
       + '<div class="card__plan" style="width: ' + mm(plans[i].width * cell) + '; height: ' + mm(plans[i].height * cell) + ';">' + plans[i].svg + '</div>'
       + '<figcaption class="card__map-name">' + typed(held.name) + esc(what) + '</figcaption>'
       + '</figure>';
   });
-  return '<div class="rs__maps" role="img" aria-label="' + esc(mapLabel(block)) + '" style="display: flex; gap: ' + mm(MAP_GAP_MM) + '; justify-content: flex-start; align-items: flex-start; margin-top: 2mm;">' + figures.join('') + '</div>';
+  return '<div class="rs__maps" role="img" aria-label="' + esc(mapLabel(block)) + '">' + figures.join('') + '</div>';
 }
 
 function blockMarkup(project, block, width) {
   const where = ' data-period="' + block.period + '"' + (block.toPeriod !== block.period + 1 ? ' data-to="' + block.toPeriod + '"' : '');
   if (block.kind !== 'walk') return '<p class="rs__line" data-kind="' + block.kind + '"' + where + '>' + esc(blockTitle(project, block)) + ' \u00b7 ' + lineMarkup(project, block) + '</p>';
   const head = '<h2>' + esc(blockTitle(project, block)) + ' · ' + typed(block.from) + ' to ' + typed(block.to) + '</h2>';
-  const open = '<section class="doc-section rs__block" data-kind="walk" data-ok="' + block.ok + '"' + where + ' style="break-inside: avoid;">';
+  const open = '<section class="doc-section rs__block" data-kind="walk" data-ok="' + block.ok + '"' + where + '>';
   if (!block.ok) return open + head + '<p class="rs__noroute" data-line="no-route">' + typed(block.sentence) + '</p></section>';
   const parts = timeParts(block);
-  const verdict = block.fits ? esc(parts.verdict) : '<span class="rs__over" style="font-weight: 700;">' + esc(parts.verdict) + '</span>';
+  const verdict = block.fits ? esc(parts.verdict) : '<span class="rs__over">' + esc(parts.verdict) + '</span>';
   const time = '<span class="rs__time" data-fits="' + block.fits + '">' + esc(parts.time + ' \u00b7 ' + parts.passing + ' \u00b7 ') + verdict + '</span>';
   const late = block.late ? ' · <span class="rs__movement" data-line="movement">' + esc(lateWords(block.late)) + '</span>' : '';
-  return open + head + stepsList(block.steps) + '<p class="rs__result" data-line="time" style="margin-top: 2mm;">' + time + late + '</p>' + (block.floors.length > 0 ? mapsMarkup(project, block, width) : '') + '</section>';
+  return open + head + stepsList(block.steps) + '<p class="rs__result" data-line="time">' + time + late + '</p>' + (block.floors.length > 0 ? mapsMarkup(project, block, width) : '') + '</section>';
 }
 
 // "Elevator D is staff and authorised only: arrange access with the office."

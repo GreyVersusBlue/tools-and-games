@@ -40,7 +40,7 @@
 import { findDayType, effectiveDayType, ownDayTypes } from '../../engine/day-types.js';
 import { bellsFor, periodName, periodLabel, formatTime, findBellSchedule, offPeriods, parseTime } from '../../engine/bells.js';
 import { transitionPlan } from '../../engine/crowd.js';
-import { resolveSlotRoom, bellSchedulesOf, ELEVATOR_KIND, elevatorSettings, ELEVATOR_DOOR_SECONDS } from '../../engine/schema.js';
+import { resolveSlotRoom, bellSchedulesOf, ELEVATOR_KIND } from '../../engine/schema.js';
 import { meetingSlots } from '../../engine/runs.js';
 import { runResults } from '../../engine/worker.js';
 import { periodWords, list } from '../components/words.js';

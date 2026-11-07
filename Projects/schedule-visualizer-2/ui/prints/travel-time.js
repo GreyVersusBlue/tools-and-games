@@ -41,6 +41,12 @@ export const name = 'Travel time';
 
 const time = (seconds) => durationWords(seconds);
 
+// A group's name as the paper writes it: "(step-free)" after the name of a
+// group that needs step-free routes, as the Summary's table does.
+export function groupLabel(group) {
+  return group.name + (group.stepFree === true ? ' (step-free)' : '');
+}
+
 // A room's number as the tab writes it.
 export function roomWords(number) {
   return number === '' ? 'no number' : number;
@@ -52,7 +58,7 @@ export function roomWords(number) {
 // only when some group of the day leaves after the bell; `rides` the "riding"
 // cell, only when some group of the day rides an elevator.
 export function transitionCells(row, held, rides) {
-  return [row.group.name, roomWords(row.from), roomWords(row.to), time(row.walking)].concat(rides ? [row.riding > 0 ? time(row.riding) : 'none'] : [], [row.waiting === 0 ? 'none' : time(row.waiting)]).concat(held ? [row.released > 0 ? time(row.released) : 'none'] : [], [time(row.total), lateWords(row)]);
+  return [groupLabel(row.group), roomWords(row.from), roomWords(row.to), time(row.walking)].concat(rides ? [row.riding > 0 ? time(row.riding) : 'none'] : [], [row.waiting === 0 ? 'none' : time(row.waiting)]).concat(held ? [row.released > 0 ? time(row.released) : 'none'] : [], [time(row.total), lateWords(row)]);
 }
 
 // One group's day as the paper prints it.
@@ -61,7 +67,7 @@ export function transitionCells(row, held, rides) {
 export function dayCells(project, row, held, rides) {
   const settings = project.settings;
   const slowest = walkWords(settings, row.slowest.period, row.slowest.toPeriod) + ', ' + time(row.slowest.total);
-  return [row.group.name, String(row.walks), time(row.walking)].concat(rides ? [row.riding > 0 ? time(row.riding) : 'none'] : [], [row.waiting === 0 ? 'none' : time(row.waiting)]).concat(held ? [row.released > 0 ? time(row.released) : 'none'] : [], [time(row.total), row.late === 0 ? 'none' : String(row.late), slowest]);
+  return [groupLabel(row.group), String(row.walks), time(row.walking)].concat(rides ? [row.riding > 0 ? time(row.riding) : 'none'] : [], [row.waiting === 0 ? 'none' : time(row.waiting)]).concat(held ? [row.released > 0 ? time(row.released) : 'none'] : [], [time(row.total), row.late === 0 ? 'none' : String(row.late), slowest]);
 }
 
 const LEFT = 'Left after the bell';

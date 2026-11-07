@@ -15,10 +15,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildGraph, nodeAt } from '../../engine/graph.js';
 import { route, routesForSchedule, routingGraph } from '../../engine/routing.js';
-import { emptySlot, emptyBells, GROUP_COLOUR_PRESETS } from '../../engine/schema.js';
+import { emptySlot, emptyBells, GROUP_COLOUR_PRESETS, defaultSettings } from '../../engine/schema.js';
 import { checkSchedule } from '../../engine/checks.js';
 import { validate } from '../../engine/validate.js';
-import { isLate, crowdCap, columnLength, routePath, walkingSeconds, simulateTransition, simulateDayTransition, simulateDay, simulateSchedule, teacherWalks, walkResults, rideFor, CAP_MINIMUM_SECONDS, CROSSING_WAIT_MAX } from '../../engine/crowd.js';
+import { isLate, crowdCap, columnLength, routePath, walkingSeconds, simulateTransition, simulateDayTransition, simulateDay, simulateSchedule, teacherWalks, walkResults, rideFor, headCountOf, CAP_MINIMUM_SECONDS, CROSSING_WAIT_MAX } from '../../engine/crowd.js';
 import { SAMPLE_PROBLEMS } from '../../data/sample-school.js';
 import { meetingSlots, runsOf } from '../../engine/runs.js';
 import { school, clone, assertValid } from './helpers.mjs';
@@ -1072,4 +1072,11 @@ test('a teacher\'s walk through a staff-only car: the teacher rides it, and the 
   // a class cannot take it: a step-free group has no way
   const walker = route(graph, roomId('1A'), roomId('2A'), { studentsOnly: true });
   assert.equal(walker.ok, false, 'students are kept out of a staff-only car');
+});
+
+test('SV2-102b: headCountOf is the crowd model\'s head-count rule: a count in range, else the school\'s default, else the shipped default', () => {
+  assert.equal(headCountOf({ headCount: 25 }, { defaultHeadCount: 30 }), 25);
+  for (const odd of [null, undefined, 0, -3, 2.5, 100000, '12']) assert.equal(headCountOf({ headCount: odd }, { defaultHeadCount: 30 }), 30, String(odd));
+  assert.equal(headCountOf({ headCount: null }, null), defaultSettings().defaultHeadCount, 'no settings: the shipped default');
+  assert.equal(headCountOf(null, { defaultHeadCount: 0 }), defaultSettings().defaultHeadCount, 'a default that is no head count is not used');
 });
