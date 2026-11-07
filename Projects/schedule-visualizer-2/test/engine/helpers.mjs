@@ -38,8 +38,10 @@ export function emptyProject() {
 // marks and duties (SV2-82, SV2-87), and without the staggered dismissal and the up-only stair (SV2-94): an A Day and a B Day, nothing else. The
 // suites that count day types, runs and findings, or that build their own
 // calendar on it, start here, so each keeps the case it was written for.
+// It is also level (SV2-106): no Elevator D, step, step door, step exit, area
+// of refuge or step-free group, which the full sample gained for W4.
 export function plainSchool() {
-  const project = sampleSchool();
+  const project = sampleSchool({ level: true });
   const kept = project.dayTypes.filter((dayType) => dayType.own);
   for (const group of project.groups) {
     for (const id of Object.keys(group.days)) if (!kept.some((dayType) => dayType.id === id)) delete group.days[id];
