@@ -40,7 +40,7 @@ async function ready(page, since) {
 
 const drawn = (page) => page.$eval('#safety-plan', (el) => Number(el.dataset.drawn || 0));
 
-// A building to look at. 'plain' is the sample school as it loads: no elevator, no step, no
+// A building to look at. 'plain' is the level sample school (SV2-106: the full one has an elevator now): no elevator, no step, no
 // refuge. 'marked' has an area of refuge by Stairs A on Floor 2 (Floor 3 has none), a second
 // area of refuge on Floor 1 that no room uses, and Door B with a step. 'groups' is 'marked' with
 // two groups that need step-free routes. `refugeName` renames the first refuge.
@@ -48,7 +48,7 @@ async function load(page, variant, refugeName) {
   if (await page.$('#print-preview[open]')) await page.keyboard.press('Escape');
   await page.evaluate(async (which, name) => {
     const { sampleSchool } = await import('./data/sample-school.js');
-    const project = sampleSchool();
+    const project = sampleSchool({ level: true });
     if (which !== 'plain') {
       const [one, two] = project.building.floors;
       const joined = project.building.connections.find((connection) => connection.label === 'A');
