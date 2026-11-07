@@ -119,10 +119,12 @@ const FLOORS = [
     id: 'fsample001',
     name: 'Floor 1',
     level: 1,
-    // A short bypass under the Main Corridor, three cells long, round the step
-    // in the corridor at x 29 (see `steps`): a step-free walk to the Gym goes by it.
-    corridor: [[1, CORRIDOR_ROW, 39, 1], [20, 8, 1, 6], [28, 8, 3, 1]],
+    corridor: [[1, CORRIDOR_ROW, 39, 1], [20, 8, 1, 6]],
     stairs: [[8, 8], [12, 8]],
+    // What the step-free group adds (left out of the level sample): a short
+    // bypass under the Main Corridor, three cells long, round the step in the
+    // corridor at x 29. A step-free walk to the Gym or to Door B goes by it.
+    bypass: [[28, 8, 3, 1]],
     lifts: [LIFT],
     steps: [[29, CORRIDOR_ROW]],
     rooms: [
@@ -260,11 +262,12 @@ function rectCells(x, y, w, h) {
   return cells;
 }
 
-function buildFloor(plan, subjectByCode, teachersByRoom) {
+function buildFloor(plan, subjectByCode, teachersByRoom, stepFree) {
   const grid = new Array(WIDTH * HEIGHT).fill('.');
-  for (const rect of plan.corridor) for (const cell of rectCells(rect[0], rect[1], rect[2], rect[3])) grid[cell] = '#';
+  const lifts = stepFree ? plan.lifts : undefined;
+  for (const rect of plan.corridor.concat(stepFree ? plan.bypass || [] : [])) for (const cell of rectCells(rect[0], rect[1], rect[2], rect[3])) grid[cell] = '#';
   for (const stair of plan.stairs) grid[stair[1] * WIDTH + stair[0]] = 'S';
-  for (const lift of plan.lifts || []) grid[lift[1] * WIDTH + lift[0]] = 'S';
+  for (const lift of lifts || []) grid[lift[1] * WIDTH + lift[0]] = 'S';
   const spaces = [];
   for (const room of plan.rooms) {
     const above = room.y < CORRIDOR_ROW;
@@ -280,7 +283,7 @@ function buildFloor(plan, subjectByCode, teachersByRoom) {
       shared: room.shared === true,
       doors: room.doors.map((x) => {
         const door = { cell: (above ? CORRIDOR_ROW - 1 : CORRIDOR_ROW + 1) * WIDTH + x, side: above ? 's' : 'n' };
-        if ((room.stepDoors || []).includes(x)) door.stepFree = false;
+        if (stepFree && (room.stepDoors || []).includes(x)) door.stepFree = false;
         return door;
       }),
     });
@@ -299,16 +302,16 @@ function buildFloor(plan, subjectByCode, teachersByRoom) {
     corridors: plan.names.map((named) => ({ id: named.id, name: named.name, cells: rectCells(named.rect[0], named.rect[1], named.rect[2], named.rect[3]) })),
     exits: plan.exits.map((exit) => {
       const out = { id: exit.id, cell: exit.y * WIDTH + exit.x, doorName: exit.doorName, assembly: exit.assembly };
-      if (exit.step) out.stepFree = false;
+      if (stepFree && exit.step) out.stepFree = false;
       return out;
     }),
     image: null,
   };
   // The three lists a floor gains for elevators and steps are there only on a
   // floor that has something in them, as the building actions leave them.
-  if (plan.lifts) floor.lifts = plan.lifts.map((lift) => lift[1] * WIDTH + lift[0]);
-  if (plan.steps) floor.notStepFree = plan.steps.map((step) => step[1] * WIDTH + step[0]);
-  if (plan.refuges) floor.refuges = plan.refuges.map((refuge) => ({ id: refuge.id, cell: refuge.y * WIDTH + refuge.x, name: 'Area of refuge' }));
+  if (stepFree && plan.lifts) floor.lifts = plan.lifts.map((lift) => lift[1] * WIDTH + lift[0]);
+  if (stepFree && plan.steps) floor.notStepFree = plan.steps.map((step) => step[1] * WIDTH + step[0]);
+  if (stepFree && plan.refuges) floor.refuges = plan.refuges.map((refuge) => ({ id: refuge.id, cell: refuge.y * WIDTH + refuge.x, name: 'Area of refuge' }));
   return floor;
 }
 
@@ -375,7 +378,13 @@ function sampleDuties() {
   ];
 }
 
-export function sampleSchool() {
+// sampleSchool({ level: true }) is the same school without what the elevator
+// and the step-free group add: no Elevator D, no step, step door or step exit,
+// no area of refuge, no bypass, and no group that needs step-free routes. It
+// is what the school was before those were added, byte for byte, so a test of
+// "a building with no elevator is unchanged" has a real one to hold against.
+export function sampleSchool(options) {
+  const stepFree = !(options && options.level === true);
   const subjectByCode = new Map(SUBJECTS.map((subject) => [subject.code, subject.id]));
   const teachersByRoom = new Map(TEACHERS.map((teacher) => [teacher[3], [teacher[0]]]));
   const roomIdByNumber = new Map();
@@ -412,8 +421,8 @@ export function sampleSchool() {
       theme: 'auto',
     },
     building: {
-      floors: FLOORS.map((plan) => buildFloor(plan, subjectByCode, teachersByRoom)),
-      connections: CONNECTIONS.map((connection) => ({
+      floors: FLOORS.map((plan) => buildFloor(plan, subjectByCode, teachersByRoom, stepFree)),
+      connections: CONNECTIONS.filter((connection) => stepFree || !connection.elevator).map((connection) => ({
         id: connection.id,
         label: connection.label,
         a: { floorId: connection.a[0], cell: connection.a[2] * WIDTH + connection.a[1] },
@@ -437,7 +446,7 @@ export function sampleSchool() {
       grade: group[2],
       headCount: group[3],
       colour: group[4],
-      ...(group[0] === STEP_FREE_GROUP ? { stepFree: true } : {}),
+      ...(stepFree && group[0] === STEP_FREE_GROUP ? { stepFree: true } : {}),
       days: { [DAY_A]: day(group[5]), [DAY_B]: day(group[6]) },
     })),
     dayTypes: [
