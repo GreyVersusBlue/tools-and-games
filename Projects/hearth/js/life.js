@@ -154,6 +154,7 @@ function newDay(){saidToday=new Set();
       say(`A child is born to ${B(a)} and ${B(b)}. They call the child ${B(k)}${nm?', after '+nm:''}.`);addEvent('birth',`the ${seasonOf(dayCount)} ${k.name} was born`,`A child, ${k.name}, was born to ${a.name} and ${b.name} in the ${seasonOf(dayCount)}.`)}}
   // old age
   for(const p of alive){const a=ageOf(p);if(a<55)continue;const chance=Math.pow((a-54)/18,3);if(R()<chance)die(p)}
+  feudDay(); /* TG-48: and again, because the old die after the first call at the top of this day, and a feud naming somebody just buried is not one for another day. No draw is made here. */
   for(const p of people)trimHist(p); /* a long life earns more lines than anyone reads; the first one and the last HIST_MAX-1 keep */
   autoSaveTick();
 }

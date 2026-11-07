@@ -289,5 +289,17 @@ section(17, () => {
   check('lone child: no warnings', h.warns.length === 0, h.warns.join(';'));
 });
 
+// ---- a feud and an old death on one morning (TG-48) ----
+// newDay called feudDay near its top and the old-age deaths ran after it, so a feud whose second name died that same morning stood
+// naming nobody until the next one, and `strain`'s daily audit read it on seed 20260819 day 39 once the deer changed the stream.
+section(18, () => {
+  const { ev } = fresh();
+  ev('for(let i=0;i<2800*4;i++)step(.05)');
+  const o = ev(`(()=>{const ad=people.filter(p=>!isKid(p)&&!p.dead);const a=ad[0],b=ad[1];arrivalT=1e9;
+    a.age0=30;a.born=dayCount;b.age0=95;b.born=dayCount;startFeud(a,b);const names=[a.name,b.name];
+    newDay();return {feud:!!feud,alive:!!byName(names[1]),aliveA:!!byName(names[0])}})()`);
+  check('feud: the old die in newDay after the first feudDay, and the feud ends that morning, not a day on', o.alive === false && o.aliveA && o.feud === false, JSON.stringify(o));
+});
+
 console.log(`${fail ? 'FAIL' : 'PASS'}: ${pass} of ${pass + fail} unit checks`);
 process.exit(fail ? 1 : 0);

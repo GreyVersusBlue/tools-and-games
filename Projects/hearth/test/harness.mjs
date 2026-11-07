@@ -1927,12 +1927,14 @@ if (mode === 'strain') {
     check(t0.proof, 'shaking it off the day before leaves you able to take it again the next morning');
 
     // the first day you are up and out, which is how it travels; the second day you are in bed whether you agree or not
-    const up = await page.evaluate(() => ({ task: window.__hearth.people.find(p => p.sick).task }));
+    // TG-48: the one who took it, by name. The first sick person in the list is not always them: by the next dawn somebody they stood
+    // next to can have it too, a day behind, and that one is still up and out on their first day.
+    const up = await page.evaluate(w => ({ task: window.__hearth.people.find(p => p.name === w).task }), t0.who);
     let r1 = await runDay(page, 25); viol = viol.concat(r1.viol);
-    const bed = await page.evaluate(() => {
-      const h = window.__hearth, p = h.people.find(x => x.sick);
+    const bed = await page.evaluate(w => {
+      const h = window.__hearth, p = h.people.find(x => x.name === w && x.sick);
       return p ? { task: p.task, days: h.dayCount - p.sickD, hall: !!p.abedH } : { task: 'well', days: -1 };
-    });
+    }, t0.who);
     console.log(`  day one ${up.task}, day two ${bed.task}${bed.days >= 0 ? ` (${bed.days} in)` : ' — up again already'}`);
     check(up.task !== 'abed', 'the first day of it puts somebody straight to bed, so it can never travel anywhere');
     check(bed.days < 0 || bed.task === 'abed', `the second day of it and ${bed.task} is not being in bed`);
@@ -2085,6 +2087,7 @@ if (mode === 'strain') {
     const st = await page.evaluate(() => {
       const h = window.__hearth, ps = h.people.filter(p => !p.dead && !p.child), [a, b, c] = ps;
       const rel = (x, y) => { const r = x.rels.find(r2 => r2.who === y.name); return r ? r.k : null };
+      h.endFeud('worn');                                                              // TG-48: start clean, as the sickness check does: a raid in the first twenty days can have opened one
       const off = h.workRateOf(a), cOff = h.workRateOf(c);
       const ok = h.startFeud(a, b), again = h.startFeud(b, c);
       const on = h.workRateOf(a), cOn = h.workRateOf(c);
@@ -2408,18 +2411,18 @@ if (mode === 'leftovers') {
   }
 
   // ---- 3. the stone hears more than the loudest need ----
-  // One person sick and the ground at .9 dry, four hundred asks with the prayer cleared between. The if/else could only ever ask for
+  // One person sick and the ground at .5 dry, four hundred asks with the prayer cleared between. The if/else could only ever ask for
   // healing here; the weighted draw asks for both, healing most, and sometimes nothing.
   const pray = await H(() => {
     const h = window.__hearth, ad = h.people.filter(p => !p.dead && !p.sick && p.age0 >= 18);
     if (!ad.length) return { err: 'nobody to make sick' };
     h.works.push({ wk: 'shrine', x: 5, y: 5, y0: 1, done: true, prog: 20, paid: 1, said: 1 });
-    h.takeSick(ad[0]); h.setDry(.9); h.setFaith(.3);
+    h.takeSick(ad[0]); h.setDry(.5); h.setFaith(.3);   /* TG-48: .5 and not .9: the weights are 1.0 for the one sick and the ground's own dryness for rain, so at .9 healing leads by a tenth and which asks more in 400 is the stream's call, not the rule's */
     const asked = {};
     for (let i = 0; i < 400; i++) { h.setPrayer(null); h.faithDay(); const k = h.prayer ? h.prayer.k : 'none'; asked[k] = (asked[k] || 0) + 1; }
     return { asked, sick: h.people.filter(p => p.sick).length };
   });
-  console.log(`prayer: ${JSON.stringify(pray.asked)} with ${pray.sick} sick and the ground at .9`);
+  console.log(`prayer: ${JSON.stringify(pray.asked)} with ${pray.sick} sick and the ground at .5`);
   if (pray.err || !pray.asked.heal || !pray.asked.rain || pray.asked.rain >= pray.asked.heal) { failed = true; console.log(`FAIL: ${pray.err || 'the stone still only hears the loudest need'}`); }
 
   // ---- 4. the most-visited stone has a line ----
