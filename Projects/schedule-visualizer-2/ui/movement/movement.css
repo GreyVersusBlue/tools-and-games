@@ -1188,6 +1188,11 @@
   overflow-x: auto;
 }
 
+.mov-travel:focus-visible {
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: var(--focus-offset);
+}
+
 .mov-hot[hidden],
 .mov-travel__tables[hidden] {
   display: none;

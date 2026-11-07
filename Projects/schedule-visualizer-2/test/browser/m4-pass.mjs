@@ -228,8 +228,8 @@ both('M2: directions are written in cells, in the steps and in the line under th
 both('M3: a way with no stairs between two floors is refused plainly, and the line that offers the stairs follows', async (page) => {
   await visit(page, '#/directions?from=rsample101&to=rsample302&stepfree=1');
   const said = await page.evaluate(() => ({
-    says: document.querySelector('.lede[role="status"]').textContent,
-    ok: document.querySelector('.lede[role="status"]').dataset.ok,
+    says: document.querySelector('.page__body > .lede').textContent,
+    ok: document.querySelector('.page__body > .lede').dataset.ok,
     next: document.querySelector('[data-directions="stairs"]').textContent,
     button: document.querySelector('[data-directions="stairs"] button').getClientRects().length,
   }));

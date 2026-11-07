@@ -421,7 +421,7 @@ test('on a 390 px phone the Building section is the plan: every tool on screen i
   await p.evaluate(() => document.querySelector('.toast__close')?.click());
   await frames(p);
   const at = await boxes(p);
-  assert.equal(at.tools.length, 11);
+  assert.equal(at.tools.length, 12);
   for (const tool of at.tools) {
     assert.ok(inside(tool, at.strip) && tool.right <= 390 && tool.bottom <= 844, 'the ' + tool.id + ' tool is not on screen');
     assert.ok(tool.width >= 44 && tool.height >= 44, 'the ' + tool.id + ' tool is ' + tool.width + ' by ' + tool.height + ', too small for a finger');

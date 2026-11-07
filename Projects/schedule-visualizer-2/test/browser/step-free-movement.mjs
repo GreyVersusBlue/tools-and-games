@@ -237,6 +237,24 @@ test('the Summary and the travel table have Riding, and the Late cell names the 
   assert.match(await text('#inspector [data-travel="transition"] .mov-travel__group th'), /Ada.*step-free/);
 });
 
+test('the travel tables scroll sideways when narrow, so each is a named region a keyboard can focus, with a focus ring (SV2-106b)', async () => {
+  await tab('tables');
+  await change({ transition: 0 });
+  await tab('tables');
+  for (const which of ['transition', 'day']) {
+    const box = '#inspector [data-travel="' + which + '"]';
+    const got = await page.$eval(box, (el) => ({ tab: el.getAttribute('tabindex'), role: el.getAttribute('role'), name: el.getAttribute('aria-label') }));
+    assert.equal(got.tab, '0', which + ': focusable');
+    assert.equal(got.role, 'region', which + ': a region');
+    assert.match(got.name, /^Travel times, \S/, which + ': named');
+  }
+  assert.match(await page.$eval('#inspector [data-travel="transition"]', (el) => el.getAttribute('aria-label')), /^Travel times, .+ to .+/);
+  await page.focus('#inspector [data-travel="pick"]');
+  await page.keyboard.press('Tab');
+  assert.equal(await view(() => document.activeElement.dataset.travel), 'transition');
+  assert.notEqual(await page.$eval('#inspector [data-travel="transition"]', (el) => getComputedStyle(el).outlineStyle), 'none', 'a visible focus ring');
+});
+
 test('while a group holds the car, the hotspot row says in use, the stop has its ring and the dot rests on it; after, none of them', async () => {
   await change({ transition: 0 });
   await tab('hotspots');
