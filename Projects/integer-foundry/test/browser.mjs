@@ -635,8 +635,10 @@ try {
       'the new sink asks for something inside the same share', `${second.needs}, ${second.cost}`);
     // One sentence a sink, in sink order, and the cut order's sentence moved with it.
     const both = await readCosts(p);
-    t.ok(both.lines.length === 2 && both.lines[0] === 'Order 23 takes 22 tiles. Cheapest line: 22\u00D7 +1.'
-      && both.lines[1] === `Order ${want} takes ${want - 1} tiles. Cheapest line: ${want - 1}\u00D7 +1.`,
+    // The new sink's roll can land on 23 too, and then both sentences say which sink they are.
+    const pre = n => (want === 23 ? `Sink ${n}: ` : '');
+    t.ok(both.lines.length === 2 && both.lines[0] === pre(1) + 'Order 23 takes 22 tiles. Cheapest line: 22\u00D7 +1.'
+      && both.lines[1] === `${pre(2)}Order ${want} takes ${want - 1} tiles. Cheapest line: ${want - 1}\u00D7 +1.`,
       'the floor has a sentence for each sink, first sink first', both.lines.join(' | '));
     const log = await p.evaluate(() => [...document.querySelectorAll('#log div')].map(e => e.textContent.trim()));
     t.ok(log.includes('Order 47 cut to 23: 2 sinks share the floor now.'),
