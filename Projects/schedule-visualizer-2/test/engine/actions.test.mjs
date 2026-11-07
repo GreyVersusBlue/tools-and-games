@@ -76,6 +76,9 @@ test('setSetting changes each field, one at a time', () => {
     ['defaultHeadCount', 30],
     ['secondsPerCell', 2],
     ['secondsPerStair', 12],
+    ['elevatorWaitSeconds', 0],
+    ['elevatorSecondsPerFloor', 9],
+    ['elevatorPeoplePerTrip', 12],
     ['cellScale', { unit: 'feet', length: 5 }],
     ['colourScale.mode', 'absolute'],
     ['colourScale.bands', [5, 10, 20, 40]],
@@ -113,7 +116,7 @@ test('setSetting stores the school name exactly as typed', () => {
 });
 
 test('setSetting refuses a value out of range and says the range', () => {
-  for (const [key, value] of [['secondsPerCell', 0], ['secondsPerCell', 11], ['secondsPerStair', 1], ['secondsPerStair', 31], ['defaultHeadCount', 0], ['defaultHeadCount', 1000], ['defaultHeadCount', 2.5], ['periodWord', 'Lesson'], ['timeFormat', '12'], ['theme', 'sepia'], ['paper.size', 'legal'], ['colourScale.bands', [1, 1, 2, 3]], ['colourScale.bands', [1, 2, 3]], ['checks.off', ['a', 'a']], ['schoolName', 5], ['nothing', 1]]) {
+  for (const [key, value] of [['secondsPerCell', 0], ['secondsPerCell', 11], ['secondsPerStair', 1], ['secondsPerStair', 31], ['elevatorWaitSeconds', -1], ['elevatorWaitSeconds', 301], ['elevatorSecondsPerFloor', 0], ['elevatorSecondsPerFloor', 61], ['elevatorPeoplePerTrip', 0], ['elevatorPeoplePerTrip', 41], ['elevatorPeoplePerTrip', 7.5], ['defaultHeadCount', 0], ['defaultHeadCount', 1000], ['defaultHeadCount', 2.5], ['periodWord', 'Lesson'], ['timeFormat', '12'], ['theme', 'sepia'], ['paper.size', 'legal'], ['colourScale.bands', [1, 1, 2, 3]], ['colourScale.bands', [1, 2, 3]], ['checks.off', ['a', 'a']], ['schoolName', 5], ['nothing', 1]]) {
     refused(actions.setSetting, school(), { key, value }, 'bad-value');
   }
   assert.throws(() => actions.setSetting(school(), { key: 'secondsPerCell', value: 11 }, ctx()), /whole number from 1 to 10/);
@@ -130,6 +133,7 @@ test('which counters a setting moves: walking speeds move geometry, display sett
   const bumps = (key, value) => info(actions.setSetting, project, { key, value }, project).bumps;
   assert.deepEqual(bumps('secondsPerCell', 2), [GEOMETRY, SCHEDULE]);
   assert.deepEqual(bumps('secondsPerStair', 9), [GEOMETRY, SCHEDULE]);
+  for (const key of ['elevatorWaitSeconds', 'elevatorSecondsPerFloor', 'elevatorPeoplePerTrip']) assert.deepEqual(bumps(key, 9), [GEOMETRY, SCHEDULE], key + ' moves routes and the schedule, as secondsPerStair does');
   assert.deepEqual(bumps('defaultHeadCount', 30), [SCHEDULE]);
   assert.deepEqual(bumps('periods', 6), [SCHEDULE]);
   assert.deepEqual(bumps('schoolName', 'x'), []);
@@ -649,7 +653,7 @@ test('deleteFloor refuses the last floor', () => {
 
 test('deleteFloor removes the stair connections that touch the floor, and only those', () => {
   const before = school();
-  assert.deepEqual(actions.describeFloorDelete(before, 'fsample003'), { name: 'Floor 3', last: false, rooms: 3, otherSpaces: 3, connections: 1, zones: 0, exits: 0, slots: 28 });
+  assert.deepEqual(actions.describeFloorDelete(before, 'fsample003'), { name: 'Floor 3', last: false, rooms: 3, otherSpaces: 3, connections: 1, zones: 0, exits: 0, lifts: 0, refuges: 0, slots: 28 });
   const after = run(actions.deleteFloor, before, { id: 'fsample003' });
   assert.deepEqual(after.building.floors.map((f) => f.name), ['Floor 1', 'Floor 2']);
   assert.deepEqual(after.building.connections.map((c) => c.label), ['A'], 'B touched Floor 3; A keeps its letter');
@@ -1780,4 +1784,40 @@ test('raising the period count deletes nothing, even a mark kept past the old en
   assert.equal(raised.duties.length, 1);
   // lowering still takes them
   assert.equal(run(actions.setPeriods, q, { periods: n - 1 }).marks.length, 0);
+});
+
+
+// ================================================================ SV2-97: the elevator settings and the step-free flag
+
+test('the elevator settings are not in a new project; setSetting writes them, a wait of 0 is allowed, reset takes them off', () => {
+  assert.equal('elevatorWaitSeconds' in defaultSettings(), false);
+  const project = school();
+  const timed = run(actions.setSetting, run(actions.setSetting, run(actions.setSetting, project, { key: 'elevatorWaitSeconds', value: 0 }), { key: 'elevatorSecondsPerFloor', value: 4 }), { key: 'elevatorPeoplePerTrip', value: 20 });
+  assert.deepEqual([timed.settings.elevatorWaitSeconds, timed.settings.elevatorSecondsPerFloor, timed.settings.elevatorPeoplePerTrip], [0, 4, 20]);
+  assert.equal(actions.setSetting(timed, { key: 'elevatorWaitSeconds', value: 0 }, ctx()), timed, 'the value it has: the same project');
+  assert.equal(info(actions.setSetting, project, { key: 'elevatorWaitSeconds', value: 0 }, timed).label, 'Change the elevator wait');
+  assert.throws(() => actions.setSetting(project, { key: 'elevatorWaitSeconds', value: 301 }, ctx()), /elevator wait in seconds is a whole number from 0 to 300/);
+  const reset = run(actions.resetSettings, timed, {});
+  assert.equal('elevatorWaitSeconds' in reset.settings, false, 'reset goes back to the defaults, which are the absent values');
+});
+
+test('a group takes the step-free flag on add and edit; only true is written, false takes it off, and a duplicate keeps it', () => {
+  const project = school();
+  const added = run(actions.addGroup, project, { name: '9Z', stepFree: true });
+  assert.equal(group(added, '9Z').stepFree, true);
+  assert.equal('stepFree' in group(run(actions.addGroup, project, { name: '9Y', stepFree: false }), '9Y'), false, 'false is not written: absent is false');
+  assert.equal('stepFree' in group(run(actions.addGroup, project, { name: '9X' }), '9X'), false);
+  refused(actions.addGroup, project, { name: '9W', stepFree: 'yes' }, 'bad-value');
+  const id = group(project, '6A').id;
+  const on = run(actions.editGroup, project, { id, stepFree: true });
+  assert.equal(group(on, '6A').stepFree, true);
+  assert.deepEqual(info(actions.editGroup, project, { id, stepFree: true }, on).bumps, [SCHEDULE]);
+  assert.equal(actions.editGroup(on, { id, stepFree: true }, ctx()), on, 'already on: the same project');
+  assert.equal(on.groups[1], project.groups[1], 'the other groups are the very same objects');
+  const copy = run(actions.duplicateGroup, on, { id });
+  assert.equal(copy.groups[copy.groups.findIndex((candidate) => candidate.id === id) + 1].stepFree, true);
+  const off = run(actions.editGroup, on, { id, stepFree: false });
+  assert.deepEqual(group(off, '6A'), group(project, '6A'), 'off is the group as it was, with no flag in it');
+  assert.equal(actions.editGroup(project, { id, stepFree: false }, ctx()), project, 'already off: the same project');
+  refused(actions.editGroup, project, { id, stepFree: null }, 'bad-value');
 });

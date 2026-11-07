@@ -15,7 +15,7 @@
 // edge of the picture like anything else: the picture is still cropped to
 // the cells that are drawn.
 //
-//   planSvg(project, floor, options) → { svg, drawn, traced, width, height, rooms, exits, letters }
+//   planSvg(project, floor, options) → { svg, drawn, traced, width, height, rooms, exits, letters, elevators? }
 //     options.traceImage    true to draw the floor's traced image. Off by default.
 //     options.traceImages   { [imageId]: 'data:image/…' }: the bytes, as data
 //                           URLs. An image with no entry here, one that is
@@ -64,9 +64,11 @@
 //     traced   whether the traced image is in the picture
 //     width, height   of the cropped picture, in cells (for fitting it to a page)
 //     rooms, exits, letters   what the caption under the plan counts
+//     elevators   [{ letter, staffOnly, connected }] for the stops drawn; absent when there are none
 
 import { mix, labelOn, parse, ROOM_STRENGTH, OTHER_STRENGTH } from '../colour.js';
-import { CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY, spaceOwners } from '../../engine/schema.js';
+import { CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY, ELEVATOR_KIND, elevatorCars, spaceOwners } from '../../engine/schema.js';
+import { pendingElevatorLetter } from '../components/words.js';
 import { esc, escXml } from './document.js';
 import { tracePlacement } from '../building/trace.js';
 
@@ -76,6 +78,10 @@ import { tracePlacement } from '../building/trace.js';
 export const PLAN_INK = '#1f2328';
 export const PLAN_PAPER = '#ffffff';
 export const PLAN_ROOM_DEFAULT = '#e9e4d9';
+// The light theme's --warning and --accent: a step's bars and an area of
+// refuge, written into the markup as attributes so print.css needs no rule.
+const PLAN_WARNING = '#925d00';
+const PLAN_ACCENT = '#0f6e66';
 
 // The plan's look on paper, for a picture that stands alone and so cannot
 // read print.css (a PNG drawn from the SVG, SV2-32c): print.css's rules for
@@ -194,9 +200,11 @@ function cellsPath(cells, width) {
 function shapeOf(space, width) {
   const inside = new Set(space.cells);
   const doors = new Set((space.doors || []).map((door) => door.cell + ':' + door.side));
+  const stepDoors = new Set((space.doors || []).filter((door) => door.stepFree === false).map((door) => door.cell + ':' + door.side));
   const cells = space.cells.slice().sort((a, b) => a - b);
   const edges = [];
   const doorEdges = [];
+  const stepEdges = [];
   const rows = new Map();
   let x0 = Infinity;
   let y0 = Infinity;
@@ -222,8 +230,10 @@ function shapeOf(space, width) {
       if (!open[side]) continue;
       // [x, y, x, y] in cells
       const piece = side === 'n' ? [x, y, x + 1, y] : side === 's' ? [x, y + 1, x + 1, y + 1] : side === 'w' ? [x, y, x, y + 1] : [x + 1, y, x + 1, y + 1];
-      if (doors.has(cell + ':' + side)) doorEdges.push(piece);
-      else edges.push(piece);
+      if (doors.has(cell + ':' + side)) {
+        doorEdges.push(piece);
+        if (stepDoors.has(cell + ':' + side)) stepEdges.push(piece);
+      } else edges.push(piece);
     }
   }
   const w = x1 - x0 + 1;
@@ -240,7 +250,27 @@ function shapeOf(space, width) {
     }
     anchor = { x: (best.x0 + best.x1) / 2, y: best.y + 0.5, w: best.x1 - best.x0, h: 1 };
   }
-  return { edges, doorEdges, anchor };
+  return { edges, doorEdges, stepEdges, anchor };
+}
+
+// Two short parallel bars along a piece [ax, ay, bx, by] in cells, a little
+// to each side of it, from a seventh in to a seventh from the far end: a step
+// (DESIGN 13.3), as attributes on a path so no stylesheet has to know it.
+function stepBarsMarkup(pieces, width) {
+  const parts = [];
+  for (const [ax, ay, bx, by] of pieces) {
+    const horizontal = ay === by;
+    const from = 0.15;
+    const to = 0.85;
+    for (const off of [-0.12, 0.12]) {
+      const x0 = ax + (bx - ax) * from + (horizontal ? 0 : off);
+      const x1 = ax + (bx - ax) * to + (horizontal ? 0 : off);
+      const y0 = ay + (by - ay) * from + (horizontal ? off : 0);
+      const y1 = ay + (by - ay) * to + (horizontal ? off : 0);
+      parts.push('M' + n(x0 * U) + ' ' + n(y0 * U) + 'L' + n(x1 * U) + ' ' + n(y1 * U));
+    }
+  }
+  return '<path class="plan__steps" fill="none" stroke="' + PLAN_WARNING + '" stroke-width="' + width + '" stroke-linecap="butt" d="' + parts.join('') + '"/>';
 }
 
 function linesPath(pieces) {
@@ -403,6 +433,36 @@ function routeMarkup(floor, route) {
   return out.length === 0 ? '' : '<g class="plan__way">' + out.join('') + '</g>';
 }
 
+// An elevator stop (DESIGN 13.2) as markup: two solid triangles, up over down,
+// the car's letter in a pill under them and, for a staff-only car, a key
+// beside the letter. [{ markup, box }]; the box is what a window keeps or
+// cuts. Shapes carry their own attributes, as the steps do.
+function liftMarkup(lift, x, y, text) {
+  const cx = x + U / 2;
+  const cy = y + U * 0.32;
+  const reach = U * 0.14;
+  const triangles = '<path class="plan__lift" fill="' + PLAN_INK + '" d="M' + n(cx) + ' ' + n(cy - reach * 1.5) + 'L' + n(cx + reach) + ' ' + n(cy - reach * 0.2) + 'L' + n(cx - reach) + ' ' + n(cy - reach * 0.2) + 'zM' + n(cx) + ' ' + n(cy + reach * 1.5) + 'L' + n(cx + reach) + ' ' + n(cy + reach * 0.2) + 'L' + n(cx - reach) + ' ' + n(cy + reach * 0.2) + 'z"/>';
+  const notch = lift.staffOnly ? 1 : 0;
+  const size = fit(textEms(lift.letter) + notch * 0.9, U - 6, 7);
+  const wide = textEms(lift.letter) * size;
+  const key = notch * size * 0.9;
+  const pillW = Math.min(U - 2, wide + size * 0.7 + key);
+  const pillH = size + 2;
+  const px = cx - pillW / 2;
+  const py = y + U * 0.72 - pillH / 2;
+  const pill = '<rect class="plan__pill" x="' + n(px) + '" y="' + n(py) + '" width="' + n(pillW) + '" height="' + n(pillH) + '" rx="' + n(pillH / 2) + '" fill="' + PLAN_PAPER + '" stroke="' + PLAN_INK + '" stroke-width="0.7"/>';
+  const letterX = px + (pillW - key) / 2 + size * 0.1;
+  const letter = text(letterX, py + pillH / 2, size, 'plan__letter', lift.letter);
+  const pieces = [{ markup: triangles, box: { left: cx - reach, right: cx + reach, top: cy - reach * 1.5, bottom: cy + reach * 1.5 } }, { markup: pill, box: { left: px, right: px + pillW, top: py, bottom: py + pillH } }, { markup: letter, box: labelBox(lift.letter, letterX, py + pillH / 2, size) }];
+  if (lift.staffOnly) {
+    const kx = px + pillW - key / 2 - size * 0.1;
+    const ky = py + pillH / 2;
+    const ring = Math.max(0.7, size * 0.16);
+    pieces.push({ markup: '<path class="plan__key" fill="none" stroke="' + PLAN_INK + '" stroke-width="0.6" d="M' + n(kx - size * 0.2 + ring) + ' ' + n(ky) + 'a' + n(ring) + ' ' + n(ring) + ' 0 1 0 ' + n(-ring * 2) + ' 0a' + n(ring) + ' ' + n(ring) + ' 0 1 0 ' + n(ring * 2) + ' 0L' + n(kx + size * 0.32) + ' ' + n(ky) + 'M' + n(kx + size * 0.22) + ' ' + n(ky) + 'L' + n(kx + size * 0.22) + ' ' + n(ky + size * 0.22) + '"/>', box: { left: kx - size * 0.2 - ring, right: kx + size * 0.32, top: ky - ring, bottom: ky + size * 0.22 } });
+  }
+  return pieces;
+}
+
 export function planSvg(project, floor, options) {
   const write = options && options.xml === true ? escXml : esc;
   const text = textWith(write);
@@ -469,6 +529,17 @@ export function planSvg(project, floor, options) {
     if (!walkable(x + 1, y)) walls.push([x + 1, y, x + 1, y + 1]);
   }
   if (walls.length > 0) out.push('<path class="plan__wall" d="' + linesPath(walls) + '"/>');
+  // a step in a corridor: two short bars across the cell
+  const stepCells = (floor.notStepFree || []).filter((cell) => floor.cells[cell] === CELL_CORRIDOR && shown([cell]));
+  if (stepCells.length > 0) {
+    const bars = [];
+    for (const cell of stepCells) {
+      const x = cell % width;
+      const y = Math.floor(cell / width);
+      for (const at of [0.36, 0.64]) bars.push([x + 0.2, y + at, x + 0.8, y + at]);
+    }
+    out.push('<path class="plan__steps" fill="none" stroke="' + PLAN_WARNING + '" stroke-width="1.6" stroke-linecap="butt" d="' + linesPath(bars) + '"/>');
+  }
 
   // stairs: a chevron and the letters of the connections that land there. A
   // one-way connection's letter has a second, bolder chevron beside it, 'up'
@@ -482,7 +553,18 @@ export function planSvg(project, floor, options) {
     return found ? found.level : 0;
   };
   const lettersAt = new Map();
+  // the elevator stops of this floor: cell -> { letter, staffOnly }. A stop not
+  // yet connected shows the letter the next elevator will take.
+  const liftAt = new Map();
+  const elevators = [];
+  for (const car of elevatorCars(project.building)) {
+    const stop = car.stops.find((each) => each.floorId === floor.id);
+    if (!stop) continue;
+    liftAt.set(stop.cell, { letter: car.label === '' ? pendingElevatorLetter(project.building) : car.label, staffOnly: car.staffOnly, connected: car.connectionIds.length > 0 });
+  }
   for (const connection of project.building.connections) {
+    // an elevator's stops carry the car's letter and their own glyph, below
+    if (connection.kind === ELEVATOR_KIND) continue;
     [connection.a, connection.b].forEach((end, index) => {
       if (end.floorId !== floor.id) return;
       if (!lettersAt.has(end.cell)) lettersAt.set(end.cell, []);
@@ -502,6 +584,12 @@ export function planSvg(project, floor, options) {
   for (const cell of shownStairs) {
     const x = (cell % width) * U;
     const y = Math.floor(cell / width) * U;
+    const lift = liftAt.get(cell);
+    if (lift) {
+      if (!elevators.some((each) => each.letter === lift.letter && each.staffOnly === lift.staffOnly && each.connected === lift.connected)) elevators.push({ letter: lift.letter, staffOnly: lift.staffOnly, connected: lift.connected });
+      liftMarkup(lift, x, y, text).forEach((piece) => put(piece.markup, piece.box));
+      continue;
+    }
     const entries = lettersAt.get(cell) || [];
     for (const entry of entries) if (!letters.includes(entry.label)) letters.push(entry.label);
     const label = entries.map((entry) => entry.label).join(' ');
@@ -553,6 +641,7 @@ export function planSvg(project, floor, options) {
     out.push('<g class="plan__space plan__space--' + (isRoom ? 'room' : 'other') + (numbered ? '' : ' plan__space--unnumbered') + '">');
     out.push('<path class="plan__fill" fill="' + fill + '" d="' + cellsPath(space.cells, width) + '"/>');
     out.push('<path class="plan__outline" d="' + linesPath(shape.edges.concat(doorStubs(shape.doorEdges))) + '"/>');
+    if (shape.stepEdges.length > 0) out.push(stepBarsMarkup(shape.stepEdges, 1.4));
     const words = isRoom ? space.number : space.label;
     const cx = shape.anchor.x * U;
     const cy = shape.anchor.y * U;
@@ -621,6 +710,13 @@ export function planSvg(project, floor, options) {
     out.push(across
       ? '<path class="plan__exit" d="M' + n((x + 0.15) * U) + ' ' + at + 'L' + n((x + 0.85) * U) + ' ' + at + '"/>'
       : '<path class="plan__exit" d="M' + at + ' ' + n((y + 0.15) * U) + 'L' + at + ' ' + n((y + 0.85) * U) + '"/>');
+    if (exit.stepFree === false) {
+      // steps outside the door: two thin bars beside the dash
+      const piece = across ? [x + 0.2, at / U, x + 0.8, at / U] : [at / U, y + 0.2, at / U, y + 0.8];
+      const bars = [];
+      for (const off of [-0.2, 0.2]) bars.push(across ? [piece[0], piece[1] + off, piece[2], piece[3] + off] : [piece[0] + off, piece[1], piece[2] + off, piece[3]]);
+      out.push('<path class="plan__steps" fill="none" stroke="' + PLAN_WARNING + '" stroke-width="1" stroke-linecap="butt" d="' + linesPath(bars) + '"/>');
+    }
     if (typeof exit.doorName === 'string' && exit.doorName.trim() !== '') {
       named = true;
       const gap = 4;
@@ -632,6 +728,21 @@ export function planSvg(project, floor, options) {
       put(markup, across
         ? labelBox(exit.doorName, (x + 0.5) * U, at + (side === 'n' ? -gap - 3 : gap + 4), 7.5)
         : labelBox(exit.doorName, at + (side === 'w' ? -gap : gap), (y + 0.5) * U, 7.5, 1, false, side));
+    }
+  }
+
+  // areas of refuge: a rounded square in the accent with a seated figure, the name beside it
+  for (const refuge of floor.refuges || []) {
+    if (!shown([refuge.cell])) continue;
+    const rx = (refuge.cell % width) * U;
+    const ry = Math.floor(refuge.cell / width) * U;
+    out.push('<path class="plan__refuge" fill="none" stroke="' + PLAN_ACCENT + '" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round" d="M' + n(rx + 3.2) + ' ' + n(ry + 1.6) + 'h' + n(U - 6.4) + 'a1.6 1.6 0 0 1 1.6 1.6v' + n(U - 6.4) + 'a1.6 1.6 0 0 1 -1.6 1.6h' + n(-(U - 6.4)) + 'a1.6 1.6 0 0 1 -1.6 -1.6v' + n(-(U - 6.4)) + 'a1.6 1.6 0 0 1 1.6 -1.6z'
+      + 'M' + n(rx + U * 0.42 + 1.1) + ' ' + n(ry + U * 0.27) + 'a1.1 1.1 0 1 0 -2.2 0a1.1 1.1 0 1 0 2.2 0M' + n(rx + U * 0.42) + ' ' + n(ry + U * 0.4) + 'L' + n(rx + U * 0.42) + ' ' + n(ry + U * 0.58) + 'L' + n(rx + U * 0.64) + ' ' + n(ry + U * 0.58) + 'L' + n(rx + U * 0.64) + ' ' + n(ry + U * 0.76) + '"/>');
+    if (typeof refuge.name === 'string' && refuge.name.trim() !== '') {
+      named = true;
+      const tx = rx + U + 2;
+      const ty = ry + U / 2;
+      put(text(tx, ty, 6, 'plan__exit-name plan__exit-name--e', refuge.name), labelBox(refuge.name, tx, ty, 6, 1, false, 'e'));
     }
   }
 
@@ -665,5 +776,8 @@ export function planSvg(project, floor, options) {
   const at = place ? ' x="' + n(place.x) + '" y="' + n(place.y) + '" width="' + n(place.width) + '" height="' + n(place.height) + '"' : '';
   const svg = '<svg class="plan" xmlns="http://www.w3.org/2000/svg"' + at + ' viewBox="' + [vx, vy, vw, vh].map(n).join(' ') + '" role="img" aria-label="' + write('Floor plan of ' + floor.name) + '">\n'
     + markup.join('\n') + '\n</svg>';
-  return { svg, drawn: true, traced: traceUrl !== null, width: vw / U, height: vh / U, rooms, exits, letters };
+  const picture = { svg, drawn: true, traced: traceUrl !== null, width: vw / U, height: vh / U, rooms, exits, letters };
+  // named only where a stop is drawn, so a building without one returns what it always did
+  if (elevators.length > 0) picture.elevators = elevators;
+  return picture;
 }

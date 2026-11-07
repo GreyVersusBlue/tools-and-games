@@ -105,8 +105,17 @@ function eachCrossed(graph, linkOfId, found, onNode, onLink) {
   }
 }
 
+// A connection's id to its link; a car's id (shared by every link of the car)
+// to the car's one link, `graph.cars[car].link`, never whichever came last, so
+// a ride is charged once, to the car (ARCHITECTURE 19.5).
 function linkIndex(graph) {
-  return new Map(graph.links.map((link, index) => [link.id, index]));
+  const cars = Array.isArray(graph.cars) ? graph.cars : [];
+  const map = new Map();
+  graph.links.forEach((link, index) => {
+    if (link.elevator === true && cars[link.car] && cars[link.car].link !== index) return;
+    map.set(link.id, index);
+  });
+  return map;
 }
 
 // Which nodes lie inside an exclusion zone.
@@ -172,6 +181,11 @@ export function loads(project, routes, dayTypeId, graph, bellsId) {
   const excludedConnections = new Uint8Array(base.links.length);
   base.links.forEach((link, index) => {
     if (excluded[link.a] || excluded[link.b]) excludedConnections[index] = 1;
+  });
+  // a car is excluded when ANY of its stops lies in a zone (DECISIONS 2026-11-06),
+  // not only the ends of its first link
+  (Array.isArray(base.cars) ? base.cars : []).forEach((car) => {
+    if (car.stops.some((stop) => excluded[stop.node])) excludedConnections[car.link] = 1;
   });
   const cells = summarise(cellCounts, base.count);
   const connections = summarise(linkCounts, base.links.length);

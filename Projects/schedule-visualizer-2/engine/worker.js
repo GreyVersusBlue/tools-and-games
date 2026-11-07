@@ -231,7 +231,12 @@ export function createPipeline(options) {
 
     const settings = project.settings;
     const margin = settings.checks ? settings.checks.passingMarginSeconds : 0;
-    const headCounts = new Map(project.groups.map((group) => [group.id, group.headCount === null || group.headCount === undefined ? 'd' + settings.defaultHeadCount : String(group.headCount)]));
+    // a group's head count, and '!' after it when it needs step-free routes:
+    // that flag changes its routes and so its figures without changing its
+    // rooms, so it is in the walk key, the walker key and the slot key that
+    // are built from this (ARCHITECTURE 19.5); nothing is added for a group
+    // without it, so a project with none keeps the keys it always had
+    const headCounts = new Map(project.groups.map((group) => [group.id, (group.headCount === null || group.headCount === undefined ? 'd' + settings.defaultHeadCount : String(group.headCount)) + (group.stepFree === true ? '!' : '')]));
     const counted = Array.from(headCounts.values()).join(',');
 
     // The transitions worked out, by what they are: the walkers (who walks

@@ -1040,6 +1040,45 @@
   font-weight: 600;
 }
 
+/* the second block (door-cards.js blockMm reserves its height): the heading
+   is one 12 pt line, the "none" sentence stands at the steps' size, and the
+   gap, padding and rule above are the exit block's own (6.5 mm) */
+.print-doc .card__stepfree {
+  display: flow-root; /* the last step's 1.6 mm stays inside the block, as blockMm counts it */
+}
+
+.print-doc .card__stepfree-head {
+  margin: 0;
+  font-size: 12pt;
+  line-height: 1.35;
+}
+
+.print-doc .card__stepfree-none {
+  margin: 0 0 1.6mm;
+  font-size: 11pt;
+  line-height: 1.35;
+}
+
+.print-doc .card-cover__stepfree-head {
+  margin: 6mm 0 2mm;
+}
+
+.print-doc .card-cover__stepfree {
+  margin: 0 0 3mm;
+}
+
+.print-doc .card-cover__nostep {
+  margin: 2mm 0 0;
+  padding-left: 6mm;
+  columns: 2;
+  column-gap: 10mm;
+}
+
+.print-doc .card-cover__nostep li {
+  break-inside: avoid;
+  padding: 0.5mm 0;
+}
+
 .print-doc .card-cover__all {
   font-weight: 600;
 }
@@ -1135,4 +1174,26 @@
 
 .print-doc .doc-table .doc-change.is-less {
   border-left: 0.8mm dotted var(--ink);
+}
+
+/* The step-free route sheet (ui/prints/route-sheet.js). */
+.print-doc .rs__block {
+  break-inside: avoid;
+}
+
+.print-doc .rs__over {
+  font-weight: 700;
+}
+
+.print-doc .rs__result {
+  margin-top: 2mm;
+}
+
+/* the gap is MAP_GAP_MM (6), which the script sizes the maps by */
+.print-doc .rs__maps {
+  display: flex;
+  gap: 6mm;
+  justify-content: flex-start;
+  align-items: flex-start;
+  margin-top: 2mm;
 }

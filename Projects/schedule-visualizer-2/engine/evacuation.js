@@ -38,6 +38,36 @@
 //   evacuation.rooms; people is the sum of those rooms' capacity; uncounted
 //   is how many of them have no capacity set (they add nothing to people).
 //
+// stepFreeWaysOut(project, graph?, options?)
+//   → { rooms, refuges, avoided }, the way out of each room with no stairs,
+//   no elevator, no step cell and no door with a step (ARCHITECTURE 19.6).
+//   rooms is, in building order, one entry for each room:
+//     { roomId, floorId, way, route, exitId, refugeId, reason, why, sentence }
+//     way     'exit'    the quickest step-free route to an exit whose
+//                       `stepFree` is not false. An exit is preferred to an
+//                       area of refuge however far: leaving beats waiting.
+//             'refuge'  no such exit can be reached: the quickest step-free
+//                       route to an area of refuge
+//             'none'    neither can be reached
+//     route   that route (routeToExit's, or routeToCells's with `target`), or
+//             the failure of the route to an exit for 'none'
+//     exitId  the exit of an 'exit' way, else null; refugeId likewise
+//     reason  for 'none' only: 'only-by-elevator' (a step-free way exists if an
+//             elevator, staff-only included, may be used), 'step-doors' (every
+//             door of the room has a step), 'step-exits' (every exit it can
+//             reach has a step), 'steps' (a step on the way) or
+//             'no-way'; null for the other ways. why is the reason in
+//             words ("only by elevator", "every door has a step", "every exit
+//             has a step", "a step on North Corridor", "no step-free way
+//             through"); sentence is
+//             describeFailure()'s, for a 'none' room.
+//   refuges is [{ refugeId, floorId, name, roomIds }] in building order: the
+//   rooms that wait at each, so a reader can say "Used by 12 rooms" (an empty
+//   roomIds is "not used").
+//   Elevators are never used: every car is shut, as evacuationRoutes shuts
+//   them, and the exits with a step are avoided. options are { cache,
+//   geometryVersion, avoidExits }, as for evacuationRoutes.
+//
 // noRoute(project, evacuation)
 //   → [{ roomId, floorId, reason, sentence, onlyByElevator }]
 //   The rooms with no way out, in the order of evacuation.rooms, each with
@@ -102,11 +132,12 @@
 // The number, door name, assembly point and every name in a step's parts are
 // as typed, in any script; nothing here escapes or interprets them.
 
-import { nameOfRoom, isWalkable } from './schema.js';
-import { routingGraph, routeToExit } from './routing.js';
+import { nameOfRoom, isWalkable, ELEVATOR_KIND } from './schema.js';
+import { routingGraph, routeToExit, routeToCells } from './routing.js';
 import { directions, describeFailure, CELL_UNITS } from './directions.js';
 
-export const ELEVATOR_KIND = 'elevator';
+// ELEVATOR_KIND lives in schema.js (the staff browser has it); re-exported here.
+export { ELEVATOR_KIND };
 export const CROP_MARGIN = 3;
 
 // The connections a walker leaving in an emergency must not take.
@@ -150,6 +181,58 @@ export function evacuationRoutes(project, graph, options) {
     return { roomId: room.id, floorId: floor.id, route, onlyByElevator };
   });
   return { rooms, avoided, asked };
+}
+
+// The first step-free exits and refuges, and the rooms' ways to them.
+export function stepFreeWaysOut(project, graph, options) {
+  const opts = options || {};
+  const routing = routingGraph(project, graph);
+  const avoided = elevatorConnections(project);
+  const base = { cache: opts.cache, geometryVersion: opts.geometryVersion, avoidStairs: true, undirected: true };
+  // elevators are shut (a car is shut by any connection of it); routeToExit leaves out the exits with
+  // a step itself under avoidStairs, and says 'step-exits' when they were all that was left
+  const shut = { ...base, avoidExits: idList(opts.avoidExits) };
+  if (avoided.length > 0) shut.avoidConnections = avoided;
+  // the same with the elevators let in, to tell "only by elevator" from "no way"
+  const lifted = { ...base, avoidExits: shut.avoidExits };
+  const targets = [];
+  for (const floor of project.building.floors) {
+    for (const refuge of floor.refuges || []) targets.push({ floorId: floor.id, cell: refuge.cell, id: refuge.id, name: refuge.name });
+  }
+  const used = new Map(targets.map((target) => [target.id, []]));
+  const rooms = roomsInOrder(project).map(({ room, floor }) => {
+    const entry = { roomId: room.id, floorId: floor.id, way: 'none', route: null, exitId: null, refugeId: null, reason: null, why: '', sentence: '' };
+    const toExit = routeToExit(routing, room.id, shut);
+    if (toExit.ok) return { ...entry, way: 'exit', route: toExit, exitId: toExit.exitId };
+    const toRefuge = targets.length > 0 && toExit.reason === 'unreachable' ? routeToCells(routing, room.id, targets, shut) : null;
+    if (toRefuge && toRefuge.ok) {
+      used.get(toRefuge.targetId).push(room.id);
+      return { ...entry, way: 'refuge', route: toRefuge, refugeId: toRefuge.targetId };
+    }
+    // none: why
+    entry.route = toExit;
+    entry.sentence = describeFailure(project, toExit);
+    const stepDoors = toExit.reason === 'no-entry' && Array.isArray(toExit.avoiding) && toExit.avoiding.includes('step-doors') && entry.sentence.endsWith(' has no step-free door.');
+    if (stepDoors) {
+      entry.reason = 'step-doors';
+      entry.why = 'every door has a step';
+    } else if (avoided.length > 0 && toExit.reason === 'unreachable' && routeToExit(routing, room.id, lifted).ok) {
+      entry.reason = 'only-by-elevator';
+      entry.why = 'only by elevator';
+    } else if (toExit.reason === 'unreachable' && toExit.stepBlocked === true && entry.sentence.includes(': a step on ')) {
+      entry.reason = 'steps';
+      entry.why = entry.sentence.slice(entry.sentence.lastIndexOf(': a step on ') + 2).replace(/\.$/, '');
+    } else if (toExit.reason === 'unreachable' && Array.isArray(toExit.avoiding) && toExit.avoiding.includes('step-exits')) {
+      entry.reason = 'step-exits';
+      entry.why = 'every exit has a step';
+    } else {
+      entry.reason = 'no-way';
+      entry.why = 'no step-free way through';
+    }
+    return entry;
+  });
+  const refuges = targets.map((target) => ({ refugeId: target.id, floorId: target.floorId, name: target.name, roomIds: used.get(target.id) }));
+  return { rooms, refuges, avoided };
 }
 
 export function byExit(project, evacuation) {

@@ -369,3 +369,103 @@ test('SV2-43 item 2: what is kept for a group’s routes is for one graph and on
   for (const entry of contributors(short, routes, day, { nodes: [node] }, graph)) assert.ok(entry.transitions.every((t) => t < 2), 'a transition of the longer day: ' + entry.transitions);
   assert.deepEqual(contributors(project, routes, day, { nodes: [node] }, graph), before);
 });
+
+
+// ---- elevators (SV2-99, ARCHITECTURE 19.5)
+
+function withCars(project, cars) {
+  const at = (number, x, y) => {
+    const floor = project.building.floors[number - 1];
+    return { floorId: floor.id, cell: y * floor.width + x };
+  };
+  let n = project.building.connections.length;
+  cars.forEach((car, index) => {
+    const letter = car.letter || String.fromCharCode(68 + index);
+    for (const [number, x, y] of car.stops) {
+      const floor = project.building.floors[number - 1];
+      const cell = y * floor.width + x;
+      floor.cells = floor.cells.slice(0, cell) + 'S' + floor.cells.slice(cell + 1);
+      floor.lifts = Array.from(new Set([...(floor.lifts || []), cell])).sort((a, b) => a - b);
+    }
+    const pairs = car.mode === 'star' ? car.stops.slice(1).map((stop) => [car.stops[0], stop]) : car.stops.slice(1).map((stop, i) => [car.stops[i], stop]);
+    for (const [a, b] of pairs) {
+      n += 1;
+      project.building.connections.push({ id: 'celev' + String(n).padStart(5, '0'), label: letter + n, a: at(...a), b: at(...b), direction: 'both', kind: 'elevator', staffOnly: false, car: letter });
+    }
+  });
+  return project;
+}
+
+const HALL = ['.AA.BB.', '.AA.BB.', '#######', '.......', '.......'];
+
+function liftSchool(mode) {
+  const project = planProject([HALL, HALL, HALL], { exits: [[1, 6, 2, 'Main Door']] });
+  withCars(project, [{ stops: [[1, 0, 2], [2, 0, 2], [3, 0, 2]], mode }]);
+  return withSchedule(project, {
+    Ten: ['1A', '3B', '1A'],
+    Twenty: ['1A', '2A', '3A'],
+    Walker: ['1A', '1B', '1A'],
+  }, { Ten: 10, Twenty: 20, Walker: 5 });
+}
+
+test('a ride charges the head count once to the car, and a car\'s other links get no row', () => {
+  for (const mode of ['chain', 'star']) {
+    const project = liftSchool(mode);
+    const { graph, load } = loaded(project);
+    const [car] = graph.cars;
+    assert.equal(car.links.length, 3, mode + ': three stops, three pairs');
+    // transition 0: Ten 1A to 3B (one ride, 10), Twenty 1A to 2A (one ride, 20); transition 1: Ten back down (10), Twenty 2A to 3A (20)
+    assert.equal(load.connections.total[car.link], 60, mode + ': 10 + 20 + 10 + 20, each ride once, all to the car\'s one link');
+    assert.equal(load.connections.busiest[car.link], 30, mode + ': 30 in the busiest transition: both groups rode in transition 0');
+    for (const link of car.links.slice(1)) {
+      assert.equal(load.connections.total[link], 0, mode + ': no figure on the car\'s other links');
+      assert.equal(load.connections.busiest[link], 0);
+    }
+    assert.equal(load.max.busiest >= 30, true);
+    // a walking group adds nothing to the car
+    assert.equal(load.connections.byTransition[0][car.link], 30);
+    assert.equal(load.connections.byTransition[1][car.link], 30);
+  }
+});
+
+test('a ride is counted once however many cells of the lift it crosses, and the lift cells carry the load as corridor cells do', () => {
+  const project = liftSchool('chain');
+  const { graph, load } = loaded(project);
+  const at = (floorNumber, x, y) => nodeAt(graph, floorId(floorNumber), cellAt(project, floorNumber, x, y));
+  assert.equal(load.cells.busiest[at(1, 0, 2)], 30, 'the lift cell on floor 1: both groups left by it in transition 0');
+  assert.equal(load.cells.busiest[at(2, 0, 2)], 20, 'floor 2: Twenty arrives in transition 0 and leaves in transition 1; Ten comes down through it');
+});
+
+test('contributors asks about a car by the car\'s link and answers with the groups that rode it', () => {
+  const project = liftSchool('star');
+  const { graph, routes } = loaded(project);
+  const day = project.dayTypes[0].id;
+  const [car] = graph.cars;
+  const found = contributors(project, routes, day, { links: [car.link] }, graph);
+  assert.deepEqual(found.map((entry) => entry.groupId).sort(), [project.groups[0].id, project.groups[1].id].sort());
+  for (const other of car.links.slice(1)) assert.deepEqual(contributors(project, routes, day, { links: [other] }, graph), [], 'a link of the car that is not the car\'s: nobody');
+});
+
+test('with no elevator the loads are as before: no car, the same rows', () => {
+  const project = corridor();
+  const { graph, load } = loaded(project);
+  assert.deepEqual(graph.cars, []);
+  assert.equal(load.connections.busiest.length, graph.links.length);
+});
+
+test('a zone over a later stop of a chain excludes the car, whichever stop it is (SV2-99b)', () => {
+  for (const [stopFloor, expected] of [[1, true], [2, true], [3, true]]) {
+    const project = liftSchool('chain');
+    project.building.zones = [{ id: 'zplan00001', floorId: floorId(stopFloor), label: '', x: 0, y: 2, w: 1, h: 1 }];
+    const { graph, load } = loaded(project);
+    const [car] = graph.cars;
+    assert.equal(load.excludedConnections[car.link] === 1, expected, 'zone over the stop on floor ' + stopFloor);
+  }
+  const none = loaded(liftSchool('chain'));
+  assert.equal(none.load.excludedConnections[none.graph.cars[0].link], 0, 'no zone, no exclusion');
+  // a zone that touches no stop leaves it alone
+  const away = liftSchool('chain');
+  away.building.zones = [{ id: 'zplan00001', floorId: floorId(3), label: '', x: 3, y: 3, w: 1, h: 1 }];
+  const kept = loaded(away);
+  assert.equal(kept.load.excludedConnections[kept.graph.cars[0].link], 0);
+});

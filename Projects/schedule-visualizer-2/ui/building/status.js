@@ -45,6 +45,8 @@ export function statusLine(options) {
         ['rooms', total.rooms === 0 ? 'No rooms' : total.numberedRooms + ' of ' + plural(total.rooms, 'room', 'rooms') + ' numbered', total.rooms === 0 ? 'No rooms' : total.numberedRooms + ' of ' + plural(total.rooms, 'room', 'rooms')],
         ['corridor', plural(total.corridorCells, 'corridor cell', 'corridor cells'), total.corridorCells + ' corridor'],
         ['connections', plural(total.connections, 'stairs connection', 'stairs connections'), total.connections + ' stairs'],
+        // elevators are counted apart from stairs, and appear only once one is drawn
+        ...(total.elevators > 0 || total.liftCells > 0 ? [['elevators', total.elevators === 0 ? plural(total.liftCells, 'elevator stop, not connected', 'elevator stops, not connected') : plural(total.elevators, 'elevator', 'elevators') + (total.unconnectedLifts > 0 ? ', ' + plural(total.unconnectedLifts, 'stop not connected', 'stops not connected') : ''), total.elevators === 0 ? plural(total.liftCells, 'elevator stop', 'elevator stops') : plural(total.elevators, 'elevator', 'elevators')]] : []),
         ['exits', plural(total.exits, 'exit', 'exits'), plural(total.exits, 'exit', 'exits')],
         ['floors', plural(total.floors, 'floor', 'floors'), plural(total.floors, 'floor', 'floors')],
       ];

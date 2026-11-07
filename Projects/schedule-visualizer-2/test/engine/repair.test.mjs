@@ -7,6 +7,8 @@ import { migrate } from '../../engine/migrate.js';
 import { PAPER_SIZES } from '../../engine/schema.js';
 import { seededRandom, isId } from '../../engine/ids.js';
 import { emptyProject, school, clone, clock, makeIds, room, group, PINNED, BREAKS } from './helpers.mjs';
+import { withElevator, withTwoElevators, brokenElevator, STEP_FREE_BREAKS } from '../fixtures/step-free.mjs';
+import { sampleSchool } from '../../data/sample-school.js';
 
 test('a valid project comes back as the same object with no notes', () => {
   for (const project of [emptyProject(), school()]) {
@@ -750,7 +752,7 @@ test('Cell scale (SV2-73a): a project with none, or not set, comes back as the s
 
 // ---------------------------------------------------------------- ARCHITECTURE 17: the new fields
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { withEverything, NEW_BREAKS, A, B, C, ER } from '../fixtures/day-types-calendar.mjs';
@@ -1238,4 +1240,190 @@ test('scenario levers (SV2-89b): repair strips unknown keys from a lever of ever
   const clean = withLevers(LEVERS);
   const result = repair(clean);
   result.project.scenario.levers.forEach((lever, i) => assert.equal(lever, LEVERS[i], 'a clean ' + lever.kind + ' lever is the very same object'));
+});
+
+// ---- the step-free model (ARCHITECTURE 19.2, SV2-96)
+
+test('step-free: repair gives back the very same object for a school with every new field sound, and for one with none', () => {
+  for (const project of [sampleSchool(), school(), withElevator(), emptyProject()]) {
+    const result = repair(project);
+    assert.equal(result.project, project);
+    assert.deepEqual(result.notes, []);
+  }
+});
+
+test('step-free: repair adds none of the new fields to a project that has none, and every fixture file comes back as it was', () => {
+  const NEW = /"(lifts|notStepFree|refuges|stepFree|staffOnly|car|elevatorWaitSeconds|elevatorSecondsPerFloor|elevatorPeoplePerTrip)"/;
+  const dir = fileURLToPath(new URL('../fixtures/formats/', import.meta.url));
+  let seen = 0;
+  for (const file of readdirSync(dir).filter((name) => /^project-.*\.json$/.test(name) && name !== 'project-newer.json')) { // a newer file is refused by migrate, never repaired
+    const raw = JSON.parse(readFileSync(dir + file, 'utf8'));
+    const result = repair(migrate(raw));
+    seen += 1;
+    assert.equal(NEW.test(JSON.stringify(result.project)), false, file + ' gained a step-free field');
+    assert.equal(NEW.test(JSON.stringify(raw)), false, file + ' is an old file and has none');
+    assert.equal(repair(result.project).project, result.project, file + ' is stable under a second repair');
+  }
+  assert.equal(seen, 3, 'it read the old, current and invalid project fixtures');
+});
+
+for (const [name, mutate, , after] of STEP_FREE_BREAKS) {
+  test('step-free: puts right ' + name, () => {
+    const project = brokenElevator([name, mutate]);
+    const before = clone(project);
+    const result = repair(project);
+    assert.deepEqual(project, before, 'the input is not changed');
+    assert.deepEqual(validate(result.project), [], 'what comes back is valid');
+    after(result.project, assert);
+    if (validate(project).length > 0 && !/no name/.test(name)) assert.ok(result.notes.length > 0 && result.notes.every((note) => typeof note === 'string' && note !== ''), 'it says what it did');
+    assert.equal(repair(result.project).project, result.project, 'and a second repair changes nothing');
+  });
+}
+
+test('step-free: the order of 19.2 holds when one project breaks several rules at once', () => {
+  const project = withElevator();
+  const [f1, f2, f3] = project.building.floors;
+  const paint = (floor, cell, character) => { floor.cells = floor.cells.slice(0, cell) + character + floor.cells.slice(cell + 1); };
+  // Floor 1 and 3 stops, a third connection that doubles Floor 1, a stairs connection onto the lift, a one-way elevator
+  paint(f1, 333, 'S');
+  paint(f3, 354, 'S');
+  const connections = project.building.connections;
+  connections.push({ id: 'csample0e0', label: 'E', a: { floorId: f2.id, cell: 332 }, b: { floorId: f1.id, cell: 333 }, direction: 'ab', kind: 'elevator', car: 'A' });
+  connections.push({ id: 'csample0f0', label: 'F', a: { floorId: f2.id, cell: 332 }, b: { floorId: f3.id, cell: 354 }, direction: 'ab', kind: 'elevator', car: 'Z' });
+  connections.push({ id: 'csample0g0', label: 'G', a: { floorId: f1.id, cell: 332 }, b: { floorId: f3.id, cell: 353 }, direction: 'both' });
+  const { project: fixed, notes } = repair(project);
+  assert.deepEqual(validate(fixed), []);
+  const labels = fixed.building.connections.map((connection) => connection.label);
+  assert.deepEqual(labels, ['A', 'B', 'F'], 'G lost to the elevator at its cell, E to the second stop on Floor 1');
+  const f = fixed.building.connections.find((connection) => connection.label === 'F');
+  assert.equal(f.direction, 'both');
+  assert.equal(f.staffOnly, true, 'true wins across the car');
+  assert.equal(f.car, 'A', 'the first connection\'s letter');
+  assert.ok(notes.length >= 4);
+});
+
+test('step-free: repair gives a project with elevator connections and no lifts list the letter its label gives', () => {
+  const project = school();
+  project.building.connections[0].kind = 'elevator';
+  const { project: fixed, notes } = repair(project);
+  assert.equal(fixed.building.connections[0].car, 'A');
+  assert.equal(fixed.building.connections[0].kind, 'elevator');
+  assert.equal('lifts' in fixed.building.floors[0], false, 'repair never adds to lifts');
+  assert.deepEqual(notes, [], 'an absent letter is filled in without a note');
+});
+
+test('step-free: a thousand randomly damaged elevator schools all come back valid', () => {
+  const random = seededRandom('damage-elevator');
+  const pick = (list) => list[Math.floor(random() * list.length)];
+  const junk = [undefined, null, -1, 0, 1.5, 9999, '', 'x', true, false, [], {}, [null], [332, 332], 'both', 'elevator', { id: 5 }, 'csample00a', 'fsample001', 'asample001'];
+  const damage = (project) => {
+    let target = project;
+    for (let depth = 0; depth < 7; depth += 1) {
+      const keys = Object.keys(target);
+      if (keys.length === 0) return;
+      const key = pick(keys);
+      const child = target[key];
+      if (child !== null && typeof child === 'object' && random() < 0.8) {
+        target = child;
+        continue;
+      }
+      if (random() < 0.3) delete target[key];
+      else target[key] = pick(junk);
+      return;
+    }
+  };
+  for (let n = 0; n < 1000; n += 1) {
+    const project = withElevator();
+    for (let k = 0; k < 1 + Math.floor(random() * 4); k += 1) damage(project);
+    const result = repair(project, { ids: makeIds(n + 1), clock });
+    assert.deepEqual(validate(result.project), [], 'case ' + n);
+    const again = repair(result.project, { ids: makeIds(n + 1), clock });
+    assert.equal(again.project, result.project, 'case ' + n + ': a second repair returns the same object');
+    assert.deepEqual(again.notes, [], 'case ' + n);
+  }
+});
+
+test('step-free: an older tool\'s edits of a W4 file (an elevator redrawn as stairs, a resize) open and come back valid', () => {
+  // The older tool copies every field it does not know, then its own edits
+  // repaint a lift cell as a corridor cell and join another as stairs.
+  const project = withElevator();
+  const [f1, f2] = project.building.floors;
+  f1.cells = f1.cells.slice(0, 332) + '#' + f1.cells.slice(333);
+  delete project.building.connections[0].kind;
+  const { project: fixed } = repair(project);
+  assert.deepEqual(validate(fixed), []);
+  assert.deepEqual(fixed.building.floors[0].lifts, [], 'the repainted cell is not a stop');
+  assert.deepEqual(fixed.building.connections.map((connection) => connection.label), ['B'], 'a connection to a cell that is not stairs goes, as it always did');
+  assert.deepEqual(fixed.building.floors[1].lifts, [332], 'the other end is a stop with no connection, which `lifts` still marks');
+  assert.equal(fixed.building.floors[0].notStepFree.length, 2, 'what the older tool does not know is kept');
+  assert.ok(f2);
+});
+
+test('step-free: a later elevator that shares an earlier one\'s letter takes its first connection\'s own label, with a note', () => {
+  const project = withTwoElevators('a');
+  const { project: fixed, notes } = repair(project);
+  assert.deepEqual(validate(fixed), []);
+  assert.deepEqual(fixed.building.connections.map((connection) => connection.car), ['A', 'B']);
+  assert.equal(notes.length, 1);
+  assert.match(notes[0], /same letter as an earlier elevator.*"B"/);
+  const again = repair(fixed);
+  assert.equal(again.project, fixed);
+  assert.deepEqual(again.notes, []);
+});
+
+test('step-free: repair\'s idempotence holds when the own label is also taken, and the first car keeps its letter', () => {
+  const project = withTwoElevators('A');
+  project.building.connections[0].car = 'B';
+  project.building.connections[1].car = 'b';
+  const { project: fixed } = repair(project);
+  assert.deepEqual(validate(fixed), []);
+  assert.equal(fixed.building.connections[0].car, 'B');
+  assert.notEqual(fixed.building.connections[1].car.toLowerCase(), 'b');
+  assert.equal(repair(fixed).project, fixed);
+});
+
+test('step-free: fuzz: a damaged three-floor chain and a damaged star come back valid, and a second repair changes nothing', () => {
+  const random = seededRandom('damage-chain-star');
+  const pick = (list) => list[Math.floor(random() * list.length)];
+  const junk = [undefined, null, -1, 0, 1.5, 9999, '', 'x', true, [], {}, 'both', 'elevator', 'a', 'A', 'fsample001', 'fsample003', 'csample00a'];
+  const build = (shape) => {
+    const project = school();
+    const [f1, f2, f3] = project.building.floors;
+    for (const f of [f1, f2, f3]) f.cells = f.cells.slice(0, 333) + 'S' + f.cells.slice(334);
+    const end = (f) => ({ floorId: f.id, cell: 333 });
+    const second = shape === 'chain' ? [end(f2), end(f3)] : [end(f1), end(f3)];
+    project.building.connections = [
+      { id: 'cfuzz00001', label: 'A', a: end(f1), b: end(f2), direction: 'both', kind: 'elevator', car: 'A' },
+      { id: 'cfuzz00002', label: 'B', a: second[0], b: second[1], direction: 'both', kind: 'elevator', car: 'A' },
+    ];
+    return project;
+  };
+  const damage = (project) => {
+    let target = project.building;
+    for (let depth = 0; depth < 5; depth += 1) {
+      const keys = Object.keys(target);
+      if (keys.length === 0) return;
+      const key = pick(keys);
+      const child = target[key];
+      if (child !== null && typeof child === 'object' && random() < 0.8) {
+        target = child;
+        continue;
+      }
+      if (random() < 0.3) delete target[key];
+      else target[key] = pick(junk);
+      return;
+    }
+  };
+  for (const shape of ['chain', 'star']) {
+    assert.deepEqual(validate(build(shape)), [], shape + ' as built');
+    for (let n = 0; n < 500; n += 1) {
+      const project = build(shape);
+      for (let k = 0; k < 1 + Math.floor(random() * 4); k += 1) damage(project);
+      const result = repair(project, { ids: makeIds(n + 1), clock });
+      assert.deepEqual(validate(result.project), [], shape + ' case ' + n);
+      const again = repair(result.project, { ids: makeIds(n + 1), clock });
+      assert.equal(again.project, result.project, shape + ' case ' + n + ': a second repair returns the same object');
+      assert.deepEqual(again.notes, []);
+    }
+  }
 });

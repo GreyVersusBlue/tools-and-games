@@ -34,7 +34,7 @@ import { releaseOf } from '../../engine/schema.js';
 import { periodName, formatTime } from '../../engine/bells.js';
 import { periodWords } from '../components/words.js';
 import { wayChoices } from '../building/inspector/floor.js';
-import { dayChoices, periodChoices, groupChoices, slotWords, TEACHERS_FOLLOW, bellSets, bellLever, realBellOf, bellPassingWords, lengthenPassing, connectionChoices, corridorChoices, corridorLever } from './model.js';
+import { dayChoices, periodChoices, groupChoices, slotWords, TEACHERS_FOLLOW, bellSets, bellLever, realBellOf, bellPassingWords, lengthenPassing, connectionChoices, stairsConnection, stairsOf, corridorChoices, corridorLever } from './model.js';
 
 export const FORM_KINDS = [
   { value: 'move', label: 'Move a group' },
@@ -114,7 +114,7 @@ function seedWay(project, building) {
   const key = String(building.connectionId);
   if (building.seeded === key) return;
   building.seeded = key;
-  const connection = (project.building.connections || []).find((each) => each.id === building.connectionId);
+  const connection = stairsConnection(project, building.connectionId);
   building.way = connection ? connection.direction : 'both';
 }
 
@@ -247,7 +247,7 @@ export function formsPanel(env) {
       now.textContent = set ? 'Now: ' + periodName(project.settings, form.bells.period) + ', ' + (real ? text(real.start) + ' to ' + text(real.end) : 'no times') + '.' : '';
     }
     else if (form.kind === 'building' && form.building.what === 'stair') {
-      const connection = (project.building.connections || []).find((each) => each.id === form.building.connectionId);
+      const connection = stairsConnection(project, form.building.connectionId);
       const has = connection ? wayChoices(project, connection).find((each) => each.value === connection.direction) : null;
       now.textContent = has ? 'Now: ' + has.label + '.' : '';
     }
@@ -509,7 +509,7 @@ export function formsPanel(env) {
           seedWay(ctx.store.project, f);
           redraw('scenario-building-stair');
         }));
-        const connection = (project.building.connections || []).find((each) => each.id === f.connectionId);
+        const connection = stairsConnection(project, f.connectionId);
         const ways = connection ? wayChoices(project, connection).concat([{ value: 'closed', label: 'Closed' }]) : [];
         const group = choice({
           name: 'scenario-building-way',
@@ -652,7 +652,7 @@ export function formsPanel(env) {
       project.bellSchedules,
       project.release,
       // the stairs and the named corridors the Stairs and corridors form offers, and the ways it words
-      project.building.connections,
+      stairsOf(project),
       project.building.floors.map((floor) => [floor.id, floor.name, floor.level, (floor.corridors || []).map((corridor) => [corridor.id, corridor.name, corridor.cells.length])]),
       // a room's name and label too: the picker shows the label of the room picked
       allRooms(project).map((room) => [room.id, room.number, room.name, roomLabel(project, room), room.teacherIds.join(','), room.capacity, room.wing]),

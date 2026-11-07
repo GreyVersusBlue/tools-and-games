@@ -12,7 +12,7 @@ import { createStore } from '../../engine/store.js';
 import { parseTsv, writeTsv } from '../../ui/schedule/grid/tsv.js';
 import { draftFor, gridEditsPending, watchGridEdits, preview, payloadOf, touch, discard, remember, takeBack, stageSlot, stageField, stageAdd, stageRemove } from '../../ui/schedule/grid/staged.js';
 import { sheetModel, cellText, cellState, readCell, planPaste } from '../../ui/schedule/grid/model.js';
-import { school, emptyProject, ctx, clock, makeIds, room, group, assertValid } from './helpers.mjs';
+import { school, emptyProject, ctx, clock, makeIds, room, group, assertValid, clone } from './helpers.mjs';
 
 const { applyGridEdits, countGroupChanges, groupChangesText, describeAction, ActionError } = actions;
 const DAY_A = 'dsample00a';
@@ -358,4 +358,29 @@ test('rows pasted past the last group become new groups, each with a free name a
   assert.deepEqual(after.project.groups[0].days[dayId][0], { room: null, roomText: 'Gym', label: '', teacherIds: [] }, 'no building yet, so the room is kept as typed');
   assertValid(after.project);
   assert.equal(cellText(after.model, after.model.rows[0], after.model.columns[0]), '7-1');
+});
+
+
+// ---------------------------------------------------------------- the step-free flag (SV2-97)
+
+test('the grid keeps a group\'s step-free flag when it rewrites the group, carries one on a new group, and clears it when told', () => {
+  const flagged = clone(school());
+  const six = group(flagged, '6A');
+  six.stepFree = true;
+  assertValid(flagged);
+  const rewritten = run(flagged, { groups: [{ id: six.id, name: '6 Alpha', grade: '6', headCount: 31, colour: '#123456' }] });
+  assert.equal(group(rewritten, '6 Alpha').stepFree, true, 'a rename and new fields leave the flag alone');
+  assert.equal(group(rewritten, '6B').stepFree, undefined, 'and give none to a group that had none');
+  const added = run(flagged, { added: [{ id: 'gnewgroup1', name: '9A', grade: '9', headCount: null, colour: '#abcdef', stepFree: true }] });
+  assert.equal(group(added, '9A').stepFree, true);
+  const cleared = run(flagged, { groups: [{ id: six.id, stepFree: false }] });
+  assert.equal('stepFree' in group(cleared, '6A'), false);
+  const set = run(school(), { groups: [{ id: group(school(), '6B').id, stepFree: true }] });
+  assert.equal(group(set, '6B').stepFree, true);
+  // one undo step, with the flag back as it was
+  const store = createStore({ project: flagged, clock, ids: makeIds(4) });
+  store.apply(applyGridEdits, { groups: [{ id: six.id, stepFree: false }] });
+  assert.equal(store.history.past.length, 1);
+  store.undo();
+  assert.equal(group(store.project, '6A').stepFree, true);
 });

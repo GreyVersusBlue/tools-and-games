@@ -11,7 +11,7 @@ import { picker } from '../components/picker.js';
 import { icon } from '../components/icons.js';
 import { count, list, periodWords } from '../components/words.js';
 import { setSetting, resetSettings, describePeriodChange } from '../../engine/actions.js';
-import { CHECK_KINDS, RANGES, CELL_LENGTH_MOST, DAY_TYPES_MOST, bellSchedulesOf } from '../../engine/schema.js';
+import { CHECK_KINDS, RANGES, CELL_LENGTH_MOST, DAY_TYPES_MOST, bellSchedulesOf, elevatorSettings } from '../../engine/schema.js';
 import { readLength, lengthWords } from '../building/scale-tool.js';
 import { isOwnCopy, effectiveDayType } from '../../engine/day-types.js';
 import { calendarDays, dateWords } from '../../engine/calendar.js';
@@ -235,6 +235,17 @@ export function settingsCard(ctx) {
     number('secondsPerCell', (s) => s.secondsPerCell, 'Seconds per corridor cell'));
   row(movement, 'Seconds per stair connection', 'How long the stairs take, for each floor climbed or descended.',
     number('secondsPerStair', (s) => s.secondsPerStair, 'Seconds per stair connection'));
+  // ---- Elevators (ARCHITECTURE 19.2). Absent in an older project: the numbers read
+  // as the defaults through elevatorSettings, and the first edit writes one.
+  const elevators = group('elevators', 'Elevators');
+  const rangeOf = (key) => 'From ' + RANGES[key][0] + ' to ' + RANGES[key][1] + '.';
+  elevators.element.append(h('p', { class: 'setting__hint', data: { part: 'elevators-note' } }, 'Used only when the building has an elevator.'));
+  row(elevators, 'Wait', 'Seconds from pressing the button to the doors opening. ' + rangeOf('elevatorWaitSeconds') + ' Write 0 for no wait.',
+    number('elevatorWaitSeconds', (s) => elevatorSettings(s).wait, 'The elevator wait in seconds'));
+  row(elevators, 'Ride per floor', 'Seconds the ride takes for each floor it goes up or down. ' + rangeOf('elevatorSecondsPerFloor'),
+    number('elevatorSecondsPerFloor', (s) => elevatorSettings(s).perFloor, 'The ride per floor in seconds'));
+  row(elevators, 'People per trip', 'How many fit in the car at once. A larger group goes in several trips. ' + rangeOf('elevatorPeoplePerTrip'),
+    number('elevatorPeoplePerTrip', (s) => elevatorSettings(s).perTrip, 'People per trip'));
   row(movement, 'Cell scale', 'How long one cell of the floor plan is, in feet or metres; not set until it is given. Building uses it to scale a traced image from a length. Real distances in directions and reports, and walking speed as a speed, are not in the tool yet.', (labelId, hintId) => {
     const read = (settings) => (settings.cellScale && typeof settings.cellScale === 'object' ? settings.cellScale : null);
     // the unit a length typed here is in: the setting's, or feet until one is set

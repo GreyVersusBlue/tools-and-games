@@ -15,14 +15,22 @@ import { bandOf, bandEdges } from '../../engine/load.js';
 import { parse as parseCsv } from '../../engine/csv.js';
 import { csvText, exportFileName } from '../../engine/exports.js';
 import { defaultChoice, pictureOf } from '../../ui/movement/model.js';
-import { hotspotRows, placesElsewhere, rankedPlaces, hotspotsCsv, cellWords, placeWords, createPulse, pulseFrame, PULSE_TOP, TABLE_FIRST, PULSE_MS, PULSE_TIMES } from '../../ui/movement/hotspots.js';
+import { hotspotRows, placesElsewhere, groupWords, rankedPlaces, hotspotsCsv, cellWords, placeWords, createPulse, pulseFrame, PULSE_TOP, TABLE_FIRST, PULSE_MS, PULSE_TIMES } from '../../ui/movement/hotspots.js';
 import { transitionRows, dayRows, slowestPeriod, lateWords, transitionsCsv, dayCsv, travelDay } from '../../ui/movement/tables.js';
 import { fitScale, heldScale, stepDown, canvasHolds, MAX_SIDE, MAX_AREA, LOWEST_SCALE } from '../../ui/movement/export.js';
 import { OUTPUTS, outputFor, renderOutput } from '../../ui/prints/index.js';
 import { esc } from '../../ui/prints/document.js';
 import * as movementPrint from '../../ui/prints/movement.js';
 import * as congestionPrint from '../../ui/prints/congestion.js';
-import { school, group, room, PINNED } from './helpers.mjs';
+import { school, group, room, assertValid, PINNED } from './helpers.mjs';
+import { createHash } from 'node:crypto';
+import { emptySlot, emptyBells, GROUP_COLOUR_PRESETS } from '../../engine/schema.js';
+import { buildingContents } from '../../ui/project/clear.js';
+import { drawLink, drawRideLink } from '../../ui/movement/ride-link.js';
+import { drawStairLink } from '../../ui/surface/overlays/lanes.js';
+import { readFileSync } from 'node:fs';
+import { planProject, roomId } from '../fixtures/buildings/plans.mjs';
+import { groupRows } from '../../ui/movement/model.js';
 
 const DAY_A = 'dsample00a';
 const DAY_B = 'dsample00b';
@@ -910,4 +918,159 @@ test('SV2-79: the congestion report under a bell schedule is of that run, named 
   assert.ok(bells.includes('<h2>A Day with Early Release bells</h2>') && bells.includes('<h2>B Day with Early Release bells</h2>'), 'each day section names the bells');
   assert.ok(!bells.includes('Period 5 to Period 6'), 'no transition that does not happen is named');
   assert.notEqual(bells, regular);
+});
+
+// ---------------------------------------------------------------- a school with an elevator (W4)
+//
+// Three floors of one hall with an elevator at the west end of each corridor
+// (Elevator D, staff only). Ada needs step-free routes and has 20 students
+// (3 trips of 8); Bo stays on Floor 1 and needs none.
+function elevatorSchool() {
+  const hall = ['.AA.BB.', '.AA.BB.', '#######', '.......', '.......'];
+  const project = planProject([hall, hall, hall], { exits: [[1, 6, 2, 'Main Door']] });
+  const at = (number) => {
+    const floor = project.building.floors[number - 1];
+    return { floorId: floor.id, cell: 2 * floor.width };
+  };
+  for (const number of [1, 2, 3]) {
+    const floor = project.building.floors[number - 1];
+    const stop = at(number).cell;
+    floor.cells = floor.cells.slice(0, stop) + 'S' + floor.cells.slice(stop + 1);
+    floor.lifts = [stop];
+  }
+  [[1, 2], [2, 3]].forEach(([a, b], index) => {
+    project.building.connections.push({ id: 'celev0000' + (index + 1), label: 'D' + (index + 1), a: at(a), b: at(b), direction: 'both', kind: 'elevator', staffOnly: true, car: 'D' });
+  });
+  project.settings.periods = 3;
+  project.settings.defaultPassingSeconds = 60;
+  for (const dayType of project.dayTypes) dayType.bells = emptyBells(3);
+  const rows = { Ada: ['1A', '2A', '2A'], Bo: ['1A', '1B', '1B'] };
+  project.groups = Object.keys(rows).map((name, index) => ({
+    id: 'gplan0000' + (index + 1),
+    name,
+    grade: '',
+    headCount: index === 0 ? 20 : null,
+    colour: GROUP_COLOUR_PRESETS[index],
+    ...(index === 0 ? { stepFree: true } : {}),
+    days: { [project.dayTypes[0].id]: rows[name].map((number) => ({ ...emptySlot(), room: roomId(number) })) },
+  }));
+  assertValid(project);
+  return project;
+}
+
+test('the elevator is one place with every stop it has, and its CSV row says elevator, not stairs', () => {
+  const world = derive(elevatorSchool());
+  const view = picture(world, { groupIds: world.project.groups.map((each) => each.id) });
+  const rows = hotspotRows(world.project, world.results, world.graph, view);
+  const car = rows.find((row) => row.place.elevator === true);
+  assert.ok(car, 'the car is ranked: ' + rows.map((row) => row.place.name).join(', '));
+  assert.equal(car.place.name, 'Elevator D');
+  assert.deepEqual(car.ends.map((end) => end.floorId), world.project.building.floors.map((floor) => floor.id), 'its ends are its three stops, not the first connection\'s two');
+  assert.equal(car.load, 20, 'the group is charged to the car once');
+  const csv = hotspotsCsv(world.project, rows, view);
+  const row = csv.find((each) => each[1] === 'Elevator D');
+  assert.equal(row[3], 'elevator');
+  assert.equal(csv.some((each) => each[3] === 'stairs'), false, 'nothing here is stairs');
+});
+
+test('the legend counts a ride as a ride and not as stairs, and says step-free after the name', () => {
+  const world = derive(elevatorSchool());
+  const view = picture(world, { groupIds: world.project.groups.map((each) => each.id) });
+  const rows = groupRows(world.project, world.results, view);
+  const ada = rows.find((row) => row.group.name === 'Ada');
+  assert.equal(ada.stairs, false, 'an elevator is not stairs');
+  assert.equal(ada.rides, true);
+  assert.equal(ada.riding, 91 * 1, 'the one ride of the day: 30 s wait, 6 s, two more round trips');
+  assert.equal(rows.find((row) => row.group.name === 'Bo').rides, false);
+  const { html } = movementPrint.render(world.project, null, { ...NOW, movement: { choice: { groupIds: world.project.groups.map((each) => each.id) } } });
+  const table = tableAfter(html, 'Groups on the map');
+  assert.ok(html.includes('Riding over the day'), 'a column for riding, since someone rides');
+  assert.equal(table[0][0], 'Ada (step-free)', 'the flag in words');
+  assert.equal(table[0][2], '1 min 31 s');
+  assert.equal(table[1][2], 'none');
+  assert.equal(table[0][4], 'No', 'Stairs: No for a group that rides');
+  const plain = movementPrint.render(sample.project, null, { ...NOW, movement: {} }).html;
+  assert.equal(plain.includes('Riding'), false, 'no ride in the school, no column');
+});
+
+// ---------------------------------------------------------------- SV2-102b
+
+test('SV2-102b: the clear dialog counts a stop by its connection, not a stale lifts index: stairs with a stale index are stairs', () => {
+  const hall = ['.AA.BB.', '.AA.BB.', '#######', '.......', 'S......'];
+  const project = planProject([hall, hall, hall.map((row) => row.replace('S', '.'))], { exits: [[1, 6, 2, 'Main Door']] });
+  const [one, two, three] = project.building.floors;
+  const stop = 4 * one.width;
+  const end = (floor) => ({ floorId: floor.id, cell: stop });
+  one.lifts = [stop];
+  // Floor 1 to Floor 2 is stairs whose ends carry a stale lifts index; Floor 2 to Floor 3 is a lift
+  const stairs = { id: 'cstale00001', label: 'A', a: end(one), b: end(two), direction: 'both' };
+  const lift = { id: 'cstale00002', label: 'D', a: { floorId: two.id, cell: stop + 1 }, b: { floorId: three.id, cell: stop + 1 }, direction: 'both', kind: 'elevator', staffOnly: false, car: 'D' };
+  for (const floor of [two, three]) floor.cells = floor.cells.slice(0, stop + 1) + 'S' + floor.cells.slice(stop + 2);
+  two.lifts = [stop, stop + 1];
+  three.lifts = [stop + 1];
+  project.building.connections.push(stairs, lift);
+  const found = buildingContents(project);
+  assert.equal(found.liftCells, 2, 'the two ends of the elevator connection are stops');
+  assert.equal(found.stairsCells, 2, 'the stairs ends are stairs, whatever lifts says: ' + JSON.stringify(found));
+});
+
+test('SV2-102b: a ride is drawn as its own mark: a dashed line and open rings, never the dotted arc or a filled dot; stairs are as they were', () => {
+  const recorder = () => {
+    const calls = [];
+    const g = new Proxy({}, {
+      get: (_, name) => (name === 'calls' ? calls : (...args) => calls.push([name, ...args])),
+      set: (_, name, value) => { calls.push(['set ' + name, value]); return true; },
+    });
+    return g;
+  };
+  const style = { colour: '#123456', edge: '#ffffff', width: 3, font: 'sans-serif', ink: '#000000' };
+  const from = { x: 10, y: 20 };
+  const to = { x: 110, y: 60 };
+  const ride = recorder();
+  drawLink(ride, { elevator: true }, from, to, style);
+  const names = ride.calls.map((call) => call[0]);
+  assert.equal(names.includes('quadraticCurveTo'), false, 'no arc');
+  assert.equal(names.includes('fill'), false, 'no filled dot: the stop is a ring');
+  assert.ok(names.includes('lineTo'), 'a straight line from stop to stop');
+  assert.deepEqual(ride.calls.find((call) => call[0] === 'setLineDash' && call[1].length === 2 && call[1][0] > 1), ['setLineDash', [9, 6]], 'dashed, not dotted');
+  assert.equal(ride.calls.filter((call) => call[0] === 'arc').length, 4, 'a ring at each stop, an edge and a colour pass each');
+  assert.deepEqual(ride.calls.filter((call) => call[0] === 'lineTo').map((call) => call.slice(1)), [[110, 60], [110, 60]]);
+  // the same link as stairs is the arc with the dotted line and a filled dot
+  const stairs = recorder();
+  drawLink(stairs, { elevator: false }, from, to, style);
+  const reference = recorder();
+  drawStairLink(reference, from, to, style);
+  assert.deepEqual(stairs.calls, reference.calls, 'stairs are drawStairLink\'s own drawing');
+  assert.ok(stairs.calls.some((call) => call[0] === 'quadraticCurveTo') && stairs.calls.some((call) => call[0] === 'fill'));
+  // a ride with one stop off the map: the ring and the words, no line
+  const half = recorder();
+  drawRideLink(half, from, null, { ...style, text: 'Elevator D to Floor 2' });
+  assert.equal(half.calls.some((call) => call[0] === 'lineTo'), false);
+  assert.ok(half.calls.some((call) => call[0] === 'fillText' && call[1] === 'Elevator D to Floor 2'));
+  // the map and the PNG both go through it: neither draws a link with the stairs arc itself
+  for (const file of ['index.js', 'export.js']) {
+    const source = readFileSync(new URL('../../ui/movement/' + file, import.meta.url), 'utf8');
+    assert.equal(source.includes('drawStairLink('), false, file + ' draws links through drawLink');
+    assert.ok(source.includes('drawLink(g, link,'), file + ' uses drawLink');
+  }
+});
+
+test('SV2-102b: a step-free group is marked in the hotspot group lists, on the screen and on paper', () => {
+  const world = derive(elevatorSchool());
+  const view = picture(world, { groupIds: world.project.groups.map((each) => each.id) });
+  const rows = hotspotRows(world.project, world.results, world.graph, view);
+  const car = rows.find((row) => row.place.elevator === true);
+  assert.deepEqual(groupWords(car), ['Ada (step-free)']);
+  assert.ok(rows.some((row) => groupWords(row).includes('Bo')), 'a group without the flag is just its name');
+  const { html } = movementPrint.render(world.project, null, { ...NOW, movement: { choice: { groupIds: world.project.groups.map((each) => each.id) } } });
+  assert.ok(html.includes('<td>Ada (step-free)</td>'), 'on paper');
+  // the file's column headings and cells keep the names as typed
+  const csv = hotspotsCsv(world.project, rows, view);
+  assert.ok(csv[0].includes('Ada') && !csv[0].some((cell) => String(cell).includes('step-free')));
+});
+
+// Digests recorded from the code before SV2-102b changed it.
+test('SV2-102b: the movement print of a school with no elevator is byte for byte what it was', () => {
+  const html = renderOutput('movement', sample.project, null, { ...NOW, movement: sample }).html;
+  assert.equal(createHash('sha256').update(html).digest('hex'), '57e1f883c9e101832d4a49c58d70025926eda1469e14eda4d3b7e02ea555400d');
 });

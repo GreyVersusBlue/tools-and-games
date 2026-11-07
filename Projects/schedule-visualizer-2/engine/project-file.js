@@ -915,7 +915,7 @@ export function applySchedule(project, file, options) {
         return { room, roomText, label: slot.label, teacherIds };
       });
     }
-    return { key: nameKey(group.name), name: group.name, id: group.id, fields: { grade: group.grade, headCount: group.headCount, colour: group.colour }, days };
+    return { key: nameKey(group.name), name: group.name, id: group.id, fields: group.stepFree === true ? { grade: group.grade, headCount: group.headCount, colour: group.colour, stepFree: true } : { grade: group.grade, headCount: group.headCount, colour: group.colour }, days };
   });
   const merged = mergeGroups(next, incoming, options.policy, ids);
   const madeOwn = summary.madeOwn.concat(merged.summary.madeOwn);

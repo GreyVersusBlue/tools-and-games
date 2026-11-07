@@ -91,7 +91,8 @@ async function checkHelp(page, id, rail) {
   assert.deepEqual(seen.keys, registered.map((entry) => entry.id), id + ': the shortcuts are not the shell’s list');
   assert.deepEqual(seen.groups, [...new Set(registered.map((entry) => entry.group))], id + ': a group of shortcuts is not explained');
   assert.deepEqual(seen.devices, ['mouse', 'touch', 'pen', 'keyboard']);
-  assert.equal(seen.words.length, 32, id + ': spec 2 has 20 words, DESIGN 11.1 adds 11 and DESIGN 12.1 adds Staggered dismissal');
+  assert.equal(seen.words.length, 35, id + ': spec 2 has 20 words, DESIGN 11.1 adds 11, DESIGN 12.1 adds Staggered dismissal and DESIGN 13.1 adds Step-free, Area of refuge and Route sheet');
+  for (const term of ['Elevator', 'Step-free', 'Area of refuge', 'Route sheet']) assert.ok(seen.words.includes(term), id + ': Help\'s words lack ' + term);
   assert.deepEqual(seen.numbers, ['load', 'travel', 'late']);
   assert.deepEqual(seen.jumps, ['sections', 'keys', 'gestures', 'words', 'numbers']);
   assert.doesNotMatch(seen.text, /—/, 'an em dash in Help');
@@ -254,6 +255,8 @@ test('the numbers are this project’s settings, with the defaults beside them',
     const travel = await page.$eval('#help-dialog [data-numbers="travel"]', (el) => el.textContent);
     assert.match(travel, /5 seconds \(the default is 3 seconds\) for each cell of corridor/);
     assert.match(travel, /8 seconds \(the default\) on stairs/);
+    assert.match(travel, /Wait is 30 seconds \(the default\), from pressing the button to the doors opening; Ride per floor is 6 seconds \(the default\)/, 'the elevator\'s wait and ride (DESIGN 13.1)');
+    assert.match(travel, /8 people \(the default\) fit in one \(People per trip\), so a group of 25 takes 4 trips/);
     await page.keyboard.press('Escape');
     await helpGone(page);
   });

@@ -9,6 +9,9 @@
 //   cost no more than one of the two day types does. A bell-schedule run
 //   retimes the regular run's transitions (crowd.js retimeTransition) where
 //   no group reaches a cap, so the four own day types are what costs.
+//   the fixture with two elevators of four stops and ten step-free groups
+//   (ARCHITECTURE 19.9, the fixture test/timing/routing.mjs routes): the
+//   whole day under 500 ms too, and the groups really ride.
 //   the same twelve runs walked at 10 seconds a cell, the slowest the
 //   settings allow, so that groups reach the cap (three times the passing
 //   time, at least 600 s) and no bell-schedule transition can be retimed:
@@ -41,6 +44,7 @@ import { places } from '../../engine/places.js';
 import { routesByRun } from '../../engine/crowd.js';
 import { bigProject, BIG } from '../fixtures/big.mjs';
 import { bigRunsProject, BIG_RUNS } from './big-runs.mjs';
+import { validate } from '../../engine/validate.js';
 
 const BUDGET = 500;
 const SLACK = 2;
@@ -169,4 +173,78 @@ test('the twelve runs where groups reach the cap: every bell-schedule transition
   assert.equal(simulated, BIG_RUNS.ownDayTypes * ((BIG.periods - 1) + (BIG.periods - 1 - BIG_RUNS.offPeriods)));
   assert.ok(capped > 0 && stopped > 0, 'groups really reach the cap');
   assert.ok(first.ms < BUDGET * SLACK, 'the crowd model for twelve runs at the cap took ' + first.ms.toFixed(1) + ' ms, over ' + BUDGET * SLACK);
+});
+
+// The fixture of test/timing/routing.mjs's elevator case: two of its four stairwells (the north-west and the
+// south-east) become elevators, each a chain of connections joining its four stops.
+function withElevators(project) {
+  const building = project.building;
+  const stairs = [building.connections.filter((connection) => connection.a.cell === 9 * BIG.width + 1), building.connections.filter((connection) => connection.a.cell === 29 * BIG.width + 58)];
+  assert.deepEqual(stairs.map((list) => list.length), [3, 3]);
+  building.connections = building.connections.filter((connection) => !stairs[0].includes(connection) && !stairs[1].includes(connection));
+  stairs.forEach((list, index) => {
+    const letter = index === 0 ? 'M' : 'N';
+    for (const connection of list) {
+      connection.kind = 'elevator';
+      connection.staffOnly = true;
+      connection.car = letter;
+      connection.label = letter + connection.label;
+      for (const end of [connection.a, connection.b]) {
+        const floor = building.floors.find((candidate) => candidate.id === end.floorId);
+        floor.lifts = Array.from(new Set([...(floor.lifts || []), end.cell])).sort((a, b) => a - b);
+      }
+      building.connections.push(connection);
+    }
+  });
+  return project;
+}
+
+test('the crowd model with two elevators of four stops and ten step-free groups: the whole day under 500 ms', () => {
+  const project = withElevators(bigProject({ seed: 1 }));
+  project.groups.slice(0, 10).forEach((group) => {
+    group.stepFree = true;
+  });
+  assert.deepEqual(validate(project), []);
+  const graph = routingGraph(project);
+  const routes = routesForSchedule(project, graph);
+  const cold = timed(() => simulateSchedule(project, routes, graph));
+  const warm = timed(() => simulateSchedule(project, routes, graph));
+  let walks = 0;
+  let riders = 0;
+  let riding = 0;
+  let stopped = 0;
+  let stoppedPlain = 0;
+  let unexplained = 0;
+  let carDelay = 0;
+  const needing = new Set(project.groups.filter((group) => group.stepFree === true).map((group) => group.id));
+  for (const day of cold.value.days) {
+    for (const transition of day.transitions) {
+      for (const car of graph.cars) carDelay += transition.connectionDelay[car.link];
+      const queued = transition.groups.some((group) => !group.arrived && needing.has(group.groupId));
+      for (const group of transition.groups) {
+        walks += 1;
+        if (!group.arrived) {
+          stopped += 1;
+          if (!needing.has(group.groupId)) {
+            stoppedPlain += 1;
+            if (!queued) unexplained += 1;
+          }
+        } else assert.equal(group.total, (group.released || 0) + group.walking + (group.riding || 0) + group.waiting, 'total = released + walking + riding + waiting');
+        if (group.riding > 0) {
+          riders += 1;
+          riding += group.riding;
+        }
+      }
+    }
+  }
+  console.log('# crowd with elevators, cold: ' + cold.ms.toFixed(1) + ' ms (budget ' + BUDGET + ', fails at ' + BUDGET * SLACK + '): ' + walks + ' walks, ' + riders + ' rides, ' + riding + ' s riding, ' + carDelay + ' s waited at the cars, ' + stopped + ' did not arrive (' + stoppedPlain + ' of them groups that need no step-free route); again ' + warm.ms.toFixed(1) + ' ms');
+  assert.ok(riders > 50, 'the step-free groups really ride: ' + riders);
+  // ten step-free groups of up to 30 queue for two cars, each holding one for a minute or two: some of them
+  // run into the cap, as a real queue for a lift does, and a queue that spills into the lane holds up the
+  // groups behind it (rule 5). A group that takes no car is only ever stopped in a transition where a
+  // step-free group is stopped too: never by itself.
+  assert.ok(stopped - stoppedPlain > 0, 'the queue for a car is real: some riders run into the cap');
+  assert.equal(unexplained, 0, unexplained + ' walks of groups that take no car were stopped in a transition where no rider was stopped: the capped walks here are a car\'s queue spilling into the shared lane (a group stopped only where a rider is stopped), not an error');
+  assert.deepEqual(warm.value, cold.value, 'the second run gives the same figures');
+  assert.ok(cold.ms < BUDGET * SLACK, 'the crowd model with elevators took ' + cold.ms.toFixed(1) + ' ms, over ' + BUDGET * SLACK);
 });

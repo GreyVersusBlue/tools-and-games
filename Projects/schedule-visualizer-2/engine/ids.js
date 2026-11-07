@@ -26,6 +26,7 @@ export const ID_PREFIXES = {
   mark: 'm',
   duty: 'u',
   release: 'l',
+  refuge: 'a',
 };
 
 const ID_PATTERN = /^[a-z][a-z0-9]{9}$/;
@@ -107,6 +108,7 @@ export function collectIds(project) {
       each(floor.spaces, push);
       each(floor.corridors, push);
       each(floor.exits, push);
+      each(floor.refuges, push);
       if (floor.image && typeof floor.image.imageId === 'string') found.push(floor.image.imageId);
     });
     each(building.connections, push);

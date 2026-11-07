@@ -467,3 +467,41 @@ test('the note on day types the file makes their own copies names what each is t
   assert.equal(makesOwnText(project, []), '');
   assert.equal(makesOwnText(project, [B]), '', 'an own day type is not "same as"');
 });
+
+// ---- group.stepFree (ARCHITECTURE 19.8, SV2-96)
+
+const A_DAY = 'dsample00a';
+const entry = (name, fields) => ({ key: name.toLowerCase(), name, id: 'gnew000001', fields, days: { [A_DAY]: [] } });
+
+test('step-free: a new group carries the flag a schedule file\'s group has, and only when it is true', () => {
+  const project = school();
+  const merged = mergeGroups(project, [entry('Seven', { grade: '7', headCount: 20, colour: '#336699', stepFree: true })], { all: 'skip' }, makeIds(5));
+  assert.equal(group(merged.project, 'Seven').stepFree, true);
+  assertValid(merged.project);
+  const plain = mergeGroups(project, [entry('Eight', { grade: '8' }), entry('Nine', { grade: '9', stepFree: false })], { all: 'skip' }, makeIds(5));
+  assert.equal('stepFree' in group(plain.project, 'Eight'), false, 'a CSV row has no such column');
+  assert.equal('stepFree' in group(plain.project, 'Nine'), false, 'a false flag is the same as none');
+});
+
+test('step-free: a matched group keeps its own flag through an overwrite, whatever the file says', () => {
+  const project = school();
+  group(project, '6A').stepFree = true;
+  assertValid(project);
+  const incoming = [{ key: '6a', name: '6A', id: 'gsample06a', fields: { grade: 'Sixth' }, days: {} }, { key: '6b', name: '6B', id: 'gsample06b', fields: { grade: 'Sixth', stepFree: true }, days: {} }];
+  const merged = mergeGroups(project, incoming, { all: 'overwrite' }, makeIds(5));
+  assert.equal(group(merged.project, '6A').grade, 'Sixth');
+  assert.equal(group(merged.project, '6A').stepFree, true, 'kept');
+  assert.equal(group(merged.project, '6B').grade, 'Sixth');
+  assert.equal('stepFree' in group(merged.project, '6B'), false, 'an import does not turn the flag on for a group that is here');
+});
+
+test('step-free: a CSV import over a flagged group leaves the flag', () => {
+  const project = school();
+  group(project, '6A').stepFree = true;
+  const rows = [['Name', 'Grade', 'Head count'], ['6A', 'Sixth', '21'], ['New', '7', '19']];
+  const applied = importRows(project, rows, { all: 'overwrite' });
+  assert.equal(group(applied.project, '6A').grade, 'Sixth');
+  assert.equal(group(applied.project, '6A').stepFree, true);
+  assert.equal('stepFree' in group(applied.project, 'New'), false, 'a CSV row has no such column, so a new group has none');
+  assertValid(applied.project);
+});

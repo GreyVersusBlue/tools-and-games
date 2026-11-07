@@ -133,7 +133,7 @@ for (const size of SIZES) {
   // SV2-94: Stairs C, the sample's up-only stair: in the project at both sizes,
   // and on the Floor tab where the inspector is beside the plan (a phone keeps it in a drawer).
   test(where + ': Stairs C is up only, towards Floor 2, and Stairs A both ways', async () => {
-    assert.deepEqual(await page().evaluate(() => globalThis.sv2.store.project.building.connections.map((each) => [each.label, each.direction])), [['A', 'both'], ['B', 'both'], ['C', 'ab']]);
+    assert.deepEqual(await page().evaluate(() => globalThis.sv2.store.project.building.connections.map((each) => [each.label, each.direction])), [['A', 'both'], ['B', 'both'], ['C', 'ab'], ['D', 'both'], ['E', 'both']]);
     if (size.mobile) return;
     await go(page(), '#building');
     await page().waitForSelector('#inspector [data-tab="floor"]', { timeout: 15000 });

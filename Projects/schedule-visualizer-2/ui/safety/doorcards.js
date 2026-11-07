@@ -12,10 +12,15 @@
 // and the first step of its card, or the reason it has no way out. A
 // room's "Show" button shows its way out on the map.
 //
+// "Step-free ways out" (DESIGN 13.6) is a tick above the print buttons: on by default when the
+// building has an area of refuge or any step mark, as the output itself (ui/prints/door-cards.js)
+// decides when it is not told. What the tick says is handed to the output as `stepFree`, and kept
+// by the section for the open project.
+//
 //   doorCardsPanel(env) -> { element, update() }
 //     env   { ctx, picture(), project(), picked(), chosen() (a Set of room
-//             ids, kept by the section), swatch(number), themeKey(), pick(roomId),
-//             home() (puts the focus on the map) }
+//             ids, kept by the section), stepFree() (null: the default), setStepFree(value),
+//             swatch(number), themeKey(), pick(roomId), home() (puts the focus on the map) }
 //
 // The focus is never left on nothing: Untick all hides itself, and gives
 // the focus to the list's first box; a row whose room is gone gives it to
@@ -25,6 +30,7 @@
 import { h, uid } from '../components/dom.js';
 import { openPrintPreview } from '../components/print-preview.js';
 import { roomLine } from './model.js';
+import { hasStepMarks, BLOCK_HEAD } from './ways.js';
 
 export const CHOOSE_FIRST = 'Tick rooms in the list below first.';
 
@@ -35,10 +41,16 @@ export function doorCardsPanel(env) {
   const allButton = h('button', { type: 'button', class: 'btn', data: { print: 'all' }, on: { click: (event) => print('all', event.currentTarget) } });
   const clearButton = h('button', { type: 'button', class: 'btn btn--quiet', data: { action: 'untick' }, on: { click: untick } }, 'Untick all');
   const pickedHint = h('p', { class: 'sfy-cards__hint' }, 'Pick a room on the map for its card alone.');
+  const stepBox = h('input', { type: 'checkbox', class: 'sfy-cards__step-box', id: base + '-step', data: { option: 'step-free' }, 'aria-describedby': base + '-step-hint' });
+  stepBox.addEventListener('change', () => env.setStepFree(stepBox.checked));
+  const stepOption = h('div', { class: 'sfy-cards__step' },
+    h('label', { class: 'sfy-cards__step-label', for: base + '-step' }, stepBox, ' ', 'Step-free ways out'),
+    h('p', { class: 'sfy-cards__hint', id: base + '-step-hint' }, 'A card whose step-free way out is not its route carries a second, shorter block, “' + BLOCK_HEAD + '”.'));
   const list = h('div', { class: 'sfy-list' });
   const element = h('div', { class: 'mov-panel sfy-panel', data: { panel: 'cards' } },
     h('h2', { class: 'mov-panel__title' }, 'Door cards'),
     h('p', { class: 'sfy-panel__lead' }, 'A card to post by a room’s door: its way out on the map, in numbered steps, and the assembly point. The paper is chosen in the preview.'),
+    stepOption,
     h('div', { class: 'sfy-cards__print' }, pickedButton, pickedHint, chosenButton, allButton, clearButton),
     h('h3', { class: 'mov-panel__sub', id: base + '-ways' }, 'Every room’s way out'),
     h('p', { class: 'sfy-panel__lead' }, 'Tick the rooms whose cards you want together.'),
@@ -56,7 +68,7 @@ export function doorCardsPanel(env) {
       env.ctx.announce(CHOOSE_FIRST);
       return;
     }
-    const options = { opener };
+    const options = { opener, stepFree: stepBox.checked };
     if (which === 'picked') options.roomIds = [env.picked()];
     else if (which === 'chosen') options.roomIds = rooms().filter((row) => env.chosen().has(row.roomId)).map((row) => row.roomId);
     openPrintPreview(env.ctx, 'door-cards', options);
@@ -77,6 +89,8 @@ export function doorCardsPanel(env) {
 
   function buttons() {
     const picture = env.picture();
+    const asked = env.stepFree();
+    stepBox.checked = asked === null ? hasStepMarks(env.project().building) : asked;
     const picked = env.picked() && picture ? picture.byRoom.get(env.picked()) : null;
     pickedButton.hidden = !picked;
     pickedHint.hidden = Boolean(picked);
