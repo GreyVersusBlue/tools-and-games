@@ -1946,6 +1946,8 @@ Generator.
 
 **#1039. Integer Foundry's order sentence names its sink when two sinks hold the same order, and the tile cost is called tiles everywhere.** Outside the reserved block: the next landing must create a new block. `orderReadout(n, plan, sinkNo)` puts `Sink N: ` in front only when the page passes `sinkNo`, and the page passes it only when another sink holds the same number (`rollTarget` does not avoid repeats, so it can happen: the second sink's roll lands on 23 about one time in four in the second-sink beat). Otherwise the sentence is byte for byte what #920 shipped. The tooltip (`orderHint`) said `46 fabricators between a source and this sink`; it says `46 tiles` now, and so does the comment above `orderCost`. The other `fabricator` strings are the pieces' name (the shelf heading, the hint, the shop text) and stay. No change to `opBudget`, `costStandsOut`, `LOUD_COSTS`, the save or any order's number.
 
+**#1076. Reserved: #1047 to #1076 are held for sessions on Huginn (the Selector loop); anyone else numbers from #1077.**
+
 # The log
 ## School Generator: the brush rasterizes only the rooms a stroke can reach, 2026-11-06 (TG-39)
 
