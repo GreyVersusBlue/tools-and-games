@@ -32,9 +32,8 @@ flock ~/.cache/selector-locks/tools-and-games-suites.lock node test/visual/run.m
 ```
 
 That is Playwright 1.56.1 with Chromium 1194, the build CI pins, so every
-capture should read `0 px moved` except `sheet-spec` (below). Rebaseline one
-capture at a time, `node test/visual/run.mjs --update --only chrome-rail`:
-a bare `--update` also rewrites `sheet-spec` from huginn's fallback font.
+capture should read `0 px moved`. Rebaseline one capture at a time,
+`node test/visual/run.mjs --update --only chrome-rail`.
 
 **The chrome draws its symbols (the glyph block in `js/main.js`, #1047).** A glyph the
 vendored faces lack comes from the machine's fallback font and moves the
@@ -43,10 +42,14 @@ and CI. If a chrome capture drifts by a few pixels in a sprinkle that follows
 a row of buttons, look for a new emoji or symbol in the markup and add it to the
 map in that block with a sprite symbol in `index.html`.
 
-**`sheet-spec` differs on huginn and is left at CI's baseline.** Its
-`α ≈ 0.xx at 500 Hz` line is data from `js/spec.js` and Public Sans's latin
-subset has neither character, so the fallback face draws them: 7,813 px
-(0.407%) on huginn.
+**The sheets draw three glyphs from their own file (`libs/sheet-symbols.woff2`, #1049).**
+`α ≈ 0.xx at 500 Hz` on the spec sheet is data from `js/spec.js`, and the
+legend on the phasing sheet draws ■; Public Sans's and IBM Plex Mono's
+Latin subsets carry none of the three, so each machine drew them in its own
+fallback face (7,813 px on huginn against CI's baseline). The harness page
+declares the same `unicode-range` faces `index.html` does and awaits them.
+Source and licence: `libs/sheet-symbols.README.md`, which also says why ▸ is
+not in it.
 
 ## A baseline belongs to one browser
 

@@ -64,6 +64,33 @@
       font-display: swap;
       src: url('/assets/fonts/ibm-plex-mono-latin-500-normal.woff2') format('woff2');
     }
+    /* Three glyphs the printed sheets draw that the Latin subsets above do not
+       carry (alpha, approx and the legend square), from libs/sheet-symbols.woff2.
+       Declared last under both family names with a unicode-range of exactly
+       those code points, so they are tried first for them and for nothing
+       else. One per weight the Latin faces above declare, with the same
+       weight: a face spanning 100 to 900 would match a request for 600 ahead
+       of the 700 face and take the whole family with it. Source and licence: libs/sheet-symbols.README.md. */
+    @font-face {
+      font-family: 'Public Sans'; font-style: normal; font-weight: 400;
+      font-display: swap; unicode-range: U+03B1, U+2248, U+25A0;
+      src: url('libs/sheet-symbols.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'Public Sans'; font-style: normal; font-weight: 700;
+      font-display: swap; unicode-range: U+03B1, U+2248, U+25A0;
+      src: url('libs/sheet-symbols.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 400;
+      font-display: swap; unicode-range: U+03B1, U+2248, U+25A0;
+      src: url('libs/sheet-symbols.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 500;
+      font-display: swap; unicode-range: U+03B1, U+2248, U+25A0;
+      src: url('libs/sheet-symbols.woff2') format('woff2');
+    }
 
     :root {
       /* chrome */

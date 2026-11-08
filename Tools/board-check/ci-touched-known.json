@@ -1,11 +1,4 @@
 {
   "_read_me": "Commands that fail on huginn but not in CI, so ci-touched.mjs prints KNOWN for them and does not fail the run. One entry per command; workflow is the file name, job is the job id, command is the run text exactly as the workflow has it. Keep this short: an entry is a debt. When a listed command passes, ci-touched.mjs says so; delete the entry then.",
-  "known": [
-    {
-      "workflow": "school-generator-ci.yml",
-      "job": "browser",
-      "command": "node test/visual/run.mjs",
-      "reason": "sheet-spec renders 7,813 px tall on huginn because the alpha and approx glyphs fall back to another font; the other baselines match (TG-63)"
-    }
-  ]
+  "known": []
 }

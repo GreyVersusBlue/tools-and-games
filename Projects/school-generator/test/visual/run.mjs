@@ -66,6 +66,15 @@ const SHEET_PAGE = `<!doctype html><html><head><meta charset="utf-8"><style>
   src: url('/assets/fonts/public-sans-latin-700-normal.woff2') format('woff2'); }
 @font-face { font-family: 'IBM Plex Mono'; font-weight: 400; font-display: block;
   src: url('/assets/fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Public Sans'; font-weight: 400; font-display: block;
+  unicode-range: U+03B1, U+2248, U+25A0;
+  src: url('/libs/sheet-symbols.woff2') format('woff2'); }
+@font-face { font-family: 'Public Sans'; font-weight: 700; font-display: block;
+  unicode-range: U+03B1, U+2248, U+25A0;
+  src: url('/libs/sheet-symbols.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-weight: 400; font-display: block;
+  unicode-range: U+03B1, U+2248, U+25A0;
+  src: url('/libs/sheet-symbols.woff2') format('woff2'); }
 </style></head><body><script type="module">
 window.renderSheet = async (which) => {
   await Promise.all([
@@ -73,6 +82,8 @@ window.renderSheet = async (which) => {
     document.fonts.load('700 11px "Public Sans"'),
     document.fonts.load('600 11px "Public Sans"'),
     document.fonts.load('400 10px "IBM Plex Mono"'),
+    document.fonts.load('400 11px "Public Sans"', '\u03b1\u2248\u25a0'),
+    document.fonts.load('400 10px "IBM Plex Mono"', '\u03b1\u2248\u25a0'),
   ]);
   if (which === 'roof-curve') {
     // No shipped school has a curved roof, so this one is built here; the
