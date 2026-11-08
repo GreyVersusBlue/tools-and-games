@@ -67,13 +67,13 @@ const SHEET_PAGE = `<!doctype html><html><head><meta charset="utf-8"><style>
 @font-face { font-family: 'IBM Plex Mono'; font-weight: 400; font-display: block;
   src: url('/assets/fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2'); }
 @font-face { font-family: 'Public Sans'; font-weight: 400; font-display: block;
-  unicode-range: U+03B1, U+2248, U+25A0;
+  unicode-range: U+03B1, U+2248, U+25A0, U+25B8;
   src: url('/libs/sheet-symbols.woff2') format('woff2'); }
 @font-face { font-family: 'Public Sans'; font-weight: 700; font-display: block;
-  unicode-range: U+03B1, U+2248, U+25A0;
+  unicode-range: U+03B1, U+2248, U+25A0, U+25B8;
   src: url('/libs/sheet-symbols.woff2') format('woff2'); }
 @font-face { font-family: 'IBM Plex Mono'; font-weight: 400; font-display: block;
-  unicode-range: U+03B1, U+2248, U+25A0;
+  unicode-range: U+03B1, U+2248, U+25A0, U+25B8;
   src: url('/libs/sheet-symbols.woff2') format('woff2'); }
 </style></head><body><script type="module">
 window.renderSheet = async (which) => {

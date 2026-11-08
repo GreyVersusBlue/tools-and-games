@@ -82,7 +82,6 @@ import {
   BANDS, SCHEMES, schemeEntry, DEFAULT_BRIEF, normalizeBrief, buildProgram, programLines,
   bandEntry,
 } from './program.js';
-import { parseBrief } from './brief.js';
 import { AUTO_ENTRY, AUTO_KEY } from './templateedit.js';
 import {
   ALL_FLOORS, MAX_PIXELS, MAX_BYTES,
@@ -219,6 +218,9 @@ const generateModule = lazy(() => import('./generate.js'));
 // The gallery's three schools are 90 KB of share payloads and are wanted on
 // exactly one load in a browser's life — the first one. Same bargain.
 const galleryStock = lazy(() => import('./gallerystock.js'));
+// The brief reader is 18 KB of phrase rules behind one button ("Read" in the
+// Generate dialog), so it is fetched on that press. TG-66.
+const briefModule = lazy(() => import('./brief.js'));
 
 // Phase 42: the boot diet. Three more things the tool used to download before
 // the first frame and now fetches the first time they are wanted. Each loader
@@ -5977,7 +5979,8 @@ for (const id of [...Object.values(GEN_FIELDS), ...Object.values(GEN_FLAGS), 'ge
   $(id).addEventListener('input', genChanged);
 }
 
-$('gen-read').addEventListener('click', () => {
+$('gen-read').addEventListener('click', async () => {
+  const { parseBrief } = await briefModule();
   const r = parseBrief($('gen-brief').value, readGenFields());
   genBrief = r.brief;
   writeGenFields(genBrief);

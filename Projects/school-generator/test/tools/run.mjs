@@ -288,11 +288,18 @@ const modulesFetched = (since = 0) =>
 // 116 since #967: roof.js imports skeleton.js, because a hipped roof over a
 // curve is drawn at boot like any other roof.
 // 117 since #1045: rng.js is one more request, because main.js still imports agents.js and timetable.js; it earns itself back only when the heavy panels load lazily.
-const BOOT_BUDGET = { bytes: 4 * 1024 * 1024, requests: 117 };
+// TG-66: 4 MB + 64 KB and 120 requests. After #1049 the boot was 27 bytes under
+// 4 MB and exactly at 117 requests, so the next byte or file failed CI at a
+// landing. brief.js came out of the boot (18 KB, one request), ▸ in the rail put
+// the 3 KB symbol file back in (one request), and the ceiling rose 64 KB / 3
+// requests above that day's 4,179,001 bytes (80,839 bytes of room). The walk
+// template's 4 MB rule is the walk's, not this page's.
+const BOOT_BUDGET = { bytes: 4 * 1024 * 1024 + 64 * 1024, requests: 120 };
 // Modules the boot must not fetch: each is behind a button, and the phase
 // that put it there is named so the next reader knows what re-pinning costs.
 const DEFERRED = [
   'generate', 'gallerystock',                                    // the audit's pass
+  'brief',                                                       // TG-66: the Generate dialog's Read button
   'report', 'egress', 'daylight', 'utilisation', 'takeoff',      // Phase 42: the report tail
   'cost', 'spec', 'rates', 'phasing', 'commonpath',
   'blueprint',                                                   // Phase 42: the printable set
@@ -326,6 +333,22 @@ const CHECKS = [
       if (pinned.length) {
         throw new Error(`${pinned.join(', ')} loaded at boot — something on the boot path imports ` +
           `${pinned.length === 1 ? 'it' : 'them'} again`);
+      }
+    },
+  },
+  {
+    name: 'symbol-font-rail',
+    what: 'the rail\'s fold arrow (U+25B8) is drawn from libs/sheet-symbols.woff2, so it is the same glyph on every machine',
+    async run(d) {
+      // Only ▸ can have fetched the file on the boot page:
+      // a face whose unicode-range holds U+25B8 and that has loaded can only have
+      // nothing else drawn at boot is in its unicode-range.
+      return d.page.evaluate(`[...document.fonts].filter((f) => /25B8/i.test(f.unicodeRange)).map((f) => f.status)`);
+    },
+    expect: ({ ctx }) => {
+      if (!ctx.length) throw new Error('no @font-face has U+25B8 in its unicode-range');
+      if (!ctx.includes('loaded')) {
+        throw new Error(`the symbol file never loaded (${ctx.join(', ')}): the rail arrow is drawn from the machine's font`);
       }
     },
   },
@@ -3439,6 +3462,30 @@ const CHECKS = [
         if (!ctx.modules.has(m)) throw new Error(`opening the panel did not fetch ${m}.js`);
       }
       if (!/Not in a session/.test(ctx.text)) throw new Error(`the panel says "${ctx.text}"`);
+    },
+  },
+  {
+    name: 'brief-on-demand',
+    what: 'the Generate dialog fetches the brief reader when Read is pressed, and not before',
+    async run(d) {
+      const since = performance.now();
+      const before = modulesFetched().has('brief');
+      await d.page.evaluate(`document.getElementById('gen-btn').click(); 1`);
+      await d.page.waitForTimeout(300);
+      const openedFetched = modulesFetched(since).has('brief');
+      await d.page.evaluate(`document.getElementById('gen-brief').value = 'a school for 400 students'; ` +
+        `document.getElementById('gen-read').click(); 1`);
+      await d.page.waitForFunction(`/Read:/.test(document.getElementById('gen-echo').textContent)`,
+        { timeout: 60000 });
+      const echo = await d.page.evaluate(`document.getElementById('gen-echo').textContent`);
+      await d.page.keyboard.press('Escape');
+      await settleResponses();
+      return { before, openedFetched, echo, fetchedNow: modulesFetched(since).has('brief') };
+    },
+    expect: ({ ctx }) => {
+      if (ctx.before || ctx.openedFetched) throw new Error('brief.js was fetched before Read was pressed');
+      if (!ctx.fetchedNow) throw new Error('pressing Read did not fetch brief.js');
+      if (!/Read:/.test(ctx.echo)) throw new Error(`the echo says "${ctx.echo}"`);
     },
   },
   // ---------- Phase 30 ----------
