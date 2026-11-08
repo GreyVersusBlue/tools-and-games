@@ -21,3 +21,9 @@ Left out on purpose: ▸ (U+25B8), which the phasing sheet's current-phase mark
 and the rail's fold arrow (`content: '\25b8'` in `index.html`) both draw.
 Covering it would redraw the rail arrow in the chrome and move
 `chrome-welcome` by 1,245 px, and this change was to touch no other glyph.
+
+Why one face per weight: a single face spanning 100 to 900 matches a request
+for weight 600 ahead of the 700 face and takes the whole family with it (every
+capture moved, up to 9%). And the rules in `index.html` are written tight,
+without `font-display` or `format()`, because the boot budget in
+`test/tools/run.mjs` had under 700 bytes of room left.
