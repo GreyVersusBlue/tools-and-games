@@ -728,7 +728,7 @@ test('Directions, step-free, between two rooms that nothing joins: the page says
     await goto(page, files.wing.url + '#/directions?from=' + a + '&to=' + c + '&stepfree=1');
     assert.equal(await page.evaluate(() => document.getElementById('directions-stepfree').checked), true);
     assert.equal(await says(page), 'There is no way through from Room 1A to Room 1C on Floor 1.');
-    assert.equal(await page.evaluate(() => document.querySelector('.lede[role="status"]').dataset.ok), 'false');
+    assert.equal(await page.evaluate(() => document.querySelector('.page__body > .lede').dataset.ok), 'false');
     assert.equal(await page.evaluate(() => document.querySelector('[data-directions="stairs"]')), null, 'no way with stairs is offered where there is none');
     assert.equal(await page.evaluate(() => document.querySelectorAll('[data-out="directions"] button').length), 0);
     assert.doesNotMatch(await page.evaluate(() => document.querySelector('.page__body').textContent), /without stairs|uses stairs/);

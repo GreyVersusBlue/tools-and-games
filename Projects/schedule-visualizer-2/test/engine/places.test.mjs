@@ -130,7 +130,9 @@ test('every walkable cell is in exactly one place and every connection is one', 
       if (place.kind === 'connection') assert.equal(cut.placeOfLink[place.link], index);
     });
     assert.equal(seen.reduce((sum, value) => sum + value, 0), graph.count);
-    assert.equal(cut.places.filter((place) => place.kind === 'connection').length, graph.links.length);
+    // a stairs connection is one place and an elevator car is one place, however many pairs of stops it has (SV2-100: this pin was "places = links")
+    const cars = (graph.cars || []).length;
+    assert.equal(cut.places.filter((place) => place.kind === 'connection').length, graph.links.filter((link) => !link.elevator).length + cars);
     assert.equal(new Set(cut.places.map((place) => place.id)).size, cut.places.length, 'ids are unique');
   }
 });
@@ -355,4 +357,66 @@ test('a connection is a hotspot row with its own load and no cells', () => {
   const rows = hotspots(project, routes, project.dayTypes[0].id, { graph }).filter((row) => row.place.kind === 'connection');
   assert.deepEqual(rows.map((row) => [row.place.name, row.load, row.peak, row.cells.length]), [['Stairs A, Floor 1 to Floor 2', 21, 1, 0], ['Stairs B, Floor 2 to Floor 3', 12, 0, 0]]);
   assert.deepEqual(rows[0].groups.map((entry) => entry.count), [12, 9]);
+});
+
+// ---------------------------------------------------------------- SV2-100: an elevator car is one place
+
+// Elevator stops by hand: cars is [{ stops: [[floor, x, y], …], letter, mode: 'chain' | 'star' }].
+function withCars(project, cars) {
+  const at = (number, x, y) => {
+    const floor = project.building.floors[number - 1];
+    return { floorId: floor.id, cell: y * floor.width + x };
+  };
+  let n = project.building.connections.length;
+  for (const car of cars) {
+    for (const [number, x, y] of car.stops) {
+      const floor = project.building.floors[number - 1];
+      const cell = y * floor.width + x;
+      floor.cells = floor.cells.slice(0, cell) + 'S' + floor.cells.slice(cell + 1);
+      floor.lifts = Array.from(new Set([...(floor.lifts || []), cell])).sort((a, b) => a - b);
+    }
+    const pairs = car.mode === 'star' ? car.stops.slice(1).map((stop) => [car.stops[0], stop]) : car.stops.slice(1).map((stop, i) => [car.stops[i], stop]);
+    for (const [a, b] of pairs) {
+      n += 1;
+      project.building.connections.push({ id: 'celev' + String(n).padStart(5, '0'), label: car.letter + n, a: at(...a), b: at(...b), direction: 'both', kind: 'elevator', staffOnly: false, car: car.letter });
+    }
+  }
+  return project;
+}
+
+const HALL = ['.AA.BB.', '.AA.BB.', '#######', '.......', '.......'];
+
+test('a car is one place, "Elevator D", on its first link; a chain and a star give the same one place, and the other links have none', () => {
+  for (const mode of ['chain', 'star']) {
+    const project = withCars(planProject([HALL, HALL, HALL]), [{ stops: [[1, 0, 2], [2, 0, 2], [3, 0, 2]], letter: 'D', mode }]);
+    const graph = buildGraph(project);
+    assert.equal(graph.links.length, 3, 'three stops: three pairs');
+    const cut = places(project, graph);
+    const rides = cut.places.filter((place) => place.elevator === true);
+    assert.equal(rides.length, 1, mode);
+    const [car] = rides;
+    assert.deepEqual([car.kind, car.name, car.link, car.id, car.connectionId], ['connection', 'Elevator D', graph.cars[0].link, graph.cars[0].id, graph.cars[0].id]);
+    assert.deepEqual(car.parts, [{ text: 'Elevator ', name: false }, { text: 'D', name: true }]);
+    assert.deepEqual(car.floorIds, [floorId(1), floorId(2), floorId(3)], 'every floor the car stops on');
+    assert.deepEqual(car.nodes, []);
+    assert.equal(cut.placeOfLink[car.link], cut.places.indexOf(car));
+    assert.deepEqual(Array.from(cut.placeOfLink).map((index) => index !== -1), graph.links.map((link, index) => index === car.link), 'the car\'s other links get no place');
+    assert.equal(new Set(cut.places.map((place) => place.id)).size, cut.places.length);
+    assert.equal(placeName(car), 'Elevator D');
+  }
+});
+
+test('an elevator letter is typed text, and stairs beside an elevator keep their own names and places', () => {
+  const floor = ['.AA.BB.', '.AA.BB.', 'S######', '.......', '.......'];
+  const project = withCars(planProject([floor, floor], { connections: [[1, 0, 2, 2, 0, 2]] }), [{ stops: [[1, 6, 2], [2, 6, 2]], letter: '<E & "1">' }]);
+  const graph = buildGraph(project);
+  const cut = places(project, graph);
+  const connections = cut.places.filter((place) => place.kind === 'connection');
+  assert.deepEqual(connections.map((place) => place.name), ['Stairs A, Floor 1 to Floor 2', 'Elevator <E & "1">']);
+  assert.equal(connections[0].elevator, undefined);
+  assert.deepEqual(connections[1].parts.filter((part) => part.name).map((part) => part.text), ['<E & "1">']);
+  // every walkable cell is still in exactly one place: the lift cells are cells like any other
+  const seen = new Uint8Array(graph.count);
+  for (const place of cut.places) for (const node of place.nodes) seen[node] += 1;
+  assert.ok(seen.every((count) => count === 1));
 });

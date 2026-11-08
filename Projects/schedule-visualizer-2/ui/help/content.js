@@ -23,7 +23,7 @@
 // A section, a shortcut group or a setting with no words here still shows,
 // with a sentence saying Help has nothing for it; the Node test fails first.
 
-import { defaultSettings, STUDENTS_PER_LANE_CELL, DOOR_SIDES, DAY_TYPES_MOST, DEFAULT_DAY_TYPE_NAMES } from '../../engine/schema.js';
+import { defaultSettings, elevatorSettings, STUDENTS_PER_LANE_CELL, DOOR_SIDES, DAY_TYPES_MOST, DEFAULT_DAY_TYPE_NAMES } from '../../engine/schema.js';
 import { CROSSING_WAIT_MAX, CAP_FACTOR, CAP_MINIMUM_SECONDS, columnLength, walkingSeconds } from '../../engine/crowd.js';
 import { routingGraph } from '../../engine/routing.js';
 import { LOAD_BANDS, bandEdges } from '../../engine/load.js';
@@ -144,7 +144,7 @@ export function words(settings) {
     { term: 'Other space', meaning: 'A space nobody is scheduled into: a bathroom, an office, storage, a courtyard. It is shown and labelled, and routes do not pass through it.' },
     { term: 'Corridor', meaning: 'Hallway cells people walk along. A corridor can be named, such as North Corridor.' },
     { term: 'Stairs', meaning: 'A connection between two points, normally on different floors. It can be made one way, up only or down only; evacuation ignores that.' },
-    { term: 'Elevator', meaning: 'A step-free connection between floors. It is planned, and not built yet.' },
+    { term: 'Elevator', meaning: 'A step-free connection between floors. Ordinary routes use it only when it is quicker and not staff only; step-free routes always may; an evacuation never does.' },
     { term: 'Exit', meaning: 'A point on a corridor that leads outside. It can have a door name and an assembly point.' },
     { term: 'Door', meaning: 'Where a room opens onto a corridor. A room with no door opens onto every corridor cell beside it.' },
     { term: w.One, meaning: 'One slot of the school day. The school picks the word: Period, Mod, Block or Hour.' + own },
@@ -171,6 +171,10 @@ export function words(settings) {
     { term: 'Next in the rotation', meaning: 'What a date set this way takes: the day type that comes next, as a Saturday make-up day does.' },
     // DESIGN 12.1's words (SV2-94)
     { term: 'Staggered dismissal', meaning: 'A rule that some groups leave a little after the bell, such as “7th grade leaves 2 min after the bell”, so the corridors clear. The group has that much less of the passing time to walk in.' },
+    // DESIGN 13.1's words (SV2-106)
+    { term: 'Step-free', meaning: 'A route with no stairs and no step. A corridor cell, a door or an exit can be marked as having a step, and a step-free route goes round it or finds no way.' },
+    { term: 'Area of refuge', meaning: 'A place to wait for help in an evacuation, for someone who cannot use the stairs. Mark one in Building; Safety shows which rooms would wait at it.' },
+    { term: 'Route sheet', meaning: 'One person’s day, printed: each transition’s step-free route, its time for one person and whether it fits the passing time.' },
   ];
 }
 
@@ -253,6 +257,8 @@ export function numbers(settings) {
   const two = stairsFlight(s, 2);
   const oneWas = stairsFlight(defaults, 1);
   const speeds = (x) => (x === s ? one : oneWas);
+  const people = (n) => count(n, 'person', 'people');
+  const trips = Math.ceil(head / elevatorSettings(s).perTrip);
   return [
     {
       id: 'load',
@@ -269,12 +275,14 @@ export function numbers(settings) {
     {
       id: 'travel',
       title: 'Travel time',
-      uses: ['secondsPerCell', 'secondsPerStair', 'defaultHeadCount'],
+      uses: ['secondsPerCell', 'secondsPerStair', 'defaultHeadCount', 'elevatorWaitSeconds', 'elevatorSecondsPerFloor', 'elevatorPeoplePerTrip'],
       sentences: [
         'A route is the quickest way from the door of one room to the door of the next. It is chosen on ' + setting(s, defaults, (x) => speeds(x).secondsPerCell, seconds) + ' for each cell of corridor (Seconds per corridor cell), and ' + setting(s, defaults, (x) => speeds(x).secondsPerStair, seconds) + ' on stairs for each floor climbed or descended (Seconds per stair connection). Between two equally quick ways, the one with fewer turns is taken, then the one with fewer stairs, so the same building always gives the same route.',
         'Walking time is that route with the corridors empty, and it counts each flight of stairs as whole cells: a flight of one floor is ' + count(one.cells, 'cell') + ', ' + seconds(one.seconds) + ', and a flight of two floors ' + count(two.cells, 'cell') + ', ' + seconds(two.seconds) + '. The crowd model then walks every group at once, one second at a time. A group walks as a column one cell long for every ' + students(STUDENTS_PER_LANE_CELL) + ', so a group of ' + head + ' is ' + count(columnLength(head), 'cell') + ' long.',
+        'An elevator costs its wait and its ride. Wait is ' + setting(s, defaults, (x) => elevatorSettings(x).wait, seconds) + ', from pressing the button to the doors opening; Ride per floor is ' + setting(s, defaults, (x) => elevatorSettings(x).perFloor, seconds) + ' for each floor it travels. Both are under Elevators in Project › Settings, and used only when the building has an elevator. An ordinary route uses an elevator only when it is quicker, and never one that is staff only; a step-free route always may; an evacuation never does.',
+        'A whole class takes several trips: ' + setting(s, defaults, (x) => people(elevatorSettings(x).perTrip), (v) => v) + ' fit in one (People per trip), so a group of ' + head + ' takes ' + count(trips, 'trip') + ', each further trip a round trip. That is why a step-free class can be late where one person would not. A teacher, or one person on a route sheet, rides once.',
         'People keep right, so groups going opposite ways pass each other. A group waits while the cell ahead of it in its lane is taken, for as long as that takes. A left turn across oncoming walkers waits for a gap in them, but for no more than ' + seconds(CROSSING_WAIT_MAX) + ' at one crossing; after that it turns as soon as the cell ahead is free.',
-        'Travel time is walking time plus waiting time. Each second of waiting is charged to the cell or the flight of stairs the group was trying to enter, which is the estimated delay Hotspots gives for a place.',
+        'Travel time is walking time plus waiting time. Each second of waiting is charged to the cell or the flight of stairs the group was trying to enter, which is the estimated delay Hotspots gives for a place. A group waiting for an elevator is charged to the elevator, a place of its own in Hotspots, and the time it spends in the car is Riding, shown beside Walking and Waiting when some group rides.',
         'A teacher’s walk between rooms is timed with the corridors empty, and the screen says so.',
       ],
     },

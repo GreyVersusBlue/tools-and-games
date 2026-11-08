@@ -229,3 +229,25 @@ test('Help knows "Staggered dismissal", and no string a reader sees says "releas
   }
   assert.deepEqual(hits, [], 'a string says "release delay" where DESIGN 12.1 says "staggered dismissal"');
 });
+
+// DESIGN 13.1 (SV2-106): the word on screen is "elevator", and "lift" is only
+// ever the code's (a `lifts` list, a CSS class, a data attribute). "Lift" as a
+// word a reader sees would be a second name for the one thing.
+// [file, a piece of the string, why it may say "lift"]
+export const ALLOWED_LIFT = [
+  ['engine/building.js', 'lifts', 'the name of a floor\'s list of elevator stops, handed to a helper as a key, never shown'],
+  ['engine/validate.js', '.lifts', 'a path into the file (floors[0].lifts[2]) where a rule was broken: the file\'s own field name, as notStepFree and refuges are'],
+  ['engine/validate.js', '.lifts[', 'a path into the file (floors[0].lifts[2]) where a rule was broken: the file\'s own field name, as notStepFree and refuges are'],
+];
+
+test('no string a reader sees says "lift": the word is "elevator" (DESIGN 13.1)', () => {
+  const LIFT = /(?<![\w-])lifts?(?![\w-])/i;
+  const { hits, unused } = scan(['ui', 'staff', 'engine'], LIFT, ALLOWED_LIFT);
+  assert.deepEqual(hits, [], 'a string says "lift" where DESIGN 13.1 says "elevator" (or add it to ALLOWED_LIFT with why it is not read):\n' + hits.join('\n'));
+  assert.deepEqual(unused, [], 'an allowed "lift" no longer exists: take its line out of ALLOWED_LIFT');
+});
+
+test('the same scan finds "lift" where a reader would see it, and not in a code name', () => {
+  const found = stringsOf("const a = 'Take the lift up'; const b = 'plan__lift'; const c = `the ${x} lifts`; const d = 'lifts';").filter(({ text }) => /(?<![\w-])lifts?(?![\w-])/i.test(text)).map(({ text }) => text);
+  assert.deepEqual(found, ['Take the lift up', ' lifts', 'lifts'], 'a bare word is found, a CSS class (plan__lift) is not');
+});

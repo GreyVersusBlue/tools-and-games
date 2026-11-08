@@ -27,6 +27,7 @@ import { h, uid } from '../components/dom.js';
 import { field, wholeNumber } from '../components/field.js';
 import { picker } from '../components/picker.js';
 import { openMenu } from '../components/menu.js';
+import { openPrintPreview } from '../components/print-preview.js';
 import { icon } from '../components/icons.js';
 import { count, periodWords } from '../components/words.js';
 import { addGroup, editGroup, duplicateGroup, deleteGroup, setSlot, moveSlot, copyDay, makeOwnCopy } from '../../engine/actions.js';
@@ -248,6 +249,8 @@ export function placeInHistory(ctx, view, tab) {
   if (tab === 'groups') placeView(ctx, view);
 }
 
+const ROUTE_SHEET_SCOPE = 'This sheet times one person; open it from Movement › Travel time to see whether the whole group is late.';
+
 export function mount(env) {
   const { ctx, view } = env;
   const element = h('div', { class: 'sch-groups' });
@@ -358,6 +361,8 @@ export function mount(env) {
       h('span', { class: 'sch-dot', style: 'background:' + group.colour }),
       h('span', { class: 'sch-group__name' }, group.name),
       group.grade === '' ? said('. ') : h('span', { class: 'sch-group__grade' }, said(', grade '), group.grade, said('. ')),
+      // in words, never colour or a symbol alone (DESIGN 13.4)
+      group.stepFree === true ? h('span', { class: 'sch-group__stepfree', data: { part: 'step-free' } }, h('span', { 'aria-hidden': 'true' }, '\u267F '), 'step-free', said('. ')) : null,
       h('span', { class: 'sch-group__marks' }, marksFor(found))),
     h('span', { class: 'sch-group__bars' }, bars)), 'group:' + group.id);
   }
@@ -435,7 +440,31 @@ export function mount(env) {
     });
     keyed(head.input, 'group-head');
     head.input.title = 'From ' + RANGES.headCount[0] + ' to ' + RANGES.headCount[1] + '. Left empty, the group counts as ' + project.settings.defaultHeadCount + ', the school’s usual.';
-    return h('div', { class: 'sch-editor__fields' }, name.element, grade.element, head.element, colourControl(group));
+    return h('div', { class: 'sch-editor__fields' }, name.element, grade.element, head.element, colourControl(group), stepFreeControl(group));
+  }
+
+  // "Needs step-free routes" (spec 11, DESIGN 13.4). The line never suggests a
+  // group of one: the tool holds no student records. Its "Route sheet" button
+  // (DESIGN 13.5) prints this group's step-free day on every day type. The
+  // print preview holds only the checks' results, never Movement's, so the
+  // sheet carries no "Movement shows the whole group late" lines (the
+  // travel-time table's button does); a plain line by the button says so.
+  function stepFreeControl(group) {
+    const hintId = uid('stepfree');
+    const box = keyed(h('input', { type: 'checkbox', name: 'groupStepFree', 'aria-describedby': hintId }), 'group-stepfree');
+    box.checked = group.stepFree === true;
+    box.addEventListener('change', () => apply(env, editGroup, { id: group.id, stepFree: box.checked }));
+    return h('div', { class: 'field sch-stepfree', data: { part: 'step-free-field' } },
+      h('label', { class: 'sch-radio' }, box, h('span', null, 'Needs step-free routes')),
+      h('p', { class: 'sch-hint', id: hintId }, 'Routes for this group use elevators, never stairs. For one person’s day, print a route sheet.'),
+      h('p', { class: 'sch-hint', data: { part: 'route-sheet-scope' } }, ROUTE_SHEET_SCOPE),
+      routeSheetButton(group));
+  }
+
+  function routeSheetButton(group) {
+    const sheet = keyed(h('button', { type: 'button', class: 'btn btn--quiet', id: uid('route-sheet'), data: { print: 'route-sheet', group: group.id } }, 'Route sheet'), 'group-route-sheet');
+    sheet.addEventListener('click', () => openPrintPreview(ctx, 'route-sheet', { groupId: group.id, opener: sheet }));
+    return sheet;
   }
 
   function roomOptions(project, model, slot) {

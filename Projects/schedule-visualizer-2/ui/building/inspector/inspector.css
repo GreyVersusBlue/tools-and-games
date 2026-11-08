@@ -312,6 +312,11 @@
   padding: var(--s-2) var(--s-4);
   background: var(--accent);
   color: var(--accent-ink);
+  /* a long list of stops scrolls inside the banner and never covers the whole plan */
+  max-height: 60%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
 }
 
 .bld-connect__text {
@@ -340,6 +345,87 @@
   font-weight: var(--w-semibold);
 }
 
+/* ---------- Step-free marks (DESIGN 13.2, 13.3) ---------- */
+
+.bi-lead {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.bi-link {
+  color: var(--accent);
+}
+
+/* a door's row: its place, its tick and its Remove; 44 px tall to tap */
+.bi-row--door {
+  flex-wrap: wrap;
+  min-height: 44px;
+}
+
+.bi-row--door .bi-check,
+.bi-row--stack .bi-check {
+  min-height: 44px;
+  align-content: center;
+}
+
+.bi-row--door .bi-check__label,
+.bi-row--stack .bi-check__label {
+  font-weight: var(--w-regular, normal);
+}
+
+/* 44 px at every pointer (DESIGN 13.3), not only a coarse one: the door's and the exit's
+   tick (its box and its words, which are the target) and the buttons of the Floor and Exits
+   tabs' rows and of a stop's other stops */
+.bi-row--door .bi-check__box,
+.bi-row--stack .bi-check__box {
+  width: 24px;
+  height: 24px;
+}
+
+.bi-row--door .bi-check__label,
+.bi-row--stack .bi-check__label {
+  padding: var(--s-2) 0;
+}
+
+.bi-row--door .bi-small,
+.bi-row--stack .bi-small,
+#stop-others .bi-small {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.bi-buttons--marks {
+  padding-top: var(--s-2);
+}
+
+/* a tick that is neither on nor off: some of the cells have a step */
+.bi-check__box:indeterminate {
+  outline: var(--border-width) solid var(--ink-2);
+}
+
+.bi-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-2);
+}
+
+.bi-legend__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.bi-glyph {
+  flex: none;
+  color: var(--ink);
+}
+
+.bi-legend__words {
+  overflow-wrap: anywhere;
+}
+
 @media (pointer: coarse) {
   .bi-small {
     min-height: 44px;
@@ -348,6 +434,15 @@
   .bi-check__box {
     width: 24px;
     height: 24px;
+  }
+
+  /* a tick is a finger's height, its words the target */
+  .bi-check {
+    min-height: 44px;
+  }
+
+  .bi-check__label {
+    padding: var(--s-2) 0;
   }
 }
 

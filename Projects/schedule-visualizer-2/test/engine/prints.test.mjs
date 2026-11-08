@@ -24,6 +24,7 @@ import { teacherDays } from '../../engine/teacher-day.js';
 import { SAMPLE_PROBLEMS, SAMPLE_SCHOOL_NAME } from '../../data/sample-school.js';
 import { planProject } from '../fixtures/buildings/plans.mjs';
 import { school, PINNED } from './helpers.mjs';
+import { withElevator } from '../fixtures/step-free.mjs';
 
 const TOOL_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const NOW = { now: PINNED };
@@ -44,7 +45,7 @@ const PAPER_CHOICES = Object.keys(PAPERS).flatMap((size) => Object.keys(ORIENTAT
 // Every tag a print document is made of. A name that came through as markup
 // would bring a tag that is not here.
 const TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'style', 'body', 'main', 'section', 'header', 'footer', 'div', 'p', 'h1', 'h2', 'ul', 'li', 'span',
-  'table', 'thead', 'tbody', 'tr', 'th', 'td', 'figure', 'figcaption', 'svg', 'g', 'path', 'text']);
+  'table', 'thead', 'tbody', 'tr', 'th', 'td', 'figure', 'figcaption', 'svg', 'g', 'path', 'text', 'rect']);
 
 function tagsOf(html) {
   return Array.from(html.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9-]*)/g)).map((match) => match[1]);
@@ -65,8 +66,8 @@ const HOSTILE = [
 
 // The sample school with a hostile string in every name a user can type.
 // Each gets a number so that every one is its own string.
-function hostileSchool() {
-  const project = school();
+function hostileSchool(withLift) {
+  const project = withLift ? withElevator() : school();
   let next = 0;
   const made = [];
   const nasty = (what) => {
@@ -92,7 +93,10 @@ function hostileSchool() {
       exit.assembly = nasty('assembly');
     }
   }
-  for (const connection of project.building.connections) connection.label = nasty('stairs');
+  for (const connection of project.building.connections) {
+    connection.label = nasty(connection.kind === 'elevator' ? 'elevator label' : 'stairs');
+    if (connection.kind === 'elevator') connection.car = nasty('elevator');
+  }
   for (const subject of project.subjects) {
     subject.name = nasty('subject');
     subject.code = nasty('code');
@@ -202,7 +206,7 @@ test('the stylesheets are found where the caller says they are', () => {
 });
 
 test('the outputs are listed once each, and every print button names one of them', () => {
-  assert.deepEqual(OUTPUTS.map((output) => output.id), ['floor-plan', 'room-list', 'checks', 'teacher-schedules', 'door-signs', 'door-signs-day', 'room-schedules', 'whole-school', 'movement', 'congestion', 'door-cards', 'groups', 'teachers', 'teacher-grid', 'room-grid', 'travel-time', 'calendar']);
+  assert.deepEqual(OUTPUTS.map((output) => output.id), ['floor-plan', 'room-list', 'checks', 'teacher-schedules', 'door-signs', 'door-signs-day', 'room-schedules', 'whole-school', 'movement', 'congestion', 'door-cards', 'groups', 'teachers', 'teacher-grid', 'room-grid', 'travel-time', 'calendar', 'step-free', 'route-sheet']);
   for (const output of OUTPUTS) {
     assert.equal(typeof output.render, 'function');
     assert.equal(outputFor(output.id), output);
@@ -234,7 +238,9 @@ test('frame() escapes what it is handed as text, and leaves the body as its make
 // ---------------------------------------------------------------- hostile names
 
 test('hostile names come through every output as text, never as markup', () => {
-  const { project, made } = hostileSchool();
+  const plain = hostileSchool();
+  const lift = hostileSchool(true);
+  const { project } = plain;
   project.accepted = [{ findingId: 'room-double:' + SAMPLE_PROBLEMS.roomDouble.dayTypeId + ':1:rsample203', reason: HOSTILE[1] + ' reason', at: PINNED, about: [] }];
   const expected = {
     'floor-plan': ['school', 'floor', 'room', 'other space', 'corridor', 'door', 'stairs'],
@@ -254,8 +260,13 @@ test('hostile names come through every output as text, never as markup', () => {
     'room-grid': ['school', 'floor', 'room', 'group', 'day type'],
     'travel-time': ['school', 'room', 'group', 'day type'],
     calendar: ['school'],
+    'step-free': ['school'],
+    // the route sheet's own line: the floors its maps name, the elevator's letter (a car, drawn and staff only), and (read below with a teacher's sheet) a teacher
+    'route-sheet': ['school', 'floor', 'room', 'group', 'day type', 'elevator'],
   };
   for (const output of OUTPUTS) {
+    // the route sheet is read on the school with an elevator, so that it prints a map and the staff-only line
+    const { project, made } = output.id === 'route-sheet' ? lift : plain;
     for (const paper of [PAPER_CHOICES[0], PAPER_CHOICES[3]]) {
       const { title, html } = output.render(project, null, { ...NOW, paper });
       assert.ok(title.includes(project.settings.schoolName), output.id + ': the title is the name as typed');
@@ -273,13 +284,26 @@ test('hostile names come through every output as text, never as markup', () => {
       assert.equal(countOf(html, '</title>'), 1, output.id);
       assert.equal(countOf(html, '<style'), 1, output.id);
       assert.equal(countOf(html, '</style>'), 1, output.id);
-      assert.equal(countOf(html, '<svg'), output.id === 'floor-plan' ? project.building.floors.length : output.id === 'door-cards' ? countOf(html, '<figure class="card__map"') : 0, output.id);
+      assert.equal(countOf(html, '<svg'), output.id === 'floor-plan' ? project.building.floors.length : output.id === 'door-cards' ? countOf(html, '<figure class="card__map"') : output.id === 'route-sheet' ? countOf(html, '<figure class="card__map rs__map"') : 0, output.id);
       // with every quoted value taken out (a quote inside one is &quot;), no tag has an event handler left in it
       assert.doesNotMatch(html.replace(/="[^"]*"/g, ''), /<[^>]*\son[a-z]+\s*=/i, output.id + ': an event handler attribute');
     }
   }
-  const checks = renderOutput('checks', project, null, NOW).html;
+  const checks = renderOutput('checks', plain.project, null, NOW).html;
   assert.ok(checks.includes(esc(HOSTILE[1] + ' reason')), 'the reason a finding was accepted for');
+  // the route sheet, with the fixture's elevator: a map is printed, and so is the staff-only line, naming the car
+  const { made } = lift;
+  const rs = renderOutput('route-sheet', lift.project, null, NOW).html;
+  assert.ok(countOf(rs, '<figure class="card__map rs__map"') > 0, 'a route that changes floor has a map');
+  assert.ok(countOf(rs, 'data-line="staff-only"') > 0, 'the staff-only line is printed');
+  const car = made.find((entry) => entry.what === 'elevator').value;
+  const staff = rs.slice(rs.indexOf('data-line="staff-only"'), rs.indexOf('</p>', rs.indexOf('data-line="staff-only"')));
+  assert.ok(staff.includes(esc(car)), 'the staff-only line names the car as typed, escaped');
+  // and the teacher's sheet names the teacher
+  const teacher = made.find((entry) => entry.what === 'teacher').value;
+  const theirs = renderOutput('route-sheet', lift.project, null, { ...NOW, teacherId: lift.project.teachers[0].id }).html;
+  assert.equal(countOf(theirs, 'data-kind="teacher"') > 0, true);
+  assert.ok(made.filter((entry) => entry.what === 'teacher').some((entry) => theirs.includes(esc(entry.value))), 'a teacher name is printed: ' + teacher);
 });
 
 test('the teacher\'s surname under a room number is text too', () => {
@@ -811,7 +835,7 @@ test('a school with nothing in it still prints all three', () => {
 test('the print modules read no screen, clock or storage: a document is made from the model alone', () => {
   const dir = path.join(TOOL_DIR, 'ui', 'prints');
   const files = readdirSync(dir).filter((file) => file.endsWith('.js'));
-  assert.deepEqual(files.sort(), ['batch.js', 'checks-report.js', 'congestion.js', 'document.js', 'door-cards.js', 'floor-plan.js', 'index.js', 'movement.js', 'plan-svg.js', 'room-list.js', 'schedule-grids.js', 'travel-time.js', 'calendar.js'].sort());
+  assert.deepEqual(files.sort(), ['batch.js', 'checks-report.js', 'congestion.js', 'document.js', 'door-cards.js', 'floor-plan.js', 'index.js', 'movement.js', 'plan-svg.js', 'room-list.js', 'schedule-grids.js', 'travel-time.js', 'calendar.js', 'step-free.js', 'route-sheet.js'].sort());
   for (const file of files) {
     const code = readFileSync(path.join(dir, file), 'utf8').replace(/\/\/.*$/gm, '');
     for (const name of [/\bdocument\.(?!js')/, /\bwindow\./, /\bnavigator\b/, /\blocalStorage\b/, /\bindexedDB\b/, /Date\.now/, /new Date\(\)/, /Math\.random/, /innerHTML/, /querySelector/, /getContext/]) {

@@ -22,6 +22,8 @@ import { school, emptyProject, clone, clock, makeIds, tickingClock, assertValid,
 import { withEverything, C, D } from '../fixtures/day-types-calendar.mjs';
 import { summaryText } from '../../engine/import-groups.js';
 import { dayOn, calendarDays } from '../../engine/calendar.js';
+import { withElevator } from '../fixtures/step-free.mjs';
+import { snapshotRecord, readSnapshotProject } from '../../storage/snapshots.js';
 
 const FORMATS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'formats');
 const fixture = (name) => readFileSync(path.join(FORMATS_DIR, name), 'utf8');
@@ -1135,4 +1137,119 @@ test('a corridor closed in the lab under a 50-character name exports and reopens
   const read = readProjectFile(text);
   assert.deepEqual(read.project.scenario.levers, [{ kind: 'corridor', floorId: floor.id, cells, name }]);
   assert.equal(writeProjectFile(read.project, { images: read.images }), text, 'and it writes the same again');
+});
+
+// ---- the step-free model (ARCHITECTURE 19.2, 19.8, SV2-96)
+
+const NEW_FIELDS = ['lifts', 'notStepFree', 'refuges', 'stepFree', 'staffOnly', 'car', 'elevatorWaitSeconds', 'elevatorSecondsPerFloor', 'elevatorPeoplePerTrip'];
+
+test('step-free: the project file round-trips every new field, byte for byte', () => {
+  const project = withElevator();
+  assertValid(project);
+  const first = writeProjectFile(project);
+  const text = JSON.parse(first);
+  assert.deepEqual(text.building.floors[0].lifts, [332]);
+  assert.deepEqual(text.building.floors[0].notStepFree, [281, 282]);
+  assert.deepEqual(text.building.floors[0].refuges, [{ id: 'asample001', cell: 283, name: 'Area of refuge' }]);
+  assert.equal(text.building.floors[0].spaces[0].doors[0].stepFree, false);
+  assert.equal(text.building.floors[0].exits[1].stepFree, false);
+  assert.deepEqual(text.building.connections[0], { id: 'csample00a', label: 'A', a: { floorId: 'fsample001', cell: 332 }, b: { floorId: 'fsample002', cell: 332 }, direction: 'both', kind: 'elevator', staffOnly: true, car: 'A' });
+  assert.equal(text.groups[0].stepFree, true);
+  assert.deepEqual([text.settings.elevatorWaitSeconds, text.settings.elevatorSecondsPerFloor, text.settings.elevatorPeoplePerTrip], [45, 5, 6]);
+  const read = readProjectFile(first);
+  assert.deepEqual(read.project, project);
+  assert.deepEqual(read.notes, [], 'repair had nothing to say');
+  assert.equal(writeProjectFile(read.project), first);
+});
+
+test('step-free: a project with none of the new fields writes none of them (a file saved before is byte-identical)', () => {
+  const first = writeProjectFile(school());
+  for (const key of NEW_FIELDS) assert.equal(first.includes('"' + key + '"'), false, key);
+  assert.equal(first.includes('elevator'), false);
+  assert.equal(writeProjectFile(readProjectFile(first).project), first);
+});
+
+test('step-free: a snapshot and a recovery point, stored as plain JSON and read back, keep every new field', () => {
+  const project = withElevator();
+  const record = snapshotRecord(project, { id: 'nsample001', name: 'With the lift', takenAt: '2026-11-06T12:00:00.000Z' });
+  // what IndexedDB's structured clone gives back
+  const stored = JSON.parse(JSON.stringify(record));
+  const back = readSnapshotProject(stored.project);
+  assert.equal(back.project, stored.project, 'repair had nothing to do, so it is the very same object');
+  assert.deepEqual(back.project, project);
+  assert.deepEqual(back.notes, []);
+  assert.ok(record.bytes > snapshotRecord(school(), { id: 'nsample002', name: 'Without', takenAt: '2026-11-06T12:00:00.000Z' }).bytes);
+});
+
+test('step-free: the building file carries the building whole: every floor list, door and exit flag, and connection field', () => {
+  const project = withElevator();
+  const text = writeBuildingFile(project);
+  const value = JSON.parse(text);
+  assert.deepEqual(value.building, project.building);
+  const read = readBuildingFile(text);
+  assert.deepEqual(read.file.building, project.building);
+  assert.equal(writeBuildingFile({ ...project, building: read.file.building }), text);
+  // into another project: the building is replaced whole, new fields included
+  const into = applyBuilding(school(), read.file, { ids: makeIds(9), unnumberedText: 'x' });
+  assert.deepEqual(into.project.building, project.building);
+  assertValid(into.project);
+  // and the settings stay with the project file: the building file carries no settings
+  assert.equal('settings' in value, false);
+  assert.equal(text.includes('elevatorWaitSeconds'), false);
+});
+
+test('step-free: the schedule file carries group.stepFree, and not the elevator settings (they travel with the project file only)', () => {
+  const project = withElevator();
+  const text = writeScheduleFile(project);
+  const value = JSON.parse(text);
+  assert.equal(value.groups[0].stepFree, true);
+  assert.deepEqual(Object.keys(value.settings), ['periods', 'periodWord', 'defaultPassingSeconds', 'defaultHeadCount']);
+  assert.equal(text.includes('elevator'), false);
+  const applied = applySchedule(project, readScheduleFile(text).file, { policy: { all: 'overwrite' }, ids: makeIds(9) });
+  assert.equal(applied.project, project, 'its own schedule changes nothing, the flag included');
+});
+
+test('step-free: a schedule file read into a project that has the group keeps the group\'s own flag, and one read into an empty schedule carries it on the new group', () => {
+  const project = withElevator();
+  const text = writeScheduleFile(project);
+  const file = readScheduleFile(text).file;
+
+  // matched group, flag on in the file and off here: an overwrite leaves the flag as it is here
+  const here = clone(project);
+  delete group(here, '6A').stepFree;
+  delete group(here, '6B').stepFree;
+  group(here, '6B').grade = 'changed';
+  const kept = applySchedule(here, file, { policy: { all: 'overwrite' }, ids: makeIds(9) });
+  assert.equal('stepFree' in group(kept.project, '6A'), false, 'a matched group keeps its own flag, here none');
+  assert.equal(group(kept.project, '6B').grade, group(project, '6B').grade, 'the fields the file carries are still taken');
+  // matched group, flag on here and absent from the file: still on
+  const off = clone(project);
+  delete group(off, '6A').stepFree;
+  const stays = applySchedule(project, readScheduleFile(writeScheduleFile(off)).file, { policy: { all: 'overwrite' }, ids: makeIds(9) });
+  assert.equal(group(stays.project, '6A').stepFree, true, 'the project\'s flag survives an overwrite from a file that has none');
+
+  // a new group carries it
+  const bare = clone(project);
+  bare.groups = bare.groups.filter((one) => one.name !== '6A');
+  const added = applySchedule(bare, file, { policy: { all: 'skip' }, ids: makeIds(9) });
+  assert.equal(group(added.project, '6A').stepFree, true);
+  assert.equal('stepFree' in group(added.project, '6B'), false, 'no group the file did not flag gains one');
+  assertValid(added.project);
+  assert.deepEqual(added.summary.created, ['6A']);
+});
+
+test('step-free: an elevator connection naming a floor that does not exist gives a FileError, never a TypeError', () => {
+  const project = withElevator();
+  project.building.connections[0].a = { floorId: 'fzzzzzzzzz', cell: 1 };
+  project.building.connections[0].b = { floorId: 'fzzzzzzzzz', cell: 2 };
+  assert.throws(() => readProjectFile(writeProjectFile(project)), (error) => error instanceof FileError);
+  assert.throws(() => readBuildingFile(writeBuildingFile(project)), (error) => error instanceof FileError);
+});
+
+test('step-free: two elevators with one letter are refused by the project file as a FileError', () => {
+  const project = withElevator();
+  const b = project.building.connections[1];
+  b.kind = 'elevator';
+  b.car = 'A';
+  assert.throws(() => readProjectFile(writeProjectFile(project)), (error) => error instanceof FileError);
 });

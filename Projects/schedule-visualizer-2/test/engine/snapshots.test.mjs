@@ -213,7 +213,7 @@ test('clearing the building empties every floor and keeps the floors, the schedu
   project.building.floors[1].image = { imageId: 'iabcdefgh1', opacity: 0.4, scale: 1, rotation: 0, x: 0, y: 0, visible: true, locked: false, width: 10, height: 10, missing: false };
   const cleared = clearedBuilding(project);
   assertValid(cleared);
-  assert.deepEqual(buildingContents(cleared), { floors: 3, rooms: 0, otherSpaces: 0, corridorCells: 0, stairsCells: 0, corridorNames: 0, exits: 0, connections: 0, zones: 0 });
+  assert.deepEqual(buildingContents(cleared), { floors: 3, rooms: 0, otherSpaces: 0, corridorCells: 0, stairsCells: 0, liftCells: 0, corridorNames: 0, exits: 0, connections: 0, elevatorConnections: 0, steps: 0, refuges: 0, zones: 0 });
   assert.deepEqual(cleared.building.floors.map((floor) => [floor.id, floor.name, floor.level, floor.width, floor.height]), project.building.floors.map((floor) => [floor.id, floor.name, floor.level, floor.width, floor.height]));
   assert.equal(cleared.building.floors[1].image, project.building.floors[1].image, 'the traced image stays');
   assert.equal(cleared.groups.length, project.groups.length);

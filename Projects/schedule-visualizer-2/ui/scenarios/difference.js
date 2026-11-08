@@ -94,7 +94,7 @@ function partsToText(parts) {
 //      <when>. Walk here only before: 7A. Walk here only after: 8B."
 //     It is said in place of the lab's own line about the cell ("Floor 1:
 //     corridor."), so it names the floor and corridor or stairs as that does.
-//   info: { parts, floorName, stairs, words, before, after, unit, when,
+//   info: { parts, floorName, stairs, lift, words, before, after, unit, when,
 //           transition, excluded,
 //           groups: { onlyBefore, onlyAfter } (groups, by name as typed) or null }
 export function whenWords(project, transition, dayTypeId, bellsId) {
@@ -119,7 +119,7 @@ export function apartLabel(side, transition) {
 
 export function cardText(info) {
   const transition = info.transition === undefined ? null : info.transition;
-  let text = partsToText(info.parts) + ', ' + info.floorName + ', ' + (info.stairs ? 'stairs' : 'corridor') + ': ' + info.words + '. ' + sidesWords(info);
+  let text = partsToText(info.parts) + ', ' + info.floorName + ', ' + (info.lift ? 'elevator' : info.stairs ? 'stairs' : 'corridor') + ': ' + info.words + '. ' + sidesWords(info);
   if (info.excluded) text += ' In an exclusion zone.';
   if (info.groups && info.groups.onlyBefore.length > 0) text += ' ' + apartLabel('before', transition) + namesText(info.groups.onlyBefore) + '.';
   if (info.groups && info.groups.onlyAfter.length > 0) text += ' ' + apartLabel('after', transition) + namesText(info.groups.onlyAfter) + '.';
@@ -465,6 +465,7 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
       parts: at && at.parts && at.parts.length > 0 ? at.parts : [{ text: at ? at.name : 'Corridor' }],
       floorName: graph.floors[f].name,
       stairs: Boolean(graph.stairs && graph.stairs[node]),
+      lift: Boolean(graph.lifts && graph.lifts[node]),
       delta,
       words: differenceWords(delta),
       strength: strengthOf(delta, difference.largest),

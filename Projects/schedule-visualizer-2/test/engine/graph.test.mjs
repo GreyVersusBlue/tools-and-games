@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { buildGraph, nodeAt, placeOfNode, roomNodes, entryCells, reachable, components, HEADINGS } from '../../engine/graph.js';
 import * as actions from '../../engine/actions.js';
 import { school, ctx, clone } from './helpers.mjs';
+import { validate } from '../../engine/validate.js';
 import { planProject, twoRooms, disconnectedWing, threeFloors, splitLevel, cellAt, floorId, roomId } from '../fixtures/buildings/plans.mjs';
 
 const F1 = floorId(1);
@@ -181,4 +182,142 @@ test('a full 200 by 200 floor of corridor builds and is searched', () => {
   assert.equal(graph.count, 40000);
   assert.equal(count(reachable(graph, 0)), 40000);
   assert.equal(components(graph).count, 1);
+});
+
+// ---- elevators and step-free marks (SV2-98)
+
+// Joins stops with elevator connections by hand: cars is [{ stops: [[floor, x, y], …], mode: 'chain' | 'star', staffOnly, letter }].
+// Each stop is a stairs cell the drawing already has, listed in the floor's `lifts`; the connections carry the kind, the car letter and staffOnly.
+function withCars(project, cars) {
+  const at = (number, x, y) => {
+    const floor = project.building.floors[number - 1];
+    return { floorId: floor.id, cell: y * floor.width + x };
+  };
+  let n = project.building.connections.length;
+  cars.forEach((car, index) => {
+    const letter = car.letter || String.fromCharCode(68 + index);
+    for (const [number, x, y] of car.stops) {
+      const floor = project.building.floors[number - 1];
+      const cell = y * floor.width + x;
+      floor.cells = floor.cells.slice(0, cell) + 'S' + floor.cells.slice(cell + 1);
+      floor.lifts = Array.from(new Set([...(floor.lifts || []), cell])).sort((a, b) => a - b);
+    }
+    const pairs = car.stops.length === 1 ? [] : car.mode === 'star' ? car.stops.slice(1).map((stop) => [car.stops[0], stop]) : car.stops.slice(1).map((stop, i) => [car.stops[i], stop]);
+    for (const [a, b] of pairs) {
+      n += 1;
+      project.building.connections.push({ id: 'celev' + String(n).padStart(5, '0'), label: letter + n, a: at(...a), b: at(...b), direction: 'both', kind: 'elevator', staffOnly: car.staffOnly === true, car: letter });
+    }
+  });
+  return project;
+}
+
+const STOPS = [[1, 0, 2], [2, 0, 2], [3, 0, 2]];
+
+function lifted(mode, staffOnly) {
+  const project = planProject([['.AA.BB.', '.AA.BB.', '#######', '.......', '.......']].concat([0, 1].map(() => ['.AA.BB.', '.AA.BB.', '#######', '.......', '.......'])), { exits: [[1, 6, 2, 'Main Door']] });
+  return withCars(project, [{ stops: STOPS, mode, staffOnly }]);
+}
+
+test('a car makes one link for every pair of its stops, with its own id, whichever way the stops were joined', () => {
+  for (const mode of ['chain', 'star']) {
+    const project = lifted(mode, true);
+    assert.deepEqual(validate(project), [], mode);
+    const graph = buildGraph(project);
+    const id = project.building.connections[0].id;
+    assert.equal(graph.links.length, 3, mode + ': three stops, three pairs');
+    for (const link of graph.links) {
+      assert.deepEqual([link.id, link.elevator, link.staffOnly, link.direction, link.car], [id, true, true, 'both', 0], mode);
+      assert.equal(link.label, 'D', mode + ': the car letter, on every link');
+    }
+    assert.deepEqual(graph.links.map((link) => [graph.nodeFloor[link.a], graph.nodeFloor[link.b], link.levels]), [[0, 1, 1], [0, 2, 2], [1, 2, 1]], mode + ': levels = max(1, |difference|), stops in floor order');
+    assert.deepEqual(graph.cars.map((car) => [car.id, car.label, car.link, car.links, car.stops.map((stop) => stop.floorId)]), [[id, 'D', 0, [0, 1, 2], [floorId(1), floorId(2), floorId(3)]]]);
+  }
+});
+
+test('a lift cell is in lifts and out of stairs; a stairs connection still makes one link; an unconnected stop makes none', () => {
+  const project = lifted('chain', false);
+  const floor = project.building.floors[0];
+  // a stairs cell and a stairs connection on floors 1 and 2, next to the car
+  for (const f of [0, 1]) {
+    const target = project.building.floors[f];
+    target.cells = target.cells.slice(0, 6 * 1 + 2 * target.width) + 'S' + target.cells.slice(6 + 2 * target.width + 1);
+  }
+  project.building.connections.push({ id: 'cstairs001', label: 'A', a: { floorId: floor.id, cell: 6 + 2 * floor.width }, b: { floorId: project.building.floors[1].id, cell: 6 + 2 * floor.width }, direction: 'both' });
+  // one more stop with no connection, on floor 3
+  const top = project.building.floors[2];
+  top.cells = top.cells.slice(0, 3 + 3 * top.width) + 'S' + top.cells.slice(3 + 3 * top.width + 1);
+  top.lifts.push(3 + 3 * top.width);
+  const graph = buildGraph(project);
+  const nodeOf = (number, x, y) => nodeAt(graph, floorId(number), cellAt(project, number, x, y));
+  assert.deepEqual([graph.lifts[nodeOf(1, 0, 2)], graph.stairs[nodeOf(1, 0, 2)]], [1, 0], 'a car stop is a lift cell, not stairs');
+  assert.deepEqual([graph.lifts[nodeOf(1, 6, 2)], graph.stairs[nodeOf(1, 6, 2)]], [0, 1], 'stairs stay stairs');
+  assert.deepEqual([graph.lifts[nodeOf(3, 3, 3)], graph.stairs[nodeOf(3, 3, 3)]], [1, 0], 'a stop with no connection is a lift cell too');
+  assert.equal(graph.links.length, 4, 'one stairs link and the car\'s three');
+  assert.deepEqual(graph.links.map((link) => Boolean(link.elevator)), [false, true, true, true], 'stairs links come first, and carry no elevator field');
+  assert.equal(graph.cars.length, 1, 'the unconnected stop is no car with links');
+  assert.equal(Array.from(graph.lifts).reduce((sum, mark) => sum + mark, 0), 4);
+});
+
+test('a room is never entered through a lift cell: a door cannot face one and a doorless room does not use one', () => {
+  const project = planProject([['AAA', '#S#'], ['...', '#S#']].map((rows) => rows.concat(['...', '...', '...'])), { connections: [] });
+  const [one, two] = project.building.floors;
+  withCars(project, [{ stops: [[1, 1, 1], [2, 1, 1]] }]);
+  const graph = buildGraph(project);
+  const room = graph.rooms.get(roomId('1A'));
+  assert.deepEqual(room.entries.map((entry) => graph.nodeCell[entry.node] % one.width), [0, 2], 'the corridor cells either side of the lift cell, never the lift cell');
+  assert.ok(two);
+  project.building.floors[0].spaces[0].doors.push({ cell: 1, side: 's' });
+  const withDoor = buildGraph(project).rooms.get(roomId('1A'));
+  assert.equal(withDoor.entries.length, 0, 'a door on the lift cell leads nowhere');
+  assert.equal(withDoor.deadDoors.length, 1);
+});
+
+test('door and exit stepFree are copied onto the entries and the exits, true when absent', () => {
+  const project = planProject([['AAA..', '#####', '.....']], { doors: { '1A': [[0, 0, 's'], [2, 0, 's']] }, exits: [[1, 0, 1, 'West'], [1, 4, 1, 'East']] });
+  const floor = project.building.floors[0];
+  floor.spaces[0].doors[1].stepFree = false;
+  floor.exits[1].stepFree = false;
+  const graph = buildGraph(project);
+  assert.deepEqual(graph.rooms.get(roomId('1A')).entries.map((entry) => entry.stepFree), [true, false]);
+  assert.deepEqual(graph.exits.map((exit) => exit.stepFree), [true, false]);
+  const bare = buildGraph(planProject([['AAA..', '#####']]));
+  assert.deepEqual(bare.rooms.get(roomId('1A')).entries.map((entry) => entry.stepFree), [true, true, true], 'a doorless room: every entry');
+});
+
+// Two floors, each a corridor of four cells with a lift cell at the second, joined by one car.
+function cutCorridors() {
+  const floor = ['A..B', '####', '....', '....', '....'];
+  return withCars(planProject([floor, floor]), [{ stops: [[1, 1, 1], [2, 1, 1]] }]);
+}
+
+test('reachable never walks through a lift cell: with no ride the corridor beyond it is out of reach, with one it is in', () => {
+  const project = cutCorridors();
+  const graph = buildGraph(project);
+  const at = (number, x) => nodeAt(graph, floorId(number), cellAt(project, number, x, 1));
+  const marks = (seen, number) => [0, 1, 2, 3].map((x) => seen[at(number, x)]);
+  const walking = reachable(graph, at(1, 0), { noElevators: true });
+  assert.deepEqual(marks(walking, 1), [1, 1, 0, 0], 'the lift cell is stepped onto and leads nowhere');
+  assert.deepEqual(marks(walking, 2), [0, 0, 0, 0]);
+  const riding = reachable(graph, at(1, 0));
+  assert.deepEqual([marks(riding, 1), marks(riding, 2)], [[1, 1, 1, 1], [1, 1, 1, 1]], 'a ride up, a step back onto the floor 2 lift cell, a ride down: out the east side');
+  // the same drawing with the stop joined to nothing: an unconnected stop is no way through either
+  const alone = cutCorridors();
+  alone.building.connections = [];
+  assert.deepEqual(marks(reachable(buildGraph(alone), at(1, 0)), 1), [1, 1, 0, 0]);
+});
+
+test('components take noElevators, and two corridors that meet only at a lift cell are one part only when the car carries them', () => {
+  const project = cutCorridors();
+  const graph = buildGraph(project);
+  const at = (number, x) => nodeAt(graph, floorId(number), cellAt(project, number, x, 1));
+  const joined = components(graph);
+  assert.equal(joined.count, 1);
+  const walking = components(graph, { noElevators: true });
+  assert.equal(walking.of[at(1, 0)], walking.of[at(1, 1)], 'the lift cell belongs to the part of the corridor that reaches it first');
+  assert.notEqual(walking.of[at(1, 0)], walking.of[at(1, 2)], 'the corridor west and east of a lift cell are two parts: nobody walks through it');
+  assert.notEqual(walking.of[at(1, 0)], walking.of[at(2, 0)], 'and each floor is its own');
+  assert.equal(walking.count, 4);
+  const none = cutCorridors();
+  none.building.connections = [];
+  assert.equal(components(buildGraph(none)).count, 4, 'an unconnected stop leaves four parts, with or without the option');
 });

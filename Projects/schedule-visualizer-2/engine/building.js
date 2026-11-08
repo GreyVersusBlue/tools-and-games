@@ -16,7 +16,7 @@
 // stairs are gone. Those are taken out in the same step and reported in
 // `loss`, so nothing goes silently and validate() accepts every result.
 
-import { RANGES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CELL_EMPTY, CELL_CORRIDOR, CELL_STAIRS, DEFAULT_OTHER_COLOUR } from './schema.js';
+import { RANGES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CELL_EMPTY, CELL_CORRIDOR, CELL_STAIRS, DEFAULT_OTHER_COLOUR, ELEVATOR_KIND, REFUGE_DEFAULT_NAME, NAME_MOST, textLength, isLiftCell, elevatorCars } from './schema.js';
 import { newRoom, newOtherSpace, neighbourCell, spaceOwners, cellKind, isEdgeCorridorCell, isWalkable, inRange, isHexColour, roomNumberKey, nextConnectionLabel, nameOfRoom } from './schema.js';
 
 export class BuildingError extends Error {
@@ -145,17 +145,22 @@ function sameItems(a, b) {
 
 // What a change took out of the building besides what it was asked to change.
 export function emptyLoss() {
-  return { spaces: [], corridorCells: 0, stairsCells: 0, connections: [], exits: [], doors: [], corridorNames: [], zones: [] };
+  return { spaces: [], corridorCells: 0, stairsCells: 0, liftCells: 0, stepCells: 0, connections: [], exits: [], doors: [], corridorNames: [], zones: [], refuges: [], renamed: [] };
 }
 
+// liftCells counts elevator stops, stepCells the corridor cells that had a
+// step marked on them, and refuges lists the areas of refuge that went
+// (ARCHITECTURE 19.3). A loss written before they existed reads them as none.
 export function isLoss(loss) {
-  return loss.spaces.length + loss.corridorCells + loss.stairsCells + loss.connections.length + loss.exits.length + loss.doors.length + loss.corridorNames.length + loss.zones.length > 0;
+  return loss.spaces.length + loss.corridorCells + loss.stairsCells + (loss.liftCells || 0) + (loss.stepCells || 0) + loss.connections.length + loss.exits.length + loss.doors.length + loss.corridorNames.length + loss.zones.length + (loss.refuges || []).length > 0;
 }
 
 function addLoss(into, from) {
   into.corridorCells += from.corridorCells;
   into.stairsCells += from.stairsCells;
-  for (const key of ['spaces', 'connections', 'exits', 'doors', 'corridorNames', 'zones']) into[key].push(...from[key]);
+  into.liftCells += from.liftCells || 0;
+  into.stepCells += from.stepCells || 0;
+  for (const key of ['spaces', 'connections', 'exits', 'doors', 'corridorNames', 'zones', 'refuges', 'renamed']) into[key].push(...(from[key] || []));
   return into;
 }
 
@@ -183,36 +188,172 @@ export function lossText(loss) {
   for (const space of loss.spaces) if (!space.removed) parts.push(plural(space.cells, 'cell', 'cells') + ' of ' + space.name);
   if (loss.corridorCells > 0) parts.push(plural(loss.corridorCells, 'corridor cell', 'corridor cells'));
   if (loss.stairsCells > 0) parts.push(plural(loss.stairsCells, 'stairs cell', 'stairs cells'));
-  for (const connection of loss.connections) parts.push('stairs connection ' + connection.label);
+  if (loss.liftCells > 0) parts.push(plural(loss.liftCells, 'elevator stop', 'elevator stops'));
+  // a car's connections are one phrase: "2 connections of Elevator A"
+  const cars = new Map();
+  for (const connection of loss.connections) {
+    if (connection.kind !== ELEVATOR_KIND) {
+      parts.push('stairs connection ' + connection.label);
+      continue;
+    }
+    const letter = connection.car || connection.label;
+    if (!cars.has(letter)) {
+      cars.set(letter, { count: 0, at: parts.length });
+      parts.push('');
+    }
+    cars.get(letter).count += 1;
+  }
+  for (const [letter, car] of cars) parts[car.at] = car.count === 1 ? 'a connection of elevator ' + letter : car.count + ' connections of Elevator ' + letter;
   for (const exit of loss.exits) parts.push(exit.doorName.trim() === '' ? 'an exit' : 'the exit ' + exit.doorName);
   if (loss.doors.length > 0) parts.push(plural(loss.doors.length, 'door', 'doors'));
   for (const corridor of loss.corridorNames) if (corridor.removed) parts.push('the corridor name ' + corridor.name);
   if (loss.zones.length > 0) parts.push(plural(loss.zones.length, 'exclusion zone', 'exclusion zones'));
+  if (loss.stepCells > 0) parts.push(plural(loss.stepCells, 'step mark', 'step marks'));
+  const refuges = loss.refuges || [];
+  if (refuges.length === 1) parts.push('the area of refuge ' + refuges[0].name);
+  else if (refuges.length > 1) parts.push('the areas of refuge ' + sentenceList(refuges.map((refuge) => refuge.name)));
   return sentenceList(parts);
 }
 
 // ---------------------------------------------------------------- the one edit
 
+// A list field of a floor ("lifts", "notStepFree", "refuges") with the new
+// items; the key goes when the list is empty, so a building that never had
+// one is the building it always was.
+function withList(floor, key, list) {
+  const was = Array.isArray(floor[key]) ? floor[key] : [];
+  if (sameItems(list, was)) return floor;
+  if (list.length === 0) {
+    const { [key]: gone, ...rest } = floor;
+    return rest;
+  }
+  return { ...floor, [key]: list };
+}
+
+// A connection as the loss records it: an elevator's also says its car.
+function lostConnection(connection) {
+  return connection.kind === ELEVATOR_KIND ? { id: connection.id, label: connection.label, kind: ELEVATOR_KIND, car: connection.car || connection.label } : { id: connection.id, label: connection.label };
+}
+
+// Connections taken out of the building leave their elevator stops standing:
+// a stop whose last connection went is "not connected", still a stop, so it
+// is listed in its floor's `lifts` (a stop an older tool never listed gets
+// listed here). `building` is the building after the removal. Ends on
+// `resizedFloorId` are skipped: their cell numbers belong to the old grid.
+export function keepElevatorStops(building, removed, resizedFloorId) {
+  let floors = building.floors;
+  for (const connection of removed) {
+    if (connection.kind !== ELEVATOR_KIND) continue;
+    for (const end of [connection.a, connection.b]) {
+      if (end.floorId === resizedFloorId) continue;
+      const at = floors.findIndex((floor) => floor.id === end.floorId);
+      if (at === -1) continue;
+      const floor = floors[at];
+      if (floor.cells[end.cell] !== CELL_STAIRS || (Array.isArray(floor.lifts) && floor.lifts.includes(end.cell))) continue;
+      // a stop another connection still reaches is a stop by that connection
+      if (building.connections.some((other) => [other.a, other.b].some((x) => x.floorId === end.floorId && x.cell === end.cell))) continue;
+      floors = floors.map((candidate, i) => (i === at ? { ...candidate, lifts: (candidate.lifts || []).concat([end.cell]).sort((x, y) => x - y) } : candidate));
+    }
+  }
+  return floors === building.floors ? building : { ...building, floors };
+}
+
+// A floor list as words: "Floors 3 and 4" when the names are "Floor 3" and
+// "Floor 4", else the names as typed.
+function floorNamesWords(names) {
+  const numbered = names.map((name) => /^Floor (\S+)$/.exec(name));
+  if (names.length > 1 && numbered.every(Boolean)) return 'Floors ' + sentenceList(numbered.map((match) => match[1]));
+  return sentenceList(names);
+}
+
+const letterKey = (letter) => String(letter).trim().toLowerCase();
+
+// Taking connections out of a car can leave two cars with one letter (the
+// letter is stored on every connection, and validate refuses a building with
+// two elevators of one letter). The car whose first connection comes first in
+// building order keeps the letter; every other car that shares it takes the
+// next free one, as describeConnect picks a letter (no connection label and
+// no car letter in use), written to all its connections. Each car renamed is
+// said in `loss.renamed`: { car, was, floors, text }, "Floors 3 and 4 are now
+// Elevator B". A building with no shared letter comes back as it was.
+export function splitCars(building, loss) {
+  const cars = elevatorCars(building).filter((car) => car.connectionIds.length > 0);
+  const seen = new Set();
+  const renamed = new Map();
+  const used = building.connections.flatMap((connection) => [{ label: connection.label }, { label: connection.car === undefined ? '' : connection.car }]);
+  for (const car of cars) {
+    const key = letterKey(car.label);
+    if (!seen.has(key)) {
+      seen.add(key);
+      continue;
+    }
+    const letter = nextConnectionLabel(used);
+    used.push({ label: letter });
+    seen.add(letterKey(letter));
+    renamed.set(car, letter);
+  }
+  if (renamed.size === 0) return building;
+  const letterOf = new Map();
+  for (const [car, letter] of renamed) for (const id of car.connectionIds) letterOf.set(id, letter);
+  const next = { ...building, connections: building.connections.map((connection) => (letterOf.has(connection.id) ? { ...connection, car: letterOf.get(connection.id) } : connection)) };
+  if (loss) {
+    for (const [car, letter] of renamed) {
+      const floors = car.stops.map((stop) => building.floors.find((floor) => floor.id === stop.floorId).name);
+      loss.renamed.push({ car: letter, was: car.label, floors, text: floorNamesWords(floors) + ' are now Elevator ' + letter });
+    }
+  }
+  return next;
+}
+
+// What splitting a car renamed, as a sentence ("Floors 3 and 4 are now
+// Elevator B"); empty when nothing was renamed.
+export function renamedText(loss) {
+  return (loss.renamed || []).map((entry) => entry.text).join('; ');
+}
+
 // After a floor's cells or spaces changed: take out every door, exit,
-// corridor-name cell and connection the new shape no longer supports, and
-// write each into `loss`.
+// corridor-name cell, connection, elevator stop, step mark and area of refuge
+// the new shape no longer supports, and write each into `loss`.
 function settle(building, index, floor, loss) {
+  let next = floor;
+
+  const connections = building.connections.filter((connection) => {
+    const ok = [connection.a, connection.b].every((end) => end.floorId !== next.id || next.cells[end.cell] === CELL_STAIRS);
+    if (!ok) loss.connections.push(lostConnection(connection));
+    return ok;
+  });
+
+  // a stop is a stairs cell; a step is on a corridor cell; a refuge is on a
+  // corridor or stairs cell that is not an elevator stop
+  if (Array.isArray(next.lifts)) next = withList(next, 'lifts', next.lifts.filter((cell) => next.cells[cell] === CELL_STAIRS));
+  const probe = { floors: [next], connections };
+  const hasLifts = (Array.isArray(next.lifts) && next.lifts.length > 0) || connections.some((connection) => connection.kind === ELEVATOR_KIND && [connection.a, connection.b].some((end) => end.floorId === next.id));
+  const liftAt = (cell) => hasLifts && isLiftCell(probe, next.id, cell);
+  if (Array.isArray(next.notStepFree)) next = withList(next, 'notStepFree', next.notStepFree.filter((cell) => next.cells[cell] === CELL_CORRIDOR));
+  if (Array.isArray(next.refuges)) {
+    next = withList(next, 'refuges', next.refuges.filter((refuge) => {
+      const ok = (next.cells[refuge.cell] === CELL_CORRIDOR || next.cells[refuge.cell] === CELL_STAIRS) && !liftAt(refuge.cell);
+      if (!ok) loss.refuges.push({ id: refuge.id, name: refuge.name, cell: refuge.cell });
+      return ok;
+    }));
+  }
+
   const spaces = [];
-  for (const space of floor.spaces) {
+  for (const space of next.spaces) {
     if (space.kind !== 'room' || space.doors.length === 0) {
       spaces.push(space);
       continue;
     }
     const own = new Set(space.cells);
     const doors = space.doors.filter((door) => {
-      const across = neighbourCell(floor, door.cell, door.side);
-      const ok = own.has(door.cell) && across !== -1 && !own.has(across) && isWalkable(floor.cells[across]);
+      const across = neighbourCell(next, door.cell, door.side);
+      const ok = own.has(door.cell) && across !== -1 && !own.has(across) && isWalkable(next.cells[across]) && !liftAt(across);
       if (!ok) loss.doors.push({ roomId: space.id, name: spaceName(space), cell: door.cell, side: door.side });
       return ok;
     });
     spaces.push(doors.length === space.doors.length ? space : { ...space, doors });
   }
-  let next = sameItems(spaces, floor.spaces) ? floor : { ...floor, spaces };
+  if (!sameItems(spaces, next.spaces)) next = { ...next, spaces };
 
   const corridors = [];
   for (const corridor of next.corridors) {
@@ -233,15 +374,10 @@ function settle(building, index, floor, loss) {
   });
   if (exits.length !== next.exits.length) next = { ...next, exits };
 
-  const connections = building.connections.filter((connection) => {
-    const ok = [connection.a, connection.b].every((end) => end.floorId !== next.id || next.cells[end.cell] === CELL_STAIRS);
-    if (!ok) loss.connections.push({ id: connection.id, label: connection.label });
-    return ok;
-  });
-
   if (next === building.floors[index] && connections.length === building.connections.length) return building;
   const floors = next === building.floors[index] ? building.floors : building.floors.map((candidate, i) => (i === index ? next : candidate));
-  return { ...building, floors, connections: connections.length === building.connections.length ? building.connections : connections };
+  const settled = { ...building, floors, connections: connections.length === building.connections.length ? building.connections : connections };
+  return connections.length === building.connections.length ? settled : splitCars(keepElevatorStops(settled, building.connections.filter((connection) => !connections.includes(connection))), loss);
 }
 
 // Change one floor. edit has any of:
@@ -267,10 +403,17 @@ function editFloor(building, index, edit) {
     for (const cell of take) characters[cell] = CELL_EMPTY;
     for (const [cell, character] of paint) characters[cell] = character;
     cells = characters.join('');
+    const steps = new Set(floor.notStepFree || []);
     for (const cell of new Set([...take, ...paint.keys()])) {
       if (floor.cells[cell] === cells[cell]) continue;
-      if (floor.cells[cell] === CELL_CORRIDOR) loss.corridorCells += 1;
-      if (floor.cells[cell] === CELL_STAIRS) loss.stairsCells += 1;
+      if (floor.cells[cell] === CELL_CORRIDOR) {
+        loss.corridorCells += 1;
+        if (steps.has(cell)) loss.stepCells += 1;
+      }
+      if (floor.cells[cell] === CELL_STAIRS) {
+        if (isLiftCell(building, floor.id, cell)) loss.liftCells += 1;
+        else loss.stairsCells += 1;
+      }
     }
   }
 
@@ -327,7 +470,7 @@ function placeSpace(building, args, make) {
   const mode = overMode(args.over, 'replace');
   let cells = targetCells(floor, args);
   if (mode === 'skip') {
-    cells = cells.filter((cell) => cellKind(floor, cell) === 'empty');
+    cells = cells.filter((cell) => cellKind(floor, cell, building) === 'empty');
     if (cells.length === 0) refuse('There is no empty cell there on ' + floor.name + '. Draw somewhere empty, or erase what is there first.', 'occupied');
   }
   cells.sort((a, b) => a - b);
@@ -381,10 +524,16 @@ function paintCells(building, args, character) {
   const index = floorIndexOf(building, args.floorId);
   const floor = building.floors[index];
   const mode = overMode(args.over, 'replace');
-  let cells = targetCells(floor, args).filter((cell) => floor.cells[cell] !== character);
-  if (mode === 'skip') cells = cells.filter((cell) => cellKind(floor, cell) === 'empty');
+  // an elevator stop is already "S", but stairs are not what it is
+  let cells = targetCells(floor, args).filter((cell) => floor.cells[cell] !== character || (character === CELL_STAIRS && isLiftCell(building, floor.id, cell)));
+  if (mode === 'skip') cells = cells.filter((cell) => cellKind(floor, cell, building) === 'empty');
   if (cells.length === 0) return { building, floorId: floor.id, cells, loss: emptyLoss(), removedRooms: [] };
-  const result = editFloor(building, index, { take: new Set(cells), paint: new Map(cells.map((cell) => [cell, character])) });
+  // stairs over a stop: the stop goes first (and its connections with it, and
+  // said), then the cell is drawn as stairs
+  const stops = character === CELL_STAIRS ? cells.filter((cell) => isLiftCell(building, floor.id, cell)) : [];
+  const lifted = stops.length > 0 ? editFloor(building, index, { take: new Set(stops) }) : null;
+  const result = editFloor(lifted ? lifted.building : building, index, { take: new Set(cells), paint: new Map(cells.map((cell) => [cell, character])) });
+  if (lifted) addLoss(result.loss, lifted.loss);
   if (mode === 'refuse' && isLoss(result.loss)) refuse('That would replace ' + lossText(result.loss) + ' on ' + floor.name + '. Paint somewhere empty, or erase or move what is there first.', 'occupied');
   return { building: result.building, floorId: floor.id, cells, loss: result.loss, removedRooms: result.removedRooms };
 }
@@ -396,6 +545,33 @@ export function paintCorridor(building, args) {
 
 export function placeStairs(building, args) {
   return paintCells(building, args, CELL_STAIRS);
+}
+
+// An elevator stop on each cell: its own path, because paintCells leaves a
+// cell that is already "S" alone and a stop over stairs would never reach
+// editFloor. What is under the cell goes first, as for any placing (a room
+// loses the cell, a corridor cell its name, exit, step mark and refuge,
+// stairs their connections), and a door facing the cell is taken out, each
+// said in `loss`; then the cell is "S" and listed in the floor's `lifts`.
+// args as placeStairs. A cell that is a stop already is left as it is.
+export function placeLift(building, args) {
+  const index = floorIndexOf(building, args.floorId);
+  const floor = building.floors[index];
+  const mode = overMode(args.over, 'replace');
+  let cells = targetCells(floor, args).filter((cell) => !isLiftCell(building, floor.id, cell));
+  if (mode === 'skip') cells = cells.filter((cell) => cellKind(floor, cell, building) === 'empty');
+  if (cells.length === 0) return { building, floorId: floor.id, cells, loss: emptyLoss(), removedRooms: [] };
+  cells.sort((a, b) => a - b);
+  const cleared = editFloor(building, index, { take: new Set(cells) });
+  if (mode === 'refuse' && isLoss(cleared.loss)) refuse('That would replace ' + lossText(cleared.loss) + ' on ' + floor.name + '. Place the elevator somewhere empty, or erase or move what is there first.', 'occupied');
+  const now = cleared.building.floors[index];
+  const characters = now.cells.split('');
+  for (const cell of cells) characters[cell] = CELL_STAIRS;
+  const lifts = Array.from(new Set((now.lifts || []).concat(cells))).sort((a, b) => a - b);
+  const painted = replaceFloor(cleared.building, index, { ...now, cells: characters.join(''), lifts });
+  // a stop fills a cell: an exit beside it may no longer be on the edge
+  const placed = settle(painted, index, painted.floors[index], cleared.loss);
+  return { building: placed, floorId: floor.id, cells, loss: cleared.loss, removedRooms: cleared.removedRooms };
 }
 
 // ---------------------------------------------------------------- erase and delete
@@ -469,8 +645,19 @@ export function deleteSpaces(building, args) {
 
 // ---------------------------------------------------------------- move, copy, paste
 
+// A door's step flag as the fields it adds: `stepFree: false` when it has a
+// step, nothing when it does not (absent is step-free).
+function stepMark(door) {
+  return door.stepFree === false ? { stepFree: false } : {};
+}
+
+// The door at a new cell, keeping its side and its step flag.
+function doorAt(door, cell) {
+  return { cell, side: door.side, ...stepMark(door) };
+}
+
 function landsOn(loss) {
-  return loss.spaces.length + loss.corridorCells + loss.stairsCells > 0;
+  return loss.spaces.length + loss.corridorCells + loss.stairsCells + loss.liftCells > 0;
 }
 
 // Move one or many spaces by (dx, dy) cells, and to another floor with
@@ -499,7 +686,7 @@ export function moveSpaces(building, args) {
   };
   const moved = found.map(({ space }) => {
     const next = { ...space, cells: space.cells.map((cell) => shift(space, cell)) };
-    if (space.kind === 'room') next.doors = space.doors.map((door) => ({ cell: shift(space, door.cell), side: door.side }));
+    if (space.kind === 'room') next.doors = space.doors.map((door) => doorAt(door, shift(space, door.cell)));
     return next;
   });
   const take = new Set();
@@ -514,7 +701,7 @@ export function moveSpaces(building, args) {
     addLoss(result.loss, lifted.loss);
   }
   if (mode !== 'replace' && landsOn(result.loss)) {
-    const under = { ...emptyLoss(), spaces: result.loss.spaces, corridorCells: result.loss.corridorCells, stairsCells: result.loss.stairsCells };
+    const under = { ...emptyLoss(), spaces: result.loss.spaces, corridorCells: result.loss.corridorCells, stairsCells: result.loss.stairsCells, liftCells: result.loss.liftCells };
     refuse('That would put ' + (moved.length === 1 ? spaceName(moved[0]) : plural(moved.length, 'space', 'spaces')) + ' on top of ' + lossText(under) + ' on ' + to.name + '. Move it somewhere empty, or erase what is there first.', 'occupied');
   }
   return { building: result.building, floorId: to.id, loss: result.loss, removedRooms: result.removedRooms, spaceIds: moved.map((space) => space.id) };
@@ -547,7 +734,7 @@ export function copySpaces(building, args) {
     delete copy.id;
     if (space.kind === 'room') {
       copy.teacherIds = [];
-      copy.doors = space.doors.map((door) => ({ at: offset(door.cell), side: door.side }));
+      copy.doors = space.doors.map((door) => ({ at: offset(door.cell), side: door.side, ...stepMark(door) }));
     }
     return copy;
   });
@@ -580,7 +767,7 @@ export function pasteSpaces(building, args, ids) {
       const room = newRoom(ids('r'), cells);
       const free = source.number.trim() !== '' && !taken.has(roomNumberKey(source.number));
       if (free) taken.add(roomNumberKey(source.number));
-      return { ...room, number: free ? source.number : '', subjectId: source.subjectId, wing: source.wing, capacity: source.capacity, shared: source.shared, doors: source.doors.map((door) => ({ cell: place(door.at), side: door.side })) };
+      return { ...room, number: free ? source.number : '', subjectId: source.subjectId, wing: source.wing, capacity: source.capacity, shared: source.shared, doors: source.doors.map((door) => doorAt(door, place(door.at))) };
     }
     return { ...newOtherSpace(ids('o'), cells), label: source.label, otherKind: source.otherKind, colour: source.colour };
   });
@@ -588,7 +775,7 @@ export function pasteSpaces(building, args, ids) {
   for (const space of add) for (const cell of space.cells) take.add(cell);
   const result = editFloor(building, index, { take, add });
   if (mode !== 'replace' && landsOn(result.loss)) {
-    const under = { ...emptyLoss(), spaces: result.loss.spaces, corridorCells: result.loss.corridorCells, stairsCells: result.loss.stairsCells };
+    const under = { ...emptyLoss(), spaces: result.loss.spaces, corridorCells: result.loss.corridorCells, stairsCells: result.loss.stairsCells, liftCells: result.loss.liftCells };
     refuse('The copy would land on top of ' + lossText(under) + ' on ' + floor.name + '. Paste it somewhere empty, or erase what is there first.', 'occupied');
   }
   // a pasted door that faces nothing here was never in this building: not a loss
@@ -657,7 +844,8 @@ export function describeDoor(building, args) {
   if (!space.cells.includes(args.cell)) return no('That cell is not part of ' + spaceName(space) + '. A door goes on one of the room\'s own cells.', 'not-own-cell');
   const across = neighbourCell(floor, args.cell, args.side);
   if (across === -1) return no('The ' + side + ' side of that cell is the edge of the floor, so a door there would lead nowhere. Put the door on a side that faces a corridor or stairs.', 'leads-nowhere');
-  if (isWalkable(floor.cells[across])) return { ok: true, exists, reason: '', code: '', leadsTo: cellKind(floor, across) };
+  if (isLiftCell(building, floor.id, across)) return no('The ' + side + ' side of that cell faces an elevator stop. An elevator is not a corridor: a door goes on a side that faces a corridor or stairs.', 'faces-elevator');
+  if (isWalkable(floor.cells[across])) return { ok: true, exists, reason: '', code: '', leadsTo: cellKind(floor, across, building) };
   const owner = spaceOwners(floor).get(across);
   if (owner === space) return no('The ' + side + ' side of that cell is inside ' + spaceName(space) + '. A door goes on an outer edge of the room.', 'inner-edge');
   const there = owner ? spaceName(owner) : 'a wall';
@@ -674,6 +862,24 @@ export function addDoor(building, args) {
   return { building: replaceSpace(building, found, room), floorId: found.floor.id };
 }
 
+// Whether a door has a step. args: { roomId, door: { cell, side }, stepFree }.
+// `stepFree: false` writes the flag, true takes it off (absent is step-free).
+export function setDoorStepFree(building, args) {
+  const found = needSpace(building, args.roomId, 'room');
+  const at = args.door;
+  if (!at || !Number.isInteger(at.cell) || !DOOR_SIDES.includes(at.side)) refuse('A door is named by its cell and its side.', 'bad-value');
+  if (typeof args.stepFree !== 'boolean') refuse('Step-free is on or off.', 'bad-value');
+  const door = found.space.doors.find((candidate) => candidate.cell === at.cell && candidate.side === at.side);
+  if (!door) refuse('That door is no longer on ' + spaceName(found.space) + '.', 'missing');
+  if ((door.stepFree === false) === !args.stepFree) return { building, floorId: found.floor.id, roomId: found.space.id };
+  const doors = found.space.doors.map((candidate) => {
+    if (candidate !== door) return candidate;
+    const { stepFree, ...rest } = candidate;
+    return args.stepFree ? rest : { ...rest, stepFree: false };
+  });
+  return { building: replaceSpace(building, found, { ...found.space, doors }), floorId: found.floor.id, roomId: found.space.id, side: door.side };
+}
+
 export function removeDoor(building, args) {
   const found = needSpace(building, args.roomId, 'room');
   const doors = found.space.doors.filter((door) => !(door.cell === args.cell && door.side === args.side));
@@ -681,12 +887,12 @@ export function removeDoor(building, args) {
   return { building: replaceSpace(building, found, { ...found.space, doors }), floorId: found.floor.id };
 }
 
-// ---------------------------------------------------------------- stairs connections
+// ---------------------------------------------------------------- stairs and elevator connections
 
 function needEnd(building, end) {
   if (!end || typeof end.floorId !== 'string' || !Number.isInteger(end.cell)) refuse('An end of a connection is a floor and a cell.', 'bad-value');
   const floor = building.floors[floorIndexOf(building, end.floorId)];
-  if (!inGrid(floor, end.cell) || floor.cells[end.cell] !== CELL_STAIRS) refuse('A connection joins two stairs cells, and that cell on ' + floor.name + ' is not stairs. Click a stairs cell.', 'not-stairs');
+  if (!inGrid(floor, end.cell) || floor.cells[end.cell] !== CELL_STAIRS) refuse('A connection joins two stairs cells, and that cell on ' + floor.name + ' is not stairs. Click a stairs cell, or an elevator stop to join an elevator.', 'not-stairs');
   return floor;
 }
 
@@ -694,20 +900,78 @@ function sameEnd(a, b) {
   return a.floorId === b.floorId && a.cell === b.cell;
 }
 
-// Whether two stairs cells can be connected. `sameFloor` is the unusual case
-// the interface asks about first. Refuses what connectStairs would refuse.
+function carName(car) {
+  return car.label === '' ? 'the elevator' : 'Elevator ' + car.label;
+}
+
+function carAt(cars, end) {
+  return cars.find((car) => car.stops.some((stop) => sameEnd(stop, end))) || null;
+}
+
+// Whether two stairs cells, or two elevator stops, can be connected.
+// `sameFloor` is the unusual case of stairs the interface asks about first.
+// Refuses what connectStairs would refuse, in words. For elevator stops it
+// also says what the join makes: `elevator`, the car's letter `car`, whether
+// the car is `staffOnly`, and the letters of the cars that `merges` into it.
 export function describeConnect(building, args) {
   const floorA = needEnd(building, args.a);
   const floorB = needEnd(building, args.b);
-  if (sameEnd(args.a, args.b)) refuse('A connection joins two different stairs cells. Click the stairs at the other end.', 'same-cell');
+  if (sameEnd(args.a, args.b)) {
+    if (isLiftCell(building, args.a.floorId, args.a.cell)) refuse('An elevator joins two different stops. Click a stop on another floor.', 'same-cell');
+    refuse('A connection joins two different stairs cells. Click the stairs at the other end.', 'same-cell');
+  }
   const already = building.connections.find((connection) => (sameEnd(connection.a, args.a) && sameEnd(connection.b, args.b)) || (sameEnd(connection.a, args.b) && sameEnd(connection.b, args.a)));
+  if (already && already.kind === ELEVATOR_KIND) refuse('Those two stops are already joined: Elevator ' + (already.car || already.label) + '.', 'already-connected');
   if (already) refuse('Those two stairs are already connected, as ' + already.label + '.', 'already-connected');
-  return { sameFloor: floorA === floorB, fromFloor: floorA.name, toFloor: floorB.name, label: nextConnectionLabel(building.connections) };
+  let label = nextConnectionLabel(building.connections);
+  const liftA = isLiftCell(building, args.a.floorId, args.a.cell);
+  const liftB = isLiftCell(building, args.b.floorId, args.b.cell);
+  if (liftA !== liftB) refuse('An elevator stop joins only another elevator stop, and stairs join only stairs. Click ' + (liftA ? 'an elevator stop on another floor' : 'a stairs cell') + ', or choose a cell of the same kind.', 'elevator-stairs');
+  if (!liftA) return { sameFloor: floorA === floorB, fromFloor: floorA.name, toFloor: floorB.name, label };
+
+  if (floorA === floorB) refuse('An elevator joins different floors, and both of those stops are on ' + floorA.name + '. Click a stop on another floor.', 'elevator-same-floor');
+  const cars = elevatorCars(building);
+  const carA = carAt(cars, args.a);
+  const carB = carAt(cars, args.b);
+  if (carA === carB) refuse('Those two stops are already part of ' + carName(carA) + '. Click a stop that is not.', 'already-connected');
+  for (const [car, other] of [[carA, carB], [carB, carA]]) {
+    for (const stop of other.stops) {
+      const taken = car.stops.find((own) => own.floorId === stop.floorId && own.cell !== stop.cell);
+      if (!taken) continue;
+      const named = car.label !== '' ? car : other.label !== '' ? other : car;
+      refuse(carName(named) + ' already stops on ' + building.floors.find((floor) => floor.id === stop.floorId).name + '. An elevator stops once on each floor; click a stop on a floor it does not serve, or disconnect that stop first.', 'elevator-floor-taken');
+    }
+  }
+  const joined = [carA, carB].filter((car) => car.connectionIds.length > 0);
+  // a new elevator takes the first letter that no connection and no elevator
+  // uses (a letter outlives the connection it came from, and two elevators
+  // may not share one); it is the connection's own label too when that is free
+  let letter = carA.label !== '' ? carA.label : carB.label !== '' ? carB.label : '';
+  if (letter === '') {
+    letter = nextConnectionLabel(building.connections.flatMap((connection) => [{ label: connection.label }, { label: connection.car === undefined ? '' : connection.car }]));
+    if (!building.connections.some((connection) => connection.label === letter)) label = letter;
+  }
+  return {
+    sameFloor: false,
+    fromFloor: floorA.name,
+    toFloor: floorB.name,
+    label,
+    elevator: true,
+    car: letter,
+    staffOnly: joined.length === 0 ? true : joined.some((car) => car.staffOnly),
+    merges: joined.filter((car) => car.label !== letter).map((car) => car.label),
+    newCar: joined.length === 0,
+  };
 }
 
-// Connect two stairs cells. args: { a: { floorId, cell }, b: { floorId, cell } }
-// and optionally id. The letter is the first one no connection uses, and it
-// never changes afterwards. A same-floor connection is allowed and flagged.
+// Connect two stairs cells or two elevator stops. args: { a: { floorId, cell },
+// b: { floorId, cell } } and optionally id. The connection's letter is the
+// first one no connection uses, and it never changes afterwards. A same-floor
+// stairs connection is allowed and flagged. Two elevator stops make an
+// elevator connection (`kind`, `direction: "both"`, the car's letter in `car`,
+// `staffOnly: true` for a new car, or the car's own setting when a stop joins
+// one); a stop that joins a car is merged into it, and two cars that meet
+// become one under the letter of the car the first stop was in.
 export function connectStairs(building, args, ids) {
   const verdict = describeConnect(building, args);
   const connection = {
@@ -717,7 +981,28 @@ export function connectStairs(building, args, ids) {
     b: { floorId: args.b.floorId, cell: args.b.cell },
     direction: 'both',
   };
-  return { building: { ...building, connections: building.connections.concat([connection]) }, connectionId: connection.id, label: connection.label, sameFloor: verdict.sameFloor, fromFloor: verdict.fromFloor, toFloor: verdict.toFloor };
+  let connections = building.connections;
+  if (verdict.elevator) {
+    connection.kind = ELEVATOR_KIND;
+    connection.car = verdict.car;
+    if (verdict.staffOnly) connection.staffOnly = true;
+    const cars = elevatorCars(building);
+    const members = new Set();
+    for (const end of [args.a, args.b]) for (const id of carAt(cars, end).connectionIds) members.add(id);
+    // every connection of the merged car says the same letter and the same access
+    connections = connections.map((other) => {
+      if (!members.has(other.id)) return other;
+      const { staffOnly, ...rest } = other;
+      const next = { ...rest, car: verdict.car };
+      if (verdict.staffOnly) next.staffOnly = true;
+      return next.car === other.car && Boolean(next.staffOnly) === Boolean(other.staffOnly) ? other : next;
+    });
+  }
+  const next = { ...building, connections: connections.concat([connection]) };
+  const out = { building: next, connectionId: connection.id, label: connection.label, sameFloor: verdict.sameFloor, fromFloor: verdict.fromFloor, toFloor: verdict.toFloor };
+  if (!verdict.elevator) return out;
+  const car = elevatorCars(next).find((candidate) => candidate.connectionIds.includes(connection.id));
+  return { ...out, elevator: true, car: verdict.car, carId: car.id, staffOnly: verdict.staffOnly, merges: verdict.merges, newCar: verdict.newCar, floors: car.stops.map((stop) => next.floors.find((floor) => floor.id === stop.floorId).name) };
 }
 
 function needConnection(building, connectionId) {
@@ -726,13 +1011,18 @@ function needConnection(building, connectionId) {
   return connection;
 }
 
+// Takes a connection out. The stops of an elevator connection stay stops, now
+// "not connected" unless another connection still reaches them.
 export function disconnectStairs(building, args) {
   const connection = needConnection(building, args.connectionId);
-  return { building: { ...building, connections: building.connections.filter((candidate) => candidate !== connection) }, label: connection.label, floorId: connection.a.floorId };
+  const rest = { ...building, connections: building.connections.filter((candidate) => candidate !== connection) };
+  const elevator = connection.kind === ELEVATOR_KIND;
+  const loss = emptyLoss();
+  return { building: splitCars(keepElevatorStops(rest, [connection]), loss), label: connection.label, floorId: connection.a.floorId, elevator, car: elevator ? connection.car || connection.label : undefined, loss };
 }
 
 // A connection's name and direction. args: { connectionId } and any of
-// { label, direction }.
+// { label, direction }. An elevator runs both ways: any other direction is refused.
 export function setConnection(building, args) {
   const connection = needConnection(building, args.connectionId);
   let next = connection;
@@ -742,10 +1032,31 @@ export function setConnection(building, args) {
   }
   if (args.direction !== undefined) {
     if (!CONNECTION_DIRECTIONS.includes(args.direction)) refuse('A connection\'s direction is one of: ' + CONNECTION_DIRECTIONS.join(', ') + '.', 'bad-value');
+    if (connection.kind === ELEVATOR_KIND && args.direction !== 'both') refuse('An elevator runs both ways, so it cannot be one way. Only stairs can be set to up only or down only.', 'elevator-direction');
     next = withField(next, 'direction', args.direction);
   }
   if (next === connection) return { building, floorId: connection.a.floorId };
   return { building: { ...building, connections: building.connections.map((candidate) => (candidate === connection ? next : candidate)) }, floorId: connection.a.floorId };
+}
+
+// Who may use an elevator: `staffOnly` is written on every connection of the
+// car, or taken off every one. args: { carId, staffOnly }; carId is an id of
+// elevatorCars(building). A stop with no connection has no car to set.
+export function setElevator(building, args) {
+  const car = elevatorCars(building).find((candidate) => candidate.id === args.carId);
+  if (!car) refuse('That elevator is no longer in the building.', 'missing');
+  if (typeof args.staffOnly !== 'boolean') refuse('Staff and authorised only is on or off.', 'bad-value');
+  if (car.connectionIds.length === 0) refuse('That elevator stop is not connected to another floor yet, so it is not an elevator to set. Connect it first.', 'not-connected');
+  const members = new Set(car.connectionIds);
+  const connections = building.connections.map((connection) => {
+    if (!members.has(connection.id) || Boolean(connection.staffOnly) === args.staffOnly) return connection;
+    const { staffOnly, ...rest } = connection;
+    return args.staffOnly ? { ...rest, staffOnly: true } : rest;
+  });
+  const floorId = car.stops[0].floorId;
+  const out = { floorId, carId: car.id, car: car.label, stops: car.stops.length, staffOnly: args.staffOnly };
+  if (connections.every((connection, i) => connection === building.connections[i])) return { building, ...out };
+  return { building: { ...building, connections }, ...out };
 }
 
 // ---------------------------------------------------------------- corridor names
@@ -814,7 +1125,7 @@ export function describeExit(building, args) {
   const floor = building.floors[floorIndexOf(building, args.floorId)];
   if (!inGrid(floor, args.cell)) refuse('Cell ' + args.cell + ' is not on ' + floor.name + '.', 'off-floor');
   const exists = floor.exits.some((exit) => exit.cell === args.cell);
-  if (floor.cells[args.cell] !== CELL_CORRIDOR) return { ok: false, exists, code: 'not-corridor', reason: 'An exit is on a corridor cell, and that cell is ' + { stairs: 'stairs', room: 'part of a room', other: 'part of another space', empty: 'empty' }[cellKind(floor, args.cell)] + '. Paint a corridor to the building\'s edge and mark its last cell.' };
+  if (floor.cells[args.cell] !== CELL_CORRIDOR) return { ok: false, exists, code: 'not-corridor', reason: 'An exit is on a corridor cell, and that cell is ' + { stairs: 'stairs', elevator: 'an elevator stop', room: 'part of a room', other: 'part of another space', empty: 'empty' }[cellKind(floor, args.cell, building)] + '. Paint a corridor to the building\'s edge and mark its last cell.' };
   if (!isEdgeCorridorCell(floor, args.cell)) return { ok: false, exists, code: 'not-edge', reason: 'That corridor cell is in the middle of the building: every side of it is a room, a space or more corridor. An exit is on a corridor cell at the building\'s edge, with an empty cell or the edge of the floor beside it.' };
   return { ok: true, exists, code: '', reason: '' };
 }
@@ -858,6 +1169,134 @@ export function setExit(building, args) {
 export function unmarkExit(building, args) {
   const { index, floor, exit } = needExit(building, args);
   return { building: replaceFloor(building, index, { ...floor, exits: floor.exits.filter((candidate) => candidate !== exit) }), floorId: floor.id, doorName: exit.doorName };
+}
+
+// Whether an exit has steps outside its door. args: { exitId, stepFree } and
+// optionally floorId. `stepFree: false` writes the flag, true takes it off
+// (absent is step-free).
+export function setExitStepFree(building, args) {
+  if (typeof args.stepFree !== 'boolean') refuse('Step-free is on or off.', 'bad-value');
+  const index = args.floorId === undefined ? building.floors.findIndex((floor) => floor.exits.some((exit) => exit.id === args.exitId)) : floorIndexOf(building, args.floorId);
+  const floor = building.floors[index];
+  const exit = floor && floor.exits.find((candidate) => candidate.id === args.exitId);
+  if (!exit) refuse('That exit is no longer on the floor.', 'missing');
+  const out = { floorId: floor.id, exitId: exit.id, doorName: exit.doorName };
+  if ((exit.stepFree === false) === !args.stepFree) return { building, ...out };
+  const { stepFree, ...rest } = exit;
+  const next = args.stepFree ? rest : { ...rest, stepFree: false };
+  return { building: replaceFloor(building, index, { ...floor, exits: floor.exits.map((candidate) => (candidate === exit ? next : candidate)) }), ...out };
+}
+
+// ---------------------------------------------------------------- steps and areas of refuge
+
+// Mark corridor cells as having a step (`stepFree: false`), or take the mark
+// off (`stepFree: true`). args: { floorId, stepFree } with cells, rect or
+// from/to. Cells that are not corridor are skipped and counted in `skipped`;
+// a selection with no corridor cell at all is refused. `changed` counts the
+// cells whose mark actually changed.
+export function setStepCells(building, args) {
+  const index = floorIndexOf(building, args.floorId);
+  const floor = building.floors[index];
+  if (typeof args.stepFree !== 'boolean') refuse('Step-free is on or off.', 'bad-value');
+  const cells = targetCells(floor, args);
+  const corridor = cells.filter((cell) => floor.cells[cell] === CELL_CORRIDOR).sort((a, b) => a - b);
+  const skipped = cells.length - corridor.length;
+  if (corridor.length === 0) refuse('None of those cells is a corridor cell, and a step is marked on corridor. Select corridor cells.', 'not-corridor');
+  const marked = new Set(floor.notStepFree || []);
+  let changed = 0;
+  for (const cell of corridor) {
+    if (args.stepFree ? marked.delete(cell) : !marked.has(cell) && marked.add(cell)) changed += 1;
+  }
+  const out = { floorId: floor.id, cells: corridor, changed, skipped };
+  if (changed === 0) return { building, ...out };
+  return { building: replaceFloor(building, index, withList(floor, 'notStepFree', Array.from(marked).sort((a, b) => a - b))), ...out };
+}
+
+function refugeKey(name) {
+  return name.trim().toLowerCase();
+}
+
+// A name typed for an area of refuge: trimmed, and at most NAME_MOST
+// characters as the names of floors, groups and the rest are.
+function needRefugeName(floor, typed, exceptId) {
+  if (typeof typed !== 'string') refuse('The name of an area of refuge is text.', 'bad-value');
+  const name = typed.trim();
+  if (name === '') refuse('An area of refuge has a name. Type one.', 'no-name');
+  if (textLength(name) > NAME_MOST) refuse('The name of an area of refuge is at most ' + NAME_MOST + ' characters; this one has ' + textLength(name) + '. Type a shorter one.', 'too-long');
+  const taken = (floor.refuges || []).find((refuge) => refuge.id !== exceptId && refugeKey(refuge.name) === refugeKey(name));
+  if (taken) refuse('There is already an area of refuge called ' + taken.name + ' on ' + floor.name + '. Names are unique on a floor, whatever the capitals; type a different name.', 'duplicate-name');
+  return name;
+}
+
+// "Area of refuge" or "Area of refuge 2" and on: a name the tool gives, so it
+// reads as a name already ("Area of refuge 2") and not "Area of refuge, ...".
+function isDefaultRefugeName(name) {
+  const key = refugeKey(name);
+  const base = refugeKey(REFUGE_DEFAULT_NAME);
+  return key === base || (key.startsWith(base + ' ') && /^[1-9]\d*$/.test(key.slice(base.length + 1)));
+}
+
+// "Area of refuge", then "Area of refuge 2" and on, the first one the floor does not use.
+function defaultRefugeName(floor) {
+  const used = new Set((floor.refuges || []).map((refuge) => refugeKey(refuge.name)));
+  for (let n = 1; ; n += 1) {
+    const name = n === 1 ? REFUGE_DEFAULT_NAME : REFUGE_DEFAULT_NAME + ' ' + n;
+    if (!used.has(refugeKey(name))) return name;
+  }
+}
+
+function needRefugeCell(building, floor, cell, exceptId) {
+  if (!inGrid(floor, cell)) refuse('Cell ' + cell + ' is not on ' + floor.name + '.', 'off-floor');
+  const kind = cellKind(floor, cell, building);
+  if (kind !== 'corridor' && kind !== 'stairs') refuse('An area of refuge is on a corridor or stairs cell, and that cell is ' + { elevator: 'an elevator stop', room: 'part of a room', other: 'part of another space', empty: 'empty' }[kind] + '. Pick a corridor cell or a stairs cell.', 'not-corridor');
+  const there = (floor.refuges || []).find((refuge) => refuge.cell === cell && refuge.id !== exceptId);
+  if (there) refuse('That cell is already the area of refuge ' + there.name + '. A cell holds one.', 'duplicate-cell');
+}
+
+function needRefuge(building, args) {
+  const index = args.floorId === undefined ? building.floors.findIndex((floor) => (floor.refuges || []).some((refuge) => refuge.id === args.refugeId)) : floorIndexOf(building, args.floorId);
+  const floor = building.floors[index];
+  const refuge = floor && (floor.refuges || []).find((candidate) => candidate.id === args.refugeId);
+  if (!refuge) refuse('That area of refuge is no longer on the floor.', 'missing');
+  return { index, floor, refuge };
+}
+
+// A place to wait for help in an evacuation, on a corridor or stairs cell
+// that is not an elevator stop. args: { floorId, cell } and optionally name,
+// id. A blank or missing name takes the first of "Area of refuge", "Area of
+// refuge 2" and on that the floor does not use; a name must be unique on its
+// floor, ignoring case.
+export function addRefuge(building, args, ids) {
+  const index = floorIndexOf(building, args.floorId);
+  const floor = building.floors[index];
+  needRefugeCell(building, floor, args.cell, null);
+  const unnamed = args.name === undefined || (typeof args.name === 'string' && args.name.trim() === '');
+  const name = unnamed ? defaultRefugeName(floor) : needRefugeName(floor, args.name, null);
+  const refuge = { id: args.id || ids('a'), cell: args.cell, name };
+  return { building: replaceFloor(building, index, { ...floor, refuges: (floor.refuges || []).concat([refuge]) }), floorId: floor.id, refugeId: refuge.id, name };
+}
+
+// args: { refugeId } and optionally floorId, with any of { name, cell }.
+export function setRefuge(building, args) {
+  const { index, floor, refuge } = needRefuge(building, args);
+  let next = refuge;
+  if (args.name !== undefined) {
+    if (typeof args.name === 'string' && args.name.trim() === '') refuse('An area of refuge has a name. Type one.', 'no-name');
+    next = withField(next, 'name', needRefugeName(floor, args.name, refuge.id));
+  }
+  if (args.cell !== undefined && args.cell !== refuge.cell) {
+    needRefugeCell(building, floor, args.cell, refuge.id);
+    next = withField(next, 'cell', args.cell);
+  }
+  const out = { floorId: floor.id, refugeId: refuge.id, name: next.name, was: refuge.name };
+  if (next === refuge) return { building, ...out };
+  return { building: replaceFloor(building, index, { ...floor, refuges: floor.refuges.map((candidate) => (candidate === refuge ? next : candidate)) }), ...out };
+}
+
+// args: { refugeId } and optionally floorId.
+export function removeRefuge(building, args) {
+  const { index, floor, refuge } = needRefuge(building, args);
+  return { building: replaceFloor(building, index, withList(floor, 'refuges', floor.refuges.filter((candidate) => candidate !== refuge))), floorId: floor.id, name: refuge.name };
 }
 
 // ---------------------------------------------------------------- exclusion zones
@@ -933,6 +1372,7 @@ export function resizeFloor(building, args) {
     const to = move(cell);
     if (to !== -1) characters[to] = character;
     else if (character === CELL_CORRIDOR) loss.corridorCells += 1;
+    else if (isLiftCell(building, floor.id, cell)) loss.liftCells += 1;
     else loss.stairsCells += 1;
   }
 
@@ -950,7 +1390,7 @@ export function resizeFloor(building, args) {
       next.doors = [];
       for (const door of space.doors) {
         const cell = move(door.cell);
-        if (cell !== -1) next.doors.push({ cell, side: door.side });
+        if (cell !== -1) next.doors.push(doorAt(door, cell));
         else loss.doors.push({ roomId: space.id, name: spaceName(space), cell: door.cell, side: door.side });
       }
     }
@@ -964,6 +1404,21 @@ export function resizeFloor(building, args) {
     if (cells.length > 0) corridors.push({ ...corridor, cells });
   }
 
+  // elevator stops, steps and areas of refuge move with the cells they are on
+  const lifts = [];
+  for (const cell of floor.lifts || []) if (move(cell) !== -1) lifts.push(move(cell));
+  const notStepFree = [];
+  for (const cell of floor.notStepFree || []) {
+    if (move(cell) !== -1) notStepFree.push(move(cell));
+    else loss.stepCells += 1;
+  }
+  const refuges = [];
+  for (const refuge of floor.refuges || []) {
+    const cell = move(refuge.cell);
+    if (cell !== -1) refuges.push({ ...refuge, cell });
+    else loss.refuges.push({ id: refuge.id, name: refuge.name, cell: refuge.cell });
+  }
+
   const exits = [];
   for (const exit of floor.exits) {
     const cell = move(exit.cell);
@@ -974,7 +1429,7 @@ export function resizeFloor(building, args) {
   const connections = [];
   for (const connection of building.connections) {
     const ends = [connection.a, connection.b].map((end) => (end.floorId === floor.id ? { floorId: end.floorId, cell: move(end.cell) } : end));
-    if (ends.some((end) => end.cell === -1)) loss.connections.push({ id: connection.id, label: connection.label });
+    if (ends.some((end) => end.cell === -1)) loss.connections.push(lostConnection(connection));
     else connections.push(connection.a.floorId === floor.id || connection.b.floorId === floor.id ? { ...connection, a: ends[0], b: ends[1] } : connection);
   }
 
@@ -994,9 +1449,11 @@ export function resizeFloor(building, args) {
 
   // the traced image stays under the same part of the plan
   const image = floor.image && (left !== 0 || top !== 0) ? { ...floor.image, x: floor.image.x + left, y: floor.image.y + top } : floor.image;
-  const resized = { ...floor, width, height, cells: characters.join(''), spaces, corridors, exits, image };
+  let resized = { ...floor, width, height, cells: characters.join(''), spaces, corridors, exits, image };
+  resized = withList(withList(withList(resized, 'lifts', lifts.sort((a, b) => a - b)), 'notStepFree', notStepFree.sort((a, b) => a - b)), 'refuges', refuges);
   const floors = building.floors.map((candidate, i) => (i === index ? resized : candidate));
-  const next = settle({ ...building, floors, connections, zones }, index, resized, loss);
+  const cut = building.connections.filter((connection) => !connections.some((kept) => kept.id === connection.id));
+  const next = splitCars(settle(keepElevatorStops({ ...building, floors, connections, zones }, cut, floor.id), index, resized, loss), loss);
   return { building: next, floorId: floor.id, width, height, loss, removedRooms };
 }
 
@@ -1016,11 +1473,20 @@ function countCharacter(text, character) {
 }
 
 // The live counts of spec 4.10, for the whole building and per floor.
-// `unconnectedStairs` counts stairs cells that no connection names.
+// `stairsCells` and `unconnectedStairs` count stairs only; an elevator stop
+// is counted in `liftCells` and, when no elevator connection reaches it, in
+// `unconnectedLifts`. `connections` counts stairs connections;
+// `elevatorConnections` the others, and `elevators` the cars that are
+// joined to another floor. `steps` counts corridor cells marked with a step
+// and `refuges` the areas of refuge.
 export function counts(building) {
   const connected = new Set();
   for (const connection of building.connections) for (const end of [connection.a, connection.b]) connected.add(end.floorId + ':' + end.cell);
-  const total = { floors: building.floors.length, rooms: 0, numberedRooms: 0, otherSpaces: 0, corridorCells: 0, stairsCells: 0, unconnectedStairs: 0, connections: building.connections.length, exits: 0, zones: building.zones.length, byFloor: {} };
+  const cars = elevatorCars(building);
+  const stops = new Set();
+  for (const car of cars) for (const stop of car.stops) stops.add(stop.floorId + ':' + stop.cell);
+  const elevatorConnections = building.connections.filter((connection) => connection.kind === ELEVATOR_KIND).length;
+  const total = { floors: building.floors.length, rooms: 0, numberedRooms: 0, otherSpaces: 0, corridorCells: 0, stairsCells: 0, unconnectedStairs: 0, liftCells: 0, unconnectedLifts: 0, steps: 0, refuges: 0, connections: building.connections.length - elevatorConnections, elevatorConnections, elevators: cars.filter((car) => car.connectionIds.length > 0).length, exits: 0, zones: building.zones.length, byFloor: {} };
   for (const floor of building.floors) {
     const rooms = floor.spaces.filter((space) => space.kind === 'room');
     const own = {
@@ -1028,12 +1494,23 @@ export function counts(building) {
       numberedRooms: rooms.filter((room) => room.number.trim() !== '').length,
       otherSpaces: floor.spaces.length - rooms.length,
       corridorCells: countCharacter(floor.cells, CELL_CORRIDOR),
-      stairsCells: countCharacter(floor.cells, CELL_STAIRS),
+      stairsCells: 0,
       unconnectedStairs: 0,
+      liftCells: 0,
+      unconnectedLifts: 0,
+      steps: (floor.notStepFree || []).length,
+      refuges: (floor.refuges || []).length,
       exits: floor.exits.length,
     };
     for (let cell = floor.cells.indexOf(CELL_STAIRS); cell !== -1; cell = floor.cells.indexOf(CELL_STAIRS, cell + 1)) {
-      if (!connected.has(floor.id + ':' + cell)) own.unconnectedStairs += 1;
+      const key = floor.id + ':' + cell;
+      if (stops.has(key)) {
+        own.liftCells += 1;
+        if (!connected.has(key)) own.unconnectedLifts += 1;
+      } else {
+        own.stairsCells += 1;
+        if (!connected.has(key)) own.unconnectedStairs += 1;
+      }
     }
     total.byFloor[floor.id] = own;
     for (const key of Object.keys(own)) total[key] += own[key];
@@ -1041,19 +1518,80 @@ export function counts(building) {
   return total;
 }
 
+function floorsWords(names) {
+  return names.length <= 1 ? names.join('') : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+}
+
 // What is at one cell, for the status line: its column and row (from 0), what
-// kind of cell it is, and the space, corridor name, exit and connections there.
+// kind of cell it is ('elevator' for a stop), and the space, corridor name,
+// exit, connections, step, area of refuge and elevator there.
 export function describeCell(building, floorId, cell) {
   const floor = building.floors[floorIndexOf(building, floorId)];
   if (!inGrid(floor, cell)) return null;
   const corridor = floor.corridors.find((candidate) => candidate.cells.includes(cell)) || null;
+  const kind = cellKind(floor, cell, building);
+  const car = kind === 'elevator' ? elevatorCars(building).find((candidate) => candidate.stops.some((stop) => stop.floorId === floorId && stop.cell === cell)) || null : null;
   return {
     x: cell % floor.width,
     y: Math.floor(cell / floor.width),
-    kind: cellKind(floor, cell),
+    kind,
     space: spaceOwners(floor).get(cell) || null,
     corridorName: corridor ? corridor.name : '',
     exit: floor.exits.find((exit) => exit.cell === cell) || null,
     connections: building.connections.filter((connection) => (connection.a.floorId === floorId && connection.a.cell === cell) || (connection.b.floorId === floorId && connection.b.cell === cell)),
+    elevator: car ? { carId: car.id, label: car.label, staffOnly: car.staffOnly, connected: car.connectionIds.length > 0, floors: car.stops.map((stop) => building.floors.find((candidate) => candidate.id === stop.floorId).name) } : null,
+    step: (floor.notStepFree || []).includes(cell),
+    refuge: (floor.refuges || []).find((refuge) => refuge.cell === cell) || null,
   };
+}
+
+// The elevators, steps and areas of refuge of one floor as words, for the
+// Floor tab and for the plan's text alternative. Nothing is changed.
+//   elevators  [{ carId, label, cell, staffOnly, connected, floors, text }]
+//   steps      [{ cells, corridorNames, text }], each run of touching cells
+//   refuges    [{ id, name, cell, text }]
+export function describeFloor(building, floorId) {
+  const floor = building.floors[floorIndexOf(building, floorId)];
+  const cars = elevatorCars(building);
+  const elevators = [];
+  for (const car of cars) {
+    const stop = car.stops.find((candidate) => candidate.floorId === floor.id);
+    if (!stop) continue;
+    const floors = car.stops.map((each) => building.floors.find((candidate) => candidate.id === each.floorId).name);
+    const connected = car.connectionIds.length > 0;
+    elevators.push({
+      carId: car.id,
+      label: car.label,
+      cell: stop.cell,
+      staffOnly: car.staffOnly,
+      connected,
+      floors,
+      text: connected ? 'Elevator ' + car.label + ': ' + floorsWords(floors) + (car.staffOnly ? ', staff and authorised only' : '') : 'Elevator stop on ' + floor.name + ': not connected',
+    });
+  }
+  const marked = new Set(floor.notStepFree || []);
+  const seen = new Set();
+  const steps = [];
+  for (const start of Array.from(marked).sort((a, b) => a - b)) {
+    if (seen.has(start)) continue;
+    const run = [];
+    const queue = [start];
+    seen.add(start);
+    while (queue.length > 0) {
+      const cell = queue.shift();
+      run.push(cell);
+      for (const side of DOOR_SIDES) {
+        const next = neighbourCell(floor, cell, side);
+        if (next !== -1 && marked.has(next) && !seen.has(next)) {
+          seen.add(next);
+          queue.push(next);
+        }
+      }
+    }
+    run.sort((a, b) => a - b);
+    const names = Array.from(new Set(floor.corridors.filter((corridor) => run.some((cell) => corridor.cells.includes(cell))).map((corridor) => corridor.name)));
+    steps.push({ cells: run, corridorNames: names, text: 'A step ' + (names.length > 0 ? 'on ' + floorsWords(names) : 'in the corridor') + ', ' + plural(run.length, 'cell', 'cells') });
+  }
+  const refuges = (floor.refuges || []).map((refuge) => ({ id: refuge.id, name: refuge.name, cell: refuge.cell, text: isDefaultRefugeName(refuge.name) ? refuge.name : 'Area of refuge, ' + refuge.name }));
+  return { floorId: floor.id, name: floor.name, elevators, steps, refuges };
 }

@@ -21,6 +21,7 @@ import { roomRows, sortRoomRows } from '../../ui/prints/room-list.js';
 import { evacuationRoutes, noRoute, doorCard, ELEVATOR_KIND } from '../../engine/evacuation.js';
 import { routingGraph } from '../../engine/routing.js';
 import { sampleSchool } from '../../data/sample-school.js';
+// SV2-106: four cases below ask the level sample (no elevator, step or refuge). The full sample's cards carry a "Step-free way out" block, which puts the Floor 3 cards on a second sheet in landscape and Room 303's on Letter upright.
 import { plainSchool } from './helpers.mjs';
 import { planProject, threeFloors, twoRooms, disconnectedWing, splitLevel, floorId, roomId } from '../fixtures/buildings/plans.mjs';
 import { PINNED } from './helpers.mjs';
@@ -194,7 +195,7 @@ test('the maps share one scale, and a small route is not blown up past the large
 // ---------------------------------------------------------------- the words
 
 test('the steps are the evacuation engine\'s, numbered, without distances, and the exit and assembly point close the card', () => {
-  const project = sampleSchool();
+  const project = sampleSchool({ level: true });
   const graph = routingGraph(project);
   const evacuation = evacuationRoutes(project, graph);
   const cards = cardsOf(doorCards.render(project, null, NOW).html);
@@ -248,7 +249,7 @@ test('directions that run long flow on to a second sheet: thirty-one steps, ever
 
 test('the sample school\'s cards are one sheet each, upright and on their side, on both papers', () => {
   for (const paper of PAPERS) {
-    const { html } = doorCards.render(sampleSchool(), null, { ...NOW, paper });
+    const { html } = doorCards.render(sampleSchool({ level: true }), null, { ...NOW, paper });
     assert.equal(countOf(html, 'card__more new-sheet'), 0, paper.size + ' ' + paper.orientation);
   }
 });
@@ -387,7 +388,7 @@ function cellIn(markup, plan) {
 }
 
 test('Room 303 upright on Letter: three floors\' maps at least half as large again as the 2.3 mm a cell they were, every step still on the one sheet', () => {
-  const project = sampleSchool();
+  const project = sampleSchool({ level: true });
   const letter = { size: 'letter', orientation: 'portrait' };
   const markup = cardsOf(doorCards.render(project, null, { ...NOW, paper: letter, roomIds: ['rsample303'] }).html).get('rsample303');
   const fit = fitOf(project, 'rsample303', letter, true);
@@ -477,7 +478,7 @@ test('the last card keeps room for the closing line, page boxes or none: winding
   // the document lays out its last card with the room kept, and no other:
   // the sample's Room 204, whose maps are smaller for it, alone and before 303
   const letter = { size: 'letter', orientation: 'portrait' };
-  const sample = sampleSchool();
+  const sample = sampleSchool({ level: true });
   const alone = fitOf(sample, 'rsample204', letter, true);
   const before = fitOf(sample, 'rsample204', letter, false);
   assert.ok(alone.layout.cell < before.layout.cell - 0.1, 'the closing line costs this card: ' + alone.layout.cell + ' against ' + before.layout.cell);
@@ -786,4 +787,164 @@ test('on a map with a route the corridor names are drawn over the way out, on a 
     }
   }
   assert.ok(checked >= 3, 'Room 303\'s card has ' + checked + ' corridor names: the case reads nothing');
+});
+
+// ---------------------------------------------------------------- step-free ways out (SV2-104; DESIGN 13.6)
+
+import { stepFreeBlock, hasStepMarks, refugeEnd, refugeBy, BLOCK_HEAD } from '../../ui/safety/ways.js';
+import { stepFreeWaysOut } from '../../engine/evacuation.js';
+
+// Two rooms along one corridor, an exit at each end: Room 1A beside the west one, Room 1B nearer the east one.
+const ENDS = ['AA..BB..', 'AA..BB..', '########', '........', '........'];
+
+function ends(options) {
+  const project = planProject([ENDS], { exits: [[1, 0, 2, 'West Door'], [1, 7, 2, 'East Door']] });
+  const floor = project.building.floors[0];
+  if (options && options.westStep) floor.exits[0].stepFree = false;
+  if (options && options.eastStep) floor.exits[1].stepFree = false;
+  return project;
+}
+
+// Two floors with stairs A at the west end, the one exit having a step, and an area of refuge by the stairs.
+const STAIRS_HALL = ['.AA.BB.', '.AA.BB.', 'S######', '.......', '.......'];
+
+function refuged(name) {
+  const project = planProject([STAIRS_HALL, STAIRS_HALL], { exits: [[1, 6, 2, 'Main Door']], connections: [[1, 0, 2, 2, 0, 2]] });
+  const floor = project.building.floors[0];
+  floor.exits[0].stepFree = false;
+  floor.refuges = [{ id: 'aplan00001', cell: 2 * floor.width + 1, name: name || 'Area of refuge' }];
+  return project;
+}
+
+test('hasStepMarks: a refuge, a corridor step, a door or an exit with a step, and nothing else, turn the default on (and an elevator stop)', () => {
+  assert.equal(hasStepMarks(ends().building), false);
+  assert.equal(hasStepMarks(ends({ westStep: true }).building), true, 'an exit with a step');
+  const cell = ends();
+  cell.building.floors[0].notStepFree = [2 * cell.building.floors[0].width + 3];
+  assert.equal(hasStepMarks(cell.building), true, 'a corridor step');
+  const door = ends();
+  door.building.floors[0].spaces.find((space) => space.kind === 'room').doors = [{ cell: 0, side: 'n', stepFree: false }];
+  assert.equal(hasStepMarks(door.building), true, 'a door with a step');
+  const only = ends();
+  only.building.floors[0].refuges = [{ id: 'aplan00009', cell: 2 * only.building.floors[0].width + 3, name: 'Area of refuge' }];
+  assert.equal(hasStepMarks(only.building), true, 'a refuge and nothing else');
+  // an elevator stop turns it on too (DECISIONS 2026-11-06)
+  const lift = planProject([['.AA.', '.AA.', 'S###', '....', '....']]);
+  lift.building.floors[0].lifts = [2 * lift.building.floors[0].width];
+  assert.equal(hasStepMarks(lift.building), true, 'a lift stop');
+  const car = ends();
+  car.building.connections = [{ id: 'cnlift0001', kind: 'elevator', ends: [] }];
+  assert.equal(hasStepMarks(car.building), true, 'an elevator connection');
+});
+
+test('step-free ways out: off with nothing marked, on by default with a mark, and either way as asked', () => {
+  const plain = doorCards.render(ends(), null, NOW).html;
+  assert.equal(countOf(plain, 'data-stepfree'), 0, 'no mark in the building: no block');
+  assert.equal(countOf(plain, BLOCK_HEAD), 0);
+  const marked = ends({ westStep: true });
+  const on = doorCards.render(marked, null, NOW).html;
+  assert.ok(countOf(on, 'data-stepfree="exit"') >= 1, 'a step exit: the default is on');
+  assert.equal(countOf(doorCards.render(marked, null, { ...NOW, stepFree: false }).html, 'data-stepfree'), 0, 'asked off');
+  assert.ok(countOf(doorCards.render(ends(), null, { ...NOW, stepFree: true }).html, 'data-stepfree') === 0, 'asked on with nothing to say: every way is the route, so no block');
+});
+
+test('a card whose step-free way is its route has no second block; one whose way differs has, with its own steps ending at its exit', () => {
+  const project = ends({ westStep: true });
+  const cards = cardsOf(doorCards.render(project, null, NOW).html);
+  const a = cards.get(roomId('1A'));
+  const b = cards.get(roomId('1B'));
+  assert.equal(countOf(b, 'card__stepfree'), 0, 'Room 1B goes out by East Door either way');
+  assert.equal(countOf(a, 'class="card__exit card__stepfree"'), 1);
+  const block = a.slice(a.indexOf('class="card__exit card__stepfree"'));
+  assert.ok(block.includes('<span class="card__label">' + BLOCK_HEAD + '</span>'));
+  assert.deepEqual(stepNumbers(block), stepNumbers(block).map((unused, i) => i + 1), 'numbered from 1');
+  const texts = stepTexts(block);
+  assert.equal(texts[texts.length - 1], 'Exit at East Door.');
+  // the main block still goes out by West Door
+  assert.ok(stepTexts(a.slice(0, a.indexOf('card__stepfree'))).includes('Exit at West Door.'));
+  // the entries say which, for the screen and the cover
+  const entries = doorCards.cardsFor(project, {});
+  assert.deepEqual(entries.map((entry) => entry.block && entry.block.kind), ['exit', null]);
+});
+
+test('an area of refuge ends the block: "Wait at Area of refuge, by Stairs A, for help."; a room upstairs with no way says why', () => {
+  const project = refuged();
+  const entries = doorCards.cardsFor(project, {});
+  const byRoom = new Map(entries.map((entry) => [entry.row.id, entry.block]));
+  const down = byRoom.get(roomId('1A'));
+  assert.equal(down.kind, 'refuge');
+  assert.equal(down.steps[down.steps.length - 1].text, 'Wait at Area of refuge, by Stairs A, for help.');
+  assert.deepEqual(down.steps.map((step) => step.n), down.steps.map((unused, i) => i + 1));
+  assert.ok(down.steps.every((step) => step.kind !== 'arrive'), 'no "a room is behind you" step from a route that ends at no room');
+  const up = byRoom.get(roomId('2A'));
+  assert.equal(up.kind, 'none');
+  assert.match(up.sentence, /^There is no step-free way out from this room: /);
+  const html = doorCards.render(project, null, NOW).html;
+  const card = cardsOf(html).get(roomId('2A'));
+  assert.ok(card.includes('data-stepfree="none"') && card.includes('card__stepfree-none'));
+  assert.ok(stepTexts(cardsOf(html).get(roomId('1A'))).includes('Wait at Area of refuge, by Stairs A, for help.'));
+});
+
+test('refugeBy: the stairs or elevator on or beside the refuge, the nearest first; none when none is near', () => {
+  const project = refuged();
+  const building = project.building;
+  const floor = building.floors[0];
+  const at = (x, y) => ({ id: 'r', floorId: floor.id, cell: y * floor.width + x, name: 'Area of refuge' });
+  assert.equal(refugeBy(building, at(0, 2)).text, 'Stairs A', 'on the stop');
+  assert.equal(refugeBy(building, at(1, 2)).text, 'Stairs A', 'beside it');
+  assert.equal(refugeBy(building, at(4, 2)), null, 'four cells off');
+  building.connections[0].kind = 'elevator';
+  building.connections[0].car = 'D';
+  assert.equal(refugeBy(building, at(1, 2)).text, 'Elevator D');
+  assert.equal(refugeEnd(building, at(1, 2)).text, 'Wait at Area of refuge, by Elevator D, for help.');
+  assert.equal(refugeEnd(building, at(4, 2)).text, 'Wait at Area of refuge, for help.');
+});
+
+test('a refuge named like markup prints as text in the block, in its own direction, and in the cover', () => {
+  const name = '<img src=x onerror=alert(1)> "refuge" & مأوى';
+  const html = doorCards.render(refuged(name), null, NOW).html;
+  assert.equal(countOf(html, '<img'), 0);
+  assert.ok(html.includes('<span dir="auto">' + esc(name) + '</span>'), 'the name is set apart, escaped');
+  assert.doesNotMatch(html.replace(/="[^"]*"/g, ''), /<[^>]*\son[a-z]+\s*=/i);
+});
+
+test('the cover says what the second blocks are, counts them and lists the rooms with no step-free way; off, it says nothing of them', () => {
+  const project = refuged();
+  const html = doorCards.render(project, null, NOW).html;
+  assert.ok(html.includes('<h2 class="card-cover__stepfree-head">Step-free ways out</h2>'));
+  assert.ok(html.includes('class="card-cover__nostep"'));
+  const list = html.slice(html.indexOf('class="card-cover__nostep"'));
+  assert.ok(list.slice(0, list.indexOf('</ul>')).includes('<li data-room="' + roomId('2A') + '">'), 'Room 2A is in the list of rooms with no step-free way');
+  assert.ok(!list.slice(0, list.indexOf('</ul>')).includes(roomId('1A')), 'Room 1A has one');
+  const off = doorCards.render(project, null, { ...NOW, stepFree: false }).html;
+  assert.equal(countOf(off, 'card-cover__stepfree'), 0);
+  assert.equal(countOf(off, 'card-cover__nostep'), 0);
+});
+
+test('cardFit keeps the block\'s room out of the steps\' and maps\': the maps are no larger, every step still on its sheet, upright and on their side', () => {
+  const project = refuged();
+  const entries = doorCards.cardsFor(project, {});
+  const entry = entries.find((each) => each.row.id === roomId('1A'));
+  for (const paper of PAPERS) {
+    const without = doorCards.cardFit(project, entry.row, entry.card, paper, {});
+    const withBlock = doorCards.cardFit(project, entry.row, entry.card, paper, { block: entry.block });
+    assert.equal(without.block || 0, 0);
+    assert.equal(withBlock.block, doorCards.blockMm(entry.block, withBlock.steps));
+    assert.ok(withBlock.block > 10, 'a block of a few lines is taller than a rule and its padding');
+    assert.ok(withBlock.layout.cell <= without.layout.cell + 1e-9, paper.orientation + ': the maps give room up');
+    assert.equal(withBlock.sheets.length, 1, paper.orientation + ': a short card stays one sheet');
+  }
+  assert.equal(doorCards.blockMm(null, 100), 0);
+  assert.ok(doorCards.blockMm({ kind: 'none', steps: [], sentence: 'x '.repeat(200) }, 80) > doorCards.blockMm({ kind: 'none', steps: [], sentence: 'x' }, 80), 'a long sentence takes more lines');
+});
+
+test('stepFreeBlock: no block for an exit that is the route, none for a room with no way out at all, and the wording is the engine\'s', () => {
+  const project = ends({ westStep: true });
+  const ways = stepFreeWaysOut(project);
+  const evacuation = evacuationRoutes(project);
+  const blocks = ways.rooms.map((way, i) => stepFreeBlock(project, way, evacuation.rooms[i]));
+  assert.deepEqual(blocks.map((block) => block && block.kind), ['exit', null]);
+  // a room the ordinary evacuation cannot leave either: the card already says so, so no second block
+  const lost = ways.rooms[0];
+  assert.equal(stepFreeBlock(project, { ...lost, way: 'none', why: 'x', sentence: '' }, { route: { ok: false } }), null);
 });

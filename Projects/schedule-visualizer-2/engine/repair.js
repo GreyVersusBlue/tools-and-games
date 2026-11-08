@@ -29,6 +29,10 @@
 //   when there are none.
 // - A floor's missing or fractional width or height is worked out from its
 //   cells when the other side divides them exactly.
+// - Elevators and step marks (ARCHITECTURE 19.2) are optional and stay absent
+//   when absent. A connection's kind is the authority for a stop it joins; a
+//   stop in `lifts` that an older tool joined as stairs leaves `lifts`, and
+//   repair never adds to `lifts` or sets a kind.
 // - A scenario's changes are checked for shape only. Whether they still point
 //   at things that exist is for the scenario module, which tells the user
 //   what it dropped.
@@ -39,8 +43,8 @@
 // images this device holds; with it, each floor's image is marked missing or
 // not.
 
-import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CHANGE_KINDS, PUBLISH_VIEWS, CHECK_KINDS, CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY, DEFAULT_FLOOR_WIDTH, DEFAULT_FLOOR_HEIGHT, DEFAULT_OTHER_COLOUR, DEFAULT_DAY_TYPE_NAMES } from './schema.js';
-import { defaultSettings, defaultPublish, defaultOnboarding, emptyCells, emptySlot, emptyDay, newFloor, newDayType, roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isEdgeCorridorCell, nextGroupColour, nextConnectionLabel, isCellScale } from './schema.js';
+import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CHANGE_KINDS, PUBLISH_VIEWS, CHECK_KINDS, CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY, ELEVATOR_KIND, REFUGE_DEFAULT_NAME, DEFAULT_FLOOR_WIDTH, DEFAULT_FLOOR_HEIGHT, DEFAULT_OTHER_COLOUR, DEFAULT_DAY_TYPE_NAMES } from './schema.js';
+import { defaultSettings, defaultPublish, defaultOnboarding, emptyCells, emptySlot, emptyDay, newFloor, newDayType, roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isEdgeCorridorCell, nextGroupColour, nextConnectionLabel, isCellScale, elevatorCars, isLiftCell } from './schema.js';
 import { LATER_PUBLISH_VIEWS, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DAYS_MOST, ROTATION_RANGE, DATE_LABEL_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, WEEKDAY_NAMES, defaultWeekdays, spacelessKey, textLength } from './schema.js';
 import { DEFAULT_PASSCODE } from './publish-defaults.js';
 import { createIds, seededRandom, collectIds, isId } from './ids.js';
@@ -206,6 +210,13 @@ export function repair(input, options) {
   if (!published) whole(settings, 'defaultHeadCount', RANGES.headCount, defaults.defaultHeadCount, 'The default head count');
   whole(settings, 'secondsPerCell', RANGES.secondsPerCell, defaults.secondsPerCell, 'Seconds per corridor cell');
   whole(settings, 'secondsPerStair', RANGES.secondsPerStair, defaults.secondsPerStair, 'Seconds per stair connection');
+  // the three elevator timings are not in defaultSettings(): absent stays
+  // absent, and one out of range is removed so elevatorSettings() reads its default
+  for (const [key, what] of [['elevatorWaitSeconds', 'The elevator wait'], ['elevatorSecondsPerFloor', 'The elevator ride per floor'], ['elevatorPeoplePerTrip', 'The people an elevator carries a trip']]) {
+    if (settings[key] === undefined || inRange(settings[key], RANGES[key])) continue;
+    note(what + ' was not a whole number from ' + RANGES[key][0] + ' to ' + RANGES[key][1] + ' and was removed, so the usual figure applies.');
+    delete settings[key];
+  }
   choice(settings, 'timeFormat', TIME_FORMATS, defaults.timeFormat, 'The time format');
   if (!published) {
     if (settings.colourScale !== undefined && !isObject(settings.colourScale)) note('The colour scale could not be read and was reset.');
@@ -612,6 +623,10 @@ export function repair(input, options) {
         continue;
       }
       exitCells.add(cell);
+      if (exit.stepFree !== undefined && typeof exit.stepFree !== 'boolean') {
+        note('The step-free flag of the exit "' + exit.doorName + '" on ' + floor.name + ' was not true or false and was removed.');
+        delete exit.stepFree;
+      }
       exits.push(exit);
     }
     floor.exits = exits;
@@ -682,9 +697,230 @@ export function repair(input, options) {
     }
     usedLabels.add(connection.label);
     choice(connection, 'direction', CONNECTION_DIRECTIONS, 'both', 'The direction of stair connection ' + connection.label);
+    // an elevator's own fields (19.2): a kind that is not "elevator" is removed (a stairs
+    // connection); staffOnly and car are kept only on an elevator and only when well formed
+    if (connection.kind !== undefined && connection.kind !== ELEVATOR_KIND) {
+      note('The kind of connection ' + connection.label + ' was not "elevator" and was removed, so it is a stairs connection.');
+      delete connection.kind;
+    }
+    if (connection.staffOnly !== undefined && typeof connection.staffOnly !== 'boolean') {
+      note('Staff only on connection ' + connection.label + ' was not true or false and was removed.');
+      delete connection.staffOnly;
+    }
+    if (connection.car !== undefined && (typeof connection.car !== 'string' || connection.car.trim() === '')) {
+      note('The elevator letter of connection ' + connection.label + ' was not text and was removed.');
+      delete connection.car;
+    }
+    if (connection.kind !== ELEVATOR_KIND && (connection.staffOnly !== undefined || connection.car !== undefined)) {
+      note('Connection ' + connection.label + ' is stairs, so its staff-only and elevator-letter fields were removed.');
+      delete connection.staffOnly;
+      delete connection.car;
+    }
     connections.push(connection);
   }
   building.connections = connections;
+
+  // ---- elevators and step-free marks (ARCHITECTURE 19.2), in the order it lists
+  {
+    let list = connections;
+    const at = (end) => end.floorId + ':' + end.cell;
+    const elevator = (connection) => connection.kind === ELEVATOR_KIND;
+    const ends = (connection) => [connection.a, connection.b];
+    const cellText = (end) => 'cell ' + end.cell + ' on ' + floorById.get(end.floorId).name;
+
+    // 1. a `lifts` cell that is not "S", or that carries a stairs connection, leaves `lifts`.
+    // Steps 2 to 5 can turn an elevator connection into stairs or remove a connection, so
+    // this runs once more after them: what repair gives back must pass validate.
+    const dropStaleLifts = () => {
+      const stairsAt = new Set();
+      for (const connection of list) if (!elevator(connection)) for (const end of ends(connection)) stairsAt.add(at(end));
+      for (const floor of building.floors) {
+        if (floor.lifts === undefined) continue;
+        if (!Array.isArray(floor.lifts)) {
+          note('The elevator stops of ' + floor.name + ' could not be read and were removed.');
+          delete floor.lifts;
+          continue;
+        }
+        const seen = new Set();
+        const kept = floor.lifts.filter((cell) => {
+          if (!Number.isInteger(cell) || cell < 0 || cell >= floor.cells.length || floor.cells[cell] !== CELL_STAIRS || stairsAt.has(floor.id + ':' + cell) || seen.has(cell)) return false;
+          seen.add(cell);
+          return true;
+        });
+        if (kept.length !== floor.lifts.length) {
+          note(plural(floor.lifts.length - kept.length, 'cell', 'cells') + ' listed as elevator stops on ' + floor.name + ' ' + (floor.lifts.length - kept.length === 1 ? 'is' : 'are') + ' not stairs cells, carry a stairs connection or are listed twice, and ' + (floor.lifts.length - kept.length === 1 ? 'was' : 'were') + ' taken off the list.');
+          floor.lifts = kept;
+        }
+      }
+    };
+    dropStaleLifts();
+
+    // 2. a same-floor elevator connection is a stairs connection, as an older tool would have drawn it
+    for (const connection of list) {
+      if (!elevator(connection) || connection.a.floorId !== connection.b.floorId) continue;
+      note('Elevator connection ' + connection.label + ' joined two cells on ' + floorById.get(connection.a.floorId).name + ', so it is now a stairs connection.');
+      delete connection.kind;
+      delete connection.staffOnly;
+      delete connection.car;
+    }
+
+    // 3. a cell carrying both kinds keeps its elevator connections and loses the stairs one
+    const elevatorAt = new Set();
+    for (const connection of list) if (elevator(connection)) for (const end of ends(connection)) elevatorAt.add(at(end));
+    const withoutBoth = list.filter((connection) => {
+      if (elevator(connection)) return true;
+      const clash = ends(connection).find((end) => elevatorAt.has(at(end)));
+      if (!clash) return true;
+      note('Stairs connection ' + connection.label + ' was removed: ' + cellText(clash) + ' is an elevator stop.');
+      return false;
+    });
+    if (withoutBoth.length !== list.length) list = withoutBoth;
+
+    // 4. an elevator runs both ways
+    for (const connection of list) {
+      if (!elevator(connection) || connection.direction === 'both') continue;
+      note('Elevator connection ' + connection.label + ' was one-way and now runs both ways.');
+      connection.direction = 'both';
+    }
+
+    // 5. a car has one stop a floor: a connection that would give it a second on a floor is dropped, the later of the two
+    const cars = new Map(); // cell -> { floors: Map(floorId -> cell) }
+    const dropped = new Set();
+    for (const connection of list) {
+      if (!elevator(connection)) continue;
+      const [a, b] = ends(connection);
+      const carOf = (end) => {
+        if (!cars.has(at(end))) cars.set(at(end), { floors: new Map([[end.floorId, end.cell]]) });
+        return cars.get(at(end));
+      };
+      const ca = carOf(a);
+      const cb = carOf(b);
+      if (ca === cb) continue;
+      const clash = Array.from(cb.floors).find(([floorId, cell]) => ca.floors.has(floorId) && ca.floors.get(floorId) !== cell);
+      if (clash) {
+        note('Elevator connection ' + connection.label + ' was removed: it would give its elevator a second stop on ' + floorById.get(clash[0]).name + '.');
+        dropped.add(connection);
+        continue;
+      }
+      for (const [floorId, cell] of cb.floors) ca.floors.set(floorId, cell);
+      for (const [key, car] of cars) if (car === cb) cars.set(key, ca);
+    }
+    if (dropped.size > 0) list = list.filter((connection) => !dropped.has(connection));
+    dropStaleLifts();
+
+    // 6. staffOnly equal across a car (true wins), `car` the first connection's, or its own label when it has none
+    const byId = new Map(list.map((connection) => [connection.id, connection]));
+    const lettersUsed = new Set();
+    for (const car of elevatorCars({ floors: building.floors, connections: list })) {
+      if (car.connectionIds.length === 0) continue;
+      const own = car.connectionIds.map((id) => byId.get(id));
+      if (own.some((connection) => connection.staffOnly === true) && own.some((connection) => connection.staffOnly !== true)) {
+        note('Elevator ' + car.label + ' was staff only on some connections and not on others; it is staff only on all of them.');
+        for (const connection of own) connection.staffOnly = true;
+      }
+      let letter = typeof own[0].car === 'string' && own[0].car.trim() !== '' ? own[0].car : own[0].label;
+      if (lettersUsed.has(nameKey(letter))) {
+        // two elevators may not share a letter: the later one takes its first connection's own label
+        let own2 = own[0].label;
+        for (let n = 2; lettersUsed.has(nameKey(own2)); n += 1) own2 = own[0].label + n;
+        note('Elevator ' + car.label + ' had the same letter as an earlier elevator; its letter is now "' + own2 + '".');
+        letter = own2;
+        for (const connection of own) connection.car = letter;
+      }
+      lettersUsed.add(nameKey(letter));
+      if (own.some((connection) => typeof connection.car === 'string' && connection.car !== letter)) note('The connections of one elevator carried different letters; they are all "' + letter + '" now.');
+      for (const connection of own) connection.car = letter;
+    }
+    building.connections = list;
+
+    // 7. a door facing a lift cell is removed; a malformed door flag is removed
+    const anyLift = list.some(elevator) || building.floors.some((floor) => Array.isArray(floor.lifts) && floor.lifts.length > 0);
+    for (const floor of building.floors) {
+      for (const space of floor.spaces) {
+        if (space.kind !== 'room') continue;
+        let changed = false;
+        const doors = [];
+        for (const door of space.doors) {
+          const across = neighbourCell(floor, door.cell, door.side);
+          if (anyLift && across !== -1 && isLiftCell(building, floor.id, across)) {
+            note('A door of room "' + space.number + '" faced an elevator stop on ' + floor.name + ' and was removed.');
+            changed = true;
+            continue;
+          }
+          if (door.stepFree !== undefined && typeof door.stepFree !== 'boolean') {
+            note('The step-free flag of a door of room "' + space.number + '" was not true or false and was removed.');
+            const { stepFree, ...rest } = door;
+            doors.push(rest);
+            changed = true;
+            continue;
+          }
+          doors.push(door);
+        }
+        if (changed) space.doors = doors;
+      }
+    }
+
+    // 8. invalid refuges and step cells are dropped
+    for (const floor of building.floors) {
+      if (floor.notStepFree !== undefined) {
+        if (!Array.isArray(floor.notStepFree)) {
+          note('The cells with a step on ' + floor.name + ' could not be read and were removed.');
+          delete floor.notStepFree;
+        } else {
+          const seen = new Set();
+          const kept = floor.notStepFree.filter((cell) => {
+            if (!Number.isInteger(cell) || cell < 0 || cell >= floor.cells.length || floor.cells[cell] !== CELL_CORRIDOR || seen.has(cell)) return false;
+            seen.add(cell);
+            return true;
+          });
+          if (kept.length !== floor.notStepFree.length) {
+            note(plural(floor.notStepFree.length - kept.length, 'cell', 'cells') + ' marked as a step on ' + floor.name + ' ' + (floor.notStepFree.length - kept.length === 1 ? 'is' : 'are') + ' not corridor cells or marked twice, and ' + (floor.notStepFree.length - kept.length === 1 ? 'was' : 'were') + ' unmarked.');
+            floor.notStepFree = kept;
+          }
+        }
+      }
+      if (floor.refuges !== undefined) {
+        const refugeCells = new Set();
+        const refugeNames = new Set();
+        const kept = [];
+        let changed = false;
+        if (!Array.isArray(floor.refuges)) {
+          note('The areas of refuge of ' + floor.name + ' could not be read and were removed.');
+          delete floor.refuges;
+        } else {
+          for (const raw of floor.refuges) {
+            if (!isObject(raw)) {
+              note('An area of refuge on ' + floor.name + ' could not be read and was removed.');
+              changed = true;
+              continue;
+            }
+            const refuge = { ...raw };
+            const cell = refuge.cell;
+            const character = Number.isInteger(cell) && cell >= 0 && cell < floor.cells.length ? floor.cells[cell] : null;
+            if ((character !== CELL_CORRIDOR && character !== CELL_STAIRS) || isLiftCell(building, floor.id, cell) || refugeCells.has(cell)) {
+              note('The area of refuge "' + (typeof refuge.name === 'string' ? refuge.name : REFUGE_DEFAULT_NAME) + '" on ' + floor.name + ' was not on a corridor or stairs cell that is free of an elevator and another refuge, and was removed.');
+              changed = true;
+              continue;
+            }
+            refugeCells.add(cell);
+            refuge.id = claimId(refuge, 'a', 'An area of refuge on ' + floor.name);
+            if (typeof refuge.name !== 'string') {
+              if (refuge.name !== undefined && refuge.name !== null) note('The name of an area of refuge on ' + floor.name + ' was not text and was reset.');
+              refuge.name = REFUGE_DEFAULT_NAME;
+            }
+            const name = uniqueText(refuge.name, nameKey, refugeNames);
+            if (name !== refuge.name) {
+              note('Two areas of refuge on ' + floor.name + ' were both called "' + refuge.name + '". The second is now "' + name + '".');
+              refuge.name = name;
+            }
+            if (refuge.id !== raw.id || refuge.name !== raw.name) changed = true;
+            kept.push(refuge);
+          }
+          if (changed) floor.refuges = kept;
+        }
+      }
+    }
+  }
 
   // zones
   if (!published || building.zones !== undefined) {
@@ -777,6 +1013,10 @@ export function repair(input, options) {
     if (!isHexColour(group.colour)) {
       if (group.colour !== undefined) note('The colour of group "' + group.name + '" could not be read and was reset.');
       group.colour = nextGroupColour(groups);
+    }
+    if (group.stepFree !== undefined && typeof group.stepFree !== 'boolean') {
+      note('The step-free flag of group "' + group.name + '" was not true or false and was removed.');
+      delete group.stepFree;
     }
 
     let rawDays = isObject(group.days) ? group.days : {};

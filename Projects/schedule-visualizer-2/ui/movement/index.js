@@ -59,7 +59,8 @@ import { tabs } from '../components/tabs.js';
 import { count, figures, periodWords } from '../components/words.js';
 import { createViewport } from '../surface/viewport.js';
 import { createPlanMap, CURSOR_LEAST, KEEP_ON_STAGE } from '../surface/plan-map.js';
-import { lanesOverlay, drawStairLink, lanePoint, lineWidth } from '../surface/overlays/lanes.js';
+import { lanesOverlay, lanePoint, lineWidth } from '../surface/overlays/lanes.js';
+import { drawLink } from './ride-link.js';
 import { parse, readable } from '../colour.js';
 import { buildGraph } from '../../engine/graph.js';
 import { ActionError, setSetting, setOnboarding } from '../../engine/actions.js';
@@ -199,6 +200,9 @@ export const section = {
       paintMarks: () => plan.paintMarks(),
       layer,
       card,
+      // who holds an elevator at the second playback shows: { now: [{ groupId,
+      // car, label, at }], listeners }; playback writes it, the hotspot table reads it
+      rides: { now: [], listeners: new Set() },
       // a card the reader tapped open ({ floorId, cell }, or null), and
       // putting it back beside its cell after the map moved under it with
       // nothing said (presentation mode leaving, ./present.js)
@@ -536,8 +540,9 @@ export const section = {
       return colour;
     }
 
-    // ---- the stairs links in use: a dotted arc from one end to the other,
-    // over every floor on the map's canvas
+    // ---- the links in use over every floor on the map's canvas: a dotted arc
+    // from one end of a stairs connection to the other, and for an elevator
+    // ride a dashed line with a ring at each stop (ride-link.js)
     plan.across.push((g, given) => {
       if (!picture || !state) return;
       const theme = given.theme;
@@ -550,10 +555,10 @@ export const section = {
         if (!a && !b) continue;
         const style = { colour: alone || theme.ink, edge: theme.card, width: linkWidth, font: theme.font, ink: theme.ink, labelScale: plan.labelScale };
         if (a && b) {
-          drawStairLink(g, a, b, style);
+          drawLink(g, link, a, b, style);
         } else {
           const other = state.project.building.floors.find((floor) => floor.id === (a ? link.b.floorId : link.a.floorId));
-          drawStairLink(g, a || b, null, { ...style, text: link.label + (other ? ' to ' + other.name : '') });
+          drawLink(g, link, a || b, null, { ...style, text: link.label + (other ? ' to ' + other.name : '') });
         }
       }
     });

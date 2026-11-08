@@ -19,6 +19,10 @@ export const RANGES = {
   capacity: [1, 999],
   secondsPerCell: [1, 10],
   secondsPerStair: [2, 30],
+  // Elevator settings (ARCHITECTURE 19.2), read through elevatorSettings().
+  elevatorWaitSeconds: [0, 300],
+  elevatorSecondsPerFloor: [1, 60],
+  elevatorPeoplePerTrip: [1, 40],
   floorSize: [5, 200],
   consecutiveLimit: [1, 16],
   passingMarginSeconds: [0, 600],
@@ -123,6 +127,24 @@ export const CHECK_KINDS = [
   'room-no-teacher',
   'duty-nobody',
 ];
+
+// ---------------------------------------------------------------- elevators and step-free routes (ARCHITECTURE 19)
+//
+// An elevator stop is a stairs cell ("S") listed in its floor's `lifts`, and
+// an elevator is a stairs connection with `kind: "elevator"`; a car is the
+// set of cells such connections join, worked out by elevatorCars() and never
+// stored. Every field is additive and absent reads as today's behaviour.
+// The three timings are school settings kept out of defaultSettings(): read
+// them through elevatorSettings().
+
+// A connection's kind when it is an elevator; absent means stairs.
+export const ELEVATOR_KIND = 'elevator';
+// Seconds the doors take to open or to close, for a group's trips (19.5).
+export const ELEVATOR_DOOR_SECONDS = 10;
+// What an absent elevator setting reads as.
+export const ELEVATOR_DEFAULTS = { wait: 30, perFloor: 6, perTrip: 8 };
+// What an area of refuge is called when it is not named.
+export const REFUGE_DEFAULT_NAME = 'Area of refuge';
 
 export const CELL_EMPTY = '.';
 export const CELL_CORRIDOR = '#';
@@ -488,13 +510,130 @@ export function spaceOwners(floor) {
   return owners;
 }
 
-// What a cell is: 'corridor', 'stairs', 'room', 'other' or 'empty'.
-export function cellKind(floor, cell) {
+// What a cell is: 'corridor', 'stairs', 'elevator', 'room', 'other' or
+// 'empty'. With the building as the third argument a stairs cell is an
+// elevator by isLiftCell's rule (a connection's kind is the authority);
+// without it, by the floor's own `lifts` alone, which is right for a floor
+// whose stops are not yet connected and may be stale for one that is.
+export function cellKind(floor, cell, building) {
   const character = floor.cells[cell];
   if (character === CELL_CORRIDOR) return 'corridor';
-  if (character === CELL_STAIRS) return 'stairs';
+  if (character === CELL_STAIRS) {
+    if (building) return isLiftCell(building, floor.id, cell) ? 'elevator' : 'stairs';
+    return Array.isArray(floor.lifts) && floor.lifts.includes(cell) ? 'elevator' : 'stairs';
+  }
   const owner = spaceOwners(floor).get(cell);
   return owner ? owner.kind : 'empty';
+}
+
+// The three elevator timings of a project's settings, each as set when it is
+// a whole number in range and the default otherwise: { wait, perFloor,
+// perTrip } in seconds, seconds a floor and people a trip. Not through
+// defaultSettings(), which would move every new project and every baseline.
+export function elevatorSettings(settings) {
+  const source = settings && typeof settings === 'object' ? settings : {};
+  const pick = (key, fallback) => (inRange(source[key], RANGES[key]) ? source[key] : fallback);
+  return {
+    wait: pick('elevatorWaitSeconds', ELEVATOR_DEFAULTS.wait),
+    perFloor: pick('elevatorSecondsPerFloor', ELEVATOR_DEFAULTS.perFloor),
+    perTrip: pick('elevatorPeoplePerTrip', ELEVATOR_DEFAULTS.perTrip),
+  };
+}
+
+function isEnd(end) {
+  return end !== null && typeof end === 'object' && typeof end.floorId === 'string' && Number.isInteger(end.cell);
+}
+
+// True when this stairs cell is an elevator stop: it is an end of an
+// elevator connection, or it is in its floor's `lifts` and carries no
+// connection of the other kind. A connection's kind is the authority, so a
+// stale `lifts` index an older tool left (after a resize or a repaint) never
+// turns a stairs connection into an elevator.
+export function isLiftCell(building, floorId, cell) {
+  if (!building || !Array.isArray(building.floors)) return false;
+  const connections = Array.isArray(building.connections) ? building.connections : [];
+  let joined = false;
+  for (const connection of connections) {
+    if (!connection) continue;
+    for (const end of [connection.a, connection.b]) {
+      if (!isEnd(end) || end.floorId !== floorId || end.cell !== cell) continue;
+      if (connection.kind === ELEVATOR_KIND) return true;
+      joined = true;
+    }
+  }
+  if (joined) return false;
+  const floor = building.floors.find((candidate) => candidate && candidate.id === floorId);
+  return Boolean(floor && Array.isArray(floor.lifts) && floor.lifts.includes(cell) && floor.cells[cell] === CELL_STAIRS);
+}
+
+// The elevators of a building, derived: the cells that elevator connections
+// join (cells shared between connections make one car), and each stop that
+// is in `lifts` with no connection at all as a car of its own.
+//   [{ id, label, stops: [{ floorId, cell }], connectionIds, staffOnly }]
+// In building order of each car's first connection, the unconnected stops
+// after them (floor order, then cell). `id` is the first connection's id
+// (route results name a car by it; an unconnected stop's is
+// "stop:<floorId>:<cell>"), `label` the stored `car` letter (the first
+// connection's own label when none is stored; "" for an unconnected stop),
+// `stops` in floor-level order (building order, then cell, on a tie), and
+// `staffOnly` true when any connection of the car says so.
+export function elevatorCars(building) {
+  if (!building || !Array.isArray(building.floors)) return [];
+  const connections = (Array.isArray(building.connections) ? building.connections : []).filter((connection) => connection && connection.kind === ELEVATOR_KIND && isEnd(connection.a) && isEnd(connection.b));
+  const key = (end) => end.floorId + ':' + end.cell;
+  const parent = new Map();
+  const find = (k) => {
+    let root = k;
+    while (parent.get(root) !== root) root = parent.get(root);
+    parent.set(k, root);
+    return root;
+  };
+  for (const connection of connections) {
+    for (const end of [connection.a, connection.b]) if (!parent.has(key(end))) parent.set(key(end), key(end));
+    const x = find(key(connection.a));
+    const y = find(key(connection.b));
+    if (x !== y) parent.set(y, x);
+  }
+  const order = new Map(building.floors.map((floor, f) => [floor && floor.id, { f, level: floor && Number.isInteger(floor.level) ? floor.level : f }]));
+  const where = (stop) => order.get(stop.floorId) || { f: Infinity, level: Infinity };
+  const byLevel = (a, b) => where(a).level - where(b).level || where(a).f - where(b).f || a.cell - b.cell;
+  const cars = [];
+  const byRoot = new Map();
+  for (const connection of connections) {
+    const root = find(key(connection.a));
+    let car = byRoot.get(root);
+    if (!car) {
+      car = {
+        id: connection.id,
+        label: typeof connection.car === 'string' && connection.car !== '' ? connection.car : typeof connection.label === 'string' ? connection.label : '',
+        stops: [],
+        connectionIds: [],
+        staffOnly: false,
+      };
+      byRoot.set(root, car);
+      cars.push(car);
+    }
+    car.connectionIds.push(connection.id);
+    if (connection.staffOnly === true) car.staffOnly = true;
+    for (const end of [connection.a, connection.b]) {
+      if (!car.stops.some((stop) => stop.floorId === end.floorId && stop.cell === end.cell)) car.stops.push({ floorId: end.floorId, cell: end.cell });
+    }
+  }
+  for (const car of cars) car.stops.sort(byLevel);
+  // stops no connection reaches
+  const joined = new Set();
+  for (const connection of Array.isArray(building.connections) ? building.connections : []) {
+    if (!connection) continue;
+    for (const end of [connection.a, connection.b]) if (isEnd(end)) joined.add(key(end));
+  }
+  for (const floor of building.floors) {
+    if (!floor || !Array.isArray(floor.lifts)) continue;
+    for (const cell of Array.from(new Set(floor.lifts)).filter(Number.isInteger).sort((a, b) => a - b)) {
+      if (floor.cells[cell] !== CELL_STAIRS || joined.has(floor.id + ':' + cell)) continue;
+      cars.push({ id: 'stop:' + floor.id + ':' + cell, label: '', stops: [{ floorId: floor.id, cell }], connectionIds: [], staffOnly: false });
+    }
+  }
+  return cars;
 }
 
 // An exit sits on a corridor cell with at least one side that is empty or off

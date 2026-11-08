@@ -1177,3 +1177,21 @@ test('fitFloorToImage, the other path to a resize, moves a closure with its cell
   assert.deepEqual(after.scenario.levers[0].cells, [2 * 16 + 2, 2 * 16 + 3], 'the cells the corridor moved to');
   assert.ok(after.scenario.levers[0].cells.every((cell) => after.building.floors[0].cells[cell] === '#'));
 });
+
+
+// ---------------------------------------------------------------- an elevator is not a way lever (SV2-97)
+
+test('a way lever naming an elevator connection is refused in words, and a stairs connection still takes one', () => {
+  const store = storeOf();
+  const [one, two] = [store.project.building.floors[0].id, store.project.building.floors[1].id];
+  store.apply(actions.placeLift, { floorId: one, cells: [0] });
+  store.apply(actions.placeLift, { floorId: two, cells: [0] });
+  store.apply(actions.connectStairs, { a: { floorId: one, cell: 0 }, b: { floorId: two, cell: 0 }, id: 'celevator1' });
+  store.apply(newScenario, { name: 'Trial' });
+  const stairs = store.project.building.connections.find((connection) => connection.kind === undefined);
+  assert.throws(() => store.apply(addScenarioLever, { lever: { kind: 'way', connectionId: 'celevator1', way: 'closed' } }), (error) => refusedWith('bad-value')(error) && /Elevator C has no way to change: an elevator runs both ways/.test(error.message));
+  assert.throws(() => store.apply(addScenarioLever, { lever: { kind: 'way', connectionId: 'celevator1', way: 'ab' } }), refusedWith('bad-value'));
+  assert.deepEqual(store.project.scenario.levers || [], [], 'nothing was added');
+  store.apply(addScenarioLever, { lever: { kind: 'way', connectionId: stairs.id, way: 'closed' } });
+  assert.equal(store.project.scenario.levers.length, 1, 'a stairs connection takes a way lever as before');
+});

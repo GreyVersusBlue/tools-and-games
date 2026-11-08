@@ -47,7 +47,8 @@ import { h, uid } from '../components/dom.js';
 import { openPrintPreview } from '../components/print-preview.js';
 import { createViewport, CELL } from '../surface/viewport.js';
 import { createRenderer } from '../surface/renderer.js';
-import { lanesOverlay, drawStairLink, BAND_EXCLUDED } from '../surface/overlays/lanes.js';
+import { lanesOverlay, BAND_EXCLUDED } from '../surface/overlays/lanes.js';
+import { drawLink } from './ride-link.js';
 import { parse, readable } from '../colour.js';
 import { csvText, exportFileName } from '../../engine/exports.js';
 import { schoolName, printDate, TOOL_NAME } from '../prints/document.js';
@@ -322,7 +323,7 @@ export function drawPicture(movement, options) {
       g.strokeRect(left + 0.5, top + 0.5, right - left - 1, bottom - top - 1);
     }
 
-    // the stairs links in use
+    // the links in use: stairs arcs, and the elevator rides drawn their own way
     const pixel = (floorId, cell) => {
       const place = placeOf(world, floorId, cell);
       return place ? { x: left0 + (place.x + 0.5) * CELL, y: head + (place.y + 0.5) * CELL } : null;
@@ -334,10 +335,10 @@ export function drawPicture(movement, options) {
       if (!a && !b) continue;
       const how = { colour: alone || theme.ink, edge: theme.card, width: 3, font: theme.font, ink: theme.ink };
       if (a && b) {
-        drawStairLink(g, a, b, how);
+        drawLink(g, link, a, b, how);
       } else {
         const other = project.building.floors.find((floor) => floor.id === (a ? link.b.floorId : link.a.floorId));
-        drawStairLink(g, a || b, null, { ...how, text: link.label + (other ? ' to ' + other.name : '') });
+        drawLink(g, link, a || b, null, { ...how, text: link.label + (other ? ' to ' + other.name : '') });
       }
     }
 

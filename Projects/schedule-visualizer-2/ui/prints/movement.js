@@ -47,6 +47,7 @@ import { formatDuration } from '../../engine/findings.js';
 import { LOAD_BANDS, parse, toHex } from '../colour.js';
 import { count, list } from '../components/words.js';
 import { defaultChoice, settleChoice, pictureOf, groupRows, routeHealth, unitWord } from '../movement/model.js';
+import { anyRiding } from '../movement/tables.js';
 import { hotspotRows, placesElsewhere, groupWords } from '../movement/hotspots.js';
 import { bandText } from '../movement/legend.js';
 import { esc, frame, mm, paperOf, printableBox } from './document.js';
@@ -217,13 +218,16 @@ function legendSection(project, results, picture) {
   // "Late" follows what is printed: with one transition on the paper it is
   // that transition's answer (picture.late is the map's own list), not the day's count
   const one = picture.transition ? new Set(picture.late.map((walk) => walk.groupId)) : null;
+  // a column for riding only when some group of the run rides, as the Summary has it
+  const rides = anyRiding(results, picture.dayTypeId, picture.bellsId);
   const out = ['<section class="doc-section">', '<h2>Groups on the map</h2>',
     '<table class="doc-table doc-table--groups">',
-    '<thead><tr><th scope="col">Group</th><th scope="col" class="is-number">Walking over the day</th><th scope="col" class="is-number">Lost to crowds</th><th scope="col">Stairs</th><th scope="col">' + (one ? 'Late in this transition' : 'Late') + '</th><th scope="col">Failed routes</th></tr></thead>',
+    '<thead><tr><th scope="col">Group</th><th scope="col" class="is-number">Walking over the day</th>' + (rides ? '<th scope="col" class="is-number">Riding over the day</th>' : '') + '<th scope="col" class="is-number">Lost to crowds</th><th scope="col">Stairs</th><th scope="col">' + (one ? 'Late in this transition' : 'Late') + '</th><th scope="col">Failed routes</th></tr></thead>',
     '<tbody>'];
   for (const row of rows) {
-    out.push('<tr><th scope="row">' + square(colourOf(row.group.colour)) + ' ' + esc(row.group.name) + '</th>'
+    out.push('<tr><th scope="row">' + square(colourOf(row.group.colour)) + ' ' + esc(row.group.name) + (row.group.stepFree === true ? ' (step-free)' : '') + '</th>'
       + '<td class="is-number">' + esc(seconds(row.walking)) + '</td>'
+      + (rides ? '<td class="is-number">' + (row.riding > 0 ? esc(seconds(row.riding)) : 'none') + '</td>' : '')
       + '<td class="is-number">' + (row.waiting === 0 ? 'none' : esc(seconds(row.waiting))) + '</td>'
       + '<td>' + (row.stairs ? 'Yes' : 'No') + '</td>'
       + '<td>' + (one ? (one.has(row.group.id) ? 'Yes' : 'No') : row.late === 0 ? 'Never' : row.late === 1 ? 'Once' : row.late + ' times') + '</td>'

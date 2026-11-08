@@ -24,7 +24,7 @@
 import { h } from '../components/dom.js';
 import { singleKeyAllowed, IS_MAC } from '../components/shortcuts.js';
 import { dialogIsOpen } from '../components/dialog.js';
-import { count, figures, list } from '../components/words.js';
+import { count, figures, list, pendingElevatorLetter } from '../components/words.js';
 import { createViewport, drawnBox, ZOOM_STEP } from '../surface/viewport.js';
 import { createRenderer } from '../surface/renderer.js';
 import { attachInput } from '../surface/input.js';
@@ -91,16 +91,27 @@ export function stairsWords(project, connections) {
   }).join(', ');
 }
 
+// "Elevator D, staff only" for a connected stop, "Elevator D, not connected" for
+// a stop alone (it has its letter from the first placement). `at` is
+// describeCell's answer; cellWords adds a step and an area of refuge.
+export function elevatorWords(project, at) {
+  const car = at.elevator;
+  const name = 'Elevator ' + (car && car.label !== '' ? car.label : pendingElevatorLetter(project.building));
+  return name + (car && car.connected ? '' : ', not connected') + (car && car.staffOnly ? ', staff only' : '');
+}
+
 // What is on a cell, in a word or two: the planner's cursor line and the
 // announcement of a move.
 export function cellWords(project, floorId, cell) {
   const at = describeCell(project.building, floorId, cell);
   if (!at) return '';
-  if (at.kind === 'corridor') return 'Corridor' + (at.corridorName === '' ? '' : ', ' + at.corridorName) + (at.exit ? ', exit' + (at.exit.doorName === '' ? '' : ' ' + at.exit.doorName) : '');
-  if (at.kind === 'stairs') return at.connections.length > 0 ? stairsWords(project, at.connections) : 'Stairs, not connected';
-  if (at.kind === 'room') return roomName(at.space, true);
-  if (at.kind === 'other') return at.space.label.trim() === '' ? 'Other space' : at.space.label;
-  return 'Empty';
+  const marks = (at.step ? ', has a step' : '') + (at.refuge ? ', area of refuge' + (typeof at.refuge.name === 'string' && at.refuge.name.trim() !== '' ? ' ' + at.refuge.name.trim() : '') : '');
+  if (at.kind === 'corridor') return 'Corridor' + (at.corridorName === '' ? '' : ', ' + at.corridorName) + (at.exit ? ', exit' + (at.exit.doorName === '' ? '' : ' ' + at.exit.doorName) : '') + marks;
+  if (at.kind === 'elevator') return elevatorWords(project, at) + marks;
+  if (at.kind === 'stairs') return (at.connections.length > 0 ? stairsWords(project, at.connections) : 'Stairs, not connected') + marks;
+  if (at.kind === 'room') return roomName(at.space, true) + marks;
+  if (at.kind === 'other') return (at.space.label.trim() === '' ? 'Other space' : at.space.label) + marks;
+  return 'Empty' + marks;
 }
 
 // The keys of the plan. The plan answers them itself, so they are listed for
@@ -125,7 +136,7 @@ function facts(project) {
   const f = figures(project);
   const first = project.building.floors[0];
   if (f.rooms === 0 && f.exits === 0 && f.floors === 1) return 'Nothing is drawn yet. ' + first.name + ' is ' + first.width + ' × ' + first.height + ' cells.';
-  return 'So far: ' + list([count(f.floors, 'floor'), count(f.rooms, 'room'), count(f.otherSpaces, 'other space'), count(f.connections, 'stairs connection'), count(f.exits, 'exit')]) + '.';
+  return 'So far: ' + list([count(f.floors, 'floor'), count(f.rooms, 'room'), count(f.otherSpaces, 'other space'), count(f.connections, 'stairs connection')].concat(f.elevators > 0 ? [count(f.elevators, 'elevator')] : [], [count(f.exits, 'exit')])) + '.';
 }
 
 // The inspector's tabs as the shell's folded strip shows them: an icon each.
@@ -521,6 +532,9 @@ export const section = {
           cursor.moveTo(ev.x, ev.y, false);
           hover = null;
         }
+        // connect mode has the press: a finger is let through to here for a pan
+        // or a pinch, and no tool acts on it
+        if (ev.source === 'pointer' && ed.connect && ed.connect.picking) return false;
         return tool.onDown(ed, ev);
       },
       move(ev) {

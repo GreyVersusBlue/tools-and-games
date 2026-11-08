@@ -16,7 +16,7 @@ import { formatDuration } from '../../engine/findings.js';
 import { periodName } from '../../engine/bells.js';
 import { findDayType, ownDayTypes } from '../../engine/day-types.js';
 import { floorOfRoom } from '../../engine/schema.js';
-import { anyHeldBack, heldWords } from './tables.js';
+import { anyHeldBack, anyRiding, heldWords, stepFreeTag } from './tables.js';
 import { failureParts, foldHealth, groupRows, unitWord, walkNamed } from './model.js';
 
 function parts(list) {
@@ -91,11 +91,13 @@ export function summaryPanel(env) {
     if (rows.length === 0) return;
     // a column for the delay only when some group of this run has one: a school with none sees today's table
     const held = anyHeldBack(results, picture.dayTypeId, picture.bellsId);
+    // Riding the same way: a column only when some group of this run rides an elevator
+    const rides = anyRiding(results, picture.dayTypeId, picture.bellsId);
     // with the column the table may be wider than the panel: its scroller is then a place the keyboard can reach
-    if (held) {
+    if (held || rides) {
       groups.tabIndex = 0;
       groups.setAttribute('role', 'region');
-      groups.setAttribute('aria-label', 'Groups on screen, with the time each was held back');
+      groups.setAttribute('aria-label', 'Groups on screen' + (rides ? ', with the time each spent in an elevator' : '') + (held ? (rides ? ' and' : ',') + ' with the time each was held back' : ''));
     } else {
       groups.removeAttribute('tabindex');
       groups.removeAttribute('role');
@@ -106,15 +108,17 @@ export function summaryPanel(env) {
       h('thead', null, h('tr', null,
         h('th', { scope: 'col' }, 'Group'),
         h('th', { scope: 'col', class: 'table__num' }, 'Walking'),
+        rides ? h('th', { scope: 'col', class: 'table__num' }, 'Riding') : null,
         h('th', { scope: 'col', class: 'table__num' }, 'Lost to crowds'),
         held ? h('th', { scope: 'col', class: 'table__num' }, 'Left after the bell') : null,
         h('th', { scope: 'col' }, 'Stairs'))),
       h('tbody', null, rows.map((row) => h('tr', { data: { group: row.group.id, failed: String(row.failed), late: String(row.late) } },
         h('th', { scope: 'row' },
-          h('span', { class: 'mov-swatch', style: 'background:' + row.group.colour }), h('bdi', null, row.group.name),
+          h('span', { class: 'mov-swatch', style: 'background:' + row.group.colour }), h('bdi', null, row.group.name), stepFreeTag(row.group),
           row.late > 0 ? h('span', { class: 'mov-groups__late' }, 'late ' + (row.late === 1 ? 'once' : row.late + ' times') + heldWords(row.lateHeld)) : null,
           row.failed > 0 ? h('span', { class: 'mov-groups__failed' }, count(row.failed, 'failed route')) : null),
         h('td', { class: 'table__num' }, formatDuration(row.walking)),
+        rides ? h('td', { class: 'table__num', data: { cell: 'riding' } }, row.riding > 0 ? formatDuration(row.riding) : 'none') : null,
         h('td', { class: 'table__num' }, row.waiting === 0 ? 'none' : formatDuration(row.waiting)),
         held ? h('td', { class: 'table__num', data: { cell: 'released' } }, row.released > 0 ? formatDuration(row.released) : 'none') : null,
         h('td', null, row.stairs ? 'Yes' : 'No'))))));

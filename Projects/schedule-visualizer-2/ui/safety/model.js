@@ -22,10 +22,29 @@
 //   roomLine(row, picture) -> string   "Door A · 45 s · Turn left out of the door."
 //     (the exit's number is beside it, on its colour, where it is shown)
 //
+//   stepFreePicture(project, graph, picture) -> {
+//     waysOut   stepFreeWaysOut()'s answer, as it came
+//     report    stepFreeReport()'s answer, as it came
+//     rooms     [{ roomId, floorId, floorName, name, cells, way: 'exit' | 'refuge' | 'none',
+//                  route, seconds, exitId, exitNumber, exitName, refugeId, refugeName,
+//                  reason, why }]   every room, as `rows` has them; exitNumber is the
+//                  number the key gives the exit (the same as in the Everyone view)
+//     byRoom    Map roomId -> room
+//     counts    { exit, refuge, none }
+//     exits     [{ exitId, number, name, rooms }]   the exits some room leaves by, step-free
+//     refuges   [{ refugeId, floorId, floorName, name, roomIds, by, use }]  `use` is
+//               refugeUse()'s line
+//   stepFreeWords(counts) -> "41 to an exit, 12 to an area of refuge, 3 with no way out"
+//   refugeUse(roomIds) -> "Used by 12 rooms." | "Not used by any room."
+//   stepFreeFirstLine(project, step, picked) -> parts, as firstLine() does, for the Step-free view
+//   stepFreeRoomLine(room, step) -> string  where the room's step-free way goes, in words
+//
 // Every name in it is as typed; whoever puts them on screen sets textContent.
 
 import { nameOfRoom } from '../../engine/schema.js';
-import { evacuationRoutes, byExit, noRoute, doorCard } from '../../engine/evacuation.js';
+import { evacuationRoutes, byExit, noRoute, doorCard, stepFreeWaysOut } from '../../engine/evacuation.js';
+import { stepFreeReport } from '../../engine/step-free.js';
+import { refugeBy, refugeFor } from './ways.js';
 import { formatDuration } from '../../engine/findings.js';
 import { count } from '../components/words.js';
 
@@ -90,4 +109,74 @@ export function firstLine(project, picture, picked) {
   const parts = [{ text: 'Every room’s way out, coloured by the exit it uses: ' + count(ways, 'room') + ' to ' + count(used, 'exit') + '.', name: false }];
   if (picture.missing.length > 0) parts.push({ text: ' ' + (picture.missing.length === 1 ? '1 room has' : picture.missing.length + ' rooms have') + ' no way out.', name: false });
   return parts;
+}
+
+// ---- the Step-free view (DESIGN 13.6)
+
+export function refugeUse(roomIds) {
+  const n = Array.isArray(roomIds) ? roomIds.length : 0;
+  return n === 0 ? 'Not used by any room.' : 'Used by ' + count(n, 'room') + '.';
+}
+
+export function stepFreeWords(counts) {
+  return counts.exit + ' to an exit, ' + counts.refuge + ' to an area of refuge, ' + counts.none + ' with no way out';
+}
+
+export function stepFreePicture(project, graph, picture) {
+  const waysOut = stepFreeWaysOut(project, graph);
+  const report = stepFreeReport(project, graph);
+  const names = floorNames(project);
+  const exitOf = new Map(picture.exits.map((exit) => [exit.exitId, exit]));
+  const refugeOf = new Map(waysOut.refuges.map((refuge) => [refuge.refugeId, refuge]));
+  const rooms = waysOut.rooms.map((entry) => {
+    const row = picture.byRoom.get(entry.roomId);
+    const exit = entry.exitId ? exitOf.get(entry.exitId) : null;
+    const refuge = entry.refugeId ? refugeOf.get(entry.refugeId) : null;
+    return {
+      roomId: entry.roomId,
+      floorId: entry.floorId,
+      floorName: names.get(entry.floorId) || '',
+      name: row ? row.name : '',
+      cells: row ? row.cells : [],
+      way: entry.way,
+      route: entry.way === 'none' ? null : entry.route,
+      seconds: entry.way === 'none' ? null : entry.route.seconds,
+      exitId: entry.exitId,
+      exitNumber: exit ? exit.number : null,
+      exitName: exit ? exit.name : null,
+      refugeId: entry.refugeId,
+      refugeName: refuge ? refuge.name : null,
+      reason: entry.reason,
+      why: entry.why,
+    };
+  });
+  const counts = { exit: 0, refuge: 0, none: 0 };
+  for (const room of rooms) counts[room.way] += 1;
+  const used = new Map();
+  for (const room of rooms) if (room.way === 'exit' && room.exitId) used.set(room.exitId, (used.get(room.exitId) || 0) + 1);
+  const exits = picture.exits.filter((exit) => used.has(exit.exitId)).map((exit) => ({ exitId: exit.exitId, number: exit.number, name: exit.name, rooms: used.get(exit.exitId) }));
+  const refuges = waysOut.refuges.map((refuge) => {
+    const placed = refugeFor(project.building, refuge.refugeId);
+    const by = placed ? refugeBy(project.building, placed) : null;
+    return { ...refuge, floorName: names.get(refuge.floorId) || '', by: by ? by.text : null, use: refugeUse(refuge.roomIds) };
+  });
+  return { waysOut, report, rooms, byRoom: new Map(rooms.map((room) => [room.roomId, room])), counts, exits, refuges };
+}
+
+// Where a room's step-free way goes, in words ("East Door · 45 s", "Area of refuge 2 · 20 s", "only by elevator").
+export function stepFreeRoomLine(room) {
+  if (room.way === 'exit') return (room.exitName || 'An exit') + ' · ' + formatDuration(room.seconds);
+  if (room.way === 'refuge') return (room.refugeName || 'An area of refuge') + ' · ' + formatDuration(room.seconds) + ', then wait for help';
+  return room.why;
+}
+
+export function stepFreeFirstLine(project, step, picked) {
+  const room = picked ? step.byRoom.get(picked) : null;
+  if (room) {
+    const head = [{ text: room.name, name: true }, { text: ' on ', name: false }, { text: room.floorName, name: true }];
+    if (room.way === 'exit') return [...head, { text: ': step-free out by ', name: false }, { text: room.exitName || 'an exit', name: true }, { text: ' in ' + formatDuration(room.seconds) + ' of walking.', name: false }];
+    if (room.way === 'refuge') return [...head, { text: ': no step-free exit; wait at ', name: false }, { text: room.refugeName || 'an area of refuge', name: true }, { text: ', ' + formatDuration(room.seconds) + ' of walking, for help.', name: false }];
+    return [...head, { text: ' has no step-free way out: ' + room.why + '.', name: false }];
+  }
+  return [{ text: 'Step-free ways out: ' + stepFreeWords(step.counts) + '.', name: false }];
 }

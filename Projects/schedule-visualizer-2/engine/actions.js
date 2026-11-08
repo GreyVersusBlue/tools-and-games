@@ -26,7 +26,7 @@ import { DAY_TYPES_MOST, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DA
 import { spacelessKey, textLength, bellSchedulesOf, calendarOf, newBellSchedule, defaultWeekdays } from './schema.js';
 import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST, marksOf, dutiesOf, newMark, newDuty } from './schema.js';
 import { RELEASE_MOST, RELEASE_SECONDS, RELEASE_WHO_KINDS, releaseOf, newRelease } from './schema.js';
-import { CELL_CORRIDOR, CELL_STAIRS } from './schema.js';
+import { CELL_CORRIDOR, CELL_STAIRS, ELEVATOR_KIND } from './schema.js';
 import { releaseKind } from './release.js';
 import { formatDuration } from './findings.js';
 import { isCalendarDate, daysBetween, datesFrom, weekdayOf, dateWords, calendarDays } from './calendar.js';
@@ -200,6 +200,9 @@ const SETTINGS = {
   defaultHeadCount: { label: 'Change the default head count', bumps: [SCHEDULE], check: wholeRule(RANGES.headCount, 'The default head count') },
   secondsPerCell: { label: 'Change seconds per corridor cell', bumps: [GEOMETRY, SCHEDULE], check: wholeRule(RANGES.secondsPerCell, 'Seconds per corridor cell') },
   secondsPerStair: { label: 'Change seconds per stair connection', bumps: [GEOMETRY, SCHEDULE], check: wholeRule(RANGES.secondsPerStair, 'Seconds per stair connection') },
+  elevatorWaitSeconds: { label: 'Change the elevator wait', bumps: [GEOMETRY, SCHEDULE], check: wholeRule(RANGES.elevatorWaitSeconds, 'The elevator wait in seconds') },
+  elevatorSecondsPerFloor: { label: 'Change elevator seconds per floor', bumps: [GEOMETRY, SCHEDULE], check: wholeRule(RANGES.elevatorSecondsPerFloor, 'Elevator seconds per floor') },
+  elevatorPeoplePerTrip: { label: 'Change people per elevator trip', bumps: [GEOMETRY, SCHEDULE], check: wholeRule(RANGES.elevatorPeoplePerTrip, 'People per elevator trip') },
   cellScale: { label: 'Change the cell scale', bumps: [], check: (value) => (isCellScale(value) ? null : CELL_SCALE_RULE) },
   'colourScale.mode': { label: 'Change the colour scale', bumps: [], check: choiceRule(COLOUR_SCALE_MODES, 'The colour scale') },
   'colourScale.bands': {
@@ -690,8 +693,8 @@ function ownDayTypeIds(project) {
   return project.dayTypes.filter((dayType, index) => index === 0 || dayType.own).map((dayType) => dayType.id);
 }
 
-// payload: { name, grade, headCount, colour } and optionally id. A group with
-// no colour given takes the next unused preset.
+// payload: { name, grade, headCount, colour } and optionally id and stepFree.
+// A group with no colour given takes the next unused preset.
 export const addGroup = action(
   { label: (before, payload) => 'Add group ' + payload.name, bumps: [SCHEDULE], focus: (before, payload, after) => ({ section: 'schedule', tab: 'groups', groupId: after.groups[after.groups.length - 1].id }) },
   (project, payload, ctx) => {
@@ -705,11 +708,20 @@ export const addGroup = action(
       colour: payload.colour === undefined ? nextGroupColour(project.groups) : needColour(payload.colour),
       days,
     };
+    // absent is false: only a group that needs step-free routes carries the flag
+    if (needStepFreeFlag(payload.stepFree)) group.stepFree = true;
     return { ...project, groups: project.groups.concat([group]) };
   },
 );
 
-// payload: { id } and any of { name, grade, headCount, colour }.
+// stepFree is "this group needs step-free routes": true, false or left out.
+function needStepFreeFlag(value) {
+  if (value === undefined) return false;
+  if (typeof value !== 'boolean') refuse('Needs step-free routes is on or off.', 'bad-value');
+  return value;
+}
+
+// payload: { id } and any of { name, grade, headCount, colour, stepFree }.
 export const editGroup = action(
   { label: (before, payload) => 'Edit group ' + groupName(before, payload.id), bumps: [SCHEDULE], focus: (before, payload) => ({ section: 'schedule', tab: 'groups', groupId: payload.id }) },
   (project, payload) => {
@@ -719,6 +731,14 @@ export const editGroup = action(
     if (payload.grade !== undefined) next = withKey(next, 'grade', needText(payload.grade, 'A grade'));
     if (payload.headCount !== undefined) next = withKey(next, 'headCount', needHeadCount(payload.headCount));
     if (payload.colour !== undefined) next = withKey(next, 'colour', needColour(payload.colour));
+    if (payload.stepFree !== undefined) {
+      const flag = needStepFreeFlag(payload.stepFree);
+      if (flag && next.stepFree !== true) next = { ...next, stepFree: true };
+      else if (!flag && 'stepFree' in next) {
+        const { stepFree, ...rest } = next;
+        next = rest;
+      }
+    }
     if (next === group) return project;
     return { ...project, groups: project.groups.map((candidate) => (candidate === group ? next : candidate)) };
   },
@@ -1827,6 +1847,8 @@ export function describeFloorDelete(project, floorId) {
     connections: project.building.connections.filter((connection) => connection.a.floorId === floorId || connection.b.floorId === floorId).length,
     zones: project.building.zones.filter((zone) => zone.floorId === floorId).length,
     exits: floor.exits.length,
+    lifts: (floor.lifts || []).length,
+    refuges: (floor.refuges || []).length,
     slots,
   };
 }
@@ -1835,18 +1857,25 @@ export function describeFloorDelete(project, floorId) {
 // floor and its zones go with it, and slots in its rooms are kept as "not in
 // the building", all in the one undo step.
 export const deleteFloor = action(
-  { label: (before, payload) => 'Delete ' + floorName(before, payload.id), bumps: [GEOMETRY, SCHEDULE], focus: () => ({ section: 'building' }) },
+  { label: (before, payload, after) => 'Delete ' + floorName(before, payload.id) + renamedWords(after), bumps: [GEOMETRY, SCHEDULE], focus: () => ({ section: 'building' }) },
   (project, payload) => {
     const floors = project.building.floors;
     const floor = need(floors, payload.id, 'floor');
     if (floors.length === 1) refuse(floor.name + ' is the only floor, and a building has at least one. Clear it instead, or add another floor first.', 'last-floor');
-    const building = {
+    const touching = (connection) => connection.a.floorId === floor.id || connection.b.floorId === floor.id;
+    // the floor's stops, steps and areas of refuge go with it; the stops of an
+    // elevator on other floors stay, now not connected
+    const building = geometry.keepElevatorStops({
       ...project.building,
       floors: floors.filter((candidate) => candidate !== floor),
-      connections: filterShared(project.building.connections, (connection) => connection.a.floorId !== floor.id && connection.b.floorId !== floor.id),
+      connections: filterShared(project.building.connections, (connection) => !touching(connection)),
       zones: filterShared(project.building.zones, (zone) => zone.floorId !== floor.id),
-    };
-    return detachRooms({ ...project, building }, floor.spaces.filter((space) => space.kind === 'room'));
+    }, project.building.connections.filter(touching), floor.id);
+    const loss = geometry.emptyLoss();
+    const split = geometry.splitCars(building, loss);
+    const next = detachRooms({ ...project, building: split }, floor.spaces.filter((space) => space.kind === 'room'));
+    if (split !== building) outcomes.set(next, { floorId: floor.id, loss });
+    return next;
   },
 );
 
@@ -1979,7 +2008,15 @@ export function buildingOutcome(project) {
 function replacing(after, word) {
   const outcome = outcomes.get(after);
   const text = outcome && outcome.loss ? geometry.lossText(outcome.loss) : '';
-  return text === '' ? '' : ', ' + (word || 'replacing') + ' ' + text;
+  return (text === '' ? '' : ', ' + (word || 'replacing') + ' ' + text) + renamedWords(after);
+}
+
+// "Floors 3 and 4 are now Elevator B" when taking something out split an
+// elevator in two; part of the label, after a full stop.
+function renamedWords(after) {
+  const outcome = outcomes.get(after);
+  const text = outcome && outcome.loss ? geometry.renamedText(outcome.loss) : '';
+  return text === '' ? '' : '. ' + text;
 }
 
 function onFloor(before, payload, after) {
@@ -2077,6 +2114,15 @@ export const placeStairs = action(
   (project, payload) => inBuilding(project, (building) => geometry.placeStairs(building, payload)),
 );
 
+// An elevator stop on each cell, on its own path (stairs placed over a stop
+// are placeStairs'). What is under a cell is replaced and the label says what
+// (a door facing the cell goes too); a cell that is a stop already is left
+// alone. payload: { floorId } with cells, rect or from/to; over.
+export const placeLift = action(
+  { label: (before, payload, after) => 'Place an elevator stop' + onFloor(before, payload, after) + replacing(after), bumps: geometryBumps, focus: buildingFocus },
+  (project, payload) => inBuilding(project, (building) => geometry.placeLift(building, payload)),
+);
+
 // ---- erase and delete
 
 // What erasing these cells would do, as the whole space and as the cells
@@ -2098,7 +2144,7 @@ export const eraseCells = action(
     label: (before, payload, after) => {
       const outcome = outcomes.get(after);
       const text = outcome ? geometry.lossText(outcome.loss) : '';
-      return 'Erase' + (text === '' ? '' : ' ' + text) + onFloor(before, payload, after);
+      return 'Erase' + (text === '' ? '' : ' ' + text) + onFloor(before, payload, after) + renamedWords(after);
     },
     bumps: geometryBumps,
     focus: buildingFocus,
@@ -2204,7 +2250,14 @@ export const removeDoor = action(
   (project, payload) => inBuilding(project, (building) => geometry.removeDoor(building, payload)),
 );
 
-// ---- stairs connections
+// payload: { roomId, door: { cell, side }, stepFree }. A door with a step
+// (stepFree: false) is not used by a step-free route.
+export const setDoorStepFree = action(
+  { label: (before, payload) => (payload.stepFree === false ? 'Mark a door of ' + spaceLabel(before, payload.roomId) + ' as having a step' : 'Mark a door of ' + spaceLabel(before, payload.roomId) + ' as step-free'), bumps: [GEOMETRY], focus: buildingFocus },
+  (project, payload) => inBuilding(project, (building) => geometry.setDoorStepFree(building, payload)),
+);
+
+// ---- stairs and elevator connections
 
 // Whether two stairs cells can be connected, and whether they are on one
 // floor, which the interface confirms first: { sameFloor, fromFloor,
@@ -2218,6 +2271,7 @@ export const connectStairs = action(
     label: (before, payload, after) => {
       const outcome = outcomes.get(after);
       if (!outcome) return 'Connect stairs';
+      if (outcome.elevator) return 'Connect elevator ' + outcome.car + ': ' + outcome.fromFloor + ' to ' + outcome.toFloor + (outcome.merges.length > 0 ? ', joining ' + outcome.merges.map((car) => 'elevator ' + car).join(' and ') + ' to it' : '');
       return 'Connect stairs ' + outcome.label + ': ' + (outcome.sameFloor ? 'two places on ' + outcome.fromFloor : outcome.fromFloor + ' to ' + outcome.toFloor);
     },
     bumps: [GEOMETRY],
@@ -2234,23 +2288,49 @@ function connectionLabel(project, connectionId) {
   return connection ? connection.label : '';
 }
 
-// payload: { connectionId }.
+// 'stairs A' or 'elevator D' for a connection, for a label.
+function connectionWords(project, connectionId) {
+  const connection = project.building.connections.find((candidate) => candidate.id === connectionId);
+  if (!connection) return 'stairs';
+  return connection.kind === ELEVATOR_KIND ? 'elevator ' + (connection.car || connection.label) : 'stairs ' + connection.label;
+}
+
+// payload: { connectionId }. An elevator's stops stay where they are, not connected.
 export const disconnectStairs = action(
-  { label: (before, payload) => 'Disconnect stairs ' + connectionLabel(before, payload.connectionId), bumps: [GEOMETRY], focus: buildingFocus },
+  { label: (before, payload, after) => 'Disconnect ' + connectionWords(before, payload.connectionId) + renamedWords(after), bumps: [GEOMETRY], focus: buildingFocus },
   (project, payload) => inBuilding(project, (building) => geometry.disconnectStairs(building, payload)),
 );
 
 // payload: { connectionId } and any of { label, direction }. A label another
 // connection already has is refused: two stairs called A cannot be told apart
-// in directions or on the plan.
+// in directions or on the plan. An elevator takes no direction but both.
 export const setConnection = action(
-  { label: (before, payload) => 'Change stairs connection ' + connectionLabel(before, payload.connectionId), bumps: [GEOMETRY], focus: buildingFocus },
+  { label: (before, payload) => 'Change ' + (connectionWords(before, payload.connectionId).startsWith('elevator') ? 'an elevator connection' : 'stairs connection ' + connectionLabel(before, payload.connectionId)), bumps: [GEOMETRY], focus: buildingFocus },
   (project, payload) => {
-    if (typeof payload.label === 'string' && project.building.connections.some((other) => other.id !== payload.connectionId && other.label === payload.label)) {
-      refuse('There is already a stairs connection ' + payload.label + '. Each has its own letter or name; type a different one.', 'duplicate-label');
+    const clash = typeof payload.label === 'string' ? project.building.connections.find((other) => other.id !== payload.connectionId && other.label === payload.label) : null;
+    if (clash && clash.kind === ELEVATOR_KIND) {
+      const car = clash.car || clash.label;
+      refuse(car === clash.label ? 'Elevator ' + car + ' already uses that letter. Each has its own letter or name; type a different one.' : 'A connection of Elevator ' + car + ' is already called ' + clash.label + '. Each has its own letter or name; type a different one.', 'duplicate-label');
     }
+    if (clash) refuse('There is already a stairs connection ' + payload.label + '. Each has its own letter or name; type a different one.', 'duplicate-label');
     return inBuilding(project, (building) => geometry.setConnection(building, payload));
   },
+);
+
+// payload: { carId, staffOnly }; carId is the id elevatorCars() gives the
+// elevator (the id of its first connection). Sets every connection of the car.
+// buildingOutcome(after).stops is how many stops it applied to.
+export const setElevator = action(
+  {
+    label: (before, payload, after) => {
+      const outcome = outcomes.get(after);
+      const name = outcome && outcome.car !== '' ? 'elevator ' + outcome.car : 'an elevator';
+      return payload.staffOnly ? 'Make ' + name + ' staff and authorised only' : 'Open ' + name + ' to everyone';
+    },
+    bumps: [GEOMETRY],
+    focus: buildingFocus,
+  },
+  (project, payload) => inBuilding(project, (building) => geometry.setElevator(building, payload)),
 );
 
 // ---- corridor names
@@ -2312,6 +2392,70 @@ export const setExit = action(
 export const unmarkExit = action(
   { label: (before, payload) => 'Remove ' + exitLabel(before, payload), bumps: [GEOMETRY], focus: buildingFocus },
   (project, payload) => inBuilding(project, (building) => geometry.unmarkExit(building, payload)),
+);
+
+function exitStepLabel(project, payload, after) {
+  const outcome = outcomes.get(after);
+  const name = outcome && outcome.doorName.trim() !== '' ? 'the exit ' + outcome.doorName : 'an exit';
+  return payload.stepFree === false ? 'Mark ' + name + ' as having a step' : 'Mark ' + name + ' as step-free';
+}
+
+// payload: { exitId, stepFree } and optionally floorId.
+export const setExitStepFree = action(
+  { label: exitStepLabel, bumps: [GEOMETRY], focus: buildingFocus },
+  (project, payload) => inBuilding(project, (building) => geometry.setExitStepFree(building, payload)),
+);
+
+// ---- steps and areas of refuge
+
+// Mark corridor cells as a step (stepFree: false) or clear the mark (true).
+// payload: { floorId, stepFree } with cells, rect or from/to. Cells that are
+// not corridor are skipped: buildingOutcome(after).skipped counts them, and
+// the label says so.
+export const setStepCells = action(
+  {
+    label: (before, payload, after) => {
+      const outcome = outcomes.get(after);
+      const n = outcome ? outcome.changed : 0;
+      const skipped = outcome && outcome.skipped > 0 ? ', ' + outcome.skipped + ' skipped, not corridor' : '';
+      return (payload.stepFree === false ? 'Mark ' + n + (n === 1 ? ' cell' : ' cells') + ' as a step' : 'Clear the step from ' + n + (n === 1 ? ' cell' : ' cells')) + onFloor(before, payload, after) + skipped;
+    },
+    bumps: [GEOMETRY],
+    focus: buildingFocus,
+  },
+  (project, payload) => inBuilding(project, (building) => geometry.setStepCells(building, payload)),
+);
+
+function refugeLabel(project, payload) {
+  for (const floor of project.building.floors) {
+    if (payload.floorId !== undefined && floor.id !== payload.floorId) continue;
+    const refuge = (floor.refuges || []).find((candidate) => candidate.id === payload.refugeId);
+    if (refuge) return refuge.name;
+  }
+  return 'an area of refuge';
+}
+
+// payload: { floorId, cell } and optionally name, id. A corridor or stairs
+// cell that is not an elevator stop; names are unique on a floor, ignoring
+// case; no name takes "Area of refuge", then "Area of refuge 2".
+export const addRefuge = action(
+  { label: (before, payload, after) => 'Add the area of refuge ' + ((outcomes.get(after) || {}).name || '') + onFloor(before, payload, after), bumps: [GEOMETRY], focus: buildingFocus },
+  (project, payload, ctx) => {
+    checkGivenId(project, payload, 'a');
+    return inBuilding(project, (building) => geometry.addRefuge(building, payload, ctx.ids));
+  },
+);
+
+// payload: { refugeId } and optionally floorId, with any of { name, cell }.
+export const setRefuge = action(
+  { label: (before, payload, after) => 'Edit the area of refuge ' + refugeLabel(before, payload), bumps: [GEOMETRY], focus: buildingFocus },
+  (project, payload) => inBuilding(project, (building) => geometry.setRefuge(building, payload)),
+);
+
+// payload: { refugeId } and optionally floorId.
+export const removeRefuge = action(
+  { label: (before, payload) => 'Remove the area of refuge ' + refugeLabel(before, payload), bumps: [GEOMETRY], focus: buildingFocus },
+  (project, payload) => inBuilding(project, (building) => geometry.removeRefuge(building, payload)),
 );
 
 // ---- exclusion zones
@@ -2720,8 +2864,8 @@ function renameGroups(project, edits) {
 
 // Everything the grid editor staged, as one step. payload:
 //   removed  [groupId]
-//   groups   [{ id } with any of { name, grade, headCount, colour }]
-//   added    [{ id, name, grade, headCount, colour }]
+//   groups   [{ id } with any of { name, grade, headCount, colour, stepFree }]
+//   added    [{ id, name, grade, headCount, colour, stepFree }]
 //   slots    [{ groupId, dayTypeId, period, slot }], slot as setSlot takes it
 // Each part runs the action that does that one thing (deleteGroup, editGroup,
 // addGroup, setSlot), in that order, so a removed group's name is free for an
@@ -2739,7 +2883,7 @@ export const applyGridEdits = action(
     let next = project;
     for (const id of list('removed')) next = deleteGroup(next, { id }, ctx);
     next = renameGroups(next, list('groups'));
-    for (const edit of list('groups')) next = editGroup(next, { id: edit.id, grade: edit.grade, headCount: edit.headCount, colour: edit.colour }, ctx);
+    for (const edit of list('groups')) next = editGroup(next, { id: edit.id, grade: edit.grade, headCount: edit.headCount, colour: edit.colour, stepFree: edit.stepFree }, ctx);
     for (const group of list('added')) next = addGroup(next, group, ctx);
     for (const change of list('slots')) next = setSlot(next, change, ctx);
     return next;
@@ -2936,6 +3080,7 @@ function scenarioLever(project, lever) {
   if (lever.kind === 'way') {
     const connection = typeof lever.connectionId === 'string' ? project.building.connections.find((each) => each.id === lever.connectionId) : undefined;
     if (!connection) refuse('That stairs connection is no longer in the building.', 'missing');
+    if (connection.kind === ELEVATOR_KIND) refuse('Elevator ' + (connection.car || connection.label) + ' has no way to change: an elevator runs both ways, and a stairs\' way is for stairs. Choose a stairs connection.', 'bad-value');
     const stairsAt = (end) => {
       const floor = project.building.floors.find((each) => each.id === end.floorId);
       return Boolean(floor) && floor.cells[end.cell] === CELL_STAIRS;

@@ -43,6 +43,22 @@
 // only: Stairs A carry everything coming down, so the one-way rule traps
 // nobody and the checks say nothing about either.
 //
+// Elevator D and what goes with it are done right on purpose too, for the
+// step-free features to show. Elevator D stops on all three floors in the cell
+// east of Stairs A, and is staff and authorised only, which is what a new
+// elevator is: no group's ordinary route uses it, and the checks and every
+// other group's route are what they were. Group 6A needs step-free routes, and
+// its day goes up and down all three floors, so it rides. In the Main Corridor
+// there is a step at x 29, with a three-cell bypass under it; the Cafeteria's
+// west door has a step and its east door has none; Door A has a step outside it;
+// and an area of refuge stands in the Floor 2 corridor above Stairs B. So a
+// step-free walk to the Gym goes round the step, one into the Cafeteria goes in
+// by the east door, Floor 1 rooms leave step-free by Door B, Floor 2 rooms wait at the
+// area of refuge, and Floor 3 rooms have no step-free way out, which is true
+// of a building whose upper floors are reached by an elevator an evacuation
+// may not use. Every room can still be reached without stairs.
+// sampleSchool({ level: true }) leaves all of this out.
+//
 // The checks also report two notes, and nothing else. Both are about the
 // Cafeteria, both are true of a lunch room, and they stay: it has no subject,
 // and it has groups scheduled into it and no teacher.
@@ -61,6 +77,8 @@
 const WIDTH = 40;
 const HEIGHT = 14;
 const CORRIDOR_ROW = 7;
+// The elevator's stop, on every floor: the cell east of Stairs A.
+const LIFT = [13, 8];
 const SAMPLE_DATE = '2026-09-01T12:00:00.000Z';
 
 export const SAMPLE_PROJECT_ID = 'psample001';
@@ -119,11 +137,17 @@ const FLOORS = [
     level: 1,
     corridor: [[1, CORRIDOR_ROW, 39, 1], [20, 8, 1, 6]],
     stairs: [[8, 8], [12, 8]],
+    // What the step-free group adds (left out of the level sample): a short
+    // bypass under the Main Corridor, three cells long, round the step in the
+    // corridor at x 29. A step-free walk to the Gym or to Door B goes by it.
+    bypass: [[28, 8, 3, 1]],
+    lifts: [LIFT],
+    steps: [[29, CORRIDOR_ROW]],
     rooms: [
       { id: 'rsample101', number: '101', x: 1, y: 3, w: 5, h: 4, doors: [3], subject: 'MATH', capacity: 30, wing: 'West' },
       { id: 'rsample102', number: '102', x: 7, y: 3, w: 5, h: 4, doors: [9], subject: 'MATH', capacity: 30, wing: 'West' },
       { id: 'rsample103', number: '103', x: 13, y: 3, w: 5, h: 4, doors: [15], subject: 'SCI', capacity: 30, wing: 'West' },
-      { id: 'rsamplecaf', number: 'Cafeteria', x: 19, y: 2, w: 9, h: 5, doors: [21, 25], subject: null, capacity: 150, shared: true, wing: '' },
+      { id: 'rsamplecaf', number: 'Cafeteria', x: 19, y: 2, w: 9, h: 5, doors: [21, 25], stepDoors: [21], subject: null, capacity: 150, shared: true, wing: '' },
       { id: 'rsamplegym', number: 'Gym', x: 30, y: 1, w: 9, h: 6, doors: [36], subject: 'PE', capacity: 120, shared: true, wing: 'East' },
     ],
     others: [
@@ -137,7 +161,7 @@ const FLOORS = [
       { id: 'ksample002', name: 'Front Hall', rect: [20, 8, 1, 6] },
     ],
     exits: [
-      { id: 'xsample00a', x: 20, y: 13, doorName: 'Door A', assembly: 'Front lawn by the flagpole' },
+      { id: 'xsample00a', x: 20, y: 13, doorName: 'Door A', assembly: 'Front lawn by the flagpole', step: true },
       { id: 'xsample00b', x: 39, y: CORRIDOR_ROW, doorName: 'Door B', assembly: 'East field by the backstop' },
     ],
   },
@@ -147,6 +171,8 @@ const FLOORS = [
     level: 2,
     corridor: [[1, CORRIDOR_ROW, 38, 1]],
     stairs: [[8, 8], [12, 8], [33, 8]],
+    lifts: [LIFT],
+    refuges: [{ id: 'asample001', x: 33, y: CORRIDOR_ROW }],
     rooms: [
       { id: 'rsample201', number: '201', x: 1, y: 3, w: 6, h: 4, doors: [3], subject: 'ENG', capacity: 30, wing: 'West' },
       { id: 'rsample202', number: '202', x: 8, y: 3, w: 6, h: 4, doors: [10], subject: 'ENG', capacity: 30, wing: 'West' },
@@ -168,6 +194,7 @@ const FLOORS = [
     level: 3,
     corridor: [[1, CORRIDOR_ROW, 38, 1]],
     stairs: [[33, 8]],
+    lifts: [LIFT],
     rooms: [
       { id: 'rsample303', number: '303', x: 1, y: 2, w: 7, h: 5, doors: [4], subject: 'MUS', capacity: 40, wing: 'Music Wing' },
       { id: 'rsample302', number: '302', x: 18, y: 3, w: 7, h: 4, doors: [21], subject: 'ART', capacity: 30, wing: 'East' },
@@ -193,6 +220,11 @@ const CONNECTIONS = [
   // connection's `a` is Floor 1). Stairs A, beside it, carry everything coming
   // down, so the one-way rule traps nobody.
   { id: 'csample0up', label: 'C', a: ['fsample001', 8, 8], b: ['fsample002', 8, 8], direction: 'ab' },
+  // Elevator D, beside Stairs A, stops on every floor and is staff and
+  // authorised only, which is what a new elevator is. Two connections make one
+  // elevator: its letter is `car`, and each connection keeps a label of its own.
+  { id: 'csample00d', label: 'D', a: ['fsample001', 13, 8], b: ['fsample002', 13, 8], elevator: true },
+  { id: 'csample00e', label: 'E', a: ['fsample002', 13, 8], b: ['fsample003', 13, 8], elevator: true },
 ];
 
 const BELLS_A = [['08:00', '08:48'], ['08:52', '09:40'], ['09:44', '10:32'], ['10:36', '11:24'], ['11:28', '12:16'], ['12:20', '13:08'], ['13:12', '14:00'], ['14:04', '14:52']];
@@ -205,6 +237,9 @@ const BELLS_EARLY_RELEASE = [['08:00', '08:40'], ['08:44', '09:24'], ['09:28', '
 // Assembly: every period shortened to 44 minutes except the last, which is
 // the assembly itself.
 const BELLS_ASSEMBLY_DAY = [['08:00', '08:44'], ['08:48', '09:32'], ['09:36', '10:20'], ['10:24', '11:08'], ['11:12', '11:56'], ['12:00', '12:44'], ['12:48', '13:32'], ['13:36', '14:30']];
+
+// 6A needs step-free routes: its day goes up and down Floors 1 to 3, so it rides Elevator D.
+const STEP_FREE_GROUP = 'gsample06a';
 
 // name, grade, head count (null uses the school default), colour, then the
 // room for each of the eight periods on A Days and on B Days.
@@ -243,10 +278,12 @@ function rectCells(x, y, w, h) {
   return cells;
 }
 
-function buildFloor(plan, subjectByCode, teachersByRoom) {
+function buildFloor(plan, subjectByCode, teachersByRoom, stepFree) {
   const grid = new Array(WIDTH * HEIGHT).fill('.');
-  for (const rect of plan.corridor) for (const cell of rectCells(rect[0], rect[1], rect[2], rect[3])) grid[cell] = '#';
+  const lifts = stepFree ? plan.lifts : undefined;
+  for (const rect of plan.corridor.concat(stepFree ? plan.bypass || [] : [])) for (const cell of rectCells(rect[0], rect[1], rect[2], rect[3])) grid[cell] = '#';
   for (const stair of plan.stairs) grid[stair[1] * WIDTH + stair[0]] = 'S';
+  for (const lift of lifts || []) grid[lift[1] * WIDTH + lift[0]] = 'S';
   const spaces = [];
   for (const room of plan.rooms) {
     const above = room.y < CORRIDOR_ROW;
@@ -260,13 +297,17 @@ function buildFloor(plan, subjectByCode, teachersByRoom) {
       wing: room.wing,
       capacity: room.capacity,
       shared: room.shared === true,
-      doors: room.doors.map((x) => ({ cell: (above ? CORRIDOR_ROW - 1 : CORRIDOR_ROW + 1) * WIDTH + x, side: above ? 's' : 'n' })),
+      doors: room.doors.map((x) => {
+        const door = { cell: (above ? CORRIDOR_ROW - 1 : CORRIDOR_ROW + 1) * WIDTH + x, side: above ? 's' : 'n' };
+        if (stepFree && (room.stepDoors || []).includes(x)) door.stepFree = false;
+        return door;
+      }),
     });
   }
   for (const other of plan.others) {
     spaces.push({ id: other.id, kind: 'other', cells: rectCells(other.x, other.y, other.w, other.h), label: other.label, otherKind: other.otherKind, colour: other.colour });
   }
-  return {
+  const floor = {
     id: plan.id,
     name: plan.name,
     level: plan.level,
@@ -275,9 +316,19 @@ function buildFloor(plan, subjectByCode, teachersByRoom) {
     cells: grid.join(''),
     spaces,
     corridors: plan.names.map((named) => ({ id: named.id, name: named.name, cells: rectCells(named.rect[0], named.rect[1], named.rect[2], named.rect[3]) })),
-    exits: plan.exits.map((exit) => ({ id: exit.id, cell: exit.y * WIDTH + exit.x, doorName: exit.doorName, assembly: exit.assembly })),
+    exits: plan.exits.map((exit) => {
+      const out = { id: exit.id, cell: exit.y * WIDTH + exit.x, doorName: exit.doorName, assembly: exit.assembly };
+      if (stepFree && exit.step) out.stepFree = false;
+      return out;
+    }),
     image: null,
   };
+  // The three lists a floor gains for elevators and steps are there only on a
+  // floor that has something in them, as the building actions leave them.
+  if (stepFree && plan.lifts) floor.lifts = plan.lifts.map((lift) => lift[1] * WIDTH + lift[0]);
+  if (stepFree && plan.steps) floor.notStepFree = plan.steps.map((step) => step[1] * WIDTH + step[0]);
+  if (stepFree && plan.refuges) floor.refuges = plan.refuges.map((refuge) => ({ id: refuge.id, cell: refuge.y * WIDTH + refuge.x, name: 'Area of refuge' }));
+  return floor;
 }
 
 // A school year that never happened: 31 August 2026 to 11 June 2027, A Days
@@ -343,7 +394,13 @@ function sampleDuties() {
   ];
 }
 
-export function sampleSchool() {
+// sampleSchool({ level: true }) is the same school without what the elevator
+// and the step-free group add: no Elevator D, no step, step door or step exit,
+// no area of refuge, no bypass, and no group that needs step-free routes. It
+// is what the school was before those were added, byte for byte, so a test of
+// "a building with no elevator is unchanged" has a real one to hold against.
+export function sampleSchool(options) {
+  const stepFree = !(options && options.level === true);
   const subjectByCode = new Map(SUBJECTS.map((subject) => [subject.code, subject.id]));
   const teachersByRoom = new Map(TEACHERS.map((teacher) => [teacher[3], [teacher[0]]]));
   const roomIdByNumber = new Map();
@@ -380,13 +437,14 @@ export function sampleSchool() {
       theme: 'auto',
     },
     building: {
-      floors: FLOORS.map((plan) => buildFloor(plan, subjectByCode, teachersByRoom)),
-      connections: CONNECTIONS.map((connection) => ({
+      floors: FLOORS.map((plan) => buildFloor(plan, subjectByCode, teachersByRoom, stepFree)),
+      connections: CONNECTIONS.filter((connection) => stepFree || !connection.elevator).map((connection) => ({
         id: connection.id,
         label: connection.label,
         a: { floorId: connection.a[0], cell: connection.a[2] * WIDTH + connection.a[1] },
         b: { floorId: connection.b[0], cell: connection.b[2] * WIDTH + connection.b[1] },
         direction: connection.direction || 'both',
+        ...(connection.elevator ? { kind: 'elevator', car: 'D', staffOnly: true } : {}),
       })),
       zones: [{ id: 'zsample001', floorId: 'fsample001', label: 'Cafeteria doors', x: 19, y: CORRIDOR_ROW, w: 9, h: 1 }],
     },
@@ -404,6 +462,7 @@ export function sampleSchool() {
       grade: group[2],
       headCount: group[3],
       colour: group[4],
+      ...(stepFree && group[0] === STEP_FREE_GROUP ? { stepFree: true } : {}),
       days: { [DAY_A]: day(group[5]), [DAY_B]: day(group[6]) },
     })),
     dayTypes: [

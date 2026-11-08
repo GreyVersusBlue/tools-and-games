@@ -558,6 +558,7 @@ export function mergeGroups(project, incoming, policy, ids) {
         });
         if (changed) days = { ...days, [dayTypeId]: day };
       }
+      // `...current` keeps the matched group's own step-free flag: an import never changes it
       const updated = {
         ...current,
         grade: fields.grade === undefined ? current.grade : fields.grade,
@@ -598,6 +599,8 @@ export function mergeGroups(project, incoming, policy, ids) {
       colour: fields.colour === undefined ? nextGroupColour(groups) : fields.colour,
       days,
     };
+    // "needs step-free routes" comes with a schedule file's group (ARCHITECTURE 19.8); a CSV has no such column
+    if (fields.stepFree === true) group.stepFree = true;
     groups = groups.concat([group]);
     summary.created.push(step.name);
   }

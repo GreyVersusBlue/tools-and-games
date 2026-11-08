@@ -45,6 +45,11 @@
 //     `released` is there only when above 0
 //     slowest first by total; `lost` counts walks that did not arrive at all;
 //     `slowest` is the group's slowest walk, a row as above
+//   Rows gain `riding` (seconds held in an elevator's car, ARCHITECTURE 19.5) only when above 0,
+//   and `ride` ({ car, trips, perTrip, wait }: the car's letter, the trips the group's head count
+//   takes, the school's people per trip and wait) on a walk that rides, so a late walk can say why.
+//   anyRiding(results, dayTypeId, bellsId)   whether any walk of the run rides: the tables and the
+//                                       CSV files gain "Riding" only then, as "Left after the bell" does
 //   slowestPeriod(results, dayTypeId, bellsId)   the transition holding the slowest walk, or null
 //   lateWords(row)                      "In time", "Late by 21 s", "Did not arrive"; a late
 //                                       walk that was held back says so: "Late by 40 s · left 2 min after the bell"
@@ -72,8 +77,10 @@ import { findDayType, effectiveDayType } from '../../engine/day-types.js';
 import { findBellSchedule, offPeriods, periodName } from '../../engine/bells.js';
 import { parse } from '../colour.js';
 import { transitionsOf, runOf, walkWords, nothingMeets, nothingMeetsParts } from './model.js';
+import { ELEVATOR_KIND, elevatorSettings } from '../../engine/schema.js';
+import { headCountOf } from '../../engine/crowd.js';
 import { printButtons } from '../prints/index.js';
-import { printButton } from '../components/print-preview.js';
+import { printButton, openPrintPreview } from '../components/print-preview.js';
 
 function roomNumbers(project) {
   const numbers = new Map();
@@ -115,7 +122,33 @@ function walksOf(results, dayTypeId, bellsId) {
   return runOf(results, dayTypeId, bellsId).walks.groups;
 }
 
-function rowOf(project, walk, group, numbers) {
+// Why a walk that rides takes what it does: the elevators it used (each car
+// the route rides, in the order ridden, once each; `car` is the first), how
+// many trips the group's head count needs (the crowd model's own head-count
+// rule), and the school's wait. null when the route has no ride.
+function rideOf(project, route, group) {
+  if (!route || route.ok !== true || !(route.rides > 0)) return null;
+  const connections = new Map(project.building.connections.map((connection) => [connection.id, connection]));
+  const cars = [];
+  for (const id of route.connections || []) {
+    const connection = connections.get(id);
+    if (!connection || connection.kind !== ELEVATOR_KIND) continue;
+    const name = connection.car || connection.label;
+    if (!cars.includes(name)) cars.push(name);
+  }
+  if (cars.length === 0) return null;
+  const { wait, perTrip } = elevatorSettings(project.settings);
+  const heads = headCountOf(group, project.settings);
+  return { car: cars[0], cars, trips: Math.max(1, Math.ceil(heads / perTrip)), perTrip, wait };
+}
+
+function routeOf(results, dayTypeId, bellsId, groupId, period) {
+  const day = runOf(results, dayTypeId, bellsId).routes;
+  const entry = day ? day.groups.find((each) => each.groupId === groupId) : null;
+  return entry ? entry.routes[period] : null;
+}
+
+function rowOf(project, walk, group, numbers, ride) {
   const margin = project.settings.checks ? project.settings.checks.passingMarginSeconds : 0;
   return {
     group,
@@ -125,8 +158,10 @@ function rowOf(project, walk, group, numbers) {
     to: numbers.get(walk.toRoomId) || '',
     passingSeconds: walk.passingSeconds,
     walking: walk.walking,
+    ...(walk.riding > 0 ? { riding: walk.riding } : {}),
     waiting: walk.waiting,
     ...(walk.released > 0 ? { released: walk.released } : {}),
+    ...(walk.riding > 0 && ride ? { ride } : {}),
     total: walk.total,
     late: walk.late === true,
     arrived: walk.arrived !== false,
@@ -144,7 +179,7 @@ export function transitionRows(project, results, dayTypeId, period, bellsId) {
   const order = new Map(project.groups.map((group, index) => [group.id, index]));
   const rows = walksOf(results, dayTypeId, bellsId)
     .filter((walk) => walk.period === period && groups.has(walk.groupId))
-    .map((walk) => rowOf(project, walk, groups.get(walk.groupId), numbers))
+    .map((walk) => rowOf(project, walk, groups.get(walk.groupId), numbers, walk.riding > 0 ? rideOf(project, routeOf(results, dayTypeId, bellsId, walk.groupId, walk.period), groups.get(walk.groupId)) : null))
     .sort(slowestFirst(order));
   const still = [];
   const failed = [];
@@ -165,11 +200,12 @@ export function dayRows(project, results, dayTypeId, bellsId) {
   const walks = walksOf(results, dayTypeId, bellsId);
   const rows = [];
   for (const group of project.groups) {
-    const mine = walks.filter((walk) => walk.groupId === group.id).map((walk) => rowOf(project, walk, group, numbers));
+    const mine = walks.filter((walk) => walk.groupId === group.id).map((walk) => rowOf(project, walk, group, numbers, walk.riding > 0 ? rideOf(project, routeOf(results, dayTypeId, bellsId, walk.groupId, walk.period), group) : null));
     if (mine.length === 0) continue;
     const row = { group, walks: mine.length, walking: 0, waiting: 0, total: 0, late: 0, lost: 0, slowest: null };
     for (const walk of mine) {
       row.walking += walk.walking;
+      if (walk.riding > 0) row.riding = (row.riding || 0) + walk.riding;
       row.waiting += walk.waiting;
       if (walk.released > 0) row.released = (row.released || 0) + walk.released;
       row.total += walk.total;
@@ -194,7 +230,25 @@ export function lateWords(row) {
   if (!row.arrived) return 'Did not arrive';
   if (!row.late) return 'In time';
   // a group held back has less of the passing time to walk in: say so where "late" is said
-  return 'Late by ' + formatDuration(row.over) + heldWords(row.released);
+  return 'Late by ' + formatDuration(row.over) + heldWords(row.released) + rideWords(row.ride);
+}
+
+// The cause of a late walk that rode, " · 4 trips of 8 in Elevator D, 30 s wait"; '' with none.
+export function rideWords(ride) {
+  if (!ride) return '';
+  const wait = ride.wait === 0 ? 'no wait' : formatDuration(ride.wait) + ' wait';
+  return ' · ' + (ride.trips > 1 ? ride.trips + ' trips of ' + ride.perTrip + ' in ' : '') + (ride.cars || [ride.car]).map((car) => 'Elevator ' + car).join(', then ') + ', ' + wait;
+}
+
+// Whether any walk of the run rode an elevator.
+export function anyRiding(results, dayTypeId, bellsId) {
+  return results ? walksOf(results, dayTypeId, bellsId).some((walk) => walk.riding > 0) : false;
+}
+
+// A group that needs step-free routes, named as such in words after its name
+// (DESIGN 13.4): the symbol is only a mark beside the words.
+export function stepFreeTag(group) {
+  return group.stepFree === true ? h('span', { class: 'mov-stepfree', data: { part: 'step-free' } }, h('span', { 'aria-hidden': 'true' }, '\u267F '), 'step-free') : null;
 }
 
 // The cause of a late walk that was held back, " · left 2 min after the bell"; '' with none.
@@ -228,10 +282,11 @@ function transitionName(settings, period, toPeriod) {
 export function transitionsCsv(project, results, dayTypeId, bellsId) {
   const day = travelDay(project, dayTypeId, bellsId);
   const held = anyHeldBack(results, day.id, day.bellsId);
-  const table = [['Day type', 'Transition', 'Passing time (seconds)', 'Group', 'From room', 'To room', 'Walking (seconds)', 'Waiting (seconds)'].concat(held ? ['Left after the bell (seconds)'] : [], ['Total (seconds)', 'Late', 'Late by (seconds)'])];
+  const rides = anyRiding(results, day.id, day.bellsId);
+  const table = [['Day type', 'Transition', 'Passing time (seconds)', 'Group', 'From room', 'To room', 'Walking (seconds)'].concat(rides ? ['Riding (seconds)'] : [], ['Waiting (seconds)']).concat(held ? ['Left after the bell (seconds)'] : [], ['Total (seconds)', 'Late', 'Late by (seconds)'])];
   for (const { period, toPeriod } of transitionsOf(project, day.id, day.bellsId)) {
     for (const row of transitionRows(project, results, day.id, period, day.bellsId).rows) {
-      table.push([day.heading, transitionName(project.settings, period, toPeriod), row.passingSeconds, row.group.name, row.from, row.to, row.walking, row.waiting].concat(held ? [row.released || 0] : [], [row.total, !row.arrived ? 'did not arrive' : row.late ? 'late' : 'in time', row.late ? row.over : '']));
+      table.push([day.heading, transitionName(project.settings, period, toPeriod), row.passingSeconds, row.group.name, row.from, row.to, row.walking].concat(rides ? [row.riding || 0] : [], [row.waiting]).concat(held ? [row.released || 0] : [], [row.total, !row.arrived ? 'did not arrive' : row.late ? 'late' : 'in time', row.late ? row.over : '']));
     }
   }
   return table;
@@ -240,9 +295,10 @@ export function transitionsCsv(project, results, dayTypeId, bellsId) {
 export function dayCsv(project, results, dayTypeId, bellsId) {
   const day = travelDay(project, dayTypeId, bellsId);
   const held = anyHeldBack(results, day.id, day.bellsId);
-  const table = [['Day type', 'Group', 'Walks', 'Walking (seconds)', 'Waiting (seconds)'].concat(held ? ['Left after the bell (seconds)'] : [], ['Total (seconds)', 'Late walks', 'Slowest walk', 'Slowest walk (seconds)'])];
+  const rides = anyRiding(results, day.id, day.bellsId);
+  const table = [['Day type', 'Group', 'Walks', 'Walking (seconds)'].concat(rides ? ['Riding (seconds)'] : [], ['Waiting (seconds)']).concat(held ? ['Left after the bell (seconds)'] : [], ['Total (seconds)', 'Late walks', 'Slowest walk', 'Slowest walk (seconds)'])];
   for (const row of dayRows(project, results, day.id, day.bellsId)) {
-    table.push([day.heading, row.group.name, row.walks, row.walking, row.waiting].concat(held ? [row.released || 0] : [], [row.total, row.late, transitionName(project.settings, row.slowest.period, row.slowest.toPeriod), row.slowest.total]));
+    table.push([day.heading, row.group.name, row.walks, row.walking].concat(rides ? [row.riding || 0] : [], [row.waiting]).concat(held ? [row.released || 0] : [], [row.total, row.late, transitionName(project.settings, row.slowest.period, row.slowest.toPeriod), row.slowest.total]));
   }
   return table;
 }
@@ -260,9 +316,9 @@ function names(groups) {
 // group is a row group of its own, and each time names both its headings.
 //   entries   [{ row: { group, walking, waiting, released, total, late }, who: [nodes after the name] }]
 //   held      whether a column "Left after the bell" stands between Waiting and Total
-function travelTable(caption, entries, held) {
+function travelTable(caption, entries, held, rides, sheetFor) {
   const base = uid('travel');
-  const labels = held ? ['Walking', 'Waiting', 'Left after the bell', 'Total'] : ['Walking', 'Waiting', 'Total'];
+  const labels = ['Walking'].concat(rides ? ['Riding'] : [], ['Waiting'], held ? ['Left after the bell'] : [], ['Total']);
   const heads = labels.map((label, index) => h('th', { scope: 'col', class: 'table__num', id: base + '-c' + index }, label));
   return h('table', { class: 'table mov-travel__table' + (held ? ' mov-travel__table--held' : '') },
     h('caption', { class: 'vh' }, caption),
@@ -272,10 +328,28 @@ function travelTable(caption, entries, held) {
       const id = base + '-g' + index;
       const cell = (column, text) => h('td', { class: 'table__num', headers: id + ' ' + base + '-c' + column }, text);
       return h('tbody', { class: 'mov-travel__group', data: { group: row.group.id, total: String(row.total), late: String(row.late) } },
-        h('tr', null, h('th', { scope: 'rowgroup', colspan: String(labels.length), id }, swatch(row.group), h('bdi', { class: 'mov-travel__name' }, row.group.name), entry.who)),
-        h('tr', null, cell(0, formatDuration(row.walking)), cell(1, row.waiting === 0 ? 'none' : formatDuration(row.waiting)),
-          held ? cell(2, row.released > 0 ? formatDuration(row.released) : 'none') : null, cell(held ? 3 : 2, formatDuration(row.total))));
+        h('tr', null, h('th', { scope: 'rowgroup', colspan: String(labels.length), id }, swatch(row.group), h('bdi', { class: 'mov-travel__name' }, row.group.name), stepFreeTag(row.group), entry.who)),
+        h('tr', null, labels.map((label, column) => {
+          if (label === 'Walking') return cell(column, formatDuration(row.walking));
+          if (label === 'Riding') return cell(column, row.riding > 0 ? formatDuration(row.riding) : 'none');
+          if (label === 'Waiting') return cell(column, row.waiting === 0 ? 'none' : formatDuration(row.waiting));
+          if (label === 'Left after the bell') return cell(column, row.released > 0 ? formatDuration(row.released) : 'none');
+          return cell(column, formatDuration(row.total));
+        })),
+        // a row of its own under the group's figures, across the table: a column would
+        // move the three headings' widths (the whole-day table's Route sheet button)
+        sheetFor ? h('tr', { class: 'mov-travel__sheet' }, h('td', { colspan: String(labels.length), headers: id }, sheetFor(row.group))) : null);
     }));
+}
+
+// The "Route sheet" button of a group's row in the whole-day table (DESIGN 13.5):
+// opens the print preview of that group's step-free day, on the day type shown.
+// It is not one of ui/prints/index.js's printButtons (a button there has one
+// id on one page); each group's has its own.
+function sheetButton(env, group, options) {
+  const button = h('button', { type: 'button', class: 'btn btn--quiet', id: uid('route-sheet'), 'aria-label': 'Route sheet for ' + group.name, data: { print: 'route-sheet', group: group.id } }, 'Route sheet');
+  button.addEventListener('click', () => openPrintPreview(env.ctx, 'route-sheet', { ...options(group), opener: button }));
+  return button;
 }
 
 export function tablesPanel(env) {
@@ -284,10 +358,11 @@ export function tablesPanel(env) {
   const lead = h('p', { class: 'mov-travel__lead', data: { travel: 'lead' } });
   const oneTitle = h('h3', { class: 'mov-panel__sub', data: { travel: 'transition-title' } }, 'One transition');
   const oneLine = h('p', { class: 'mov-panel__note', data: { travel: 'transition-line' } });
-  const one = h('div', { class: 'mov-travel', data: { travel: 'transition' } });
+  // each scrolls sideways when narrow, so each is a named region a keyboard can focus and scroll (SV2-106b)
+  const one = h('div', { class: 'mov-travel', tabindex: '0', role: 'region', data: { travel: 'transition' } });
   const oneRest = h('p', { class: 'mov-panel__note', data: { travel: 'transition-rest' } });
   const dayTitle = h('h3', { class: 'mov-panel__sub', data: { travel: 'day-title' } }, 'The whole day');
-  const whole = h('div', { class: 'mov-travel', data: { travel: 'day' } });
+  const whole = h('div', { class: 'mov-travel', tabindex: '0', role: 'region', data: { travel: 'day' } });
   const picker = h('div', { class: 'mov-travel__choose' }, h('label', { class: 'mov-ctl__label', for: pickId }, 'Transition'), pick);
   let last = null;
   // what the tables are drawn from, handed to the print whole
@@ -296,6 +371,13 @@ export function tablesPanel(env) {
     bellsId: last.picture.choice.bellsId,
     movement: { project: last.project, results: last.results, graph: last.graph },
   }));
+  // the sheet of one group on the day type and bells shown, from what the tables are drawn from
+  const sheetOptions = (group) => ({
+    groupId: group.id,
+    dayTypeId: last.picture.choice.dayTypeId,
+    bellsId: last.picture.choice.bellsId,
+    movement: { project: last.project, results: last.results, graph: last.graph },
+  });
   const tables = h('div', { class: 'mov-travel__tables' }, h('div', { class: 'mov-export__buttons' }, print), oneTitle, picker, oneLine, one, oneRest, dayTitle, whole);
   const element = h('div', { class: 'mov-panel', data: { panel: 'tables' } },
     h('h2', { class: 'mov-panel__title' }, 'Travel time'),
@@ -337,7 +419,8 @@ export function tablesPanel(env) {
       return;
     }
     const held = anyHeldBack(results, day.id, day.bellsId);
-    lead.replaceChildren('How long every group takes on ', h('bdi', null, day.heading), ', slowest first. Walking is the time in an empty corridor; waiting is the time lost to the crowd.' + (held ? ' Left after the bell is the time a group was held back by a staggered dismissal; it counts in the total, so the group has less of the passing time to walk in.' : '') + ' The figures do not depend on which groups the map shows.');
+    const rides = anyRiding(results, day.id, day.bellsId);
+    lead.replaceChildren('How long every group takes on ', h('bdi', null, day.heading), ', slowest first. Walking is the time in an empty corridor; waiting is the time lost to the crowd.' + (rides ? ' Riding is the time held in an elevator: its wait, the ride, and the further trips a large group needs. It counts in the total.' : '') + (held ? ' Left after the bell is the time a group was held back by a staggered dismissal; it counts in the total, so the group has less of the passing time to walk in.' : '') + ' The figures do not depend on which groups the map shows.');
 
     // the map's transition leads; with the whole day on the map, the one picked here, else the slowest
     if (picture.choice.transition !== mapTransition) {
@@ -363,6 +446,7 @@ export function tablesPanel(env) {
         + (mapTransition === null && picked === null && period === slowest ? ' This transition holds the day\'s slowest walk.' : '')
       : '';
     one.dataset.period = String(period);
+    one.setAttribute('aria-label', 'Travel times, ' + (transition ? transition.name : 'one transition'));
     one.replaceChildren(found.rows.length === 0
       ? h('p', { class: 'mov-panel__note' }, 'Nobody walks in this transition.')
       : travelTable('Each group\'s walk in ' + (transition ? transition.name : 'this transition') + ', slowest first', found.rows.map((row) => ({
@@ -371,20 +455,21 @@ export function tablesPanel(env) {
           h('span', { class: 'mov-travel__rooms' }, h('bdi', null, row.from === '' ? 'no number' : row.from), ' to ', h('bdi', null, row.to === '' ? 'no number' : row.to)),
           h('span', { class: row.late ? 'mov-groups__late' : 'mov-travel__fits', data: { fits: String(!row.late) } }, lateWords(row)),
         ],
-      })), held));
+      })), held, rides));
     const rest = [];
     if (found.still.length > 0) rest.push(...names(found.still), found.still.length === 1 ? ' stays in its room.' : ' stay in their rooms.');
     if (found.failed.length > 0) rest.push(rest.length > 0 ? ' ' : null, ...names(found.failed), found.failed.length === 1 ? ' has no route: see Summary.' : ' have no route: see Summary.');
     oneRest.replaceChildren(...rest);
     oneRest.hidden = rest.length === 0;
 
+    whole.setAttribute('aria-label', 'Travel times, the whole of ' + day.heading);
     whole.replaceChildren(travelTable('Each group over the whole of ' + day.heading + ', slowest first', dayRows(project, results, day.id, day.bellsId).map((row) => ({
       row,
       who: [
         h('span', { class: 'mov-travel__rooms' }, count(row.walks, 'walk') + ', the slowest ' + formatDuration(row.slowest.total)),
         row.late > 0 ? h('span', { class: 'mov-groups__late' }, 'late ' + (row.late === 1 ? 'once' : row.late + ' times')) : null,
       ],
-    })), held));
+    })), held, rides, (group) => sheetButton(env, group, sheetOptions)));
   }
 
   pick.addEventListener('change', () => {
