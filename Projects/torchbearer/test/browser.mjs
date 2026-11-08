@@ -271,6 +271,48 @@ try {
     console.log(`  (the cast caught ${foesLit.length}: ${foesLit.join(", ") || "nobody"})`);
   } else ok("the line had an aim to cast at", false);
 
+  group("the picker warns on a level gap");
+  /* One hero of each level against every adventure on the picker. A card warns
+     when the hero is two or more levels from the level it was written for, with
+     that sentence and no other change to the card. */
+  /* The picker lists what is loaded, and only Barrowmoor is until the shelf is
+     used: register the other two shipped adventures through the page's own
+     applyPack. It registers the pack and then throws redrawing a title screen
+     that is not up, so the throw is swallowed and the three-card check below
+     is what says whether they arrived. */
+  await page.evaluate(async () => {
+    const A = window.__torchbearer;
+    for (const f of ["thornwake-vigil", "embers-of-the-hold"]) {
+      const data = await (await fetch(`/Projects/torchbearer/packs/${f}.json`)).json();
+      try { A.applyPack(data); } catch (e) { /* see above */ }
+      A.closeModal();
+    }
+  });
+  const gaps = [];
+  for (const L of [1, 2, 3, 4, 5, 6, 8, 10]) {
+    const cards = await page.evaluate(({ s, L }) => {
+      const A = window.__torchbearer;
+      A.loadSave({ ...s, build: { ...s.build, level: L } });
+      A.chooseAdventure();
+      const out = [...document.querySelectorAll("#modal-body [data-id]")].map(el => ({
+        id: el.dataset.id, meta: el.querySelector(".meta").textContent,
+        warn: [...el.querySelectorAll(".level-gap")].map(w => w.textContent), n: el.children.length }));
+      const level = A.hero.level;
+      A.closeModal();
+      return { level, cards: out };
+    }, { s: state, L });
+    gaps.push(cards);
+    for (const c of cards.cards) {
+      const wrote = Number(/^Level (\d+) adventure$/.exec(c.meta)?.[1]);
+      const want = Math.abs(cards.level - wrote) >= 2 ? [`Written for level ${wrote}; your hero is level ${cards.level}.`] : [];
+      eq(`hero ${cards.level} against ${c.id} (level ${wrote}): ${want.length ? "a warning" : "no warning"}`, c.warn, want);
+      eq(`…and the card keeps its ${want.length ? 4 : 3} parts`, c.n, want.length ? 4 : 3);
+    }
+  }
+  ok("the heroes came out at the levels asked", JSON.stringify(gaps.map(g => g.level)) === JSON.stringify([1, 2, 3, 4, 5, 6, 8, 10]), JSON.stringify(gaps.map(g => g.level)));
+  eq("the picker lists the three shipped adventures", gaps.map(g => g.cards.length), gaps.map(() => 3));
+  ok("some hero was warned and some was not", gaps.some(g => g.cards.some(c => c.warn.length)) && gaps.some(g => g.cards.some(c => !c.warn.length)));
+
   group("the page");
   eq("no console error, page error or failed request", page.__errs, []);
   eq("no offsite request", page.__blocked, []);

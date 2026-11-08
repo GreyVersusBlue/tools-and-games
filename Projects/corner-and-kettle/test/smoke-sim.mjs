@@ -19,6 +19,7 @@ const mod = p => import(pathToFileURL(join(here, p)).href);
 
 const CONTENT = await mod("../js/content.js");
 const { makeRng, createSim, freshState, freshDayStats, newCup, STEP_MS, SERVE_CLEAR_MS } = await mod("../js/sim.js");
+const { createGuide, CUES } = await mod("../js/guide.js");
 const { SHIFT_MS, PHASES, RECIPES, FOODS, BARISTA_TIERS,
   REGULAR_FRIEND_CHANCE, WORD_OF_MOUTH_MIN, WORD_OF_MOUTH_MAX } = CONTENT;
 
@@ -424,7 +425,7 @@ section("10. the page has no clock and no dice of its own, and owns no rule");
   // checkout, not just a Linux CI runner's LF one.
   const read = (...p) => readFileSync(join(here, "..", ...p), "utf8").replace(/\r\n/g, "\n");
   const uncommented = src => src.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
-  const VIEW = ["ui.js", "stations.js", "chalkboard.js", "patch.js", "draw.js", "sound.js"];
+  const VIEW = ["ui.js", "stations.js", "chalkboard.js", "patch.js", "draw.js", "sound.js", "guide.js"];
   const html = read("index.html");
   eq((html.match(/<script\b/g) || []).length, 1, "index.html has exactly one script tag");
   ok(/<script type="module" src="\.\/js\/ui\.js"><\/script>/.test(html), "and it is the module js/ui.js");
@@ -1787,6 +1788,96 @@ section("20. two paces: Busy Corner is the game as it was, Quiet Corner slows th
     runShift(sim, state); sim.startNextDay();
     eq(state.pace, "quiet", "so does the next day");
   }
+}
+
+section("21. the first-shift guide reads the shop and changes nothing in it (#1042)");
+{
+  // A fresh game starts the guide; a bare sim has none.
+  eq(freshState(CONTENT).guideSeen, true, "a bare sim's state has the guide off");
+  eq(CUES.length >= 4 && CUES.length <= 6, true, "four to six cues");
+  ok(CUES.every(c => typeof c.text === "string" && c.text.length > 10 && c.text.length < 110), "each is one short sentence's worth of words");
+  ok(CUES.every(c => !/—|–/.test(c.text)), "and has no dash in it");
+
+  const seen = [];
+  const mk = (seed, on) => {
+    const s = shop(seed, st => { st.guideSeen = !on; });
+    const guide = createGuide({ state: s.state, sim: s.sim, onChange: () => seen.push(guide.step), onDone: () => seen.push("done") });
+    return { ...s, guide };
+  };
+  const { sim, state, guide } = mk(77, true);
+  state.queue.push(sim.generateOrder());
+  while (!state.queue.some(c => !c.isFood)) state.queue.push(sim.generateOrder());
+  const cust = state.queue.find(c => !c.isFood);
+  eq(guide.cue().id, "take", "it opens on taking a customer to a station");
+  guide.update();
+  eq(guide.step, 0, "and nothing moves it by itself, however long it waits");
+  for (let i = 0; i < 400; i++) { sim.advance(STEP_MS); guide.update(); }
+  eq(guide.step, 0, "400 steps of the clock do not advance a cue");
+  const idx = sim.acceptCustomer(cust.id);
+  guide.update();
+  eq(guide.step, 1, "taking the customer to a station is the first cue done");
+  const slot = state.slots[idx];
+  sim.cupAction(slot, "pullShot");
+  guide.update();
+  ok(guide.step >= 2, "a base in the cup is the second");
+  // Finish the cup by the ticket's own lines.
+  let guardN = 0;
+  while (!sim.serveReadiness(slot).complete && guardN++ < 12) {
+    const reqs = sim.getOrderRequirements(slot.customer).filter(r => !r.check(slot));
+    if (!reqs.length) break;
+    reqs[0].apply(slot);
+  }
+  guide.update();
+  eq(guide.step, 3, "the ticket's lines met is the third");
+  const moneyBefore = state.money;
+  sim.scoreServe(slot);
+  guide.update();
+  eq(guide.step, 4, "serving is the fourth");
+  ok(state.money > moneyBefore, "(and the serve paid, so it was a real one)");
+  eq(guide.cue().id, "board", "the last cue points at the Menu Board");
+  guide.update({ boardOpen: true });
+  eq(state.guideSeen, true, "opening the board ends the guide and marks it seen");
+  eq(guide.cue(), null, "and there is no cue left");
+  ok(seen.includes("done"), "and onDone fired, which is where the page saves it");
+
+  // Skip, restart, and a customer who leaves.
+  {
+    const g = mk(5, true);
+    g.guide.skip();
+    eq(g.state.guideSeen, true, "Skip marks it seen");
+    g.guide.restart();
+    eq(g.state.guideSeen, false, "restart from the Menu Board brings it back");
+    eq(g.guide.step, 0, "at the first cue");
+    const c = g.sim.generateOrder(); g.state.queue.push(c);
+    const i = g.sim.acceptCustomer(c.id);
+    g.guide.update();
+    eq(g.guide.step, 1, "a customer taken");
+    g.sim.releaseSlot(i);
+    g.guide.update();
+    eq(g.guide.step, 0, "a customer who leaves puts it back to the first cue");
+    const off = mk(5, false);
+    off.guide.update();
+    eq(off.guide.step, 0, "a guide that is off never moves");
+    eq(off.guide.cue(), null, "and shows nothing");
+  }
+
+  // The guide on or off, the seeded run reads the same.
+  {
+    const play = (on) => {
+      const g = mk(2026, on);
+      const driven = (sm, st) => { autopilot(sm, st); g.guide.update(); };
+      runShift(g.sim, g.state, STEP_MS, driven);
+      return fingerprint(g.state);
+    };
+    const a = play(true), b = play(false);
+    eq(a, b, "a whole seeded shift reads byte for byte the same with the guide on and off");
+    ok(a.length > 200, "(and it was a real shift)");
+  }
+
+  // It is a reader: no sim file names it.
+  const uncomm = src => src.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  const simText = uncomm(readFileSync(join(here, "..", "js", "sim.js"), "utf8"));
+  eq((simText.match(/guideSeen/g) || []).length, 1, "sim.js names guideSeen once, in freshState, and reads it nowhere");
 }
 
 /* ---------- report ---------- */

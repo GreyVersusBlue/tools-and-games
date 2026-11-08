@@ -63,6 +63,8 @@ const ONLY_PACE = process.argv.includes('--pace');
 // `--focus` runs sections 17 to 19 alone: the board, the queue, the
 // stations row and the open station's panel keeping the keyboard on a redraw.
 const ONLY_FOCUS = process.argv.includes('--focus');
+// `--guide` runs section 20 alone: the first-shift guide, start to finish.
+const ONLY_GUIDE = process.argv.includes('--guide');
 
 /**
  * Click a control inside the chalkboard. The panel is a ~3,000 px scroll
@@ -125,7 +127,7 @@ const p = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
 
 try {
   sections: {
-  if (ONLY_A11Y || ONLY_PACE || ONLY_FOCUS) break sections;
+  if (ONLY_A11Y || ONLY_PACE || ONLY_FOCUS || ONLY_GUIDE) break sections;
   /* ---------- 1. the page boots at all ---------- */
 
   t.section('1. the module script runs');
@@ -1091,7 +1093,7 @@ try {
   // it alone.
 
   a11y: {
-  if (ONLY_PACE || ONLY_FOCUS) break a11y;
+  if (ONLY_PACE || ONLY_FOCUS || ONLY_GUIDE) break a11y;
   t.section('15. without colour, and without motion (#916, #917)');
   const ap = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
   await boot(ap, { wipe: true });
@@ -1286,7 +1288,7 @@ try {
   // save, so `--pace` can run it alone.
 
   pace: {
-  if (ONLY_A11Y || ONLY_FOCUS) break pace;
+  if (ONLY_A11Y || ONLY_FOCUS || ONLY_GUIDE) break pace;
   t.section('16. the pace switch on the Menu Board (#947)');
   const pp = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
   await boot(pp, { wipe: true });
@@ -1432,7 +1434,7 @@ try {
   // fresh build of the same rows after every step.
 
   focus: {
-  if (ONLY_A11Y || ONLY_PACE) break focus;
+  if (ONLY_A11Y || ONLY_PACE || ONLY_GUIDE) break focus;
   t.section('17. the Menu Board keeps the keyboard across a redraw (#968)');
   const fp = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
   await boot(fp, { wipe: true });
@@ -1579,7 +1581,7 @@ try {
   // the Menu Board is (section 17), and held to a fresh build after each step.
 
   queue: {
-  if (ONLY_A11Y || ONLY_PACE) break queue;
+  if (ONLY_A11Y || ONLY_PACE || ONLY_GUIDE) break queue;
   t.section('18. the queue and the stations row keep the keyboard across a redraw');
   const qp = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
   await boot(qp, { wipe: true });
@@ -1762,7 +1764,7 @@ try {
   // are the ones a fresh build gives, which `stationsHtml` carries.
 
   panel: {
-  if (ONLY_A11Y || ONLY_PACE) break panel;
+  if (ONLY_A11Y || ONLY_PACE || ONLY_GUIDE) break panel;
   t.section("19. the open station's buttons keep the keyboard across a redraw");
   const sp = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
   await boot(sp, { wipe: true });
@@ -1906,6 +1908,145 @@ try {
   t.ok(post.n === pre + 1 && f.same, 'Enter on Save Current saves a preset and the panel is a fresh build after it', `${pre} -> ${post.n} presets; keyboard kept ${post.kept}, then on ${post.at}${f.why ? ', ' + f.why : ''}`);
   t.ok(sp.__errs.filter(e => e.startsWith('pageerror')).length === 0, 'no uncaught page error through any of it', sp.__errs.join(' | ') || 'clean');
   await sp.close();
+  }
+
+  // ---- 20. the first-shift guide (#1042) ----
+  // A new game starts it, an old save never does, and it is finished by doing
+  // the things, never by waiting.
+
+  guide: {
+  if (ONLY_A11Y || ONLY_PACE || ONLY_FOCUS) break guide;
+  t.section('20. the first-shift guide (#1042)');
+  const gp = await prepPage(browser, BASE, { width: 1280, height: 1000, dsf: 1 });
+  await boot(gp, { wipe: true });
+  await gp.evaluate(() => { window.confirm = () => true; });
+  const strip = () => gp.evaluate(() => {
+    const el = document.getElementById('guideStrip'), sk = document.getElementById('guideSkip');
+    const a = document.activeElement;
+    return {
+      shown: !el.hidden && getComputedStyle(el).display !== 'none',
+      text: document.getElementById('guideText').textContent,
+      count: document.getElementById('guideCount').textContent,
+      skipTag: sk.tagName, skipText: sk.textContent.trim(),
+      active: a === document.body ? 'body' : (a.id || a.className || a.tagName),
+      seen: window.__CK_DEBUG__.state.guideSeen,
+      anim: getComputedStyle(el).animationName, trans: getComputedStyle(el).transitionDuration,
+      inSky: !!el.closest('#skystrip'),
+      before: !!(el.compareDocumentPosition(document.getElementById('queueRow')) & Node.DOCUMENT_POSITION_FOLLOWING),
+    };
+  });
+  let g = await strip();
+  t.ok(g.shown && g.inSky && g.before, 'a new game shows the strip above the queue', g.text);
+  t.ok(g.count === '1 of 5' && /customer/i.test(g.text), 'on the first cue, which names the customer', g.count);
+  t.ok(g.skipTag === 'BUTTON' && /skip/i.test(g.skipText), 'Skip is a real button', g.skipText);
+  t.ok(g.active === 'body', 'and the page did not take the keyboard to put it there', g.active);
+  // Time alone moves nothing.
+  await wait(2500);
+  g = await strip();
+  t.ok(g.count === '1 of 5', 'two and a half seconds of a running shift do not advance it', g.count);
+
+  // Tab reaches Skip, in order, without help.
+  let reached = false;
+  for (let i = 0; i < 40 && !reached; i++) {
+    await gp.keyboard.press('Tab');
+    reached = await gp.evaluate(() => document.activeElement && document.activeElement.id === 'guideSkip');
+  }
+  t.ok(reached, 'Tab reaches Skip');
+  await gp.evaluate(() => document.activeElement.blur());
+
+  // Do the things.
+  await gp.click('#queueRow .customer');
+  await wait(150);
+  g = await strip();
+  t.ok(g.count === '2 of 5' && /base/i.test(g.text), 'taking a customer to a station is the first cue done', g.text);
+  await gp.evaluate(() => {
+    const d = window.__CK_DEBUG__, slot = d.state.slots.find(Boolean);
+    d.sim.cupAction(slot, slot.food ? 'plateFood' : 'pullShot', slot.food ? slot.customer.foodId : undefined);
+    d.renderAll();
+  });
+  await wait(100);
+  g = await strip();
+  t.ok(/^[34] of 5$/.test(g.count), 'a base or plate made moves it on (a drink that is only a base is already met, so it may be 4)', g.count);
+  await gp.evaluate(() => {
+    const d = window.__CK_DEBUG__, slot = d.state.slots.find(Boolean);
+    for (const r of d.sim.getOrderRequirements(slot.customer).filter(r => !r.check(slot))) r.apply(slot);
+    d.renderAll();
+  });
+  await wait(100);
+  g = await strip();
+  t.ok(g.count === '4 of 5' && /serve/i.test(g.text), 'the ticket met moves it to Serve', g.text);
+  await gp.click('.slot.focused [data-act="serve"]');
+  await wait(200);
+  g = await strip();
+  t.ok(g.count === '5 of 5' && /Menu Board/.test(g.text), 'serving is done by pressing Serve, and the last cue is the Menu Board', g.text);
+  t.ok(g.seen === false && ((await savedState(gp)) || {}).guideSeen !== true, 'it is not marked seen until the end');
+  await gp.click('#chalkToggle');
+  await wait(300);
+  g = await strip();
+  t.ok(!g.shown && g.seen === true, 'opening the Menu Board ends it and marks it seen', `shown ${g.shown}`);
+  t.ok((await savedState(gp)).guideSeen === true, 'and that is written to storage at once');
+  await boot(gp);
+  g = await strip();
+  t.ok(!g.shown, 'a reload does not bring it back');
+
+  // Bring it back from the Menu Board.
+  await gp.click('#chalkToggle');
+  await wait(400);
+  await clickInChalkboard(gp, '#guideBtn');
+  await wait(300);
+  g = await strip();
+  const boardOpen = await gp.$eval('#chalkboard', el => el.classList.contains('open'));
+  t.ok(g.shown && g.count === '1 of 5' && g.seen === false, 'the Menu Board button brings it back at the first cue', g.count);
+  t.ok(!boardOpen, 'and closes the board so the strip can be seen');
+
+  // Skip, from the keyboard.
+  await gp.focus('#guideSkip');
+  await gp.keyboard.press('Enter');
+  await wait(300);
+  g = await strip();
+  t.ok(!g.shown && g.seen === true, 'Enter on Skip ends it', g.active);
+  t.ok(g.active !== 'body', 'and the keyboard goes to a control that is still there, not to the page', g.active);
+  t.ok((await savedState(gp)).guideSeen === true, 'Skip is saved');
+
+  // The flag travels with an export.
+  await hookExport(gp);
+  await gp.click('#chalkToggle');
+  await wait(400);
+  await gp.click('#save-bar [data-gvb="export"]');
+  await waitFor(gp, () => window.__exports && window.__exports.length > 0, { timeout: 5000 });
+  const ex = JSON.parse(await gp.evaluate(() => window.__exports[0]));
+  t.ok(ex.state && ex.state.guideSeen === true, 'an exported file carries guideSeen', String(ex.state && ex.state.guideSeen));
+  const unseen = { ...ex, state: { ...ex.state, guideSeen: false } };
+  const importFile = path.join(OUT, 'ck-guide-unseen.json');
+  fs.writeFileSync(importFile, JSON.stringify(unseen));
+  await setFiles(gp, importFile, () => gp.click('#save-bar [data-gvb="import"]'));
+  await wait(600);
+  g = await strip();
+  t.ok(g.shown && g.count === '1 of 5', 'and an imported file that says unseen starts it', g.count);
+
+  // New Game starts it; an old save does not.
+  await gp.evaluate(() => { window.confirm = () => true; document.getElementById('guideSkip').click(); });
+  await gp.evaluate(() => { const c = document.getElementById('chalkboard'); if (!c.classList.contains('open')) c.classList.add('open'); });
+  await clickInChalkboard(gp, '#newGameBtn');
+  await wait(600);
+  g = await strip();
+  t.ok(g.shown && g.count === '1 of 5' && g.seen === false, 'New Game starts it again', g.count);
+  await gp.evaluate(([k, v]) => localStorage.setItem(k, JSON.stringify(v)), [KEY, {
+    day: 9, money: 900, unlockedRecipes: ['drip', 'latte'], stationCount: 2,
+  }]);
+  await boot(gp);
+  g = await strip();
+  t.ok(!g.shown && g.seen === true, 'a save written before the flag existed loads as seen, with no strip', `day ${await gp.$eval('#dayNum', e => e.textContent)}`);
+
+  // Without motion.
+  await gp.evaluate(() => window.__CK_DEBUG__.guide.restart());
+  await (gp.emulateMediaFeatures
+    ? gp.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
+    : gp.emulateMedia({ reducedMotion: 'reduce' }));
+  g = await strip();
+  t.ok(g.shown && g.anim === 'none' && /^0s(, 0s)*$/.test(g.trans), 'the strip has no animation and no transition, with or without the setting', `${g.anim} / ${g.trans}`);
+  t.ok(gp.__errs.filter(e => e.startsWith('pageerror')).length === 0, 'no uncaught page error through any of it', gp.__errs.join(' | ') || 'clean');
+  await gp.close();
   }
 
 } finally {

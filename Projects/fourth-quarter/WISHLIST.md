@@ -282,7 +282,11 @@ fourth as #909, the dated shelf, and its fifth as #911, season terms, which
 closed item 3). In the order to take it, each a session of its own: the
 sound, then the texture pop.
 
-1. **The sound.** Nothing in `audio/sfx/footsteps/` or `audio/music/`.
+1. **The sound.** Nothing in `audio/music/`. **Footsteps shipped on
+   2026-11-06 (TG-37, #1032)**: two CC0 wood takes by TinyWorlds under
+   `audio/sfx/footsteps/`, played for the walking crowd through `walk.js`'s
+   `Footfalls` (nearest 3, 6 a second, 9 m earshot); nobody has heard them.
+   Not done there: the player's own steps, and any variation by floor.
    **The cheer and the groan's OGG shipped on 2026-11-04 (TG-36)**: a Mules
    win plays `crowd-cheer.ogg` ("Well Done" by qubodup, CC0) after the
    whistle, level with the groan, and the groan is `crowd-groan.ogg`, so
@@ -293,12 +297,12 @@ sound, then the texture pop.
    are a bit all over the place, crowd is loud" of 2026-10-07: a trim per
    sound in `audio.js`, the seven cues within 1.1 dB of each other where they
    were 19.6 apart, the crowd's three sounds each 12 to 13 dB down,
-   `test/smoke-mix.mjs` (111 then; 122 with the cheer) holding it. The README's "The mix" has the
+   `test/smoke-mix.mjs` (111 then; 122 with the cheer, 135 with the footsteps) holding it. The README's "The mix" has the
    table. **It wanted Devon's ears again, and has them (below)**, and what to
    turn if it is wrong is the `TRIM` table and the bands in that suite.
    **Heard: Devon, 2026-10-21 (#1008), FQ-mix: "Done: sounds fine".** The
    levelled mix stands as shipped (crowd 12 to 13 dB down); nothing to turn. A new
-   sound (footsteps, music) needs a trim, a role in the suite and
+   sound (music) needs a trim, a role in the suite and
    `node tools/measure-audio.mjs` run where a decoder is, or CI is red.
    Small and not done: a
    volume slider (there is only the mute, and it is not saved).

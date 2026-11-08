@@ -34,7 +34,8 @@
 //
 // Pure module: no three.js, no DOM. Exercised by test/timetable.test.mjs.
 
-import { rng } from './agents.js';
+import { rng } from './rng.js';
+import { roomNumber } from './shapes.js';
 import { normalizeSchedule } from './schedule.js';
 import { teachingRooms } from './navgraph.js';
 import { roomOccupancy, occupancyIndex } from './occupancy.js';
@@ -561,20 +562,6 @@ export function timetableIssues(tt, pool) {
 // ---------- binding it to the rooms that are actually there ----------
 
 const normName = (s) => String(s ?? '').trim().toLowerCase();
-
-// The trailing number in a room's name. "Room 104" and "104" are the same room
-// to everybody except a string comparison, and a schedule exported from a
-// school office is full of bare room numbers.
-//
-// Exported since Phase 31, because signage.js needs the same answer: the
-// number a placard puts on a door has to be the number a timetable binds by,
-// or the sign on 104 and the schedule for 104 are about different rooms. One
-// function, one regex, one rule — see the conventions on two numbers that mean
-// the same thing.
-export const roomNumber = (s) => {
-  const m = /(\d{1,4}[a-z]?)\s*$/i.exec(String(s ?? '').trim());
-  return m ? m[1].toLowerCase() : null;
-};
 
 // One token from a spreadsheet cell, as a room. **Id first, name second** —
 // which is the whole difference Phase 12 makes here: a binding that went by

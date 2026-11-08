@@ -203,7 +203,7 @@ node Projects/absalom-inheritance/test/balance.mjs 400 --verbose   (a fast spot 
 - ~~**Is the 53.6% / 79.8% split between builds the design, or a tuning
   debt?**~~ **Answered by Devon, 2026-10-05: "it is the design".** The
   Selector recorded the consequence as: the picker should say which build is
-  the easier and which the harder; nothing here has built that. Round three
+  the easier and which the harder; built 2026-11-06 (#1027). Round three
   called the asymmetry deliberate. The two ways it could have gone: a band per
   build in `balance.mjs`, or an easy mode and a hard mode the picker names,
   since a player choosing Kessa Vane cannot tell.

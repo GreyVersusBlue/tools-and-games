@@ -8,7 +8,7 @@
 // is the one that drives the real page.
 import fs from "fs"; import path from "path";
 import { fileURLToPath } from "url";
-import { DB, loadAll, contentErrors, dropBrokenContent } from "../js/data.js";
+import { DB, loadAll, contentErrors, dropBrokenContent, droppedClients, errorFiles } from "../js/data.js";
 import { S, newGame, makeCareer, adoptState, careerSlot, save, loadSave, wipeSave,
          validCareer, repairCareer, rand, SAVE_KEY, SAVE_VERSION, DEFAULT_BROKERAGE,
          getClientRec, contentClient, activeClients, LEVELS,
@@ -1824,6 +1824,55 @@ const unlist = (cat, file) => m => { m[cat] = m[cat].filter(p => p !== cat + "/"
     });
   }
 
+  // --- a seller the loader left out is known by name (#1026): one Ledger line
+  // under it, tagged with the client record, where a file that was never there
+  // keeps #861's two anonymous ones (the loop above).
+  {
+    newGame("bk_hearthstone");
+    const rec = Clients.meetClient("cl_0102");
+    const pl = Seller.takeListing(rec);
+    Seller.goLive(pl, Seller.suggestedPrice(pl), 1);
+    const name = DB.clients.cl_0102.name, recId = rec.recId, logBefore = S.log.length;
+    save(store3);
+    fileGone("neighborhoods", NB, false, () => {
+      droppedClients.clear();
+      dropBrokenContent(DB, undefined, droppedClients);
+      eq(droppedClients.get("cl_0102"), name, "the loader's pass records the seller it dropped, by name");
+      loadSave(store3);
+      droppedClients.clear();
+      const fresh = S.log.slice(0, S.log.length - logBefore);
+      eq(fresh.length, 1, "a dropped seller leaves one Ledger line, not two");
+      eq(`${fresh[0].text.startsWith(name + "'s file was left out of the game")} ${fresh[0].recId === recId} ${fresh[0].cls}`, "true true bad",
+        "under the seller's name, tagged with their record for the per-client filter");
+      eq(`${S.playerListings.length} ${S.clients.length}`, "0 0", "and the agreement ends and the book loses them, as before");
+    });
+    eq(droppedClients.size, 0, "the map is left empty for the next load");
+  }
+
+  // --- a client file deleted and later put back (#1026). Written up in
+  // BACKLOG.md, not fixed: the repair that removes the record has to drop what
+  // the client was to the career (their satisfaction, their history under the
+  // old recId), and a file that returns is a client the career has not met.
+  {
+    const store4 = memStore();
+    newGame("bk_hearthstone");
+    const rec = Clients.meetClient("cl_0102");
+    rec.satisfaction = 91;
+    const oldRecId = rec.recId;
+    save(store4);
+    fileGone("clients", "cl_0102", true, () => {
+      loadSave(store4);
+      eq(S.clients.some(r => r.clientId === "cl_0102"), false, "the client's file gone: they leave the book");
+      eq(S.clientQueue.includes("cl_0102") || S.usedClients.includes("cl_0102"), false, "and the queue and the used list forget them");
+      save(store4);
+    });
+    loadSave(store4);
+    eq(S.clients.some(r => r.clientId === "cl_0102"), false, "put back, they are not on the book");
+    eq(S.clientQueue.at(-1), "cl_0102", "they come in as a client the career has not met, on the end of the queue");
+    const again = Clients.meetClient("cl_0102");
+    eq(`${again.recId !== oldRecId} ${again.satisfaction !== 91}`, "true true", "and meeting them makes a new record: the old one's id and its 91 satisfaction are gone");
+  }
+
   // --- the loader itself, end to end, on a manifest that no longer lists Sal.
   {
     const realFetch = globalThis.fetch, realError = console.error;
@@ -1843,6 +1892,25 @@ const unlist = (cat, file) => m => { m[cat] = m[cat].filter(p => p !== cat + "/"
       eq(printed.join("\n"), contentErrors.map(x => "Closing Time content error: " + x).join("\n"), "and prints each to the console once, under the game's name");
       ok(contentErrors.every(x => /^data\/listings\/ls_\d+\.json: listingAgentId is "ag_sal_dimeo"/.test(x)), "naming the file it fetched", contentErrors[0]);
       eq(SALS.filter(x => x in DB.listings).length + "/" + Object.keys(DB.listings).length, "0/" + (counts.listings - 5), "the five listings are not in what it loaded, and the rest are");
+      // A file the manifest names that the server does not have (#1026): the
+      // page goes on without it, says so once, and what named its id meets
+      // the pass as it would for a file that was never there.
+      printed.length = 0;
+      const gone = `data/agents/${AG}.json`;
+      globalThis.fetch = async url => url === gone ? { ok: false, status: 404, json: async () => { throw new Error("no body"); } } : serve(m => m)(url);
+      emptyDB();
+      let threw = null;
+      try { await loadAll(); } catch (e) { threw = e.message; }
+      eq(threw, null, "a file the manifest names that is not on the server does not stop the page");
+      eq(contentErrors.length, 6, "it is one more content error beside the five listings it takes with it");
+      ok(contentErrors[0].startsWith(gone + ': listed under "agents" in data/manifest.json, but it could not be loaded (Failed to load ' + gone + ')'),
+        "named first, with the file and why", contentErrors[0]);
+      eq(printed.length + " " + (AG in DB.agents), "6 false", "each is printed once, and the agent is not in what loaded");
+      eq(errorFiles().join(" "), [gone, ...SALS.map(x => `data/listings/${x}.json`)].join(" "), "and errorFiles() gives each file once, for the desk's note");
+      threw = null;
+      globalThis.fetch = async url => url === "data/manifest.json" ? { ok: false, status: 404, json: async () => ({}) } : serve(m => m)(url);
+      try { await loadAll(); } catch (e) { threw = e.message; }
+      eq(threw, "Failed to load data/manifest.json", "but the manifest itself is not a file the page can go on without");
       printed.length = 0;
       globalThis.fetch = serve(m => m);
       emptyDB();
@@ -2579,6 +2647,47 @@ console.log("\nthe listing side of the commercial tier:");
       }
     }
     ok(over === 0 && raised > 0, "a highest-and-best call on a building field raises no offer past its ceiling", `${over} over, ${raised} raised`);
+  }
+  // --- Test 20's other half: a call that empties the room on a building costs
+  // what it costs on a house (the house's path, unchanged, #865). Seeded: both
+  // agents walk on about one seed in 170, so the suite looks for the first seed
+  // that does with the engine's own roll, and takes the first that does not as
+  // the control. Counted by the Ledger line's own text, not by S.rep, which
+  // clamps and drifts.
+  {
+    const field = seed => {
+      const { rec, pl } = taken();
+      ready(pl); Seller.goLive(pl, 1000000, 2);
+      exchangeOffer(pl, 960000, { agentId: "ag_priya_natesan" });
+      exchangeOffer(pl, 950000, { agentId: "ag_denny_kessler" });
+      pl.offers.forEach(o => { o.day = S.day - 2; });
+      Esc.callHighestAndBest(pl);
+      S.rep = 50; S.seed = seed; rec.satisfaction = 50;
+      return { rec, pl };
+    };
+    const emptied = () => S.log.filter(e => e.kind === "rep" && e.text.includes("after you called for highest and best")).length;
+    let hit = null, miss = null;
+    for (let seed = 1; seed < 50000 && !(hit && miss); seed++) {
+      const f = field(seed);
+      const r = Esc.resolveHighestAndBest(f.pl);
+      if (r.field.length === 0) { if (!hit) hit = seed; } else if (!miss) miss = seed;
+    }
+    ok(hit !== null && miss !== null, "a building field has a seed that empties the room and one that does not", `hit ${hit}, miss ${miss}`);
+    {
+      const { rec, pl } = field(hit);
+      Esc.resolveHighestAndBest(pl);
+      ok(pl.offers.every(o => o.status === "walked"), "a building's room can empty: both agents walk");
+      eq(`${S.rep} ${emptied()} ${rec.satisfaction}`, "48 1 38",
+        "an emptied room on a building costs the house's 2 reputation once and 12 satisfaction");
+      eq(S.log.filter(e => e.text.startsWith("Highest and best on 330 Courthouse Row: nobody answered.")).length, 1,
+        "with the house's one Ledger line, naming the building");
+      eq(`${pl.hbDeadline} ${pl.status}`, "null live", "and the call is over with the listing still live and nothing on it");
+    }
+    {
+      const { rec, pl } = field(miss);
+      Esc.resolveHighestAndBest(pl);
+      eq(`${emptied()} ${S.rep >= 50}`, "0 true", "the control, a field that does not empty, is not charged for it");
+    }
   }
 
   // --- D. Due diligence.

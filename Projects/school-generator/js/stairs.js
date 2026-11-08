@@ -652,6 +652,26 @@ export function topLandingBox(link, metrics) {
   return { x0: -hw, x1: hw, z0: run, z1: run + topLanding(link) };
 }
 
+// A ramp's outline on the plan, in world feet, for the edit view's finding
+// mark: the boxes it stands on, each as a four-corner ring. A folded ramp is
+// its lanes and its landings (the turn decks and the top deck); a straight one
+// is its run and its top landing. `kind` says which, so a drawing can tell the
+// slope from the level deck. Empty for anything that is not a ramp.
+export function rampOutline(link, metrics) {
+  if (!link || link.type !== 'ramp') return [];
+  const layout = rampLayout(link, metrics);
+  if (layout) {
+    return [
+      ...layout.runs.map((r) => ({ kind: 'run', pts: rectCorners(link, r.box) })),
+      ...layout.landings.map((l) => ({ kind: 'landing', pts: rectCorners(link, l.box) })),
+    ];
+  }
+  const out = [{ kind: 'run', pts: rectCorners(link, footprintBox(link, metrics)) }];
+  const deck = topLandingBox(link, metrics);
+  if (deck) out.push({ kind: 'landing', pts: rectCorners(link, deck) });
+  return out;
+}
+
 // The same box for a straight ramp alone, which is what the `ramp-landing`
 // finding asks about (ADA 405.7, #904); null for a stair.
 export function rampLandingBox(link, metrics) {

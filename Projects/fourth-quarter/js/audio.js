@@ -9,7 +9,6 @@
 // Where each file came from is audio/SOURCES.md.
 //
 // NOT WIRED (no source file yet, left as TODO so gaps don't get lost):
-//   - footsteps (audio/sfx/footsteps/ is empty)
 //   - music (audio/music/ is empty — Phase 1 item, later sprint)
 
 const BASE = "audio/";
@@ -26,6 +25,8 @@ const SFX = {
   crowdGroan:     "sfx/events/crowd-groan.ogg",
   crowdCheer:     "sfx/events/crowd-cheer.ogg",
   stormOut:       "sfx/events/patron-storm-out.ogg",
+  footstepA:      "sfx/footsteps/step-wood-a.ogg",
+  footstepB:      "sfx/footsteps/step-wood-b.ogg",
   stingerKickoff: "sfx/events/stinger-kickoff.ogg",
   stingerFinal:   "sfx/events/stinger-final-whistle.ogg",
 };
@@ -68,6 +69,13 @@ export const TRIM = {
   // level with the groan it stands in for (within 0.1 dB)
   crowdCheer:     0.34,
   stormOut:       0.22,
+  // a boot on the boards, TG-37: never heard. Two takes of one step, played
+  // by playStep() at most a few a second (walk.js Footfalls), and set well
+  // under the crowd since it is the crowd's own feet. The two takes are
+  // 7 dB apart as vendored, so B is turned down to A's level, and A keeps
+  // 1.9 dB of headroom in case Devon wants them louder.
+  footstepA:      0.80,
+  footstepB:      0.36,
   barBed:         0.08,
   // the two QTE loops, level with each other and as they were (0.55)
   sizzle:         0.60,
@@ -106,6 +114,14 @@ export function playSfx(key, vol = 1) {
   const node = oneShotCache[key].cloneNode(true);
   node.volume = gainFor(key, vol);
   node.play().catch(() => {}); // ignore autoplay-policy rejections
+}
+
+let stepFlip = false;
+/** One footfall: the two takes alternate. vol is walk.js Footfalls's number
+ *  (0-1, falling with distance); the mute and the trim are playSfx's. */
+export function playStep(vol = 1) {
+  stepFlip = !stepFlip;
+  playSfx(stepFlip ? "footstepA" : "footstepB", vol);
 }
 
 /**

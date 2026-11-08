@@ -59,6 +59,9 @@ export function pickCharacter(content) {
         `</svg>` +
         `<h3 class="serif">${escapeHtml(pc.name)}</h3>` +
         `<div class="pc-title">${escapeHtml(pc.title)}</div>` +
+        (pc.difficulty
+          ? `<div class="pc-diff" data-diff="${pc.difficulty.word.toLowerCase()}"><b>${escapeHtml(pc.difficulty.word)}:</b> ${escapeHtml(pc.difficulty.line)}</div>`
+          : "") +
         `<div class="pc-blurb">${escapeHtml(pc.blurb)}</div>` +
         `<div class="pc-stats">` +
         `<span>HP <b>${pc.hp}</b></span>` +

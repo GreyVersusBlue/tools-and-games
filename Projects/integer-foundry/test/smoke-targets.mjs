@@ -140,6 +140,14 @@ group('When the cost is the loud number');
   eq(orderReadout(2, withDoubler).text, 'Order 2 takes 1 tile. Cheapest line: +1.', 'one tile is not "1 tiles"');
   eq(orderReadout(48, opening).text, 'Order 48: this floor cannot build it.', 'an unbuildable order says so and names no count');
   eq(orderReadout(1, opening).text, 'Order 1: run a source straight into this sink.', 'and a bare source says that');
+  eq(orderReadout(231, withDoubler, 2).text,
+    'Sink 2: ' + orderReadout(231, withDoubler).text,
+    'a sink position puts "Sink N: " in front and changes nothing else');
+  eq(orderReadout(48, opening, 1).text, 'Sink 1: Order 48: this floor cannot build it.', 'an unbuildable order takes the prefix too');
+  ok(orderReadout(231, withDoubler, 2).cells === 12 && orderReadout(231, withDoubler, 2).loud === true,
+    'the prefix leaves the count and the loud flag alone');
+  ok(!/Sink/.test(orderReadout(231, withDoubler).text) && !/Sink/.test(orderReadout(47, opening).text),
+    'with no sink position given there is no prefix');
   ok(orderReadout(231, withDoubler).loud === true && orderReadout(47, opening).loud === false
     && orderReadout(48, opening).loud === false, 'the readout carries the same loud flag the tile does');
 

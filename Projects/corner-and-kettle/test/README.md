@@ -4,10 +4,10 @@ Four suites and an autopilot. All exit non-zero on any failure (locked
 decision #13).
 
 ```
-node Projects/corner-and-kettle/test/smoke-sim.mjs     638 assertions, no browser, seeded
-node Projects/corner-and-kettle/test/smoke-save.mjs    261 assertions, no browser
-node Projects/corner-and-kettle/test/balance.mjs       100 seeds × 30 days × 3 players, three bands and the two paces, about 3.5 minutes
-node Projects/corner-and-kettle/test/drive-save.mjs    297 checks, real browser
+node Projects/corner-and-kettle/test/smoke-sim.mjs     664 assertions, no browser, seeded
+node Projects/corner-and-kettle/test/smoke-save.mjs    278 assertions, no browser
+node Projects/corner-and-kettle/test/balance.mjs       100 seeds × 30 days × 3 players, three bands and the two paces, about 7 minutes (3.5 before #1031)
+node Projects/corner-and-kettle/test/drive-save.mjs    322 checks, real browser
 ```
 
 `drive-save.mjs --a11y` runs its section 15 alone (31 checks, about six
@@ -31,6 +31,13 @@ three things that panel has and the others do not: a timed button acts on the
 cup in the station when it is clicked and keeps that cup until its bar fills,
 the bar keeps its width across a redraw and empties when it fills, and the
 key map read off the panel is a fresh build's.
+
+`drive-save.mjs --guide` runs its section 20 alone (25 checks): the first-shift
+guide (#1042) done cue by cue with real clicks, Skip by keyboard, back from the
+Menu Board, through a reload, an export and import, New Game and an old save.
+The guide's own logic with a seed, and the whole seeded shift reading the same
+with it on and off, is smoke-sim's section 21; the flag in the save is
+smoke-save's section 13.
 
 `drive-save.mjs --pace` runs its section 16 alone the same way (36 checks):
 the pace switch on the Menu Board (#947), by keyboard mid-shift and by mouse,
@@ -94,6 +101,23 @@ those apart (locked decision #147). A shopper's income is the door, the door is
 the level's spawn floor, and a Legacy unlock is worth a few hundred dollars
 against a $176,000 run.
 
+Two tables print after the pace table and before the verdict line, and the
+text above them is byte-identical to what it was (#1031, TG-46). **The three
+recipes no player bought:** the shopper plays 30 seeds for 30 days with Cold
+Brew, Nitro Cold Brew and Affogato bought by money, in the chain's order, ahead
+of `DEFAULT_PRIORITY` and behind it, and the table gives each one's lines,
+dollars a line, serves and earnings a day, and `edge`, the net it adds over the
+variant before it (payback is its unlock cost over that). **The barista's
+hand-back on a cup the player finished:** 20 seeds, 30 days, patient and eager
+hands, serving at once, after 1.5 s and after 3 s. Neither is banded; the one
+rail on them, `checkProbes()`, is not about balance: it fails the run if a seed
+does not buy and serve all three recipes, or the watcher sees no player-finished
+hand-back at 1.5 s, so a blind probe cannot print a plausible table. Broken on
+purpose, each caught by the line meant for it: the watcher flagging nothing
+(`the watcher is blind`), the variants dropping the recipes from the list (`was
+bought in 0 of 4 runs`, plus `never served`), and the tally reading no recipe id
+(`was never served` alone). The full run is about 7 minutes with them.
+
 ## `autopilot.mjs`
 
 Three scripted players, one pair of hands each, a ticket line every
@@ -114,6 +138,16 @@ plays the permanent layer: `layout(sim, state)` picks the configuration and
 `spend(sim, state)` runs straight after `prestige()`, with the closing run's
 beans on hand. Omit it and the reopening is exactly the one that existed before
 layouts did, which is what keeps the older batches' numbers comparable.
+
+Four helpers were added for the TG-46 sweeps and change nothing about a shop
+they are not wrapped around: `eagerShopper()` (the shopper's chalkboard,
+eager hands), `delayed(policy, ms)` (serves a cup once it has been ready for
+`ms` of shift time; zero is the policy as it was), `watchRecipes(sim)` (serves,
+dollars and ticket lines by recipe, off `scoreServe`) and `watchHandBacks()`
+(which barista toasts came from a cup that was already complete before the
+step, so were handed back, not finished by the barista, and what the player then
+spent on it). They wrap `sim.advance`, `autoAssistStep` and `scoreServe` on the
+returned object, which is what `playDay` calls; `js/sim.js` is untouched.
 
 Two things about the game it had to name: nobody walks (patience only stops
 the tip, and only ticks while a customer is queued, never on a station), so

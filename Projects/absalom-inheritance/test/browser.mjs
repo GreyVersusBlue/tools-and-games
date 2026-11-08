@@ -124,6 +124,11 @@ const names = await page.$$eval("#create-grid .pc-card h3", ns => ns.map(n => n.
 const fighterIdx = PACK.pcOptions.findIndex(p => p.id === "fighter");
 eq("the fighter's card is where the pack puts her", names[fighterIdx], PACK.pcOptions[fighterIdx].name);
 
+// Each card says which build is the easier and which the harder, from the pack.
+const diffs = await page.$$eval("#create-grid .pc-card .pc-diff", ns => ns.map(n => n.textContent));
+eq("every card carries its difficulty word and line", diffs.join("|"),
+  PACK.pcOptions.map(p => `${p.difficulty.word}: ${p.difficulty.line}`).join("|"));
+
 // Four cards, on a phone. `grid-template-columns: repeat(auto-fit,
 // minmax(240px, 1fr))` stacks by arithmetic rather than by a media query, so
 // the thing worth asserting is the arithmetic's answer at the narrowest width

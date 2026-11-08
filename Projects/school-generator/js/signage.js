@@ -33,12 +33,11 @@
 // test/signage.test.mjs.
 
 import { DOOR_H, WALL_H } from './grid.js';
-import { shapesOf, segEnds, openingSpec, shapeAt, isBuilt, OP_DOOR } from './shapes.js';
+import { roomNumber, shapesOf, segEnds, openingSpec, shapeAt, isBuilt, OP_DOOR } from './shapes.js';
 import { wallLinesOf, lineEnds, lineKind, lineOpenings } from './wallrun.js';
 import { wallProbe, WALL_T_EXT } from './walls.js';
 import { buildNav } from './navgraph.js';
 import { classify, isGroup } from './occupancy.js';
-import { roomNumber } from './timetable.js';
 
 // ---------- how big a sign is ----------
 //

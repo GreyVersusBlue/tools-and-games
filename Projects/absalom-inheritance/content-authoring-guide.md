@@ -102,6 +102,7 @@ cards or four.
     "id": "wizard",
     "name": "Vesper Quill", "title": "Human Wizard 1", "note": "Trained proficiency +3",
     "blurb": "A one-paragraph pitch, shown on the character picker.",
+    "difficulty": { "word": "Easier", "line": "A half-line on why, in the voice of the blurbs." },
     "hp": 15, "ac": 15, "acNote": "10 + DEX 2 + Trained unarmored +3",
     "speed": 25, "perception": 5,
     "saves": { "fort": 4, "ref": 5, "will": 6 },
@@ -121,6 +122,15 @@ cards or four.
   }
 ]
 ```
+
+**`difficulty` is optional, and it is checked against the autopilot.** `word` is one of
+`Easier`, `Steady` or `Harder` (`DIFFICULTY_WORDS` in `js/content.js`, easiest first); `line` is a
+short sentence, 100 characters at most, with no percentage in it. The picker shows both on the
+card. A pack with one build, like the proving ground, omits it: there is nothing to rank. A pack
+with several that labels any of them has to keep the words true: `test/smoke.mjs` ranks the
+shipping builds by their win rate in `test/baseline.json` and fails a word that disagrees with its
+rank by more than three points, and two builds within three points must share a word. Add a
+build, run `balance.mjs 2000 --write-baseline`, then label it.
 
 **`palette` is required, and it is three colours because the heir has three faces.**
 The heir on the board is one figure rendered as a mask, red, green and blue for the faces that

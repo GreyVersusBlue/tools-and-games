@@ -23,6 +23,8 @@
 //
 // Everything here is pure: bounds in, pixels out, no canvas, no three.js.
 
+import { rampOutline, stairMetrics } from './stairs.js';
+
 export const MODES = ['fit', 'follow'];
 export const ORIENTS = ['north', 'heading'];
 
@@ -235,12 +237,26 @@ export const MARK_LINE = {
 export const markFill = (level) => MARK_FILL[level] || MARK_FILL.note;
 export const markLine = (level) => MARK_LINE[level] || MARK_LINE.note;
 
+// The outline of each ramp a finding's marks stand at the foot of, found by
+// the link id the mark carries (a doorway's id never names a link). On the
+// storey the ramp starts from, which is where its foot is.
+function rampOutlines(doors, design) {
+  const out = [];
+  for (const d of doors) {
+    const link = (design.links || []).find((l) => l.type === 'ramp' && l.id === d.id && l.from === d.floor);
+    if (link && !out.some((o) => o.id === link.id)) {
+      out.push({ id: link.id, floor: d.floor, parts: rampOutline(link, stairMetrics(design)) });
+    }
+  }
+  return out;
+}
+
 // Every finding that points at somewhere on the plan, in the order the report
 // sorted them — worst first. A finding with nothing to point at (three exits
 // where four are needed; a building with no way out at all) is not a mark: it
 // is about the design rather than about a place in it, and drawing it
 // somewhere would be inventing a location the report never claimed.
-export function findingMarks(report) {
+export function findingMarks(report, design = null) {
   const out = [];
   for (const f of (report && report.findings) || []) {
     const rooms = (f.rooms || [])
@@ -256,6 +272,9 @@ export function findingMarks(report) {
       .filter((c) => c && Number.isFinite(c.x) && Number.isFinite(c.z) && Number.isFinite(c.r))
       .map((c) => ({ id: c.id, floor: c.floor ?? 0, x: c.x, z: c.z, r: c.r, need: c.need ?? c.r }));
     if (!rooms.length && !doors.length && !circles.length) continue;
+    // The edit view also outlines the ramp a mark's foot belongs to (the
+    // design is only handed over there; the map's marks are unchanged).
+    const ramps = design ? rampOutlines(doors, design) : [];
     out.push({
       code: f.code,
       section: f.section || null,
@@ -265,6 +284,7 @@ export function findingMarks(report) {
       rooms,
       doors,
       circles,
+      ramps,
       floors: [...new Set([...rooms, ...doors, ...circles].map((t) => t.floor))].sort((a, b) => a - b),
     });
   }
@@ -286,6 +306,7 @@ export function markOnFloor(mark, floorIndex) {
     rooms: mark.rooms.filter((r) => r.floor === floorIndex),
     doors: mark.doors.filter((d) => d.floor === floorIndex),
     circles: (mark.circles || []).filter((c) => c.floor === floorIndex),
+    ramps: (mark.ramps || []).filter((r) => r.floor === floorIndex),
   };
 }
 
