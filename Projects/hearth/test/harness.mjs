@@ -1544,6 +1544,12 @@ if (mode === 'wider') {
   for (let d = 0; d < 12; d++) { const r = await runDay(page, 25); viol = viol.concat(r.viol); }
 
   // one: the horizon has a seed, and the seed is an involution — the island the link opens has this one on its horizon
+  // Twelve days is too short for the voyage to be waited on, but not too short for it to happen: after TG-48 moved the stream, island 7's
+  // own boat came home with the name inside them (known 1, 2 crossings) before this section looked, and "the island already knows a name"
+  // failed on the island rather than on the code. The section is about the forced cargo, so a voyage that already happened is put back to
+  // the unfetched state and said out loud, and the section runs on the same footing whichever way the stream fell.
+  const natural = await H(() => { const f = window.__hearth.farRec, n = f && f.kn ? f.cr.length : 0; if (n) { f.kn = 0; f.cr.length = 0 } return n });
+  if (natural) console.log(`  NOTE: the island's own boat had already fetched the name in ${natural} crossings; the record is reset so the forced cargo below starts from nothing`);
   const rec = await H(() => {
     const h = window.__hearth, f = h.farRec;
     return { seed: h.seed, s: f && f.s, n: f && f.n, kn: f && f.kn, cr: f ? f.cr.length : -1,
