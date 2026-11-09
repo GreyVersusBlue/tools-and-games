@@ -82,7 +82,6 @@ import {
   BANDS, SCHEMES, schemeEntry, DEFAULT_BRIEF, normalizeBrief, buildProgram, programLines,
   bandEntry,
 } from './program.js';
-import { parseBrief } from './brief.js';
 import { AUTO_ENTRY, AUTO_KEY } from './templateedit.js';
 import {
   ALL_FLOORS, MAX_PIXELS, MAX_BYTES,
@@ -135,6 +134,83 @@ import {
 } from './filestore.js';
 import { demoById, demoSpot, demoEvents, demoBounds, demoCommands } from './demo.js';
 
+// Glyphs — draws the symbols the chrome used to type.
+//
+// A Unicode symbol or emoji that none of the vendored faces contains is
+// painted by whatever font the machine falls back to, and that font's shape
+// and height move every box under it (#1047: the Floors panel sat about 5 px
+// higher on huginn than on CI, so the screenshot suite could never agree).
+// This swaps each such glyph, wherever it lands in the page, for an inline SVG
+// from the sprite in index.html: same stroke, same size rule, currentColor.
+// The strings in the data (sky.js, weather.js, the buttons' own labels) keep
+// their glyphs, so wording, saves and tests are untouched; only what is drawn
+// changes. A glyph not listed here passes through as text.
+// (Lives in main.js, not its own module: a module is one more boot request,
+// and the boot budget in test/tools/run.mjs is exactly met, #1047.)
+
+const GLYPHS = {
+  '✨': 'sparkle', '▦': 'floor', '⚑': 'flag', '🖼': 'image', '🎒': 'backpack',
+  '🏃': 'walk', '♿': 'wheelchair', '🥽': 'vr', '📍': 'pin', '＋': 'plus',
+  '🔔': 'bell', '📢': 'megaphone', '⚖': 'scale', '👥': 'people', '🎲': 'dice',
+  '🗓': 'calendar', '✖': 'x', '✕': 'x', '🚨': 'siren', '🔥': 'flame',
+  '👤': 'person', '🤝': 'handshake', '☁': 'cloud', '▶': 'play', '⏸': 'pause',
+  '⏹': 'stop', '⇧': 'shift', '🌄': 'sunrise', '🌇': 'sunset', '🌆': 'city',
+  '🌙': 'moon', '☀': 'sun', '🌧': 'rain', '❄': 'snow', '👁': 'eye',
+  '🗑': 'trash',
+};
+
+const GLYPH_RE = new RegExp(`(${Object.keys(GLYPHS).join('|')})\\uFE0F?[ \\u00A0]?`, 'gu');
+const SKIP = 'option,textarea,script,style,title,svg,canvas,[data-glyph-text]';
+
+function icon(name) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'icon ic');
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', `#i-${name}`);
+  svg.appendChild(use);
+  return svg;
+}
+
+function swapText(node) {
+  const parent = node.parentElement;
+  if (!parent || parent.closest(SKIP)) return;
+  const text = node.data;
+  GLYPH_RE.lastIndex = 0;
+  if (!GLYPH_RE.test(text)) return;
+  GLYPH_RE.lastIndex = 0;
+  const frag = document.createDocumentFragment();
+  let at = 0;
+  for (let m; (m = GLYPH_RE.exec(text));) {
+    if (m.index > at) frag.appendChild(document.createTextNode(text.slice(at, m.index)));
+    frag.appendChild(icon(GLYPHS[m[1]]));
+    at = m.index + m[0].length;
+  }
+  if (at < text.length) frag.appendChild(document.createTextNode(text.slice(at)));
+  node.replaceWith(frag);
+}
+
+function iconify(root) {
+  if (root.nodeType === Node.TEXT_NODE) { swapText(root); return; }
+  if (root.nodeType !== Node.ELEMENT_NODE || root.closest(SKIP)) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const found = [];
+  for (let n; (n = walker.nextNode());) found.push(n);
+  for (const n of found) swapText(n);
+}
+
+function initGlyphs() {
+  iconify(document.body);
+  new MutationObserver((muts) => {
+    for (const m of muts) {
+      if (m.type === 'characterData') iconify(m.target);
+      else for (const n of m.addedNodes) iconify(n);
+    }
+  }).observe(document.body, { childList: true, characterData: true, subtree: true });
+}
+
+initGlyphs();
+
 // The generator is the single largest module in the tool (109 KB) and is
 // wanted exactly once, when somebody presses Go in the Generate dialog — so
 // it is fetched then rather than on every load. See js/lazy.js.
@@ -142,6 +218,9 @@ const generateModule = lazy(() => import('./generate.js'));
 // The gallery's three schools are 90 KB of share payloads and are wanted on
 // exactly one load in a browser's life — the first one. Same bargain.
 const galleryStock = lazy(() => import('./gallerystock.js'));
+// The brief reader is 18 KB of phrase rules behind one button ("Read" in the
+// Generate dialog), so it is fetched on that press. TG-66.
+const briefModule = lazy(() => import('./brief.js'));
 
 // Phase 42: the boot diet. Three more things the tool used to download before
 // the first frame and now fetches the first time they are wanted. Each loader
@@ -5900,7 +5979,8 @@ for (const id of [...Object.values(GEN_FIELDS), ...Object.values(GEN_FLAGS), 'ge
   $(id).addEventListener('input', genChanged);
 }
 
-$('gen-read').addEventListener('click', () => {
+$('gen-read').addEventListener('click', async () => {
+  const { parseBrief } = await briefModule();
   const r = parseBrief($('gen-brief').value, readGenFields());
   genBrief = r.brief;
   writeGenFields(genBrief);

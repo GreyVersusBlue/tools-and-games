@@ -64,6 +64,11 @@
       font-display: swap;
       src: url('/assets/fonts/ibm-plex-mono-latin-500-normal.woff2') format('woff2');
     }
+    /* α ≈ ■ ▸: libs/sheet-symbols.README.md */
+    @font-face { font-family: 'Public Sans'; font-weight: 400; unicode-range: U+3B1, U+2248, U+25A0, U+25B8; src: url(libs/sheet-symbols.woff2); }
+    @font-face { font-family: 'Public Sans'; font-weight: 700; unicode-range: U+3B1, U+2248, U+25A0, U+25B8; src: url(libs/sheet-symbols.woff2); }
+    @font-face { font-family: 'IBM Plex Mono'; font-weight: 400; unicode-range: U+3B1, U+2248, U+25A0, U+25B8; src: url(libs/sheet-symbols.woff2); }
+    @font-face { font-family: 'IBM Plex Mono'; font-weight: 500; unicode-range: U+3B1, U+2248, U+25A0, U+25B8; src: url(libs/sheet-symbols.woff2); }
 
     :root {
       /* chrome */
@@ -290,6 +295,10 @@
       stroke-linecap: round; stroke-linejoin: round;
     }
     #toolbar .tool svg.icon { margin-bottom: 2px; }
+    /* Sprite icons inside panel buttons and the rail: drawn, not typed, so the
+       machine's fallback font cannot move the layout under them (#1047). */
+    svg.icon.ic { width: 1.1em; height: 1.1em; vertical-align: -0.17em; margin-right: 0.4em; display: inline-block; }
+    button > svg.icon.ic:only-child { margin-right: 0; }
     #topbar button svg.icon, #topbar h1 svg.icon {
       width: 15px; height: 15px; vertical-align: -3px; margin-right: 5px;
       display: inline-block;
@@ -1773,6 +1782,41 @@
     <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c.5-3.5 2.7-5.5 5.5-5.5s5 2 5.5 5.5"/><circle cx="16.8" cy="9" r="2.6"/><path d="M16 14.7c2.6.2 4 2 4.5 5.3"/></symbol>
     <symbol id="i-report" viewBox="0 0 24 24"><rect x="5" y="4.5" width="14" height="17" rx="1.5"/><path d="M9.5 4.5v-1h5v1"/><path d="M8.5 10h7M8.5 13.5h7M8.5 17h4.5"/></symbol>
     <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19z"/><path d="M14.5 6.5l3 3"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="1.5"/><path d="M5 15.5v-9A1.5 1.5 0 0 1 6.5 5h9"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15"/><path d="M9.5 7V4.5h5V7"/><path d="M6.5 7l1 13h9l1-13"/><path d="M10 11v5.5M14 11v5.5"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4.5v4h-4"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M5 20h14"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 20V9"/><path d="m7.5 13.5 4.5-4.5 4.5 4.5"/><path d="M5 4.5h14"/></symbol>
+    <symbol id="i-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M14.7 9.4c-.4-.9-1.5-1.4-2.7-1.4-1.5 0-2.6.8-2.6 2 0 2.6 5.2 1.4 5.2 4 0 1.2-1.1 2-2.7 2-1.3 0-2.4-.5-2.9-1.5"/><path d="M12 6v2M12 16v2"/></symbol>
+    <symbol id="i-rect" viewBox="0 0 24 24"><rect x="3.5" y="7" width="17" height="10" rx="1"/></symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24"><path d="M6 21V4"/><path d="M6 4h11l-2.5 4 2.5 4H6"/></symbol>
+    <symbol id="i-backpack" viewBox="0 0 24 24"><rect x="6" y="8" width="12" height="13" rx="3"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/><path d="M9 15h6"/></symbol>
+    <symbol id="i-wheelchair" viewBox="0 0 24 24"><circle cx="10" cy="4.5" r="1.5"/><path d="M10 8v6h5l3 5"/><path d="M10 11h5"/><path d="M7.5 13a4.5 4.5 0 1 0 6 6"/></symbol>
+    <symbol id="i-vr" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="9" rx="3"/><path d="M9.5 17c.7-2.2 4.3-2.2 5 0"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s6-5.5 6-11a6 6 0 0 0-12 0c0 5.5 6 11 6 11z"/><circle cx="12" cy="10" r="2"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 17v-6a6 6 0 0 1 12 0v6l1.5 2h-15z"/><path d="M10 21h4"/></symbol>
+    <symbol id="i-megaphone" viewBox="0 0 24 24"><path d="M4 10v4h3l8 4V6L7 10z"/><path d="M18 9.5a3.5 3.5 0 0 1 0 5"/></symbol>
+    <symbol id="i-scale" viewBox="0 0 24 24"><path d="M12 4v16"/><path d="M7 20h10"/><path d="M4 8h16"/><path d="M4 8l-2 5.5a2.5 2 0 0 0 4 0z"/><path d="M20 8l-2 5.5a2.5 2 0 0 0 4 0z"/></symbol>
+    <symbol id="i-dice" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r=".6"/><circle cx="15" cy="15" r=".6"/><circle cx="12" cy="12" r=".6"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="1.5"/><path d="M4 10h16M8 3.5v4M16 3.5v4"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-siren" viewBox="0 0 24 24"><path d="M7 19v-6a5 5 0 0 1 10 0v6"/><path d="M5 19h14"/><path d="M12 3v2M4.5 7l1.5 1.5M19.5 7 18 8.5"/></symbol>
+    <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 3c1 4 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-5 1-9z"/></symbol>
+    <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.5-4 3.5-6 7-6s6.5 2 7 6"/></symbol>
+    <symbol id="i-handshake" viewBox="0 0 24 24"><path d="M3 11l4-3.5 4 1.5 4-1.5 4 3.5-6 7a2 2 0 0 1-3 0z"/><path d="M8 13l3 3"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1-.5-8 5.5 5.5 0 0 1 10.6 1.2A3.4 3.4 0 0 1 17 18z"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12"/></symbol>
+    <symbol id="i-shift" viewBox="0 0 24 24"><path d="M12 4 4.5 12H9v7h6v-7h4.5z"/></symbol>
+    <symbol id="i-sunrise" viewBox="0 0 24 24"><path d="M3 18h18"/><path d="M7 18a5 5 0 0 1 10 0"/><path d="M12 6.5v3M5 11.5l1.5 1.5M19 11.5 17.5 13"/><path d="M10 4.5l2-2 2 2"/></symbol>
+    <symbol id="i-sunset" viewBox="0 0 24 24"><path d="M3 18h18"/><path d="M7 18a5 5 0 0 1 10 0"/><path d="M12 6.5v3M5 11.5l1.5 1.5M19 11.5 17.5 13"/><path d="M10 2.5l2 2 2-2"/></symbol>
+    <symbol id="i-city" viewBox="0 0 24 24"><path d="M3 20h18"/><path d="M5 20v-7h4v7"/><path d="M11 20V8h4v12"/><path d="M17 20v-5h3v5"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+    <symbol id="i-rain" viewBox="0 0 24 24"><path d="M7 14a4 4 0 0 1-.5-8 5.5 5.5 0 0 1 10.6 1.2A3.4 3.4 0 0 1 17 14z"/><path d="M8 17l-1 3M12 17l-1 3M16 17l-1 3"/></symbol>
+    <symbol id="i-snow" viewBox="0 0 24 24"><path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.5"/></symbol>
     <symbol id="i-walk" viewBox="0 0 24 24"><circle cx="13.2" cy="4.3" r="1.8"/><path d="M12.8 7.2 10.8 11.8l2.5 2.8.8 6"/><path d="M10.8 11.8 7.8 20.5"/><path d="M11.5 9.4 15 11.8l2.8.7"/><path d="M10.8 11.8 7.2 10.6 5.5 12.9"/></symbol>
   </defs></svg>
 
@@ -1924,9 +1968,9 @@
       <button id="anno-dim" type="button" aria-pressed="true"
               title="Two anchors, then where the line stands — the number is measured, never typed">⇤⇥ Dimension</button>
       <button id="anno-chain" type="button" aria-pressed="false"
-              title="Click a wall — its openings and piers come out dimensioned end to end">⧉ Chain</button>
+              title="Click a wall — its openings and piers come out dimensioned end to end"><svg class="icon ic" aria-hidden="true"><use href="#i-copy"/></svg>Chain</button>
       <button id="anno-note" type="button" aria-pressed="false"
-              title="A point, a leader, a sentence">✎ Note</button>
+              title="A point, a leader, a sentence"><svg class="icon ic" aria-hidden="true"><use href="#i-pencil"/></svg>Note</button>
     </div>
     <label style="margin-top:12px" for="anno-text">Note text</label>
     <input id="anno-text" type="text" value="Note" maxlength="240"
@@ -1953,9 +1997,9 @@
     <label>Drawing</label>
     <div class="seg-toggle">
       <button id="floor-rect" type="button" aria-pressed="true"
-              title="Drag out a whole rectangle of floor (R)">▭ Rectangle</button>
+              title="Drag out a whole rectangle of floor (R)"><svg class="icon ic" aria-hidden="true"><use href="#i-rect"/></svg>Rectangle</button>
       <button id="floor-brush" type="button" aria-pressed="false"
-              title="Paint one grid tile at a time (R)">✎ Brush</button>
+              title="Paint one grid tile at a time (R)"><svg class="icon ic" aria-hidden="true"><use href="#i-pencil"/></svg>Brush</button>
     </div>
     <details class="keys"><summary>Keys &amp; tips</summary><div>
       <kbd>R</kbd> rectangle / brush<br />
@@ -2038,7 +2082,7 @@
       <div class="flip">
         <button id="stair-rot-ccw" type="button" title="Turn 15° counter-clockwise (⇧R)">⟲</button>
         <button id="stair-rot-cw" type="button" title="Turn 15° clockwise (R)">⟳</button>
-        <button id="stair-delete" type="button" class="danger" title="Remove it (Del)">🗑 Delete</button>
+        <button id="stair-delete" type="button" class="danger" title="Remove it (Del)"><svg class="icon ic" aria-hidden="true"><use href="#i-trash"/></svg>Delete</button>
       </div>
       <div class="nudge">
         <button id="stair-nudge-up" type="button" title="Move it 4 ft north">↑</button>
@@ -2096,7 +2140,7 @@
     <div id="overlay-buttons">
       <button id="overlay-load" type="button" title="Load a PNG, JPEG or WebP to trace over">📂 Image…</button>
       <button id="overlay-fit" type="button" title="Grow the plan until the whole image is drawable">⤢ Fit plan</button>
-      <button id="overlay-clear" type="button" title="Remove the tracing image">🗑 Clear</button>
+      <button id="overlay-clear" type="button" title="Remove the tracing image"><svg class="icon ic" aria-hidden="true"><use href="#i-trash"/></svg>Clear</button>
     </div>
     <input id="overlay-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/avif,image/bmp" class="hidden" />
 
@@ -2173,9 +2217,9 @@
     <h2>Floors</h2>
     <div id="floor-list"></div>
     <div id="floor-actions">
-      <button id="floor-add" title="Add an empty floor above this one" aria-label="Add floor">＋</button>
-      <button id="floor-dup" title="Copy this floor to a new level above" aria-label="Duplicate floor">⧉</button>
-      <button id="floor-del" title="Delete this floor" aria-label="Delete floor">🗑</button>
+      <button id="floor-add" title="Add an empty floor above this one" aria-label="Add floor"><svg class="icon ic" aria-hidden="true"><use href="#i-plus"/></svg></button>
+      <button id="floor-dup" title="Copy this floor to a new level above" aria-label="Duplicate floor"><svg class="icon ic" aria-hidden="true"><use href="#i-copy"/></svg></button>
+      <button id="floor-del" title="Delete this floor" aria-label="Delete floor"><svg class="icon ic" aria-hidden="true"><use href="#i-trash"/></svg></button>
     </div>
     <div id="sheet-group" role="group" aria-label="Plan size">
       <div id="sheet-row">
@@ -2246,9 +2290,9 @@
     </p>
 
     <div id="report-acts">
-      <button id="report-refresh" title="Re-read the model">↻ Refresh</button>
-      <button id="report-csv" title="Download every number as a spreadsheet">⬇ CSV</button>
-      <button id="cost-open" title="The rate table this design is priced against, and the phasing plan">💲 Costs</button>
+      <button id="report-refresh" title="Re-read the model"><svg class="icon ic" aria-hidden="true"><use href="#i-refresh"/></svg>Refresh</button>
+      <button id="report-csv" title="Download every number as a spreadsheet"><svg class="icon ic" aria-hidden="true"><use href="#i-download"/></svg>CSV</button>
+      <button id="cost-open" title="The rate table this design is priced against, and the phasing plan"><svg class="icon ic" aria-hidden="true"><use href="#i-coin"/></svg>Costs</button>
     </div>
 
     <div id="report-findings"></div>
@@ -2331,8 +2375,8 @@
     </div>
     <div class="life-acts">
       <button id="life-tt-import"
-        title="Read a timetable out of a spreadsheet — the CSV the schedule tools export">⬆ CSV</button>
-      <button id="life-tt-csv" title="Write this timetable out as a spreadsheet">⬇ CSV</button>
+        title="Read a timetable out of a spreadsheet — the CSV the schedule tools export"><svg class="icon ic" aria-hidden="true"><use href="#i-upload"/></svg>CSV</button>
+      <button id="life-tt-csv" title="Write this timetable out as a spreadsheet"><svg class="icon ic" aria-hidden="true"><use href="#i-download"/></svg>CSV</button>
     </div>
     <input id="life-tt-file" type="file" accept=".csv,text/csv" hidden />
     <div class="life-acts">
@@ -2444,11 +2488,11 @@
     <select id="tour-pick" aria-label="Which tour"></select>
     <input id="tour-name" type="text" maxlength="40" placeholder="Name this tour…" aria-label="Tour name" />
     <div id="tour-acts">
-      <button id="tour-new" type="button" title="Start a new, empty tour">＋ New</button>
+      <button id="tour-new" type="button" title="Start a new, empty tour"><svg class="icon ic" aria-hidden="true"><use href="#i-plus"/></svg>New</button>
       <button id="tour-mark" type="button" class="primary" title="Record where you are standing as the next stop (R)">📍 Add stop</button>
       <button id="tour-play" type="button" title="Play the tour from the top (Enter)">▶ Play</button>
       <button id="tour-record" type="button" title="Play it and record a video file">⏺ Record</button>
-      <button id="tour-delete" type="button" title="Delete this tour">🗑</button>
+      <button id="tour-delete" type="button" title="Delete this tour" aria-label="Delete tour"><svg class="icon ic" aria-hidden="true"><use href="#i-trash"/></svg></button>
     </div>
     <label class="opt"><input type="checkbox" id="tour-loop" /> Loop back to the first stop</label>
     <label class="opt"><input type="checkbox" id="tour-clock" />
@@ -2814,9 +2858,9 @@
       </p>
       <div class="row">
         <button id="export-close">Close</button>
-        <button id="export-glb" title="Download the whole building as a glTF binary">⬇ 3D model</button>
+        <button id="export-glb" title="Download the whole building as a glTF binary"><svg class="icon ic" aria-hidden="true"><use href="#i-download"/></svg>3D model</button>
         <button id="export-print">🖨 Print / Save as PDF</button>
-        <button id="export-png" class="primary">⬇ Download PNG</button>
+        <button id="export-png" class="primary"><svg class="icon ic" aria-hidden="true"><use href="#i-download"/></svg>Download PNG</button>
       </div>
     </div>
   </div>
@@ -2854,7 +2898,7 @@
       <div class="acts">
         <button id="cost-example" title="Fill the table with order-of-magnitude figures you can overwrite">Load worked example</button>
         <button id="cost-clear" title="Empty the table — nothing is priced">Clear</button>
-        <button id="cost-import" title="Read rates back out of a spreadsheet">⬆ Import CSV</button>
+        <button id="cost-import" title="Read rates back out of a spreadsheet"><svg class="icon ic" aria-hidden="true"><use href="#i-upload"/></svg>Import CSV</button>
         <button id="cost-export" title="Write the rate table out as a spreadsheet">⬇ Export CSV</button>
         <input id="cost-file" type="file" accept=".csv,text/csv" hidden />
       </div>
@@ -2883,7 +2927,7 @@
 
       <div class="row">
         <button id="cost-close">Close</button>
-        <button id="cost-csv" class="primary" title="Cost, specification and phasing as one spreadsheet">⬇ CSV</button>
+        <button id="cost-csv" class="primary" title="Cost, specification and phasing as one spreadsheet"><svg class="icon ic" aria-hidden="true"><use href="#i-download"/></svg>CSV</button>
       </div>
     </div>
   </div>
