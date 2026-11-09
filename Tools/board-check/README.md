@@ -275,6 +275,7 @@ node ci-touched.mjs --base <ref> [--head <ref>]
 node ci-touched.mjs --files a,b      # pretend these files changed
 node ci-touched.mjs --only aphelion --skip hearth    # filter on "file / job [entry]"; both repeat
 node ci-touched.mjs --dirty          # also count uncommitted and untracked files
+node ci-touched.mjs --scheduled      # also run the schedule-only jobs the change touches
 node ci-touched.mjs --verbose        # stream each command's output
 node ci-touched.test.mjs             # the guard on all of this; Node only
 ```
@@ -301,7 +302,13 @@ Which jobs a change touches:
   minutes.
 - A changed workflow file selects that workflow. A changed `suite.yml` selects
   every job that calls it. Schedule-only jobs (Hearth's `deep` matrix) print
-  one `SKIP` line.
+  one `SKIP` line and, under it, the command that runs them now. A PR never
+  runs them and the nightly does, so a change that moves what a deep mode
+  measures is red on `main` the next morning (TG-48 changed `js/life.js`; the
+  nightly `decade` failed 2026-11-08). `--scheduled` runs them for the touched
+  paths; Hearth's whole matrix is about an hour, so pair it with `--only`
+  (`--scheduled --only "hearth-ci.yml / deep [decade]"`) when one mode is the
+  question.
 - A job runs after the jobs it `needs`; if one did not pass it prints `SKIP`.
   Every command of a job runs even after one fails, as `suite.yml` does.
 

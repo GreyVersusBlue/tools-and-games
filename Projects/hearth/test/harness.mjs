@@ -1111,6 +1111,10 @@ if (mode === 'decade') {
   const seeds = arg('seeds', '7,20260819').split(',').filter(Boolean).map(Number);
   const auditEvery = parseInt(arg('audit', '100'));
   console.log(`decade: ${years} game-years (${days} days) x seeds [${seeds.join(', ')}], audit every ${auditEvery} steps\n`);
+  // A song is lost when every singer who knew it is dead, and how many songs an island ever makes is a stream accident: seed 7 makes
+  // 13 and loses 5, seed 20260819 made 2 and loses none (once TG-48 shifted the stream; both carried by six and nine singers at the
+  // end, so there was nothing to lose). So the loss is asserted across the seeds the mode runs, not on each one.
+  const lostBySeed = [];
   for (const seed of seeds) {
     const warns = [];
     const { ctx, page } = await openIsland(browser, seed, warns);
@@ -1151,7 +1155,7 @@ if (mode === 'decade') {
     const missing = [];
     if (!s.bounds) missing.push('the bounds were never walked');
     if (!s.heir) missing.push('nothing was ever handed down');
-    if (!s.lost) missing.push('no song was ever lost');
+    lostBySeed.push(s.lost);
     if (!s.told && tellOdds < 0.05) missing.push(`no child was ever told about somebody under a stone, across ${tellDays} days that could have`);
     if (!s.told && tellOdds >= 0.05) console.log(`  NOTE: no child was told of the dead, and the island only gave it ${tellDays} days to happen on` +
       ` (zero is a ${(tellOdds * 100).toFixed(0)}% outcome at that many) — not counted against the run, but the teller pool is thin`);
@@ -1165,6 +1169,8 @@ if (mode === 'decade') {
     console.log(`  ~${audits} full-cast audits, ${viol.length} violations`);
     await ctx.close();
   }
+
+  if (!lostBySeed.some(n => n > 0)) { failed = true; console.log(`FAIL: no song was ever lost on any of the seeds [${seeds.join(', ')}]`); }
 
   // ---- and the generational speed is the same island ----
   // Two fresh copies of one seed driven through real frames — the same step() calls at the same dt in both, one frame at a time and

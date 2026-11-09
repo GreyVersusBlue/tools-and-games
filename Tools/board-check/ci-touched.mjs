@@ -30,7 +30,8 @@
 //     `board-check` job, which has no folder, is always selected.
 //   - A change to a workflow file selects that workflow; a change to suite.yml
 //     selects every job that calls it.
-//   - Jobs only for schedule or workflow_dispatch are skipped and say so.
+//   - Jobs only for schedule or workflow_dispatch are skipped and say so, with the
+//     command that runs them; `--scheduled` runs them for the touched paths.
 //
 // What it will not do, and says it did not: `npm ci`, `npm install` and
 // `playwright install` steps (this machine has its dependencies and its
@@ -160,7 +161,11 @@ export function unitsOf(file, wf) {
       };
       if (job.if) {
         const cond = String(job.if);
-        if (!/pull_request|'push'/.test(cond)) unit.skipReason = `if: ${cond.slice(0, 60)}`;
+        if (!/pull_request|'push'/.test(cond)) {
+          unit.skipReason = `if: ${cond.slice(0, 60)}`;
+          // Only a job whose condition names schedule or workflow_dispatch can be turned on by --scheduled.
+          unit.scheduleOnly = /schedule|workflow_dispatch/.test(cond);
+        }
       }
       if (job.uses) {
         const w = job.with || {};
@@ -291,6 +296,7 @@ function parseArgs(argv) {
     else if (k === '--skip') a.skip.push(val());
     else if (k === '--root') a.root = resolve(val());
     else if (k === '--list') a.list = true;
+    else if (k === '--scheduled') a.scheduled = true;
     else if (k === '--dirty') a.dirty = true;
     else if (k === '--verbose') a.verbose = true;
     else if (k === '--help' || k === '-h') a.help = true;
@@ -339,6 +345,8 @@ function main() {
   const label = (u) => u.label.toLowerCase();
   const selected = [];
   for (const u of all) {
+    // --scheduled runs the jobs CI starts only on schedule or workflow_dispatch (Hearth's deep matrix) as if they were on the PR.
+    if (a.scheduled && u.scheduleOnly) u.skipReason = '';
     const why = whySelected(u, changed);
     if (!why) continue;
     if (a.only.length && !a.only.some(s => label(u).includes(s.toLowerCase()))) continue;
@@ -350,13 +358,15 @@ function main() {
   const skippedJobs = new Map();
   for (const sel of selected.filter(x => x.u.skipReason)) {
     const k = `${sel.u.file} / ${sel.u.jobId}`;
-    skippedJobs.set(k, { reason: sel.u.skipReason, n: (skippedJobs.has(k) ? skippedJobs.get(k).n : 0) + 1 });
+    skippedJobs.set(k, { reason: sel.u.skipReason, scheduleOnly: !!sel.u.scheduleOnly, n: (skippedJobs.has(k) ? skippedJobs.get(k).n : 0) + 1 });
   }
   selected.splice(0, selected.length, ...selected.filter(x => !x.u.skipReason));
 
   console.log(`ci-touched: ${changed.length} changed file(s)${a.files ? '' : ` in ${a.base}...${a.head}${a.dirty ? ' + uncommitted' : ''}`}; ${selected.length} of ${all.length} CI jobs selected${skippedJobs.size ? `, ${skippedJobs.size} more skipped` : ''}`);
   const reportSkipped = () => {
     for (const [k, v] of skippedJobs) console.log(`SKIP   ${k}${v.n > 1 ? ` (${v.n} matrix entries)` : ''}  ${v.reason}`);
+    // A schedule-only job skipped here still runs at 3am on main: say how to run it now, since nothing on a PR does (TG-48, TG-67).
+    for (const [k, v] of skippedJobs) if (v.scheduleOnly) console.log(`       to run it now: node Tools/board-check/ci-touched.mjs --scheduled --only "${k}"${a.base !== 'origin/main' ? ` --base ${a.base}` : ''}${a.files ? ` --files ${a.files.join(',')}` : ''}`);
   };
   if (!selected.length) { reportSkipped(); console.log('ci-touched: no workflow job covers these files; nothing to run'); return; }
 

@@ -94,6 +94,13 @@ try {
   check('no ${{ }} is left unexpanded in a command, dir or install', unresolved.length === 0, unresolved.join(', '));
   const hd = units.find(u => u.file === 'hearth-ci.yml' && u.jobId === 'deep');
   check('hearth deep (schedule only) is a skipped job', hd && hd.skipReason !== '');
+  check('hearth deep is marked schedule-only, so --scheduled can turn it on', hd && hd.scheduleOnly === true);
+  {
+    const ct = args => spawnSync(process.execPath, [join(HERE, 'ci-touched.mjs'), '--list', '--files', 'Projects/hearth/js/life.js', ...args], { encoding: 'utf8' });
+    const off = ct([]), on = ct(['--scheduled', '--only', 'hearth-ci.yml / deep [decade]']);
+    check('a skipped schedule-only job prints the command that runs it', /^SKIP +hearth-ci\.yml \/ deep/m.test(off.stdout) && /to run it now: node Tools\/board-check\/ci-touched\.mjs --scheduled --only "hearth-ci\.yml \/ deep"/.test(off.stdout), off.stdout);
+    check('--scheduled lists the deep entry and no longer skips it', /^hearth-ci\.yml \/ deep \[decade\]/m.test(on.stdout) && /harness\.mjs decade/.test(on.stdout) && !/^SKIP .*deep/m.test(on.stdout), on.stdout);
+  }
   const hg = units.find(u => u.file === 'hearth-ci.yml' && u.jobId === 'gate');
   check('hearth gate skips npm ci and playwright install but keeps the harness runs', hg && hg.skippedSteps.some(s => /npm ci/.test(s)) && hg.skippedSteps.some(s => /playwright install/.test(s)) && hg.commands.some(c => /harness\.mjs determinism/.test(c.cmd)) && hg.dir === 'Projects/hearth/test');
 }
