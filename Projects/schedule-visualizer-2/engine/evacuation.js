@@ -26,10 +26,16 @@
 //   routingGraph's; options are { cache, geometryVersion, avoidExits,
 //   avoidConnections, avoidStairs } and pass through to routeToExit, the
 //   caller's avoidConnections merged with the elevators, never replaced.
+//   options also takes shutCells, a list of { floorId, cell } not to be walked
+//   on (a blocked corridor); `asked.shutCells` holds them when there are any.
 //   Every search is `undirected`: a stairs connection set to one way is used
 //   both ways here, since the rule is for passing time, not an emergency
 //   (ARCHITECTURE 18.4). Where a building has a one-way stair these searches
 //   share no distance field with the movement view's.
+//
+// reachableExits(project, graph, roomId, options?) → [exitId]
+//   the exits a room can reach under evacuationRoutes' options, in building
+//   order (a blocked-trial question: pass the options without avoidExits).
 //
 // byExit(project, evacuation)
 //   → [{ exitId, floorId, doorName, assembly, roomIds, rooms, people, uncounted }]
@@ -66,7 +72,9 @@
 //   roomIds is "not used").
 //   Elevators are never used: every car is shut, as evacuationRoutes shuts
 //   them, and the exits with a step are avoided. options are { cache,
-//   geometryVersion, avoidExits }, as for evacuationRoutes.
+//   geometryVersion, avoidExits, shutCells }, as for evacuationRoutes: the
+//   exits and cells are shut in the plan that judges "only by elevator" too.
+//   avoidConnections is not read (a step-free way uses no stairs anyway).
 //
 // noRoute(project, evacuation)
 //   → [{ roomId, floorId, reason, sentence, onlyByElevator }]
@@ -160,21 +168,37 @@ function idList(value) {
   return Array.from(value).filter((item) => typeof item === 'string').sort();
 }
 
-export function evacuationRoutes(project, graph, options) {
-  const opts = options || {};
-  const routing = routingGraph(project, graph);
+// The options every evacuation search is given, and what the caller asked.
+// `plain` leaves the elevators to the caller; `guarded` shuts them too.
+function searchOptions(project, opts) {
   const avoided = elevatorConnections(project);
   const callerConnections = idList(opts.avoidConnections);
+  const shutCells = shutCellList(opts.shutCells);
   const asked = { avoidConnections: callerConnections, avoidStairs: opts.avoidStairs === true, avoidExits: idList(opts.avoidExits) };
+  if (shutCells.length > 0) asked.shutCells = shutCells;
   // every stair is used in an emergency: a one-way rule is for passing time
   // (ARCHITECTURE 18.4), so the search ignores direction
   const plain = { cache: opts.cache, geometryVersion: opts.geometryVersion, avoidExits: opts.avoidExits, avoidStairs: asked.avoidStairs, undirected: true };
   if (callerConnections.length > 0) plain.avoidConnections = callerConnections;
+  if (shutCells.length > 0) plain.shutCells = shutCells;
   // the elevators added to what the caller avoids; left as the caller's when
   // there is no elevator, so the search is the plain one and a cache's
   // distance fields are the ones the movement view fills
   const onlyElevators = avoided.filter((id) => !callerConnections.includes(id));
   const guarded = onlyElevators.length > 0 ? { ...plain, avoidConnections: [...callerConnections, ...onlyElevators] } : plain;
+  return { avoided, asked, plain, guarded, onlyElevators };
+}
+
+// A list of { floorId, cell } as routing.js reads one: only what is well formed.
+function shutCellList(value) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((place) => place && typeof place.floorId === 'string' && Number.isInteger(place.cell));
+}
+
+export function evacuationRoutes(project, graph, options) {
+  const opts = options || {};
+  const routing = routingGraph(project, graph);
+  const { avoided, asked, plain, guarded, onlyElevators } = searchOptions(project, opts);
   const rooms = roomsInOrder(project).map(({ room, floor }) => {
     const route = routeToExit(routing, room.id, guarded);
     const onlyByElevator = !route.ok && route.reason === 'unreachable' && onlyElevators.length > 0 && routeToExit(routing, room.id, plain).ok === true;
@@ -183,12 +207,27 @@ export function evacuationRoutes(project, graph, options) {
   return { rooms, avoided, asked };
 }
 
+// The exits a room can reach under the same options evacuationRoutes takes,
+// every exit of the building in building order (one search per exit that the
+// cache answers from the room's field). Pass the options without `avoidExits`
+// to learn which exits a room could reach if no exit were blocked.
+export function reachableExits(project, graph, roomId, options) {
+  const routing = routingGraph(project, graph);
+  const { guarded } = searchOptions(project, options || {});
+  const all = [];
+  for (const floor of project.building.floors) for (const exit of floor.exits || []) all.push(exit.id);
+  return all.filter((id) => routeToExit(routing, roomId, { ...guarded, avoidExits: all.filter((other) => other !== id) }).ok === true);
+}
+
 // The first step-free exits and refuges, and the rooms' ways to them.
 export function stepFreeWaysOut(project, graph, options) {
   const opts = options || {};
   const routing = routingGraph(project, graph);
   const avoided = elevatorConnections(project);
   const base = { cache: opts.cache, geometryVersion: opts.geometryVersion, avoidStairs: true, undirected: true };
+  // a caller's blocked cells (a closed corridor) shut both plans
+  const shutCells = shutCellList(opts.shutCells);
+  if (shutCells.length > 0) base.shutCells = shutCells;
   // elevators are shut (a car is shut by any connection of it); routeToExit leaves out the exits with
   // a step itself under avoidStairs, and says 'step-exits' when they were all that was left
   const shut = { ...base, avoidExits: idList(opts.avoidExits) };
