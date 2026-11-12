@@ -24,8 +24,9 @@ import * as stepFreeReport from './step-free.js'; // SV2-104
 import * as routeSheet from './route-sheet.js'; // SV2-103
 import * as lockdownMap from './lockdown-map.js'; // SV2-110
 import * as evacuationPoster from './evacuation-poster.js'; // SV2-110
+import * as mapPack from './map-pack.js'; // SV2-111
 
-export const OUTPUTS = [floorPlan, roomList, checksReport, ...BATCHES, movementPicture, congestionReport, doorCards, ...GRIDS, travelTime, calendarPrint, stepFreeReport, routeSheet, lockdownMap, evacuationPoster];
+export const OUTPUTS = [floorPlan, roomList, checksReport, ...BATCHES, movementPicture, congestionReport, doorCards, ...GRIDS, travelTime, calendarPrint, stepFreeReport, routeSheet, lockdownMap, evacuationPoster, mapPack];
 
 export function outputFor(id) {
   return OUTPUTS.find((output) => output.id === id) || null;
