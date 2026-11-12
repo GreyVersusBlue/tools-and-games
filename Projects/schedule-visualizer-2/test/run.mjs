@@ -95,6 +95,8 @@ export const GROUPS = {
     'engine/prints-door-cards.test.mjs', // SV2-66
     'engine/prints-step-free.test.mjs', // SV2-104
     'engine/prints-route-sheet.test.mjs', // SV2-103
+    'engine/prints-lockdown-map.test.mjs', // SV2-110
+    'engine/prints-evacuation-poster.test.mjs', // SV2-110
     'engine/prints-calendar.test.mjs', // SV2-80
     'engine/suggest.test.mjs', // SV2-63
     'engine/prints-congestion-scenario.test.mjs', // SV2-71

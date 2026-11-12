@@ -170,7 +170,8 @@ test('every output is a whole document: header with school, what it is and the d
       assert.equal(countOf(html, '@page'), 1, at + ': one page rule and no other');
       assert.ok(html.includes('<link rel="stylesheet" href="ui/tokens.css">') && html.includes('<link rel="stylesheet" href="ui/print.css">'), at + ': the two stylesheets');
       assert.ok(countOf(html, '<p class="doc-head__school">' + esc(SAMPLE_SCHOOL_NAME) + '</p>') >= 1, at + ': the school');
-      assert.ok(html.includes('<h1 class="doc-head__what">' + output.name), at + ': what this is');
+      // the poster's sheets are headed "Evacuation routes · Floor 1" (DESIGN 14.6), its name in a list is "Evacuation poster"
+      assert.ok(html.includes('<h1 class="doc-head__what">' + (output.id === 'evacuation-poster' ? 'Evacuation routes' : output.name)), at + ': what this is');
       assert.ok(html.includes('<p class="doc-head__date">1 September 2026</p>'), at + ': the date');
       // a batch has no closing line: its last sheet is the paper's height, and the line was a sheet more (SV2-49 item 3)
       const batch = ['teacher-schedules', 'door-signs', 'door-signs-day', 'room-schedules', 'whole-school'].includes(output.id);
@@ -206,13 +207,13 @@ test('the stylesheets are found where the caller says they are', () => {
 });
 
 test('the outputs are listed once each, and every print button names one of them', () => {
-  assert.deepEqual(OUTPUTS.map((output) => output.id), ['floor-plan', 'room-list', 'checks', 'teacher-schedules', 'door-signs', 'door-signs-day', 'room-schedules', 'whole-school', 'movement', 'congestion', 'door-cards', 'groups', 'teachers', 'teacher-grid', 'room-grid', 'travel-time', 'calendar', 'step-free', 'route-sheet']);
+  assert.deepEqual(OUTPUTS.map((output) => output.id), ['floor-plan', 'room-list', 'checks', 'teacher-schedules', 'door-signs', 'door-signs-day', 'room-schedules', 'whole-school', 'movement', 'congestion', 'door-cards', 'groups', 'teachers', 'teacher-grid', 'room-grid', 'travel-time', 'calendar', 'step-free', 'route-sheet', 'lockdown-map', 'evacuation-poster']);
   for (const output of OUTPUTS) {
     assert.equal(typeof output.render, 'function');
     assert.equal(outputFor(output.id), output);
   }
-  assert.equal(outputFor('lockdown-map'), null);
-  assert.equal(renderOutput('lockdown-map', school(), null, {}), null);
+  assert.equal(outputFor('map-pack'), null);
+  assert.equal(renderOutput('map-pack', school(), null, {}), null);
   assert.deepEqual(printButtons.map((button) => button.output).sort(), ['checks', 'door-cards', 'floor-plan', 'groups', 'groups', 'room-grid', 'room-grid', 'room-list', 'teacher-grid', 'teacher-grid', 'teachers', 'teachers', 'travel-time']);
   assert.equal(new Set(printButtons.map((button) => button.id)).size, printButtons.length);
   for (const button of printButtons) {
@@ -263,6 +264,9 @@ test('hostile names come through every output as text, never as markup', () => {
     'step-free': ['school'],
     // the route sheet's own line: the floors its maps name, the elevator's letter (a car, drawn and staff only), and (read below with a teacher's sheet) a teacher
     'route-sheet': ['school', 'floor', 'room', 'group', 'day type', 'elevator'],
+    // places only: no teacher, group or subject; the exits, stairs and rooms with their floors
+    'lockdown-map': ['school', 'floor', 'room', 'other space', 'corridor', 'door', 'stairs'],
+    'evacuation-poster': ['school', 'floor', 'room', 'other space', 'corridor', 'door', 'assembly', 'stairs'],
   };
   for (const output of OUTPUTS) {
     // the route sheet is read on the school with an elevator, so that it prints a map and the staff-only line
@@ -284,7 +288,7 @@ test('hostile names come through every output as text, never as markup', () => {
       assert.equal(countOf(html, '</title>'), 1, output.id);
       assert.equal(countOf(html, '<style'), 1, output.id);
       assert.equal(countOf(html, '</style>'), 1, output.id);
-      assert.equal(countOf(html, '<svg'), output.id === 'floor-plan' ? project.building.floors.length : output.id === 'door-cards' ? countOf(html, '<figure class="card__map"') : output.id === 'route-sheet' ? countOf(html, '<figure class="card__map rs__map"') : 0, output.id);
+      assert.equal(countOf(html, '<svg'), output.id === 'floor-plan' || output.id === 'lockdown-map' || output.id === 'evacuation-poster' ? project.building.floors.length : output.id === 'door-cards' ? countOf(html, '<figure class="card__map"') : output.id === 'route-sheet' ? countOf(html, '<figure class="card__map rs__map"') : 0, output.id);
       // with every quoted value taken out (a quote inside one is &quot;), no tag has an event handler left in it
       assert.doesNotMatch(html.replace(/="[^"]*"/g, ''), /<[^>]*\son[a-z]+\s*=/i, output.id + ': an event handler attribute');
     }
@@ -850,7 +854,7 @@ test('a school with nothing in it still prints all three', () => {
 test('the print modules read no screen, clock or storage: a document is made from the model alone', () => {
   const dir = path.join(TOOL_DIR, 'ui', 'prints');
   const files = readdirSync(dir).filter((file) => file.endsWith('.js'));
-  assert.deepEqual(files.sort(), ['batch.js', 'checks-report.js', 'congestion.js', 'document.js', 'door-cards.js', 'floor-plan.js', 'index.js', 'movement.js', 'plan-svg.js', 'room-list.js', 'schedule-grids.js', 'travel-time.js', 'calendar.js', 'step-free.js', 'route-sheet.js', 'routes.js'].sort());
+  assert.deepEqual(files.sort(), ['batch.js', 'checks-report.js', 'congestion.js', 'document.js', 'door-cards.js', 'floor-plan.js', 'index.js', 'movement.js', 'plan-svg.js', 'room-list.js', 'schedule-grids.js', 'travel-time.js', 'calendar.js', 'step-free.js', 'route-sheet.js', 'routes.js', 'lockdown-map.js', 'evacuation-poster.js'].sort());
   for (const file of files) {
     const code = readFileSync(path.join(dir, file), 'utf8').replace(/\/\/.*$/gm, '');
     for (const name of [/\bdocument\.(?!js')/, /\bwindow\./, /\bnavigator\b/, /\blocalStorage\b/, /\bindexedDB\b/, /Date\.now/, /new Date\(\)/, /Math\.random/, /innerHTML/, /querySelector/, /getContext/]) {

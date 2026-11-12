@@ -22,8 +22,10 @@ import * as travelTime from './travel-time.js'; // SV2-32d
 import * as calendarPrint from './calendar.js'; // SV2-80
 import * as stepFreeReport from './step-free.js'; // SV2-104
 import * as routeSheet from './route-sheet.js'; // SV2-103
+import * as lockdownMap from './lockdown-map.js'; // SV2-110
+import * as evacuationPoster from './evacuation-poster.js'; // SV2-110
 
-export const OUTPUTS = [floorPlan, roomList, checksReport, ...BATCHES, movementPicture, congestionReport, doorCards, ...GRIDS, travelTime, calendarPrint, stepFreeReport, routeSheet];
+export const OUTPUTS = [floorPlan, roomList, checksReport, ...BATCHES, movementPicture, congestionReport, doorCards, ...GRIDS, travelTime, calendarPrint, stepFreeReport, routeSheet, lockdownMap, evacuationPoster];
 
 export function outputFor(id) {
   return OUTPUTS.find((output) => output.id === id) || null;
