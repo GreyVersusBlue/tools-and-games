@@ -50,7 +50,9 @@ const sectionNoun = (n) => (n === 1 ? 'section' : 'sections');
 
 export function printsPanel(env) {
   const base = uid('prints');
-  const state = { by: 'floor', postersOff: new Set(), corridorsOff: new Set(), lockdownOff: new Set(), sections: new Set(DEFAULT_SECTIONS), stepFree: false };
+  // what is chosen: the way of the posters, and what is left unticked (so that a floor drawn later is ticked)
+  const fresh = () => ({ projectId: null, by: 'floor', postersOff: new Set(), corridorsOff: new Set(), lockdownOff: new Set(), sections: new Set(DEFAULT_SECTIONS) });
+  let state = fresh();
 
   const trialLine = h('p', { class: 'sfy-panel__lead sfy-trial-line', role: 'note', hidden: true, data: { line: 'as-built' } }, AS_BUILT_LINE);
 
@@ -263,6 +265,8 @@ export function printsPanel(env) {
   // everything drawn again: the building changed, or the radio did. The focus goes back to the same control.
   function draw() {
     const project = env.project();
+    // another project: its own choices, not the last one's
+    if (state.projectId !== project.id) state = Object.assign(fresh(), { projectId: project.id });
     const picture = env.asBuilt();
     const held = element.contains(document.activeElement) && document.activeElement.id ? document.activeElement.id : null;
     const floors = project.building.floors.map((floor) => ({ id: floor.id, text: floor.name, typed: true }));
