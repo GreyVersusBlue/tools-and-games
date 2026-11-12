@@ -122,7 +122,7 @@ function exitRow(exit) {
   const badge = '<span style="display: inline-block; min-width: 5mm; padding: 0 1mm; border-radius: 2.5mm; text-align: center; font-weight: 700; background: ' + esc(exit.colour) + '; color: ' + esc(ink) + ';">' + exit.number + '</span>';
   const people = exit.rooms === 0 ? '0' : String(exit.people) + (exit.uncounted > 0 ? ' (' + exit.uncounted + ' with no capacity set)' : '');
   const percent = exit.share > 0 ? ' · ' + Math.round(exit.share * 100) + ' %' : '';
-  const heavy = exit.heavy ? '<strong data-heavy="true">' + esc(HEAVY_WORDS) + '</strong>' + esc(percent) : (exit.rooms === 0 ? esc('No room goes out this way.') : esc(percent.replace(/^ · /, '')));
+  const heavy = exit.heavy ? '<span data-heavy="true" style="font-weight: 700;">' + esc(HEAVY_WORDS) + '</span>' + esc(percent) : (exit.rooms === 0 ? esc('No room goes out this way.') : esc(percent.replace(/^ · /, '')));
   return '<tr data-exit="' + esc(exit.exitId) + '"' + (exit.heavy ? ' data-heavy="true"' : '') + '>'
     + '<th scope="row">' + badge + ' ' + typed(exit.name) + '</th>'
     + '<td>' + typed(exit.floor) + '</td>'
@@ -144,7 +144,7 @@ function exitsPages(project, orientationOf) {
   const out = [];
   const lead = [];
   if (exits.length === 0) lead.push('<p class="doc-lead" data-line="no-exit">' + esc(NO_EXIT_SAYS) + '</p>');
-  if (load.sentence) lead.push('<p class="doc-lead" data-line="heavy"><strong>Warning</strong> ' + esc(load.sentence) + '</p>');
+  if (load.sentence) lead.push('<p class="doc-lead" data-line="heavy"><span style="font-weight: 700;">Warning</span> ' + esc(load.sentence) + '</p>');
   const basis = basisWords(load);
   if (basis !== '') lead.push('<p class="doc-meaning" data-line="basis">' + esc(basis) + '</p>');
   const groups = exits.length === 0 ? [[]] : chunks(exits, rowsAt);
@@ -158,7 +158,7 @@ function exitsPages(project, orientationOf) {
   if (missing.length === 0) {
     // a line, on the table's last sheet, so a building with every way out says so
     const last = out[out.length - 1];
-    last.body = last.body.replace(/<\/section>$/, '<p class="doc-meaning" data-line="all-out">' + esc(ALL_HAVE_WAY) + '</p></section>');
+    last.body = last.body.replace(/<\/section>$/, '<p class="doc-meaning" data-line="all-out" style="margin-top: 3mm;">' + esc(ALL_HAVE_WAY) + '</p></section>');
     return out;
   }
   chunks(missing, missingAt).forEach((group, index) => {
@@ -185,7 +185,7 @@ function coverBody(project, opts, listed) {
   const date = printDate(opts.now);
   const lines = listed.map((entry) => {
     const said = entry.sheets === 0 ? 'nothing to print yet' : sheets(entry.sheets) + (entry.note ? ', ' + entry.note : '');
-    return '<li data-section="' + esc(entry.id) + '" data-sheets="' + entry.sheets + '"><strong>' + esc(entry.label) + '</strong> <span class="card-cover__to">' + esc(said) + '</span></li>';
+    return '<li data-section="' + esc(entry.id) + '" data-sheets="' + entry.sheets + '"><span style="font-weight: 700;">' + esc(entry.label) + '</span> <span class="card-cover__to">' + esc(said) + '</span></li>';
   });
   const total = listed.reduce((sum, entry) => sum + entry.sheets, 0) + 1;
   return [
@@ -193,7 +193,7 @@ function coverBody(project, opts, listed) {
     '<p class="mpack__school" style="margin: 0 0 3mm; font-size: 28pt; line-height: 1.15; font-weight: 700;">' + typed(schoolName(project)) + '</p>',
     '<h2 style="margin: 0 0 3mm; font-size: 18pt;">' + esc(COVER_WHAT) + '</h2>',
     date === '' ? '' : '<p class="doc-lead" data-line="date">' + esc(date) + '</p>',
-    '<h3 style="margin: 8mm 0 2mm;">In this pack</h3>',
+    '<h2 style="margin: 8mm 0 2mm; font-size: 12pt;">In this pack</h2>',
     '<ul class="card-cover__list" data-list="contents">' + lines.join('') + '</ul>',
     '<p class="doc-meaning" data-line="total">' + esc(sheets(total) + ' in all, with this cover. Choose Save as PDF in the print dialog to keep the pack as one file.') + '</p>',
     '</div>',

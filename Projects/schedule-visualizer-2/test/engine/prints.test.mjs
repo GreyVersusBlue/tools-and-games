@@ -8,6 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,7 +22,8 @@ import { gridMarks, numbered, findingsFor } from '../../ui/prints/checks-report.
 import { checkSchedule } from '../../engine/checks.js';
 import { makeFinding } from '../../engine/findings.js';
 import { teacherDays } from '../../engine/teacher-day.js';
-import { SAMPLE_PROBLEMS, SAMPLE_SCHOOL_NAME } from '../../data/sample-school.js';
+import { SAMPLE_PROBLEMS, SAMPLE_SCHOOL_NAME, sampleSchool } from '../../data/sample-school.js';
+import * as floorPlanSheet from '../../ui/prints/floor-plan.js';
 import { planProject } from '../fixtures/buildings/plans.mjs';
 import { school, PINNED } from './helpers.mjs';
 import { withElevator } from '../fixtures/step-free.mjs';
@@ -207,13 +209,16 @@ test('the stylesheets are found where the caller says they are', () => {
 });
 
 test('the outputs are listed once each, and every print button names one of them', () => {
-  assert.deepEqual(OUTPUTS.map((output) => output.id), ['floor-plan', 'room-list', 'checks', 'teacher-schedules', 'door-signs', 'door-signs-day', 'room-schedules', 'whole-school', 'movement', 'congestion', 'door-cards', 'groups', 'teachers', 'teacher-grid', 'room-grid', 'travel-time', 'calendar', 'step-free', 'route-sheet', 'lockdown-map', 'evacuation-poster']);
+  assert.deepEqual(OUTPUTS.map((output) => output.id), ['floor-plan', 'room-list', 'checks', 'teacher-schedules', 'door-signs', 'door-signs-day', 'room-schedules', 'whole-school', 'movement', 'congestion', 'door-cards', 'groups', 'teachers', 'teacher-grid', 'room-grid', 'travel-time', 'calendar', 'step-free', 'route-sheet', 'lockdown-map', 'evacuation-poster', 'map-pack']);
   for (const output of OUTPUTS) {
     assert.equal(typeof output.render, 'function');
     assert.equal(outputFor(output.id), output);
   }
-  assert.equal(outputFor('map-pack'), null);
-  assert.equal(renderOutput('map-pack', school(), null, {}), null);
+  // SV2-111: the map pack is an output now; one that does not exist is still null
+  assert.equal(outputFor('map-pack').id, 'map-pack');
+  assert.equal(typeof renderOutput('map-pack', school(), null, NOW).html, 'string');
+  assert.equal(outputFor('no-such-output'), null);
+  assert.equal(renderOutput('no-such-output', school(), null, {}), null);
   assert.deepEqual(printButtons.map((button) => button.output).sort(), ['checks', 'door-cards', 'floor-plan', 'groups', 'groups', 'room-grid', 'room-grid', 'room-list', 'teacher-grid', 'teacher-grid', 'teachers', 'teachers', 'travel-time']);
   assert.equal(new Set(printButtons.map((button) => button.id)).size, printButtons.length);
   for (const button of printButtons) {
@@ -267,6 +272,8 @@ test('hostile names come through every output as text, never as markup', () => {
     // places only: no teacher, group or subject; the exits, stairs and rooms with their floors
     'lockdown-map': ['school', 'floor', 'room', 'other space', 'corridor', 'door', 'stairs'],
     'evacuation-poster': ['school', 'floor', 'room', 'other space', 'corridor', 'door', 'assembly', 'stairs'],
+    // the plans, the maps, the posters and the exits table
+    'map-pack': ['school', 'floor', 'room', 'other space', 'corridor', 'door', 'assembly', 'stairs'],
   };
   for (const output of OUTPUTS) {
     // the route sheet is read on the school with an elevator, so that it prints a map and the staff-only line
@@ -288,7 +295,7 @@ test('hostile names come through every output as text, never as markup', () => {
       assert.equal(countOf(html, '</title>'), 1, output.id);
       assert.equal(countOf(html, '<style'), 1, output.id);
       assert.equal(countOf(html, '</style>'), 1, output.id);
-      assert.equal(countOf(html, '<svg'), output.id === 'floor-plan' || output.id === 'lockdown-map' || output.id === 'evacuation-poster' ? project.building.floors.length : output.id === 'door-cards' ? countOf(html, '<figure class="card__map"') : output.id === 'route-sheet' ? countOf(html, '<figure class="card__map rs__map"') : 0, output.id);
+      assert.equal(countOf(html, '<svg'), output.id === 'floor-plan' || output.id === 'lockdown-map' || output.id === 'evacuation-poster' ? project.building.floors.length : output.id === 'map-pack' ? 3 * project.building.floors.length : output.id === 'door-cards' ? countOf(html, '<figure class="card__map"') : output.id === 'route-sheet' ? countOf(html, '<figure class="card__map rs__map"') : 0, output.id);
       // with every quoted value taken out (a quote inside one is &quot;), no tag has an event handler left in it
       assert.doesNotMatch(html.replace(/="[^"]*"/g, ''), /<[^>]*\son[a-z]+\s*=/i, output.id + ': an event handler attribute');
     }
@@ -854,7 +861,7 @@ test('a school with nothing in it still prints all three', () => {
 test('the print modules read no screen, clock or storage: a document is made from the model alone', () => {
   const dir = path.join(TOOL_DIR, 'ui', 'prints');
   const files = readdirSync(dir).filter((file) => file.endsWith('.js'));
-  assert.deepEqual(files.sort(), ['batch.js', 'checks-report.js', 'congestion.js', 'document.js', 'door-cards.js', 'floor-plan.js', 'index.js', 'movement.js', 'plan-svg.js', 'room-list.js', 'schedule-grids.js', 'travel-time.js', 'calendar.js', 'step-free.js', 'route-sheet.js', 'routes.js', 'lockdown-map.js', 'evacuation-poster.js'].sort());
+  assert.deepEqual(files.sort(), ['batch.js', 'checks-report.js', 'congestion.js', 'document.js', 'door-cards.js', 'floor-plan.js', 'index.js', 'movement.js', 'plan-svg.js', 'room-list.js', 'schedule-grids.js', 'travel-time.js', 'calendar.js', 'step-free.js', 'route-sheet.js', 'routes.js', 'lockdown-map.js', 'evacuation-poster.js', 'map-pack.js'].sort());
   for (const file of files) {
     const code = readFileSync(path.join(dir, file), 'utf8').replace(/\/\/.*$/gm, '');
     for (const name of [/\bdocument\.(?!js')/, /\bwindow\./, /\bnavigator\b/, /\blocalStorage\b/, /\bindexedDB\b/, /Date\.now/, /new Date\(\)/, /Math\.random/, /innerHTML/, /querySelector/, /getContext/]) {
@@ -1066,4 +1073,35 @@ test('the picture\'s plan looks as the printed plan does: print.css\'s plan rule
   const written = new Map(PLAN_STYLE.map(([selector, rules]) => [selector, rules.split(';').map((each) => each.trim().replace(/\s+/g, ' '))]));
   assert.deepEqual([...written.keys()].sort(), [...printed.keys()].sort(), 'the same parts of the plan');
   for (const [selector, rules] of printed) assert.deepEqual(written.get(selector), rules, selector);
+});
+
+// ---------------------------------------------------------------- SV2-111: pages() and the pin
+
+// The first 16 hex digits of the SHA-256 of a document, taken from the module as it was before
+// render became frame(pages()) (the sample school, the clock pinned): the split changed no byte.
+const digest = (html) => createHash('sha256').update(html).digest('hex').slice(0, 16);
+
+test('the floor plan\'s render is byte for byte what it was before pages() was split out of it', () => {
+  const project = sampleSchool();
+  assert.equal(digest(floorPlanSheet.render(project, null, NOW).html), 'd6aaa78d8a83b86b');
+  assert.equal(digest(floorPlanSheet.render(project, null, { ...NOW, paper: { size: 'a4', orientation: 'portrait' } }).html), '3b0a78ccbbebd1e2');
+});
+
+test('the floor plan\'s pages() are its sheets, one a floor, each with its own head; render frames them', () => {
+  const project = sampleSchool();
+  const made = floorPlanSheet.pages(project, null, NOW);
+  assert.deepEqual(made.map((page) => page.what), project.building.floors.map((floor) => 'Floor plan: ' + floor.name));
+  assert.equal(floorPlanSheet.render(project, null, NOW).html, frame(project, { output: 'floor-plan', what: 'Floor plan', pages: made, options: NOW }).html);
+});
+
+test('floorIds asks the floor plan for some floors, in the building\'s order; floorId still wins; ids that match none ask for all', () => {
+  const project = sampleSchool();
+  const [one, two, three] = project.building.floors;
+  assert.deepEqual(floorPlanSheet.floorsFor(project, { floorIds: [three.id, one.id] }).map((floor) => floor.id), [one.id, three.id]);
+  assert.deepEqual(floorPlanSheet.floorsFor(project, { floorId: two.id, floorIds: [one.id] }).map((floor) => floor.id), [two.id]);
+  assert.deepEqual(floorPlanSheet.floorsFor(project, { floorId: 'all', floorIds: [one.id] }).map((floor) => floor.id), [one.id]);
+  assert.equal(floorPlanSheet.floorsFor(project, { floorIds: ['nope'] }).length, 3);
+  assert.equal(floorPlanSheet.floorsFor(project, { floorIds: [] }).length, 3);
+  assert.equal(floorPlanSheet.floorsFor(project, null).length, 3);
+  assert.equal(floorPlanSheet.pages(project, null, { ...NOW, floorIds: [two.id] }).length, 1);
 });
