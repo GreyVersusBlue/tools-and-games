@@ -10,7 +10,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildGraph } from '../../engine/graph.js';
 import { createRouteCache } from '../../engine/routing.js';
-import { evacuationRoutes } from '../../engine/evacuation.js';
+import { evacuationRoutes, byExit } from '../../engine/evacuation.js';
+import { exitLoad } from '../../engine/exit-load.js';
 import { normaliseBlocked, blockedFromScenario, blockedOptions, blockedTrial, blockedWords, stairsName } from '../../engine/blocked.js';
 import { sampleSchool } from '../../data/sample-school.js';
 import { planProject, disconnectedWing, threeFloors, floorId, roomId } from '../fixtures/buildings/plans.mjs';
@@ -300,7 +301,7 @@ test('normaliseBlocked names a gone exit from the earlier building, as typed, an
   const before = structuredClone(project);
   project.building.floors[0].exits = [];
   assert.deepEqual(normaliseBlocked(project, { exits: [EXIT] }, before).dropped, ['<i>West</i> "Door" is gone, so it is no longer blocked.']);
-  assert.deepEqual(normaliseBlocked(project, undefined), { blocked: { exits: [], connections: [], cells: [] }, dropped: [] });
+  assert.deepEqual(normaliseBlocked(project, undefined), { blocked: { exits: [], connections: [], cells: [] }, dropped: [], droppedParts: [] });
   assert.deepEqual(normaliseBlocked(project, { exits: 'x', connections: [1, null], cells: [null, { floorId: 1 }, 'a'] }).blocked, { exits: [], connections: [], cells: [] });
 });
 
@@ -363,4 +364,161 @@ test('the trial sentence: three clauses with the Oxford comma, the noun once, pl
   assert.ok(result.sentence.startsWith('If A is blocked: 2 rooms go out another way and the slowest way out takes '), result.sentence);
   const wing = trial(disconnectedWing(), { exits: [EXIT] });
   assert.equal(wing.sentence, 'If West Door is blocked: 2 rooms have no way out.');
+});
+
+// ---- SV2-107b
+
+function names(parts) {
+  return parts.filter((part) => part.name).map((part) => part.text);
+}
+
+function joinedText(parts) {
+  return parts.map((part) => part.text).join('');
+}
+
+// Floor 1 has room 1A with no capacity; floor 2 has rooms 2A and 2B of 30.
+function basisFlip() {
+  const low = ['..AA......', '..AA......', 'S########S', '..........', '..........'];
+  const high = ['..AABB....', '..AABB....', 'S########S', '..........', '..........'];
+  const project = planProject([low, high], {
+    doors: { '1A': [[2, 1, 's']], '2A': [[2, 1, 's']], '2B': [[4, 1, 's']] },
+    connections: [[1, 0, 2, 2, 0, 2], [1, 9, 2, 2, 9, 2]],
+    exits: [[1, 1, 2, 'West Door']],
+  });
+  for (const space of project.building.floors[1].spaces) space.capacity = 30;
+  return project;
+}
+
+test('before and after are loaded on one basis: losing the counted rooms would otherwise flip it to rooms', () => {
+  const project = basisFlip();
+  const graph = buildGraph(project);
+  const result = blockedTrial(project, graph, { connections: [STAIRS_A, STAIRS_B] });
+  assert.equal(result.summary.lost, 2, 'both upper rooms are cut off');
+  assert.equal(result.load.before.basis, 'people', '1 of 3 rooms with a way out has no capacity');
+  const alone = exitLoad(project, byExit(project, result.after));
+  assert.equal(alone.basis, 'rooms', 'the one room left has no capacity: on its own the after load flips');
+  assert.equal(result.load.after.basis, 'people', 'the trial holds it to before\'s basis');
+  assert.equal(result.load.after.total, 0, 'people, and the room left holds none');
+});
+
+test('a caller\'s avoidExits count as blocked for the loads and for exits[].blocked, with the set\'s on top', () => {
+  const project = twoStairs([[1, 1, 2, 'West Door'], [1, 8, 2, 'East Door']]);
+  const graph = buildGraph(project);
+  const result = blockedTrial(project, graph, { exits: ['xplan00002'] }, { avoidExits: ['xplan00001'] });
+  assert.equal(result.load.before.open, 1, 'before has West Door avoided by the caller');
+  assert.deepEqual(result.load.before.exits.map((exit) => exit.blocked), [true, false]);
+  assert.equal(result.load.after.open, 0, 'after has both: the caller\'s and the set\'s');
+  assert.deepEqual(result.load.after.exits.map((exit) => exit.blocked), [true, true]);
+  assert.deepEqual(result.exits.map((exit) => exit.blocked), [true, true], 'exits[] uses the same union');
+  const plain = blockedTrial(project, graph, { exits: ['xplan00002'] });
+  assert.equal(plain.load.before.open, 2, 'no caller option: before has nothing blocked');
+  assert.deepEqual(plain.exits.map((exit) => exit.blocked), [false, true]);
+});
+
+test('every exit blocked: every room is lost, nothing is open, no load sentence', () => {
+  const project = twoStairs([[1, 1, 2, 'West Door'], [1, 8, 2, 'East Door']]);
+  const result = trial(project, { exits: ['xplan00001', 'xplan00002'] });
+  assert.ok(result.rooms.every((room) => room.change === 'lost'));
+  assert.equal(result.summary.lost, 2);
+  assert.equal(result.load.after.open, 0);
+  assert.equal(result.load.after.sentence, null);
+  assert.deepEqual(result.load.after.heavy, []);
+  assert.ok(result.exits.every((exit) => exit.blocked));
+  assert.equal(result.sentence, 'If West Door and East Door are blocked: 2 rooms have no way out.');
+});
+
+test('one link of a three-floor stairwell blocked: the floors below it keep their way, the floor above has none', () => {
+  const project = threeFloors();
+  const result = trial(project, { connections: [STAIRS_B] });
+  assert.equal(result.sentence, 'If Stairs B, Floor 2 to Floor 3 is blocked: 2 rooms have no way out.');
+  assert.deepEqual(result.rooms.map((room) => [room.roomId, room.change]), [
+    [roomId('1A'), 'same'], [roomId('1B'), 'same'], [roomId('2A'), 'same'], [roomId('2B'), 'same'], [roomId('3A'), 'lost'], [roomId('3B'), 'lost'],
+  ]);
+  assert.equal(result.summary.moved, 0);
+});
+
+test('a scenario corridor lever on cells that are no longer a corridor blocks nothing; one cell left blocks that cell', () => {
+  const project = twoStairs();
+  const scenario = { levers: [{ kind: 'corridor', floorId: F2, cells: [21, 22], name: 'North Corridor' }, { kind: 'corridor', floorId: F1, cells: [25], name: 'Gone Corridor' }] };
+  const floor = project.building.floors[1];
+  const erase = (cell) => {
+    floor.cells = floor.cells.slice(0, cell) + '.' + floor.cells.slice(cell + 1);
+  };
+  const one = project.building.floors[0];
+  one.cells = one.cells.slice(0, 25) + '.' + one.cells.slice(26);
+  erase(21);
+  const part = blockedFromScenario(project, scenario);
+  assert.deepEqual(part.cells, [{ floorId: F2, cell: 22 }], 'cell 21 is erased on floor 2 and cell 25 on floor 1');
+  assert.deepEqual(part.corridors, [{ floorId: F2, name: 'North Corridor', cells: [22] }]);
+  assert.equal(part.words.text, 'North Corridor', 'the corridor with no cell left is not worded');
+  erase(22);
+  const none = blockedFromScenario(project, scenario);
+  assert.deepEqual(none, { connections: [], cells: [], corridors: [], words: { parts: [], text: '' } });
+  const out = { levers: [{ kind: 'corridor', floorId: F2, cells: [5000, -1, 1.5], name: 'Far' }] };
+  assert.deepEqual(blockedFromScenario(project, out).corridors, [], 'cells out of range or not whole numbers');
+});
+
+test('blockedOptions and every exported function survive null, non-object and malformed cells and ids', () => {
+  const project = twoStairs();
+  const junk = { exits: [null, 5, 'xplan00001', {}], connections: 'cplan00001', cells: [null, 'a', 7, {}, { floorId: 1, cell: 2 }, { floorId: F1, cell: 'x' }, { floorId: F1, cell: 1.5 }, { floorId: F1, cell: 22 }] };
+  assert.deepEqual(blockedOptions(junk), { avoidExits: ['xplan00001'], avoidConnections: [], shutCells: [{ floorId: F1, cell: 22 }] });
+  for (const given of [null, undefined, 'x', 5, true, [], [null], { cells: null }, { cells: 'ab' }, { exits: null, connections: {} }, junk]) {
+    assert.doesNotThrow(() => blockedOptions(given), 'blockedOptions');
+    assert.doesNotThrow(() => normaliseBlocked(project, given), 'normaliseBlocked');
+    assert.doesNotThrow(() => blockedWords(project, given), 'blockedWords');
+    assert.doesNotThrow(() => trial(project, given), 'blockedTrial');
+    assert.doesNotThrow(() => blockedFromScenario(project, given), 'blockedFromScenario');
+  }
+  assert.doesNotThrow(() => stairsName(project, null));
+  assert.doesNotThrow(() => stairsName(project, {}));
+  for (const options of [null, 'x', 5, { avoidExits: 'xplan00001' }, { avoidExits: [null, 3], shutCells: 'a' }]) assert.doesNotThrow(() => trial(project, {}, options), 'options ' + JSON.stringify(options));
+  const only = trial(project, junk);
+  assert.deepEqual(only.blocked.exits, ['xplan00001'], 'what is well formed still counts');
+  assert.equal(blockedWords(project, junk).text, 'West Door and 1 corridor cell on Floor 1 blocked');
+});
+
+test('every sentence a page shows has parts, names marked: the trial, each room, the dropped, the scenario', () => {
+  const project = twoStairs([[1, 1, 2, '<b>West</b> Door']]);
+  project.building.floors[1].name = 'Upper <i>Floor</i>';
+  project.building.floors[1].spaces[0].number = '<u>2A</u>';
+  const before = structuredClone(project);
+  project.building.connections = project.building.connections.filter((connection) => connection.id !== STAIRS_B);
+  const result = trial(project, { exits: [EXIT], connections: ['cgone'] });
+  assert.equal(joinedText(result.sentenceParts), result.sentence);
+  assert.deepEqual(names(result.sentenceParts), ['<b>West</b> Door']);
+  assert.equal(result.sentence, 'If <b>West</b> Door is blocked: 2 rooms have no way out.');
+  for (const room of result.rooms) {
+    assert.equal(room.sentence, 'Its only way out, <b>West</b> Door (1), is blocked.');
+    assert.equal(joinedText(room.sentenceParts), room.sentence);
+    assert.deepEqual(names(room.sentenceParts), ['<b>West</b> Door']);
+  }
+  assert.equal(result.droppedParts.length, result.dropped.length);
+  assert.deepEqual(result.droppedParts.map(joinedText), result.dropped);
+  // a room cut off by a blocked stairs: noRoute's sentence, with the room and floor marked
+  const stairs = trial(project, { connections: [STAIRS_A] });
+  const cut = stairs.rooms.find((room) => room.change === 'lost');
+  assert.ok(cut, 'floor 2 is cut off by stairs A, B being gone');
+  assert.equal(joinedText(cut.sentenceParts), cut.sentence);
+  assert.deepEqual(names(cut.sentenceParts), ['<u>2A</u>', 'Upper <i>Floor</i>']);
+  // a room that has a way has none
+  const same = stairs.rooms.find((room) => room.change === 'same');
+  assert.equal(same.sentence, null);
+  assert.equal(same.sentenceParts, null);
+  assert.deepEqual(trial(project, {}).sentenceParts, [{ text: 'Nothing changes: every room goes out the way it did.', name: false }]);
+  // dropped: a gone exit by its earlier name, a gone stairs by letter and floors, cells by floor
+  const gone = normaliseBlocked(project, { exits: ['xplan00009'], connections: [STAIRS_B], cells: [{ floorId: F2, cell: 0 }] }, before);
+  assert.deepEqual(gone.droppedParts.map(joinedText), gone.dropped);
+  assert.deepEqual(gone.droppedParts.map(names), [[], ['B', 'Floor 1', 'Upper <i>Floor</i>'], ['Upper <i>Floor</i>']]);
+});
+
+test('normaliseBlocked with `previous` after a renamed exit: the exit that stays is blocked by its new name, the one that went by its old', () => {
+  const project = twoStairs([[1, 1, 2, 'Old Name'], [1, 8, 2, 'Side Door']]);
+  const previous = structuredClone(project);
+  project.building.floors[0].exits = [{ ...project.building.floors[0].exits[0], doorName: 'New Name' }];
+  const result = normaliseBlocked(project, { exits: ['xplan00001', 'xplan00002'] }, previous);
+  assert.deepEqual(result.blocked.exits, ['xplan00001'], 'the renamed exit keeps its id and stays blocked');
+  assert.deepEqual(result.dropped, ['Side Door is gone, so it is no longer blocked.']);
+  assert.equal(blockedWords(project, result.blocked).text, 'New Name blocked');
+  const renamedAway = normaliseBlocked({ ...project, building: { ...project.building, floors: [{ ...project.building.floors[0], exits: [] }, project.building.floors[1]] } }, { exits: ['xplan00001'] }, previous);
+  assert.deepEqual(renamedAway.dropped, ['Old Name is gone, so it is no longer blocked.'], 'a gone exit is named as it was in `previous`, not renamed');
 });

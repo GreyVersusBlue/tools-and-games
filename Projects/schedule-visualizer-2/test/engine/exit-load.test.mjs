@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { buildGraph } from '../../engine/graph.js';
 import { routingGraph } from '../../engine/routing.js';
 import { evacuationRoutes, byExit } from '../../engine/evacuation.js';
-import { EXIT_UNNAMED, HEAVY_SHARE, HEAVY_MARGIN, exitNumbers, exitName, exitLoad, corridorRooms, roomsOnNoNamedCorridor } from '../../engine/exit-load.js';
+import { EXIT_UNNAMED, BASIS_ROOMS, basisWords, HEAVY_SHARE, HEAVY_MARGIN, exitNumbers, exitName, exitLoad, corridorRooms, roomsOnNoNamedCorridor } from '../../engine/exit-load.js';
 import { sampleSchool } from '../../data/sample-school.js';
 import { planProject, floorId, roomId } from '../fixtures/buildings/plans.mjs';
 
@@ -295,4 +295,126 @@ test('roomsOnNoNamedCorridor: every room when no corridor has a name, none for a
   assert.equal(roomsOnNoNamedCorridor(project, buildGraph(project)).length, 5);
   const empty = exitsOnly(['A']);
   assert.deepEqual(roomsOnNoNamedCorridor(empty, buildGraph(empty)), []);
+});
+
+// ---- SV2-107b
+
+function realLoad(project, options) {
+  const graph = buildGraph(project);
+  return exitLoad(project, byExit(project, evacuationRoutes(project, graph)), options);
+}
+
+// Rooms 1A, 1B and 1C across a corridor with the exit at its east end; the
+// capacities are the cases'.
+function threeRooms(capacities) {
+  const project = planProject([['AABBCC...', 'AABBCC...', '#########', '.........', '.........']], { doors: { '1A': [[0, 1, 's']], '1B': [[2, 1, 's']], '1C': [[4, 1, 's']] }, exits: [[1, 8, 2, 'East']] });
+  project.building.floors[0].spaces.forEach((space, i) => {
+    space.capacity = capacities[i];
+  });
+  return project;
+}
+
+test('the rooms-basis words are pinned, and only the rooms basis has them', () => {
+  assert.equal(BASIS_ROOMS, 'Most rooms have no capacity set, so this compares rooms, not people.');
+  assert.equal(basisWords({ basis: 'rooms' }), BASIS_ROOMS);
+  assert.equal(basisWords({ basis: 'people' }), '');
+  assert.equal(basisWords(null), '');
+  assert.equal(basisWords({}), '');
+  const project = exitsOnly(['A', 'B']);
+  assert.equal(basisWords(exitLoad(project, rowsOf(project, [[4, 100, 4], [2, 100, 0]]))), BASIS_ROOMS);
+  assert.equal(basisWords(exitLoad(project, rowsOf(project, [[3, 300, 3], [3, 300, 0]]))), '', 'exactly half: people');
+});
+
+test('exitLoad with a forced basis: the caller\'s word wins over the rooms\' capacities', () => {
+  const project = exitsOnly(['A', 'B']);
+  const rows = rowsOf(project, [[4, 100, 4], [2, 100, 0]]);
+  assert.equal(exitLoad(project, rows).basis, 'rooms');
+  const people = exitLoad(project, rows, { basis: 'people' });
+  assert.equal(people.basis, 'people');
+  assert.equal(people.total, 200, 'the figure follows the forced basis');
+  const rooms = exitLoad(project, rowsOf(project, [[3, 300, 0], [3, 300, 0]]), { basis: 'rooms' });
+  assert.equal(rooms.basis, 'rooms');
+  assert.equal(rooms.total, 6);
+  assert.equal(exitLoad(project, rows, { basis: 'nonsense' }).basis, 'rooms', 'anything else is no force');
+});
+
+test('exitLoad sentences come with parts: a door name is typed, an unnamed exit\'s words are marked whole, null when no sentence', () => {
+  const project = exitsOnly(['<b>Door A</b>', 'Door B', '']);
+  const load = exitLoad(project, rowsOf(project, [[14, 420], [6, 90], [4, 90]]));
+  assert.equal(load.sentenceParts.map((part) => part.text).join(''), load.sentence);
+  assert.deepEqual(load.sentenceParts.filter((part) => part.name).map((part) => part.text), ['<b>Door A</b>']);
+  const four = exitsOnly(['<b>Door A</b>', 'Door B', '', 'Door D']);
+  const two = exitLoad(four, rowsOf(four, [[14, 420], [1, 5], [14, 420], [1, 5]]));
+  assert.equal(two.heavy.length, 2);
+  assert.equal(two.sentenceParts.map((part) => part.text).join(''), two.sentence);
+  assert.deepEqual(two.sentenceParts.filter((part) => part.name).map((part) => part.text), ['<b>Door A</b>', 'The exit on Floor 1']);
+  const quiet = exitLoad(project, rowsOf(project, [[4, 100], [4, 100], [4, 100]]));
+  assert.equal(quiet.sentence, null);
+  assert.equal(quiet.sentenceParts, null);
+  const one = exitsOnly(['Only']);
+  const only = exitLoad(one, rowsOf(one, [[3, 90]]));
+  assert.deepEqual(only.sentenceParts, [{ text: 'Every room leaves by ', name: false }, { text: 'Only', name: true }, { text: ': it is the only exit.', name: false }]);
+});
+
+test('exitLoad on a real building: an exit on a floor no room reaches is open, carries 0 people and sets the even share', () => {
+  const floor = ['AABBCC...', 'AABBCC...', '#########', '.........', '.........'];
+  const project = planProject([floor, ['.........', '.........', '#########', '.........', '.........']], { doors: { '1A': [[0, 1, 's']], '1B': [[2, 1, 's']], '1C': [[4, 1, 's']] }, exits: [[1, 8, 2, 'East'], [2, 8, 2, 'Roof']] });
+  for (const space of project.building.floors[0].spaces) space.capacity = 40;
+  const load = realLoad(project);
+  assert.deepEqual(load.exits.map((exit) => [exit.number, exit.rooms, exit.people, exit.blocked]), [[1, 3, 120, false], [2, 0, 0, false]]);
+  assert.equal(load.open, 2, 'the unused exit is open');
+  assert.equal(load.fair, 60);
+  assert.deepEqual(load.heavy, [project.building.floors[0].exits[0].id], '120 is 2 times fair and 60 more: over both lines, so heavy; the roof exit, open with nobody, is what makes it so');
+});
+
+test('exitLoad: two exits and no people at all: nothing is heavy, every share is 0, no sentence', () => {
+  const project = exitsOnly(['A', 'B']);
+  const load = exitLoad(project, rowsOf(project, [[3, 0, 0], [2, 0, 0]]));
+  assert.equal(load.total, 0);
+  assert.equal(load.fair, 0);
+  assert.deepEqual(load.heavy, []);
+  assert.deepEqual(load.exits.map((exit) => exit.share), [0, 0]);
+  assert.equal(load.sentence, null);
+  assert.equal(load.open, 2);
+});
+
+test('every exit blocked on a real building: no exit is open or heavy, and no sentence', () => {
+  const project = threeRooms([10, 10, 10]);
+  const ids = project.building.floors[0].exits.map((exit) => exit.id);
+  const load = realLoad(project, { blockedExits: ids });
+  assert.equal(load.open, 0);
+  assert.equal(load.sentence, null);
+  assert.deepEqual(load.heavy, []);
+  assert.ok(load.exits.every((exit) => exit.blocked && !exit.heavy));
+});
+
+test('a capacity of 0 is uncounted, like none: two of three rooms makes the basis rooms, one of two is exactly half and stays people', () => {
+  const zero = realLoad(threeRooms([0, 0, 30]));
+  assert.equal(zero.uncounted, 2, 'capacity 0 and null are the same');
+  assert.equal(zero.basis, 'rooms');
+  assert.equal(zero.total, 3);
+  const unset = realLoad(threeRooms([null, null, 30]));
+  assert.equal(unset.uncounted, 2);
+  assert.equal(unset.basis, 'rooms');
+  const counted = realLoad(threeRooms([1, 1, 30]));
+  assert.equal(counted.uncounted, 0, 'a capacity of 1 is counted');
+  assert.equal(counted.basis, 'people');
+  const project = planProject([['AABB.....', 'AABB.....', '#########', '.........', '.........']], { doors: { '1A': [[0, 1, 's']], '1B': [[2, 1, 's']] }, exits: [[1, 8, 2, 'East']] });
+  project.building.floors[0].spaces[0].capacity = 0;
+  project.building.floors[0].spaces[1].capacity = 25;
+  const half = realLoad(project);
+  assert.equal(half.uncounted, 1);
+  assert.equal(half.basis, 'people', '1 of 2 rooms uncounted is exactly half, not more than half');
+  assert.equal(half.total, 25);
+});
+
+test('roomsOnNoNamedCorridor: a room whose doors open onto two named corridors is on both and on none of the missing', () => {
+  const project = corridorsProject();
+  const graph = buildGraph(project);
+  const west = corridorRooms(project, graph, 'kwest');
+  const east = corridorRooms(project, graph, 'keast');
+  assert.ok(west.includes(roomId('1C')) && east.includes(roomId('1C')));
+  assert.equal(roomsOnNoNamedCorridor(project, graph).includes(roomId('1C')), false);
+  assert.equal(west.length + east.length, 4, 'room 1C counted once in each');
+  assert.equal(new Set([...west, ...east]).size, 3);
 });
