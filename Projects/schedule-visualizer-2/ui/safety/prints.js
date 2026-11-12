@@ -41,7 +41,7 @@ export const TICK_SECTION = 'Tick at least one section.';
 export const NO_FLOORS = 'The building has no floors yet.';
 export const POSTERS_LEAD = 'A poster to put up on each floor or in each corridor, with every way out in its exit’s colour.';
 export const LOCKDOWN_LEAD = 'A plain map of each floor with a reference grid and an index of rooms, for the emergency plan and for responders. It shows places, never people.';
-export const PACK_LEAD = 'Everything above in one document, with a cover and the exits and assembly points. Print it, or choose Save as PDF in the print dialog to keep it as one file.';
+export const PACK_LEAD = 'The floor plans, lockdown maps and evacuation posters for every floor, with a cover and the exits and assembly points, in one document. Print it, or choose Save as PDF in the print dialog to keep it as one file.';
 export const NOTES = { posters: ' (one per floor)', cards: ' (one or two pages a room)' };
 
 const floorNoun = (n) => (n === 1 ? 'floor' : 'floors');
@@ -72,7 +72,7 @@ export function printsPanel(env) {
   });
   const postersTicks = h('div', { class: 'sfy-prints__ticks', data: { ticks: 'posters' } });
   const postersNote = h('p', { class: 'sfy-cards__hint', data: { line: 'corridor-note' }, hidden: true });
-  const postersWarn = h('div', { class: 'sfy-prints__warn', data: { part: 'no-way-out' } });
+  const postersWarn = h('div', { class: 'sfy-prints__warn', data: { part: 'no-way-out-slot' } });
   const postersButton = previewButton('posters', 'Preview posters');
   const postersReason = h('span', { class: 'sfy-cards__hint', id: base + '-posters-reason', data: { part: 'reason' }, hidden: true });
   postersButton.setAttribute('aria-describedby', postersReason.id);
@@ -160,8 +160,8 @@ export function printsPanel(env) {
       return countLine.textContent;
     };
     if (total >= ALL_NONE_FROM) {
-      const all = h('button', { type: 'button', class: 'btn btn--quiet', 'aria-label': 'All ' + noun(2), data: { action: 'all', ticks: kind } }, 'All');
-      const none = h('button', { type: 'button', class: 'btn btn--quiet', 'aria-label': 'None of the ' + noun(2), data: { action: 'none', ticks: kind } }, 'None');
+      const all = h('button', { type: 'button', class: 'btn btn--quiet', id: base + '-' + kind + '-all', 'aria-label': 'All ' + noun(2), data: { action: 'all', ticks: kind } }, 'All');
+      const none = h('button', { type: 'button', class: 'btn btn--quiet', id: base + '-' + kind + '-none', 'aria-label': 'None of the ' + noun(2), data: { action: 'none', ticks: kind } }, 'None');
       const set = (on) => {
         for (const group of groups) for (const item of group.items) {
           if (on) off.delete(item.id);

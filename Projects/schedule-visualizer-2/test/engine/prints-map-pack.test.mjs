@@ -35,6 +35,12 @@ const PAPERS = [
   { size: 'a2', orientation: 'landscape' },
 ];
 
+const FSI = '\u2068';
+const PDI = '\u2069';
+const withoutMarks = (text) => text.replace(/[\u2068\u2069]/g, '');
+// the text of a sheet's markup
+const textOf = (html) => withoutMarks(html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '));
+
 function countOf(html, piece) {
   return html.split(piece).length - 1;
 }
@@ -236,7 +242,7 @@ test('the exits table: every exit by its number, door, floor, assembly point, ro
   // the sample sends 520 of 640 people out of Door A: far more than the others, in words, once
   assert.equal(countOf(page, HEAVY_WORDS), 1);
   assert.ok(/<tr data-exit="[^"]+" data-heavy="true"><th scope="row">[^]*?Door A/.test(page));
-  assert.ok(page.includes('data-line="heavy"') && page.includes('Door A (1) is the way out for rooms holding 520 of 640 people'));
+  assert.ok(page.includes('data-line="heavy"') && withoutMarks(page).includes('Door A (1) is the way out for rooms holding 520 of 640 people'));
 });
 
 test('a building with every room out says so; nothing is flagged without a heavy exit', () => {
@@ -276,17 +282,145 @@ test('a building with one exit gets the one-way-out note, not a warning', () => 
   assert.ok(!page.includes('data-line="heavy"') && !page.includes('>Warning<'));
 });
 
-test('a long table goes on to more sheets of its own, ten exits to a sheet across; a long list likewise', () => {
-  const project = sampleSchool();
+// exits added to the sample's ground floor: short names, or 120-character assembly points
+function withExits(project, n, assembly) {
   const floor = project.building.floors[0];
   const spare = floor.exits[0];
-  for (let i = 0; i < 24; i += 1) floor.exits.push({ ...spare, id: 'xextra' + String(i).padStart(5, '0'), doorName: 'Extra ' + i });
-  const paper = { size: 'letter', orientation: 'landscape' };
-  const made = pack.pages(project, null, { ...NOW, paper, sections: ['exits'] });
-  assert.equal(made.length - 1, Math.ceil(26 / pack.ROWS_PER_SHEET.landscape));
-  assert.ok(made[2].body.includes('(continued)'));
-  for (const page of made.slice(1)) assert.ok(page.body.includes('<thead>'), 'the head repeats on every sheet');
-  assert.equal(contentsOf(made[0].body)[0].sheets, made.length - 1);
+  for (let i = 0; i < n; i += 1) floor.exits.push({ ...spare, id: 'xextra' + String(i).padStart(5, '0'), doorName: 'Extra ' + i, assembly: assembly ? assembly(i) : spare.assembly });
+  return project;
+}
+const LONG_ASSEMBLY = (i) => ('Assembly field ' + i + ' ').padEnd(120, 'by the far fence ');
+const LETTER = { size: 'letter', orientation: 'landscape' };
+const A4 = { size: 'a4', orientation: 'portrait' };
+// the exits sheets of a pack, and the rows on each
+const exitSheets = (made) => made.filter((page) => page.what === 'Map pack · Exits and assembly points');
+const rowsOn = (page) => countOf(page.body, '<tr data-exit="');
+
+test('a long table goes on to more sheets of its own, every sheet with its head row; the cover counts them', () => {
+  const made = pack.pages(withExits(sampleSchool(), 24), null, { ...NOW, paper: LETTER, sections: ['exits'] });
+  const sheets = exitSheets(made);
+  assert.ok(sheets.length >= 3, 'twenty-six exits do not fit on two sheets');
+  assert.ok(sheets[1].body.includes('(continued)'));
+  for (const page of sheets) assert.ok(page.body.includes('<thead>'), 'the head repeats on every sheet');
+  assert.equal(sheets.reduce((sum, page) => sum + rowsOn(page), 0), 26);
+  assert.equal(contentsOf(made[0].body)[0].sheets, sheets.length);
+});
+
+test('the first sheet of the table holds fewer rows by the lead lines it carries; the later sheets are as full as each other', () => {
+  const project = withExits(sampleSchool(), 40);
+  // every row the same words, so that only the lead lines make the first sheet's room smaller
+  for (const floor of project.building.floors) for (const exit of floor.exits) Object.assign(exit, { doorName: 'Door', assembly: 'Front lawn' });
+  const made = exitSheets(pack.pages(project, null, { ...NOW, paper: LETTER, sections: ['exits'] }));
+  assert.ok(made[0].body.includes('data-line="heavy"'), 'the first sheet carries the heavy exit\'s warning');
+  // the warning's lines and the basis line are about three rows high; the heavy row itself is a line taller than the rest, so one row of the gap is not the lead's
+  assert.ok(rowsOn(made[1]) - rowsOn(made[0]) >= 2, rowsOn(made[0]) + ' on the first sheet, ' + rowsOn(made[1]) + ' on the second');
+  assert.equal(rowsOn(made[1]), rowsOn(made[2]));
+});
+
+test('long wrapped names take room: 120-character assembly points put fewer rows on a sheet, on any paper', () => {
+  for (const paper of [LETTER, A4]) {
+    const short = exitSheets(pack.pages(withExits(sampleSchool(), 40), null, { ...NOW, paper, sections: ['exits'] }));
+    const long = exitSheets(pack.pages(withExits(sampleSchool(), 40, LONG_ASSEMBLY), null, { ...NOW, paper, sections: ['exits'] }));
+    assert.ok(rowsOn(long[1]) < rowsOn(short[1]), paper.size + ': ' + rowsOn(long[1]) + ' long rows to a sheet, ' + rowsOn(short[1]) + ' short');
+    assert.ok(rowsOn(long[1]) >= 1);
+  }
+});
+
+test('the closing line: a pack that ends on the exits keeps room for it, so it never lands on a sheet nobody counted', () => {
+  // the same exits with something after them (door cards: not the pack's last) and with nothing after
+  let tighter = 0;
+  for (let n = 0; n < 60; n += 1) {
+    const project = withExits(sampleSchool(), n);
+    const ends = exitSheets(pack.pages(project, null, { ...NOW, paper: LETTER, sections: ['exits'] }));
+    const goes = exitSheets(pack.pages(project, null, { ...NOW, paper: LETTER, sections: ['exits', 'cards'] }));
+    assert.ok(ends.length >= goes.length, n + ' exits');
+    if (ends.length > goes.length) tighter += 1;
+  }
+  assert.ok(tighter >= 1, 'some count of exits fills the last sheet to the foot');
+});
+
+test('the exits section scales with the paper: --exits-scale is 1 on Letter and grows on A2, as the lockdown index does', () => {
+  const scaleOn = (paper) => Number(/--exits-scale: ([\d.]+)/.exec(pack.pages(sampleSchool(), null, { ...NOW, paper, sections: ['exits'] })[1].body)[1]);
+  assert.equal(scaleOn(LETTER), 1);
+  assert.equal(scaleOn(A4), 1);
+  assert.ok(scaleOn({ size: 'a2', orientation: 'landscape' }) > 2);
+});
+
+// ---------------------------------------------------------------- the no-way-out intro and the lines that say all is well
+
+test('the no-way-out intro agrees with its count, and names door cards and posters only when they are in the pack', () => {
+  const one = twoRooms();
+  one.building.floors[0].exits = [];
+  // two rooms and no exit: two rooms have no way out
+  const many = (sections) => textOf(exitSheets(pack.pages(one, null, { ...NOW, sections }))[1].body);
+  assert.ok(many(['exits', 'cards', 'posters']).includes('2 rooms have no way out, so their door cards say so and their routes are missing from the posters.'));
+  assert.ok(many(['exits', 'cards']).includes('2 rooms have no way out, so their door cards say so.'));
+  assert.ok(many(['exits', 'posters']).includes('2 rooms have no way out, so their routes are missing from the posters.'));
+  assert.ok(many(['exits']).includes('2 rooms have no way out.'));
+});
+
+test('one room with no way out: "1 room has no way out, so its door card says so and its route is missing from the posters."', () => {
+  const project = disconnectedWing();
+  const floor = project.building.floors[0];
+  floor.spaces = floor.spaces.filter((space) => space.kind !== 'room' || space.number !== '1D');
+  const intro = textOf(exitSheets(pack.pages(project, null, { ...NOW, sections: ['posters', 'cards', 'exits'] }))[1].body);
+  assert.ok(intro.includes('1 room has no way out, so its door card says so and its route is missing from the posters.'), intro);
+  assert.ok(textOf(exitSheets(pack.pages(project, null, { ...NOW, sections: ['exits'] }))[1].body).includes('1 room has no way out.'));
+});
+
+test('a building with no exit, or no room, does not also say "Every room has a way out."', () => {
+  const noExit = planProject([['.AA.BB.', '.AA.BB.', '#######', '.......', '.......']], {});
+  const noRooms = planProject([['.......', '.......', '#######', '.......', '.......']], { exits: [[1, 0, 3, 'Only Door']] });
+  const neither = planProject([['.......', '.......', '#######', '.......', '.......']], {});
+  for (const [what, project] of [['no exit', noExit], ['no room', noRooms], ['neither', neither]]) {
+    const html = pack.render(project, null, { ...NOW, sections: ['exits'] }).html;
+    assert.ok(!html.includes(pack.ALL_HAVE_WAY), what);
+    assert.ok(!html.includes('data-line="all-out"'), what);
+  }
+  assert.ok(pack.render(noExit, null, { ...NOW, sections: ['exits'] }).html.includes(pack.NO_WAY_OUT_HEAD));
+  assert.ok(pack.render(twoRooms(), null, { ...NOW, sections: ['exits'] }).html.includes(pack.ALL_HAVE_WAY), 'a building with an exit and every room out still says so');
+});
+
+test('with no room to make a door card for, the cover says "nothing to print yet" and counts no sheet', () => {
+  const project = planProject([['.......', '.......', '#######', '.......', '.......']], { exits: [[1, 0, 3, 'Only Door']] });
+  const made = pack.pages(project, null, { ...NOW, sections: ['cards', 'exits'] });
+  const cover = made[0].body;
+  assert.ok(/Door cards<\/span> <span class="card-cover__to">nothing to print yet</.test(cover), cover);
+  assert.ok(!cover.includes('one or two sheets a room'));
+  assert.deepEqual(contentsOf(cover), [{ id: 'exits', sheets: made.length - 1 }, { id: 'cards', sheets: 0 }]);
+  assert.ok(cover.includes(made.length + ' sheets in all') || cover.includes(made.length + ' sheet in all'));
+});
+
+test('the cover lists the sections in one column, in the pack\'s order', () => {
+  const cover = pack.pages(sampleSchool(), null, { ...NOW, sections: ALL })[0].body;
+  assert.deepEqual(Array.from(cover.matchAll(/<li data-section="([^"]+)"/g)).map((match) => match[1]), ALL);
+  assert.ok(cover.includes('class="card-cover__list mpack__list"'), 'the pack\'s own list class, which print.css sets to one column');
+});
+
+// ---------------------------------------------------------------- right-to-left names
+
+test('typed names in a head and a sentence are isolated: a right-to-left floor, door and room name never reorders the line', () => {
+  const floorName = 'الطابق الأول';
+  const doorName = 'المدخل الرئيسي';
+  const roomName = 'مكتبة';
+  const project = sampleSchool();
+  project.building.floors[1].name = floorName;
+  project.building.floors[0].exits[0].doorName = doorName;
+  const heads = pack.pages(project, null, { ...NOW, sections: ALL }).map((page) => page.what);
+  assert.ok(heads.includes('Map pack · Floor plan: ' + FSI + floorName + PDI), 'the floor plan\'s head');
+  assert.ok(heads.includes('Map pack · Lockdown map · ' + FSI + floorName + PDI), 'the lockdown map\'s head');
+  assert.ok(heads.includes('Map pack · Evacuation routes · ' + FSI + floorName + PDI), 'the poster\'s head');
+  assert.ok(heads.includes('Map pack · Floor plan: Floor 1'), 'a plain name is left as it reads');
+  const exits = exitSheets(pack.pages(project, null, { ...NOW, sections: ['exits'] }))[0].body;
+  assert.ok(exits.includes(FSI + doorName + PDI + ' (1) is the way out'), 'the load sentence');
+  // a room that has no way out, numbered in Arabic, first in its sentence
+  const wing = disconnectedWing();
+  wing.building.floors[0].name = floorName;
+  const room = wing.building.floors[0].spaces.find((space) => space.number === '1C');
+  room.number = roomName;
+  const list = pack.pages(wing, null, { ...NOW, sections: ['exits'] }).map((page) => page.body).find((body) => body.includes(pack.NO_WAY_OUT_HEAD));
+  assert.ok(list.includes(FSI + roomName + PDI), 'the room\'s name is isolated in its sentence');
+  assert.ok(list.includes(FSI + floorName + PDI), 'and the floor\'s');
 });
 
 // ---------------------------------------------------------------- the door cards' foot

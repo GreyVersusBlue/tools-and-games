@@ -92,6 +92,21 @@ const VARIANTS = `({
     }
     return project;
   },
+  // twelve exits, each with a 120-character assembly point of words that wrap
+  exits12(project) {
+    const floor = project.building.floors[0];
+    const spare = floor.exits[0];
+    floor.exits = [];
+    for (let i = 0; i < 12; i += 1) floor.exits.push({ ...spare, id: 'xtwelve' + i, doorName: 'Door number ' + (i + 1), assembly: ('Assembly point ' + (i + 1) + ' ').padEnd(120, 'by the far fence ') });
+    return project;
+  },
+  // an Arabic floor name, and a room named in Arabic with no way out
+  arabic(project) {
+    project.building.connections = project.building.connections.filter((connection) => connection.kind === 'elevator');
+    project.building.floors[1].name = '\u0627\u0644\u0637\u0627\u0628\u0642 \u0627\u0644\u062b\u0627\u0646\u064a';
+    project.building.floors[1].spaces.filter((space) => space.kind === 'room')[0].number = '\u0645\u0643\u062a\u0628\u0629';
+    return project;
+  },
   // eight more named corridors: the posters' list past six
   corridors(project) {
     let n = 0;
@@ -198,7 +213,7 @@ test('the Prints tab: the heading, then three cards, each with its sentence and 
   assert.deepEqual(await page.$$eval('.sfy-card > .sfy-panel__lead', (els) => els.map((el) => el.textContent)), [
     'A poster to put up on each floor or in each corridor, with every way out in its exit’s colour.',
     'A plain map of each floor with a reference grid and an index of rooms, for the emergency plan and for responders. It shows places, never people.',
-    'Everything above in one document, with a cover and the exits and assembly points. Print it, or choose Save as PDF in the print dialog to keep it as one file.',
+    'The floor plans, lockdown maps and evacuation posters for every floor, with a cover and the exits and assembly points, in one document. Print it, or choose Save as PDF in the print dialog to keep it as one file.',
   ]);
   // each card is a labelled region, and the buttons sit under their card's choices
   assert.deepEqual(await page.$$eval('.sfy-card', (els) => els.map((el) => document.getElementById(el.getAttribute('aria-labelledby')).textContent)), ['Evacuation posters', 'Lockdown maps', 'Map pack']);
@@ -449,6 +464,10 @@ test('rooms with no way out on a floor ticked are named in a warning block befor
   assert.ok(first.includes('Room 201 has no way out and its route will be missing from the Floor 2 poster.'), first.join(' | '));
   assert.ok(first.includes('Room 301 has no way out and its route will be missing from the Floor 3 poster.'));
   assert.equal(await page.$eval('[data-part="no-way-out"].sfy-warn', (el) => el.getAttribute('aria-label')), 'Warning');
+  // the card's wrapper is its own part: the warning is the one thing called no-way-out
+  assert.equal(await page.$$eval('[data-part="no-way-out"]', (els) => els.length), 1);
+  assert.equal(await page.$$eval('[data-card="posters"] [data-part="no-way-out-slot"]', (els) => els.length), 1);
+  assert.equal(await page.$eval('[data-part="no-way-out-slot"]', (el) => el.contains(document.querySelector('[data-part="no-way-out"]'))), true);
   assert.equal(await text(page, '[data-part="no-way-out"] .sfy-warn__head'), 'Warning', 'in words, never colour alone');
   const ids = await floorIds(page);
   await page.click('[data-card="posters"] .sfy-tick__box[data-id="' + ids[1] + '"]');
@@ -588,9 +607,9 @@ test('at 390 px with touch: the cards are one column, ticks, All, None and Previ
     await page.tap('[data-preview="pack"]');
     const seen = await sheetOf(page);
     // eight floors: a cover, 24 sheets of plans, maps and posters, the exits and the rooms with no way out
-    assert.equal(seen.pages, 28);
-    assert.equal(seen.status, 'US Letter, landscape. About 28 sheets.');
-    assert.ok(seen.html.includes('28 sheets in all, with this cover.'));
+    assert.equal(seen.pages, 27);
+    assert.equal(seen.status, 'US Letter, landscape. About 27 sheets.');
+    assert.ok(seen.html.includes('27 sheets in all, with this cover.'));
     assert.equal(seen.inside, true);
     const fit = await page.evaluate(() => {
       const sheet = document.getElementById('print-preview').getBoundingClientRect();
@@ -605,5 +624,159 @@ test('at 390 px with touch: the cards are one column, ticks, All, None and Previ
     assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.dataset.preview), 'pack');
   } finally {
     await session.close();
+  }
+});
+
+// ---- the focus after a redraw
+
+test('All and None keep the focus when the building is edited: the lists are drawn again and the focus is on the same button', async () => {
+  const page = wide.page;
+  await fresh(page, 'many');
+  for (const [card, action] of [['lockdown', 'none'], ['lockdown', 'all'], ['posters', 'none']]) {
+    await page.focus('[data-card="' + card + '"] [data-action="' + action + '"]');
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.action), action);
+    const before = await page.evaluate(() => document.activeElement.id);
+    assert.notEqual(before, '', 'the button has an id to be found by');
+    // the building changes (a floor renamed): the tab draws its lists again
+    const name = 'Ground ' + action + card;
+    await page.evaluate((name) => {
+      const project = JSON.parse(JSON.stringify(globalThis.sv2.store.project));
+      project.building.floors[0].name = name;
+      globalThis.sv2.store.replace(project);
+    }, name);
+    // the list shows the new name: it was drawn again
+    await page.waitForFunction((name) => document.querySelector('[data-card="lockdown"] .sfy-tick__words').textContent === name, {}, name);
+    const after = await page.evaluate(() => ({ id: document.activeElement.id, action: document.activeElement.dataset.action, ticks: document.activeElement.dataset.ticks }));
+    assert.equal(after.id, before, 'the same button is still focused');
+    assert.equal(after.action, action);
+    assert.equal(after.ticks, card);
+  }
+});
+
+// ---- the map pack's sheets on paper
+
+// The pack in the preview on a paper: the document's own measures of each sheet. `paper` is the
+// preview's size and orientation radios.
+async function packOn(page, size, orientation) {
+  await page.click('[data-preview="pack"]');
+  await page.waitForSelector('#print-preview[open][data-ready="true"]');
+  const want = size + ' ' + orientation;
+  if (await page.$eval('#print-preview', (el) => el.dataset.paper) !== want) {
+    await page.click('#print-preview input[value="' + size + '"]');
+    await page.click('#print-preview input[value="' + orientation + '"]');
+    await page.waitForSelector('#print-preview[data-ready="true"][data-paper="' + want + '"]');
+  }
+  const seen = await page.evaluate(() => {
+    const sheet = document.getElementById('print-preview');
+    const doc = sheet.querySelector('iframe').contentDocument;
+    const view = doc.defaultView;
+    const MM = 96 / 25.4;
+    const root = view.getComputedStyle(doc.documentElement);
+    const pageH = parseFloat(root.getPropertyValue('--page-h')) * MM;
+    const pages = Array.from(doc.querySelectorAll('.page'));
+    const last = pages[pages.length - 1];
+    const lastBody = last.querySelector('.doc-body');
+    const lastBottom = Array.from(lastBody.querySelectorAll('*')).reduce((bottom, el) => Math.max(bottom, el.getBoundingClientRect().bottom), 0) - last.getBoundingClientRect().top;
+    const cover = doc.querySelector('[data-line="total"]').textContent;
+    return {
+      status: sheet.querySelector('.preview__status').textContent,
+      counted: Number(sheet.dataset.sheets),
+      newSheets: doc.querySelectorAll('.new-sheet').length,
+      pages: pages.length,
+      cover: Number(/(\d+) sheets? in all/.exec(cover)[1]),
+      // a sheet taller than the paper is a sheet that runs on to another
+      tall: pages.map((el, i) => [i, Math.round(el.getBoundingClientRect().height - pageH)]).filter(([, over]) => over > 1),
+      // room under the last sheet's content for the closing line (12.5 mm), inside the 16 mm margin
+      footRoom: (pageH - 16 * MM - lastBottom) / MM,
+      // the exits table's type, in px: 9 pt on Letter, grown with a bigger sheet like the lockdown index
+      tableFont: parseFloat(view.getComputedStyle(doc.querySelector('.mpack__exits .doc-table')).fontSize),
+      heads: pages.map((el) => ({ what: el.querySelector('.doc-head__what').textContent, size: parseFloat(view.getComputedStyle(el.querySelector('.doc-head__what')).fontSize), poster: el.querySelector('.poster') !== null })),
+      list: (() => {
+        const list = doc.querySelector('.mpack__cover [data-list="contents"]');
+        return { columns: view.getComputedStyle(list).columnCount, lefts: Array.from(list.children).map((li) => Math.round(li.getBoundingClientRect().left)), ids: Array.from(list.children).map((li) => li.dataset.section) };
+      })(),
+      html: doc.documentElement.outerHTML,
+    };
+  });
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.getElementById('print-preview') === null);
+  return seen;
+}
+
+test('the map pack\'s cover: the sections are one column, in the pack\'s order', async () => {
+  const page = wide.page;
+  await fresh(page);
+  await page.click('[data-card="pack"] .sfy-tick__box[data-id="cards"]');
+  const seen = await packOn(page, 'letter', 'landscape');
+  assert.deepEqual(seen.list.ids, ['plans', 'lockdown', 'posters', 'exits', 'cards']);
+  assert.equal(seen.list.columns, '1', 'one column');
+  assert.equal(new Set(seen.list.lefts).size, 1, 'every line starts at the same left edge');
+});
+
+test('inside the pack a poster\'s sheet heads at the poster\'s 28 pt scaled by paper, the other sheets at 18 pt, and every sheet is one sheet tall', async () => {
+  const page = wide.page;
+  await fresh(page);
+  // Letter 28 pt = 37.33 px; A2's scale is 2.0636
+  let letterFont = 0;
+  for (const [size, orientation, scale] of [['letter', 'landscape', 1], ['a2', 'landscape', 2.0636]]) {
+    const seen = await packOn(page, size, orientation);
+    const posters = seen.heads.filter((head) => head.poster);
+    assert.equal(posters.length, 3, size + ': a sheet a floor');
+    for (const head of posters) assert.ok(Math.abs(head.size - 28 * scale * 96 / 72) < 0.6, size + ' ' + head.what + ' heads at ' + head.size + ' px');
+    for (const head of seen.heads.filter((each) => !each.poster)) assert.ok(Math.abs(head.size - 24) < 0.6, size + ' ' + head.what + ' heads at ' + head.size + ' px, 18 pt');
+    assert.deepEqual(seen.tall, [], size + ': sheets that run past the paper, as [index, mm over px]');
+    assert.equal(seen.counted, seen.pages);
+    // the exits table's text scales with the paper: A2's short side is 2.04 times Letter's printable width
+    if (size === 'letter') letterFont = seen.tableFont;
+    else assert.ok(seen.tableFont > letterFont * 1.9, 'A2 sets the exits table at ' + seen.tableFont + ' px, Letter at ' + letterFont);
+  }
+});
+
+test('twelve exits with 120-character assembly points: the cover\'s sheet total is the preview\'s, and no sheet runs over, on Letter landscape and A4 portrait', async () => {
+  const page = wide.page;
+  await fresh(page, 'exits12');
+  for (const [size, orientation] of [['letter', 'landscape'], ['a4', 'portrait']]) {
+    const seen = await packOn(page, size, orientation);
+    const rows = (seen.html.match(/<tr data-exit=/g) || []).length;
+    assert.equal(rows, 12, size + ': every exit is in the table once');
+    assert.equal(seen.cover, seen.counted, size + ': the cover says ' + seen.cover + ' sheets in all, the preview counts ' + seen.counted);
+    assert.equal(seen.pages + seen.newSheets, seen.counted, size + ': a sheet for each .page and each .new-sheet');
+    assert.match(seen.status, new RegExp('About ' + seen.counted + ' sheets\\.'), size);
+    assert.deepEqual(seen.tall, [], size + ': sheets that run past the paper, as [index, mm over px]');
+    assert.ok(seen.footRoom >= 0, size + ': the closing line has room under the last sheet, ' + seen.footRoom + ' mm');
+  }
+});
+
+test('an Arabic floor name: the pack\'s running heads and its no-way-out sentences hold it in an isolate', async () => {
+  const page = wide.page;
+  await fresh(page, 'arabic');
+  const seen = await packOn(page, 'letter', 'landscape');
+  const floor = 'الطابق الثاني';
+  const room = 'مكتبة';
+  assert.ok(seen.heads.some((head) => head.what === 'Map pack · Floor plan: ⁨' + floor + '⁩'), seen.heads.map((head) => head.what).join(' | '));
+  assert.ok(seen.heads.some((head) => head.what === 'Map pack · Evacuation routes · ⁨' + floor + '⁩'));
+  assert.ok(seen.html.includes('⁨' + room + '⁩'), 'the room\'s name in its sentence');
+  assert.ok(seen.html.includes('⁨' + floor + '⁩ does not') || seen.html.includes('⁨' + floor + '⁩'), 'and the floor\'s');
+});
+
+test('eight floors, a long list of rooms with no way out: the cover\'s total is the preview\'s and no sheet runs over', async () => {
+  const page = wide.page;
+  await fresh(page, 'many');
+  await page.evaluate(async () => {
+    const project = JSON.parse(JSON.stringify(globalThis.sv2.store.project));
+    project.building.connections = project.building.connections.filter((connection) => connection.kind === 'elevator');
+    // room numbers of 90 characters, so each sentence wraps to a second or third line
+    let n = 0;
+    for (const floor of project.building.floors) for (const space of floor.spaces) if (space.kind === 'room') space.number = ('Room ' + (n += 1) + ' of the old building ').padEnd(90, 'by the long hall ');
+    globalThis.sv2.store.replace(project);
+  });
+  await ready(page);
+  await printsReady(page);
+  for (const [size, orientation] of [['letter', 'landscape'], ['a4', 'portrait']]) {
+    const seen = await packOn(page, size, orientation);
+    assert.ok(seen.html.split('data-section="no-way-out"').length - 1 >= 2, size + ': the list runs on to a second sheet');
+    assert.equal(seen.cover, seen.counted, size);
+    assert.deepEqual(seen.tall, [], size);
+    assert.ok(seen.footRoom >= 0, size + ': room for the closing line, ' + seen.footRoom + ' mm');
   }
 });

@@ -1406,6 +1406,64 @@
 .print-doc[data-output="evacuation-poster"][data-paper="a0"] { --poster-head-scale: 4.2574; }
 .print-doc[data-output="evacuation-poster"][data-paper="poster-24x36"] { --poster-head-scale: 3.0516; }
 
+/* The map pack (SV2-111b). A poster's sheet inside the pack heads at the
+   poster's own 28 pt, scaled by paper as above (the poster's fitPlan has
+   already made room for that header); the other sheets keep the running
+   head's 18 pt. */
+.print-doc[data-output="map-pack"] .page:has(.poster) .doc-head__what {
+  font-size: calc(28pt * var(--poster-head-scale, 1));
+}
+.print-doc[data-output="map-pack"][data-paper="letter"] { --poster-head-scale: 1; }
+.print-doc[data-output="map-pack"][data-paper="a4"] { --poster-head-scale: 1; }
+.print-doc[data-output="map-pack"][data-paper="tabloid"] { --poster-head-scale: 1.3309; }
+.print-doc[data-output="map-pack"][data-paper="a3"] { --poster-head-scale: 1.4226; }
+.print-doc[data-output="map-pack"][data-paper="a2"] { --poster-head-scale: 2.0636; }
+.print-doc[data-output="map-pack"][data-paper="a1"] { --poster-head-scale: 2.9703; }
+.print-doc[data-output="map-pack"][data-paper="a0"] { --poster-head-scale: 4.2574; }
+.print-doc[data-output="map-pack"][data-paper="poster-24x36"] { --poster-head-scale: 3.0516; }
+
+/* The cover's list is one column, in the pack's order (door cards' cover keeps its two). */
+.print-doc .mpack__list {
+  columns: 1;
+}
+
+/* The exits section: the table and the lists under it scale with the paper like the
+   lockdown index (--exits-scale, 1 on Letter); the columns are fixed so that
+   map-pack.js can measure the rows it puts on a sheet. */
+.print-doc .mpack__exits h2 {
+  font-size: calc(12pt * var(--exits-scale, 1));
+}
+.print-doc .mpack__exits .doc-lead {
+  font-size: calc(11pt * var(--exits-scale, 1));
+  max-width: calc(170mm * var(--exits-scale, 1));
+}
+.print-doc .mpack__exits .doc-meaning {
+  font-size: calc(9pt * var(--exits-scale, 1));
+}
+.print-doc .mpack__exits .doc-table {
+  table-layout: fixed;
+  font-size: calc(9pt * var(--exits-scale, 1));
+}
+.print-doc .mpack__exits .doc-table th,
+.print-doc .mpack__exits .doc-table td {
+  padding: calc(1.2mm * var(--exits-scale, 1)) calc(2mm * var(--exits-scale, 1));
+  overflow-wrap: anywhere;
+}
+.print-doc .mpack__exits .doc-table thead th {
+  font-size: calc(8pt * var(--exits-scale, 1));
+}
+.print-doc .mpack__exits .doc-table thead th:nth-child(1) { width: 25%; }
+.print-doc .mpack__exits .doc-table thead th:nth-child(2) { width: 12%; }
+.print-doc .mpack__exits .doc-table thead th:nth-child(3) { width: 31%; }
+.print-doc .mpack__exits .doc-table thead th:nth-child(4) { width: 7%; }
+.print-doc .mpack__exits .doc-table thead th:nth-child(5) { width: 13%; }
+.print-doc .mpack__exits .doc-table thead th:nth-child(6) { width: 12%; }
+.print-doc .mpack__exits .card-cover__missing {
+  margin-bottom: 0;
+  padding-left: calc(6mm * var(--exits-scale, 1));
+  font-size: calc(10pt * var(--exits-scale, 1));
+}
+
 .print-doc .poster__plan {
   margin: 0;
   flex: none;
