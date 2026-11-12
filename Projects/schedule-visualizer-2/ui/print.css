@@ -1272,3 +1272,155 @@
   align-items: flex-start;
   margin-top: 2mm;
 }
+
+/* The lockdown map and the evacuation poster (SV2-110). The plan's own
+   classes are above; these are the sheet round it. Sizes in pt scale with the
+   sheet: --lockdown-scale and --poster-scale are 1 on Letter and grow with a
+   larger sheet's short side. */
+
+.print-doc .lockdown__main {
+  display: flex;
+  gap: var(--lockdown-gap, 6mm);
+  align-items: flex-start;
+}
+
+.print-doc .lockdown--tall .lockdown__main {
+  flex-direction: column;
+}
+
+.print-doc .lockdown__plan {
+  margin: 0;
+  flex: none;
+}
+
+.print-doc .lockdown__picture {
+  margin: 0 auto;
+}
+
+.print-doc .lockdown__index {
+  flex: 1 1 0;
+  min-width: 0;
+  line-height: 1.25;
+  font-size: calc(8pt * var(--lockdown-scale, 1));
+}
+
+.print-doc .lockdown__block {
+  margin-bottom: 3mm;
+  break-inside: avoid;
+}
+
+.print-doc .lockdown__block h2 {
+  margin: 0 0 1mm;
+  font-size: 1.25em;
+  font-weight: 600;
+}
+
+.print-doc .lockdown__rooms,
+.print-doc .lockdown__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.print-doc .lockdown__rooms li,
+.print-doc .lockdown__list li {
+  break-inside: avoid;
+  padding: 0.2mm 0;
+}
+
+.print-doc .lockdown__sq {
+  color: var(--ink-2);
+}
+
+.print-doc .lockdown__none {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+.print-doc .lockdown__badge,
+.print-doc .poster__badge {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 0 0.3em;
+  border-radius: 1em;
+  text-align: center;
+  font-weight: 700;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.print-doc .lockdown__foot {
+  margin-top: 3mm;
+  font-size: calc(8pt * var(--lockdown-scale, 1));
+  color: var(--ink-2);
+}
+
+.print-doc .lockdown__foot p {
+  margin: 0;
+}
+
+.print-doc .poster {
+  display: flex;
+  gap: 6mm;
+  align-items: flex-start;
+}
+
+.print-doc .poster--tall {
+  flex-direction: column;
+}
+
+.print-doc .poster__plan {
+  margin: 0;
+  flex: none;
+}
+
+.print-doc .poster__picture {
+  margin: 0 auto;
+}
+
+.print-doc .poster__text {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: calc(11pt * var(--poster-scale, 1));
+  line-height: 1.3;
+}
+
+.print-doc .poster__key {
+  margin: 0 0 3mm;
+  padding: 0;
+  list-style: none;
+}
+
+.print-doc .poster__exit {
+  display: flex;
+  align-items: center;
+  gap: 2mm;
+  margin-bottom: 2mm;
+  break-inside: avoid;
+}
+
+.print-doc .poster__badge {
+  flex: none;
+  font-size: 1.1em;
+}
+
+.print-doc .poster__bar {
+  flex: none;
+  width: 1.6mm;
+  align-self: stretch;
+  border-radius: 0.8mm;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.print-doc .poster__line {
+  margin: 0 0 2.5mm;
+}
+
+.print-doc .poster__line--bold {
+  font-weight: 700;
+}
+
+.print-doc .poster__line--warn {
+  font-weight: 600;
+}
