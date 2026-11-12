@@ -14,6 +14,10 @@
 //                  point, rooms, people at full capacity and, when heavy, "Far more than the
 //                  others" in words), then the rooms with no way out under "Rooms with no way
 //                  out: fix before posting" (engine/exit-load.js's exitLoad, engine/evacuation.js)
+//                  The rows to a sheet are measured from their text, as fitPlan does (the first
+//                  sheet's room is less by the lines it carries; the pack's last sheet keeps room
+//                  for the closing line), and the section's text scales with the paper
+//                  (--exits-scale, as the lockdown index's --lockdown-scale).
 //
 // Every sheet's running head is its page's `what` under "Map pack · ". Door cards keep room for
 // the closing line only on the pack's last sheet (their `last`, from this module).
@@ -21,22 +25,27 @@
 // The pack prints the building as built, never a Safety trial (ui/safety/ways.js AS_BUILT_LINE).
 // It takes `sections` (ids in SECTIONS; default DEFAULT_SECTIONS) and `floorIds` (the floors of
 // the plans, the maps and the posters; the preview sheet forces `floorId`, which is not read here).
-// Every name is escaped and set in a span with dir="auto".
+// Every name is escaped and set in a span with dir="auto"; inside a sentence it is isolated with
+// U+2068 and U+2069 as the poster does (the pinned tag list of a print has no <bdi>), and in a
+// running head too when the name holds anything but ASCII.
 //
 // render(project, derived, options) → { title, html }; options as document.js.
 
 import { routingGraph } from '../../engine/routing.js';
 import { evacuationRoutes, byExit, noRoute } from '../../engine/evacuation.js';
 import { exitLoad, exitNumbers, exitName, basisWords } from '../../engine/exit-load.js';
+import { nameOfRoom } from '../../engine/schema.js';
 import { count } from '../components/words.js';
 import { labelOn } from '../colour.js';
 import { HEAVY_WORDS } from '../safety/exits.js';
-import { esc, frame, paperOf, printDate, schoolName } from './document.js';
+import { esc, frame, paperOf, printableBox, printDate, schoolName } from './document.js';
 import { printExitColour, PLAN_INK, PLAN_PAPER } from './plan-svg.js';
 import * as floorPlan from './floor-plan.js';
 import * as lockdownMap from './lockdown-map.js';
 import * as evacuationPoster from './evacuation-poster.js';
+import { sheetScale, headerMm, wrapped } from './evacuation-poster.js';
 import * as doorCards from './door-cards.js';
+import { FOOT_MM } from './door-cards.js';
 import * as stepFree from './step-free.js';
 
 export const id = 'map-pack';
@@ -59,10 +68,8 @@ export const COVER_WHAT = 'Building map pack';
 export const NO_WAY_OUT_HEAD = 'Rooms with no way out: fix before posting';
 export const ALL_HAVE_WAY = 'Every room has a way out.';
 export const NO_EXIT_SAYS = evacuationPoster.NO_EXIT;
-// exit rows and no-way-out lines to a sheet, so a table's head is repeated by a new sheet
-// and the cover's counts are the sheets' own
-export const ROWS_PER_SHEET = { landscape: 10, portrait: 18 };
-export const MISSING_PER_SHEET = { landscape: 14, portrait: 26 };
+const FSI = '\u2068';
+const PDI = '\u2069';
 
 function typed(value) {
   return '<span dir="auto">' + esc(value) + '</span>';
@@ -111,62 +118,219 @@ function exitsData(project) {
       share: figure ? figure.share : 0,
     };
   });
-  const names = new Map();
-  for (const floor of project.building.floors) for (const space of floor.spaces) if (space.kind === 'room') names.set(space.id, { floor: floor.name });
-  const missing = noRoute(project, evacuation).map((row) => ({ roomId: row.roomId, floor: names.has(row.roomId) ? names.get(row.roomId).floor : '', sentence: row.sentence, onlyByElevator: row.onlyByElevator === true }));
-  return { exits, missing, load };
+  const named = new Map();
+  let rooms = 0;
+  for (const floor of project.building.floors) {
+    for (const space of floor.spaces) {
+      if (space.kind !== 'room') continue;
+      rooms += 1;
+      named.set(space.id, [nameOfRoom(space, true), nameOfRoom(space, false), floor.name]);
+    }
+  }
+  const missing = noRoute(project, evacuation).map((row) => ({ roomId: row.roomId, names: named.get(row.roomId) || [], sentence: row.sentence, onlyByElevator: row.onlyByElevator === true }));
+  return { exits, missing, load, rooms };
+}
+
+// The words of each cell of an exit's row, as plain text: the row is set from them, and the
+// sheet's chunking measures them.
+function cellsOf(exit) {
+  const people = exit.rooms === 0 ? '0' : String(exit.people) + (exit.uncounted > 0 ? ' (' + exit.uncounted + ' with no capacity set)' : '');
+  const percent = exit.share > 0 ? ' · ' + Math.round(exit.share * 100) + ' %' : '';
+  const load = exit.heavy ? HEAVY_WORDS + percent : (exit.rooms === 0 ? 'No room goes out this way.' : percent.replace(/^ · /, ''));
+  return {
+    exit: String(exit.number) + ' ' + exit.name,
+    floor: exit.floor,
+    assembly: exit.assembly === '' ? 'Assembly point not set' : exit.assembly,
+    rooms: String(exit.rooms),
+    people,
+    load,
+    percent,
+  };
 }
 
 function exitRow(exit) {
   const ink = labelOn(exit.colour, PLAN_INK, PLAN_PAPER);
   const badge = '<span style="display: inline-block; min-width: 5mm; padding: 0 1mm; border-radius: 2.5mm; text-align: center; font-weight: 700; background: ' + esc(exit.colour) + '; color: ' + esc(ink) + ';">' + exit.number + '</span>';
-  const people = exit.rooms === 0 ? '0' : String(exit.people) + (exit.uncounted > 0 ? ' (' + exit.uncounted + ' with no capacity set)' : '');
-  const percent = exit.share > 0 ? ' · ' + Math.round(exit.share * 100) + ' %' : '';
-  const heavy = exit.heavy ? '<span data-heavy="true" style="font-weight: 700;">' + esc(HEAVY_WORDS) + '</span>' + esc(percent) : (exit.rooms === 0 ? esc('No room goes out this way.') : esc(percent.replace(/^ · /, '')));
+  const cells = cellsOf(exit);
+  const heavy = exit.heavy ? '<span data-heavy="true" style="font-weight: 700;">' + esc(HEAVY_WORDS) + '</span>' + esc(cells.percent) : esc(cells.load);
   return '<tr data-exit="' + esc(exit.exitId) + '"' + (exit.heavy ? ' data-heavy="true"' : '') + '>'
     + '<th scope="row">' + badge + ' ' + typed(exit.name) + '</th>'
     + '<td>' + typed(exit.floor) + '</td>'
-    + '<td>' + (exit.assembly === '' ? '<span class="is-missing">' + esc('Assembly point not set') + '</span>' : typed(exit.assembly)) + '</td>'
+    + '<td>' + (exit.assembly === '' ? '<span class="is-missing">' + esc(cells.assembly) + '</span>' : typed(exit.assembly)) + '</td>'
     + '<td class="is-number">' + exit.rooms + '</td>'
-    + '<td class="is-number">' + esc(people) + '</td>'
+    + '<td class="is-number">' + esc(cells.people) + '</td>'
     + '<td>' + heavy + '</td>'
     + '</tr>';
 }
 
-const TABLE_HEAD = '<thead><tr><th scope="col">Exit</th><th scope="col">Floor</th><th scope="col">Assembly point</th><th scope="col">Rooms</th><th scope="col">People at full capacity</th><th scope="col">Load</th></tr></thead>';
+// The table's columns, as shares of the sheet's width: print.css sets the same widths on the head's cells
+// (table-layout: fixed; the pinned tag list of a print has no <col>), so the measure below is the layout.
+const COLUMNS = [
+  ['Exit', 0.25, 'exit'], ['Floor', 0.12, 'floor'], ['Assembly point', 0.31, 'assembly'],
+  ['Rooms', 0.07, 'rooms'], ['People at full capacity', 0.13, 'people'], ['Load', 0.12, 'load'],
+];
+const TABLE_HEAD = '<thead><tr>' + COLUMNS.map(([label]) => '<th scope="col">' + esc(label) + '</th>').join('') + '</tr></thead>';
 
-// The exits section's sheets: the table (a sheet of rows at a time), then the missing rooms.
-function exitsPages(project, orientationOf) {
-  const { exits, missing, load } = exitsData(project);
-  const rowsAt = ROWS_PER_SHEET[orientationOf];
-  const missingAt = MISSING_PER_SHEET[orientationOf];
-  const what = 'Exits and assembly points';
+// ---- measuring what a sheet holds, in millimetres, from the text as fitPlan does (evacuation-poster.js)
+const MM_PER_PT = 25.4 / 72;
+// the pack's own rows and lines are never taller than this fraction of a sheet's room: the estimate errs long
+const SLACK_MM = 3;
+const SLACK_SHARE = 0.03;
+
+// characters counted by width: a CJK character is about two Latin ones
+function weigh(text) {
+  let n = 0;
+  for (const character of String(text)) n += character.codePointAt(0) >= 0x2e80 ? 1.8 : 1;
+  return n;
+}
+
+// the lines of `text` in a column `width` mm wide, set `size` mm high
+function linesOf(text, width, size) {
+  return wrapped(weigh(text), width, size);
+}
+
+// A heading line cannot be shorter than the head the sheet draws: the school line, the headline, the rule.
+function headMm(box) {
+  return headerMm(box, 1, 'Map pack · ' + EXITS_WHAT + ' (continued)', 18);
+}
+
+// Greedy: items (their heights) into sheets, the first with `first` mm of room and the rest `later`;
+// `after` mm of something that follows the last item (a line, or the closing line) must fit on the
+// last sheet too, else the last item goes to a sheet of its own, so nothing falls onto a sheet nobody counted.
+function chunkBy(heights, first, later, after) {
+  const groups = [{ items: [], used: 0, room: first }];
+  heights.forEach((height, index) => {
+    let at = groups[groups.length - 1];
+    if (at.items.length > 0 && at.used + height > at.room) {
+      at = { items: [], used: 0, room: later };
+      groups.push(at);
+    }
+    at.items.push(index);
+    at.used += height;
+  });
+  const last = groups[groups.length - 1];
+  if (after > 0 && last.items.length > 1 && last.used + after > last.room) {
+    const moved = last.items.pop();
+    last.used -= heights[moved];
+    groups.push({ items: [moved], used: heights[moved], room: later });
+  }
+  return groups.map((group) => group.items);
+}
+
+const EXITS_WHAT = 'Exits and assembly points';
+
+// A name inside a sentence, isolated from the words round it (U+2068, U+2069), as the poster does: a
+// right-to-left name, or a number first, cannot reorder the sentence. The pinned tag list of a print has no <bdi>.
+function iso(value) {
+  return FSI + esc(value) + PDI;
+}
+
+// `text` as markup with the first appearance of each of `names` isolated.
+function isolated(text, names) {
+  const list = Array.from(new Set(names.filter((each) => typeof each === 'string' && each.trim() !== ''))).sort((a, b) => b.length - a.length);
+  if (list.length === 0) return esc(text);
+  const pattern = new RegExp(list.map((each) => each.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g');
+  const used = new Set();
+  let out = '';
+  let from = 0;
+  for (const match of text.matchAll(pattern)) {
+    if (used.has(match[0])) continue;
+    used.add(match[0]);
+    out += esc(text.slice(from, match.index)) + iso(match[0]);
+    from = match.index + match[0].length;
+  }
+  return out + esc(text.slice(from));
+}
+
+// A running head: the typed names in it are isolated when they hold anything but ASCII (a plain
+// name needs none, and the head stays the words it reads as).
+function headOf(what, names) {
+  const risky = names.filter((each) => typeof each === 'string' && each.trim() !== '' && /[^ -~]/.test(each) && what.includes(each));
+  if (risky.length === 0) return what;
+  const list = risky.sort((a, b) => b.length - a.length);
+  let out = '';
+  let rest = what;
+  while (rest !== '') {
+    const hit = list.find((each) => rest.startsWith(each));
+    if (hit) {
+      out += FSI + hit + PDI;
+      rest = rest.slice(hit.length);
+    } else {
+      out += rest[0];
+      rest = rest.slice(1);
+    }
+  }
+  return out;
+}
+
+// The exits section's sheets: the table (as many rows to a sheet as the sheet holds, measured), then the missing rooms.
+//   context { paper, last (the pack ends with this section), cards, posters (those sections are in the pack) }
+function exitsPages(project, context) {
+  const { exits, missing, load, rooms } = exitsData(project);
+  const box = printableBox(context.paper);
+  const scale = sheetScale(box);
+  const size = (pt) => pt * scale * MM_PER_PT;
+  const style = ' style="--exits-scale: ' + Math.round(scale * 100) / 100 + ';"';
+  const room = box.height - headMm(box) - (SLACK_MM + SLACK_SHARE * box.height) - (size(12) * 1.25 + 1.5);
+  const foot = context.last ? FOOT_MM : 0;
+  const what = EXITS_WHAT;
   const out = [];
+  // the lines over the table, with the room each takes
   const lead = [];
-  if (exits.length === 0) lead.push('<p class="doc-lead" data-line="no-exit">' + esc(NO_EXIT_SAYS) + '</p>');
+  let leadMm = 0;
+  const say = (html, plain, pt, across) => {
+    lead.push(html);
+    leadMm += linesOf(plain, Math.min(box.width, across), size(pt)) * size(pt) * 1.4 + 2.5;
+  };
+  if (exits.length === 0) say('<p class="doc-lead" data-line="no-exit">' + esc(NO_EXIT_SAYS) + '</p>', NO_EXIT_SAYS, 11, 170 * scale);
   // far more than the others is a warning; a building with one way out gets the same sentence as a note
-  if (load.sentence) lead.push('<p class="doc-lead" data-line="' + (load.heavy.length > 0 ? 'heavy' : 'one-exit') + '">' + (load.heavy.length > 0 ? '<span style="font-weight: 700;">Warning</span> ' : '') + esc(load.sentence) + '</p>');
+  if (load.sentence) {
+    const heavy = load.heavy.length > 0;
+    const words = load.sentenceParts.map((part) => (part.name ? iso(part.text) : esc(part.text))).join('');
+    say('<p class="doc-lead" data-line="' + (heavy ? 'heavy' : 'one-exit') + '">' + (heavy ? '<span style="font-weight: 700;">Warning</span> ' : '') + words + '</p>', (heavy ? 'Warning ' : '') + load.sentence, 11, 170 * scale);
+  }
   const basis = basisWords(load);
-  if (basis !== '') lead.push('<p class="doc-meaning" data-line="basis">' + esc(basis) + '</p>');
-  const groups = exits.length === 0 ? [[]] : chunks(exits, rowsAt);
+  if (basis !== '') say('<p class="doc-meaning" data-line="basis">' + esc(basis) + '</p>', basis, 9, box.width);
+  // a building with every way out says so, on the table's last sheet: only when it has an exit and a room to say it of
+  const allOut = missing.length === 0 && exits.length > 0 && rooms > 0;
+  const allOutMm = allOut ? 3 + linesOf(ALL_HAVE_WAY, box.width, size(9)) * size(9) * 1.4 + 2.5 : 0;
+
+  const cellsMm = (key, text, bold) => {
+    const share = COLUMNS.find(([, , id]) => id === key)[1];
+    const type = size(9) * (bold ? 1.1 : 1);
+    return linesOf(text, box.width * share - 4 * scale, type) * type * 1.4 + 2.4 * scale + 0.2;
+  };
+  const headMmRow = Math.max(...COLUMNS.map(([label, share]) => linesOf(label, box.width * share - 4 * scale, size(8) * 1.1) * size(8) * 1.1 * 1.4 + 2.4 * scale + 0.2));
+  const heights = exits.map((exit) => {
+    const cells = cellsOf(exit);
+    return Math.max(cellsMm('exit', cells.exit, true), ...['floor', 'assembly', 'rooms', 'people', 'load'].map((key) => cellsMm(key, key === 'load' ? cells.load : cells[key], false)));
+  });
+  const groups = chunkBy(heights, room - leadMm - (exits.length > 0 ? headMmRow : 0), room - headMmRow, allOutMm + (missing.length === 0 ? foot : 0));
   groups.forEach((group, index) => {
-    const body = ['<section class="doc-section" data-section="exits"><h2>' + esc(what) + (index > 0 ? esc(' (continued)') : '') + '</h2>'];
+    const body = ['<section class="doc-section mpack__exits" data-section="exits"' + style + '><h2>' + esc(what) + (index > 0 ? esc(' (continued)') : '') + '</h2>'];
     if (index === 0) body.push(...lead);
-    if (group.length > 0) body.push('<table class="doc-table doc-table--exits">' + TABLE_HEAD + '<tbody>' + group.map(exitRow).join('') + '</tbody></table>');
+    if (group.length > 0) body.push('<table class="doc-table doc-table--exits">' + TABLE_HEAD + '<tbody>' + group.map((at) => exitRow(exits[at])).join('') + '</tbody></table>');
+    if (allOut && index === groups.length - 1) body.push('<p class="doc-meaning" data-line="all-out" style="margin-top: 3mm;">' + esc(ALL_HAVE_WAY) + '</p>');
     body.push('</section>');
     out.push({ what, body: body.join('\n') });
   });
-  if (missing.length === 0) {
-    // a line, on the table's last sheet, so a building with every way out says so
-    const last = out[out.length - 1];
-    last.body = last.body.replace(/<\/section>$/, '<p class="doc-meaning" data-line="all-out" style="margin-top: 3mm;">' + esc(ALL_HAVE_WAY) + '</p></section>');
-    return out;
-  }
-  chunks(missing, missingAt).forEach((group, index) => {
+  if (missing.length === 0) return out;
+
+  const n = missing.length;
+  const because = [];
+  if (context.cards) because.push(n === 1 ? 'its door card says so' : 'their door cards say so');
+  if (context.posters) because.push(n === 1 ? 'its route is missing from the posters' : 'their routes are missing from the posters');
+  const intro = count(n, 'room') + (n === 1 ? ' has' : ' have') + ' no way out' + (because.length > 0 ? ', so ' + because.join(' and ') : '') + '.';
+  const introMm = linesOf(intro, Math.min(box.width, 170 * scale), size(11)) * size(11) * 1.4 + 2.5;
+  const itemsMm = missing.map((row) => linesOf(row.sentence + (row.onlyByElevator ? ' ' + doorCards.ELEVATOR_SAYS : ''), box.width - 6 * scale, size(10)) * size(10) * 1.4);
+  chunkBy(itemsMm, room - introMm, room, foot).forEach((group, index) => {
     const head = index === 0 ? NO_WAY_OUT_HEAD : NO_WAY_OUT_HEAD + ' (continued)';
-    const items = group.map((row) => '<li data-room="' + esc(row.roomId) + '">' + typed(row.sentence) + (row.onlyByElevator ? ' ' + esc(doorCards.ELEVATOR_SAYS) : '') + '</li>').join('');
-    const intro = index === 0 ? '<p class="doc-lead">' + esc(count(missing.length, 'room') + (missing.length === 1 ? ' has' : ' have') + ' no way out, so its door card says so and its route is missing from the posters.') + '</p>' : '';
-    out.push({ what, body: '<section class="doc-section" data-section="no-way-out"><h2>' + esc(head) + '</h2>' + intro + '<ul class="card-cover__missing">' + items + '</ul></section>' });
+    const items = group.map((at) => {
+      const row = missing[at];
+      return '<li data-room="' + esc(row.roomId) + '"><span dir="auto">' + isolated(row.sentence, row.names) + '</span>' + (row.onlyByElevator ? ' ' + esc(doorCards.ELEVATOR_SAYS) : '') + '</li>';
+    }).join('');
+    const lead = index === 0 ? '<p class="doc-lead">' + esc(intro) + '</p>' : '';
+    out.push({ what, body: '<section class="doc-section mpack__exits" data-section="no-way-out"' + style + '><h2>' + esc(head) + '</h2>' + lead + '<ul class="card-cover__missing">' + items + '</ul></section>' });
   });
   return out;
 }
@@ -195,7 +359,7 @@ function coverBody(project, opts, listed) {
     '<h2 style="margin: 0 0 3mm; font-size: 18pt;">' + esc(COVER_WHAT) + '</h2>',
     date === '' ? '' : '<p class="doc-lead" data-line="date">' + esc(date) + '</p>',
     '<h2 style="margin: 8mm 0 2mm; font-size: 12pt;">In this pack</h2>',
-    '<ul class="card-cover__list" data-list="contents">' + lines.join('') + '</ul>',
+    '<ul class="card-cover__list mpack__list" data-list="contents">' + lines.join('') + '</ul>',
     '<p class="doc-meaning" data-line="total">' + esc(sheets(total) + ' in all, with this cover. Choose Save as PDF in the print dialog to keep the pack as one file.') + '</p>',
     '</div>',
   ].join('\n');
@@ -207,22 +371,28 @@ export function pages(project, derived, options) {
   const wanted = sectionsFor(opts);
   // the document has one orientation and one paper; the modules read them from the options as given
   const paper = paperOf(project, opts);
+  const named = [];
+  for (const floor of project.building.floors) {
+    named.push(floor.name);
+    for (const corridor of floor.corridors || []) named.push(corridor.name);
+  }
   const base = { ...opts, floorId: 'all', traceImage: false, traceImages: undefined, roomIds: undefined, by: 'floor', corridorIds: undefined, sections: undefined };
   const out = [];
   const listed = [];
   const run = (section, made, note) => {
     const label = SECTIONS.find((each) => each.id === section).label;
     listed.push({ id: section, label, sheets: sheetsOf(made), note });
-    for (const page of made) out.push({ what: 'Map pack · ' + (page.what || label), body: page.body });
+    for (const page of made) out.push({ what: headOf('Map pack · ' + (page.what || label), named), body: page.body });
   };
   for (const section of wanted) {
     if (section === 'plans') run(section, floorPlan.pages(project, derived, base), 'one a floor');
     else if (section === 'lockdown') run(section, lockdownMap.pages(project, derived, base), 'one a floor');
     else if (section === 'posters') run(section, evacuationPoster.pages(project, derived, base), 'one a floor');
-    else if (section === 'exits') run(section, exitsPages(project, paper.orientation), '');
+    else if (section === 'exits') run(section, exitsPages(project, { paper, last: wanted[wanted.length - 1] === 'exits', cards: wanted.includes('cards'), posters: wanted.includes('posters') }), '');
     else if (section === 'cards') {
       const made = doorCards.pages(project, derived, { ...base, last: wanted[wanted.length - 1] === 'cards' });
-      run(section, made, 'one or two sheets a room');
+      // a building with no room has no card: the module's one sheet saying so is not printed, the cover says it
+      run(section, made.length === 1 && !made[0].what ? [] : made, 'one or two sheets a room');
     } else if (section === 'step-free') run(section, stepFree.pages(project, derived, base), '');
   }
   return [{ what: 'Map pack', body: coverBody(project, opts, listed) }].concat(out);
