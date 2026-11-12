@@ -309,7 +309,10 @@ test('Help’s Safety part names each of Safety’s tabs, the trial and the prin
       const rule = Array.from(dialog.querySelectorAll('[data-numbers="load"] li, [data-numbers="load"] p')).map((el) => el.textContent);
       return { safety: li ? li.textContent : '', rule };
     });
-    for (const label of tabLabels) assert.ok(seen.safety.includes(label), 'Help’s Safety part does not name the ' + label + ' tab');
+    // an exact, word-bounded match: "Exits" is not met by "exits"
+    for (const label of tabLabels) {
+      assert.ok(new RegExp('(?<![A-Za-z0-9-])' + label.replace(/-/g, '\\-') + '(?![A-Za-z0-9-])').test(seen.safety), 'Help’s Safety part does not name the ' + label + ' tab');
+    }
     for (const phrase of ['five tabs', 'never printed', 'Save as PDF', 'Use the scenario’s closures', 'Clear the trial', 'evacuation posters', 'lockdown maps', 'map pack']) {
       assert.ok(seen.safety.includes(phrase), 'Help’s Safety part lacks "' + phrase + '"');
     }

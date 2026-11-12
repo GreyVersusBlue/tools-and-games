@@ -732,3 +732,41 @@ test('waysOnFloor: a route with no from has no start, on its first floor and aft
   assert.deepEqual(waysOnFloor([over], 'fa').map((way) => [way.cells, way.start, way.exit, way.joins]), [[[6], null, null, [6]], [[8], null, 8, [8]]]);
   assert.deepEqual(runsOf(over.route).map((run) => run.length), [1, 1, 1]);
 });
+
+// SV2-112b: the dot as well as the pill is kept off every corridor name. On the
+// sample's Main Corridor poster the middle cell lay under "MAIN · IDOR".
+const dotBox = (svg) => {
+  const m = /class="plan__marker" cx="([-\d.]+)" cy="([-\d.]+)" r="([\d.]+)"/.exec(svg);
+  return m ? { left: Number(m[1]) - Number(m[3]), right: Number(m[1]) + Number(m[3]), top: Number(m[2]) - Number(m[3]), bottom: Number(m[2]) + Number(m[3]) } : null;
+};
+
+test('marker: the dot and the pill are off every corridor name, on all five named corridors of the sample, at the middle cell', () => {
+  const project = school();
+  let checked = 0;
+  let moved = 0;
+  for (const floor of project.building.floors) {
+    for (const corridor of floor.corridors) {
+      if (corridor.name.trim() === '') continue;
+      const mx = corridor.cells.reduce((sum, cell) => sum + (cell % floor.width), 0) / corridor.cells.length;
+      const my = corridor.cells.reduce((sum, cell) => sum + Math.floor(cell / floor.width), 0) / corridor.cells.length;
+      const dist = (cell) => Math.hypot((cell % floor.width) - mx, Math.floor(cell / floor.width) - my);
+      const cell = corridor.cells.slice().sort((a, b) => dist(a) - dist(b))[0];
+      const plan = planSvg(project, floor, { marker: { cell, label: 'You are here' }, highlightCells: corridor.cells });
+      const dot = dotBox(plan.svg);
+      const pill = pillBox(plan.svg);
+      assert.ok(dot && pill, 'a dot and a pill are drawn');
+      for (const name of nameBoxes(plan.svg)) {
+        assert.equal(boxesOverlap(dot, name), false, floor.name + ' ' + corridor.name + ': the dot is on ' + name.name);
+        assert.equal(boxesOverlap(pill, name), false, floor.name + ' ' + corridor.name + ': the pill covers ' + name.name);
+      }
+      // the moved marker is still on the same corridor
+      const col = Math.floor(((dot.left + dot.right) / 2) / 20);
+      const row = Math.floor(((dot.top + dot.bottom) / 2) / 20);
+      assert.ok(corridor.cells.includes(row * floor.width + col), floor.name + ' ' + corridor.name + ': the dot left its corridor');
+      if (row * floor.width + col !== cell) moved += 1;
+      checked += 1;
+    }
+  }
+  assert.equal(checked, 5, 'the sample names five corridors');
+  assert.ok(moved >= 1, 'at least one middle cell lay under a name and was moved (Main Corridor)');
+});

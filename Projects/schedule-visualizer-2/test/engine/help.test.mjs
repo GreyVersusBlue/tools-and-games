@@ -540,3 +540,61 @@ test('the numbers say what an elevator costs and how a class rides, from the set
   const settingsPage = read('ui', 'project', 'settings.js');
   for (const label of ['Elevators', 'Wait', 'Ride per floor', 'People per trip']) assert.ok(settingsPage.includes("'" + label + "'"), 'Project › Settings has no "' + label + '"');
 });
+
+// SV2-112b: Help's Safety part. The five tabs are named by an exact match
+// (capital letters and all), so "Exits" is not met by the word "exits".
+const SAFETY_TABS = ['Exits', 'Door cards', 'Step-free', 'What if', 'Prints'];
+const namesTab = (text, label) => new RegExp('(?<![A-Za-z0-9-])' + label.replace(/[-]/g, '\\-') + '(?![A-Za-z0-9-])').test(text);
+
+test('the tab match is exact: "Exits" is not met by "exits", nor "Prints" by "Printsheet"', () => {
+  assert.equal(namesTab('Which exits are open', 'Exits'), false);
+  assert.equal(namesTab('Exits lists the rooms', 'Exits'), true);
+  assert.equal(namesTab('Printsheet', 'Prints'), false);
+  assert.equal(namesTab('step-free ways', 'Step-free'), false);
+});
+
+const safetyText = () => Object.values(SECTION_HELP.safety).join(' ');
+const loadText = () => numbers(defaultSettings()).find((each) => each.id === 'load').sentences.join(' ');
+
+test('Help’s Safety part names each of the five tabs exactly', () => {
+  const text = safetyText();
+  for (const label of SAFETY_TABS) assert.ok(namesTab(text, label), 'Help’s Safety part does not name the ' + label + ' tab');
+});
+
+test('Help says Door cards print one or two pages a room', () => {
+  const text = safetyText();
+  assert.ok(text.includes('prints one or two pages a room'), 'Door cards line');
+  assert.ok(!text.includes('prints one page a room'));
+});
+
+test('Help’s corridor sentence says to close the corridor in a scenario first, in the What if tab’s words', async () => {
+  const { CORRIDOR_SAYS, FOR_SCENARIO } = await import('../../ui/safety/what-if.js').catch(() => ({}));
+  const text = safetyText();
+  assert.ok(text.includes('close it in a scenario'), 'the corridor must first be closed in a scenario');
+  assert.ok(text.includes('Scenarios, Stairs and corridors'), 'where to close it');
+  assert.ok(text.indexOf('close it in a scenario') < text.indexOf('Scenarios, Stairs and corridors'));
+  assert.ok(CORRIDOR_SAYS && text.includes(CORRIDOR_SAYS.slice(0, -1)), 'the same words as CORRIDOR_SAYS');
+  if (FOR_SCENARIO) assert.ok(text.includes(FOR_SCENARIO));
+});
+
+test('Help says what people means, the even share, when the warning fires, the advice and the one-exit note', async () => {
+  const { BASIS_ROOMS, HEAVY_SHARE, HEAVY_MARGIN } = await import('../../engine/exit-load.js');
+  const text = loadText();
+  assert.ok(text.includes('people means each room’s capacity at full capacity'));
+  assert.ok(text.includes('A room with no capacity set adds nothing'));
+  assert.ok(text.includes(BASIS_ROOMS), 'the rooms basis in the engine’s words');
+  assert.ok(text.includes('divided among the exits not blocked'));
+  assert.ok(text.includes('at least two open exits'));
+  assert.ok(text.includes('a blocked exit is never flagged'));
+  assert.ok(text.includes('does not know door widths'));
+  assert.ok(text.includes('one exit gets a note instead'));
+  assert.ok(text.includes(HEAVY_SHARE + ' times an even share') && text.includes(HEAVY_MARGIN.people + ' people'));
+});
+
+test('Help says blocked stairs do not change the Step-free view; only blocked exits and corridors do', async () => {
+  const { STAIRS_UNCHANGED } = await import('../../ui/safety/ways.js').catch(() => ({}));
+  const text = safetyText();
+  assert.ok(/blocked stairs do not change it, because it never uses stairs/.test(text), 'stairs unchanged');
+  assert.ok(/only blocked exits and corridors do/.test(text), 'exits and corridors do');
+  if (STAIRS_UNCHANGED) assert.ok(STAIRS_UNCHANGED.toLowerCase().includes('never uses stairs'));
+});

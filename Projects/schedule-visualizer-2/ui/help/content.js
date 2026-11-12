@@ -26,7 +26,7 @@
 import { defaultSettings, elevatorSettings, STUDENTS_PER_LANE_CELL, DOOR_SIDES, DAY_TYPES_MOST, DEFAULT_DAY_TYPE_NAMES } from '../../engine/schema.js';
 import { CROSSING_WAIT_MAX, CAP_FACTOR, CAP_MINIMUM_SECONDS, columnLength, walkingSeconds } from '../../engine/crowd.js';
 import { routingGraph } from '../../engine/routing.js';
-import { HEAVY_SHARE, HEAVY_MARGIN } from '../../engine/exit-load.js';
+import { HEAVY_SHARE, HEAVY_MARGIN, BASIS_ROOMS } from '../../engine/exit-load.js';
 import { LOAD_BANDS, bandEdges } from '../../engine/load.js';
 import { MIN_ZOOM, MAX_ZOOM } from '../surface/viewport.js';
 import { LONG_PRESS_MS, SLOP } from '../surface/input.js';
@@ -64,7 +64,7 @@ export const SECTION_HELP = {
   safety: {
     purpose: 'See the way out from every room to its nearest exit, try the building with an exit or stairs blocked, and print door cards, evacuation posters, lockdown maps and a map pack.',
     first: 'Mark the exits first: the Exit tool (X) in Building, on a corridor cell at the edge of a floor. Then pick a room on the map, or tick rooms under Door cards and print them.',
-    more: 'The inspector has five tabs. Exits lists the rooms and people each exit serves and any room with no way out; when one exit serves far more than the others it says so in a warning, and evacuation still takes every room to its nearest way out. Door cards prints one page a room. Step-free shows the ways out that use no stairs and no step. What if is a trial: tick the exits and stairs that cannot be used, or press Use the scenario’s closures to block the stairs and corridors the open scenario closes, and the map, Exits and Step-free show how every room would get out without them, with the rooms that have no way out, the rooms that go out another way and each exit’s rooms before and after. The trial survives moving between sections, is forgotten when the page closes or another project opens, and is never printed: every print is the building as built. Clear the trial puts everything back. Prints opens the evacuation posters (one per floor or one per named corridor), the lockdown maps and the map pack, each in the print preview; choose Save as PDF in the print dialog to keep the map pack as one file.',
+    more: 'The inspector has five tabs. Exits lists the rooms and people each exit serves and any room with no way out; when one exit serves far more than the others it says so in a warning, and evacuation still takes every room to its nearest way out. Door cards prints one or two pages a room (a second block when Step-free applies). Step-free shows the ways out that use no stairs and no step; blocked stairs do not change it, because it never uses stairs, and only blocked exits and corridors do. What if is a trial: tick the exits and stairs that cannot be used. To block a corridor, close it in a scenario and press Use the scenario’s closures (a corridor is closed in Scenarios, Stairs and corridors); the button also brings in the stairs the scenario closes. The map, Exits and Step-free show how every room would get out without them, with the rooms that have no way out, the rooms that go out another way and each exit’s rooms before and after. The trial survives moving between sections, is forgotten when the page closes or another project opens, and is never printed: every print is the building as built. Clear the trial puts everything back. Prints opens the evacuation posters (one per floor or one per named corridor), the lockdown maps and the map pack, each in the print preview; choose Save as PDF in the print dialog to keep the map pack as one file.',
   },
   staff: {
     purpose: 'Make the staff browser: a read-only lookup of where and when, for staff on their phones, published as one file.',
@@ -277,6 +277,8 @@ export function numbers(settings) {
         'The map colours cells in ' + LOAD_BANDS + ' bands, quiet to busy. The colour scale is ' + setting(s, defaults, (x) => mode(x.colourScale), (v) => v) + '. Relative splits the busiest load on screen into fifths. Absolute starts bands 2 to 5 at the loads you set: ' + setting(s, defaults, (x) => absoluteStarts(x.colourScale), (v) => v) + '.',
         'Cells inside a Leave out zone are counted, but not coloured and not ranked among the hotspots.',
         'An exit is far more than the others when it serves at least ' + HEAVY_SHARE + ' times an even share of the building’s people and at least ' + HEAVY_MARGIN.people + ' people more than that share (' + HEAVY_MARGIN.rooms + ' rooms, when most rooms have no capacity set and rooms are compared instead).',
+        'In Safety, people means each room’s capacity at full capacity. A room with no capacity set adds nothing, and when most rooms have none the figures compare rooms: ' + BASIS_ROOMS + ' An even share is the building’s people divided among the exits not blocked.',
+        'The warning needs at least two open exits, and a blocked exit is never flagged. It comes with advice to check the door and the corridors to it, because the tool does not know door widths. A building with one exit gets a note instead.',
       ],
     },
     {

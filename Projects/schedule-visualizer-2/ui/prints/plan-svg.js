@@ -116,6 +116,9 @@
 //                           what is drawn), or, when that would cover a corridor's
 //                           name or a route's number badge, on the first of the
 //                           other sides that does not: below, above, right, left.
+//                           The dot is kept off every corridor name too: a marker
+//                           under one moves to the nearest cell of the same
+//                           corridor clear of every name and badge.
 //     options.place         { x, y, width, height }: where the picture lies
 //                           inside a larger SVG (the floor plan's PNG,
 //                           SV2-32c), written on its root. Left out, the root
@@ -1074,28 +1077,48 @@ export function planSvg(project, floor, options) {
   // that does not (below, above, right, left), and in a window on one the window
   // holds whole. Nothing here grows a window.
   if (marker !== null) {
-    const mx = ((marker.cell % width) + 0.5) * U;
-    const my = (Math.floor(marker.cell / width) + 0.5) * U;
     const r = U * 0.38;
     const words = typeof marker.label === 'string' ? marker.label : '';
+    const size = 10;
+    const wide = textEms(words) * size + 8;
+    const tall = size + 6;
+    const hits = (b, o) => b.left < o.right && b.right > o.left && b.top < o.bottom && b.bottom > o.top;
+    const clear = (b) => !nameAvoid.some((o) => hits(b, o));
+    const inside = (b) => !crop || (b.left >= crop.x * U && b.right <= (crop.x + crop.width) * U && b.top >= crop.y * U && b.bottom <= (crop.y + crop.height) * U);
+    // where the dot and the pill of a marker on one cell would lie, and whether
+    // the dot and one side of pill are clear of every name and badge
+    const placeAt = (cell) => {
+      const mx = ((cell % width) + 0.5) * U;
+      const my = (Math.floor(cell / width) + 0.5) * U;
+      const box = { left: mx - r, right: mx + r, top: my - r, bottom: my + r };
+      const pillBox = (left, top) => ({ left, right: left + wide, top, bottom: top + tall });
+      const above = Math.floor(cell / width) > (crop ? crop.y : y0);
+      const sides = [pillBox(mx - wide / 2, my - r - 3 - tall), pillBox(mx - wide / 2, my + r + 3), pillBox(mx + r + 3, my - tall / 2), pillBox(mx - r - 3 - wide, my - tall / 2)];
+      const [up, down, right, left] = sides;
+      const order = above ? [up, down, right, left] : [down, right, left, up];
+      const dotClear = clear(box);
+      const pillClear = order.find((o) => clear(o) && inside(o)) || null;
+      return { cell, mx, my, box, order, dotClear, pillClear };
+    };
+    // SV2-112b: the dot never sits on a corridor's name. Where the cell lies
+    // under one, the marker moves to the nearest cell of the same corridor with
+    // the dot and a pill side both clear (else the nearest with the dot clear).
+    let spot = placeAt(marker.cell);
+    if (!spot.dotClear) {
+      const corridor = floor.corridors.find((c) => Array.isArray(c.cells) && c.cells.includes(marker.cell));
+      if (corridor) {
+        const near = (cell) => Math.hypot((cell % width) - (marker.cell % width), Math.floor(cell / width) - Math.floor(marker.cell / width));
+        const options = corridor.cells.filter((cell) => cell !== marker.cell && Number.isInteger(cell) && cell >= 0 && cell < width * height && (!crop || inCrop(cell)) && shown([cell])).sort((p, q) => near(p) - near(q) || p - q).map(placeAt);
+        const better = options.find((o) => o.dotClear && (words.trim() === '' || o.pillClear)) || (spot.dotClear ? null : options.find((o) => o.dotClear));
+        if (better) spot = better;
+      }
+    }
+    const { mx, my, box, order } = spot;
     const dot = '<circle class="plan__marker" cx="' + n(mx) + '" cy="' + n(my) + '" r="' + n(r) + '"/>';
-    const box = { left: mx - r, right: mx + r, top: my - r, bottom: my + r };
     if (words.trim() === '') {
       put('<g class="plan__you">' + dot + '</g>', box);
       if (!crop) reach.push({ left: box.left - 1, right: box.right + 1, top: box.top - 1, bottom: box.bottom + 1 });
     } else {
-      const size = 10;
-      const wide = textEms(words) * size + 8;
-      const tall = size + 6;
-      const above = Math.floor(marker.cell / width) > (crop ? crop.y : y0);
-      const pillBox = (left, top) => ({ left, right: left + wide, top, bottom: top + tall });
-      const up = pillBox(mx - wide / 2, my - r - 3 - tall);
-      const down = pillBox(mx - wide / 2, my + r + 3);
-      const right = pillBox(mx + r + 3, my - tall / 2);
-      const left = pillBox(mx - r - 3 - wide, my - tall / 2);
-      const order = above ? [up, down, right, left] : [down, right, left, up];
-      const clear = (b) => !nameAvoid.some((o) => b.left < o.right && b.right > o.left && b.top < o.bottom && b.bottom > o.top);
-      const inside = (b) => !crop || (b.left >= crop.x * U && b.right <= (crop.x + crop.width) * U && b.top >= crop.y * U && b.bottom <= (crop.y + crop.height) * U);
       const pill = order.find((b) => clear(b) && inside(b)) || order.find(inside) || order[0];
       const pieces = '<rect class="plan__marker-pill" x="' + n(pill.left) + '" y="' + n(pill.top) + '" width="' + n(wide) + '" height="' + n(tall) + '" rx="' + n(tall / 2) + '"/>'
         + text(pill.left + wide / 2, pill.top + tall / 2, size, 'plan__marker-label', words);
