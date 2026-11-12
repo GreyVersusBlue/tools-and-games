@@ -35,6 +35,18 @@
 //                           printed in part ("Cafete" for Cafeteria; SV2-72c).
 //                           rooms, exits and letters count what is in the
 //                           window.
+//                           The options for the safety prints never grow a
+//                           window (SV2-108b). A `marker` whose cell is
+//                           outside it is not drawn and adds nothing to what
+//                           the picture holds; one inside keeps its dot, and
+//                           its pill is put where the window holds it whole
+//                           (above, below, then either side) or left out.
+//                           With `exitMarks` or `refGrid`, a door name and a
+//                           mark follow the rule above: left out where the
+//                           edge would cut them, never made room for, so the
+//                           window stays the one asked for. (The reference grid's letters and numbers
+//                           still stand in a band outside it, as without a
+//                           window; width and height then count the band.)
 //     options.route         { cells, start, exit }: the way out, drawn over the
 //                           plan as a line through the cells in walking order
 //                           (a jump between cells that do not touch, as at a
@@ -52,7 +64,7 @@
 //                           it, and may then be fractions of a cell.
 //                           With neither option the picture is byte for byte
 //                           what it was before they existed.
-//     options.routes        [{ cells, start, exit, colour, number, faint }]: many ways
+//     options.routes        [{ cells, start, exit, joins, colour, number, faint }]: many ways
 //                           out at once (a poster, SV2-108), drawn where `route`
 //                           is drawn, in the order given, later over earlier (the
 //                           caller puts the faint ones first). cells, start and
@@ -62,9 +74,13 @@
 //                           `faint`, in the plan's ink at 30 %, with a round
 //                           mark where a non-faint one leaves its room. The
 //                           route's `number` is in a small round badge at the
-//                           exit and where it meets a stairs cell, so a route
-//                           is never told by colour alone; two routes with the
-//                           same number meet at one badge. Giving `routes`, like
+//                           exit and at each cell in `joins` (the cells where a
+//                           connection is taken and where it comes out: what
+//                           waysOnFloor gives), never where a way only crosses a
+//                           stairs landing; with no `joins` a badge is at the first
+//                           cell of each run of stairs cells, as before. A route is
+//                           never told by colour alone; two routes with the same
+//                           number meet at one badge, side by side in number order. Giving `routes`, like
 //                           giving `route`, draws the plain stair marks (no
 //                           one-way chevrons) and puts corridor names on a halo.
 //     options.refGrid       true, or { maxCols, maxRows, sizes }: a reference
@@ -85,10 +101,21 @@
 //                           corridor and under everything else (a poster's corridor)
 //     options.exitMarks     [{ exitId, number, colour }]: a filled circle with the
 //                           exit's number beside its door name (the name moves out
-//                           to make room); an exit not listed is drawn as it was
+//                           to make room); an exit not listed is drawn as it was.
+//                           `colour` (a #rrggbb) left out is printExitColour(number
+//                           - 1), as for `routes`. A mark whose number is not a
+//                           positive whole number is not drawn at all: no empty
+//                           circle, no "0".
+//     options.teachers      false to leave out the teacher's surname under a room's
+//                           number (a lockdown map shows places, never people).
+//                           Left out: the surname is drawn as it always was.
 //     options.marker        { cell, label }: a filled mark on the cell with its
 //                           words ("You are here") in a pill beside it, over
-//                           everything; the picture grows to hold the pill
+//                           everything; the picture grows to hold the pill. The
+//                           pill is above the dot (below it on the top row of
+//                           what is drawn), or, when that would cover a corridor's
+//                           name or a route's number badge, on the first of the
+//                           other sides that does not: below, above, right, left.
 //     options.place         { x, y, width, height }: where the picture lies
 //                           inside a larger SVG (the floor plan's PNG,
 //                           SV2-32c), written on its root. Left out, the root
@@ -102,7 +129,13 @@
 //     width, height   of the cropped picture, in cells (for fitting it to a page)
 //     rooms, exits, letters   what the caption under the plan counts
 //     elevators   [{ letter, staffOnly, connected }] for the stops drawn; absent when there are none
-//     grid, labelCells   only with options.refGrid (above)
+//     grid, labelCells, unlabelled   only with options.refGrid (above). labelCells
+//                           holds only the spaces whose label is drawn (a room with
+//                           no number, an other space with no label, and a label a
+//                           window cuts off, are not in it); `unlabelled` is the
+//                           ids of the drawn spaces that are not, in drawing order.
+//                           A floor with nothing drawn has grid null, an empty
+//                           labelCells and unlabelled [].
 //   With none of routes, refGrid, highlightCells, exitMarks and marker the picture
 //   is byte for byte what it was before they existed (a case pins every sample
 //   floor, with and without `route` and `crop`).
@@ -536,7 +569,7 @@ function badgeMarkup(text, x, y, colour, words, faint) {
 // Many ways out as markup (options.routes): each a pale band under a line in
 // its exit's colour, the faint ones a thin grey line alone; then the round
 // mark where a coloured one leaves its room; then the badges, over every line.
-function waysMarkup(floor, routes, text) {
+function waysMarkup(floor, routes, text, avoid) {
   const lines = [];
   const starts = [];
   const badges = new Map();
@@ -557,14 +590,20 @@ function waysMarkup(floor, routes, text) {
       starts.push('<circle class="plan__way-start" cx="' + n(x) + '" cy="' + n(y) + '" r="' + n(U * 0.2) + '" fill="' + colour + '"/>');
     }
     if (words === '') continue;
-    // a badge at the exit, and at the first cell of each stretch of stairs cells
+    // a badge at the exit and at each cell where a connection is taken or comes
+    // out (`joins`); a way that gives none has one at the first cell of each
+    // stretch of stairs cells
     const stops = [];
     if (exit !== null) stops.push(exit);
-    let inStairs = false;
-    for (const cell of start === null ? cells : [start].concat(cells)) {
-      const onStairs = floor.cells[cell] === CELL_STAIRS;
-      if (onStairs && !inStairs) stops.push(cell);
-      inStairs = onStairs;
+    if (Array.isArray(route.joins)) {
+      for (const cell of route.joins) if (Number.isInteger(cell) && cell >= 0 && cell < floor.width * floor.height) stops.push(cell);
+    } else {
+      let inStairs = false;
+      for (const cell of start === null ? cells : [start].concat(cells)) {
+        const onStairs = floor.cells[cell] === CELL_STAIRS;
+        if (onStairs && !inStairs) stops.push(cell);
+        inStairs = onStairs;
+      }
     }
     for (const cell of stops) badges.set(cell + ':' + words, { cell, words, colour, faint });
   }
@@ -573,11 +612,14 @@ function waysMarkup(floor, routes, text) {
   for (const badge of badges.values()) byCell.set(badge.cell, (byCell.get(badge.cell) || []).concat(badge));
   const drawn = [];
   for (const [cell, list] of byCell) {
-    list.sort((a, b) => (a.words < b.words ? -1 : a.words > b.words ? 1 : 0));
+    // by number, 2 before 10; words that are not numbers after, as typed
+    const whole = (words) => /^\d+$/.test(words);
+    list.sort((a, b) => (whole(a.words) && whole(b.words) ? Number(a.words) - Number(b.words) : whole(a.words) !== whole(b.words) ? (whole(a.words) ? -1 : 1) : a.words < b.words ? -1 : a.words > b.words ? 1 : 0));
     const cx = ((cell % floor.width) + 0.5) * U;
     const cy = (Math.floor(cell / floor.width) + 0.5) * U;
     list.forEach((badge, i) => drawn.push({ ...badge, x: cx + (i - (list.length - 1) / 2) * (BADGE_R * 2 + 1), y: cy }));
   }
+  if (avoid) for (const b of drawn) avoid.push({ left: b.x - BADGE_R - 1, right: b.x + BADGE_R + 1, top: b.y - BADGE_R - 1, bottom: b.y + BADGE_R + 1 });
   const parts = lines.concat(starts, drawn.filter((b) => b.faint).map((b) => badgeMarkup(text, b.x, b.y, b.colour, b.words, true)), drawn.filter((b) => !b.faint).map((b) => badgeMarkup(text, b.x, b.y, b.colour, b.words, false)));
   return parts.length === 0 ? '' : '<g class="plan__ways">' + parts.join('') + '</g>';
 }
@@ -666,15 +708,17 @@ export function planSvg(project, floor, options) {
   const cellsOf = (list) => (Array.isArray(list) ? list.filter((cell) => Number.isInteger(cell) && cell >= 0 && cell < width * height) : []);
   const marks = new Map();
   for (const mark of Array.isArray(opts.exitMarks) ? opts.exitMarks : []) {
-    if (mark && typeof mark === 'object' && typeof mark.exitId === 'string' && !marks.has(mark.exitId)) marks.set(mark.exitId, mark);
+    // a number that is not a positive whole number has no mark (never an empty circle or a "0")
+    if (mark && typeof mark === 'object' && typeof mark.exitId === 'string' && Number.isInteger(mark.number) && mark.number >= 1 && !marks.has(mark.exitId)) marks.set(mark.exitId, mark);
   }
-  const marker = opts.marker && typeof opts.marker === 'object' && Number.isInteger(opts.marker.cell) && opts.marker.cell >= 0 && opts.marker.cell < width * height ? opts.marker : null;
   const gridAsked = opts.refGrid === true || (opts.refGrid && typeof opts.refGrid === 'object');
   const inCrop = (cell) => {
     const x = cell % width;
     const y = Math.floor(cell / width);
     return x >= crop.x && x < crop.x + crop.width && y >= crop.y && y < crop.y + crop.height;
   };
+  // in a window, a marker outside it is not drawn and holds nothing
+  const marker = opts.marker && typeof opts.marker === 'object' && Number.isInteger(opts.marker.cell) && opts.marker.cell >= 0 && opts.marker.cell < width * height && (!crop || inCrop(opts.marker.cell)) ? opts.marker : null;
 
   // what is drawn, and its box
   let x0 = Infinity;
@@ -692,7 +736,15 @@ export function planSvg(project, floor, options) {
   corridor.forEach(take);
   stairs.forEach(take);
   for (const space of floor.spaces) space.cells.forEach(take);
-  if (x1 === -1) return { svg: '', drawn: false, traced: false, width: 0, height: 0, rooms: 0, exits: 0, letters: [] };
+  if (x1 === -1) {
+    const nothing = { svg: '', drawn: false, traced: false, width: 0, height: 0, rooms: 0, exits: 0, letters: [] };
+    if (gridAsked) {
+      nothing.grid = null;
+      nothing.labelCells = new Map();
+      nothing.unlabelled = [];
+    }
+    return nothing;
+  }
   // in a window, only what is in it (the walls still look at the whole floor)
   const shownCorridor = crop ? corridor.filter(inCrop) : corridor;
   const shownStairs = crop ? stairs.filter(inCrop) : stairs;
@@ -821,12 +873,14 @@ export function planSvg(project, floor, options) {
 
   // other spaces, then rooms: the fill, the outline with its door gaps, the label
   let rooms = 0;
-  const labelCells = new Map();
+  // each drawn space's label cell and the box of its label, or null for none
+  const labelled = [];
   const spaces = floor.spaces.filter((space) => space.kind !== 'room').concat(floor.spaces.filter((space) => space.kind === 'room')).filter((space) => shown(space.cells));
   for (const space of spaces) {
     const isRoom = space.kind === 'room';
     const shape = shapeOf(space, width);
-    labelCells.set(space.id, Math.floor(shape.anchor.y) * width + Math.floor(shape.anchor.x));
+    const labelCell = Math.floor(shape.anchor.y) * width + Math.floor(shape.anchor.x);
+    let labelBoxOf = null;
     let fill;
     if (isRoom) {
       rooms += 1;
@@ -846,7 +900,7 @@ export function planSvg(project, floor, options) {
     const cy = shape.anchor.y * U;
     const room = shape.anchor.w * U - 3;
     const mainTeacher = isRoom && space.teacherIds.length > 0 ? project.teachers.find((teacher) => teacher.id === space.teacherIds[0]) : null;
-    const under = mainTeacher ? surname(mainTeacher.name) : '';
+    const under = mainTeacher && opts.teachers !== false ? surname(mainTeacher.name) : '';
     const underSize = fit(textEms(under), room, NAME_MAX);
     const twoLines = under !== '' && shape.anchor.h >= 2 && underSize >= NAME_MIN && typeof words === 'string' && words.trim() !== '';
     if (typeof words === 'string' && words.trim() !== '') {
@@ -854,13 +908,15 @@ export function planSvg(project, floor, options) {
       const tall = shape.anchor.h * U * (twoLines ? 0.3 : 0.45);
       const size = Math.max(NUMBER_MIN, fit(textEms(words), room, Math.min(isRoom ? NUMBER_MAX : LABEL_MAX, tall)));
       const y = cy - (twoLines ? underSize * 0.6 : 0);
-      put(text(cx, y, size, isRoom ? 'plan__number' : 'plan__label', words, ' fill="' + ink + '"'), labelBox(words, cx, y, size));
+      labelBoxOf = labelBox(words, cx, y, size);
+      put(text(cx, y, size, isRoom ? 'plan__number' : 'plan__label', words, ' fill="' + ink + '"'), labelBoxOf);
       if (twoLines) {
         const below = cy + size * 0.5 + underSize * 0.2;
         put(text(cx, below, underSize, 'plan__teacher', under, ' fill="' + ink + '"'), labelBox(under, cx, below, underSize));
       }
     }
     out.push('</g>');
+    labelled.push({ id: space.id, cell: labelCell, box: labelBoxOf });
   }
 
   // the reference grid's lines, over the rooms and under every label that follows
@@ -886,6 +942,8 @@ export function planSvg(project, floor, options) {
   // corridor names, along the way the named cells run
   const routed = Boolean(options && options.route && typeof options.route === 'object') || manyWays !== null;
   const namesOver = [];
+  // the boxes of the corridor names, which the marker's pill keeps clear of
+  const nameAvoid = [];
   for (const named of floor.corridors) {
     if (typeof named.name !== 'string' || named.name.trim() === '' || named.cells.length === 0 || !shown(named.cells)) continue;
     let ax = Infinity;
@@ -907,6 +965,7 @@ export function planSvg(project, floor, options) {
     // way out along MAIN CORRIDOR left "RIDOR" of it on Room 303's card)
     const markup = text(cx, cy, size, 'plan__corridor-name', named.name, (across ? '' : ' transform="rotate(-90 ' + n(cx) + ' ' + n(cy) + ')"') + (routed ? ' stroke="' + PLAN_PAPER + '" stroke-width="2.4" paint-order="stroke"' : ''));
     const box = labelBox(named.name.toUpperCase(), cx, cy, size, SPACED, !across);
+    nameAvoid.push({ left: box.left - 1, right: box.right + 1, top: box.top - 1, bottom: box.bottom + 1 });
     if (routed) namesOver.push(crop ? { markup, box } : markup);
     else put(markup, box);
   }
@@ -960,10 +1019,11 @@ export function planSvg(project, floor, options) {
         : labelBox(exit.doorName, at + (side === 'w' ? -nameGap : nameGap), (y + 0.5) * U, 7.5, 1, false, side);
       put(markup, box);
       // with marks or a grid the picture must hold every name whole, whatever its length
-      if (marks.size > 0 || gridAsked) reach.push(exitNameBox(exit.doorName, side, x, y, at, nameGap));
+      // (not in a window: there the edge cuts a name, and the window stays as asked)
+      if (!crop && (marks.size > 0 || gridAsked)) reach.push(exitNameBox(exit.doorName, side, x, y, at, nameGap));
     }
     if (mark !== null) {
-      const colour = hexOr(mark.colour, PLAN_ACCENT);
+      const colour = hexOr(mark.colour, printExitColour(mark.number - 1));
       const words = numberWords(mark.number);
       let mx;
       let my;
@@ -978,7 +1038,7 @@ export function planSvg(project, floor, options) {
       const size = fit(textEms(words), markR * 2 - 1.4, 7);
       const ink = labelOn(colour, PLAN_INK, PLAN_PAPER);
       put('<circle class="plan__mark" cx="' + n(mx) + '" cy="' + n(my) + '" r="' + n(markR) + '" fill="' + colour + '"/>' + text(mx, my, size, 'plan__mark-number', words, ' fill="' + ink + '"'), { left: mx - markR, right: mx + markR, top: my - markR, bottom: my + markR });
-      reach.push({ left: mx - markR - 1, right: mx + markR + 1, top: my - markR - 1, bottom: my + markR + 1 });
+      if (!crop) reach.push({ left: mx - markR - 1, right: mx + markR + 1, top: my - markR - 1, bottom: my + markR + 1 });
     }
   }
 
@@ -1003,35 +1063,55 @@ export function planSvg(project, floor, options) {
     if (way !== '') out.push(way);
   }
   if (manyWays !== null) {
-    const ways = waysMarkup(floor, manyWays, text);
+    const ways = waysMarkup(floor, manyWays, text, nameAvoid);
     if (ways !== '') out.push(ways);
   }
   out.push(...namesOver);
 
-  // "You are here": a filled mark on its cell with its words in a pill above it
-  // (below it when it is on the top row of what is drawn)
+  // "You are here": a filled mark on its cell with its words in a pill. The pill
+  // is above the dot (below it on the top row of what is drawn); when that would
+  // cover a corridor's name or a route's badge it goes on the first other side
+  // that does not (below, above, right, left), and in a window on one the window
+  // holds whole. Nothing here grows a window.
   if (marker !== null) {
     const mx = ((marker.cell % width) + 0.5) * U;
     const my = (Math.floor(marker.cell / width) + 0.5) * U;
     const r = U * 0.38;
     const words = typeof marker.label === 'string' ? marker.label : '';
-    let pieces = '<circle class="plan__marker" cx="' + n(mx) + '" cy="' + n(my) + '" r="' + n(r) + '"/>';
+    const dot = '<circle class="plan__marker" cx="' + n(mx) + '" cy="' + n(my) + '" r="' + n(r) + '"/>';
     const box = { left: mx - r, right: mx + r, top: my - r, bottom: my + r };
-    if (words.trim() !== '') {
+    if (words.trim() === '') {
+      put('<g class="plan__you">' + dot + '</g>', box);
+      if (!crop) reach.push({ left: box.left - 1, right: box.right + 1, top: box.top - 1, bottom: box.bottom + 1 });
+    } else {
       const size = 10;
       const wide = textEms(words) * size + 8;
       const tall = size + 6;
       const above = Math.floor(marker.cell / width) > (crop ? crop.y : y0);
-      const py = above ? my - r - 3 - tall : my + r + 3;
-      pieces += '<rect class="plan__marker-pill" x="' + n(mx - wide / 2) + '" y="' + n(py) + '" width="' + n(wide) + '" height="' + n(tall) + '" rx="' + n(tall / 2) + '"/>'
-        + text(mx, py + tall / 2, size, 'plan__marker-label', words);
-      box.left = Math.min(box.left, mx - wide / 2);
-      box.right = Math.max(box.right, mx + wide / 2);
-      box.top = Math.min(box.top, py);
-      box.bottom = Math.max(box.bottom, py + tall);
+      const pillBox = (left, top) => ({ left, right: left + wide, top, bottom: top + tall });
+      const up = pillBox(mx - wide / 2, my - r - 3 - tall);
+      const down = pillBox(mx - wide / 2, my + r + 3);
+      const right = pillBox(mx + r + 3, my - tall / 2);
+      const left = pillBox(mx - r - 3 - wide, my - tall / 2);
+      const order = above ? [up, down, right, left] : [down, right, left, up];
+      const clear = (b) => !nameAvoid.some((o) => b.left < o.right && b.right > o.left && b.top < o.bottom && b.bottom > o.top);
+      const inside = (b) => !crop || (b.left >= crop.x * U && b.right <= (crop.x + crop.width) * U && b.top >= crop.y * U && b.bottom <= (crop.y + crop.height) * U);
+      const pill = order.find((b) => clear(b) && inside(b)) || order.find(inside) || order[0];
+      const pieces = '<rect class="plan__marker-pill" x="' + n(pill.left) + '" y="' + n(pill.top) + '" width="' + n(wide) + '" height="' + n(tall) + '" rx="' + n(tall / 2) + '"/>'
+        + text(pill.left + wide / 2, pill.top + tall / 2, size, 'plan__marker-label', words);
+      if (crop) {
+        // the dot is in the window; the pill stays only if the window holds it whole
+        put('<g class="plan__you">' + dot + '</g>', box);
+        put('<g class="plan__you">' + pieces + '</g>', pill);
+      } else {
+        out.push('<g class="plan__you">' + dot + pieces + '</g>');
+        box.left = Math.min(box.left, pill.left);
+        box.right = Math.max(box.right, pill.right);
+        box.top = Math.min(box.top, pill.top);
+        box.bottom = Math.max(box.bottom, pill.bottom);
+        reach.push({ left: box.left - 1, right: box.right + 1, top: box.top - 1, bottom: box.bottom + 1 });
+      }
     }
-    out.push('<g class="plan__you">' + pieces + '</g>');
-    reach.push({ left: box.left - 1, right: box.right + 1, top: box.top - 1, bottom: box.bottom + 1 });
   }
 
   // cropped to what is drawn, with room around it for the door names; or to
@@ -1059,6 +1139,9 @@ export function planSvg(project, floor, options) {
     vx = left;
     vy = top;
   }
+  // the window a label is judged against: everything but the grid's band, which
+  // holds the grid's own letters and so never makes room for a cut label
+  const held = { x: vx, y: vy, w: vw, h: vh };
   // the reference grid's labels in a band outside all of it
   const labelling = [];
   if (grid !== null) {
@@ -1087,18 +1170,25 @@ export function planSvg(project, floor, options) {
     out.push('<g class="plan__grid-labels" aria-hidden="true">' + labelling.join('') + '</g>');
   }
   // in a window, each label the window would cut is left out
-  const whole = (box) => box.left >= vx - 1e-9 && box.top >= vy - 1e-9 && box.right <= vx + vw + 1e-9 && box.bottom <= vy + vh + 1e-9;
+  const whole = (box) => box.left >= held.x - 1e-9 && box.top >= held.y - 1e-9 && box.right <= held.x + held.w + 1e-9 && box.bottom <= held.y + held.h + 1e-9;
   const markup = crop ? out.filter((each) => typeof each === 'string' || whole(each.box)).map((each) => (typeof each === 'string' ? each : each.markup)) : out;
   const place = options && options.place && typeof options.place === 'object' ? options.place : null;
   const at = place ? ' x="' + n(place.x) + '" y="' + n(place.y) + '" width="' + n(place.width) + '" height="' + n(place.height) + '"' : '';
   const svg = '<svg class="plan" xmlns="http://www.w3.org/2000/svg"' + at + ' viewBox="' + [vx, vy, vw, vh].map(n).join(' ') + '" role="img" aria-label="' + write('Floor plan of ' + floor.name) + '">\n'
     + markup.join('\n') + '\n</svg>';
+  const labelCells = new Map();
+  const unlabelled = [];
+  for (const each of labelled) {
+    if (each.box !== null && (!crop || whole(each.box))) labelCells.set(each.id, each.cell);
+    else unlabelled.push(each.id);
+  }
   const picture = { svg, drawn: true, traced: traceUrl !== null, width: vw / U, height: vh / U, rooms, exits, letters };
   // named only where a stop is drawn, so a building without one returns what it always did
   if (elevators.length > 0) picture.elevators = elevators;
   if (grid !== null) {
     picture.grid = grid;
     picture.labelCells = labelCells;
+    picture.unlabelled = unlabelled;
   }
   return picture;
 }
