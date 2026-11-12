@@ -33,7 +33,7 @@ import { routingGraph } from '../../engine/routing.js';
 import { evacuationRoutes } from '../../engine/evacuation.js';
 import { exitNumbers, exitName, corridorRooms } from '../../engine/exit-load.js';
 import { stairsName } from '../../engine/blocked.js';
-import { count, list } from '../components/words.js';
+import { count } from '../components/words.js';
 import { labelOn } from '../colour.js';
 import { esc, frame, mm, paperOf, printableBox } from './document.js';
 import { planSvg, printExitColour, PLAN_INK, PLAN_PAPER } from './plan-svg.js';
@@ -66,6 +66,12 @@ function blank(value) {
 function or(items) {
   if (items.length <= 1) return items.join('');
   return items.slice(0, -1).join(', ') + ' or ' + items[items.length - 1];
+}
+
+// "X, 9 rooms, and Y, 3 rooms": each item has a comma in it, so the last is set off by one too.
+function andList(items) {
+  if (items.length <= 1) return items.join('');
+  return items.slice(0, -1).join(', ') + ', and ' + items[items.length - 1];
 }
 
 export function floorsFor(project, options) {
@@ -235,7 +241,7 @@ function sheet(project, floor, ctx, view, corridor) {
   if (corridor) {
     if (keyed.length > 0) {
       const byCount = keyed.slice().sort((a, b) => used.get(b.exit.id) - used.get(a.exit.id) || a.number - b.number);
-      text.push('<p class="poster__line" data-line="corridor">' + esc('Rooms on ') + typed(corridor.name) + esc(' go out by ' + list(byCount.map((info) => withNumber(info) + ', ' + count(used.get(info.exit.id), 'room'))) + '.') + '</p>');
+      text.push('<p class="poster__line" data-line="corridor">' + esc('Rooms on ') + typed(corridor.name) + esc(' go out by ' + andList(byCount.map((info) => withNumber(info) + ', ' + count(used.get(info.exit.id), 'room'))) + '.') + '</p>');
     }
   } else {
     const stairs = stairsSentence(project, mine, floor, ctx);
