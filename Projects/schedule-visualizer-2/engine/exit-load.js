@@ -13,10 +13,15 @@
 //                                     is not in the building
 // exitLoad(project, rows, options?)   how evenly the exits share the people
 //   rows are byExit(project, evacuation)'s rows. options.blockedExits is a list
-//   of exit ids: a blocked exit is not open and is never heavy.
+//   of exit ids: a blocked exit is not open and is never heavy. options.basis
+//   ('people' or 'rooms') forces the basis, so two loads of one question (a
+//   trial's before and after) are always compared on the same one.
 //   → { exits: [{ exitId, number, rooms, people, uncounted, blocked, heavy, share }],
 //       basis: 'people' | 'rooms', open, total, fair, heavy: [exitId],
-//       uncounted, sentence }
+//       uncounted, sentence, sentenceParts }
+//   `sentenceParts` is the sentence as [{ text, name }], name true for what a
+//   user typed (a door name, or the floor's name in an unnamed exit's words);
+//   null when `sentence` is.
 //   `open` counts the exits not blocked, whether or not a room uses them (an
 //   exit no room reaches is the very imbalance this warns of). `total` is the
 //   sum of people (basis 'people') or rooms (basis 'rooms') over every row,
@@ -29,6 +34,9 @@
 //   exit's sentence each, in key order, as DESIGN 14.7 item 2 words them; one
 //   sentence says so when the building has a single way out. A row whose exit
 //   has gone from the building is skipped. Deterministic, never throws.
+// BASIS_ROOMS                        "Most rooms have no capacity set, so this
+//                                     compares rooms, not people."
+// basisWords(load)                    BASIS_ROOMS when load.basis is 'rooms', else ''
 // corridorRooms(project, graph, corridorId)
 //                                     the ids of the rooms with a door entry on
 //                                     the corridor, in building order (ARCHITECTURE
@@ -51,10 +59,18 @@ export const HEAVY_SHARE = 1.6;
 // when the figures are rooms.
 export const HEAVY_MARGIN = { people: 50, rooms: 4 };
 
+export const BASIS_ROOMS = 'Most rooms have no capacity set, so this compares rooms, not people.';
+
+export function basisWords(load) {
+  return load && load.basis === 'rooms' ? BASIS_ROOMS : '';
+}
+
 function exitsInOrder(project) {
   const found = [];
-  for (const floor of project.building.floors) {
-    for (const exit of floor.exits || []) found.push({ exit, floor });
+  const floors = project && project.building && Array.isArray(project.building.floors) ? project.building.floors : [];
+  for (const floor of floors) {
+    if (!floor) continue;
+    for (const exit of Array.isArray(floor.exits) ? floor.exits : []) if (exit) found.push({ exit, floor });
   }
   return found;
 }
@@ -74,6 +90,10 @@ export function exitName(project, exitId) {
   return '';
 }
 
+function count(value) {
+  return Number.isFinite(value) ? value : 0;
+}
+
 function whole(value) {
   return Math.round(value);
 }
@@ -86,10 +106,11 @@ export function exitLoad(project, rows, options) {
   const blockedIds = new Set(options && Array.isArray(options.blockedExits) ? options.blockedExits : []);
   const numbers = exitNumbers(project);
   const kept = (Array.isArray(rows) ? rows : []).filter((row) => row && numbers.has(row.exitId));
-  const withWay = kept.reduce((sum, row) => sum + row.rooms, 0);
-  const uncounted = kept.reduce((sum, row) => sum + row.uncounted, 0);
-  const basis = withWay > 0 && uncounted * 2 > withWay ? 'rooms' : 'people';
-  const figureOf = (row) => (basis === 'rooms' ? row.rooms : row.people);
+  const withWay = kept.reduce((sum, row) => sum + count(row.rooms), 0);
+  const uncounted = kept.reduce((sum, row) => sum + count(row.uncounted), 0);
+  const forced = options && (options.basis === 'rooms' || options.basis === 'people') ? options.basis : null;
+  const basis = forced || (withWay > 0 && uncounted * 2 > withWay ? 'rooms' : 'people');
+  const figureOf = (row) => count(basis === 'rooms' ? row.rooms : row.people);
   const total = kept.reduce((sum, row) => sum + figureOf(row), 0);
   const open = numbers.size - Array.from(numbers.keys()).filter((id) => blockedIds.has(id)).length;
   const fair = open > 0 ? total / open : 0;
@@ -98,32 +119,37 @@ export function exitLoad(project, rows, options) {
     const figure = figureOf(row);
     const blocked = blockedIds.has(row.exitId);
     const heavy = !blocked && open >= 2 && figure >= HEAVY_SHARE * fair && figure >= fair + margin;
-    return { exitId: row.exitId, number: numbers.get(row.exitId), rooms: row.rooms, people: row.people, uncounted: row.uncounted, blocked, heavy, share: total > 0 ? figure / total : 0 };
+    return { exitId: row.exitId, number: numbers.get(row.exitId), rooms: count(row.rooms), people: count(row.people), uncounted: count(row.uncounted), blocked, heavy, share: total > 0 ? figure / total : 0 };
   });
   const heavy = exits.filter((exit) => exit.heavy).map((exit) => exit.exitId);
-  return { exits, basis, open, total, fair, heavy, uncounted, sentence: sentenceFor(project, exits, { basis, open, total, fair, heavy, count: numbers.size }) };
+  const parts = sentenceFor(project, exits, { basis, open, total, fair, heavy, count: numbers.size });
+  return { exits, basis, open, total, fair, heavy, uncounted, sentence: parts ? parts.map((part) => part.text).join('') : null, sentenceParts: parts };
 }
 
+// The sentence as parts, or null: a door name is typed, the rest is ours.
 function sentenceFor(project, exits, figures) {
   if (figures.count === 0 || figures.open === 0) return null;
+  const typed = (text) => ({ text, name: true });
+  const ours = (text) => ({ text, name: false });
   if (figures.open === 1) {
     const only = exits.find((exit) => !exit.blocked) || null;
     const name = exitName(project, only ? only.exitId : firstOpen(project, exits));
-    if (figures.count === 1) return 'Every room leaves by ' + name + ': it is the only exit.';
-    return 'Every room leaves by ' + name + ': it is the only exit not blocked.';
+    return [ours('Every room leaves by '), typed(name), ours(figures.count === 1 ? ': it is the only exit.' : ': it is the only exit not blocked.')];
   }
   if (figures.heavy.length === 0) return null;
   const byId = new Map(exits.map((exit) => [exit.exitId, exit]));
   const share = (exit) => whole(exit.share * 100) + ' %';
   const exitsWord = 'where an even share of the ' + figures.open + ' exits would be ' + whole(figures.fair) + '.';
-  return figures.heavy
-    .map((id) => {
-      const exit = byId.get(id);
-      const label = exitName(project, id) + ' (' + exit.number + ')';
-      if (figures.basis === 'people') return label + ' is the way out for rooms holding ' + exit.people + ' of ' + figures.total + ' people at full capacity, ' + share(exit) + ', ' + exitsWord;
-      return label + ' is the way out for ' + exit.rooms + ' of ' + plural(figures.total, 'room', 'rooms') + ', ' + share(exit) + ', ' + exitsWord;
-    })
-    .join(' ');
+  const parts = [];
+  figures.heavy.forEach((id, i) => {
+    const exit = byId.get(id);
+    const rest = figures.basis === 'people'
+      ? ' (' + exit.number + ') is the way out for rooms holding ' + exit.people + ' of ' + figures.total + ' people at full capacity, ' + share(exit) + ', ' + exitsWord
+      : ' (' + exit.number + ') is the way out for ' + exit.rooms + ' of ' + plural(figures.total, 'room', 'rooms') + ', ' + share(exit) + ', ' + exitsWord;
+    parts.push(typed(exitName(project, id)), ours(rest));
+    if (i < figures.heavy.length - 1) parts.push(ours(' '));
+  });
+  return parts;
 }
 
 // An open exit's id when no row of it is left to read it from (cannot happen
