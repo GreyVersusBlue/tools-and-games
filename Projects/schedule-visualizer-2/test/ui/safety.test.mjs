@@ -4,16 +4,26 @@
 // test/browser/safety.mjs. The exits' colours are tokens of
 // ui/safety/safety.css since SV2-72c, held by test/ui/exit-colours.test.mjs.
 //
+// SV2-109 adds the trial: the picture under a blocked set, the route cache, exit numbers
+// pinned to the engine's, the cross's contrast over every exit colour, and the marks the map draws.
+//
 //   node test/ui/safety.test.mjs
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-import { runsOf, apart, oklab } from '../../ui/surface/overlays/evacuation.js';
-import { safetyPicture, firstLine, roomLine } from '../../ui/safety/model.js';
-import { cursorLine, REPEAT_SAYS, GONE_SAYS } from '../../ui/safety/index.js';
+import { runsOf, apart, oklab, blockedOverlay, blockedCross, blockedRingHolds, BLOCKED_RING, BLOCKED_EDGE } from '../../ui/surface/overlays/evacuation.js';
+import { safetyPicture, stepFreePicture, firstLine, roomLine, blockedKey, blockedCount, NO_BLOCKED } from '../../ui/safety/model.js';
+import { cursorLine, REPEAT_SAYS, GONE_SAYS, SAFETY_TABS, BLOCKED_CURSOR, bandShort } from '../../ui/safety/index.js';
+import { spoken, blockedSays, stairsOfBuilding } from '../../ui/safety/what-if.js';
 import { sampleSchool } from '../../data/sample-school.js';
 import { buildGraph } from '../../engine/graph.js';
+import { createRouteCache } from '../../engine/routing.js';
+import { exitNumbers, EXIT_UNNAMED } from '../../engine/exit-load.js';
+import { contrast } from '../../ui/colour.js';
 
 function sample() {
   const project = sampleSchool();
@@ -77,4 +87,192 @@ test('roomLine and the cursor\'s sentence: the exit by name, and on the cursor b
   assert.equal(roomLine(none, picture), none.sentence);
   assert.equal(cursorLine(none, picture), 'Room 303: ' + none.sentence);
   assert.equal(GONE_SAYS('Room 302'), 'Room 302 is no longer in the building; showing every room.');
+});
+
+// ---- SV2-109: the trial
+
+const blocked = (parts) => ({ exits: [], connections: [], cells: [], ...parts });
+
+test('exit numbers: the screen\'s are exitNumbers\', on the sample and on a building with an unnamed exit', () => {
+  const { project, picture } = sample();
+  const engine = exitNumbers(project);
+  assert.deepEqual(picture.exits.map((exit) => [exit.exitId, exit.number]), Array.from(engine));
+  // an unnamed exit keeps its number and gets the words for it
+  const other = sampleSchool();
+  other.building.floors[0].exits[1].doorName = '';
+  const again = safetyPicture(other, buildGraph(other));
+  assert.deepEqual(again.exits.map((exit) => [exit.exitId, exit.number]), Array.from(exitNumbers(other)));
+  assert.equal(again.exits[1].name, EXIT_UNNAMED('Floor 1'));
+  // a blocked exit keeps its number
+  const trial = safetyPicture(project, buildGraph(project), { blocked: blocked({ exits: [picture.exits[0].exitId] }) });
+  assert.deepEqual(trial.exits.map((exit) => exit.number), [1, 2]);
+});
+
+test('the picture with nothing blocked is the plain pass: no trial, nothing dropped, Door A flagged heavy with its sentence', () => {
+  const { picture } = sample();
+  assert.equal(picture.trial, null);
+  assert.deepEqual(picture.dropped, []);
+  assert.deepEqual(picture.blocked, NO_BLOCKED);
+  assert.deepEqual(picture.exits.map((exit) => [exit.heavy, exit.blocked, exit.was]), [[true, false, null], [false, false, null]]);
+  assert.equal(picture.load.sentence, 'Door A (1) is the way out for rooms holding 520 of 640 people at full capacity, 81 %, where an even share of the 2 exits would be 320.');
+});
+
+test('a trial picture: the trial\'s ways, the "was" figures, the blocked exit, nothing flagged, and rooms cut off say why', () => {
+  const project = sampleSchool();
+  const graph = buildGraph(project);
+  const plain = safetyPicture(project, graph);
+  const doorA = plain.exits[0].exitId;
+  const trial = safetyPicture(project, graph, { blocked: blocked({ exits: [doorA] }) });
+  assert.ok(trial.trial);
+  assert.deepEqual(trial.exits[0].was, { rooms: 12, people: 520 });
+  assert.equal(trial.exits[0].blocked, true);
+  assert.equal(trial.exits[0].rooms, 0);
+  assert.deepEqual(trial.exits[1].was, { rooms: 1, people: 120 });
+  assert.equal(trial.exits[1].rooms, 13);
+  assert.deepEqual(trial.exits.map((exit) => exit.heavy), [false, false], 'a blocked exit is never flagged, and one open exit has no even share');
+  assert.equal(trial.load.sentence, 'Every room leaves by Door B: it is the only exit not blocked.');
+  assert.equal(trial.rows.every((row) => row.ok && row.exitId === trial.exits[1].exitId), true);
+  // both exits blocked: every room is cut off and says which exits
+  const both = safetyPicture(project, graph, { blocked: blocked({ exits: plain.exits.map((exit) => exit.exitId) }) });
+  assert.equal(both.missing.length, 13);
+  assert.match(both.byRoom.get('rsample101').sentence, /^Every exit it can reach is blocked: Door A \(1\) and Door B \(2\)\.$/);
+  // Stairs B blocked: Floor 3 has no way out, with noRoute's words
+  const upper = safetyPicture(project, graph, { blocked: blocked({ connections: ['csample00b'] }) });
+  assert.ok(upper.missing.length >= 1);
+  assert.equal(upper.byRoom.get('rsample303').ok, false);
+  assert.equal(upper.byRoom.get('rsample101').ok, true);
+  // a stairs and an elevator that is not one: an elevator is dropped with its sentence
+  const lift = safetyPicture(project, graph, { blocked: blocked({ connections: ['csample00d'] }) });
+  assert.equal(lift.trial, null);
+  assert.deepEqual(lift.dropped, ['Elevator D is never used in an evacuation, so it is not blocked.']);
+});
+
+test('a row\'s first step is worked out when it is read, and is the same step as the plain picture\'s', () => {
+  const project = sampleSchool();
+  const graph = buildGraph(project);
+  const plain = safetyPicture(project, graph);
+  const trial = safetyPicture(project, graph, { blocked: blocked({ connections: ['csample00b'] }) });
+  const descriptor = Object.getOwnPropertyDescriptor(trial.byRoom.get('rsample101'), 'first');
+  assert.equal(typeof descriptor.get, 'function', 'first is not lazy');
+  assert.equal(trial.byRoom.get('rsample101').first, plain.byRoom.get('rsample101').first);
+  assert.equal(roomLine(trial.byRoom.get('rsample101'), trial), roomLine(plain.byRoom.get('rsample101'), plain));
+});
+
+test('the route cache: a second plain pass searches nothing, a blocked exit searches nothing, a blocked stairs searches again', () => {
+  const project = sampleSchool();
+  const graph = buildGraph(project);
+  const cache = createRouteCache(2 * 13 + 8);
+  const options = { cache, geometryVersion: 1 };
+  const plain = safetyPicture(project, graph, options);
+  const first = cache.searches;
+  assert.ok(first > 0, 'the first pass searched nothing');
+  safetyPicture(project, graph, options);
+  assert.equal(cache.searches, first, 'a second plain pass searched again');
+  safetyPicture(project, graph, { ...options, blocked: blocked({ exits: [plain.exits[0].exitId] }) });
+  assert.equal(cache.searches, first, 'a blocked exit worked out a field of its own');
+  safetyPicture(project, graph, { ...options, blocked: blocked({ connections: ['csample00b'] }) });
+  assert.ok(cache.searches > first, 'a blocked stairs found its fields already worked out');
+  // the plain pass is still there after the stairs'
+  const kept = cache.searches;
+  safetyPicture(project, graph, options);
+  assert.equal(cache.searches, kept, 'the stairs\' trial pushed the plain pass out of the cache');
+  assert.ok(cache.bytes > 0);
+});
+
+test('the Step-free view under a trial: a blocked exit is left out, and a blocked stairs changes nothing', () => {
+  const project = sampleSchool();
+  const graph = buildGraph(project);
+  const plain = safetyPicture(project, graph);
+  const open = stepFreePicture(project, graph, plain);
+  assert.deepEqual(open.counts, { exit: 5, refuge: 5, none: 3 });
+  assert.deepEqual(open.blocked, NO_BLOCKED);
+  const doorB = plain.exits[1].exitId;
+  const shut = stepFreePicture(project, graph, safetyPicture(project, graph, { blocked: blocked({ exits: [doorB] }) }));
+  assert.deepEqual(shut.counts, { exit: 0, refuge: 5, none: 8 });
+  assert.equal(shut.rooms.some((room) => room.exitId === doorB), false);
+  const stairs = stepFreePicture(project, graph, safetyPicture(project, graph, { blocked: blocked({ connections: ['csample00b'] }) }));
+  assert.deepEqual(stairs.counts, open.counts, 'a blocked stairs changed the step-free ways');
+});
+
+test('blockedKey and blockedCount: one key a set, the count of every kind', () => {
+  assert.equal(blockedCount(NO_BLOCKED), 0);
+  assert.equal(blockedCount(blocked({ exits: ['a'], connections: ['b'], cells: [{ floorId: 'f', cell: 3 }] })), 3);
+  assert.notEqual(blockedKey(blocked({ exits: ['a'] })), blockedKey(blocked({ connections: ['a'] })));
+  assert.equal(blockedKey(blocked({ exits: ['a'] })), blockedKey(blocked({ exits: ['a'] })));
+});
+
+test('the tabs, and the words of the What if tab', () => {
+  assert.deepEqual(SAFETY_TABS.map((tab) => tab.id), ['exits', 'cards', 'stepfree', 'whatif', 'prints']);
+  assert.deepEqual(SAFETY_TABS.map((tab) => tab.label), ['Exits', 'Door cards', 'Step-free', 'What if', 'Prints']);
+  assert.equal(blockedSays(2), '2 blocked');
+  assert.equal(bandShort(2), 'Trial · 2 blocked');
+  assert.equal(BLOCKED_CURSOR('Stairs B, Floor 2 to Floor 3'), 'Stairs B, Floor 2 to Floor 3, blocked in this trial');
+  assert.equal(spoken(45), '45 seconds');
+  assert.equal(spoken(1), '1 second');
+  assert.equal(spoken(80), '1 minute 20 seconds');
+  assert.equal(spoken(120), '2 minutes');
+  // stairs only: an elevator is never offered
+  assert.deepEqual(stairsOfBuilding(sampleSchool()).map((connection) => connection.id), ['csample00a', 'csample00b', 'csample0up']);
+});
+
+// A recording stand-in for the canvas: what was drawn, and in what colours
+function recorder() {
+  const calls = [];
+  const g = { calls };
+  for (const name of ['save', 'restore', 'beginPath', 'fill', 'stroke', 'moveTo', 'lineTo']) g[name] = (...args) => calls.push([name, ...args]);
+  g.arc = (...args) => calls.push(['arc', ...args]);
+  for (const name of ['fillStyle', 'strokeStyle', 'lineWidth', 'lineCap']) {
+    Object.defineProperty(g, name, { set: (value) => calls.push([name, value]), get: () => undefined });
+  }
+  return g;
+}
+
+test('the trial\'s marks: a ring and a cross at each blocked cell of the floor being drawn, none elsewhere, none when nothing is read', () => {
+  const view = { x: 0, y: 0, size: 10 };
+  const floor = { id: 'f1', width: 10, height: 10 };
+  const theme = { problem: '#b3261e' };
+  const g = recorder();
+  blockedOverlay(() => null)(g, view, floor, theme);
+  assert.deepEqual(g.calls, [], 'drew something with nothing to draw');
+  const draw = blockedOverlay(() => ({ marks: [{ floorId: 'f1', cell: 23 }, { floorId: 'f2', cell: 5 }] }));
+  const h = recorder();
+  draw(h, view, floor, theme);
+  const arcs = h.calls.filter((call) => call[0] === 'arc');
+  assert.equal(arcs.length, 1, 'one mark is on this floor');
+  // cell 23 is column 3, row 2: its middle is (35, 25); the ring is at least 7 px
+  assert.deepEqual(arcs[0].slice(1, 3), [35, 25]);
+  assert.ok(arcs[0][3] >= 7, 'the ring is ' + arcs[0][3] + ' px');
+  const styles = h.calls.filter((call) => call[0] === 'fillStyle' || call[0] === 'strokeStyle').map((call) => call[1]);
+  assert.deepEqual(styles, [BLOCKED_RING, BLOCKED_EDGE, blockedCross('#b3261e')]);
+  assert.equal(h.calls.filter((call) => call[0] === 'lineTo').length, 2, 'the cross is two strokes');
+});
+
+// ---- the contrast case: the ring and the cross over every exit colour, in both themes
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const bare = (file) => readFileSync(join(root, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+// the first eight --exit-n of safety.css are the light theme's, the next eight the dark theme's; the first
+// --problem of tokens.css is the light theme's, the second the dark's (test/ui/exit-colours.test.mjs holds the blocks)
+const exitColours = (text) => Array.from(text.matchAll(/--exit-(\d):\s*(#[0-9a-fA-F]{6})/g)).map((match) => match[2]);
+const problems = Array.from(bare('ui/tokens.css').matchAll(/--problem:\s*(#[0-9a-fA-F]{6})/g)).map((match) => match[1]);
+const sets = exitColours(bare('ui/safety/safety.css'));
+
+test('the cross holds 3:1 on its white ring, and the ring holds 3:1 over each of the eight exit colours, in both themes', () => {
+  assert.equal(sets.length >= 16, true, 'read ' + sets.length + ' exit colours');
+  assert.ok(problems.length >= 2, 'read ' + problems.length + ' problem colours');
+  const checked = [];
+  for (const [theme, colours, problem] of [['light', sets.slice(0, 8), problems[0]], ['dark', sets.slice(8, 16), problems[1]]]) {
+    const cross = blockedCross(problem);
+    const onRing = contrast(cross, BLOCKED_RING);
+    assert.ok(onRing >= 3, theme + ': the cross ' + cross + ' is ' + onRing.toFixed(2) + ':1 on the ring');
+    colours.forEach((colour, i) => {
+      const held = blockedRingHolds(colour);
+      checked.push(theme + ' ' + (i + 1));
+      assert.ok(held >= 3, theme + ' exit ' + (i + 1) + ' ' + colour + ': neither the white ring nor its edge is 3:1 (best ' + held.toFixed(2) + ')');
+    });
+  }
+  assert.equal(checked.length, 16);
+  // the dark theme's --problem is paler than the white ring can carry: the cross is a darker variant of it
+  assert.notEqual(blockedCross(problems[1]), problems[1]);
+  assert.equal(blockedCross(problems[0]), problems[0]);
 });

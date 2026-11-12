@@ -29,6 +29,13 @@
 // the page, from the graph the store keeps (engine/evacuation.js through
 // ./model.js), once a state of the building.
 //
+// The What if tab (./what-if.js) holds the trial: the exits and stairs ticked as blocked.
+// It is view state of this section (`memory.blocked`), never saved, never in undo, kept while
+// the page is open and the same project is shown, forgotten when another project opens. While
+// anything is blocked the map, the key, Exits, Step-free and the first line show the trial's
+// ways, a band above the map says so on every tab (with Clear), and each blocked exit and stairs
+// wears a cross on a white ring. Door cards, posters and the prints never read it.
+//
 // The view on screen is at document.querySelector('.sfy').safety, for the
 // tests and for the console.
 
@@ -39,12 +46,16 @@ import { choice } from '../components/choice.js';
 import { count, figures } from '../components/words.js';
 import { createPlanMap } from '../surface/plan-map.js';
 import { slotAt } from '../surface/plan-layout.js';
-import { evacuationOverlay, exitColours, exitPalette, runsOf, EXIT_KEY_LEAST, EXIT_COUNT } from '../surface/overlays/evacuation.js';
+import { evacuationOverlay, blockedOverlay, exitColours, exitPalette, runsOf, EXIT_KEY_LEAST, EXIT_COUNT } from '../surface/overlays/evacuation.js';
 import { drawStairLink } from '../surface/overlays/lanes.js';
 import { labelOn } from '../colour.js';
 import { buildGraph } from '../../engine/graph.js';
-import { safetyPicture, firstLine, stepFreePicture, stepFreeFirstLine, stepFreeWords } from './model.js';
+import { createRouteCache } from '../../engine/routing.js';
+import { normaliseBlocked, blockedFromScenario, stairsName } from '../../engine/blocked.js';
+import { exitName } from '../../engine/exit-load.js';
+import { safetyPicture, firstLine, stepFreePicture, stepFreeFirstLine, stepFreeWords, NO_BLOCKED, blockedCount, blockedKey } from './model.js';
 import { exitsPanel } from './exits.js';
+import { whatIfPanel, blockedSays, stairsOfBuilding } from './what-if.js';
 import { doorCardsPanel } from './doorcards.js';
 import { stepFreeWaysPanel, stepFreeReportPanel } from './stepfree.js';
 import { stepFreeOverlay, endsOf } from './stepfree-overlay.js';
@@ -66,6 +77,8 @@ export const SAFETY_TABS = [
   { id: 'exits', label: 'Exits' },
   { id: 'cards', label: 'Door cards' },
   { id: 'stepfree', label: 'Step-free' },
+  { id: 'whatif', label: 'What if' },
+  { id: 'prints', label: 'Prints' },
 ];
 
 // The two views of the evacuation (DESIGN 13.6): a radio group at the top of the inspector.
@@ -105,9 +118,19 @@ export function cursorLine(row, picture, stepRoom) {
   return row.name + ': out by ' + (exit ? exit.name + ', number ' + exit.number + ' in the key' : 'an exit') + '. Enter shows its way out.';
 }
 
+// The cross's words under the keyboard cursor (DESIGN 14.3)
+export const BLOCKED_CURSOR = (name) => name + ', blocked in this trial';
+// the trial band (DESIGN 14.3; 14.7 item 8): the words, and the short form for a phone
+export const bandWords = (words) => 'Trial: ' + words;
+export const bandShort = (n) => 'Trial · ' + n + ' blocked';
+export const CLEAR_SAYS = 'The trial is cleared: every room goes out the way it did.';
+
 // What is chosen here, kept for the open project while the page is open
-// (in memory: no storage key).
-const memory = { projectId: null, picked: null, pickedName: '', chosen: new Set(), floors: 'auto', tab: 'exits', view: 'everyone', stepFree: null };
+// (in memory: no storage key). `blocked` is the What if trial (ARCHITECTURE 20.9 item 14): a trial
+// survives a move to another section and back, and is let go when another project opens.
+// `chips` are the corridors it brought in from the scenario; `droppedSays` what the last building
+// change took out of it; `seen` the project this section last drew, to name what is gone.
+const memory = { projectId: null, picked: null, pickedName: '', chosen: new Set(), floors: 'auto', tab: 'exits', view: 'everyone', stepFree: null, blocked: NO_BLOCKED, chips: [], droppedSays: [], droppedParts: [], seen: null, cache: null, cacheLimit: 0 };
 
 // A project other than the one the choices were made for lets them go: on
 // mounting, and at every refresh while mounted (a replace, Undo across one).
@@ -120,6 +143,13 @@ function adopt(project) {
   memory.floors = 'auto';
   memory.view = 'everyone';
   memory.stepFree = null;
+  memory.blocked = NO_BLOCKED;
+  memory.chips = [];
+  memory.droppedSays = [];
+  memory.droppedParts = [];
+  memory.seen = null;
+  memory.cache = null;
+  memory.cacheLimit = 0;
   return true;
 }
 
@@ -165,11 +195,39 @@ export const section = {
     let coloursKey = '';
 
     const graphNow = () => store.derived.get('graph', ['building'], (project) => buildGraph(project));
+    // One route cache for every pass this section makes (ARCHITECTURE 20.9 item 1): two fields a room
+    // and a few over, so the plain pass is still there after a trial's, which a stairs block makes
+    // a fresh pass of its own. It empties itself when the store's geometry counter moves.
+    const routeOptions = (project) => {
+      const need = 2 * figures(project).rooms + 8;
+      if (!memory.cache || memory.cacheLimit < need) {
+        memory.cache = createRouteCache(need);
+        memory.cacheLimit = need;
+      }
+      return { cache: memory.cache, geometryVersion: store.geometryVersion };
+    };
+    // the trial's picture, once a (state of the building, blocked set): never through store.derived,
+    // which keys on the project's parts, and always a new object when either changes
+    let trialHeld = null;
+    const trialStamp = () => store.buildingVersion + ':' + store.scheduleVersion + ':' + store.geometryVersion + ':' + blockedKey(memory.blocked);
+    const trialOn = () => blockedCount(memory.blocked) > 0;
     // once a state of the building: rooms, doors, exits, connections, names
-    const pictureNow = () => store.derived.get('safety-picture', ['building'], (project) => safetyPicture(project, graphNow()));
+    const pictureNow = () => {
+      if (!trialOn()) return store.derived.get('safety-picture', ['building'], (project) => safetyPicture(project, graphNow(), routeOptions(project)));
+      const stamp = trialStamp();
+      if (trialHeld && trialHeld.stamp === stamp) return trialHeld.picture;
+      const picture = safetyPicture(store.project, graphNow(), { ...routeOptions(store.project), blocked: memory.blocked });
+      trialHeld = { stamp, picture, step: null };
+      return picture;
+    };
 
     // the step-free picture is worked out only when the view or the tab needs it
-    const stepNow = () => store.derived.get('safety-step', ['building', 'schedule'], (project) => stepFreePicture(project, graphNow(), pictureNow()));
+    const stepNow = () => {
+      if (!trialOn()) return store.derived.get('safety-step', ['building', 'schedule'], (project) => stepFreePicture(project, graphNow(), pictureNow()));
+      const picture = pictureNow();
+      if (!trialHeld.step) trialHeld.step = stepFreePicture(store.project, graphNow(), picture);
+      return trialHeld.step;
+    };
     const wantStep = () => memory.view === 'step-free' || memory.tab === 'stepfree';
     const ensureStep = () => {
       step = picture && shown && wantStep() ? stepNow() : null;
@@ -180,7 +238,12 @@ export const section = {
     const lineWords = h('span', { class: 'mov-line__words', data: { part: 'words' } });
     const allButton = h('button', { type: 'button', class: 'mov-link', hidden: true, data: { action: 'show-all' }, on: { click: showEvery } }, 'Show every room');
     const line = h('p', { class: 'mov-line intro__first', id: 'safety-line' }, lineWords, ' ', allButton);
-    const top = h('div', { class: 'mov-top sfy-top' }, line);
+    // the trial band, above the map on every tab: the words long, "Trial · 2 blocked" on a phone
+    const bandLong = h('span', { class: 'sfy-band__long', data: { part: 'band-words' } });
+    const bandShortWords = h('span', { class: 'sfy-band__short', data: { part: 'band-short' } });
+    const bandClear = h('button', { type: 'button', class: 'btn sfy-band__clear', data: { action: 'band-clear' }, on: { click: () => clearTrial({ from: 'band' }) } }, 'Clear', h('span', { class: 'vh' }, ' the trial'));
+    const band = h('div', { class: 'sfy-band', hidden: true, role: 'group', 'aria-label': 'Trial', data: { part: 'band' } }, h('p', { class: 'sfy-band__text' }, bandLong, bandShortWords), bandClear);
+    const top = h('div', { class: 'mov-top sfy-top' }, line, band);
     const headline = h('h1', { class: 'vh' }, HEADLINE);
 
     // ---- the key, docked under the map
@@ -280,6 +343,9 @@ export const section = {
       const drawing = stepDrawing();
       return drawing ? { ...drawing, picked: memory.picked } : null;
     }, labelOn));
+    // what the trial blocks: a cross on a white ring over each blocked exit and each end of a blocked
+    // stairs, on every tab and in both views
+    plan.overlays.push(blockedOverlay(() => (trialOn() && shown ? { marks: blockedMarks() } : null)));
     // the picked room's stairs, from one floor to the other, over every floor
     plan.across.push((g, given) => {
       if (stepView()) return;
@@ -316,6 +382,22 @@ export const section = {
       },
       swatch,
       themeKey: () => plan.theme().corridor,
+      // the What if tab's: the trial and what it needs
+      blocked: () => memory.blocked,
+      chips: () => memory.chips,
+      closures: () => (shown && shown.scenario ? blockedFromScenario(shown, shown.scenario) : null),
+      dropped: () => memory.droppedParts,
+      tick: tickBlocked,
+      useScenario,
+      removeChip,
+      clear: () => clearTrial({ from: 'tab' }),
+      show(roomId) {
+        const sheet = document.getElementById('inspector');
+        const row = picture ? picture.byRoom.get(roomId) : null;
+        if (sheet && sheet.dataset.mode === 'sheet' && sheet.dataset.open === 'true') ctx.closeInspector();
+        pick(roomId, { bring: true });
+        if (row) ctx.announce(row.name + ' shown on the map');
+      },
       pick(roomId) {
         // on a phone the inspector is a sheet over the map: it is shut, so the way out is seen
         const sheet = document.getElementById('inspector');
@@ -337,9 +419,12 @@ export const section = {
         want.update();
       },
     };
-    const panels = { exits: exitsTab, cards: doorCardsPanel(env), stepfree: stepFreeReportPanel(env) };
+    const whatIf = whatIfPanel(env);
+    // the Prints tab is mounted by ui/safety/prints.js (SV2-111): until then, its heading and nothing else
+    const printsPanel = { element: h('div', { class: 'mov-panel sfy-panel', data: { panel: 'prints' } }, h('h2', { class: 'mov-panel__title' }, 'Prints')), update() {} };
+    const panels = { exits: exitsTab, cards: doorCardsPanel(env), stepfree: stepFreeReportPanel(env), whatif: whatIf, prints: printsPanel };
     const inspector = tabs({
-      label: 'Ways out and door cards',
+      label: 'Safety',
       selected: memory.tab,
       onSelect(id) {
         memory.tab = id;
@@ -347,6 +432,11 @@ export const section = {
         drawPanel();
       },
       items: SAFETY_TABS.map((tab) => ({ id: tab.id, label: tab.label, panel: () => panels[tab.id].element })),
+    });
+    // five tabs scroll sideways on a phone: the one that takes the focus is brought wholly into view
+    // (a tab only partly in view is not scrolled to by focus alone)
+    inspector.element.querySelector('.tabs__list').addEventListener('focusin', (event) => {
+      if (event.target instanceof Element && event.target.matches('.tabs__tab')) event.target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     });
     // Everyone / Step-free: one radio group, so Tab passes through it once and the arrows move
     // the choice with the focus staying on it (DESIGN 13.6)
@@ -374,6 +464,104 @@ export const section = {
     ctx.setInspector(inspectorBox);
     function drawPanel() {
       if (picture && shown) panels[inspector.selected].update();
+    }
+
+    // ---- the trial (DESIGN 14.3): what is blocked, and the words for it
+    // how many things are blocked, as the band and the live region count them: an exit, a stairs,
+    // a corridor brought in from the scenario
+    const blockedThings = () => memory.blocked.exits.length + memory.blocked.connections.length + memory.chips.length;
+    // the cells of the map the trial marks, with the name the cursor says: each blocked exit, each end of a blocked stairs
+    function blockedMarks() {
+      const marks = [];
+      if (!shown) return marks;
+      for (const id of memory.blocked.exits) {
+        for (const floor of shown.building.floors) {
+          const exit = (floor.exits || []).find((each) => each.id === id);
+          if (exit) marks.push({ floorId: floor.id, cell: exit.cell, name: exitName(shown, id) });
+        }
+      }
+      for (const id of memory.blocked.connections) {
+        const connection = (shown.building.connections || []).find((each) => each && each.id === id);
+        if (!connection) continue;
+        const name = stairsName(shown, connection);
+        for (const end of [connection.a, connection.b]) if (end) marks.push({ floorId: end.floorId, cell: end.cell, name });
+      }
+      return marks;
+    }
+    const trialSentence = () => (picture && picture.trial ? picture.trial.sentence : '');
+    function trialParts() {
+      const trial = picture.trial;
+      if (Array.isArray(trial.sentenceParts)) return trial.sentenceParts.map((part) => ({ text: part.text, name: Boolean(part.name) }));
+      return [{ text: trial.sentence, name: false }];
+    }
+    // A new blocked set: the lists as the engine keeps them, the chips of what is no longer in it let go,
+    // the section drawn again, and the count and the sentence said (the live region, once the work is done)
+    function setBlocked(next, said) {
+      const checked = normaliseBlocked(store.project, next);
+      memory.blocked = blockedCount(checked.blocked) === 0 ? NO_BLOCKED : checked.blocked;
+      const held = new Set(memory.blocked.cells.map((place) => place.floorId + ':' + place.cell));
+      memory.chips = memory.chips.filter((chip) => chip.cells.some((cell) => held.has(chip.floorId + ':' + cell)));
+      memory.droppedSays = [];
+      memory.droppedParts = [];
+      refresh();
+      const n = blockedThings();
+      ctx.announce((said ? said + ' ' : '') + (n === 0 ? 'Nothing blocked.' : blockedSays(n) + '. ' + trialSentence()));
+    }
+    function tickBlocked(kind, id, on) {
+      const set = memory.blocked;
+      const list = kind === 'exit' ? set.exits : set.connections;
+      const next = on ? Array.from(new Set([...list, id])) : list.filter((each) => each !== id);
+      setBlocked(kind === 'exit' ? { ...set, exits: next } : { ...set, connections: next });
+    }
+    function useScenario() {
+      const closures = shown && shown.scenario ? blockedFromScenario(shown, shown.scenario) : null;
+      if (!closures || (closures.connections.length === 0 && closures.cells.length === 0)) {
+        ctx.announce('The open scenario closes no stairs or corridors.');
+        return;
+      }
+      const set = memory.blocked;
+      const before = blockedKey(set);
+      const next = { exits: set.exits, connections: Array.from(new Set([...set.connections, ...closures.connections])), cells: [...set.cells, ...closures.cells] };
+      const checked = normaliseBlocked(store.project, next).blocked;
+      if (blockedKey(checked) === before) {
+        ctx.announce('Nothing new: the scenario’s closures are already in this trial.');
+        return;
+      }
+      for (const corridor of closures.corridors) {
+        const same = memory.chips.some((chip) => chip.floorId === corridor.floorId && chip.name === corridor.name && chip.cells.join() === corridor.cells.join());
+        if (!same) memory.chips.push({ floorId: corridor.floorId, name: corridor.name.trim() === '' ? corridor.cells.length + ' corridor cells' : corridor.name, cells: corridor.cells });
+      }
+      setBlocked(checked, 'Brought in from the scenario: ' + closures.words.text + '.');
+    }
+    function removeChip(index) {
+      const chip = memory.chips[index];
+      if (!chip) return;
+      const others = memory.chips.filter((_, i) => i !== index);
+      const kept = new Set(others.flatMap((each) => each.cells.map((cell) => each.floorId + ':' + cell)));
+      const cells = memory.blocked.cells.filter((place) => !(place.floorId === chip.floorId && chip.cells.includes(place.cell) && !kept.has(place.floorId + ':' + place.cell)));
+      memory.chips = others;
+      setBlocked({ ...memory.blocked, cells }, chip.name + ' is no longer blocked.');
+    }
+    // Clear: every room goes out the way it did. On the band the focus goes to the open tab's heading
+    // (DESIGN 14.7 item 8), on the What if tab's own button to the first tick
+    function clearTrial(options) {
+      if (!trialOn()) return;
+      memory.blocked = NO_BLOCKED;
+      memory.chips = [];
+      memory.droppedSays = [];
+      memory.droppedParts = [];
+      trialHeld = null;
+      refresh();
+      ctx.announce(CLEAR_SAYS);
+      if (options && options.from === 'tab') whatIf.focusFirst();
+      else focusHeading();
+    }
+    function focusHeading() {
+      const heading = inspector.element.querySelector('.tabs__panel .mov-panel__title');
+      if (heading && heading.getClientRects().length > 0) {
+        heading.tabIndex = -1;
+        heading.focus();
+      } else plan.focus();
     }
 
     // ---- picking a room
@@ -416,7 +604,9 @@ export const section = {
       } else if (ev.kind === 'keyboard') {
         const { found, room } = roomUnder(ev.x, ev.y);
         const row = room ? picture.byRoom.get(room.id) : null;
-        if (!found) ctx.announce('Between floors.');
+        const blockedHere = found && trialOn() ? blockedMarks().find((mark) => mark.floorId === found.slot.floor.id && mark.cell === found.cell) : null;
+        if (blockedHere) ctx.announce(BLOCKED_CURSOR(blockedHere.name));
+        else if (!found) ctx.announce('Between floors.');
         else if (!row) ctx.announce(found.slot.floor.name + ': not a room.');
         else ctx.announce(cursorLine(row, picture, stepView() ? step.byRoom.get(row.roomId) : null));
       } else if (ev.kind === 'enter') {
@@ -474,7 +664,7 @@ export const section = {
       keyList.replaceChildren(...picture.exits.map((exit) => h('li', { class: 'sfy-key__item', data: { exit: exit.exitId, number: String(exit.number) } },
         h('span', { class: 'sfy-swatch', style: swatch(exit.number), 'aria-hidden': 'true' }, String(exit.number)),
         h('span', { class: 'vh' }, 'Exit ' + exit.number + ': '),
-        h('span', null, h('bdi', { class: 'sfy-key__name' }, exit.name), ', ' + count(exit.rooms, 'room')))));
+        h('span', null, h('bdi', { class: 'sfy-key__name' }, exit.name), ', ' + (exit.blocked ? 'blocked in this trial' : count(exit.rooms, 'room'))))));
     }
 
     // the badges are drawn from EXIT_KEY_LEAST px a cell; under it, with
@@ -484,11 +674,42 @@ export const section = {
       if (zoomNote.hidden !== hide) zoomNote.hidden = hide;
     }
 
+    // What is blocked as the band says it: "Door B, Stairs A and North Corridor blocked", the corridors
+    // by the names they came in with (a corridor stretch has no name of its own in the building)
+    function bandParts() {
+      const items = [];
+      for (const id of memory.blocked.exits) items.push([{ text: exitName(shown, id), name: true }]);
+      for (const id of memory.blocked.connections) {
+        const connection = (shown.building.connections || []).find((each) => each && each.id === id);
+        const label = connection && typeof connection.label === 'string' ? connection.label : '';
+        items.push(label === '' ? [{ text: 'Stairs', name: false }] : [{ text: 'Stairs ', name: false }, { text: label, name: true }]);
+      }
+      for (const chip of memory.chips) items.push([{ text: chip.name, name: true }]);
+      const parts = [];
+      items.forEach((item, i) => {
+        if (i > 0) parts.push({ text: i === items.length - 1 ? ' and ' : ', ', name: false });
+        parts.push(...item);
+      });
+      parts.push({ text: ' blocked', name: false });
+      return parts;
+    }
+
+    // the band above the map: the words of what is blocked, and Clear; hidden with no trial
+    function drawBand() {
+      const on = trialOn() && Boolean(shown);
+      band.hidden = !on;
+      element.dataset.trial = on ? String(blockedThings()) : '0';
+      if (!on) return;
+      bandLong.replaceChildren('Trial: ', ...bandParts().map((part) => (part.name ? h('bdi', null, part.text) : part.text)));
+      bandShortWords.textContent = bandShort(blockedThings());
+    }
+
     function draw() {
       if (!picture || gone) return;
       if (memory.picked && !picture.byRoom.has(memory.picked)) memory.picked = null;
       if (memory.picked) memory.pickedName = picture.byRoom.get(memory.picked).name;
-      lineWords.replaceChildren(...words(stepView() ? stepFreeFirstLine(shown, step, memory.picked) : firstLine(shown, picture, memory.picked)));
+      lineWords.replaceChildren(...words(stepView() ? stepFreeFirstLine(shown, step, memory.picked) : picture.trial && !memory.picked ? trialParts() : firstLine(shown, picture, memory.picked)));
+      drawBand();
       element.dataset.view = memory.view;
       viewChoice.set(memory.view);
       allButton.hidden = !memory.picked;
@@ -503,6 +724,21 @@ export const section = {
     function refresh() {
       const project = store.project;
       adopt(project);
+      // a building change that removes a blocked item: the trial drops it, and the words are said once
+      let droppedSaid = '';
+      if (blockedCount(memory.blocked) > 0) {
+        const checked = normaliseBlocked(project, memory.blocked, memory.seen || undefined);
+        if (checked.dropped.length > 0) {
+          memory.blocked = blockedCount(checked.blocked) === 0 ? NO_BLOCKED : checked.blocked;
+          const held = new Set(memory.blocked.cells.map((place) => place.floorId + ':' + place.cell));
+          memory.chips = memory.chips.filter((chip) => chip.cells.some((cell) => held.has(chip.floorId + ':' + cell)));
+          memory.droppedSays = checked.dropped;
+          memory.droppedParts = checked.droppedParts;
+          droppedSaid = checked.dropped.join(' ');
+          trialHeld = null;
+        }
+      }
+      memory.seen = project;
       const f = figures(project);
       const nothing = f.rooms === 0 || f.exits === 0;
       map.hidden = nothing;
@@ -521,6 +757,7 @@ export const section = {
         picture = null;
         shown = null;
         element.dataset.mode = 'empty';
+        band.hidden = true;
         step = null;
         return;
       }
@@ -550,6 +787,7 @@ export const section = {
       }
       plan.setProject(project, graph);
       if (lost) ctx.announce(GONE_SAYS(lost));
+      if (droppedSaid) ctx.announce(droppedSaid);
     }
 
     refresh();
@@ -565,6 +803,11 @@ export const section = {
         return drawing ? drawing.ends : [];
       },
       get view() { return memory.view; },
+      // the What if trial, for the tests and the console
+      get blocked() { return memory.blocked; },
+      get trial() { return picture ? picture.trial : null; },
+      blockedMarks,
+      get routeCache() { return memory.cache; },
       setView(value) {
         viewChoice.set(value);
         memory.view = value;
