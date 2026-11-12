@@ -1424,3 +1424,7 @@
 .print-doc .poster__line--warn {
   font-weight: 600;
 }
+
+.print-doc .poster__door {
+  font-weight: 700;
+}

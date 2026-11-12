@@ -179,7 +179,7 @@ function keyCard(info, rooms, where) {
   return '<li class="poster__exit" data-exit="' + esc(info.exit.id) + '">'
     + '<span class="poster__badge" style="background: ' + esc(info.colour) + '; color: ' + esc(ink) + ';">' + info.number + '</span>'
     + '<span class="poster__bar" style="background: ' + esc(info.colour) + ';"></span>'
-    + '<span class="poster__exit-text"><strong>' + typed(info.name) + '</strong> · ' + typed(info.floor.name) + ' · ' + typed(assembly) + (rooms === null ? '' : ' · ' + esc(count(rooms, 'room') + ' ' + where)) + '</span>'
+    + '<span class="poster__exit-text"><span class="poster__door">' + typed(info.name) + '</span> · ' + typed(info.floor.name) + ' · ' + typed(assembly) + (rooms === null ? '' : ' · ' + esc(count(rooms, 'room') + ' ' + where)) + '</span>'
     + '</li>';
 }
 
