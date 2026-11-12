@@ -217,6 +217,12 @@ test('before comes from the cache: a blocked exit searches nothing new, and the 
   const fresh = createRouteCache(20);
   blockedTrial(project, graph, { exits: [EXIT] }, { cache: fresh, geometryVersion: 1 });
   assert.equal(fresh.searches, 2, 'before once; after shares its fields');
+  // a stairs changes the plan: before is its own pass, in the cache, so the plain pass is a hit afterwards
+  const stairsCache = createRouteCache(20);
+  blockedTrial(project, graph, { connections: [STAIRS_A] }, { cache: stairsCache, geometryVersion: 1 });
+  assert.equal(stairsCache.searches, 4, 'before (2 fields) and after (2 fields), each in the cache');
+  evacuationRoutes(project, graph, { cache: stairsCache, geometryVersion: 1 });
+  assert.equal(stairsCache.searches, 4, 'the plain pass is already there: before went through the cache');
 });
 
 test('the cut-off wording asks the cache, not a new search, once the pass is cached', () => {
