@@ -139,7 +139,7 @@ const FIRST_EXIT = async (page) => page.evaluate(() => document.querySelector('.
 
 // ---- the tabs and the Exits tab
 
-test('the tablist is labelled Safety and holds Exits, Door cards, Step-free, What if and Prints, the last an empty panel with its heading', async () => {
+test('the tablist is labelled Safety and holds Exits, Door cards, Step-free, What if and Prints, the last a panel with its heading first (SV2-111 filled it)', async () => {
   const page = wide.page;
   await fresh(page);
   assert.equal(await page.$eval('.sfy-inspector [role="tablist"]', (el) => el.getAttribute('aria-label')), 'Safety');
@@ -148,7 +148,8 @@ test('the tablist is labelled Safety and holds Exits, Door cards, Step-free, Wha
   ]);
   await tab(page, 'prints');
   await page.waitForSelector('.sfy-panel[data-panel="prints"]');
-  assert.deepEqual(await page.$eval('.sfy-panel[data-panel="prints"]', (el) => Array.from(el.children).map((child) => child.tagName + ':' + child.textContent)), ['H2:Prints']);
+  // SV2-111 mounts the three cards under the heading (test/browser/safety-prints.mjs reads them)
+  assert.equal(await page.$eval('.sfy-panel[data-panel="prints"]', (el) => el.firstElementChild.tagName + ':' + el.firstElementChild.textContent), 'H2:Prints');
 });
 
 test('the Exits tab: the sample\'s Door A is flagged in a warning block with its sentence, advice and the rule, and Door B is not', async () => {

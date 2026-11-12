@@ -169,6 +169,47 @@ for (const output of OUTPUTS) {
   });
 }
 
+// SV2-111: the map pack, opened as the Safety section's Prints tab opens it. It is one document
+// of one orientation (landscape by default): a cover and a sheet for each floor of the plans, the
+// lockdown maps and the posters, then the exits, each sheet one sheet of the paper.
+test('the preview of the map pack: one landscape page rule, a cover and a sheet each, running heads, light paper, no mark of the editor', async () => {
+  await openPreview('map-pack');
+  const seen = await readDocument();
+  assert.equal(seen.heading, 'Print: Map pack');
+  assert.equal(seen.output, 'map-pack');
+  assert.equal(seen.title, 'Map pack · Marrowby Middle School (sample)');
+  assert.equal(seen.pageSizeText, '@page { size: letter landscape; }');
+  assert.deepEqual(seen.pageRules.filter((rule) => rule.own === 'page-size').map((rule) => rule.size), ['letter landscape']);
+  assert.equal(seen.pages, 11);
+  const floors = ['Floor 1', 'Floor 2', 'Floor 3'];
+  assert.deepEqual(seen.what, ['Map pack', ...floors.map((name) => 'Map pack · Floor plan: ' + name), ...floors.map((name) => 'Map pack · Lockdown map · ' + name), ...floors.map((name) => 'Map pack · Evacuation routes · ' + name), 'Map pack · Exits and assembly points']);
+  assert.deepEqual(seen.school, seen.what.map(() => 'Marrowby Middle School (sample)'));
+  assert.equal(seen.theme, 'light');
+  assert.equal(seen.sheetColour, 'rgb(255, 255, 255)');
+  assert.equal(seen.scripts, 0);
+  assert.equal(seen.images, 0);
+  assert.deepEqual(seen.classes.filter((name) => EDITOR_MARK.test(name)), []);
+  assert.equal(seen.svgs, 9, 'a plan on each floor of the three sections that draw one');
+  // a US Letter sheet turned on its side is 1056 by 816 px, and each of the eleven is one sheet
+  assert.ok(Math.abs(seen.pageWidth - 1056) <= 1, 'a landscape sheet is 1056 px wide, drew ' + seen.pageWidth);
+  assert.equal(seen.status, 'US Letter, landscape. About 11 sheets.');
+  assert.ok(seen.stage.scroll <= seen.stage.client, 'the preview does not scroll sideways');
+  const heights = await page.evaluate(() => Array.from(document.querySelector('#print-preview iframe').contentDocument.querySelectorAll('.page')).map((sheet) => Math.round(sheet.getBoundingClientRect().height)));
+  assert.deepEqual(heights, heights.map(() => 816), 'every sheet is one sheet tall');
+  // the paper and the way round are the sheet's: one page rule again after each choice
+  await page.click('#print-preview input[value="a4"]');
+  await page.waitForSelector('#print-preview[data-ready="true"][data-paper="a4 landscape"]');
+  await page.click('#print-preview input[value="portrait"]');
+  await page.waitForSelector('#print-preview[data-ready="true"][data-paper="a4 portrait"]');
+  const turned = await readDocument();
+  assert.equal(turned.pageSizeText, '@page { size: A4 portrait; }');
+  assert.equal(turned.pages, 11);
+  // the paper is the project's setting: put it back, for the cases after this one
+  await page.click('#print-preview input[value="letter"]');
+  await page.waitForSelector('#print-preview[data-ready="true"][data-paper="letter portrait"]');
+  await closePreview();
+});
+
 // SV2-32g1b: the sheets sit inside <main class="doc-main">, so the gap that
 // keeps them apart on screen has to be that element's; the body's grid once
 // held only the main, and three sheets of a floor plan drew flush.
