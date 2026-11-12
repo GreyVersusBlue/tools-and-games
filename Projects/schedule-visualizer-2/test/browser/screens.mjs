@@ -1359,6 +1359,48 @@ const SV2_106 = [
   { id: 'staff-directions-ride', fullSample: true, hash: '#staff', open: staffInside('#/directions?from=rsample101&to=rsample303&stepfree=1', staffRideDrawn) }, // Directions: a ride is a step
 ];
 
+// SV2-112: Safety's What if and Prints tabs. Both open the whole sample (`fullSample`: Stairs B,
+// connection csample00b, is in it). Every wait is on a state the page sets: the section's picture
+// for the project in the store (safetyDrawn), the blocked set the section holds, the prints' ticks
+// drawn for the project's floors. The sweeps visit each in both themes (axe.mjs) at the sweep's
+// own 1280 and, with PHONE, at 390 with touch.
+
+// What if with Stairs B ticked: the trial band, the results, the cross on the map.
+// At 390 the inspector is a sheet the top bar's toggle opens (as safety-what-if.mjs does).
+async function inspectorOpen(page) {
+  if (await page.$eval('#inspector', (el) => el.dataset.mode === 'sheet' && el.dataset.open !== 'true').catch(() => false)) {
+    await page.tap('#inspector-toggle');
+    await page.waitForFunction(() => document.getElementById('inspector').dataset.open === 'true');
+  }
+}
+
+async function safetyTrial(page) {
+  await safetyDrawn(page);
+  await inspectorOpen(page);
+  await safetyTab('whatif')(page);
+  await page.click('.sfy-tick__box[data-kind="stairs"][data-id="csample00b"]');
+  await page.waitForFunction(() => document.querySelector('.sfy').dataset.trial === '1' && document.querySelector('.sfy').safety.blocked.connections.includes('csample00b'), { timeout: 20000 });
+  await page.waitForFunction(() => Number(document.querySelector('.sfy-whatif [data-list="lost"]')?.dataset.count) > 0, { timeout: 20000 });
+}
+
+// Prints: the three cards once their ticks are drawn for every floor.
+async function safetyPrints(page) {
+  await safetyDrawn(page);
+  await inspectorOpen(page);
+  await safetyTab('prints')(page);
+  await page.waitForFunction(() => {
+    const project = globalThis.sv2.store.project;
+    return document.querySelectorAll('[data-card="lockdown"] .sfy-tick__box').length === project.building.floors.length && document.querySelector('.sfy-panel[data-panel="prints"] [data-card="pack"] .sfy-tick__box') !== null;
+  }, { timeout: 20000 });
+}
+
+const SV2_112 = [
+  { id: 'safety-what-if', fullSample: true, hash: '#safety', open: safetyTrial }, // Stairs B blocked: the band, the rooms with no way out, the exits before and after
+  { id: 'safety-what-if-phone', fullSample: true, hash: '#safety', viewport: PHONE, open: safetyTrial }, // the same at 390 with touch: one column
+  { id: 'safety-prints', fullSample: true, hash: '#safety', open: safetyPrints }, // the three cards: posters, lockdown maps, the map pack
+  { id: 'safety-prints-phone', fullSample: true, hash: '#safety', viewport: PHONE, open: safetyPrints },
+];
+
 export const SCREENS = [
   { id: 'building', hash: '#building' },
   { id: 'schedule-groups', hash: '#schedule/groups' },
@@ -1906,4 +1948,5 @@ export const SCREENS = [
   ...SV2_32G1,
   ...SV2_94,
   ...SV2_106,
+  ...SV2_112,
 ];
