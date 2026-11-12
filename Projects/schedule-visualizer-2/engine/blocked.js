@@ -34,6 +34,7 @@
 //     exits: [{ exitId, number, before: { rooms, people }, after: { rooms, people }, blocked }],
 //     load: { before: exitLoad, after: exitLoad },
 //     summary: { moved, otherExit, slower, lost, gained, slowestBefore, slowestAfter },
+//                 (the slowest ways are over the rooms that have one before and after)
 //     sentence }
 //   options are evacuationRoutes' (cache, geometryVersion, avoidExits,
 //   avoidConnections, avoidStairs, shutCells); the blocked set is merged into
@@ -272,9 +273,11 @@ function figures(rows) {
   return new Map(rows.map((row) => [row.exitId, { rooms: row.rooms, people: row.people }]));
 }
 
+// The slowest way out among the rooms that have one before and after, so a
+// room that is lost does not make the slowest way look quicker.
 function slowest(rooms, key) {
   let found = null;
-  for (const room of rooms) if (room[key] && (found === null || room[key].seconds > found)) found = room[key].seconds;
+  for (const room of rooms) if (room.before && room.after && (found === null || room[key].seconds > found)) found = room[key].seconds;
   return found;
 }
 
