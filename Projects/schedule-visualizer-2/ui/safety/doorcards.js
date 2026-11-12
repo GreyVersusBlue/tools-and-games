@@ -33,6 +33,8 @@ import { roomLine } from './model.js';
 import { hasStepMarks, BLOCK_HEAD } from './ways.js';
 
 export const CHOOSE_FIRST = 'Tick rooms in the list below first.';
+// under a trial (DESIGN 14.3): the cards are never the trial's
+export const AS_BUILT_SAYS = 'Door cards print the building as it is, not this trial.';
 
 export function doorCardsPanel(env) {
   const base = uid('cards');
@@ -47,8 +49,10 @@ export function doorCardsPanel(env) {
     h('label', { class: 'sfy-cards__step-label', for: base + '-step' }, stepBox, ' ', 'Step-free ways out'),
     h('p', { class: 'sfy-cards__hint', id: base + '-step-hint' }, 'A card whose step-free way out is not its route carries a second, shorter block, “' + BLOCK_HEAD + '”.'));
   const list = h('div', { class: 'sfy-list' });
+  const trialLine = h('p', { class: 'sfy-panel__lead sfy-trial-line', role: 'note', hidden: true, data: { line: 'as-built' } }, AS_BUILT_SAYS);
   const element = h('div', { class: 'mov-panel sfy-panel', data: { panel: 'cards' } },
     h('h2', { class: 'mov-panel__title' }, 'Door cards'),
+    trialLine,
     h('p', { class: 'sfy-panel__lead' }, 'A card to post by a room’s door: its way out on the map, in numbered steps, and the assembly point. The paper is chosen in the preview.'),
     stepOption,
     h('div', { class: 'sfy-cards__print' }, pickedButton, pickedHint, chosenButton, allButton, clearButton),
@@ -89,6 +93,7 @@ export function doorCardsPanel(env) {
 
   function buttons() {
     const picture = env.picture();
+    trialLine.hidden = !(picture && picture.trial);
     const asked = env.stepFree();
     stepBox.checked = asked === null ? hasStepMarks(env.project().building) : asked;
     const picked = env.picked() && picture ? picture.byRoom.get(env.picked()) : null;

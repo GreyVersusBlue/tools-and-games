@@ -2,11 +2,13 @@
 // with no DOM in it: every room's way out (engine/evacuation.js, the one
 // rule), the exits as the key numbers them, and the words for each.
 //
-//   safetyPicture(project, graph) -> {
-//     evacuation   evacuationRoutes()'s answer, as it came
+//   safetyPicture(project, graph, { cache, geometryVersion, blocked }?) -> {
+//     evacuation   evacuationRoutes()'s answer, as it came (the trial's `after` under a trial)
 //     exits        [{ exitId, number, floorId, floorName, name, doorName,
-//                     assembly, roomIds, rooms, people, uncounted }]
-//                  byExit()'s rows in its order, numbered from 1 for the key;
+//                     assembly, roomIds, rooms, people, uncounted,
+//                     heavy, share, blocked, was }]
+//                  byExit()'s rows in its order, numbered from 1 for the key
+//                  (exitNumbers, engine/exit-load.js, the rule the prints use);
 //                  `name` is the door name as typed, or "The exit on Floor 1"
 //     rows         [{ roomId, floorId, floorName, name, cells, ok, route,
 //                     exitId, exitNumber, seconds, first, sentence, onlyByElevator }]
@@ -15,8 +17,12 @@
 //                  for a room with no way out `sentence`, the routing engine's
 //     missing      noRoute()'s rows
 //     byRoom       Map roomId -> row
+//     load         exitLoad()'s answer: the warning's sentence, the basis
+//     blocked      the trial's set, normalised (NO_BLOCKED's shape)
+//     trial        blockedTrial()'s answer under a trial, else null
+//     dropped      what normalising took out of the set, as sentences
 //   }
-//   EXIT_UNNAMED(floorName)   the words for an exit with no door name
+//   EXIT_UNNAMED(floorName)   the words for an exit with no door name (engine/exit-load.js's)
 //   firstLine(project, picture, picked) -> parts [{ text, name }]
 //     the screen's first line: what is drawn, as a sentence
 //   roomLine(row, picture) -> string   "Door A · 45 s · Turn left out of the door."
@@ -43,25 +49,80 @@
 
 import { nameOfRoom } from '../../engine/schema.js';
 import { evacuationRoutes, byExit, noRoute, doorCard, stepFreeWaysOut } from '../../engine/evacuation.js';
+import { EXIT_UNNAMED, exitNumbers, exitLoad } from '../../engine/exit-load.js';
+import { blockedTrial, blockedOptions, normaliseBlocked } from '../../engine/blocked.js';
 import { stepFreeReport } from '../../engine/step-free.js';
 import { refugeBy, refugeFor } from './ways.js';
 import { formatDuration } from '../../engine/findings.js';
 import { count } from '../components/words.js';
 
-export const EXIT_UNNAMED = (floorName) => 'The exit on ' + floorName;
+// the words for an exit with no door name live with the exits' figures (engine/exit-load.js)
+export { EXIT_UNNAMED };
+
+// A trial (ARCHITECTURE 20.1): the exits, stairs and corridor cells left out to see how every
+// room gets out without them. Never saved; the Safety section holds it in view state.
+export const NO_BLOCKED = Object.freeze({ exits: [], connections: [], cells: [] });
+
+export function blockedCount(set) {
+  return set ? set.exits.length + set.connections.length + set.cells.length : 0;
+}
+
+// What the trial blocks, counted the way the band says it: an exit, a stairs, a corridor stretch.
+export function blockedKey(set) {
+  return set ? JSON.stringify([set.exits, set.connections, set.cells.map((place) => place.floorId + ':' + place.cell)]) : '';
+}
+
+// the route options every pass of Safety shares: the cache and the store's geometry counter
+function routeOptionsOf(options) {
+  const out = {};
+  if (options && options.cache) out.cache = options.cache;
+  if (options && options.geometryVersion !== undefined) out.geometryVersion = options.geometryVersion;
+  return out;
+}
 
 function floorNames(project) {
   return new Map(project.building.floors.map((floor) => [floor.id, floor.name]));
 }
 
-export function safetyPicture(project, graph) {
+// options { cache, geometryVersion, blocked }: the route cache and counter Safety keeps (ARCHITECTURE
+// 20.9 item 1), and the trial's blocked set. With nothing blocked the picture is evacuationRoutes'
+// plain pass (the cached one); with something blocked it is the trial's `after`, and carries
+//   blocked    the set, normalised         trial   blockedTrial's answer, or null
+//   load       exitLoad's answer for what is shown
+//   dropped    what normalising left out, as sentences
+// Each exit has number (exitNumbers), heavy, share, blocked, and `was` ({ rooms, people } before
+// the trial, or null). A row's `first` is worked out on first read: the door card's first step.
+export function safetyPicture(project, graph, options) {
   const names = floorNames(project);
-  const evacuation = evacuationRoutes(project, graph);
-  const missing = noRoute(project, evacuation);
-  const exits = byExit(project, evacuation).map((row, i) => {
+  const routeOptions = routeOptionsOf(options);
+  const checked = normaliseBlocked(project, options && options.blocked);
+  const set = checked.blocked;
+  const trial = blockedCount(set) > 0 ? blockedTrial(project, graph, set, routeOptions) : null;
+  const evacuation = trial ? trial.after : evacuationRoutes(project, graph, routeOptions);
+  const trialRoom = trial ? new Map(trial.rooms.map((room) => [room.roomId, room])) : null;
+  const missing = noRoute(project, evacuation).map((row) => {
+    const said = trialRoom && trialRoom.get(row.roomId) ? trialRoom.get(row.roomId).sentence : null;
+    return said ? { ...row, sentence: said } : row;
+  });
+  const rowsOf = byExit(project, evacuation);
+  const load = trial ? trial.load.after : exitLoad(project, rowsOf);
+  const loadOf = new Map(load.exits.map((entry) => [entry.exitId, entry]));
+  const was = trial ? new Map(trial.exits.map((entry) => [entry.exitId, entry.before])) : null;
+  const numbers = exitNumbers(project);
+  const exits = rowsOf.map((row, i) => {
     const floorName = names.get(row.floorId) || '';
     const named = typeof row.doorName === 'string' && row.doorName.trim() !== '';
-    return { ...row, number: i + 1, floorName, name: named ? row.doorName : EXIT_UNNAMED(floorName) };
+    const figures = loadOf.get(row.exitId);
+    return {
+      ...row,
+      number: numbers.get(row.exitId) || i + 1,
+      floorName,
+      name: named ? row.doorName : EXIT_UNNAMED(floorName),
+      heavy: Boolean(figures && figures.heavy),
+      share: figures ? figures.share : 0,
+      blocked: set.exits.includes(row.exitId),
+      was: was ? was.get(row.exitId) || null : null,
+    };
   });
   const exitOf = new Map(exits.map((exit) => [exit.exitId, exit]));
   const failed = new Map(missing.map((row) => [row.roomId, row]));
@@ -74,11 +135,27 @@ export function safetyPicture(project, graph) {
       const no = failed.get(entry.roomId);
       return { ...base, ok: false, exitId: null, exitNumber: null, seconds: null, first: null, sentence: no ? no.sentence : '' };
     }
-    const card = doorCard(project, graph, entry.route, { avoidConnections: evacuation.asked.avoidConnections });
     const exit = exitOf.get(entry.route.exitId);
-    return { ...base, ok: true, exitId: entry.route.exitId, exitNumber: exit ? exit.number : null, seconds: entry.route.seconds, first: card.ok && card.steps.length > 0 ? card.steps[0].text : null, sentence: null };
+    const row = { ...base, ok: true, exitId: entry.route.exitId, exitNumber: exit ? exit.number : null, seconds: entry.route.seconds, sentence: null };
+    // the card's first step costs a door card a room: worked out for the rows that are read (the Door
+    // cards list, a picked room), never 150 of them for every tick of a trial
+    let first;
+    let known = false;
+    Object.defineProperty(row, 'first', {
+      enumerable: true,
+      configurable: true,
+      get() {
+        if (!known) {
+          const card = doorCard(project, graph, entry.route, { avoidConnections: evacuation.asked.avoidConnections });
+          first = card.ok && card.steps.length > 0 ? card.steps[0].text : null;
+          known = true;
+        }
+        return first;
+      },
+    });
+    return row;
   });
-  return { evacuation, exits, rows, missing, byRoom: new Map(rows.map((row) => [row.roomId, row])) };
+  return { evacuation, exits, rows, missing, byRoom: new Map(rows.map((row) => [row.roomId, row])), load, blocked: set, trial, dropped: checked.dropped };
 }
 
 export function roomLine(row, picture) {
@@ -122,8 +199,15 @@ export function stepFreeWords(counts) {
   return counts.exit + ' to an exit, ' + counts.refuge + ' to an area of refuge, ' + counts.none + ' with no way out';
 }
 
+// Under a trial the Step-free view changes only by the blocked exits and cells: it already shuts
+// every stair (ARCHITECTURE 20.9 item 3). `blocked` is the picture's set.
 export function stepFreePicture(project, graph, picture) {
-  const waysOut = stepFreeWaysOut(project, graph);
+  const set = picture.blocked || NO_BLOCKED;
+  const asked = blockedOptions(set);
+  const trialOptions = {};
+  if (asked.avoidExits.length > 0) trialOptions.avoidExits = asked.avoidExits;
+  if (asked.shutCells.length > 0) trialOptions.shutCells = asked.shutCells;
+  const waysOut = stepFreeWaysOut(project, graph, trialOptions);
   const report = stepFreeReport(project, graph);
   const names = floorNames(project);
   const exitOf = new Map(picture.exits.map((exit) => [exit.exitId, exit]));
@@ -160,7 +244,7 @@ export function stepFreePicture(project, graph, picture) {
     const by = placed ? refugeBy(project.building, placed) : null;
     return { ...refuge, floorName: names.get(refuge.floorId) || '', by: by ? by.text : null, use: refugeUse(refuge.roomIds) };
   });
-  return { waysOut, report, rooms, byRoom: new Map(rooms.map((room) => [room.roomId, room])), counts, exits, refuges };
+  return { waysOut, report, rooms, byRoom: new Map(rooms.map((room) => [room.roomId, room])), counts, exits, refuges, blocked: set };
 }
 
 // Where a room's step-free way goes, in words ("East Door · 45 s", "Area of refuge 2 · 20 s", "only by elevator").

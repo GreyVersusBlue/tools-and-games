@@ -40,6 +40,8 @@ export const UNMARKED_SAYS = 'Nothing step-free is marked yet, so this assumes e
 export const TWO_VIEWS_SAYS = 'Reaching a room may use an elevator; leaving in an emergency may not.';
 export const ALL_REACHED_SAYS = 'Every room can be reached without stairs.';
 export const EVACUATION_NO_ELEVATORS = 'An evacuation never uses elevators.';
+// under a trial in the Step-free view (DESIGN 14.7 item 5)
+export const STAIRS_UNCHANGED = 'Blocked stairs do not change the Step-free view: it never uses stairs.';
 export const NO_WAY_SAYS = 'There is no step-free way out from this room.';
 
 export function hasStepMarks(building) {
