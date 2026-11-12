@@ -26,6 +26,7 @@
 import { defaultSettings, elevatorSettings, STUDENTS_PER_LANE_CELL, DOOR_SIDES, DAY_TYPES_MOST, DEFAULT_DAY_TYPE_NAMES } from '../../engine/schema.js';
 import { CROSSING_WAIT_MAX, CAP_FACTOR, CAP_MINIMUM_SECONDS, columnLength, walkingSeconds } from '../../engine/crowd.js';
 import { routingGraph } from '../../engine/routing.js';
+import { HEAVY_SHARE, HEAVY_MARGIN } from '../../engine/exit-load.js';
 import { LOAD_BANDS, bandEdges } from '../../engine/load.js';
 import { MIN_ZOOM, MAX_ZOOM } from '../surface/viewport.js';
 import { LONG_PRESS_MS, SLOP } from '../surface/input.js';
@@ -61,9 +62,9 @@ export const SECTION_HELP = {
     more: 'A scenario can also come from another project file of the same building: every slot that differs becomes a change. A change that no longer fits the schedule is listed and left out of Apply. The four levers are: Bell times, which moves a period’s start and end for one day type (or one bell schedule) and shows the passing time before and after, with a row that lengthens the passing time before a period; Staggered dismissal, which lists the rules already in force and lets you try one (a trial rule for exactly the same groups, grade or wing, periods and day types replaces the real one in the trial); Stairs and corridors, where a stair can be made Both ways, Up only, Down only or Closed, and a corridor can be closed by choosing its name or by Pick on the map, then tapping or clicking a corridor (by keyboard, Tab to the plan, move its cursor with the arrow keys and press Enter or Space; Escape cancels, and picking a closed corridor opens it again); and Capacity and head counts, where a room’s seats change the findings, and a group’s head count changes crowding, walking times and findings. Closing a stair or a corridor is a trial only: Apply leaves it out and the building stays as it is, and the summary says so before you press the button, which then reads, for example, Apply 4 of 6 changes. Undo after Apply brings the whole scenario back, closures included.',
   },
   safety: {
-    purpose: 'See the way out from every room to its nearest exit, and print a door card for each room.',
+    purpose: 'See the way out from every room to its nearest exit, try the building with an exit or stairs blocked, and print door cards, evacuation posters, lockdown maps and a map pack.',
     first: 'Mark the exits first: the Exit tool (X) in Building, on a corridor cell at the edge of a floor. Then pick a room on the map, or tick rooms under Door cards and print them.',
-    more: 'Exits are numbered as well as coloured, on the map, in the key and in the inspector. Exits lists the rooms each exit serves and any room with no way out.',
+    more: 'The inspector has five tabs. Exits lists the rooms and people each exit serves and any room with no way out; when one exit serves far more than the others it says so in a warning, and evacuation still takes every room to its nearest way out. Door cards prints one page a room. Step-free shows the ways out that use no stairs and no step. What if is a trial: tick the exits and stairs that cannot be used, or press Use the scenario’s closures to block the stairs and corridors the open scenario closes, and the map, Exits and Step-free show how every room would get out without them, with the rooms that have no way out, the rooms that go out another way and each exit’s rooms before and after. The trial survives moving between sections, is forgotten when the page closes or another project opens, and is never printed: every print is the building as built. Clear the trial puts everything back. Prints opens the evacuation posters (one per floor or one per named corridor), the lockdown maps and the map pack, each in the print preview; choose Save as PDF in the print dialog to keep the map pack as one file.',
   },
   staff: {
     purpose: 'Make the staff browser: a read-only lookup of where and when, for staff on their phones, published as one file.',
@@ -175,6 +176,11 @@ export function words(settings) {
     { term: 'Step-free', meaning: 'A route with no stairs and no step. A corridor cell, a door or an exit can be marked as having a step, and a step-free route goes round it or finds no way.' },
     { term: 'Area of refuge', meaning: 'A place to wait for help in an evacuation, for someone who cannot use the stairs. Mark one in Building; Safety shows which rooms would wait at it.' },
     { term: 'Route sheet', meaning: 'One person’s day, printed: each transition’s step-free route, its time for one person and whether it fits the passing time.' },
+    // DESIGN 14.1's words (SV2-112)
+    { term: 'Blocked', meaning: 'An exit or stairs Safety’s What if tab leaves out, to see how every room would get out without it. A trial only: nothing is saved.' },
+    { term: 'Lockdown map', meaning: 'A plain map of one floor with a reference grid and an index of its rooms, exits and stairs, for the emergency plan and for responders. It shows places, never people.' },
+    { term: 'Evacuation poster', meaning: 'A sheet to put up on a floor or in a named corridor, with every way out drawn in its exit’s colour and numbered.' },
+    { term: 'Map pack', meaning: 'The floor plans, lockdown maps, evacuation posters and the exits and assembly points as one document, which Save as PDF in the print dialog keeps as one file.' },
   ];
 }
 
@@ -270,6 +276,7 @@ export function numbers(settings) {
         'Busiest is a cell’s load in its busiest transition of the day. Total adds up every transition.',
         'The map colours cells in ' + LOAD_BANDS + ' bands, quiet to busy. The colour scale is ' + setting(s, defaults, (x) => mode(x.colourScale), (v) => v) + '. Relative splits the busiest load on screen into fifths. Absolute starts bands 2 to 5 at the loads you set: ' + setting(s, defaults, (x) => absoluteStarts(x.colourScale), (v) => v) + '.',
         'Cells inside a Leave out zone are counted, but not coloured and not ranked among the hotspots.',
+        'An exit is far more than the others when it serves at least ' + HEAVY_SHARE + ' times an even share of the building’s people and at least ' + HEAVY_MARGIN.people + ' people more than that share (' + HEAVY_MARGIN.rooms + ' rooms, when most rooms have no capacity set and rooms are compared instead).',
       ],
     },
     {

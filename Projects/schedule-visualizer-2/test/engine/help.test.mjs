@@ -154,7 +154,9 @@ const SPEC_WORDS = ['Project', 'Floor', 'Cell', 'Room', 'Other space', 'Corridor
 // DESIGN 11.1's words, after spec 2's (SV2-80): No class beside No school.
 const DESIGN_WORDS = ['Bell schedule', 'Regular bells', 'Calendar', 'Rotation', 'No school', 'No class', 'Marked period', 'Duty', 'Meeting', 'Their own lunch', 'Next in the rotation', 'Staggered dismissal',
   // DESIGN 13.1's words (SV2-106)
-  'Step-free', 'Area of refuge', 'Route sheet'];
+  'Step-free', 'Area of refuge', 'Route sheet',
+  // DESIGN 14.1's words (SV2-112)
+  'Blocked', 'Lockdown map', 'Evacuation poster', 'Map pack'];
 const ALL_WORDS = SPEC_WORDS.concat(DESIGN_WORDS);
 test('every word of spec 2 is explained, in the spec’s order, with the school’s own period word', () => {
   assert.deepEqual(words(defaultSettings()).map((each) => each.term), ALL_WORDS);
@@ -508,7 +510,7 @@ test('Elevator is no longer "planned": ordinary routes, step-free routes and an 
   assert.match(meaning('Area of refuge'), /a place to wait for help in an evacuation/i);
   assert.match(meaning('Route sheet'), /One person’s day, printed/);
   assert.equal(all.filter((each) => each.term === 'Elevator').length, 1, 'no new entry for the elevator: its meaning changed');
-  assert.equal(all.length, 35, 'spec 2 has 20 words, DESIGN 11.1 adds 11, DESIGN 12.1 one, DESIGN 13.1 three');
+  assert.equal(all.length, 39, 'spec 2 has 20 words, DESIGN 11.1 adds 11, DESIGN 12.1 one, DESIGN 13.1 three, DESIGN 14.1 four');
   assert.doesNotMatch(all.map((each) => each.meaning).join(' '), /\blifts?\b/i, 'the code says lift; Help says elevator');
 });
 
