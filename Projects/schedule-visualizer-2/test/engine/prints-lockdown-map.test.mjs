@@ -5,16 +5,18 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import * as sheet from '../../ui/prints/lockdown-map.js';
 import { OUTPUTS, outputFor } from '../../ui/prints/index.js';
-import { frame, esc, paperOf, printableBox } from '../../ui/prints/document.js';
+import { frame, esc, paperOf, printableBox, PAPERS as SHEETS } from '../../ui/prints/document.js';
 import { planSvg, gridSquare } from '../../ui/prints/plan-svg.js';
 import { school, PINNED } from './helpers.mjs';
 import { withElevator } from '../fixtures/step-free.mjs';
 import { planProject } from '../fixtures/buildings/plans.mjs';
 
 const NOW = { now: PINNED };
+const PRINT_CSS = readFileSync(new URL('../../ui/print.css', import.meta.url), 'utf8');
 const PAPERS = [
   { size: 'letter', orientation: 'landscape' },
   { size: 'letter', orientation: 'portrait' },
@@ -70,9 +72,9 @@ test('the index gives every room and labelled space the grid square the picture 
   for (const line of want) assert.ok(rooms.includes(line), line + ' is in the index: ' + rooms.join(' / '));
   // the rooms by number first, then the other spaces by label
   const named = floor.spaces.filter((space) => space.kind === 'room').length;
-  assert.deepEqual(rooms.slice(0, named).map((line) => line.split(' · ')[0]), ['Cafeteria', 'Gym', '101', '102', '103']);
+  assert.deepEqual(rooms.slice(0, named).map((line) => line.split(' · ')[0]), ['101', '102', '103', 'Cafeteria', 'Gym']);
   assert.deepEqual(rooms.slice(named).map((line) => line.split(' · ')[0]), ['Bathrooms', 'Courtyard', 'Kitchen', 'Office']);
-  assert.match(rooms[2], /^101 · [A-L]([1-9]|1[0-2])$/);
+  assert.match(rooms[0], /^101 · [A-L]([1-9]|1[0-2])$/);
   // the grid is 12 columns or fewer and 12 rows or fewer, and is in the picture
   assert.ok(plan.grid.cols <= 12 && plan.grid.rows <= 12);
   assert.ok(html.includes('plan__grid-lines'));
@@ -92,7 +94,7 @@ test('an elevator is listed with its floors, and "staff only" when it is', () =>
   const project = withElevator();
   const { html } = sheet.render(project, null, { ...NOW, floorIds: ['fsample002'] });
   const lines = items(block(html, 'stairs'));
-  assert.ok(lines.includes('Elevator A · Floors Floor 1 and Floor 2 · staff only'), lines.join(' / '));
+  assert.ok(lines.includes('Elevator A · Floor 1 and Floor 2 · staff only'), lines.join(' / '));
   assert.ok(lines.includes('Stairs B, Floor 2 to Floor 3'));
 });
 
@@ -205,4 +207,175 @@ test('the same project and options give the same document, with a default render
   assert.equal(a, sheet.render(school(), null, NOW).html);
   assert.equal(a, sheet.render(school(), null, { ...NOW, by: 'floor', paper: undefined }).html);
   assert.ok(a.includes('<p class="doc-head__date">1 September 2026</p>'));
+});
+
+// the plan's box and the free room the layout promised it, in millimetres, for every sheet of a render
+function boxes(html) {
+  const found = [];
+  for (const part of html.split('<div class="lockdown ').slice(1)) {
+    const free = /--lockdown-free-w: ([\d.]+)mm; --lockdown-free-h: ([\d.]+)mm;/.exec(part);
+    const picture = /class="lockdown__picture" style="width: ([\d.]+)mm; height: ([\d.]+)mm;"/.exec(part);
+    found.push({ freeW: Number(free[1]), freeH: Number(free[2]), width: Number(picture[1]), height: Number(picture[2]), layout: /data-layout="(\w+)"/.exec(part)[1] });
+  }
+  return found;
+}
+
+const FILLED = [
+  { size: 'letter', orientation: 'landscape' },
+  { size: 'a4', orientation: 'portrait' },
+  { size: 'a2', orientation: 'landscape' },
+];
+
+test('the plan is the largest that fits the room left: at least 85 % of the free width or the free height, whichever binds', () => {
+  const project = school();
+  for (const paper of FILLED) {
+    const at = paper.size + ' ' + paper.orientation;
+    const box = printableBox(paperOf(project, { paper }));
+    for (const found of boxes(sheet.render(project, null, { ...NOW, paper }).html)) {
+      const bound = Math.max(found.width / found.freeW, found.height / found.freeH);
+      assert.ok(bound >= 0.85, at + ': the plan is ' + Math.round(bound * 100) + ' % of the room it was given');
+      assert.ok(found.width <= found.freeW + 0.01 && found.height <= found.freeH + 0.01, at + ': inside its room');
+      // the room itself is not made small to make the sum come out
+      assert.ok(found.freeW >= box.width * 0.5 && found.freeH >= box.height * 0.3, at + ': the room left is a fair share of the sheet');
+      // the sample's plans are three times as wide as high: across the width, whichever way the sheet lies
+      assert.ok(found.width >= box.width * 0.85, at + ': the plan is ' + found.width + ' mm of ' + box.width);
+    }
+  }
+});
+
+test('a plan about as tall as it is wide goes beside the index on a landscape sheet and fills the height', () => {
+  const rows = ['AAAA.BBBB', 'AAAA.BBBB', 'AAAA.BBBB', 'AAAA.BBBB', '#########', '.........', '.........', 'CCCC.DDDD', 'CCCC.DDDD', 'CCCC.DDDD', 'CCCC.DDDD'];
+  const project = planProject([rows], { doors: { '1A': [[1, 3, 's']], '1B': [[6, 3, 's']], '1C': [[1, 7, 'n']], '1D': [[6, 7, 'n']] }, exits: [[1, 0, 5, 'West'], [1, 8, 5, 'East']] });
+  const paper = { size: 'letter', orientation: 'landscape' };
+  const box = printableBox(paperOf(project, { paper }));
+  const [found] = boxes(sheet.render(project, null, { ...NOW, paper }).html);
+  assert.equal(found.layout, 'beside');
+  assert.ok(found.height >= 0.85 * found.freeH, 'the height binds: ' + found.height + ' of ' + found.freeH);
+  assert.ok(found.height >= box.height * 0.6, 'and it is most of the sheet: ' + found.height + ' of ' + box.height);
+  assert.ok(found.freeW + 6 < box.width, 'the index has a column');
+  // the same building on an upright sheet goes over its index
+  assert.equal(boxes(sheet.render(project, null, { ...NOW, paper: { size: 'letter', orientation: 'portrait' } }).html)[0].layout, 'under');
+});
+
+// a floor of rooms numbered and named every way the index has to sort
+function mixed() {
+  const rows = ['AB.CD.EF.GH', 'AB.CD.EF.GH', 'IJ.kk.ll.mm', 'IJ.kk.ll.mm'];
+  const project = planProject([rows], { numbers: { '1A': '102', '1B': 'B12', '1C': 'Gym', '1D': '', '1E': '101', '1F': '9', '1G': 'Cafeteria', '1H': '', '1I': '20', '1J': '2nd office' } });
+  const floor = project.building.floors[0];
+  floor.spaces.find((space) => space.id === 'rplan1d000').label = 'Annex';
+  floor.spaces.find((space) => space.id === 'oplan1k000').label = 'Boiler room';
+  return project;
+}
+
+test('the index: rooms with a number in natural order, then rooms named in words, then other spaces by label', () => {
+  const project = mixed();
+  const { html } = sheet.render(project, null, NOW);
+  const rooms = items(block(html, 'rooms')).map((line) => line.split(' · ')[0]);
+  // every number with a digit in it, in natural order (2 before 9 before 20 before 101); then the words: Annex (a label, no number), Cafeteria, Gym
+  assert.deepEqual(rooms.slice(0, 6), ['2nd office', '9', '20', '101', '102', 'B12']);
+  assert.deepEqual(rooms.slice(6, 9), ['Annex', 'Cafeteria', 'Gym']);
+  assert.equal(rooms[9], 'Boiler room', 'the other spaces by label come last');
+  assert.ok(rooms.includes('Space l'), rooms.join(' / '));
+  // a room with a label but no number is indexed by its label; only a room with neither is counted
+  assert.ok(html.includes('1 room with no number is not listed.'), 'room H has neither');
+  assert.equal(countOf(html, 'data-line="unnumbered"'), 1);
+});
+
+test('ten exits on one floor are all in the exit list, numbered 1 to 10', () => {
+  const row = (letters) => letters.split('').flatMap((letter) => [letter, letter]).join('');
+  const rooms = row('ABCDEFGHIJ');
+  const doors = {};
+  'ABCDEFGHIJ'.split('').forEach((letter, i) => { doors['1' + letter] = [[2 * i + 1, 1, 's']]; });
+  const project = planProject([[rooms, rooms, '#'.repeat(20), '.'.repeat(20), '.'.repeat(20)]], { doors, exits: Array.from({ length: 10 }, (_, i) => [1, 2 * i, 2, 'Door ' + String.fromCharCode(65 + i)]) });
+  const { html } = sheet.render(project, null, NOW);
+  const lines = items(block(html, 'exits'));
+  assert.equal(lines.length, 10, lines.join(' / '));
+  assert.deepEqual(lines.map((line) => Number(line.split(' ')[0])), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.deepEqual(lines.map((line) => line.split(' ').slice(1, 3).join(' ')), Array.from({ length: 10 }, (_, i) => 'Door ' + String.fromCharCode(65 + i)));
+  const badges = Array.from(html.matchAll(/class="lockdown__badge"[^>]*>(\d+)</g)).map((match) => Number(match[1]));
+  assert.deepEqual(badges, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.equal(new Set(Array.from(html.matchAll(/class="plan__mark-number"[^>]*>(\d+)</g)).map((match) => match[1])).size, 10, 'the plan numbers them too');
+});
+
+test('an elevator names its floors once: "Floor 1, Floor 2 and Floor 3", never "Floors Floor 1"', () => {
+  const project = withElevator();
+  const [, f2, f3] = project.building.floors;
+  const b = project.building.connections[1];
+  b.kind = 'elevator';
+  b.car = 'A';
+  b.a = { floorId: f2.id, cell: 332 };
+  b.b = { floorId: f3.id, cell: 332 };
+  f3.lifts = [332];
+  const { html } = sheet.render(project, null, { ...NOW, floorIds: [f2.id] });
+  const lines = items(block(html, 'stairs'));
+  assert.ok(lines.includes('Elevator A · Floor 1, Floor 2 and Floor 3 · staff only'), lines.join(' / '));
+  assert.doesNotMatch(html, /Floors /);
+});
+
+test('the index text scales with the sheet like the footer, and a long list never takes type under 7 pt', () => {
+  assert.match(PRINT_CSS, /\.lockdown__index \{[^}]*font-size: calc\(var\(--lockdown-fs, 8pt\) \* var\(--lockdown-scale, 1\)\);/);
+  assert.match(PRINT_CSS, /\.lockdown__foot \{[^}]*font-size: calc\(8pt \* var\(--lockdown-scale, 1\)\);/);
+  const project = school();
+  const floor = project.building.floors[0];
+  const { html } = sheet.render(project, null, { ...NOW, floorIds: [floor.id], paper: { size: 'a2', orientation: 'landscape' } });
+  // the inline size no longer beats the rule
+  assert.doesNotMatch(html, /class="lockdown__index"[^>]*style=/);
+  assert.ok(Number(/--lockdown-scale: ([\d.]+);/.exec(html)[1]) > 1.8, 'A2 scales it');
+  assert.equal(/--lockdown-fs: ([\d.]+)pt;/.exec(html)[1], '8');
+  // a floor with a long index takes smaller type, and more of it fits by columns
+  const long = (extra) => {
+    const crowded = school();
+    const f = crowded.building.floors[0];
+    for (let i = 0; i < extra; i++) f.spaces.push({ ...f.spaces[f.spaces.length - 1], id: 'xlong' + i, label: 'Place ' + i });
+    return sheet.render(crowded, null, { ...NOW, floorIds: [f.id] }).html;
+  };
+  const sizes = [0, 40, 80].map((extra) => Number(/--lockdown-fs: ([\d.]+)pt;/.exec(long(extra))[1]));
+  assert.deepEqual(sizes, [8, 7.5, 7]);
+  for (const size of sizes) assert.ok(size >= 7, size + ' pt');
+});
+
+test('every paper size, both ways round, keeps the plan inside the sheet and the index with it', () => {
+  const project = school();
+  for (const key of Object.keys(SHEETS)) {
+    for (const orientation of ['portrait', 'landscape']) {
+      const paper = { size: key, orientation };
+      const at = key + ' ' + orientation;
+      const box = printableBox(paperOf(project, { paper }));
+      const { html } = sheet.render(project, null, { ...NOW, paper });
+      assert.ok(html.includes('data-paper="' + key + '"') && html.includes('data-orientation="' + orientation + '"'), at);
+      const found = boxes(html);
+      assert.equal(found.length, 3, at);
+      for (const one of found) {
+        assert.ok(one.width <= box.width + 0.01 && one.height <= box.height + 0.01, at + ': inside the sheet');
+        assert.ok(one.width > 20 && one.height > 8, at + ': not tiny');
+        assert.ok(one.width >= 0.85 * box.width, at + ': a wide plan takes the width: ' + one.width + ' of ' + box.width);
+        assert.ok(one.height + 23 < box.height, at + ': the header and the index have their room');
+      }
+      for (const name of ['rooms', 'exits', 'stairs']) assert.equal(countOf(html, 'data-block="' + name + '"'), 3, at + ' ' + name);
+    }
+  }
+});
+
+test('an Arabic name and a name with an override nobody closed are each in their own isolated span, in every list', () => {
+  const ARABIC = 'باب الشمال';
+  const OVERRIDE = '‮evil';
+  const project = withElevator();
+  const [f1, f2] = project.building.floors;
+  f1.exits[0].doorName = ARABIC;
+  f1.exits[1].doorName = OVERRIDE;
+  f1.spaces[0].number = OVERRIDE;
+  f1.spaces[1].number = ARABIC;
+  project.building.connections[0].kind = 'stairs';
+  delete project.building.connections[0].car;
+  project.building.connections[0].label = ARABIC;
+  project.building.connections[1].label = OVERRIDE;
+  f1.name = ARABIC;
+  f2.name = OVERRIDE;
+  const { html } = sheet.render(project, null, NOW);
+  for (const page of html.split('<section class="page">').slice(1)) {
+    const rest = page.replace(/<span dir="auto">.*?<\/span>/g, '#').replace(/<header.*?<\/header>/s, '').replace(/<svg.*?<\/svg>/gs, '');
+    assert.doesNotMatch(rest, /[؀-ۿ‪-‮⁦-⁩]/, 'a typed name outside its isolate');
+  }
+  for (const name of [ARABIC, OVERRIDE]) assert.ok(html.includes('<span dir="auto">' + name + '</span>'), name);
+  assert.ok(html.includes('<span dir="auto">Stairs ' + ARABIC + ', ' + ARABIC + ' to ' + OVERRIDE + '</span>'), 'a stairs line is one isolated span');
 });
