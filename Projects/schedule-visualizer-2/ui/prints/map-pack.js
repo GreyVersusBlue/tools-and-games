@@ -144,7 +144,8 @@ function exitsPages(project, orientationOf) {
   const out = [];
   const lead = [];
   if (exits.length === 0) lead.push('<p class="doc-lead" data-line="no-exit">' + esc(NO_EXIT_SAYS) + '</p>');
-  if (load.sentence) lead.push('<p class="doc-lead" data-line="heavy"><span style="font-weight: 700;">Warning</span> ' + esc(load.sentence) + '</p>');
+  // far more than the others is a warning; a building with one way out gets the same sentence as a note
+  if (load.sentence) lead.push('<p class="doc-lead" data-line="' + (load.heavy.length > 0 ? 'heavy' : 'one-exit') + '">' + (load.heavy.length > 0 ? '<span style="font-weight: 700;">Warning</span> ' : '') + esc(load.sentence) + '</p>');
   const basis = basisWords(load);
   if (basis !== '') lead.push('<p class="doc-meaning" data-line="basis">' + esc(basis) + '</p>');
   const groups = exits.length === 0 ? [[]] : chunks(exits, rowsAt);
