@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { contrast } from '../../ui/colour.js';
+import { PRINT_EXIT_COLOURS, printExitColour } from '../../ui/prints/plan-svg.js';
 import { exitPalette, exitColours, oklab, apart, EXIT_COUNT, EXIT_APART, EXIT_HUE_CLEAR, EXIT_GREY } from '../../ui/surface/overlays/evacuation.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -188,4 +189,12 @@ test('past eight exits the colours repeat in key order; an unread token is the f
   assert.equal(new Set(colours.slice(0, EXIT_COUNT)).size, EXIT_COUNT);
   assert.deepEqual(exitColours(2, [null, '#005700'], '#1f2328'), ['#1f2328', '#005700']);
   assert.deepEqual(exitColours(2, null), ['#808080', '#808080']);
+});
+
+// SV2-108: a print cannot read the stylesheet, so the plan writes the light colours out
+test('PRINT_EXIT_COLOURS are the light --exit-1 to --exit-8 of safety.css\'s :root block, in order, and wrap as exitColours does', () => {
+  assert.deepEqual(PRINT_EXIT_COLOURS, palette('light'));
+  assert.equal(PRINT_EXIT_COLOURS.length, EXIT_COUNT);
+  const screen = exitColours(EXIT_COUNT * 2 + 3, palette('light'));
+  for (let i = 0; i < screen.length; i += 1) assert.equal(printExitColour(i), screen[i], 'exit ' + (i + 1));
 });

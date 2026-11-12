@@ -80,6 +80,7 @@ export const GROUPS = {
     'engine/import-teachers.test.mjs', // SV2-35
     'engine/finding-ids.test.mjs', // SV2-35
     'engine/prints.test.mjs', // SV2-14
+    'engine/plan-svg-safety.test.mjs', // SV2-108
     'engine/prints-batch.test.mjs', // SV2-24
     'engine/readers.test.mjs', // SV2-42
     'engine/prints-movement.test.mjs', // SV2-18

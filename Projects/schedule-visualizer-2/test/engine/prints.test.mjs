@@ -45,7 +45,7 @@ const PAPER_CHOICES = Object.keys(PAPERS).flatMap((size) => Object.keys(ORIENTAT
 // Every tag a print document is made of. A name that came through as markup
 // would bring a tag that is not here.
 const TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'style', 'body', 'main', 'section', 'header', 'footer', 'div', 'p', 'h1', 'h2', 'ul', 'li', 'span',
-  'table', 'thead', 'tbody', 'tr', 'th', 'td', 'figure', 'figcaption', 'svg', 'g', 'path', 'text', 'rect']);
+  'table', 'thead', 'tbody', 'tr', 'th', 'td', 'figure', 'figcaption', 'svg', 'g', 'path', 'text', 'rect', 'circle']);
 
 function tagsOf(html) {
   return Array.from(html.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9-]*)/g)).map((match) => match[1]);
@@ -625,6 +625,21 @@ test('only the bytes of an image are drawn: an address, or anything that is not 
   assert.ok(html.includes('href="' + esc(nasty) + '"'));
 });
 
+// SV2-108: the safety prints draw badges, marks and a marker as circles; a document that holds
+// them is made of the tags above and no others, and a hostile name brings none
+test('a plan drawn with every safety option is made of tags the print whitelist holds', () => {
+  const { project } = hostileSchool(false);
+  const floor = project.building.floors[0];
+  const exit = floor.exits[0];
+  const { svg } = planSvg(project, floor, {
+    routes: [{ cells: [floor.cells.indexOf('#')], exit: exit.cell, number: 1, colour: '#255ebc' }],
+    refGrid: true, highlightCells: [floor.cells.indexOf('#')], exitMarks: [{ exitId: exit.id, number: 1 }], marker: { cell: exit.cell, label: HOSTILE[0] },
+  });
+  assert.ok(svg.includes('<circle'), 'a circle is drawn');
+  assert.deepEqual(tagsOf(svg).filter((tag) => !TAGS.has(tag)), []);
+  assert.equal(countOf(svg, '<script'), 0);
+});
+
 test('the plan\'s own ink and room colour are the light theme\'s', () => {
   const css = readFileSync(path.join(TOOL_DIR, 'ui', 'tokens.css'), 'utf8');
   const light = /\[data-theme="light"\],\s*\[data-theme="auto"\]\s*\{([^}]*)\}/.exec(css)[1];
@@ -835,7 +850,7 @@ test('a school with nothing in it still prints all three', () => {
 test('the print modules read no screen, clock or storage: a document is made from the model alone', () => {
   const dir = path.join(TOOL_DIR, 'ui', 'prints');
   const files = readdirSync(dir).filter((file) => file.endsWith('.js'));
-  assert.deepEqual(files.sort(), ['batch.js', 'checks-report.js', 'congestion.js', 'document.js', 'door-cards.js', 'floor-plan.js', 'index.js', 'movement.js', 'plan-svg.js', 'room-list.js', 'schedule-grids.js', 'travel-time.js', 'calendar.js', 'step-free.js', 'route-sheet.js'].sort());
+  assert.deepEqual(files.sort(), ['batch.js', 'checks-report.js', 'congestion.js', 'document.js', 'door-cards.js', 'floor-plan.js', 'index.js', 'movement.js', 'plan-svg.js', 'room-list.js', 'schedule-grids.js', 'travel-time.js', 'calendar.js', 'step-free.js', 'route-sheet.js', 'routes.js'].sort());
   for (const file of files) {
     const code = readFileSync(path.join(dir, file), 'utf8').replace(/\/\/.*$/gm, '');
     for (const name of [/\bdocument\.(?!js')/, /\bwindow\./, /\bnavigator\b/, /\blocalStorage\b/, /\bindexedDB\b/, /Date\.now/, /new Date\(\)/, /Math\.random/, /innerHTML/, /querySelector/, /getContext/]) {
