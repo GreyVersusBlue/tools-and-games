@@ -10,7 +10,7 @@
 // no sprint outruns. You escape by breaking its line of sight, or by a door
 // slamming between you; never by cardio.
 //
-// What it genuinely shares, it imports: the crowd's seeded `rng`, the
+// What it genuinely shares, it imports: the crowd's seeded `rng` (rng.js), the
 // navgraph's routes, the collider's `moveWalker` (through an injected
 // `colliderFor`, the same bargain the crowd struck), and sightline's cast.
 // Everything else it does with one switch statement.
@@ -19,7 +19,7 @@
 // functions, so the tests drive the whole hunt headless — the way every
 // tool-shaped module here is driven.
 
-import { rng } from './agents.js';
+import { rng } from './rng.js';
 import { route, nodeAt } from './navgraph.js';
 import { moveWalker } from './collide.js';
 import { sightClear } from './sightline.js';

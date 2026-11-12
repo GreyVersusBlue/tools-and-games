@@ -619,6 +619,46 @@ section("12. the pace is one field, and a save without it is the game it was wri
   eq(SAVE_VERSION, 1, "and neither did the version: a missing field is repair's, not migrate's (#37)");
 }
 
+section("13. the guide's seen flag is one field, and a save without it is a shop already played (#1042)");
+{
+  const slot = newSlot();
+  const base = { day: 6, money: 1200, unlockedRecipes: ["drip", "latte"] };
+  eq(slot.fresh().guideSeen, false, "a fresh shop has not seen the guide");
+  eq(slot.reset().guideSeen, false, "and neither does New Game's");
+  ok(Object.keys(freshSaveData(CATALOG)).includes("guideSeen"), "the field is one the save knows, so repair's unknown-field sweep keeps it");
+  eq(slot.normalize({ ...base }).guideSeen, true, "a save written before the field existed loads as seen");
+  eq(slot.normalize({ ...base, guideSeen: false }).guideSeen, false, "one that says unseen stays unseen");
+  eq(slot.normalize({ ...base, guideSeen: "no" }).guideSeen, true, "a value that is not a boolean reads as an old save: seen");
+  {
+    const store = memStore();
+    store.setItem(SAVE_KEY, JSON.stringify({ ...base, baristaLevel: 1 }));
+    const s = createCornerKettleSlot(CATALOG, { storage: store, rng: () => 0.5 }).load();
+    eq(s && s.guideSeen, true, "an unversioned save in storage loads as seen");
+  }
+  {
+    const store = memStore();
+    const s1 = createCornerKettleSlot(CATALOG, { storage: store, rng: () => 0.5 });
+    const blob = toSaveData(applyToState(blankState(), s1.normalize({ ...base })));
+    delete blob.guideSeen;
+    s1.save(blob);
+    ok(!/"guideSeen"/.test(store.getItem(SAVE_KEY)), "a current-version save can be written with the field cut out");
+    eq(createCornerKettleSlot(CATALOG, { storage: store, rng: () => 0.5 }).load().guideSeen, true, "and reads back as seen");
+  }
+  // Export and import carry it.
+  {
+    const s2 = newSlot();
+    const state = applyToState(blankState(), s2.fresh());
+    eq(state.guideSeen, false, "applyToState seats the flag on a new game's state");
+    const text = s2.serialize(toSaveData(state));
+    ok(/"guideSeen":\s*false/.test(text), "an exported file carries it in so many words");
+    eq(s2.deserialize(text).guideSeen, false, "and an import reads it back unseen");
+    state.guideSeen = true;
+    eq(s2.deserialize(s2.serialize(toSaveData(state))).guideSeen, true, "and seen round-trips as itself");
+  }
+  eq(SAVE_KEY, "cornerKettleSave_v1", "the storage key did not move (#36)");
+  eq(SAVE_VERSION, 1, "nor the version: a missing field is repair's, not migrate's (#37)");
+}
+
 /* ---------- report ---------- */
 
 process.stdout.write(`\n${passed} passed, ${failures.length} failed\n`);

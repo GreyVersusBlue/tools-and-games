@@ -1,5 +1,5 @@
 // ui.js — rendering + interaction flows. All engine mutation goes through engine modules.
-import { DB, fmtMoney } from "./data.js";
+import { DB, fmtMoney, contentErrors, errorFiles } from "./data.js";
 import { S, save, wipeSave, dayName, isWeekend, weekOf, seasonOf, levelInfo, LEVELS, activeClients, clientSlotsMax,
          getClientRec, contentClient, log, addRep, addCash, rand, pick,
          loadHall, hallSlot, hallBests, mergeHall } from "./state.js";
@@ -19,7 +19,22 @@ const $ = sel => document.querySelector(sel);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+/**
+ * What the loader left out, kept on the desk after the toast is gone (#1026).
+ * One line, hidden when nothing was dropped; the file names are its title and
+ * the console has the full sentence for each.
+ */
+function renderContentNote() {
+  const note = $("#content-note");
+  if (!note) return;
+  const n = contentErrors.length;
+  note.hidden = !n;
+  note.textContent = n ? `${n} content error${n === 1 ? "" : "s"} in data/: what could not be loaded was left out of this game.` : "";
+  note.title = n ? errorFiles().join("\n") : "";
+}
+
 export function render() {
+  renderContentNote();
   renderTopbar(); renderNav();
   const main = $("#main"); main.innerHTML = "";
   ({ dashboard: renderDashboard, clients: renderClients, mls: renderMLS,

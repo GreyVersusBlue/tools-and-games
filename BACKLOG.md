@@ -1247,9 +1247,9 @@ If a future round finds something real:
 
 1. **Extend `Pathfinder/tests/anathema.test.mjs`** rather than starting a
    second suite, if this page gets more interaction logic. **The suite says
-   when that happens now** (#626, 2026-09-24): its static section lists all 47
+   when that happens now** (#626, 2026-09-24): its static section lists all 48
    ways the page takes input in `SURFACE` and fails on a new one. That failure
-   is this item coming true; it is not a ranked row until then. **All 47 are
+   is this item coming true; it is not a ranked row until then. **All 48 are
    driven by a scenario** (TG-29, 2026-10-05, #867 and #869; it was 41 undriven,
    then 11): the filters, deep search, the bookmark star with export and import,
    the keyboard, the back button, list scrolling and an edited URL by
@@ -1260,12 +1260,11 @@ If a future round finds something real:
    `window resize` listener by `testWindowResize`, which grows a 420px window
    to 1500px and asks that rows are drawn down to the bottom of the taller
    list. So there is no `''` left in `SURFACE`, and the next one is a new entry
-   point. Not driven, because it is not an entry point: `loadEncounter`'s repair
-   of a stored encounter (a count under 1, a party level past 20, a line with no
-   `_id`), which would take a seeded `aa.encounter` and a reload. Seen and left:
-   a party level or size typed past its limit is held in the total and in
-   storage (20, 12) while the field goes on showing what was typed until the
-   builder is next redrawn. 59 breaks of the page were run against the
+   point. Two things the notes had left are done (TG-52, #1040): `loadEncounter`'s
+   repair of a stored encounter is driven by `testEncounterRepair` from a seeded
+   `aa.encounter` and a reload, and a party level or size typed past its limit
+   shows the held value when the field is left (a `change` listener, the 48th
+   entry in `SURFACE`). 59 breaks of the page were run against the
    two new scenarios and all 59 failed the suite; of their 81 checks, 9 failed
    under none (3 `fixture:` lines and 6 starting states). The
    `waitFor`/`clickCat`/`clickLevelChip` helpers and the `freshPage()` pattern
@@ -1694,8 +1693,8 @@ refuses under their floor (CT-1), the investor tour is built (CT-6), and
 memorandum at packet value draws an offer worth taking in a median 20 days against a
 house's 11, at 0.90 of a house listing's gross per slot-day (1.06 on a data room); a
 careful career reaches Broker-Track on a median day 215 and 17 of 20 close a
-building. `tools/smoke.mjs` 703, `tools/browser.mjs` 40 (port 8178, now in
-`site-ci.yml`). **Left: a person's play of it**, and test 20's empty-room half.
+building. `tools/smoke.mjs` 725, `tools/browser.mjs` 47 (port 8178, now in
+`site-ci.yml`). **Left: a person's play of it.** Test 20's empty-room half shipped in #1026.
 It was never in the ranked table. The two things it read in the code on the way were both real and are
 fixed (#956, 2026-10-12): `repairCareer()` puts a client file added since a
 career began on the end of that career's queue, lowest rung first and then by
@@ -1733,12 +1732,20 @@ project's only plan and is being retired from that file:
   house is in a missing neighborhood, and an event naming a missing agent or
   brokerage), says which file names which id in the console, and a save holding
   the listing takes #861's void. `tools/smoke.mjs` fails the build on the same
-  lines and on a manifest that disagrees with the folder. **Still open**: a
-  file the manifest names that is not on the server stops the page at "Failed
-  to load" (CI catches it, the page does not go on without it); the toast is
-  2.6 seconds and nothing on the desk says afterwards that content was left
-  out; a seller dropped this way gets #861's two anonymous deleted-client
-  lines, not one under their name.
+  lines and on a manifest that disagrees with the folder. **The three things it
+  left open are shipped (#1026, 2026-11-06)**: a file the manifest names that is
+  not on the server is one more content error and the page goes on without it
+  (the manifest itself is still fatal); the desk keeps a one-line note with the
+  count and the file names in its title; a dropped seller gets one Ledger line
+  under their name. **One thing is written up and not fixed**: a client file
+  deleted and later put back comes in as a client the career has not met. The
+  repair that removes the record also drops the id from the queue and the used
+  list, so when the file returns it is "new" (end of the queue, a new `recId`,
+  its old satisfaction and Ledger history gone), reproduced in `tools/smoke.mjs`.
+  A fix needs the save to keep a tombstone of the removed record (id, name,
+  satisfaction) to restore from: a shape change in the career, not a few lines,
+  and nothing has been seen to need it. Open only if Devon wants a deleted
+  client to be recoverable.
 
 Two conventions that stay in the README rather than moving here: anything new
 added to `S` belongs in `repairCareer()` the same day it's added, especially if
@@ -1838,7 +1845,8 @@ What's left:
    frames). No
    foam is drawn round the tip of the water where the channel runs dry beside
    the ford, no bird or crab is placed on the bar, the surf sound does not
-   know it, and nothing in a browser suite walks it. The crest sits in a 4 cm
+   know it. A browser check walks it since #1041 (`test/bar.mjs`, port 8179, not yet in
+   Site CI). The crest sits in a 4 cm
    window because the tide's range is 0.36 m against a 0.32 m swash; a bar
    that stood prouder would need a bigger tide, which is the home beach's too.
 
@@ -2316,9 +2324,10 @@ Two things the work turned up. The first is fixed, the second had shipped:
    page's `LOUD_COSTS` constant turns both halves off. No save field, no key.
    `smoke-targets.mjs` 151 to 175, `browser.mjs` 79 to 90. **Nobody looked at
    it**: no person has judged whether copper and one pixel is loud enough,
-   or whether a sentence under the grid is where a player reads. Not built:
-   the sentence does not say which sink it belongs to when two orders are the
-   same number, and the tooltip keeps its older wording (`12 fabricators`).
+   or whether a sentence under the grid is where a player reads. The two
+   small gaps it left are closed (2026-11-07, TG-51, #1039): the sentence
+   names its sink when another sink holds the same order, and the tooltip
+   says tiles. Nothing is open here.
 
 ## The Fracture Cycle
 
@@ -2437,7 +2446,8 @@ wants, not a placeholder for a "real" save); no `reset` button on the save bar
    1,200-launch census judge, and the sector map rolls one at Easy, Medium or
    Hard. The census feeds the editor's Check since 2026-10-05 (#877): after
    the verdict it reads `1.4% of launches win (17 of 1,200).`, stepped one
-   launch at a time. **The tier bands were measured on 2026-10-05 and left
+   launch at a time, with `, N of them would win with no bodies at all` added
+   when N is not zero (2026-11-07, #1038). **The tier bands were measured on 2026-10-05 and left
    alone** (#881): seeds 1 to 200 at each tier, every candidate's census kept.
    Win share of the accepted levels, and what the judge refused on the way:
 

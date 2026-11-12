@@ -539,6 +539,12 @@ $('encbar').addEventListener('input', ev => {
   if (sum) sum.innerHTML = `<b>${total} XP</b> — ${esc(label)}${over ? ' (a creature is more than 4 levels above the party)' : ''}<br>`
     + `<span style="color:var(--text-faint)">${budgets.map(([nm,b]) => `${nm} ${b}`).join(' · ')}</span>`;
 });
+/* a party level or size typed past its limit is held (20, 12) in the total and
+   in storage while it is typed; on blur or Enter the field shows what is held */
+$('encbar').addEventListener('change', ev => {
+  if (ev.target.id === 'encLvl') ev.target.value = S.enc.partyLevel;
+  else if (ev.target.id === 'encSize') ev.target.value = S.enc.partySize;
+});
 const TRADITIONS = ['arcane','divine','occult','primal'];
 const traditionsOf = e => {
   const tr = e.system?.traits?.traditions || [], tv = traitsOf(e);

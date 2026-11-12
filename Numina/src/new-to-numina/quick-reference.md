@@ -10,7 +10,7 @@ memorized before your first event — bookmark the page and come back to it.
 
 ## Bookmark these
 
-- **[The official Numina site](http://www.numinalarp.com)** — event dates,
+- **[The official Numina site](https://www.numinalarp.com)** — event dates,
   pricing, and registration.
 - **[The Numina Discord](https://discord.gg/YUbmyK4Ehb)** — the fastest place
   to ask a question, borrow gear, arrange a ride, or tell staff you'd like to

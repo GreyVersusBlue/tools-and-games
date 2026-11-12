@@ -25,7 +25,7 @@ import {
   shapesOf, segEnds, isBuilt, isDoorOpening, openingSpec, shapeAt, SEG_WALL,
 } from './shapes.js';
 import { solidSpans } from './collide.js';
-import { rng } from './agents.js';
+import { rng } from './rng.js';
 import { pointEntry, findPath, pathDistance, nearestExit } from './navgraph.js';
 import { registerRecord } from './records.js';
 

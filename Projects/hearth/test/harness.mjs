@@ -1022,9 +1022,17 @@ if (mode === 'sixteen') {
       if (k1.task === 'tag' || k2.task === 'tag') tagSeen = true;
     }
     h.setSnow(0.9);
+    // TG-48: a snowman needs ground (freeSpotNear), and the yard beside the fire is built over on some islands: on seed 7 once the
+    // deer flee by dry routes, there was none at all within three tiles of (fire -2, fire +2), so the children stood there for
+    // 3000 steps and the check failed on the island's layout. They stand on the nearest ground that has room instead.
+    let sx = fireSpot.x, sy = fireSpot.y + 2;
+    search: for (let r = 2; r <= 14; r++) for (let a = 0; a < 16; a++) {
+      const x = fireSpot.x + Math.cos(a * Math.PI / 8) * r, y = fireSpot.y + Math.sin(a * Math.PI / 8) * r;
+      if (h.landAt(x, y) && window.freeSpotNear(x, y, 1, 3, 1)) { sx = x; sy = y; break search; }
+    }
     let snowman = 0;
     for (let i = 0; i < 3000 && !snowman; i++) {
-      for (const k of [k1, k2]) if (k.task !== 'snowman') { k.task = 'play'; k.t = 0; k.x = fireSpot.x + (k === k1 ? -2 : 2); k.y = fireSpot.y + 2; k.tx = k.x; k.ty = k.y; }
+      for (const k of [k1, k2]) if (k.task !== 'snowman') { k.task = 'play'; k.t = 0; k.x = sx + (k === k1 ? -.5 : .5); k.y = sy; k.tx = k.x; k.ty = k.y; }
       h.step(0.05);
       snowman = h.snowmen.length;
     }
@@ -1103,6 +1111,10 @@ if (mode === 'decade') {
   const seeds = arg('seeds', '7,20260819').split(',').filter(Boolean).map(Number);
   const auditEvery = parseInt(arg('audit', '100'));
   console.log(`decade: ${years} game-years (${days} days) x seeds [${seeds.join(', ')}], audit every ${auditEvery} steps\n`);
+  // A song is lost when every singer who knew it is dead, and how many songs an island ever makes is a stream accident: seed 7 makes
+  // 13 and loses 5, seed 20260819 made 2 and loses none (once TG-48 shifted the stream; both carried by six and nine singers at the
+  // end, so there was nothing to lose). So the loss is asserted across the seeds the mode runs, not on each one.
+  const lostBySeed = [];
   for (const seed of seeds) {
     const warns = [];
     const { ctx, page } = await openIsland(browser, seed, warns);
@@ -1143,7 +1155,7 @@ if (mode === 'decade') {
     const missing = [];
     if (!s.bounds) missing.push('the bounds were never walked');
     if (!s.heir) missing.push('nothing was ever handed down');
-    if (!s.lost) missing.push('no song was ever lost');
+    lostBySeed.push(s.lost);
     if (!s.told && tellOdds < 0.05) missing.push(`no child was ever told about somebody under a stone, across ${tellDays} days that could have`);
     if (!s.told && tellOdds >= 0.05) console.log(`  NOTE: no child was told of the dead, and the island only gave it ${tellDays} days to happen on` +
       ` (zero is a ${(tellOdds * 100).toFixed(0)}% outcome at that many) — not counted against the run, but the teller pool is thin`);
@@ -1157,6 +1169,8 @@ if (mode === 'decade') {
     console.log(`  ~${audits} full-cast audits, ${viol.length} violations`);
     await ctx.close();
   }
+
+  if (!lostBySeed.some(n => n > 0)) { failed = true; console.log(`FAIL: no song was ever lost on any of the seeds [${seeds.join(', ')}]`); }
 
   // ---- and the generational speed is the same island ----
   // Two fresh copies of one seed driven through real frames — the same step() calls at the same dt in both, one frame at a time and
@@ -1530,6 +1544,12 @@ if (mode === 'wider') {
   for (let d = 0; d < 12; d++) { const r = await runDay(page, 25); viol = viol.concat(r.viol); }
 
   // one: the horizon has a seed, and the seed is an involution — the island the link opens has this one on its horizon
+  // Twelve days is too short for the voyage to be waited on, but not too short for it to happen: after TG-48 moved the stream, island 7's
+  // own boat came home with the name inside them (known 1, 2 crossings) before this section looked, and "the island already knows a name"
+  // failed on the island rather than on the code. The section is about the forced cargo, so a voyage that already happened is put back to
+  // the unfetched state and said out loud, and the section runs on the same footing whichever way the stream fell.
+  const natural = await H(() => { const f = window.__hearth.farRec, n = f && f.kn ? f.cr.length : 0; if (n) { f.kn = 0; f.cr.length = 0 } return n });
+  if (natural) console.log(`  NOTE: the island's own boat had already fetched the name in ${natural} crossings; the record is reset so the forced cargo below starts from nothing`);
   const rec = await H(() => {
     const h = window.__hearth, f = h.farRec;
     return { seed: h.seed, s: f && f.s, n: f && f.n, kn: f && f.kn, cr: f ? f.cr.length : -1,
@@ -1919,12 +1939,14 @@ if (mode === 'strain') {
     check(t0.proof, 'shaking it off the day before leaves you able to take it again the next morning');
 
     // the first day you are up and out, which is how it travels; the second day you are in bed whether you agree or not
-    const up = await page.evaluate(() => ({ task: window.__hearth.people.find(p => p.sick).task }));
+    // TG-48: the one who took it, by name. The first sick person in the list is not always them: by the next dawn somebody they stood
+    // next to can have it too, a day behind, and that one is still up and out on their first day.
+    const up = await page.evaluate(w => ({ task: window.__hearth.people.find(p => p.name === w).task }), t0.who);
     let r1 = await runDay(page, 25); viol = viol.concat(r1.viol);
-    const bed = await page.evaluate(() => {
-      const h = window.__hearth, p = h.people.find(x => x.sick);
+    const bed = await page.evaluate(w => {
+      const h = window.__hearth, p = h.people.find(x => x.name === w && x.sick);
       return p ? { task: p.task, days: h.dayCount - p.sickD, hall: !!p.abedH } : { task: 'well', days: -1 };
-    });
+    }, t0.who);
     console.log(`  day one ${up.task}, day two ${bed.task}${bed.days >= 0 ? ` (${bed.days} in)` : ' — up again already'}`);
     check(up.task !== 'abed', 'the first day of it puts somebody straight to bed, so it can never travel anywhere');
     check(bed.days < 0 || bed.task === 'abed', `the second day of it and ${bed.task} is not being in bed`);
@@ -2077,6 +2099,7 @@ if (mode === 'strain') {
     const st = await page.evaluate(() => {
       const h = window.__hearth, ps = h.people.filter(p => !p.dead && !p.child), [a, b, c] = ps;
       const rel = (x, y) => { const r = x.rels.find(r2 => r2.who === y.name); return r ? r.k : null };
+      h.endFeud('worn');                                                              // TG-48: start clean, as the sickness check does: a raid in the first twenty days can have opened one
       const off = h.workRateOf(a), cOff = h.workRateOf(c);
       const ok = h.startFeud(a, b), again = h.startFeud(b, c);
       const on = h.workRateOf(a), cOn = h.workRateOf(c);
@@ -2400,18 +2423,18 @@ if (mode === 'leftovers') {
   }
 
   // ---- 3. the stone hears more than the loudest need ----
-  // One person sick and the ground at .9 dry, four hundred asks with the prayer cleared between. The if/else could only ever ask for
+  // One person sick and the ground at .5 dry, four hundred asks with the prayer cleared between. The if/else could only ever ask for
   // healing here; the weighted draw asks for both, healing most, and sometimes nothing.
   const pray = await H(() => {
     const h = window.__hearth, ad = h.people.filter(p => !p.dead && !p.sick && p.age0 >= 18);
     if (!ad.length) return { err: 'nobody to make sick' };
     h.works.push({ wk: 'shrine', x: 5, y: 5, y0: 1, done: true, prog: 20, paid: 1, said: 1 });
-    h.takeSick(ad[0]); h.setDry(.9); h.setFaith(.3);
+    h.takeSick(ad[0]); h.setDry(.5); h.setFaith(.3);   /* TG-48: .5 and not .9: the weights are 1.0 for the one sick and the ground's own dryness for rain, so at .9 healing leads by a tenth and which asks more in 400 is the stream's call, not the rule's */
     const asked = {};
     for (let i = 0; i < 400; i++) { h.setPrayer(null); h.faithDay(); const k = h.prayer ? h.prayer.k : 'none'; asked[k] = (asked[k] || 0) + 1; }
     return { asked, sick: h.people.filter(p => p.sick).length };
   });
-  console.log(`prayer: ${JSON.stringify(pray.asked)} with ${pray.sick} sick and the ground at .9`);
+  console.log(`prayer: ${JSON.stringify(pray.asked)} with ${pray.sick} sick and the ground at .5`);
   if (pray.err || !pray.asked.heal || !pray.asked.rain || pray.asked.rain >= pray.asked.heal) { failed = true; console.log(`FAIL: ${pray.err || 'the stone still only hears the loudest need'}`); }
 
   // ---- 4. the most-visited stone has a line ----

@@ -12,6 +12,14 @@ export const DB = {
  */
 export const contentErrors = [];
 
+/**
+ * Sellers dropBrokenContent() left out of the game, id -> name, so that a career
+ * which was holding one can say who it lost in one line under their name
+ * (repairCareer, #1026). Only filled for a file that loaded and was then
+ * dropped: a file that is not on the server has no name to give.
+ */
+export const droppedClients = new Map();
+
 /** A seller client whose listing is a building. The ladder gates these, and only these, among sellers (CT-12). */
 export const sellsBuilding = c => !!(c && c.type === "seller"
   && (c.tier === "commercial" || (c.sellerListing && c.sellerListing.tier === "commercial")));
@@ -26,20 +34,30 @@ export function validCommercialBlock(cb) {
 
 export async function loadAll() {
   const manifest = await fetchJSON("data/manifest.json");
-  const jobs = [], files = {};
+  const jobs = [], files = {}, missing = [];
   for (const cat of Object.keys(DB)) {
     for (const path of manifest[cat] || []) {
-      jobs.push(fetchJSON("data/" + path).then(obj => { DB[cat][obj.id] = obj; files[cat + "/" + obj.id] = "data/" + path; }));
+      // A file the manifest names that the server does not have is one more
+      // broken piece of content, not the end of the page: it is left out and
+      // said so, as dropBrokenContent() does for a file that names a missing
+      // one. Whatever pointed at its id meets that function next.
+      jobs.push(fetchJSON("data/" + path).then(
+        obj => { DB[cat][obj.id] = obj; files[cat + "/" + obj.id] = "data/" + path; },
+        err => { missing.push(`data/${path}: listed under "${cat}" in data/manifest.json, but it could not be loaded (${err.message}). The file is left out of the game.`); }));
     }
   }
   await Promise.all(jobs);
   contentErrors.length = 0;
-  contentErrors.push(...dropBrokenContent(DB, (cat, id) => files[cat + "/" + id]));
+  droppedClients.clear();
+  contentErrors.push(...missing.sort(), ...dropBrokenContent(DB, (cat, id) => files[cat + "/" + id], droppedClients));
   // Once, here, and not wherever the missing file would first have been read:
   // that was a TypeError on `.name` three screens away from the cause.
   for (const line of contentErrors) console.error("Closing Time content error: " + line);
   return DB;
 }
+
+/** The file each content error is about, once each, in the order they were found. For the desk's note. */
+export const errorFiles = (lines = contentErrors) => [...new Set(lines.map(l => (/^(data\/[^:]+):/.exec(l) || [])[1]).filter(Boolean))];
 
 /**
  * Content that names a file which is not there is a content error, and the
@@ -63,9 +81,10 @@ export async function loadAll() {
  * case #861 already settles: no commission, no charge, one Ledger line.
  *
  * Returns the lines; `fileOf(cat, id)` is the path a loaded id came from.
- * Pure apart from `db`, so the suite can run it on a copy.
+ * Pure apart from `db` and `dropped`, which gets each dropped seller's id and
+ * name, so the suite can run it on a copy.
  */
-export function dropBrokenContent(db = DB, fileOf = () => undefined) {
+export function dropBrokenContent(db = DB, fileOf = () => undefined, dropped = new Map()) {
   const errors = [];
   const usual = (cat, id) => `data/${cat}/${id}.json`;
   const has = (cat, id) => typeof id === "string" && id in db[cat];
@@ -82,6 +101,7 @@ export function dropBrokenContent(db = DB, fileOf = () => undefined) {
   for (const c of Object.values(db.clients)) {
     if (c.sellerListing && !has("neighborhoods", c.sellerListing.neighborhood)) {
       say("clients", c.id, "sellerListing.neighborhood", "neighborhoods", c.sellerListing.neighborhood, "The seller is left out of the game, and the house with them.");
+      dropped.set(c.id, c.name);
       delete db.clients[c.id];
       continue;
     }
@@ -92,6 +112,7 @@ export function dropBrokenContent(db = DB, fileOf = () => undefined) {
         : null;
       if (bad) {
         errors.push(`${fileOf("clients", c.id) || usual("clients", c.id)}: ${bad[0]} is ${JSON.stringify(sl[bad[0].split(".")[1]] ?? null)}, and a seller of a building needs ${bad[1]}. The seller is left out of the game, and the building with them.`);
+        dropped.set(c.id, c.name);
         delete db.clients[c.id];
         continue;
       }

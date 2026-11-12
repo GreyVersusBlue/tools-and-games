@@ -2430,6 +2430,13 @@ const App = {
   campaignRecord(){ return this.campaignId? (Registry.campaigns[this.campaignId]||null) : null; },
   /** The two saved fields js/campaign.js reads, and nothing else. */
   campaignState(){ return {completed:this.completed, campaignFlags:this.campaignFlags}; },
+  /** One line on an adventure's card when the hero is two or more levels from
+      the level it was written for, and nothing else: no DC, foe or XP moves. */
+  levelGapNote(a){
+    const L=this.hero&&this.hero.level;
+    if(!L||!a.level||Math.abs(L-a.level)<2) return "";
+    return `<div class="small level-gap" style="color:var(--warn,#c9a227)">Written for level ${a.level}; your hero is level ${L}.</div>`;
+  },
   chooseAdventure(){
     const camps=Registry.list(Registry.campaigns);
     const advs=Registry.list(Registry.adventures);
@@ -2444,7 +2451,7 @@ const App = {
           <div class="desc">${esc(c.blurb||"")}</div></div>`;}).join("")}</div>
       <div class="section-sub" style="margin-top:18px">One-shots</div>`;
     const body=advs.map(a=>`<div class="opt-card" data-id="${a.id}"><h3>${esc(a.name)}</h3>
-      <div class="meta">Level ${a.level} adventure</div><div class="desc">${esc(a.blurb||"")}</div></div>`).join("");
+      <div class="meta">Level ${a.level} adventure</div>${this.levelGapNote(a)}<div class="desc">${esc(a.blurb||"")}</div></div>`).join("");
     this.modal("Choose a Road",`${campHTML}<div class="card-grid">${body}</div>
       <div class="small" style="margin-top:10px;font-style:italic">More adventures are on The Shelf, at the bottom of the title screen.</div>`,[{label:"Cancel"}]);
     document.querySelectorAll("#modal-body [data-camp]").forEach(el=>el.onclick=()=>{ this.closeModal(); this.startCampaign(el.dataset.camp); });

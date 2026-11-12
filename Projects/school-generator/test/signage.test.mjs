@@ -53,7 +53,7 @@ test('a placard splits a name into its number and what is left', () => {
 });
 
 test('a placard\'s number is the number a timetable binds by', () => {
-  // The reason `roomNumber` is exported from timetable.js rather than copied
+  // The reason `roomNumber` is exported from shapes.js (timetable.js imports it) rather than copied
   // here: the sign on the door and the schedule for the room have to agree
   // about which room 104 is.
   const pool = [

@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import { createState } from '../js/grid.js';
 import { addShape, shapesOf } from '../js/shapes.js';
 import { serialize, deserialize } from '../js/save-load.js';
-import { paintTiles } from '../js/paint.js';
+import { paintTiles, accentsOffPhrase } from '../js/paint.js';
 import {
   addWallLine, wallLinesOf, setLineAccent, lineAccent, pruneAccents, LINE_LEFT, LINE_RIGHT,
 } from '../js/wallrun.js';
@@ -119,4 +119,22 @@ test('a design with no accent comes out of a rub-out as the same bytes it did be
   const out = rub(s, ...WEST);
   assert.equal(out.accentsOff, 0);
   assert.ok(!serialize(s).includes('accents'));
+});
+
+// The status line's clause (#1044): the count paintTiles already returns,
+// in plain words, and nothing when none came off.
+test('the status clause says how many accents came off, and nothing for none', () => {
+  assert.equal(accentsOffPhrase(0), '');
+  assert.equal(accentsOffPhrase(undefined), '');
+  assert.equal(accentsOffPhrase(1), '1 accent colour came off with the wall.');
+  assert.equal(accentsOffPhrase(2), '2 accent colours came off with their walls.');
+});
+
+test('the words follow the counts a stroke returns', () => {
+  const west = hall();
+  assert.equal(accentsOffPhrase(rub(west, ...WEST).accentsOff), '1 accent colour came off with the wall.');
+  const both = hall();
+  assert.equal(accentsOffPhrase(rub(both, 4, 4, 28, 20).accentsOff), '2 accent colours came off with their walls.');
+  const corner = hall();
+  assert.equal(accentsOffPhrase(rub(corner, 24, 4, 28, 20).accentsOff), '');
 });

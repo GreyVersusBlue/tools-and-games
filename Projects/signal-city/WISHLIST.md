@@ -887,11 +887,12 @@ GPU at device pixel ratio 2, and a rig on the road at 20 px/m.
   waiting to turn (on one lane a left turner at the head of the queue
   holds it, the thing #569 widened the corridor for), and the routed
   ambulance draws nothing where today's draws twice, so every pinned run
-  of the level moves with the first weight. Not covered, seen and left:
-  a district (`districtLevel`) passes a route through untouched while
-  moving the spawn to another leg, so a route written for one street is
-  read on another; the hand's `clearAhead` in `calibrate.mjs` gives the
-  through at each box ahead and does not read a route.
+  of the level moves with the first weight. Both gaps seen and left here
+  were closed by TG-45 (#1029, 2026-11-06): a district (`districtLevel`)
+  drops a spawn's `route` when the spawn moved to another box or leg and
+  keeps it when it stayed (a route is one street's turns), and the hand's
+  `clearAhead` in `calibrate.mjs` reads `car.route[car.routeAt + hop]` at
+  each box ahead, the through when there is none.
 
 - An ambulance still on the map when the run ends is late, called or
   not (#955, 2026-10-12). It used not to be: `stats.ambulanceLate`

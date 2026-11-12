@@ -383,9 +383,6 @@ Open and unclaimed. Add here rather than starting a new list.
   by Weekend 6 with the mood line firing once or twice. A weather-beaten
   weekend survived, a beat answered, a Devoted act on the bill are the
   obvious next three; the shape is `weekendRenown` and its lines.
-- The `carryover.seasons` record is banked and printed on the ledger once,
-  at the close. Nothing shows past seasons afterwards — a hall of closed
-  seasons on the Office desk is a renderer away.
 
 **Tooling**
 - The `data-action` wiring audit is a person with grep, and it found a real

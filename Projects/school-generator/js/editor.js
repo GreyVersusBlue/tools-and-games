@@ -34,7 +34,7 @@ import {
   curveSegment, straightenRun, segEnds, segLength, shapeArea,
   OP_DOOR, OP_WINDOW, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, WINDOW_SILL,
 } from './shapes.js';
-import { paintTiles, frozenAt, frozenAtPoint } from './paint.js';
+import { paintTiles, frozenAt, frozenAtPoint, accentsOffPhrase } from './paint.js';
 import { linkAt, stairMetrics, footprintBox } from './stairs.js';
 import { removeLink, removeProp } from './props.js';
 import { pickPropAt } from './propplace.js';
@@ -221,6 +221,8 @@ export function initEditor({
   let strokeChanged = false;
   let strokeFrozen = 0;   // tiles this stroke declined because a free-drawn
                           // room was under them — see paint.js
+  let strokeAccents = 0;  // painted faces a rub-out left with no room in front
+                          // of them, and took off the wall with it (#964)
   let enabled = true;
 
   // --- hover cursors ---
@@ -689,6 +691,7 @@ export function initEditor({
       : {});
     strokeFrozen += out.frozenTiles;
     strokeOffSheet += out.offSheetTiles;
+    strokeAccents += out.accentsOff || 0;
     if (out.changed) strokeChanged = true;
     return out;
   }
@@ -1744,6 +1747,7 @@ export function initEditor({
     strokeActive = true;
     strokeChanged = false;
     strokeFrozen = 0;
+    strokeAccents = 0;
     overhangRefused = 0;
     overhangArea = 0;
     strokeOffSheet = 0;
@@ -1822,7 +1826,8 @@ export function initEditor({
       if (strokeChanged) {
         fire({ structural: true, commit: true });
         say(`${tool === 'erase' ? 'Erased' : 'Floor'} — ${ftLabel(size.w)} × ${ftLabel(size.d)} ft, ` +
-          `${Math.round(size.area).toLocaleString()} ft².`);
+          `${Math.round(size.area).toLocaleString()} ft².` +
+          (strokeAccents ? ` ${accentsOffPhrase(strokeAccents)}` : ''));
       }
       if (overhangRefused) reportRefusal();
       else if (strokeFrozen) reportFrozen();
@@ -1845,6 +1850,7 @@ export function initEditor({
     if (overhangRefused) reportRefusal();
     else if (strokeFrozen) reportFrozen();
     else if (strokeOffSheet) reportOffSheet();
+    else if (strokeAccents) say(`Erased — ${accentsOffPhrase(strokeAccents)}`);
     else if (overhangArea) {
       say(`Overhang — ${Math.round(overhangArea).toLocaleString()} ft² of this storey now ` +
         'stands on nothing below.');

@@ -85,6 +85,7 @@ export function freshState(content) {
     marketingRemaining: 0,
     prestigeLevel: 0,
     pace: content.PACES[0].id, // which row of PACES the shop runs at
+    guideSeen: true, // js/guide.js's flag, saved by save.js; the sim never reads it, and a bare sim has no guide
     // The permanent layer (Phase 7, #360). `meta` is the only part of the
     // state a reopening does not touch: beans earned and the tree they bought.
     // `layoutId` is the configuration this run opened in, picked at the last

@@ -394,8 +394,10 @@ and add to this list rather than starting a new one.
   `ramp-rise` or `narrow-ramp` ramp is marked as every finding with a
   position is: a ring at the ramp's foot on the map, and "Show it on the
   plan" pans the edit view there and draws the map's marks in it, a ring at
-  the same foot (#1003), until the next edit. That ring is the mark; the
-  ramp's own outline is not drawn.
+  the same foot (#1003), until the next edit, and the ramp's own outline with
+  it (#1044): its lanes and its landing decks as lines, `rampOutline` in
+  `stairs.js`, handed to the mark by `findingMarks(report, design)`, so the
+  map's marks are unchanged.
 - Curvature isn't stored, so re-bending a wall after a reload starts from its
   chords. Curved walls are chords in the collider too.
 - Wall paint is per face (`facePainter` in `finish.js`, #823): each face is
@@ -455,12 +457,14 @@ and add to this list rather than starting a new one.
   drawn over it; a wall drawn over another one of the same kind loses that
   wall's doorways, as it did before, and keeps its paint; the floor brush
   rubbing a room out from in front of a painted face takes the accent with
-  it now (#964, `paintCells` asks `pruneAccents` after a rub-out; pure Node,
-  no browser check drives the stroke, and the status line does not say an
-  accent came off); `duplicateFloor` copies a storey's free-standing walls,
+  it now (#964, `paintCells` asks `pruneAccents` after a rub-out), and the
+  status line says how many (#1044, `accentsOffPhrase`: "1 accent colour came
+  off with the wall.", none otherwise), driven by `accent-rubout` in
+  `test/tools/run.mjs`; `duplicateFloor` copies a storey's free-standing walls,
   faces and doorways with them (#979); the brush's two refusals for
-  a free-standing wall are driven by a browser check for glass and by
-  nothing for the outdoor face; nobody has looked at one by eye;
+  a free-standing wall are driven by a browser check each, glass in
+  `accent-line` and the outdoor face in `accent-outdoor` (#1043); nobody
+  has looked at one by eye;
   paint is counted as one area, so an accent is not a line of its own in
   the takeoff or the cost. The top and the ends
   keep the one-colour rule, and a glazed run's frame is not painted at all.
@@ -513,7 +517,8 @@ and add to this list rather than starting a new one.
   is cut back to the chords, its bitten cells are decked as what is left of
   them, and the takeoff and the estimate count that deck; along the cut the
   parapet is the curved building's, drawn once (#992), and a cut `ringMinus` cannot
-  vouch for (an edge along the other ring) keeps the pair stepped; the site plan's building line is the ground storey's mask, stepped on a curve
+  vouch for (an edge along the other ring) keeps the pair stepped, driven by
+  `test/roof-ringminus.test.mjs` (#1043); the site plan's building line is the ground storey's mask, stepped on a curve
   (it draws the ground storey whatever the roof, so the skeleton path's test
   cannot decide it: drawing it from `roofOutline` moves the site plan of a
   curved school under every roof style and every storey count, a call of its
@@ -574,11 +579,14 @@ and add to this list rather than starting a new one.
   pair of leaves is one doorway — right — and so is a 12ft cased opening, which
   is arguable; and a stair is a node, so two stairs off one landing count as
   two ways where a plan checker might want them remote from one another.
-- Accessibility reaches past routes now (`clearance.js`, Phase 40), but a
-  door's manoeuvring clearance is a circle beside the door rather than ADA
-  404.2.4's rectangle with its 18in latch-side strip; a pair of doors is judged
-  with both leaves open (the code judges it by the active leaf, so the
-  lattice's 4ft pair passes here and would not on a plan check); the outside of
+- Accessibility reaches past routes now (`clearance.js`, Phase 40), and a door
+  that swings is asked ADA 404.2.4's rectangle, fixed by its hinge and swing
+  (60in deep with an 18in latch-side strip on the pull side, 48in and 12in on
+  the push side, #1025); the rectangles are not drawn on the plan sheet or the
+  minimap, only the door's ring. A pair of doors is judged
+  with both leaves open on the route and at its active leaf in a `note`
+  (`pair-active-leaf`, #1034: 4ft gives 20in through one leaf, 6ft is the
+  narrowest that gives 32in); the outside of
   an exterior door is not tested; and knee and toe clearance under a counter is
   not modelled at all.
 - The code edition is applied now (`codes.js`, Phase 41), but two things still
@@ -658,9 +666,12 @@ and add to this list rather than starting a new one.
   the lattice" verb would close the loop.
 - Painting merges nothing, and there is no deliberate "join these two rooms"
   verb either.
-- `paint.js` rasterizes every lattice-aligned room on the storey for one
-  cell — wasteful on a large plan; the fix is to rasterize only rooms whose
-  bounding box the stroke touches.
+- `paint.js` rasterizes only the rooms a stroke can reach (#1030), but on a
+  connected building that is nearly all of them: shared walls are re-claimed
+  pass after pass down a run of halls, and a room the brush has not traced
+  before is not known to survive being traced, so neither a box test nor a
+  neighbour test could skip more without changing the building. What is left
+  is the whole-sheet lattice, `assignOwners`' scan and `ownedRegions`.
 
 **The sheet**
 - The drawing surface has a size but no origin, so a plan cannot extend into
@@ -704,14 +715,14 @@ and add to this list rather than starting a new one.
 - **What is still on the boot path, and why.** Phase 42 took the first diet —
   4117 KB over 121 requests before, 3805 KB over 109 after, against a 4 MB
   ceiling the harness now holds. This is the table the next diet starts from,
-  checked against the graph:
+  checked against the graph. TG-40 (#1045) then split `rng` and `roomNumber` out; measured after it, the boot is 117 requests, 4086 KB (3838 KB of JavaScript, 93 modules), one request more than the 116 before, because `main.js` still imports `agents.js` and `timetable.js` directly:
 
   | module | pinned by | what it would take |
   | --- | --- | --- |
   | `three.module.js` (1274 KB, a third of the boot) | everything | a minified or gzipped vendored build — the walk export's note about a quarter of the bytes applies to the tool too |
   | `main.js` + `render.js` (678 KB) | they *are* the boot | the audit's split, now that the tool harness exists to hold it |
-  | `agents.js` (85 KB) | `main.js`'s crowd (`stepAgents` per frame), and `hunt.js` (via `render.js`), `murmur.js`, `haunt.js`, `timetable.js` — every one of the four for `rng` alone | `rng` in its own module; the crowd as an object built when the Life panel opens or a walk starts |
-  | `timetable.js` (35 KB) | `render.js` via `signage.js`, for `roomNumber`; `main.js`'s Life panel | `roomNumber` beside `nextRoomName` in `shapes.js`; the day tab of the Life panel async |
+  | `agents.js` (85 KB) | `main.js`'s crowd (`stepAgents` per frame) alone; `rng` now lives in `js/rng.js` (#1045), so `hunt.js`, `murmur.js`, `haunt.js` and `timetable.js` no longer pull it | the crowd as an object built when the Life panel opens or a walk starts; until then `rng.js` costs one request and saves none |
+  | `timetable.js` (35 KB) | `main.js`'s Life panel alone; `roomNumber` now sits beside `nextRoomName` in `shapes.js` (#1045), so `signage.js` and `render.js` no longer pull it | the day tab of the Life panel async |
   | `gltf.js` (29 KB), `hunt.js`, `xr.js`, `models.js` | `render.js` | unchanged: the scene asking for them at the moment it draws one, not at import |
   | `tour.js`, `haunt.js` (37 KB) | `main.js`: the tours panel, and the palette's haunt entry, both read synchronously | the panel async; the palette entry reading `state.haunt` through the registry |
   | `program.js` + `brief.js` (38 KB) | the Generate dialog's bands and schemes, filled at boot | filled on first open, the way the cost sheet's currencies now are |

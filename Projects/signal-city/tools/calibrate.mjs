@@ -240,7 +240,11 @@ export function clearAhead(w) {
     let p = car.path;
     for (let hop = 0; p.link && hop < w.nodes.length; hop++) {
       const net = w.nodes[p.link.node], ctl = w.controllers[p.link.node];
-      const through = net.choicesFrom(p.link.entry, p.exitLane).find(q => q.turn === 'T');
+      // the car's own route says which way it leaves this box (#960); with
+      // none left, or none this box has a way out for, the through (TG-45)
+      const told = car.route ? car.route[car.routeAt + hop] : undefined;
+      const choices = net.choicesFrom(p.link.entry, p.exitLane);
+      const through = (told && choices.find(q => q.turn === told)) || choices.find(q => q.turn === 'T');
       if (!through) break;
       p = through;
       if (net.roundabout || ctl.mode === 'timed' || ctl.preemption || ctl.stage === 'flash') continue;

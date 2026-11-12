@@ -868,6 +868,9 @@ export function resolveBeat(state, beatId, choiceId) {
   if (!pendingBeats(state).some(p => p.beat.id === beatId)) return { state, error: 'That moment has passed.' };
   const choice = beat.choices.find(c => c.id === choiceId);
   if (!choice) return { state, error: 'That is not one of the choices.' };
+  // The house rule of every other purchase in this file: an answer that
+  // costs money is refused before any number moves if the till cannot pay it.
+  if (typeof choice.cash === 'number' && choice.cash < 0 && state.cash < -choice.cash) return { state, error: `Not enough cash (need $${-choice.cash}).` };
   const id = arc.subject;
   const next = clone(state);
   const traits = { ...(next.actTraits[id] || {}) };

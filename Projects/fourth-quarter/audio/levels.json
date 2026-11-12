@@ -65,6 +65,24 @@
       "momentary": -23.57,
       "peak": -0.97
     },
+    "audio/sfx/footsteps/step-wood-a.ogg": {
+      "sha256": "482d97c5e1e6eb7b239be46f25d093ebebb94cefb56eedb04807b6a5dc68e972",
+      "seconds": 0.24,
+      "channels": 2,
+      "rate": 44100,
+      "integrated": null,
+      "momentary": -40.81,
+      "peak": -20.85
+    },
+    "audio/sfx/footsteps/step-wood-b.ogg": {
+      "sha256": "9b677c284389163f132b94e1323ea713a4c7ac9d5fba849cf7cbf8b53a1627e2",
+      "seconds": 0.32,
+      "channels": 2,
+      "rate": 44100,
+      "integrated": null,
+      "momentary": -33.7,
+      "peak": -12.81
+    },
     "audio/sfx/order-ding.ogg": {
       "sha256": "9a612fd2f513d52a296906b41071c990f75defe56be3bee60d2d4e2423b51b8b",
       "seconds": 0.38,

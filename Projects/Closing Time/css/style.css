@@ -27,6 +27,9 @@ body::before { /* subtle ledger rule down the left, ambient not loud */
 /* Topbar as brokerage letterhead */
 .topbar { display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
   padding: 14px 22px; border-bottom: 3px double var(--ink); background: var(--card); }
+.content-note { margin: 0; padding: 6px 22px; font-size: 13px; color: var(--sign-red);
+  background: var(--paper-2); border-bottom: 1px solid var(--line); }
+.content-note[hidden] { display: none; }
 .letterhead .lh-name { font-family: var(--display); font-weight: 700; font-size: 22px; letter-spacing: .06em; }
 .letterhead .lh-sub { display: block; font-size: 12px; color: var(--ink-soft); letter-spacing: .04em; }
 .statgrid { display: flex; gap: 20px; flex-wrap: wrap; margin-left: auto; align-items: center; }

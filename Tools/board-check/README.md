@@ -15,6 +15,7 @@ npm run hearth       # Hearth's one preview frame, headless (2D canvas, no GPU)
 npm run promote      # candidates/chosen.json -> assets/previews/ + assets/og/
 npm run social       # regenerate every page's favicon + og tags from the board
 npm run social:check # ...or just report which pages have drifted
+npm run ci:touched   # run the CI jobs your commits touched, here, before the PR
 ```
 
 ## Why this is (mostly) not Playwright
@@ -259,6 +260,96 @@ taking each page's title and description from its own `<a class="notice">` in
 idempotent. `npm run social:check` reports drift and exits non-zero without
 writing.
 
+### `ci-touched.mjs`
+
+`npm run check`, `social:check` and `ci-check.mjs` are the checks every session
+runs, and none of them runs a project suite. CI does, in `site-ci.yml` and the
+per-project workflows, so a change that trips one of those fails at the landing
+(2026-11-05: TG-62 added a `@media (pointer: coarse)` rule to Aphelion and Site
+CI's Aphelion entry failed `test/desktop-input.mjs`). This runs them first.
+
+```
+node ci-touched.mjs                  # diff origin/main...HEAD, run every job it touches
+node ci-touched.mjs --list           # print the plan and run nothing
+node ci-touched.mjs --base <ref> [--head <ref>]
+node ci-touched.mjs --files a,b      # pretend these files changed
+node ci-touched.mjs --only aphelion --skip hearth    # filter on "file / job [entry]"; both repeat
+node ci-touched.mjs --dirty          # also count uncommitted and untracked files
+node ci-touched.mjs --scheduled      # also run the schedule-only jobs the change touches
+node ci-touched.mjs --verbose        # stream each command's output
+node ci-touched.test.mjs             # the guard on all of this; Node only
+```
+
+It reads every `.github/workflows/*.yml` (`ci-yaml.mjs`, a reader for the shapes
+those files use; it throws on anything else), picks the jobs the changed files
+would start, and runs their commands in order from the directory CI runs them
+in, with `CI=true`. Output is one line per job (`PASS`, `FAIL`, `KNOWN`, `SKIP`)
+and the exit code is 1 if any job failed; the last 25 lines of a failed command
+print under its job and the full output goes to a log file named on that line.
+
+Which jobs a change touches:
+
+- A workflow with `on.pull_request.paths` runs, all of it, when a changed file
+  matches one of its globs. That covers absalom, corner-kettle, daredevil,
+  fourth-quarter, fracture-cycle, hearth, numina, schedule-visualizer-2,
+  school-generator and torchbearer.
+- `site-ci.yml` has no filter, so CI runs it whole on every PR. Here an entry of
+  its matrix runs when a changed file is under its `dir` or under the folder of
+  a script its commands name (`Pathfinder`, `Numina`, `Projects/x`, `Tools/x`,
+  otherwise the script's own folder), or is `harness.mjs`, `drive.mjs`,
+  `package.json` or `package-lock.json` of `Tools/board-check` and the entry
+  installs it. The `board-check` job has no folder and always runs, about three
+  minutes.
+- A changed workflow file selects that workflow. A changed `suite.yml` selects
+  every job that calls it. Schedule-only jobs (Hearth's `deep` matrix) print
+  one `SKIP` line and, under it, the command that runs them now. A PR never
+  runs them and the nightly does, so a change that moves what a deep mode
+  measures is red on `main` the next morning (TG-48 changed `js/life.js`; the
+  nightly `decade` failed 2026-11-08). `--scheduled` runs them for the touched
+  paths; Hearth's whole matrix is about an hour, so pair it with `--only`
+  (`--scheduled --only "hearth-ci.yml / deep [decade]"`) when one mode is the
+  question.
+- A job runs after the jobs it `needs`; if one did not pass it prints `SKIP`.
+  Every command of a job runs even after one fails, as `suite.yml` does.
+
+What it never runs, and lists on the job's line and again at the end: `npm ci`
+and `npm install` steps, `playwright install` steps (this machine has its
+dependencies and browsers, and an install has deleted the cached browsers
+before), `uses:` steps other than checkout, setup-node and upload-artifact, and
+steps guarded by `if: failure()`. A job with an `install:` folder that has no
+`node_modules` fails with that message; CI would have run `npm ci` there.
+In a git worktree, symlink `Tools/board-check/node_modules` first.
+
+**Browser commands** take `flock` on the suites lock, so one runs at a time
+across every session on the machine, and get the Playwright 1.56.1 prefix and
+the Chromium 1194 folder, which are what CI's screenshot baselines were made
+with. Every command of a job with an `install:` folder or a Playwright step
+counts as a browser command; in any other job, a command whose script file names
+harness, playwright, puppeteer or chromium does. The recipe is huginn's. Each
+part has an override and is left out, with a notice, where its folder is absent:
+
+| Variable | Default |
+| --- | --- |
+| `CI_TOUCHED_LOCK` | `~/.cache/selector-locks/tools-and-games-suites.lock` |
+| `CI_TOUCHED_PW_PREFIX` | `~/.cache/selector-scratch/selector/pwprefix` (sets `npm_config_prefix`) |
+| `CI_TOUCHED_PW_BROWSERS` | `~/projects/.pw-1194` (sets `PLAYWRIGHT_BROWSERS_PATH`) |
+| `CI_TOUCHED_KNOWN` | `ci-touched-known.json` |
+| `CI_TOUCHED_LOGS` | `~/.cache/ci-touched/<timestamp>/` |
+
+**`ci-touched-known.json`** lists commands that fail on huginn and pass in CI.
+One entry per command (`workflow` file, `job` id, `command` exactly as the
+workflow has it, `reason`). A listed failure prints `KNOWN` and does not fail
+the run; a listed command that passes prints a note asking you to delete its
+entry. Today it holds one line: School Generator's `node test/visual/run.mjs`,
+whose `sheet-spec` capture is 7,813 px off here because `α` and `≈` fall back to
+another font. An entry is a debt; do not add one to get a run green.
+
+Not covered: a job reached only through a GitHub event this script cannot
+imitate (`workflow_dispatch`, `schedule`), the `if:` and `needs:` expressions
+beyond the two shapes above, and jobs on another OS. Browser jobs here run on
+huginn's Chromium, and a real-time movement assertion that fails under software
+rendering is inconclusive, not confirmed (#53).
+
 ## The ports
 
 `serve()` binds a static server on a fixed port, and two suites on the same port
@@ -300,6 +391,7 @@ taking a new one.
 | 8174 | `Projects/skywings64/test/draws.mjs` |
 | 8175 | `Projects/the-fracture-cycle/test/browser.mjs` |
 | 8177 | `Projects/torchbearer/test/browser.mjs` |
+| 8179 | `Projects/golden-hour-beach/test/bar.mjs` |
 | 8178 | `Projects/Closing Time/tools/browser.mjs` |
 | 8191 | `Projects/throneshard/tools/scripts/vfx_measure.mjs` (`VFX_PORT` moves it) |
 

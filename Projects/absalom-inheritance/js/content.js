@@ -304,6 +304,24 @@ function readTuning(raw, base, where) {
  * because the three branches in game.js's applyRestore read the array by
  * membership and a name none of them tests for is silence.
  */
+/**
+ * The words a build's `difficulty.word` may be, easiest first. The order is
+ * the contract: test/smoke.mjs ranks the builds by the autopilot's win rate in
+ * test/baseline.json and fails a label that disagrees with its rank.
+ */
+export const DIFFICULTY_WORDS = Object.freeze(["Easier", "Steady", "Harder"]);
+
+function readDifficulty(raw, where) {
+  if (raw === undefined) return null;
+  need(raw && typeof raw === "object", `content: ${where}.difficulty must be { word, line }`);
+  need(DIFFICULTY_WORDS.includes(raw.word),
+    `content: ${where}.difficulty.word must be one of ${DIFFICULTY_WORDS.join(", ")}`);
+  need(typeof raw.line === "string" && raw.line.trim() && raw.line.length <= 100,
+    `content: ${where}.difficulty.line must be a short sentence, 100 characters at most`);
+  need(!/\d\s*%/.test(raw.line), `content: ${where}.difficulty.line must not quote a percentage`);
+  return Object.freeze({ word: raw.word, line: raw.line });
+}
+
 export const RESTORABLE = Object.freeze(["hp", "slots", "focus"]);
 
 function readRestore(raw, where) {
@@ -498,6 +516,7 @@ export function loadPack(raw) {
       id: p.id,
       name: p.name || "The heir", title: p.title || "", note: p.note || "",
       blurb: p.blurb || "",
+      difficulty: readDifficulty(p.difficulty, `pcOptions "${p.id}"`),
       hp: p.hp, ac: p.ac, acNote: p.acNote || "", speed: p.speed || 25,
       // How far this build threatens, for the reaction bus. Every level-1
       // weapon in this pack is 5 ft; a reach weapon would say 10 and the

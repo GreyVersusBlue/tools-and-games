@@ -287,16 +287,25 @@ const modulesFetched = (since = 0) =>
 // is exactly the measurement is a budget that fails on a comment.
 // 116 since #967: roof.js imports skeleton.js, because a hipped roof over a
 // curve is drawn at boot like any other roof.
-const BOOT_BUDGET = { bytes: 4 * 1024 * 1024, requests: 116 };
+// 117 since #1045: rng.js is one more request, because main.js still imports agents.js and timetable.js; it earns itself back only when the heavy panels load lazily.
+// TG-66: 4 MB + 64 KB and 120 requests. After #1049 the boot was 27 bytes under
+// 4 MB and exactly at 117 requests, so the next byte or file failed CI at a
+// landing. brief.js came out of the boot (18 KB, one request), ▸ in the rail put
+// the 3 KB symbol file back in (one request), and the ceiling rose 64 KB / 3
+// requests above that day's 4,179,001 bytes (80,839 bytes of room). The walk
+// template's 4 MB rule is the walk's, not this page's.
+const BOOT_BUDGET = { bytes: 4 * 1024 * 1024 + 64 * 1024, requests: 120 };
 // Modules the boot must not fetch: each is behind a button, and the phase
 // that put it there is named so the next reader knows what re-pinning costs.
 const DEFERRED = [
   'generate', 'gallerystock',                                    // the audit's pass
+  'brief',                                                       // TG-66: the Generate dialog's Read button
   'report', 'egress', 'daylight', 'utilisation', 'takeoff',      // Phase 42: the report tail
   'cost', 'spec', 'rates', 'phasing', 'commonpath',
   'blueprint',                                                   // Phase 42: the printable set
   'session', 'presence', 'wire', 'cloud',                        // Phase 42: the session stack
   'snapshots', 'designdiff',                                     // Phase 34: the history
+  'turning',                                                     // TG-38: the chair's turning space and door rectangles
 ];
 
 // ---------- the checks ----------
@@ -324,6 +333,22 @@ const CHECKS = [
       if (pinned.length) {
         throw new Error(`${pinned.join(', ')} loaded at boot — something on the boot path imports ` +
           `${pinned.length === 1 ? 'it' : 'them'} again`);
+      }
+    },
+  },
+  {
+    name: 'symbol-font-rail',
+    what: 'the rail\'s fold arrow (U+25B8) is drawn from libs/sheet-symbols.woff2, so it is the same glyph on every machine',
+    async run(d) {
+      // Only ▸ can have fetched the file on the boot page:
+      // a face whose unicode-range holds U+25B8 and that has loaded can only have
+      // nothing else drawn at boot is in its unicode-range.
+      return d.page.evaluate(`[...document.fonts].filter((f) => /25B8/i.test(f.unicodeRange)).map((f) => f.status)`);
+    },
+    expect: ({ ctx }) => {
+      if (!ctx.length) throw new Error('no @font-face has U+25B8 in its unicode-range');
+      if (!ctx.includes('loaded')) {
+        throw new Error(`the symbol file never loaded (${ctx.join(', ')}): the rail arrow is drawn from the machine's font`);
       }
     },
   },
@@ -2475,6 +2500,195 @@ const CHECKS = [
       if (after.json !== before.json) throw new Error('the design is not back to the bytes it started with');
     },
   },
+  // The brush's other refusal for a free-standing wall (#910, #1043): a screen
+  // standing outdoors has no room in front of either face, so the facade would
+  // cover any colour put there, and the click is refused with the status line
+  // saying so. accent-line drives the glass refusal; this drives that one.
+  // test/wall-accent.test.mjs states what the click is told (no room on that
+  // side). One undo step goes on (the wall) and comes off, so `undo-redo`
+  // finds the stack as it was.
+  {
+    name: 'accent-outdoor',
+    what: 'a click on either face of a free-standing wall in the open is refused out loud, and the wall, the colour and the brush stay as they were',
+    async run(d) {
+      const q = (js) => d.page.evaluate(js);
+      // An 8ft screen toward +z in the open: no room within 6ft of any point
+      // along it, nothing else near, and all four of its clicks on the canvas.
+      const aim = await q(`(async () => {
+        const { shapeAt, accentFaceAt } = await import('./js/shapes.js');
+        const { wallLineAt } = await import('./js/wallrun.js');
+        const s = window.app.state, floor = s.floors[s.currentFloor];
+        const { CELL } = await import('./js/grid.js');
+        // The open ground nearest the middle of the screen, where a click is
+        // known to land on the plan.
+        const mid = [s.w * CELL / 2, s.h * CELL / 2];
+        let best = null;
+        for (let x = 8; x <= s.w * CELL - 8; x += 4) {
+          for (let z = 8; z <= s.h * CELL - 8; z += 4) {
+            const pts = [];
+            for (let k = -6; k <= 6; k += 2) for (const o of [-6, -2, 0, 2, 6]) pts.push([x + o, z + k]);
+            if (pts.some(([px, pz]) => shapeAt(floor, px, pz) || accentFaceAt(floor, px, pz, 6) || wallLineAt(floor, px, pz, 6))) continue;
+            if (![[x, z - 4], [x, z + 4], [x - 1, z], [x + 1, z]].every(([px, pz]) => window.__clear(px, pz))) continue;
+            const far = Math.hypot(x - mid[0], z - mid[1]);
+            if (!best || far < best.far) best = { x, z, far, lines: (floor.walls || []).length };
+          }
+        }
+        return best;
+      })()`);
+      if (!aim) throw new Error('no open ground on this storey for a screen');
+      const read = () => q(`(() => {
+        const s = window.app.state, floor = s.floors[s.currentFloor];
+        const line = (floor.walls || []).find((l) => l.ax === ${aim.x} && l.bx === ${aim.x}
+          && Math.min(l.az, l.bz) === ${aim.z - 4} && Math.max(l.az, l.bz) === ${aim.z + 4});
+        return {
+          lines: (floor.walls || []).length,
+          line: line ? { az: line.az, bz: line.bz, kind: line.kind, accents: line.accents ? line.accents.slice() : null } : null,
+          rooms: floor.shapes.some((sh) => sh.rings.some((r) => r.accents)) ? JSON.stringify(floor.shapes.map((sh) => sh.rings.map((r) => r.accents || null))) : null,
+          armed: window.app.editor.accentPaint === undefined ? 'off' : window.app.editor.accentPaint,
+          status: document.getElementById('status').textContent,
+          json: JSON.stringify(s),
+        };
+      })()`);
+      await d.pick('wall');
+      await d.click(aim.x, aim.z - 4);
+      await d.click(aim.x, aim.z + 4);
+      const drawn = await read();
+      await q(`document.querySelector('#accent-swatches [data-paint="#2f5d8a"]').click(); 1`);
+      const armed = await read();
+      await d.click(aim.x - 1, aim.z);
+      const west = await read();
+      await d.click(aim.x + 1, aim.z);
+      const east = await read();
+      // The same two clicks with the other colour armed: still refused, so the
+      // refusal is the face's and not the swatch's.
+      await q(`document.querySelector('#accent-swatches [data-paint="#d9772b"]').click(); 1`);
+      await d.click(aim.x + 1, aim.z);
+      const other = await read();
+      await d.page.keyboard.press('Escape');
+      await q('window.app.editor.undo(); 1');
+      const gone = await read();
+      return { aim, drawn, armed, west, east, other, gone };
+    },
+    expect: ({ ctx, before, after }) => {
+      const { aim } = ctx;
+      const say = (o) => JSON.stringify(o);
+      if (ctx.drawn.lines !== aim.lines + 1 || !ctx.drawn.line || ctx.drawn.line.accents !== null) {
+        throw new Error(`two clicks should draw one unpainted screen in the open: ${say(aim)} ${say(ctx.drawn).slice(0, 80)}`);
+      }
+      if (ctx.armed.armed !== 'harbor-blue') throw new Error(`the swatch did not arm the brush: ${say(ctx.armed)}`);
+      const words = /that side of the wall faces outside, and the facade covers it\. Click from inside a room\./;
+      for (const [which, got, colour] of [['west', ctx.west, 'harbor-blue'], ['east', ctx.east, 'harbor-blue'], ['east again', ctx.other, 'pumpkin']]) {
+        if (!words.test(got.status)) throw new Error(`the ${which} face should be refused with the facade's words: ${got.status}`);
+        if (got.line.accents !== null) throw new Error(`the ${which} face took an accent it cannot show: ${say(got.line)}`);
+        if (got.lines !== ctx.drawn.lines) throw new Error(`the ${which} click changed the number of walls: ${got.lines}`);
+        if (got.rooms !== ctx.drawn.rooms) throw new Error(`the ${which} click painted a room: ${got.rooms}`);
+        if (got.armed !== colour) throw new Error(`the brush should still hold ${colour} after the ${which} click: ${got.armed}`);
+        // Nothing was stored, so nothing is on the undo stack to take back.
+        if (got.json !== ctx.drawn.json) throw new Error(`the ${which} click changed the design`);
+      }
+      if (ctx.gone.line || ctx.gone.lines !== aim.lines) {
+        throw new Error(`one undo should take the screen away, not an accent that was refused: ${say(ctx.gone)}`);
+      }
+      if (after.json !== before.json) throw new Error('the design is not back to the bytes it started with');
+    },
+  },
+  // A rub-out that takes an accent says so (#964, #1044). test/accent-rubout
+  // .test.mjs states the rule and the words; this lays a room with the floor
+  // brush, draws a screen in it, paints both faces, rubs out a corner that
+  // is in front of neither (no clause), then the half west of the screen
+  // (one accent off, said), and reads the status line, the wall's faces and
+  // the room each time. Undo runs back to the starting bytes, so `undo-redo`
+  // finds the stack as it was.
+  {
+    name: 'accent-rubout',
+    what: 'a rectangle rubbed out in front of a painted face takes its accent and says so in the status line; one in front of none says nothing of it',
+    async run(d) {
+      const q = (js) => d.page.evaluate(js);
+      const start = await q('JSON.stringify(window.app.state)');
+      // Open ground for a 24 x 16ft room and 4ft of margin all round it.
+      const aim = await q(`(async () => {
+        const { shapeAt, accentFaceAt } = await import('./js/shapes.js');
+        const { wallLineAt } = await import('./js/wallrun.js');
+        const { CELL } = await import('./js/grid.js');
+        const s = window.app.state, floor = s.floors[s.currentFloor];
+        const mid = [s.w * CELL / 2, s.h * CELL / 2];
+        let best = null;
+        for (let x = 4; x + 32 <= s.w * CELL; x += 4) {
+          for (let z = 4; z + 24 <= s.h * CELL; z += 4) {
+            let free = true;
+            for (let px = x - 4; px <= x + 28 && free; px += 4) {
+              for (let pz = z - 4; pz <= z + 20; pz += 4) {
+                if (shapeAt(floor, px, pz) || accentFaceAt(floor, px, pz, 6) || wallLineAt(floor, px, pz, 6)) { free = false; break; }
+              }
+            }
+            if (!free) continue;
+            if (![[x, z], [x + 24, z + 16], [x + 12, z + 4], [x + 12, z + 12], [x + 4, z + 8], [x + 20, z + 8]].every(([px, pz]) => window.__clear(px, pz))) continue;
+            const far = Math.hypot(x + 12 - mid[0], z + 8 - mid[1]);
+            if (!best || far < best.far) best = { x, z, far };
+          }
+        }
+        return best;
+      })()`);
+      if (!aim) throw new Error('no open ground on this storey for a 24 x 16ft room');
+      const { x, z } = aim;
+      const read = () => q(`(() => {
+        const s = window.app.state, floor = s.floors[s.currentFloor];
+        const line = (floor.walls || []).find((l) => l.ax === ${x + 12} && l.bx === ${x + 12});
+        return {
+          line: line ? (line.accents ? line.accents.slice() : null) : 'none',
+          rooms: floor.shapes.length,
+          status: document.getElementById('status').textContent,
+        };
+      })()`);
+      const swatch = (hex) => q(`document.querySelector('#accent-swatches [data-paint="${hex}"]').click(); 1`);
+      await d.pick('floor');
+      await q('window.app.editor.setFloorRect(true); 1');
+      await d.drag([[x, z], [x + 24, z + 16]]);
+      const laid = await read();
+      await d.pick('wall');
+      await d.click(x + 12, z + 4);
+      await d.click(x + 12, z + 12);
+      await swatch('#2f5d8a');
+      await d.click(x + 11, z + 8);
+      await swatch('#d9772b');
+      await d.click(x + 13, z + 8);
+      await d.page.keyboard.press('Escape');
+      const painted = await read();
+      // Two tiles at the east end, 8ft from the screen: in front of neither face.
+      await d.pick('erase');
+      await q('window.app.editor.setFloorRect(true); 1');
+      await d.drag([[x + 22, z + 10], [x + 22, z + 14]]);
+      const corner = await read();
+      // The west half, which is all of the room in front of the left face.
+      await d.drag([[x + 2, z + 2], [x + 10, z + 14]]);
+      const west = await read();
+      // Undo runs back to the starting bytes, whatever each stroke stacked.
+      let undone = 0;
+      while (undone < 12 && (await q('JSON.stringify(window.app.state)')) !== start) {
+        await q('window.app.editor.undo(); 1');
+        undone++;
+      }
+      return { aim, laid, painted, corner, west, undone };
+    },
+    expect: ({ ctx, before, after }) => {
+      const say = (o) => JSON.stringify(o);
+      const words = /accent colours? came off with/;
+      if (ctx.laid.rooms < 1) throw new Error(`the brush laid no room: ${say(ctx.laid)}`);
+      if (say(ctx.painted.line) !== say(['harbor-blue', 'pumpkin'])) {
+        throw new Error(`both faces of the screen should be painted before the rub-out: ${say(ctx.painted)}`);
+      }
+      if (words.test(ctx.corner.status)) throw new Error(`a corner in front of no painted face spoke of an accent: ${ctx.corner.status}`);
+      if (say(ctx.corner.line) !== say(['harbor-blue', 'pumpkin'])) throw new Error(`the corner rub-out touched an accent: ${say(ctx.corner)}`);
+      if (!/1 accent colour came off with the wall\./.test(ctx.west.status)) {
+        throw new Error(`the rub-out west of the screen should say one accent came off: ${ctx.west.status}`);
+      }
+      if (say(ctx.west.line) !== say([null, 'pumpkin'])) {
+        throw new Error(`only the left face's accent should be gone: ${say(ctx.west)}`);
+      }
+      if (ctx.undone >= 12) throw new Error('undo never got back to the starting design');
+      if (after.json !== before.json) throw new Error('the design is not back to the bytes it started with');
+    },
+  },
   // Any other colour (#944). test/accent-free.test.mjs states what is parsed
   // and where it is stored; this types a hex into the Wall panel with the
   // keyboard, paints a wall with it, opens the design in a second page from
@@ -3132,7 +3346,12 @@ const CHECKS = [
         const g = window.app.renderApi.scene.getObjectByName('finding-mark');
         return {
           visible: g.visible, floor: window.app.state.currentFloor,
-          parts: g.children.map((m) => ({ kind: m.userData.kind, x: m.position.x, y: m.position.y, z: m.position.z, scale: m.scale.x })),
+          parts: g.children.map((m) => ({
+            kind: m.userData.kind, x: m.position.x, y: m.position.y, z: m.position.z, scale: m.scale.x,
+            pts: m.userData.kind === 'outline'
+              ? Array.from({ length: m.geometry.attributes.position.count }, (_, i) => [m.geometry.attributes.position.getX(i), m.geometry.attributes.position.getZ(i)])
+              : null,
+          })),
           view: { x: window.app.renderApi.editView.x, z: window.app.renderApi.editView.z },
         };
       })()`);
@@ -3163,6 +3382,19 @@ const CHECKS = [
         throw new Error('the view did not pan to the ring');
       }
       if (!(r.scale >= 1.5)) throw new Error(`the ring was never sized to the view: scale ${r.scale}`);
+      // #1044: the ramp's own outline, its run and its top landing, with the
+      // ring at the foot sitting on the near edge of the run.
+      const outlines = ctx.shown.parts.filter((p) => p.kind === 'outline');
+      if (outlines.length !== 2 || outlines.some((o) => o.pts.length !== 4)) {
+        throw new Error(`a one-run ramp is a run and a landing, four corners each: ${JSON.stringify(outlines)}`);
+      }
+      const distTo = (pts) => Math.min(...pts.map((a, i) => {
+        const b = pts[(i + 1) % pts.length];
+        const dx = b[0] - a[0], dz = b[1] - a[1];
+        const t = Math.max(0, Math.min(1, ((r.x - a[0]) * dx + (r.z - a[1]) * dz) / (dx * dx + dz * dz)));
+        return Math.hypot(r.x - (a[0] + t * dx), r.z - (a[1] + t * dz));
+      }));
+      if (distTo(outlines[0].pts) > 1e-6) throw new Error('the ring at the foot is not on the run\'s outline');
       if (ctx.after.visible || ctx.after.parts !== 0 || ctx.after.mark !== null) {
         throw new Error(`deleting the ramp left its mark: ${JSON.stringify(ctx.after)}`);
       }
@@ -3230,6 +3462,30 @@ const CHECKS = [
         if (!ctx.modules.has(m)) throw new Error(`opening the panel did not fetch ${m}.js`);
       }
       if (!/Not in a session/.test(ctx.text)) throw new Error(`the panel says "${ctx.text}"`);
+    },
+  },
+  {
+    name: 'brief-on-demand',
+    what: 'the Generate dialog fetches the brief reader when Read is pressed, and not before',
+    async run(d) {
+      const since = performance.now();
+      const before = modulesFetched().has('brief');
+      await d.page.evaluate(`document.getElementById('gen-btn').click(); 1`);
+      await d.page.waitForTimeout(300);
+      const openedFetched = modulesFetched(since).has('brief');
+      await d.page.evaluate(`document.getElementById('gen-brief').value = 'a school for 400 students'; ` +
+        `document.getElementById('gen-read').click(); 1`);
+      await d.page.waitForFunction(`/Read:/.test(document.getElementById('gen-echo').textContent)`,
+        { timeout: 60000 });
+      const echo = await d.page.evaluate(`document.getElementById('gen-echo').textContent`);
+      await d.page.keyboard.press('Escape');
+      await settleResponses();
+      return { before, openedFetched, echo, fetchedNow: modulesFetched(since).has('brief') };
+    },
+    expect: ({ ctx }) => {
+      if (ctx.before || ctx.openedFetched) throw new Error('brief.js was fetched before Read was pressed');
+      if (!ctx.fetchedNow) throw new Error('pressing Read did not fetch brief.js');
+      if (!/Read:/.test(ctx.echo)) throw new Error(`the echo says "${ctx.echo}"`);
     },
   },
   // ---------- Phase 30 ----------

@@ -341,9 +341,11 @@ claims, carried here when those handoffs were retired into `HISTORY.md`. There
 were nine; TG-26 closed three (`HISTORY.md`, #812 to #816).
 
 - **The beached-boat pixel at the hut is crude** (sprints 5 and 6).
-- **Deer do not avoid water when fleeing across a narrow neck** — they retarget
-  six times, then go anyway (sprints 5 and 6).
-- **A lone surviving child has no behaviour but `play`** (sprint 6).
+- ~~**Deer do not avoid water when fleeing across a narrow neck** — they retarget
+  six times, then go anyway (sprints 5 and 6).~~ Done, #1036: a flight is picked
+  by a dry route, and only a deer with none goes anyway.
+- ~~**A lone surviving child has no behaviour but `play`** (sprint 6).~~ Done:
+  the fire since sprint 16, the well water and the ripe fields too since #1036.
 - **The NaN islander is an open case.** Observed once on a random island that
   had collapsed to one person by day 44; never reproduced since, including
   under forced starvation for 144 sim-days and TG-26's sweep of 25 islands at
@@ -354,12 +356,13 @@ were nine; TG-26 closed three (`HISTORY.md`, #812 to #816).
   whether a boat or the bridge was involved. If a
   `hearth: non-finite position` warning ever appears in a console, that line
   is the lead (sprint 8).
-- **The shelf in the hall has no art.** Things on it exist only in prose; a
+- ~~**The shelf in the hall has no art.** Things on it exist only in prose; a
   two-pixel row inside the hall when `things.some(t=>!t.holder)` would be a
-  nice touch (sprint 12).
-- **Named places have no art on the ground.** They exist in spot labels, walks
+  nice touch (sprint 12).~~ Already drawn (`js/render.js` line 192).
+- ~~**Named places have no art on the ground.** They exist in spot labels, walks
   and the chronicle, but the ground draws nothing — a worn patch, or a small
-  cairn after enough walks, would be the same trick as the shelf (sprint 13).
+  cairn after enough walks, would be the same trick as the shelf (sprint 13).~~
+  Already drawn (`js/render.js` line 231).
 
 **Format, tooling, and the machine**
 - No preview image. Phase 8 decided against a `Tools/board-check/games.mjs`

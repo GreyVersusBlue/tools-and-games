@@ -97,6 +97,11 @@ jobs:
       # board's previews. No --rendered: the renders are untracked.
       - name: blender/dioramas.mjs
         run: node blender/dioramas.mjs
+      # ci-touched.mjs reads these workflow files to decide which jobs a
+      # change touches (HISTORY #1048). Node only: the YAML reader against
+      # every file in this folder, the selection rules, the exit codes.
+      - name: ci-touched.test.mjs
+        run: node ci-touched.test.mjs
 
   suites:
     name: ${{ matrix.name }}
