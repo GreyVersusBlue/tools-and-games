@@ -873,3 +873,19 @@ test('reachableExits: the exits a room can reach, under the options a trial uses
   assert.deepEqual(reachableExits(project, undefined, roomId('1A'), { shutCells: [{ floorId: F1, cell: 2 * w + 5 }, { floorId: F2, cell: 2 * w + 5 }] }), ['xplan00001'], 'both floors shut: the east exit is cut off');
   assert.deepEqual(reachableExits(project, undefined, 'rgone'), []);
 });
+
+test('a step-free way on a short way round: a one-cell walk before a turn folds into it, as on the ordinary card, and is never the whole block (W4 leftover)', () => {
+  // the room's door gives onto the corridor's corner: one cell east, then south to an area of refuge
+  const project = planProject([['.A....', '.A....', '###...', '..#...', '..#...', '..#...']], { doors: { '1A': [[1, 1, 's']] } });
+  const floor = project.building.floors[0];
+  floor.refuges = [{ id: 'aplan00001', cell: 5 * floor.width + 2, name: 'Area of refuge' }];
+  const way = stepFreeWaysOut(project).rooms[0];
+  assert.equal(way.way, 'refuge');
+  const raw = directions(project, way.route).steps.filter((step) => step.kind !== 'arrive');
+  assert.deepEqual(raw.map((step) => step.text), ['Turn left out of the door.', 'Walk 1 cell.', 'Turn right.', 'Walk 3 cells to the end of the corridor.']);
+  const steps = cardSteps(raw);
+  assert.deepEqual(steps.map((step) => step.n + '. ' + step.text), ['1. Turn left out of the door.', '2. Walk on, then turn right.', '3. Walk to the end of the corridor.'], 'the fold says the one cell and the turn together, once');
+  assert.equal(steps[1].turn, 'right', 'the folded step keeps the turn it carries');
+  // a block always has its first step out of the door and its last at the exit or the refuge, so the fold is never alone
+  assert.ok(steps.length >= 3 && steps[0].kind === 'leave' && steps[steps.length - 1].kind === 'walk');
+});
