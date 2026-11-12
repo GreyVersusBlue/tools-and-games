@@ -35,6 +35,7 @@ import { exitNumbers, exitName } from '../../engine/exit-load.js';
 import { stairsName } from '../../engine/blocked.js';
 import { count, list } from '../components/words.js';
 import { esc, frame, mm, paperOf, printableBox } from './document.js';
+import { fitPlan, sheetScale, wrapped } from './evacuation-poster.js';
 import { labelOn } from '../colour.js';
 import { planSvg, gridSquare, printExitColour, PLAN_INK, PLAN_PAPER } from './plan-svg.js';
 
@@ -44,13 +45,12 @@ export const name = 'Lockdown map';
 export const orientation = 'landscape';
 
 // What the sheet spends besides the plan, in millimetres: the header (school,
-// headline, rule) and the footer lines under the plan and index.
-const HEADER_MM = 26;
-const FOOT_MM = 16;
-// The plan's share of the sheet's width (landscape) or height (upright).
-const PLAN_SHARE_WIDE = 0.64;
-const PLAN_SHARE_TALL = 0.6;
+// 18 pt headline, rule) and the footer lines under the plan and index (the
+// footer's type grows with the sheet, so its height does too).
+const HEADER_MM = 23;
 const GAP_MM = 6;
+const MM_PER_PT = 25.4 / 72;
+const BASE_PT = 8;
 
 export const FOOTER_LINES = [
   'Rooms, exits, stairs and elevators only: no staff or student lists.',
@@ -77,8 +77,11 @@ function blank(value) {
   return typeof value !== 'string' || value.trim() === '';
 }
 
-// The rows of the index for one floor: [{ text, square, sort }], and how many
-// rooms are left out because nothing names them.
+// The rows of the index for one floor: [{ text, square, rank, sort }], and how
+// many rooms are left out because nothing names them. In order: rooms whose
+// number has a digit in it, in natural order (101, 102, 103, B12); then the
+// rooms named in words (a number such as Cafeteria, or no number but a label),
+// by that name; then the other spaces by label.
 function indexOf(floor, plan) {
   const rows = [];
   let left = 0;
@@ -86,17 +89,17 @@ function indexOf(floor, plan) {
     const cell = plan.labelCells ? plan.labelCells.get(space.id) : null;
     const square = gridSquare(plan.grid, floor.width, cell);
     if (space.kind === 'room') {
-      if (blank(space.number)) {
+      const text = !blank(space.number) ? String(space.number) : !blank(space.label) ? String(space.label) : null;
+      if (text === null) {
         left += 1;
         continue;
       }
-      rows.push({ text: String(space.number), sort: nameOfRoom(space, true), square, other: false });
+      rows.push({ text, square, rank: !blank(space.number) && /\d/.test(text) ? 0 : 1 });
     } else if (!blank(space.label)) {
-      rows.push({ text: String(space.label), sort: String(space.label), square, other: true });
+      rows.push({ text: String(space.label), square, rank: 2 });
     }
   }
-  // the rooms by number, then the other spaces by label
-  rows.sort((a, b) => Number(a.other) - Number(b.other) || collator.compare(a.sort, b.sort));
+  rows.sort((a, b) => a.rank - b.rank || collator.compare(a.text, b.text) || (a.text < b.text ? -1 : a.text > b.text ? 1 : 0));
   return { rows, left };
 }
 
@@ -126,7 +129,8 @@ function liftRows(project, floor) {
     .filter((car) => car.stops.some((stop) => stop.floorId === floor.id))
     .map((car) => {
       const stops = car.stops.map((stop) => floorName.get(stop.floorId)).filter((each) => each !== undefined);
-      const where = stops.length > 1 ? 'Floors ' + list(stops) : 'Floor ' + (stops[0] || '');
+      // the floor names are the floors' own ("Floor 1"), so no word "Floors" before them
+      const where = list(stops);
       return { sort: car.label || '', text: 'Elevator' + (car.label ? ' ' + car.label : '') + ' · ' + where + (car.staffOnly ? ' · staff only' : '') };
     });
   cars.sort((a, b) => collator.compare(a.sort, b.sort));
@@ -137,17 +141,67 @@ function footer() {
   return '<div class="lockdown__foot">' + FOOTER_LINES.map((line) => '<p>' + esc(line) + '</p>').join('') + '</div>';
 }
 
+// ---- how tall the index is, for fitting the plan to what is left
+//
+// Estimated from the words, in millimetres, never measured in a browser, so a
+// sheet is laid out the same everywhere. `size` is the type in mm.
+
+// a block of items (each a number of characters) in `cols` columns `width` wide
+function itemsHeight(chars, width, size, cols) {
+  const across = (width - (cols - 1) * size) / cols;
+  const heights = chars.map((each) => wrapped(each, across, size) * size * 1.25 + 0.4);
+  return heights.reduce((sum, each) => sum + each, 0) / cols + (heights.length > 0 ? size * 1.25 : 0);
+}
+
+function blockHeight(chars, width, size, cols) {
+  return size * 1.25 * 1.25 + 1 + itemsHeight(chars, width, size, cols) + 3;
+}
+
+// The index's figures for a floor: how many characters each line has.
+function measures(rows, left, exits, ways) {
+  const rooms = rows.map((row) => row.text.length + (row.square ? 5 : 0));
+  if (rows.length === 0) rooms.push(40);
+  if (left > 0) rooms.push(40);
+  const exitLines = exits.length === 0 ? [50] : exits.map((exit) => 4 + exit.name.length + 3 + exit.floor.length);
+  const stairLines = ways.length === 0 ? [30] : ways.map((way) => way.text.length);
+  return { rooms, exits: exitLines, stairs: stairLines };
+}
+
+// The index in a column `width` wide beside the plan, the blocks one over the next.
+function besideIndex(m, width, size, scale) {
+  let best = null;
+  for (let cols = 1; cols <= 4; cols++) {
+    if (cols > 1 && (width - (cols - 1) * size) / cols < 24 * scale) break;
+    const height = blockHeight(m.rooms, width, size, cols) + blockHeight(m.exits, width, size, 1) + blockHeight(m.stairs, width, size, 1);
+    if (best === null || height < best.height - 0.5) best = { height, cols };
+  }
+  return best;
+}
+
+// The index under the plan, the three blocks side by side across `width`.
+function underIndex(m, width, size, scale) {
+  let best = null;
+  for (let cols = 1; cols <= 4; cols++) {
+    const weights = [cols * 30, 55, 55];
+    const room = width - 2 * GAP_MM;
+    const total = weights[0] + weights[1] + weights[2];
+    const widths = weights.map((weight) => (room * weight) / total);
+    if (cols > 1 && (widths[0] - (cols - 1) * size) / cols < 24 * scale) break;
+    const height = Math.max(blockHeight(m.rooms, widths[0], size, cols), blockHeight(m.exits, widths[1], size, 1), blockHeight(m.stairs, widths[2], size, 1));
+    if (best === null || height < best.height - 0.5) best = { height, cols, weights };
+  }
+  return best;
+}
+
 export function pages(project, derived, options) {
   const opts = options || {};
   const box = printableBox(paperOf(project, opts));
   const wide = paperOf(project, opts).orientation === 'landscape';
   const numbers = exitNumbers(project);
   const exits = exitRows(project);
-  const scale = Math.max(1, Math.min(box.width, box.height) / printableBox({ size: 'letter', orientation: 'portrait' }).width);
-  const room = {
-    width: wide ? box.width * PLAN_SHARE_WIDE : box.width,
-    height: wide ? box.height - HEADER_MM - FOOT_MM : (box.height - HEADER_MM - FOOT_MM) * PLAN_SHARE_TALL,
-  };
+  const scale = sheetScale(box);
+  // the footer's three lines grow with the sheet, so what is left does too
+  const foot = 3 * BASE_PT * scale * MM_PER_PT * 1.4 + 4;
   return floorsFor(project, opts).map((floor) => {
     const what = name + ' · ' + floor.name;
     const marks = (floor.exits || []).map((exit) => ({ exitId: exit.id, number: numbers.get(exit.id), colour: printExitColour(numbers.get(exit.id) - 1) }));
@@ -155,19 +209,34 @@ export function pages(project, derived, options) {
     if (!plan.drawn) {
       return { what, body: '<p class="doc-lead">' + esc('Nothing is drawn on ' + floor.name + ' yet.') + '</p>' + footer() };
     }
-    const cell = Math.min(room.width / plan.width, room.height / plan.height);
+    const index = indexOf(floor, plan);
+    const ways = liftRows(project, floor);
+    const lines = index.rows.length;
+    // a long list takes smaller type and more columns, never under 7 pt
+    const dense = lines > 40 ? (lines > 80 ? 3 : 2) : 0;
+    const points = dense === 3 ? 7 : dense === 2 ? 7.5 : BASE_PT;
+    const size = points * scale * MM_PER_PT;
+    const m = measures(index.rows, index.left, exits, ways);
+
+    // the largest plan the room left allows
+    const fit = fitPlan({
+      wide,
+      width: box.width,
+      height: box.height - HEADER_MM - foot,
+      aspect: plan.width / plan.height,
+      gap: GAP_MM,
+      beside: (width) => besideIndex(m, width, size, scale).height,
+      under: (width) => underIndex(m, width, size, scale).height,
+    });
+    const set = fit.layout === 'under' ? underIndex(m, box.width, size, scale) : besideIndex(m, fit.side, size, scale);
     const figure = '<figure class="lockdown__plan">'
-      + '<div class="lockdown__picture" style="width: ' + mm(plan.width * cell) + '; height: ' + mm(plan.height * cell) + ';">' + plan.svg + '</div>'
+      + '<div class="lockdown__picture" style="width: ' + mm(fit.plan.width) + '; height: ' + mm(fit.plan.height) + ';">' + plan.svg + '</div>'
       + '</figure>';
 
-    const index = indexOf(floor, plan);
-    const lines = index.rows.length;
-    const dense = lines > 40 ? (lines > 80 ? 3 : 2) : 0;
-    const columns = lines > 24 ? (dense === 3 ? 4 : dense === 2 ? 3 : 2) : 1;
     const rooms = ['<section class="lockdown__block" data-block="rooms"><h2>Rooms</h2>'];
     if (lines === 0) rooms.push('<p class="lockdown__none">' + esc('No rooms or labelled spaces on this floor.') + '</p>');
     else {
-      rooms.push('<ul class="lockdown__rooms" style="column-count: ' + columns + ';">');
+      rooms.push('<ul class="lockdown__rooms">');
       for (const row of index.rows) {
         rooms.push('<li>' + typed(row.text) + (row.square ? ' <span class="lockdown__sq">· ' + esc(row.square) + '</span>' : '') + '</li>');
       }
@@ -187,14 +256,15 @@ export function pages(project, derived, options) {
     }
     exitList.push('</section>');
 
-    const ways = liftRows(project, floor);
     const stairsList = ['<section class="lockdown__block" data-block="stairs"><h2>Stairs and elevators</h2>'];
     if (ways.length === 0) stairsList.push('<p class="lockdown__none">' + esc('No stairs or elevators on this floor.') + '</p>');
     else stairsList.push('<ul class="lockdown__list">' + ways.map((way) => '<li>' + typed(way.text) + '</li>').join('') + '</ul>');
     stairsList.push('</section>');
 
-    const side = '<div class="lockdown__index" style="font-size: ' + (dense === 3 ? '6' : dense === 2 ? '6.5' : '8') + 'pt;">' + rooms.join('') + exitList.join('') + stairsList.join('') + '</div>';
-    const body = '<div class="lockdown lockdown--' + (wide ? 'wide' : 'tall') + '" style="--lockdown-gap: ' + mm(GAP_MM) + '; --lockdown-scale: ' + Math.round(scale * 100) / 100 + ';" data-floor="' + esc(floor.id) + '">'
+    const columns = fit.layout === 'under' ? '--lockdown-cols: ' + set.weights.map((weight) => weight + 'fr').join(' ') + '; ' : '';
+    const side = '<div class="lockdown__index">' + rooms.join('') + exitList.join('') + stairsList.join('') + '</div>';
+    const body = '<div class="lockdown lockdown--' + (wide ? 'wide' : 'tall') + ' lockdown--' + fit.layout + '" style="--lockdown-gap: ' + mm(GAP_MM) + '; --lockdown-scale: ' + Math.round(scale * 100) / 100 + '; --lockdown-fs: ' + points + 'pt; --lockdown-rooms: ' + set.cols + '; ' + columns
+      + '--lockdown-free-w: ' + mm(fit.freeW) + '; --lockdown-free-h: ' + mm(fit.freeH) + ';" data-layout="' + fit.layout + '" data-floor="' + esc(floor.id) + '">'
       + '<div class="lockdown__main">' + figure + side + '</div>'
       + footer()
       + '</div>';

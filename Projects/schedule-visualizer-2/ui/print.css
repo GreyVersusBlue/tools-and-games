@@ -1284,8 +1284,22 @@
   align-items: flex-start;
 }
 
-.print-doc .lockdown--tall .lockdown__main {
+.print-doc .lockdown--under .lockdown__main {
   flex-direction: column;
+  align-items: stretch;
+}
+
+/* under the plan the three blocks sit side by side, the rooms in as many
+   columns as the sheet's room asks for (--lockdown-cols, --lockdown-rooms) */
+.print-doc .lockdown--under .lockdown__index {
+  display: grid;
+  grid-template-columns: var(--lockdown-cols, 1fr 1fr 1fr);
+  column-gap: var(--lockdown-gap, 6mm);
+  align-items: start;
+}
+
+.print-doc .lockdown__rooms {
+  column-count: var(--lockdown-rooms, 1);
 }
 
 .print-doc .lockdown__plan {
@@ -1301,7 +1315,7 @@
   flex: 1 1 0;
   min-width: 0;
   line-height: 1.25;
-  font-size: calc(8pt * var(--lockdown-scale, 1));
+  font-size: calc(var(--lockdown-fs, 8pt) * var(--lockdown-scale, 1));
 }
 
 .print-doc .lockdown__block {
@@ -1365,9 +1379,32 @@
   align-items: flex-start;
 }
 
-.print-doc .poster--tall {
+.print-doc .poster--under {
   flex-direction: column;
+  align-items: stretch;
 }
+
+.print-doc .poster--under .poster__key {
+  display: grid;
+  grid-template-columns: repeat(var(--poster-cols, 1), minmax(0, 1fr));
+  column-gap: 6mm;
+}
+
+/* The sheet's headline is 28 pt on Letter and grows with the sheet's short
+   side like the poster's text (--poster-scale on the poster itself); the
+   header is the document's, outside the poster, so the scale is set by
+   paper here: (short side - 24 mm of margin) / 191.9 mm, never below 1. */
+.print-doc[data-output="evacuation-poster"] .doc-head__what {
+  font-size: calc(28pt * var(--poster-head-scale, 1));
+}
+.print-doc[data-output="evacuation-poster"][data-paper="letter"] { --poster-head-scale: 1; }
+.print-doc[data-output="evacuation-poster"][data-paper="a4"] { --poster-head-scale: 1; }
+.print-doc[data-output="evacuation-poster"][data-paper="tabloid"] { --poster-head-scale: 1.3309; }
+.print-doc[data-output="evacuation-poster"][data-paper="a3"] { --poster-head-scale: 1.4226; }
+.print-doc[data-output="evacuation-poster"][data-paper="a2"] { --poster-head-scale: 2.0636; }
+.print-doc[data-output="evacuation-poster"][data-paper="a1"] { --poster-head-scale: 2.9703; }
+.print-doc[data-output="evacuation-poster"][data-paper="a0"] { --poster-head-scale: 4.2574; }
+.print-doc[data-output="evacuation-poster"][data-paper="poster-24x36"] { --poster-head-scale: 3.0516; }
 
 .print-doc .poster__plan {
   margin: 0;
