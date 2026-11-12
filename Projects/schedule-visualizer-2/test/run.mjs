@@ -97,6 +97,7 @@ export const GROUPS = {
     'engine/prints-route-sheet.test.mjs', // SV2-103
     'engine/prints-lockdown-map.test.mjs', // SV2-110
     'engine/prints-evacuation-poster.test.mjs', // SV2-110
+    'engine/prints-map-pack.test.mjs', // SV2-111
     'engine/prints-calendar.test.mjs', // SV2-80
     'engine/suggest.test.mjs', // SV2-63
     'engine/prints-congestion-scenario.test.mjs', // SV2-71
@@ -190,6 +191,7 @@ export const GROUPS = {
     'browser/safety.mjs', // SV2-67
     'browser/step-free-safety.mjs', // SV2-104
     'browser/safety-what-if.mjs', // SV2-109
+    'browser/safety-prints.mjs', // SV2-111
     'browser/route-sheet.mjs', // SV2-103
     'browser/scenario.mjs', // SV2-68
     'browser/scenario-levers.mjs', // SV2-92
@@ -259,6 +261,7 @@ export const BROWSER_SECONDS = {
   'browser/safety.mjs': 20,
   'browser/step-free-safety.mjs': 20,
   'browser/safety-what-if.mjs': 25,
+  'browser/safety-prints.mjs': 25,
   'browser/route-sheet.mjs': 10,
   'browser/scenario-levers.mjs': 20,
   'browser/playback.mjs': 19,
