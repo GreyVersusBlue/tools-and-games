@@ -450,7 +450,7 @@
 
 /* ---------- The load warning, the trial band and the What if tab (SV2-109; DESIGN 14) ---------- */
 
-/* five tabs: they scroll sideways when the inspector is too narrow for them, each keeping its name whole */
+/* five tabs: they scroll sideways when the window is narrow, each keeping its name whole */
 .sfy-inspector .tabs__list {
   overflow-x: auto;
   scrollbar-width: thin;
@@ -459,6 +459,20 @@
 .sfy-inspector .tabs__tab {
   flex: 1 0 auto;
   padding: 0 var(--s-3);
+}
+
+/* from 1024 px the inspector is wide enough for no scrolling: a tighter padding, and the row wraps
+   to a second line rather than cut a name, so every tab lies wholly inside its row */
+@media (min-width: 1024px) {
+  .sfy-inspector .tabs__list {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  .sfy-inspector .tabs__tab {
+    flex: 1 1 auto;
+    padding: 0 var(--s-2);
+  }
 }
 
 .sfy-load {
@@ -603,6 +617,10 @@
   gap: 0 var(--s-1);
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.sfy-tick__words {
+  min-width: 0;
 }
 
 .sfy-whatif__actions {

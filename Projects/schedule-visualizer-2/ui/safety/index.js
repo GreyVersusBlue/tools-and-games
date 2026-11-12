@@ -19,7 +19,7 @@
 //             their people, and the rooms with no way out, each with the
 //             routing engine's sentence. Door cards (./doorcards.js): print
 //             the picked room's card, the rooms ticked in its list, or every
-//             room's; the list says each room's way out in words (its exit,
+//             room's; the list says each room's way out as built, never the trial's, in words (its exit,
 //             the walking time and the first step), and is the map's text
 //             alternative
 //
@@ -53,11 +53,12 @@ import { buildGraph } from '../../engine/graph.js';
 import { createRouteCache } from '../../engine/routing.js';
 import { normaliseBlocked, blockedFromScenario, stairsName } from '../../engine/blocked.js';
 import { exitName } from '../../engine/exit-load.js';
-import { safetyPicture, firstLine, stepFreePicture, stepFreeFirstLine, stepFreeWords, NO_BLOCKED, blockedCount, blockedKey } from './model.js';
+import { safetyPicture, firstLine, stepFreePicture, stepFreeFirstLine, stepFreeWords, NO_BLOCKED, blockedCount, blockedKey, lostInTrial } from './model.js';
 import { exitsPanel } from './exits.js';
 import { whatIfPanel, blockedSays, stairsOfBuilding } from './what-if.js';
 import { doorCardsPanel } from './doorcards.js';
 import { stepFreeWaysPanel, stepFreeReportPanel } from './stepfree.js';
+import { stepFreeReport } from '../../engine/step-free.js';
 import { stepFreeOverlay, endsOf } from './stepfree-overlay.js';
 import { EVACUATION_NO_ELEVATORS } from './ways.js';
 
@@ -105,6 +106,10 @@ export const SAFETY_LEAST = 160;
 // the live region, when the picked room is gone from the building
 export const GONE_SAYS = (name) => name + ' is no longer in the building; showing every room.';
 
+// a room the trial leaves with no way out: its cursor words, the key's line and the mark's name
+export const LOST_IN_TRIAL = (name) => name + ', no way out in this trial';
+export const LOST_KEY = (n) => 'No way out in this trial, ' + count(n, 'room');
+
 // The cursor's sentence over a room: its way out, by name and by the number
 // the key and the badges give it, since past the colours a colour repeats.
 export function cursorLine(row, picture, stepRoom) {
@@ -113,6 +118,7 @@ export function cursorLine(row, picture, stepRoom) {
     if (stepRoom.way === 'refuge') return row.name + ': no step-free exit; waits at ' + stepRoom.refugeName + '. Enter shows its way.';
     return row.name + ': no step-free way out, ' + stepRoom.why + '.';
   }
+  if (!row.ok && lostInTrial(picture).includes(row)) return LOST_IN_TRIAL(row.name);
   if (!row.ok) return row.name + ': ' + row.sentence;
   const exit = picture.exits.find((each) => each.exitId === row.exitId);
   return row.name + ': out by ' + (exit ? exit.name + ', number ' + exit.number + ' in the key' : 'an exit') + '. Enter shows its way out.';
@@ -130,7 +136,7 @@ export const CLEAR_SAYS = 'The trial is cleared: every room goes out the way it 
 // survives a move to another section and back, and is let go when another project opens.
 // `chips` are the corridors it brought in from the scenario; `droppedSays` what the last building
 // change took out of it; `seen` the project this section last drew, to name what is gone.
-const memory = { projectId: null, picked: null, pickedName: '', chosen: new Set(), floors: 'auto', tab: 'exits', view: 'everyone', stepFree: null, blocked: NO_BLOCKED, chips: [], droppedSays: [], droppedParts: [], seen: null, cache: null, cacheLimit: 0 };
+const memory = { projectId: null, picked: null, pickedName: '', chosen: new Set(), floors: 'auto', tab: 'exits', view: 'everyone', stepFree: null, blocked: NO_BLOCKED, chips: [], droppedSays: [], droppedParts: [], seen: null, cache: null, cacheLimit: 0, stepCache: null, stepCacheLimit: 0 };
 
 // A project other than the one the choices were made for lets them go: on
 // mounting, and at every refresh while mounted (a replace, Undo across one).
@@ -150,6 +156,8 @@ function adopt(project) {
   memory.seen = null;
   memory.cache = null;
   memory.cacheLimit = 0;
+  memory.stepCache = null;
+  memory.stepCacheLimit = 0;
   return true;
 }
 
@@ -206,26 +214,48 @@ export const section = {
       }
       return { cache: memory.cache, geometryVersion: store.geometryVersion };
     };
+    // The Step-free view's passes (a shut plan a room, the same with the elevators let in, a refuge's) are
+    // about three fields a room, so they get a cache of their own, the same kind: in the plain pass's
+    // cache they would push it out. A trial's step-free picture is worked out through it, so a blocked
+    // exit it has seen searches nothing again.
+    const stepRouteOptions = (project) => {
+      const need = 3 * figures(project).rooms + 8;
+      if (!memory.stepCache || memory.stepCacheLimit < need) {
+        memory.stepCache = createRouteCache(need);
+        memory.stepCacheLimit = need;
+      }
+      return { cache: memory.stepCache, geometryVersion: store.geometryVersion };
+    };
     // the trial's picture, once a (state of the building, blocked set): never through store.derived,
     // which keys on the project's parts, and always a new object when either changes
     let trialHeld = null;
-    const trialStamp = () => store.buildingVersion + ':' + store.scheduleVersion + ':' + store.geometryVersion + ':' + blockedKey(memory.blocked);
+    // (the picture depends on the building only: a schedule edit does not make a new one)
+    const trialStamp = () => store.buildingVersion + ':' + store.geometryVersion + ':' + blockedKey(memory.blocked);
     const trialOn = () => blockedCount(memory.blocked) > 0;
     // once a state of the building: rooms, doors, exits, connections, names
+    // the plain pass (cached): the picture with nothing blocked, which the door cards print
+    const builtNow = () => store.derived.get('safety-picture', ['building'], (project) => safetyPicture(project, graphNow(), routeOptions(project)));
     const pictureNow = () => {
-      if (!trialOn()) return store.derived.get('safety-picture', ['building'], (project) => safetyPicture(project, graphNow(), routeOptions(project)));
+      if (!trialOn()) return builtNow();
       const stamp = trialStamp();
       if (trialHeld && trialHeld.stamp === stamp) return trialHeld.picture;
       const picture = safetyPicture(store.project, graphNow(), { ...routeOptions(store.project), blocked: memory.blocked });
-      trialHeld = { stamp, picture, step: null };
+      trialHeld = { stamp, picture, step: null, report: null };
       return picture;
     };
 
     // the step-free picture is worked out only when the view or the tab needs it
+    // the report is once per state of the building and schedule (its groups read the schedule); a
+    // trial never changes it
+    const reportNow = () => store.derived.get('safety-step-report', ['building', 'schedule'], (project) => stepFreeReport(project, graphNow()));
     const stepNow = () => {
-      if (!trialOn()) return store.derived.get('safety-step', ['building', 'schedule'], (project) => stepFreePicture(project, graphNow(), pictureNow()));
+      if (!trialOn()) return store.derived.get('safety-step', ['building', 'schedule'], (project) => stepFreePicture(project, graphNow(), pictureNow(), { report: reportNow() }));
       const picture = pictureNow();
-      if (!trialHeld.step) trialHeld.step = stepFreePicture(store.project, graphNow(), picture);
+      const report = reportNow();
+      if (!trialHeld.step || trialHeld.report !== report) {
+        trialHeld.step = stepFreePicture(store.project, graphNow(), picture, { ...stepRouteOptions(store.project), report });
+        trialHeld.report = report;
+      }
       return trialHeld.step;
     };
     const wantStep = () => memory.view === 'step-free' || memory.tab === 'stepfree';
@@ -309,6 +339,8 @@ export const section = {
         mode: memory.picked ? 'one' : 'all',
         picked: memory.picked,
         lost: lost && !lost.ok ? { floorId: lost.floorId, cells: lost.cells } : null,
+        // the rooms the trial leaves with no way out: framed and marked × (the Step-free view's mark)
+        lostRooms: lostInTrial(picture).map((row) => ({ floorId: row.floorId, cells: row.cells })),
         rooms: picture.rows.filter((row) => row.ok).map((row) => ({ roomId: row.roomId, floorId: row.floorId, cells: row.cells, route: row.route, number: row.exitNumber, colour: exitColour(row.exitNumber) })),
       };
     }));
@@ -371,6 +403,8 @@ export const section = {
     const env = {
       ctx,
       picture: () => picture,
+      // the building as built, whatever is blocked: the door cards' list says what the cards print
+      asBuilt: () => (shown ? builtNow() : null),
       step: () => step,
       project: () => shown,
       picked: () => memory.picked,
@@ -435,7 +469,9 @@ export const section = {
     });
     // five tabs scroll sideways on a phone: the one that takes the focus is brought wholly into view
     // (a tab only partly in view is not scrolled to by focus alone)
+    // (from 1024 px the tabs all fit and the row does not scroll: nothing is brought into view)
     inspector.element.querySelector('.tabs__list').addEventListener('focusin', (event) => {
+      if (matchMedia('(min-width: 1024px)').matches) return;
       if (event.target instanceof Element && event.target.matches('.tabs__tab')) event.target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     });
     // Everyone / Step-free: one radio group, so Tab passes through it once and the arrows move
@@ -661,10 +697,15 @@ export const section = {
         keyList.replaceChildren(...items, ...refuges, ...none);
         return;
       }
+      const theme = plan.theme();
+      const lost = lostInTrial(picture);
+      const lostItem = lost.length > 0 ? [h('li', { class: 'sfy-key__item', data: { none: String(lost.length) } },
+        h('span', { class: 'sfy-swatch', style: 'background:' + theme.problem + ';color:' + labelOn(theme.problem, theme.ink, theme.paper), 'aria-hidden': 'true' }, '×'),
+        h('span', null, LOST_KEY(lost.length)))] : [];
       keyList.replaceChildren(...picture.exits.map((exit) => h('li', { class: 'sfy-key__item', data: { exit: exit.exitId, number: String(exit.number) } },
         h('span', { class: 'sfy-swatch', style: swatch(exit.number), 'aria-hidden': 'true' }, String(exit.number)),
         h('span', { class: 'vh' }, 'Exit ' + exit.number + ': '),
-        h('span', null, h('bdi', { class: 'sfy-key__name' }, exit.name), ', ' + (exit.blocked ? 'blocked in this trial' : count(exit.rooms, 'room'))))));
+        h('span', null, h('bdi', { class: 'sfy-key__name' }, exit.name), ', ' + (exit.blocked ? 'blocked in this trial' : count(exit.rooms, 'room'))))), ...lostItem);
     }
 
     // the badges are drawn from EXIT_KEY_LEAST px a cell; under it, with
@@ -724,7 +765,8 @@ export const section = {
     function refresh() {
       const project = store.project;
       adopt(project);
-      // a building change that removes a blocked item: the trial drops it, and the words are said once
+      // a building change that removes a blocked item: the trial drops it, and the words are said once,
+      // with a picked room's going if that happened too (one string a change)
       let droppedSaid = '';
       if (blockedCount(memory.blocked) > 0) {
         const checked = normaliseBlocked(project, memory.blocked, memory.seen || undefined);
@@ -746,6 +788,15 @@ export const section = {
       headline.hidden = nothing;
       plan.showFloors(!nothing);
       if (nothing) {
+        // a picked room that is no longer in the building is let go here too, and said with the rest
+        let goneWords = '';
+        if (memory.picked && !project.building.floors.some((floor) => floor.spaces.some((space) => space.id === memory.picked))) {
+          goneWords = (memory.pickedName || 'The picked room') + ' is no longer in the building.';
+          memory.picked = null;
+          memory.pickedName = '';
+        }
+        const saidNothing = [goneWords, droppedSaid].filter(Boolean).join(' ');
+        if (saidNothing) ctx.announce(saidNothing);
         empty.dataset.empty = f.rooms === 0 ? 'safety-rooms' : 'safety-exits';
         empty.replaceChildren(intro({
           headline: HEADLINE,
@@ -786,8 +837,8 @@ export const section = {
         ctx.announce('Step-free: ' + stepFreeWords(step.counts));
       }
       plan.setProject(project, graph);
-      if (lost) ctx.announce(GONE_SAYS(lost));
-      if (droppedSaid) ctx.announce(droppedSaid);
+      const saidNow = [lost ? GONE_SAYS(lost) : '', droppedSaid].filter(Boolean).join(' ');
+      if (saidNow) ctx.announce(saidNow);
     }
 
     refresh();
@@ -808,6 +859,7 @@ export const section = {
       get trial() { return picture ? picture.trial : null; },
       blockedMarks,
       get routeCache() { return memory.cache; },
+      get stepRouteCache() { return memory.stepCache; },
       setView(value) {
         viewChoice.set(value);
         memory.view = value;

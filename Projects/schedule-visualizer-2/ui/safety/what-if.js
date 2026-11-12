@@ -28,6 +28,7 @@ import { h, uid } from '../components/dom.js';
 import { count } from '../components/words.js';
 import { formatDuration } from '../../engine/findings.js';
 import { ELEVATOR_KIND } from '../../engine/schema.js';
+import { EXIT_UNNAMED } from '../../engine/exit-load.js';
 import { blockedCount } from './model.js';
 
 export const WHAT_IF_HEAD = 'What if an exit or stairs is blocked?';
@@ -107,15 +108,18 @@ export function whatIfPanel(env) {
 
   let drawnBuilding = null;
   let drawnTheme = null;
+  let drawnResultsTheme = null;
   let drawnPicture = null;
   let drawnChips = '';
 
   const tickId = (kind, id) => base + '-' + kind + '-' + id;
 
-  function tick(kind, id, label) {
+  // The label is a flex row (swatch, words); the words are one inline span, so a typed name and
+  // the comma after it stay in one line of text and no flex gap comes between them.
+  function tick(kind, id, lead, words) {
     const box = h('input', { type: 'checkbox', class: 'sfy-tick__box', id: tickId(kind, id), data: { kind, id } });
     box.addEventListener('change', () => env.tick(kind, id, box.checked));
-    return h('li', { class: 'sfy-tick', data: { kind, id } }, box, h('label', { class: 'sfy-tick__label', for: box.id }, label));
+    return h('li', { class: 'sfy-tick', data: { kind, id } }, box, h('label', { class: 'sfy-tick__label', for: box.id }, lead, h('span', { class: 'sfy-tick__words' }, words)));
   }
 
   // the ticks are drawn again when the building or the theme changes, the focus put back on the same tick
@@ -123,13 +127,13 @@ export function whatIfPanel(env) {
     const project = env.project();
     const picture = env.picture();
     const held = element.contains(document.activeElement) && document.activeElement.matches('.sfy-tick__box') ? document.activeElement.id : null;
-    const exitRows = picture.exits.map((exit) => tick('exit', exit.exitId, [
+    const exitRows = picture.exits.map((exit) => tick('exit', exit.exitId,
       h('span', { class: 'sfy-swatch sfy-swatch--small', style: env.swatch(exit.number), 'aria-hidden': 'true' }, String(exit.number)),
-      h('span', { class: 'vh' }, 'Exit ' + exit.number + ': '),
-      ' ',
-      h('bdi', null, exit.name),
-      exit.name === 'The exit on ' + exit.floorName ? null : [', ', h('bdi', null, exit.floorName)],
-    ]));
+      [
+        h('span', { class: 'vh' }, 'Exit ' + exit.number + ': '),
+        h('bdi', null, exit.name),
+        exit.name === EXIT_UNNAMED(exit.floorName) ? null : [', ', h('bdi', null, exit.floorName)],
+      ]));
     exitsBox.replaceChildren(h('legend', { class: 'sfy-ticks__legend' }, 'Exits'), h('ul', { class: 'sfy-ticks__list' }, exitRows));
     const stairs = stairsOfBuilding(project);
     const groups = [];
@@ -141,7 +145,7 @@ export function whatIfPanel(env) {
       if (here.length === 0) continue;
       groups.push(h('fieldset', { class: 'sfy-ticks sfy-ticks--floor', data: { ticks: 'stairs', floor: floor.id } },
         h('legend', { class: 'sfy-ticks__legend' }, 'Stairs from ', h('bdi', null, floor.name)),
-        h('ul', { class: 'sfy-ticks__list' }, here.map((connection) => tick('stairs', connection.id, stairsWords(project, connection))))));
+        h('ul', { class: 'sfy-ticks__list' }, here.map((connection) => tick('stairs', connection.id, null, stairsWords(project, connection))))));
     }
     stairsBox.replaceChildren(...(groups.length > 0 ? groups : [h('p', { class: 'sfy-panel__lead', data: { line: 'no-stairs' } }, 'This building has no stairs to block.')]));
     if (held) {
@@ -177,11 +181,13 @@ export function whatIfPanel(env) {
       const held = chips.contains(document.activeElement) ? Array.from(chips.querySelectorAll('button')).indexOf(document.activeElement) : -1;
       chips.replaceChildren(...list.map((chip, i) => h('li', { class: 'sfy-chip', data: { chip: String(i) } },
         h('span', { class: 'sfy-chip__words', dir: 'auto' }, h('bdi', null, chip.name), ' (from the scenario)'),
-        h('button', { type: 'button', class: 'mov-link sfy-chip__remove', on: { click: () => env.removeChip(i) } }, 'Remove', h('span', { class: 'vh' }, ' ', chip.name)))));
+        h('button', { type: 'button', class: 'mov-link sfy-chip__remove', on: { click: () => env.removeChip(i) } }, 'Remove', h('span', { class: 'vh' }, ' ', h('bdi', null, chip.name))))));
       if (held !== -1) {
         const buttons = chips.querySelectorAll('button');
         if (buttons.length > 0) buttons[Math.min(held, buttons.length - 1)].focus();
-        else scenarioButton.hidden ? clearButton.focus() : scenarioButton.focus();
+        else if (!scenarioButton.hidden) scenarioButton.focus();
+        else if (!clearButton.hidden) clearButton.focus();
+        else focusFirst();
       }
     }
     const said = env.dropped();
@@ -190,7 +196,7 @@ export function whatIfPanel(env) {
   }
 
   function showButton(room, name) {
-    return h('button', { type: 'button', class: 'mov-link sfy-row__show', data: { action: 'show', room: room.roomId }, on: { click: () => env.show(room.roomId) } }, 'Show', h('span', { class: 'vh' }, ' ', name, ' on the map'));
+    return h('button', { type: 'button', class: 'mov-link sfy-row__show', data: { action: 'show', room: room.roomId }, on: { click: () => env.show(room.roomId) } }, 'Show', h('span', { class: 'vh' }, ' ', h('bdi', null, name), ' on the map'));
   }
 
   function exitLabel(exit) {
@@ -287,8 +293,10 @@ export function whatIfPanel(env) {
     }
     syncTicks();
     drawActions();
-    if (drawnPicture !== picture) {
+    // the results' swatches are the exits' colours: drawn again with the theme as the ticks are
+    if (drawnPicture !== picture || drawnResultsTheme !== env.themeKey()) {
       drawnPicture = picture;
+      drawnResultsTheme = env.themeKey();
       drawResults();
     }
   }
@@ -297,7 +305,10 @@ export function whatIfPanel(env) {
   function focusFirst() {
     const box = element.querySelector('.sfy-tick__box');
     if (box) box.focus();
-    else env.home();
+    else {
+      heading.tabIndex = -1;
+      heading.focus();
+    }
   }
 
   return { element, update, focusFirst };

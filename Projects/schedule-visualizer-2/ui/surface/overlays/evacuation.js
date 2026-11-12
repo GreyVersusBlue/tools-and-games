@@ -46,12 +46,14 @@
 //   evacuationOverlay(read) -> (g, view, floor, theme) => {}   for map.overlays
 //     read()   null, or { mode: 'all' | 'one',
 //                         rooms: [{ roomId, floorId, cells, route, colour, number }],
-//                         picked: roomId or null, lost }
+//                         picked: roomId or null, lost, lostRooms }
 //              rooms: every room with a way out (cells: the room's own
 //              cells; route: routeToExit's; colour and number: its exit's in
 //              the key). In 'one' only the picked room's entry is drawn; a
 //              picked room with no way out is not among them, and is framed
-//              in the problem colour from `lost`: { floorId, cells }
+//              in the problem colour from `lost`: { floorId, cells }. In 'all', `lostRooms`
+//              ([{ floorId, cells }], the rooms a What if trial leaves with no way out) are framed
+//              in the problem colour and marked ×, as the Step-free view marks a room with none
 //   EXIT_KEY_LEAST   the zoom (px a cell) under which badges are not drawn
 //   blockedOverlay(read) -> (g, view, floor, theme) => {}   for map.overlays
 //     read()   null, or { marks: [{ floorId, cell }] }: what a What if trial
@@ -261,6 +263,13 @@ export function evacuationOverlay(read) {
         frameRoom(g, view, floor, picture.lost.cells, theme.problem, Math.max(2, Math.min(4, size * 0.12)));
       }
     } else {
+      // a room a trial leaves with no way out: framed in the problem colour and marked ×, as the
+      // Step-free view marks a room with no step-free way
+      for (const entry of picture.lostRooms || []) {
+        if (entry.floorId !== floor.id) continue;
+        frameRoom(g, view, floor, entry.cells, theme.problem, Math.max(2, Math.min(4, size * 0.12)));
+        badge(g, view, floor, entry.cells, theme.problem, '×', theme);
+      }
       const width = Math.max(2, Math.min(6, size * 0.18));
       for (const entry of picture.rooms) drawRoute(g, view, floor, entry.route, entry.colour, width, theme);
       for (const entry of picture.rooms) {

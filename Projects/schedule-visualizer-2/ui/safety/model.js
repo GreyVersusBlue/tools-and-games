@@ -28,7 +28,7 @@
 //   roomLine(row, picture) -> string   "Door A · 45 s · Turn left out of the door."
 //     (the exit's number is beside it, on its colour, where it is shown)
 //
-//   stepFreePicture(project, graph, picture) -> {
+//   stepFreePicture(project, graph, picture, { cache, geometryVersion, report }?) -> {
 //     waysOut   stepFreeWaysOut()'s answer, as it came
 //     report    stepFreeReport()'s answer, as it came
 //     rooms     [{ roomId, floorId, floorName, name, cells, way: 'exit' | 'refuge' | 'none',
@@ -158,6 +158,18 @@ export function safetyPicture(project, graph, options) {
   return { evacuation, exits, rows, missing, byRoom: new Map(rows.map((row) => [row.roomId, row])), load, blocked: set, trial, dropped: checked.dropped };
 }
 
+// The rooms a trial leaves with no way out (they had one): the picture's rows, in their order. The map
+// marks them, the key counts them and the cursor names them; [] with no trial.
+const lostHeld = new WeakMap();
+export function lostInTrial(picture) {
+  if (!picture || !picture.trial) return [];
+  if (!lostHeld.has(picture)) {
+    const lost = new Set(picture.trial.rooms.filter((room) => room.change === 'lost').map((room) => room.roomId));
+    lostHeld.set(picture, picture.rows.filter((row) => !row.ok && lost.has(row.roomId)));
+  }
+  return lostHeld.get(picture);
+}
+
 export function roomLine(row, picture) {
   if (!row.ok) return row.sentence;
   const exit = picture.exits.find((each) => each.exitId === row.exitId);
@@ -201,14 +213,18 @@ export function stepFreeWords(counts) {
 
 // Under a trial the Step-free view changes only by the blocked exits and cells: it already shuts
 // every stair (ARCHITECTURE 20.9 item 3). `blocked` is the picture's set.
-export function stepFreePicture(project, graph, picture) {
+// options { cache, geometryVersion, report }: under a trial the route cache and counter Safety keeps go
+// to stepFreeWaysOut (a blocked exit then searches nothing new); `report` is stepFreeReport's answer
+// for this building, worked out once by the caller (it does not depend on the trial).
+export function stepFreePicture(project, graph, picture, options) {
   const set = picture.blocked || NO_BLOCKED;
   const asked = blockedOptions(set);
   const trialOptions = {};
   if (asked.avoidExits.length > 0) trialOptions.avoidExits = asked.avoidExits;
   if (asked.shutCells.length > 0) trialOptions.shutCells = asked.shutCells;
+  if (picture.trial) Object.assign(trialOptions, routeOptionsOf(options));
   const waysOut = stepFreeWaysOut(project, graph, trialOptions);
-  const report = stepFreeReport(project, graph);
+  const report = options && options.report ? options.report : stepFreeReport(project, graph);
   const names = floorNames(project);
   const exitOf = new Map(picture.exits.map((exit) => [exit.exitId, exit]));
   const refugeOf = new Map(waysOut.refuges.map((refuge) => [refuge.refugeId, refuge]));

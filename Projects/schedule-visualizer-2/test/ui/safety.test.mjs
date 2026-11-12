@@ -16,8 +16,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { runsOf, apart, oklab, blockedOverlay, blockedCross, blockedRingHolds, BLOCKED_RING, BLOCKED_EDGE } from '../../ui/surface/overlays/evacuation.js';
-import { safetyPicture, stepFreePicture, firstLine, roomLine, blockedKey, blockedCount, NO_BLOCKED } from '../../ui/safety/model.js';
-import { cursorLine, REPEAT_SAYS, GONE_SAYS, SAFETY_TABS, BLOCKED_CURSOR, bandShort } from '../../ui/safety/index.js';
+import { safetyPicture, stepFreePicture, firstLine, roomLine, blockedKey, blockedCount, lostInTrial, NO_BLOCKED } from '../../ui/safety/model.js';
+import { AS_BUILT_LINE } from '../../ui/safety/ways.js';
+import { stepFreeReport } from '../../engine/step-free.js';
+import { cursorLine, REPEAT_SAYS, GONE_SAYS, SAFETY_TABS, BLOCKED_CURSOR, LOST_IN_TRIAL, bandShort } from '../../ui/safety/index.js';
 import { spoken, blockedSays, stairsOfBuilding } from '../../ui/safety/what-if.js';
 import { sampleSchool } from '../../data/sample-school.js';
 import { buildGraph } from '../../engine/graph.js';
@@ -275,4 +277,59 @@ test('the cross holds 3:1 on its white ring, and the ring holds 3:1 over each of
   // the dark theme's --problem is paler than the white ring can carry: the cross is a darker variant of it
   assert.notEqual(blockedCross(problems[1]), problems[1]);
   assert.equal(blockedCross(problems[0]), problems[0]);
+});
+
+// ---- SV2-109b
+
+test('a room a trial leaves with no way out: lostInTrial finds it, and the cursor says so in words', () => {
+  const project = sampleSchool();
+  const graph = buildGraph(project);
+  const plain = safetyPicture(project, graph);
+  assert.deepEqual(lostInTrial(plain), [], 'no trial, no room lost in it');
+  const trial = safetyPicture(project, graph, { blocked: blocked({ connections: ['csample00b'] }) });
+  const lost = lostInTrial(trial);
+  assert.ok(lost.length >= 1);
+  assert.ok(lost.every((row) => !row.ok && trial.byRoom.get(row.roomId) === row), 'a lost room is a row of the picture, with no way out');
+  assert.equal(lostInTrial(trial), lost, 'one answer a picture');
+  assert.equal(lost.some((row) => row.roomId === 'rsample101'), false, 'Room 101 keeps its way out');
+  const row = trial.byRoom.get('rsample303');
+  assert.equal(cursorLine(row, trial), 'Room 303, no way out in this trial');
+  assert.equal(LOST_IN_TRIAL('Room 302'), 'Room 302, no way out in this trial');
+  // a room with no way out before the trial too keeps the engine's words
+  const none = { ...plain.byRoom.get('rsample101'), ok: false, sentence: 'Room 101 does not open onto a corridor.' };
+  assert.equal(cursorLine(none, plain), 'Room 101: Room 101 does not open onto a corridor.');
+});
+
+test('the trial line is one constant, in the words of DESIGN 14.7 item 4', () => {
+  assert.equal(AS_BUILT_LINE, 'Printed as built, not this trial.');
+  const doorcards = readFileSync(join(root, 'ui/safety/doorcards.js'), 'utf8');
+  assert.match(doorcards, /AS_BUILT_LINE/);
+  assert.doesNotMatch(doorcards, /not this trial\./, 'door cards keep a copy of the words');
+});
+
+test('the Step-free picture under a trial takes the route cache\'s options and the report it is given', () => {
+  const project = sampleSchool();
+  const graph = buildGraph(project);
+  const cache = createRouteCache(3 * 13 + 8);
+  const options = { cache, geometryVersion: 1 };
+  const plain = safetyPicture(project, graph);
+  const trial = safetyPicture(project, graph, { blocked: blocked({ exits: [plain.exits[1].exitId] }) });
+  const report = stepFreeReport(project, graph);
+  const before = cache.searches;
+  const first = stepFreePicture(project, graph, trial, { ...options, report });
+  assert.ok(cache.searches > before, 'the step-free ways were not worked out through the cache');
+  assert.equal(first.report, report, 'the report was worked out again');
+  const warm = cache.searches;
+  const second = stepFreePicture(project, graph, trial, { ...options, report });
+  assert.equal(cache.searches, warm, 'the same trial searched again');
+  assert.deepEqual(second.counts, first.counts);
+  // the same picture without a trial keeps to its own passes (it is never given the cache's)
+  const open = stepFreePicture(project, graph, plain, { ...options, report });
+  assert.deepEqual(open.counts, { exit: 5, refuge: 5, none: 3 });
+});
+
+test('what-if.js compares an exit\'s name with EXIT_UNNAMED, not with a copy of its words', () => {
+  const source = readFileSync(join(root, 'ui/safety/what-if.js'), 'utf8');
+  assert.match(source, /EXIT_UNNAMED\(/);
+  assert.doesNotMatch(source, /The exit on /);
 });
