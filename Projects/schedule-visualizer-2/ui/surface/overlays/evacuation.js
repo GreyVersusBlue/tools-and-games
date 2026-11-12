@@ -55,6 +55,7 @@
 //   EXIT_KEY_LEAST   the zoom (px a cell) under which badges are not drawn
 
 import { labelOn, parse } from '../../colour.js';
+import { runsOf } from '../../prints/routes.js';
 
 export const EXIT_KEY_LEAST = 10;
 
@@ -111,21 +112,9 @@ export function apart(a, b) {
   return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
 }
 
-export function runsOf(route) {
-  if (!route || !route.ok || !Array.isArray(route.cells)) return [];
-  const runs = [];
-  let run = route.from ? [route.from] : [];
-  const cuts = new Set(route.connectionAt || []);
-  route.cells.forEach((place, index) => {
-    run.push(place);
-    if (cuts.has(index)) {
-      runs.push(run);
-      run = [];
-    }
-  });
-  if (run.length > 0) runs.push(run);
-  return runs.filter((each) => each.length > 0);
-}
+// runsOf lives with the prints' routes (ui/prints/routes.js), so that a print
+// need not import a screen overlay; it is exported from here as it always was.
+export { runsOf };
 
 // ---- drawing
 
