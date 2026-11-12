@@ -56,6 +56,7 @@ import { exitName } from '../../engine/exit-load.js';
 import { safetyPicture, firstLine, stepFreePicture, stepFreeFirstLine, stepFreeWords, NO_BLOCKED, blockedCount, blockedKey, lostInTrial } from './model.js';
 import { exitsPanel } from './exits.js';
 import { whatIfPanel, blockedSays, stairsOfBuilding } from './what-if.js';
+import { printsPanel } from './prints.js';
 import { doorCardsPanel } from './doorcards.js';
 import { stepFreeWaysPanel, stepFreeReportPanel } from './stepfree.js';
 import { stepFreeReport } from '../../engine/step-free.js';
@@ -454,9 +455,7 @@ export const section = {
       },
     };
     const whatIf = whatIfPanel(env);
-    // the Prints tab is mounted by ui/safety/prints.js (SV2-111): until then, its heading and nothing else
-    const printsPanel = { element: h('div', { class: 'mov-panel sfy-panel', data: { panel: 'prints' } }, h('h2', { class: 'mov-panel__title' }, 'Prints')), update() {} };
-    const panels = { exits: exitsTab, cards: doorCardsPanel(env), stepfree: stepFreeReportPanel(env), whatif: whatIf, prints: printsPanel };
+    const panels = { exits: exitsTab, cards: doorCardsPanel(env), stepfree: stepFreeReportPanel(env), whatif: whatIf, prints: printsPanel(env) };
     const inspector = tabs({
       label: 'Safety',
       selected: memory.tab,

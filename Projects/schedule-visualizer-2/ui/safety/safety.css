@@ -740,3 +740,58 @@
     color: var(--ink-2);
   }
 }
+
+/* ---------- The Prints tab (ui/safety/prints.js) ---------- */
+
+.sfy-prints__card {
+  margin-top: var(--s-4);
+  padding-top: var(--s-3);
+  border-top: var(--border);
+}
+
+.sfy-prints__ticks {
+  min-width: 0;
+}
+
+.sfy-prints__all {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+
+.sfy-prints__all .btn {
+  min-height: 44px;
+}
+
+.sfy-prints__go {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  margin-top: var(--s-3);
+}
+
+.sfy-prints__preview {
+  min-height: 44px;
+}
+
+.sfy-prints__preview[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sfy-prints__warn:not(:empty) {
+  margin-top: var(--s-3);
+}
+
+.sfy-prints__missing {
+  margin: var(--s-1) 0 0;
+  padding-left: var(--s-4);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.sfy-prints .seg {
+  margin-top: var(--s-3);
+}
