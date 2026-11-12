@@ -176,7 +176,9 @@ row names a file it does not run.
 | `test/engine/grid-edits.test.mjs` | The grid editor's one action and the pure parts that feed it |
 | `test/engine/import-subjects.test.mjs` | The subject list from a CSV file |
 | `test/engine/scenario.test.mjs` | The scenario engine: apply, normalise, reconcile, the comparison, the difference map's numbers, compare with another file, the chip words |
-| `test/engine/evacuation.test.mjs` | Evacuation: every room's way out, the exits' rooms and people, the rooms with no way out, the door card's data |
+| `test/engine/evacuation.test.mjs` | Evacuation: every room's way out, the exits' rooms and people, the rooms with no way out, the door card's data, and shut cells and blocked exits in both functions |
+| `test/engine/exit-load.test.mjs` | Safety's figures: exit numbers and names, the load warning's thresholds and sentences, the rooms on each named corridor |
+| `test/engine/blocked.test.mjs` | "What if this exit or stairs is blocked?": the blocked set, the scenario's closures, the trial's changes per room, its sentence and words, the cache |
 | `test/engine/step-free.test.mjs` | The step-free report: the rooms that cannot be reached without stairs, each with its reason, the no-step-free-exit line, the step-free groups in them by period |
 | `test/engine/scenario-actions.test.mjs` | The scenario lab's actions: start, rename, add and remove a change, discard, compare with another file, apply as one undo step |
 | `test/engine/prints-door-cards.test.mjs` | Door cards: which rooms and in what order, the cropped maps of the way out, the steps and their second sheet, rooms with no way out, and the floor plan's crop and route options; no label cut at a map's edge |
@@ -296,7 +298,7 @@ row names a file it does not run.
 | `test/timing/pipeline.mjs` | The derived pipeline end to end under its budget |
 | `test/timing/movement.mjs` | The movement view's main-thread work under its budget |
 | `test/timing/playback.mjs` | One frame of playback under its budget |
-| `test/timing/evacuation.mjs` | Every room's way out and door card under its budget |
+| `test/timing/evacuation.mjs` | Every room's way out and door card under its budget; a blocked-trial question (exit and stairs) with the plain pass cached |
 | `test/timing/suggest.mjs` | Suggestions for one finding under their budget |
 | `test/timing/scenario-lane.mjs` | The scenario lane, one change added and the first asking, under its budgets |
 | `test/timing/difference-card.mjs` | The difference map's card, the first after an answer and a later one, under its budgets |
