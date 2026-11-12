@@ -170,6 +170,7 @@ row names a file it does not run.
 | `test/engine/import-teachers.test.mjs` | The teacher list from a CSV file |
 | `test/engine/finding-ids.test.mjs` | One form for every finding's id |
 | `test/engine/prints.test.mjs` | The print documents: the frame, the floor plan, the room list, the checks report |
+| `test/engine/plan-svg-safety.test.mjs` | The plan's options for the safety prints: many coloured ways with number badges, the reference grid and its squares, a highlighted corridor, numbered exits, "You are here"; the sample's floors unchanged without them; the exit colours' wrap; `ui/prints/routes.js` |
 | `test/engine/prints-batch.test.mjs` | Batch printing: every teacher's schedule and every door sign as one document |
 | `test/engine/readers.test.mjs` | What readers will see of the problems that remain, sentence by sentence |
 | `test/engine/prints-movement.test.mjs` | The movement view's tables, CSV files and print documents |

@@ -1133,6 +1133,81 @@
   stroke-width: 2;
 }
 
+/* many ways out, a reference grid, a highlighted corridor, numbered exits and
+   "You are here" over a plan (planSvg's routes, refGrid, highlightCells,
+   exitMarks and marker options, SV2-108). A way's colour, a badge's ring and
+   a mark's fill are attributes: they are the exit's, not the stylesheet's. */
+.print-doc .plan__highlight {
+  fill: #0f6e66;
+  fill-opacity: 0.25;
+}
+
+.print-doc .plan__grid-lines {
+  fill: none;
+  stroke: #857f73;
+  stroke-width: 0.5;
+  stroke-dasharray: 4 3;
+}
+
+.print-doc .plan__grid-label {
+  fill: #515761;
+  font-weight: 500;
+}
+
+.print-doc .plan__way-band {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 7.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.print-doc .plan__way-line {
+  fill: none;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.print-doc .plan__way-start {
+  stroke: #ffffff;
+  stroke-width: 1.4;
+}
+
+.print-doc .plan__badge {
+  fill: #ffffff;
+  stroke-width: 2;
+}
+
+.print-doc .plan__badge-number {
+  fill: #1f2328;
+  font-weight: 700;
+}
+
+.print-doc .plan__mark {
+  stroke: #ffffff;
+  stroke-width: 1.2;
+}
+
+.print-doc .plan__mark-number { font-weight: 700; }
+
+.print-doc .plan__marker {
+  fill: #1f2328;
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+
+.print-doc .plan__marker-pill {
+  fill: #ffffff;
+  stroke: #1f2328;
+  stroke-width: 0.8;
+}
+
+.print-doc .plan__marker-label {
+  fill: #1f2328;
+  font-weight: 700;
+}
+
 /* ---------- SV2-71: the congestion report's scenario section (ui/prints/congestion.js) ----------
    The tables are the report's own (.doc-table). Busier and quieter, more and
    less, are said in words and signs ("+28 busier", "−48 s"); the weight and
