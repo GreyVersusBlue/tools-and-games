@@ -130,7 +130,7 @@ export const CLEAR_SAYS = 'The trial is cleared: every room goes out the way it 
 // survives a move to another section and back, and is let go when another project opens.
 // `chips` are the corridors it brought in from the scenario; `droppedSays` what the last building
 // change took out of it; `seen` the project this section last drew, to name what is gone.
-const memory = { projectId: null, picked: null, pickedName: '', chosen: new Set(), floors: 'auto', tab: 'exits', view: 'everyone', stepFree: null, blocked: NO_BLOCKED, chips: [], droppedSays: [], seen: null, cache: null, cacheLimit: 0 };
+const memory = { projectId: null, picked: null, pickedName: '', chosen: new Set(), floors: 'auto', tab: 'exits', view: 'everyone', stepFree: null, blocked: NO_BLOCKED, chips: [], droppedSays: [], droppedParts: [], seen: null, cache: null, cacheLimit: 0 };
 
 // A project other than the one the choices were made for lets them go: on
 // mounting, and at every refresh while mounted (a replace, Undo across one).
@@ -146,6 +146,7 @@ function adopt(project) {
   memory.blocked = NO_BLOCKED;
   memory.chips = [];
   memory.droppedSays = [];
+  memory.droppedParts = [];
   memory.seen = null;
   memory.cache = null;
   memory.cacheLimit = 0;
@@ -385,7 +386,7 @@ export const section = {
       blocked: () => memory.blocked,
       chips: () => memory.chips,
       closures: () => (shown && shown.scenario ? blockedFromScenario(shown, shown.scenario) : null),
-      dropped: () => memory.droppedSays,
+      dropped: () => memory.droppedParts,
       tick: tickBlocked,
       useScenario,
       removeChip,
@@ -501,6 +502,7 @@ export const section = {
       const held = new Set(memory.blocked.cells.map((place) => place.floorId + ':' + place.cell));
       memory.chips = memory.chips.filter((chip) => chip.cells.some((cell) => held.has(chip.floorId + ':' + cell)));
       memory.droppedSays = [];
+      memory.droppedParts = [];
       refresh();
       const n = blockedThings();
       ctx.announce((said ? said + ' ' : '') + (n === 0 ? 'Nothing blocked.' : blockedSays(n) + '. ' + trialSentence()));
@@ -547,6 +549,7 @@ export const section = {
       memory.blocked = NO_BLOCKED;
       memory.chips = [];
       memory.droppedSays = [];
+      memory.droppedParts = [];
       trialHeld = null;
       refresh();
       ctx.announce(CLEAR_SAYS);
@@ -730,6 +733,7 @@ export const section = {
           const held = new Set(memory.blocked.cells.map((place) => place.floorId + ':' + place.cell));
           memory.chips = memory.chips.filter((chip) => chip.cells.some((cell) => held.has(chip.floorId + ':' + cell)));
           memory.droppedSays = checked.dropped;
+          memory.droppedParts = checked.droppedParts;
           droppedSaid = checked.dropped.join(' ');
           trialHeld = null;
         }

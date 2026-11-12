@@ -14,7 +14,8 @@
 
 import { h } from '../components/dom.js';
 import { count } from '../components/words.js';
-import { HEAVY_SHARE, HEAVY_MARGIN } from '../../engine/exit-load.js';
+import { HEAVY_SHARE, HEAVY_MARGIN, basisWords } from '../../engine/exit-load.js';
+import { partsNodes } from './what-if.js';
 
 const CAPACITY_UNSET = (n) => (n === 1 ? '1 room has no capacity set and is not counted' : n + ' rooms have no capacity set and are not counted');
 
@@ -23,7 +24,6 @@ export const HEAVY_WORDS = 'Far more than the others';
 export const BLOCKED_WORDS = 'Blocked in this trial';
 export const HEAVY_ADVICE = 'The tool does not know door widths. Check this door and the way to it in your next drill.';
 export const heavyRule = (basis) => 'Why: an exit is flagged when its share is ' + HEAVY_SHARE + ' times an even share and at least ' + HEAVY_MARGIN[basis === 'rooms' ? 'rooms' : 'people'] + ' ' + (basis === 'rooms' ? 'rooms' : 'people') + ' more.';
-export const BASIS_ROOMS_SAYS = 'Most rooms have no capacity set, so this compares rooms, not people.';
 export const BASIS_LINK = 'Set capacities in Building › Rooms.';
 
 // "12 rooms, 420 people": an exit's figures; under a trial, what they were
@@ -32,10 +32,9 @@ function figuresOf(exit) {
   return count(exit.rooms, 'room') + ', ' + count(exit.people, 'person', 'people') + (exit.uncounted > 0 ? ' (' + CAPACITY_UNSET(exit.uncounted) + ')' : '') + '.';
 }
 
-// a sentence as parts when the engine gives them (typed names set apart), else as it is
+// a sentence as parts (typed names set apart)
 function sentenceOf(load) {
-  if (Array.isArray(load.sentenceParts)) return load.sentenceParts.map((part) => (part.name ? h('bdi', null, part.text) : part.text));
-  return [load.sentence];
+  return partsNodes(load.sentenceParts, load.sentence);
 }
 
 export function exitsPanel(env) {
@@ -71,8 +70,8 @@ export function exitsPanel(env) {
     } else if (load.sentence) {
       parts.push(h('p', { class: 'sfy-note', role: 'note', data: { part: 'load-note' } }, ...sentenceOf(load)));
     }
-    if (load.basis === 'rooms') {
-      parts.push(h('p', { class: 'sfy-note', data: { part: 'load-basis' } }, BASIS_ROOMS_SAYS + ' ', h('button', { type: 'button', class: 'mov-link', data: { action: 'to-rooms' }, on: { click: () => env.ctx.navigate('#building') } }, BASIS_LINK)));
+    if (basisWords(load) !== '') {
+      parts.push(h('p', { class: 'sfy-note', data: { part: 'load-basis' } }, basisWords(load) + ' ', h('button', { type: 'button', class: 'mov-link', data: { action: 'to-rooms' }, on: { click: () => env.ctx.navigate('#building') } }, BASIS_LINK)));
     }
     return parts.length === 0 ? null : h('div', { class: 'sfy-load', data: { part: 'load' } }, parts);
   }
@@ -114,7 +113,7 @@ export function exitsPanel(env) {
       const row = rows.get(no.roomId);
       return h('li', { class: 'sfy-missing__row', data: { room: no.roomId } },
         roomButton(row),
-        h('p', { class: 'sfy-missing__why', dir: 'auto' }, no.sentence),
+        h('p', { class: 'sfy-missing__why', dir: 'auto' }, ...partsNodes(no.sentenceParts, no.sentence)),
         no.onlyByElevator ? h('p', { class: 'sfy-missing__why' }, 'Its only way out is by elevator, and an elevator is not used in an evacuation.') : null);
     });
     element.replaceChildren(

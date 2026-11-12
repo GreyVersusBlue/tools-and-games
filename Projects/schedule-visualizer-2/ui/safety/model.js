@@ -101,8 +101,8 @@ export function safetyPicture(project, graph, options) {
   const evacuation = trial ? trial.after : evacuationRoutes(project, graph, routeOptions);
   const trialRoom = trial ? new Map(trial.rooms.map((room) => [room.roomId, room])) : null;
   const missing = noRoute(project, evacuation).map((row) => {
-    const said = trialRoom && trialRoom.get(row.roomId) ? trialRoom.get(row.roomId).sentence : null;
-    return said ? { ...row, sentence: said } : row;
+    const room = trialRoom ? trialRoom.get(row.roomId) : null;
+    return room && room.sentence ? { ...row, sentence: room.sentence, sentenceParts: room.sentenceParts } : row;
   });
   const rowsOf = byExit(project, evacuation);
   const load = trial ? trial.load.after : exitLoad(project, rowsOf);
@@ -133,7 +133,7 @@ export function safetyPicture(project, graph, options) {
     const base = { roomId: entry.roomId, floorId: entry.floorId, floorName: names.get(entry.floorId) || '', name: nameOfRoom(room, true), cells: room ? room.cells : [], route: entry.route, onlyByElevator: entry.onlyByElevator === true };
     if (!entry.route.ok) {
       const no = failed.get(entry.roomId);
-      return { ...base, ok: false, exitId: null, exitNumber: null, seconds: null, first: null, sentence: no ? no.sentence : '' };
+      return { ...base, ok: false, exitId: null, exitNumber: null, seconds: null, first: null, sentence: no ? no.sentence : '', sentenceParts: no && no.sentenceParts ? no.sentenceParts : null };
     }
     const exit = exitOf.get(entry.route.exitId);
     const row = { ...base, ok: true, exitId: entry.route.exitId, exitNumber: exit ? exit.number : null, seconds: entry.route.seconds, sentence: null };

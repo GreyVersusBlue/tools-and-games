@@ -6,7 +6,7 @@
 //     env   { ctx, project(), picture(), blocked() (the trial's set), chips()
 //             ([{ name, floorId, cells }], the corridors brought in from the scenario),
 //             closures() (blockedFromScenario's answer for the open scenario, or null),
-//             dropped() (sentences, from the last change that took something out),
+//             dropped() (sentences as parts, from the last change that took something out),
 //             tick(kind, id, on) with kind 'exit' or 'stairs', useScenario(),
 //             removeChip(index), clear(), show(roomId), swatch(number), themeKey(),
 //             home() (puts the focus on the map) }
@@ -40,6 +40,12 @@ export const CLEAR_TRIAL = 'Clear the trial';
 
 // "2 blocked": what the live region says after each tick
 export const blockedSays = (n) => n + ' blocked';
+
+// a sentence as nodes: [{ text, name }] with what a user typed set apart (bdi), or the plain string
+export function partsNodes(parts, plain) {
+  if (!Array.isArray(parts)) return [plain || ''];
+  return parts.map((part) => (part.name ? h('bdi', null, part.text) : part.text));
+}
 
 // a duration said whole, for the hidden words beside an arrow
 export function spoken(seconds) {
@@ -180,7 +186,7 @@ export function whatIfPanel(env) {
     }
     const said = env.dropped();
     dropped.hidden = said.length === 0;
-    dropped.textContent = said.join(' ');
+    dropped.replaceChildren(...said.flatMap((parts, i) => [i > 0 ? ' ' : '', ...partsNodes(parts)]));
   }
 
   function showButton(room, name) {
@@ -215,7 +221,7 @@ export function whatIfPanel(env) {
       const name = row ? row.name : '';
       return h('li', { class: 'sfy-row', data: { room: room.roomId, change: 'lost' } },
         h('div', { class: 'sfy-row__head' }, h('span', { class: 'sfy-row__name' }, h('bdi', null, name)), showButton(room, name)),
-        h('p', { class: 'sfy-row__way', dir: 'auto' }, room.sentence || ''));
+        h('p', { class: 'sfy-row__way', dir: 'auto' }, ...partsNodes(room.sentenceParts, room.sentence)));
     });
     const movedRows = moved.map((room) => {
       const row = nameOf.get(room.roomId);
@@ -248,7 +254,7 @@ export function whatIfPanel(env) {
         h('td', { class: 'sfy-table__people', data: { label: 'People' } }, ...figure(before.people, after.people, 'person', 'people')),
         h('td', { class: 'sfy-table__note' }, note === '' ? null : h('span', { class: exit.blocked ? 'sfy-heavy sfy-heavy--blocked' : 'sfy-heavy' }, note)));
     });
-    const sentence = trial.sentenceParts ? trial.sentenceParts.map((part) => (part.name ? h('bdi', null, part.text) : part.text)) : [trial.sentence];
+    const sentence = partsNodes(trial.sentenceParts, trial.sentence);
     results.replaceChildren(
       h('p', { class: 'sfy-results__sentence', data: { part: 'sentence' } }, ...sentence),
       h('h3', { class: 'mov-panel__sub', id: base + '-lost' }, 'Rooms with no way out (' + lost.length + ')'),

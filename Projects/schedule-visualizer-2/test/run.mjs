@@ -187,6 +187,7 @@ export const GROUPS = {
     'browser/plan-map.mjs', // SV2-65b
     'browser/safety.mjs', // SV2-67
     'browser/step-free-safety.mjs', // SV2-104
+    'browser/safety-what-if.mjs', // SV2-109
     'browser/route-sheet.mjs', // SV2-103
     'browser/scenario.mjs', // SV2-68
     'browser/scenario-levers.mjs', // SV2-92
@@ -255,6 +256,7 @@ export const BROWSER_SECONDS = {
   'browser/fix.mjs': 21,
   'browser/safety.mjs': 20,
   'browser/step-free-safety.mjs': 20,
+  'browser/safety-what-if.mjs': 25,
   'browser/route-sheet.mjs': 10,
   'browser/scenario-levers.mjs': 20,
   'browser/playback.mjs': 19,
