@@ -89,7 +89,7 @@ export function whatIfPanel(env) {
   const lead = h('p', { class: 'sfy-panel__lead' }, WHAT_IF_LEAD);
   const exitsBox = h('fieldset', { class: 'sfy-ticks', data: { ticks: 'exits' } });
   const stairsBox = h('div', { class: 'sfy-ticks-group', data: { ticks: 'stairs' } });
-  const stairsNote = h('p', { class: 'sfy-panel__lead', data: { line: 'no-elevators' } }, NO_ELEVATORS_SAYS);
+  const stairsNote = h('p', { class: 'sfy-panel__lead', data: { line: 'elevators-not-listed' } }, NO_ELEVATORS_SAYS);
   const corridorNote = h('p', { class: 'sfy-panel__lead', data: { line: 'corridors' } }, CORRIDOR_SAYS);
   const scenarioButton = h('button', { type: 'button', class: 'btn', hidden: true, data: { action: 'use-scenario' }, on: { click: () => env.useScenario() } }, FOR_SCENARIO);
   const scenarioWords = h('p', { class: 'sfy-panel__lead', hidden: true, data: { part: 'scenario-words' } });

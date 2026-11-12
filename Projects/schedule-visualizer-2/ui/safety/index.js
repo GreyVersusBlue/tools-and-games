@@ -51,7 +51,7 @@ import { drawStairLink } from '../surface/overlays/lanes.js';
 import { labelOn } from '../colour.js';
 import { buildGraph } from '../../engine/graph.js';
 import { createRouteCache } from '../../engine/routing.js';
-import { normaliseBlocked, blockedFromScenario, blockedWords, stairsName } from '../../engine/blocked.js';
+import { normaliseBlocked, blockedFromScenario, stairsName } from '../../engine/blocked.js';
 import { exitName } from '../../engine/exit-load.js';
 import { safetyPicture, firstLine, stepFreePicture, stepFreeFirstLine, stepFreeWords, NO_BLOCKED, blockedCount, blockedKey } from './model.js';
 import { exitsPanel } from './exits.js';
@@ -432,6 +432,11 @@ export const section = {
       },
       items: SAFETY_TABS.map((tab) => ({ id: tab.id, label: tab.label, panel: () => panels[tab.id].element })),
     });
+    // five tabs scroll sideways on a phone: the one that takes the focus is brought wholly into view
+    // (a tab only partly in view is not scrolled to by focus alone)
+    inspector.element.querySelector('.tabs__list').addEventListener('focusin', (event) => {
+      if (event.target instanceof Element && event.target.matches('.tabs__tab')) event.target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
     // Everyone / Step-free: one radio group, so Tab passes through it once and the arrows move
     // the choice with the focus staying on it (DESIGN 13.6)
     const viewLabel = uid('safety-view');
@@ -666,14 +671,33 @@ export const section = {
       if (zoomNote.hidden !== hide) zoomNote.hidden = hide;
     }
 
+    // What is blocked as the band says it: "Door B, Stairs A and North Corridor blocked", the corridors
+    // by the names they came in with (a corridor stretch has no name of its own in the building)
+    function bandParts() {
+      const items = [];
+      for (const id of memory.blocked.exits) items.push([{ text: exitName(shown, id), name: true }]);
+      for (const id of memory.blocked.connections) {
+        const connection = (shown.building.connections || []).find((each) => each && each.id === id);
+        const label = connection && typeof connection.label === 'string' ? connection.label : '';
+        items.push(label === '' ? [{ text: 'Stairs', name: false }] : [{ text: 'Stairs ', name: false }, { text: label, name: true }]);
+      }
+      for (const chip of memory.chips) items.push([{ text: chip.name, name: true }]);
+      const parts = [];
+      items.forEach((item, i) => {
+        if (i > 0) parts.push({ text: i === items.length - 1 ? ' and ' : ', ', name: false });
+        parts.push(...item);
+      });
+      parts.push({ text: ' blocked', name: false });
+      return parts;
+    }
+
     // the band above the map: the words of what is blocked, and Clear; hidden with no trial
     function drawBand() {
       const on = trialOn() && Boolean(shown);
       band.hidden = !on;
       element.dataset.trial = on ? String(blockedThings()) : '0';
       if (!on) return;
-      const parts = blockedWords(shown, memory.blocked, { floors: false }).parts;
-      bandLong.replaceChildren('Trial: ', ...parts.map((part) => (part.name ? h('bdi', null, part.text) : part.text)));
+      bandLong.replaceChildren('Trial: ', ...bandParts().map((part) => (part.name ? h('bdi', null, part.text) : part.text)));
       bandShortWords.textContent = bandShort(blockedThings());
     }
 
