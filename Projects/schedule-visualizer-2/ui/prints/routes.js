@@ -12,7 +12,7 @@
 //     stairs connection is taken: the room cell it leaves by first. A route
 //     that is not ok has none.
 //
-//   waysOnFloor(entries, floorId, options?) -> [{ cells, start, exit, colour, number, faint, roomId }]
+//   waysOnFloor(entries, floorId, options?) -> [{ cells, start, exit, joins, colour, number, faint, roomId }]
 //     entries   evacuationRoutes()'s `rooms`: { roomId, floorId, route }
 //     the part of every entry's route that lies on this floor, one way for
 //     each run on it (a route that leaves a floor and comes back has two),
@@ -27,6 +27,12 @@
 //                        faint always: a poster for a floor shows the way of
 //                        its own rooms in colour and the part of an upper
 //                        floor's way that comes down to the exit, grey
+//     `joins` of a way: the cells of this floor where a connection is taken
+//     (the last cell of a run that another follows: connectionAt) and where it
+//     comes out (the first cell of a run that follows one), the only cells
+//     planSvg puts the route's number badge on besides the exit; a way that
+//     only crosses a stairs landing has none there. On one floor a stairs
+//     connection is two runs, so its two ends are both joins.
 //     The result has the faint ways first, so the coloured ones are drawn
 //     over them; within each, the order of `entries`.
 
@@ -65,6 +71,7 @@ export function waysOnFloor(entries, floorId, options) {
         cells,
         start: begins ? run[0].cell : null,
         exit: ends ? route.exit.cell : null,
+        joins: Array.from(new Set((index > 0 ? [cells[0]] : []).concat(index < runs.length - 1 ? [cells[cells.length - 1]] : []))).filter((cell) => Number.isInteger(cell)),
         colour: named.colour,
         number: named.number,
         faint: grey,

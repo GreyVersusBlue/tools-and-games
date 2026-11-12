@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 
-import { planSvg, planStyleText, PRINT_EXIT_COLOURS, printExitColour, gridSquare, columnLetters } from '../../ui/prints/plan-svg.js';
+import { planSvg, planStyleText, textEms, PRINT_EXIT_COLOURS, printExitColour, gridSquare, columnLetters } from '../../ui/prints/plan-svg.js';
 import { runsOf, waysOnFloor } from '../../ui/prints/routes.js';
 import { runsOf as overlayRunsOf } from '../../ui/surface/overlays/evacuation.js';
 import { esc } from '../../ui/prints/document.js';
@@ -342,7 +342,7 @@ test('every typed name is escaped: a door name, a marker\'s words, a badge\'s nu
   floor.name = HOSTILE;
   const plan = planSvg(project, floor, {
     routes: [{ cells: [at(3, 3), at(4, 3)], exit: at(9, 3), number: HOSTILE, colour: HOSTILE }],
-    exitMarks: [{ exitId: floor.exits[0].id, number: HOSTILE, colour: HOSTILE }],
+    exitMarks: [{ exitId: floor.exits[0].id, number: 7, colour: HOSTILE }],
     marker: { cell: at(5, 3), label: HOSTILE },
     refGrid: true,
     highlightCells: [at(3, 3)],
@@ -350,7 +350,10 @@ test('every typed name is escaped: a door name, a marker\'s words, a badge\'s nu
   assert.equal(count(plan.svg, '<script'), 0);
   assert.equal(count(plan.svg, '<img'), 0);
   assert.equal(count(plan.svg, 'onerror=alert(1)>'), 0);
-  assert.ok(count(plan.svg, esc(HOSTILE)) >= 4, 'door name, marker, badge and mark number, each as typed: ' + count(plan.svg, esc(HOSTILE)));
+  // the door name, the marker's words and the badge's number, each as typed (a mark's number is a whole number now, so only its colour is typed)
+  assert.ok(count(plan.svg, esc(HOSTILE)) >= 3, 'door name, marker and badge, each as typed: ' + count(plan.svg, esc(HOSTILE)));
+  assert.equal(count(plan.svg, 'fill="' + HOSTILE), 0, 'a colour that is not a colour is not written');
+  assert.ok(plan.svg.includes('>7</text>'), 'the mark is drawn, in the exit\'s own colour');
   assert.deepEqual(Array.from(plan.svg.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9-]*)/g)).map((m) => m[1]).filter((tag) => !['svg', 'g', 'path', 'text', 'circle', 'rect'].includes(tag)), []);
   // the picture on its own, as XML, is as safe
   const xml = planSvg(project, floor, { xml: true, marker: { cell: at(5, 3), label: HOSTILE } });
@@ -419,4 +422,313 @@ test('waysOnFloor: the part of every route on a floor, the room\'s own floor in 
   const entry = { roomId: 'r', floorId: 'fa', route: { ok: true, exitId: 'x', from: { floorId: 'fa', cell: 5 }, cells: [{ floorId: 'fa', cell: 6 }, { floorId: 'fb', cell: 1 }, { floorId: 'fa', cell: 8 }, { floorId: 'fa', cell: 9 }], connectionAt: [0, 1], exit: { id: 'x', floorId: 'fa', cell: 9 } } };
   const both = waysOnFloor([entry], 'fa');
   assert.deepEqual(both.map((way) => [way.cells, way.start, way.exit]), [[[6], 5, null], [[8, 9], null, 9]]);
+});
+
+// ---- SV2-108b: the corrections
+
+const boxesOverlap = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+const viewOf = (svg) => /viewBox="([-\d. ]+)"/.exec(svg)[1].split(' ').map(Number);
+
+test('teachers: false leaves out the surname under a room number; left out of the options, every sample floor is as it was', () => {
+  const project = school();
+  let seen = 0;
+  for (const floor of project.building.floors) {
+    const plain = planSvg(project, floor);
+    const same = planSvg(project, floor, { teachers: true });
+    assert.equal(same.svg, plain.svg, floor.name + ': teachers true is the default');
+    const without = planSvg(project, floor, { teachers: false });
+    const named = count(plain.svg, 'class="plan__teacher"');
+    seen += named;
+    assert.equal(count(without.svg, 'plan__teacher'), 0, floor.name + ': no surname');
+    // every room number is still drawn
+    assert.equal(count(without.svg, 'class="plan__number"'), count(plain.svg, 'class="plan__number"'));
+    assert.equal(without.rooms, plain.rooms);
+  }
+  assert.ok(seen >= 4, 'the sample has surnames to leave out: ' + seen);
+});
+
+// the box of a corridor name as the plan draws it: textEms of its capitals, 1.15 for the letter spacing, turned a quarter when it runs down
+function nameBoxes(svg) {
+  return Array.from(svg.matchAll(/<text class="plan__corridor-name" x="([-\d.]+)" y="([-\d.]+)" font-size="([\d.]+)"([^>]*)>([^<]*)<\/text>/g)).map((m) => {
+    const [x, y, size] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    const wide = textEms(m[5].toUpperCase()) * 1.15 * size;
+    const tall = size * 0.5;
+    return m[4].includes('rotate') ? { name: m[5], left: x - tall, right: x + tall, top: y - wide / 2, bottom: y + wide / 2 } : { name: m[5], left: x - wide / 2, right: x + wide / 2, top: y - tall, bottom: y + tall };
+  });
+}
+const pillBox = (svg) => {
+  const m = /class="plan__marker-pill" x="([-\d.]+)" y="([-\d.]+)" width="([\d.]+)" height="([\d.]+)"/.exec(svg);
+  return m ? { left: Number(m[1]), top: Number(m[2]), right: Number(m[1]) + Number(m[3]), bottom: Number(m[2]) + Number(m[4]) } : null;
+};
+
+test('marker: the pill never covers a corridor name, on every named corridor of the sample at its middle cell', () => {
+  const project = school();
+  let checked = 0;
+  for (const floor of project.building.floors) {
+    for (const corridor of floor.corridors) {
+      if (corridor.name.trim() === '') continue;
+      const mx = corridor.cells.reduce((sum, cell) => sum + (cell % floor.width), 0) / corridor.cells.length;
+      const my = corridor.cells.reduce((sum, cell) => sum + Math.floor(cell / floor.width), 0) / corridor.cells.length;
+      const cell = corridor.cells.slice().sort((a, b) => Math.hypot((a % floor.width) - mx, Math.floor(a / floor.width) - my) - Math.hypot((b % floor.width) - mx, Math.floor(b / floor.width) - my))[0];
+      const plan = planSvg(project, floor, { marker: { cell, label: 'You are here' } });
+      const pill = pillBox(plan.svg);
+      assert.ok(pill, 'a pill is drawn');
+      for (const name of nameBoxes(plan.svg)) assert.equal(boxesOverlap(pill, name), false, floor.name + ' ' + corridor.name + ': the pill covers ' + name.name);
+      checked += 1;
+    }
+  }
+  assert.equal(checked, 5, 'the sample names five corridors');
+  // a corridor two cells high is named on the line between its rows: a marker on the lower row has the name just above it, where the pill would go
+  const wide = planProject([['.....', '.###########', '.###########']]);
+  const hall = wide.building.floors[0];
+  hall.corridors.push({ id: 'cor00000002', name: 'Hall', cells: hall.cells.split('').flatMap((c, i) => (c === '#' ? [i] : [])) });
+  const under = planSvg(wide, hall, { marker: { cell: 2 * hall.width + 6, label: 'You are here' } });
+  const hallName = nameBoxes(under.svg);
+  assert.equal(hallName.length, 1);
+  assert.equal(boxesOverlap(pillBox(under.svg), hallName[0]), false, 'the pill is off the name Hall');
+  // a marker with nothing near it keeps its pill above, where it was
+  const project2 = small();
+  const floor2 = project2.building.floors[0];
+  const lone = pillBox(planSvg(project2, floor2, { marker: { cell: at(5, 3), label: 'Here' } }).svg);
+  assert.equal(lone.bottom, at(5, 3) % 1 + 70 - 7.6 - 3, 'above the dot, 3 units clear of it');
+});
+
+test('marker: the pill is moved off a route badge beside the dot, and stays whole inside the picture', () => {
+  const project = small();
+  const floor = project.building.floors[0];
+  // a badge on the cell above the marker, where the pill would go
+  const way = { cells: [at(5, 2)], joins: [at(5, 2)], number: 1, colour: '#255ebc' };
+  const plan = planSvg(project, floor, { marker: { cell: at(5, 3), label: 'You are here' }, routes: [way] });
+  const badge = /class="plan__badge" cx="([\d.]+)" cy="([\d.]+)"/.exec(plan.svg);
+  assert.ok(badge, 'the badge is drawn');
+  const near = { left: Number(badge[1]) - 6, right: Number(badge[1]) + 6, top: Number(badge[2]) - 6, bottom: Number(badge[2]) + 6 };
+  const pill = pillBox(plan.svg);
+  assert.equal(boxesOverlap(pill, near), false, 'the pill is clear of the badge');
+  const view = viewOf(plan.svg);
+  assert.ok(pill.left >= view[0] && pill.right <= view[0] + view[2] && pill.top >= view[1] && pill.bottom <= view[1] + view[3]);
+});
+
+test('refGrid on a floor with nothing drawn: grid null, no labelled cells, never undefined', () => {
+  const project = planProject([['.....']]);
+  const floor = project.building.floors[0];
+  const plan = planSvg(project, floor, { refGrid: true });
+  assert.equal(plan.drawn, false);
+  assert.equal(plan.grid, null);
+  assert.ok(plan.labelCells instanceof Map);
+  assert.equal(plan.labelCells.size, 0);
+  assert.deepEqual(plan.unlabelled, []);
+  // without the grid the result is what it was
+  assert.equal('grid' in planSvg(project, floor), false);
+  assert.equal('labelCells' in planSvg(project, floor, { refGrid: false }), false);
+});
+
+test('labelCells holds the spaces whose label is drawn; unlabelled names the drawn spaces with none', () => {
+  const project = small({ numbers: { '1B': '' } });
+  const floor = project.building.floors[0];
+  const [a, b] = floor.spaces;
+  const plan = planSvg(project, floor, { refGrid: true });
+  assert.deepEqual([...plan.labelCells.keys()], [a.id], 'a room with no number has no label cell');
+  assert.deepEqual(plan.unlabelled, [b.id]);
+  // every space labelled: nothing unlabelled
+  const all = planSvg(small(), small().building.floors[0], { refGrid: true });
+  assert.deepEqual(all.unlabelled, []);
+  assert.equal(all.labelCells.size, 2);
+  // an other space with no label, and a label a window cuts, are unlabelled too
+  const other = planProject([['..aa.', '..aa.', '.###.']]);
+  other.building.floors[0].spaces[0].label = '';
+  const blank = planSvg(other, other.building.floors[0], { refGrid: true });
+  assert.deepEqual(blank.unlabelled, [other.building.floors[0].spaces[0].id]);
+  assert.equal(blank.labelCells.size, 0);
+  const cut = planSvg(project, floor, { refGrid: true, crop: { x: 2, y: 1, width: 1, height: 2 } });
+  assert.deepEqual(cut.unlabelled, [a.id], 'room A\'s number is on the window\'s edge and is left out');
+  assert.equal(cut.labelCells.size, 0);
+});
+
+test('crop: the options for safety never grow the window; a marker outside it is not drawn', () => {
+  const project = small();
+  const floor = project.building.floors[0];
+  const [exitId] = ids(project);
+  const window = { x: 0, y: 0, width: 6, height: 5 };
+  const plain = planSvg(project, floor, { crop: window });
+  assert.deepEqual(viewOf(plain.svg), [0, 0, 120, 100]);
+  // the marker is on the east, outside the window: not drawn, and the window is the one asked for
+  const outside = planSvg(project, floor, { crop: window, marker: { cell: at(8, 3), label: 'You are here' } });
+  assert.equal(count(outside.svg, 'plan__marker'), 0);
+  assert.equal(outside.svg, plain.svg, 'nothing about it is drawn');
+  assert.deepEqual([outside.width, outside.height], [6, 5]);
+  // one cell past the edge, where a pill put on the left would lie inside the window: still nothing
+  const beside = planSvg(project, floor, { crop: { x: 0, y: 0, width: 5, height: 5 }, marker: { cell: at(5, 3), label: 'You are here' } });
+  assert.equal(count(beside.svg, 'plan__marker'), 0, 'no dot and no pill for a marker outside the window');
+  assert.deepEqual(viewOf(beside.svg), [0, 0, 100, 100]);
+  // inside, with room for its pill: dot and pill, window as asked
+  const inside = planSvg(project, floor, { crop: { x: 0, y: 0, width: 10, height: 5 }, marker: { cell: at(5, 3), label: 'You are here' } });
+  assert.equal(count(inside.svg, 'class="plan__marker"'), 1);
+  assert.equal(count(inside.svg, 'class="plan__marker-pill"'), 1);
+  assert.deepEqual(viewOf(inside.svg), [0, 0, 200, 100]);
+  // a window with no room for the pill: the dot stays, the pill is left out, the window stays
+  const tight = planSvg(project, floor, { crop: { x: 4, y: 2, width: 3, height: 3 }, marker: { cell: at(5, 3), label: 'You are here' } });
+  assert.equal(count(tight.svg, 'class="plan__marker"'), 1);
+  assert.equal(count(tight.svg, 'plan__marker-pill'), 0);
+  assert.deepEqual(viewOf(tight.svg), [80, 40, 60, 60]);
+  // exitMarks: the exit's name and mark are inside the window and kept, or the edge would cut them and both are left out
+  const back = planProject([FLOOR], { exits: [[1, 6, 3, 'East Door']] });
+  const backFloor = back.building.floors[0];
+  const backId = backFloor.exits[0].id;
+  const mid = { x: 3, y: 0, width: 6, height: 5 };
+  const kept = planSvg(back, backFloor, { crop: mid, exitMarks: [{ exitId: backId, number: 1 }] });
+  assert.equal(count(kept.svg, 'class="plan__mark"'), 1);
+  assert.ok(kept.svg.includes('>East Door</text>'));
+  assert.deepEqual(viewOf(kept.svg), [60, 0, 120, 100]);
+  const low = { x: 3, y: 3, width: 6, height: 2 };
+  const cutOff = planSvg(back, backFloor, { crop: low, exitMarks: [{ exitId: backId, number: 1 }] });
+  assert.equal(count(cutOff.svg, 'plan__mark'), 0, 'the mark the edge would cut is left out');
+  assert.equal(count(cutOff.svg, 'East Door'), 0, 'and so is the name');
+  assert.deepEqual(viewOf(cutOff.svg), viewOf(planSvg(back, backFloor, { crop: low }).svg), 'the window did not grow');
+  assert.deepEqual(viewOf(cutOff.svg), [60, 60, 120, 40]);
+  const east = { x: 5, y: 0, width: 5, height: 5 };
+  // a long name on an east edge: the window is not grown to hold it, with marks or a grid
+  const wide = planProject([EAST], { exits: [[1, 4, 1, 'The Very Long Door Name Out To The East']] });
+  const wideFloor = wide.building.floors[0];
+  const wideId = wideFloor.exits[0].id;
+  const base = viewOf(planSvg(wide, wideFloor, { crop: { x: 0, y: 0, width: 5, height: 5 } }).svg);
+  assert.deepEqual(viewOf(planSvg(wide, wideFloor, { crop: { x: 0, y: 0, width: 5, height: 5 }, exitMarks: [{ exitId: wideId, number: 1 }] }).svg), base);
+  const gridded = planSvg(wide, wideFloor, { crop: { x: 0, y: 0, width: 5, height: 5 }, refGrid: true });
+  const [gx, gy, gw, gh] = viewOf(gridded.svg);
+  assert.ok(Math.abs(gx + gw / 2 - 50) < 1e-6 && Math.abs(gy + gh / 2 - 50) < 1e-6, 'the grid\'s band is the same all round, the window the one asked for: ' + [gx, gy, gw, gh]);
+  assert.equal(count(gridded.svg, 'The Very Long'), 0, 'the name the edge would cut is left out');
+  // routes: a way in the window draws as before and holds nothing
+  const ways = planSvg(project, floor, { crop: east, routes: [{ cells: [at(5, 3), at(6, 3)], start: null, exit: at(9, 3), joins: [], number: 1 }] });
+  assert.deepEqual(viewOf(ways.svg), [100, 0, 100, 100]);
+  assert.ok(count(ways.svg, 'class="plan__badge"') >= 1);
+  // all of them at once
+  const all = planSvg(project, floor, { crop: east, exitMarks: [{ exitId, number: 1 }], marker: { cell: at(8, 3), label: 'Here' }, routes: [{ cells: [at(8, 3)], exit: at(9, 3), number: 1 }] });
+  assert.deepEqual(viewOf(all.svg), [100, 0, 100, 100]);
+});
+
+test('exitMarks: an exit on each of the four edges has its name and circle whole inside the picture and clear of each other', () => {
+  const block = ['.....', '.###.', '.###.', '.###.'];
+  const project = planProject([block], { exits: [[1, 2, 1, 'North Door'], [1, 2, 3, 'South Door'], [1, 1, 2, 'West Door'], [1, 3, 2, 'East Door']] });
+  const floor = project.building.floors[0];
+  const marks = floor.exits.map((exit, i) => ({ exitId: exit.id, number: i + 1 }));
+  for (const options of [{ exitMarks: marks }, { exitMarks: marks, refGrid: true }]) {
+    const plan = planSvg(project, floor, options);
+    assert.equal(plan.exits, 4);
+    const [vx, vy, vw, vh] = viewOf(plan.svg);
+    const circles = Array.from(plan.svg.matchAll(/class="plan__mark" cx="([-\d.]+)" cy="([-\d.]+)" r="([\d.]+)"/g)).map((m) => ({ left: Number(m[1]) - Number(m[3]), right: Number(m[1]) + Number(m[3]), top: Number(m[2]) - Number(m[3]), bottom: Number(m[2]) + Number(m[3]) }));
+    assert.equal(circles.length, 4);
+    const names = Array.from(plan.svg.matchAll(/<text class="plan__exit-name( plan__exit-name--([we]))?" x="([-\d.]+)" y="([-\d.]+)" font-size="7.5">([^<]*)</g)).map((m) => {
+      const wide = textEms(m[5]) * 7.5;
+      const x = Number(m[3]);
+      const y = Number(m[4]);
+      const box = m[2] === 'w' ? { left: x - wide, right: x } : m[2] === 'e' ? { left: x, right: x + wide } : { left: x - wide / 2, right: x + wide / 2 };
+      return { ...box, top: y - 3.75, bottom: y + 3.75 };
+    });
+    assert.equal(names.length, 4);
+    for (const box of circles.concat(names)) assert.ok(box.left >= vx && box.right <= vx + vw && box.top >= vy && box.bottom <= vy + vh, 'inside the picture: ' + JSON.stringify(box));
+    for (const circle of circles) for (const name of names) assert.equal(boxesOverlap(circle, name), false, 'a circle over a name');
+  }
+});
+
+test('exitMarks: more than eight wrap the colours; no colour takes printExitColour(number - 1), like routes', () => {
+  const row = '#'.repeat(12);
+  const project = planProject([['............', row]], { exits: Array.from({ length: 10 }, (_, i) => [1, i, 1, '']) });
+  const floor = project.building.floors[0];
+  const plan = planSvg(project, floor, { exitMarks: floor.exits.map((exit, i) => ({ exitId: exit.id, number: i + 1 })) });
+  const fills = Array.from(plan.svg.matchAll(/class="plan__mark" cx="[-\d.]+" cy="[-\d.]+" r="[\d.]+" fill="(#[0-9a-f]{6})"/g)).map((m) => m[1]);
+  assert.deepEqual(fills, Array.from({ length: 10 }, (_, i) => PRINT_EXIT_COLOURS[i % 8]));
+  assert.equal(fills[8], fills[0], 'the ninth is the first again');
+  assert.ok(plan.svg.includes('>10</text>'));
+  // a colour given is kept; the mark's number, not its place in the list, picks the default
+  const picked = planSvg(project, floor, { exitMarks: [{ exitId: floor.exits[0].id, number: 3 }, { exitId: floor.exits[1].id, number: 2, colour: '#661f75' }] });
+  assert.ok(picked.svg.includes('fill="' + PRINT_EXIT_COLOURS[2] + '"/>'));
+  assert.ok(picked.svg.includes('fill="#661f75"/>'));
+  // and routes of the same number are the same colour
+  const way = planSvg(project, floor, { routes: [{ cells: [1 * 12 + 3, 1 * 12 + 4], number: 3 }] });
+  assert.ok(way.svg.includes('class="plan__way-line" stroke="' + PRINT_EXIT_COLOURS[2] + '"'));
+});
+
+test('exitMarks: a number that is not a positive whole number draws no mark, no empty circle and no "0"', () => {
+  const project = small();
+  const floor = project.building.floors[0];
+  const [exitId] = ids(project);
+  const plain = planSvg(project, floor);
+  for (const number of [0, -1, 1.5, NaN, Infinity, undefined, null, '', '3', '0', {}, [2]]) {
+    const plan = planSvg(project, floor, { exitMarks: [{ exitId, number }] });
+    assert.equal(count(plan.svg, 'plan__mark'), 0, JSON.stringify(number) + ' draws no mark');
+    assert.equal(plan.svg, plain.svg, JSON.stringify(number) + ': the exit is drawn as without marks');
+  }
+  // the first mark for an exit that is bad does not shadow a later good one
+  const later = planSvg(project, floor, { exitMarks: [{ exitId, number: 0 }, { exitId, number: 4 }] });
+  assert.equal(count(later.svg, 'class="plan__mark"'), 1);
+  assert.ok(later.svg.includes('>4</text>'));
+});
+
+test('exitMarks: an exit with no door name has the circle alone on its door, whole inside the picture, on every edge', () => {
+  const project = planProject([['.....', '.###.', '.###.', '.###.']], { exits: [[1, 2, 1, ''], [1, 2, 3, ''], [1, 1, 2, ''], [1, 3, 2, '   ']] });
+  const floor = project.building.floors[0];
+  const marks = floor.exits.map((exit, i) => ({ exitId: exit.id, number: i + 1 }));
+  for (const options of [{ exitMarks: marks }, { exitMarks: marks, refGrid: true }]) {
+    const plan = planSvg(project, floor, options);
+    assert.equal(count(plan.svg, 'plan__exit-name'), 0);
+    assert.equal(count(plan.svg, 'class="plan__mark"'), 4);
+    const [vx, vy, vw, vh] = viewOf(plan.svg);
+    for (const m of plan.svg.matchAll(/class="plan__mark" cx="([-\d.]+)" cy="([-\d.]+)" r="([\d.]+)"/g)) {
+      const [x, y, r] = [Number(m[1]), Number(m[2]), Number(m[3])];
+      assert.ok(x - r >= vx && x + r <= vx + vw && y - r >= vy && y + r <= vy + vh, 'circle at ' + x + ',' + y + ' is inside the picture');
+    }
+  }
+});
+
+test('routes: badges sit at the cells in joins and the exit only, side by side in number order', () => {
+  const project = small();
+  const floor = project.building.floors[0];
+  const stairs = at(2, 4);
+  const way = (extra) => ({ cells: [stairs, at(2, 3), at(3, 3)], exit: at(9, 3), number: 1, colour: '#255ebc', ...extra });
+  // a way that only crosses the stairs landing has a badge at its exit and none on the landing
+  assert.equal(count(planSvg(project, floor, { routes: [way({ joins: [] })] }).svg, 'class="plan__badge"'), 1);
+  // one that takes the connection there has one there too
+  assert.equal(count(planSvg(project, floor, { routes: [way({ joins: [stairs] })] }).svg, 'class="plan__badge"'), 2);
+  // joins that are not cells of the floor are left out
+  assert.equal(count(planSvg(project, floor, { routes: [way({ joins: [-1, 9999, 1.5, 'x', null] })] }).svg, 'class="plan__badge"'), 1);
+  // 2 and 10 on one cell: 2 on the left, never "10" before "2"
+  const two = planSvg(project, floor, { routes: [way({ number: 10, joins: [], colour: '#005700' }), way({ number: 2, joins: [] }), way({ number: 9, joins: [], colour: '#661f75' })] });
+  const order = Array.from(two.svg.matchAll(/class="plan__badge-number" x="([\d.]+)" y="[\d.]+" font-size="[\d.]+">(\d+)</g)).sort((a, b) => Number(a[1]) - Number(b[1])).map((m) => m[2]);
+  assert.deepEqual(order, ['2', '9', '10']);
+});
+
+const ENTRY = (route) => ({ roomId: 'r', floorId: 'fa', route: { ok: true, exitId: 'x', ...route } });
+
+test('waysOnFloor: joins are the cells a connection is taken from and comes out at, and only those', () => {
+  // a way that leaves a floor and comes back to it: two ways, each with its join
+  const twice = ENTRY({ from: { floorId: 'fa', cell: 5 }, cells: [{ floorId: 'fa', cell: 6 }, { floorId: 'fb', cell: 1 }, { floorId: 'fa', cell: 8 }, { floorId: 'fa', cell: 9 }], connectionAt: [0, 1], exit: { id: 'x', floorId: 'fa', cell: 9 } });
+  assert.deepEqual(waysOnFloor([twice], 'fa').map((way) => [way.cells, way.start, way.exit, way.joins]), [[[6], 5, null, [6]], [[8, 9], null, 9, [8]]]);
+  assert.deepEqual(waysOnFloor([twice], 'fb').map((way) => [way.cells, way.start, way.exit, way.joins]), [[[1], null, null, [1]]]);
+  // a way that crosses a stairs landing without taking the connection has none
+  const across = ENTRY({ from: { floorId: 'fa', cell: 5 }, cells: [{ floorId: 'fa', cell: 6 }, { floorId: 'fa', cell: 7 }, { floorId: 'fa', cell: 8 }], connectionAt: [], exit: { id: 'x', floorId: 'fa', cell: 8 } });
+  assert.deepEqual(waysOnFloor([across], 'fa').map((way) => way.joins), [[]]);
+  // and drawn, its badge is at the exit alone
+  const project = small();
+  const floor = project.building.floors[0];
+  const drawn = (list) => count(planSvg(project, floor, { routes: list.map((way) => ({ ...way, number: 1 })) }).svg, 'class="plan__badge"');
+  assert.equal(drawn(waysOnFloor([across], 'fa')), 1);
+  assert.equal(drawn(waysOnFloor([twice], 'fa')), 3, 'two joins and the exit');
+});
+
+test('waysOnFloor: a stairs connection on one floor is two ways, its two ends both joins', () => {
+  const route = ENTRY({ from: { floorId: 'fa', cell: 5 }, cells: [{ floorId: 'fa', cell: 6 }, { floorId: 'fa', cell: 7 }, { floorId: 'fa', cell: 20 }, { floorId: 'fa', cell: 21 }, { floorId: 'fa', cell: 22 }], connectionAt: [1], exit: { id: 'x', floorId: 'fa', cell: 22 } });
+  const ways = waysOnFloor([route], 'fa');
+  assert.deepEqual(ways.map((way) => [way.cells, way.start, way.exit, way.joins]), [[[6, 7], 5, null, [7]], [[20, 21, 22], null, 22, [20]]]);
+  assert.deepEqual(runsOf(route.route).map((run) => run.length), [3, 3]);
+  // drawn: a badge at 7, at 20 and at the exit 22
+  const project = small();
+  const plan = planSvg(project, project.building.floors[0], { routes: ways.map((way) => ({ ...way, number: 1 })) });
+  assert.equal(count(plan.svg, 'class="plan__badge"'), 3);
+});
+
+test('waysOnFloor: a route with no from has no start, on its first floor and after a connection', () => {
+  const plain = ENTRY({ cells: [{ floorId: 'fa', cell: 6 }, { floorId: 'fa', cell: 7 }], exit: { id: 'x', floorId: 'fa', cell: 7 } });
+  assert.deepEqual(waysOnFloor([plain], 'fa').map((way) => [way.cells, way.start, way.exit, way.joins]), [[[6, 7], null, 7, []]]);
+  const over = ENTRY({ cells: [{ floorId: 'fa', cell: 6 }, { floorId: 'fb', cell: 1 }, { floorId: 'fa', cell: 8 }], connectionAt: [0, 1], exit: { id: 'x', floorId: 'fa', cell: 8 } });
+  assert.deepEqual(waysOnFloor([over], 'fa').map((way) => [way.cells, way.start, way.exit, way.joins]), [[[6], null, null, [6]], [[8], null, 8, [8]]]);
+  assert.deepEqual(runsOf(over.route).map((run) => run.length), [1, 1, 1]);
 });
