@@ -37,8 +37,8 @@ function upper(text) {
   return text === '' ? text : text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-export function render(project, derived, options) {
-  const opts = options || {};
+// The sheet, one: [{ body }] (frame() in document.js).
+export function pages(project, derived, options) {
   const report = stepFreeReport(project);
   const floors = project.building.floors;
   const rooms = new Map();
@@ -76,5 +76,9 @@ export function render(project, derived, options) {
     }
   }
   body.push('<p class="doc-meaning stepfree__views" data-line="views">' + esc(TWO_VIEWS_SAYS) + '</p>');
-  return frame(project, { output: id, what: name, pages: [{ body: body.join('\n') }], options: opts });
+  return [{ body: body.join('\n') }];
+}
+
+export function render(project, derived, options) {
+  return frame(project, { output: id, what: name, pages: pages(project, derived, options), options: options || {} });
 }

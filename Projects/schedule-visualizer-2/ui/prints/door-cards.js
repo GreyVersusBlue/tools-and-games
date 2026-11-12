@@ -526,16 +526,22 @@ function emptyWords(rooms) {
   return 'There are no rooms in the building yet.';
 }
 
-export function render(project, derived, options) {
+// The sheets: [{ what, body }] (frame() in document.js).
+//   options.last   false when something follows these cards in the same document (the map
+//                  pack): no card then keeps room for the closing line a browser with no page
+//                  margin boxes prints once after the last sheet. Left out, the last card keeps it.
+export function pages(project, derived, options) {
   const opts = options || {};
   const paper = paperOf(project, opts);
   const rooms = roomsFor(project, opts);
   const cards = cardsFor(project, opts);
-  if (cards.length === 0) {
-    return frame(project, { output: id, what: name, pages: [{ body: '<p class="doc-lead">' + esc(emptyWords(rooms)) + '</p>' }], options: opts });
-  }
-  const pages = [];
-  if (cards.length > 1 || cards.some(({ card }) => !card.ok)) pages.push({ what: name, body: coverBody(rooms, cards, stepFreeOn(project, opts)) });
-  cards.forEach((entry, i) => pages.push({ what: CARD_WHAT, body: cardBody(project, entry.row, entry.card, paper, entry, i === cards.length - 1, entry.block) }));
-  return frame(project, { output: id, what: name, pages, options: opts });
+  if (cards.length === 0) return [{ body: '<p class="doc-lead">' + esc(emptyWords(rooms)) + '</p>' }];
+  const out = [];
+  if (cards.length > 1 || cards.some(({ card }) => !card.ok)) out.push({ what: name, body: coverBody(rooms, cards, stepFreeOn(project, opts)) });
+  cards.forEach((entry, i) => out.push({ what: CARD_WHAT, body: cardBody(project, entry.row, entry.card, paper, entry, opts.last !== false && i === cards.length - 1, entry.block) }));
+  return out;
+}
+
+export function render(project, derived, options) {
+  return frame(project, { output: id, what: name, pages: pages(project, derived, options), options: options || {} });
 }
