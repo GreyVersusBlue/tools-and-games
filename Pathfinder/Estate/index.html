@@ -91,6 +91,7 @@
     font-variation-settings:'SOFT' 100, 'WONK' 1; margin:14px 0 8px; letter-spacing:-.01em;
     text-shadow:0 2px 24px rgba(231,166,78,.25); }
   .masthead .sub{ font-style:italic; color:var(--mist); margin:0; }
+  .masthead .tagline{ font-size:15px; opacity:.75; margin-top:10px; }
   .flourish{ display:flex; align-items:center; gap:12px; justify-content:center;
     margin:20px auto 0; max-width:320px; color:var(--lamp-dim); }
   .flourish::before, .flourish::after{ content:''; flex:1; height:1px;
@@ -173,7 +174,8 @@
   .rule::after{ content:'\2766'; position:absolute; left:50%; top:-.75em; transform:translateX(-50%);
     background:var(--paper); padding:0 10px; color:var(--rule); font-size:16px; line-height:1.5; }
 
-  .vitals{ display:grid; grid-template-columns:repeat(auto-fit, minmax(90px,1fr)); gap:10px; }
+  .vitals{ display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; }
+  @media (min-width:520px){ .vitals{ grid-template-columns:repeat(4, minmax(0,1fr)); } }
   .vital{ text-align:center; border:1px solid var(--rule); border-radius:3px; padding:10px 6px 8px;
     background:rgba(255,255,255,.28); }
   .vital .v{ font:600 34px/1 var(--display); font-variant-numeric:lining-nums tabular-nums; }
@@ -182,23 +184,40 @@
 
   .row-label{ font:11px/1 var(--mono); letter-spacing:.2em; text-transform:uppercase;
     color:var(--claret); margin:18px 0 8px; }
-  .chips{ display:grid; grid-template-columns:repeat(auto-fit, minmax(72px,1fr)); gap:8px; }
+  .chips{ display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); column-gap:16px; row-gap:2px; }
   .chip{ display:flex; justify-content:space-between; align-items:baseline; gap:6px;
     border-bottom:1px dotted var(--rule); padding:4px 2px; }
   .chip .l{ font-size:16px; color:var(--ink-soft); }
   .chip .v{ font:600 19px/1 var(--display); font-variant-numeric:lining-nums tabular-nums; }
-  .skills{ grid-template-columns:repeat(auto-fill, minmax(150px,1fr)); column-gap:18px; }
+  .skills{ grid-template-columns:repeat(2, minmax(0,1fr)); column-gap:20px; }
+  @media (min-width:560px){ .skills{ grid-template-columns:repeat(3, minmax(0,1fr)); } }
 
   .section h3{ font:italic 600 22px/1.1 var(--display); margin:22px 0 8px;
     color:var(--ink); border-bottom:1px solid var(--rule); padding-bottom:6px; }
   .item{ margin:10px 0 0; }
   .item-head{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
   .item-name{ font-weight:400; font-variant:small-caps; letter-spacing:.03em; font-size:19px; }
-  .item-tag{ font:11px/1.2 var(--mono); letter-spacing:.08em; color:var(--claret);
-    text-transform:uppercase; white-space:nowrap; }
   .item-text{ margin:2px 0 0; color:#3a2d20; }
 
-  .empty-note{ font-style:italic; color:var(--ink-soft); text-align:center; margin:20px 0 0; }
+  .vital .n{ font:italic 14px/1.1 var(--body); color:var(--claret); margin-top:4px; }
+  .quote{ margin:14px 0 0; padding:2px 0 2px 14px; border-left:3px solid var(--claret);
+    font:italic 400 19px/1.35 var(--display); color:var(--ink); }
+  .chip.low{ opacity:.55; }
+  .item-head .item-roll{ font:600 22px/1 var(--display); color:var(--claret); white-space:nowrap;
+    font-variant-numeric:lining-nums tabular-nums; }
+  .item-sub{ display:block; font:11px/1.3 var(--mono); letter-spacing:.06em; text-transform:uppercase;
+    color:var(--ink-soft); margin-top:2px; }
+
+  .terms{ margin:26px auto 0; max-width:520px; border:1px solid rgba(179,157,112,.35);
+    border-radius:4px; padding:14px 16px 12px; background:rgba(13,20,22,.55); }
+  .terms h2{ font:11px/1 var(--mono); letter-spacing:.24em; text-transform:uppercase;
+    color:var(--lamp); margin:0 0 10px; text-align:center; font-weight:400; }
+  .terms ol{ margin:0; padding-left:22px; color:var(--mist); font-size:16px; }
+  .terms li{ margin:3px 0; }
+  .page .terms{ background:transparent; border-color:var(--rule); margin-top:24px; }
+  .page .terms h2{ color:var(--claret); }
+  .page .terms ol{ color:var(--ink-soft); }
+
 </style>
 </head>
 <body>
@@ -210,10 +229,12 @@
       <div class="kicker">Evening Sale &middot; By Invitation</div>
       <h1 id="title">The Estate</h1>
       <p class="sub">Catalogue of Attendees</p>
+      <p class="sub tagline">The town is small. The rain doesn't stop. Everyone has a secret.</p>
       <div class="flourish" aria-hidden="true">&#10086;</div>
     </header>
     <ul class="lots" id="lots"></ul>
     <p class="colophon">Choose your lot. Bidding is final.</p>
+    <aside class="terms" id="terms-cat"></aside>
   </section>
 
   <section id="sheet" hidden aria-live="polite">
@@ -227,7 +248,7 @@
 </main>
 
 <script type="module">
-import { characters } from './characters.js';
+import { characters, rules } from './characters.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g,
@@ -253,10 +274,13 @@ function renderCatalogue() {
     </button></li>`).join('');
 }
 
+const termsHtml = () => `<h2>Conditions of Sale</h2><ol>${rules.map(r => `<li>${esc(r)}</li>`).join('')}</ol>`;
+const isLow = v => parseInt(v, 10) <= 3;
+
 const chips = (label, list, extra = '') => list?.length ? `
   <div class="row-label">${esc(label)}</div>
   <div class="chips ${extra}">${list.map(s =>
-    `<div class="chip"><span class="l">${esc(s.label)}</span><span class="v">${esc(s.value)}</span></div>`).join('')}
+    `<div class="chip${extra === 'skills' && isLow(s.value) ? ' low' : ''}"><span class="l">${esc(s.label)}</span><span class="v">${esc(s.value)}</span></div>`).join('')}
   </div>` : '';
 
 function renderSheet(c) {
@@ -266,8 +290,9 @@ function renderSheet(c) {
     <div class="section"><h3>${esc(sec.title)}</h3>
       ${(sec.items || []).map(it => `
         <div class="item">
-          <div class="item-head"><span class="item-name">${esc(it.name)}</span>
-            ${it.tag ? `<span class="item-tag">${esc(it.tag)}</span>` : ''}</div>
+          ${it.name ? `<div class="item-head"><span class="item-name">${esc(it.name)}
+            ${it.tag ? `<span class="item-sub">${esc(it.tag)}</span>` : ''}</span>
+            ${it.roll ? `<span class="item-roll">${esc(it.roll)}</span>` : ''}</div>` : ''}
           ${it.text ? `<p class="item-text">${esc(it.text)}</p>` : ''}
         </div>`).join('')}
     </div>`).join('');
@@ -275,16 +300,18 @@ function renderSheet(c) {
     <div class="stamp" aria-label="Lot ${esc(c.lot)}">Lot<b>${esc(c.lot)}</b></div>
     <header class="who">
       <h2>${esc(c.name)}</h2>
-      ${c.epithet ? `<p class="epithet">${esc(c.epithet)}</p>` : ''}
+      ${c.epithet ? `<p class="epithet">${esc([c.epithet, c.lineage].filter(Boolean).join(' · '))}</p>` : ''}
     </header>
     ${c.blurb ? `<p class="blurb">${esc(c.blurb)}</p>` : ''}
+    ${c.quote ? `<blockquote class="quote">&ldquo;${esc(c.quote)}&rdquo;</blockquote>` : ''}
     <div class="rule" role="separator"></div>
     ${c.vitals?.length ? `<div class="vitals">${c.vitals.map(v =>
-      `<div class="vital"><div class="v">${esc(v.value)}</div><div class="l">${esc(v.label)}</div></div>`).join('')}</div>` : ''}
+      `<div class="vital"><div class="v">${esc(v.value)}</div><div class="l">${esc(v.label)}</div>${v.note ? `<div class="n">${esc(v.note)}</div>` : ''}</div>`).join('')}</div>` : ''}
     ${chips('Saving Throws', c.saves)}
     ${chips('Attributes', c.attributes)}
     ${chips('Skills', c.skills, 'skills')}
-    ${sections || (c.attributes?.length ? '' : '<p class="empty-note">Particulars to follow.</p>')}`;
+    ${sections}
+    <aside class="terms">${termsHtml()}</aside>`;
 }
 
 // The address bar holds the choice (#slug), so a player can bookmark their own
@@ -306,6 +333,7 @@ $('lots').addEventListener('click', e => {
 $('back').addEventListener('click', () => { location.hash = ''; });
 addEventListener('hashchange', route);
 renderCatalogue();
+$('terms-cat').innerHTML = termsHtml();
 route();
 </script>
 </body>
