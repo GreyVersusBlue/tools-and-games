@@ -21,7 +21,7 @@ import { validate } from '../../engine/validate.js';
 import { repair } from '../../engine/repair.js';
 import { sampleSchool } from '../../data/sample-school.js';
 import {
-  SCENARIOS_MOST, mapScenarios, keptScenarios, scenarioProject, reconcile, applyChanges, applyLevers, leverRouteOptions,
+  SCENARIOS_MOST, mapScenarios, keptScenarios, scenarioProject, scenarioInputs, reconcile, applyChanges, applyLevers, leverRouteOptions,
   walkFigures, busiestOf, findingsOf, roomKeys, matchRooms, compareResults,
 } from '../../engine/scenario.js';
 import { createPipeline, scenarioRun } from '../../engine/worker.js';
@@ -716,4 +716,275 @@ test('a project with kept scenarios survives a clear of the schedule and an undo
   store.undo();
   assert.equal(store.project.scenarios.length, 2);
   assert.equal(store.project.scenarios[1].id, 'ekept00001');
+});
+
+// ---------------------------------------------------------------- SV2-113b: an older planner's edit, the open rules as they were, scenarioInputs, ids
+
+// An edit as the 7bfbac17 planner did it: the actions run on the project with
+// the open scenario only (the kept list is not theirs to rewrite), and the
+// kept scenarios are put back as they were.
+function asOlderPlanner(project, edit) {
+  const { scenarios, ...open } = project;
+  const store = storeOf(open);
+  edit(store);
+  return { ...store.project, scenarios };
+}
+
+const everyCell = (floorId) => Array.from({ length: school().building.floors.find((floor) => floor.id === floorId).cells.length }, (_, i) => i);
+
+test('an older planner\'s edit: a floor shrunk, a room, a group and a day type deleted with only the open scenario rewritten; validate finds nothing and repair says what it fixed', () => {
+  const project = withKept(['One', 'Two']);
+  project.scenarios[1].levers = [
+    { ...corridorLever(everyCell('fsample001')), name: 'Whole <b>floor</b>' },
+    releaseGroups([G8A]),
+    { kind: 'capacity', roomId: 'rsample204', capacity: 12 },
+    { kind: 'headCount', groupId: G8A, headCount: 20 },
+  ];
+  project.scenarios[1].changes = [move(G8A, 1, 'rsample204', B), move(G7C, 2, 'rsample204', B)];
+  project.scenarios[0].changes = [move(G8A, 1, 'rsample204', B)];
+  assertValid(project);
+  const edited = asOlderPlanner(project, (store) => {
+    store.apply(actions.resizeFloor, { floorId: 'fsample001', left: -17 });
+    store.apply(actions.deleteSpaces, { spaceIds: ['rsample204'] });
+    store.apply(actions.deleteGroup, { id: G8A });
+    store.apply(actions.deleteDayType, { dayTypeId: B });
+  });
+  assert.equal(edited.scenarios, project.scenarios, 'the kept scenarios were not touched');
+  const floor = edited.building.floors.find((candidate) => candidate.id === 'fsample001');
+  assert.ok(floor.cells.length < project.scenarios[1].levers[0].cells.length, 'the kept lever now holds more cells than the floor has');
+  assert.ok(!edited.groups.some((group) => group.id === G8A) && !edited.dayTypes.some((dayType) => dayType.id === B));
+  // validate: the shape only, so the saved project is not quarantined
+  assert.deepEqual(validate(edited), []);
+  // repair: the lever is cut to the floor and the note says whose it was; what points at deleted things is reconcile's
+  const { project: fixed, notes } = repair(edited);
+  assert.deepEqual(notes, ['Kept scenario 2: 1 closed corridor of the scenario held more cells than a floor has, and was cut to fit: Lever 1 of the scenario.']);
+  assert.equal(fixed.scenarios[1].levers[0].cells.length, floor.cells.length);
+  assert.equal(fixed.scenarios[1].levers[0].name, 'Whole <b>floor</b>', 'the name is never cut');
+  assert.equal(fixed.scenarios[0], edited.scenarios[0], 'a kept scenario with nothing to fix is the very same object');
+  assert.equal(fixed.scenarios[1].changes.length, 2, 'changes to a deleted group are left for reconcile');
+  assert.deepEqual(validate(fixed), []);
+  const gone = reconcile(fixed, fixed.scenarios[1]);
+  assert.equal(gone.changes.length, 0);
+  assert.equal(gone.dropped.length, 2);
+  // a lever past the largest floor there can be is a finding, in a kept scenario as in the open one
+  const huge = withKept(['One']);
+  huge.scenarios[0].levers = [{ ...corridorLever(Array.from({ length: 200 * 200 + 1 }, (_, i) => i)), floorId: 'fgone00001' }];
+  assert.deepEqual(validate(huge).map((finding) => finding.path), ['scenarios[0].levers[0]']);
+  const cut = repair(huge);
+  assert.equal(cut.project.scenarios[0].levers[0].cells.length, 200 * 200);
+  assert.match(cut.notes[0], /^Kept scenario 1: /);
+  // the open scenario is still judged against its own floor, as it always was
+  const open = withKept([]);
+  open.scenario.levers = [corridorLever(everyCell('fsample001').concat([560]))];
+  assert.deepEqual(validate(open).map((finding) => finding.path), ['scenario.levers[0]']);
+});
+
+test('repair names the kept scenario in every note about it, the shared helpers\' too', () => {
+  const project = withKept(['One', 'Two']);
+  project.scenarios[1].name = 5;
+  project.scenarios[1].changes = [move(G7C, 1, 'rsample204'), 7, null];
+  project.scenarios[0].changes = 'x';
+  const { notes } = repair(project);
+  assert.ok(notes.length >= 3, notes.join(' | '));
+  assert.ok(notes.some((note) => /^Kept scenario 2: the scenario name was not text/.test(note)), notes.join(' | '));
+  assert.ok(notes.some((note) => /^Kept scenario 2: 2 entries in the list of scenario changes/.test(note)), notes.join(' | '));
+  assert.ok(notes.some((note) => /^Kept scenario 1 had no list of changes and was removed/.test(note)), notes.join(' | '));
+  // the open scenario's own words are as they were
+  const open = withKept([]);
+  open.scenario.name = 5;
+  assert.match(repair(open).notes[0], /^The scenario name was not text and was reset\.$/);
+});
+
+// ---- the open scenario's rules, against the validate as it was before kept scenarios (970dd3a9)
+
+function oldValidateCopy() {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const engine = path.join(here, '..', '..', 'engine');
+  // engine/validate.js as it was at 970dd3a9, kept as a file: CI's checkout is shallow, so git cannot show it there
+  const source = readFileSync(path.join(here, '..', 'fixtures', 'validate-970dd3a9.js'), 'utf8');
+  const dir = mkdtempSync(path.join(tmpdir(), 'sv2-oldvalidate-'));
+  mkdirSync(path.join(dir, 'engine'));
+  for (const name of readdirSync(engine)) if (name.endsWith('.js')) writeFileSync(path.join(dir, 'engine', name), readFileSync(path.join(engine, name)));
+  writeFileSync(path.join(dir, 'engine', 'validate-old.js'), source);
+  return { dir, url: pathToFileURL(path.join(dir, 'engine', 'validate-old.js')).href };
+}
+
+test('the open scenario\'s rules in validate accept and refuse what validate 970dd3a9 did, finding for finding', async () => {
+  const old = oldValidateCopy();
+  try {
+    const oldValidate = (await import(old.url)).validate;
+    const withOpen = (open) => ({ ...school(), scenario: open });
+    const everyKind = scenarioNamed('Every kind', undefined, {
+      changes: [move(G7C, 1, 'rsample204'), { kind: 'swapPeriods', dayTypeId: A, groupId: G7C, periodA: 0, periodB: 1 }, { kind: 'swapRooms', dayTypeId: A, groupA: G6A, groupB: G7C, period: 2 }],
+      levers: [releaseGroups([G6A]), { kind: 'release', who: { grade: '7' }, seconds: 30, after: [1], dayTypeIds: [A] }, { kind: 'bell', dayTypeId: A, period: 6, start: '13:20', end: '14:08' }, { kind: 'capacity', roomId: 'rsample203', capacity: 12 }, { kind: 'headCount', groupId: G6A, headCount: 30 }, { kind: 'way', connectionId: 'csample00a', way: 'ab' }, corridorLever([13, 14, 15])],
+    });
+    const corpus = [
+      school(),
+      withOpen(null),
+      withOpen(everyKind),
+      withOpen('x'),
+      withOpen([]),
+      withOpen({ name: 5, changes: [], compared: null }),
+      withOpen({ name: 'x', changes: 'x', compared: null }),
+      withOpen({ name: 'x', changes: [{ kind: 'nope', dayTypeId: A }, null, { kind: 'move', dayTypeId: 5, groupId: 'g', period: -1, roomId: 'r' }], compared: null }),
+      withOpen({ name: 'x', changes: [], compared: { fileName: 5, addedGroups: [], removedGroups: [] } }),
+      withOpen({ name: 'x', changes: [] }),
+      withOpen({ name: 'x', changes: [], compared: null, levers: 'x' }),
+      withOpen({ name: 'x', changes: [], compared: null, levers: [null, { kind: 'zap' }, { kind: 'release', who: { groups: [] }, seconds: 5, after: null, dayTypeIds: null }, { kind: 'bell', period: 1, start: '1', end: '2' }, { kind: 'capacity', roomId: '', capacity: 12 }, { kind: 'headCount', groupId: G6A, headCount: 1.5 }, { kind: 'way', connectionId: 'c', way: 'up' }] }),
+      withOpen({ name: 'x', changes: [], compared: null, levers: [corridorLever([]), corridorLever([1.5]), { ...corridorLever([1]), name: 5 }, corridorLever(Array.from({ length: 561 }, (_, i) => i)), { ...corridorLever([1]), floorId: 'fnone', cells: Array.from({ length: 9000 }, (_, i) => i) }, { ...corridorLever([1]), floorId: '' }] }),
+      { ...withOpen(null), scenario: 7 },
+    ];
+    let refused = 0;
+    corpus.forEach((project, i) => {
+      const found = validate(project);
+      assert.deepEqual(found, oldValidate(project), 'project ' + i);
+      if (found.length > 0) refused += 1;
+    });
+    assert.ok(refused >= 8 && refused < corpus.length, 'the corpus has both: ' + refused);
+    assert.deepEqual(validate(corpus[2]), [], 'every change kind and lever kind is accepted');
+  } finally {
+    rmSync(old.dir, { recursive: true, force: true });
+  }
+});
+
+// ---- scenarioInputs
+
+test('scenarioInputs: { project, routeOptions } is what the lane runs for the open scenario, and scenarioProject is its project', () => {
+  const store = storeOf();
+  store.apply(newScenario, { name: 'Lab' });
+  store.apply(addScenarioChange, { change: move(G7C, 1, 'rsample204') });
+  store.apply(addScenarioLever, { lever: { kind: 'headCount', groupId: G6A, headCount: 30 } });
+  store.apply(addScenarioLever, { lever: { kind: 'way', connectionId: 'csample00a', way: 'closed' } });
+  store.apply(addScenarioLever, { lever: corridorLever([13, 14, 15, 16].map((x) => 7 * 40 + x)) });
+  const project = store.project;
+  assert.equal(scenarioInputs.length, 2);
+  const inputs = scenarioInputs(project, project.scenario);
+  assert.deepEqual(Object.keys(inputs).sort(), ['project', 'routeOptions']);
+  const real = createPipeline();
+  let seen = null;
+  const spy = { run: (given, versions, options) => { seen = { project: given, options }; return real.run(given, versions, options); } };
+  scenarioRun(spy, project, { geometry: 1, building: 1, schedule: 1 });
+  assert.deepEqual(seen.project, inputs.project, 'the project the lane runs');
+  assert.deepEqual(seen.options, inputs.routeOptions, 'and the route options it runs it with');
+  assert.notDeepEqual(inputs.routeOptions, leverRouteOptions(project, []), 'the building levers are in them');
+  assert.deepEqual(scenarioProject(project, project.scenario), inputs.project);
+  assert.deepEqual(inputs.routeOptions, leverRouteOptions(project, reconcile(project, project.scenario).levers));
+  const bare = scenarioInputs(school(), { name: 'Empty', changes: [], compared: null });
+  assert.deepEqual(bare.routeOptions, leverRouteOptions(school(), []));
+});
+
+// ---- ids and names in the actions
+
+test('withId is not a place to trip: no ctx gives no id and no TypeError; an explicit undefined or null id cannot overwrite the one made', () => {
+  const bare = { ...school(), scenario: scenarioNamed('Open') };
+  const noCtx = actions.newScenario({ ...bare }, { name: 'Next', keep: true });
+  assert.equal(noCtx.scenarios[0].name, 'Open');
+  assert.equal(noCtx.scenario.id, undefined);
+  assert.equal(noCtx.scenarios[0].id, undefined);
+  for (const id of [undefined, null, 5, {}]) {
+    const out = actions.newScenario({ ...school(), scenario: { ...scenarioNamed('Open'), id } }, { name: 'Next', keep: true }, ctx());
+    assert.ok(isId(out.scenarios[0].id, 'e'), 'a kept scenario whose id was ' + JSON.stringify(id) + ' has one now');
+    assert.ok(isId(out.scenario.id, 'e'));
+  }
+  const kept = actions.newScenario({ ...school(), scenario: scenarioNamed('Open', 'eopen00001') }, { name: 'Next', keep: true }, ctx());
+  assert.equal(kept.scenarios[0].id, 'eopen00001');
+  const project = withKept(['One']);
+  for (const [act, payload] of [[actions.duplicateScenario, {}], [actions.duplicateScenario, { id: 'ekept00000' }], [actions.openScenario, { id: 'ekept00000' }], [actions.renameScenario, { name: 'Z' }], [actions.deleteScenario, { id: 'ekept00000' }], [actions.newScenario, { replace: true }]]) {
+    assert.doesNotThrow(() => act(project, payload), act.name);
+  }
+  const copied = actions.duplicateScenario(project, {});
+  assert.equal(copied.scenarios[0].id, undefined, 'a copy made with no ids function has no id, never its source\'s');
+  assert.equal(copied.scenarios[0].name, 'Open (copy)');
+});
+
+test('scenario ids in the payloads: the open one\'s id names it, an id that is not a string names nothing, a typed name that another holds is refused', () => {
+  const project = withKept(['One', 'Two']);
+  const store = storeOf(project);
+  store.apply(duplicateScenario, { id: 'eopen00001' });
+  assert.deepEqual(names(store.project), ['Open', 'Open (copy)', 'One', 'Two'], 'the open one\'s own id duplicates the open one');
+  store.apply(renameScenario, { id: 'eopen00001', name: 'Renamed open' });
+  assert.equal(store.project.scenario.name, 'Renamed open');
+  assert.equal(store.project.scenario.id, 'eopen00001');
+  for (const id of [5, null, {}, [], true, '']) {
+    for (const act of [duplicateScenario, renameScenario, openScenario, deleteScenario]) {
+      const before = store.project;
+      assert.throws(() => store.apply(act, { id, name: 'Q' }), refusedWith('no-scenario'), act.name + ' ' + JSON.stringify(id));
+      assert.equal(store.project, before);
+    }
+  }
+  const odd = { ...school(), scenario: { ...scenarioNamed('Open'), id: 5 }, scenarios: [] };
+  assert.throws(() => actions.duplicateScenario(odd, { id: 5 }), refusedWith('no-scenario'));
+  assert.throws(() => actions.renameScenario(odd, { id: 5, name: 'Q' }), refusedWith('no-scenario'));
+  const twin = withKept(['One']);
+  twin.scenarios[0].id = 'eopen00001';
+  assert.equal(actions.renameScenario(twin, { id: 'eopen00001', name: 'Mine' }).scenario.name, 'Mine');
+  assert.throws(() => store.apply(newScenario, { name: ' renamed  OPEN ', keep: true }), refusedWith('name-taken'), 'a typed name that the open one holds');
+  assert.throws(() => store.apply(renameScenario, { id: 'ekept00000', name: 'renamed open' }), refusedWith('name-taken'));
+});
+
+test('setScenarioFromFile with keep and with replace: a typed name the open scenario holds is refused only when it is kept; ids are made for the new one and the kept one', () => {
+  const other = school();
+  other.groups = other.groups.slice(0, -1);
+  const project = withKept(['One']);
+  const payload = { project: other, fileName: 'next.json', name: 'Open' };
+  assert.throws(() => actions.setScenarioFromFile(project, { ...payload, keep: true }, ctx()), refusedWith('name-taken'), 'keep: the open one stays, so its name is taken');
+  const replaced = actions.setScenarioFromFile(project, { ...payload, replace: true }, ctx());
+  assert.equal(replaced.scenario.name, 'Open', 'replace: the open one goes, so its name is free');
+  assert.ok(isId(replaced.scenario.id, 'e'));
+  assert.notEqual(replaced.scenario.id, 'eopen00001');
+  assert.deepEqual(replaced.scenarios, project.scenarios);
+  const kept = actions.setScenarioFromFile(project, { ...payload, name: 'Fresh', keep: true }, ctx());
+  assert.equal(kept.scenarios[0].id, 'eopen00001');
+  assert.equal(kept.scenarios[0].name, 'Open');
+  assert.equal(kept.scenario.name, 'Fresh');
+  assert.ok(isId(kept.scenario.id, 'e') && kept.scenario.id !== 'eopen00001');
+  assert.throws(() => actions.setScenarioFromFile(project, { ...payload, name: ' one ', replace: true }, ctx()), refusedWith('name-taken'));
+  const noCtx = actions.setScenarioFromFile(project, { ...payload, name: 'Fresh', keep: true });
+  assert.equal(noCtx.scenario.id, undefined);
+  assert.equal(noCtx.scenarios[0].id, 'eopen00001');
+});
+
+test('kept scenarios with blank or repeated stored names (an older planner\'s) can be renamed and duplicated, and nothing trips on a list holding a non-object', () => {
+  const project = withKept(['Same', 'same', '  ', '']);
+  project.scenario.name = ' SAME ';
+  const store = storeOf(project);
+  assertValid(store.project);
+  store.apply(duplicateScenario, { id: 'ekept00002' });
+  assert.deepEqual(names(store.project).slice(0, 5), [' SAME ', 'Same', 'same', '  ', 'New scenario (copy)']);
+  store.apply(duplicateScenario, { id: 'ekept00003' });
+  assert.ok(names(store.project).includes('New scenario (copy 2)'), names(store.project).join('|'));
+  store.apply(renameScenario, { id: 'ekept00001', name: 'Third' });
+  assert.ok(names(store.project).includes('Third'));
+  assert.throws(() => store.apply(renameScenario, { id: 'ekept00000', name: 'THIRD' }), refusedWith('name-taken'));
+  store.apply(renameScenario, { id: 'ekept00002', name: 'Was blank' });
+  assert.ok(names(store.project).includes('Was blank'));
+  store.apply(renameScenario, { name: 'Open again' });
+  assert.equal(store.project.scenario.name, 'Open again');
+  const strange = withKept(['One']);
+  strange.scenarios = [null, 5, 'x', ...strange.scenarios];
+  const s2 = storeOf(strange);
+  assert.doesNotThrow(() => s2.apply(newScenario, { name: 'Two', keep: true }));
+  assert.doesNotThrow(() => s2.apply(duplicateScenario, { id: 'ekept00000' }));
+  assert.doesNotThrow(() => s2.apply(renameScenario, { id: 'ekept00000', name: 'Uno' }));
+  assert.throws(() => s2.apply(deleteScenario, { id: 'enone00000' }), refusedWith('no-scenario'));
+  assert.throws(() => s2.apply(openScenario, { id: 'enone00000' }), refusedWith('no-scenario'));
+  assert.throws(() => storeOf(strange).apply(renameScenario, { id: 'ekept00000', name: 'Open' }), refusedWith('name-taken'));
+  assert.equal(scheduleContents(strange).kept, 1, 'the clear counts the scenarios, not the junk');
+});
+
+test('mapScenarios: a callback that returns undefined leaves the scenario as it is, only null removes; the open one is not removed by null; non-objects are not handed to it', () => {
+  const project = withKept(['One', 'Two']);
+  assert.equal(mapScenarios(project, () => undefined), project, 'nothing returned, nothing changed');
+  const once = mapScenarios(project, (scenario) => (scenario.name === 'One' ? undefined : { ...scenario, tag: 1 }));
+  assert.deepEqual(names(once), ['Open', 'One', 'Two']);
+  assert.equal(once.scenarios[0], project.scenarios[0], 'the one the callback said nothing about is the same object');
+  assert.equal(once.scenarios[1].tag, 1);
+  assert.equal(once.scenario.tag, 1);
+  assert.deepEqual(names(mapScenarios(project, (scenario) => (scenario.name === 'Two' ? null : undefined))), ['Open', 'One']);
+  assert.equal(mapScenarios(project, () => null).scenario, project.scenario);
+  const strange = { ...project, scenarios: [null, 5, ...project.scenarios] };
+  const seen = [];
+  const same = mapScenarios(strange, (scenario) => { seen.push(scenario.name); return undefined; });
+  assert.equal(same, strange);
+  assert.deepEqual(seen, ['Open', 'One', 'Two']);
 });

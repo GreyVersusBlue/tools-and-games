@@ -95,8 +95,10 @@ before(async () => {
           if (key === 'current') plain.current = { id: record.project.id, savedAt: record.savedAt, openedAt: record.openedAt || null, exportedAt: record.exportedAt };
           else {
             const pictures = {};
-            for (const [id, value] of Object.entries(record.images)) pictures[id] = (await text(value)).text;
-            plain.shelf[key] = { id: record.project.id, label: record.project.label, shelvedAt: record.shelvedAt, savedAt: record.savedAt, bytes: record.bytes, pictures };
+            const kept = record && typeof record === 'object' ? record : {};
+            const inside = kept.project && typeof kept.project === 'object' ? kept.project : {};
+            for (const [id, value] of Object.entries(kept.images || {})) pictures[id] = (await text(value)).text;
+            plain.shelf[key] = { id: inside.id, label: inside.label, shelvedAt: kept.shelvedAt, savedAt: kept.savedAt, bytes: kept.bytes, pictures };
           }
         }
         for (const [id, value] of Object.entries(images)) plain.images[id] = (await text(value)).text;
@@ -306,7 +308,7 @@ test('the refusals: a newer current, a shelf copy of the open project, the open 
   assert.equal(result.switchFull, null, 'switching keeps the count, so a full shelf still switches');
 });
 
-test('the list, a rename, a delete and the ids on the shelf; a record that is not a project is left out of the list', async () => {
+test('the list, a rename, a delete and the ids on the shelf; a damaged record is listed as unreadable', async () => {
   const result = await page.evaluate(async () => {
     const a = globalThis.lab.project('pa', 'This year', ['iaaaa']);
     const b = globalThis.lab.project('pb', '', []);
@@ -337,7 +339,13 @@ test('the list, a rename, a delete and the ids on the shelf; a record that is no
     const tx = handle2.main.transaction('project', 'readwrite');
     tx.objectStore('project').put('not a record', 'shelf:stray');
     await new Promise((resolve) => { tx.oncomplete = resolve; });
-    out.listWithStray = (await handle2.listShelf()).map((one) => one.id);
+    const damaged = handle2.main.transaction('project', 'readwrite');
+    damaged.objectStore('project').put({ savedAt: 's', shelvedAt: 'z', bytes: 7, project: 'text' }, 'shelf:noproject');
+    damaged.objectStore('project').put(null, 'shelf:nothing');
+    await new Promise((resolve) => { damaged.oncomplete = resolve; });
+    out.listWithStray = (await handle2.listShelf()).map((one) => [one.id, one.unreadable === true, one.label, one.bytes]);
+    out.fullListed = (await handle2.listShelf()).find((one) => one.id === 'noproject');
+    out.plainHasNoFlag = 'unreadable' in (await handle2.listShelf()).find((one) => one.id === 'pa');
     out.idsWithStray = (await handle2.shelfIds()).sort();
     return out;
   });
@@ -363,8 +371,148 @@ test('the list, a rename, a delete and the ids on the shelf; a record that is no
   assert.equal(result.deletedAgain, false);
   assert.deepEqual(result.idsAfter, ['pa']);
   assert.equal(result.currentAfter, 'pc', 'the open project is untouched by any of it');
-  assert.deepEqual(result.listWithStray, ['pa']);
-  assert.deepEqual(result.idsWithStray, ['pa', 'stray'], 'the ids are every key under the prefix');
+  assert.deepEqual(result.listWithStray, [['noproject', true, '', 7], ['pa', false, 'Next year\'s plan', result.listWithStray[1][3]], ['nothing', true, '', 0], ['stray', true, '', 0]], 'damaged records are listed, flagged, with the id from the key (shelvedAt order, blanks last)');
+  assert.equal(result.fullListed.savedAt, 's');
+  assert.equal(result.plainHasNoFlag, false, 'a readable record has no unreadable key');
+  assert.deepEqual(result.idsWithStray, ['noproject', 'nothing', 'pa', 'stray'], 'the ids are every key under the prefix, so the list and the count agree');
+});
+
+test('a request that fails by itself inside a move aborts the whole move: both projects where they were, every image intact', async () => {
+  const result = await page.evaluate(async () => {
+    const { db } = globalThis.lab;
+    const handle = await globalThis.lab.fresh();
+    const a = globalThis.lab.project('pa', 'This year', ['iaaaa']);
+    const b = globalThis.lab.project('pb', 'Next year', ['ibbbb']);
+    const seeded = await globalThis.lab.seed(a, { iaaaa: 'bytes of A' });
+    const bHeld = new Map([['ibbbb', globalThis.lab.image('bytes of B')]]);
+    const known = await handle.shelveAndStart(a, b, seeded.known, { images: seeded.held, freshImages: bHeld });
+    const out = { before: await globalThis.lab.everything() };
+    db.hooks.failSwitchRequest = true;
+    out.switchTo = await globalThis.lab.refusal(handle.switchTo('pa', b, known, { images: bHeld }));
+    out.start = await globalThis.lab.refusal(handle.shelveAndStart(b, globalThis.lab.project('pc', 'C', ['icccc']), known, { images: bHeld, freshImages: new Map([['icccc', globalThis.lab.image('bytes of C')]]) }));
+    db.hooks.failSwitchRequest = false;
+    out.after = await globalThis.lab.everything();
+    out.worked = await globalThis.lab.refusal(handle.switchTo('pa', b, known, { images: bHeld }));
+    out.now = (await globalThis.lab.everything()).current.id;
+    return out;
+  });
+  assert.equal(result.switchTo && result.switchTo.name, 'ConstraintError', 'the promise rejects with the failed request\'s own error');
+  assert.equal(result.start && result.start.name, 'ConstraintError');
+  assert.deepEqual(result.after, result.before, 'nothing of the move was kept: current, the shelf, every image and the shelf record\'s bytes as they were');
+  assert.equal(result.worked, null);
+  assert.equal(result.now, 'pa');
+});
+
+test('a switch is refused, nothing moving, when the target record cannot be read as the project it is kept under', async () => {
+  const result = await page.evaluate(async () => {
+    const handle = await globalThis.lab.fresh();
+    const a = globalThis.lab.project('pa', 'A', ['iaaaa']);
+    const b = globalThis.lab.project('pb', 'B', []);
+    const seeded = await globalThis.lab.seed(a, { iaaaa: 'bytes of A' });
+    const known = await handle.shelveAndStart(a, b, seeded.known, { images: seeded.held });
+    const put = async (key, value) => {
+      const tx = handle.main.transaction('project', 'readwrite');
+      tx.objectStore('project').put(value, key);
+      await new Promise((resolve) => { tx.oncomplete = resolve; });
+    };
+    const out = { before: null, cases: {} };
+    out.before = await globalThis.lab.everything();
+    const raw = { savedAt: known, exportedAt: null, shelvedAt: known, bytes: 1, images: {} };
+    const damage = {
+      noProject: { ...raw },
+      projectText: { ...raw, project: 'text' },
+      projectList: { ...raw, project: [] },
+      noId: { ...raw, project: { label: 'x' } },
+      idNumber: { ...raw, project: { id: 5 } },
+      idMismatch: { ...raw, project: { id: 'other' } },
+      notObject: 'a string',
+    };
+    for (const [name, record] of Object.entries(damage)) {
+      await put('shelf:pz', record);
+      const before = await globalThis.lab.everything();
+      const error = await globalThis.lab.refusal(handle.switchTo('pz', b, known, {}));
+      const after = await globalThis.lab.everything();
+      out.cases[name] = { code: error && error.code, same: JSON.stringify(before) === JSON.stringify(after), shelf: Object.keys(after.shelf), current: after.current.id };
+    }
+    // a record that is as it should be does open
+    await put('shelf:pz', { ...raw, project: globalThis.lab.project('pz', 'Z', []) });
+    out.ok = await globalThis.lab.refusal(handle.switchTo('pz', b, known, {}));
+    out.opened = (await globalThis.lab.everything()).current.id;
+    return out;
+  });
+  for (const [name, one] of Object.entries(result.cases)) {
+    assert.equal(one.code, 'unreadable-target', name);
+    assert.equal(one.same, true, name + ': nothing moved');
+    assert.equal(one.current, 'pb', name);
+    assert.deepEqual(one.shelf, ['shelf:pa', 'shelf:pz'], name);
+  }
+  assert.equal(Object.keys(result.cases).length, 7);
+  assert.equal(result.ok, null);
+  assert.equal(result.opened, 'pz');
+});
+
+test('deleteShelved and renameShelved honour the write hook; a rename takes a blank, 60 and 61 characters', async () => {
+  const result = await page.evaluate(async () => {
+    const { db } = globalThis.lab;
+    const handle = await globalThis.lab.fresh();
+    const a = globalThis.lab.project('pa', 'A', []);
+    const b = globalThis.lab.project('pb', 'B', []);
+    const seeded = await globalThis.lab.seed(a, {});
+    await handle.shelveAndStart(a, b, seeded.known, {});
+    const out = {};
+    db.hooks.failWrite = 'The disk is full.';
+    out.deleteFail = await globalThis.lab.refusal(handle.deleteShelved('pa'));
+    out.renameFail = await globalThis.lab.refusal(handle.renameShelved('pa', 'New'));
+    db.hooks.failWrite = null;
+    out.still = (await handle.readShelved('pa')).project.label;
+    out.blank = await handle.renameShelved('pa', '   ');
+    out.blankStored = (await handle.readShelved('pa')).project.label;
+    out.sixty = (await handle.renameShelved('pa', 'x'.repeat(60))).length;
+    out.padded = (await handle.renameShelved('pa', '  ' + 'y'.repeat(60) + '  ')).length;
+    out.sixtyOne = await globalThis.lab.refusal(handle.renameShelved('pa', 'z'.repeat(61)));
+    out.afterLong = (await handle.readShelved('pa')).project.label.length;
+    out.deleted = await handle.deleteShelved('pa');
+    return out;
+  });
+  assert.equal(result.deleteFail.message, 'The disk is full.');
+  assert.equal(result.renameFail.message, 'The disk is full.');
+  assert.equal(result.still, 'A', 'neither touched the record');
+  assert.equal(result.blank, '');
+  assert.equal(result.blankStored, '', 'a blank label is stored as blank (the school name shows instead)');
+  assert.equal(result.sixty, 60);
+  assert.equal(result.padded, 60, 'trimmed first, so padding does not count');
+  assert.equal(result.sixtyOne.type, true);
+  assert.equal(result.afterLong, 60, 'the refused label changed nothing');
+  assert.equal(result.deleted, true, 'the delete works once the hook is off');
+});
+
+test('the trim right after a switch: another project\'s points above 3 go even when the store holds 8 or fewer', async () => {
+  const result = await page.evaluate(async () => {
+    const { recovery } = globalThis.lab;
+    const handle = await globalThis.lab.fresh();
+    const projects = { pa: globalThis.lab.project('pa', 'A', []), pb: globalThis.lab.project('pb', 'B', []) };
+    let n = 0;
+    const take = (id, open) => {
+      n += 1;
+      const point = recovery.buildPoint(projects[id], 'timer', '2026-11-14T10:00:00.000Z', null);
+      point.sequence = n;
+      return handle.addPoint(point, undefined, open);
+    };
+    const kept = async () => (await handle.listPoints()).map((point) => point.project.id + point.sequence);
+    const out = {};
+    for (let i = 0; i < 5; i += 1) await take('pa', 'pa');
+    out.five = await kept();
+    // B is opened: its first point makes 6 in all, and A (now another project) holds 5
+    await take('pb', 'pb');
+    out.afterSwitch = await kept();
+    // nothing to trim: 3 of A and 2 of B stay as they are
+    await take('pb', 'pb');
+    out.quiet = await kept();
+    return out;
+  });
+  assert.deepEqual(result.five, ['pa5', 'pa4', 'pa3', 'pa2', 'pa1']);
+  assert.deepEqual(result.afterSwitch, ['pb6', 'pa5', 'pa4', 'pa3'], 'A keeps its newest 3');
+  assert.deepEqual(result.quiet, ['pb7', 'pb6', 'pa5', 'pa4', 'pa3']);
 });
 
 test('the open project\'s images come from the ones given, the store is asked only for the rest, and an image the device lost is left out', async () => {

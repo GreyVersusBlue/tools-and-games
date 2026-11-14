@@ -61,7 +61,7 @@ export function filesCard(ctx) {
   // what the last export or import came to: { kind: 'done' | 'refused', text, notes }
   let said = null;
 
-  const lead = h('p', { class: 'card__lead' }, 'A project file is the whole project in one file: the settings, the building with its traced images, the teachers, the groups and their schedule, the scenario and the accepted findings. Export one to keep somewhere safe or to hand to a colleague.');
+  const lead = h('p', { class: 'card__lead' }, 'A project file is the whole project in one file: the settings, the building with its traced images, the teachers, the groups and their schedule, the scenarios and the accepted findings. Export one to keep somewhere safe or to hand to a colleague.');
   const result = h('div', { data: { line: 'result' }, hidden: true });
 
   function say(kind, text, notes) {
