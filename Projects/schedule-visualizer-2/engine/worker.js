@@ -134,7 +134,7 @@ import { loads } from './load.js';
 import { places } from './places.js';
 import { checkSchedule } from './checks.js';
 import { buildingChecks } from './building-checks.js';
-import { applyChanges, applyLevers, leverRouteOptions, reconcile, scenarioProject, trimResult } from './scenario.js';
+import { scenarioInputs, trimResult } from './scenario.js';
 import { suggest } from './suggest.js';
 
 export const REQUEST = 'sv2-derive';
@@ -426,11 +426,10 @@ export function runResults(result, dayTypeId, bellsId) {
 // out a change or lever whose group, room, day type or period is gone, one a
 // later one replaces, and one the schedule already has), run on `pipeline`, trimmed
 // to what compareResults reads. The project handed in is not changed. With
-// no scenario open, the project as it is.
+// no scenario open, the project as it is. It is keptRun of the open scenario,
+// so the open and the kept runs cannot drift apart.
 export function scenarioRun(pipeline, project, versions) {
-  const kept = reconcile(project, project.scenario);
-  const levers = kept.levers || [];
-  return trimResult(pipeline.run(applyLevers(applyChanges(project, kept.changes), levers), versions, leverRouteOptions(project, levers)));
+  return keptRun(pipeline, project, project.scenario, versions);
 }
 
 // The suggestion lane's answer: suggest() run on `pipeline`, which must not
@@ -442,15 +441,15 @@ export function suggestRun(pipeline, project, versions, finding, options) {
 }
 
 // The kept-scenario lane's answer (ARCHITECTURE 21.2, 21.10): the project as
-// the kept scenario `scenario` would make it (scenarioProject: the changes
+// the kept scenario `scenario` would make it (scenarioInputs: the changes
 // that still apply, then its levers that do), run with that scenario's
 // building levers as route options, trimmed to what compareResults reads.
 // Run on its own pipeline (which may share the main lane's route cache).
 // The project and the scenario handed in are not changed; `scenario` need
 // not be the open one, and the project's open scenario is not read.
 export function keptRun(pipeline, project, scenario, versions) {
-  const levers = reconcile(project, scenario).levers || [];
-  return trimResult(pipeline.run(scenarioProject(project, scenario), versions, leverRouteOptions(project, levers)));
+  const inputs = scenarioInputs(project, scenario);
+  return trimResult(pipeline.run(inputs.project, versions, inputs.routeOptions));
 }
 
 // The other-building lane's answer (ARCHITECTURE 21.3, 21.10): the other
