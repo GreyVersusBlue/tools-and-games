@@ -96,6 +96,11 @@
 //         answer is keptRun(): trimResult() of the project as the kept
 //         scenario `scenario` (one of project.scenarios) would make it,
 //         under that scenario's building levers as route options
+//   in    { type: 'sv2-kept-close' }
+//         the page has asked for no kept scenario for a while (or is closing):
+//         the kept pipeline's held run is let go, and made again with the next
+//         sv2-derive-kept. The route cache it shares is the main lane's and
+//         stays. No answer.
 //   in    { type: 'sv2-derive-other', generation, comparison, project?, versions }
 //   out   { type: 'sv2-derived-other', generation, ok, answer | error }
 //         answer is otherRun(): trimResult() of the other building's project
@@ -149,6 +154,7 @@ export const KEPT_ANSWER = 'sv2-derived-kept';
 export const OTHER_REQUEST = 'sv2-derive-other';
 export const OTHER_ANSWER = 'sv2-derived-other';
 export const OTHER_CLOSE = 'sv2-other-close';
+export const KEPT_CLOSE = 'sv2-kept-close';
 
 // The parts of a result that are kept or sent whole.
 export const WHOLE_PARTS = ['places', 'walks', 'findings', 'buildingFindings'];
@@ -589,7 +595,8 @@ if (scope) {
   const pipeline = createPipeline();
   const scenarioPipeline = createPipeline({ cache: pipeline.cache });
   const suggestionPipeline = createPipeline({ cache: pipeline.cache });
-  const keptPipeline = createPipeline({ cache: pipeline.cache });
+  // made when a kept request comes and let go by KEPT_CLOSE; it shares the main lane's route cache
+  let keptPipeline = null;
   // no cache argument: the other building's routes are kept apart from this one's
   const otherPipeline = createPipeline();
   let otherHeld = null; // { comparison, project }: the last one sent
@@ -609,12 +616,17 @@ if (scope) {
     }
     if (message && message.type === KEPT_REQUEST) {
       try {
+        if (!keptPipeline) keptPipeline = createPipeline({ cache: pipeline.cache });
         const answer = keptRun(keptPipeline, message.project, message.scenario, message.versions);
         scope.postMessage({ type: KEPT_ANSWER, generation: message.generation, ok: true, answer });
       } catch (error) {
-        keptPipeline.clear();
+        if (keptPipeline) keptPipeline.clear();
         scope.postMessage({ type: KEPT_ANSWER, generation: message.generation, ok: false, error: said(error) });
       }
+      return;
+    }
+    if (message && message.type === KEPT_CLOSE) {
+      keptPipeline = null;
       return;
     }
     if (message && message.type === OTHER_REQUEST) {
