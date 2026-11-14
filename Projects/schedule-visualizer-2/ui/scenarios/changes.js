@@ -74,7 +74,8 @@ export function changesPanel(env) {
   const chips = h('ul', { class: 'scn-chips', 'aria-labelledby': 'scenario-chips-title', data: { part: 'chips' } });
   const none = h('p', { class: 'scn-none', hidden: true }, 'No changes yet. Add one below.');
   // what the last action said about itself (a change that cancelled itself)
-  const status = h('p', { class: 'scn-status', role: 'status', data: { part: 'status' } });
+  // the visible line; the page's one live region (ctx.announce) says it aloud
+  const status = h('p', { class: 'scn-status', data: { part: 'status' } });
 
   const droppedTitle = h('h2', { class: 'scn-panel__title', id: 'scenario-dropped-title' }, 'No longer applies');
   const droppedNote = h('p', { class: 'scn-dropped__note' }, 'The schedule has changed under these. They are skipped when you apply, and come back if the change under them is undone.');
@@ -128,9 +129,12 @@ export function changesPanel(env) {
       ctx.announce(why);
       return;
     }
+    const had = new Set((Array.isArray(env.project().scenarios) ? env.project().scenarios : []).map((scenario) => scenario && scenario.id));
     if (!env.apply(duplicateScenario, {})) return;
-    const kept = env.project().scenarios;
-    const copy = Array.isArray(kept) && kept.length > 0 ? scenarioName(kept[0]) : '';
+    // the copy is the kept scenario that was not there before, found by its id
+    const now = env.project().scenarios;
+    const made = Array.isArray(now) ? now.find((scenario) => scenario && !had.has(scenario.id)) : null;
+    const copy = made ? scenarioName(made) : '';
     const text = 'Duplicated ' + (view ? view.name : '') + ' as ' + copy + '. It is kept under Other scenarios.';
     status.textContent = text;
     ctx.announce(text);

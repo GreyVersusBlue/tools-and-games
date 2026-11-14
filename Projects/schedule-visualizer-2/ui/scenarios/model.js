@@ -790,6 +790,7 @@ export function comparedSentence(name, compare) {
 }
 
 export const SWITCHED_TO_COMPARED = 'You switched to the scenario you were comparing with, so it is now compared with the real schedule.';
+export const CHOICE_GONE = 'The scenario you chose to compare with is gone, so it is compared with the real schedule.';
 export const COMPARED_GONE = 'The scenario you were comparing with is gone, so it is now compared with the real schedule.';
 
 // What Switch to says: "Switched to Stagger 8th grade. Move 7th grade is kept."

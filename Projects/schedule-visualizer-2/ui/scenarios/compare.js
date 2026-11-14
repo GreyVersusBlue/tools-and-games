@@ -28,7 +28,7 @@ import { h } from '../components/dom.js';
 import { count } from '../components/words.js';
 import { ownDayTypes } from '../../engine/day-types.js';
 import { bellSchedulesOf } from '../../engine/schema.js';
-import { figureRows, groupRows, placeRow, transitionChoices, optionText, REAL_SCHEDULE, scenarioName } from './model.js';
+import { figureRows, groupRows, placeRow, transitionChoices, optionText, REAL_SCHEDULE, CHOICE_GONE, scenarioName } from './model.js';
 import { keptScenarios } from '../../engine/scenario.js';
 
 // how long the Compare with select waits for a further change before it acts
@@ -69,10 +69,16 @@ export function comparePanel(env) {
   const withSelect = h('select', { class: 'field__input', id: 'scenario-compare-with', data: { key: 'scenario-compare-with' } });
   const withField = h('div', { class: 'field scn-compare__with', hidden: true, data: { field: 'compare-with' } }, h('label', { class: 'field__label', for: 'scenario-compare-with' }, 'Compare with'), withSelect);
   let settling = null;
+  // what the select shows while its choice settles ('' for the real schedule)
+  let pendingChoice = '';
+  // the sentence for a choice that went away while it settled
+  let goneNote = '';
   let lastState = null;
   withSelect.addEventListener('change', () => {
     const value = withSelect.value === '' ? null : withSelect.value;
     clearTimeout(settling);
+    goneNote = '';
+    pendingChoice = withSelect.value;
     if (value === env.memory.compareWith) {
       settling = null;
       delete element.dataset.settling;
@@ -200,6 +206,21 @@ export function comparePanel(env) {
     if (key !== withKey) {
       withKey = key;
       withSelect.replaceChildren(h('option', { value: '' }, REAL_SCHEDULE), ...kept.map((scenario) => h('option', { value: scenario.id, title: scenarioName(scenario) }, optionText(scenarioName(scenario)))));
+      // rebuilding the options put the select back on its first; the choice
+      // that was settling stands if it is still there, else it is let go
+      if (settling !== null) {
+        if (pendingChoice === '' || kept.some((scenario) => scenario.id === pendingChoice)) withSelect.value = pendingChoice;
+        else {
+          clearTimeout(settling);
+          settling = null;
+          delete element.dataset.settling;
+          pendingChoice = '';
+          goneNote = CHOICE_GONE;
+          withSelect.value = '';
+          // back to the real schedule, once this drawing is done
+          queueMicrotask(() => env.chooseCompare(null, true));
+        }
+      }
     }
     withField.hidden = kept.length === 0;
     // while a choice settles, the select shows what was chosen, not the memory
@@ -231,7 +252,7 @@ export function comparePanel(env) {
     if (state.failed) status.textContent = 'The comparison could not be worked out: ' + state.failed + (state.compare ? ' The figures below are from before your last change.' : '');
     else if (working) status.textContent = 'Working out the comparison…';
     else if (state.pending) status.textContent = state.compare ? 'Working out the comparison again. The figures below are from before your last change.' : 'Working out the comparison…';
-    else status.textContent = state.noted || '';
+    else status.textContent = state.noted || goneNote;
     if (working) {
       // the old figures were for another Before side: none is shown
       shownCompare = null;

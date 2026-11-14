@@ -86,7 +86,8 @@ function partsToText(parts) {
 //     "at its busiest in one transition, on A Day" for the whole day,
 //     "in Period 2 to Period 3, on A Day" for one transition; under a bell
 //     schedule the day says so: "on A Day with Early Release bells"
-//   sidesWords(info)   "Before 12, after 26 students, <when>."
+//   sidesWords(info)   "Before 12, after 26 students, <when>."; against a kept
+//     scenario (info.beforeName) "Stagger 8th grade: 12, after: 26 students, <when>."
 //   apartLabel(side, transition)
 //     "Walk here only before: " for one transition,
 //     "Over the day, walk here only before: " for the whole day (null)
@@ -107,6 +108,8 @@ export function whenWords(project, transition, dayTypeId, bellsId) {
 }
 
 export function sidesWords(info) {
+  // against a kept scenario the first side is called by its name, as typed
+  if (typeof info.beforeName === 'string' && info.beforeName !== '') return info.beforeName + ': ' + info.before + ', after: ' + info.after + ' ' + unitWord(info.unit, info.after) + ', ' + info.when + '.';
   return 'Before ' + info.before + ', after ' + info.after + ' ' + unitWord(info.unit, info.after) + ', ' + info.when + '.';
 }
 
@@ -242,11 +245,13 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
   const title = h('h3', { class: 'scn-compare__heading', id: 'scenario-difference-title' });
   const key = h('p', { class: 'scn-compare__note', data: { part: 'difference-key' } });
   const tableBody = h('tbody');
+  // the Before column's heading: the kept scenario compared with, as typed, else "Before"
+  const beforeHead = h('th', { scope: 'col', data: { part: 'difference-before-heading' } }, 'Before');
   const table = h('table', { class: 'scn-table scn-difference', data: { part: 'difference-table' } },
     h('caption', { class: 'vh' }, 'The ' + DIFFERENCE_TOP + ' largest changes on the difference map, largest first'),
     // five columns in the inspector's 320 px, at the shares of scenarios.css's
     // .scn-difference, the figures' headings over their figures at the right
-    h('thead', null, h('tr', null, ...['Place', 'Floor', 'Before', 'After', 'Change'].map((text) => h('th', { scope: 'col' }, text)))),
+    h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Place'), h('th', { scope: 'col' }, 'Floor'), beforeHead, h('th', { scope: 'col' }, 'After'), h('th', { scope: 'col' }, 'Change'))),
     tableBody);
   const note = h('p', { class: 'scn-compare__note', data: { part: 'difference-note' } });
   // laid out as the comparison above it is (its padding and spacing)
@@ -275,6 +280,8 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
     const project = held.project;
     if (!difference || !project) {
       tableBody.replaceChildren();
+      // no picture: the legend names no side
+      key.replaceChildren();
       if (failed === null) {
         section.hidden = true;
         return;
@@ -290,6 +297,9 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
     section.hidden = false;
     key.hidden = false;
     section.dataset.against = held.beforeOf ? held.beforeOf.name : '';
+    beforeHead.replaceChildren(held.beforeOf ? h('bdi', null, held.beforeOf.name) : 'Before');
+    if (held.beforeOf) beforeHead.title = held.beforeOf.name;
+    else beforeHead.removeAttribute('title');
     const unit = difference.unit;
     title.textContent = difference.transition === null
       ? 'Corridors that change most over the day'
@@ -502,6 +512,7 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
       dayTypeId,
       excluded: Boolean(difference.excluded && difference.excluded[node]),
       groups: groupsApart(node, dayTypeId),
+      beforeName: held.beforeOf ? held.beforeOf.name : null,
     };
   }
 

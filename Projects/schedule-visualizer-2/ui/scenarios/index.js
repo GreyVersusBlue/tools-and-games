@@ -142,7 +142,23 @@ export const section = {
     // beforeOf is { result, versions, changes, name, scenario } while the Before side
     // is a kept scenario's; working is set from the moment that side changes
     // until its answer is in; noted is the sentence the answer came to
-    const lane = { compare: null, answer: null, pending: false, failed: null, asked: 0, key: null, beforeOf: null, working: false, noted: null };
+    const lane = { compare: null, answer: null, pending: false, failed: null, asked: 0, key: null, beforeOf: null, working: false, noted: null, sayReal: false };
+
+    // A row of the Other scenarios strip that changes the project places the
+    // focus itself (the open scenario's name, the next row's button), and says
+    // its own sentence. While it runs, the drawing it causes neither parks the
+    // focus on the name field on its way (a focus event there is heard by a
+    // screen reader) nor says the compare-reset sentence on its own: the
+    // strip's one sentence has it (15.9 items 8 and 11).
+    let placing = 0;
+    function placeFocus(work) {
+      placing += 1;
+      try {
+        return work();
+      } finally {
+        placing -= 1;
+      }
+    }
 
     const graphNow = () => store.derived.get('graph', ['building'], (project) => buildGraph(project));
 
@@ -180,6 +196,7 @@ export const section = {
       memory,
       project: () => store.project,
       apply: run,
+      placeFocus,
       add,
       addLever,
       // the Kind of change fieldset: where the focus goes when the last chip is taken out
@@ -516,13 +533,15 @@ export const section = {
     }
 
     // Compare with, after the select settled (400 ms): a kept scenario or null
-    function chooseCompare(id) {
+    function chooseCompare(id, letGo) {
       if (gone) return;
       const next = id === null || keptScenarios(store.project).some((scenario) => scenario && scenario.id === id) ? id : null;
       if (next === memory.compareWith) {
         drawCompare();
         return;
       }
+      // back to the real schedule by choice: its status sentence is said too
+      lane.sayReal = next === null && letGo !== true;
       memory.compareWith = next;
       askIfChanged();
     }
@@ -535,6 +554,7 @@ export const section = {
       const text = why === 'gone' ? COMPARED_GONE : open && open.id === memory.compareWith ? SWITCHED_TO_COMPARED : COMPARED_GONE;
       memory.compareWith = null;
       lane.noted = null;
+      lane.sayReal = false;
       ctx.announce(text);
       if (view && !gone) askIfChanged();
     }
@@ -557,6 +577,11 @@ export const section = {
         lane.compare = null;
         lane.noted = null;
         lane.working = true;
+        // and the difference map and its legend: they are drawn from the last
+        // answer and its Before side, which are the old side's until the new
+        // answer lands (the map is blank and the legend gone meanwhile)
+        lane.answer = null;
+        lane.beforeOf = null;
       }
       drawCompare();
       // drawn first: the options settle to the project (a day type gone is none)
@@ -581,9 +606,16 @@ export const section = {
           const changes = answer.changes.concat(theirs.changes);
           const levers = (answer.levers || []).concat(theirs.levers || []);
           compared = compareResults(kept.result, answer.result, { ...options, changes, levers });
+          // kept.result holds every day type's loads and every bell schedule's
+          // run, as the open scenario's does (both are pipeline.run() of a whole
+          // project, trimmed; engine/worker.js keptRun, scenarioRun), so
+          // compareResults reads the same day type and bells from both
           beforeOf = { result: kept.result, versions: kept.versions, changes: theirs.changes, name: scenarioName(target), scenario: target };
           noted = comparedSentence(beforeOf.name, compared);
         }
+        // the real schedule, chosen by hand: it too says what it came to
+        if (!target && compared && lane.sayReal) noted = comparedSentence('the real schedule', compared);
+        lane.sayReal = false;
         lane.pending = false;
         lane.working = false;
         lane.answer = answer;
@@ -708,7 +740,9 @@ export const section = {
         const text = open && open.id === memory.compareWith ? SWITCHED_TO_COMPARED : COMPARED_GONE;
         memory.compareWith = null;
         lane.noted = null;
-        ctx.announce(text);
+        lane.sayReal = false;
+        // the strip's own sentence has it when a row of the strip did this
+        if (placing === 0) ctx.announce(text);
       }
       const f = figures(project);
       const nothing = f.rooms === 0 || f.groups === 0;
@@ -767,7 +801,7 @@ export const section = {
         drawCompare();
       }
       plan.setProject(project, graphNow());
-      if (held && (!held.isConnected || held.closest('[hidden]'))) changes.focusName();
+      if (placing === 0 && held && (!held.isConnected || held.closest('[hidden]'))) changes.focusName();
     }
 
     refresh();

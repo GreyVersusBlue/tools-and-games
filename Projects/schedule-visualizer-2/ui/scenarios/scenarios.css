@@ -273,11 +273,13 @@
   gap: var(--s-2);
 }
 
-/* a finger's target on a phone or a coarse pointer */
-@media (max-width: 639.98px), (pointer: coarse) {
+/* a finger's target on a phone, a coarse pointer, or a short window (a phone
+   on its side asks by touch even where the pointer reads as fine) */
+@media (max-width: 639.98px), (max-height: 420px), (pointer: coarse) {
   .scn-bar .btn,
   .scn-panel .btn,
   .scn-panel .field__input,
+  .scn-compare__options .field__input,
   .scn-panel .seg__option {
     min-height: 44px;
   }
