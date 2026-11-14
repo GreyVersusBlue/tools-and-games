@@ -444,6 +444,18 @@ test('snapshots: a snapshot of a project no longer here is listed apart with Exp
   assert.equal(await page.$eval(row + ' [data-line="of-project"] bdi', (el) => el.textContent.length > 0), true);
   assert.equal(await page.$eval(row + ' .snap__name bdi', (el) => el.textContent), 'Sample day <i>two</i>', 'a name is text');
   const before = await counts(page);
+  // a plain restore of it is refused by the storage itself, whatever the card offers
+  const plain = await page.evaluate(async (snapshotId) => {
+    const { pageSnapshots } = await import(new URL('storage/snapshots.js', document.baseURI).href);
+    try {
+      await pageSnapshots().restore(snapshotId);
+      return 'restored';
+    } catch (error) {
+      return error.code;
+    }
+  }, id);
+  assert.equal(plain, 'other-project');
+  assert.deepEqual(await counts(page), before, 'and nothing moved');
   // the stale case: the project is kept after all by the time the button is pressed
   const record = await current(page);
   await write(page, 'sv2', 'project', 'put', { savedAt: record.savedAt, project: { ...record.project, id: gone, label: 'Kept twin' }, exportedAt: null, shelvedAt: record.savedAt, bytes: 1, images: {} }, 'shelf:' + gone);

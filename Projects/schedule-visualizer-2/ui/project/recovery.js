@@ -97,26 +97,25 @@ export function recoveryCard(ctx) {
     problem(answer.text);
   }
 
-  // Plain Restore, for the open project's own points. A point whose project has
-  // since been put on the shelf (the list was drawn before) is refused first.
+  // Plain Restore, for the open project's own points. The session decides (a point
+  // is only applied over its own project): a point whose project has since been put
+  // on the shelf, or is neither open nor kept, comes back with its code and is sent
+  // the way a row of another project goes.
   async function restorePlain(point, opener) {
     problem('');
-    if (typeof point.projectId === 'string' && point.projectId !== '' && point.projectId !== ctx.store.project.id) {
-      let held = null;
-      try {
-        const label = await storage.projects.holds(point.projectId);
-        held = label === null ? null : { id: point.projectId, label };
-      } catch (error) {
-        problem('Nothing was restored, because this device could not be asked which projects it keeps. ' + (error && error.message ? error.message : ''));
-        return;
-      }
-      if (held) {
-        const outcome = await refuseHeld(ctx, { what: 'point', held, opener, keep: null });
-        if (outcome.text !== '') problem(outcome.text);
-        return;
-      }
+    const answer = await storage.restoreRecoveryPointResult(point.key);
+    if (answer.ok) return;
+    if (answer.code === 'held') {
+      problem(answer.text);
+      const outcome = await refuseHeld(ctx, { what: 'point', held: { id: answer.id, label: answer.label }, opener, keep: null });
+      if (outcome.text !== '') problem(outcome.text);
+      return;
     }
-    await storage.restoreRecoveryPoint(point.key);
+    if (answer.code === 'other-project') {
+      await openOrRestoreAsProject({ ...point, projectId: point.projectId }, false, opener);
+      return;
+    }
+    problem(answer.text);
   }
 
   function row(point, now, format, away) {

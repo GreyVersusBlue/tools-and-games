@@ -478,6 +478,7 @@ export function startSnapshots(ctx, options) {
     // recovery point taken. The refusal carries who holds it.
     if (opened.project.id !== ctx.store.project.id) {
       const label = await storage().projects.holds(opened.project.id);
+      if (label === null) throw new SnapshotError('This snapshot is of another project, which is not the open one and is not kept on this device. Use Restore as a project: it keeps the open project and opens this one. Nothing was replaced.', 'other-project');
       if (label !== null) {
         const error = new SnapshotError('This snapshot is a copy of ' + label + ', which is also kept on this device. Open ' + label + ' first, or keep it as another project. Nothing was replaced.', 'held');
         error.held = { id: opened.project.id, label };
