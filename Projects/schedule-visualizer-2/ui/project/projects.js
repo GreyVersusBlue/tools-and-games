@@ -463,6 +463,7 @@ export function projectsCard(ctx) {
     const kept = await snapshotCount(entry.id);
     const exporter = entry.unreadable ? () => entry.exportRaw() : typeof storage.projects.exportShelved === 'function' ? () => storage.projects.exportShelved(entry.id) : null;
     const note = h('p', { class: 'proj__dialog-note', role: 'status', hidden: true });
+    let exported = false;
     const body = entry.unreadable
       ? [h('p', null, 'Delete ' + name + ' from this device? It cannot be read, so no recovery point can be made of it. Export it as it is first if you may want it later.')]
       : [
@@ -481,7 +482,8 @@ export function projectsCard(ctx) {
         event.stopImmediatePropagation();
         try {
           const done = await exporter();
-          note.textContent = done && done.ok === false ? done.text : 'Exported. Delete it now, or cancel and keep it.';
+          exported = !(done && done.ok === false);
+          note.textContent = exported ? 'Exported. Delete it now, or cancel and keep it.' : done.text;
         } catch (error) {
           note.textContent = 'It was not exported. ' + messageOf(error);
         }
@@ -492,7 +494,7 @@ export function projectsCard(ctx) {
     if (choice !== 'delete') return;
     const index = Array.from(list.children).findIndex((li) => li.dataset.projectId === entry.id);
     setBusy(true);
-    const answer = await storage.projects.remove(entry.id);
+    const answer = await storage.projects.remove(entry.id, entry.unreadable && exported ? { exported: true } : undefined);
     setBusy(false);
     if (!answer.ok) {
       say('refused', answer.text);
