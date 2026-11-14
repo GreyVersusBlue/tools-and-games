@@ -690,6 +690,136 @@ test('after a switch nothing is known about the images store, so the page-leavin
   assert.deepEqual(result.images, { ishared: 'bytes of both' }, 'forgetStored() ran with the switch, so the leaving save does not trust the images store');
 });
 
+// ---------------------------------------------------------------- the review of SV2-116 (SV2-116b)
+
+test('promoteShelved: the shelf record becomes current with its pictures and the shelf key goes, in one transaction; it refuses a current that is there, a record that is gone or kept under another id, and honours the write hook', async () => {
+  const result = await page.evaluate(async () => {
+    const { db } = globalThis.lab;
+    const handle = await globalThis.lab.fresh();
+    const a = globalThis.lab.project('pa', 'This year', ['iaaaa']);
+    const b = globalThis.lab.project('pb', 'Next year', []);
+    const seeded = await globalThis.lab.seed(a, { iaaaa: 'bytes of A' });
+    await handle.shelveAndStart(a, b, seeded.known, { images: seeded.held });
+    const out = { shelved: await globalThis.lab.everything() };
+    // current is there: refused, nothing moves
+    out.exists = await globalThis.lab.refusal(handle.promoteShelved('pa'));
+    out.afterExists = await globalThis.lab.everything();
+    // the saved project is gone
+    await new Promise((resolve, reject) => {
+      const tx = handle.main.transaction('project', 'readwrite');
+      tx.objectStore('project').delete('current');
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    out.gone = await globalThis.lab.refusal(handle.promoteShelved('pnothere'));
+    db.hooks.failWrite = 'The disk is full.';
+    out.hook = await globalThis.lab.refusal(handle.promoteShelved('pa'));
+    db.hooks.failWrite = null;
+    out.afterRefusals = await globalThis.lab.everything();
+    // a record kept under another project's id
+    await new Promise((resolve, reject) => {
+      const tx = handle.main.transaction('project', 'readwrite');
+      tx.objectStore('project').put({ savedAt: '2026-11-14T10:00:00.000Z', project: { id: 'pother' }, shelvedAt: 'x', bytes: 1, images: {} }, 'shelf:pwrong');
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    out.wrong = await globalThis.lab.refusal(handle.promoteShelved('pwrong'));
+    // it works
+    const promoted = await handle.promoteShelved('pa');
+    out.promoted = { savedAt: promoted.savedAt, id: promoted.record.project.id };
+    out.after = await globalThis.lab.everything();
+    return out;
+  });
+  assert.deepEqual(Object.keys(result.shelved.shelf), ['shelf:pa'], 'the setup: a project on the shelf with its picture inside');
+  assert.equal(result.exists.code, 'current-exists');
+  assert.deepEqual(result.afterExists, result.shelved, 'nothing moved');
+  assert.equal(result.gone.code, 'no-such-project');
+  assert.equal(result.hook.message, 'The disk is full.');
+  assert.equal(result.wrong.code, 'unreadable-target');
+  assert.equal(result.afterRefusals.current, null);
+  assert.deepEqual(Object.keys(result.afterRefusals.shelf), ['shelf:pa'], 'a refusal leaves the shelf as it was');
+  assert.equal(result.after.current.id, 'pa', 'the shelved project is current');
+  assert.equal(result.after.current.savedAt, result.promoted.savedAt);
+  assert.equal(result.after.current.openedAt, result.promoted.savedAt, 'stamped for the tab lock');
+  assert.deepEqual(Object.keys(result.after.shelf), ['shelf:pwrong'], 'its shelf key is gone (the other record is not its business)');
+  assert.deepEqual(result.after.images, { iaaaa: 'bytes of A' }, 'its picture is in the images store');
+});
+
+test('precheckMove gives the shelf\'s refusals with the move\'s own sentences and writes nothing', async () => {
+  const result = await page.evaluate(async () => {
+    const { db } = globalThis.lab;
+    const handle = await globalThis.lab.fresh();
+    const a = globalThis.lab.project('pa', 'This year', []);
+    const b = globalThis.lab.project('pb', 'Next year', []);
+    const seeded = await globalThis.lab.seed(a, {});
+    await handle.shelveAndStart(a, b, seeded.known, {});
+    const before = await globalThis.lab.everything();
+    const out = {};
+    out.ok = await globalThis.lab.refusal(handle.precheckMove('pa', b, null));
+    out.okFresh = await globalThis.lab.refusal(handle.precheckMove(null, b, globalThis.lab.project('pc', 'C', [])));
+    out.gone = await globalThis.lab.refusal(handle.precheckMove('pnothere', b, null));
+    out.hasOpen = await globalThis.lab.refusal(handle.precheckMove('pnothere', a, null));
+    out.hasFresh = await globalThis.lab.refusal(handle.precheckMove(null, b, a));
+    // the same refusals from the move itself, for the same sentences
+    out.moveGone = await globalThis.lab.refusal(handle.switchTo('pnothere', b, '2999', {}));
+    out.moveHasOpen = await globalThis.lab.refusal(handle.switchTo('pnothere', a, '2999', {}));
+    out.moveHasFresh = await globalThis.lab.refusal(handle.shelveAndStart(b, a, '2999', {}));
+    // a full shelf: 19 kept
+    for (let n = 0; n < 18; n += 1) {
+      await new Promise((resolve, reject) => {
+        const tx = handle.main.transaction('project', 'readwrite');
+        tx.objectStore('project').put({ savedAt: 'x', project: { id: 'pf' + n }, shelvedAt: 'x', bytes: 1, images: {} }, 'shelf:pf' + n);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+    out.full = await globalThis.lab.refusal(handle.precheckMove(null, b, globalThis.lab.project('pd', 'D', [])));
+    out.moveFull = await globalThis.lab.refusal(handle.shelveAndStart(b, globalThis.lab.project('pd', 'D', []), '2999', {}));
+    out.fullTarget = await globalThis.lab.refusal(handle.precheckMove('pa', b, null));
+    db.hooks.failWrite = 'The disk is full.';
+    out.hook = await globalThis.lab.refusal(handle.precheckMove('pa', b, null));
+    db.hooks.failWrite = null;
+    out.same = JSON.stringify(Object.keys((await globalThis.lab.everything()).shelf).length);
+    out.before = Object.keys(before.shelf);
+    return out;
+  });
+  assert.equal(result.ok, null);
+  assert.equal(result.okFresh, null);
+  assert.equal(result.gone.code, 'no-such-project');
+  assert.equal(result.hasOpen.code, 'shelf-has-open');
+  assert.equal(result.hasFresh.code, 'shelf-has-fresh');
+  assert.equal(result.moveGone.message, result.gone.message);
+  assert.equal(result.moveHasOpen.message, result.hasOpen.message);
+  assert.equal(result.moveHasFresh.message, result.hasFresh.message);
+  assert.equal(result.full.code, 'shelf-full');
+  assert.equal(result.moveFull.message, result.full.message);
+  assert.equal(result.fullTarget, null, 'opening a kept project is not a new one: the limit is for starting');
+  assert.equal(result.hook.message, 'The disk is full.');
+  assert.equal(result.same, '19');
+});
+
+test('the shelf record\'s exportedAt is the one the caller passes, not the stored current\'s; left out, the stored one', async () => {
+  const result = await page.evaluate(async () => {
+    const handle = await globalThis.lab.fresh();
+    const a = globalThis.lab.project('pa', 'This year', []);
+    const b = globalThis.lab.project('pb', 'Next year', []);
+    const c = globalThis.lab.project('pc', 'Third', []);
+    const seeded = await globalThis.lab.seed(a, {});
+    await handle.saveProject(a, seeded.known, { exportedAt: '2026-11-01T00:00:00.000Z' });
+    const known = (await handle.readCurrent()).savedAt;
+    const second = await handle.shelveAndStart(a, b, known, { exportedAt: '2026-11-14T09:00:00.000Z' });
+    const out = { given: (await handle.readShelved('pa')).exportedAt };
+    const third = await handle.shelveAndStart(b, c, second, { exportedAt: null });
+    out.nulled = (await handle.readShelved('pb')).exportedAt;
+    await handle.saveProject(c, third, { exportedAt: '2026-11-05T00:00:00.000Z' });
+    const stored = (await handle.readCurrent()).savedAt;
+    await handle.switchTo('pa', c, stored, {});
+    out.stored = (await handle.readShelved('pc')).exportedAt;
+    return out;
+  });
+  assert.deepEqual(result, { given: '2026-11-14T09:00:00.000Z', nulled: null, stored: '2026-11-05T00:00:00.000Z' });
+});
+
 // ---------------------------------------------------------------- in Node: the tab lock's grace
 
 test('tabs: a tab left behind by a switch is told so for 10 s, and only then', () => {

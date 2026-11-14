@@ -36,7 +36,10 @@
 //       was taken from. `known` is the savedAt this tab last read or wrote.
 //       `images` is a Map (or object) of imageId -> { blob, type, width, height }
 //       for the images the session holds; the store is asked only for the ids
-//       it lacks. Puts `open` on the shelf, the target at "current" (with
+//       it lacks. `exportedAt` (a string or null) is when the open project was
+//       last exported, as the session knows it: the shelf record carries that,
+//       not whatever the stored "current" says (a save may not have written it
+//       yet). Left out, the stored one is used. Puts `open` on the shelf, the target at "current" (with
 //       `openedAt` = the new savedAt, which the tab lock reads, 21.10 "The tab
 //       lock across a reload"), the target's images into the images store, then
 //       sweeps. Resolves with the new savedAt, which is the session's `known`.
@@ -44,6 +47,19 @@
 //       The same with `fresh` (a new, sample or duplicated project) becoming
 //       current. `freshImages` are the fresh project's images, put into the
 //       images store in the same transaction.
+//   promoteShelved(id) -> { savedAt, record }
+//       Boot with "current" missing and the person choosing a shelved project:
+//       in ONE transaction the shelf record's project becomes "current" (with
+//       `openedAt`), its images go into the images store, the shelf key is
+//       deleted and the sweep runs. Either everything happens or nothing does.
+//       Refuses (ShelfError) with 'current-exists' when "current" is there after
+//       all, 'no-such-project' and 'unreadable-target' as switchTo does.
+//   precheckMove(targetId | null, open, fresh) -> undefined, or throws the
+//       ShelfError ('shelf-has-open', 'no-such-project', 'shelf-has-fresh',
+//       'shelf-full') that the move itself would give for the shelf alone, with
+//       the same sentence, in one read-only transaction. The session asks it
+//       before it takes the recovery point of a switch, so that a refused
+//       attempt adds no point. The move still checks everything itself.
 //   deleteShelved(id) -> true when there was one. (The caller took the point.)
 //   renameShelved(id, label) -> the new label. Not an undo step.
 //   shelfIds() -> ids on the shelf, for the one-per-id rule.
@@ -102,8 +118,10 @@ const LABEL_MOST = 60;
 // makes every putImage's transaction abort, the way a full disk would.
 // `failSwitchLate` set true aborts each shelf move once all its writes have
 // been issued; `failSwitchRequest` set true makes one request of each shelf
-// move fail by itself, after the others were issued.
-export const hooks = { failWrite: null, failImagePut: false, failSwitchLate: false, failSwitchRequest: false };
+// move fail by itself, after the others were issued. `slowSwitch` set to a
+// number of milliseconds makes each shelf move wait that long before it opens its
+// transaction, so a test can act while the move is under way.
+export const hooks = { failWrite: null, failImagePut: false, failSwitchLate: false, failSwitchRequest: false, slowSwitch: 0 };
 
 // The saved record is newer than the one this tab last read or wrote: another
 // tab saved in between. Nothing was written.
@@ -207,6 +225,15 @@ function heldImage(held, id) {
   if (typeof held.get === 'function') return held.get(id);
   return Object.prototype.hasOwnProperty.call(held, id) ? held[id] : undefined;
 }
+
+// The sentences of the shelf's refusals, one place for the move and its pre-check.
+function labelOf(project) {
+  return (isObject(project) && (project.label || (isObject(project.settings) && project.settings.schoolName))) || 'this project';
+}
+const shelfHasOpen = (open) => new ShelfError('shelf-has-open', 'This device already keeps a second copy of \u201c' + labelOf(open) + '\u201d on its shelf, which only an older version of the planner can cause. Export both copies before going on.');
+const noSuchProject = () => new ShelfError('no-such-project', 'That project is no longer kept on this device.');
+const shelfHasFresh = () => new ShelfError('shelf-has-fresh', 'A project with that id is already kept on this device.');
+const shelfFull = () => new ShelfError('shelf-full', 'This device keeps ' + PROJECTS_MOST + ' projects at most. Delete one before starting another.');
 
 // The four figures a shelf list shows, read defensively (nothing is validated here).
 function shelfSummary(project) {
@@ -744,6 +771,12 @@ export async function openDatabases(options) {
   // project goes on the shelf and another becomes current. `target` is a shelf
   // id to bring in, or null when `fresh` (a project in memory) is to start.
   function shelve(target, open, fresh, known, extra) {
+    const slow = Number(hooks.slowSwitch) > 0 ? new Promise((done) => setTimeout(done, Number(hooks.slowSwitch))) : null;
+    const move = () => shelveNow(target, open, fresh, known, extra);
+    return slow ? slow.then(move) : move();
+  }
+
+  function shelveNow(target, open, fresh, known, extra) {
     return new Promise((resolve, reject) => {
       if (hooks.failWrite) {
         reject(new Error(hooks.failWrite));
@@ -787,13 +820,13 @@ export async function openDatabases(options) {
           const shelved = projects.get(SHELF_PREFIX + open.id);
           shelved.onsuccess = () => {
             if (shelved.result !== undefined) {
-              refuse(new ShelfError('shelf-has-open', 'This device already keeps a second copy of \u201c' + (open.label || (open.settings && open.settings.schoolName) || 'this project') + '\u201d on its shelf, which only an older version of the planner can cause. Export both copies before going on.'));
+              refuse(shelfHasOpen(open));
               return;
             }
             const next = projects.get(SHELF_PREFIX + incomingId);
             next.onsuccess = () => {
               if (target !== null && next.result === undefined) {
-                refuse(new ShelfError('no-such-project', 'That project is no longer kept on this device.'));
+                refuse(noSuchProject());
                 return;
               }
               if (target !== null && !(isObject(next.result) && isObject(next.result.project) && typeof next.result.project.id === 'string' && next.result.project.id === target)) {
@@ -801,13 +834,13 @@ export async function openDatabases(options) {
                 return;
               }
               if (target === null && next.result !== undefined) {
-                refuse(new ShelfError('shelf-has-fresh', 'A project with that id is already kept on this device.'));
+                refuse(shelfHasFresh());
                 return;
               }
               const count = projects.count(shelfRange());
               count.onsuccess = () => {
                 if (target === null && count.result + 1 > PROJECTS_MOST - 1) {
-                  refuse(new ShelfError('shelf-full', 'This device keeps ' + PROJECTS_MOST + ' projects at most. Delete one before starting another.'));
+                  refuse(shelfFull());
                   return;
                 }
                 finish(there, next.result);
@@ -832,7 +865,7 @@ export async function openDatabases(options) {
             projects.put({
               savedAt: isObject(there) && typeof there.savedAt === 'string' ? there.savedAt : stamp,
               project: open,
-              exportedAt: isObject(there) && there.exportedAt ? there.exportedAt : null,
+              exportedAt: extra && extra.exportedAt !== undefined ? (extra.exportedAt || null) : (isObject(there) && there.exportedAt ? there.exportedAt : null),
               shelvedAt,
               bytes: projectBytes(open, shelfImages),
               images: shelfImages,
@@ -908,6 +941,96 @@ export async function openDatabases(options) {
     return shelve(null, open, fresh, known, extra);
   }
 
+  // The shelf's refusals that need no write, asked before a switch takes its
+  // recovery point (the move checks them again inside its own transaction).
+  async function precheckMove(target, open, fresh) {
+    if (hooks.failWrite) throw new Error(hooks.failWrite);
+    if (!isObject(open) || typeof open.id !== 'string' || open.id === '') throw new TypeError('The project to put on the shelf has no id.');
+    const ids = await shelfIds();
+    if (ids.includes(open.id)) throw shelfHasOpen(open);
+    if (typeof target === 'string' && target !== '') {
+      if (!ids.includes(target)) throw noSuchProject();
+      return;
+    }
+    if (isObject(fresh) && ids.includes(fresh.id)) throw shelfHasFresh();
+    if (ids.length + 1 > PROJECTS_MOST - 1) throw shelfFull();
+  }
+
+  // Boot with "current" missing: a shelved project becomes current in one
+  // transaction (21.10 "start() with shelves").
+  function promoteShelved(id) {
+    return new Promise((resolve, reject) => {
+      if (hooks.failWrite) {
+        reject(new Error(hooks.failWrite));
+        return;
+      }
+      if (typeof id !== 'string' || id === '') {
+        reject(new TypeError('The project to open has no id.'));
+        return;
+      }
+      const stamp = clock().toISOString();
+      let refusal = null;
+      let promoted = null;
+      let tx;
+      const refuse = (error) => {
+        refusal = error;
+        tx.abort();
+      };
+      try {
+        tx = main.transaction([PROJECT_STORE, SNAPSHOT_STORE, QUARANTINE_STORE, IMAGE_STORE], 'readwrite');
+        const projects = tx.objectStore(PROJECT_STORE);
+        const images = tx.objectStore(IMAGE_STORE);
+        const there = projects.getKey(CURRENT_KEY);
+        there.onsuccess = () => {
+          if (there.result !== undefined) {
+            refuse(new ShelfError('current-exists', 'A saved project is already there, so nothing was opened.'));
+            return;
+          }
+          const next = projects.get(SHELF_PREFIX + id);
+          next.onsuccess = () => {
+            const record = next.result;
+            if (record === undefined) {
+              refuse(noSuchProject());
+              return;
+            }
+            if (!(isObject(record) && isObject(record.project) && record.project.id === id)) {
+              refuse(new ShelfError('unreadable-target', 'The copy of that project kept on this device cannot be read, so it was not opened. Export it as it is, or delete it.'));
+              return;
+            }
+            const kept = isObject(record.images) ? record.images : {};
+            for (const imageId of Object.keys(kept)) images.put(kept[imageId], imageId);
+            projects.put({ savedAt: stamp, project: record.project, exportedAt: record.exportedAt || null, openedAt: stamp }, CURRENT_KEY);
+            projects.delete(SHELF_PREFIX + id);
+            sweepUnnamedImages(tx, imageIdsOf(record.project));
+            promoted = record;
+          };
+        };
+      } catch (error) {
+        reject(error);
+        return;
+      }
+      saving += 1;
+      tx.oncomplete = () => {
+        saving -= 1;
+        forgetStored();
+        resolve({ savedAt: stamp, record: promoted });
+      };
+      tx.onerror = (event) => {
+        event.preventDefault();
+        if (!refusal) refusal = (event.target && event.target.error) || tx.error;
+        try {
+          tx.abort();
+        } catch (error) {
+          // already stopping
+        }
+      };
+      tx.onabort = () => {
+        saving -= 1;
+        reject(refusal || tx.error || new Error('The browser stopped the write.'));
+      };
+    });
+  }
+
   async function deleteShelved(id) {
     if (hooks.failWrite) throw new Error(hooks.failWrite);
     const tx = main.transaction(PROJECT_STORE, 'readwrite');
@@ -960,6 +1083,8 @@ export async function openDatabases(options) {
     readShelved,
     switchTo,
     shelveAndStart,
+    promoteShelved,
+    precheckMove,
     deleteShelved,
     renameShelved,
     quarantineCurrent,
