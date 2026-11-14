@@ -236,6 +236,9 @@ test('an older planner: a project with every new field goes through repair and v
     // and what the new rules refuse, an older planner takes without a finding: that is the reason names are never validated
     const odd = { ...project, scenarios: [{ id: 'xx', name: '', changes: 'x' }], label: 5 };
     assert.deepEqual(oldValidate(odd), [], 'the copy has no rule for scenarios or label');
+    const oddText = JSON.stringify(odd);
+    assert.equal(JSON.stringify(oldRepair(JSON.parse(oddText)).project), oddText, 'nor does its repair touch them');
+    assert.notEqual(JSON.stringify(repair(JSON.parse(oddText)).project), oddText, 'the real repair does');
     assert.notDeepEqual(validate(odd), [], 'the real validate has');
   } finally {
     rmSync(older.dir, { recursive: true, force: true });
