@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0d1416">
+<meta name="robots" content="noindex">
+<title>The Estate — Catalogue of Attendees</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%233B2A1A'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%237E2A20'/%3E%3Ccircle cx='13' cy='13' r='3.5' fill='%23A8443A'/%3E%3C/svg%3E">
+<style>
+  @font-face{ font-family:'Fraunces'; font-style:normal; font-weight:100 900; font-display:swap;
+    src:url('fonts/fraunces-latin-var-normal.woff2') format('woff2'); }
+  @font-face{ font-family:'Fraunces'; font-style:italic; font-weight:100 900; font-display:swap;
+    src:url('fonts/fraunces-latin-var-italic.woff2') format('woff2'); }
+  @font-face{ font-family:'EB Garamond'; font-style:normal; font-weight:400; font-display:swap;
+    src:url('fonts/eb-garamond-latin-400-normal.woff2') format('woff2'); }
+  @font-face{ font-family:'EB Garamond'; font-style:italic; font-weight:400; font-display:swap;
+    src:url('fonts/eb-garamond-latin-400-italic.woff2') format('woff2'); }
+  @font-face{ font-family:'Plex Mono'; font-style:normal; font-weight:400; font-display:swap;
+    src:url('fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2'); }
+
+  /* Palette pulled from the portrait style: wet slate teal, umber wood,
+     lamplight amber, catalogue paper, claret for the paddle numbers. */
+  :root{
+    --night:#0d1416;
+    --slate:#16232a;
+    --teal:#24403f;
+    --teal-hi:#3b6260;
+    --umber:#4a311f;
+    --lamp:#e7a64e;
+    --lamp-dim:#a8773a;
+    --paper:#eee3c8;
+    --paper-dk:#d9caa5;
+    --rule:#b39d70;
+    --ink:#211812;
+    --ink-soft:#5a4936;
+    --claret:#7a2632;
+    --mist:#9fb3b0;
+    --display:'Fraunces', Georgia, serif;
+    --body:'EB Garamond', Georgia, serif;
+    --mono:'Plex Mono', ui-monospace, monospace;
+  }
+  *{ box-sizing:border-box; }
+  html{ -webkit-text-size-adjust:100%; }
+  body{
+    margin:0; min-height:100vh; min-height:100dvh;
+    background:var(--night); color:var(--paper);
+    font:18px/1.45 var(--body);
+    overflow-x:hidden;
+  }
+  button{ font:inherit; color:inherit; }
+  [hidden]{ display:none !important; }
+
+  /* ------------------------------------------------------------ weather -- */
+  /* Lamplight pooled at the top, then three sheets of rain at different
+     speeds. Pure CSS, no script, and it stops for reduced motion. */
+  .weather{ position:fixed; inset:0; pointer-events:none; z-index:0; }
+  .weather::before{
+    content:''; position:absolute; inset:0;
+    background:
+      radial-gradient(120% 60% at 50% -10%, rgba(231,166,78,.22), transparent 60%),
+      radial-gradient(90% 50% at 100% 100%, rgba(59,98,96,.25), transparent 70%),
+      linear-gradient(180deg, #13201f 0%, var(--night) 70%);
+  }
+  .rain{ position:absolute; inset:-20% -10%; opacity:.5;
+    background-image:repeating-linear-gradient(100deg,
+      transparent 0 18px, rgba(190,215,212,.16) 18px 19px, transparent 19px 47px);
+    background-size:100% 160px;
+    animation:fall 0.9s linear infinite; }
+  .rain.r2{ opacity:.32; background-size:100% 230px; animation-duration:1.4s;
+    background-image:repeating-linear-gradient(98deg,
+      transparent 0 31px, rgba(190,215,212,.12) 31px 32px, transparent 32px 83px); }
+  .rain.r3{ opacity:.2; background-size:100% 310px; animation-duration:2.1s;
+    background-image:repeating-linear-gradient(103deg,
+      transparent 0 53px, rgba(231,166,78,.10) 53px 54px, transparent 54px 121px); }
+  @keyframes fall{ from{ background-position:0 0; } to{ background-position:-28px 100%; } }
+  .weather::after{ /* fogged-glass vignette */
+    content:''; position:absolute; inset:0;
+    background:radial-gradient(130% 90% at 50% 40%, transparent 55%, rgba(5,9,10,.85) 100%);
+  }
+  @media (prefers-reduced-motion: reduce){ .rain{ animation:none; } }
+
+  main{ position:relative; z-index:1; max-width:760px; margin:0 auto;
+    padding:0 16px calc(40px + env(safe-area-inset-bottom)); }
+
+  /* ------------------------------------------------------- catalogue -- */
+  .masthead{ text-align:center; padding:44px 8px 22px; }
+  .masthead .kicker{ font:12px/1 var(--mono); letter-spacing:.32em; text-transform:uppercase;
+    color:var(--lamp); opacity:.9; }
+  .masthead h1{ font:italic 600 clamp(44px, 13vw, 76px)/0.95 var(--display);
+    font-variation-settings:'SOFT' 100, 'WONK' 1; margin:14px 0 8px; letter-spacing:-.01em;
+    text-shadow:0 2px 24px rgba(231,166,78,.25); }
+  .masthead .sub{ font-style:italic; color:var(--mist); margin:0; }
+  .flourish{ display:flex; align-items:center; gap:12px; justify-content:center;
+    margin:20px auto 0; max-width:320px; color:var(--lamp-dim); }
+  .flourish::before, .flourish::after{ content:''; flex:1; height:1px;
+    background:linear-gradient(90deg, transparent, var(--lamp-dim), transparent); }
+
+  .lots{ list-style:none; margin:10px 0 0; padding:0;
+    display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px; }
+  @media (min-width:620px){ .lots{ grid-template-columns:repeat(3, minmax(0,1fr)); gap:18px; } }
+
+  .lot{ display:block; width:100%; text-align:center; cursor:pointer;
+    background:linear-gradient(180deg, rgba(36,64,63,.55), rgba(22,35,42,.75));
+    border:1px solid rgba(179,157,112,.35); border-radius:6px;
+    padding:14px 10px 16px; position:relative;
+    box-shadow:0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04);
+    transition:transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+    -webkit-tap-highlight-color:transparent; }
+  .lot:hover, .lot:focus-visible{ transform:translateY(-2px); border-color:var(--lamp);
+    box-shadow:0 14px 34px rgba(0,0,0,.45), 0 0 0 1px rgba(231,166,78,.25); outline:none; }
+  .lot:active{ transform:translateY(0); }
+  .lot-no{ position:absolute; top:8px; left:10px; font:11px/1 var(--mono);
+    letter-spacing:.14em; color:var(--lamp); opacity:.85; }
+
+  /* the oval portrait frame, used on the catalogue and in the sheet header */
+  .frame{ position:relative; margin:6px auto 12px; width:78%; aspect-ratio:4/5;
+    border-radius:50% / 46%; overflow:hidden;
+    background:radial-gradient(80% 70% at 50% 35%, #3a4f4b, #1a2629);
+    box-shadow:0 0 0 2px var(--umber), 0 0 0 4px var(--lamp-dim), 0 0 0 5px rgba(0,0,0,.6),
+      0 10px 24px rgba(0,0,0,.5); }
+  .frame img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .frame .mono{ position:absolute; inset:0; display:grid; place-items:center;
+    font:italic 600 clamp(34px, 11vw, 52px)/1 var(--display); color:var(--paper-dk);
+    font-variation-settings:'SOFT' 100, 'WONK' 1; opacity:.8; }
+  .lot-name{ font:600 clamp(17px, 4.6vw, 21px)/1.15 var(--display); margin:0; }
+  .lot-epithet{ font-style:italic; font-size:15px; color:var(--mist); margin:4px 0 0; }
+
+  .colophon{ text-align:center; font-style:italic; font-size:15px; color:var(--mist);
+    opacity:.7; margin-top:30px; }
+
+  /* ------------------------------------------------------------ sheet -- */
+  .bar{ position:sticky; top:0; z-index:5; margin:0 -16px;
+    padding:calc(10px + env(safe-area-inset-top)) 16px 10px;
+    display:flex; align-items:center; gap:12px;
+    background:rgba(13,20,22,.86); -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+    border-bottom:1px solid rgba(179,157,112,.25); }
+  .back{ background:none; border:1px solid rgba(179,157,112,.4); border-radius:999px;
+    padding:6px 14px 7px; font:13px/1 var(--mono); letter-spacing:.08em; color:var(--lamp);
+    cursor:pointer; min-height:36px; }
+  .back:hover, .back:focus-visible{ border-color:var(--lamp); outline:none; }
+  .thumb{ width:40px; height:40px; border-radius:50%; overflow:hidden; flex:none;
+    background:radial-gradient(#3a4f4b, #1a2629);
+    box-shadow:0 0 0 1.5px var(--lamp-dim); display:grid; place-items:center;
+    font:italic 600 18px/1 var(--display); color:var(--paper-dk); }
+  .thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .bar-name{ font:600 18px/1.1 var(--display); white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis; min-width:0; }
+
+  /* the sheet is a catalogue page: paper, a deckled edge, a lot stamp */
+  .page{ margin-top:18px; background:var(--paper); color:var(--ink);
+    border-radius:3px; padding:22px 18px 26px; position:relative;
+    background-image:
+      radial-gradient(120% 80% at 0% 0%, rgba(255,255,255,.35), transparent 50%),
+      radial-gradient(100% 60% at 100% 100%, rgba(122,88,40,.14), transparent 60%);
+    box-shadow:0 20px 50px rgba(0,0,0,.55), 0 0 0 1px rgba(0,0,0,.3); }
+  .page::before{ content:''; position:absolute; inset:7px; pointer-events:none;
+    border:1px solid var(--rule); border-radius:2px; }
+  .stamp{ position:absolute; top:16px; right:16px; width:62px; height:62px; border-radius:50%;
+    border:2px solid var(--claret); color:var(--claret); display:grid; place-items:center;
+    text-align:center; transform:rotate(-9deg); opacity:.85;
+    font:10px/1.15 var(--mono); letter-spacing:.12em; text-transform:uppercase; }
+  .stamp b{ display:block; font:600 22px/1 var(--display); letter-spacing:0; }
+
+  .who{ padding-right:70px; }
+  .who h2{ font:600 clamp(28px, 8vw, 38px)/1.02 var(--display); margin:0;
+    font-variation-settings:'SOFT' 50; }
+  .who .epithet{ font:13px/1.3 var(--mono); letter-spacing:.1em; text-transform:uppercase;
+    color:var(--ink-soft); margin:8px 0 0; }
+  .blurb{ font-style:italic; color:var(--ink-soft); margin:14px 0 0; }
+
+  .rule{ height:0; border-top:1px solid var(--rule); margin:18px 0 16px; position:relative; }
+  .rule::after{ content:'\2766'; position:absolute; left:50%; top:-.75em; transform:translateX(-50%);
+    background:var(--paper); padding:0 10px; color:var(--rule); font-size:16px; line-height:1.5; }
+
+  .vitals{ display:grid; grid-template-columns:repeat(auto-fit, minmax(90px,1fr)); gap:10px; }
+  .vital{ text-align:center; border:1px solid var(--rule); border-radius:3px; padding:10px 6px 8px;
+    background:rgba(255,255,255,.28); }
+  .vital .v{ font:600 34px/1 var(--display); font-variant-numeric:lining-nums tabular-nums; }
+  .vital .l{ font:11px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase;
+    color:var(--ink-soft); margin-top:6px; }
+
+  .row-label{ font:11px/1 var(--mono); letter-spacing:.2em; text-transform:uppercase;
+    color:var(--claret); margin:18px 0 8px; }
+  .chips{ display:grid; grid-template-columns:repeat(auto-fit, minmax(72px,1fr)); gap:8px; }
+  .chip{ display:flex; justify-content:space-between; align-items:baseline; gap:6px;
+    border-bottom:1px dotted var(--rule); padding:4px 2px; }
+  .chip .l{ font-size:16px; color:var(--ink-soft); }
+  .chip .v{ font:600 19px/1 var(--display); font-variant-numeric:lining-nums tabular-nums; }
+  .skills{ grid-template-columns:repeat(auto-fill, minmax(150px,1fr)); column-gap:18px; }
+
+  .section h3{ font:italic 600 22px/1.1 var(--display); margin:22px 0 8px;
+    color:var(--ink); border-bottom:1px solid var(--rule); padding-bottom:6px; }
+  .item{ margin:10px 0 0; }
+  .item-head{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+  .item-name{ font-weight:400; font-variant:small-caps; letter-spacing:.03em; font-size:19px; }
+  .item-tag{ font:11px/1.2 var(--mono); letter-spacing:.08em; color:var(--claret);
+    text-transform:uppercase; white-space:nowrap; }
+  .item-text{ margin:2px 0 0; color:#3a2d20; }
+
+  .empty-note{ font-style:italic; color:var(--ink-soft); text-align:center; margin:20px 0 0; }
+</style>
+</head>
+<body>
+<div class="weather" aria-hidden="true"><div class="rain"></div><div class="rain r2"></div><div class="rain r3"></div></div>
+
+<main>
+  <section id="catalogue" aria-labelledby="title">
+    <header class="masthead">
+      <div class="kicker">Evening Sale &middot; By Invitation</div>
+      <h1 id="title">The Estate</h1>
+      <p class="sub">Catalogue of Attendees</p>
+      <div class="flourish" aria-hidden="true">&#10086;</div>
+    </header>
+    <ul class="lots" id="lots"></ul>
+    <p class="colophon">Choose your lot. Bidding is final.</p>
+  </section>
+
+  <section id="sheet" hidden aria-live="polite">
+    <div class="bar">
+      <button class="back" id="back" type="button">&larr; Catalogue</button>
+      <span class="thumb" id="thumb" aria-hidden="true"></span>
+      <span class="bar-name" id="bar-name"></span>
+    </div>
+    <article class="page" id="page"></article>
+  </section>
+</main>
+
+<script type="module">
+import { characters } from './characters.js';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+const initials = name => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('');
+
+// A portrait that fails to load falls back to the monogram, so a missing file
+// never shows a broken-image icon at the table.
+function portrait(c, cls) {
+  const mono = `<span class="mono">${esc(initials(c.name))}</span>`;
+  if (!c.portrait) return mono;
+  return `<img src="${esc(c.portrait)}" alt="" class="${cls || ''}" loading="lazy"
+    onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'mono',textContent:${esc(JSON.stringify(initials(c.name)))}}))">`;
+}
+
+function renderCatalogue() {
+  $('lots').innerHTML = characters.map(c => `
+    <li><button class="lot" type="button" data-slug="${esc(c.slug)}">
+      <span class="lot-no">LOT ${esc(String(c.lot ?? '').padStart(2, '0'))}</span>
+      <div class="frame">${portrait(c)}</div>
+      <p class="lot-name">${esc(c.name)}</p>
+      ${c.epithet ? `<p class="lot-epithet">${esc(c.epithet)}</p>` : ''}
+    </button></li>`).join('');
+}
+
+const chips = (label, list, extra = '') => list?.length ? `
+  <div class="row-label">${esc(label)}</div>
+  <div class="chips ${extra}">${list.map(s =>
+    `<div class="chip"><span class="l">${esc(s.label)}</span><span class="v">${esc(s.value)}</span></div>`).join('')}
+  </div>` : '';
+
+function renderSheet(c) {
+  $('bar-name').textContent = c.name;
+  $('thumb').innerHTML = c.portrait ? portrait(c) : esc(initials(c.name));
+  const sections = (c.sections || []).map(sec => `
+    <div class="section"><h3>${esc(sec.title)}</h3>
+      ${(sec.items || []).map(it => `
+        <div class="item">
+          <div class="item-head"><span class="item-name">${esc(it.name)}</span>
+            ${it.tag ? `<span class="item-tag">${esc(it.tag)}</span>` : ''}</div>
+          ${it.text ? `<p class="item-text">${esc(it.text)}</p>` : ''}
+        </div>`).join('')}
+    </div>`).join('');
+  $('page').innerHTML = `
+    <div class="stamp" aria-label="Lot ${esc(c.lot)}">Lot<b>${esc(c.lot)}</b></div>
+    <header class="who">
+      <h2>${esc(c.name)}</h2>
+      ${c.epithet ? `<p class="epithet">${esc(c.epithet)}</p>` : ''}
+    </header>
+    ${c.blurb ? `<p class="blurb">${esc(c.blurb)}</p>` : ''}
+    <div class="rule" role="separator"></div>
+    ${c.vitals?.length ? `<div class="vitals">${c.vitals.map(v =>
+      `<div class="vital"><div class="v">${esc(v.value)}</div><div class="l">${esc(v.label)}</div></div>`).join('')}</div>` : ''}
+    ${chips('Saving Throws', c.saves)}
+    ${chips('Attributes', c.attributes)}
+    ${chips('Skills', c.skills, 'skills')}
+    ${sections || (c.attributes?.length ? '' : '<p class="empty-note">Particulars to follow.</p>')}`;
+}
+
+// The address bar holds the choice (#slug), so a player can bookmark their own
+// sheet and the phone's back gesture returns to the catalogue. No storage.
+function route() {
+  const slug = decodeURIComponent(location.hash.slice(1));
+  const c = characters.find(x => x.slug === slug);
+  $('catalogue').hidden = !!c;
+  $('sheet').hidden = !c;
+  if (c) { renderSheet(c); document.title = `${c.name} — The Estate`; }
+  else document.title = 'The Estate — Catalogue of Attendees';
+  window.scrollTo(0, 0);
+}
+
+$('lots').addEventListener('click', e => {
+  const b = e.target.closest('.lot');
+  if (b) location.hash = b.dataset.slug;
+});
+$('back').addEventListener('click', () => { location.hash = ''; });
+addEventListener('hashchange', route);
+renderCatalogue();
+route();
+</script>
+</body>
+</html>
