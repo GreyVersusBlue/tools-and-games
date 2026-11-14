@@ -74,7 +74,7 @@ const figure = (name) => text('.figures__item[data-figure="' + name + '"] dd');
 // The card has drawn a list of n.
 const listed = (n, target) => (target || page).waitForFunction((count) => {
   const el = document.getElementById('snapshots');
-  return el && el.dataset.state === 'ready' && el.dataset.pending === undefined && el.dataset.snapshots === String(count);
+  return el && el.dataset.state === 'ready' && el.dataset.pending === undefined && el.dataset.total === String(count);
 }, { timeout: 10000 }, n);
 
 // The card is not drawing, whatever it holds; then how many it lists. A
@@ -703,7 +703,7 @@ test('clear the schedule: a double press clears once with one snapshot; the grou
   });
   await shows(() => document.querySelector('dialog.dialog[open]') !== null || document.querySelector('.figures__item[data-figure="groups"] dd').textContent === '0');
   await settled();
-  const twice = [await page.$('dialog.dialog[open]') !== null, await page.$eval('#snapshots', (el) => Number(el.dataset.snapshots))];
+  const twice = [await page.$('dialog.dialog[open]') !== null, await page.$eval('#snapshots', (el) => Number(el.dataset.total))];
   assert.deepEqual(twice, [false, 3], 'a double press runs the clear once: one snapshot, and no second run asking to go on without one');
   assert.deepEqual([await figure('teachers'), await figure('rooms'), await figure('dayTypes')], ['0', '13', '2']);
   assert.equal((await names())[0], 'Before clearing the schedule');

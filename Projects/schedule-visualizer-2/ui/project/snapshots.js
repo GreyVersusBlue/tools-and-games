@@ -339,9 +339,9 @@ export function snapshotsCard(ctx) {
     // the open project's (and any that cannot be read, which can only be deleted) are the list;
     // the rest are counted, and those of projects no longer on this device are listed apart
     const openId = ctx.store.project.id;
-    const mine = (entry) => kept === null || !entry.readable || entry.projectId === null || entry.projectId === openId;
-    entries = found.filter(mine);
-    const elsewhere = found.filter((entry) => !mine(entry));
+    const isMine = (entry) => kept === null || !entry.readable || entry.projectId === null || entry.projectId === openId;
+    entries = found.filter(isMine);
+    const elsewhere = found.filter((entry) => !isMine(entry));
     others = elsewhere.filter((entry) => !kept.has(entry.projectId));
     const now = ctx.clock();
     const format = ctx.store.project.settings.timeFormat;
