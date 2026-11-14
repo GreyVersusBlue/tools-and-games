@@ -108,20 +108,20 @@ export function repair(input, options) {
   const follow = (prefix, id) => (typeof id === 'string' && renamed[prefix].has(id) ? renamed[prefix].get(id) : id);
 
   // The objects of a list; anything that is not an object is dropped.
-  const objects = (list, what) => {
+  const objects = (list, what, say = note) => {
     if (list === undefined) return [];
     if (!Array.isArray(list)) {
-      note('The list of ' + what + ' could not be read and was emptied.');
+      say('The list of ' + what + ' could not be read and was emptied.');
       return [];
     }
     const kept = list.filter(isObject);
-    if (kept.length !== list.length) note(plural(list.length - kept.length, 'entry', 'entries') + ' in the list of ' + what + ' could not be read and ' + (list.length - kept.length === 1 ? 'was' : 'were') + ' removed.');
+    if (kept.length !== list.length) say(plural(list.length - kept.length, 'entry', 'entries') + ' in the list of ' + what + ' could not be read and ' + (list.length - kept.length === 1 ? 'was' : 'were') + ' removed.');
     return kept;
   };
 
-  const text = (thing, key, fallback, what) => {
+  const text = (thing, key, fallback, what, say = note) => {
     if (typeof thing[key] === 'string') return;
-    if (thing[key] !== undefined && thing[key] !== null) note(what + ' was not text and was reset.');
+    if (thing[key] !== undefined && thing[key] !== null) say(what + ' was not text and was reset.');
     thing[key] = fallback;
   };
 
@@ -1560,10 +1560,10 @@ export function repair(input, options) {
     const readScenario = (rawScenario, where, say) => {
       const note = (sentence) => say(where === '' ? sentence : where + ': ' + sentence.charAt(0).toLowerCase() + sentence.slice(1));
       const scenario = { ...rawScenario };
-      text(scenario, 'name', '', 'The scenario name');
+      text(scenario, 'name', '', 'The scenario name', note);
       const wholePeriod = (value) => Number.isInteger(value) && value >= 0;
       const isText = (value) => typeof value === 'string';
-      const changes = objects(scenario.changes, 'scenario changes').filter((change) => {
+      const changes = objects(scenario.changes, 'scenario changes', note).filter((change) => {
         if (!CHANGE_KINDS.includes(change.kind) || !isText(change.dayTypeId)) return false;
         if (change.kind === 'move') return isText(change.groupId) && wholePeriod(change.period) && isText(change.roomId);
         if (change.kind === 'swapPeriods') return isText(change.groupId) && wholePeriod(change.periodA) && wholePeriod(change.periodB);

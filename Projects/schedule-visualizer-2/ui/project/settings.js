@@ -173,7 +173,7 @@ export function settingsCard(ctx) {
       lost.push(...info.marksAndDutiesWords);
       const ok = await ctx.confirm({
         title: 'Remove ' + what + ' from every day?',
-        body: 'That takes away ' + list(lost) + '. Undo brings them back.',
+        body: 'That takes away ' + list(lost) + '.' + inScenarios(info) + ' Undo brings them back.',
         action: 'Remove ' + what,
         keep: 'Keep ' + count(info.from, words.one, words.many),
         danger: true,
@@ -183,6 +183,16 @@ export function settingsCard(ctx) {
     }
     set('periods', periods);
     return true;
+  }
+
+  // where the scenario changes and levers a reduction takes are held: in the
+  // open scenario or any kept one (the counts take in every scenario)
+  function inScenarios(info) {
+    const kinds = [];
+    if (info.scenarioChanges > 0) kinds.push(info.scenarioChanges === 1 ? 'change' : 'changes');
+    if (info.scenarioLevers > 0) kinds.push(info.scenarioLevers === 1 ? 'lever' : 'levers');
+    if (kinds.length === 0) return '';
+    return ' The scenario ' + kinds.join(' and ') + ' ' + (info.scenarioChanges + (info.scenarioLevers || 0) === 1 ? 'is' : 'are') + ' in the open or kept scenarios.';
   }
 
   // ---- School

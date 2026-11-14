@@ -91,8 +91,26 @@
 //   out   { type: 'sv2-suggested', generation, ok, answer | error }
 //         answer is suggest() (engine/suggest.js): { suggestions, none }
 //
-// The three lanes have a pipeline each, and the scenario and suggestion
-// pipelines share the main one's route cache. The main lane's pipeline is
+//   in    { type: 'sv2-derive-kept', generation, project, scenario, versions }
+//   out   { type: 'sv2-derived-kept', generation, ok, answer | error }
+//         answer is keptRun(): trimResult() of the project as the kept
+//         scenario `scenario` (one of project.scenarios) would make it,
+//         under that scenario's building levers as route options
+//   in    { type: 'sv2-derive-other', generation, comparison, project?, versions }
+//   out   { type: 'sv2-derived-other', generation, ok, answer | error }
+//         answer is otherRun(): trimResult() of the other building's project
+//         as it is (its own scenarios are never applied). `project` goes
+//         with the first request of a comparison only (`comparison` is the
+//         page's number for it); the worker keeps the last one it was sent,
+//         and a request for another comparison with no project is refused
+//   in    { type: 'sv2-other-close' }
+//         the comparison ended: the held project and the other pipeline's
+//         routes, crowd and route cache are let go. No answer.
+//
+// Five lanes have a pipeline each. The scenario, suggestion and kept
+// pipelines share the main one's route cache; the other-building pipeline
+// has a cache of its own, so one building's routes can never be served for
+// the other's (ARCHITECTURE 21.3, 21.10). The main lane's pipeline is
 // never handed a scenario's project or a suggestion's candidate, so its
 // answers and what it keeps are exactly what they were with one lane. The
 // scenario lane's `versions` are the page's own counters for that lane
@@ -116,7 +134,7 @@ import { loads } from './load.js';
 import { places } from './places.js';
 import { checkSchedule } from './checks.js';
 import { buildingChecks } from './building-checks.js';
-import { applyChanges, applyLevers, leverRouteOptions, reconcile, trimResult } from './scenario.js';
+import { scenarioInputs, trimResult } from './scenario.js';
 import { suggest } from './suggest.js';
 
 export const REQUEST = 'sv2-derive';
@@ -126,6 +144,11 @@ export const SCENARIO_REQUEST = 'sv2-derive-scenario';
 export const SCENARIO_ANSWER = 'sv2-derived-scenario';
 export const SUGGEST_REQUEST = 'sv2-suggest';
 export const SUGGEST_ANSWER = 'sv2-suggested';
+export const KEPT_REQUEST = 'sv2-derive-kept';
+export const KEPT_ANSWER = 'sv2-derived-kept';
+export const OTHER_REQUEST = 'sv2-derive-other';
+export const OTHER_ANSWER = 'sv2-derived-other';
+export const OTHER_CLOSE = 'sv2-other-close';
 
 // The parts of a result that are kept or sent whole.
 export const WHOLE_PARTS = ['places', 'walks', 'findings', 'buildingFindings'];
@@ -403,11 +426,10 @@ export function runResults(result, dayTypeId, bellsId) {
 // out a change or lever whose group, room, day type or period is gone, one a
 // later one replaces, and one the schedule already has), run on `pipeline`, trimmed
 // to what compareResults reads. The project handed in is not changed. With
-// no scenario open, the project as it is.
+// no scenario open, the project as it is. It is keptRun of the open scenario,
+// so the open and the kept runs cannot drift apart.
 export function scenarioRun(pipeline, project, versions) {
-  const kept = reconcile(project, project.scenario);
-  const levers = kept.levers || [];
-  return trimResult(pipeline.run(applyLevers(applyChanges(project, kept.changes), levers), versions, leverRouteOptions(project, levers)));
+  return keptRun(pipeline, project, project.scenario, versions);
 }
 
 // The suggestion lane's answer: suggest() run on `pipeline`, which must not
@@ -416,6 +438,26 @@ export function scenarioRun(pipeline, project, versions) {
 export function suggestRun(pipeline, project, versions, finding, options) {
   const opts = options || {};
   return suggest(project, finding, { pipeline, versions: countersOf(versions), otherTeachersRooms: opts.otherTeachersRooms === true, limit: opts.limit });
+}
+
+// The kept-scenario lane's answer (ARCHITECTURE 21.2, 21.10): the project as
+// the kept scenario `scenario` would make it (scenarioInputs: the changes
+// that still apply, then its levers that do), run with that scenario's
+// building levers as route options, trimmed to what compareResults reads.
+// Run on its own pipeline (which may share the main lane's route cache).
+// The project and the scenario handed in are not changed; `scenario` need
+// not be the open one, and the project's open scenario is not read.
+export function keptRun(pipeline, project, scenario, versions) {
+  const inputs = scenarioInputs(project, scenario);
+  return trimResult(pipeline.run(inputs.project, versions, inputs.routeOptions));
+}
+
+// The other-building lane's answer (ARCHITECTURE 21.3, 21.10): the other
+// project as it is, run on a pipeline whose route cache is its own,
+// trimmed. Its scenarios, open or kept, are not applied: the comparison is
+// of the two buildings and their schedules, not of anyone's trials.
+export function otherRun(pipeline, project, versions) {
+  return trimResult(pipeline.run(project, versions));
 }
 
 // Is this the route the other side already has? A route that was walked is
@@ -547,6 +589,10 @@ if (scope) {
   const pipeline = createPipeline();
   const scenarioPipeline = createPipeline({ cache: pipeline.cache });
   const suggestionPipeline = createPipeline({ cache: pipeline.cache });
+  const keptPipeline = createPipeline({ cache: pipeline.cache });
+  // no cache argument: the other building's routes are kept apart from this one's
+  const otherPipeline = createPipeline();
+  let otherHeld = null; // { comparison, project }: the last one sent
   let sent = null;
   const said = (error) => (error && error.message ? String(error.message) : String(error));
   scope.addEventListener('message', (event) => {
@@ -559,6 +605,33 @@ if (scope) {
         scenarioPipeline.clear();
         scope.postMessage({ type: SCENARIO_ANSWER, generation: message.generation, ok: false, error: said(error) });
       }
+      return;
+    }
+    if (message && message.type === KEPT_REQUEST) {
+      try {
+        const answer = keptRun(keptPipeline, message.project, message.scenario, message.versions);
+        scope.postMessage({ type: KEPT_ANSWER, generation: message.generation, ok: true, answer });
+      } catch (error) {
+        keptPipeline.clear();
+        scope.postMessage({ type: KEPT_ANSWER, generation: message.generation, ok: false, error: said(error) });
+      }
+      return;
+    }
+    if (message && message.type === OTHER_REQUEST) {
+      try {
+        if (message.project !== undefined) otherHeld = { comparison: message.comparison, project: message.project };
+        if (!otherHeld || otherHeld.comparison !== message.comparison) throw new Error('The other project was not sent to this worker.');
+        const answer = otherRun(otherPipeline, otherHeld.project, message.versions);
+        scope.postMessage({ type: OTHER_ANSWER, generation: message.generation, ok: true, answer });
+      } catch (error) {
+        otherPipeline.clear();
+        scope.postMessage({ type: OTHER_ANSWER, generation: message.generation, ok: false, error: said(error) });
+      }
+      return;
+    }
+    if (message && message.type === OTHER_CLOSE) {
+      otherHeld = null;
+      otherPipeline.clear();
       return;
     }
     if (message && message.type === SUGGEST_REQUEST) {

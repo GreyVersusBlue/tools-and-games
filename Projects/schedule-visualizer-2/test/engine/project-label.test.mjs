@@ -125,7 +125,21 @@ test('openProjectName: the label, else the school\'s name, else "Untitled projec
   assert.equal(openProjectName(project), '⁨Harbour <b>View</b> School⁩');
   assert.equal(openProjectName({ ...project, label: '  ' }), '⁨Harbour <b>View</b> School⁩', 'a blank label shows the school name');
   const nameless = { ...project, label: '', settings: { ...project.settings, schoolName: ' ' }, created: '2026-11-04T23:59:00.000Z' };
-  assert.equal(openProjectName(nameless), 'Untitled project (started 4 November 2026)', 'the date is the UTC date, whatever the machine\'s zone');
+  const zone = process.env.TZ;
+  try {
+    process.env.TZ = 'America/Los_Angeles';
+    assert.equal(openProjectName(nameless), 'Untitled project (started 4 November 2026)');
+    process.env.TZ = 'Pacific/Auckland';
+    assert.equal(openProjectName(nameless), 'Untitled project (started 5 November 2026)', 'the date is the reader\'s own day, as the rest of the planner words a date');
+  } finally {
+    if (zone === undefined) delete process.env.TZ;
+    else process.env.TZ = zone;
+  }
   assert.equal(openProjectName({ ...nameless, created: 'x' }), 'Untitled project');
-  assert.equal(openProjectName({ ...project, label: '‮<i>' }), '⁨‮<i>⁩');
+  assert.equal(openProjectName({ ...project, label: '‮<i>' }), '⁨<i>⁩', 'a right-to-left override is taken out of the name');
+  const BIDI = ['\u202A', '\u202B', '\u202C', '\u202D', '\u202E', '\u2066', '\u2067', '\u2068', '\u2069'];
+  assert.equal(openProjectName({ ...project, label: BIDI.join('A') + ' ⁩Year<b>' }), '\u2068AAAAAAAA Year<b>\u2069', 'every control, an isolate that would close ours early too, and the rest as typed');
+  assert.equal(openProjectName({ ...project, label: BIDI.join('') }), '⁨Harbour <b>View</b> School⁩', 'a label of controls only is blank');
+  assert.equal(openProjectName({ ...nameless, settings: { ...project.settings, schoolName: '‮⁩' } }).startsWith('Untitled project'), true, 'so is a school name of them');
+  assert.equal(openProjectName({ ...project, label: '', settings: { ...project.settings, schoolName: 'S‮chool' } }), '⁨School⁩');
 });

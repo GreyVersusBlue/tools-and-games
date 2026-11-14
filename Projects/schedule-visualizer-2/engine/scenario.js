@@ -485,7 +485,8 @@ export function keptScenarios(project) {
 
 // `fn` applied to the open scenario (when there is one) and to each kept
 // scenario, in that order; fn(scenario) returns the scenario itself when it
-// changes nothing, a new object when it does, and null to remove a kept one
+// changes nothing (undefined reads so too), a new object when it does, and
+// null to remove a kept one
 // (the open one cannot be removed this way: null leaves it as it was). The
 // same project comes back when nothing changed, so an action that finds
 // nothing to do makes no history entry. A project with no `scenarios` list
@@ -501,7 +502,9 @@ export function mapScenarios(project, fn) {
     let changed = false;
     const kept = [];
     for (const scenario of project.scenarios) {
-      const result = scenario && typeof scenario === 'object' ? fn(scenario) : scenario;
+      const answer = scenario && typeof scenario === 'object' ? fn(scenario) : scenario;
+      // undefined (a callback that forgot to return) is "unchanged"; only null removes
+      const result = answer === undefined ? scenario : answer;
       if (result !== scenario) changed = true;
       if (result !== null) kept.push(result);
     }
@@ -517,8 +520,18 @@ export function mapScenarios(project, fn) {
 // scenario, so a kept scenario and the open one are run alike. The project
 // handed in is not changed. Pure.
 export function scenarioProject(project, scenario) {
+  return scenarioInputs(project, scenario).project;
+}
+
+// What the scenario lane runs for `scenario`: { project, routeOptions }, the
+// project with the scenario's reconciled changes and levers applied, and the
+// route options of those levers (leverRouteOptions: a stair one way or
+// closed, closed corridor cells), which the building itself never takes.
+// scenarioProject is its `project`. Pure; the project handed in is not changed.
+export function scenarioInputs(project, scenario) {
   const kept = reconcile(project, scenario);
-  return applyLevers(applyChanges(project, kept.changes), kept.levers || []);
+  const levers = kept.levers || [];
+  return { project: applyLevers(applyChanges(project, kept.changes), levers), routeOptions: leverRouteOptions(project, levers) };
 }
 
 // ---------------------------------------------------------------- levers

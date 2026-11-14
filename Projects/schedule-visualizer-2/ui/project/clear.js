@@ -41,7 +41,7 @@ import { count, list } from '../components/words.js';
 import { detachRooms, replaceProject } from '../../engine/actions.js';
 import { newProject, DEFAULT_DAY_TYPE_NAMES, ELEVATOR_KIND, isLiftCell } from '../../engine/schema.js';
 import { keptScenarios } from '../../engine/scenario.js';
-import { dateWords } from '../../engine/calendar.js';
+import { printDate } from '../prints/document.js';
 import { DEFAULT_PASSCODE } from '../../engine/publish-defaults.js';
 import { pageSnapshots, AUTO_SNAPSHOT_NAMES, READ_ONLY_SENTENCE } from '../../storage/snapshots.js';
 import { keepNeverShow } from '../help/progress.js';
@@ -90,20 +90,25 @@ export function buildingContents(project) {
 
 // What is in the schedule that clearing it removes, counted.
 export function scheduleContents(project) {
-  return { groups: project.groups.length, teachers: project.teachers.length, accepted: project.accepted.length, scenario: project.scenario ? project.scenario.name : null, kept: keptScenarios(project).length };
+  return { groups: project.groups.length, teachers: project.teachers.length, accepted: project.accepted.length, scenario: project.scenario ? project.scenario.name : null, kept: keptScenarios(project).filter((scenario) => scenario && typeof scenario === 'object').length };
 }
 
 // What the project is called in a sentence about it (ARCHITECTURE 21.5): its
 // label; blank, the school's name; both blank, "Untitled project (started
-// 14 November 2026)", the date of its `created` time, in UTC. The name is
-// isolated (U+2068 … U+2069) so a right-to-left override in it cannot turn
-// the words after it round.
+// 14 November 2026)", the date of its `created` time in the reader's own zone
+// (printDate, as the rest of the planner words a date). A typed name loses its
+// bidirectional controls (U+202A to U+202E, U+2066 to U+2069: an override in
+// it could turn the words after it round, and one of its own isolates could
+// close ours early) and is isolated (U+2068 … U+2069) in their place.
+const BIDI_CONTROLS = /[\u202A-\u202E\u2066-\u2069]/g;
+
 export function openProjectName(project) {
-  const label = typeof project.label === 'string' ? project.label.trim() : '';
-  const school = project.settings && typeof project.settings.schoolName === 'string' ? project.settings.schoolName.trim() : '';
+  const clean = (value) => (typeof value === 'string' ? value.replace(BIDI_CONTROLS, '').trim() : '');
+  const label = clean(project.label);
+  const school = clean(project.settings && project.settings.schoolName);
   if (label !== '') return '\u2068' + label + '\u2069';
   if (school !== '') return '\u2068' + school + '\u2069';
-  const started = typeof project.created === 'string' ? dateWords(project.created.slice(0, 10)) : '';
+  const started = typeof project.created === 'string' ? printDate(project.created) : '';
   return 'Untitled project' + (started === '' ? '' : ' (started ' + started + ')');
 }
 

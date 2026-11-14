@@ -100,9 +100,52 @@
 // store is now, so a job at an older geometry never reaches the route cache
 // the three pipelines share (it would empty it for the main lane). `client.laneStats`
 // counts each lane: asked, remembered, sent, answered, dropped, failed.
+//
+// Two more lanes (ARCHITECTURE 21.2, 21.3, 21.10), each with its own wanted,
+// flying and generation, its own counters and its own staleness check:
+//
+//   const { result, versions, where, generation } = await store.derived.kept(id, options);
+//     result    trimResult() of the project as the kept scenario with that
+//               id (one of project.scenarios) would make it: its changes
+//               that still apply and its levers (scenarioProject), run with
+//               its building levers as route options, worked out on a
+//               pipeline of its own that shares the main lane's route cache.
+//               The page compares it with compareResults(result, the open
+//               scenario's result, ...): same building, so that works as it
+//               is. options are not read: the answer does not depend on them.
+//     versions  the store's counters it is for
+//     null when no kept scenario has that id.
+//   Remembered by the three counters and the identity of that kept scenario
+//   object (an action that changes a scenario makes a new object, so a
+//   renamed or edited one is worked out again), never by its index. The lane
+//   takes a schedule counter of its own that only goes up, one per new
+//   job, and a levers counter that is the same for the same route options,
+//   so the open scenario's runs and a kept one's never share incremental
+//   work by mistake. A job is checked against the store before it is sent
+//   and again when its answer comes: a store that has moved on, or a
+//   scenarios list that no longer holds that very object, drops the answer,
+//   and the newest is asked for (null when the scenario is gone). A failure
+//   is not remembered, as everywhere here.
+//
+//   store.derived.setOther(project, fileName)   hold another building's project
+//   const { result, where, generation, fileName } = await store.derived.other(options);
+//   store.derived.closeOther()                  let it go
+//     The building comparison's other side (21.3): trimResult() of the other
+//     project as it is, on a pipeline whose route cache is its own and
+//     whose counters are the comparison's number (1, 2, 3 ...), so its
+//     routes are never served for the open project's. The worker is sent
+//     the project once per comparison, and told to free it (OTHER_CLOSE)
+//     when the comparison ends. other() is null while none is held; an
+//     answer for a comparison that has ended or been replaced is dropped
+//     and its callers get null. options are not read. The main lane and
+//     the store are not touched: the other project is view state.
 
-import { createPipeline, unpack, scenarioRun, suggestRun, REQUEST, ANSWER, READY, SCENARIO_REQUEST, SCENARIO_ANSWER, SUGGEST_REQUEST, SUGGEST_ANSWER } from '../engine/worker.js';
-import { reconcile, trimResult, compareResults, leverRouteOptions, leverOptionsKey } from '../engine/scenario.js';
+import {
+  createPipeline, unpack, scenarioRun, suggestRun, keptRun, otherRun,
+  REQUEST, ANSWER, READY, SCENARIO_REQUEST, SCENARIO_ANSWER, SUGGEST_REQUEST, SUGGEST_ANSWER,
+  KEPT_REQUEST, KEPT_ANSWER, OTHER_REQUEST, OTHER_ANSWER, OTHER_CLOSE,
+} from '../engine/worker.js';
+import { reconcile, trimResult, compareResults, leverRouteOptions, leverOptionsKey, keptScenarios } from '../engine/scenario.js';
 import { NO_SUGGESTION } from '../engine/suggest.js';
 
 // How long a new worker has to say it has loaded before it is given up on.
@@ -167,9 +210,24 @@ export function createEngineClient(store, options) {
   const lanes = {
     scenario: { request: SCENARIO_REQUEST, answer: SCENARIO_ANSWER, wanted: null, flying: null, generation: 0, stats: laneCounts() },
     suggest: { request: SUGGEST_REQUEST, answer: SUGGEST_ANSWER, wanted: null, flying: null, generation: 0, stats: laneCounts() },
+    kept: { request: KEPT_REQUEST, answer: KEPT_ANSWER, wanted: null, flying: null, generation: 0, stats: laneCounts() },
+    other: { request: OTHER_REQUEST, answer: OTHER_ANSWER, wanted: null, flying: null, generation: 0, stats: laneCounts(), projectSentFor: null },
   };
   let localScenario = null;
   let localSuggest = null;
+  let localKept = null;
+  let localOther = null;
+  // the kept lane's own counters: the schedule counter moves with each new
+  // job's key (the store's counters and that kept scenario object), and the
+  // levers counter is one number per distinct route options, so a kept
+  // scenario's runs under the same options keep what they share
+  let keptKey = null;
+  let keptCounter = 0;
+  const keptLevers = new Map([['', 0]]);
+  let keptLeversNow = 0;
+  // the comparison held, if any: { comparison, project, fileName }
+  let otherHeld = null;
+  let otherComparison = 0;
   // the scenario lane's own schedule counter: it moves when the store's
   // counters do or project.scenario is another object
   const scenarioIds = new WeakMap();
@@ -242,7 +300,7 @@ export function createEngineClient(store, options) {
 
   function laneSettle(lane, job, value) {
     job.settled = true;
-    job.resolve({ ...value, project: job.project, storeVersions: job.storeVersions });
+    job.resolve({ ...value, project: job.project, storeVersions: job.storeVersions, scenario: job.scenario, comparison: job.comparison });
   }
 
   function laneFail(lane, job, error) {
@@ -261,6 +319,23 @@ export function createEngineClient(store, options) {
           answer = scenarioRun(localScenario, job.project, job.versions);
         } catch (error) {
           localScenario.clear();
+          throw error;
+        }
+      } else if (lane === lanes.kept) {
+        if (!localKept) localKept = createPipeline({ cache: localMain().cache });
+        try {
+          answer = keptRun(localKept, job.project, job.scenario, job.versions);
+        } catch (error) {
+          localKept.clear();
+          throw error;
+        }
+      } else if (lane === lanes.other) {
+        // a cache of its own: the other building's routes are never the open project's
+        if (!localOther) localOther = createPipeline();
+        try {
+          answer = otherRun(localOther, job.project, job.versions);
+        } catch (error) {
+          localOther.clear();
           throw error;
         }
       } else {
@@ -282,7 +357,11 @@ export function createEngineClient(store, options) {
   // Is this lane job for the store as it is? Its counters, and for the
   // scenario lane the identity of project.scenario too.
   function laneCurrent(lane, job) {
+    // the other building is view state: it does not move with the store
+    if (lane === lanes.other) return otherHeld !== null && otherHeld.comparison === job.comparison;
     if (stampOf(job.storeVersions) !== stampOf(currentVersions())) return false;
+    // a kept answer is for that very object, wherever it now is in the list
+    if (lane === lanes.kept) return keptScenarios(store.project).includes(job.scenario);
     return lane !== lanes.scenario || store.project.scenario === job.project.scenario;
   }
 
@@ -294,14 +373,28 @@ export function createEngineClient(store, options) {
     if (laneCurrent(lane, job)) return false;
     lane.stats.dropped += 1;
     if (lane === lanes.scenario) askScenario();
-    else client.suggest(job.findingId, job.given);
+    else if (lane === lanes.kept) askKept(job.keptId, job.given);
+    else if (lane !== lanes.other) client.suggest(job.findingId, job.given);
     // the asking above settles the job (laneJob) when it makes a new one;
-    // when it makes none (no scenario open) it has settled it null already
+    // when it makes none (no scenario open, no such kept scenario, the other
+    // comparison ended) the job is settled null here, and never asked again
+    // as it was
     if (!job.settled) {
       job.settled = true;
+      job.dead = true;
       job.resolve(null);
+      if (lane.wanted === job) lane.wanted = null;
     }
     return true;
+  }
+
+  // What a lane's job is sent as. The other building's project goes once per
+  // comparison, with the first request; the worker keeps it.
+  function laneMessage(lane, job) {
+    const base = { type: lane.request, generation: job.generation, versions: job.versions };
+    if (lane === lanes.kept) return { ...base, project: job.project, scenario: job.scenario };
+    if (lane === lanes.other) return lane.projectSentFor === job.comparison ? { ...base, comparison: job.comparison } : { ...base, comparison: job.comparison, project: job.project };
+    return { ...base, project: job.project, finding: job.finding, options: job.options };
   }
 
   function pumpLane(lane) {
@@ -324,7 +417,8 @@ export function createEngineClient(store, options) {
     lane.flying = job.generation;
     lane.stats.sent += 1;
     try {
-      worker.postMessage({ type: lane.request, generation: job.generation, project: job.project, versions: job.versions, finding: job.finding, options: job.options });
+      worker.postMessage(laneMessage(lane, job));
+      if (lane === lanes.other) lane.projectSentFor = job.comparison;
     } catch (error) {
       giveUpOnWorker('The project could not be sent to the worker: ' + error.message);
     }
@@ -425,6 +519,88 @@ export function createEngineClient(store, options) {
     return job;
   }
 
+  // The kept lane's job for the kept scenario with this id, for the store as
+  // it is now: the one wanted already when it is for these counters and that
+  // very object, else a new one; null when no kept scenario has the id (a
+  // job still waiting for another is left to it).
+  function askKept(id, given) {
+    const lane = lanes.kept;
+    const project = store.project;
+    const scenario = typeof id === 'string' ? keptScenarios(project).find((kept) => kept && kept.id === id) : undefined;
+    if (!scenario) return null;
+    const versions = currentVersions();
+    if (!scenarioIds.has(scenario)) {
+      scenarioIdNext += 1;
+      scenarioIds.set(scenario, scenarioIdNext);
+    }
+    const key = stampOf(versions) + '|' + id + '|' + scenarioIds.get(scenario);
+    const held = lane.wanted;
+    if (held && held.key === key && !held.failed && !held.dead) {
+      lane.stats.remembered += 1;
+      return held;
+    }
+    if (key !== keptKey) {
+      keptKey = key;
+      keptCounter += 1;
+      // a scenario the lane cannot read fails in the lane's own answer; it has no route options to key here
+      let optionsKey = '';
+      try {
+        optionsKey = leverOptionsKey(leverRouteOptions(project, reconcile(project, scenario).levers));
+      } catch (error) {
+        optionsKey = '';
+      }
+      if (!keptLevers.has(optionsKey)) keptLevers.set(optionsKey, keptLevers.size);
+      keptLeversNow = keptLevers.get(optionsKey);
+    }
+    const job = laneJob(lane, {
+      key,
+      subject: 'kept:' + id,
+      keptId: id,
+      given,
+      scenario,
+      project,
+      storeVersions: versions,
+      versions: { geometry: versions.geometry, building: versions.building, schedule: keptCounter, levers: keptLeversNow },
+      ready: true,
+    });
+    job.answered = job.promise.then((run) => {
+      if (run === null) return null;
+      // the store has moved on since this was worked out, its counters or
+      // the list that held the scenario: the newest instead, null if it is gone
+      if (stampOf(run.storeVersions) !== stampOf(currentVersions()) || !keptScenarios(store.project).includes(run.scenario)) {
+        lane.stats.dropped += 1;
+        return client.kept(id, given);
+      }
+      return { result: run.answer, versions: run.storeVersions, where: run.where, generation: run.generation };
+    });
+    pumpLane(lane);
+    return job;
+  }
+
+  // The comparison ends: a job waiting is settled null and never worked out,
+  // the worker is told to let the other project go, and so is this side.
+  function endOther() {
+    const lane = lanes.other;
+    const older = lane.wanted;
+    if (older && !older.settled) {
+      older.settled = true;
+      older.resolve(null);
+      // one already with the worker is counted when its answer comes
+      if (!older.sent || where === 'main') lane.stats.dropped += 1;
+    }
+    lane.wanted = null;
+    lane.projectSentFor = null;
+    otherHeld = null;
+    if (worker && where === 'worker') {
+      try {
+        worker.postMessage({ type: OTHER_CLOSE });
+      } catch (error) {
+        giveUpOnWorker('A message could not be sent to the worker: ' + error.message);
+      }
+    }
+    localOther = null;
+  }
+
   function giveUpOnWorker(reason) {
     if (where === 'main') return;
     stopWaitingForReady();
@@ -450,7 +626,9 @@ export function createEngineClient(store, options) {
 
   function onMessage(event) {
     const message = event.data;
-    if (message && (message.type === READY || message.type === ANSWER || message.type === SCENARIO_ANSWER || message.type === SUGGEST_ANSWER)) stopWaitingForReady();
+    if (message && (message.type === READY || message.type === ANSWER || message.type === SCENARIO_ANSWER || message.type === SUGGEST_ANSWER || message.type === KEPT_ANSWER || message.type === OTHER_ANSWER)) stopWaitingForReady();
+    if (message && message.type === KEPT_ANSWER) return onLaneMessage(lanes.kept, message);
+    if (message && message.type === OTHER_ANSWER) return onLaneMessage(lanes.other, message);
     if (message && message.type === SCENARIO_ANSWER) return onLaneMessage(lanes.scenario, message);
     if (message && message.type === SUGGEST_ANSWER) return onLaneMessage(lanes.suggest, message);
     if (!message || message.type !== ANSWER || message.generation !== flying) return;
@@ -512,11 +690,11 @@ export function createEngineClient(store, options) {
     // Distance fields searched on this side so far, by the pipelines here
     // (they share one route cache, counted once); null while none is made.
     get searches() {
-      const caches = new Set([local, localScenario, localSuggest].filter(Boolean).map((pipeline) => pipeline.cache));
+      const caches = new Set([local, localScenario, localSuggest, localKept, localOther].filter(Boolean).map((pipeline) => pipeline.cache));
       return caches.size === 0 ? null : Array.from(caches).reduce((sum, cache) => sum + cache.searches, 0);
     },
     get laneStats() {
-      return { scenario: lanes.scenario.stats, suggest: lanes.suggest.stats };
+      return { scenario: lanes.scenario.stats, suggest: lanes.suggest.stats, kept: lanes.kept.stats, other: lanes.other.stats };
     },
     // A promise for the result of the store's project as it is now.
     results() {
@@ -616,6 +794,61 @@ export function createEngineClient(store, options) {
       });
       return job.answered;
     },
+    // The kept scenario with this id worked out. The shape is in the header.
+    kept(id, options) {
+      if (closed) return Promise.reject(new Error('This engine client has been closed.'));
+      lanes.kept.stats.asked += 1;
+      const job = askKept(id, options);
+      return job ? job.answered : Promise.resolve(null);
+    },
+    // Hold another building's project for a comparison, replacing one held.
+    setOther(project, fileName) {
+      if (closed) throw new Error('This engine client has been closed.');
+      if (!project || typeof project !== 'object') throw new TypeError('setOther needs the other project.');
+      if (otherHeld) endOther();
+      otherComparison += 1;
+      otherHeld = { comparison: otherComparison, project, fileName: typeof fileName === 'string' ? fileName : '' };
+      return otherComparison;
+    },
+    // The comparison is over: let the other project go. Harmless when none is held.
+    closeOther() {
+      if (closed || !otherHeld) return;
+      endOther();
+    },
+    // The other building worked out. The shape is in the header.
+    other(options) {
+      if (closed) return Promise.reject(new Error('This engine client has been closed.'));
+      const lane = lanes.other;
+      lane.stats.asked += 1;
+      if (!otherHeld) return Promise.resolve(null);
+      const held = lane.wanted;
+      if (held && held.comparison === otherHeld.comparison && !held.failed && !held.dead) {
+        lane.stats.remembered += 1;
+        return held.answered;
+      }
+      const comparison = otherHeld.comparison;
+      const fileName = otherHeld.fileName;
+      const job = laneJob(lane, {
+        key: 'other:' + comparison,
+        subject: 'other:' + comparison,
+        comparison,
+        project: otherHeld.project,
+        storeVersions: null,
+        // the comparison's own number in all three, counting up from 1: never the store's
+        versions: { geometry: comparison, building: comparison, schedule: comparison },
+        ready: true,
+      });
+      job.answered = job.promise.then((run) => {
+        if (run === null) return null;
+        if (otherHeld === null || otherHeld.comparison !== run.comparison) {
+          lane.stats.dropped += 1;
+          return null;
+        }
+        return { result: run.answer, where: run.where, generation: run.generation, fileName };
+      });
+      pumpLane(lane);
+      return job.answered;
+    },
     close() {
       if (closed) return;
       closed = true;
@@ -633,8 +866,9 @@ export function createEngineClient(store, options) {
   return client;
 }
 
-// store.derived.scenario(options) and store.derived.suggest(findingId,
-// options), beside store.derived.results(): each asks the engine attached
+// store.derived.scenario(options), store.derived.suggest(findingId,
+// options), store.derived.kept(id, options), store.derived.other(options),
+// setOther(project, fileName) and closeOther(), beside store.derived.results(): each asks the engine attached
 // with use(), and refuses in the same words while none is. engine/store.js
 // is not this file's, so they are put on the store's derived object here,
 // once, on the first engineFor().
@@ -646,6 +880,23 @@ function addLanes(derived) {
   }
   if (typeof derived.suggest !== 'function') {
     derived.suggest = (findingId, options) => (derived.engine && typeof derived.engine.suggest === 'function' ? derived.engine.suggest(findingId, options) : Promise.reject(new Error(NOTHING_ATTACHED)));
+  }
+  if (typeof derived.kept !== 'function') {
+    derived.kept = (id, options) => (derived.engine && typeof derived.engine.kept === 'function' ? derived.engine.kept(id, options) : Promise.reject(new Error(NOTHING_ATTACHED)));
+  }
+  if (typeof derived.other !== 'function') {
+    derived.other = (options) => (derived.engine && typeof derived.engine.other === 'function' ? derived.engine.other(options) : Promise.reject(new Error(NOTHING_ATTACHED)));
+  }
+  if (typeof derived.setOther !== 'function') {
+    derived.setOther = (project, fileName) => {
+      if (!derived.engine || typeof derived.engine.setOther !== 'function') throw new Error(NOTHING_ATTACHED);
+      return derived.engine.setOther(project, fileName);
+    };
+  }
+  if (typeof derived.closeOther !== 'function') {
+    derived.closeOther = () => {
+      if (derived.engine && typeof derived.engine.closeOther === 'function') derived.engine.closeOther();
+    };
   }
 }
 
