@@ -3004,7 +3004,19 @@ const scenarioNameKey = (scenario) => spacelessKey(nameOfScenario(scenario));
 
 // every scenario of the project, the open one first
 function allScenarios(project) {
-  return (project.scenario ? [project.scenario] : []).concat(keptScenarios(project));
+  return (project.scenario ? [project.scenario] : []).concat(keptObjects(project));
+}
+
+// the kept scenarios that are objects (a list an older file or planner left
+// holding something else is not the actions' to trip over)
+function keptObjects(project) {
+  return keptScenarios(project).filter((scenario) => scenario && typeof scenario === 'object');
+}
+
+// the open scenario when `id` is its id; a kept one's otherwise (refused when
+// there is none). Only a string id names a scenario.
+function needScenarioById(project, id) {
+  return project.scenario && typeof id === 'string' && project.scenario.id === id ? project.scenario : needKept(project, id);
 }
 
 function nameTaken(scenarios, name, except) {
@@ -3018,7 +3030,7 @@ function needRoomForAnother(project, thrownAway) {
 }
 
 function needKept(project, id) {
-  const found = typeof id === 'string' ? keptScenarios(project).find((scenario) => scenario.id === id) : undefined;
+  const found = typeof id === 'string' ? keptObjects(project).find((scenario) => scenario.id === id) : undefined;
   if (!found) refuse('That scenario is not among the kept scenarios. It may have been deleted or opened.', 'no-scenario');
   return found;
 }
@@ -3040,7 +3052,7 @@ function idOf(ctx) {
 }
 
 function withId(scenario, ctx) {
-  return typeof scenario.id === 'string' ? scenario : { id: ctx.ids('e'), ...scenario };
+  return typeof scenario.id === 'string' ? scenario : { ...scenario, ...idOf(ctx) };
 }
 
 // The kept list with the open scenario put first (given an id when it has
@@ -3062,14 +3074,14 @@ export const newScenario = action(
     const replacing = Boolean(project.scenario) && !keep && given.replace === true;
     if (project.scenario && !keep && !replacing) needNoScenario(project, payload);
     needRoomForAnother(project, replacing);
-    const others = keep ? allScenarios(project) : keptScenarios(project);
+    const others = keep ? allScenarios(project) : keptObjects(project);
     let name;
     if (given.name === undefined || blankName(given.name)) name = freeName(others, NEW_SCENARIO_NAME, (n) => NEW_SCENARIO_NAME + ' ' + n);
     else {
       name = needText(given.name, 'A scenario name');
       if (nameTaken(others, name)) refuse('Another scenario is called ' + name + '.', 'name-taken');
     }
-    const made = { ...idOf(ctx), name, changes: [], compared: null };
+    const made = { name, changes: [], compared: null, ...idOf(ctx) };
     return keep ? { ...withScenario(project, made), scenarios: keptWithOpen(project, ctx) } : withScenario(project, made);
   },
 );
@@ -3079,7 +3091,7 @@ export const newScenario = action(
 // list's order. payload: { id }. Opening the open scenario changes nothing.
 export const openScenario = action(
   {
-    label: (before, payload) => 'Open scenario ' + nameOfScenario(keptScenarios(before).find((scenario) => scenario.id === payloadOf(payload).id) || before.scenario || {}),
+    label: (before, payload) => 'Open scenario ' + nameOfScenario(keptObjects(before).find((scenario) => scenario.id === payloadOf(payload).id) || before.scenario || {}),
     bumps: [],
     focus: scenarioFocus,
   },
@@ -3104,7 +3116,7 @@ export const duplicateScenario = action(
   {
     label: (before, payload) => {
       const id = payloadOf(payload).id;
-      const source = id === undefined ? before.scenario : keptScenarios(before).find((scenario) => scenario.id === id) || before.scenario;
+      const source = id === undefined ? before.scenario : keptObjects(before).find((scenario) => scenario.id === id) || before.scenario;
       return 'Duplicate scenario ' + nameOfScenario(source || {});
     },
     bumps: [],
@@ -3116,12 +3128,13 @@ export const duplicateScenario = action(
     if (id === undefined) {
       if (!project.scenario) refuse('There is no scenario open. Start one first.', 'no-scenario');
       source = project.scenario;
-    } else if (project.scenario && project.scenario.id === id) source = project.scenario;
-    else source = needKept(project, id);
+    } else source = needScenarioById(project, id);
     needRoomForAnother(project, false);
     const base = nameOfScenario(source);
     const name = freeName(allScenarios(project), base + ' (copy)', (n) => base + ' (copy ' + n + ')');
-    const copy = { ...structuredClone(source), id: ctx.ids('e'), name };
+    const copy = { ...structuredClone(source), name };
+    delete copy.id;
+    Object.assign(copy, idOf(ctx));
     const list = keptScenarios(project);
     const at = source === project.scenario ? 0 : list.indexOf(source) + 1;
     const scenarios = list.slice();
@@ -3136,7 +3149,7 @@ export const renameScenario = action(
   {
     label: (before, payload) => {
       const id = payloadOf(payload).id;
-      const target = id === undefined ? before.scenario : keptScenarios(before).find((scenario) => scenario.id === id);
+      const target = id === undefined ? before.scenario : keptObjects(before).find((scenario) => scenario.id === id);
       return 'Rename scenario ' + nameOfScenario(target || {}) + ' to ' + payloadOf(payload).name;
     },
     bumps: [],
@@ -3144,7 +3157,7 @@ export const renameScenario = action(
   },
   (project, payload) => {
     const id = payloadOf(payload).id;
-    const scenario = id === undefined ? needScenario(project) : project.scenario && project.scenario.id === id ? project.scenario : needKept(project, id);
+    const scenario = id === undefined ? needScenario(project) : needScenarioById(project, id);
     const given = payloadOf(payload).name;
     const name = needName(blankName(given) ? '' : given, 'A scenario');
     if (name === scenario.name) return project;
@@ -3159,7 +3172,7 @@ export const renameScenario = action(
 // is discarded.) payload: { id }.
 export const deleteScenario = action(
   {
-    label: (before, payload) => 'Delete scenario ' + nameOfScenario(keptScenarios(before).find((scenario) => scenario.id === payloadOf(payload).id) || {}),
+    label: (before, payload) => 'Delete scenario ' + nameOfScenario(keptObjects(before).find((scenario) => scenario.id === payloadOf(payload).id) || {}),
     bumps: [],
     focus: scenarioFocus,
   },
@@ -3445,12 +3458,12 @@ export const setScenarioFromFile = action(
     if (!readableProject(other)) refuse('This file is not a project file this tool can read, so there is nothing to compare with.', 'bad-value');
     needRoomForAnother(project, replacing);
     const options = { fileName: typeof given.fileName === 'string' ? given.fileName : '' };
-    const others = keep ? allScenarios(project) : keptScenarios(project);
+    const others = keep ? allScenarios(project) : keptObjects(project);
     if (typeof given.name === 'string' && !blankName(given.name)) {
       options.name = given.name;
       if (nameTaken(others, given.name)) refuse('Another scenario is called ' + given.name + '.', 'name-taken');
     }
-    const made = { ...idOf(ctx), ...scenarioFromDiff(project, other, options).scenario };
+    const made = { ...scenarioFromDiff(project, other, options).scenario, ...idOf(ctx) };
     // a name the file's name made is numbered when another scenario has it
     if (options.name === undefined) made.name = freeName(others, made.name, (n) => made.name + ' ' + n);
     const next = keep ? { ...withScenario(project, made), scenarios: keptWithOpen(project, ctx) } : withScenario(project, made);

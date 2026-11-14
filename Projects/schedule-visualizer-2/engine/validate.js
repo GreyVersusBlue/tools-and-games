@@ -807,7 +807,7 @@ export function validate(project) {
   // The shape of one scenario; `base` is the path it is reported at. Names are
   // not checked (an older planner's renameScenario allows blanks and
   // duplicates, and a finding here would quarantine the project it saved).
-  const checkScenario = (scenario, base) => {
+  const checkScenario = (scenario, base, kept = false) => {
     if (!isObject(scenario)) {
       add(base, 'A scenario is an object.');
       return;
@@ -865,7 +865,10 @@ export function validate(project) {
             // corridor name, which has no cap, so it has none here
             const floors = project.building && Array.isArray(project.building.floors) ? project.building.floors : [];
             const floorOf = floors.find((candidate) => isObject(candidate) && candidate.id === lever.floorId);
-            const most = floorOf && isString(floorOf.cells) ? floorOf.cells.length : RANGES.floorSize[1] * RANGES.floorSize[1];
+            let most = floorOf && isString(floorOf.cells) ? floorOf.cells.length : RANGES.floorSize[1] * RANGES.floorSize[1];
+            // W6:BEGIN a kept scenario is never judged against the floor: an older planner shrinks a floor and rewrites only the open scenario, and a finding here would quarantine the saved project; the fit to the floor is repair's and reconcile's
+            if (kept) most = RANGES.floorSize[1] * RANGES.floorSize[1];
+            // W6:END
             sound = text(lever.floorId) && Array.isArray(lever.cells) && lever.cells.length > 0 && lever.cells.length <= most && lever.cells.every(whole) && isString(lever.name);
           }
           if (!sound) add(path, 'This ' + lever.kind + ' lever is missing one of its fields, or one holds a value it cannot.');
@@ -896,7 +899,7 @@ export function validate(project) {
       if (project.scenarios.length > SCENARIOS_MOST - 1) add('scenarios', 'A project keeps at most ' + (SCENARIOS_MOST - 1) + ' scenarios besides the open one; this has ' + project.scenarios.length + '.');
       project.scenarios.forEach((kept, i) => {
         const path = 'scenarios[' + i + ']';
-        checkScenario(kept, path);
+        checkScenario(kept, path, true);
         if (isObject(kept)) checkId(path, kept, ID_PREFIXES.scenario);
       });
     }
