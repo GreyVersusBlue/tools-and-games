@@ -321,7 +321,8 @@ const reaches = (p, id, states) => p.waitForFunction((which, wanted) => {
   return el && wanted.includes(el.dataset.state);
 }, { timeout: 30000 }, id, states).then(() => p.$eval('#' + id, (el) => el.dataset.state));
 
-async function receiveRefused(size, how) {
+// `choice`: what is done in the refusal: 'keep' (Keep it as another project), 'open' (Open <label>) or 'close' (Escape).
+async function receiveRefused(size, how, choice) {
   const a = await lone(size);
   const b = await lone(size);
   try {
@@ -353,13 +354,29 @@ async function receiveRefused(size, how) {
     assert.deepEqual(await there.$$eval('#transfer-receive [data-action="keep-held"], #transfer-receive [data-action="open-held"]', (buttons) => buttons.map((button) => button.textContent)), ['Keep it as another project', 'Open ' + label]);
     assert.equal(await there.$('#transfer-receive [data-action="replace-project"]'), null, 'no way to replace');
     assert.equal(await focused(there), 'Open ' + label);
-    assert.equal(await reaches(sender, 'transfer-send', ['not-taken', 'applied', 'lost', 'failed']), 'not-taken', 'the sending device is told it was not taken');
+    // the sending device is not told "not taken" before the person has chosen
+    await there.waitForFunction(() => document.querySelector('#transfer-receive [data-action="keep-held"]') !== null);
+    assert.equal(await sender.$eval('#transfer-send', (el) => el.dataset.state), 'sent', 'still waiting for the reply while the question is open');
     assert.deepEqual(await counts(there), before, 'no snapshot, recovery point or image on the receiving device');
     if (how === 'tap') await fits(there, 'dialog#transfer-receive');
 
+    if (choice === 'close') {
+      await there.keyboard.press('Escape');
+      assert.equal(await reaches(sender, 'transfer-send', ['not-taken', 'applied', 'lost', 'failed']), 'not-taken', 'Cancel: told it was not taken');
+      assert.deepEqual(await counts(there), before);
+      return;
+    }
     await there.evaluate(() => {
       globalThis.__before = true;
     });
+    if (choice === 'open') {
+      if (how === 'tap') await there.tap('[data-action="open-held"]');
+      else await there.keyboard.press('Enter');
+      await loaded(there);
+      assert.equal(await projectId(there), sampleId, 'the kept project is open');
+      assert.equal(await reaches(sender, 'transfer-send', ['not-taken', 'applied', 'lost', 'failed']), 'not-taken', 'Open: told it was not taken');
+      return;
+    }
     if (how === 'tap') await there.tap('[data-action="keep-held"]');
     else await backAndEnter(there);
     await loaded(there);
@@ -367,6 +384,8 @@ async function receiveRefused(size, how) {
     assert.notEqual(copy.project.id, sampleId);
     assert.match(copy.project.label, / \(another copy\)$/);
     assert.ok((await shelfKeys(there)).includes('shelf:' + sampleId), 'the kept project is still kept');
+    // the protocol has no word for "kept as another project": the reply is received-and-applied
+    assert.equal(await reaches(sender, 'transfer-send', ['not-taken', 'applied', 'lost', 'failed']), 'applied', 'Keep it as another project: told it was received and applied');
     assert.deepEqual(a.problems().errors, []);
   } finally {
     await shut(a, b);
@@ -374,11 +393,187 @@ async function receiveRefused(size, how) {
 }
 
 test('receive by the keyboard at 1280: a project that arrives as a copy of a kept one is refused with Open and Keep, and the sender is told', async () => {
-  await receiveRefused({ width: 1280, height: 900 }, 'keyboard');
+  await receiveRefused({ width: 1280, height: 900 }, 'keyboard', 'keep');
+});
+
+test('receive: Escape in the refusal tells the sender it was not taken, and nothing was stored; Open <label> tells it the same and opens the kept project', async () => {
+  await receiveRefused({ width: 1280, height: 900 }, 'keyboard', 'close');
+  await receiveRefused({ width: 1280, height: 900 }, 'keyboard', 'open');
 });
 
 test('receive by finger at 390 by 844: the same, inside the window', async () => {
-  await receiveRefused({ width: 390, height: 844, mobile: true }, 'tap');
+  await receiveRefused({ width: 390, height: 844, mobile: true }, 'tap', 'keep');
+});
+
+// ---- the guards of SV2-118b
+
+// A kept project's record on the shelf under `id`, as a copy of the open project.
+const shelve = (p, id, label) => p.evaluate((wanted, name) => new Promise((resolve, reject) => {
+  const open = indexedDB.open('sv2');
+  open.onsuccess = () => {
+    const db = open.result;
+    const tx = db.transaction('project', 'readwrite');
+    const store = tx.objectStore('project');
+    const got = store.get('current');
+    got.onsuccess = () => {
+      const record = got.result;
+      store.put({ savedAt: record.savedAt, project: { ...record.project, id: wanted, label: name }, exportedAt: null, shelvedAt: record.savedAt, bytes: 1, images: {} }, 'shelf:' + wanted);
+    };
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => reject(tx.error);
+  };
+}), id, label);
+
+const withoutHolds = (p) => p.evaluate(() => {
+  const { projects } = globalThis.sv2.storage;
+  globalThis.__holds = projects.holds;
+  projects.holds = undefined;
+});
+const withHolds = (p) => p.evaluate(() => {
+  globalThis.sv2.storage.projects.holds = globalThis.__holds;
+});
+const resultOf = (p) => p.waitForFunction(() => document.querySelector('#project-file [data-line="result"]').dataset.result === 'refused', { timeout: 10000 })
+  .then(() => p.$eval('#project-file [data-line="result"] p', (el) => el.textContent));
+
+test('import: the refusal is said once, in the dialog; the card line says only that nothing was imported and replaces a stale line', async () => {
+  const { kept, label } = await withKept(page, session);
+  // an earlier outcome leaves a line: a file of the open id, read and declined
+  await chooseFile(page, 'same.json', await fileOf(page, await projectId(page)));
+  await page.waitForSelector('dialog.dialog[open]');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.querySelector('dialog[open]') === null);
+  assert.match(await page.$eval('#project-file [data-line="result"] p', (el) => el.textContent), /was read and not imported/);
+  await chooseFile(page, 'next year.json', await fileOf(page, kept));
+  await page.waitForSelector('dialog#held-refusal[open]');
+  const line = await page.$eval('#project-file [data-line="result"] p', (el) => el.textContent);
+  assert.equal(line, '“next year.json” was not imported, and nothing has changed.');
+  assert.ok(!line.includes('is a copy of'), 'the sentence of the refusal is in the dialog only');
+  assert.equal(await page.$$eval('[role="alert"]', (all) => all.filter((el) => el.textContent.includes('is a copy of ' + '')).length), 1, 'one alert says it: ' + label);
+  await page.keyboard.press('Escape');
+});
+
+test('import: a hostile label in the refusal is text, in the sentence and on Open', async () => {
+  const { kept } = await withKept(page, session);
+  const hostile = '<img src=x onerror=alert(1)> Next';
+  await shelve(page, kept, hostile);
+  await chooseFile(page, 'next year.json', await fileOf(page, kept));
+  await page.waitForSelector('dialog#held-refusal[open]');
+  assert.equal(await page.$('#held-refusal img'), null);
+  assert.deepEqual(await dialogButtons(page, 'held-refusal'), ['Keep it as another project', 'Open ' + hostile]);
+  assert.equal(await page.$eval('#held-refusal [role="alert"]', (el) => el.textContent), sentence('file', hostile, 'choose the file again'));
+  await page.keyboard.press('Escape');
+});
+
+test('import: the shelf changing while the question is open refuses at Replace, before any snapshot, image or recovery point', async () => {
+  await freshDevice(page, session);
+  const id = 'plate00001';
+  await chooseFile(page, 'late.json', await fileOf(page, id));
+  await page.waitForSelector('dialog.dialog[open]');
+  assert.equal(await page.$('#held-refusal'), null, 'not held when the question was asked');
+  await shelve(page, id, 'Late twin');
+  const before = await counts(page);
+  await page.click('dialog.dialog[open] .dialog__buttons button:first-child');
+  await page.waitForSelector('dialog#held-refusal[open]');
+  assert.deepEqual(await dialogButtons(page, 'held-refusal'), ['Keep it as another project', 'Open Late twin']);
+  assert.deepEqual(await counts(page), before, 'nothing stored, snapshotted or replaced');
+  await page.keyboard.press('Escape');
+});
+
+test('import: with no way to ask which projects are kept, the file is refused before any question, snapshot or image', async () => {
+  await freshDevice(page, session);
+  const before = await counts(page);
+  await withoutHolds(page);
+  try {
+    await chooseFile(page, 'absent.json', await fileOf(page, 'pabsent001'));
+    assert.match(await resultOf(page), /was not imported, and nothing has changed, because this device could not be asked which projects it keeps\./);
+    assert.equal(await page.$('dialog.dialog[open]'), null, 'nothing asked');
+  } finally {
+    await withHolds(page);
+  }
+  assert.deepEqual(await counts(page), before);
+});
+
+test('a building file has no id check and none is wanted: it goes to its own question even with a kept project of the open id\'s family', async () => {
+  await withKept(page, session);
+  const text = await page.evaluate(async () => {
+    const { buildExport } = await import(new URL('engine/exports.js', document.baseURI).href);
+    return buildExport(globalThis.sv2.store.project, 'building', { date: new Date(), images: {} }).text;
+  });
+  await page.evaluate((contents) => {
+    const input = document.querySelector('#project-file input[type="file"][data-file="building"]');
+    const data = new DataTransfer();
+    data.items.add(new File([contents], 'building.json'));
+    input.files = data.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }, text);
+  await page.waitForSelector('dialog.dialog[open]');
+  assert.equal(await page.$('#held-refusal'), null);
+  assert.match(await page.$eval('dialog.dialog[open] h2', (el) => el.textContent), /^Replace the building with the one in /);
+  await page.keyboard.press('Escape');
+});
+
+// Two devices on the sample school; the receiving one is made ready by `ready(there, sampleId)`; the project is sent;
+// resolves what the receiving dialog reached.
+async function pairAndSend(ready) {
+  const a = await lone({ width: 1280, height: 900 });
+  const b = await lone({ width: 1280, height: 900 });
+  const sender = a.page;
+  const there = b.page;
+  await withActions(sender);
+  await withActions(there);
+  const sampleId = await projectId(there);
+  await ready(there, sampleId);
+  const before = await counts(there);
+  await pressOn(sender, '[data-action="send-project"]');
+  await reaches(sender, 'transfer-send', ['offer']);
+  const offer = await sender.$eval('textarea[data-code="offer"]', (el) => el.value);
+  await pressOn(there, '[data-action="receive-project"]');
+  await reaches(there, 'transfer-receive', ['offer']);
+  await pasteCode(there, 'offer', offer, 'keyboard');
+  await reaches(there, 'transfer-receive', ['reply']);
+  const answer = await there.$eval('textarea[data-code="answer"]', (el) => el.value);
+  await pasteCode(sender, 'answer', answer, 'keyboard');
+  return { a, b, sender, there, sampleId, before };
+}
+
+test('receive: the shelf changing while the question is open refuses at Replace, the sender is told it was not taken, nothing is stored', async () => {
+  const rig = await pairAndSend(async (there, sampleId) => {
+    await through(there, "storage.projects.startAnother('empty')");
+    assert.equal((await ask(there, 'storage.projects.remove(arg)', sampleId)).ok, true);
+  });
+  try {
+    assert.equal(await reaches(rig.there, 'transfer-receive', ['held', 'confirm', 'applied', 'failed', 'lost']), 'confirm');
+    await shelve(rig.there, rig.sampleId, 'Late twin');
+    const before = await counts(rig.there);
+    await rig.there.click('#transfer-receive [data-action="replace-project"]');
+    assert.equal(await reaches(rig.there, 'transfer-receive', ['held', 'applied', 'failed']), 'held');
+    assert.deepEqual(await counts(rig.there), before, 'no snapshot, recovery point or image');
+    assert.equal(await rig.sender.$eval('#transfer-send', (el) => el.dataset.state), 'sent', 'not told yet');
+    await rig.there.keyboard.press('Escape');
+    assert.equal(await reaches(rig.sender, 'transfer-send', ['not-taken', 'applied', 'lost', 'failed']), 'not-taken');
+  } finally {
+    await shut(rig.a, rig.b);
+  }
+});
+
+test('receive: with no way to ask which projects are kept the project is refused, the sender is told, nothing is stored', async () => {
+  let before;
+  const rig = await pairAndSend(async (there, sampleId) => {
+    await through(there, "storage.projects.startAnother('empty')");
+    await withoutHolds(there);
+  });
+  try {
+    assert.equal(await reaches(rig.there, 'transfer-receive', ['held', 'confirm', 'applied', 'failed', 'lost']), 'failed');
+    assert.match(await rig.there.$eval('#transfer-receive [data-line="status"]', (el) => el.textContent), /could not be asked which projects it keeps, so nothing was changed\./);
+    assert.equal(await reaches(rig.sender, 'transfer-send', ['not-taken', 'applied', 'lost', 'failed']), 'not-taken');
+    before = rig.before;
+    assert.deepEqual(await counts(rig.there), before);
+  } finally {
+    await shut(rig.a, rig.b);
+  }
 });
 
 // ---------------------------------------------------------------- snapshots
@@ -468,7 +663,16 @@ test('snapshots: a snapshot of a project no longer here is listed apart with Exp
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => document.getElementById('held-refusal') === null);
   assert.equal(await page.evaluate(() => globalThis.sv2.store.project.id), before.id, 'nothing was replaced');
+  // the card drew the row again: it offers Open on the row, in the open project's list
+  await page.waitForFunction((wanted) => document.querySelector('#snapshots [data-snapshot="' + wanted + '"] [data-action="open-project"]') !== null, {}, id);
+  assert.equal(await page.$eval('#snapshots [data-snapshot="' + id + '"] [data-action="open-project"]', (el) => el.textContent), 'Open Kept twin');
   await write(page, 'sv2', 'project', 'delete', null, 'shelf:' + gone);
+  await page.evaluate(() => globalThis.sv2.navigate('#building'));
+  await page.evaluate(() => globalThis.sv2.navigate('#project'));
+  await snapshotsCardReady(page);
+  await page.$eval('#snapshots [data-disclosure="gone-snapshots"]', (el) => {
+    el.open = true;
+  });
   // and with the project truly gone: restored as a project, opened
   await page.evaluate(() => {
     globalThis.__before = true;
@@ -579,4 +783,70 @@ test('recovery points: a point whose project turns out to be kept after the list
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => document.getElementById('held-refusal') === null);
   assert.deepEqual(await counts(page), { ...before, shelf: before.shelf }, 'nothing was replaced');
+});
+
+test('recovery points: rows of other projects name the label (in the button\'s name too), a hostile label is text, Open is busy once, and focus goes on after it', async () => {
+  const hostile = '<img src=x onerror=alert(1)> Next';
+  await freshDevice(page, session);
+  const kept = await projectId(page);
+  await page.evaluate((label) => globalThis.sv2.store.apply(globalThis.sv2Actions.setProjectLabel, { label }), hostile);
+  await waitSaved(page);
+  await through(page, "storage.projects.startAnother('empty')");
+  await withActions(page);
+  await pointsCardReady(page);
+  const rows = '#recovery [data-disclosure="other-points"] tr[data-project="' + kept + '"]';
+  await page.waitForSelector(rows);
+  await page.$eval('#recovery [data-disclosure="other-points"]', (el) => {
+    el.open = true;
+  });
+  assert.equal(await page.$eval(rows + ' [data-line="point-project"]', (el) => el.textContent), hostile);
+  assert.equal(await page.$('#recovery img'), null);
+  const names = await page.$$eval(rows + ' button', (all) => all.map((b) => [b.textContent, b.getAttribute('aria-label')]));
+  assert.equal(names[0][0], 'Open ' + hostile);
+  for (const [visible, name] of names) assert.ok(name.startsWith(visible), name);
+  assert.ok(names.every(([, name]) => name.includes(hostile)), 'each name says whose point it is');
+  // busy: two presses, one call
+  await page.evaluate(() => {
+    globalThis.calls = 0;
+    globalThis.sv2.storage.projects.open = () => {
+      globalThis.calls += 1;
+      return new Promise((resolve) => {
+        globalThis.release = () => resolve({ ok: false, code: 'refused', text: 'Not opened (a test made this up).' });
+      });
+    };
+  });
+  const open = rows + ' [data-action="open-project"]';
+  await page.click(open);
+  await page.waitForFunction((selector) => document.querySelector(selector).getAttribute('aria-busy') === 'true', { timeout: 5000 }, open);
+  await page.click(open);
+  assert.equal(await page.evaluate(() => globalThis.calls), 1, 'the second press did nothing');
+  await page.evaluate(() => globalThis.release());
+  await page.waitForFunction(() => !document.querySelector('#recovery [data-line="point-problem"]').hidden);
+  assert.equal(await page.$eval('#recovery [data-line="point-problem"]', (el) => el.textContent), 'Not opened (a test made this up).');
+  assert.equal(await page.$eval(open, (el) => el.getAttribute('aria-busy')), null);
+});
+
+test('recovery points: unreadable and unclassed points of a device with several projects are listed apart, in no count', async () => {
+  await withKept(page, session);
+  await page.evaluate(async () => {
+    await new Promise((resolve, reject) => {
+      const open = indexedDB.open('sv2-recovery');
+      open.onsuccess = () => {
+        const db = open.result;
+        const tx = db.transaction('recovery', 'readwrite');
+        tx.objectStore('recovery').add({ takenAt: '2026-01-01T10:00:00.000Z', reason: 'timer', junk: true });
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      };
+    });
+    await globalThis.sv2.storage.takeRecoveryPoint('replace');
+  });
+  await page.waitForFunction(() => document.getElementById('recovery').dataset.unreadable === '1', { timeout: 10000 });
+  assert.equal(await page.$eval('#recovery [data-line="broken-title"]', (el) => el.textContent), 'Cannot be read (1)');
+  const inOthers = await page.$$eval('#recovery [data-disclosure="other-points"] tr', (all) => all.length);
+  const countAll = await page.$eval('#recovery', (el) => Number(el.dataset.points) + Number(el.dataset.others) + Number(el.dataset.unreadable));
+  assert.ok(countAll >= 3 && inOthers >= 1);
 });

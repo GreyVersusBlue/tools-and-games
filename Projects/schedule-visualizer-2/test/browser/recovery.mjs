@@ -502,3 +502,209 @@ test('a device that cannot keep recovery points says so once and carries on savi
   assert.equal((await stored(page, 'sv2', 'project', 'current')).project.settings.schoolName, 'No recovery here');
   assert.deepEqual(session.problems().errors, []);
 });
+
+// ---------------------------------------------------------------- SV2-118b: rules, reasons, focus, guards, a phone
+
+const rowsKeys = () => page.$$eval('#recovery tr[data-point]', (rows) => rows.map((row) => row.dataset.point));
+const cardReady = () => page.waitForFunction(() => document.getElementById('recovery').dataset.points !== undefined, { timeout: 10000 });
+
+// A fresh device with n points of the open project.
+async function withPoints(n, options) {
+  if (session) await session.close().catch(() => {});
+  use(await open(options));
+  for (let i = 0; i < n; i += 1) {
+    await rename('Point school ' + i);
+    await take('replace');
+  }
+  await cardReady();
+  await page.waitForFunction((wanted) => document.querySelectorAll('#recovery tbody tr[data-point]').length >= wanted, { timeout: 10000 }, n);
+}
+
+// A record in the recovery store that is not a point, or one with no project named.
+const addRaw = (value) => page.evaluate((record) => new Promise((resolve, reject) => {
+  const openDb = indexedDB.open('sv2-recovery');
+  openDb.onerror = () => reject(openDb.error);
+  openDb.onsuccess = () => {
+    const db = openDb.result;
+    const tx = db.transaction('recovery', 'readwrite');
+    tx.objectStore('recovery').add(record);
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => reject(tx.error);
+  };
+}), value);
+
+test('the lead says the per-project rule: the newest 8 of this project, the newest 3 of each other, at most 24 of others', async () => {
+  await withPoints(1);
+  const lead = await page.$eval('#recovery .card__lead', (el) => el.textContent);
+  assert.match(lead, /The newest 8 of this project are kept, and the newest 3 of each other project on this device \(at most 24 of other projects in all\)/);
+});
+
+test('a point that cannot be read is listed apart under Cannot be read, with Export as it is and Delete, and is in no count', async () => {
+  await withPoints(2);
+  await addRaw({ takenAt: '2026-01-01T10:00:00.000Z', reason: 'timer', garbage: true, project: 'not a project' });
+  await take('replace');
+  await page.waitForFunction(() => document.getElementById('recovery').dataset.unreadable === '1', { timeout: 10000 });
+  const seen = await page.$eval('#recovery', (el) => ({
+    points: el.dataset.points,
+    title: el.querySelector('[data-line="broken-title"]').textContent,
+    line: el.querySelector('[data-line="points"]').textContent,
+    inMain: el.querySelectorAll('[data-disclosure="unreadable-points"]').length,
+    buttons: Array.from(el.querySelectorAll('[data-disclosure="unreadable-points"] tr button'), (b) => b.textContent),
+    disabled: Array.from(el.querySelectorAll('[data-disclosure="unreadable-points"] tr button'), (b) => b.getAttribute('aria-disabled')),
+  }));
+  assert.equal(seen.points, '3', 'the readable ones only');
+  assert.equal(seen.title, 'Cannot be read (1)');
+  assert.deepEqual(seen.buttons, ['Export', 'Delete']);
+  assert.deepEqual(seen.disabled, [null, null]);
+  assert.match(seen.line, /There are 3 recovery points, .* in all\. 1 cannot be read and is listed under Cannot be read\.$/);
+  assert.equal(await page.$('#recovery tbody:not(:empty) tr:not([data-point])'), null);
+  // Export as it is: the record's own JSON
+  await catchDownloads();
+  await page.$eval('#recovery [data-disclosure="unreadable-points"]', (el) => {
+    el.open = true;
+  });
+  await page.click('#recovery [data-disclosure="unreadable-points"] [data-action="export"]');
+  await page.waitForFunction(() => globalThis.downloads && globalThis.downloads.length > 0 && globalThis.downloads[0].text !== null, { timeout: 5000 });
+  const file = await page.evaluate(() => globalThis.downloads.at(-1));
+  assert.match(file.name, /^recovery-point-as-stored-\d+\.json$/);
+  assert.equal(JSON.parse(file.text).garbage, true);
+  // Delete asks, deletes it, and the focus goes to the card's heading (no other row in that list)
+  await page.click('#recovery [data-disclosure="unreadable-points"] [data-action="delete"]');
+  await page.waitForSelector('dialog.dialog[open]');
+  await page.click('dialog.dialog[open] .dialog__buttons button:first-child');
+  await page.waitForFunction(() => document.getElementById('recovery').dataset.unreadable === '0', { timeout: 10000 });
+  assert.equal(await page.evaluate(() => document.activeElement.className + '|' + document.activeElement.tagName), 'card__title|H2');
+});
+
+test('focus after Delete goes to the next row\'s first button, else the previous row\'s, else the card\'s heading', async () => {
+  await withPoints(3);
+  const first = async (key) => page.evaluate((k) => document.activeElement === document.querySelector('#recovery tr[data-point="' + k + '"] button'), key);
+  const del = async (key) => {
+    await page.click('#recovery tr[data-point="' + key + '"] [data-action="delete"]');
+    await page.waitForSelector('dialog.dialog[open]');
+    await page.click('dialog.dialog[open] .dialog__buttons button:first-child');
+    await page.waitForFunction((k) => document.querySelector('#recovery tr[data-point="' + k + '"]') === null, { timeout: 10000 }, key);
+  };
+  let keys = await rowsKeys();
+  await del(keys[0]);
+  assert.equal(await first(keys[1]), true, 'the next row\'s first button');
+  await del(keys[2]);
+  assert.equal(await first(keys[1]), true, 'no next row: the previous one');
+  await del(keys[1]);
+  assert.equal(await page.evaluate(() => document.activeElement.className), 'card__title', 'no row left: the heading');
+  assert.equal(await page.$eval('#recovery .card__title', (el) => el.getAttribute('tabindex')), '-1');
+});
+
+test('every button\'s name starts with the words it shows (WCAG 2.5.3)', async () => {
+  await withPoints(2);
+  const wrong = await page.$$eval('#recovery button', (all) => all.filter((b) => !b.getAttribute('aria-label').startsWith(b.textContent.trim())).map((b) => b.textContent + '|' + b.getAttribute('aria-label')));
+  assert.deepEqual(wrong, []);
+});
+
+test('a read-only tab: Restore and Delete are aria-disabled but focusable, each described by a reason, and pressing says it; Export stays', async () => {
+  await withPoints(2);
+  const other = await openPlanner({ hash: '#project', fullSample: true, server, browser, keep: true });
+  try {
+    const second = other.page;
+    await second.waitForFunction(() => globalThis.sv2 && globalThis.sv2.storage.state.readOnly, { timeout: 15000 });
+    await second.waitForFunction(() => document.querySelectorAll('#recovery tbody tr[data-point]').length >= 2, { timeout: 10000 });
+    const seen = await second.$$eval('#recovery tbody tr:first-child button', (all) => all.map((b) => ({
+      action: b.dataset.action,
+      aria: b.getAttribute('aria-disabled'),
+      native: b.disabled,
+      reason: b.getAttribute('aria-describedby') ? document.getElementById(b.getAttribute('aria-describedby')).textContent : null,
+    })));
+    assert.deepEqual(seen.map((b) => [b.action, b.aria, b.native]), [['restore', 'true', false], ['export', null, false], ['delete', 'true', false]]);
+    assert.match(seen[0].reason, /^This tab is read-only while the project is open in another tab, so it cannot restore, open or delete a recovery point\./);
+    assert.equal(seen[0].reason, seen[2].reason);
+    await second.focus('#recovery tbody tr:first-child [data-action="restore"]');
+    assert.equal(await second.evaluate(() => document.activeElement.dataset.action), 'restore', 'still focusable');
+    await second.keyboard.press('Enter');
+    assert.match(await second.$eval('#recovery [data-line="point-problem"]', (el) => el.textContent), /^This tab is read-only/);
+    await second.click('#recovery tbody tr:first-child [data-action="delete"]');
+    assert.equal(await second.$('dialog.dialog[open]'), null, 'nothing asked');
+  } finally {
+    await other.close();
+  }
+});
+
+test('a plain Restore that throws says so and can be pressed again; a second press while one runs is ignored and the button is aria-busy', async () => {
+  await withPoints(1);
+  const key = (await rowsKeys())[0];
+  const row = '#recovery tr[data-point="' + key + '"] [data-action="restore"]';
+  await page.evaluate(() => {
+    globalThis.calls = 0;
+    globalThis.sv2.storage.restoreRecoveryPointResult = () => {
+      globalThis.calls += 1;
+      return Promise.reject(new Error('the disk went away'));
+    };
+  });
+  await page.click(row);
+  await page.waitForFunction(() => !document.querySelector('#recovery [data-line="point-problem"]').hidden, { timeout: 5000 });
+  assert.equal(await page.$eval('#recovery [data-line="point-problem"]', (el) => el.textContent), 'Nothing was restored. the disk went away');
+  // slow: two presses, one call
+  await page.evaluate(() => {
+    globalThis.calls = 0;
+    globalThis.sv2.storage.restoreRecoveryPointResult = () => {
+      globalThis.calls += 1;
+      return new Promise((resolve) => {
+        globalThis.release = () => resolve({ ok: false, code: 'refused', text: 'The store did not take it.' });
+      });
+    };
+  });
+  await page.click(row);
+  await page.waitForFunction((selector) => document.querySelector(selector).getAttribute('aria-busy') === 'true', { timeout: 5000 }, row);
+  await page.click(row);
+  assert.equal(await page.evaluate(() => globalThis.calls), 1, 'the second press was ignored');
+  await page.evaluate(() => globalThis.release());
+  await page.waitForFunction((selector) => document.querySelector(selector).getAttribute('aria-busy') === null, { timeout: 5000 }, row);
+  assert.equal(await page.$eval('#recovery [data-line="point-problem"]', (el) => el.textContent), 'The store did not take it.');
+});
+
+test('plain Restore answered held offers Open only; answered other-project goes the way of a project that is gone', async () => {
+  await withPoints(1);
+  const key = (await rowsKeys())[0];
+  const row = '#recovery tr[data-point="' + key + '"] [data-action="restore"]';
+  await page.evaluate(() => {
+    globalThis.sv2.storage.restoreRecoveryPointResult = async () => ({ ok: false, code: 'held', id: 'pkeptother1', label: 'Kept twin', text: 'That recovery point is of Kept twin, which is also kept on this device.' });
+  });
+  await page.click(row);
+  await page.waitForSelector('dialog#held-refusal[open]');
+  assert.deepEqual(await page.$$eval('#held-refusal .dialog__buttons button', (all) => all.map((b) => b.textContent)), ['Open Kept twin']);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.getElementById('held-refusal') === null);
+  await page.evaluate(() => {
+    globalThis.asked = [];
+    globalThis.sv2.storage.restoreRecoveryPointResult = async () => ({ ok: false, code: 'other-project', text: 'x' });
+    globalThis.sv2.storage.projects.restoreAsProject = async (which) => {
+      globalThis.asked.push(which);
+      return { ok: false, code: 'refused', text: 'Not kept as a project (a test made this up).' };
+    };
+  });
+  await page.click(row);
+  await page.waitForFunction(() => globalThis.asked.length === 1, { timeout: 5000 });
+  assert.equal(await page.evaluate(() => globalThis.asked[0]), Number(key));
+  assert.equal(await page.$eval('#recovery [data-line="point-problem"]', (el) => el.textContent), 'Not kept as a project (a test made this up).');
+});
+
+test('the recovery card at 390 by 844 fits: no sideways scroll, rows of stacked lines, every box inside the window', async () => {
+  await withPoints(3, { width: 390, height: 844, mobile: true });
+  await addRaw({ takenAt: '2026-01-01T10:00:00.000Z', reason: 'timer', garbage: true, project: 'not a project' });
+  await take('replace');
+  await page.waitForFunction(() => document.getElementById('recovery').dataset.unreadable === '1', { timeout: 10000 });
+  await page.$eval('#recovery [data-disclosure="unreadable-points"]', (el) => {
+    el.open = true;
+  });
+  const seen = await page.evaluate(() => {
+    const card = document.getElementById('recovery');
+    const over = Array.from(card.querySelectorAll('*')).filter((el) => el.getBoundingClientRect().right > innerWidth + 0.5).map((el) => el.tagName + '.' + el.className);
+    const scrollers = Array.from(document.querySelectorAll('*')).filter((el) => el.scrollWidth > el.clientWidth + 1 && ['auto', 'scroll'].includes(getComputedStyle(el).overflowX)).map((el) => el.id || el.className);
+    const row = card.querySelector('tbody tr[data-point]');
+    return { page: document.documentElement.scrollWidth - innerWidth, over, scrollers, stacked: getComputedStyle(row).display, wide: card.scrollWidth - card.clientWidth };
+  });
+  assert.deepEqual([seen.page <= 0, seen.over, seen.wide <= 0, seen.stacked], [true, [], true, 'block'], JSON.stringify(seen));
+  assert.deepEqual(session.problems().errors, []);
+});

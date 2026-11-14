@@ -902,3 +902,214 @@ for (const theme of ['light', 'dark']) {
     assert.deepEqual(found.violations.map((violation) => violation.id + ': ' + violation.nodes.map((node) => node.target.join(' ')).join(', ')), []);
   });
 }
+
+// ---------------------------------------------------------------- SV2-118b: classes, stale rows, reasons, a full device
+
+// The device with no snapshot, and the card drawn again.
+async function empty() {
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
+  await rawWrite(['snapshots'], (tx) => tx.objectStore('snapshots').clear());
+  await redraw(0);
+}
+
+const takeNamed = (name) => page.evaluate(async (wanted) => {
+  const { pageSnapshots } = await import(new URL('storage/snapshots.js', document.baseURI).href);
+  return (await pageSnapshots().take(wanted)).id;
+}, name);
+
+// Change what a stored snapshot says its project is (without the card hearing of it).
+const edit = (id, source) => rawWrite(['snapshots'], (tx, value) => {
+  const store = tx.objectStore('snapshots');
+  const got = store.get(value.id);
+  got.onsuccess = () => {
+    // eslint-disable-next-line no-new-func
+    const next = new Function('record', value.source)(got.result);
+    store.put(next);
+  };
+}, { id, source });
+
+const rowIds = () => page.$$eval('#snapshots [data-snapshot]', (all) => all.map((el) => el.dataset.snapshot));
+const counts = async () => ({ snapshots: (await idb('snapshots')).length, points: (await idb('recovery')).length, images: (await idb('images')).length });
+const rowActions = (id) => page.$$eval('#snapshots [data-snapshot="' + id + '"] button', (all) => all.map((b) => b.dataset.action));
+
+test('a snapshot with no project id is from before projects had ids: it is the open project\'s and restores plainly', async () => {
+  await empty();
+  const before = await page.evaluate(() => globalThis.sv2.store.project.id);
+  const id = await takeNamed('Legacy <b>one</b>');
+  await edit(id, 'delete record.project.id; return record;');
+  await redraw(1);
+  assert.equal(await page.$eval('#snapshots', (el) => el.dataset.snapshots), '1', 'listed with the open project\'s');
+  assert.deepEqual(await rowActions(id), ['restore', 'rename', 'export', 'delete']);
+  await page.click('#snapshots [data-snapshot="' + id + '"] [data-action="restore"]');
+  await shows(() => document.querySelector('#snapshots [data-line="result"]').dataset.result === 'done');
+  assert.match(await text('#snapshots [data-line="result"] p'), /^Restored the snapshot “Legacy <b>one<\/b>”\./);
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.project.id), before, 'over the open project, under its id');
+});
+
+test('a snapshot found to be of another project when pressed: the card is drawn again and that row offers Restore as a project, then Open <label>', async () => {
+  await empty();
+  const hostile = '<img src=x onerror=alert(1)> Next year';
+  const id = await takeNamed('Moving 7th grade');
+  const open = await page.evaluate(() => globalThis.sv2.store.project.id);
+  await redraw(1);
+  // the project of the stored snapshot is another one's after the card was drawn
+  await edit(id, "record.project.id = 'pgone00001'; return record;");
+  const before = await counts();
+  await page.click('#snapshots [data-snapshot="' + id + '"] [data-action="restore"]');
+  await shows((wanted) => Array.from(document.querySelectorAll('#snapshots [data-snapshot="' + wanted + '"] button')).some((b) => b.dataset.action === 'restore-as-project'), id);
+  assert.match(await text('#snapshots [data-line="result"] p'), /was not restored\. This snapshot is of another project/);
+  assert.deepEqual(await rowActions(id), ['export', 'restore-as-project', 'delete']);
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.action), 'restore-as-project', 'the focus is on the button that fits');
+  assert.equal(await page.$eval('#snapshots', (el) => el.dataset.snapshots), '1', 'the row stays where it was');
+  assert.deepEqual(await counts(), before, 'no image stored, no recovery point or snapshot taken');
+  // now that project is kept on the shelf, under a hostile label
+  await rawWrite(['project'], (tx, value) => {
+    const store = tx.objectStore('project');
+    const got = store.get('current');
+    got.onsuccess = () => {
+      const record = got.result;
+      store.put({ ...record, project: { ...record.project, id: 'pgone00001', label: value }, shelvedAt: record.savedAt, exportedAt: null, bytes: 1, images: {} }, 'shelf:pgone00001');
+    };
+  }, hostile);
+  await page.click('#snapshots [data-snapshot="' + id + '"] [data-action="restore-as-project"]');
+  await page.waitForSelector('dialog#held-refusal[open]');
+  assert.equal(await page.$('#held-refusal img'), null, 'a label is text');
+  assert.deepEqual(await page.$$eval('#held-refusal .dialog__buttons button', (all) => all.map((b) => b.textContent)), ['Keep it as another project', 'Open ' + hostile]);
+  assert.equal(await page.$eval('#held-refusal [role="alert"]', (el) => el.textContent), 'This snapshot is a copy of ' + hostile + ', which is also kept on this device. Open ' + hostile + ' first, then restore it again, or keep it as another project. Nothing was replaced.');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.getElementById('held-refusal') === null);
+  await shows((wanted) => Array.from(document.querySelectorAll('#snapshots [data-snapshot="' + wanted + '"] button')).some((b) => b.dataset.action === 'open-project'), id);
+  assert.deepEqual(await rowActions(id), ['open-project', 'export', 'delete']);
+  assert.equal(await page.$eval('#snapshots [data-snapshot="' + id + '"] [data-action="open-project"]', (el) => el.textContent), 'Open ' + hostile);
+  assert.equal(await page.$('#snapshots img'), null);
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.project.id), open, 'nothing was replaced');
+  assert.deepEqual(await counts(), before);
+  await rawWrite(['project'], (tx) => tx.objectStore('project').delete('shelf:pgone00001'));
+});
+
+test('plain restore answered held by the session offers the dialog and then Open on the row; with holds missing it refuses, and stores nothing', async () => {
+  await empty();
+  const id = await takeNamed('Holds test');
+  await redraw(1);
+  const before = await counts();
+  await edit(id, "record.project.id = 'pgone00002'; return record;");
+  // holds is gone from the session: fail closed
+  const refused = await page.evaluate(async (snapshotId) => {
+    const { pageSnapshots } = await import(new URL('storage/snapshots.js', document.baseURI).href);
+    const { projects } = globalThis.sv2.storage;
+    const holds = projects.holds;
+    projects.holds = undefined;
+    try {
+      await pageSnapshots().restore(snapshotId);
+      return 'restored';
+    } catch (error) {
+      return error.code + ': ' + error.message;
+    } finally {
+      projects.holds = holds;
+    }
+  }, id);
+  assert.match(refused, /^refused: This device could not be asked which projects it keeps/);
+  assert.deepEqual(await counts(), before);
+});
+
+test('a snapshot that cannot be read is listed apart under Cannot be read with Export as stored and Delete, and is in no count of the open project\'s', async () => {
+  await empty();
+  await takeNamed('Good one');
+  await rawWrite(['snapshots'], (tx) => tx.objectStore('snapshots').add({ id: 'nbad000001', name: 'Broken <i>', takenAt: '2026-02-01T00:00:00.000Z', bytes: 5, project: 'not a project' }));
+  await redraw(2);
+  const seen = await page.$eval('#snapshots', (el) => ({
+    mine: el.dataset.snapshots,
+    total: el.dataset.total,
+    unreadable: el.dataset.unreadable,
+    others: el.dataset.others,
+    title: el.querySelector('[data-line="broken-title"]').textContent,
+    main: Array.from(el.querySelectorAll('.snap__list:not([aria-label*="cannot be read"]) [data-snapshot]'), (li) => li.dataset.snapshot),
+    broken: Array.from(el.querySelectorAll('[data-disclosure="unreadable-snapshots"] [data-snapshot]'), (li) => li.dataset.snapshot),
+    buttons: Array.from(el.querySelectorAll('[data-disclosure="unreadable-snapshots"] button'), (b) => b.textContent + ':' + b.getAttribute('aria-disabled')),
+    status: el.querySelector('[data-line="snapshots"]').textContent,
+  }));
+  assert.deepEqual([seen.mine, seen.total, seen.unreadable, seen.others], ['1', '2', '1', '0']);
+  assert.equal(seen.title, 'Cannot be read (1)');
+  assert.deepEqual(seen.broken, ['nbad000001']);
+  assert.ok(!seen.main.includes('nbad000001'));
+  assert.deepEqual(seen.buttons, ['Export:null', 'Delete:null']);
+  assert.match(seen.status, /1 cannot be read and is listed under Cannot be read\.$/);
+  await page.$eval('#snapshots [data-disclosure="unreadable-snapshots"]', (el) => {
+    el.open = true;
+  });
+  await page.click('#snapshots [data-snapshot="nbad000001"] [data-action="export"]');
+  await shows(() => globalThis.sv2test.downloads.length > 0);
+  const file = await page.evaluate(() => globalThis.sv2test.downloads.at(-1));
+  assert.equal(JSON.parse(file.text).name, 'Broken <i>', 'the record as it is stored');
+  await page.click('#snapshots [data-snapshot="nbad000001"] [data-action="delete"]');
+  await page.waitForSelector('dialog.dialog[open]');
+  await answer('Delete this snapshot');
+  await shows(() => document.getElementById('snapshots').dataset.unreadable === '0');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.field), 'snapshot-name', 'no row left: the name field');
+});
+
+test('a device full of other projects\' snapshots says so and that Take will be refused; Take stays focusable with a reason and stores nothing', async () => {
+  await empty();
+  await takeNamed('Seed');
+  await rawWrite(['snapshots'], (tx) => {
+    const store = tx.objectStore('snapshots');
+    const got = store.getAll();
+    got.onsuccess = () => {
+      const first = got.result[0];
+      store.clear();
+      for (let n = 0; n < 30; n += 1) store.add({ ...first, id: 'nother' + String(n).padStart(4, '0'), name: 'Of another ' + n, takenAt: '2026-08-01T10:' + String(n).padStart(2, '0') + ':00.000Z', project: { ...first.project, id: 'pother' + String(n % 3).padStart(4, '0'), label: 'Other ' + (n % 3) } });
+    }
+  });
+  await redraw(30);
+  const seen = await page.$eval('#snapshots', (el) => {
+    const button = el.querySelector('[data-action="take-snapshot"]');
+    return {
+      mine: el.dataset.snapshots,
+      status: el.querySelector('[data-line="snapshots"]').textContent,
+      aria: button.getAttribute('aria-disabled'),
+      native: button.disabled,
+      reason: document.getElementById(button.getAttribute('aria-describedby')).textContent,
+      line: el.querySelector('[data-line="snapshots"]').id === button.getAttribute('aria-describedby'),
+    };
+  });
+  assert.equal(seen.mine, '0');
+  assert.match(seen.status, /^There are no snapshots of this project, and this device is full: it keeps 30 snapshots, the most it keeps, none of them of this project, so taking one will be refused\./);
+  assert.doesNotMatch(seen.status, /take one before a large change/i);
+  assert.deepEqual([seen.aria, seen.native, seen.line], ['true', false, true]);
+  assert.match(seen.reason, /taking one will be refused/);
+  const before = await counts();
+  await page.focus('#snapshots [data-action="take-snapshot"]');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.action), 'take-snapshot', 'still focusable');
+  await page.click('#snapshots [data-action="take-snapshot"]');
+  assert.equal(await text('#snapshots [data-line="result"] p'), fullSentence(SNAPSHOT_LIMIT, 30));
+  assert.deepEqual(await counts(), before);
+  await empty();
+});
+
+test('every snapshot button\'s name starts with the words it shows, and a read-only tab\'s reasons are described and said on press', async () => {
+  await empty();
+  const id = await takeNamed('Names');
+  await redraw(1);
+  const wrong = await page.$$eval('#snapshots [data-snapshot] button', (all) => all.filter((b) => !b.getAttribute('aria-label').startsWith(b.textContent.trim())).map((b) => b.textContent + '|' + b.getAttribute('aria-label')));
+  assert.deepEqual(wrong, []);
+  const other = await openPlanner({ hash: '#project', server, browser, keep: true });
+  try {
+    const second = other.page;
+    await second.waitForFunction(() => globalThis.sv2 && globalThis.sv2.storage.state.readOnly, { timeout: 15000 });
+    await listed(1, second);
+    const seen = await second.$$eval('#snapshots [data-snapshot="' + id + '"] button, #snapshots [data-action="take-snapshot"]', (all) => all.map((b) => ({
+      action: b.dataset.action,
+      aria: b.getAttribute('aria-disabled'),
+      native: b.disabled,
+      reason: b.getAttribute('aria-describedby') ? document.getElementById(b.getAttribute('aria-describedby')).textContent : null,
+    })));
+    for (const b of seen.filter((each) => each.aria === 'true')) {
+      assert.equal(b.native, false, b.action + ' stays focusable');
+      assert.ok(b.reason && b.reason.includes('read-only'), b.action + ' is described by its reason: ' + b.reason);
+    }
+    assert.deepEqual(seen.filter((b) => b.aria === 'true').map((b) => b.action).sort(), ['delete', 'rename', 'restore', 'take-snapshot']);
+    assert.equal(seen.find((b) => b.action === 'export').aria, null);
+  } finally {
+    await other.close();
+  }
+});

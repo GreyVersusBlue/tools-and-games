@@ -22,7 +22,10 @@
 //   checking     every part is in; the hash and the file are checked
 //   held         the project is a copy of one kept on this device (the
 //                one-per-id rule); "Open <label>" or "Keep it as another
-//                project", the sending device told it was not taken
+//                project". The sending device is told only when the question is
+//                answered: not taken when the dialog is closed or Open is chosen,
+//                received and applied on Keep it as another project (the reply
+//                has no third word)
 //   confirm      "Replace my project" or "Keep my project"
 //   read-only    this tab became the read-only one while the project came;
 //                nothing is asked, and the sending device is told
@@ -91,7 +94,8 @@ export function openReceive(ctx, opener) {
       if (taken) taken.stop();
       // closing while the question is asked is keeping this project; the
       // reply is let go before the connection is
-      if (dialog.element.dataset.state === 'confirm' && reply(false)) {
+      const asking = dialog.element.dataset.state;
+      if ((asking === 'confirm' || asking === 'held') && reply(false)) {
         if (peer) peer.closeAfter();
       } else if (peer) {
         peer.close();
@@ -134,12 +138,28 @@ export function openReceive(ctx, opener) {
     dialog.body.append(alternative('stalled', SENTENCES.stalledReceiving, importRow(dialog)));
   }
 
+  // Asked again at the replacement (the shelf may have changed while the question was open):
+  // true when it must stop, the dialog saying why. Nothing is stored or snapshotted by then.
+  async function heldNow(read) {
+    let held;
+    try {
+      held = await heldBy(ctx, read.project.id);
+    } catch (error) {
+      failed('The project was not received, and nothing has changed, because this device could not be asked which projects it keeps. ' + messageOf(error));
+      return true;
+    }
+    if (!held) return false;
+    refuseHeld(read, held);
+    return true;
+  }
+
   async function replace(read, room) {
     dialog.show('replacing', SENTENCES.replacing, []);
     if (readOnly(ctx)) {
       failed(SENTENCES.readOnly);
       return;
     }
+    if (await heldNow(read)) return;
     if (room && !room.error && !room.full) {
       const snapshot = await takeAutoSnapshot('import', SNAPSHOT_NAME);
       if (!snapshot.ok) {
@@ -147,6 +167,7 @@ export function openReceive(ctx, opener) {
         return;
       }
     }
+    if (await heldNow(read)) return;
     const before = ctx.store.project;
     try {
       try {
@@ -174,7 +195,6 @@ export function openReceive(ctx, opener) {
 
   // A received project that is a copy of a kept one: the sentence and two ways on.
   function refuseHeld(read, held) {
-    reply(false);
     const open = h('button', { type: 'button', class: 'btn btn--primary', data: { action: 'open-held' } }, 'Open ' + held.label);
     const keep = h('button', { type: 'button', class: 'btn', data: { action: 'keep-held' } }, 'Keep it as another project');
     const problem = h('p', { role: 'alert', data: { line: 'held-problem' }, hidden: true });
@@ -195,8 +215,20 @@ export function openReceive(ctx, opener) {
       problem.textContent = answer.text;
       problem.hidden = false;
     };
-    open.addEventListener('click', () => go(open, () => ctx.storage.projects.open(held.id)));
-    keep.addEventListener('click', () => go(keep, () => ctx.storage.projects.startAnother('file', read, { copy: true })));
+    // the reply goes when the person has chosen, and before the page reloads under it
+    const sent = async () => {
+      for (let waited = 0; channel && channel.bufferedAmount > 0 && waited < 20; waited += 1) await new Promise((resolve) => setTimeout(resolve, 25));
+    };
+    open.addEventListener('click', () => go(open, async () => {
+      reply(false);
+      await sent();
+      return ctx.storage.projects.open(held.id);
+    }));
+    keep.addEventListener('click', () => go(keep, async () => {
+      reply(true); // the project is kept here, as another project: the protocol's one word for that is applied
+      await sent();
+      return ctx.storage.projects.startAnother('file', read, { copy: true });
+    }));
     dialog.show('held', heldSentence('project', held.label), [problem, h('div', { class: 'card__buttons xfer__ask' }, keep, open)], open);
   }
 
