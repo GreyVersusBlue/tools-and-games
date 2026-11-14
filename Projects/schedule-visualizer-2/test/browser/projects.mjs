@@ -369,6 +369,16 @@ for (const [name, width, height] of [['390 x 844', 390, 844], ['844 x 390', 844,
           return buttons.top >= about.bottom - 1;
         }));
         assert.equal(stacked, true, 'on a phone the buttons go under the two lines');
+        // ... in one wrapping row, not three stacked full-width buttons
+        const rowsOfButtons = await p.$$eval('#projects .proj__row[data-open="false"]', (all) => all.map((li) => {
+          const wide = li.getBoundingClientRect().width;
+          return Array.from(li.querySelectorAll('button')).map((b) => ({ top: Math.round(b.getBoundingClientRect().top), share: b.getBoundingClientRect().width / wide }));
+        }));
+        for (const each of rowsOfButtons) {
+          assert.equal(each.length, 3);
+          assert.ok(each.every((b) => Math.abs(b.top - each[0].top) <= 1), 'Open, Rename… and Delete… share one line: ' + JSON.stringify(each));
+          assert.ok(each.every((b) => b.share < 0.5), 'none is full width: ' + JSON.stringify(each));
+        }
       }
     } finally {
       session = real;
@@ -483,11 +493,11 @@ test('a read-only tab: the buttons are aria-disabled with the one sentence, focu
   await listed(p, 2);
   const sentence = 'This tab is read-only while the project is open in another tab, so it cannot open, start, duplicate or delete projects.';
   assert.equal(await p.$eval('#projects [data-line="read-only"]', (el) => el.hidden ? null : el.textContent), sentence);
-  const all = await p.$$eval('#projects [data-action]', (els) => els.map((el) => [el.dataset.action, el.getAttribute('aria-disabled'), document.getElementById(el.getAttribute('aria-describedby'))?.textContent.slice(0, 20) ?? null, el.disabled]));
+  const all = await p.$$eval('#projects [data-action]', (els) => els.map((el) => [el.dataset.action, el.getAttribute('aria-disabled'), document.getElementById(el.getAttribute('aria-describedby').split(' ').at(-1))?.textContent.slice(0, 20) ?? null, el.disabled]));
   assert.ok(all.length >= 5, 'start, duplicate and the row buttons: ' + JSON.stringify(all));
   for (const [action, disabled, why, native] of all) {
     assert.equal(disabled, 'true', action + ' is aria-disabled');
-    assert.ok(why, action + ' names its reason');
+    assert.ok(why, action + ' names its reason: ' + JSON.stringify(all));
     assert.equal(native, false, action + ' stays focusable');
   }
   assert.equal(await p.$eval('#projects input.field__input', (el) => el.readOnly), true);
@@ -685,4 +695,480 @@ test('the sample school\'s Load, with the sample already kept: it asks, Open <la
   await page.click('[data-hit="1"]');
   await loaded(page);
   assert.equal((await stateOf(page)).id, 'psample001', 'the kept sample school is opened');
+});
+
+// ================================================================ SV2-117b: the review's faults, one case each
+
+const twoProjects = async (p) => {
+  await freshDevice(p);
+  await p.evaluate(() => globalThis.sv2.storage.projects.startAnother('empty'));
+  await loaded(p);
+  await withActions(p);
+  await listed(p, 2);
+  await waitSaved(p);
+};
+// a paste: the text goes in at the caret in one input event
+const insertText = (p, text) => p.evaluate((typed) => {
+  const el = document.activeElement;
+  el.setRangeText(typed, el.selectionStart, el.selectionEnd, 'end');
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}, text);
+const otherRow = async (p) => (await rowsOf(p)).find((row) => !row.open);
+
+// Replace a storage call with one that waits for `release(value)`; the page counts the calls.
+const hang = (p, owner, name) => p.evaluate((who, what) => {
+  const target = who === 'storage' ? globalThis.sv2.storage : globalThis.sv2.storage.projects;
+  globalThis.__calls = 0;
+  target[what] = () => {
+    globalThis.__calls += 1;
+    return new Promise((resolve) => {
+      globalThis.__release = resolve;
+    });
+  };
+}, owner, name);
+const release = (p, value) => p.evaluate((answer) => globalThis.__release(answer), value);
+const noteKept = (p) => p.evaluate(() => JSON.parse(globalThis.sessionStorage.getItem('sv2:opening-note')));
+const dialogState = (p) => p.evaluate(() => {
+  const d = document.querySelector('dialog.dialog[open]');
+  return d ? { busy: d.getAttribute('aria-busy'), refusal: d.querySelector('.proj__dialog-refusal:not([hidden])')?.textContent ?? null } : null;
+});
+const installDownloads = (p) => p.evaluate(() => {
+  globalThis.sv2test = { downloads: [] };
+  const click = HTMLAnchorElement.prototype.click;
+  HTMLAnchorElement.prototype.click = function clicked() {
+    if (!this.hasAttribute('download')) return click.call(this);
+    globalThis.sv2test.downloads.push(this.download);
+    return undefined;
+  };
+});
+
+test('item 1: Open says Opening…, aria-disabled and aria-busy and keeps the focus through a redraw; a refusal restores the button and the focus', async () => {
+  await twoProjects(page);
+  const id = (await otherRow(page)).id;
+  await hang(page, 'projects', 'open');
+  await pressRow(page, 'pointer', id, 'open');
+  await page.waitForFunction(() => globalThis.__calls === 1);
+  // the list is drawn again while it works (as the 'switching' event does): a label change in the open project redraws it
+  await page.evaluate(() => {
+    document.querySelector('#projects .proj__row[data-open="false"] .proj__label').textContent = 'stale';
+  });
+  await page.evaluate(() => globalThis.sv2.ctx.store.apply(globalThis.sv2Actions.setProjectLabel, { label: 'Redrawn' }));
+  await page.waitForFunction(() => !document.querySelector('#projects').hasAttribute('data-pending')
+    && document.querySelector('#projects .proj__row[data-open="false"] .proj__label').textContent !== 'stale', { timeout: 15000 });
+  const seen = await page.evaluate((rowId) => {
+    const b = document.querySelector('#projects .proj__row[data-project-id="' + rowId + '"] [data-action="open"]');
+    return { text: b.textContent, disabled: b.getAttribute('aria-disabled'), busy: b.getAttribute('aria-busy'), card: document.getElementById('projects').getAttribute('aria-busy'), focused: document.activeElement === b };
+  }, id);
+  assert.deepEqual(seen, { text: 'Opening…', disabled: 'true', busy: 'true', card: 'true', focused: true }, 'the redraw kept the busy button and its focus');
+  await release(page, { ok: false, code: 'failed', text: 'It was not opened.' });
+  await page.waitForFunction((rowId) => document.querySelector('#projects .proj__row[data-project-id="' + rowId + '"] [data-action="open"]').textContent === 'Open', { timeout: 15000 }, id);
+  const after = await page.evaluate((rowId) => {
+    const b = document.querySelector('#projects .proj__row[data-project-id="' + rowId + '"] [data-action="open"]');
+    return { disabled: b.getAttribute('aria-disabled'), busy: b.getAttribute('aria-busy'), card: document.getElementById('projects').getAttribute('aria-busy'), focused: document.activeElement === b, said: document.querySelector('#projects [data-line="result"]').textContent };
+  }, id);
+  assert.deepEqual(after, { disabled: null, busy: null, card: null, focused: true, said: 'It was not opened.' }, 'restored, focused and said');
+  assert.equal(await noteKept(page), null, 'the sentence for the next page is forgotten');
+});
+
+test('item 11: every redraw keeps a focus that was inside the list, by row and button', async () => {
+  await twoProjects(page);
+  const id = (await otherRow(page)).id;
+  await page.focus('#projects .proj__row[data-project-id="' + id + '"] [data-action="rename"]');
+  await page.evaluate(() => {
+    globalThis.__old = document.activeElement;
+  });
+  await page.evaluate(() => globalThis.sv2.ctx.store.apply(globalThis.sv2Actions.setProjectLabel, { label: 'Another label' }));
+  await page.waitForFunction(() => document.querySelector('#projects [data-line="lead"]').textContent.includes('Another label'));
+  await listed(page, 2);
+  const kept = await page.evaluate(() => ({
+    same: document.activeElement === globalThis.__old,
+    id: document.activeElement.closest('[data-project-id]')?.dataset.projectId,
+    action: document.activeElement.dataset.action,
+  }));
+  assert.equal(kept.same, false, 'the row was drawn again');
+  assert.deepEqual({ id: kept.id, action: kept.action }, { id, action: 'rename' }, 'and the focus is on the same row\'s Rename…');
+});
+
+test('item 2, 7: a gated row button keeps its label line and adds the reason; a read-only tab still exports a row that cannot be read; the names return when it is cleared', async () => {
+  await twoProjects(page);
+  const base = await idbRead(page, 'get', 'current');
+  await idbPut(page, 'shelf:pbroken002', { savedAt: base.savedAt, shelvedAt: new Date(2026, 0, 1).toISOString(), bytes: 10, project: 'not a project', images: {} });
+  const other = await openPlanner({ server: session.server, browser: session.browser, hash: '#project', keep: true });
+  extra.push(other);
+  try {
+    const p = other.page;
+    assert.equal((await stateOf(p)).readOnly, true);
+    await listed(p, 3);
+    await installDownloads(p);
+    const described = () => p.$$eval('#projects .proj__row button', (all) => all.map((b) => {
+      const ids = b.getAttribute('aria-describedby').split(' ');
+      return {
+        action: b.dataset.action,
+        disabled: b.getAttribute('aria-disabled'),
+        ids: ids.length,
+        nameOk: document.getElementById(ids[0]).classList.contains('proj__name'),
+        reason: ids[1] ? document.getElementById(ids[1]).textContent.slice(0, 18) : null,
+      };
+    }));
+    const locked = await described();
+    for (const b of locked) {
+      assert.equal(b.nameOk, true, b.action + ' still names its row first');
+      if (b.action === 'export-raw') {
+        assert.deepEqual({ disabled: b.disabled, ids: b.ids }, { disabled: null, ids: 1 }, 'Export it as it is stays available, with its label line only');
+      } else {
+        assert.equal(b.disabled, 'true', b.action + ' is gated');
+        assert.ok(b.reason && (b.reason.startsWith('This tab is read-') || b.reason.startsWith('To delete this')), b.action + ' adds its reason after the label line: ' + b.reason);
+      }
+    }
+    assert.ok(locked.some((b) => b.action === 'export-raw'), 'the unreadable row has Export it as it is');
+    await press(p, 'pointer', '.proj__row[data-project-id="pbroken002"]', 'Export it as it is');
+    await p.waitForFunction(() => globalThis.sv2test.downloads.length === 1, { timeout: 15000 });
+    // the reason goes when it no longer holds: this tab becomes the editor when the other lets go of the lock
+    await page.goto('about:blank');
+    await p.waitForFunction(() => globalThis.sv2.storage.state.readOnly === false, { timeout: 30000 });
+    await p.waitForFunction(() => document.querySelector('#projects .proj__row[data-open="false"] [aria-disabled]') === null, { timeout: 15000 });
+    const freed = await described();
+    for (const b of freed.filter((each) => each.reason === null)) {
+      assert.deepEqual({ disabled: b.disabled, ids: b.ids, nameOk: b.nameOk }, { disabled: null, ids: 1, nameOk: true }, b.action + ' is back to its label line only');
+    }
+    assert.ok(freed.filter((b) => b.reason === null).length >= 5, 'the shelved rows\' buttons are all back: ' + JSON.stringify(freed));
+  } finally {
+    await other.close().catch(() => {});
+    extra.pop();
+  }
+});
+
+test('item 3: the sample school\'s Load with the sample kept says what its buttons do, tells a refusal, writes the opening sentence first and shows it is working', async () => {
+  await twoProjects(page);
+  await hang(page, 'projects', 'startAnother');
+  await page.click('#sample-school [data-action="sample"]');
+  await dialogOpen(page);
+  const said = await page.$eval('dialog.dialog[open] [role="alert"]', (el) => el.textContent);
+  assert.match(said, /You can open that one, or make another copy of the sample school and open the copy\.$/);
+  await press(page, 'pointer', 'dialog.dialog[open] .dialog__buttons', 'Keep it as another project');
+  await page.waitForFunction(() => globalThis.__calls === 1);
+  const working = await page.$eval('#sample-school [data-action="sample"]', (el) => ({ disabled: el.getAttribute('aria-disabled'), busy: el.getAttribute('aria-busy') }));
+  assert.deepEqual(working, { disabled: 'true', busy: 'true' }, 'the button says it is working');
+  assert.equal((await noteKept(page)).kind, 'start', 'the page that follows is told first');
+  await release(page, { ok: false, code: 'limit', text: 'Up to 20 projects can be kept on this device.' });
+  await page.waitForFunction(() => document.querySelector('.toast__text')?.textContent.includes('Up to 20 projects'), { timeout: 15000 });
+  assert.equal(await toastText(page), 'Up to 20 projects can be kept on this device.', 'the refusal is said');
+  assert.deepEqual(await page.$eval('#sample-school [data-action="sample"]', (el) => ({ disabled: el.getAttribute('aria-disabled'), busy: el.getAttribute('aria-busy') })), { disabled: null, busy: null }, 'and the button is back');
+  assert.equal(await noteKept(page), null, 'the sentence is forgotten');
+  // the way "Open" goes
+  await hang(page, 'projects', 'open');
+  await page.click('#sample-school [data-action="sample"]');
+  await dialogOpen(page);
+  await page.evaluate(() => Array.from(document.querySelectorAll('dialog.dialog[open] .dialog__buttons button')).find((b) => b.textContent.startsWith('Open ')).setAttribute('data-hit', '1'));
+  await page.click('[data-hit="1"]');
+  await page.waitForFunction(() => globalThis.__calls === 1);
+  assert.equal((await noteKept(page)).kind, 'open');
+  await release(page, { ok: false, code: 'failed', text: 'It was not opened.' });
+  await page.waitForFunction(() => document.querySelector('.toast__text')?.textContent === 'It was not opened.', { timeout: 15000 });
+});
+
+test('item 4: Start another, Duplicate and Replace cannot be cancelled while they work; a late refusal is written into the dialog that is still there', async () => {
+  await twoProjects(page);
+  const inert = async () => {
+    await page.keyboard.press('Escape');
+    await page.click('dialog.dialog[open] .dialog__buttons button:last-child');
+    assert.equal(await page.evaluate(() => document.querySelector('dialog.dialog[open]') !== null), true, 'Escape and Cancel did nothing');
+    assert.equal((await dialogState(page)).busy, 'true', 'the dialog says it is busy');
+  };
+  // Duplicate
+  await hang(page, 'projects', 'duplicate');
+  await press(page, 'pointer', '#projects .card__buttons', 'Duplicate this project');
+  await dialogOpen(page);
+  await press(page, 'pointer', 'dialog.dialog[open] .dialog__buttons', 'Duplicate and open it');
+  await page.waitForFunction(() => globalThis.__calls === 1);
+  await inert();
+  await release(page, { ok: false, code: 'failed', text: 'The copy was not made.' });
+  await page.waitForFunction(() => document.querySelector('dialog.dialog[open] .proj__dialog-refusal:not([hidden])')?.textContent === 'The copy was not made.', { timeout: 15000 });
+  assert.equal((await dialogState(page)).busy, null);
+  await page.keyboard.press('Escape');
+  await dialogShut(page);
+  // Start another
+  await hang(page, 'projects', 'startAnother');
+  await press(page, 'pointer', '#projects .card__buttons', 'Start another project…');
+  await dialogOpen(page);
+  await press(page, 'pointer', 'dialog.dialog[open] .dialog__buttons', 'Start');
+  await page.waitForFunction(() => globalThis.__calls === 1);
+  await inert();
+  await release(page, { ok: false, code: 'failed', text: 'Nothing was started.' });
+  await page.waitForFunction(() => document.querySelector('dialog.dialog[open] .proj__dialog-refusal:not([hidden])')?.textContent === 'Nothing was started.', { timeout: 15000 });
+  assert.equal((await dialogState(page)).busy, null);
+  await page.keyboard.press('Escape');
+  await dialogShut(page);
+  // Replace the open project (a file that is the open one)
+  const open = (await stateOf(page)).id;
+  await hang(page, 'storage', 'takeRecoveryPoint');
+  await press(page, 'pointer', '#projects .card__buttons', 'Start another project…');
+  await dialogOpen(page);
+  await page.click('dialog.dialog[open] input[value="file"]');
+  await chooseFile(page, open, 'Late School');
+  await page.waitForFunction(() => document.querySelector('dialog.dialog[open] [data-line="held"]:not([hidden])') !== null, { timeout: 15000 });
+  await press(page, 'pointer', 'dialog.dialog[open] [data-line="held"]', 'Replace the open project');
+  await page.waitForFunction(() => globalThis.__calls === 1, { timeout: 15000 });
+  await inert();
+  await release(page, null);
+  await dialogShut(page);
+  await page.waitForFunction(() => globalThis.sv2.store.project.settings.schoolName === 'Late School', { timeout: 15000 });
+});
+
+test('item 5: Replace the open project is refused up front in a read-only tab and while a switch is under way, and says so before it goes ahead without a snapshot', async () => {
+  await freshDevice(page);
+  const open = (await stateOf(page)).id;
+  const before = (await stateOf(page)).school;
+  await press(page, 'pointer', '#projects .card__buttons', 'Start another project…');
+  await dialogOpen(page);
+  await page.click('dialog.dialog[open] input[value="file"]');
+  await chooseFile(page, open, 'Refused School');
+  await page.waitForFunction(() => document.querySelector('dialog.dialog[open] [data-line="held"]:not([hidden])') !== null, { timeout: 15000 });
+  await page.evaluate(() => {
+    globalThis.__kept = globalThis.sv2.store.project;
+    globalThis.sv2.storage.state.readOnly = true;
+  });
+  await press(page, 'pointer', 'dialog.dialog[open] [data-line="held"]', 'Replace the open project');
+  assert.match((await dialogState(page)).refusal, /^This tab is read-only while the project is open in another tab, so it cannot replace the open project\.$/);
+  await page.evaluate(() => {
+    globalThis.sv2.storage.state.readOnly = false;
+    globalThis.sv2.storage.state.switching = true;
+  });
+  await press(page, 'pointer', 'dialog.dialog[open] [data-line="held"]', 'Replace the open project');
+  assert.match((await dialogState(page)).refusal, /already being opened/);
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.project === globalThis.__kept), true, 'nothing was replaced');
+  await page.evaluate(() => {
+    globalThis.sv2.storage.state.switching = false;
+  });
+  // no snapshot can be taken: the question says so, Cancel changes nothing, Replace anyway goes on with a recovery point first
+  await page.evaluate(async () => {
+    const { pageSnapshots } = await import(new URL('storage/snapshots.js', document.baseURI).href);
+    pageSnapshots().room = async () => ({ full: true, limit: 30 });
+  });
+  const pointsBefore = (await page.evaluate(() => globalThis.sv2.storage.listRecoveryPoints())).length;
+  await press(page, 'pointer', 'dialog.dialog[open] [data-line="held"]', 'Replace the open project');
+  await page.waitForFunction(() => document.querySelectorAll('dialog.dialog[open]').length === 2, { timeout: 15000 });
+  const asked = await page.evaluate(() => Array.from(document.querySelectorAll('dialog.dialog[open]')).at(-1).textContent);
+  assert.match(asked, /No snapshot can be taken: this device already keeps 30 snapshots/);
+  assert.match(asked, /A recovery point of this project is taken first/);
+  await page.evaluate(() => Array.from(document.querySelectorAll('dialog.dialog[open]')).at(-1).querySelector('.dialog__buttons button:last-child').click());
+  await page.waitForFunction(() => document.querySelectorAll('dialog.dialog[open]').length === 1);
+  assert.equal(await page.evaluate(() => globalThis.sv2.store.project === globalThis.__kept), true, 'Cancel replaced nothing');
+  await press(page, 'pointer', 'dialog.dialog[open] [data-line="held"]', 'Replace the open project');
+  await page.waitForFunction(() => document.querySelectorAll('dialog.dialog[open]').length === 2, { timeout: 15000 });
+  await page.evaluate(() => Array.from(document.querySelectorAll('dialog.dialog[open]')).at(-1).querySelector('.dialog__buttons button:first-child').click());
+  await dialogShut(page);
+  await page.waitForFunction(() => globalThis.sv2.store.project.settings.schoolName === 'Refused School', { timeout: 15000 });
+  const said = await toastText(page);
+  assert.match(said, /^Imported the project file next-year\.json\. Undo brings back the project that was here\. No snapshot was taken: this device keeps the most snapshots it can; a recovery point of it was\.$/);
+  const points = await page.evaluate(() => globalThis.sv2.storage.listRecoveryPoints());
+  assert.ok(points.length > pointsBefore && points.some((point) => point.reason === 'import'), 'the recovery point the toast names was taken');
+  await page.evaluate(() => globalThis.sv2.ctx.undo());
+  assert.equal((await stateOf(page)).school, before, 'Undo brings the project back');
+});
+
+test('Start another refused with limit at 20: the sentence is in the dialog, nothing moves, the dialog can be closed', async () => {
+  await freshDevice(page);
+  const base = await idbRead(page, 'get', 'current');
+  const shelve = async (i) => {
+    const id = 'pextra' + String(i).padStart(3, '0');
+    await idbPut(page, 'shelf:' + id, { ...base, project: { ...base.project, id, label: 'Kept ' + i }, shelvedAt: new Date(2026, 0, 1, 12, i).toISOString(), bytes: 1000 });
+  };
+  for (let i = 0; i < 18; i += 1) await shelve(i); // 19 in all
+  await page.reload({ waitUntil: 'load' });
+  await loaded(page);
+  await listed(page, 19);
+  const here = (await stateOf(page)).id;
+  await press(page, 'pointer', '#projects .card__buttons', 'Start another project…');
+  await dialogOpen(page);
+  await shelve(18); // another tab's: 20 now
+  await press(page, 'pointer', 'dialog.dialog[open] .dialog__buttons', 'Start');
+  await page.waitForFunction(() => document.querySelector('dialog.dialog[open] .proj__dialog-refusal:not([hidden])') !== null, { timeout: 15000 });
+  const state = await dialogState(page);
+  assert.match(state.refusal, /20/, 'the refusal names the limit: ' + state.refusal);
+  assert.equal(state.busy, null);
+  assert.equal(await page.$eval('dialog.dialog[open] .dialog__buttons button', (el) => el.getAttribute('aria-disabled')), null, 'Start is usable again');
+  assert.equal((await stateOf(page)).id, here, 'nothing moved');
+  await page.keyboard.press('Escape');
+  await dialogShut(page);
+});
+
+test('Rename refused as too long: the sentence is in the dialog, the focus is in the field, the label is unchanged', async () => {
+  await twoProjects(page);
+  const row = await otherRow(page);
+  await pressRow(page, 'pointer', row.id, 'rename');
+  await dialogOpen(page);
+  await page.evaluate(() => document.querySelector('dialog.dialog[open] input').select());
+  await page.keyboard.type('b'.repeat(61));
+  await press(page, 'pointer', 'dialog.dialog[open] .dialog__buttons', 'Rename');
+  await page.waitForFunction(() => document.querySelector('dialog.dialog[open] .proj__dialog-refusal:not([hidden])') !== null, { timeout: 15000 });
+  assert.equal((await dialogState(page)).refusal, 'A label is at most 60 characters.');
+  assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('dialog.dialog[open] input')), true, 'the focus is in the field');
+  assert.equal((await dialogState(page)).busy, null);
+  await page.keyboard.press('Escape');
+  await dialogShut(page);
+  assert.equal((await otherRow(page)).name, row.name, 'the label did not change');
+});
+
+test('Delete refused with needs exported: the card says so, the row stays; Export it as it is, then Delete goes through; the last kept row gone, the focus is the heading', async () => {
+  await freshDevice(page);
+  const base = await idbRead(page, 'get', 'current');
+  await idbPut(page, 'shelf:pbroken003', { savedAt: base.savedAt, shelvedAt: new Date(2026, 0, 1).toISOString(), bytes: 10, project: null, images: {} });
+  await page.reload({ waitUntil: 'load' });
+  await loaded(page);
+  await listed(page, 2);
+  await installDownloads(page);
+  await press(page, 'pointer', '.proj__row[data-project-id="pbroken003"]', 'Delete…');
+  await dialogOpen(page);
+  await press(page, 'pointer', 'dialog.dialog[open] .dialog__buttons', 'Delete');
+  await dialogShut(page);
+  await page.waitForFunction(() => document.querySelector('#projects [data-line="result"]:not([hidden])') !== null, { timeout: 15000 });
+  assert.match(await page.$eval('#projects [data-line="result"]', (el) => el.dataset.result + ': ' + el.textContent), /^refused: That project is too damaged to keep a recovery point of, so it was not deleted\./, 'the card says it was refused');
+  assert.equal((await rowsOf(page)).length, 2, 'the row stays');
+  assert.equal(await page.evaluate(() => document.querySelector('#projects').getAttribute('aria-busy')), null, 'and the card is not left busy');
+  await press(page, 'pointer', '.proj__row[data-project-id="pbroken003"]', 'Delete…');
+  await dialogOpen(page);
+  await press(page, 'pointer', 'dialog.dialog[open] .dialog__buttons', 'Export it as it is');
+  await page.waitForFunction(() => globalThis.sv2test.downloads.length === 1, { timeout: 15000 });
+  await page.waitForFunction(() => document.querySelector('dialog.dialog[open] [role="status"]:not([hidden])') !== null);
+  await press(page, 'pointer', 'dialog.dialog[open] .dialog__buttons', 'Delete');
+  await dialogShut(page);
+  await listed(page, 1);
+  assert.deepEqual((await idbRead(page, 'keys')).filter((key) => key.startsWith('shelf:')), [], 'deleted with exported: true');
+  assert.match(await toastText(page), /^Deleted .+ from this device\. No recovery point could be kept of it\.$/);
+  assert.equal((await focusedIs(page)).inHeading, true, 'with no kept row left, the focus is the card\'s heading: ' + JSON.stringify(await focusedIs(page)));
+});
+
+test('the chip and the title go from two projects back to one, and the focus goes to the heading when the last kept row is deleted', async () => {
+  await twoProjects(page);
+  await typeLabel(page, 'Second');
+  assert.equal(await page.$eval('#school-name', (el) => el.textContent.includes('· Second')), true, 'two projects: the chip carries the label');
+  assert.equal(await page.evaluate(() => document.title.startsWith('Second · Project')), true);
+  await pressRow(page, 'pointer', (await otherRow(page)).id, 'delete');
+  await dialogOpen(page);
+  await press(page, 'pointer', 'dialog.dialog[open] .dialog__buttons', 'Delete');
+  await dialogShut(page);
+  await listed(page, 1);
+  await page.waitForFunction(() => !document.getElementById('school-name').textContent.includes('Second') && !document.title.startsWith('Second'), { timeout: 15000 });
+  assert.equal(await page.$eval('#projects .proj__list', (el) => el.hidden), true, 'one project, no list');
+  assert.equal((await focusedIs(page)).inHeading, true, 'the focus is the card\'s heading: ' + JSON.stringify(await focusedIs(page)));
+});
+
+test('item 6: a copy of a copy is "(copy 2)", then "(copy 3)", never "(copy) (copy)"', async () => {
+  await freshDevice(page);
+  const field = async () => {
+    await press(page, 'pointer', '#projects .card__buttons', 'Duplicate this project');
+    await dialogOpen(page);
+    const value = await page.$eval('dialog.dialog[open] input', (el) => el.value);
+    await page.keyboard.press('Escape');
+    await dialogShut(page);
+    return value;
+  };
+  await typeLabel(page, 'Next year');
+  assert.equal(await field(), 'Next year (copy)');
+  await typeLabel(page, 'Next year (copy)');
+  assert.equal(await field(), 'Next year (copy 2)');
+  await typeLabel(page, 'Next year (copy 2)');
+  assert.equal(await field(), 'Next year (copy 3)');
+  await typeLabel(page, 'Next year (copy 9)');
+  assert.equal(await field(), 'Next year (copy 10)');
+  await typeLabel(page, 'Plan (copy) B');
+  assert.equal(await field(), 'Plan (copy) B (copy)', 'only an ending is a copy mark');
+  const long = await page.evaluate(async () => {
+    const { suffixedLabel } = await import(new URL('ui/project/projects.js', document.baseURI).href);
+    return [suffixedLabel('x'.repeat(50) + ' (copy 12)', ' (copy)'), suffixedLabel('x'.repeat(70), ' (copy)')];
+  });
+  for (const each of long) assert.ok(Array.from(each).length <= 60 && /\(copy( \d+)?\)$/.test(each), each);
+  assert.match(long[0], /\(copy 13\)$/);
+  await typeLabel(page, '');
+});
+
+test('item 8: the label count only primes on load, announces the largest threshold crossed upward once, and says over the limit', async () => {
+  await freshDevice(page);
+  const live = () => page.$eval('#projects [data-line="label-count-live"]', (el) => el.textContent);
+  await typeLabel(page, 'a'.repeat(55));
+  await page.reload({ waitUntil: 'load' });
+  await loaded(page);
+  await listed(page, 1);
+  assert.equal(await live(), '', 'a label of 55 on load is not announced');
+  assert.equal(await page.$eval('#projects [data-line="label-count"]', (el) => el.hidden ? '' : el.textContent), '55 of 60 characters', 'but the count shows');
+  await page.focus('#projects input.field__input');
+  await page.keyboard.press('End');
+  for (let i = 0; i < 6; i += 1) await page.keyboard.press('Backspace'); // 49
+  assert.equal(await live(), '', 'going down says nothing');
+  await insertText(page, 'a'.repeat(11)); // 49 to 60 at once: 50, 55 and 60 crossed; the largest is said
+  assert.equal(await live(), '60 of 60 characters', 'the largest threshold crossed, once');
+  await insertText(page, 'a');
+  assert.equal(await live(), '61 of 60 characters: over the limit');
+  await insertText(page, 'a');
+  assert.equal(await live(), '61 of 60 characters: over the limit', 'once, not again at 62');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.press('Backspace');
+  assert.equal(await live(), '', 'back at 60, nothing is said');
+});
+
+test('item 9: after a reload with the route not #project, nothing in the Projects card takes the focus; a reader who moved it keeps it', async () => {
+  await freshDevice(page);
+  await page.evaluate(() => {
+    location.hash = '#building';
+  });
+  await waitForSection(page, 'building');
+  await marker(page);
+  await page.evaluate(() => globalThis.sv2.storage.projects.startAnother('empty'));
+  await page.waitForFunction(() => globalThis.__before === undefined && globalThis.sv2 !== undefined && document.documentElement.dataset.ready === 'true', { timeout: 40000 });
+  await waitForSection(page, 'building');
+  assert.equal(await page.evaluate(() => location.hash), '#building');
+  assert.match(await page.$eval('#shell-status', (el) => el.textContent), /^Opened /, 'the page still says so');
+  assert.equal(await page.evaluate(() => document.activeElement.closest('#projects') === null), true, 'no focus in the card');
+  // the reader has put the focus on a control; then comes to the Project section: the heading does not take it
+  await page.focus('#school-name');
+  await page.evaluate(() => {
+    location.hash = '#project';
+  });
+  await waitForSection(page, 'project');
+  await page.waitForFunction(() => document.querySelector('#projects') !== null && !document.querySelector('#projects').hasAttribute('data-pending'), { timeout: 15000 });
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve)))));
+  assert.equal((await focusedIs(page)).inHeading, false, 'the heading did not take the focus: ' + JSON.stringify(await focusedIs(page)));
+});
+
+test('item 12: Restore as a project from the toast takes one press only', async () => {
+  await twoProjects(page);
+  const row = await otherRow(page);
+  await pressRow(page, 'pointer', row.id, 'delete');
+  await dialogOpen(page);
+  await press(page, 'pointer', 'dialog.dialog[open] .dialog__buttons', 'Delete');
+  await dialogShut(page);
+  await listed(page, 1);
+  await hang(page, 'projects', 'restoreAsProject');
+  await page.evaluate(() => {
+    const b = Array.from(document.querySelectorAll('.toast button')).find((each) => each.textContent === 'Restore as a project');
+    b.click();
+    b.click();
+  });
+  await page.waitForFunction(() => globalThis.__calls >= 1);
+  assert.equal(await page.evaluate(() => globalThis.__calls), 1, 'one call for two presses');
+  assert.equal(await page.$eval('#projects', (el) => el.getAttribute('aria-busy')), 'true');
+  await release(page, { ok: false, code: 'failed', text: 'It was not restored.' });
+  await page.waitForFunction(() => document.querySelector('.toast__text')?.textContent === 'It was not restored.', { timeout: 15000 });
+  assert.equal(await page.$eval('#projects', (el) => el.getAttribute('aria-busy')), null, 'a refusal frees the card');
+  assert.equal(await noteKept(page), null);
+});
+
+test('item 13 and 14: with a file picked and a held choice shown, the first held button has the focus; choosing the file again asks again', async () => {
+  await twoProjects(page); // the sample school (id psample001) is kept on the shelf
+  await press(page, 'pointer', '#projects .card__buttons', 'Start another project…');
+  await dialogOpen(page);
+  await page.click('dialog.dialog[open] input[value="file"]');
+  await chooseFile(page, 'psample001', 'Kept School');
+  await page.waitForFunction(() => document.querySelector('dialog.dialog[open] [data-line="held"]:not([hidden])') !== null, { timeout: 15000 });
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.action), 'held-open', 'the first held button has the focus, not the Start that waits');
+  await page.click('dialog.dialog[open] input[value="empty"]');
+  assert.equal(await page.$eval('dialog.dialog[open] [data-line="held"]', (el) => el.hidden), true, 'another choice puts the question away');
+  assert.equal(await page.$eval('dialog.dialog[open] .dialog__buttons button', (el) => el.getAttribute('aria-disabled')), null);
+  await page.click('dialog.dialog[open] input[value="file"]');
+  await page.waitForFunction(() => document.querySelector('dialog.dialog[open] [data-line="held"]:not([hidden])') !== null, { timeout: 15000 });
+  assert.equal(await page.$eval('dialog.dialog[open] .dialog__buttons button', (el) => el.getAttribute('aria-disabled')), 'true', 'the holds check ran again: Start waits for a choice');
+  assert.deepEqual(await page.$$eval('dialog.dialog[open] [data-line="held"] button', (all) => all.map((b) => b.dataset.action)), ['held-open', 'held-keep']);
+  await page.keyboard.press('Escape');
+  await dialogShut(page);
 });

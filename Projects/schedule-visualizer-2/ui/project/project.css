@@ -200,9 +200,8 @@
   gap: var(--s-2);
 }
 
-/* a phone: the rows' buttons go under the two lines, full width */
+/* a phone: a row's buttons stay one wrapping row under its two lines (each 44 px tall); the dialog's held choices are full width */
 @media (max-width: 600px) {
-  .proj__buttons .btn,
   .proj__held-buttons .btn {
     flex: 1 1 100%;
   }

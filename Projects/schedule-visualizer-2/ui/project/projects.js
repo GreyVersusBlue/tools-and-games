@@ -26,7 +26,7 @@ import { card } from '../components/card.js';
 import { field } from '../components/field.js';
 import { count } from '../components/words.js';
 import { openProjectName } from './clear.js';
-import { holdsWords } from './files.js';
+import { holdsWords, importSafetyLine } from './files.js';
 import { setProjectLabel, replaceProject } from '../../engine/actions.js';
 import { PROJECT_LABEL_MOST } from '../../engine/scenario.js';
 import { readProjectFile } from '../../engine/project-file.js';
@@ -49,6 +49,10 @@ const READ_ONLY = 'This tab is read-only while the project is open in another ta
 const OPEN_FIRST = 'To delete this one, open another first.';
 // storage/db.js keeps this many recovery points of each project that is not open (21.10)
 const OTHERS_KEPT = 3;
+// After a reload the card waits at most this many frames for its section to be on the page.
+const HEADING_FRAMES = 12;
+// ... and only for a page this young.
+const HEADING_WITHIN_MS = 10000;
 const SWITCH_SAYS = 'Undo starts afresh for each project you open.';
 
 const textLength = (value) => Array.from(String(value)).length;
@@ -61,11 +65,20 @@ export function entryName(entry) {
 }
 
 // "<name> (copy)", cut with an ellipsis so the whole is at most PROJECT_LABEL_MOST.
+// A name that already ends in " (copy)" or " (copy N)" is not chained
+// ("X (copy) (copy)"): it becomes " (copy 2)", " (copy N+1)".
 export function suffixedLabel(name, suffix) {
-  const room = PROJECT_LABEL_MOST - suffix.length;
-  const letters = Array.from(name);
-  const base = letters.length > room ? letters.slice(0, Math.max(0, room - 1)).join('').trimEnd() + '…' : name;
-  return base + suffix;
+  let base = name;
+  let ending = suffix;
+  const again = suffix === ' (copy)' ? / \(copy(?: (\d+))?\)$/.exec(name) : null;
+  if (again) {
+    base = name.slice(0, again.index);
+    ending = ' (copy ' + (again[1] === undefined ? 2 : Number(again[1]) + 1) + ')';
+  }
+  const room = PROJECT_LABEL_MOST - ending.length;
+  const letters = Array.from(base);
+  const cut = letters.length > room ? letters.slice(0, Math.max(0, room - 1)).join('').trimEnd() + '…' : base;
+  return cut + ending;
 }
 
 // ------------------------------------------------ the sentence after a reload
@@ -76,7 +89,7 @@ export function rememberOpening(note) {
   } catch (error) { /* the page opens all the same, with the plain sentence */ }
 }
 
-function forgetOpening() {
+export function forgetOpening() {
   try {
     globalThis.sessionStorage.removeItem(OPENING_NOTE_KEY);
   } catch (error) { /* nothing to forget */ }
@@ -145,6 +158,30 @@ export function keptDialog(ctx, options) {
   }).closed;
 }
 
+// A dialog that is working (its question is with storage) cannot be cancelled:
+// Escape and Cancel do nothing and the dialog says aria-busy, so a late answer
+// is never written into a dialog that has closed. `working()` is asked each time.
+export function holdWhileWorking(dialog, working) {
+  const buttons = dialog.element.querySelectorAll('.dialog__buttons button');
+  const cancel = buttons[buttons.length - 1];
+  const stop = (event) => {
+    if (!working()) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+  dialog.element.addEventListener('cancel', stop, true);
+  dialog.element.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') stop(event);
+  }, true);
+  dialog.element.addEventListener('click', (event) => {
+    if (event.target === cancel) stop(event);
+  }, true);
+  return (on) => {
+    if (on) dialog.element.setAttribute('aria-busy', 'true');
+    else dialog.element.removeAttribute('aria-busy');
+  };
+}
+
 // ------------------------------------------------ the card
 
 export function projectsCard(ctx) {
@@ -186,10 +223,11 @@ export function projectsCard(ctx) {
   let busy = false;
   let drawn = 0;
   let want = null; // where the focus goes after the next draw
-  const announced = new Set();
 
   const sentence = openedSentences(ctx);
-  let headingWanted = Boolean(sentence && sentence.focus);
+  // The heading takes the focus on the page a switch just opened, not on a card built later (a reader who came to this section minutes after).
+  let headingWanted = Boolean(sentence && sentence.focus && performance.now() < HEADING_WITHIN_MS);
+  let headingFrames = 0;
   if (sentence) {
     openedLine.hidden = false;
     openedLine.textContent = sentence.line;
@@ -209,48 +247,94 @@ export function projectsCard(ctx) {
 
   // ---- disabled is never silent
 
+  // A row's button is named by its label line (data-names); a reason is added
+  // after it, never in its place, and taken away again when it no longer holds.
   function gate(button, reasonId, reason) {
+    const names = button.dataset.names;
     if (reason) {
       button.setAttribute('aria-disabled', 'true');
-      button.setAttribute('aria-describedby', reasonId);
+      button.setAttribute('aria-describedby', names ? names + ' ' + reasonId : reasonId);
     } else {
       button.removeAttribute('aria-disabled');
-      if (button.getAttribute('aria-describedby') === reasonId) button.removeAttribute('aria-describedby');
+      if (names) button.setAttribute('aria-describedby', names);
+      else if (button.getAttribute('aria-describedby') === reasonId) button.removeAttribute('aria-describedby');
     }
   }
 
   const disabled = (button) => button.getAttribute('aria-disabled') === 'true';
 
+  // The row button that says it is working. It is found again by its row and action,
+  // because the list is drawn again while a switch is under way ('switching').
+  let working = null; // { id, action, text, was }
+
+  function liveWorking() {
+    if (!working) return null;
+    const li = list.querySelector('[data-project-id="' + CSS.escape(working.id) + '"]');
+    return li ? li.querySelector('[data-action="' + working.action + '"]') : null;
+  }
+
+  function showWorking() {
+    const button = liveWorking();
+    if (!button) return null;
+    button.dataset.was = working.was;
+    button.textContent = working.text;
+    button.setAttribute('aria-disabled', 'true');
+    button.setAttribute('aria-busy', 'true');
+    return button;
+  }
+
+  // On: `button` is a row's button, which reads `text` and says it is busy.
+  // Off: the same button (the live one) is as it was; it is returned.
   function setBusy(on, button, text) {
     busy = on;
     if (on) element.setAttribute('aria-busy', 'true');
     else element.removeAttribute('aria-busy');
-    if (button) {
-      if (on) {
-        button.dataset.was = button.textContent;
-        button.textContent = text;
-        button.setAttribute('aria-disabled', 'true');
-      } else if (button.dataset.was !== undefined) {
-        button.textContent = button.dataset.was;
-        delete button.dataset.was;
-        button.removeAttribute('aria-disabled');
-      }
+    if (on && button) {
+      const li = button.closest('[data-project-id]');
+      working = li ? { id: li.dataset.projectId, action: button.dataset.action, text, was: button.textContent } : null;
+      if (working) showWorking();
+      return button;
     }
+    if (!on && working) {
+      const live = liveWorking();
+      const was = working.was;
+      working = null;
+      if (live) {
+        live.textContent = was;
+        delete live.dataset.was;
+        live.removeAttribute('aria-disabled');
+        live.removeAttribute('aria-busy');
+      }
+      return live;
+    }
+    return null;
   }
 
   // ---- the label
 
+  // No maxlength on the field: it counts UTF-16 units and the limit is in characters
+  // (a name with letters outside the basic plane would be cut short), and it would
+  // silently cut text pasted in. The count shows from 50, the live region speaks at
+  // 50, 55 and 60 and once more when the label is over, and the store's refusal says
+  // the limit in a sentence.
+  let lastLength = null; // null until the first draw, which only primes the thresholds
   function drawCount() {
     const length = textLength(labelField.input.value.trim());
     countLine.hidden = length < COUNT_FROM;
-    countLine.textContent = length + ' of ' + PROJECT_LABEL_MOST + ' characters';
-    if (COUNT_ANNOUNCED.includes(length) && !announced.has(length)) {
-      announced.add(length);
-      countLive.textContent = length + ' of ' + PROJECT_LABEL_MOST + ' characters';
-    } else if (length < COUNT_FROM) {
-      announced.clear();
-      countLive.textContent = '';
+    countLine.textContent = length + ' of ' + PROJECT_LABEL_MOST + ' characters' + (length > PROJECT_LABEL_MOST ? ': over the limit' : '');
+    const before = lastLength;
+    lastLength = length;
+    if (before === null || length === before) return;
+    if (length < before) {
+      countLive.textContent = ''; // so the same words, said again on the way up, are heard again
+      return;
     }
+    if (length > PROJECT_LABEL_MOST) {
+      if (before <= PROJECT_LABEL_MOST) countLive.textContent = length + ' of ' + PROJECT_LABEL_MOST + ' characters: over the limit';
+      return;
+    }
+    const crossed = COUNT_ANNOUNCED.filter((at) => before < at && at <= length);
+    if (crossed.length > 0) countLive.textContent = crossed[crossed.length - 1] + ' of ' + PROJECT_LABEL_MOST + ' characters';
   }
   labelField.input.addEventListener('input', drawCount);
 
@@ -269,7 +353,7 @@ export function projectsCard(ctx) {
   }
 
   function rowButton(label, action, nameId, run) {
-    const button = h('button', { type: 'button', class: 'btn', data: { action }, 'aria-describedby': nameId });
+    const button = h('button', { type: 'button', class: 'btn', data: { action, names: nameId }, 'aria-describedby': nameId });
     button.textContent = label;
     button.addEventListener('click', (event) => {
       if (disabled(button) || busy) {
@@ -311,7 +395,8 @@ export function projectsCard(ctx) {
       actions.append(rowButton('Rename…', 'rename', nameId, (button) => renameEntry(entry, button)));
     }
     actions.append(rowButton('Delete…', 'delete', nameId, (button) => deleteEntry(entry, button)));
-    if (locked) for (const button of actions.querySelectorAll('button')) gate(button, ids.readOnly, true);
+    // reading only stays available: exporting a record as it is changes nothing
+    if (locked) for (const button of actions.querySelectorAll('button:not([data-action="export-raw"])')) gate(button, ids.readOnly, true);
     li.append(actions);
     return li;
   }
@@ -343,7 +428,12 @@ export function projectsCard(ctx) {
       ? 'This device keeps ' + count(rows.length, 'project') + '. ' + openName() + ' is open.'
       : 'This device keeps one project: ' + openName() + '.';
     list.hidden = !many;
+    // a redraw keeps a focus that was inside the list (by row and button), and a
+    // button that was working goes on saying so
+    const kept = focusInList();
     list.replaceChildren(...(many ? rows.map((entry) => row(entry, now, format)) : []));
+    const was = showWorking();
+    if (kept) restoreFocus(kept, was);
 
     readOnlyLine.hidden = !locked;
     const full = rows.length >= PROJECTS_MOST;
@@ -357,21 +447,46 @@ export function projectsCard(ctx) {
     placeFocus();
   }
 
+  // Where the focus is inside the list: { id, action } or null.
+  function focusInList() {
+    const at = document.activeElement;
+    if (!at || !list.contains(at)) return null;
+    const li = at.closest('[data-project-id]');
+    return li ? { id: li.dataset.projectId, action: at.dataset.action || '' } : null;
+  }
+
+  function restoreFocus(spot, busyButton) {
+    const gone = !document.activeElement || document.activeElement === document.body || !document.activeElement.isConnected;
+    if (!gone || want) return;
+    const li = list.querySelector('[data-project-id="' + CSS.escape(spot.id) + '"]');
+    const button = li ? li.querySelector('[data-action="' + spot.action + '"]') || li.querySelector('button') : null;
+    if (button) button.focus();
+    else if (!list.hidden || element.isConnected) heading.focus();
+  }
+
+  // The reader may have moved on: only a focus on nothing (the page, or the main region) is taken.
+  const focusIsFree = () => {
+    const at = document.activeElement;
+    return !at || at === document.body || at.tagName === 'MAIN';
+  };
+
   function placeFocus() {
-    if (headingWanted && element.isConnected) {
-      headingWanted = false;
-      heading.focus();
-      return;
-    }
     if (headingWanted) {
-      // the section is not on the page yet; the first frame it is, the heading has the focus
-      requestAnimationFrame(() => {
-        if (headingWanted && element.isConnected) placeFocus();
-        else if (headingWanted) requestAnimationFrame(placeFocus);
-      });
-      return;
+      headingFrames += 1;
+      if (!focusIsFree() || headingFrames > HEADING_FRAMES) {
+        headingWanted = false; // moved on, or the section never came: no heading focus, no more frames
+      } else if (element.isConnected) {
+        headingWanted = false;
+        heading.focus();
+        return;
+      } else {
+        // the section is not on the page yet; the first frame it is, the heading has the focus
+        requestAnimationFrame(placeFocus);
+        return;
+      }
     }
     if (!want) return;
+    if (document.querySelector('dialog[open]')) return; // the focus is kept for when the dialog has closed
     const target = want;
     want = null;
     const rowOf = (id) => list.querySelector('[data-project-id="' + CSS.escape(id) + '"]');
@@ -396,13 +511,14 @@ export function projectsCard(ctx) {
     const answer = await storage.projects.open(entry.id);
     if (answer.ok && !answer.reloadFailed) return; // the page reloads a moment from now
     if (answer.ok) {
-      setBusy(false, button); // the switch is done; the page's banner says to reload it
+      const live = setBusy(false); // the switch is done; the page's banner says to reload it
+      if (live) live.focus();
       return;
     }
     forgetOpening();
-    setBusy(false, button);
+    const live = setBusy(false);
     say('refused', answer.text);
-    button.focus();
+    (live || heading).focus();
   }
 
   // ---- Rename…
@@ -422,14 +538,24 @@ export function projectsCard(ctx) {
       opener,
     });
     const [renameButton] = dialog.element.querySelectorAll('.dialog__buttons button');
+    let renaming = false;
+    const showBusy = holdWhileWorking(dialog, () => renaming);
     async function submit() {
+      if (renaming) return;
+      renaming = true;
+      showBusy(true);
       problem.hidden = true;
+      // the focus is wanted before the answer: the list is drawn again as the store answers
+      want = { id: entry.id, action: 'rename' };
       const answer = await storage.projects.rename(entry.id, input.input.value);
+      renaming = false;
+      showBusy(false);
       if (answer.ok) {
-        want = { id: entry.id, action: 'rename' };
         dialog.close('renamed');
+        placeFocus();
         return;
       }
+      want = null;
       problem.textContent = answer.text;
       problem.hidden = false;
       input.input.focus();
@@ -498,24 +624,31 @@ export function projectsCard(ctx) {
     if (choice !== 'delete') return;
     const index = Array.from(list.children).findIndex((li) => li.dataset.projectId === entry.id);
     setBusy(true);
+    // the focus is wanted before the answer: the list is drawn again as the store answers
+    want = { after: index };
     const answer = await storage.projects.remove(entry.id, exported ? { exported: true } : undefined);
     setBusy(false);
     if (!answer.ok) {
       // no recovery point could be kept (needs: 'exported'): the row's Delete… asks again, with Export first
+      want = null;
       say('refused', answer.text);
       return;
     }
     say('status', '');
-    want = { after: index };
     ctx.toast({
       text: 'Deleted ' + name + ' from this device.' + (answer.pointKept ? '' : ' No recovery point could be kept of it.'),
       action: answer.pointKept ? { label: 'Restore as a project', run: () => restoreDeleted(answer.pointKey) } : undefined,
     });
   }
 
+  // One press only: the toast's button is pressed again while the first is working, nothing happens.
   async function restoreDeleted(pointKey) {
+    if (busy) return;
+    setBusy(true);
     rememberOpening({ kind: 'start', from: openName() });
     const answer = await storage.projects.restoreAsProject(pointKey);
+    if (answer.ok && !answer.reloadFailed) return; // the page reloads a moment from now
+    setBusy(false);
     if (answer.ok) return;
     forgetOpening();
     ctx.toast({ kind: 'problem', text: answer.text });
@@ -537,10 +670,12 @@ export function projectsCard(ctx) {
       opener,
     });
     const [go] = dialog.element.querySelectorAll('.dialog__buttons button');
-    let working = false;
+    let duplicating = false;
+    const showBusy = holdWhileWorking(dialog, () => duplicating);
     async function submit() {
-      if (working) return;
-      working = true;
+      if (duplicating) return;
+      duplicating = true;
+      showBusy(true);
       problem.hidden = true;
       go.textContent = 'Duplicating…';
       go.setAttribute('aria-disabled', 'true');
@@ -552,9 +687,14 @@ export function projectsCard(ctx) {
         return;
       }
       forgetOpening();
-      working = false;
+      duplicating = false;
+      showBusy(false);
       go.textContent = 'Duplicate and open it';
       go.removeAttribute('aria-disabled');
+      if (!dialog.element.isConnected) {
+        ctx.toast({ kind: 'problem', text: answer.text });
+        return;
+      }
       problem.textContent = answer.text;
       problem.hidden = false;
       input.input.focus();
@@ -606,14 +746,21 @@ export function projectsCard(ctx) {
       opener,
     });
     const [startBtn] = dialog.element.querySelectorAll('.dialog__buttons button');
+    const showBusy = holdWhileWorking(dialog, () => working);
 
     function drawStart() {
       startBtn.textContent = kind === 'file' && picked ? 'Open it as another project' : working ? 'Starting…' : 'Start';
       if (held || working) startBtn.setAttribute('aria-disabled', 'true');
       else startBtn.removeAttribute('aria-disabled');
+      showBusy(working);
     }
 
+    // A sentence for the dialog; if the dialog is gone it goes to a toast, never into a closed dialog.
     function showRefusal(text) {
+      if (!dialog.element.isConnected) {
+        if (text !== '') ctx.toast({ kind: 'problem', text });
+        return;
+      }
       refusal.textContent = text;
       refusal.hidden = text === '';
     }
@@ -626,6 +773,19 @@ export function projectsCard(ctx) {
       showRefusal('');
       summary.hidden = !(value === 'file' && picked);
       drawStart();
+      // the file is still held: choosing it again asks the one-per-id question again
+      if (value === 'file' && picked) checkHeld();
+    }
+
+    // The one-per-id rule, asked of the picked file before anything is started.
+    async function checkHeld() {
+      const mine = picked;
+      if (mine.read.project.id === store.project.id) {
+        showHeld({ id: mine.read.project.id, label: open, heldBy: 'open' }, 'file');
+        return;
+      }
+      const label = await storage.projects.holds(mine.read.project.id);
+      if (label !== null && kind === 'file' && picked === mine && !held) showHeld({ id: mine.read.project.id, label, heldBy: 'shelf' }, 'file');
     }
 
     // The two ways on when the project is already kept (15.9 item 3).
@@ -689,18 +849,55 @@ export function projectsCard(ctx) {
     }
 
     // "Replace the open project" is Import's meaning: a recovery point and a
-    // snapshot first, one undo step.
+    // snapshot first, one undo step. Refused up front in a read-only tab or while a
+    // switch is under way; when no snapshot can be taken, the question says so first.
+    function cannotReplace() {
+      if (storage.state.readOnly) return 'This tab is read-only while the project is open in another tab, so it cannot replace the open project.';
+      if (storage.state.switching) return 'A project is already being opened. Wait for the page to reload.';
+      return null;
+    }
+
     async function replaceOpen() {
+      const no = cannotReplace();
+      if (no) {
+        showRefusal(no);
+        return;
+      }
       working = true;
       drawStart();
       const { read: file, fileName } = picked;
       const before = store.project;
+      let snapshotSaid = '';
       try {
         const snapshots = pageSnapshots();
         const room = snapshots ? await snapshots.room() : null;
-        if (snapshots && room && !room.error && !room.full) await snapshots.takeAuto('import', 'Before importing ' + fileName);
+        const takes = Boolean(snapshots && room && !room.error && !room.full);
+        if (!takes) {
+          working = false;
+          drawStart();
+          const go = await ctx.openDialog({
+            title: 'Replace the open project without a snapshot?',
+            body: [h('p', null, importSafetyLine(room, 'Before importing ' + fileName, 'the project that was here'))],
+            buttons: [{ label: 'Replace anyway', value: 'replace', kind: 'danger' }, { label: 'Cancel', value: null }],
+            opener: dialog.element.querySelector('[data-action="held-replace"]'),
+          }).closed;
+          if (go !== 'replace') return;
+          const again = cannotReplace();
+          if (again) {
+            showRefusal(again);
+            return;
+          }
+          working = true;
+          drawStart();
+          snapshotSaid = ' No snapshot was taken' + (room && room.error ? ' (' + String(room.error).replace(/\.$/, '') + ')' : room && room.full ? ': this device keeps the most snapshots it can' : '') + '; a recovery point of it was.';
+        } else {
+          const taken = await snapshots.takeAuto('import', 'Before importing ' + fileName);
+          snapshotSaid = taken && taken.ok === false ? ' No snapshot was taken (' + String(taken.text).replace(/\.$/, '') + '); a recovery point of it was.' : ' A snapshot and a recovery point of it were kept first.';
+        }
         await storage.takeRecoveryPoint('import');
         await storage.keepFileImages(file.project, file.images);
+        const late = cannotReplace();
+        if (late) throw new Error(late);
         store.apply(replaceProject, { project: file.project, label: 'Import the project file ' + fileName });
       } catch (error) {
         working = false;
@@ -715,7 +912,7 @@ export function projectsCard(ctx) {
         return;
       }
       dialog.close('replaced');
-      ctx.toast({ text: 'Imported the project file ' + fileName + '. Undo brings back the project that was here.', action: { label: 'Undo', run: ctx.undo } });
+      ctx.toast({ text: 'Imported the project file ' + fileName + '. Undo brings back the project that was here.' + snapshotSaid, action: { label: 'Undo', run: ctx.undo } });
     }
 
     input.addEventListener('change', async () => {
@@ -748,14 +945,11 @@ export function projectsCard(ctx) {
       summary.hidden = false;
       held = null;
       heldBox.hidden = true;
-      // the one-per-id rule, asked before anything is started
-      if (parsed.project.id === store.project.id) showHeld({ id: parsed.project.id, label: open, heldBy: 'open' }, 'file');
-      else {
-        const label = await storage.projects.holds(parsed.project.id);
-        if (label !== null) showHeld({ id: parsed.project.id, label, heldBy: 'shelf' }, 'file');
-      }
+      await checkHeld(); // the one-per-id rule, asked before anything is started
       drawStart();
-      startBtn.focus();
+      // the first held choice takes the focus, never the Start that waits for one
+      const first = held ? heldBox.querySelector('button') : null;
+      (first || startBtn).focus();
     });
 
     dialog.element.addEventListener('click', (event) => {

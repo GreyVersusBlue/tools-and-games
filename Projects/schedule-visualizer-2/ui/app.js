@@ -46,7 +46,7 @@ import { focusHash, groupOf } from './schedule/address.js';
 import { setSetting, setOnboarding, replaceProject } from '../engine/actions.js';
 import { sampleSchool, SAMPLE_PROJECT_ID } from '../data/sample-school.js';
 import { startStorage } from '../storage/session.js';
-import { openedSentences, keptDialog } from './project/projects.js';
+import { openedSentences, keptDialog, rememberOpening, forgetOpening, entryName } from './project/projects.js';
 import { readDevice, writeDevice as storeDevice, DEVICE_KEY as STORED_DEVICE_KEY } from '../storage/device.js';
 import { engineFor } from './engine-client.js';
 
@@ -349,6 +349,8 @@ async function boot() {
 
   // ------------------------------------------------------------ the sample school
 
+  let loadingSample = false;
+
   async function loadSample(opener) {
     const now = store.project;
     if (now.id === SAMPLE_PROJECT_ID) return;
@@ -357,13 +359,38 @@ async function boot() {
     if (keptAs !== null) {
       const way = await keptDialog(ctx, {
         title: 'The sample school is already kept on this device',
-        sentence: 'The sample school is already kept on this device as ' + keptAs + '. Open it, or keep this one as another project.',
+        sentence: 'The sample school is already kept on this device as ' + keptAs + '. You can open that one, or make another copy of the sample school and open the copy.',
         label: keptAs,
         heldBy: 'shelf',
         opener,
       });
-      if (way === 'open') await ctx.storage.projects.open(SAMPLE_PROJECT_ID);
-      else if (way === 'keep') await ctx.storage.projects.startAnother('sample', undefined, { copy: true });
+      if (way !== 'open' && way !== 'keep') return;
+      if (loadingSample) return;
+      // the page reloads on success; the sentence it says is written first, and the button says it is working
+      loadingSample = true;
+      if (opener && opener.isConnected) {
+        opener.setAttribute('aria-disabled', 'true');
+        opener.setAttribute('aria-busy', 'true');
+      }
+      rememberOpening({ kind: way === 'open' ? 'open' : 'start', from: entryName({ label: store.project.label || '', schoolName: store.project.settings.schoolName }) });
+      let answer;
+      try {
+        answer = way === 'open'
+          ? await ctx.storage.projects.open(SAMPLE_PROJECT_ID)
+          : await ctx.storage.projects.startAnother('sample', undefined, { copy: true });
+      } catch (error) {
+        answer = { ok: false, text: 'The sample school was not opened. ' + (error && error.message ? error.message : 'Try again.') };
+      }
+      if (answer.ok && !answer.reloadFailed) return; // the page reloads a moment from now
+      loadingSample = false;
+      if (opener && opener.isConnected) {
+        opener.removeAttribute('aria-disabled');
+        opener.removeAttribute('aria-busy');
+      }
+      if (!answer.ok) {
+        forgetOpening();
+        toast({ kind: 'problem', text: answer.text });
+      }
       return;
     }
     if (hasContent(now)) {
