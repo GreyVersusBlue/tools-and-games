@@ -203,6 +203,7 @@ export const GROUPS = {
     'browser/safety-prints.mjs', // SV2-111
     'browser/route-sheet.mjs', // SV2-103
     'browser/scenario.mjs', // SV2-68
+    'browser/scenarios-kept.mjs', // SV2-122
     'browser/scenario-levers.mjs', // SV2-92
     'browser/congestion-scenario.mjs', // SV2-71
     'browser/difference.mjs', // SV2-69

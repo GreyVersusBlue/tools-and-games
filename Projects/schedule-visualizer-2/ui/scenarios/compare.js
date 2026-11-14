@@ -80,12 +80,12 @@ export function comparePanel(env) {
       return;
     }
     element.dataset.settling = 'true';
-    if (lastState) update(lastState);
     settling = setTimeout(() => {
       settling = null;
       delete element.dataset.settling;
       env.chooseCompare(withSelect.value === '' ? null : withSelect.value);
     }, SETTLE_MS);
+    if (lastState) update(lastState);
   });
   const bellsField = h('div', { class: 'field', hidden: true, data: { field: 'bells' } }, h('label', { class: 'field__label', for: 'scenario-compare-bells' }, 'Bells'), bellsSelect);
   const options = h('div', { class: 'scn-compare__options' },

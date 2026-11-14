@@ -778,6 +778,8 @@ export const section = {
       get compare() { return lane.compare; },
       get answer() { return lane.answer; },
       get pending() { return lane.pending; },
+      // how many times the lane was asked, for the tests (a settled choice asks once)
+      get asked() { return lane.asked; },
       memory,
       ask,
     };

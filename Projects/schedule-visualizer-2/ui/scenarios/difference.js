@@ -296,8 +296,8 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
       : 'Corridors that change most in ' + transitionName(project, memory.bellsId, difference.transition);
     // against the real schedule the legend says "busier, quieter"; against a
     // kept scenario it names it: "busier than Stagger 8th grade" (15.9 item 8)
-    const than = held.beforeOf ? [' than ', h('bdi', null, held.beforeOf.name)] : [];
-    key.replaceChildren('On the map: ', swatch('problem', 3), 'busier', ...than, ', ', swatch('accent', 3), 'quieter', ...than, '. ',
+    const than = () => (held.beforeOf ? [' than ', h('bdi', null, held.beforeOf.name)] : []);
+    key.replaceChildren('On the map: ', swatch('problem', 3), 'busier', ...than(), ', ', swatch('accent', 3), 'quieter', ...than(), '. ',
       difference.largest > 0 ? 'The stronger the colour, the larger the change; the largest is ' + difference.largest + ' ' + unitWord(unit, difference.largest) + '. A place with no change is not coloured.' : 'Nothing on the map changes.');
     // the day type is named on a row only when the rows come from more than one
     const several = new Set(held.ranked.rows.map((row) => row.dayTypeId)).size > 1;
