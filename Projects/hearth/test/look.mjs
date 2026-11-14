@@ -242,10 +242,15 @@ async function lightChecks(page, id) {
 
 // ---- (2) the eight scenes, at zoom 1 and zoom 3.2: pictures and timing ----
 const rows = [], lums = {};
+// the stock checks set wood, food and granary and the clock by hand, so they get an island of their own: run on the scenes' island they left S7's lit windows with no pairs to measure
+{
+  const { ctx, page } = await open(7);
+  await stockChecks(page);
+  await ctx.close();
+}
 {
   const { ctx, page } = await open(7);
   await groundChecks(page);
-  await stockChecks(page);
   for (const sc of SCENES) {
     await page.evaluate(sc => {
       const H = window.__hearth;
