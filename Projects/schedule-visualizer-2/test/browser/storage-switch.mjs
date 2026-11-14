@@ -119,6 +119,15 @@ const ask = (p, expression, arg) => p.evaluate((source, given) => {
   return Promise.resolve(call(globalThis.sv2.storage, globalThis.sv2, given)).then((result) => JSON.parse(JSON.stringify(result, (name, value) => (typeof value === 'function' ? '[function]' : value))));
 }, expression, arg);
 
+// Leave the planner for a page of the same origin that runs none of it (the
+// planner's own leaving writes are done by then), do `work`, and open the
+// planner again. Does not wait for it: a boot dialog may be what is asked for.
+async function away(p, work) {
+  await p.goto(session.base + '/404.html', { waitUntil: 'load' });
+  await work();
+  await p.goto(session.url('#project'), { waitUntil: 'load' });
+}
+
 async function freshDevice(p) {
   await p.goto('about:blank');
   await clearSaved(p, session.base);
@@ -316,14 +325,14 @@ test('the boot dialogs see only points of the saved project\'s own id: a switch\
   const saved = await current(page);
   const clone = (id) => JSON.parse(JSON.stringify({ ...saved.project, id, modified: '2099-01-01T00:00:00.000Z' }));
   const point = (project) => ({ takenAt: '2099-01-01T00:00:00.000Z', reason: 'timer', summary: { floors: 1, rooms: 0, groups: 0, teachers: 0 }, bytes: 1, project, images: {}, projectId: project.id });
-  await write(page, 'sv2-recovery', 'recovery', 'put', point(clone(first)));
-  await page.reload({ waitUntil: 'load' });
+  // written with the planner's page gone, so that the point the page takes as
+  // it leaves is not newer than this one and hides it
+  await away(page, () => write(page, 'sv2-recovery', 'recovery', 'put', point(clone(first))));
   await loaded(page);
   assert.equal(await page.evaluate(() => document.getElementById('recovery-dialog')), null, 'a newer point of another project is not offered over this one');
   assert.equal((await stateOf(page)).id, second);
   // and one of its own id, newer, is
-  await write(page, 'sv2-recovery', 'recovery', 'put', point(clone(second)));
-  await page.reload({ waitUntil: 'load' });
+  await away(page, () => write(page, 'sv2-recovery', 'recovery', 'put', point(clone(second))));
   await page.waitForFunction(() => document.getElementById('recovery-dialog') !== null, { timeout: 20000 });
   const dialog = await page.evaluate(() => ({
     title: document.querySelector('#recovery-dialog h2, #recovery-dialog [role="heading"]')?.textContent || document.getElementById('recovery-dialog').textContent.slice(0, 80),
