@@ -118,10 +118,57 @@ async function animChecks(page) {
   check('animT: frame(.5,true) advances it by the real seconds', Math.abs(r.ran - 3.5) < 1e-9, `3 became ${r.ran}`);
 }
 
+// ---- (4) A3: the ground has a shape. Called on a fresh seed-7 island at day 0, summer-ish, no snow, before any scene moves it. ----
+async function groundChecks(page) {
+  const r = await page.evaluate(() => {
+    const H = window.__hearth, cv = H.terCv, g = cv.getContext('2d'), W = 110, HH = 70, T = 8;
+    const tiles = H.tilesNow, elev = H.elevNow, road = H.road;
+    const snap = () => g.getImageData(0, 0, W * T, HH * T).data;
+    H.paintTerrain(); const a = snap();
+    const t0 = performance.now(); H.paintTerrain(); const ms = performance.now() - t0; g.getImageData(0, 0, 1, 1);
+    const b = snap();
+    let same = true; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) { same = false; break; }
+    const lum = (tx, ty) => { let s = 0; for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) { const k = ((ty * T + y) * W * T + tx * T + x) * 4; s += .299 * b[k] + .587 * b[k + 1] + .114 * b[k + 2]; } return s / (T * T); };
+    const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= HH) ? 0 : tiles[y * W + x];
+    const lo = [], hi = [];
+    for (let y = 1; y < HH - 1; y++) for (let x = 1; x < W - 1; x++) {
+      if (at(x, y) !== 2 || road[y * W + x]) continue; // open grass only, so sand, rock and water edges do not decide it
+      let pure = true; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (at(x + dx, y + dy) !== 2) pure = false;
+      if (!pure) continue;
+      const nw = elev[(y - 1) * W + x - 1], me = elev[y * W + x];
+      if (nw < me) lo.push(lum(x, y)); else if (nw > me) hi.push(lum(x, y));
+    }
+    const mean = l => l.reduce((s, v) => s + v, 0) / (l.length || 1);
+    // the coast: every sand tile with water to its east must carry the wet-sand lip on its east 2 px, and the water tile the foam line
+    let lipN = 0, lipOk = 0, foamOk = 0;
+    const px = (x, y) => { const k = (y * W * T + x) * 4; return [b[k], b[k + 1], b[k + 2]].join(','); };
+    for (let y = 0; y < HH; y++) for (let x = 0; x < W - 1; x++) if (at(x, y) === 1 && at(x + 1, y) === 0) {
+      lipN++; if (px(x * T + 6, y * T + 3) === '179,159,120' && px(x * T + 7, y * T + 3) === '179,159,120') lipOk++;
+      if (px((x + 1) * T, y * T + 3) === '220,236,244') foamOk++;
+    }
+    // rock far from the snow line gets strata: some darker band pixel (#4f4b44) on most rock tiles
+    let rock = 0, strata = 0;
+    for (let y = 0; y < HH; y++) for (let x = 0; x < W; x++) if (at(x, y) === 3 && elev[y * W + x] <= .7) {
+      rock++; let found = false;
+      for (let j = 0; j < T && !found; j++) for (let i = 0; i < T; i++) { const k = ((y * T + j) * W * T + x * T + i) * 4; if (b[k] === 79 && b[k + 1] === 75 && b[k + 2] === 68) { found = true; break; } }
+      if (found) strata++;
+    }
+    return { same, ms, lo: lo.length, hi: hi.length, mlo: mean(lo), mhi: mean(hi), lipN, lipOk, foamOk, rock, strata };
+  });
+  check('ground: land tiles with a lower north-west neighbour are at least 6 brighter than those with a higher one', r.lo > 50 && r.hi > 50 && r.mlo - r.mhi >= 6,
+    `${r.lo} lit tiles at ${r.mlo.toFixed(2)}, ${r.hi} shaded tiles at ${r.mhi.toFixed(2)}`);
+  check('ground: a second paintTerrain() with the same key is pixel-identical', r.same, 'the repaint differs');
+  check('ground: paintTerrain() takes under 60 ms', r.ms < 60, `${r.ms.toFixed(1)} ms`);
+  check('ground: every sand tile with water to its east has the wet lip and the foam line', r.lipN >= 5 && r.lipOk === r.lipN && r.foamOk === r.lipN, `${r.lipN} such tiles, ${r.lipOk} lips, ${r.foamOk} foam lines`);
+  check('ground: rock below the snow line carries strata bands', r.rock >= 5 && r.strata === r.rock, `${r.strata} of ${r.rock} rock tiles`);
+  console.log(`      ground: ${r.lo} tiles NW-lower at ${r.mlo.toFixed(2)}, ${r.hi} NW-higher at ${r.mhi.toFixed(2)}, paint ${r.ms.toFixed(1)} ms`);
+}
+
 // ---- (2) the eight scenes, at zoom 1 and zoom 3.2: pictures and timing ----
 const rows = [];
 {
   const { ctx, page } = await open(7);
+  await groundChecks(page);
   for (const sc of SCENES) {
     await page.evaluate(sc => {
       const H = window.__hearth;
