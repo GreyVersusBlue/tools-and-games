@@ -243,7 +243,7 @@ test('clearing the schedule takes the groups, teachers, accepted findings and sc
   project.accepted = [{ findingId: 'room-double:dsample00a:1:rsample203', reason: 'Shared', at: '2026-09-01T12:00:00.000Z', about: [] }];
   project.scenario = { name: HOSTILE, changes: [], compared: null };
   assertValid(project);
-  assert.deepEqual(scheduleContents(project), { groups: 8, teachers: 12, accepted: 1, scenario: HOSTILE });
+  assert.deepEqual(scheduleContents(project), { groups: 8, teachers: 12, accepted: 1, scenario: HOSTILE, kept: 0 });
   const cleared = clearedSchedule(project);
   assertValid(cleared);
   assert.deepEqual([cleared.groups, cleared.teachers, cleared.accepted, cleared.scenario], [[], [], [], null]);
@@ -310,7 +310,7 @@ test('the three clears in the card\'s order, each with an action that names it a
   assert.deepEqual(CLEARS.map((entry) => [entry.id, entry.button, entry.action, entry.keep, entry.label, AUTO_SNAPSHOT_NAMES[entry.reason]]), [
     ['building', 'Clear the building', 'Clear the building', 'Keep the building', 'Clear the building', 'Before clearing the building'],
     ['schedule', 'Clear the schedule', 'Clear the schedule', 'Keep the schedule', 'Clear the schedule', 'Before clearing the schedule'],
-    ['new', 'Start a new project', 'Start a new project', 'Keep this project', 'Start a new project', 'Before starting a new project'],
+    ['new', 'Replace with a new empty project', 'Replace with a new empty project', 'Keep this project', 'Replace with a new empty project', 'Before starting a new project'],
   ]);
   const project = school();
   const made = CLEARS.map((entry) => entry.make(project, { ids: makeIds(6), clock, devicePaper: () => 'letter' }));

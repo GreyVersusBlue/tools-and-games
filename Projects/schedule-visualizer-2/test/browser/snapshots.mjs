@@ -715,7 +715,7 @@ test('clear the schedule: a double press clears once with one snapshot; the grou
 test('start a new project: a recovery point and a snapshot first, an empty project of its own at once, one undo back', async () => {
   await dismissToast();
   const id = await page.evaluate(() => globalThis.sv2.store.project.id);
-  assert.equal(await text('#clear [data-action="clear-new"]'), 'Start a new project');
+  assert.equal(await text('#clear [data-action="clear-new"]'), 'Replace with a new empty project');
   await page.click('#clear [data-action="clear-new"]');
   await shows(() => document.querySelector('dialog.dialog[open]') !== null || (document.querySelector('.figures__item[data-figure="rooms"] dd').textContent === '0' && document.querySelector('.figures__item[data-figure="floors"] dd').textContent === '1'));
   assert.equal(await page.$('dialog.dialog[open]'), null, 'nothing asked');
