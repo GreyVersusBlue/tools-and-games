@@ -246,6 +246,7 @@ row names a file it does not run.
 | `test/browser/storage.mjs` | Saving on the device, with a real IndexedDB |
 | `test/browser/storage-shelf.mjs` | Several projects on one device, in the database: switching with traced images, a failed switch, the refusals, the list, delete and rename, a duplicate's pictures, the recovery trim across projects |
 | `test/browser/storage-switch.mjs` | Several projects on one device, in the session: Start another, an edit pending as a switch starts, the boot dialogs and reconcile, an unreadable record refused, duplicate, restore as a project, every call refused while switching and in a read-only tab, a read-only sibling through a switch |
+| `test/browser/projects.mjs` | The Projects on this device card: start another, open it, back, duplicate, rename, delete and restore as a project by pointer, by keyboard alone, at 390 by 844 and at 844 by 390; the one-project form and the Label field (one undo step, the count from 50, a name as typed), the chip and the title with the label only above one project, the limit, a read-only tab, a row that cannot be read, Start another project's one-per-id choices and the sample school's Load asking the same |
 | `test/browser/recovery.mjs` | Recovery points: taken, kept, restored |
 | `test/browser/tabs.mjs` | Two tabs on one project |
 | `test/browser/schedule.mjs` | The Schedule section: a group entered by keyboard, the checks |
