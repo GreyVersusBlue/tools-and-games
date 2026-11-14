@@ -84,7 +84,7 @@ export function changesPanel(env) {
 
   // what the cross-hatch on the plan means (a closed corridor or stairs), shown while one is closed
   const legend = h('p', { class: 'scn-legend', hidden: true, data: { part: 'legend' } }, h('span', { class: 'scn-legend__swatch', 'aria-hidden': 'true' }), 'Closed in this trial');
-  const open = h('div', { class: 'scn-open', data: { part: 'open' } }, openTitle, naming, keeping, fullNote, chipsTitle, none, chips, legend, status, dropped);
+  const open = h('div', { class: 'scn-open', data: { part: 'open' } }, openTitle, naming, chipsTitle, none, chips, legend, status, dropped, keeping, fullNote);
   const element = h('div', { class: 'scn-changes' }, starting, open);
 
   let view = null;
