@@ -411,8 +411,8 @@ test('an unreadable shelf record is refused before anything moves, and can be ex
   assert.deepEqual([gone.ok, gone.pointKept, gone.pointKey], [true, false, null], 'deleted, and the answer says no recovery point was kept');
   assert.deepEqual(await shelfKeys(page), ['shelf:' + first], 'only the damaged record went');
   // the one that failed validation is deleted too, when asked, and the answer says what it could keep
-  const second = await ask(page, 'storage.projects.remove(arg)', first);
-  assert.equal(second.ok, true);
+  const rest = await ask(page, 'storage.projects.remove(arg)', first);
+  assert.equal(rest.ok, true);
   assert.deepEqual(await shelfKeys(page), [], 'the damaged record is gone');
 });
 
