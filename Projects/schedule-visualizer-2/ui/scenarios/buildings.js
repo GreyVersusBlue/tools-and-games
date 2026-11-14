@@ -42,7 +42,8 @@
 // The band's data-held is "true" while a comparison is held, data-working
 // "true" while one is being worked out (the first answer, and again after a
 // change in the open project), data-side the building the map shows
-// ('this' or 'other'), data-day the day type's name compared.
+// ('this' or 'other'), data-day the day type's name compared, data-painted the
+// cells painted on the map and data-scale the busiest load that scale was made from.
 
 import { h } from '../components/dom.js';
 import { choice } from '../components/choice.js';
@@ -232,6 +233,11 @@ export function buildingsPanel(env) {
     if (state.side === 'this') plan.setProject(store.project, env.graph());
     else plan.setProject(state.other, state.otherGraph);
     plan.paint();
+    // for the tests: how many cells are painted, and the busiest load the scale was made from
+    let painted = 0;
+    for (const bands of state.bands[state.side].values()) for (const value of bands) if (value > 0 && value !== BAND_EXCLUDED) painted += 1;
+    band.dataset.painted = String(painted);
+    band.dataset.scale = String(state.scales[state.side]);
     return true;
   }
 

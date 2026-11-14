@@ -210,6 +210,8 @@ async function journey(page, mode, name) {
 
   // one scale for both buildings: the legend reads the same on each side
   const legendHere = await seen(page, '.scn-bld__bands');
+  const here = await page.$eval('.scn-bld', (el) => [Number(el.dataset.painted), el.dataset.scale]);
+  assert.ok(here[0] > 0, 'this project\'s corridors are painted');
   // the switch: the map paints the file's building, and the status says so
   if (mode === 'keyboard') {
     await page.keyboard.press('ArrowRight');
@@ -220,6 +222,9 @@ async function journey(page, mode, name) {
   assert.equal(await page.evaluate(() => document.querySelector('.scn').scenarios.plan.project.building.floors.length), 4, 'the map paints the wing');
   assert.match(await announced(page), new RegExp('^Showing ' + name + '\\.json’s building\\. Busiest: .+, \\d+ students\\.$'));
   assert.equal(await seen(page, '.scn-bld__bands'), legendHere, 'the same colours mean the same crowd on both sides');
+  const there = await page.$eval('.scn-bld', (el) => [Number(el.dataset.painted), el.dataset.scale]);
+  assert.ok(there[0] > 0, 'the wing\'s building is painted too');
+  assert.equal(there[1], here[1], 'one scale: both sides read the same busiest load');
   // and back
   if (mode === 'keyboard') {
     await page.keyboard.press('ArrowLeft');
@@ -272,6 +277,50 @@ test('by touch at 844 by 390: the band is one row, and the legend line is in the
   await journey(landscape.page, 'touch', 'wing-landscape');
 });
 
+// ---------------------------------------------------------------- the shape, in plain Node
+
+const { shapeOf } = await import(pathToFileURL(path.join(TOOL_DIR, 'ui', 'scenarios', 'buildings.js')).href);
+const { createPipeline } = await import(pathToFileURL(path.join(TOOL_DIR, 'engine', 'worker.js')).href);
+const { buildGraph } = await import(pathToFileURL(path.join(TOOL_DIR, 'engine', 'graph.js')).href);
+
+function sideOf(project) {
+  return { project, graph: buildGraph(project), result: createPipeline().run(project) };
+}
+
+test('shapeOf: one scale, the larger of the two sides\' busiest decides both, and both read the same bands', () => {
+  const a = plainSchool();
+  // the same building with a group doubled up in 6A's rooms: busier corridors
+  const b = clone(a);
+  b.groups.push({ ...clone(group(a, '6A')), id: 'gdouble0001', name: 'Z Doubles' });
+  const quiet = shapeOf(sideOf(a), sideOf(b), null);
+  assert.equal(quiet.answer.refused, undefined);
+  assert.equal(quiet.scales.this, quiet.scales.other, 'one scale for both');
+  const alone = shapeOf(sideOf(a), sideOf(a), null);
+  assert.ok(quiet.scales.other > alone.scales.this, 'the busier side decides: ' + quiet.scales.other + ' over ' + alone.scales.this);
+  assert.deepEqual(quiet.edges.this, quiet.edges.other, 'the same colour means the same crowd');
+  assert.ok(quiet.bands.this.size > 0 && quiet.bands.other.size > 0);
+});
+
+test('shapeOf: units that differ make the numbers incomparable, so each side keeps its own scale and the sentence says why', () => {
+  const a = plainSchool();
+  const b = clone(a);
+  for (const each of b.groups) delete each.headCount;
+  const shaped = shapeOf(sideOf(a), sideOf(b), null);
+  assert.ok(shaped.answer.unitsDiffer, 'students against groups');
+  assert.notEqual(shaped.scales.this, shaped.scales.other, 'each side its own busiest');
+  assert.match(shaped.answer.unitsDiffer.sentence, /students/);
+});
+
+test('shapeOf: a refusal is a value with its sentence and nothing is shaped', () => {
+  const a = plainSchool();
+  const b = clone(a);
+  b.dayTypes = b.dayTypes.map((day) => ({ ...day, name: day.name + ' elsewhere' }));
+  const shaped = shapeOf(sideOf(a), sideOf(b), null);
+  assert.equal(shaped.answer.refused, 'no-day-type');
+  assert.equal(typeof shaped.answer.sentence, 'string');
+  assert.equal(shaped.bands, null);
+});
+
 // ---------------------------------------------------------------- the end of a comparison
 
 async function hold(page, name) {
@@ -305,6 +354,29 @@ test('a comparison ends when another project opens, and when the lab is left', a
   await go(page, '#scenarios');
   await ready(page);
   assert.equal(await heldOf(page), 'false', 'the comparison does not come back');
+});
+
+test('a focus inside the forms when the comparison starts goes to the line "Stop comparing to edit the scenario."', async () => {
+  const page = wide.page;
+  await fresh(page, openScenarioSchool());
+  const file = writeFile('focus.json', withWing(plainSchool()));
+  const input = await page.$('input[data-file="compare"]');
+  await input.uploadFile(file);
+  await page.waitForSelector('[data-action="compare-buildings"]');
+  // the focus is in the scenario's name field, which the comparison hides; a click made by the page
+  // leaves it there until the lab is drawn again, and every focus after is written down
+  await page.focus('#scenario-name');
+  await page.evaluate(() => {
+    globalThis.__focus = [];
+    document.addEventListener('focusin', (event) => globalThis.__focus.push(event.target.id || event.target.name || event.target.tagName), true);
+    document.querySelector('[data-action="compare-buildings"]').click();
+  });
+  await page.waitForSelector(BAND, { timeout: 30000 });
+  const seenFocus = await page.evaluate(() => globalThis.__focus);
+  assert.equal(seenFocus[0], 'scenario-building-edit', 'the line is where the focus went first: ' + seenFocus.join(', '));
+  assert.ok(!seenFocus.includes('scenario-name'), 'never back to a hidden field');
+  await page.click('[data-action="stop-comparing"]');
+  await page.waitForFunction(() => document.querySelector('.scn-bld').dataset.held === 'false');
 });
 
 test('the same building is not a comparison of buildings: the file still makes the scenario, and a held comparison gives way', async () => {
