@@ -30,7 +30,7 @@ import { CELL_CORRIDOR, CELL_STAIRS, ELEVATOR_KIND } from './schema.js';
 import { releaseKind } from './release.js';
 import { formatDuration } from './findings.js';
 import { isCalendarDate, daysBetween, datesFrom, weekdayOf, dateWords, calendarDays } from './calendar.js';
-import { isId, collectIds } from './ids.js';
+import { isId, collectIds, createIds, seededRandom } from './ids.js';
 import { importedCalendar, calendarImportText } from './import-calendar.js';
 
 export const GEOMETRY = 'geometry';
@@ -2713,6 +2713,7 @@ export const fitFloorToImage = action(
 
 import { applyGroupImport, summaryText, ImportError } from './import-groups.js';
 import { applyBuilding, applySchedule, applySettings, buildingPart, schedulePart, readProjectFile, FileError } from './project-file.js';
+import { NOT_A_PROJECT_MESSAGE } from './migrate.js';
 import { applyTeacherImport, teacherSummaryText } from './import-teachers.js';
 import { applySubjectImport, subjectSummaryText } from './import-subjects.js';
 
@@ -2824,13 +2825,113 @@ export const importBuilding = action(
 // bytes of a traced image are the page's to keep (keepFileImages); the summary
 // carries `part` so the page knows which summary it holds.
 const PART_WORDS = { building: 'building', schedule: 'schedule', settings: 'settings' };
-const PART_BUMPS = { building: [GEOMETRY, BUILDING, SCHEDULE], schedule: [BUILDING, SCHEDULE], settings: [SCHEDULE] };
+const PART_BUMPS = { building: [GEOMETRY, BUILDING, SCHEDULE], schedule: [BUILDING, SCHEDULE] };
+// What the settings a file brought in move, from the keys actually taken and
+// by setSetting's own rules (its SETTINGS table, and setPeriods): periods, the
+// period word, the two defaults and the checks move the schedule; the school
+// name, the colour scale and the time format move nothing. A settings import
+// never moves the geometry.
+const SETTING_BUMPS = { periods: [SCHEDULE], periodWord: [SCHEDULE], defaultPassingSeconds: [SCHEDULE], defaultHeadCount: [SCHEDULE], checks: [SCHEDULE], schoolName: [], colourScale: [], timeFormat: [] };
+function takenBumps(summary) {
+  const bumps = [];
+  if (summary && Array.isArray(summary.taken)) {
+    for (const taken of summary.taken) for (const bump of SETTING_BUMPS[taken.key] || []) if (!bumps.includes(bump)) bumps.push(bump);
+  }
+  return bumps;
+}
 const PART_FOCUS = { building: { section: 'building' }, schedule: { section: 'schedule', tab: 'groups' }, settings: { section: 'project' } };
+
+// A project file read that the parts can be worked out from: a project with a
+// building of floors, settings and subjects. Refused in the reader's words
+// otherwise (a read from anywhere but readProjectFile may lack them).
+function needRead(read) {
+  const project = read && typeof read === 'object' ? read.project : null;
+  if (!project || typeof project !== 'object') refuse('There is no project file to bring a part in from.', 'bad-value');
+  const whole = project.building && typeof project.building === 'object' && Array.isArray(project.building.floors) && project.settings && typeof project.settings === 'object' && !Array.isArray(project.settings) && Array.isArray(project.subjects);
+  if (!whole) refuse(NOT_A_PROJECT_MESSAGE, 'bad-value');
+  return read;
+}
+
+// After a new building (ARCHITECTURE 21.10, 21.2): the open scenario's levers
+// and each kept one's that name what the building no longer has are dropped,
+// as reconcile would drop them when it ran: a corridor lever on a floor that
+// is gone or whose cells are not all corridor in the new building, a way
+// lever on a connection that is gone, a capacity lever on a room that is
+// gone. A scenario move to a room that is gone is left in place (reconcile
+// shows it as a change that no longer applies) and counted in
+// `changesUnmatched`. Returns { project, leversDropped, changesUnmatched }.
+function scenariosAfterBuilding(project) {
+  let leversDropped = 0;
+  let changesUnmatched = 0;
+  const floors = project.building.floors;
+  const connections = Array.isArray(project.building.connections) ? project.building.connections : [];
+  const gone = (lever) => {
+    if (!lever || typeof lever !== 'object') return false;
+    if (lever.kind === 'corridor') {
+      const floor = floors.find((candidate) => candidate.id === lever.floorId);
+      return !floor || !Array.isArray(lever.cells) || !lever.cells.every((cell) => Number.isInteger(cell) && cell >= 0 && cell < floor.cells.length && floor.cells[cell] === CELL_CORRIDOR);
+    }
+    if (lever.kind === 'way') return !connections.some((connection) => connection && connection.id === lever.connectionId);
+    if (lever.kind === 'capacity') return !findRoom(project, lever.roomId);
+    return false;
+  };
+  const followed = mapScenarios(project, (scenario) => {
+    if (Array.isArray(scenario.changes)) {
+      for (const change of scenario.changes) if (change && change.kind === 'move' && !findRoom(project, change.roomId)) changesUnmatched += 1;
+    }
+    if (!Array.isArray(scenario.levers)) return scenario;
+    const levers = scenario.levers.filter((lever) => !gone(lever));
+    leversDropped += scenario.levers.length - levers.length;
+    return levers.length === scenario.levers.length ? scenario : { ...scenario, levers };
+  });
+  return { project: followed, leversDropped, changesUnmatched };
+}
+
+// The part brought in: { project, summary } with the summary as it stands for
+// the page ({ part, ... }). `options`: { policy, ids, clock } as the schedule
+// import takes them.
+//
+// The schedule part and the scenarios: the schedule import never changes the
+// id of a group or a day type this project has (a group is matched by name
+// and the one here keeps its id, whatever the policy; one the file adds
+// is new, under a new id when the file's is taken; a day type is matched by id
+// then name and the one here stays). So the open and kept scenarios' changes
+// and levers that name a group or a day type here keep naming it, and a change
+// that names a group's old id stays with the group that has it (an imported
+// group under a new id gets none of them). Nothing in the scenarios is
+// rewritten, and so none is counted.
+function applyPart(project, read, part, options) {
+  needRead(read);
+  let result;
+  if (part === 'building') {
+    result = applyBuilding(project, buildingPart(read).file, { ids: options.ids, unnumberedText: UNNUMBERED_ROOM_TEXT });
+    const followed = scenariosAfterBuilding(result.project);
+    result = { project: followed.project, summary: { ...result.summary, leversDropped: followed.leversDropped, changesUnmatched: followed.changesUnmatched } };
+  } else if (part === 'schedule') {
+    result = applySchedule(project, schedulePart(read.project).file, { policy: options.policy, takeSettings: false, ids: options.ids, clock: options.clock });
+  } else result = applySettings(project, read.project.settings);
+  return { project: result.project, summary: { part, ...result.summary } };
+}
+
+// What bringing a part in would say, without bringing it in: the summary the
+// dialog's second step shows for every part, and importPart's outcome when it
+// applies, `{ part, ...summary }` (the settings' is { part, taken, periodsRaised,
+// periodsStay }, which is there even when nothing would change; the building's
+// carries leversDropped and changesUnmatched). It works on its own ids, so it
+// takes none of the store's. It refuses as importPart does, by throwing
+// ActionError (a bad part or read), or FileError and ImportError (the file's
+// own refusals, such as an unknown policy) with the reader's words.
+// options: { policy, clock }.
+export function previewPart(project, read, part, options) {
+  if (!Object.prototype.hasOwnProperty.call(PART_WORDS, part)) refuse('A project file gives its building, its schedule or its settings. Choose one.', 'bad-value');
+  const opts = options || {};
+  return applyPart(project, read, part, { policy: opts.policy, clock: opts.clock || (() => new Date(0)), ids: createIds(seededRandom(1)) }).summary;
+}
 
 export const importPart = action(
   {
     label: (before, payload) => 'Bring in the ' + (PART_WORDS[payload.part] || 'part') + ' from ' + (typeof payload.fileName === 'string' && payload.fileName !== '' ? payload.fileName : 'a project file'),
-    bumps: (before, payload) => PART_BUMPS[payload.part] || [],
+    bumps: (before, payload, after) => (payload.part === 'settings' ? takenBumps(importOutcomes.get(after)) : PART_BUMPS[payload.part] || []),
     focus: (before, payload) => PART_FOCUS[payload.part] || null,
   },
   (project, payload, ctx) => {
@@ -2838,12 +2939,7 @@ export const importPart = action(
     return importing(project, () => {
       let read = payload.read;
       if (typeof payload.text === 'string') read = readProjectFile(payload.text, { ids: ctx.ids, clock: ctx.clock });
-      if (!read || typeof read !== 'object' || !read.project || typeof read.project !== 'object') refuse('There is no project file to bring a part in from.', 'bad-value');
-      let result;
-      if (payload.part === 'building') result = applyBuilding(project, buildingPart(read).file, { ids: ctx.ids, unnumberedText: UNNUMBERED_ROOM_TEXT });
-      else if (payload.part === 'schedule') result = applySchedule(project, schedulePart(read.project).file, { policy: payload.policy, takeSettings: false, ids: ctx.ids, clock: ctx.clock });
-      else result = applySettings(project, read.project.settings);
-      return { project: result.project, summary: { part: payload.part, ...result.summary } };
+      return applyPart(project, read, payload.part, { policy: payload.policy, ids: ctx.ids, clock: ctx.clock });
     });
   },
 );
