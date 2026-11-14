@@ -123,14 +123,22 @@ export function filesCard(ctx) {
   const result = h('div', { data: { line: 'result' }, hidden: true });
 
   // `undo`, when given, is { run }: the line then keeps an Undo button beside the sentence.
-  function say(kind, text, notes, undo) {
+  // The line is one live region, updated in place and never replaced (a screen reader hears
+  // each sentence once); `focus` puts the keyboard on the line itself (tabindex -1).
+  const sentenceLine = h('p', { role: 'status' });
+  const noteList = h('ul', { hidden: true });
+  result.tabIndex = -1;
+  result.append(sentenceLine, noteList);
+  function say(kind, text, notes, undo, focus) {
     said = { kind, text, notes: notes || [] };
     result.hidden = false;
     result.dataset.result = kind;
-    result.replaceChildren(
-      h('p', { role: kind === 'refused' ? 'alert' : 'status' }, text,
-        undo ? [' ', h('button', { type: 'button', class: 'btn', data: { action: 'undo-part' }, on: { click: undo.run } }, 'Undo')] : null),
-      said.notes.length > 0 ? h('ul', null, said.notes.map((note) => h('li', null, note))) : '');
+    sentenceLine.setAttribute('role', kind === 'refused' ? 'alert' : 'status');
+    sentenceLine.replaceChildren(text,
+      ...(undo ? [' ', h('button', { type: 'button', class: 'btn', data: { action: 'undo-part' }, on: { click: undo.run } }, 'Undo')] : []));
+    noteList.replaceChildren(...said.notes.map((note) => h('li', null, note)));
+    noteList.hidden = said.notes.length === 0;
+    if (focus === true) result.focus();
   }
 
   async function save(kind) {
@@ -308,9 +316,9 @@ export function filesCard(ctx) {
   }
 
   // A button that asks for a file, with the <input type="file"> it stands for.
-  function chooser(kind, label, run) {
+  function chooser(kind, label, run, busy) {
     const input = h('input', { type: 'file', accept: '.json,application/json', hidden: true, tabindex: '-1', 'aria-hidden': 'true', data: { file: kind } });
-    const opener = h('button', { type: 'button', class: 'btn', data: { action: 'import-' + kind }, on: { click: () => input.click() } }, label);
+    const opener = h('button', { type: 'button', class: 'btn', data: { action: 'import-' + kind }, on: { click: () => { if (!busy || !busy()) input.click(); } } }, label);
     input.addEventListener('change', () => {
       const file = input.files && input.files[0];
       if (!file) return;
@@ -322,7 +330,7 @@ export function filesCard(ctx) {
     return [opener, input];
   }
 
-  const importPartFile = mergeImport({ ctx, say, snapshotPlan, takeSnapshot, recoveryPoint, safetyLine: importSafetyLine });
+  const importPartFile = mergeImport({ ctx, say, snapshotPlan, takeSnapshot, safetyLine: importSafetyLine });
 
   const exporter = (kind, label) => h('button', { type: 'button', class: 'btn', data: { action: 'export-' + kind }, on: { click: () => save(kind) } }, label);
 
@@ -335,7 +343,7 @@ export function filesCard(ctx) {
     h('p', null, 'The schedule alone: subjects, teachers, groups, day types and bell times. Importing one adds to the schedule here, and asks about groups whose names are already here; that is on the Schedule section\'s Import tab.'),
     h('div', { class: 'card__buttons' }, exporter('schedule', 'Export the schedule'), h('a', { class: 'btn', href: '#schedule/import', data: { action: 'import-schedule' } }, 'Import a schedule file…')),
     h('p', null, 'Bring in only the building, only the schedule or only the settings from another project file. The rest of this project stays as it is.'),
-    h('div', { class: 'card__buttons' }, chooser('part', 'Import part of a project file…', importPartFile)),
+    h('div', { class: 'card__buttons' }, chooser('part', 'Import part of a project file…', importPartFile, importPartFile.busy)),
     h('p', { class: 'card__small' }, 'A file is checked in full before anything changes. One made by a newer Schedule Visualizer 2 is refused whole, and one that is damaged changes nothing.'),
   );
 
