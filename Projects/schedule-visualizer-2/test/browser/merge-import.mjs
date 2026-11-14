@@ -50,11 +50,15 @@ function fixtureText(change) {
   return writeProjectFile(project, { images: {} });
 }
 
-// What the project is, without the moment of its last change.
+// What the project is, without the moment of its last change, as a short digest
+// (a failed comparison prints the digests, not two whole projects).
 const signature = (p) => p.evaluate(() => {
   const project = JSON.parse(JSON.stringify(globalThis.sv2.store.project));
   delete project.modified;
-  return JSON.stringify(project);
+  const text = JSON.stringify(project);
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619) >>> 0;
+  return text.length + ':' + hash.toString(16);
 });
 const undoLabel = (p) => p.evaluate(() => globalThis.sv2.store.undoLabel);
 const open = (p) => p.$eval('dialog#merge-import[open]', (el) => el.dataset.step).catch(() => null);
