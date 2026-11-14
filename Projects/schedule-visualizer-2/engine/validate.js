@@ -18,7 +18,8 @@
 // (17.1): project-file.js refuses a current-version file on any finding.
 
 import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_FORMATS, PAPER_SIZES, PAPER_ORIENTATIONS, THEMES, COLOUR_SCALE_MODES, OTHER_KINDS, DOOR_SIDES, CONNECTION_DIRECTIONS, CHANGE_KINDS, PUBLISH_VIEWS, CHECK_KINDS, CELL_CORRIDOR, CELL_STAIRS, CELL_EMPTY } from './schema.js';
-import { isId, ID_LENGTH } from './ids.js';
+import { isId, ID_LENGTH, ID_PREFIXES } from './ids.js';
+import { SCENARIOS_MOST, PROJECT_LABEL_MOST } from './scenario.js'; // W6:LINE
 import { roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isCellScale, CELL_SCALE_UNITS, CELL_LENGTH_MOST, ELEVATOR_KIND, elevatorCars, isLiftCell } from './schema.js';
 import { LATER_PUBLISH_VIEWS, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DAYS_MOST, ROTATION_RANGE, DATE_LABEL_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, spacelessKey, textLength } from './schema.js';
 import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST, RELEASE_MOST, RELEASE_SECONDS, RELEASE_WHO_KINDS } from './schema.js';
@@ -802,80 +803,113 @@ export function validate(project) {
     });
   }
 
-  // ---- scenario
-  const scenario = project.scenario;
-  if (scenario !== null) {
+  // ---- scenarios (ARCHITECTURE 21.2, 21.10)
+  // The shape of one scenario; `base` is the path it is reported at. Names are
+  // not checked (an older planner's renameScenario allows blanks and
+  // duplicates, and a finding here would quarantine the project it saved).
+  const checkScenario = (scenario, base) => {
     if (!isObject(scenario)) {
-      add('scenario', 'The scenario is null or an object.');
+      add(base, 'A scenario is an object.');
+      return;
+    }
+    if (!isString(scenario.name)) add(base + '.name', 'A scenario name is text.');
+    if (!Array.isArray(scenario.changes)) {
+      add(base + '.changes', 'The changes of a scenario are a list.');
     } else {
-      if (!isString(scenario.name)) add('scenario.name', 'A scenario name is text.');
-      if (!Array.isArray(scenario.changes)) {
-        add('scenario.changes', 'The changes of a scenario are a list.');
+      const wholePeriod = (value) => Number.isInteger(value) && value >= 0;
+      scenario.changes.forEach((change, i) => {
+        const path = base + '.changes[' + i + ']';
+        if (!isObject(change) || !CHANGE_KINDS.includes(change.kind)) return add(path, 'A change is one of ' + CHANGE_KINDS.join(', ') + '.');
+        if (!isString(change.dayTypeId)) add(path + '.dayTypeId', 'Every change names its own day type.');
+        let sound = true;
+        if (change.kind === 'move') sound = isString(change.groupId) && wholePeriod(change.period) && isString(change.roomId);
+        if (change.kind === 'swapPeriods') sound = isString(change.groupId) && wholePeriod(change.periodA) && wholePeriod(change.periodB);
+        if (change.kind === 'swapRooms') sound = isString(change.groupA) && isString(change.groupB) && wholePeriod(change.period);
+        if (!sound) add(path, 'This ' + change.kind + ' change is missing one of its fields.');
+        return undefined;
+      });
+    }
+    // levers (ARCHITECTURE 18.3): strict when present, never asked for when absent
+    if (scenario.levers !== undefined) {
+      if (!Array.isArray(scenario.levers)) {
+        add(base + '.levers', 'The levers of a scenario are a list.');
       } else {
-        const wholePeriod = (value) => Number.isInteger(value) && value >= 0;
-        scenario.changes.forEach((change, i) => {
-          const path = 'scenario.changes[' + i + ']';
-          if (!isObject(change) || !CHANGE_KINDS.includes(change.kind)) return add(path, 'A change is one of ' + CHANGE_KINDS.join(', ') + '.');
-          if (!isString(change.dayTypeId)) add(path + '.dayTypeId', 'Every change names its own day type.');
+        const whole = (value) => Number.isInteger(value) && value >= 0;
+        const text = (value) => isString(value) && value !== '';
+        scenario.levers.forEach((lever, i) => {
+          const path = base + '.levers[' + i + ']';
+          const kinds = ['release', 'bell', 'way', 'corridor', 'capacity', 'headCount'];
+          if (!isObject(lever) || !kinds.includes(lever.kind)) return add(path, 'A lever is one of ' + kinds.join(', ') + '.');
           let sound = true;
-          if (change.kind === 'move') sound = isString(change.groupId) && wholePeriod(change.period) && isString(change.roomId);
-          if (change.kind === 'swapPeriods') sound = isString(change.groupId) && wholePeriod(change.periodA) && wholePeriod(change.periodB);
-          if (change.kind === 'swapRooms') sound = isString(change.groupA) && isString(change.groupB) && wholePeriod(change.period);
-          if (!sound) add(path, 'This ' + change.kind + ' change is missing one of its fields.');
+          if (lever.kind === 'release') {
+            const keys = isObject(lever.who) ? Object.keys(lever.who) : [];
+            const kind = keys.length === 1 && RELEASE_WHO_KINDS.includes(keys[0]) ? keys[0] : null;
+            if (kind === null) sound = false;
+            else if (kind === 'groups') sound = Array.isArray(lever.who.groups) && lever.who.groups.length > 0 && lever.who.groups.every(text);
+            else sound = isString(lever.who[kind]) && lever.who[kind].trim() !== '' && textLength(lever.who[kind]) <= NAME_MOST;
+            const low = kind === 'groups' ? 0 : RELEASE_SECONDS[0];
+            sound = sound && Number.isInteger(lever.seconds) && lever.seconds >= low && lever.seconds <= RELEASE_SECONDS[1];
+            sound = sound && (lever.after === null || (Array.isArray(lever.after) && lever.after.length > 0 && lever.after.every(whole)));
+            sound = sound && (lever.dayTypeIds === null || (Array.isArray(lever.dayTypeIds) && lever.dayTypeIds.length > 0 && lever.dayTypeIds.every(text)));
+          } else if (lever.kind === 'bell') {
+            sound = ((text(lever.dayTypeId) ? 1 : 0) + (text(lever.bellsId) ? 1 : 0)) === 1 && (lever.dayTypeId === undefined || lever.dayTypeId === null || text(lever.dayTypeId)) && (lever.bellsId === undefined || lever.bellsId === null || text(lever.bellsId)) && whole(lever.period) && isBellTime(lever.start) && isBellTime(lever.end);
+          } else if (lever.kind === 'capacity') {
+            sound = text(lever.roomId) && (lever.capacity === null || (Number.isInteger(lever.capacity) && inRange(lever.capacity, RANGES.capacity)));
+          } else if (lever.kind === 'headCount') {
+            sound = text(lever.groupId) && (lever.headCount === null || (Number.isInteger(lever.headCount) && inRange(lever.headCount, RANGES.headCount)));
+          } else if (lever.kind === 'way') {
+            sound = text(lever.connectionId) && ['both', 'ab', 'ba', 'closed'].includes(lever.way);
+          } else {
+            // at most as many cells as a floor has (the floor's own, or the
+            // largest a floor can be); the name is display text frozen from a
+            // corridor name, which has no cap, so it has none here
+            const floors = project.building && Array.isArray(project.building.floors) ? project.building.floors : [];
+            const floorOf = floors.find((candidate) => isObject(candidate) && candidate.id === lever.floorId);
+            const most = floorOf && isString(floorOf.cells) ? floorOf.cells.length : RANGES.floorSize[1] * RANGES.floorSize[1];
+            sound = text(lever.floorId) && Array.isArray(lever.cells) && lever.cells.length > 0 && lever.cells.length <= most && lever.cells.every(whole) && isString(lever.name);
+          }
+          if (!sound) add(path, 'This ' + lever.kind + ' lever is missing one of its fields, or one holds a value it cannot.');
           return undefined;
         });
       }
-      // levers (ARCHITECTURE 18.3): strict when present, never asked for when absent
-      if (scenario.levers !== undefined) {
-        if (!Array.isArray(scenario.levers)) {
-          add('scenario.levers', 'The levers of a scenario are a list.');
-        } else {
-          const whole = (value) => Number.isInteger(value) && value >= 0;
-          const text = (value) => isString(value) && value !== '';
-          scenario.levers.forEach((lever, i) => {
-            const path = 'scenario.levers[' + i + ']';
-            const kinds = ['release', 'bell', 'way', 'corridor', 'capacity', 'headCount'];
-            if (!isObject(lever) || !kinds.includes(lever.kind)) return add(path, 'A lever is one of ' + kinds.join(', ') + '.');
-            let sound = true;
-            if (lever.kind === 'release') {
-              const keys = isObject(lever.who) ? Object.keys(lever.who) : [];
-              const kind = keys.length === 1 && RELEASE_WHO_KINDS.includes(keys[0]) ? keys[0] : null;
-              if (kind === null) sound = false;
-              else if (kind === 'groups') sound = Array.isArray(lever.who.groups) && lever.who.groups.length > 0 && lever.who.groups.every(text);
-              else sound = isString(lever.who[kind]) && lever.who[kind].trim() !== '' && textLength(lever.who[kind]) <= NAME_MOST;
-              const low = kind === 'groups' ? 0 : RELEASE_SECONDS[0];
-              sound = sound && Number.isInteger(lever.seconds) && lever.seconds >= low && lever.seconds <= RELEASE_SECONDS[1];
-              sound = sound && (lever.after === null || (Array.isArray(lever.after) && lever.after.length > 0 && lever.after.every(whole)));
-              sound = sound && (lever.dayTypeIds === null || (Array.isArray(lever.dayTypeIds) && lever.dayTypeIds.length > 0 && lever.dayTypeIds.every(text)));
-            } else if (lever.kind === 'bell') {
-              sound = ((text(lever.dayTypeId) ? 1 : 0) + (text(lever.bellsId) ? 1 : 0)) === 1 && (lever.dayTypeId === undefined || lever.dayTypeId === null || text(lever.dayTypeId)) && (lever.bellsId === undefined || lever.bellsId === null || text(lever.bellsId)) && whole(lever.period) && isBellTime(lever.start) && isBellTime(lever.end);
-            } else if (lever.kind === 'capacity') {
-              sound = text(lever.roomId) && (lever.capacity === null || (Number.isInteger(lever.capacity) && inRange(lever.capacity, RANGES.capacity)));
-            } else if (lever.kind === 'headCount') {
-              sound = text(lever.groupId) && (lever.headCount === null || (Number.isInteger(lever.headCount) && inRange(lever.headCount, RANGES.headCount)));
-            } else if (lever.kind === 'way') {
-              sound = text(lever.connectionId) && ['both', 'ab', 'ba', 'closed'].includes(lever.way);
-            } else {
-              // at most as many cells as a floor has (the floor's own, or the
-              // largest a floor can be); the name is display text frozen from a
-              // corridor name, which has no cap, so it has none here
-              const floors = project.building && Array.isArray(project.building.floors) ? project.building.floors : [];
-              const floorOf = floors.find((candidate) => isObject(candidate) && candidate.id === lever.floorId);
-              const most = floorOf && isString(floorOf.cells) ? floorOf.cells.length : RANGES.floorSize[1] * RANGES.floorSize[1];
-              sound = text(lever.floorId) && Array.isArray(lever.cells) && lever.cells.length > 0 && lever.cells.length <= most && lever.cells.every(whole) && isString(lever.name);
-            }
-            if (!sound) add(path, 'This ' + lever.kind + ' lever is missing one of its fields, or one holds a value it cannot.');
-            return undefined;
-          });
-        }
-      }
-      const compared = scenario.compared;
-      if (compared !== null) {
-        const names = (list) => Array.isArray(list) && list.every(isString);
-        if (!isObject(compared) || !isString(compared.fileName) || !names(compared.addedGroups) || !names(compared.removedGroups)) add('scenario.compared', 'The compared file is null, or a file name and two lists of group names.');
-      }
+    }
+    const compared = scenario.compared;
+    if (compared !== null) {
+      const names = (list) => Array.isArray(list) && list.every(isString);
+      if (!isObject(compared) || !isString(compared.fileName) || !names(compared.addedGroups) || !names(compared.removedGroups)) add(base + '.compared', 'The compared file is null, or a file name and two lists of group names.');
+    }
+  };
+  const scenario = project.scenario;
+  if (scenario !== null) {
+    if (!isObject(scenario)) add('scenario', 'The scenario is null or an object.');
+    else {
+      checkScenario(scenario, 'scenario');
+      // W6:BEGIN absent on a scenario made before kept scenarios existed
+      if (scenario.id !== undefined) checkId('scenario', scenario, ID_PREFIXES.scenario);
+      // W6:END
     }
   }
+  // W6:BEGIN kept scenarios
+  if (project.scenarios !== undefined) {
+    if (!Array.isArray(project.scenarios)) add('scenarios', 'The kept scenarios are a list.');
+    else {
+      if (project.scenarios.length > SCENARIOS_MOST - 1) add('scenarios', 'A project keeps at most ' + (SCENARIOS_MOST - 1) + ' scenarios besides the open one; this has ' + project.scenarios.length + '.');
+      project.scenarios.forEach((kept, i) => {
+        const path = 'scenarios[' + i + ']';
+        checkScenario(kept, path);
+        if (isObject(kept)) checkId(path, kept, ID_PREFIXES.scenario);
+      });
+    }
+  }
+
+  // W6:END
+
+  // W6:BEGIN the label (ARCHITECTURE 21.5): absent, or text of at most PROJECT_LABEL_MOST characters once trimmed
+  if (project.label !== undefined) {
+    if (!isString(project.label)) add('label', 'The project label is text.');
+    else if (textLength(project.label.trim()) > PROJECT_LABEL_MOST) add('label', 'The project label is at most ' + PROJECT_LABEL_MOST + ' characters.');
+  }
+  // W6:END
 
   // ---- marked periods (ARCHITECTURE 17.5) and duties (17.6): strict when
   // present, never asked for when absent. A mark past the period count is
