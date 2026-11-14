@@ -379,7 +379,7 @@ export function snapshotsCard(ctx) {
       for (const stop of stops) stop();
       return;
     }
-    if (what === 'ready' || what === 'tabs' || what === 'taken' || what === 'renamed' || what === 'deleted' || what === 'restored') draw();
+    if (what === 'ready' || what === 'tabs' || what === 'projects' || what === 'taken' || what === 'renamed' || what === 'deleted' || what === 'restored') draw();
   };
   if (snapshots) stops.push(snapshots.subscribe(watch));
   if (ctx.storage) stops.push(ctx.storage.subscribe((state, what) => watch(what)));

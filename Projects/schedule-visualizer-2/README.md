@@ -246,6 +246,7 @@ row names a file it does not run.
 | `test/browser/storage.mjs` | Saving on the device, with a real IndexedDB |
 | `test/browser/storage-shelf.mjs` | Several projects on one device, in the database: switching with traced images, a failed switch, the refusals, the list, delete and rename, a duplicate's pictures, the recovery trim across projects |
 | `test/browser/storage-switch.mjs` | Several projects on one device, in the session: Start another, an edit pending as a switch starts, the boot dialogs and reconcile, an unreadable record refused, duplicate, restore as a project, every call refused while switching and in a read-only tab, a read-only sibling through a switch |
+| `test/browser/one-per-id.mjs` | The one-per-id rule at every hook, with a kept project of the file's id: import, receive, restore of a snapshot and of a recovery point each refused before anything is stored, with the sentence and Open / Keep it as another project; the Snapshots card's open-project list, other-projects line and "Of projects no longer on this device"; the Recovery points card's "Of other projects" with Open <label> and Restore as a project; by keyboard and at 390 px |
 | `test/browser/recovery.mjs` | Recovery points: taken, kept, restored |
 | `test/browser/tabs.mjs` | Two tabs on one project |
 | `test/browser/schedule.mjs` | The Schedule section: a group entered by keyboard, the checks |
