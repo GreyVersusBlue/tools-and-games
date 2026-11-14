@@ -135,7 +135,12 @@ const focused = (page) => page.evaluate(() => {
   const el = document.activeElement;
   return el ? { id: el.id, name: el.getAttribute('name') || '', value: el.value || '', action: el.dataset ? el.dataset.action || '' : '', text: el.textContent.slice(0, 40) } : null;
 });
-const laneClosed = (page) => page.evaluate(async () => (await globalThis.sv2.store.derived.other()) === null);
+// closed: asking for the other building answers null at once. A lane still held answers with the
+// building, or (once the page that held it has gone) not at all: the wait is capped so that is a failure.
+const laneClosed = (page) => page.evaluate(() => Promise.race([
+  globalThis.sv2.store.derived.other().then((answer) => answer === null),
+  new Promise((resolve) => setTimeout(() => resolve(false), 5000)),
+]));
 
 // One press, as the mode has it: a click, a tap, or the keyboard on a control
 // that is focused first (Enter for a button, a radio by the arrow keys).
