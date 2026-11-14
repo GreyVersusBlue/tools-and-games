@@ -95,6 +95,7 @@ export const GROUPS = {
     'engine/scenarios-kept.test.mjs', // SV2-113
     'engine/kept-lane.test.mjs', // SV2-121
     'engine/project-label.test.mjs', // SV2-113
+    'engine/merge-import.test.mjs', // SV2-119
     'engine/prints-door-cards.test.mjs', // SV2-66
     'engine/prints-step-free.test.mjs', // SV2-104
     'engine/prints-route-sheet.test.mjs', // SV2-103

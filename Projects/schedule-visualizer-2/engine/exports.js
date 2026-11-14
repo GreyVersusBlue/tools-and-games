@@ -236,12 +236,18 @@ export function roomGridRows(project, dayTypeId) {
 // "Marrowby Middle School - groups - 2026-09-01.csv". `date` is a Date (its
 // local day is used) or "YYYY-MM-DD". Characters a file system refuses are
 // left out of the school's name; the name inside the file is untouched.
-export function exportFileName(project, what, extension, date) {
+// `options.label`, true, is the caller's word that more than one project is
+// kept on this device: a project with a label then carries it after the
+// school ("Marrowby Middle School - Next year - groups - 2026-09-01.csv").
+// Without it, or with a blank label, the name is as it always was.
+export function exportFileName(project, what, extension, date, options) {
   let day = '';
   if (typeof date === 'string') day = date;
   else if (date instanceof Date) day = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
-  const school = String(project.settings.schoolName).replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, 80).trim();
-  return [school === '' ? TOOL_NAME : school, what, day].filter((part) => part !== '').join(' - ') + '.' + extension;
+  const clean = (text, most) => String(text).replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, most).trim();
+  const school = clean(project.settings.schoolName, 80);
+  const label = options && options.label === true && typeof project.label === 'string' ? clean(project.label, 60) : '';
+  return [school === '' ? TOOL_NAME : school, label, what, day].filter((part) => part !== '').join(' - ') + '.' + extension;
 }
 
 const CSV = 'text/csv';
@@ -266,5 +272,5 @@ export function buildExport(project, kind, options) {
   const builder = BUILDERS[kind];
   if (!builder) throw new TypeError('An export is one of: ' + EXPORT_KINDS.join(', ') + '.');
   const opts = options || {};
-  return { fileName: exportFileName(project, builder.what, builder.extension, opts.date), mime: builder.mime, text: builder.text(project, opts) };
+  return { fileName: exportFileName(project, builder.what, builder.extension, opts.date, { label: opts.label === true }), mime: builder.mime, text: builder.text(project, opts) };
 }
