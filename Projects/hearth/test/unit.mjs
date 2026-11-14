@@ -369,7 +369,7 @@ section(20, () => {
   const ws = sky(.05, 'winter', 'clear', .8);
   check('sky: snow lying gives moonlight back (a lit winter night, #46548a before the winter tint)', ws[2] > w[2] && ws[0] > w[0] && ws[2] - ws[0] >= 40, JSON.stringify(ws));
   const dusk = sky(ev('EDGE.summer[1]-.005'), 'summer', 'clear', 0);
-  check('sky: dusk has red greater than blue', dusk[0] > dusk[2], JSON.stringify(dusk));
+  check('sky: dusk is rose: red exceeds blue by at least 40', dusk[0] - dusk[2] >= 40, JSON.stringify(dusk));
   check('sky: rain is darker than clear at noon, a storm darker than rain', ev('(()=>{const L=c=>c[0]+c[1]+c[2];return L(skyAt(.5,"summer","thunder",0))<L(skyAt(.5,"summer","rain",0))&&L(skyAt(.5,"summer","rain",0))<L(skyAt(.5,"summer","clear",0))})()'));
   let worst = 0, at = '';
   for (const season of ['spring', 'summer', 'autumn', 'winter']) for (const wx of ['clear', 'overcast', 'rain', 'thunder', 'fog', 'snow']) for (const snow of [0, .8]) {
