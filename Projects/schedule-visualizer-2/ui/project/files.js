@@ -59,10 +59,11 @@ export function importSafetyLine(room, name, what) {
 // The one-per-id rule (21.1, DESIGN 15.3): a project that is a copy of one kept
 // on this device is never put over the open one. heldBy(ctx, id) asks before
 // anything is stored, snapshotted or replaced: { id, label } when the id is a
-// shelved project's, else null. The open project's own id is not a refusal.
+// shelved project's, else null. The open project's own id is not a refusal. A page
+// whose session cannot answer refuses (it throws: fail closed, never "nobody holds it").
 export async function heldBy(ctx, projectId) {
   const projects = ctx.storage && ctx.storage.projects;
-  if (!projects || typeof projects.holds !== 'function') return null;
+  if (!projects || typeof projects.holds !== 'function') throw new Error('The page has no way to ask which projects this device keeps.');
   const label = await projects.holds(projectId);
   return label === null ? null : { id: projectId, label };
 }
@@ -164,6 +165,26 @@ export function filesCard(ctx) {
   }
 
   async function importProject(fileName, text, opener) {
+    // The refusal is said once, in the dialog's alert; the card's line only says that nothing
+    // was imported (replacing whatever an earlier outcome left there), and what a way on failed with.
+    async function refused(held) {
+      say('refused', quote(fileName) + ' was not imported, and nothing has changed.');
+      const outcome = await refuseHeld(ctx, { what: 'file', held, opener, keep: () => storage.projects.startAnother('file', read, { copy: true }) });
+      if (outcome.text !== '') say('refused', quote(fileName) + ' was not imported, and nothing has changed. ' + outcome.text);
+    }
+    // asked again just before the snapshot and just before the replacement: the shelf may have changed
+    // while the question was open. Resolves true when the import must stop (it has said why).
+    async function stopped(held) {
+      try {
+        held = await heldBy(ctx, read.project.id);
+      } catch (error) {
+        say('refused', quote(fileName) + ' was not imported, and nothing has changed, because this device could not be asked which projects it keeps. ' + messageOf(error));
+        return true;
+      }
+      if (!held) return false;
+      await refused(held);
+      return true;
+    }
     let read;
     try {
       read = readProjectFile(text, { ids: ctx.ids, clock: ctx.clock });
@@ -180,9 +201,7 @@ export function filesCard(ctx) {
       return;
     }
     if (held) {
-      say('refused', quote(fileName) + ' was not imported. ' + heldSentence('file', held.label));
-      const outcome = await refuseHeld(ctx, { what: 'file', held, opener, keep: () => storage.projects.startAnother('file', read, { copy: true }) });
-      if (outcome.text !== '') say('refused', quote(fileName) + ' was not imported, and nothing has changed. ' + outcome.text);
+      await refused(held);
       return;
     }
     const here = figures(ctx.store.project);
@@ -204,11 +223,13 @@ export function filesCard(ctx) {
       return;
     }
     const before = ctx.store.project;
+    if (await stopped()) return;
     const unsnapped = await takeSnapshot(plan);
     if (unsnapped) {
       say('refused', quote(fileName) + ' was not imported, and nothing has changed, because the snapshot could not be taken first. ' + unsnapped);
       return;
     }
+    if (await stopped()) return;
     try {
       await recoveryPoint();
       await storage.keepFileImages(read.project, read.images);

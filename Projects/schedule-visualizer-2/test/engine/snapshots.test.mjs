@@ -332,3 +332,14 @@ test('the question\'s last line says whether a snapshot comes first, and why not
   assert.equal(importSafetyLine({ ...room, count: 30, full: true }, 'x', 'the building'), 'A recovery point of this project is taken first, and Undo brings the building back while this tab stays open. No snapshot can be taken: this device already keeps 30 snapshots, the most it keeps, and none is replaced to make room. To have one as well, keep this, delete one under Snapshots, and import again.');
   assert.equal(importSafetyLine(null, 'x', 'it'), 'A recovery point of this project is taken first, and Undo brings it back while this tab stays open. No snapshot can be taken.');
 });
+
+test('the Snapshots status line: a device full of other projects\' snapshots says Take will be refused, not "take one"; unreadable ones count towards the limit', async () => {
+  const { countSentence } = await import('../../ui/project/snapshots.js');
+  const full = countSentence([], 30, 30, 0);
+  assert.match(full, /^There are no snapshots of this project, and this device is full: it keeps 30 snapshots, the most it keeps, none of them of this project, so taking one will be refused\./);
+  assert.doesNotMatch(full, /Take one before/);
+  assert.match(countSentence([], 30, 28, 2), /this device is full/, 'the ones that cannot be read are on the device too');
+  assert.match(countSentence([], 30, 2, 0), /^There are no snapshots yet\. Take one before a large change/);
+  assert.match(countSentence([{ bytes: 100 }], 30, 28, 1), /That is the most this device keeps: delete one to take another\./);
+  assert.match(countSentence([{ bytes: 100 }], 30, 0, 1), /1 cannot be read and is listed under Cannot be read\.$/);
+});
