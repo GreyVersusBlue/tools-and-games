@@ -314,22 +314,26 @@ export function describePeriodChange(project, periods) {
     bells += count;
   }
   const offLost = bellSchedules.reduce((sum, entry) => sum + entry.off, 0);
+  // every scenario's changes that use a period past the new end, and every
+  // scenario's levers that name one: a bell lever's, or a release lever that
+  // follows only such periods (one that follows a period that is left is
+  // trimmed, not lost)
   let scenarioChanges = 0;
-  if (project.scenario) {
-    for (const change of project.scenario.changes) {
+  let scenarioLevers = 0;
+  mapScenarios(project, (scenario) => {
+    for (const change of scenario.changes) {
       const used = [change.period, change.periodA, change.periodB].filter((value) => value !== undefined);
       if (used.some((value) => value >= periods)) scenarioChanges += 1;
     }
-  }
-  // the open scenario's levers that name a period past the new end: a bell lever's, or a release lever that follows only such periods (one that follows a period that is left is trimmed, not lost)
-  let scenarioLevers = 0;
-  if (project.scenario && Array.isArray(project.scenario.levers)) {
-    for (const lever of project.scenario.levers) {
-      if (!lever || typeof lever !== 'object') continue;
-      if (lever.kind === 'bell' && lever.period >= periods) scenarioLevers += 1;
-      if (lever.kind === 'release' && Array.isArray(lever.after) && lever.after.length > 0 && lever.after.every((period) => period >= periods)) scenarioLevers += 1;
+    if (Array.isArray(scenario.levers)) {
+      for (const lever of scenario.levers) {
+        if (!lever || typeof lever !== 'object') continue;
+        if (lever.kind === 'bell' && lever.period >= periods) scenarioLevers += 1;
+        if (lever.kind === 'release' && Array.isArray(lever.after) && lever.after.length > 0 && lever.after.every((period) => period >= periods)) scenarioLevers += 1;
+      }
     }
-  }
+    return scenario;
+  });
   const past = periods < from ? countPastPeriods(project, periods) : { marks: 0, duties: 0, release: 0 };
   // the sentence's words for what the change takes, in the order the screen says it
   const lostWords = [];
@@ -1125,8 +1129,9 @@ export function describeDayTypeKind(project, payload) {
   return { from: null, to: target.name, slots: revert.slots, groups: revert.groups, bells: revert.bells, followers, scenarioChanges, ...levers, losesData: revert.losesData || scenarioChanges > 0 || levers.scenarioLevers > 0 };
 }
 
+// How many changes name `dayTypeId`, in the open scenario and the kept ones.
 function scenarioChangesOn(project, dayTypeId) {
-  return project.scenario ? project.scenario.changes.filter((change) => change.dayTypeId === dayTypeId).length : 0;
+  return allScenarios(project).reduce((sum, scenario) => sum + scenario.changes.filter((change) => change.dayTypeId === dayTypeId).length, 0);
 }
 
 // The open scenario's levers that name `dayTypeId`, as { changed, removed }:
@@ -1148,14 +1153,14 @@ function leverKeys(project, dayTypeId) {
   return changed > 0 ? { scenarioLevers: changed, scenarioLeversRemoved: removed } : {};
 }
 
-// The project with the open scenario's changes and levers on `dayTypeId`
-// taken out. A scenario with no `levers` keeps none, as it was.
+// The project with the changes and levers on `dayTypeId` taken out of the
+// open scenario and of each kept one. A scenario with no `levers` keeps none,
+// as it was.
 function withoutScenarioChanges(project, dayTypeId) {
-  const changes = scenarioChangesOn(project, dayTypeId);
-  const trimmed = dropDayTypeFromLevers(project, dayTypeId);
-  if (changes === 0 && trimmed === project) return project;
-  const scenario = { ...trimmed.scenario, changes: project.scenario.changes.filter((change) => change.dayTypeId !== dayTypeId) };
-  return { ...project, scenario };
+  return mapScenarios(dropDayTypeFromLevers(project, dayTypeId), (scenario) => {
+    const changes = scenario.changes.filter((change) => change.dayTypeId !== dayTypeId);
+    return changes.length === scenario.changes.length ? scenario : { ...scenario, changes };
+  });
 }
 
 // The one rule for turning a day type into its own copy or into "same as":
@@ -1955,7 +1960,7 @@ function inBuilding(project, run) {
   return next;
 }
 
-// A floor resize that also moves the scenario's closed corridors: a corridor
+// A floor resize that also moves the scenarios' closed corridors, the open one's and each kept one's: a corridor
 // lever keeps cell indexes (y * width + x), so when the floor's width changes
 // or its top or left edge moves, each index is worked out again the way the
 // building's own cell references are; a lever whose cells are all cut away
@@ -1964,8 +1969,7 @@ function inBuilding(project, run) {
 function resizingFloor(project, resize) {
   const old = project.building.floors.find((floor) => floor.id === resize.floorId);
   const next = inBuilding(project, (building) => geometry.resizeFloor(building, resize));
-  const scenario = project.scenario;
-  if (next === project || !old || !scenario || !Array.isArray(scenario.levers)) return next;
+  if (next === project || !old) return next;
   const left = resize.left || 0;
   const top = resize.top || 0;
   const width = old.width + left + (resize.right || 0);
@@ -1976,25 +1980,29 @@ function resizingFloor(project, resize) {
     return x < 0 || y < 0 || x >= width || y >= height ? -1 : y * width + x;
   };
   let lost = 0;
-  let changed = false;
-  const levers = [];
-  for (const lever of scenario.levers) {
-    if (lever.kind !== 'corridor' || lever.floorId !== old.id) {
-      levers.push(lever);
-      continue;
+  // the open scenario's levers and every kept scenario's (ARCHITECTURE 21.10)
+  const followed = mapScenarios(next, (scenario) => {
+    if (!Array.isArray(scenario.levers)) return scenario;
+    let changed = false;
+    const levers = [];
+    for (const lever of scenario.levers) {
+      if (lever.kind !== 'corridor' || lever.floorId !== old.id) {
+        levers.push(lever);
+        continue;
+      }
+      const cells = lever.cells.map(move).filter((cell) => cell !== -1);
+      if (cells.length === 0) {
+        lost += 1;
+        changed = true;
+      } else if (cells.length !== lever.cells.length || cells.some((cell, i) => cell !== lever.cells[i])) {
+        levers.push({ ...lever, cells });
+        changed = true;
+      } else levers.push(lever);
     }
-    const cells = lever.cells.map(move).filter((cell) => cell !== -1);
-    if (cells.length === 0) {
-      lost += 1;
-      changed = true;
-    } else if (cells.length !== lever.cells.length || cells.some((cell, i) => cell !== lever.cells[i])) {
-      levers.push({ ...lever, cells });
-      changed = true;
-    } else levers.push(lever);
-  }
-  if (!changed) return next;
+    return changed ? { ...scenario, levers } : scenario;
+  });
+  if (followed === next) return next;
   const outcome = outcomes.get(next);
-  const followed = { ...next, scenario: { ...scenario, levers } };
   outcomes.set(followed, { ...outcome, leversLost: lost });
   return followed;
 }
@@ -3024,6 +3032,13 @@ function freeName(scenarios, base, join) {
   }
 }
 
+// { id } for a scenario about to be made. A direct call with no context (a
+// page test composing actions) makes the scenario as it was before ids, which
+// stays valid; the store always passes one.
+function idOf(ctx) {
+  return ctx && typeof ctx.ids === 'function' ? { id: ctx.ids('e') } : {};
+}
+
 function withId(scenario, ctx) {
   return typeof scenario.id === 'string' ? scenario : { id: ctx.ids('e'), ...scenario };
 }
@@ -3054,7 +3069,7 @@ export const newScenario = action(
       name = needText(given.name, 'A scenario name');
       if (nameTaken(others, name)) refuse('Another scenario is called ' + name + '.', 'name-taken');
     }
-    const made = { id: ctx.ids('e'), name, changes: [], compared: null };
+    const made = { ...idOf(ctx), name, changes: [], compared: null };
     return keep ? { ...withScenario(project, made), scenarios: keptWithOpen(project, ctx) } : withScenario(project, made);
   },
 );
@@ -3435,7 +3450,7 @@ export const setScenarioFromFile = action(
       options.name = given.name;
       if (nameTaken(others, given.name)) refuse('Another scenario is called ' + given.name + '.', 'name-taken');
     }
-    const made = { id: ctx.ids('e'), ...scenarioFromDiff(project, other, options).scenario };
+    const made = { ...idOf(ctx), ...scenarioFromDiff(project, other, options).scenario };
     // a name the file's name made is numbered when another scenario has it
     if (options.name === undefined) made.name = freeName(others, made.name, (n) => made.name + ' ' + n);
     const next = keep ? { ...withScenario(project, made), scenarios: keptWithOpen(project, ctx) } : withScenario(project, made);
@@ -4035,21 +4050,23 @@ function dropPastPeriodsFromRelease(project, periods) {
   });
 }
 
-// ---- what other actions do to the open scenario's levers (SV2-89b). A
+// ---- what other actions do to the levers of the open scenario and of each kept one (SV2-89b). A
 // release lever is trimmed as a real entry is, and goes only when nothing is
 // left; a bell lever on a day type goes with it. A scenario with no `levers`
 // keeps none, and an untouched lever is the very same object.
 
 function changeLevers(project, fn) {
-  if (!project.scenario || !Array.isArray(project.scenario.levers)) return project;
-  let changed = false;
-  const levers = [];
-  for (const lever of project.scenario.levers) {
-    const result = lever && typeof lever === 'object' ? fn(lever) : lever;
-    if (result !== lever) changed = true;
-    if (result !== null) levers.push(result);
-  }
-  return changed ? { ...project, scenario: { ...project.scenario, levers } } : project;
+  return mapScenarios(project, (scenario) => {
+    if (!Array.isArray(scenario.levers)) return scenario;
+    let changed = false;
+    const levers = [];
+    for (const lever of scenario.levers) {
+      const result = lever && typeof lever === 'object' ? fn(lever) : lever;
+      if (result !== lever) changed = true;
+      if (result !== null) levers.push(result);
+    }
+    return changed ? { ...scenario, levers } : scenario;
+  });
 }
 
 function dropGroupFromLevers(project, groupId) {
@@ -4069,13 +4086,21 @@ function dropDayTypeFromLevers(project, dayTypeId) {
   });
 }
 
-// How many levers `next` changed or removed against `project`: { changed,
-// removed }, removed counted in changed.
+// How many levers `next` changed or removed against `project`, over the open
+// scenario and the kept ones: { changed, removed }, removed counted in changed.
 function leverChanges(project, next) {
-  const before = project.scenario && Array.isArray(project.scenario.levers) ? project.scenario.levers : [];
-  const after = next.scenario && Array.isArray(next.scenario.levers) ? next.scenario.levers : [];
-  const kept = new Set(after);
-  return { changed: before.filter((lever) => !kept.has(lever)).length, removed: before.length - after.length };
+  const listsOf = (of) => allScenarios(of).map((scenario) => (Array.isArray(scenario.levers) ? scenario.levers : []));
+  const befores = listsOf(project);
+  const afters = listsOf(next);
+  let changed = 0;
+  let removed = 0;
+  befores.forEach((before, i) => {
+    const after = afters[i] || [];
+    const kept = new Set(after);
+    changed += before.filter((lever) => !kept.has(lever)).length;
+    removed += before.length - after.length;
+  });
+  return { changed, removed };
 }
 
 // ================================================================ SV2-88 (end)
