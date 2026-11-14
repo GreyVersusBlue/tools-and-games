@@ -545,7 +545,22 @@ test('Delete… of a project that reads fine offers Export it first when storage
   await press(page, 'pointer', '#projects .proj__row[data-open="false"]', 'Delete…');
   await dialogOpen(page);
   const labels = await page.$$eval('dialog.dialog[open] .dialog__buttons button', (all) => all.map((b) => b.textContent));
-  assert.deepEqual(labels, offered ? ['Export it first', 'Delete', 'Cancel'] : ['Delete', 'Cancel']);
+  assert.equal(offered, true, 'storage exports a kept project (projects.exportShelved)');
+  assert.deepEqual(labels, ['Export it first', 'Delete', 'Cancel']);
+  await page.evaluate(() => {
+    globalThis.sv2test = { downloads: [] };
+    const click = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function clicked() {
+      if (!this.hasAttribute('download')) return click.call(this);
+      globalThis.sv2test.downloads.push(this.download);
+      return undefined;
+    };
+  });
+  await press(page, 'pointer', 'dialog.dialog[open] .dialog__buttons', 'Export it first');
+  await page.waitForFunction(() => document.querySelector('dialog.dialog[open] [role="status"]:not([hidden])') !== null, { timeout: 15000 });
+  assert.equal((await page.evaluate(() => globalThis.sv2test.downloads)).length, 1, 'the project was written to a file');
+  assert.match(await page.$eval('dialog.dialog[open] [role="status"]', (el) => el.textContent), /^Exported\./);
+  assert.equal(await page.evaluate(() => document.querySelector('dialog.dialog[open]') !== null), true, 'the question stays open after Export');
   await press(page, 'pointer', 'dialog.dialog[open] .dialog__buttons', 'Cancel');
   await dialogShut(page);
 });
