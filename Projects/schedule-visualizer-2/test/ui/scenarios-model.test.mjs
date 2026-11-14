@@ -505,6 +505,14 @@ test('SV2-122 comparedSentence: walking more, less or the same, as the table pri
   assert.equal(comparedSentence('A', walking(600, 600.2)), 'Compared with A: walking the same.', 'a change smaller than what is printed is none');
 });
 
+test('SV2-122b the real schedule says what it came to as a kept scenario does, and a choice gone while it settled has its own sentence', async () => {
+  const { CHOICE_GONE, COMPARED_GONE, SWITCHED_TO_COMPARED } = await import('../../ui/scenarios/model.js');
+  const walking = (before, after) => ({ figures: { walking: { before, after, difference: after - before } } });
+  assert.equal(comparedSentence('the real schedule', walking(600, 720)), 'Compared with the real schedule: walking 2 min more.');
+  assert.equal(CHOICE_GONE, 'The scenario you chose to compare with is gone, so it is compared with the real schedule.');
+  assert.equal(new Set([CHOICE_GONE, COMPARED_GONE, SWITCHED_TO_COMPARED]).size, 3, 'three distinct reasons');
+});
+
 test('SV2-122 the sentences: Switch to says what was kept, Apply adds its line only while scenarios are kept', () => {
   assert.equal(switchedSentence('Stagger 8th grade', 'Move 7th grade'), 'Switched to Stagger 8th grade. Move 7th grade is kept.');
   assert.equal(switchedSentence('Stagger 8th grade', null), 'Switched to Stagger 8th grade.');

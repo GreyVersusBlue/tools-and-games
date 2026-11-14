@@ -15,6 +15,15 @@
 // switched to or deleted); Apply's added line; typed names as typed. By
 // pointer, by keyboard alone, and with touch at 390 by 844 and 844 by 390.
 //
+// SV2-122b (the review of SV2-122): the map and legend blank while a new Before
+// side is worked out; a kept scenario compared under another day type and
+// another bell schedule; focus never passing through the name field and one
+// announcement for each event; a choice whose scenario goes away while it
+// settles; the real schedule's status sentence; the Before name in the
+// difference table and card; the rows' messages in their buttons' descriptions;
+// a row already gone; answers out of order; kept() null; a schedule change and
+// an Apply while comparing; 44 px on a short window by pointer.
+//
 // Every wait is for a state the page sets (data-compare, data-settling,
 // data-difference, the dialog open), never a first paint or a fixed sleep.
 
@@ -26,10 +35,14 @@ import { pathToFileURL } from 'node:url';
 import { openPlanner, go, launch, startServer, TOOL_DIR } from './harness.mjs';
 
 const { plainSchool } = await import(pathToFileURL(path.join(TOOL_DIR, 'test', 'engine', 'helpers.mjs')).href);
+const { sampleSchool } = await import(pathToFileURL(path.join(TOOL_DIR, 'data', 'sample-school.js')).href);
 
+const HOSTILE_ID = 'ekepthost0';
 const HOSTILE = '<img src=x onerror="window.__hit=1">&amp; "Plan"';
 const LONG = 'A very long scenario name that goes on past forty characters';
 const DAY_A = 'dsample00a';
+const DAY_B = 'dsample00b';
+const EARLY = 'bsample0er';
 
 let browser;
 let server;
@@ -91,6 +104,9 @@ async function load(page, project) {
   }
   await page.evaluate((next) => {
     delete window.__hit;
+    // the lab's choices (Compare with, day type, bells, transition) are memory, which outlives a test
+    const lab = document.querySelector('.scn');
+    if (lab && lab.scenarios) Object.assign(lab.scenarios.memory, { compareWith: null, dayTypeId: null, bellsId: null, transition: null });
     globalThis.sv2.store.replace(next);
   }, project);
   await go(page, '#scenarios');
@@ -448,7 +464,7 @@ test('Compare with: a run of changes acts once, on the last, and going back to t
   await page.waitForFunction(() => document.querySelector('.scn').dataset.compareWith === '');
   await ready(page);
   assert.equal(await page.$eval('[data-part="before-heading"]', (el) => el.textContent), 'Before');
-  assert.equal(await page.$eval('.scn-compare__status', (el) => el.textContent), '');
+  assert.match(await page.$eval('.scn-compare__status', (el) => el.textContent), /^Compared with the real schedule: walking /);
   assert.match(await page.$eval('[data-part="difference-key"]', (el) => el.textContent), /^On the map: busier, quieter\./);
   // a change put back before it settled is no change at all
   const again = await page.evaluate(() => document.querySelector('.scn').scenarios.asked);
@@ -530,6 +546,493 @@ test('Apply adds its line while scenarios are kept, and they stay kept', async (
   assert.equal(await page.$('#scenario-apply [data-part="kept-stay"]'), null);
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => !document.querySelector('dialog[open]'));
+});
+
+
+// ---------------------------------------------------------------- SV2-122b
+
+// what the page is doing, as a page reads it
+const compareState = (page) => page.evaluate(() => {
+  const el = document.querySelector('.scn');
+  const block = document.querySelector('.scn-difference-block');
+  return {
+    compare: el.dataset.compare,
+    difference: el.difference.state().state,
+    answer: el.difference.answer !== null,
+    blockHidden: block ? block.hidden : null,
+    key: document.querySelector('[data-part="difference-key"]')?.textContent || '',
+    heading: document.querySelector('[data-part="before-heading"]')?.textContent || '',
+    status: document.querySelector('.scn-compare__status')?.textContent || '',
+  };
+});
+
+// hold the lane's answers back, one gate for each kept scenario (or the open
+// one's, under the id 'open'), until a test lets them go
+async function gate(page, ids) {
+  await page.evaluate((list) => {
+    const derived = globalThis.sv2.store.derived;
+    window.__orig = { kept: derived.kept, scenario: derived.scenario };
+    window.__gates = {};
+    for (const id of list) {
+      let release;
+      const held = new Promise((resolve) => { release = resolve; });
+      window.__gates[id] = { held, release };
+    }
+    derived.kept = (ref, ...rest) => {
+      const id = typeof ref === 'string' ? ref : ref && ref.id;
+      const one = window.__gates[id];
+      return one ? one.held.then(() => window.__orig.kept.call(derived, ref, ...rest)) : window.__orig.kept.call(derived, ref, ...rest);
+    };
+    derived.scenario = (...rest) => {
+      const one = window.__gates.open;
+      return one ? one.held.then(() => window.__orig.scenario.call(derived, ...rest)) : window.__orig.scenario.call(derived, ...rest);
+    };
+  }, ids);
+}
+const letGo = (page, id) => page.evaluate((one) => window.__gates[one].release(), id);
+const ungate = (page) => page.evaluate(() => {
+  const derived = globalThis.sv2.store.derived;
+  for (const one of Object.values(window.__gates || {})) one.release();
+  if (window.__orig) {
+    derived.kept = window.__orig.kept;
+    derived.scenario = window.__orig.scenario;
+  }
+});
+// a few frames: whatever the page was going to draw has been drawn
+const frames = (page) => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 60)))));
+
+// the page's live regions, and every focus: recorded from now on
+async function listen(page) {
+  await page.evaluate(() => {
+    window.__focus = [];
+    window.__live = [];
+    // the page lives on between tests: listen once
+    if (window.__listening) return;
+    window.__listening = true;
+    document.addEventListener('focusin', (event) => {
+      const el = event.target;
+      window.__focus.push(el.id || (el.dataset && el.dataset.action) || el.tagName);
+    }, true);
+    new MutationObserver((records) => {
+      for (const record of records) {
+        // what was put there: a sentence set is a removal and an addition
+        if (record.type === 'childList' && record.addedNodes.length === 0) continue;
+        const node = record.target.nodeType === 1 ? record.target : record.target.parentElement;
+        const region = node && node.closest('[aria-live], [role="status"], [role="alert"]');
+        if (region && region.textContent !== '') window.__live.push({ region: region.id || region.className, text: region.textContent });
+      }
+    }).observe(document.body, { subtree: true, childList: true, characterData: true });
+  });
+}
+const focusLog = (page) => page.evaluate(() => window.__focus.slice());
+const liveLog = (page) => page.evaluate(() => window.__live.slice());
+
+// the sample school with the Early Release bells, a kept scenario on B Day
+function bellsFixture() {
+  const project = fixture((each) => {
+    each.bellSchedules = JSON.parse(JSON.stringify(sampleSchool({ level: true }).bellSchedules)).filter((schedule) => schedule.id === EARLY);
+    each.scenario = { id: 'eopen00001', name: 'Move 7A', changes: [{ kind: 'move', dayTypeId: DAY_B, groupId: 'gsample07a', period: 1, roomId: 'rsample101' }], compared: null };
+    each.scenarios = [
+      { id: 'ekeptbees0', name: 'Bees', changes: [{ kind: 'move', dayTypeId: DAY_B, groupId: 'gsample06b', period: 0, roomId: 'rsample301' }, { kind: 'move', dayTypeId: DAY_B, groupId: 'gsample06c', period: 2, roomId: 'rsample101' }], compared: null },
+      { id: 'ekeptlib00', name: 'Library lessons', changes: [move('gsample06b', 0, 'rsamplelib')], compared: null },
+    ];
+  });
+  return project;
+}
+
+test('122b 1: while a new Before side is worked out the difference map and its legend do not keep the old side', async () => {
+  const page = wide.page;
+  await load(page, fixture());
+  await chooseCompare(page, 'ekeptlib00');
+  const was = await compareState(page);
+  assert.equal(was.difference, 'shown');
+  assert.match(was.key, /busier than Library lessons/);
+  await gate(page, [HOSTILE_ID, 'ekeptlong0']);
+  try {
+    await page.select('#scenario-compare-with', 'ekeptlong0');
+    // the choice settles, the lane is asked, and its answer is held back
+    await page.waitForFunction(() => document.querySelector('.scn').dataset.compareWith === 'ekeptlong0' && document.querySelector('.scn').dataset.compare === 'pending');
+    const during = await compareState(page);
+    assert.equal(during.heading, 'Working…', 'the Before column is working');
+    assert.equal(during.difference, 'none', 'no picture is held: ' + JSON.stringify(during));
+    assert.equal(during.answer, false, 'the old answer is let go');
+    assert.equal(during.blockHidden, true, 'the legend and the table are not shown');
+    assert.equal(during.key.includes('Library lessons'), false, 'the legend does not name the old side');
+    assert.equal(await page.evaluate(() => document.querySelector('.scn').difference.state().busier.length + document.querySelector('.scn').difference.state().quieter.length), 0, 'no cell is painted');
+    // and back to the real schedule (nothing gated): the same, then the picture
+    await letGo(page, 'ekeptlong0');
+    await ready(page);
+    const after = await compareState(page);
+    assert.equal(after.difference, 'shown');
+    assert.match(after.key, new RegExp('busier than ' + LONG.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  } finally {
+    await ungate(page);
+  }
+  // from a kept scenario to the real schedule, the open one's answer held: nothing of the old side stands
+  await gate(page, ['open']);
+  try {
+    await page.select('#scenario-compare-with', '');
+    await page.waitForFunction(() => document.querySelector('.scn').dataset.compareWith === '' && document.querySelector('.scn').dataset.compare === 'pending');
+    const during = await compareState(page);
+    assert.equal(during.difference, 'none');
+    assert.equal(during.blockHidden, true);
+    assert.equal(during.key.includes(LONG), false);
+  } finally {
+    await ungate(page);
+  }
+  await ready(page);
+  assert.match((await compareState(page)).key, /^On the map: busier, quieter\./);
+});
+
+test('122b 2: a kept scenario is compared under the day type and bell schedule chosen: its figures are those it has when it is the open one', async () => {
+  const page = wide.page;
+  await load(page, bellsFixture());
+  await page.select('#scenario-compare-day', DAY_B);
+  await ready(page);
+  await page.select('#scenario-compare-bells', EARLY);
+  await ready(page);
+  assert.deepEqual(await page.evaluate(() => [document.querySelector('.scn').scenarios.memory.dayTypeId, document.querySelector('.scn').scenarios.memory.bellsId]), [DAY_B, EARLY]);
+  await chooseCompare(page, 'ekeptbees0');
+  const withBees = await page.evaluate(() => {
+    const figures = document.querySelector('.scn').scenarios.compare.figures;
+    return { walking: figures.walking.before, crowding: figures.crowding.before, busiest: figures.busiest.before && figures.busiest.before.load, dayTypeId: figures.busiest.before && figures.busiest.before.dayTypeId };
+  });
+  assert.equal(await page.$eval('[data-part="before-heading"]', (el) => el.textContent), 'Bees');
+  // the kept result holds this day type's loads and this bell schedule's run
+  const held = await page.evaluate(async () => {
+    const result = (await globalThis.sv2.store.derived.kept('ekeptbees0')).result;
+    return { loads: result.loads.map((load) => load.dayTypeId), bells: (result.bellLoads || []).map((load) => load.dayTypeId + ':' + load.bellsId) };
+  });
+  assert.ok(held.loads.includes(DAY_B) && held.bells.includes(DAY_B + ':' + EARLY), JSON.stringify(held));
+  // the truth: Bees opened, the lane's own answer under the same choices
+  const truth = await page.evaluate(async (ids) => {
+    const { openScenario } = await import(new URL('engine/actions.js', location.href).href);
+    globalThis.sv2.store.apply(openScenario, { id: ids });
+    const asked = async (options) => (await globalThis.sv2.store.derived.scenario({ transition: null, runFindings: true, ...options })).compare.figures;
+    const one = await asked({ dayTypeId: 'dsample00b', bellsId: 'bsample0er' });
+    const all = await asked({ dayTypeId: null });
+    return { walking: one.walking.after, crowding: one.crowding.after, busiest: one.busiest.after && one.busiest.after.load, dayTypeId: one.busiest.after && one.busiest.after.dayTypeId, allWalking: all.walking.after };
+  }, 'ekeptbees0');
+  assert.deepEqual(withBees, { walking: truth.walking, crowding: truth.crowding, busiest: truth.busiest, dayTypeId: truth.dayTypeId }, 'Compare with Bees, under B Day and Early Release, reads what Bees is under them');
+  assert.notEqual(truth.walking, truth.allWalking, 'the choice matters: B Day under Early Release is not every day type under Regular bells');
+});
+
+test('122b 3: Switch to and Delete… move the focus once, never by way of the name field', async () => {
+  const page = wide.page;
+  await load(page, fixture());
+  await listen(page);
+  await page.click(rowButton('ekeptlib00', 'switch'));
+  await page.waitForFunction(() => globalThis.sv2.store.project.scenario?.id === 'ekeptlib00');
+  await ready(page);
+  let log = await focusLog(page);
+  assert.equal(log.includes('scenario-name'), false, 'Switch to: ' + JSON.stringify(log));
+  assert.equal(log[log.length - 1], 'scenario-open-title');
+  await page.evaluate(() => { window.__focus.length = 0; });
+  await page.click(rowButton('ekepthost0', 'delete'));
+  await page.waitForSelector('dialog[open]');
+  await page.click('dialog[open] .btn--danger');
+  await page.waitForFunction(() => document.querySelectorAll('.scn-other').length === 2);
+  await ready(page);
+  log = await focusLog(page);
+  assert.equal(log.includes('scenario-name'), false, 'Delete: ' + JSON.stringify(log));
+  assert.deepEqual(await focused(page), { id: '', text: 'Switch to', action: 'other-switch', row: 'ekeptlong0' });
+});
+
+test('122b 4: one announcement for each event: Switch to and Delete… say their sentence once, the reset of Compare with in it', async () => {
+  const page = wide.page;
+  await load(page, fixture());
+  await chooseCompare(page, 'ekeptlib00');
+  await listen(page);
+  await page.click(rowButton('ekeptlib00', 'switch'));
+  await page.waitForFunction(() => globalThis.sv2.store.project.scenario?.id === 'ekeptlib00');
+  await ready(page);
+  // the sentences of the event; the comparison's own "Working…" is another region's, on its own
+  const said = (list) => list.filter((each) => /^(Switched to|Deleted) /.test(each.text));
+  let live = said(await liveLog(page));
+  assert.equal(live.length, 1, 'Switch to, comparing with it: ' + JSON.stringify(live));
+  assert.equal(live[0].region, 'announcer', 'the one live channel is the page\'s');
+  assert.equal(live[0].text, 'Switched to Library lessons. Move 6A to 301 is kept. You switched to the scenario you were comparing with, so it is now compared with the real schedule.');
+  // Delete the scenario compared with
+  await chooseCompare(page, 'ekeptlong0');
+  await page.evaluate(() => { window.__live.length = 0; });
+  await page.click(rowButton('ekeptlong0', 'delete'));
+  await page.waitForSelector('dialog[open]');
+  await page.click('dialog[open] .btn--danger');
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.compareWith === '');
+  await ready(page);
+  live = said(await liveLog(page));
+  assert.equal(live.length, 1, 'Delete…, comparing with it: ' + JSON.stringify(live));
+  assert.equal(live[0].text, 'Deleted ' + LONG + '. The scenario you were comparing with is gone, so it is now compared with the real schedule.');
+  // a Switch to that is not the one compared with: one sentence, and the choice stays
+  await chooseCompare(page, 'ekepthost0');
+  await page.evaluate(() => { window.__live.length = 0; });
+  await page.click(rowButton('eopen00001', 'switch'));
+  await page.waitForFunction(() => globalThis.sv2.store.project.scenario?.id === 'eopen00001');
+  await ready(page);
+  live = said(await liveLog(page));
+  assert.equal(live.length, 1, JSON.stringify(live));
+  assert.equal(live[0].region, 'announcer');
+  assert.equal(live[0].text, 'Switched to Move 6A to 301. Library lessons is kept.');
+  assert.equal(await page.$eval('.scn', (el) => el.dataset.compareWith), 'ekepthost0', 'the choice stays');
+  // the strip's visible line is not a second channel
+  assert.equal(await page.$eval('.scn-others__status', (el) => el.getAttribute('role')), null);
+  assert.equal(await page.$eval('.scn-status', (el) => el.getAttribute('role')), null);
+});
+
+test('122b 5: a choice whose scenario goes away while it settles resets to the real schedule and says why; the options rebuilding keeps a choice that is still there', async () => {
+  const page = wide.page;
+  // a choice made, and then an action of the store, in one turn: inside the 400 ms
+  const during = (value, name, payload) => page.evaluate(async (one, action, args) => {
+    const actions = await import(new URL('engine/actions.js', location.href).href);
+    const select = document.getElementById('scenario-compare-with');
+    select.value = one;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    const settling = document.querySelector('.scn-compare').dataset.settling;
+    globalThis.sv2.store.apply(actions[action], args);
+    return settling;
+  }, value, name, payload);
+  // Delete, Switch to and Rename… of the scenario chosen, inside the 400 ms
+  const sentence = 'The scenario you chose to compare with is gone, so it is compared with the real schedule.';
+  for (const how of ['delete', 'switch']) {
+    await load(page, fixture());
+    // the choice and what makes it go away, in one turn: well inside the 400 ms
+    const settling = await page.evaluate(async (way) => {
+      const { deleteScenario, openScenario } = await import(new URL('engine/actions.js', location.href).href);
+      const select = document.getElementById('scenario-compare-with');
+      select.value = 'ekepthost0';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      const during = document.querySelector('.scn-compare').dataset.settling;
+      globalThis.sv2.store.apply(way === 'delete' ? deleteScenario : openScenario, { id: 'ekepthost0' });
+      return during;
+    }, how);
+    assert.equal(settling, 'true', how);
+    await page.waitForFunction(() => !document.querySelector('.scn-compare').dataset.settling);
+    await ready(page);
+    assert.equal(await page.$eval('#scenario-compare-with', (el) => el.value), '', how);
+    assert.equal(await page.$eval('.scn', (el) => el.dataset.compareWith), '', how);
+    assert.equal(await page.$eval('.scn-compare__status', (el) => el.textContent), sentence, how + ': the sentence stays where the choice was');
+    assert.equal(await page.$eval('[data-part="before-heading"]', (el) => el.textContent), 'Before', how);
+    await frames(page);
+    assert.equal(await page.$eval('.scn', (el) => el.dataset.compareWith), '', how + ': and stays reset');
+  }
+  // one that was already compared with, another chosen and gone: the real schedule
+  await load(page, fixture());
+  await chooseCompare(page, 'ekeptlib00');
+  assert.equal(await during('ekepthost0', 'deleteScenario', { id: 'ekepthost0' }), 'true');
+  await page.waitForFunction(() => !document.querySelector('.scn-compare').dataset.settling);
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.compareWith === '');
+  await ready(page);
+  assert.equal(await page.$eval('.scn-compare__status', (el) => el.textContent), sentence);
+  // another scenario renamed while a choice settles: the options are made again and the choice stands
+  await load(page, fixture());
+  assert.equal(await during('ekeptlong0', 'renameScenario', { id: 'ekeptlib00', name: 'Library, mornings' }), 'true');
+  assert.equal(await page.$eval('#scenario-compare-with', (el) => el.value), 'ekeptlong0', 'the select still shows the choice');
+  assert.equal(await page.$eval('#scenario-compare-with option', (el) => el.nextElementSibling.textContent), 'Library, mornings', 'the options were made again');
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.compareWith === 'ekeptlong0');
+  await ready(page);
+  assert.equal(await page.$eval('[data-part="before-heading"]', (el) => el.textContent), LONG);
+  // the real schedule chosen while the options are made again stays the real schedule
+  await load(page, fixture());
+  await chooseCompare(page, 'ekeptlib00');
+  assert.equal(await during('', 'renameScenario', { id: 'ekepthost0', name: 'Host, renamed' }), 'true');
+  assert.equal(await page.$eval('#scenario-compare-with', (el) => el.value), '');
+  await page.waitForFunction(() => document.querySelector('.scn').dataset.compareWith === '');
+  await ready(page);
+});
+
+test('122b 6: choosing the real schedule gives its status sentence', async () => {
+  const page = wide.page;
+  await load(page, fixture());
+  await chooseCompare(page, 'ekeptlib00');
+  await chooseCompare(page, '');
+  const sentence = await page.$eval('.scn-compare__status', (el) => el.textContent);
+  assert.match(sentence, /^Compared with the real schedule: walking (\d+ (min|s)( \d+ s)? (more|less)|the same)\.$/);
+  const expected = await page.evaluate(async (base) => (await import(base)).comparedSentence('the real schedule', document.querySelector('.scn').scenarios.compare), new URL('ui/scenarios/model.js', wide.url('')).href);
+  assert.equal(sentence, expected);
+  // it is the answer's sentence, not a standing one: the first drawing with nothing chosen says none
+  await load(page, fixture());
+  assert.equal(await page.$eval('.scn-compare__status', (el) => el.textContent), '');
+});
+
+test('122b 7: the difference table\'s Before heading and the card\'s sentence use the kept scenario\'s name', async () => {
+  const page = wide.page;
+  await load(page, fixture());
+  assert.equal(await page.$eval('[data-part="difference-before-heading"]', (el) => el.textContent), 'Before');
+  await chooseCompare(page, 'ekepthost0');
+  assert.equal(await page.$eval('[data-part="difference-before-heading"]', (el) => el.textContent), HOSTILE, 'as typed, as text');
+  assert.equal(await page.$('[data-part="difference-before-heading"] img'), null);
+  assert.equal(await page.evaluate(() => window.__hit), undefined);
+  await chooseCompare(page, 'ekeptlib00');
+  assert.equal(await page.$eval('[data-part="difference-before-heading"]', (el) => el.textContent), 'Library lessons');
+  const card = await page.evaluate(() => {
+    const el = document.querySelector('.scn');
+    const [cell] = el.difference.state().busier.concat(el.difference.state().quieter);
+    if (!cell) return { debug: JSON.stringify({ state: el.difference.state().state, largest: el.difference.state().largest, rows: el.difference.rows.length, changed: el.difference.changed }) };
+    const info = el.difference.cardOf(cell.floorId, cell.cell);
+    return { text: el.difference.cardText(info), name: info.beforeName };
+  });
+  assert.ok(card && !card.debug, 'a cell changes against the kept scenario ' + (card && card.debug));
+  assert.equal(card.name, 'Library lessons');
+  assert.ok(card.text.includes('Library lessons: ') && card.text.includes(', after: '), card.text);
+  assert.equal(card.text.includes('Before '), false);
+  await chooseCompare(page, '');
+  assert.equal(await page.$eval('[data-part="difference-before-heading"]', (el) => el.textContent), 'Before');
+});
+
+test('122b 8: Delete… and Rename… of a row that is already gone say so, and never act on the scenario opened in its place', async () => {
+  const page = wide.page;
+  await load(page, fixture());
+  const before = await steps(page);
+  await page.click(rowButton('ekepthost0', 'delete'));
+  await page.waitForSelector('dialog[open]');
+  await page.evaluate(async () => {
+    const { deleteScenario } = await import(new URL('engine/actions.js', location.href).href);
+    globalThis.sv2.store.apply(deleteScenario, { id: 'ekepthost0' });
+  });
+  await page.click('dialog[open] .btn--danger');
+  await page.waitForFunction(() => !document.querySelector('dialog[open]'));
+  assert.equal(await page.$eval('.scn-others__status', (el) => el.textContent), 'That scenario is already gone.');
+  assert.equal(await announced(page), 'That scenario is already gone.');
+  assert.equal(await steps(page), before + 1, 'only the delete that was made');
+  assert.deepEqual(names(await projectOf(page)), ['Move 6A to 301', ['Library lessons', LONG]]);
+  // a row opened while its Delete question stood: the open scenario is not deleted
+  await load(page, fixture());
+  await page.click(rowButton('ekeptlib00', 'delete'));
+  await page.waitForSelector('dialog[open]');
+  await page.evaluate(async () => {
+    const { openScenario } = await import(new URL('engine/actions.js', location.href).href);
+    globalThis.sv2.store.apply(openScenario, { id: 'ekeptlib00' });
+  });
+  await page.click('dialog[open] .btn--danger');
+  await page.waitForFunction(() => !document.querySelector('dialog[open]'));
+  assert.equal(await page.$eval('.scn-others__status', (el) => el.textContent), 'That scenario is already gone.');
+  assert.equal((await projectOf(page)).scenario.name, 'Library lessons', 'the scenario now open is still open');
+  // Rename…: the dialog closes with a sentence, and nothing is renamed
+  await load(page, fixture());
+  await page.click(rowButton('ekepthost0', 'rename'));
+  await page.waitForSelector('#scenario-rename[open]');
+  await page.evaluate(async () => {
+    const { deleteScenario } = await import(new URL('engine/actions.js', location.href).href);
+    globalThis.sv2.store.apply(deleteScenario, { id: 'ekepthost0' });
+  });
+  await page.keyboard.type(' again');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => !document.querySelector('#scenario-rename[open]'));
+  assert.match(await page.$eval('.scn-others__status', (el) => el.textContent), /^That scenario is not among the kept scenarios any more\./);
+  assert.equal(await page.$('#scenario-rename[open]'), null, 'the dialog is not asked again');
+  // and one opened meanwhile is not renamed as the open scenario
+  await load(page, fixture());
+  await page.click(rowButton('ekeptlib00', 'rename'));
+  await page.waitForSelector('#scenario-rename[open]');
+  await page.evaluate(async () => {
+    const { openScenario } = await import(new URL('engine/actions.js', location.href).href);
+    globalThis.sv2.store.apply(openScenario, { id: 'ekeptlib00' });
+  });
+  await page.keyboard.type(' again');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => !document.querySelector('#scenario-rename[open]'));
+  assert.equal((await projectOf(page)).scenario.name, 'Library lessons');
+});
+
+test('122b 9: each row\'s two messages are in its buttons\' descriptions, after its line', async () => {
+  const page = wide.page;
+  await load(page, fixture());
+  const rows = await page.$$eval('.scn-other', (items) => items.map((item) => Array.from(item.querySelectorAll('button')).map((button) => button.getAttribute('aria-describedby').split(' ').map((id) => document.getElementById(id)?.textContent || '?'))));
+  const lib = ['Library lessons · 3 changes', '1 change is already in the schedule', '1 change no longer applies'];
+  assert.deepEqual(rows[0], [lib, lib, lib, lib], 'every button of the row with two messages');
+  assert.deepEqual(rows[1].map((each) => each.length), [1, 1, 1, 1], 'a row with none has only its line');
+  // a message that goes (the schedule changes) goes from the description too
+  await page.evaluate(async () => {
+    const { setSlot } = await import(new URL('engine/actions.js', location.href).href);
+    globalThis.sv2.store.apply(setSlot, { groupId: 'gsample06a', dayTypeId: 'dsample00a', period: 0, slot: { room: 'rsample103' } });
+  });
+  await page.waitForFunction(() => !document.querySelector('.scn-other [data-message="already"]'));
+  const again = await page.$$eval('.scn-other:first-child button', (items) => items.map((button) => button.getAttribute('aria-describedby').split(' ').map((id) => document.getElementById(id)?.textContent || '?').length));
+  assert.ok(again.every((n) => n === 2), JSON.stringify(again));
+});
+
+test('122b 10: answers that come out of order: choose A then B in one flight, only B draws', async () => {
+  const page = wide.page;
+  await load(page, fixture());
+  await gate(page, ['ekeptlib00', 'ekepthost0']);
+  try {
+    await page.select('#scenario-compare-with', 'ekeptlib00');
+    await page.waitForFunction(() => document.querySelector('.scn').dataset.compareWith === 'ekeptlib00' && document.querySelector('.scn').dataset.compare === 'pending');
+    await page.select('#scenario-compare-with', 'ekepthost0');
+    await page.waitForFunction(() => document.querySelector('.scn').dataset.compareWith === 'ekepthost0');
+    // B answers first, then A's older answer comes
+    await letGo(page, 'ekepthost0');
+    await page.waitForFunction(() => document.querySelector('.scn').dataset.compare === 'ready');
+    await ready(page);
+    assert.equal(await page.$eval('[data-part="before-heading"]', (el) => el.textContent), HOSTILE);
+    const drawn = await page.evaluate(() => document.querySelector('.scn').difference.painted.made);
+    await letGo(page, 'ekeptlib00');
+    await frames(page);
+    assert.equal(await page.$eval('[data-part="before-heading"]', (el) => el.textContent), HOSTILE, 'A did not draw');
+    assert.match(await page.$eval('.scn-compare__status', (el) => el.textContent), new RegExp('^Compared with ' + HOSTILE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ': '));
+    assert.equal(await page.$eval('.scn-difference-block', (el) => el.dataset.against), HOSTILE);
+    assert.equal(await page.evaluate(() => document.querySelector('.scn').difference.painted.made), drawn, 'the map was not painted again for A');
+  } finally {
+    await ungate(page);
+  }
+});
+
+test('122b 11: a kept scenario that cannot be worked out (kept() answers null) is said, and the next choice recovers', async () => {
+  const page = wide.page;
+  await load(page, fixture());
+  await page.evaluate(() => {
+    const derived = globalThis.sv2.store.derived;
+    window.__orig = { kept: derived.kept };
+    derived.kept = async () => null;
+  });
+  try {
+    await page.select('#scenario-compare-with', 'ekeptlib00');
+    await page.waitForFunction(() => document.querySelector('.scn').dataset.compare === 'failed');
+    const state = await compareState(page);
+    assert.match(state.status, /^The comparison could not be worked out: the scenario to compare with could not be worked out\./);
+    assert.equal(state.difference, 'none', 'no picture of either side');
+    assert.equal(state.blockHidden, true);
+  } finally {
+    await page.evaluate(() => { globalThis.sv2.store.derived.kept = window.__orig.kept; });
+  }
+  await chooseCompare(page, '');
+  assert.equal((await compareState(page)).difference, 'shown');
+  assert.deepEqual(wide.problems().errors, []);
+});
+
+test('122b 12: a schedule change while comparing asks both sides again; an Apply keeps the choice for the next scenario', async () => {
+  const page = wide.page;
+  await load(page, fixture());
+  await chooseCompare(page, 'ekeptlib00');
+  const asked = await page.evaluate(() => document.querySelector('.scn').scenarios.asked);
+  await page.evaluate(async () => {
+    const { setSlot } = await import(new URL('engine/actions.js', location.href).href);
+    globalThis.sv2.store.apply(setSlot, { groupId: 'gsample07c', dayTypeId: 'dsample00a', period: 0, slot: { room: 'rsample103' } });
+  });
+  await ready(page);
+  assert.ok(await page.evaluate(() => document.querySelector('.scn').scenarios.asked) > asked, 'asked again');
+  assert.equal(await page.evaluate(() => {
+    const answer = document.querySelector('.scn').difference.answer;
+    return answer.versions.schedule === globalThis.sv2.store.scheduleVersion;
+  }), true, 'the picture is for the schedule as it is');
+  assert.equal(await page.$eval('[data-part="before-heading"]', (el) => el.textContent), 'Library lessons');
+  // Apply: the scenario closes, nothing is compared, and the choice is kept
+  await page.click('[data-action="apply"]');
+  await page.waitForSelector('#scenario-apply[open]');
+  await page.click('#scenario-apply .btn--primary');
+  await page.waitForFunction(() => globalThis.sv2.store.project.scenario === null);
+  await ready(page);
+  const none = await compareState(page);
+  assert.equal(none.compare, 'none');
+  assert.equal(none.difference, 'none');
+  assert.equal(await page.$eval('.scn', (el) => el.dataset.compareWith), 'ekeptlib00', 'the choice is view state and stands');
+  await page.type('#scenario-start-name', 'After the apply');
+  await page.click('[data-action="start"]');
+  await page.waitForFunction(() => globalThis.sv2.store.project.scenario?.name === 'After the apply');
+  await ready(page);
+  assert.equal(await page.$eval('[data-part="before-heading"]', (el) => el.textContent), 'Library lessons');
+  assert.match(await page.$eval('.scn-compare__status', (el) => el.textContent), /^Compared with Library lessons: /);
+  assert.deepEqual(wide.problems().errors, []);
 });
 
 // ---------------------------------------------------------------- keyboard alone
@@ -628,6 +1131,19 @@ for (const size of [{ width: 390, height: 844 }, { width: 844, height: 390 }]) {
       await ready(page);
       assert.equal(await page.$eval('[data-part="before-heading"]', (el) => el.textContent), HOSTILE);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, 'a long Before heading does not widen the page');
+      // the select is a finger's size, and the legend names the other side inside the page's width
+      const opened = (await page.$eval('#inspector', (el) => el.dataset.open)) !== 'true';
+      if (opened) await page.tap('#inspector-toggle');
+      await page.waitForFunction(() => document.getElementById('scenario-compare-with').getClientRects().length > 0);
+      const sizes = await page.evaluate(() => {
+        const key = document.querySelector('[data-part="difference-key"]');
+        const box = key.getBoundingClientRect();
+        return { select: document.getElementById('scenario-compare-with').getBoundingClientRect().height, day: document.getElementById('scenario-compare-day').getBoundingClientRect().height, legendWithin: box.width > 0 && box.right <= innerWidth + 1 && box.left >= -1, legend: key.textContent };
+      });
+      assert.ok(sizes.select >= 43.5 && sizes.day >= 43.5, 'the selects are 44 px: ' + JSON.stringify(sizes));
+      assert.equal(sizes.legendWithin, true, 'the legend is inside the page');
+      assert.ok(sizes.legend.startsWith('On the map: busier than ' + HOSTILE), sizes.legend);
+      if (opened) await page.tap('#inspector-toggle');
       await page.$eval(rowButton('ekeptlong0', 'delete'), (el) => el.scrollIntoView({ block: 'center' }));
       await page.tap(rowButton('ekeptlong0', 'delete'));
       await page.waitForSelector('dialog[open]');
@@ -642,6 +1158,34 @@ for (const size of [{ width: 390, height: 844 }, { width: 844, height: 390 }]) {
     }
   });
 }
+
+test('122b 13: on a short window by pointer (844 by 390, not touch) the lab\'s controls are 44 px tall', async () => {
+  const short = await openPlanner({ server, width: 844, height: 390, hash: '#scenarios', theme: 'light' });
+  try {
+    const page = short.page;
+    assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), false, 'a pointer, not a touch');
+    assert.equal(await page.evaluate(() => innerHeight), 390);
+    await load(page, fixture());
+    await chooseCompare(page, 'ekepthost0');
+    if ((await page.$eval('#inspector', (el) => el.dataset.open)) !== 'true') await page.click('#inspector-toggle');
+    await page.waitForFunction(() => document.getElementById('scenario-compare-with').getClientRects().length > 0);
+    const small = await page.evaluate(() => {
+      const heights = (selector) => Array.from(document.querySelectorAll(selector)).filter((el) => el.getClientRects().length > 0).map((el) => Math.round(el.getBoundingClientRect().height * 10) / 10);
+      return {
+        strip: heights('.scn-other__button'),
+        panel: heights('.scn-open__actions .btn, .scn-bar .btn'),
+        select: heights('#scenario-compare-with, #scenario-compare-day, #scenario-compare-bells, #scenario-compare-when'),
+      };
+    });
+    for (const [name, list] of Object.entries(small)) {
+      assert.ok(list.length > 0, name + ' is there');
+      assert.ok(list.every((height) => height >= 43.5), name + ': ' + list.join(', '));
+    }
+    assert.deepEqual(short.problems().errors, []);
+  } finally {
+    await short.close();
+  }
+});
 
 test('no error was logged and nothing left the page', async () => {
   assert.deepEqual(wide.problems().errors, []);

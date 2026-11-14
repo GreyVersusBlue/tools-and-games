@@ -30,6 +30,8 @@ import { h } from '../components/dom.js';
 import { openScenario, duplicateScenario, renameScenario, deleteScenario } from '../../engine/actions.js';
 import { otherRows, rowCount, rowMessages, fullWords, scenarioName, switchedSentence, SWITCHED_TO_COMPARED } from './model.js';
 
+const NOT_KEPT = 'That scenario is not among the kept scenarios any more. It may have been deleted or opened, so it was not renamed.';
+const GONE = 'That scenario is already gone.';
 const ACTIONS = [
   { id: 'switch', label: 'Switch to' },
   { id: 'duplicate', label: 'Duplicate' },
@@ -40,7 +42,8 @@ const ACTIONS = [
 export function othersPanel(env) {
   const ctx = env.ctx;
   const title = h('h2', { class: 'scn-panel__title', id: 'scenario-others-title', tabindex: '-1', data: { part: 'others-title' } }, 'Other scenarios');
-  const status = h('p', { class: 'scn-others__status', role: 'status', data: { part: 'others-status' } });
+  // the visible line; the page's one live region (ctx.announce) says it aloud
+  const status = h('p', { class: 'scn-others__status', data: { part: 'others-status' } });
   const list = h('ul', { class: 'scn-others__list', 'aria-labelledby': 'scenario-others-title', data: { part: 'others-list' } });
   const full = h('p', { class: 'scn-others__full', id: 'scenario-others-full', hidden: true, data: { part: 'others-full' } });
   const element = h('section', { class: 'scn-others', hidden: true, 'aria-labelledby': 'scenario-others-title', data: { part: 'others' } }, title, status, list, full);
@@ -85,9 +88,10 @@ export function othersPanel(env) {
     const said = rowMessages(row);
     const had = Array.from(entry.messages.children).map((el) => el.dataset.message + ':' + el.textContent).join('|');
     if (had !== said.map((each) => each.id + ':' + each.text).join('|')) {
-      entry.messages.replaceChildren(...said.map((each) => h('p', { class: 'scn-other__message', data: { message: each.id } }, each.text)));
+      entry.messages.replaceChildren(...said.map((each) => h('p', { class: 'scn-other__message', id: entry.lineId + '-' + each.id, data: { message: each.id } }, each.text)));
     }
-    const describedBy = entry.lineId;
+    // the label line first, then the row's messages (15.10: "aria-describedby on a row button")
+    const describedBy = [entry.lineId, ...said.map((each) => entry.lineId + '-' + each.id)].join(' ');
     entry.buttons.switch.setAttribute('aria-describedby', describedBy);
     entry.buttons.rename.setAttribute('aria-describedby', describedBy);
     entry.buttons.delete.setAttribute('aria-describedby', describedBy);
@@ -151,13 +155,24 @@ export function othersPanel(env) {
     return remove(row, key, button);
   }
 
+  // a row's scenario is still kept (not deleted, not opened) in the project now
+  function stillKept(row) {
+    const list = Array.isArray(env.project().scenarios) ? env.project().scenarios : [];
+    return row.id === null || list.some((scenario) => scenario && scenario.id === row.id);
+  }
+
+  function gone() {
+    say(GONE);
+  }
+
   // ---- Switch to: one step of undo; the open scenario (if any) takes this
   // one's place in the list
   function switchTo(row) {
     const project = env.project();
     const was = project.scenario ? scenarioName(project.scenario) : null;
     const comparing = row.id !== null && env.memory.compareWith === row.id;
-    if (!env.apply(openScenario, { id: row.id }, (message) => refusal({ message }))) return;
+    if (!stillKept(row)) return gone();
+    if (!env.placeFocus(() => env.apply(openScenario, { id: row.id }, (message) => refusal({ message })))) return;
     // the comparison's other side was this one: it is now the open scenario,
     // so the comparison goes back to the real schedule (15.9 item 8)
     if (comparing) env.resetCompare();
@@ -175,11 +190,12 @@ export function othersPanel(env) {
       ctx.announce(why);
       return;
     }
+    if (!stillKept(row)) return gone();
     const before = env.project();
     if (!env.apply(duplicateScenario, { id: row.id }, (message) => refusal({ message }))) return;
-    const list = Array.isArray(env.project().scenarios) ? env.project().scenarios : [];
-    const from = (Array.isArray(before.scenarios) ? before.scenarios : []).indexOf(row.scenario);
-    const copy = list[from + 1];
+    // the copy is the scenario that was not there before (by its id)
+    const had = new Set((Array.isArray(before.scenarios) ? before.scenarios : []).map((scenario) => scenario && scenario.id));
+    const copy = (Array.isArray(env.project().scenarios) ? env.project().scenarios : []).find((scenario) => scenario && !had.has(scenario.id));
     say('Duplicated ' + row.name + (copy ? ' as ' + scenarioName(copy) : '') + '.');
     if (button.isConnected) button.focus();
   }
@@ -212,6 +228,8 @@ export function othersPanel(env) {
       const answer = await dialog.closed;
       if (answer !== 'rename') return;
       typed = input.value;
+      // gone while the dialog stood open (deleted, or opened: a rename would then rename the open one)
+      if (!stillKept(row)) return notKept();
       let refused = null;
       env.apply(renameScenario, { id: row.id, name: typed }, (message) => {
         refused = message;
@@ -223,6 +241,11 @@ export function othersPanel(env) {
       }
       problem = refused;
     }
+  }
+
+  // the dialog is closed and the row's scenario is not among the kept ones now
+  function notKept() {
+    say(NOT_KEPT);
   }
 
   // ---- Delete…: asks first
@@ -237,9 +260,15 @@ export function othersPanel(env) {
     });
     if (!ok) return;
     const index = rows.findIndex((each, at) => keyOf(each, at) === key);
-    if (index === -1) return;
+    // gone while the question stood open (deleted, or opened, which takes its
+    // row out of the strip: the engine would then delete the open scenario)
+    if (index === -1) {
+      gone();
+      if (!opener.isConnected) env.home();
+      return;
+    }
     const comparing = row.id !== null && env.memory.compareWith === row.id;
-    if (!env.apply(deleteScenario, { id: row.id }, (message) => refusal({ message }))) return;
+    if (!env.placeFocus(() => env.apply(deleteScenario, { id: row.id }, (message) => refusal({ message })))) return;
     if (comparing) env.resetCompare('gone');
     const left = rows.length;
     // the drawing has made the rows again (the store tells the section at once)
