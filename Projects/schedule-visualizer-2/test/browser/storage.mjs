@@ -335,7 +335,7 @@ test('the two databases, their stores and their keys have the names that never c
   assert.equal(record.project.settings.schoolName, 'Names Test School');
   const points = await idb('sv2-recovery', 'recovery', 'all');
   assert.equal(points.length, 1);
-  assert.deepEqual(Object.keys(points[0]).sort(), ['bytes', 'images', 'project', 'reason', 'summary', 'takenAt']);
+  assert.deepEqual(Object.keys(points[0]).sort(), ['bytes', 'images', 'project', 'projectId', 'reason', 'summary', 'takenAt']);
   assert.deepEqual(points[0].summary, { floors: 3, rooms: 13, groups: 8, teachers: 12 });
   assert.equal(points[0].reason, 'replace');
   assert.ok(points[0].bytes > 10000 && points[0].bytes < 200000, 'bytes is the size of the project: ' + points[0].bytes);
