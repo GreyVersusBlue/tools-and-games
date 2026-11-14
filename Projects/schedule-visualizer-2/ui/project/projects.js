@@ -394,7 +394,11 @@ export function projectsCard(ctx) {
     setBusy(true, button, 'Opening…');
     say('status', '');
     const answer = await storage.projects.open(entry.id);
-    if (answer.ok) return; // the page reloads a moment from now
+    if (answer.ok && !answer.reloadFailed) return; // the page reloads a moment from now
+    if (answer.ok) {
+      setBusy(false, button); // the switch is done; the page's banner says to reload it
+      return;
+    }
     forgetOpening();
     setBusy(false, button);
     say('refused', answer.text);
@@ -494,9 +498,10 @@ export function projectsCard(ctx) {
     if (choice !== 'delete') return;
     const index = Array.from(list.children).findIndex((li) => li.dataset.projectId === entry.id);
     setBusy(true);
-    const answer = await storage.projects.remove(entry.id, entry.unreadable && exported ? { exported: true } : undefined);
+    const answer = await storage.projects.remove(entry.id, exported ? { exported: true } : undefined);
     setBusy(false);
     if (!answer.ok) {
+      // no recovery point could be kept (needs: 'exported'): the row's Delete… asks again, with Export first
       say('refused', answer.text);
       return;
     }
