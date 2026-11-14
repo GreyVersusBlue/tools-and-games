@@ -761,7 +761,6 @@ export function projectsCard(ctx) {
       else run(false);
     }, true);
 
-    group.querySelector('input:checked').focus();
     await dialog.closed;
   }
 
@@ -802,8 +801,12 @@ export function projectsCard(ctx) {
     element,
     update(project) {
       const now = typeof project.label === 'string' ? project.label : '';
-      // an undo or a redo of the label puts the field back; one being typed in is left alone
-      if (now !== label && document.activeElement !== labelField.input) labelField.set(now);
+      // an undo or a redo of the label puts the field back; text being typed in (not the label as it was) is left alone
+      if (now !== label) {
+        const untouched = labelField.input.value === label;
+        labelField.set(now); // the field keeps text being typed; the label as it was is not that
+        if (untouched) labelField.input.value = now;
+      }
       if (now !== label || project.settings.timeFormat !== format || project.settings.schoolName !== school || project.id !== projectId) {
         label = now;
         format = project.settings.timeFormat;
