@@ -11,8 +11,9 @@
 //   the Kind of change fieldset, DESIGN 12.4)
 
 import { h } from '../components/dom.js';
-import { newScenario, renameScenario, removeScenarioChange, removeScenarioChanges, removeScenarioLever } from '../../engine/actions.js';
+import { newScenario, renameScenario, duplicateScenario, removeScenarioChange, removeScenarioChanges, removeScenarioLever } from '../../engine/actions.js';
 import { count } from '../components/words.js';
+import { fullWords, scenarioName } from './model.js';
 
 function words(parts) {
   return parts.map((part) => (part.name ? h('bdi', null, part.text) : part.text));
@@ -57,6 +58,16 @@ export function changesPanel(env) {
     rename();
     nameHeld = null;
   });
+  // the open scenario's name as a heading, shown while other scenarios are
+  // kept: where the focus goes after Switch to (DESIGN 15.9 item 11)
+  const openTitle = h('h2', { class: 'scn-panel__title scn-open__title', id: 'scenario-open-title', tabindex: '-1', hidden: true, data: { part: 'open-title' } });
+  // Keep and start another, Duplicate: in the panel, not on the sticky bar
+  // (which keeps Apply… and Discard…). At the limit of twelve scenarios both
+  // are aria-disabled with the reason as their description, and stay focusable.
+  const keepButton = h('button', { type: 'button', class: 'btn', data: { action: 'keep-start' }, on: { click: () => keepAndStart() } }, 'Keep and start another');
+  const duplicateButton = h('button', { type: 'button', class: 'btn', data: { action: 'duplicate' }, on: { click: () => duplicateOpen() } }, 'Duplicate');
+  const fullNote = h('p', { class: 'scn-open__full', id: 'scenario-open-full', hidden: true, data: { part: 'open-full' } });
+  const keeping = h('div', { class: 'scn-open__actions', role: 'group', 'aria-label': 'Keep this scenario', data: { part: 'open-actions' } }, keepButton, duplicateButton);
   const naming = h('div', { class: 'scn-name' }, h('label', { class: 'field__label', for: 'scenario-name' }, 'Scenario name'), nameInput);
 
   const chipsTitle = h('h2', { class: 'scn-panel__title', id: 'scenario-chips-title' }, 'Changes');
@@ -73,7 +84,7 @@ export function changesPanel(env) {
 
   // what the cross-hatch on the plan means (a closed corridor or stairs), shown while one is closed
   const legend = h('p', { class: 'scn-legend', hidden: true, data: { part: 'legend' } }, h('span', { class: 'scn-legend__swatch', 'aria-hidden': 'true' }), 'Closed in this trial');
-  const open = h('div', { class: 'scn-open', data: { part: 'open' } }, naming, chipsTitle, none, chips, legend, status, dropped);
+  const open = h('div', { class: 'scn-open', data: { part: 'open' } }, openTitle, naming, keeping, fullNote, chipsTitle, none, chips, legend, status, dropped);
   const element = h('div', { class: 'scn-changes' }, starting, open);
 
   let view = null;
@@ -86,6 +97,43 @@ export function changesPanel(env) {
       // the name field takes the focus: it is the open scenario's first control
       if (nameInput.isConnected && !open.hidden) nameInput.focus();
     }
+  }
+
+  // Keep and start another: the open scenario goes to the kept list and a
+  // new one opens, with its name field focused and selected
+  function keepAndStart() {
+    const why = fullWords(env.project());
+    if (why) {
+      status.textContent = why;
+      ctx.announce(why);
+      return;
+    }
+    const kept = view ? view.name : '';
+    if (!env.apply(newScenario, { keep: true })) return;
+    const text = 'Kept ' + kept + '. Started ' + scenarioName(env.project().scenario) + '.';
+    status.textContent = text;
+    ctx.announce(text);
+    if (nameInput.isConnected && !open.hidden) {
+      nameInput.focus();
+      nameInput.select();
+    }
+  }
+
+  // Duplicate: a copy is kept right after the open scenario's place in the
+  // list; the open scenario stays open and the focus stays on the button
+  function duplicateOpen() {
+    const why = fullWords(env.project());
+    if (why) {
+      status.textContent = why;
+      ctx.announce(why);
+      return;
+    }
+    if (!env.apply(duplicateScenario, {})) return;
+    const kept = env.project().scenarios;
+    const copy = Array.isArray(kept) && kept.length > 0 ? scenarioName(kept[0]) : '';
+    const text = 'Duplicated ' + (view ? view.name : '') + ' as ' + copy + '. It is kept under Other scenarios.';
+    status.textContent = text;
+    ctx.announce(text);
   }
 
   function rename() {
@@ -168,6 +216,20 @@ export function changesPanel(env) {
       if (document.activeElement === nameInput) nameHeld = stored;
     }
     nameSet = stored;
+    openTitle.replaceChildren(h('bdi', null, view.name), h('span', { class: 'vh' }, ', the open scenario'));
+    const why = fullWords(env.project());
+    for (const button of [keepButton, duplicateButton]) {
+      if (why) {
+        button.setAttribute('aria-disabled', 'true');
+        button.setAttribute('aria-describedby', 'scenario-open-full');
+      } else {
+        button.removeAttribute('aria-disabled');
+        button.removeAttribute('aria-describedby');
+      }
+    }
+    fullNote.hidden = !why;
+    fullNote.textContent = why || '';
+    openTitle.hidden = !env.showOpenTitle();
     if (stored !== view.name) nameInput.placeholder = view.name;
     none.hidden = view.total > 0;
     legend.hidden = !view.levers.some((each) => each.trial);
@@ -188,6 +250,10 @@ export function changesPanel(env) {
     update,
     said(text) {
       status.textContent = text;
+    },
+    focusOpened() {
+      if (!open.hidden && !openTitle.hidden) openTitle.focus();
+      else this.focusName();
     },
     focusName() {
       if (!open.hidden) nameInput.focus();

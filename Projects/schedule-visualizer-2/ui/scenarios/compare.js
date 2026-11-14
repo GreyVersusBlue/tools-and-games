@@ -7,15 +7,32 @@
 // the panel says so and keeps the last answer, marked as old.
 //
 // comparePanel(env) -> { element, update(state) }
-//   env.ctx, env.memory (memory.dayTypeId, memory.bellsId, memory.transition), env.ask()
-//   (ask the lane again with the memory's options)
-//   state: { project, compare (or null), scenario (open or not), pending, old, failed }
+//   env.ctx, env.memory (memory.dayTypeId, memory.bellsId, memory.transition,
+//   memory.compareWith), env.ask() (ask the lane again with the memory's
+//   options), env.chooseCompare(id) (the Compare with choice, after it has
+//   settled: the id of a kept scenario, or null for the real schedule)
+//   state: { project, compare (or null), scenario (open or not), pending,
+//   old, failed, beforeName (the kept scenario compared with, or null),
+//   working (its answer is not in yet), noted (the sentence that says what it
+//   came to) }
+//
+// Compare with (DESIGN 15.6, 15.9 item 8): a select in the head, shown while
+// scenarios are kept, "The real schedule" and each kept scenario by name (at
+// most 40 characters, the whole name in the option's title). It acts after
+// 400 ms with no further change (a closed select fires change on each arrow
+// key in some browsers); until the answer comes the Before column reads
+// "Working…", then the status says "Compared with <name>: walking 2 min more."
+// The section's data-settling is "true" while the 400 ms run, for tests.
 
 import { h } from '../components/dom.js';
 import { count } from '../components/words.js';
 import { ownDayTypes } from '../../engine/day-types.js';
 import { bellSchedulesOf } from '../../engine/schema.js';
-import { figureRows, groupRows, placeRow, transitionChoices } from './model.js';
+import { figureRows, groupRows, placeRow, transitionChoices, optionText, REAL_SCHEDULE, scenarioName } from './model.js';
+import { keptScenarios } from '../../engine/scenario.js';
+
+// how long the Compare with select waits for a further change before it acts
+export const SETTLE_MS = 400;
 
 const SEVERITY = { problem: 'Problem', warning: 'Warning', note: 'Note' };
 
@@ -48,8 +65,31 @@ export function comparePanel(env) {
     memory.transition = whenSelect.value === '' ? null : Number(whenSelect.value);
     env.ask();
   });
+  // ---- Compare with: the real schedule or a kept scenario, the Before side
+  const withSelect = h('select', { class: 'field__input', id: 'scenario-compare-with', data: { key: 'scenario-compare-with' } });
+  const withField = h('div', { class: 'field scn-compare__with', hidden: true, data: { field: 'compare-with' } }, h('label', { class: 'field__label', for: 'scenario-compare-with' }, 'Compare with'), withSelect);
+  let settling = null;
+  let lastState = null;
+  withSelect.addEventListener('change', () => {
+    const value = withSelect.value === '' ? null : withSelect.value;
+    clearTimeout(settling);
+    if (value === env.memory.compareWith) {
+      settling = null;
+      delete element.dataset.settling;
+      if (lastState) update(lastState);
+      return;
+    }
+    element.dataset.settling = 'true';
+    if (lastState) update(lastState);
+    settling = setTimeout(() => {
+      settling = null;
+      delete element.dataset.settling;
+      env.chooseCompare(withSelect.value === '' ? null : withSelect.value);
+    }, SETTLE_MS);
+  });
   const bellsField = h('div', { class: 'field', hidden: true, data: { field: 'bells' } }, h('label', { class: 'field__label', for: 'scenario-compare-bells' }, 'Bells'), bellsSelect);
   const options = h('div', { class: 'scn-compare__options' },
+    withField,
     h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'scenario-compare-day' }, 'Day type'), daySelect),
     bellsField,
     h('div', { class: 'field' }, h('label', { class: 'field__label', for: 'scenario-compare-when' }, 'Places: the whole day or one transition'), whenSelect));
@@ -78,35 +118,43 @@ export function comparePanel(env) {
     whenSelect.value = memory.transition === null ? '' : String(memory.transition);
   }
 
-  function figuresTable(compare) {
+  // the table as it is while the Before side is being worked out: its rows
+  // and no figure, the Before column's heading "Working…"
+  function emptyCompare() {
+    const side = () => ({ before: 0, after: 0, difference: 0 });
+    return { figures: { walking: side(), crowding: side(), busiest: { before: null, after: null, difference: 0 }, late: side(), failed: side(), findings: { problem: side(), warning: side(), note: side() } } };
+  }
+
+  function figuresTable(compare, head) {
+    const waiting = Boolean(head && head.working);
     const rows = figureRows(compare);
     // Laid out as a grid in the inspector's 320 px (scenarios.css): each
     // figure's name a line of its own over its three figures, since four
     // columns left the names 70 px and three lines (SV2-72d, W3). The roles
     // are said outright, so the grid stays a table to a screen reader.
     return h('table', { class: 'scn-table scn-figures', role: 'table', 'aria-label': 'The scenario’s figures before, after, and the difference', data: { part: 'figures' } },
-      h('thead', { role: 'rowgroup' }, h('tr', { role: 'row' }, h('th', { scope: 'col', role: 'columnheader', class: 'scn-figures__corner' }, 'Figure'), h('th', { scope: 'col', role: 'columnheader' }, 'Before'), h('th', { scope: 'col', role: 'columnheader' }, 'After'), h('th', { scope: 'col', role: 'columnheader' }, 'Difference'))),
+      h('thead', { role: 'rowgroup' }, h('tr', { role: 'row' }, h('th', { scope: 'col', role: 'columnheader', class: 'scn-figures__corner' }, 'Figure'), h('th', { scope: 'col', role: 'columnheader', class: 'scn-figures__before', data: { part: 'before-heading' }, title: head && head.name ? head.name : null }, waiting ? 'Working…' : head && head.name ? h('bdi', null, head.name) : 'Before'), h('th', { scope: 'col', role: 'columnheader' }, 'After'), h('th', { scope: 'col', role: 'columnheader' }, 'Difference'))),
       h('tbody', { role: 'rowgroup' }, rows.map((row) => h('tr', { role: 'row', data: { figure: row.id, trend: row.worse === null ? 'same' : row.worse ? 'worse' : 'better' } },
         h('th', { scope: 'row', role: 'rowheader' }, row.label),
-        h('td', { class: 'num', role: 'cell' }, row.before),
-        h('td', { class: 'num', role: 'cell' }, row.after),
-        h('td', { class: 'num', role: 'cell' }, row.difference, trend(row.worse))))));
+        h('td', { class: 'num', role: 'cell' }, waiting ? '…' : row.before),
+        h('td', { class: 'num', role: 'cell' }, waiting ? '…' : row.after),
+        h('td', { class: 'num', role: 'cell' }, waiting ? '…' : row.difference, waiting ? null : trend(row.worse))))));
   }
 
-  function busiestLine(compare) {
+  function busiestLine(compare, name) {
     const busy = compare.figures.busiest;
     const at = (side) => (side ? [h('bdi', null, side.name), ' (' + side.load + ')'] : ['nowhere']);
-    return h('p', { class: 'scn-compare__busiest', data: { part: 'busiest' } }, 'The busiest place before: ', ...at(busy.before), '; after: ', ...at(busy.after), '.');
+    return h('p', { class: 'scn-compare__busiest', data: { part: 'busiest' } }, 'The busiest place ' + (name ? 'in ' : 'before'), ...(name ? [h('bdi', null, name)] : []), ': ', ...at(busy.before), '; after: ', ...at(busy.after), '.');
   }
 
-  function groupsBlock(project, compare) {
+  function groupsBlock(project, compare, name) {
     const found = groupRows(project, compare);
     const heading = h('h3', { class: 'scn-compare__heading', id: 'scenario-groups-title' }, 'Travel time by group');
     if (found.rows.length === 0) return h('section', { 'aria-labelledby': 'scenario-groups-title', data: { part: 'groups' } }, heading, h('p', null, 'No group’s travel time changes.'));
     return h('section', { 'aria-labelledby': 'scenario-groups-title', data: { part: 'groups' } }, heading,
       h('table', { class: 'scn-table scn-groups' },
         h('caption', { class: 'vh' }, 'Each group’s travel time over the day, biggest change first'),
-        h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Group'), h('th', { scope: 'col' }, 'Before'), h('th', { scope: 'col' }, 'After'), h('th', { scope: 'col' }, 'Change'))),
+        h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Group'), h('th', { scope: 'col', title: name || null }, name ? h('bdi', null, name) : 'Before'), h('th', { scope: 'col' }, 'After'), h('th', { scope: 'col' }, 'Change'))),
         h('tbody', null, found.rows.map((row) => h('tr', { data: { group: row.groupId, edited: String(row.edited), trend: row.worse === null ? 'same' : row.worse ? 'worse' : 'better' } },
           h('th', { scope: 'row' }, row.typed ? h('bdi', null, row.name) : row.name, row.edited ? h('span', { class: 'scn-tag', data: { tag: 'edited' } }, 'edited') : null,
             row.held ? h('span', { class: 'scn-held', data: { tag: 'held' } }, 'Late, and ' + row.held) : null),
@@ -143,40 +191,72 @@ export function comparePanel(env) {
       listOf(compare.findings.unchanged, 'Unchanged', 'unchanged', false));
   }
 
+  // the Compare with options: "The real schedule" and each kept scenario by
+  // name, cut at 40 characters with the whole in the option's title
+  let withKey = '';
+  function drawWith(project) {
+    const kept = keptScenarios(project).filter((scenario) => scenario && typeof scenario === 'object' && typeof scenario.id === 'string');
+    const key = JSON.stringify(kept.map((scenario) => [scenario.id, scenarioName(scenario)]));
+    if (key !== withKey) {
+      withKey = key;
+      withSelect.replaceChildren(h('option', { value: '' }, REAL_SCHEDULE), ...kept.map((scenario) => h('option', { value: scenario.id, title: scenarioName(scenario) }, optionText(scenarioName(scenario)))));
+    }
+    withField.hidden = kept.length === 0;
+    // while a choice settles, the select shows what was chosen, not the memory
+    if (settling === null) withSelect.value = env.memory.compareWith === null || !kept.some((scenario) => scenario.id === env.memory.compareWith) ? '' : env.memory.compareWith;
+  }
+
   // what the body was drawn from: the answer, and the project's groups (a
   // group renamed or deleted while the answer is old is named as it is now)
   let shownCompare = null;
   let shownGroups = null;
+  let shownHead = null;
   function update(state) {
+    lastState = state;
     drawOptions(state.project);
-    const mode = !state.scenario ? 'none' : state.pending && !state.compare ? 'working' : state.failed && !state.compare ? 'failed' : state.old ? 'old' : 'ready';
+    drawWith(state.project);
+    // the Before side is being worked out: the select settling, or the lane asked
+    const working = Boolean(state.scenario) && (settling !== null || Boolean(state.working));
+    const head = { name: state.beforeName || null, working };
+    const mode = !state.scenario ? 'none' : working || (state.pending && !state.compare) ? 'working' : state.failed && !state.compare ? 'failed' : state.old ? 'old' : 'ready';
     element.dataset.state = mode;
     options.hidden = !state.scenario;
     if (!state.scenario) {
       status.textContent = '';
       shownCompare = null;
+      shownHead = null;
       body.replaceChildren(h('p', { class: 'scn-compare__note' }, 'Start a scenario, and this compares it with the real schedule: walking, crowding, the busiest place, late arrivals and findings, before and after.'));
       return;
     }
     if (state.failed) status.textContent = 'The comparison could not be worked out: ' + state.failed + (state.compare ? ' The figures below are from before your last change.' : '');
+    else if (working) status.textContent = 'Working out the comparison…';
     else if (state.pending) status.textContent = state.compare ? 'Working out the comparison again. The figures below are from before your last change.' : 'Working out the comparison…';
-    else status.textContent = '';
+    else status.textContent = state.noted || '';
+    if (working) {
+      // the old figures were for another Before side: none is shown
+      shownCompare = null;
+      shownHead = null;
+      body.replaceChildren(figuresTable(emptyCompare(), head));
+      return;
+    }
     if (!state.compare) {
       shownCompare = null;
+      shownHead = null;
       body.replaceChildren();
       return;
     }
-    if (state.compare === shownCompare && state.project.groups === shownGroups) return;
+    if (state.compare === shownCompare && state.project.groups === shownGroups && shownHead === head.name) return;
     shownCompare = state.compare;
     shownGroups = state.project.groups;
+    shownHead = head.name;
     const keep = body.querySelectorAll('details[open]');
     const opened = new Set(Array.from(keep).map((el) => el.dataset.part));
-    body.replaceChildren(figuresTable(state.compare), busiestLine(state.compare), groupsBlock(state.project, state.compare), placesBlock(state.compare), findingsBlock(state.compare));
+    body.replaceChildren(figuresTable(state.compare, head), busiestLine(state.compare, head.name), groupsBlock(state.project, state.compare, head.name), placesBlock(state.compare), findingsBlock(state.compare));
     for (const part of opened) {
       const again = body.querySelector('details[data-part="' + part + '"]');
       if (again) again.open = true;
     }
   }
 
-  return { element, update, ctx };
+  return { element, update, ctx, stop() { clearTimeout(settling); } };
 }

@@ -9,7 +9,7 @@ import { periodName, offPeriods, bellsFor, parseTime, formatTime } from '../../e
 import { walkTarget } from '../../engine/routing.js';
 import { resolveSlotRoom, nameOfRoom, bellSchedulesOf, CELL_CORRIDOR, ELEVATOR_KIND, isLiftCell } from '../../engine/schema.js';
 import { formatDuration } from '../../engine/findings.js';
-import { reconcile, reconcileLevers, changeWords, changeSlots, leverKey, isTrialOnly, isWrittenWay, trialOnlyWords, applyLevers } from '../../engine/scenario.js';
+import { reconcile, reconcileLevers, changeWords, changeSlots, leverKey, isTrialOnly, isWrittenWay, trialOnlyWords, applyLevers, SCENARIOS_MOST } from '../../engine/scenario.js';
 import { releaseDelay } from '../../engine/release.js';
 import { NEW_SCENARIO_NAME, blankName } from '../../engine/actions.js';
 import { count, list, periodWords } from '../components/words.js';
@@ -699,4 +699,106 @@ export function pickWords(picked, closed) {
 export function closedAt(view, floorId, cell) {
   if (!view) return null;
   return view.levers.find((each) => each.lever.kind === 'corridor' && each.lever.floorId === floorId && each.lever.cells.includes(cell)) || null;
+}
+
+// ---- other scenarios (spec 9.3; DESIGN 15.6, 15.9 items 7, 8, 10)
+
+// What the engine's reconcile says of a change or lever the schedule (or the
+// building) already has, as the end of its sentence. A kept row tells these
+// apart from the changes that cannot apply any more (a room deleted, a group
+// gone, a later change on the slot): the first need no mending, the second do.
+const ALREADY_THERE = ['the schedule already has this.', 'the building already has this.'];
+
+// The kept scenarios of the project (the open one is not among them), as the
+// strip lists them: [{ id, name, total, kept, already, gone, words }] in the
+// project's order. `total` counts changes and levers alike, as the bar does;
+// `already` the ones the schedule already has, `gone` the ones that no longer
+// apply for any other reason (reconcile is per scenario: the open one's
+// changes never touch a kept one's row).
+export function otherRows(project) {
+  const list = Array.isArray(project.scenarios) ? project.scenarios : [];
+  return list.filter((scenario) => scenario && typeof scenario === 'object').map((scenario) => {
+    const found = reconcile(project, scenario);
+    const levers = Array.isArray(found.levers) ? found.levers : [];
+    const dropped = found.dropped.concat(Array.isArray(found.droppedLevers) ? found.droppedLevers : []);
+    const already = dropped.filter((each) => ALREADY_THERE.some((end) => each.sentence.endsWith(end))).length;
+    const stored = (Array.isArray(scenario.changes) ? scenario.changes.length : 0) + (Array.isArray(scenario.levers) ? scenario.levers.length : 0);
+    return {
+      id: typeof scenario.id === 'string' ? scenario.id : null,
+      scenario,
+      name: scenarioName(scenario),
+      total: stored,
+      kept: found.changes.length + levers.length,
+      already,
+      gone: dropped.length - already,
+    };
+  });
+}
+
+// "4 changes" on a row, and its two messages, each present only when true:
+//   "1 change is already in the schedule", "2 changes no longer apply"
+// (two sentences, never one: the first needs nothing done, the second is
+// seen in full when the scenario is switched to).
+export function rowCount(row) {
+  return count(row.total, 'change');
+}
+
+export function rowMessages(row) {
+  const out = [];
+  if (row.already > 0) out.push({ id: 'already', text: count(row.already, 'change') + (row.already === 1 ? ' is' : ' are') + ' already in the schedule' });
+  if (row.gone > 0) out.push({ id: 'gone', text: count(row.gone, 'change') + (row.gone === 1 ? ' no longer applies' : ' no longer apply') });
+  return out;
+}
+
+// How many scenarios the project holds, the open one and the kept ones.
+export function heldScenarios(project) {
+  return (project.scenario ? 1 : 0) + (Array.isArray(project.scenarios) ? project.scenarios.length : 0);
+}
+
+// Why Keep and start another and Duplicate cannot be used now, or null.
+export function fullWords(project) {
+  return heldScenarios(project) >= SCENARIOS_MOST ? 'This project keeps ' + SCENARIOS_MOST + ' scenarios, the most it can. Delete one first.' : null;
+}
+
+// An option of the Compare with select: at most 40 characters, the rest cut
+// with an ellipsis (the whole name goes in the option's title). Counted in
+// code points, so a name with an emoji or a non-Latin script is never cut
+// through a character.
+export const COMPARE_OPTION_MOST = 40;
+export function optionText(name) {
+  const letters = Array.from(name);
+  return letters.length <= COMPARE_OPTION_MOST ? name : letters.slice(0, COMPARE_OPTION_MOST - 1).join('') + '…';
+}
+
+export const REAL_SCHEDULE = 'The real schedule';
+
+// The words of the comparison's other side: "the real schedule" or the kept
+// scenario's name as typed.
+export function beforeName(scenario) {
+  return scenario ? scenarioName(scenario) : REAL_SCHEDULE;
+}
+
+// The status sentence once a comparison with a kept scenario has come:
+// "Compared with Stagger 8th grade: walking 2 min more." Walking is the
+// figure said, as timeFigures prints it, so the sentence agrees with the
+// table's own row.
+export function comparedSentence(name, compare) {
+  const f = compare.figures.walking;
+  const figures = timeFigures(f.before, f.after);
+  const how = figures.n === 0 ? 'walking the same' : 'walking ' + duration(Math.abs(figures.n)).replace(/ /g, ' ') + (figures.n > 0 ? ' more' : ' less');
+  return 'Compared with ' + name + ': ' + how + '.';
+}
+
+export const SWITCHED_TO_COMPARED = 'You switched to the scenario you were comparing with, so it is now compared with the real schedule.';
+export const COMPARED_GONE = 'The scenario you were comparing with is gone, so it is now compared with the real schedule.';
+
+// What Switch to says: "Switched to Stagger 8th grade. Move 7th grade is kept."
+export function switchedSentence(to, was) {
+  return 'Switched to ' + to + '.' + (was ? ' ' + was + ' is kept.' : '');
+}
+
+// Apply's added line, when scenarios are kept.
+export const KEPT_STAY_KEPT = 'Kept scenarios stay kept. They are compared with the schedule as it will be.';
+export function keptLine(project) {
+  return Array.isArray(project.scenarios) && project.scenarios.length > 0 ? KEPT_STAY_KEPT : null;
 }
