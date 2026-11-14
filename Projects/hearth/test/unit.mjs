@@ -304,6 +304,30 @@ section(18, () => {
   check('feud: the old die in newDay after the first feudDay, and the feud ends that morning, not a day on', o.alive === false && o.aliveA && o.feud === false, JSON.stringify(o));
 });
 
+// ---- the hour is a colour (A2) ----
+// skyAt(f, season, wx, snowLying) is pure, so it is called straight. Break: swap the dusk and noon colours in SKY (js/look.js); "dusk has red
+// greater than blue" and the pop walk both fail (dusk goes white, so red is no longer above blue; the swap puts a 255-to-217 step in 0.002).
+section(20, () => {
+  const { ev } = fresh();
+  const sky = (f, s, w, n) => ev(`skyAt(${f},${JSON.stringify(s)},${JSON.stringify(w)},${n})`);
+  const n = sky(.5, 'summer', 'clear', 0);
+  // the design asks for 6; summer's own tint (#fffaf0) takes blue to 240, so the bound is 16 (the tint is the design's own)
+  check('sky: clear summer noon is white, to within the summer tint', n.every(v => v >= 255 - 16) && n[0] === 255, JSON.stringify(n));
+  const w = sky(.05, 'winter', 'clear', 0);
+  check('sky: a clear winter night is blue by at least 40 over red', w[2] - w[0] >= 40, JSON.stringify(w));
+  const ws = sky(.05, 'winter', 'clear', .8);
+  check('sky: snow lying gives moonlight back (a lit winter night, #46548a before the winter tint)', ws[2] > w[2] && ws[0] > w[0] && ws[2] - ws[0] >= 40, JSON.stringify(ws));
+  const dusk = sky(ev('EDGE.summer[1]-.005'), 'summer', 'clear', 0);
+  check('sky: dusk is rose: red exceeds blue by at least 40', dusk[0] - dusk[2] >= 40, JSON.stringify(dusk));
+  check('sky: rain is darker than clear at noon, a storm darker than rain', ev('(()=>{const L=c=>c[0]+c[1]+c[2];return L(skyAt(.5,"summer","thunder",0))<L(skyAt(.5,"summer","rain",0))&&L(skyAt(.5,"summer","rain",0))<L(skyAt(.5,"summer","clear",0))})()'));
+  let worst = 0, at = '';
+  for (const season of ['spring', 'summer', 'autumn', 'winter']) for (const wx of ['clear', 'overcast', 'rain', 'thunder', 'fog', 'snow']) for (const snow of [0, .8]) {
+    let prev = sky(0, season, wx, snow);
+    for (let i = 1; i <= 500; i++) { const c = sky(i * .002, season, wx, snow); for (let k = 0; k < 3; k++) { const d = Math.abs(c[k] - prev[k]); if (d > worst) { worst = d; at = `${season} ${wx} snow ${snow} f ${(i * .002).toFixed(3)}`; } } prev = c; }
+  }
+  check('sky: no channel moves by more than 10 between f and f+.002, for four seasons, six weathers, with and without snow', worst <= 10, `${worst} at ${at}`);
+});
+
 // ---- one top-level name, one file (A0) ----
 // The scripts share one global scope, so a name declared at column 0 in two files is a redeclaration the browser reports as a SyntaxError
 // on the second file (let, const) or a silent overwrite (function), and the first failure takes the whole page's later scripts with it.
@@ -353,30 +377,6 @@ section(19, () => {
   check('names: the scanner finds core.js\'s own declarations', seen.get('newWorld') === 'js/core.js' && seen.get('zoom') === 'js/main.js' && seen.get('camX') === 'js/main.js' && seen.size > 200, `${seen.size} names; zoom in ${seen.get('zoom')}, camX in ${seen.get('camX')}`);
   check('names: no top-level name is declared in two files', dup.length === 0, dup.join('; '));
   check('names: the three look scripts load after render.js and before audio.js', ['js/look.js', 'js/folk.js', 'js/goods.js'].every(f => ORDER.indexOf(f) > ORDER.indexOf('js/render.js') && ORDER.indexOf(f) < ORDER.indexOf('js/audio.js')));
-});
-
-// ---- the hour is a colour (A2) ----
-// skyAt(f, season, wx, snowLying) is pure, so it is called straight. Break: swap the dusk and noon colours in SKY (js/look.js); "dusk has red
-// greater than blue" and the pop walk both fail (dusk goes white, so red is no longer above blue; the swap puts a 255-to-217 step in 0.002).
-section(20, () => {
-  const { ev } = fresh();
-  const sky = (f, s, w, n) => ev(`skyAt(${f},${JSON.stringify(s)},${JSON.stringify(w)},${n})`);
-  const n = sky(.5, 'summer', 'clear', 0);
-  // the design asks for 6; summer's own tint (#fffaf0) takes blue to 240, so the bound is 16 (the tint is the design's own)
-  check('sky: clear summer noon is white, to within the summer tint', n.every(v => v >= 255 - 16) && n[0] === 255, JSON.stringify(n));
-  const w = sky(.05, 'winter', 'clear', 0);
-  check('sky: a clear winter night is blue by at least 40 over red', w[2] - w[0] >= 40, JSON.stringify(w));
-  const ws = sky(.05, 'winter', 'clear', .8);
-  check('sky: snow lying gives moonlight back (a lit winter night, #46548a before the winter tint)', ws[2] > w[2] && ws[0] > w[0] && ws[2] - ws[0] >= 40, JSON.stringify(ws));
-  const dusk = sky(ev('EDGE.summer[1]-.005'), 'summer', 'clear', 0);
-  check('sky: dusk is rose: red exceeds blue by at least 40', dusk[0] - dusk[2] >= 40, JSON.stringify(dusk));
-  check('sky: rain is darker than clear at noon, a storm darker than rain', ev('(()=>{const L=c=>c[0]+c[1]+c[2];return L(skyAt(.5,"summer","thunder",0))<L(skyAt(.5,"summer","rain",0))&&L(skyAt(.5,"summer","rain",0))<L(skyAt(.5,"summer","clear",0))})()'));
-  let worst = 0, at = '';
-  for (const season of ['spring', 'summer', 'autumn', 'winter']) for (const wx of ['clear', 'overcast', 'rain', 'thunder', 'fog', 'snow']) for (const snow of [0, .8]) {
-    let prev = sky(0, season, wx, snow);
-    for (let i = 1; i <= 500; i++) { const c = sky(i * .002, season, wx, snow); for (let k = 0; k < 3; k++) { const d = Math.abs(c[k] - prev[k]); if (d > worst) { worst = d; at = `${season} ${wx} snow ${snow} f ${(i * .002).toFixed(3)}`; } } prev = c; }
-  }
-  check('sky: no channel moves by more than 10 between f and f+.002, for four seasons, six weathers, with and without snow', worst <= 10, `${worst} at ${at}`);
 });
 
 console.log(`${fail ? 'FAIL' : 'PASS'}: ${pass} of ${pass + fail} unit checks`);
