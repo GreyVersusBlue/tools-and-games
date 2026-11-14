@@ -148,7 +148,7 @@ export function filePanel(env) {
     result.dataset.result = 'refused';
     const button = h('button', { type: 'button', class: 'btn', data: { action: 'compare-buildings' }, on: { click: () => compareBuildings(fileName, read, button) } }, 'Compare the two buildings');
     result.replaceChildren(
-      h('p', { role: 'alert' }, quote(fileName) + ' was not compared as a scenario, and nothing has changed. ' + message + ' ' + ANOTHER_BUILDING_ON),
+      h('p', { role: 'alert' }, quote(fileName) + ' was not compared, and nothing has changed. ' + message + ' ' + ANOTHER_BUILDING_ON),
       button);
     ctx.announce(result.textContent);
   }

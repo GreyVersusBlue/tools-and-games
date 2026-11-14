@@ -117,6 +117,30 @@ function busiestWords(side) {
   return 'Busiest: ' + side.name + ', ' + side.load + ' ' + (side.load === 1 ? side.unit.replace(/s$/, '') : side.unit) + '.';
 }
 
+// The comparison worked out for the matched day type, and what the map needs of
+// it: { answer, scales: { this, other }, bands: { this, other }, edges }. `a` is the
+// open project and `b` the other, each { project, graph, result }. The scale is
+// shared (the larger of the two sides' busiest cell decides the bands) unless the
+// two count in different units, when each side keeps its own. Plain Node: nothing
+// here reads the page.
+export function shapeOf(a, b, dayTypeName) {
+  const answer = compareBuildings(a.project, a.result, b.project, b.result, dayTypeName === null || dayTypeName === undefined ? {} : { dayTypeName });
+  if (answer.refused) return { answer, scales: null, bands: null, edges: null };
+  const loadA = loadOf(a.result, answer.matched.dayTypeIdA);
+  const loadB = loadOf(b.result, answer.matched.dayTypeIdB);
+  const maxA = busiestCell(loadA);
+  const maxB = busiestCell(loadB);
+  const scale = a.project.settings.colourScale;
+  const top = answer.unitsDiffer ? null : Math.max(maxA, maxB);
+  const scales = { this: top === null ? maxA : top, other: top === null ? maxB : top };
+  return {
+    answer,
+    scales,
+    bands: { this: bandsOf(a.graph, loadA, scales.this, scale), other: bandsOf(b.graph, loadB, scales.other, scale) },
+    edges: { this: bandEdges(scale, scales.this), other: bandEdges(scale, scales.other) },
+  };
+}
+
 export function buildingsPanel(env) {
   const ctx = env.ctx;
   const store = ctx.store;
@@ -174,21 +198,8 @@ export function buildingsPanel(env) {
   // ---- the answer's shape: day type, the shared scale, the bands of each side
   function shape() {
     const s = state;
-    s.answer = compareBuildings(store.project, s.mainResult, s.other, s.otherResult, s.dayTypeName === null ? {} : { dayTypeName: s.dayTypeName });
-    if (s.answer.refused) return;
-    const answer = s.answer;
-    s.dayTypeName = answer.matched.dayTypeName;
-    const loadA = loadOf(s.mainResult, answer.matched.dayTypeIdA);
-    const loadB = loadOf(s.otherResult, answer.matched.dayTypeIdB);
-    const maxA = busiestCell(loadA);
-    const maxB = busiestCell(loadB);
-    const scale = store.project.settings.colourScale;
-    // units that differ make the numbers incomparable: each side keeps its own scale then
-    const shared = !answer.unitsDiffer;
-    const top = shared ? Math.max(maxA, maxB) : null;
-    s.scales = { this: shared ? top : maxA, other: shared ? top : maxB };
-    s.bands = { this: bandsOf(env.graph(), loadA, s.scales.this, scale), other: bandsOf(s.otherGraph, loadB, s.scales.other, scale) };
-    s.edges = { this: bandEdges(scale, s.scales.this), other: bandEdges(scale, s.scales.other) };
+    Object.assign(s, shapeOf({ project: store.project, graph: env.graph(), result: s.mainResult }, { project: s.other, graph: s.otherGraph, result: s.otherResult }, s.dayTypeName));
+    if (!s.answer.refused) s.dayTypeName = s.answer.matched.dayTypeName;
   }
 
   function colourOfBands() {

@@ -802,7 +802,7 @@ test('compare with a file of another building is refused with the count of rooms
   const input = await page.$('input[data-file="compare"]');
   await input.uploadFile(file);
   await page.waitForFunction(() => /was not compared/.test(document.querySelector('.scn-file__result').textContent));
-  assert.equal(await seen(page, '.scn-file__result'), '“other-building.json” was not compared, and nothing has changed. This file describes a different building: 1 room is missing and 1 is added.');
+  assert.equal(await seen(page, '.scn-file__result'), '“other-building.json” was not compared, and nothing has changed. This file describes a different building: 1 room is missing and 1 is added. You can still compare the two buildings: crowds, travel times and findings, matched by group and room names.Compare the two buildings');
   assert.equal(await page.evaluate(() => globalThis.sv2.store.project.scenario), null);
   // and a file that is no project at all
   const junk = path.join(SCRATCH, 'junk.json');

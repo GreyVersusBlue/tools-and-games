@@ -170,7 +170,7 @@ async function journey(page, mode, name) {
   await input.uploadFile(file);
   await page.waitForSelector('.scn-file__result[data-result="refused"]');
   const refusal = await seen(page, '.scn-file__result');
-  assert.equal(refusal, '“' + name + '.json” was not compared as a scenario, and nothing has changed. This file describes a different building: 2 rooms are added. You can still compare the two buildings: crowds, travel times and findings, matched by group and room names.Compare the two buildings');
+  assert.equal(refusal, '“' + name + '.json” was not compared, and nothing has changed. This file describes a different building: 2 rooms are added. You can still compare the two buildings: crowds, travel times and findings, matched by group and room names.Compare the two buildings');
   assert.equal(await page.$eval('.scn-file__result [role="alert"]', (el) => el.tagName), 'P', 'the sentence is an alert');
   assert.equal(await heldOf(page), 'false', 'a refusal holds no comparison');
   assert.equal(await page.evaluate(() => globalThis.sv2.store.project.scenario !== null), true, 'the open scenario is as it was');

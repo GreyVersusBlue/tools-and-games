@@ -206,6 +206,7 @@ export const GROUPS = {
     'browser/route-sheet.mjs', // SV2-103
     'browser/scenario.mjs', // SV2-68
     'browser/scenarios-kept.mjs', // SV2-122
+    'browser/compare-buildings.mjs', // SV2-123
     'browser/scenario-levers.mjs', // SV2-92
     'browser/congestion-scenario.mjs', // SV2-71
     'browser/difference.mjs', // SV2-69
@@ -239,6 +240,7 @@ export const GROUPS = {
     'timing/suggest.mjs', // SV2-63
     'timing/scenario-lane.mjs', // SV2-64
     'timing/kept-lane.mjs', // SV2-121
+    'timing/compare-buildings.mjs', // SV2-123
     'timing/difference-card.mjs', // SV2-69c
     'timing/checks.mjs', // SV2-32i
     'timing/worker.mjs', // SV2-32i
@@ -275,6 +277,7 @@ export const BROWSER_SECONDS = {
   'browser/recovery.mjs': 23,
   'browser/scenario.mjs': 21,
   'browser/scenarios-kept.mjs': 45, // 36 s on two slow cores (SV2-122)
+  'browser/compare-buildings.mjs': 90, // SV2-123
   'browser/fix.mjs': 21,
   'browser/safety.mjs': 20,
   'browser/step-free-safety.mjs': 20,
