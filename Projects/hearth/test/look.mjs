@@ -81,6 +81,43 @@ function check(name, ok, detail = '') { console.log(`${ok ? 'ok  ' : 'FAIL'} ${n
   check('drawing is off the stream: draw() every 10 steps leaves the pack hash as it was', plain === drawn, `${plain} without, ${drawn} with`);
 }
 
+// ---- (3) A1: what is only seen runs on animT, which is real seconds and stands still when paused ----
+// Two draws of the same instant of sim time, animT at 0 and at 3. Water that is open sea, far from any coast and from anything that moves, and
+// outside the summer shimmer's bands, can only change through the water glints; a block of rock outside the bands changes through nothing.
+async function animChecks(page) {
+  const r = await page.evaluate(() => {
+    const H = window.__hearth, g = document.getElementById('c').getContext('2d'), W = 110, HH = 70, T = 8;
+    H.setZoom(1);
+    const shot = a => { H.setAnimT(a); H.draw(); return g.getImageData(0, 0, W * T, HH * T).data; };
+    const t0 = H.time, d0 = shot(0), d3 = shot(3);
+    const tiles = H.tilesNow, at = (x, y) => (x < 0 || y < 0 || x >= W || y >= HH) ? 0 : tiles[y * W + x];
+    const bands = y => { for (let i = 0; i < 8; i++) { const y0 = (i * 67) % (HH * T - 8); if (y >= y0 - 1 && y < y0 + 7) return true; } return false; };
+    const near = (x, y, r, f) => { for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (f(x + i, y + j)) return true; return false; };
+    const sh = [H.fishSh, H.boats, H.gulls, H.wild, H.people].flatMap(l => l.map(o => [o.x, o.y])); // everything that moves on its own
+    const clear = (tx, ty) => !sh.some(([x, y]) => Math.hypot(x - tx, y - ty) < 4);
+    const differs = (x, y) => { const k = (y * W * T + x) * 4; return d0[k] !== d3[k] || d0[k + 1] !== d3[k + 1] || d0[k + 2] !== d3[k + 2]; };
+    let water = 0, waterPx = 0, rock = 0, rockPx = 0; const rockAt = [];
+    for (let ty = 0; ty < HH; ty++) for (let tx = 0; tx < W; tx++) {
+      const t = at(tx, ty);
+      let kind = 0;
+      if (t === 0 && !near(tx, ty, 3, (x, y) => at(x, y) !== 0) && clear(tx, ty)) kind = 1;
+      else if (t === 3 && !near(tx, ty, 1, (x, y) => at(x, y) !== 3) && clear(tx, ty)) kind = 2;
+      if (!kind) continue;
+      for (let y = ty * T; y < ty * T + T; y++) { if (bands(y)) continue; for (let x = tx * T; x < tx * T + T; x++) {
+        if (kind === 1) { waterPx++; if (differs(x, y)) water++; } else { rockPx++; if (differs(x, y)) { rock++; if (rockAt.length < 6) rockAt.push([x, y]); } } } }
+    }
+    const sameTime = H.time === t0;
+    H.setAnimT(3); H.frame(.5, false); const held = H.animT;
+    H.frame(.5, true); const ran = H.animT;
+    return { water, waterPx, rock, rockPx, rockAt, sameTime, held, ran };
+  });
+  check('animT: with time unchanged, open water differs between animT 0 and 3 (the glints)', r.water >= 20, `${r.water} of ${r.waterPx} open-water pixels differ`);
+  check('animT: with time unchanged, rock far from the coast is identical', r.rockPx > 200 && r.rock === 0, `${r.rock} of ${r.rockPx} rock pixels differ ${JSON.stringify(r.rockAt)}`);
+  check('animT: setting it does not move sim time', r.sameTime, 'time moved');
+  check('animT: frame(.5,false) with the loop paused leaves it where it was', r.held === 3, `3 became ${r.held}`);
+  check('animT: frame(.5,true) advances it by the real seconds', Math.abs(r.ran - 3.5) < 1e-9, `3 became ${r.ran}`);
+}
+
 // ---- (2) the eight scenes, at zoom 1 and zoom 3.2: pictures and timing ----
 const rows = [];
 {
@@ -116,6 +153,7 @@ const rows = [];
       const png = await page.locator('#c').screenshot();
       fs.writeFileSync(path.join(OUT, `${sc.id}-${sc.name.replace(/ /g, '-')}-z${z}.png`), png);
     }
+    if (sc.id === 'S1') await animChecks(page);
   }
   await ctx.close();
 }
