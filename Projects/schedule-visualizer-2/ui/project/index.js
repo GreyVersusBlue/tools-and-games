@@ -1,5 +1,5 @@
 // The Project section: a page of cards, top to bottom, in the order of
-// DESIGN 5.7: Saved on this device, Project file, Snapshots, Recovery points,
+// DESIGN 5.7 and 15.2: Projects on this device, Saved on this device, Project file, Snapshots, Recovery points,
 // Settings, Clear…, Sample school, and About and help. The card for sending
 // to another device joins the list when it is built, after Recovery points.
 //
@@ -8,6 +8,7 @@
 
 import { h } from '../components/dom.js';
 import { figures } from '../components/words.js';
+import { projectsCard } from './projects.js';
 import { savedCard } from './saved.js';
 import { filesCard } from './files.js';
 import { snapshotsCard } from './snapshots.js';
@@ -20,7 +21,7 @@ import { aboutCard } from './about.js';
 import { startSnapshots } from '../../storage/snapshots.js';
 
 // The cards, top to bottom. Each is a function (ctx) -> { element, update(project) }.
-export const CARDS = [savedCard, filesCard, snapshotsCard, recoveryCard, transferCard, settingsCard, clearCard, sampleCard, aboutCard];
+export const CARDS = [projectsCard, savedCard, filesCard, snapshotsCard, recoveryCard, transferCard, settingsCard, clearCard, sampleCard, aboutCard];
 
 // The section's own stylesheet. index.html may link it (with data-sheet,
 // which is how it is found here); this adds it on a page that does not.

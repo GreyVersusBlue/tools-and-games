@@ -16,7 +16,7 @@ import { card } from '../components/card.js';
 import { count } from '../components/words.js';
 import { formatBytes, whenWords } from '../../storage/words.js';
 import { summaryWords } from '../../storage/session.js';
-import { pageSnapshots, SNAPSHOT_LIMIT, NAME_NEEDED, READ_ONLY_SENTENCE } from '../../storage/snapshots.js';
+import { pageSnapshots, SNAPSHOT_LIMIT, NAME_NEEDED, READ_ONLY_SENTENCE, fullSentence } from '../../storage/snapshots.js';
 import { readProjectFile } from '../../engine/project-file.js';
 import { refuseHeld } from './files.js';
 
@@ -42,14 +42,17 @@ const named = (name) => h('bdi', { class: 'snap__name-text' }, name);
 const quoted = (name) => ['“', named(name), '”'];
 
 // The status line under the take form. `entries` are the open project's;
-// `others` is how many more are of other projects (the limit is for the whole
-// device, so they count towards it: DESIGN 15.4).
-export function countSentence(entries, limit, others) {
+// `others` is how many more are of other projects and `unreadable` how many cannot
+// be read: both count towards the device's limit (DESIGN 15.4).
+export function countSentence(entries, limit, others, unreadable) {
+  const apart = (others || 0) + (unreadable || 0);
   const more = others > 0 ? ' ' + (others === 1 ? '1 more is' : others + ' more are') + ' of other projects; the limit of ' + limit + ' is for the whole device.' : '';
-  if (entries.length === 0) return 'There are no snapshots yet. Take one before a large change; the tool also takes one by itself before it clears the building, the schedule or the whole project, and before an import replaces it. This device keeps up to ' + limit + '.' + more;
+  const broken = unreadable > 0 ? ' ' + (unreadable === 1 ? '1 cannot be read' : unreadable + ' cannot be read') + ' and is listed under Cannot be read.' : '';
+  if (entries.length === 0 && apart >= limit) return 'There are no snapshots of this project, and this device is full: it keeps ' + apart + ' snapshots, the most it keeps, none of them of this project, so taking one will be refused. Delete one you no longer need first (export it first to keep it as a file).' + broken;
+  if (entries.length === 0) return 'There are no snapshots yet. Take one before a large change; the tool also takes one by itself before it clears the building, the schedule or the whole project, and before an import replaces it. This device keeps up to ' + limit + '.' + more + broken;
   const total = entries.reduce((sum, entry) => sum + (Number.isFinite(entry.bytes) ? entry.bytes : 0), 0);
-  const most = entries.length + (others || 0) >= limit ? ' That is the most this device keeps: delete one to take another.' : ' This device keeps up to ' + limit + '.';
-  return 'There ' + (entries.length === 1 ? 'is ' : 'are ') + count(entries.length, 'snapshot') + ', ' + formatBytes(total) + ' in all.' + most + more;
+  const most = entries.length + apart >= limit ? ' That is the most this device keeps: delete one to take another.' : ' This device keeps up to ' + limit + '.';
+  return 'There ' + (entries.length === 1 ? 'is ' : 'are ') + count(entries.length, 'snapshot') + ', ' + formatBytes(total) + ' in all.' + most + more + broken;
 }
 
 export function snapshotsCard(ctx) {
@@ -61,14 +64,19 @@ export function snapshotsCard(ctx) {
     h('label', { class: 'field__label', for: nameId }, 'Name'),
     h('div', { class: 'snap__take-row' }, input, takeButton));
   const lead = h('p', { class: 'card__lead' }, 'A snapshot is a copy of the project that stays on this device, under the name you give it, until you delete it. Restoring one takes a recovery point of the project first, and Undo puts the project back. Traced images are kept once, however many snapshots name them.');
-  const status = h('p', { data: { line: 'snapshots' } });
+  const statusId = uid('snap-status');
+  const status = h('p', { id: statusId, data: { line: 'snapshots' } });
   const result = h('div', { data: { line: 'result' }, hidden: true });
   const listEl = h('ul', { class: 'snap__list', 'aria-label': 'Snapshots, newest first', hidden: true });
   // Snapshots of projects that are no longer on this device (21.4): Export, Restore as a project, Delete
   const goneList = h('ul', { class: 'snap__list', 'aria-label': 'Snapshots of projects no longer on this device, newest first' });
   const goneTitle = h('summary', { data: { line: 'gone-title' } });
   const gone = h('details', { class: 'snap__gone', data: { disclosure: 'gone-snapshots' }, hidden: true }, goneTitle, goneList);
-  const element = card({ id: 'snapshots', title: 'Snapshots' }, lead, form, result, status, listEl, gone);
+  // Snapshots that cannot be read, or whose project cannot be told: Export (as stored) and Delete only
+  const brokenList = h('ul', { class: 'snap__list', 'aria-label': 'Snapshots that cannot be read, newest first' });
+  const brokenTitle = h('summary', { data: { line: 'broken-title' } });
+  const broken = h('details', { class: 'snap__gone', data: { disclosure: 'unreadable-snapshots' }, hidden: true }, brokenTitle, brokenList);
+  const element = card({ id: 'snapshots', title: 'Snapshots' }, lead, form, result, status, listEl, gone, broken);
 
   // What the card is doing, kept across a redraw.
   let renaming = null; // the id of the snapshot whose name is being edited
@@ -76,6 +84,11 @@ export function snapshotsCard(ctx) {
   let drawn = 0;
   let entries = [];
   let others = []; // the readable ones of other projects, kept apart from the open project's
+  let unreadable = []; // the ones that cannot be read
+  // snapshots a press has found to be of another project than the card thought: id -> { kind: 'held' | 'other', held }
+  // They stay listed with the button that fits, until the card is drawn for another project.
+  const pinned = new Map();
+  let takeReason = ''; // why Take is marked off, or ''
 
   // `parts`: text and nodes (a name is a <bdi>, never spliced into the text)
   function say(kind, ...parts) {
@@ -116,6 +129,17 @@ export function snapshotsCard(ctx) {
     });
   });
 
+  // A press found the snapshot to be of another project: the card is drawn again with that
+  // row offering the button that fits (Open <label>, or Restore as a project), the focus on it.
+  function pin(entry, kind, held) {
+    pinned.set(entry.id, { kind, held: held || null });
+    focusAfter = { id: entry.id, action: kind === 'held' ? 'open-project' : 'restore-as-project' };
+    return draw();
+  }
+
+  // the row's button after a redraw (the one pressed is gone with the old row)
+  const openerOf = (entry) => element.querySelector('[data-snapshot="' + CSS.escape(entry.id) + '"] [data-action="open-project"]');
+
   async function restore(entry, opener) {
     try {
       const done = await snapshots.restore(entry.id);
@@ -128,12 +152,28 @@ export function snapshotsCard(ctx) {
     } catch (error) {
       if (error && error.code === 'held' && error.held) {
         say('refused', 'The snapshot ', quoted(entry.name), ' was not restored. ' + messageOf(error));
-        const outcome = await refuseHeld(ctx, { what: 'snapshot', held: error.held, opener, keep: () => keepAsProject(entry) });
+        await pin(entry, 'held', error.held);
+        const outcome = await refuseHeld(ctx, { what: 'snapshot', held: error.held, opener: openerOf(entry) || opener, keep: () => keepAsProject(entry) });
         if (outcome.text !== '') say('refused', 'The snapshot ', quoted(entry.name), ' was not restored, and nothing has changed. ' + outcome.text);
+        focusAfter = { id: entry.id, action: 'open-project' };
+        await draw();
         return;
       }
       say('refused', 'The snapshot ', quoted(entry.name), ' was not restored. ' + messageOf(error));
+      if (error && error.code === 'other-project') await pin(entry, 'other');
     }
+  }
+
+  // Open the kept project this snapshot is a copy of (the page reloads into it).
+  async function openHeld(entry, held) {
+    let answer;
+    try {
+      answer = await ctx.storage.projects.open(held.id);
+    } catch (error) {
+      say('refused', 'The snapshot ', quoted(entry.name), ' was not restored, and nothing has changed. ' + messageOf(error));
+      return;
+    }
+    if (answer && answer.ok === false) say('refused', 'The snapshot ', quoted(entry.name), ' was not restored, and nothing has changed. ' + answer.text);
   }
 
   // "Keep it as another project": the snapshot as a project file, read the way a
@@ -160,18 +200,22 @@ export function snapshotsCard(ctx) {
     }
     if (answer.code === 'held') {
       say('refused', 'The snapshot ', quoted(entry.name), ' was not restored. ' + answer.text);
-      const outcome = await refuseHeld(ctx, { what: 'snapshot', held: { id: answer.id, label: answer.label }, opener, keep: () => keepAsProject(entry) });
+      const held = { id: answer.id, label: answer.label };
+      await pin(entry, 'held', held);
+      const outcome = await refuseHeld(ctx, { what: 'snapshot', held, opener: openerOf(entry) || opener, keep: () => keepAsProject(entry) });
       if (outcome.text !== '') say('refused', 'The snapshot ', quoted(entry.name), ' was not restored, and nothing has changed. ' + outcome.text);
+      focusAfter = { id: entry.id, action: 'open-project' };
+      await draw();
       return;
     }
     say('refused', 'The snapshot ', quoted(entry.name), ' was not restored as a project, and nothing has changed. ' + answer.text);
   }
 
-  async function save(entry) {
+  async function save(entry, asStored) {
     try {
-      const file = await snapshots.exportFile(entry.id);
+      const file = await (asStored ? snapshots.exportRaw(entry.id) : snapshots.exportFile(entry.id));
       download(file.fileName, file.text);
-      say('done', 'Saved the snapshot ', quoted(file.name), ' as ', quoted(file.fileName), ' to your downloads. It is a project file: import it under Project file.');
+      say('done', 'Saved the snapshot ', quoted(file.name === '' ? entry.name : file.name), ' as ', quoted(file.fileName), ' to your downloads.' + (asStored ? ' It is the record as it is stored, not a project file: it cannot be imported.' : ' It is a project file: import it under Project file.'));
     } catch (error) {
       say('refused', 'The snapshot ', quoted(entry.name), ' was not exported. ' + messageOf(error));
     }
@@ -188,7 +232,7 @@ export function snapshotsCard(ctx) {
     });
     if (!ok) return;
     // the row's own list: the open project's, or those of projects no longer here
-    const among = entries.some((each) => each.id === entry.id) ? entries : others;
+    const among = [entries, others, unreadable].find((list) => list.some((each) => each.id === entry.id)) || entries;
     const at = among.findIndex((each) => each.id === entry.id);
     try {
       await snapshots.remove(entry.id);
@@ -202,11 +246,17 @@ export function snapshotsCard(ctx) {
   }
 
   // A button that does nothing but say why while it is marked off: `off` is
-  // that sentence (text, or a list of text and nodes), or null. (aria-disabled
-  // keeps it in the tab order, so it has to stop the click itself.)
-  function button(label, action, aria, run, off) {
-    const el = h('button', { type: 'button', class: 'btn', 'aria-label': aria, data: { action } }, label);
-    if (off) el.setAttribute('aria-disabled', 'true');
+  // that sentence (text, or a list of text and nodes), or null. aria-disabled
+  // keeps it in the tab order, so it has to stop the click itself; and it is
+  // described by the reason (`reasonId`, a visually hidden line in its row).
+  // Its name begins with the words it shows (WCAG 2.5.3) and ends with whose it is.
+  const nameOf = (visible, whose) => visible + (/ /.test(visible) ? ', ' : ' ') + whose;
+  function button(label, action, whose, run, off, reasonId) {
+    const el = h('button', { type: 'button', class: 'btn', 'aria-label': nameOf(label, whose), data: { action } }, label);
+    if (off) {
+      el.setAttribute('aria-disabled', 'true');
+      el.setAttribute('aria-describedby', reasonId);
+    }
     el.addEventListener('click', () => {
       if (off) say('refused', off);
       else run(el);
@@ -269,7 +319,10 @@ export function snapshotsCard(ctx) {
     draw();
   }
 
-  function row(entry, now, format, away) {
+  // `kind`: 'mine' (the open project's), 'gone' (a project no longer on this device), 'other'
+  // (a press found it is of another project that is not kept: Restore as a project), 'held'
+  // (a press found it is a copy of a kept project: Open <label>) or 'broken' (cannot be read).
+  function row(entry, now, format, kind, held) {
     const when = whenWords(entry.takenAt, now, format);
     const off = readOnly();
     const about = [
@@ -277,22 +330,42 @@ export function snapshotsCard(ctx) {
       entry.readable ? summaryWords(entry.summary) : 'This one cannot be read',
       entry.bytes === null ? null : formatBytes(entry.bytes),
     ].filter(Boolean).join(' · ');
-    // a snapshot of a project that is not on this device says whose it is (a typed name, as text)
-    const elsewhere = away
+    // a snapshot of another project says whose it is (a typed name, as text)
+    const elsewhere = kind === 'gone' || kind === 'other' || kind === 'held'
       ? h('p', { class: 'snap__other', data: { line: 'of-project' } }, 'Of ', named(entry.label === '' ? 'a project with no name' : entry.label))
       : null;
     const head = renaming === entry.id ? renameField(entry) : h('p', { class: 'snap__name' }, named(entry.name));
-    const label = 'the snapshot ' + entry.name;
-    const unreadable = entry.readable ? null : ['The snapshot ', quoted(entry.name), ' cannot be read, so it can only be deleted.'];
-    const buttons = away ? h('div', { class: 'card__buttons snap__buttons' },
-      button('Export', 'export', 'Export ' + label, () => save(entry), unreadable),
-      button('Restore as a project', 'restore-as-project', 'Restore ' + label + ' as a project', (el) => once(() => restoreAsProject(entry, el)), off ? READ_ONLY_SENTENCE : unreadable),
-      button('Delete', 'delete', 'Delete ' + label, (el) => once(() => remove(entry, el)), off ? READ_ONLY_SENTENCE : null))
-      : h('div', { class: 'card__buttons snap__buttons' },
-      button('Restore', 'restore', 'Restore ' + label, (el) => once(() => restore(entry, el)), off ? READ_ONLY_SENTENCE : unreadable),
-      button('Rename', 'rename', 'Rename ' + label, () => startRename(entry), off ? READ_ONLY_SENTENCE : null),
-      button('Export', 'export', 'Export ' + label, () => save(entry), unreadable),
-      button('Delete', 'delete', 'Delete ' + label, (el) => once(() => remove(entry, el)), off ? READ_ONLY_SENTENCE : null));
+    const whose = 'the snapshot ' + entry.name;
+    const reasonId = uid('snap-reason');
+    const reason = h('span', { class: 'vh', id: reasonId }, off ? READ_ONLY_SENTENCE : '');
+    const off2 = off ? READ_ONLY_SENTENCE : null;
+    let list;
+    if (kind === 'broken') {
+      list = [
+        button('Export', 'export', whose, () => save(entry, true), null, reasonId),
+        button('Delete', 'delete', whose, (el) => once(() => remove(entry, el)), off2, reasonId),
+      ];
+    } else if (kind === 'gone' || kind === 'other') {
+      list = [
+        button('Export', 'export', whose, () => save(entry), null, reasonId),
+        button('Restore as a project', 'restore-as-project', whose, (el) => once(() => restoreAsProject(entry, el)), off2, reasonId),
+        button('Delete', 'delete', whose, (el) => once(() => remove(entry, el)), off2, reasonId),
+      ];
+    } else if (kind === 'held') {
+      list = [
+        button('Open ' + held.label, 'open-project', whose, () => once(() => openHeld(entry, held)), off2, reasonId),
+        button('Export', 'export', whose, () => save(entry), null, reasonId),
+        button('Delete', 'delete', whose, (el) => once(() => remove(entry, el)), off2, reasonId),
+      ];
+    } else {
+      list = [
+        button('Restore', 'restore', whose, (el) => once(() => restore(entry, el)), off2, reasonId),
+        button('Rename', 'rename', whose, () => startRename(entry), off2, reasonId),
+        button('Export', 'export', whose, () => save(entry), null, reasonId),
+        button('Delete', 'delete', whose, (el) => once(() => remove(entry, el)), off2, reasonId),
+      ];
+    }
+    const buttons = h('div', { class: 'card__buttons snap__buttons' }, ...list, off ? reason : null);
     return h('li', { class: 'snap__item', data: { snapshot: entry.id } }, head, h('p', { class: 'snap__about' }, about), elsewhere, buttons);
   }
 
@@ -336,12 +409,21 @@ export function snapshotsCard(ctx) {
       failed = 'Snapshots are not open on this page.';
     }
     if (mine !== drawn) return; // a later draw has the newer list
-    // the open project's (and any that cannot be read, which can only be deleted) are the list;
-    // the rest are counted, and those of projects no longer on this device are listed apart
+    // the open project's are the list (a snapshot with no project id is from before projects had
+    // ids, so it is the open project's); a press may have found one to be of another project, and
+    // that one stays listed with the button that fits. One that cannot be read is listed apart
+    // (Cannot be read), and the rest are counted, those of projects no longer here listed apart.
     const openId = ctx.store.project.id;
-    const isMine = (entry) => kept === null || !entry.readable || entry.projectId === null || entry.projectId === openId;
-    entries = found.filter(isMine);
-    const elsewhere = found.filter((entry) => !isMine(entry));
+    for (const [id, as] of Array.from(pinned)) {
+      const there = found.find((entry) => entry.id === id && entry.readable);
+      // a press's finding is dropped when the snapshot is gone, or the shelf no longer says it
+      if (!there || (kept !== null && (as.kind === 'held' ? !kept.has(as.held.id) : kept.has(there.projectId)))) pinned.delete(id);
+    }
+    unreadable = found.filter((entry) => !entry.readable);
+    const readable = found.filter((entry) => entry.readable);
+    const isMine = (entry) => pinned.has(entry.id) || kept === null || entry.projectId === null || entry.projectId === openId;
+    entries = readable.filter(isMine);
+    const elsewhere = readable.filter((entry) => !isMine(entry));
     others = elsewhere.filter((entry) => !kept.has(entry.projectId));
     const now = ctx.clock();
     const format = ctx.store.project.settings.timeFormat;
@@ -349,18 +431,32 @@ export function snapshotsCard(ctx) {
     element.dataset.total = String(found.length);
     element.dataset.others = String(elsewhere.length);
     element.dataset.gone = String(others.length);
+    element.dataset.unreadable = String(unreadable.length);
     element.dataset.state = failed ? 'failed' : 'ready';
     const full = found.length >= SNAPSHOT_LIMIT;
     element.dataset.full = String(full);
-    status.textContent = failed ? 'Snapshots cannot be kept here: ' + failed : countSentence(entries, SNAPSHOT_LIMIT, elsewhere.length) + (readOnly() ? ' ' + READ_ONLY_SENTENCE : '');
-    if (readOnly() || failed) takeButton.setAttribute('aria-disabled', 'true');
-    else takeButton.removeAttribute('aria-disabled');
+    status.textContent = failed ? 'Snapshots cannot be kept here: ' + failed : countSentence(entries, SNAPSHOT_LIMIT, elsewhere.length, unreadable.length) + (readOnly() ? ' ' + READ_ONLY_SENTENCE : '');
+    // marked off (and still focusable) when this tab is read-only, snapshots cannot be kept here, or the device is full
+    takeReason = readOnly() ? READ_ONLY_SENTENCE : failed ? status.textContent : full ? fullSentence(SNAPSHOT_LIMIT, found.length) : '';
+    if (takeReason !== '') {
+      takeButton.setAttribute('aria-disabled', 'true');
+      takeButton.setAttribute('aria-describedby', statusId);
+    } else {
+      takeButton.removeAttribute('aria-disabled');
+      takeButton.removeAttribute('aria-describedby');
+    }
     listEl.hidden = entries.length === 0;
     if (renaming !== null && !entries.some((entry) => entry.id === renaming)) renaming = null;
-    listEl.replaceChildren(...entries.map((entry) => row(entry, now, format, false)));
+    listEl.replaceChildren(...entries.map((entry) => {
+      const as = pinned.get(entry.id);
+      return row(entry, now, format, as ? as.kind : 'mine', as ? as.held : null);
+    }));
     gone.hidden = others.length === 0;
     goneTitle.textContent = 'Of projects no longer on this device (' + others.length + ')';
-    goneList.replaceChildren(...others.map((entry) => row(entry, now, format, true)));
+    goneList.replaceChildren(...others.map((entry) => row(entry, now, format, 'gone')));
+    broken.hidden = unreadable.length === 0;
+    brokenTitle.textContent = 'Cannot be read (' + unreadable.length + ')';
+    brokenList.replaceChildren(...unreadable.map((entry) => row(entry, now, format, 'broken')));
     delete element.dataset.pending;
     placeFocus();
   }
@@ -368,7 +464,7 @@ export function snapshotsCard(ctx) {
   takeButton.addEventListener('click', (event) => {
     if (takeButton.getAttribute('aria-disabled') !== 'true') return;
     event.preventDefault();
-    say('refused', readOnly() ? READ_ONLY_SENTENCE : status.textContent);
+    say('refused', takeReason);
   });
 
   let shown = false;

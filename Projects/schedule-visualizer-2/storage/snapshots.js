@@ -467,28 +467,41 @@ export function startSnapshots(ctx, options) {
     return { record, project: read.project, notes: read.notes, images: have };
   }
 
+  // One project, one place (21.1): who keeps `projectId` on the shelf, asked of the
+  // session just now. A page whose session cannot answer refuses (fail closed).
+  async function keptBy(projectId) {
+    const projects = storage() && storage().projects;
+    if (!projects || typeof projects.holds !== 'function') throw new SnapshotError('This device could not be asked which projects it keeps, so the snapshot was not restored. Nothing was replaced.', 'refused');
+    return projects.holds(projectId);
+  }
+
+  async function oneHome(project) {
+    if (project.id === ctx.store.project.id) return;
+    const label = await keptBy(project.id);
+    if (label === null) throw new SnapshotError('This snapshot is of another project, which is not the open one and is not kept on this device. Use Restore as a project: it keeps the open project and opens this one. Nothing was replaced.', 'other-project');
+    const error = new SnapshotError('This snapshot is a copy of ' + label + ', which is also kept on this device. Open ' + label + ' first, or keep it as another project. Nothing was replaced.', 'held');
+    error.held = { id: project.id, label };
+    throw error;
+  }
+
   // Put a snapshot's project in place of the one on screen: a recovery point
   // of the present first, then one undo step. Resolves with { name, notes,
   // recoveryPoint } (recoveryPoint: whether the device kept one).
   async function restore(id) {
     editable();
     const opened = await open(id);
-    // one project, one place (21.1): a snapshot of a project kept on the shelf is not
-    // put over the open one, and this is asked before any image is put back or a
-    // recovery point taken. The refusal carries who holds it.
-    if (opened.project.id !== ctx.store.project.id) {
-      const label = await storage().projects.holds(opened.project.id);
-      if (label === null) throw new SnapshotError('This snapshot is of another project, which is not the open one and is not kept on this device. Use Restore as a project: it keeps the open project and opens this one. Nothing was replaced.', 'other-project');
-      if (label !== null) {
-        const error = new SnapshotError('This snapshot is a copy of ' + label + ', which is also kept on this device. Open ' + label + ' first, or keep it as another project. Nothing was replaced.', 'held');
-        error.held = { id: opened.project.id, label };
-        throw error;
-      }
-    }
+    // a snapshot from before projects had ids is of the project that was open then:
+    // it is put over the open one under that one's id (read once, here)
+    const own = opened.record.project;
+    if (typeof own.id !== 'string' || own.id === '') opened.project = { ...opened.project, id: ctx.store.project.id };
+    // asked before any image is put back or a recovery point taken, and once more
+    // just before the replacement (the shelf may change while the images are put back)
+    await oneHome(opened.project);
     for (const imageId of opened.images) {
       const value = await storage().getImage(imageId);
       if (value) await storage().putImage(imageId, value);
     }
+    await oneHome(opened.project);
     // null when the device could not keep it (no recovery database, no room):
     // the restore goes on, Undo still brings the present back, and the card says so
     const point = await storage().takeRecoveryPoint('restore');
@@ -523,6 +536,15 @@ export function startSnapshots(ctx, options) {
     return { fileName: snapshotFileName(opened.project, opened.record.takenAt, ctx.clock()), text: writeProjectFile(opened.project, { images }), name: opened.record.name };
   }
 
+  // A snapshot as it is stored, readable or not: { fileName, text, name }. Not a project
+  // file: the record's own JSON, so what is wrong with it can be looked at or sent on.
+  async function exportRaw(id) {
+    const record = await readSnapshot(await main(), id);
+    if (!record) throw new SnapshotError('That snapshot is no longer on this device.', 'missing');
+    const safe = String(id).replace(/[^A-Za-z0-9_-]/g, '_');
+    return { fileName: 'snapshot-as-stored-' + safe + '.json', text: JSON.stringify(record, null, 2), name: isObject(record) && typeof record.name === 'string' ? record.name : '' };
+  }
+
   const snapshots = {
     limit: SNAPSHOT_LIMIT,
     get count() {
@@ -540,6 +562,7 @@ export function startSnapshots(ctx, options) {
     rename,
     remove,
     exportFile,
+    exportRaw,
   };
   active = snapshots;
   return snapshots;
