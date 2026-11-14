@@ -52,10 +52,14 @@ before(async () => {
   wide = await openPlanner({ browser, server, width: 1280, height: 800, hash: '#scenarios', theme: 'light' });
 });
 
+// a close that does not come back is given up on after 10 s: a failed case may leave a page
+// the browser cannot close, and the file must end (and say it failed) rather than hang
+const quickly = (work) => Promise.race([Promise.resolve(work).catch(() => {}), new Promise((resolve) => setTimeout(resolve, 10000).unref())]);
+
 after(async () => {
-  for (const each of [wide, phone, landscape]) if (each) await each.close();
-  if (browser) await browser.close();
-  if (server) await server.close();
+  for (const each of [wide, phone, landscape]) if (each) await quickly(each.close());
+  if (browser) await quickly(browser.close());
+  if (server) await quickly(server.close());
   fs.rmSync(SCRATCH, { recursive: true, force: true });
 });
 
