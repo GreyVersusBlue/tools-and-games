@@ -178,6 +178,7 @@ export const GROUPS = {
     'browser/sample-whole.mjs', // SV2-87b
     'browser/import.mjs', // SV2-13
     'browser/project-file.mjs', // SV2-13
+    'browser/merge-import.mjs', // SV2-120
     'browser/worker.mjs', // SV2-16
     'browser/lanes-kept.mjs', // SV2-121
     'browser/print.mjs', // SV2-14

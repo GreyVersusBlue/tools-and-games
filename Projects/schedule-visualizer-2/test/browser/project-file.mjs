@@ -98,7 +98,7 @@ after(async () => {
 test('the Project file card is on the Project page, after Saved on this device', async () => {
   assert.deepEqual(await page.$$eval('.page > .card .card__title', (all) => all.map((el) => el.textContent).slice(0, 4)), ['Projects on this device', 'Saved on this device', 'Project file', 'Snapshots']);
   assert.deepEqual(await page.$$eval('#project-file .card__buttons > .btn', (all) => all.map((el) => el.textContent)),
-    ['Export the project', 'Import a project file…', 'Export the building', 'Import a building file…', 'Export the schedule', 'Import a schedule file…']);
+    ['Export the project', 'Import a project file…', 'Export the building', 'Import a building file…', 'Export the schedule', 'Import a schedule file…', 'Import part of a project file…']);
   assert.equal(await page.$eval('#project-file [data-action="import-schedule"]', (el) => el.getAttribute('href')), '#schedule/import');
   assert.equal(await result(), null);
 });

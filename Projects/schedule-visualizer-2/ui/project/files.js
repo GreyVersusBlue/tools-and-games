@@ -20,6 +20,7 @@ import { readProjectFile, readBuildingFile } from '../../engine/project-file.js'
 import { replaceProject, importBuilding } from '../../engine/actions.js';
 import { CURRENT_VERSION } from '../../engine/schema.js';
 import { pageSnapshots } from '../../storage/snapshots.js';
+import { mergeImport } from './merge.js';
 
 // Hand a file to the browser to save.
 function download(fileName, mime, text) {
@@ -121,12 +122,14 @@ export function filesCard(ctx) {
   const lead = h('p', { class: 'card__lead' }, 'A project file is the whole project in one file: the settings, the building with its traced images, the teachers, the groups and their schedule, the scenarios and the accepted findings. Export one to keep somewhere safe or to hand to a colleague.');
   const result = h('div', { data: { line: 'result' }, hidden: true });
 
-  function say(kind, text, notes) {
+  // `undo`, when given, is { run }: the line then keeps an Undo button beside the sentence.
+  function say(kind, text, notes, undo) {
     said = { kind, text, notes: notes || [] };
     result.hidden = false;
     result.dataset.result = kind;
     result.replaceChildren(
-      h('p', { role: kind === 'refused' ? 'alert' : 'status' }, text),
+      h('p', { role: kind === 'refused' ? 'alert' : 'status' }, text,
+        undo ? [' ', h('button', { type: 'button', class: 'btn', data: { action: 'undo-part' }, on: { click: undo.run } }, 'Undo')] : null),
       said.notes.length > 0 ? h('ul', null, said.notes.map((note) => h('li', null, note))) : '');
   }
 
@@ -151,9 +154,10 @@ export function filesCard(ctx) {
   }
 
   // Whether a snapshot can be taken before an import: { room, name }.
-  async function snapshotPlan(fileName) {
+  // `name` is the snapshot's own name when the caller has one (a part brought in).
+  async function snapshotPlan(fileName, name) {
     const snapshots = pageSnapshots();
-    return { snapshots, room: snapshots ? await snapshots.room() : null, name: 'Before importing ' + fileName };
+    return { snapshots, room: snapshots ? await snapshots.room() : null, name: name || 'Before importing ' + fileName };
   }
 
   // Take the snapshot the question promised. Null when it was taken or none
@@ -318,6 +322,8 @@ export function filesCard(ctx) {
     return [opener, input];
   }
 
+  const importPartFile = mergeImport({ ctx, say, snapshotPlan, takeSnapshot, recoveryPoint, safetyLine: importSafetyLine });
+
   const exporter = (kind, label) => h('button', { type: 'button', class: 'btn', data: { action: 'export-' + kind }, on: { click: () => save(kind) } }, label);
 
   const element = card({ id: 'project-file', title: 'Project file' },
@@ -328,6 +334,8 @@ export function filesCard(ctx) {
     h('div', { class: 'card__buttons' }, exporter('building', 'Export the building'), chooser('building', 'Import a building file…', importBuildingFile)),
     h('p', null, 'The schedule alone: subjects, teachers, groups, day types and bell times. Importing one adds to the schedule here, and asks about groups whose names are already here; that is on the Schedule section\'s Import tab.'),
     h('div', { class: 'card__buttons' }, exporter('schedule', 'Export the schedule'), h('a', { class: 'btn', href: '#schedule/import', data: { action: 'import-schedule' } }, 'Import a schedule file…')),
+    h('p', null, 'Bring in only the building, only the schedule or only the settings from another project file. The rest of this project stays as it is.'),
+    h('div', { class: 'card__buttons' }, chooser('part', 'Import part of a project file…', importPartFile)),
     h('p', { class: 'card__small' }, 'A file is checked in full before anything changes. One made by a newer Schedule Visualizer 2 is refused whole, and one that is damaged changes nothing.'),
   );
 
