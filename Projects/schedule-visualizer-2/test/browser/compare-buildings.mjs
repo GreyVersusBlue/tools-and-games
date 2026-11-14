@@ -34,7 +34,8 @@ import { openPlanner, go, launch, startServer, waitForSection, TOOL_DIR } from '
 const { plainSchool, clone, group } = await import(pathToFileURL(path.join(TOOL_DIR, 'test', 'engine', 'helpers.mjs')).href);
 const { writeProjectFile } = await import(pathToFileURL(path.join(TOOL_DIR, 'engine', 'project-file.js')).href);
 
-const SCRATCH = path.join(TOOL_DIR, 'test', '.scratch', 'compare-buildings');
+// a folder of this run's own: two runs of this file at once never take each other's files away
+const SCRATCH = path.join(TOOL_DIR, 'test', '.scratch', 'compare-buildings-' + process.pid);
 const HOSTILE = '<img src=x onerror="window.__hit=1">&amp; "Plan"';
 const DAY_A = 'dsample00a';
 
