@@ -20,6 +20,11 @@
 }
 
 .scn-panel[hidden],
+.scn-others[hidden],
+.scn-open__title[hidden],
+.scn-open__full[hidden],
+.scn-others__full[hidden],
+.scn-compare__with[hidden],
 .scn-bar__buttons[hidden],
 .scn-open[hidden],
 .scn-start[hidden],
@@ -281,6 +286,91 @@
     min-width: 44px;
     min-height: 44px;
   }
+}
+
+/* ---------- Other scenarios, and keeping the open one (SV2-122) ---------- */
+
+/* A list of rows, never a scroller: the name and its count on a line, the
+   messages under it, and the four buttons wrapping under those. */
+.scn-others {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.scn-others__list {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scn-other {
+  display: grid;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--paper);
+}
+
+.scn-other__line,
+.scn-other__message,
+.scn-others__status,
+.scn-others__full,
+.scn-open__full {
+  margin: 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}
+
+.scn-other__line {
+  font-weight: 600;
+}
+
+.scn-other__message,
+.scn-others__full,
+.scn-open__full {
+  color: var(--ink-2);
+}
+
+.scn-others__status:empty {
+  display: none;
+}
+
+.scn-other__buttons,
+.scn-open__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.scn-open__title {
+  overflow-wrap: anywhere;
+}
+
+.scn-open__title:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.scn-others__title:focus,
+#scenario-others-title:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* a long kept name in the Before column's heading wraps rather than widens it */
+.scn-figures__before {
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+.scn-other__button[aria-disabled="true"],
+.scn-open__actions .btn[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* ---------- Beside the map, on a wide window ---------- */
