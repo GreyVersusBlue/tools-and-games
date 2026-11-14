@@ -12,8 +12,21 @@
 //   subscribe(fn)              fn(state, what) after anything here changes
 //   takeRecoveryPoint(reason)  before anything that replaces the whole
 //                              project; resolves when the point is kept
-//   listRecoveryPoints()       newest first
-//   restoreRecoveryPoint(key), exportRecoveryPoint(key), deleteRecoveryPoint(key)
+//   listRecoveryPoints()       newest first: [{ key, projectId, label, takenAt, reason,
+//                              summary, bytes, readable }]. `projectId` is the project the
+//                              point is of ('' when it says none); `label` is that project's
+//                              label, else its school name, else '' (so a list can say whose
+//                              each point is and offer Restore, Open or Restore as a project).
+//   restoreRecoveryPoint(key)  -> true when the project was restored, false otherwise (a
+//                              toast says why). restoreRecoveryPointResult(key) is the same
+//                              with the reason: { ok: true } or { ok: false, code, text,
+//                              id?, label?, action? }; codes 'switching', 'read-only',
+//                              'no-such-point', 'unreadable', 'held' (the point is of a
+//                              project kept on the shelf: Open it), 'other-project' (neither
+//                              open nor kept: projects.restoreAsProject({ point: key })) and
+//                              'refused' (the store did not take it). A point is only ever
+//                              applied over the project it is of.
+//   exportRecoveryPoint(key), deleteRecoveryPoint(key)
 //   exportProject()            download the project file now
 //   noteExported()             a project file was just written (the Saved
 //                              card shows when)
@@ -27,7 +40,8 @@
 //                                   bytes, summary }]  the open project first, then the
 //                                   rest, most recently put aside first. A shelved
 //                                   project that cannot be read has `unreadable: true`
-//                                   and `exportRaw()` (its record as a file): offer
+//                                   and `exportRaw()` (the whole record as a file, its
+//                                   pictures as base64, whatever is wrong with it): offer
 //                                   that and remove(id), never open(id).
 //   holds(projectId)           -> the label (label, else school name, else "Untitled
 //                                   project") of the project of that id when it is kept
@@ -44,8 +58,17 @@
 //                              kept beside it and opened; label default "<name> (copy)"
 //   rename(id, label)          a shelved project's label (not an undo step; the open
 //                              project's label is an action)
-//   remove(id)                 delete a shelved project after a recovery point of it
-//                              (pointKey, pointKept; none for a record too damaged to read)
+//   remove(id, { exported })   delete a shelved project after a recovery point of it
+//                              (pointKey, pointKept). When no point can be kept (a record too
+//                              damaged to make one of, or a device that will not write it) it is
+//                              refused (code 'unreadable' or 'no-point', with exportRaw() and
+//                              needs: 'exported') unless called with `{ exported: true }`, which
+//                              the caller passes once the person has the record as a file.
+//   exportShelved(id)          a readable shelved project as a normal project file, its pictures
+//                              inside -> { ok: true, fileName } or { ok: false, code, text }
+//                              ('switching', 'unavailable', 'is-open', 'no-such-project',
+//                              'unreadable' with exportRaw()). Reads only: allowed in a
+//                              read-only tab; refused while a switch is under way.
 //   restoreAsProject(point | snapshot)
 //                              a recovery point (its key, or { point: key }) or a
 //                              snapshot (its id, or { snapshot: id }) of a project that
@@ -71,10 +94,16 @@
 // readProject start() uses and refuse an unreadable one before anything moves;
 // set `switching`, which makes store.apply, undo, redo and autosave refuse
 // at once; let the save in flight finish; take a recovery point (reason
-// 'replace') of the very project that goes on the shelf; db.switchTo (one
-// transaction); on success write 'sv2:opened' and reload, on failure undo step 2
-// and say so. While `switching` the leaving save and leaving point are skipped:
-// the page holds the old project and would write it over the new one.
+// 'replace') of the very project that goes on the shelf (the shelf's own
+// refusals are looked at first, so a refused attempt adds no point); db.switchTo
+// (one transaction); on success write 'sv2:opened' and reload, on failure undo
+// step 2 and say so. Once switchTo has resolved the failure branch never runs
+// again: the page stays `switching`, its saves held for good, the leaving save
+// and leaving point are skipped (the page holds the old project and would write
+// it over the new one), and a reload that throws leaves a banner that asks for
+// it by hand (the answer then has `reloadFailed: true`). Before that, pagehide
+// saves as ever, the held edit included, and an answer of the tab lock that
+// comes meanwhile is applied if the switch fails.
 //
 // The module also exports takeRecoveryPoint(reason) for code that has no ctx.
 
@@ -87,7 +116,7 @@ import { newProject } from '../engine/schema.js';
 import { DEFAULT_PASSCODE } from '../engine/publish-defaults.js';
 import { writeProjectFile } from '../engine/project-file.js';
 import { exportFileName } from '../engine/exports.js';
-import { sampleSchool } from '../data/sample-school.js';
+import { sampleSchool, SAMPLE_PROJECT_ID } from '../data/sample-school.js';
 import { keepNeverShow } from '../ui/help/progress.js';
 import { openDatabases, estimateUsage, askToPersist, imageIdsOf, projectBytes, pointProjectId, hooks, RECOVERY_KEEP, ConflictError, ShelfError } from './db.js';
 import { createAutosave, SAVE_RETRY_MS } from './autosave.js';
@@ -134,6 +163,16 @@ function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+// Are two plain values the same data, to the letter? (JSON-shaped values; key order does not matter.)
+function sameJson(a, b) {
+  if (a === b) return true;
+  if (typeof a !== typeof b || a === null || b === null || typeof a !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) return a.length === b.length && a.every((value, index) => sameJson(value, b[index]));
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => Object.prototype.hasOwnProperty.call(b, key) && sameJson(a[key], b[key]));
+}
+
 // What a project goes by in a sentence: its label, else the school's name.
 export function projectTitle(project) {
   const label = isObject(project) && typeof project.label === 'string' ? project.label.trim() : '';
@@ -171,6 +210,11 @@ async function blobToBase64(blob) {
   let text = '';
   for (let at = 0; at < bytes.length; at += 0x8000) text += String.fromCharCode.apply(null, bytes.subarray(at, at + 0x8000));
   return btoa(text);
+}
+
+// The type of a stored picture: the record's own word for it, else its blob's.
+function pictureType(value, blob) {
+  return isObject(value) && typeof value.type === 'string' && value.type !== '' ? value.type : blob.type;
 }
 
 function base64ToBlob(data, type) {
@@ -244,6 +288,9 @@ export function startStorage(ctx, options) {
   let recoveryWarned = false;
   let switching = false; // the same as state.switching, read synchronously by the guards
   let skipped = false; // a change autosave was not told of while switching
+  let committed = false; // db.switchTo (or shelveAndStart) has resolved: the device holds the other project now
+  let missedOwner = null; // the last answer of the tab lock while switching (true | false), or null
+  let reloadFn = opts.reload || null; // the tests may replace it (setReload)
   let recoveryTimer = null;
   let recoveryMs = opts.recoveryMs === undefined ? RECOVERY_INTERVAL_MS : opts.recoveryMs;
   let usageAt = 0;
@@ -252,8 +299,19 @@ export function startStorage(ctx, options) {
   // the same images as a recovery point carries them: imageId -> Blob
   const blobs = { get: (id) => (held.has(id) ? held.get(id).blob : undefined), has: (id) => held.has(id) };
 
+  // Every listener is told; the first one that throws has its error thrown
+  // after the rest have run (so one card's fault does not hide a change from
+  // the others, and a caller that must not be stopped by it catches it).
   function emit(what) {
-    for (const listener of Array.from(listeners)) listener(state, what);
+    let failure = null;
+    for (const listener of Array.from(listeners)) {
+      try {
+        listener(state, what);
+      } catch (error) {
+        if (failure === null) failure = { error };
+      }
+    }
+    if (failure !== null) throw failure.error;
   }
 
   const timeFormat = () => store.project.settings.timeFormat;
@@ -463,11 +521,22 @@ export function startStorage(ctx, options) {
     }, recoveryMs);
   }
 
+  // The label of a point's project, else its school name, else blank.
+  function pointLabel(point) {
+    const project = isObject(point) && isObject(point.project) ? point.project : null;
+    if (project === null) return '';
+    if (typeof project.label === 'string' && project.label.trim() !== '') return project.label.trim();
+    const school = isObject(project.settings) && typeof project.settings.schoolName === 'string' ? project.settings.schoolName.trim() : '';
+    return school;
+  }
+
   async function listPoints() {
     if (!db) return [];
     const points = await db.listPoints();
     return points.map((point) => ({
       key: point.key,
+      projectId: pointProjectId(point),
+      label: pointLabel(point),
       takenAt: point.takenAt,
       reason: point.reason,
       summary: point.summary,
@@ -500,34 +569,77 @@ export function startStorage(ctx, options) {
   }
 
   // Restore a point: the present is captured first, so this can be put back,
-  // and the restore is one undo step as well.
-  async function restorePoint(key) {
-    if (switching) return false;
+  // and the restore is one undo step as well. Resolves { ok: true } or
+  // { ok: false, code, text, ... }; codes 'switching', 'read-only', 'no-such-point',
+  // 'unreadable', 'held' (with id, label: the point is of a project kept on the
+  // shelf: open it), 'other-project' (with id, label: the point is of a project
+  // that is neither open nor kept: restoreAsProject keeps it as one) and
+  // 'refused' (the store did not take it). Every refusal after the first look
+  // says so in a toast. Nothing is applied over a project that is not the
+  // point's own, and switching and read-only are looked at again after every wait.
+  async function restorePointResult(key) {
+    if (switching) return refusal('switching', 'A project is being opened, so nothing was restored.');
     if (state.readOnly) {
       refuseReadOnly();
-      return false;
+      return refusal('read-only', READ_ONLY_PROJECTS);
     }
+    const stop = (result) => {
+      ctx.toast({ kind: 'problem', text: result.text, ...(result.action ? { action: result.action } : {}) });
+      return result;
+    };
+    // a switch begun or a lock lost during a wait: nothing is applied
+    const interrupted = () => {
+      if (switching) return stop(refusal('switching', 'A project began opening while the recovery point was being read, so nothing was restored.'));
+      if (state.readOnly) return stop(refusal('read-only', 'This tab became read-only while the recovery point was being read, so nothing was restored.'));
+      return null;
+    };
     let opened;
     try {
       opened = await openPoint(key);
     } catch (error) {
-      ctx.toast({ kind: 'problem', text: 'That recovery point was not restored. ' + messageOf(error) });
-      return false;
+      return stop(refusal(String(error.message).includes('no longer') ? 'no-such-point' : 'unreadable', 'That recovery point was not restored. ' + messageOf(error)));
     }
+    const pointId = opened.project.id;
+    const own = () => store.project.id;
+    let stopped = interrupted();
+    if (stopped) return stopped;
     // one project, one place (21.1): a point of a project kept on the shelf is
-    // not put over the open one
-    const keptAs = opened.project.id === store.project.id ? null : await holds(opened.project.id);
-    if (keptAs !== null) {
-      ctx.toast({ kind: 'problem', text: 'That recovery point is of ' + keptAs + ', which is also kept on this device. Open ' + keptAs + ' first; nothing was restored.', action: { label: 'Open ' + keptAs, run: () => projects.open(opened.project.id) } });
-      return false;
+    // not put over the open one, and neither is a point of a project that is
+    // not kept at all (it is a project of its own: restoreAsProject)
+    if (pointId !== own()) {
+      let keptAs = null;
+      try {
+        keptAs = await holds(pointId);
+      } catch (error) {
+        return stop(refusal('unreadable', 'That recovery point was not restored. ' + messageOf(error)));
+      }
+      stopped = interrupted();
+      if (stopped) return stopped;
+      if (keptAs !== null) {
+        return stop(refusal('held', 'That recovery point is of ' + keptAs + ', which is also kept on this device. Open ' + keptAs + ' first; nothing was restored.', { id: pointId, label: keptAs, heldBy: 'shelf', action: { label: 'Open ' + keptAs, run: () => projects.open(pointId) } }));
+      }
+      const title = projectTitle(opened.project);
+      return stop(refusal('other-project', 'That recovery point is of ' + title + ', which is not the open project and is not kept on this device, so it was not put over the open one. Restore it as a project of its own instead.', { id: pointId, label: title, action: { label: 'Restore as a project', run: () => projects.restoreAsProject({ point: key }) } }));
     }
     await takePoint('restore', key);
+    stopped = interrupted();
+    if (stopped) return stopped;
     await keepPointImages(opened.project, opened.images);
+    stopped = interrupted();
+    if (stopped) return stopped;
+    if (own() !== pointId) return stop(refusal('other-project', 'The open project changed while the recovery point was being read, so nothing was restored.'));
     const label = 'Restore the recovery point from ' + whenWords(opened.point.takenAt, clock(), timeFormat());
+    const before = store.project;
     store.apply(replaceProject, { project: opened.project, label });
+    if (store.project === before) return stop(refusal('refused', 'The recovery point was read, but the project did not take it, so nothing was restored.'));
     lastPointModified = store.project.modified;
     ctx.toast({ text: 'Restored the recovery point from ' + whenWords(opened.point.takenAt, clock(), timeFormat()) + '. What was here before is a recovery point now.', action: { label: 'Undo', run: ctx.undo } });
-    return true;
+    return { ok: true };
+  }
+
+  async function restorePoint(key) {
+    const result = await restorePointResult(key);
+    return result.ok === true;
   }
 
   async function exportPoint(key) {
@@ -695,7 +807,7 @@ export function startStorage(ctx, options) {
     } catch (error) { /* reload anyway */ }
   }
 
-  const reload = () => (opts.reload || (() => globalThis.location.reload()))();
+  const reload = () => (reloadFn || (() => globalThis.location.reload()))();
 
   // The other tab has gone: take up its last save and start editing.
   async function becomeEditor() {
@@ -742,7 +854,12 @@ export function startStorage(ctx, options) {
   const tabs = watchTabs({
     retryMs: opts.tabRetryMs,
     onChange(owner) {
-      if (switching) return;
+      // a switch under way is not interrupted; the last answer is kept and applied
+      // if the switch fails (the page that follows a success asks the lock afresh)
+      if (switching) {
+        missedOwner = owner;
+        return;
+      }
       if (owner) becomeEditor();
       else setReadOnly(true);
     },
@@ -789,7 +906,14 @@ export function startStorage(ctx, options) {
         { label: texts.other, value: 'other' },
         ...(newest ? [{ label: 'Restore the recovery point from ' + when, value: 'restore', kind: 'primary' }] : []),
       ],
-    }).closed.then((value) => (typeof value === 'string' && value.startsWith('shelf:') ? value : value === 'other' || !newest ? 'other' : 'restore'));
+    }).closed.then((value) => {
+      if (typeof value === 'string' && value.startsWith('shelf:')) return value;
+      if (value === 'other' || !newest) {
+        // the sample school is kept on the shelf already: starting with it opens that one
+        return others.some((entry) => entry.id === SAMPLE_PROJECT_ID) ? 'shelf:' + SAMPLE_PROJECT_ID : 'other';
+      }
+      return 'restore';
+    });
   }
 
   // Storage could not be opened or read at all. The page still works; it
@@ -810,44 +934,87 @@ export function startStorage(ctx, options) {
   // Two copies of one project (an older planner imported or restored it over
   // "current" while a newer one had it on the shelf): the shelf copy becomes a
   // recovery point of its own and the shelf key goes, so neither is overwritten
-  // and neither is lost (21.10 "Boot reconcile").
-  async function reconcileShelf(project) {
+  // and neither is lost (21.10 "Boot reconcile"). Two copies that are the same
+  // project, to the letter, need no point and no note. The note says which copy
+  // is newer (by `modified`) and where the other one went. When the point cannot
+  // be kept, a banner says so and offers both copies as files; the shelf key stays.
+  //
+  // Only the editing tab runs this (start() calls it after the read-only branch
+  // has returned): a read-only tab would race the editing tab, each adding a
+  // point and deleting the key under the other, and the editing tab may be an
+  // older planner that has no reconcile at all, in which case the next start of
+  // an editing tab does it.
+  async function reconcileShelf(project, rawProject) {
     let record;
     try {
       record = await db.readShelved(project.id);
     } catch (error) {
-      return;
+      return; // nothing was changed; the next start tries again
     }
     if (record === null || !isObject(record)) return;
+    const title = projectTitle(project);
+    const images = isObject(record.images) ? record.images : {};
+    // the same project, to the letter, with every picture it carries in the images store
+    if (isObject(record.project) && sameJson(record.project, rawProject)) {
+      try {
+        const have = new Set(await db.imageIds());
+        if (Object.keys(images).every((id) => have.has(id))) {
+          await db.deleteShelved(project.id);
+          return;
+        }
+      } catch (error) { /* keep both: the point below is taken */ }
+    }
+    const modifiedOf = (value) => (isObject(value) && typeof value.modified === 'string' ? Date.parse(value.modified) : NaN);
+    const theirs = modifiedOf(record.project);
+    const mine = modifiedOf(rawProject);
     try {
-      const images = isObject(record.images) ? record.images : {};
       const point = buildPoint(record.project, 'replace', clock().toISOString(), { get: (id) => (images[id] ? images[id].blob : undefined) });
       await db.addPoint(point, undefined, project.id);
       await db.deleteShelved(project.id);
     } catch (error) {
-      return; // the shelf copy stays where it is; the next start tries again
+      setBanner('reconcile-failed', {
+        kind: 'problem',
+        text: 'Two copies of ' + title + ' are kept on this device, and the second one could not be put in Recovery points (' + messageOf(error).replace(/\.$/, '') + '). It is still kept apart, and nothing was overwritten. Export both copies to be safe.',
+        buttons: [{ label: 'Export both copies', action: 'export-both', run: () => exportBoth(project.id) }],
+      });
+      return;
     }
-    state.reconciled = 'Two copies of ' + projectTitle(project) + ' were kept; the older one is in Recovery points.';
+    if (Number.isFinite(theirs) && Number.isFinite(mine) && theirs > mine) {
+      state.reconciled = 'Two copies of ' + title + ' were kept. The other one was edited later than the one that is open; it is in Recovery points, where it can be restored.';
+    } else if (Number.isFinite(theirs) && Number.isFinite(mine) && theirs < mine) {
+      state.reconciled = 'Two copies of ' + title + ' were kept; the older one is in Recovery points.';
+    } else {
+      state.reconciled = 'Two different copies of ' + title + ' were kept, and their times do not say which is newer. The other one is in Recovery points.';
+    }
     ctx.toast({ text: state.reconciled, duration: Infinity });
+  }
+
+  // The open project and the second copy kept apart, each as a file.
+  async function exportBoth(id) {
+    await exportProject();
+    try {
+      await exportShelvedRaw(await db.readShelved(id), id);
+    } catch (error) {
+      ctx.toast({ kind: 'problem', text: 'The second copy was not exported. ' + messageOf(error) });
+    }
   }
 
   // The saved project is missing or unreadable and the person chose a project
   // from the shelf: it becomes current, in the page, with no open project to put
-  // on the shelf. Two transactions (save it as current, then delete the shelf
-  // key); a stop between them leaves the project in both places, which
-  // reconcileShelf says and mends at the next start. True when it was opened.
+  // on the shelf. One transaction (db.promoteShelved): "current" is written, its
+  // pictures stored and the shelf key deleted together, so there is no moment
+  // when the project is in both places or in neither. True when it was opened.
   async function openShelvedAtBoot(id) {
     try {
       const record = await db.readShelved(id);
-      if (!isObject(record)) return false;
+      if (!isObject(record) || !isObject(record.project) || record.project.id !== id) throw new Error('The copy kept on this device is not readable as that project.');
       const images = isObject(record.images) ? record.images : {};
       const read = readProject(record.project, new Set(Object.keys(images)));
+      const promoted = await db.promoteShelved(id);
       for (const [imageId, value] of Object.entries(images)) held.set(imageId, value);
-      const savedAt = await db.saveProject(read.project, null, { exportedAt: typeof record.exportedAt === 'string' ? record.exportedAt : null, images: held });
-      await db.deleteShelved(id);
       show(read.project);
-      known = savedAt;
-      state.savedAt = savedAt;
+      known = promoted.savedAt;
+      state.savedAt = promoted.savedAt;
       state.exportedAt = typeof record.exportedAt === 'string' ? record.exportedAt : null;
       state.save = 'saved';
       state.opened = { id, at: clock().toISOString() };
@@ -900,7 +1067,18 @@ export function startStorage(ctx, options) {
 
     if (unreadable) await db.quarantineCurrent(raw, unreadable);
     state.quarantined = (await db.quarantined()).length;
-    if (loaded) await reconcileShelf(loaded.project);
+    if (loaded) await reconcileShelf(loaded.project, raw.project);
+
+    // with no saved project, the projects kept on this device come first
+    let shelf = [];
+    if (!loaded) {
+      try {
+        shelf = await db.listShelf();
+      } catch (error) { /* no shelf to offer */ }
+    }
+    // a point of a project that is kept on the shelf is offered as "Open <label>"
+    // there, never as a Restore that would leave the project in two places
+    const kept = new Set(shelf.filter((entry) => !entry.unreadable).map((entry) => entry.id));
 
     // the newest point that can be read, of the saved project's own id
     let newest = null;
@@ -908,8 +1086,11 @@ export function startStorage(ctx, options) {
       try {
         for (const point of await db.listPoints()) {
           if (currentId !== null && pointProjectId(point) !== currentId) continue;
+          if (!loaded && kept.has(pointProjectId(point))) continue;
           try {
-            newest = await openPoint(point.key);
+            const found = await openPoint(point.key);
+            if (!loaded && kept.has(found.project.id)) continue;
+            newest = found;
             break;
           } catch (error) { /* an unreadable point: try the one before */ }
         }
@@ -920,13 +1101,6 @@ export function startStorage(ctx, options) {
     const pointModified = newest && typeof newest.point.project.modified === 'string' ? newest.point.project.modified : '';
     const savedModified = loaded && typeof raw.project.modified === 'string' ? raw.project.modified : '';
 
-    // with no saved project, the projects kept on this device come first
-    let shelf = [];
-    if (!loaded) {
-      try {
-        shelf = await db.listShelf();
-      } catch (error) { /* no shelf to offer */ }
-    }
     let restore = false;
     let choice = null;
     if (newest && unreadable) choice = await offerPoint('unreadable', newest, undefined, shelf);
@@ -984,9 +1158,12 @@ export function startStorage(ctx, options) {
   // here in full, before the page goes; the browser finishes them. (A write
   // that reads first and puts in the callback is lost: the callback never runs.)
   globalThis.addEventListener('pagehide', () => {
-    // a switch under way: this page holds the old project, and a save of it now
-    // would land over the new "current"; the switch took its point (21.10 step 6)
-    if (switching) return;
+    // once the switch has committed: this page holds the old project, and a save of
+    // it now would land over the new "current"; the switch took its point (21.10
+    // step 6). Before that, the device still holds this project and the page may be
+    // going for good, so the leaving save and point are made as ever, the held edit
+    // included (a switch that then finds a newer save refuses and gives back).
+    if (committed) return;
     if (!db || state.readOnly || state.save === 'conflict') return;
     if (autosave.pending) {
       try {
@@ -1039,9 +1216,10 @@ export function startStorage(ctx, options) {
       : 'This is a copy of ' + label + ', which is also kept on this device. Open ' + label + ' first, or keep it as another project.';
   }
 
-  // The shelf's refusals as results.
+  // The shelf's refusals as results. `what` is what was being done, as the
+  // sentence has it: "opened", "started", "duplicated", "restored", "renamed", "deleted".
   function failed(error, what) {
-    if (error instanceof ConflictError) return refusal('conflict', 'Another tab saved this project after this tab read it, so ' + what + ' and nothing has moved. Reload this tab, then try again.');
+    if (error instanceof ConflictError) return refusal('conflict', 'Another tab saved this project after this tab read it, so the project was not ' + what + ' and nothing has moved. Reload this tab, then try again.');
     if (error instanceof ShelfError) {
       const code = error.code === 'unreadable-target' ? 'unreadable' : error.code === 'shelf-full' ? 'limit' : error.code;
       return refusal(code, messageOf(error));
@@ -1049,11 +1227,36 @@ export function startStorage(ctx, options) {
     return refusal('failed', 'The project was not ' + what + ', and nothing has moved. ' + messageOf(error));
   }
 
-  // The raw record of a shelved project as a file, whatever is wrong with it.
-  function exportShelvedRaw(record) {
-    const project = isObject(record) && record.project !== undefined ? record.project : null;
-    download(exportFileName(isObject(project) ? project : {}, 'unreadable project', 'json', clock()), 'application/json', JSON.stringify(project, null, 2));
-    return true;
+  // The raw record of a shelved project as a file, whatever is wrong with it:
+  // the whole record, its pictures as base64 (data and type, the way a project
+  // file embeds them), even when `project` is missing or is not an object.
+  async function exportShelvedRaw(record, id) {
+    try {
+      let whole = record;
+      if (isObject(record) && isObject(record.images)) {
+        const images = {};
+        for (const [id, value] of Object.entries(record.images)) {
+          const blob = value instanceof Blob ? value : (isObject(value) && value.blob instanceof Blob ? value.blob : null);
+          images[id] = blob === null ? value : { ...(isObject(value) ? value : {}), blob: undefined, data: await blobToBase64(blob), type: pictureType(value, blob) };
+        }
+        whole = { ...record, images };
+      }
+      let text;
+      try {
+        text = JSON.stringify(whole === undefined ? null : whole, null, 2);
+      } catch (error) {
+        text = String(whole);
+      }
+      const project = isObject(record) && isObject(record.project) ? record.project : {};
+      const school = isObject(project.settings) && typeof project.settings.schoolName === 'string' ? project.settings.schoolName : '';
+      // a record with no school name in it goes by its key: "Unreadable project <id> - record - <date>.json"
+      const named = school !== '' || typeof id !== 'string' || id === '';
+      download(named ? exportFileName({ settings: { schoolName: school } }, 'unreadable project', 'json', clock()) : exportFileName({ settings: { schoolName: 'Unreadable project ' + id } }, 'record', 'json', clock()), 'application/json', text === undefined ? 'null' : text);
+      return true;
+    } catch (error) {
+      ctx.toast({ kind: 'problem', text: 'That copy was not exported. ' + messageOf(error) });
+      return false;
+    }
   }
 
   // Step 1: the shelf record read the way start() reads the saved project.
@@ -1062,57 +1265,119 @@ export function startStorage(ctx, options) {
     if (record === null) return { refused: refusal('no-such-project', 'That project is no longer kept on this device.') };
     const images = isObject(record) && isObject(record.images) ? record.images : {};
     try {
-      return { record, read: readProject(isObject(record) ? record.project : undefined, new Set(Object.keys(images))) };
+      if (!isObject(record) || !isObject(record.project) || record.project.id !== id) throw new Error('The copy kept under this name is not that project.');
+      return { record, read: readProject(record.project, new Set(Object.keys(images))) };
     } catch (error) {
       return {
         refused: refusal('unreadable', 'That project cannot be read here, so it was not opened and nothing has moved. ' + messageOf(error) + ' It can still be exported as it is.', {
-          exportRaw: () => exportShelvedRaw(record),
+          exportRaw: () => exportShelvedRaw(record, id),
         }),
       };
     }
   }
 
-  // Steps 2 to 6 of 21.10. `plan` is { targetId } (a shelved project to open)
-  // or { fresh, freshImages } (a project in memory to start, the open one kept).
-  async function move(plan, openedId) {
+  // Steps 2 to 6 of 21.10. `plan` is { targetId } (a shelved project to open),
+  // { fresh, freshImages } (a project in memory to start, the open one kept) or
+  // { duplicate: { id, label } } (the open project, copied here once the saves have
+  // settled, so an edit made before the switch began reaches the copy); each with
+  // `what`, the word for a failure's sentence. `title` is what the page that follows
+  // is for, in the sentence that asks for a reload by hand.
+  //
+  // Once db.switchTo has resolved the device holds the other project and the
+  // failure branch never runs again: the page stays switching, its saves held for
+  // good, so nothing it holds can be written over the new "current".
+  async function move(plan, openedId, title) {
     // step 2: from this line no edit is made and no autosave is acted on
     switching = true;
     state.switching = true;
+    missedOwner = null;
     autosave.hold();
-    emit('switching');
+    try {
+      emit('switching');
+    } catch (error) { /* a card's fault must not strand the flag */ }
+    let savedAt;
+    let incoming = title;
     try {
       // step 3: the save in flight is let finish; then read the project
       await autosave.settle();
       const open = store.project;
+      let fresh = plan.fresh;
+      let freshImages = plan.freshImages;
+      if (plan.duplicate) {
+        // cloned here, with no wait between reading store.project and the copy
+        const now = clock().toISOString();
+        const copy = structuredClone(open);
+        copy.id = plan.duplicate.id;
+        copy.label = plan.duplicate.label !== null && plan.duplicate.label !== '' ? plan.duplicate.label : suffixed(projectTitle(open), ' (copy)');
+        copy.created = now;
+        copy.modified = now;
+        if (isObject(copy.publish)) copy.publish.lastPublishedAt = null;
+        // its images, the same ids: the images store keeps what "current" names, and
+        // the original's shelf record carries its own
+        freshImages = {};
+        for (const id of imageIdsOf(copy)) {
+          const value = held.get(id) || await db.getImage(id);
+          if (value) freshImages[id] = value;
+        }
+        fresh = copy;
+      }
+      if (fresh) incoming = projectTitle(fresh);
+      // the shelf's own refusals, before a recovery point is taken for a move that
+      // cannot happen
+      await db.precheckMove(fresh ? null : plan.targetId, open, fresh);
       // step 4: a recovery point of the very object that goes on the shelf
       await takePoint('replace', undefined, open);
       // step 5: one transaction
-      const extra = { images: held };
-      const savedAt = plan.fresh
-        ? await db.shelveAndStart(open, plan.fresh, known, { images: held, freshImages: plan.freshImages })
+      const extra = { images: held, exportedAt: state.exportedAt };
+      savedAt = fresh
+        ? await db.shelveAndStart(open, fresh, known, { ...extra, freshImages })
         : await db.switchTo(plan.targetId, open, known, extra);
-      // step 6: the page reloads into the project that is current now
-      known = savedAt;
-      db.forgetStored();
-      try {
-        globalThis.sessionStorage.setItem(OPENED_KEY, JSON.stringify({ id: openedId, at: clock().toISOString() }));
-      } catch (error) { /* the page opens all the same, without its sentence */ }
-      emit('switched');
-      reload();
-      return { ok: true, id: openedId };
     } catch (error) {
       switching = false;
       state.switching = false;
       autosave.release();
+      // an answer of the tab lock that came while the switch was under way
+      const missed = missedOwner;
+      missedOwner = null;
+      if (missed !== null && missed !== !state.readOnly) {
+        if (missed) becomeEditor();
+        else setReadOnly(true);
+      }
       if (skipped) {
         skipped = false;
-        autosave.changed();
+        if (!state.readOnly) autosave.changed();
       }
-      const result = failed(error, 'opened');
+      const result = failed(error, plan.what);
       ctx.toast({ kind: 'problem', text: result.text });
-      emit('switching');
+      try {
+        emit('switching');
+      } catch (listenerError) { /* said already */ }
       return result;
     }
+    // step 6: committed. Nothing below may undo the switch.
+    committed = true;
+    known = savedAt;
+    try {
+      db.forgetStored();
+    } catch (error) { /* the page reloads */ }
+    try {
+      globalThis.sessionStorage.setItem(OPENED_KEY, JSON.stringify({ id: openedId, at: clock().toISOString() }));
+    } catch (error) { /* the page opens all the same, without its sentence */ }
+    try {
+      emit('switched');
+    } catch (error) { /* a card's fault must not stop the reload */ }
+    try {
+      reload();
+    } catch (error) {
+      const name = incoming && incoming !== '' ? incoming : UNTITLED;
+      setBanner('reload-needed', {
+        kind: 'problem',
+        text: 'Reload the page to finish opening ' + name + '.',
+        buttons: [{ label: 'Reload this tab', action: 'reload', run: () => globalThis.location.reload() }],
+      });
+      return { ok: true, id: openedId, reloadFailed: true };
+    }
+    return { ok: true, id: openedId };
   }
 
   // The images of a project in memory as the shelf takes them.
@@ -1136,7 +1401,7 @@ export function startStorage(ctx, options) {
     const target = await readTarget(id);
     if (target.refused) return target.refused;
     if (blocked()) return blocked();
-    return move({ targetId: id }, id);
+    return move({ targetId: id, what: 'opened' }, id, projectTitle(target.read.project));
   }
 
   async function startAnother(kind, read, options) {
@@ -1188,7 +1453,7 @@ export function startStorage(ctx, options) {
       fresh = { ...fresh, label };
     }
     if (blocked()) return blocked();
-    return move({ fresh, freshImages }, fresh.id);
+    return move({ fresh, freshImages, what: 'started' }, fresh.id, projectTitle(fresh));
   }
 
   async function duplicate(options) {
@@ -1200,27 +1465,9 @@ export function startStorage(ctx, options) {
       label = cleanLabel(opts.label);
       if (label === null) return refusal('label', 'A label is at most ' + LABEL_MOST + ' characters.');
     }
-    const open = store.project;
-    const now = clock().toISOString();
-    const copy = structuredClone(open);
-    copy.id = ctx.ids('p');
-    copy.label = label !== null && label !== '' ? label : suffixed(projectTitle(open), ' (copy)');
-    copy.created = now;
-    copy.modified = now;
-    if (isObject(copy.publish)) copy.publish.lastPublishedAt = null;
-    // its images, the same ids: the images store keeps what "current" names, and
-    // the original's shelf record carries its own
-    const freshImages = {};
-    try {
-      for (const id of imageIdsOf(copy)) {
-        const value = held.get(id) || await db.getImage(id);
-        if (value) freshImages[id] = value;
-      }
-    } catch (error) {
-      return refusal('failed', 'The project was not duplicated, and nothing has moved. ' + messageOf(error));
-    }
-    if (blocked()) return blocked();
-    return move({ fresh: copy, freshImages }, copy.id);
+    // the copy itself is made inside the switch, after the saves have settled
+    const id = ctx.ids('p');
+    return move({ duplicate: { id, label }, what: 'duplicated' }, id, null);
   }
 
   async function rename(id, label) {
@@ -1238,7 +1485,7 @@ export function startStorage(ctx, options) {
     return { ok: true, label: text };
   }
 
-  async function remove(id) {
+  async function remove(id, options) {
     const no = blocked();
     if (no) return no;
     if (id === store.project.id) return refusal('is-open', 'This project is open. To delete it, open another first.');
@@ -1250,19 +1497,33 @@ export function startStorage(ctx, options) {
     }
     if (record === null) return refusal('no-such-project', 'That project is no longer kept on this device.');
     // a recovery point of it first; the newest 3 of each other project are kept.
-    // A record too damaged to make a point of (it is listed as unreadable) is
-    // deleted without one: the person was offered its export first.
+    // When none can be kept (the record is too damaged to make a point of, or the
+    // device would not write it), the delete is refused unless the caller says the
+    // person has the record as a file: `{ exported: true }`.
+    const exported = isObject(options) && options.exported === true;
     let point = null;
     try {
       const images = isObject(record) && isObject(record.images) ? record.images : {};
       point = buildPoint(record.project, 'replace', clock().toISOString(), { get: (imageId) => (images[imageId] ? images[imageId].blob : undefined) });
     } catch (error) { /* no point can be made of it */ }
+    if (point === null && !exported) {
+      return refusal('unreadable', 'That project is too damaged to keep a recovery point of, so it was not deleted. Export it as it is first; then it can be deleted.', {
+        exportRaw: () => exportShelvedRaw(record, id),
+        needs: 'exported',
+      });
+    }
     let key = null;
     if (point !== null) {
       try {
         key = await db.addPoint(point, undefined, store.project.id);
       } catch (error) {
         warnRecovery(error);
+        if (!exported) {
+          return refusal('no-point', 'This device would not keep a recovery point of that project (' + messageOf(error).replace(/\.$/, '') + '), so it was not deleted. Export it first; then it can be deleted.', {
+            exportRaw: () => exportShelvedRaw(record, id),
+            needs: 'exported',
+          });
+        }
       }
     }
     try {
@@ -1328,7 +1589,7 @@ export function startStorage(ctx, options) {
     if (keptAs !== null) return refusal('held', 'This is a copy of ' + keptAs + ', which is also kept on this device. Open ' + keptAs + ' instead.', { id: project.id, label: keptAs, heldBy: 'shelf' });
     const gone = imageIdsOf(source.raw).filter((id) => !source.stored[id]);
     if (blocked()) return blocked();
-    const result = await move({ fresh: project, freshImages: source.stored }, project.id);
+    const result = await move({ fresh: project, freshImages: source.stored, what: 'restored' }, project.id, projectTitle(project));
     if (!result.ok) return result;
     const notes = read.notes.slice();
     if (gone.length > 0) notes.unshift(IMAGE_GONE_SENTENCE);
@@ -1348,10 +1609,40 @@ export function startStorage(ctx, options) {
       shelvedAt: null,
       bytes: projectBytes(open, Object.fromEntries(held)),
       summary: pointSummary(open),
-    }, ...shelf.map((entry) => (entry.unreadable ? { ...entry, open: false, exportRaw: async () => exportShelvedRaw(await db.readShelved(entry.id)) } : { ...entry, open: false }))];
+    }, ...shelf.map((entry) => (entry.unreadable ? { ...entry, open: false, exportRaw: async () => exportShelvedRaw(await db.readShelved(entry.id), entry.id) } : { ...entry, open: false }))];
   }
 
-  const projects = { list, open: openProject, startAnother, duplicate, rename, remove, holds, restoreAsProject };
+  // A readable shelved project as a normal project file, its pictures inside
+  // (the project file's own writer and file name). Reads only, so it is allowed in a
+  // read-only tab; refused while a switch is under way.
+  async function exportShelved(id) {
+    if (!db) return refusal('unavailable', 'This browser is not keeping projects, so it keeps none to export.');
+    if (switching) return refusal('switching', 'A project is already being opened. Wait for the page to reload.');
+    if (typeof id !== 'string' || id === '' || id === store.project.id) return refusal('is-open', 'This project is open. Export it with Export the project.');
+    let target;
+    try {
+      target = await readTarget(id);
+    } catch (error) {
+      return refusal('failed', 'The project was not exported. ' + messageOf(error));
+    }
+    if (target.refused) return target.refused;
+    try {
+      const stored = isObject(target.record.images) ? target.record.images : {};
+      const images = {};
+      for (const imageId of imageIdsOf(target.read.project)) {
+        const value = stored[imageId];
+        const blob = value instanceof Blob ? value : (isObject(value) && value.blob instanceof Blob ? value.blob : null);
+        if (blob) images[imageId] = { data: await blobToBase64(blob), type: pictureType(value, blob) };
+      }
+      const fileName = exportFileName(target.read.project, 'project', 'json', clock());
+      download(fileName, 'application/json', writeProjectFile(target.read.project, { images }));
+      return { ok: true, fileName };
+    } catch (error) {
+      return refusal('failed', 'The project was not exported. ' + messageOf(error));
+    }
+  }
+
+  const projects = { list, open: openProject, startAnother, duplicate, rename, remove, holds, restoreAsProject, exportShelved };
 
   const storage = {
     state,
@@ -1365,6 +1656,7 @@ export function startStorage(ctx, options) {
     takeRecoveryPoint: (reason) => takePoint(reason),
     listRecoveryPoints: listPoints,
     restoreRecoveryPoint: restorePoint,
+    restoreRecoveryPointResult: restorePointResult,
     exportRecoveryPoint: exportPoint,
     deleteRecoveryPoint: deletePoint,
     exportProject,
@@ -1383,7 +1675,10 @@ export function startStorage(ctx, options) {
     get pending() {
       return autosave.pending;
     },
-    // For the tests: shorter waits.
+    // For the tests: the page's reload replaced (what a switch calls last), and shorter waits.
+    setReload(fn) {
+      reloadFn = typeof fn === 'function' ? fn : null;
+    },
     setTiming(timing) {
       autosave.setTiming(timing);
       if (timing.recoveryMs !== undefined) {

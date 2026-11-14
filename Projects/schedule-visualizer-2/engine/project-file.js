@@ -23,7 +23,7 @@
 // `images` is { [imageId]: { data, type } } both ways: the page passes what
 // it holds to a writer, and stores what a reader hands back.
 
-import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, defaultSettings, defaultPublish, defaultOnboarding, emptyBells, emptySlot, emptyDay, roomNumberKey, nameKey, spacelessKey, allRooms, findRoom, bellSchedulesOf, calendarOf, marksOf, dutiesOf, releaseOf, RELEASE_MOST, DAY_TYPES_MOST, BELL_SCHEDULES_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, CHECK_KINDS } from './schema.js';
+import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, defaultSettings, defaultPublish, defaultOnboarding, emptyBells, emptySlot, emptyDay, roomNumberKey, nameKey, spacelessKey, allRooms, findRoom, bellSchedulesOf, calendarOf, marksOf, dutiesOf, releaseOf, RELEASE_MOST, DAY_TYPES_MOST, BELL_SCHEDULES_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, CHECK_KINDS, RANGES, PERIOD_WORDS, TIME_FORMATS, COLOUR_SCALE_MODES } from './schema.js';
 import { DEFAULT_PASSCODE } from './publish-defaults.js';
 import { migrate, MigrateError, versionOf, NEWER_VERSION_MESSAGE, NOT_A_PROJECT_MESSAGE } from './migrate.js';
 import { repair } from './repair.js';
@@ -1149,35 +1149,103 @@ export const SETTINGS_LEFT = ['secondsPerCell', 'secondsPerStair', 'paper', 'the
 // project, which keeps its own (a day is never shortened). A key the file does
 // not hold leaves the value here. `checks.off` keeps only the kinds this
 // version knows. A file that changes nothing returns the project itself.
+// Every key taken that the file does hold is checked first, whether or not it
+// would change anything: one of the wrong type or out of range refuses the
+// whole import ('invalid', naming the setting) before anything changes.
+// `colourScale` is rebuilt as { mode, bands } and `checks` from its known
+// keys, so a key of a future version is not carried; two values are "the
+// same" when their contents are, whatever the order of their keys.
+function badSetting(key, message) {
+  const findings = [{ path: 'settings.' + key, message }];
+  return new FileError(invalidMessage('settings', findings), 'invalid', findings);
+}
+
+const wholeIn = (value, range) => Number.isInteger(value) && value >= range[0] && value <= range[1];
+
+function checkedSettings(project, fileSettings) {
+  const out = {};
+  for (const key of SETTINGS_TAKEN) {
+    const value = fileSettings[key];
+    if (value === undefined) continue;
+    const here = project.settings[key];
+    if (key === 'schoolName') {
+      if (typeof value !== 'string') throw badSetting(key, 'The school name is text.');
+      out[key] = value;
+    } else if (key === 'periods') {
+      if (!wholeIn(value, RANGES.periods)) throw badSetting(key, 'Periods per day is a whole number from ' + RANGES.periods[0] + ' to ' + RANGES.periods[1] + '.');
+      out[key] = value;
+    } else if (key === 'periodWord') {
+      if (!PERIOD_WORDS.includes(value)) throw badSetting(key, 'The period word is one of: ' + PERIOD_WORDS.join(', ') + '.');
+      out[key] = value;
+    } else if (key === 'defaultPassingSeconds') {
+      if (!wholeIn(value, RANGES.defaultPassingSeconds)) throw badSetting(key, 'The default passing time is a whole number of seconds from ' + RANGES.defaultPassingSeconds[0] + ' to ' + RANGES.defaultPassingSeconds[1] + '.');
+      out[key] = value;
+    } else if (key === 'defaultHeadCount') {
+      if (!wholeIn(value, RANGES.headCount)) throw badSetting(key, 'The default head count is a whole number from ' + RANGES.headCount[0] + ' to ' + RANGES.headCount[1] + '.');
+      out[key] = value;
+    } else if (key === 'timeFormat') {
+      if (!TIME_FORMATS.includes(value)) throw badSetting(key, 'The time format is one of: ' + TIME_FORMATS.join(', ') + '.');
+      out[key] = value;
+    } else if (key === 'colourScale') {
+      if (!isObject(value)) throw badSetting(key, 'The colour scale is an object with a mode and four bands.');
+      const own = isObject(here) ? here : defaultSettings().colourScale;
+      const mode = value.mode === undefined ? own.mode : value.mode;
+      const bands = value.bands === undefined ? own.bands : value.bands;
+      if (!COLOUR_SCALE_MODES.includes(mode)) throw badSetting(key, 'The colour scale mode is one of: ' + COLOUR_SCALE_MODES.join(', ') + '.');
+      if (!Array.isArray(bands) || bands.length !== 4 || !bands.every((band, i) => wholeIn(band, RANGES.colourBand) && (i === 0 || band > bands[i - 1]))) throw badSetting(key, 'The colour bands are four whole numbers, each larger than the one before.');
+      out[key] = { mode, bands: bands.slice() };
+    } else if (key === 'checks') {
+      if (!isObject(value)) throw badSetting(key, 'The checks are an object with a limit, a margin and a list switched off.');
+      const own = isObject(here) ? here : defaultSettings().checks;
+      const checks = { consecutiveLimit: own.consecutiveLimit, passingMarginSeconds: own.passingMarginSeconds, off: Array.isArray(own.off) ? own.off.slice() : [] };
+      if (value.consecutiveLimit !== undefined) {
+        if (!wholeIn(value.consecutiveLimit, RANGES.consecutiveLimit)) throw badSetting(key, 'The consecutive-periods limit is a whole number from ' + RANGES.consecutiveLimit[0] + ' to ' + RANGES.consecutiveLimit[1] + '.');
+        checks.consecutiveLimit = value.consecutiveLimit;
+      }
+      if (value.passingMarginSeconds !== undefined) {
+        if (!wholeIn(value.passingMarginSeconds, RANGES.passingMarginSeconds)) throw badSetting(key, 'The passing margin is a whole number of seconds from ' + RANGES.passingMarginSeconds[0] + ' to ' + RANGES.passingMarginSeconds[1] + '.');
+        checks.passingMarginSeconds = value.passingMarginSeconds;
+      }
+      if (value.off !== undefined) {
+        if (!Array.isArray(value.off) || !value.off.every((kind) => typeof kind === 'string')) throw badSetting(key, 'The checks switched off are a list of check kinds.');
+        checks.off = Array.from(new Set(value.off.filter((kind) => CHECK_KINDS.includes(kind))));
+      }
+      out[key] = checks;
+    }
+  }
+  return out;
+}
+
+// The same contents, whatever the order of the keys of an object in it.
+function sameContents(a, b) {
+  if (Array.isArray(a) || Array.isArray(b)) return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((item, i) => sameContents(item, b[i]));
+  if (isObject(a) && isObject(b)) {
+    const keys = Object.keys(a);
+    return keys.length === Object.keys(b).length && keys.every((key) => Object.prototype.hasOwnProperty.call(b, key) && sameContents(a[key], b[key]));
+  }
+  return a === b;
+}
+
 export function applySettings(project, fileSettings) {
   const summary = { taken: [], periodsRaised: null, periodsStay: null };
   if (!isObject(fileSettings)) throw new FileError(invalidMessage('settings', [{ path: 'settings', message: 'A project file holds settings.' }]), 'invalid', [{ path: 'settings', message: 'A project file holds settings.' }]);
+  const given = checkedSettings(project, fileSettings);
   let next = project;
   for (const key of Object.keys(defaultSettings())) {
     if (!SETTINGS_TAKEN.includes(key)) continue;
-    const incoming = fileSettings[key];
-    if (incoming === undefined) continue;
+    const value = given[key];
+    if (value === undefined) continue;
     const here = project.settings[key];
     if (key === 'periods') {
-      if (!Number.isInteger(incoming)) continue;
-      if (incoming > here) {
-        next = raisePeriods(next, incoming);
-        summary.periodsRaised = { from: here, to: incoming };
-        summary.taken.push({ key, from: here, to: incoming });
-      } else if (incoming < here) summary.periodsStay = { at: here, file: incoming };
+      if (value > here) {
+        next = raisePeriods(next, value);
+        summary.periodsRaised = { from: here, to: value };
+        summary.taken.push({ key, from: here, to: value });
+      } else if (value < here) summary.periodsStay = { at: here, file: value };
       continue;
     }
-    let value = incoming;
-    if (key === 'schoolName') {
-      if (typeof here !== 'string' || here.trim() !== '' || typeof incoming !== 'string' || incoming.trim() === '') continue;
-    } else if (key === 'checks') {
-      if (!isObject(incoming)) continue;
-      const own = isObject(here) ? here : defaultSettings().checks;
-      value = { ...own };
-      for (const part of Object.keys(defaultSettings().checks)) if (incoming[part] !== undefined) value[part] = incoming[part];
-      if (Array.isArray(value.off)) value.off = Array.from(new Set(value.off.filter((kind) => CHECK_KINDS.includes(kind))));
-    }
-    if (sameJson(value, here)) continue;
+    if (key === 'schoolName' && (typeof here !== 'string' || here.trim() !== '' || value.trim() === '')) continue;
+    if (sameContents(value, here)) continue;
     next = { ...next, settings: { ...next.settings, [key]: value } };
     summary.taken.push({ key, from: here, to: value });
   }

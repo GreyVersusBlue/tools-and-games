@@ -16,6 +16,9 @@
 // ARCHITECTURE 21.10): hold() stops every save, as pause() does, but keeps the
 // change it owes; settle() resolves when the save in flight has finished and
 // starts none; release() carries on, saving at once what hold() kept back.
+// hold() and pause() are two flags: a tab that is told it may edit while a switch
+// holds its saves (resume()) keeps the change the switch owes, and release()
+// never lifts a pause.
 //
 // No DOM and no storage here: the caller supplies both ends.
 
@@ -38,7 +41,8 @@ export function createAutosave(options) {
   let dirty = false; // a change no finished save has covered
   let dirtySince = 0; // when the oldest such change was made
   let writing = null; // the save in flight
-  let paused = false;
+  let paused = false; // a read-only tab
+  let held = false; // a switch under way
   let stopped = false; // a conflict: nothing more is written
 
   function set(next, detail) {
@@ -60,7 +64,7 @@ export function createAutosave(options) {
   }
 
   function run() {
-    if (paused || stopped || !dirty) return Promise.resolve();
+    if (paused || held || stopped || !dirty) return Promise.resolve();
     if (writing) return writing;
     dirty = false;
     let attempt;
@@ -104,7 +108,7 @@ export function createAutosave(options) {
       const at = now();
       if (!dirty) dirtySince = at;
       dirty = true;
-      if (paused) return;
+      if (paused || held) return;
       // while a save is failing the banner and the red indicator stay up
       if (state !== 'failed') set('saving');
       schedule(Math.max(0, Math.min(delay, dirtySince + maxWait - at)));
@@ -123,14 +127,15 @@ export function createAutosave(options) {
     },
     // Editable again. What this tab showed while it was paused was never its
     // own work, so nothing from then is owed a save.
+    // (Not while a switch holds the saves: what is owed then is the person's.)
     resume() {
       paused = false;
-      dirty = false;
+      if (!held) dirty = false;
     },
 
     // Stop saving without forgetting what is owed. A pending timer is cleared.
     hold() {
-      paused = true;
+      held = true;
       clear();
     },
     // The save in flight is finished (written or failed) when this resolves;
@@ -141,8 +146,8 @@ export function createAutosave(options) {
     },
     // Saving again. A change held back is saved now, the way a change is.
     release() {
-      paused = false;
-      if (dirty && !stopped) {
+      held = false;
+      if (dirty && !stopped && !paused) {
         if (state !== 'failed') set('saving');
         schedule(0);
       }

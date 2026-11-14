@@ -105,6 +105,14 @@
 // flying and generation, its own counters and its own staleness check:
 //
 //   const { result, versions, where, generation } = await store.derived.kept(id, options);
+//     id        the kept scenario's id; its object itself is taken too (the
+//               one in project.scenarios), which reaches a scenario whose id
+//               an older file repeated or left out
+//     One job for each kept scenario object, asked together or alternately:
+//     Promise.all([kept(A), kept(B)]) answers both, and the answer for each
+//     object is remembered while the store's counters hold. They queue on
+//     the one kept pipeline in the worker. Asked for nothing for KEPT_IDLE_MS,
+//     the lane lets its pipeline go (answers stay), as does close().
 //     result    trimResult() of the project as the kept scenario with that
 //               id (one of project.scenarios) would make it: its changes
 //               that still apply and its levers (scenarioProject), run with
@@ -115,7 +123,7 @@
 //               is. options are not read: the answer does not depend on them.
 //     versions  the store's counters it is for
 //     null when no kept scenario has that id.
-//   Remembered by the three counters and the identity of that kept scenario
+//   Remembered, for each scenario, by the three counters and the identity of that kept scenario
 //   object (an action that changes a scenario makes a new object, so a
 //   renamed or edited one is worked out again), never by its index. The lane
 //   takes a schedule counter of its own that only goes up, one per new
@@ -143,13 +151,17 @@
 import {
   createPipeline, unpack, scenarioRun, suggestRun, keptRun, otherRun,
   REQUEST, ANSWER, READY, SCENARIO_REQUEST, SCENARIO_ANSWER, SUGGEST_REQUEST, SUGGEST_ANSWER,
-  KEPT_REQUEST, KEPT_ANSWER, OTHER_REQUEST, OTHER_ANSWER, OTHER_CLOSE,
+  KEPT_REQUEST, KEPT_ANSWER, KEPT_CLOSE, OTHER_REQUEST, OTHER_ANSWER, OTHER_CLOSE,
 } from '../engine/worker.js';
-import { reconcile, trimResult, compareResults, leverRouteOptions, leverOptionsKey, keptScenarios } from '../engine/scenario.js';
+import { reconcile, trimResult, compareResults, leverRouteOptions, leverOptionsKey, keptScenarios, SCENARIOS_MOST } from '../engine/scenario.js';
 import { NO_SUGGESTION } from '../engine/suggest.js';
 
 // How long a new worker has to say it has loaded before it is given up on.
 export const READY_WAIT_MS = 10000;
+
+// How long the kept lane may go with no kept scenario asked for before its
+// pipeline (the held run, on this side and in the worker) is let go.
+export const KEPT_IDLE_MS = 30000;
 
 const clients = new WeakMap();
 
@@ -217,14 +229,26 @@ export function createEngineClient(store, options) {
   let localSuggest = null;
   let localKept = null;
   let localOther = null;
-  // the kept lane's own counters: the schedule counter moves with each new
-  // job's key (the store's counters and that kept scenario object), and the
-  // levers counter is one number per distinct route options, so a kept
-  // scenario's runs under the same options keep what they share
-  let keptKey = null;
+  // the kept lane's jobs, one for each kept scenario object (never its id:
+  // an older file may repeat one or have none), the newest answer or the
+  // job still being worked out; never more than SCENARIOS_MOST
+  const keptJobs = new Map();
+  let keptIdleTimer = null;
+  // the kept lane's own counters: the schedule counter goes up with each new
+  // job (a new job is for new counters or a new scenario object, or follows
+  // a failure), and the levers counter is one number per distinct route
+  // options, so a kept scenario's runs under the same options keep what they share.
+  // keptLevers gets one entry for each distinct route-options key this client
+  // has seen and never shrinks: the keys are the combinations of building
+  // levers the page's kept scenarios have, a handful, and the numbers must stay
+  // the same for the same options for as long as the client lives (a number
+  // reused for other options would let a run take another's routes), so there
+  // is nothing safe to forget. The counters mean nothing outside this client.
   let keptCounter = 0;
   const keptLevers = new Map([['', 0]]);
-  let keptLeversNow = 0;
+  // the searches of route caches already let go, so client.searches only goes up
+  let searchesReleased = 0;
+  let cachesReleased = false;
   // the comparison held, if any: { comparison, project, fileName }
   let otherHeld = null;
   let otherComparison = 0;
@@ -304,10 +328,39 @@ export function createEngineClient(store, options) {
   }
 
   function laneFail(lane, job, error) {
+    // the worker no longer holds the other project (it says so): the retry carries it
+    if (lane === lanes.other && error && /was not sent/.test(String(error.message))) lane.projectSentFor = null;
     job.settled = true;
     job.failed = true;
     lane.stats.failed += 1;
     job.reject(error);
+  }
+
+  // A pipeline about to be let go: its route cache's searches are kept in a
+  // running total unless another pipeline here still holds that cache.
+  function release(pipeline) {
+    if (!pipeline) return;
+    cachesReleased = true;
+    const rest = [local, localScenario, localSuggest, localKept, localOther].filter((one) => one && one !== pipeline);
+    if (!rest.some((one) => one.cache === pipeline.cache)) searchesReleased += pipeline.cache.searches;
+  }
+
+  // The jobs of a lane that are not settled, and the one to send next (the
+  // kept lane has one for each scenario, the oldest asked first).
+  function liveJobs(lane) {
+    if (lane === lanes.kept) return Array.from(keptJobs.values()).filter((job) => !job.settled);
+    return lane.wanted && !lane.wanted.settled ? [lane.wanted] : [];
+  }
+
+  function nextJob(lane) {
+    if (lane !== lanes.kept) return lane.wanted;
+    let next = null;
+    for (const job of liveJobs(lane)) if (!job.sent && (next === null || job.generation < next.generation)) next = job;
+    return next;
+  }
+
+  function isWanted(lane, job) {
+    return lane === lanes.kept ? keptJobs.get(job.scenario) === job : lane.wanted === job;
   }
 
   function runLaneHere(lane, job) {
@@ -373,7 +426,7 @@ export function createEngineClient(store, options) {
     if (laneCurrent(lane, job)) return false;
     lane.stats.dropped += 1;
     if (lane === lanes.scenario) askScenario();
-    else if (lane === lanes.kept) askKept(job.keptId, job.given);
+    else if (lane === lanes.kept) askKept(job.scenario, job.given);
     else if (lane !== lanes.other) client.suggest(job.findingId, job.given);
     // the asking above settles the job (laneJob) when it makes a new one;
     // when it makes none (no scenario open, no such kept scenario, the other
@@ -383,7 +436,9 @@ export function createEngineClient(store, options) {
       job.settled = true;
       job.dead = true;
       job.resolve(null);
-      if (lane.wanted === job) lane.wanted = null;
+      if (lane === lanes.kept) {
+        if (isWanted(lane, job)) keptJobs.delete(job.scenario);
+      } else if (lane.wanted === job) lane.wanted = null;
     }
     return true;
   }
@@ -398,14 +453,14 @@ export function createEngineClient(store, options) {
   }
 
   function pumpLane(lane) {
-    const job = lane.wanted;
+    const job = nextJob(lane);
     if (closed || !job || job.settled || job.sent || !job.ready) return;
     if (where === 'main') {
       if (dropStale(lane, job)) return;
       job.sent = true;
       lane.stats.sent += 1;
       Promise.resolve().then(() => {
-        if (job !== lane.wanted || closed || job.settled) return;
+        if (!isWanted(lane, job) || closed || job.settled) return;
         if (dropStale(lane, job)) return;
         runLaneHere(lane, job);
       });
@@ -433,19 +488,25 @@ export function createEngineClient(store, options) {
       job.resolve = resolve;
       job.reject = reject;
     });
-    const older = lane.wanted;
+    const older = lane === lanes.kept ? keptJobs.get(fields.scenario) : lane.wanted;
     if (older && !older.settled) {
       older.settled = true;
       older.resolve(older.subject === job.subject ? job.promise : null);
     }
-    lane.wanted = job;
+    if (lane === lanes.kept) {
+      // the newest last, so the oldest answers go first when there are too many
+      keptJobs.delete(fields.scenario);
+      keptJobs.set(fields.scenario, job);
+    } else {
+      lane.wanted = job;
+    }
     return job;
   }
 
   function onLaneMessage(lane, message) {
     if (message.generation !== lane.flying) return;
     lane.flying = null;
-    const job = lane.wanted && lane.wanted.generation === message.generation && !lane.wanted.settled ? lane.wanted : null;
+    const job = liveJobs(lane).find((one) => one.generation === message.generation) || null;
     if (message.ok !== true) {
       if (job) laneFail(lane, job, new Error(message.error));
       else lane.stats.dropped += 1;
@@ -519,62 +580,106 @@ export function createEngineClient(store, options) {
     return job;
   }
 
-  // The kept lane's job for the kept scenario with this id, for the store as
-  // it is now: the one wanted already when it is for these counters and that
-  // very object, else a new one; null when no kept scenario has the id (a
-  // job still waiting for another is left to it).
-  function askKept(id, given) {
+  // The kept lane's job for a kept scenario (its id, or that very object),
+  // for the store as it is now: the one held for that object already when it
+  // is for these counters, else a new one; null when no kept scenario is
+  // that. Jobs for other scenarios are left as they are: each has its own.
+  function askKept(ref, given) {
+    if (closed) return null;
     const lane = lanes.kept;
     const project = store.project;
-    const scenario = typeof id === 'string' ? keptScenarios(project).find((kept) => kept && kept.id === id) : undefined;
+    const list = keptScenarios(project);
+    let scenario;
+    if (typeof ref === 'string') scenario = list.find((kept) => kept && kept.id === ref);
+    else if (ref !== null && typeof ref === 'object' && list.includes(ref)) scenario = ref;
     if (!scenario) return null;
+    // a settled job for an object that has left the list is let go; too many, the oldest settled
+    for (const [object, one] of keptJobs) if (one.settled && !list.includes(object)) keptJobs.delete(object);
+    const room = keptJobs.has(scenario) ? SCENARIOS_MOST : SCENARIOS_MOST - 1;
+    for (const [object, one] of keptJobs) {
+      if (keptJobs.size <= room) break;
+      if (one.settled && object !== scenario) keptJobs.delete(object);
+    }
+    touchKept();
     const versions = currentVersions();
     if (!scenarioIds.has(scenario)) {
       scenarioIdNext += 1;
       scenarioIds.set(scenario, scenarioIdNext);
     }
-    const key = stampOf(versions) + '|' + id + '|' + scenarioIds.get(scenario);
-    const held = lane.wanted;
+    const key = stampOf(versions) + '|' + scenarioIds.get(scenario);
+    const held = keptJobs.get(scenario);
     if (held && held.key === key && !held.failed && !held.dead) {
       lane.stats.remembered += 1;
       return held;
     }
-    if (key !== keptKey) {
-      keptKey = key;
-      keptCounter += 1;
-      // a scenario the lane cannot read fails in the lane's own answer; it has no route options to key here
-      let optionsKey = '';
-      try {
-        optionsKey = leverOptionsKey(leverRouteOptions(project, reconcile(project, scenario).levers));
-      } catch (error) {
-        optionsKey = '';
-      }
-      if (!keptLevers.has(optionsKey)) keptLevers.set(optionsKey, keptLevers.size);
-      keptLeversNow = keptLevers.get(optionsKey);
+    keptCounter += 1;
+    // a scenario the lane cannot read fails in the lane's own answer; it has no route options to key here
+    let optionsKey = '';
+    try {
+      optionsKey = leverOptionsKey(leverRouteOptions(project, reconcile(project, scenario).levers));
+    } catch (error) {
+      optionsKey = '';
     }
+    if (!keptLevers.has(optionsKey)) keptLevers.set(optionsKey, keptLevers.size);
     const job = laneJob(lane, {
       key,
-      subject: 'kept:' + id,
-      keptId: id,
+      subject: 'kept',
       given,
       scenario,
       project,
       storeVersions: versions,
-      versions: { geometry: versions.geometry, building: versions.building, schedule: keptCounter, levers: keptLeversNow },
+      versions: { geometry: versions.geometry, building: versions.building, schedule: keptCounter, levers: keptLevers.get(optionsKey) },
       ready: true,
     });
     job.answered = job.promise.then((run) => {
+      // the idle time counts from the answer, not from the asking: a run can take longer than it
+      touchKept();
       if (run === null) return null;
       // the store has moved on since this was worked out, its counters or
       // the list that held the scenario: the newest instead, null if it is gone
       if (stampOf(run.storeVersions) !== stampOf(currentVersions()) || !keptScenarios(store.project).includes(run.scenario)) {
         lane.stats.dropped += 1;
-        return client.kept(id, given);
+        const again = askKept(run.scenario, given);
+        return again ? again.answered : null;
       }
       return { result: run.answer, versions: run.storeVersions, where: run.where, generation: run.generation };
     });
     pumpLane(lane);
     return job;
+  }
+
+  // The kept lane was asked for something just now: it may keep its pipeline
+  // for KEPT_IDLE_MS more (options.keptIdle, for the tests). When the time is
+  // up with a job still waiting, it waits again.
+  function touchKept() {
+    if (closed) return;
+    if (keptIdleTimer !== null) clearTimeout(keptIdleTimer);
+    const wait = Number.isFinite(opts.keptIdle) ? opts.keptIdle : KEPT_IDLE_MS;
+    keptIdleTimer = setTimeout(() => {
+      keptIdleTimer = null;
+      if (closed) return;
+      if (liveJobs(lanes.kept).length > 0) {
+        touchKept();
+        return;
+      }
+      releaseKept();
+    }, wait);
+    if (keptIdleTimer && typeof keptIdleTimer.unref === 'function') keptIdleTimer.unref();
+  }
+
+  // The kept pipeline's held run is let go here and in the worker. The
+  // answers stay (small, and what the page asks again for); the next job
+  // makes the pipeline again.
+  function releaseKept() {
+    release(localKept);
+    localKept = null;
+    if (worker && where === 'worker') {
+      try {
+        worker.postMessage({ type: KEPT_CLOSE });
+      } catch (error) {
+        giveUpOnWorker('A message could not be sent to the worker: ' + error.message);
+      }
+    }
   }
 
   // The comparison ends: a job waiting is settled null and never worked out,
@@ -598,6 +703,7 @@ export function createEngineClient(store, options) {
         giveUpOnWorker('A message could not be sent to the worker: ' + error.message);
       }
     }
+    release(localOther);
     localOther = null;
   }
 
@@ -617,11 +723,14 @@ export function createEngineClient(store, options) {
     if (wanted && !wanted.settled) wanted.sent = false;
     for (const lane of Object.values(lanes)) {
       lane.flying = null;
-      if (lane.wanted && !lane.wanted.settled) lane.wanted.sent = false;
+      for (const job of liveJobs(lane)) job.sent = false;
     }
     if (typeof opts.onFallback === 'function') opts.onFallback(reason);
     pump();
-    for (const lane of Object.values(lanes)) pumpLane(lane);
+    for (const lane of Object.values(lanes)) {
+      // on this side each pump sends one job: the kept lane may have a job for each scenario
+      for (let more = 0; more < 2 * SCENARIOS_MOST && nextJob(lane); more += 1) pumpLane(lane);
+    }
   }
 
   function onMessage(event) {
@@ -688,10 +797,12 @@ export function createEngineClient(store, options) {
       return fallback;
     },
     // Distance fields searched on this side so far, by the pipelines here
-    // (they share one route cache, counted once); null while none is made.
+    // (they share one route cache, counted once), and by one let go (the
+    // other building's, a closed comparison's): it never goes down. Null while none is made.
     get searches() {
       const caches = new Set([local, localScenario, localSuggest, localKept, localOther].filter(Boolean).map((pipeline) => pipeline.cache));
-      return caches.size === 0 ? null : Array.from(caches).reduce((sum, cache) => sum + cache.searches, 0);
+      if (caches.size === 0 && !cachesReleased) return null;
+      return searchesReleased + Array.from(caches).reduce((sum, cache) => sum + cache.searches, 0);
     },
     get laneStats() {
       return { scenario: lanes.scenario.stats, suggest: lanes.suggest.stats, kept: lanes.kept.stats, other: lanes.other.stats };
@@ -857,8 +968,15 @@ export function createEngineClient(store, options) {
       worker = null;
       if (wanted && !wanted.settled) fail(wanted, new Error('This engine client has been closed.'));
       for (const lane of Object.values(lanes)) {
-        if (lane.wanted && !lane.wanted.settled) laneFail(lane, lane.wanted, new Error('This engine client has been closed.'));
+        for (const job of liveJobs(lane)) laneFail(lane, job, new Error('This engine client has been closed.'));
       }
+      if (keptIdleTimer !== null) clearTimeout(keptIdleTimer);
+      keptIdleTimer = null;
+      // let everything held go: the comparison, the pipelines, the answers
+      endOther();
+      release(localKept);
+      localKept = null;
+      keptJobs.clear();
       if (store.derived.engine === client) store.derived.use(null);
       if (clients.get(store) === client) clients.delete(store);
     },

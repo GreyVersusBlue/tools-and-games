@@ -24,11 +24,11 @@ import { createIds, seededRandom } from '../../engine/ids.js';
 import * as actions from '../../engine/actions.js';
 import { allRooms } from '../../engine/schema.js';
 import { effectiveSchedule } from '../../engine/day-types.js';
-import { applyChanges, applyLevers, leverRouteOptions, leverOptionsKey, reconcile, trimResult, keptScenarios } from '../../engine/scenario.js';
+import { applyChanges, applyLevers, leverRouteOptions, leverOptionsKey, reconcile, trimResult, keptScenarios, SCENARIOS_MOST } from '../../engine/scenario.js';
 import {
   createPipeline, keptRun, otherRun, scenarioRun, pack,
   REQUEST, ANSWER, SCENARIO_REQUEST, SCENARIO_ANSWER, SUGGEST_REQUEST, SUGGEST_ANSWER,
-  KEPT_REQUEST, KEPT_ANSWER, OTHER_REQUEST, OTHER_ANSWER, OTHER_CLOSE,
+  KEPT_REQUEST, KEPT_ANSWER, KEPT_CLOSE, OTHER_REQUEST, OTHER_ANSWER, OTHER_CLOSE,
 } from '../../engine/worker.js';
 import { createEngineClient, engineFor } from '../../ui/engine-client.js';
 import { sampleSchool, SAMPLE_PROBLEMS } from '../../data/sample-school.js';
@@ -141,6 +141,10 @@ async function standInWorker() {
       listeners[type].push(listener);
     },
     terminate() {},
+    // the worker lets the other project go without the page knowing
+    forget() {
+      scope.handle({ type: OTHER_CLOSE });
+    },
     emit(type, event) {
       for (const listener of listeners[type]) listener(event);
     },
@@ -184,6 +188,7 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
 test('the message names of the kept lane and the other-building lane', () => {
   assert.deepEqual([KEPT_REQUEST, KEPT_ANSWER], ['sv2-derive-kept', 'sv2-derived-kept']);
   assert.deepEqual([OTHER_REQUEST, OTHER_ANSWER, OTHER_CLOSE], ['sv2-derive-other', 'sv2-derived-other', 'sv2-other-close']);
+  assert.equal(KEPT_CLOSE, 'sv2-kept-close');
   assert.deepEqual([REQUEST, ANSWER], ['sv2-derive', 'sv2-derived']);
 });
 
@@ -419,6 +424,8 @@ test('the kept lane\'s counters: a schedule counter of its own that only goes up
   const closed = keptNamed(store.project, 'Closed stairs').id;
   await answered(worker, store.derived.kept(ease));
   await answered(worker, store.derived.kept(closed));
+  // asked again with nothing changed, the first answer is the one given (see the alternating test); a schedule change makes a new run
+  store.apply(actions.setSlot, { groupId: 'gsample06b', dayTypeId: 'dsample00b', period: 0, slot: { room: null } });
   await answered(worker, store.derived.kept(ease));
   const sent = worker.sent.filter((one) => one.type === KEPT_REQUEST);
   assert.equal(sent.length, 3);
@@ -642,6 +649,345 @@ test('closing the client fails a waiting kept or other job and the lanes then re
 test('createEngineClient is exported with the lanes on it', () => {
   const client = createEngineClient(storeOf(sampleSchool()), { worker: false });
   for (const name of ['kept', 'other', 'setOther', 'closeOther']) assert.equal(typeof client[name], 'function', name);
+  client.close();
+});
+
+// ---------------------------------------------------------------- one job for each kept scenario (SV2-121b)
+
+const SLOT_CHANGE = { groupId: 'gsample06b', dayTypeId: 'dsample00b', period: 0, slot: { room: null } };
+
+test('two kept scenarios asked together are both answered: one job each, on the main thread and in the worker', async () => {
+  for (const inWorker of [true, false]) {
+    const store = withScenarios(storeOf(sampleSchool()));
+    const worker = inWorker ? await standInWorker() : null;
+    const client = engineFor(store, inWorker ? { worker: () => worker } : { worker: false });
+    const a = keptNamed(store.project, 'Ease the walk');
+    const b = keptNamed(store.project, 'Closed stairs');
+    const both = Promise.all([store.derived.kept(a.id), store.derived.kept(b.id)]);
+    if (worker) await worker.workAll();
+    const [first, second] = await both;
+    assert.ok(first && second, 'neither caller was told there is no such scenario (' + (inWorker ? 'worker' : 'main') + ')');
+    assert.deepEqual(first.result, expectedKept(store.project, a));
+    assert.deepEqual(second.result, expectedKept(store.project, b));
+    assert.equal(client.laneStats.kept.sent, 2);
+    assert.equal(client.laneStats.kept.answered, 2);
+    assert.equal(client.laneStats.kept.dropped, 0);
+    client.close();
+  }
+});
+
+test('kept scenarios asked alternately are not worked out again while nothing has changed; a change works each out once more', async () => {
+  const store = withScenarios(storeOf(sampleSchool()));
+  const worker = await standInWorker();
+  const client = engineFor(store, { worker: () => worker });
+  const a = keptNamed(store.project, 'Ease the walk').id;
+  const b = keptNamed(store.project, 'Closed stairs').id;
+  const first = await answered(worker, Promise.all([store.derived.kept(a), store.derived.kept(b)]));
+  for (let round = 0; round < 3; round += 1) {
+    const [again, other] = await Promise.all([store.derived.kept(a), store.derived.kept(b)]);
+    assert.equal(again, first[0], 'the answer given before, by ===');
+    assert.equal(other, first[1]);
+  }
+  assert.equal(worker.count(KEPT_REQUEST), 2, 'two runs in all');
+  assert.equal(client.laneStats.kept.sent, 2);
+  assert.equal(client.laneStats.kept.remembered, 6);
+  store.apply(actions.setSlot, SLOT_CHANGE);
+  const second = await answered(worker, Promise.all([store.derived.kept(a), store.derived.kept(b)]));
+  assert.notEqual(second[0], first[0]);
+  assert.equal(worker.count(KEPT_REQUEST), 4);
+  client.close();
+});
+
+test('a kept scenario whose id an older file repeated, or left out, is answered, each by its own object', async () => {
+  const base = withScenarios(storeOf(sampleSchool()));
+  const [ease, closed] = keptScenarios(base.project);
+  const noId = { ...closed };
+  delete noId.id;
+  const repeated = { ...closed, id: ease.id };
+  const project = { ...base.project, scenarios: [ease, repeated, noId] };
+  const store = storeOf(project);
+  const worker = await standInWorker();
+  const client = engineFor(store, { worker: () => worker });
+  const [one, two, three] = keptScenarios(store.project);
+  const all = Promise.all([store.derived.kept(one), store.derived.kept(two), store.derived.kept(three)]);
+  await worker.workAll();
+  const [x, y, z] = await all;
+  assert.deepEqual(x.result, expectedKept(store.project, one));
+  assert.deepEqual(y.result, expectedKept(store.project, two), 'the second with the first one\'s id has its own answer');
+  assert.deepEqual(z.result, expectedKept(store.project, three), 'the one with no id is answered');
+  assert.notDeepEqual(x.result, y.result);
+  assert.equal(client.laneStats.kept.sent, 3);
+  assert.equal(await store.derived.kept(ease.id), x, 'by id, the first one with it');
+  assert.equal(await store.derived.kept({ ...ease }), null, 'an object that is not in scenarios is not a kept scenario');
+  assert.equal(await store.derived.kept(undefined), null);
+  client.close();
+});
+
+test('a kept scenario that left scenarios before its run is answered null and never run', async () => {
+  const store = withScenarios(storeOf(sampleSchool()));
+  const client = engineFor(store, { worker: false });
+  const a = keptNamed(store.project, 'Ease the walk');
+  const b = keptNamed(store.project, 'Closed stairs');
+  const early = store.derived.kept(a);
+  const late = store.derived.kept(b);
+  store.apply(actions.deleteScenario, { id: a.id });
+  assert.equal(await early, null, 'the object left scenarios before it was run');
+  assert.ok((await late).result);
+  assert.equal(client.laneStats.kept.answered, 1, 'only the scenario that is still kept was run');
+  client.close();
+});
+
+test('no more answers are held than SCENARIOS_MOST: the oldest is worked out again, the newest is remembered', async () => {
+  const base = withScenarios(storeOf(sampleSchool()));
+  const [ease] = keptScenarios(base.project);
+  // more than a project keeps, as an older or hand-made file might: distinct objects
+  const many = Array.from({ length: SCENARIOS_MOST + 2 }, (unused, index) => ({ ...ease, id: 'ekept' + String(index).padStart(5, '0') }));
+  const store = storeOf({ ...base.project, scenarios: many });
+  const client = engineFor(store, { worker: false });
+  for (const scenario of many) await store.derived.kept(scenario);
+  assert.equal(client.laneStats.kept.sent, many.length);
+  await store.derived.kept(many[many.length - 1]);
+  assert.equal(client.laneStats.kept.sent, many.length, 'the newest is remembered');
+  await store.derived.kept(many[0]);
+  assert.equal(client.laneStats.kept.sent, many.length + 1, 'the oldest was let go, and is worked out again');
+  client.close();
+});
+
+// ---------------------------------------------------------------- the shared route cache
+
+test('kept scenarios with closed stairs and a one-way lever leave the main lane\'s routes and searches as they were', async () => {
+  const store = withScenarios(storeOf(sampleSchool()));
+  store.apply(actions.newScenario, { name: 'One way', keep: true });
+  store.apply(actions.addScenarioLever, { lever: { kind: 'way', connectionId: STAIRS_A, way: 'ab' } });
+  store.apply(actions.newScenario, { name: 'Open again', keep: true });
+  const client = engineFor(store, { worker: false });
+  const first = await store.derived.results();
+  // a run's routes, without how many searches it took to get them
+  const routesOf = (result) => ({ ...result.routes, searches: 0 });
+  assert.deepEqual(routesOf(first), routesOf(createPipeline().run(store.project)));
+  const one = keptNamed(store.project, 'One way');
+  const closed = keptNamed(store.project, 'Closed stairs');
+  assert.notEqual(leverOptionsKey(leverRouteOptions(store.project, reconcile(store.project, one).levers)), leverOptionsKey(leverRouteOptions(store.project, reconcile(store.project, closed).levers)), 'two different route options');
+  const kept = await Promise.all([one, closed, keptNamed(store.project, 'Ease the walk')].map((scenario) => store.derived.kept(scenario)));
+  assert.notDeepEqual(kept[0].result, kept[1].result);
+  store.apply(actions.setSlot, SLOT_CHANGE);
+  const before = client.searches;
+  const second = await store.derived.results();
+  assert.notEqual(second, first);
+  assert.deepEqual(routesOf(second), routesOf(createPipeline().run(store.project)), 'the main lane\'s routes are the engine\'s own, whatever the kept runs searched under');
+  assert.equal(client.searches - before, 0, 'the kept runs did not take the distance fields the main lane routes from');
+  assert.equal(second.work.searches, 0);
+  // and the other way round: a kept run after the main lane's, under the same counters, is the engine's own
+  const again = await store.derived.kept(closed);
+  assert.deepEqual(again.result, expectedKept(store.project, keptNamed(store.project, 'Closed stairs')));
+  client.close();
+});
+
+test('a kept job sent at one geometry is never run after a main job at the next: it is dropped and asked again', async () => {
+  const store = withScenarios(storeOf(sampleSchool()));
+  const worker = await standInWorker();
+  const client = engineFor(store, { worker: () => worker });
+  const a = keptNamed(store.project, 'Ease the walk');
+  const b = keptNamed(store.project, 'Closed stairs');
+  const pa = store.derived.kept(a);
+  const pb = store.derived.kept(b);
+  assert.equal(worker.inbox.length, 1, 'one kept job is with the worker, the other waits behind it');
+  store.apply(actions.disconnectStairs, { connectionId: 'csample00b' });
+  assert.ok(store.geometryVersion > worker.sent[0].versions.geometry);
+  const main = store.derived.results();
+  await worker.workAll();
+  const [ra, rb] = await Promise.all([pa, pb]);
+  await main;
+  assert.deepEqual([ra.versions.geometry, rb.versions.geometry], [store.geometryVersion, store.geometryVersion]);
+  assert.deepEqual(rb.result, expectedKept(store.project, keptNamed(store.project, 'Closed stairs')));
+  let newest = 0;
+  for (const one of worker.sent) {
+    if (one.type === REQUEST) newest = Math.max(newest, one.versions.geometry);
+    if (one.type === KEPT_REQUEST) assert.ok(one.versions.geometry >= newest, 'a kept job at geometry ' + one.versions.geometry + ' was sent after a main job at ' + newest);
+  }
+  assert.ok(client.laneStats.kept.dropped >= 1);
+  client.close();
+});
+
+// ---------------------------------------------------------------- letting go
+
+test('the worker lets its kept pipeline go on sv2-kept-close and makes it again for the next kept request', async () => {
+  const scope = await workerScope();
+  const store = withScenarios(storeOf(sampleSchool()));
+  const ease = keptNamed(store.project, 'Ease the walk');
+  const request = (generation) => ({ type: KEPT_REQUEST, generation, project: store.project, scenario: ease, versions: { ...versionsOf(store), schedule: generation, levers: 0 } });
+  const [before] = scope.handle(request(1));
+  assert.equal(before.ok, true);
+  assert.deepEqual(scope.handle({ type: KEPT_CLOSE }), [], 'no answer');
+  const [after] = scope.handle(request(2));
+  assert.equal(after.ok, true, 'the lane works after the close');
+  assert.deepEqual(after.answer, before.answer);
+  assert.deepEqual(scope.handle({ type: KEPT_CLOSE }), []);
+  assert.deepEqual(scope.handle({ type: KEPT_CLOSE }), [], 'closing twice is harmless');
+});
+
+test('the client lets the kept pipeline go when no kept scenario has been asked for for the idle time (keptIdle): one sv2-kept-close, answers stay', async () => {
+  const store = withScenarios(storeOf(sampleSchool()));
+  const worker = await standInWorker();
+  const client = engineFor(store, { worker: () => worker, keptIdle: 100 });
+  const a = keptNamed(store.project, 'Ease the walk').id;
+  const b = keptNamed(store.project, 'Closed stairs').id;
+  const first = await answered(worker, store.derived.kept(a));
+  assert.equal(worker.count(KEPT_CLOSE), 0);
+  // a pending job keeps the pipeline: nothing is closed while one waits
+  const pending = store.derived.kept(b);
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  assert.equal(worker.count(KEPT_CLOSE), 0, 'a job with the worker is not cut off');
+  await worker.workAll();
+  await pending;
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  assert.equal(worker.count(KEPT_CLOSE), 1, 'one close for the idle time');
+  assert.equal(await store.derived.kept(a), first, 'the answer is still remembered');
+  assert.equal(worker.count(KEPT_REQUEST), 2);
+  // the lane works again after the close
+  store.apply(actions.setSlot, SLOT_CHANGE);
+  const again = await answered(worker, store.derived.kept(a));
+  assert.deepEqual(again.result, expectedKept(store.project, keptNamed(store.project, 'Ease the walk')));
+  client.close();
+});
+
+test('client.searches never goes down: closing the comparison or the client folds the other building\'s searches into a total', async () => {
+  const store = storeOf(sampleSchool());
+  const client = engineFor(store, { worker: false });
+  assert.equal(client.searches, null, 'none made yet');
+  await store.derived.results();
+  const main = client.searches;
+  store.derived.setOther(sampleSchool(), 'same.json');
+  await store.derived.other();
+  const both = client.searches;
+  assert.ok(both >= 2 * main, 'the other building searched on its own cache');
+  store.derived.closeOther();
+  assert.equal(client.searches, both, 'closeOther let the cache go and kept its searches');
+  store.derived.setOther(sampleSchool(), 'again.json');
+  await store.derived.other();
+  assert.ok(client.searches >= both + main);
+  const last = client.searches;
+  store.derived.setOther(otherBuilding(), 'replaced.json');
+  assert.ok(client.searches >= last, 'a replaced comparison counts too');
+  await store.derived.other();
+  const beforeClose = client.searches;
+  client.close();
+  assert.equal(client.searches, beforeClose, 'closing the client does not lose them either');
+});
+
+test('the idle release of the kept pipeline on the main thread loses no searches', async () => {
+  const store = withScenarios(storeOf(sampleSchool()));
+  const client = engineFor(store, { worker: false, keptIdle: 20 });
+  await store.derived.kept(keptNamed(store.project, 'Closed stairs').id);
+  const before = client.searches;
+  assert.ok(before > 0);
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(client.searches, before);
+  const again = await store.derived.kept(keptNamed(store.project, 'Ease the walk').id);
+  assert.ok(again.result, 'the lane makes its pipeline again');
+  assert.ok(client.searches >= before);
+  client.close();
+});
+
+// ---------------------------------------------------------------- a refusal that the project was not sent
+
+test('a worker that no longer holds the other project says so, and the retry carries it', async () => {
+  const store = storeOf(sampleSchool());
+  const worker = await standInWorker();
+  const client = engineFor(store, { worker: () => worker });
+  store.derived.setOther(otherBuilding(), 'a.json');
+  worker.refuse = 1;
+  const failed = store.derived.other();
+  failed.catch(() => {});
+  await worker.workAll();
+  await assert.rejects(failed, /could not be worked out/);
+  // the retry goes without the project (the worker holds it); then the worker loses it
+  const second = store.derived.other();
+  second.catch(() => {});
+  worker.forget();
+  await worker.workAll();
+  await assert.rejects(second, /was not sent/);
+  const third = await answered(worker, store.derived.other());
+  assert.deepEqual(third.result, trimResult(createPipeline().run(otherBuilding())));
+  assert.deepEqual(worker.sent.filter((one) => one.type === OTHER_REQUEST).map((one) => one.hasProject), [true, false, true], 'the project went again after the refusal');
+  client.close();
+});
+
+// ---------------------------------------------------------------- the main thread, which has no worker to be late
+
+const betweenRunAndAnswer = (change) => Promise.resolve().then(change);
+
+test('main thread: a kept answer the store has moved past is dropped and the newest given', async () => {
+  const store = withScenarios(storeOf(sampleSchool()));
+  const client = engineFor(store, { worker: false });
+  const id = keptNamed(store.project, 'Ease the walk').id;
+  const asked = store.derived.kept(id);
+  // runs in the microtask after the lane's own run and before its answer is looked at
+  const moved = betweenRunAndAnswer(() => store.apply(actions.setSlot, SLOT_CHANGE));
+  const answer = await asked;
+  await moved;
+  assert.deepEqual(answer.versions, versionsOf(store), 'the answer is for the store as it now is');
+  assert.deepEqual(answer.result, expectedKept(store.project, keptNamed(store.project, 'Ease the walk')));
+  assert.equal(client.laneStats.kept.dropped, 1);
+  assert.equal(client.laneStats.kept.sent, 2);
+  assert.equal(client.laneStats.kept.asked, 1, 'the page asked once: the lane\'s own asking again is not counted');
+  client.close();
+});
+
+test('main thread: a kept scenario deleted before its run, or after it and before the answer, is answered null', async () => {
+  const store = withScenarios(storeOf(sampleSchool()));
+  const client = engineFor(store, { worker: false });
+  const a = keptNamed(store.project, 'Ease the walk').id;
+  const b = keptNamed(store.project, 'Closed stairs').id;
+  const before = store.derived.kept(a);
+  store.apply(actions.deleteScenario, { id: a });
+  assert.equal(await before, null);
+  assert.equal(client.laneStats.kept.answered, 0, 'never run');
+  const after = store.derived.kept(b);
+  const gone = betweenRunAndAnswer(() => store.apply(actions.deleteScenario, { id: b }));
+  assert.equal(await after, null);
+  await gone;
+  assert.equal(client.laneStats.kept.answered, 1, 'run, and the answer went to nobody');
+  assert.equal(client.laneStats.kept.dropped, 2);
+  assert.equal(client.laneStats.kept.failed, 0);
+  client.close();
+});
+
+test('main thread: closeOther while the other building is being worked out gives its callers null', async () => {
+  const store = storeOf(sampleSchool());
+  const client = engineFor(store, { worker: false });
+  store.derived.setOther(otherBuilding(), 'a.json');
+  const asked = store.derived.other();
+  const closing = betweenRunAndAnswer(() => store.derived.closeOther());
+  assert.equal(await asked, null);
+  await closing;
+  assert.equal(client.laneStats.other.answered, 1, 'it was run');
+  assert.equal(client.laneStats.other.dropped, 1, 'and its answer dropped');
+  assert.equal(await store.derived.other(), null);
+  // a comparison held again is worked out afresh
+  store.derived.setOther(otherBuilding(), 'b.json');
+  assert.deepEqual((await store.derived.other()).result, trimResult(createPipeline().run(otherBuilding())));
+  client.close();
+});
+
+test('a worker given up on while the other building is with it: the main thread works it out from the project the page holds', async () => {
+  const store = storeOf(sampleSchool());
+  const worker = await standInWorker();
+  const client = engineFor(store, { worker: () => worker });
+  store.derived.setOther(otherBuilding(), 'a.json');
+  const pending = store.derived.other();
+  assert.deepEqual(worker.sent.map((one) => [one.type, one.hasProject]), [[OTHER_REQUEST, true]], 'the project went with the first request');
+  worker.emit('error', { message: 'it died' });
+  const answer = await pending;
+  assert.equal(answer.where, 'main');
+  assert.deepEqual(answer.result, trimResult(createPipeline().run(otherBuilding())));
+  assert.equal(answer.fileName, 'a.json');
+  assert.equal(client.laneStats.other.failed, 0);
+  // the next comparison is worked out here too
+  store.derived.setOther(sampleSchool(), 'b.json');
+  const next = await store.derived.other();
+  assert.equal(next.where, 'main');
+  assert.deepEqual(next.result, trimResult(createPipeline().run(sampleSchool())));
   client.close();
 });
 
