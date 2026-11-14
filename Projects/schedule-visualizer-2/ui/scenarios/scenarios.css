@@ -938,3 +938,138 @@
     repeating-linear-gradient(45deg, transparent 0 3px, var(--ink) 3px 4px),
     repeating-linear-gradient(-45deg, transparent 0 3px, var(--ink) 3px 4px);
 }
+
+/* ---------- Comparing two buildings (SV2-123; DESIGN 15.7 and 15.9) ---------- */
+
+.scn-bld[hidden],
+.scn-bld__inspector[hidden],
+.scn-changes[hidden],
+.scn-compare[hidden],
+.scn-file__shelf[hidden] {
+  display: none;
+}
+
+/* the band, in the trial band's style: a border, the words, Stop comparing */
+.scn-bld {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 2px solid var(--accent);
+  border-radius: var(--r-1);
+  background: var(--card);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.scn-bld__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-3);
+}
+
+.scn-bld__text {
+  flex: 1 1 12rem;
+  min-width: 0;
+  margin: 0;
+  font-weight: var(--w-semibold);
+  overflow-wrap: anywhere;
+}
+
+.scn-bld__stop {
+  flex: none;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.scn-bld__note,
+.scn-bld__edit {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.scn-bld__legend {
+  font-weight: var(--w-semibold);
+}
+
+/* the two-way switch: two buttons in a row on a phone, each a finger's size */
+.scn-bld__switch .seg {
+  display: flex;
+  width: 100%;
+}
+
+.scn-bld__switch .seg__option {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.scn-bld__switch .seg__label {
+  min-height: 44px;
+  justify-content: center;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* the legend in the inspector: five swatches with their loads, then the one line */
+.scn-bld__key {
+  display: grid;
+  gap: var(--s-1);
+}
+
+.scn-bld__bands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-sm);
+}
+
+.scn-bld__bands li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.scn-bld__swatch {
+  display: inline-block;
+  width: 1.1rem;
+  height: 0.8rem;
+  border: 1px solid var(--line-strong);
+}
+
+.scn-bld__line {
+  margin: 0;
+  font-size: var(--t-sm);
+}
+
+.scn-bld__list {
+  margin: 0;
+  padding-left: var(--s-4);
+}
+
+/* with different units there is no difference column: two figures a row */
+.scn-figures--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* the projects kept on this device, beside "Compare with another project file…" */
+.scn-file__shelf {
+  display: grid;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+  align-items: end;
+}
+
+/* a short window (a phone on its side): the band is one row, the not-saved line is in the inspector */
+@media (max-height: 420px) {
+  .scn-bld__note {
+    display: none;
+  }
+
+  .scn-bld__head {
+    flex-wrap: nowrap;
+  }
+}

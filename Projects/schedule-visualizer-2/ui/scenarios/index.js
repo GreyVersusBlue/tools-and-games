@@ -49,6 +49,7 @@ import { scenarioView, scenarioName, comparedSentence, keptLine, SWITCHED_TO_COM
 import { changesPanel } from './changes.js';
 import { formsPanel, freshForm } from './forms.js';
 import { filePanel } from './file.js';
+import { buildingsPanel } from './buildings.js';
 import { othersPanel } from './others.js';
 import { comparePanel } from './compare.js';
 import { mountDifference } from './difference.js';
@@ -216,21 +217,28 @@ export const section = {
       // Compare with: the choice after it has settled, and back to the real schedule
       chooseCompare,
       resetCompare,
+      // Comparing two buildings (./buildings.js): the plan map once it is made, the open
+      // project's graph, the lab drawn again, where the focus goes after Stop comparing
+      plan: () => plan,
+      graph: graphNow,
+      redraw: () => refresh(),
+      focusFile: () => file.focusHeading(),
+      buildings: () => buildings,
     };
     const others = othersPanel(env);
     const changes = changesPanel(env);
     const forms = formsPanel(env);
+    const buildings = buildingsPanel(env);
     const file = filePanel(env);
     const congestion = h('button', { type: 'button', class: 'btn', data: { action: 'congestion' }, on: { click: (event) => openPrintPreview(ctx, 'congestion', { opener: event.currentTarget }) } }, 'Print the congestion report…');
     const report = h('section', { class: 'scn-report', 'aria-labelledby': 'scenario-report-title' },
       h('h2', { class: 'scn-panel__title', id: 'scenario-report-title' }, 'Congestion report'),
       h('p', { class: 'scn-report__lead' }, 'The movement view’s report on paper, with what the open scenario does to it.'),
       congestion);
-    // SV2-123 mounts the building comparison here: its band and switch go above
-    // the panel's first section, and while one is held it hides `forms.element`
-    // and the chips (index.js `refresh()` marks the line below) and says
-    // "Stop comparing to edit the scenario." Nothing of it is built in SV2-122.
-    const panel = h('section', { class: 'scn-panel', 'aria-label': 'The scenario and its changes', data: { part: 'panel' } }, others.element, changes.element, forms.element, file.element, report);
+    // The building comparison's band goes above the panel's first section; while one is
+    // held it hides the chips and the forms and says "Stop comparing to edit the scenario."
+    // (index.js `refresh()` marks it below).
+    const panel = h('section', { class: 'scn-panel', 'aria-label': 'The scenario and its changes', data: { part: 'panel' } }, buildings.band, others.element, changes.element, forms.element, file.element, report);
 
     // ---- picking a corridor on the map (DESIGN 12.4): a banner on the stage with
     // Cancel; a tap or click, or Enter (or Space let go alone) at the keyboard's
@@ -449,7 +457,7 @@ export const section = {
 
     // ---- the inspector
     const compare = comparePanel(env);
-    const inspectorBox = h('div', { class: 'scn-inspector' }, compare.element);
+    const inspectorBox = h('div', { class: 'scn-inspector' }, compare.element, buildings.inspector);
     let inspectorShown = false;
 
     // ---- writes, through the scenario actions; a refusal is said as it is
@@ -734,6 +742,8 @@ export const section = {
     function refresh() {
       const project = store.project;
       adopt(project);
+      // a comparison for another project ends; a change in this one is compared again
+      buildings.update(project);
       // the kept scenario compared with was switched to or deleted: back to the real schedule
       if (memory.compareWith !== null && !keptTarget()) {
         const open = project.scenario;
@@ -789,6 +799,12 @@ export const section = {
       forms.element.hidden = !view;
       if (view) forms.update(project);
       file.update(view);
+      // a held building comparison hides the chips and the forms (./buildings.js)
+      const comparing = buildings.held();
+      changes.element.hidden = comparing;
+      if (comparing) forms.element.hidden = true;
+      compare.element.hidden = comparing;
+      if (comparing) stopPicking(false, '');
       if (view) askIfChanged();
       else {
         // nothing open: the last answer goes, and an asking still out is let go
@@ -800,8 +816,12 @@ export const section = {
         lane.failed = null;
         drawCompare();
       }
-      plan.setProject(project, graphNow());
-      if (placing === 0 && held && (!held.isConnected || held.closest('[hidden]'))) changes.focusName();
+      // a held building comparison paints the map itself
+      if (!buildings.paint()) plan.setProject(project, graphNow());
+      if (placing === 0 && held && (!held.isConnected || held.closest('[hidden]'))) {
+        if (buildings.held()) buildings.editLine.focus();
+        else changes.focusName();
+      }
     }
 
     refresh();
@@ -826,6 +846,7 @@ export const section = {
       },
       unmount() {
         gone = true;
+        buildings.unmount();
         compare.stop();
         toastWatch.disconnect();
         if (toastHost) toastHost.style.removeProperty('--toast-left');
