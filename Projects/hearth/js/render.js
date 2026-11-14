@@ -266,6 +266,7 @@ function draw(){
       if(sings&&songs.some(sg=>!sg.lost&&sg.kn.includes(p.name))){g.fillStyle='#f0d488';g.fillRect(x+3,y-10*k,1,1);g.fillRect(x+4,y-12*k,1,2);g.fillRect(x+4,y-12*k,2,1)}}}});
   ents.push({y:center.y,d:()=>{const x=center.x*T,y=center.y*T;g.fillStyle='#3a2a1a';g.fillRect(x-4,y-1,8,3);const fl=isNight()||L<.6;
     if(fl){for(let i=0;i<4;i++){g.fillStyle=i%2?'#ffb347':'#ff6a2b';const s=RM?2.2:2+Math.sin(animT*10+i)*1.5;g.fillRect(x-1+(RM?0:Math.sin(animT*7+i)*1.5),y-3-i*1.5-s,2,s)}}}});
+  drawStock(ents,cap); /* B1: the woodpile, the sacks and the drying fish, js/goods.js */
   /* phase 7: hands held between neighbours on the ring. Presentation only — reads the ring/rA the play case set, draws nothing from R().
      A line at hand height from each child to the next one round the circle, only while the two are close enough to be holding on. */
   for(const k of ['swing','ring']){const rg=people.filter(o=>o.ring===k&&o.task==='play'&&!o.inside&&!o.dead).sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0);if(rg.length<2)continue;
