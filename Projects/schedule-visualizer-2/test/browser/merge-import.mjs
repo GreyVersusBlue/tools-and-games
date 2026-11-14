@@ -218,7 +218,7 @@ test('the building: step 2, Back, Bring it in is one snapshot and one undo step,
   await stepIs(page, '2');
   await press(page, 'Bring it in');
   await closed(page);
-  await says(page, 'Brought in');
+  await says(page, 'Brought in the building');
   const after = await signature(page);
   assert.notEqual(after, before, 'the building came in');
   assert.equal(await undoLabel(page), 'Bring in the building from ' + FILE);
@@ -235,6 +235,10 @@ test('the building: step 2, Back, Bring it in is one snapshot and one undo step,
   await page.waitForFunction((was) => globalThis.sv2.store.undoLabel !== was, { timeout: 10000 }, 'Bring in the building from ' + FILE);
   assert.equal(await signature(page), before);
   await dismissToasts(page);
+  // the card's line still offers Undo; it says the step is already undone and takes nothing else back
+  await page.click('#project-file [data-action="undo-part"]');
+  await says(page, 'Undid ');
+  assert.equal(await signature(page), before);
 });
 
 test('the schedule: the question for groups already here, step 2, Bring it in, Undo on the card\'s line', async () => {
@@ -259,7 +263,7 @@ test('the schedule: the question for groups already here, step 2, Bring it in, U
   assert.match((await summary(page))[0], /^Groups: 1 group replaced, 7 groups left as they were/);
   await press(page, 'Bring it in');
   await closed(page);
-  await says(page, 'Brought in');
+  await says(page, 'Brought in the schedule');
   assert.equal(await undoLabel(page), 'Bring in the schedule from ' + FILE);
   assert.equal(await page.evaluate(() => globalThis.sv2.store.project.dayTypes.some((dayType) => dayType.name === 'Assembly Day')), true);
   assert.equal(await page.evaluate(() => globalThis.sv2.store.project.settings.periods), 9, 'the day was made as long as the file\'s');
@@ -288,7 +292,7 @@ test('the settings: the taken and not-taken lists, the periods that stay, one un
   assert.equal(await signature(page), before);
   await press(page, 'Bring it in');
   await closed(page);
-  await says(page, 'Brought in');
+  await says(page, 'Brought in the settings');
   assert.equal(await undoLabel(page), 'Bring in the settings from ' + FILE);
   assert.deepEqual(await page.evaluate(() => {
     const { settings } = globalThis.sv2.store.project;
@@ -389,7 +393,7 @@ test('by the keyboard alone: the part chosen with the arrows, Next, Escape, and 
   assert.equal((await focused(page)).text, 'Bring it in');
   await page.keyboard.press('Enter');
   await closed(page);
-  await says(page, 'Brought in');
+  await says(page, 'Brought in the settings');
   await saved(page);
   assert.notEqual(await signature(page), before);
   await dismissToasts(page);
@@ -420,7 +424,7 @@ for (const [width, height] of [[390, 844], [844, 390]]) {
         await fits(p, part + ' step 2');
         await press(p, 'Bring it in');
         await closed(p);
-        await says(p, 'Brought in');
+        await says(p, 'Brought in the ' + part);
         assert.notEqual(await signature(p), before, part + ' came in');
         await dismissToasts(p);
         await p.evaluate(() => document.querySelector('#project-file [data-action="undo-part"]').click());

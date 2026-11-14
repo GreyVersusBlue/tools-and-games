@@ -292,6 +292,11 @@ export function mergeImport(env) {
     // The line's Undo takes this step back only while this step is the one Undo would take.
     const undo = {
       run() {
+        if (ctx.store.undoLabel !== label && ctx.store.redoLabel === label) {
+          // the toast's Undo (or the keyboard's) already took it back
+          say('done', 'Undid bringing in ' + entry.what + ' from ' + quote(fileName) + '. This project is as it was.');
+          return;
+        }
         if (ctx.store.undoLabel !== label) {
           say('done', sentence + ' Undo no longer reaches it: later changes sit on top. Undo them first, or restore ' + quote(snapshotName(state.part)) + ' from Snapshots.');
           return;
