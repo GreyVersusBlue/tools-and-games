@@ -12,8 +12,10 @@
 //   epithet    one line under the name ("The Bruiser")
 //   lineage    ancestry, shown beside the epithet on the sheet
 //   lot        the catalogue number
-//   portrait   path to the bust image, relative to this folder, or null.
-//              null shows a monogram plate instead.
+//   portrait   path to the 4:5 bust image, relative to this folder, or null.
+//              null (or a file that fails to load) shows a monogram plate.
+//   thumb      path to the square face crop for the sheet's top bar; falls
+//              back to portrait, then to the monogram.
 //   blurb      the paragraph under the name
 //   quote      their line, set as a pull quote
 //   vitals     the big numbers: [{ label, value, note }]
@@ -43,7 +45,8 @@ export const characters = [
     name: 'Dale "Tiny" Kowalski',
     epithet: 'The Bruiser',
     lot: 1,
-    portrait: null,
+    portrait: 'portraits/tiny.webp',
+    thumb: 'portraits/tiny-thumb.webp',
     blurb: 'Ex-gym teacher turned bouncer at the Rusty Anchor. Never lost a tug-of-war. Flip phone, cracked screen, battery lasts nine days.',
     quote: "I don't ask questions. I just stand in the doorway.",
     vitals: [
@@ -76,7 +79,8 @@ export const characters = [
     epithet: 'The Fixer',
     lineage: 'Halfling',
     lot: 2,
-    portrait: null,
+    portrait: 'portraits/pip.webp',
+    thumb: 'portraits/pip-thumb.webp',
     blurb: 'Halfling con artist and part-time locksmith. Has a cousin in every town and a debt in half of them. Prepaid flip phone, three contacts, all saved under fake names.',
     quote: 'Locked doors are just opinions.',
     vitals: [
@@ -110,7 +114,8 @@ export const characters = [
     name: 'Mary-Ann Hartley',
     epithet: 'The Nurse',
     lot: 3,
-    portrait: null,
+    portrait: 'portraits/mary-ann.webp',
+    thumb: 'portraits/mary-ann-thumb.webp',
     blurb: 'School nurse for eleven years, and the only one the whole town trusts. Has seen every kind of injury and a few kinds of apology. Smartphone, 47 unread messages from the church group chat.',
     quote: 'Sit down. Let me look at that.',
     vitals: [
@@ -143,7 +148,8 @@ export const characters = [
     epithet: 'The Smooth Talker',
     lineage: 'Gnome',
     lot: 4,
-    portrait: null,
+    portrait: 'portraits/felix.webp',
+    thumb: 'portraits/felix-thumb.webp',
     blurb: 'Gnome wedding DJ, karaoke host, and unofficial mayor of the diner. Knows everyone\'s business and sings about it. Smartphone, exactly 4% battery, three playlists.',
     quote: "Everybody's got a song. I just play it back to them.",
     vitals: [
@@ -178,7 +184,8 @@ export const characters = [
     epithet: 'The Researcher',
     lineage: 'Elf',
     lot: 5,
-    portrait: null,
+    portrait: 'portraits/juniper.webp',
+    thumb: 'portraits/juniper-thumb.webp',
     blurb: 'Elf grad student who never finished her thesis because the research kept turning into a different thesis. Smartphone at 6%, three spare chargers, a spellbook with sticky tabs.',
     quote: "I'm not saying it's cursed. I'm saying the data is.",
     vitals: [
@@ -214,7 +221,8 @@ export const characters = [
     epithet: 'The Cop',
     lineage: 'Orc',
     lot: 6,
-    portrait: null,
+    portrait: 'portraits/kara.webp',
+    thumb: 'portraits/kara-thumb.webp',
     blurb: 'Orc volunteer firefighter and youth soccer ref. Stays late to put the chairs away. Smartphone in a rugged case, bugle-call ringtone.',
     quote: 'Rules are rules. Even for the people who wrote them.',
     vitals: [
