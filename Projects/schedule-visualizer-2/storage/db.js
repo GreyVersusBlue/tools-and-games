@@ -20,8 +20,13 @@
 // The functions for the session (storage/session.js, steps 1 to 6 of 21.10's
 // "Switching"). Each is one transaction, so a project is never in neither place:
 //
-//   listShelf() -> [{ id, label, schoolName, savedAt, shelvedAt, bytes, summary }]
-//       Step 1's list. Newest shelved first. Reads no image.
+//   listShelf() -> [{ id, label, schoolName, savedAt, shelvedAt, bytes, summary, unreadable? }]
+//       Step 1's list. Newest shelved first. Reads no image. A damaged record
+//       (not an object, or its `project` not an object) is listed too, with
+//       `unreadable: true`, its id taken from the key and the rest blank, so
+//       the session can offer to export it as it is or delete it; a readable
+//       record has no `unreadable` key. Every key under the prefix is listed,
+//       so the list agrees with shelfIds() and with PROJECTS_MOST's count.
 //   readShelved(id) -> the raw record, or null
 //       Step 1: the session reads the target and runs it through readProject
 //       (validate, migrate, repair) before anything moves. An unreadable record
@@ -47,9 +52,15 @@
 // when "current" is newer than `known`; TypeError when the target or the fresh
 // project is the open one; ShelfError 'shelf-has-open' when shelf:<open.id>
 // exists (only an older planner can cause that: export both), 'no-such-project',
-// 'shelf-has-fresh', 'shelf-full' (PROJECTS_MOST). `hooks.failWrite` fails
-// every one of these with its sentence, and `hooks.failSwitchLate` aborts the
-// transaction after every write was issued, to prove nothing is half done.
+// 'shelf-has-fresh', 'shelf-full' (PROJECTS_MOST), 'unreadable-target' (switchTo
+// only: the record is not an object, or its `project` is not an object with a
+// string `id` equal to the target id; nothing moves). A request inside a move
+// that fails on its own aborts the whole transaction and the promise rejects
+// with that request's error: everything or nothing. `hooks.failWrite` fails
+// every one of these, deleteShelved and renameShelved included, with its
+// sentence; `hooks.failSwitchLate` aborts the transaction after every write was
+// issued; `hooks.failSwitchRequest` makes one request inside a move fail
+// asynchronously (an add on a key that exists), to prove nothing is half done.
 // forgetStored() is called by each success.
 //
 // Every name above is permanent. A person's work is behind them; a renamed
@@ -90,8 +101,9 @@ const LABEL_MOST = 60;
 // project fail with it, the way a full disk would; `failImagePut` set true
 // makes every putImage's transaction abort, the way a full disk would.
 // `failSwitchLate` set true aborts each shelf move once all its writes have
-// been issued.
-export const hooks = { failWrite: null, failImagePut: false, failSwitchLate: false };
+// been issued; `failSwitchRequest` set true makes one request of each shelf
+// move fail by itself, after the others were issued.
+export const hooks = { failWrite: null, failImagePut: false, failSwitchLate: false, failSwitchRequest: false };
 
 // The saved record is newer than the one this tab last read or wrote: another
 // tab saved in between. Nothing was written.
@@ -532,7 +544,10 @@ export async function openDatabases(options) {
   // project, the newest OTHER_POINTS_EACH of each other project, and of other
   // projects together at most OTHER_POINTS_MOST, newest first. The walk is over
   // keys only; a record is read (for its `projectId`) only when the store holds
-  // more than RECOVERY_KEEP and this connection has not met its key before.
+  // more than OTHER_POINTS_EACH points (fewer cannot need a trim) and this
+  // connection has not met its key before. When the add itself fails the
+  // transaction aborts and this rejects; a failed delete of the trim is left
+  // to the next point (the new point is kept, which is what matters).
   // Resolves with the new point's key.
   function addPoint(point, spare, openId) {
     return new Promise((resolve, reject) => {
@@ -563,7 +578,10 @@ export async function openDatabases(options) {
         return;
       }
       tx.oncomplete = () => resolve(key);
-      tx.onerror = (event) => event.preventDefault();
+      tx.onerror = (event) => {
+        // a failed delete of the trim leaves the point added; a failed add must not commit
+        if (key !== null) event.preventDefault();
+      };
       tx.onabort = () => reject(tx.error || new Error('The browser stopped the write.'));
     });
   }
@@ -573,7 +591,7 @@ export async function openDatabases(options) {
     for (const known of Array.from(pointOwners.keys())) {
       if (!keys.includes(known)) pointOwners.delete(known);
     }
-    if (keys.length <= RECOVERY_KEEP) return;
+    if (keys.length <= OTHER_POINTS_EACH) return;
     const unknown = keys.filter((key) => !pointOwners.has(key));
     let waiting = unknown.length;
     const decide = () => {
@@ -661,8 +679,8 @@ export async function openDatabases(options) {
   }
 
   // The projects kept besides the open one, newest shelved first. The records
-  // are read whole (a list is at most PROJECTS_MOST - 1 long); nothing is
-  // checked, and a record that is not an object is left out of the list.
+  // are read whole (a list is at most PROJECTS_MOST - 1 long). A damaged
+  // record is listed with `unreadable: true` and its id from the key.
   function listShelf() {
     return new Promise((resolve, reject) => {
       const found = [];
@@ -682,7 +700,19 @@ export async function openDatabases(options) {
           return;
         }
         const record = at.value;
-        if (isObject(record)) {
+        if (!isObject(record) || !isObject(record.project)) {
+          const kept = isObject(record) ? record : {};
+          found.push({
+            id: String(at.key).slice(SHELF_PREFIX.length),
+            label: '',
+            schoolName: '',
+            savedAt: typeof kept.savedAt === 'string' ? kept.savedAt : '',
+            shelvedAt: typeof kept.shelvedAt === 'string' ? kept.shelvedAt : '',
+            bytes: Number.isFinite(kept.bytes) ? kept.bytes : 0,
+            summary: shelfSummary(null),
+            unreadable: true,
+          });
+        } else {
           const project = isObject(record.project) ? record.project : {};
           const settings = isObject(project.settings) ? project.settings : {};
           found.push({
@@ -762,8 +792,12 @@ export async function openDatabases(options) {
             }
             const next = projects.get(SHELF_PREFIX + incomingId);
             next.onsuccess = () => {
-              if (target !== null && !isObject(next.result)) {
+              if (target !== null && next.result === undefined) {
                 refuse(new ShelfError('no-such-project', 'That project is no longer kept on this device.'));
+                return;
+              }
+              if (target !== null && !(isObject(next.result) && isObject(next.result.project) && typeof next.result.project.id === 'string' && next.result.project.id === target)) {
+                refuse(new ShelfError('unreadable-target', 'The copy of that project kept on this device cannot be read, so it was not opened. Export it as it is, or delete it.'));
                 return;
               }
               if (target === null && next.result !== undefined) {
@@ -803,6 +837,8 @@ export async function openDatabases(options) {
               bytes: projectBytes(open, shelfImages),
               images: shelfImages,
             }, SHELF_PREFIX + open.id);
+            // for the tests: a request that fails by itself (the key was just put)
+            if (hooks.failSwitchRequest) projects.add({}, SHELF_PREFIX + open.id);
             let start;
             let startImages;
             let exportedAt = null;
@@ -847,7 +883,16 @@ export async function openDatabases(options) {
         forgetStored();
         resolve(stamp);
       };
-      tx.onerror = (event) => event.preventDefault();
+      tx.onerror = (event) => {
+        // one failed request fails the whole move: record it, stop everything
+        event.preventDefault();
+        if (!refusal) refusal = (event.target && event.target.error) || tx.error;
+        try {
+          tx.abort();
+        } catch (error) {
+          // already stopping
+        }
+      };
       tx.onabort = () => {
         saving -= 1;
         reject(refusal || tx.error || new Error('The browser stopped the write.'));
@@ -864,6 +909,7 @@ export async function openDatabases(options) {
   }
 
   async function deleteShelved(id) {
+    if (hooks.failWrite) throw new Error(hooks.failWrite);
     const tx = main.transaction(PROJECT_STORE, 'readwrite');
     const store = tx.objectStore(PROJECT_STORE);
     let existed = false;
@@ -877,6 +923,7 @@ export async function openDatabases(options) {
   }
 
   async function renameShelved(id, label) {
+    if (hooks.failWrite) throw new Error(hooks.failWrite);
     const text = typeof label === 'string' ? label.trim() : null;
     if (text === null || text.length > LABEL_MOST) throw new TypeError('A project label is text of at most ' + LABEL_MOST + ' characters.');
     const tx = main.transaction(PROJECT_STORE, 'readwrite');
