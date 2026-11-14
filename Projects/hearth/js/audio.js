@@ -131,7 +131,7 @@ function songTune(sg,voices){if(!sg||sg.lost)return null;const deg=songDegrees(s
     deg.forEach((d,i)=>note(songHz(d,k)*(v?1.003:1),beat*2.1,v?.026:.05,v?'sine':'triangle',pan,sfxG,t2+i*beat+v*.02))}
   return deg}
 function crackle(g,k,fx){if(!AC||!audioOn)return;const t=AC.currentTime,src=AC.createBufferSource();src.buffer=nBuf;
-  const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=ar(1400,4800);bp.Q.value=2.5;const gn=AC.createGain(),v=.34*g*k*(.45+Math.random()*.55);
+  const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=ar(1400,4800);bp.Q.value=2.5;const gn=AC.createGain(),v=.25*g*k*(.7+Math.random()*.3);
   gn.gain.setValueAtTime(0,t);gn.gain.linearRampToValueAtTime(v,t+.002);gn.gain.exponentialRampToValueAtTime(.0005,t+ar(.025,.07));
   src.connect(bp).connect(gn).connect(mkPan((fx-cur.x)/30)).connect(ambG);src.start(t,ar(1.5));src.stop(t+.09)}
 function plop(w){if(!AC||!audioOn)return;const o=AC.createOscillator(),gn=AC.createGain(),t=AC.currentTime,f=ar(220,420);o.type='sine';
