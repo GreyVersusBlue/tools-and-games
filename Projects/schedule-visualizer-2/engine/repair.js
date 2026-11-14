@@ -47,7 +47,8 @@ import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, RANGES, PERIOD_WORDS, TIME_F
 import { defaultSettings, defaultPublish, defaultOnboarding, emptyCells, emptySlot, emptyDay, newFloor, newDayType, roomNumberKey, nameKey, isHexColour, isBellTime, isIsoDate, inRange, neighbourCell, isEdgeCorridorCell, nextGroupColour, nextConnectionLabel, isCellScale, elevatorCars, isLiftCell } from './schema.js';
 import { LATER_PUBLISH_VIEWS, BELL_SCHEDULES_MOST, NAME_MOST, SHORT_MOST, CALENDAR_DAYS_MOST, ROTATION_RANGE, DATE_LABEL_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, WEEKDAY_NAMES, defaultWeekdays, spacelessKey, textLength } from './schema.js';
 import { DEFAULT_PASSCODE } from './publish-defaults.js';
-import { createIds, seededRandom, collectIds, isId } from './ids.js';
+import { createIds, seededRandom, collectIds, isId, ID_PREFIXES } from './ids.js';
+import { SCENARIOS_MOST, PROJECT_LABEL_MOST } from './scenario.js'; // W6:LINE
 import { MARK_KINDS, MARK_SCOPES, MARK_LABEL_MOST, DUTY_KINDS, DUTY_WHEN, DUTY_LABEL_MOST, DUTY_PLACE_MOST, RELEASE_MOST, RELEASE_SECONDS, RELEASE_WHO_KINDS } from './schema.js';
 import { isCalendarDate, daysBetween, addDays, weekdayOf, dateWords } from './calendar.js';
 
@@ -1553,12 +1554,12 @@ export function repair(input, options) {
     });
     if (Array.isArray(source.accepted) && project.accepted.length === source.accepted.length && project.accepted.every((entry, i) => entry === source.accepted[i])) project.accepted = source.accepted;
 
-    // ---- scenario
-    if (!isObject(source.scenario)) {
-      if (source.scenario !== null && source.scenario !== undefined) note('The scenario could not be read and was removed.');
-      project.scenario = null;
-    } else {
-      const scenario = { ...source.scenario };
+    // ---- scenarios (ARCHITECTURE 21.2). One function reads a scenario, the open
+    // one and each kept one alike; `where` ('' for the open one) puts a kept
+    // scenario's place at the front of each note it makes.
+    const readScenario = (rawScenario, where, say) => {
+      const note = (sentence) => say(where === '' ? sentence : where + ': ' + sentence.charAt(0).toLowerCase() + sentence.slice(1));
+      const scenario = { ...rawScenario };
       text(scenario, 'name', '', 'The scenario name');
       const wholePeriod = (value) => Number.isInteger(value) && value >= 0;
       const isText = (value) => typeof value === 'string';
@@ -1676,8 +1677,50 @@ export function repair(input, options) {
           if (lost.length > 0 || levers.some((lever, i) => lever !== scenario.levers[i])) scenario.levers = levers;
         }
       }
-      project.scenario = scenario;
+      return scenario;
+    };
+    if (!isObject(source.scenario)) {
+      if (source.scenario !== null && source.scenario !== undefined) note('The scenario could not be read and was removed.');
+      project.scenario = null;
+    } else {
+      project.scenario = readScenario(source.scenario, '', note);
+      // W6:BEGIN the open scenario's id: absent stays absent (a scenario made before kept scenarios existed); one that is there is an id of its kind or is given another
+      if (source.scenario.id !== undefined) project.scenario.id = claimId(source.scenario, ID_PREFIXES.scenario, 'The open scenario');
+      // W6:END
     }
+    // W6:BEGIN kept scenarios
+    if (source.scenarios !== undefined) {
+      if (!Array.isArray(source.scenarios)) {
+        note('The kept scenarios could not be read and were removed.');
+        delete project.scenarios;
+      } else {
+        const kept = [];
+        source.scenarios.forEach((raw, i) => {
+          const place = 'Kept scenario ' + (i + 1);
+          if (!isObject(raw)) return note(place + ' could not be read and was removed.');
+          if (!Array.isArray(raw.changes)) return note(place + ' had no list of changes and was removed.');
+          if (kept.length >= SCENARIOS_MOST - 1) return note(place + ' was over the ' + (SCENARIOS_MOST - 1) + ' a project keeps besides the open one and was removed.');
+          const read = readScenario(raw, place, note);
+          read.id = claimId(raw, ID_PREFIXES.scenario, place);
+          return kept.push(JSON.stringify(read) === JSON.stringify(raw) ? raw : read);
+        });
+        const same = kept.length === source.scenarios.length && kept.every((scenario, i) => scenario === source.scenarios[i]);
+        project.scenarios = same ? source.scenarios : kept;
+      }
+    }
+    // W6:END
+
+    // W6:BEGIN the project's label (ARCHITECTURE 21.5)
+    if (project.label !== undefined) {
+      if (typeof project.label !== 'string') {
+        note('The project label was not text and was removed.');
+        delete project.label;
+      } else if (textLength(project.label.trim()) > PROJECT_LABEL_MOST) {
+        project.label = Array.from(project.label.trim()).slice(0, PROJECT_LABEL_MOST).join('').trim();
+        note('The project label was longer than ' + PROJECT_LABEL_MOST + ' characters and was cut.');
+      }
+    }
+    // W6:END
 
     // ---- publish settings
     const publishDefaults = defaultPublish(DEFAULT_PASSCODE);

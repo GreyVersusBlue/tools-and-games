@@ -729,7 +729,7 @@ const SV2_32G1 = [
   },
   { id: 'project-clear-building', hash: '#project', open: clearAsks('building', 'Clear the building?') },
   { id: 'project-clear-schedule', hash: '#project', open: clearAsks('schedule', 'Clear the schedule?') },
-  { id: 'project-clear-new', hash: '#project', open: clearAsks('new', 'Start a new project in place of this one?') },
+  { id: 'project-clear-new', hash: '#project', open: clearAsks('new', 'Replace this project with a new empty project?') },
   { id: 'start-up-recovery', hash: '#project', open: startUpRecovery },
   { id: 'read-only-tab', hash: '#project', open: secondTab, close: closeSecondTab },
   { id: 'read-only-tab-building', hash: '#building', open: secondTab, close: closeSecondTab },

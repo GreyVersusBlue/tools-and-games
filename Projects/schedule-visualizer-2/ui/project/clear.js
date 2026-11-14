@@ -1,5 +1,5 @@
 // The Clear… card (spec 13.6): "Clear the building", "Clear the schedule" and
-// "Start a new project". Each says beside its button exactly what it removes
+// "Replace with a new empty project". Each says beside its button exactly what it removes
 // and what stays, takes a snapshot first (storage/snapshots.js) and a
 // recovery point 'replace' (ARCHITECTURE 7: before every replace-everything
 // action), and takes effect on screen at once as one undo step
@@ -21,12 +21,16 @@
 //                  starts from). Slots in a room that is gone keep its
 //                  number as text, as deleting a room does (detachRooms).
 //   the schedule   every group with its schedule, every teacher (so no room
-//                  has teachers), the accepted findings and the open
-//                  scenario. The building, the subjects, the day types with
-//                  their bell times and the settings stay.
+//                  has teachers), the accepted findings, the open scenario
+//                  and the kept ones. The building, the subjects, the day
+//                  types with their bell times and the settings stay.
 //   a new project  everything: an empty project as a first visit makes,
 //                  with a new identity; only the theme is kept, as removing
-//                  the sample school keeps it.
+//                  the sample school keeps it. It replaces the open project
+//                  (spec 13.6); Start another project, in Projects on this
+//                  device, is the one that keeps it (DESIGN 15.9 item 2).
+//   The building's clear leaves the scenarios as it leaves the open one: the
+//   lab's reconcile drops what no longer applies (ARCHITECTURE 21.10).
 //
 // The pure parts (cleared projects and the words) are exported for the Node
 // test, test/engine/snapshots.test.mjs.
@@ -36,6 +40,8 @@ import { card } from '../components/card.js';
 import { count, list } from '../components/words.js';
 import { detachRooms, replaceProject } from '../../engine/actions.js';
 import { newProject, DEFAULT_DAY_TYPE_NAMES, ELEVATOR_KIND, isLiftCell } from '../../engine/schema.js';
+import { keptScenarios } from '../../engine/scenario.js';
+import { dateWords } from '../../engine/calendar.js';
 import { DEFAULT_PASSCODE } from '../../engine/publish-defaults.js';
 import { pageSnapshots, AUTO_SNAPSHOT_NAMES, READ_ONLY_SENTENCE } from '../../storage/snapshots.js';
 import { keepNeverShow } from '../help/progress.js';
@@ -84,7 +90,21 @@ export function buildingContents(project) {
 
 // What is in the schedule that clearing it removes, counted.
 export function scheduleContents(project) {
-  return { groups: project.groups.length, teachers: project.teachers.length, accepted: project.accepted.length, scenario: project.scenario ? project.scenario.name : null };
+  return { groups: project.groups.length, teachers: project.teachers.length, accepted: project.accepted.length, scenario: project.scenario ? project.scenario.name : null, kept: keptScenarios(project).length };
+}
+
+// What the project is called in a sentence about it (ARCHITECTURE 21.5): its
+// label; blank, the school's name; both blank, "Untitled project (started
+// 14 November 2026)", the date of its `created` time, in UTC. The name is
+// isolated (U+2068 … U+2069) so a right-to-left override in it cannot turn
+// the words after it round.
+export function openProjectName(project) {
+  const label = typeof project.label === 'string' ? project.label.trim() : '';
+  const school = project.settings && typeof project.settings.schoolName === 'string' ? project.settings.schoolName.trim() : '';
+  if (label !== '') return '\u2068' + label + '\u2069';
+  if (school !== '') return '\u2068' + school + '\u2069';
+  const started = typeof project.created === 'string' ? dateWords(project.created.slice(0, 10)) : '';
+  return 'Untitled project' + (started === '' ? '' : ' (started ' + started + ')');
 }
 
 // The project with every floor emptied and the building's links gone. The
@@ -106,12 +126,15 @@ export function clearedBuilding(project) {
 }
 
 // The project with no groups, no teachers, no accepted findings and no
-// scenario. Every room's teacher list is emptied with the teachers.
+// scenario, open or kept. Every room's teacher list is emptied with the
+// teachers.
 export function clearedSchedule(project) {
   const floors = project.building.floors.map((floor) => (floor.spaces.some((space) => space.kind === 'room' && space.teacherIds.length > 0)
     ? { ...floor, spaces: floor.spaces.map((space) => (space.kind === 'room' && space.teacherIds.length > 0 ? { ...space, teacherIds: [] } : space)) }
     : floor));
-  return { ...project, building: { ...project.building, floors }, groups: [], teachers: [], accepted: [], scenario: null };
+  // `scenarios` goes with `scenario`: a project that had none has none still
+  const { scenarios, ...rest } = project;
+  return { ...rest, building: { ...project.building, floors }, groups: [], teachers: [], accepted: [], scenario: null };
 }
 
 // An empty project in place of this one. Only the theme comes across, and
@@ -157,6 +180,7 @@ export function scheduleWords(project) {
     c.teachers > 0 ? count(c.teachers, 'teacher') : null,
     c.accepted > 0 ? count(c.accepted, 'accepted finding') : null,
     c.scenario !== null ? 'the open scenario ' + quoteName(c.scenario) : null,
+    c.kept > 0 ? count(c.kept, 'kept scenario') : null,
   ].filter(Boolean);
   return {
     empty: parts.length === 0,
@@ -165,14 +189,18 @@ export function scheduleWords(project) {
   };
 }
 
-// What starting a new project would say: { empty, removes, keeps }.
+// What replacing the project with a new empty one would say: { empty, removes,
+// replaces, keeps }; `replaces` is the line that says it takes the open
+// project and where to go to keep it.
 export function newProjectWords(project) {
   const b = buildingContents(project);
   const s = scheduleContents(project);
   const parts = [count(b.floors, 'floor'), count(b.rooms, 'room'), count(s.teachers, 'teacher'), count(s.groups, 'group'), count(project.subjects.length, 'subject'), count(project.dayTypes.length, 'day type')];
+  if (s.kept > 0) parts.push(count(s.kept, 'kept scenario'));
   return {
     empty: false,
     removes: 'Replaces the whole project with an empty one: the building, the schedule, the scenario, the publish settings and every other setting. This project has ' + list(parts) + '.',
+    replaces: 'This replaces ' + openProjectName(project) + ' (the open project). To keep it, use Start another project in Projects on this device.',
     keeps: 'The new project has one empty floor, the day types a new project starts with (' + list(DEFAULT_DAY_TYPE_NAMES) + '), the starter subjects and the settings a new project starts with. Only the theme stays as it is.',
   };
 }
@@ -206,12 +234,12 @@ export const CLEARS = [
   {
     id: 'new',
     reason: 'new-project',
-    button: 'Start a new project',
-    title: 'Start a new project in place of this one?',
-    action: 'Start a new project',
+    button: 'Replace with a new empty project',
+    title: 'Replace this project with a new empty project?',
+    action: 'Replace with a new empty project',
     keep: 'Keep this project',
-    label: 'Start a new project',
-    done: 'Started a new project.',
+    label: 'Replace with a new empty project',
+    done: 'Replaced the project with a new empty project.',
     words: newProjectWords,
     make: (project, ctx) => freshProject(project, ctx.ids, ctx.clock, ctx.devicePaper ? ctx.devicePaper() : undefined),
   },
@@ -244,7 +272,7 @@ export function clearCard(ctx) {
     const words = entry.words(project);
     return ctx.confirm({
       title: entry.title,
-      body: [h('p', null, words.removes), h('p', null, words.keeps), h('p', null, snapshotLine(why, AUTO_SNAPSHOT_NAMES[entry.reason], WHAT[entry.id]))],
+      body: [h('p', null, words.removes), ...(words.replaces ? [h('p', null, words.replaces)] : []), h('p', null, words.keeps), h('p', null, snapshotLine(why, AUTO_SNAPSHOT_NAMES[entry.reason], WHAT[entry.id]))],
       action: entry.action,
       keep: entry.keep,
       danger: true,
@@ -322,11 +350,12 @@ export function clearCard(ctx) {
     lead,
     CLEARS.map((entry) => {
       const says = h('p', { data: { says: entry.id } });
+      const replaces = entry.id === 'new' ? h('p', { class: 'clear__replaces', data: { replaces: entry.id } }) : null;
       const keeps = h('p', { class: 'clear__keeps', data: { keeps: entry.id } });
       const button = h('button', { type: 'button', class: 'btn', data: { action: 'clear-' + entry.id } }, entry.button);
       button.addEventListener('click', () => run(entry, button));
-      rows.set(entry.id, { says, keeps });
-      return h('div', { class: 'clear__row', data: { clear: entry.id } }, says, keeps, h('div', { class: 'card__buttons' }, button));
+      rows.set(entry.id, { says, replaces, keeps });
+      return h('div', { class: 'clear__row', data: { clear: entry.id } }, says, replaces, keeps, h('div', { class: 'card__buttons' }, button));
     }),
     result,
   );
@@ -336,6 +365,7 @@ export function clearCard(ctx) {
       const words = entry.words(project);
       const row = rows.get(entry.id);
       row.says.textContent = words.removes;
+      if (row.replaces) row.replaces.textContent = words.replaces || '';
       row.keeps.textContent = words.empty ? '' : words.keeps;
       row.keeps.hidden = words.empty;
     }

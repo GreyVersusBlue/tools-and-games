@@ -27,6 +27,7 @@ export const ID_PREFIXES = {
   duty: 'u',
   release: 'l',
   refuge: 'a',
+  scenario: 'e', // W6:LINE
 };
 
 const ID_PATTERN = /^[a-z][a-z0-9]{9}$/;
@@ -122,5 +123,9 @@ export function collectIds(project) {
   each(project.marks, push);
   each(project.duties, push);
   each(project.release, push);
+  // W6:BEGIN the open scenario and the kept ones
+  push(project.scenario);
+  each(project.scenarios, push);
+  // W6:END
   return found;
 }

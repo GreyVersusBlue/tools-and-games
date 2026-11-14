@@ -92,6 +92,8 @@ export const GROUPS = {
     'engine/blocked.test.mjs', // SV2-107
     'engine/step-free.test.mjs', // SV2-100
     'engine/scenario-actions.test.mjs', // SV2-61
+    'engine/scenarios-kept.test.mjs', // SV2-113
+    'engine/project-label.test.mjs', // SV2-113
     'engine/prints-door-cards.test.mjs', // SV2-66
     'engine/prints-step-free.test.mjs', // SV2-104
     'engine/prints-route-sheet.test.mjs', // SV2-103

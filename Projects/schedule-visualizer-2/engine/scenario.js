@@ -467,6 +467,60 @@ export function reconcile(project, scenario) {
   return result;
 }
 
+// ---------------------------------------------------------------- several scenarios
+//
+// project.scenario is the open scenario (or null); project.scenarios the kept
+// ones, absent = [] (ARCHITECTURE 21.2). The constants are here and not in
+// schema.js, which the staff browser loads.
+
+// the open scenario and the kept ones together: the most a project holds
+export const SCENARIOS_MOST = 12;
+// the most characters of a project's label, after trimming
+export const PROJECT_LABEL_MOST = 60;
+
+// The kept scenarios as a list; absent, or not a list, reads as none.
+export function keptScenarios(project) {
+  return project && Array.isArray(project.scenarios) ? project.scenarios : [];
+}
+
+// `fn` applied to the open scenario (when there is one) and to each kept
+// scenario, in that order; fn(scenario) returns the scenario itself when it
+// changes nothing, a new object when it does, and null to remove a kept one
+// (the open one cannot be removed this way: null leaves it as it was). The
+// same project comes back when nothing changed, so an action that finds
+// nothing to do makes no history entry. A project with no `scenarios` list
+// gets none.
+export function mapScenarios(project, fn) {
+  let next = project;
+  const open = project.scenario;
+  if (open && typeof open === 'object') {
+    const result = fn(open);
+    if (result && result !== open) next = { ...next, scenario: result };
+  }
+  if (Array.isArray(project.scenarios)) {
+    let changed = false;
+    const kept = [];
+    for (const scenario of project.scenarios) {
+      const result = scenario && typeof scenario === 'object' ? fn(scenario) : scenario;
+      if (result !== scenario) changed = true;
+      if (result !== null) kept.push(result);
+    }
+    if (changed) next = { ...next, scenarios: kept };
+  }
+  return next;
+}
+
+// The project as `scenario` would make it: the changes that still apply
+// (reconcile), then its levers that do (bells, leaving late, seats and head
+// counts). The building's own levers are route options, not an edit
+// (leverRouteOptions). The same function the scenario lane runs for the open
+// scenario, so a kept scenario and the open one are run alike. The project
+// handed in is not changed. Pure.
+export function scenarioProject(project, scenario) {
+  const kept = reconcile(project, scenario);
+  return applyLevers(applyChanges(project, kept.changes), kept.levers || []);
+}
+
 // ---------------------------------------------------------------- levers
 //
 // The scenario's second list (ARCHITECTURE 18.3): scenario.levers, absent =
@@ -1040,7 +1094,7 @@ function emptyFigures() {
   return { walking: 0, waiting: 0, total: 0, late: 0, walks: 0, failed: 0 };
 }
 
-function walkFigures(view, dayTypeId, bellsId) {
+export function walkFigures(view, dayTypeId, bellsId) {
   const groups = new Map();
   const all = emptyFigures();
   const into = (groupId) => {
@@ -1123,7 +1177,7 @@ export function trimResult(result) {
 // The busiest place: the highest load in any one transition of a cell or a
 // connection outside the exclusion zones, the cells first and then the
 // connections, lower index first on a tie. Null when nothing is crossed.
-function busiestOf(result, dayTypeId, bellsId) {
+export function busiestOf(result, dayTypeId, bellsId) {
   let best = null;
   for (const load of wantedLoads(result, dayTypeId, bellsId)) {
     const consider = (source, shut, isLink) => {
@@ -1143,7 +1197,7 @@ function busiestOf(result, dayTypeId, bellsId) {
   return { ...best, placeId: place ? place.id : null, name: place ? place.name : '', parts: place ? place.parts : [] };
 }
 
-function findingsOf(result) {
+export function findingsOf(result) {
   return result && result.findings && Array.isArray(result.findings.findings) ? result.findings.findings : [];
 }
 
@@ -1418,7 +1472,7 @@ function looseRoomKey(number) {
   return roomNumberKey(String(number).normalize('NFKC')).replace(/\s+/g, '');
 }
 
-function roomKeys(project) {
+export function roomKeys(project) {
   const keys = new Map();
   for (const room of allRooms(project)) {
     const key = looseRoomKey(room.number);
@@ -1437,11 +1491,23 @@ function roomKeys(project) {
 // read like it. Also counts the rooms of A the file has no room for
 // (`missing`) and the rooms of the file A has none for (`added`), by loose
 // key.
-function matchRooms(keysA, keysB) {
+export function matchRooms(keysA, keysB) {
   let missing = 0;
   let added = 0;
-  for (const [key, rooms] of keysA) missing += Math.max(0, rooms.length - (keysB.get(key) || []).length);
-  for (const [key, rooms] of keysB) added += Math.max(0, rooms.length - (keysA.get(key) || []).length);
+  const missingNumbers = [];
+  const addedNumbers = [];
+  // the numbers of the surplus rooms, as each file writes them: the rooms of a
+  // key past as many as the other file has, in the order the file lists them
+  for (const [key, rooms] of keysA) {
+    const extra = rooms.slice((keysB.get(key) || []).length);
+    missing += extra.length;
+    for (const room of extra) missingNumbers.push(room.number);
+  }
+  for (const [key, rooms] of keysB) {
+    const extra = rooms.slice((keysA.get(key) || []).length);
+    added += extra.length;
+    for (const room of extra) addedNumbers.push(room.number);
+  }
   const pairOf = new Map();
   const alike = new Map();
   for (const [key, roomsB] of keysB) {
@@ -1458,7 +1524,7 @@ function matchRooms(keysA, keysB) {
       else alike.set(room.id, roomsA);
     }
   }
-  return { missing, added, pairOf, alike };
+  return { missing, added, missingNumbers, addedNumbers, pairOf, alike };
 }
 
 // "1 room is missing and 1 is added", "2 rooms are added"
