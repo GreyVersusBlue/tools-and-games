@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0d1416">
+<meta name="robots" content="noindex">
+<script>
+/* Chrome's "Desktop site" mode (on by default on some Android phones) ignores
+   the viewport tag and lays the page out 980px wide, then shrinks it to fit:
+   every word needs a pinch. Spot that (a phone-sized screen showing a page far
+   wider than itself), zoom the document back up to phone size, and mark it
+   .squeezed so the desktop-only rules below stand down. */
+(function () {
+  function fit() {
+    var d = document.documentElement, sw = screen.width, r = innerWidth / sw;
+    if (sw > 0 && sw < 600 && r > 1.25) { d.classList.add('squeezed'); d.style.zoom = r; }
+    else { d.classList.remove('squeezed'); d.style.zoom = ''; }
+  }
+  fit();
+  addEventListener('resize', fit);
+})();
+</script>
+<title>The Estate — Catalogue of Attendees</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%233B2A1A'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%237E2A20'/%3E%3Ccircle cx='13' cy='13' r='3.5' fill='%23A8443A'/%3E%3C/svg%3E">
+<style>
+  @font-face{ font-family:'Fraunces'; font-style:normal; font-weight:100 900; font-display:swap;
+    src:url('fonts/fraunces-latin-var-normal.woff2') format('woff2'); }
+  @font-face{ font-family:'Fraunces'; font-style:italic; font-weight:100 900; font-display:swap;
+    src:url('fonts/fraunces-latin-var-italic.woff2') format('woff2'); }
+  @font-face{ font-family:'EB Garamond'; font-style:normal; font-weight:400; font-display:swap;
+    src:url('fonts/eb-garamond-latin-400-normal.woff2') format('woff2'); }
+  @font-face{ font-family:'EB Garamond'; font-style:italic; font-weight:400; font-display:swap;
+    src:url('fonts/eb-garamond-latin-400-italic.woff2') format('woff2'); }
+  @font-face{ font-family:'Plex Mono'; font-style:normal; font-weight:400; font-display:swap;
+    src:url('fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2'); }
+
+  /* Palette pulled from the portrait style: wet slate teal, umber wood,
+     lamplight amber, catalogue paper, claret for the paddle numbers. */
+  :root{
+    --night:#0d1416;
+    --slate:#16232a;
+    --teal:#24403f;
+    --teal-hi:#3b6260;
+    --umber:#4a311f;
+    --lamp:#e7a64e;
+    --lamp-dim:#a8773a;
+    --paper:#eee3c8;
+    --paper-dk:#d9caa5;
+    --rule:#b39d70;
+    --ink:#211812;
+    --ink-soft:#5a4936;
+    --claret:#7a2632;
+    --mist:#9fb3b0;
+    --display:'Fraunces', Georgia, serif;
+    --body:'EB Garamond', Georgia, serif;
+    --mono:'Plex Mono', ui-monospace, monospace;
+  }
+  *{ box-sizing:border-box; }
+  /* Phones first. Nothing may be wider than the screen: a phone that finds
+     anything wider zooms the whole page out to fit it, and then every line of
+     text needs a pinch to read. overflow-x:clip on both roots is the belt,
+     .weather's own overflow:hidden is the braces (iOS Safari ignores body
+     overflow for fixed-position children). */
+  html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; overflow-x:hidden; overflow-x:clip; }
+  body{
+    margin:0; min-height:100vh; min-height:100dvh;
+    background:var(--night); color:var(--paper);
+    font:19px/1.5 var(--body);
+    overflow-x:hidden; overflow-x:clip;
+    overflow-wrap:break-word;
+  }
+  img{ max-width:100%; }
+  button{ font:inherit; color:inherit; }
+  [hidden]{ display:none !important; }
+
+  /* ------------------------------------------------------------ weather -- */
+  /* Lamplight pooled at the top, then three sheets of rain at different
+     speeds. Pure CSS, no script, and it stops for reduced motion. */
+  .weather{ position:fixed; inset:0; pointer-events:none; z-index:0; overflow:hidden; }
+  .weather::before{
+    content:''; position:absolute; inset:0;
+    background:
+      radial-gradient(120% 60% at 50% -10%, rgba(231,166,78,.22), transparent 60%),
+      radial-gradient(90% 50% at 100% 100%, rgba(59,98,96,.25), transparent 70%),
+      linear-gradient(180deg, #13201f 0%, var(--night) 70%);
+  }
+  .rain{ position:absolute; inset:0; opacity:.5;
+    background-image:repeating-linear-gradient(100deg,
+      transparent 0 18px, rgba(190,215,212,.16) 18px 19px, transparent 19px 47px);
+    background-size:100% 160px;
+    animation:fall 0.9s linear infinite; }
+  .rain.r2{ opacity:.32; background-size:100% 230px; animation-duration:1.4s;
+    background-image:repeating-linear-gradient(98deg,
+      transparent 0 31px, rgba(190,215,212,.12) 31px 32px, transparent 32px 83px); }
+  .rain.r3{ opacity:.2; background-size:100% 310px; animation-duration:2.1s;
+    background-image:repeating-linear-gradient(103deg,
+      transparent 0 53px, rgba(231,166,78,.10) 53px 54px, transparent 54px 121px); }
+  @keyframes fall{ from{ background-position:0 0; } to{ background-position:-28px 100%; } }
+  .weather::after{ /* fogged-glass vignette */
+    content:''; position:absolute; inset:0;
+    background:radial-gradient(130% 90% at 50% 40%, transparent 55%, rgba(5,9,10,.85) 100%);
+  }
+  @media (prefers-reduced-motion: reduce){ .rain{ animation:none; } }
+
+  main{ position:relative; z-index:1; max-width:760px; margin:0 auto;
+    padding:0 16px calc(40px + env(safe-area-inset-bottom)); }
+
+  /* ------------------------------------------------------- catalogue -- */
+  .masthead{ text-align:center; padding:36px 0 20px; }
+  .masthead .kicker{ font:13px/1.4 var(--mono); letter-spacing:.2em; text-transform:uppercase;
+    color:var(--lamp); opacity:.9; }
+  .masthead h1{ font:italic 600 clamp(44px, 13vw, 76px)/0.95 var(--display);
+    font-variation-settings:'SOFT' 100, 'WONK' 1; margin:14px 0 8px; letter-spacing:-.01em;
+    text-shadow:0 2px 24px rgba(231,166,78,.25); }
+  .masthead .sub{ font-style:italic; color:var(--mist); margin:0; }
+  .masthead .tagline{ font-size:17px; opacity:.8; margin-top:10px; }
+  .flourish{ display:flex; align-items:center; gap:12px; justify-content:center;
+    margin:20px auto 0; max-width:320px; color:var(--lamp-dim); }
+  .flourish::before, .flourish::after{ content:''; flex:1; height:1px;
+    background:linear-gradient(90deg, transparent, var(--lamp-dim), transparent); }
+
+  .lots{ list-style:none; margin:10px 0 0; padding:0;
+    display:grid; grid-template-columns:1fr; gap:12px; }
+
+  .lot{ display:grid; grid-template-columns:104px minmax(0,1fr); align-items:center; gap:18px;
+    width:100%; text-align:left; cursor:pointer;
+    background:linear-gradient(180deg, rgba(36,64,63,.55), rgba(22,35,42,.75));
+    border:1px solid rgba(179,157,112,.35); border-radius:6px;
+    padding:12px 16px 12px 14px; position:relative; min-height:96px;
+    box-shadow:0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04);
+    transition:transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+    -webkit-tap-highlight-color:transparent; }
+  .lot:hover, .lot:focus-visible{ transform:translateY(-2px); border-color:var(--lamp);
+    box-shadow:0 14px 34px rgba(0,0,0,.45), 0 0 0 1px rgba(231,166,78,.25); outline:none; }
+  .lot:active{ transform:translateY(0); }
+  .lot-no{ display:block; font:13px/1 var(--mono); letter-spacing:.14em; color:var(--lamp);
+    opacity:.9; margin-bottom:6px; }
+  .lot-text{ display:block; min-width:0; }
+
+  /* the oval portrait frame, used on the catalogue and in the sheet header */
+  .frame{ display:block; position:relative; margin:6px 4px; width:auto; aspect-ratio:4/5;
+    border-radius:50% / 46%; overflow:hidden;
+    background:radial-gradient(80% 70% at 50% 35%, #3a4f4b, #1a2629);
+    box-shadow:0 0 0 2px var(--umber), 0 0 0 4px var(--lamp-dim), 0 0 0 5px rgba(0,0,0,.6),
+      0 10px 24px rgba(0,0,0,.5); }
+  .frame img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .frame .mono{ position:absolute; inset:0; display:grid; place-items:center;
+    font:italic 600 34px/1 var(--display); color:var(--paper-dk);
+    font-variation-settings:'SOFT' 100, 'WONK' 1; opacity:.8; }
+  .lot-name{ display:block; font:600 23px/1.15 var(--display); }
+  .lot-epithet{ display:block; font-style:italic; font-size:18px; color:var(--mist); margin-top:4px; }
+  /* desktop, a distant second: the same cards three across, portrait on top */
+  @media (min-width:700px){
+    html:not(.squeezed) .lots{ grid-template-columns:repeat(3, minmax(0,1fr)); gap:18px; }
+    html:not(.squeezed) .lot{ grid-template-columns:1fr; text-align:center; gap:10px; padding:16px 12px 18px; }
+    html:not(.squeezed) .frame{ width:78%; margin:4px auto 0; }
+  }
+
+  .colophon{ text-align:center; font-style:italic; font-size:17px; color:var(--mist);
+    opacity:.7; margin-top:30px; }
+
+  /* ------------------------------------------------------------ sheet -- */
+  .bar{ position:sticky; top:0; z-index:5; margin:0 -16px;
+    padding:calc(10px + env(safe-area-inset-top)) 16px 10px;
+    display:flex; align-items:center; gap:12px;
+    background:rgba(13,20,22,.86); -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+    border-bottom:1px solid rgba(179,157,112,.25); }
+  .back{ background:none; border:1px solid rgba(179,157,112,.4); border-radius:999px;
+    padding:8px 14px; font:14px/1 var(--mono); letter-spacing:.04em; color:var(--lamp);
+    cursor:pointer; min-height:44px; flex:none; }
+  .back:hover, .back:focus-visible{ border-color:var(--lamp); outline:none; }
+  .thumb{ width:44px; height:44px; border-radius:50%; overflow:hidden; flex:none;
+    background:radial-gradient(#3a4f4b, #1a2629);
+    box-shadow:0 0 0 1.5px var(--lamp-dim); display:grid; place-items:center;
+    font:italic 600 18px/1 var(--display); color:var(--paper-dk); }
+  .thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .bar-name{ font:600 19px/1.1 var(--display); white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis; min-width:0; }
+
+  /* the sheet is a catalogue page: paper, a deckled edge, a lot stamp */
+  .page{ margin-top:18px; background:var(--paper); color:var(--ink);
+    border-radius:3px; padding:22px 18px 26px; position:relative; margin-left:-4px; margin-right:-4px;
+    background-image:
+      radial-gradient(120% 80% at 0% 0%, rgba(255,255,255,.35), transparent 50%),
+      radial-gradient(100% 60% at 100% 100%, rgba(122,88,40,.14), transparent 60%);
+    box-shadow:0 20px 50px rgba(0,0,0,.55), 0 0 0 1px rgba(0,0,0,.3); }
+  .page::before{ content:''; position:absolute; inset:7px; pointer-events:none;
+    border:1px solid var(--rule); border-radius:2px; }
+  .stamp{ position:absolute; top:16px; right:16px; width:62px; height:62px; border-radius:50%;
+    border:2px solid var(--claret); color:var(--claret); display:grid; place-items:center;
+    text-align:center; transform:rotate(-9deg); opacity:.85;
+    font:11px/1.15 var(--mono); letter-spacing:.1em; text-transform:uppercase; }
+  .stamp b{ display:block; font:600 22px/1 var(--display); letter-spacing:0; }
+
+  .who{ padding-right:70px; }
+  .who h2{ font:600 clamp(28px, 8vw, 38px)/1.02 var(--display); margin:0;
+    font-variation-settings:'SOFT' 50; }
+  .who .epithet{ font:14px/1.35 var(--mono); letter-spacing:.06em; text-transform:uppercase;
+    color:var(--ink-soft); margin:8px 0 0; }
+  .blurb{ font-style:italic; color:var(--ink-soft); margin:14px 0 0; }
+
+  .rule{ height:0; border-top:1px solid var(--rule); margin:18px 0 16px; position:relative; }
+  .rule::after{ content:'\2766'; position:absolute; left:50%; top:-.75em; transform:translateX(-50%);
+    background:var(--paper); padding:0 10px; color:var(--rule); font-size:16px; line-height:1.5; }
+
+  .vitals{ display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; }
+  @media (min-width:520px){ html:not(.squeezed) .vitals{ grid-template-columns:repeat(4, minmax(0,1fr)); } }
+  .vital{ text-align:center; border:1px solid var(--rule); border-radius:3px; padding:10px 6px 8px;
+    background:rgba(255,255,255,.28); }
+  .vital .v{ font:600 38px/1 var(--display); font-variant-numeric:lining-nums tabular-nums; }
+  .vital .l{ font:13px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase;
+    color:var(--ink-soft); margin-top:6px; }
+
+  .row-label{ font:13px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase;
+    color:var(--claret); margin:18px 0 8px; }
+  .chips{ display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); column-gap:14px; row-gap:2px; }
+  .chip{ display:flex; justify-content:space-between; align-items:baseline; gap:6px;
+    border-bottom:1px dotted var(--rule); padding:4px 2px; }
+  .chip .l{ font-size:18px; color:var(--ink-soft); min-width:0; }
+  .chip .v{ font:600 21px/1 var(--display); font-variant-numeric:lining-nums tabular-nums; }
+  .skills{ grid-template-columns:repeat(2, minmax(0,1fr)); column-gap:18px; }
+  @media (max-width:359px){ .skills{ grid-template-columns:1fr; } }
+  @media (min-width:700px){ html:not(.squeezed) .skills{ grid-template-columns:repeat(3, minmax(0,1fr)); } }
+
+  .section h3{ font:italic 600 25px/1.15 var(--display); margin:22px 0 8px;
+    color:var(--ink); border-bottom:1px solid var(--rule); padding-bottom:6px; }
+  .item{ margin:14px 0 0; }
+  .item-head{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+  .item-name{ font-weight:400; font-variant:small-caps; letter-spacing:.03em; font-size:21px; min-width:0; }
+  .item-text{ margin:2px 0 0; color:#3a2d20; }
+
+  .vital .n{ font:italic 16px/1.15 var(--body); color:var(--claret); margin-top:4px; }
+  .quote{ margin:14px 0 0; padding:2px 0 2px 14px; border-left:3px solid var(--claret);
+    font:italic 400 21px/1.35 var(--display); color:var(--ink); }
+  .chip.low{ opacity:.55; }
+  .item-head .item-roll{ font:600 25px/1 var(--display); flex:none; color:var(--claret); white-space:nowrap;
+    font-variant-numeric:lining-nums tabular-nums; }
+  .item-sub{ display:block; font:13px/1.35 var(--mono); letter-spacing:.03em; text-transform:uppercase;
+    color:var(--ink-soft); margin-top:2px; }
+
+  .terms{ margin:26px auto 0; max-width:520px; border:1px solid rgba(179,157,112,.35);
+    border-radius:4px; padding:14px 16px 12px; background:rgba(13,20,22,.55); }
+  .terms h2{ font:13px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase;
+    color:var(--lamp); margin:0 0 10px; text-align:center; font-weight:400; }
+  .terms ol{ margin:0; padding-left:22px; color:var(--mist); font-size:18px; }
+  .terms li{ margin:3px 0; }
+  .page .terms{ background:transparent; border-color:var(--rule); margin-top:24px; }
+  .page .terms h2{ color:var(--claret); }
+  .page .terms ol{ color:var(--ink-soft); }
+
+</style>
+</head>
+<body>
+<div class="weather" aria-hidden="true"><div class="rain"></div><div class="rain r2"></div><div class="rain r3"></div></div>
+
+<main>
+  <section id="catalogue" aria-labelledby="title">
+    <header class="masthead">
+      <div class="kicker">Evening Sale &middot; By Invitation</div>
+      <h1 id="title">The Estate</h1>
+      <p class="sub">Catalogue of Attendees</p>
+      <p class="sub tagline">The town is small. The rain doesn't stop. Everyone has a secret.</p>
+      <div class="flourish" aria-hidden="true">&#10086;</div>
+    </header>
+    <ul class="lots" id="lots"></ul>
+    <p class="colophon">Choose your lot. Bidding is final.</p>
+    <aside class="terms" id="terms-cat"></aside>
+  </section>
+
+  <section id="sheet" hidden aria-live="polite">
+    <div class="bar">
+      <button class="back" id="back" type="button">&larr; Catalogue</button>
+      <span class="thumb" id="thumb" aria-hidden="true"></span>
+      <span class="bar-name" id="bar-name"></span>
+    </div>
+    <article class="page" id="page"></article>
+  </section>
+</main>
+
+<script type="module">
+import { characters, rules } from './characters.js';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+// first and last word that start with a letter: 'Dale "Tiny" Kowalski' -> DK
+const initials = name => { const w = name.split(/\s+/).filter(x => /^\p{L}/u.test(x)); return (w[0]?.[0] || '') + (w.length > 1 ? w[w.length - 1][0] : ''); };
+
+// A portrait that fails to load falls back to the monogram, so a missing file
+// never shows a broken-image icon at the table.
+function portrait(c, src = c.portrait) {
+  const mono = `<span class="mono">${esc(initials(c.name))}</span>`;
+  if (!src) return mono;
+  return `<img src="${esc(src)}" alt="" width="480" height="600"
+    onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'mono',textContent:${esc(JSON.stringify(initials(c.name)))}}))">`;
+}
+
+function renderCatalogue() {
+  $('lots').innerHTML = characters.map(c => `
+    <li><button class="lot" type="button" data-slug="${esc(c.slug)}">
+      <span class="frame">${portrait(c)}</span>
+      <span class="lot-text">
+        <span class="lot-no">LOT ${esc(String(c.lot ?? '').padStart(2, '0'))}</span>
+        <span class="lot-name">${esc(c.name)}</span>
+        ${c.epithet ? `<span class="lot-epithet">${esc(c.epithet)}</span>` : ''}
+      </span>
+    </button></li>`).join('');
+}
+
+const termsHtml = () => `<h2>Conditions of Sale</h2><ol>${rules.map(r => `<li>${esc(r)}</li>`).join('')}</ol>`;
+const isLow = v => parseInt(v, 10) <= 3;
+
+const chips = (label, list, extra = '') => list?.length ? `
+  <div class="row-label">${esc(label)}</div>
+  <div class="chips ${extra}">${list.map(s =>
+    `<div class="chip${extra === 'skills' && isLow(s.value) ? ' low' : ''}"><span class="l">${esc(s.label)}</span><span class="v">${esc(s.value)}</span></div>`).join('')}
+  </div>` : '';
+
+function renderSheet(c) {
+  $('bar-name').textContent = c.name;
+  const t = c.thumb || c.portrait;
+  $('thumb').innerHTML = t ? portrait(c, t) : esc(initials(c.name));
+  const sections = (c.sections || []).map(sec => `
+    <div class="section"><h3>${esc(sec.title)}</h3>
+      ${(sec.items || []).map(it => `
+        <div class="item">
+          ${it.name ? `<div class="item-head"><span class="item-name">${esc(it.name)}
+            ${it.tag ? `<span class="item-sub">${esc(it.tag)}</span>` : ''}</span>
+            ${it.roll ? `<span class="item-roll">${esc(it.roll)}</span>` : ''}</div>` : ''}
+          ${it.text ? `<p class="item-text">${esc(it.text)}</p>` : ''}
+        </div>`).join('')}
+    </div>`).join('');
+  $('page').innerHTML = `
+    <div class="stamp" aria-label="Lot ${esc(c.lot)}">Lot<b>${esc(c.lot)}</b></div>
+    <header class="who">
+      <h2>${esc(c.name)}</h2>
+      ${c.epithet ? `<p class="epithet">${esc([c.epithet, c.lineage].filter(Boolean).join(' · '))}</p>` : ''}
+    </header>
+    ${c.blurb ? `<p class="blurb">${esc(c.blurb)}</p>` : ''}
+    ${c.quote ? `<blockquote class="quote">&ldquo;${esc(c.quote)}&rdquo;</blockquote>` : ''}
+    <div class="rule" role="separator"></div>
+    ${c.vitals?.length ? `<div class="vitals">${c.vitals.map(v =>
+      `<div class="vital"><div class="v">${esc(v.value)}</div><div class="l">${esc(v.label)}</div>${v.note ? `<div class="n">${esc(v.note)}</div>` : ''}</div>`).join('')}</div>` : ''}
+    ${chips('Saving Throws', c.saves)}
+    ${chips('Attributes', c.attributes)}
+    ${chips('Skills', c.skills, 'skills')}
+    ${sections}
+    <aside class="terms">${termsHtml()}</aside>`;
+}
+
+// The address bar holds the choice (#slug), so a player can bookmark their own
+// sheet and the phone's back gesture returns to the catalogue. No storage.
+function route() {
+  const slug = decodeURIComponent(location.hash.slice(1));
+  const c = characters.find(x => x.slug === slug);
+  $('catalogue').hidden = !!c;
+  $('sheet').hidden = !c;
+  if (c) { renderSheet(c); document.title = `${c.name} — The Estate`; }
+  else document.title = 'The Estate — Catalogue of Attendees';
+  window.scrollTo(0, 0);
+}
+
+$('lots').addEventListener('click', e => {
+  const b = e.target.closest('.lot');
+  if (b) location.hash = b.dataset.slug;
+});
+$('back').addEventListener('click', () => { location.hash = ''; });
+addEventListener('hashchange', route);
+renderCatalogue();
+$('terms-cat').innerHTML = termsHtml();
+route();
+</script>
+</body>
+</html>
