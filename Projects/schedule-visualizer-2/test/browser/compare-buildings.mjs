@@ -90,6 +90,7 @@ function withWing(base) {
 }
 
 function writeFile(name, project) {
+  fs.mkdirSync(SCRATCH, { recursive: true });
   const file = path.join(SCRATCH, name);
   fs.writeFileSync(file, writeProjectFile(project));
   return file;
