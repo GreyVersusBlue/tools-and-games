@@ -343,6 +343,7 @@ if (mode === 'eleven') {
   console.log(failed ? '\nFAIL' : '\nPASS: sprint 11 systems behave');
 }
 
+const RAIN_OLD_RMS = 0.0522; /* RMS of the old single bed (white noise, high-pass 2200 Hz Q 1) at rainG gain .09, rendered offline in Chromium 1194 before A11 */
 if (mode === 'twelve') {
   // sprint 12 observation & force tests: heirlooms made and handed down, stories that grow in the telling,
   // works-in-progress surviving a save, v7 compat, and the audio listening pass — measured, not vibed.
@@ -437,7 +438,11 @@ if (mode === 'twelve') {
     // The room the one-shots are measured in has to be the same room every time. Phase 2 shifted the R() stream, the island happened
     // to be under rain during this pass, and rain goes straight to the master bus by design — the floor read 0.1616 instead of the
     // 0.0557 every threshold below was written against, and a perfectly audible song failed for being only 1.17 floors loud.
-    h.setWx('clear'); h.setSnow(0); h.audioTick(.05); await new Promise(r => setTimeout(r, 400));
+    h.setWx('clear'); h.setSnow(0);
+    // A11: the same goes for the hearth. At night, or on a fire night, it crackles within 10 tiles of the view and lifts this floor; take the fire out of
+    // the room until the crackle rows (the time of day stays: noon would bring the birds, and their chirps are a floor of their own).
+    const fireKept = fires.splice(0); storyDay = dayCount - 1;
+    h.audioTick(.05); await new Promise(r => setTimeout(r, 400));
     const x = h.cur.x, y = h.cur.y, out = {};
     // phase 1: a tune needs a song, and the song has to be a real one — its degrees come off its chronicle index.
     const sung = { ci: 0, comp: h.people[0].name, kn: h.people.map(p => p.name), lost: 0, d: h.dayCount };
@@ -491,12 +496,44 @@ if (mode === 'twelve') {
     h.setWx('clear'); await settleDuck(2400);
     const sfxClear = h.buses.sfxG.gain.value;
     out.duck = { sfxStorm: +sfxStorm.toFixed(3), sfxClear: +sfxClear.toFixed(3), bedStorm: +bedStorm.toFixed(4) };
+    // ---- A11: the fire's crackle, and rain that knows what is under the view. Bare names below are the game's own globals. ----
+    // The crackle: at the hearth with the fire lit it clears the room floor by a ratio and stays under the one-shot band; 30 tiles away it is gone.
+    const tickFor = async ms => { const t0 = performance.now(); while (performance.now() - t0 < ms) { h.audioTick(.05); await peakFor(50); } };
+    const roomAt = async (x, y, lit, ms = 1800) => {
+      h.cur.x = x; h.cur.y = y; fires.splice(0); if (lit) fires.push(...fireKept); storyDay = lit ? dayCount : dayCount - 1;
+      await tickFor(2500); h.audioTick(.05); return +(await (async () => { const t0 = performance.now(); let pk = 0; while (performance.now() - t0 < ms) { h.audioTick(.05); pk = Math.max(pk, await peakFor(50)); } return pk; })()).toFixed(4);
+    };
+    /* exactly 30 tiles straight north or south of the hearth when the map has room: no pan, so a missing falloff cannot hide behind the stereo downmix */
+    const far = [[center.x, center.y - 30], [center.x, center.y + 30], [4, 4], [W - 4, 4], [4, H - 4], [W - 4, H - 4]].filter(([x, y]) => y >= 1 && y < H - 1).map(([x, y]) => ({ x, y, d: Math.hypot(x - center.x, y - center.y) })).filter(p => p.d >= 30)[0];
+    out.crack = { farD: +far.d.toFixed(1) };
+    out.crack.nearOut = await roomAt(center.x, center.y, false);
+    out.crack.nearLit = await roomAt(center.x, center.y, true);
+    out.crack.farOut = await roomAt(far.x, far.y, false);
+    out.crack.farLit = await roomAt(far.x, far.y, true);
+    fires.splice(0);   // and the rain rows below are rained on without a fire
+    // the rain: three places, one level. rainG is the one gain the game sets; each place reads its RMS off a tap on it.
+    const an2 = AC.createAnalyser(); an2.fftSize = 2048; h.buses.rainG.connect(an2); const b2 = new Float32Array(2048);
+    const rms2 = ms => new Promise(res => { let sq = 0, n = 0; const t0 = performance.now(); const iv = setInterval(() => { an2.getFloatTimeDomainData(b2); for (const v of b2) { sq += v * v; n++; } if (performance.now() - t0 > ms) { clearInterval(iv); res(Math.sqrt(sq / n)); } }, 30); });
+    const open = (x, y) => { let wet = 0; for (let dy = -4; dy <= 4; dy += 2) for (let dx = -4; dx <= 4; dx += 2) if (at((x | 0) + dx, (y | 0) + dy) === WATER) wet++; return wet; };
+    let wp = null, tp = null;
+    for (let y = 6; y < H - 6 && !wp; y++) for (let x = 6; x < W - 6 && !wp; x++) if (open(x, y) === 25) wp = { x: x + .5, y: y + .5 };
+    let bestD = -1;
+    for (const t of trees) { if (open(t.x, t.y)) continue; const dh = Math.min(...houses.map(q => Math.hypot(q.x + 1 - t.x, q.y + 1 - t.y))); if (dh > bestD) { bestD = dh; tp = { x: t.x, y: t.y }; } }
+    const vp = { x: houses[0].x + 1, y: houses[0].y + 1 };
+    out.rain = { places: {} };
+    h.setWx('rain'); h.buses.rainG.gain.value = .09;
+    for (const [nm, pl] of [['water', wp], ['village', vp], ['trees', tp]]) {
+      if (!pl) { out.rain.places[nm] = null; continue; }
+      h.cur.x = pl.x; h.cur.y = pl.y; await tickFor(4000); out.rain.places[nm] = { w: rainMix().map(v => +v.toFixed(2)), rms: +(await rms2(2500)).toFixed(5) };
+    }
+    out.rain.treeFromHouse = +bestD.toFixed(1);
+    h.setWx('clear');
     return out;
   });
   if (audio.skip) { failed = true; console.log(`FAIL: listening pass skipped (${audio.skip})`); }
   else {
     console.log('listening pass, master-bus peaks per one-shot:');
-    const names = Object.keys(audio).filter(k => k !== 'duck' && k !== 'song');
+    const names = Object.keys(audio).filter(k => k !== 'duck' && k !== 'song' && k !== 'crack' && k !== 'rain');
     for (const k of names) console.log(`  ${k.padEnd(10)} ${audio[k].toFixed(3)}${audio[k] > .9 ? '  !! CLIPPING RISK' : audio[k] < .004 ? '  !! INAUDIBLE' : ''}`);
     const d = audio.duck;
     console.log(`  duck bus: sfx gain ${d.sfxStorm} in storm vs ${d.sfxClear} clear; storm bed peaks ${d.bedStorm}`);
@@ -508,6 +545,28 @@ if (mode === 'twelve') {
     if (!(d.sfxStorm >= .70 && d.sfxStorm <= .75) || !(d.sfxClear >= .94 && d.sfxClear <= 1.0)) {
       failed = true;
       console.log(`FAIL: the duck budget moved — sfx gain ${d.sfxStorm}/${d.sfxClear}, want ~0.72 storm / ~0.97 clear`);
+    }
+
+    // ---- A11: rain, fire and sea that know where you are looking ----
+    // The storm duck band is the assertion just above (sfx ~0.72 storm / ~0.97 clear); it is named here so the table has the row.
+    console.log(`  A11 row: storm duck band unchanged, sfx ${d.sfxStorm} storm / ${d.sfxClear} clear (want 0.70-0.75 / 0.94-1.0)`);
+    const ck = audio.crack;
+    console.log(`  A11 row: crackle near the hearth ${ck.nearLit} lit vs ${ck.nearOut} out (x${(ck.nearLit / ck.nearOut).toFixed(2)}); at ${ck.farD} tiles ${ck.farLit} lit vs ${ck.farOut} out (x${(ck.farLit / ck.farOut).toFixed(2)})`);
+    if (ck.farD < 30) { failed = true; console.log(`FAIL: no point on the island is 30 tiles from the hearth (best ${ck.farD})`); }
+    if (ck.nearLit < ck.nearOut * 1.3) { failed = true; console.log(`FAIL: the fire's crackle is not audible at the hearth (${ck.nearLit} over a floor of ${ck.nearOut}, want x1.3)`); }
+    if (ck.nearLit > .19) { failed = true; console.log(`FAIL: the fire's crackle is outside the one-shot band (${ck.nearLit} > 0.19)`); }
+    // The room floor wanders 30 to 45% window to window (x1.44 was read with nothing in range at all); a crackle placed at full volume reads x2.3 or more at the hearth. 1.8 sits between.
+    if (ck.farLit > ck.farOut * 1.8) { failed = true; console.log(`FAIL: the crackle is still heard 30 tiles from the hearth (${ck.farLit} over a floor of ${ck.farOut})`); }
+    // The old single rain bed read this RMS on rainG at gain .09 (measured on main before A11, 2026-11-14, Chromium 1194). A constant, not a
+    // value taken from the code under test: a bed that is louder or quieter in any one place moves off it.
+    const RAIN_OLD = RAIN_OLD_RMS;
+    for (const [nm, v] of Object.entries(audio.rain.places)) {
+      if (!v) { failed = true; console.log(`FAIL: no ${nm} place found to stand in for the rain row`); continue; }
+      const r = v.rms / RAIN_OLD;
+      console.log(`  A11 row: rain over ${nm} (weights water/village/trees ${v.w.join('/')}) rms ${v.rms} = x${r.toFixed(3)} of the old bed ${RAIN_OLD}`);
+      if (Math.abs(r - 1) > .1) { failed = true; console.log(`FAIL: rain over ${nm} is x${r.toFixed(3)} of the old level, want within 10%`); }
+      const wi = { water: 0, village: 1, trees: 2 }[nm];
+      if (v.w[wi] < .6) { failed = true; console.log(`FAIL: standing over ${nm} the ${nm} bed carries only ${v.w[wi]} of the rain`); }
     }
 
     // ---- phase 1: the song, checked rather than admired ----
