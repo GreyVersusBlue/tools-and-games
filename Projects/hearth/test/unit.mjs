@@ -355,6 +355,56 @@ section(19, () => {
   check('names: the three look scripts load after render.js and before audio.js', ['js/look.js', 'js/folk.js', 'js/goods.js'].every(f => ORDER.indexOf(f) > ORDER.indexOf('js/render.js') && ORDER.indexOf(f) < ORDER.indexOf('js/audio.js')));
 });
 
+// ---- stock you can point at (B1, unit section 22) ----
+// goods.js draws wood, grain and fish as objects whose count is the number. The counts are a pure function of wood, granary and food, and the
+// spots are a pure function of center and what stands on the island: all land, none inside a house, a building, a plot or a work.
+// The footprints below are the sprites' own pixels (a house frame is 16 by 16 at its tile), not goods.js's wider margins, so this does not
+// re-run the function it checks. Break: read `food` where `wood` belongs in stockWant, and the wood line of the first check fails.
+section(22, () => {
+  const { ev } = fresh(7);
+  const want = (w, g, f) => ev(`(wood=${w},granary=${g},food=${f},stockWant())`);
+  check('stock: wood 12 is 3 logs, 96 is a full stack of 24, more stays 24', want(12, 0, 0).wood === 3 && want(96, 0, 0).wood === 24 && want(500, 0, 0).wood === 24 && want(0, 0, 0).wood === 0 && want(1, 0, 0).wood === 1, JSON.stringify([12, 96, 500, 0, 1].map(w => want(w, 0, 0).wood)));
+  check('stock: granary 25 is 1 sack, 26 is 2, capped at 16', want(0, 25, 0).sack === 1 && want(0, 26, 0).sack === 2 && want(0, 400, 0).sack === 16 && want(0, 0, 0).sack === 0, JSON.stringify([25, 26, 400, 0].map(g => want(0, g, 0).sack)));
+  check('stock: food 20 is 1 fish, 21 is 2, capped at 8', want(0, 0, 20).fish === 1 && want(0, 0, 21).fish === 2 && want(0, 0, 400).fish === 8 && want(0, 0, 0).fish === 0, JSON.stringify([20, 21, 400, 0].map(f => want(0, 0, f).fish)));
+  check('stock: the three counts do not read each other', want(96, 0, 0).sack === 0 && want(96, 0, 0).fish === 0 && want(0, 400, 0).wood === 0 && want(0, 0, 400).wood === 0 && want(0, 0, 400).sack === 0);
+  // the ease: a seeded island shows its stock at once, then moves one object per 0.4 s of animT, and stands still while animT does
+  const e = fresh(7); e.ev('wood=0;granary=0;food=0;animT=0;stockEase()');
+  e.ev('wood=96;granary=0;food=0');
+  const c0 = e.ev('stockEase().wood'); e.ev('animT=0.39'); const c1 = e.ev('stockEase().wood'); e.ev('animT=0.4'); const c2 = e.ev('stockEase().wood'); e.ev('animT=0.4'); const c3 = e.ev('stockEase().wood');
+  e.ev('animT=3.2'); const c4 = e.ev('stockEase().wood'); e.ev('animT=60'); const c5 = e.ev('stockEase().wood');
+  check('stock: logs arrive one per 0.4 s of animT and not before', c0 === 0 && c1 === 0 && c2 === 1 && c3 === 1 && c4 === 8 && c5 === 24, JSON.stringify([c0, c1, c2, c3, c4, c5]));
+  e.ev('wood=0'); e.ev('animT=61'); const d1 = e.ev('stockEase().wood');
+  check('stock: logs leave one per 0.4 s as well', d1 === 22, `${d1} after 1 s of animT with the pile at 24`);
+  // positions
+  const bad = [];
+  for (const seed of [7, 42, 20260819]) {
+    const h = fresh(seed);
+    for (const day of [1, 12]) {
+      while (h.ev('dayCount') < day) h.ev('for(let i=0;i<280;i++)step(.05)');
+      const sp = h.ev('stockSpots()'), at = (x, y) => h.ev(`at(${x},${y})`);
+      const hs = h.ev('houses.map(o=>[o.x,o.y])'), bs = h.ev('bAll().map(o=>[o.x,o.y,o.w,o.h])'), pl = h.ev('plots.map(o=>[o.x,o.y])');
+      for (const k of ['wood', 'sack', 'fish']) {
+        const s = sp[k], x0 = s.x - s.w / 2, x1 = s.x + s.w / 2, y0 = s.y - s.h, y1 = s.y;
+        const tag = `seed ${seed} day ${day} ${k}`;
+        if (!s.ok) bad.push(`${tag} found no free spot`);
+        for (let ty = Math.floor(y0 / 8); ty * 8 < y1; ty++) for (let tx = Math.floor(x0 / 8); tx * 8 < x1; tx++) { const t = at(tx, ty); if (t === 0 || t === 3) bad.push(`${tag} on ${t === 0 ? 'water' : 'rock'} at ${tx},${ty}`); }
+        const over = (a0, b0, a1, b1) => x0 < a1 && x1 > a0 && y0 < b1 && y1 > b0;
+        for (const [hx, hy] of hs) if (over(hx * 8, hy * 8, hx * 8 + 16, hy * 8 + 16)) bad.push(`${tag} inside the house at ${hx},${hy}`);
+        for (const [px, py] of pl) if (over(px * 8, py * 8, px * 8 + 16, py * 8 + 16)) bad.push(`${tag} inside the plot at ${px},${py}`);
+        for (const [bx, by, bw, bh] of bs) if (!(k === 'sack' && h.ev('getB("hall")') && bx === h.ev('getB("hall").x') && by === h.ev('getB("hall").y')) && !(s.on === 'line' && h.ev('getB("hut")') && bx === h.ev('getB("hut").x') && by === h.ev('getB("hut").y')) && over(bx * 8, by * 8, (bx + bw) * 8, (by + bh) * 8)) bad.push(`${tag} inside the building at ${bx},${by}`);
+      }
+    }
+  }
+  check('stock: for seeds 7, 42 and 20260819 at days 1 and 12 every pile is on land, clear of houses, plots and buildings', bad.length === 0, bad.slice(0, 4).join('; '));
+  // a hall with a house on its south side: the sacks move off it
+  const f = fresh(7), cx = f.ev('center.x'), cy = f.ev('center.y');
+  f.ev(`bldg.push({kind:'hall',x:${cx + 8},y:${cy - 6},w:3,h:2,done:true,prog:0,work:80})`);
+  const s0 = f.ev('stockSpots().sack');
+  f.ev(`houses.push({x:${Math.round(s0.x / 8) - 1},y:${Math.round(s0.y / 8) - 1},r:'#8a3d2f',owners:[]})`);
+  const s1 = f.ev('stockSpots().sack');
+  check('stock: sacks stand at the hall\'s south wall, and move when a house takes that spot', s0.ok && s0.y / 8 > cy - 6 + 2 && s0.x / 8 > cx + 8 && s1.ok && (s1.x !== s0.x || s1.y !== s0.y), JSON.stringify([s0, s1]));
+});
+
 // ---- a save cannot carry markup (C1, unit section 26) ----
 // unpack() makes every string in the save plain text on every load (#37): no < > & " or backtick, none over 400 characters.
 // The log writes names and chronicle text through innerHTML, and a save is about to be something a server accepts and republishes.

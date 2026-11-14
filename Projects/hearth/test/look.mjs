@@ -164,11 +164,50 @@ async function groundChecks(page) {
   console.log(`      ground: ${r.lo} tiles NW-lower at ${r.mlo.toFixed(2)}, ${r.hi} NW-higher at ${r.mhi.toFixed(2)}, paint ${r.ms.toFixed(1)} ms`);
 }
 
+// ---- (5) B1: stock you can point at. A fresh seed-7 island at noon, clear, no snow, zoom 1, where one world pixel is one canvas pixel. ----
+// Each pile is counted by its own colours inside the box stockSpots() gives. wood, granary and food are set through the page's global scope,
+// and animT is set by hand, so the ease is the thing under test: the numbers change at once, the objects arrive one per 0.4 s.
+async function stockChecks(page) {
+  const r = await page.evaluate(() => {
+    const H = window.__hearth, g = document.getElementById('c').getContext('2d'), ev = (0, eval);
+    const COL = { wood: [[138, 90, 46], [148, 98, 47], [107, 68, 35], [200, 147, 90]], sack: [[214, 199, 154], [179, 162, 115], [138, 122, 82]], fish: [[201, 208, 200], [125, 140, 138]] };
+    H.setZoom(1); H.setWx('clear'); H.setSnow(0); H.setTime((Math.floor(H.time / 140) + .5) * 140);
+    const count = k => {
+      const s = ev('stockSpots()')[k], x0 = Math.round(s.x - s.w / 2) - 1, y0 = Math.round(s.y - s.h) - 2, w = s.w + 2, h = s.h + 3;
+      const d = g.getImageData(x0, y0, w, h).data; let n = 0;
+      for (let i = 0; i < d.length; i += 4) if (COL[k].some(c => d[i] === c[0] && d[i + 1] === c[1] && d[i + 2] === c[2])) n++;
+      return n;
+    };
+    const out = {};
+    const run = (k, set, hi, t) => {
+      ev(set(0)); H.setAnimT(t); H.draw(); const empty = count(k);
+      ev(set(hi)); H.draw(); const same = count(k);
+      H.setAnimT(t + 1.2); H.draw(); const part = count(k);
+      H.setAnimT(t + 12); H.draw(); const full = count(k);
+      out[k] = { empty, same, part, full };
+    };
+    run('wood', v => `wood=${v}`, 96, 100);
+    ev('wood=12'); H.setAnimT(200); H.draw();
+    run('sack', v => `granary=${v}`, 400, 300);
+    ev('granary=0'); H.setAnimT(400); H.draw();
+    run('fish', v => `food=${v}`, 160, 500);
+    return out;
+  });
+  // eight fish are 4 px each, so their floor is 24, not the 60 the design gives for logs and sacks
+  for (const [k, what, set, min] of [['wood', 'logs', 'setWood(96)', 60], ['sack', 'sacks', 'setGranary(400)', 60], ['fish', 'fish', 'setFood(160)', 24]]) {
+    const o = r[k];
+    check(`stock: ${what} are ${o.empty} px at 0 and ${o.full} px once ${set} has had 12 s of animT, at least ${min} of them`, o.empty === 0 && o.full >= min, JSON.stringify(o));
+    check(`stock: the ${what} arrive over time, none at the instant the number moves, some at 1.2 s, all by 12 s`, o.same === 0 && o.part > 0 && o.part < o.full, JSON.stringify(o));
+  }
+  console.log(`      stock: logs ${r.wood.full} px, sacks ${r.sack.full} px, fish ${r.fish.full} px`);
+}
+
 // ---- (2) the eight scenes, at zoom 1 and zoom 3.2: pictures and timing ----
 const rows = [];
 {
   const { ctx, page } = await open(7);
   await groundChecks(page);
+  await stockChecks(page);
   for (const sc of SCENES) {
     await page.evaluate(sc => {
       const H = window.__hearth;
