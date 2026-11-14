@@ -13,7 +13,8 @@
 // the two buildings" with the button "Compare the two buildings" (./buildings.js
 // holds that comparison: view state, never saved). "Compare with another project
 // on this device" is the same question asked of the projects kept on the shelf: a
-// select of their labels and a Compare button. A kept project is read with
+// select of their labels and a Compare button, which compares another building at
+// once (the person has already chosen it). A kept project is read with
 // ctx.storage.projects.read(id), the same path open() reads it by; the same
 // building makes the scenario as a file does, another building the comparison.
 //
@@ -92,7 +93,9 @@ export function filePanel(env) {
 
   // A project that has been read, from a file or from the shelf: the same
   // building makes the scenario, another building the comparison.
-  async function compareRead(fileName, read, returnTo) {
+  // `direct`: a kept project was chosen and Compare pressed, so another building is
+  // compared at once (a file first gets the refusal's sentence and its button).
+  async function compareRead(fileName, read, returnTo, direct) {
     if (!env.mounted()) return;
     // what cannot be compared, against the project as it is now; another
     // building is refused by the action itself, in its own words
@@ -105,7 +108,8 @@ export function filePanel(env) {
       if (error && error.code === 'different-building') another = error.message;
     }
     if (another !== null) {
-      sayAnother(fileName, read, another);
+      if (direct) await compareBuildings(fileName, read, returnTo);
+      else sayAnother(fileName, read, another);
       return;
     }
     // a scenario is made now: a building comparison held gives way to it
@@ -221,7 +225,7 @@ export function filePanel(env) {
       refused(quote(label) + ' was not compared, and nothing has changed. ' + got.text);
       return;
     }
-    await compareRead(label, { project: got.project }, shelfButton);
+    await compareRead(label, { project: got.project }, shelfButton, true);
   }
 
   readShelf();

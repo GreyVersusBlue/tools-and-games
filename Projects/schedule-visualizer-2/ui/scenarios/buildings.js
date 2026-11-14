@@ -159,6 +159,7 @@ export function buildingsPanel(env) {
     if (!state) return;
     state.dayTypeName = daySelect.value;
     shape();
+    band.dataset.day = state.dayTypeName;
     drawInspector();
     paint();
     const what = state.answer ? 'Compared on ' + state.dayTypeName + '. ' + busiestWords(state.side === 'this' ? state.answer.figures.busiest.before : state.answer.figures.busiest.after) : '';
@@ -277,7 +278,7 @@ export function buildingsPanel(env) {
     const only = (label, list) => (list.length === 0 ? null : h('li', { data: { rooms: label } }, label === 'added' ? ['Only in ', bdi(file), ' (' + list.length + '): ', ...names(list.map(String))] : ['Only in this project (' + list.length + '): ', ...names(list.map(String))]));
     return h('section', { 'aria-labelledby': 'scenario-building-rooms-title', data: { part: 'rooms' } },
       h('h3', { class: 'scn-compare__heading', id: 'scenario-building-rooms-title' }, 'Rooms'),
-      h('p', null, count(rooms.same, 'room') + ' (' + (rooms.same === 1 ? 'a number' : 'numbers') + ' in both buildings).'),
+      h('p', null, count(rooms.same, 'room') + (rooms.same === 1 ? ' has' : ' have') + ' the same number in both buildings.'),
       rooms.added.length + rooms.removed.length === 0 ? null : h('ul', { class: 'scn-bld__list' }, only('removed', rooms.removed), only('added', rooms.added)));
   }
 
@@ -436,7 +437,7 @@ export function buildingsPanel(env) {
     } catch (error) {
       return refuse(REFUSED_ENGINE + (error && error.message ? error.message : String(error)));
     }
-    state = { projectId: store.project.id, counters: counters(), fileName: name, other, otherGraph: graph, mainResult: found.main.result, otherResult: found.other.result, dayTypeName: null, side: 'this', answer: null, scales: null, bands: null, edges: null };
+    state = { projectId: store.project.id, counters: counters(), fileName: name, other, otherGraph: graph, mainResult: found.main, otherResult: found.other.result, dayTypeName: null, side: 'this', answer: null, scales: null, bands: null, edges: null };
     try {
       shape();
     } catch (error) {
@@ -516,7 +517,7 @@ export function buildingsPanel(env) {
       if (mine !== token || state !== s) return;
       band.dataset.working = 'false';
       if (!ours) return;
-      s.mainResult = ours.result;
+      s.mainResult = ours;
       try {
         shape();
       } catch (error) {
