@@ -402,7 +402,7 @@ test('an unreadable shelf record is refused before anything moves, and can be ex
   assert.equal(await page.evaluate(() => globalThis.sv2.store.project.settings.schoolName), 'Still editable', 'the project can still be edited');
   // a record that is not a project at all is listed as unreadable, with its
   // export, and can be deleted (no recovery point can be made of it)
-  await write(page, 'sv2', 'project', 'put', { savedAt: '2026-11-14T10:00:00.000Z', project: 'not a project', shelvedAt: '2026-11-14T10:00:00.000Z', bytes: 1, images: {} }, 'shelf:pdamaged01');
+  await write(page, 'sv2', 'project', 'put', { savedAt: '2026-11-14T10:00:00.000Z', project: null, shelvedAt: '2026-11-14T10:00:00.000Z', bytes: 1, images: {} }, 'shelf:pdamaged01');
   const entry = (await ask(page, 'storage.projects.list()')).find((each) => each.id === 'pdamaged01');
   assert.deepEqual([entry.open, entry.unreadable, entry.exportRaw], [false, true, '[function]'], 'listed as unreadable, with a way to export it as it is');
   const refused = await ask(page, "storage.projects.open('pdamaged01')");
