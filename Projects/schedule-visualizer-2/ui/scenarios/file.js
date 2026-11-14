@@ -97,14 +97,11 @@ export function filePanel(env) {
   // compared at once (a file first gets the refusal's sentence and its button).
   async function compareRead(fileName, read, returnTo, direct) {
     if (!env.mounted()) return;
-    // what cannot be compared, against the project as it is now; another
-    // building is refused by the action itself, in its own words
-    let skipped = [];
+    // another building is not a scenario: the action refuses it in its own words
     let another = null;
     try {
-      skipped = scenarioFromDiff(ctx.store.project, read.project, { fileName }).skipped;
+      scenarioFromDiff(ctx.store.project, read.project, { fileName });
     } catch (error) {
-      skipped = [];
       if (error && error.code === 'different-building') another = error.message;
     }
     if (another !== null) {
@@ -130,6 +127,13 @@ export function filePanel(env) {
         say(quote(fileName) + ' was read and not compared. Nothing has changed.');
         return;
       }
+    }
+    // what could not be compared, against the project as it is now that the question is answered
+    let skipped = [];
+    try {
+      skipped = scenarioFromDiff(ctx.store.project, read.project, { fileName }).skipped;
+    } catch (error) {
+      skipped = [];
     }
     const done = env.apply(setScenarioFromFile, { project: read.project, fileName, replace }, (message) => refused(quote(fileName) + ' was not compared, and nothing has changed. ' + message));
     if (!done) return;
