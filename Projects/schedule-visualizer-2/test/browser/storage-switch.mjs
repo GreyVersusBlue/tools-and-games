@@ -400,6 +400,12 @@ test('an unreadable shelf record is refused before anything moves, and can be ex
   await withActions(page);
   await rename(page, 'Still editable');
   assert.equal(await page.evaluate(() => globalThis.sv2.store.project.settings.schoolName), 'Still editable', 'the project can still be edited');
+  // it is listed as unreadable, with its export, and can be deleted (no recovery point can be made of it)
+  const entry = (await ask(page, 'storage.projects.list()')).find((each) => each.id === first);
+  assert.deepEqual([entry.open, entry.unreadable, entry.exportRaw], [false, true, '[function]'], 'listed as unreadable, with a way to export it as it is');
+  const gone = await ask(page, 'storage.projects.remove(arg)', first);
+  assert.deepEqual([gone.ok, gone.pointKept, gone.pointKey], [true, false, null], 'deleted, and the answer says no recovery point was kept');
+  assert.deepEqual(await shelfKeys(page), [], 'the damaged record is gone');
 });
 
 // ---------------------------------------------------------------- duplicate and restore

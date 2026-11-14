@@ -26,7 +26,9 @@
 //   list()                     -> [{ id, open, label, schoolName, savedAt, shelvedAt,
 //                                   bytes, summary }]  the open project first, then the
 //                                   rest, most recently put aside first. A shelved
-//                                   project that cannot be read has `unreadable: true`.
+//                                   project that cannot be read has `unreadable: true`
+//                                   and `exportRaw()` (its record as a file): offer
+//                                   that and remove(id), never open(id).
 //   holds(projectId)           -> the label (label, else school name, else "Untitled
 //                                   project") of the project of that id when it is kept
 //                                   on the shelf, else null. The open project's own id
@@ -43,6 +45,7 @@
 //   rename(id, label)          a shelved project's label (not an undo step; the open
 //                              project's label is an action)
 //   remove(id)                 delete a shelved project after a recovery point of it
+//                              (pointKey, pointKept; none for a record too damaged to read)
 //   restoreAsProject(point | snapshot)
 //                              a recovery point (its key, or { point: key }) or a
 //                              snapshot (its id, or { snapshot: id }) of a project that
@@ -1046,20 +1049,24 @@ export function startStorage(ctx, options) {
     return refusal('failed', 'The project was not ' + what + ', and nothing has moved. ' + messageOf(error));
   }
 
+  // The raw record of a shelved project as a file, whatever is wrong with it.
+  function exportShelvedRaw(record) {
+    const project = isObject(record) && record.project !== undefined ? record.project : null;
+    download(exportFileName(isObject(project) ? project : {}, 'unreadable project', 'json', clock()), 'application/json', JSON.stringify(project, null, 2));
+    return true;
+  }
+
   // Step 1: the shelf record read the way start() reads the saved project.
   async function readTarget(id) {
     const record = await db.readShelved(id);
-    if (!isObject(record)) return { refused: refusal('no-such-project', 'That project is no longer kept on this device.') };
-    const images = isObject(record.images) ? record.images : {};
+    if (record === null) return { refused: refusal('no-such-project', 'That project is no longer kept on this device.') };
+    const images = isObject(record) && isObject(record.images) ? record.images : {};
     try {
-      return { record, read: readProject(record.project, new Set(Object.keys(images))) };
+      return { record, read: readProject(isObject(record) ? record.project : undefined, new Set(Object.keys(images))) };
     } catch (error) {
       return {
         refused: refusal('unreadable', 'That project cannot be read here, so it was not opened and nothing has moved. ' + messageOf(error) + ' It can still be exported as it is.', {
-          exportRaw: () => {
-            download(exportFileName(isObject(record.project) ? record.project : {}, 'unreadable project', 'json', clock()), 'application/json', JSON.stringify(record.project === undefined ? null : record.project, null, 2));
-            return true;
-          },
+          exportRaw: () => exportShelvedRaw(record),
         }),
       };
     }
@@ -1241,18 +1248,22 @@ export function startStorage(ctx, options) {
     } catch (error) {
       return failed(error, 'deleted');
     }
-    if (!isObject(record)) return refusal('no-such-project', 'That project is no longer kept on this device.');
-    // a recovery point of it first; the newest 3 of each other project are kept
-    let key = null;
+    if (record === null) return refusal('no-such-project', 'That project is no longer kept on this device.');
+    // a recovery point of it first; the newest 3 of each other project are kept.
+    // A record too damaged to make a point of (it is listed as unreadable) is
+    // deleted without one: the person was offered its export first.
+    let point = null;
     try {
-      const images = isObject(record.images) ? record.images : {};
-      const point = buildPoint(record.project, 'replace', clock().toISOString(), { get: (imageId) => (images[imageId] ? images[imageId].blob : undefined) });
-      key = await db.addPoint(point, undefined, store.project.id);
-    } catch (error) {
-      if (!isObject(record.project) || !isObject(record.project.settings)) {
-        return refusal('unreadable', 'That project cannot be read here, so no recovery point of it could be kept and it was not deleted. Export it as it is first.', { exportRaw: () => { download('unreadable-project.json', 'application/json', JSON.stringify(record.project === undefined ? null : record.project, null, 2)); return true; } });
+      const images = isObject(record) && isObject(record.images) ? record.images : {};
+      point = buildPoint(record.project, 'replace', clock().toISOString(), { get: (imageId) => (images[imageId] ? images[imageId].blob : undefined) });
+    } catch (error) { /* no point can be made of it */ }
+    let key = null;
+    if (point !== null) {
+      try {
+        key = await db.addPoint(point, undefined, store.project.id);
+      } catch (error) {
+        warnRecovery(error);
       }
-      warnRecovery(error);
     }
     try {
       await db.deleteShelved(id);
@@ -1261,7 +1272,7 @@ export function startStorage(ctx, options) {
     }
     emit('points');
     emit('projects');
-    return { ok: true, label: projectTitle(record.project), pointKey: key };
+    return { ok: true, label: projectTitle(isObject(record) ? record.project : null), pointKey: key, pointKept: key !== null };
   }
 
   // The project of a recovery point or a snapshot, read for restoreAsProject.
@@ -1337,7 +1348,7 @@ export function startStorage(ctx, options) {
       shelvedAt: null,
       bytes: projectBytes(open, Object.fromEntries(held)),
       summary: pointSummary(open),
-    }, ...shelf.map((entry) => ({ ...entry, open: false }))];
+    }, ...shelf.map((entry) => (entry.unreadable ? { ...entry, open: false, exportRaw: async () => exportShelvedRaw(await db.readShelved(entry.id)) } : { ...entry, open: false }))];
   }
 
   const projects = { list, open: openProject, startAnother, duplicate, rename, remove, holds, restoreAsProject };
