@@ -171,7 +171,7 @@ after(async () => {
 
 // ---------------------------------------------------------------- the names
 
-test('the names: sessionStorage sv2:opened, the nine calls of projects, the three flags of state', async () => {
+test('the names: sessionStorage sv2:opened, the ten calls of projects, the three flags of state', async () => {
   const seen = await page.evaluate(async () => {
     const module = await import(new URL('storage/session.js', document.baseURI).href);
     const { storage } = globalThis.sv2;
@@ -182,7 +182,7 @@ test('the names: sessionStorage sv2:opened, the nine calls of projects, the thre
     };
   });
   assert.equal(seen.key, 'sv2:opened', 'the key never changes once written');
-  assert.deepEqual(seen.calls, ['duplicate', 'exportShelved', 'holds', 'list', 'open', 'remove', 'rename', 'restoreAsProject', 'startAnother']);
+  assert.deepEqual(seen.calls, ['duplicate', 'exportShelved', 'holds', 'list', 'open', 'read', 'remove', 'rename', 'restoreAsProject', 'startAnother']);
   assert.deepEqual(seen.flags, [true, true, true]);
 });
 
@@ -1388,6 +1388,43 @@ test('item 12: points are listed with their project and label; exportShelved wri
     let answer = null;
     const stop = storage.subscribe((state, what) => {
       if (what === 'switching' && state.switching && answer === null) answer = storage.projects.exportShelved(target).then((result) => [result.ok, result.code]);
+    });
+    await storage.projects.open(target);
+    stop();
+    storage.hooks.failSwitchLate = false;
+    return answer;
+  }, first);
+  assert.deepEqual(during, [false, 'switching']);
+});
+
+test('SV2-123: read(id) gives a kept project through open()\'s path, writes nothing, answers in a read-only tab, and refuses the open project, a missing one, an unreadable one and a switch under way', async () => {
+  const { first, second } = await twoProjects();
+  const before = await idb(page, 'sv2', 'project', 'keys');
+  const done = await ask(page, 'storage.projects.read(arg)', first);
+  assert.equal(done.ok, true);
+  assert.equal(done.project.id, first, 'the kept project, not the open one');
+  assert.equal(typeof done.images, 'object');
+  assert.deepEqual(await idb(page, 'sv2', 'project', 'keys'), before, 'nothing was written, nothing taken off the shelf');
+  assert.equal((await ask(page, 'storage.projects.read(arg)', second)).code, 'is-open');
+  assert.equal((await ask(page, "storage.projects.read('pnothere01')")).code, 'no-such-project');
+  const record = await shelfOf(page, first);
+  const damaged = JSON.parse(JSON.stringify(record));
+  delete damaged.project.groups;
+  damaged.project.id = 'pdamaged03';
+  await write(page, 'sv2', 'project', 'put', damaged, 'shelf:pdamaged03');
+  const bad = await ask(page, "storage.projects.read('pdamaged03')");
+  assert.deepEqual([bad.ok, bad.code], [false, 'unreadable']);
+  assert.match(bad.text, /so it was not read\./, 'the sentence is about reading, not opening');
+  const sibling = await secondTab();
+  assert.equal((await ask(sibling, 'storage.projects.read(arg)', first)).ok, true, 'a read-only tab can read a kept project');
+  await sibling.close();
+  extra.pop();
+  const during = await page.evaluate(async (target) => {
+    const { storage } = globalThis.sv2;
+    storage.hooks.failSwitchLate = true;
+    let answer = null;
+    const stop = storage.subscribe((state, what) => {
+      if (what === 'switching' && state.switching && answer === null) answer = storage.projects.read(target).then((result) => [result.ok, result.code]);
     });
     await storage.projects.open(target);
     stop();

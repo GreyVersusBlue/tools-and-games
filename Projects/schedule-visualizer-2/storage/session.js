@@ -69,6 +69,14 @@
 //                              ('switching', 'unavailable', 'is-open', 'no-such-project',
 //                              'unreadable' with exportRaw()). Reads only: allowed in a
 //                              read-only tab; refused while a switch is under way.
+//   read(id)                   a readable shelved project, read the way open() reads it
+//                              (validate, migrate, repair), and changed nowhere: the
+//                              scenario lab's "Compare with another project on this device"
+//                              -> { ok: true, project, images } or { ok: false, code, text }
+//                              ('switching', 'unavailable', 'is-open', 'no-such-project',
+//                              'unreadable', 'failed'). `images` is the record's own pictures,
+//                              as stored. Reads only: allowed in a read-only tab; refused for
+//                              the open project's id and while a switch is under way.
 //   restoreAsProject(point | snapshot)
 //                              a recovery point (its key, or { point: key }) or a
 //                              snapshot (its id, or { snapshot: id }) of a project that
@@ -1642,7 +1650,25 @@ export function startStorage(ctx, options) {
     }
   }
 
-  const projects = { list, open: openProject, startAnother, duplicate, rename, remove, holds, restoreAsProject, exportShelved };
+  // A readable shelved project, through readTarget (the path open() uses), and
+  // nothing written. The open project's id is refused: it is store.project.
+  async function readShelved(id) {
+    if (!db) return refusal('unavailable', 'This browser is not keeping projects, so it keeps none to read.');
+    if (switching) return refusal('switching', 'A project is already being opened. Wait for the page to reload.');
+    if (typeof id !== 'string' || id === '' || id === store.project.id) return refusal('is-open', 'This project is open. It is read as it is, not from the shelf.');
+    let target;
+    try {
+      target = await readTarget(id);
+    } catch (error) {
+      return refusal('failed', 'The project was not read. ' + messageOf(error));
+    }
+    if (target.refused) return { ...target.refused, text: target.refused.text.replace('so it was not opened and nothing has moved.', 'so it was not read.') };
+    // a switch may have begun while the record was read
+    if (switching) return refusal('switching', 'A project began opening while this one was read, so it was not used.');
+    return { ok: true, project: target.read.project, images: isObject(target.record.images) ? target.record.images : {} };
+  }
+
+  const projects = { list, open: openProject, startAnother, duplicate, rename, remove, holds, restoreAsProject, exportShelved, read: readShelved };
 
   const storage = {
     state,
