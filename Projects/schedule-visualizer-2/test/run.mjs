@@ -265,7 +265,7 @@ export const BROWSER_SECONDS = {
   'browser/plan-map.mjs': 26,
   'browser/storage.mjs': 24,
   'browser/storage-shelf.mjs': 10,
-  'browser/storage-switch.mjs': 120,
+  'browser/storage-switch.mjs': 400, // 133 s on Huginn alone, about 300 s on two slow cores (SV2-116b)
   'browser/recovery.mjs': 23,
   'browser/scenario.mjs': 21,
   'browser/fix.mjs': 21,
