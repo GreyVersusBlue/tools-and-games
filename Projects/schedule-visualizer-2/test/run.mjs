@@ -93,6 +93,7 @@ export const GROUPS = {
     'engine/step-free.test.mjs', // SV2-100
     'engine/scenario-actions.test.mjs', // SV2-61
     'engine/scenarios-kept.test.mjs', // SV2-113
+    'engine/kept-lane.test.mjs', // SV2-121
     'engine/project-label.test.mjs', // SV2-113
     'engine/prints-door-cards.test.mjs', // SV2-66
     'engine/prints-step-free.test.mjs', // SV2-104
@@ -173,6 +174,7 @@ export const GROUPS = {
     'browser/import.mjs', // SV2-13
     'browser/project-file.mjs', // SV2-13
     'browser/worker.mjs', // SV2-16
+    'browser/lanes-kept.mjs', // SV2-121
     'browser/print.mjs', // SV2-14
     'browser/building-files.mjs', // SV2-32c
     'browser/staff-shell.mjs', // SV2-20
@@ -229,6 +231,7 @@ export const GROUPS = {
     'timing/evacuation.mjs', // SV2-62
     'timing/suggest.mjs', // SV2-63
     'timing/scenario-lane.mjs', // SV2-64
+    'timing/kept-lane.mjs', // SV2-121
     'timing/difference-card.mjs', // SV2-69c
     'timing/checks.mjs', // SV2-32i
     'timing/worker.mjs', // SV2-32i
