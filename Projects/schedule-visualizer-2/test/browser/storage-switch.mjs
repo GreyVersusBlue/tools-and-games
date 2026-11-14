@@ -400,11 +400,19 @@ test('an unreadable shelf record is refused before anything moves, and can be ex
   await withActions(page);
   await rename(page, 'Still editable');
   assert.equal(await page.evaluate(() => globalThis.sv2.store.project.settings.schoolName), 'Still editable', 'the project can still be edited');
-  // it is listed as unreadable, with its export, and can be deleted (no recovery point can be made of it)
-  const entry = (await ask(page, 'storage.projects.list()')).find((each) => each.id === first);
+  // a record that is not a project at all is listed as unreadable, with its
+  // export, and can be deleted (no recovery point can be made of it)
+  await write(page, 'sv2', 'project', 'put', { savedAt: '2026-11-14T10:00:00.000Z', project: 'not a project', shelvedAt: '2026-11-14T10:00:00.000Z', bytes: 1, images: {} }, 'shelf:pdamaged01');
+  const entry = (await ask(page, 'storage.projects.list()')).find((each) => each.id === 'pdamaged01');
   assert.deepEqual([entry.open, entry.unreadable, entry.exportRaw], [false, true, '[function]'], 'listed as unreadable, with a way to export it as it is');
-  const gone = await ask(page, 'storage.projects.remove(arg)', first);
+  const refused = await ask(page, "storage.projects.open('pdamaged01')");
+  assert.deepEqual([refused.ok, refused.code], [false, 'unreadable'], 'and never opened');
+  const gone = await ask(page, "storage.projects.remove('pdamaged01')");
   assert.deepEqual([gone.ok, gone.pointKept, gone.pointKey], [true, false, null], 'deleted, and the answer says no recovery point was kept');
+  assert.deepEqual(await shelfKeys(page), ['shelf:' + first], 'only the damaged record went');
+  // the one that failed validation is deleted too, when asked, and the answer says what it could keep
+  const second = await ask(page, 'storage.projects.remove(arg)', first);
+  assert.equal(second.ok, true);
   assert.deepEqual(await shelfKeys(page), [], 'the damaged record is gone');
 });
 
