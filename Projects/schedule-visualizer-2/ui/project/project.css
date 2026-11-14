@@ -77,3 +77,133 @@
 #snapshots [data-line="result"] {
   margin-top: var(--s-3);
 }
+
+/* Projects on this device (SV2-117): the label, the list, its rows and the dialogs' choices */
+.proj__opened {
+  margin: 0 0 var(--s-3);
+  font-weight: var(--w-semibold);
+}
+
+.proj__list {
+  list-style: none;
+  margin: var(--s-4) 0 0;
+  padding: 0;
+}
+
+.proj__row {
+  padding: var(--s-3) 0;
+  border-top: var(--border);
+}
+
+.proj__name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-md);
+  font-weight: var(--w-semibold);
+}
+
+.proj__label {
+  overflow-wrap: anywhere;
+}
+
+/* never colour alone: the word is the mark */
+.proj__pill {
+  padding: 0 var(--s-2);
+  border: var(--border-width) solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  font-size: var(--t-xs);
+  line-height: var(--lh-md);
+  font-weight: var(--w-semibold);
+}
+
+.proj__about,
+.proj__reason,
+.proj__dialog-note {
+  margin-top: var(--s-1);
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}
+
+.proj__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+
+.proj__buttons .btn,
+.proj__held-buttons .btn,
+#projects .card__buttons .btn {
+  min-height: 44px;
+}
+
+.proj__buttons .btn[aria-disabled="true"],
+#projects .card__buttons .btn[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.proj__result {
+  margin-top: var(--s-3);
+}
+
+.proj__dialog-refusal {
+  color: var(--danger, var(--ink));
+  font-weight: var(--w-semibold);
+}
+
+.proj__choices {
+  display: grid;
+  gap: var(--s-2);
+  margin: var(--s-3) 0;
+}
+
+.proj__choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  min-height: 44px;
+  padding: var(--s-2) var(--s-3);
+  border: var(--border);
+  border-radius: var(--radius, 6px);
+}
+
+.proj__choice input {
+  margin-top: 0.35rem;
+}
+
+.proj__choice-text {
+  display: grid;
+}
+
+.proj__choice-label {
+  font-weight: var(--w-semibold);
+}
+
+.proj__choice-about {
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+.proj__held {
+  margin-top: var(--s-3);
+}
+
+.proj__held-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+/* a phone: the rows' buttons go under the two lines, full width */
+@media (max-width: 600px) {
+  .proj__buttons .btn,
+  .proj__held-buttons .btn {
+    flex: 1 1 100%;
+  }
+}
