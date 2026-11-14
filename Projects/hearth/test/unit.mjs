@@ -379,5 +379,50 @@ section(19, () => {
   check('names: the three look scripts load after render.js and before audio.js', ['js/look.js', 'js/folk.js', 'js/goods.js'].every(f => ORDER.indexOf(f) > ORDER.indexOf('js/render.js') && ORDER.indexOf(f) < ORDER.indexOf('js/audio.js')));
 });
 
+// ---- a save cannot carry markup (C1, unit section 26) ----
+// unpack() makes every string in the save plain text on every load (#37): no < > & " or backtick, none over 400 characters.
+// The log writes names and chronicle text through innerHTML, and a save is about to be something a server accepts and republishes.
+section(26, () => {
+  const BAD = /[<>&"`]/, XSS = '<b onmouseover=x>';
+  const strings = (v, out = []) => { if (typeof v === 'string') out.push(v); else if (Array.isArray(v)) v.forEach(x => strings(x, out)); else if (v && typeof v === 'object') Object.values(v).forEach(x => strings(x, out)); return out; };
+  // a hundred days from seed 7, taken before any repair: the repair has to be a no-op on a real island, or this list is what it found
+  const { H, ev } = fresh(7);
+  ev('for(let i=0;i<2800*100;i++)step(.05)');
+  const clean = H.pack(), cleanStr = JSON.stringify(clean);
+  const found = strings(clean).filter(x => BAD.test(x) || x.length > 400);
+  check('save: a 100-day island from seed 7 carries none of the five characters and no long string before repair', found.length === 0 && strings(clean).length > 100, `${strings(clean).length} strings; found ${JSON.stringify(found.slice(0, 5))}`);
+  // pack -> unpack -> pack on a 100-day island is not byte-identical on main either: a voyage that "stayed" (o.vo) is dropped by
+  // unpack's `voyage.p` guard and packs as 0. That is older than this repair and not this increment's to fix, so the 100-day check
+  // names every key but vo, and the whole-object byte check runs on a six-day island below, where there is no voyage.
+  H.unpack(JSON.parse(cleanStr));
+  const re = H.pack(), drift = Object.keys(clean).filter(k => JSON.stringify(clean[k]) !== JSON.stringify(re[k]));
+  check('save: unpack leaves every key of that 100-day island as it was, but the voyage', drift.every(k => k === 'vo'), drift.join(','));
+  { const g = fresh(7); g.ev('for(let i=0;i<2800*6;i++)step(.05)'); const six = JSON.stringify(g.H.pack()); g.H.unpack(JSON.parse(six));
+    check('save: pack -> unpack -> pack is still byte-identical on a clean six-day island', JSON.stringify(g.H.pack()) === six); }
+  // one person's name, the village name, one chronicle label and one life line, each carrying markup
+  const o = JSON.parse(cleanStr);
+  const who = o.pe[0][2];
+  o.pe[0][2] = who + XSS; o.vn = 'Mill' + XSS; o.ch[0][3] = 'a label' + XSS; o.pe[0][7].push([o.d, 'a life line' + XSS]);
+  check('save: the doctored save really carries markup before repair', strings(o).filter(x => BAD.test(x)).length >= 4);
+  H.unpack(o);
+  const after = H.pack();
+  check('save: after unpack no string anywhere in pack() contains <', strings(after).every(x => !x.includes('<')), JSON.stringify(strings(after).filter(x => x.includes('<')).slice(0, 3)));
+  check('save: and none contains any of the five characters', strings(after).every(x => !BAD.test(x)));
+  check('save: the chronicle label kept its text and lost only the markup', after.ch[0][3] === 'a labelb onmouseover=x', after.ch[0][3]);
+  check('save: the name, the village and the life line did too', after.pe[0][2] === who + 'b onmouseover=x' && after.vn === 'Millb onmouseover=x' && after.pe[0][7].at(-1)[1] === 'a life lineb onmouseover=x', JSON.stringify([after.pe[0][2], after.vn, after.pe[0][7].at(-1)]));
+  // the log is innerHTML: nothing the load wrote there may carry a tag either
+  check('save: the log the load wrote has no markup from the save', !/<b onmouseover/.test(ev("document.getElementById('log').innerHTML")));
+  // the cut: 400 and no more, and a string under the cut is untouched
+  const long = JSON.parse(cleanStr);
+  long.ch[0][3] = 'x'.repeat(900); long.vn = 'y'.repeat(400);
+  H.unpack(long);
+  const lp = H.pack();
+  check('save: a string over 400 characters is cut to 400, one of exactly 400 is left alone', lp.ch[0][3].length === 400 && lp.vn.length === 400, `${lp.ch[0][3].length}, ${lp.vn.length}`);
+  // a repair on every load, not only the first: a second pass changes nothing
+  const twice = JSON.stringify(lp);
+  H.unpack(JSON.parse(twice));
+  check('save: repairing twice is the same as repairing once', JSON.stringify(H.pack()) === twice);
+});
+
 console.log(`${fail ? 'FAIL' : 'PASS'}: ${pass} of ${pass + fail} unit checks`);
 process.exit(fail ? 1 : 0);
