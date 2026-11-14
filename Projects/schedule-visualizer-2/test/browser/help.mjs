@@ -320,6 +320,37 @@ test('Help’s Safety part names each of Safety’s tabs, the trial and the prin
   });
 });
 
+// W6 (SV2-124): Help names the Project section's own buttons, read from the
+// page, so a button renamed there fails here, and says each W6 idea in words.
+test('Help’s Project and Scenarios parts name the Projects card’s buttons and the W6 ideas', async () => {
+  await on(DESK, '#project', async (page) => {
+    await page.waitForSelector('[data-action="start-another"]');
+    const onPage = await page.evaluate(() => ['start-another', 'duplicate'].map((action) => document.querySelector('[data-action="' + action + '"]').textContent.trim()));
+    assert.deepEqual(onPage, ['Start another project…', 'Duplicate this project'], 'the Projects card’s buttons changed: Help must name them');
+    const part = await page.evaluate(() => Array.from(document.querySelectorAll('button, label')).map((el) => el.textContent.trim()).filter((text) => text === 'Import part of a project file…' || text === 'Replace with a new empty project'));
+    assert.deepEqual([...new Set(part)].sort(), ['Import part of a project file…', 'Replace with a new empty project']);
+    await blurAll(page);
+    await page.keyboard.press('?');
+    await page.waitForSelector(OPEN);
+    const said = await page.evaluate(() => ({
+      project: document.querySelector('.help__section[data-section="project"]').textContent,
+      scenarios: document.querySelector('.help__section[data-section="scenarios"]').textContent,
+    }));
+    for (const phrase of ['Projects on this device', 'The Label is', 'Start another project', 'Duplicate this project', 'Open switches', 'Rename…', 'Delete…', 'Export it first', 'Keep it as another project', 'Of other projects', 'Of projects no longer on this device', 'Cannot be read', 'Restore as a project', 'Import part of a project file', 'only the building, only the schedule or only the settings', 'Bring it in', 'a snapshot is taken first', 'Replace with a new empty project']) {
+      assert.ok(said.project.includes(phrase), 'Help’s Project part lacks "' + phrase + '"');
+    }
+    for (const phrase of ['Other scenarios', 'Keep and start another', 'Switch to', 'Duplicate', 'Rename…', 'Delete…', 'Compare with', 'Compare the two buildings', 'Stop comparing', 'only in one building', 'not saved']) {
+      assert.ok(said.scenarios.includes(phrase), 'Help’s Scenarios part lacks "' + phrase + '"');
+    }
+    for (const word of ['Label', 'Kept scenario', 'Building comparison']) {
+      const meaning = await page.$eval('#help-dialog dt[data-term="' + word + '"] + dd', (el) => el.textContent);
+      assert.ok(meaning.endsWith('.') && !meaning.includes('. '), word + ' is not one sentence');
+    }
+    await page.keyboard.press('Escape');
+    await helpGone(page);
+  });
+});
+
 for (const [theme, size] of [['light', DESK], ['dark', DESK], ['light', UPRIGHT], ['dark', UPRIGHT], ['light', ON_ITS_SIDE], ['dark', ON_ITS_SIDE]]) {
   test('axe finds nothing in Help, in the ' + theme + ' theme at ' + size.width + ' by ' + size.height, async () => {
     const session = await openPlanner({ hash: '#safety', server, browser, theme, ...size });
