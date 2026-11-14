@@ -132,6 +132,8 @@ export function snapshotEntry(record) {
     takenAt: record && typeof record.takenAt === 'string' ? record.takenAt : '',
     bytes: record && Number.isFinite(record.bytes) ? record.bytes : null,
     school: typeof settings.schoolName === 'string' ? settings.schoolName : '',
+    // what the project goes by (21.5): its label, else the school's name, else ''
+    label: project && typeof project.label === 'string' && project.label.trim() !== '' ? project.label.trim() : (typeof settings.schoolName === 'string' ? settings.schoolName : ''),
     projectId: project && typeof project.id === 'string' ? project.id : null,
     summary,
     readable: readable && summary !== null,
@@ -471,6 +473,17 @@ export function startSnapshots(ctx, options) {
   async function restore(id) {
     editable();
     const opened = await open(id);
+    // one project, one place (21.1): a snapshot of a project kept on the shelf is not
+    // put over the open one, and this is asked before any image is put back or a
+    // recovery point taken. The refusal carries who holds it.
+    if (opened.project.id !== ctx.store.project.id) {
+      const label = await storage().projects.holds(opened.project.id);
+      if (label !== null) {
+        const error = new SnapshotError('This snapshot is a copy of ' + label + ', which is also kept on this device. Open ' + label + ' first, or keep it as another project. Nothing was replaced.', 'held');
+        error.held = { id: opened.project.id, label };
+        throw error;
+      }
+    }
     for (const imageId of opened.images) {
       const value = await storage().getImage(imageId);
       if (value) await storage().putImage(imageId, value);
