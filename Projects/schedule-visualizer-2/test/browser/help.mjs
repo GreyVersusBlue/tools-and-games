@@ -91,8 +91,8 @@ async function checkHelp(page, id, rail) {
   assert.deepEqual(seen.keys, registered.map((entry) => entry.id), id + ': the shortcuts are not the shell’s list');
   assert.deepEqual(seen.groups, [...new Set(registered.map((entry) => entry.group))], id + ': a group of shortcuts is not explained');
   assert.deepEqual(seen.devices, ['mouse', 'touch', 'pen', 'keyboard']);
-  assert.equal(seen.words.length, 39, id + ': spec 2 has 20 words, DESIGN 11.1 adds 11, DESIGN 12.1 adds Staggered dismissal, DESIGN 13.1 adds Step-free, Area of refuge and Route sheet and DESIGN 14.1 adds Blocked, Lockdown map, Evacuation poster and Map pack');
-  for (const term of ['Elevator', 'Step-free', 'Area of refuge', 'Route sheet', 'Blocked', 'Lockdown map', 'Evacuation poster', 'Map pack']) assert.ok(seen.words.includes(term), id + ': Help\'s words lack ' + term);
+  assert.equal(seen.words.length, 42, id + ': spec 2 has 20 words, DESIGN 11.1 adds 11, DESIGN 12.1 adds Staggered dismissal, DESIGN 13.1 adds Step-free, Area of refuge and Route sheet, DESIGN 14.1 adds Blocked, Lockdown map, Evacuation poster and Map pack, and DESIGN 15.1 adds Label, Kept scenario and Building comparison');
+  for (const term of ['Elevator', 'Step-free', 'Area of refuge', 'Route sheet', 'Blocked', 'Lockdown map', 'Evacuation poster', 'Map pack', 'Label', 'Kept scenario', 'Building comparison']) assert.ok(seen.words.includes(term), id + ': Help\'s words lack ' + term);
   assert.deepEqual(seen.numbers, ['load', 'travel', 'late']);
   assert.deepEqual(seen.jumps, ['sections', 'keys', 'gestures', 'words', 'numbers']);
   assert.doesNotMatch(seen.text, /—/, 'an em dash in Help');
