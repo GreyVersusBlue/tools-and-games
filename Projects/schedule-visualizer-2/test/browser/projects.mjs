@@ -357,7 +357,7 @@ for (const [name, width, height] of [['390 x 844', 390, 844], ['844 x 390', 844,
       await withActions(p);
       await journey(p, 'pointer');
       // this card's own boxes, not the page's: the Recovery points card's table (another unit's) is wider than a phone once points exist
-      const over = await p.evaluate(() => Array.from(document.querySelectorAll('#projects, #projects *')).filter((el) => !el.classList.contains('vh') && (el.getBoundingClientRect().right > document.getElementById('surface').clientWidth + 0.5 || el.getBoundingClientRect().left < -0.5)).map((el) => el.tagName + '.' + String(el.className).slice(0, 30)));
+      const over = await p.evaluate(() => Array.from(document.querySelectorAll('#projects, #projects *')).filter((el) => !el.classList.contains('vh') && (el.getBoundingClientRect().right > document.getElementById('surface').getBoundingClientRect().right + 0.5 || el.getBoundingClientRect().left < document.getElementById('surface').getBoundingClientRect().left - 0.5)).map((el) => el.tagName + '.' + String(el.className).slice(0, 30)));
       assert.deepEqual(over, [], 'nothing of the Projects card is past the edge with three projects listed');
       assert.equal((await noSideways(p)).page, 0, 'the page itself does not scroll sideways');
       const small = await p.$$eval('#projects .proj__row button, #projects .card__buttons .btn', (all) => all.filter((b) => b.getBoundingClientRect().height < 43.5).map((b) => b.textContent));
