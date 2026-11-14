@@ -819,7 +819,7 @@ export const section = {
       // a held building comparison paints the map itself
       if (!buildings.paint()) plan.setProject(project, graphNow());
       if (placing === 0 && held && (!held.isConnected || held.closest('[hidden]'))) {
-        if (buildings.held()) buildings.editLine.focus();
+        if (buildings.held()) buildings.focusSwitch();
         else changes.focusName();
       }
     }

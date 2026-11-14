@@ -31,13 +31,18 @@
 //                          stop(options), update(project), paint(), unmount() }
 //   env.ctx, env.plan() (the lab's plan map, once mounted), env.graph() (the
 //   open project's graph), env.redraw() (the lab draws itself again),
-//   env.focusFile() (where the focus goes after Stop comparing)
+//   env.focusFile() (where the focus goes when a comparison ends)
 //   start(read, fileName) -> Promise of { ok: true } or { ok: false, sentence }
 //   (a refusal of the engine, or why the other side could not be worked out):
 //   nothing is held after a refusal. `read` is { project } (what
 //   readProjectFile or projects.read gave).
 //   paint() draws the map for the held comparison and answers true, or does
 //   nothing and answers false when none is held (the lab then draws its own).
+//
+// One start at a time is held: a new start leaves the one held as it was until its own
+// answer is ready, and a refused one leaves it as it was. Every announcement goes through
+// the inspector's status (a refusal through its alert line); the band's own words do not
+// speak. onEnd(fn) is told when a comparison ends: fn({ name, why, say }).
 //
 // The band's data-held is "true" while a comparison is held, data-working
 // "true" while one is being worked out (the first answer, and again after a
@@ -147,8 +152,11 @@ export function buildingsPanel(env) {
   const store = ctx.store;
   // the held comparison, or null
   let state = null;
-  // the asking in progress (start, a change in the open project): an older answer is dropped
-  let token = 0;
+  // the askings in progress (a start; a change in the open project): an older answer is dropped
+  let startToken = 0;
+  let updateToken = 0;
+  let starting = false;
+  let updating = false;
   let saved = null;
   let colours = null;
   let coloursKey = '';
@@ -158,11 +166,12 @@ export function buildingsPanel(env) {
   const text = h('p', { class: 'scn-bld__text', data: { part: 'band-text' } });
   const head = h('div', { class: 'scn-bld__head' }, text, stopButton);
   const notSaved = h('p', { class: 'scn-bld__note', data: { part: 'not-saved' } }, NOT_SAVED);
-  const editLine = h('p', { class: 'scn-bld__edit', id: 'scenario-building-edit', tabindex: '-1', data: { part: 'edit-line' } }, EDIT_LINE);
+  const editLine = h('p', { class: 'scn-bld__edit', id: 'scenario-building-edit', role: 'note', data: { part: 'edit-line' } }, EDIT_LINE);
+  const bandTitle = h('h2', { class: 'vh', id: 'scenario-building-band-title' }, 'Comparing two buildings');
   const legendName = h('span', { class: 'scn-bld__legend', id: 'scenario-building-switch-label' }, 'Building shown on the map');
   const sideChoice = { current: null };
   const switchBox = h('div', { class: 'scn-bld__switch', data: { part: 'switch' } });
-  const band = h('section', { class: 'scn-bld', hidden: true, 'aria-label': 'Comparing two buildings', data: { part: 'building-band', held: 'false' } }, head, notSaved, editLine, legendName, switchBox);
+  const band = h('section', { class: 'scn-bld', hidden: true, 'aria-labelledby': 'scenario-building-band-title', data: { part: 'building-band', held: 'false' } }, bandTitle, head, notSaved, editLine, legendName, switchBox);
 
   function drawSwitch(fileName) {
     sideChoice.current = choice({
@@ -181,26 +190,59 @@ export function buildingsPanel(env) {
   const daySelect = h('select', { class: 'field__input', id: 'scenario-building-day', data: { key: 'scenario-building-day' } });
   dayField.append(h('label', { class: 'field__label', for: 'scenario-building-day' }, 'Day type'), daySelect);
   daySelect.addEventListener('change', () => {
-    if (!state) return;
-    state.dayTypeName = daySelect.value;
-    shape();
-    band.dataset.day = state.dayTypeName;
+    if (!state || state.stale) return;
+    const s = state;
+    const before = s.dayTypeName;
+    let shaped;
+    try {
+      shaped = shapeFor(s, daySelect.value);
+    } catch (error) {
+      daySelect.value = before;
+      alertIt('The day type could not be compared, and nothing has changed. ' + (error && error.message ? error.message : String(error)));
+      return;
+    }
+    if (shaped.answer.refused) {
+      daySelect.value = before;
+      alertIt(shaped.answer.sentence + ' Nothing has changed.');
+      return;
+    }
+    adopt(s, shaped);
+    band.dataset.day = s.dayTypeName;
     drawInspector();
     paint();
-    const what = state.answer ? 'Compared on ' + state.dayTypeName + '. ' + busiestWords(state.side === 'this' ? state.answer.figures.busiest.before : state.answer.figures.busiest.after) : '';
-    status.textContent = what;
+    say('Compared on ' + s.dayTypeName + '. ' + busiestWords(sideBusiest(s)));
   });
   const legend = h('div', { class: 'scn-bld__key', data: { part: 'legend' } });
+  // the one place that speaks: a status, and for a refusal its alert line (never both at once)
   const status = h('p', { class: 'scn-compare__status', role: 'status', data: { part: 'building-status' } });
+  const alertLine = h('p', { class: 'scn-compare__status', role: 'alert', data: { part: 'building-alert' } });
   const body = h('div', { class: 'scn-compare__body', data: { part: 'building-body' } });
   const inspector = h('div', { class: 'scn-compare scn-bld__inspector', hidden: true, data: { part: 'building-inspector' } },
-    h('h2', { class: 'scn-compare__title', id: 'scenario-building-title' }, 'Two buildings'), legend, h('div', { class: 'scn-compare__options' }, dayField), status, body);
+    h('h2', { class: 'scn-compare__title', id: 'scenario-building-title' }, 'Two buildings'), legend, h('div', { class: 'scn-compare__options' }, dayField), status, alertLine, body);
+
+  function say(text) {
+    alertLine.textContent = '';
+    status.textContent = text;
+  }
+
+  function alertIt(text) {
+    status.textContent = '';
+    alertLine.textContent = text;
+  }
+
+  function sideBusiest(s) {
+    if (!s.answer || s.answer.refused) return null;
+    return s.side === 'this' ? s.answer.figures.busiest.before : s.answer.figures.busiest.after;
+  }
 
   // ---- the answer's shape: day type, the shared scale, the bands of each side
-  function shape() {
-    const s = state;
-    Object.assign(s, shapeOf({ project: store.project, graph: env.graph(), result: s.mainResult }, { project: s.other, graph: s.otherGraph, result: s.otherResult }, s.dayTypeName));
-    if (!s.answer.refused) s.dayTypeName = s.answer.matched.dayTypeName;
+  function shapeFor(s, dayTypeName) {
+    return shapeOf({ project: store.project, graph: env.graph(), result: s.mainResult }, { project: s.other, graph: s.otherGraph, result: s.otherResult }, dayTypeName);
+  }
+
+  function adopt(s, shaped) {
+    Object.assign(s, shaped);
+    if (!shaped.answer.refused) s.dayTypeName = shaped.answer.matched.dayTypeName;
   }
 
   function colourOfBands() {
@@ -217,23 +259,32 @@ export function buildingsPanel(env) {
     return colours;
   }
 
-  const overlay = lanesOverlay(() => (state && state.bands ? { bands: state.bands[state.side], bandColours: colourOfBands() } : null));
+  // nothing is painted while a recompute is pending (the bands are of the project as it was) or after a refusal
+  const overlay = lanesOverlay(() => (state && state.bands && !state.stale ? { bands: state.bands[state.side], bandColours: colourOfBands() } : null));
 
   // The map: the building of the side shown, painted on the shared scale. The
   // lab's own overlays (the closed corridors, the difference map) are set aside
   // while a comparison is held: they paint the open scenario, not this.
   function paint() {
-    if (!state || !state.answer || state.answer.refused) return false;
+    if (!state) return false;
     const plan = env.plan();
     if (!plan) return false;
     if (saved === null) {
       saved = plan.overlays.splice(0);
       plan.overlays.push(overlay);
+      // the closed corridors are not drawn while their overlay is set aside
+      const scn = plan.canvas.closest('.scn');
+      if (scn) scn.dataset.closedDrawn = '0';
     }
     if (state.side === 'this') plan.setProject(store.project, env.graph());
     else plan.setProject(state.other, state.otherGraph);
     plan.paint();
     // for the tests: how many cells are painted, and the busiest load the scale was made from
+    if (!state.bands || state.stale) {
+      delete band.dataset.painted;
+      delete band.dataset.scale;
+      return true;
+    }
     let painted = 0;
     for (const bands of state.bands[state.side].values()) for (const value of bands) if (value > 0 && value !== BAND_EXCLUDED) painted += 1;
     band.dataset.painted = String(painted);
@@ -243,13 +294,20 @@ export function buildingsPanel(env) {
 
   function showSide(value) {
     if (!state || (value !== 'this' && value !== 'other')) return;
+    const plan = env.plan();
+    // each building keeps its own zoom and place across the switch
+    if (plan && state.side !== value) state.views[state.side] = plan.fitted ? { fitted: true } : { fitted: false, view: plan.view.save() };
     state.side = value;
     band.dataset.side = value;
     paint();
+    const was = state.views[value];
+    if (plan) {
+      if (was && !was.fitted) plan.setView(was.view);
+      else plan.fit(true);
+    }
     drawLegend();
     const which = value === 'this' ? 'this project’s' : state.fileName + '’s';
-    const side = state.answer && !state.answer.refused ? (value === 'this' ? state.answer.figures.busiest.before : state.answer.figures.busiest.after) : null;
-    ctx.announce('Showing ' + which + ' building. ' + busiestWords(side));
+    say('Showing ' + which + ' building. ' + (state.stale ? 'Working it out again…' : busiestWords(sideBusiest(state))));
   }
 
   function drawLegend() {
@@ -267,6 +325,21 @@ export function buildingsPanel(env) {
       h('p', { class: 'scn-bld__line', data: { part: 'one-scale' } }, sentence));
   }
 
+  // A refusal after a change in the open project: nothing of the old answer stays
+  // (legend, day types, painted cells, scale), the inspector says why, and the
+  // map shows the building unpainted.
+  function showRefusal(sentence) {
+    legend.replaceChildren();
+    daySelect.replaceChildren();
+    daySelect.dataset.key = '';
+    delete band.dataset.painted;
+    delete band.dataset.scale;
+    delete body.dataset.stale;
+    delete inspector.dataset.stale;
+    body.replaceChildren(h('p', { class: 'scn-bld__refusal', data: { part: 'refusal' } }, sentence));
+    alertIt(sentence);
+  }
+
   // ---- the inspector's tables
   function drawInspector() {
     const s = state;
@@ -280,11 +353,13 @@ export function buildingsPanel(env) {
       daySelect.dataset.key = key;
       daySelect.replaceChildren(...days.map((day) => h('option', { value: day }, day)));
     }
-    if (!answer.refused) daySelect.value = answer.matched.dayTypeName;
     if (answer.refused) {
-      body.replaceChildren(h('p', { role: 'alert' }, answer.sentence));
+      showRefusal(answer.sentence);
       return;
     }
+    daySelect.value = answer.matched.dayTypeName;
+    delete body.dataset.stale;
+    delete inspector.dataset.stale;
     drawLegend();
     const unitsDiffer = Boolean(answer.unitsDiffer);
     body.replaceChildren(roomsBlock(answer, file), figuresBlock(answer, file, unitsDiffer), groupsBlock(answer, file, unitsDiffer), placesBlock(answer, file, unitsDiffer), findingsBlock(answer), h('p', { class: 'scn-compare__note', data: { part: 'not-saved-foot' } }, NOT_SAVED_FOOT));
@@ -333,6 +408,13 @@ export function buildingsPanel(env) {
     return side ? [...parts(side.parts || [{ text: side.name }]), ' (' + side.load + ')'] : ['nowhere'];
   }
 
+  // The engine lists "(no name)" once, last, for the groups with no name, and counts them in
+  // noNameBefore/After: the marker goes (its count says it), so a group really named
+  // "(no name)" stays in the list as typed.
+  function realNames(list, nameless) {
+    return nameless > 0 ? list.slice(0, -1) : list;
+  }
+
   function groupsBlock(answer, file) {
     const shown = [];
     let same = 0;
@@ -362,24 +444,32 @@ export function buildingsPanel(env) {
           h('td', { class: 'num' }, each.after),
           h('td', { class: 'num' }, each.change))))),
       same > 0 ? h('p', { class: 'scn-compare__note' }, count(same, 'other group') + (same === 1 ? ' walks' : ' walk') + ' as before.') : null,
-      only('before', answer.groups.onlyBefore, 0), only('after', answer.groups.onlyAfter, 0));
+      only('before', realNames(answer.groups.onlyBefore, answer.groups.noNameBefore), answer.groups.noNameBefore), only('after', realNames(answer.groups.onlyAfter, answer.groups.noNameAfter), answer.groups.noNameAfter));
   }
 
   function placesBlock(answer, file, unitsDiffer) {
     const places = answer.places;
-    const unit = (answer.figures.busiest.after || answer.figures.busiest.before || { unit: 'students' }).unit;
-    const row = (each) => h('li', { data: { place: each.key } }, h('span', { dir: 'auto' }, bdi(each.name), each.floorNames && each.floorNames.length > 0 ? ' (' + each.floorNames.join(', ') + ')' : ''), ': ' + each.before + ' → ' + each.after + ' ' + unit + (unitsDiffer ? '' : ' (' + signed(each.difference) + ')'));
+    const busiest = answer.figures.busiest;
+    // each side counts in its own unit (they differ only when unitsDiffer says so)
+    const unitBefore = unitsDiffer ? answer.unitsDiffer.before : (busiest.before || busiest.after || { unit: 'students' }).unit;
+    const unitAfter = unitsDiffer ? answer.unitsDiffer.after : (busiest.after || busiest.before || { unit: 'students' }).unit;
+    const words = (n, unit) => (n === 1 ? unit.replace(/s$/, '') : unit);
+    const nameOf = (each) => h('span', { dir: 'auto' }, bdi(each.name), each.floorNames && each.floorNames.length > 0 ? ' (' + each.floorNames.join(', ') + ')' : '');
+    const row = (each) => h('li', { data: { place: each.key } }, nameOf(each), unitsDiffer
+      ? ': ' + each.before + ' ' + words(each.before, unitBefore) + ' before → ' + each.after + ' ' + words(each.after, unitAfter) + ' after'
+      : ': ' + each.before + ' → ' + each.after + ' ' + words(each.after, unitAfter) + ' (' + signed(each.difference) + ')');
     const list = (rows, label, part, total) => h('div', { class: 'scn-places', data: { part } },
       h('h4', { class: 'scn-places__title' }, label + ' (' + (total === undefined ? rows.length : total) + ')'),
       rows.length === 0 ? h('p', { class: 'scn-compare__note' }, 'None.') : h('ul', { class: 'scn-places__list' }, rows.map(row)));
-    const plain = (rows, label, part, text) => h('div', { class: 'scn-places', data: { part } },
+    // a place on one side only: its load in that side's unit
+    const plain = (rows, label, part, fallback) => h('div', { class: 'scn-places', data: { part } },
       h('h4', { class: 'scn-places__title' }, label + ' (' + rows.length + ')'),
-      rows.length === 0 ? h('p', { class: 'scn-compare__note' }, 'None.') : h('ul', { class: 'scn-places__list' }, rows.map((each) => h('li', { data: { place: each.key } }, h('span', { dir: 'auto' }, bdi(each.name), each.floorNames && each.floorNames.length > 0 ? ' (' + each.floorNames.join(', ') + ')' : ''), text(each)))));
+      rows.length === 0 ? h('p', { class: 'scn-compare__note' }, 'None.') : h('ul', { class: 'scn-places__list' }, rows.map((each) => h('li', { data: { place: each.key } }, nameOf(each), ': ' + each.load + ' ' + words(each.load, each.unit || fallback)))));
     return h('section', { 'aria-labelledby': 'scenario-building-places-title', data: { part: 'building-places' } },
       h('h3', { class: 'scn-compare__heading', id: 'scenario-building-places-title' }, 'Places, matched by name'),
       unitsDiffer ? list(places.changed, 'Changed, not ranked', 'changed', places.changedTotal) : [list(places.busier, 'Busier', 'busier', places.busierTotal), list(places.quieter, 'Quieter', 'quieter', places.quieterTotal)],
-      plain(places.new, ['New, only in ', file].join(''), 'new', (each) => ': ' + each.load + ' ' + unit),
-      plain(places.gone, 'Gone, only in this project', 'gone', (each) => ': ' + each.load + ' ' + unit),
+      plain(places.new, ['New, only in ', file].join(''), 'new', unitAfter),
+      plain(places.gone, 'Gone, only in this project', 'gone', unitBefore),
       places.ambiguous.length === 0 ? null : h('div', { class: 'scn-places', data: { part: 'ambiguous' } },
         h('h4', { class: 'scn-places__title' }, 'Named alike, so not matched (' + places.ambiguous.length + ')'),
         h('ul', { class: 'scn-places__list' }, places.ambiguous.map((each) => h('li', { dir: 'auto' }, bdi(each.name), ': ' + each.before + ' here, ' + each.after + ' there')))),
@@ -411,32 +501,69 @@ export function buildingsPanel(env) {
     return store.geometryVersion + ':' + store.buildingVersion + ':' + store.scheduleVersion;
   }
 
-  // Both sides worked out: { main, other }, or null when a newer asking took
-  // over, or { failed } with why.
-  async function work() {
-    const mine = ++token;
-    band.dataset.working = 'true';
+  // The colour scale moves no counter (a setting is not geometry, building or schedule), so a
+  // change in it is read here.
+  function colourKey() {
+    const scale = store.project.settings && store.project.settings.colourScale;
+    return JSON.stringify(scale === undefined ? null : scale);
+  }
+
+  function working() {
+    band.dataset.working = String(starting || updating);
+  }
+
+  const endListeners = [];
+  function ended(info) {
+    for (const fn of endListeners) fn(info);
+  }
+
+  function focusInside() {
+    const at = document.activeElement;
+    return Boolean(at) && (band.contains(at) || inspector.contains(at));
+  }
+
+  function focusLost() {
+    const at = document.activeElement;
+    return !at || at === document.body || !at.isConnected || focusInside();
+  }
+
+  // Both sides worked out under `mine` (a start's number): { main, other }, or null when a
+  // newer start took over, or { failed } with why.
+  async function work(mine) {
+    starting = true;
+    working();
     try {
       const [theirs, ours] = await Promise.all([store.derived.other(), store.derived.results()]);
-      if (mine !== token) return null;
+      if (mine !== startToken) return null;
       if (!theirs || !ours) throw new Error('the engine did not answer. Try again.');
-      band.dataset.working = 'false';
       return { main: ours, other: theirs };
     } catch (error) {
-      if (mine !== token) return null;
-      band.dataset.working = 'false';
+      if (mine !== startToken) return null;
       return { failed: error && error.message ? error.message : String(error) };
     }
   }
 
-  // Hold the other project and compare. One already held is let go first.
+  // Hold the other project and compare. One already held stays exactly as it was until
+  // this one's answer is ready, and when this one is refused.
   async function start(read, fileName) {
     if (!read || !read.project) throw new TypeError('start needs the other project.');
-    if (state) stop({ say: false });
+    const prior = state;
     const other = read.project;
     const name = typeof fileName === 'string' ? fileName : '';
+    const mine = ++startToken;
+    // a refusal: nothing new is held, what was held is as it was
     const refuse = (sentence, extra) => {
-      store.derived.closeOther();
+      starting = false;
+      working();
+      if (prior && state === prior) {
+        try {
+          store.derived.setOther(prior.other, prior.fileName);
+        } catch (error) {
+          // the held comparison keeps its own answers; only the lane's copy is gone
+        }
+      } else {
+        store.derived.closeOther();
+      }
       return { ok: false, sentence, ...extra };
     };
     // the lane holds it from here; a refusal lets it go again
@@ -445,44 +572,66 @@ export function buildingsPanel(env) {
     } catch (error) {
       return refuse(REFUSED_ENGINE + (error && error.message ? error.message : String(error)));
     }
-    const found = await work();
-    if (found === null) return { ok: false, sentence: REFUSED_ENGINE + 'Another comparison was started meanwhile.', superseded: true };
-    if (found.failed) return refuse(REFUSED_ENGINE + 'It could not be worked out: ' + found.failed);
+    // the open project's id and counters as the asking began: an answer for another project,
+    // or for one that changed meanwhile, is not held (asked again, three times at most)
+    let found = null;
+    let projectId = '';
+    let key = '';
+    for (let tries = 0; tries < 3 && found === null; tries += 1) {
+      projectId = store.project.id;
+      key = counters();
+      const answer = await work(mine);
+      if (answer === null) return { ok: false, sentence: REFUSED_ENGINE + 'Another comparison was started meanwhile.', superseded: true };
+      if (answer.failed) return refuse(REFUSED_ENGINE + 'It could not be worked out: ' + answer.failed);
+      if (store.project.id !== projectId) return refuse(REFUSED_ENGINE + 'Another project was opened while this was being worked out.', { changed: true });
+      if (counters() === key) found = answer;
+    }
+    if (found === null) return refuse(REFUSED_ENGINE + 'The open project kept changing while this was being worked out. Try again.', { changed: true });
     let graph;
     try {
       graph = buildGraph(other);
     } catch (error) {
       return refuse(REFUSED_ENGINE + (error && error.message ? error.message : String(error)));
     }
-    state = { projectId: store.project.id, counters: counters(), fileName: name, other, otherGraph: graph, mainResult: found.main, otherResult: found.other.result, dayTypeName: null, side: 'this', answer: null, scales: null, bands: null, edges: null };
+    const next = { projectId, counters: key, colour: colourKey(), stale: false, views: {}, fileName: name, other, otherGraph: graph, mainResult: found.main, otherResult: found.other.result, dayTypeName: null, side: 'this', answer: null, scales: null, bands: null, edges: null };
+    let shaped;
     try {
-      shape();
+      shaped = shapeFor(next, null);
     } catch (error) {
-      state = null;
       return refuse(REFUSED_ENGINE + (error && error.message ? error.message : String(error)));
     }
-    if (state.answer.refused) {
-      const sentence = state.answer.sentence;
-      state = null;
-      return refuse(sentence);
-    }
+    if (shaped.answer.refused) return refuse(shaped.answer.sentence);
+    adopt(next, shaped);
+    // ready: the one held gives way to this one
+    starting = false;
+    state = next;
+    updateToken += 1;
+    updating = false;
+    working();
     band.hidden = false;
     inspector.hidden = false;
     band.dataset.held = 'true';
     band.dataset.side = 'this';
     band.dataset.day = state.dayTypeName;
+    band.dataset.counters = state.counters;
+    delete body.dataset.stale;
+    delete inspector.dataset.stale;
+    alertLine.textContent = '';
     drawBand();
     drawInspector();
     paint();
-    status.textContent = 'Comparing with ' + name + ', another building. ' + busiestWords(state.answer.figures.busiest.before);
     env.redraw();
-    ctx.announce('Comparing with ' + name + ', another building. ' + EDIT_LINE);
+    say('Comparing with ' + name + ', another building. ' + EDIT_LINE + ' ' + busiestWords(state.answer.figures.busiest.before));
     return { ok: true };
   }
 
-  // Held no more: the lab's overlays and project back, the lane let go.
-  function endState(redraw) {
-    token += 1;
+  // Held no more: the lab's overlays and project back, the lane let go. `quiet`: the map is
+  // going away, so it is not drawn again.
+  function endState(redraw, quiet) {
+    startToken += 1;
+    updateToken += 1;
+    starting = false;
+    updating = false;
     state = null;
     band.hidden = true;
     inspector.hidden = true;
@@ -490,28 +639,38 @@ export function buildingsPanel(env) {
     band.dataset.working = 'false';
     delete band.dataset.side;
     delete band.dataset.day;
+    delete band.dataset.painted;
+    delete band.dataset.scale;
+    delete band.dataset.counters;
+    delete body.dataset.stale;
+    delete inspector.dataset.stale;
     legend.replaceChildren();
+    daySelect.replaceChildren();
+    daySelect.dataset.key = '';
     body.replaceChildren();
     status.textContent = '';
+    alertLine.textContent = '';
     const plan = env.plan();
     if (saved !== null && plan) {
       plan.overlays.splice(0);
       plan.overlays.push(...saved);
-      saved = null;
-      plan.setProject(store.project, env.graph());
-      plan.paint();
+      if (!quiet) {
+        plan.setProject(store.project, env.graph());
+        plan.paint();
+      }
     }
     saved = null;
     if (redraw) env.redraw();
   }
 
+  // options: refocus (the file panel's heading takes the focus), say (the file panel says it ended)
   function stop(options) {
     const opts = options || {};
     if (!state) return;
     const name = state.fileName;
     store.derived.closeOther();
     endState(true);
-    if (opts.say) ctx.announce('Stopped comparing with ' + name + '.');
+    ended({ name, why: 'stop', say: Boolean(opts.say) });
     if (opts.refocus) env.focusFile();
   }
 
@@ -521,38 +680,87 @@ export function buildingsPanel(env) {
     if (!state) return;
     // another project: the lab is being drawn, so no second drawing is asked for
     if (project.id !== state.projectId) {
+      const lost = focusLost();
+      const name = state.fileName;
       store.derived.closeOther();
       endState(false);
+      ended({ name, why: 'project', say: false });
+      if (lost) env.focusFile();
       return;
     }
-    if (counters() === state.counters) return;
     const s = state;
+    const scaleNow = colourKey();
+    if (counters() === s.counters) {
+      // a change of the colour scale alone: no recompute, the bands and the legend are drawn again
+      if (scaleNow !== s.colour && !s.stale) {
+        s.colour = scaleNow;
+        try {
+          adopt(s, shapeFor(s, s.dayTypeName));
+          if (!s.answer.refused) drawLegend();
+        } catch (error) {
+          showRefusal('The comparison could not be worked out again: ' + (error && error.message ? error.message : String(error)));
+        }
+      } else if (scaleNow !== s.colour) {
+        s.colour = scaleNow;
+      }
+      return;
+    }
     s.counters = counters();
-    const mine = ++token;
-    band.dataset.working = 'true';
+    s.colour = scaleNow;
+    s.stale = true;
+    body.dataset.stale = 'true';
+    inspector.dataset.stale = 'true';
+    band.dataset.counters = s.counters;
+    const mine = ++updateToken;
+    updating = true;
+    working();
+    say('Working it out again…');
+    const failed = (error) => {
+      if (mine !== updateToken || state !== s) return;
+      updating = false;
+      working();
+      alertIt('The comparison could not be worked out again: ' + (error && error.message ? error.message : String(error)));
+    };
     store.derived.results().then((ours) => {
-      if (mine !== token || state !== s) return;
-      band.dataset.working = 'false';
-      if (!ours) return;
+      if (mine !== updateToken || state !== s) return;
+      if (!ours) {
+        failed(new Error('the engine did not answer.'));
+        return;
+      }
+      updating = false;
+      working();
       s.mainResult = ours;
+      let note = '';
       try {
-        shape();
+        let shaped = shapeFor(s, s.dayTypeName);
+        // the day type chosen is no longer in both buildings: the first matched one instead
+        if (shaped.answer.refused === 'no-day-type' && s.dayTypeName) {
+          const again = shapeFor(s, null);
+          if (!again.answer.refused) {
+            note = 'The day type “' + s.dayTypeName + '” is no longer in both buildings, so this is compared on “' + again.answer.matched.dayTypeName + '” now. ';
+            shaped = again;
+          }
+        }
+        s.stale = false;
+        adopt(s, shaped);
       } catch (error) {
-        status.textContent = 'The comparison could not be worked out again: ' + (error && error.message ? error.message : String(error));
+        s.stale = false;
+        s.answer = null;
+        s.bands = null;
+        showRefusal('The comparison could not be worked out again: ' + (error && error.message ? error.message : String(error)));
+        paint();
         return;
       }
       if (s.answer.refused) {
-        status.textContent = s.answer.sentence;
-        body.replaceChildren(h('p', { role: 'alert' }, s.answer.sentence));
+        showRefusal(s.answer.sentence);
+        paint();
         return;
       }
+      band.dataset.day = s.dayTypeName;
       drawInspector();
       paint();
-    }, (error) => {
-      if (mine !== token || state !== s) return;
-      band.dataset.working = 'false';
-      status.textContent = 'The comparison could not be worked out again: ' + (error && error.message ? error.message : String(error));
-    });
+      say(note + 'Compared again after a change in this project. ' + busiestWords(sideBusiest(s)));
+    }, failed);
   }
 
   return {
@@ -563,7 +771,10 @@ export function buildingsPanel(env) {
     stop,
     update,
     paint,
-    // the sentence where the focus goes when a form it was in is hidden
+    onEnd(fn) {
+      endListeners.push(fn);
+    },
+    // the sentence that says the forms are hidden
     editLine,
     // after a comparison starts: the switch's checked radio
     focusSwitch() {
@@ -571,20 +782,10 @@ export function buildingsPanel(env) {
       if (checked) checked.focus();
     },
     unmount() {
-      token += 1;
-      if (state) {
-        store.derived.closeOther();
-        state = null;
-      } else {
-        // a start still working out when the section goes: let the lane go too
-        store.derived.closeOther();
-      }
-      const plan = env.plan();
-      if (saved !== null && plan) {
-        plan.overlays.splice(0);
-        plan.overlays.push(...saved);
-      }
-      saved = null;
+      const lost = focusInside();
+      store.derived.closeOther();
+      endState(false, true);
+      if (lost) env.focusFile();
     },
   };
 }

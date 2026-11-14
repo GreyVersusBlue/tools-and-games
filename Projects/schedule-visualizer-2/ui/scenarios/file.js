@@ -95,7 +95,7 @@ export function filePanel(env) {
   // building makes the scenario, another building the comparison.
   // `direct`: a kept project was chosen and Compare pressed, so another building is
   // compared at once (a file first gets the refusal's sentence and its button).
-  async function compareRead(fileName, read, returnTo, direct) {
+  async function compareRead(fileName, read, returnTo, direct, owned) {
     if (!env.mounted()) return;
     // another building is not a scenario: the action refuses it in its own words
     let another = null;
@@ -105,12 +105,10 @@ export function filePanel(env) {
       if (error && error.code === 'different-building') another = error.message;
     }
     if (another !== null) {
-      if (direct) await compareBuildings(fileName, read, returnTo);
+      if (direct) await compareBuildings(fileName, read, returnTo, owned);
       else sayAnother(fileName, read, another);
       return;
     }
-    // a scenario is made now: a building comparison held gives way to it
-    if (env.buildings().held()) env.buildings().stop({ say: false });
     const project = ctx.store.project;
     let replace = false;
     if (project.scenario) {
@@ -128,6 +126,9 @@ export function filePanel(env) {
         return;
       }
     }
+    // a scenario is made now (the question, if there was one, is answered): a building
+    // comparison held gives way to it, and the focus goes to this panel's heading
+    if (env.buildings().held()) env.buildings().stop({ say: false, refocus: true });
     // what could not be compared, against the project as it is now that the question is answered
     let skipped = [];
     try {
@@ -142,7 +143,6 @@ export function filePanel(env) {
     say('Compared with ' + quote(fileName) + ': ' + count(scenario.changes.length, 'change') + '.' + (skipped.length > 0 ? ' ' + count(skipped.length, 'slot') + ' could not be compared; they are listed below.' : ''), 'done', scenario.compared);
     // the store drew the panel before this line was said: draw it for this scenario
     update({ compared: scenario.compared });
-    ctx.announce(result.textContent);
   }
 
   // The refusal's sentence, and the way on: Compare the two buildings
@@ -154,30 +154,65 @@ export function filePanel(env) {
     result.replaceChildren(
       h('p', { role: 'alert' }, quote(fileName) + ' was not compared, and nothing has changed. ' + message + ' ' + ANOTHER_BUILDING_ON),
       button);
-    ctx.announce(result.textContent);
   }
 
-  async function compareBuildings(fileName, read, button) {
-    button.setAttribute('aria-disabled', 'true');
+  // One press at a time: a press while one is being worked out (aria-busy, or aria-disabled
+  // on the button) does nothing. The shelf's select and button are left alone meanwhile.
+  let busy = false;
+  function enter(button) {
+    if (busy || button.getAttribute('aria-busy') === 'true' || button.getAttribute('aria-disabled') === 'true') return false;
+    busy = true;
     button.setAttribute('aria-busy', 'true');
-    result.dataset.result = 'working';
-    const working = h('p', { role: 'status' }, 'Comparing the two buildings…');
-    result.replaceChildren(working);
-    let answer;
+    button.setAttribute('aria-disabled', 'true');
+    shelfSelect.inert = true;
+    shelfButton.setAttribute('aria-busy', 'true');
+    shelfButton.setAttribute('aria-disabled', 'true');
+    if (document.activeElement !== shelfButton) shelfButton.inert = true;
+    return true;
+  }
+  function leave(button) {
+    busy = false;
+    for (const each of [button, shelfButton]) {
+      each.removeAttribute('aria-busy');
+      each.removeAttribute('aria-disabled');
+    }
+    shelfSelect.inert = false;
+    shelfButton.inert = false;
+  }
+  // the focus went with a control that is gone: to this panel's heading
+  function keepFocus() {
+    const at = document.activeElement;
+    if (!at || at === document.body || !at.isConnected) heading.focus();
+  }
+
+  // `owned`: the caller (compareShelf) holds the press already
+  async function compareBuildings(fileName, read, button, owned) {
+    if (!owned && !enter(button)) return;
     try {
-      answer = await env.buildings().start({ project: read.project }, fileName);
-    } catch (error) {
-      answer = { ok: false, sentence: 'The two buildings could not be compared, and nothing has changed. ' + (error && error.message ? error.message : String(error)) };
+      result.dataset.result = 'working';
+      // the line that was there stays (and the button that was pressed keeps its focus) while the answer is worked out
+      for (const old of result.querySelectorAll('[data-part="working"]')) old.remove();
+      result.append(h('p', { data: { part: 'working' } }, 'Comparing the two buildings…'));
+      let answer;
+      try {
+        answer = await env.buildings().start({ project: read.project }, fileName);
+      } catch (error) {
+        answer = { ok: false, sentence: 'The two buildings could not be compared, and nothing has changed. ' + (error && error.message ? error.message : String(error)) };
+      }
+      if (!env.mounted()) return;
+      if (answer.ok) {
+        // the band's inspector says it aloud; this line is the panel's own record of it
+        result.dataset.result = 'compared-buildings';
+        result.replaceChildren(h('p', null, 'Comparing with ' + quote(fileName) + ', another building. The band above the map says how to stop.'));
+        env.buildings().focusSwitch();
+        return;
+      }
+      if (answer.superseded) return;
+      refused(answer.sentence);
+      keepFocus();
+    } finally {
+      if (!owned) leave(button);
     }
-    if (!env.mounted()) return;
-    if (answer.ok) {
-      result.dataset.result = 'compared-buildings';
-      result.replaceChildren(h('p', { role: 'status' }, 'Comparing with ' + quote(fileName) + ', another building. The band above the map says how to stop.'));
-      env.buildings().focusSwitch();
-      return;
-    }
-    if (answer.superseded) return;
-    refused(answer.sentence);
   }
 
   // ---- the projects kept on this device
@@ -210,29 +245,58 @@ export function filePanel(env) {
   shelf.addEventListener('focusin', () => {
     readShelf();
   });
+  // the rows follow the device's shelf: each change of the projects kept is read again
+  if (ctx.storage && typeof ctx.storage.subscribe === 'function') {
+    const off = ctx.storage.subscribe((state, what) => {
+      if (!env.mounted()) {
+        off();
+        return;
+      }
+      if (what === 'projects' || what === 'switched' || what === 'ready') readShelf();
+    });
+  }
 
   async function compareShelf() {
-    const row = shelfRows.find((each) => each.id === shelfSelect.value);
-    if (!row) return;
-    const label = shelfLabel(row);
-    shelfButton.setAttribute('aria-busy', 'true');
-    let got;
+    if (!enter(shelfButton)) return;
     try {
-      got = await ctx.storage.projects.read(row.id);
-    } catch (error) {
-      got = { ok: false, text: error && error.message ? error.message : String(error) };
+      const row = shelfRows.find((each) => each.id === shelfSelect.value);
+      if (!row) {
+        readShelf();
+        return;
+      }
+      const label = shelfLabel(row);
+      let got;
+      try {
+        got = await ctx.storage.projects.read(row.id);
+      } catch (error) {
+        got = { ok: false, text: error && error.message ? error.message : String(error) };
+      }
+      if (!env.mounted()) return;
+      if (!got || !got.ok) {
+        refused(quote(label) + ' was not compared, and nothing has changed. ' + (got && got.text ? got.text : 'It could not be read.'));
+        // the row may be gone (deleted in another tab): the shelf is read again
+        readShelf();
+        return;
+      }
+      // only the project is used: the record's pictures stay where they are
+      await compareRead(label, { project: got.project }, shelfButton, true, true);
     } finally {
-      shelfButton.removeAttribute('aria-busy');
+      leave(shelfButton);
     }
-    if (!env.mounted()) return;
-    if (!got.ok) {
-      refused(quote(label) + ' was not compared, and nothing has changed. ' + got.text);
-      return;
-    }
-    await compareRead(label, { project: got.project }, shelfButton, true);
   }
 
   readShelf();
+
+  // a comparison ended: Stop comparing says so here (this line is a status, the page's one voice for it);
+  // the line that said it was held goes either way
+  env.buildings().onEnd(({ name, why, say: speak }) => {
+    if (!env.mounted()) return;
+    if (why === 'stop' && speak) say('Stopped comparing with ' + name + '.', 'stopped');
+    else if (result.dataset.result === 'compared-buildings') {
+      delete result.dataset.result;
+      result.replaceChildren();
+    }
+  });
 
   function update(view) {
     const compared = view && view.compared ? view.compared : null;
