@@ -206,3 +206,40 @@
     flex: 1 1 100%;
   }
 }
+
+/* ---------- Import part of a project file (the merge dialog, DESIGN 15.5, 15.9 item 16) ---------- */
+
+/* Long file names, school names and room lists wrap wherever they must, so
+   nothing makes the dialog scroll sideways at 390 px. The dialog itself is
+   the Apply summary's column (.scn-apply: its body scrolls between the
+   question and the buttons, which stay in view at 844 by 390). */
+.merge {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.merge p,
+.merge li,
+.merge legend,
+.merge label,
+.merge strong {
+  overflow-wrap: anywhere;
+}
+
+.merge fieldset {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.merge__lines {
+  margin: var(--s-1) 0 var(--s-3);
+  padding-left: var(--s-5);
+}
+
+.merge__notice {
+  font-weight: var(--w-semibold);
+}
+
+.merge .imp-table {
+  max-width: 100%;
+}
