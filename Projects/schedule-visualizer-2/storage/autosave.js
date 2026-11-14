@@ -9,7 +9,13 @@
 //   write()    saves the project as it is now; returns a promise of savedAt
 //   onState(state, detail)   'saving' | 'saved' (detail: savedAt) |
 //                            'failed' (detail: the error) | 'conflict' (detail: the error)
-// returns { changed(), flush(), pause(), resume(), setTiming({ delay, maxWait, retry }), state, pending }
+// returns { changed(), flush(), pause(), resume(), hold(), release(), settle(),
+//           setTiming({ delay, maxWait, retry }), state, pending }
+//
+// hold() / release() / settle() are for a project switch (storage/session.js,
+// ARCHITECTURE 21.10): hold() stops every save, as pause() does, but keeps the
+// change it owes; settle() resolves when the save in flight has finished and
+// starts none; release() carries on, saving at once what hold() kept back.
 //
 // No DOM and no storage here: the caller supplies both ends.
 
@@ -120,6 +126,26 @@ export function createAutosave(options) {
     resume() {
       paused = false;
       dirty = false;
+    },
+
+    // Stop saving without forgetting what is owed. A pending timer is cleared.
+    hold() {
+      paused = true;
+      clear();
+    },
+    // The save in flight is finished (written or failed) when this resolves;
+    // while held no other begins. Look at `pending` afterwards: true means a
+    // change is still owed.
+    settle() {
+      return writing ? writing.then(() => {}, () => {}) : Promise.resolve();
+    },
+    // Saving again. A change held back is saved now, the way a change is.
+    release() {
+      paused = false;
+      if (dirty && !stopped) {
+        if (state !== 'failed') set('saving');
+        schedule(0);
+      }
     },
 
     setTiming(timing) {
