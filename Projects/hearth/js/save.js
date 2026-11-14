@@ -260,7 +260,7 @@ function unpack(o){
   things=o.hl.map(a=>({n:a[0],full:a[1],holder:a[2]||0,src:a[3],ci:a[4]>=0?a[4]:undefined,hist:a[5].map(h=>({d:h[0],s:h[1]}))}));heirYr=o.hy;
   events=o.ev.map(a=>({d:a[0],y:a[1],kind:a[2],label:a[3]}));
   for(const s of springs){for(let y=Math.floor(s.y-s.r-1);y<=s.y+s.r+1;y++)for(let x=Math.floor(s.x-s.r-1);x<=s.x+s.r+1;x++){
-      if(x<1||y<1||x>=W-1||y>=H-1)continue;if(Math.hypot(x+.5-s.x,(y+.5-s.y)*1.3)>s.r)continue;if(at(x,y)!==GRASS)continue;
+      if(x<1||y<1||x>=W-1||y>=H-1)continue;if(hyp(x+.5-s.x,(y+.5-s.y)*1.3)>s.r)continue;if(at(x,y)!==GRASS)continue;
       tiles[idx(x,y)]=WATER;elev[idx(x,y)]=.19}
     spots.push({l:'the spring',x:s.x,y:s.y+1.6})}
   for(const f of farms)tiles[idx(f.x,f.y)]=FARM;

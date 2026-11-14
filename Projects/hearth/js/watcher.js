@@ -13,7 +13,7 @@ function addCloud(edge){const s=rnd(.65,1.5),w=112*s/T;
   clouds.push({x:edge?(wind>0?-w*.6:W+w*.6):rnd(w*.5,W-w*.5),y:rnd(2,H-3),s,i:(R()*3)|0,r:0,rt:0,ph:rnd(6.28)})}
 function stepClouds(dt){const n=CLOUDN[wx]||0,v=(CLOUDV[wx]||.3)*wind;
   if(clouds.length<n&&R()<dt*.5)addCloud(true);
-  for(const c of clouds){c.x+=v*dt;c.y+=Math.sin(time*.04+c.ph)*dt*.12;
+  for(const c of clouds){c.x+=v*dt;c.y+=dsin(time*.04+c.ph)*dt*.12;
     if(c.r>0){c.r-=dt;const w=cloudW(c)*.42,h=cloudH(c)*.4;
       if(R()<dt*10){const rx=c.x+rnd(-w,w),ry=c.y+rnd(-h,h);if(rx>0&&ry>0&&rx<W&&ry<H&&at(rx|0,ry|0)!==WATER)fx.push({x:rx,y:ry,vx:0,vy:0,c:'#cfe6ff',l:.3})}
       for(const f of farms)if(f.g<1&&Math.abs(f.x+.5-c.x)<w&&Math.abs(f.y+.5-c.y)<h)f.g=Math.min(1,f.g+dt*.03);
@@ -28,13 +28,13 @@ function rainOn(c){c.r=rnd(16,26);whoosh(c.x,c.y,1.8);actDone('cloudrain');noteA
 // a spring, from a long press on the grass
 function makeSpring(cx,cy){const r=rnd(1.3,2.1),hit=[];
   for(let y=Math.floor(cy-r-1);y<=cy+r+1;y++)for(let x=Math.floor(cx-r-1);x<=cx+r+1;x++){
-    if(x<1||y<1||x>=W-1||y>=H-1)continue;if(Math.hypot(x+.5-cx,(y+.5-cy)*1.3)>r)continue;if(at(x,y)!==GRASS)continue;
-    if(Math.hypot(center.x-x,center.y-y)<3.5)return false;
-    if(houses.some(h=>x>=h.x-1&&x<=h.x+2&&y>=h.y-1&&y<=h.y+3)||bAll().some(b=>x>=b.x-1&&x<=b.x+b.w&&y>=b.y-1&&y<=b.y+b.h)||graves.some(gr=>Math.hypot(gr.x-x,gr.y-y)<2.2))return false;
+    if(x<1||y<1||x>=W-1||y>=H-1)continue;if(hyp(x+.5-cx,(y+.5-cy)*1.3)>r)continue;if(at(x,y)!==GRASS)continue;
+    if(hyp(center.x-x,center.y-y)<3.5)return false;
+    if(houses.some(h=>x>=h.x-1&&x<=h.x+2&&y>=h.y-1&&y<=h.y+3)||bAll().some(b=>x>=b.x-1&&x<=b.x+b.w&&y>=b.y-1&&y<=b.y+b.h)||graves.some(gr=>hyp(gr.x-x,gr.y-y)<2.2))return false;
     hit.push(idx(x,y))}
   if(hit.length<4)return false;
   for(const i of hit){tiles[i]=WATER;elev[i]=.19;road[i]=0}
-  trees=trees.filter(t=>Math.hypot(t.x-cx,t.y-cy)>r+.3);stumps=stumps.filter(t=>Math.hypot(t.x-cx,t.y-cy)>r+.3);
+  trees=trees.filter(t=>hyp(t.x-cx,t.y-cy)>r+.3);stumps=stumps.filter(t=>hyp(t.x-cx,t.y-cy)>r+.3);
   springs.push({x:cx,y:cy,r,ph:R()});spots.push({l:'the spring',x:cx,y:cy+1.6});actDone('spring');noteAct('spring',.07);
   if(R()<.5)fishSh.push({x:cx,y:cy,tx:cx,ty:cy,n:2,t:0,ph:R()*6,st:true});
   paintTerrain();splash(cx,cy);
@@ -44,7 +44,7 @@ function makeSpring(cx,cy){const r=rnd(1.3,2.1),hit=[];
   return true}
 // a stone, skipped
 const ring=(x,y)=>fx.push({x,y,vx:0,vy:0,rg:1,l:.9,l0:.9,c:'#cfe6ff'});
-function skipStone(x,y){let dx=x-center.x,dy=y-center.y;const d=Math.hypot(dx,dy)||1;
+function skipStone(x,y){let dx=x-center.x,dy=y-center.y;const d=hyp(dx,dy)||1;
   skips.push({x,y,vx:dx/d*11,vy:dy/d*7.5,n:2+((R()*4)|0),t:.14});plink(.15);actDone('stone');noteAct('stone',.01);
   skipN++ /* sprint 16: the island remembers seeing it done (saved, unlike the per-device hints) — the children copy what they have watched */}
 function stepSkips(dt){for(const k of skips){k.x+=k.vx*dt;k.y+=k.vy*dt;k.t-=dt;
@@ -52,12 +52,12 @@ function stepSkips(dt){for(const k of skips){k.x+=k.vx*dt;k.y+=k.vy*dt;k.t-=dt;
     if(k.n<=0||k.x<0||k.y<0||k.x>=W||k.y>=H||at(k.x|0,k.y|0)!==WATER)k.gone=true}
   skips=skips.filter(k=>!k.gone)}
 // a gust, dragged across the water
-function gustAt(x0,y0,x1,y1){const dx=x1-x0,dy=y1-y0,d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d;
+function gustAt(x0,y0,x1,y1){const dx=x1-x0,dy=y1-y0,d=hyp(dx,dy)||1,ux=dx/d,uy=dy/d;
   gusts.push({x:x0,y:y0,ux,uy,len:d,t:1.8});whoosh((x0+x1)/2,(y0+y1)/2,1.1);actDone('gust');noteAct('gust',.025);
   let pushed=null;
-  for(const b of boats){if(Math.hypot(b.x-x1,b.y-y1)>9)continue;b.gvx=(b.gvx||0)+ux*3.2;b.gvy=(b.gvy||0)+uy*3.2;pushed=b}
-  for(const gl of gulls){if(Math.hypot(gl.cx-x1,gl.cy-y1)>10)continue;gl.cx+=ux*1.6;gl.cy+=uy*1.6}
-  for(const f of fishSh)if(Math.hypot(f.x-x1,f.y-y1)<5){f.tx=f.x+ux*2.5;f.ty=f.y+uy*2.5}
+  for(const b of boats){if(hyp(b.x-x1,b.y-y1)>9)continue;b.gvx=(b.gvx||0)+ux*3.2;b.gvy=(b.gvy||0)+uy*3.2;pushed=b}
+  for(const gl of gulls){if(hyp(gl.cx-x1,gl.cy-y1)>10)continue;gl.cx+=ux*1.6;gl.cy+=uy*1.6}
+  for(const f of fishSh)if(hyp(f.x-x1,f.y-y1)<5){f.tx=f.x+ux*2.5;f.ty=f.y+uy*2.5}
   if(pushed&&pushed.p)say(`A gust comes off the water and takes the boat sideways. ${B(pushed.p)} leans into it and lets it.`,true);
   else if(pushed)say('A gust comes off the water and shoves the boat along faster than anyone is rowing.',true);
   else say('Something moves over the water in a line, and the water goes dark under it, and then light again.',false,'gust')}

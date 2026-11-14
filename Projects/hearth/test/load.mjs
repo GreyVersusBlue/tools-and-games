@@ -4,8 +4,8 @@
 // page runs — with nothing drawn and nothing heard. The RAF loop never starts: the stubbed Image never loads, so sheetGo never
 // calls back, and every step is the caller's.
 //
-// Node's V8 is not Chromium 1194's (see hearth-ci.yml): Math.pow and Math.sin differ in the last bits, so an island stepped here
-// is a different island from the pinned one. Nothing here compares against hashes.json. It compares the code with itself.
+// Since C2 the simulation's arithmetic is the same on every engine (hyp, dsin, dcos, dpow12 and shuf in core.js use only + - * / sqrt
+// floor and round), so an island stepped here is the pinned island: test/portable.mjs compares it with hashes.json.
 import vm from 'node:vm';
 import fs from 'node:fs';
 import path from 'node:path';

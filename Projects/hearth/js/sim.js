@@ -5,7 +5,7 @@
    retarget at different moments still land on one turning circle, and a reload lands them on the same one (time is packed). */
 const ringPhase=()=>time*.3;
 const KEPT_FIELDS='worked the fields alone, with nobody grown left';
-const ringOf=w=>people.filter(o=>!o.dead&&!o.inside&&isKid(o)&&(o.task==='play'||o.task==='tag')&&Math.hypot(o.x-w.x,o.y-w.y)<4);
+const ringOf=w=>people.filter(o=>!o.dead&&!o.inside&&isKid(o)&&(o.task==='play'||o.task==='tag')&&hyp(o.x-w.x,o.y-w.y)<4);
 function step(dt){
   const d0=Math.floor(time/dayLen);time+=dt;if(Math.floor(time/dayLen)>d0){dayCount++;newDay()} // > not !==: a backward wobble across a boundary must not run a day twice
   const s=sea();
@@ -40,7 +40,7 @@ function step(dt){
   if(s==='winter'&&isNight()&&R()<dt*.02*houses.length*(hasWay(2)?.7:1))wood=Math.max(0,wood-1);
   // saplings grow / regrow forest
   for(const t of trees)if(t.hp>0&&t.s<1)t.s+=dt*.012;
-  if(sea()!=='winter'&&trees.length<260&&R()<dt*.3){const s=freeSpot(11,40);if(s&&(R()<.3||trees.some(t=>Math.hypot(t.x-s.x,t.y-s.y)<3)))trees.push(mkTree(s.x+.5,s.y+.5,.15))}
+  if(sea()!=='winter'&&trees.length<260&&R()<dt*.3){const s=freeSpot(11,40);if(s&&(R()<.3||trees.some(t=>hyp(t.x-s.x,t.y-s.y)<3)))trees.push(mkTree(s.x+.5,s.y+.5,.15))}
   // arrivals
   arrivalT-=dt;if(arrivalT<=0){arrivalT=rnd(70,140)*(1+people.length/10)*(hasB('light')?.75:1)*(1+wayN()*.35);/* a village that has learned its ways fills slower, and stays a village longer */if(people.length<popCap()&&people.length<48&&food>people.length*2&&!storm&&!boats.some(b=>b.kind==='arrival')){
     const age=R()<.2?rnd(50,64)|0:rnd(18,42)|0;
@@ -52,7 +52,7 @@ function step(dt){
   if(seaDay()===2&&traderDay!==dayCount&&dayFrac()>.32&&!storm&&!frozen&&people.length>=6&&landings.length){traderDay=dayCount;const h=getB('hut');const l=h?landings.find(l=>l.x===h.x&&l.y===h.y)||landings[0]:landings[0];spawnBoat('trade',l,{})}
   // the fishing boat goes out
   {const h=getB('hut');if(h&&!frozen&&!storm&&wx!=='fog'&&!isNight()&&dayFrac()<edges()[1]-.16&&boats.filter(b=>b.kind==='fish').length<(hasW('boat2')?2:1)&&R()<dt*.08){
-    const cand=people.filter(p=>p.task==='idle'&&!isKid(p)&&!p.inside&&Math.hypot(p.x-h.x,p.y-h.y)<40);if(cand.length){const p=cand.reduce((a,b)=>(has(b,'brave')?0:1)+R()<(has(a,'brave')?0:1)+R()?b:a);const l=landings.find(l=>l.x===h.x&&l.y===h.y)||landings[0];
+    const cand=people.filter(p=>p.task==='idle'&&!isKid(p)&&!p.inside&&hyp(p.x-h.x,p.y-h.y)<40);if(cand.length){const p=cand.reduce((a,b)=>(has(b,'brave')?0:1)+R()<(has(a,'brave')?0:1)+R()?b:a);const l=landings.find(l=>l.x===h.x&&l.y===h.y)||landings[0];
       const k=rnd(6,11);spawnBoat('fish',l,{p,x:l.x+l.dx*.9,y:l.y+l.dy*.9,tx:l.x+l.dx*k+rnd(-2,2),ty:l.y+l.dy*k+rnd(-2,2)});p.task='boat';p.inBoat=true;if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null}}}
   if(voyage&&(voyage.st==='decided'||(voyage.st==='going'&&voyage.p.task!=='voyage'))&&!isNight()&&!storm&&dayFrac()>edges()[0]+.06&&voyage.p.task!=='boat'){const p=voyage.p;const first=voyage.st==='decided';voyage.st='going';const l=landings[0];if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;p.inside=false;goTo(p,l.x,l.y,'voyage',0);
     if(first)say(`${B(p)} says, at breakfast, that ${p.name} is going to see the far island, and that it is not up for discussion.`,true)}
@@ -119,7 +119,7 @@ function step(dt){
       const bd=sickBed(p);p.task='abed';p.abedH=bd.hall;p.tx=bd.x;p.ty=bd.y;
       if(bd.hall&&!saidToday.has('sickhall'))say(`The ones with it are carried up to the hall and laid out along one wall, where there is a fire going anyway and one person can watch all of them at once.`,false,'sickhall');
       continue}
-    if(shelt&&p.task!=='shelter'&&p.task!=='sleep'&&p.task!=='gohome'&&p.task!=='voyage'&&p.task!=='abed'){p.task='shelter';let h=homeOf(p);if(!h&&houses.length)h=houses.reduce((a,b)=>Math.hypot(b.x-p.x,b.y-p.y)<Math.hypot(a.x-p.x,a.y-p.y)?b:a);
+    if(shelt&&p.task!=='shelter'&&p.task!=='sleep'&&p.task!=='gohome'&&p.task!=='voyage'&&p.task!=='abed'){p.task='shelter';let h=homeOf(p);if(!h&&houses.length)h=houses.reduce((a,b)=>hyp(b.x-p.x,b.y-p.y)<hyp(a.x-p.x,a.y-p.y)?b:a);
       p.inside=false;p.shelterH=h;p.tx=h?h.x+1+rnd(-.5,.5):center.x+rnd(-1.5,1.5);p.ty=h?h.y+2.2:center.y+rnd(-1,1);if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;continue}
     if(!storm&&p.task==='shelter'){p.task='idle';p.inside=false;p.t=rnd(.5,2)}
     if(night&&p.task!=='sleep'&&p.task!=='gohome'&&p.task!=='shelter'&&p.task!=='wave'&&p.task!=='voyage'&&p.task!=='gather'&&p.task!=='abed'){p.task='gohome';const h=homeOf(p);const hx=h?h.x+1:center.x,hy=h?h.y+2.2:center.y;p.tx=hx+rnd(-.6,.6);p.ty=hy+rnd(-.4,.4);if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;continue}
@@ -146,7 +146,7 @@ function step(dt){
             else if(p.task==='visit'&&p.vg){p.vg.vn=(p.vg.vn||0)+1;say(`${B(p)} stops at ${p.vg.name}'s stone and straightens it, though it was straight.`,false,'visit')}
             else if(p.task==='pilgrim')say(`${B(p)} stands a while at ${p.pilgL||'the place in the story'}, matching the ground to the telling, and the ground holds still for it.`,false,'pilg');
             else if(p.task==='chat'){const q=byName(p.chatW); /* the first of the pair to arrive with the other in reach does the talking for both */
-              if(q&&!q.dead&&q.task==='chat'&&!p.chatSd&&Math.hypot(q.x-p.x,q.y-p.y)<2.4){p.chatSd=q.chatSd=1;chatNews(p,q);
+              if(q&&!q.dead&&q.task==='chat'&&!p.chatSd&&hyp(q.x-p.x,q.y-p.y)<2.4){p.chatSd=q.chatSd=1;chatNews(p,q);
                 if(R()<.2)say(`${B(p)} and ${B(q)} stop mid-path to talk, which is how this island gets its news around.`,false,'chat')}}
             else if(p.task==='kidskip'){let wt=null;const px=p.x|0,py=p.y|0; /* a child skips a stone the way the watcher showed the island how */
               for(const dd of[[1,0],[-1,0],[0,1],[0,-1]])if(at(px+dd[0],py+dd[1])===WATER&&!wadeTiles.has(idx(px+dd[0],py+dd[1]))){wt=dd;break}
@@ -159,9 +159,9 @@ function step(dt){
               const d2=(o.x-p.x)*(o.x-p.x)+(o.y-p.y)*(o.y-p.y);if(d2<md){md=d2;m=o}}
             if(m){p.task='tag';p.tagW=m.name;p.tagIt=1;p.tagN=0;p.tagT=0;p.tagR=0;m.task='tag';m.tagW=p.name;m.tagIt=0;m.tagN=0;m.tagT=0;m.tagR=0;
               if(R()<.25)say(`${B(p)} slaps ${B(m)} on the shoulder and runs. The chase is on before anyone agreed to one.`,false,'tag');break}}
-          if(snowD>.5&&snowmen.length<2&&R()<.15&&!snowmen.some(s2=>Math.hypot(s2.x-p.x,s2.y-p.y)<7)){const s0=freeSpotNear(p.x,p.y,1,3,1);
+          if(snowD>.5&&snowmen.length<2&&R()<.15&&!snowmen.some(s2=>hyp(s2.x-p.x,s2.y-p.y)<7)){const s0=freeSpotNear(p.x,p.y,1,3,1);
             if(s0){p.task='snowman';p.snT=0;p.tx=s0.x+.5;p.ty=s0.y+.5;break}}
-          if(skipN>0&&R()<.08){const sh=nearestShore(p.x,p.y);if(sh&&Math.hypot(sh.x-p.x,sh.y-p.y)<9){goTo(p,sh.x,sh.y,'kidskip',rnd(3,5));break}}}
+          if(skipN>0&&R()<.08){const sh=nearestShore(p.x,p.y);if(sh&&hyp(sh.x-p.x,sh.y-p.y)<9){goTo(p,sh.x,sh.y,'kidskip',rnd(3,5));break}}}
         if(ageOf(p)>=5&&R()<.4){ // old enough to follow the work around, asking why
           const wkers=people.filter(q=>!isKid(q)&&!q.dead&&!q.inside&&!apart(p,q)&&(q.task==='chop'||q.task==='till'||q.task==='harvest'||q.task==='fish'||q.task==='build'||q.task==='carry'||q.task==='water'));
           if(wkers.length){const q=wkers[(R()*wkers.length)|0];anchor=q;
@@ -174,9 +174,9 @@ function step(dt){
            sim clock, and each child holds the slot its name sorts into, so the whole ring turns as one and the hands can be drawn between
            neighbours (render.js). `ring`/`rA` are the day's business, not saved, like walkP. No draw from R() in either branch's arithmetic. */
         p.ring=null;
-        if(anchor&&anchor.wk&&people.some(o=>o!==p&&!o.dead&&isKid(o)&&(o.task==='play'||o.task==='tag')&&Math.hypot(o.x-anchor.x,o.y-anchor.y)<4)){
+        if(anchor&&anchor.wk&&people.some(o=>o!==p&&!o.dead&&isKid(o)&&(o.task==='play'||o.task==='tag')&&hyp(o.x-anchor.x,o.y-anchor.y)<4)){
           const rg=ringOf(anchor);if(!rg.includes(p))rg.push(p);rg.sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0);
-          p.ring=anchor.wk;p.rA=ringPhase()+rg.indexOf(p)*6.2832/rg.length;p.tx=anchor.x+.5+Math.cos(p.rA)*2;p.ty=anchor.y+.9+Math.sin(p.rA)*1.4}
+          p.ring=anchor.wk;p.rA=ringPhase()+rg.indexOf(p)*6.2832/rg.length;p.tx=anchor.x+.5+dcos(p.rA)*2;p.ty=anchor.y+.9+dsin(p.rA)*1.4}
         else{p.tx=anchor.x+rnd(-2.5,2.5);p.ty=anchor.y+rnd(-2,2)}}walk(p,dt);break}
       case 'tag':{const m=byName(p.tagW);
         if(!m||m.dead||m.task!=='tag'){p.task='play';p.t=rnd(.5,1.5);break}
@@ -184,9 +184,9 @@ function step(dt){
         p.tagR-=dt;
         if(p.tagIt){if(p.tagR<=0){p.tagR=.4;p.tx=m.x;p.ty=m.y}
           walk(p,dt);
-          if(Math.hypot(m.x-p.x,m.y-p.y)<.7){p.tagIt=0;m.tagIt=1;m.tagR=0;p.tagN=(p.tagN||0)+1; /* tagged: the roles swap, up to three times, then the grass gets them */
+          if(hyp(m.x-p.x,m.y-p.y)<.7){p.tagIt=0;m.tagIt=1;m.tagR=0;p.tagN=(p.tagN||0)+1; /* tagged: the roles swap, up to three times, then the grass gets them */
             if(p.tagN>=3){p.task='play';p.t=1;m.task='play';m.t=1;if(R()<.2)say('The chase ends the way the good ones do: both of them flat in the grass, out of breath, entirely satisfied.',false,'tagend')}}}
-        else{if(p.tagR<=0){p.tagR=.5;const dx=p.x-m.x,dy=p.y-m.y,d=Math.hypot(dx,dy)||1;let tx=p.x+dx/d*4+rnd(-1.2,1.2),ty=p.y+dy/d*3+rnd(-1,1);
+        else{if(p.tagR<=0){p.tagR=.5;const dx=p.x-m.x,dy=p.y-m.y,d=hyp(dx,dy)||1;let tx=p.x+dx/d*4+rnd(-1.2,1.2),ty=p.y+dy/d*3+rnd(-1,1);
             if(!canWalk(tx,ty)&&!canWade(tx,ty)){tx=center.x+rnd(-2,2);ty=center.y+rnd(-1.5,1.5)}p.tx=tx;p.ty=ty}
           walk(p,dt)}break}
       case 'snowman':{if(snowD<.4){p.task='play';p.t=1;break}
@@ -225,7 +225,7 @@ function step(dt){
           const need=people.filter(q=>q!==p&&q.sick&&!q.dead&&q.task==='abed'&&q.nursed!==dayCount);
           if(need.length){const sc=q=>(q.name===p.partner?6:0)+((p.parents.includes(q.name)||q.parents.includes(p.name))?4:0)+
               (p.rels.some(r=>r.who===q.name&&r.k==='friend')?2:0)+(p.rels.some(r=>r.who===q.name&&r.k==='rival')?(has(p,'gentle')?1:-1):0)+
-              (has(p,'gentle')?1.5:0)-Math.hypot(q.x-p.x,q.y-p.y)*.06;
+              (has(p,'gentle')?1.5:0)-hyp(q.x-p.x,q.y-p.y)*.06;
             const q=need.reduce((a,b)=>sc(b)>sc(a)?b:a);
             p.nursD=dayCount;p.nursW=q.name;goTo(p,q.x,q.y,'nurse',rnd(10,18));break}}
         // trait detours
@@ -254,10 +254,10 @@ function step(dt){
         else if(bldgTgt&&!bldgTgt.done&&R()<.35){p.tgt=bldgTgt;p.tx=bldgTgt.x+bldgTgt.w/2+rnd(-.8,.8);p.ty=bldgTgt.y+bldgTgt.h+.3;p.task='build'}
         else{
         const site=canBuild?((ruin&&ruinSeen&&R()<.4&&freeSpotNear(ruin.x,ruin.y,4,7,2))||freeSpot(3,11,2)||freeSpot(3,15,2)):null;
-        if(site){const s=site;{wood-=18;p.tgt={x:s.x,y:s.y,prog:0,forCouple:p.wantHouse?[p.name,p.partner]:null};plots.push(p.tgt);if(p.wantHouse){p.wantHouse=false;const q=byName(p.partner);if(q)q.wantHouse=false}p.tx=s.x+1;p.ty=s.y+2.2;p.task='build';const nearR=ruin&&Math.hypot(s.x-ruin.x,s.y-ruin.y)<8&&!ruin.built;if(nearR){ruin.built=true;p.hist.push({d:dayCount,s:'built the first house in the lee of the old stones'})}say(nearR?`${B(p)} paces out a plot in the lee of the old stones. It is out of the wind there, ${p.name} says, and it is not only that.`:p.wantHouse?`${B(p)} paces out a plot for a house of their own.`:`${B(p)} paces out a plot for a new house.`)}}
+        if(site){const s=site;{wood-=18;p.tgt={x:s.x,y:s.y,prog:0,forCouple:p.wantHouse?[p.name,p.partner]:null};plots.push(p.tgt);if(p.wantHouse){p.wantHouse=false;const q=byName(p.partner);if(q)q.wantHouse=false}p.tx=s.x+1;p.ty=s.y+2.2;p.task='build';const nearR=ruin&&hyp(s.x-ruin.x,s.y-ruin.y)<8&&!ruin.built;if(nearR){ruin.built=true;p.hist.push({d:dayCount,s:'built the first house in the lee of the old stones'})}say(nearR?`${B(p)} paces out a plot in the lee of the old stones. It is out of the wind there, ${p.name} says, and it is not only that.`:p.wantHouse?`${B(p)} paces out a plot for a house of their own.`:`${B(p)} paces out a plot for a new house.`)}}
         else if(uw&&!isElder(p)&&wood>=4&&R()<.3){if(!uw.paid){uw.paid=1;wood-=4}p.tgt=uw;p.tx=uw.x+.5+rnd(-.6,.6);p.ty=uw.y+1.2;p.task='build';if(!uw.said){uw.said=1;say(`${B(p)} has decided ${V()} should have ${WORKS[uw.wk].name}, and starts on it before anyone can weigh in.`)}}
         else if(dry01>.6&&hasB('well')&&s!=='winter'&&farms.some(f=>f.g<1)&&R()<.3){const w=getB('well');p.wtgt=farms.filter(f=>f.g<1).sort((a,b)=>a.g-b.g)[0];p.waterSt=0;goTo(p,w.x+.5,w.y+1.4,'water',0)}
-        else if(ripe.length&&!proud&&keen){const f=ripe.sort((a,b)=>Math.hypot(a.x-p.x,a.y-p.y)-Math.hypot(b.x-p.x,b.y-p.y))[0];f.claimed=true;p.tgt=f;p.tx=f.x+.5;p.ty=f.y+.5;p.task='harvest'}
+        else if(ripe.length&&!proud&&keen){const f=ripe.sort((a,b)=>hyp(a.x-p.x,a.y-p.y)-hyp(b.x-p.x,b.y-p.y))[0];f.claimed=true;p.tgt=f;p.tx=f.x+.5;p.ty=f.y+.5;p.task='harvest'}
         else if(needFood&&(storm?has(p,'brave'):R()<(hunger>.2?.7:s==='winter'?.45:.35)+(p.craft===2?.3*p.cxp:0))&&shore.length){const s=nearestShore(p.x,p.y);if(s){p.tgt=s;p.tx=s.x+.5;p.ty=s.y+.5;p.task='fish';p.work=0}else p.t=1}
         else if(needFood&&!proud&&s!=='winter'&&snowD<.4&&farms.length<people.length*.7+2&&R()<.7){const s=freeSpot(3,9);if(s){p.tgt=s;p.tx=s.x+.5;p.ty=s.y+.5;p.task='till'}else p.t=1}
         else if(wood<70&&(needWood||proud||R()<.4+(p.craft===1?.3*p.cxp:0))){const t=nearestTree(p.x,p.y);if(t&&(needWood||trees.length>12)){p.tgt=t;p.tx=t.x;p.ty=t.y+.4;p.task='chop'}else p.t=2}
@@ -294,7 +294,7 @@ function step(dt){
           else{const s2=p.stops[p.si];goTo(p,s2.x,s2.y,'bounds',rnd(5,9))}}}break}
       case 'voyage': if(walk(p,dt)){const l=landings[0];const b=spawnBoat('away',l,{p,x:l.x+l.dx*.9,y:l.y+l.dy*.9,st:'out',tx:l.x+l.dx*24,ty:l.y+l.dy*24});p.task='boat';p.inBoat=true;voyage.st='away';voyage.day=dayCount;voyage.n=2+((R()*3)|0);
         p.hist.push({d:dayCount,s:'took the boat out alone to see the far island'});addEvent('voyage',`the ${sea()} ${p.name} sailed for the far island`,`${p.name} rowed out alone for the far island, and five people stood on the shore and watched it happen.`);
-        const w=people.filter(q=>q!==p&&!q.dead&&q.task!=='sleep'&&q.task!=='boat'&&q.task!=='bounds'&&!q.inside).sort(()=>R()-.5).slice(0,5);for(const q of w){const s=nearestShore(l.x+rnd(-3,3),l.y+rnd(-3,3))||l;goTo(q,s.x,s.y,'wave',rnd(10,20));if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null;q.hist.push({d:dayCount,s:`watched ${p.name} row out toward the far island`})}
+        const w=shuf(people.filter(q=>q!==p&&!q.dead&&q.task!=='sleep'&&q.task!=='boat'&&q.task!=='bounds'&&!q.inside)).slice(0,5);for(const q of w){const s=nearestShore(l.x+rnd(-3,3),l.y+rnd(-3,3))||l;goTo(q,s.x,s.y,'wave',rnd(10,20));if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null;q.hist.push({d:dayCount,s:`watched ${p.name} row out toward the far island`})}
         say(`${B(p)} pushes off from the landing and rows straight out, and does not look back until ${p.name} is small.`,true)}break;
       case 'build': if(!p.tgt||p.tgt.done){p.task='idle';p.t=1;break}if(walk(p,dt)){p.tgt.prog+=dt*workRate(p);
         p.cw=(p.cw||0)+dt;if(p.cw>9){p.cw=0;craftUp(p,3)} // long hours at the frame teach the frame
