@@ -94,7 +94,9 @@ export const GROUPS = {
     'engine/scenario-actions.test.mjs', // SV2-61
     'engine/scenarios-kept.test.mjs', // SV2-113
     'engine/kept-lane.test.mjs', // SV2-121
+    'engine/compare-buildings.test.mjs', // SV2-114
     'engine/project-label.test.mjs', // SV2-113
+    'engine/merge-import.test.mjs', // SV2-119
     'engine/prints-door-cards.test.mjs', // SV2-66
     'engine/prints-step-free.test.mjs', // SV2-104
     'engine/prints-route-sheet.test.mjs', // SV2-103
@@ -155,6 +157,7 @@ export const GROUPS = {
     'browser/search.mjs', // SV2-07
     'browser/storage.mjs', // SV2-03
     'browser/storage-shelf.mjs', // SV2-115
+    'browser/storage-switch.mjs', // SV2-116
     'browser/recovery.mjs', // SV2-03
     'browser/tabs.mjs', // SV2-03
     'browser/schedule.mjs', // SV2-11
@@ -262,6 +265,7 @@ export const BROWSER_SECONDS = {
   'browser/plan-map.mjs': 26,
   'browser/storage.mjs': 24,
   'browser/storage-shelf.mjs': 10,
+  'browser/storage-switch.mjs': 120,
   'browser/recovery.mjs': 23,
   'browser/scenario.mjs': 21,
   'browser/fix.mjs': 21,

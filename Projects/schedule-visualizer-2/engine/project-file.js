@@ -23,7 +23,7 @@
 // `images` is { [imageId]: { data, type } } both ways: the page passes what
 // it holds to a writer, and stores what a reader hands back.
 
-import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, defaultSettings, defaultPublish, defaultOnboarding, emptyBells, emptySlot, emptyDay, roomNumberKey, nameKey, spacelessKey, allRooms, findRoom, bellSchedulesOf, calendarOf, marksOf, dutiesOf, releaseOf, RELEASE_MOST, DAY_TYPES_MOST, BELL_SCHEDULES_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR } from './schema.js';
+import { FORMAT, PUBLISHED_FORMAT, CURRENT_VERSION, defaultSettings, defaultPublish, defaultOnboarding, emptyBells, emptySlot, emptyDay, roomNumberKey, nameKey, spacelessKey, allRooms, findRoom, bellSchedulesOf, calendarOf, marksOf, dutiesOf, releaseOf, RELEASE_MOST, DAY_TYPES_MOST, BELL_SCHEDULES_MOST, DAY_ROTATION, DAY_CLOSED, BELLS_REGULAR, CHECK_KINDS } from './schema.js';
 import { DEFAULT_PASSCODE } from './publish-defaults.js';
 import { migrate, MigrateError, versionOf, NEWER_VERSION_MESSAGE, NOT_A_PROJECT_MESSAGE } from './migrate.js';
 import { repair } from './repair.js';
@@ -324,6 +324,32 @@ export function readBuildingFile(text) {
   return { file, images: taken.images, summary: summarise({ building, subjects }) };
 }
 
+// The building part of a project file already read, as readBuildingFile
+// would return it from writeBuildingFile(read.project, { images: read.images }),
+// without the round trip: the same subject filter (only the subjects rooms
+// use) and the same `missing` rewrite (an image is on hand exactly when
+// `read.images` holds its bytes). `images` holds the bytes of the images the
+// building refers to, in the shape keepFileImages takes.
+export function buildingPart(read) {
+  const project = read.project;
+  const held = read.images || {};
+  const images = {};
+  const building = {
+    ...project.building,
+    floors: project.building.floors.map((floor) => {
+      if (!floor.image) return floor;
+      const present = Object.prototype.hasOwnProperty.call(held, floor.image.imageId);
+      if (present) images[floor.image.imageId] = held[floor.image.imageId];
+      const missing = !present;
+      return missing === floor.image.missing ? floor : { ...floor, image: { ...floor.image, missing } };
+    }),
+  };
+  const used = new Set(allRooms(project).map((room) => room.subjectId));
+  const subjects = project.subjects.filter((subject) => used.has(subject.id));
+  const file = { format: BUILDING_FORMAT, version: BUILDING_VERSION, building, subjects };
+  return { file, images, summary: summarise({ building, subjects }) };
+}
+
 function sameSubject(a, b) {
   return nameKey(a.code) === nameKey(b.code) && nameKey(a.name) === nameKey(b.name);
 }
@@ -467,7 +493,7 @@ export function applyBuilding(project, file, options) {
 // building whose rooms have other ids. The staggered dismissals (18.2) are
 // written only when the project has some, so an older project's file is
 // byte-identical.
-export function writeScheduleFile(project) {
+function scheduleFileObject(project) {
   const named = new Set();
   for (const teacher of project.teachers) for (const roomId of teacher.roomIds) named.add(roomId);
   for (const group of project.groups) {
@@ -496,7 +522,41 @@ export function writeScheduleFile(project) {
   if (marks.length > 0) file.marks = marks;
   if (duties.length > 0) file.duties = duties;
   if (release.length > 0) file.release = release;
-  return stringify(file);
+  return file;
+}
+
+export function writeScheduleFile(project) {
+  return stringify(scheduleFileObject(project));
+}
+
+// The sentence's figures for a schedule file, as readScheduleFile reports them.
+function scheduleSummary(file) {
+  return { periods: file.settings.periods, subjects: file.subjects.length, teachers: file.teachers.length, groups: file.groups.length, dayTypes: file.dayTypes.length, bellSchedules: file.bellSchedules.length, calendar: file.calendar !== null, marks: file.marks.length, duties: file.duties.length, release: file.release.length };
+}
+
+// The schedule part of a project, as readScheduleFile would return it from
+// writeScheduleFile(project), without the round trip: what the file would
+// hold, with what it leaves out when the project has none read as empty
+// (bell schedules, marks, duties and dismissals as lists, the calendar as
+// null). A project file already read is valid, so nothing here is checked again.
+export function schedulePart(project) {
+  const written = scheduleFileObject(project);
+  const file = {
+    format: SCHEDULE_FORMAT,
+    version: SCHEDULE_VERSION,
+    settings: written.settings,
+    rooms: written.rooms,
+    subjects: written.subjects,
+    teachers: written.teachers,
+    groups: written.groups,
+    dayTypes: written.dayTypes,
+    bellSchedules: written.bellSchedules === undefined ? [] : written.bellSchedules,
+    calendar: written.calendar === undefined ? null : written.calendar,
+    marks: written.marks === undefined ? [] : written.marks,
+    duties: written.duties === undefined ? [] : written.duties,
+    release: written.release === undefined ? [] : written.release,
+  };
+  return { file, summary: scheduleSummary(file) };
 }
 
 const SCAFFOLD_WIDTH = 200;
@@ -557,7 +617,7 @@ export function readScheduleFile(text) {
   const duties = value.duties === undefined ? [] : value.duties;
   const release = value.release === undefined ? [] : value.release;
   const file = { format: SCHEDULE_FORMAT, version: value.version, settings: value.settings, rooms: value.rooms, subjects: value.subjects, teachers: value.teachers, groups: value.groups, dayTypes: value.dayTypes, bellSchedules, calendar, marks, duties, release };
-  return { file, summary: { periods: value.settings.periods, subjects: value.subjects.length, teachers: value.teachers.length, groups: value.groups.length, dayTypes: value.dayTypes.length, bellSchedules: bellSchedules.length, calendar: calendar !== null, marks: marks.length, duties: duties.length, release: release.length } };
+  return { file, summary: scheduleSummary(file) };
 }
 
 function padTo(list, length, make) {
@@ -598,6 +658,27 @@ function dayTypeOf(id, name, own, sameAs, short, bells) {
 function filledBells(here, from) {
   if (!here.some((bell, period) => bell === null && from[period])) return here;
   return here.map((bell, period) => (bell === null && from[period] ? { ...from[period] } : bell));
+}
+
+// The project with a longer school day: every day type's bells, every
+// group's slots on every day type and every bell schedule padded to `periods`
+// with empty ones. The project itself when `periods` is no more than it has,
+// so a day is never shortened. applySchedule and applySettings both raise the
+// day through this one helper.
+export function raisePeriods(project, periods) {
+  if (!Number.isInteger(periods) || periods <= project.settings.periods) return project;
+  let next = {
+    ...project,
+    settings: { ...project.settings, periods },
+    dayTypes: project.dayTypes.map((dayType) => ({ ...dayType, bells: padTo(dayType.bells, periods, () => null) })),
+    groups: project.groups.map((group) => {
+      const days = {};
+      for (const dayTypeId of Object.keys(group.days)) days[dayTypeId] = padTo(group.days[dayTypeId], periods, emptySlot);
+      return { ...group, days };
+    }),
+  };
+  if (Array.isArray(next.bellSchedules)) next = { ...next, bellSchedules: next.bellSchedules.map((schedule) => ({ ...schedule, bells: padTo(schedule.bells, periods, () => null) })) };
+  return next;
 }
 
 const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -673,17 +754,7 @@ export function applySchedule(project, file, options) {
   const periods = Math.max(project.settings.periods, file.settings.periods);
   if (periods > project.settings.periods) {
     summary.periodsRaised = { from: project.settings.periods, to: periods };
-    next = {
-      ...next,
-      settings: { ...next.settings, periods },
-      dayTypes: next.dayTypes.map((dayType) => ({ ...dayType, bells: padTo(dayType.bells, periods, () => null) })),
-      groups: next.groups.map((group) => {
-        const days = {};
-        for (const dayTypeId of Object.keys(group.days)) days[dayTypeId] = padTo(group.days[dayTypeId], periods, emptySlot);
-        return { ...group, days };
-      }),
-    };
-    if (Array.isArray(next.bellSchedules)) next = { ...next, bellSchedules: next.bellSchedules.map((schedule) => ({ ...schedule, bells: padTo(schedule.bells, periods, () => null) })) };
+    next = raisePeriods(next, periods);
   }
   if (options.takeSettings) {
     for (const key of SCHEDULE_SETTINGS) {
@@ -1055,4 +1126,64 @@ export function applySchedule(project, file, options) {
   const findings = validate(result);
   if (findings.length > 0) throw new FileError(invalidMessage('schedule', findings), 'invalid', findings);
   return { project: result, summary };
+}
+
+// ---------------------------------------------------------------- the settings part
+
+// What bringing in only the settings takes and leaves (ARCHITECTURE 21.10).
+// Both lists name keys of defaultSettings(); applySettings walks that list,
+// never the file's keys, and a test checks that these two cover it exactly.
+// `schoolName` is taken only when this project's is blank. The theme and the
+// paper belong to the device; the cell size, the walking and stair times
+// belong to the building they were measured on. Settings kept only as
+// optional extras (cellScale, the three elevator numbers) are not in
+// defaultSettings(), so they are never walked, and so never taken.
+export const SETTINGS_TAKEN = ['schoolName', 'periods', 'periodWord', 'defaultPassingSeconds', 'defaultHeadCount', 'colourScale', 'checks', 'timeFormat'];
+export const SETTINGS_LEFT = ['secondsPerCell', 'secondsPerStair', 'paper', 'theme'];
+
+// The project with the settings of a file's project brought in. `fileSettings`
+// is the `settings` of a project file already read. Returns { project, summary }:
+// `taken` lists { key, from, to } for each setting that changed (`periods`
+// among them when raised); `periodsRaised` is { from, to } or null;
+// `periodsStay` is { at, file } when the file has fewer periods than this
+// project, which keeps its own (a day is never shortened). A key the file does
+// not hold leaves the value here. `checks.off` keeps only the kinds this
+// version knows. A file that changes nothing returns the project itself.
+export function applySettings(project, fileSettings) {
+  const summary = { taken: [], periodsRaised: null, periodsStay: null };
+  if (!isObject(fileSettings)) throw new FileError(invalidMessage('settings', [{ path: 'settings', message: 'A project file holds settings.' }]), 'invalid', [{ path: 'settings', message: 'A project file holds settings.' }]);
+  let next = project;
+  for (const key of Object.keys(defaultSettings())) {
+    if (!SETTINGS_TAKEN.includes(key)) continue;
+    const incoming = fileSettings[key];
+    if (incoming === undefined) continue;
+    const here = project.settings[key];
+    if (key === 'periods') {
+      if (!Number.isInteger(incoming)) continue;
+      if (incoming > here) {
+        next = raisePeriods(next, incoming);
+        summary.periodsRaised = { from: here, to: incoming };
+        summary.taken.push({ key, from: here, to: incoming });
+      } else if (incoming < here) summary.periodsStay = { at: here, file: incoming };
+      continue;
+    }
+    let value = incoming;
+    if (key === 'schoolName') {
+      if (typeof here !== 'string' || here.trim() !== '' || typeof incoming !== 'string' || incoming.trim() === '') continue;
+    } else if (key === 'checks') {
+      if (!isObject(incoming)) continue;
+      const own = isObject(here) ? here : defaultSettings().checks;
+      value = { ...own };
+      for (const part of Object.keys(defaultSettings().checks)) if (incoming[part] !== undefined) value[part] = incoming[part];
+      if (Array.isArray(value.off)) value.off = Array.from(new Set(value.off.filter((kind) => CHECK_KINDS.includes(kind))));
+    }
+    if (sameJson(value, here)) continue;
+    next = { ...next, settings: { ...next.settings, [key]: value } };
+    summary.taken.push({ key, from: here, to: value });
+  }
+  if (next !== project) {
+    const findings = validate(next);
+    if (findings.length > 0) throw new FileError(invalidMessage('settings', findings), 'invalid', findings);
+  }
+  return { project: next, summary };
 }
