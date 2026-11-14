@@ -584,6 +584,11 @@ test('on the main thread the other building is searched on a cache of its own, a
   store.derived.setOther(sampleSchool(), 'same.json');
   await store.derived.other();
   assert.ok(client.searches >= searched * 2, 'the same building was searched again: its route cache is not the main lane\'s (' + client.searches + ' after ' + searched + ')');
+  // and the other building did not empty the cache the main lane routes from: a schedule change searches nothing
+  const afterOther = client.searches;
+  store.apply(actions.setSlot, { groupId: 'gsample06b', dayTypeId: 'dsample00b', period: 0, slot: { room: null } });
+  await store.derived.results();
+  assert.equal(client.searches - afterOther, 0, 'the main lane\'s distance fields were still there');
   const kept = withScenarios(storeOf(sampleSchool()));
   const keptClient = engineFor(kept, { worker: false });
   await kept.derived.results();
