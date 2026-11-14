@@ -164,8 +164,47 @@ async function groundChecks(page) {
   console.log(`      ground: ${r.lo} tiles NW-lower at ${r.mlo.toFixed(2)}, ${r.hi} NW-higher at ${r.mhi.toFixed(2)}, paint ${r.ms.toFixed(1)} ms`);
 }
 
+
+// ---- (5) A2: the hour is a colour. S1 against the A0 baseline, S6 rose over the land, S7 dark with its windows lit on the snow ----
+const S1_BASELINE = 82.34; // mean luminance of S1 at zoom 1 on the A0 code, measured before A2 on Chromium 1194
+async function lightChecks(page, id) {
+  const r = await page.evaluate(id => {
+    const H = window.__hearth, g = document.getElementById('c').getContext('2d'), W = 110, HH = 70, T = 8;
+    H.setZoom(1); H.draw();
+    const d = g.getImageData(0, 0, W * T, HH * T).data, tiles = H.tilesNow, road = H.road;
+    const px = (x, y) => { const k = (Math.round(y) * W * T + Math.round(x)) * 4; return [d[k], d[k + 1], d[k + 2]]; };
+    const lum = (x, y) => { const c = px(x, y); return .299 * c[0] + .587 * c[1] + .114 * c[2]; };
+    const tile = (x, y) => { const tx = Math.floor(x / T), ty = Math.floor(y / T); return (tx < 0 || ty < 0 || tx >= W || ty >= HH) ? -1 : tiles[ty * W + tx]; };
+    let t = 0; for (let i = 0; i < d.length; i += 4) t += .299 * d[i] + .587 * d[i + 1] + .114 * d[i + 2];
+    const out = { mean: t / (d.length / 4) };
+    let rs = 0, bs = 0, n = 0;
+    for (let y = 0; y < HH * T; y += 2) for (let x = 0; x < W * T; x += 2) if (tile(x, y) > 0) { const c = px(x, y); rs += c[0]; bs += c[2]; n++; }
+    out.landR = rs / n; out.landB = bs / n;
+    // a lit window and the snow round it: the pixel 3 px under the pair against one 24 px off, on the same grass tile type, either side first
+    const diffs = [], lit = [...H.litHouses];
+    for (const h of lit) {
+      const ax = h.x * T + 8, ay = h.y * T + 16;
+      const ok = (x, y) => tile(x, y) === 2 && !road[Math.floor(y / T) * W + Math.floor(x / T)];
+      if (!ok(ax, ay)) continue;
+      for (const [dx, dy] of [[24, 0], [-24, 0], [0, 24], [0, -24]]) if (ok(ax + dx, ay + dy)) { diffs.push(lum(ax, ay) - lum(ax + dx, ay + dy)); break; }
+    }
+    diffs.sort((a, b) => a - b);
+    out.lit = lit.length; out.houses = H.houses.length; out.pairs = diffs.length; out.medDiff = diffs.length ? diffs[diffs.length >> 1] : 0;
+    return out;
+  }, id);
+  if (id === 'S1') {
+    check('light: S1 (summer noon) is not dimmed: mean luminance within -15% and +4% of the A0 baseline', r.mean >= S1_BASELINE * .85 && r.mean <= S1_BASELINE * 1.04, `${r.mean.toFixed(2)} against ${S1_BASELINE}`);
+  }
+  if (id === 'S6') check('light: S6 (winter dusk) is warm over the land: mean red exceeds mean blue', r.landR > r.landB, `red ${r.landR.toFixed(1)}, blue ${r.landB.toFixed(1)}`);
+  if (id === 'S7') {
+    check('light: S7 (winter evening) mean luminance is between 30 and 95 of 255', r.mean >= 30 && r.mean <= 95, `${r.mean.toFixed(2)}`);
+    check('light: S7 some windows are lit and some are not', r.lit >= 1 && r.lit < r.houses, `${r.lit} of ${r.houses} houses lit`);
+    check('light: S7 the snow 3 px below a lit window is at least 60 brighter than the snow 24 px away (median over lit houses)', r.pairs >= 3 && r.medDiff >= 60, `${r.pairs} pairs, median ${r.medDiff.toFixed(1)}`);
+  }
+}
+
 // ---- (2) the eight scenes, at zoom 1 and zoom 3.2: pictures and timing ----
-const rows = [];
+const rows = [], lums = {};
 {
   const { ctx, page } = await open(7);
   await groundChecks(page);
@@ -196,16 +235,20 @@ const rows = [];
         return out.sort((a, b) => a - b);
       });
       const med = (ms[14] + ms[15]) / 2, p95 = ms[Math.min(29, Math.ceil(.95 * 30) - 1)];
+      const lum = z === 1 ? await page.evaluate(() => { const c = document.getElementById('c'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let t = 0; for (let i = 0; i < d.length; i += 4) t += .299 * d[i] + .587 * d[i + 1] + .114 * d[i + 2]; return t / (d.length / 4); }) : null;
+      if (lum !== null) lums[sc.id] = lum;
       rows.push({ id: sc.id, name: sc.name, z, med, p95 });
       const png = await page.locator('#c').screenshot();
       fs.writeFileSync(path.join(OUT, `${sc.id}-${sc.name.replace(/ /g, '-')}-z${z}.png`), png);
     }
     if (sc.id === 'S1') await animChecks(page);
+    if (['S1', 'S6', 'S7'].includes(sc.id)) await lightChecks(page, sc.id);
   }
   await ctx.close();
 }
 console.log('\nscene                          zoom   median ms   p95 ms');
 for (const r of rows) console.log(`${(r.id + ' ' + r.name).padEnd(30)} ${String(r.z).padEnd(5)} ${r.med.toFixed(2).padStart(9)} ${r.p95.toFixed(2).padStart(8)}`);
+console.log('mean luminance at zoom 1: ' + Object.entries(lums).map(([k, v]) => k + ' ' + v.toFixed(2)).join('  '));
 console.log(`pictures: ${OUT}\n`);
 check(`timing: every scene's draw() median is at or under ${BUDGET_MEDIAN} ms and p95 at or under ${BUDGET_P95} ms`,
   rows.every(r => r.med <= BUDGET_MEDIAN && r.p95 <= BUDGET_P95),

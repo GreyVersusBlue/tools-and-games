@@ -163,12 +163,12 @@ function draw(){
   for(const t of trees)ents.push({y:t.y,d:()=>{const r=T*.7*t.s*shrink,c=canopy(t);g.fillStyle='#4a2f16';g.fillRect(t.x*T-1,t.y*T-r*.6,2,r*.9);g.fillStyle=c[0];g.beginPath();g.arc(t.x*T,t.y*T-r,r,0,6.283);g.fill();g.fillStyle=c[1];g.beginPath();g.arc(t.x*T-r*.3,t.y*T-r*1.2,r*.6,0,6.283);g.fill();
     if(blossom&&t.b&&t.s>.6){g.fillStyle='#e8a0b8';g.fillRect(t.x*T-r*.6,t.y*T-r*1.1,2,2);g.fillRect(t.x*T+r*.3,t.y*T-r*1.5,2,2);g.fillRect(t.x*T+r*.1,t.y*T-r*.6,2,2)}
     if(cap>0&&t.s>.4){g.fillStyle='#eef2f4';g.beginPath();g.arc(t.x*T-r*.2,t.y*T-r*1.35,r*.55*cap,0,6.283);g.fill()}}});
-  const occSet=new Set();for(const p of people)if(p.inside&&p.shelterH)occSet.add(p.shelterH); // a house someone is waiting out the storm in shows a light
+  litHouses=houseLights(L,dayFrac(),edges()); // which windows are lit (look.js): somebody home before the house's own lights-out, or sheltering in it
   // the frames are drawn; what moves or changes is drawn over them: snow settling, the kiln's chimney pots, a window lit (#807)
   for(const h of houses)ents.push({y:h.y+2,d:()=>{const x=h.x*T,y=h.y*T;bFrame(roofFrame(h.r),x,y);
     if(cap>0)bFrame('house-snow',x,y,cap);
     if(hasWay(2)){g.fillStyle='#a34a2a';g.fillRect(x+11,y+1,2,3);g.fillStyle='#6b2f1e';g.fillRect(x+11,y+1,2,1)} // kiln-fired chimney pots
-    if(L<.5||occSet.has(h)){g.fillStyle='#f5c463';g.fillRect(x+4,y+10,3,3);g.fillRect(x+10,y+10,3,3)}}});
+    if(litHouses.has(h)){g.fillStyle='#f5c463';g.fillRect(x+4,y+10,3,3);g.fillRect(x+10,y+10,3,3)}}});
   // a house going up (TG-26) is the frame every building in progress shows, on its two tiles
   for(const h of plots)ents.push({y:h.y+2,d:()=>{const x=h.x*T,y=h.y*T,pr=Math.min(1,h.prog/12);
     g.fillStyle='rgba(60,45,25,.5)';g.fillRect(x,y,2*T,2*T);g.fillStyle='#8a6a44';for(let i=0;i<2*T;i+=4)g.fillRect(x+i,y+2*T-2-pr*6,2,2+pr*6)}});
@@ -283,28 +283,25 @@ function draw(){
   if(geese){g.fillStyle='#2a2620';const dir=Math.sign(geese.vx);for(let i=0;i<geese.n;i++){const k=Math.ceil(i/2),side=i%2?1:-1;const x=(geese.x-dir*k*1.35)*T,y=(geese.y+side*k*.75)*T,fl=Math.sin(animT*9+geese.ph+i)>0?0:1;g.fillRect(x-1,y+fl,3,1);g.fillRect(x-2,y-fl+1,1,1);g.fillRect(x+2,y-fl+1,1,1)}}
   if(rain){g.strokeStyle=storm?'rgba(200,220,255,.5)':'rgba(200,220,255,.35)';g.beginPath();const n=(storm?300:180)*(RM?.5:1);for(let i=0;i<n;i++){const x=(i*97+((animT*300)|0)*(i%3+1))%(W*T),y=(i*61+((animT*400)|0))%(H*T);g.moveTo(x,y);g.lineTo(x-(storm?4:2),y+6)}g.stroke()}
   if(wx==='snow'){g.fillStyle='rgba(255,255,255,.85)';const sn=RM?70:150;for(let i=0;i<sn;i++){const x=(i*97+((animT*20)|0)*(i%3+1)+((Math.sin(animT*.8+i)*5)|0)+2000)%(W*T),y=(i*61+((animT*34)|0))%(H*T);g.fillRect(x,y,i%4?1:2,i%4?1:2)}}
-  // sky: season tint, cloud, fog
+  // sky: the hour's colour (look.js), cloud, fog
   const f=dayFrac(),e=edges();
-  if(s==='summer'&&L>.5){g.fillStyle=`rgba(255,200,90,${(L-.5)*.14})`;g.fillRect(0,0,W*T,H*T)}
-  if(s==='winter'){g.fillStyle='rgba(150,180,220,.10)';g.fillRect(0,0,W*T,H*T)}
+  g.globalCompositeOperation='multiply';g.drawImage(lightMap(L,f,e,s),0,0);g.globalCompositeOperation='source-over'; // the hour is a colour, and the lights are in it (look.js)
+  const skyY=.3+.7*skyLum; // fog and mist are painted after the multiply, so they take the hour's brightness themselves
   // a rainbow hangs where the rain just was (sprint 16): one cached sprite, fading over half a minute of sim time
   if(rbUntil>time&&L>.35&&!rain&&wx!=='fog'){g.globalAlpha=Math.min(1,(rbUntil-time)/8)*.38;
     g.drawImage(rbSprite(),(center.x-26)*T,(center.y-24)*T,52*T,26*T);g.globalAlpha=1}
-  if(wx==='overcast'||wx==='snow'||wx==='fog'){g.fillStyle=`rgba(120,130,150,${wx==='snow'?.28:.2})`;g.fillRect(0,0,W*T,H*T)}
-  if(fogA>.01){const dx=Math.sin(animT*.06)*10;g.globalAlpha=fogA*.55;g.drawImage(fogCv,dx,0);g.globalAlpha=fogA*.4;g.drawImage(fogCv,-dx*.6,Math.cos(animT*.05)*4);g.globalAlpha=1;
-    g.fillStyle=`rgba(230,236,240,${(fogA*.16).toFixed(3)})`;for(let i=0;i<10;i++){const y=(i*67+13)%(H*T),x=((i*151+animT*(6+i%3)*3)%(W*T*1.4))-W*T*.2;g.fillRect(x,y,120+i*20,7);g.fillRect(x+30,y+7,80+i*10,4)}}
+  if(fogA>.01){const dx=Math.sin(animT*.06)*10;g.globalAlpha=fogA*.55*skyY;g.drawImage(fogCv,dx,0);g.globalAlpha=fogA*.4*skyY;g.drawImage(fogCv,-dx*.6,Math.cos(animT*.05)*4);g.globalAlpha=1;
+    g.fillStyle=`rgba(230,236,240,${(fogA*.16*skyY).toFixed(3)})`;for(let i=0;i<10;i++){const y=(i*67+13)%(H*T),x=((i*151+animT*(6+i%3)*3)%(W*T*1.4))-W*T*.2;g.fillRect(x,y,120+i*20,7);g.fillRect(x+30,y+7,80+i*10,4)}}
   // spring and autumn dawns raise a mist off the low ground (sprint 16), and the first hour of sun takes it back
   {const mist=(wx==='clear'||wx==='overcast')&&(s==='spring'||s==='autumn')&&f>e[0]&&f<e[0]+.09?1-(f-e[0])/.09:0;
-    if(mist>0&&fogA<.4){g.globalAlpha=mist*.3;g.drawImage(fogCv,Math.sin(animT*.05)*6,0);g.globalAlpha=mist*.18;g.drawImage(fogCv,-4,3);g.globalAlpha=1}}
+    if(mist>0&&fogA<.4){g.globalAlpha=mist*.3*skyY;g.drawImage(fogCv,Math.sin(animT*.05)*6,0);g.globalAlpha=mist*.18*skyY;g.drawImage(fogCv,-4,3);g.globalAlpha=1}}
   if(farIsle&&fogA<.9){const fi=farIsle,x0=fi.x*T,w=fi.w*T,h=fi.h*1.7,al=(1-fogA)*(wx==='overcast'||rain||wx==='snow'?.55:.8);g.fillStyle=L>.5?`rgba(44,58,86,${(al*.85).toFixed(2)})`:`rgba(18,24,44,${al.toFixed(2)})`;
     g.beginPath();g.moveTo(x0,0);g.quadraticCurveTo(x0+w*.22,h*1.5,x0+w*.42,h*.7);g.quadraticCurveTo(x0+w*.6,h*2.1,x0+w*.8,h*.9);g.quadraticCurveTo(x0+w*.92,h*.4,x0+w,0);g.closePath();g.fill();
     g.fillStyle=`rgba(200,214,232,${(al*.18*(L>.5?1:.3)).toFixed(3)})`;g.fillRect(x0-6,h*1.9,w+12,1)}
-  const dark=1-L;g.fillStyle=`rgba(12,16,48,${(dark*.72+(storm?.12:rain?.06:0))*(1-flash*.9)})`;g.fillRect(0,0,W*T,H*T);
-  if(flash>0){g.fillStyle=`rgba(255,255,255,${flash*.35})`;g.fillRect(0,0,W*T,H*T)}
-  const gold=Math.max(0,1-Math.abs(f-(e[0]+.02))*9)+Math.max(0,1-Math.abs(f-(e[1]-.01))*9);if(gold>0&&wx!=='fog'&&!rain){g.fillStyle=`rgba(255,140,60,${gold*(s==='summer'?.22:.18)})`;g.fillRect(0,0,W*T,H*T)}
-  if(dark>.3){g.globalCompositeOperation='lighter';const glow=(x,y,r,a)=>{const gr=g.createRadialGradient(x,y,0,x,y,r);gr.addColorStop(0,`rgba(255,180,90,${a})`);gr.addColorStop(1,'rgba(255,180,90,0)');g.fillStyle=gr;g.fillRect(x-r,y-r,r*2,r*2)};
-    glow(center.x*T,center.y*T-2,40,.5*dark);for(const h of houses)glow(h.x*T+8,h.y*T+11,18,.35*dark);
-    if(farIsle&&farIsle.lit&&fogA<.6&&(animT*2.3|0)%9!==0){const lx=(farIsle.x+farIsle.w*.6)*T,ly=farIsle.h*1.7*1.5;g.fillStyle=`rgba(255,190,110,${(.9*(dark-.3)).toFixed(2)})`;g.fillRect(lx,ly,1,1);glow(lx,ly,7,.5*(dark-.3))}
+  const dark=1-L;
+  if(dark>.3){g.globalCompositeOperation='lighter';
+    if(farIsle&&farIsle.lit&&fogA<.6&&(animT*2.3|0)%9!==0){const lx=(farIsle.x+farIsle.w*.6)*T,ly=farIsle.h*1.7*1.5;g.fillStyle=`rgba(255,190,110,${(.9*(dark-.3)).toFixed(2)})`;g.fillRect(lx,ly,1,1)}
+    if(L<.7){const fx0=center.x*T,fy0=center.y*T-2;g.globalAlpha=Math.min(1,(.7-L)/.4)*.55;g.drawImage(lightSprites().fire[8],Math.round(fx0-8),Math.round(fy0-8));g.globalAlpha=1} // a small bright core, so the fire stays the brightest thing
     /* the aurora (sprint 16): cold clear winter nights, more often on cold-tempered islands. Whether tonight has one is a pure
        function of seed and day — same on every device that opens this island — and the bands' geometry is fixed per island. */
     if(wx==='clear'&&auroraNight()){
@@ -313,9 +310,7 @@ function draw(){
         gr2.addColorStop(0,`rgba(96,225,160,${a1})`);gr2.addColorStop(.55,`rgba(70,165,195,${a2})`);gr2.addColorStop(1,'rgba(70,165,195,0)');
         g.fillStyle=gr2;g.fillRect(bx-bw/2,0,bw,bh)}}
     g.globalCompositeOperation='source-over'}
-  if(flies.length){g.globalCompositeOperation='lighter';for(const fl of flies){const b=RM?.85:Math.sin(animT*2.6+fl.ph);if(b<.2)continue;const a=(b-.2)*1.1*Math.min(1,fl.l/6);const x=fl.x*T,y=fl.y*T-2;g.fillStyle=`rgba(190,255,120,${(a*.35).toFixed(2)})`;g.fillRect(x-1,y-1,3,3);g.fillStyle=`rgba(230,255,170,${a.toFixed(2)})`;g.fillRect(x,y,1,1)}g.globalCompositeOperation='source-over'}
-  {const lh=getB('light');if(lh&&dark>.35){const lx=lh.x*T+4,ly=lh.y*T-13,a=animT*.9,al=(dark-.35)*.22*(wx==='fog'?1.6:1);g.globalCompositeOperation='lighter';g.fillStyle=`rgba(255,240,180,${al})`;
-    for(const off of [0,Math.PI]){g.beginPath();g.moveTo(lx,ly);g.arc(lx,ly,120,a+off-.13,a+off+.13);g.closePath();g.fill()}g.globalCompositeOperation='source-over'}}
+  if(flies.length){g.globalCompositeOperation='lighter';for(const fl of flies){const b=RM?.85:Math.sin(animT*2.6+fl.ph);if(b<.2)continue;const a=(b-.2)*1.1*Math.min(1,fl.l/6);const x=fl.x*T,y=fl.y*T-2;g.fillStyle=`rgba(230,255,170,${a.toFixed(2)})`;g.fillRect(x,y,1,1)}g.globalCompositeOperation='source-over'}
   if(dark>.5&&wx==='clear'){g.fillStyle=`rgba(255,255,255,${(dark-.5)*1.2})`;const rr=mulberry(seed^7);for(let i=0;i<70;i++){const x=rr()*W*T,y=rr()*H*T;if(at((x/T)|0,(y/T)|0)===WATER&&(animT*3+i)%7<6)g.fillRect(x,y,1,1)}}
   for(const st of shoots){const x=st.x*T,y=st.y*T,a=Math.min(1,st.l/.7);g.fillStyle=`rgba(255,255,255,${(a*.9).toFixed(2)})`;g.fillRect(x,y,2,1);
     g.fillStyle=`rgba(255,255,255,${(a*.3).toFixed(2)})`;g.fillRect(x-st.vx*.03*T,y-st.vy*.03*T,2,1);g.fillRect(x-st.vx*.06*T,y-st.vy*.06*T,1,1)}
