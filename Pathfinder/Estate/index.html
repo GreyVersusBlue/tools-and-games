@@ -257,10 +257,10 @@ const initials = name => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => 
 
 // A portrait that fails to load falls back to the monogram, so a missing file
 // never shows a broken-image icon at the table.
-function portrait(c, cls) {
+function portrait(c, src = c.portrait) {
   const mono = `<span class="mono">${esc(initials(c.name))}</span>`;
-  if (!c.portrait) return mono;
-  return `<img src="${esc(c.portrait)}" alt="" class="${cls || ''}" loading="lazy"
+  if (!src) return mono;
+  return `<img src="${esc(src)}" alt="" width="480" height="600"
     onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'mono',textContent:${esc(JSON.stringify(initials(c.name)))}}))">`;
 }
 
@@ -285,7 +285,8 @@ const chips = (label, list, extra = '') => list?.length ? `
 
 function renderSheet(c) {
   $('bar-name').textContent = c.name;
-  $('thumb').innerHTML = c.portrait ? portrait(c) : esc(initials(c.name));
+  const t = c.thumb || c.portrait;
+  $('thumb').innerHTML = t ? portrait(c, t) : esc(initials(c.name));
   const sections = (c.sections || []).map(sec => `
     <div class="section"><h3>${esc(sec.title)}</h3>
       ${(sec.items || []).map(it => `
