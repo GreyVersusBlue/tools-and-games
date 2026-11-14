@@ -68,7 +68,12 @@ function sentence(floor, plan, project) {
 export function floorsFor(project, options) {
   const floors = project.building.floors;
   const asked = options && options.floorId;
-  if (!asked || asked === 'all') return floors;
+  if (!asked || asked === 'all') {
+    // floorIds: the map pack's way (the preview sheet forces floorId over a caller's, so a caller
+    // that wants some floors passes the list); ids that match no floor ask for every floor
+    const some = options && Array.isArray(options.floorIds) ? floors.filter((floor) => options.floorIds.includes(floor.id)) : [];
+    return some.length > 0 ? some : floors;
+  }
   const one = floors.filter((floor) => floor.id === asked);
   return one.length > 0 ? one : floors;
 }
@@ -80,11 +85,12 @@ export function tracedFloors(project, options) {
   return floorsFor(project, options).filter((floor) => floor.image && floor.image.visible === true && floor.image.missing !== true);
 }
 
-export function render(project, derived, options) {
+// The sheets, one a floor: [{ what, body }] (frame() in document.js).
+export function pages(project, derived, options) {
   const opts = options || {};
   const box = printableBox(paperOf(project, opts));
   const room = { width: box.width, height: box.height - HEADER_MM - CAPTION_MM };
-  const pages = floorsFor(project, opts).map((floor) => {
+  return floorsFor(project, opts).map((floor) => {
     const plan = planSvg(project, floor, { traceImage: opts.traceImage === true, traceImages: opts.traceImages });
     const what = name + ': ' + floor.name;
     if (!plan.drawn) {
@@ -97,7 +103,10 @@ export function render(project, derived, options) {
       + '</figure>';
     return { what, body: figure };
   });
-  return frame(project, { output: id, what: name, pages, options: opts });
+}
+
+export function render(project, derived, options) {
+  return frame(project, { output: id, what: name, pages: pages(project, derived, options), options: options || {} });
 }
 
 // ---------------------------------------------------------------- the picture

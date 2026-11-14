@@ -1133,6 +1133,81 @@
   stroke-width: 2;
 }
 
+/* many ways out, a reference grid, a highlighted corridor, numbered exits and
+   "You are here" over a plan (planSvg's routes, refGrid, highlightCells,
+   exitMarks and marker options, SV2-108). A way's colour, a badge's ring and
+   a mark's fill are attributes: they are the exit's, not the stylesheet's. */
+.print-doc .plan__highlight {
+  fill: #0f6e66;
+  fill-opacity: 0.25;
+}
+
+.print-doc .plan__grid-lines {
+  fill: none;
+  stroke: #857f73;
+  stroke-width: 0.5;
+  stroke-dasharray: 4 3;
+}
+
+.print-doc .plan__grid-label {
+  fill: #515761;
+  font-weight: 500;
+}
+
+.print-doc .plan__way-band {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 7.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.print-doc .plan__way-line {
+  fill: none;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.print-doc .plan__way-start {
+  stroke: #ffffff;
+  stroke-width: 1.4;
+}
+
+.print-doc .plan__badge {
+  fill: #ffffff;
+  stroke-width: 2;
+}
+
+.print-doc .plan__badge-number {
+  fill: #1f2328;
+  font-weight: 700;
+}
+
+.print-doc .plan__mark {
+  stroke: #ffffff;
+  stroke-width: 1.2;
+}
+
+.print-doc .plan__mark-number { font-weight: 700; }
+
+.print-doc .plan__marker {
+  fill: #1f2328;
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+
+.print-doc .plan__marker-pill {
+  fill: #ffffff;
+  stroke: #1f2328;
+  stroke-width: 0.8;
+}
+
+.print-doc .plan__marker-label {
+  fill: #1f2328;
+  font-weight: 700;
+}
+
 /* ---------- SV2-71: the congestion report's scenario section (ui/prints/congestion.js) ----------
    The tables are the report's own (.doc-table). Busier and quieter, more and
    less, are said in words and signs ("+28 busier", "−48 s"); the weight and
@@ -1196,4 +1271,255 @@
   justify-content: flex-start;
   align-items: flex-start;
   margin-top: 2mm;
+}
+
+/* The lockdown map and the evacuation poster (SV2-110). The plan's own
+   classes are above; these are the sheet round it. Sizes in pt scale with the
+   sheet: --lockdown-scale and --poster-scale are 1 on Letter and grow with a
+   larger sheet's short side. */
+
+.print-doc .lockdown__main {
+  display: flex;
+  gap: var(--lockdown-gap, 6mm);
+  align-items: flex-start;
+}
+
+.print-doc .lockdown--under .lockdown__main {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* under the plan the three blocks sit side by side, the rooms in as many
+   columns as the sheet's room asks for (--lockdown-cols, --lockdown-rooms) */
+.print-doc .lockdown--under .lockdown__index {
+  display: grid;
+  grid-template-columns: var(--lockdown-cols, 1fr 1fr 1fr);
+  column-gap: var(--lockdown-gap, 6mm);
+  align-items: start;
+}
+
+.print-doc .lockdown__rooms {
+  column-count: var(--lockdown-rooms, 1);
+}
+
+.print-doc .lockdown__plan {
+  margin: 0;
+  flex: none;
+}
+
+.print-doc .lockdown__picture {
+  margin: 0 auto;
+}
+
+.print-doc .lockdown__index {
+  flex: 1 1 0;
+  min-width: 0;
+  line-height: 1.25;
+  font-size: calc(var(--lockdown-fs, 8pt) * var(--lockdown-scale, 1));
+}
+
+.print-doc .lockdown__block {
+  margin-bottom: 3mm;
+  break-inside: avoid;
+}
+
+.print-doc .lockdown__block h2 {
+  margin: 0 0 1mm;
+  font-size: 1.25em;
+  font-weight: 600;
+}
+
+.print-doc .lockdown__rooms,
+.print-doc .lockdown__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.print-doc .lockdown__rooms li,
+.print-doc .lockdown__list li {
+  break-inside: avoid;
+  padding: 0.2mm 0;
+}
+
+.print-doc .lockdown__sq {
+  color: var(--ink-2);
+}
+
+.print-doc .lockdown__none {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+.print-doc .lockdown__badge,
+.print-doc .poster__badge {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 0 0.3em;
+  border-radius: 1em;
+  text-align: center;
+  font-weight: 700;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.print-doc .lockdown__foot {
+  margin-top: 3mm;
+  font-size: calc(8pt * var(--lockdown-scale, 1));
+  color: var(--ink-2);
+}
+
+.print-doc .lockdown__foot p {
+  margin: 0;
+}
+
+.print-doc .poster {
+  display: flex;
+  gap: 6mm;
+  align-items: flex-start;
+}
+
+.print-doc .poster--under {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.print-doc .poster--under .poster__key {
+  display: grid;
+  grid-template-columns: repeat(var(--poster-cols, 1), minmax(0, 1fr));
+  column-gap: 6mm;
+}
+
+/* The sheet's headline is 28 pt on Letter and grows with the sheet's short
+   side like the poster's text (--poster-scale on the poster itself); the
+   header is the document's, outside the poster, so the scale is set by
+   paper here: (short side - 24 mm of margin) / 191.9 mm, never below 1. */
+.print-doc[data-output="evacuation-poster"] .doc-head__what {
+  font-size: calc(28pt * var(--poster-head-scale, 1));
+}
+.print-doc[data-output="evacuation-poster"][data-paper="letter"] { --poster-head-scale: 1; }
+.print-doc[data-output="evacuation-poster"][data-paper="a4"] { --poster-head-scale: 1; }
+.print-doc[data-output="evacuation-poster"][data-paper="tabloid"] { --poster-head-scale: 1.3309; }
+.print-doc[data-output="evacuation-poster"][data-paper="a3"] { --poster-head-scale: 1.4226; }
+.print-doc[data-output="evacuation-poster"][data-paper="a2"] { --poster-head-scale: 2.0636; }
+.print-doc[data-output="evacuation-poster"][data-paper="a1"] { --poster-head-scale: 2.9703; }
+.print-doc[data-output="evacuation-poster"][data-paper="a0"] { --poster-head-scale: 4.2574; }
+.print-doc[data-output="evacuation-poster"][data-paper="poster-24x36"] { --poster-head-scale: 3.0516; }
+
+/* The map pack (SV2-111b). A poster's sheet inside the pack heads at the
+   poster's own 28 pt, scaled by paper as above (the poster's fitPlan has
+   already made room for that header); the other sheets keep the running
+   head's 18 pt. */
+.print-doc[data-output="map-pack"] .page:has(.poster) .doc-head__what {
+  font-size: calc(28pt * var(--poster-head-scale, 1));
+}
+.print-doc[data-output="map-pack"][data-paper="letter"] { --poster-head-scale: 1; }
+.print-doc[data-output="map-pack"][data-paper="a4"] { --poster-head-scale: 1; }
+.print-doc[data-output="map-pack"][data-paper="tabloid"] { --poster-head-scale: 1.3309; }
+.print-doc[data-output="map-pack"][data-paper="a3"] { --poster-head-scale: 1.4226; }
+.print-doc[data-output="map-pack"][data-paper="a2"] { --poster-head-scale: 2.0636; }
+.print-doc[data-output="map-pack"][data-paper="a1"] { --poster-head-scale: 2.9703; }
+.print-doc[data-output="map-pack"][data-paper="a0"] { --poster-head-scale: 4.2574; }
+.print-doc[data-output="map-pack"][data-paper="poster-24x36"] { --poster-head-scale: 3.0516; }
+
+/* The cover's list is one column, in the pack's order (door cards' cover keeps its two). */
+.print-doc .mpack__list {
+  columns: 1;
+}
+
+/* The exits section: the table and the lists under it scale with the paper like the
+   lockdown index (--exits-scale, 1 on Letter); the columns are fixed so that
+   map-pack.js can measure the rows it puts on a sheet. */
+.print-doc .mpack__exits h2 {
+  font-size: calc(12pt * var(--exits-scale, 1));
+}
+.print-doc .mpack__exits .doc-lead {
+  font-size: calc(11pt * var(--exits-scale, 1));
+  max-width: calc(170mm * var(--exits-scale, 1));
+}
+.print-doc .mpack__exits .doc-meaning {
+  font-size: calc(9pt * var(--exits-scale, 1));
+}
+.print-doc .mpack__exits .doc-table {
+  table-layout: fixed;
+  font-size: calc(9pt * var(--exits-scale, 1));
+}
+.print-doc .mpack__exits .doc-table th,
+.print-doc .mpack__exits .doc-table td {
+  padding: calc(1.2mm * var(--exits-scale, 1)) calc(2mm * var(--exits-scale, 1));
+  overflow-wrap: anywhere;
+}
+.print-doc .mpack__exits .doc-table thead th {
+  font-size: calc(8pt * var(--exits-scale, 1));
+}
+.print-doc .mpack__exits .doc-table thead th:nth-child(1) { width: 25%; }
+.print-doc .mpack__exits .doc-table thead th:nth-child(2) { width: 12%; }
+.print-doc .mpack__exits .doc-table thead th:nth-child(3) { width: 31%; }
+.print-doc .mpack__exits .doc-table thead th:nth-child(4) { width: 7%; }
+.print-doc .mpack__exits .doc-table thead th:nth-child(5) { width: 13%; }
+.print-doc .mpack__exits .doc-table thead th:nth-child(6) { width: 12%; }
+.print-doc .mpack__exits .card-cover__missing {
+  margin-bottom: 0;
+  padding-left: calc(6mm * var(--exits-scale, 1));
+  font-size: calc(10pt * var(--exits-scale, 1));
+}
+
+.print-doc .poster__plan {
+  margin: 0;
+  flex: none;
+}
+
+.print-doc .poster__picture {
+  margin: 0 auto;
+}
+
+.print-doc .poster__text {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: calc(11pt * var(--poster-scale, 1));
+  line-height: 1.3;
+}
+
+.print-doc .poster__key {
+  margin: 0 0 3mm;
+  padding: 0;
+  list-style: none;
+}
+
+.print-doc .poster__exit {
+  display: flex;
+  align-items: center;
+  gap: 2mm;
+  margin-bottom: 2mm;
+  break-inside: avoid;
+}
+
+.print-doc .poster__badge {
+  flex: none;
+  font-size: 1.1em;
+}
+
+.print-doc .poster__bar {
+  flex: none;
+  width: 1.6mm;
+  align-self: stretch;
+  border-radius: 0.8mm;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.print-doc .poster__line {
+  margin: 0 0 2.5mm;
+}
+
+.print-doc .poster__line--bold {
+  font-weight: 700;
+}
+
+.print-doc .poster__line--warn {
+  font-weight: 600;
+}
+
+.print-doc .poster__door {
+  font-weight: 700;
 }

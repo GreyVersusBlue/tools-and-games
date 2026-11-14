@@ -80,6 +80,7 @@ export const GROUPS = {
     'engine/import-teachers.test.mjs', // SV2-35
     'engine/finding-ids.test.mjs', // SV2-35
     'engine/prints.test.mjs', // SV2-14
+    'engine/plan-svg-safety.test.mjs', // SV2-108
     'engine/prints-batch.test.mjs', // SV2-24
     'engine/readers.test.mjs', // SV2-42
     'engine/prints-movement.test.mjs', // SV2-18
@@ -87,11 +88,16 @@ export const GROUPS = {
     'engine/import-subjects.test.mjs', // SV2-13
     'engine/scenario.test.mjs', // SV2-60
     'engine/evacuation.test.mjs', // SV2-62
+    'engine/exit-load.test.mjs', // SV2-107
+    'engine/blocked.test.mjs', // SV2-107
     'engine/step-free.test.mjs', // SV2-100
     'engine/scenario-actions.test.mjs', // SV2-61
     'engine/prints-door-cards.test.mjs', // SV2-66
     'engine/prints-step-free.test.mjs', // SV2-104
     'engine/prints-route-sheet.test.mjs', // SV2-103
+    'engine/prints-lockdown-map.test.mjs', // SV2-110
+    'engine/prints-evacuation-poster.test.mjs', // SV2-110
+    'engine/prints-map-pack.test.mjs', // SV2-111
     'engine/prints-calendar.test.mjs', // SV2-80
     'engine/suggest.test.mjs', // SV2-63
     'engine/prints-congestion-scenario.test.mjs', // SV2-71
@@ -184,6 +190,8 @@ export const GROUPS = {
     'browser/plan-map.mjs', // SV2-65b
     'browser/safety.mjs', // SV2-67
     'browser/step-free-safety.mjs', // SV2-104
+    'browser/safety-what-if.mjs', // SV2-109
+    'browser/safety-prints.mjs', // SV2-111
     'browser/route-sheet.mjs', // SV2-103
     'browser/scenario.mjs', // SV2-68
     'browser/scenario-levers.mjs', // SV2-92
@@ -252,6 +260,8 @@ export const BROWSER_SECONDS = {
   'browser/fix.mjs': 21,
   'browser/safety.mjs': 20,
   'browser/step-free-safety.mjs': 20,
+  'browser/safety-what-if.mjs': 25,
+  'browser/safety-prints.mjs': 25,
   'browser/route-sheet.mjs': 10,
   'browser/scenario-levers.mjs': 20,
   'browser/playback.mjs': 19,

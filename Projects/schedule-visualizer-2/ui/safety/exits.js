@@ -14,8 +14,28 @@
 
 import { h } from '../components/dom.js';
 import { count } from '../components/words.js';
+import { HEAVY_SHARE, HEAVY_MARGIN, basisWords } from '../../engine/exit-load.js';
+import { partsNodes } from './what-if.js';
 
 const CAPACITY_UNSET = (n) => (n === 1 ? '1 room has no capacity set and is not counted' : n + ' rooms have no capacity set and are not counted');
+
+// the load warning's words (DESIGN 14.2, 14.7 item 2)
+export const HEAVY_WORDS = 'Far more than the others';
+export const BLOCKED_WORDS = 'Blocked in this trial';
+export const HEAVY_ADVICE = 'The tool does not know door widths. Check this door and the way to it in your next drill.';
+export const heavyRule = (basis) => 'Why: an exit is flagged when its share is ' + HEAVY_SHARE + ' times an even share and at least ' + HEAVY_MARGIN[basis === 'rooms' ? 'rooms' : 'people'] + ' ' + (basis === 'rooms' ? 'rooms' : 'people') + ' more.';
+export const BASIS_LINK = 'Set capacities in Building › Rooms.';
+
+// "12 rooms, 420 people": an exit's figures; under a trial, what they were
+function figuresOf(exit) {
+  if (exit.rooms === 0) return 'No room goes out this way.';
+  return count(exit.rooms, 'room') + ', ' + count(exit.people, 'person', 'people') + (exit.uncounted > 0 ? ' (' + CAPACITY_UNSET(exit.uncounted) + ')' : '') + '.';
+}
+
+// a sentence as parts (typed names set apart)
+function sentenceOf(load) {
+  return partsNodes(load.sentenceParts, load.sentence);
+}
 
 export function exitsPanel(env) {
   const element = h('div', { class: 'mov-panel sfy-panel', data: { panel: 'exits' } });
@@ -31,6 +51,29 @@ export function exitsPanel(env) {
       data: { room: row.roomId },
       on: { click: () => env.pick(row.roomId) },
     }, h('bdi', null, row.name));
+  }
+
+  // The load warning (spec 10.1): with a heavy exit a warning block in words, its sentence and
+  // advice, and the rule that flagged it; with one way out only, a note; and, when the figures
+  // compare rooms, the line that says so with a link to where capacities are set.
+  function loadBlock(picture) {
+    const load = picture.load;
+    if (!load) return null;
+    const heavy = load.heavy.length > 0;
+    const parts = [];
+    if (heavy) {
+      parts.push(h('div', { class: 'sfy-warn', role: 'group', 'aria-label': 'Warning', data: { part: 'load-warning' } },
+        h('p', { class: 'sfy-warn__head' }, h('strong', null, 'Warning')),
+        h('p', { class: 'sfy-warn__sentence', data: { part: 'load-sentence' } }, ...sentenceOf(load)),
+        h('p', { class: 'sfy-warn__advice' }, HEAVY_ADVICE),
+        h('p', { class: 'sfy-warn__rule', data: { part: 'load-rule' } }, heavyRule(load.basis))));
+    } else if (load.sentence) {
+      parts.push(h('p', { class: 'sfy-note', role: 'note', data: { part: 'load-note' } }, ...sentenceOf(load)));
+    }
+    if (basisWords(load) !== '') {
+      parts.push(h('p', { class: 'sfy-note', data: { part: 'load-basis' } }, basisWords(load) + ' ', h('button', { type: 'button', class: 'mov-link', data: { action: 'to-rooms' }, on: { click: () => env.ctx.navigate('#building') } }, BASIS_LINK)));
+    }
+    return parts.length === 0 ? null : h('div', { class: 'sfy-load', data: { part: 'load' } }, parts);
   }
 
   function update() {
@@ -52,7 +95,8 @@ export function exitsPanel(env) {
     drawnPicked = env.picked();
     const rows = new Map(picture.rows.map((row) => [row.roomId, row]));
     const exits = picture.exits.map((exit) => {
-      const people = exit.rooms === 0 ? 'No room goes out this way.' : count(exit.rooms, 'room') + ', ' + count(exit.people, 'person', 'people') + (exit.uncounted > 0 ? ' (' + CAPACITY_UNSET(exit.uncounted) + ')' : '') + '.';
+      const people = exit.blocked ? BLOCKED_WORDS + '.' : figuresOf(exit);
+      const was = exit.was ? h('span', { class: 'sfy-exit__was', data: { part: 'was' } }, ' Was ' + count(exit.was.rooms, 'room') + ', ' + count(exit.was.people, 'person', 'people') + '.') : null;
       const assembly = typeof exit.assembly === 'string' && exit.assembly.trim() !== ''
         ? h('p', { class: 'sfy-exit__assembly' }, 'Assembly point: ', h('bdi', null, exit.assembly))
         : h('p', { class: 'sfy-exit__assembly sfy-exit__assembly--none' }, 'No assembly point is set for this exit.');
@@ -61,7 +105,7 @@ export function exitsPanel(env) {
           h('span', { class: 'sfy-swatch', style: env.swatch(exit.number), 'aria-hidden': 'true' }, String(exit.number)),
           h('span', { class: 'vh' }, 'Exit ' + exit.number + ': '),
           h('bdi', null, exit.name)),
-        h('p', { class: 'sfy-exit__where' }, 'On ', h('bdi', null, exit.floorName), '. ', people),
+        h('p', { class: 'sfy-exit__where' }, 'On ', h('bdi', null, exit.floorName), '. ', exit.blocked ? h('strong', { class: 'sfy-heavy sfy-heavy--blocked', data: { part: 'blocked' } }, people) : people, was, exit.heavy ? [' ', h('strong', { class: 'sfy-heavy', data: { part: 'heavy' } }, HEAVY_WORDS)] : null),
         assembly,
         exit.roomIds.length > 0 ? h('ul', { class: 'sfy-rooms', 'aria-label': 'Rooms that go out by ' + exit.name }, exit.roomIds.map((id) => h('li', null, roomButton(rows.get(id))))) : null);
     });
@@ -69,11 +113,12 @@ export function exitsPanel(env) {
       const row = rows.get(no.roomId);
       return h('li', { class: 'sfy-missing__row', data: { room: no.roomId } },
         roomButton(row),
-        h('p', { class: 'sfy-missing__why', dir: 'auto' }, no.sentence),
+        h('p', { class: 'sfy-missing__why', dir: 'auto' }, ...partsNodes(no.sentenceParts, no.sentence)),
         no.onlyByElevator ? h('p', { class: 'sfy-missing__why' }, 'Its only way out is by elevator, and an elevator is not used in an evacuation.') : null);
     });
     element.replaceChildren(
       h('h2', { class: 'mov-panel__title' }, 'Exits'),
+      loadBlock(picture),
       h('p', { class: 'sfy-panel__lead' }, 'Each room goes out by the exit it reaches soonest on foot, stairs counted and elevators never used. People are the rooms’ capacities.'),
       h('ol', { class: 'sfy-exits', 'aria-label': 'Exits' }, exits),
       h('h2', { class: 'mov-panel__sub', id: 'safety-missing' }, 'Rooms with no way out'),

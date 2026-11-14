@@ -24,7 +24,8 @@ import { count } from '../components/words.js';
 import { nameOfRoom } from '../../engine/schema.js';
 import { periodName } from '../../engine/bells.js';
 import { formatDuration } from '../../engine/findings.js';
-import { UNMARKED_SAYS, TWO_VIEWS_SAYS, ALL_REACHED_SAYS, EVACUATION_NO_ELEVATORS } from './ways.js';
+import { UNMARKED_SAYS, TWO_VIEWS_SAYS, ALL_REACHED_SAYS, EVACUATION_NO_ELEVATORS, STAIRS_UNCHANGED } from './ways.js';
+import { blockedCount } from './model.js';
 
 function upper(text) {
   return text === '' ? text : text.charAt(0).toUpperCase() + text.slice(1);
@@ -97,6 +98,7 @@ export function stepFreeWaysPanel(env) {
         h('p', { class: 'sfy-refuge__use' }, refuge.use))))];
     element.replaceChildren(
       h('h2', { class: 'mov-panel__title' }, 'Step-free ways out'),
+      ...(blockedCount(step.blocked) > 0 ? [h('p', { class: 'sfy-panel__lead sfy-trial-line', role: 'note', data: { line: 'stairs-unchanged' } }, STAIRS_UNCHANGED)] : []),
       ...(step.report.marked ? [] : [unmarked(env)]),
       h('p', { class: 'sfy-panel__lead' }, 'Each room goes out by the step-free exit it reaches soonest, or waits at an area of refuge when it can reach none. ' + EVACUATION_NO_ELEVATORS),
       ...sections,

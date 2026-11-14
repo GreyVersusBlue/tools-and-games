@@ -91,8 +91,8 @@ async function checkHelp(page, id, rail) {
   assert.deepEqual(seen.keys, registered.map((entry) => entry.id), id + ': the shortcuts are not the shell’s list');
   assert.deepEqual(seen.groups, [...new Set(registered.map((entry) => entry.group))], id + ': a group of shortcuts is not explained');
   assert.deepEqual(seen.devices, ['mouse', 'touch', 'pen', 'keyboard']);
-  assert.equal(seen.words.length, 35, id + ': spec 2 has 20 words, DESIGN 11.1 adds 11, DESIGN 12.1 adds Staggered dismissal and DESIGN 13.1 adds Step-free, Area of refuge and Route sheet');
-  for (const term of ['Elevator', 'Step-free', 'Area of refuge', 'Route sheet']) assert.ok(seen.words.includes(term), id + ': Help\'s words lack ' + term);
+  assert.equal(seen.words.length, 39, id + ': spec 2 has 20 words, DESIGN 11.1 adds 11, DESIGN 12.1 adds Staggered dismissal, DESIGN 13.1 adds Step-free, Area of refuge and Route sheet and DESIGN 14.1 adds Blocked, Lockdown map, Evacuation poster and Map pack');
+  for (const term of ['Elevator', 'Step-free', 'Area of refuge', 'Route sheet', 'Blocked', 'Lockdown map', 'Evacuation poster', 'Map pack']) assert.ok(seen.words.includes(term), id + ': Help\'s words lack ' + term);
   assert.deepEqual(seen.numbers, ['load', 'travel', 'late']);
   assert.deepEqual(seen.jumps, ['sections', 'keys', 'gestures', 'words', 'numbers']);
   assert.doesNotMatch(seen.text, /—/, 'an em dash in Help');
@@ -289,6 +289,34 @@ test('Show Getting started brings the card back and puts the focus in it', async
     await page.click('#help-dialog .dialog__buttons button:first-child');
     await page.waitForFunction(() => document.getElementById('getting-started').hidden === false);
     assert.equal(await page.evaluate(() => document.getElementById('getting-started').contains(document.activeElement)), true, 'the focus is not in the card');
+  });
+});
+
+// Help names every tab Safety has (read from the page's own tablist, so a sixth
+// tab fails here), and says the W5 words: the trial, never printed, the prints
+// and the map pack's Save as PDF, and the exit-load rule in one sentence.
+test('Help’s Safety part names each of Safety’s tabs, the trial and the prints, and the numbers hold the exit-load rule', async () => {
+  await on(DESK, '#safety', async (page) => {
+    await page.waitForSelector('.sfy-inspector .tabs__tab[data-tab="prints"]');
+    const tabLabels = await page.$$eval('.sfy-inspector .tabs__tab', (all) => all.map((tab) => tab.textContent.trim()));
+    assert.deepEqual(tabLabels, ['Exits', 'Door cards', 'Step-free', 'What if', 'Prints'], 'Safety’s tabs changed: Help’s Safety part must name them');
+    await blurAll(page);
+    await page.keyboard.press('?');
+    await page.waitForSelector(OPEN);
+    const seen = await page.evaluate(() => {
+      const dialog = document.getElementById('help-dialog');
+      const li = dialog.querySelector('.help__section[data-section="safety"]');
+      const rule = Array.from(dialog.querySelectorAll('[data-numbers="load"] li, [data-numbers="load"] p')).map((el) => el.textContent);
+      return { safety: li ? li.textContent : '', rule };
+    });
+    // an exact, word-bounded match: "Exits" is not met by "exits"
+    for (const label of tabLabels) {
+      assert.ok(new RegExp('(?<![A-Za-z0-9-])' + label.replace(/-/g, '\\-') + '(?![A-Za-z0-9-])').test(seen.safety), 'Help’s Safety part does not name the ' + label + ' tab');
+    }
+    for (const phrase of ['five tabs', 'never printed', 'Save as PDF', 'Use the scenario’s closures', 'Clear the trial', 'evacuation posters', 'lockdown maps', 'map pack']) {
+      assert.ok(seen.safety.includes(phrase), 'Help’s Safety part lacks "' + phrase + '"');
+    }
+    assert.equal(seen.rule.filter((text) => text.includes('1.6 times an even share') && text.includes('50 people')).length, 1, 'the load numbers lack the one-sentence exit-load rule: ' + seen.rule.length + ' sentences read');
   });
 });
 

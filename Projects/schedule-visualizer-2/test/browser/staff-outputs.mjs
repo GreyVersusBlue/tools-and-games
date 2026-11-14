@@ -1115,12 +1115,14 @@ test('a note is typed on the reader\'s own day card, kept as typed, and shown as
     // still there when the file is opened again; and on the teacher page, which is the same person's
     await page.goto('about:blank');
     await goto(page, files.open.url);
-    assert.equal(await hash(page), '#/teacher/tsample001');
     // the empty address sends the reader on to their own teacher page, which
-    // is drawn after the file reads as open: wait for that page, not the
-    // first one (CI read the note's paper empty there once, #582)
-    // (the field is filled as it is drawn, so its value is the state to wait on)
-    await page.waitForFunction((typed) => document.querySelector('[data-note="dsample00a:1"] .note__paper')?.textContent === typed && document.querySelector('[data-note="dsample00a:1"] input')?.value === typed, { timeout: 10000 }, HOSTILE);
+    // is drawn after the file reads as open: wait for that page's own drawn
+    // state, not the first one (CI read the note's paper empty there once,
+    // #582, and the address itself was read before the redirect once, #587).
+    // The page is drawn when its address is the teacher's, its days are read
+    // and the note's field is filled (as it is drawn, so its value is the state)
+    await page.waitForFunction((typed) => location.hash === '#/teacher/tsample001' && document.querySelector('.days')?.dataset.notes === 'read' && document.querySelector('[data-note="dsample00a:1"] .note__paper')?.textContent === typed && document.querySelector('[data-note="dsample00a:1"] input')?.value === typed, { timeout: 10000 }, HOSTILE);
+    assert.equal(await hash(page), '#/teacher/tsample001');
     assert.equal(await text(page, '[data-note="dsample00a:1"] .note__paper'), HOSTILE);
     assert.equal(await page.evaluate(() => document.querySelector('[data-note="dsample00a:1"] input').value), HOSTILE);
 

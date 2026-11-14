@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import * as doorCards from '../../ui/prints/door-cards.js';
 import { OUTPUTS, outputFor, printButtons } from '../../ui/prints/index.js';
 import { planSvg } from '../../ui/prints/plan-svg.js';
-import { esc } from '../../ui/prints/document.js';
+import { esc, frame } from '../../ui/prints/document.js';
 import { render as floorPlan } from '../../ui/prints/floor-plan.js';
 import { roomRows, sortRoomRows } from '../../ui/prints/room-list.js';
 import { evacuationRoutes, noRoute, doorCard, ELEVATOR_KIND } from '../../engine/evacuation.js';
@@ -947,4 +947,45 @@ test('stepFreeBlock: no block for an exit that is the route, none for a room wit
   // a room the ordinary evacuation cannot leave either: the card already says so, so no second block
   const lost = ways.rooms[0];
   assert.equal(stepFreeBlock(project, { ...lost, way: 'none', why: 'x', sentence: '' }, { route: { ok: false } }), null);
+});
+
+// ---------------------------------------------------------------- SV2-111: pages() and the pack's `last`
+
+// The first 16 hex digits of the SHA-256 of the sample's document, taken from the module as it was
+// before render became frame(pages()) (the clock pinned): the split changed no byte.
+const digest = (html) => createHash('sha256').update(html).digest('hex').slice(0, 16);
+
+test('render is byte for byte what it was before pages() was split out: the sample, with step-free blocks and without', () => {
+  const project = sampleSchool();
+  const withBlocks = doorCards.render(project, null, { ...NOW, stepFree: true }).html;
+  const without = doorCards.render(project, null, { ...NOW, stepFree: false }).html;
+  assert.equal(digest(withBlocks), '73f7f49efa1edd7c');
+  assert.equal(digest(without), '9d48d8f430b51505');
+  // the two pins are not the same document by accident: one has the second block, the other none
+  assert.ok(withBlocks.split('data-stepfree="').length > 1, 'the sample has cards with a step-free block');
+  assert.equal(without.split('data-stepfree="').length, 1, 'and without it, none');
+});
+
+test('pages() are the cover and one page a card, headed as the output heads them; render frames them', () => {
+  const project = sampleSchool();
+  const made = doorCards.pages(project, null, NOW);
+  assert.equal(made[0].what, 'Door cards');
+  assert.ok(made.slice(1).every((page) => page.what === 'Evacuation route'));
+  assert.equal(made.length, 1 + doorCards.cardsFor(project, NOW).length);
+  assert.equal(doorCards.render(project, null, NOW).html, frame(project, { output: 'door-cards', what: 'Door cards', pages: made, options: NOW }).html);
+  // nothing to print: the one sentence page, with no head of its own
+  const none = doorCards.pages(project, null, { ...NOW, floorId: 'no-such-floor' });
+  assert.equal(none.length, 1);
+  assert.equal(none[0].what, undefined);
+});
+
+test('options.last = false keeps the closing line\'s room from the last card: only that card\'s page changes', () => {
+  const project = sampleSchool();
+  const paper = { size: 'letter', orientation: 'landscape' };
+  const asLast = doorCards.pages(project, null, { ...NOW, paper });
+  assert.deepEqual(asLast, doorCards.pages(project, null, { ...NOW, paper, last: true }), 'true is what it was when left out');
+  const followed = doorCards.pages(project, null, { ...NOW, paper, last: false });
+  assert.equal(followed.length, asLast.length);
+  const changed = asLast.map((page, i) => (page.body === followed[i].body ? -1 : i)).filter((i) => i >= 0);
+  assert.deepEqual(changed, [asLast.length - 1], 'the foot is reserved on the last page, and on no other');
 });

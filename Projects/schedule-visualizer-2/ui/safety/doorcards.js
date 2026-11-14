@@ -7,7 +7,8 @@
 //   the picked room's card      the room picked on the map or in a list
 //   the rooms ticked            a choice made in the list below, one box a room
 //   every room's card           the whole building, in room order
-// The list is the map's text alternative (spec 3.10): floor by floor, each
+// The list is the map's text alternative (spec 3.10), as the building is built, never the trial's:
+// floor by floor, each
 // room with the number of its exit in the key, the exit, the walking time
 // and the first step of its card, or the reason it has no way out. A
 // room's "Show" button shows its way out on the map.
@@ -18,7 +19,7 @@
 // by the section for the open project.
 //
 //   doorCardsPanel(env) -> { element, update() }
-//     env   { ctx, picture(), project(), picked(), chosen() (a Set of room
+//     env   { ctx, picture(), asBuilt() (the plain pass, never the trial's), project(), picked(), chosen() (a Set of room
 //             ids, kept by the section), stepFree() (null: the default), setStepFree(value),
 //             swatch(number), themeKey(), pick(roomId), home() (puts the focus on the map) }
 //
@@ -30,7 +31,7 @@
 import { h, uid } from '../components/dom.js';
 import { openPrintPreview } from '../components/print-preview.js';
 import { roomLine } from './model.js';
-import { hasStepMarks, BLOCK_HEAD } from './ways.js';
+import { hasStepMarks, BLOCK_HEAD, AS_BUILT_LINE } from './ways.js';
 
 export const CHOOSE_FIRST = 'Tick rooms in the list below first.';
 
@@ -47,8 +48,10 @@ export function doorCardsPanel(env) {
     h('label', { class: 'sfy-cards__step-label', for: base + '-step' }, stepBox, ' ', 'Step-free ways out'),
     h('p', { class: 'sfy-cards__hint', id: base + '-step-hint' }, 'A card whose step-free way out is not its route carries a second, shorter block, “' + BLOCK_HEAD + '”.'));
   const list = h('div', { class: 'sfy-list' });
+  const trialLine = h('p', { class: 'sfy-panel__lead sfy-trial-line', role: 'note', hidden: true, data: { line: 'as-built' } }, AS_BUILT_LINE);
   const element = h('div', { class: 'mov-panel sfy-panel', data: { panel: 'cards' } },
     h('h2', { class: 'mov-panel__title' }, 'Door cards'),
+    trialLine,
     h('p', { class: 'sfy-panel__lead' }, 'A card to post by a room’s door: its way out on the map, in numbered steps, and the assembly point. The paper is chosen in the preview.'),
     stepOption,
     h('div', { class: 'sfy-cards__print' }, pickedButton, pickedHint, chosenButton, allButton, clearButton),
@@ -58,8 +61,10 @@ export function doorCardsPanel(env) {
   let drawnFor = null;
   let drawnTheme = null;
 
+  // The list says the building as built, always: door cards print it so, whatever a trial blocks,
+  // and the list and the print must agree (env.asBuilt() is the plain pass, cached).
   function rooms() {
-    const picture = env.picture();
+    const picture = env.asBuilt();
     return picture ? picture.rows : [];
   }
 
@@ -89,6 +94,7 @@ export function doorCardsPanel(env) {
 
   function buttons() {
     const picture = env.picture();
+    trialLine.hidden = !(picture && picture.trial);
     const asked = env.stepFree();
     stepBox.checked = asked === null ? hasStepMarks(env.project().building) : asked;
     const picked = env.picked() && picture ? picture.byRoom.get(env.picked()) : null;
@@ -113,7 +119,7 @@ export function doorCardsPanel(env) {
   }
 
   function drawList() {
-    const picture = env.picture();
+    const picture = env.asBuilt();
     const project = env.project();
     const held = list.contains(document.activeElement) ? document.activeElement.id : null;
     // where it was, for a row that will not be drawn again
@@ -166,8 +172,9 @@ export function doorCardsPanel(env) {
   function update() {
     const picture = env.picture();
     if (!picture) return;
-    if (drawnFor !== picture || drawnTheme !== env.themeKey()) {
-      drawnFor = picture;
+    const built = env.asBuilt();
+    if (drawnFor !== built || drawnTheme !== env.themeKey()) {
+      drawnFor = built;
       drawnTheme = env.themeKey();
       drawList();
     }

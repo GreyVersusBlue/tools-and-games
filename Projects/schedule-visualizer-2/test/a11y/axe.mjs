@@ -228,6 +228,15 @@ for (const pass of PASSES) {
   });
 }
 
+// SV2-112: Safety's What if tab (a trial on) and Prints tab, at 1280 and at 390 with touch, are
+// screens the four passes above visit: light, dark, and each chosen from the theme menu.
+test('the sweep visits Safety\'s What if (a trial on) and Prints tabs, at 1280 and 390', () => {
+  const ids = SCREENS.map((screen) => screen.id);
+  for (const id of ['safety-what-if', 'safety-what-if-phone', 'safety-prints', 'safety-prints-phone']) assert.ok(ids.includes(id), 'screens.mjs has no ' + id + ', so axe does not check it');
+  assert.equal(SCREENS.find((screen) => screen.id === 'safety-what-if-phone').viewport.width, 390);
+  assert.equal(SCREENS.find((screen) => screen.id === 'safety-prints-phone').viewport.width, 390);
+});
+
 test('every entry in the allow-list still matches something', () => {
   assert.deepEqual(ALLOW.filter((entry) => !used.has(entry)).map((entry) => entry.rule + (entry.screen ? ' on ' + entry.screen : '') + (entry.where ? ' (' + entry.where + ')' : '')), []);
 });

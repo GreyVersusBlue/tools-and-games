@@ -46,15 +46,27 @@
 //   evacuationOverlay(read) -> (g, view, floor, theme) => {}   for map.overlays
 //     read()   null, or { mode: 'all' | 'one',
 //                         rooms: [{ roomId, floorId, cells, route, colour, number }],
-//                         picked: roomId or null, lost }
+//                         picked: roomId or null, lost, lostRooms }
 //              rooms: every room with a way out (cells: the room's own
 //              cells; route: routeToExit's; colour and number: its exit's in
 //              the key). In 'one' only the picked room's entry is drawn; a
 //              picked room with no way out is not among them, and is framed
-//              in the problem colour from `lost`: { floorId, cells }
+//              in the problem colour from `lost`: { floorId, cells }. In 'all', `lostRooms`
+//              ([{ floorId, cells }], the rooms a What if trial leaves with no way out) are framed
+//              in the problem colour and marked ×, as the Step-free view marks a room with none
 //   EXIT_KEY_LEAST   the zoom (px a cell) under which badges are not drawn
+//   blockedOverlay(read) -> (g, view, floor, theme) => {}   for map.overlays
+//     read()   null, or { marks: [{ floorId, cell }] }: what a What if trial
+//              blocks (an exit's cell, each end of a stairs). Each is a cross in
+//              the problem colour on a white ring with a dark edge, so it holds
+//              3:1 over any exit colour, and is drawn over everything else, at
+//              any zoom (SV2-109; DESIGN 14.3, 14.7 item 12)
+//   BLOCKED_RING     '#ffffff', the ring's fill; BLOCKED_EDGE '#1a1a1a', its edge
+//   blockedCross(problem) -> '#rrggbb'   the cross: `problem`, or its nearest
+//     variant with 3:1 on the white ring (the dark theme's --problem is paler)
 
-import { labelOn, parse } from '../../colour.js';
+import { labelOn, parse, readable, contrast } from '../../colour.js';
+import { runsOf } from '../../prints/routes.js';
 
 export const EXIT_KEY_LEAST = 10;
 
@@ -111,21 +123,9 @@ export function apart(a, b) {
   return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
 }
 
-export function runsOf(route) {
-  if (!route || !route.ok || !Array.isArray(route.cells)) return [];
-  const runs = [];
-  let run = route.from ? [route.from] : [];
-  const cuts = new Set(route.connectionAt || []);
-  route.cells.forEach((place, index) => {
-    run.push(place);
-    if (cuts.has(index)) {
-      runs.push(run);
-      run = [];
-    }
-  });
-  if (run.length > 0) runs.push(run);
-  return runs.filter((each) => each.length > 0);
-}
+// runsOf lives with the prints' routes (ui/prints/routes.js), so that a print
+// need not import a screen overlay; it is exported from here as it always was.
+export { runsOf };
 
 // ---- drawing
 
@@ -263,6 +263,13 @@ export function evacuationOverlay(read) {
         frameRoom(g, view, floor, picture.lost.cells, theme.problem, Math.max(2, Math.min(4, size * 0.12)));
       }
     } else {
+      // a room a trial leaves with no way out: framed in the problem colour and marked ×, as the
+      // Step-free view marks a room with no step-free way
+      for (const entry of picture.lostRooms || []) {
+        if (entry.floorId !== floor.id) continue;
+        frameRoom(g, view, floor, entry.cells, theme.problem, Math.max(2, Math.min(4, size * 0.12)));
+        badge(g, view, floor, entry.cells, theme.problem, '×', theme);
+      }
       const width = Math.max(2, Math.min(6, size * 0.18));
       for (const entry of picture.rooms) drawRoute(g, view, floor, entry.route, entry.colour, width, theme);
       for (const entry of picture.rooms) {
@@ -270,6 +277,54 @@ export function evacuationOverlay(read) {
         frameRoom(g, view, floor, entry.cells, entry.colour, Math.max(2, Math.min(4, size * 0.12)));
         badge(g, view, floor, entry.cells, entry.colour, entry.number, theme);
       }
+    }
+    g.restore();
+  };
+}
+
+// ---- the trial's marks
+
+export const BLOCKED_RING = '#ffffff';
+export const BLOCKED_EDGE = '#1a1a1a';
+export const BLOCKED_LEAST = 3;
+
+export function blockedCross(problem) {
+  return readable(problem, BLOCKED_RING, BLOCKED_LEAST);
+}
+
+// the mark's ring over a colour: white or its dark edge is what the eye finds, whichever contrasts
+export function blockedRingHolds(colour) {
+  return Math.max(contrast(BLOCKED_RING, colour), contrast(BLOCKED_EDGE, colour));
+}
+
+export function blockedOverlay(read) {
+  return (g, view, floor, theme) => {
+    const picture = read();
+    if (!picture || !Array.isArray(picture.marks)) return;
+    const size = view.size;
+    const r = Math.max(7, Math.min(14, size * 0.45));
+    const cross = blockedCross(theme.problem);
+    g.save();
+    for (const mark of picture.marks) {
+      if (mark.floorId !== floor.id) continue;
+      const at = middle(view, floor, mark.cell);
+      g.beginPath();
+      g.arc(at.x, at.y, r, 0, Math.PI * 2);
+      g.fillStyle = BLOCKED_RING;
+      g.fill();
+      g.strokeStyle = BLOCKED_EDGE;
+      g.lineWidth = 2;
+      g.stroke();
+      const k = r * 0.5;
+      g.lineCap = 'round';
+      g.lineWidth = Math.max(2.5, r * 0.3);
+      g.strokeStyle = cross;
+      g.beginPath();
+      g.moveTo(at.x - k, at.y - k);
+      g.lineTo(at.x + k, at.y + k);
+      g.moveTo(at.x + k, at.y - k);
+      g.lineTo(at.x - k, at.y + k);
+      g.stroke();
     }
     g.restore();
   };

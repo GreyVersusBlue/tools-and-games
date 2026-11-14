@@ -35,11 +35,16 @@ import { directions } from '../../engine/directions.js';
 import { cardSteps } from '../../engine/evacuation.js';
 
 export const BLOCK_HEAD = 'Step-free way out';
+// The line over the door cards, and over the Prints tab, while a trial is on (DESIGN 14.7 item 4):
+// the prints never read the trial. One constant, so both tabs say the same words.
+export const AS_BUILT_LINE = 'Printed as built, not this trial.';
 // The report's lines (DESIGN 13.6), said the same on screen and on paper.
 export const UNMARKED_SAYS = 'Nothing step-free is marked yet, so this assumes every door and corridor is level. Mark steps, doors with a step, elevators and areas of refuge in Building first.';
 export const TWO_VIEWS_SAYS = 'Reaching a room may use an elevator; leaving in an emergency may not.';
 export const ALL_REACHED_SAYS = 'Every room can be reached without stairs.';
 export const EVACUATION_NO_ELEVATORS = 'An evacuation never uses elevators.';
+// under a trial in the Step-free view (DESIGN 14.7 item 5)
+export const STAIRS_UNCHANGED = 'Blocked stairs do not change the Step-free view: it never uses stairs.';
 export const NO_WAY_SAYS = 'There is no step-free way out from this room.';
 
 export function hasStepMarks(building) {

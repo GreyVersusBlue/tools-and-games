@@ -322,7 +322,8 @@ test('the inspector lists each exit with the rooms it serves and their people, a
     assert.deepEqual(item.rooms.map((room) => room.text), exit.rooms.map((id) => names.get(id)));
     const people = exit.rooms.reduce((sum, id) => sum + (capacity[id] || 0), 0);
     assert.equal(exit.people, people);
-    assert.equal(item.where, 'On Floor 1. ' + exit.rooms.length + (exit.rooms.length === 1 ? ' room, ' : ' rooms, ') + people + ' people.');
+    // Door A carries 520 of the sample's 640 people: SV2-109's warning words come after the figures
+    assert.equal(item.where, 'On Floor 1. ' + exit.rooms.length + (exit.rooms.length === 1 ? ' room, ' : ' rooms, ') + people + ' people.' + (exit.number === 1 ? ' Far more than the others' : ''));
     assert.match(item.assembly, /^Assembly point: ./);
   }
   // every room is in one exit's list

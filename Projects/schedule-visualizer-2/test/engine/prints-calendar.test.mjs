@@ -247,7 +247,7 @@ test('a two-year calendar of 24 months is two sheets in every paper and way up; 
     }
   }
   assert.equal(calendarPrint.orientation, 'landscape');
-  assert.deepEqual(OUTPUTS.filter((output) => output.orientation !== undefined).map((output) => output.id), ['calendar'], 'only the calendar names an orientation');
+  assert.deepEqual(OUTPUTS.filter((output) => output.orientation !== undefined).map((output) => output.id), ['calendar', 'lockdown-map', 'evacuation-poster', 'map-pack'], 'only the calendar and the three safety sheets name an orientation');
 });
 
 test('a run of bells alone is named in the dialog’s words and counts school days only', () => {

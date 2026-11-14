@@ -5,10 +5,12 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 
 import * as sheet from '../../ui/prints/step-free.js';
 import { OUTPUTS, outputFor, renderOutput } from '../../ui/prints/index.js';
-import { esc } from '../../ui/prints/document.js';
+import { esc, frame } from '../../ui/prints/document.js';
+import { sampleSchool } from '../../data/sample-school.js';
 import { UNMARKED_SAYS, TWO_VIEWS_SAYS, ALL_REACHED_SAYS } from '../../ui/safety/ways.js';
 import { school, group } from './helpers.mjs';
 import { planProject, floorId, roomId } from '../fixtures/buildings/plans.mjs';
@@ -233,3 +235,18 @@ test('where a refuge stands is read from its own cell: the nearer of two stairs,
   const { step } = pictureOf(project);
   assert.equal(step.refuges[0].by, 'Stairs A');
 }); 
+
+// ---------------------------------------------------------------- SV2-111: pages()
+
+test('render is byte for byte what it was before pages() was split out: the sample, the clock pinned', () => {
+  const html = sheet.render(sampleSchool(), null, NOW).html;
+  assert.equal(createHash('sha256').update(html).digest('hex').slice(0, 16), '0c7a1fa32a5a0fd4');
+});
+
+test('pages() is one sheet with no head of its own; render frames it', () => {
+  const project = upstairs();
+  const made = sheet.pages(project, null, NOW);
+  assert.equal(made.length, 1);
+  assert.equal(made[0].what, undefined);
+  assert.equal(sheet.render(project, null, NOW).html, frame(project, { output: 'step-free', what: 'Step-free report', pages: made, options: NOW }).html);
+});

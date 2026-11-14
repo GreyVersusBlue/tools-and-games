@@ -447,3 +447,351 @@
     margin-left: calc(24px + var(--s-2));
   }
 }
+
+/* ---------- The load warning, the trial band and the What if tab (SV2-109; DESIGN 14) ---------- */
+
+/* five tabs: they scroll sideways when the window is narrow, each keeping its name whole */
+.sfy-inspector .tabs__list {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.sfy-inspector .tabs__tab {
+  flex: 1 0 auto;
+  padding: 0 var(--s-3);
+}
+
+/* from 1024 px the inspector is wide enough for no scrolling: a tighter padding, and the row wraps
+   to a second line rather than cut a name, so every tab lies wholly inside its row */
+@media (min-width: 1024px) {
+  .sfy-inspector .tabs__list {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  .sfy-inspector .tabs__tab {
+    flex: 1 1 auto;
+    padding: 0 var(--s-2);
+  }
+}
+
+.sfy-load {
+  margin-top: var(--s-3);
+}
+
+/* a warning in words first ("Warning", "Far more than the others"), the colour second */
+.sfy-warn {
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border: 2px solid var(--warning);
+  border-radius: var(--r-1);
+  background: var(--card);
+}
+
+.sfy-warn p,
+.sfy-note {
+  margin: var(--s-1) 0 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.sfy-warn__head {
+  margin-top: 0;
+  color: var(--warning);
+}
+
+.sfy-warn__head::before {
+  content: "\26A0\FE0E\00A0";
+}
+
+.sfy-warn__rule,
+.sfy-note {
+  color: var(--ink-2);
+}
+
+.sfy-heavy {
+  color: var(--warning);
+  font-weight: var(--w-semibold);
+}
+
+.sfy-heavy--blocked {
+  color: var(--problem);
+}
+
+.sfy-exit__was {
+  color: var(--ink-2);
+}
+
+/* the trial band: above the map, on every tab, never over it */
+.sfy-band {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  flex-wrap: wrap;
+  margin-top: var(--s-2);
+  padding: var(--s-1) var(--s-3);
+  border: 2px solid var(--problem);
+  border-radius: var(--r-1);
+  background: var(--card);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.sfy-band[hidden] {
+  display: none;
+}
+
+.sfy-band__text {
+  flex: 1 1 12rem;
+  min-width: 0;
+  margin: 0;
+  font-weight: var(--w-semibold);
+  overflow-wrap: anywhere;
+}
+
+.sfy-band__short {
+  display: none;
+}
+
+.sfy-band__clear {
+  flex: none;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* a phone: one line, "Trial · 2 blocked · Clear"; the sentence is the screen's first line */
+@media (max-width: 640px) {
+  .sfy-band {
+    flex-wrap: nowrap;
+  }
+
+  .sfy-band__long {
+    display: none;
+  }
+
+  .sfy-band__short {
+    display: inline;
+  }
+}
+
+.sfy-ticks {
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.sfy-ticks__legend {
+  padding: 0;
+  font-weight: var(--w-semibold);
+}
+
+.sfy-ticks__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sfy-tick {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 44px;
+  border-bottom: var(--border);
+}
+
+.sfy-tick__box {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.sfy-tick__label {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-self: stretch;
+  gap: 0 var(--s-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sfy-tick__words {
+  min-width: 0;
+}
+
+.sfy-whatif__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+}
+
+.sfy-whatif__actions .btn {
+  min-height: 44px;
+}
+
+.sfy-chips {
+  margin: var(--s-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sfy-chips[hidden] {
+  display: none;
+}
+
+.sfy-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 44px;
+}
+
+.sfy-chip__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.sfy-results {
+  margin-top: var(--s-4);
+}
+
+.sfy-results__sentence {
+  margin: 0;
+  font-size: var(--t-lg);
+  line-height: var(--lh-lg);
+}
+
+.sfy-results__none {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+
+.sfy-whatif .sfy-row__way {
+  margin-left: 0;
+}
+
+.sfy-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.sfy-table th,
+.sfy-table td {
+  padding: var(--s-1) var(--s-2);
+  border-bottom: var(--border);
+  text-align: left;
+  vertical-align: baseline;
+}
+
+.sfy-table thead th {
+  font-weight: var(--w-semibold);
+}
+
+.sfy-table__exit {
+  font-weight: var(--w-medium);
+}
+
+/* a phone: each exit is two lines, the exit and then its figures before and after */
+@media (max-width: 640px) {
+  .sfy-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .sfy-table,
+  .sfy-table tbody {
+    display: block;
+  }
+
+  .sfy-table__row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 var(--s-3);
+    padding: var(--s-1) 0;
+    border-bottom: var(--border);
+  }
+
+  .sfy-table__row th,
+  .sfy-table__row td {
+    padding: var(--s-1) 0;
+    border: 0;
+  }
+
+  .sfy-table__exit {
+    flex: 1 0 100%;
+  }
+
+  .sfy-table td::before {
+    content: attr(data-label) " ";
+    color: var(--ink-2);
+  }
+}
+
+/* ---------- The Prints tab (ui/safety/prints.js) ---------- */
+
+.sfy-prints__card {
+  margin-top: var(--s-4);
+  padding-top: var(--s-3);
+  border-top: var(--border);
+}
+
+.sfy-prints__ticks {
+  min-width: 0;
+}
+
+.sfy-prints__all {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+
+.sfy-prints__all .btn {
+  min-height: 44px;
+}
+
+.sfy-prints__go {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  margin-top: var(--s-3);
+}
+
+.sfy-prints__preview {
+  min-height: 44px;
+}
+
+.sfy-prints__preview[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sfy-prints__warn:not(:empty) {
+  margin-top: var(--s-3);
+}
+
+.sfy-prints__missing {
+  margin: var(--s-1) 0 0;
+  padding-left: var(--s-4);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.sfy-prints .seg {
+  margin-top: var(--s-3);
+}

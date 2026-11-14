@@ -11,8 +11,9 @@ import assert from 'node:assert/strict';
 import { buildGraph } from '../../engine/graph.js';
 import { route, routeToExit, routingGraph, routesForSchedule, createRouteCache } from '../../engine/routing.js';
 import { directions, describeFailure } from '../../engine/directions.js';
-import { evacuationRoutes, stepFreeWaysOut, byExit, noRoute, doorCard, cardSteps, elevatorConnections, ELEVATOR_KIND, CROP_MARGIN } from '../../engine/evacuation.js';
+import { evacuationRoutes, stepFreeWaysOut, reachableExits, byExit, noRoute, doorCard, cardSteps, elevatorConnections, ELEVATOR_KIND, CROP_MARGIN } from '../../engine/evacuation.js';
 import { school, clone } from './helpers.mjs';
+import { withElevator } from '../fixtures/step-free.mjs';
 import { validate } from '../../engine/validate.js';
 import { repair } from '../../engine/repair.js';
 import * as schema from '../../engine/schema.js';
@@ -778,4 +779,113 @@ test('stepFreeWaysOut: a refuge on a step cell is not a way; a building with no 
   // and with neither: no way, said plainly
   const bare = planProject([ROW]);
   assert.deepEqual(stepFreeWaysOut(bare).rooms.map((entry) => [entry.way, entry.reason, entry.why]), [['none', 'no-way', 'no step-free way through'], ['none', 'no-way', 'no step-free way through']]);
+});
+
+// ---- W5 (SV2-107): shutCells in both functions, exits and cells in the lifted plan, nothing new when absent
+
+const TWO_FLOORS = ['..AA......', '..AA......', 'S########S', '..........', '..........'];
+
+function twoStairsBuilding() {
+  return planProject([TWO_FLOORS, TWO_FLOORS], {
+    doors: { '1A': [[2, 1, 's']], '2A': [[2, 1, 's']] },
+    connections: [[1, 0, 2, 2, 0, 2], [1, 9, 2, 2, 9, 2]],
+    exits: [[1, 1, 2, 'West Door']],
+  });
+}
+
+test('evacuationRoutes passes shutCells to routing: a shut corridor cell sends the room the long way round', () => {
+  const project = twoStairsBuilding();
+  const plain = evacuationRoutes(project);
+  const upper = (result) => result.rooms.find((entry) => entry.roomId === roomId('2A'));
+  assert.deepEqual(upper(plain).route.connections, ['cplan00001']);
+  const shut = [{ floorId: F2, cell: 21 }];
+  const detour = evacuationRoutes(project, undefined, { shutCells: shut });
+  assert.deepEqual(upper(detour).route.connections, ['cplan00002'], 'floor 2\'s cell beside stairs A is shut: the way is stairs B');
+  assert.ok(upper(detour).route.seconds > upper(plain).route.seconds);
+  assert.deepEqual(detour.asked.shutCells, shut, 'what was asked, for the one who words a failure');
+  // both ways shut: no way out, in the avoided words
+  const none = evacuationRoutes(project, undefined, { shutCells: [{ floorId: F2, cell: 21 }, { floorId: F2, cell: 28 }] });
+  assert.equal(upper(none).route.ok, false);
+  assert.match(noRoute(project, none)[0].sentence, /no way through that keeps to what you asked to avoid/);
+});
+
+test('evacuationRoutes: with no shutCells, an empty list or junk the results are exactly what they were', () => {
+  const project = twoStairsBuilding();
+  const alone = JSON.stringify(evacuationRoutes(project));
+  for (const shutCells of [undefined, [], null, [null, { floorId: 1 }, { cell: 4 }]]) {
+    assert.equal(JSON.stringify(evacuationRoutes(project, undefined, { shutCells })), alone, JSON.stringify(shutCells));
+  }
+  assert.ok(!('shutCells' in evacuationRoutes(project).asked), 'asked has no new field when nothing was asked');
+});
+
+test('stepFreeWaysOut passes shutCells too, and judges "only by elevator" with them shut', () => {
+  const lift = (staffOnly) => withCars(planProject([HALL, HALL], { exits: [[1, 6, 2, 'Main Door']] }), [{ stops: [[1, 0, 2], [2, 0, 2]], letter: 'D', staffOnly }]);
+  const project = lift(false);
+  const upper = (waysOut) => waysOut.rooms.filter((entry) => entry.floorId === F2).map((entry) => [entry.way, entry.reason]);
+  assert.deepEqual(upper(stepFreeWaysOut(project)), [['none', 'only-by-elevator'], ['none', 'only-by-elevator']]);
+  // floor 1's corridor shut between the car and the exit: a car would not help either
+  const shut = [{ floorId: F1, cell: 2 * project.building.floors[0].width + 3 }];
+  assert.deepEqual(upper(stepFreeWaysOut(project, undefined, { shutCells: shut })), [['none', 'no-way'], ['none', 'no-way']], 'the lifted search has the cells shut: no elevator is blamed');
+  // and a floor 1 room is cut off by the same cells on the ground
+  const ground = stepFreeWaysOut(project, undefined, { shutCells: shut }).rooms.filter((entry) => entry.floorId === F1);
+  assert.ok(ground.some((entry) => entry.way === 'exit'), 'rooms on the near side of the cells still leave');
+  // a shut exit is shut in the lifted plan as well: leaving by the only exit blocked is no way, not "only by elevator"
+  const noExit = stepFreeWaysOut(project, undefined, { avoidExits: [project.building.floors[0].exits[0].id] });
+  assert.deepEqual(upper(noExit), [['none', 'no-way'], ['none', 'no-way']]);
+});
+
+test('stepFreeWaysOut reads no avoidConnections: a step-free way uses no stairs, so a blocked stairs changes nothing', () => {
+  const project = twoStairsBuilding();
+  assert.equal(JSON.stringify(stepFreeWaysOut(project, undefined, { avoidConnections: ['cplan00001'] })), JSON.stringify(stepFreeWaysOut(project)));
+});
+
+test('stepFreeWaysOut with none of the new options is what it was, on a drawn building and on the step-free fixture', () => {
+  const alone = (project) => JSON.stringify(stepFreeWaysOut(project));
+  const drawn = twoStairsBuilding();
+  const sample = withElevator();
+  for (const project of [drawn, sample]) {
+    const expected = alone(project);
+    for (const options of [undefined, {}, { shutCells: [] }, { avoidExits: [] }, { shutCells: [], avoidExits: [], avoidConnections: [] }]) {
+      assert.equal(JSON.stringify(stepFreeWaysOut(project, undefined, options)), expected, JSON.stringify(options));
+    }
+  }
+});
+
+test('evacuationRoutes with none of the new options is what it was, on the sample and on the step-free fixture', () => {
+  for (const project of [school(), withElevator()]) {
+    const expected = JSON.stringify(evacuationRoutes(project));
+    for (const options of [undefined, {}, { shutCells: [] }, { avoidExits: [], avoidConnections: [], shutCells: [] }]) {
+      assert.equal(JSON.stringify(evacuationRoutes(project, undefined, options)), expected, JSON.stringify(options));
+    }
+    // the same graph handed in, and a cache: the same routes
+    const graph = routingGraph(project, buildGraph(project));
+    assert.equal(JSON.stringify(evacuationRoutes(project, graph, { cache: createRouteCache(200), geometryVersion: 1 })), expected);
+  }
+});
+
+test('reachableExits: the exits a room can reach, under the options a trial uses, in building order', () => {
+  const project = twoStairsBuilding();
+  project.building.floors[0].exits.push({ id: 'xplan00002', cell: 8 + 2 * project.building.floors[0].width, doorName: 'East Door', assembly: '' });
+  assert.deepEqual(reachableExits(project, undefined, roomId('2A')), ['xplan00001', 'xplan00002']);
+  assert.deepEqual(reachableExits(project, undefined, roomId('2A'), { avoidConnections: ['cplan00001', 'cplan00002'] }), [], 'no stairs, no exit from floor 2');
+  const w = project.building.floors[0].width;
+  assert.deepEqual(reachableExits(project, undefined, roomId('1A'), { shutCells: [{ floorId: F1, cell: 2 * w + 5 }] }), ['xplan00001', 'xplan00002'], 'one floor shut: up the stairs and over is a way to the east exit');
+  assert.deepEqual(reachableExits(project, undefined, roomId('1A'), { shutCells: [{ floorId: F1, cell: 2 * w + 5 }, { floorId: F2, cell: 2 * w + 5 }] }), ['xplan00001'], 'both floors shut: the east exit is cut off');
+  assert.deepEqual(reachableExits(project, undefined, 'rgone'), []);
+});
+
+test('a step-free way on a short way round: a one-cell walk before a turn folds into it, as on the ordinary card, and is never the whole block (W4 leftover)', () => {
+  // the room's door gives onto the corridor's corner: one cell east, then south to an area of refuge
+  const project = planProject([['.A....', '.A....', '###...', '..#...', '..#...', '..#...']], { doors: { '1A': [[1, 1, 's']] } });
+  const floor = project.building.floors[0];
+  floor.refuges = [{ id: 'aplan00001', cell: 5 * floor.width + 2, name: 'Area of refuge' }];
+  const way = stepFreeWaysOut(project).rooms[0];
+  assert.equal(way.way, 'refuge');
+  const raw = directions(project, way.route).steps.filter((step) => step.kind !== 'arrive');
+  assert.deepEqual(raw.map((step) => step.text), ['Turn left out of the door.', 'Walk 1 cell.', 'Turn right.', 'Walk 3 cells to the end of the corridor.']);
+  const steps = cardSteps(raw);
+  assert.deepEqual(steps.map((step) => step.n + '. ' + step.text), ['1. Turn left out of the door.', '2. Walk on, then turn right.', '3. Walk to the end of the corridor.'], 'the fold says the one cell and the turn together, once');
+  assert.equal(steps[1].turn, 'right', 'the folded step keeps the turn it carries');
+  // a block always has its first step out of the door and its last at the exit or the refuge, so the fold is never alone
+  assert.ok(steps.length >= 3 && steps[0].kind === 'leave' && steps[steps.length - 1].kind === 'walk');
 });
