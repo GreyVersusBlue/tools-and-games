@@ -20,6 +20,9 @@
 //                with nothing arriving on an open channel (here or in reply),
 //                data-stalled="true" and the plain statement; it keeps waiting
 //   checking     every part is in; the hash and the file are checked
+//   held         the project is a copy of one kept on this device (the
+//                one-per-id rule); "Open <label>" or "Keep it as another
+//                project", the sending device told it was not taken
 //   confirm      "Replace my project" or "Keep my project"
 //   read-only    this tab became the read-only one while the project came;
 //                nothing is asked, and the sending device is told
@@ -39,7 +42,7 @@ import { readProjectFile } from '../../../engine/project-file.js';
 import { replaceProject } from '../../../engine/actions.js';
 import { CURRENT_VERSION } from '../../../engine/schema.js';
 import { takeAutoSnapshot, snapshotRoom } from '../../../storage/snapshots.js';
-import { holdsWords, importSafetyLine } from '../files.js';
+import { holdsWords, importSafetyLine, heldBy, heldSentence } from '../files.js';
 import { transferDialog } from './dialog.js';
 import { createPeer, peerAvailable, stallClock, NO_CHANNEL_MS, STALL_MS } from './peer.js';
 import { codeShown, codeTaken } from './codes.js';
@@ -169,6 +172,34 @@ export function openReceive(ctx, opener) {
     ctx.toast({ text: 'Received a project from another device.', action: { label: 'Undo', run: ctx.undo } });
   }
 
+  // A received project that is a copy of a kept one: the sentence and two ways on.
+  function refuseHeld(read, held) {
+    reply(false);
+    const open = h('button', { type: 'button', class: 'btn btn--primary', data: { action: 'open-held' } }, 'Open ' + held.label);
+    const keep = h('button', { type: 'button', class: 'btn', data: { action: 'keep-held' } }, 'Keep it as another project');
+    const problem = h('p', { role: 'alert', data: { line: 'held-problem' }, hidden: true });
+    const go = async (button, work) => {
+      if (button.getAttribute('aria-disabled') === 'true') return;
+      open.setAttribute('aria-disabled', 'true');
+      keep.setAttribute('aria-disabled', 'true');
+      problem.hidden = true;
+      let answer;
+      try {
+        answer = await work();
+      } catch (error) {
+        answer = { ok: false, text: messageOf(error) };
+      }
+      if (answer && answer.ok !== false) return; // the page reloads
+      open.removeAttribute('aria-disabled');
+      keep.removeAttribute('aria-disabled');
+      problem.textContent = answer.text;
+      problem.hidden = false;
+    };
+    open.addEventListener('click', () => go(open, () => ctx.storage.projects.open(held.id)));
+    keep.addEventListener('click', () => go(keep, () => ctx.storage.projects.startAnother('file', read, { copy: true })));
+    dialog.show('held', heldSentence('project', held.label), [problem, h('div', { class: 'card__buttons xfer__ask' }, keep, open)], open);
+  }
+
   async function ask(text) {
     let read;
     try {
@@ -178,6 +209,20 @@ export function openReceive(ctx, opener) {
       return;
     }
     if (closed) return;
+    // one project, one place: before the snapshot room is asked and before any
+    // image is stored; the sending device is told it was not taken
+    let held;
+    try {
+      held = await heldBy(ctx, read.project.id);
+    } catch (error) {
+      failed('The project arrived whole, but this device could not be asked which projects it keeps, so nothing was changed. ' + messageOf(error));
+      return;
+    }
+    if (closed) return;
+    if (held) {
+      refuseHeld(read, held);
+      return;
+    }
     const here = figures(ctx.store.project);
     const room = await snapshotRoom();
     if (closed) return;
