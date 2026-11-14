@@ -7,6 +7,9 @@
 // exactly the state each function reads. Each check names the thing it guards, and each was broken once in the code and watched
 // fail on its own line (#34) — the break is written beside it.
 import { loadHearth } from './load.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 let pass = 0, fail = 0;
 function check(name, ok, detail = '') {
@@ -299,6 +302,57 @@ section(18, () => {
     a.age0=30;a.born=dayCount;b.age0=95;b.born=dayCount;startFeud(a,b);const names=[a.name,b.name];
     newDay();return {feud:!!feud,alive:!!byName(names[1]),aliveA:!!byName(names[0])}})()`);
   check('feud: the old die in newDay after the first feudDay, and the feud ends that morning, not a day on', o.alive === false && o.aliveA && o.feud === false, JSON.stringify(o));
+});
+
+// ---- one top-level name, one file (A0) ----
+// The scripts share one global scope, so a name declared at column 0 in two files is a redeclaration the browser reports as a SyntaxError
+// on the second file (let, const) or a silent overwrite (function), and the first failure takes the whole page's later scripts with it.
+// This reads the files as text, so the page is not what catches it. Break: `let seed` at the top of js/look.js names `seed` (core.js).
+section(19, () => {
+  const ORDER = ['js/core.js', 'js/flavor.js', 'js/life.js', 'js/watcher.js', 'js/sim.js', 'assets/sprites/buildings.js',
+    'js/render.js', 'js/look.js', 'js/folk.js', 'js/goods.js', 'js/audio.js', 'js/save.js', 'js/main.js'];
+  const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+  // the names one file declares at column 0: `let a,b=1,c`, `const x=..`, `function f(`; strings, comments and brackets are skipped
+  // so a comma or semicolon inside them does not end or split a declaration
+  function declared(src) {
+    const names = [];
+    const re = /^(let|const|function\*?)[ \t]+([A-Za-z_$][\w$]*)/gm;
+    let m;
+    while ((m = re.exec(src))) {
+      if (m[1].startsWith('function')) { names.push(m[2]); continue; }
+      let i = m.index + m[1].length, depth = 0, start = i, q = null;
+      const parts = [];
+      for (; i < src.length; i++) {
+        const c = src[i];
+        if (q) { if (c === '\\') i++; else if (c === q) q = null; continue; }
+        if (c === '/' && src[i + 1] === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
+        if (c === '/' && src[i + 1] === '*') { i = src.indexOf('*/', i + 2) + 1; continue; }
+        if (c === "'" || c === '"' || c === '`') { q = c; continue; }
+        if ('([{'.includes(c)) depth++;
+        else if (')]}'.includes(c)) depth--;
+        else if (depth === 0 && c === ',') { parts.push(src.slice(start, i)); start = i + 1; }
+        else if (depth === 0 && c === ';') break;
+        else if (depth === 0 && c === '\n') {
+          const before = src.slice(start, i).trimEnd().slice(-1);
+          if (before !== ',' && before !== '=') break;
+        }
+      }
+      parts.push(src.slice(start, i));
+      for (const p of parts) { const n = /^\s*([A-Za-z_$][\w$]*)/.exec(p); if (n) names.push(n[1]); }
+    }
+    return names;
+  }
+  const seen = new Map(), dup = [];
+  const per = {};
+  for (const f of ORDER) {
+    const ns = declared(fs.readFileSync(path.join(ROOT, f), 'utf8'));
+    per[f] = ns;
+    for (const n of new Set(ns)) { if (seen.has(n)) dup.push(`${n} in ${seen.get(n)} and ${f}`); else seen.set(n, f); }
+  }
+  // a scanner that finds nothing would pass anything: it has to find known names, including one from a comma list
+  check('names: the scanner finds core.js\'s own declarations', seen.get('newWorld') === 'js/core.js' && seen.get('zoom') === 'js/main.js' && seen.get('camX') === 'js/main.js' && seen.size > 200, `${seen.size} names; zoom in ${seen.get('zoom')}, camX in ${seen.get('camX')}`);
+  check('names: no top-level name is declared in two files', dup.length === 0, dup.join('; '));
+  check('names: the three look scripts load after render.js and before audio.js', ['js/look.js', 'js/folk.js', 'js/goods.js'].every(f => ORDER.indexOf(f) > ORDER.indexOf('js/render.js') && ORDER.indexOf(f) < ORDER.indexOf('js/audio.js')));
 });
 
 console.log(`${fail ? 'FAIL' : 'PASS'}: ${pass} of ${pass + fail} unit checks`);
