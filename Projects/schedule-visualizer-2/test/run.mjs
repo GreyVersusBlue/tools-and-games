@@ -152,6 +152,7 @@ export const GROUPS = {
     'browser/search.mjs', // SV2-07
     'browser/storage.mjs', // SV2-03
     'browser/storage-shelf.mjs', // SV2-115
+    'browser/storage-switch.mjs', // SV2-116
     'browser/recovery.mjs', // SV2-03
     'browser/tabs.mjs', // SV2-03
     'browser/schedule.mjs', // SV2-11
@@ -255,8 +256,9 @@ export const BROWSER_SECONDS = {
   'browser/journeys-keys.mjs': 27,
   'browser/hotspots.mjs': 27,
   'browser/plan-map.mjs': 26,
-  'browser/storage.mjs': 24,
+  'browser/storage.mjs': 26,
   'browser/storage-shelf.mjs': 10,
+  'browser/storage-switch.mjs': 15,
   'browser/recovery.mjs': 23,
   'browser/scenario.mjs': 21,
   'browser/fix.mjs': 21,

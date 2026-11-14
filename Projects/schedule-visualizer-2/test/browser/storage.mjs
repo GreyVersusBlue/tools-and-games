@@ -230,6 +230,49 @@ test('autosave: a change made while a write is in flight gets its own write', as
   assert.equal(states[states.length - 1], 'saved');
 });
 
+test('autosave: a held autosave writes nothing but keeps what it owes, settle waits for the save in flight, release saves what was held (a project switch)', async () => {
+  const time = fakeTime();
+  let finish = null;
+  const { autosave, writes, states } = saver(time, () => new Promise((resolve) => {
+    finish = resolve;
+  }));
+  autosave.changed();
+  await time.advance(600);
+  assert.equal(writes.length, 1, 'the first save is in flight');
+  // a second change, then the switch holds autosave
+  autosave.changed();
+  autosave.hold();
+  let settled = false;
+  const waiting = autosave.settle().then(() => {
+    settled = true;
+  });
+  for (let i = 0; i < 5; i += 1) await Promise.resolve();
+  assert.equal(settled, false, 'settle waits for the save in flight');
+  finish('saved-1');
+  await waiting;
+  assert.equal(settled, true);
+  await time.advance(10000);
+  assert.equal(writes.length, 1, 'held, it started no other save, however long it was held');
+  assert.equal(autosave.pending, true, 'and it still owes the second change (pause would have forgotten it)');
+  autosave.release();
+  await time.advance(0);
+  assert.equal(writes.length, 2, 'release saves what was held at once');
+  finish('saved-2');
+  for (let i = 0; i < 5; i += 1) await Promise.resolve();
+  assert.equal(states[states.length - 1], 'saved');
+  assert.equal(autosave.pending, false);
+});
+
+test('autosave: settle with nothing in flight resolves at once, and a release with nothing owed saves nothing', async () => {
+  const time = fakeTime();
+  const { autosave, writes } = saver(time);
+  autosave.hold();
+  await autosave.settle();
+  autosave.release();
+  await time.advance(5000);
+  assert.equal(writes.length, 0);
+});
+
 test('autosave: flush writes at once, and a paused autosave writes nothing', async () => {
   const time = fakeTime();
   const { autosave, writes } = saver(time);
