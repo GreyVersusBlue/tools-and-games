@@ -2712,7 +2712,7 @@ export const fitFloorToImage = action(
 // the store keeps a stamped copy, so the label carries the summary there.
 
 import { applyGroupImport, summaryText, ImportError } from './import-groups.js';
-import { applyBuilding, applySchedule, FileError } from './project-file.js';
+import { applyBuilding, applySchedule, applySettings, buildingPart, schedulePart, readProjectFile, FileError } from './project-file.js';
 import { applyTeacherImport, teacherSummaryText } from './import-teachers.js';
 import { applySubjectImport, subjectSummaryText } from './import-subjects.js';
 
@@ -2809,6 +2809,42 @@ export const importBuilding = action(
   (project, payload, ctx) => {
     if (!payload.file || typeof payload.file !== 'object') refuse('There is no building file to import.', 'bad-value');
     return importing(project, () => applyBuilding(project, payload.file, { ids: ctx.ids, unnumberedText: UNNUMBERED_ROOM_TEXT }));
+  },
+);
+
+// One part of a project file, brought into the open project (spec 13.2, ARCHITECTURE
+// 21.6): only the building, only the schedule, or only the settings. payload:
+// { part: 'building' | 'schedule' | 'settings', read, fileName, policy }.
+// `read` is what readProjectFile returned (the page reads the file to show its
+// summary first); `text`, the file's text, may stand in for it, and is then read
+// here, so a newer file or one of another kind is refused in the reader's words.
+// `policy` is the schedule import's answer to marks and duties that clash. The
+// whole file is read and the part is worked out and checked before anything is
+// returned, so a refusal changes nothing. One undo step, whatever the part. The
+// bytes of a traced image are the page's to keep (keepFileImages); the summary
+// carries `part` so the page knows which summary it holds.
+const PART_WORDS = { building: 'building', schedule: 'schedule', settings: 'settings' };
+const PART_BUMPS = { building: [GEOMETRY, BUILDING, SCHEDULE], schedule: [BUILDING, SCHEDULE], settings: [SCHEDULE] };
+const PART_FOCUS = { building: { section: 'building' }, schedule: { section: 'schedule', tab: 'groups' }, settings: { section: 'project' } };
+
+export const importPart = action(
+  {
+    label: (before, payload) => 'Bring in the ' + (PART_WORDS[payload.part] || 'part') + ' from ' + (typeof payload.fileName === 'string' && payload.fileName !== '' ? payload.fileName : 'a project file'),
+    bumps: (before, payload) => PART_BUMPS[payload.part] || [],
+    focus: (before, payload) => PART_FOCUS[payload.part] || null,
+  },
+  (project, payload, ctx) => {
+    if (!Object.prototype.hasOwnProperty.call(PART_WORDS, payload.part)) refuse('A project file gives its building, its schedule or its settings. Choose one.', 'bad-value');
+    return importing(project, () => {
+      let read = payload.read;
+      if (typeof payload.text === 'string') read = readProjectFile(payload.text, { ids: ctx.ids, clock: ctx.clock });
+      if (!read || typeof read !== 'object' || !read.project || typeof read.project !== 'object') refuse('There is no project file to bring a part in from.', 'bad-value');
+      let result;
+      if (payload.part === 'building') result = applyBuilding(project, buildingPart(read).file, { ids: ctx.ids, unnumberedText: UNNUMBERED_ROOM_TEXT });
+      else if (payload.part === 'schedule') result = applySchedule(project, schedulePart(read.project).file, { policy: payload.policy, takeSettings: false, ids: ctx.ids, clock: ctx.clock });
+      else result = applySettings(project, read.project.settings);
+      return { project: result.project, summary: { part: payload.part, ...result.summary } };
+    });
   },
 );
 
