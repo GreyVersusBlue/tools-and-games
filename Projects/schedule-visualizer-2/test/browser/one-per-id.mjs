@@ -221,7 +221,7 @@ async function fits(p, selector) {
   assert.ok(seen.scroll <= 0 && seen.left >= 0 && seen.right <= seen.width, selector + ' fits the window: ' + JSON.stringify(seen));
 }
 
-const sentence = (what, label, again) => 'This ' + what + ' is a copy of ' + label + ', which is also kept on this device. Open ' + label + ' first, then ' + again + ', or keep it as another project. Nothing was replaced.';
+const sentence = (what, label, again) => 'This ' + (what === 'point' ? 'recovery point' : what) + ' is a copy of ' + label + ', which is also kept on this device. Open ' + label + ' first, then ' + again + ', or keep it as another project. Nothing was replaced.';
 
 // ---------------------------------------------------------------- import
 
@@ -522,7 +522,7 @@ test('recovery points: the open project\'s, then Of other projects with labels; 
     el.open = true;
   });
   assert.equal(await page.$eval(rows + ' [data-line="point-project"]', (el) => el.textContent), label, 'the project\'s label comes first');
-  const own = await page.$$eval('#recovery table:first-of-type tbody tr', (trs) => trs.map((tr) => tr.dataset.project || ''));
+  const own = await page.$$eval('#recovery tbody tr', (trs) => trs.filter((tr) => !tr.closest('details')).map((tr) => tr.dataset.project || ''));
   assert.ok(!own.includes(kept), 'the open project\'s list holds none of the other project\'s');
   assert.deepEqual(await page.$$eval(rows + ' button', (buttons) => buttons.map((button) => button.textContent)), ['Open ' + label, 'Export', 'Delete']);
   assert.equal(await page.$('#recovery [data-disclosure="other-points"] [data-action="restore"]'), null, 'no plain Restore on another project\'s point');
