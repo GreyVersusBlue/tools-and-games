@@ -146,7 +146,7 @@ test('a point is the project, its four figures, its size and its images, for one
   assert.deepEqual(RECOVERY_REASONS, ['timer', 'leave', 'replace', 'import', 'restore']);
   assert.deepEqual(pointSummary(project), { floors: 3, rooms: 13, groups: 8, teachers: 12 });
   const point = buildPoint(project, 'timer', '2026-09-01T12:00:00.000Z', new Map());
-  assert.deepEqual(Object.keys(point), ['takenAt', 'reason', 'summary', 'bytes', 'project', 'images']);
+  assert.deepEqual(Object.keys(point), ['takenAt', 'reason', 'summary', 'bytes', 'project', 'images', 'projectId']);
   assert.equal(point.project, project);
   assert.equal(point.bytes, Buffer.byteLength(JSON.stringify(project)));
   assert.equal(isPoint(point), true);

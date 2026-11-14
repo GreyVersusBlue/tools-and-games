@@ -153,6 +153,7 @@ export const GROUPS = {
     'browser/inspector.mjs', // SV2-07
     'browser/search.mjs', // SV2-07
     'browser/storage.mjs', // SV2-03
+    'browser/storage-shelf.mjs', // SV2-115
     'browser/recovery.mjs', // SV2-03
     'browser/tabs.mjs', // SV2-03
     'browser/schedule.mjs', // SV2-11
@@ -257,6 +258,7 @@ export const BROWSER_SECONDS = {
   'browser/hotspots.mjs': 27,
   'browser/plan-map.mjs': 26,
   'browser/storage.mjs': 24,
+  'browser/storage-shelf.mjs': 10,
   'browser/recovery.mjs': 23,
   'browser/scenario.mjs': 21,
   'browser/fix.mjs': 21,
