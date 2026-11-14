@@ -239,6 +239,7 @@ row names a file it does not run.
 | `test/browser/inspector.mjs` | The building inspector's five tabs |
 | `test/browser/search.mjs` | Finding rooms, teachers and groups from the top bar |
 | `test/browser/storage.mjs` | Saving on the device, with a real IndexedDB |
+| `test/browser/storage-shelf.mjs` | Several projects on one device, in the database: switching with traced images, a failed switch, the refusals, the list, delete and rename, a duplicate's pictures, the recovery trim across projects |
 | `test/browser/recovery.mjs` | Recovery points: taken, kept, restored |
 | `test/browser/tabs.mjs` | Two tabs on one project |
 | `test/browser/schedule.mjs` | The Schedule section: a group entered by keyboard, the checks |
