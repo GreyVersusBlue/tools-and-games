@@ -716,6 +716,15 @@ test('start a new project: a recovery point and a snapshot first, an empty proje
   await dismissToast();
   const id = await page.evaluate(() => globalThis.sv2.store.project.id);
   assert.equal(await text('#clear [data-action="clear-new"]'), 'Replace with a new empty project');
+  // DESIGN 15.9 item 2: the line says whose project it replaces and where to go to keep it; a typed name is text
+  const replaces = (name) => 'This replaces \u2068' + name + '\u2069 (the open project). To keep it, use Start another project in Projects on this device.';
+  assert.equal(await text('#clear [data-replaces="new"]'), replaces(SCHOOL), 'with no label, the school\'s name');
+  await page.evaluate(() => globalThis.sv2.store.apply(globalThis.sv2Actions.setProjectLabel, { label: 'Next year <i>proposal</i>' }));
+  await shows(() => document.querySelector('#clear [data-replaces="new"]').textContent.includes('Next year'));
+  assert.equal(await text('#clear [data-replaces="new"]'), replaces('Next year <i>proposal</i>'), 'with a label, the label');
+  assert.equal(await page.$('#clear [data-replaces="new"] i'), null, 'the label is text, never markup');
+  await page.evaluate(() => globalThis.sv2.store.undo());
+  await shows(() => !document.querySelector('#clear [data-replaces="new"]').textContent.includes('Next year'));
   await page.click('#clear [data-action="clear-new"]');
   await shows(() => document.querySelector('dialog.dialog[open]') !== null || (document.querySelector('.figures__item[data-figure="rooms"] dd').textContent === '0' && document.querySelector('.figures__item[data-figure="floors"] dd').textContent === '1'));
   assert.equal(await page.$('dialog.dialog[open]'), null, 'nothing asked');
