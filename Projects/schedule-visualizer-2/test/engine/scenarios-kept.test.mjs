@@ -14,7 +14,6 @@ import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSyn
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { execFileSync } from 'node:child_process';
 import * as actions from '../../engine/actions.js';
 import { createStore } from '../../engine/store.js';
 import { ID_PREFIXES, collectIds, isId } from '../../engine/ids.js';
@@ -801,7 +800,8 @@ test('repair names the kept scenario in every note about it, the shared helpers\
 function oldValidateCopy() {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const engine = path.join(here, '..', '..', 'engine');
-  const source = execFileSync('git', ['show', '970dd3a9:Projects/schedule-visualizer-2/engine/validate.js'], { cwd: here, encoding: 'utf8', maxBuffer: 1 << 26 });
+  // engine/validate.js as it was at 970dd3a9, kept as a file: CI's checkout is shallow, so git cannot show it there
+  const source = readFileSync(path.join(here, '..', 'fixtures', 'validate-970dd3a9.js'), 'utf8');
   const dir = mkdtempSync(path.join(tmpdir(), 'sv2-oldvalidate-'));
   mkdirSync(path.join(dir, 'engine'));
   for (const name of readdirSync(engine)) if (name.endsWith('.js')) writeFileSync(path.join(dir, 'engine', name), readFileSync(path.join(engine, name)));
