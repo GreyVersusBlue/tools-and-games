@@ -90,7 +90,7 @@ export function recoveryCard(ctx) {
     if (answer.ok) return; // the page reloads into that project
     if (answer.code === 'held') {
       problem(answer.text);
-      const outcome = await refuseHeld(ctx, { what: 'point', held: { id: answer.id, label: answer.label }, opener, keep: () => Promise.resolve({ ok: false, text: 'Open ' + answer.label + ' instead; a recovery point cannot be kept as a second copy.' }) });
+      const outcome = await refuseHeld(ctx, { what: 'point', held: { id: answer.id, label: answer.label }, opener, keep: null });
       if (outcome.text !== '') problem(outcome.text);
       return;
     }
@@ -111,7 +111,7 @@ export function recoveryCard(ctx) {
         return;
       }
       if (held) {
-        const outcome = await refuseHeld(ctx, { what: 'point', held, opener, keep: () => Promise.resolve({ ok: false, text: 'Open ' + held.label + ' instead; a recovery point cannot be kept as a second copy.' }) });
+        const outcome = await refuseHeld(ctx, { what: 'point', held, opener, keep: null });
         if (outcome.text !== '') problem(outcome.text);
         return;
       }

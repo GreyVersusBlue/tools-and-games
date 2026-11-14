@@ -75,18 +75,18 @@ const HELD_AGAIN = {
   point: ['This recovery point', 'restore it again'],
 };
 
-export function heldSentence(what, label) {
+// `keepable` false: there is no way to keep it as another project (a recovery
+// point, which the session cannot read as a file), so only Open is offered.
+export function heldSentence(what, label, keepable) {
   const [thing, again] = HELD_AGAIN[what];
-  return thing + ' is a copy of ' + label + ', which is also kept on this device. Open ' + label + ' first, then ' + again + ', or keep it as another project. Nothing was replaced.';
+  return thing + ' is a copy of ' + label + ', which is also kept on this device. Open ' + label + ' first, then ' + again + (keepable === false ? '' : ', or keep it as another project') + '. Nothing was replaced.';
 }
 
 // The two ways on, as the dialog's buttons: Keep it as another project, and
 // Open <label> (last, so it is the focused one: it changes nothing).
-export function heldButtons(label) {
-  return [
-    { label: 'Keep it as another project', value: 'keep' },
-    { label: 'Open ' + label, value: 'open', kind: 'primary' },
-  ];
+export function heldButtons(label, keepable) {
+  const open = { label: 'Open ' + label, value: 'open', kind: 'primary' };
+  return keepable === false ? [open] : [{ label: 'Keep it as another project', value: 'keep' }, open];
 }
 
 // Show the refusal in the tool's dialog and carry out the way chosen.
@@ -99,8 +99,8 @@ export async function refuseHeld(ctx, { what, held, keep, opener }) {
   const choice = await ctx.openDialog({
     id: 'held-refusal',
     title: 'Nothing was replaced',
-    body: h('p', { role: 'alert', data: { line: 'held' } }, heldSentence(what, held.label)),
-    buttons: heldButtons(held.label),
+    body: h('p', { role: 'alert', data: { line: 'held' } }, heldSentence(what, held.label, typeof keep === 'function')),
+    buttons: heldButtons(held.label, typeof keep === 'function'),
     opener,
   }).closed;
   if (choice !== 'open' && choice !== 'keep') return { choice: null, text: '' };
