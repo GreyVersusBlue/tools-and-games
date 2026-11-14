@@ -109,8 +109,7 @@ test('two scenarios are kept beside an open one, and the worker is the one answe
 });
 
 test('a kept scenario is answered by the worker, and the main thread says the same', async () => {
-  // one at a time: the lane keeps only the newest request, and a newer one
-  // for another scenario settles an older null (nobody shows it any more)
+  // one at a time here; the next case asks for both together
   await page.evaluate(() => {
     globalThis.sv2test.kept.here = globalThis.sv2test.createEngineClient(globalThis.sv2.store, { worker: false });
   });
@@ -134,6 +133,36 @@ test('a kept scenario is answered by the worker, and the main thread says the sa
   }
   assert.notEqual(texts['Ease the walk'], texts['Closed stairs'], 'each answer is its own scenario\'s');
   const lane = await page.evaluate(() => ({ ...globalThis.sv2test.engineFor(globalThis.sv2.store).laneStats.kept }));
+  assert.deepEqual({ sent: lane.sent, answered: lane.answered, failed: lane.failed }, { sent: 2, answered: 2, failed: 0 });
+  await page.evaluate((saved) => { globalThis.sv2test.kept.texts = saved; }, texts);
+});
+
+test('two kept scenarios asked together are both answered by the worker, as on the main thread, and neither is worked out again', async () => {
+  await page.evaluate(() => {
+    const { store } = globalThis.sv2;
+    const t = globalThis.sv2test;
+    t.kept.sentBefore = t.engineFor(store).laneStats.kept.sent;
+    // a client of its own with nothing remembered, so both really go to the worker
+    t.kept.fresh = t.createEngineClient(store);
+    t.settle('both-a', t.kept.fresh.kept(t.kept.ids['Ease the walk']));
+    t.settle('both-b', t.kept.fresh.kept(t.kept.ids['Closed stairs']));
+  });
+  const a = await settled('both-a');
+  const b = await settled('both-b');
+  assert.equal(a.ok, true, a.error);
+  assert.equal(b.ok, true, b.error);
+  assert.ok(a.value && b.value, 'neither caller was told there is no such scenario');
+  assert.equal(a.value.where, 'worker');
+  assert.equal(b.value.where, 'worker');
+  const texts = await page.evaluate(() => globalThis.sv2test.kept.texts);
+  assert.equal(a.value.text, texts['Ease the walk']);
+  assert.equal(b.value.text, texts['Closed stairs']);
+  const lane = await page.evaluate(() => {
+    const t = globalThis.sv2test;
+    const stats = { ...t.kept.fresh.laneStats.kept };
+    t.kept.fresh.close();
+    return stats;
+  });
   assert.deepEqual({ sent: lane.sent, answered: lane.answered, failed: lane.failed }, { sent: 2, answered: 2, failed: 0 });
 });
 
