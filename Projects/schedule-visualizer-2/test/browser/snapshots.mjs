@@ -74,7 +74,7 @@ const figure = (name) => text('.figures__item[data-figure="' + name + '"] dd');
 // The card has drawn a list of n.
 const listed = (n, target) => (target || page).waitForFunction((count) => {
   const el = document.getElementById('snapshots');
-  return el && el.dataset.state === 'ready' && el.dataset.pending === undefined && el.dataset.snapshots === String(count);
+  return el && el.dataset.state === 'ready' && el.dataset.pending === undefined && el.dataset.total === String(count);
 }, { timeout: 10000 }, n);
 
 // The card is not drawing, whatever it holds; then how many it lists. A
@@ -86,7 +86,8 @@ const settled = (target) => (target || page).waitForFunction(() => {
 }, { timeout: 10000 });
 async function counted(n, why) {
   await settled();
-  assert.equal(await page.$eval('#snapshots', (el) => Number(el.dataset.snapshots)), n, why);
+  // SV2-118: data-snapshots counts the open project's; data-total is every one on the device
+  assert.equal(await page.$eval('#snapshots', (el) => Number(el.dataset.total)), n, why);
 }
 
 // The names on the card, top to bottom, as the page shows them.
@@ -702,7 +703,7 @@ test('clear the schedule: a double press clears once with one snapshot; the grou
   });
   await shows(() => document.querySelector('dialog.dialog[open]') !== null || document.querySelector('.figures__item[data-figure="groups"] dd').textContent === '0');
   await settled();
-  const twice = [await page.$('dialog.dialog[open]') !== null, await page.$eval('#snapshots', (el) => Number(el.dataset.snapshots))];
+  const twice = [await page.$('dialog.dialog[open]') !== null, await page.$eval('#snapshots', (el) => Number(el.dataset.total))];
   assert.deepEqual(twice, [false, 3], 'a double press runs the clear once: one snapshot, and no second run asking to go on without one');
   assert.deepEqual([await figure('teachers'), await figure('rooms'), await figure('dayTypes')], ['0', '13', '2']);
   assert.equal((await names())[0], 'Before clearing the schedule');
@@ -734,8 +735,9 @@ test('start a new project: a recovery point and a snapshot first, an empty proje
   assert.deepEqual([recovery.reason, recovery.project.id], ['replace', id], 'the project replaced is the newest recovery point');
   await counted(4, 'a snapshot was taken before the new project');
   assert.equal((await names())[0], 'Before starting a new project');
-  // the earlier snapshots are of another project now, and say whose
-  assert.match(await page.$eval('#snapshots .snap__item:nth-child(2) .snap__other', (el) => el.textContent), /^Of another project: Harbour <b>View<\/b> School$/);
+  // the earlier snapshots are of another project now (SV2-118: neither open nor kept, so listed apart, and say whose)
+  await page.waitForFunction(() => document.querySelector('#snapshots').dataset.gone === '4' && document.querySelector('#snapshots').dataset.pending === undefined);
+  assert.match(await page.$eval('#snapshots [data-disclosure="gone-snapshots"] .snap__item:nth-child(2) .snap__other', (el) => el.textContent), /^Of Harbour <b>View<\/b> School$/);
   await page.click('#undo');
   await shows((wanted) => globalThis.sv2.store.project.id === wanted, id);
 });

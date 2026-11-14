@@ -56,6 +56,62 @@ export function importSafetyLine(room, name, what) {
   return point + ', with a snapshot of it, ' + quote(name) + ', that you can restore from Snapshots at any time. Undo brings ' + what + ' back while this tab stays open.';
 }
 
+// The one-per-id rule (21.1, DESIGN 15.3): a project that is a copy of one kept
+// on this device is never put over the open one. heldBy(ctx, id) asks before
+// anything is stored, snapshotted or replaced: { id, label } when the id is a
+// shelved project's, else null. The open project's own id is not a refusal.
+export async function heldBy(ctx, projectId) {
+  const projects = ctx.storage && ctx.storage.projects;
+  if (!projects || typeof projects.holds !== 'function') return null;
+  const label = await projects.holds(projectId);
+  return label === null ? null : { id: projectId, label };
+}
+
+// What each thing is called in the refusal, and what to do again afterwards.
+const HELD_AGAIN = {
+  file: ['This file', 'choose the file again'],
+  project: ['This project', 'send it again'],
+  snapshot: ['This snapshot', 'restore it again'],
+  point: ['This recovery point', 'restore it again'],
+};
+
+// `keepable` false: there is no way to keep it as another project (a recovery
+// point, which the session cannot read as a file), so only Open is offered.
+export function heldSentence(what, label, keepable) {
+  const [thing, again] = HELD_AGAIN[what];
+  return thing + ' is a copy of ' + label + ', which is also kept on this device. Open ' + label + ' first, then ' + again + (keepable === false ? '' : ', or keep it as another project') + '. Nothing was replaced.';
+}
+
+// The two ways on, as the dialog's buttons: Keep it as another project, and
+// Open <label> (last, so it is the focused one: it changes nothing).
+export function heldButtons(label, keepable) {
+  const open = { label: 'Open ' + label, value: 'open', kind: 'primary' };
+  return keepable === false ? [open] : [{ label: 'Keep it as another project', value: 'keep' }, open];
+}
+
+// Show the refusal in the tool's dialog and carry out the way chosen.
+//   what    'file' | 'project' | 'snapshot' | 'point'
+//   held    { id, label } from heldBy
+//   keep    async () => the session's answer for "Keep it as another project"
+// Resolves { choice: 'open' | 'keep' | null, text }: `text` is the sentence for a
+// way that failed (the page reloads when one worked), else ''.
+export async function refuseHeld(ctx, { what, held, keep, opener }) {
+  const choice = await ctx.openDialog({
+    id: 'held-refusal',
+    title: 'Nothing was replaced',
+    body: h('p', { role: 'alert', data: { line: 'held' } }, heldSentence(what, held.label, typeof keep === 'function')),
+    buttons: heldButtons(held.label, typeof keep === 'function'),
+    opener,
+  }).closed;
+  if (choice !== 'open' && choice !== 'keep') return { choice: null, text: '' };
+  try {
+    const answer = choice === 'open' ? await ctx.storage.projects.open(held.id) : await keep();
+    return { choice, text: answer && answer.ok === false ? answer.text : '' };
+  } catch (error) {
+    return { choice, text: messageOf(error) };
+  }
+}
+
 export function filesCard(ctx) {
   const storage = ctx.storage;
   // what the last export or import came to: { kind: 'done' | 'refused', text, notes }
@@ -113,6 +169,20 @@ export function filesCard(ctx) {
       read = readProjectFile(text, { ids: ctx.ids, clock: ctx.clock });
     } catch (error) {
       say('refused', quote(fileName) + ' was not imported, and nothing has changed. ' + messageOf(error));
+      return;
+    }
+    // one project, one place: before the question, and so before any snapshot or image
+    let held;
+    try {
+      held = await heldBy(ctx, read.project.id);
+    } catch (error) {
+      say('refused', quote(fileName) + ' was not imported, and nothing has changed, because this device could not be asked which projects it keeps. ' + messageOf(error));
+      return;
+    }
+    if (held) {
+      say('refused', quote(fileName) + ' was not imported. ' + heldSentence('file', held.label));
+      const outcome = await refuseHeld(ctx, { what: 'file', held, opener, keep: () => storage.projects.startAnother('file', read, { copy: true }) });
+      if (outcome.text !== '') say('refused', quote(fileName) + ' was not imported, and nothing has changed. ' + outcome.text);
       return;
     }
     const here = figures(ctx.store.project);

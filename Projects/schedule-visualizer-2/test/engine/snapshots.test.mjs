@@ -86,9 +86,12 @@ test('an entry is what the card lists; a damaged record is listed as unreadable,
   project.settings.schoolName = HOSTILE;
   const entry = snapshotEntry(snapshotRecord(project, { id: 'nabcdefgh1', name: HOSTILE, takenAt: '2026-09-01T12:00:00.000Z' }));
   assert.deepEqual({ ...entry, bytes: typeof entry.bytes }, {
-    id: 'nabcdefgh1', name: HOSTILE, takenAt: '2026-09-01T12:00:00.000Z', bytes: 'number', school: HOSTILE, projectId: project.id,
+    id: 'nabcdefgh1', name: HOSTILE, takenAt: '2026-09-01T12:00:00.000Z', bytes: 'number', school: HOSTILE, label: HOSTILE, projectId: project.id,
     summary: { floors: 3, rooms: 13, groups: 8, teachers: 12 }, readable: true,
   });
+  // SV2-118: the label a project goes by (21.5): its label, else the school's name
+  project.label = '  Next year  ';
+  assert.equal(snapshotEntry(snapshotRecord(project, { id: 'nabcdefgh1', name: 'x', takenAt: '2026-09-01T12:00:00.000Z' })).label, 'Next year', 'a label, trimmed');
   for (const bad of [{ id: 'nabcdefgh2', name: 'x', takenAt: 'y' }, { id: 'nabcdefgh3', name: 'x', takenAt: 'y', project: [] }, null, 'text']) {
     const listed = snapshotEntry(bad);
     assert.equal(listed.readable, false);

@@ -159,6 +159,7 @@ export const GROUPS = {
     'browser/storage-shelf.mjs', // SV2-115
     'browser/storage-switch.mjs', // SV2-116
     'browser/projects.mjs', // SV2-117
+    'browser/one-per-id.mjs', // SV2-118
     'browser/recovery.mjs', // SV2-03
     'browser/tabs.mjs', // SV2-03
     'browser/schedule.mjs', // SV2-11
@@ -266,8 +267,9 @@ export const BROWSER_SECONDS = {
   'browser/plan-map.mjs': 26,
   'browser/storage.mjs': 24,
   'browser/storage-shelf.mjs': 10,
-  'browser/storage-switch.mjs': 120,
+  'browser/storage-switch.mjs': 400, // 133 s on Huginn alone, about 300 s on two slow cores (SV2-116b)
   'browser/projects.mjs': 120,
+  'browser/one-per-id.mjs': 150,
   'browser/recovery.mjs': 23,
   'browser/scenario.mjs': 21,
   'browser/fix.mjs': 21,
