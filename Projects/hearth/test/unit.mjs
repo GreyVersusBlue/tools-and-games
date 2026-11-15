@@ -495,5 +495,31 @@ section(26, () => {
   check('save: repairing twice is the same as repairing once', JSON.stringify(H.pack()) === twice);
 });
 
+// ---- one arithmetic for every engine (C2, unit section 27) ----
+// The simulation's files use hyp, dsin, dcos, dpow12 and shuf (built from + - * / sqrt floor round, which every engine computes the same bit
+// for bit) and never Math.sin, cos, pow, hypot and the rest, which engines may round differently. The one exception: the view's wheel zoom.
+section(27, () => {
+  const FILES = ['core', 'life', 'watcher', 'sim', 'flavor', 'save', 'main'];
+  const BANNED = /Math\.(sin|cos|tan|pow|hypot|atan|exp|log|asin|acos|sinh|cosh|tanh|cbrt|expm1|log1p|log2|log10)|\*\*|sort\(\s*\(\s*\)\s*=>\s*R\(\)/g;
+  const ALLOW = new Set(['main.js:Math.exp']);
+  const hits = [];
+  for (const f of FILES) {
+    // comments are prose: block comments and a // to the end of the line are not code
+    const src = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'js', f + '.js'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1');
+    for (const m of src.matchAll(BANNED)) if (!ALLOW.has(f + '.js:' + m[0])) hits.push(f + '.js:' + m[0]);
+  }
+  check('arithmetic: no Math.sin, cos, pow, hypot, exp, ** or random-comparator sort in the seven simulation files', hits.length === 0, hits.slice(0, 6).join(' '));
+  const allowed = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'js', 'main.js'), 'utf8').match(/Math\.exp/g) || [];
+  check('arithmetic: the allowlist is still needed (main.js still has its one Math.exp)', allowed.length === 1, String(allowed.length));
+  const { ev } = fresh();
+  const worst = ev(`(()=>{let ws=0,wc=0,we=0;for(let i=0;i<1000;i++){const x=(i-500)*0.731+i*i*0.0003;ws=Math.max(ws,Math.abs(dsin(x)-Math.sin(x)));wc=Math.max(wc,Math.abs(dcos(x)-Math.cos(x)))}
+    for(let i=0;i<200;i++){const x=-4+i*0.02,r=dpow12(x)/Math.pow(.12,x);we=Math.max(we,Math.abs(r-1))}return [ws,wc,we]})()`);
+  check('arithmetic: dsin against Math.sin at 1,000 points to within 1e-8', worst[0] < 1e-8, String(worst[0]));
+  check('arithmetic: dcos against Math.cos at 1,000 points to within 1e-8', worst[1] < 1e-8, String(worst[1]));
+  check('arithmetic: dpow12 against Math.pow(.12, x) to a relative 1e-8 for x in [-4, 0)', worst[2] < 1e-8, String(worst[2]));
+  check('arithmetic: hyp(3,4) is 5 and shuf is a permutation drawn from R()', ev('hyp(3,4)') === 5 && ev(`(()=>{const a=shuf([1,2,3,4,5,6]);return a.length===6&&a.slice().sort().join()==='1,2,3,4,5,6'})()`));
+});
+
 console.log(`${fail ? 'FAIL' : 'PASS'}: ${pass} of ${pass + fail} unit checks`);
 process.exit(fail ? 1 : 0);

@@ -61,7 +61,7 @@ cv.addEventListener('wheel',e=>{e.preventDefault();const w=toWorld(e);setZoom(zo
 cv.addEventListener('pointerdown',e=>{ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
   try{cv.setPointerCapture(e.pointerId)}catch(err){}
   if(ptrs.size>=2){if(lpT){clearTimeout(lpT);lpT=0}press=null; // a second finger means the view, not a blessing
-    const a=[...ptrs.values()];pinch={d0:Math.max(20,Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)),z0:zoom,mx:(a[0].x+a[1].x)/2,my:(a[0].y+a[1].y)/2};return}
+    const a=[...ptrs.values()];pinch={d0:Math.max(20,hyp(a[0].x-a[1].x,a[0].y-a[1].y)),z0:zoom,mx:(a[0].x+a[1].x)/2,my:(a[0].y+a[1].y)/2};return}
   const w=toWorld(e);cur.x=w.x;cur.y=w.y;
   press={x0:w.x,y0:w.y,x:w.x,y:w.y,cx:e.clientX,cy:e.clientY,sm:0,moved:0,done:false,water:at(w.x|0,w.y|0)===WATER};
   if(at(w.x|0,w.y|0)===GRASS){lpT=setTimeout(()=>{lpT=0;if(!press||press.moved>1.1)return;press.done=true;
@@ -69,14 +69,14 @@ cv.addEventListener('pointerdown',e=>{ptrs.set(e.pointerId,{x:e.clientX,y:e.clie
       say('The ground here holds its water, and keeps it.',false,'nospring')}},520)}});
 cv.addEventListener('pointermove',e=>{const pt=ptrs.get(e.pointerId);if(pt){pt.x=e.clientX;pt.y=e.clientY}
   if(pinch&&ptrs.size>=2){const a=[...ptrs.values()],k=vScale();
-    const d=Math.max(20,Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)),mx=(a[0].x+a[1].x)/2,my=(a[0].y+a[1].y)/2;
+    const d=Math.max(20,hyp(a[0].x-a[1].x,a[0].y-a[1].y)),mx=(a[0].x+a[1].x)/2,my=(a[0].y+a[1].y)/2;
     camX-=(mx-pinch.mx)*dprE/(k*T);camY-=(my-pinch.my)*dprE/(k*T);pinch.mx=mx;pinch.my=my;
     setZoom(pinch.z0*d/pinch.d0);clampCam();return}
   const w=toWorld(e);cur.x=w.x;cur.y=w.y;if(!press)return;
   const sdx=e.clientX-press.cx,sdy=e.clientY-press.cy;press.cx=e.clientX;press.cy=e.clientY;press.sm+=Math.abs(sdx)+Math.abs(sdy);
   if(press.sm>8&&lpT){clearTimeout(lpT);lpT=0}
   if(!press.water&&zoom>1.02&&press.sm>8){press.pan=true;const k=vScale();camX-=sdx*dprE/(k*T);camY-=sdy*dprE/(k*T);clampCam();return} // dragging the land drags the view; the water keeps its gust
-  press.moved=Math.max(press.moved,Math.hypot(w.x-press.x0,w.y-press.y0));press.x=w.x;press.y=w.y;
+  press.moved=Math.max(press.moved,hyp(w.x-press.x0,w.y-press.y0));press.x=w.x;press.y=w.y;
   if(press.moved>1.1&&lpT){clearTimeout(lpT);lpT=0}
   if(press.water&&press.moved>1.5&&R()<.35)fx.push({x:w.x,y:w.y,vx:0,vy:0,c:'#dceeff',l:.3})});
 function endPress(e){if(!press)return;const pr=press;press=null;if(lpT){clearTimeout(lpT);lpT=0}
@@ -86,14 +86,14 @@ function endPress(e){if(!press)return;const pr=press;press=null;if(lpT){clearTim
   if(pr.water&&pr.moved>2.2&&at(pr.x|0,pr.y|0)===WATER){gustAt(x,y,pr.x,pr.y);return}
   if(pr.moved>1.4)return;
   // an islander, and at night a dream
-  let best=null,bd=1.4;for(const p of people){if(p.inside)continue;const d=Math.hypot(p.x-x,p.y-y+.6);if(d<bd){bd=d;best=p}}
+  let best=null,bd=1.4;for(const p of people){if(p.inside)continue;const d=hyp(p.x-x,p.y-y+.6);if(d<bd){bd=d;best=p}}
   if(best){showCard(best);
     if(isNight()){if(isKid(best)&&best.task==='sleep'){lullaby(best.x,best.y);actDone('lullaby');noteAct('lullaby',.03);
         say(`Somewhere in the dark somebody is humming, very quietly, and ${B(best)} turns over and sleeps on.`,true)}
       dreamOf(best)}
     return}
   // the fire, and the story at it
-  if(Math.hypot(x-center.x,y-center.y)<2.3){if(!tellStory())say('The fire has already had its story out of tonight.',false,'toldalready');return}
+  if(hyp(x-center.x,y-center.y)<2.3){if(!tellStory())say('The fire has already had its story out of tonight.',false,'toldalready');return}
   // a cloud's shadow
   const c=cloudAt(x,y);if(c){rainOn(c);return}
   const t=at(x|0,y|0);

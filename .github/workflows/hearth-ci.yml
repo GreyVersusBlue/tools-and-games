@@ -90,6 +90,11 @@ jobs:
       - name: Unit (test/unit.mjs, no browser)
         run: node unit.mjs
 
+      # Node against the pinned Chromium (C2): the simulation's arithmetic is the same on every engine, so Node
+      # growing seeds 7 and 20260819 for forty days must give the hashes.json hashes that Chromium 1194 wrote.
+      - name: Portable arithmetic (test/portable.mjs, no browser)
+        run: node portable.mjs
+
       - name: Install the pinned Playwright
         run: npm ci
 

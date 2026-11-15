@@ -3,6 +3,15 @@
 // ---------- rng & noise ----------
 let seed=(Math.random()*1e9)|0;
 function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+/* C2: the simulation's arithmetic is the same on every engine. dsin, cos, pow and hypot are allowed to differ in the last bits between
+   V8 builds; + - * / sqrt floor round are exact by the language standard, so these are built from nothing else. Accurate to about 1e-11. */
+const hyp=(dx,dy)=>Math.sqrt(dx*dx+dy*dy);
+function dsin(x){const T=6.283185307179586;x=x-T*Math.round(x/T);if(x>1.5707963267948966)x=3.141592653589793-x;else if(x<-1.5707963267948966)x=-3.141592653589793-x;
+  const q=x*x;return x*(1+q*(-1/6+q*(1/120+q*(-1/5040+q*(1/362880+q*(-1/39916800+q*(1/6227020800+q*(-1/1307674368000))))))))}
+const dcos=x=>dsin(x+1.5707963267948966);
+function dexp(x){const k=Math.round(x/.6931471805599453);let r=x-k*.6931471805599453,t=1;for(let i=14;i>0;i--)t=1+r*t/i;let s=1;for(let i=0,n=k<0?-k:k;i<n;i++)s*=2;return k<0?t/s:t*s}
+const dpow12=x=>dexp(x*-2.120263536200091); /* .12 to the x; the one base life.js needs (boats' drift) */
+function shuf(a){for(let i=a.length-1;i>0;i--){const j=(R()*(i+1))|0,t=a[i];a[i]=a[j];a[j]=t}return a}
 let R;
 const rnd=(a=1,b)=>b===undefined?R()*a:a+R()*(b-a), pick=a=>a[(R()*a.length)|0], hash=s=>{let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0};
 function noise2(){const p=[];for(let i=0;i<256;i++)p[i]=R();const h=(x,y)=>p[((x*49+y*131)&255)^((x*7)&255)];const sm=t=>t*t*(3-2*t);
@@ -137,7 +146,7 @@ const LORE_PLACE={
  back:{l:'where they watch for boats',at:()=>landings.length?{x:landings[0].x,y:landings[0].y}:(nearestShore(center.x,center.y)||center)},
  rainscame:{l:'where they stood in the rain',at:()=>farms.length?{x:farms[0].x+.5,y:farms[0].y+.5}:center},
  shoal:{l:'where the fish came in',at:()=>{const h=getB('hut');return(h?nearestShore(h.x,h.y):nearestShore(center.x,center.y))||center}},
- stayed:{l:'the shore that faces the far island',at:()=>{if(!farIsle)return null;const fx=farIsle.x+farIsle.w/2;let b=null,bd=1e9;for(const s of shore){const d=Math.hypot(s.x-fx,s.y);if(d<bd){bd=d;b=s}}return b}},
+ stayed:{l:'the shore that faces the far island',at:()=>{if(!farIsle)return null;const fx=farIsle.x+farIsle.w/2;let b=null,bd=1e9;for(const s of shore){const d=hyp(s.x-fx,s.y);if(d<bd){bd=d;b=s}}return b}},
  found:{l:'where the ground gave it up',at:()=>ruin?{x:ruin.x,y:ruin.y+1.6}:null},
  bread:{l:'the mill path',at:()=>{const m=getB('mill');return m?{x:m.x+1,y:m.y+2.6}:null}},
  way:{l:'where the new way was tried first',at:()=>{const e=chron.find(x=>x.kind==='way'&&x.gr&&WAY_AT.some(n=>x.label.includes(n)));if(!e)return null;
@@ -242,7 +251,7 @@ function newWorld(s){
   if(R()<.65){let sx=-1,sy=-1,se=-1;for(let k=0;k<300;k++){const x=(R()*W)|0,y=(R()*H)|0;const e=elev[idx(x,y)];if(at(x,y)!==WATER&&e>se&&e<.6){se=e;sx=x;sy=y}}
     let x=sx,y=sy,seen=new Set();for(let k=0;k<45&&x>0&&y>0&&x<W-1&&y<H-1;k++){if(at(x,y)===WATER&&!seen.has(idx(x,y)))break;seen.add(idx(x,y));stream.push({x,y});
       let bx=x,by=y,be=1e9;for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const e=elev[idx(x+dx,y+dy)]+(seen.has(idx(x+dx,y+dy))?9:0);if(e<be){be=e;bx=x+dx;by=y+dy}}if(be>8)break;x=bx;y=by}
-    if(stream.length<8)stream=[];for(const s of stream){tiles[idx(s.x,s.y)]=WATER;elev[idx(s.x,s.y)]=.19}trees=trees.filter(t=>!stream.some(s=>Math.hypot(s.x+.5-t.x,s.y+.5-t.y)<1))}
+    if(stream.length<8)stream=[];for(const s of stream){tiles[idx(s.x,s.y)]=WATER;elev[idx(s.x,s.y)]=.19}trees=trees.filter(t=>!stream.some(s=>hyp(s.x+.5-t.x,s.y+.5-t.y)<1))}
   wadeTiles=new Set();for(const s of stream)wadeTiles.add(idx(s.x,s.y));bridgeUp=false;
   for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(at(x,y)===SAND&&(at(x+1,y)===WATER||at(x-1,y)===WATER||at(x,y+1)===WATER||at(x,y-1)===WATER))shore.push({x,y});
   // tide band: sand/water tiles within a hair of the waterline; fog mask: low ground and water
@@ -254,19 +263,19 @@ function newWorld(s){
   let best=null,bs=-1;
   for(let y=6;y<H-6;y+=2)for(let x=6;x<W-6;x+=2){if(at(x,y)!==GRASS)continue;let c=0;
     for(let j=-5;j<=5;j++)for(let i=-5;i<=5;i++)if(at(x+i,y+j)===GRASS)c++;
-    const sc=c-Math.hypot(x-cx,y-cy)*.6;if(sc>bs){bs=sc;best={x,y}}}
+    const sc=c-hyp(x-cx,y-cy)*.6;if(sc>bs){bs=sc;best={x,y}}}
   center=best||{x:cx|0,y:cy|0};cur.x=center.x;cur.y=center.y;
-  trees=trees.filter(t=>Math.hypot(t.x-center.x,t.y-center.y)>3.5);
+  trees=trees.filter(t=>hyp(t.x-center.x,t.y-center.y)>3.5);
   // hill for graves: highest grass tile 8–22 tiles from the hearth
-  hill=null;let he=-1;for(let y=2;y<H-2;y++)for(let x=2;x<W-2;x++){if(at(x,y)!==GRASS)continue;const d=Math.hypot(x-center.x,y-center.y);if(d<8||d>22)continue;const e=elev[idx(x,y)];if(e>he){he=e;hill={x,y}}}
+  hill=null;let he=-1;for(let y=2;y<H-2;y++)for(let x=2;x<W-2;x++){if(at(x,y)!==GRASS)continue;const d=hyp(x-center.x,y-center.y);if(d<8||d>22)continue;const e=elev[idx(x,y)];if(e>he){he=e;hill={x,y}}}
   if(!hill)hill={x:center.x+6,y:center.y-4};
   // ruins on some islands: a broken stone circle or an old wall, on grass away from the hearth
-  if(R()<.55){let site=null;for(let k=0;k<400&&!site;k++){const x=(R()*(W-8)+4)|0,y=(R()*(H-8)+4)|0;if(at(x,y)!==GRASS)continue;const d=Math.hypot(x-center.x,y-center.y);if(d<9||d>26||Math.hypot(x-hill.x,y-hill.y)<5)continue;let ok=true;for(let j=-3;j<=3&&ok;j++)for(let i=-3;i<=3;i++)if(at(x+i,y+j)!==GRASS){ok=false;break}if(ok)site={x,y}}
+  if(R()<.55){let site=null;for(let k=0;k<400&&!site;k++){const x=(R()*(W-8)+4)|0,y=(R()*(H-8)+4)|0;if(at(x,y)!==GRASS)continue;const d=hyp(x-center.x,y-center.y);if(d<9||d>26||hyp(x-hill.x,y-hill.y)<5)continue;let ok=true;for(let j=-3;j<=3&&ok;j++)for(let i=-3;i<=3;i++)if(at(x+i,y+j)!==GRASS){ok=false;break}if(ok)site={x,y}}
     if(site){const kind=R()<.55?'circle':'wall',st=[];
-      if(kind==='circle'){const n=7+((R()*3)|0);for(let i=0;i<n;i++){if(R()<.3)continue;const a=i/n*6.283;st.push({x:site.x+.5+Math.cos(a)*2.6,y:site.y+.5+Math.sin(a)*1.8,h:2+((R()*3)|0),f:R()<.3,w:1})}}
+      if(kind==='circle'){const n=7+((R()*3)|0);for(let i=0;i<n;i++){if(R()<.3)continue;const a=i/n*6.283;st.push({x:site.x+.5+dcos(a)*2.6,y:site.y+.5+dsin(a)*1.8,h:2+((R()*3)|0),f:R()<.3,w:1})}}
       else{const dx=R()<.5?1:0,dy=1-dx,n=8+((R()*4)|0);for(let i=0;i<n;i++){if(R()<.15)continue;st.push({x:site.x+.5+(i-n/2)*dx*.8+rnd(-.05,.05),y:site.y+.5+(i-n/2)*dy*.7+rnd(-.05,.05),h:1+((R()*2)|0),f:R()<.3,w:dx?1:0})}}
       const legend=kind==='circle'?pick(['the ring the giants left','the ring where the first fires were lit','the ring of the ones who were here before','the dancing stones']):pick(['the wall the sea people built','the old wall nobody finished','the wall the ones before us raised against something']);
-      ruin={kind,x:site.x+.5,y:site.y+.5,st,legend};trees=trees.filter(t=>Math.hypot(t.x-ruin.x,t.y-ruin.y)>3.4)}}
+      ruin={kind,x:site.x+.5,y:site.y+.5,st,legend};trees=trees.filter(t=>hyp(t.x-ruin.x,t.y-ruin.y)>3.4)}}
   // the far island: only ever a silhouette on the horizon (the top edge, over open water), on the side away from the hearth
   {const w=8+((R()*5)|0);let best=null,bs=-1;for(let x0=3;x0<W-w-3;x0++){let c=0;for(let i=0;i<w;i++)for(let j=0;j<7;j++)if(at(x0+i,j)===WATER)c++;const sc=c+Math.abs(x0+w/2-center.x)*.4+R()*3;if(c>=w*6&&sc>bs){bs=sc;best=x0}}
     if(best===null){best=center.x<W/2?W-w-4:4}farIsle={x:best,w,h:5+((R()*4)|0),lit:false,k:R()};
@@ -274,20 +283,20 @@ function newWorld(s){
     // deep water for the whale: well out from any land
     deep=[];for(let y=6;y<H-6;y+=2)for(let x=6;x<W-6;x+=2){if(elev[idx(x,y)]<.02){let ok=true;for(let j=-6;j<=6&&ok;j+=2)for(let i=-6;i<=6;i+=2)if(at(x+i,y+j)!==WATER){ok=false;break}if(ok)deep.push({x,y})}}}
   // favourite spots
-  const far=shore.reduce((a,b)=>Math.hypot(b.x-center.x,b.y-center.y)>Math.hypot(a.x-center.x,a.y-center.y)?b:a,shore[0]||center);
-  const near=shore.reduce((a,b)=>Math.hypot(b.x-center.x,b.y-center.y)<Math.hypot(a.x-center.x,a.y-center.y)?b:a,shore[0]||center);
+  const far=shore.reduce((a,b)=>hyp(b.x-center.x,b.y-center.y)>hyp(a.x-center.x,a.y-center.y)?b:a,shore[0]||center);
+  const near=shore.reduce((a,b)=>hyp(b.x-center.x,b.y-center.y)<hyp(a.x-center.x,a.y-center.y)?b:a,shore[0]||center);
   let rock=null;for(let k=0;k<400&&!rock;k++){const x=(R()*W)|0,y=(R()*H)|0;if(at(x,y)===ROCK)rock={x,y}}
   const oak=trees.reduce((a,b)=>b.s>a.s?b:a,trees[0]||{x:center.x+2,y:center.y+2});
   spots=[{l:'the far shore',x:far.x,y:far.y},{l:'the near beach',x:near.x,y:near.y},{l:'the hilltop',x:hill.x,y:hill.y},{l:'the fire',x:center.x,y:center.y},{l:'the old tree',x:oak.x,y:oak.y+.6},{l:'the fields',x:center.x+4,y:center.y+3}];
   if(rock)spots.push({l:'the grey rocks',x:rock.x,y:rock.y});
   if(ruin)spots.push({l:'the old stones',x:ruin.x,y:ruin.y+1.6});
   // landings: shore tiles with open water straight out to sea (boats row in along the ray from the hearth)
-  for(const s of shore){let dx=s.x-center.x,dy=s.y-center.y;const d=Math.hypot(dx,dy)||1;dx/=d;dy/=d;let ok=true;for(let k=1;k<=14&&ok;k++){const x=Math.round(s.x+dx*k),y=Math.round(s.y+dy*k);if(x>=0&&y>=0&&x<W&&y<H&&at(x,y)!==WATER)ok=false}
+  for(const s of shore){let dx=s.x-center.x,dy=s.y-center.y;const d=hyp(dx,dy)||1;dx/=d;dy/=d;let ok=true;for(let k=1;k<=14&&ok;k++){const x=Math.round(s.x+dx*k),y=Math.round(s.y+dy*k);if(x>=0&&y>=0&&x<W&&y<H&&at(x,y)!==WATER)ok=false}
     if(ok)landings.push({x:s.x,y:s.y,dx,dy,d})}
   landings.sort((a,b)=>a.d-b.d);
   // lighthouse: the rock (or sand) tile with the most sea around it, well away from the hearth
-  {let best=null,bs=-1;for(let y=2;y<H-2;y++)for(let x=2;x<W-2;x++){const t=at(x,y);if(t!==ROCK&&t!==SAND)continue;let w=0;for(let j=-3;j<=3;j++)for(let i=-3;i<=3;i++)if(at(x+i,y+j)===WATER)w++;if(w<14)continue;const sc=w+(t===ROCK?12:0)-Math.hypot(x-center.x,y-center.y)*.15;if(sc>bs){bs=sc;lightSite={x,y}}}}
-  if(stream.length){let bd=1e9;for(const s of stream){const d=Math.hypot(s.x-center.x,s.y-center.y);if(d<bd&&d>2){bd=d;bridgeSite=s}}}
+  {let best=null,bs=-1;for(let y=2;y<H-2;y++)for(let x=2;x<W-2;x++){const t=at(x,y);if(t!==ROCK&&t!==SAND)continue;let w=0;for(let j=-3;j<=3;j++)for(let i=-3;i<=3;i++)if(at(x+i,y+j)===WATER)w++;if(w<14)continue;const sc=w+(t===ROCK?12:0)-hyp(x-center.x,y-center.y)*.15;if(sc>bs){bs=sc;lightSite={x,y}}}}
+  if(stream.length){let bd=1e9;for(const s of stream){const d=hyp(s.x-center.x,s.y-center.y);if(d<bd&&d>2){bd=d;bridgeSite=s}}}
   // reachability from the hearth (people refuse the sea now): landings must be walkable, and a lighthouse
   // on an islet nobody can reach is no lighthouse at all. Pure flood-fill — no rnd(), replays unaffected.
   {const reach=new Uint8Array(W*H);const qx=[center.x],qy=[center.y];reach[idx(center.x,center.y)]=1;
@@ -386,24 +395,24 @@ const EDGE={spring:[.2,.8],summer:[.15,.86],autumn:[.2,.8],winter:[.27,.73]}; //
 const edges=()=>EDGE[sea()];
 const isNight=()=>{const f=dayFrac(),e=edges();return f<e[0]||f>e[1]};
 const isDusk=()=>{const f=dayFrac(),e=edges();return f>e[1]-.1&&f<e[1]};
-const light=()=>{const f=dayFrac(),e=edges();const t=Math.max(-.15,Math.min(1.15,(f-e[0])/(e[1]-e[0])));return Math.max(0,Math.min(1,(Math.sin(t*Math.PI)+.45)/1.15))};
-const tide=()=>Math.sin(dayFrac()*4*Math.PI+(seed%7)); // two tides a day; +1 high, -1 low
-function nearestTree(x,y){let b=null,bd=1e9;for(const t of trees){if(t.hp<=0||t.s<.5||t.o)continue;const d=Math.hypot(t.x-x,t.y-y);if(d<bd){bd=d;b=t}}return b} // nobody fells the orchard
-function nearestShore(x,y){let b=null,bd=1e9;for(const s of shore){const d=Math.hypot(s.x-x,s.y-y);if(d<bd){bd=d;b=s}}return b}
+const light=()=>{const f=dayFrac(),e=edges();const t=Math.max(-.15,Math.min(1.15,(f-e[0])/(e[1]-e[0])));return Math.max(0,Math.min(1,(dsin(t*Math.PI)+.45)/1.15))};
+const tide=()=>dsin(dayFrac()*4*Math.PI+(seed%7)); // two tides a day; +1 high, -1 low
+function nearestTree(x,y){let b=null,bd=1e9;for(const t of trees){if(t.hp<=0||t.s<.5||t.o)continue;const d=hyp(t.x-x,t.y-y);if(d<bd){bd=d;b=t}}return b} // nobody fells the orchard
+function nearestShore(x,y){let b=null,bd=1e9;for(const s of shore){const d=hyp(s.x-x,s.y-y);if(d<bd){bd=d;b=s}}return b}
 const bAll=()=>bldgTgt?bldg.concat([bldgTgt]):bldg;
-function freeSpot(r0,r1,need=1){for(let k=0;k<80;k++){const a=rnd(6.28),r=rnd(r0,r1);const x=Math.round(center.x+Math.cos(a)*r),y=Math.round(center.y+Math.sin(a)*r*.75);
+function freeSpot(r0,r1,need=1){for(let k=0;k<80;k++){const a=rnd(6.28),r=rnd(r0,r1);const x=Math.round(center.x+dcos(a)*r),y=Math.round(center.y+dsin(a)*r*.75);
   let ok=true;for(let j=0;j<need&&ok;j++)for(let i=0;i<need;i++){if(at(x+i,y+j)!==GRASS){ok=false;break}
-    if(houses.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||plots.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||bAll().some(b=>x+i>=b.x-1&&x+i<=b.x+b.w&&y+j>=b.y-1&&y+j<=b.y+b.h)||farms.some(f=>f.x===x+i&&f.y===y+j)||(ruin&&Math.hypot(ruin.x-x-i-.5,ruin.y-y-j-.5)<3.6)||graves.some(gr=>Math.hypot(gr.x-x-i,gr.y-y-j)<3)||trees.some(t=>t.hp>0&&Math.hypot(t.x-x-i-.5,t.y-y-j-.5)<1.2)){ok=false;break}}
+    if(houses.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||plots.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||bAll().some(b=>x+i>=b.x-1&&x+i<=b.x+b.w&&y+j>=b.y-1&&y+j<=b.y+b.h)||farms.some(f=>f.x===x+i&&f.y===y+j)||(ruin&&hyp(ruin.x-x-i-.5,ruin.y-y-j-.5)<3.6)||graves.some(gr=>hyp(gr.x-x-i,gr.y-y-j)<3)||trees.some(t=>t.hp>0&&hyp(t.x-x-i-.5,t.y-y-j-.5)<1.2)){ok=false;break}}
   if(ok)return{x,y}}return null}
-function freeSpotNear(cx,cy,r0,r1,need){for(let k=0;k<60;k++){const a=rnd(6.28),r=rnd(r0,r1);const x=Math.round(cx+Math.cos(a)*r),y=Math.round(cy+Math.sin(a)*r*.75);
+function freeSpotNear(cx,cy,r0,r1,need){for(let k=0;k<60;k++){const a=rnd(6.28),r=rnd(r0,r1);const x=Math.round(cx+dcos(a)*r),y=Math.round(cy+dsin(a)*r*.75);
   let ok=true;for(let j=0;j<need&&ok;j++)for(let i=0;i<need;i++){if(at(x+i,y+j)!==GRASS){ok=false;break}
-    if(houses.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||plots.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||bAll().some(b=>x+i>=b.x-1&&x+i<=b.x+b.w&&y+j>=b.y-1&&y+j<=b.y+b.h)||farms.some(f=>f.x===x+i&&f.y===y+j)||(ruin&&Math.hypot(ruin.x-x-i-.5,ruin.y-y-j-.5)<3.6)||graves.some(gr=>Math.hypot(gr.x-x-i,gr.y-y-j)<3)||trees.some(t=>t.hp>0&&Math.hypot(t.x-x-i-.5,t.y-y-j-.5)<1.2)){ok=false;break}}
+    if(houses.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||plots.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||bAll().some(b=>x+i>=b.x-1&&x+i<=b.x+b.w&&y+j>=b.y-1&&y+j<=b.y+b.h)||farms.some(f=>f.x===x+i&&f.y===y+j)||(ruin&&hyp(ruin.x-x-i-.5,ruin.y-y-j-.5)<3.6)||graves.some(gr=>hyp(gr.x-x-i,gr.y-y-j)<3)||trees.some(t=>t.hp>0&&hyp(t.x-x-i-.5,t.y-y-j-.5)<1.2)){ok=false;break}}
   if(ok)return{x,y}}return null}
 // people walk on land. The stream can be waded — slowly, feeling for the stones — and once the bridge is up it carries them over dry. The sea refuses.
 const canWalk=(x,y)=>at(x|0,y|0)!==WATER||(bridgeUp&&bridgeSite&&(x|0)===bridgeSite.x&&(y|0)===bridgeSite.y);
 const canWade=(x,y)=>wadeTiles.has(idx(x|0,y|0));
 // if the straight line to a target crosses the stream and the bridge is up, go round by the bridge (no rnd() in here: replays depend on it)
-function routeVia(x0,y0,x1,y1){if(!bridgeUp||!bridgeSite)return null;const d=Math.hypot(x1-x0,y1-y0);if(d<5)return null;
+function routeVia(x0,y0,x1,y1){if(!bridgeUp||!bridgeSite)return null;const d=hyp(x1-x0,y1-y0);if(d<5)return null;
   const n=Math.ceil(d);let cross=false;for(let i=1;i<n&&!cross;i++){const k=i/n;if(canWade(x0+(x1-x0)*k,y0+(y1-y0)*k))cross=true}
   return cross?{x:bridgeSite.x+.5,y:bridgeSite.y+.5}:null}
 // a person with nowhere left to step lets the task go where they stand (deterministic: no rnd())
@@ -411,7 +420,7 @@ function blockedStop(p){if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;p
 function walk(p,dt){
   if(p.tx!==p._vx||p.ty!==p._vy){p._vx=p.tx;p._vy=p.ty;p.via=routeVia(p.x,p.y,p.tx,p.ty)}
   const txx=p.via?p.via.x:p.tx,tyy=p.via?p.via.y:p.ty;
-  const dx=txx-p.x,dy=tyy-p.y,d=Math.hypot(dx,dy);let sp=(isNight()?1.6:2.6)*dt*(1-hunger*.3);if(isElder(p))sp*=.7;if(isKid(p))sp*=.85;if(p.sick)sp*=.65;if(snowD>.5&&at(p.x|0,p.y|0)!==WATER)sp*=.85;
+  const dx=txx-p.x,dy=tyy-p.y,d=hyp(dx,dy);let sp=(isNight()?1.6:2.6)*dt*(1-hunger*.3);if(isElder(p))sp*=.7;if(isKid(p))sp*=.85;if(p.sick)sp*=.65;if(snowD>.5&&at(p.x|0,p.y|0)!==WATER)sp*=.85;
   const wading=at(p.x|0,p.y|0)===WATER&&canWade(p.x,p.y);
   if(wading){sp*=.55;if(p.waded!==dayCount){p.waded=dayCount;say(`${B(p)} hitches up and wades the stream, feeling for the stones.`,false,'wade')}}
   if(d<sp){if(p.via){p.x=txx;p.y=tyy;p.via=null;return false}
