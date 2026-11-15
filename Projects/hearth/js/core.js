@@ -461,7 +461,8 @@ function popCap(){return 4+houses.length*2}
 const BIRTH_OVER=1;
 const has=(p,t)=>p.tr.includes(t);
 // which craft a task teaches (and is sped by): field, wood, sea, frame, store
-const CRAFT_TASK={till:0,harvest:0,water:0,chop:1,fish:2,boat:2,build:3,carry:4};
+const HAUL_LINE="carried the timber down to the trader's boat";
+const CRAFT_TASK={till:0,harvest:0,water:0,chop:1,fish:2,boat:2,build:3,carry:4,haul:4};
 const workRate=p=>(has(p,'patient')?1.15:1)*(isElder(p)?.7:1)*(1-hunger*.5)*(p.sick?.45:1)*(want?.85:1)*(p.short?.9:1)*(feud&&(p.name===feud.rv[0]||p.name===feud.rv[1])?.8:1)*(p.craft>=0&&CRAFT_TASK[p.task]===p.craft?1+.35*p.cxp:1); /* phase 6: rations are the decision that slows everyone, and the elder eating last is slower again */
 // what the hands learn: a finished cycle of work teaches. The craftless drift into whatever they do most; the crafted deepen.
 const CRAFT_WORK=['the fields','the woodpile','the nets','the framing','the store'];

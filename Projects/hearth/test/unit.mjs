@@ -566,5 +566,49 @@ section(23, () => {
   check('carry: running carryOf, carryTrack and beltOf over everyone leaves the save as it was', JSON.stringify(r.H.pack()) === before);
 });
 
+// ---- B3: the trade, enacted ----
+section(24, () => {
+  // a scripted island: a landing, a hall, wood 40, eight adults, a full store so the trade is the second branch (ten of timber for meal)
+  const make = () => { const h = fresh(7);
+    h.ev("while(people.filter(p=>!isKid(p)&&!p.dead).length<8)addPerson(center.x+1,center.y+1,{age:25});for(const p of people)p.craft=-1");
+    h.ev("bldg.push({kind:'hall',x:center.x+8,y:center.y-6,w:3,h:2,done:true,prog:0,work:80});wood=40;granary=60;food=60;time=dayLen*.4;spawnBoat('trade',landings[0],{});boatArrive(boats.find(b=>b.kind==='trade'))");
+    return h; };
+  const a = make();
+  const eco = a.ev('[wood,granary,food]');
+  const hauling = () => a.ev("people.filter(p=>p.task==='haul').map(p=>p.name)");
+  const names = hauling();
+  check('trade: after the arrival at least one person has task haul', names.length >= 1, JSON.stringify(names));
+  check('trade: the first min(4,n) adults of the wavers haul, four of eight', names.length === 4 && a.ev("people.filter(p=>p.task==='haul').every(p=>!isKid(p)&&p.haulWood===1&&p.haulSt===0)"), JSON.stringify(names));
+  check('trade: the numbers moved on the landing and are the old branch\'s (wood 40 to 30, granary 60 to 72), before anyone has walked', eco[0] === 30 && eco[1] === 72 && eco[2] === 60, JSON.stringify(eco));
+  const top = {};
+  for (let i = 0; i < 1200; i++) { a.ev('step(.05)');
+    for (const r of a.ev("people.filter(p=>p.task==='haul').map(p=>[p.name,p.haulSt])")) top[r[0]] = Math.max(top[r[0]] || 0, r[1]);
+    for (const n of names) if (a.ev(`(()=>{const p=byName(${JSON.stringify(n)});return p.haulSt===3&&p.task==='idle'})()`)) top[n] = 3; }
+  check('trade: every hauler reaches haulSt 3 and returns to idle within 1,200 steps', names.every(n => top[n] === 3 && a.ev(`byName(${JSON.stringify(n)}).task!=='haul'`)) && hauling().length === 0, JSON.stringify(top));
+  // paid in meal only: the first branch with no timber to give, so nobody carries a length of timber
+  const m = fresh(7);
+  m.ev("while(people.filter(p=>!isKid(p)&&!p.dead).length<8)addPerson(center.x+1,center.y+1,{age:25});wood=2;granary=0;food=0;time=dayLen*.4;spawnBoat('trade',landings[0],{});boatArrive(boats.find(b=>b.kind==='trade'))");
+  check('trade: no timber paid, no timber carried (haulWood 0, and carryOf names nothing on the way down)', m.ev("people.filter(p=>p.task==='haul').length>=1&&people.filter(p=>p.task==='haul').every(p=>p.haulWood===0)") && m.ev("(()=>{const p=people.find(q=>q.task==='haul');p.haulSt=1;return carryOf(p)})()") === null);
+  // a storm drops the errand at once
+  const s = make(); s.ev('storm=true');
+  for (let i = 0; i < 60; i++) s.ev('step(.05)');
+  check('trade: with a storm the haulers are idle within 60 steps and nobody is left in haul', s.ev("people.filter(p=>p.task==='haul').length") === 0);
+  // what is carried, by haulSt
+  const c = make(), pn = names[0], cf = (st, w) => c.ev(`(()=>{const p=byName(${JSON.stringify(pn)});p.haulSt=${st};p.haulWood=${w};const c=carryOf(p);return c?c.k:null})()`);
+  check('trade: a hauler carries timber (as a plank) only on the way to the landing, nothing while waiting or going down, a sack on the way up', cf(0, 1) === null && cf(1, 1) === 'plank' && cf(1, 0) === null && cf(2, 1) === null && cf(3, 1) === 'sack' && cf(3, 0) === 'sack', JSON.stringify([cf(0, 1), cf(1, 1), cf(1, 0), cf(2, 1), cf(3, 1), cf(3, 0)]));
+  check('trade: whyText has a line for each haulSt', [0, 1, 2, 3].every(st => c.ev(`(()=>{const p=byName(${JSON.stringify(pn)});p.haulSt=${st};p.haulWood=1;return whyText(p)})()`).length > 20));
+  // the first time a person hauls timber they get one life line, not two
+  const l = make(); for (let i = 0; i < 700; i++) l.ev('step(.05)');
+  const lines = l.ev("people.map(p=>p.hist.filter(h=>h.s===HAUL_LINE).length)");
+  check('trade: whoever hauled timber has the life line once', Math.max(...lines) === 1 && lines.filter(n => n === 1).length >= 1, JSON.stringify(lines));
+  // the cargo drawing reads and does not write
+  const r = make();
+  r.ev("for(let i=0;i<400;i++)step(.05)");
+  const before = JSON.stringify(r.H.pack());
+  r.ev("{const ents=[];drawStock(ents,0);for(const e of ents)void e.y}");
+  check('trade: the cargo is counted from the haulers (timber on the sand, four sacks in the boat) while the boat waits', r.ev("cargo.tim>=1&&cargo.n===4"), JSON.stringify(r.ev('cargo')));
+  check('trade: drawing the cargo leaves the save as it was', JSON.stringify(r.H.pack()) === before);
+});
+
 console.log(`${fail ? 'FAIL' : 'PASS'}: ${pass} of ${pass + fail} unit checks`);
 process.exit(fail ? 1 : 0);

@@ -274,6 +274,17 @@ function step(dt){
           p.task='idle';p.t=1;if(R()<.25)say(store?`${B(p)} carries a basket of grain to the store, against the winter.`:`${B(p)} brings in a basket of grain.`,false,'basket')}}break;
       case 'carry': if(walk(p,dt)){if(p.carrySt===0){p.carrySt=1;goTo(p,center.x,center.y,'carry',0);if(R()<.2)say(`${B(p)} tips the basket into the hopper and waits while the stones do their slow work.`,false,'hopper')}
         else{granary+=2;craftUp(p,4);p.task='idle';p.t=1;if(R()<.2)say(`${B(p)} carries the meal down from the mill to the store, dusted white to the elbows.`,false,'meal')}}break;
+      /* B3: the trade, enacted. haulSt 0 to the pile, 1 to the landing with timber if timber was paid, 2 waiting there until the boat has under 20 left,
+         3 up to the store with a sack. The stock changed when the boat landed; this is who is seen to do it, and it moves nothing but the walker.
+         No R(): every target is set straight. A storm, night or a boat that has gone drops the errand, as a reload does. */
+      case 'haul':{
+        if(storm||p.inBoat||(p.haulSt<2&&!trader)){p.task='idle';p.t=1;break}
+        if(p.haulSt===2&&(!trader||trader.t<20)){const sk=stockSpots().sack;p.haulSt=3;p.tx=sk.x/T+(p.off%1-.5)*.6;p.ty=sk.y/T+.3}
+        else if(walk(p,dt)){
+          if(p.haulSt===0){const l=trader.land;p.haulSt=1;p.tx=l.x+.5+(p.off%1-.5)*.6;p.ty=l.y+.5}
+          else if(p.haulSt===1){p.haulSt=2;if(p.haulWood&&!p.hist.some(h=>h.s===HAUL_LINE))p.hist.push({d:dayCount,s:HAUL_LINE})}
+          else if(p.haulSt===3){p.task='idle';p.t=1}}
+        break}
       case 'water': if(walk(p,dt)){if(p.waterSt===0){p.waterSt=1;const f=p.wtgt;if(f)goTo(p,f.x+.5,f.y+.5,'water',0);else{p.task='idle';p.t=1}}
         else{const f=p.wtgt;if(f&&f.g<1)f.g=Math.min(1,f.g+.15);p.wtgt=null;craftUp(p,0);p.task='idle';p.t=1;if(R()<.25)say(`${B(p)} carries well water to the fields, two buckets at a time, and the rows drink it standing up.`,false,'water')}}break;
       case 'fish': if(storm&&!has(p,'brave')){p.task='idle';p.t=1;break} // light rain is only water; work goes on
