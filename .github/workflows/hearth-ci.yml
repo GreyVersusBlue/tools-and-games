@@ -17,6 +17,8 @@
 #         minutes), `decade` (six), and every per-sprint mode, one job per
 #         mode so a red one names itself. Never on a pull request: the sweep
 #         is about half an hour end to end and would hold every PR open.
+#         One more nightly job, `longrun`, is Node only: 800 island days of
+#         the public island's server (test/longrun.mjs, C6).
 #
 # The harness has no screenshots, so the browser pin is not about pixels. It
 # is about arithmetic. Every distance on the island goes through Math.hypot,
@@ -185,3 +187,22 @@ jobs:
       # breadcrumb, page error or failed check.
       - name: ${{ matrix.mode }}
         run: node harness.mjs ${{ matrix.mode }}
+
+  # The public island's long run, short form (C6): one island for 800 island days through server/world.mjs, Node only (no browser, no
+  # install). Fails when step cost per day at the end is over three times its value at day 500, when the compressed save passes 1.5 million
+  # characters, or when resident memory passes 384 MB. The full 6,480 days is run by hand; see Projects/hearth/server/README.md.
+  longrun:
+    name: deep · longrun (800 island days)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: longrun --days 800
+        working-directory: Projects/hearth/test
+        run: node longrun.mjs --days 800

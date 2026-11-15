@@ -69,7 +69,7 @@ export function createWorld(opts = {}) {
     // the island as a record: the JSON (hash is of this), the compressed string a share link carries, and where it stands
     snapshot() {
       const json = JSON.stringify(g.H.pack());
-      return { step: gstep, hash: fnv(json), save: g.H.lzEnc(json) };
+      return { step: gstep, hash: fnv(json), save: g.H.lzEnc(json), raw: json.length };
     },
     // unpack the island's own snapshot, so the server's island is at every epoch the island anybody gets by loading that file. With
     // `newCode` it builds a new context from the scripts on disk first (the snapshot goes through migrate there); without it the

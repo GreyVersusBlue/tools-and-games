@@ -1489,6 +1489,9 @@ configuration or drops an increment, never a design already built.
    under the web root. If the web server is configured some other way, the
    `alias` block does the same job. This is the one thing the plan cannot see
    from the repo.
+   **Answered by Devon, 2026-11-15: "Let's go with the default options to
+   build c6."** The default stands: one extra read-only mount under the web
+   root, no `alias` block (C6's `compose.example.yml` and `README.md`).
 5. **Which island is the public one?** Default: seed 7, Fenstrand, the island
    on the board's card, known to stay healthy for 35 island years in
    `decade`.

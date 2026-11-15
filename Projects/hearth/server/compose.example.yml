@@ -1,0 +1,30 @@
+# Hearth's public island: the one extra container (DESIGN-arc-three.md 5.4). An example, not a file anything reads. Copy the service into the
+# compose file the site already uses and replace the three <...> paths. No port is published: the container writes files, the web
+# container serves them. See README.md in this folder.
+services:
+  hearth-live:
+    image: node:22-alpine
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    working_dir: /app/Projects/hearth
+    command: ["node", "--max-old-space-size=192", "server/live.mjs"]
+    environment:
+      HEARTH_DATA: /data            # private state: anchor, newest two epoch files
+      HEARTH_PUBLIC: /public        # what the web server serves at /hearth-live/
+      HEARTH_SEED: "7"              # the first island (Fenstrand)
+      HEARTH_DAY_SECONDS: "1200"    # real seconds per island day
+      HEARTH_ERA_DAYS: "90"         # real days per era (published only, eras are C7)
+    volumes:
+      - <the served checkout of this repo>:/app:ro
+      - <state>/hearth-live/data:/data
+      - <state>/hearth-live/public:/public
+    mem_limit: 384m
+    cpus: 0.5
+
+  # The one change to the web container you already run: one more read-only mount, so the folder is served with no change to its
+  # configuration. Add this line to that service's volumes, not to hearth-live's.
+  #
+  #   web:
+  #     volumes:
+  #       - <state>/hearth-live/public:/usr/share/nginx/html/hearth-live:ro
