@@ -325,7 +325,7 @@ async function whoChecks(page) {
     // ---- (c) singing and the teller. Four stand at the fire a row apart: two know the song, two do not, and the oldest of the four is not one of the two ----
     const [s1, s2, n1, tl] = six.slice(2, 6); [s1, s2, n1, tl].forEach((p, i) => { stand(p, spot.x + 2 + i * 4, cy); p.task = 'gather'; ageTo(p, [32, 38, 36, 55][i]); });
     for (const p of [A, B]) stand(p, p.x, cy - 5);
-    const songs0 = ev('songs').slice(); ev('songs.length=0');
+    const songs0 = ev('songs').slice(); ev('songs.length=0'); ev('singNow=null'); /* an earlier scene may have heard a song; its window is animT 0 to a few seconds, the same clock this check reads */
     ev(`songs.push({ci:3,comp:${JSON.stringify(s1.name)},kn:[${JSON.stringify(s1.name)},${JSON.stringify(s2.name)}],lost:0,d:dayCount})`); ev('storyDay=dayCount');
     const sky = H.skyAt(.5, 'summer', 'clear', 0), hex = ev('noteCol(songs[0])'), want = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) * sky[(i - 1) / 2] / 255);
     const notes = p => { const g2 = null; let n = 0; const cap = draw(); for (let y = p.y * T - 26; y < p.y * T - 8; y++) for (let x = p.x * T + 2; x < p.x * T + 8; x++) { const c = cap(x, y); if (Math.max(Math.abs(c[0] - want[0]), Math.abs(c[1] - want[1]), Math.abs(c[2] - want[2])) <= 6) n++; } return n; };
@@ -338,6 +338,19 @@ async function whoChecks(page) {
     H.setAnimT(0); const on = draw(); ev('storyDay=0'); const off = draw(); ev('storyDay=dayCount');
     const diff = (p, rows) => { let n = 0; for (const yy of rows) for (const xx of [p.x * T - 1, p.x * T]) { const a = on(xx, yy), b = off(xx, yy); if (Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2])) >= 8) n++; } return n; };
     out.teller = { head: diff(tl, [tl.y * T - 9]), others: [n1].map(p => diff(p, [p.y * T - 9, p.y * T - 8, p.y * T - 5])).concat([diff(s1, [s1.y * T - 9])]) };
+    // ---- (d) A13: the note follows the beat that is sung. A forced songTune (audio is off here, which is the point: the picture follows the tune with or
+    // without the sound) sets singNow; the note over the composer is read at a beat and half a beat later and has to have moved; the one who knows the song
+    // but is not singing yet shows nothing on the first pass and a note on the second; a lost song sets nothing.
+    ev('songs.length=0'); ev('storyDay=dayCount');
+    ev(`songs.push({ci:3,comp:${JSON.stringify(s1.name)},kn:[${JSON.stringify(s1.name)},${JSON.stringify(s2.name)}],lost:0,d:dayCount})`);
+    ev('singNow=null'); H.setAnimT(0); ev('songTune(songs[0],2)');
+    const sn = ev('singNow'), colourPx = (cap, p) => { const m = []; for (let y = p.y * T - 26; y < p.y * T - 8; y++) for (let x = p.x * T + 2; x < p.x * T + 8; x++) { const c = cap(x, y); m.push(Math.max(Math.abs(c[0] - want[0]), Math.abs(c[1] - want[1]), Math.abs(c[2] - want[2])) <= 6 ? 1 : 0); } return m; };
+    const atBeat = sn ? sn.a + 3 * sn.beat : 0, atHalf = atBeat + sn.beat / 2;
+    H.setAnimT(atBeat); const m0 = colourPx(draw(), s1); H.setAnimT(atHalf); const m1 = colourPx(draw(), s1);
+    out.beat = { set: !!sn, names: sn && sn.names, n: sn && sn.deg.length, on0: m0.reduce((a, b) => a + b, 0), on1: m1.reduce((a, b) => a + b, 0), diff: m0.filter((v, i) => v !== m1[i]).length };
+    H.setAnimT(atBeat); out.beat.s2first = colourPx(draw(), s2).reduce((a, b) => a + b, 0);
+    H.setAnimT(sn.second + 2 * sn.beat); out.beat.s2second = colourPx(draw(), s2).reduce((a, b) => a + b, 0);
+    ev('singNow=null'); ev('songs[0].lost=1'); ev('songTune(songs[0],2)'); out.beat.lostSets = ev('singNow') !== null; ev('songs[0].lost=0'); ev('singNow=null');
     // someone sick and still up is a shade paler
     ev('songs.length=0'); ev('storyDay=0'); stand(tl, tl.x, tl.y);
     const lum = c => .299 * c[0] + .587 * c[1] + .114 * c[2];
@@ -359,6 +372,9 @@ async function whoChecks(page) {
   check('singing: the two who know the song have its colour over their heads at every frame of the rise, the two who do not have none', r.sing.every(f => f[0] >= 3 && f[1] >= 3 && f[2] === 0 && f[3] === 0), `${r.hex}: ${JSON.stringify(r.sing)}`);
   check('singing: a song that is lost is silent', r.lost[0] === 0 && r.lost[1] === 0, JSON.stringify(r.lost));
   check('teller: the oldest at the fire stands a pixel taller on the night; nobody else changes', r.teller.head === 2 && r.teller.others.every(n => n === 0), JSON.stringify(r.teller));
+  check('sung: with singNow set by songTune, the note over the composer has the song colour and has moved half a beat later', r.beat.set && r.beat.on0 >= 3 && r.beat.on1 >= 3 && r.beat.diff >= 4, JSON.stringify(r.beat));
+  check('sung: the second voice shows no note on the first pass, shows one on the second', r.beat.s2first === 0 && r.beat.s2second >= 3, JSON.stringify(r.beat));
+  check('sung: a lost song sets nothing for the picture to follow', r.beat.lostSets === false, JSON.stringify(r.beat));
   check('sick: someone sick and still up is drawn paler than the same person well', r.sick.ill >= r.sick.well + 8, `${r.sick.well.toFixed(1)} well, ${r.sick.ill.toFixed(1)} ill`);
 }
 

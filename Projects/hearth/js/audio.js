@@ -124,13 +124,33 @@ const songHz=(d,k)=>k[0]*Math.pow(2,(k[1][d%5]+(d>=5?12:0))/12)/2;
 // The tune, at the fire. Pass one is the composer alone; on pass two the ones who know it come in, which is what the prose at the fire
 // already says happens. Every voice is one note() per degree, scheduled ahead on sfxG, so the storm ducks this with everything else.
 // Returns the degrees, or null when nothing sounded — a lost song is silent, and that is the design.
+/* A13: a song that sounds sung. Each voice is one sawtooth through two band-pass filters at vowel formants (a different pair per voice) with a slow
+   vibrato, so the fire-night song is a small choir and not five beeps; a child's voice is an octave up; a 180 ms feedback delay (gain .25) sits on
+   the song and nothing else, for the hill. What was scheduled is kept in singNow, a presentation variable only folk.js reads: start (animT clock),
+   beat, degrees, who sings on each pass. A lost song schedules nothing and leaves singNow alone. Math.random and R() are never called here. */
+let singNow=null;
+const FORMANTS=[[700,1100],[600,1250],[800,1000],[500,1400],[650,1150]];
+const SONG_LEAD=.2,SONG_BEAT=.38,SONG_GAP=.45,SONG_MAKEUP=1.7;     /* two narrow formants pass little of a sawtooth: this brings the choir back to the level the five beeps measured (peak 0.103) */
+function songVoice(deg,k,t,beat,vol,pan,vi,kid,dest){const o=AC.createOscillator(),vib=AC.createOscillator(),vg=AC.createGain(),sum=AC.createGain();
+  o.type='sawtooth';vib.frequency.value=5+vi*.35;vg.gain.value=kid?14:9;vib.connect(vg).connect(o.detune);   /* cents; a child's wobbles a little more */
+  const fm=FORMANTS[vi%FORMANTS.length],sc=kid?1.18:1;
+  for(const f of fm){const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=f*sc;bp.Q.value=5;o.connect(bp);bp.connect(sum)}
+  deg.forEach((d,i)=>{const f=songHz(d,k)*(kid?2:1),at=t+i*beat,g=AC.createGain();g.gain.value=0;o.frequency.setValueAtTime(f,at);
+    g.gain.setValueAtTime(.0001,at);g.gain.linearRampToValueAtTime(vol*SONG_MAKEUP,at+.14);g.gain.exponentialRampToValueAtTime(.0004,at+beat*2.1);
+    sum.connect(g);g.connect(dest)});
+  const end=t+deg.length*beat+beat*2.1+.06;o.start(t);vib.start(t);o.stop(end);vib.stop(end)}
 function songTune(sg,voices){if(!sg||sg.lost)return null;const deg=songDegrees(sg.ci);
-  if(!AC||!audioOn)return deg;                                        // the tune is a fact about the island; the sound is a setting
-  const k=KEYS[sea()],t=AC.currentTime+.2,beat=.38,vs=Math.max(1,Math.min(4,(voices|0)||1));
-  deg.forEach((d,i)=>note(songHz(d,k),beat*2.1,.05,'triangle',-.12,sfxG,t+i*beat));
-  const t2=t+deg.length*beat+.45;
-  for(let v=0;v<vs;v++){const pan=vs<2?0:(v/(vs-1))*1.1-.55;          // the second pass, spread across the fire
-    deg.forEach((d,i)=>note(songHz(d,k)*(v?1.003:1),beat*2.1,v?.026:.05,v?'sine':'triangle',pan,sfxG,t2+i*beat+v*.02))}
+  const vs=Math.max(1,Math.min(4,(voices|0)||1)),beat=SONG_BEAT,t2=SONG_LEAD+deg.length*beat+SONG_GAP;
+  const names=[sg.comp].concat((sg.kn||[]).filter(n=>n!==sg.comp)).filter(n=>n!=null&&n!=='').slice(0,vs);
+  singNow={a:animT+SONG_LEAD,beat,deg,names,second:animT+t2,end:animT+t2+(deg.length+1)*beat};   /* the tune is a fact about the island; the picture follows it with or without the sound */
+  if(!AC||!audioOn)return deg;
+  const k=KEYS[sea()],t=AC.currentTime+SONG_LEAD,bus=AC.createGain(),dly=AC.createDelay(.5),fb=AC.createGain(),wet=AC.createGain();
+  dly.delayTime.value=.18;fb.gain.value=.25;wet.gain.value=.25;bus.connect(sfxG);bus.connect(dly);dly.connect(fb).connect(dly);dly.connect(wet).connect(sfxG);
+  const kidOf=n=>{const q=n&&byName(n);return !!q&&isKid(q)};
+  songVoice(deg,k,t,beat,.05,-.12,0,kidOf(names[0]),bus);
+  const tt=t+deg.length*beat+SONG_GAP;
+  for(let v=0;v<vs;v++){const pan=vs<2?0:(v/(vs-1))*1.1-.55;songVoice(deg,k,tt+v*.02,beat,v?.026:.05,pan,v,kidOf(names[v]),bus)}
+  setTimeout(()=>{try{bus.disconnect();wet.disconnect();fb.gain.value=0}catch(e){}},(deg.length*beat*2+SONG_GAP+beat*2.1+2.5)*1000);
   return deg}
 // ---------- A12: the island's own voices ----------
 // Math.random for the sound, never R(). Nothing here is written to the simulation; every function only reads it. The one thing that is a

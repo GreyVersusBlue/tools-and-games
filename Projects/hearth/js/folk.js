@@ -63,7 +63,14 @@ function drawFolk(p){if(p.inside)return;
     if(p.heard){g.fillStyle='#f0b35a';g.fillRect(x+ox,y-10*k,1,1)}}
   /* and a song you can hear: three frames of note rising over each singer, in the colour of the song they know. Everyone at the fire who knows one
      sings it while the story is told; at work it is now and then, as it was */
-  const sg=songs.length?songOf(p):null;
-  if(sg&&((p.task==='gather'&&storyDay===dayCount)||((p.task==='chop'||p.task==='till'||p.task==='harvest'||p.task==='fish')&&Math.sin(animT*.7+p.off*3)>.94))){
+  const sg=songs.length?songOf(p):null,sn=singNow&&animT>=singNow.a&&animT<singNow.end?singNow:null;
+  /* A13: while a tune is sounding the note belongs to the beat you hear, not to a clock of its own: only who is singing right now shows one, and it
+     rises through its three frames once per beat, a little higher for a higher degree. Outside a hearing nothing here changes. */
+  const one=sn&&animT<sn.second,t0=one?sn.a:sn?sn.second:0,bt=sn?(animT-t0)/sn.beat:0;
+  if(sn&&sg&&(one?p.name===sn.names[0]:sn.names.includes(p.name))){
+    if(bt<0||bt>=sn.deg.length+1)return; /* before its first note and after its last has died away: not singing */
+    const i=Math.min(sn.deg.length-1,Math.floor(bt)),fr=Math.min(2,(((bt-Math.floor(bt))*3)|0)),by=y-12*k-fr*2-(sn.deg[i]>4?1:0);g.fillStyle=noteCol(sg);
+    g.fillRect(x+4,by,1,4);g.fillRect(x+3,by+3,2,1);g.fillRect(x+5,by,1,1);return}
+  if(!sn&&sg&&((p.task==='gather'&&storyDay===dayCount)||((p.task==='chop'||p.task==='till'||p.task==='harvest'||p.task==='fish')&&Math.sin(animT*.7+p.off*3)>.94))){
     const ph=((animT*1.4+p.off)%1+1)%1,fr=Math.min(2,(ph*3)|0),by=y-12*k-fr*2;g.fillStyle=noteCol(sg);
     g.fillRect(x+4,by,1,4);g.fillRect(x+3,by+3,2,1);g.fillRect(x+5,by,1,1)}}
