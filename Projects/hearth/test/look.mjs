@@ -87,7 +87,7 @@ function check(name, ok, detail = '') { console.log(`${ok ? 'ok  ' : 'FAIL'} ${n
 async function animChecks(page) {
   const r = await page.evaluate(() => {
     const H = window.__hearth, g = document.getElementById('c').getContext('2d'), W = 110, HH = 70, T = 8;
-    H.setZoom(1);
+    H.setZoom(1); H.lookOff.smoke = true; /* A7: the smokehouse's column rises over rock and moves with animT on purpose */
     const shot = a => { H.setAnimT(a); H.draw(); return g.getImageData(0, 0, W * T, HH * T).data; };
     const t0 = H.time, d0 = shot(0), d3 = shot(3);
     const tiles = H.tilesNow, at = (x, y) => (x < 0 || y < 0 || x >= W || y >= HH) ? 0 : tiles[y * W + x];
@@ -106,6 +106,7 @@ async function animChecks(page) {
       for (let y = ty * T; y < ty * T + T; y++) { if (bands(y)) continue; for (let x = tx * T; x < tx * T + T; x++) {
         if (kind === 1) { waterPx++; if (differs(x, y)) water++; } else { rockPx++; if (differs(x, y)) { rock++; if (rockAt.length < 6) rockAt.push([x, y]); } } } }
     }
+    H.lookOff.smoke = false;
     const sameTime = H.time === t0;
     H.setAnimT(3); H.frame(.5, false); const held = H.animT;
     H.frame(.5, true); const ran = H.animT;
@@ -637,6 +638,65 @@ async function rainChecks() {
   await ctx.close();
 }
 await rainChecks();
+
+// ---- A7: weather that lands, the cold half. Smoke over the houses with somebody home, fog that is thickest at the edge, snow that leaves the roofs ----
+async function coldChecks() {
+  const prep = async (sc, extra) => {
+    const { ctx, page } = await open(7);
+    await page.evaluate(sc => { const H = window.__hearth; while (H.dayCount < sc.day) H.step(.05); H.setTime((Math.floor(H.time / 140) + sc.f) * 140); H.setWx(sc.wx); H.setSnow(sc.snow); for (let i = 0; i < 40 + (sc.settle || 0); i++) H.step(.05); H.setZoom(1); H.setAnimT(500.5); }, sc);
+    return { ctx, page };
+  };
+  /* S6: winter dusk. Smoke-coloured pixels in the 20 px above each house, while its people are home and after everybody has been moved away */
+  {
+    const { ctx, page } = await prep(SCENES[5]);
+    const r = await page.evaluate(() => {
+      const H = window.__hearth, g = document.getElementById('c').getContext('2d'), T = 8, Wd = 110, HH = 70, cols = [[0xcf, 0xc8, 0xbe], [0x6a, 0x6f, 0x8e]];
+      /* put somebody home in four houses (asleep at the door) and everybody else a long way off; then the same frame with smoke taken away, so what differs is the smoke */
+      H.houses.forEach((h, i) => { for (const p of H.people) if (p.home === h) { if (i % 3 === 0) { p.x = h.x + 1; p.y = h.y + 2; p.inside = false; p.task = 'sleep'; } else { p.x = 1; p.y = 1; p.inside = false; p.task = 'idle'; } } });
+      for (const p of H.people) { p.shelterH = null; if (!H.houses.includes(p.home) || !(H.houses.indexOf(p.home) % 3 === 0)) { p.x = 1; p.y = 1; p.inside = false; p.task = 'idle'; } }
+      const grab = () => { H.draw(); return g.getImageData(0, 0, Wd * T, HH * T).data; };
+      const withS = grab(); H.lookOff.smoke = true; const noS = grab(); H.lookOff.smoke = false;
+      const out = []; for (const h of H.houses) { let n = 0; for (let y = Math.max(0, h.y * T - 20); y < h.y * T + 1; y++) for (let x = h.x * T + 6; x < Math.min(Wd * T, h.x * T + 24); x++) { const k = (y * Wd * T + x) * 4; if (Math.abs(withS[k] - noS[k]) + Math.abs(withS[k + 1] - noS[k + 1]) + Math.abs(withS[k + 2] - noS[k + 2]) > 20 && cols.some(c => Math.hypot(withS[k] - c[0], withS[k + 1] - c[1], withS[k + 2] - c[2]) < 70)) n++; }
+        out.push({ n, home: H.houseOccupied(h) }); }
+      return { out, pos: H.houses.map(h => [h.x, h.y]) };
+    });
+    const hm = r.out.filter(o => o.home), away = r.out.filter((o, i) => !o.home && !r.out.some((q, j) => q.home && Math.abs(r.pos[i][0] - r.pos[j][0]) < 4 && Math.abs(r.pos[i][1] - r.pos[j][1]) < 4)); /* a neighbour's column can lean over its neighbour: only houses with no occupied house within 4 tiles are asked for none */
+    check('smoke: in S6 every house with somebody home has at least 4 smoke-coloured pixels in the 20 px above it', hm.length >= 2 && hm.every(o => o.n >= 4), JSON.stringify(r.out));
+    check('smoke: in S6 above a house whose people have been moved away there is none', away.length >= 2 && away.every(o => o.n === 0), JSON.stringify(r.out));
+    console.log(`      smoke: ${hm.length} of ${r.out.length} houses with somebody home, smoke pixels ${hm.map(o => o.n).join(',')}; away ${away.map(o => o.n).join(',')}`);
+    await ctx.close();
+  }
+  /* S4: autumn fog. Saturation at the four corners of the view against the middle, with fog and with it taken away */
+  {
+    const { ctx, page } = await prep(SCENES[3]);
+    const r = await page.evaluate(() => {
+      const H = window.__hearth, g = document.getElementById('c').getContext('2d'), cvs = document.getElementById('c'), w = cvs.width, h = cvs.height;
+      const sat = (d, x0, y0) => { let t = 0, n = 0; for (let y = y0; y < y0 + 40; y++) for (let x = x0; x < x0 + 40; x++) { const k = (y * w + x) * 4, mx = Math.max(d[k], d[k + 1], d[k + 2]), mn = Math.min(d[k], d[k + 1], d[k + 2]); if (mx > 0) { t += (mx - mn) / mx; n++; } } return t / n; };
+      const read = () => { H.draw(); const d = g.getImageData(0, 0, w, h).data; const c = [[0, 0], [w - 40, 0], [0, h - 40], [w - 40, h - 40]].map(([x, y]) => sat(d, x, y)); return { centre: sat(d, w / 2 - 20, h / 2 - 20), corner: c.reduce((a, b) => a + b, 0) / 4 }; };
+      const fog = read(), fogA = H.fogA;
+      H.setFogA(0); const clear = read();
+      return { fog, clear, fogA };
+    });
+    check('fog: in S4 the colour saturation at the view\'s corners is lower than at its centre', r.fogA > .3 && r.fog.corner < r.fog.centre, JSON.stringify(r));
+    check('fog: the corners lose at least .1 more saturation to the fog than the centre does', (r.clear.corner - r.fog.corner) - (r.clear.centre - r.fog.centre) >= .1, JSON.stringify(r));
+    await ctx.close();
+  }
+  /* S5-like: snow thinning on the roofs sheds pixels that move; deep snow and falling snow do not */
+  {
+    const { ctx, page } = await prep(SCENES[4]);
+    const r = await page.evaluate(() => {
+      const H = window.__hearth, g = document.getElementById('c').getContext('2d'), T = 8, Wd = 110, HH = 70, f = H.sheet.atlas.frames['house-snow'];
+      const diff = sd => { H.setWx('clear'); H.setSnow(sd); H.setAnimT(500.5); H.lookOff.shed = false; H.draw(); const a = g.getImageData(0, 0, Wd * T, HH * T).data; H.lookOff.shed = true; H.draw(); const b = g.getImageData(0, 0, Wd * T, HH * T).data; H.lookOff.shed = false; let n = 0;
+        for (const h of H.houses) { const oy = h.y * T - f.ay, ox = h.x * T - f.ax; for (let y = oy; y < oy + f.h + 5; y++) for (let x = ox; x < ox + f.w; x++) { if (x < 0 || y < 0 || x >= Wd * T || y >= HH * T) continue; const k = (y * Wd * T + x) * 4; if (Math.abs(a[k] - b[k]) + Math.abs(a[k + 1] - b[k + 1]) + Math.abs(a[k + 2] - b[k + 2]) > 30) n++; } }
+        return n; };
+      const thin = diff(.2); H.setSnow(.2); const sh1 = H.snowSheds(); const deep = diff(.5); H.setSnow(.5); const sh2 = H.snowSheds();
+      return { thin, deep, sheds: sh1, notShed: sh2 };
+    });
+    check('snow: at a thinning .2 under clear sky pixels move below the roofs\' south eaves, and not at .5', r.sheds && !r.notShed && r.thin >= 8 && r.deep === 0, JSON.stringify(r));
+    await ctx.close();
+  }
+}
+await coldChecks();
 
 const rows = [], lums = {};
 // the stock checks set wood, food and granary and the clock by hand, so they get an island of their own: run on the scenes' island they left S7's lit windows with no pairs to measure
