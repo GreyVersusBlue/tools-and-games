@@ -23,7 +23,7 @@
 // and data-side, the lab's data-compare, the file panel's data-result, the
 // storage session's own flags), never a first paint or a fixed sleep.
 
-import test, { after, before } from 'node:test';
+import test, { after, afterEach, before } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -50,6 +50,23 @@ before(async () => {
   server = await startServer();
   browser = await launch();
   wide = await openPlanner({ browser, server, width: 1280, height: 800, hash: '#scenarios', theme: 'light' });
+});
+
+// what a case installed in the page (a held-back answer, a counted start) never outlives it
+afterEach(async () => {
+  if (!wide || !wide.page) return;
+  await wide.page.evaluate(() => {
+    const derived = globalThis.sv2.store.derived;
+    if (globalThis.__gate) {
+      globalThis.__gate.open();
+      derived.results = globalThis.__gate.real;
+      globalThis.__gate = null;
+    }
+    if (globalThis.__realSetOther) {
+      derived.setOther = globalThis.__realSetOther;
+      globalThis.__realSetOther = null;
+    }
+  }).catch(() => {});
 });
 
 // a close that does not come back is given up on after 10 s: a failed case may leave a page
@@ -549,6 +566,7 @@ async function gate(page) {
 const openGate = (page) => page.evaluate(() => {
   globalThis.__gate.open();
   globalThis.sv2.store.derived.results = globalThis.__gate.real;
+  globalThis.__gate = null;
 });
 
 async function uploadWing(page, name, project) {
@@ -945,7 +963,7 @@ test('a double press on Compare the two buildings starts one comparison', async 
 });
 
 // long names, right to left, on the phones: Stop stays in view and nothing scrolls sideways
-const RTL = 'ملف-مدرسة-'.repeat(8) + '.json';
+const RTL = 'ملف-مدرسة-'.repeat(10) + '.json';
 async function longName(page) {
   await fresh(page, openScenarioSchool());
   const stage0 = await page.evaluate(() => document.querySelector('.scn .mov-stage').getBoundingClientRect().height);
@@ -960,17 +978,19 @@ async function longName(page) {
     const stop = document.querySelector('.scn-bld__stop').getBoundingClientRect();
     const head = document.querySelector('.scn-bld__head').getBoundingClientRect();
     const stage = document.querySelector('.scn .mov-stage').getBoundingClientRect();
-    return { top: stop.top, bottom: stop.bottom, left: stop.left, right: stop.right, width: innerWidth, height: innerHeight, headHeight: head.height, stage: stage.height, scrolls: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+    return { headTop: head.top, top: stop.top, bottom: stop.bottom, left: stop.left, right: stop.right, width: innerWidth, height: innerHeight, headHeight: head.height, stage: stage.height, scrolls: document.documentElement.scrollWidth > document.documentElement.clientWidth };
   });
   assert.ok(box.left >= 0 && box.right <= box.width, 'Stop is inside the window across: ' + JSON.stringify(box));
   assert.ok(box.top >= 0 && box.bottom <= box.height, 'Stop is inside the window down: ' + JSON.stringify(box));
   assert.equal(box.scrolls, false, 'no sideways scroll');
+  // on a short window the head wraps and Stop stays at its top, where a band taller than the window still shows it
+  if (box.height <= 420) assert.ok(Math.abs(box.top - box.headTop) <= 1, 'Stop is at the top of a wrapped head: ' + JSON.stringify(box));
   assert.ok(Math.abs(box.stage - stage0) <= 2, 'the band takes nothing from the stage: ' + stage0 + ' before, ' + box.stage + ' after');
   return box;
 }
 
-test('a long right-to-left file name: Stop stays in view at 390 by 844, at 844 by 390 and at 844 by 300', async () => {
-  for (const [width, height] of [[390, 844], [844, 390], [844, 300]]) {
+test('a long right-to-left file name: Stop stays in view at 390 by 844, at 844 by 390 and at 600 by 300', async () => {
+  for (const [width, height] of [[390, 844], [844, 390], [600, 300]]) {
     const own = await openPlanner({ browser, server, width, height, mobile: true, hash: '#scenarios', theme: 'light' });
     try {
       await longName(own.page);
