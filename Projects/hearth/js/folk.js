@@ -26,9 +26,9 @@ const tagsEl=document.getElementById('tags'),tagPool=[];
 function updateTags(){if(!tagsEl)return;
   const want=[];if(selected&&!selected.inside&&!selected.dead)want.push(selected);
   if(zoom>=2){const near=people.filter(p=>p!==selected&&!p.inside&&!p.dead&&Math.hypot(p.x-cur.x,p.y-cur.y)<3).sort((a,b)=>Math.hypot(a.x-cur.x,a.y-cur.y)-Math.hypot(b.x-cur.x,b.y-cur.y));
-    for(const p of near)if(want.length<6)want.push(p)}
+    for(const p of near)want.push(p)}
   const r=cv.getBoundingClientRect(),k=vScale();
-  for(let i=0;i<6;i++){let el=tagPool[i];if(!el){if(i>=want.length)continue;el=tagPool[i]=document.createElement('div');el.className='tag';tagsEl.appendChild(el)}
+  for(let i=0;i<6;i++){let el=tagPool[i]; /* six is the most there are */if(!el){if(i>=want.length)continue;el=tagPool[i]=document.createElement('div');el.className='tag';tagsEl.appendChild(el)}
     const p=want[i];if(!p){if(!el.hidden)el.hidden=true;continue}
     const cx=r.left+(p.x*T*k+cv.width/2-camX*T*k)/dprE,cy=r.top+((p.y*T-8*kOf(p)-(p.inBoat?1:0))*k+cv.height/2-camY*T*k)/dprE-2,key=p.name+'|'+(p===selected)+'|'+Math.round(cx)+'|'+Math.round(cy);
     if(el._k===key&&!el.hidden)continue;el._k=key;el.hidden=false;el.textContent=p.name;el.className=p===selected?'tag sel':'tag';el.style.left=Math.round(cx)+'px';el.style.top=Math.round(cy)+'px'}}
