@@ -225,8 +225,16 @@ function migrate(o){for(const h of LADDER)if(o.v===h.from){h.up(o);o.v=h.to}retu
 // The same ladder walked backwards, to forge a save of shape v out of a current one. Test-only, and it lives here rather than in the
 // harness so a hop cannot be added without its inverse.
 function forge(o,v){for(let i=LADDER.length-1;i>=0;i--){const h=LADDER[i];if(o.v===h.to&&h.to>v){h.down(o);o.v=h.from}}return o}
+/* A save is untrusted input (C1): the log writes names and chronicle text through innerHTML, and a save is about to be something a server
+   accepts and republishes. Plain text on every load, in place, before anything is built from it: no < > & " or backtick in any string, and
+   none over 400 characters. The game's own bold names are added at display time and are not in the save, so nothing it writes is lost. */
+function plainSave(v){
+  if(typeof v==='string'){const t=v.replace(/[<>&"`]/g,'');return t.length>400?t.slice(0,400):t}
+  if(Array.isArray(v)){for(let i=0;i<v.length;i++)v[i]=plainSave(v[i]);return v}
+  if(v&&typeof v==='object'){for(const k of Object.keys(v))v[k]=plainSave(v[k]);return v}
+  return v}
 function unpack(o){
-  migrate(o);
+  migrate(o);plainSave(o);
   newWorld(o.s);
   time=o.t;dayCount=o.d;lastYear=o.ly;lastSea=o.ls;wood=o.w;food=o.f;granary=o.g;hunger=o.hu;
   wx=o.wx;rain=wx==='rain'||wx==='thunder';storm=wx==='thunder';wxT=o.wt;snowD=o.sn;frozen=!!o.fz;fogA=o.fo;

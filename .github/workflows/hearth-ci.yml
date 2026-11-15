@@ -9,7 +9,7 @@
 #
 #   gate  on every pull request and push to main — the building sheet's
 #         validator, the Node unit suite, determinism, save, a twelve-day soak on the two fixed
-#         seeds, `sheet`, and `pinned`, which compares
+#         seeds, `sheet`, `look`, and `pinned`, which compares
 #         the forty-day pack() hashes of seeds 7 and 20260819 against
 #         test/hashes.json. About a minute of browser time; the install is the
 #         slow part.
@@ -117,6 +117,9 @@ jobs:
 
       - name: Sheet (every building drawn from its frame; no sheet, no island)
         run: node harness.mjs sheet
+
+      - name: Look rig (drawing is off the stream; eight scenes timed at two zooms)
+        run: node look.mjs
 
   deep:
     name: deep · ${{ matrix.mode }}

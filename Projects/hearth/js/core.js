@@ -321,16 +321,19 @@ function addEvent(kind,label,st){const e={d:dayCount,y:yearOf(dayCount),kind,lab
   chron.push(e);if(chronEl&&!chronEl.hidden)renderChron()}
 // ---------- terrain painting ----------
 const GRASS_PAL={spring:['#5f8f3e','#5a8a3b','#659745','#568437'],summer:['#6c923f','#678d3c','#729a46','#618639'],autumn:['#7c8a3d','#76853a','#838f45','#6f7f36'],winter:['#5c7a45','#587643','#617f4a','#546f40']};
+const TONE_DEEP=-.12,RELIEF_GAIN=16,RELIEF_SIGN=1; /* A3: the deepest water tone below TONE_DEEP; relief saturates at 1/16 of an elevation step across a tile */
 const TUFT={spring:'#4e7a31',summer:'#5a7a2e',autumn:'#8a7a2e',winter:'#4a6638'};
 function paintTerrain(){
   const s=sea(),sq=Math.round(snowD*6)/6;paintedKey=s+'|'+sq+'|'+frozen+'|'+roadV;
   const pal={[WATER]:['#274c78','#2b5687','#2f5f93'],[SAND]:['#cdb98a','#d4c294','#c6ad7c'],[GRASS]:GRASS_PAL[s],[ROCK]:['#6f6a60','#7b756a','#645f56']};
   const ICE=['#b9d3e3','#c4dbe8','#adc9dc'];
-  const rr=mulberry(seed^99);
+  const rr=mulberry(seed^99),r2s=mulberry(seed^0x7e44a1); /* A3: rr keeps its seven draws per tile; r2s is the shape's own stream, 36 draws per tile whether used or not */
+  const eAt=(x,y,d)=>(x<0||y<0||x>=W||y>=H)?d:elev[idx(x,y)];
+  const Q=new Float32Array(W*H*36);
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){const t=tiles[idx(x,y)],e=elev[idx(x,y)];const r1=rr(),r2=rr(),r3=rr(),r4=rr(),r5=rr(),r6=rr(),r7=rr(); // fixed draw per tile so repaints don't shuffle the ground
     const c=pal[t]||pal[GRASS];tg.fillStyle=c[(r1*c.length)|0];tg.fillRect(x*T,y*T,T,T);
     // a little more grain in the ground (sprint 11): depth in the water, mottle and flowers in the grass, speckle in the sand, cracks in the rock
-    if(t===WATER){if(e<.06){tg.fillStyle='#22436b';tg.fillRect(x*T,y*T,T,T);if(r6<.2){tg.fillStyle='#274c78';tg.fillRect(x*T+((r7*5)|0),y*T+((r3*6)|0),3,1)}}
+    if(t===WATER){if(e<.06){tg.fillStyle=e<TONE_DEEP?'#1d3a5f':'#22436b';tg.fillRect(x*T,y*T,T,T);if(r6<.2){tg.fillStyle='#274c78';tg.fillRect(x*T+((r7*5)|0),y*T+((r3*6)|0),3,1)}}
       else if(r6<.12){tg.fillStyle='#3a6ba3';tg.fillRect(x*T+((r7*6)|0),y*T+((r4*7)|0),2,1)}}
     if(t===GRASS&&r6<.14){tg.fillStyle=GRASS_PAL[s][3];tg.fillRect(x*T+((r7*5)|0),y*T+((r5*5)|0),3,2)}
     if(t===GRASS&&(s==='spring'||s==='summer')&&r7<.045){tg.fillStyle=s==='spring'?(r6<.5?'#e8a0b8':'#e6e2d8'):'#e2c25a';tg.fillRect(x*T+((r3*6)|0)+1,y*T+((r4*6)|0)+1,1,1)}
@@ -339,11 +342,38 @@ function paintTerrain(){
     if(t===GRASS&&r2<.12){tg.fillStyle=TUFT[s];tg.fillRect(x*T+((r3*6)|0),y*T+((r4*6)|0),2,1)}
     if(t===WATER&&frozen&&e>.16){tg.fillStyle=ICE[(r1*3)|0];tg.fillRect(x*T,y*T,T,T);if(r5<.15){tg.fillStyle='#8fb0c8';tg.fillRect(x*T+((r3*5)|0),y*T+((r4*7)|0),3,1)}}
     else if(t===WATER&&at(x,y-1)!==WATER){tg.fillStyle='#8fb6d6';tg.fillRect(x*T,y*T,T,1)}
-    if(t===ROCK&&r2<.3){tg.fillStyle='#e6e2d8';tg.fillRect(x*T+2,y*T+1,3,2)}
+    const qo=idx(x,y)*36;for(let i=0;i<36;i++)Q[qo+i]=r2s();const q=Q.subarray(qo,qo+36);
+    if(t!==WATER){ /* A3 relief: ground rising toward the south-east faces the north-west light; falling ground sits in shade */
+      const rise=eAt(x+1,y+1,e)-eAt(x-1,y-1,e),k=Math.max(-1,Math.min(1,rise*RELIEF_GAIN*RELIEF_SIGN));
+      if(k>0){tg.fillStyle='rgba(255,248,224,'+(.14*k).toFixed(3)+')';tg.fillRect(x*T,y*T,T,T)}
+      else if(k<0){tg.fillStyle='rgba(16,20,40,'+(.18*-k).toFixed(3)+')';tg.fillRect(x*T,y*T,T,T)}}
+    if(t===ROCK){ /* A3 strata: two or three darker bands per tile, and a full-width one where the contour steps between this tile and the one south */
+      tg.fillStyle='#4f4b44';
+      tg.fillRect(x*T+((q[0]*3)|0),y*T+1+((q[1]*3)|0),3+((q[2]*4)|0),1);
+      tg.fillRect(x*T+((q[3]*3)|0),y*T+5+((q[4]*3)|0),3+((q[5]*4)|0),1);
+      if(q[6]<.5)tg.fillRect(x*T+((q[7]*4)|0),y*T+3,2+((q[8]*5)|0),1);
+      if(Math.floor(e*40)!==Math.floor(eAt(x,y+1,e)*40)){tg.fillStyle='#46423c';tg.fillRect(x*T,y*T+T-2,T,1)}
+      if(e>.7){tg.fillStyle='#e6e2d8';tg.fillRect(x*T+2,y*T+1,3,2);if(q[9]<.6)tg.fillRect(x*T+((q[10]*5)|0),y*T+4+((q[11]*3)|0),3,1)}}
     const rd=road[idx(x,y)];if(rd===1){tg.fillStyle=r1<.5?'#8a7248':'#7e6841';tg.fillRect(x*T,y*T,T,T);tg.fillStyle='#6b5735';tg.fillRect(x*T+((r3*6)|0),y*T+((r4*7)|0),2,1)}
     else if(rd===2){tg.fillStyle=r1<.5?'#a39682':'#968a76';tg.fillRect(x*T,y*T,T,T);tg.fillStyle='#b5a892';tg.fillRect(x*T+1,y*T+1,3,2);tg.fillRect(x*T+5,y*T+4,2,2);tg.fillStyle='#7a6f5e';tg.fillRect(x*T+4,y*T+1,1,2);tg.fillRect(x*T+1,y*T+5,2,1);tg.fillRect(x*T+3,y*T+6,3,1)}
     if(sq>0&&t!==WATER&&t!==FARM){const cover=(t===ROCK?1.2:t===SAND?.8:rd?.6:1)*sq;if(r5<cover*1.05){tg.fillStyle=r4<.8?'#eef2f4':'#dfe6ea';tg.fillRect(x*T,y*T,T,T);if(r3<.2){tg.fillStyle='#f8fafb';tg.fillRect(x*T+((r4*6)|0),y*T+((r1*6)|0),2,1)}}
       else if(r5<cover*1.6){tg.fillStyle='#eef2f4';tg.fillRect(x*T+((r4*4)|0),y*T+((r1*4)|0),4,3)}}
+  }
+  /* A3 second pass, after every tile is down: the shore and the soft borders, from the same stream's draws */
+  const gc=GRASS_PAL[s][0],lipC='#b39f78',foamC='#dcecf4',COL={[SAND]:'#cdb98a',[ROCK]:'#6f6a60',[GRASS]:gc};
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const t=tiles[idx(x,y)],u=Q.subarray(idx(x,y)*36+12,idx(x,y)*36+36),px=x*T,py=y*T;
+    if(t===SAND){
+      if(at(x+1,y)===WATER){tg.fillStyle=lipC;tg.fillRect(px+T-2,py,2,T);if(!frozen){tg.fillStyle=foamC;tg.fillRect(px+T,py,1,T)}}
+      if(at(x-1,y)===WATER){tg.fillStyle=lipC;tg.fillRect(px,py,2,T);if(!frozen){tg.fillStyle=foamC;tg.fillRect(px-1,py,1,T)}}
+      if(at(x,y+1)===WATER){tg.fillStyle=lipC;tg.fillRect(px,py+T-2,T,2);if(!frozen){tg.fillStyle=foamC;tg.fillRect(px,py+T,T,1)}}
+      if(at(x,y-1)===WATER){tg.fillStyle=lipC;tg.fillRect(px,py,T,2);if(!frozen){tg.fillStyle=foamC;tg.fillRect(px,py-1,T,1)}}}
+    if(sq<.5&&COL[t]&&!road[idx(x,y)]&&x+1<W&&y+1<H){for(let d=0;d<2;d++){ /* the east edge, then the south edge */
+      const nx=x+1-d,ny=y+d,t2=tiles[idx(nx,ny)];if(t2===t||(t!==GRASS&&t2!==GRASS)||!COL[t2]||road[idx(nx,ny)])continue;
+      const n=6+((u[d*11]*5)|0);
+      for(let i=0;i<n;i++){const v=u[d*11+1+i],a=(v*T)|0,dp=((v*64)|0)&1;
+        /* this tile's colour goes into the neighbour, then the neighbour's colour comes back this way, alternately */
+        if(i%2===0){tg.fillStyle=COL[t];if(d===0)tg.fillRect(px+T+dp,py+a,1,1);else tg.fillRect(px+a,py+T+dp,1,1)}
+        else{tg.fillStyle=COL[t2];if(d===0)tg.fillRect(px+T-1-dp,py+a,1,1);else tg.fillRect(px+a,py+T-1-dp,1,1)}}}}
   }
 }
 // ---------- log ----------

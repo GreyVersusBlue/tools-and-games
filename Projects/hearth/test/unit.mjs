@@ -7,6 +7,9 @@
 // exactly the state each function reads. Each check names the thing it guards, and each was broken once in the code and watched
 // fail on its own line (#34) — the break is written beside it.
 import { loadHearth } from './load.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 let pass = 0, fail = 0;
 function check(name, ok, detail = '') {
@@ -299,6 +302,176 @@ section(18, () => {
     a.age0=30;a.born=dayCount;b.age0=95;b.born=dayCount;startFeud(a,b);const names=[a.name,b.name];
     newDay();return {feud:!!feud,alive:!!byName(names[1]),aliveA:!!byName(names[0])}})()`);
   check('feud: the old die in newDay after the first feudDay, and the feud ends that morning, not a day on', o.alive === false && o.aliveA && o.feud === false, JSON.stringify(o));
+});
+
+// ---- the hour is a colour (A2) ----
+// skyAt(f, season, wx, snowLying) is pure, so it is called straight. Break: swap the dusk and noon colours in SKY (js/look.js); "dusk has red
+// greater than blue" and the pop walk both fail (dusk goes white, so red is no longer above blue; the swap puts a 255-to-217 step in 0.002).
+section(20, () => {
+  const { ev } = fresh();
+  const sky = (f, s, w, n) => ev(`skyAt(${f},${JSON.stringify(s)},${JSON.stringify(w)},${n})`);
+  const n = sky(.5, 'summer', 'clear', 0);
+  // the design asks for 6; summer's own tint (#fffaf0) takes blue to 240, so the bound is 16 (the tint is the design's own)
+  check('sky: clear summer noon is white, to within the summer tint', n.every(v => v >= 255 - 16) && n[0] === 255, JSON.stringify(n));
+  const w = sky(.05, 'winter', 'clear', 0);
+  check('sky: a clear winter night is blue by at least 40 over red', w[2] - w[0] >= 40, JSON.stringify(w));
+  const ws = sky(.05, 'winter', 'clear', .8);
+  check('sky: snow lying gives moonlight back (a lit winter night, #46548a before the winter tint)', ws[2] > w[2] && ws[0] > w[0] && ws[2] - ws[0] >= 40, JSON.stringify(ws));
+  const dusk = sky(ev('EDGE.summer[1]-.005'), 'summer', 'clear', 0);
+  check('sky: dusk is rose: red exceeds blue by at least 40', dusk[0] - dusk[2] >= 40, JSON.stringify(dusk));
+  check('sky: rain is darker than clear at noon, a storm darker than rain', ev('(()=>{const L=c=>c[0]+c[1]+c[2];return L(skyAt(.5,"summer","thunder",0))<L(skyAt(.5,"summer","rain",0))&&L(skyAt(.5,"summer","rain",0))<L(skyAt(.5,"summer","clear",0))})()'));
+  let worst = 0, at = '';
+  for (const season of ['spring', 'summer', 'autumn', 'winter']) for (const wx of ['clear', 'overcast', 'rain', 'thunder', 'fog', 'snow']) for (const snow of [0, .8]) {
+    let prev = sky(0, season, wx, snow);
+    for (let i = 1; i <= 500; i++) { const c = sky(i * .002, season, wx, snow); for (let k = 0; k < 3; k++) { const d = Math.abs(c[k] - prev[k]); if (d > worst) { worst = d; at = `${season} ${wx} snow ${snow} f ${(i * .002).toFixed(3)}`; } } prev = c; }
+  }
+  check('sky: no channel moves by more than 10 between f and f+.002, for four seasons, six weathers, with and without snow', worst <= 10, `${worst} at ${at}`);
+});
+
+// ---- one top-level name, one file (A0) ----
+// The scripts share one global scope, so a name declared at column 0 in two files is a redeclaration the browser reports as a SyntaxError
+// on the second file (let, const) or a silent overwrite (function), and the first failure takes the whole page's later scripts with it.
+// This reads the files as text, so the page is not what catches it. Break: `let seed` at the top of js/look.js names `seed` (core.js).
+section(19, () => {
+  const ORDER = ['js/core.js', 'js/flavor.js', 'js/life.js', 'js/watcher.js', 'js/sim.js', 'assets/sprites/buildings.js',
+    'js/render.js', 'js/look.js', 'js/folk.js', 'js/goods.js', 'js/audio.js', 'js/save.js', 'js/main.js'];
+  const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+  // the names one file declares at column 0: `let a,b=1,c`, `const x=..`, `function f(`; strings, comments and brackets are skipped
+  // so a comma or semicolon inside them does not end or split a declaration
+  function declared(src) {
+    const names = [];
+    const re = /^(let|const|function\*?)[ \t]+([A-Za-z_$][\w$]*)/gm;
+    let m;
+    while ((m = re.exec(src))) {
+      if (m[1].startsWith('function')) { names.push(m[2]); continue; }
+      let i = m.index + m[1].length, depth = 0, start = i, q = null;
+      const parts = [];
+      for (; i < src.length; i++) {
+        const c = src[i];
+        if (q) { if (c === '\\') i++; else if (c === q) q = null; continue; }
+        if (c === '/' && src[i + 1] === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
+        if (c === '/' && src[i + 1] === '*') { i = src.indexOf('*/', i + 2) + 1; continue; }
+        if (c === "'" || c === '"' || c === '`') { q = c; continue; }
+        if ('([{'.includes(c)) depth++;
+        else if (')]}'.includes(c)) depth--;
+        else if (depth === 0 && c === ',') { parts.push(src.slice(start, i)); start = i + 1; }
+        else if (depth === 0 && c === ';') break;
+        else if (depth === 0 && c === '\n') {
+          const before = src.slice(start, i).trimEnd().slice(-1);
+          if (before !== ',' && before !== '=') break;
+        }
+      }
+      parts.push(src.slice(start, i));
+      for (const p of parts) { const n = /^\s*([A-Za-z_$][\w$]*)/.exec(p); if (n) names.push(n[1]); }
+    }
+    return names;
+  }
+  const seen = new Map(), dup = [];
+  const per = {};
+  for (const f of ORDER) {
+    const ns = declared(fs.readFileSync(path.join(ROOT, f), 'utf8'));
+    per[f] = ns;
+    for (const n of new Set(ns)) { if (seen.has(n)) dup.push(`${n} in ${seen.get(n)} and ${f}`); else seen.set(n, f); }
+  }
+  // a scanner that finds nothing would pass anything: it has to find known names, including one from a comma list
+  check('names: the scanner finds core.js\'s own declarations', seen.get('newWorld') === 'js/core.js' && seen.get('zoom') === 'js/main.js' && seen.get('camX') === 'js/main.js' && seen.size > 200, `${seen.size} names; zoom in ${seen.get('zoom')}, camX in ${seen.get('camX')}`);
+  check('names: no top-level name is declared in two files', dup.length === 0, dup.join('; '));
+  check('names: the three look scripts load after render.js and before audio.js', ['js/look.js', 'js/folk.js', 'js/goods.js'].every(f => ORDER.indexOf(f) > ORDER.indexOf('js/render.js') && ORDER.indexOf(f) < ORDER.indexOf('js/audio.js')));
+});
+
+// ---- stock you can point at (B1, unit section 22) ----
+// goods.js draws wood, grain and fish as objects whose count is the number. The counts are a pure function of wood, granary and food, and the
+// spots are a pure function of center and what stands on the island: all land, none inside a house, a building, a plot or a work.
+// The footprints below are the sprites' own pixels (a house frame is 16 by 16 at its tile), not goods.js's wider margins, so this does not
+// re-run the function it checks. Break: read `food` where `wood` belongs in stockWant, and the wood line of the first check fails.
+section(22, () => {
+  const { ev } = fresh(7);
+  const want = (w, g, f) => ev(`(wood=${w},granary=${g},food=${f},stockWant())`);
+  check('stock: wood 12 is 3 logs, 96 is a full stack of 24, more stays 24', want(12, 0, 0).wood === 3 && want(96, 0, 0).wood === 24 && want(500, 0, 0).wood === 24 && want(0, 0, 0).wood === 0 && want(1, 0, 0).wood === 1, JSON.stringify([12, 96, 500, 0, 1].map(w => want(w, 0, 0).wood)));
+  check('stock: granary 25 is 1 sack, 26 is 2, capped at 16', want(0, 25, 0).sack === 1 && want(0, 26, 0).sack === 2 && want(0, 400, 0).sack === 16 && want(0, 0, 0).sack === 0, JSON.stringify([25, 26, 400, 0].map(g => want(0, g, 0).sack)));
+  check('stock: food 20 is 1 fish, 21 is 2, capped at 8', want(0, 0, 20).fish === 1 && want(0, 0, 21).fish === 2 && want(0, 0, 400).fish === 8 && want(0, 0, 0).fish === 0, JSON.stringify([20, 21, 400, 0].map(f => want(0, 0, f).fish)));
+  check('stock: the three counts do not read each other', want(96, 0, 0).sack === 0 && want(96, 0, 0).fish === 0 && want(0, 400, 0).wood === 0 && want(0, 0, 400).wood === 0 && want(0, 0, 400).sack === 0);
+  // the ease: a seeded island shows its stock at once, then moves one object per 0.4 s of animT, and stands still while animT does
+  const e = fresh(7); e.ev('wood=0;granary=0;food=0;animT=0;stockEase()');
+  e.ev('wood=96;granary=0;food=0');
+  const c0 = e.ev('stockEase().wood'); e.ev('animT=0.39'); const c1 = e.ev('stockEase().wood'); e.ev('animT=0.4'); const c2 = e.ev('stockEase().wood'); e.ev('animT=0.4'); const c3 = e.ev('stockEase().wood');
+  e.ev('animT=3.2'); const c4 = e.ev('stockEase().wood'); e.ev('animT=60'); const c5 = e.ev('stockEase().wood');
+  check('stock: logs arrive one per 0.4 s of animT and not before', c0 === 0 && c1 === 0 && c2 === 1 && c3 === 1 && c4 === 8 && c5 === 24, JSON.stringify([c0, c1, c2, c3, c4, c5]));
+  e.ev('wood=0'); e.ev('animT=61'); const d1 = e.ev('stockEase().wood');
+  check('stock: logs leave one per 0.4 s as well', d1 === 22, `${d1} after 1 s of animT with the pile at 24`);
+  // positions
+  const bad = [];
+  for (const seed of [7, 42, 20260819]) {
+    const h = fresh(seed);
+    for (const day of [1, 12]) {
+      while (h.ev('dayCount') < day) h.ev('for(let i=0;i<280;i++)step(.05)');
+      const sp = h.ev('stockSpots()'), at = (x, y) => h.ev(`at(${x},${y})`);
+      const hs = h.ev('houses.map(o=>[o.x,o.y])'), bs = h.ev('bAll().map(o=>[o.x,o.y,o.w,o.h])'), pl = h.ev('plots.map(o=>[o.x,o.y])');
+      for (const k of ['wood', 'sack', 'fish']) {
+        const s = sp[k], x0 = s.x - s.w / 2, x1 = s.x + s.w / 2, y0 = s.y - s.h, y1 = s.y;
+        const tag = `seed ${seed} day ${day} ${k}`;
+        if (!s.ok) bad.push(`${tag} found no free spot`);
+        for (let ty = Math.floor(y0 / 8); ty * 8 < y1; ty++) for (let tx = Math.floor(x0 / 8); tx * 8 < x1; tx++) { const t = at(tx, ty); if (t === 0 || t === 3) bad.push(`${tag} on ${t === 0 ? 'water' : 'rock'} at ${tx},${ty}`); }
+        const over = (a0, b0, a1, b1) => x0 < a1 && x1 > a0 && y0 < b1 && y1 > b0;
+        for (const [hx, hy] of hs) if (over(hx * 8, hy * 8, hx * 8 + 16, hy * 8 + 16)) bad.push(`${tag} inside the house at ${hx},${hy}`);
+        for (const [px, py] of pl) if (over(px * 8, py * 8, px * 8 + 16, py * 8 + 16)) bad.push(`${tag} inside the plot at ${px},${py}`);
+        for (const [bx, by, bw, bh] of bs) if (!(k === 'sack' && h.ev('getB("hall")') && bx === h.ev('getB("hall").x') && by === h.ev('getB("hall").y')) && !(s.on === 'line' && h.ev('getB("hut")') && bx === h.ev('getB("hut").x') && by === h.ev('getB("hut").y')) && over(bx * 8, by * 8, (bx + bw) * 8, (by + bh) * 8)) bad.push(`${tag} inside the building at ${bx},${by}`);
+      }
+    }
+  }
+  check('stock: for seeds 7, 42 and 20260819 at days 1 and 12 every pile is on land, clear of houses, plots and buildings', bad.length === 0, bad.slice(0, 4).join('; '));
+  // a hall with a house on its south side: the sacks move off it
+  const f = fresh(7), cx = f.ev('center.x'), cy = f.ev('center.y');
+  f.ev(`bldg.push({kind:'hall',x:${cx + 8},y:${cy - 6},w:3,h:2,done:true,prog:0,work:80})`);
+  const s0 = f.ev('stockSpots().sack');
+  f.ev(`houses.push({x:${Math.round(s0.x / 8) - 1},y:${Math.round(s0.y / 8) - 1},r:'#8a3d2f',owners:[]})`);
+  const s1 = f.ev('stockSpots().sack');
+  check('stock: sacks stand at the hall\'s south wall, and move when a house takes that spot', s0.ok && s0.y / 8 > cy - 6 + 2 && s0.x / 8 > cx + 8 && s1.ok && (s1.x !== s0.x || s1.y !== s0.y), JSON.stringify([s0, s1]));
+});
+
+// ---- a save cannot carry markup (C1, unit section 26) ----
+// unpack() makes every string in the save plain text on every load (#37): no < > & " or backtick, none over 400 characters.
+// The log writes names and chronicle text through innerHTML, and a save is about to be something a server accepts and republishes.
+section(26, () => {
+  const BAD = /[<>&"`]/, XSS = '<b onmouseover=x>';
+  const strings = (v, out = []) => { if (typeof v === 'string') out.push(v); else if (Array.isArray(v)) v.forEach(x => strings(x, out)); else if (v && typeof v === 'object') Object.values(v).forEach(x => strings(x, out)); return out; };
+  // a hundred days from seed 7, taken before any repair: the repair has to be a no-op on a real island, or this list is what it found
+  const { H, ev } = fresh(7);
+  ev('for(let i=0;i<2800*100;i++)step(.05)');
+  const clean = H.pack(), cleanStr = JSON.stringify(clean);
+  const found = strings(clean).filter(x => BAD.test(x) || x.length > 400);
+  check('save: a 100-day island from seed 7 carries none of the five characters and no long string before repair', found.length === 0 && strings(clean).length > 100, `${strings(clean).length} strings; found ${JSON.stringify(found.slice(0, 5))}`);
+  // pack -> unpack -> pack on a 100-day island is not byte-identical on main either: a voyage that "stayed" (o.vo) is dropped by
+  // unpack's `voyage.p` guard and packs as 0. That is older than this repair and not this increment's to fix, so the 100-day check
+  // names every key but vo, and the whole-object byte check runs on a six-day island below, where there is no voyage.
+  H.unpack(JSON.parse(cleanStr));
+  const re = H.pack(), drift = Object.keys(clean).filter(k => JSON.stringify(clean[k]) !== JSON.stringify(re[k]));
+  check('save: unpack leaves every key of that 100-day island as it was, but the voyage', drift.every(k => k === 'vo'), drift.join(','));
+  { const g = fresh(7); g.ev('for(let i=0;i<2800*6;i++)step(.05)'); const six = JSON.stringify(g.H.pack()); g.H.unpack(JSON.parse(six));
+    check('save: pack -> unpack -> pack is still byte-identical on a clean six-day island', JSON.stringify(g.H.pack()) === six); }
+  // one person's name, the village name, one chronicle label and one life line, each carrying markup
+  const o = JSON.parse(cleanStr);
+  const who = o.pe[0][2];
+  o.pe[0][2] = who + XSS; o.vn = 'Mill' + XSS; o.ch[0][3] = 'a label' + XSS; o.pe[0][7].push([o.d, 'a life line' + XSS]);
+  check('save: the doctored save really carries markup before repair', strings(o).filter(x => BAD.test(x)).length >= 4);
+  H.unpack(o);
+  const after = H.pack();
+  check('save: after unpack no string anywhere in pack() contains <', strings(after).every(x => !x.includes('<')), JSON.stringify(strings(after).filter(x => x.includes('<')).slice(0, 3)));
+  check('save: and none contains any of the five characters', strings(after).every(x => !BAD.test(x)));
+  check('save: the chronicle label kept its text and lost only the markup', after.ch[0][3] === 'a labelb onmouseover=x', after.ch[0][3]);
+  check('save: the name, the village and the life line did too', after.pe[0][2] === who + 'b onmouseover=x' && after.vn === 'Millb onmouseover=x' && after.pe[0][7].at(-1)[1] === 'a life lineb onmouseover=x', JSON.stringify([after.pe[0][2], after.vn, after.pe[0][7].at(-1)]));
+  // the log is innerHTML: nothing the load wrote there may carry a tag either
+  check('save: the log the load wrote has no markup from the save', !/<b onmouseover/.test(ev("document.getElementById('log').innerHTML")));
+  // the cut: 400 and no more, and a string under the cut is untouched
+  const long = JSON.parse(cleanStr);
+  long.ch[0][3] = 'x'.repeat(900); long.vn = 'y'.repeat(400);
+  H.unpack(long);
+  const lp = H.pack();
+  check('save: a string over 400 characters is cut to 400, one of exactly 400 is left alone', lp.ch[0][3].length === 400 && lp.vn.length === 400, `${lp.ch[0][3].length}, ${lp.vn.length}`);
+  // a repair on every load, not only the first: a second pass changes nothing
+  const twice = JSON.stringify(lp);
+  H.unpack(JSON.parse(twice));
+  check('save: repairing twice is the same as repairing once', JSON.stringify(H.pack()) === twice);
 });
 
 console.log(`${fail ? 'FAIL' : 'PASS'}: ${pass} of ${pass + fail} unit checks`);
