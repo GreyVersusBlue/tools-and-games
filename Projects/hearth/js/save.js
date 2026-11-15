@@ -289,7 +289,7 @@ function unpack(o){
   dead=o.de.map(a=>({name:a[0],rels:a[1].map(r=>({who:r[0],k:r[1]})),dead:true,hist:[],tr:[]}));
   gone=o.go.map(a=>({name:a[0],far:a[1]||0}));
   voyage=o.vo?{name:o.vo[0],st:o.vo[1],day:o.vo[2],back:!!o.vo[3],n:o.vo[4],p:o.vo[5]?mk(o.vo[5]):byName(o.vo[0])}:null;
-  if(voyage&&!voyage.p)voyage=null;
+  if(voyage&&!voyage.p&&voyage.st!=='stayed')voyage=null;     // 'stayed' has nobody to find: the one who did not come back is not packed and not in people (#1058)
   if(voyage&&voyage.st==='going')voyage.p.task='voyage';
   if(ruin&&o.rb)ruin.built=true;
   if(farIsle)farIsle.lit=!!o.fl;
