@@ -618,10 +618,10 @@ function boatArrive(b){
   else if(b.kind==='trade'&&b.st==='in'){b.st='wait';b.t=45;trader=b;
     // the trade answers the stock now, and whoever keeps the store does the talking
     const talker=people.filter(q=>!q.dead&&q.craft===4).sort((a,c)=>c.cxp-a.cxp)[0]||null;
-    const bump=talker?1+talker.cxp*.15:1;let eff;
-    if(food+granary<people.length*4){granary+=Math.round(14*bump);if(wood>=4)wood-=4;
+    const bump=talker?1+talker.cxp*.15:1;let eff,paid=0; /* B3: paid is 1 when timber went out, and haulers carry it down */
+    if(food+granary<people.length*4){granary+=Math.round(14*bump);if(wood>=4){wood-=4;paid=1}
       eff='sees how the store stands, says nothing about it, and leaves more meal than the timber was worth'}
-    else if(wood>=30){wood-=10;granary+=Math.round(12*bump);
+    else if(wood>=30){wood-=10;paid=1;granary+=Math.round(12*bump);
       eff='takes ten lengths of good timber and pays in meal, fairly, after a long conversation about it'}
     else{wood+=4;granary+=Math.round(5*bump);
       eff='trades small things for smaller ones and leaves everyone feeling they did well out of it'}
@@ -629,6 +629,10 @@ function boatArrive(b){
     say(`A trader's boat comes in to ${V()} and everyone who can finds a reason to be on the shore. The trader ${eff}.`,true);addEvent('trade',`the ${sea()} the trader came`,pick([`The trader's boat came in and everyone who could find a reason was on the shore for it.`,`The trader came, and went, and the store was a little different after.`,`A trading boat put in for a day and left news behind as well as goods.`]));
     const wav=shuf(people.filter(p=>!p.dead&&p.task!=='sleep'&&p.task!=='boat'&&p.task!=='voyage'&&p.task!=='build'&&p.task!=='bounds'&&!p.inside)).slice(0,8); /* sprint 16: the procession does not break for the trader */
     for(const q of wav){const s=nearestShore(b.land.x+rnd(-3,3),b.land.y+rnd(-3,3))||b.land;goTo(q,s.x,s.y,'wave',rnd(12,30));if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null}
+    /* B3: the first four adults among them carry the trade. The numbers above are already applied; this is only who is seen to do it. No R(): the
+       wave's own draws are reused, and a hauler's targets are set straight from the pile, the landing and the store. */
+    {const sp=stockSpots(),hl=wav.filter(q=>!isKid(q)).slice(0,Math.min(4,wav.length));
+      hl.forEach((q,i)=>{q.task='haul';q.haulSt=0;q.haulWood=paid;q.dwell=0;q.tx=sp.wood.x/T+(i-1.5)*.5;q.ty=sp.wood.y/T+.3})}
     if(R()<.5&&wav.length){const q=pick(wav);q.hist.push({d:dayCount,s:pick(['bought a length of red cloth off the trader','traded a carved bird to the trader for a knife','asked the trader for news of home and got some'])})}
     farTrade(talker)}                                                    /* phase 5: and once in a while the boat has something aboard that no hand here could make */
   else if(b.kind==='fish'){if(b.st==='in'){b.st='fishing';b.t=rnd(10,16)}else if(b.st==='back'){b.gone=true;const p=b.p;if(p){p.task='idle';p.t=1;p.inBoat=false;p.x=b.land.x;p.y=b.land.y;p.tx=p.x;p.ty=p.y;/* step ashore, not out at the mooring */const n=(sea()==='winter'?3:6)+(hasW('racks')?1:0)+(hasWay(0)?1:0)+(arcK()==='shoal'?5:0);if(hasB('smoke')&&(sea()==='autumn'||sea()==='winter'))granary+=n;else food+=n;craftUp(p,2);p.boats=(p.boats||0)+1;if(p.boats===1)p.hist.push({d:dayCount,s:'first took the boat out past the shallows'});if(R()<.3)say(`${B(p)} rows in with the bottom of the boat silver, and hands the fish up the beach.`,false,'boatin')}}}

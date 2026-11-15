@@ -82,6 +82,7 @@ function whyText(p){const w=WX();
     case 'visit':return p.vg?`Visiting ${p.vg.name}'s stone on the hill.`:'On the hill.';
     case 'mourn':return `On the hill, at the burying.`;
     case 'play':return p.shadN&&byName(p.shadN)?`Following ${p.shadN} around the work, asking why. Learning, though neither of them is calling it that.`:`Playing near ${p.parents.length?p.parents[0]:'the fire'}, in the way of children.`;
+    case 'haul':return p.haulSt===0?`Going to the woodpile for the trader. The boat will not wait for long.`:p.haulSt===1?(p.haulWood?`Taking a length of timber down to the trader's boat.`:`Going down to the trader's boat for the meal.`):p.haulSt===2?`Waiting by the trader's boat for the meal to be handed up.`:`Carrying a sack of meal up from the trader's boat to the store.`;
     case 'carry':return `Carrying grain up to the mill and meal down to the store. The mill only matters if someone feeds it.`;
     case 'water':return `Hauling well water to the fields, two buckets at a time. The sky has not been helping.`;
     case 'tend':return `Keeping the fire and walking the tideline for food, because there is nobody grown left to do it.`;
