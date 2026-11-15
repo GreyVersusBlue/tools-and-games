@@ -7,7 +7,7 @@
 //   T        the tile size, js/core.js's `const W=..,H=..,T=8`
 //   BLD      every kind in js/core.js's BLD with its footprint in tiles
 //   ROOFS    the colours sim.js picks a new house's roof from
-//   PALETTE  every #rrggbb js/render.js writes, the only colours a frame may
+//   PALETTE  every #rrggbb js/render.js, look.js, folk.js and goods.js write, the only colours a frame may
 //            be drawn in (BACKLOG.md "Blender assets: the common plan",
 //            style sheet item 2), before the shading tiers in budget.json,
 //            and budget.json's `lifted`: the colours that left render.js
@@ -23,9 +23,11 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(path.join(HERE, '..', '..', 'js', f), 'utf8');
+// every script that draws, A0's three and render.js; their colours are the only ones a frame may use (A10)
+const DRAWS = ['render.js', 'look.js', 'folk.js', 'goods.js'];
 
 export function spec() {
-  const core = read('core.js'), render = read('render.js'), sim = read('sim.js');
+  const core = read('core.js'), render = DRAWS.map(read).join('\n'), sim = read('sim.js');
   const t = core.match(/const W=\d+,H=\d+,T=(\d+)/);
   if (!t) throw new Error('spec.mjs: no `const W=..,H=..,T=` in js/core.js');
   const body = core.match(/const BLD=\{([\s\S]*?)\}\};/);
@@ -36,7 +38,7 @@ export function spec() {
   const roof = sim.match(/r:pick\(\[([^\]]*)\]\)/);
   if (!roof) throw new Error('spec.mjs: no `r:pick([...])` for a house roof in js/sim.js');
   const ROOFS = [...roof[1].matchAll(/'(#[0-9a-f]{6})'/gi)].map(m => m[1].toLowerCase());
-  // render.js's colours, and the ones the frames took out of it when they replaced the drawings that used them (budget.json's lifted)
+  // the drawing scripts' colours, and the ones the frames took out of it when they replaced the drawings that used them (budget.json's lifted)
   const lifted = JSON.parse(fs.readFileSync(path.join(HERE, 'budget.json'), 'utf8')).lifted || [];
   const PALETTE = [...new Set([...render.matchAll(/'(#[0-9a-f]{6})'/gi)].map(m => m[1].toLowerCase()).concat(lifted))].sort();
   return { T: +t[1], BLD, ROOFS, PALETTE };

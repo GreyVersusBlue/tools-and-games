@@ -2621,16 +2621,30 @@ if (mode === 'sheet') {
     const nameAt = (sx, sy) => Object.keys(A.frames).find(k => A.frames[k].x === sx && A.frames[k].y === sy);
     const run = () => { calls = []; h.draw(); return calls.map(c => ({ f: nameAt(c.a[0], c.a[1]), x: c.a[4], y: c.a[5], alpha: c.alpha })); };
     h.setSnow(0); h.setTime(h.time - (h.time % 1)); // whatever the hour; the frames do not depend on it
+    const day0 = dayCount;
+    dayCount = 6;     // a summer day (A10): the plain frames, so the first checks below read them
     const dry = run();
     h.setSnow(0.5);   // cap is snowD x 1.4, held to 1: 0.7 here, so a frame drawn opaque shows
     const snowy = run();
+    h.setSnow(0.2);   // cap .28, under half: the light weight
+    const light = run();
     h.setSnow(0);
+    dayCount = 11; const autumn = run();   // days 11 to 15 are autumn, 1 to 5 spring, 16 to 20 winter
+    dayCount = 1; const spring = run();
+    dayCount = 16; const winter = run();
+    dayCount = 11;
+    const keepD = A.frames['hut-autumn']; delete A.frames['hut-autumn'];
+    let threwDress = '';
+    try { h.draw(); } catch (e) { threwDress = e.message; }
+    A.frames['hut-autumn'] = keepD;
+    dayCount = 6;
     let threw = '';
     const keep = A.frames.well; delete A.frames.well;
     try { h.draw(); } catch (e) { threw = e.message; }
     A.frames.well = keep;
     g.drawImage = orig;
-    return { dry, snowy, threw, roofs, kinds, T,
+    dayCount = day0;
+    return { dry, snowy, light, autumn, spring, winter, threwDress, threw, roofs, kinds, T,
       want: [...h.houses.map(x => ({ x: x.x * T, y: x.y * T })), ...h.bldg.map(b => ({ k: b.kind, x: b.x * T, y: b.y * T }))],
       frames: A.frames, roofOf: h.roofFrame('#8a3e30') };
   });
@@ -2646,13 +2660,29 @@ if (mode === 'sheet') {
     const names = k === 'bridge' ? ['bridge-h', 'bridge-v'] : [k];
     if (!r.dry.some(c => names.includes(c.f) && c.x === x - r.frames[c.f].ax && c.y === y - r.frames[c.f].ay)) bad.push(`${k} is not drawn from its frame on its tile corner`);
   }
-  const snowFrames = Object.keys(r.frames).filter(k => k.endsWith('-snow'));
-  if (r.dry.some(c => c.f && c.f.endsWith('-snow'))) bad.push('a snow frame is drawn with no snow on the ground');
+  const snowFrames = Object.keys(r.frames).filter(k => /-snow\d$/.test(k));
+  if (r.dry.some(c => c.f && /-snow\d$/.test(c.f))) bad.push('a snow frame is drawn with no snow on the ground');
+  // two weights (A10): under half a cap the light frame, from half up the heavy one, each at its alpha
   for (const f of snowFrames) {
-    const hits = at(r.snowy, f);
-    if (!hits.length) bad.push(`${f} is not drawn in deep snow`);
+    const deep = f.endsWith('-snow2'), list = deep ? r.snowy : r.light, other = deep ? r.light : r.snowy;
+    const hits = at(list, f);
+    if (!hits.length) bad.push(`${f} is not drawn in ${deep ? 'deep' : 'light'} snow`);
     else if (hits.some(c => c.alpha <= 0 || c.alpha >= 1)) bad.push(`${f} is not drawn at the snow's depth (alpha ${hits[0].alpha})`);
+    if (at(other, f).length) bad.push(`${f} is drawn in ${deep ? 'light' : 'deep'} snow as well`);
   }
+  // the year's dresses (A10): the house in each roof, the hut and the hall wear the season's frame on their tile corners, and no other season's
+  const dressed = [...r.roofs.map((rf, i) => ({ k: 'house-' + rf.slice(1), x: (10 + i * 4) * 8, y: 80 })), { k: 'hut', x: 80, y: 240 }, { k: 'hall', x: 10 * 8 + 5 * 8 * 5, y: 240 }];
+  for (const [season, list, other] of [['autumn', r.autumn, 'spring'], ['spring', r.spring, 'autumn']]) {
+    for (const d of dressed) {
+      const f = `${d.k}-${season}`, fr = r.frames[f];
+      if (!fr) { bad.push(`${f} is not in the atlas`); continue; }
+      if (!at(list, f).some(c => c.x === d.x - fr.ax && c.y === d.y - fr.ay)) bad.push(`${d.k} is not drawn from ${f} in ${season}`);
+      if (at(list, d.k).some(c => c.x === d.x - r.frames[d.k].ax && c.y === d.y - r.frames[d.k].ay)) bad.push(`${d.k} is drawn plain in ${season}, over its dress`);
+    }
+    if (list.some(c => c.f && c.f.endsWith('-' + other))) bad.push(`a ${other} dress is drawn in ${season}`);
+  }
+  for (const [name, list] of [['summer', r.dry], ['winter', r.winter]]) if (list.some(c => c.f && /-(autumn|spring)$/.test(c.f))) bad.push(`a dress is drawn in ${name}`);
+  if (!/no frame hut-autumn/.test(r.threwDress)) bad.push(`a dress missing from the atlas did not stop draw(): ${r.threwDress || 'it drew on'}`);
   if (!/no frame well/.test(r.threw)) bad.push(`a frame missing from the atlas did not stop draw(): ${r.threw || 'it drew on'}`);
   console.log(`  ${r.dry.length} frames drawn dry, ${r.snowy.length} in snow; a missing frame: ${r.threw || '(nothing)'}`);
   if (warns.length) bad.push(...warns);

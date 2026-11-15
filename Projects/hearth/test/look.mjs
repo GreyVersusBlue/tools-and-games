@@ -720,7 +720,7 @@ async function coldChecks() {
   {
     const { ctx, page } = await prep(SCENES[4]);
     const r = await page.evaluate(() => {
-      const H = window.__hearth, g = document.getElementById('c').getContext('2d'), T = 8, Wd = 110, HH = 70, f = H.sheet.atlas.frames['house-snow'];
+      const H = window.__hearth, g = document.getElementById('c').getContext('2d'), T = 8, Wd = 110, HH = 70, f = H.sheet.atlas.frames['house-snow1'];
       const diff = sd => { H.setWx('clear'); H.setSnow(sd); H.setAnimT(500.5); H.lookOff.shed = false; H.draw(); const a = g.getImageData(0, 0, Wd * T, HH * T).data; H.lookOff.shed = true; H.draw(); const b = g.getImageData(0, 0, Wd * T, HH * T).data; H.lookOff.shed = false; let n = 0;
         for (const h of H.houses) { const oy = h.y * T - f.ay, ox = h.x * T - f.ax; for (let y = oy; y < oy + f.h + 5; y++) for (let x = ox; x < ox + f.w; x++) { if (x < 0 || y < 0 || x >= Wd * T || y >= HH * T) continue; const k = (y * Wd * T + x) * 4; if (Math.abs(a[k] - b[k]) + Math.abs(a[k + 1] - b[k + 1]) + Math.abs(a[k + 2] - b[k + 2]) > 30) n++; } }
         return n; };
