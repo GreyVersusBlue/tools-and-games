@@ -647,6 +647,11 @@ if (mode === 'twelve') {
     if (sg.lostPeak > sg.floor * 1.3) {
       failed = true; console.log(`FAIL: a lost song made a sound (${sg.lostPeak} over a floor of ${sg.floor})`);
     }
+    // A13: the choir stays where the five beeps were. 0.09 to 0.12 is the band the tune sat in (0.103); a sawtooth through two formants is a different
+    // instrument, and the make-up gain in audio.js is what keeps it there. Lower and the fire night is lost under the sea; higher and it is a shout.
+    if (!(audio.songTune >= 0.09 && audio.songTune <= 0.12)) {
+      failed = true; console.log(`FAIL: the sung tune's peak is ${audio.songTune}, outside 0.09 to 0.12`);
+    }
     if (audio.songTune < sg.floor * 1.5) {
       failed = true; console.log(`FAIL: a song that is not lost is inaudible (${audio.songTune} over ${sg.floor})`);
     }
