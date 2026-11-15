@@ -332,26 +332,34 @@ function addEvent(kind,label,st){const e={d:dayCount,y:yearOf(dayCount),kind,lab
 const GRASS_PAL={spring:['#5f8f3e','#5a8a3b','#659745','#568437'],summer:['#6c923f','#678d3c','#729a46','#618639'],autumn:['#7c8a3d','#76853a','#838f45','#6f7f36'],winter:['#5c7a45','#587643','#617f4a','#546f40']};
 const TONE_DEEP=-.12,RELIEF_GAIN=16,RELIEF_SIGN=1; /* A3: the deepest water tone below TONE_DEEP; relief saturates at 1/16 of an elevation step across a tile */
 const TUFT={spring:'#4e7a31',summer:'#5a7a2e',autumn:'#8a7a2e',winter:'#4a6638'};
+const AUTUMN_CAN=[['#8a4a1e','#c47a2a'],['#8a2e1e','#b8402a'],['#7a6a20','#b09a2c']],autumnOf=t=>t.a<.35?0:t.a<.7?1:2,treeShape=t=>((t.a*13)|0)%3; /* A4: the autumn colours a tree turns, and which of three silhouettes it has (round, tall, wide); draw() and the leaf litter read the same */
+const DRY_STEPS=3; /* A4: dry01 is painted in four levels, 0 to 3, and the level is in the key */
+function terrainKey(){const s=sea();return s+'|'+Math.round(snowD*6)/6+'|'+frozen+'|'+roadV+'|'+Math.round(dry01*DRY_STEPS)+'|'+((s==='autumn'||snowD>.04)?trees.length:0)} /* A4: the tree count is in the key only where litter or snow shade reads it */
 function paintTerrain(){
-  const s=sea(),sq=Math.round(snowD*6)/6;paintedKey=s+'|'+sq+'|'+frozen+'|'+roadV;
+  const s=sea(),sq=Math.round(snowD*6)/6,dq=Math.round(dry01*DRY_STEPS);paintedKey=terrainKey();
   const pal={[WATER]:['#274c78','#2b5687','#2f5f93'],[SAND]:['#cdb98a','#d4c294','#c6ad7c'],[GRASS]:GRASS_PAL[s],[ROCK]:['#6f6a60','#7b756a','#645f56']};
   const ICE=['#b9d3e3','#c4dbe8','#adc9dc'];
   const rr=mulberry(seed^99),r2s=mulberry(seed^0x7e44a1); /* A3: rr keeps its seven draws per tile; r2s is the shape's own stream, 36 draws per tile whether used or not */
   const eAt=(x,y,d)=>(x<0||y<0||x>=W||y>=H)?d:elev[idx(x,y)];
   const Q=new Float32Array(W*H*36);
+  const under=new Uint8Array(W*H);for(const t of trees)if(t.s>.4){const tx=t.x|0,ty=t.y|0;if(tx>=0&&ty>=0&&tx<W&&ty<H){under[idx(tx,ty)]=1;if(ty>0)under[idx(tx,ty-1)]=1}} /* A4: tiles under a canopy hold snow back */
+  const nearW=(x,y)=>{for(let j=-2;j<=2;j++)for(let i=-2;i<=2;i++)if(at(x+i,y+j)===WATER)return true;return false};
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){const t=tiles[idx(x,y)],e=elev[idx(x,y)];const r1=rr(),r2=rr(),r3=rr(),r4=rr(),r5=rr(),r6=rr(),r7=rr(); // fixed draw per tile so repaints don't shuffle the ground
     const c=pal[t]||pal[GRASS];tg.fillStyle=c[(r1*c.length)|0];tg.fillRect(x*T,y*T,T,T);
     // a little more grain in the ground (sprint 11): depth in the water, mottle and flowers in the grass, speckle in the sand, cracks in the rock
     if(t===WATER){if(e<.06){tg.fillStyle=e<TONE_DEEP?'#1d3a5f':'#22436b';tg.fillRect(x*T,y*T,T,T);if(r6<.2){tg.fillStyle='#274c78';tg.fillRect(x*T+((r7*5)|0),y*T+((r3*6)|0),3,1)}}
       else if(r6<.12){tg.fillStyle='#3a6ba3';tg.fillRect(x*T+((r7*6)|0),y*T+((r4*7)|0),2,1)}}
     if(t===GRASS&&r6<.14){tg.fillStyle=GRASS_PAL[s][3];tg.fillRect(x*T+((r7*5)|0),y*T+((r5*5)|0),3,2)}
-    if(t===GRASS&&(s==='spring'||s==='summer')&&r7<.045){tg.fillStyle=s==='spring'?(r6<.5?'#e8a0b8':'#e6e2d8'):'#e2c25a';tg.fillRect(x*T+((r3*6)|0)+1,y*T+((r4*6)|0)+1,1,1)}
+    const wet=t===GRASS&&s==='spring'&&nearW(x,y);
+    if(t===GRASS&&(s==='spring'||s==='summer')&&r7<(wet?.135:.045)){tg.fillStyle=s==='spring'?(r6<.5?'#e8a0b8':'#e6e2d8'):'#e2c25a';tg.fillRect(x*T+((r3*6)|0)+1,y*T+((r4*6)|0)+1,1,1)}
     if(t===SAND&&r6<.3){tg.fillStyle=r7<.5?'#b8a172':'#e0d2a8';tg.fillRect(x*T+((r3*6)|0),y*T+((r4*6)|0),1,1);tg.fillRect(x*T+((r7*6)|0),y*T+((r5*6)|0),1,1)}
     if(t===ROCK&&r6<.22){tg.fillStyle='#54504a';tg.fillRect(x*T+((r7*4)|0),y*T+2+((r3*4)|0),3,1)}
     if(t===GRASS&&r2<.12){tg.fillStyle=TUFT[s];tg.fillRect(x*T+((r3*6)|0),y*T+((r4*6)|0),2,1)}
+    if(t===GRASS&&dq>0){tg.fillStyle='rgba(204,172,62,'+(.12*dq).toFixed(2)+')';tg.fillRect(x*T,y*T,T,T)} /* A4: a dry year yellows the grass, in four levels */
     if(t===WATER&&frozen&&e>.16){tg.fillStyle=ICE[(r1*3)|0];tg.fillRect(x*T,y*T,T,T);if(r5<.15){tg.fillStyle='#8fb0c8';tg.fillRect(x*T+((r3*5)|0),y*T+((r4*7)|0),3,1)}}
     else if(t===WATER&&at(x,y-1)!==WATER){tg.fillStyle='#8fb6d6';tg.fillRect(x*T,y*T,T,1)}
     const qo=idx(x,y)*36;for(let i=0;i<36;i++)Q[qo+i]=r2s();const q=Q.subarray(qo,qo+36);
+    if(wet&&r7<.135){tg.fillStyle=q[2]<.5?'#e8a0b8':'#e6e2d8';tg.fillRect(x*T+((q[0]*6)|0)+1,y*T+((q[1]*6)|0)+1,1,1)} /* A4: near water a flower has company, which is what makes a drift */
     if(t!==WATER){ /* A3 relief: ground rising toward the south-east faces the north-west light; falling ground sits in shade */
       const rise=eAt(x+1,y+1,e)-eAt(x-1,y-1,e),k=Math.max(-1,Math.min(1,rise*RELIEF_GAIN*RELIEF_SIGN));
       if(k>0){tg.fillStyle='rgba(255,248,224,'+(.14*k).toFixed(3)+')';tg.fillRect(x*T,y*T,T,T)}
@@ -365,8 +373,10 @@ function paintTerrain(){
       if(e>.7){tg.fillStyle='#e6e2d8';tg.fillRect(x*T+2,y*T+1,3,2);if(q[9]<.6)tg.fillRect(x*T+((q[10]*5)|0),y*T+4+((q[11]*3)|0),3,1)}}
     const rd=road[idx(x,y)];if(rd===1){tg.fillStyle=r1<.5?'#8a7248':'#7e6841';tg.fillRect(x*T,y*T,T,T);tg.fillStyle='#6b5735';tg.fillRect(x*T+((r3*6)|0),y*T+((r4*7)|0),2,1)}
     else if(rd===2){tg.fillStyle=r1<.5?'#a39682':'#968a76';tg.fillRect(x*T,y*T,T,T);tg.fillStyle='#b5a892';tg.fillRect(x*T+1,y*T+1,3,2);tg.fillRect(x*T+5,y*T+4,2,2);tg.fillStyle='#7a6f5e';tg.fillRect(x*T+4,y*T+1,1,2);tg.fillRect(x*T+1,y*T+5,2,1);tg.fillRect(x*T+3,y*T+6,3,1)}
-    if(sq>0&&t!==WATER&&t!==FARM){const cover=(t===ROCK?1.2:t===SAND?.8:rd?.6:1)*sq;if(r5<cover*1.05){tg.fillStyle=r4<.8?'#eef2f4':'#dfe6ea';tg.fillRect(x*T,y*T,T,T);if(r3<.2){tg.fillStyle='#f8fafb';tg.fillRect(x*T+((r4*6)|0),y*T+((r1*6)|0),2,1)}}
-      else if(r5<cover*1.6){tg.fillStyle='#eef2f4';tg.fillRect(x*T+((r4*4)|0),y*T+((r1*4)|0),4,3)}}
+    if(sq>0&&t!==WATER&&t!==FARM){ /* A4: snow lies by exposure, not by coin flip: high open ground first, the shelter of a tree last */
+      const sd=sq*1.2*(t===ROCK?1.2:t===SAND?.8:rd?.6:1),thr=.35+(under[idx(x,y)]?.3:0)-e*.4;
+      if(sd>thr){tg.fillStyle=r4<.8?'#eef2f4':'#dfe6ea';tg.fillRect(x*T,y*T,T,T);if(r3<.2){tg.fillStyle='#f8fafb';tg.fillRect(x*T+((r4*6)|0),y*T+((r1*6)|0),2,1)}}
+      else if(sd>thr-.12){tg.fillStyle='#eef2f4';tg.fillRect(x*T+((r4*4)|0),y*T+((r1*4)|0),4,3)}}
   }
   /* A3 second pass, after every tile is down: the shore and the soft borders, from the same stream's draws */
   const gc=GRASS_PAL[s][0],lipC='#b39f78',foamC='#dcecf4',COL={[SAND]:'#cdb98a',[ROCK]:'#6f6a60',[GRASS]:gc};
@@ -376,6 +386,12 @@ function paintTerrain(){
       if(at(x-1,y)===WATER){tg.fillStyle=lipC;tg.fillRect(px,py,2,T);if(!frozen){tg.fillStyle=foamC;tg.fillRect(px-1,py,1,T)}}
       if(at(x,y+1)===WATER){tg.fillStyle=lipC;tg.fillRect(px,py+T-2,T,2);if(!frozen){tg.fillStyle=foamC;tg.fillRect(px,py+T,T,1)}}
       if(at(x,y-1)===WATER){tg.fillStyle=lipC;tg.fillRect(px,py,T,2);if(!frozen){tg.fillStyle=foamC;tg.fillRect(px,py-1,T,1)}}}
+    if(frozen&&t===WATER&&elev[idx(x,y)]>.16){ /* A4 shore ice: a pale rim, solid where ice meets land, ragged where it meets open water */
+      for(let k=0;k<4;k++){const dx=[1,-1,0,0][k],dy=[0,0,1,-1][k],nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=W||ny>=H)continue;
+        const nt=tiles[idx(nx,ny)],open=nt===WATER&&elev[idx(nx,ny)]<=.16;if(nt===WATER&&!open)continue;
+        tg.fillStyle='#e8f2f8';
+        for(let i=0;i<T;i++){const w=open?(u[(k*6+i)%24]<.5?1:2):2;
+          if(k===0)tg.fillRect(px+T-w,py+i,w,1);else if(k===1)tg.fillRect(px,py+i,w,1);else if(k===2)tg.fillRect(px+i,py+T-w,1,w);else tg.fillRect(px+i,py,1,w)}}}
     if(sq<.5&&COL[t]&&!road[idx(x,y)]&&x+1<W&&y+1<H){for(let d=0;d<2;d++){ /* the east edge, then the south edge */
       const nx=x+1-d,ny=y+d,t2=tiles[idx(nx,ny)];if(t2===t||(t!==GRASS&&t2!==GRASS)||!COL[t2]||road[idx(nx,ny)])continue;
       const n=6+((u[d*11]*5)|0);
@@ -384,6 +400,11 @@ function paintTerrain(){
         if(i%2===0){tg.fillStyle=COL[t];if(d===0)tg.fillRect(px+T+dp,py+a,1,1);else tg.fillRect(px+a,py+T+dp,1,1)}
         else{tg.fillStyle=COL[t2];if(d===0)tg.fillRect(px+T-1-dp,py+a,1,1);else tg.fillRect(px+a,py+T-1-dp,1,1)}}}}
   }
+  /* A4 leaf litter: in autumn, three to five pixels of the tree's own colour on each grass tile around each tree that has grown, from a stream of the tree's own so a felled neighbour moves nothing */
+  if(s==='autumn'&&sq<.5)for(const t of trees){if(t.s<=.5)continue;const lr=mulberry(seed^0xa47e11^((((t.x*64)|0)*7919+((t.y*64)|0)*104729)|0)),lc=AUTUMN_CAN[autumnOf(t)],tx=t.x|0,ty=t.y|0;
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const v=[];for(let i=0;i<16;i++)v.push(lr());const nx=tx+dx,ny=ty+dy;
+      if(nx<0||ny<0||nx>=W||ny>=H||tiles[idx(nx,ny)]!==GRASS||road[idx(nx,ny)])continue;
+      const n=3+((v[0]*3)|0);for(let i=0;i<n;i++){tg.fillStyle=lc[v[1+i*3]<.5?0:1];tg.fillRect(nx*T+((v[2+i*3]*T)|0),ny*T+((v[3+i*3]*T)|0),1,1)}}}
 }
 // ---------- log ----------
 const logEl=document.getElementById('log');

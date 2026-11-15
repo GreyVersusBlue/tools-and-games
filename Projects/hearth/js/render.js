@@ -140,9 +140,10 @@ const roofFrame=r=>{if(BSHEET.frames['house-'+String(r).slice(1)])return'house-'
   const c=h=>[1,3,5].map(i=>parseInt(String(h).slice(i,i+2),16)||0),a=c(r);let best='',bd=1e9;
   for(const k of Object.keys(BSHEET.frames)){if(!/^house-[0-9a-f]{6}$/.test(k))continue;const b=c('#'+k.slice(6));const d=(a[0]-b[0])**2+(a[1]-b[1])**2+(a[2]-b[2])**2;if(d<bd){bd=d;best=k}}
   return best}
+let fallingLeaves=0; /* A4: how many falling-leaf pixels the last draw() put in the air; presentation only, the simulation never reads it */
 function draw(){
   const s=sea(),sd=seaDay();
-  if(paintedKey!==s+'|'+Math.round(snowD*6)/6+'|'+frozen+'|'+roadV)paintTerrain();
+  if(paintedKey!==terrainKey())paintTerrain();
   // the view: everything below draws in world pixels; one transform carries the zoom and the look-around
   g.setTransform(1,0,0,1,0,0);g.fillStyle='#0b0d12';g.fillRect(0,0,cv.width,cv.height);
   const vk=vScale();g.setTransform(vk,0,0,vk,cv.width/2-camX*T*vk,cv.height/2-camY*T*vk);g.imageSmoothingEnabled=false;
@@ -165,12 +166,31 @@ function draw(){
       if(p._px===undefined||dx*dx+dy*dy>.32){if(p._px!==undefined&&at(p.x|0,p.y|0)!==WATER){const pr=prints[printC++&255];pr.x=p.x;pr.y=p.y+.15;pr.t0=time}p._px=p.x;p._py=p.y}}
     for(const pr of prints){const ag=time-pr.t0;if(ag<0||ag>=18)continue;g.fillStyle=`rgba(150,168,186,${(.4*(1-ag/18)).toFixed(2)})`;g.fillRect(pr.x*T-1,pr.y*T,1,1);g.fillRect(pr.x*T+1,pr.y*T-1,1,1)}}
   const ents=[];
-  const CAN={spring:['#2f6a2b','#3f8a37'],summer:['#2c6a2a','#3f9038'],winter:['#28452a','#375a33']};
-  const canopy=t=>s==='autumn'?(t.a<.35?['#8a4a1e','#c47a2a']:t.a<.7?['#8a2e1e','#b8402a']:['#7a6a20','#b09a2c']):CAN[s];
+  const wind={clear:.7,overcast:1,rain:1.3,thunder:2.4,fog:.4,snow:.9}[wx];
+  const CAN={spring:['#2f6a2b','#3f8a37'],summer:['#2c6a2a','#3f9038']};
+  const canopy=t=>s==='autumn'?AUTUMN_CAN[autumnOf(t)]:CAN[s];
   const shrink=s==='autumn'&&sd===4?.85:1, blossom=s==='spring'&&sd<=3, cap=snowD>.15?Math.min(1,snowD*1.4):0;
-  for(const t of trees)ents.push({y:t.y,d:()=>{const r=T*.7*t.s*shrink,c=canopy(t);g.fillStyle='#4a2f16';g.fillRect(t.x*T-1,t.y*T-r*.6,2,r*.9);g.fillStyle=c[0];g.beginPath();g.arc(t.x*T,t.y*T-r,r,0,6.283);g.fill();g.fillStyle=c[1];g.beginPath();g.arc(t.x*T-r*.3,t.y*T-r*1.2,r*.6,0,6.283);g.fill();
-    if(blossom&&t.b&&t.s>.6){g.fillStyle='#e8a0b8';g.fillRect(t.x*T-r*.6,t.y*T-r*1.1,2,2);g.fillRect(t.x*T+r*.3,t.y*T-r*1.5,2,2);g.fillRect(t.x*T+r*.1,t.y*T-r*.6,2,2)}
-    if(cap>0&&t.s>.4){g.fillStyle='#eef2f4';g.beginPath();g.arc(t.x*T-r*.2,t.y*T-r*1.35,r*.55*cap,0,6.283);g.fill()}}});
+  const ln=(x0,y0,x1,y1)=>{const n=Math.max(Math.abs(x1-x0),Math.abs(y1-y0))|0;for(let i=0;i<=n;i++)g.rect(Math.round(x0+(x1-x0)*i/(n||1)),Math.round(y0+(y1-y0)*i/(n||1)),1,1)}; /* a pixel line into the open path; one fill() draws the whole bare tree */
+  const TIP=[[[-.9,-1.7],[.8,-1.8],[0,-2.1]],[[-.5,-2.2],[.5,-2.3],[0,-2.7]],[[-1.3,-1.5],[1.3,-1.6],[0,-1.9]]]; /* A4: where the bare branches end, round, tall, wide, in tree radii */
+  for(const t of trees)ents.push({y:t.y,d:()=>{const r=T*.7*t.s*shrink,sh=treeShape(t),by=t.y*T,
+    sx=RM?0:Math.max(-1,Math.min(1,Math.round(Math.sin(animT*1.7+t.x*1.7+t.y*.9)*wind*.9))),cx=t.x*T+sx; /* A4: the wind moves the canopy a pixel, by the weather's table; still under reduced motion */
+    if(s==='winter'){ /* A4: a bare branched shape, not a green ball */
+      g.fillStyle='#3a2a1c';g.beginPath();g.rect(t.x*T-1,by-r*1.0,2,r*1.3);const fy=by-r*.9;
+      for(const [tx,ty] of TIP[sh]){const ex=Math.round(cx+tx*r),ey=Math.round(by+ty*r);ln(t.x*T,fy,ex,ey);ln((t.x*T+ex)/2,(fy+ey)/2,(t.x*T+ex)/2+(tx<0?-.4:.4)*r,(fy+ey)/2-.35*r)}
+      g.fill();
+      if(cap>0&&t.s>.4){g.fillStyle='#eef2f4';g.beginPath();for(const [tx,ty] of TIP[sh])g.rect(Math.round(cx+tx*r)-1,Math.round(by+ty*r)-1,3,1);g.rect(Math.round(t.x*T)-1,Math.round(fy)-1,3,1);g.fill()}
+      return}
+    const c=canopy(t);g.fillStyle='#4a2f16';g.fillRect(t.x*T-1,by-r*.6,2,r*.9);
+    if(sh===0){g.fillStyle=c[0];g.beginPath();g.arc(cx,by-r,r,0,6.283);g.fill();g.fillStyle=c[1];g.beginPath();g.arc(cx-r*.3,by-r*1.2,r*.6,0,6.283);g.fill()}
+    else if(sh===1){g.fillStyle=c[0];g.beginPath();g.ellipse(cx,by-r*1.3,r*.62,r*1.2,0,0,6.283);g.fill();g.fillStyle=c[1];g.beginPath();g.ellipse(cx-r*.2,by-r*1.6,r*.36,r*.7,0,0,6.283);g.fill()}
+    else{g.fillStyle=c[0];g.beginPath();g.ellipse(cx,by-r*.9,r*1.35,r*.85,0,0,6.283);g.fill();g.fillStyle=c[1];g.beginPath();g.ellipse(cx-r*.35,by-r*1.1,r*.8,r*.5,0,0,6.283);g.fill()}
+    if(blossom&&t.b&&t.s>.6){g.fillStyle='#e8a0b8';g.fillRect(cx-r*.6,by-r*1.1,2,2);g.fillRect(cx+r*.3,by-r*1.5,2,2);g.fillRect(cx+r*.1,by-r*.6,2,2)}
+    if(cap>0&&t.s>.4){g.fillStyle='#eef2f4';g.beginPath();if(sh===0)g.arc(cx-r*.2,by-r*1.35,r*.55*cap,0,6.283);else if(sh===1)g.ellipse(cx-r*.15,by-r*2.0,r*.4*cap,r*.35*cap,0,0,6.283);else g.ellipse(cx-r*.2,by-r*1.45,r*.9*cap,r*.38*cap,0,0,6.283);g.fill()}}});
+  /* A4: in autumn's last two days the canopies let go: up to 40 leaf pixels in the air (20 under reduced motion), each from one tree, each on its own phase of animT */
+  fallingLeaves=0;
+  if(s==='autumn'&&sd>=3&&trees.length){const nl=Math.min(RM?20:40,trees.length*2);fallingLeaves=nl;
+    ents.push({y:1e5,d:()=>{for(let i=0;i<nl;i++){const t=trees[(i*7)%trees.length],r=T*.7*t.s,ph=(animT*.3+i*.173)%1,lc=AUTUMN_CAN[autumnOf(t)];
+      g.fillStyle=lc[i%2];g.fillRect(Math.round(t.x*T+Math.sin(animT*1.6+i*2.3)*(RM?0:5)+ph*3-1),Math.round(t.y*T-r*1.4+ph*(r*1.4+4)),i%3?1:2,1)}}})}
   litHouses=houseLights(L,dayFrac(),edges()); // which windows are lit (look.js): somebody home before the house's own lights-out, or sheltering in it
   // the frames are drawn; what moves or changes is drawn over them: snow settling, the kiln's chimney pots, a window lit (#807)
   for(const h of houses)ents.push({y:h.y+2,d:()=>{const x=h.x*T,y=h.y*T;bFrame(roofFrame(h.r),x,y);
@@ -181,7 +201,6 @@ function draw(){
   for(const h of plots)ents.push({y:h.y+2,d:()=>{const x=h.x*T,y=h.y*T,pr=Math.min(1,h.prog/12);
     g.fillStyle='rgba(60,45,25,.5)';g.fillRect(x,y,2*T,2*T);g.fillStyle='#8a6a44';for(let i=0;i<2*T;i+=4)g.fillRect(x+i,y+2*T-2-pr*6,2,2+pr*6)}});
   // buildings (bridge and hut sit low; the lighthouse sorts by its foot)
-  const wind={clear:.7,overcast:1,rain:1.3,thunder:2.4,fog:.4,snow:.9}[wx];
   for(const b of bAll())ents.push({y:b.y+b.h,d:()=>{const x=b.x*T,y=b.y*T,done=b.done,pr=done?1:Math.min(1,b.prog/b.work);
     if(!done){g.fillStyle='rgba(60,45,25,.5)';g.fillRect(x,y,b.w*T,b.h*T);g.fillStyle='#8a6a44';for(let i=0;i<b.w*T;i+=4)g.fillRect(x+i,y+b.h*T-2-pr*6,2,2+pr*6);return}
     switch(b.kind){

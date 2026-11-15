@@ -263,6 +263,124 @@ async function lightChecks(page, id) {
 }
 
 // ---- (2) the eight scenes, at zoom 1 and zoom 3.2: pictures and timing ----
+
+// ---- (7) A4: seasons on the land. Four groups: the dry year (S1), snow, ice and bare trees (S5), and the autumn island (litter, wind, leaves). ----
+// Ground pixels are read off the terrain canvas (H.terCv), which carries no light, so a colour is exactly what paintTerrain() put down. Trees are
+// read off the lit picture at zoom 1, where one world pixel is one canvas pixel: a bare winter tree is dark brown, a leafed one is green.
+const PAGE_HELPERS = `
+  const H = window.__hearth, T = 8, W = 110, HH = 70, tiles = H.tilesNow, elev = H.elevNow, road = H.road;
+  const terr = () => H.terCv.getContext('2d').getImageData(0, 0, W * T, HH * T).data;
+  const farFrom = (t, list, d) => list.every(h => Math.hypot(h.x - t.x, h.y - t.y) > d);
+  const waterNear = (t, d) => { for (let j = -d; j <= d; j++) for (let i = -d; i <= d; i++) { const x = (t.x | 0) + i, y = (t.y | 0) + j; if (x >= 0 && y >= 0 && x < W && y < HH && tiles[y * W + x] === 0) return true; } return false; };
+  const freeTrees = (minS, max) => H.trees.filter(t => t.s > minS && t.x > 3 && t.x < W - 3 && t.y > 5 && t.y < HH - 2 && farFrom(t, H.houses, 8) && farFrom(t, [...H.people, ...H.wild, ...H.gulls, ...H.flies, ...H.boats], 5) && !waterNear(t, 5)).slice(0, max);
+`;
+async function dryChecks(page) {
+  const r = await page.evaluate((helpers) => {
+    eval(helpers.replace(/const /g, 'var '));
+    const keep = H.dry01, hueOf = d => {
+      let sr = 0, sg = 0, sb = 0, n = 0;
+      for (let y = 0; y < HH; y++) for (let x = 0; x < W; x++) {
+        if (tiles[y * W + x] !== 2 || road[y * W + x]) continue;
+        const k = ((y * T + 3) * W * T + x * T + 3) * 4; sr += d[k]; sg += d[k + 1]; sb += d[k + 2]; n++;
+      }
+      const r = sr / n / 255, g = sg / n / 255, b = sb / n / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), c = mx - mn;
+      return { hue: 60 * (mx === g ? 2 + (b - r) / c : mx === r ? ((g - b) / c + 6) % 6 : 4 + (r - g) / c), n };
+    };
+    const at = d => { H.setDry(d); H.draw(); return { key: paintedKey, ...hueOf(terr()) }; };
+    const dry0 = at(0), tiny = at(.1), dry9 = at(.9);
+    H.setDry(keep); H.draw();
+    return { dry0, tiny, dry9, keep };
+  }, PAGE_HELPERS);
+  check('dry: S1 with setDry(.9) paints under a different paintedKey than setDry(0)', r.dry0.key !== r.dry9.key, `${r.dry0.key} and ${r.dry9.key}`);
+  check('dry: a drift of .1 is under the first of four levels and does not repaint', r.dry0.key === r.tiny.key, `${r.dry0.key} and ${r.tiny.key}`);
+  check('dry: the grass hue of S1 at setDry(.9) is at least 4 degrees nearer yellow than at setDry(0)', r.dry0.n > 500 && r.dry0.hue - r.dry9.hue >= 4, `${r.dry0.hue.toFixed(1)} against ${r.dry9.hue.toFixed(1)} over ${r.dry0.n} tiles`);
+  console.log(`      dry: grass hue ${r.dry0.hue.toFixed(1)} at 0, ${r.dry9.hue.toFixed(1)} at .9`);
+}
+async function snowChecks(page) {
+  const r = await page.evaluate((helpers) => {
+    eval(helpers.replace(/const /g, 'var '));
+    const keep = H.snowD, snowTile = (d, x, y) => { let n = 0; for (const [i, j] of [[1, 1], [6, 1], [1, 6], [6, 6]]) { const k = ((y * T + j) * W * T + x * T + i) * 4; if (Math.min(d[k], d[k + 1], d[k + 2]) > 205) n++; } return n >= 3; };
+    const outside = (x, y) => farFrom({ x: x + .5, y: y + .5 }, H.houses, 9);
+    const cover = (d, test) => { let n = 0, s = 0; for (let y = 1; y < HH - 1; y++) for (let x = 1; x < W - 1; x++) if (tiles[y * W + x] === 2 && !road[y * W + x] && test(x, y)) { n++; if (snowTile(d, x, y)) s++; } return { n, s }; };
+    // (a) S5 as it stands
+    H.paintTerrain(); let d = terr();
+    const all = cover(d, outside);
+    let checker = 0;
+    const gs = (x, y) => tiles[y * W + x] === 2 && !road[y * W + x] && outside(x, y);
+    for (let y = 1; y < HH - 2; y++) for (let x = 1; x < W - 2; x++) if (gs(x, y) && gs(x + 1, y) && gs(x, y + 1) && gs(x + 1, y + 1)) {
+      const a = snowTile(d, x, y), b = snowTile(d, x + 1, y), c = snowTile(d, x, y + 1), e = snowTile(d, x + 1, y + 1);
+      if ((a && e && !b && !c) || (!a && !e && b && c)) checker++;
+    }
+    // (b) the shore ice: every frozen tile with land to its east has the pale rim on its last two columns
+    let iceN = 0, iceOk = 0;
+    for (let y = 0; y < HH; y++) for (let x = 0; x < W - 1; x++) if (tiles[y * W + x] === 0 && elev[y * W + x] > .16 && tiles[y * W + x + 1] !== 0) {
+      iceN++; const k0 = (y * T + 3) * W * T + x * T + 6, k1 = k0 + 1, ok = k => d[k * 4] === 232 && d[k * 4 + 1] === 242 && d[k * 4 + 2] === 248;
+      if (ok(k0) && ok(k1)) iceOk++;
+    }
+    // (c) snow by exposure, at a light fall: open grass is covered, grass under a tree is not
+    H.setSnow(.35); H.paintTerrain(); d = terr();
+    const under = new Set(); for (const t of H.trees) if (t.s > .4) under.add((t.y | 0) * W + (t.x | 0));
+    const open = cover(d, (x, y) => !under.has(y * W + x) && !under.has((y + 1) * W + x));
+    const shade = cover(d, (x, y) => under.has(y * W + x));
+    H.setSnow(.2); H.paintTerrain(); d = terr();
+    const high = cover(d, (x, y) => elev[y * W + x] >= .5 && !under.has(y * W + x)), low = cover(d, (x, y) => elev[y * W + x] <= .3 && !under.has(y * W + x));
+    H.setSnow(keep); H.paintTerrain(); H.setZoom(1); H.draw();
+    // (d) the winter trees, read off the lit picture
+    const g = document.getElementById('c').getContext('2d'); let sampled = 0, green = 0; const brown = [];
+    for (const t of freeTrees(.7, 40)) {
+      const bx = Math.round(t.x * T) - 12, by = Math.round(t.y * T) - 24, px = g.getImageData(bx, by, 25, 27).data; let gr = 0, br = 0;
+      for (let i = 0; i < px.length; i += 4) { const R = px[i], G = px[i + 1], B = px[i + 2], lum = .299 * R + .587 * G + .114 * B; if (G > R + 15 && G > B + 15) gr++; if (lum < 120 && R > G + 4 && G > B + 4) br++; }
+      sampled++; if (gr > 0) green++; brown.push(br);
+    }
+    brown.sort((a, b) => a - b);
+    return { all, checker, iceN, iceOk, open, shade, high, low, sampled, green, medBrown: brown[brown.length >> 1] || 0 };
+  }, PAGE_HELPERS);
+  check('snow: in S5 at least 90% of grass tiles outside the village are snow-coloured', r.all.n > 500 && r.all.s >= .9 * r.all.n, `${r.all.s} of ${r.all.n}`);
+  check('snow: in S5 no 2 by 2 block of grass alternates snow and bare ground (the checker)', r.all.n > 500 && r.checker === 0, `${r.checker} alternating blocks`);
+  check('snow: shore ice leaves a pale rim on the land edge of every frozen tile in S5', r.iceN >= 5 && r.iceOk === r.iceN, `${r.iceOk} of ${r.iceN}`);
+  check('snow: at a light fall (.35) open grass is covered and the grass under a tree is not', r.open.n > 300 && r.open.s >= .9 * r.open.n && r.shade.n > 20 && r.shade.s <= .25 * r.shade.n, `open ${r.open.s}/${r.open.n}, under trees ${r.shade.s}/${r.shade.n}`);
+  check('snow: at a lighter fall (.2) high ground is covered before low ground', r.high.n > 50 && r.low.n > 20 && r.high.s / r.high.n - r.low.s / r.low.n >= .4, `high ${r.high.s}/${r.high.n}, low ${r.low.s}/${r.low.n}`);
+  check('winter trees: no green canopy on the picture, and a dark brown bare shape on each', r.sampled >= 8 && r.green <= r.sampled * .1 && r.medBrown >= 8, `${r.sampled} trees, ${r.green} with green, median ${r.medBrown} brown pixels`);
+  console.log(`      snow: ${r.all.s}/${r.all.n} covered, ${r.checker} checker blocks, ice rim ${r.iceOk}/${r.iceN}, bare trees median ${r.medBrown} brown px over ${r.sampled}`);
+}
+// the autumn island: its own page, because the checks set the weather and walk the clock. Day 133 is autumn's third day (no leaves yet), 134 its fourth.
+async function autumnChecks() {
+  const { ctx, page } = await open(7);
+  await page.evaluate(() => { const H = window.__hearth; while (H.dayCount < 133) H.step(.05); H.setTime((Math.floor(H.time / 140) + .4) * 140); for (let i = 0; i < 40; i++) H.step(.05); });
+  const r = await page.evaluate((helpers) => {
+    eval(helpers.replace(/const /g, 'var '));
+    const COL = [[[138, 74, 30], [196, 122, 42]], [[138, 46, 30], [184, 64, 42]], [[122, 106, 32], [176, 154, 44]]];
+    H.setWx('overcast'); H.paintTerrain(); const d = terr();
+    // (a) litter: exact autumn colours of the tree, on its own tile and the eight around it
+    const lit = []; for (const t of freeTrees(.5, 60)) {
+      const c = COL[t.a < .35 ? 0 : t.a < .7 ? 1 : 2]; let n = 0;
+      for (let y = (t.y | 0) - 1; y <= (t.y | 0) + 1; y++) for (let x = (t.x | 0) - 1; x <= (t.x | 0) + 1; x++) for (let j = 0; j < T; j++) for (let i = 0; i < T; i++) {
+        const k = ((y * T + j) * W * T + x * T + i) * 4; if (c.some(cc => d[k] === cc[0] && d[k + 1] === cc[1] && d[k + 2] === cc[2])) n++;
+      }
+      lit.push(n);
+    }
+    lit.sort((a, b) => a - b);
+    // (b) the wind: the same instant drawn at two animT values; a tree's box differs when it swayed, and under reduced motion no box differs
+    H.setZoom(1); const g = document.getElementById('c').getContext('2d'), tr = freeTrees(.5, 40);
+    const shot = () => tr.map(t => g.getImageData(Math.round(t.x * T) - 14, Math.round(t.y * T) - 26, 29, 28).data);
+    const moved = (a, b) => a.reduce((n, p, i) => { let df = false; for (let k = 0; k < p.length; k++) if (p[k] !== b[i][k]) { df = true; break; } return n + (df ? 1 : 0); }, 0);
+    const wind = {};
+    for (const rm of [false, true]) { H.RM = rm; H.setAnimT(0); H.draw(); const a = shot(); H.setAnimT(1.3); H.draw(); wind[rm ? 'rm' : 'free'] = moved(a, shot()); }
+    H.RM = false; H.setAnimT(0); H.draw();
+    const leaves133 = fallingLeaves;
+    return { lit, sampled: lit.length, wind, boxes: tr.length, leaves133 };
+  }, PAGE_HELPERS);
+  await page.evaluate(() => { const H = window.__hearth; while (H.dayCount < 134) H.step(.05); });
+  const q = await page.evaluate(() => { const H = window.__hearth, out = {}; H.setZoom(1); for (const rm of [false, true]) { H.RM = rm; H.draw(); out[rm ? 'rm' : 'free'] = fallingLeaves; } H.RM = false; return out; });
+  check('litter: in autumn every sampled tree has at least 8 pixels of its own leaf colour on the tiles around it', r.sampled >= 6 && r.lit[0] >= 8, `${r.sampled} trees, fewest ${r.lit[0]}, median ${r.lit[r.sampled >> 1]}`);
+  check('wind: at overcast, a quarter of the trees move a pixel between two animT values', r.boxes >= 6 && r.wind.free >= .25 * r.boxes, `${r.wind.free} of ${r.boxes} trees differ`);
+  check('wind: under reduced motion no tree moves between two animT values', r.boxes >= 6 && r.wind.rm === 0, `${r.wind.rm} of ${r.boxes} trees differ`);
+  check('leaves: none in the air on autumn day 3 of 5', r.leaves133 === 0, `${r.leaves133}`);
+  check('leaves: on autumn day 4, 40 in the air, and no more than 20 under reduced motion', q.free > 20 && q.free <= 40 && q.rm > 0 && q.rm <= 20, JSON.stringify(q));
+  console.log(`      autumn: litter fewest ${r.lit[0]} px per tree, wind moved ${r.wind.free}/${r.boxes} (${r.wind.rm} under RM), leaves ${q.free}/${q.rm}`);
+  await ctx.close();
+}
+
 const rows = [], lums = {};
 // the stock checks set wood, food and granary and the clock by hand, so they get an island of their own: run on the scenes' island they left S7's lit windows with no pairs to measure
 {
@@ -308,10 +426,13 @@ const rows = [], lums = {};
     }
     if (sc.id === 'S1') await animChecks(page);
     if (sc.id === 'S1') await peopleChecks(page);
+    if (sc.id === 'S1') await dryChecks(page);
+    if (sc.id === 'S5') await snowChecks(page);
     if (['S1', 'S6', 'S7'].includes(sc.id)) await lightChecks(page, sc.id);
   }
   await ctx.close();
 }
+await autumnChecks();
 console.log('\nscene                          zoom   median ms   p95 ms');
 for (const r of rows) console.log(`${(r.id + ' ' + r.name).padEnd(30)} ${String(r.z).padEnd(5)} ${r.med.toFixed(2).padStart(9)} ${r.p95.toFixed(2).padStart(8)}`);
 console.log('mean luminance at zoom 1: ' + Object.entries(lums).map(([k, v]) => k + ' ' + v.toFixed(2)).join('  '));
