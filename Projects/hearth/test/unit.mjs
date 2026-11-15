@@ -429,6 +429,27 @@ section(22, () => {
   check('stock: sacks stand at the hall\'s south wall, and move when a house takes that spot', s0.ok && s0.y / 8 > cy - 6 + 2 && s0.x / 8 > cx + 8 && s1.ok && (s1.x !== s0.x || s1.y !== s0.y), JSON.stringify([s0, s1]));
 });
 
+// ---- people you can tell apart (A8, unit section 21) ----
+// drawFace is called with a recording ctx (fillRect, clearRect and the fillStyle setter append to a list) and the list is hashed. The two hashes
+// below were recorded from the unmodified drawFace BEFORE it was split into faceSpec + drawFace: the first 12 people of seeds 7 and 42 at day 1
+// (day 1 has four people each) and 60 more per seed, built from them with other seeds, ages, traits and inherited skins so the hat, the beard,
+// the elder's long hair and all five skins are drawn (#646: the faces are pixel-identical). Break: drop one rr() call from faceSpec; the hash fails.
+section(21, () => {
+  const FACES = `(()=>{const rec=p=>{const L=[];let fs='';const ctx={fillRect:(...a)=>L.push('f'+a.join(',')+'@'+fs),clearRect:(...a)=>L.push('c'+a.join(',')),set fillStyle(v){fs=v},get fillStyle(){return fs}};drawFace(ctx,p);return hash(L.join('|'))};
+    const TR=['proud','brave','dreamy','stubborn','funny','gentle'],out={};out.s=people.slice(0,12).map(rec);
+    out.v=Array.from({length:60},(_,i)=>{const b=people[i%people.length];return rec({...b,seed:1000+i*7919,age0:[6,30,45,58,66,80][i%6],born:dayCount,tr:[TR[i%6],TR[(i*5+2)%6]],fSk:(i%6)-1})});return out})()`;
+  const RECORDED = { 7: 4195938380, 42: 2962902341 };
+  for (const seed of [7, 42]) {
+    const { ev } = fresh(seed);
+    check(`faces: the first people of seed ${seed} and 60 variants draw the same pixels as before faceSpec (hash ${RECORDED[seed]})`, ev(`hash(JSON.stringify(${FACES}))`) === RECORDED[seed], `got ${ev(`hash(JSON.stringify(${FACES}))`)}`);
+  }
+  const { ev } = fresh(7);
+  check('faceSpec: two calls on one person give an equal answer', ev('(()=>{const a=JSON.stringify(faceSpec(people[0])),b=JSON.stringify(faceSpec(people[0]));return a===b})()'));
+  const kinds = ev(`(()=>{const TR=['proud','brave'],o={skins:new Set(),hats:new Set(),beard:0,side:0};for(let i=0;i<400;i++){const b=people[i%people.length],sp=faceSpec({...b,seed:77+i*131,age0:[8,30,45,70][i%4],born:dayCount,tr:[TR[i%3==0?0:1]],fSk:-1});o.skins.add(sp.skin);o.hats.add(sp.hat);o.beard+=sp.beard?1:0;o.side+=sp.side?1:0}return {skins:o.skins.size,hats:o.hats.size,beard:o.beard,side:o.side}})()`);
+  check('faceSpec: 400 faces use all five skins, all three hats and none, beards and an elder\'s long hair', kinds.skins === 5 && kinds.hats === 4 && kinds.beard > 0 && kinds.side > 0, JSON.stringify(kinds));
+  check('drawFolk: draws no random numbers and writes no simulation state (pack is the same before and after a frame)', ev('(()=>{const a=JSON.stringify(pack());for(let i=0;i<3;i++)draw();return a===JSON.stringify(pack())})()'));
+});
+
 // ---- a save cannot carry markup (C1, unit section 26) ----
 // unpack() makes every string in the save plain text on every load (#37): no < > & " or backtick, none over 400 characters.
 // The log writes names and chronicle text through innerHTML, and a save is about to be something a server accepts and republishes.
