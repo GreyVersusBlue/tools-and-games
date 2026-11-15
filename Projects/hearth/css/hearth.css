@@ -4,6 +4,11 @@
   #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
   canvas{image-rendering:pixelated;image-rendering:crisp-edges}
   #c{cursor:crosshair}
+  /* A9: name tags over the people, placed by updateTags() in js/folk.js; they never take the pointer */
+  #tags{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+  #tags .tag{position:absolute;transform:translate(-50%,-100%);white-space:nowrap;font-size:11px;line-height:1;padding:2px 5px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:2px;text-shadow:0 1px 2px #000}
+  #tags .tag.sel{color:var(--gold);border-color:var(--gold)}
+  #tags .tag[hidden]{display:none}
   #hud{position:fixed;left:0;right:0;top:0;padding:10px 14px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;background:linear-gradient(#0b0d12,rgba(11,13,18,0));pointer-events:none}
   #hud>*{pointer-events:auto}
   h1{font-size:18px;font-weight:normal;letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}

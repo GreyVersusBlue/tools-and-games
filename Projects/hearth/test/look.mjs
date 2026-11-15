@@ -262,12 +262,118 @@ async function lightChecks(page, id) {
   }
 }
 
+
+// ---- (7) A9: who is who, and who is singing. A fresh seed-7 island at noon on day 128 (S1's day), clear, no snow, zoom 1. ----
+// People are stood by hand on open grass, so a check reads the picture and the DOM and not the luck of where the island put them. Ties: the
+// canvas with someone selected against the canvas with nobody, along one pixel row, sample by sample. Notes: pixels of the song's own colour (noteCol,
+// folk.js, multiplied by the noon colour as the A8 check does) in a box over each head. Break any of them as the entry in the comment above each says.
+async function whoChecks(page) {
+  const r = await page.evaluate(() => {
+    const H = window.__hearth, g = document.getElementById('c').getContext('2d'), ev = (0, eval), T = 8, W = 110, HH = 70;
+    const out = {};
+    H.setZoom(1); H.setWx('clear'); H.setSnow(0); H.setTime((Math.floor(H.time / 140) + .5) * 140); H.setAnimT(0);
+    // a strip of land 18 tiles wide with no road on it; whatever stands in and round it (trees, houses, plots, works, animals) is taken
+    // off the island, which is this check's own and is never stepped again, so nothing hides a line or a note
+    const tiles = H.tilesNow;
+    let spot = null;
+    for (let ty = 8; ty < HH - 8 && !spot; ty++) for (let tx = 6; tx < W - 24 && !spot; tx++) {
+      let ok = true;
+      for (let y = ty; y <= ty && ok; y++) for (let x = tx; x <= tx + 17; x++) if ((tiles[y * W + x] !== 2 && tiles[y * W + x] !== 1) || H.road[y * W + x]) { ok = false; break; }
+      if (ok) spot = { x: tx + 1, y: ty };
+    }
+    out.spot = spot;
+    if (!spot) return out;
+    for (const l of ['trees', 'houses', 'plots', 'works', 'wild', 'stumps', 'graves', 'snowmen']) ev(`${l}.splice(0,${l}.length,...${l}.filter(o=>!(o.x>=${spot.x - 6}&&o.x<=${spot.x + 23}&&o.y>=${spot.y - 12}&&o.y<=${spot.y + 6})))`);
+    const ppl = H.people.filter(p => !p.dead && p.task !== 'boat' && p.task !== 'voyage');
+    const stand = (p, x, y) => { p.x = x; p.y = y; p.tx = x; p.ty = y; p.inside = false; p.inBoat = false; p.task = 'wander'; p.sick = false; };
+    const ageTo = (p, a) => { p.age0 = a - (H.dayCount - p.born) / ev('YEAR'); };   // ageOf(p) = age0 + (dayCount - born) / YEAR
+    const grid = () => { const d = g.getImageData(0, 0, W * T, HH * T).data; return (x, y) => { const k = (Math.round(y) * W * T + Math.round(x)) * 4; return [d[k], d[k + 1], d[k + 2]]; }; };
+    const draw = () => { H.draw(); return grid(); };
+    // ---- the people for the whole check: six, each of them old enough to be grown and none of them an elder ----
+    const six = ppl.slice(0, 6); if (six.length < 6) { out.few = six.length; return out; }
+    six.forEach((p, i) => { ageTo(p, 30 + i * 4); p.rels = []; p.partner = null; });
+    // ---- (a) name tags ----
+    // The selected person is stood at the middle of the block with a partner; showCard() is the real click's own path. Their tag is read from the DOM.
+    const A = six[0], B = six[1], cx = spot.x + 8, cy = spot.y;
+    stand(A, cx, cy); stand(B, cx + 7, cy); A.rels = [{ who: B.name, k: 'partner' }]; B.rels = [{ who: A.name, k: 'partner' }];
+    for (const p of six.slice(2)) stand(p, spot.x + 1 + (six.indexOf(p) - 2) * 4, cy - 4);
+    const view = () => { const v = H.view, rc = document.getElementById('c').getBoundingClientRect(), k = v.fitS * v.zoom * v.dprE;
+      return (p) => ({ x: rc.left + (p.x * T * k + document.getElementById('c').width / 2 - v.camX * T * k) / v.dprE, y: rc.top + ((p.y * T - 8) * k + document.getElementById('c').height / 2 - v.camY * T * k) / v.dprE }); };
+    const tags = () => [...document.querySelectorAll('#tags .tag')].filter(e => !e.hidden).map(e => { const b = e.getBoundingClientRect(); return { n: e.textContent, x: b.left + b.width / 2, y: b.top + b.height / 2, sel: e.classList.contains('sel') }; });
+    ev('showCard(null)'); H.draw(); out.tagsNone = tags().length;
+    ev(`showCard(byName(${JSON.stringify(A.name)}))`); H.draw();
+    const tg = tags().find(t => t.n === A.name), pr = view()(A);
+    out.tagSel = tg ? { dx: Math.abs(tg.x - pr.x), dy: Math.abs(tg.y - pr.y), sel: tg.sel, n: tags().length } : null;
+    // hover: nobody selected, zoom 3.2 on the middle of the block, the pointer on one of the others; zoom 1, the same pointer, shows nothing
+    ev('showCard(null)');
+    const C = six[2]; H.cur.x = C.x; H.cur.y = C.y; H.setZoom(1); H.draw(); out.hover1 = tags().length;
+    H.setZoom(3.2, C.x, C.y); H.setCam(C.x, C.y); H.draw();
+    const hv = tags(); out.hover3 = { names: hv.map(t => t.n), hasC: hv.some(t => t.n === C.name), n: hv.length };
+    // eleven people packed round the pointer: no more than six tags
+    const extra = ppl.slice(6, 12); extra.forEach((p, i) => stand(p, C.x + .2 * i, C.y + .1)); H.draw(); out.hoverMany = tags().length;
+    H.setZoom(1); H.cur.x = 0; H.cur.y = 0; H.draw();
+    // ---- (b) ties: one row of pixels from A to an o seven tiles east, the canvas with A selected against the canvas with nobody ----
+    const row = (k, inside) => {
+      const o = B; o.inside = !!inside; A.rels = [{ who: o.name, k }]; o.rels = [];
+      ev('showCard(null)'); const base = draw(); ev(`showCard(byName(${JSON.stringify(A.name)}))`); const sel = draw();
+      const y = A.y * T - 3, x0 = A.x * T + 6, x1 = o.x * T - 6; let n = 0, ch = 0, sr = 0, sg = 0, sb = 0, lo = 255;
+      for (let x = x0; x < x1; x++) { n++; const a = base(x, y), b = sel(x, y); if (Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2])) >= 8) { ch++; sr += b[0]; sg += b[1]; sb += b[2]; lo = Math.min(lo, b[0], b[1], b[2]); } }
+      ev('showCard(null)'); B.inside = false;
+      return { n, ch, r: ch ? sr / ch : 0, g: ch ? sg / ch : 0, b: ch ? sb / ch : 0, lo };
+    };
+    out.partner = row('partner'); out.friend = row('friend'); out.rival = row('rival'); out.parent = row('parent'); out.indoors = row('partner', true);
+    // ---- (c) singing and the teller. Four stand at the fire a row apart: two know the song, two do not, and the oldest of the four is not one of the two ----
+    const [s1, s2, n1, tl] = six.slice(2, 6); [s1, s2, n1, tl].forEach((p, i) => { stand(p, spot.x + 2 + i * 4, cy); p.task = 'gather'; ageTo(p, [32, 38, 36, 55][i]); });
+    for (const p of [A, B]) stand(p, p.x, cy - 5);
+    const songs0 = ev('songs').slice(); ev('songs.length=0');
+    ev(`songs.push({ci:3,comp:${JSON.stringify(s1.name)},kn:[${JSON.stringify(s1.name)},${JSON.stringify(s2.name)}],lost:0,d:dayCount})`); ev('storyDay=dayCount');
+    const sky = H.skyAt(.5, 'summer', 'clear', 0), hex = ev('noteCol(songs[0])'), want = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) * sky[(i - 1) / 2] / 255);
+    const notes = p => { const g2 = null; let n = 0; const cap = draw(); for (let y = p.y * T - 26; y < p.y * T - 8; y++) for (let x = p.x * T + 2; x < p.x * T + 8; x++) { const c = cap(x, y); if (Math.max(Math.abs(c[0] - want[0]), Math.abs(c[1] - want[1]), Math.abs(c[2] - want[2])) <= 6) n++; } return n; };
+    out.hex = hex;
+    const frames = [0, .25, .5, .75];   // the glyph rises through three frames: every one of them must read
+    out.sing = frames.map(f => { H.setAnimT(f); return [s1, s2, n1, tl].map(notes); });
+    // a song that is lost is silent
+    ev('songs[0].lost=1'); H.setAnimT(0); out.lost = [s1, s2].map(notes); ev('songs[0].lost=0');
+    // the teller: the oldest grown person at the fire stands a pixel taller. Same canvas with and without the story on the day.
+    H.setAnimT(0); const on = draw(); ev('storyDay=0'); const off = draw(); ev('storyDay=dayCount');
+    const diff = (p, rows) => { let n = 0; for (const yy of rows) for (const xx of [p.x * T - 1, p.x * T]) { const a = on(xx, yy), b = off(xx, yy); if (Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2])) >= 8) n++; } return n; };
+    out.teller = { head: diff(tl, [tl.y * T - 9]), others: [n1].map(p => diff(p, [p.y * T - 9, p.y * T - 8, p.y * T - 5])).concat([diff(s1, [s1.y * T - 9])]) };
+    // someone sick and still up is a shade paler
+    ev('songs.length=0'); ev('storyDay=0'); stand(tl, tl.x, tl.y);
+    const lum = c => .299 * c[0] + .587 * c[1] + .114 * c[2];
+    const well = lum(draw()(tl.x * T, tl.y * T - 3)); tl.sick = true; const ill = lum(draw()(tl.x * T, tl.y * T - 3)); tl.sick = false;
+    out.sick = { well, ill };
+    return out;
+  });
+  const m = (o) => `${o.ch} of ${o.n} samples, mean rgb ${o.r.toFixed(0)},${o.g.toFixed(0)},${o.b.toFixed(0)}`;
+  if (!r.spot || r.few) { check('who: an open block of grass to stand people on, and six people to stand', false, JSON.stringify(r)); return; }
+  check('tags: nothing selected at zoom 1 and no tags', r.tagsNone === 0, `${r.tagsNone} tags`);
+  check('tags: the selected person has a tag in #tags, gold, within 12 px of where they are projected', !!r.tagSel && r.tagSel.dx <= 12 && r.tagSel.dy <= 12 && r.tagSel.sel && r.tagSel.n === 1, JSON.stringify(r.tagSel));
+  check('tags: at zoom 1 the pointer near people shows no tags, at zoom 3.2 it shows theirs', r.hover1 === 0 && r.hover3.hasC && r.hover3.n >= 1, `zoom 1: ${r.hover1}; zoom 3.2: ${JSON.stringify(r.hover3)}`);
+  check('tags: seven people round the pointer show six tags, no more', r.hoverMany === 6, `${r.hoverMany}`);
+  check('ties: a partner out of doors is joined to the selected person by a warm line the whole way', r.partner.ch >= .8 * r.partner.n && r.partner.r - r.partner.b >= 40, m(r.partner));
+  check('ties: a friend is joined by a green line the whole way', r.friend.ch >= .8 * r.friend.n && r.friend.g - r.friend.r >= 30, m(r.friend));
+  check('ties: a parent or child is joined by a pale line', r.parent.ch >= .8 * r.parent.n && r.parent.lo >= 150, m(r.parent) + `, darkest channel ${r.parent.lo}`);
+  check('ties: a rival is joined by a red line that is dashed: about half the samples', r.rival.ch >= .35 * r.rival.n && r.rival.ch <= .7 * r.rival.n && r.rival.r - r.rival.g >= 60, m(r.rival));
+  check('ties: a partner who is indoors gets no line', r.indoors.ch === 0, m(r.indoors));
+  check('singing: the two who know the song have its colour over their heads at every frame of the rise, the two who do not have none', r.sing.every(f => f[0] >= 3 && f[1] >= 3 && f[2] === 0 && f[3] === 0), `${r.hex}: ${JSON.stringify(r.sing)}`);
+  check('singing: a song that is lost is silent', r.lost[0] === 0 && r.lost[1] === 0, JSON.stringify(r.lost));
+  check('teller: the oldest at the fire stands a pixel taller on the night; nobody else changes', r.teller.head === 2 && r.teller.others.every(n => n === 0), JSON.stringify(r.teller));
+  check('sick: someone sick and still up is drawn paler than the same person well', r.sick.ill >= r.sick.well + 8, `${r.sick.well.toFixed(1)} well, ${r.sick.ill.toFixed(1)} ill`);
+}
+
 // ---- (2) the eight scenes, at zoom 1 and zoom 3.2: pictures and timing ----
 const rows = [], lums = {};
 // the stock checks set wood, food and granary and the clock by hand, so they get an island of their own: run on the scenes' island they left S7's lit windows with no pairs to measure
 {
   const { ctx, page } = await open(7);
   await stockChecks(page);
+  await ctx.close();
+}
+{
+  const { ctx, page } = await open(7);
+  await page.evaluate(() => { const H = window.__hearth; while (H.dayCount < 128) H.step(.05); H.setTime((Math.floor(H.time / 140) + .5) * 140); for (let i = 0; i < 40; i++) H.step(.05); });
+  await whoChecks(page);
   await ctx.close();
 }
 {

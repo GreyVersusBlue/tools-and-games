@@ -312,4 +312,5 @@ function draw(){
   document.getElementById('s-pop').textContent=people.length;document.getElementById('s-wood').textContent=wood;document.getElementById('s-food').textContent=food;document.getElementById('s-store').textContent=granary;
   const lbl=f<e[0]?'night':f<e[0]+.1?'dawn':f<.5?'morning':f<e[1]-.1?'afternoon':f<e[1]?'dusk':'night';const wxl={clear:'',overcast:' · overcast',rain:' · rain',thunder:' · storm',fog:' · fog',snow:' · snow'}[wx]+(want?' · rations':hunger>.3?' · hungry':'')+(ill?` · ${people.filter(p=>p.sick&&!p.dead).length} abed`:'');
   document.getElementById('s-time').textContent=`year ${yearOf(dayCount)} · day ${dayCount} · ${s} · ${lbl}${wxl}`;document.getElementById('s-time-s').textContent=`d${dayCount} · ${s} · ${lbl}${wxl}`;
+  updateTags(); /* A9: the name tags, js/folk.js */
 }
