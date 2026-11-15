@@ -264,6 +264,41 @@ async function lightChecks(page, id) {
 }
 
 
+// ---- (6c) B5: the far island, seen. Warm pixels in the silhouette's box and pale ones where a sail goes, read off the canvas. ----
+// Two far departures and the name known: two to six warm pixels. Name unknown: none. Two near departures (far 0), name known: none, and a lamp that
+// has burnt out by the small hours: none. A crossing today puts pale pixels under the island that a crossing three days old does not.
+// Break: count every entry of gone in farPeople regardless of far; the "near departures" assertion fails.
+async function farChecks(page) {
+  const r = await page.evaluate(() => {
+    const H = window.__hearth, g = document.getElementById('c').getContext('2d'), ev = (0, eval), T = 8, out = {};
+    const fi = H.farIsle; out.has = !!fi; if (!fi) return out;
+    const x0 = Math.max(0, Math.floor(fi.x * T)), x1 = Math.ceil((fi.x + fi.w) * T), hh = fi.h * 1.7;
+    H.setZoom(1); H.setWx('clear'); H.setSnow(0); H.setFogA(0); H.setAnimT(0);
+    ev('farIsle.lit=false');
+    const dayStart = Math.floor(H.time / 140) * 140;
+    const warm = () => { H.draw(); const d = g.getImageData(x0, 0, x1 - x0, Math.ceil(hh * 2.2)).data; let n = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i] > 180 && d[i] - d[i + 2] > 70) n++; return n; };
+    const pale = () => { H.draw(); const d = g.getImageData(Math.max(0, x0 - (x1 - x0)), Math.floor(hh * 1.9), 3 * (x1 - x0), 20).data; let n = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i] > 190 && d[i + 1] > 190 && d[i + 2] > 165) n++; return n; };
+    const setGone = (far) => ev(`gone=[${far.map((f, i) => `{name:'zz${i}',far:${f}}`).join(',')}]`);
+    H.setTime(dayStart + .88 * 140);
+    ev('farRec.kn=1'); setGone([1, 1]); out.two = warm();
+    ev('farRec.kn=0'); out.unknown = warm();
+    ev('farRec.kn=1'); setGone([0, 0]); out.near = warm();
+    setGone([1, 1]); H.setTime(dayStart + .95 * 140); out.mid = warm(); H.setTime(dayStart + .17 * 140); out.late = warm();
+    setGone([]); H.setTime(dayStart + .5 * 140); ev('farRec.cr=[]'); out.sail0 = pale();
+    ev(`farRec.cr=[{d:dayCount,k:'left',s:'x'}]`); out.sail1 = pale();
+    ev(`farRec.cr=[{d:dayCount-3,k:'left',s:'x'}]`); out.sailOld = pale();
+    return out;
+  });
+  if (!r.has) { check('far: this island has a far island to look at', false, JSON.stringify(r)); return; }
+  check('far: two people known to be on the named far island show two to six warm pixels in its box in the evening', r.two >= 2 && r.two <= 6, `${r.two}`);
+  check('far: with the name not yet known the island is a shape and nothing else', r.unknown === 0, `${r.unknown} warm px`);
+  check('far: two near departures and no far ones light nothing over there', r.near === 0, `${r.near} warm px`);
+  check('far: the lamps burn at midnight and are out in the small hours', r.mid >= 2 && r.late === 0, `${r.mid} warm px at .95, ${r.late} at .17`);
+  check('far: a crossing today puts a sail on the water; one three days old does not', r.sail1 - r.sail0 >= 2 && r.sailOld - r.sail0 <= 0, JSON.stringify({ none: r.sail0, today: r.sail1, old: r.sailOld }));
+}
+
 // ---- (6b) B2: hands that are full. One person stood on open grass at noon; what they carry is read off the canvas. ----
 // Full buckets against empty ones: pixels in the person's box that are blue (b well over r and g). A basket put down for a chat: pixels of its own
 // brown inside the box where they stood, once they have walked off. Break: swap the two waterSt rows in carryOf; the blue count does not rise.
@@ -714,6 +749,11 @@ const rows = [], lums = {};
 {
   const { ctx, page } = await open(7);
   await handsChecks(page);
+  await ctx.close();
+}
+{
+  const { ctx, page } = await open(7);
+  await farChecks(page);
   await ctx.close();
 }
 {

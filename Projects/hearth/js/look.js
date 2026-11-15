@@ -57,7 +57,7 @@ function lightMap(L,f,e,s){
   const lh=getB('light');
   if(lh&&dark>.35){const lx=lh.x*T+4,ly=lh.y*T-13,a=animT*.9,al=(dark-.35)*.5*(wx==='fog'?1.6:1);stamp('lamp',18,lx,ly,Math.min(1,(dark-.35)*3));
     m.fillStyle=`rgba(255,242,176,${al})`;for(const off of [0,Math.PI]){m.beginPath();m.moveTo(lx,ly);m.arc(lx,ly,120,a+off-.13,a+off+.13);m.closePath();m.fill()}}
-  if(farIsle&&farIsle.lit&&fogA<.6&&dark>.3&&(animT*2.3|0)%9!==0)stamp('lamp',8,(farIsle.x+farIsle.w*.6)*T,farIsle.h*1.7*1.5,Math.min(1,(dark-.3)*2));
+  for(const q of farLamps(L,f,e))stamp('lamp',8,q.x,q.y,q.a); /* B5: one for each person over there, until the small hours */
   for(const fl of flies){const b=RM?.85:Math.sin(animT*2.6+fl.ph);if(b<.2)continue;m.fillStyle=`rgba(150,255,90,${Math.min(1,(b-.2)*1.1*Math.min(1,fl.l/6))})`;m.fillRect(Math.round(fl.x*T-1),Math.round(fl.y*T-3),3,3)}
   if(dark>.65&&speed<FAST)for(const p of people){if(p.dead||p.inside||p.task!=='gohome'&&p.task!=='nurse'&&p.task!=='visit'&&p.task!=='voyage')continue;stamp('fire',8,p.x*T,p.y*T-3,Math.min(1,(dark-.65)*4))}
   m.globalCompositeOperation='source-over';
@@ -203,3 +203,40 @@ function fogRing(){
 function drawFogRing(skyY){
   const vk=vScale(),vw=cv.width/vk,vh=cv.height/vk;g.globalAlpha=Math.min(1,fogA)*.7*skyY;
   g.drawImage(fogRing(),Math.round(camX*T-vw/2),Math.round(camY*T-vh/2),Math.round(vw),Math.round(vh));g.globalAlpha=1}
+/* B5: the far island, seen. Once its name has crossed the water it has people on it. One lamp for every person known to be there (the gone who sailed
+   for it, plus one when somebody has stayed), up to six, set along the silhouette's lower edge from a stream seeded on the island's own seed, so the
+   same island has the same lamps on every device. They go out late in the night one by one, each at its own hour; by day each has a thread of smoke.
+   A boat that crossed in the last two days is a small sail on the water on the side it went. Reads state, writes nothing the simulation reads. */
+const FAR_Q=[[0,0,.22,1.5,.42,.7],[.42,.7,.6,2.1,.8,.9],[.8,.9,.92,.4,1,0]]; /* the outline in render.js, as [x0,y0,cx,cy,x1,y1]: x in widths, y in h */
+function farEdgeY(u,h){ /* the y of the silhouette's lower edge at u of the way across, by sampling the same three curves the fill uses */
+  for(const q of FAR_Q){if(u<q[0]||u>q[4])continue;let px=q[0],py=q[1];
+    for(let i=1;i<=16;i++){const t=i/16,m=1-t,x=m*m*q[0]+2*m*t*q[2]+t*t*q[4],y=m*m*q[1]+2*m*t*q[3]+t*t*q[5];
+      if(x>=u){const k=x>px?(u-px)/(x-px):0;return(py+(y-py)*k)*h}px=x;py=y}}
+  return 0}
+function farPeople(){return farRec&&farRec.kn?gone.filter(g=>g.far).length+(farIsle&&farIsle.lit?1:0):0}
+/* the lamps now burning: [{x,y,a}] in world pixels, a the brightness 0 to 1. Nothing at all until the name is known, or in the light of day. */
+function farLamps(L,f,e){
+  const out=[];if(!farIsle||!farRec||!farRec.kn)return out;
+  const n=Math.min(6,farPeople());if(n<1)return out;
+  const dark=1-L;if(dark<=.3)return out;
+  const fi=farIsle,x0=fi.x*T,w=fi.w*T,h=fi.h*1.7,rr=mulberry(farRec.s^0xB5),span=1-e[1]+e[0],np=(f>e[1]?f-e[1]:f+1-e[1])/span;
+  const wxk=Math.max(0,1-fogA*1.5)*(rain||wx==='snow'||wx==='thunder'?.5:wx==='overcast'?.8:1);
+  for(let i=0;i<n;i++){const u=.16+.68*rr(),o=.55+.4*((i*.618034)%1);
+    if(np>=o)continue;
+    out.push({x:Math.round(x0+u*w),y:Math.round(farEdgeY(u,h))-1,a:Math.min(1,(dark-.3)*2)*wxk})}
+  return out}
+/* by day: a pale thread of smoke over each lamp's place, and a sail for each crossing of the last two days */
+function drawFarLife(L){
+  if(!farIsle||!farRec||!farRec.kn||fogA>=.9)return;
+  const fi=farIsle,x0=fi.x*T,w=fi.w*T,h=fi.h*1.7,wxk=Math.max(0,1-fogA*1.5)*(rain||wx==='snow'||wx==='thunder'?.5:wx==='overcast'?.8:1);
+  if(wxk<=.02)return;
+  const n=Math.min(6,farPeople()),rr=mulberry(farRec.s^0xB5);
+  if(n>0&&L>=.5){g.fillStyle='#dbe2ea';
+    for(let i=0;i<n;i++){const u=.16+.68*rr(),bx=Math.round(x0+u*w),by=Math.round(farEdgeY(u,h))-1,sw=Math.sin(animT*.7+i*1.9);
+      for(let k=1;k<=5;k++){g.globalAlpha=(.34-k*.05)*wxk;g.fillRect(bx+Math.round(sw*k*.5),by-k,1,1)}}
+    g.globalAlpha=1}
+  let ln=null;for(const l of landings)if(!ln||Math.abs(l.x-(fi.x+fi.w/2))<Math.abs(ln.x-(fi.x+fi.w/2)))ln=l;
+  const side=(ln?ln.x:center.x)<fi.x+fi.w/2?-1:1;
+  for(const c of farRec.cr){if(c.k==='name'||dayCount-c.d>=2)continue;
+    const s2=mulberry(farRec.s^c.d*131),sx=x0+w/2+side*w*(.5+s2()*.25),sy=Math.round(h*2.3+s2()*3);
+    g.globalAlpha=.85*wxk;g.fillStyle='#ece8dc';g.fillRect(Math.round(sx),sy-2,1,2);g.fillRect(Math.round(sx)+1,sy-1,1,1);g.fillStyle='#5a4a3a';g.fillRect(Math.round(sx)-1,sy,3,1);g.globalAlpha=1}}

@@ -321,10 +321,11 @@ function draw(){
   if(farIsle&&fogA<.9){const fi=farIsle,x0=fi.x*T,w=fi.w*T,h=fi.h*1.7,al=(1-fogA)*(wx==='overcast'||rain||wx==='snow'?.55:.8);g.fillStyle=L>.5?`rgba(44,58,86,${(al*.85).toFixed(2)})`:`rgba(18,24,44,${al.toFixed(2)})`;
     g.beginPath();g.moveTo(x0,0);g.quadraticCurveTo(x0+w*.22,h*1.5,x0+w*.42,h*.7);g.quadraticCurveTo(x0+w*.6,h*2.1,x0+w*.8,h*.9);g.quadraticCurveTo(x0+w*.92,h*.4,x0+w,0);g.closePath();g.fill();
     g.fillStyle=`rgba(200,214,232,${(al*.18*(L>.5?1:.3)).toFixed(3)})`;g.fillRect(x0-6,h*1.9,w+12,1)}
+  drawFarLife(L); /* B5 (look.js): smoke and sails over there */
   drawSmoke(L,s); /* A7 (look.js): a column over every house with somebody home, and breath in the cold */
   const dark=1-L;
   if(dark>.3){g.globalCompositeOperation='lighter';
-    if(farIsle&&farIsle.lit&&fogA<.6&&(animT*2.3|0)%9!==0){const lx=(farIsle.x+farIsle.w*.6)*T,ly=farIsle.h*1.7*1.5;g.fillStyle=`rgba(255,190,110,${(.9*(dark-.3)).toFixed(2)})`;g.fillRect(lx,ly,1,1)}
+    for(const q of farLamps(L,f,e)){g.fillStyle=`rgba(255,190,110,${(.9*q.a).toFixed(2)})`;g.fillRect(q.x,q.y,1,1);g.fillStyle=`rgba(255,190,110,${(.3*q.a).toFixed(2)})`;g.fillRect(q.x,q.y-1,1,1)} /* B5 (look.js) */
     if(L<.7){const fx0=center.x*T,fy0=center.y*T-2;g.globalAlpha=Math.min(1,(.7-L)/.4)*.55;g.drawImage(lightSprites().fire[8],Math.round(fx0-8),Math.round(fy0-8));g.globalAlpha=1} // a small bright core, so the fire stays the brightest thing
     /* the aurora (sprint 16): cold clear winter nights, more often on cold-tempered islands. Whether tonight has one is a pure
        function of seed and day — same on every device that opens this island — and the bands' geometry is fixed per island. */
