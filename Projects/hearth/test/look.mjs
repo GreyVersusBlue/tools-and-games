@@ -118,6 +118,28 @@ async function animChecks(page) {
   check('animT: frame(.5,true) advances it by the real seconds', Math.abs(r.ran - 3.5) < 1e-9, `3 became ${r.ran}`);
 }
 
+// ---- (6) A8: people you can tell apart. The skin of each walking person, read from the picture, is not one tone. ----
+// Called in S1 (summer noon, day 128, seed 7). For every person standing in the open the pixel at the middle of the head is read off the canvas
+// and matched to the nearest of the five SKIN tones; each tone is multiplied by the noon colour (skyAt) first, and a pixel within 6 per channel of a result is a match: ground, shirts and shadow do not land that close. Break: set the head
+// fill in drawFolk (js/folk.js) back to the one old colour '#f1cfa5'; the count of distinct tones falls to one.
+const SKIN_HEX = ['#f1cfa5', '#e6b98d', '#c98a5c', '#a86a44', '#7a4b2e'];
+async function peopleChecks(page) {
+  const r = await page.evaluate((skin) => {
+    const H = window.__hearth, g = document.getElementById('c').getContext('2d'), T = 8;
+    H.setZoom(1); H.draw(); /* the canvas is world-sized; at zoom 1 nothing is culled, so every person in the open is on it */
+    const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+    const sky = H.skyAt(.5, 'summer', 'clear', 0), tones = skin.map(rgb).map(t => t.map((v, k) => v * sky[k] / 255)), got = new Set(); let sampled = 0, matched = 0;
+    for (const p of H.people) {
+      if (p.inside || p.dead || p.task === 'sleep' || p.inBoat) continue;
+      const x = Math.round(p.x * T), y = Math.round(p.y * T - 6.5), d = g.getImageData(x, y, 1, 1).data; sampled++;
+      let best = -1, bd = 1e9; tones.forEach((t, i) => { const dd = Math.max(Math.abs(t[0] - d[0]), Math.abs(t[1] - d[1]), Math.abs(t[2] - d[2])); if (dd < bd) { bd = dd; best = i; } });
+      if (bd <= 6) { matched++; got.add(best); }
+    }
+    return { sampled, matched, tones: [...got].sort(), count: H.people.length };
+  }, SKIN_HEX);
+  check('people: at noon, in S1, at least three of the five skin tones are read off the picture across the people in the open', r.tones.length >= 3 && r.matched >= 5, JSON.stringify(r));
+}
+
 // ---- (4) A3: the ground has a shape. Called on a fresh seed-7 island at day 0, summer-ish, no snow, before any scene moves it. ----
 async function groundChecks(page) {
   const r = await page.evaluate(() => {
@@ -285,6 +307,7 @@ const rows = [], lums = {};
       fs.writeFileSync(path.join(OUT, `${sc.id}-${sc.name.replace(/ /g, '-')}-z${z}.png`), png);
     }
     if (sc.id === 'S1') await animChecks(page);
+    if (sc.id === 'S1') await peopleChecks(page);
     if (['S1', 'S6', 'S7'].includes(sc.id)) await lightChecks(page, sc.id);
   }
   await ctx.close();

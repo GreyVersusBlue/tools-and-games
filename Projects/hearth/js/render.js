@@ -5,11 +5,19 @@ const SKIN=[['#f1cfa5','#d9ac7c'],['#e6b98d','#c48f63'],['#c98a5c','#a56a3f'],['
 const EYES=['#2a2a3a','#3d5a3a','#4a5f8a','#5a3a2a'];
 /* sprint 16: which skin a face gets — inherited (fSk, set at birth) or derived from the seed the way it always was */
 const skinOf=p=>p.fSk>=0?p.fSk:(mulberry(p.seed)()*SKIN.length)|0;
-function drawFace(ctx,p){const rr=mulberry(p.seed);const kid=isKid(p),eld=isElder(p),age=ageOf(p);
-  ctx.clearRect(0,0,16,16);
+/* A8: every choice a face makes, from the person's own mulberry(p.seed) and in the order drawFace has always drawn them, so both the card and the map read one answer.
+   Pure: no R(), no state written. skin is an index into SKIN, hat is null|'proud'|'brave'|'plain', side is an elder's long hair. */
+function faceSpec(p){const rr=mulberry(p.seed),kid=isKid(p),eld=isElder(p),age=ageOf(p);
   const r1=rr(); /* the first draw is still consumed either way, so every pre-sprint-16 face is pixel-identical */
-  const skin=SKIN[p.fSk>=0?p.fSk:(r1*SKIN.length)|0],eye=EYES[(rr()*EYES.length)|0];const style=(rr()*4)|0;
-  let hair=p.hair;if(age>52){const t=Math.min(1,(age-52)/20);hair=t>.6?'#d9d4c8':'#8c8478'}
+  const skin=p.fSk>=0?p.fSk:(r1*SKIN.length)|0,eye=(rr()*EYES.length)|0,style=(rr()*4)|0;
+  let hair=p.hair,grey=0;if(age>52){const t=Math.min(1,(age-52)/20);grey=t;hair=t>.6?'#d9d4c8':'#8c8478'}
+  const side=style===3&&eld?rr()<.5:false;
+  let hat=null;if(has(p,'proud')&&rr()<.6)hat='proud';else if(has(p,'brave')&&rr()<.6)hat='brave';else if(!kid&&rr()<.18)hat='plain';
+  const beard=!kid&&rr()<.3&&style!==2;
+  return{skin,eye,style,side,hat,beard,grey,hair}}
+function drawFace(ctx,p){const kid=isKid(p),eld=isElder(p),sp=faceSpec(p);
+  ctx.clearRect(0,0,16,16);
+  const skin=SKIN[sp.skin],eye=EYES[sp.eye],style=sp.style,hair=sp.hair;
   const shade=c=>{const n=parseInt(c.slice(1),16);const f=.72;return'#'+[(n>>16)&255,(n>>8)&255,n&255].map(v=>Math.round(v*f).toString(16).padStart(2,'0')).join('')};
   const px=(x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(x,y,w,h)};
   // background wash + subtle vignette
@@ -25,12 +33,12 @@ function drawFace(ctx,p){const rr=mulberry(p.seed);const kid=isKid(p),eld=isElde
   if(style===0){px(4,hy-1,8,2,hair);px(3,hy,1,2,hair);px(12,hy,1,3,hd);px(11,hy,1,2,hd)}
   else if(style===1){px(4,hy-1,8,2,hair);px(3,hy,1,hh-2,hair);px(12,hy,1,hh-2,hd);px(3,hy-1,1,1,hd)}
   else if(style===2){px(4,hy-1,8,2,hair);px(6,hy-2,4,1,hair);px(11,hy,1,2,hd);px(3,hy,1,1,hair)}
-  else{if(eld&&rr()<.5){px(3,hy+1,1,4,hair);px(12,hy+1,1,4,hd)}else{px(4,hy-1,8,1,hair);px(3,hy,1,3,hair);px(12,hy,1,3,hd);px(11,hy-1,1,1,hd)}}
+  else{if(sp.side){px(3,hy+1,1,4,hair);px(12,hy+1,1,4,hd)}else{px(4,hy-1,8,1,hair);px(3,hy,1,3,hair);px(12,hy,1,3,hd);px(11,hy-1,1,1,hd)}}
   px(3,hy-1,1,1,'#1a120c');px(12,hy-1,1,1,'#1a120c');
   // hat / headband by trait
-  if(has(p,'proud')&&rr()<.6){px(3,hy-1,10,1,'#4c5f78');px(4,hy-3,8,2,'#4c5f78');px(11,hy-3,1,2,'#33435a');px(4,hy-2,1,1,'#6c7f98')}
-  else if(has(p,'brave')&&rr()<.6){px(3,hy+1,10,1,'#8a3d2f');px(12,hy+1,1,1,'#5c2820')}
-  else if(!kid&&rr()<.18){px(3,hy-1,10,1,'#6f4b32');px(4,hy-3,8,2,'#6f4b32');px(11,hy-3,1,2,'#4a3221')}
+  if(sp.hat==='proud'){px(3,hy-1,10,1,'#4c5f78');px(4,hy-3,8,2,'#4c5f78');px(11,hy-3,1,2,'#33435a');px(4,hy-2,1,1,'#6c7f98')}
+  else if(sp.hat==='brave'){px(3,hy+1,10,1,'#8a3d2f');px(12,hy+1,1,1,'#5c2820')}
+  else if(sp.hat==='plain'){px(3,hy-1,10,1,'#6f4b32');px(4,hy-3,8,2,'#6f4b32');px(11,hy-3,1,2,'#4a3221')}
   // eyes
   const ey=hy+(kid?4:4);px(6,ey,1,1,eye);px(9,ey,1,1,eye);px(6,ey-1,1,1,skin[1]);px(9,ey-1,1,1,skin[1]);
   if(has(p,'dreamy'))px(9,ey,1,1,'#7a9ac9');
@@ -43,7 +51,7 @@ function drawFace(ctx,p){const rr=mulberry(p.seed);const kid=isKid(p),eld=isElde
   if(kid){px(5,ey+2,1,1,'#e39a8a');px(10,ey+2,1,1,'#e39a8a')}
   if(eld){px(5,ey+1,1,1,skin[1]);px(10,ey+1,1,1,skin[1]);px(4,hy+3,1,1,skin[1])}
   // beard for some non-kids
-  if(!kid&&rr()<.3&&style!==2){px(5,hy+hh-2,6,2,hair);px(6,hy+hh,4,1,hd)}
+  if(sp.beard){px(5,hy+hh-2,6,2,hair);px(6,hy+hh,4,1,hd)}
 }
 // ---------- card ----------
 const cardEl=document.getElementById('card'),faceCv=document.getElementById('face'),faceCtx=faceCv.getContext('2d');
@@ -249,21 +257,7 @@ function draw(){
     else if(w.k==='fox'){const bob=mv?Math.sin(animT*12)*1:0;g.fillStyle='rgba(0,0,0,.2)';g.fillRect(x-4,y,8,1);g.fillStyle='#b8552a';g.fillRect(x-3,y-3+bob,6,2);g.fillRect(x+f*3,y-4+bob,2,2);g.fillStyle='#e8dcc4';g.fillRect(x-f*4,y-2+bob,2,1);g.fillStyle='#4a2f16';g.fillRect(x-3,y-1,1,1);g.fillRect(x+2,y-1,1,1);g.fillRect(x+f*3,y-5+bob,1,1);g.fillStyle='#e8dcc4';g.fillRect(x+f*3+(f>0?1:0),y-3+bob,1,1)}
   }})}
   if(whale)ents.push({y:whale.y,d:()=>{const x=whale.x*T,y=whale.y*T,k=Math.sin(Math.min(1,whale.t/whale.dur)*Math.PI);if(k<.05)return;const w=Math.round(12*k),h=Math.max(1,Math.round(4*k));g.fillStyle='#2b3542';g.fillRect(x-w,y-h,w*2,h);g.fillRect(x-w+2,y-h-1,w*2-4,1);g.fillStyle='#4a5868';g.fillRect(x-w+2,y-h,w*2-4,1);g.fillStyle='#1e2630';g.fillRect(x-w,y-1,w*2,1);if(whale.t>whale.dur*.55){g.fillStyle='#2b3542';g.fillRect(x+whale.dir*(w+1),y-h-3*k,2,Math.round(4*k))}g.fillStyle='rgba(220,235,255,.35)';g.fillRect(x-w-2,y,w*2+4,1)}});
-  for(const p of people)ents.push({y:p.y+(p.inBoat?.5:0),d:()=>{if(p.inside)return;const x=p.x*T,y=p.y*T+(p.inBoat?-1:0),busy=p.task==='chop'||p.task==='build'||p.task==='till'||p.task==='harvest',bob=busy?Math.sin(animT*12+p.off)*1.2:0;const k=isKid(p)?.55+ageOf(p)/31:1;
-    if(p===selected){g.fillStyle='rgba(240,179,90,.55)';g.fillRect(x-4,y+1,9,1);g.fillRect(x-4,y-1,1,2);g.fillRect(x+4,y-1,1,2)}
-    if(p.task==='sleep'){g.fillStyle=p.col;g.fillRect(x-2,y-2,5,3);return}
-    g.fillStyle='rgba(0,0,0,.25)';g.fillRect(x-2,y,5,1);g.fillStyle=p.col;g.fillRect(x-1.5,y-5*k+bob,3,4*k);g.fillStyle='#f1cfa5';g.fillRect(x-1.5,y-8*k+bob,3,3);g.fillStyle=p.hair;g.fillRect(x-1.5,y-8*k+bob,3,1);
-    if(p.task==='chop'){g.fillStyle='#999';g.fillRect(x+2,y-7+bob*2,2,2)}
-    if(p.task==='fish'){g.fillStyle='#e8dcc4';g.fillRect(x+2,y-6,1,7)}
-    if(p.task==='wave'&&Math.hypot(p.tx-p.x,p.ty-p.y)<.05){g.fillStyle='#f1cfa5';g.fillRect(x+2,y-9*k+Math.sin(animT*9+p.off)*1.5,1,3)}
-    /* sprint 16: a talk you can see — the pip leans toward whoever it is for, and carries a bright grain when there is news in it */
-    if(p.task==='chat'&&p.chatSd&&Math.hypot(p.tx-p.x,p.ty-p.y)<.2&&Math.sin(animT*2.3+p.off)>.25){const q=byName(p.chatW),ox=q&&q.x<p.x?-4:4;
-      g.fillStyle='#e8e4da';g.fillRect(x+ox-1,y-11*k,3,2);g.fillRect(x+(ox>0?2:-2),y-9*k,1,1);
-      if(p.heard){g.fillStyle='#f0b35a';g.fillRect(x+ox,y-10*k,1,1)}}
-    /* and a song you can almost hear: note pips over the singers at a fire night, and now and then over the work */
-    if(songs.length){const sings=(p.task==='gather'&&storyDay===dayCount&&Math.sin(animT*1.8+p.off)>.55)||
-        ((p.task==='chop'||p.task==='till'||p.task==='harvest'||p.task==='fish')&&Math.sin(animT*.7+p.off*3)>.94);
-      if(sings&&songs.some(sg=>!sg.lost&&sg.kn.includes(p.name))){g.fillStyle='#f0d488';g.fillRect(x+3,y-10*k,1,1);g.fillRect(x+4,y-12*k,1,2);g.fillRect(x+4,y-12*k,2,1)}}}});
+  for(const p of people)ents.push({y:p.y+(p.inBoat?.5:0),d:()=>drawFolk(p)}); /* A8: js/folk.js */
   ents.push({y:center.y,d:()=>{const x=center.x*T,y=center.y*T;g.fillStyle='#3a2a1a';g.fillRect(x-4,y-1,8,3);const fl=isNight()||L<.6;
     if(fl){for(let i=0;i<4;i++){g.fillStyle=i%2?'#ffb347':'#ff6a2b';const s=RM?2.2:2+Math.sin(animT*10+i)*1.5;g.fillRect(x-1+(RM?0:Math.sin(animT*7+i)*1.5),y-3-i*1.5-s,2,s)}}}});
   drawStock(ents,cap); /* B1: the woodpile, the sacks and the drying fish, js/goods.js */
