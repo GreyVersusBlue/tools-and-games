@@ -51,7 +51,7 @@ async function open(base, file, { fast = true, ctx: have = null, seen } = {}) {
   const ctx = have || await browser.newContext({ viewport: { width: 880, height: 560 }, deviceScaleFactor: 1 });
   if (!have) await ctx.addInitScript(({ real0, fake0, speed, fast }) => {
     localStorage.setItem('hearth.auto', 'SENTINEL');
-    window.HEARTH_LIVE_TUNE = { retry: 300, breath: 2500, back: 150 };
+    window.HEARTH_LIVE_TUNE = { retry: 300, breath: 2500, back: 20 };
     if (fast) { const n = Date.now.bind(Date); Date.now = () => fake0 + (n() - real0) * speed; }
   }, { real0: REAL0, fake0: FAKE0 + skew, speed: SPEED, fast });
   const page = await ctx.newPage();
@@ -195,16 +195,17 @@ startTicks();
 // yesterday at speed. Epochs 0 and 1 are taken away, so "a real day back" (epoch 0 on this clock, which has 144 epochs to a real day) has to find the oldest kept.
 {
   for (const n of [0, 1]) fs.rmSync(path.join(cfg.pub, 'epoch', `0-${n}.json`));
-  const present = await lp.evaluate(() => ({ day: window.__hearth.dayCount, n: window.__hearthLive.log.length }));
-  const eAt = live.epoch;
+  const present = await lp.evaluate(() => ({ day: window.__hearth.dayCount }));
+  const eAt = await lp.evaluate(() => window.__hearthLive.epoch);   // the epoch the page is on when it leaves the present
   await lp.click('#lv-back');
   await lp.waitForFunction(() => window.__hearthLive.back, null, { timeout: 30000 });
   const bk = await lp.evaluate(() => ({ from: window.__hearthLive.backFrom, day: window.__hearth.dayCount, banner: !document.getElementById('live-back').hidden, text: document.getElementById('live-back').textContent }));
   check('(C5) "yesterday at speed" starts at the oldest epoch kept (the first two files were gone)', bk.from === epochStep(2), `${bk.from}`);
   check('(C5) the island is the older one, with a banner that says it is a look back', bk.day < present.day && bk.banner && /look back/.test(bk.text), JSON.stringify(bk));
   await lp.waitForFunction(() => !window.__hearthLive.back, null, { timeout: 240000 });
-  check('(C5) the server moved on to a later epoch while the page was looking back (else the check below could not tell a return from a stay)', live.epoch > eAt, `${eAt} -> ${live.epoch}`);
-  await lp.waitForFunction(n => window.__hearthLive.log.length > n, present.n, { timeout: 60000 });
+  check('(C5) the server moved on to a later epoch while the page was looking back (else the check below could not tell a return from a stay)', live.epoch > eAt, `page left at ${eAt}, server at ${live.epoch}`);
+  const nBack = await lp.evaluate(() => window.__hearthLive.log.length);   // boundaries the page crossed while it waited to start do not count; only the first one after the return
+  await lp.waitForFunction(n => window.__hearthLive.log.length > n, nBack, { timeout: 60000 });
   const lg = await lp.evaluate(() => window.__hearthLive.log), last = lg[lg.length - 1];
   check('(C5) back at the present, the banner is gone and hearth.auto was never touched', await lp.evaluate(() => document.getElementById('live-back').hidden && localStorage.getItem('hearth.auto') === 'SENTINEL'));
   check('(C5) and at the next epoch boundary the page\'s hash equals the server\'s again', last.mine === epochFile(last.n).hash && await lp.evaluate(() => window.__hearthLive.mismatches) === 0, `${last.n}: page ${last.mine} server ${epochFile(last.n).hash}`);
