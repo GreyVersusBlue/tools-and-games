@@ -188,10 +188,10 @@ function eavePts(name){
   try{const d=sl.getContext('2d').getImageData(0,0,sl.width,sl.height).data;
     for(let i=0;i<sl.width;i++)for(let j=sl.height-1;j>=0;j--)if(d[(j*sl.width+i)*4+3]>0){pts.push([i,j]);break}}catch(e){}
   return EAVEPTS[name]=pts}
-/* while the snow is going (it is not snowing, it lies under .3 and there is some), six white pixels per roof slide off the south eave and drop three */
-function snowSheds(){return !lookOff.shed&&wx!=='snow'&&snowD>.01&&snowD<.3&&typeof BSHEET!=='undefined'&&!!BSHEET.frames['house-snow']}
+/* while the snow is going (it is not snowing, it lies under .3 and there is some; the cap is under .5 there, so the light frame, A10), six white pixels per roof slide off the south eave and drop three */
+function snowSheds(){return !lookOff.shed&&wx!=='snow'&&snowD>.01&&snowD<.3&&typeof BSHEET!=='undefined'&&!!BSHEET.frames['house-snow1']}
 function drawRoofSlide(h,x,y){
-  const f=BSHEET.frames['house-snow'],pts=eavePts('house-snow');if(!pts.length)return;
+  const f=BSHEET.frames['house-snow1'],pts=eavePts('house-snow1');if(!pts.length)return;
   const r=mulberry(h.x*131+h.y*7+seed),ox=x-f.ax,oy=y-f.ay;g.fillStyle='#f4f8ff';
   for(let i=0;i<6;i++){const p=pts[(r()*pts.length)|0],t=(animT*.6+i/6+r())%1;g.globalAlpha=1-t*.8;g.fillRect(ox+p[0],oy+p[1]+1+Math.floor(t*3),1,1)}
   g.globalAlpha=1}

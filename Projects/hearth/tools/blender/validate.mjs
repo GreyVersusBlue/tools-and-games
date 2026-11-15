@@ -19,7 +19,11 @@
 //     the snow colour)
 //   - a frame whose drawn box is not render.js's old box (`was`) within the
 //     scale tolerance in width and height, or whose foot has moved a row
-//   - a snow frame with snow where its building is not drawn
+//   - a snow frame with snow where its building is not drawn, or a light
+//     snow frame (-snow1) that is not part of, and less than, its heavy one
+//     (-snow2), or a heavy one with no icicle (A10)
+//   - a house in any roof, the hut or the hall without its autumn and its spring
+//     dress, or a dress that is the plain frame again (A10)
 //   - two frames that are the same pixels, a pixel outside every frame that is
 //     not clear, or a file in the sheet's folder budget.json does not name
 //
@@ -107,10 +111,17 @@ for (const k of Object.keys(BLD)) {
   if (k === 'bridge') { need.add('bridge-h'); need.add('bridge-v'); } else need.add(k);
 }
 for (const r of ROOFS) need.add('house-' + r.slice(1));
-for (const k of budget.snow.kinds) need.add(k + '-snow');
-const baseOf = (f) => f.endsWith('-snow') ? (f === 'house-snow' ? 'house-' + ROOFS[0].slice(1) : f.slice(0, -5)) : f;
-const wasOf = (f) => budget.was[f.startsWith('house-') ? 'house' : f];
-for (const f of need) if (!f.endsWith('-snow')) ok(!!wasOf(f), `budget.json has render.js's old box for ${f}`);
+const isSnow = (f) => /-snow\d$/.test(f);
+const dressKinds = budget.dresses.kinds, seasons = budget.dresses.seasons, weights = budget.snow.weights;
+for (const k of budget.snow.kinds) for (const w of weights) need.add(`${k}-${w}`);
+// a building that dresses for the year has every dress, the house in every roof it is built with (A10)
+const dressNeed = [];
+for (const k of dressKinds) for (const base of k === 'house' ? ROOFS.map(r => 'house-' + r.slice(1)) : [k])
+  for (const d of seasons) { need.add(`${base}-${d}`); dressNeed.push(`${base}-${d}`); }
+const dressOf = (f) => seasons.some(d => f.endsWith('-' + d));
+const baseOf = (f) => isSnow(f) ? (f.startsWith('house-snow') ? 'house-' + ROOFS[0].slice(1) : f.replace(/-snow\d$/, '')) : dressOf(f) ? f.replace(/-[a-z]+$/, '') : f;
+const wasOf = (f) => budget.was[baseOf(f).startsWith('house-') ? 'house' : baseOf(f)];
+for (const f of need) if (!isSnow(f)) ok(!!wasOf(f), `budget.json has render.js's old box for ${f}`);
 
 // ---------------------------------------------------------------- the sheet
 
@@ -156,7 +167,7 @@ for (const [f, r] of Object.entries(frames)) {
   ok(whole(r.ax) && whole(r.ay), `${f}: anchor is a whole tile`, `(${r.ax}, ${r.ay})`);
   if (!ok(r.x >= 0 && r.y >= 0 && r.x + r.w <= img.w && r.y + r.h <= img.h, `${f}: inside the sheet`,
     `${r.x},${r.y} ${r.w} x ${r.h}`)) continue;
-  const snow = f.endsWith('-snow');
+  const snow = isSnow(f);
   let clash = 0, rim = 0, half = 0, off = 0, drawn = 0, x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   const bytes = Buffer.alloc(r.w * r.h * 4), solid = new Uint8Array(r.w * r.h);
   let firstOff = '';
@@ -196,13 +207,32 @@ for (const [f, r] of Object.entries(frames)) {
   }
 }
 for (const f of Object.keys(frames)) {
-  if (!f.endsWith('-snow') || !solidOf[f]) continue;
+  if (!isSnow(f) || !solidOf[f]) continue;
   const b = baseOf(f), r = frames[f], rb = frames[b];
   if (!ok(!!solidOf[b] && rb.w === r.w && rb.h === r.h && rb.ax === r.ax && rb.ay === r.ay,
     `${f}: shares ${b}'s frame box`)) continue;
   let bare = 0;
   for (let i = 0; i < solidOf[f].length; i++) if (solidOf[f][i] && !solidOf[b][i]) bare++;
   ok(bare === 0, `${f}: snow only where ${b} is drawn`, `${bare} pixels of snow on nothing`);
+}
+// the two weights: the light snow is part of the heavy, and less of it; the heavy hangs icicles the light does not
+for (const k of budget.snow.kinds) {
+  const [lo, hi] = weights.map(w => solidOf[`${k}-${w}`]);
+  if (!lo || !hi) continue;
+  let extra = 0, lost = 0, nLo = 0, nHi = 0;
+  for (let i = 0; i < lo.length; i++) { nLo += lo[i]; nHi += hi[i]; if (lo[i] && !hi[i]) lost++; }
+  ok(lost === 0, `${k}-${weights[0]} is part of ${k}-${weights[1]}`, `${lost} pixels of the light snow are not in the heavy`);
+  ok(nLo > 0 && nLo < nHi, `${k}-${weights[0]} is less snow than ${k}-${weights[1]}`, `${nLo} pixels against ${nHi}`);
+  // an icicle: a column where the heavy snow reaches below the light snow's lowest pixel, which is the eave
+  const w = frames[`${k}-${weights[1]}`].w, h = lo.length / w;
+  const low = (m, x) => { for (let y = h - 1; y >= 0; y--) if (m[y * w + x]) return y; return -1; };
+  for (let x = 0; x < w; x++) if (low(hi, x) > low(lo, x) && low(lo, x) >= 0) extra++;
+  ok(extra > 0, `${k}-${weights[1]} has icicles under its eaves`, 'none found');
+}
+// every dress is a drawing of its own, and none is only the base (a dress that changed nothing is no dress)
+for (const f of dressNeed) {
+  if (!(f in pixelsOf)) continue;   // missing: already said above
+  ok(!pixelsOf[f].equals(pixelsOf[baseOf(f)]), `${f} differs from ${baseOf(f)}`);
 }
 let stray = 0;
 for (let i = 0; i < img.w * img.h; i++) if (!covered[i] && img.px[i * 4 + 3] !== 0) stray++;
