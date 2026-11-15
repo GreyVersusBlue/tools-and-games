@@ -2,6 +2,8 @@
 // Classic scripts sharing one global scope; the load order in index.html is the old single file’s order and it matters.
 // ---------- rng & noise ----------
 let seed=(Math.random()*1e9)|0;
+/* C4: live.html sets HEARTH_LIVE (js/live-flag.js) before this file runs. The public island is watched, not played: four seams elsewhere ask LIVE and are inert without it. */
+const LIVE=typeof HEARTH_LIVE!=='undefined';
 function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 /* C2: the simulation's arithmetic is the same on every engine. dsin, cos, pow and hypot are allowed to differ in the last bits between
    V8 builds; + - * / sqrt floor round are exact by the language standard, so these are built from nothing else. Accurate to about 1e-11. */

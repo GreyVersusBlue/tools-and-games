@@ -74,4 +74,11 @@
     #chron{left:8px;right:8px;width:auto;max-height:60vh}
     #hud{gap:9px;padding:8px 10px}h1{font-size:15px}h1 small{display:none}.stat em{display:none}.stat::before{content:attr(data-i);color:var(--dim);margin-right:3px;font-size:12px}
     #s-time{display:none}#s-time-s{display:inline}button{padding:4px 7px;font-size:11px}}
+  /* C4: the public island, live.html. It is watched, not played: no speed, no skipping the night, no keeping or founding an island, no hint of what a click does. */
+  body.live #ctl,body.live #b-morning,body.live #b-share,body.live #b-new,body.live #b-help,body.live #hint{display:none}
+  #live-status,#live-note{display:none}
+  body.live #live-status{display:block;position:fixed;right:14px;bottom:10px;font-size:12px;color:var(--dim);letter-spacing:.04em;pointer-events:none;text-shadow:0 1px 3px #000}
+  body.live #live-note{display:block;position:fixed;left:50%;top:64px;transform:translateX(-50%);max-width:min(92vw,520px);text-align:center;font-size:13px;font-style:italic;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:8px 14px}
+  body.live #live-note[hidden]{display:none}
+  body.live #live-note a{color:var(--gold)}
   @media (prefers-reduced-motion:reduce){#log p{animation:none;opacity:1}}
