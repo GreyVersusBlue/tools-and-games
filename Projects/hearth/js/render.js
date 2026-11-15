@@ -58,7 +58,10 @@ const cardEl=document.getElementById('card'),faceCv=document.getElementById('fac
 let cardT=0;
 /* the clock of what is only seen: real seconds, frozen when paused; presentation reads it, the simulation never does */
 let animT=0;
-function whyText(p){const w=WX();
+/* B4: when the job a person is on has a grown story pulling at it, the reason names the story. Reads pulls, writes nothing. */
+const PULL_WHY={fish:'the story of the fish',water:'the story of the dry years',harvest:'the story of the hard winters',nurse:'the story of the fever',wander:'the story of the far island'};
+const whyText=p=>whyBase(p)+(PULL_WHY[p.task]&&pullOf(p.task)>0?` Some of the reason is ${PULL_WHY[p.task]}, which has grown in the telling.`:'');
+function whyBase(p){const w=WX();
   if(p.sick&&p.task!=='abed')return `Has it, and is still up. ${has(p,'stubborn')?'Exactly as stubborn about that as you would expect':'Insisting it is nothing'}, and standing far too near everybody.`;
   if(p.sick)return `In bed with it${p.abedH?' along the wall of the hall, with the others':homeOf(p)?' at home':' by the fire'}, ${dayCount-p.sickD===0?'since this morning':`${dayCount-p.sickD} ${dayCount-p.sickD===1?'day':'days'} in`}. ${p.nursed>=dayCount-1?'Somebody has been sitting with them.':'Nobody has been up to sit with them today.'}`;
   switch(p.task){

@@ -308,7 +308,7 @@ function unpack(o){
   lorePl=o.lp.filter(k=>LORE_PLACE[k]);walkP=null;
   for(const k of lorePl){const D=LORE_PLACE[k],pos=D.at();if(pos&&!spots.some(sp=>sp.l===D.l))spots.push({l:D.l,x:pos.x,y:pos.y,lore:1,k})}
   loreN={};for(const a of o.ln)if(LORE_PLACE[a[0]])loreN[a[0]]=a[1];
-  boundsYr=o.by;boundsP=null;
+  boundsYr=o.by;boundsP=null;pullsNow();
   heat=new Float32Array(W*H);boats=[];fx=[];skips=[];gusts=[];fires=houses.length?[{x:center.x,y:center.y,t:0}]:[];
   saidToday=new Set();usedTpl=new Map();
   paintedKey='';paintTerrain();spawnWildlife();clouds=[];for(let i=0;i<2;i++)addCloud(false);

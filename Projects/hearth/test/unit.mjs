@@ -610,5 +610,42 @@ section(24, () => {
   check('trade: drawing the cargo leaves the save as it was', JSON.stringify(r.H.pack()) === before);
 });
 
+// ---- B4: stories that pull ----
+section(25, () => {
+  const pull = (h, job) => h.ev(`(pullsNow(),pullOf(${JSON.stringify(job)}))`);
+  const ent = (h, kind, gr) => h.ev(`chron.push({d:1,y:1,kind:${JSON.stringify(kind)},label:'x',st:'a story',tl:${gr ? 3 : 1},gr:${gr ? 'true' : 'false'}})`);
+  const a = fresh(7);
+  check('pull: no grown entries, no pull', pull(a, 'fish') === 0 && pull(a, 'water') === 0 && pull(a, 'wander') === 0);
+  ent(a, 'shoal', false);
+  check('pull: an ungrown shoal pulls nothing', pull(a, 'fish') === 0);
+  ent(a, 'shoal', true);
+  check('pull: one grown shoal is .15 toward fish and touches no other job', pull(a, 'fish') === .15 && pull(a, 'harvest') === 0);
+  ent(a, 'shoal', true); ent(a, 'shoal', true);
+  check('pull: three grown shoals are capped at .3', pull(a, 'fish') === .3);
+  const w = fresh(7); ent(w, 'drought', true); ent(w, 'rainscame', true); ent(w, 'stayed', true);
+  check('pull: drought and rainscame both lean on water, stayed on wander at .08', pull(w, 'water') === .3 && pull(w, 'wander') === .08);
+  // the turn itself: spring day 1, food short, one idle adult, a roll just above the unpulled fishing threshold (.35, no craft term)
+  const turn = (grown, times) => { const h = fresh(7);
+    h.ev("for(const q of people){q.task='sleep';q.craft=-1}");
+    if (grown) ent(h, 'shoal', true);
+    h.ev("hunger=0;food=0;time=dayLen*.4;pullsNow()");
+    const nm = h.ev("(()=>{const p=people.find(q=>!isKid(q)&&!q.dead);return p.name})()"), res = [];
+    for (let i = 0; i < times; i++) {
+      h.ev(`(()=>{const p=byName(${JSON.stringify(nm)});p.task='idle';p.t=0;p.tgt=null;p.inside=false;p.chatD=dayCount;p.marketed=dayCount;const r=R;R=()=>.36;try{step(.05)}finally{R=r}; })()`);
+      res.push(h.ev(`byName(${JSON.stringify(nm)}).task`)); }
+    return { h, nm, res }; };
+  const off = turn(false, 1), on = turn(true, 2);
+  check('pull: with food short and a roll of .36 an idle adult does not fish without a grown shoal', off.res[0] !== 'fish', JSON.stringify(off.res));
+  check('pull: the same roll sends them fishing with one', on.res[0] === 'fish', JSON.stringify(on.res));
+  check('pull: they have the life line, once, and the island has exactly one new chronicle entry after two such turns',
+    on.h.ev(`byName(${JSON.stringify(on.nm)}).hist.filter(x=>x.s===PULL_LINE.fish).length`) === 1 && on.h.ev("chron.filter(e=>e.kind==='pull_shoal').length") === 1, JSON.stringify(on.res));
+  check('pull: the unpulled island gets neither line nor entry', off.h.ev(`byName(${JSON.stringify(off.nm)}).hist.filter(x=>x.s===PULL_LINE.fish).length`) === 0 && off.h.ev("chron.filter(e=>e.kind==='pull_shoal').length") === 0);
+  check('pull: whyText names the story when the task has a pull, and not otherwise',
+    on.h.ev(`(()=>{const p=byName(${JSON.stringify(on.nm)});p.task='fish';return whyText(p)})()`).includes('the story of the fish') && !off.h.ev(`(()=>{const p=byName(${JSON.stringify(off.nm)});p.task='fish';return whyText(p)})()`).includes('story of'));
+  // derived, never saved: a reloaded island has the pull the moment it loads
+  const sv = JSON.stringify(on.h.H.pack()), rl = fresh(7); rl.ev(`unpack(JSON.parse(${JSON.stringify(sv)}))`);
+  check('pull: unpack brings the pull back from the chronicle, and the save has no pull in it', rl.ev("pullOf('fish')") === .15 && !/"pulls?"/.test(sv));
+});
+
 console.log(`${fail ? 'FAIL' : 'PASS'}: ${pass} of ${pass + fail} unit checks`);
 process.exit(fail ? 1 : 0);

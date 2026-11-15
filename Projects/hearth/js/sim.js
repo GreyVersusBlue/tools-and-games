@@ -221,15 +221,17 @@ function step(dt){
         p.t-=dt;if(p.t>0){if(R()<dt*.6){p.tx=p.x+rnd(-2,2);p.ty=p.y+rnd(-2,2)}walk(p,dt);break}
         // somebody is in bed and nobody has been to them today (phase 6). Their partner first, then their own people, then a friend,
         // then whoever is gentle about it — and nearness breaks the tie, because this is an errand, not a vocation.
-        if(ill&&!p.sick&&p.nursD!==dayCount&&R()<(has(p,'gentle')?.5:.22)){
+        let rr=0,kr=null,fr=null; /* B4: each pulled roll is kept in a local so the code can tell a roll the story turned from one it did not */
+        const nth=has(p,'gentle')?.5:.22;
+        if(ill&&!p.sick&&p.nursD!==dayCount&&(rr=R())<nth+pullOf('nurse')){
           const need=people.filter(q=>q!==p&&q.sick&&!q.dead&&q.task==='abed'&&q.nursed!==dayCount);
           if(need.length){const sc=q=>(q.name===p.partner?6:0)+((p.parents.includes(q.name)||q.parents.includes(p.name))?4:0)+
               (p.rels.some(r=>r.who===q.name&&r.k==='friend')?2:0)+(p.rels.some(r=>r.who===q.name&&r.k==='rival')?(has(p,'gentle')?1:-1):0)+
               (has(p,'gentle')?1.5:0)-hyp(q.x-p.x,q.y-p.y)*.06;
             const q=need.reduce((a,b)=>sc(b)>sc(a)?b:a);
-            p.nursD=dayCount;p.nursW=q.name;goTo(p,q.x,q.y,'nurse',rnd(10,18));break}}
+            p.nursD=dayCount;p.nursW=q.name;if(rr>=nth)pullNote(p,'nurse');goTo(p,q.x,q.y,'nurse',rnd(10,18));break}}
         // trait detours
-        if(has(p,'restless')&&R()<.22&&!shunned(p,spots[0].x,spots[0].y)){const far=spots[0];goTo(p,far.x,far.y,'wander',rnd(6,12));break}
+        if(has(p,'restless')&&(rr=R())<.22+pullOf('wander')&&!shunned(p,spots[0].x,spots[0].y)){const far=spots[0];if(rr>=.22)pullNote(p,'wander');goTo(p,far.x,far.y,'wander',rnd(6,12));break}
         if(has(p,'gentle')&&graves.length&&R()<.1){const gr=pick(graves);p.vg=gr;goTo(p,gr.x,gr.y+.7,'visit',rnd(4,8));break}
         if(graves.length&&p.rels.length===0&&dead.some(d=>d.rels.some(r=>r.who===p.name))&&R()<.06){const gr=pick(graves);p.vg=gr;goTo(p,gr.x,gr.y+.7,'visit',rnd(4,8));break}
         if((has(p,'dreamy')||has(p,'homesick'))&&R()<.1&&!shunned(p,p.spot.x,p.spot.y)){goTo(p,p.spot.x,p.spot.y,'linger',rnd(5,9));break} /* phase 6: not if the other one is standing there */
@@ -246,8 +248,8 @@ function step(dt){
         // choose job
         const needFood=food<people.length*4, needWood=wood<14, canBuild=wood>=18&&(people.length>=popCap()-1||p.wantHouse), proud=has(p,'proud');
         const uw=works.find(w=>!w.done);
-        const ripe=farms.filter(f=>f.g>=1&&!f.claimed), keen=needFood||s==='autumn'||(s==='summer'&&seaDay()>=3)||R()<.45+(p.craft===0?.3*p.cxp:0);
-        const nb=wood>=8&&!p.child?nextBuild():null;
+        const ripe=farms.filter(f=>f.g>=1&&!f.claimed), kth=.45+(p.craft===0?.3*p.cxp:0), keen=needFood||s==='autumn'||(s==='summer'&&seaDay()>=3)||(kr=R())<kth+pullOf('harvest');
+        const fth=(hunger>.2?.7:s==='winter'?.45:.35)+(p.craft===2?.3*p.cxp:0), nb=wood>=8&&!p.child?nextBuild():null;
         const orphan=!isKid(p)&&plots.length?plots.find(h=>!people.some(q=>q.tgt===h&&q.task==='build')):null; /* no R(): an island with no dropped plot is on the stream it was */
         if(orphan){p.tgt=orphan;p.tx=orphan.x+1;p.ty=orphan.y+2.2;p.task='build'}
         else if(nb){wood-=BLD[nb.kind].wood;bldgTgt=nb;p.tgt=nb;p.tx=nb.x+nb.w/2;p.ty=nb.y+nb.h+.3;p.task='build';say(`${B(p)} paces out ground for ${BLD[nb.kind].name}, and explains the idea to anyone who will listen.`,true)}
@@ -256,9 +258,9 @@ function step(dt){
         const site=canBuild?((ruin&&ruinSeen&&R()<.4&&freeSpotNear(ruin.x,ruin.y,4,7,2))||freeSpot(3,11,2)||freeSpot(3,15,2)):null;
         if(site){const s=site;{wood-=18;p.tgt={x:s.x,y:s.y,prog:0,forCouple:p.wantHouse?[p.name,p.partner]:null};plots.push(p.tgt);if(p.wantHouse){p.wantHouse=false;const q=byName(p.partner);if(q)q.wantHouse=false}p.tx=s.x+1;p.ty=s.y+2.2;p.task='build';const nearR=ruin&&hyp(s.x-ruin.x,s.y-ruin.y)<8&&!ruin.built;if(nearR){ruin.built=true;p.hist.push({d:dayCount,s:'built the first house in the lee of the old stones'})}say(nearR?`${B(p)} paces out a plot in the lee of the old stones. It is out of the wind there, ${p.name} says, and it is not only that.`:p.wantHouse?`${B(p)} paces out a plot for a house of their own.`:`${B(p)} paces out a plot for a new house.`)}}
         else if(uw&&!isElder(p)&&wood>=4&&R()<.3){if(!uw.paid){uw.paid=1;wood-=4}p.tgt=uw;p.tx=uw.x+.5+rnd(-.6,.6);p.ty=uw.y+1.2;p.task='build';if(!uw.said){uw.said=1;say(`${B(p)} has decided ${V()} should have ${WORKS[uw.wk].name}, and starts on it before anyone can weigh in.`)}}
-        else if(dry01>.6&&hasB('well')&&s!=='winter'&&farms.some(f=>f.g<1)&&R()<.3){const w=getB('well');p.wtgt=farms.filter(f=>f.g<1).sort((a,b)=>a.g-b.g)[0];p.waterSt=0;goTo(p,w.x+.5,w.y+1.4,'water',0)}
-        else if(ripe.length&&!proud&&keen){const f=ripe.sort((a,b)=>hyp(a.x-p.x,a.y-p.y)-hyp(b.x-p.x,b.y-p.y))[0];f.claimed=true;p.tgt=f;p.tx=f.x+.5;p.ty=f.y+.5;p.task='harvest'}
-        else if(needFood&&(storm?has(p,'brave'):R()<(hunger>.2?.7:s==='winter'?.45:.35)+(p.craft===2?.3*p.cxp:0))&&shore.length){const s=nearestShore(p.x,p.y);if(s){p.tgt=s;p.tx=s.x+.5;p.ty=s.y+.5;p.task='fish';p.work=0}else p.t=1}
+        else if(dry01>.6&&hasB('well')&&s!=='winter'&&farms.some(f=>f.g<1)&&(rr=R())<.3+pullOf('water')){if(rr>=.3)pullNote(p,'water');const w=getB('well');p.wtgt=farms.filter(f=>f.g<1).sort((a,b)=>a.g-b.g)[0];p.waterSt=0;goTo(p,w.x+.5,w.y+1.4,'water',0)}
+        else if(ripe.length&&!proud&&keen){if(kr!==null&&kr>=kth)pullNote(p,'harvest');const f=ripe.sort((a,b)=>hyp(a.x-p.x,a.y-p.y)-hyp(b.x-p.x,b.y-p.y))[0];f.claimed=true;p.tgt=f;p.tx=f.x+.5;p.ty=f.y+.5;p.task='harvest'}
+        else if(needFood&&(storm?has(p,'brave'):(fr=R())<fth+pullOf('fish'))&&shore.length){const s=nearestShore(p.x,p.y);if(s){if(fr!==null&&fr>=fth)pullNote(p,'fish');p.tgt=s;p.tx=s.x+.5;p.ty=s.y+.5;p.task='fish';p.work=0}else p.t=1}
         else if(needFood&&!proud&&s!=='winter'&&snowD<.4&&farms.length<people.length*.7+2&&R()<.7){const s=freeSpot(3,9);if(s){p.tgt=s;p.tx=s.x+.5;p.ty=s.y+.5;p.task='till'}else p.t=1}
         else if(wood<70&&(needWood||proud||R()<.4+(p.craft===1?.3*p.cxp:0))){const t=nearestTree(p.x,p.y);if(t&&(needWood||trees.length>12)){p.tgt=t;p.tx=t.x;p.ty=t.y+.4;p.task='chop'}else p.t=2}
         else{p.tx=center.x+rnd(-4,4);p.ty=center.y+rnd(-3,3);p.t=rnd(2,4)}}
