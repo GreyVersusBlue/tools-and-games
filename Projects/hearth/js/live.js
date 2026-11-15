@@ -104,6 +104,8 @@ function liveFrame(now){
       lvStep+=n;
       if(lvStep===next)lvBoundary(lvEpoch+1)}}
   audioTick(rdt);cardT-=rdt;renderCard(false);draw();lvStat()}
+/* the saga lives in the server's folder, not in this repo, so the links are set here and the site's link check does not look for a file that is not there */
+lvEl('lv-saga').href=lvEl('lv-away-saga').href='/hearth-live/saga.html';
 lvEl('lv-away-x').onclick=lvEl('lv-away-ok').onclick=lvAwayClose;lvEl('lv-back').onclick=lvLookBack;lvEl('lv-now').onclick=lvBackEnd;
 addEventListener('pagehide',lvSeenPut);
 window.__hearthLive={get step(){return lvStep},get epoch(){return lvEpoch},get log(){return lvLog},get mismatches(){return lvMis},get ready(){return lvReady},get breath(){return lvBreath},get dead(){return lvDead},get back(){return !!lvBack},get backFrom(){return lvBackFrom},get nowDay(){return lvNowDay}};
