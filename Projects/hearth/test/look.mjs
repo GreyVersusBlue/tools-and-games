@@ -577,6 +577,67 @@ async function shadowChecks() {
 }
 await shadowChecks();
 
+// ---- (10) A6: weather that lands. A fresh seed-7 island on summer day 128 at noon, zoom 1, whole island in view, animT held still. ----
+// Foam is counted as new when overcast weather drawn at the same instant (no rain, so no rings, the same clouds) lacks it, which keeps the island's own bright pixels out of the count. Foam is a pixel on a water tile that is bright and not warm (lum over 185, blue at least red): the rain streaks over dark water read about 110, so only a ring
+// reaches it. The land is the mean luminance of every land tile's pixels, sampled every second pixel, so the same measure reads the whole island. wetA is set by the
+// page's setter, because easing it in takes twenty seconds of animT. The wet check compares rain with the land wet against rain with it dry, which is the ground and
+// nothing else: the design's S3 against S1 would pass on the rain's own darker sky alone. Break 1: gate the splashes on !rain in wetStep's caller (drawWet) and the foam
+// check fails. Break 2: draw the wet mask at alpha 0; the wet check fails. Break 3: dry at 1/9 the rate and the dry-again check fails; the in-between checks
+// stay. Break 4: leave drawRoofWet's fillRect out; the roof check fails.
+async function rainChecks() {
+  const { ctx, page } = await open(7);
+  await page.evaluate(() => { const H = window.__hearth; while (H.dayCount < 128) H.step(.05); H.setTime((Math.floor(H.time / 140) + .5) * 140); for (let i = 0; i < 40; i++) H.step(.05); H.setSnow(0); H.setZoom(1); H.setAnimT(500.5); });
+  const read = (wx, wet, dAnim) => page.evaluate(([wx, wet, dAnim]) => {
+    const H = window.__hearth, g = document.getElementById('c').getContext('2d'), Wd = 110, HH = 70, T = 8;
+    H.setWx(wx); if (wet !== null) H.setWetA(wet); if (dAnim) H.setAnimT(H.animT + dAnim); H.draw();
+    const d = g.getImageData(0, 0, Wd * T, HH * T).data, tl = H.tilesNow;
+    let foam = 0, fresh = 0, lt = 0, ln = 0; const mask = new Uint8Array(Wd * T * HH * T), base = window.__clearFoam;
+    for (let y = 0; y < HH * T; y++) for (let x = 0; x < Wd * T; x++) {
+      const k = (y * Wd * T + x) * 4, wt = tl[((y / T) | 0) * Wd + ((x / T) | 0)] === 0, l = .299 * d[k] + .587 * d[k + 1] + .114 * d[k + 2];
+      if (wt) { if (l > 185 && d[k + 2] >= d[k]) { foam++; mask[k >> 2] = 1; if (base && !base[k >> 2]) fresh++; } } else if (((x + y) & 1) === 0) { lt += l; ln++; }
+    }
+    if (wx === 'overcast') window.__clearFoam = mask;
+    return { foam, fresh, land: lt / ln, wetA: H.wetA };
+  }, [wx, wet, dAnim]);
+  const clear = await read('clear', 0, 0); await read('overcast', 0, 0); const rainDry = await read('rain', 0, 0), rainWet = await read('rain', 1, 0);
+  check('rain: rings on the water, at least 40 foam-coloured pixels on water in rain that overcast weather at the same instant does not have', rainDry.fresh >= 40, `rain ${rainDry.foam}, new ${rainDry.fresh}`);
+  check('rain: wet ground, land luminance with wetA at 1 is 8% or more below the same rain with wetA at 0', rainWet.land <= rainDry.land * .92, `dry ${rainDry.land.toFixed(1)}, wet ${rainWet.land.toFixed(1)}`);
+  /* the time constants: from dry, 10 s of animT in rain is half wet; from wet, 10 s of clear is still over .8; 100 s of clear is dry and the land is back within 2% */
+  await read('clear', 0, 0);
+  await read('rain', 0, 0);
+  const in10 = await read('rain', null, 10), out10a = await read('rain', 1, 0), out10 = await read('clear', null, 10), out100 = await read('clear', null, 100), back = await read('clear', null, 0);
+  check('rain: the ground wets over 20 s of animT: half wet at 10 s, between .4 and .6', in10.wetA > .4 && in10.wetA < .6, `wetA ${in10.wetA.toFixed(3)}`);
+  check('rain: the ground stays dark for a while after it stops: wetA over .8 at 10 s of clear weather', out10.wetA > .8 && out10a.wetA === 1, `wetA ${out10.wetA.toFixed(3)}`);
+  check('rain: with weather back to clear and animT 100 s on, wetA is 0 and land luminance is within 2% of clear', out100.wetA === 0 && Math.abs(back.land - clear.land) <= clear.land * .02, `wetA ${out100.wetA}, land ${back.land.toFixed(1)} against ${clear.land.toFixed(1)}`);
+  /* the roofs: the top edge of each house, as the page finds it, read with the roof line and without it */
+  const roof = await page.evaluate(() => {
+    const H = window.__hearth, g = document.getElementById('c').getContext('2d'), T = 8, Wd = 110, HH = 70;
+    H.setWx('rain'); const lum = wet => { H.setWetA(wet); H.draw(); const d = g.getImageData(0, 0, Wd * T, HH * T).data, out = [];
+      for (const h of H.houses) { const nm = H.roofFrame(h.r), f = H.sheet.atlas.frames[nm]; let t = 0, n = 0;
+        for (const p of H.roofEdge(nm)) { const x = h.x * T - f.ax + p[0], y = h.y * T - f.ay + p[1]; if (x < 0 || y < 0 || x >= Wd * T || y >= HH * T) continue; const k = (y * Wd * T + x) * 4; t += .299 * d[k] + .587 * d[k + 1] + .114 * d[k + 2]; n++; }
+        out.push(n ? t / n : 0); }
+      return out; };
+    const dry = lum(0), wet = lum(1), diffs = dry.map((v, i) => wet[i] - v).sort((a, b) => a - b);
+    return { n: diffs.length, med: diffs[diffs.length >> 1], pts: H.roofEdge(H.roofFrame(H.houses[0].r)).length };
+  });
+  check('rain: a bright line along each roof\'s top edge, at least 15 brighter in luminance (median over houses) with wetA at 1 than at 0', roof.n >= 2 && roof.pts >= 8 && roof.med >= 15, `${roof.n} houses, ${roof.pts} edge pixels on the first, median ${roof.med.toFixed(1)}`);
+  /* lightning goes through the light map: at night with flash at 1 the grass is grass-coloured and brighter than without, not a white sheet */
+  const fl = await page.evaluate(() => {
+    const H = window.__hearth, g = document.getElementById('c').getContext('2d'), T = 8, Wd = 110, HH = 70;
+    H.setWx('thunder'); H.setWetA(0); H.setTime((Math.floor(H.time / 140) + .97) * 140);
+    const grab = f => { H.setFlash(f); H.draw(); const d = g.getImageData(0, 0, Wd * T, HH * T).data, tl = H.tilesNow, rd = H.road; let r = 0, gg = 0, b = 0, n = 0;
+      for (let y = 4; y < HH * T; y += 8) for (let x = 4; x < Wd * T; x += 8) { const ti = ((y / T) | 0) * Wd + ((x / T) | 0); if (tl[ti] !== 2 || rd[ti]) continue; const k = (y * Wd * T + x) * 4; r += d[k]; gg += d[k + 1]; b += d[k + 2]; n++; }
+      return { r: r / n, g: gg / n, b: b / n, n }; };
+    const off = grab(0), on = grab(1);
+    return { off, on };
+  });
+  const lum3 = c => .299 * c.r + .587 * c.g + .114 * c.b;
+  check('rain: a flash at night shows the grass its own colour, over 40% brighter than without and green above red by 10, not a white sheet', fl.on.n > 100 && lum3(fl.on) > lum3(fl.off) * 1.4 && fl.on.g - fl.on.r >= 10, `off ${JSON.stringify(fl.off)}, on ${JSON.stringify(fl.on)}`);
+  console.log(`      rain: foam clear ${clear.foam}, rain ${rainDry.foam} (${rainDry.fresh} new); land dry ${rainDry.land.toFixed(1)}, wet ${rainWet.land.toFixed(1)} (clear ${clear.land.toFixed(1)}, back ${back.land.toFixed(1)}); roofs ${roof.med.toFixed(1)} over ${roof.n}`);
+  await ctx.close();
+}
+await rainChecks();
+
 const rows = [], lums = {};
 // the stock checks set wood, food and granary and the clock by hand, so they get an island of their own: run on the scenes' island they left S7's lit windows with no pairs to measure
 {

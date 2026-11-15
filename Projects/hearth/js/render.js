@@ -165,6 +165,7 @@ function draw(){
       const dx=p.x-(p._px===undefined?p.x:p._px),dy=p.y-(p._py===undefined?p.y:p._py);
       if(p._px===undefined||dx*dx+dy*dy>.32){if(p._px!==undefined&&at(p.x|0,p.y|0)!==WATER){const pr=prints[printC++&255];pr.x=p.x;pr.y=p.y+.15;pr.t0=time}p._px=p.x;p._py=p.y}}
     for(const pr of prints){const ag=time-pr.t0;if(ag<0||ag>=18)continue;g.fillStyle=`rgba(150,168,186,${(.4*(1-ag/18)).toFixed(2)})`;g.fillRect(pr.x*T-1,pr.y*T,1,1);g.fillRect(pr.x*T+1,pr.y*T-1,1,1)}}
+  drawWet(); /* A6 (look.js): the wet on the land, the puddles, the rings on the water */
   drawShadows(); /* A5 (look.js): the sun's shadows, after the ground and before everything that stands on it */
   const ents=[];
   const wind={clear:.7,overcast:1,rain:1.3,thunder:2.4,fog:.4,snow:.9}[wx];
@@ -296,7 +297,8 @@ function draw(){
       for(let i=0;i<46;i++){const x=cx-w+((i*53+((animT*300)|0)*(i%3+1))%(w*2)),y=cy-h+((i*37+((animT*400)|0))%(h*2));g.moveTo(x,y);g.lineTo(x-2,y+6)}g.stroke()}}
   for(const gl of gulls){const x=gl.x*T,y=gl.y*T,up=Math.sin(animT*(RM?2.5:7)+gl.ph)>0;g.fillStyle='rgba(0,0,0,.12)';g.fillRect(x-2,y+9,5,1);g.fillStyle='#f0f0ea';if(up){g.fillRect(x-3,y-1,2,1);g.fillRect(x-1,y,3,1);g.fillRect(x+2,y-1,2,1)}else{g.fillRect(x-3,y+1,2,1);g.fillRect(x-1,y,3,1);g.fillRect(x+2,y+1,2,1)}g.fillStyle='#8c8478';g.fillRect(x,y,1,1)}
   if(geese){g.fillStyle='#2a2620';const dir=Math.sign(geese.vx);for(let i=0;i<geese.n;i++){const k=Math.ceil(i/2),side=i%2?1:-1;const x=(geese.x-dir*k*1.35)*T,y=(geese.y+side*k*.75)*T,fl=Math.sin(animT*9+geese.ph+i)>0?0:1;g.fillRect(x-1,y+fl,3,1);g.fillRect(x-2,y-fl+1,1,1);g.fillRect(x+2,y-fl+1,1,1)}}
-  if(rain){g.strokeStyle=storm?'rgba(200,220,255,.5)':'rgba(200,220,255,.35)';g.beginPath();const n=(storm?300:180)*(RM?.5:1);for(let i=0;i<n;i++){const x=(i*97+((animT*300)|0)*(i%3+1))%(W*T),y=(i*61+((animT*400)|0))%(H*T);g.moveTo(x,y);g.lineTo(x-(storm?4:2),y+6)}g.stroke()}
+  if(rain)drawRain(wind); /* A6 (look.js) */
+  drawRoofWet(); /* A6 (look.js): while it rains, a bright line along each roof's top edge */
   if(wx==='snow'){g.fillStyle='rgba(255,255,255,.85)';const sn=RM?70:150;for(let i=0;i<sn;i++){const x=(i*97+((animT*20)|0)*(i%3+1)+((Math.sin(animT*.8+i)*5)|0)+2000)%(W*T),y=(i*61+((animT*34)|0))%(H*T);g.fillRect(x,y,i%4?1:2,i%4?1:2)}}
   // sky: the hour's colour (look.js), cloud, fog
   const f=dayFrac(),e=edges();
