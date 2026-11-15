@@ -34,7 +34,22 @@ function updateTags(){if(!tagsEl)return;
     if(el._k===key&&!el.hidden)continue;el._k=key;el.hidden=false;el.textContent=p.name;el.className=p===selected?'tag sel':'tag';el.style.left=Math.round(cx)+'px';el.style.top=Math.round(cy)+'px'}}
 
 const HATCOL={proud:'#4c5f78',brave:'#8a3d2f',plain:'#6f4b32'};
-function drawFolk(p){if(p.inside)return;
+/* B2: what is in someone's hands, 2 to 3 px, drawn from carryOf() in goods.js. The axe and the rod are drawn below, where they always were. */
+function drawItem(it,x,y,f,k){const h=f>0?x+2:x-3,t=y-4*k;
+  switch(it.k){
+    case 'basket':g.fillStyle='#6b4a2a';g.fillRect(h,t+1,3,1);g.fillStyle='#a0723a';g.fillRect(h,t+2,3,1);g.fillStyle='#e8c86a';g.fillRect(h+1,t,1,1);break;
+    case 'sack':g.fillStyle='#d6c79a';g.fillRect(h,t,3,3);g.fillStyle='#b3a273';g.fillRect(h,t+2,3,1);break;
+    case 'bucket':for(const bx of [x-3,x+2]){g.fillStyle='#7a5a38';g.fillRect(bx,t+2,2,2);if(it.full){g.fillStyle='#4a90d9';g.fillRect(bx,t+1,2,1)}}break;
+    case 'sheaf':g.fillStyle='#e8c86a';g.fillRect(h,t,3,3);g.fillStyle='#b8943a';g.fillRect(h,t+2,3,1);break;
+    case 'plank':g.fillStyle='#c8935a';g.fillRect(f>0?x+1:x-4,t+1,4,1);break;
+    case 'hammer':g.fillStyle='#6b4423';g.fillRect(h+1,t,1,3);g.fillStyle='#999';g.fillRect(h,t,3,1);break;
+    case 'fishstring':g.fillStyle='#8a6a44';g.fillRect(h+1,t,1,1);g.fillStyle='#c9d0c8';g.fillRect(h,t+1,1,2);g.fillRect(h+2,t+1,1,2);g.fillStyle='#7d8c8a';g.fillRect(h,t+3,1,1);g.fillRect(h+2,t+3,1,1);break;
+    case 'bowl':g.fillStyle='#d9d4c8';g.fillRect(h,t+2,3,1);g.fillStyle='#8c8478';g.fillRect(h+1,t+3,1,1);break;
+    case 'staff':g.fillStyle='#6b4a2a';g.fillRect(f>0?x-3:x+2,y-9*k,1,9*k);break;
+    case 'firewood':g.fillStyle='#6b4423';g.fillRect(h,t+1,3,1);g.fillStyle='#8a5a2e';g.fillRect(h,t,1,1);break}}
+function drawFolk(p){carryTrack(p);
+  if(p._set&&!p.dead){const it=p._set,x=Math.round(it.x*T),y=Math.round(it.y*T);g.fillStyle='rgba(0,0,0,.22)';g.fillRect(x-1,y+3,4,1);if(it.k!=='staff')drawItem(it,x-2,y+4,1,1)}
+  if(p.inside)return;
   const x=p.x*T,y=p.y*T+(p.inBoat?-1:0),busy=p.task==='chop'||p.task==='build'||p.task==='till'||p.task==='harvest',bob=busy?Math.sin(animT*12+p.off)*1.2:0;
   const k=kOf(p);
   if(p===selected){drawTies(p);g.fillStyle='rgba(240,179,90,.55)';g.fillRect(x-4,y+1,9,1);g.fillRect(x-4,y-1,1,2);g.fillRect(x+4,y-1,1,2)}
@@ -54,6 +69,7 @@ function drawFolk(p){if(p.inside)return;
   if(el){g.fillStyle='#6f4b32';g.fillRect(f>0?x+1.5:x-2.5,y-3,1,3)}
   if(tl){g.fillStyle=sk[0];g.fillRect(f>0?x-2.5:x+1.5,sh+1-(Math.sin(animT*4+p.off)>0?1:0),1,2)} /* an arm that moves, on the side away from where the teller faces */
   if(p.sick&&p.task!=='abed'){g.fillStyle='rgba(236,236,226,.3)';g.fillRect(x-1.5,top,3,y-top-1)} /* still up, and a shade paler for it */
+  {const it=p._c;if(it&&it.k!=='axe'&&it.k!=='rod')drawItem(it,x,y,f,k);const bc=beltOf(p);if(bc){g.fillStyle=bc;g.fillRect(x-1.5,y-2*k,1,1)}}
   if(p.task==='chop'){g.fillStyle='#999';g.fillRect(x+2,y-7+bob*2,2,2)}
   if(p.task==='fish'){g.fillStyle='#e8dcc4';g.fillRect(x+2,y-6,1,7)}
   if(p.task==='wave'&&Math.hypot(p.tx-p.x,p.ty-p.y)<.05){g.fillStyle=sk[0];g.fillRect(x+2,y-9*k+Math.sin(animT*9+p.off)*1.5,1,3)}
