@@ -101,3 +101,53 @@ function drawShadows(){
   g.globalAlpha=sun.str;g.drawImage(shCv,0,0);
   g.fillStyle='#000';for(const p of people){if(p.dead||p.inside||p.inBoat)continue;g.fillRect(Math.round(p.x*T+off*1.2)-1,Math.round(p.y*T),3,1)}
   g.globalAlpha=1}
+/* A6: weather that lands. The rain is not only streaks over the picture: it rings the water, it darkens the ground and the ground keeps it a while, it
+   shines in the road, and it picks out the top edge of every roof. Everything here is a function of animT, the weather and a local mulberry, so it stands
+   still when the game is paused and never touches R(). wetA is how wet the land looks, 0 to 1: 20 seconds of animT to wet, 90 to dry. */
+let wetA=0,wetLast=-1,wetCv=null,wetKey=null,puddles=[],puddleKey='';const WETC='#a4adbc',ROOFPTS={};
+function wetStep(){
+  const dt=wetLast<0?0:Math.max(0,Math.min(200,animT-wetLast));wetLast=animT;
+  wetA=rain?Math.min(1,wetA+dt/20):Math.max(0,wetA-dt/90)}
+/* the land, multiplied by the wet colour: one world-sized mask of every tile that is not water, built when the island changes */
+function drawWet(){
+  wetStep();
+  if(wetA>.004){
+    if(wetKey!==tiles){wetKey=tiles;if(!wetCv){wetCv=document.createElement('canvas');wetCv.width=W*T;wetCv.height=H*T}
+      const m=wetCv.getContext('2d');m.clearRect(0,0,W*T,H*T);m.fillStyle=WETC;
+      for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(tiles[idx(x,y)]!==WATER)m.fillRect(x*T,y*T,T,T)}
+    g.globalCompositeOperation='multiply';g.globalAlpha=wetA;g.drawImage(wetCv,0,0);g.globalAlpha=1;g.globalCompositeOperation='source-over';
+    /* puddles: thirty road tiles, fixed for the island, each with a pale glint that comes and goes */
+    const pk=seed+'|'+roadV;
+    if(puddleKey!==pk){puddleKey=pk;puddles=[];const rd=[];for(let i=0;i<W*H;i++)if(road[i]===1)rd.push(i);
+      const r=mulberry(seed^0x5ad1e);for(let i=rd.length-1;i>0;i--){const j=(r()*(i+1))|0,t=rd[i];rd[i]=rd[j];rd[j]=t}
+      for(const i of rd.slice(0,30))puddles.push({x:(i%W)*T+((r()*4)|0),y:((i/W)|0)*T+1+((r()*5)|0),ph:r()*6.283})}
+    if(wetA>.25)for(const p of puddles){const a=wetA*(.3+.3*Math.sin(animT*1.6+p.ph));g.fillStyle=`rgba(214,230,250,${a.toFixed(2)})`;g.fillRect(p.x,p.y,3,1);g.fillRect(p.x+1,p.y+1,2,1)}}
+  if(rain)drawSplashes()}
+/* rings on open water, only in view: up to sixty (forty in plain rain, half that under reduced motion) from a stream that is reseeded every quarter second,
+   each growing through three frames, 2 then 3 then 4 px, in that quarter second */
+function drawSplashes(){
+  const vk=vScale(),vw=cv.width/vk,vh=cv.height/vk,x0=Math.max(0,camX*T-vw/2),y0=Math.max(0,camY*T-vh/2),x1=Math.min(W*T-1,x0+vw),y1=Math.min(H*T-1,y0+vh);
+  const win=Math.floor(animT*4),fr=Math.min(2,Math.floor((animT*4-win)*3)),n=Math.round((storm?60:40)*(RM?.5:1)),r=mulberry(win*2654435761+seed);
+  const w=4+fr,h=(fr+2>>1)+1;g.fillStyle='#e6f2ff';
+  for(let i=0;i<n;i++){const x=Math.floor(x0+r()*(x1-x0)),y=Math.floor(y0+r()*(y1-y0));
+    if(at((x/T)|0,(y/T)|0)!==WATER||at(((x+w)/T)|0,((y+h)/T)|0)!==WATER)continue;
+    g.fillRect(x,y,w,1);g.fillRect(x,y+h,w,1);g.fillRect(x-1,y+1,1,h-1);g.fillRect(x+w,y+1,1,h-1)}}
+/* the streaks, slanted by the wind table (3 px in rain, 5 in a storm, a storm's gusts leaning them a pixel more or less), and in a storm four pale lines
+   that cross the water from east to west, as the wind goes */
+function drawRain(wind){
+  const dx=Math.round(wind*2)+(storm?Math.round(Math.sin(animT*.7)):0),ln=storm?8:6;
+  g.strokeStyle=storm?'rgba(200,220,255,.5)':'rgba(200,220,255,.35)';g.beginPath();const n=(storm?300:180)*(RM?.5:1);
+  for(let i=0;i<n;i++){const x=(i*97+((animT*300)|0)*(i%3+1))%(W*T),y=(i*61+((animT*400)|0))%(H*T);g.moveTo(x,y);g.lineTo(x-dx,y+ln)}g.stroke();
+  if(storm){const span=W*T+160,k=RM?3:4,win=Math.floor(animT/8);g.fillStyle='rgba(220,232,244,.5)';
+    for(let i=0;i<k;i++){const r=mulberry(win*7919+i*104729+seed),y=Math.floor(r()*(H*T-8)),x=(((r()*span-animT*170)%span)+span)%span-80;
+      for(let j=0;j<8;j++){const sx=Math.floor(x+j*2);if(sx<0||sx>=W*T)continue;if(at((sx/T)|0,(y/T)|0)===WATER)g.fillRect(sx,y,2,1)}}}}
+/* the top edge of a roof: the first opaque pixel in each column of the frame, found once per frame name */
+function roofEdge(name){
+  if(ROOFPTS[name])return ROOFPTS[name];const sl=silhouette(name),pts=[];
+  try{const d=sl.getContext('2d').getImageData(0,0,sl.width,sl.height).data;
+    for(let i=0;i<sl.width;i++)for(let j=0;j<sl.height;j++)if(d[(j*sl.width+i)*4+3]>0){pts.push([i,j]);break}}catch(e){}
+  return ROOFPTS[name]=pts}
+function drawRoofWet(){
+  if(wetA<.02||typeof BSHEET==='undefined')return;
+  g.fillStyle=`rgba(234,243,255,${(.65*wetA).toFixed(2)})`;
+  for(const h of houses){const name=roofFrame(h.r),f=BSHEET.frames[name];if(!f)continue;const ox=h.x*T-f.ax,oy=h.y*T-f.ay;for(const p of roofEdge(name))g.fillRect(ox+p[0],oy+p[1],1,1)}}
