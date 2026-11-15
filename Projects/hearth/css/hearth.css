@@ -81,4 +81,24 @@
   body.live #live-note{display:block;position:fixed;left:50%;top:64px;transform:translateX(-50%);max-width:min(92vw,520px);text-align:center;font-size:13px;font-style:italic;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:8px 14px}
   body.live #live-note[hidden]{display:none}
   body.live #live-note a{color:var(--gold)}
+  /* C5: the HUD link on index.html, and the record and the way back on live.html. */
+  .live-link{font-size:12px;letter-spacing:.06em;color:var(--gold);text-decoration:underline dotted}.live-link[hidden]{display:none}
+  body.live .live-link{display:none}
+  #live-tools,#live-back,#live-away{display:none}
+  body.live #live-tools{display:flex;position:fixed;left:14px;top:58px;gap:12px;align-items:center;font-size:12px;letter-spacing:.04em;color:var(--dim)}
+  body.live #live-tools a{color:var(--gold)}
+  body.live #live-tools span[hidden],body.live #live-tools a[hidden]{display:none}
+  body.live #live-back{display:flex;position:fixed;left:50%;top:104px;transform:translateX(-50%);gap:12px;align-items:center;font-size:13px;font-style:italic;background:var(--panel);border:1px solid var(--gold);border-radius:3px;padding:8px 14px}
+  body.live #live-back[hidden]{display:none}
+  body.live #live-away{display:block;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(92vw,480px);max-height:70vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:16px 18px;z-index:6}
+  body.live #live-away[hidden]{display:none}
+  #live-away h2{font-size:18px;font-weight:normal;color:var(--gold);letter-spacing:.04em}
+  #live-away h2 small{display:block;font-size:11px;color:var(--dim);letter-spacing:.06em;font-style:italic;margin-top:2px}
+  #live-away .x{position:absolute;right:6px;top:6px;padding:2px 8px;border-color:transparent}
+  #live-away .roll{margin-top:10px;font-size:13px;line-height:1.5}
+  #live-away .roll h4{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);font-weight:normal;margin:10px 0 2px}
+  #live-away .roll h4 span{text-transform:none;letter-spacing:0;font-style:italic}
+  #live-away .roll p{margin:2px 0}#live-away .roll p i{color:var(--dim);font-style:normal;font-size:11px;margin-right:8px}
+  #live-away .foot{margin-top:12px;padding-top:8px;border-top:1px solid var(--line);display:flex;gap:12px;align-items:center;justify-content:space-between;font-size:12px}
+  #live-away .foot a{color:var(--gold)}
   @media (prefers-reduced-motion:reduce){#log p{animation:none;opacity:1}}

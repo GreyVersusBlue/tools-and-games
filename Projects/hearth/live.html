@@ -48,6 +48,19 @@
   <div class="roll" id="chron-roll" tabindex="0"></div>
   <div class="foot"><button id="chron-saga" title="the whole record as one page you can send somebody">save the saga</button><button id="chron-dl" title="the plain-text version">.txt</button><span id="chron-n"></span></div>
 </aside>
+<div id="live-tools">
+  <a id="lv-saga" href="/hearth-live/saga.html" title="everything that has happened here, as one page">the saga</a>
+  <a id="lv-copy" href="index.html" target="_blank" rel="noopener" title="open this island, as it was at the last midnight, as your own to play">take a copy</a>
+  <button id="lv-back" title="watch the last island day go by at speed">yesterday at speed</button>
+  <span id="lv-long" hidden>This island has grown too long to fit in a link. The saga is the way to keep it.</span>
+</div>
+<div id="live-back" hidden><span>A look back at yesterday, at speed.</span><button id="lv-now">back to now</button></div>
+<aside id="live-away" hidden aria-label="while you were away">
+  <button class="x" id="lv-away-x" aria-label="close">×</button>
+  <h2 id="lv-away-t">While you were away<small id="lv-away-s"></small></h2>
+  <div class="roll" id="lv-away-roll" tabindex="0"></div>
+  <div class="foot"><a href="/hearth-live/saga.html">read the whole saga</a><button id="lv-away-ok">go and see</button></div>
+</aside>
 <div id="live-status" aria-live="polite"></div>
 <div id="live-note" hidden></div>
 <script src="js/live-flag.js"></script>
