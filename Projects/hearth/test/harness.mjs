@@ -442,6 +442,8 @@ if (mode === 'twelve') {
     // A11: the same goes for the hearth. At night, or on a fire night, it crackles within 10 tiles of the view and lifts this floor; take the fire out of
     // the room until the crackle rows (the time of day stays: noon would bring the birds, and their chirps are a floor of their own).
     const fireKept = fires.splice(0); storyDay = dayCount - 1;
+    // A12: the island's own voices fire on timers; the rows below call each one directly, so the timers are parked and the dawn motif is spent for today.
+    callT = gooseT = owlT = frogT = 1e9; motifKey = dayCount + ':' + seed;
     h.audioTick(.05); await new Promise(r => setTimeout(r, 400));
     const x = h.cur.x, y = h.cur.y, out = {};
     // phase 1: a tune needs a song, and the song has to be a real one — its degrees come off its chronicle index.
@@ -455,11 +457,11 @@ if (mode === 'twelve') {
     ];
     // a song is two passes of up to ten notes; it needs a longer window to peak in and a longer tail to die in,
     // or it bleeds into the duck measurement below and the storm bed reads hot for no reason.
-    const peakWindow = n => n === 'songTune' ? 3000 : (n === 'thunder' || n === 'bell') ? 2200 : 1300;
+    const peakWindow = n => n === 'songTune' ? 3000 : n === 'dawnMotif' ? 4800 : n === 'owl' ? 1800 : (n === 'thunder' || n === 'bell') ? 2200 : 1300;
     for (const [name, fn] of shots) {
       h.audioTick(.05); // resets the per-frame sfx cap so every shot actually fires
       fn(); out[name] = +(await peakFor(peakWindow(name))).toFixed(4);
-      await settle(name === 'songTune' ? 7000 : 250);
+      await settle(name === 'songTune' ? 7000 : name === 'dawnMotif' ? 3500 : 250);
     }
     // A lost song is silent, measured on the same analyser as everything else: nothing scheduled, nothing heard.
     // Against the room's own floor, not against zero — the wind and the sea are always on this bus's neighbour.
@@ -496,6 +498,41 @@ if (mode === 'twelve') {
     h.setWx('clear'); await settleDuck(2400);
     const sfxClear = h.buses.sfxG.gain.value;
     out.duck = { sfxStorm: +sfxStorm.toFixed(3), sfxClear: +sfxClear.toFixed(3), bedStorm: +bedStorm.toFixed(4) };
+    // ---- A12: the goose is silent when there are none in the air, and the market murmurs only at midday with three at it ----
+    // (the same room floor as everything else: fire out, sky clear). geese is the game's own global; the harness set and unset it above.
+    {const tickFor12 = async ms => { const t0 = performance.now(); while (performance.now() - t0 < ms) { h.audioTick(.05); await peakFor(50); } };
+      const fl = await (async () => { h.audioTick(.05); return +(await peakFor(1200)).toFixed(4); })();
+      // each of the island's voices, called directly (the timers that pick the season and hour are parked above). They run here, after the song rows,
+      // so the room's slow wind and wave phase at the song's floor reading is the one it had before A12.
+      const timeKept = time, geeseKept = geese; geese = { x, y, vx: 5, vy: 1.5, n: 8, ph: 0 };   // for the goose shot; put back below
+      for (const [name, fn] of [['twoNote', () => twoNote()], ['buzz', () => buzz()], ['gooseCall', () => gooseCall()], ['caw', () => caw()],
+        ['owl', () => owl()], ['frog', () => frog(x, y)], ['dawnMotif', () => dawnMotif()]]) {
+        // the motif rides the music bus, and that bus is shut at night: noon, and a few seconds for it to open, or the row would measure a silent bus
+        if (name === 'dawnMotif') { time = Math.floor(time / dayLen) * dayLen + dayLen * .5; await tickFor12(7000); }
+        h.audioTick(.05); fn(); out[name] = +(await peakFor(name === 'dawnMotif' ? 4800 : name === 'owl' ? 1800 : 1300)).toFixed(4);
+        await settle(name === 'dawnMotif' ? 3500 : 250);
+      }
+      time = timeKept; geese = null; h.audioTick(.05); const gRet = gooseCall(); const gPk = +(await peakFor(1500)).toFixed(4);
+      geese = geeseKept;
+      out.voices = { floor: fl, gooseNullReturn: gRet, gooseNullPeak: gPk };
+      // the market: a real one if the island has built it, else a stand-in on the village side; three people sent to it, noon, and a far view
+      const fake = hasB('market') ? null : { kind: 'market', x: Math.round(center.x) + 3, y: Math.round(center.y) + 3 }; if (fake) bldg.push(fake);
+      const mk = getB('market'), mx = mk.x + 1.5, my = mk.y + 1.5, ppl = people.slice(0, 5), kept = ppl.map(p => p.task), tKept = time;
+      time = Math.floor(time / dayLen) * dayLen + dayLen * .5;
+      const an3 = AC.createAnalyser(); an3.fftSize = 2048; murG.connect(an3); const b3 = new Float32Array(2048);   // a tap on the murmur's own gain: it reads that voice alone, not the room
+      const murAt = async (px, py, n, ms = 1800) => {
+        ppl.forEach((p, i) => p.task = i < n ? 'market' : 'idle'); h.cur.x = px; h.cur.y = py;
+        await tickFor12(3500); let pk = 0, own = 0; const t0 = performance.now(); while (performance.now() - t0 < ms) { h.audioTick(.05); pk = Math.max(pk, await peakFor(50)); an3.getFloatTimeDomainData(b3); for (const v of b3) own = Math.max(own, Math.abs(v)); } return { master: +pk.toFixed(4), own: +own.toFixed(4) };
+      };
+      out.mur = { level: {}, farD: 0 };
+      out.mur.nearOn = await murAt(mx, my, 4); out.mur.level.on = +murLevel().toFixed(3);
+      out.mur.nearTwo = await murAt(mx, my, 2); out.mur.level.two = +murLevel().toFixed(3);
+      out.mur.farOn = await murAt(mx + 20, my, 4); out.mur.level.far = +murLevel().toFixed(3);
+      time = tKept; ppl.forEach((p, i) => p.task = kept[i]); if (fake) bldg.splice(bldg.indexOf(fake), 1);
+      h.cur.x = x; h.cur.y = y; await tickFor12(2500);
+      // the motif is a function of the seed, drawn from nothing else: asked twice it answers the same, and it is three to five degrees of the scale
+      out.motif = { a: motifDegrees(), b: motifDegrees() };
+    }
     // ---- A11: the fire's crackle, and rain that knows what is under the view. Bare names below are the game's own globals. ----
     // The crackle: at the hearth with the fire lit it clears the room floor by a ratio and stays under the one-shot band; 30 tiles away it is gone.
     const tickFor = async ms => { const t0 = performance.now(); while (performance.now() - t0 < ms) { h.audioTick(.05); await peakFor(50); } };
@@ -533,7 +570,7 @@ if (mode === 'twelve') {
   if (audio.skip) { failed = true; console.log(`FAIL: listening pass skipped (${audio.skip})`); }
   else {
     console.log('listening pass, master-bus peaks per one-shot:');
-    const names = Object.keys(audio).filter(k => k !== 'duck' && k !== 'song' && k !== 'crack' && k !== 'rain');
+    const names = Object.keys(audio).filter(k => k !== 'duck' && k !== 'song' && k !== 'crack' && k !== 'rain' && k !== 'voices' && k !== 'mur' && k !== 'motif');
     for (const k of names) console.log(`  ${k.padEnd(10)} ${audio[k].toFixed(3)}${audio[k] > .9 ? '  !! CLIPPING RISK' : audio[k] < .004 ? '  !! INAUDIBLE' : ''}`);
     const d = audio.duck;
     console.log(`  duck bus: sfx gain ${d.sfxStorm} in storm vs ${d.sfxClear} clear; storm bed peaks ${d.bedStorm}`);
@@ -545,6 +582,24 @@ if (mode === 'twelve') {
     if (!(d.sfxStorm >= .70 && d.sfxStorm <= .75) || !(d.sfxClear >= .94 && d.sfxClear <= 1.0)) {
       failed = true;
       console.log(`FAIL: the duck budget moved — sfx gain ${d.sfxStorm}/${d.sfxClear}, want ~0.72 storm / ~0.97 clear`);
+    }
+
+    // ---- A12: the island's own voices, each in the one-shot band, the goose silent with none in the air, the murmur placed ----
+    for (const nm of ['twoNote', 'buzz', 'gooseCall', 'caw', 'owl', 'frog', 'dawnMotif']) {
+      console.log(`  A12 row: ${nm.padEnd(9)} ${audio[nm].toFixed(4)} (want 0.07 to 0.19)`);
+      if (audio[nm] < .07 || audio[nm] > .19) { failed = true; console.log(`FAIL: ${nm} peaks ${audio[nm]} on the master bus, outside the 0.07 to 0.19 one-shot band`); }
+    }
+    const vo = audio.voices;
+    console.log(`  A12 row: goose with none in the air returns ${vo.gooseNullReturn}, peak ${vo.gooseNullPeak} over a floor of ${vo.floor}`);
+    if (vo.gooseNullReturn !== false || vo.gooseNullPeak > vo.floor * 1.3) { failed = true; console.log(`FAIL: a goose called with geese null (returned ${vo.gooseNullReturn}, peak ${vo.gooseNullPeak} over a floor of ${vo.floor})`); }
+    const mu = audio.mur;
+    console.log(`  A12 row: market murmur alone on its own gain: ${mu.nearOn.own} at the market with four of them (level ${mu.level.on}), ${mu.nearTwo.own} with two (level ${mu.level.two}), ${mu.farOn.own} twenty tiles off (level ${mu.level.far}); master peak ${mu.nearOn.master} with four`);
+    if (!(mu.level.on > .5) || mu.level.two !== 0 || mu.level.far !== 0) { failed = true; console.log(`FAIL: the murmur level is ${mu.level.on} at the market with four, ${mu.level.two} with two, ${mu.level.far} twenty tiles off; want >0.5, 0, 0`); }
+    if (mu.nearOn.own < .01) { failed = true; console.log(`FAIL: four people at the market are not heard on the murmur's own gain (${mu.nearOn.own}, want at least 0.01)`); }
+    if (mu.nearTwo.own > mu.nearOn.own * .1 || mu.farOn.own > mu.nearOn.own * .1) { failed = true; console.log(`FAIL: the murmur is heard with only two at the market (${mu.nearTwo.own}) or twenty tiles off (${mu.farOn.own}); at the market with four it is ${mu.nearOn.own}`); }
+    if (mu.nearOn.master > .19) { failed = true; console.log(`FAIL: the murmur is outside the one-shot band (${mu.nearOn.master} > 0.19)`); }
+    if (JSON.stringify(audio.motif.a) !== JSON.stringify(audio.motif.b) || audio.motif.a.length < 3 || audio.motif.a.length > 5 || !audio.motif.a.every(d => Number.isInteger(d) && d >= 0 && d <= 9)) {
+      failed = true; console.log(`FAIL: the dawn motif is ${JSON.stringify(audio.motif.a)} then ${JSON.stringify(audio.motif.b)}; want the same twice, 3 to 5 degrees of 0 to 9`);
     }
 
     // ---- A11: rain, fire and sea that know where you are looking ----
@@ -601,13 +656,19 @@ if (mode === 'twelve') {
   // chronicle index, stored nowhere and never drawn from R(). A second island on seed 7 has to hum the same thing.
   {
     const first = await H(() => [0, 1, 2, 3, 4].map(ci => window.__hearth.songDegrees(ci)));
+    const mot = await H(() => motifDegrees());
     const other = await openIsland(browser, 7, warns);
     const again = await other.page.evaluate(() => [0, 1, 2, 3, 4].map(ci => window.__hearth.songDegrees(ci)));
+    const motAgain = await other.page.evaluate(() => motifDegrees());
+    const motElse = await other.page.evaluate(() => { window.__hearth.newWorld(8); return motifDegrees(); });
     const elsewhere = await other.page.evaluate(() => { window.__hearth.newWorld(8); return window.__hearth.songDegrees(0); });
     await other.ctx.close();
     const same = JSON.stringify(first) === JSON.stringify(again);
     console.log(`songs across two runs of seed 7: ${same ? 'identical' : 'DIFFERENT'} (${first.map(d => d.length).join('/')} degrees)`);
     if (!same) { failed = true; console.log(`FAIL: seed 7 hummed ${JSON.stringify(first[0])} and then ${JSON.stringify(again[0])}`); }
+    console.log(`  A12 row: dawn motif seed 7 [${mot.join(' ')}] and again [${motAgain.join(' ')}]; seed 8 [${motElse.join(' ')}]`);
+    if (JSON.stringify(mot) !== JSON.stringify(motAgain)) { failed = true; console.log(`FAIL: seed 7's dawn motif was ${JSON.stringify(mot)} and then ${JSON.stringify(motAgain)}`); }
+    if (JSON.stringify(motElse) === JSON.stringify(mot)) { failed = true; console.log('FAIL: seed 8 has the same dawn motif as seed 7 — the seed is not in it'); }
     if (JSON.stringify(elsewhere) === JSON.stringify(first[0])) {
       failed = true; console.log('FAIL: a different island hums the same tune — the seed is not in the phrase');
     }

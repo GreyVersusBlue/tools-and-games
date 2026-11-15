@@ -3,7 +3,7 @@
 // ---------- audio: the island, heard (sprint 6) ----------
 // everything here uses Math.random, never R() — sound must not touch the simulation's stream
 let AC=null,audioOn=false,musOn=true,master=null,ambG,sfxG,musG,windG,windF,rainG,rainW,rainV,rainT,whisG,crickG,waveG,waveF,sprG,padG,nBuf=null;
-let padOsc=[],birdT=0,gullT=3,creakT=5,musT=3,musKey='',sfxN=0,lastKnock=0,crackT=.3,plopT=.4;
+let padOsc=[],birdT=0,gullT=3,creakT=5,musT=3,musKey='',sfxN=0,lastKnock=0,crackT=.3,plopT=.4,callT=4,gooseT=2,owlT=9,frogT=3,murG=null,motifKey='';
 const cur={x:0,y:0};
 const ar=(a,b)=>b===undefined?Math.random()*a:a+Math.random()*(b-a);
 const store=(k,v)=>{try{localStorage.setItem('hearth.'+k,v)}catch(e){}};
@@ -44,6 +44,8 @@ function startAudio(){AC=new (window.AudioContext||window.webkitAudioContext)();
     rainW=bed('highpass',3400,.7,RAINK[0],.31);rainV=bed('bandpass',1800,5,RAINK[1],.77);rainT=bed('lowpass',1100,.6,RAINK[2],1.23)}
   // wind's thin whistle: a narrow band that only opens in winter and in storms
   {const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=1250;bp.Q.value=14;whisG=AC.createGain();whisG.gain.value=0;bp.connect(whisG).connect(ambG);loop(bp);lfo(.13,260,bp.frequency);lfo(.21,.006,whisG.gain)}
+  // A12: the market's murmur, a band of noise whose formant drifts; it only opens at midday, near the market, with three or more at it
+  {const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=650;bp.Q.value=1.4;murG=AC.createGain();murG.gain.value=0;bp.connect(murG).connect(ambG);loop(bp);lfo(.23,260,bp.frequency);lfo(.37,180,bp.frequency)}
   // a spring, if you are standing near one
   {const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=3000;bp.Q.value=1.6;sprG=AC.createGain();sprG.gain.value=0;bp.connect(sprG).connect(ambG);loop(bp);lfo(.7,900,bp.frequency)}
   // crickets
@@ -130,6 +132,43 @@ function songTune(sg,voices){if(!sg||sg.lost)return null;const deg=songDegrees(s
   for(let v=0;v<vs;v++){const pan=vs<2?0:(v/(vs-1))*1.1-.55;          // the second pass, spread across the fire
     deg.forEach((d,i)=>note(songHz(d,k)*(v?1.003:1),beat*2.1,v?.026:.05,v?'sine':'triangle',pan,sfxG,t2+i*beat+v*.02))}
   return deg}
+// ---------- A12: the island's own voices ----------
+// Math.random for the sound, never R(). Nothing here is written to the simulation; every function only reads it. The one thing that is a
+// function of the seed is the dawn motif, and it is derived, never stored, the way a tune is.
+function voice(f0,f1,dur,vol,type,fil,fq,pan,bus,when,vib){const t=when||AC.currentTime,o=AC.createOscillator(),g=AC.createGain(),lp=AC.createBiquadFilter();
+  o.type=type;o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(f1,t+dur*.8);lp.type='bandpass';lp.frequency.value=fil;lp.Q.value=fq;
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+Math.min(.04,dur*.3));g.gain.exponentialRampToValueAtTime(.0005,t+dur);
+  if(vib){const v=AC.createOscillator(),vg=AC.createGain();v.frequency.value=vib[0];vg.gain.value=vib[1]*vol;v.connect(vg).connect(g.gain);v.start(t);v.stop(t+dur+.05)}
+  o.connect(lp).connect(g).connect(mkPan(pan)).connect(bus||ambG);o.start(t);o.stop(t+dur+.05)}
+// spring: two notes, the second a fourth or so up
+function twoNote(){if(!AC||!audioOn)return;const f=ar(1700,2500),t=AC.currentTime,pn=ar(-.6,.6);
+  voice(f*1.04,f,.17,.105,'sine',f,1,pn,ambG,t);voice(f*1.3,f*1.25,.22,.105,'sine',f*1.3,1,pn,ambG,t+.2)}
+// summer, by day: a dry buzz, noise through a high narrow band, chopped at insect speed
+function buzz(){if(!AC||!audioOn)return;const t=AC.currentTime,d=ar(.9,1.5),n=AC.createBufferSource();n.buffer=nBuf;n.loop=true;
+  const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=ar(5200,6400);bp.Q.value=7;const g=AC.createGain(),pn=mkPan(ar(-.7,.7));
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.7,t+.25);g.gain.setValueAtTime(.7,t+d-.3);g.gain.linearRampToValueAtTime(0,t+d);
+  const ch=AC.createOscillator(),cg=AC.createGain();ch.type='square';ch.frequency.value=ar(48,70);cg.gain.value=.35;const base=AC.createGain();base.gain.value=.65;
+  const am=AC.createGain();am.gain.value=0;ch.connect(cg).connect(am.gain);base.connect(am.gain);
+  n.connect(bp).connect(am).connect(g).connect(pn).connect(ambG);n.start(t);n.stop(t+d+.05);ch.start(t);ch.stop(t+d+.05)}
+// autumn: a goose, from wherever the geese are. Silent when there are none in the air.
+function gooseCall(){if(!geese||!AC||!audioOn||sfxN>5)return false;sfxN++;const P=place(geese.x,geese.y),t=AC.currentTime,f=ar(380,470);
+  voice(f,f*1.28,.3,.18*P.g,'sawtooth',900,1.6,P.p,ambG,t);voice(f*1.18,f*.9,.34,.18*P.g,'sawtooth',900,1.6,P.p,ambG,t+.36);return true}
+// winter: one low caw, now and then
+function caw(){if(!AC||!audioOn)return;const f=ar(210,260);voice(f*1.1,f*.7,.5,.14,'sawtooth',f*2.4,1.2,ar(-.5,.5),ambG)}
+// a clear night outside winter: an owl, two soft notes
+function owl(){if(!AC||!audioOn)return;const t=AC.currentTime,pn=ar(-.6,.6);voice(430,415,.55,.095,'sine',430,1.2,pn,ambG,t);voice(345,320,.75,.095,'sine',345,1.2,pn,ambG,t+.62)}
+// frogs, at a spring at dusk: a short pulsed croak, placed at the water
+function frog(x,y){if(!AC||!audioOn)return;const P=place(x,y),t=AC.currentTime,f=ar(150,210);
+  for(let i=0;i<2+((Math.random()*3)|0);i++)voice(f,f*.8,.14,.12*P.g,'square',f*3,2,P.p,ambG,t+i*.17,[32,.8])}
+// the market's level as a gain target, from the state alone: midday, within 8 tiles of the market, three or more of them at it
+function murLevel(){const m=getB('market');if(!m)return 0;const f=dayFrac();if(f<=.45||f>=.56)return 0;
+  let n=0;for(const p of people)if(p.task==='market')n++;if(n<3)return 0;
+  return Math.max(0,1-Math.hypot(m.x+1.5-cur.x,m.y+1.5-cur.y)/8)*Math.min(1,n/5)}
+// the dawn motif: three to five notes, off the seed alone by the walk a song takes (songDegrees(-1) multiplies its index by nothing, so this
+// phrase is the seed's own and no story's). Two devices on one link agree; two islands do not.
+const motifDegrees=()=>songDegrees(-1).slice(0,3+((seed>>>0)%3));
+function dawnMotif(){if(!AC||!audioOn)return null;const deg=motifDegrees(),k=KEYS[sea()],t=AC.currentTime+.1;
+  deg.forEach((d,i)=>note(songHz(d,k)*2,2.2,.3,'sine',0,musG,t+i*.75));return deg}
 function crackle(g,k,fx){if(!AC||!audioOn)return;const t=AC.currentTime,src=AC.createBufferSource();src.buffer=nBuf;
   const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=ar(1400,4800);bp.Q.value=2.5;const gn=AC.createGain(),v=.25*g*k*(.7+Math.random()*.3);
   gn.gain.setValueAtTime(0,t);gn.gain.linearRampToValueAtTime(v,t+.002);gn.gain.exponentialRampToValueAtTime(.0005,t+ar(.025,.07));
@@ -168,6 +207,15 @@ function audioTick(dt){sfxN=0;if(!AC||!audioOn)return;const t=AC.currentTime,s=s
     sprG.gain.setTargetAtTime(d<9?.022*(1-d/9):0,t,.9)}
   // the fire's crackle: short band-passed clicks at random intervals, heard within 10 tiles, fuller on a fire night
   crackT-=dt;if(crackT<=0){const fd=Math.hypot(center.x-cur.x,center.y-cur.y),g=Math.max(0,1-fd/10);crackT=ar(.07,.45);if(g>.02&&fireLit())crackle(g,storyDay===dayCount?1.6:1,center.x)}
+  // A12: the island's own voices, by season and hour
+  {const e=edges(),f=dayFrac();
+    murG.gain.setTargetAtTime(.1*murLevel(),t,1.2);
+    callT-=dt;if(callT<=0){callT=ar(5,14);if(!night&&!rain&&wx!=='snow'){
+      if(s==='spring'&&Math.random()<.7)twoNote();else if(s==='summer'&&Math.random()<.6)buzz();else if(s==='winter'&&Math.random()<.25)caw()}}
+    gooseT-=dt;if(gooseT<=0){gooseT=ar(1.4,3);if(s==='autumn')gooseCall()}
+    owlT-=dt;if(owlT<=0){owlT=ar(10,26);if(night&&wx==='clear'&&s!=='winter')owl()}
+    frogT-=dt;if(frogT<=0){frogT=ar(.7,2.2);if(isDusk()&&(s==='spring'||s==='summer')&&!rain){let b=null,bd=14;for(const sp of springs){const d=Math.hypot(sp.x-cur.x,sp.y-cur.y);if(d<bd){bd=d;b=sp}}if(b)frog(b.x,b.y)}}
+    const mk=dayCount+':'+seed;if(motifKey!==mk&&!night&&f<e[0]+.1&&musOn&&!storm&&musG.gain.value>.15){motifKey=mk;dawnMotif()}}
   // music: the season's key, gone by nightfall
   tuneMusic();
   const want=(!night&&!storm&&musOn)?.5:0;musG.gain.setTargetAtTime(want*duck,t,want?7:4);
