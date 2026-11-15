@@ -263,6 +263,43 @@ async function lightChecks(page, id) {
 }
 
 
+// ---- (6b) B2: hands that are full. One person stood on open grass at noon; what they carry is read off the canvas. ----
+// Full buckets against empty ones: pixels in the person's box that are blue (b well over r and g). A basket put down for a chat: pixels of its own
+// brown inside the box where they stood, once they have walked off. Break: swap the two waterSt rows in carryOf; the blue count does not rise.
+async function handsChecks(page) {
+  const r = await page.evaluate(() => {
+    const H = window.__hearth, g = document.getElementById('c').getContext('2d'), ev = (0, eval), T = 8, W = 110, HH = 70;
+    const out = {};
+    H.setZoom(1); H.setWx('clear'); H.setSnow(0); H.setTime((Math.floor(H.time / 140) + .5) * 140); H.setAnimT(0);
+    const tiles = H.tilesNow; let spot = null;
+    for (let ty = 8; ty < HH - 8 && !spot; ty++) for (let tx = 6; tx < W - 24 && !spot; tx++) {
+      let ok = true;
+      for (let y = ty - 2; y <= ty + 2 && ok; y++) for (let x = tx; x <= tx + 17; x++) if (tiles[y * W + x] !== 2 || H.road[y * W + x]) { ok = false; break; }
+      if (ok) spot = { x: tx + 1, y: ty };
+    }
+    out.spot = spot; if (!spot) return out;
+    for (const l of ['trees', 'houses', 'plots', 'works', 'wild', 'stumps', 'graves', 'snowmen']) ev(`${l}.splice(0,${l}.length,...${l}.filter(o=>!(o.x>=${spot.x - 6}&&o.x<=${spot.x + 23}&&o.y>=${spot.y - 12}&&o.y<=${spot.y + 6})))`);
+    for (const p of H.people) { p.x = p.tx = 1; p.y = p.ty = 1; }
+    const p = H.people.find(q => !q.dead); const stand = (x, y) => { p.x = p.tx = x; p.y = p.ty = y; p.inside = false; p.inBoat = false; p.sick = false; };
+    const count = (cx, cy, test) => { H.draw(); const x0 = Math.round(cx * T) - 7, y0 = Math.round(cy * T) - 13, d = g.getImageData(x0, y0, 16, 17).data; let n = 0;
+      for (let i = 0; i < d.length; i += 4) if (test(d[i], d[i + 1], d[i + 2])) n++; return n; };
+    const blue = (r, g2, b) => b > r + 40 && b > g2 + 15, brown = (r, g2, b) => r > 130 && r < 190 && g2 > 85 && g2 < 140 && b > 40 && b < 90 && r - b > 70;
+    const cx = spot.x + 4, cy = spot.y; stand(cx, cy);
+    p.task = 'water'; p.waterSt = 0; out.empty = count(cx, cy, blue);
+    p.waterSt = 1; out.full = count(cx, cy, blue);
+    p.waterSt = 0; p.task = 'carry'; p.carrySt = 0; count(cx, cy, brown);
+    p.task = 'chat'; p.chatW = ''; stand(cx, cy); count(cx, cy, brown); /* the frame that sees the carry end puts the basket down */
+    p.task = 'carry'; stand(cx, cy); H.draw(); p.task = 'chat'; H.draw(); stand(cx + 6, cy);
+    out.put = count(cx, cy, brown); out.set = !!p._set;
+    p.task = 'idle'; H.draw(); out.gone = count(cx, cy, brown); out.setAfter = !!p._set;
+    return out;
+  });
+  if (!r.spot) { check('hands: an open block of grass to stand a person on', false, JSON.stringify(r)); return; }
+  check('hands: a person at the well with full buckets shows more blue in their box than with empty ones', r.full - r.empty >= 2, `${r.empty} blue px empty, ${r.full} full`);
+  check('hands: a basket put down for a chat stays on the ground in the path once they have walked on, and goes when the task changes', r.set && r.put >= 3 && r.gone < r.put && !r.setAfter, JSON.stringify(r));
+  console.log(`      hands: ${r.empty} blue px empty, ${r.full} full; basket ${r.put} px on the ground, ${r.gone} after`);
+}
+
 // ---- (7) A9: who is who, and who is singing. A fresh seed-7 island at noon on day 128 (S1's day), clear, no snow, zoom 1. ----
 // People are stood by hand on open grass, so a check reads the picture and the DOM and not the luck of where the island put them. Ties: the
 // canvas with someone selected against the canvas with nobody, along one pixel row, sample by sample. Notes: pixels of the song's own colour (noteCol,
@@ -508,6 +545,11 @@ const rows = [], lums = {};
   const { ctx, page } = await open(7);
   await page.evaluate(() => { const H = window.__hearth; while (H.dayCount < 128) H.step(.05); H.setTime((Math.floor(H.time / 140) + .5) * 140); for (let i = 0; i < 40; i++) H.step(.05); });
   await whoChecks(page);
+  await ctx.close();
+}
+{
+  const { ctx, page } = await open(7);
+  await handsChecks(page);
   await ctx.close();
 }
 {

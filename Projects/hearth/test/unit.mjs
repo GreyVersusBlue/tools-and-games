@@ -521,5 +521,50 @@ section(27, () => {
   check('arithmetic: hyp(3,4) is 5 and shuf is a permutation drawn from R()', ev('hyp(3,4)') === 5 && ev(`(()=>{const a=shuf([1,2,3,4,5,6]);return a.length===6&&a.slice().sort().join()==='1,2,3,4,5,6'})()`));
 });
 
+// ---- hands that are full (B2, unit section 23) ----
+// carryOf() is a pure function of the task and the state; each row stands a person in one of the twelve states and reads the table's item.
+section(23, () => {
+  const { ev } = fresh(7);
+  const of = (set) => ev(`(()=>{const p=people.find(q=>!q.dead);Object.assign(p,{inside:false,inBoat:false,task:'idle',work:0,carrySt:0,waterSt:0,bLead:0,tx:p.x,ty:p.y},${set});delete p._off;return carryOf(p)})()`);
+  const k = (set) => { const c = of(set); return c ? c.k + (c.full ? '+' : '') : null; };
+  const rows = [['carry, carrySt 0', "{task:'carry',carrySt:0}", 'basket'], ['carry, carrySt 1', "{task:'carry',carrySt:1}", 'sack'],
+    ['water, waterSt 0', "{task:'water',waterSt:0}", 'bucket'], ['water, waterSt 1', "{task:'water',waterSt:1}", 'bucket+'],
+    ['chop', "{task:'chop'}", 'axe'], ['fish', "{task:'fish'}", 'rod'], ['harvest, work 2', "{task:'harvest',work:2}", 'sheaf'], ['harvest, work 0.5', "{task:'harvest',work:.5}", null],
+    ['build, on the way', "{task:'build',tx:p.x+3}", 'plank'], ['build, at the site', "{task:'build'}", 'hammer'], ['nurse', "{task:'nurse'}", 'bowl'],
+    ['bounds, the leader', "{task:'bounds',bLead:1}", 'staff'], ['bounds, a child', "{task:'bounds',bLead:0}", null], ['tend', "{task:'tend'}", 'firewood'], ['gather', "{task:'gather'}", null], ['idle', "{task:'idle'}", null]];
+  const got = rows.map(r => [r[0], k(r[1]), r[2]]), bad = got.filter(r => r[1] !== r[2]);
+  check('carry: each of the twelve task states carries the table\'s item, and a task with nothing to carry carries nothing', bad.length === 0, bad.map(r => `${r[0]}: ${r[1]} not ${r[2]}`).join('; '));
+  check('carry: water with waterSt 0 is empty buckets and with waterSt 1 full ones', of("{task:'water',waterSt:0}").full === false && of("{task:'water',waterSt:1}").full === true);
+  // stepping off a boat: the string of fish for 30 s of animT, and not for the voyage home
+  const b = fresh(7); b.ev('animT=100');
+  const cur = () => b.ev('(()=>{const p=people.find(q=>!q.dead);const c=carryOf(p);return c?c.k:null})()');
+  b.ev("(()=>{const p=people.find(q=>!q.dead);Object.assign(p,{inside:false,inBoat:true,task:'boat'});carryTrack(p)})()");
+  const inB = cur();
+  b.ev("(()=>{const p=people.find(q=>!q.dead);p.inBoat=false;p.task='idle';carryTrack(p)})()");
+  const s0 = cur(); b.ev('animT=129'); const s1 = cur(); b.ev('animT=130'); const s2 = cur();
+  check('carry: stepping off a boat gives a string of fish for 30 s of animT and then nothing', inB === null && s0 === 'fishstring' && s1 === 'fishstring' && s2 === null, JSON.stringify([inB, s0, s1, s2]));
+  const v = fresh(7);
+  v.ev("(()=>{const p=people.find(q=>!q.dead);voyage={p,st:'out'};Object.assign(p,{inside:false,inBoat:true,task:'boat'});carryTrack(p);p.inBoat=false;p.task='idle';carryTrack(p)})()");
+  check('carry: coming ashore from the voyage is not a catch', v.ev('(()=>{const p=people.find(q=>!q.dead);return carryOf(p)})()') === null);
+  // putting down: the item stays where they stood while the task is a talking one, and goes when it changes
+  const d = fresh(7);
+  const st = (set) => d.ev(`(()=>{const p=people.find(q=>!q.dead);Object.assign(p,{inside:false,inBoat:false,work:0},${set});carryTrack(p);return p._set?[p._set.k,p._set.x,p._set.y]:null})()`);
+  const w1 = st("{task:'carry',carrySt:0,x:20,y:20,tx:20,ty:20}"), w2 = st("{task:'chat',x:21,y:20,tx:21,ty:20}"), w3 = st("{task:'chat',x:22,y:20,tx:22,ty:20}"), w4 = st("{task:'idle'}");
+  check('carry: a basket put down for a chat stays where they stood until the task changes again', w1 === null && w2 && w2[0] === 'basket' && w2[1] === 21 && w3 && w3[1] === 21 && w4 === null, JSON.stringify([w1, w2, w3, w4]));
+  const e = fresh(7), st2 = (set) => e.ev(`(()=>{const p=people.find(q=>!q.dead);Object.assign(p,{inside:false,inBoat:false,work:0},${set});carryTrack(p);return p._set?1:0})()`);
+  st2("{task:'chop'}"); const noSet = st2("{task:'wander'}");
+  check('carry: only chat, market, shelter and wave put an item down', noSet === 0 && ['chat', 'market', 'shelter', 'wave'].every(t => { st2("{task:'carry',carrySt:1}"); return st2(`{task:'${t}'}`) === 1; }));
+  // the belt: one bright pixel in the shelf colour for the thing's index
+  const t = fresh(7), nm = t.ev('people.find(q=>!q.dead).name');
+  t.ev(`things.length=0;things.push({holder:null},{holder:null},{holder:${JSON.stringify(nm)}})`);
+  const bt = t.ev('beltOf(people.find(q=>!q.dead))');
+  t.ev('things.length=0'); const none = t.ev('beltOf(people.find(q=>!q.dead))');
+  check('carry: a person holding a thing gets a belt pixel in the shelf colour of its index, and nobody else does', bt === '#4a5f8a' && none === null, JSON.stringify([bt, none]));
+  // it reads and does not write: no R() and no state the simulation reads
+  const r = fresh(7), before = JSON.stringify(r.H.pack());
+  r.ev("for(const p of people){carryTrack(p);carryOf(p);beltOf(p)}");
+  check('carry: running carryOf, carryTrack and beltOf over everyone leaves the save as it was', JSON.stringify(r.H.pack()) === before);
+});
+
 console.log(`${fail ? 'FAIL' : 'PASS'}: ${pass} of ${pass + fail} unit checks`);
 process.exit(fail ? 1 : 0);
