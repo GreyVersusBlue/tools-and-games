@@ -1,7 +1,7 @@
 // Hearth — the turn of village life — newDay, buildings, boats, the works, and the wildlife.
 // Classic scripts sharing one global scope; the load order in index.html is the old single file’s order and it matters.
 // ---------- life ----------
-function newDay(){saidToday=new Set();
+function newDay(){saidToday=new Set();pullsNow();
   const yr=yearOf(dayCount),s=sea();
   wakeDreams();
   // sprint 16: the day comes round again. On the anniversary of a death, whoever lost a partner or a parent walks up the hill —
