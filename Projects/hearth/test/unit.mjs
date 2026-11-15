@@ -647,5 +647,39 @@ section(25, () => {
   check('pull: unpack brings the pull back from the chronicle, and the save has no pull in it', rl.ev("pullOf('fish')") === .15 && !/"pulls?"/.test(sv));
 });
 
+// ---- the page that follows the public island (C4, unit section 28) ----
+// live.html is index.html with every id kept and two more scripts, and the four seams in the game's own files are inert without HEARTH_LIVE:
+// those are the checks here. The page itself, in a browser against a running server, is test/live.mjs. Break: delete one id from live.html;
+// or take `if(LIVE)return;` out of autoSave() in life.js and the sentinel in hearth.auto is overwritten.
+section(28, () => {
+  const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
+  const ids = html => new Set([...html.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]));
+  const scripts = html => [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
+  const idx = read('index.html'), live = read('live.html');
+  const missing = [...ids(idx)].filter(i => !ids(live).has(i));
+  check('live.html: every id index.html has is there, because the scripts bind to them at load', ids(idx).size > 40 && missing.length === 0, missing.join(', '));
+  const want = ['js/live-flag.js', ...scripts(idx), 'js/live.js'];
+  check('live.html: index.html\'s scripts in index.html\'s order, with live-flag.js first and live.js last', JSON.stringify(scripts(live)) === JSON.stringify(want), JSON.stringify(scripts(live)));
+  check('live.html: body.live, and a status line and a note the page can fill', /<body class="live">/.test(live) && ids(live).has('live-status') && ids(live).has('live-note'));
+  check('index.html does not load either live script and has no live ids', !/live/.test(scripts(idx).join(' ')) && !ids(idx).has('live-status'));
+  // the seam: the same script text, with and without the flag
+  const store = h => { h.ev("localStorage.setItem('hearth.auto','sentinel')"); h.ev('autoSave()'); return h.ev("localStorage.getItem('hearth.auto')"); };
+  const on = loadHearth({ globals: { HEARTH_LIVE: 1, btoa, atob } }), off = loadHearth({ globals: { btoa, atob } }); /* lzEnc needs btoa: without it autoSave() would fail quietly in both and the control below would prove nothing */
+  on.H.newWorld(7); off.H.newWorld(7);
+  check('LIVE: true with the flag in the context and false without it', on.ev('LIVE') === true && off.ev('LIVE') === false);
+  check('LIVE: autoSave() leaves a visitor\'s own hearth.auto alone', store(on) === 'sentinel');
+  check('LIVE: and without the flag it is still the autosave it was (the control for the line above)', store(off) !== 'sentinel');
+  // a LIVE island still packs, steps and unpacks: the seams touch input and the loop, not the simulation
+  on.ev('for(let i=0;i<300;i++)step(.05)');
+  const a = JSON.stringify(on.H.pack());
+  off.ev('for(let i=0;i<300;i++)step(.05)');
+  check('LIVE: stepping is the same arithmetic with and without the flag', a === JSON.stringify(off.H.pack()));
+  // js/live.js declares its own names and nobody else's
+  const lv = read('js/live.js'), names = [...lv.matchAll(/^(?:let|const|function)[ \t]+([A-Za-z_$][\w$]*)/gm)].map(m => m[1]);
+  check('live.js: every top-level name starts lv, LV_ or is liveFrame (so no other file can already own one)', names.length > 15 && names.every(n => /^(lv|LV_)/.test(n) || n === 'liveFrame'), names.filter(n => !/^(lv|LV_)/.test(n) && n !== 'liveFrame').join(', '));
+  check('live.js: no comment line starts with // and the file has no "use strict"', !/^\s*\/\//m.test(lv) && !/use strict/.test(lv));
+});
+
 console.log(`${fail ? 'FAIL' : 'PASS'}: ${pass} of ${pass + fail} unit checks`);
 process.exit(fail ? 1 : 0);

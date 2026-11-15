@@ -9,7 +9,7 @@
 #
 #   gate  on every pull request and push to main — the building sheet's
 #         validator, the Node unit suite, determinism, save, a twelve-day soak on the two fixed
-#         seeds, `sheet`, `look`, and `pinned`, which compares
+#         seeds, `sheet`, `look`, the public island's `server` and `live` suites, and `pinned`, which compares
 #         the forty-day pack() hashes of seeds 7 and 20260819 against
 #         test/hashes.json. About a minute of browser time; the install is the
 #         slow part.
@@ -95,6 +95,11 @@ jobs:
       - name: Portable arithmetic (test/portable.mjs, no browser)
         run: node portable.mjs
 
+      # The public island as a program (C3): the server's island is a function of its clock, and a restart, a long absence
+      # and a failing step cost nothing already written. Node only, a fake clock and a scratch folder.
+      - name: Server (test/server.mjs, no browser)
+        run: node server.mjs
+
       - name: Install the pinned Playwright
         run: npm ci
 
@@ -125,6 +130,12 @@ jobs:
 
       - name: Look rig (drawing is off the stream; eight scenes timed at two zooms)
         run: node look.mjs
+
+      # The public island's page (C4): live.html against server/live.mjs on a clock at 60 times speed. Its own hash equals the
+      # server's at three epoch boundaries, hearth.auto is untouched, a click on water skips nothing, a stopped server shows the
+      # breath line and a missing route shows the offline line.
+      - name: Live page (test/live.mjs; lockstep with the server)
+        run: node live.mjs
 
   deep:
     name: deep · ${{ matrix.mode }}

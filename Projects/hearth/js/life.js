@@ -301,7 +301,7 @@ function endFeud(how,who){if(!feud)return;const f=feud;feud=null;
     a.hist.push({d:dayCount,s:`was walked round the bounds in the same line as ${b.name}, and let it go somewhere along the way`});
     b.hist.push({d:dayCount,s:`was walked round the bounds in the same line as ${a.name}, and let it go somewhere along the way`})}}
 // sprint 9: the island keeps itself. Written at each dawn; read back at boot when no link is pinned in the address bar.
-function autoSave(){try{store('auto',lzEnc(JSON.stringify(pack())))}catch(e){}}
+function autoSave(){if(LIVE)return;try{store('auto',lzEnc(JSON.stringify(pack())))}catch(e){}}
 // The LZ of a 500-day island measured 26 ms, and at the generational speed a day goes by in about half a second, so a dawn autosave
 // there is a third of the frame budget spent on a thing nobody is waiting for. It writes every tenth day while the speed is up, and
 // once more the moment the speed comes down (setSpeed). Nothing here draws from R(), and no decision in the simulation reads it.
