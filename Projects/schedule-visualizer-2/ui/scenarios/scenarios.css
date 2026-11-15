@@ -1055,6 +1055,15 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* a recompute is pending after a change in the open project: the tables are the old ones */
+.scn-bld__inspector [data-stale='true'] {
+  opacity: 0.5;
+}
+
+.scn-bld__refusal {
+  margin: 0;
+}
+
 /* the projects kept on this device, beside "Compare with another project file…" */
 .scn-file__shelf {
   display: grid;
@@ -1069,7 +1078,12 @@
     display: none;
   }
 
+  /* the head wraps (a long file name, right to left or not, goes under Stop, never pushes it off) */
   .scn-bld__head {
-    flex-wrap: nowrap;
+    align-items: flex-start;
+  }
+
+  .scn-bld__text {
+    flex-basis: 8rem;
   }
 }
