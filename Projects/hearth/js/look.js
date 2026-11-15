@@ -61,3 +61,43 @@ function lightMap(L,f,e,s){
   if(dark>.65&&speed<FAST)for(const p of people){if(p.dead||p.inside||p.task!=='gohome'&&p.task!=='nurse'&&p.task!=='visit'&&p.task!=='voyage')continue;stamp('fire',8,p.x*T,p.y*T-3,Math.min(1,(dark-.65)*4))}
   m.globalCompositeOperation='source-over';
   return lmCv}
+/* A5: the sun casts shadows. sunAt reads the hour and the weather and answers where a shadow falls: dir is -1 in the morning (the sun is east, so the
+   shadow goes west) and +1 in the evening, easing through 0 across the few minutes round noon so nothing jumps; len is the shadow as a multiple of the
+   height of what casts it, .4 at noon up to 3 at the edges; str is how dark, 0 at night and in any weather but clear, .28 in clear light. Pure. */
+function sunAt(f,season,wx){
+  const e=EDGE[season],u=(f-e[0])/(e[1]-e[0]);
+  if(u<=0||u>=1)return{dir:0,len:0,str:0};
+  const s=2*u-1,a=Math.abs(s),dir=Math.max(-1,Math.min(1,s/.06)),len=Math.min(3,.4+2.6*a*a),fade=Math.min(1,Math.min(u,1-u)/.06);
+  return{dir,len,str:wx==='clear'?.28*fade:0}}
+/* shadows: the things that do not move go on a world-sized canvas once per change of sun (black, opaque, so two shadows that overlap are not twice as
+   dark) and it is laid over the ground at the sun's strength; people, who move, are three-by-one marks put straight on the picture. */
+let shCv=null,shG=null,shKey='';const SILS={};
+function silhouette(name){
+  if(SILS[name])return SILS[name];const f=BSHEET.frames[name],cv2=document.createElement('canvas');cv2.width=f.w;cv2.height=f.h;
+  const c=cv2.getContext('2d');c.drawImage(BIMG,f.x,f.y,f.w,f.h,0,0,f.w,f.h);c.globalCompositeOperation='source-in';c.fillStyle='#000';c.fillRect(0,0,f.w,f.h);
+  let top=0;try{const d=c.getImageData(0,0,f.w,f.h).data;top=f.h;for(let i=3;i<d.length;i+=4)if(d[i]>0){top=Math.floor(i/4/f.w);break}}catch(e){top=0} /* the first row with anything in it: the height a shadow is measured from */
+  cv2.top=top;return SILS[name]=cv2}
+const SHADOW_FRAME={hut:'hut',well:'well',market:'market',mill:'mill',smoke:'smoke',hall:'hall',light:'light'};
+function drawShadows(){
+  if(typeof lookQ!=='undefined'&&lookQ<2)return;
+  const sun=sunAt(dayFrac(),sea(),wx);if(sun.str<=.005)return;
+  const dq=Math.round(sun.dir*sun.len*24)/24,off=dq,s=sea(),shrink=s==='autumn'&&seaDay()===4?.85:1;
+  let ts=0;for(const t of trees)ts+=t.s*20+t.x*13+t.y*7;let hs=0;for(const h of houses)hs+=h.x*31+h.y*17;
+  let nb=0;const bl=bAll();for(const b of bl)if(b.done)nb++;
+  const key=`${dq}|${trees.length}|${Math.round(ts)}|${houses.length}|${hs}|${bl.length}|${nb}|${shrink}|${s==='winter'}`;
+  if(!shCv){shCv=document.createElement('canvas');shCv.width=W*T;shCv.height=H*T;shG=shCv.getContext('2d')}
+  if(key!==shKey){shKey=key;const m=shG;m.setTransform(1,0,0,1,0,0);m.clearRect(0,0,W*T,H*T);m.fillStyle='#000';
+    /* a tree: an ellipse from the trunk out along the ground, as long as len times the tree is tall; a bare winter tree casts a thinner one */
+    for(const t of trees){const r=T*.7*t.s*shrink,ls=Math.abs(off)*2.6*r,ry=Math.max(1.5,r*(s==='winter'?.28:.45));
+      m.beginPath();m.ellipse(t.x*T+Math.sign(off)*ls/2,t.y*T+1,Math.max(ls/2,r*.5),ry,0,0,6.283);m.fill()}
+    /* a building: its own frame's black copy, sheared along the ground and squashed to half its height, standing on the foot of its footprint */
+    const C=-off,D=.5,cast=(name,x,y,fy,w)=>{const f=BSHEET.frames[name];if(!f)return;const sl=silhouette(name),hv=fy-(y-f.ay+sl.top),ls=Math.abs(off)*hv,dp=Math.min(8,Math.max(4,w*T*.5)),x1=x+w*T;
+      m.setTransform(1,0,C,D,-C*fy,(1-D)*fy);m.drawImage(sl,x-f.ax,y-f.ay);m.setTransform(1,0,0,1,0,0);
+      /* and the ground the building stands on, swept along the same way: the silhouette gives the roof, this gives the shadow its depth */
+      if(ls>1){const e=off<0?x-ls:x1+ls,a=off<0?x1:x;m.beginPath();m.moveTo(a,fy-dp);m.lineTo(e,fy-dp*.85);m.lineTo(e,fy-dp*.15);m.lineTo(a,fy);m.fill()}};
+    for(const h of houses)cast(roofFrame(h.r),h.x*T,h.y*T,h.y*T+2*T,2);
+    for(const b of bl)if(b.done&&SHADOW_FRAME[b.kind])cast(SHADOW_FRAME[b.kind],b.x*T,b.y*T,(b.y+b.h)*T,b.w);
+    m.setTransform(1,0,0,1,0,0)}
+  g.globalAlpha=sun.str;g.drawImage(shCv,0,0);
+  g.fillStyle='#000';for(const p of people){if(p.dead||p.inside||p.inBoat)continue;g.fillRect(Math.round(p.x*T+off*1.2)-1,Math.round(p.y*T),3,1)}
+  g.globalAlpha=1}

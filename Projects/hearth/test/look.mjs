@@ -497,6 +497,49 @@ async function autumnChecks() {
   await ctx.close();
 }
 
+// ---- (9) A5: the sun casts shadows. A fresh seed-7 island on summer day 128, zoom 1, no people moved, only the hour and the weather set. ----
+// Summer's edges are .15 and .86, so e[0]+.08 is .23 and e[1]-.08 is .78. For each house whose two strips are plain grass (not road, with no other
+// house or tree beside it in its row: the median over houses answers for anyone passing) the strip 6 to 14 px west of the footprint against the strip 6 to 14 px east of it, on
+// the four rows from 6 to 2 px above the foot, mean luminance, west minus east, read in clear weather and in rain (which has no shadow) at each hour. Break: fix dir at
+// +1 in sunAt (js/look.js); the morning check fails and the evening one stays, which is the break the design names. A second break, drop the wx==='clear'
+// test from str, fails the rain pair.
+async function shadowChecks() {
+  const { ctx, page } = await open(7);
+  const read = (f, wx) => page.evaluate(([f, wx]) => {
+    const H = window.__hearth, g = document.getElementById('c').getContext('2d'), W = 110, HH = 70, T = 8;
+    H.setTime((Math.floor(H.time / 140) + f) * 140); H.setWx(wx); H.setSnow(0); H.setZoom(1); H.draw();
+    const tiles = H.tilesNow, road = H.road;
+    const plain = (x, y, w, h) => { for (let j = 0; j < h; j += 2) for (let i = 0; i < w; i += 2) { const tx = Math.floor((x + i) / T), ty = Math.floor((y + j) / T); if (tx < 0 || ty < 0 || tx >= W || ty >= HH || tiles[ty * W + tx] !== 2 || road[ty * W + tx]) return false; } return true; };
+    const diffs = [], all = H.houses.slice(), trees = H.trees.slice();
+    for (const h of all) {
+      const x0 = h.x * T, x1 = x0 + 16, y = h.y * T + 10;
+      if (!plain(x0 - 14, y, 8, 4) || !plain(x1 + 6, y, 8, 4)) continue;
+      /* a shadow falls on whatever is downwind of what casts it, and the village is 24 px apart, so each house is drawn alone: the others and the trees are lifted out of the
+         page's own arrays for the one draw and put back */
+      H.houses.length = 0; H.houses.push(h); H.trees.length = 0; H.draw();
+      const d2 = g.getImageData(0, 0, W * T, HH * T).data;
+      const lum2 = (x, y, w, hh) => { let t = 0, n = 0; for (let j = 0; j < hh; j++) for (let i = 0; i < w; i++) { const k = ((y + j) * W * T + x + i) * 4; t += .299 * d2[k] + .587 * d2[k + 1] + .114 * d2[k + 2]; n++; } return t / n; };
+      diffs.push(lum2(x0 - 14, y, 8, 4) - lum2(x1 + 6, y, 8, 4)); /* west minus east: negative when the west is darker */
+      H.houses.length = 0; H.houses.push(...all); H.trees.length = 0; H.trees.push(...trees);
+    }
+    diffs.sort((a, b) => a - b);
+    return { n: diffs.length, med: diffs.length ? diffs[diffs.length >> 1] : 0, sun: H.sunAt(f, 'summer', wx) };
+  }, [f, wx]);
+  await page.evaluate(() => { const H = window.__hearth; while (H.dayCount < 128) H.step(.05); for (let i = 0; i < 40; i++) H.step(.05); });
+  const am = await read(.23, 'clear'), pm = await read(.78, 'clear'), noon = await read(.5, 'clear'), noonRain = await read(.5, 'rain'), amRain = await read(.23, 'rain'), pmRain = await read(.78, 'rain');
+  /* the ground's own light and dark (relief shades the land from the north-west) leaves the west strip about 5 brighter than the east even in rain, so a shadow is what a strip
+     reads in clear weather beyond what the same strip reads in rain at the same hour: the morning's west-minus-east must be at least 12 lower than the rain's, the evening's at least 12 higher */
+  const mEff = amRain.med - am.med, eEff = pm.med - pmRain.med;
+  check('shadow: at e[0]+.08 in clear weather the strip 6 px west of a house is darker than the strip 6 px east by at least 12 more than in rain (median over houses)', am.n >= 2 && mEff >= 12, `${am.n} houses, clear ${am.med.toFixed(1)}, rain ${amRain.med.toFixed(1)}`);
+  check('shadow: at e[1]-.08 in clear weather the strip 6 px east of a house is darker than the strip 6 px west by at least 12 more than in rain (median over houses)', pm.n >= 2 && eEff >= 12, `${pm.n} houses, clear ${pm.med.toFixed(1)}, rain ${pmRain.med.toFixed(1)}`);
+  check('shadow: at noon the two strips read what they read in rain, within 12: noon is flat', noon.n >= 2 && Math.abs(noon.med - noonRain.med) < 12, `${noon.n} houses, clear ${noon.med.toFixed(1)}, rain ${noonRain.med.toFixed(1)}`);
+  check('shadow: in rain the morning and the evening read the same pair of strips within 4 of each other, so nothing parts them', amRain.n >= 2 && pmRain.n >= 2 && Math.abs(amRain.med - pmRain.med) <= 4, `morning ${amRain.med.toFixed(1)}, evening ${pmRain.med.toFixed(1)}`);
+  check('shadow: sunAt points west in the morning and east in the evening, and is longer at the edges than at noon', am.sun.dir <= -.99 && pm.sun.dir >= .99 && am.sun.len > noon.sun.len && pm.sun.len > noon.sun.len && noon.sun.len >= .39 && am.sun.len <= 3 && am.sun.str === .28 && amRain.sun.str === 0, JSON.stringify([am.sun, pm.sun, noon.sun]));
+  console.log(`      shadows: west minus east, morning ${am.med.toFixed(1)}, evening ${pm.med.toFixed(1)}, noon ${noon.med.toFixed(1)}, rain ${amRain.med.toFixed(1)}/${pmRain.med.toFixed(1)} over ${am.n} houses; sun at e[0]+.08 ${JSON.stringify(am.sun)}`);
+  await ctx.close();
+}
+await shadowChecks();
+
 const rows = [], lums = {};
 // the stock checks set wood, food and granary and the clock by hand, so they get an island of their own: run on the scenes' island they left S7's lit windows with no pairs to measure
 {

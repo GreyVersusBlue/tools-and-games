@@ -165,6 +165,7 @@ function draw(){
       const dx=p.x-(p._px===undefined?p.x:p._px),dy=p.y-(p._py===undefined?p.y:p._py);
       if(p._px===undefined||dx*dx+dy*dy>.32){if(p._px!==undefined&&at(p.x|0,p.y|0)!==WATER){const pr=prints[printC++&255];pr.x=p.x;pr.y=p.y+.15;pr.t0=time}p._px=p.x;p._py=p.y}}
     for(const pr of prints){const ag=time-pr.t0;if(ag<0||ag>=18)continue;g.fillStyle=`rgba(150,168,186,${(.4*(1-ag/18)).toFixed(2)})`;g.fillRect(pr.x*T-1,pr.y*T,1,1);g.fillRect(pr.x*T+1,pr.y*T-1,1,1)}}
+  drawShadows(); /* A5 (look.js): the sun's shadows, after the ground and before everything that stands on it */
   const ents=[];
   const wind={clear:.7,overcast:1,rain:1.3,thunder:2.4,fog:.4,snow:.9}[wx];
   const CAN={spring:['#2f6a2b','#3f8a37'],summer:['#2c6a2a','#3f9038']};
