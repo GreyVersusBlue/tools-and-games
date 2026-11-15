@@ -201,6 +201,7 @@ function draw(){
   // the frames are drawn; what moves or changes is drawn over them: snow settling, the kiln's chimney pots, a window lit (#807)
   for(const h of houses)ents.push({y:h.y+2,d:()=>{const x=h.x*T,y=h.y*T;bFrame(roofFrame(h.r),x,y);
     if(cap>0)bFrame('house-snow',x,y,cap);
+    if(snowSheds())drawRoofSlide(h,x,y); /* A7 (look.js): a thinning roof sheds a little */
     if(hasWay(2)){g.fillStyle='#a34a2a';g.fillRect(x+11,y+1,2,3);g.fillStyle='#6b2f1e';g.fillRect(x+11,y+1,2,1)} // kiln-fired chimney pots
     if(litHouses.has(h)){g.fillStyle='#f5c463';g.fillRect(x+4,y+10,3,3);g.fillRect(x+10,y+10,3,3)}}});
   // a house going up (TG-26) is the frame every building in progress shows, on its two tiles
@@ -292,7 +293,7 @@ function draw(){
     for(let i=0;i<(rg.length===2?1:rg.length);i++){const a=rg[i],b=rg[(i+1)%rg.length];if(Math.hypot(a.x-b.x,a.y-b.y)>2.8)continue;
       ents.push({y:Math.min(a.y,b.y)-.001,d:()=>{const ka=.55+ageOf(a)/31,kb=.55+ageOf(b)/31;g.strokeStyle='rgba(241,207,165,.85)';g.lineWidth=1;g.beginPath();g.moveTo(a.x*T+.5,a.y*T-4*ka+.5);g.lineTo(b.x*T+.5,b.y*T-4*kb+.5);g.stroke()}})}}
   ents.sort((a,b)=>a.y-b.y).forEach(e=>e.d());
-  for(const f of fx){if(f.rg){const k=1-f.l/f.l0;g.strokeStyle=`rgba(200,230,255,${(.55*(1-k)).toFixed(2)})`;g.lineWidth=1;g.beginPath();g.arc(f.x*T,f.y*T,1+k*9,0,6.283);g.stroke()}else{g.fillStyle=f.c;g.fillRect(f.x*T,f.y*T,2,2)}}
+  for(const f of fx){if(f.rg){const k=1-f.l/f.l0;g.strokeStyle=`rgba(200,230,255,${(.55*(1-k)).toFixed(2)})`;g.lineWidth=1;g.beginPath();g.arc(f.x*T,f.y*T,1+k*9,0,6.283);g.stroke()}else if(f.c!=='#a09890'&&f.c!=='#8c8478'){g.fillStyle=f.c;g.fillRect(f.x*T,f.y*T,2,2)}}
   for(const k of skips){g.fillStyle='#3a3a34';g.fillRect(k.x*T-1,k.y*T-2,2,2)}
   if(clouds.length&&cloudSp.length){const cl=Math.max(.16,L*.95);
     for(const c of clouds){const w=112*c.s,h=64*c.s;g.globalAlpha=Math.min(1,(c.r>0?1.15:.75)*cl);g.drawImage(cloudSp[c.i],Math.round(c.x*T-w/2),Math.round(c.y*T-h/2),w,h)}
@@ -303,7 +304,7 @@ function draw(){
   if(geese){g.fillStyle='#2a2620';const dir=Math.sign(geese.vx);for(let i=0;i<geese.n;i++){const k=Math.ceil(i/2),side=i%2?1:-1;const x=(geese.x-dir*k*1.35)*T,y=(geese.y+side*k*.75)*T,fl=Math.sin(animT*9+geese.ph+i)>0?0:1;g.fillRect(x-1,y+fl,3,1);g.fillRect(x-2,y-fl+1,1,1);g.fillRect(x+2,y-fl+1,1,1)}}
   if(rain)drawRain(wind); /* A6 (look.js) */
   drawRoofWet(); /* A6 (look.js): while it rains, a bright line along each roof's top edge */
-  if(wx==='snow'){g.fillStyle='rgba(255,255,255,.85)';const sn=RM?70:150;for(let i=0;i<sn;i++){const x=(i*97+((animT*20)|0)*(i%3+1)+((Math.sin(animT*.8+i)*5)|0)+2000)%(W*T),y=(i*61+((animT*34)|0))%(H*T);g.fillRect(x,y,i%4?1:2,i%4?1:2)}}
+  if(wx==='snow')drawSnowfall(wind); /* A7 (look.js): two depths of flake, leaning with the wind */
   // sky: the hour's colour (look.js), cloud, fog
   const f=dayFrac(),e=edges();
   g.globalCompositeOperation='multiply';g.drawImage(lightMap(L,f,e,s),0,0);g.globalCompositeOperation='source-over'; // the hour is a colour, and the lights are in it (look.js)
@@ -312,13 +313,15 @@ function draw(){
   if(rbUntil>time&&L>.35&&!rain&&wx!=='fog'){g.globalAlpha=Math.min(1,(rbUntil-time)/8)*.38;
     g.drawImage(rbSprite(),(center.x-26)*T,(center.y-24)*T,52*T,26*T);g.globalAlpha=1}
   if(fogA>.01){const dx=Math.sin(animT*.06)*10;g.globalAlpha=fogA*.55*skyY;g.drawImage(fogCv,dx,0);g.globalAlpha=fogA*.4*skyY;g.drawImage(fogCv,-dx*.6,Math.cos(animT*.05)*4);g.globalAlpha=1;
-    g.fillStyle=`rgba(230,236,240,${(fogA*.16*skyY).toFixed(3)})`;for(let i=0;i<10;i++){const y=(i*67+13)%(H*T),x=((i*151+animT*(6+i%3)*3)%(W*T*1.4))-W*T*.2;g.fillRect(x,y,120+i*20,7);g.fillRect(x+30,y+7,80+i*10,4)}}
+    g.fillStyle=`rgba(230,236,240,${(fogA*.16*skyY).toFixed(3)})`;for(let i=0;i<10;i++){const y=(i*67+13)%(H*T),x=((i*151+animT*(6+i%3)*3)%(W*T*1.4))-W*T*.2;g.fillRect(x,y,120+i*20,7);g.fillRect(x+30,y+7,80+i*10,4)}
+    drawFogRing(skyY)} /* A7 (look.js): fog is thickest at the edge of the view */
   // spring and autumn dawns raise a mist off the low ground (sprint 16), and the first hour of sun takes it back
   {const mist=(wx==='clear'||wx==='overcast')&&(s==='spring'||s==='autumn')&&f>e[0]&&f<e[0]+.09?1-(f-e[0])/.09:0;
     if(mist>0&&fogA<.4){g.globalAlpha=mist*.3*skyY;g.drawImage(fogCv,Math.sin(animT*.05)*6,0);g.globalAlpha=mist*.18*skyY;g.drawImage(fogCv,-4,3);g.globalAlpha=1}}
   if(farIsle&&fogA<.9){const fi=farIsle,x0=fi.x*T,w=fi.w*T,h=fi.h*1.7,al=(1-fogA)*(wx==='overcast'||rain||wx==='snow'?.55:.8);g.fillStyle=L>.5?`rgba(44,58,86,${(al*.85).toFixed(2)})`:`rgba(18,24,44,${al.toFixed(2)})`;
     g.beginPath();g.moveTo(x0,0);g.quadraticCurveTo(x0+w*.22,h*1.5,x0+w*.42,h*.7);g.quadraticCurveTo(x0+w*.6,h*2.1,x0+w*.8,h*.9);g.quadraticCurveTo(x0+w*.92,h*.4,x0+w,0);g.closePath();g.fill();
     g.fillStyle=`rgba(200,214,232,${(al*.18*(L>.5?1:.3)).toFixed(3)})`;g.fillRect(x0-6,h*1.9,w+12,1)}
+  drawSmoke(L,s); /* A7 (look.js): a column over every house with somebody home, and breath in the cold */
   const dark=1-L;
   if(dark>.3){g.globalCompositeOperation='lighter';
     if(farIsle&&farIsle.lit&&fogA<.6&&(animT*2.3|0)%9!==0){const lx=(farIsle.x+farIsle.w*.6)*T,ly=farIsle.h*1.7*1.5;g.fillStyle=`rgba(255,190,110,${(.9*(dark-.3)).toFixed(2)})`;g.fillRect(lx,ly,1,1)}

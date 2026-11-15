@@ -43,10 +43,11 @@ function houseLights(L,f,e){
 /* the light map: the hour's colour over a canvas the size of the world, the lights stamped on with lighter. Returns the canvas. */
 function lightMap(L,f,e,s){
   if(!lmCv){lmCv=document.createElement('canvas');lmCv.width=W*T;lmCv.height=H*T;lmG=lmCv.getContext('2d')}
-  const m=lmG,c=skyAt(f,s,wx,snowD),k=flash;skyLum=Math.min(1,(.299*c[0]+.587*c[1]+.114*c[2])/255+k);
+  const m=lmG,c=skyAt(f,s,wx,snowD),k=flash,fk=1+.5*Math.min(1,fogA),fd=Math.min(1,fogA)*.6; /* A7: fog takes the colour out of the map and swells every light */
+  if(fd>0){const y=.299*c[0]+.587*c[1]+.114*c[2];for(let q=0;q<3;q++)c[q]=Math.round(c[q]+(y-c[q])*fd)}skyLum=Math.min(1,(.299*c[0]+.587*c[1]+.114*c[2])/255+k);
   m.globalCompositeOperation='source-over';
   m.fillStyle=`rgb(${Math.round(c[0]+(255-c[0])*k)},${Math.round(c[1]+(255-c[1])*k)},${Math.round(c[2]+(255-c[2])*k)})`;m.fillRect(0,0,W*T,H*T);
-  const sp=lightSprites(),stamp=(kind,r,x,y,a)=>{m.globalAlpha=a;m.drawImage(sp[kind][r],Math.round(x-r),Math.round(y-r));m.globalAlpha=1};
+  const sp=lightSprites(),stamp=(kind,r,x,y,a)=>{m.globalAlpha=a;m.drawImage(sp[kind][r],Math.round(x-r*fk),Math.round(y-r*fk),Math.round(r*2*fk),Math.round(r*2*fk));m.globalAlpha=1};
   m.globalCompositeOperation='lighter';
   const dark=1-L;
   if(L<.7)stamp('fire',46,center.x*T,center.y*T-2,Math.min(1,(.7-L)/.4));
@@ -151,3 +152,54 @@ function drawRoofWet(){
   if(wetA<.02||typeof BSHEET==='undefined')return;
   g.fillStyle=`rgba(234,243,255,${(.65*wetA).toFixed(2)})`;
   for(const h of houses){const name=roofFrame(h.r),f=BSHEET.frames[name];if(!f)continue;const ox=h.x*T-f.ax,oy=h.y*T-f.ay;for(const p of roofEdge(name))g.fillRect(ox+p[0],oy+p[1],1,1)}}
+/* A7: weather that lands, the cold half. Fog has depth (look.js: the light map loses colour and its lights swell; render.js: a ring of fog that is thickest at the
+   edge of the view), snow falls in two depths and leans with the wind, a thinning roof of snow sheds a few pixels at its south eave, every house with somebody home
+   sends up a column of smoke in the cold, and people working out of doors breathe. Presentation only: animT, the weather and a local mulberry. The old
+   smoke in the fx list is still made by the simulation (it spends the stream) and is simply not drawn any more, so the picture has one smoke. */
+/* switches for the picture's own parts, so a check can take one away and see what it was: only the test reads or sets them */
+const lookOff={smoke:false,shed:false};
+const WINDK={clear:.7,overcast:1,rain:1.3,thunder:2.4,fog:.4,snow:.9},SMOKEC={day:'#cfc8be',night:'#6a6f8e'},WORKT=['chop','harvest','till','build','fish','water','carry'];
+/* is somebody home: sheltering in the house, or one of its own asleep or within two tiles of its door (the rule the windows use). Reads, never writes. */
+function houseOccupied(h){return people.some(p=>!p.dead&&(p.inside&&p.shelterH===h||p.home===h&&(p.task==='sleep'||Math.hypot(p.x-(h.x+1),p.y-(h.y+2))<2)))}
+/* one column of smoke from (x,y): n puffs on a slow cycle, each rising as it ages. In still air it is tall and thin and goes straight up; the wind bends it, and in a storm it is
+   short, wide and torn sideways. Pixels in the world's space, after the hour's colour so the smoke keeps its own. */
+function smokeColumn(x,y,n,k,col,wk,dir){
+  const storm2=wk>=2,rise=storm2?11:wk>=1.3?15:24,lean=wk*(storm2?9:5);
+  g.fillStyle=col;
+  for(let i=0;i<n;i++){const t=(animT*.3+i/n+k)%1,sw=Math.round(Math.sin(animT*.8+i*1.9+k*9)*(.4+wk*.5)),sz=t>(storm2?.3:.7)?2:1;
+    g.globalAlpha=.9*(1-t*.75);g.fillRect(Math.round(x+dir*t*t*lean+sw),Math.round(y-t*rise),sz,sz)}
+  g.globalAlpha=1}
+function drawSmoke(L,s){
+  if(speed>=FAST||lookOff.smoke)return;
+  const wk=WINDK[wx]||1,dir=wind<0?-1:1,dark=L<.5,col=dark?SMOKEC.night:SMOKEC.day,n0=RM?5:8;
+  if(s==='winter'||dark&&s!=='summer')houses.forEach((h,i)=>{if(houseOccupied(h))smokeColumn(h.x*T+12,h.y*T+1,5+((i*3+h.x)%4)*(n0-5)/3|0,i*.37,col,wk,dir)});
+  const sm=getB('smoke');if(sm&&sm.done)smokeColumn(sm.x*T+13,sm.y*T+1,n0-1,.5,col,wk,dir);
+  if(s==='winter'){g.fillStyle='#e8eef4';for(const p of people){if(p.dead||p.inside||p.inBoat||!WORKT.includes(p.task))continue;
+    const b=Math.sin(animT*2.2+(p.seed%7));if(b<.1)continue;const f=p.tgt&&p.tgt.x<p.x?-1:1;g.globalAlpha=Math.min(.7,b);g.fillRect(Math.round(p.x*T+f*3),Math.round(p.y*T-7),1,1)}g.globalAlpha=1}}
+/* two depths of flake: the far ones small, slow and dim, the near ones larger, quick and bright, both carried sideways by the wind */
+function drawSnowfall(wk){
+  const dir=wind<0?-1:1,far=RM?40:90,near=RM?30:60,sw=dir*wk*14,WT=W*T,HT=H*T;
+  g.fillStyle='rgba(255,255,255,.5)';for(let i=0;i<far;i++){const x=((i*97+animT*(8+sw*.4)+Math.sin(animT*.5+i)*3)%WT+WT)%WT,y=(i*61+animT*16)%HT;g.fillRect(Math.floor(x),Math.floor(y),1,1)}
+  g.fillStyle='rgba(255,255,255,.92)';for(let i=0;i<near;i++){const x=((i*131+500+animT*(18+sw)+Math.sin(animT*.8+i)*5)%WT+WT)%WT,y=(i*83+animT*44)%HT;g.fillRect(Math.floor(x),Math.floor(y),2,2)}}
+/* the south eave of the roof's snow cap: the lowest opaque pixel in each column of the cap's own frame, once per frame name */
+const EAVEPTS={};
+function eavePts(name){
+  if(EAVEPTS[name])return EAVEPTS[name];const sl=silhouette(name),pts=[];
+  try{const d=sl.getContext('2d').getImageData(0,0,sl.width,sl.height).data;
+    for(let i=0;i<sl.width;i++)for(let j=sl.height-1;j>=0;j--)if(d[(j*sl.width+i)*4+3]>0){pts.push([i,j]);break}}catch(e){}
+  return EAVEPTS[name]=pts}
+/* while the snow is going (it is not snowing, it lies under .3 and there is some), six white pixels per roof slide off the south eave and drop three */
+function snowSheds(){return !lookOff.shed&&wx!=='snow'&&snowD>.01&&snowD<.3&&typeof BSHEET!=='undefined'&&!!BSHEET.frames['house-snow']}
+function drawRoofSlide(h,x,y){
+  const f=BSHEET.frames['house-snow'],pts=eavePts('house-snow');if(!pts.length)return;
+  const r=mulberry(h.x*131+h.y*7+seed),ox=x-f.ax,oy=y-f.ay;g.fillStyle='#f4f8ff';
+  for(let i=0;i<6;i++){const p=pts[(r()*pts.length)|0],t=(animT*.6+i/6+r())%1;g.globalAlpha=1-t*.8;g.fillRect(ox+p[0],oy+p[1]+1+Math.floor(t*3),1,1)}
+  g.globalAlpha=1}
+/* fog's ring: a small sprite, transparent at the middle and grey at the corners, built once and stretched over the view */
+let fogRad=null;
+function fogRing(){
+  if(fogRad)return fogRad;fogRad=document.createElement('canvas');fogRad.width=220;fogRad.height=140;const c=fogRad.getContext('2d'),gr=c.createRadialGradient(110,70,25,110,70,132);
+  gr.addColorStop(0,'rgba(222,230,236,0)');gr.addColorStop(.55,'rgba(222,230,236,.25)');gr.addColorStop(1,'rgba(222,230,236,1)');c.fillStyle=gr;c.fillRect(0,0,220,140);return fogRad}
+function drawFogRing(skyY){
+  const vk=vScale(),vw=cv.width/vk,vh=cv.height/vk;g.globalAlpha=Math.min(1,fogA)*.7*skyY;
+  g.drawImage(fogRing(),Math.round(camX*T-vw/2),Math.round(camY*T-vh/2),Math.round(vw),Math.round(vh));g.globalAlpha=1}
