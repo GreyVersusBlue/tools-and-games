@@ -111,6 +111,36 @@ export function schoolMarkFor(project, dayTypeId, period) {
   return best === null ? null : best.mark;
 }
 
+// ---------------------------------------------------------------- away
+
+// Is teacher T away in period p on day type D? The first of the teacher's
+// `away` entries that holds, or null (ARCHITECTURE 22.3, 22.17). An entry holds
+// when it takes D (no day types named, or D, or the day type D is the same
+// as), names the period (or none: the whole day), and, when it names weekdays,
+// only on a date that falls on one of them: without a date a weekdays-only
+// entry is "sometimes", listed but not taking the period away, as a sometimes
+// duty. `options.project` is needed to follow a day type that is the same as
+// another; `options.date` is YYYY-MM-DD. An absent or malformed `away`, or
+// entry, is not there.
+export function awayFor(teacher, dayTypeId, period, options) {
+  const list = teacher && Array.isArray(teacher.away) ? teacher.away : [];
+  if (list.length === 0) return null;
+  const project = options && options.project && typeof options.project === 'object' ? options.project : {};
+  const date = options && typeof options.date === 'string' ? options.date : null;
+  for (const entry of list) {
+    if (!entry || typeof entry !== 'object') continue;
+    if (!takesDay(project, entry.dayTypeIds, dayTypeId)) continue;
+    const periods = Array.isArray(entry.periods) ? entry.periods.filter((held) => Number.isInteger(held)) : [];
+    if (periods.length > 0 && !periods.includes(period)) continue;
+    const weekdays = Array.isArray(entry.weekdays) ? entry.weekdays.filter((held) => Number.isInteger(held)) : [];
+    if (weekdays.length > 0) {
+      if (!isCalendarDate(date) || !weekdays.includes(weekdayOf(date))) continue;
+    }
+    return entry;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------- duties
 
 // The teacher ids a duty covers, in the teachers' order: those it names, the

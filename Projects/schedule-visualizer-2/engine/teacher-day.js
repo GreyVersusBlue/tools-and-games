@@ -18,11 +18,11 @@
 // module is one of those a published file carries, so it keeps to the linker
 // rule: one-line named imports, `export` only directly before a declaration.
 
-import { findRoom, findById, roomNumberKey } from './schema.js';
+import { findRoom, findById, roomNumberKey, WEEKDAY_NAMES } from './schema.js';
 import { findDayType } from './day-types.js';
-import { offPeriods } from './bells.js';
+import { offPeriods, periodLabel, periodNumberName, periodWordForms } from './bells.js';
 import { meetingSlots } from './runs.js';
-import { markFor, schoolMarkFor, dutiesByTeacher, dutyIsSometimes } from './marks.js';
+import { markFor, schoolMarkFor, dutiesByTeacher, dutyIsSometimes, awayFor } from './marks.js';
 
 // The teachers a slot counts for, by the rule above. Ids as stored; the
 // caller decides what to do with an id that names nobody.
@@ -40,7 +40,8 @@ export function slotTeacherIds(project, slot) {
 // null and roomText is the number the slot kept; otherwise roomText is "".
 // `duties` is every duty the teacher has in the period, always or sometimes.
 // `marked` is set only on planning entries, to what takes the period: an
-// always duty's kind ("duty", "meeting", "lunch"), else a school mark's kind
+// "away" when the teacher is not in school then (`teacher.away`, awayFor), else
+// an always duty's kind ("duty", "meeting", "lunch"), else a school mark's kind
 // ("lunch", "advisory", "activity", "noclass"), else null; a duty that holds
 // only on some days counts as always only when `options.date` is given and
 // matches. `options.bellsId` is a bell schedule whose off periods do not
@@ -84,9 +85,16 @@ export function teacherDays(project, dayTypeId, options) {
     const mark = off.has(period) ? { kind: 'noclass' } : schoolMarkFor(project, dayTypeId, period);
     schoolMarks.push(mark ? mark.kind : null);
   }
-  for (const day of days.values()) {
+  const teachersById = new Map(project.teachers.map((teacher) => [teacher.id, teacher]));
+  for (const [teacherId, day] of days) {
+    const teacher = teachersById.get(teacherId);
+    const hasAway = Boolean(teacher) && Array.isArray(teacher.away) && teacher.away.length > 0;
     for (const entry of day) {
       if (entry.kind !== 'planning') continue;
+      if (hasAway && awayFor(teacher, dayTypeId, entry.period, { project, date })) {
+        entry.marked = 'away';
+        continue;
+      }
       const always = entry.duties.find((duty) => !dutyIsSometimes(duty) || date !== null);
       entry.marked = always ? always.kind : schoolMarks[entry.period];
     }
@@ -101,6 +109,43 @@ export function teacherDay(project, teacherId, dayTypeId, options) {
   if (!findById(project.teachers, teacherId)) return null;
   const days = teacherDays(project, dayTypeId, options);
   return days ? days.get(teacherId) : null;
+}
+
+// The periods of an away entry in words: a run joined with "to" by number
+// ("Periods 7 to 8", "Blocks E to H"), a lone one by its number name ("Period 7"),
+// separate ones listed.
+function awayPeriods(settings, periods) {
+  const forms = periodWordForms(settings);
+  const sorted = Array.from(new Set(periods)).sort((a, b) => a - b);
+  const runs = [];
+  for (const period of sorted) {
+    const last = runs[runs.length - 1];
+    if (last && last[1] === period - 1) last[1] = period;
+    else runs.push([period, period]);
+  }
+  const words = runs.map(([from, to]) => (from === to ? periodNumberName(settings, from) : forms.many + ' ' + periodLabel(settings, from) + ' to ' + periodLabel(settings, to)));
+  return words.length <= 1 ? words.join('') : words.slice(0, -1).join(', ') + ' and ' + words[words.length - 1];
+}
+
+// An away entry in words (ARCHITECTURE 22.10): "Not in school", then the
+// periods ("in Periods 7 to 8"), the weekdays ("on Fridays") and the day
+// types ("when it is B Day"), whichever the entry names. `dayTypes` is the
+// project's list; an id it does not hold is left out. Day type names are given
+// as typed.
+export function awayWords(settings, entry, dayTypes) {
+  const parts = ['Not in school'];
+  if (!entry || typeof entry !== 'object') return parts[0];
+  const periods = Array.isArray(entry.periods) ? entry.periods.filter((held) => Number.isInteger(held) && held >= 0) : [];
+  if (periods.length > 0) parts.push('in ' + awayPeriods(settings, periods));
+  const weekdays = Array.from(new Set(Array.isArray(entry.weekdays) ? entry.weekdays.filter((held) => Number.isInteger(held) && held >= 0 && held < WEEKDAY_NAMES.length) : [])).sort((a, b) => a - b);
+  if (weekdays.length > 0) {
+    const names = weekdays.map((day) => WEEKDAY_NAMES[day] + 's');
+    parts.push('on ' + (names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1]));
+  }
+  const known = new Map((Array.isArray(dayTypes) ? dayTypes : []).filter((dayType) => dayType && typeof dayType.id === 'string' && typeof dayType.name === 'string').map((dayType) => [dayType.id, dayType.name]));
+  const named = (Array.isArray(entry.dayTypeIds) ? entry.dayTypeIds : []).filter((id) => known.has(id)).map((id) => known.get(id));
+  if (named.length > 0) parts.push('when it is ' + (named.length === 1 ? named[0] : named.slice(0, -1).join(', ') + ' or ' + named[named.length - 1]));
+  return parts.join(' ');
 }
 
 // Is the teacher free in this entry? Planning, and nothing else takes the

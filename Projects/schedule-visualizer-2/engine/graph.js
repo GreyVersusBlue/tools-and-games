@@ -8,7 +8,7 @@
 // rule: imports from ./schema.js on one line, `export` only directly before
 // a declaration.
 
-import { DOOR_SIDES, CELL_STAIRS, ELEVATOR_KIND, elevatorCars, isWalkable, neighbourCell } from './schema.js';
+import { DOOR_SIDES, CELL_STAIRS, ELEVATOR_KIND, elevatorCars, isWalkable, neighbourCell, stairsLetter } from './schema.js';
 
 // The order every neighbour list is in: north, east, south, west.
 export const HEADINGS = DOOR_SIDES;
@@ -113,7 +113,7 @@ export function buildGraph(project) {
     const b = nodeOf(connection.b);
     if (a === -1 || b === -1 || a === b || !stairs[a] || !stairs[b]) continue;
     const difference = Math.abs(floors[nodeFloor[a]].level - floors[nodeFloor[b]].level);
-    links.push({ id: connection.id, label: connection.label, a, b, direction: connection.direction, levels: Math.max(1, difference), sameFloor: nodeFloor[a] === nodeFloor[b] });
+    links.push({ id: connection.id, label: stairsLetter(connection), a, b, direction: connection.direction, levels: Math.max(1, difference), sameFloor: nodeFloor[a] === nodeFloor[b] });
   }
   const cars = [];
   carStops.forEach((car) => {

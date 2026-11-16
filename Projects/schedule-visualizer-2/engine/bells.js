@@ -47,22 +47,50 @@ function letters(index) {
   return label;
 }
 
+// The school's word for a period, in every form a sentence needs
+// (ARCHITECTURE 22.17): { one, many, oneLower, manyLower, count }, count being
+// how its periods are numbered: "number" (Period 3), "letter" (Block C) or
+// "ordinal" (3rd Hour). A custom word (`settings.periodCustom`) wins over
+// `periodWord` and is given as typed in every form, "Class" and "Classes",
+// since a word that is a name is not lower-cased. An absent or malformed field
+// is today's word: the staff browser never runs repair.
+export function periodWordForms(settings) {
+  const custom = settings && settings.periodCustom;
+  if (custom && typeof custom === 'object' && typeof custom.word === 'string' && custom.word.trim() !== '') {
+    const word = custom.word.trim();
+    const plural = typeof custom.plural === 'string' && custom.plural.trim() !== '' ? custom.plural.trim() : word + 's';
+    const count = custom.count === 'letter' || custom.count === 'ordinal' ? custom.count : 'number';
+    return { one: word, many: plural, oneLower: word, manyLower: plural, count };
+  }
+  const word = settings && typeof settings.periodWord === 'string' && settings.periodWord !== '' ? settings.periodWord : 'Period';
+  const count = word === 'Block' ? 'letter' : word === 'Hour' ? 'ordinal' : 'number';
+  return { one: word, many: word + 's', oneLower: word.toLowerCase(), manyLower: word.toLowerCase() + 's', count };
+}
+
 // The short form: "3", "C", "3rd".
 export function periodLabel(settings, index) {
-  const word = settings.periodWord;
-  if (word === 'Block') return letters(index);
-  if (word === 'Hour') return ordinal(index + 1);
+  const { count } = periodWordForms(settings);
+  if (count === 'letter') return letters(index);
+  if (count === 'ordinal') return ordinal(index + 1);
   return String(index + 1);
 }
 
-// The name of period `index` (from 0) in the school's word: "Period 3",
-// "Mod 3", "Block C", "3rd Hour".
+// The period's name by number, whatever it is called: "Period 3", "Mod 3",
+// "Block C", "3rd Hour", "Lesson 3". For imports, CSV headers and wherever a
+// name would be ambiguous.
+export function periodNumberName(settings, index) {
+  const forms = periodWordForms(settings);
+  const label = periodLabel(settings, index);
+  return forms.count === 'ordinal' ? label + ' ' + forms.one : forms.one + ' ' + label;
+}
+
+// The name of period `index` (from 0): its own name when it has one
+// (`settings.periodNames`, as typed), else the number name.
 export function periodName(settings, index) {
-  const word = settings.periodWord;
-  if (word === 'Hour') return ordinal(index + 1) + ' Hour';
-  if (word === 'Block') return 'Block ' + letters(index);
-  if (word === 'Mod') return 'Mod ' + (index + 1);
-  return 'Period ' + (index + 1);
+  const names = settings && Array.isArray(settings.periodNames) ? settings.periodNames : [];
+  const own = names[index];
+  if (typeof own === 'string' && own.trim() !== '') return own;
+  return periodNumberName(settings, index);
 }
 
 // "HH:MM" to minutes after midnight, or null when it is not a bell time.

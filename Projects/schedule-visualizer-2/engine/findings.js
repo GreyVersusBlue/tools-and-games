@@ -82,6 +82,7 @@
 // about the walk there is.
 
 import { CHECK_KINDS, nameOfRoom } from './schema.js';
+import { periodWordForms } from './bells.js';
 
 export const SEVERITIES = ['problem', 'warning', 'note'];
 
@@ -280,7 +281,8 @@ export function listWords(items) {
 // The school's period word inside a sentence: "period", "mod", "block",
 // "hour"; with `many`, "periods" and so on.
 export function periodWord(settings, many) {
-  return String(settings.periodWord).toLowerCase() + (many ? 's' : '');
+  const forms = periodWordForms(settings);
+  return many ? forms.manyLower : forms.oneLower;
 }
 
 // A room as a sentence names it: "Room 204", "Gym", "a room with no number".

@@ -104,6 +104,19 @@ export const DUTY_PLACE_MOST = 60;
 export const RELEASE_MOST = 50;
 export const RELEASE_SECONDS = [15, 300];
 export const RELEASE_WHO_KINDS = ['groups', 'grade', 'wing'];
+// Room features, period words and names, part-time days, stairwells and dead
+// ends (ARCHITECTURE 22.2, 22.6): the most of each, and the lists a form offers.
+export const FEATURES_MOST = 40;
+export const FEATURE_NAME_MOST = 30;
+export const COMMON_FEATURES = ['Lab', 'Sink', 'Projector', 'Computers', 'Stage', 'Kiln', 'Ovens', 'Studio sound'];
+export const PERIOD_COUNTS = ['number', 'letter', 'ordinal'];
+export const PERIOD_WORD_MOST = 16;
+export const PERIOD_NAME_MOST = 24;
+export const AWAY_MOST = 12;
+export const WELL_MOST = 8;
+// A dead end is a note when it is longer than either of these.
+export const DEAD_END_CELLS = 6;
+export const DEAD_END_METRES = 6.1;
 // Index 0 is Monday.
 export const WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -347,8 +360,10 @@ export function newFloor(id, name, level, width, height) {
   };
 }
 
-export function newRoom(id, cells) {
-  return {
+// `featureIds` is given only when asked: a room drawn with none carries no
+// field, so the sample and newProject stay byte for byte as they were.
+export function newRoom(id, cells, featureIds) {
+  const room = {
     id,
     kind: 'room',
     cells,
@@ -360,6 +375,8 @@ export function newRoom(id, cells) {
     shared: false,
     doors: [],
   };
+  if (Array.isArray(featureIds)) room.featureIds = featureIds.slice();
+  return room;
 }
 
 export function newOtherSpace(id, cells) {
@@ -736,9 +753,13 @@ export function nextGroupColour(groups) {
   return best;
 }
 
-// The first unused connection letter: A to Z, then AA, AB and on.
+// The first unused connection letter: A to Z, then AA, AB and on. A stairwell's
+// letter (`well`) is as used as a label is, compared as names are, so no plain
+// flight takes a letter a well shows (ARCHITECTURE 22.17).
 export function nextConnectionLabel(connections) {
-  const used = new Set(connections.map((connection) => connection.label));
+  const list = Array.isArray(connections) ? connections : [];
+  const used = new Set(list.map((connection) => connection && connection.label));
+  const wells = new Set(list.map((connection) => (connection && typeof connection.well === 'string' ? nameKey(connection.well) : '')));
   for (let n = 0; ; n += 1) {
     let label = '';
     let rest = n;
@@ -746,6 +767,80 @@ export function nextConnectionLabel(connections) {
       label = String.fromCharCode(65 + (rest % 26)) + label;
       rest = Math.floor(rest / 26) - 1;
     } while (rest >= 0);
-    if (!used.has(label)) return label;
+    if (!used.has(label) && !wells.has(nameKey(label))) return label;
   }
+}
+
+// What a stairs connection is called on screen: the stairwell's letter when
+// it has one, else its own label. Every place that shows a stairs letter asks
+// here. An absent or malformed `well` is no well.
+export function stairsLetter(connection) {
+  if (!connection || typeof connection !== 'object') return '';
+  if (typeof connection.well === 'string' && connection.well.trim() !== '') return connection.well;
+  return typeof connection.label === 'string' ? connection.label : '';
+}
+
+// A room's features as { id, name }, in the building's list order. An id the
+// list does not hold is skipped; an absent or malformed field is none.
+export function roomFeatures(building, room) {
+  const list = building && Array.isArray(building.features) ? building.features : [];
+  const wanted = room && Array.isArray(room.featureIds) ? new Set(room.featureIds.filter((id) => typeof id === 'string')) : new Set();
+  if (wanted.size === 0) return [];
+  const found = [];
+  for (const feature of list) {
+    if (!feature || typeof feature.id !== 'string' || typeof feature.name !== 'string') continue;
+    if (wanted.has(feature.id) && !found.some((held) => held.id === feature.id)) found.push({ id: feature.id, name: feature.name });
+  }
+  return found;
+}
+
+// The stairwells of a building, derived: the stairs connections sharing a
+// `well` letter (compared by nameKey). One entry per well, in building order
+// of its first flight:
+//   { letter, connectionIds, stops: [{ floorId, cell, level }], parts }
+// `stops` are the cells the well's flights join, once each, lowest level
+// first (building order, then cell, on a tie). `parts` is how many groups of
+// flights share cells: more than one when an older planner pulled a middle
+// flight out, which the staff browser, never repairing, still has to read.
+export function stairwells(building) {
+  if (!building || !Array.isArray(building.floors)) return [];
+  const order = new Map(building.floors.map((floor, f) => [floor && floor.id, { f, level: floor && Number.isInteger(floor.level) ? floor.level : f }]));
+  const where = (stop) => order.get(stop.floorId) || { f: Infinity, level: Infinity };
+  const byLevel = (a, b) => where(a).level - where(b).level || where(a).f - where(b).f || a.cell - b.cell;
+  const wells = new Map();
+  for (const connection of Array.isArray(building.connections) ? building.connections : []) {
+    if (!connection || typeof connection !== 'object' || connection.kind === ELEVATOR_KIND) continue;
+    if (typeof connection.well !== 'string' || connection.well.trim() === '') continue;
+    if (!isEnd(connection.a) || !isEnd(connection.b)) continue;
+    const key = nameKey(connection.well);
+    if (!wells.has(key)) wells.set(key, { letter: connection.well, flights: [] });
+    wells.get(key).flights.push(connection);
+  }
+  const found = [];
+  for (const well of wells.values()) {
+    const parent = new Map();
+    const find = (k) => {
+      let root = k;
+      while (parent.get(root) !== root) root = parent.get(root);
+      parent.set(k, root);
+      return root;
+    };
+    const key = (end) => end.floorId + ':' + end.cell;
+    const stops = [];
+    for (const flight of well.flights) {
+      for (const end of [flight.a, flight.b]) {
+        if (!parent.has(key(end))) {
+          parent.set(key(end), key(end));
+          stops.push({ floorId: end.floorId, cell: end.cell, level: where(end).level });
+        }
+      }
+      const x = find(key(flight.a));
+      const y = find(key(flight.b));
+      if (x !== y) parent.set(y, x);
+    }
+    stops.sort(byLevel);
+    const roots = new Set(stops.map((stop) => find(key(stop))));
+    found.push({ letter: well.letter, connectionIds: well.flights.map((flight) => flight.id), stops, parts: roots.size });
+  }
+  return found;
 }
