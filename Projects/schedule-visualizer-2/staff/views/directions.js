@@ -15,6 +15,7 @@ import { pageOf, printGate } from '../page.js';
 import { viewLink, sectionHeading } from '../clock.js';
 import { floorMap } from '../map.js';
 import { isElevatorLink } from '../model.js';
+import { stairsLetter } from '../../engine/schema.js';
 
 // "under a minute", "about 1 minute", "about 4 minutes".
 function about(seconds) {
@@ -49,7 +50,7 @@ export function routeCrossings(school, found) {
     const connection = connections.find((item) => item.id === id);
     const at = (found.connectionAt || [])[i];
     const ride = isElevatorLink(connection);
-    const label = !connection ? '' : ride && typeof connection.car === 'string' && connection.car !== '' ? connection.car : connection.label;
+    const label = !connection ? '' : ride && typeof connection.car === 'string' && connection.car !== '' ? connection.car : stairsLetter(connection);
     return { kind: ride ? 'ride' : 'stairs', label, at, fromFloorId: cells[at] ? cells[at].floorId : null, toFloorId: cells[at + 1] ? cells[at + 1].floorId : null };
   });
 }
@@ -216,11 +217,17 @@ export const directionsView = {
       const stairs = found.stairs;
       const rides = crossings.filter((each) => each.kind === 'ride');
       const byOf = (part) => (part.via && part.via.kind === 'ride' ? carWords(part.via.label) : part.via && part.via.label ? ['stairs ', typed(part.via.label)] : 'the stairs');
+      // the flights of one stairwell in a row are one set of stairs: a floor
+      // entered and left by the same letter is passed through, said once
+      const same = (a, b) => Boolean(a && b && a.kind === 'stairs' && b.kind === 'stairs' && a.label !== '' && a.label === b.label);
       // the line on each floor, in words: the picture's alternative
       const lineOn = (floor) => {
         const here = floors.map((part, index) => ({ part, index })).filter((each) => each.part.floorId === floor.id);
         if (here.length === 0) return [h('span', null, 'The way does not cross ', typed(floor.name), '.')];
-        return [h('span', null, here.map(({ part, index }, at) => [
+        return [h('span', null, here.map(({ part, index }, at) => index > 0 && part.via !== null && same(floors[index - 1].via, part.via) ? [
+          at > 0 ? ' Then it' : ['On ', typed(floor.name), ' the line'],
+          ' stays on ', byOf(part), '.',
+        ] : [
           at > 0 ? ' Then from ' : ['On ', typed(floor.name), ' the line runs from '],
           index === 0 ? typed(school.roomName(start)) : byOf(floors[index - 1]),
           ' to ',

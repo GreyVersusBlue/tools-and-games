@@ -75,12 +75,12 @@ export const commonView = {
       return h('section', { class: 'card', dataset: { days: set.dayTypes.map((dayType) => dayType.id).join(' ') } },
         h('h2', { class: 'card__title' }, dayTypeNames(set.dayTypes)),
         h('p', { dataset: { common: 'sentence' } }, together.length === 0
-          ? 'There is no ' + school.data.settings.periodWord.toLowerCase() + ' when ' + (chosen.length === 2 ? 'both' : 'all ' + chosen.length) + ' are free.'
+          ? 'There is no ' + school.periodWords().oneLower + ' when ' + (chosen.length === 2 ? 'both' : 'all ' + chosen.length) + ' are free.'
           : [everyone, ' free in ', listOf(together.map((period) => school.periodName(period))), '.']),
         h('div', { class: 'scroll', role: 'region', tabindex: '0', 'aria-label': 'The full grid for ' + set.dayTypes.map((dayType) => dayType.name).join(', ') },
           h('table', { class: 'table' },
             h('thead', null, h('tr', null,
-              h('th', { scope: 'col' }, school.data.settings.periodWord),
+              h('th', { scope: 'col' }, school.periodWords().one),
               chosen.map((id) => h('th', { scope: 'col' }, viewLink(school, 'teacher', id, typed(school.teacher(id).name)))),
               h('th', { scope: 'col' }, 'Together'))),
             h('tbody', null, rows))));
@@ -115,7 +115,7 @@ export const commonView = {
       const sets = dayKindsOf(school, (dayType) => chosen.map((id) => everyTeacherDay(school, dayType.id, dutyDate(ctx, dayType.id)).get(id)));
       const found = sets.map((set) => ({ set, periods: commonPeriods(school, chosen, set.first.id, dutyDate(ctx, set.first.id)) })).filter((part) => part.periods.length > 0);
       says.replaceChildren(h('span', null, found.length === 0
-        ? (chosen.length === 2 ? 'These two teachers are' : 'These ' + chosen.length + ' teachers are') + ' never all free in the same ' + school.data.settings.periodWord.toLowerCase() + '.'
+        ? (chosen.length === 2 ? 'These two teachers are' : 'These ' + chosen.length + ' teachers are') + ' never all free in the same ' + school.periodWords().oneLower + '.'
         : [chosen.length === 2 ? 'Both are' : 'All ' + chosen.length + ' are', ' free in ', found.map((part, index) => [
           index > 0 ? '; in ' : null,
           listOf(part.periods.map((period) => school.periodName(period))),

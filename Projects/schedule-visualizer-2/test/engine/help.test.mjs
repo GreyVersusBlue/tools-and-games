@@ -219,7 +219,7 @@ const KEEPERS = new Set(['schema.js', 'validate.js', 'repair.js', 'migrate.js', 
 // schedule check's own limit and its switches, not load, travel or late), and
 // checks and colourScale, read whole to reach their fields, which are named
 // one by one.
-const NOT_A_NUMBER = new Set(['periods', 'periodWord', 'timeFormat', 'schoolName', 'paper', 'paper.size', 'paper.orientation', 'theme', 'checks.consecutiveLimit', 'checks.off', 'checks', 'colourScale']);
+const NOT_A_NUMBER = new Set(['periods', 'periodWord', 'periodCustom', 'periodNames', 'timeFormat', 'schoolName', 'paper', 'paper.size', 'paper.orientation', 'theme', 'checks.consecutiveLimit', 'checks.off', 'checks', 'colourScale']);
 
 function stripComments(source) {
   let out = '';

@@ -105,7 +105,7 @@ export const coverageView = {
     const picker = h('div', { class: 'controls' });
     const out = h('div', { class: 'stack', dataset: { out: 'coverage' } });
     const links = h('p', { class: 'actions' });
-    const word = school.data.settings.periodWord.toLowerCase();
+    const words = school.periodWords();
     let lastToday = '';
 
     const draw = () => {
@@ -118,7 +118,7 @@ export const coverageView = {
       let sentence;
       if (periods.length === 0) sentence = [name, ' teaches no group on ', dayWords(school, dayType, bellsId), ', so there is nothing to cover.'];
       else {
-        sentence = [name, ' teaches ', String(periods.length), ' of ', String(meets.size), ' ', word, 's on ', dayWords(school, dayType, bellsId), '. ',
+        sentence = [name, ' teaches ', String(periods.length), ' of ', String(meets.size), ' ', words.manyLower, ' on ', dayWords(school, dayType, bellsId), '. ',
           nobody.length === 0 ? 'Somebody is free in every one of them.' : ['Nobody is free in ', listOf(nobody.map((item) => school.periodName(item.period))), '.']];
       }
       says.replaceChildren(h('span', null, sentence));
@@ -130,7 +130,7 @@ export const coverageView = {
           h('p', null, entryWords(school, item.entry, { dayTypeId: dayType.id, date: when })),
           sectionHeading('Free to cover', item.candidates.length),
           item.candidates.length === 0
-            ? h('p', { class: 'muted' }, 'Nobody is free this ' + word + '.')
+            ? h('p', { class: 'muted' }, 'Nobody is free this ' + words.oneLower + '.')
             : h('ul', { class: 'list', dataset: { list: 'candidates' } }, item.candidates.map((candidate) => h('li', { dataset: { same: candidate.sameSubject ? 'true' : 'false' } },
               viewLink(school, 'teacher', candidate.teacher.id, [
                 h('span', { class: 'list__name' }, typed(candidate.teacher.name), candidate.sameSubject ? h('span', { class: 'tag' }, 'Same subject') : null),

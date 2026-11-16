@@ -6,7 +6,7 @@
 
 import { findById, findRoom, floorOfRoom, allRooms, findFloor, bellSchedulesOf, calendarOf, DAY_CLOSED, BELLS_REGULAR, ELEVATOR_KIND, REFUGE_DEFAULT_NAME, elevatorCars } from '../engine/schema.js';
 import { ownDayTypes, isOwnCopy, effectiveSchedule, effectiveDayType, dayShort, bellsShort } from '../engine/day-types.js';
-import { bellsFor, findBellSchedule, periodName, periodLabel, parseTime, formatTime } from '../engine/bells.js';
+import { bellsFor, findBellSchedule, periodName, periodLabel, periodWordForms, parseTime, formatTime } from '../engine/bells.js';
 import { dayOn, calendarDays, isCalendarDate, addDays, daysBetween, weekdayOf, dateWords } from '../engine/calendar.js';
 import { teacherDay } from '../engine/teacher-day.js';
 import { roomName, formatDuration } from '../engine/findings.js';
@@ -82,6 +82,11 @@ export function openSchool(data) {
     },
     periodName(index) {
       return periodName(data.settings, index);
+    },
+    // The school's word for a period in every form ("Lesson", "Lessons"), for
+    // sentences and column heads: { one, many, oneLower, manyLower, count }.
+    periodWords() {
+      return periodWordForms(data.settings);
     },
     // The period without its word, for a badge on a room: "3", "C", "3rd".
     periodLabel(index) {
