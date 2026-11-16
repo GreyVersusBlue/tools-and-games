@@ -362,10 +362,17 @@
   outline-offset: 2px;
 }
 
-/* a long kept name in the Before column's heading wraps rather than widens it */
+/* a long kept name in the Before column's heading wraps rather than widens it;
+   a name is never hyphenated by the page (SV2-123c: "next-" over "year.json"
+   had been drawn in a column a third of the table wide), only wrapped */
 .scn-figures__before {
   overflow-wrap: anywhere;
-  hyphens: auto;
+  hyphens: manual;
+}
+
+.scn-table th.scn-name {
+  overflow-wrap: anywhere;
+  hyphens: manual;
 }
 
 .scn-other__button[aria-disabled="true"],
@@ -534,7 +541,9 @@
    The corner heading, "Figure", is for a reader alone. */
 .scn-figures {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* each column as wide as its heading and figures want, no wider than the table
+     (a file name over its column is wrapped only when the table cannot hold it whole) */
+  grid-template-columns: repeat(3, minmax(0, auto));
 }
 
 .scn-figures thead,
@@ -592,7 +601,7 @@
 .scn-table tbody th {
   font-weight: 500;
   overflow-wrap: break-word;
-  hyphens: auto;
+  hyphens: manual;
 }
 
 .scn-table .num {
@@ -1051,7 +1060,7 @@
 
 /* with different units there is no difference column: two figures a row */
 .scn-figures--two {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, auto));
 }
 
 /* a recompute is pending after a change in the open project: the tables are the old ones */

@@ -78,6 +78,7 @@ export function filePanel(env) {
   }
   function refused(text) {
     say(text, 'refused');
+    keepFocus();
   }
 
   async function compare(fileName, text) {
@@ -154,6 +155,7 @@ export function filePanel(env) {
     result.replaceChildren(
       h('p', { role: 'alert' }, quote(fileName) + ' was not compared, and nothing has changed. ' + message + ' ' + ANOTHER_BUILDING_ON),
       button);
+    keepFocus();
   }
 
   // One press at a time: a press while one is being worked out (aria-busy, or aria-disabled
@@ -179,7 +181,9 @@ export function filePanel(env) {
     shelfSelect.inert = false;
     shelfButton.inert = false;
   }
-  // the focus went with a control that is gone: to this panel's heading
+  // the focus went with a control that is gone (or, after a file was chosen, to the body):
+  // to this panel's heading, which a reader says once; the refusal under it is the alert
+  // that says its own sentence, so the sentence is not focused as well (SV2-123c)
   function keepFocus() {
     const at = document.activeElement;
     if (!at || at === document.body || !at.isConnected) heading.focus();

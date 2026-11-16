@@ -199,6 +199,12 @@ async function journey(page, mode, name) {
   const refusal = await seen(page, '.scn-file__result');
   assert.equal(refusal, '“' + name + '.json” was not compared, and nothing has changed. This file describes a different building: 2 rooms are added. You can still compare the two buildings: crowds, travel times and findings, matched by group and room names.Compare the two buildings');
   assert.equal(await page.$eval('.scn-file__result [role="alert"]', (el) => el.tagName), 'P', 'the sentence is an alert');
+  // SV2-123c: choosing the file left the focus on the body; it is on the panel's heading, which is no live
+  // region, so the sentence (the one alert) is said once and the heading once
+  assert.deepEqual(await page.evaluate(() => {
+    const at = document.activeElement;
+    return [at.id, at.closest('[role="alert"],[role="status"],[aria-live]') === null, document.querySelectorAll('.scn-file__result [role="alert"]').length];
+  }), ['scenario-file-title', true, 1], 'the focus is on the file panel\'s heading after the refusal');
   assert.equal(await heldOf(page), 'false', 'a refusal holds no comparison');
   assert.equal(await page.evaluate(() => globalThis.sv2.store.project.scenario !== null), true, 'the open scenario is as it was');
 
@@ -306,6 +312,85 @@ test('by touch at 390 by 844, and no sideways scroll', async () => {
 test('by touch at 844 by 390: the band is one row, and the legend line is in the inspector', async () => {
   landscape = await openPlanner({ browser, server, width: 844, height: 390, mobile: true, hash: '#scenarios', theme: 'light' });
   await journey(landscape.page, 'touch', 'wing-landscape');
+});
+
+// ---------------------------------------------------------------- SV2-123c
+
+test('the line under the band says "edit the scenario" only when a scenario is open', async () => {
+  const page = wide.page;
+  // none open: the band's line and the inspector's status say where Stop comparing leads
+  await fresh(page);
+  assert.match(await seen(page, '.scn'), /No scenario is open/, 'the page says none is open');
+  await uploadWing(page, 'noscenario');
+  await listen(page);
+  await page.click('[data-action="compare-buildings"]');
+  await page.waitForSelector(BAND, { timeout: 30000 });
+  assert.equal(await seen(page, '#scenario-building-edit'), 'Stop comparing to go back to this project’s map.');
+  const status = await seen(page, '[data-part="building-status"]');
+  assert.doesNotMatch(status, /edit the scenario/, 'the inspector status: ' + status);
+  assert.match(status, /Stop comparing to go back to this project’s map\./, status);
+  assert.doesNotMatch(await seen(page, '.scn-bld'), /edit the scenario/, 'the band');
+  await page.click('[data-action="stop-comparing"]');
+  await page.waitForFunction(() => document.querySelector('.scn-bld').dataset.held === 'false');
+  // one open: the same two places say it
+  await fresh(page, openScenarioSchool());
+  await uploadWing(page, 'withscenario');
+  await page.click('[data-action="compare-buildings"]');
+  await page.waitForSelector(BAND, { timeout: 30000 });
+  assert.equal(await seen(page, '#scenario-building-edit'), 'Stop comparing to edit the scenario.');
+  assert.match(await seen(page, '[data-part="building-status"]'), /Stop comparing to edit the scenario\./);
+  assert.doesNotMatch(await seen(page, '.scn-bld'), /go back to this project/, 'the band');
+  await page.click('[data-action="stop-comparing"]');
+  await page.waitForFunction(() => document.querySelector('.scn-bld').dataset.held === 'false');
+});
+
+// a column heading that is a file name: wrapped, never hyphenated, and as typed
+async function headingFacts(page) {
+  return page.$$eval('[data-part="building-figures"] thead th:not(.scn-figures__corner)', (ths) => ths.map((th) => {
+    const style = getComputedStyle(th);
+    const line = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.4;
+    const box = th.getBoundingClientRect();
+    return { text: th.textContent, lines: Math.round((box.height - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)) / line), hyphens: style.hyphens, wrap: style.overflowWrap, markup: th.querySelectorAll('img, script').length };
+  }));
+}
+
+test('a file name in a column heading is not hyphenated: next-year.json stays on one line, and a long name wraps inside the page', async () => {
+  const page = wide.page;
+  await fresh(page);
+  await uploadWing(page, 'next-year');
+  await page.click('[data-action="compare-buildings"]');
+  await page.waitForSelector(BAND, { timeout: 30000 });
+  const facts = await headingFacts(page);
+  const name = facts.find((each) => each.text === 'next-year.json');
+  assert.ok(name, 'the heading is the name as typed: ' + JSON.stringify(facts));
+  assert.equal(name.lines, 1, 'next-year.json is not broken at its hyphen: ' + JSON.stringify(name));
+  for (const each of facts) assert.notEqual(each.hyphens, 'auto', 'no heading hyphenates: ' + JSON.stringify(each));
+  assert.equal(name.wrap, 'anywhere');
+  await page.click('[data-action="stop-comparing"]');
+  await page.waitForFunction(() => document.querySelector('.scn-bld').dataset.held === 'false');
+  // a long one, and markup typed as a name, in a narrow window: wraps, no sideways scroll, text unchanged
+  const own = await openPlanner({ browser, server, width: 390, height: 844, mobile: true, hash: '#scenarios', theme: 'light' });
+  try {
+    const long = 'proposal-for-next-year-and-the-year-after-with-the-new-wing-<b>plan';
+    await fresh(own.page);
+    await uploadWing(own.page, long);
+    await own.page.tap('[data-action="compare-buildings"]');
+    await own.page.waitForSelector(BAND, { timeout: 30000 });
+    // the inspector is a drawer on a phone: opened to be read
+    if ((await own.page.$eval('#inspector', (el) => el.dataset.open)) !== 'true') await own.page.tap('#inspector-toggle');
+    await own.page.waitForFunction(() => document.querySelector('[data-part="building-figures"]').getClientRects().length > 0);
+    const narrow = await headingFacts(own.page);
+    const typed = narrow.find((each) => each.text === long + '.json');
+    assert.ok(typed, 'the long name is exactly as typed: ' + JSON.stringify(narrow));
+    assert.ok(typed.lines >= 2, 'it wraps: ' + JSON.stringify(typed));
+    assert.equal(typed.markup, 0, 'it is text');
+    assert.equal(typed.hyphens === 'auto', false);
+    assert.equal(await own.page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true, 'no sideways scroll');
+    const th = await own.page.$$eval('[data-part="building-figures"] thead th:not(.scn-figures__corner)', (ths) => ths.map((el) => { const box = el.getBoundingClientRect(); return [box.left >= -1, box.right <= innerWidth + 1]; }));
+    assert.deepEqual(th.flat().every(Boolean), true, 'every heading is inside the window');
+  } finally {
+    await quickly(own.close());
+  }
 });
 
 // ---------------------------------------------------------------- the shape, in plain Node
@@ -858,7 +943,8 @@ test('every event is said once: the start, a switch of side, a day type, Stop co
   await page.waitForSelector(BAND, { timeout: 30000 });
   const started = await said(page);
   assert.equal(started.length, 1, 'the start: ' + JSON.stringify(started));
-  assert.match(started[0], /^Comparing with voice\.json, another building\. Stop comparing to edit the scenario\. Busiest: .+, \d+ students?\.$/);
+  // no scenario is open in this case: nothing to edit (SV2-123c)
+  assert.match(started[0], /^Comparing with voice\.json, another building\. Stop comparing to go back to this project’s map\. Busiest: .+, \d+ students?\.$/);
   await page.click('.scn-bld .seg__option:last-child .seg__label');
   await page.waitForSelector('.scn-bld[data-side="other"]');
   assert.equal((await said(page)).length, 1, 'a switch of side');

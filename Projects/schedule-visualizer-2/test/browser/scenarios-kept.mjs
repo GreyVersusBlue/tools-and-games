@@ -1159,6 +1159,73 @@ for (const size of [{ width: 390, height: 844 }, { width: 844, height: 390 }]) {
   });
 }
 
+// SV2-123c: on a phone the open scenario's panel scrolls under a stage pinned to its top (a
+// scenario open, 390 by 844), so a stage over the panel is the layout, not a fault; the fault
+// to catch is a stage (or its zoom bar) over what the reader is working with. After Switch to the
+// focus is on the open scenario's name, and a reader going back up through the strip's buttons
+// by Tab must find each one clear of the stage and the zoom bar. On a window under 600 px tall
+// the stage is not pinned at all: it scrolls away and never lies over the panel. The cause the
+// walk-through saw (the strip's Rename… and Delete… under the stage in a screenshot taken right
+// after Switch to) was the page scrolled so the name showed just under the stage with the strip
+// above it, which is the scroll-padding doing its work; the same holds after Start a scenario.
+const meets = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+
+for (const size of [{ width: 390, height: 844 }, { width: 844, height: 390 }]) {
+  test('SV2-123c: after Switch to at ' + size.width + ' by ' + size.height + ' (touch, dark) the stage and its zoom bar never cover the focused control, and on a short window never lie over the panel', async () => {
+    const phone = await openPlanner({ server, width: size.width, height: size.height, mobile: true, hash: '#scenarios', theme: 'dark' });
+    try {
+      const page = phone.page;
+      await load(page, fixture());
+      // pressed by its own click (the tap on it is the case above's), so a stage drawn over the button
+      // fails the assertions below, not the press
+      await page.$eval(rowButton('ekeptlib00', 'switch'), (el) => el.click());
+      await page.waitForFunction(() => globalThis.sv2.store.project.scenario?.id === 'ekeptlib00');
+      await ready(page);
+      await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'scenario-open-title');
+      // what is drawn over a control: the stage, the zoom bar, or anything but the control itself
+      const covered = () => page.evaluate(() => {
+        const el = document.activeElement;
+        const box = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.left + Math.min(box.width / 2, 40), box.top + box.height / 2);
+        const zoom = document.querySelector('.mov-zoom').getBoundingClientRect();
+        const stage = document.querySelector('.mov-stage').getBoundingClientRect();
+        const rect = (b) => ({ left: b.left, right: b.right, top: b.top, bottom: b.bottom });
+        return { name: el.id || el.textContent.trim(), ok: hit === el || el.contains(hit), over: hit ? (hit.className || hit.tagName) : null, zoom: rect(zoom), stage: rect(stage), box: rect(box), inWindow: box.top >= 0 && box.bottom <= innerHeight };
+      });
+      const checked = [];
+      const look = async () => {
+        const at = await covered();
+        checked.push(at.name);
+        assert.equal(at.ok, true, at.name + ' is under ' + at.over + ' (stage ' + JSON.stringify(at.stage) + ', control ' + JSON.stringify(at.box) + ')');
+        assert.equal(meets(at.zoom, at.box), false, at.name + ' is under the zoom bar: ' + JSON.stringify(at));
+        return at;
+      };
+      await look();
+      // back up through the strip by Shift+Tab: each button is clear when it takes the focus
+      for (let step = 0; step < 24; step += 1) {
+        await page.keyboard.down('Shift');
+        await page.keyboard.press('Tab');
+        await page.keyboard.up('Shift');
+        const inStrip = await page.evaluate(() => Boolean(document.activeElement.closest('.scn-others__list')));
+        if (!inStrip) break;
+        await look();
+      }
+      assert.ok(checked.filter((each) => /Switch to|Duplicate|Rename|Delete/.test(each)).length >= 8, 'the strip\'s buttons were all reached: ' + checked.join(' | '));
+      if (size.height < 600) {
+        // no pinned stage: it never lies over the panel, whatever the scroll
+        for (const top of [0, 150, 400]) {
+          await page.evaluate((y) => { document.querySelector('.scn').scrollTop = y; }, top);
+          const lies = await page.evaluate(() => ({ stage: document.querySelector('.mov-stage').getBoundingClientRect().bottom, panel: document.querySelector('.scn-panel').getBoundingClientRect().top }));
+          assert.ok(lies.stage <= lies.panel + 1, 'scrolled to ' + top + ' the stage ends at ' + lies.stage + ' and the panel begins at ' + lies.panel);
+        }
+      }
+      assert.deepEqual(phone.problems().errors, []);
+    } finally {
+      await phone.close();
+    }
+  });
+}
+
 test('122b 13: on a short window by pointer (844 by 390, not touch) the lab\'s controls are 44 px tall', async () => {
   const short = await openPlanner({ server, width: 844, height: 390, hash: '#scenarios', theme: 'light' });
   try {

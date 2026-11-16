@@ -160,7 +160,7 @@ export function comparePanel(env) {
     return h('section', { 'aria-labelledby': 'scenario-groups-title', data: { part: 'groups' } }, heading,
       h('table', { class: 'scn-table scn-groups' },
         h('caption', { class: 'vh' }, 'Each group’s travel time over the day, biggest change first'),
-        h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Group'), h('th', { scope: 'col', title: name || null }, name ? h('bdi', null, name) : 'Before'), h('th', { scope: 'col' }, 'After'), h('th', { scope: 'col' }, 'Change'))),
+        h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Group'), h('th', { scope: 'col', class: name ? 'scn-name' : null, title: name || null }, name ? h('bdi', null, name) : 'Before'), h('th', { scope: 'col' }, 'After'), h('th', { scope: 'col' }, 'Change'))),
         h('tbody', null, found.rows.map((row) => h('tr', { data: { group: row.groupId, edited: String(row.edited), trend: row.worse === null ? 'same' : row.worse ? 'worse' : 'better' } },
           h('th', { scope: 'row' }, row.typed ? h('bdi', null, row.name) : row.name, row.edited ? h('span', { class: 'scn-tag', data: { tag: 'edited' } }, 'edited') : null,
             row.held ? h('span', { class: 'scn-held', data: { tag: 'held' } }, 'Late, and ' + row.held) : null),

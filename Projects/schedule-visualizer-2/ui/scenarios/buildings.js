@@ -64,6 +64,8 @@ export const ONE_SCALE = 'One scale for both buildings: the same colour means th
 export const NOT_SAVED = 'Not saved: it ends when you leave this page or open another project.';
 export const NOT_SAVED_FOOT = 'This comparison is not saved: it ends when you close the page. To keep the other building, open it as a project (Project › Start another project › A project file).';
 export const EDIT_LINE = 'Stop comparing to edit the scenario.';
+// with no scenario open there is nothing to edit (SV2-123c): the line says what Stop does
+export const BACK_LINE = 'Stop comparing to go back to this project’s map.';
 export const REFUSED_ENGINE = 'The two buildings could not be compared, and nothing has changed. ';
 
 const SEVERITY = { problem: 'Problem', warning: 'Warning', note: 'Note' };
@@ -167,6 +169,7 @@ export function buildingsPanel(env) {
   const head = h('div', { class: 'scn-bld__head' }, text, stopButton);
   const notSaved = h('p', { class: 'scn-bld__note', data: { part: 'not-saved' } }, NOT_SAVED);
   const editLine = h('p', { class: 'scn-bld__edit', id: 'scenario-building-edit', role: 'note', data: { part: 'edit-line' } }, EDIT_LINE);
+  const editWords = () => (store.project.scenario ? EDIT_LINE : BACK_LINE);
   const bandTitle = h('h2', { class: 'vh', id: 'scenario-building-band-title' }, 'Comparing two buildings');
   const legendName = h('span', { class: 'scn-bld__legend', id: 'scenario-building-switch-label' }, 'Building shown on the map');
   const sideChoice = { current: null };
@@ -379,7 +382,7 @@ export function buildingsPanel(env) {
     const heading = (extra) => h('tr', { role: 'row' },
       h('th', { scope: 'col', role: 'columnheader', class: 'scn-figures__corner' }, 'Figure'),
       h('th', { scope: 'col', role: 'columnheader', class: 'scn-figures__before' }, 'This project'),
-      h('th', { scope: 'col', role: 'columnheader', dir: 'auto' }, bdi(file)),
+      h('th', { scope: 'col', role: 'columnheader', class: 'scn-name', dir: 'auto' }, bdi(file)),
       extra ? h('th', { scope: 'col', role: 'columnheader' }, 'Difference') : null);
     const table = h('table', { class: 'scn-table scn-figures' + (unitsDiffer ? ' scn-figures--two' : ''), role: 'table', 'aria-label': 'The two buildings’ figures, and the difference', data: { part: 'building-figures' } },
       h('thead', { role: 'rowgroup' }, heading(!unitsDiffer)),
@@ -437,7 +440,7 @@ export function buildingsPanel(env) {
     return h('section', { 'aria-labelledby': 'scenario-building-groups-title', data: { part: 'building-groups' } }, heading,
       shown.length === 0 ? h('p', null, 'No matched group’s travel time changes.') : h('table', { class: 'scn-table scn-groups' },
         h('caption', { class: 'vh' }, 'Each matched group’s travel time over the day, biggest change first'),
-        h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Group'), h('th', { scope: 'col' }, 'This project'), h('th', { scope: 'col' }, bdi(file)), h('th', { scope: 'col' }, 'Change'))),
+        h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Group'), h('th', { scope: 'col' }, 'This project'), h('th', { scope: 'col', class: 'scn-name' }, bdi(file)), h('th', { scope: 'col' }, 'Change'))),
         h('tbody', null, shown.map((each) => h('tr', { data: { group: each.row.name, trend: each.worse ? 'worse' : 'better' } },
           h('th', { scope: 'row', dir: 'auto' }, bdi(each.row.name), each.row.mergedBefore > 1 || each.row.mergedAfter > 1 ? h('span', { class: 'scn-tag' }, 'one name, ' + Math.max(each.row.mergedBefore, each.row.mergedAfter) + ' groups') : null),
           h('td', { class: 'num' }, each.before),
@@ -494,6 +497,7 @@ export function buildingsPanel(env) {
   function drawBand() {
     if (!state) return;
     text.replaceChildren('Comparing with ', bdi(state.fileName), ', another building');
+    editLine.textContent = editWords();
     drawSwitch(state.fileName);
   }
 
@@ -621,7 +625,7 @@ export function buildingsPanel(env) {
     drawInspector();
     paint();
     env.redraw();
-    say('Comparing with ' + name + ', another building. ' + EDIT_LINE + ' ' + busiestWords(state.answer.figures.busiest.before));
+    say('Comparing with ' + name + ', another building. ' + editWords() + ' ' + busiestWords(state.answer.figures.busiest.before));
     return { ok: true };
   }
 
@@ -689,6 +693,7 @@ export function buildingsPanel(env) {
       return;
     }
     const s = state;
+    editLine.textContent = editWords();
     const scaleNow = colourKey();
     if (counters() === s.counters) {
       // a change of the colour scale alone: no recompute, the bands and the legend are drawn again
