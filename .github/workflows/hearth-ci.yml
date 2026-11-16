@@ -9,7 +9,7 @@
 #
 #   gate  on every pull request and push to main — the building sheet's
 #         validator, the Node unit suite, determinism, save, a twelve-day soak on the two fixed
-#         seeds, `sheet`, and `pinned`, which compares
+#         seeds, `sheet`, `look`, the public island's `server` and `live` suites, and `pinned`, which compares
 #         the forty-day pack() hashes of seeds 7 and 20260819 against
 #         test/hashes.json. About a minute of browser time; the install is the
 #         slow part.
@@ -17,6 +17,8 @@
 #         minutes), `decade` (six), and every per-sprint mode, one job per
 #         mode so a red one names itself. Never on a pull request: the sweep
 #         is about half an hour end to end and would hold every PR open.
+#         One more nightly job, `longrun`, is Node only: 800 island days of
+#         the public island's server (test/longrun.mjs, C6).
 #
 # The harness has no screenshots, so the browser pin is not about pixels. It
 # is about arithmetic. Every distance on the island goes through Math.hypot,
@@ -90,6 +92,16 @@ jobs:
       - name: Unit (test/unit.mjs, no browser)
         run: node unit.mjs
 
+      # Node against the pinned Chromium (C2): the simulation's arithmetic is the same on every engine, so Node
+      # growing seeds 7 and 20260819 for forty days must give the hashes.json hashes that Chromium 1194 wrote.
+      - name: Portable arithmetic (test/portable.mjs, no browser)
+        run: node portable.mjs
+
+      # The public island as a program (C3): the server's island is a function of its clock, and a restart, a long absence
+      # and a failing step cost nothing already written. Node only, a fake clock and a scratch folder.
+      - name: Server (test/server.mjs, no browser)
+        run: node server.mjs
+
       - name: Install the pinned Playwright
         run: npm ci
 
@@ -117,6 +129,15 @@ jobs:
 
       - name: Sheet (every building drawn from its frame; no sheet, no island)
         run: node harness.mjs sheet
+
+      - name: Look rig (drawing is off the stream; eight scenes timed at two zooms)
+        run: node look.mjs
+
+      # The public island's page (C4): live.html against server/live.mjs on a clock at 60 times speed. Its own hash equals the
+      # server's at three epoch boundaries, hearth.auto is untouched, a click on water skips nothing, a stopped server shows the
+      # breath line and a missing route shows the offline line.
+      - name: Live page (test/live.mjs; lockstep with the server)
+        run: node live.mjs
 
   deep:
     name: deep · ${{ matrix.mode }}
@@ -166,3 +187,22 @@ jobs:
       # breadcrumb, page error or failed check.
       - name: ${{ matrix.mode }}
         run: node harness.mjs ${{ matrix.mode }}
+
+  # The public island's long run, short form (C6): one island for 800 island days through server/world.mjs, Node only (no browser, no
+  # install). Fails when step cost per day at the end is over three times its value at day 500, when the compressed save passes 1.5 million
+  # characters, or when resident memory passes 384 MB. The full 6,480 days is run by hand; see Projects/hearth/server/README.md.
+  longrun:
+    name: deep · longrun (800 island days)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: longrun --days 800
+        working-directory: Projects/hearth/test
+        run: node longrun.mjs --days 800

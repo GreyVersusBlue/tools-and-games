@@ -1413,9 +1413,15 @@ const SV2_112 = [
 async function noSideways(page, what) {
   const over = await page.evaluate(() => {
     const root = document.documentElement;
-    return { page: root.scrollWidth - root.clientWidth, body: document.body.scrollWidth - root.clientWidth };
+    // the parts that hold their own width: none may have to scroll inside itself either
+    const inner = [];
+    for (const selector of ['dialog#merge-import[open]', '.scn-others', '.scn-bld', '#projects .proj__list']) {
+      for (const el of document.querySelectorAll(selector)) if (el.scrollWidth > el.clientWidth + 1) inner.push(selector + ' is ' + (el.scrollWidth - el.clientWidth) + ' px wider inside than its box');
+    }
+    return { page: root.scrollWidth - root.clientWidth, body: document.body.scrollWidth - root.clientWidth, inner };
   });
   if (over.page > 1 || over.body > 1) throw new Error(what + ' scrolls sideways: the page is ' + over.page + ' px and the body ' + over.body + ' px wider than the window');
+  if (over.inner.length > 0) throw new Error(what + ' scrolls sideways inside: ' + over.inner.join('; '));
 }
 
 // kept projects put on the device beside the open one, as the Projects card lists them
@@ -1432,7 +1438,7 @@ async function shelve(page, labels) {
         const tx = db.transaction('project', 'readwrite');
         names.forEach((label, i) => {
           const id = 'pscreen00' + i;
-          tx.objectStore('project').put({ ...base, project: { ...base.project, id, label }, shelvedAt: new Date(2026, 10, 12, 15, 40 + i).toISOString(), bytes: 2400000 + i * 100000 }, 'shelf:' + id);
+          tx.objectStore('project').put({ ...base, project: { ...base.project, id, label }, shelvedAt: '2026-11-12T15:' + String(40 + i).padStart(2, '0') + ':00.000Z', bytes: 2400000 + i * 100000 }, 'shelf:' + id);
         });
         tx.oncomplete = () => {
           db.close();

@@ -2,7 +2,18 @@
 // Classic scripts sharing one global scope; the load order in index.html is the old single file’s order and it matters.
 // ---------- rng & noise ----------
 let seed=(Math.random()*1e9)|0;
+/* C4: live.html sets HEARTH_LIVE (js/live-flag.js) before this file runs. The public island is watched, not played: four seams elsewhere ask LIVE and are inert without it. */
+const LIVE=typeof HEARTH_LIVE!=='undefined';
 function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+/* C2: the simulation's arithmetic is the same on every engine. dsin, cos, pow and hypot are allowed to differ in the last bits between
+   V8 builds; + - * / sqrt floor round are exact by the language standard, so these are built from nothing else. Accurate to about 1e-11. */
+const hyp=(dx,dy)=>Math.sqrt(dx*dx+dy*dy);
+function dsin(x){const T=6.283185307179586;x=x-T*Math.round(x/T);if(x>1.5707963267948966)x=3.141592653589793-x;else if(x<-1.5707963267948966)x=-3.141592653589793-x;
+  const q=x*x;return x*(1+q*(-1/6+q*(1/120+q*(-1/5040+q*(1/362880+q*(-1/39916800+q*(1/6227020800+q*(-1/1307674368000))))))))}
+const dcos=x=>dsin(x+1.5707963267948966);
+function dexp(x){const k=Math.round(x/.6931471805599453);let r=x-k*.6931471805599453,t=1;for(let i=14;i>0;i--)t=1+r*t/i;let s=1;for(let i=0,n=k<0?-k:k;i<n;i++)s*=2;return k<0?t/s:t*s}
+const dpow12=x=>dexp(x*-2.120263536200091); /* .12 to the x; the one base life.js needs (boats' drift) */
+function shuf(a){for(let i=a.length-1;i>0;i--){const j=(R()*(i+1))|0,t=a[i];a[i]=a[j];a[j]=t}return a}
 let R;
 const rnd=(a=1,b)=>b===undefined?R()*a:a+R()*(b-a), pick=a=>a[(R()*a.length)|0], hash=s=>{let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0};
 function noise2(){const p=[];for(let i=0;i<256;i++)p[i]=R();const h=(x,y)=>p[((x*49+y*131)&255)^((x*7)&255)];const sm=t=>t*t*(3-2*t);
@@ -130,6 +141,16 @@ const GROW={
   farcame:['The crossing gets longer in that story every year, and the boat in it smaller.'],
   fartrade:['What came off that boat gets rarer every telling, and from further off than anywhere anyone has been.'],
   bounds:['Each spring the walk gets longer in the telling, and the stone in the pocket heavier, and the children better behaved than any children have ever been.']};
+/* B4: a story that has grown pulls a little on where people walk. Story kind to the job it leans toward. Derived from chron, never saved. */
+const GROW_PULL={shoal:{job:'fish',w:.15},rainscame:{job:'water',w:.15},drought:{job:'water',w:.15},hardwinter:{job:'harvest',w:.15},want:{job:'harvest',w:.15},fever:{job:'nurse',w:.15},ill:{job:'nurse',w:.15},stayed:{job:'wander',w:.08},voyage:{job:'wander',w:.08},farname:{job:'wander',w:.08}};
+/* one life line per job, the first time the pull turns a roll for that person; one chronicle line per story kind, ever */
+const PULL_LINE={fish:'took to the water after the story of the fish was told again',water:'carried water to the fields because of the story of the dry years',harvest:'went out to the fields early, with the hard winters in the story',nurse:'went to sit with the sick, the way the story of the fever says one should',wander:'walked out to the far shore, drawn by the story of the far island'};
+const PULL_CHRON={shoal:'the summer the story started sending people to the boats',rainscame:'the year the story started sending people to the wells',drought:'the year the story started sending people to the wells',hardwinter:'the autumn the story started sending people to the fields',want:'the autumn the story started sending people to the fields',fever:'the winter the story started sending people to the sick',ill:'the winter the story started sending people to the sick',stayed:'the spring the story started sending people to the far shore',voyage:'the spring the story started sending people to the far shore',farname:'the spring the story started sending people to the far shore'};
+let pulls={};
+function pullsNow(){const o={};for(const e of chron){const g=e.gr&&GROW_PULL[e.kind];if(g)o[g.job]=Math.min(.3,(o[g.job]||0)+g.w)}pulls=o}
+const pullOf=job=>pulls[job]||0;
+function pullNote(p,job){if(!p.hist.some(h=>h.s===PULL_LINE[job]))p.hist.push({d:dayCount,s:PULL_LINE[job]});
+  for(const e of chron){const g=GROW_PULL[e.kind];if(e.gr&&g&&g.job===job&&!chron.some(c=>c.kind==='pull_'+e.kind))addEvent('pull_'+e.kind,PULL_CHRON[e.kind],null)}}
 // sprint 13: the ground under the big stories. When a story has grown, the place it happened can take a name and join the island's
 // geography for good. at() reads live world state and must stay rnd()-free — it is re-run at load to put the named places back.
 const LORE_PLACE={
@@ -137,7 +158,7 @@ const LORE_PLACE={
  back:{l:'where they watch for boats',at:()=>landings.length?{x:landings[0].x,y:landings[0].y}:(nearestShore(center.x,center.y)||center)},
  rainscame:{l:'where they stood in the rain',at:()=>farms.length?{x:farms[0].x+.5,y:farms[0].y+.5}:center},
  shoal:{l:'where the fish came in',at:()=>{const h=getB('hut');return(h?nearestShore(h.x,h.y):nearestShore(center.x,center.y))||center}},
- stayed:{l:'the shore that faces the far island',at:()=>{if(!farIsle)return null;const fx=farIsle.x+farIsle.w/2;let b=null,bd=1e9;for(const s of shore){const d=Math.hypot(s.x-fx,s.y);if(d<bd){bd=d;b=s}}return b}},
+ stayed:{l:'the shore that faces the far island',at:()=>{if(!farIsle)return null;const fx=farIsle.x+farIsle.w/2;let b=null,bd=1e9;for(const s of shore){const d=hyp(s.x-fx,s.y);if(d<bd){bd=d;b=s}}return b}},
  found:{l:'where the ground gave it up',at:()=>ruin?{x:ruin.x,y:ruin.y+1.6}:null},
  bread:{l:'the mill path',at:()=>{const m=getB('mill');return m?{x:m.x+1,y:m.y+2.6}:null}},
  way:{l:'where the new way was tried first',at:()=>{const e=chron.find(x=>x.kind==='way'&&x.gr&&WAY_AT.some(n=>x.label.includes(n)));if(!e)return null;
@@ -228,7 +249,7 @@ function trimHist(p){if(p.hist.length>HIST_MAX)p.hist.splice(1,p.hist.length-HIS
 function newWorld(s){
   seed=s;R=mulberry(seed);document.getElementById('seedlbl').textContent='island '+seed.toString(36);
   const n1=noise2(),n2=noise2();tiles=new Uint8Array(W*H);elev=new Float32Array(W*H);trees=[];houses=[];farms=[];people=[];stumps=[];fx=[];fires=[];graves=[];dead=[];events=[];shore=[];
-  wood=12;food=20;granary=0;hunger=0;time=dayLen*.22;dayCount=1;lastYear=1;lastSea='spring';rain=false;storm=false;wx='clear';wxT=rnd(60,180);fogA=0;flash=0;snowD=0;frozen=false;gone=[];paintedKey='';works=[];plots=[];dry01=0;breadYr=0;retYr=0;bldg=[];bldgTgt=null;boats=[];heat=new Float32Array(W*H);road=new Uint8Array(W*H);roadV=0;village=null;landings=[];lightSite=null;stream=[];bridgeSite=null;traderDay=0;belled=0;trader=null;wild=[];flies=[];gulls=[];geese=null;geeseDay=0;whale=null;whaleT=rnd(60,200);farIsle=null;farRec=null;voyage=null;ruin=null;fishSh=[];ruinSeen=0;springs=[];clouds=[];gusts=[];skips=[];chron=[];storyDay=0;dreamAny=0;sackUsed=false;things=[];heirYr=0;lorePl=[];walkP=null;loreN={};boundsP=null;boundsYr=0;songs=[];snowmen=[];skipN=0;rbUntil=0;shoots=[];starDay=0;want=null;wantYr=0;ill=null;feud=null;wind=R()<.5?-1:1;evT=14;arrivalT=90;names=new Set();saidToday=new Set();usedTpl=new Map();selected=null;
+  wood=12;food=20;granary=0;hunger=0;time=dayLen*.22;dayCount=1;lastYear=1;lastSea='spring';rain=false;storm=false;wx='clear';wxT=rnd(60,180);fogA=0;flash=0;snowD=0;frozen=false;gone=[];paintedKey='';works=[];plots=[];dry01=0;breadYr=0;retYr=0;bldg=[];bldgTgt=null;boats=[];heat=new Float32Array(W*H);road=new Uint8Array(W*H);roadV=0;village=null;landings=[];lightSite=null;stream=[];bridgeSite=null;traderDay=0;belled=0;trader=null;wild=[];flies=[];gulls=[];geese=null;geeseDay=0;whale=null;whaleT=rnd(60,200);farIsle=null;farRec=null;voyage=null;ruin=null;fishSh=[];ruinSeen=0;springs=[];clouds=[];gusts=[];skips=[];chron=[];pulls={};storyDay=0;dreamAny=0;sackUsed=false;things=[];heirYr=0;lorePl=[];walkP=null;loreN={};boundsP=null;boundsYr=0;songs=[];snowmen=[];skipN=0;rbUntil=0;shoots=[];starDay=0;want=null;wantYr=0;ill=null;feud=null;wind=R()<.5?-1:1;evT=14;arrivalT=90;names=new Set();saidToday=new Set();usedTpl=new Map();selected=null;
   faith=0;faithSt=0;acts=[];prayer=null;arc=null;arcYr=0;wayYr=0;bookYr=0;ways=0;lastStormDay=0;rainedDay=0;wreckYr=0;famDone=false;temper=TEMPERS[(seed>>>0)%5]; // temper from the seed alone: no rnd(), so old links keep their terrain
   const cx=W/2,cy=H/2;
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){
@@ -242,7 +263,7 @@ function newWorld(s){
   if(R()<.65){let sx=-1,sy=-1,se=-1;for(let k=0;k<300;k++){const x=(R()*W)|0,y=(R()*H)|0;const e=elev[idx(x,y)];if(at(x,y)!==WATER&&e>se&&e<.6){se=e;sx=x;sy=y}}
     let x=sx,y=sy,seen=new Set();for(let k=0;k<45&&x>0&&y>0&&x<W-1&&y<H-1;k++){if(at(x,y)===WATER&&!seen.has(idx(x,y)))break;seen.add(idx(x,y));stream.push({x,y});
       let bx=x,by=y,be=1e9;for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const e=elev[idx(x+dx,y+dy)]+(seen.has(idx(x+dx,y+dy))?9:0);if(e<be){be=e;bx=x+dx;by=y+dy}}if(be>8)break;x=bx;y=by}
-    if(stream.length<8)stream=[];for(const s of stream){tiles[idx(s.x,s.y)]=WATER;elev[idx(s.x,s.y)]=.19}trees=trees.filter(t=>!stream.some(s=>Math.hypot(s.x+.5-t.x,s.y+.5-t.y)<1))}
+    if(stream.length<8)stream=[];for(const s of stream){tiles[idx(s.x,s.y)]=WATER;elev[idx(s.x,s.y)]=.19}trees=trees.filter(t=>!stream.some(s=>hyp(s.x+.5-t.x,s.y+.5-t.y)<1))}
   wadeTiles=new Set();for(const s of stream)wadeTiles.add(idx(s.x,s.y));bridgeUp=false;
   for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(at(x,y)===SAND&&(at(x+1,y)===WATER||at(x-1,y)===WATER||at(x,y+1)===WATER||at(x,y-1)===WATER))shore.push({x,y});
   // tide band: sand/water tiles within a hair of the waterline; fog mask: low ground and water
@@ -254,19 +275,19 @@ function newWorld(s){
   let best=null,bs=-1;
   for(let y=6;y<H-6;y+=2)for(let x=6;x<W-6;x+=2){if(at(x,y)!==GRASS)continue;let c=0;
     for(let j=-5;j<=5;j++)for(let i=-5;i<=5;i++)if(at(x+i,y+j)===GRASS)c++;
-    const sc=c-Math.hypot(x-cx,y-cy)*.6;if(sc>bs){bs=sc;best={x,y}}}
+    const sc=c-hyp(x-cx,y-cy)*.6;if(sc>bs){bs=sc;best={x,y}}}
   center=best||{x:cx|0,y:cy|0};cur.x=center.x;cur.y=center.y;
-  trees=trees.filter(t=>Math.hypot(t.x-center.x,t.y-center.y)>3.5);
+  trees=trees.filter(t=>hyp(t.x-center.x,t.y-center.y)>3.5);
   // hill for graves: highest grass tile 8–22 tiles from the hearth
-  hill=null;let he=-1;for(let y=2;y<H-2;y++)for(let x=2;x<W-2;x++){if(at(x,y)!==GRASS)continue;const d=Math.hypot(x-center.x,y-center.y);if(d<8||d>22)continue;const e=elev[idx(x,y)];if(e>he){he=e;hill={x,y}}}
+  hill=null;let he=-1;for(let y=2;y<H-2;y++)for(let x=2;x<W-2;x++){if(at(x,y)!==GRASS)continue;const d=hyp(x-center.x,y-center.y);if(d<8||d>22)continue;const e=elev[idx(x,y)];if(e>he){he=e;hill={x,y}}}
   if(!hill)hill={x:center.x+6,y:center.y-4};
   // ruins on some islands: a broken stone circle or an old wall, on grass away from the hearth
-  if(R()<.55){let site=null;for(let k=0;k<400&&!site;k++){const x=(R()*(W-8)+4)|0,y=(R()*(H-8)+4)|0;if(at(x,y)!==GRASS)continue;const d=Math.hypot(x-center.x,y-center.y);if(d<9||d>26||Math.hypot(x-hill.x,y-hill.y)<5)continue;let ok=true;for(let j=-3;j<=3&&ok;j++)for(let i=-3;i<=3;i++)if(at(x+i,y+j)!==GRASS){ok=false;break}if(ok)site={x,y}}
+  if(R()<.55){let site=null;for(let k=0;k<400&&!site;k++){const x=(R()*(W-8)+4)|0,y=(R()*(H-8)+4)|0;if(at(x,y)!==GRASS)continue;const d=hyp(x-center.x,y-center.y);if(d<9||d>26||hyp(x-hill.x,y-hill.y)<5)continue;let ok=true;for(let j=-3;j<=3&&ok;j++)for(let i=-3;i<=3;i++)if(at(x+i,y+j)!==GRASS){ok=false;break}if(ok)site={x,y}}
     if(site){const kind=R()<.55?'circle':'wall',st=[];
-      if(kind==='circle'){const n=7+((R()*3)|0);for(let i=0;i<n;i++){if(R()<.3)continue;const a=i/n*6.283;st.push({x:site.x+.5+Math.cos(a)*2.6,y:site.y+.5+Math.sin(a)*1.8,h:2+((R()*3)|0),f:R()<.3,w:1})}}
+      if(kind==='circle'){const n=7+((R()*3)|0);for(let i=0;i<n;i++){if(R()<.3)continue;const a=i/n*6.283;st.push({x:site.x+.5+dcos(a)*2.6,y:site.y+.5+dsin(a)*1.8,h:2+((R()*3)|0),f:R()<.3,w:1})}}
       else{const dx=R()<.5?1:0,dy=1-dx,n=8+((R()*4)|0);for(let i=0;i<n;i++){if(R()<.15)continue;st.push({x:site.x+.5+(i-n/2)*dx*.8+rnd(-.05,.05),y:site.y+.5+(i-n/2)*dy*.7+rnd(-.05,.05),h:1+((R()*2)|0),f:R()<.3,w:dx?1:0})}}
       const legend=kind==='circle'?pick(['the ring the giants left','the ring where the first fires were lit','the ring of the ones who were here before','the dancing stones']):pick(['the wall the sea people built','the old wall nobody finished','the wall the ones before us raised against something']);
-      ruin={kind,x:site.x+.5,y:site.y+.5,st,legend};trees=trees.filter(t=>Math.hypot(t.x-ruin.x,t.y-ruin.y)>3.4)}}
+      ruin={kind,x:site.x+.5,y:site.y+.5,st,legend};trees=trees.filter(t=>hyp(t.x-ruin.x,t.y-ruin.y)>3.4)}}
   // the far island: only ever a silhouette on the horizon (the top edge, over open water), on the side away from the hearth
   {const w=8+((R()*5)|0);let best=null,bs=-1;for(let x0=3;x0<W-w-3;x0++){let c=0;for(let i=0;i<w;i++)for(let j=0;j<7;j++)if(at(x0+i,j)===WATER)c++;const sc=c+Math.abs(x0+w/2-center.x)*.4+R()*3;if(c>=w*6&&sc>bs){bs=sc;best=x0}}
     if(best===null){best=center.x<W/2?W-w-4:4}farIsle={x:best,w,h:5+((R()*4)|0),lit:false,k:R()};
@@ -274,20 +295,20 @@ function newWorld(s){
     // deep water for the whale: well out from any land
     deep=[];for(let y=6;y<H-6;y+=2)for(let x=6;x<W-6;x+=2){if(elev[idx(x,y)]<.02){let ok=true;for(let j=-6;j<=6&&ok;j+=2)for(let i=-6;i<=6;i+=2)if(at(x+i,y+j)!==WATER){ok=false;break}if(ok)deep.push({x,y})}}}
   // favourite spots
-  const far=shore.reduce((a,b)=>Math.hypot(b.x-center.x,b.y-center.y)>Math.hypot(a.x-center.x,a.y-center.y)?b:a,shore[0]||center);
-  const near=shore.reduce((a,b)=>Math.hypot(b.x-center.x,b.y-center.y)<Math.hypot(a.x-center.x,a.y-center.y)?b:a,shore[0]||center);
+  const far=shore.reduce((a,b)=>hyp(b.x-center.x,b.y-center.y)>hyp(a.x-center.x,a.y-center.y)?b:a,shore[0]||center);
+  const near=shore.reduce((a,b)=>hyp(b.x-center.x,b.y-center.y)<hyp(a.x-center.x,a.y-center.y)?b:a,shore[0]||center);
   let rock=null;for(let k=0;k<400&&!rock;k++){const x=(R()*W)|0,y=(R()*H)|0;if(at(x,y)===ROCK)rock={x,y}}
   const oak=trees.reduce((a,b)=>b.s>a.s?b:a,trees[0]||{x:center.x+2,y:center.y+2});
   spots=[{l:'the far shore',x:far.x,y:far.y},{l:'the near beach',x:near.x,y:near.y},{l:'the hilltop',x:hill.x,y:hill.y},{l:'the fire',x:center.x,y:center.y},{l:'the old tree',x:oak.x,y:oak.y+.6},{l:'the fields',x:center.x+4,y:center.y+3}];
   if(rock)spots.push({l:'the grey rocks',x:rock.x,y:rock.y});
   if(ruin)spots.push({l:'the old stones',x:ruin.x,y:ruin.y+1.6});
   // landings: shore tiles with open water straight out to sea (boats row in along the ray from the hearth)
-  for(const s of shore){let dx=s.x-center.x,dy=s.y-center.y;const d=Math.hypot(dx,dy)||1;dx/=d;dy/=d;let ok=true;for(let k=1;k<=14&&ok;k++){const x=Math.round(s.x+dx*k),y=Math.round(s.y+dy*k);if(x>=0&&y>=0&&x<W&&y<H&&at(x,y)!==WATER)ok=false}
+  for(const s of shore){let dx=s.x-center.x,dy=s.y-center.y;const d=hyp(dx,dy)||1;dx/=d;dy/=d;let ok=true;for(let k=1;k<=14&&ok;k++){const x=Math.round(s.x+dx*k),y=Math.round(s.y+dy*k);if(x>=0&&y>=0&&x<W&&y<H&&at(x,y)!==WATER)ok=false}
     if(ok)landings.push({x:s.x,y:s.y,dx,dy,d})}
   landings.sort((a,b)=>a.d-b.d);
   // lighthouse: the rock (or sand) tile with the most sea around it, well away from the hearth
-  {let best=null,bs=-1;for(let y=2;y<H-2;y++)for(let x=2;x<W-2;x++){const t=at(x,y);if(t!==ROCK&&t!==SAND)continue;let w=0;for(let j=-3;j<=3;j++)for(let i=-3;i<=3;i++)if(at(x+i,y+j)===WATER)w++;if(w<14)continue;const sc=w+(t===ROCK?12:0)-Math.hypot(x-center.x,y-center.y)*.15;if(sc>bs){bs=sc;lightSite={x,y}}}}
-  if(stream.length){let bd=1e9;for(const s of stream){const d=Math.hypot(s.x-center.x,s.y-center.y);if(d<bd&&d>2){bd=d;bridgeSite=s}}}
+  {let best=null,bs=-1;for(let y=2;y<H-2;y++)for(let x=2;x<W-2;x++){const t=at(x,y);if(t!==ROCK&&t!==SAND)continue;let w=0;for(let j=-3;j<=3;j++)for(let i=-3;i<=3;i++)if(at(x+i,y+j)===WATER)w++;if(w<14)continue;const sc=w+(t===ROCK?12:0)-hyp(x-center.x,y-center.y)*.15;if(sc>bs){bs=sc;lightSite={x,y}}}}
+  if(stream.length){let bd=1e9;for(const s of stream){const d=hyp(s.x-center.x,s.y-center.y);if(d<bd&&d>2){bd=d;bridgeSite=s}}}
   // reachability from the hearth (people refuse the sea now): landings must be walkable, and a lighthouse
   // on an islet nobody can reach is no lighthouse at all. Pure flood-fill — no rnd(), replays unaffected.
   {const reach=new Uint8Array(W*H);const qx=[center.x],qy=[center.y];reach[idx(center.x,center.y)]=1;
@@ -321,30 +342,81 @@ function addEvent(kind,label,st){const e={d:dayCount,y:yearOf(dayCount),kind,lab
   chron.push(e);if(chronEl&&!chronEl.hidden)renderChron()}
 // ---------- terrain painting ----------
 const GRASS_PAL={spring:['#5f8f3e','#5a8a3b','#659745','#568437'],summer:['#6c923f','#678d3c','#729a46','#618639'],autumn:['#7c8a3d','#76853a','#838f45','#6f7f36'],winter:['#5c7a45','#587643','#617f4a','#546f40']};
+const TONE_DEEP=-.12,RELIEF_GAIN=16,RELIEF_SIGN=1; /* A3: the deepest water tone below TONE_DEEP; relief saturates at 1/16 of an elevation step across a tile */
 const TUFT={spring:'#4e7a31',summer:'#5a7a2e',autumn:'#8a7a2e',winter:'#4a6638'};
+const AUTUMN_CAN=[['#8a4a1e','#c47a2a'],['#8a2e1e','#b8402a'],['#7a6a20','#b09a2c']],autumnOf=t=>t.a<.35?0:t.a<.7?1:2,treeShape=t=>((t.a*13)|0)%3; /* A4: the autumn colours a tree turns, and which of three silhouettes it has (round, tall, wide); draw() and the leaf litter read the same */
+const DRY_STEPS=3; /* A4: dry01 is painted in four levels, 0 to 3, and the level is in the key */
+function terrainKey(){const s=sea();return s+'|'+Math.round(snowD*6)/6+'|'+frozen+'|'+roadV+'|'+Math.round(dry01*DRY_STEPS)+'|'+((s==='autumn'||snowD>.04)?trees.length:0)} /* A4: the tree count is in the key only where litter or snow shade reads it */
 function paintTerrain(){
-  const s=sea(),sq=Math.round(snowD*6)/6;paintedKey=s+'|'+sq+'|'+frozen+'|'+roadV;
+  const s=sea(),sq=Math.round(snowD*6)/6,dq=Math.round(dry01*DRY_STEPS);paintedKey=terrainKey();
   const pal={[WATER]:['#274c78','#2b5687','#2f5f93'],[SAND]:['#cdb98a','#d4c294','#c6ad7c'],[GRASS]:GRASS_PAL[s],[ROCK]:['#6f6a60','#7b756a','#645f56']};
   const ICE=['#b9d3e3','#c4dbe8','#adc9dc'];
-  const rr=mulberry(seed^99);
+  const rr=mulberry(seed^99),r2s=mulberry(seed^0x7e44a1); /* A3: rr keeps its seven draws per tile; r2s is the shape's own stream, 36 draws per tile whether used or not */
+  const eAt=(x,y,d)=>(x<0||y<0||x>=W||y>=H)?d:elev[idx(x,y)];
+  const Q=new Float32Array(W*H*36);
+  const under=new Uint8Array(W*H);for(const t of trees)if(t.s>.4){const tx=t.x|0,ty=t.y|0;if(tx>=0&&ty>=0&&tx<W&&ty<H){under[idx(tx,ty)]=1;if(ty>0)under[idx(tx,ty-1)]=1}} /* A4: tiles under a canopy hold snow back */
+  const nearW=(x,y)=>{for(let j=-2;j<=2;j++)for(let i=-2;i<=2;i++)if(at(x+i,y+j)===WATER)return true;return false};
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){const t=tiles[idx(x,y)],e=elev[idx(x,y)];const r1=rr(),r2=rr(),r3=rr(),r4=rr(),r5=rr(),r6=rr(),r7=rr(); // fixed draw per tile so repaints don't shuffle the ground
     const c=pal[t]||pal[GRASS];tg.fillStyle=c[(r1*c.length)|0];tg.fillRect(x*T,y*T,T,T);
     // a little more grain in the ground (sprint 11): depth in the water, mottle and flowers in the grass, speckle in the sand, cracks in the rock
-    if(t===WATER){if(e<.06){tg.fillStyle='#22436b';tg.fillRect(x*T,y*T,T,T);if(r6<.2){tg.fillStyle='#274c78';tg.fillRect(x*T+((r7*5)|0),y*T+((r3*6)|0),3,1)}}
+    if(t===WATER){if(e<.06){tg.fillStyle=e<TONE_DEEP?'#1d3a5f':'#22436b';tg.fillRect(x*T,y*T,T,T);if(r6<.2){tg.fillStyle='#274c78';tg.fillRect(x*T+((r7*5)|0),y*T+((r3*6)|0),3,1)}}
       else if(r6<.12){tg.fillStyle='#3a6ba3';tg.fillRect(x*T+((r7*6)|0),y*T+((r4*7)|0),2,1)}}
     if(t===GRASS&&r6<.14){tg.fillStyle=GRASS_PAL[s][3];tg.fillRect(x*T+((r7*5)|0),y*T+((r5*5)|0),3,2)}
-    if(t===GRASS&&(s==='spring'||s==='summer')&&r7<.045){tg.fillStyle=s==='spring'?(r6<.5?'#e8a0b8':'#e6e2d8'):'#e2c25a';tg.fillRect(x*T+((r3*6)|0)+1,y*T+((r4*6)|0)+1,1,1)}
+    const wet=t===GRASS&&s==='spring'&&nearW(x,y);
+    if(t===GRASS&&(s==='spring'||s==='summer')&&r7<(wet?.135:.045)){tg.fillStyle=s==='spring'?(r6<.5?'#e8a0b8':'#e6e2d8'):'#e2c25a';tg.fillRect(x*T+((r3*6)|0)+1,y*T+((r4*6)|0)+1,1,1)}
     if(t===SAND&&r6<.3){tg.fillStyle=r7<.5?'#b8a172':'#e0d2a8';tg.fillRect(x*T+((r3*6)|0),y*T+((r4*6)|0),1,1);tg.fillRect(x*T+((r7*6)|0),y*T+((r5*6)|0),1,1)}
     if(t===ROCK&&r6<.22){tg.fillStyle='#54504a';tg.fillRect(x*T+((r7*4)|0),y*T+2+((r3*4)|0),3,1)}
     if(t===GRASS&&r2<.12){tg.fillStyle=TUFT[s];tg.fillRect(x*T+((r3*6)|0),y*T+((r4*6)|0),2,1)}
+    if(t===GRASS&&dq>0){tg.fillStyle='rgba(204,172,62,'+(.12*dq).toFixed(2)+')';tg.fillRect(x*T,y*T,T,T)} /* A4: a dry year yellows the grass, in four levels */
     if(t===WATER&&frozen&&e>.16){tg.fillStyle=ICE[(r1*3)|0];tg.fillRect(x*T,y*T,T,T);if(r5<.15){tg.fillStyle='#8fb0c8';tg.fillRect(x*T+((r3*5)|0),y*T+((r4*7)|0),3,1)}}
     else if(t===WATER&&at(x,y-1)!==WATER){tg.fillStyle='#8fb6d6';tg.fillRect(x*T,y*T,T,1)}
-    if(t===ROCK&&r2<.3){tg.fillStyle='#e6e2d8';tg.fillRect(x*T+2,y*T+1,3,2)}
+    const qo=idx(x,y)*36;for(let i=0;i<36;i++)Q[qo+i]=r2s();const q=Q.subarray(qo,qo+36);
+    if(wet&&r7<.135){tg.fillStyle=q[2]<.5?'#e8a0b8':'#e6e2d8';tg.fillRect(x*T+((q[0]*6)|0)+1,y*T+((q[1]*6)|0)+1,1,1)} /* A4: near water a flower has company, which is what makes a drift */
+    if(t!==WATER){ /* A3 relief: ground rising toward the south-east faces the north-west light; falling ground sits in shade */
+      const rise=eAt(x+1,y+1,e)-eAt(x-1,y-1,e),k=Math.max(-1,Math.min(1,rise*RELIEF_GAIN*RELIEF_SIGN));
+      if(k>0){tg.fillStyle='rgba(255,248,224,'+(.14*k).toFixed(3)+')';tg.fillRect(x*T,y*T,T,T)}
+      else if(k<0){tg.fillStyle='rgba(16,20,40,'+(.18*-k).toFixed(3)+')';tg.fillRect(x*T,y*T,T,T)}}
+    if(t===ROCK){ /* A3 strata: two or three darker bands per tile, and a full-width one where the contour steps between this tile and the one south */
+      tg.fillStyle='#4f4b44';
+      tg.fillRect(x*T+((q[0]*3)|0),y*T+1+((q[1]*3)|0),3+((q[2]*4)|0),1);
+      tg.fillRect(x*T+((q[3]*3)|0),y*T+5+((q[4]*3)|0),3+((q[5]*4)|0),1);
+      if(q[6]<.5)tg.fillRect(x*T+((q[7]*4)|0),y*T+3,2+((q[8]*5)|0),1);
+      if(Math.floor(e*40)!==Math.floor(eAt(x,y+1,e)*40)){tg.fillStyle='#46423c';tg.fillRect(x*T,y*T+T-2,T,1)}
+      if(e>.7){tg.fillStyle='#e6e2d8';tg.fillRect(x*T+2,y*T+1,3,2);if(q[9]<.6)tg.fillRect(x*T+((q[10]*5)|0),y*T+4+((q[11]*3)|0),3,1)}}
     const rd=road[idx(x,y)];if(rd===1){tg.fillStyle=r1<.5?'#8a7248':'#7e6841';tg.fillRect(x*T,y*T,T,T);tg.fillStyle='#6b5735';tg.fillRect(x*T+((r3*6)|0),y*T+((r4*7)|0),2,1)}
     else if(rd===2){tg.fillStyle=r1<.5?'#a39682':'#968a76';tg.fillRect(x*T,y*T,T,T);tg.fillStyle='#b5a892';tg.fillRect(x*T+1,y*T+1,3,2);tg.fillRect(x*T+5,y*T+4,2,2);tg.fillStyle='#7a6f5e';tg.fillRect(x*T+4,y*T+1,1,2);tg.fillRect(x*T+1,y*T+5,2,1);tg.fillRect(x*T+3,y*T+6,3,1)}
-    if(sq>0&&t!==WATER&&t!==FARM){const cover=(t===ROCK?1.2:t===SAND?.8:rd?.6:1)*sq;if(r5<cover*1.05){tg.fillStyle=r4<.8?'#eef2f4':'#dfe6ea';tg.fillRect(x*T,y*T,T,T);if(r3<.2){tg.fillStyle='#f8fafb';tg.fillRect(x*T+((r4*6)|0),y*T+((r1*6)|0),2,1)}}
-      else if(r5<cover*1.6){tg.fillStyle='#eef2f4';tg.fillRect(x*T+((r4*4)|0),y*T+((r1*4)|0),4,3)}}
+    if(sq>0&&t!==WATER&&t!==FARM){ /* A4: snow lies by exposure, not by coin flip: high open ground first, the shelter of a tree last */
+      const sd=sq*1.2*(t===ROCK?1.2:t===SAND?.8:rd?.6:1),thr=.35+(under[idx(x,y)]?.3:0)-e*.4;
+      if(sd>thr){tg.fillStyle=r4<.8?'#eef2f4':'#dfe6ea';tg.fillRect(x*T,y*T,T,T);if(r3<.2){tg.fillStyle='#f8fafb';tg.fillRect(x*T+((r4*6)|0),y*T+((r1*6)|0),2,1)}}
+      else if(sd>thr-.12){tg.fillStyle='#eef2f4';tg.fillRect(x*T+((r4*4)|0),y*T+((r1*4)|0),4,3)}}
   }
+  /* A3 second pass, after every tile is down: the shore and the soft borders, from the same stream's draws */
+  const gc=GRASS_PAL[s][0],lipC='#b39f78',foamC='#dcecf4',COL={[SAND]:'#cdb98a',[ROCK]:'#6f6a60',[GRASS]:gc};
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const t=tiles[idx(x,y)],u=Q.subarray(idx(x,y)*36+12,idx(x,y)*36+36),px=x*T,py=y*T;
+    if(t===SAND){
+      if(at(x+1,y)===WATER){tg.fillStyle=lipC;tg.fillRect(px+T-2,py,2,T);if(!frozen){tg.fillStyle=foamC;tg.fillRect(px+T,py,1,T)}}
+      if(at(x-1,y)===WATER){tg.fillStyle=lipC;tg.fillRect(px,py,2,T);if(!frozen){tg.fillStyle=foamC;tg.fillRect(px-1,py,1,T)}}
+      if(at(x,y+1)===WATER){tg.fillStyle=lipC;tg.fillRect(px,py+T-2,T,2);if(!frozen){tg.fillStyle=foamC;tg.fillRect(px,py+T,T,1)}}
+      if(at(x,y-1)===WATER){tg.fillStyle=lipC;tg.fillRect(px,py,T,2);if(!frozen){tg.fillStyle=foamC;tg.fillRect(px,py-1,T,1)}}}
+    if(frozen&&t===WATER&&elev[idx(x,y)]>.16){ /* A4 shore ice: a pale rim, solid where ice meets land, ragged where it meets open water */
+      for(let k=0;k<4;k++){const dx=[1,-1,0,0][k],dy=[0,0,1,-1][k],nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=W||ny>=H)continue;
+        const nt=tiles[idx(nx,ny)],open=nt===WATER&&elev[idx(nx,ny)]<=.16;if(nt===WATER&&!open)continue;
+        tg.fillStyle='#e8f2f8';
+        for(let i=0;i<T;i++){const w=open?(u[(k*6+i)%24]<.5?1:2):2;
+          if(k===0)tg.fillRect(px+T-w,py+i,w,1);else if(k===1)tg.fillRect(px,py+i,w,1);else if(k===2)tg.fillRect(px+i,py+T-w,1,w);else tg.fillRect(px+i,py,1,w)}}}
+    if(sq<.5&&COL[t]&&!road[idx(x,y)]&&x+1<W&&y+1<H){for(let d=0;d<2;d++){ /* the east edge, then the south edge */
+      const nx=x+1-d,ny=y+d,t2=tiles[idx(nx,ny)];if(t2===t||(t!==GRASS&&t2!==GRASS)||!COL[t2]||road[idx(nx,ny)])continue;
+      const n=6+((u[d*11]*5)|0);
+      for(let i=0;i<n;i++){const v=u[d*11+1+i],a=(v*T)|0,dp=((v*64)|0)&1;
+        /* this tile's colour goes into the neighbour, then the neighbour's colour comes back this way, alternately */
+        if(i%2===0){tg.fillStyle=COL[t];if(d===0)tg.fillRect(px+T+dp,py+a,1,1);else tg.fillRect(px+a,py+T+dp,1,1)}
+        else{tg.fillStyle=COL[t2];if(d===0)tg.fillRect(px+T-1-dp,py+a,1,1);else tg.fillRect(px+a,py+T-1-dp,1,1)}}}}
+  }
+  /* A4 leaf litter: in autumn, three to five pixels of the tree's own colour on each grass tile around each tree that has grown, from a stream of the tree's own so a felled neighbour moves nothing */
+  if(s==='autumn'&&sq<.5)for(const t of trees){if(t.s<=.5)continue;const lr=mulberry(seed^0xa47e11^((((t.x*64)|0)*7919+((t.y*64)|0)*104729)|0)),lc=AUTUMN_CAN[autumnOf(t)],tx=t.x|0,ty=t.y|0;
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const v=[];for(let i=0;i<16;i++)v.push(lr());const nx=tx+dx,ny=ty+dy;
+      if(nx<0||ny<0||nx>=W||ny>=H||tiles[idx(nx,ny)]!==GRASS||road[idx(nx,ny)])continue;
+      const n=3+((v[0]*3)|0);for(let i=0;i<n;i++){tg.fillStyle=lc[v[1+i*3]<.5?0:1];tg.fillRect(nx*T+((v[2+i*3]*T)|0),ny*T+((v[3+i*3]*T)|0),1,1)}}}
 }
 // ---------- log ----------
 const logEl=document.getElementById('log');
@@ -356,24 +428,24 @@ const EDGE={spring:[.2,.8],summer:[.15,.86],autumn:[.2,.8],winter:[.27,.73]}; //
 const edges=()=>EDGE[sea()];
 const isNight=()=>{const f=dayFrac(),e=edges();return f<e[0]||f>e[1]};
 const isDusk=()=>{const f=dayFrac(),e=edges();return f>e[1]-.1&&f<e[1]};
-const light=()=>{const f=dayFrac(),e=edges();const t=Math.max(-.15,Math.min(1.15,(f-e[0])/(e[1]-e[0])));return Math.max(0,Math.min(1,(Math.sin(t*Math.PI)+.45)/1.15))};
-const tide=()=>Math.sin(dayFrac()*4*Math.PI+(seed%7)); // two tides a day; +1 high, -1 low
-function nearestTree(x,y){let b=null,bd=1e9;for(const t of trees){if(t.hp<=0||t.s<.5||t.o)continue;const d=Math.hypot(t.x-x,t.y-y);if(d<bd){bd=d;b=t}}return b} // nobody fells the orchard
-function nearestShore(x,y){let b=null,bd=1e9;for(const s of shore){const d=Math.hypot(s.x-x,s.y-y);if(d<bd){bd=d;b=s}}return b}
+const light=()=>{const f=dayFrac(),e=edges();const t=Math.max(-.15,Math.min(1.15,(f-e[0])/(e[1]-e[0])));return Math.max(0,Math.min(1,(dsin(t*Math.PI)+.45)/1.15))};
+const tide=()=>dsin(dayFrac()*4*Math.PI+(seed%7)); // two tides a day; +1 high, -1 low
+function nearestTree(x,y){let b=null,bd=1e9;for(const t of trees){if(t.hp<=0||t.s<.5||t.o)continue;const d=hyp(t.x-x,t.y-y);if(d<bd){bd=d;b=t}}return b} // nobody fells the orchard
+function nearestShore(x,y){let b=null,bd=1e9;for(const s of shore){const d=hyp(s.x-x,s.y-y);if(d<bd){bd=d;b=s}}return b}
 const bAll=()=>bldgTgt?bldg.concat([bldgTgt]):bldg;
-function freeSpot(r0,r1,need=1){for(let k=0;k<80;k++){const a=rnd(6.28),r=rnd(r0,r1);const x=Math.round(center.x+Math.cos(a)*r),y=Math.round(center.y+Math.sin(a)*r*.75);
+function freeSpot(r0,r1,need=1){for(let k=0;k<80;k++){const a=rnd(6.28),r=rnd(r0,r1);const x=Math.round(center.x+dcos(a)*r),y=Math.round(center.y+dsin(a)*r*.75);
   let ok=true;for(let j=0;j<need&&ok;j++)for(let i=0;i<need;i++){if(at(x+i,y+j)!==GRASS){ok=false;break}
-    if(houses.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||plots.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||bAll().some(b=>x+i>=b.x-1&&x+i<=b.x+b.w&&y+j>=b.y-1&&y+j<=b.y+b.h)||farms.some(f=>f.x===x+i&&f.y===y+j)||(ruin&&Math.hypot(ruin.x-x-i-.5,ruin.y-y-j-.5)<3.6)||graves.some(gr=>Math.hypot(gr.x-x-i,gr.y-y-j)<3)||trees.some(t=>t.hp>0&&Math.hypot(t.x-x-i-.5,t.y-y-j-.5)<1.2)){ok=false;break}}
+    if(houses.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||plots.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||bAll().some(b=>x+i>=b.x-1&&x+i<=b.x+b.w&&y+j>=b.y-1&&y+j<=b.y+b.h)||farms.some(f=>f.x===x+i&&f.y===y+j)||(ruin&&hyp(ruin.x-x-i-.5,ruin.y-y-j-.5)<3.6)||graves.some(gr=>hyp(gr.x-x-i,gr.y-y-j)<3)||trees.some(t=>t.hp>0&&hyp(t.x-x-i-.5,t.y-y-j-.5)<1.2)){ok=false;break}}
   if(ok)return{x,y}}return null}
-function freeSpotNear(cx,cy,r0,r1,need){for(let k=0;k<60;k++){const a=rnd(6.28),r=rnd(r0,r1);const x=Math.round(cx+Math.cos(a)*r),y=Math.round(cy+Math.sin(a)*r*.75);
+function freeSpotNear(cx,cy,r0,r1,need){for(let k=0;k<60;k++){const a=rnd(6.28),r=rnd(r0,r1);const x=Math.round(cx+dcos(a)*r),y=Math.round(cy+dsin(a)*r*.75);
   let ok=true;for(let j=0;j<need&&ok;j++)for(let i=0;i<need;i++){if(at(x+i,y+j)!==GRASS){ok=false;break}
-    if(houses.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||plots.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||bAll().some(b=>x+i>=b.x-1&&x+i<=b.x+b.w&&y+j>=b.y-1&&y+j<=b.y+b.h)||farms.some(f=>f.x===x+i&&f.y===y+j)||(ruin&&Math.hypot(ruin.x-x-i-.5,ruin.y-y-j-.5)<3.6)||graves.some(gr=>Math.hypot(gr.x-x-i,gr.y-y-j)<3)||trees.some(t=>t.hp>0&&Math.hypot(t.x-x-i-.5,t.y-y-j-.5)<1.2)){ok=false;break}}
+    if(houses.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||plots.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||bAll().some(b=>x+i>=b.x-1&&x+i<=b.x+b.w&&y+j>=b.y-1&&y+j<=b.y+b.h)||farms.some(f=>f.x===x+i&&f.y===y+j)||(ruin&&hyp(ruin.x-x-i-.5,ruin.y-y-j-.5)<3.6)||graves.some(gr=>hyp(gr.x-x-i,gr.y-y-j)<3)||trees.some(t=>t.hp>0&&hyp(t.x-x-i-.5,t.y-y-j-.5)<1.2)){ok=false;break}}
   if(ok)return{x,y}}return null}
 // people walk on land. The stream can be waded — slowly, feeling for the stones — and once the bridge is up it carries them over dry. The sea refuses.
 const canWalk=(x,y)=>at(x|0,y|0)!==WATER||(bridgeUp&&bridgeSite&&(x|0)===bridgeSite.x&&(y|0)===bridgeSite.y);
 const canWade=(x,y)=>wadeTiles.has(idx(x|0,y|0));
 // if the straight line to a target crosses the stream and the bridge is up, go round by the bridge (no rnd() in here: replays depend on it)
-function routeVia(x0,y0,x1,y1){if(!bridgeUp||!bridgeSite)return null;const d=Math.hypot(x1-x0,y1-y0);if(d<5)return null;
+function routeVia(x0,y0,x1,y1){if(!bridgeUp||!bridgeSite)return null;const d=hyp(x1-x0,y1-y0);if(d<5)return null;
   const n=Math.ceil(d);let cross=false;for(let i=1;i<n&&!cross;i++){const k=i/n;if(canWade(x0+(x1-x0)*k,y0+(y1-y0)*k))cross=true}
   return cross?{x:bridgeSite.x+.5,y:bridgeSite.y+.5}:null}
 // a person with nowhere left to step lets the task go where they stand (deterministic: no rnd())
@@ -381,7 +453,7 @@ function blockedStop(p){if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;p
 function walk(p,dt){
   if(p.tx!==p._vx||p.ty!==p._vy){p._vx=p.tx;p._vy=p.ty;p.via=routeVia(p.x,p.y,p.tx,p.ty)}
   const txx=p.via?p.via.x:p.tx,tyy=p.via?p.via.y:p.ty;
-  const dx=txx-p.x,dy=tyy-p.y,d=Math.hypot(dx,dy);let sp=(isNight()?1.6:2.6)*dt*(1-hunger*.3);if(isElder(p))sp*=.7;if(isKid(p))sp*=.85;if(p.sick)sp*=.65;if(snowD>.5&&at(p.x|0,p.y|0)!==WATER)sp*=.85;
+  const dx=txx-p.x,dy=tyy-p.y,d=hyp(dx,dy);let sp=(isNight()?1.6:2.6)*dt*(1-hunger*.3);if(isElder(p))sp*=.7;if(isKid(p))sp*=.85;if(p.sick)sp*=.65;if(snowD>.5&&at(p.x|0,p.y|0)!==WATER)sp*=.85;
   const wading=at(p.x|0,p.y|0)===WATER&&canWade(p.x,p.y);
   if(wading){sp*=.55;if(p.waded!==dayCount){p.waded=dayCount;say(`${B(p)} hitches up and wades the stream, feeling for the stones.`,false,'wade')}}
   if(d<sp){if(p.via){p.x=txx;p.y=tyy;p.via=null;return false}
@@ -401,7 +473,8 @@ function popCap(){return 4+houses.length*2}
 const BIRTH_OVER=1;
 const has=(p,t)=>p.tr.includes(t);
 // which craft a task teaches (and is sped by): field, wood, sea, frame, store
-const CRAFT_TASK={till:0,harvest:0,water:0,chop:1,fish:2,boat:2,build:3,carry:4};
+const HAUL_LINE="carried the timber down to the trader's boat";
+const CRAFT_TASK={till:0,harvest:0,water:0,chop:1,fish:2,boat:2,build:3,carry:4,haul:4};
 const workRate=p=>(has(p,'patient')?1.15:1)*(isElder(p)?.7:1)*(1-hunger*.5)*(p.sick?.45:1)*(want?.85:1)*(p.short?.9:1)*(feud&&(p.name===feud.rv[0]||p.name===feud.rv[1])?.8:1)*(p.craft>=0&&CRAFT_TASK[p.task]===p.craft?1+.35*p.cxp:1); /* phase 6: rations are the decision that slows everyone, and the elder eating last is slower again */
 // what the hands learn: a finished cycle of work teaches. The craftless drift into whatever they do most; the crafted deepen.
 const CRAFT_WORK=['the fields','the woodpile','the nets','the framing','the store'];

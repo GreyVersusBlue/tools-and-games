@@ -84,10 +84,10 @@ export const SECTION_HELP = {
       'Projects on this device is the first card. A device keeps more than one project, up to 20, each with its own building, schedule, settings, scenarios and undo history. With one project the card says so and offers Start another project and Duplicate this project; with more it lists them, the open one first and marked Open, the rest by most recently opened.',
       'The Label is a project’s own name on this device, such as This year or Next year’s proposal, up to 60 characters. The school’s name stays in Settings. When more than one project is kept, the top bar and the browser tab show the label as well, so two windows are never mistaken for each other.',
       'Open switches to another project: the page reloads into it, and the one you left stays on this device. Rename… changes a label. Delete… takes a project off the device after keeping a recovery point of it, and offers Export it first; the open project cannot be deleted, so open another first. Its snapshots stay.',
-      'Start another project keeps the open project and makes a new one from Empty, from The sample school or from a project file. Duplicate this project makes a copy with a label of your choice (the default is the label and “(copy)”), with a new identity of its own, and opens it. Clear’s Replace with a new empty project, by contrast, replaces the open project.',
-      'A device keeps only one project for each identity. A project file, a project received from another device or a restored recovery point that is a copy of a project already kept is not put in silently: the dialog gives two choices, Open that project (then choose the file again to replace it) or Keep it as another project, which makes a separate copy with an identity of its own and opens it.',
-      'Recovery points and Snapshots list the open project’s first. Of other projects (recovery points) and Of projects no longer on this device (snapshots) follow, with each project’s label; a row of a project kept on the device offers Open that project, and a row of a project no longer here offers Restore as a project, which keeps it on this device as another project and opens it. Items that cannot be read are listed under Cannot be read, where they can be exported as stored or deleted.',
-      'Import part of a project file brings in only the building, only the schedule or only the settings from another project file; the rest of the open project stays as it is. Step 1 reads the file and asks what to bring in. Step 2 says exactly what will change, for example how many classes keep their rooms and which room numbers are not in the new building, and that a snapshot is taken first. Nothing changes before Bring it in, and Undo brings it all back. Settings are taken as the schedule’s numbers (the school’s name, the periods, the period word, times and the checks); the theme and paper belong to this device, and the cell size, walking and stair times and elevator times belong to the building, so none of those is taken.',
+      'Start another project keeps the open project and makes a new one from Empty, from The sample school or from a project file. Duplicate this project asks for a label for the copy (the default is the label and “(copy)”); Duplicate and open it then makes the copy, with a new identity of its own, and opens it. Clear’s Replace with a new empty project, by contrast, replaces the open project.',
+      'A device keeps only one project for each identity. A project file, a project received from another device or a restored recovery point that is a copy of a project already kept is not put in silently: the dialog gives two choices, Open followed by that project’s label, such as Open Next year (then choose the file again to replace it) or Keep it as another project, which makes a separate copy with an identity of its own and opens it.',
+      'Recovery points and Snapshots list the open project’s first. Of other projects (recovery points) and Of projects no longer on this device (snapshots) follow, with each project’s label; a row of a project kept on the device offers Open followed by that project’s label, and a row of a project no longer here offers Restore as a project, which keeps it on this device as another project and opens it. Items that cannot be read are listed under Cannot be read, where they can be exported as stored or deleted.',
+      (w) => 'Import part of a project file brings in only the building, only the schedule or only the settings from another project file; the rest of the open project stays as it is. Step 1 reads the file and asks what to bring in. Step 2 says exactly what will change, for example how many classes keep their rooms and which room numbers are not in the new building, and that a snapshot is taken first. Nothing changes before Bring it in, and Undo brings it all back. Settings are taken as the schedule’s numbers (the school’s name, the ' + w.many + ' per day, the period word, times and the checks); the theme and paper belong to this device, and the cell size, walking and stair times and elevator times belong to the building, so none of those is taken.',
     ],
   },
 };
@@ -198,7 +198,7 @@ export function words(settings) {
     // DESIGN 15.1's words (SV2-124)
     { term: 'Label', meaning: 'A project’s own name on this device, such as This year or Next year’s proposal, which tells it from the other projects kept here.' },
     { term: 'Kept scenario', meaning: 'A scenario that is saved in the project but not open, so it can be switched to, duplicated, deleted or compared with.' },
-    { term: 'Building comparison', meaning: 'A side-by-side of two different buildings, this project’s and another file’s or project’s, matched by group and room names and not saved.' },
+    { term: 'Building comparison', meaning: 'Two different buildings, this project’s and another file’s or project’s, compared by crowds, travel times and findings, matched by group and room names and not saved, and the map shows one building at a time, both on one scale, with a switch between them.' },
   ];
 }
 
@@ -346,7 +346,7 @@ export function helpModel(options) {
       purpose: help ? says(help.purpose, w) : NOTHING_WRITTEN,
       first: help ? says(help.first, w) : '',
       more: help ? says(help.more, w) : '',
-      parts: help && help.parts ? help.parts.slice() : [],
+      parts: help && help.parts ? help.parts.map((part) => says(part, w)) : [],
       here: section.id === currentId,
       written: Boolean(help),
     };

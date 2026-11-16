@@ -4,8 +4,8 @@
 // page runs — with nothing drawn and nothing heard. The RAF loop never starts: the stubbed Image never loads, so sheetGo never
 // calls back, and every step is the caller's.
 //
-// Node's V8 is not Chromium 1194's (see hearth-ci.yml): Math.pow and Math.sin differ in the last bits, so an island stepped here
-// is a different island from the pinned one. Nothing here compares against hashes.json. It compares the code with itself.
+// Since C2 the simulation's arithmetic is the same on every engine (hyp, dsin, dcos, dpow12 and shuf in core.js use only + - * / sqrt
+// floor and round), so an island stepped here is the pinned island: test/portable.mjs compares it with hashes.json.
 import vm from 'node:vm';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,8 +13,8 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
-const ORDER = ['js/core.js', 'js/flavor.js', 'js/life.js', 'js/watcher.js', 'js/sim.js', 'assets/sprites/buildings.js',
-  'js/render.js', 'js/audio.js', 'js/save.js', 'js/main.js'];
+export const ORDER = ['js/core.js', 'js/flavor.js', 'js/life.js', 'js/watcher.js', 'js/sim.js', 'assets/sprites/buildings.js',
+  'js/render.js', 'js/look.js', 'js/folk.js', 'js/goods.js', 'js/audio.js', 'js/save.js', 'js/main.js'];
 
 function stub() {
   const f = function () {};
@@ -33,7 +33,11 @@ function stub() {
 }
 
 // `warn` collects every console.warn and console.error line, the way the harness collects `hearth:` lines from the page.
-export function loadHearth() {
+// C3 (the server) uses the same loader (#816) and adds three options, all unused by the tests: `root` (a copy of the game's folder, to
+// try other code), `globals` (names placed in the context before the scripts run: the server passes btoa and atob, which lzEnc needs),
+// and `after` (source run in the context once the scripts have loaded: the server's tests use it to inject a failure).
+export function loadHearth(opts = {}) {
+  const root = opts.root || ROOT;
   const S = stub(), warns = [];
   const store = new Map();
   const ctx = {
@@ -47,8 +51,10 @@ export function loadHearth() {
     Image: function () { return S; },
   };
   ctx.window = ctx;
+  Object.assign(ctx, opts.globals);
   vm.createContext(ctx);
-  for (const f of ORDER) vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
+  for (const f of ORDER) vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f });
+  if (opts.after) vm.runInContext(opts.after, ctx, { filename: 'after.js' });
   // `ev` reads and writes the scripts' own top-level let/const, which window.__hearth only partly exposes
   const ev = code => vm.runInContext(code, ctx);
   return { H: ctx.__hearth, ev, ctx, warns };
