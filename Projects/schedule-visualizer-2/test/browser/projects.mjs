@@ -1087,6 +1087,7 @@ test('item 8: the label count only primes on load, announces the largest thresho
   await freshDevice(page);
   const live = () => page.$eval('#projects [data-line="label-count-live"]', (el) => el.textContent);
   await typeLabel(page, 'a'.repeat(55));
+  await waitSaved(page); // the label is on the device before the reload, not racing its autosave
   await page.reload({ waitUntil: 'load' });
   await loaded(page);
   await listed(page, 1);
