@@ -38,26 +38,57 @@ line on the web container you already have. Nothing else changes.
 | `HEARTH_DATA` | `./hearth-data` | private state: `anchor.json` and the newest two epoch files |
 | `HEARTH_PUBLIC` | `./hearth-public` | what the web server serves |
 | `HEARTH_SEED` | `7` | the first island's seed; only read when the data folder is empty |
-| `HEARTH_DAY_SECONDS` | `1200` | real seconds per island day (20 minutes: 72 island days a real day) |
-| `HEARTH_ERA_DAYS` | `90` | real days per era; published in `live.json` only until eras are built (C7) |
+| `HEARTH_DAY_SECONDS` | `1200` | real seconds per island day (20 minutes: 72 island days a real day), for the next island founded. An island that exists keeps the pace it was founded with |
+| `HEARTH_ERA_DAYS` | `90` | real days an island lives. At the first epoch past that it is archived and its far island is founded (see "Eras") |
 
-**Changing the pace.** Change it only on a new island. `live.mjs` takes the
-pace from `HEARTH_DAY_SECONDS` at every start but anchors the clock at the
-founding, so changing the value on an island that exists makes the clock
-compute a different step for the same wall time: slower and the island waits
-until the new pace catches up with the steps already taken, faster and it races
-ahead to catch up. `live.json` also still publishes the old pace in its
-`clock`, so the page would disagree with the server. To change the pace:
-`docker compose stop hearth-live`, empty `data/` and `public/` (copy `data/` away
-first if the old island matters), set the new value, start. That founds a new
-island at `HEARTH_SEED` on day 1.
+**Changing the pace.** Edit `HEARTH_DAY_SECONDS` and restart; nothing is
+emptied. The pace of an island is written into its `anchor.json`
+(`daySeconds`, and `stepMs` derived from it) when the island is founded, and
+`live.mjs` reads it from there at every start. A different environment value
+leaves the island that is running alone, so its history is not retimed and
+`live.json` agrees with the page; the server logs one line saying so
+("HEARTH_DAY_SECONDS is N but this era runs at M; N applies from the next
+era"), and the next era's anchor takes the new value. To change the pace of the
+island that is running now, the only way is the old one: stop the container,
+empty `data/` and `public/` (copy `data/` away first if the island matters),
+set the new value, start; that founds a new island at `HEARTH_SEED` on day 1.
+An anchor from before eras (no `daySeconds`) keeps the pace its `stepMs` says
+and has it written in at the first start.
+
+## Eras
+
+An island lives `HEARTH_ERA_DAYS` real days. At the first epoch whose wall
+time is at or past that (so a long absence ends it at the same epoch a
+second-by-second run would), `era.mjs` files it and founds the next:
+
+- `public/eras/<era>/final.json` (the last epoch's snapshot, the same shape as
+  an epoch file) and `public/eras/<era>/saga.html`, and a row in
+  `public/eras.json` (`{v, eras:[{era, seed, name, founded, ended, years,
+  people, graves}]}`);
+- up to four founders: the people who sailed away for the far island, newest
+  first, then living adults who dream of it or are brave or restless, by name.
+  No random draw;
+- the new island is founded at the far island's seed (`farSeed` of the old one,
+  so the old island is on its horizon), its first settlers take the founders'
+  names, its far island is named for the old village with its lamp lit, and
+  its chronicle opens with the founding;
+- a new anchor at the wall time of the epoch that ended the old era, era
+  number one higher, epoch numbers from 0 again. `data/epoch/` and
+  `public/epoch/` then hold only the new era's files (`1-0.json` and on); the
+  old era's epoch files are removed, `final.json` is what is kept.
+
+A kill part way is safe: the new epoch 0 is written before the new anchor, and
+the old era's files are removed after it, so a restart that finds the old
+anchor ends the era again to the same bytes. `live.json` names the era; the
+page moves to the new island by itself and lists the old ones under "the
+island before this one".
 
 ## What lives where
 
-- `data/anchor.json`, `data/epoch/0-<n>.json`: the only state. Plain files,
+- `data/anchor.json`, `data/epoch/<era>-<n>.json`: the only state. Plain files,
   each written to a temporary name and renamed, so a kill leaves either the old
   file or the new one.
-- `public/live.json` (every epoch), `public/epoch/0-<n>.json` (once each),
+- `public/live.json` (every epoch), `public/epoch/<era>-<n>.json` (once each), `public/eras.json` and `public/eras/<era>/` (at an era's end),
   `public/saga.html` and `chronicle.txt` (every epoch), `public/health.json`
   (every minute). Epoch files are kept for 48 hours, then one a UTC day.
 
@@ -98,7 +129,10 @@ tar -C <state>/hearth-live -czf hearth-live-data-$(date +%F).tgz data
 ```
 
 `public/` is rebuilt from `data/` at the next epoch for everything but old epoch
-files, so it needs no backup.
+files and the era archive (`public/eras.json`, `public/eras/`), which exist
+nowhere else once an era has ended. Once the first era ends, add them to the
+archive:
+`tar -C <state>/hearth-live -czf hearth-live-eras-$(date +%F).tgz public/eras public/eras.json`.
 
 ## Restore
 

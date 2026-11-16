@@ -223,6 +223,46 @@ await lctx.close();
   check('(5) with no /hearth-live/ route the page says where the island lives and links index.html', /kept on the site/.test(o.text) && o.href === 'index.html' && !o.ready && o.dead, JSON.stringify(o));
   await ctx.close();
 }
+// ---- (6) C7: an era ends under an open page, and the page moves to the island that follows it ----
+// A second server on its own folders and the same clock, whose era is five island days (it ends at epoch 6, about a minute in). The page is opened on era 0.
+{
+  const d2 = path.join(SCRATCH, 'era');
+  const cfg2 = envConfig({ HEARTH_DATA: path.join(d2, 'data'), HEARTH_PUBLIC: path.join(d2, 'pub'), HEARTH_SEED: '7', HEARTH_DAY_SECONDS: String(DAY_SECONDS), HEARTH_ERA_DAYS: String(5 * DAY_SECONDS / 86400) });
+  const live2 = createLive(cfg2, { now });
+  const t2 = setInterval(() => { try { live2.tick(); } catch (e) { console.log('tick2 threw', e.message); } }, 200);
+  const srv2 = await serve({ mounts: { '/hearth-live/': path.resolve(cfg2.pub) }, date: now });
+  const { ctx, page } = await open(srv2.url, 'live.html');
+  await readyLive(page);
+  check('(6) the page opens on era 0, which has no island before it: no button', await page.evaluate(() => window.__hearthLive.era === 0 && document.getElementById('lv-eras').hidden));
+  const went = await page.waitForFunction(() => window.__hearthLive.era === 1 && window.__hearthLive.eras === 1, null, { timeout: 120000 }).then(() => true, () => false);
+  check('(6) the page followed the server from era 0 into era 1 on its own, without a reload', went, `page at era ${await page.evaluate(() => window.__hearthLive.era)}, server at ${live2.era}`);
+  if (went) {
+    const final0 = JSON.parse(fs.readFileSync(path.join(cfg2.pub, 'eras', '0', 'final.json'), 'utf8')), rows = JSON.parse(fs.readFileSync(path.join(cfg2.pub, 'eras.json'), 'utf8')).eras;
+    const lj2 = JSON.parse(fs.readFileSync(path.join(cfg2.pub, 'live.json'), 'utf8'));
+    check('(6) the page followed the server into era 1 and stays at its epochs', lj2.era === 1 && await page.evaluate(() => window.__hearthLive.era === 1 && window.__hearthLive.epoch >= 0), JSON.stringify({ era: lj2.era, epoch: lj2.epoch }));
+    const far = await page.evaluate(() => ({ n: window.__hearth.farRec.n, kn: window.__hearth.farRec.kn, seed: window.__hearth.farRec.s }));
+    check('(6) the island on the page is the new one: its far record is known and points at island 7', far.kn === 1 && far.seed === 7 && far.n === (rows[0].name || 'island ' + (7).toString(36)), JSON.stringify(far));
+    const btn = await page.evaluate(() => { const b = document.getElementById('lv-eras'); return { hidden: b.hidden, shown: getComputedStyle(b).display !== 'none', text: b.textContent }; });
+    check('(6) a button offers "the island before this one"', !btn.hidden && btn.shown && /before this one/.test(btn.text), JSON.stringify(btn));
+    await page.click('#lv-eras');
+    const pn = await page.evaluate(() => { const el = document.getElementById('live-eras'); return { hidden: el.hidden, shown: getComputedStyle(el).display !== 'none', rows: el.querySelectorAll('p').length, saga: [...el.querySelectorAll('.lv-era-saga')].map(a => a.getAttribute('href')) }; });
+    check('(6) it opens a panel with one row and the old island\'s saga link', !pn.hidden && pn.shown && pn.rows === 1 && pn.saga.join() === '/hearth-live/eras/0/saga.html', JSON.stringify(pn));
+    const sg = await page.evaluate(async () => { const r = await fetch('/hearth-live/eras/0/saga.html'); return { ok: r.ok, html: /<html/i.test(await r.text()) }; });
+    check('(6) the archive link loads: the old island\'s saga is a page', sg.ok && sg.html, JSON.stringify(sg));
+    const href = await page.evaluate(() => lvEraCopy(0));
+    check('(6) its final island as a copy is index.html with the final file\'s own save string', href === 'index.html#' + final0.save, String(href).slice(0, 40));
+    const [pop] = await Promise.all([page.waitForEvent('popup'), page.click('.lv-era-copy[data-era="0"]')]);
+    await pop.waitForFunction(() => !!window.__hearth);
+    await pop.evaluate(() => { window.__hearth.speed = 0; });
+    NH.unpack(JSON.parse(NH.lzDec(final0.save)));
+    const pd = await pop.evaluate(() => window.__hearth.dayCount);
+    check('(6) the copy link opens that final island on index.html, at its last day', pd === NH.dayCount && /index\.html/.test(pop.url()), `${pd} vs ${NH.dayCount} ${pop.url().slice(0, 60)}`);
+    await pop.close();
+    check('(6) the page counted no mismatch against the server through the change, and never touched hearth.auto', await page.evaluate(() => window.__hearthLive.mismatches === 0 && localStorage.getItem('hearth.auto') === 'SENTINEL'));
+  }
+  clearInterval(t2);
+  await ctx.close(); srv2.close();
+}
 check('no page error and no hearth: console line anywhere in the run', bad.length === 0, bad.join(' | '));
 
 await browser.close();
