@@ -17,7 +17,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 let fails = 0;
 const check = (name, ok, detail) => { if (!ok) fails++; console.log(`${ok ? '  ok  ' : 'FAIL  '}${name}${!ok && detail !== undefined ? '  -> ' + detail : ''}`); };
 
-// scratch folders go under ~/.cache, not /tmp (RAM on the build machine)
+// scratch folders go under ~/.cache, not /tmp (RAM on the build machine);
+// a fresh CI runner has no ~/.cache yet, so make it first
+fs.mkdirSync(path.join(os.homedir(), '.cache'), { recursive: true });
 const SCRATCH = fs.mkdtempSync(path.join(os.homedir(), '.cache', 'hearth-server-test-'));
 process.on('exit', () => fs.rmSync(SCRATCH, { recursive: true, force: true }));
 let nf = 0;

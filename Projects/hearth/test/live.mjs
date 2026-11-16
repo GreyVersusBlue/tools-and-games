@@ -24,6 +24,7 @@ const SPEED = 60, DAY_SECONDS = 600;
 let failed = 0;
 function check(name, ok, detail = '') { console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${ok ? '' : ' — ' + detail}`); if (!ok) failed++; }
 
+fs.mkdirSync(path.join(os.homedir(), '.cache'), { recursive: true }); // a fresh CI runner has no ~/.cache yet
 const SCRATCH = fs.mkdtempSync(path.join(os.homedir(), '.cache', 'hearth-live-test-'));
 process.on('exit', () => fs.rmSync(SCRATCH, { recursive: true, force: true }));
 const cfg = envConfig({ HEARTH_DATA: path.join(SCRATCH, 'data'), HEARTH_PUBLIC: path.join(SCRATCH, 'pub'), HEARTH_SEED: '7', HEARTH_DAY_SECONDS: String(DAY_SECONDS) });
