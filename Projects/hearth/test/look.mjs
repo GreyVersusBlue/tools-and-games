@@ -802,7 +802,7 @@ async function tierChecks() {
       for (const el of document.querySelectorAll('#tags .tag')) { if (el.hidden) continue; seen++; const r = R(el);
         if (r.b < 0 || r.t > vh || r.r < 0 || r.l > vw) continue; /* off the screen: nobody sees it */
         ymin = Math.min(ymin, r.t); ymax = Math.max(ymax, r.b); if (r.t < hud.b + 40) nearTop++; if (r.b > log.t - 40 && r.l < log.r + 40) nearLog++;
-        if (hit(r, hud)) bad.push(`${el.textContent} in the HUD at ${sx},${sy}`); if (hit(r, log)) bad.push(`${el.textContent} under the log at ${sx},${sy}`); } }
+        if (hit(r, hud)) bad.push(`${el.textContent} in the HUD at x ${sx}`); if (hit(r, log)) bad.push(`${el.textContent} under the log at x ${sx}`); } }
     return { seen, nearTop, nearLog, ymin, ymax, bad: bad.slice(0, 4), nbad: bad.length, hud, log };
   });
   console.log(`      phone: ${phone.seen} tags seen, tops ${Math.round(phone.ymin)} to ${Math.round(phone.ymax)}; HUD to ${Math.round(phone.hud.b)}, log from ${Math.round(phone.log.t)}`);
