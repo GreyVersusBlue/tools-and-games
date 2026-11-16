@@ -684,7 +684,9 @@ test('plain Restore answered held offers Open only; answered other-project goes 
       return { ok: false, code: 'refused', text: 'Not kept as a project (a test made this up).' };
     };
   });
-  await page.click(row);
+  // closing the refusal redraws the card, so the row's button may be replaced: find it and press it in one step
+  await page.waitForSelector(row);
+  await page.$eval(row, (button) => button.click());
   await page.waitForFunction(() => globalThis.asked.length === 1, { timeout: 5000 });
   assert.equal(await page.evaluate(() => globalThis.asked[0]), Number(key));
   assert.equal(await page.$eval('#recovery [data-line="point-problem"]', (el) => el.textContent), 'Not kept as a project (a test made this up).');
