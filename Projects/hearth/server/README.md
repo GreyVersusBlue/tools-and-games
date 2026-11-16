@@ -130,3 +130,23 @@ unpack time every 500 days. It fails if the cost per day at the end is over
 three times the first line's, if the compressed save passes 1.5 million
 characters, or if memory passes 384 MB. `--days 800` is the short form the
 nightly job runs.
+
+**Measured on 2026-11-16, seed 7, Node 22, Huginn, `node --max-old-space-size=192 longrun.mjs` (the container's heap flag), the full 6,480 days in 145.4 minutes, all three limits passed.**
+
+| Island day | ms/day | Save raw | Save compressed | Resident MB | Unpack ms | People |
+|---|---|---|---|---|---|---|
+| 500 | 787.0 | 205,783 | 77,716 | 228 | 460.8 | 50 |
+| 1000 | 977.8 | 288,058 | 106,436 | 243 | 472.9 | 50 |
+| 1500 | 997.8 | 352,605 | 126,183 | 242 | 443.4 | 48 |
+| 2000 | 1083.5 | 451,002 | 151,236 | 265 | 404.9 | 47 |
+| 2500 | 1069.6 | 498,134 | 165,700 | 287 | 439.9 | 47 |
+| 3000 | 1120.7 | 556,525 | 181,479 | 285 | 410.9 | 47 |
+| 3500 | 1221.6 | 627,000 | 200,735 | 283 | 434.7 | 45 |
+| 4000 | 1242.3 | 719,793 | 227,122 | 278 | 433.5 | 47 |
+| 4500 | 1382.0 | 794,429 | 252,279 | 278 | 625.3 | 50 |
+| 5000 | 1647.4 | 860,424 | 271,828 | 288 | 660.2 | 47 |
+| 5500 | 1622.0 | 945,056 | 296,370 | 290 | 890.2 | 47 |
+| 6000 | 2106.5 | 1,011,451 | 319,356 | 293 | 690.0 | 48 |
+| 6480 | 2254.8 | 1,069,959 | 338,079 | 306 | 729.3 | 44 |
+
+Cost per day at the end is 2.87 times the first line's (limit 3), the compressed save is 338,079 characters (limit 1.5 million), and resident memory peaks at 306 MB (limit 384). The cost ratio is the thin one: a little more growth in the last era would trip it. Earlier short runs read 342 and 373 MB at day 800 without the heap flag; under it the same island never passes 306 MB.
