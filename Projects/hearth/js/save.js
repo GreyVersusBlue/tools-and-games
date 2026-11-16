@@ -225,8 +225,16 @@ function migrate(o){for(const h of LADDER)if(o.v===h.from){h.up(o);o.v=h.to}retu
 // The same ladder walked backwards, to forge a save of shape v out of a current one. Test-only, and it lives here rather than in the
 // harness so a hop cannot be added without its inverse.
 function forge(o,v){for(let i=LADDER.length-1;i>=0;i--){const h=LADDER[i];if(o.v===h.to&&h.to>v){h.down(o);o.v=h.from}}return o}
+/* A save is untrusted input (C1): the log writes names and chronicle text through innerHTML, and a save is about to be something a server
+   accepts and republishes. Plain text on every load, in place, before anything is built from it: no < > & " or backtick in any string, and
+   none over 400 characters. The game's own bold names are added at display time and are not in the save, so nothing it writes is lost. */
+function plainSave(v){
+  if(typeof v==='string'){const t=v.replace(/[<>&"`]/g,'');return t.length>400?t.slice(0,400):t}
+  if(Array.isArray(v)){for(let i=0;i<v.length;i++)v[i]=plainSave(v[i]);return v}
+  if(v&&typeof v==='object'){for(const k of Object.keys(v))v[k]=plainSave(v[k]);return v}
+  return v}
 function unpack(o){
-  migrate(o);
+  migrate(o);plainSave(o);
   newWorld(o.s);
   time=o.t;dayCount=o.d;lastYear=o.ly;lastSea=o.ls;wood=o.w;food=o.f;granary=o.g;hunger=o.hu;
   wx=o.wx;rain=wx==='rain'||wx==='thunder';storm=wx==='thunder';wxT=o.wt;snowD=o.sn;frozen=!!o.fz;fogA=o.fo;
@@ -252,7 +260,7 @@ function unpack(o){
   things=o.hl.map(a=>({n:a[0],full:a[1],holder:a[2]||0,src:a[3],ci:a[4]>=0?a[4]:undefined,hist:a[5].map(h=>({d:h[0],s:h[1]}))}));heirYr=o.hy;
   events=o.ev.map(a=>({d:a[0],y:a[1],kind:a[2],label:a[3]}));
   for(const s of springs){for(let y=Math.floor(s.y-s.r-1);y<=s.y+s.r+1;y++)for(let x=Math.floor(s.x-s.r-1);x<=s.x+s.r+1;x++){
-      if(x<1||y<1||x>=W-1||y>=H-1)continue;if(Math.hypot(x+.5-s.x,(y+.5-s.y)*1.3)>s.r)continue;if(at(x,y)!==GRASS)continue;
+      if(x<1||y<1||x>=W-1||y>=H-1)continue;if(hyp(x+.5-s.x,(y+.5-s.y)*1.3)>s.r)continue;if(at(x,y)!==GRASS)continue;
       tiles[idx(x,y)]=WATER;elev[idx(x,y)]=.19}
     spots.push({l:'the spring',x:s.x,y:s.y+1.6})}
   for(const f of farms)tiles[idx(f.x,f.y)]=FARM;
@@ -281,7 +289,7 @@ function unpack(o){
   dead=o.de.map(a=>({name:a[0],rels:a[1].map(r=>({who:r[0],k:r[1]})),dead:true,hist:[],tr:[]}));
   gone=o.go.map(a=>({name:a[0],far:a[1]||0}));
   voyage=o.vo?{name:o.vo[0],st:o.vo[1],day:o.vo[2],back:!!o.vo[3],n:o.vo[4],p:o.vo[5]?mk(o.vo[5]):byName(o.vo[0])}:null;
-  if(voyage&&!voyage.p)voyage=null;
+  if(voyage&&!voyage.p&&voyage.st!=='stayed')voyage=null;     // 'stayed' has nobody to find: the one who did not come back is not packed and not in people (#1058)
   if(voyage&&voyage.st==='going')voyage.p.task='voyage';
   if(ruin&&o.rb)ruin.built=true;
   if(farIsle)farIsle.lit=!!o.fl;
@@ -300,7 +308,7 @@ function unpack(o){
   lorePl=o.lp.filter(k=>LORE_PLACE[k]);walkP=null;
   for(const k of lorePl){const D=LORE_PLACE[k],pos=D.at();if(pos&&!spots.some(sp=>sp.l===D.l))spots.push({l:D.l,x:pos.x,y:pos.y,lore:1,k})}
   loreN={};for(const a of o.ln)if(LORE_PLACE[a[0]])loreN[a[0]]=a[1];
-  boundsYr=o.by;boundsP=null;
+  boundsYr=o.by;boundsP=null;pullsNow();
   heat=new Float32Array(W*H);boats=[];fx=[];skips=[];gusts=[];fires=houses.length?[{x:center.x,y:center.y,t:0}]:[];
   saidToday=new Set();usedTpl=new Map();
   paintedKey='';paintTerrain();spawnWildlife();clouds=[];for(let i=0;i<2;i++)addCloud(false);

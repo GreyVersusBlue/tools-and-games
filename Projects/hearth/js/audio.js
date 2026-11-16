@@ -2,8 +2,8 @@
 // Classic scripts sharing one global scope; the load order in index.html is the old single file’s order and it matters.
 // ---------- audio: the island, heard (sprint 6) ----------
 // everything here uses Math.random, never R() — sound must not touch the simulation's stream
-let AC=null,audioOn=false,musOn=true,master=null,ambG,sfxG,musG,windG,windF,rainG,crickG,waveG,waveF,sprG,padG,nBuf=null;
-let padOsc=[],birdT=0,gullT=3,creakT=5,musT=3,musKey='',sfxN=0,lastKnock=0;
+let AC=null,audioOn=false,musOn=true,master=null,ambG,sfxG,musG,windG,windF,rainG,rainW,rainV,rainT,whisG,crickG,waveG,waveF,sprG,padG,nBuf=null;
+let padOsc=[],birdT=0,gullT=3,creakT=5,musT=3,musKey='',sfxN=0,lastKnock=0,crackT=.3,plopT=.4,callT=4,gooseT=2,owlT=9,frogT=3,murG=null,motifKey='';
 const cur={x:0,y:0};
 const ar=(a,b)=>b===undefined?Math.random()*a:a+Math.random()*(b-a);
 const store=(k,v)=>{try{localStorage.setItem('hearth.'+k,v)}catch(e){}};
@@ -13,6 +13,16 @@ function noiseBuf(){const b=AC.createBuffer(1,AC.sampleRate*2,AC.sampleRate);con
 function mkPan(p){if(!AC.createStereoPanner)return AC.createGain();const n=AC.createStereoPanner();n.pan.value=Math.max(-1,Math.min(1,p));return n}
 // how loud and how far to the side a thing at (x,y) is, from wherever the watcher is looking
 function place(x,y){const dx=x-cur.x,d=Math.hypot(dx,y-cur.y);return{g:Math.max(.08,1-d/42),p:Math.max(-1,Math.min(1,dx/30))}}
+// A11: per-bed make-up gains, measured so each bed alone reads the same RMS on rainG as the old single high-passed bed did
+const RAINK=[1.013,6.39,3.48];
+// what the view is over, as three weights that sum to 1: [water, village, trees]. Reads only; nothing here is drawn from R().
+function rainMix(){const cx=cur.x|0,cy=cur.y|0;let wet=0,n=0;for(let dy=-4;dy<=4;dy+=2)for(let dx=-4;dx<=4;dx+=2){n++;if(at(cx+dx,cy+dy)===WATER)wet++}
+  let dh=99;for(const h of houses)dh=Math.min(dh,Math.hypot(h.x+1-cur.x,h.y+1-cur.y));
+  let dt=99;for(const t of trees){const d=Math.hypot(t.x-cur.x,t.y-cur.y);if(d<dt)dt=d}
+  const a=wet/n,b=Math.max(0,1-dh/7)*(1-a),c=Math.max(.15,Math.max(0,1-dt/6))*(1-a)*(1-b*.7);
+  const s=a+b+c;return[a/s,b/s,c/s]}
+// the hearth is lit by night, or on a fire night at any hour; how far its crackle carries is 10 tiles
+const fireLit=()=>!!fires.length&&(isNight()||storyDay===dayCount);
 function startAudio(){AC=new (window.AudioContext||window.webkitAudioContext)();nBuf=noiseBuf();
   master=AC.createGain();master.gain.value=audioOn?1:0;master.connect(AC.destination);
   ambG=AC.createGain();ambG.connect(master);sfxG=AC.createGain();sfxG.connect(master);musG=AC.createGain();musG.gain.value=0;musG.connect(master);
@@ -26,7 +36,16 @@ function startAudio(){AC=new (window.AudioContext||window.webkitAudioContext)();
   waveG=AC.createGain();waveG.gain.value=0;waveF.connect(waveG).connect(ambG);loop(waveF);
   lfo(.085,240,waveF.frequency);lfo(.062,.016,waveG.gain);
   // rain goes straight to the master: it is the thing everything else ducks under
-  {const hp=AC.createBiquadFilter();hp.type='highpass';hp.frequency.value=2200;rainG=AC.createGain();rainG.gain.value=0;hp.connect(rainG).connect(master);loop(hp)}
+  // A11: three beds crossfaded by what is under the view (water: bright hiss, village: roofs near 1.8 kHz, trees: a low soft wash). rainG is still
+  // the one level the game sets, and the beds' own gains are equal-power weights, so the sum stays where the single bed was.
+  {rainG=AC.createGain();rainG.gain.value=0;rainG.connect(master);
+    const bed=(type,f,q,k,off)=>{const fl=AC.createBiquadFilter();fl.type=type;fl.frequency.value=f;fl.Q.value=q;const gn=AC.createGain();gn.gain.value=0;const k2=AC.createGain();k2.gain.value=k;
+      const sr=AC.createBufferSource();sr.buffer=nBuf;sr.loop=true;sr.connect(fl).connect(k2).connect(gn).connect(rainG);sr.start(0,off);return gn};
+    rainW=bed('highpass',3400,.7,RAINK[0],.31);rainV=bed('bandpass',1800,5,RAINK[1],.77);rainT=bed('lowpass',1100,.6,RAINK[2],1.23)}
+  // wind's thin whistle: a narrow band that only opens in winter and in storms
+  {const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=1250;bp.Q.value=14;whisG=AC.createGain();whisG.gain.value=0;bp.connect(whisG).connect(ambG);loop(bp);lfo(.13,260,bp.frequency);lfo(.21,.006,whisG.gain)}
+  // A12: the market's murmur, a band of noise whose formant drifts; it only opens at midday, near the market, with three or more at it
+  {const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=650;bp.Q.value=1.4;murG=AC.createGain();murG.gain.value=0;bp.connect(murG).connect(ambG);loop(bp);lfo(.23,260,bp.frequency);lfo(.37,180,bp.frequency)}
   // a spring, if you are standing near one
   {const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=3000;bp.Q.value=1.6;sprG=AC.createGain();sprG.gain.value=0;bp.connect(sprG).connect(ambG);loop(bp);lfo(.7,900,bp.frequency)}
   // crickets
@@ -105,14 +124,78 @@ const songHz=(d,k)=>k[0]*Math.pow(2,(k[1][d%5]+(d>=5?12:0))/12)/2;
 // The tune, at the fire. Pass one is the composer alone; on pass two the ones who know it come in, which is what the prose at the fire
 // already says happens. Every voice is one note() per degree, scheduled ahead on sfxG, so the storm ducks this with everything else.
 // Returns the degrees, or null when nothing sounded — a lost song is silent, and that is the design.
+/* A13: a song that sounds sung. Each voice is one sawtooth through two band-pass filters at vowel formants (a different pair per voice) with a slow
+   vibrato, so the fire-night song is a small choir and not five beeps; a child's voice is an octave up; a 180 ms feedback delay (gain .25) sits on
+   the song and nothing else, for the hill. What was scheduled is kept in singNow, a presentation variable only folk.js reads: start (animT clock),
+   beat, degrees, who sings on each pass. A lost song schedules nothing and leaves singNow alone. Math.random and R() are never called here. */
+let singNow=null;
+const FORMANTS=[[700,1100],[600,1250],[800,1000],[500,1400],[650,1150]];
+const SONG_LEAD=.2,SONG_BEAT=.38,SONG_GAP=.45,SONG_MAKEUP=1.7;     /* two narrow formants pass little of a sawtooth: this brings the choir back to the level the five beeps measured (peak 0.103) */
+function songVoice(deg,k,t,beat,vol,pan,vi,kid,dest){const o=AC.createOscillator(),vib=AC.createOscillator(),vg=AC.createGain(),sum=AC.createGain();
+  o.type='sawtooth';vib.frequency.value=5+vi*.35;vg.gain.value=kid?14:9;vib.connect(vg).connect(o.detune);   /* cents; a child's wobbles a little more */
+  const fm=FORMANTS[vi%FORMANTS.length],sc=kid?1.18:1;
+  for(const f of fm){const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=f*sc;bp.Q.value=5;o.connect(bp);bp.connect(sum)}
+  deg.forEach((d,i)=>{const f=songHz(d,k)*(kid?2:1),at=t+i*beat,g=AC.createGain();g.gain.value=0;o.frequency.setValueAtTime(f,at);
+    g.gain.setValueAtTime(.0001,at);g.gain.linearRampToValueAtTime(vol*SONG_MAKEUP,at+.14);g.gain.exponentialRampToValueAtTime(.0004,at+beat*2.1);
+    sum.connect(g);g.connect(dest)});
+  const end=t+deg.length*beat+beat*2.1+.06;o.start(t);vib.start(t);o.stop(end);vib.stop(end)}
 function songTune(sg,voices){if(!sg||sg.lost)return null;const deg=songDegrees(sg.ci);
-  if(!AC||!audioOn)return deg;                                        // the tune is a fact about the island; the sound is a setting
-  const k=KEYS[sea()],t=AC.currentTime+.2,beat=.38,vs=Math.max(1,Math.min(4,(voices|0)||1));
-  deg.forEach((d,i)=>note(songHz(d,k),beat*2.1,.05,'triangle',-.12,sfxG,t+i*beat));
-  const t2=t+deg.length*beat+.45;
-  for(let v=0;v<vs;v++){const pan=vs<2?0:(v/(vs-1))*1.1-.55;          // the second pass, spread across the fire
-    deg.forEach((d,i)=>note(songHz(d,k)*(v?1.003:1),beat*2.1,v?.026:.05,v?'sine':'triangle',pan,sfxG,t2+i*beat+v*.02))}
+  const vs=Math.max(1,Math.min(4,(voices|0)||1)),beat=SONG_BEAT,t2=SONG_LEAD+deg.length*beat+SONG_GAP;
+  const names=[sg.comp].concat((sg.kn||[]).filter(n=>n!==sg.comp)).filter(n=>n!=null&&n!=='').slice(0,vs);
+  singNow={a:animT+SONG_LEAD,beat,deg,names,second:animT+t2,end:animT+t2+(deg.length+1)*beat};   /* the tune is a fact about the island; the picture follows it with or without the sound */
+  if(!AC||!audioOn)return deg;
+  const k=KEYS[sea()],t=AC.currentTime+SONG_LEAD,bus=AC.createGain(),dly=AC.createDelay(.5),fb=AC.createGain(),wet=AC.createGain();
+  dly.delayTime.value=.18;fb.gain.value=.25;wet.gain.value=.25;bus.connect(sfxG);bus.connect(dly);dly.connect(fb).connect(dly);dly.connect(wet).connect(sfxG);
+  const kidOf=n=>{const q=n&&byName(n);return !!q&&isKid(q)};
+  songVoice(deg,k,t,beat,.05,-.12,0,kidOf(names[0]),bus);
+  const tt=t+deg.length*beat+SONG_GAP;
+  for(let v=0;v<vs;v++){const pan=vs<2?0:(v/(vs-1))*1.1-.55;songVoice(deg,k,tt+v*.02,beat,v?.026:.05,pan,v,kidOf(names[v]),bus)}
+  setTimeout(()=>{try{bus.disconnect();wet.disconnect();fb.gain.value=0}catch(e){}},(deg.length*beat*2+SONG_GAP+beat*2.1+2.5)*1000);
   return deg}
+// ---------- A12: the island's own voices ----------
+// Math.random for the sound, never R(). Nothing here is written to the simulation; every function only reads it. The one thing that is a
+// function of the seed is the dawn motif, and it is derived, never stored, the way a tune is.
+function voice(f0,f1,dur,vol,type,fil,fq,pan,bus,when,vib){const t=when||AC.currentTime,o=AC.createOscillator(),g=AC.createGain(),lp=AC.createBiquadFilter();
+  o.type=type;o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(f1,t+dur*.8);lp.type='bandpass';lp.frequency.value=fil;lp.Q.value=fq;
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+Math.min(.04,dur*.3));g.gain.exponentialRampToValueAtTime(.0005,t+dur);
+  if(vib){const v=AC.createOscillator(),vg=AC.createGain();v.frequency.value=vib[0];vg.gain.value=vib[1]*vol;v.connect(vg).connect(g.gain);v.start(t);v.stop(t+dur+.05)}
+  o.connect(lp).connect(g).connect(mkPan(pan)).connect(bus||ambG);o.start(t);o.stop(t+dur+.05)}
+// spring: two notes, the second a fourth or so up
+function twoNote(){if(!AC||!audioOn)return;const f=ar(1700,2500),t=AC.currentTime,pn=ar(-.6,.6);
+  voice(f*1.04,f,.17,.105,'sine',f,1,pn,ambG,t);voice(f*1.3,f*1.25,.22,.105,'sine',f*1.3,1,pn,ambG,t+.2)}
+// summer, by day: a dry buzz, noise through a high narrow band, chopped at insect speed
+function buzz(){if(!AC||!audioOn)return;const t=AC.currentTime,d=ar(.9,1.5),n=AC.createBufferSource();n.buffer=nBuf;n.loop=true;
+  const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=ar(5200,6400);bp.Q.value=7;const g=AC.createGain(),pn=mkPan(ar(-.7,.7));
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.7,t+.25);g.gain.setValueAtTime(.7,t+d-.3);g.gain.linearRampToValueAtTime(0,t+d);
+  const ch=AC.createOscillator(),cg=AC.createGain();ch.type='square';ch.frequency.value=ar(48,70);cg.gain.value=.35;const base=AC.createGain();base.gain.value=.65;
+  const am=AC.createGain();am.gain.value=0;ch.connect(cg).connect(am.gain);base.connect(am.gain);
+  n.connect(bp).connect(am).connect(g).connect(pn).connect(ambG);n.start(t);n.stop(t+d+.05);ch.start(t);ch.stop(t+d+.05)}
+// autumn: a goose, from wherever the geese are. Silent when there are none in the air.
+function gooseCall(){if(!geese||!AC||!audioOn||sfxN>5)return false;sfxN++;const P=place(geese.x,geese.y),t=AC.currentTime,f=ar(380,470);
+  voice(f,f*1.28,.3,.18*P.g,'sawtooth',900,1.6,P.p,ambG,t);voice(f*1.18,f*.9,.34,.18*P.g,'sawtooth',900,1.6,P.p,ambG,t+.36);return true}
+// winter: one low caw, now and then
+function caw(){if(!AC||!audioOn)return;const f=ar(210,260);voice(f*1.1,f*.7,.5,.14,'sawtooth',f*2.4,1.2,ar(-.5,.5),ambG)}
+// a clear night outside winter: an owl, two soft notes
+function owl(){if(!AC||!audioOn)return;const t=AC.currentTime,pn=ar(-.6,.6);voice(430,415,.55,.095,'sine',430,1.2,pn,ambG,t);voice(345,320,.75,.095,'sine',345,1.2,pn,ambG,t+.62)}
+// frogs, at a spring at dusk: a short pulsed croak, placed at the water
+function frog(x,y){if(!AC||!audioOn)return;const P=place(x,y),t=AC.currentTime,f=ar(150,210);
+  for(let i=0;i<2+((Math.random()*3)|0);i++)voice(f,f*.8,.14,.12*P.g,'square',f*3,2,P.p,ambG,t+i*.17,[32,.8])}
+// the market's level as a gain target, from the state alone: midday, within 8 tiles of the market, three or more of them at it
+function murLevel(){const m=getB('market');if(!m)return 0;const f=dayFrac();if(f<=.45||f>=.56)return 0;
+  let n=0;for(const p of people)if(p.task==='market')n++;if(n<3)return 0;
+  return Math.max(0,1-Math.hypot(m.x+1.5-cur.x,m.y+1.5-cur.y)/8)*Math.min(1,n/5)}
+// the dawn motif: three to five notes, off the seed alone by the walk a song takes (songDegrees(-1) multiplies its index by nothing, so this
+// phrase is the seed's own and no story's). Two devices on one link agree; two islands do not.
+const motifDegrees=()=>songDegrees(-1).slice(0,3+((seed>>>0)%3));
+function dawnMotif(){if(!AC||!audioOn)return null;const deg=motifDegrees(),k=KEYS[sea()],t=AC.currentTime+.1;
+  deg.forEach((d,i)=>note(songHz(d,k)*2,2.2,.3,'sine',0,musG,t+i*.75));return deg}
+function crackle(g,k,fx){if(!AC||!audioOn)return;const t=AC.currentTime,src=AC.createBufferSource();src.buffer=nBuf;
+  const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=ar(1400,4800);bp.Q.value=2.5;const gn=AC.createGain(),v=.25*g*k*(.7+Math.random()*.3);
+  gn.gain.setValueAtTime(0,t);gn.gain.linearRampToValueAtTime(v,t+.002);gn.gain.exponentialRampToValueAtTime(.0005,t+ar(.025,.07));
+  src.connect(bp).connect(gn).connect(mkPan((fx-cur.x)/30)).connect(ambG);src.start(t,ar(1.5));src.stop(t+.09)}
+function plop(w){if(!AC||!audioOn)return;const o=AC.createOscillator(),gn=AC.createGain(),t=AC.currentTime,f=ar(220,420);o.type='sine';
+  o.frequency.setValueAtTime(f,t);o.frequency.exponentialRampToValueAtTime(f*.45,t+.09);
+  gn.gain.setValueAtTime(0,t);gn.gain.linearRampToValueAtTime(.05*w,t+.006);gn.gain.exponentialRampToValueAtTime(.001,t+.12);o.connect(gn).connect(mkPan(ar(-.5,.5))).connect(ambG);o.start(t);o.stop(t+.14)}
 function chirp(){if(!AC||!audioOn)return;const o=AC.createOscillator(),gn=AC.createGain(),t=AC.currentTime;o.type='sine';const f=2200+Math.random()*1800;
   o.frequency.setValueAtTime(f,t);o.frequency.exponentialRampToValueAtTime(f*1.5,t+.06);o.frequency.exponentialRampToValueAtTime(f*.9,t+.13);
   gn.gain.setValueAtTime(0,t);gn.gain.linearRampToValueAtTime(.06,t+.02);gn.gain.linearRampToValueAtTime(0,t+.15);
@@ -128,16 +211,31 @@ function audioTick(dt){sfxN=0;if(!AC||!audioOn)return;const t=AC.currentTime,s=s
   const duck=storm?.4:rain?.62:wx==='snow'?.85:1;                        // everything steps back under rain
   ambG.gain.setTargetAtTime(duck,t,1.2);sfxG.gain.setTargetAtTime(.5+.5*duck,t,.7);
   rainG.gain.setTargetAtTime(rain?(storm?.14:.09):0,t,1.5);
+  {const m=rainMix();rainW.gain.setTargetAtTime(Math.sqrt(m[0]),t,.6);rainV.gain.setTargetAtTime(Math.sqrt(m[1]),t,.6);rainT.gain.setTargetAtTime(Math.sqrt(m[2]),t,.6);
+    // sparse low plops on the water, only while it is raining and the view is over the sea
+    plopT-=dt;if(plopT<=0){plopT=ar(.18,.7);if(rain&&Math.random()<m[0])plop(m[0]*(storm?1.3:1))}}
+  whisG.gain.setTargetAtTime((s==='winter'?.012:0)+(storm?.016:0),t,2.5);
   windG.gain.setTargetAtTime(({clear:.045,overcast:.06,rain:.07,thunder:.12,fog:.03,snow:.055})[wx]+(s==='winter'?.012:0),t,2);
   windF.frequency.setTargetAtTime(storm?640:wx==='fog'?250:380,t,4);
   crickG.gain.setTargetAtTime(night&&!rain&&s!=='winter'?.045:0,t,2);
   // the sea, from where you are looking
   {const sh=nearestShore(cur.x,cur.y),d=sh?Math.hypot(sh.x-cur.x,sh.y-cur.y):40;
     const v=Math.max(0,1-d/18)*(frozen?.3:1)*(storm?1.8:rain?1.2:1);
-    waveG.gain.setTargetAtTime(.01+v*.075,t,.7)}
+    waveG.gain.setTargetAtTime(.01+v*.075*(.7+.3*(tide()+1)/2),t,.7)}   // fuller at high water
   // and the spring, if there is one near
   {let d=99;for(const sp of springs)d=Math.min(d,Math.hypot(sp.x-cur.x,sp.y-cur.y));
     sprG.gain.setTargetAtTime(d<9?.022*(1-d/9):0,t,.9)}
+  // the fire's crackle: short band-passed clicks at random intervals, heard within 10 tiles, fuller on a fire night
+  crackT-=dt;if(crackT<=0){const fd=Math.hypot(center.x-cur.x,center.y-cur.y),g=Math.max(0,1-fd/10);crackT=ar(.07,.45);if(g>.02&&fireLit())crackle(g,storyDay===dayCount?1.6:1,center.x)}
+  // A12: the island's own voices, by season and hour
+  {const e=edges(),f=dayFrac();
+    murG.gain.setTargetAtTime(.1*murLevel(),t,1.2);
+    callT-=dt;if(callT<=0){callT=ar(5,14);if(!night&&!rain&&wx!=='snow'){
+      if(s==='spring'&&Math.random()<.7)twoNote();else if(s==='summer'&&Math.random()<.6)buzz();else if(s==='winter'&&Math.random()<.25)caw()}}
+    gooseT-=dt;if(gooseT<=0){gooseT=ar(1.4,3);if(s==='autumn')gooseCall()}
+    owlT-=dt;if(owlT<=0){owlT=ar(10,26);if(night&&wx==='clear'&&s!=='winter')owl()}
+    frogT-=dt;if(frogT<=0){frogT=ar(.7,2.2);if(isDusk()&&(s==='spring'||s==='summer')&&!rain){let b=null,bd=14;for(const sp of springs){const d=Math.hypot(sp.x-cur.x,sp.y-cur.y);if(d<bd){bd=d;b=sp}}if(b)frog(b.x,b.y)}}
+    const mk=dayCount+':'+seed;if(motifKey!==mk&&!night&&f<e[0]+.1&&musOn&&!storm&&musG.gain.value>.15){motifKey=mk;dawnMotif()}}
   // music: the season's key, gone by nightfall
   tuneMusic();
   const want=(!night&&!storm&&musOn)?.5:0;musG.gain.setTargetAtTime(want*duck,t,want?7:4);

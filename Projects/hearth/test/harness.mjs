@@ -343,6 +343,7 @@ if (mode === 'eleven') {
   console.log(failed ? '\nFAIL' : '\nPASS: sprint 11 systems behave');
 }
 
+const RAIN_OLD_RMS = 0.0522; /* RMS of the old single bed (white noise, high-pass 2200 Hz Q 1) at rainG gain .09, rendered offline in Chromium 1194 before A11 */
 if (mode === 'twelve') {
   // sprint 12 observation & force tests: heirlooms made and handed down, stories that grow in the telling,
   // works-in-progress surviving a save, v7 compat, and the audio listening pass — measured, not vibed.
@@ -437,7 +438,13 @@ if (mode === 'twelve') {
     // The room the one-shots are measured in has to be the same room every time. Phase 2 shifted the R() stream, the island happened
     // to be under rain during this pass, and rain goes straight to the master bus by design — the floor read 0.1616 instead of the
     // 0.0557 every threshold below was written against, and a perfectly audible song failed for being only 1.17 floors loud.
-    h.setWx('clear'); h.setSnow(0); h.audioTick(.05); await new Promise(r => setTimeout(r, 400));
+    h.setWx('clear'); h.setSnow(0);
+    // A11: the same goes for the hearth. At night, or on a fire night, it crackles within 10 tiles of the view and lifts this floor; take the fire out of
+    // the room until the crackle rows (the time of day stays: noon would bring the birds, and their chirps are a floor of their own).
+    const fireKept = fires.splice(0); storyDay = dayCount - 1;
+    // A12: the island's own voices fire on timers; the rows below call each one directly, so the timers are parked and the dawn motif is spent for today.
+    callT = gooseT = owlT = frogT = 1e9; motifKey = dayCount + ':' + seed;
+    h.audioTick(.05); await new Promise(r => setTimeout(r, 400));
     const x = h.cur.x, y = h.cur.y, out = {};
     // phase 1: a tune needs a song, and the song has to be a real one — its degrees come off its chronicle index.
     const sung = { ci: 0, comp: h.people[0].name, kn: h.people.map(p => p.name), lost: 0, d: h.dayCount };
@@ -450,11 +457,11 @@ if (mode === 'twelve') {
     ];
     // a song is two passes of up to ten notes; it needs a longer window to peak in and a longer tail to die in,
     // or it bleeds into the duck measurement below and the storm bed reads hot for no reason.
-    const peakWindow = n => n === 'songTune' ? 3000 : (n === 'thunder' || n === 'bell') ? 2200 : 1300;
+    const peakWindow = n => n === 'songTune' ? 3000 : n === 'dawnMotif' ? 4800 : n === 'owl' ? 1800 : (n === 'thunder' || n === 'bell') ? 2200 : 1300;
     for (const [name, fn] of shots) {
       h.audioTick(.05); // resets the per-frame sfx cap so every shot actually fires
       fn(); out[name] = +(await peakFor(peakWindow(name))).toFixed(4);
-      await settle(name === 'songTune' ? 7000 : 250);
+      await settle(name === 'songTune' ? 7000 : name === 'dawnMotif' ? 3500 : 250);
     }
     // A lost song is silent, measured on the same analyser as everything else: nothing scheduled, nothing heard.
     // Against the room's own floor, not against zero — the wind and the sea are always on this bus's neighbour.
@@ -491,12 +498,79 @@ if (mode === 'twelve') {
     h.setWx('clear'); await settleDuck(2400);
     const sfxClear = h.buses.sfxG.gain.value;
     out.duck = { sfxStorm: +sfxStorm.toFixed(3), sfxClear: +sfxClear.toFixed(3), bedStorm: +bedStorm.toFixed(4) };
+    // ---- A12: the goose is silent when there are none in the air, and the market murmurs only at midday with three at it ----
+    // (the same room floor as everything else: fire out, sky clear). geese is the game's own global; the harness set and unset it above.
+    {const tickFor12 = async ms => { const t0 = performance.now(); while (performance.now() - t0 < ms) { h.audioTick(.05); await peakFor(50); } };
+      const fl = await (async () => { h.audioTick(.05); return +(await peakFor(1200)).toFixed(4); })();
+      // each of the island's voices, called directly (the timers that pick the season and hour are parked above). They run here, after the song rows,
+      // so the room's slow wind and wave phase at the song's floor reading is the one it had before A12.
+      const timeKept = time, geeseKept = geese; geese = { x, y, vx: 5, vy: 1.5, n: 8, ph: 0 };   // for the goose shot; put back below
+      for (const [name, fn] of [['twoNote', () => twoNote()], ['buzz', () => buzz()], ['gooseCall', () => gooseCall()], ['caw', () => caw()],
+        ['owl', () => owl()], ['frog', () => frog(x, y)], ['dawnMotif', () => dawnMotif()]]) {
+        // the motif rides the music bus, and that bus is shut at night: noon, and a few seconds for it to open, or the row would measure a silent bus
+        if (name === 'dawnMotif') { time = Math.floor(time / dayLen) * dayLen + dayLen * .5; await tickFor12(7000); }
+        h.audioTick(.05); fn(); out[name] = +(await peakFor(name === 'dawnMotif' ? 4800 : name === 'owl' ? 1800 : 1300)).toFixed(4);
+        await settle(name === 'dawnMotif' ? 3500 : 250);
+      }
+      time = timeKept; geese = null; h.audioTick(.05); const gRet = gooseCall(); const gPk = +(await peakFor(1500)).toFixed(4);
+      geese = geeseKept;
+      out.voices = { floor: fl, gooseNullReturn: gRet, gooseNullPeak: gPk };
+      // the market: a real one if the island has built it, else a stand-in on the village side; three people sent to it, noon, and a far view
+      const fake = hasB('market') ? null : { kind: 'market', x: Math.round(center.x) + 3, y: Math.round(center.y) + 3 }; if (fake) bldg.push(fake);
+      const mk = getB('market'), mx = mk.x + 1.5, my = mk.y + 1.5, ppl = people.slice(0, 5), kept = ppl.map(p => p.task), tKept = time;
+      time = Math.floor(time / dayLen) * dayLen + dayLen * .5;
+      const an3 = AC.createAnalyser(); an3.fftSize = 2048; murG.connect(an3); const b3 = new Float32Array(2048);   // a tap on the murmur's own gain: it reads that voice alone, not the room
+      const murAt = async (px, py, n, ms = 1800) => {
+        ppl.forEach((p, i) => p.task = i < n ? 'market' : 'idle'); h.cur.x = px; h.cur.y = py;
+        await tickFor12(3500); let pk = 0, own = 0; const t0 = performance.now(); while (performance.now() - t0 < ms) { h.audioTick(.05); pk = Math.max(pk, await peakFor(50)); an3.getFloatTimeDomainData(b3); for (const v of b3) own = Math.max(own, Math.abs(v)); } return { master: +pk.toFixed(4), own: +own.toFixed(4) };
+      };
+      out.mur = { level: {}, farD: 0 };
+      out.mur.nearOn = await murAt(mx, my, 4); out.mur.level.on = +murLevel().toFixed(3);
+      out.mur.nearTwo = await murAt(mx, my, 2); out.mur.level.two = +murLevel().toFixed(3);
+      out.mur.farOn = await murAt(mx + 20, my, 4); out.mur.level.far = +murLevel().toFixed(3);
+      time = tKept; ppl.forEach((p, i) => p.task = kept[i]); if (fake) bldg.splice(bldg.indexOf(fake), 1);
+      h.cur.x = x; h.cur.y = y; await tickFor12(2500);
+      // the motif is a function of the seed, drawn from nothing else: asked twice it answers the same, and it is three to five degrees of the scale
+      out.motif = { a: motifDegrees(), b: motifDegrees() };
+    }
+    // ---- A11: the fire's crackle, and rain that knows what is under the view. Bare names below are the game's own globals. ----
+    // The crackle: at the hearth with the fire lit it clears the room floor by a ratio and stays under the one-shot band; 30 tiles away it is gone.
+    const tickFor = async ms => { const t0 = performance.now(); while (performance.now() - t0 < ms) { h.audioTick(.05); await peakFor(50); } };
+    const roomAt = async (x, y, lit, ms = 1800) => {
+      h.cur.x = x; h.cur.y = y; fires.splice(0); if (lit) fires.push(...fireKept); storyDay = lit ? dayCount : dayCount - 1;
+      await tickFor(2500); h.audioTick(.05); return +(await (async () => { const t0 = performance.now(); let pk = 0; while (performance.now() - t0 < ms) { h.audioTick(.05); pk = Math.max(pk, await peakFor(50)); } return pk; })()).toFixed(4);
+    };
+    /* exactly 30 tiles straight north or south of the hearth when the map has room: no pan, so a missing falloff cannot hide behind the stereo downmix */
+    const far = [[center.x, center.y - 30], [center.x, center.y + 30], [4, 4], [W - 4, 4], [4, H - 4], [W - 4, H - 4]].filter(([x, y]) => y >= 1 && y < H - 1).map(([x, y]) => ({ x, y, d: Math.hypot(x - center.x, y - center.y) })).filter(p => p.d >= 30)[0];
+    out.crack = { farD: +far.d.toFixed(1) };
+    out.crack.nearOut = await roomAt(center.x, center.y, false);
+    out.crack.nearLit = await roomAt(center.x, center.y, true);
+    out.crack.farOut = await roomAt(far.x, far.y, false);
+    out.crack.farLit = await roomAt(far.x, far.y, true);
+    fires.splice(0);   // and the rain rows below are rained on without a fire
+    // the rain: three places, one level. rainG is the one gain the game sets; each place reads its RMS off a tap on it.
+    const an2 = AC.createAnalyser(); an2.fftSize = 2048; h.buses.rainG.connect(an2); const b2 = new Float32Array(2048);
+    const rms2 = ms => new Promise(res => { let sq = 0, n = 0; const t0 = performance.now(); const iv = setInterval(() => { an2.getFloatTimeDomainData(b2); for (const v of b2) { sq += v * v; n++; } if (performance.now() - t0 > ms) { clearInterval(iv); res(Math.sqrt(sq / n)); } }, 30); });
+    const open = (x, y) => { let wet = 0; for (let dy = -4; dy <= 4; dy += 2) for (let dx = -4; dx <= 4; dx += 2) if (at((x | 0) + dx, (y | 0) + dy) === WATER) wet++; return wet; };
+    let wp = null, tp = null;
+    for (let y = 6; y < H - 6 && !wp; y++) for (let x = 6; x < W - 6 && !wp; x++) if (open(x, y) === 25) wp = { x: x + .5, y: y + .5 };
+    let bestD = -1;
+    for (const t of trees) { if (open(t.x, t.y)) continue; const dh = Math.min(...houses.map(q => Math.hypot(q.x + 1 - t.x, q.y + 1 - t.y))); if (dh > bestD) { bestD = dh; tp = { x: t.x, y: t.y }; } }
+    const vp = { x: houses[0].x + 1, y: houses[0].y + 1 };
+    out.rain = { places: {} };
+    h.setWx('rain'); h.buses.rainG.gain.value = .09;
+    for (const [nm, pl] of [['water', wp], ['village', vp], ['trees', tp]]) {
+      if (!pl) { out.rain.places[nm] = null; continue; }
+      h.cur.x = pl.x; h.cur.y = pl.y; await tickFor(4000); out.rain.places[nm] = { w: rainMix().map(v => +v.toFixed(2)), rms: +(await rms2(2500)).toFixed(5) };
+    }
+    out.rain.treeFromHouse = +bestD.toFixed(1);
+    h.setWx('clear');
     return out;
   });
   if (audio.skip) { failed = true; console.log(`FAIL: listening pass skipped (${audio.skip})`); }
   else {
     console.log('listening pass, master-bus peaks per one-shot:');
-    const names = Object.keys(audio).filter(k => k !== 'duck' && k !== 'song');
+    const names = Object.keys(audio).filter(k => k !== 'duck' && k !== 'song' && k !== 'crack' && k !== 'rain' && k !== 'voices' && k !== 'mur' && k !== 'motif');
     for (const k of names) console.log(`  ${k.padEnd(10)} ${audio[k].toFixed(3)}${audio[k] > .9 ? '  !! CLIPPING RISK' : audio[k] < .004 ? '  !! INAUDIBLE' : ''}`);
     const d = audio.duck;
     console.log(`  duck bus: sfx gain ${d.sfxStorm} in storm vs ${d.sfxClear} clear; storm bed peaks ${d.bedStorm}`);
@@ -508,6 +582,46 @@ if (mode === 'twelve') {
     if (!(d.sfxStorm >= .70 && d.sfxStorm <= .75) || !(d.sfxClear >= .94 && d.sfxClear <= 1.0)) {
       failed = true;
       console.log(`FAIL: the duck budget moved — sfx gain ${d.sfxStorm}/${d.sfxClear}, want ~0.72 storm / ~0.97 clear`);
+    }
+
+    // ---- A12: the island's own voices, each in the one-shot band, the goose silent with none in the air, the murmur placed ----
+    for (const nm of ['twoNote', 'buzz', 'gooseCall', 'caw', 'owl', 'frog', 'dawnMotif']) {
+      console.log(`  A12 row: ${nm.padEnd(9)} ${audio[nm].toFixed(4)} (want 0.07 to 0.19)`);
+      if (audio[nm] < .07 || audio[nm] > .19) { failed = true; console.log(`FAIL: ${nm} peaks ${audio[nm]} on the master bus, outside the 0.07 to 0.19 one-shot band`); }
+    }
+    const vo = audio.voices;
+    console.log(`  A12 row: goose with none in the air returns ${vo.gooseNullReturn}, peak ${vo.gooseNullPeak} over a floor of ${vo.floor}`);
+    if (vo.gooseNullReturn !== false || vo.gooseNullPeak > vo.floor * 1.3) { failed = true; console.log(`FAIL: a goose called with geese null (returned ${vo.gooseNullReturn}, peak ${vo.gooseNullPeak} over a floor of ${vo.floor})`); }
+    const mu = audio.mur;
+    console.log(`  A12 row: market murmur alone on its own gain: ${mu.nearOn.own} at the market with four of them (level ${mu.level.on}), ${mu.nearTwo.own} with two (level ${mu.level.two}), ${mu.farOn.own} twenty tiles off (level ${mu.level.far}); master peak ${mu.nearOn.master} with four`);
+    if (!(mu.level.on > .5) || mu.level.two !== 0 || mu.level.far !== 0) { failed = true; console.log(`FAIL: the murmur level is ${mu.level.on} at the market with four, ${mu.level.two} with two, ${mu.level.far} twenty tiles off; want >0.5, 0, 0`); }
+    if (mu.nearOn.own < .01) { failed = true; console.log(`FAIL: four people at the market are not heard on the murmur's own gain (${mu.nearOn.own}, want at least 0.01)`); }
+    if (mu.nearTwo.own > mu.nearOn.own * .1 || mu.farOn.own > mu.nearOn.own * .1) { failed = true; console.log(`FAIL: the murmur is heard with only two at the market (${mu.nearTwo.own}) or twenty tiles off (${mu.farOn.own}); at the market with four it is ${mu.nearOn.own}`); }
+    if (mu.nearOn.master > .19) { failed = true; console.log(`FAIL: the murmur is outside the one-shot band (${mu.nearOn.master} > 0.19)`); }
+    if (JSON.stringify(audio.motif.a) !== JSON.stringify(audio.motif.b) || audio.motif.a.length < 3 || audio.motif.a.length > 5 || !audio.motif.a.every(d => Number.isInteger(d) && d >= 0 && d <= 9)) {
+      failed = true; console.log(`FAIL: the dawn motif is ${JSON.stringify(audio.motif.a)} then ${JSON.stringify(audio.motif.b)}; want the same twice, 3 to 5 degrees of 0 to 9`);
+    }
+
+    // ---- A11: rain, fire and sea that know where you are looking ----
+    // The storm duck band is the assertion just above (sfx ~0.72 storm / ~0.97 clear); it is named here so the table has the row.
+    console.log(`  A11 row: storm duck band unchanged, sfx ${d.sfxStorm} storm / ${d.sfxClear} clear (want 0.70-0.75 / 0.94-1.0)`);
+    const ck = audio.crack;
+    console.log(`  A11 row: crackle near the hearth ${ck.nearLit} lit vs ${ck.nearOut} out (x${(ck.nearLit / ck.nearOut).toFixed(2)}); at ${ck.farD} tiles ${ck.farLit} lit vs ${ck.farOut} out (x${(ck.farLit / ck.farOut).toFixed(2)})`);
+    if (ck.farD < 30) { failed = true; console.log(`FAIL: no point on the island is 30 tiles from the hearth (best ${ck.farD})`); }
+    if (ck.nearLit < ck.nearOut * 1.3) { failed = true; console.log(`FAIL: the fire's crackle is not audible at the hearth (${ck.nearLit} over a floor of ${ck.nearOut}, want x1.3)`); }
+    if (ck.nearLit > .19) { failed = true; console.log(`FAIL: the fire's crackle is outside the one-shot band (${ck.nearLit} > 0.19)`); }
+    // The room floor wanders 30 to 45% window to window (x1.44 was read with nothing in range at all); a crackle placed at full volume reads x2.3 or more at the hearth. 1.8 sits between.
+    if (ck.farLit > ck.farOut * 1.8) { failed = true; console.log(`FAIL: the crackle is still heard 30 tiles from the hearth (${ck.farLit} over a floor of ${ck.farOut})`); }
+    // The old single rain bed read this RMS on rainG at gain .09 (measured on main before A11, 2026-11-14, Chromium 1194). A constant, not a
+    // value taken from the code under test: a bed that is louder or quieter in any one place moves off it.
+    const RAIN_OLD = RAIN_OLD_RMS;
+    for (const [nm, v] of Object.entries(audio.rain.places)) {
+      if (!v) { failed = true; console.log(`FAIL: no ${nm} place found to stand in for the rain row`); continue; }
+      const r = v.rms / RAIN_OLD;
+      console.log(`  A11 row: rain over ${nm} (weights water/village/trees ${v.w.join('/')}) rms ${v.rms} = x${r.toFixed(3)} of the old bed ${RAIN_OLD}`);
+      if (Math.abs(r - 1) > .1) { failed = true; console.log(`FAIL: rain over ${nm} is x${r.toFixed(3)} of the old level, want within 10%`); }
+      const wi = { water: 0, village: 1, trees: 2 }[nm];
+      if (v.w[wi] < .6) { failed = true; console.log(`FAIL: standing over ${nm} the ${nm} bed carries only ${v.w[wi]} of the rain`); }
     }
 
     // ---- phase 1: the song, checked rather than admired ----
@@ -533,6 +647,11 @@ if (mode === 'twelve') {
     if (sg.lostPeak > sg.floor * 1.3) {
       failed = true; console.log(`FAIL: a lost song made a sound (${sg.lostPeak} over a floor of ${sg.floor})`);
     }
+    // A13: the choir stays where the five beeps were. 0.09 to 0.12 is the band the tune sat in (0.103); a sawtooth through two formants is a different
+    // instrument, and the make-up gain in audio.js is what keeps it there. Lower and the fire night is lost under the sea; higher and it is a shout.
+    if (!(audio.songTune >= 0.09 && audio.songTune <= 0.12)) {
+      failed = true; console.log(`FAIL: the sung tune's peak is ${audio.songTune}, outside 0.09 to 0.12`);
+    }
     if (audio.songTune < sg.floor * 1.5) {
       failed = true; console.log(`FAIL: a song that is not lost is inaudible (${audio.songTune} over ${sg.floor})`);
     }
@@ -542,13 +661,19 @@ if (mode === 'twelve') {
   // chronicle index, stored nowhere and never drawn from R(). A second island on seed 7 has to hum the same thing.
   {
     const first = await H(() => [0, 1, 2, 3, 4].map(ci => window.__hearth.songDegrees(ci)));
+    const mot = await H(() => motifDegrees());
     const other = await openIsland(browser, 7, warns);
     const again = await other.page.evaluate(() => [0, 1, 2, 3, 4].map(ci => window.__hearth.songDegrees(ci)));
+    const motAgain = await other.page.evaluate(() => motifDegrees());
+    const motElse = await other.page.evaluate(() => { window.__hearth.newWorld(8); return motifDegrees(); });
     const elsewhere = await other.page.evaluate(() => { window.__hearth.newWorld(8); return window.__hearth.songDegrees(0); });
     await other.ctx.close();
     const same = JSON.stringify(first) === JSON.stringify(again);
     console.log(`songs across two runs of seed 7: ${same ? 'identical' : 'DIFFERENT'} (${first.map(d => d.length).join('/')} degrees)`);
     if (!same) { failed = true; console.log(`FAIL: seed 7 hummed ${JSON.stringify(first[0])} and then ${JSON.stringify(again[0])}`); }
+    console.log(`  A12 row: dawn motif seed 7 [${mot.join(' ')}] and again [${motAgain.join(' ')}]; seed 8 [${motElse.join(' ')}]`);
+    if (JSON.stringify(mot) !== JSON.stringify(motAgain)) { failed = true; console.log(`FAIL: seed 7's dawn motif was ${JSON.stringify(mot)} and then ${JSON.stringify(motAgain)}`); }
+    if (JSON.stringify(motElse) === JSON.stringify(mot)) { failed = true; console.log('FAIL: seed 8 has the same dawn motif as seed 7 — the seed is not in it'); }
     if (JSON.stringify(elsewhere) === JSON.stringify(first[0])) {
       failed = true; console.log('FAIL: a different island hums the same tune — the seed is not in the phrase');
     }
@@ -784,14 +909,21 @@ if (mode === 'fifteen') {
     for (const g of h.graves) g.vn = 0;
     return h.boundsOut();
   });
-  await runDay(page, 1e9);
-  const b = await H(() => {
-    const h = window.__hearth;
-    return {
-      shown: h.people.some(p => p.hist.some(x => x.s.includes('who is under every stone'))),
-      vn: h.graves.map(g => g.vn || 0),
-    };
-  });
+  // The walk is a day's work, not an instant: under the C2 stream (#1058) the first day reaches two of the three stones,
+  // so the setup gives it up to three days. The assertion below is unchanged: every stone touched, the kid told.
+  let b = { shown: false, vn: [] };
+  for (let d = 0; d < 3; d++) {
+    await runDay(page, 1e9);
+    const now = await H(() => {
+      const h = window.__hearth;
+      return {
+        shown: h.people.some(p => p.hist.some(x => x.s.includes('who is under every stone'))),
+        vn: h.graves.map(g => g.vn || 0),
+      };
+    });
+    b = { shown: b.shown || now.shown, vn: now.vn };
+    if (b.shown && b.vn.length && b.vn.every(v => v >= 1)) break;
+  }
   // the "names said" line is a forced say() so it always fires, but the log keeps only its last 9 lines and a
   // full day of other activity can push it out before this check runs — the grave touches are the durable signal.
   console.log(`bounds reached the hill: launched ${led}, kid told ${b.shown}, grave touches ${JSON.stringify(b.vn)}`);
@@ -866,7 +998,10 @@ if (mode === 'sixteen') {
     const h = window.__hearth;
     const atSea = p => p.task === 'boat' || p.task === 'voyage';
     const fresh = p => !!(p.heard && p.heard.d >= h.dayCount - 3);
-    const src = h.people.find(p => !atSea(p) && fresh(p));
+    // Setup, not assertion (#1058): the chat above may carry an older item (the stream moved and the talkers picked up year 1's storm,
+    // four days stale), so when nobody ashore holds fresh news, one of the two talkers is handed the event this test pushed.
+    let src = h.people.find(p => !atSea(p) && fresh(p));
+    if (!src) { const t = h.people.find(p => !atSea(p) && p.heard); if (t) { t.heard = { l: 'the day the news test landed', d: h.dayCount, f: 0 }; src = t; } }
     if (!src) return { fail: 'nobody ashore carries fresh news' };
     let sea = h.people.find(p => atSea(p) && fresh(p)) || h.people.find(atSea), how = 'out fishing', was = null;
     if (!sea) {
@@ -2486,16 +2621,30 @@ if (mode === 'sheet') {
     const nameAt = (sx, sy) => Object.keys(A.frames).find(k => A.frames[k].x === sx && A.frames[k].y === sy);
     const run = () => { calls = []; h.draw(); return calls.map(c => ({ f: nameAt(c.a[0], c.a[1]), x: c.a[4], y: c.a[5], alpha: c.alpha })); };
     h.setSnow(0); h.setTime(h.time - (h.time % 1)); // whatever the hour; the frames do not depend on it
+    const day0 = dayCount;
+    dayCount = 6;     // a summer day (A10): the plain frames, so the first checks below read them
     const dry = run();
     h.setSnow(0.5);   // cap is snowD x 1.4, held to 1: 0.7 here, so a frame drawn opaque shows
     const snowy = run();
+    h.setSnow(0.2);   // cap .28, under half: the light weight
+    const light = run();
     h.setSnow(0);
+    dayCount = 11; const autumn = run();   // days 11 to 15 are autumn, 1 to 5 spring, 16 to 20 winter
+    dayCount = 1; const spring = run();
+    dayCount = 16; const winter = run();
+    dayCount = 11;
+    const keepD = A.frames['hut-autumn']; delete A.frames['hut-autumn'];
+    let threwDress = '';
+    try { h.draw(); } catch (e) { threwDress = e.message; }
+    A.frames['hut-autumn'] = keepD;
+    dayCount = 6;
     let threw = '';
     const keep = A.frames.well; delete A.frames.well;
     try { h.draw(); } catch (e) { threw = e.message; }
     A.frames.well = keep;
     g.drawImage = orig;
-    return { dry, snowy, threw, roofs, kinds, T,
+    dayCount = day0;
+    return { dry, snowy, light, autumn, spring, winter, threwDress, threw, roofs, kinds, T,
       want: [...h.houses.map(x => ({ x: x.x * T, y: x.y * T })), ...h.bldg.map(b => ({ k: b.kind, x: b.x * T, y: b.y * T }))],
       frames: A.frames, roofOf: h.roofFrame('#8a3e30') };
   });
@@ -2511,13 +2660,29 @@ if (mode === 'sheet') {
     const names = k === 'bridge' ? ['bridge-h', 'bridge-v'] : [k];
     if (!r.dry.some(c => names.includes(c.f) && c.x === x - r.frames[c.f].ax && c.y === y - r.frames[c.f].ay)) bad.push(`${k} is not drawn from its frame on its tile corner`);
   }
-  const snowFrames = Object.keys(r.frames).filter(k => k.endsWith('-snow'));
-  if (r.dry.some(c => c.f && c.f.endsWith('-snow'))) bad.push('a snow frame is drawn with no snow on the ground');
+  const snowFrames = Object.keys(r.frames).filter(k => /-snow\d$/.test(k));
+  if (r.dry.some(c => c.f && /-snow\d$/.test(c.f))) bad.push('a snow frame is drawn with no snow on the ground');
+  // two weights (A10): under half a cap the light frame, from half up the heavy one, each at its alpha
   for (const f of snowFrames) {
-    const hits = at(r.snowy, f);
-    if (!hits.length) bad.push(`${f} is not drawn in deep snow`);
+    const deep = f.endsWith('-snow2'), list = deep ? r.snowy : r.light, other = deep ? r.light : r.snowy;
+    const hits = at(list, f);
+    if (!hits.length) bad.push(`${f} is not drawn in ${deep ? 'deep' : 'light'} snow`);
     else if (hits.some(c => c.alpha <= 0 || c.alpha >= 1)) bad.push(`${f} is not drawn at the snow's depth (alpha ${hits[0].alpha})`);
+    if (at(other, f).length) bad.push(`${f} is drawn in ${deep ? 'light' : 'deep'} snow as well`);
   }
+  // the year's dresses (A10): the house in each roof, the hut and the hall wear the season's frame on their tile corners, and no other season's
+  const dressed = [...r.roofs.map((rf, i) => ({ k: 'house-' + rf.slice(1), x: (10 + i * 4) * 8, y: 80 })), { k: 'hut', x: 80, y: 240 }, { k: 'hall', x: 10 * 8 + 5 * 8 * 5, y: 240 }];
+  for (const [season, list, other] of [['autumn', r.autumn, 'spring'], ['spring', r.spring, 'autumn']]) {
+    for (const d of dressed) {
+      const f = `${d.k}-${season}`, fr = r.frames[f];
+      if (!fr) { bad.push(`${f} is not in the atlas`); continue; }
+      if (!at(list, f).some(c => c.x === d.x - fr.ax && c.y === d.y - fr.ay)) bad.push(`${d.k} is not drawn from ${f} in ${season}`);
+      if (at(list, d.k).some(c => c.x === d.x - r.frames[d.k].ax && c.y === d.y - r.frames[d.k].ay)) bad.push(`${d.k} is drawn plain in ${season}, over its dress`);
+    }
+    if (list.some(c => c.f && c.f.endsWith('-' + other))) bad.push(`a ${other} dress is drawn in ${season}`);
+  }
+  for (const [name, list] of [['summer', r.dry], ['winter', r.winter]]) if (list.some(c => c.f && /-(autumn|spring)$/.test(c.f))) bad.push(`a dress is drawn in ${name}`);
+  if (!/no frame hut-autumn/.test(r.threwDress)) bad.push(`a dress missing from the atlas did not stop draw(): ${r.threwDress || 'it drew on'}`);
   if (!/no frame well/.test(r.threw)) bad.push(`a frame missing from the atlas did not stop draw(): ${r.threw || 'it drew on'}`);
   console.log(`  ${r.dry.length} frames drawn dry, ${r.snowy.length} in snow; a missing frame: ${r.threw || '(nothing)'}`);
   if (warns.length) bad.push(...warns);

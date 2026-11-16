@@ -3206,6 +3206,7 @@ now.
 | Pathfinder Campaigns | `Pathfinder/campaigns.html`, `Pathfinder/campaigns-assets/` | as above |
 | Pathfinder Characters | `Pathfinder/characters.html`, `Pathfinder/characters-assets/` | as above |
 | Pathfinder Converter | `Pathfinder/converter.html`, `Pathfinder/converter-assets/` | as above, and `Pathfinder/data/` (read under its README, never written) |
+| Pathfinder Estate | `Pathfinder/Estate/` | as above |
 | Aphelion | `Projects/aphelion/` | as above |
 | Closing Time | `Projects/Closing Time/` | the four shared |
 | The Fourth Quarter | `Projects/fourth-quarter/`, **`Projects/The-Fourth-Quarter.html`** (the original flat build, board-linked at `index.html:508`, owned by nobody until #355 caught it), `.github/workflows/fourth-quarter-ci.yml` | the four shared |

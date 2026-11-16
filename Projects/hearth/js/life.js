@@ -1,7 +1,7 @@
 // Hearth — the turn of village life — newDay, buildings, boats, the works, and the wildlife.
 // Classic scripts sharing one global scope; the load order in index.html is the old single file’s order and it matters.
 // ---------- life ----------
-function newDay(){saidToday=new Set();
+function newDay(){saidToday=new Set();pullsNow();
   const yr=yearOf(dayCount),s=sea();
   wakeDreams();
   // sprint 16: the day comes round again. On the anniversary of a death, whoever lost a partner or a parent walks up the hill —
@@ -153,7 +153,7 @@ function newDay(){saidToday=new Set();
       const s=`a child, ${k.name}, was born`;a.hist.push({d:dayCount,s});b.hist.push({d:dayCount,s});
       say(`A child is born to ${B(a)} and ${B(b)}. They call the child ${B(k)}${nm?', after '+nm:''}.`);addEvent('birth',`the ${seasonOf(dayCount)} ${k.name} was born`,`A child, ${k.name}, was born to ${a.name} and ${b.name} in the ${seasonOf(dayCount)}.`)}}
   // old age
-  for(const p of alive){const a=ageOf(p);if(a<55)continue;const chance=Math.pow((a-54)/18,3);if(R()<chance)die(p)}
+  for(const p of alive){const a=ageOf(p);if(a<55)continue;const u=(a-54)/18,chance=u*u*u;if(R()<chance)die(p)}
   feudDay(); /* TG-48: and again, because the old die after the first call at the top of this day, and a feud naming somebody just buried is not one for another day. No draw is made here. */
   for(const p of people)trimHist(p); /* a long life earns more lines than anyone reads; the first one and the last HIST_MAX-1 keep */
   autoSaveTick();
@@ -240,7 +240,7 @@ function endWant(){if(!want)return;const w0=want;want=null;
 const feudWith=p=>{if(!feud||!p)return null;const o=p.name===feud.rv[0]?feud.rv[1]:p.name===feud.rv[1]?feud.rv[0]:null;return o?byName(o)||null:null};
 const feudSide=p=>!feud||!p?0:(p.name===feud.rv[0]||p.parents.includes(feud.rv[0]))?1:(p.name===feud.rv[1]||p.parents.includes(feud.rv[1]))?2:0;
 const apart=(p,q)=>{if(!feud)return false;const a=feudSide(p),b=feudSide(q);return !!(a&&b&&a!==b)};   /* the two, or their children, across the line from each other */
-const shunned=(p,x,y)=>{const o=feudWith(p);return !!(o&&!o.dead&&!o.inBoat&&Math.hypot(o.x-x,o.y-y)<FEUDR)};   /* would going there mean standing near the other one */
+const shunned=(p,x,y)=>{const o=feudWith(p);return !!(o&&!o.dead&&!o.inBoat&&hyp(o.x-x,o.y-y)<FEUDR)};   /* would going there mean standing near the other one */
 function startFeud(a,b){if(feud||!a||!b||a===b)return false;feud={d0:dayCount,rv:[a.name,b.name],kept:0,n:1};
   for(const [x,y] of [[a,b],[b,a]]){const r=x.rels.find(r2=>r2.who===y.name);if(r)r.k='rival';else x.rels.push({who:y.name,k:'rival'})}
   return true}
@@ -301,7 +301,7 @@ function endFeud(how,who){if(!feud)return;const f=feud;feud=null;
     a.hist.push({d:dayCount,s:`was walked round the bounds in the same line as ${b.name}, and let it go somewhere along the way`});
     b.hist.push({d:dayCount,s:`was walked round the bounds in the same line as ${a.name}, and let it go somewhere along the way`})}}
 // sprint 9: the island keeps itself. Written at each dawn; read back at boot when no link is pinned in the address bar.
-function autoSave(){try{store('auto',lzEnc(JSON.stringify(pack())))}catch(e){}}
+function autoSave(){if(LIVE)return;try{store('auto',lzEnc(JSON.stringify(pack())))}catch(e){}}
 // The LZ of a 500-day island measured 26 ms, and at the generational speed a day goes by in about half a second, so a dawn autosave
 // there is a third of the frame budget spent on a thing nobody is waiting for. It writes every tenth day while the speed is up, and
 // once more the moment the speed comes down (setSpeed). Nothing here draws from R(), and no decision in the simulation reads it.
@@ -372,7 +372,7 @@ function tellOfDead(alive){
 }
 function die(p){remove(p);dead.push(p);loseSongs(p,'died');
   // grave on the hill
-  const k=graves.length,gx=hill.x+((k%4)-1.5)*1.6,gy=hill.y+Math.floor(k/4)*1.4;const gr={x:gx,y:gy,name:p.name,d:dayCount,y2:yearOf(dayCount),age:ageI(p),vn:0};graves.push(gr);trees=trees.filter(t=>Math.hypot(t.x-gx,t.y-gy)>1.6);
+  const k=graves.length,gx=hill.x+((k%4)-1.5)*1.6,gy=hill.y+Math.floor(k/4)*1.4;const gr={x:gx,y:gy,name:p.name,d:dayCount,y2:yearOf(dayCount),age:ageI(p),vn:0};graves.push(gr);trees=trees.filter(t=>hyp(t.x-gx,t.y-gy)>1.6);
   const sea=seasonOf(dayCount);say(`${B(p)} died in the night, at ${ageI(p)}. The village carries ${p.name} up the hill in the ${sea} light.`,true);addEvent('death',`the ${sea} ${p.name} died`,`${p.name} died at ${ageI(p)}, and was carried up the hill in the ${sea} light.`);
   for(const q of people){const r=q.rels.find(r=>r.who===p.name);if(!r)continue;q.hist.push({d:dayCount,s:`lost ${r.k==='partner'?'their partner':r.k==='parent'?'their parent':r.k==='child'?'their child':r.k==='rival'?'an old rival':'a friend'}, ${p.name}`});
     if(r.k==='partner')q.partner=null;q.mourn=gr}
@@ -453,7 +453,7 @@ function endIll(){if(!ill)return;const w=ill;ill=null;const dz=dayCount-w.d0;
 function nextBuild(){if(bldgTgt)return null;for(const k in BLD){if(hasB(k))continue;const d=BLD[k];if(wood<d.wood||!d.cond())continue;let s=null;
     if(k==='hut'){const l=landings[0];s={x:l.x,y:l.y}}
     else if(k==='light')s=lightSite;else if(k==='bridge')s=bridgeSite;
-    else if(k==='smoke'){const h=getB('hut');for(let n=0;n<60&&!s;n++){const x=h.x+((rnd(-4,5))|0),y=h.y+((rnd(-4,5))|0),t=at(x,y),t2=at(x+1,y);if((t===SAND||t===GRASS)&&(t2===SAND||t2===GRASS)&&Math.hypot(x-h.x,y-h.y)>=2&&!bAll().some(b=>x>=b.x-2&&x<=b.x+b.w&&y>=b.y-1&&y<=b.y+b.h)&&!houses.some(hh=>Math.abs(hh.x-x)<3&&Math.abs(hh.y-y)<3))s={x,y}}}
+    else if(k==='smoke'){const h=getB('hut');for(let n=0;n<60&&!s;n++){const x=h.x+((rnd(-4,5))|0),y=h.y+((rnd(-4,5))|0),t=at(x,y),t2=at(x+1,y);if((t===SAND||t===GRASS)&&(t2===SAND||t2===GRASS)&&hyp(x-h.x,y-h.y)>=2&&!bAll().some(b=>x>=b.x-2&&x<=b.x+b.w&&y>=b.y-1&&y<=b.y+b.h)&&!houses.some(hh=>Math.abs(hh.x-x)<3&&Math.abs(hh.y-y)<3))s={x,y}}}
     else if(k==='well')s=freeSpot(2,5,1)||freeSpot(2,8,1);else if(k==='mill')s=freeSpot(5,11,2)||freeSpot(4,14,2);else if(k==='market')s=freeSpot(2,7,3)||freeSpot(2,12,3)||freeSpot(2,16,3);else if(k==='hall')s=freeSpot(3,9,3)||freeSpot(3,14,3)||freeSpot(3,18,3);
     if(s)return{kind:k,x:s.x,y:s.y,w:d.w,h:d.h,prog:0,work:d.work,done:false}}return null}
 function finishBuilding(p,t){t.done=true;bldgTgt=null;bldg.push(t);craftUp(p,3);const nm=BLD[t.kind].name;
@@ -596,8 +596,8 @@ function finishWork(p,w){w.done=true;w.y0=yearOf(dayCount);applyWork(w);
     p.hist.push({d:dayCount,s:`lifted ${sn} out of the old stones, and kept it`})}}
 function stepBoats(dt){for(const b of boats){
     if(!isFinite(b.x)||!isFinite(b.y)){try{console.warn('hearth: non-finite boat',b.kind)}catch(e){}b.gone=true;if(b.p){b.p.inBoat=false;b.p.x=b.land.x;b.p.y=b.land.y;b.p.task='idle';b.p.t=1}continue}
-    if(b.gvx){const nx=b.x+b.gvx*dt,ny=b.y+b.gvy*dt;if(at(nx|0,ny|0)===WATER){b.x=nx;b.y=ny;if(b.p){b.p.x=nx;b.p.y=ny}}const k=Math.pow(.12,dt);b.gvx*=k;b.gvy*=k;if(Math.abs(b.gvx)+Math.abs(b.gvy)<.08)b.gvx=b.gvy=0}
-    if(b.st==='in'||b.st==='out'||b.st==='back'){const dx=b.tx-b.x,dy=b.ty-b.y,d=Math.hypot(dx,dy),sp=(b.kind==='trade'?2.2:b.kind==='away'||b.kind==='return'?2.4:2.8)*(hasWay(0)&&b.kind==='fish'?1.35:1)*dt*(storm?.6:1);
+    if(b.gvx){const nx=b.x+b.gvx*dt,ny=b.y+b.gvy*dt;if(at(nx|0,ny|0)===WATER){b.x=nx;b.y=ny;if(b.p){b.p.x=nx;b.p.y=ny}}const k=dpow12(dt);b.gvx*=k;b.gvy*=k;if(Math.abs(b.gvx)+Math.abs(b.gvy)<.08)b.gvx=b.gvy=0}
+    if(b.st==='in'||b.st==='out'||b.st==='back'){const dx=b.tx-b.x,dy=b.ty-b.y,d=hyp(dx,dy),sp=(b.kind==='trade'?2.2:b.kind==='away'||b.kind==='return'?2.4:2.8)*(hasWay(0)&&b.kind==='fish'?1.35:1)*dt*(storm?.6:1);
       if(d<sp){b.x=b.tx;b.y=b.ty;boatArrive(b)}else{b.x+=dx/d*sp;b.y+=dy/d*sp;if(R()<dt*6)fx.push({x:b.x-dx/d*.6,y:b.y-dy/d*.6+.2,vx:0,vy:0,c:'#cfe6ff',l:.8})}
       if(b.p){b.p.x=b.x;b.p.y=b.y}}
     else if(b.st==='wait'){b.t-=dt;if(b.t<=0){b.st='out';b.tx=b.land.x+b.land.dx*20;b.ty=b.land.y+b.land.dy*20;if(b.kind==='trade'){trader=null;say(`The trader's boat pulls out into the channel. A few people stay on the shore until it is small.`,false,'tradeout')}}}
@@ -618,17 +618,21 @@ function boatArrive(b){
   else if(b.kind==='trade'&&b.st==='in'){b.st='wait';b.t=45;trader=b;
     // the trade answers the stock now, and whoever keeps the store does the talking
     const talker=people.filter(q=>!q.dead&&q.craft===4).sort((a,c)=>c.cxp-a.cxp)[0]||null;
-    const bump=talker?1+talker.cxp*.15:1;let eff;
-    if(food+granary<people.length*4){granary+=Math.round(14*bump);if(wood>=4)wood-=4;
+    const bump=talker?1+talker.cxp*.15:1;let eff,paid=0; /* B3: paid is 1 when timber went out, and haulers carry it down */
+    if(food+granary<people.length*4){granary+=Math.round(14*bump);if(wood>=4){wood-=4;paid=1}
       eff='sees how the store stands, says nothing about it, and leaves more meal than the timber was worth'}
-    else if(wood>=30){wood-=10;granary+=Math.round(12*bump);
+    else if(wood>=30){wood-=10;paid=1;granary+=Math.round(12*bump);
       eff='takes ten lengths of good timber and pays in meal, fairly, after a long conversation about it'}
     else{wood+=4;granary+=Math.round(5*bump);
       eff='trades small things for smaller ones and leaves everyone feeling they did well out of it'}
     if(talker){craftUp(talker,4);if(R()<.5)talker.hist.push({d:dayCount,s:'did the talking when the trader came, and did it well'})}
     say(`A trader's boat comes in to ${V()} and everyone who can finds a reason to be on the shore. The trader ${eff}.`,true);addEvent('trade',`the ${sea()} the trader came`,pick([`The trader's boat came in and everyone who could find a reason was on the shore for it.`,`The trader came, and went, and the store was a little different after.`,`A trading boat put in for a day and left news behind as well as goods.`]));
-    const wav=people.filter(p=>!p.dead&&p.task!=='sleep'&&p.task!=='boat'&&p.task!=='voyage'&&p.task!=='build'&&p.task!=='bounds'&&!p.inside).sort(()=>R()-.5).slice(0,8); /* sprint 16: the procession does not break for the trader */
+    const wav=shuf(people.filter(p=>!p.dead&&p.task!=='sleep'&&p.task!=='boat'&&p.task!=='voyage'&&p.task!=='build'&&p.task!=='bounds'&&!p.inside)).slice(0,8); /* sprint 16: the procession does not break for the trader */
     for(const q of wav){const s=nearestShore(b.land.x+rnd(-3,3),b.land.y+rnd(-3,3))||b.land;goTo(q,s.x,s.y,'wave',rnd(12,30));if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null}
+    /* B3: the first four adults among them carry the trade. The numbers above are already applied; this is only who is seen to do it. No R(): the
+       wave's own draws are reused, and a hauler's targets are set straight from the pile, the landing and the store. */
+    {const sp=stockSpots(),hl=wav.filter(q=>!isKid(q)).slice(0,Math.min(4,wav.length));
+      hl.forEach((q,i)=>{q.task='haul';q.haulSt=0;q.haulWood=paid;q.dwell=0;q.tx=sp.wood.x/T+(i-1.5)*.5;q.ty=sp.wood.y/T+.3})}
     if(R()<.5&&wav.length){const q=pick(wav);q.hist.push({d:dayCount,s:pick(['bought a length of red cloth off the trader','traded a carved bird to the trader for a knife','asked the trader for news of home and got some'])})}
     farTrade(talker)}                                                    /* phase 5: and once in a while the boat has something aboard that no hand here could make */
   else if(b.kind==='fish'){if(b.st==='in'){b.st='fishing';b.t=rnd(10,16)}else if(b.st==='back'){b.gone=true;const p=b.p;if(p){p.task='idle';p.t=1;p.inBoat=false;p.x=b.land.x;p.y=b.land.y;p.tx=p.x;p.ty=p.y;/* step ashore, not out at the mooring */const n=(sea()==='winter'?3:6)+(hasW('racks')?1:0)+(hasWay(0)?1:0)+(arcK()==='shoal'?5:0);if(hasB('smoke')&&(sea()==='autumn'||sea()==='winter'))granary+=n;else food+=n;craftUp(p,2);p.boats=(p.boats||0)+1;if(p.boats===1)p.hist.push({d:dayCount,s:'first took the boat out past the shallows'});if(R()<.3)say(`${B(p)} rows in with the bottom of the boat silver, and hands the fish up the beach.`,false,'boatin')}}}
@@ -652,11 +656,11 @@ const landAt=(x,y)=>{const t=at(x|0,y|0);return t===GRASS||t===SAND||t===ROCK||t
 // TG-48: slide() never wades, so a flight whose straight line crosses water ends at the shore and the deer stands there, looking at it.
 // A route is dry when every half-tile along it is land. Deer used to ask only that the far end was land, so across a narrow neck that
 // was a way across, and they retargeted six times at random and then went anyway.
-const dryRoute=(x0,y0,x1,y1)=>{const n=Math.max(1,Math.ceil(Math.hypot(x1-x0,y1-y0)/.5));for(let i=1;i<=n;i++)if(!landAt(x0+(x1-x0)*i/n,y0+(y1-y0)*i/n))return false;return true};
+const dryRoute=(x0,y0,x1,y1)=>{const n=Math.max(1,Math.ceil(hyp(x1-x0,y1-y0)/.5));for(let i=1;i<=n;i++)if(!landAt(x0+(x1-x0)*i/n,y0+(y1-y0)*i/n))return false;return true};
 // no rnd(): sixteen compass points, two lengths, the dry one that ends farthest from what scared the deer; null when there is none
-function dryFlight(w,th){let best=null,bd=-1;for(const len of[7,3.5])for(let i=0;i<16;i++){const a=i*Math.PI/8,x=w.x+Math.cos(a)*len,y=w.y+Math.sin(a)*len*.7;
-  if(!dryRoute(w.x,w.y,x,y))continue;const d=Math.hypot(x-th.x,y-th.y);if(d>bd){bd=d;best={x,y}}}return best}
-function forestTree(){for(let k=0;k<30;k++){const t=pick(trees);if(t&&t.hp>0&&t.s>.6&&Math.hypot(t.x-center.x,t.y-center.y)>9&&!houses.some(h=>Math.hypot(h.x-t.x,h.y-t.y)<5))return t}return null}
+function dryFlight(w,th){let best=null,bd=-1;for(const len of[7,3.5])for(let i=0;i<16;i++){const a=i*Math.PI/8,x=w.x+dcos(a)*len,y=w.y+dsin(a)*len*.7;
+  if(!dryRoute(w.x,w.y,x,y))continue;const d=hyp(x-th.x,y-th.y);if(d>bd){bd=d;best={x,y}}}return best}
+function forestTree(){for(let k=0;k<30;k++){const t=pick(trees);if(t&&t.hp>0&&t.s>.6&&hyp(t.x-center.x,t.y-center.y)>9&&!houses.some(h=>hyp(h.x-t.x,h.y-t.y)<5))return t}return null}
 function spawnWildlife(){wild=[];const nd=Math.min(5,1+((trees.length/45)|0));for(let i=0;i<nd;i++){const t=forestTree();if(t)wild.push({k:'deer',x:t.x+rnd(-1,1),y:t.y+rnd(.5,1.5),tx:0,ty:0,home:t,st:'graze',t:rnd(1,5),chk:R(),f:R()<.5?1:-1})}
   for(let i=0;i<4;i++){const s=freeSpot(6,22);if(s)wild.push({k:'rabbit',x:s.x+.5,y:s.y+.5,tx:0,ty:0,home:{x:s.x+.5,y:s.y+.5},st:'sit',t:rnd(1,3),chk:R(),f:1})}
   gulls=[];for(let i=0;i<4;i++)addGull();fishSh=[];const shal=[];for(let y=2;y<H-2;y+=2)for(let x=2;x<W-2;x+=2){const e=elev[idx(x,y)];if(at(x,y)===WATER&&e>.13&&e<.235&&(at(x-1,y)===WATER&&at(x+1,y)===WATER))shal.push({x,y})}
@@ -677,39 +681,39 @@ function stepWild(dt){const s=sea(),night=isNight();
   for(const w of wild){w.chk-=dt;
     // anything that somehow ended up in the sea goes home (a fox just leaves)
     if(!landAt(w.x,w.y)&&w.st!=='leave'){if(w.k==='fox'){w.gone=true;continue}const hm=w.home||center;w.x=hm.x;w.y=hm.y;w.tx=hm.x;w.ty=hm.y;w.st=w.k==='deer'?'graze':'sit';w.t=rnd(1,3)}
-    if(w.k==='deer'){if(w.chk<=0){w.chk=.35;if(w.st!=='flee'){let th=null;for(const p of people){if(p.inside||p.task==='sleep')continue;const d=Math.hypot(p.x-w.x,p.y-w.y);if(d<(p.task==='chop'?5.5:3.2)){th=p;break}}
-          if(!th&&fox&&Math.hypot(fox.x-w.x,fox.y-w.y)<3)th=fox;
-          if(th){w.st='flee';const dx=w.x-th.x,dy=w.y-th.y,d=Math.hypot(dx,dy)||1;let tx=w.x+dx/d*8,ty=w.y+dy/d*6;for(let k=0;k<6&&!dryRoute(w.x,w.y,tx,ty);k++){const a=rnd(6.28);tx=w.x+Math.cos(a)*7;ty=w.y+Math.sin(a)*5}
+    if(w.k==='deer'){if(w.chk<=0){w.chk=.35;if(w.st!=='flee'){let th=null;for(const p of people){if(p.inside||p.task==='sleep')continue;const d=hyp(p.x-w.x,p.y-w.y);if(d<(p.task==='chop'?5.5:3.2)){th=p;break}}
+          if(!th&&fox&&hyp(fox.x-w.x,fox.y-w.y)<3)th=fox;
+          if(th){w.st='flee';const dx=w.x-th.x,dy=w.y-th.y,d=hyp(dx,dy)||1;let tx=w.x+dx/d*8,ty=w.y+dy/d*6;for(let k=0;k<6&&!dryRoute(w.x,w.y,tx,ty);k++){const a=rnd(6.28);tx=w.x+dcos(a)*7;ty=w.y+dsin(a)*5}
             if(!dryRoute(w.x,w.y,tx,ty)){const dry=dryFlight(w,th);if(dry){tx=dry.x;ty=dry.y}} /* TG-48: no dry random pick, so look for one; none at all and the deer goes anyway */
             w.tx=tx;w.ty=ty;w.f=dx<0?-1:1;if(th.task==='chop'&&R()<.15)say(`A deer breaks from the trees at the sound of the axe and is gone before ${B(th)} has looked up.`,false,'deerflee')}}
         if(w.home&&(w.home.hp<=0||!trees.includes(w.home))){w.home=forestTree()}}
       if(w.st==='graze'){w.t-=dt;if(w.t<=0){w.st='move';const h=w.home||center;let tx=h.x+rnd(-4,4),ty=h.y+rnd(-2.5,3.5);for(let k=0;k<5&&!landAt(tx,ty);k++){tx=h.x+rnd(-4,4);ty=h.y+rnd(-2.5,3.5)}w.tx=tx;w.ty=ty;w.f=tx<w.x?-1:1;if(R()<.12&&w.home){w.home=forestTree()||w.home}}}
-      else{const sp=(w.st==='flee'?7:night?.6:1.3)*dt,dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy);if(d<sp){if(landAt(w.tx,w.ty)){w.x=w.tx;w.y=w.ty}w.st='graze';w.t=rnd(2,7)}
+      else{const sp=(w.st==='flee'?7:night?.6:1.3)*dt,dx=w.tx-w.x,dy=w.ty-w.y,d=hyp(dx,dy);if(d<sp){if(landAt(w.tx,w.ty)){w.x=w.tx;w.y=w.ty}w.st='graze';w.t=rnd(2,7)}
         else if(!slide(w,w.x+dx/d*sp,w.y+dy/d*sp)){w.st='graze';w.t=rnd(1,3)}}} // a deer with nowhere to run stands at the edge
-    else if(w.k==='rabbit'){if(w.chk<=0){w.chk=.3;if(w.st!=='hide'&&w.st!=='flee'){let th=null;for(const p of people){if(p.inside||p.task==='sleep')continue;if(Math.hypot(p.x-w.x,p.y-w.y)<2.6){th=p;break}}if(!th&&fox&&Math.hypot(fox.x-w.x,fox.y-w.y)<5)th=fox;
-          if(th){w.st='flee';const dx=w.x-th.x,dy=w.y-th.y,d=Math.hypot(dx,dy)||1;let tx=w.x+dx/d*5,ty=w.y+dy/d*3.5;for(let k=0;k<5&&!landAt(tx,ty);k++){tx=w.home.x+rnd(-2,2);ty=w.home.y+rnd(-2,2)}w.tx=tx;w.ty=ty;w.f=dx<0?-1:1}}}
+    else if(w.k==='rabbit'){if(w.chk<=0){w.chk=.3;if(w.st!=='hide'&&w.st!=='flee'){let th=null;for(const p of people){if(p.inside||p.task==='sleep')continue;if(hyp(p.x-w.x,p.y-w.y)<2.6){th=p;break}}if(!th&&fox&&hyp(fox.x-w.x,fox.y-w.y)<5)th=fox;
+          if(th){w.st='flee';const dx=w.x-th.x,dy=w.y-th.y,d=hyp(dx,dy)||1;let tx=w.x+dx/d*5,ty=w.y+dy/d*3.5;for(let k=0;k<5&&!landAt(tx,ty);k++){tx=w.home.x+rnd(-2,2);ty=w.home.y+rnd(-2,2)}w.tx=tx;w.ty=ty;w.f=dx<0?-1:1}}}
       if(w.st==='hide'){w.t-=dt;if(w.t<=0&&!(snowD>.6&&R()<.7)){w.st='sit';w.t=rnd(1,3);const sx=w.home.x+rnd(-1,1),sy=w.home.y+rnd(-1,1);if(landAt(sx,sy)){w.x=sx;w.y=sy}else{w.x=w.home.x;w.y=w.home.y}}}
       else if(w.st==='sit'){w.t-=dt;if(w.t<=0){w.st='hop';let tx=w.home.x+rnd(-2.5,2.5),ty=w.home.y+rnd(-2,2);if(!landAt(tx,ty)){tx=w.home.x;ty=w.home.y}w.tx=tx;w.ty=ty;w.f=tx<w.x?-1:1;if(R()<.06){const s=farms.length&&R()<.6?freeSpotNear(pick(farms).x,pick(farms).y,2,5,1):freeSpot(6,22);if(s)w.home={x:s.x+.5,y:s.y+.5}}}}
-      else{const sp=(w.st==='flee'?6:2.2)*dt,dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy);if(d<sp){if(landAt(w.tx,w.ty)){w.x=w.tx;w.y=w.ty}if(w.st==='flee'){w.st='hide';w.t=rnd(3,9);w.sc=(w.sc||0)+1;if(w.sc>3){w.sc=0;const s=freeSpot(9,24);if(s)w.home={x:s.x+.5,y:s.y+.5}}}else{w.st='sit';w.t=rnd(.6,3)}}else if(!slide(w,w.x+dx/d*sp,w.y+dy/d*sp)){w.tx=w.x;w.ty=w.y}}} // a blocked rabbit goes to ground where it is
-    else if(w.k==='fox'){if(w.st==='leave'){const dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy),sp=4*dt;w.x+=dx/d*sp;w.y+=dy/d*sp;w.f=dx<0?-1:1;if(d<sp||w.x<0||w.x>W||!landAt(w.x,w.y))w.gone=true;continue}
-      let prey=null;if(w.chk<=0){w.chk=.3;let bd=5;for(const r of wild)if(r.k==='rabbit'&&r.st!=='hide'){const d=Math.hypot(r.x-w.x,r.y-w.y);if(d<bd){bd=d;prey=r}}if(prey){w.prey=prey;w.st='chase'}else if(w.st==='chase'){w.st='trot';w.t=0}}
-      if(w.st==='chase'&&w.prey){if(w.prey.st==='hide'||w.prey.gone){w.st='trot';w.t=0;w.prey=null}else{w.tx=w.prey.x;w.ty=w.prey.y;const dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy),sp=5.5*dt;if(d<.4){w.prey.gone=true;w.prey=null;w.st='eat';w.t=rnd(4,8);if(R()<.4)say('Out past the fields something small stops running. The fox has one of the rabbits, and the night goes on.',false,'foxeat')}else if(slide(w,w.x+dx/d*sp,w.y+dy/d*sp)){w.f=dx<0?-1:1}else{w.st='trot';w.t=0;w.prey=null}}} // a fox does not swim for a rabbit
+      else{const sp=(w.st==='flee'?6:2.2)*dt,dx=w.tx-w.x,dy=w.ty-w.y,d=hyp(dx,dy);if(d<sp){if(landAt(w.tx,w.ty)){w.x=w.tx;w.y=w.ty}if(w.st==='flee'){w.st='hide';w.t=rnd(3,9);w.sc=(w.sc||0)+1;if(w.sc>3){w.sc=0;const s=freeSpot(9,24);if(s)w.home={x:s.x+.5,y:s.y+.5}}}else{w.st='sit';w.t=rnd(.6,3)}}else if(!slide(w,w.x+dx/d*sp,w.y+dy/d*sp)){w.tx=w.x;w.ty=w.y}}} // a blocked rabbit goes to ground where it is
+    else if(w.k==='fox'){if(w.st==='leave'){const dx=w.tx-w.x,dy=w.ty-w.y,d=hyp(dx,dy),sp=4*dt;w.x+=dx/d*sp;w.y+=dy/d*sp;w.f=dx<0?-1:1;if(d<sp||w.x<0||w.x>W||!landAt(w.x,w.y))w.gone=true;continue}
+      let prey=null;if(w.chk<=0){w.chk=.3;let bd=5;for(const r of wild)if(r.k==='rabbit'&&r.st!=='hide'){const d=hyp(r.x-w.x,r.y-w.y);if(d<bd){bd=d;prey=r}}if(prey){w.prey=prey;w.st='chase'}else if(w.st==='chase'){w.st='trot';w.t=0}}
+      if(w.st==='chase'&&w.prey){if(w.prey.st==='hide'||w.prey.gone){w.st='trot';w.t=0;w.prey=null}else{w.tx=w.prey.x;w.ty=w.prey.y;const dx=w.tx-w.x,dy=w.ty-w.y,d=hyp(dx,dy),sp=5.5*dt;if(d<.4){w.prey.gone=true;w.prey=null;w.st='eat';w.t=rnd(4,8);if(R()<.4)say('Out past the fields something small stops running. The fox has one of the rabbits, and the night goes on.',false,'foxeat')}else if(slide(w,w.x+dx/d*sp,w.y+dy/d*sp)){w.f=dx<0?-1:1}else{w.st='trot';w.t=0;w.prey=null}}} // a fox does not swim for a rabbit
       else if(w.st==='eat'){w.t-=dt;if(w.t<=0){w.st='trot';w.t=0}}
-      else{w.t-=dt;if(w.t<=0){w.t=rnd(2,5);let tx=w.x+rnd(-7,7),ty=w.y+rnd(-5,5);for(let k=0;k<6&&(!landAt(tx,ty)||houses.some(h=>Math.hypot(h.x+1-tx,h.y+1-ty)<3)||Math.hypot(tx-center.x,ty-center.y)<4);k++){tx=w.x+rnd(-7,7);ty=w.y+rnd(-5,5)}w.tx=tx;w.ty=ty;w.f=tx<w.x?-1:1}
-        const dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy),sp=2.4*dt;if(d>sp&&!slide(w,w.x+dx/d*sp,w.y+dy/d*sp))w.t=0}}
+      else{w.t-=dt;if(w.t<=0){w.t=rnd(2,5);let tx=w.x+rnd(-7,7),ty=w.y+rnd(-5,5);for(let k=0;k<6&&(!landAt(tx,ty)||houses.some(h=>hyp(h.x+1-tx,h.y+1-ty)<3)||hyp(tx-center.x,ty-center.y)<4);k++){tx=w.x+rnd(-7,7);ty=w.y+rnd(-5,5)}w.tx=tx;w.ty=ty;w.f=tx<w.x?-1:1}
+        const dx=w.tx-w.x,dy=w.ty-w.y,d=hyp(dx,dy),sp=2.4*dt;if(d>sp&&!slide(w,w.x+dx/d*sp,w.y+dy/d*sp))w.t=0}}
   }
   wild=wild.filter(w=>!w.gone);
   // gulls
   const fb=boats.find(b=>b.kind==='fish'&&(b.st==='back'||b.st==='fishing'));const ng=storm?1:wx==='fog'?2:night?2:(fb?7:5)+(arcK()==='shoal'?3:0);
   if(gulls.length<ng&&R()<dt*.6)addGull(fb&&R()<.7?fb:null);else if(gulls.length>ng&&R()<dt*.4)gulls.pop();
   for(const gl of gulls){gl.a+=gl.sp*dt;gl.t-=dt;if(gl.t<=0){gl.t=rnd(5,14);const s=fb&&R()<.6?fb:R()<.4&&hasB('hut')?getB('hut'):pick(shore)||center;gl.nx=s.x+.5;gl.ny=s.y+.5}
-    if(gl.nx!==undefined){const dx=gl.nx-gl.cx,dy=gl.ny-gl.cy,d=Math.hypot(dx,dy),sp=1.6*dt;if(d<sp){gl.cx=gl.nx;gl.cy=gl.ny;gl.nx=undefined}else{gl.cx+=dx/d*sp;gl.cy+=dy/d*sp}}
+    if(gl.nx!==undefined){const dx=gl.nx-gl.cx,dy=gl.ny-gl.cy,d=hyp(dx,dy),sp=1.6*dt;if(d<sp){gl.cx=gl.nx;gl.cy=gl.ny;gl.nx=undefined}else{gl.cx+=dx/d*sp;gl.cy+=dy/d*sp}}
     else if(fb&&R()<dt*.5){gl.nx=fb.x;gl.ny=fb.y}
-    gl.x=gl.cx+Math.cos(gl.a)*gl.r;gl.y=gl.cy+Math.sin(gl.a)*gl.r*.55}
+    gl.x=gl.cx+dcos(gl.a)*gl.r;gl.y=gl.cy+dsin(gl.a)*gl.r*.55}
   // fish shadows: drift about the shallows
   if(!frozen)for(const f of fishSh){f.t-=dt;if(f.t<=0){f.t=rnd(3,8);for(let k=0;k<6;k++){const tx=f.x+rnd(-3,3),ty=f.y+rnd(-2,2);const e=elev[idx(tx|0,ty|0)]||0;if(at(tx|0,ty|0)===WATER&&(f.st?e<.2:(e>.11&&e<.235))){f.tx=tx;f.ty=ty;break}}}
-    const dx=f.tx-f.x,dy=f.ty-f.y,d=Math.hypot(dx,dy),sp=.7*dt;if(d>sp){f.x+=dx/d*sp;f.y+=dy/d*sp}
-    for(const p of people)if(p.task==='fish'&&Math.hypot(p.x-f.x,p.y-f.y)<1.5){f.tx=f.x+(f.x-p.x)*2;f.ty=f.y+(f.y-p.y)*2;break}}
+    const dx=f.tx-f.x,dy=f.ty-f.y,d=hyp(dx,dy),sp=.7*dt;if(d>sp){f.x+=dx/d*sp;f.y+=dy/d*sp}
+    for(const p of people)if(p.task==='fish'&&hyp(p.x-f.x,p.y-f.y)<1.5){f.tx=f.x+(f.x-p.x)*2;f.ty=f.y+(f.y-p.y)*2;break}}
   // fireflies: summer twilight over the grass
   const fl=s==='summer'&&!rain&&wx!=='fog'&&light()<.45&&light()>0&&!isNight()||(s==='summer'&&!rain&&isNight()&&dayFrac()>edges()[1]&&dayFrac()<edges()[1]+.06);
   if(fl&&flies.length<36&&R()<dt*20){const sp=freeSpot(3,20);if(sp)flies.push({x:sp.x+rnd(),y:sp.y+rnd(),ph:rnd(6.28),vx:0,vy:0,l:rnd(30,80)})}
