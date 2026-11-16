@@ -683,7 +683,7 @@ section(28, () => {
 
 // ---- tiers (A14, unit section 29: the design leaves A14 no number and 19 to 28 are taken) ----
 // lookQNext(q, st, ms, dt) is the tier logic of 3.2, called straight: 2 s over 20 ms steps down, 10 s under 10 ms steps up. The simulation must not read any
-// of it. Break: change the step-down test to st.over>=.5; "steps down after 2 s" fails on the 1.5 s run, the rest stay green. Break: let step() in sim.js read
+// of it. Break: change the step-down test to st.over>=.5; the 1.5 s run, the 2 s run and the spike run fail, the rest stay green. Break: let step() in sim.js read
 // lookQ; "no simulation file reads the tier" fails and nothing else does.
 section(29, () => {
   const { ev } = fresh(7);
