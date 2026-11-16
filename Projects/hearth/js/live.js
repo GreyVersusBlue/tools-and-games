@@ -113,7 +113,7 @@ function liveFrame(now){
       for(let i=0;i<n;i++)step(lvCfg.dt);
       lvStep+=n;
       if(lvStep===next)lvBoundary(lvEpoch+1)}}
-  audioTick(rdt);cardT-=rdt;renderCard(false);draw();lvStat()}
+  audioTick(rdt);cardT-=rdt;renderCard(false);timedDraw(rdt);lvStat()}
 /* ---- C7: the islands before this one. eras.json lists them; each has its saga and its final island, which opens as a copy on index.html ---- */
 let lvErasList=[];
 const lvEraName=r=>r.name||'island '+r.seed.toString(36);

@@ -3,6 +3,21 @@
 /* A2: the hour is a colour. The scene is multiplied by one colour that depends on the hour, the season and the weather (skyAt), and the
    lights are stamped into that colour first, so a lit window shows the true colour of what is round it. Nothing here calls R() or writes
    anything the simulation reads: it reads state, and assigns only its own variables and underscore fields. */
+/* A14: three quality tiers, chosen by measurement and never by the simulation (it must not read any of this). lookQ 2 is everything; 1 drops the shadows and the
+   rings on the water and builds the light map at half resolution; 0 is the cost the look rig started from: the hour's colour, the lights and the weather, and none of
+   the wet, the smoke or the far island's life. lookEma is a moving average of what draw() costs; over 20 ms for 2 s steps down a tier, under 10 ms for 10 s steps up one.
+   lookAuto false pins the tier, which is how a test or setLookQ holds it. Presentation only: assigns its own variables. */
+let lookQ=2,lookAuto=true,lookEma=0,lookOver=0,lookUnder=0;
+/* the tier after one frame that took ms, with dt seconds of the clock passing: st is {ema,over,under}, q the tier now. Pure but for st. */
+function lookQNext(q,st,ms,dt){
+  st.ema=st.ema?st.ema+(ms-st.ema)*.1:ms;
+  st.over=st.ema>20?st.over+dt:0;st.under=st.ema<10?st.under+dt:0;
+  if(st.over>=2&&q>0){st.over=0;st.under=0;return q-1}
+  if(st.under>=10&&q<2){st.over=0;st.under=0;return q+1}
+  return q}
+const lookSt={ema:0,over:0,under:0};
+function lookQTick(ms,dt){if(!lookAuto)return;lookQ=lookQNext(lookQ,lookSt,ms,dt);lookEma=lookSt.ema}
+function setLookQ(q){lookQ=q;lookAuto=false}
 const SKYH=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
 /* name, what the hour is counted from (0 sunrise edge, 1 sunset edge, 2 the day itself), offset in day fractions, multiply colour */
 const SKY=[['night0',0,-.06,'#34406e'],['first',0,-.04,'#5a5f8a'],['dawn',0,.02,'#f0b292'],['morning',0,.10,'#fff0dc'],['noon',2,.5,'#ffffff'],
@@ -42,8 +57,10 @@ function houseLights(L,f,e){
   return out}
 /* the light map: the hour's colour over a canvas the size of the world, the lights stamped on with lighter. Returns the canvas. */
 function lightMap(L,f,e,s){
-  if(!lmCv){lmCv=document.createElement('canvas');lmCv.width=W*T;lmCv.height=H*T;lmG=lmCv.getContext('2d')}
-  const m=lmG,c=skyAt(f,s,wx,snowD),k=flash,fk=1+.5*Math.min(1,fogA),fd=Math.min(1,fogA)*.6; /* A7: fog takes the colour out of the map and swells every light */
+  const lsc=lookQ<2?.5:1; /* A14: below tier 2 the map is built at half size and the picture stretches it back */
+  if(!lmCv){lmCv=document.createElement('canvas');lmG=lmCv.getContext('2d')}
+  if(lmCv.width!==W*T*lsc){lmCv.width=W*T*lsc;lmCv.height=H*T*lsc}
+  const m=lmG;m.setTransform(lsc,0,0,lsc,0,0);const c=skyAt(f,s,wx,snowD),k=flash,fk=1+.5*Math.min(1,fogA),fd=Math.min(1,fogA)*.6; /* A7: fog takes the colour out of the map and swells every light */
   if(fd>0){const y=.299*c[0]+.587*c[1]+.114*c[2];for(let q=0;q<3;q++)c[q]=Math.round(c[q]+(y-c[q])*fd)}skyLum=Math.min(1,(.299*c[0]+.587*c[1]+.114*c[2])/255+k);
   m.globalCompositeOperation='source-over';
   m.fillStyle=`rgb(${Math.round(c[0]+(255-c[0])*k)},${Math.round(c[1]+(255-c[1])*k)},${Math.round(c[2]+(255-c[2])*k)})`;m.fillRect(0,0,W*T,H*T);
@@ -55,7 +72,7 @@ function lightMap(L,f,e,s){
   const hall=getB('hall');
   if(hall&&L<.5&&(storyDay===dayCount||people.some(p=>p.task==='abed'&&p.abedH)))stamp('win',28,hall.x*T+8,hall.y*T+10,1);
   const lh=getB('light');
-  if(lh&&dark>.35){const lx=lh.x*T+4,ly=lh.y*T-13,a=animT*.9,al=(dark-.35)*.5*(wx==='fog'?1.6:1);stamp('lamp',18,lx,ly,Math.min(1,(dark-.35)*3));
+  if(lh&&dark>.35){const lx=lh.x*T+4,ly=lh.y*T-13,a=RM?.6:animT*.9,al=(dark-.35)*.5*(wx==='fog'?1.6:1);stamp('lamp',18,lx,ly,Math.min(1,(dark-.35)*3));
     m.fillStyle=`rgba(255,242,176,${al})`;for(const off of [0,Math.PI]){m.beginPath();m.moveTo(lx,ly);m.arc(lx,ly,120,a+off-.13,a+off+.13);m.closePath();m.fill()}}
   for(const q of farLamps(L,f,e))stamp('lamp',8,q.x,q.y,q.a); /* B5: one for each person over there, until the small hours */
   for(const fl of flies){const b=RM?.85:Math.sin(animT*2.6+fl.ph);if(b<.2)continue;m.fillStyle=`rgba(150,255,90,${Math.min(1,(b-.2)*1.1*Math.min(1,fl.l/6))})`;m.fillRect(Math.round(fl.x*T-1),Math.round(fl.y*T-3),3,3)}
@@ -116,14 +133,15 @@ function drawWet(){
     if(wetKey!==tiles){wetKey=tiles;if(!wetCv){wetCv=document.createElement('canvas');wetCv.width=W*T;wetCv.height=H*T}
       const m=wetCv.getContext('2d');m.clearRect(0,0,W*T,H*T);m.fillStyle=WETC;
       for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(tiles[idx(x,y)]!==WATER)m.fillRect(x*T,y*T,T,T)}
+    if(lookQ<1)return; /* A14: tier 0 has no wet land and no puddles */
     g.globalCompositeOperation='multiply';g.globalAlpha=wetA;g.drawImage(wetCv,0,0);g.globalAlpha=1;g.globalCompositeOperation='source-over';
     /* puddles: thirty road tiles, fixed for the island, each with a pale glint that comes and goes */
     const pk=seed+'|'+roadV;
     if(puddleKey!==pk){puddleKey=pk;puddles=[];const rd=[];for(let i=0;i<W*H;i++)if(road[i]===1)rd.push(i);
       const r=mulberry(seed^0x5ad1e);for(let i=rd.length-1;i>0;i--){const j=(r()*(i+1))|0,t=rd[i];rd[i]=rd[j];rd[j]=t}
       for(const i of rd.slice(0,30))puddles.push({x:(i%W)*T+((r()*4)|0),y:((i/W)|0)*T+1+((r()*5)|0),ph:r()*6.283})}
-    if(wetA>.25)for(const p of puddles){const a=wetA*(.3+.3*Math.sin(animT*1.6+p.ph));g.fillStyle=`rgba(214,230,250,${a.toFixed(2)})`;g.fillRect(p.x,p.y,3,1);g.fillRect(p.x+1,p.y+1,2,1)}}
-  if(rain)drawSplashes()}
+    if(wetA>.25)for(const p of puddles){const a=wetA*(.3+.3*(RM?0:Math.sin(animT*1.6+p.ph)));g.fillStyle=`rgba(214,230,250,${a.toFixed(2)})`;g.fillRect(p.x,p.y,3,1);g.fillRect(p.x+1,p.y+1,2,1)}}
+  if(rain&&lookQ>=2)drawSplashes()}
 /* rings on open water, only in view: up to sixty (forty in plain rain, half that under reduced motion) from a stream that is reseeded every quarter second,
    each growing through three frames, 2 then 3 then 4 px, in that quarter second */
 function drawSplashes(){
@@ -149,7 +167,7 @@ function roofEdge(name){
     for(let i=0;i<sl.width;i++)for(let j=0;j<sl.height;j++)if(d[(j*sl.width+i)*4+3]>0){pts.push([i,j]);break}}catch(e){}
   return ROOFPTS[name]=pts}
 function drawRoofWet(){
-  if(wetA<.02||typeof BSHEET==='undefined')return;
+  if(wetA<.02||lookQ<1||typeof BSHEET==='undefined')return;
   g.fillStyle=`rgba(234,243,255,${(.65*wetA).toFixed(2)})`;
   for(const h of houses){const name=roofFrame(h.r),f=BSHEET.frames[name];if(!f)continue;const ox=h.x*T-f.ax,oy=h.y*T-f.ay;for(const p of roofEdge(name))g.fillRect(ox+p[0],oy+p[1],1,1)}}
 /* A7: weather that lands, the cold half. Fog has depth (look.js: the light map loses colour and its lights swell; render.js: a ring of fog that is thickest at the
@@ -166,11 +184,11 @@ function houseOccupied(h){return people.some(p=>!p.dead&&(p.inside&&p.shelterH==
 function smokeColumn(x,y,n,k,col,wk,dir){
   const storm2=wk>=2,rise=storm2?11:wk>=1.3?15:24,lean=wk*(storm2?9:5);
   g.fillStyle=col;
-  for(let i=0;i<n;i++){const t=(animT*.3+i/n+k)%1,sw=Math.round(Math.sin(animT*.8+i*1.9+k*9)*(.4+wk*.5)),sz=t>(storm2?.3:.7)?2:1;
+  for(let i=0;i<n;i++){const t=(animT*.3+i/n+k)%1,sw=RM?0:Math.round(Math.sin(animT*.8+i*1.9+k*9)*(.4+wk*.5)),sz=t>(storm2?.3:.7)?2:1;
     g.globalAlpha=.9*(1-t*.75);g.fillRect(Math.round(x+dir*t*t*lean+sw),Math.round(y-t*rise),sz,sz)}
   g.globalAlpha=1}
 function drawSmoke(L,s){
-  if(speed>=FAST||lookOff.smoke)return;
+  if(speed>=FAST||lookOff.smoke||lookQ<1)return;
   const wk=WINDK[wx]||1,dir=wind<0?-1:1,dark=L<.5,col=dark?SMOKEC.night:SMOKEC.day,n0=RM?5:8;
   if(s==='winter'||dark&&s!=='summer')houses.forEach((h,i)=>{if(houseOccupied(h))smokeColumn(h.x*T+12,h.y*T+1,5+((i*3+h.x)%4)*(n0-5)/3|0,i*.37,col,wk,dir)});
   const sm=getB('smoke');if(sm&&sm.done)smokeColumn(sm.x*T+13,sm.y*T+1,n0-1,.5,col,wk,dir);
@@ -189,7 +207,7 @@ function eavePts(name){
     for(let i=0;i<sl.width;i++)for(let j=sl.height-1;j>=0;j--)if(d[(j*sl.width+i)*4+3]>0){pts.push([i,j]);break}}catch(e){}
   return EAVEPTS[name]=pts}
 /* while the snow is going (it is not snowing, it lies under .3 and there is some; the cap is under .5 there, so the light frame, A10), six white pixels per roof slide off the south eave and drop three */
-function snowSheds(){return !lookOff.shed&&wx!=='snow'&&snowD>.01&&snowD<.3&&typeof BSHEET!=='undefined'&&!!BSHEET.frames['house-snow1']}
+function snowSheds(){return !lookOff.shed&&lookQ>=1&&wx!=='snow'&&snowD>.01&&snowD<.3&&typeof BSHEET!=='undefined'&&!!BSHEET.frames['house-snow1']}
 function drawRoofSlide(h,x,y){
   const f=BSHEET.frames['house-snow1'],pts=eavePts('house-snow1');if(!pts.length)return;
   const r=mulberry(h.x*131+h.y*7+seed),ox=x-f.ax,oy=y-f.ay;g.fillStyle='#f4f8ff';
@@ -227,12 +245,12 @@ function farLamps(L,f,e){
   return out}
 /* by day: a pale thread of smoke over each lamp's place, and a sail for each crossing of the last two days */
 function drawFarLife(L){
-  if(!farIsle||!farRec||!farRec.kn||fogA>=.9)return;
+  if(!farIsle||!farRec||!farRec.kn||fogA>=.9||lookQ<1)return;
   const fi=farIsle,x0=fi.x*T,w=fi.w*T,h=fi.h*1.7,wxk=Math.max(0,1-fogA*1.5)*(rain||wx==='snow'||wx==='thunder'?.5:wx==='overcast'?.8:1);
   if(wxk<=.02)return;
   const n=Math.min(6,farPeople()),rr=mulberry(farRec.s^0xB5);
   if(n>0&&L>=.5){g.fillStyle='#dbe2ea';
-    for(let i=0;i<n;i++){const u=.16+.68*rr(),bx=Math.round(x0+u*w),by=Math.round(farEdgeY(u,h))-1,sw=Math.sin(animT*.7+i*1.9);
+    for(let i=0;i<n;i++){const u=.16+.68*rr(),bx=Math.round(x0+u*w),by=Math.round(farEdgeY(u,h))-1,sw=RM?0:Math.sin(animT*.7+i*1.9);
       for(let k=1;k<=5;k++){g.globalAlpha=(.34-k*.05)*wxk;g.fillRect(bx+Math.round(sw*k*.5),by-k,1,1)}}
     g.globalAlpha=1}
   let ln=null;for(const l of landings)if(!ln||Math.abs(l.x-(fi.x+fi.w/2))<Math.abs(ln.x-(fi.x+fi.w/2)))ln=l;

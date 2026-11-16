@@ -181,18 +181,19 @@ function draw(){
   const shrink=s==='autumn'&&sd===4?.85:1, blossom=s==='spring'&&sd<=3, cap=snowD>.15?Math.min(1,snowD*1.4):0;
   const ln=(x0,y0,x1,y1)=>{const n=Math.max(Math.abs(x1-x0),Math.abs(y1-y0))|0;for(let i=0;i<=n;i++)g.rect(Math.round(x0+(x1-x0)*i/(n||1)),Math.round(y0+(y1-y0)*i/(n||1)),1,1)}; /* a pixel line into the open path; one fill() draws the whole bare tree */
   const TIP=[[[-.9,-1.7],[.8,-1.8],[0,-2.1]],[[-.5,-2.2],[.5,-2.3],[0,-2.7]],[[-1.3,-1.5],[1.3,-1.6],[0,-1.9]]]; /* A4: where the bare branches end, round, tall, wide, in tree radii */
+  /* A14: trees are most of a frame (260 of them, 2 ms in summer and 5 in a bare winter): tier 2 draws every highlight and spur, tier 1 one shape per canopy and a bare tree without its spurs, tier 0 a bare tree as its trunk and the tips of its branches */
   for(const t of trees)ents.push({y:t.y,d:()=>{const r=T*.7*t.s*shrink,sh=treeShape(t),by=t.y*T,
     sx=RM?0:Math.max(-1,Math.min(1,Math.round(Math.sin(animT*1.7+t.x*1.7+t.y*.9)*wind*.9))),cx=t.x*T+sx; /* A4: the wind moves the canopy a pixel, by the weather's table; still under reduced motion */
     if(s==='winter'){ /* A4: a bare branched shape, not a green ball */
       g.fillStyle='#3a2a1c';g.beginPath();g.rect(t.x*T-1,by-r*1.0,2,r*1.3);const fy=by-r*.9;
-      for(const [tx,ty] of TIP[sh]){const ex=Math.round(cx+tx*r),ey=Math.round(by+ty*r);ln(t.x*T,fy,ex,ey);ln((t.x*T+ex)/2,(fy+ey)/2,(t.x*T+ex)/2+(tx<0?-.4:.4)*r,(fy+ey)/2-.35*r)}
+      for(const [tx,ty] of TIP[sh]){const ex=Math.round(cx+tx*r),ey=Math.round(by+ty*r);if(lookQ<1){g.rect(ex,ey,1,1);g.rect((t.x*T+ex)>>1,(fy+ey)/2|0,1,1);continue}ln(t.x*T,fy,ex,ey);if(lookQ>=2)ln((t.x*T+ex)/2,(fy+ey)/2,(t.x*T+ex)/2+(tx<0?-.4:.4)*r,(fy+ey)/2-.35*r)}
       g.fill();
       if(cap>0&&t.s>.4){g.fillStyle='#eef2f4';g.beginPath();for(const [tx,ty] of TIP[sh])g.rect(Math.round(cx+tx*r)-1,Math.round(by+ty*r)-1,3,1);g.rect(Math.round(t.x*T)-1,Math.round(fy)-1,3,1);g.fill()}
       return}
     const c=canopy(t);g.fillStyle='#4a2f16';g.fillRect(t.x*T-1,by-r*.6,2,r*.9);
-    if(sh===0){g.fillStyle=c[0];g.beginPath();g.arc(cx,by-r,r,0,6.283);g.fill();g.fillStyle=c[1];g.beginPath();g.arc(cx-r*.3,by-r*1.2,r*.6,0,6.283);g.fill()}
-    else if(sh===1){g.fillStyle=c[0];g.beginPath();g.ellipse(cx,by-r*1.3,r*.62,r*1.2,0,0,6.283);g.fill();g.fillStyle=c[1];g.beginPath();g.ellipse(cx-r*.2,by-r*1.6,r*.36,r*.7,0,0,6.283);g.fill()}
-    else{g.fillStyle=c[0];g.beginPath();g.ellipse(cx,by-r*.9,r*1.35,r*.85,0,0,6.283);g.fill();g.fillStyle=c[1];g.beginPath();g.ellipse(cx-r*.35,by-r*1.1,r*.8,r*.5,0,0,6.283);g.fill()}
+    if(sh===0){g.fillStyle=c[0];g.beginPath();g.arc(cx,by-r,r,0,6.283);g.fill();if(lookQ>=2){g.fillStyle=c[1];g.beginPath();g.arc(cx-r*.3,by-r*1.2,r*.6,0,6.283);g.fill()}}
+    else if(sh===1){g.fillStyle=c[0];g.beginPath();g.ellipse(cx,by-r*1.3,r*.62,r*1.2,0,0,6.283);g.fill();if(lookQ>=2){g.fillStyle=c[1];g.beginPath();g.ellipse(cx-r*.2,by-r*1.6,r*.36,r*.7,0,0,6.283);g.fill()}}
+    else{g.fillStyle=c[0];g.beginPath();g.ellipse(cx,by-r*.9,r*1.35,r*.85,0,0,6.283);g.fill();if(lookQ>=2){g.fillStyle=c[1];g.beginPath();g.ellipse(cx-r*.35,by-r*1.1,r*.8,r*.5,0,0,6.283);g.fill()}}
     if(blossom&&t.b&&t.s>.6){g.fillStyle='#e8a0b8';g.fillRect(cx-r*.6,by-r*1.1,2,2);g.fillRect(cx+r*.3,by-r*1.5,2,2);g.fillRect(cx+r*.1,by-r*.6,2,2)}
     if(cap>0&&t.s>.4){g.fillStyle='#eef2f4';g.beginPath();if(sh===0)g.arc(cx-r*.2,by-r*1.35,r*.55*cap,0,6.283);else if(sh===1)g.ellipse(cx-r*.15,by-r*2.0,r*.4*cap,r*.35*cap,0,0,6.283);else g.ellipse(cx-r*.2,by-r*1.45,r*.9*cap,r*.38*cap,0,0,6.283);g.fill()}}});
   /* A4: in autumn's last two days the canopies let go: up to 40 leaf pixels in the air (20 under reduced motion), each from one tree, each on its own phase of animT */
@@ -310,7 +311,7 @@ function draw(){
   if(wx==='snow')drawSnowfall(wind); /* A7 (look.js): two depths of flake, leaning with the wind */
   // sky: the hour's colour (look.js), cloud, fog
   const f=dayFrac(),e=edges();
-  g.globalCompositeOperation='multiply';g.drawImage(lightMap(L,f,e,s),0,0);g.globalCompositeOperation='source-over'; // the hour is a colour, and the lights are in it (look.js)
+  g.globalCompositeOperation='multiply';{const lm=lightMap(L,f,e,s);g.drawImage(lm,0,0,W*T,H*T)}g.globalCompositeOperation='source-over'; // the hour is a colour, and the lights are in it (look.js)
   const skyY=.3+.7*skyLum; // fog and mist are painted after the multiply, so they take the hour's brightness themselves
   // a rainbow hangs where the rain just was (sprint 16): one cached sprite, fading over half a minute of sim time
   if(rbUntil>time&&L>.35&&!rain&&wx!=='fog'){g.globalAlpha=Math.min(1,(rbUntil-time)/8)*.38;

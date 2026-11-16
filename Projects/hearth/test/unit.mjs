@@ -681,5 +681,31 @@ section(28, () => {
   check('live.js: no comment line starts with // and the file has no "use strict"', !/^\s*\/\//m.test(lv) && !/use strict/.test(lv));
 });
 
+// ---- tiers (A14, unit section 29: the design leaves A14 no number and 19 to 28 are taken) ----
+// lookQNext(q, st, ms, dt) is the tier logic of 3.2, called straight: 2 s over 20 ms steps down, 10 s under 10 ms steps up. The simulation must not read any
+// of it. Break: change the step-down test to st.over>=.5; "steps down after 2 s" fails on the 1.5 s run, the rest stay green. Break: let step() in sim.js read
+// lookQ; "no simulation file reads the tier" fails and nothing else does.
+section(29, () => {
+  const { ev } = fresh(7);
+  const run = (q, ms, secs, dt = .05) => ev(`(()=>{const st={ema:0,over:0,under:0};let q=${q};const n=Math.round(${secs}/${dt}),log=[];for(let i=0;i<n;i++){const k=lookQNext(q,st,${ms},${dt});if(k!==q){log.push([+(i*${dt}).toFixed(2),k]);q=k}}return {q,log}})()`);
+  const slow = run(2, 30, 1.5);
+  check('tiers: 1.5 s of 30 ms frames does not step down (the average needs 2 s over 20 ms, and starts at the first frame)', slow.q === 2 && slow.log.length === 0, JSON.stringify(slow));
+  const down = run(2, 30, 2.5);
+  check('tiers: 30 ms frames step 2 to 1 after about 2 s and not before 1.9', down.q === 1 && down.log.length === 1 && down.log[0][0] >= 1.9 && down.log[0][0] <= 2.2, JSON.stringify(down));
+  const floor = run(2, 30, 30);
+  check('tiers: 30 s of 30 ms frames ends at tier 0 and goes no lower (one step per 2 s, stops at 0)', floor.q === 0 && floor.log.length === 2, JSON.stringify(floor));
+  const up = run(0, 4, 25);
+  check('tiers: 4 ms frames step 0 to 1 after about 10 s and 1 to 2 after another 10, and stop at 2', up.q === 2 && up.log.length === 2 && up.log[0][0] >= 9.9 && up.log[0][0] <= 10.2 && up.log[1][0] >= 19.9, JSON.stringify(up));
+  const mid = run(1, 15, 60);
+  check('tiers: frames between 10 and 20 ms hold the tier for a minute', mid.q === 1 && mid.log.length === 0, JSON.stringify(mid));
+  const spike = ev('(()=>{const st={ema:0,over:0,under:0};let q=2;for(let i=0;i<400;i++)q=lookQNext(q,st,i%20===0?60:6,.05);return q})()');
+  check('tiers: a 60 ms frame once a second in 6 ms frames never costs a tier (the average, not the worst frame)', spike === 2, 'got ' + spike);
+  check('tiers: setLookQ pins the tier and lookQTick no longer moves it', ev('(()=>{setLookQ(1);for(let i=0;i<200;i++)lookQTick(90,.05);return lookQ===1&&!lookAuto})()'));
+  const read = f => fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', f), 'utf8');
+  const SIM = ['js/core.js', 'js/sim.js', 'js/life.js', 'js/flavor.js', 'js/watcher.js', 'js/save.js'];
+  const hits = SIM.filter(f => /lookQ|lookAuto|lookEma/.test(read(f)));
+  check('tiers: no simulation file reads the tier', hits.length === 0, hits.join(', '));
+});
+
 console.log(`${fail ? 'FAIL' : 'PASS'}: ${pass} of ${pass + fail} unit checks`);
 process.exit(fail ? 1 : 0);
