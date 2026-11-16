@@ -20,7 +20,9 @@ import { buildGraph } from '../../engine/graph.js';
 import { route, routingGraph } from '../../engine/routing.js';
 import { directions } from '../../engine/directions.js';
 import { publishedModel } from '../../engine/publish-data.js';
-import { openSchool } from '../../staff/model.js';
+import { openSchool, letterOfStairs } from '../../staff/model.js';
+import { routeFloors, routeCrossings } from '../../staff/views/directions.js';
+import { oneWayStairs } from '../../staff/views/map.js';
 import { sampleSchool } from '../../data/sample-school.js';
 import { school, clone, makeIds, clock } from './helpers.mjs';
 import { planProject, threeFloors, roomId, cellAt } from '../fixtures/buildings/plans.mjs';
@@ -455,4 +457,39 @@ test('the staff browser reads a published model carrying the new fields, and one
   const reads = openSchool(broken);
   assert.equal(reads.periodName(0), 'Period 1');
   assert.equal(reads.periodWords().one, 'Period');
+});
+
+// The sample's stairs A (Floors 1 and 2) and B (Floors 2 and 3), published
+// with both flights in stairwell W. (publish-data.js writes `well` from
+// SV2-126 on; here the field is put into the published model by hand, which
+// is what a file from a planner that has it holds.)
+function publishedWell(change) {
+  const model = clone(publishedModel(school(), { clock }));
+  for (const connection of model.building.connections.slice(0, 2)) connection.well = 'W';
+  if (change) change(model);
+  return model;
+}
+
+test('the staff browser names a stairwell by its letter: letterOfStairs, the route, the written directions', () => {
+  assert.equal(letterOfStairs({ label: 'A', well: 'W' }), 'W');
+  assert.equal(letterOfStairs({ label: 'A' }), 'A');
+  const open = openSchool(publishedWell());
+  const found = open.route('rsample101', 'rsample303');
+  assert.equal(found.ok, true);
+  assert.deepEqual(routeCrossings(open, found).map((each) => each.label), ['W', 'W']);
+  assert.deepEqual(routeFloors(open, found).map((part) => part.stairs), ['W', 'W', null]);
+  assert.match(open.directions(found).text, /Take stairs W up to Floor 3\./);
+  assert.doesNotMatch(open.directions(found).text, /stairs A|stairs B/);
+});
+
+test('the staff browser lists a stairwell\'s one-way flights once, by the letter', () => {
+  const model = publishedWell((built) => {
+    built.building.connections[0].direction = 'ab';
+    built.building.connections[1].direction = 'ab';
+  });
+  const second = model.building.floors[1];
+  assert.deepEqual(oneWayStairs(model, second).map((each) => each.text), ['Stairs W (up only)'], 'two flights touch Floor 2, one line says it');
+  const plain = clone(model);
+  for (const connection of plain.building.connections) delete connection.well;
+  assert.deepEqual(oneWayStairs(plain, plain.building.floors[1]).map((each) => each.text), ['Stairs A (up only)', 'Stairs B (up only)'], 'plain flights keep their own letters');
 });

@@ -8,8 +8,7 @@
 import { h, typed } from '../dom.js';
 import { makeHash } from '../router.js';
 import { pageOf, missingPage } from '../page.js';
-import { isElevatorLink } from '../model.js';
-import { stairsLetter } from '../../engine/schema.js';
+import { isElevatorLink, letterOfStairs } from '../model.js';
 import { floorMap, besideMap, stepFreeNotes } from '../map.js';
 import { countOf, subjectChipOf, listPart } from './teacher.js';
 
@@ -34,8 +33,8 @@ export function oneWayStairs(data, floor) {
   const level = (id) => (floors.find((each) => each.id === id) || { level: 0 }).level;
   return links.filter((link) => !isElevatorLink(link) && (link.direction === 'ab' || link.direction === 'ba') && (link.a.floorId === floor.id || link.b.floorId === floor.id)).map((link) => {
     const rise = link.direction === 'ab' ? level(link.b.floorId) - level(link.a.floorId) : level(link.a.floorId) - level(link.b.floorId);
-    return { id: link.id, text: 'Stairs ' + stairsLetter(link) + ' (' + (rise > 0 ? 'up only' : rise < 0 ? 'down only' : 'one way only') + ')' };
-  });
+    return { id: link.id, text: 'Stairs ' + letterOfStairs(link) + ' (' + (rise > 0 ? 'up only' : rise < 0 ? 'down only' : 'one way only') + ')' };
+  }).filter((item, index, all) => all.findIndex((other) => other.text === item.text) === index);
 }
 
 // The subjects a floor's rooms have, in the school's own order, and whether

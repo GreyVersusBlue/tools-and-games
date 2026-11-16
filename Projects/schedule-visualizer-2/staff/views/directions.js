@@ -14,8 +14,7 @@ import { makeHash } from '../router.js';
 import { pageOf, printGate } from '../page.js';
 import { viewLink, sectionHeading } from '../clock.js';
 import { floorMap } from '../map.js';
-import { isElevatorLink } from '../model.js';
-import { stairsLetter } from '../../engine/schema.js';
+import { isElevatorLink, letterOfStairs } from '../model.js';
 
 // "under a minute", "about 1 minute", "about 4 minutes".
 function about(seconds) {
@@ -50,7 +49,7 @@ export function routeCrossings(school, found) {
     const connection = connections.find((item) => item.id === id);
     const at = (found.connectionAt || [])[i];
     const ride = isElevatorLink(connection);
-    const label = !connection ? '' : ride && typeof connection.car === 'string' && connection.car !== '' ? connection.car : stairsLetter(connection);
+    const label = !connection ? '' : ride && typeof connection.car === 'string' && connection.car !== '' ? connection.car : letterOfStairs(connection);
     return { kind: ride ? 'ride' : 'stairs', label, at, fromFloorId: cells[at] ? cells[at].floorId : null, toFloorId: cells[at + 1] ? cells[at + 1].floorId : null };
   });
 }

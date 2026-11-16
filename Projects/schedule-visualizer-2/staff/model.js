@@ -4,7 +4,7 @@
 // a bell time is engine/bells.js's, a route is engine/routing.js's: the same
 // functions the planner uses, run on the published data.
 
-import { findById, findRoom, floorOfRoom, allRooms, findFloor, bellSchedulesOf, calendarOf, DAY_CLOSED, BELLS_REGULAR, ELEVATOR_KIND, REFUGE_DEFAULT_NAME, elevatorCars } from '../engine/schema.js';
+import { findById, findRoom, floorOfRoom, allRooms, findFloor, bellSchedulesOf, calendarOf, DAY_CLOSED, BELLS_REGULAR, ELEVATOR_KIND, REFUGE_DEFAULT_NAME, elevatorCars, stairsLetter } from '../engine/schema.js';
 import { ownDayTypes, isOwnCopy, effectiveSchedule, effectiveDayType, dayShort, bellsShort } from '../engine/day-types.js';
 import { bellsFor, findBellSchedule, periodName, periodLabel, periodWordForms, parseTime, formatTime } from '../engine/bells.js';
 import { dayOn, calendarDays, isCalendarDate, addDays, daysBetween, weekdayOf, dateWords } from '../engine/calendar.js';
@@ -21,6 +21,13 @@ export const SCHOOL_FALLBACK_NAME = 'Staff schedule';
 // kind themselves.
 export function isElevatorLink(link) {
   return Boolean(link) && link.kind === ELEVATOR_KIND;
+}
+
+// What a stairs connection is called on screen: its stairwell's letter when it
+// has one, else its own. The views ask this and never read the label themselves
+// (the views reach the engine only through the school).
+export function letterOfStairs(link) {
+  return stairsLetter(link);
 }
 
 export function openSchool(data) {
