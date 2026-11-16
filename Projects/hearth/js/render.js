@@ -5,11 +5,19 @@ const SKIN=[['#f1cfa5','#d9ac7c'],['#e6b98d','#c48f63'],['#c98a5c','#a56a3f'],['
 const EYES=['#2a2a3a','#3d5a3a','#4a5f8a','#5a3a2a'];
 /* sprint 16: which skin a face gets — inherited (fSk, set at birth) or derived from the seed the way it always was */
 const skinOf=p=>p.fSk>=0?p.fSk:(mulberry(p.seed)()*SKIN.length)|0;
-function drawFace(ctx,p){const rr=mulberry(p.seed);const kid=isKid(p),eld=isElder(p),age=ageOf(p);
-  ctx.clearRect(0,0,16,16);
+/* A8: every choice a face makes, from the person's own mulberry(p.seed) and in the order drawFace has always drawn them, so both the card and the map read one answer.
+   Pure: no R(), no state written. skin is an index into SKIN, hat is null|'proud'|'brave'|'plain', side is an elder's long hair. */
+function faceSpec(p){const rr=mulberry(p.seed),kid=isKid(p),eld=isElder(p),age=ageOf(p);
   const r1=rr(); /* the first draw is still consumed either way, so every pre-sprint-16 face is pixel-identical */
-  const skin=SKIN[p.fSk>=0?p.fSk:(r1*SKIN.length)|0],eye=EYES[(rr()*EYES.length)|0];const style=(rr()*4)|0;
-  let hair=p.hair;if(age>52){const t=Math.min(1,(age-52)/20);hair=t>.6?'#d9d4c8':'#8c8478'}
+  const skin=p.fSk>=0?p.fSk:(r1*SKIN.length)|0,eye=(rr()*EYES.length)|0,style=(rr()*4)|0;
+  let hair=p.hair,grey=0;if(age>52){const t=Math.min(1,(age-52)/20);grey=t;hair=t>.6?'#d9d4c8':'#8c8478'}
+  const side=style===3&&eld?rr()<.5:false;
+  let hat=null;if(has(p,'proud')&&rr()<.6)hat='proud';else if(has(p,'brave')&&rr()<.6)hat='brave';else if(!kid&&rr()<.18)hat='plain';
+  const beard=!kid&&rr()<.3&&style!==2;
+  return{skin,eye,style,side,hat,beard,grey,hair}}
+function drawFace(ctx,p){const kid=isKid(p),eld=isElder(p),sp=faceSpec(p);
+  ctx.clearRect(0,0,16,16);
+  const skin=SKIN[sp.skin],eye=EYES[sp.eye],style=sp.style,hair=sp.hair;
   const shade=c=>{const n=parseInt(c.slice(1),16);const f=.72;return'#'+[(n>>16)&255,(n>>8)&255,n&255].map(v=>Math.round(v*f).toString(16).padStart(2,'0')).join('')};
   const px=(x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(x,y,w,h)};
   // background wash + subtle vignette
@@ -25,12 +33,12 @@ function drawFace(ctx,p){const rr=mulberry(p.seed);const kid=isKid(p),eld=isElde
   if(style===0){px(4,hy-1,8,2,hair);px(3,hy,1,2,hair);px(12,hy,1,3,hd);px(11,hy,1,2,hd)}
   else if(style===1){px(4,hy-1,8,2,hair);px(3,hy,1,hh-2,hair);px(12,hy,1,hh-2,hd);px(3,hy-1,1,1,hd)}
   else if(style===2){px(4,hy-1,8,2,hair);px(6,hy-2,4,1,hair);px(11,hy,1,2,hd);px(3,hy,1,1,hair)}
-  else{if(eld&&rr()<.5){px(3,hy+1,1,4,hair);px(12,hy+1,1,4,hd)}else{px(4,hy-1,8,1,hair);px(3,hy,1,3,hair);px(12,hy,1,3,hd);px(11,hy-1,1,1,hd)}}
+  else{if(sp.side){px(3,hy+1,1,4,hair);px(12,hy+1,1,4,hd)}else{px(4,hy-1,8,1,hair);px(3,hy,1,3,hair);px(12,hy,1,3,hd);px(11,hy-1,1,1,hd)}}
   px(3,hy-1,1,1,'#1a120c');px(12,hy-1,1,1,'#1a120c');
   // hat / headband by trait
-  if(has(p,'proud')&&rr()<.6){px(3,hy-1,10,1,'#4c5f78');px(4,hy-3,8,2,'#4c5f78');px(11,hy-3,1,2,'#33435a');px(4,hy-2,1,1,'#6c7f98')}
-  else if(has(p,'brave')&&rr()<.6){px(3,hy+1,10,1,'#8a3d2f');px(12,hy+1,1,1,'#5c2820')}
-  else if(!kid&&rr()<.18){px(3,hy-1,10,1,'#6f4b32');px(4,hy-3,8,2,'#6f4b32');px(11,hy-3,1,2,'#4a3221')}
+  if(sp.hat==='proud'){px(3,hy-1,10,1,'#4c5f78');px(4,hy-3,8,2,'#4c5f78');px(11,hy-3,1,2,'#33435a');px(4,hy-2,1,1,'#6c7f98')}
+  else if(sp.hat==='brave'){px(3,hy+1,10,1,'#8a3d2f');px(12,hy+1,1,1,'#5c2820')}
+  else if(sp.hat==='plain'){px(3,hy-1,10,1,'#6f4b32');px(4,hy-3,8,2,'#6f4b32');px(11,hy-3,1,2,'#4a3221')}
   // eyes
   const ey=hy+(kid?4:4);px(6,ey,1,1,eye);px(9,ey,1,1,eye);px(6,ey-1,1,1,skin[1]);px(9,ey-1,1,1,skin[1]);
   if(has(p,'dreamy'))px(9,ey,1,1,'#7a9ac9');
@@ -43,14 +51,17 @@ function drawFace(ctx,p){const rr=mulberry(p.seed);const kid=isKid(p),eld=isElde
   if(kid){px(5,ey+2,1,1,'#e39a8a');px(10,ey+2,1,1,'#e39a8a')}
   if(eld){px(5,ey+1,1,1,skin[1]);px(10,ey+1,1,1,skin[1]);px(4,hy+3,1,1,skin[1])}
   // beard for some non-kids
-  if(!kid&&rr()<.3&&style!==2){px(5,hy+hh-2,6,2,hair);px(6,hy+hh,4,1,hd)}
+  if(sp.beard){px(5,hy+hh-2,6,2,hair);px(6,hy+hh,4,1,hd)}
 }
 // ---------- card ----------
 const cardEl=document.getElementById('card'),faceCv=document.getElementById('face'),faceCtx=faceCv.getContext('2d');
 let cardT=0;
 /* the clock of what is only seen: real seconds, frozen when paused; presentation reads it, the simulation never does */
 let animT=0;
-function whyText(p){const w=WX();
+/* B4: when the job a person is on has a grown story pulling at it, the reason names the story. Reads pulls, writes nothing. */
+const PULL_WHY={fish:'the story of the fish',water:'the story of the dry years',harvest:'the story of the hard winters',nurse:'the story of the fever',wander:'the story of the far island'};
+const whyText=p=>whyBase(p)+(PULL_WHY[p.task]&&pullOf(p.task)>0?` Some of the reason is ${PULL_WHY[p.task]}, which has grown in the telling.`:'');
+function whyBase(p){const w=WX();
   if(p.sick&&p.task!=='abed')return `Has it, and is still up. ${has(p,'stubborn')?'Exactly as stubborn about that as you would expect':'Insisting it is nothing'}, and standing far too near everybody.`;
   if(p.sick)return `In bed with it${p.abedH?' along the wall of the hall, with the others':homeOf(p)?' at home':' by the fire'}, ${dayCount-p.sickD===0?'since this morning':`${dayCount-p.sickD} ${dayCount-p.sickD===1?'day':'days'} in`}. ${p.nursed>=dayCount-1?'Somebody has been sitting with them.':'Nobody has been up to sit with them today.'}`;
   switch(p.task){
@@ -74,6 +85,7 @@ function whyText(p){const w=WX();
     case 'visit':return p.vg?`Visiting ${p.vg.name}'s stone on the hill.`:'On the hill.';
     case 'mourn':return `On the hill, at the burying.`;
     case 'play':return p.shadN&&byName(p.shadN)?`Following ${p.shadN} around the work, asking why. Learning, though neither of them is calling it that.`:`Playing near ${p.parents.length?p.parents[0]:'the fire'}, in the way of children.`;
+    case 'haul':return p.haulSt===0?`Going to the woodpile for the trader. The boat will not wait for long.`:p.haulSt===1?(p.haulWood?`Taking a length of timber down to the trader's boat.`:`Going down to the trader's boat for the meal.`):p.haulSt===2?`Waiting by the trader's boat for the meal to be handed up.`:`Carrying a sack of meal up from the trader's boat to the store.`;
     case 'carry':return `Carrying grain up to the mill and meal down to the store. The mill only matters if someone feeds it.`;
     case 'water':return `Hauling well water to the fields, two buckets at a time. The sky has not been helping.`;
     case 'tend':return `Keeping the fire and walking the tideline for food, because there is nobody grown left to do it.`;
@@ -128,13 +140,17 @@ function sheetGo(go,fail){if(bFail)return fail(bFail);if(bReady)return go();
 function bFrame(name,x,y,a){const f=BSHEET.frames[name];if(!f)throw new Error('hearth: no frame '+name+' in the building sheet');
   if(a!==undefined)g.globalAlpha=a;g.drawImage(BIMG,f.x,f.y,f.w,f.h,x-f.ax,y-f.ay,f.w,f.h);if(a!==undefined)g.globalAlpha=1}
 /* a house's roof is one of the three sim.js picks; a roof from anywhere else (a hand-made link) takes the nearest of them rather than no house */
-const roofFrame=r=>{if(BSHEET.frames['house-'+String(r).slice(1)])return'house-'+String(r).slice(1);
+const roofFrame=(r,se)=>{const dr=n=>se==='autumn'||se==='spring'?n+'-'+se:n; /* A10: the house wears the season's dress; a dress missing from the sheet stops draw() by name, as any missing frame does */
+  if(BSHEET.frames['house-'+String(r).slice(1)])return dr('house-'+String(r).slice(1));
   const c=h=>[1,3,5].map(i=>parseInt(String(h).slice(i,i+2),16)||0),a=c(r);let best='',bd=1e9;
   for(const k of Object.keys(BSHEET.frames)){if(!/^house-[0-9a-f]{6}$/.test(k))continue;const b=c('#'+k.slice(6));const d=(a[0]-b[0])**2+(a[1]-b[1])**2+(a[2]-b[2])**2;if(d<bd){bd=d;best=k}}
-  return best}
+  return dr(best)}
+/* A10: a building that dresses for the year (house, hut, hall) wears 'autumn' or 'spring'; a snow frame comes in two weights, the light one under half a cap */
+const dressed=(n,se)=>se==='autumn'||se==='spring'?n+'-'+se:n, snowOf=(n,c)=>n+(c<.5?'-snow1':'-snow2');
+let fallingLeaves=0; /* A4: how many falling-leaf pixels the last draw() put in the air; presentation only, the simulation never reads it */
 function draw(){
   const s=sea(),sd=seaDay();
-  if(paintedKey!==s+'|'+Math.round(snowD*6)/6+'|'+frozen+'|'+roadV)paintTerrain();
+  if(paintedKey!==terrainKey())paintTerrain();
   // the view: everything below draws in world pixels; one transform carries the zoom and the look-around
   g.setTransform(1,0,0,1,0,0);g.fillStyle='#0b0d12';g.fillRect(0,0,cv.width,cv.height);
   const vk=vScale();g.setTransform(vk,0,0,vk,cv.width/2-camX*T*vk,cv.height/2-camY*T*vk);g.imageSmoothingEnabled=false;
@@ -156,40 +172,61 @@ function draw(){
       const dx=p.x-(p._px===undefined?p.x:p._px),dy=p.y-(p._py===undefined?p.y:p._py);
       if(p._px===undefined||dx*dx+dy*dy>.32){if(p._px!==undefined&&at(p.x|0,p.y|0)!==WATER){const pr=prints[printC++&255];pr.x=p.x;pr.y=p.y+.15;pr.t0=time}p._px=p.x;p._py=p.y}}
     for(const pr of prints){const ag=time-pr.t0;if(ag<0||ag>=18)continue;g.fillStyle=`rgba(150,168,186,${(.4*(1-ag/18)).toFixed(2)})`;g.fillRect(pr.x*T-1,pr.y*T,1,1);g.fillRect(pr.x*T+1,pr.y*T-1,1,1)}}
+  drawWet(); /* A6 (look.js): the wet on the land, the puddles, the rings on the water */
+  drawShadows(); /* A5 (look.js): the sun's shadows, after the ground and before everything that stands on it */
   const ents=[];
-  const CAN={spring:['#2f6a2b','#3f8a37'],summer:['#2c6a2a','#3f9038'],winter:['#28452a','#375a33']};
-  const canopy=t=>s==='autumn'?(t.a<.35?['#8a4a1e','#c47a2a']:t.a<.7?['#8a2e1e','#b8402a']:['#7a6a20','#b09a2c']):CAN[s];
+  const wind={clear:.7,overcast:1,rain:1.3,thunder:2.4,fog:.4,snow:.9}[wx];
+  const CAN={spring:['#2f6a2b','#3f8a37'],summer:['#2c6a2a','#3f9038']};
+  const canopy=t=>s==='autumn'?AUTUMN_CAN[autumnOf(t)]:CAN[s];
   const shrink=s==='autumn'&&sd===4?.85:1, blossom=s==='spring'&&sd<=3, cap=snowD>.15?Math.min(1,snowD*1.4):0;
-  for(const t of trees)ents.push({y:t.y,d:()=>{const r=T*.7*t.s*shrink,c=canopy(t);g.fillStyle='#4a2f16';g.fillRect(t.x*T-1,t.y*T-r*.6,2,r*.9);g.fillStyle=c[0];g.beginPath();g.arc(t.x*T,t.y*T-r,r,0,6.283);g.fill();g.fillStyle=c[1];g.beginPath();g.arc(t.x*T-r*.3,t.y*T-r*1.2,r*.6,0,6.283);g.fill();
-    if(blossom&&t.b&&t.s>.6){g.fillStyle='#e8a0b8';g.fillRect(t.x*T-r*.6,t.y*T-r*1.1,2,2);g.fillRect(t.x*T+r*.3,t.y*T-r*1.5,2,2);g.fillRect(t.x*T+r*.1,t.y*T-r*.6,2,2)}
-    if(cap>0&&t.s>.4){g.fillStyle='#eef2f4';g.beginPath();g.arc(t.x*T-r*.2,t.y*T-r*1.35,r*.55*cap,0,6.283);g.fill()}}});
+  const ln=(x0,y0,x1,y1)=>{const n=Math.max(Math.abs(x1-x0),Math.abs(y1-y0))|0;for(let i=0;i<=n;i++)g.rect(Math.round(x0+(x1-x0)*i/(n||1)),Math.round(y0+(y1-y0)*i/(n||1)),1,1)}; /* a pixel line into the open path; one fill() draws the whole bare tree */
+  const TIP=[[[-.9,-1.7],[.8,-1.8],[0,-2.1]],[[-.5,-2.2],[.5,-2.3],[0,-2.7]],[[-1.3,-1.5],[1.3,-1.6],[0,-1.9]]]; /* A4: where the bare branches end, round, tall, wide, in tree radii */
+  for(const t of trees)ents.push({y:t.y,d:()=>{const r=T*.7*t.s*shrink,sh=treeShape(t),by=t.y*T,
+    sx=RM?0:Math.max(-1,Math.min(1,Math.round(Math.sin(animT*1.7+t.x*1.7+t.y*.9)*wind*.9))),cx=t.x*T+sx; /* A4: the wind moves the canopy a pixel, by the weather's table; still under reduced motion */
+    if(s==='winter'){ /* A4: a bare branched shape, not a green ball */
+      g.fillStyle='#3a2a1c';g.beginPath();g.rect(t.x*T-1,by-r*1.0,2,r*1.3);const fy=by-r*.9;
+      for(const [tx,ty] of TIP[sh]){const ex=Math.round(cx+tx*r),ey=Math.round(by+ty*r);ln(t.x*T,fy,ex,ey);ln((t.x*T+ex)/2,(fy+ey)/2,(t.x*T+ex)/2+(tx<0?-.4:.4)*r,(fy+ey)/2-.35*r)}
+      g.fill();
+      if(cap>0&&t.s>.4){g.fillStyle='#eef2f4';g.beginPath();for(const [tx,ty] of TIP[sh])g.rect(Math.round(cx+tx*r)-1,Math.round(by+ty*r)-1,3,1);g.rect(Math.round(t.x*T)-1,Math.round(fy)-1,3,1);g.fill()}
+      return}
+    const c=canopy(t);g.fillStyle='#4a2f16';g.fillRect(t.x*T-1,by-r*.6,2,r*.9);
+    if(sh===0){g.fillStyle=c[0];g.beginPath();g.arc(cx,by-r,r,0,6.283);g.fill();g.fillStyle=c[1];g.beginPath();g.arc(cx-r*.3,by-r*1.2,r*.6,0,6.283);g.fill()}
+    else if(sh===1){g.fillStyle=c[0];g.beginPath();g.ellipse(cx,by-r*1.3,r*.62,r*1.2,0,0,6.283);g.fill();g.fillStyle=c[1];g.beginPath();g.ellipse(cx-r*.2,by-r*1.6,r*.36,r*.7,0,0,6.283);g.fill()}
+    else{g.fillStyle=c[0];g.beginPath();g.ellipse(cx,by-r*.9,r*1.35,r*.85,0,0,6.283);g.fill();g.fillStyle=c[1];g.beginPath();g.ellipse(cx-r*.35,by-r*1.1,r*.8,r*.5,0,0,6.283);g.fill()}
+    if(blossom&&t.b&&t.s>.6){g.fillStyle='#e8a0b8';g.fillRect(cx-r*.6,by-r*1.1,2,2);g.fillRect(cx+r*.3,by-r*1.5,2,2);g.fillRect(cx+r*.1,by-r*.6,2,2)}
+    if(cap>0&&t.s>.4){g.fillStyle='#eef2f4';g.beginPath();if(sh===0)g.arc(cx-r*.2,by-r*1.35,r*.55*cap,0,6.283);else if(sh===1)g.ellipse(cx-r*.15,by-r*2.0,r*.4*cap,r*.35*cap,0,0,6.283);else g.ellipse(cx-r*.2,by-r*1.45,r*.9*cap,r*.38*cap,0,0,6.283);g.fill()}}});
+  /* A4: in autumn's last two days the canopies let go: up to 40 leaf pixels in the air (20 under reduced motion), each from one tree, each on its own phase of animT */
+  fallingLeaves=0;
+  if(s==='autumn'&&sd>=3&&trees.length){const nl=Math.min(RM?20:40,trees.length*2);fallingLeaves=nl;
+    ents.push({y:1e5,d:()=>{for(let i=0;i<nl;i++){const t=trees[(i*7)%trees.length],r=T*.7*t.s,ph=(animT*.3+i*.173)%1,lc=AUTUMN_CAN[autumnOf(t)];
+      g.fillStyle=lc[i%2];g.fillRect(Math.round(t.x*T+Math.sin(animT*1.6+i*2.3)*(RM?0:5)+ph*3-1),Math.round(t.y*T-r*1.4+ph*(r*1.4+4)),i%3?1:2,1)}}})}
   litHouses=houseLights(L,dayFrac(),edges()); // which windows are lit (look.js): somebody home before the house's own lights-out, or sheltering in it
   // the frames are drawn; what moves or changes is drawn over them: snow settling, the kiln's chimney pots, a window lit (#807)
-  for(const h of houses)ents.push({y:h.y+2,d:()=>{const x=h.x*T,y=h.y*T;bFrame(roofFrame(h.r),x,y);
-    if(cap>0)bFrame('house-snow',x,y,cap);
+  for(const h of houses)ents.push({y:h.y+2,d:()=>{const x=h.x*T,y=h.y*T;bFrame(roofFrame(h.r,s),x,y);
+    if(cap>0)bFrame(snowOf('house',cap),x,y,cap);
+    if(snowSheds())drawRoofSlide(h,x,y); /* A7 (look.js): a thinning roof sheds a little */
     if(hasWay(2)){g.fillStyle='#a34a2a';g.fillRect(x+11,y+1,2,3);g.fillStyle='#6b2f1e';g.fillRect(x+11,y+1,2,1)} // kiln-fired chimney pots
     if(litHouses.has(h)){g.fillStyle='#f5c463';g.fillRect(x+4,y+10,3,3);g.fillRect(x+10,y+10,3,3)}}});
   // a house going up (TG-26) is the frame every building in progress shows, on its two tiles
   for(const h of plots)ents.push({y:h.y+2,d:()=>{const x=h.x*T,y=h.y*T,pr=Math.min(1,h.prog/12);
     g.fillStyle='rgba(60,45,25,.5)';g.fillRect(x,y,2*T,2*T);g.fillStyle='#8a6a44';for(let i=0;i<2*T;i+=4)g.fillRect(x+i,y+2*T-2-pr*6,2,2+pr*6)}});
   // buildings (bridge and hut sit low; the lighthouse sorts by its foot)
-  const wind={clear:.7,overcast:1,rain:1.3,thunder:2.4,fog:.4,snow:.9}[wx];
   for(const b of bAll())ents.push({y:b.y+b.h,d:()=>{const x=b.x*T,y=b.y*T,done=b.done,pr=done?1:Math.min(1,b.prog/b.work);
     if(!done){g.fillStyle='rgba(60,45,25,.5)';g.fillRect(x,y,b.w*T,b.h*T);g.fillStyle='#8a6a44';for(let i=0;i<b.w*T;i+=4)g.fillRect(x+i,y+b.h*T-2-pr*6,2,2+pr*6);return}
     switch(b.kind){
-      case 'hut':bFrame('hut',x,y);if(cap>0)bFrame('hut-snow',x,y,cap);
+      case 'hut':bFrame(dressed('hut',s),x,y);if(cap>0)bFrame(snowOf('hut',cap),x,y,cap);
         if(!boats.some(bb=>bb.kind==='fish')){const bx=x+(b.x>center.x?b.w*T+1:-10),by=y+8; // the boat, pulled up on the sand beside the hut
           g.fillStyle='rgba(0,0,0,.2)';g.fillRect(bx,by+3,9,1);
           g.fillStyle='#8a6a44';g.fillRect(bx+1,by,7,1);g.fillRect(bx+7,by-4,1,4);g.fillRect(bx+6,by-5,2,1);
           g.fillStyle='#6b4a2a';g.fillRect(bx,by+1,9,1);
           g.fillStyle='#4a2f16';g.fillRect(bx+1,by+2,7,1);g.fillRect(bx+3,by,1,1)}break;
-      case 'well':bFrame('well',x,y);if(cap>0)bFrame('well-snow',x,y,cap);break;
+      case 'well':bFrame('well',x,y);if(cap>0)bFrame(snowOf('well',cap),x,y,cap);break;
       case 'market':bFrame('market',x,y);break;
-      case 'mill':{bFrame('mill',x,y);if(cap>0)bFrame('mill-snow',x,y,cap);
+      case 'mill':{bFrame('mill',x,y);if(cap>0)bFrame(snowOf('mill',cap),x,y,cap);
         const cx=x+8,cy=y+2,a=animT*(.5+wind*.9);g.strokeStyle='#e8dcc4';g.lineWidth=1.5;g.beginPath();for(let i=0;i<4;i++){const an=a+i*Math.PI/2;g.moveTo(cx,cy);g.lineTo(cx+Math.cos(an)*9,cy+Math.sin(an)*9)}g.stroke();g.strokeStyle='#8a6a44';g.lineWidth=1;g.beginPath();for(let i=0;i<4;i++){const an=a+i*Math.PI/2+.25;g.moveTo(cx+Math.cos(an)*3,cy+Math.sin(an)*3);g.lineTo(cx+Math.cos(an)*8,cy+Math.sin(an)*8)}g.stroke();g.fillStyle='#4a2f16';g.fillRect(cx-1,cy-1,2,2);break}
       case 'smoke':bFrame('smoke',x,y);break;
       case 'bridge':bFrame(at(b.x-1,b.y)===WATER&&at(b.x+1,b.y)===WATER?'bridge-h':'bridge-v',x,y);break;
-      case 'hall':bFrame('hall',x,y);if(cap>0)bFrame('hall-snow',x,y,cap);
+      case 'hall':bFrame(dressed('hall',s),x,y);if(cap>0)bFrame(snowOf('hall',cap),x,y,cap);
         if(L<.5){g.fillStyle='#f5c463';g.fillRect(x+4,y+8,3,3);g.fillRect(x+17,y+8,3,3)}
         {const sh=things.filter(t=>!t.holder);if(sh.length){/* the shelf where things wait (sprint 13): a plank between the windows, and what sits on it */
           g.fillStyle='#6b4a2a';g.fillRect(x+9,y+8,6,1);const TC=['#d9d4c8','#c9a24a','#4a5f8a'];
@@ -249,21 +286,7 @@ function draw(){
     else if(w.k==='fox'){const bob=mv?Math.sin(animT*12)*1:0;g.fillStyle='rgba(0,0,0,.2)';g.fillRect(x-4,y,8,1);g.fillStyle='#b8552a';g.fillRect(x-3,y-3+bob,6,2);g.fillRect(x+f*3,y-4+bob,2,2);g.fillStyle='#e8dcc4';g.fillRect(x-f*4,y-2+bob,2,1);g.fillStyle='#4a2f16';g.fillRect(x-3,y-1,1,1);g.fillRect(x+2,y-1,1,1);g.fillRect(x+f*3,y-5+bob,1,1);g.fillStyle='#e8dcc4';g.fillRect(x+f*3+(f>0?1:0),y-3+bob,1,1)}
   }})}
   if(whale)ents.push({y:whale.y,d:()=>{const x=whale.x*T,y=whale.y*T,k=Math.sin(Math.min(1,whale.t/whale.dur)*Math.PI);if(k<.05)return;const w=Math.round(12*k),h=Math.max(1,Math.round(4*k));g.fillStyle='#2b3542';g.fillRect(x-w,y-h,w*2,h);g.fillRect(x-w+2,y-h-1,w*2-4,1);g.fillStyle='#4a5868';g.fillRect(x-w+2,y-h,w*2-4,1);g.fillStyle='#1e2630';g.fillRect(x-w,y-1,w*2,1);if(whale.t>whale.dur*.55){g.fillStyle='#2b3542';g.fillRect(x+whale.dir*(w+1),y-h-3*k,2,Math.round(4*k))}g.fillStyle='rgba(220,235,255,.35)';g.fillRect(x-w-2,y,w*2+4,1)}});
-  for(const p of people)ents.push({y:p.y+(p.inBoat?.5:0),d:()=>{if(p.inside)return;const x=p.x*T,y=p.y*T+(p.inBoat?-1:0),busy=p.task==='chop'||p.task==='build'||p.task==='till'||p.task==='harvest',bob=busy?Math.sin(animT*12+p.off)*1.2:0;const k=isKid(p)?.55+ageOf(p)/31:1;
-    if(p===selected){g.fillStyle='rgba(240,179,90,.55)';g.fillRect(x-4,y+1,9,1);g.fillRect(x-4,y-1,1,2);g.fillRect(x+4,y-1,1,2)}
-    if(p.task==='sleep'){g.fillStyle=p.col;g.fillRect(x-2,y-2,5,3);return}
-    g.fillStyle='rgba(0,0,0,.25)';g.fillRect(x-2,y,5,1);g.fillStyle=p.col;g.fillRect(x-1.5,y-5*k+bob,3,4*k);g.fillStyle='#f1cfa5';g.fillRect(x-1.5,y-8*k+bob,3,3);g.fillStyle=p.hair;g.fillRect(x-1.5,y-8*k+bob,3,1);
-    if(p.task==='chop'){g.fillStyle='#999';g.fillRect(x+2,y-7+bob*2,2,2)}
-    if(p.task==='fish'){g.fillStyle='#e8dcc4';g.fillRect(x+2,y-6,1,7)}
-    if(p.task==='wave'&&Math.hypot(p.tx-p.x,p.ty-p.y)<.05){g.fillStyle='#f1cfa5';g.fillRect(x+2,y-9*k+Math.sin(animT*9+p.off)*1.5,1,3)}
-    /* sprint 16: a talk you can see — the pip leans toward whoever it is for, and carries a bright grain when there is news in it */
-    if(p.task==='chat'&&p.chatSd&&Math.hypot(p.tx-p.x,p.ty-p.y)<.2&&Math.sin(animT*2.3+p.off)>.25){const q=byName(p.chatW),ox=q&&q.x<p.x?-4:4;
-      g.fillStyle='#e8e4da';g.fillRect(x+ox-1,y-11*k,3,2);g.fillRect(x+(ox>0?2:-2),y-9*k,1,1);
-      if(p.heard){g.fillStyle='#f0b35a';g.fillRect(x+ox,y-10*k,1,1)}}
-    /* and a song you can almost hear: note pips over the singers at a fire night, and now and then over the work */
-    if(songs.length){const sings=(p.task==='gather'&&storyDay===dayCount&&Math.sin(animT*1.8+p.off)>.55)||
-        ((p.task==='chop'||p.task==='till'||p.task==='harvest'||p.task==='fish')&&Math.sin(animT*.7+p.off*3)>.94);
-      if(sings&&songs.some(sg=>!sg.lost&&sg.kn.includes(p.name))){g.fillStyle='#f0d488';g.fillRect(x+3,y-10*k,1,1);g.fillRect(x+4,y-12*k,1,2);g.fillRect(x+4,y-12*k,2,1)}}}});
+  for(const p of people)ents.push({y:p.y+(p.inBoat?.5:0),d:()=>drawFolk(p)}); /* A8: js/folk.js */
   ents.push({y:center.y,d:()=>{const x=center.x*T,y=center.y*T;g.fillStyle='#3a2a1a';g.fillRect(x-4,y-1,8,3);const fl=isNight()||L<.6;
     if(fl){for(let i=0;i<4;i++){g.fillStyle=i%2?'#ffb347':'#ff6a2b';const s=RM?2.2:2+Math.sin(animT*10+i)*1.5;g.fillRect(x-1+(RM?0:Math.sin(animT*7+i)*1.5),y-3-i*1.5-s,2,s)}}}});
   drawStock(ents,cap); /* B1: the woodpile, the sacks and the drying fish, js/goods.js */
@@ -273,7 +296,7 @@ function draw(){
     for(let i=0;i<(rg.length===2?1:rg.length);i++){const a=rg[i],b=rg[(i+1)%rg.length];if(Math.hypot(a.x-b.x,a.y-b.y)>2.8)continue;
       ents.push({y:Math.min(a.y,b.y)-.001,d:()=>{const ka=.55+ageOf(a)/31,kb=.55+ageOf(b)/31;g.strokeStyle='rgba(241,207,165,.85)';g.lineWidth=1;g.beginPath();g.moveTo(a.x*T+.5,a.y*T-4*ka+.5);g.lineTo(b.x*T+.5,b.y*T-4*kb+.5);g.stroke()}})}}
   ents.sort((a,b)=>a.y-b.y).forEach(e=>e.d());
-  for(const f of fx){if(f.rg){const k=1-f.l/f.l0;g.strokeStyle=`rgba(200,230,255,${(.55*(1-k)).toFixed(2)})`;g.lineWidth=1;g.beginPath();g.arc(f.x*T,f.y*T,1+k*9,0,6.283);g.stroke()}else{g.fillStyle=f.c;g.fillRect(f.x*T,f.y*T,2,2)}}
+  for(const f of fx){if(f.rg){const k=1-f.l/f.l0;g.strokeStyle=`rgba(200,230,255,${(.55*(1-k)).toFixed(2)})`;g.lineWidth=1;g.beginPath();g.arc(f.x*T,f.y*T,1+k*9,0,6.283);g.stroke()}else if(f.c!=='#a09890'&&f.c!=='#8c8478'){g.fillStyle=f.c;g.fillRect(f.x*T,f.y*T,2,2)}}
   for(const k of skips){g.fillStyle='#3a3a34';g.fillRect(k.x*T-1,k.y*T-2,2,2)}
   if(clouds.length&&cloudSp.length){const cl=Math.max(.16,L*.95);
     for(const c of clouds){const w=112*c.s,h=64*c.s;g.globalAlpha=Math.min(1,(c.r>0?1.15:.75)*cl);g.drawImage(cloudSp[c.i],Math.round(c.x*T-w/2),Math.round(c.y*T-h/2),w,h)}
@@ -282,8 +305,9 @@ function draw(){
       for(let i=0;i<46;i++){const x=cx-w+((i*53+((animT*300)|0)*(i%3+1))%(w*2)),y=cy-h+((i*37+((animT*400)|0))%(h*2));g.moveTo(x,y);g.lineTo(x-2,y+6)}g.stroke()}}
   for(const gl of gulls){const x=gl.x*T,y=gl.y*T,up=Math.sin(animT*(RM?2.5:7)+gl.ph)>0;g.fillStyle='rgba(0,0,0,.12)';g.fillRect(x-2,y+9,5,1);g.fillStyle='#f0f0ea';if(up){g.fillRect(x-3,y-1,2,1);g.fillRect(x-1,y,3,1);g.fillRect(x+2,y-1,2,1)}else{g.fillRect(x-3,y+1,2,1);g.fillRect(x-1,y,3,1);g.fillRect(x+2,y+1,2,1)}g.fillStyle='#8c8478';g.fillRect(x,y,1,1)}
   if(geese){g.fillStyle='#2a2620';const dir=Math.sign(geese.vx);for(let i=0;i<geese.n;i++){const k=Math.ceil(i/2),side=i%2?1:-1;const x=(geese.x-dir*k*1.35)*T,y=(geese.y+side*k*.75)*T,fl=Math.sin(animT*9+geese.ph+i)>0?0:1;g.fillRect(x-1,y+fl,3,1);g.fillRect(x-2,y-fl+1,1,1);g.fillRect(x+2,y-fl+1,1,1)}}
-  if(rain){g.strokeStyle=storm?'rgba(200,220,255,.5)':'rgba(200,220,255,.35)';g.beginPath();const n=(storm?300:180)*(RM?.5:1);for(let i=0;i<n;i++){const x=(i*97+((animT*300)|0)*(i%3+1))%(W*T),y=(i*61+((animT*400)|0))%(H*T);g.moveTo(x,y);g.lineTo(x-(storm?4:2),y+6)}g.stroke()}
-  if(wx==='snow'){g.fillStyle='rgba(255,255,255,.85)';const sn=RM?70:150;for(let i=0;i<sn;i++){const x=(i*97+((animT*20)|0)*(i%3+1)+((Math.sin(animT*.8+i)*5)|0)+2000)%(W*T),y=(i*61+((animT*34)|0))%(H*T);g.fillRect(x,y,i%4?1:2,i%4?1:2)}}
+  if(rain)drawRain(wind); /* A6 (look.js) */
+  drawRoofWet(); /* A6 (look.js): while it rains, a bright line along each roof's top edge */
+  if(wx==='snow')drawSnowfall(wind); /* A7 (look.js): two depths of flake, leaning with the wind */
   // sky: the hour's colour (look.js), cloud, fog
   const f=dayFrac(),e=edges();
   g.globalCompositeOperation='multiply';g.drawImage(lightMap(L,f,e,s),0,0);g.globalCompositeOperation='source-over'; // the hour is a colour, and the lights are in it (look.js)
@@ -292,16 +316,19 @@ function draw(){
   if(rbUntil>time&&L>.35&&!rain&&wx!=='fog'){g.globalAlpha=Math.min(1,(rbUntil-time)/8)*.38;
     g.drawImage(rbSprite(),(center.x-26)*T,(center.y-24)*T,52*T,26*T);g.globalAlpha=1}
   if(fogA>.01){const dx=Math.sin(animT*.06)*10;g.globalAlpha=fogA*.55*skyY;g.drawImage(fogCv,dx,0);g.globalAlpha=fogA*.4*skyY;g.drawImage(fogCv,-dx*.6,Math.cos(animT*.05)*4);g.globalAlpha=1;
-    g.fillStyle=`rgba(230,236,240,${(fogA*.16*skyY).toFixed(3)})`;for(let i=0;i<10;i++){const y=(i*67+13)%(H*T),x=((i*151+animT*(6+i%3)*3)%(W*T*1.4))-W*T*.2;g.fillRect(x,y,120+i*20,7);g.fillRect(x+30,y+7,80+i*10,4)}}
+    g.fillStyle=`rgba(230,236,240,${(fogA*.16*skyY).toFixed(3)})`;for(let i=0;i<10;i++){const y=(i*67+13)%(H*T),x=((i*151+animT*(6+i%3)*3)%(W*T*1.4))-W*T*.2;g.fillRect(x,y,120+i*20,7);g.fillRect(x+30,y+7,80+i*10,4)}
+    drawFogRing(skyY)} /* A7 (look.js): fog is thickest at the edge of the view */
   // spring and autumn dawns raise a mist off the low ground (sprint 16), and the first hour of sun takes it back
   {const mist=(wx==='clear'||wx==='overcast')&&(s==='spring'||s==='autumn')&&f>e[0]&&f<e[0]+.09?1-(f-e[0])/.09:0;
     if(mist>0&&fogA<.4){g.globalAlpha=mist*.3*skyY;g.drawImage(fogCv,Math.sin(animT*.05)*6,0);g.globalAlpha=mist*.18*skyY;g.drawImage(fogCv,-4,3);g.globalAlpha=1}}
   if(farIsle&&fogA<.9){const fi=farIsle,x0=fi.x*T,w=fi.w*T,h=fi.h*1.7,al=(1-fogA)*(wx==='overcast'||rain||wx==='snow'?.55:.8);g.fillStyle=L>.5?`rgba(44,58,86,${(al*.85).toFixed(2)})`:`rgba(18,24,44,${al.toFixed(2)})`;
     g.beginPath();g.moveTo(x0,0);g.quadraticCurveTo(x0+w*.22,h*1.5,x0+w*.42,h*.7);g.quadraticCurveTo(x0+w*.6,h*2.1,x0+w*.8,h*.9);g.quadraticCurveTo(x0+w*.92,h*.4,x0+w,0);g.closePath();g.fill();
     g.fillStyle=`rgba(200,214,232,${(al*.18*(L>.5?1:.3)).toFixed(3)})`;g.fillRect(x0-6,h*1.9,w+12,1)}
+  drawFarLife(L); /* B5 (look.js): smoke and sails over there */
+  drawSmoke(L,s); /* A7 (look.js): a column over every house with somebody home, and breath in the cold */
   const dark=1-L;
   if(dark>.3){g.globalCompositeOperation='lighter';
-    if(farIsle&&farIsle.lit&&fogA<.6&&(animT*2.3|0)%9!==0){const lx=(farIsle.x+farIsle.w*.6)*T,ly=farIsle.h*1.7*1.5;g.fillStyle=`rgba(255,190,110,${(.9*(dark-.3)).toFixed(2)})`;g.fillRect(lx,ly,1,1)}
+    for(const q of farLamps(L,f,e)){g.fillStyle=`rgba(255,190,110,${(.9*q.a).toFixed(2)})`;g.fillRect(q.x,q.y,1,1);g.fillStyle=`rgba(255,190,110,${(.3*q.a).toFixed(2)})`;g.fillRect(q.x,q.y-1,1,1)} /* B5 (look.js) */
     if(L<.7){const fx0=center.x*T,fy0=center.y*T-2;g.globalAlpha=Math.min(1,(.7-L)/.4)*.55;g.drawImage(lightSprites().fire[8],Math.round(fx0-8),Math.round(fy0-8));g.globalAlpha=1} // a small bright core, so the fire stays the brightest thing
     /* the aurora (sprint 16): cold clear winter nights, more often on cold-tempered islands. Whether tonight has one is a pure
        function of seed and day — same on every device that opens this island — and the bands' geometry is fixed per island. */
@@ -318,4 +345,5 @@ function draw(){
   document.getElementById('s-pop').textContent=people.length;document.getElementById('s-wood').textContent=wood;document.getElementById('s-food').textContent=food;document.getElementById('s-store').textContent=granary;
   const lbl=f<e[0]?'night':f<e[0]+.1?'dawn':f<.5?'morning':f<e[1]-.1?'afternoon':f<e[1]?'dusk':'night';const wxl={clear:'',overcast:' · overcast',rain:' · rain',thunder:' · storm',fog:' · fog',snow:' · snow'}[wx]+(want?' · rations':hunger>.3?' · hungry':'')+(ill?` · ${people.filter(p=>p.sick&&!p.dead).length} abed`:'');
   document.getElementById('s-time').textContent=`year ${yearOf(dayCount)} · day ${dayCount} · ${s} · ${lbl}${wxl}`;document.getElementById('s-time-s').textContent=`d${dayCount} · ${s} · ${lbl}${wxl}`;
+  updateTags(); /* A9: the name tags, js/folk.js */
 }

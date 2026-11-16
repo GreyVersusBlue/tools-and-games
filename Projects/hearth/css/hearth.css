@@ -4,6 +4,11 @@
   #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
   canvas{image-rendering:pixelated;image-rendering:crisp-edges}
   #c{cursor:crosshair}
+  /* A9: name tags over the people, placed by updateTags() in js/folk.js; they never take the pointer */
+  #tags{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+  #tags .tag{position:absolute;transform:translate(-50%,-100%);white-space:nowrap;font-size:11px;line-height:1;padding:2px 5px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:2px;text-shadow:0 1px 2px #000}
+  #tags .tag.sel{color:var(--gold);border-color:var(--gold)}
+  #tags .tag[hidden]{display:none}
   #hud{position:fixed;left:0;right:0;top:0;padding:10px 14px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;background:linear-gradient(#0b0d12,rgba(11,13,18,0));pointer-events:none}
   #hud>*{pointer-events:auto}
   h1{font-size:18px;font-weight:normal;letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
@@ -69,4 +74,31 @@
     #chron{left:8px;right:8px;width:auto;max-height:60vh}
     #hud{gap:9px;padding:8px 10px}h1{font-size:15px}h1 small{display:none}.stat em{display:none}.stat::before{content:attr(data-i);color:var(--dim);margin-right:3px;font-size:12px}
     #s-time{display:none}#s-time-s{display:inline}button{padding:4px 7px;font-size:11px}}
+  /* C4: the public island, live.html. It is watched, not played: no speed, no skipping the night, no keeping or founding an island, no hint of what a click does. */
+  body.live #ctl,body.live #b-morning,body.live #b-share,body.live #b-new,body.live #b-help,body.live #hint{display:none}
+  #live-status,#live-note{display:none}
+  body.live #live-status{display:block;position:fixed;right:14px;bottom:10px;font-size:12px;color:var(--dim);letter-spacing:.04em;pointer-events:none;text-shadow:0 1px 3px #000}
+  body.live #live-note{display:block;position:fixed;left:50%;top:64px;transform:translateX(-50%);max-width:min(92vw,520px);text-align:center;font-size:13px;font-style:italic;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:8px 14px}
+  body.live #live-note[hidden]{display:none}
+  body.live #live-note a{color:var(--gold)}
+  /* C5: the HUD link on index.html, and the record and the way back on live.html. */
+  .live-link{font-size:12px;letter-spacing:.06em;color:var(--gold);text-decoration:underline dotted}.live-link[hidden]{display:none}
+  body.live .live-link{display:none}
+  #live-tools,#live-back,#live-away{display:none}
+  body.live #live-tools{display:flex;position:fixed;left:14px;top:58px;gap:12px;align-items:center;font-size:12px;letter-spacing:.04em;color:var(--dim)}
+  body.live #live-tools a{color:var(--gold)}
+  body.live #live-tools span[hidden],body.live #live-tools a[hidden]{display:none}
+  body.live #live-back{display:flex;position:fixed;left:50%;top:104px;transform:translateX(-50%);gap:12px;align-items:center;font-size:13px;font-style:italic;background:var(--panel);border:1px solid var(--gold);border-radius:3px;padding:8px 14px}
+  body.live #live-back[hidden]{display:none}
+  body.live #live-away{display:block;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(92vw,480px);max-height:70vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:16px 18px;z-index:6}
+  body.live #live-away[hidden]{display:none}
+  #live-away h2{font-size:18px;font-weight:normal;color:var(--gold);letter-spacing:.04em}
+  #live-away h2 small{display:block;font-size:11px;color:var(--dim);letter-spacing:.06em;font-style:italic;margin-top:2px}
+  #live-away .x{position:absolute;right:6px;top:6px;padding:2px 8px;border-color:transparent}
+  #live-away .roll{margin-top:10px;font-size:13px;line-height:1.5}
+  #live-away .roll h4{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);font-weight:normal;margin:10px 0 2px}
+  #live-away .roll h4 span{text-transform:none;letter-spacing:0;font-style:italic}
+  #live-away .roll p{margin:2px 0}#live-away .roll p i{color:var(--dim);font-style:normal;font-size:11px;margin-right:8px}
+  #live-away .foot{margin-top:12px;padding-top:8px;border-top:1px solid var(--line);display:flex;gap:12px;align-items:center;justify-content:space-between;font-size:12px}
+  #live-away .foot a{color:var(--gold)}
   @media (prefers-reduced-motion:reduce){#log p{animation:none;opacity:1}}

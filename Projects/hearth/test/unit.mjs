@@ -429,6 +429,27 @@ section(22, () => {
   check('stock: sacks stand at the hall\'s south wall, and move when a house takes that spot', s0.ok && s0.y / 8 > cy - 6 + 2 && s0.x / 8 > cx + 8 && s1.ok && (s1.x !== s0.x || s1.y !== s0.y), JSON.stringify([s0, s1]));
 });
 
+// ---- people you can tell apart (A8, unit section 21) ----
+// drawFace is called with a recording ctx (fillRect, clearRect and the fillStyle setter append to a list) and the list is hashed. The two hashes
+// below were recorded from the unmodified drawFace BEFORE it was split into faceSpec + drawFace: the first 12 people of seeds 7 and 42 at day 1
+// (day 1 has four people each) and 60 more per seed, built from them with other seeds, ages, traits and inherited skins so the hat, the beard,
+// the elder's long hair and all five skins are drawn (#646: the faces are pixel-identical). Break: drop one rr() call from faceSpec; the hash fails.
+section(21, () => {
+  const FACES = `(()=>{const rec=p=>{const L=[];let fs='';const ctx={fillRect:(...a)=>L.push('f'+a.join(',')+'@'+fs),clearRect:(...a)=>L.push('c'+a.join(',')),set fillStyle(v){fs=v},get fillStyle(){return fs}};drawFace(ctx,p);return hash(L.join('|'))};
+    const TR=['proud','brave','dreamy','stubborn','funny','gentle'],out={};out.s=people.slice(0,12).map(rec);
+    out.v=Array.from({length:60},(_,i)=>{const b=people[i%people.length];return rec({...b,seed:1000+i*7919,age0:[6,30,45,58,66,80][i%6],born:dayCount,tr:[TR[i%6],TR[(i*5+2)%6]],fSk:(i%6)-1})});return out})()`;
+  const RECORDED = { 7: 4195938380, 42: 2962902341 };
+  for (const seed of [7, 42]) {
+    const { ev } = fresh(seed);
+    check(`faces: the first people of seed ${seed} and 60 variants draw the same pixels as before faceSpec (hash ${RECORDED[seed]})`, ev(`hash(JSON.stringify(${FACES}))`) === RECORDED[seed], `got ${ev(`hash(JSON.stringify(${FACES}))`)}`);
+  }
+  const { ev } = fresh(7);
+  check('faceSpec: two calls on one person give an equal answer', ev('(()=>{const a=JSON.stringify(faceSpec(people[0])),b=JSON.stringify(faceSpec(people[0]));return a===b})()'));
+  const kinds = ev(`(()=>{const TR=['proud','brave'],o={skins:new Set(),hats:new Set(),beard:0,side:0};for(let i=0;i<400;i++){const b=people[i%people.length],sp=faceSpec({...b,seed:77+i*131,age0:[8,30,45,70][i%4],born:dayCount,tr:[TR[i%3==0?0:1]],fSk:-1});o.skins.add(sp.skin);o.hats.add(sp.hat);o.beard+=sp.beard?1:0;o.side+=sp.side?1:0}return {skins:o.skins.size,hats:o.hats.size,beard:o.beard,side:o.side}})()`);
+  check('faceSpec: 400 faces use all five skins, all three hats and none, beards and an elder\'s long hair', kinds.skins === 5 && kinds.hats === 4 && kinds.beard > 0 && kinds.side > 0, JSON.stringify(kinds));
+  check('drawFolk: draws no random numbers and writes no simulation state (pack is the same before and after a frame)', ev('(()=>{const a=JSON.stringify(pack());for(let i=0;i<3;i++)draw();return a===JSON.stringify(pack())})()'));
+});
+
 // ---- a save cannot carry markup (C1, unit section 26) ----
 // unpack() makes every string in the save plain text on every load (#37): no < > & " or backtick, none over 400 characters.
 // The log writes names and chronicle text through innerHTML, and a save is about to be something a server accepts and republishes.
@@ -472,6 +493,192 @@ section(26, () => {
   const twice = JSON.stringify(lp);
   H.unpack(JSON.parse(twice));
   check('save: repairing twice is the same as repairing once', JSON.stringify(H.pack()) === twice);
+});
+
+// ---- one arithmetic for every engine (C2, unit section 27) ----
+// The simulation's files use hyp, dsin, dcos, dpow12 and shuf (built from + - * / sqrt floor round, which every engine computes the same bit
+// for bit) and never Math.sin, cos, pow, hypot and the rest, which engines may round differently. The one exception: the view's wheel zoom.
+section(27, () => {
+  const FILES = ['core', 'life', 'watcher', 'sim', 'flavor', 'save', 'main'];
+  const BANNED = /Math\.(sin|cos|tan|pow|hypot|atan|exp|log|asin|acos|sinh|cosh|tanh|cbrt|expm1|log1p|log2|log10)|\*\*|sort\(\s*\(\s*\)\s*=>\s*R\(\)/g;
+  const ALLOW = new Set(['main.js:Math.exp']);
+  const hits = [];
+  for (const f of FILES) {
+    // comments are prose: block comments and a // to the end of the line are not code
+    const src = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'js', f + '.js'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1');
+    for (const m of src.matchAll(BANNED)) if (!ALLOW.has(f + '.js:' + m[0])) hits.push(f + '.js:' + m[0]);
+  }
+  check('arithmetic: no Math.sin, cos, pow, hypot, exp, ** or random-comparator sort in the seven simulation files', hits.length === 0, hits.slice(0, 6).join(' '));
+  const allowed = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'js', 'main.js'), 'utf8').match(/Math\.exp/g) || [];
+  check('arithmetic: the allowlist is still needed (main.js still has its one Math.exp)', allowed.length === 1, String(allowed.length));
+  const { ev } = fresh();
+  const worst = ev(`(()=>{let ws=0,wc=0,we=0;for(let i=0;i<1000;i++){const x=(i-500)*0.731+i*i*0.0003;ws=Math.max(ws,Math.abs(dsin(x)-Math.sin(x)));wc=Math.max(wc,Math.abs(dcos(x)-Math.cos(x)))}
+    for(let i=0;i<200;i++){const x=-4+i*0.02,r=dpow12(x)/Math.pow(.12,x);we=Math.max(we,Math.abs(r-1))}return [ws,wc,we]})()`);
+  check('arithmetic: dsin against Math.sin at 1,000 points to within 1e-8', worst[0] < 1e-8, String(worst[0]));
+  check('arithmetic: dcos against Math.cos at 1,000 points to within 1e-8', worst[1] < 1e-8, String(worst[1]));
+  check('arithmetic: dpow12 against Math.pow(.12, x) to a relative 1e-8 for x in [-4, 0)', worst[2] < 1e-8, String(worst[2]));
+  check('arithmetic: hyp(3,4) is 5 and shuf is a permutation drawn from R()', ev('hyp(3,4)') === 5 && ev(`(()=>{const a=shuf([1,2,3,4,5,6]);return a.length===6&&a.slice().sort().join()==='1,2,3,4,5,6'})()`));
+});
+
+// ---- hands that are full (B2, unit section 23) ----
+// carryOf() is a pure function of the task and the state; each row stands a person in one of the twelve states and reads the table's item.
+section(23, () => {
+  const { ev } = fresh(7);
+  const of = (set) => ev(`(()=>{const p=people.find(q=>!q.dead);Object.assign(p,{inside:false,inBoat:false,task:'idle',work:0,carrySt:0,waterSt:0,bLead:0,tx:p.x,ty:p.y},${set});delete p._off;return carryOf(p)})()`);
+  const k = (set) => { const c = of(set); return c ? c.k + (c.full ? '+' : '') : null; };
+  const rows = [['carry, carrySt 0', "{task:'carry',carrySt:0}", 'basket'], ['carry, carrySt 1', "{task:'carry',carrySt:1}", 'sack'],
+    ['water, waterSt 0', "{task:'water',waterSt:0}", 'bucket'], ['water, waterSt 1', "{task:'water',waterSt:1}", 'bucket+'],
+    ['chop', "{task:'chop'}", 'axe'], ['fish', "{task:'fish'}", 'rod'], ['harvest, work 2', "{task:'harvest',work:2}", 'sheaf'], ['harvest, work 0.5', "{task:'harvest',work:.5}", null],
+    ['build, on the way', "{task:'build',tx:p.x+3}", 'plank'], ['build, at the site', "{task:'build'}", 'hammer'], ['nurse', "{task:'nurse'}", 'bowl'],
+    ['bounds, the leader', "{task:'bounds',bLead:1}", 'staff'], ['bounds, a child', "{task:'bounds',bLead:0}", null], ['tend', "{task:'tend'}", 'firewood'], ['gather', "{task:'gather'}", null], ['idle', "{task:'idle'}", null]];
+  const got = rows.map(r => [r[0], k(r[1]), r[2]]), bad = got.filter(r => r[1] !== r[2]);
+  check('carry: each of the twelve task states carries the table\'s item, and a task with nothing to carry carries nothing', bad.length === 0, bad.map(r => `${r[0]}: ${r[1]} not ${r[2]}`).join('; '));
+  check('carry: water with waterSt 0 is empty buckets and with waterSt 1 full ones', of("{task:'water',waterSt:0}").full === false && of("{task:'water',waterSt:1}").full === true);
+  // stepping off a boat: the string of fish for 30 s of animT, and not for the voyage home
+  const b = fresh(7); b.ev('animT=100');
+  const cur = () => b.ev('(()=>{const p=people.find(q=>!q.dead);const c=carryOf(p);return c?c.k:null})()');
+  b.ev("(()=>{const p=people.find(q=>!q.dead);Object.assign(p,{inside:false,inBoat:true,task:'boat'});carryTrack(p)})()");
+  const inB = cur();
+  b.ev("(()=>{const p=people.find(q=>!q.dead);p.inBoat=false;p.task='idle';carryTrack(p)})()");
+  const s0 = cur(); b.ev('animT=129'); const s1 = cur(); b.ev('animT=130'); const s2 = cur();
+  check('carry: stepping off a boat gives a string of fish for 30 s of animT and then nothing', inB === null && s0 === 'fishstring' && s1 === 'fishstring' && s2 === null, JSON.stringify([inB, s0, s1, s2]));
+  const v = fresh(7);
+  v.ev("(()=>{const p=people.find(q=>!q.dead);voyage={p,st:'out'};Object.assign(p,{inside:false,inBoat:true,task:'boat'});carryTrack(p);p.inBoat=false;p.task='idle';carryTrack(p)})()");
+  check('carry: coming ashore from the voyage is not a catch', v.ev('(()=>{const p=people.find(q=>!q.dead);return carryOf(p)})()') === null);
+  // putting down: the item stays where they stood while the task is a talking one, and goes when it changes
+  const d = fresh(7);
+  const st = (set) => d.ev(`(()=>{const p=people.find(q=>!q.dead);Object.assign(p,{inside:false,inBoat:false,work:0},${set});carryTrack(p);return p._set?[p._set.k,p._set.x,p._set.y]:null})()`);
+  const w1 = st("{task:'carry',carrySt:0,x:20,y:20,tx:20,ty:20}"), w2 = st("{task:'chat',x:21,y:20,tx:21,ty:20}"), w3 = st("{task:'chat',x:22,y:20,tx:22,ty:20}"), w4 = st("{task:'idle'}");
+  check('carry: a basket put down for a chat stays where they stood until the task changes again', w1 === null && w2 && w2[0] === 'basket' && w2[1] === 21 && w3 && w3[1] === 21 && w4 === null, JSON.stringify([w1, w2, w3, w4]));
+  const e = fresh(7), st2 = (set) => e.ev(`(()=>{const p=people.find(q=>!q.dead);Object.assign(p,{inside:false,inBoat:false,work:0},${set});carryTrack(p);return p._set?1:0})()`);
+  st2("{task:'chop'}"); const noSet = st2("{task:'wander'}");
+  check('carry: only chat, market, shelter and wave put an item down', noSet === 0 && ['chat', 'market', 'shelter', 'wave'].every(t => { st2("{task:'carry',carrySt:1}"); return st2(`{task:'${t}'}`) === 1; }));
+  // the belt: one bright pixel in the shelf colour for the thing's index
+  const t = fresh(7), nm = t.ev('people.find(q=>!q.dead).name');
+  t.ev(`things.length=0;things.push({holder:null},{holder:null},{holder:${JSON.stringify(nm)}})`);
+  const bt = t.ev('beltOf(people.find(q=>!q.dead))');
+  t.ev('things.length=0'); const none = t.ev('beltOf(people.find(q=>!q.dead))');
+  check('carry: a person holding a thing gets a belt pixel in the shelf colour of its index, and nobody else does', bt === '#4a5f8a' && none === null, JSON.stringify([bt, none]));
+  // it reads and does not write: no R() and no state the simulation reads
+  const r = fresh(7), before = JSON.stringify(r.H.pack());
+  r.ev("for(const p of people){carryTrack(p);carryOf(p);beltOf(p)}");
+  check('carry: running carryOf, carryTrack and beltOf over everyone leaves the save as it was', JSON.stringify(r.H.pack()) === before);
+});
+
+// ---- B3: the trade, enacted ----
+section(24, () => {
+  // a scripted island: a landing, a hall, wood 40, eight adults, a full store so the trade is the second branch (ten of timber for meal)
+  const make = () => { const h = fresh(7);
+    h.ev("while(people.filter(p=>!isKid(p)&&!p.dead).length<8)addPerson(center.x+1,center.y+1,{age:25});for(const p of people)p.craft=-1");
+    h.ev("bldg.push({kind:'hall',x:center.x+8,y:center.y-6,w:3,h:2,done:true,prog:0,work:80});wood=40;granary=60;food=60;time=dayLen*.4;spawnBoat('trade',landings[0],{});boatArrive(boats.find(b=>b.kind==='trade'))");
+    return h; };
+  const a = make();
+  const eco = a.ev('[wood,granary,food]');
+  const hauling = () => a.ev("people.filter(p=>p.task==='haul').map(p=>p.name)");
+  const names = hauling();
+  check('trade: after the arrival at least one person has task haul', names.length >= 1, JSON.stringify(names));
+  check('trade: the first min(4,n) adults of the wavers haul, four of eight', names.length === 4 && a.ev("people.filter(p=>p.task==='haul').every(p=>!isKid(p)&&p.haulWood===1&&p.haulSt===0)"), JSON.stringify(names));
+  check('trade: the numbers moved on the landing and are the old branch\'s (wood 40 to 30, granary 60 to 72), before anyone has walked', eco[0] === 30 && eco[1] === 72 && eco[2] === 60, JSON.stringify(eco));
+  const top = {};
+  for (let i = 0; i < 1200; i++) { a.ev('step(.05)');
+    for (const r of a.ev("people.filter(p=>p.task==='haul').map(p=>[p.name,p.haulSt])")) top[r[0]] = Math.max(top[r[0]] || 0, r[1]);
+    for (const n of names) if (a.ev(`(()=>{const p=byName(${JSON.stringify(n)});return p.haulSt===3&&p.task==='idle'})()`)) top[n] = 3; }
+  check('trade: every hauler reaches haulSt 3 and returns to idle within 1,200 steps', names.every(n => top[n] === 3 && a.ev(`byName(${JSON.stringify(n)}).task!=='haul'`)) && hauling().length === 0, JSON.stringify(top));
+  // paid in meal only: the first branch with no timber to give, so nobody carries a length of timber
+  const m = fresh(7);
+  m.ev("while(people.filter(p=>!isKid(p)&&!p.dead).length<8)addPerson(center.x+1,center.y+1,{age:25});wood=2;granary=0;food=0;time=dayLen*.4;spawnBoat('trade',landings[0],{});boatArrive(boats.find(b=>b.kind==='trade'))");
+  check('trade: no timber paid, no timber carried (haulWood 0, and carryOf names nothing on the way down)', m.ev("people.filter(p=>p.task==='haul').length>=1&&people.filter(p=>p.task==='haul').every(p=>p.haulWood===0)") && m.ev("(()=>{const p=people.find(q=>q.task==='haul');p.haulSt=1;return carryOf(p)})()") === null);
+  // a storm drops the errand at once
+  const s = make(); s.ev('storm=true');
+  for (let i = 0; i < 60; i++) s.ev('step(.05)');
+  check('trade: with a storm the haulers are idle within 60 steps and nobody is left in haul', s.ev("people.filter(p=>p.task==='haul').length") === 0);
+  // what is carried, by haulSt
+  const c = make(), pn = names[0], cf = (st, w) => c.ev(`(()=>{const p=byName(${JSON.stringify(pn)});p.haulSt=${st};p.haulWood=${w};const c=carryOf(p);return c?c.k:null})()`);
+  check('trade: a hauler carries timber (as a plank) only on the way to the landing, nothing while waiting or going down, a sack on the way up', cf(0, 1) === null && cf(1, 1) === 'plank' && cf(1, 0) === null && cf(2, 1) === null && cf(3, 1) === 'sack' && cf(3, 0) === 'sack', JSON.stringify([cf(0, 1), cf(1, 1), cf(1, 0), cf(2, 1), cf(3, 1), cf(3, 0)]));
+  check('trade: whyText has a line for each haulSt', [0, 1, 2, 3].every(st => c.ev(`(()=>{const p=byName(${JSON.stringify(pn)});p.haulSt=${st};p.haulWood=1;return whyText(p)})()`).length > 20));
+  // the first time a person hauls timber they get one life line, not two
+  const l = make(); for (let i = 0; i < 700; i++) l.ev('step(.05)');
+  const lines = l.ev("people.map(p=>p.hist.filter(h=>h.s===HAUL_LINE).length)");
+  check('trade: whoever hauled timber has the life line once', Math.max(...lines) === 1 && lines.filter(n => n === 1).length >= 1, JSON.stringify(lines));
+  // the cargo drawing reads and does not write
+  const r = make();
+  r.ev("for(let i=0;i<400;i++)step(.05)");
+  const before = JSON.stringify(r.H.pack());
+  r.ev("{const ents=[];drawStock(ents,0);for(const e of ents)void e.y}");
+  check('trade: the cargo is counted from the haulers (timber on the sand, four sacks in the boat) while the boat waits', r.ev("cargo.tim>=1&&cargo.n===4"), JSON.stringify(r.ev('cargo')));
+  check('trade: drawing the cargo leaves the save as it was', JSON.stringify(r.H.pack()) === before);
+});
+
+// ---- B4: stories that pull ----
+section(25, () => {
+  const pull = (h, job) => h.ev(`(pullsNow(),pullOf(${JSON.stringify(job)}))`);
+  const ent = (h, kind, gr) => h.ev(`chron.push({d:1,y:1,kind:${JSON.stringify(kind)},label:'x',st:'a story',tl:${gr ? 3 : 1},gr:${gr ? 'true' : 'false'}})`);
+  const a = fresh(7);
+  check('pull: no grown entries, no pull', pull(a, 'fish') === 0 && pull(a, 'water') === 0 && pull(a, 'wander') === 0);
+  ent(a, 'shoal', false);
+  check('pull: an ungrown shoal pulls nothing', pull(a, 'fish') === 0);
+  ent(a, 'shoal', true);
+  check('pull: one grown shoal is .15 toward fish and touches no other job', pull(a, 'fish') === .15 && pull(a, 'harvest') === 0);
+  ent(a, 'shoal', true); ent(a, 'shoal', true);
+  check('pull: three grown shoals are capped at .3', pull(a, 'fish') === .3);
+  const w = fresh(7); ent(w, 'drought', true); ent(w, 'rainscame', true); ent(w, 'stayed', true);
+  check('pull: drought and rainscame both lean on water, stayed on wander at .08', pull(w, 'water') === .3 && pull(w, 'wander') === .08);
+  // the turn itself: spring day 1, food short, one idle adult, a roll just above the unpulled fishing threshold (.35, no craft term)
+  const turn = (grown, times) => { const h = fresh(7);
+    h.ev("for(const q of people){q.task='sleep';q.craft=-1}");
+    if (grown) ent(h, 'shoal', true);
+    h.ev("hunger=0;food=0;time=dayLen*.4;pullsNow()");
+    const nm = h.ev("(()=>{const p=people.find(q=>!isKid(q)&&!q.dead);return p.name})()"), res = [];
+    for (let i = 0; i < times; i++) {
+      h.ev(`(()=>{const p=byName(${JSON.stringify(nm)});p.task='idle';p.t=0;p.tgt=null;p.inside=false;p.chatD=dayCount;p.marketed=dayCount;const r=R;R=()=>.36;try{step(.05)}finally{R=r}; })()`);
+      res.push(h.ev(`byName(${JSON.stringify(nm)}).task`)); }
+    return { h, nm, res }; };
+  const off = turn(false, 1), on = turn(true, 2);
+  check('pull: with food short and a roll of .36 an idle adult does not fish without a grown shoal', off.res[0] !== 'fish', JSON.stringify(off.res));
+  check('pull: the same roll sends them fishing with one', on.res[0] === 'fish', JSON.stringify(on.res));
+  check('pull: they have the life line, once, and the island has exactly one new chronicle entry after two such turns',
+    on.h.ev(`byName(${JSON.stringify(on.nm)}).hist.filter(x=>x.s===PULL_LINE.fish).length`) === 1 && on.h.ev("chron.filter(e=>e.kind==='pull_shoal').length") === 1, JSON.stringify(on.res));
+  check('pull: the unpulled island gets neither line nor entry', off.h.ev(`byName(${JSON.stringify(off.nm)}).hist.filter(x=>x.s===PULL_LINE.fish).length`) === 0 && off.h.ev("chron.filter(e=>e.kind==='pull_shoal').length") === 0);
+  check('pull: whyText names the story when the task has a pull, and not otherwise',
+    on.h.ev(`(()=>{const p=byName(${JSON.stringify(on.nm)});p.task='fish';return whyText(p)})()`).includes('the story of the fish') && !off.h.ev(`(()=>{const p=byName(${JSON.stringify(off.nm)});p.task='fish';return whyText(p)})()`).includes('story of'));
+  // derived, never saved: a reloaded island has the pull the moment it loads
+  const sv = JSON.stringify(on.h.H.pack()), rl = fresh(7); rl.ev(`unpack(JSON.parse(${JSON.stringify(sv)}))`);
+  check('pull: unpack brings the pull back from the chronicle, and the save has no pull in it', rl.ev("pullOf('fish')") === .15 && !/"pulls?"/.test(sv));
+});
+
+// ---- the page that follows the public island (C4, unit section 28) ----
+// live.html is index.html with every id kept and two more scripts, and the four seams in the game's own files are inert without HEARTH_LIVE:
+// those are the checks here. The page itself, in a browser against a running server, is test/live.mjs. Break: delete one id from live.html;
+// or take `if(LIVE)return;` out of autoSave() in life.js and the sentinel in hearth.auto is overwritten.
+section(28, () => {
+  const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
+  const ids = html => new Set([...html.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]));
+  const scripts = html => [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
+  const idx = read('index.html'), live = read('live.html');
+  const missing = [...ids(idx)].filter(i => !ids(live).has(i));
+  check('live.html: every id index.html has is there, because the scripts bind to them at load', ids(idx).size > 40 && missing.length === 0, missing.join(', '));
+  const want = ['js/live-flag.js', ...scripts(idx), 'js/live.js'];
+  check('live.html: index.html\'s scripts in index.html\'s order, with live-flag.js first and live.js last', JSON.stringify(scripts(live)) === JSON.stringify(want), JSON.stringify(scripts(live)));
+  check('live.html: body.live, and a status line and a note the page can fill', /<body class="live">/.test(live) && ids(live).has('live-status') && ids(live).has('live-note'));
+  check('index.html does not load either live script and has no live ids', !/live/.test(scripts(idx).join(' ')) && !ids(idx).has('live-status'));
+  // the seam: the same script text, with and without the flag
+  const store = h => { h.ev("localStorage.setItem('hearth.auto','sentinel')"); h.ev('autoSave()'); return h.ev("localStorage.getItem('hearth.auto')"); };
+  const on = loadHearth({ globals: { HEARTH_LIVE: 1, btoa, atob } }), off = loadHearth({ globals: { btoa, atob } }); /* lzEnc needs btoa: without it autoSave() would fail quietly in both and the control below would prove nothing */
+  on.H.newWorld(7); off.H.newWorld(7);
+  check('LIVE: true with the flag in the context and false without it', on.ev('LIVE') === true && off.ev('LIVE') === false);
+  check('LIVE: autoSave() leaves a visitor\'s own hearth.auto alone', store(on) === 'sentinel');
+  check('LIVE: and without the flag it is still the autosave it was (the control for the line above)', store(off) !== 'sentinel');
+  // a LIVE island still packs, steps and unpacks: the seams touch input and the loop, not the simulation
+  on.ev('for(let i=0;i<300;i++)step(.05)');
+  const a = JSON.stringify(on.H.pack());
+  off.ev('for(let i=0;i<300;i++)step(.05)');
+  check('LIVE: stepping is the same arithmetic with and without the flag', a === JSON.stringify(off.H.pack()));
+  // js/live.js declares its own names and nobody else's
+  const lv = read('js/live.js'), names = [...lv.matchAll(/^(?:let|const|function)[ \t]+([A-Za-z_$][\w$]*)/gm)].map(m => m[1]);
+  check('live.js: every top-level name starts lv, LV_ or is liveFrame (so no other file can already own one)', names.length > 15 && names.every(n => /^(lv|LV_)/.test(n) || n === 'liveFrame'), names.filter(n => !/^(lv|LV_)/.test(n) && n !== 'liveFrame').join(', '));
+  check('live.js: no comment line starts with // and the file has no "use strict"', !/^\s*\/\//m.test(lv) && !/use strict/.test(lv));
 });
 
 console.log(`${fail ? 'FAIL' : 'PASS'}: ${pass} of ${pass + fail} unit checks`);

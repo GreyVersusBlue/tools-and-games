@@ -60,4 +60,55 @@ function drawStock(ents,snow){
     if(!rk){g.fillStyle='#6f4b32';g.fillRect(x0-1,y0,1,f.h);g.fillRect(x0+f.w,y0,1,f.h);g.fillStyle='#8a6a44';g.fillRect(x0,y0,f.w,1)}
     for(let i=0;i<cnt.fish;i++){const x=x0+1+Math.round(i*(f.w-2)/7),y=rk?y0+4+(i&1):y0+1;
       g.fillStyle='#c9d0c8';g.fillRect(x,y,1,3);g.fillStyle='#7d8c8a';g.fillRect(x,y+3,1,1)}}})}
-}
+  drawCargo(ents)}
+/* B3: the cargo while the trader's boat waits. Timber stacks on the sand as haulers arrive with it and sacks in the boat go as haulers leave with
+   them. The counts come from the haulers' own state (haulSt) and are remembered per boat in underscore fields on the people and in cargo below;
+   the simulation never reads either. */
+let cargo={b:null,n:0,tim:0,out:0};
+function cargoTrack(){
+  if(cargo.b!==trader)cargo={b:trader,n:0,tim:0,out:0};
+  if(!trader)return cargo;
+  for(const p of people){if(p.dead||p.task!=='haul')continue;
+    if(p._cgN!==trader){p._cgN=trader;cargo.n++}
+    if(p.haulSt>=2&&p.haulWood&&p._cgT!==trader){p._cgT=trader;cargo.tim++}
+    if(p.haulSt===3&&p._cgS!==trader){p._cgS=trader;cargo.out++}}
+  return cargo}
+function drawCargo(ents){
+  const c=cargoTrack(),b=trader;if(!b||b.st!=='wait'||!c.n)return;
+  const l=b.land,sx=Math.round((l.x+.5-l.dy*1.3-l.dx*.6)*T),sy=Math.round((l.y+.5+l.dx*1.3-l.dy*.6)*T);
+  if(c.tim>0)ents.push({y:sy/T+.01,d:()=>{for(let i=0;i<c.tim*2;i++){const x=sx-4+(i&3)*3,y=sy-1-2*(i>>2);g.fillStyle=i&1?'#8a5a2e':'#94622f';g.fillRect(x,y,3,1);g.fillStyle='#6b4423';g.fillRect(x,y+1,3,1)}}});
+  const left=Math.max(0,c.n-c.out);
+  if(left>0)ents.push({y:b.y+.45,d:()=>{const bx=Math.round(b.x*T)-left*2;for(let i=0;i<left;i++){g.fillStyle='#d6c79a';g.fillRect(bx+i*4,Math.round(b.y*T)-2,3,3);g.fillStyle='#b3a273';g.fillRect(bx+i*4,Math.round(b.y*T),3,1)}}})}
+/* B2: hands that are full. carryOf(p) is a pure function of the person's task and state; folk.js draws what it names. It reads the simulation and
+   assigns nothing. The two things that need a memory (a string of fish after a boat, a thing set down) live in carryTrack(), which writes only
+   underscore fields on the person: p._boat, p._off, p._c, p._set. No R(), no Math.random(). */
+const FISH_STRING=30; /* seconds of animT a string of fish is carried after stepping off a boat */
+const SETDOWN={chat:1,market:1,shelter:1,wave:1}; /* the tasks that make someone put what they carry on the ground */
+const SHELFC=['#d9d4c8','#c9a24a','#4a5f8a']; /* the shelf's colours in render.js, by index */
+function carryOf(p){
+  if(!p||p.dead||p.inside)return null;
+  switch(p.task){
+    case 'carry':return{k:p.carrySt===0?'basket':'sack'};
+    case 'water':return{k:'bucket',full:p.waterSt===1};
+    case 'chop':return{k:'axe'};
+    case 'fish':return{k:'rod'};
+    case 'harvest':return p.work>1?{k:'sheaf'}:null;
+    case 'build':return{k:Math.hypot(p.tx-p.x,p.ty-p.y)>.05?'plank':'hammer'};
+    case 'nurse':return{k:'bowl'};
+    case 'bounds':return p.bLead?{k:'staff'}:null;
+    case 'tend':return{k:'firewood'};
+    case 'haul':return p.haulSt===1&&p.haulWood?{k:'plank'}:p.haulSt===3?{k:'sack'}:null;
+    case 'gather':return null}
+  if(p._off!==undefined&&!p.inBoat&&animT-p._off>=0&&animT-p._off<FISH_STRING)return{k:'fishstring'};
+  return null}
+/* the colour of the one bright pixel at the belt of someone who keeps a thing, by that thing's index in things[]; null for nobody */
+function beltOf(p){const t=p?thingsOf(p.name)[0]:null;return t?SHELFC[things.indexOf(t)%3]:null}
+/* once a frame per person, from drawFolk: note a boat landing, and put an item down when the task that carried it gives way to a talking one */
+function carryTrack(p){
+  if(p.inBoat&&!(voyage&&voyage.p===p))p._boat=1;
+  else if(!p.inBoat&&p._boat){p._boat=0;p._off=animT}
+  const c=carryOf(p);
+  if(c)p._set=null;
+  else if(p._c&&SETDOWN[p.task])p._set={k:p._c.k,full:p._c.full,x:p.x,y:p.y};
+  else if(!SETDOWN[p.task])p._set=null;
+  p._c=c}

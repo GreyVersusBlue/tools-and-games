@@ -61,39 +61,41 @@ cv.addEventListener('wheel',e=>{e.preventDefault();const w=toWorld(e);setZoom(zo
 cv.addEventListener('pointerdown',e=>{ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
   try{cv.setPointerCapture(e.pointerId)}catch(err){}
   if(ptrs.size>=2){if(lpT){clearTimeout(lpT);lpT=0}press=null; // a second finger means the view, not a blessing
-    const a=[...ptrs.values()];pinch={d0:Math.max(20,Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)),z0:zoom,mx:(a[0].x+a[1].x)/2,my:(a[0].y+a[1].y)/2};return}
+    const a=[...ptrs.values()];pinch={d0:Math.max(20,hyp(a[0].x-a[1].x,a[0].y-a[1].y)),z0:zoom,mx:(a[0].x+a[1].x)/2,my:(a[0].y+a[1].y)/2};return}
   const w=toWorld(e);cur.x=w.x;cur.y=w.y;
   press={x0:w.x,y0:w.y,x:w.x,y:w.y,cx:e.clientX,cy:e.clientY,sm:0,moved:0,done:false,water:at(w.x|0,w.y|0)===WATER};
-  if(at(w.x|0,w.y|0)===GRASS){lpT=setTimeout(()=>{lpT=0;if(!press||press.moved>1.1)return;press.done=true;
+  if(!LIVE&&at(w.x|0,w.y|0)===GRASS){lpT=setTimeout(()=>{lpT=0;if(!press||press.moved>1.1)return;press.done=true;
     if(!makeSpring(press.x0,press.y0)){for(let i=0;i<7;i++)fx.push({x:press.x0,y:press.y0,vx:rnd(-.7,.7),vy:-rnd(.3,1),c:'#9fd66a',l:.5});
       say('The ground here holds its water, and keeps it.',false,'nospring')}},520)}});
 cv.addEventListener('pointermove',e=>{const pt=ptrs.get(e.pointerId);if(pt){pt.x=e.clientX;pt.y=e.clientY}
   if(pinch&&ptrs.size>=2){const a=[...ptrs.values()],k=vScale();
-    const d=Math.max(20,Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)),mx=(a[0].x+a[1].x)/2,my=(a[0].y+a[1].y)/2;
+    const d=Math.max(20,hyp(a[0].x-a[1].x,a[0].y-a[1].y)),mx=(a[0].x+a[1].x)/2,my=(a[0].y+a[1].y)/2;
     camX-=(mx-pinch.mx)*dprE/(k*T);camY-=(my-pinch.my)*dprE/(k*T);pinch.mx=mx;pinch.my=my;
     setZoom(pinch.z0*d/pinch.d0);clampCam();return}
   const w=toWorld(e);cur.x=w.x;cur.y=w.y;if(!press)return;
   const sdx=e.clientX-press.cx,sdy=e.clientY-press.cy;press.cx=e.clientX;press.cy=e.clientY;press.sm+=Math.abs(sdx)+Math.abs(sdy);
   if(press.sm>8&&lpT){clearTimeout(lpT);lpT=0}
   if(!press.water&&zoom>1.02&&press.sm>8){press.pan=true;const k=vScale();camX-=sdx*dprE/(k*T);camY-=sdy*dprE/(k*T);clampCam();return} // dragging the land drags the view; the water keeps its gust
-  press.moved=Math.max(press.moved,Math.hypot(w.x-press.x0,w.y-press.y0));press.x=w.x;press.y=w.y;
+  press.moved=Math.max(press.moved,hyp(w.x-press.x0,w.y-press.y0));press.x=w.x;press.y=w.y;
   if(press.moved>1.1&&lpT){clearTimeout(lpT);lpT=0}
-  if(press.water&&press.moved>1.5&&R()<.35)fx.push({x:w.x,y:w.y,vx:0,vy:0,c:'#dceeff',l:.3})});
+  if(!LIVE&&press.water&&press.moved>1.5&&R()<.35)fx.push({x:w.x,y:w.y,vx:0,vy:0,c:'#dceeff',l:.3})});
+function personAt(x,y){let best=null,bd=1.4;for(const p of people){if(p.inside)continue;const d=hyp(p.x-x,p.y-y+.6);if(d<bd){bd=d;best=p}}return best}
 function endPress(e){if(!press)return;const pr=press;press=null;if(lpT){clearTimeout(lpT);lpT=0}
   if(pr.done||pr.pan)return;
   const x=pr.x0,y=pr.y0;
+  if(LIVE){if(pr.moved<=1.4){const q=personAt(x,y);if(q)showCard(q)}return} // C4: the public island is watched, not played: a click opens a card and nothing else, and draws nothing from R()
   // a gust, dragged across the water
   if(pr.water&&pr.moved>2.2&&at(pr.x|0,pr.y|0)===WATER){gustAt(x,y,pr.x,pr.y);return}
   if(pr.moved>1.4)return;
   // an islander, and at night a dream
-  let best=null,bd=1.4;for(const p of people){if(p.inside)continue;const d=Math.hypot(p.x-x,p.y-y+.6);if(d<bd){bd=d;best=p}}
+  const best=personAt(x,y);
   if(best){showCard(best);
     if(isNight()){if(isKid(best)&&best.task==='sleep'){lullaby(best.x,best.y);actDone('lullaby');noteAct('lullaby',.03);
         say(`Somewhere in the dark somebody is humming, very quietly, and ${B(best)} turns over and sleeps on.`,true)}
       dreamOf(best)}
     return}
   // the fire, and the story at it
-  if(Math.hypot(x-center.x,y-center.y)<2.3){if(!tellStory())say('The fire has already had its story out of tonight.',false,'toldalready');return}
+  if(hyp(x-center.x,y-center.y)<2.3){if(!tellStory())say('The fire has already had its story out of tonight.',false,'toldalready');return}
   // a cloud's shadow
   const c=cloudAt(x,y);if(c){rainOn(c);return}
   const t=at(x|0,y|0);
@@ -125,6 +127,7 @@ document.getElementById('b-music').onclick=e=>{musOn=!musOn;e.target.textContent
   if(AC&&!musOn)musG.gain.setTargetAtTime(0,AC.currentTime,.5)};
 addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;
   const k=e.key.toLowerCase();
+  if(LIVE&&(k===' '||k==='1'||k==='3'||k==='0'||k==='y'||k==='m')){if(k===' ')e.preventDefault();return} // C4: no pause, no speed, no skipping the night on the public island
   if(k===' '||e.code==='Space'){paused=!paused;syncCtl();e.preventDefault()}
   else if(k==='1')setSpeed(1);else if(k==='3')setSpeed(3);else if(k==='0')setSpeed(10);else if(k==='y')setSpeed(FAST);
   else if(k==='m')skipToMorning();
@@ -145,9 +148,9 @@ addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;
     const kick=()=>{if(!AC)startAudio();if(AC&&AC.state==='suspended')AC.resume();
       removeEventListener('pointerdown',kick,true);removeEventListener('keydown',kick,true)};
     addEventListener('pointerdown',kick,true);addEventListener('keydown',kick,true)}}
-{let ok=false;try{ok=loadHash()}catch(err){ok=false}
-  if(!ok){const a=pref('auto');if(a)try{const o=JSON.parse(lzDec(a));if(canLoad(o)){unpack(o);say('The island kept itself while you were away.',true);ok=true}}catch(err){ok=false}}
-  if(!ok)newWorld(seed);syncCtl()}
+{let ok=false;if(!LIVE)try{ok=loadHash()}catch(err){ok=false}
+  if(!ok&&!LIVE){const a=pref('auto');if(a)try{const o=JSON.parse(lzDec(a));if(canLoad(o)){unpack(o);say('The island kept itself while you were away.',true);ok=true}}catch(err){ok=false}}
+  if(!ok)newWorld(LIVE?1:seed);syncCtl()}
 let last=performance.now(),frameN=0,genAcc=0;
 // One frame of the world: the steps, then everything that is only there to be seen or heard. Split out of loop() so the harness can
 // drive real frames at either speed and compare the two islands. The log and the chronicle are written inside step() and newDay(),
@@ -160,13 +163,14 @@ function frame(dt,run){
   // at 240x a person crosses ten tiles between frames, so three paints in four buy nothing; the hints are for somebody who has just
   // arrived, and this is not their speed. audioTick gets the whole accumulated dt, so its timers run at the wall clock they always did.
   if((++frameN&3)===0){audioTick(genAcc);cardT-=genAcc;genAcc=0;renderCard(false);draw()}}
-function loop(now){let dt=Math.max(0,Math.min(.05,(now-last)/1000));last=now; // clamped at 0: the first frame's timestamp can predate performance.now(), and time must never run backward
+function loop(now){if(LIVE){if(typeof liveFrame==='function')liveFrame(now);requestAnimationFrame(loop);return} // C4: js/live.js owns the frame on the public island; the typeof is for a first frame that fires while live.js, the last script, is still on its way, which would otherwise throw and end the loop for good
+  let dt=Math.max(0,Math.min(.05,(now-last)/1000));last=now; // clamped at 0: the first frame's timestamp can predate performance.now(), and time must never run backward
   frame(dt,!paused);requestAnimationFrame(loop)}
 // the loop waits for the building sheet (#806): an island drawn without its buildings is a wrong island, so a sheet that will not
 // come stops it here, says why in the log, and prints it for the harness, which fails on any console line that starts `hearth:`
 sheetGo(()=>{last=performance.now();requestAnimationFrame(loop)},why=>{say(`The island cannot be drawn: ${why}.`,true);console.error('hearth: '+why)});
 // exposed for headless testing only
-window.__hearth={step,draw,frame,FAST,skyAt,get litHouses(){return litHouses},get sheet(){return{ready:bReady,fail:bFail,atlas:typeof BSHEET==='undefined'?null:BSHEET}},roofFrame,get speed(){return speed},set speed(v){speed=v},get paused(){return paused},get trees(){return trees},get people(){return people},get graves(){return graves},get dead(){return dead},get gone(){return gone},get bldg(){return bldg},get boats(){return boats},get village(){return village},get road(){return road},get stream(){return stream},get landings(){return landings},get heat(){return heat},get bldgTgt(){return bldgTgt},get wild(){return wild},get gulls(){return gulls},get flies(){return flies},get geese(){return geese},get whale(){return whale},get farIsle(){return farIsle},get voyage(){return voyage},get ruin(){return ruin},get fishSh(){return fishSh},get events(){return events},get chron(){return chron},get springs(){return springs},get clouds(){return clouds},get skips(){return skips},get houses(){return houses},get farms(){return farms},get dayCount(){return dayCount},get food(){return food},get granary(){return granary},get hunger(){return hunger},get wx(){return wx},get snowD(){return snowD},get frozen(){return frozen},get wood(){return wood},get time(){return time},get animT(){return animT},get tilesNow(){return tiles},get elevNow(){return elev},get terCv(){return ter},paintTerrain,setAnimT:v=>animT=v,get seed(){return seed},setTime:t=>time=t,setCam:(x,y)=>{camX=x;camY=y;clampCam()},get zoomNow(){return zoom},setWhaleT:v=>whaleT=v,setGeeseDay:v=>geeseDay=v,setWx,setSnow:v=>snowD=v,setSpeed,setFood:v=>food=v,setGranary:v=>granary=v,landAt,canWalk,canWade,routeVia,autoSave,get wadeTiles(){return wadeTiles},get bridgeUp(){return bridgeUp},get bridgeSite(){return bridgeSite},get works(){return works},get plots(){return plots},get dry01(){return dry01},setDry:v=>dry01=v,get breadYr(){return breadYr},WORKS,WORK_ORDER,hasW,get spots(){return spots},
+window.__hearth={step,draw,frame,FAST,skyAt,get litHouses(){return litHouses},sunAt,get sheet(){return{ready:bReady,fail:bFail,atlas:typeof BSHEET==='undefined'?null:BSHEET}},roofFrame,get speed(){return speed},set speed(v){speed=v},get paused(){return paused},get trees(){return trees},get people(){return people},get graves(){return graves},get dead(){return dead},get gone(){return gone},get bldg(){return bldg},get boats(){return boats},get village(){return village},get road(){return road},get stream(){return stream},get landings(){return landings},get heat(){return heat},get bldgTgt(){return bldgTgt},get wild(){return wild},get gulls(){return gulls},get flies(){return flies},get geese(){return geese},get whale(){return whale},get farIsle(){return farIsle},get voyage(){return voyage},get ruin(){return ruin},get fishSh(){return fishSh},get events(){return events},get chron(){return chron},get springs(){return springs},get clouds(){return clouds},get skips(){return skips},get houses(){return houses},get farms(){return farms},get dayCount(){return dayCount},get food(){return food},get granary(){return granary},get hunger(){return hunger},get wx(){return wx},get snowD(){return snowD},get frozen(){return frozen},get wood(){return wood},get time(){return time},get animT(){return animT},get tilesNow(){return tiles},get elevNow(){return elev},get terCv(){return ter},paintTerrain,setAnimT:v=>animT=v,get seed(){return seed},setTime:t=>time=t,setCam:(x,y)=>{camX=x;camY=y;clampCam()},get zoomNow(){return zoom},setWhaleT:v=>whaleT=v,setGeeseDay:v=>geeseDay=v,setWx,setSnow:v=>snowD=v,get wetA(){return wetA},setWetA:v=>{wetA=v;wetLast=animT},setFlash:v=>flash=v,setFogA:v=>fogA=v,get fogA(){return fogA},lookOff,houseOccupied,snowSheds,roofEdge,setSpeed,setFood:v=>food=v,setGranary:v=>granary=v,landAt,canWalk,canWade,routeVia,autoSave,get wadeTiles(){return wadeTiles},get bridgeUp(){return bridgeUp},get bridgeSite(){return bridgeSite},get works(){return works},get plots(){return plots},get dry01(){return dry01},setDry:v=>dry01=v,get breadYr(){return breadYr},WORKS,WORK_ORDER,hasW,get spots(){return spots},
 get faith(){return faith},setFaith:v=>faith=v,get faithSt(){return faithSt},get prayer(){return prayer},setPrayer:v=>prayer=v,faithDay,wayDay,seaDay,tellOfDead:()=>tellOfDead(people.filter(p=>!p.dead)),ringPhase,ringOf,get arc(){return arc},startArc,get ways(){return ways},setWays:v=>ways=v,hasWay,get temper(){return temper},noteAct,get acts(){return acts},get sickCount(){return people.filter(p=>p.sick).length},
 get want(){return want},get wantYr(){return wantYr},setWantYr:v=>wantYr=v,declareWant,wantRaid,wantShort,endWant,workRateOf:workRate,
 get ill(){return ill},takeSick,illDay,endIll,wellAgain,canTake,nursedBy,sickBed,illChanceOf:illChance,SICKD,WAVED,WELLD,
