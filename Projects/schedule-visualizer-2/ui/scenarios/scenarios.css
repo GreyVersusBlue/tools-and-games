@@ -357,8 +357,7 @@
   outline-offset: 2px;
 }
 
-.scn-others__title:focus,
-#scenario-others-title:focus {
+.scn-others__title:focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

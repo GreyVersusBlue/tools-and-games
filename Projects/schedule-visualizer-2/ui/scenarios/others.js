@@ -41,7 +41,7 @@ const ACTIONS = [
 
 export function othersPanel(env) {
   const ctx = env.ctx;
-  const title = h('h2', { class: 'scn-panel__title', id: 'scenario-others-title', tabindex: '-1', data: { part: 'others-title' } }, 'Other scenarios');
+  const title = h('h2', { class: 'scn-panel__title scn-others__title', id: 'scenario-others-title', tabindex: '-1', data: { part: 'others-title' } }, 'Other scenarios');
   // the visible line; the page's one live region (ctx.announce) says it aloud
   const status = h('p', { class: 'scn-others__status', data: { part: 'others-status' } });
   const list = h('ul', { class: 'scn-others__list', 'aria-labelledby': 'scenario-others-title', data: { part: 'others-list' } });
