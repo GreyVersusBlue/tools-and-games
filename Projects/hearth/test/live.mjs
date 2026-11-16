@@ -211,6 +211,17 @@ startTicks();
   check('(C5) back at the present, the banner is gone and hearth.auto was never touched', await lp.evaluate(() => document.getElementById('live-back').hidden && localStorage.getItem('hearth.auto') === 'SENTINEL'));
   check('(C5) and at the next epoch boundary the page\'s hash equals the server\'s again', last.mine === epochFile(last.n).hash && await lp.evaluate(() => window.__hearthLive.mismatches) === 0, `${last.n}: page ${last.mine} server ${epochFile(last.n).hash}`);
 }
+
+// yesterday at speed with the server down: every epoch request fails, and the page says so quietly and stays in the present (TG-96)
+{
+  await lp.route('**/hearth-live/epoch/**', r => r.abort());
+  const stepBefore = await lp.evaluate(() => window.__hearthLive.step);
+  await lp.click('#lv-back');
+  await lp.waitForFunction(() => { const n = document.getElementById('live-note'); return !n.hidden && /not available/.test(n.textContent); }, null, { timeout: 15000 }).catch(() => {});
+  const dn = await lp.evaluate(() => ({ back: window.__hearthLive.back, note: document.getElementById('live-note').textContent, hidden: document.getElementById('live-note').hidden, bannerHidden: document.getElementById('live-back').hidden, step: window.__hearthLive.step, dead: window.__hearthLive.dead }));
+  check('(C5) server down: "yesterday" says the look-back is unavailable, and the page stays in the present (no banner, not dead, still stepping)', !dn.back && !dn.hidden && /Yesterday is not available/.test(dn.note) && dn.bannerHidden && !dn.dead && dn.step >= stepBefore, JSON.stringify(dn));
+  await lp.unroute('**/hearth-live/epoch/**');
+}
 stopTicks();
 await lctx.close();
 

@@ -23,7 +23,7 @@ function put(file, body) {
 const INFO = `(()=>{const adults=people.filter(p=>!p.dead&&!isKid(p)&&(p.dreamFar||has(p,'brave')||has(p,'restless'))).map(p=>p.name).sort((a,b)=>a<b?-1:a>b?1:0);
  const from=gone.filter(g=>g.far).map(g=>g.name).reverse();const seen=new Set(),want=[];
  for(const n of from.concat(adults))if(!seen.has(n)){seen.add(n);want.push(n)}
- return{seed,village:village||null,years:yearOf(dayCount),people:people.filter(p=>!p.dead).length,graves:graves.length,farSeed:farSeed(seed),candidates:want}})()`;
+ return{seed,village:village||farNameOf(seed),years:yearOf(dayCount),people:people.filter(p=>!p.dead).length,graves:graves.length,farSeed:farSeed(seed),candidates:want}})()`;
 
 // In the new island: rename its first settlers to the founders (skipping a candidate whose name a settler already has, so no two people
 // share one), carry the name through everything that holds it, mark the old village on the far record and light its lamp, and write the
@@ -59,7 +59,7 @@ export function endEra(ctx) {
   list.push(row); list.sort((a, b) => a.era - b.era);
   put(file, { v: ERAS_V, eras: list });
   world.found(info.farSeed);
-  const founders = world.run(FOUND({ old: info.village || 'island ' + info.seed.toString(36), candidates: info.candidates }));
+  const founders = world.run(FOUND({ old: info.village, candidates: info.candidates }));
   log(`era ${era} ended: island ${info.seed.toString(36)}, ${info.years} years, ${info.people} living, ${founders.length} founders sailed for island ${info.farSeed.toString(36)}`);
   return { row, seed: info.farSeed, founders };
 }
