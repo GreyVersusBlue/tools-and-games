@@ -13,7 +13,8 @@ import { applyChanges, reconcile, changeWords } from '../../engine/scenario.js';
 import { releaseOf } from '../../engine/schema.js';
 import { validate } from '../../engine/validate.js';
 import { writeProjectFile, readProjectFile } from '../../engine/project-file.js';
-import { school, emptyProject, clone, clock, makeIds, assertValid } from './helpers.mjs';
+import { school, emptyProject, clone, clock, makeIds, ctx, assertValid } from './helpers.mjs';
+import { isId } from '../../engine/ids.js';
 
 const { addScenarioLever, removeScenarioLever, removeScenarioLevers, deleteDayType, setDayTypeKind, describeDayTypeDelete, describeDayTypeKind, describePeriodChange, setPeriods, newScenario, renameScenario, addScenarioChange, removeScenarioChange, removeScenarioChanges, discardScenario, setScenarioFromFile, applyScenario, setSlot, deleteGroup, revertToBase, ActionError, SCHEDULE, NEW_SCENARIO_NAME } = actions;
 
@@ -92,15 +93,17 @@ test('newScenario: an empty scenario with the name as typed, or "New scenario" w
   const store = storeOf();
   const before = store.project;
   store.apply(newScenario, { name: '<b>Move "7th" grade</b>' });
-  assert.deepEqual(store.project.scenario, { name: '<b>Move "7th" grade</b>', changes: [], compared: null });
+  // the id is new in W6 (ARCHITECTURE 21.2): every scenario made from now on has one, prefix e
+  assert.ok(isId(store.project.scenario.id, 'e'));
+  assert.deepEqual(store.project.scenario, { id: store.project.scenario.id, name: '<b>Move "7th" grade</b>', changes: [], compared: null });
   assert.equal(store.undoLabel, 'Start scenario <b>Move "7th" grade</b>');
   assert.equal(store.project.groups, before.groups, 'the schedule is the very same object');
   assert.equal(store.project.building, before.building);
   assertValid(store.project);
 
-  assert.equal(newScenario(school(), {}).scenario.name, NEW_SCENARIO_NAME);
-  assert.equal(newScenario(school(), { name: '   ' }).scenario.name, 'New scenario');
-  assert.throws(() => newScenario(school(), { name: 7 }), refusedWith('bad-value'));
+  assert.equal(newScenario(school(), {}, ctx()).scenario.name, NEW_SCENARIO_NAME);
+  assert.equal(newScenario(school(), { name: '   ' }, ctx()).scenario.name, 'New scenario');
+  assert.throws(() => newScenario(school(), { name: 7 }, ctx()), refusedWith('bad-value'));
 });
 
 test('newScenario: an open scenario is not replaced unless the payload says replace', () => {
@@ -109,7 +112,7 @@ test('newScenario: an open scenario is not replaced unless the payload says repl
   assert.throws(() => store.apply(newScenario, { name: 'Other' }), (error) => refusedWith('scenario-open')(error) && error.message === 'A scenario is already open: Trial. Apply it or discard it first.');
   assert.equal(store.project, open, 'a refusal changes nothing');
   store.apply(newScenario, { name: 'Other', replace: true });
-  assert.deepEqual(store.project.scenario, { name: 'Other', changes: [], compared: null });
+  assert.deepEqual(store.project.scenario, { id: store.project.scenario.id, name: 'Other', changes: [], compared: null });
   store.undo();
   assert.equal(store.project.scenario, open.scenario, 'undo brings back the scenario it replaced');
 });
@@ -255,7 +258,7 @@ test('a blank stored name reads "New scenario" in every label; a name blank of w
   assert.throws(() => replaced.apply(renameScenario, { name: '\u200B\u2060\uFEFF' }), refusedWith('no-name'));
   replaced.apply(renameScenario, { name: ' Trial\u200B ' });
   assert.equal(replaced.project.scenario.name, ' Trial\u200B ', 'a name that is not blank is stored exactly as typed');
-  assert.equal(newScenario(school(), { name: '\u200BX' }).scenario.name, '\u200BX');
+  assert.equal(newScenario(school(), { name: '\u200BX' }, ctx()).scenario.name, '\u200BX');
 });
 
 test('every scenario action reads a null payload as {}, so its own refusal applies and never a TypeError', () => {
@@ -379,14 +382,14 @@ test('setScenarioFromFile: the file\'s schedule as moves, with the file and the 
   const store = storeOf();
   store.apply(setScenarioFromFile, { project: nextYear(), fileName: 'next-year.json' });
   const scenario = store.project.scenario;
-  assert.deepEqual(Object.keys(scenario).sort(), ['changes', 'compared', 'name'], 'the scenario gains no field');
+  assert.deepEqual(Object.keys(scenario).sort(), ['changes', 'compared', 'id', 'name'], 'the scenario gains no field but its id');
   assert.equal(scenario.name, 'Compared with next-year.json');
   assert.deepEqual(scenario.changes, [move(G7C, 1, 'rsample204'), move(G8A, 0, 'rsamplelib', B)]);
   assert.deepEqual(scenario.compared, { fileName: 'next-year.json', addedGroups: ['9A'], removedGroups: ['8B'] });
   assert.equal(store.undoLabel, 'Compare with next-year.json: 2 changes');
   assertValid(store.project);
 
-  const named = setScenarioFromFile(school(), { project: nextYear(), fileName: '', name: 'Proposal' });
+  const named = setScenarioFromFile(school(), { project: nextYear(), fileName: '', name: 'Proposal' }, ctx());
   assert.equal(named.scenario.name, 'Proposal');
   assert.equal(setScenarioFromFile.label(school(), {}, named), 'Compare with another file: 2 changes');
 });

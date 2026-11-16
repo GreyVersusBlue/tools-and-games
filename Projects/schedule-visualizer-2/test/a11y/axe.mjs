@@ -237,6 +237,17 @@ test('the sweep visits Safety\'s What if (a trial on) and Prints tabs, at 1280 a
   assert.equal(SCREENS.find((screen) => screen.id === 'safety-prints-phone').viewport.width, 390);
 });
 
+// SV2-124: W6's screens, at 1280 and at 390 with touch, are visited by the four passes above
+// (each opener also fails when the page scrolls sideways).
+test('the sweep visits W6\'s screens: the Projects card (one and three projects), the merge dialog\'s two steps, the lab with Other scenarios and Compare with, and the building comparison, at 1280 and 390', () => {
+  const ids = SCREENS.map((screen) => screen.id);
+  for (const id of ['projects-one', 'projects-three', 'merge-step-1', 'merge-step-2', 'scenarios-other', 'scenarios-compare-with', 'scenarios-buildings']) {
+    assert.ok(ids.includes(id), 'screens.mjs has no ' + id + ', so axe does not check it');
+    const phone = SCREENS.find((screen) => screen.id === id + '-phone');
+    assert.ok(phone && phone.viewport.width === 390 && phone.viewport.mobile === true, id + ' has no screen at 390 with touch');
+  }
+});
+
 test('every entry in the allow-list still matches something', () => {
   assert.deepEqual(ALLOW.filter((entry) => !used.has(entry)).map((entry) => entry.rule + (entry.screen ? ' on ' + entry.screen : '') + (entry.where ? ' (' + entry.where + ')' : '')), []);
 });

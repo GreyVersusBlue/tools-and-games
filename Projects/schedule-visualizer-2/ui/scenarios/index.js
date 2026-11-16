@@ -7,8 +7,9 @@
 //   the map   the plan map (ui/surface/plan-map.js), plain for now; the
 //             difference overlay (SV2-69) mounts on it below, at the line
 //             marked "SV2-69"
-//   the panel (./changes.js, ./forms.js, ./file.js) beside the map on a
-//             wide window and under it on a narrow one: the scenario's name,
+//   the panel (./others.js, ./changes.js, ./forms.js, ./file.js) beside the map on a
+//             wide window and under it on a narrow one: Other scenarios (the
+//             kept ones, with Switch to, Duplicate, Rename… and Delete…), the scenario's name,
 //             its changes as chips with ×, the changes that no longer apply
 //             with "Remove them", "Add a change" with the three kinds of
 //             change, "Compare with another project file", and the
@@ -17,7 +18,10 @@
 //             Apply… (a summary, then one step of undo) and Discard… (asks)
 //   inspector the comparison (./compare.js): Before / After / Difference,
 //             travel by group, places busier and quieter, findings new,
-//             resolved and unchanged, all from store.derived.scenario()
+//             resolved and unchanged, all from store.derived.scenario(); with
+//             "Compare with" the Before side is the real schedule or a kept
+//             scenario (store.derived.kept(), compared here with
+//             compareResults, DESIGN 15.9 item 8)
 //
 // Every write goes through the scenario actions (engine/actions.js, SV2-61),
 // whose refusals are shown as they are. Nothing the lab chooses (the form's
@@ -36,14 +40,17 @@ import { closedOverlay, closedMarks } from '../surface/overlays/closed.js';
 import { slotAt } from '../surface/plan-layout.js';
 import { buildGraph } from '../../engine/graph.js';
 import { ActionError, addScenarioChange, addScenarioLever, applyScenario, discardScenario, removeScenarioLever } from '../../engine/actions.js';
+import { keptScenarios, reconcile, compareResults } from '../../engine/scenario.js';
 import { places, placeAt } from '../../engine/places.js';
 import { changeWords } from '../../engine/scenario.js';
 import { nameOfRoom, isLiftCell } from '../../engine/schema.js';
 import { snapshotAfter, snapshotRoom, undoForStep } from '../../storage/snapshots.js';
-import { scenarioView, firstLine, barWords, cancelled, cancelledSentence, leverCancelled, leverCancelledSentence, applySummary, applyButtonWords, snapshotWords, pickedPlace, pickedName, pickWords, closedAt } from './model.js';
+import { scenarioView, scenarioName, comparedSentence, keptLine, SWITCHED_TO_COMPARED, COMPARED_GONE, firstLine, barWords, cancelled, cancelledSentence, leverCancelled, leverCancelledSentence, applySummary, applyButtonWords, snapshotWords, pickedPlace, pickedName, pickWords, closedAt } from './model.js';
 import { changesPanel } from './changes.js';
 import { formsPanel, freshForm } from './forms.js';
 import { filePanel } from './file.js';
+import { buildingsPanel } from './buildings.js';
+import { othersPanel } from './others.js';
 import { comparePanel } from './compare.js';
 import { mountDifference } from './difference.js';
 
@@ -63,7 +70,9 @@ export const SCENARIO_KEYS = [
 
 // What is chosen here, kept for the open project while the page is open
 // (in memory: no storage key, and nothing new in project.scenario).
-const memory = { projectId: null, form: freshForm(), dayTypeId: null, bellsId: null, transition: null, floors: 'auto', file: null };
+// compareWith: the id of the kept scenario the comparison's Before side is, or
+// null for the real schedule (DESIGN 15.9 item 8)
+const memory = { projectId: null, form: freshForm(), dayTypeId: null, bellsId: null, transition: null, floors: 'auto', file: null, compareWith: null };
 
 function adopt(project) {
   if (memory.projectId === project.id) return;
@@ -74,6 +83,7 @@ function adopt(project) {
   memory.transition = null;
   memory.floors = 'auto';
   memory.file = null;
+  memory.compareWith = null;
 }
 
 function words(parts) {
@@ -130,7 +140,26 @@ export const section = {
     // out; `key` is what the last asking was for (the scenario object, the
     // store's counters, the lab's options), so a drawing that changes none of
     // them (the floors row, the theme, a store change elsewhere) asks nothing
-    const lane = { compare: null, answer: null, pending: false, failed: null, asked: 0, key: null };
+    // beforeOf is { result, versions, changes, name, scenario } while the Before side
+    // is a kept scenario's; working is set from the moment that side changes
+    // until its answer is in; noted is the sentence the answer came to
+    const lane = { compare: null, answer: null, pending: false, failed: null, asked: 0, key: null, beforeOf: null, working: false, noted: null, sayReal: false };
+
+    // A row of the Other scenarios strip that changes the project places the
+    // focus itself (the open scenario's name, the next row's button), and says
+    // its own sentence. While it runs, the drawing it causes neither parks the
+    // focus on the name field on its way (a focus event there is heard by a
+    // screen reader) nor says the compare-reset sentence on its own: the
+    // strip's one sentence has it (15.9 items 8 and 11).
+    let placing = 0;
+    function placeFocus(work) {
+      placing += 1;
+      try {
+        return work();
+      } finally {
+        placing -= 1;
+      }
+    }
 
     const graphNow = () => store.derived.get('graph', ['building'], (project) => buildGraph(project));
 
@@ -168,6 +197,7 @@ export const section = {
       memory,
       project: () => store.project,
       apply: run,
+      placeFocus,
       add,
       addLever,
       // the Kind of change fieldset: where the focus goes when the last chip is taken out
@@ -181,16 +211,34 @@ export const section = {
       ask,
       // false once the section has been taken off the page
       mounted: () => !gone,
+      // the strip: the open scenario's name is a heading while others are kept
+      showOpenTitle: () => keptScenarios(store.project).length > 0,
+      focusOpened: () => changes.focusOpened(),
+      // Compare with: the choice after it has settled, and back to the real schedule
+      chooseCompare,
+      resetCompare,
+      // Comparing two buildings (./buildings.js): the plan map once it is made, the open
+      // project's graph, the lab drawn again, where the focus goes after Stop comparing
+      plan: () => plan,
+      graph: graphNow,
+      redraw: () => refresh(),
+      focusFile: () => file.focusHeading(),
+      buildings: () => buildings,
     };
+    const others = othersPanel(env);
     const changes = changesPanel(env);
     const forms = formsPanel(env);
+    const buildings = buildingsPanel(env);
     const file = filePanel(env);
     const congestion = h('button', { type: 'button', class: 'btn', data: { action: 'congestion' }, on: { click: (event) => openPrintPreview(ctx, 'congestion', { opener: event.currentTarget }) } }, 'Print the congestion report…');
     const report = h('section', { class: 'scn-report', 'aria-labelledby': 'scenario-report-title' },
       h('h2', { class: 'scn-panel__title', id: 'scenario-report-title' }, 'Congestion report'),
       h('p', { class: 'scn-report__lead' }, 'The movement view’s report on paper, with what the open scenario does to it.'),
       congestion);
-    const panel = h('section', { class: 'scn-panel', 'aria-label': 'The scenario and its changes', data: { part: 'panel' } }, changes.element, forms.element, file.element, report);
+    // The building comparison's band goes above the panel's first section; while one is
+    // held it hides the chips and the forms and says "Stop comparing to edit the scenario."
+    // (index.js `refresh()` marks it below).
+    const panel = h('section', { class: 'scn-panel', 'aria-label': 'The scenario and its changes', data: { part: 'panel' } }, buildings.band, others.element, changes.element, forms.element, file.element, report);
 
     // ---- picking a corridor on the map (DESIGN 12.4): a banner on the stage with
     // Cancel; a tap or click, or Enter (or Space let go alone) at the keyboard's
@@ -409,7 +457,7 @@ export const section = {
 
     // ---- the inspector
     const compare = comparePanel(env);
-    const inspectorBox = h('div', { class: 'scn-inspector' }, compare.element);
+    const inspectorBox = h('div', { class: 'scn-inspector' }, compare.element, buildings.inspector);
     let inspectorShown = false;
 
     // ---- writes, through the scenario actions; a refusal is said as it is
@@ -470,18 +518,53 @@ export const section = {
     }
 
     // ---- the comparison, asked of the scenario lane
+    // the kept scenario the Before side is, as the object in the project (the
+    // lane keys its answers by the object, so a renamed or edited one is asked
+    // again), or null for the real schedule
+    function keptTarget() {
+      if (memory.compareWith === null) return null;
+      return keptScenarios(store.project).find((scenario) => scenario && typeof scenario === 'object' && scenario.id === memory.compareWith) || null;
+    }
+
     function laneKey() {
-      return { scenario: store.project.scenario, counters: store.geometryVersion + ':' + store.buildingVersion + ':' + store.scheduleVersion, dayTypeId: memory.dayTypeId, bellsId: memory.bellsId, transition: memory.transition };
+      return { scenario: store.project.scenario, against: keptTarget(), counters: store.geometryVersion + ':' + store.buildingVersion + ':' + store.scheduleVersion, dayTypeId: memory.dayTypeId, bellsId: memory.bellsId, transition: memory.transition };
     }
 
     function sameKey(a, b) {
-      return Boolean(a) && Boolean(b) && a.scenario === b.scenario && a.counters === b.counters && a.dayTypeId === b.dayTypeId && a.bellsId === b.bellsId && a.transition === b.transition;
+      return Boolean(a) && Boolean(b) && a.scenario === b.scenario && a.against === b.against && a.counters === b.counters && a.dayTypeId === b.dayTypeId && a.bellsId === b.bellsId && a.transition === b.transition;
     }
 
     // asks again only when what the answer is for has changed
     function askIfChanged() {
       if (sameKey(lane.key, laneKey())) drawCompare();
       else ask();
+    }
+
+    // Compare with, after the select settled (400 ms): a kept scenario or null
+    function chooseCompare(id, letGo) {
+      if (gone) return;
+      const next = id === null || keptScenarios(store.project).some((scenario) => scenario && scenario.id === id) ? id : null;
+      if (next === memory.compareWith) {
+        drawCompare();
+        return;
+      }
+      // back to the real schedule by choice: its status sentence is said too
+      lane.sayReal = next === null && letGo !== true;
+      memory.compareWith = next;
+      askIfChanged();
+    }
+
+    // back to the real schedule, with the sentence that says why (the scenario
+    // compared with was switched to, or is gone)
+    function resetCompare(why) {
+      if (memory.compareWith === null) return;
+      const open = store.project.scenario;
+      const text = why === 'gone' ? COMPARED_GONE : open && open.id === memory.compareWith ? SWITCHED_TO_COMPARED : COMPARED_GONE;
+      memory.compareWith = null;
+      lane.noted = null;
+      lane.sayReal = false;
+      ctx.announce(text);
+      if (view && !gone) askIfChanged();
     }
 
     function ask() {
@@ -495,25 +578,71 @@ export const section = {
       const token = lane.asked;
       lane.pending = true;
       lane.failed = null;
+      const target = keptTarget();
+      // the Before side is another one now: the figures on screen are for the
+      // last, so the column says it is working until this answer is in
+      if ((lane.beforeOf ? lane.beforeOf.scenario : null) !== target) {
+        lane.compare = null;
+        lane.noted = null;
+        lane.working = true;
+        // and the difference map and its legend: they are drawn from the last
+        // answer and its Before side, which are the old side's until the new
+        // answer lands (the map is blank and the legend gone meanwhile)
+        lane.answer = null;
+        lane.beforeOf = null;
+      }
       drawCompare();
       // drawn first: the options settle to the project (a day type gone is none)
       lane.key = laneKey();
-      store.derived.scenario({ dayTypeId: memory.dayTypeId, ...(memory.bellsId === null ? {} : { bellsId: memory.bellsId }), transition: memory.transition, runFindings: true }).then((answer) => {
+      const options = { dayTypeId: memory.dayTypeId, ...(memory.bellsId === null ? {} : { bellsId: memory.bellsId }), transition: memory.transition, runFindings: true };
+      const open = store.derived.scenario(options);
+      const both = target ? Promise.all([open, store.derived.kept(target)]) : open.then((answer) => [answer, null]);
+      both.then(([answer, kept]) => {
         if (gone || token !== lane.asked) return;
+        if (target && answer && !kept) throw new Error('the scenario to compare with could not be worked out. It may have been changed or deleted.');
+        let compared = answer ? answer.compare : null;
+        let beforeOf = null;
+        let noted = null;
+        if (target && answer) {
+          // the same store counters on both sides, or the store moved on: ask again
+          const stamp = (versions) => versions.geometry + ':' + versions.building + ':' + versions.schedule;
+          if (stamp(answer.versions) !== stamp(kept.versions)) {
+            ask();
+            return;
+          }
+          const theirs = reconcile(store.project, target);
+          const changes = answer.changes.concat(theirs.changes);
+          const levers = (answer.levers || []).concat(theirs.levers || []);
+          compared = compareResults(kept.result, answer.result, { ...options, changes, levers });
+          // kept.result holds every day type's loads and every bell schedule's
+          // run, as the open scenario's does (both are pipeline.run() of a whole
+          // project, trimmed; engine/worker.js keptRun, scenarioRun), so
+          // compareResults reads the same day type and bells from both
+          beforeOf = { result: kept.result, versions: kept.versions, changes: theirs.changes, name: scenarioName(target), scenario: target };
+          noted = comparedSentence(beforeOf.name, compared);
+        }
+        // the real schedule, chosen by hand: it too says what it came to
+        if (!target && compared && lane.sayReal) noted = comparedSentence('the real schedule', compared);
+        lane.sayReal = false;
         lane.pending = false;
+        lane.working = false;
         lane.answer = answer;
-        lane.compare = answer ? answer.compare : null;
+        lane.compare = compared;
+        lane.beforeOf = beforeOf;
+        lane.noted = noted;
         drawCompare();
-      }, (error) => {
+      }).catch((error) => {
         if (gone || token !== lane.asked) return;
         lane.pending = false;
+        lane.working = false;
         lane.failed = error && error.message ? error.message : String(error);
         drawCompare();
       });
     }
 
     function drawCompare() {
-      compare.update({ project: store.project, scenario: Boolean(view), compare: view ? lane.compare : null, pending: lane.pending, old: Boolean(lane.compare) && (lane.pending || Boolean(lane.failed)), failed: lane.failed });
+      compare.update({ project: store.project, scenario: Boolean(view), compare: view ? lane.compare : null, pending: lane.pending, old: Boolean(lane.compare) && (lane.pending || Boolean(lane.failed)), failed: lane.failed, beforeName: view && lane.beforeOf ? lane.beforeOf.name : null, working: lane.working && lane.pending, noted: lane.noted });
+      element.dataset.compareWith = memory.compareWith === null ? '' : memory.compareWith;
       element.dataset.compare = !view ? 'none' : lane.pending ? 'pending' : lane.failed ? 'failed' : lane.compare ? 'ready' : 'none';
       difference.update();
     }
@@ -543,6 +672,7 @@ export const section = {
         summary.added.length > 0 || summary.removed.length > 0 ? h('p', { data: { part: 'groups' } }, 'Groups only in one of the two files are not added or removed: a scenario changes rooms, not the list of groups.') : null,
         summary.trial ? h('p', { class: 'scn-summary__trial', role: 'note', data: { part: 'trial' } }, words(summary.trial.parts)) : null,
         nothingToWrite ? null : h('p', null, 'It is one step: Undo brings back the schedule and the scenario together.'),
+        keptLine(project) ? h('p', { data: { part: 'kept-stay' } }, keptLine(project)) : null,
         summary.snapshot ? h('p', { data: { part: 'snapshot' } }, snapshotLine) : null,
       ];
       const dialog = ctx.openDialog({
@@ -612,6 +742,18 @@ export const section = {
     function refresh() {
       const project = store.project;
       adopt(project);
+      // a comparison for another project ends; a change in this one is compared again
+      buildings.update(project);
+      // the kept scenario compared with was switched to or deleted: back to the real schedule
+      if (memory.compareWith !== null && !keptTarget()) {
+        const open = project.scenario;
+        const text = open && open.id === memory.compareWith ? SWITCHED_TO_COMPARED : COMPARED_GONE;
+        memory.compareWith = null;
+        lane.noted = null;
+        lane.sayReal = false;
+        // the strip's own sentence has it when a row of the strip did this
+        if (placing === 0) ctx.announce(text);
+      }
       const f = figures(project);
       const nothing = f.rooms === 0 || f.groups === 0;
       map.hidden = nothing;
@@ -628,6 +770,7 @@ export const section = {
         }));
         if (inspectorShown) ctx.setInspector(null);
         inspectorShown = false;
+        others.update(project);
         element.dataset.mode = 'empty';
         view = null;
         openBar(false);
@@ -651,10 +794,17 @@ export const section = {
       lineWords.replaceChildren(...words(firstLine(project, view)));
       openBar(Boolean(view));
       barText.textContent = barWords(view);
+      others.update(project);
       changes.update(view);
       forms.element.hidden = !view;
       if (view) forms.update(project);
       file.update(view);
+      // a held building comparison hides the chips and the forms (./buildings.js)
+      const comparing = buildings.held();
+      changes.element.hidden = comparing;
+      if (comparing) forms.element.hidden = true;
+      compare.element.hidden = comparing;
+      if (comparing) stopPicking(false, '');
       if (view) askIfChanged();
       else {
         // nothing open: the last answer goes, and an asking still out is let go
@@ -666,8 +816,12 @@ export const section = {
         lane.failed = null;
         drawCompare();
       }
-      plan.setProject(project, graphNow());
-      if (held && (!held.isConnected || held.closest('[hidden]'))) changes.focusName();
+      // a held building comparison paints the map itself
+      if (!buildings.paint()) plan.setProject(project, graphNow());
+      if (placing === 0 && held && (!held.isConnected || held.closest('[hidden]'))) {
+        if (buildings.held()) buildings.focusSwitch();
+        else changes.focusName();
+      }
     }
 
     refresh();
@@ -678,6 +832,8 @@ export const section = {
       get compare() { return lane.compare; },
       get answer() { return lane.answer; },
       get pending() { return lane.pending; },
+      // how many times the lane was asked, for the tests (a settled choice asks once)
+      get asked() { return lane.asked; },
       memory,
       ask,
     };
@@ -690,6 +846,8 @@ export const section = {
       },
       unmount() {
         gone = true;
+        buildings.unmount();
+        compare.stop();
         toastWatch.disconnect();
         if (toastHost) toastHost.style.removeProperty('--toast-left');
         plan.unmount();

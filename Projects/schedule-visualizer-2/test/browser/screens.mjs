@@ -729,7 +729,7 @@ const SV2_32G1 = [
   },
   { id: 'project-clear-building', hash: '#project', open: clearAsks('building', 'Clear the building?') },
   { id: 'project-clear-schedule', hash: '#project', open: clearAsks('schedule', 'Clear the schedule?') },
-  { id: 'project-clear-new', hash: '#project', open: clearAsks('new', 'Start a new project in place of this one?') },
+  { id: 'project-clear-new', hash: '#project', open: clearAsks('new', 'Replace this project with a new empty project?') },
   { id: 'start-up-recovery', hash: '#project', open: startUpRecovery },
   { id: 'read-only-tab', hash: '#project', open: secondTab, close: closeSecondTab },
   { id: 'read-only-tab-building', hash: '#building', open: secondTab, close: closeSecondTab },
@@ -1401,6 +1401,174 @@ const SV2_112 = [
   { id: 'safety-prints-phone', fullSample: true, hash: '#safety', viewport: PHONE, open: safetyPrints },
 ];
 
+// ---- SV2-124: W6's screens (DESIGN 15): the Projects on this device card, the
+// merge dialog's two steps, the lab with Other scenarios and Compare with, and
+// the building comparison. Each is at 1280 and at 390 with touch; the sweeps
+// run each in both themes. Every opener ends by asserting the page does not
+// scroll sideways (DESIGN 15.8), so a screen that does fails in both sweeps.
+// Every wait is on a state the page sets (a card's data-pending gone and its
+// data-projects, a dialog's data-step, the lab's data-compare, the band's
+// data-held), never a first paint or a fixed sleep.
+
+async function noSideways(page, what) {
+  const over = await page.evaluate(() => {
+    const root = document.documentElement;
+    // the parts that hold their own width: none may have to scroll inside itself either
+    const inner = [];
+    for (const selector of ['dialog#merge-import[open]', '.scn-others', '.scn-bld', '#projects .proj__list']) {
+      for (const el of document.querySelectorAll(selector)) if (el.scrollWidth > el.clientWidth + 1) inner.push(selector + ' is ' + (el.scrollWidth - el.clientWidth) + ' px wider inside than its box');
+    }
+    return { page: root.scrollWidth - root.clientWidth, body: document.body.scrollWidth - root.clientWidth, inner };
+  });
+  if (over.page > 1 || over.body > 1) throw new Error(what + ' scrolls sideways: the page is ' + over.page + ' px and the body ' + over.body + ' px wider than the window');
+  if (over.inner.length > 0) throw new Error(what + ' scrolls sideways inside: ' + over.inner.join('; '));
+}
+
+// kept projects put on the device beside the open one, as the Projects card lists them
+async function shelve(page, labels) {
+  await page.waitForFunction(() => document.getElementById('save-indicator').dataset.state === 'saved' && !globalThis.sv2.storage.pending, { timeout: 15000 });
+  await page.evaluate((names) => new Promise((resolve, reject) => {
+    const open = indexedDB.open('sv2');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const read = db.transaction('project', 'readonly').objectStore('project').get('current');
+      read.onsuccess = () => {
+        const base = read.result;
+        const tx = db.transaction('project', 'readwrite');
+        names.forEach((label, i) => {
+          const id = 'pscreen00' + i;
+          tx.objectStore('project').put({ ...base, project: { ...base.project, id, label }, shelvedAt: '2026-11-12T15:' + String(40 + i).padStart(2, '0') + ':00.000Z', bytes: 2400000 + i * 100000 }, 'shelf:' + id);
+        });
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      };
+    };
+  }), labels);
+}
+
+const projectsCard = (labels, what) => async (page) => {
+  if (labels.length > 0) await shelve(page, labels);
+  // the card reads the device when it is drawn: leave the section and come back
+  await go(page, '#scenarios');
+  await go(page, '#project');
+  await page.waitForFunction((wanted) => {
+    const el = document.getElementById('projects');
+    return el && !el.hasAttribute('data-pending') && el.dataset.projects === String(wanted) && el.dataset.state === 'ready';
+  }, { timeout: 20000 }, labels.length + 1);
+  await page.evaluate(() => document.getElementById('projects').scrollIntoView({ block: 'start' }));
+  await noSideways(page, what);
+};
+
+// Import part of a project file: a file of another school (its name and default head count), read
+const mergeDialog = (step, what) => async (page) => {
+  const text = await page.evaluate(async () => {
+    const { writeProjectFile } = await import(new URL('engine/project-file.js', location.href).href);
+    const other = JSON.parse(JSON.stringify(globalThis.sv2.store.project));
+    other.settings.schoolName = 'Larkspur Middle';
+    other.settings.defaultHeadCount = 31;
+    return writeProjectFile(other);
+  });
+  await chooseFile(page, '#project-file input[data-file="part"]', 'larkspur.json', text);
+  await page.waitForSelector('dialog#merge-import[open][data-step="1"]', { timeout: 20000 });
+  if (step === 2) {
+    await page.click('dialog#merge-import[open] input[data-part="settings"]');
+    await page.evaluate(() => Array.from(document.querySelectorAll('dialog#merge-import[open] .dialog__buttons button')).find((button) => button.textContent === 'Next').click());
+    await page.waitForSelector('dialog#merge-import[open][data-step="2"]', { timeout: 20000 });
+  }
+  await noSideways(page, what);
+};
+
+// the lab with an open scenario and three kept ones (one whose changes no longer all apply), Compare with chosen
+const labKept = (compareWith, what) => async (page) => {
+  await page.waitForFunction(() => document.querySelector('.scn') && document.querySelector('.scn').dataset.styled === 'true', { timeout: 20000 });
+  await page.evaluate(() => {
+    const move = (groupId, period, roomId) => ({ kind: 'move', dayTypeId: 'dsample00a', groupId, period, roomId });
+    const project = JSON.parse(JSON.stringify(globalThis.sv2.store.project));
+    project.scenario = { id: 'eopen00001', name: 'Move 6A to 301', changes: [move('gsample06a', 1, 'rsample301')], compared: null };
+    project.scenarios = [
+      { id: 'ekeptlib00', name: 'Library lessons', changes: [move('gsample06b', 0, 'rsamplelib'), move('gsample06a', 0, 'rsample201'), move('gsample06c', 1, 'rnowhere00')], compared: null },
+      { id: 'ekeptwest0', name: 'Stagger 8th grade', changes: [move('gsample06c', 0, 'rsample102')], compared: null },
+      { id: 'ekeptlong0', name: 'A very long scenario name that goes on past forty characters', changes: [move('gsample06b', 1, 'rsample103')], compared: null },
+    ];
+    globalThis.sv2.store.replace(project);
+  });
+  const settled = () => page.waitForFunction(() => {
+    const el = document.querySelector('.scn');
+    if (!el || el.dataset.styled !== 'true' || !el.scenarios || el.scenarios.plan.project !== globalThis.sv2.store.project) return false;
+    if (document.querySelector('.scn-compare')?.dataset.settling) return false;
+    return el.dataset.compare === 'ready' && !el.scenarios.pending && el.dataset.difference === 'shown';
+  }, { timeout: 30000 });
+  await go(page, '#scenarios');
+  await settled();
+  if (compareWith) {
+    await page.select('#scenario-compare-with', compareWith);
+    await page.waitForFunction((wanted) => document.querySelector('.scn').dataset.compareWith === wanted, { timeout: 10000 }, compareWith);
+    await settled();
+  }
+  await noSideways(page, what);
+};
+
+// the two buildings: a file describing the sample school with two more rooms, refused with its way on; then held
+const buildingsHeld = (held, what) => async (page) => {
+  await page.waitForFunction(() => document.querySelector('.scn') && document.querySelector('.scn').dataset.styled === 'true', { timeout: 20000 });
+  const text = await page.evaluate(async () => {
+    const { writeProjectFile } = await import(new URL('engine/project-file.js', location.href).href);
+    // the school with a wing: a Floor 4 built from Floor 3's drawing, two rooms, stairs up to it
+    const other = JSON.parse(JSON.stringify(globalThis.sv2.store.project));
+    const three = other.building.floors.find((each) => each.id === 'fsample003');
+    const four = JSON.parse(JSON.stringify(three));
+    four.id = 'fscrnwing4';
+    four.name = 'Floor 4';
+    four.level = 4;
+    four.image = null;
+    const stairs = 5 + 8 * four.width;
+    four.cells = four.cells.slice(0, stairs) + 'S' + four.cells.slice(stairs + 1);
+    three.cells = three.cells.slice(0, stairs) + 'S' + three.cells.slice(stairs + 1);
+    four.corridors = [{ id: 'kscrnwing1', name: 'Wing Corridor', cells: four.cells.split('').map((c, i) => (c === '#' ? i : -1)).filter((i) => i >= 0) }];
+    four.spaces = four.spaces.slice(0, 2).map((space, index) => ({ ...space, id: 'rscrnwing' + (index + 1), number: '40' + (index + 1), wing: 'Wing', teacherIds: [], doors: space.doors.slice() }));
+    four.exits = [];
+    other.building.floors.push(four);
+    other.building.connections.push({ id: 'cscrnwing1', label: 'E', a: { floorId: 'fsample003', cell: stairs }, b: { floorId: 'fscrnwing4', cell: stairs }, direction: 'both' });
+    return writeProjectFile(other);
+  });
+  await chooseFile(page, 'input[data-file="compare"]', 'next-year.json', text);
+  await page.waitForSelector('.scn-file__result[data-result="refused"]', { timeout: 30000 });
+  if (held) {
+    await page.click('[data-action="compare-buildings"]');
+    await page.waitForSelector('.scn-bld[data-held="true"]:not([data-working="true"])', { timeout: 30000 });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.scn');
+      if (!el || el.dataset.styled !== 'true' || !el.scenarios) return false;
+      if (document.querySelector('.scn-compare')?.dataset.settling) return false;
+      if (el.dataset.mode === 'none') return el.dataset.compare === 'none';
+      return el.dataset.compare === 'ready' && !el.scenarios.pending;
+    }, { timeout: 30000 });
+  }
+  await noSideways(page, what);
+};
+
+const SV2_124 = [
+  { id: 'projects-one', hash: '#project', open: projectsCard([], 'Projects on this device with one project') },
+  { id: 'projects-one-phone', hash: '#project', viewport: PHONE, open: projectsCard([], 'Projects on this device with one project, at 390') },
+  { id: 'projects-three', hash: '#project', open: projectsCard(['Next year', 'Summer plan'], 'Projects on this device with three projects') },
+  { id: 'projects-three-phone', hash: '#project', viewport: PHONE, open: projectsCard(['Next year', 'Summer plan'], 'Projects on this device with three projects, at 390') },
+  { id: 'merge-step-1', hash: '#project', open: mergeDialog(1, 'the merge dialog, step 1') },
+  { id: 'merge-step-1-phone', hash: '#project', viewport: PHONE, open: mergeDialog(1, 'the merge dialog, step 1, at 390') },
+  { id: 'merge-step-2', hash: '#project', open: mergeDialog(2, 'the merge dialog, step 2') },
+  { id: 'merge-step-2-phone', hash: '#project', viewport: PHONE, open: mergeDialog(2, 'the merge dialog, step 2, at 390') },
+  { id: 'scenarios-other', hash: '#scenarios', open: labKept(null, 'the lab with Other scenarios') },
+  { id: 'scenarios-other-phone', hash: '#scenarios', viewport: PHONE, open: labKept(null, 'the lab with Other scenarios, at 390') },
+  { id: 'scenarios-compare-with', hash: '#scenarios', open: labKept('ekeptwest0', 'the lab compared with a kept scenario') },
+  { id: 'scenarios-compare-with-phone', hash: '#scenarios', viewport: PHONE, open: labKept('ekeptwest0', 'the lab compared with a kept scenario, at 390') },
+  { id: 'scenarios-buildings-refused', hash: '#scenarios', open: buildingsHeld(false, 'the different-building refusal') },
+  { id: 'scenarios-buildings', hash: '#scenarios', open: buildingsHeld(true, 'the building comparison') },
+  { id: 'scenarios-buildings-phone', hash: '#scenarios', viewport: PHONE, open: buildingsHeld(true, 'the building comparison, at 390') },
+];
+
 export const SCREENS = [
   { id: 'building', hash: '#building' },
   { id: 'schedule-groups', hash: '#schedule/groups' },
@@ -1949,4 +2117,5 @@ export const SCREENS = [
   ...SV2_94,
   ...SV2_106,
   ...SV2_112,
+  ...SV2_124,
 ];

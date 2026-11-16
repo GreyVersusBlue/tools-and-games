@@ -92,6 +92,11 @@ export const GROUPS = {
     'engine/blocked.test.mjs', // SV2-107
     'engine/step-free.test.mjs', // SV2-100
     'engine/scenario-actions.test.mjs', // SV2-61
+    'engine/scenarios-kept.test.mjs', // SV2-113
+    'engine/kept-lane.test.mjs', // SV2-121
+    'engine/compare-buildings.test.mjs', // SV2-114
+    'engine/project-label.test.mjs', // SV2-113
+    'engine/merge-import.test.mjs', // SV2-119
     'engine/prints-door-cards.test.mjs', // SV2-66
     'engine/prints-step-free.test.mjs', // SV2-104
     'engine/prints-route-sheet.test.mjs', // SV2-103
@@ -151,6 +156,10 @@ export const GROUPS = {
     'browser/inspector.mjs', // SV2-07
     'browser/search.mjs', // SV2-07
     'browser/storage.mjs', // SV2-03
+    'browser/storage-shelf.mjs', // SV2-115
+    'browser/storage-switch.mjs', // SV2-116
+    'browser/projects.mjs', // SV2-117
+    'browser/one-per-id.mjs', // SV2-118
     'browser/recovery.mjs', // SV2-03
     'browser/tabs.mjs', // SV2-03
     'browser/schedule.mjs', // SV2-11
@@ -169,7 +178,9 @@ export const GROUPS = {
     'browser/sample-whole.mjs', // SV2-87b
     'browser/import.mjs', // SV2-13
     'browser/project-file.mjs', // SV2-13
+    'browser/merge-import.mjs', // SV2-120
     'browser/worker.mjs', // SV2-16
+    'browser/lanes-kept.mjs', // SV2-121
     'browser/print.mjs', // SV2-14
     'browser/building-files.mjs', // SV2-32c
     'browser/staff-shell.mjs', // SV2-20
@@ -194,6 +205,8 @@ export const GROUPS = {
     'browser/safety-prints.mjs', // SV2-111
     'browser/route-sheet.mjs', // SV2-103
     'browser/scenario.mjs', // SV2-68
+    'browser/scenarios-kept.mjs', // SV2-122
+    'browser/compare-buildings.mjs', // SV2-123
     'browser/scenario-levers.mjs', // SV2-92
     'browser/congestion-scenario.mjs', // SV2-71
     'browser/difference.mjs', // SV2-69
@@ -226,6 +239,8 @@ export const GROUPS = {
     'timing/evacuation.mjs', // SV2-62
     'timing/suggest.mjs', // SV2-63
     'timing/scenario-lane.mjs', // SV2-64
+    'timing/kept-lane.mjs', // SV2-121
+    'timing/compare-buildings.mjs', // SV2-123
     'timing/difference-card.mjs', // SV2-69c
     'timing/checks.mjs', // SV2-32i
     'timing/worker.mjs', // SV2-32i
@@ -255,8 +270,15 @@ export const BROWSER_SECONDS = {
   'browser/hotspots.mjs': 27,
   'browser/plan-map.mjs': 26,
   'browser/storage.mjs': 24,
-  'browser/recovery.mjs': 23,
+  'browser/storage-shelf.mjs': 10,
+  'browser/storage-switch.mjs': 400, // 133 s on Huginn alone, about 300 s on two slow cores (SV2-116b)
+  'browser/projects.mjs': 120,
+  'browser/one-per-id.mjs': 150,
+  'browser/recovery.mjs': 38, // 38 s on Huginn (SV2-118b)
   'browser/scenario.mjs': 21,
+  'browser/scenarios-kept.mjs': 45, // 36 s on two slow cores (SV2-122)
+  'browser/compare-buildings.mjs': 90, // SV2-123; 45 s on Huginn
+  'browser/merge-import.mjs': 40, // 40 s on Huginn (SV2-120)
   'browser/fix.mjs': 21,
   'browser/safety.mjs': 20,
   'browser/step-free-safety.mjs': 20,
@@ -278,7 +300,7 @@ export const BROWSER_SECONDS = {
   'browser/movement.mjs': 13,
   'browser/staff-views-a.mjs': 13,
   'browser/calendar-review.mjs': 13,
-  'browser/snapshots.mjs': 12,
+  'browser/snapshots.mjs': 25, // 25 s on Huginn (SV2-118b)
   'browser/tabs.mjs': 12,
   'browser/auto-snapshots.mjs': 12,
   'browser/trace-scale.mjs': 12,

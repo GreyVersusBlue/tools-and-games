@@ -230,6 +230,49 @@ test('autosave: a change made while a write is in flight gets its own write', as
   assert.equal(states[states.length - 1], 'saved');
 });
 
+test('autosave: a held autosave writes nothing but keeps what it owes, settle waits for the save in flight, release saves what was held (a project switch)', async () => {
+  const time = fakeTime();
+  let finish = null;
+  const { autosave, writes, states } = saver(time, () => new Promise((resolve) => {
+    finish = resolve;
+  }));
+  autosave.changed();
+  await time.advance(600);
+  assert.equal(writes.length, 1, 'the first save is in flight');
+  // a second change, then the switch holds autosave
+  autosave.changed();
+  autosave.hold();
+  let settled = false;
+  const waiting = autosave.settle().then(() => {
+    settled = true;
+  });
+  for (let i = 0; i < 5; i += 1) await Promise.resolve();
+  assert.equal(settled, false, 'settle waits for the save in flight');
+  finish('saved-1');
+  await waiting;
+  assert.equal(settled, true);
+  await time.advance(10000);
+  assert.equal(writes.length, 1, 'held, it started no other save, however long it was held');
+  assert.equal(autosave.pending, true, 'and it still owes the second change (pause would have forgotten it)');
+  autosave.release();
+  await time.advance(0);
+  assert.equal(writes.length, 2, 'release saves what was held at once');
+  finish('saved-2');
+  for (let i = 0; i < 5; i += 1) await Promise.resolve();
+  assert.equal(states[states.length - 1], 'saved');
+  assert.equal(autosave.pending, false);
+});
+
+test('autosave: settle with nothing in flight resolves at once, and a release with nothing owed saves nothing', async () => {
+  const time = fakeTime();
+  const { autosave, writes } = saver(time);
+  autosave.hold();
+  await autosave.settle();
+  autosave.release();
+  await time.advance(5000);
+  assert.equal(writes.length, 0);
+});
+
 test('autosave: flush writes at once, and a paused autosave writes nothing', async () => {
   const time = fakeTime();
   const { autosave, writes } = saver(time);
@@ -248,18 +291,38 @@ test('autosave: flush writes at once, and a paused autosave writes nothing', asy
 
 // ---------------------------------------------------------------- in Node: words and the device key
 
-test('words: sizes and moments read the same on every machine', () => {
-  assert.deepEqual([0, 1, 1023, 1024, 1536, 20 * 1024, 5 * 1024 * 1024, 4.2 * 1024 ** 3].map(formatBytes), ['0 bytes', '1 byte', '1023 bytes', '1.0 KB', '1.5 KB', '20 KB', '5.0 MB', '4.2 GB']);
-  const now = new Date('2026-09-01T12:00:00Z');
-  assert.equal(clockTime(new Date('2026-09-01T10:42:00Z'), '12h'), '10:42 AM');
-  assert.equal(clockTime(new Date('2026-09-01T10:42:00Z'), '12h', { suffix: false }), '10:42');
-  assert.equal(clockTime(new Date('2026-09-01T14:05:00Z'), '24h'), '14:05');
-  assert.equal(whenWords('2026-09-01T10:42:00Z', now, '24h'), '10:42');
-  assert.equal(whenInSentence('2026-09-01T10:42:00Z', now, '12h'), 'at 10:42 AM');
-  assert.match(whenWords('2026-08-30T10:42:00Z', now, '24h'), /30.*, 10:42$/, 'another day is named');
-  assert.match(whenInSentence('2026-08-30T10:42:00Z', now, '24h'), /^on .*30.* at 10:42$/);
-  assert.equal(whenWords('not a date', now, '24h'), 'an unknown time');
-});
+// The moments below are built from local clock readings, so each zone sees the
+// same wall-clock time; the zone is pinned (W5's leftover: the case once held
+// only where the machine's own zone happened to give these answers).
+function inZone(zone, run) {
+  const was = process.env.TZ;
+  process.env.TZ = zone;
+  try {
+    run();
+  } finally {
+    if (was === undefined) delete process.env.TZ;
+    else process.env.TZ = was;
+  }
+}
+
+for (const zone of ['UTC', 'America/New_York']) {
+  test('words: sizes and moments read the same on every machine (' + zone + ')', () => {
+    inZone(zone, () => {
+      assert.deepEqual([0, 1, 1023, 1024, 1536, 20 * 1024, 5 * 1024 * 1024, 4.2 * 1024 ** 3].map(formatBytes), ['0 bytes', '1 byte', '1023 bytes', '1.0 KB', '1.5 KB', '20 KB', '5.0 MB', '4.2 GB']);
+      const local = (text) => new Date(text);
+      const iso = (text) => local(text).toISOString();
+      const now = local('2026-09-01T12:00:00');
+      assert.equal(clockTime(local('2026-09-01T10:42:00'), '12h'), '10:42 AM');
+      assert.equal(clockTime(local('2026-09-01T10:42:00'), '12h', { suffix: false }), '10:42');
+      assert.equal(clockTime(local('2026-09-01T14:05:00'), '24h'), '14:05');
+      assert.equal(whenWords(iso('2026-09-01T10:42:00'), now, '24h'), '10:42');
+      assert.equal(whenInSentence(iso('2026-09-01T10:42:00'), now, '12h'), 'at 10:42 AM');
+      assert.match(whenWords(iso('2026-08-30T10:42:00'), now, '24h'), /30.*, 10:42$/, 'another day is named');
+      assert.match(whenInSentence(iso('2026-08-30T10:42:00'), now, '24h'), /^on .*30.* at 10:42$/);
+      assert.equal(whenWords('not a date', now, '24h'), 'an unknown time');
+    });
+  });
+}
 
 test('device: a write changes only its own keys under sv2:device, and bad JSON reads as nothing', () => {
   const held = new Map();
@@ -315,7 +378,7 @@ test('the two databases, their stores and their keys have the names that never c
   assert.equal(record.project.settings.schoolName, 'Names Test School');
   const points = await idb('sv2-recovery', 'recovery', 'all');
   assert.equal(points.length, 1);
-  assert.deepEqual(Object.keys(points[0]).sort(), ['bytes', 'images', 'project', 'reason', 'summary', 'takenAt']);
+  assert.deepEqual(Object.keys(points[0]).sort(), ['bytes', 'images', 'project', 'projectId', 'reason', 'summary', 'takenAt']);
   assert.deepEqual(points[0].summary, { floors: 3, rooms: 13, groups: 8, teachers: 12 });
   assert.equal(points[0].reason, 'replace');
   assert.ok(points[0].bytes > 10000 && points[0].bytes < 200000, 'bytes is the size of the project: ' + points[0].bytes);

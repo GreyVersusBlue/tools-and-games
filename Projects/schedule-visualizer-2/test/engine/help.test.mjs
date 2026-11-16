@@ -156,7 +156,9 @@ const DESIGN_WORDS = ['Bell schedule', 'Regular bells', 'Calendar', 'Rotation', 
   // DESIGN 13.1's words (SV2-106)
   'Step-free', 'Area of refuge', 'Route sheet',
   // DESIGN 14.1's words (SV2-112)
-  'Blocked', 'Lockdown map', 'Evacuation poster', 'Map pack'];
+  'Blocked', 'Lockdown map', 'Evacuation poster', 'Map pack',
+  // DESIGN 15.1's words (SV2-124)
+  'Label', 'Kept scenario', 'Building comparison'];
 const ALL_WORDS = SPEC_WORDS.concat(DESIGN_WORDS);
 test('every word of spec 2 is explained, in the spec’s order, with the school’s own period word', () => {
   assert.deepEqual(words(defaultSettings()).map((each) => each.term), ALL_WORDS);
@@ -510,8 +512,31 @@ test('Elevator is no longer "planned": ordinary routes, step-free routes and an 
   assert.match(meaning('Area of refuge'), /a place to wait for help in an evacuation/i);
   assert.match(meaning('Route sheet'), /One person’s day, printed/);
   assert.equal(all.filter((each) => each.term === 'Elevator').length, 1, 'no new entry for the elevator: its meaning changed');
-  assert.equal(all.length, 39, 'spec 2 has 20 words, DESIGN 11.1 adds 11, DESIGN 12.1 one, DESIGN 13.1 three, DESIGN 14.1 four');
+  assert.equal(all.length, 42, 'spec 2 has 20 words, DESIGN 11.1 adds 11, DESIGN 12.1 one, DESIGN 13.1 three, DESIGN 14.1 four, DESIGN 15.1 three');
   assert.doesNotMatch(all.map((each) => each.meaning).join(' '), /\blifts?\b/i, 'the code says lift; Help says elevator');
+});
+
+// DESIGN 15 (SV2-124b): Help's W6 words say what the code's buttons and screens do.
+test('Help says "Open" followed by the label, as the buttons do, and the three W6 words mean what the screens show', () => {
+  const part = (id, word) => helpModel({ sections: [{ id, name: id, key: '1' }], settings: { ...defaultSettings(), periodWord: word || 'Period' } }).sections[0].parts.join(' ');
+  const project = part('project');
+  assert.doesNotMatch(project, /Open that project/, 'the buttons say "Open <label>", not "Open that project"');
+  assert.equal((project.match(/Open followed by that project’s label/g) || []).length, 2, 'the one-per-id choice and the recovery row each name the button as Open followed by the label');
+  assert.match(project, /Duplicate and open it then makes the copy/, 'the Duplicate dialog\u2019s confirm button is named as the code names it');
+  const meaning = (term) => words(defaultSettings()).find((each) => each.term === term).meaning;
+  assert.match(meaning('Label'), /^A project’s own name on this device, such as This year or Next year’s proposal/);
+  assert.match(meaning('Label'), /tells it from the other projects kept here/);
+  assert.match(meaning('Kept scenario'), /saved in the project but not open/);
+  assert.match(meaning('Kept scenario'), /switched to, duplicated, deleted or compared with/);
+  assert.match(meaning('Building comparison'), /^Two different buildings/);
+  assert.match(meaning('Building comparison'), /matched by group and room names and not saved/);
+  assert.match(meaning('Building comparison'), /the map shows one building at a time, both on one scale, with a switch/);
+  assert.doesNotMatch(meaning('Building comparison'), /side-by-side/, 'the map shows one building at a time, not two side by side');
+  // the import part's "periods per day" is the school's own word
+  assert.match(part('project', 'Mod'), /the mods per day, the period word, times and the checks/);
+  assert.match(part('project', 'Hour'), /the hours per day, the period word/);
+  assert.doesNotMatch(part('project', 'Block'), /the periods per day/);
+  assert.match(part('project'), /the periods per day, the period word/);
 });
 
 test('the numbers say what an elevator costs and how a class rides, from the settings the engine reads (wait, ride per floor, people per trip, and the trips of the default head count)', () => {

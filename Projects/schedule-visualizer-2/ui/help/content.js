@@ -11,7 +11,7 @@
 //
 //   helpModel({ sections, shortcuts, settings, current }) -> {
 //     current:   { id, name, purpose, first } | null   the section open now
-//     sections:  [{ id, name, key, purpose, first, more, here }]  rail order
+//     sections:  [{ id, name, key, purpose, first, more, parts, here }]  rail order; `parts` are further paragraphs
 //     keys:      { rows, groups: [{ group, says }] }   rows as shortcuts.list()
 //     gestures:  [{ id, device, items }]
 //     words:     [{ term, meaning }]
@@ -60,6 +60,11 @@ export const SECTION_HELP = {
     purpose: 'Try changes to the schedule apart from the real one, and see what they do: travel times, the busiest places and the checks, before and after.',
     first: 'Start a scenario, then add a change by choosing its kind: move a group to another room, swap two of its periods, swap two groups’ rooms, or one of the four levers below. The map shows busier cells in red and quieter ones in blue-green. Apply puts the changes into the schedule as one step you can undo; Discard drops them.',
     more: 'A scenario can also come from another project file of the same building: every slot that differs becomes a change. A change that no longer fits the schedule is listed and left out of Apply. The four levers are: Bell times, which moves a period’s start and end for one day type (or one bell schedule) and shows the passing time before and after, with a row that lengthens the passing time before a period; Staggered dismissal, which lists the rules already in force and lets you try one (a trial rule for exactly the same groups, grade or wing, periods and day types replaces the real one in the trial); Stairs and corridors, where a stair can be made Both ways, Up only, Down only or Closed, and a corridor can be closed by choosing its name or by Pick on the map, then tapping or clicking a corridor (by keyboard, Tab to the plan, move its cursor with the arrow keys and press Enter or Space; Escape cancels, and picking a closed corridor opens it again); and Capacity and head counts, where a room’s seats change the findings, and a group’s head count changes crowding, walking times and findings. Closing a stair or a corridor is a trial only: Apply leaves it out and the building stays as it is, and the summary says so before you press the button, which then reads, for example, Apply 4 of 6 changes. Undo after Apply brings the whole scenario back, closures included.',
+    parts: [
+      'Other scenarios sits at the top of the lab once a scenario is kept. A project can keep several scenarios, not only the one open. Keep and start another keeps the open scenario and opens a new one; each kept scenario is a row with Switch to, Duplicate, Rename… and Delete…. Switch to makes it the open one (the one the lab edits and Apply writes), and the open one stays kept. A row says “already in the schedule” when its changes are already there and “no longer applies” when the schedule has moved on; the details show when it is switched to. Kept scenarios are saved in the project and travel in the project file.',
+      'Compare with, at the head of the inspector, chooses what the open scenario is compared with: the real schedule, or any kept scenario by name. The first column and the difference map take its name, and the legend says busier than that scenario. The choice is only what you are looking at, never saved: it goes back to the real schedule when the scenario compared with is deleted or switched to.',
+      'Compare the two buildings lets two different buildings be compared, such as this year’s and a proposed new wing. When another project file, or another project on this device, describes a different building, the lab offers Compare the two buildings. The band above the map says what is compared with and has Stop comparing; the map shows one building at a time, both on one scale, so the same colour means the same crowd, and a switch picks which. Groups and places are matched by name, and those only in one building are listed as only there, new or gone. The comparison is not saved: it ends when you leave the page or open another project, and Stop comparing returns the lab’s forms. To keep the other building, open it as a project.',
+    ],
   },
   safety: {
     purpose: 'See the way out from every room to its nearest exit, try the building with an exit or stairs blocked, and print door cards, evacuation posters, lockdown maps and a map pack.',
@@ -75,6 +80,15 @@ export const SECTION_HELP = {
     purpose: 'The project as a whole: where it is saved, project files, snapshots, recovery points, sending it to another device, the settings, clearing it, and the sample school.',
     first: 'Export a project file now and then, so a copy is kept off this device. Settings holds every number the planner works with, each with a line saying what it does.',
     more: 'A snapshot is a copy you name and keep on this device. A recovery point is taken by the planner before anything that replaces the project. Every change is saved on this device within about a second without asking.',
+    parts: [
+      'Projects on this device is the first card. A device keeps more than one project, up to 20, each with its own building, schedule, settings, scenarios and undo history. With one project the card says so and offers Start another project and Duplicate this project; with more it lists them, the open one first and marked Open, the rest by most recently opened.',
+      'The Label is a project’s own name on this device, such as This year or Next year’s proposal, up to 60 characters. The school’s name stays in Settings. When more than one project is kept, the top bar and the browser tab show the label as well, so two windows are never mistaken for each other.',
+      'Open switches to another project: the page reloads into it, and the one you left stays on this device. Rename… changes a label. Delete… takes a project off the device after keeping a recovery point of it, and offers Export it first; the open project cannot be deleted, so open another first. Its snapshots stay.',
+      'Start another project keeps the open project and makes a new one from Empty, from The sample school or from a project file. Duplicate this project asks for a label for the copy (the default is the label and “(copy)”); Duplicate and open it then makes the copy, with a new identity of its own, and opens it. Clear’s Replace with a new empty project, by contrast, replaces the open project.',
+      'A device keeps only one project for each identity. A project file, a project received from another device or a restored recovery point that is a copy of a project already kept is not put in silently: the dialog gives two choices, Open followed by that project’s label, such as Open Next year (then choose the file again to replace it) or Keep it as another project, which makes a separate copy with an identity of its own and opens it.',
+      'Recovery points and Snapshots list the open project’s first. Of other projects (recovery points) and Of projects no longer on this device (snapshots) follow, with each project’s label; a row of a project kept on the device offers Open followed by that project’s label, and a row of a project no longer here offers Restore as a project, which keeps it on this device as another project and opens it. Items that cannot be read are listed under Cannot be read, where they can be exported as stored or deleted.',
+      (w) => 'Import part of a project file brings in only the building, only the schedule or only the settings from another project file; the rest of the open project stays as it is. Step 1 reads the file and asks what to bring in. Step 2 says exactly what will change, for example how many classes keep their rooms and which room numbers are not in the new building, and that a snapshot is taken first. Nothing changes before Bring it in, and Undo brings it all back. Settings are taken as the schedule’s numbers (the school’s name, the ' + w.many + ' per day, the period word, times and the checks); the theme and paper belong to this device, and the cell size, walking and stair times and elevator times belong to the building, so none of those is taken.',
+    ],
   },
 };
 
@@ -181,6 +195,10 @@ export function words(settings) {
     { term: 'Lockdown map', meaning: 'A plain map of one floor with a reference grid and an index of its rooms, exits and stairs, for the emergency plan and for responders. It shows places, never people.' },
     { term: 'Evacuation poster', meaning: 'A sheet to put up on a floor or in a named corridor, with every way out drawn in its exit’s colour and numbered.' },
     { term: 'Map pack', meaning: 'The floor plans, lockdown maps, evacuation posters and the exits and assembly points as one document, which Save as PDF in the print dialog keeps as one file.' },
+    // DESIGN 15.1's words (SV2-124)
+    { term: 'Label', meaning: 'A project’s own name on this device, such as This year or Next year’s proposal, which tells it from the other projects kept here.' },
+    { term: 'Kept scenario', meaning: 'A scenario that is saved in the project but not open, so it can be switched to, duplicated, deleted or compared with.' },
+    { term: 'Building comparison', meaning: 'Two different buildings, this project’s and another file’s or project’s, compared by crowds, travel times and findings, matched by group and room names and not saved, and the map shows one building at a time, both on one scale, with a switch between them.' },
   ];
 }
 
@@ -328,6 +346,7 @@ export function helpModel(options) {
       purpose: help ? says(help.purpose, w) : NOTHING_WRITTEN,
       first: help ? says(help.first, w) : '',
       more: help ? says(help.more, w) : '',
+      parts: help && help.parts ? help.parts.map((part) => says(part, w)) : [],
       here: section.id === currentId,
       written: Boolean(help),
     };

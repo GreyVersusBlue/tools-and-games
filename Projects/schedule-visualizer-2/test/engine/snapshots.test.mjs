@@ -86,9 +86,12 @@ test('an entry is what the card lists; a damaged record is listed as unreadable,
   project.settings.schoolName = HOSTILE;
   const entry = snapshotEntry(snapshotRecord(project, { id: 'nabcdefgh1', name: HOSTILE, takenAt: '2026-09-01T12:00:00.000Z' }));
   assert.deepEqual({ ...entry, bytes: typeof entry.bytes }, {
-    id: 'nabcdefgh1', name: HOSTILE, takenAt: '2026-09-01T12:00:00.000Z', bytes: 'number', school: HOSTILE, projectId: project.id,
+    id: 'nabcdefgh1', name: HOSTILE, takenAt: '2026-09-01T12:00:00.000Z', bytes: 'number', school: HOSTILE, label: HOSTILE, projectId: project.id,
     summary: { floors: 3, rooms: 13, groups: 8, teachers: 12 }, readable: true,
   });
+  // SV2-118: the label a project goes by (21.5): its label, else the school's name
+  project.label = '  Next year  ';
+  assert.equal(snapshotEntry(snapshotRecord(project, { id: 'nabcdefgh1', name: 'x', takenAt: '2026-09-01T12:00:00.000Z' })).label, 'Next year', 'a label, trimmed');
   for (const bad of [{ id: 'nabcdefgh2', name: 'x', takenAt: 'y' }, { id: 'nabcdefgh3', name: 'x', takenAt: 'y', project: [] }, null, 'text']) {
     const listed = snapshotEntry(bad);
     assert.equal(listed.readable, false);
@@ -243,7 +246,7 @@ test('clearing the schedule takes the groups, teachers, accepted findings and sc
   project.accepted = [{ findingId: 'room-double:dsample00a:1:rsample203', reason: 'Shared', at: '2026-09-01T12:00:00.000Z', about: [] }];
   project.scenario = { name: HOSTILE, changes: [], compared: null };
   assertValid(project);
-  assert.deepEqual(scheduleContents(project), { groups: 8, teachers: 12, accepted: 1, scenario: HOSTILE });
+  assert.deepEqual(scheduleContents(project), { groups: 8, teachers: 12, accepted: 1, scenario: HOSTILE, kept: 0 });
   const cleared = clearedSchedule(project);
   assertValid(cleared);
   assert.deepEqual([cleared.groups, cleared.teachers, cleared.accepted, cleared.scenario], [[], [], [], null]);
@@ -310,7 +313,7 @@ test('the three clears in the card\'s order, each with an action that names it a
   assert.deepEqual(CLEARS.map((entry) => [entry.id, entry.button, entry.action, entry.keep, entry.label, AUTO_SNAPSHOT_NAMES[entry.reason]]), [
     ['building', 'Clear the building', 'Clear the building', 'Keep the building', 'Clear the building', 'Before clearing the building'],
     ['schedule', 'Clear the schedule', 'Clear the schedule', 'Keep the schedule', 'Clear the schedule', 'Before clearing the schedule'],
-    ['new', 'Start a new project', 'Start a new project', 'Keep this project', 'Start a new project', 'Before starting a new project'],
+    ['new', 'Replace with a new empty project', 'Replace with a new empty project', 'Keep this project', 'Replace with a new empty project', 'Before starting a new project'],
   ]);
   const project = school();
   const made = CLEARS.map((entry) => entry.make(project, { ids: makeIds(6), clock, devicePaper: () => 'letter' }));
@@ -328,4 +331,15 @@ test('the question\'s last line says whether a snapshot comes first, and why not
   assert.equal(importSafetyLine(room, 'Before importing ' + HOSTILE + '.json', 'it'), 'A recovery point of this project is taken first, with a snapshot of it, “Before importing ' + HOSTILE + '.json”, that you can restore from Snapshots at any time. Undo brings it back while this tab stays open.');
   assert.equal(importSafetyLine({ ...room, count: 30, full: true }, 'x', 'the building'), 'A recovery point of this project is taken first, and Undo brings the building back while this tab stays open. No snapshot can be taken: this device already keeps 30 snapshots, the most it keeps, and none is replaced to make room. To have one as well, keep this, delete one under Snapshots, and import again.');
   assert.equal(importSafetyLine(null, 'x', 'it'), 'A recovery point of this project is taken first, and Undo brings it back while this tab stays open. No snapshot can be taken.');
+});
+
+test('the Snapshots status line: a device full of other projects\' snapshots says Take will be refused, not "take one"; unreadable ones count towards the limit', async () => {
+  const { countSentence } = await import('../../ui/project/snapshots.js');
+  const full = countSentence([], 30, 30, 0);
+  assert.match(full, /^There are no snapshots of this project, and this device is full: it keeps 30 snapshots, the most it keeps, none of them of this project, so taking one will be refused\./);
+  assert.doesNotMatch(full, /Take one before/);
+  assert.match(countSentence([], 30, 28, 2), /this device is full/, 'the ones that cannot be read are on the device too');
+  assert.match(countSentence([], 30, 2, 0), /^There are no snapshots yet\. Take one before a large change/);
+  assert.match(countSentence([{ bytes: 100 }], 30, 28, 1), /That is the most this device keeps: delete one to take another\./);
+  assert.match(countSentence([{ bytes: 100 }], 30, 0, 1), /1 cannot be read and is listed under Cannot be read\.$/);
 });

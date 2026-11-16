@@ -60,6 +60,7 @@ function sectionsPart(model) {
       h('p', null, section.purpose),
       section.first ? h('p', null, h('strong', null, 'First: '), section.first) : null,
       section.more ? h('p', { class: 'help__more' }, section.more) : null,
+      ...section.parts.map((text) => h('p', { class: 'help__more' }, text)),
     ))));
 }
 
