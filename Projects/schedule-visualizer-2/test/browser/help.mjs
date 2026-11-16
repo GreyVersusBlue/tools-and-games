@@ -91,8 +91,8 @@ async function checkHelp(page, id, rail) {
   assert.deepEqual(seen.keys, registered.map((entry) => entry.id), id + ': the shortcuts are not the shell’s list');
   assert.deepEqual(seen.groups, [...new Set(registered.map((entry) => entry.group))], id + ': a group of shortcuts is not explained');
   assert.deepEqual(seen.devices, ['mouse', 'touch', 'pen', 'keyboard']);
-  assert.equal(seen.words.length, 39, id + ': spec 2 has 20 words, DESIGN 11.1 adds 11, DESIGN 12.1 adds Staggered dismissal, DESIGN 13.1 adds Step-free, Area of refuge and Route sheet and DESIGN 14.1 adds Blocked, Lockdown map, Evacuation poster and Map pack');
-  for (const term of ['Elevator', 'Step-free', 'Area of refuge', 'Route sheet', 'Blocked', 'Lockdown map', 'Evacuation poster', 'Map pack']) assert.ok(seen.words.includes(term), id + ': Help\'s words lack ' + term);
+  assert.equal(seen.words.length, 42, id + ': spec 2 has 20 words, DESIGN 11.1 adds 11, DESIGN 12.1 adds Staggered dismissal, DESIGN 13.1 adds Step-free, Area of refuge and Route sheet, DESIGN 14.1 adds Blocked, Lockdown map, Evacuation poster and Map pack, and DESIGN 15.1 adds Label, Kept scenario and Building comparison');
+  for (const term of ['Elevator', 'Step-free', 'Area of refuge', 'Route sheet', 'Blocked', 'Lockdown map', 'Evacuation poster', 'Map pack', 'Label', 'Kept scenario', 'Building comparison']) assert.ok(seen.words.includes(term), id + ': Help\'s words lack ' + term);
   assert.deepEqual(seen.numbers, ['load', 'travel', 'late']);
   assert.deepEqual(seen.jumps, ['sections', 'keys', 'gestures', 'words', 'numbers']);
   assert.doesNotMatch(seen.text, /—/, 'an em dash in Help');
@@ -317,6 +317,157 @@ test('Help’s Safety part names each of Safety’s tabs, the trial and the prin
       assert.ok(seen.safety.includes(phrase), 'Help’s Safety part lacks "' + phrase + '"');
     }
     assert.equal(seen.rule.filter((text) => text.includes('1.6 times an even share') && text.includes('50 people')).length, 1, 'the load numbers lack the one-sentence exit-load rule: ' + seen.rule.length + ' sentences read');
+  });
+});
+
+// W6 states, brought up as test/browser/screens.mjs's SV2-124 openers do, so the
+// labels Help names are read from the real page.
+async function waitSaved(page) {
+  await page.waitForFunction(() => document.getElementById('save-indicator').dataset.state === 'saved' && !globalThis.sv2.storage.pending, { timeout: 15000 });
+}
+
+// a second project kept on this device, beside the open one
+async function shelveOne(page, label) {
+  await waitSaved(page);
+  await page.evaluate((name) => new Promise((resolve, reject) => {
+    const open = indexedDB.open('sv2');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const read = db.transaction('project', 'readonly').objectStore('project').get('current');
+      read.onsuccess = () => {
+        const base = read.result;
+        const tx = db.transaction('project', 'readwrite');
+        tx.objectStore('project').put({ ...base, project: { ...base.project, id: 'phelp0000', label: name }, shelvedAt: '2026-11-12T15:40:00.000Z', bytes: 2400000 }, 'shelf:phelp0000');
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      };
+    };
+  }), label);
+}
+
+async function chooseFile(page, selector, name, body) {
+  await page.evaluate((which, fileName, contents) => {
+    const input = document.querySelector(which);
+    const data = new DataTransfer();
+    data.items.add(new File([contents], fileName));
+    input.files = data.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }, selector, name, body);
+}
+
+// the Projects card with a second project, its row buttons and the Duplicate dialog's confirm button
+async function projectsLabels(page) {
+  await shelveOne(page, 'Next year');
+  await go(page, '#scenarios');
+  await go(page, '#project');
+  await page.waitForFunction(() => {
+    const el = document.getElementById('projects');
+    return el && !el.hasAttribute('data-pending') && el.dataset.projects === '2' && el.dataset.state === 'ready';
+  }, { timeout: 20000 });
+  const row = await page.evaluate(() => {
+    const li = Array.from(document.querySelectorAll('#projects .proj__list li')).find((each) => !each.querySelector('.proj__pill'));
+    const text = (action) => { const b = li && li.querySelector('[data-action="' + action + '"]'); return b ? b.textContent.trim() : null; };
+    return { open: text('open'), rename: text('rename'), delete: text('delete') };
+  });
+  await page.click('[data-action="duplicate"]');
+  await page.waitForSelector('dialog[open] .dialog__buttons button');
+  const confirm = await page.$eval('dialog[open] .dialog__buttons button', (el) => el.textContent.trim());
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('dialog[open]'));
+  return { ...row, confirm };
+}
+
+// the lab with three kept scenarios, then the refusal of another building and its comparison held
+async function scenariosLabels(page) {
+  await go(page, '#scenarios');
+  await page.waitForFunction(() => document.querySelector('.scn') && document.querySelector('.scn').dataset.styled === 'true', { timeout: 20000 });
+  await page.evaluate(() => {
+    const move = (groupId, period, roomId) => ({ kind: 'move', dayTypeId: 'dsample00a', groupId, period, roomId });
+    const project = JSON.parse(JSON.stringify(globalThis.sv2.store.project));
+    project.scenario = { id: 'eopen00001', name: 'Move 6A to 301', changes: [move('gsample06a', 1, 'rsample301')], compared: null };
+    project.scenarios = [
+      { id: 'ekeptlib00', name: 'Library lessons', changes: [move('gsample06b', 0, 'rsamplelib')], compared: null },
+      { id: 'ekeptwest0', name: 'Stagger 8th grade', changes: [move('gsample06c', 0, 'rsample102')], compared: null },
+    ];
+    globalThis.sv2.store.replace(project);
+  });
+  await page.waitForSelector('.scn-others [data-action="other-switch"]', { timeout: 30000 });
+  await page.waitForSelector('#scenario-compare-with', { timeout: 30000 });
+  const text = (selector) => page.$eval(selector, (el) => el.textContent.trim());
+  const labels = {
+    others: await text('#scenario-others-title'),
+    switchTo: await text('.scn-others [data-action="other-switch"]'),
+    keep: await text('[data-action="keep-start"]'),
+    compareWith: await text('label[for="scenario-compare-with"]'),
+  };
+  // another building: the sample school with a Floor 4 and two rooms more
+  const file = await page.evaluate(async () => {
+    const { writeProjectFile } = await import(new URL('engine/project-file.js', location.href).href);
+    const other = JSON.parse(JSON.stringify(globalThis.sv2.store.project));
+    const three = other.building.floors.find((each) => each.id === 'fsample003');
+    const four = JSON.parse(JSON.stringify(three));
+    four.id = 'fhelpwing4';
+    four.name = 'Floor 4';
+    four.level = 4;
+    four.image = null;
+    const stairs = 5 + 8 * four.width;
+    four.cells = four.cells.slice(0, stairs) + 'S' + four.cells.slice(stairs + 1);
+    three.cells = three.cells.slice(0, stairs) + 'S' + three.cells.slice(stairs + 1);
+    four.corridors = [{ id: 'khelpwing1', name: 'Wing Corridor', cells: four.cells.split('').map((c, i) => (c === '#' ? i : -1)).filter((i) => i >= 0) }];
+    four.spaces = four.spaces.slice(0, 2).map((space, index) => ({ ...space, id: 'rhelpwing' + (index + 1), number: '40' + (index + 1), wing: 'Wing', teacherIds: [], doors: space.doors.slice() }));
+    four.exits = [];
+    other.building.floors.push(four);
+    other.building.connections.push({ id: 'chelpwing1', label: 'E', a: { floorId: 'fsample003', cell: stairs }, b: { floorId: 'fhelpwing4', cell: stairs }, direction: 'both' });
+    return writeProjectFile(other);
+  });
+  await chooseFile(page, 'input[data-file="compare"]', 'next-year.json', file);
+  await page.waitForSelector('.scn-file__result[data-result="refused"]', { timeout: 30000 });
+  labels.compareBuildings = await text('[data-action="compare-buildings"]');
+  await page.click('[data-action="compare-buildings"]');
+  await page.waitForSelector('.scn-bld[data-held="true"]:not([data-working="true"])', { timeout: 30000 });
+  labels.stop = await text('.scn-bld [data-action="stop-comparing"]');
+  return labels;
+}
+
+// W6 (SV2-124): Help names the Project section's own buttons, read from the
+// page, so a button renamed there fails here, and says each W6 idea in words.
+test('Help’s Project and Scenarios parts name the Projects card’s buttons and the W6 ideas', async () => {
+  await on(DESK, '#project', async (page) => {
+    await page.waitForSelector('[data-action="start-another"]');
+    const onPage = await page.evaluate(() => ['start-another', 'duplicate'].map((action) => document.querySelector('[data-action="' + action + '"]').textContent.trim()));
+    assert.deepEqual(onPage, ['Start another project…', 'Duplicate this project'], 'the Projects card’s buttons changed: Help must name them');
+    const part = await page.evaluate(() => Array.from(document.querySelectorAll('button, label')).map((el) => el.textContent.trim()).filter((text) => text === 'Import part of a project file…' || text === 'Replace with a new empty project'));
+    assert.deepEqual([...new Set(part)].sort(), ['Import part of a project file…', 'Replace with a new empty project']);
+    // the labels Help names, read from the real Projects card and lab, so a renamed button fails here
+    const row = await projectsLabels(page);
+    assert.deepEqual(row, { open: 'Open', rename: 'Rename…', delete: 'Delete…', confirm: 'Duplicate and open it' }, 'a Projects row button or the Duplicate dialog’s confirm button changed: Help must name it');
+    const lab = await scenariosLabels(page);
+    assert.deepEqual(lab, { others: 'Other scenarios', switchTo: 'Switch to', keep: 'Keep and start another', compareWith: 'Compare with', compareBuildings: 'Compare the two buildings', stop: 'Stop comparing' }, 'a Scenarios label changed: Help must name it');
+    await go(page, '#project');
+    await blurAll(page);
+    await page.keyboard.press('?');
+    await page.waitForSelector(OPEN);
+    const said = await page.evaluate(() => ({
+      project: document.querySelector('.help__section[data-section="project"]').textContent,
+      scenarios: document.querySelector('.help__section[data-section="scenarios"]').textContent,
+    }));
+    for (const phrase of ['Projects on this device', 'The Label is', 'Start another project', 'Duplicate this project', 'Open switches', 'Rename…', 'Delete…', 'Export it first', 'Keep it as another project', 'Open followed by that project’s label', 'Of other projects', 'Of projects no longer on this device', 'Cannot be read', 'Restore as a project', 'Import part of a project file', 'only the building, only the schedule or only the settings', 'Bring it in', 'a snapshot is taken first', 'Replace with a new empty project']) {
+      assert.ok(said.project.includes(phrase), 'Help’s Project part lacks "' + phrase + '"');
+    }
+    for (const label of [row.open, row.rename, row.delete, row.confirm]) assert.ok(said.project.includes(label), 'Help’s Project part does not name ' + label);
+    for (const phrase of [...Object.values(lab), 'Duplicate', 'Rename…', 'Delete…', 'only in one building', 'not saved']) {
+      assert.ok(said.scenarios.includes(phrase), 'Help’s Scenarios part lacks "' + phrase + '"');
+    }
+    for (const word of ['Label', 'Kept scenario', 'Building comparison']) {
+      const meaning = await page.$eval('#help-dialog dt[data-term="' + word + '"] + dd', (el) => el.textContent);
+      assert.ok(meaning.endsWith('.') && !meaning.includes('. '), word + ' is not one sentence');
+    }
+    await page.keyboard.press('Escape');
+    await helpGone(page);
   });
 });
 

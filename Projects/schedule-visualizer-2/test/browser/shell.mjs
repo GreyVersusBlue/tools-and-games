@@ -529,6 +529,8 @@ test('one click removes the sample school, one click loads it, and both can be u
   await go(page, '#building');
   assert.match(await text('#surface .intro__facts'), /^Nothing is drawn yet\. Floor 1 is 40 × 30 cells\.$/);
   await page.click('#getting-started [data-action="load-sample"]');
+  // loading the sample first asks the device whether it keeps a copy (W6), so wait for the name
+  await page.waitForFunction((name) => document.querySelector('#school-name .school__text')?.textContent === name, { timeout: 15000 }, SAMPLE_NAME);
   assert.equal(await exists('dialog[open]'), false, 'an empty project has nothing to lose, so no question');
   assert.equal(await schoolShown(), SAMPLE_NAME);
   assert.equal(await page.$eval('#sample-chip', (el) => el.hidden), false);

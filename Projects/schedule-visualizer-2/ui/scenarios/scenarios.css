@@ -20,6 +20,11 @@
 }
 
 .scn-panel[hidden],
+.scn-others[hidden],
+.scn-open__title[hidden],
+.scn-open__full[hidden],
+.scn-others__full[hidden],
+.scn-compare__with[hidden],
 .scn-bar__buttons[hidden],
 .scn-open[hidden],
 .scn-start[hidden],
@@ -268,11 +273,13 @@
   gap: var(--s-2);
 }
 
-/* a finger's target on a phone or a coarse pointer */
-@media (max-width: 639.98px), (pointer: coarse) {
+/* a finger's target on a phone, a coarse pointer, or a short window (a phone
+   on its side asks by touch even where the pointer reads as fine) */
+@media (max-width: 639.98px), (max-height: 420px), (pointer: coarse) {
   .scn-bar .btn,
   .scn-panel .btn,
   .scn-panel .field__input,
+  .scn-compare__options .field__input,
   .scn-panel .seg__option {
     min-height: 44px;
   }
@@ -281,6 +288,97 @@
     min-width: 44px;
     min-height: 44px;
   }
+}
+
+/* ---------- Other scenarios, and keeping the open one (SV2-122) ---------- */
+
+/* A list of rows, never a scroller: the name and its count on a line, the
+   messages under it, and the four buttons wrapping under those. */
+.scn-others {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.scn-others__list {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scn-other {
+  display: grid;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--paper);
+}
+
+.scn-other__line,
+.scn-other__message,
+.scn-others__status,
+.scn-others__full,
+.scn-open__full {
+  margin: 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}
+
+.scn-other__line {
+  font-weight: 600;
+}
+
+.scn-other__message,
+.scn-others__full,
+.scn-open__full {
+  color: var(--ink-2);
+}
+
+.scn-others__status:empty {
+  display: none;
+}
+
+.scn-other__buttons,
+.scn-open__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.scn-open__title {
+  overflow-wrap: anywhere;
+}
+
+.scn-open__title:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.scn-others__title:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* a long kept name in the Before column's heading wraps rather than widens it;
+   a name is never hyphenated by the page (SV2-123c: "next-" over "year.json"
+   had been drawn in a column a third of the table wide), only wrapped */
+.scn-figures__before {
+  overflow-wrap: anywhere;
+  hyphens: manual;
+}
+
+.scn-table th.scn-name {
+  overflow-wrap: anywhere;
+  hyphens: manual;
+}
+
+.scn-other__button[aria-disabled="true"],
+.scn-open__actions .btn[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* ---------- Beside the map, on a wide window ---------- */
@@ -443,7 +541,9 @@
    The corner heading, "Figure", is for a reader alone. */
 .scn-figures {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* each column as wide as its heading and figures want, no wider than the table
+     (a file name over its column is wrapped only when the table cannot hold it whole) */
+  grid-template-columns: repeat(3, minmax(0, auto));
 }
 
 .scn-figures thead,
@@ -501,7 +601,7 @@
 .scn-table tbody th {
   font-weight: 500;
   overflow-wrap: break-word;
-  hyphens: auto;
+  hyphens: manual;
 }
 
 .scn-table .num {
@@ -845,4 +945,153 @@
   background:
     repeating-linear-gradient(45deg, transparent 0 3px, var(--ink) 3px 4px),
     repeating-linear-gradient(-45deg, transparent 0 3px, var(--ink) 3px 4px);
+}
+
+/* ---------- Comparing two buildings (SV2-123; DESIGN 15.7 and 15.9) ---------- */
+
+.scn-bld[hidden],
+.scn-bld__inspector[hidden],
+.scn-changes[hidden],
+.scn-compare[hidden],
+.scn-file__shelf[hidden] {
+  display: none;
+}
+
+/* the band, in the trial band's style: a border, the words, Stop comparing */
+.scn-bld {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 2px solid var(--accent);
+  border-radius: var(--r-1);
+  background: var(--card);
+  font-size: var(--t-sm);
+  line-height: var(--lh-sm);
+}
+
+.scn-bld__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-3);
+}
+
+.scn-bld__text {
+  flex: 1 1 12rem;
+  min-width: 0;
+  margin: 0;
+  font-weight: var(--w-semibold);
+  overflow-wrap: anywhere;
+}
+
+.scn-bld__stop {
+  flex: none;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.scn-bld__note,
+.scn-bld__edit {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.scn-bld__legend {
+  font-weight: var(--w-semibold);
+}
+
+/* the two-way switch: two buttons in a row on a phone, each a finger's size */
+.scn-bld__switch .seg {
+  display: flex;
+  width: 100%;
+}
+
+.scn-bld__switch .seg__option {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.scn-bld__switch .seg__label {
+  min-height: 44px;
+  justify-content: center;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* the legend in the inspector: five swatches with their loads, then the one line */
+.scn-bld__key {
+  display: grid;
+  gap: var(--s-1);
+}
+
+.scn-bld__bands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-sm);
+}
+
+.scn-bld__bands li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.scn-bld__swatch {
+  display: inline-block;
+  width: 1.1rem;
+  height: 0.8rem;
+  border: 1px solid var(--line-strong);
+}
+
+.scn-bld__line {
+  margin: 0;
+  font-size: var(--t-sm);
+}
+
+.scn-bld__list {
+  margin: 0;
+  padding-left: var(--s-4);
+}
+
+/* with different units there is no difference column: two figures a row */
+.scn-figures--two {
+  grid-template-columns: repeat(2, minmax(0, auto));
+}
+
+/* a recompute is pending after a change in the open project: the tables are the old ones */
+.scn-bld__inspector [data-stale='true'] {
+  opacity: 0.5;
+}
+
+.scn-bld__refusal {
+  margin: 0;
+}
+
+/* the projects kept on this device, beside "Compare with another project file…" */
+.scn-file__shelf {
+  display: grid;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+  align-items: end;
+}
+
+/* a short window (a phone on its side): the band is one row, the not-saved line is in the inspector */
+@media (max-height: 420px) {
+  .scn-bld__note {
+    display: none;
+  }
+
+  /* the head wraps (a long file name, right to left or not, goes under Stop, never pushes it off) */
+  .scn-bld__head {
+    align-items: flex-start;
+  }
+
+  .scn-bld__text {
+    flex-basis: 8rem;
+  }
 }

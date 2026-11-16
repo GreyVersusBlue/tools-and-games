@@ -20,6 +20,7 @@ import { readProjectFile, readBuildingFile } from '../../engine/project-file.js'
 import { replaceProject, importBuilding } from '../../engine/actions.js';
 import { CURRENT_VERSION } from '../../engine/schema.js';
 import { pageSnapshots } from '../../storage/snapshots.js';
+import { mergeImport } from './merge.js';
 
 // Hand a file to the browser to save.
 function download(fileName, mime, text) {
@@ -56,21 +57,88 @@ export function importSafetyLine(room, name, what) {
   return point + ', with a snapshot of it, ' + quote(name) + ', that you can restore from Snapshots at any time. Undo brings ' + what + ' back while this tab stays open.';
 }
 
+// The one-per-id rule (21.1, DESIGN 15.3): a project that is a copy of one kept
+// on this device is never put over the open one. heldBy(ctx, id) asks before
+// anything is stored, snapshotted or replaced: { id, label } when the id is a
+// shelved project's, else null. The open project's own id is not a refusal. A page
+// whose session cannot answer refuses (it throws: fail closed, never "nobody holds it").
+export async function heldBy(ctx, projectId) {
+  const projects = ctx.storage && ctx.storage.projects;
+  if (!projects || typeof projects.holds !== 'function') throw new Error('The page has no way to ask which projects this device keeps.');
+  const label = await projects.holds(projectId);
+  return label === null ? null : { id: projectId, label };
+}
+
+// What each thing is called in the refusal, and what to do again afterwards.
+const HELD_AGAIN = {
+  file: ['This file', 'choose the file again'],
+  project: ['This project', 'send it again'],
+  snapshot: ['This snapshot', 'restore it again'],
+  point: ['This recovery point', 'restore it again'],
+};
+
+// `keepable` false: there is no way to keep it as another project (a recovery
+// point, which the session cannot read as a file), so only Open is offered.
+export function heldSentence(what, label, keepable) {
+  const [thing, again] = HELD_AGAIN[what];
+  return thing + ' is a copy of ' + label + ', which is also kept on this device. Open ' + label + ' first, then ' + again + (keepable === false ? '' : ', or keep it as another project') + '. Nothing was replaced.';
+}
+
+// The two ways on, as the dialog's buttons: Keep it as another project, and
+// Open <label> (last, so it is the focused one: it changes nothing).
+export function heldButtons(label, keepable) {
+  const open = { label: 'Open ' + label, value: 'open', kind: 'primary' };
+  return keepable === false ? [open] : [{ label: 'Keep it as another project', value: 'keep' }, open];
+}
+
+// Show the refusal in the tool's dialog and carry out the way chosen.
+//   what    'file' | 'project' | 'snapshot' | 'point'
+//   held    { id, label } from heldBy
+//   keep    async () => the session's answer for "Keep it as another project"
+// Resolves { choice: 'open' | 'keep' | null, text }: `text` is the sentence for a
+// way that failed (the page reloads when one worked), else ''.
+export async function refuseHeld(ctx, { what, held, keep, opener }) {
+  const choice = await ctx.openDialog({
+    id: 'held-refusal',
+    title: 'Nothing was replaced',
+    body: h('p', { role: 'alert', data: { line: 'held' } }, heldSentence(what, held.label, typeof keep === 'function')),
+    buttons: heldButtons(held.label, typeof keep === 'function'),
+    opener,
+  }).closed;
+  if (choice !== 'open' && choice !== 'keep') return { choice: null, text: '' };
+  try {
+    const answer = choice === 'open' ? await ctx.storage.projects.open(held.id) : await keep();
+    return { choice, text: answer && answer.ok === false ? answer.text : '' };
+  } catch (error) {
+    return { choice, text: messageOf(error) };
+  }
+}
+
 export function filesCard(ctx) {
   const storage = ctx.storage;
   // what the last export or import came to: { kind: 'done' | 'refused', text, notes }
   let said = null;
 
-  const lead = h('p', { class: 'card__lead' }, 'A project file is the whole project in one file: the settings, the building with its traced images, the teachers, the groups and their schedule, the scenario and the accepted findings. Export one to keep somewhere safe or to hand to a colleague.');
+  const lead = h('p', { class: 'card__lead' }, 'A project file is the whole project in one file: the settings, the building with its traced images, the teachers, the groups and their schedule, the scenarios and the accepted findings. Export one to keep somewhere safe or to hand to a colleague.');
   const result = h('div', { data: { line: 'result' }, hidden: true });
 
-  function say(kind, text, notes) {
+  // `undo`, when given, is { run }: the line then keeps an Undo button beside the sentence.
+  // The line is one live region, updated in place and never replaced (a screen reader hears
+  // each sentence once); `focus` puts the keyboard on the line itself (tabindex -1).
+  const sentenceLine = h('p', { role: 'status' });
+  const noteList = h('ul', { hidden: true });
+  result.tabIndex = -1;
+  result.append(sentenceLine, noteList);
+  function say(kind, text, notes, undo, focus) {
     said = { kind, text, notes: notes || [] };
     result.hidden = false;
     result.dataset.result = kind;
-    result.replaceChildren(
-      h('p', { role: kind === 'refused' ? 'alert' : 'status' }, text),
-      said.notes.length > 0 ? h('ul', null, said.notes.map((note) => h('li', null, note))) : '');
+    sentenceLine.setAttribute('role', kind === 'refused' ? 'alert' : 'status');
+    sentenceLine.replaceChildren(text,
+      ...(undo ? [' ', h('button', { type: 'button', class: 'btn', data: { action: 'undo-part' }, on: { click: undo.run } }, 'Undo')] : []));
+    noteList.replaceChildren(...said.notes.map((note) => h('li', null, note)));
+    noteList.hidden = said.notes.length === 0;
+    if (focus === true) result.focus();
   }
 
   async function save(kind) {
@@ -94,9 +162,10 @@ export function filesCard(ctx) {
   }
 
   // Whether a snapshot can be taken before an import: { room, name }.
-  async function snapshotPlan(fileName) {
+  // `name` is the snapshot's own name when the caller has one (a part brought in).
+  async function snapshotPlan(fileName, name) {
     const snapshots = pageSnapshots();
-    return { snapshots, room: snapshots ? await snapshots.room() : null, name: 'Before importing ' + fileName };
+    return { snapshots, room: snapshots ? await snapshots.room() : null, name: name || 'Before importing ' + fileName };
   }
 
   // Take the snapshot the question promised. Null when it was taken or none
@@ -108,11 +177,43 @@ export function filesCard(ctx) {
   }
 
   async function importProject(fileName, text, opener) {
+    // The refusal is said once, in the dialog's alert; the card's line only says that nothing
+    // was imported (replacing whatever an earlier outcome left there), and what a way on failed with.
+    async function refused(held) {
+      say('refused', quote(fileName) + ' was not imported, and nothing has changed.');
+      const outcome = await refuseHeld(ctx, { what: 'file', held, opener, keep: () => storage.projects.startAnother('file', read, { copy: true }) });
+      if (outcome.text !== '') say('refused', quote(fileName) + ' was not imported, and nothing has changed. ' + outcome.text);
+    }
+    // asked again just before the snapshot and just before the replacement: the shelf may have changed
+    // while the question was open. Resolves true when the import must stop (it has said why).
+    async function stopped(held) {
+      try {
+        held = await heldBy(ctx, read.project.id);
+      } catch (error) {
+        say('refused', quote(fileName) + ' was not imported, and nothing has changed, because this device could not be asked which projects it keeps. ' + messageOf(error));
+        return true;
+      }
+      if (!held) return false;
+      await refused(held);
+      return true;
+    }
     let read;
     try {
       read = readProjectFile(text, { ids: ctx.ids, clock: ctx.clock });
     } catch (error) {
       say('refused', quote(fileName) + ' was not imported, and nothing has changed. ' + messageOf(error));
+      return;
+    }
+    // one project, one place: before the question, and so before any snapshot or image
+    let held;
+    try {
+      held = await heldBy(ctx, read.project.id);
+    } catch (error) {
+      say('refused', quote(fileName) + ' was not imported, and nothing has changed, because this device could not be asked which projects it keeps. ' + messageOf(error));
+      return;
+    }
+    if (held) {
+      await refused(held);
       return;
     }
     const here = figures(ctx.store.project);
@@ -134,11 +235,13 @@ export function filesCard(ctx) {
       return;
     }
     const before = ctx.store.project;
+    if (await stopped()) return;
     const unsnapped = await takeSnapshot(plan);
     if (unsnapped) {
       say('refused', quote(fileName) + ' was not imported, and nothing has changed, because the snapshot could not be taken first. ' + unsnapped);
       return;
     }
+    if (await stopped()) return;
     try {
       await recoveryPoint();
       await storage.keepFileImages(read.project, read.images);
@@ -213,9 +316,9 @@ export function filesCard(ctx) {
   }
 
   // A button that asks for a file, with the <input type="file"> it stands for.
-  function chooser(kind, label, run) {
+  function chooser(kind, label, run, busy) {
     const input = h('input', { type: 'file', accept: '.json,application/json', hidden: true, tabindex: '-1', 'aria-hidden': 'true', data: { file: kind } });
-    const opener = h('button', { type: 'button', class: 'btn', data: { action: 'import-' + kind }, on: { click: () => input.click() } }, label);
+    const opener = h('button', { type: 'button', class: 'btn', data: { action: 'import-' + kind }, on: { click: () => { if (!busy || !busy()) input.click(); } } }, label);
     input.addEventListener('change', () => {
       const file = input.files && input.files[0];
       if (!file) return;
@@ -227,6 +330,8 @@ export function filesCard(ctx) {
     return [opener, input];
   }
 
+  const importPartFile = mergeImport({ ctx, say, snapshotPlan, takeSnapshot, safetyLine: importSafetyLine });
+
   const exporter = (kind, label) => h('button', { type: 'button', class: 'btn', data: { action: 'export-' + kind }, on: { click: () => save(kind) } }, label);
 
   const element = card({ id: 'project-file', title: 'Project file' },
@@ -237,6 +342,8 @@ export function filesCard(ctx) {
     h('div', { class: 'card__buttons' }, exporter('building', 'Export the building'), chooser('building', 'Import a building file…', importBuildingFile)),
     h('p', null, 'The schedule alone: subjects, teachers, groups, day types and bell times. Importing one adds to the schedule here, and asks about groups whose names are already here; that is on the Schedule section\'s Import tab.'),
     h('div', { class: 'card__buttons' }, exporter('schedule', 'Export the schedule'), h('a', { class: 'btn', href: '#schedule/import', data: { action: 'import-schedule' } }, 'Import a schedule file…')),
+    h('p', null, 'Bring in only the building, only the schedule or only the settings from another project file. The rest of this project stays as it is.'),
+    h('div', { class: 'card__buttons' }, chooser('part', 'Import part of a project file…', importPartFile, importPartFile.busy)),
     h('p', { class: 'card__small' }, 'A file is checked in full before anything changes. One made by a newer Schedule Visualizer 2 is refused whole, and one that is damaged changes nothing.'),
   );
 

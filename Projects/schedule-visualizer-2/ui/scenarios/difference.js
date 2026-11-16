@@ -22,7 +22,8 @@
 //
 // Before is the main lane's result for the answer's counters
 // (store.derived.results(), which keeps one answer per counter triple, so
-// this is the result the comparison was made against); after is the
+// this is the result the comparison was made against), or the kept
+// scenario's when one is the other side (lane.beforeOf); after is the
 // answer's result. Both carry their `loads` whole through trimResult. An
 // answer is taken only together with its before: until results() gives the
 // before for the answer's counters, the last answer and its picture stay.
@@ -85,7 +86,8 @@ function partsToText(parts) {
 //     "at its busiest in one transition, on A Day" for the whole day,
 //     "in Period 2 to Period 3, on A Day" for one transition; under a bell
 //     schedule the day says so: "on A Day with Early Release bells"
-//   sidesWords(info)   "Before 12, after 26 students, <when>."
+//   sidesWords(info)   "Before 12, after 26 students, <when>."; against a kept
+//     scenario (info.beforeName) "Stagger 8th grade: 12, after: 26 students, <when>."
 //   apartLabel(side, transition)
 //     "Walk here only before: " for one transition,
 //     "Over the day, walk here only before: " for the whole day (null)
@@ -106,6 +108,8 @@ export function whenWords(project, transition, dayTypeId, bellsId) {
 }
 
 export function sidesWords(info) {
+  // against a kept scenario the first side is called by its name, as typed
+  if (typeof info.beforeName === 'string' && info.beforeName !== '') return info.beforeName + ': ' + info.before + ', after: ' + info.after + ' ' + unitWord(info.unit, info.after) + ', ' + info.when + '.';
   return 'Before ' + info.before + ', after ' + info.after + ' ' + unitWord(info.unit, info.after) + ', ' + info.when + '.';
 }
 
@@ -129,11 +133,14 @@ export function cardText(info) {
 // Who walks where, before and after, for the card: worked out once an
 // answer.
 //
-//   cardWalks(project, changes, graph, { cache, geometryVersion, bellsId }?)
+//   cardWalks(project, changes, graph, { cache, geometryVersion, bellsId, beforeChanges }?)
 //     project is the real schedule, changes the answer's (reconcile's kept
 //     changes) and graph buildGraph(project). The groups the changes edit
 //     are routed for the real schedule and for it with the changes applied;
 //     no other group walks anywhere else. Null when no change edits a group.
+//     With beforeChanges (the kept scenario compared with) the before side is
+//     the schedule with those changes applied, and the groups either list
+//     edits are the ones routed.
 //       { order: Map groupId -> its place in project.groups,
 //         before, after: Map dayTypeId -> Map node -> Map groupId -> Set of
 //                        the transitions it crosses the node in }
@@ -172,20 +179,22 @@ function crossings(routes, graph, edited, bellsId) {
 }
 
 export function cardWalks(project, changes, graph, options) {
-  const edited = new Set(editedGroupIds(changes || []));
+  const opts = options || {};
+  const beforeChanges = Array.isArray(opts.beforeChanges) ? opts.beforeChanges : null;
+  const edited = new Set(editedGroupIds(changes || []).concat(beforeChanges ? editedGroupIds(beforeChanges) : []));
   for (const id of edited) if (!project.groups.some((group) => group.id === id)) edited.delete(id);
   if (edited.size === 0) return null;
   const after = applyChanges(project, changes);
+  const was = beforeChanges ? applyChanges(project, beforeChanges) : project;
   const only = (whole) => ({ ...whole, groups: whole.groups.filter((group) => edited.has(group.id)) });
   const routing = routingGraph(project, graph);
-  const opts = options || {};
   const asked = { cache: opts.cache, geometryVersion: opts.geometryVersion };
   const bellsId = typeof opts.bellsId === 'string' ? opts.bellsId : null;
   // the run under the bells chosen: its routes put each group where meetingSlots does, a walk across periods that do not meet included
   const routesOf = (whole) => routesForSchedule(only(whole), routing, bellsId === null ? asked : { ...asked, runs: ownDayTypes(whole).map((dayType) => ({ dayTypeId: dayType.id, bellsId })), meetingSlots });
   return {
     order: new Map(project.groups.map((group, index) => [group.id, index])),
-    before: crossings(routesOf(project), graph, edited, bellsId),
+    before: crossings(routesOf(was), graph, edited, bellsId),
     after: crossings(routesOf(after), graph, edited, bellsId),
   };
 }
@@ -215,7 +224,7 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
   // what is painted: the answer it is from and the before it is compared
   // with (taken together, never one without the other), the difference
   // worked out for the lab's choice, and the card's walks for the answer
-  const held = { answer: null, before: null, key: null, difference: null, ranked: { rows: [], changed: 0 }, graph: null, project: null, walks: null };
+  const held = { answer: null, before: null, beforeOf: null, key: null, difference: null, ranked: { rows: [], changed: 0 }, graph: null, project: null, walks: null };
   // the newest answer whose before is asked for: { answer, state: 'out' | 'failed' }
   let asking = null;
   // what results() refused with, said in the section until an answer is taken
@@ -236,11 +245,13 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
   const title = h('h3', { class: 'scn-compare__heading', id: 'scenario-difference-title' });
   const key = h('p', { class: 'scn-compare__note', data: { part: 'difference-key' } });
   const tableBody = h('tbody');
+  // the Before column's heading: the kept scenario compared with, as typed, else "Before"
+  const beforeHead = h('th', { scope: 'col', data: { part: 'difference-before-heading' } }, 'Before');
   const table = h('table', { class: 'scn-table scn-difference', data: { part: 'difference-table' } },
     h('caption', { class: 'vh' }, 'The ' + DIFFERENCE_TOP + ' largest changes on the difference map, largest first'),
     // five columns in the inspector's 320 px, at the shares of scenarios.css's
     // .scn-difference, the figures' headings over their figures at the right
-    h('thead', null, h('tr', null, ...['Place', 'Floor', 'Before', 'After', 'Change'].map((text) => h('th', { scope: 'col' }, text)))),
+    h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Place'), h('th', { scope: 'col' }, 'Floor'), beforeHead, h('th', { scope: 'col' }, 'After'), h('th', { scope: 'col' }, 'Change'))),
     tableBody);
   const note = h('p', { class: 'scn-compare__note', data: { part: 'difference-note' } });
   // laid out as the comparison above it is (its padding and spacing)
@@ -269,6 +280,8 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
     const project = held.project;
     if (!difference || !project) {
       tableBody.replaceChildren();
+      // no picture: the legend names no side
+      key.replaceChildren();
       if (failed === null) {
         section.hidden = true;
         return;
@@ -283,11 +296,18 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
     }
     section.hidden = false;
     key.hidden = false;
+    section.dataset.against = held.beforeOf ? held.beforeOf.name : '';
+    beforeHead.replaceChildren(held.beforeOf ? h('bdi', null, held.beforeOf.name) : 'Before');
+    if (held.beforeOf) beforeHead.title = held.beforeOf.name;
+    else beforeHead.removeAttribute('title');
     const unit = difference.unit;
     title.textContent = difference.transition === null
       ? 'Corridors that change most over the day'
       : 'Corridors that change most in ' + transitionName(project, memory.bellsId, difference.transition);
-    key.replaceChildren('On the map: ', swatch('problem', 3), 'busier, ', swatch('accent', 3), 'quieter. ',
+    // against the real schedule the legend says "busier, quieter"; against a
+    // kept scenario it names it: "busier than Stagger 8th grade" (15.9 item 8)
+    const than = () => (held.beforeOf ? [' than ', h('bdi', null, held.beforeOf.name)] : []);
+    key.replaceChildren('On the map: ', swatch('problem', 3), 'busier', ...than(), ', ', swatch('accent', 3), 'quieter', ...than(), '. ',
       difference.largest > 0 ? 'The stronger the colour, the larger the change; the largest is ' + difference.largest + ' ' + unitWord(unit, difference.largest) + '. A place with no change is not coloured.' : 'Nothing on the map changes.');
     // the day type is named on a row only when the rows come from more than one
     const several = new Set(held.ranked.rows.map((row) => row.dayTypeId)).size > 1;
@@ -359,6 +379,7 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
   function clear() {
     held.answer = null;
     held.before = null;
+    held.beforeOf = null;
     held.walks = null;
     asking = null;
     failed = null;
@@ -366,7 +387,19 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
   }
 
   // the before for this answer; the answer is taken only with it
-  function fetchBefore(answer) {
+  function fetchBefore(answer, beforeOf) {
+    if (beforeOf) {
+      // the other side is a kept scenario's result, already here
+      asking = null;
+      if (failed !== null) failed = null;
+      held.answer = answer;
+      held.before = beforeOf.result;
+      held.beforeOf = beforeOf;
+      held.key = null;
+      compute();
+      settle();
+      return;
+    }
     const mine = { answer, state: 'out' };
     asking = mine;
     if (failed !== null) {
@@ -395,6 +428,7 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
       }
       held.answer = answer;
       held.before = main;
+      held.beforeOf = null;
       held.key = null;
       compute();
       settle();
@@ -408,7 +442,8 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
       settle();
       return;
     }
-    if (answer !== held.answer && !(asking && asking.answer === answer && asking.state === 'out')) fetchBefore(answer);
+    const beforeOf = lane.beforeOf || null;
+    if ((answer !== held.answer || beforeOf !== held.beforeOf) && !(asking && asking.answer === answer && asking.state === 'out' && !beforeOf)) fetchBefore(answer, beforeOf);
     if (held.difference && !current()) blank();
     compute();
     settle();
@@ -432,8 +467,8 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
     const answer = held.answer;
     const project = store.project;
     if (!answer || !sameVersions(answer.versions, { geometry: store.geometryVersion, building: store.buildingVersion, schedule: store.scheduleVersion })) return null;
-    if (!held.walks || held.walks.answer !== answer || held.walks.bellsId !== memory.bellsId) {
-      held.walks = { answer, bellsId: memory.bellsId, walks: cardWalks(project, answer.changes || [], held.graph, { cache, geometryVersion: store.geometryVersion, bellsId: memory.bellsId }) };
+    if (!held.walks || held.walks.answer !== answer || held.walks.bellsId !== memory.bellsId || held.walks.beforeOf !== held.beforeOf) {
+      held.walks = { answer, bellsId: memory.bellsId, beforeOf: held.beforeOf, walks: cardWalks(project, answer.changes || [], held.graph, { cache, geometryVersion: store.geometryVersion, bellsId: memory.bellsId, beforeChanges: held.beforeOf ? held.beforeOf.changes : null }) };
       builds.walks += 1;
     }
     const apart = groupsAt(held.walks.walks, node, dayTypeId, held.difference.transition);
@@ -477,6 +512,7 @@ export function mountDifference({ ctx, store, plan, memory, lane, inspector }) {
       dayTypeId,
       excluded: Boolean(difference.excluded && difference.excluded[node]),
       groups: groupsApart(node, dayTypeId),
+      beforeName: held.beforeOf ? held.beforeOf.name : null,
     };
   }
 

@@ -417,3 +417,106 @@ test('snapshotWords: a lever-only Apply does not say "1 other change"', () => {
   assert.equal(kept({ slots: 1, leversWritten: 4 }), 'It changes 1 period of the groups\' days and 4 other changes');
   assert.equal(kept({ slots: 3, leversWritten: 0 }), 'It changes 3 periods of the groups\' days');
 });
+
+// ---------------------------------------------------------------- SV2-122: other scenarios
+
+import {
+  otherRows, rowCount, rowMessages, heldScenarios, fullWords, optionText, beforeName, comparedSentence, switchedSentence, keptLine,
+  COMPARE_OPTION_MOST, REAL_SCHEDULE, KEPT_STAY_KEPT,
+} from '../../ui/scenarios/model.js';
+import { SCENARIOS_MOST } from '../../engine/scenario.js';
+
+// a project whose kept list holds one scenario with three changes: one that
+// applies, one the schedule already has, one whose room is gone
+function keptThree() {
+  const project = school();
+  const group = project.groups[0];
+  const here = group.days[DAY_A][0].room;
+  const elsewhere = project.building.floors.flatMap((floor) => floor.spaces).find((space) => space.kind === 'room' && space.id !== here && space.id !== group.days[DAY_A][1].room);
+  const moves = [
+    { kind: 'move', dayTypeId: DAY_A, groupId: group.id, period: 1, roomId: elsewhere.id },
+    { kind: 'move', dayTypeId: DAY_A, groupId: group.id, period: 0, roomId: here },
+    { kind: 'move', dayTypeId: DAY_A, groupId: group.id, period: 2, roomId: 'rnowhere' },
+  ];
+  project.scenarios = [{ id: 'ekept0001', name: 'Stagger <8th> grade', changes: moves, compared: null }];
+  return project;
+}
+
+test('SV2-122 otherRows: a kept row counts every stored change and tells "already in the schedule" from "no longer applies" by the engine\'s own reconcile', () => {
+  const [row] = otherRows(keptThree());
+  assert.deepEqual([row.id, row.name, row.total, row.kept, row.already, row.gone], ['ekept0001', 'Stagger <8th> grade', 3, 1, 1, 1]);
+  assert.equal(rowCount(row), '3 changes');
+  assert.deepEqual(rowMessages(row).map((each) => each.text), ['1 change is already in the schedule', '1 change no longer applies']);
+});
+
+test('SV2-122 otherRows: a lever the building already has is "already in the schedule" too, and the open scenario is not a row', () => {
+  const project = keptThree();
+  project.scenario = { id: 'eopen00001', name: 'Open one', changes: [], compared: null };
+  project.scenarios[0].changes = [];
+  project.scenarios[0].levers = [{ kind: 'capacity', roomId: 'rnowhere', capacity: 9 }];
+  const rows = otherRows(project);
+  assert.equal(rows.length, 1, 'only the kept scenario has a row');
+  assert.deepEqual([rows[0].total, rows[0].already, rows[0].gone], [1, 0, 1], 'a lever for a room that is gone no longer applies');
+});
+
+test('SV2-122 rowMessages: none when everything applies, plural and singular, and two separate sentences when both are true', () => {
+  assert.deepEqual(rowMessages({ already: 0, gone: 0 }), []);
+  assert.deepEqual(rowMessages({ already: 2, gone: 0 }).map((each) => each.text), ['2 changes are already in the schedule']);
+  assert.deepEqual(rowMessages({ already: 0, gone: 3 }).map((each) => each.text), ['3 changes no longer apply']);
+  assert.deepEqual(rowMessages({ already: 1, gone: 1 }).map((each) => each.id), ['already', 'gone']);
+  assert.equal(rowCount({ total: 0 }), 'no changes');
+  assert.equal(rowCount({ total: 1 }), '1 change');
+});
+
+test('SV2-122 the limit: twelve scenarios in all, the open one counted, gives the reason Delete one first', () => {
+  const project = school();
+  project.scenario = { id: 'eopen00001', name: 'Open', changes: [], compared: null };
+  project.scenarios = Array.from({ length: SCENARIOS_MOST - 2 }, (_, i) => ({ id: 'ekept' + String(i).padStart(5, '0'), name: 'Kept ' + i, changes: [], compared: null }));
+  assert.equal(heldScenarios(project), SCENARIOS_MOST - 1);
+  assert.equal(fullWords(project), null);
+  project.scenarios.push({ id: 'eextra0001', name: 'One more', changes: [], compared: null });
+  assert.equal(heldScenarios(project), SCENARIOS_MOST);
+  assert.equal(fullWords(project), 'This project keeps 12 scenarios, the most it can. Delete one first.');
+});
+
+test('SV2-122 optionText: at most 40 characters with an ellipsis, counted in whole characters, short names untouched', () => {
+  assert.equal(optionText('Stagger 8th grade'), 'Stagger 8th grade');
+  assert.equal(optionText('x'.repeat(COMPARE_OPTION_MOST)), 'x'.repeat(COMPARE_OPTION_MOST));
+  const cut = optionText('x'.repeat(41));
+  assert.equal(Array.from(cut).length, COMPARE_OPTION_MOST);
+  assert.equal(cut, 'x'.repeat(COMPARE_OPTION_MOST - 1) + '…');
+  const faces = optionText('😀'.repeat(50));
+  assert.equal(Array.from(faces).length, COMPARE_OPTION_MOST, 'cut between characters, never through a surrogate pair');
+  assert.doesNotMatch(faces, /[\ud800-\udbff](?![\udc00-\udfff])/);
+  assert.equal(optionText('<b>' + 'y'.repeat(60) + '</b>').startsWith('<b>yyy'), true, 'markup is text, cut as text');
+});
+
+test('SV2-122 beforeName: the real schedule, or the kept scenario by name as typed (a blank one by the actions\' own word)', () => {
+  assert.equal(beforeName(null), REAL_SCHEDULE);
+  assert.equal(beforeName({ name: 'Move 7th <grade>' }), 'Move 7th <grade>');
+  assert.equal(beforeName({ name: '   ' }), 'New scenario');
+});
+
+test('SV2-122 comparedSentence: walking more, less or the same, as the table prints it', () => {
+  const walking = (before, after) => ({ figures: { walking: { before, after, difference: after - before } } });
+  assert.equal(comparedSentence('Stagger 8th grade', walking(600, 720)), 'Compared with Stagger 8th grade: walking 2 min more.');
+  assert.equal(comparedSentence('Stagger 8th grade', walking(720, 600)), 'Compared with Stagger 8th grade: walking 2 min less.');
+  assert.equal(comparedSentence('A', walking(600, 600)), 'Compared with A: walking the same.');
+  assert.equal(comparedSentence('A', walking(600, 600.2)), 'Compared with A: walking the same.', 'a change smaller than what is printed is none');
+});
+
+test('SV2-122b the real schedule says what it came to as a kept scenario does, and a choice gone while it settled has its own sentence', async () => {
+  const { CHOICE_GONE, COMPARED_GONE, SWITCHED_TO_COMPARED } = await import('../../ui/scenarios/model.js');
+  const walking = (before, after) => ({ figures: { walking: { before, after, difference: after - before } } });
+  assert.equal(comparedSentence('the real schedule', walking(600, 720)), 'Compared with the real schedule: walking 2 min more.');
+  assert.equal(CHOICE_GONE, 'The scenario you chose to compare with is gone, so it is compared with the real schedule.');
+  assert.equal(new Set([CHOICE_GONE, COMPARED_GONE, SWITCHED_TO_COMPARED]).size, 3, 'three distinct reasons');
+});
+
+test('SV2-122 the sentences: Switch to says what was kept, Apply adds its line only while scenarios are kept', () => {
+  assert.equal(switchedSentence('Stagger 8th grade', 'Move 7th grade'), 'Switched to Stagger 8th grade. Move 7th grade is kept.');
+  assert.equal(switchedSentence('Stagger 8th grade', null), 'Switched to Stagger 8th grade.');
+  assert.equal(keptLine(school()), null);
+  assert.equal(keptLine(keptThree()), KEPT_STAY_KEPT);
+  assert.equal(KEPT_STAY_KEPT, 'Kept scenarios stay kept. They are compared with the schedule as it will be.');
+});

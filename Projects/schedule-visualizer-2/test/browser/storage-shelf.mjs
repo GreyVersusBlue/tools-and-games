@@ -1,0 +1,844 @@
+// Several projects on one device, the database layer, in a real browser with a
+// real IndexedDB: node test/browser/storage-shelf.mjs
+//
+// storage/db.js's shelf (ARCHITECTURE 21.4 and 21.10): the open project stays
+// at "current", every other one is a record "shelf:<id>" carrying its traced
+// images inside itself. The journey, in order: the names; two projects each
+// with a traced image switched there and back twice with every picture intact,
+// and once more after the image sweep ran on its own; a switch that fails
+// (the write hook, and an abort after every write) leaves both where they
+// were; the refusals; delete, rename and the list; the images a caller holds
+// that the store lacks; a duplicate's shared image ids surviving the
+// original's delete; the recovery trim across three projects; the tab lock's
+// grace for a tab left behind by a switch (plain Node).
+//
+// Every case works on its own pair of databases, opened through a wrapper that
+// renames them, so the page's own autosave never touches the records under
+// test. Every wait is on a promise the code under test returns, never on a
+// first paint or a sleep.
+
+import test, { after, before } from 'node:test';
+import assert from 'node:assert/strict';
+
+import { openPlanner, waitForSection } from './harness.mjs';
+import { OPENED_GRACE_MS, switchedAway } from '../../storage/tabs.js';
+
+let session;
+let page;
+
+before(async () => {
+  session = await openPlanner({ hash: '#project' });
+  page = session.page;
+  await waitForSection(page, 'project');
+  // the lab: fresh databases per case, small projects with pictures, and a
+  // reading of everything stored, as plain data
+  await page.evaluate(async () => {
+    const db = await import(new URL('storage/db.js', document.baseURI).href);
+    const recovery = await import(new URL('storage/recovery.js', document.baseURI).href);
+    let era = 0;
+    let ticks = 0;
+    let opened = null;
+    const factory = { open: (name, version) => indexedDB.open('lab' + era + '-' + name, version) };
+    const clock = () => new Date(Date.parse('2026-11-14T10:00:00.000Z') + (ticks += 1) * 1000);
+    const lab = {
+      db,
+      recovery,
+      get handle() {
+        return opened;
+      },
+      async fresh() {
+        if (opened) opened.close();
+        era += 1;
+        opened = await db.openDatabases({ indexedDB: factory, clock });
+        return opened;
+      },
+      image: (text) => ({ blob: new Blob([text]), type: 'image/png', width: 2, height: 2 }),
+      project: (id, label, imageIds) => ({
+        id,
+        label,
+        settings: { schoolName: 'School ' + id },
+        building: { floors: (imageIds.length ? imageIds : [null]).map((imageId, index) => ({ id: 'f' + index, spaces: [{ kind: 'room' }], image: imageId ? { imageId } : null })) },
+        groups: [{}, {}],
+        teachers: [{}],
+      }),
+      // put the project on the device as the open one, with its pictures
+      async seed(project, pictures) {
+        const held = new Map();
+        for (const [id, text] of Object.entries(pictures || {})) {
+          held.set(id, lab.image(text));
+          await opened.putImage(id, held.get(id));
+        }
+        const known = await opened.saveProject(project, null, { images: held });
+        return { known, held };
+      },
+      // every record in the main database as plain data; blobs as their text
+      async everything() {
+        const tx = opened.main.transaction(['project', 'images', 'snapshots', 'quarantine'], 'readonly');
+        const all = (name) => new Promise((resolve, reject) => {
+          const out = {};
+          const request = tx.objectStore(name).openCursor();
+          request.onerror = () => reject(request.error);
+          request.onsuccess = () => {
+            const at = request.result;
+            if (!at) {
+              resolve(out);
+              return;
+            }
+            out[at.key] = at.value;
+            at.continue();
+          };
+        });
+        const [project, images] = await Promise.all([all('project'), all('images')]);
+        const text = async (value) => (value && value.blob ? { text: await value.blob.text(), type: value.type } : value);
+        const plain = { current: null, shelf: {}, images: {} };
+        for (const [key, record] of Object.entries(project)) {
+          if (key === 'current') plain.current = { id: record.project.id, savedAt: record.savedAt, openedAt: record.openedAt || null, exportedAt: record.exportedAt };
+          else {
+            const pictures = {};
+            const kept = record && typeof record === 'object' ? record : {};
+            const inside = kept.project && typeof kept.project === 'object' ? kept.project : {};
+            for (const [id, value] of Object.entries(kept.images || {})) pictures[id] = (await text(value)).text;
+            plain.shelf[key] = { id: inside.id, label: inside.label, shelvedAt: kept.shelvedAt, savedAt: kept.savedAt, bytes: kept.bytes, pictures };
+          }
+        }
+        for (const [id, value] of Object.entries(images)) plain.images[id] = (await text(value)).text;
+        return plain;
+      },
+      async refusal(promise) {
+        try {
+          await promise;
+        } catch (error) {
+          return { name: error.name, code: error.code || null, message: error.message, type: error instanceof TypeError };
+        }
+        return null;
+      },
+    };
+    globalThis.lab = lab;
+  });
+});
+
+after(async () => {
+  if (session) await session.close();
+});
+
+// ---------------------------------------------------------------- in the browser
+
+test('the names the shelf is kept under, and what it is bounded by', async () => {
+  const seen = await page.evaluate(() => {
+    const { db, recovery } = globalThis.lab;
+    return {
+      prefix: db.SHELF_PREFIX,
+      most: db.PROJECTS_MOST,
+      each: db.OTHER_POINTS_EACH,
+      points: db.OTHER_POINTS_MOST,
+      keep: db.RECOVERY_KEEP,
+      version: db.DB_VERSION,
+      recoveryVersion: db.RECOVERY_DB_VERSION,
+      reexport: recovery.projectBytes === db.projectBytes,
+    };
+  });
+  assert.deepEqual(seen, { prefix: 'shelf:', most: 20, each: 3, points: 24, keep: 8, version: 1, recoveryVersion: 1, reexport: true }, 'no store was added and no version moved');
+  const stores = await page.evaluate(async () => {
+    const handle = await globalThis.lab.fresh();
+    return { main: Array.from(handle.main.objectStoreNames), version: handle.main.version };
+  });
+  assert.deepEqual(stores, { main: ['images', 'project', 'quarantine', 'snapshots'], version: 1 });
+});
+
+test('two projects with a traced image each, switched there and back twice: every image intact, and once more after the sweep ran on its own', async () => {
+  const result = await page.evaluate(async () => {
+    const { db } = globalThis.lab;
+    const handle = await globalThis.lab.fresh();
+    const a = globalThis.lab.project('pa', 'This year', ['iaaaa']);
+    const b = globalThis.lab.project('pb', 'Next year', ['ibbbb']);
+    const seeded = await globalThis.lab.seed(a, { iaaaa: 'bytes of A' });
+    // B is made as another project: started beside A, which goes on the shelf
+    const bHeld = new Map([['ibbbb', globalThis.lab.image('bytes of B')]]);
+    let known = await handle.shelveAndStart(a, b, seeded.known, { images: seeded.held, freshImages: bHeld });
+    const log = [await globalThis.lab.everything()];
+    // there and back, twice (the session passes the open project's held images)
+    const heldNow = { pa: seeded.held, pb: bHeld };
+    let open = 'pb';
+    for (let round = 0; round < 4; round += 1) {
+      const target = open === 'pb' ? 'pa' : 'pb';
+      const openProject = open === 'pb' ? b : a;
+      known = await handle.switchTo(target, openProject, known, { images: heldNow[open] });
+      open = target;
+      log.push(await globalThis.lab.everything());
+    }
+    // the sweep on its own, naming only what "current" names, as an older planner's does
+    await new Promise((resolve, reject) => {
+      const tx = handle.main.transaction(['snapshots', 'quarantine', 'images'], 'readwrite');
+      db.sweepUnnamedImages(tx, [open === 'pa' ? 'iaaaa' : 'ibbbb']);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    log.push(await globalThis.lab.everything());
+    // and once more: both ways again, the session not holding the images this time (the store is asked)
+    for (let round = 0; round < 2; round += 1) {
+      const target = open === 'pb' ? 'pa' : 'pb';
+      known = await handle.switchTo(target, open === 'pb' ? b : a, known, { images: new Map() });
+      open = target;
+      log.push(await globalThis.lab.everything());
+    }
+    return { log, open };
+  });
+  const [afterStart, ...rest] = result.log;
+  assert.equal(afterStart.current.id, 'pb');
+  assert.deepEqual(Object.keys(afterStart.shelf), ['shelf:pa']);
+  assert.deepEqual(afterStart.shelf['shelf:pa'].pictures, { iaaaa: 'bytes of A' }, 'the shelved project carries its picture inside its record');
+  assert.deepEqual(afterStart.images, { ibbbb: 'bytes of B' }, 'the images store holds only what the open project names');
+  const states = rest.map((entry) => ({ open: entry.current.id, shelf: Object.keys(entry.shelf), images: entry.images, shelved: Object.values(entry.shelf).map((one) => one.pictures) }));
+  const A = 'bytes of A';
+  const B = 'bytes of B';
+  assert.deepEqual(states, [
+    { open: 'pa', shelf: ['shelf:pb'], images: { iaaaa: A }, shelved: [{ ibbbb: B }] },
+    { open: 'pb', shelf: ['shelf:pa'], images: { ibbbb: B }, shelved: [{ iaaaa: A }] },
+    { open: 'pa', shelf: ['shelf:pb'], images: { iaaaa: A }, shelved: [{ ibbbb: B }] },
+    { open: 'pb', shelf: ['shelf:pa'], images: { ibbbb: B }, shelved: [{ iaaaa: A }] },
+    { open: 'pb', shelf: ['shelf:pa'], images: { ibbbb: B }, shelved: [{ iaaaa: A }] },
+    { open: 'pa', shelf: ['shelf:pb'], images: { iaaaa: A }, shelved: [{ ibbbb: B }] },
+    { open: 'pb', shelf: ['shelf:pa'], images: { ibbbb: B }, shelved: [{ iaaaa: A }] },
+  ]);
+  assert.equal(result.open, 'pb');
+  // current was stamped by the switch, for the tab lock
+  const stamped = rest[0].current;
+  assert.equal(stamped.openedAt, stamped.savedAt, 'openedAt is the switch\'s own savedAt');
+  // rest[4] is the reading after the sweep, which is no switch: same savedAt as rest[3]
+  assert.ok(rest.every((entry, index) => index === 0 || (index === 4 ? entry.current.savedAt === rest[3].current.savedAt : entry.current.savedAt > rest[index - 1].current.savedAt)), 'each switch gives current a later savedAt, and the sweep gives it none');
+  assert.ok(rest[0].shelf['shelf:pb'].shelvedAt, 'a shelf record says when it was shelved');
+  assert.ok(rest[0].shelf['shelf:pb'].bytes > 'bytes of B'.length, 'and what it weighs, pictures included');
+});
+
+test('a switch that fails leaves both projects where they were, whether the write is refused or the transaction stops after its writes', async () => {
+  const result = await page.evaluate(async () => {
+    const { db } = globalThis.lab;
+    const handle = await globalThis.lab.fresh();
+    const a = globalThis.lab.project('pa', 'This year', ['iaaaa']);
+    const b = globalThis.lab.project('pb', 'Next year', ['ibbbb']);
+    const seeded = await globalThis.lab.seed(a, { iaaaa: 'bytes of A' });
+    const bHeld = new Map([['ibbbb', globalThis.lab.image('bytes of B')]]);
+    const known = await handle.shelveAndStart(a, b, seeded.known, { images: seeded.held, freshImages: bHeld });
+    const before = await globalThis.lab.everything();
+    const out = { before };
+    db.hooks.failWrite = 'The disk is full.';
+    out.early = await globalThis.lab.refusal(handle.switchTo('pa', b, known, { images: bHeld }));
+    out.earlyStart = await globalThis.lab.refusal(handle.shelveAndStart(b, globalThis.lab.project('pc', 'C', []), known, { images: bHeld }));
+    db.hooks.failWrite = null;
+    out.afterEarly = await globalThis.lab.everything();
+    db.hooks.failSwitchLate = true;
+    out.late = await globalThis.lab.refusal(handle.switchTo('pa', b, known, { images: bHeld }));
+    out.lateStart = await globalThis.lab.refusal(handle.shelveAndStart(b, globalThis.lab.project('pc', 'C', ['icccc']), known, { images: bHeld, freshImages: new Map([['icccc', globalThis.lab.image('bytes of C')]]) }));
+    db.hooks.failSwitchLate = false;
+    out.afterLate = await globalThis.lab.everything();
+    // and the same switch works once the fault is gone: the failure left nothing in the way
+    await handle.switchTo('pa', b, known, { images: bHeld });
+    out.worked = (await globalThis.lab.everything()).current.id;
+    return out;
+  });
+  assert.equal(result.early.message, 'The disk is full.');
+  assert.equal(result.earlyStart.message, 'The disk is full.');
+  assert.deepEqual(result.afterEarly, result.before, 'a refused write moved nothing');
+  assert.match(result.late.message, /nothing is half done/);
+  assert.match(result.lateStart.message, /nothing is half done/);
+  assert.deepEqual(result.afterLate, result.before, 'a transaction stopped after all its writes moved nothing: the project, the shelf and the images are as they were');
+  assert.equal(result.worked, 'pa');
+});
+
+test('the refusals: a newer current, a shelf copy of the open project, the open project as the target, a target that is gone, a fresh id already kept, a full shelf', async () => {
+  const result = await page.evaluate(async () => {
+    const { db } = globalThis.lab;
+    const handle = await globalThis.lab.fresh();
+    const a = globalThis.lab.project('pa', 'This year', []);
+    const b = globalThis.lab.project('pb', 'Next year', []);
+    const c = globalThis.lab.project('pc', 'Third', []);
+    const seeded = await globalThis.lab.seed(a, {});
+    let known = await handle.shelveAndStart(a, b, seeded.known, {});
+    const out = {};
+    // another tab saved after this one last read
+    const older = '2026-11-14T09:00:00.000Z';
+    out.newer = await globalThis.lab.refusal(handle.switchTo('pa', b, older, {}));
+    out.newerStart = await globalThis.lab.refusal(handle.shelveAndStart(b, c, older, {}));
+    out.sameTarget = await globalThis.lab.refusal(handle.switchTo('pb', b, known, {}));
+    out.sameFresh = await globalThis.lab.refusal(handle.shelveAndStart(b, b, known, {}));
+    out.noId = await globalThis.lab.refusal(handle.switchTo(undefined, b, known, {}));
+    out.gone = await globalThis.lab.refusal(handle.switchTo('pz', b, known, {}));
+    out.keptFresh = await globalThis.lab.refusal(handle.shelveAndStart(b, a, known, {}));
+    out.afterRefusals = await globalThis.lab.everything();
+    // an older planner imported the open project's id over current while a copy was shelved
+    const tx = handle.main.transaction('project', 'readwrite');
+    tx.objectStore('project').put({ savedAt: known, project: b, exportedAt: null, shelvedAt: known, bytes: 1, images: {} }, 'shelf:pb');
+    await new Promise((resolve) => { tx.oncomplete = resolve; });
+    out.shelfOfOpen = await globalThis.lab.refusal(handle.switchTo('pa', b, known, {}));
+    out.shelfOfOpenStart = await globalThis.lab.refusal(handle.shelveAndStart(b, c, known, {}));
+    const clean = handle.main.transaction('project', 'readwrite');
+    clean.objectStore('project').delete('shelf:pb');
+    await new Promise((resolve) => { clean.oncomplete = resolve; });
+    // a full shelf: PROJECTS_MOST projects, the open one included
+    const ids = [];
+    for (let n = 0; n < db.PROJECTS_MOST - 2; n += 1) {
+      const next = globalThis.lab.project('px' + n, 'Extra ' + n, []);
+      known = await handle.shelveAndStart(b, next, known, {});
+      ids.push(next.id);
+      b.id = next.id;
+      Object.assign(b, next);
+    }
+    out.count = (await handle.shelfIds()).length + 1;
+    out.full = await globalThis.lab.refusal(handle.shelveAndStart(b, globalThis.lab.project('py', 'One too many', []), known, {}));
+    out.afterFull = (await handle.shelfIds()).length + 1;
+    // switching among a full shelf is not refused
+    out.switchFull = await globalThis.lab.refusal(handle.switchTo('pa', b, known, {}));
+    return out;
+  });
+  assert.equal(result.newer.name, 'ConflictError');
+  assert.equal(result.newerStart.name, 'ConflictError');
+  assert.equal(result.sameTarget.type, true, 'the target being the open project is a TypeError');
+  assert.equal(result.sameFresh.type, true);
+  assert.equal(result.noId.type, true);
+  assert.equal(result.gone.code, 'no-such-project');
+  assert.equal(result.keptFresh.code, 'shelf-has-fresh');
+  assert.equal(result.afterRefusals.current.id, 'pb');
+  assert.deepEqual(Object.keys(result.afterRefusals.shelf), ['shelf:pa'], 'no refusal moved anything');
+  assert.equal(result.shelfOfOpen.code, 'shelf-has-open');
+  assert.equal(result.shelfOfOpenStart.code, 'shelf-has-open');
+  assert.match(result.shelfOfOpen.message, /Export both copies/);
+  assert.equal(result.count, 20, 'twenty projects, the open one included');
+  assert.equal(result.full.code, 'shelf-full');
+  assert.equal(result.afterFull, 20, 'the refusal added nothing');
+  assert.equal(result.switchFull, null, 'switching keeps the count, so a full shelf still switches');
+});
+
+test('the list, a rename, a delete and the ids on the shelf; a damaged record is listed as unreadable', async () => {
+  const result = await page.evaluate(async () => {
+    const a = globalThis.lab.project('pa', 'This year', ['iaaaa']);
+    const b = globalThis.lab.project('pb', '', []);
+    const c = globalThis.lab.project('pc', 'Third', []);
+    const out = { empty: await (await globalThis.lab.fresh()).listShelf() };
+    // the same three projects on a fresh device
+    const handle2 = await globalThis.lab.fresh();
+    let k = (await globalThis.lab.seed(a, { iaaaa: 'bytes of A' })).known;
+    k = await handle2.shelveAndStart(a, b, k, { images: new Map([['iaaaa', globalThis.lab.image('bytes of A')]]) });
+    k = await handle2.shelveAndStart(b, c, k, {});
+    out.list = await handle2.listShelf();
+    out.ids = (await handle2.shelfIds()).sort();
+    out.raw = await handle2.readShelved('pa');
+    out.rawGone = await handle2.readShelved('pz');
+    out.renamed = await handle2.renameShelved('pa', '  Next year\'s plan  ');
+    out.afterRename = (await handle2.listShelf()).map((one) => [one.id, one.label]);
+    out.rawAfter = (await handle2.readShelved('pa')).project.label;
+    out.longLabel = await globalThis.lab.refusal(handle2.renameShelved('pa', 'x'.repeat(61)));
+    out.notText = await globalThis.lab.refusal(handle2.renameShelved('pa', 5));
+    out.renameGone = await globalThis.lab.refusal(handle2.renameShelved('pz', 'Ghost'));
+    out.hostile = await handle2.renameShelved('pb', '<img src=x onerror=alert(1)> "quotes" שלום');
+    out.hostileRead = (await handle2.readShelved('pb')).project.label;
+    out.deleted = await handle2.deleteShelved('pb');
+    out.deletedAgain = await handle2.deleteShelved('pb');
+    out.idsAfter = await handle2.shelfIds();
+    out.currentAfter = (await globalThis.lab.everything()).current.id;
+    // a stray value under the prefix
+    const tx = handle2.main.transaction('project', 'readwrite');
+    tx.objectStore('project').put('not a record', 'shelf:stray');
+    await new Promise((resolve) => { tx.oncomplete = resolve; });
+    const damaged = handle2.main.transaction('project', 'readwrite');
+    damaged.objectStore('project').put({ savedAt: 's', shelvedAt: 'z', bytes: 7, project: 'text' }, 'shelf:noproject');
+    damaged.objectStore('project').put(null, 'shelf:nothing');
+    await new Promise((resolve) => { damaged.oncomplete = resolve; });
+    out.listWithStray = (await handle2.listShelf()).map((one) => [one.id, one.unreadable === true, one.label, one.bytes]);
+    out.fullListed = (await handle2.listShelf()).find((one) => one.id === 'noproject');
+    out.plainHasNoFlag = 'unreadable' in (await handle2.listShelf()).find((one) => one.id === 'pa');
+    out.idsWithStray = (await handle2.shelfIds()).sort();
+    return out;
+  });
+  assert.deepEqual(result.empty, []);
+  assert.equal(result.list.length, 2);
+  assert.deepEqual(result.list.map((one) => one.id), ['pb', 'pa'], 'newest shelved first');
+  const [listB, listA] = result.list;
+  assert.deepEqual(listA, { id: 'pa', label: 'This year', schoolName: 'School pa', savedAt: listA.savedAt, shelvedAt: listA.shelvedAt, bytes: listA.bytes, summary: { floors: 1, rooms: 1, groups: 2, teachers: 1 } });
+  assert.equal(listB.label, '');
+  assert.ok(listA.bytes > 'bytes of A'.length && listA.savedAt && listA.shelvedAt);
+  assert.deepEqual(result.ids, ['pa', 'pb']);
+  assert.equal(result.raw.project.id, 'pa', 'the raw record, as stored');
+  assert.deepEqual(Object.keys(result.raw.images), ['iaaaa']);
+  assert.equal(result.rawGone, null);
+  assert.equal(result.renamed, 'Next year\'s plan', 'trimmed');
+  assert.deepEqual(result.afterRename, [['pb', ''], ['pa', 'Next year\'s plan']]);
+  assert.equal(result.rawAfter, 'Next year\'s plan');
+  assert.equal(result.longLabel.type, true);
+  assert.equal(result.notText.type, true);
+  assert.equal(result.renameGone.code, 'no-such-project');
+  assert.equal(result.hostileRead, '<img src=x onerror=alert(1)> "quotes" שלום', 'a label is stored exactly as typed');
+  assert.equal(result.deleted, true);
+  assert.equal(result.deletedAgain, false);
+  assert.deepEqual(result.idsAfter, ['pa']);
+  assert.equal(result.currentAfter, 'pc', 'the open project is untouched by any of it');
+  assert.deepEqual(result.listWithStray, [['noproject', true, '', 7], ['pa', false, 'Next year\'s plan', result.listWithStray[1][3]], ['nothing', true, '', 0], ['stray', true, '', 0]], 'damaged records are listed, flagged, with the id from the key (shelvedAt order, blanks last)');
+  assert.equal(result.fullListed.savedAt, 's');
+  assert.equal(result.plainHasNoFlag, false, 'a readable record has no unreadable key');
+  assert.deepEqual(result.idsWithStray, ['noproject', 'nothing', 'pa', 'stray'], 'the ids are every key under the prefix, so the list and the count agree');
+});
+
+test('a request that fails by itself inside a move aborts the whole move: both projects where they were, every image intact', async () => {
+  const result = await page.evaluate(async () => {
+    const { db } = globalThis.lab;
+    const handle = await globalThis.lab.fresh();
+    const a = globalThis.lab.project('pa', 'This year', ['iaaaa']);
+    const b = globalThis.lab.project('pb', 'Next year', ['ibbbb']);
+    const seeded = await globalThis.lab.seed(a, { iaaaa: 'bytes of A' });
+    const bHeld = new Map([['ibbbb', globalThis.lab.image('bytes of B')]]);
+    const known = await handle.shelveAndStart(a, b, seeded.known, { images: seeded.held, freshImages: bHeld });
+    const out = { before: await globalThis.lab.everything() };
+    db.hooks.failSwitchRequest = true;
+    out.switchTo = await globalThis.lab.refusal(handle.switchTo('pa', b, known, { images: bHeld }));
+    out.start = await globalThis.lab.refusal(handle.shelveAndStart(b, globalThis.lab.project('pc', 'C', ['icccc']), known, { images: bHeld, freshImages: new Map([['icccc', globalThis.lab.image('bytes of C')]]) }));
+    db.hooks.failSwitchRequest = false;
+    out.after = await globalThis.lab.everything();
+    out.worked = await globalThis.lab.refusal(handle.switchTo('pa', b, known, { images: bHeld }));
+    out.now = (await globalThis.lab.everything()).current.id;
+    return out;
+  });
+  assert.equal(result.switchTo && result.switchTo.name, 'ConstraintError', 'the promise rejects with the failed request\'s own error');
+  assert.equal(result.start && result.start.name, 'ConstraintError');
+  assert.deepEqual(result.after, result.before, 'nothing of the move was kept: current, the shelf, every image and the shelf record\'s bytes as they were');
+  assert.equal(result.worked, null);
+  assert.equal(result.now, 'pa');
+});
+
+test('a switch is refused, nothing moving, when the target record cannot be read as the project it is kept under', async () => {
+  const result = await page.evaluate(async () => {
+    const handle = await globalThis.lab.fresh();
+    const a = globalThis.lab.project('pa', 'A', ['iaaaa']);
+    const b = globalThis.lab.project('pb', 'B', []);
+    const seeded = await globalThis.lab.seed(a, { iaaaa: 'bytes of A' });
+    const known = await handle.shelveAndStart(a, b, seeded.known, { images: seeded.held });
+    const put = async (key, value) => {
+      const tx = handle.main.transaction('project', 'readwrite');
+      tx.objectStore('project').put(value, key);
+      await new Promise((resolve) => { tx.oncomplete = resolve; });
+    };
+    const out = { before: null, cases: {} };
+    out.before = await globalThis.lab.everything();
+    const raw = { savedAt: known, exportedAt: null, shelvedAt: known, bytes: 1, images: {} };
+    const damage = {
+      noProject: { ...raw },
+      projectText: { ...raw, project: 'text' },
+      projectList: { ...raw, project: [] },
+      noId: { ...raw, project: { label: 'x' } },
+      idNumber: { ...raw, project: { id: 5 } },
+      idMismatch: { ...raw, project: { id: 'other' } },
+      notObject: 'a string',
+    };
+    for (const [name, record] of Object.entries(damage)) {
+      await put('shelf:pz', record);
+      const before = await globalThis.lab.everything();
+      const error = await globalThis.lab.refusal(handle.switchTo('pz', b, known, {}));
+      const after = await globalThis.lab.everything();
+      out.cases[name] = { code: error && error.code, same: JSON.stringify(before) === JSON.stringify(after), shelf: Object.keys(after.shelf), current: after.current.id };
+    }
+    // a record that is as it should be does open
+    await put('shelf:pz', { ...raw, project: globalThis.lab.project('pz', 'Z', []) });
+    out.ok = await globalThis.lab.refusal(handle.switchTo('pz', b, known, {}));
+    out.opened = (await globalThis.lab.everything()).current.id;
+    return out;
+  });
+  for (const [name, one] of Object.entries(result.cases)) {
+    assert.equal(one.code, 'unreadable-target', name);
+    assert.equal(one.same, true, name + ': nothing moved');
+    assert.equal(one.current, 'pb', name);
+    assert.deepEqual(one.shelf, ['shelf:pa', 'shelf:pz'], name);
+  }
+  assert.equal(Object.keys(result.cases).length, 7);
+  assert.equal(result.ok, null);
+  assert.equal(result.opened, 'pz');
+});
+
+test('deleteShelved and renameShelved honour the write hook; a rename takes a blank, 60 and 61 characters', async () => {
+  const result = await page.evaluate(async () => {
+    const { db } = globalThis.lab;
+    const handle = await globalThis.lab.fresh();
+    const a = globalThis.lab.project('pa', 'A', []);
+    const b = globalThis.lab.project('pb', 'B', []);
+    const seeded = await globalThis.lab.seed(a, {});
+    await handle.shelveAndStart(a, b, seeded.known, {});
+    const out = {};
+    db.hooks.failWrite = 'The disk is full.';
+    out.deleteFail = await globalThis.lab.refusal(handle.deleteShelved('pa'));
+    out.renameFail = await globalThis.lab.refusal(handle.renameShelved('pa', 'New'));
+    db.hooks.failWrite = null;
+    out.still = (await handle.readShelved('pa')).project.label;
+    out.blank = await handle.renameShelved('pa', '   ');
+    out.blankStored = (await handle.readShelved('pa')).project.label;
+    out.sixty = (await handle.renameShelved('pa', 'x'.repeat(60))).length;
+    out.padded = (await handle.renameShelved('pa', '  ' + 'y'.repeat(60) + '  ')).length;
+    out.sixtyOne = await globalThis.lab.refusal(handle.renameShelved('pa', 'z'.repeat(61)));
+    out.afterLong = (await handle.readShelved('pa')).project.label.length;
+    out.deleted = await handle.deleteShelved('pa');
+    return out;
+  });
+  assert.equal(result.deleteFail.message, 'The disk is full.');
+  assert.equal(result.renameFail.message, 'The disk is full.');
+  assert.equal(result.still, 'A', 'neither touched the record');
+  assert.equal(result.blank, '');
+  assert.equal(result.blankStored, '', 'a blank label is stored as blank (the school name shows instead)');
+  assert.equal(result.sixty, 60);
+  assert.equal(result.padded, 60, 'trimmed first, so padding does not count');
+  assert.equal(result.sixtyOne.type, true);
+  assert.equal(result.afterLong, 60, 'the refused label changed nothing');
+  assert.equal(result.deleted, true, 'the delete works once the hook is off');
+});
+
+test('the trim right after a switch: another project\'s points above 3 go even when the store holds 8 or fewer', async () => {
+  const result = await page.evaluate(async () => {
+    const { recovery } = globalThis.lab;
+    const handle = await globalThis.lab.fresh();
+    const projects = { pa: globalThis.lab.project('pa', 'A', []), pb: globalThis.lab.project('pb', 'B', []) };
+    let n = 0;
+    const take = (id, open) => {
+      n += 1;
+      const point = recovery.buildPoint(projects[id], 'timer', '2026-11-14T10:00:00.000Z', null);
+      point.sequence = n;
+      return handle.addPoint(point, undefined, open);
+    };
+    const kept = async () => (await handle.listPoints()).map((point) => point.project.id + point.sequence);
+    const out = {};
+    for (let i = 0; i < 5; i += 1) await take('pa', 'pa');
+    out.five = await kept();
+    // B is opened: its first point makes 6 in all, and A (now another project) holds 5
+    await take('pb', 'pb');
+    out.afterSwitch = await kept();
+    // nothing to trim: 3 of A and 2 of B stay as they are
+    await take('pb', 'pb');
+    out.quiet = await kept();
+    return out;
+  });
+  assert.deepEqual(result.five, ['pa5', 'pa4', 'pa3', 'pa2', 'pa1']);
+  assert.deepEqual(result.afterSwitch, ['pb6', 'pa5', 'pa4', 'pa3'], 'A keeps its newest 3');
+  assert.deepEqual(result.quiet, ['pb7', 'pb6', 'pa5', 'pa4', 'pa3']);
+});
+
+test('the open project\'s images come from the ones given, the store is asked only for the rest, and an image the device lost is left out', async () => {
+  const result = await page.evaluate(async () => {
+    const handle = await globalThis.lab.fresh();
+    // A names three pictures: one given by the session (an undo brought it back after a sweep took it), one stored, one lost
+    const a = globalThis.lab.project('pa', 'A', ['igiven', 'istored', 'ilost']);
+    const b = globalThis.lab.project('pb', 'B', []);
+    const seeded = await globalThis.lab.seed(a, { istored: 'in the store' });
+    const given = new Map([['igiven', globalThis.lab.image('from the session')], ['istored', globalThis.lab.image('the session\'s older copy')]]);
+    await handle.shelveAndStart(a, b, seeded.known, { images: given });
+    const everything = await globalThis.lab.everything();
+    return everything;
+  });
+  assert.deepEqual(result.shelf['shelf:pa'].pictures, { igiven: 'from the session', istored: 'the session\'s older copy' }, 'a given image wins over the store\'s; the one nobody has is not invented');
+  const second = await page.evaluate(async () => {
+    const handle = await globalThis.lab.fresh();
+    const a = globalThis.lab.project('pa', 'A', ['igiven', 'istored']);
+    const b = globalThis.lab.project('pb', 'B', []);
+    const seeded = await globalThis.lab.seed(a, { istored: 'in the store' });
+    // no images given at all: the store is asked for both ids
+    await handle.shelveAndStart(a, b, seeded.known, {});
+    return (await globalThis.lab.everything()).shelf['shelf:pa'].pictures;
+  });
+  assert.deepEqual(second, { istored: 'in the store' }, 'with none given the store supplies what it has');
+});
+
+test('a duplicate keeps its pictures when the original is deleted, and again after a switch away and back', async () => {
+  const result = await page.evaluate(async () => {
+    const { db } = globalThis.lab;
+    const handle = await globalThis.lab.fresh();
+    const original = globalThis.lab.project('pa', 'This year', ['iaaaa', 'iaaab']);
+    const seeded = await globalThis.lab.seed(original, { iaaaa: 'first picture', iaaab: 'second picture' });
+    // the duplicate: a fresh project id, the same picture ids, started beside the original
+    const copy = { ...original, id: 'pcopy', label: 'This year (copy)' };
+    let known = await handle.shelveAndStart(original, copy, seeded.known, { images: seeded.held, freshImages: seeded.held });
+    const out = { afterDuplicate: await globalThis.lab.everything() };
+    // delete the original
+    await handle.deleteShelved('pa');
+    out.afterDelete = await globalThis.lab.everything();
+    // an older planner's sweep, naming only current's images
+    await new Promise((resolve, reject) => {
+      const tx = handle.main.transaction(['snapshots', 'quarantine', 'images'], 'readwrite');
+      db.sweepUnnamedImages(tx, ['iaaaa', 'iaaab']);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    out.afterSweep = await globalThis.lab.everything();
+    // away to another project and back
+    const other = globalThis.lab.project('pother', 'Other', []);
+    known = await handle.shelveAndStart(copy, other, known, { images: seeded.held });
+    out.away = await globalThis.lab.everything();
+    await handle.switchTo('pcopy', other, known, { images: new Map() });
+    out.back = await globalThis.lab.everything();
+    return out;
+  });
+  const both = { iaaaa: 'first picture', iaaab: 'second picture' };
+  assert.deepEqual(result.afterDuplicate.images, both, 'the copy is current and names the pictures');
+  assert.deepEqual(result.afterDuplicate.shelf['shelf:pa'].pictures, both, 'the original carries its own copies');
+  assert.deepEqual(Object.keys(result.afterDelete.shelf), [], 'the original is gone');
+  assert.deepEqual(result.afterDelete.images, both, 'and the copy\'s pictures with it: deleting a shelved project touches no image in the store');
+  assert.deepEqual(result.afterSweep.images, both);
+  assert.deepEqual(result.away.shelf['shelf:pcopy'].pictures, both);
+  assert.deepEqual(result.away.images, {}, 'nothing in the images store names them while the copy is shelved');
+  assert.deepEqual(result.back.images, both, 'every picture is back');
+});
+
+test('the recovery trim across projects: 8 of the open project, 3 of each other, 24 of the others at most, by project id', async () => {
+  const result = await page.evaluate(async () => {
+    const { db, recovery } = globalThis.lab;
+    const handle = await globalThis.lab.fresh();
+    const projects = { pa: globalThis.lab.project('pa', 'A', []), pb: globalThis.lab.project('pb', 'B', []), pc: globalThis.lab.project('pc', 'C', []) };
+    let n = 0;
+    const take = async (id, open, spare) => {
+      n += 1;
+      const point = recovery.buildPoint(projects[id], 'timer', '2026-11-14T10:' + String(n % 60).padStart(2, '0') + ':00.000Z', null);
+      point.sequence = n;
+      return handle.addPoint(point, spare, open);
+    };
+    const kept = async () => (await handle.listPoints()).map((point) => point.project.id + point.sequence);
+    const out = {};
+    // a point says whose it is
+    out.built = recovery.buildPoint(projects.pa, 'replace', '2026-11-14T10:00:00.000Z', null).projectId;
+    out.legacy = [db.pointProjectId({ project: { id: 'pold' } }), db.pointProjectId({ projectId: 'pnew', project: { id: 'pold' } }), db.pointProjectId({}), db.pointProjectId(null)];
+    // ten of A while A is open: 8 kept
+    for (let i = 0; i < 10; i += 1) await take('pa', 'pa');
+    out.tenOfA = await kept();
+    // B is opened: 'replace' point of A, then B's own points
+    await take('pa', 'pa');
+    for (let i = 0; i < 6; i += 1) await take('pb', 'pb');
+    out.afterB = await kept();
+    // C is opened: points of C; B and A are others now
+    for (let i = 0; i < 12; i += 1) await take('pc', 'pc');
+    out.afterC = await kept();
+    // an older planner's trim to 8 overall could have dropped the older projects' points: a point of A with none left
+    // the walk reads each record once per connection
+    return out;
+  });
+  assert.equal(result.built, 'pa');
+  assert.deepEqual(result.legacy, ['pold', 'pnew', '', '']);
+  assert.equal(result.tenOfA.length, 8, 'the open project keeps its newest 8');
+  assert.deepEqual(result.tenOfA, ['pa10', 'pa9', 'pa8', 'pa7', 'pa6', 'pa5', 'pa4', 'pa3']);
+  // A has 8 points before the switch; the new one makes 9 of A, so the oldest of A is the one that goes ... but A is now only 'other'
+  // at the point B is open: A keeps 3, B keeps its 6
+  const bPoints = result.afterB.filter((key) => key.startsWith('pb'));
+  assert.equal(bPoints.length, 6);
+  assert.deepEqual(result.afterB.filter((key) => key.startsWith('pa')), ['pa11', 'pa10', 'pa9'], 'A is another project now: its newest 3');
+  assert.equal(result.afterC.filter((key) => key.startsWith('pc')).length, 8, 'C, the open project: 8');
+  assert.deepEqual(result.afterC.filter((key) => key.startsWith('pb')), ['pb17', 'pb16', 'pb15'], 'B: 3');
+  assert.deepEqual(result.afterC.filter((key) => key.startsWith('pa')), ['pa11', 'pa10', 'pa9'], 'A: 3');
+  assert.equal(result.afterC.length, 8 + 3 + 3);
+});
+
+test('the other projects\' points are at most 24 together, oldest first, and a legacy point without a projectId counts as its project\'s', async () => {
+  const result = await page.evaluate(async () => {
+    const { recovery } = globalThis.lab;
+    const handle = await globalThis.lab.fresh();
+    let n = 0;
+    const take = async (id, open, legacy, spare) => {
+      n += 1;
+      const point = recovery.buildPoint(globalThis.lab.project(id, id, []), 'timer', '2026-11-14T10:00:00.000Z', null);
+      point.sequence = n;
+      if (legacy) delete point.projectId;
+      return handle.addPoint(point, spare, open);
+    };
+    const kept = async () => (await handle.listPoints()).map((point) => point.project.id + point.sequence);
+    const out = {};
+    // ten other projects, three points each, then the open one's: 30 points of others, 24 allowed
+    for (let project = 0; project < 10; project += 1) {
+      for (let i = 0; i < 3; i += 1) await take('p' + project, 'popen', project % 2 === 0);
+    }
+    await take('popen', 'popen', false);
+    out.others = (await kept()).filter((key) => !key.startsWith('popen'));
+    out.openKept = (await kept()).filter((key) => key.startsWith('popen'));
+    // a spared point survives even when it is the oldest of the others
+    const oldest = (await handle.listPoints()).slice(-1)[0];
+    out.sparedKey = oldest.key;
+    await take('popen', 'popen', false, oldest.key);
+    out.afterSpare = (await handle.listPoints()).map((point) => point.key).includes(oldest.key);
+    // the id given wins: a point of another project taken while "popen" is open does not take the open project's room
+    out.total = (await handle.listPoints()).length;
+    // with no open id given the point's own project is the open one
+    const alone = await globalThis.lab.fresh();
+    for (let i = 0; i < 10; i += 1) {
+      const point = recovery.buildPoint(globalThis.lab.project('plone', 'plone', []), 'timer', '2026-11-14T10:00:00.000Z', null);
+      await alone.addPoint(point);
+    }
+    out.alone = (await alone.listPoints()).length;
+    return out;
+  });
+  assert.equal(result.others.length, 24, 'no more than 24 points of other projects');
+  // the newest first: projects 9 down to 2 keep 3 each (24), projects 0 and 1 lose theirs
+  assert.deepEqual(result.others.map((key) => key.slice(0, 2)).filter((id, index, all) => all.indexOf(id) === index), ['p9', 'p8', 'p7', 'p6', 'p5', 'p4', 'p3', 'p2'], 'the oldest projects are the ones that lose their points');
+  assert.equal(result.openKept.length, 1);
+  assert.equal(result.afterSpare, true, 'a spared point is never trimmed');
+  assert.equal(result.alone, 8, 'without an open id the point\'s own project is the open one: the old rule of 8');
+});
+
+test('after a switch nothing is known about the images store, so the page-leaving save writes every image it holds', async () => {
+  const result = await page.evaluate(async () => {
+    const handle = await globalThis.lab.fresh();
+    // B is a copy of A: the same picture id, so the last save's own record of "stored" would still hold after the switch
+    const a = globalThis.lab.project('pa', 'A', ['ishared']);
+    const b = { ...a, id: 'pb', label: 'B' };
+    const seeded = await globalThis.lab.seed(a, { ishared: 'bytes of both' });
+    const known = await handle.shelveAndStart(a, b, seeded.known, { images: seeded.held, freshImages: seeded.held });
+    // another writer takes the picture out of the store, as an older planner's sweep could
+    const tx = handle.main.transaction('images', 'readwrite');
+    tx.objectStore('images').delete('ishared');
+    await new Promise((resolve) => { tx.oncomplete = resolve; });
+    const leaving = handle.saveProjectLeaving(b, known, { images: seeded.held });
+    await leaving.done;
+    return globalThis.lab.everything();
+  });
+  assert.deepEqual(result.images, { ishared: 'bytes of both' }, 'forgetStored() ran with the switch, so the leaving save does not trust the images store');
+});
+
+// ---------------------------------------------------------------- the review of SV2-116 (SV2-116b)
+
+test('promoteShelved: the shelf record becomes current with its pictures and the shelf key goes, in one transaction; it refuses a current that is there, a record that is gone or kept under another id, and honours the write hook', async () => {
+  const result = await page.evaluate(async () => {
+    const { db } = globalThis.lab;
+    const handle = await globalThis.lab.fresh();
+    const a = globalThis.lab.project('pa', 'This year', ['iaaaa']);
+    const b = globalThis.lab.project('pb', 'Next year', []);
+    const seeded = await globalThis.lab.seed(a, { iaaaa: 'bytes of A' });
+    await handle.shelveAndStart(a, b, seeded.known, { images: seeded.held });
+    const out = { shelved: await globalThis.lab.everything() };
+    // current is there: refused, nothing moves
+    out.exists = await globalThis.lab.refusal(handle.promoteShelved('pa'));
+    out.afterExists = await globalThis.lab.everything();
+    // the saved project is gone
+    await new Promise((resolve, reject) => {
+      const tx = handle.main.transaction('project', 'readwrite');
+      tx.objectStore('project').delete('current');
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    out.gone = await globalThis.lab.refusal(handle.promoteShelved('pnothere'));
+    db.hooks.failWrite = 'The disk is full.';
+    out.hook = await globalThis.lab.refusal(handle.promoteShelved('pa'));
+    db.hooks.failWrite = null;
+    out.afterRefusals = await globalThis.lab.everything();
+    // a record kept under another project's id
+    await new Promise((resolve, reject) => {
+      const tx = handle.main.transaction('project', 'readwrite');
+      tx.objectStore('project').put({ savedAt: '2026-11-14T10:00:00.000Z', project: { id: 'pother' }, shelvedAt: 'x', bytes: 1, images: {} }, 'shelf:pwrong');
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    out.wrong = await globalThis.lab.refusal(handle.promoteShelved('pwrong'));
+    // it works
+    const promoted = await handle.promoteShelved('pa');
+    out.promoted = { savedAt: promoted.savedAt, id: promoted.record.project.id };
+    out.after = await globalThis.lab.everything();
+    return out;
+  });
+  assert.deepEqual(Object.keys(result.shelved.shelf), ['shelf:pa'], 'the setup: a project on the shelf with its picture inside');
+  assert.equal(result.exists.code, 'current-exists');
+  assert.deepEqual(result.afterExists, result.shelved, 'nothing moved');
+  assert.equal(result.gone.code, 'no-such-project');
+  assert.equal(result.hook.message, 'The disk is full.');
+  assert.equal(result.wrong.code, 'unreadable-target');
+  assert.equal(result.afterRefusals.current, null);
+  assert.deepEqual(Object.keys(result.afterRefusals.shelf), ['shelf:pa'], 'a refusal leaves the shelf as it was');
+  assert.equal(result.after.current.id, 'pa', 'the shelved project is current');
+  assert.equal(result.after.current.savedAt, result.promoted.savedAt);
+  assert.equal(result.after.current.openedAt, result.promoted.savedAt, 'stamped for the tab lock');
+  assert.deepEqual(Object.keys(result.after.shelf), ['shelf:pwrong'], 'its shelf key is gone (the other record is not its business)');
+  assert.deepEqual(result.after.images, { iaaaa: 'bytes of A' }, 'its picture is in the images store');
+});
+
+test('precheckMove gives the shelf\'s refusals with the move\'s own sentences and writes nothing', async () => {
+  const result = await page.evaluate(async () => {
+    const { db } = globalThis.lab;
+    const handle = await globalThis.lab.fresh();
+    const a = globalThis.lab.project('pa', 'This year', []);
+    const b = globalThis.lab.project('pb', 'Next year', []);
+    const seeded = await globalThis.lab.seed(a, {});
+    await handle.shelveAndStart(a, b, seeded.known, {});
+    const before = await globalThis.lab.everything();
+    const out = {};
+    out.ok = await globalThis.lab.refusal(handle.precheckMove('pa', b, null));
+    out.okFresh = await globalThis.lab.refusal(handle.precheckMove(null, b, globalThis.lab.project('pc', 'C', [])));
+    out.gone = await globalThis.lab.refusal(handle.precheckMove('pnothere', b, null));
+    out.hasOpen = await globalThis.lab.refusal(handle.precheckMove('pnothere', a, null));
+    out.hasFresh = await globalThis.lab.refusal(handle.precheckMove(null, b, a));
+    // the same refusals from the move itself, for the same sentences
+    out.moveGone = await globalThis.lab.refusal(handle.switchTo('pnothere', b, '2999', {}));
+    out.moveHasOpen = await globalThis.lab.refusal(handle.switchTo('pnothere', a, '2999', {}));
+    out.moveHasFresh = await globalThis.lab.refusal(handle.shelveAndStart(b, a, '2999', {}));
+    // a full shelf: 19 kept
+    for (let n = 0; n < 18; n += 1) {
+      await new Promise((resolve, reject) => {
+        const tx = handle.main.transaction('project', 'readwrite');
+        tx.objectStore('project').put({ savedAt: 'x', project: { id: 'pf' + n }, shelvedAt: 'x', bytes: 1, images: {} }, 'shelf:pf' + n);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+    out.full = await globalThis.lab.refusal(handle.precheckMove(null, b, globalThis.lab.project('pd', 'D', [])));
+    out.moveFull = await globalThis.lab.refusal(handle.shelveAndStart(b, globalThis.lab.project('pd', 'D', []), '2999', {}));
+    out.fullTarget = await globalThis.lab.refusal(handle.precheckMove('pa', b, null));
+    db.hooks.failWrite = 'The disk is full.';
+    out.hook = await globalThis.lab.refusal(handle.precheckMove('pa', b, null));
+    db.hooks.failWrite = null;
+    out.same = JSON.stringify(Object.keys((await globalThis.lab.everything()).shelf).length);
+    out.before = Object.keys(before.shelf);
+    return out;
+  });
+  assert.equal(result.ok, null);
+  assert.equal(result.okFresh, null);
+  assert.equal(result.gone.code, 'no-such-project');
+  assert.equal(result.hasOpen.code, 'shelf-has-open');
+  assert.equal(result.hasFresh.code, 'shelf-has-fresh');
+  assert.equal(result.moveGone.message, result.gone.message);
+  assert.equal(result.moveHasOpen.message, result.hasOpen.message);
+  assert.equal(result.moveHasFresh.message, result.hasFresh.message);
+  assert.equal(result.full.code, 'shelf-full');
+  assert.equal(result.moveFull.message, result.full.message);
+  assert.equal(result.fullTarget, null, 'opening a kept project is not a new one: the limit is for starting');
+  assert.equal(result.hook.message, 'The disk is full.');
+  assert.equal(result.same, '19');
+});
+
+test('the shelf record\'s exportedAt is the one the caller passes, not the stored current\'s; left out, the stored one', async () => {
+  const result = await page.evaluate(async () => {
+    const handle = await globalThis.lab.fresh();
+    const a = globalThis.lab.project('pa', 'This year', []);
+    const b = globalThis.lab.project('pb', 'Next year', []);
+    const c = globalThis.lab.project('pc', 'Third', []);
+    const seeded = await globalThis.lab.seed(a, {});
+    await handle.saveProject(a, seeded.known, { exportedAt: '2026-11-01T00:00:00.000Z' });
+    const known = (await handle.readCurrent()).savedAt;
+    const second = await handle.shelveAndStart(a, b, known, { exportedAt: '2026-11-14T09:00:00.000Z' });
+    const out = { given: (await handle.readShelved('pa')).exportedAt };
+    const third = await handle.shelveAndStart(b, c, second, { exportedAt: null });
+    out.nulled = (await handle.readShelved('pb')).exportedAt;
+    await handle.saveProject(c, third, { exportedAt: '2026-11-05T00:00:00.000Z' });
+    const stored = (await handle.readCurrent()).savedAt;
+    await handle.switchTo('pa', c, stored, {});
+    out.stored = (await handle.readShelved('pc')).exportedAt;
+    return out;
+  });
+  assert.deepEqual(result, { given: '2026-11-14T09:00:00.000Z', nulled: null, stored: '2026-11-05T00:00:00.000Z' });
+});
+
+// ---------------------------------------------------------------- in Node: the tab lock's grace
+
+test('tabs: a tab left behind by a switch is told so for 10 s, and only then', () => {
+  const stamped = (project, at) => ({ savedAt: at, openedAt: at, project: { id: project } });
+  const at = '2026-11-14T10:00:00.000Z';
+  const now = Date.parse(at);
+  assert.equal(OPENED_GRACE_MS, 10000);
+  assert.equal(switchedAway(stamped('pb', at), 'pa', now + 1000), true, 'another project, just switched: left behind');
+  assert.equal(switchedAway(stamped('pb', at), 'pa', now + OPENED_GRACE_MS), true, 'the edge is inside');
+  assert.equal(switchedAway(stamped('pb', at), 'pa', now + OPENED_GRACE_MS + 1), false, 'later than that: an ordinary change');
+  assert.equal(switchedAway(stamped('pb', at), 'pb', now + 1000), false, 'the same project is not a switch');
+  assert.equal(switchedAway({ savedAt: at, project: { id: 'pb' } }, 'pa', now + 1000), false, 'a record no switch wrote has no openedAt');
+  assert.equal(switchedAway(stamped('pb', at), 'pa', now - 1), false, 'a stamp in the future is not trusted');
+  assert.equal(switchedAway({ openedAt: 'yesterday', project: { id: 'pb' } }, 'pa', now), false);
+  assert.equal(switchedAway(null, 'pa', now), false);
+  assert.equal(switchedAway({ openedAt: at }, 'pa', now), false, 'no project, no switch');
+  assert.equal(switchedAway(stamped('pb', at), 'pa', NaN), false);
+});
+
+test('after all of that the page has logged no error', () => {
+  assert.deepEqual(session.problems(), { errors: [], blocked: [], shimmed: [] });
+});

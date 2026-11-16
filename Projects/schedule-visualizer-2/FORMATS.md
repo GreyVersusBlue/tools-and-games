@@ -35,7 +35,7 @@ every rule on this page and `engine/repair.js` enforces them on every load.
   first is a letter that says what the thing is: `p` project, `f` floor, `r`
   room, `o` other space, `k` corridor name, `x` exit, `c` connection, `z`
   zone, `s` subject, `t` teacher, `g` group, `d` day type, `i` image, `n`
-  snapshot. An id is unique across the whole project, never changes and is
+  snapshot, `e` scenario. An id is unique across the whole project, never changes and is
   never reused. Renaming something never changes its id.
 - **Names are data.** Any name a user can type may hold any character and is
   stored exactly as typed, surrounding spaces included. Nothing here trims,
@@ -71,7 +71,9 @@ every rule on this page and `engine/repair.js` enforces them on every load.
 | `duties` | Duty[] | Optional; absent is none. Duties, standing meetings and teachers' own lunches, laid over teachers' days. |
 | `release` | Release[] | Optional; absent is none; at most 50. Staggered dismissal: groups, a grade or a wing that leave a little after the bell. Not published. |
 | `accepted` | AcceptedFinding[] | Findings the user has accepted. |
-| `scenario` | Scenario or `null` | The one open scenario. |
+| `label` | text | Optional; absent reads as "". The name this project goes by when several are kept on a device ("This year", "Next year's proposal"), apart from the school's name. At most 60 characters once trimmed (counted as characters, not bytes); stored with the surrounding spaces taken off; a blank label is stored as no `label` at all. Not in the schedule file, the building file or the published data. |
+| `scenario` | Scenario or `null` | The one open scenario: the one the scenario lab edits, compares and applies. |
+| `scenarios` | Scenario[] | Optional; absent is none. The kept scenarios, the ones not open, in the order the lab lists them. At most 11, so with the open one a project holds at most 12. Each carries an `id` and has a name no other scenario has (the tool's actions see to that; a file that breaks it is still read). Travels in the project file, a snapshot and a recovery point; not in the schedule file, the building file or the published data. |
 | `publish` | PublishSettings | |
 | `onboarding` | Onboarding | Getting started. |
 
@@ -466,7 +468,8 @@ record written before the field existed, never reads as changed.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `name` | text | |
+| `id` | id, `e…` | Optional on the open scenario (`scenario`), required on every kept one (`scenarios`). Given to every scenario made from now on, and to the open one when it is first kept. Unique across `scenario` and `scenarios`, and across the whole project like any id. |
+| `name` | text | Not checked on load: a name may be blank or the same as another's. The actions keep names apart, without regard to case or spaces. |
 | `changes` | Change[] | |
 | `compared` | `null` or `{ fileName, addedGroups, removedGroups }` | Set when the scenario came from comparing with another project file. The two lists hold group names. |
 
@@ -506,6 +509,7 @@ removed on load: the scenario lab reconciles it and says what it dropped.
 | 0 | Data with no `version`. A scenario held one `dayTypeId` for all of its changes. |
 | 1 | `format` and `version` are in the object. Each scenario change has its own `dayTypeId`. `Floor.level` exists. |
 | 1, unchanged | Added without a version step, every one optional: `DayType.sameAs` and `short`, `bellSchedules`, `calendar`, `marks`, `duties`, `release`, `PublishSettings.staleAtCalendarEnd`, `PublishSettings.lastPublishedHadCalendar` and `views.calendar`. A file without them reads exactly as before; a copy of the tool from before them keeps them through its own repair, which copies what it does not know. |
+| 1, unchanged | Added without a version step, every one optional (ARCHITECTURE 21.2, 21.5): `label`, `scenarios` and `Scenario.id` (id kind `e`). A file without them reads exactly as before; a copy of the tool from before them keeps them through its own repair, which copies what it does not know, and shows only the open scenario. |
 | 1, unchanged | Added without a version step, every one optional (ARCHITECTURE 19.2): `Floor.lifts`, `notStepFree` and `refuges` (id kind `a`), `Door.stepFree`, `Exit.stepFree`, `Connection.kind`, `staffOnly` and `car`, `Group.stepFree`, and the settings `elevatorWaitSeconds`, `elevatorSecondsPerFloor` and `elevatorPeoplePerTrip`. A file without them reads exactly as before. |
 
 ### What is never in a project

@@ -46,6 +46,7 @@ import { focusHash, groupOf } from './schedule/address.js';
 import { setSetting, setOnboarding, replaceProject } from '../engine/actions.js';
 import { sampleSchool, SAMPLE_PROJECT_ID } from '../data/sample-school.js';
 import { startStorage } from '../storage/session.js';
+import { openedSentences, keptDialog, rememberOpening, forgetOpening, entryName } from './project/projects.js';
 import { readDevice, writeDevice as storeDevice, DEVICE_KEY as STORED_DEVICE_KEY } from '../storage/device.js';
 import { engineFor } from './engine-client.js';
 
@@ -140,8 +141,12 @@ async function boot() {
   const sectionHost = h('div', { class: 'surface__section', id: 'section' });
   const toastHost = h('div', { class: 'toasts', id: 'toasts', role: 'status' });
   const announcer = h('div', { class: 'vh', id: 'announcer', 'aria-live': 'polite' });
+  // A page opened by a switch of projects says so here (DESIGN 15.9 item 9). The
+  // region is in the page from the first paint, so the words put into it after
+  // start are heard.
+  const shellStatus = h('div', { class: 'vh', id: 'shell-status', role: 'status' });
   const layout = h('div', { class: 'surface__layout' }, sectionHost);
-  const main = h('main', { class: 'surface', id: 'surface', tabindex: '-1' }, layout, toastHost, announcer);
+  const main = h('main', { class: 'surface', id: 'surface', tabindex: '-1' }, layout, toastHost, announcer, shellStatus);
   // The inspector: a 320 px panel on the right that folds to a 32 px strip
   // of its tabs' icons, and under 900 px a sheet along the bottom that opens
   // from its handle (DESIGN 4). The section's panel goes in the body.
@@ -296,9 +301,14 @@ async function boot() {
 
   // ------------------------------------------------------------ the school name
 
+  // How many projects this device keeps; the chip and the tab title carry the label only above one.
+  let projectsKept = 1;
+
   function drawSchool() {
     const name = store.project.settings.schoolName;
-    schoolText.textContent = name === '' ? TOOL_NAME : name;
+    // with more than one project kept, the label tells two windows apart (DESIGN 15.2)
+    const label = projectsKept > 1 && typeof store.project.label === 'string' ? store.project.label.trim() : '';
+    schoolText.textContent = (name === '' ? TOOL_NAME : name) + (label === '' ? '' : ' \u00B7 ' + label);
     schoolMore.textContent = name === '' ? ' (no school name yet). Set the school name' : '. Change the school name';
     schoolButton.classList.toggle('school__name--unset', name === '');
     sampleChip.hidden = store.project.id !== SAMPLE_PROJECT_ID;
@@ -339,9 +349,50 @@ async function boot() {
 
   // ------------------------------------------------------------ the sample school
 
+  let loadingSample = false;
+
   async function loadSample(opener) {
     const now = store.project;
     if (now.id === SAMPLE_PROJECT_ID) return;
+    // one project, one place: a sample school already kept on this device is not made a second time (ARCHITECTURE 21.10)
+    const keptAs = ctx.storage ? await ctx.storage.projects.holds(SAMPLE_PROJECT_ID) : null;
+    if (keptAs !== null) {
+      const way = await keptDialog(ctx, {
+        title: 'The sample school is already kept on this device',
+        sentence: 'The sample school is already kept on this device as ' + keptAs + '. You can open that one, or make another copy of the sample school and open the copy.',
+        label: keptAs,
+        heldBy: 'shelf',
+        opener,
+      });
+      if (way !== 'open' && way !== 'keep') return;
+      if (loadingSample) return;
+      // the page reloads on success; the sentence it says is written first, and the button says it is working
+      loadingSample = true;
+      if (opener && opener.isConnected) {
+        opener.setAttribute('aria-disabled', 'true');
+        opener.setAttribute('aria-busy', 'true');
+      }
+      rememberOpening({ kind: way === 'open' ? 'open' : 'start', from: entryName({ label: store.project.label || '', schoolName: store.project.settings.schoolName }) });
+      let answer;
+      try {
+        answer = way === 'open'
+          ? await ctx.storage.projects.open(SAMPLE_PROJECT_ID)
+          : await ctx.storage.projects.startAnother('sample', undefined, { copy: true });
+      } catch (error) {
+        answer = { ok: false, text: 'The sample school was not opened. ' + (error && error.message ? error.message : 'Try again.') };
+      }
+      if (answer.ok && !answer.reloadFailed) return; // the page reloads a moment from now
+      loadingSample = false;
+      if (opener && opener.isConnected) {
+        opener.removeAttribute('aria-disabled');
+        opener.removeAttribute('aria-busy');
+      }
+      if (!answer.ok) {
+        forgetOpening();
+        toast({ kind: 'problem', text: answer.text });
+      }
+      return;
+    }
     if (hasContent(now)) {
       const ok = await confirm({
         title: 'Replace this project with the sample school?',
@@ -408,6 +459,10 @@ async function boot() {
     announce(text) {
       announcer.textContent = text;
     },
+    // The page's polite status region (a page opened by a switch of projects uses it).
+    say(text) {
+      shellStatus.textContent = text;
+    },
     // The top bar's second row (the floor tabs). Pass null to take it away.
     setSecondRow(element) {
       secondRow.replaceChildren(...(element ? [element] : []));
@@ -472,7 +527,8 @@ async function boot() {
   function drawTitle() {
     if (!current) return;
     const name = store.project.settings.schoolName;
-    document.title = current.section.name + ' · ' + (name === '' ? TOOL_NAME : name + ' · ' + TOOL_NAME);
+    const label = projectsKept > 1 && typeof store.project.label === 'string' ? store.project.label.trim() : '';
+    document.title = (label === '' ? '' : label + ' · ') + current.section.name + ' · ' + (name === '' ? TOOL_NAME : name + ' · ' + TOOL_NAME);
   }
 
   function route() {
@@ -589,6 +645,20 @@ async function boot() {
   await ctx.storage.ready;
 
   store.subscribe(draw);
+  // The projects this device keeps: the chip and the title carry the label only above one.
+  async function countProjects() {
+    try {
+      const kept = (await ctx.storage.projects.list()).length;
+      if (kept === projectsKept) return;
+      projectsKept = kept;
+      drawSchool();
+      drawTitle();
+    } catch (error) { /* the chip stays as it is */ }
+  }
+  ctx.storage.subscribe((state, what) => {
+    if (what === 'projects' || what === 'switched') countProjects();
+  });
+  await countProjects();
   window.addEventListener('hashchange', route);
   route();
   draw();
@@ -597,6 +667,12 @@ async function boot() {
   // section yet: it goes on to the section's surface now (SV2-32h1), unless
   // the question was answered by a tap (SV2-32r).
   if (document.activeElement === main && lastInput !== 'touch') focusSurface();
+  // A page opened by a switch of projects says so, in the status region, in a toast and (on the Project section) in the card.
+  const arrived = openedSentences(ctx);
+  if (arrived) {
+    ctx.say(arrived.line);
+    toast({ text: arrived.toast });
+  }
   document.documentElement.dataset.ready = 'true';
 
   // For the tests and for the console.

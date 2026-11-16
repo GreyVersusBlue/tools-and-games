@@ -23,6 +23,22 @@ export const TAB_KEY = 'sv2:tab';
 export const TAB_RETRY_MS = 5000;
 export const TAB_BEAT_MS = 2000;
 export const TAB_STALE_MS = 60000;
+// A project switch stamps `openedAt` on the saved record (db.js switchTo). A
+// tab that becomes the editor within this long of it, and finds another
+// project than its own, was left behind by the switch: it gives the lock back
+// and reloads read-only instead of racing the tab that switched (21.10).
+export const OPENED_GRACE_MS = 10000;
+
+// True when `record` (the saved "current") was put there by a switch to a
+// project other than `projectId` no more than OPENED_GRACE_MS before `now`
+// (milliseconds). Pure; anything unreadable is false.
+export function switchedAway(record, projectId, now) {
+  if (!record || typeof record !== 'object' || typeof record.openedAt !== 'string') return false;
+  const project = record.project;
+  if (!project || typeof project !== 'object' || project.id === projectId) return false;
+  const at = Date.parse(record.openedAt);
+  return Number.isFinite(at) && Number.isFinite(now) && now - at >= 0 && now - at <= OPENED_GRACE_MS;
+}
 
 export function watchTabs(options) {
   const opts = options || {};
