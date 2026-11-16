@@ -2,7 +2,7 @@
 // of each transition, and the inline checks on a bell schedule. Times are
 // stored as 24-hour "HH:MM" and shown in the school's chosen form.
 
-import { isBellTime, bellSchedulesOf } from './schema.js';
+import { isBellTime, bellSchedulesOf, PERIOD_WORDS } from './schema.js';
 import { effectiveDayType } from './day-types.js';
 
 // Bell schedule B of this project, or null. A day type's own bells are its
@@ -53,7 +53,8 @@ function letters(index) {
 // "ordinal" (3rd Hour). A custom word (`settings.periodCustom`) wins over
 // `periodWord` and is given as typed in every form, "Class" and "Classes",
 // since a word that is a name is not lower-cased. An absent or malformed field
-// is today's word: the staff browser never runs repair.
+// (or a periodWord outside the four) is today's word, "Period": the staff
+// browser never runs repair.
 export function periodWordForms(settings) {
   const custom = settings && settings.periodCustom;
   if (custom && typeof custom === 'object' && typeof custom.word === 'string' && custom.word.trim() !== '') {
@@ -62,7 +63,7 @@ export function periodWordForms(settings) {
     const count = custom.count === 'letter' || custom.count === 'ordinal' ? custom.count : 'number';
     return { one: word, many: plural, oneLower: word, manyLower: plural, count };
   }
-  const word = settings && typeof settings.periodWord === 'string' && settings.periodWord !== '' ? settings.periodWord : 'Period';
+  const word = settings && PERIOD_WORDS.includes(settings.periodWord) ? settings.periodWord : 'Period';
   const count = word === 'Block' ? 'letter' : word === 'Hour' ? 'ordinal' : 'number';
   return { one: word, many: word + 's', oneLower: word.toLowerCase(), manyLower: word.toLowerCase() + 's', count };
 }

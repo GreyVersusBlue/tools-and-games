@@ -125,10 +125,10 @@ export function schoolMarkFor(project, dayTypeId, period) {
 export function awayFor(teacher, dayTypeId, period, options) {
   const list = teacher && Array.isArray(teacher.away) ? teacher.away : [];
   if (list.length === 0) return null;
-  const project = options && options.project && typeof options.project === 'object' ? options.project : {};
+  const project = options && options.project && Array.isArray(options.project.dayTypes) ? options.project : { dayTypes: [] };
   const date = options && typeof options.date === 'string' ? options.date : null;
   for (const entry of list) {
-    if (!entry || typeof entry !== 'object') continue;
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
     if (!takesDay(project, entry.dayTypeIds, dayTypeId)) continue;
     const periods = Array.isArray(entry.periods) ? entry.periods.filter((held) => Number.isInteger(held)) : [];
     if (periods.length > 0 && !periods.includes(period)) continue;

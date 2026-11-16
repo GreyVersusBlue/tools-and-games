@@ -171,6 +171,7 @@ row names a file it does not run.
 | `test/engine/graph.test.mjs` | The walkable graph, room entries, reachability |
 | `test/engine/building-checks.test.mjs` | Each building check, found where it is, with its sentence |
 | `test/engine/teacher-day.test.mjs` | The one rule for a teacher's day |
+| `test/engine/w7-rules.test.mjs` | W7's rule functions: period words and names, features, stairwells and their letter, away, directions through a stairwell, and a project without the new fields unchanged |
 | `test/engine/checks.test.mjs` | The schedule checks of spec 5.7 |
 | `test/engine/checks-duties.test.mjs` | The checks with marks and duties: duty-clash, duty-nobody, no-planning and consecutive when a duty or a mark takes a period, the empty-period note under a mark |
 | `test/engine/routing.test.mjs` | Routes: the quickest, the tie-breaks, the options, the named failures |
