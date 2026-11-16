@@ -274,10 +274,11 @@ export const BROWSER_SECONDS = {
   'browser/storage-switch.mjs': 400, // 133 s on Huginn alone, about 300 s on two slow cores (SV2-116b)
   'browser/projects.mjs': 120,
   'browser/one-per-id.mjs': 150,
-  'browser/recovery.mjs': 23,
+  'browser/recovery.mjs': 38, // 38 s on Huginn (SV2-118b)
   'browser/scenario.mjs': 21,
   'browser/scenarios-kept.mjs': 45, // 36 s on two slow cores (SV2-122)
-  'browser/compare-buildings.mjs': 90, // SV2-123
+  'browser/compare-buildings.mjs': 90, // SV2-123; 45 s on Huginn
+  'browser/merge-import.mjs': 40, // 40 s on Huginn (SV2-120)
   'browser/fix.mjs': 21,
   'browser/safety.mjs': 20,
   'browser/step-free-safety.mjs': 20,
@@ -299,7 +300,7 @@ export const BROWSER_SECONDS = {
   'browser/movement.mjs': 13,
   'browser/staff-views-a.mjs': 13,
   'browser/calendar-review.mjs': 13,
-  'browser/snapshots.mjs': 12,
+  'browser/snapshots.mjs': 25, // 25 s on Huginn (SV2-118b)
   'browser/tabs.mjs': 12,
   'browser/auto-snapshots.mjs': 12,
   'browser/trace-scale.mjs': 12,
