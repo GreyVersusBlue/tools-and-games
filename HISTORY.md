@@ -2009,6 +2009,8 @@ Generator.
 
 **#1076. Reserved: #1047 to #1076 are held for sessions on Huginn (the Selector loop); anyone else numbers from #1077.**
 
+**#1107. Reserved: #1078 to #1107 are held for sessions on Huginn (the Selector loop); anyone else numbers from #1108.**
+
 # The log
 ## School Generator: the brush rasterizes only the rooms a stroke can reach, 2026-11-06 (TG-39)
 
