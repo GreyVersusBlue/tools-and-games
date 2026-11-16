@@ -516,6 +516,29 @@ test('Elevator is no longer "planned": ordinary routes, step-free routes and an 
   assert.doesNotMatch(all.map((each) => each.meaning).join(' '), /\blifts?\b/i, 'the code says lift; Help says elevator');
 });
 
+// DESIGN 15 (SV2-124b): Help's W6 words say what the code's buttons and screens do.
+test('Help says "Open" followed by the label, as the buttons do, and the three W6 words mean what the screens show', () => {
+  const part = (id, word) => helpModel({ sections: [{ id, name: id, key: '1' }], settings: { ...defaultSettings(), periodWord: word || 'Period' } }).sections[0].parts.join(' ');
+  const project = part('project');
+  assert.doesNotMatch(project, /Open that project/, 'the buttons say "Open <label>", not "Open that project"');
+  assert.equal((project.match(/Open followed by that project’s label/g) || []).length, 2, 'the one-per-id choice and the recovery row each name the button as Open followed by the label');
+  assert.match(project, /Duplicate and open it then makes the copy/, 'the Duplicate dialog\u2019s confirm button is named as the code names it');
+  const meaning = (term) => words(defaultSettings()).find((each) => each.term === term).meaning;
+  assert.match(meaning('Label'), /^A project’s own name on this device, such as This year or Next year’s proposal/);
+  assert.match(meaning('Label'), /tells it from the other projects kept here/);
+  assert.match(meaning('Kept scenario'), /saved in the project but not open/);
+  assert.match(meaning('Kept scenario'), /switched to, duplicated, deleted or compared with/);
+  assert.match(meaning('Building comparison'), /^Two different buildings/);
+  assert.match(meaning('Building comparison'), /matched by group and room names and not saved/);
+  assert.match(meaning('Building comparison'), /the map shows one building at a time, both on one scale, with a switch/);
+  assert.doesNotMatch(meaning('Building comparison'), /side-by-side/, 'the map shows one building at a time, not two side by side');
+  // the import part's "periods per day" is the school's own word
+  assert.match(part('project', 'Mod'), /the mods per day, the period word, times and the checks/);
+  assert.match(part('project', 'Hour'), /the hours per day, the period word/);
+  assert.doesNotMatch(part('project', 'Block'), /the periods per day/);
+  assert.match(part('project'), /the periods per day, the period word/);
+});
+
 test('the numbers say what an elevator costs and how a class rides, from the settings the engine reads (wait, ride per floor, people per trip, and the trips of the default head count)', () => {
   const travel = (settings) => numbers(settings).find((part) => part.id === 'travel').sentences.join(' ');
   const text = travel(defaultSettings());
