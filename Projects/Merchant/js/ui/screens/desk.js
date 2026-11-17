@@ -4,7 +4,7 @@
 // paper is raised, which back is being read, whether a flip is under way.
 import { h, qs } from '../dom.js';
 import * as engine from '../../engine/index.js';
-import { front, back, record, edge, paperTitle, happened, num, dinars, sourceOf } from './paper.js';
+import { front, back, record, edge, paperTitle, happened, num, dinars, RECORD_KINDS } from './paper.js';
 
 const WORDS = ['one', 'two', 'three', 'four'];
 const COUNT = ['No', 'One', 'Two', 'Three', 'Four', 'Five'];
@@ -121,6 +121,8 @@ export function createDesk(app) {
   }
 
   // ---- what is on the desk
+  // DESIGN 4.6: the account is folded shut on the first return of a game and open after.
+  const returnsSeen = () => app.state.log.filter(e => e.kind === 'return').length;
   const openPapers = () => app.state.desk.filter(p => p.state === 'open');
   function listed() {
     const list = app.state.desk.filter(p => p.state === 'open' || p.id === backOf?.paper.id);
@@ -134,28 +136,26 @@ export function createDesk(app) {
   }
 
   function stubPaper() {
-    const stop = (content.stops ?? []).find(s => s.id === (content.city.firstStop ?? 'damascus'));
-    let plan = null, problem = null;
-    if (typeof engine.suggestPlan === 'function') {
-      try { plan = engine.suggestPlan(app.state, content, stop?.id); } catch (e) { problem = e.message; }
-      if (plan && plan.ok === false) { problem = plan.reason ?? 'The plan cannot be made.'; plan = null; }
-      if (plan?.plan) plan = plan.plan;
-    }
+    const stop = (content.stops ?? []).find(x => x.id === (content.city.firstStop ?? 'damascus'));
+    const plan = engine.suggestPlan(app.state, content, stop?.id); // a plan, or null when nothing fits
     const agent = plan && (content.agents ?? []).find(a => a.id === plan.agent);
-    const title = plan && agent && stop ? `Send ${agent.name} to ${stop.name}` : 'Your first expedition';
-    const body = plan ? `Everything is packed and filled in. ${agent?.name ?? 'Your agent'} is ready to take the house's goods to ${stop?.name ?? 'the first stop'}.`
-      : problem ?? 'The map table is not open yet, so nobody can set out this season. Your agent waits.';
+    const goodsText = plan && Object.entries(plan.cargo ?? {}).map(([g, n]) =>
+      `${n} ${n === 1 ? 'load' : 'loads'} of ${(content.goods ?? []).find(x => x.id === g)?.name?.toLowerCase() ?? g}`).join(' and ');
+    const title = plan ? `Send ${agent.name} to ${stop.name}` : 'Nobody can set out yet';
+    const body = plan
+      ? `Everything is packed and filled in. ${agent.name} will carry ${goodsText} to ${stop.name}, with your own money behind it.`
+      : 'The house has nobody free to send, or nothing to send. You can try again next season.';
     const titleId = 'paper-stub-title';
-    const buttons = plan
-      ? h('button', { class: 'button next', type: 'button', id: 'btn-send', onclick: () => sendStub(plan) }, `Send ${agent?.name ?? 'them'} to ${stop?.name ?? 'the first stop'}`)
+    const button = plan
+      ? h('button', { class: 'button next', type: 'button', id: 'btn-send', onclick: () => sendStub(plan) }, `Send ${agent.name} to ${stop.name}`)
       : h('button', { class: 'button next', type: 'button', id: 'btn-stub-dismiss', onclick: () => closeStub() }, 'Leave it for now');
     return h('article', { class: 'paper sheet front kind-outfit', dataset: { paper: 'stub', kind: 'outfit', face: 'front' }, 'aria-labelledby': titleId },
       h('div', { class: 'sheet-head' }, h('span', { class: 'seal seal-plain', 'aria-hidden': 'true' }), h('p', { class: 'sender' }, h('strong', null, 'The house'), h('span', null, ' Cairo'))),
       h('h2', { class: 'sheet-title', id: titleId, tabindex: '-1' }, title),
-      h('p', { class: 'sheet-body', id: 'stub-body' }, body), buttons);
+      h('p', { class: 'sheet-body', id: 'stub-body' }, body), button);
   }
   function sendStub(plan) {
-    try { app.act(s => engine.outfit(s, content, plan)); } catch (e) { qs('#stub-body', el).textContent = e.message; return; }
+    try { app.act(s => engine.outfit(s, content, plan)); } catch (e) { qs('#stub-body', el).textContent = e.message.replace(/^outfit: /, ''); return; }
     closeStub();
   }
   function closeStub() { stub = null; draw({ focus: 'next' }); }
@@ -176,7 +176,7 @@ export function createDesk(app) {
         node = back(app, paper, { now: backOf.now, fresh: backOf.fresh, onNext: next });
         node.dataset.face = 'back';
       } else if (paper.id === 'stub') node = stubPaper();
-      else if (paper.kind === 'return' || paper.kind === 'accounts') node = record(app, paper, { onDone: () => answer(paper, { id: 'ok', now: [] }) });
+      else if (RECORD_KINDS.includes(paper.kind)) node = record(app, paper, { open: returnsSeen() > 1, onDone: () => answer(paper, { id: 'ok', now: [] }) });
       else node = front(app, paper, { onChoose: (c) => answer(paper, c), locked: () => busy });
       const key = `${paper.id}:${backOf ? 'back' : 'front'}`;
       if (shown.has(key) && !opts.flipped) node.classList.add('still');
@@ -196,8 +196,11 @@ export function createDesk(app) {
     const wrap = (title, ...rest) => h('article', { class: 'paper sheet front kind-phase', dataset: { phase, face: 'front' }, 'aria-labelledby': 'phase-title' },
       h('h2', { class: 'sheet-title', id: 'phase-title', tabindex: '-1' }, title), ...rest);
     if (phase === 'interlude') {
-      const gap = (content.text?.interludes ?? [])[v.act - 2];
-      return wrap(gap?.title ?? 'Years pass', h('p', { class: 'sheet-body' }, gap?.body ?? 'Years go by.'),
+      const gap = v.interlude;
+      return wrap('Years pass',
+        gap ? h('p', { class: 'span', id: 'interlude-span' }, `${gap.from} to ${gap.to}`) : null,
+        ...(gap?.paragraphs ?? []).map(p => h('p', { class: 'sheet-body' }, p.text)),
+        h('p', { class: 'sheet-body' }, `The house carries ${dinars(app.state.money)} into the next years.`),
         h('button', { class: 'button next', type: 'button', id: 'btn-open-house', onclick: () => { app.act(s => engine.openSeason(s, content)); seasonKey = null; draw({ focus: 'season' }); } },
           `Open the house in ${cap(v.season)} ${v.year}`));
     }
@@ -219,7 +222,7 @@ export function createDesk(app) {
     node?.setAttribute('inert', '');
     const before = new Set(app.state.notebook);
     try { app.act(s => engine.choose(s, content, paper.id, choice.id)); } catch (e) { busy = false; node?.removeAttribute('inert'); app.say(e.message); return; }
-    if (paper.kind === 'return' || paper.kind === 'accounts') { busy = false; raised = null; draw({ focus: 'next' }); return; }
+    if (RECORD_KINDS.includes(paper.kind)) { busy = false; raised = null; draw({ focus: 'next' }); return; }
     const fresh = app.state.notebook.filter(id => !before.has(id)).map(id => (content.notebook ?? []).find(n => n.id === id)?.title ?? id);
     const answered = app.state.desk.find(p => p.id === paper.id);
     const now = paper.kind === 'notice' ? 'Noted.' : happened(content, choice.now);

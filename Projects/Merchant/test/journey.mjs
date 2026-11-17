@@ -397,6 +397,9 @@ try {
 
   // ---- MER-43: the game. The engine runs the same seed in Node; the DOM must say what it says.
   const titleOf = (s, p) => {
+    if (p.kind === 'return' || p.kind === 'lost') return p.data.headline;
+    if (p.kind === 'accounts') return 'Accounts';
+    if (p.kind === 'news') return p.letters.length === 1 ? `News from ${nodeContent.stops.find(x => x.id === p.letters[0].stop).name}` : `News from ${p.letters.length} cities`;
     if (p.kind === 'notice') return nodeContent.events.find(e => e.id === p.ref).notice.title;
     return nodeContent.cards.find(c => c.id === p.ref).title;
   };
@@ -531,6 +534,9 @@ try {
       eq(t[0].key, '1'); eq(t[1].key, '2');
       eq(t[1].cost, null);
       eq(t[0].disabled, null);
+      // DESIGN 7: the card shows both prices, from what the house knows (view().prices)
+      const line = await page.$eval('.sheet .choice .prices', e => e.textContent);
+      ok(/^Cairo pays \d+ a load of linen\./.test(line), line);
       // put the first paper back on top
       await page.click('.edge');
       eq((await screenOf(page)).raised, 'Welcome to the house');
@@ -573,20 +579,25 @@ try {
       const m1 = eng.choose(m0, nodeContent, 'p0-1', 'go');
       eq(await page.$eval('.sheet-title', e => e.textContent), 'You paid 20 dinars.');
       await page.click('#btn-next');
-      // a stub paper stands in for the map table until MER-44
+      // the one-press first expedition (DESIGN 4.8) stands in for the map table until MER-44
       await page.waitForSelector('.sheet[data-kind="outfit"]');
       eq(await page.evaluate(() => document.querySelector('.stack-count').textContent), '2 papers left');
       eq(await page.$eval('#btn-end', b => b.getAttribute('aria-disabled')), 'true');
       eq(await page.$eval('#end-reason', e => e.textContent), '2 papers still need an answer.');
-      await page.click('#btn-stub-dismiss');
+      const plan = eng.suggestPlan(m1, nodeContent, 'damascus');
+      eq(await page.$eval('.sheet-title', e => e.textContent), 'Send Yusuf to Damascus');
+      eq(await page.$eval('#btn-send', b => b.textContent), 'Send Yusuf to Damascus');
+      await page.click('#btn-send');
+      const m1b = eng.outfit(m1, nodeContent, plan);
       await page.waitForFunction(() => document.querySelector('.sheet')?.dataset.kind === 'card');
-      await sameScreen(page, m1, 'after the expedition card');
+      await sameScreen(page, m1b, 'after the expedition is sent');
+      eq(await engineState(page), JSON.parse(JSON.stringify(m1b)), 'the expedition on the road is the engine\'s');
       eq(await page.$eval('#bar-money', e => e.textContent.trim()), '1,480 dinars');
 
       // the neighbour, second choice ("Keep them")
       await page.click('#choice-p0-2-keep');
       await page.waitForSelector('.sheet[data-face="back"]');
-      const m2 = eng.choose(m1, nodeContent, 'p0-2', 'keep');
+      const m2 = eng.choose(m1b, nodeContent, 'p0-2', 'keep');
       await page.click('#btn-next');
       await page.waitForFunction(() => document.activeElement.id === 'btn-end');
       model = m2;
@@ -695,8 +706,9 @@ try {
       model = eng.choose(model, nodeContent, 'p0-1', 'go');
       await page.keyboard.press('Enter');
       await page.waitForSelector('.sheet[data-kind="outfit"]');
+      model = eng.outfit(model, nodeContent, eng.suggestPlan(model, nodeContent, 'damascus'));
       await page.keyboard.press('Tab');
-      eq(await focusId(page), 'btn-stub-dismiss');
+      eq(await focusId(page), 'btn-send');
       await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.querySelector('.sheet')?.dataset.kind === 'card');
       await page.keyboard.press('1');
@@ -740,9 +752,9 @@ try {
       eq(await page.evaluate(() => window.__merchant.settings.shortcuts), false);
       await page.keyboard.press('1');
       eq(await engineState(page), before, 'a shortcut acted after a reload');
-      // the button still works
-      await page.click('.sheet .choice');
-      await page.waitForSelector('.sheet[data-face="back"]');
+      // the button still works (season two opens on a paper the engine wrote, which has one button)
+      await page.click('.sheet .choice, .sheet .next');
+      await page.waitForFunction(b => JSON.stringify(window.__merchant.state) !== b, {}, JSON.stringify(before));
     });
 
     await test('Settings: Large text and Reduce motion are saved and applied again after a reload', async () => {
@@ -763,6 +775,77 @@ try {
       eq(page.__blocked, []);
       eq(consoleErrors, []);
     });
+    await page.close();
+  }
+
+  // ---- seasons played through to a return: the engine's own papers (price letters, a return, accounts)
+  {
+    const { page, consoleErrors } = await open(FRAMES[0]);
+    await start(page, 'pointer');
+    // Both sides play the same policy: the first choice that is open to the player; the first
+    // expedition is sent with the engine's own plan; every other paper is set aside.
+    const nodeSeason = s => {
+      for (const p of s.desk) {
+        if (p.state !== 'open') continue;
+        const cs = eng.paperChoices(s, nodeContent, p.id);
+        const c = cs.find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } });
+        s = eng.choose(s, nodeContent, p.id, c.id);
+        if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
+      }
+      return eng.endSeason(s, nodeContent);
+    };
+    const uiSeason = async () => {
+      for (let guard = 0; guard < 12; guard++) {
+        if (await page.$eval('#btn-end', b => b.getAttribute('aria-disabled') === 'false')) break;
+        const k = await page.evaluate(() => ({ kind: document.querySelector('.sheet')?.dataset.kind, face: document.querySelector('.sheet')?.dataset.face }));
+        if (k.face === 'back') { await page.click('#btn-next'); continue; }
+        if (k.kind === 'outfit') { await page.click('#btn-send, #btn-stub-dismiss'); continue; }
+        if (['return', 'lost', 'news', 'accounts'].includes(k.kind)) { await page.click('#btn-next'); continue; }
+        await page.click('.sheet .choice:not([aria-disabled="true"])');
+        await page.waitForSelector('.sheet[data-face="back"]');
+      }
+      await page.click('#btn-end');
+    };
+    let model = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+    let sawReturn = null;
+    await test('play to the first return: the page matches the engine every season, and the return paper leads with its sentence', async () => {
+      for (let season = 1; season <= 10 && !sawReturn; season++) {
+        const ret = model.desk.find(p => p.kind === 'return');
+        if (ret) {
+          // raise it and read it before the season is played
+          await page.waitForFunction(() => document.querySelector('.stack'));
+          sawReturn = ret;
+          const rid = ret.id;
+          // the engine's other papers sit first or after; raise the return
+          await page.$$eval('.edge, .sheet', () => {});
+          const raised = await page.$eval('.sheet-title', e => e.textContent);
+          if (raised !== ret.data.headline) await page.click(`.edge[data-paper="${rid}"]`);
+            await page.waitForFunction(h => document.querySelector('.sheet-title')?.textContent === h, {}, ret.data.headline);
+          eq(await page.$eval('.sheet', e => e.dataset.kind), 'return');
+          eq(await page.$eval('.account', d => d.open), false, 'the account is folded shut on the first return of a game');
+          ok((await page.$eval('.account summary', e => e.textContent)) === 'Show the account');
+          await page.click('.account summary');
+          const rows = await page.$$eval('.account tr', trs => trs.map(t => t.textContent));
+          ok(rows.length >= 3 && rows.some(r => r.includes('Profit') || r.includes('Back home')), rows.join(' | '));
+          eq(await page.$eval('#btn-next', b => b.textContent), 'Into the ledger');
+          // the End bar never sits over a button of the paper: after scrolling it into view, the
+          // button is what a press at its middle would hit
+          const hit = await page.$eval('#btn-next', b => { b.scrollIntoView({ block: 'nearest' }); const r = b.getBoundingClientRect();
+            const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return top === b || b.contains(top); });
+          eq(hit, true, 'Into the ledger is covered by something else');
+        }
+        await sameScreen(page, model, `season ${season}`, { raisedFirst: false });
+        // both sides answer in the desk's own order: put the first paper back on top if we read another
+        const first = model.desk.find(p => p.state === 'open').id;
+        if (await page.$eval('.sheet', (e, id) => e.dataset.paper !== id, first)) await page.click(`.edge[data-paper="${first}"]`);
+        model = nodeSeason(model);
+        await uiSeason();
+        await page.waitForFunction(n => window.__merchant.state.t === n, {}, model.t);
+        eq(await engineState(page), JSON.parse(JSON.stringify(model)), `after season ${season}`);
+      }
+      ok(sawReturn, 'no expedition came home in ten seasons');
+    });
+    await test('play to the first return: no console error, nothing offsite', async () => { eq(consoleErrors, []); eq(page.__blocked, []); });
     await page.close();
   }
 
@@ -790,7 +873,7 @@ try {
         await page.waitForSelector('.sheet[data-face="back"]');
         await page.$eval('#btn-next', b => b.scrollIntoView({ block: 'center' }));
         await page.click('#btn-next');
-        if (id === 'go') { await page.waitForSelector('#btn-stub-dismiss'); await page.click('#btn-stub-dismiss'); }
+        if (id === 'go') { await page.waitForSelector('#btn-send'); await page.click('#btn-send'); }
       }
       await page.waitForFunction(() => document.getElementById('btn-end').getAttribute('aria-disabled') === 'false');
       const r = await page.$eval('#btn-end', b => { const x = b.getBoundingClientRect(); return [x.bottom <= innerHeight + 1, x.top >= 0]; });

@@ -36,6 +36,26 @@ export function happened(content, effects) {
   return seen.length ? seen.map(s => s.said).join(' ') : 'Nothing changed at once.';
 }
 
+/** "Cairo pays 25 a load. Damascus paid 38, two seasons ago." from what the house knows
+    (view().prices), for the first expedition's card; null when the house knows nothing yet. */
+export function priceLine(app) {
+  const { content, state } = app;
+  const home = content.city.home, stopId = content.city.firstStop ?? 'damascus';
+  const stop = (content.stops ?? []).find(x => x.id === stopId);
+  const plan = engine.suggestPlan(state, content, stopId);
+  const good = Object.keys(plan?.cargo ?? {})[0] ?? Object.keys(state.stock).find(g => stop?.sells?.[g]);
+  if (!stop || !good) return null;
+  const prices = app.view().prices, name = goodName(content, good);
+  const here = prices[home]?.[good], there = prices[stopId]?.[good];
+  const parts = [];
+  if (here?.p != null) parts.push(`${stopName(content, home)} pays ${num(here.p)} a load of ${name}.`);
+  if (there?.p != null) {
+    const ago = there.age === 0 ? 'this season' : there.ageWords.replace(/ old$/, ' ago');
+    parts.push(`${stop.name} paid ${num(there.p)}, ${ago}.`);
+  }
+  return parts.length ? parts.join(' ') : null;
+}
+
 /** The choices of an open paper with their availability. The engine says whether a choice can
     be made by being asked to make it on a copy of the state. */
 export function choicesOf(app, paper) {
@@ -49,7 +69,7 @@ export function choicesOf(app, paper) {
       const need = c.requires?.money?.gte;
       why = typeof need === 'number' ? `You have ${dinars(state.money)}.` : 'Not open to you now.';
     }
-    return { ...c, available, why, seen: seenEffects(content, c.now) };
+    return { ...c, available, why, seen: seenEffects(content, c.now), prices: c.ui === 'outfit-first' ? priceLine(app) : null };
   });
 }
 
@@ -64,9 +84,29 @@ export function sourceOf(content, paper) {
   return paper; // returns and the Accounts paper carry their own words
 }
 
+/** Papers the engine writes itself, answered with "ok" and never flipped (MER-40, MER-41). */
+export const RECORD_KINDS = ['return', 'lost', 'news', 'accounts'];
+
+const stopName = (content, id) => (content.stops ?? []).find(x => x.id === id)?.name ?? id;
+
 export function paperTitle(content, paper) {
+  if (paper.kind === 'return' || paper.kind === 'lost') return paper.data?.headline ?? 'News of the house';
+  if (paper.kind === 'news') {
+    const n = paper.letters?.length ?? 0;
+    return n === 1 ? `News from ${stopName(content, paper.letters[0].stop)}` : `News from ${n} cities`;
+  }
+  if (paper.kind === 'accounts') return 'Accounts';
   const s = sourceOf(content, paper);
-  return s.title ?? s.headline ?? (paper.kind === 'accounts' ? 'Accounts' : 'A paper');
+  return s.title ?? 'A paper';
+}
+
+/** Who a paper is from: the agent's seal on a return or a loss, a plain mark on the rest. */
+export function senderOf(content, paper) {
+  const agent = paper.agent && (content.agents ?? []).find(a => a.id === paper.agent);
+  if (agent) return { name: agent.name, role: paper.kind === 'lost' ? 'Word from the road' : 'Home from the road', seal: agent.seal };
+  if (paper.kind === 'news') return { name: 'Price letters', role: 'Cairo', seal: null };
+  if (paper.kind === 'accounts') return { name: 'Your clerk', role: 'The house, Cairo', seal: null };
+  return sourceOf(content, paper).from ?? null;
 }
 
 /** "Source: Author, Title, year, where." The line a teacher reads; never an address. */
@@ -111,9 +151,10 @@ export function front(app, paper, { onChoose, locked }) {
     h('span', { class: 'key', 'aria-hidden': 'true' }, String(i + 1)),
     h('span', { class: 'label' }, c.label),
     c.available
-      ? (c.seen.length || c.hint ? h('span', { class: 'costline' },
+      ? (c.seen.length || c.hint || c.prices ? h('span', { class: 'costline' },
         c.seen.length ? h('span', { class: 'cost' }, c.seen.map((e, j) => [j ? ' · ' : '', h('span', { class: e.kind }, e.cost)]), ' now') : null,
-        c.hint ? h('em', { class: 'hint' }, c.hint) : null) : null)
+        c.hint ? h('em', { class: 'hint' }, c.hint) : null,
+        c.prices ? h('span', { class: 'prices' }, c.prices) : null) : null)
       : h('span', { class: 'costline why' }, c.why))));
   return h('article', { class: `paper sheet front kind-${paper.kind}`, dataset: { paper: paper.id, kind: paper.kind, face: 'front' }, 'aria-labelledby': titleId },
     head(app, s.from),
@@ -135,27 +176,46 @@ export function back(app, paper, { now, fresh, onNext }) {
     sourceLine(app.content, s.sources));
 }
 
-/** A return paper or the Accounts paper. The engine writes their words (MER-41): `headline`,
-    `route`, `account` rows of [label, value] and `lines`. Until it does, none is made. */
-export function record(app, paper, { onDone }) {
+const row = (k, v) => h('tr', null, h('th', { scope: 'row' }, k), h('td', null, v));
+
+/** The engine's own papers (DESIGN 4.6, 2): a return, a loss, price letters and the folded
+    Accounts paper. Each is read and set aside with one press. `open` says whether a return's
+    account starts unfolded (it is folded shut on the first return of a game). */
+export function record(app, paper, { onDone, open }) {
+  const { content } = app;
   const titleId = `paper-${paper.id}-title`;
-  const s = sourceOf(app.content, paper);
-  const rows = paper.account ?? [];
+  const d = paper.data ?? {};
+  const body = [];
+  if (paper.kind === 'return' || paper.kind === 'lost') {
+    if (d.route && paper.kind === 'return') body.push(h('p', { class: 'route' }, d.route));
+    const rows = paper.kind === 'return' ? (d.account ?? []) : (d.lines ?? []);
+    if (rows.length) {
+      const table = h('table', { class: 'accounts-table' }, h('tbody', null, rows.map(r => row(r.label, r.text))));
+      body.push(paper.kind === 'return'
+        ? h('details', { class: 'account', open: open ? true : null }, h('summary', null, 'Show the account'), table)
+        : table);
+    }
+    if (d.agentLine) body.push(h('p', { class: 'agent-line' }, d.agentLine));
+  } else if (paper.kind === 'news') {
+    if (paper.line) body.push(h('p', { class: 'sheet-body' }, paper.line));
+    else for (const l of paper.letters ?? []) {
+      body.push(h('h3', null, `From ${stopName(content, l.stop)}, written in ${l.writtenIn}`),
+        h('table', { class: 'accounts-table' }, h('tbody', null, Object.entries(l.prices).map(([g, p]) =>
+          row((content.goods ?? []).find(x => x.id === g)?.name ?? g, `${num(p)} a load`)))));
+    }
+  } else {
+    for (const i of paper.items ?? []) body.push(h('p', { class: 'account-item' }, i.text));
+  }
   return h('article', { class: `paper sheet front kind-${paper.kind}`, dataset: { paper: paper.id, kind: paper.kind, face: 'front' }, 'aria-labelledby': titleId },
-    head(app, s.from ?? paper.from),
-    h('h2', { class: 'sheet-title', id: titleId, tabindex: '-1' }, paper.headline ?? paper.title ?? 'Accounts'),
-    paper.route ? h('p', { class: 'route' }, paper.route) : null,
-    (paper.lines ?? []).map(l => h('p', null, l)),
-    rows.length ? h('details', { class: 'account', open: paper.open !== false },
-      h('summary', null, 'Show the account'),
-      h('table', null, h('tbody', null, rows.map(([k, v]) => h('tr', null, h('th', { scope: 'row' }, k), h('td', null, v)))))) : null,
+    head(app, senderOf(content, paper)),
+    h('h2', { class: 'sheet-title', id: titleId, tabindex: '-1' }, paperTitle(content, paper)),
+    ...body,
     h('button', { class: 'button next', type: 'button', id: 'btn-next', onclick: onDone }, paper.kind === 'return' ? 'Into the ledger' : 'Noted'));
 }
 
 /** The edge of a paper lower in the stack: seal and title, pressed to raise it. */
 export function edge(app, paper, { onRaise, tilt }) {
-  const s = sourceOf(app.content, paper);
   return h('button', { class: 'edge', type: 'button', style: `--tilt:${tilt}deg`, dataset: { paper: paper.id }, onclick: onRaise,
     'aria-label': `Raise: ${paperTitle(app.content, paper)}` },
-  seal(app, (s.from ?? paper.from)?.seal), h('span', null, paperTitle(app.content, paper)));
+  seal(app, senderOf(app.content, paper)?.seal), h('span', null, paperTitle(app.content, paper)));
 }
