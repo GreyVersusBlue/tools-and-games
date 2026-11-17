@@ -49,6 +49,12 @@ orchestrator's to reopen.
 | D11 | Renders may use free-licence (CC0) textures and sky images as inputs, downloaded on the Windows machine. Each one is listed in a manifest with its licence. Nothing downloaded is served by the site. |
 | D12 | At 22:00 a running worker finishes its unit and nothing new starts. |
 | D13 | The player chooses the length at the start: the three-act game or the full run of years (3.2). |
+| D14 | From M2 the game lands on the site with no quest card, so it can be played on a phone and a board while it is built. The card comes at M5. |
+| D15 | No faces in the art at all, at any size. People and animals appear only as small distant shapes. Portraits may be added later by another route; nothing may depend on them. |
+| D16 | The folder stays `Projects/Merchant/` even if the title changes. |
+| D17 | Sound is wanted: free-licence (CC0) recordings only (section 5.5). |
+| D18 | The art list (`ART.md`) is in Devon's hands from 2026-11-16, ahead of M1. Devon runs it on Windows and drops the results into the Huginn Inbox as `merchant-art/`; the orchestrator picks them up from `~/inbox/merchant-art/`. |
+| D19 | The orchestrator carries on from M0 into M1 and beyond without waiting for Devon. It stops for him only when something truly cannot proceed without him; everything else is written down as a question with the assumption in force. |
 | D9 | An Opus orchestrator runs development. Sonnet 5.5 workers do the writing, the research and the code, each in a new session, at most three at a time. A worker's session is archived once it has reported. No work between 22:00 and 04:00 Eastern. |
 
 ## 3. How it plays
@@ -198,8 +204,8 @@ sky, haze, low sun, candlelight, depth of field.
 What it does badly, and the art avoids: faces and bodies close up, and animals
 close up. So:
 
-- **No face is ever close to the camera.** People are small figures in wide
-  shots, backs, cloaks, hands at the edge of a frame, or absent.
+- **No face, anywhere, at any size** (D15). People are small hooded figures
+  far off, seen from behind or against the light, or absent.
 - **An agent is shown by a seal and a hand of writing**, not a portrait.
 - **Camels, horses and crews are seen at a distance** or as silhouettes
   against the light.
@@ -228,7 +234,12 @@ close up. So:
   `assets/art/manifest.json` lists every asset with its size and whether it is
   a placeholder; a test checks the files against it.
 
-### 5.3 The prompt format (ART.md, written in M1)
+### 5.3 The prompt format (`ART.md`, version 1 written 2026-11-16)
+
+`ART.md` exists and Devon has it (D18). It was written before M1's research,
+so its history is a draft: M1 checks each entry against the sources and sends
+corrections, and because every picture comes from a script with fixed seeds a
+correction is a rerender, not a repaint.
 
 One entry per asset, complete enough to hand to Claude Code on the Windows
 machine with no other context:
@@ -244,7 +255,7 @@ machine with no other context:
 8. Acceptance checklist the session checks its own render against, and how
    many rounds of render-look-fix it may take before stopping to ask Devon.
 
-### 5.4 The asset list (first cut; M1 writes the prompts and may add or cut)
+### 5.4 The asset list (as in `ART.md` version 1; the Constantinople set waits for M7)
 
 | Id | Asset | Used for |
 |---|---|---|
@@ -269,6 +280,27 @@ machine with no other context:
 | A19 | The Constantinople set: desk, map table, the Golden Horn, Caffa, Trebizond | M7 |
 
 About 50 renders for Cairo. A01, A03, A04 and A15 are needed first.
+
+### 5.5 Sound
+
+Free-licence recordings only: CC0, nothing that needs attribution or forbids
+reuse. Freesound can be searched by CC0 licence and Kenney's packs are CC0.
+Downloading from Freesound needs an account, so the flow matches the art: a
+worker writes a list of named recordings with their licence, Devon downloads
+them and drops them into the Huginn Inbox as `merchant-sound/`, and the
+orchestrator trims, converts and vendors them. Each file's source and licence
+go in a manifest that a test checks.
+
+| Kind | Sounds |
+|---|---|
+| The desk | Paper unfolding, a page turning, a reed pen scratching, a stamp pressed, coins set down, scale pans settling, a lamp lit |
+| Places | Harbour (water on stone, rope and timber creaking, gulls), market murmur with no clear words, desert wind, rain on leaves, a courtyard at night |
+| The road | Camel bells, a camel's grunt, hooves on stone, a sail filling, a storm at sea |
+| The game | A letter arriving, a season ending, an expedition home |
+
+Sound starts only after the player's first click, has one mute control, and
+the game is complete without it. The list is an M1 unit; the files go in at
+M5.
 
 ## 6. How it is built
 
@@ -357,11 +389,12 @@ Research and writing units, which run three at a time.
 - Goods and the price model's numbers.
 - The timeline: what happened when, for the three acts.
 - The first notebook entries and the About page text, D5's sentence included.
-- **`ART.md`: the full prompt for every asset in 5.4.** From here the art runs
-  on Devon's machine beside everything else.
+- A check of `ART.md` version 1 against the sources, with a list of
+  corrections for Devon's Windows session.
+- The sound list (5.5).
 
 **Ends with:** the world as data, each fact with a source, and the art list
-in Devon's hands.
+corrected against it.
 
 ### M2. The expedition loop (first playable)
 
@@ -449,26 +482,26 @@ are in the data from the first card.
   the cited source.
 - **Landing** is one pull request per milestone from the integration branch
   into `main`, with CI green, merged with a merge commit.
-- **Art** does not go through the workers. Devon runs each `ART.md` prompt on
-  Windows; that session commits the script and the image and opens its own
-  pull request, which touches only `assets/art/` and `tools/blender/`. No
-  worker unit owns those two folders.
+- **Art** does not go through the workers. Devon runs `ART.md` on Windows in
+  four batches and drops the folder into the Huginn Inbox (D18). At every
+  start the orchestrator looks in `~/inbox/merchant-art/`, checks each new
+  file against the manifest (size, format, transparency, the no-faces and
+  no-writing rules by eye), and brings what passes into `assets/art/` and
+  `tools/blender/` at the next landing. Requests for a rerender go to Devon
+  in `~/outbox/merchant-art/`. No worker unit owns those two folders.
+- **Devon's attention** (D19). The orchestrator does not wait for answers. It
+  stops only for something it is forbidden to do or cannot do without him.
 - **Where the files live.** This road map and `ART.md` are in this folder,
   because the Windows machine reads the art list from the repository. The
   orchestrator's own handoff, board, log and worker prompts live outside the
   site, in `~/projects/merchant/`, as Schedule Visualizer 2's do, because
   every file here is a live URL (D10).
 
-## 9. Open questions, with the assumption in force
+## 9. Open questions
 
-The work proceeds on the assumption until Devon says otherwise.
-
-| # | Question | Assumption |
-|---|---|---|
-| Q6 | Does the game land on the site without a quest card from M2, so it can be played on a phone and a board while it is built? | Yes. |
-| Q7 | Is "no close faces, agents shown by seal and handwriting" acceptable as the answer to what scripted Blender cannot do? | Yes. |
-| Q8 | Sound. None is planned before M5, and there is no source for it yet. | No sound until Devon names a source. |
-| Q9 | The folder is `Projects/Merchant/` with a capital M, and the address is case-sensitive. Rename if the game's name changes? | Keep the folder name even if the title changes; a moved address breaks links and saves. |
+None on 2026-11-16: every question from the planning conversation is answered
+and recorded in section 2. New ones go to the orchestrator's questions file
+with the assumption in force (D19).
 
 ## 10. Risks
 
