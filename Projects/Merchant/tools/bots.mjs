@@ -34,7 +34,7 @@ export const LIMITS = {
   choiceTaken: 0.90,       // greedy takes no one choice more than this share of the times its card is offered (card policy: M3)
   choicePending: true,     // true until M3 gives a bot a card policy: with 'the first choice that holds' the number only measures list order, so it is printed and does not fail the run
   choiceMinOffers: 30,     // a card offered fewer times than this is not judged on its choices
-  tripMedian: [0.10, 0.30],// careful's and greedy's median profit on a round trip after the wage, as a share of the house's stake (DECISIONS 2026-11-17)
+  tripMedian: [0.10, 0.30],// careful's and greedy's median profit on a round trip after the wage, as a share of the house's stake. 10 to 30 percent is a design target (DECISIONS 2026-11-17 08:50), not a recorded figure; the one recorded anchor is Goitein, Letters of Medieval Jewish Traders, 1973, p. 35 note 27: profits were as a rule surprisingly low and a near doubling exceptional (so tripMedianMax)
   tripMedianMax: 1.0,      // no bot's median round trip reaches a doubling
 };
 export const DEFAULTS = { games: 2000, seed0: 1000, length: 'acts' };
