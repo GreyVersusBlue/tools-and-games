@@ -1,1 +1,269 @@
-[]
+[
+  {
+    "id": "gold-comes-to-cairo",
+    "group": "news",
+    "from": {
+      "name": "Jamil, a cloth seller",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Mali's king is in Cairo",
+    "body": "Mansa Musa, the king of Mali, is in Cairo on a pilgrimage, a holy journey to Mecca. His huge company is buying and selling in the markets. Jamil offers you a share in his cloth sales to them.",
+    "when": {
+      "all": [
+        {
+          "year": [
+            1324,
+            1324
+          ]
+        },
+        {
+          "season": [
+            "summer",
+            "autumn"
+          ]
+        }
+      ]
+    },
+    "weight": 8,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "share",
+        "label": "Put money into Jamil's cloth",
+        "hint": "He sells to the Malians. You share the profit.",
+        "requires": {
+          "money": {
+            "gte": 100
+          }
+        },
+        "now": [
+          {
+            "money": -100
+          }
+        ],
+        "later": [
+          {
+            "in": 1,
+            "do": [
+              {
+                "money": 180
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "gold",
+        "label": "Buy two chests of gold now",
+        "hint": "A chest of gold costs 100.",
+        "requires": {
+          "money": {
+            "gte": 200
+          }
+        },
+        "now": [
+          {
+            "money": -200
+          },
+          {
+            "stock": "gold",
+            "by": 2
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "card": "gold-price-falls"
+          }
+        ]
+      },
+      {
+        "id": "watch",
+        "label": "Watch from the street",
+        "hint": "Your partners like a steady house.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Al-Umari wrote that the people of Cairo made great profits from the Malians, and that the price of gold fell.",
+    "unlocks": [
+      "person-mansa-musa",
+      "term-pilgrimage"
+    ],
+    "sources": [
+      {
+        "src": "collet-2023",
+        "at": "summer 1324; the departure on 14 October 1324"
+      },
+      {
+        "src": "levtzion-hopkins-1981",
+        "at": "pp. 269 to 273; al-Umari on the Malians in Cairo"
+      }
+    ]
+  },
+  {
+    "id": "flood-boats",
+    "group": "news",
+    "from": {
+      "name": "Kamil, a boat owner",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "The canal is filling",
+    "body": "The Nile flood is filling the canal to Alexandria. Kamil owns a boat that sails with the flood, and he has room for goods. The sugar buyers at Alexandria are waiting.",
+    "when": {
+      "all": [
+        {
+          "season": [
+            "summer"
+          ]
+        },
+        {
+          "notebook": "term-load"
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "sail",
+        "label": "Buy four loads of sugar and ship them",
+        "hint": "The first boats sell first, and other owners will grumble.",
+        "requires": {
+          "money": {
+            "gte": 220
+          }
+        },
+        "now": [
+          {
+            "money": -220
+          },
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 260
+              }
+            ],
+            "card": "kamil-boat-arrived"
+          }
+        ]
+      },
+      {
+        "id": "pass",
+        "label": "Let this flood pass",
+        "hint": "Kamil will sail without you.",
+        "now": [],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Al-Maqrizi wrote that ships loaded with crops, spices and sugar set sail when the Nile filled the Alexandria canal. That was from 25 July to 23 August.",
+    "sources": [
+      {
+        "src": "sato-2006",
+        "at": "p. 150; al-Maqrizi on the Alexandria canal and the flood"
+      }
+    ]
+  },
+  {
+    "id": "better-market",
+    "group": "news",
+    "from": {
+      "name": "Zubayda, a linen seller",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Another market, a better price",
+    "body": "Zubayda sells linen in another part of Cairo. She says shops there get more for linen than yours do. She offers to sell your next cloth in her market for a fee.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "move",
+        "label": "Sell in her market",
+        "hint": "Her fee is high. Your neighbours will see you go.",
+        "requires": {
+          "money": {
+            "gte": 30
+          }
+        },
+        "now": [
+          {
+            "money": -30
+          },
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 60
+              }
+            ],
+            "card": "zubayda-fee"
+          }
+        ]
+      },
+      {
+        "id": "stay",
+        "label": "Stay in your own market",
+        "hint": "No fee, and your neighbours are glad.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 10
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Al-Maqrizi counted 54 markets in Cairo. Shops that sold the same goods stood together, which saved buyers time and the cost of carrying goods.",
+    "sources": [
+      {
+        "src": "agir-2017",
+        "at": "Introduction n. 11, and Background n. 24; the count of markets, and shops of one trade standing together"
+      }
+    ]
+  }
+]

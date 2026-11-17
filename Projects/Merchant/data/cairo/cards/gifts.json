@@ -1,1 +1,166 @@
-[]
+[
+  {
+    "id": "opening-letter",
+    "group": "gifts",
+    "from": {
+      "name": "Old Sabir, the clerk",
+      "role": "Your house, Cairo",
+      "seal": null
+    },
+    "title": "Welcome to the house",
+    "body": "Welcome to the house. Letters come to this desk, and you answer them. You send our people out to buy where goods are cheap and sell where they are dear. At the end, the house is judged on its money, its good name, the people who came home, and what you learned.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "begin",
+        "label": "Let's begin",
+        "now": [],
+        "later": [
+          {
+            "in": 1,
+            "do": [
+              {
+                "flag": "house-open",
+                "set": "now"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Ibn Battuta wrote that Cairo surged like the waves of the sea. Merchants there had long run their trade by letter, with agents and friends in other cities.",
+    "unlocks": [
+      "place-cairo",
+      "term-load",
+      "term-toll",
+      "term-customs"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, pp. 52 to 53; the sultan and the city"
+      },
+      {
+        "src": "goitein-1973",
+        "at": "the Geniza letters, mostly 950 to 1250: merchants and their agents writing to each other"
+      }
+    ]
+  },
+  {
+    "id": "opening-letter-broker",
+    "group": "gifts",
+    "from": {
+      "name": "Nabil, the broker",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Welcome to the house",
+    "body": "Welcome to the house I rented you. Letters come to this desk, and you answer them. You send people out to buy where goods are cheap and sell where they are dear. At the end, the house is judged on its money, its good name, the people who came home, and what you learned.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "begin",
+        "label": "Let's begin",
+        "now": [],
+        "later": [
+          {
+            "in": 1,
+            "do": [
+              {
+                "flag": "house-open",
+                "set": "now"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Ibn Battuta wrote that Cairo surged like the waves of the sea. Merchants there had long run their trade by letter, with agents and friends in other cities.",
+    "unlocks": [
+      "place-cairo",
+      "term-load",
+      "term-toll",
+      "term-customs"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, pp. 52 to 53; the sultan and the city"
+      },
+      {
+        "src": "goitein-1973",
+        "at": "the Geniza letters, mostly 950 to 1250: merchants and their agents writing to each other"
+      }
+    ]
+  },
+  {
+    "id": "favour-for-friend",
+    "group": "gifts",
+    "from": {
+      "name": "Girgis, a merchant",
+      "role": "Damascus",
+      "seal": null
+    },
+    "title": "Look after a friend's son",
+    "body": "Girgis is a merchant in Damascus. He writes that his partner's son is coming to Cairo to learn the trade. He asks you to find the boy a place and keep an eye on him.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "help",
+        "label": "Take the boy in",
+        "hint": "Girgis will owe you a favour.",
+        "requires": {
+          "money": {
+            "gte": 30
+          }
+        },
+        "now": [
+          {
+            "money": -30
+          },
+          {
+            "rep": "foreign",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "card": "girgis-favour"
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Say you cannot",
+        "hint": "Girgis will find someone else.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Merchants had long done each other favours and expected the same.",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 316; the friend who serves \"there\" for the friend who serves \"here\""
+      },
+      {
+        "src": "goitein-1973",
+        "at": "merchants asking correspondents to look after others, as Edwards and Ogilvie (2008), p. 18 report"
+      }
+    ]
+  }
+]

@@ -1,1 +1,272 @@
-[]
+[
+  {
+    "id": "yusuf-asks-for-work",
+    "group": "hiring",
+    "from": {
+      "name": "Yusuf, a trader of Cairo",
+      "role": "Cairo",
+      "seal": "seal-1"
+    },
+    "title": "Yusuf asks for work",
+    "body": "Yusuf is a careful young trader who knows the road to Damascus. He has no house of his own. He asks you to hire him and send him out with ten loads of your linen.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "hire",
+        "label": "Hire Yusuf and send him",
+        "hint": "He will carry your linen to Damascus.",
+        "requires": {
+          "money": {
+            "gte": 30
+          }
+        },
+        "now": [
+          {
+            "money": -30
+          },
+          {
+            "hire": "yusuf"
+          },
+          {
+            "trust": "yusuf",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "trust": "yusuf",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "not-yet",
+        "label": "Not yet",
+        "hint": "Without an agent you cannot send anyone out.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "agents",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Merchants had long sent agents to buy and sell in other towns, and kept in touch with them by letter.",
+    "unlocks": [
+      "term-load"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1973",
+        "at": "the Geniza letters, mostly 950 to 1250: merchants and their agents writing to each other"
+      }
+    ]
+  },
+  {
+    "id": "qirad-offer",
+    "group": "hiring",
+    "from": {
+      "name": "Samir, a young man of Cairo",
+      "role": "Cairo",
+      "seal": "seal-3"
+    },
+    "title": "Samir wants a qirad",
+    "body": "Samir has no money, but he wants to carry three loads of pepper to Alexandria for you. He offers a qirad, a deal where you pay for the goods and he keeps a share of the profit. Or you can pay him a plain wage.",
+    "when": {
+      "all": [
+        {
+          "agent": "samir",
+          "hired": false
+        },
+        {
+          "notebook": "term-load"
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "qirad",
+        "label": "Agree to a qirad",
+        "hint": "He keeps a third of the profit. You carry any loss.",
+        "requires": {
+          "money": {
+            "gte": 360
+          }
+        },
+        "now": [
+          {
+            "money": -360
+          },
+          {
+            "rep": "partners",
+            "by": -1
+          },
+          {
+            "hire": "samir"
+          },
+          {
+            "trust": "samir",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 400
+              }
+            ],
+            "card": "samir-comes-home"
+          }
+        ]
+      },
+      {
+        "id": "wage",
+        "label": "Pay him a wage",
+        "hint": "You keep all the profit. He is paid even if the trip fails.",
+        "requires": {
+          "money": {
+            "gte": 375
+          }
+        },
+        "now": [
+          {
+            "money": -375
+          },
+          {
+            "rep": "partners",
+            "by": -1
+          },
+          {
+            "hire": "samir"
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": 420
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "not-now",
+        "label": "Not now",
+        "hint": "Some partners think Samir is too young.",
+        "now": [],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Merchants had long made deals like this. The partner with the money bore any loss, and the traveller lost only his work.",
+    "unlocks": [
+      "term-qirad"
+    ],
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 317; the worker's smaller share and no share in the loss"
+      },
+      {
+        "src": "udovitch-1970",
+        "at": "the rules of the qirad from the law books"
+      }
+    ]
+  },
+  {
+    "id": "contract-limits",
+    "group": "hiring",
+    "from": {
+      "name": "Yusuf, your agent",
+      "role": "Cairo",
+      "seal": "seal-1"
+    },
+    "title": "Yusuf asks to widen the paper",
+    "body": "Before he leaves, Yusuf asks to trade at Aleppo as well as Damascus. The paper you wrote says Damascus only. He says Aleppo may pay better, but he will keep to the paper if you say so.",
+    "when": {
+      "agent": "yusuf",
+      "hired": true,
+      "where": "cairo"
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "widen",
+        "label": "Let him trade at Aleppo too",
+        "hint": "He may do better, and you carry the risk.",
+        "requires": {
+          "money": {
+            "gte": 25
+          }
+        },
+        "now": [
+          {
+            "money": -25
+          },
+          {
+            "trust": "yusuf",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "card": "yusuf-aleppo"
+          }
+        ]
+      },
+      {
+        "id": "keep",
+        "label": "Keep to the paper",
+        "hint": "Yusuf will keep his word.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "trust": "yusuf",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Contracts had long said where an agent could trade. In the Geniza papers an agent who went beyond those limits and lost something paid the whole loss himself.",
+    "sources": [
+      {
+        "src": "goitein-1964",
+        "at": "p. 327; a manager who broke the contract's terms paid the whole loss"
+      }
+    ]
+  }
+]

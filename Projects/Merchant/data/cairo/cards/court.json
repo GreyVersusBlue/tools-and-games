@@ -1,1 +1,134 @@
-[]
+[
+  {
+    "id": "muhtasib-visit",
+    "group": "court",
+    "from": {
+      "name": "Bishr, your clerk",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "The market inspector comes",
+    "body": "The muhtasib, the officer who watches over the markets, is walking down your street. Bishr found a few sacks of dates in the warehouse that have gone bad. He asks what to do.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "throw",
+        "label": "Throw the sacks out now",
+        "hint": "It costs money. The inspector will see an honest house.",
+        "requires": {
+          "money": {
+            "gte": 30
+          }
+        },
+        "now": [
+          {
+            "money": -30
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "hide",
+        "label": "Hide the sacks and hope",
+        "hint": "Bad food is easy to smell.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "money": -20
+              },
+              {
+                "rep": "court",
+                "by": -1
+              }
+            ],
+            "card": "muhtasib-fine"
+          }
+        ]
+      }
+    ],
+    "note": "In 1341 the muhtasib of Cairo found 1,196 pigeons and 33,000 starlings, all spoiled, in a seller's storehouse. The man was punished in public, and the birds were destroyed.",
+    "unlocks": [
+      "term-muhtasib"
+    ],
+    "sources": [
+      {
+        "src": "agir-2017",
+        "at": "section 1, n. 95; the finding of 1341"
+      }
+    ]
+  },
+  {
+    "id": "chief-of-merchants",
+    "group": "court",
+    "from": {
+      "name": "Tamer, a rich merchant",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "A rich man wants a title",
+    "body": "Tamer is a rich merchant. He hopes the sultan will name him chief of the merchants, a title given to some wealthy men. He asks your house to speak well of him at court. His rivals ask you to stay out.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "back",
+        "label": "Speak well of Tamer at court",
+        "hint": "He will not forget it. His rivals will not either.",
+        "now": [
+          {
+            "rep": "court",
+            "by": 1
+          },
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "card": "tamer-title"
+          }
+        ]
+      },
+      {
+        "id": "stay",
+        "label": "Stay out of it",
+        "hint": "No one is angry, and no one owes you.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Sultans gave the title \"chief of the merchants\" to some rich men. One scholar warns that it was not a real office.",
+    "sources": [
+      {
+        "src": "sato-2006",
+        "at": "pp. 150, 152 and 154; the title ra'is al-tujjar and Ashtor's warning"
+      }
+    ]
+  }
+]

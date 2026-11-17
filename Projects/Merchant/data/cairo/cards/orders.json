@@ -1,1 +1,375 @@
-[]
+[
+  {
+    "id": "first-expedition",
+    "group": "orders",
+    "from": {
+      "name": "Yusuf, your agent",
+      "role": "Cairo",
+      "seal": "seal-1"
+    },
+    "title": "Yusuf is ready to go",
+    "body": "Yusuf has packed for the road. He says linen sells for more in Damascus, where the weavers want good plain cloth. He asks to take ten loads of your linen. The caravan, the group of travellers he will join, charges a fee for a place in the line.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "go",
+        "label": "Send Yusuf with ten loads of linen",
+        "hint": "Damascus may pay more than Cairo does.",
+        "requires": {
+          "money": {
+            "gte": 20
+          }
+        },
+        "now": [
+          {
+            "money": -20
+          },
+          {
+            "trust": "yusuf",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 4,
+            "do": [
+              {
+                "trust": "yusuf",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wait",
+        "label": "Not this season",
+        "hint": "Nothing now. Yusuf will be disappointed.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "trust": "yusuf",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Cairo's merchants sent goods by river, desert road and sea. They had long used agents to buy and sell for them in other towns.",
+    "unlocks": [
+      "term-load",
+      "term-caravan"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, pp. 41 to 59 and p. 80 n. 48; Cairo, the Nile boats and the caravan to Damascus"
+      },
+      {
+        "src": "goitein-1973",
+        "at": "the Geniza letters, mostly 950 to 1250: agents writing home"
+      }
+    ]
+  },
+  {
+    "id": "linen-neighbour",
+    "group": "orders",
+    "from": {
+      "name": "Abu Bakr, your neighbour",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "A neighbour wants your linen",
+    "body": "Abu Bakr makes sails and needs cloth today. He offers Cairo's price for your other ten loads of linen. He will pay in coin at once.",
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "sell",
+        "label": "Sell them now",
+        "hint": "Abu Bakr will remember a good neighbour.",
+        "now": [
+          {
+            "money": 450
+          },
+          {
+            "stock": "linen",
+            "by": -10
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "card": "abu-bakr-again"
+          }
+        ]
+      },
+      {
+        "id": "keep",
+        "label": "Keep them for the next trip",
+        "hint": "Nothing now. They may sell for more far away.",
+        "now": [],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "A handbook of about 1340 says goods brought into Alexandria paid 20 in every hundred, and goods leaving paid nothing. A price far away had to cover costs like that.",
+    "unlocks": [
+      "term-load"
+    ],
+    "sources": [
+      {
+        "src": "pegolotti-1936",
+        "at": "Alexandria chapter, print p. 72"
+      }
+    ]
+  },
+  {
+    "id": "silk-order",
+    "group": "orders",
+    "from": {
+      "name": "Nabil, the broker",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "One load of silk by spring",
+    "body": "Nabil is a broker, a go-between who finds buyers. He knows a rich family that wants one load of silk before spring. They will pay well, but you have no silk.",
+    "when": {
+      "all": [
+        {
+          "season": [
+            "summer",
+            "autumn"
+          ]
+        },
+        {
+          "notebook": "term-load"
+        },
+        {
+          "flag": "silk-order-done",
+          "not": true
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "agree",
+        "label": "Send to Damascus for the silk",
+        "hint": "The family may come back.",
+        "requires": {
+          "money": {
+            "gte": 410
+          }
+        },
+        "now": [
+          {
+            "money": -410
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "do": [
+              {
+                "rep": "partners",
+                "by": 1
+              }
+            ],
+            "card": "silk-order-due"
+          }
+        ]
+      },
+      {
+        "id": "refuse",
+        "label": "Say no politely",
+        "hint": "Nabil trusts you a little less.",
+        "now": [
+          {
+            "rep": "partners",
+            "by": -1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "flag": "silk-order-done",
+                "set": "now"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In 1326 the sultan owned a silk funduq in Alexandria. A funduq was a warehouse and inn for merchants.",
+    "unlocks": [
+      "term-broker"
+    ],
+    "sources": [
+      {
+        "src": "christie-2004",
+        "at": "the property list of 16 April 1326"
+      },
+      {
+        "src": "agir-2017",
+        "at": "Background n. 17; qaysariyya, funduq, khan and wikala as one type of building"
+      }
+    ]
+  },
+  {
+    "id": "sugar-pots",
+    "group": "orders",
+    "from": {
+      "name": "Amina, a sugar maker",
+      "role": "Fustat",
+      "seal": null
+    },
+    "title": "Amina needs money for fuel",
+    "body": "Amina runs a sugar refinery in Fustat. She needs money now for fuel and cane. She will sell you three loads of sugar cheaply if you pay today.",
+    "when": {
+      "all": [
+        {
+          "notebook": "term-load"
+        }
+      ]
+    },
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "buy",
+        "label": "Buy three loads of her sugar",
+        "hint": "Sugar keeps well. The price may rise.",
+        "requires": {
+          "money": {
+            "gte": 120
+          }
+        },
+        "now": [
+          {
+            "money": -120
+          },
+          {
+            "stock": "sugar",
+            "by": 3
+          }
+        ],
+        "later": [
+          {
+            "in": 2,
+            "card": "amina-thanks"
+          }
+        ]
+      },
+      {
+        "id": "pass",
+        "label": "Wish her luck and pass",
+        "hint": "Amina will find another buyer.",
+        "now": [],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "partners",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "In about 1400 a writer in Cairo counted 65 places that refined sugar in Fustat. Thirteen belonged to merchants.",
+    "sources": [
+      {
+        "src": "sato-2006",
+        "at": "p. 149; the count of Ibn Duqmaq, who died in 1406"
+      }
+    ]
+  },
+  {
+    "id": "shared-stay",
+    "group": "orders",
+    "from": {
+      "name": "Khalid, a spice merchant",
+      "role": "Cairo",
+      "seal": null
+    },
+    "title": "Share a funduq",
+    "body": "Khalid is one of the Karimi, a loose group of great spice merchants. He and his friends are building a funduq, a warehouse and inn for merchants, in a port on the spice road. He offers your house a share of the rooms for one trip.",
+    "weight": 3,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "share",
+        "label": "Take a share of the rooms",
+        "hint": "You share the costs, and the news.",
+        "requires": {
+          "money": {
+            "gte": 80
+          }
+        },
+        "now": [
+          {
+            "money": -80
+          },
+          {
+            "rep": "foreign",
+            "by": 1
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "card": "khalid-news"
+          }
+        ]
+      },
+      {
+        "id": "decline",
+        "label": "Keep your own lodging",
+        "hint": "You pay no share, and you hear less.",
+        "now": [],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "foreign",
+                "by": -1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "The Karimi were a loose group of spice merchants. Now and then they built funduqs together, for shared use.",
+    "unlocks": [
+      "person-karimi",
+      "term-caravanserai"
+    ],
+    "sources": [
+      {
+        "src": "sato-2006",
+        "at": "pp. 149 and 150; the loose confederation and the funduqs built for common purposes"
+      }
+    ]
+  }
+]
