@@ -228,7 +228,8 @@ export const setPeriodName = action(
     if (typeof payload.name !== 'string') refuse('A period name is text. Leave it empty to clear it.', 'bad-value');
     const name = payload.name.trim();
     if (textLength(name) > PERIOD_NAME_MOST) refuse('A period name is at most ' + PERIOD_NAME_MOST + ' characters, and this one has ' + textLength(name) + '. Shorten it.', 'too-long');
-    const names = Array.isArray(settings.periodNames) ? settings.periodNames.slice() : [];
+    const held = settings.periodNames;
+    const names = Array.isArray(held) ? held.slice() : [];
     while (names.length < settings.periods) names.push('');
     if ((names[payload.period] || '') === name) return project;
     if (name !== '') {
