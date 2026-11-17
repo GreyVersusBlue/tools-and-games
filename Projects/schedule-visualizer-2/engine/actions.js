@@ -4076,7 +4076,12 @@ function pastNames(project, periods) {
 
 function dropPastNames(project, periods) {
   const names = project.settings.periodNames;
-  return Array.isArray(names) && names.length > periods ? patch(project, ['settings', 'periodNames'], () => names.slice(0, periods)) : project;
+  if (!Array.isArray(names) || names.length <= periods) return project;
+  const kept = names.slice(0, periods);
+  while (kept.length > 0 && kept[kept.length - 1] === '') kept.pop();
+  if (kept.length > 0) return patch(project, ['settings', 'periodNames'], () => kept);
+  const { periodNames: dropped, ...rest } = project.settings;
+  return { ...project, settings: rest };
 }
 
 // An away entry that names periods: those past the end go, and one left with

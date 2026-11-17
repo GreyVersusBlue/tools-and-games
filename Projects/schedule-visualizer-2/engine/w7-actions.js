@@ -9,7 +9,7 @@
 
 import { action, ActionError, patch, mapRooms, mapShared, reporting, withRoomFeatureIds, BUILDING, SCHEDULE } from './actions.js';
 import { FEATURES_MOST, FEATURE_NAME_MOST, COMMON_FEATURES, PERIOD_COUNTS, PERIOD_WORD_MOST, PERIOD_NAME_MOST, AWAY_MOST, WEEKDAY_NAMES } from './schema.js';
-import { nameKey, textLength, findRoom, nameOfRoom, allRooms } from './schema.js';
+import { nameKey, spacelessKey, textLength, findRoom, nameOfRoom, allRooms } from './schema.js';
 import { periodNumberName } from './bells.js';
 import { isId, collectIds } from './ids.js';
 import { awayWords } from './teacher-day.js';
@@ -211,7 +211,7 @@ function describeName(project, period, name) {
   const others = [];
   const names = Array.isArray(settings.periodNames) ? settings.periodNames : [];
   for (let at = 0; at < settings.periods; at += 1) {
-    if (at !== period && typeof names[at] === 'string' && nameKey(names[at]) === nameKey(name)) others.push(at);
+    if (at !== period && typeof names[at] === 'string' && spacelessKey(names[at]) === spacelessKey(name)) others.push(at);
   }
   return others;
 }
@@ -234,7 +234,7 @@ export const setPeriodName = action(
     if (name !== '') {
       if (/^[0-9]+$/.test(name)) refuse('A period name cannot be just a number: "' + name + '" would be taken for period ' + name + ' when a file is read. Add a word, like "Lunch" or "Advisory".', 'bad-name');
       for (let at = 0; at < settings.periods; at += 1) {
-        if (nameKey(periodNumberName(settings, at)) === nameKey(name)) refuse('"' + name + '" is the number name of ' + (at === payload.period ? 'this period' : 'another period') + ', and a file would match it to ' + (at === payload.period ? 'it' : 'that one') + '. Type another name.', 'bad-name');
+        if (spacelessKey(periodNumberName(settings, at)) === spacelessKey(name)) refuse('"' + name + '" is the number name of ' + (at === payload.period ? 'this period' : 'another period') + ', and a file would match it to ' + (at === payload.period ? 'it' : 'that one') + '. Type another name.', 'bad-name');
       }
     }
     names[payload.period] = name;
