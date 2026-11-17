@@ -197,8 +197,17 @@ jobs:
               node tools/blender/validate.mjs
 
           # Merchant (Projects/Merchant/, built from its own road map outside
-          # the ranked backlog). Its Node suites join here as they are built:
-          # engine.mjs, save.mjs, content.mjs, art-manifest.mjs, swap.mjs.
+          # the ranked backlog). swap.mjs and the balance bots join in M2.
+          - name: Merchant
+            dir: Projects/Merchant
+            commands: |
+              node test/engine.mjs
+              node test/save.mjs
+              node test/content.mjs
+              node test/art-manifest.mjs
+              node tools/lint-content.mjs cairo
+              node tools/reading-level.mjs cairo
+
           - name: Merchant in a browser
             dir: Projects/Merchant
             install: Tools/board-check
