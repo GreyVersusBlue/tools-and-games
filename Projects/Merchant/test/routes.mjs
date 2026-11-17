@@ -535,6 +535,7 @@ test('the act jump applies the between events of that gap in order and shows the
     y.events.push({ id: 'between-a', at: 9, between: [1, 2], do: [{ flag: 'a', set: 1 }, { unlock: 'testport' }], interlude: 'Years passed in the north.' });
     y.events.push({ id: 'between-b', at: 5, between: [1, 2], do: [{ flag: 'b', set: 2 }, { flag: 'a', clear: true }], interlude: 'Then more years passed.' });
     y.events.push({ id: 'between-c', at: 5, between: [2, 3], do: [{ flag: 'c', set: 3 }], interlude: 'Not this gap.' });
+    y.events.push({ id: 'between-d', at: 9, between: [2, 3], do: [{ flag: 'd', set: 4 }], interlude: 'A gap testport never reaches.' });  // a played season, and no jump will apply it
   });
   // season 9 is played in the acts calendar: the event at 9 must not fire there
   let s = game(c, { length: 'acts' });
@@ -544,11 +545,11 @@ test('the act jump applies the between events of that gap in order and shows the
   eq([s.flags.b, s.flags.a, s.flags.c], [2, 1, undefined], 'b then a: a was cleared by b and then set by a, which comes later; the other gap\'s event did not run');
   s = openSeason(s, c);
   s = play(s, c, 1);                                      // season 9: no second firing by `at`
-  eq(s.log.filter(e => e.kind === 'event' && e.ref === 'between-a').length, 0, 'not fired by its season in the three-act game');
+  eq([s.flags.d, s.seen['event:between-d']], [undefined, undefined], 'season 9 is played, and an event meant for a gap is not fired by it in the three-act game');
   // in the full game there is no gap, and the same event fires in its own season
   let f = game(c, { length: 'full' });
   f = play(f, c, 9);
-  eq([idx(f, c), f.flags.a, f.seen['event:between-a']], [9, 1, 1], 'the full game fires it at its season');
+  eq([idx(f, c), f.flags.a, f.seen['event:between-a'], f.flags.d], [9, 1, 1, 4], 'the full game fires them at their seasons');
   // cairo: act one to act two
   const cairoEvents = C.events.filter(e => e.between?.[0] === 1 && e.between?.[1] === 2).map(e => e.id);
   eq(cairoEvents, ['ibn-battuta-alexandria', 'aydhab-closed-1326', 'aydhab-open-again', 'sultan-pilgrimage-1332']);
