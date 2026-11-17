@@ -55,6 +55,7 @@ export const DIRECTIONS = {
 LIMITS.directionMin = 0.08;        // over the careful, greedy and qirad bots' trips together, each direction but the Mediterranean carries at least this share...
 LIMITS.depthShare = 0.5;            // not a limit of the run: a sensible bot trades no more than this share of a market's depth in one good, which would move the price against it
 LIMITS.wageBillShare = 5;           // not a limit of the run: a bot sends a stake of at least this many times the wage bill of the whole road (seasons times the agent's wage)
+LIMITS.redseaMedianAtLeastMediterranean = true; // the long roads paid most (MER-51b); the rule is a comparison, so it has no number
 LIMITS.mediterraneanMax = 0.60;    // ...and the Mediterranean at most this share. An estimate of balance, not a recorded figure: the long roads were risky and paid the most, so a sensible bot uses them sometimes
 export const SENSIBLE = ['careful', 'greedy', 'qirad'];
 export const directionOf = dest => Object.keys(DIRECTIONS).find(d => DIRECTIONS[d].includes(dest)) ?? null;
@@ -352,6 +353,15 @@ export function directionShares(content, games) {
   return Object.fromEntries(Object.entries(n).map(([d, c]) => [d, all ? c / all : 0]));
 }
 
+/** The median round trip profit after wage by direction, over the trips of the careful, greedy and qirad bots
+    together (MER-51b: the long roads paid most). Returns { direction: { median, n } }; the median is NaN with no trip. */
+export function directionMedians(content, results) {
+  const dest = Object.fromEntries(content.routes.map(r => [r.id, r.to]));
+  const by = Object.fromEntries(Object.keys(DIRECTIONS).map(d => [d, []]));
+  for (const b of SENSIBLE) for (const g of results[b] ?? []) g.trips.forEach((t, i) => by[directionOf(dest[g.tripRoute[i]])]?.push(t));
+  return Object.fromEntries(Object.entries(by).map(([d, l]) => [d, { median: l.length ? quantile(l, 0.5) : NaN, n: l.length }]));
+}
+
 /** Every threshold against a run. Returns { rows: [{ name, value, limit, ok, note }], ok }. */
 export function check({ content, results, offered, taken, games }) {
   const rows = [];
@@ -392,6 +402,12 @@ export function check({ content, results, offered, taken, games }) {
       if (d === 'mediterranean') add('mediterranean: share of careful, greedy and qirad trips at most', share[d], LIMITS.mediterraneanMax, share[d] <= LIMITS.mediterraneanMax, `${sensible.join(', ')}`);
       else add(`${d}: share of careful, greedy and qirad trips at least`, share[d], LIMITS.directionMin, share[d] >= LIMITS.directionMin, `${sensible.join(', ')}`);
     }
+  }
+  // the long roads paid most (MER-51b): the Red Sea and India's median trip is at least the Mediterranean's
+  if (sensible.length) {
+    const med = directionMedians(content, results);
+    const r = med['redsea-india'], m = med.mediterranean;
+    add('redsea-india: median round trip profit at least the mediterranean\'s', r.median, m.median, r.n > 0 && m.n > 0 && r.median >= m.median, `${r.n} and ${m.n} trips`);
   }
   // cards drawn: the union over every bot's games, per card
   const total = Object.values(results).reduce((n, l) => n + l.length, 0);
@@ -447,10 +463,8 @@ export function table({ content, results, houses, games, startWorth }, checked) 
   lines.push('');
   lines.push('median round trip profit after wage, by direction (trips; careful, greedy and qirad together):');
   {
-    const dest = Object.fromEntries(content.routes.map(r => [r.id, r.to]));
-    const by = Object.fromEntries(names.map(d => [d, []]));
-    for (const b of SENSIBLE) for (const g of results[b] ?? []) g.trips.forEach((t, i) => by[directionOf(dest[g.tripRoute[i]])]?.push(t));
-    lines.push(`  ${names.map(d => `${d} ${pct(quantile(by[d], 0.5))} (${by[d].length})`).join('   ')}`);
+    const med = directionMedians(content, results);
+    lines.push(`  ${names.map(d => `${d} ${pct(med[d].median)} (${med[d].n})`).join('   ')}`);
   }
   lines.push('');
   lines.push('routes sent (share of all expeditions):');

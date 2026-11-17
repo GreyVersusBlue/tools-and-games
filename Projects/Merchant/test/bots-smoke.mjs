@@ -62,7 +62,7 @@ test('smoke: an unknown bot and an unknown house are refused, not played as some
 test('smoke: the check returns one row per threshold and the table prints', () => {
   const checked = check(res);
   const names = checked.rows.map(r => r.name).join(' | ');
-  for (const part of ['most-used', 'broke by season', '75th percentile', 'after wage', 'under a doubling', 'every card drawn', 'choices taken', 'mediterranean: share', 'levant-persia: share', 'redsea-india: share', 'sahara: share']) ok(names.includes(part), `no row for "${part}"`);
+  for (const part of ['most-used', 'broke by season', '75th percentile', 'after wage', 'under a doubling', 'every card drawn', 'choices taken', 'mediterranean: share', 'levant-persia: share', 'redsea-india: share', 'sahara: share', 'redsea-india: median round trip']) ok(names.includes(part), `no row for "${part}"`);
   ok(table(res, checked).includes('worth by house'));
 });
 
@@ -102,6 +102,25 @@ test('check: a round trip median outside 10 to 30 percent is a breach and one in
   eq(failing(inside).filter(n => n.includes('after wage')), []);
   const below = doctored(r => { for (const g of r.results.careful) g.trips = g.trips.map(() => 0.02); });
   ok(failing(below).some(n => n.startsWith('careful') && n.includes('after wage')));
+});
+
+// ---- the long roads paid most (MER-51b): the Red Sea and India's median trip is at least the Mediterranean's
+const medianRow = c => c.rows.find(r => r.name.startsWith('redsea-india: median round trip'));
+/** Every sensible bot's games get one trip on each route named, with the profit given per route. */
+const withTrips = profit => doctored(r => { for (const b of SENSIBLE) for (const g of r.results[b]) { g.tripRoute = Object.keys(profit); g.trips = Object.values(profit); } });
+
+test('median by direction: the Red Sea and India paying 20 against the Mediterranean\'s 15 passes, and a tie passes', () => {
+  ok(medianRow(withTrips({ 'cairo-calicut': 0.2, 'cairo-venice': 0.15 })).ok);
+  ok(medianRow(withTrips({ 'cairo-calicut': 0.15, 'cairo-venice': 0.15 })).ok, 'equal is fine');
+});
+
+test('median by direction: the Red Sea and India paying under the Mediterranean is a breach, by one point of a hundred', () => {
+  const c = withTrips({ 'cairo-calicut': 0.14, 'cairo-venice': 0.15 });
+  ok(!medianRow(c).ok && !c.ok, JSON.stringify(medianRow(c)));
+});
+
+test('median by direction: a run with no Red Sea trip at all is a breach, not a pass by default', () => {
+  ok(!medianRow(withTrips({ 'cairo-venice': 0.15 })).ok);
 });
 
 // ---- the four directions (MER-51): where the careful, greedy and qirad bots' trips end
