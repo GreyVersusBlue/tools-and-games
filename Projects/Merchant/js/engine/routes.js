@@ -18,7 +18,7 @@ import { applyAll } from './effects.js';
 import { cityOf, addPaper, deskFull } from './state.js';
 import { next, chance } from './rng.js';
 import * as M from './market.js';
-import { riskFactor, bargain, legSeasons } from './agents.js';
+import { riskFactor, bargain, legSeasons, returnTrust, refusesOwn } from './agents.js';
 import { decide, WAIT } from './letters.js';
 
 export const WINTER_GALLEY = 1.5;   // risk times this on a galley leg started in winter (Duggan 2015: risky, not closed)
@@ -352,6 +352,8 @@ function build(s, content, plan) {
     else if (!isCount(partners) || partners < 1) no('A qirad needs partners who put in some money. Say how much.');
     else if (partners > purse + buyCost) no(`The partners cannot put in more than the ${coins(content, purse + buyCost)} that goes out in money and bought goods.`);
   } else partners = 0;
+  const wants = agent && kind === 'own' ? refusesOwn(s, agent) : null;
+  if (wants) no(wants);
 
   // selling and buying at the far end
   const carried = new Set(Object.keys(cargo));
@@ -613,10 +615,12 @@ function bringHome(s, content, x, { elapsed }) {
   const shares = split(x.contract, x.staked, value);
   for (const [g, n] of Object.entries(x.cargo)) addStock(s, g, n);
   s.money += x.purse;
-  const short = pay(s, content, shares.partners) + pay(s, content, shares.agent);
+  const partnersShort = pay(s, content, shares.partners), agentShort = pay(s, content, shares.agent);
+  const short = partnersShort + agentShort;
   const wage = x.contract.kind === 'own' ? x.out * (agent.wage ?? 0) : 0;
   const wageShort = pay(s, content, wage);
   if (short || wageShort) s.rep.partners = clamp(s.rep.partners - 1, -3, 3);
+  returnTrust(s, content, x, { qirad: x.contract.kind === 'qirad', agentShare: shares.agent, agentShort, wage, wageShort, lost: Object.keys(x.book.lost ?? {}).length > 0, since: x.sent }, seasonIndex(s, content));
   agentRec.where = home;
   for (const k of x.book.seen) bumpKnown(s, k.stop, k.good, k.p, k.at);
   const houseNet = shares.house - x.staked.house - wage;

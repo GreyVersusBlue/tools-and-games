@@ -10,6 +10,12 @@
 //
 // `knows-<stop>` helps only at that stop and on legs that start or end there.
 // `speaks-<language>` does nothing to the numbers yet; letters will read it.
+//
+// Below the trait tables: trust and reputation (ARCHITECTURE 4.11). Trust is per agent and
+// reputation per group, both -3 to 3, and the rules that move them or read them are here, each a
+// small function with a named case in test/agents.mjs.
+import { seasonIndex } from './calendar.js';
+import { addPaper, cityOf, REP_GROUPS } from './state.js';
 
 export const TRAIT_TABLE = {
   careful: { risk: 0.5, slow: 1 },
@@ -52,4 +58,114 @@ export function legSeasons(agent, leg) {
   let extra = 0;
   for (const t of traitsOf(agent)) extra += TRAIT_TABLE[t]?.slow ?? 0;
   return leg.seasons + extra;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Trust and reputation (ARCHITECTURE 4.11, DESIGN 4.9)
+
+export const LEAVES_AT = -2;      // an agent at home with trust this low or lower leaves at the next opening
+export const WARY_AT = -1;        // trust this low or lower acts as careful whatever the traits
+export const UNFAIR_LIMIT = 2;    // this many `unfair` memories and the agent wants a share, not a wage
+export const UNFAIR = 'unfair';   // the memory an unpaid wage leaves
+export const BLAMED = 'blamed';   // the memory a report answered "You should have waited" leaves (data: a letter choice's `memory` effect)
+
+// The trust of every agent at the last opening, kept as the one log entry of this kind (a new one
+// replaces it, so the log grows by one entry, not one a season).
+const NOTED = 'trust';
+const clamp3 = n => Math.max(-3, Math.min(3, n));
+
+// The five-step scale of DESIGN 4.9, one table for trust and for reputation. Seven numbers go into
+// five steps with the middle three wider at the ends: -3, then -2 and -1, 0, 1 and 2, then 3.
+export const SCALE = {
+  group: ['They will not deal with you', 'They deal with you warily', 'They deal with you as with anyone',
+    'They speak well of you', 'They come to you first'],
+  agent: ['has lost faith in the house', 'is uneasy with the house', 'has no strong feeling about the house',
+    'trusts the house', 'would follow the house anywhere'],
+};
+
+/** Which of the five steps a number from -3 to 3 falls in. */
+export const stepOf = n => (n <= -3 ? 0 : n < 0 ? 1 : n === 0 ? 2 : n < 3 ? 3 : 4);
+
+/** The words for a number: who is "agent" (for an agent's trust) or "group" (for a reputation). */
+export const scaleWords = (n, who = 'group') => SCALE[who][stepOf(n)];
+
+/** For view(): trust in words for every agent and standing in words for every group, each with its number. */
+export function standing(s, content) {
+  const trust = {}, rep = {};
+  for (const a of content.agents ?? []) {
+    const n = s.agents[a.id]?.trust ?? 0;
+    trust[a.id] = { n, step: stepOf(n), words: scaleWords(n, 'agent') };
+  }
+  for (const g of REP_GROUPS) rep[g] = { n: s.rep[g], step: stepOf(s.rep[g]), words: scaleWords(s.rep[g], 'group') };
+  return { trust, rep };
+}
+
+const unfairCount = rec => (rec?.memory ?? []).filter(m => m.kind === UNFAIR).length;
+
+/** The trust an agent loses or gains on coming home (the return's one line in routes.js), applied to
+    the record and returned. `r` is { qirad, agentShare, agentShort, wage, wageShort, lost, since }:
+    a qirad share paid in full is +1 (a share of nothing is not a payment); an own contract's wage the
+    house could not pay is -1 and an `unfair` memory; a loss on the road the house blamed on the agent
+    (a `blamed` memory written since the expedition left, by a report answered "You should have
+    waited") is -1. */
+export function returnTrust(s, content, x, r, idx) {
+  const rec = s.agents[x.agent];
+  let by = 0;
+  if (r.qirad && r.agentShare > 0 && r.agentShort === 0) by += 1;
+  if (!r.qirad && r.wage > 0 && r.wageShort > 0) { by -= 1; rec.memory.push({ at: idx, kind: UNFAIR }); }
+  if (r.lost && rec.memory.some(m => m.kind === BLAMED && m.at >= r.since && m.at <= idx)) by -= 1;
+  rec.trust = clamp3(rec.trust + by);
+  return by;
+}
+
+/** Trust of -1 or lower: the agent acts as careful on every trait default, whatever the traits
+    (RM 3.3). Read by letters.js where a trait would decide the agent's answer. */
+export const wary = (s, agentId) => (s.agents[agentId]?.trust ?? 0) <= WARY_AT;
+
+/** Two or more `unfair` memories: the agent will not go on a wage again and asks for a qirad share.
+    The words `outfit` gives, or null when the agent will go. */
+export function refusesOwn(s, agent) {
+  if (unfairCount(s.agents[agent.id]) < UNFAIR_LIMIT) return null;
+  return `${agent.name} will not go for a wage again, because the house did not pay what it promised before. ${agent.name} asks for a qirad share.`;
+}
+
+// Invented houses an agent may go to work for; chosen from the agent's place in the book, not drawn,
+// so leaving never moves the seeded stream.
+export const RIVALS = ['Karimi', 'Mansur', 'Qasim', 'Hadid'];
+
+/** The one sentence of why: from the agent's last memory, since a number alone says nothing. */
+function reason(rec, name) {
+  const last = [...(rec.memory ?? [])].reverse().find(m => m.kind === UNFAIR || m.kind === BLAMED);
+  if (last?.kind === UNFAIR) return `${name} says the house did not pay what it promised.`;
+  if (last?.kind === BLAMED) return `${name} says the house blamed them for a loss that was not their fault.`;
+  return `${name} says the house did not keep faith.`;
+}
+
+/** Opening step "agents": the first thing that runs when a season opens, before the returns.
+    1. The season that has just closed moves `rep.agents` by the sum of every agent's trust change
+       since the last opening, at most one step (nothing moves across the years of a jump, whose
+       halving is not the house's doing).
+    2. An agent at home with trust -2 or lower leaves: hired false, where "gone", a notice paper that
+       names them and says why.
+    3. The trust of every agent is noted, in the log, for the next opening. */
+export function opening(s, content) {
+  const idx = seasonIndex(s, content);
+  const was = s.log.find(e => e.kind === NOTED);
+  if (was && idx - was.at === 1) {
+    let sum = 0;
+    for (const [id, r] of Object.entries(s.agents)) sum += r.trust - (was.trust[id] ?? r.trust);
+    s.rep.agents = clamp3(s.rep.agents + Math.max(-1, Math.min(1, sum)));
+  }
+  (content.agents ?? []).forEach((a, i) => {
+    const rec = s.agents[a.id];
+    if (!rec?.hired || rec.trust > LEAVES_AT || rec.where !== cityOf(content, 'agents').home || s.expeditions.some(x => x.agent === a.id)) return;
+    rec.hired = false;
+    rec.where = 'gone';
+    const house = RIVALS[i % RIVALS.length];
+    const headline = `${a.name} has gone to work for the ${house} house. ${reason(rec, a.name)}`;
+    const shown = addPaper(s, { kind: 'notice', ref: 'agent-left', agent: a.id, data: { headline, title: `${a.name} has left`, body: headline } });
+    s.log.push({ at: idx, kind: 'left', ref: a.id, choice: 'trust', ...(shown ? {} : { dropped: 'notice' }) });
+  });
+  s.log = s.log.filter(e => e.kind !== NOTED);
+  s.log.push({ at: idx, kind: NOTED, trust: Object.fromEntries(Object.entries(s.agents).map(([id, r]) => [id, r.trust])) });
 }

@@ -684,8 +684,10 @@ test('the act jump: loans fall due with interest for the years passed, and what 
 test('the act jump: trust halves toward 0, an agent at -2 or lower leaves, and some retire', () => {
   const c = risk(T, 0);
   let s = game(c, { length: 'acts', house: 'rich' });
-  s.agents.mira.trust = 3; s.agents.tobin.trust = -2;
-  s = play(s, c, 3);
+  s.agents.mira.trust = 3;
+  s = play(s, c, 2);
+  s.agents.tobin.trust = -2;   // set late: an agent at home with -2 at an opening leaves then, before any jump
+  s = play(s, c, 1);
   eq([s.agents.tobin.hired, s.agents.tobin.where], [false, 'gone']);
   ok(s.agents.mira.trust === 1 || s.agents.mira.where === 'gone', `mira's trust 3 halves to 1: ${s.agents.mira.trust}`);
   eq(view(s, c).interlude.agents.find(a => a.id === 'tobin'), { id: 'tobin', left: 'trust' });
