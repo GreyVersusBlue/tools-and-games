@@ -3,7 +3,7 @@
 // MER-46 (ARCHITECTURE 7.4, DESIGN 5): every screen but the map's own labels, at the frames of
 // DESIGN 5 and at Large text on the short phone frame. Port 8193, through the site harness.
 //
-// Screens: the title (with and without a save), New game, the desk with a letter raised, the desk
+// Screens: the title (with and without a save), New game, the desk with a letter raised, a question and a report from the road, the desk
 // with a full stack, a return paper, the outfitting sheet, the price board on the map table, the ledger,
 // the notebook (MER-62), the page
 // between acts and the ending stub. The labels on the map table are MER-44b's check in
@@ -108,6 +108,15 @@ const states = {
     return s;
   })(),
 };
+// A question and a report from the road on the desk (MER-63): the engine's own delivery puts the paper
+// there from an entry in `post`; only the draw is placed by hand (every cairo letter has weight 0).
+const withLetter = (id, kind, stop, lag, standing) => {
+  const sent = eng.outfit(states.firstDone, content, eng.suggestPlan(states.firstDone, content, 'damascus')), x = sent.expeditions[0];
+  sent.post.push({ id, kind, expedition: x.id, agent: x.agent, stop, standing, written: sent.t, lag, arrive: sent.t + 1 });
+  return eng.endSeason(sent, content);
+};
+states.question = withLetter('first-road-letter', 'question', 'damascus', 2, false);
+states.report = withLetter('toll-at-aydhab', 'report', 'aydhab', 1, true);
 const plain = s => JSON.parse(JSON.stringify(s));
 
 const server = await serve(PORT);
@@ -152,6 +161,10 @@ const SCREENS = [
     go: async (p, f) => { await load(p, '#title', { large: f.large }); await p.waitForSelector('#btn-new'); await p.click('#btn-new'); await p.waitForFunction(() => document.getElementById('panel-newgame')?.open); } },
   { name: 'desk-letter',
     go: async (p, f) => { await load(p, '#desk', { state: states.start, large: f.large }); await p.waitForSelector('#screen-desk .sheet-title'); } },
+  { name: 'desk-question',
+    go: async (p, f) => { await load(p, '#desk', { state: states.question, large: f.large }); await p.waitForSelector('#screen-desk .letter-answer'); } },
+  { name: 'desk-report',
+    go: async (p, f) => { await load(p, '#desk', { state: states.report, large: f.large }); await p.waitForSelector('#screen-desk .letter-line'); } },
   { name: 'desk-papers',
     go: async (p, f) => { await load(p, '#desk', { state: states.full, large: f.large }); await p.waitForSelector('#screen-desk .sheet-title'); } },
   { name: 'desk-return',

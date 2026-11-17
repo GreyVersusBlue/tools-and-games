@@ -13,8 +13,6 @@ const plural = (n, one, many) => (n === 1 ? one : many);
 const VESSEL = { caravan: 'caravan', galley: 'galley', dhow: 'dhow', nileboat: 'river boat', mules: 'mule train' };
 const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
 const FRACTIONS = { '1/2': 'one half', '1/3': 'one third', '2/3': 'two thirds', '1/4': 'one quarter', '3/4': 'three quarters', '1/5': 'one fifth' };
-const TRUST = { '-3': 'has lost faith in the house', '-2': 'is close to leaving the house', '-1': 'is uneasy with the house',
-  0: 'has no strong feeling about the house', 1: 'trusts the house', 2: 'trusts the house well', 3: 'trusts the house fully' };
 
 export const stopOf = (content, id) => (content.stops ?? []).find(s => s.id === id);
 export const stopName = (content, id) => stopOf(content, id)?.name ?? id;
@@ -162,7 +160,7 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
     if (!expanded('who') && a) return section('who', '1. Who goes', summary('who', `${a.name} (${traitWords(app, a)}).`, () => { open.add('who'); render('change-who'); }, 'who goes'));
     return section('who', '1. Who goes', h('div', { class: 'agents', role: 'radiogroup', 'aria-labelledby': 'outfit-who-h' },
       free.map(ag => {
-        const on = ag.id === draft.agent, trust = app.state.agents[ag.id].trust;
+        const on = ag.id === draft.agent, trust = app.view().trust[ag.id];
         return h('button', { class: 'agent', type: 'button', role: 'radio', id: `agent-${ag.id}`, dataset: { key: `agent-${ag.id}` }, 'aria-checked': on ? 'true' : 'false',
           tabindex: on || (!draft.agent && ag === free[0]) ? '0' : '-1',
           onclick: () => { draft.agent = ag.id; render(`agent-${ag.id}`); },
@@ -175,7 +173,7 @@ export function createOutfit(app, { stopId, onSent, onCancel, onDesk }) {
           } },
         seal(app, ag.seal),
         h('span', { class: 'agent-text' }, h('strong', null, ag.name), h('span', { class: 'traits' }, traitWords(app, ag)),
-          h('span', { class: 'trust' }, `${ag.name} ${TRUST[trust] ?? TRUST[0]}.`)));
+          h('span', { class: 'trust' }, `${ag.name} ${trust?.words ?? ''}.`)));
       })));
   }
 
