@@ -1,0 +1,4 @@
+[
+  { "id": "mira", "name": "Mira", "community": "harbour", "seal": "seal-1", "traits": ["careful"], "wage": 10, "home": "harbour" },
+  { "id": "tobin", "name": "Tobin", "community": "harbour", "seal": "seal-1", "traits": ["bold"], "wage": 8, "home": "harbour" }
+]

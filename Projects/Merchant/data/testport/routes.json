@@ -1,0 +1,8 @@
+[
+  { "id": "harbour-saltmarsh", "to": "saltmarsh", "legs": [
+    { "from": "harbour", "to": "saltmarsh", "by": "nileboat", "seasons": 1, "opens": ["spring", "summer", "autumn", "winter"], "risk": 0.02, "toll": 2, "sources": [ { "src": "testport-fiction" } ] },
+    { "from": "saltmarsh", "to": "harbour", "by": "nileboat", "seasons": 1, "opens": ["spring", "summer", "autumn", "winter"], "risk": 0.02, "toll": 2, "sources": [ { "src": "testport-fiction" } ] } ] },
+  { "id": "harbour-hilltown", "to": "hilltown", "legs": [
+    { "from": "harbour", "to": "hilltown", "by": "mules", "seasons": 2, "opens": ["spring", "summer", "autumn"], "risk": 0.05, "toll": 5, "sources": [ { "src": "testport-fiction" } ] },
+    { "from": "hilltown", "to": "harbour", "by": "mules", "seasons": 2, "opens": ["spring", "summer", "autumn"], "risk": 0.05, "toll": 5, "sources": [ { "src": "testport-fiction" } ] } ] }
+]

@@ -1,0 +1,13 @@
+{
+  "id": "testport",
+  "name": "Testport",
+  "home": "harbour",
+  "currency": "coins",
+  "title": "Testport",
+  "tagline": "An invented harbour town for testing the engine.",
+  "opening": {
+    "plain": ["welcome-note", "wool-offer"],
+    "rich": ["welcome-note", "salt-dispute"]
+  },
+  "secondSeason": { "cards": 1 }
+}
