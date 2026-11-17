@@ -45,6 +45,10 @@ orchestrator's to reopen.
 | D6 | The educational content is in from the start, not added later. |
 | D7 | For now the game is a standalone page on the site's quest board. Classroom use (a lesson around it, a teacher guide) comes later and must not be blocked. |
 | D8 | The art is made in Blender and aims for a realistic look, as rendered still images. Devon runs the art on his Windows machine, by handing Claude Code one prompt per asset from an art list this project writes. |
+| D10 | Merchant runs apart from `BACKLOG.md`'s ranked table and `HISTORY.md`'s numbered decisions, for now. Its board, log, decisions and worker prompts live outside the site in `~/projects/merchant/`. |
+| D11 | Renders may use free-licence (CC0) textures and sky images as inputs, downloaded on the Windows machine. Each one is listed in a manifest with its licence. Nothing downloaded is served by the site. |
+| D12 | At 22:00 a running worker finishes its unit and nothing new starts. |
+| D13 | The player chooses the length at the start: the three-act game or the full run of years (3.2). |
 | D9 | An Opus orchestrator runs development. Sonnet 5.5 workers do the writing, the research and the code, each in a new session, at most three at a time. A worker's session is archived once it has reported. No work between 22:00 and 04:00 Eastern. |
 
 ## 3. How it plays
@@ -60,12 +64,22 @@ A turn is one season. In a turn the player:
 
 A turn should take about a minute once the player knows the game.
 
-### 3.2 The span: three acts (draft, M1 confirms)
+### 3.2 The span: two lengths, chosen at the start (D13; M1 confirms the years)
 
-1320 to 1347 is about 110 seasons, which is too long to play. The draft is
-three acts of two years each, 8 turns an act, 24 turns a game, with a short
-"years pass" page between acts that carries the house forward (money, agents,
+**The three-act game** is the default and the one a class period holds. Three
+acts of two years each, 8 turns an act, 24 turns a game, with a short "years
+pass" page between acts that carries the house forward (money, agents,
 reputation) and says what changed in the world.
+
+**The full years** runs every season from 1324 to 1347 with no jumps: about 92
+turns, a game played over several sittings from the save. Same engine, same
+data, same set pieces on their real dates. It needs more cards than the
+three-act game to stay fresh and its own balance run, so it is built in M6,
+when the card count reaches about 150. The title screen shows the choice from
+M4 with the long game marked as coming.
+
+Both lengths are one rule in the engine: a calendar that lists which seasons
+are played. The balance bots run both.
 
 | Act | Draft years | What it is about | Draft set pieces |
 |---|---|---|---|
@@ -73,7 +87,8 @@ reputation) and says what changed in the world.
 | 2 | 1335 to 1336 | A larger house, more at risk | The Mongol state in Persia breaks up and the road east turns dangerous |
 | 3 | 1346 to 1347 | Reading the warnings | Rumours from the Black Sea, then the plague; recall your people or gamble |
 
-A game is one sitting of about 30 minutes, and it saves after every turn.
+The three-act game is one sitting of about 30 minutes. Both lengths save
+after every turn.
 
 ### 3.3 The systems
 
@@ -397,6 +412,8 @@ card, so Devon can play it on any device.
 ### M6. Depth
 
 - Cards from 60 to about 150, so two games are not alike.
+- The full-years length (D13): the continuous calendar, its events on their
+  real dates, and its own bot run.
 - A second balance pass.
 - The teacher page generated from the sources in the data.
 
@@ -438,9 +455,9 @@ are in the data from the first card.
   worker unit owns those two folders.
 - **Where the files live.** This road map and `ART.md` are in this folder,
   because the Windows machine reads the art list from the repository. The
-  orchestrator's own handoff, board, log and worker prompts are proposed to
-  live outside the site, in `~/projects/merchant/`, as Schedule Visualizer 2's
-  do, because every file here is a live URL (see Q2).
+  orchestrator's own handoff, board, log and worker prompts live outside the
+  site, in `~/projects/merchant/`, as Schedule Visualizer 2's do, because
+  every file here is a live URL (D10).
 
 ## 9. Open questions, with the assumption in force
 
@@ -448,11 +465,6 @@ The work proceeds on the assumption until Devon says otherwise.
 
 | # | Question | Assumption |
 |---|---|---|
-| Q1 | Is Merchant separate from `BACKLOG.md`'s ranked table and `HISTORY.md`'s numbered decisions, the way Schedule Visualizer 2 is? | Yes. Its plan and decisions live with the orchestrator; the site's files change only at a landing. |
-| Q2 | Do the orchestrator's handoff, board, log and prompts live outside the repository in `~/projects/merchant/`? | Yes. |
-| Q3 | May the renders use free-licence (CC0) textures and sky images as inputs, downloaded on the Windows machine and listed in a manifest? They raise the realism a great deal. | Yes, procedural materials first, a CC0 input where it clearly looks better, every one listed with its licence. Nothing downloaded is served by the site. |
-| Q4 | At 22:00, does a running worker stop at once or finish its unit? | It finishes its unit. Nothing new starts. |
-| Q5 | Three acts of two years, or one continuous run of years? | Three acts, 24 turns. |
 | Q6 | Does the game land on the site without a quest card from M2, so it can be played on a phone and a board while it is built? | Yes. |
 | Q7 | Is "no close faces, agents shown by seal and handwriting" acceptable as the answer to what scripted Blender cannot do? | Yes. |
 | Q8 | Sound. None is planned before M5, and there is no source for it yet. | No sound until Devon names a source. |
