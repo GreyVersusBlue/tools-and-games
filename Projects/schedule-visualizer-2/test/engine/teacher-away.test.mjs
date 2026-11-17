@@ -309,3 +309,9 @@ test('a period name is shown in the check sentences and numbers stay in the CSV 
   const found = ofKind(checkSchedule(project, null), 'teacher-away')[0];
   assert.match(found.text, /not in school in Advisory on A Day \(in Period 2\)/, 'the period\'s own name where it names the period, the number name in a range');
 });
+
+test('the checks report names its grids by the school\'s own period word, as typed', () => {
+  assert.match(render(school(), null, {}).html, /Teachers by period: A Day/);
+  const custom = setPeriodCustom(school(), { word: 'Lesson', count: 'number' }, ctx());
+  assert.match(render(custom, null, {}).html, /Teachers by Lesson: A Day/);
+});
