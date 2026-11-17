@@ -257,7 +257,7 @@ export function repair(input, options) {
         }
         return name;
       });
-      if (unreadable > 0) note(plural(unreadable, 'period name', 'period names') + ' were not text and ' + (unreadable === 1 ? 'was' : 'were') + ' cleared.');
+      if (unreadable > 0) note(plural(unreadable, 'period name', 'period names') + ' ' + (unreadable === 1 ? 'was' : 'were') + ' not text and ' + (unreadable === 1 ? 'was' : 'were') + ' cleared.');
       if (cutLong > 0) note(plural(cutLong, 'period name', 'period names') + ' ' + (cutLong === 1 ? 'was' : 'were') + ' longer than ' + PERIOD_NAME_MOST + ' characters and ' + (cutLong === 1 ? 'was' : 'were') + ' cut.');
       if (names.length > periods) {
         note('The period names listed ' + names.length + ' names and the day has ' + periods + ' periods; the names past period ' + periods + ' were removed.');
@@ -545,9 +545,10 @@ export function repair(input, options) {
         if (featureNames.has(nameKey(feature.name))) {
           let n = 2;
           let unique = feature.name;
+          const base = feature.name.trim(); // " lab " becomes "lab (2)", not "lab  (2)"
           do {
             const tail = ' (' + n + ')';
-            unique = Array.from(feature.name).slice(0, FEATURE_NAME_MOST - tail.length).join('') + tail;
+            unique = Array.from(base).slice(0, FEATURE_NAME_MOST - tail.length).join('') + tail;
             n += 1;
           } while (featureNames.has(nameKey(unique)));
           note('Two room features were both called "' + feature.name + '". The later is now "' + unique + '".');
@@ -678,12 +679,12 @@ export function repair(input, options) {
             note('The features of ' + label + ' could not be read and were removed.');
             delete space.featureIds;
           } else {
-            const wanted = new Set(space.featureIds.map((id) => follow('h', id)).filter((id) => featureOrder.has(id)));
-            const mended = Array.from(wanted).sort((a, b) => featureOrder.get(a) - featureOrder.get(b));
+            // the room's own order is kept (validate does not ask for the list's order, so repair(valid) is valid)
+            const mended = Array.from(new Set(space.featureIds.map((id) => follow('h', id)).filter((id) => featureOrder.has(id))));
             const same = mended.length === space.featureIds.length && mended.every((id, k) => id === space.featureIds[k]);
             if (!same) {
               const lost = space.featureIds.length - mended.length;
-              note(lost > 0 ? label + ' named ' + plural(lost, 'feature', 'features') + ' that ' + (lost === 1 ? 'is' : 'are') + ' not on the building\'s list, or the same one twice; ' + (lost === 1 ? 'it was' : 'they were') + ' removed.' : 'The features of ' + label + ' were put in the order of the building\'s list.');
+              note(label + ' named ' + plural(lost, 'feature', 'features') + ' that ' + (lost === 1 ? 'is' : 'are') + ' not on the building\'s list, or the same one twice; ' + (lost === 1 ? 'it was' : 'they were') + ' removed.');
               space.featureIds = mended;
             }
           }
@@ -1000,7 +1001,8 @@ export function repair(input, options) {
         pool.push({ label: '', well: letter });
         return letter;
       };
-      const plainLabels = new Set(list.filter((connection) => connection.well === undefined && !elevator(connection)).map((connection) => nameKey(connection.label)));
+      // labels a well's letter may not equal: a plain flight's and an elevator's
+      const plainLabels = new Set(list.filter((connection) => connection.well === undefined).map((connection) => nameKey(connection.label)));
       const groups = new Map(); // nameKey of a letter -> its flights, in building order
       for (const connection of list) {
         if (connection.well === undefined) continue;
@@ -1012,9 +1014,14 @@ export function repair(input, options) {
         const letter = flights[0].well;
         if (plainLabels.has(key)) {
           const next = fresh();
-          note('Stairwell ' + letter + ' had the same letter as a stairs connection that is not part of a stairwell; the stairwell is now ' + next + '.');
+          note('Stairwell ' + letter + ' had the same letter as a stairs connection that is not part of a stairwell, or as an elevator; the stairwell is now ' + next + '.');
           for (const flight of flights) flight.well = next;
           continue;
+        }
+        // one letter string for the group, the first's, so "W" and "w" end equal
+        if (flights.some((flight) => flight.well !== letter)) {
+          note('Stairwell ' + letter + ' was also written ' + Array.from(new Set(flights.map((flight) => flight.well).filter((w) => w !== letter))).map((w) => '"' + w + '"').join(', ') + '; every flight of it now reads "' + letter + '".');
+          for (const flight of flights) flight.well = letter;
         }
         // the parts: flights that share a stop are one part
         const part = new Map();
@@ -1614,6 +1621,7 @@ export function repair(input, options) {
       const days = idsOf(entry.dayTypeIds, 'd', allDayIds).kept;
       const hadWeekdays = entry.weekdays.length > 0;
       const weekdays = Array.from(new Set(entry.weekdays.filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))).sort((a, b) => a - b);
+      const sameList = (a, b) => a.length === b.length && a.every((v, k) => v === b[k]);
       const hadPeriods = entry.periods.length > 0;
       const wholePeriods = Array.from(new Set(entry.periods.filter((n) => Number.isInteger(n) && n >= 0))).sort((a, b) => a - b);
       const inDay = wholePeriods.filter((n) => n < project.settings.periods);
@@ -1622,11 +1630,30 @@ export function repair(input, options) {
         changed = true;
         continue;
       }
-      const same = (a, b) => a.length === b.length && a.every((v, k) => v === b[k]);
-      if (!same(days, entry.dayTypeIds) || !same(weekdays, entry.weekdays) || !same(inDay, entry.periods)) {
-        note('An entry of when ' + who + ' is away named day types that are not in the project, periods past the end of the day, or listed something twice; those were removed.');
-        changed = true;
-      }
+      // one note per cause, so each says what it did
+      const unknownDays = entry.dayTypeIds.filter((raw) => {
+        const id = follow('d', raw);
+        return !(typeof id === 'string' && allDayIds.has(id));
+      }).length;
+      const dayRepeats = entry.dayTypeIds.length - days.length - unknownDays;
+      const badWeekdays = entry.weekdays.filter((n) => !(Number.isInteger(n) && n >= 0 && n <= 6)).length;
+      const weekdayRepeats = entry.weekdays.length - weekdays.length - badWeekdays;
+      const badPeriods = entry.periods.filter((n) => !Number.isInteger(n) || n < 0).length;
+      const periodRepeats = entry.periods.length - wholePeriods.length - badPeriods;
+      const pastEnd = wholePeriods.length - inDay.length;
+      const gone = (n) => (n === 1 ? 'it was' : 'they were') + ' removed.';
+      if (unknownDays > 0) note('An entry of when ' + who + ' is away named ' + plural(unknownDays, 'day type', 'day types') + ' that ' + (unknownDays === 1 ? 'is' : 'are') + ' not in the project; ' + gone(unknownDays));
+      if (dayRepeats > 0) note('An entry of when ' + who + ' is away listed a day type twice; the repeat was removed.');
+      if (badWeekdays > 0) note('An entry of when ' + who + ' is away named ' + plural(badWeekdays, 'weekday', 'weekdays') + ' that ' + (badWeekdays === 1 ? 'does' : 'do') + ' not exist (0 is Monday, 6 is Sunday); ' + gone(badWeekdays));
+      if (weekdayRepeats > 0) note('An entry of when ' + who + ' is away listed a weekday twice; the repeat was removed.');
+      if (badPeriods > 0) note('An entry of when ' + who + ' is away named ' + plural(badPeriods, 'period', 'periods') + ' that ' + (badPeriods === 1 ? 'is' : 'are') + ' not a period number from 0; ' + gone(badPeriods));
+      if (periodRepeats > 0) note('An entry of when ' + who + ' is away listed a period twice; the repeat was removed.');
+      if (pastEnd > 0) note('An entry of when ' + who + ' is away named ' + plural(pastEnd, 'period', 'periods') + ' past the end of the day; ' + gone(pastEnd));
+      // a list that only needed sorting
+      const inOrder = (list) => list.every((n, k) => k === 0 || n >= list[k - 1]);
+      if (badWeekdays + weekdayRepeats === 0 && !inOrder(entry.weekdays)) note('The weekdays of an entry of when ' + who + ' is away were put in order.');
+      if (badPeriods + periodRepeats + pastEnd === 0 && !inOrder(entry.periods)) note('The periods of an entry of when ' + who + ' is away were put in order.');
+      if (!sameList(days, entry.dayTypeIds) || !sameList(weekdays, entry.weekdays) || !sameList(inDay, entry.periods)) changed = true;
       entry.dayTypeIds = days;
       entry.weekdays = weekdays;
       entry.periods = inDay;

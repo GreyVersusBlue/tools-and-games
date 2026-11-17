@@ -94,8 +94,10 @@ export function validate(project) {
       if (!isObject(custom)) {
         add('settings.periodCustom', 'The custom period word is not set, or an object with a word, its plural and how periods are counted.');
       } else {
-        if (isBlank(custom.word) || textLength(custom.word.trim()) > PERIOD_WORD_MOST) add('settings.periodCustom.word', 'The custom period word is text of 1 to ' + PERIOD_WORD_MOST + ' characters.');
-        if (custom.plural !== undefined && (isBlank(custom.plural) || textLength(custom.plural.trim()) > PERIOD_WORD_MOST)) add('settings.periodCustom.plural', 'The custom period word\'s plural is text of 1 to ' + PERIOD_WORD_MOST + ' characters, or absent.');
+        // no surrounding spaces: the field is new, so a file that has them is refused and repair's trim is only a mend (repair(valid) is valid)
+        const word = (value) => isString(value) && value !== '' && value === value.trim() && textLength(value) <= PERIOD_WORD_MOST;
+        if (!word(custom.word)) add('settings.periodCustom.word', 'The custom period word is text of 1 to ' + PERIOD_WORD_MOST + ' characters, with no space before or after.');
+        if (custom.plural !== undefined && !word(custom.plural)) add('settings.periodCustom.plural', 'The custom period word\'s plural is text of 1 to ' + PERIOD_WORD_MOST + ' characters with no space before or after, or absent.');
         if (!PERIOD_COUNTS.includes(custom.count)) add('settings.periodCustom.count', 'Custom periods are counted as ' + PERIOD_COUNTS.join(', ') + '.');
       }
     }
@@ -766,7 +768,7 @@ export function validate(project) {
             const ep = ap + '[' + e + ']';
             if (!isObject(entry)) return add(ep, 'An entry of when a teacher is away is an object.');
             if (!Array.isArray(entry.dayTypeIds) || !entry.dayTypeIds.every(isString) || new Set(entry.dayTypeIds).size !== entry.dayTypeIds.length) add(ep + '.dayTypeIds', 'The day types are a list of day type ids, each once; empty means every day type.');
-            if (!whole(entry.weekdays, 6)) add(ep + '.weekdays', 'The weekdays are a list of numbers 0 (Monday) to 6 (Sunday), each once; empty means every day.');
+            if (!whole(entry.weekdays, 6) || entry.weekdays.some((n, k) => k > 0 && n < entry.weekdays[k - 1])) add(ep + '.weekdays', 'The weekdays are a list of numbers 0 (Monday) to 6 (Sunday), each once, in order; empty means every day.');
             if (!whole(entry.periods) || entry.periods.some((n, k) => k > 0 && n < entry.periods[k - 1])) add(ep + '.periods', 'The periods are a list of period numbers from 0, each once, in order; empty means the whole day.');
             return undefined;
           });
