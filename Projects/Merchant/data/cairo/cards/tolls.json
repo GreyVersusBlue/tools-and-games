@@ -16,6 +16,11 @@
         "id": "pay",
         "label": "Pay your share of the toll",
         "hint": "It costs now. Hamza will speak well of you.",
+        "requires": {
+          "money": {
+            "gte": 25
+          }
+        },
         "now": [
           {
             "money": -25
@@ -36,18 +41,14 @@
       {
         "id": "quseir",
         "label": "Send the goods by Quseir",
-        "hint": "It costs a little less. Quseir is nearer to Qus.",
-        "now": [
-          {
-            "money": -10
-          }
-        ],
+        "hint": "It costs less, later. Quseir is nearer to Qus.",
+        "now": [],
         "later": [
           {
-            "in": 3,
+            "in": 2,
             "do": [
               {
-                "money": -10
+                "money": -20
               }
             ]
           }
@@ -111,25 +112,16 @@
         ]
       },
       {
-        "id": "half",
-        "label": "Pay half now and the rest later",
-        "hint": "It costs less. He may not like a late payer.",
-        "requires": {
-          "money": {
-            "gte": 20
-          }
-        },
-        "now": [
-          {
-            "money": -20
-          }
-        ],
+        "id": "store",
+        "label": "Leave the goods in the harbour store",
+        "hint": "It costs less. Your goods wait, and he notices.",
+        "now": [],
         "later": [
           {
             "in": 2,
             "do": [
               {
-                "money": -15
+                "money": -20
               },
               {
                 "rep": "court",
@@ -237,6 +229,11 @@
         "id": "papers",
         "label": "Send two loads under his papers",
         "hint": "It costs a little. Nabil will be glad to help.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
         "now": [
           {
             "money": -10

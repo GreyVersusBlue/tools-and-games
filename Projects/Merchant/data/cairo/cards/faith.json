@@ -154,6 +154,11 @@
         "id": "free",
         "label": "Take her at no charge",
         "hint": "It costs a little. Your street will hear of it.",
+        "requires": {
+          "money": {
+            "gte": 10
+          }
+        },
         "now": [
           {
             "money": -10

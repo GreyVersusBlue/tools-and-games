@@ -262,15 +262,7 @@
         "id": "judge",
         "label": "Let a judge decide",
         "hint": "It costs less. Yusuf will not like it.",
-        "requires": {
-          "money": {
-            "gte": 15
-          }
-        },
         "now": [
-          {
-            "money": -5
-          },
           {
             "trust": "yusuf",
             "by": -1
@@ -285,7 +277,7 @@
             "in": 2,
             "do": [
               {
-                "money": -10
+                "money": -15
               }
             ]
           }
