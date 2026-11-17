@@ -10,6 +10,13 @@
 //   random   any destination, any good, any size
 //   qirad    greedy's choice and a medium cargo, always under a qirad with partners
 //
+// What every bot but `random` values and refuses (MER-51): an offer is the whole round trip (goods out sold at the far
+// price, the best good there bought for the way home, less what each leg's risk is expected to take), money-only
+// trips included, because the Sahara has nothing the house sells; no second agent to a stop one is already bound for;
+// no load above half a market's depth in one good; no stake under five times the wage bill of the road. An expedition
+// still on the road at the act jump is settled off stage and counts as a trip, tagged with its route, so the table
+// can give the median by direction. The four directions and their limits are DIRECTIONS and LIMITS below.
+//
 // Defaults: 2,000 games per bot (about 11 minutes on three threads), 20,000 by hand (--games 20000). Games rotate through the
 // houses (--house to fix one). Seed of game i is SEED0 + i, so a run is repeatable.
 // test/bots-smoke.mjs imports `playGame` and `run` and plays 200 games for CI.

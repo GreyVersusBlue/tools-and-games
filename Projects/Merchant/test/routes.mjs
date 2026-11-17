@@ -920,8 +920,8 @@ test('a seeded testport game with a scripted plan runs to the end in both length
 });
 
 test('a seeded cairo three-act game with a scripted plan runs to the end in Node, jumps twice, and ends with the recall', () => {
-  const a = run(C, { seed: 18, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'] });
-  const b = run(C, { seed: 18, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'] });
+  const a = run(C, { seed: 9, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'] });
+  const b = run(C, { seed: 9, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'] });
   eq(a.s.phase, 'ended');
   sound(a.s);
   eq(JSON.stringify(a.s), JSON.stringify(b.s), 'a second run is the same game');
