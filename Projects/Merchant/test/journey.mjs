@@ -34,7 +34,7 @@ async function open(frame) {
   const consoleErrors = [];
   page.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text()); });
   page.on('pageerror', e => consoleErrors.push(String(e)));
-  await page.goto(URL_, { waitUntil: 'networkidle0' });
+  await page.goto(URL_, { waitUntil: 'load' });
   await page.waitForSelector('#screen-title');
   return { page, consoleErrors };
 }
@@ -84,8 +84,11 @@ try {
         await page.keyboard.press('Tab');
         const r = await ringOf(page);
         seen.push(r.id);
-        ok((r.style !== 'none' && r.outline !== '0px') || (r.shadow && r.shadow !== 'none'),
-          `no focus ring on ${r.id}`);
+        // DESIGN 6: a brass ring with a dark ring outside it, drawn as two
+        // box-shadows in that order (brass first, so it sits inside).
+        const brass = (r.shadow || '').indexOf('rgb(168, 121, 44)');
+        const night = (r.shadow || '').indexOf('rgb(20, 17, 13)');
+        ok(brass >= 0 && night > brass, `no brass-inside, dark-outside focus ring on ${r.id}: ${r.shadow}`);
       }
       ok(seen.includes('btn-about') && seen.includes('btn-settings'), `Tab visited ${seen.join(', ')}`);
       ok(!seen.includes('btn-new'), 'a disabled button took focus');

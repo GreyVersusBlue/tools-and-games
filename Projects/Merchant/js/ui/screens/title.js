@@ -7,8 +7,10 @@ export const TITLE_TEXT = {
   tagline: 'Cairo, 1324. Buy where it is cheap, sell where it is dear, and bring your people home.',
   notReady: 'The first playable season is being built. Come back soon.',
   about: [
-    'You run a merchant house in Cairo in the 1320s, but you never travel: you hire agents, load their cargo and send them out along the sea and desert roads.',
-    'Their letters arrive late, so every choice is a guess, and your score counts the people who came home as well as the money.',
+    'You run a trading house in Cairo in the 1320s. You never travel yourself.',
+    'You hire agents, give them goods, and send them over the sea and across the desert.',
+    'Their letters come home late, so every choice is a guess.',
+    'In the end, the people who came home count as much as the money.',
   ],
   noSave: 'This game saves nothing yet.',
 };
