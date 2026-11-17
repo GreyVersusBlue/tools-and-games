@@ -12,6 +12,7 @@ import { holds } from './conditions.js';
 import { apply, applyAll, check } from './effects.js';
 import { find, addPaper, deskFull, cityOf, MAX_PAPERS } from './state.js';
 import { weighted } from './rng.js';
+import * as market from './market.js';
 
 export { MAX_PAPERS };
 export const RECENT = 6; // a card is not drawn again within this many seasons
@@ -22,7 +23,7 @@ export const steps = {
   // opening a season
   returns: noop,
   letters: noop,
-  news: noop,
+  news(s, content) { market.news(s, content); },
   events(s, content) {
     const idx = seasonIndex(s, content);
     for (const ev of content.events ?? []) {
@@ -39,7 +40,7 @@ export const steps = {
   move: noop,
   risk: noop,
   tolls: noop,
-  drift: noop,
+  drift(s, content) { market.drift(s, content); },
   fireDue(s, content) { fireDue(s, content); },
   advance(s, content) {
     const moved = s.t + 1 < playedSeasons(content.calendar, s.length).length;
@@ -155,7 +156,7 @@ export function openSeason(state, content) {
 export function paperChoices(state, content, paperId) {
   const p = state.desk.find(x => x.id === paperId);
   if (!p) throw new Error(`no paper "${paperId}" on the desk`);
-  if (p.kind === 'notice') return [{ id: 'ok', label: 'Noted' }];
+  if (p.kind === 'notice' || p.kind === 'news') return [{ id: 'ok', label: 'Noted' }];
   return structuredClone(find(content.cards, p.ref, 'card').choices ?? []);
 }
 
@@ -167,7 +168,7 @@ export function choose(state, content, paperId, choiceId) {
   if (paper.state !== 'open') throw new Error(`choose: paper "${paperId}" is already answered`);
   const idx = seasonIndex(s, content);
 
-  if (paper.kind === 'notice') {
+  if (paper.kind === 'notice' || paper.kind === 'news') {
     if (choiceId !== 'ok') throw new Error(`choose: a notice is answered with "ok"`);
   } else {
     const card = find(content.cards, paper.ref, 'card');
@@ -204,7 +205,7 @@ export function choose(state, content, paperId, choiceId) {
   paper.state = 'done';
   paper.choice = choiceId;
   s.done.push({ id: paper.id, ref: paper.ref, choice: choiceId });
-  s.log.push({ at: idx, kind: paper.kind === 'notice' ? 'event' : 'card', ref: paper.ref, choice: choiceId });
+  s.log.push({ at: idx, kind: paper.kind === 'notice' || paper.kind === 'news' ? 'event' : 'card', ref: paper.ref, choice: choiceId });
   return s;
 }
 
@@ -254,5 +255,6 @@ export function view(state, content) {
     act: actOf(state, content),
     last: isLastSeason(state, content),
     phase: state.phase,
+    prices: market.knownPrices(state, content),
   };
 }

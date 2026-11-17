@@ -6,6 +6,7 @@ import { REP_GROUPS } from './state.js';
 
 const LEAVES = {
   season: [], year: [], act: [], length: [], notebook: [], out: [], money: [],
+  stock: ['gte'],
   flag: ['not', 'gte'],
   rep: ['gte', 'lte'],
   agent: ['hired', 'where'],
@@ -34,7 +35,7 @@ function typed(cond, head) {
     case 'season': if (!Array.isArray(v) || !v.length || !v.every(x => SEASONS.includes(x))) bad(head, `a list of season names (${SEASONS.join(', ')})`, v); break;
     case 'year': if (!Array.isArray(v) || v.length !== 2 || !v.every(isNum)) bad(head, 'a [from, to] pair of numbers', v); break;
     case 'act': if (!Number.isInteger(v)) bad(head, 'a whole number', v); break;
-    case 'length': case 'notebook': case 'flag': case 'rep': case 'agent': if (!isStr(v)) bad(head, 'a name', v); break;
+    case 'length': case 'notebook': case 'stock': case 'flag': case 'rep': case 'agent': if (!isStr(v)) bad(head, 'a name', v); break;
   }
   for (const k of ['gte', 'lte']) if (head !== 'money' && head !== 'out' && cond[k] !== undefined && !isNum(cond[k])) bad(`${head} ${k}`, 'a number', cond[k]);
   if (cond.not !== undefined && typeof cond.not !== 'boolean') bad(`${head} not`, 'true or false', cond.not);
@@ -65,6 +66,10 @@ export function holds(cond, state, content) {
     case 'notebook': return state.notebook.includes(v);
     case 'out': return bounds(v, state.expeditions.length, 'out');
     case 'money': return bounds(v, state.money, 'money');
+    case 'stock': {
+      if (cond.gte === undefined) throw new Error('condition stock: needs gte');
+      return (state.stock[v] ?? 0) >= cond.gte;
+    }
     case 'flag': {
       let r = v in state.flags;
       if (cond.gte !== undefined) r = typeof state.flags[v] === 'number' && state.flags[v] >= cond.gte;
