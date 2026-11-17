@@ -10,13 +10,12 @@ import { seasonIndex } from '../js/engine/calendar.js';
 import * as M from '../js/engine/market.js';
 import { newGame, endSeason, view, paperChoices, choose } from '../js/engine/index.js';
 
-const LETTERS = [{ id: 'any' }]; // price letters need a city with correspondents; testport has none of its own
 const CITIES = {
   testport: { content: await loadContent('testport', { fs }), house: 'plain', stop: 'saltmarsh', good: 'lamps', far: 'hilltown', farLag: 2, nearLag: 1, foldAt: 2 },
   cairo: { content: await loadContent('cairo', { fs }), house: 'spice', stop: 'damascus', good: 'linen', far: 'tabriz', farLag: 4, nearLag: 1, foldAt: 1 },
 };
 for (const c of Object.values(CITIES)) c.orig = c.content;
-for (const c of Object.values(CITIES)) c.content = { ...c.content, city: { ...c.content.city, priceNews: true }, letters: c.content.letters.length ? c.content.letters : LETTERS };
+for (const c of Object.values(CITIES)) c.content = { ...c.content, city: { ...c.content.city, priceNews: true } };
 
 /** First choice whose requirement holds, for every open paper. */
 function answer(s, content) {
@@ -216,10 +215,10 @@ for (const [name, C] of Object.entries(CITIES)) {
     eq(s.desk.find(p => p.kind === 'news').state, 'done');
   });
 
-  test(T('a city with no letters sends no price letters'), () => {
-    const c = { ...content, letters: [] };
-    const s = play(newGame(c, { seed: 7, length: 'full', house: C.house }), c, 3);
-    eq(s.desk.some(p => p.kind === 'news'), false);
+  test(T('priceNews alone governs the price letters: a city with no letters file still gets them, one that says false gets none'), () => {
+    const sent = c => play(newGame(c, { seed: 7, length: 'full', house: C.house }), c, 3).desk.some(p => p.kind === 'news');
+    eq(sent({ ...content, letters: [] }), true, 'no letters file, priceNews true');
+    eq(sent({ ...content, city: { ...content.city, priceNews: false } }), false, 'priceNews false');
   });
 
   test(T('the home stop\'s price is always current in known'), () => {
