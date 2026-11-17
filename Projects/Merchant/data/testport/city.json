@@ -9,5 +9,11 @@
     "plain": ["welcome-note", "wool-offer"],
     "rich": ["welcome-note", "salt-dispute"]
   },
-  "secondSeason": { "cards": 1 }
+  "secondSeason": { "cards": 1 },
+  "priceNews": false,
+  "recall": {
+    "reach": { "start": 0.9, "perSeason": 0.2, "floor": 0.1 },
+    "recalledKeeps": 0.5, "recalledSurvives": 0.9, "stayedSurvives": 0.5, "homeSurvives": 0.7,
+    "byStop": { "hilltown": 0.4 }
+  }
 }

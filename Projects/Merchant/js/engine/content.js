@@ -231,6 +231,16 @@ export function validateContent(raw, { art } = {}) {
       contracts: (v, p) => dict(v, p, idv, (x, q) => obj(x, q, { agentShare: (y, r) => { arr(y, r, (n, s) => int(n, s, 1)); if (Array.isArray(y) && y.length !== 2) schema(r, 'needs [numerator, denominator]'); } })),
       score: (v, p) => obj(v, p, { wealthScale: (x, q) => arr(x, q, () => {}), ranks: (x, q) => arr(x, q, () => {}) }),
       stills: (v, p) => dict(v, p, str, (x, q) => { str(x, q); artRef(x, q); }),
+      priceNews: bool,
+      // the chances of the ending (ARCHITECTURE 4.9); every key is optional and routes.js has a default for each
+      recall: (v, p) => {
+        const unit = (x, q) => num(x, q, 0, 1);
+        obj(v, p, {
+          reach: (x, q) => obj(x, q, { start: unit, perSeason: unit, floor: unit }),
+          recalledKeeps: unit, recalledSurvives: unit, stayedSurvives: unit, homeSurvives: unit,
+          byStop: (x, q) => dict(x, q, (k, r) => ref('stops', k, r), unit),
+        });
+      },
     }, ['id', 'name', 'home', 'currency', 'title', 'tagline', 'opening']);
     if (typeof city.id === 'string' && typeof raw.cityId === 'string' && city.id !== raw.cityId) schema('city.json.id', `says "${city.id}" but the folder is "${raw.cityId}"`);
   } else schema('city.json', 'is missing or empty');
