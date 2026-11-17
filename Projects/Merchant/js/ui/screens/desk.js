@@ -113,7 +113,7 @@ export function createDesk(app) {
           onclick: () => barNote(REASONS.ledger) }, `${num(held)} ${held === 1 ? 'load' : 'loads'} in the warehouse`)),
       h('div', { class: 'bar-tools' },
         soft('map', 'Map'), soft('ledger', 'Ledger'),
-        soft('notebook', 'Notebook', h('span', { class: 'bar-badge' }, ` ${app.state.notebook.length}`)),
+        soft('notebook', 'Notebook', h('span', { class: 'bar-badge' }, String(app.state.notebook.length))),
         h('button', { class: 'bar-btn speaker', type: 'button', id: 'btn-sound', 'aria-pressed': sound ? 'true' : 'false', 'aria-label': 'Sound',
           onclick: () => { app.setSetting('sound', !app.settings.sound); drawBar(app.view()); } }, icon(sound ? ICONS.speakerOn : ICONS.speakerOff)),
         h('button', { class: 'bar-btn menu', type: 'button', id: 'btn-menu', 'aria-haspopup': 'dialog',

@@ -748,6 +748,11 @@ try {
   for (const frame of FRAMES) {
     const { page, consoleErrors } = await open(frame);
     await start(page, 'pointer');
+    // the fixed End bar can cover the edges on a phone, as a thumb would find: scroll to one first
+    const raiseEdge = async () => { await page.$eval('.edge', e => e.scrollIntoView({ block: 'center' })); await page.click('.edge'); };
+    await raiseEdge(); // the expedition card, which has a cost line
+    await page.screenshot({ path: path.join(SHOTS, `card-${frame.name}.png`) });
+    await raiseEdge(); // and back to the letter
     await test(`${frame.name} ${frame.width}x${frame.height}: the desk has no horizontal overflow and every control of the raised paper can be scrolled to`, async () => {
       const m = await page.evaluate(() => ({ doc: [document.documentElement.scrollWidth, document.documentElement.clientWidth],
         body: [document.body.scrollWidth, document.body.clientWidth],
