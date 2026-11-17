@@ -332,7 +332,7 @@ export function validateContent(raw, { art } = {}) {
   const agents = file('agents', raw.agents, []);
   arr(agents, 'agents.json', (a, p) => obj(a, p, {
     id: idv, name: str, community: str, seal, traits: (v, q) => arr(v, q, trait), wage: (v, q) => int(v, q, 0),
-    home: refOf('stops'), hireCard: refOf('cards'), notebook: refOf('notebook'),
+    home: refOf('stops'), hireCard: refOf('cards'), notebook: refOf('notebook'), sources,
   }, ['id', 'name', 'community', 'seal', 'traits', 'wage', 'home']));
   if (Array.isArray(agents)) unique(agents, 'agents.json', 'agent id');
 

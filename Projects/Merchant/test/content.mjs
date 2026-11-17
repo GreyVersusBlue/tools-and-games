@@ -110,6 +110,17 @@ test('validate: an unknown key is an error at any depth', () => {
     ok(p.some(x => x.kind === 'unknown-key'), `no unknown-key problem for ${edit}: ${JSON.stringify(p)}`);
   }
 });
+test('validate: an agent may carry sources, and a source id that is not in sources.json fails (MER-50)', () => {
+  ok(problemsOf(variant(c => { c.agents[0].sources = [{ src: 'testport-fiction', at: 'a note' }]; })).length === 0, 'a good agent source was refused');
+  const bad = problemsOf(variant(c => { c.agents[0].sources = [{ src: 'lost-1900' }]; }));
+  ok(bad.some(x => String(x.text ?? x.message ?? JSON.stringify(x)).includes('no source "lost-1900"') && JSON.stringify(x).includes('sources')), `no bad-source problem: ${JSON.stringify(bad)}`);
+});
+test('validate: city.json clusters is a map of ids to names, and anything else fails (MER-44b)', () => {
+  ok(problemsOf(variant(c => { c.city.clusters = { 'red-sea': 'The Red Sea' }; })).length === 0, 'a good clusters map was refused');
+  ok(problemsOf(variant(c => { c.city.clusters = { 'Red Sea': 'x' }; })).length > 0, 'a cluster id with a capital and a space passed');
+  ok(problemsOf(variant(c => { c.city.clusters = { 'red-sea': 7 }; })).length > 0, 'a cluster name that is a number passed');
+  ok(problemsOf(variant(c => { c.city.clusters = ['red-sea']; })).length > 0, 'a clusters list passed');
+});
 test('validate: a reference to nothing is an error (card, good, stop, agent, house, source, entry)', () => {
   for (const [edit, text] of [
     [c => { c.city.opening.plain = ['no-such-card']; }, 'no card "no-such-card"'],
