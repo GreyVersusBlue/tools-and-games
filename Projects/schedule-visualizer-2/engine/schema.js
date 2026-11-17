@@ -612,8 +612,15 @@ export function elevatorCars(building) {
     if (x !== y) parent.set(y, x);
   }
   const order = new Map(building.floors.map((floor, f) => [floor && floor.id, { f, level: floor && Number.isInteger(floor.level) ? floor.level : f }]));
-  const where = (stop) => order.get(stop.floorId) || { f: Infinity, level: Infinity };
-  const byLevel = (a, b) => where(a).level - where(b).level || where(a).f - where(b).f || a.cell - b.cell;
+  const where = (stop) => order.get(stop.floorId) || null;
+  // a stop on a floor the building does not hold goes last, and no comparison
+  // is ever made with NaN
+  const compare = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+  const byLevel = (a, b) => {
+    const [x, y] = [where(a), where(b)];
+    if (x === null || y === null) return compare(x === null, y === null) || compare(String(a.floorId), String(b.floorId)) || compare(a.cell, b.cell);
+    return compare(x.level, y.level) || compare(x.f, y.f) || compare(a.cell, b.cell);
+  };
   const cars = [];
   const byRoot = new Map();
   for (const connection of connections) {
@@ -754,11 +761,11 @@ export function nextGroupColour(groups) {
 }
 
 // The first unused connection letter: A to Z, then AA, AB and on. A stairwell's
-// letter (`well`) is as used as a label is, compared as names are, so no plain
-// flight takes a letter a well shows (ARCHITECTURE 22.17).
+// letter (`well`) is as used as a label is, both compared as names are (nameKey),
+// so no plain flight takes a letter a well shows (ARCHITECTURE 22.17).
 export function nextConnectionLabel(connections) {
   const list = Array.isArray(connections) ? connections : [];
-  const used = new Set(list.map((connection) => connection && connection.label));
+  const used = new Set(list.map((connection) => (connection && typeof connection.label === 'string' ? nameKey(connection.label) : '')));
   const wells = new Set(list.map((connection) => (connection && typeof connection.well === 'string' ? nameKey(connection.well) : '')));
   for (let n = 0; ; n += 1) {
     let label = '';
@@ -767,16 +774,17 @@ export function nextConnectionLabel(connections) {
       label = String.fromCharCode(65 + (rest % 26)) + label;
       rest = Math.floor(rest / 26) - 1;
     } while (rest >= 0);
-    if (!used.has(label) && !wells.has(nameKey(label))) return label;
+    const key = nameKey(label);
+    if (!used.has(key) && !wells.has(key)) return label;
   }
 }
 
 // What a stairs connection is called on screen: the stairwell's letter when
-// it has one, else its own label. Every place that shows a stairs letter asks
+// it has one (trimmed), else its own label. Every place that shows a stairs letter asks
 // here. An absent or malformed `well` is no well.
 export function stairsLetter(connection) {
   if (!connection || typeof connection !== 'object') return '';
-  if (typeof connection.well === 'string' && connection.well.trim() !== '') return connection.well;
+  if (typeof connection.well === 'string' && connection.well.trim() !== '') return connection.well.trim();
   return typeof connection.label === 'string' ? connection.label : '';
 }
 
@@ -799,21 +807,31 @@ export function roomFeatures(building, room) {
 // of its first flight:
 //   { letter, connectionIds, stops: [{ floorId, cell, level }], parts }
 // `stops` are the cells the well's flights join, once each, lowest level
-// first (building order, then cell, on a tie). `parts` is how many groups of
+// first (building order, then cell, on a tie); a stop on a floor the building
+// does not hold comes last, its `level` null. A flight with no id is left
+// out. `parts` is how many groups of
 // flights share cells: more than one when an older planner pulled a middle
 // flight out, which the staff browser, never repairing, still has to read.
 export function stairwells(building) {
   if (!building || !Array.isArray(building.floors)) return [];
   const order = new Map(building.floors.map((floor, f) => [floor && floor.id, { f, level: floor && Number.isInteger(floor.level) ? floor.level : f }]));
-  const where = (stop) => order.get(stop.floorId) || { f: Infinity, level: Infinity };
-  const byLevel = (a, b) => where(a).level - where(b).level || where(a).f - where(b).f || a.cell - b.cell;
+  const where = (stop) => order.get(stop.floorId) || null;
+  // a stop on a floor the building does not hold goes last, and no comparison
+  // is ever made with NaN
+  const compare = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+  const byLevel = (a, b) => {
+    const [x, y] = [where(a), where(b)];
+    if (x === null || y === null) return compare(x === null, y === null) || compare(String(a.floorId), String(b.floorId)) || compare(a.cell, b.cell);
+    return compare(x.level, y.level) || compare(x.f, y.f) || compare(a.cell, b.cell);
+  };
   const wells = new Map();
   for (const connection of Array.isArray(building.connections) ? building.connections : []) {
     if (!connection || typeof connection !== 'object' || connection.kind === ELEVATOR_KIND) continue;
+    if (typeof connection.id !== 'string' || connection.id === '') continue;
     if (typeof connection.well !== 'string' || connection.well.trim() === '') continue;
     if (!isEnd(connection.a) || !isEnd(connection.b)) continue;
     const key = nameKey(connection.well);
-    if (!wells.has(key)) wells.set(key, { letter: connection.well, flights: [] });
+    if (!wells.has(key)) wells.set(key, { letter: connection.well.trim(), flights: [] });
     wells.get(key).flights.push(connection);
   }
   const found = [];
@@ -831,7 +849,7 @@ export function stairwells(building) {
       for (const end of [flight.a, flight.b]) {
         if (!parent.has(key(end))) {
           parent.set(key(end), key(end));
-          stops.push({ floorId: end.floorId, cell: end.cell, level: where(end).level });
+          stops.push({ floorId: end.floorId, cell: end.cell, level: where(end) === null ? null : where(end).level });
         }
       }
       const x = find(key(flight.a));

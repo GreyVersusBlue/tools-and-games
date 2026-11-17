@@ -2,7 +2,7 @@
 // of each transition, and the inline checks on a bell schedule. Times are
 // stored as 24-hour "HH:MM" and shown in the school's chosen form.
 
-import { isBellTime, bellSchedulesOf, PERIOD_WORDS } from './schema.js';
+import { isBellTime, bellSchedulesOf, PERIOD_WORDS, PERIOD_WORD_MOST, PERIOD_NAME_MOST } from './schema.js';
 import { effectiveDayType } from './day-types.js';
 
 // Bell schedule B of this project, or null. A day type's own bells are its
@@ -47,6 +47,18 @@ function letters(index) {
   return label;
 }
 
+// At most `most` characters of the trimmed text (whole characters, so a pair
+// of code units is never cut): the staff browser never validates, so a stored
+// word or name is held to its limit when it is read.
+function clamped(text, most) {
+  return Array.from(text.trim()).slice(0, most).join('').trim();
+}
+
+// An index that names a period: a whole number from 0.
+function isIndex(index) {
+  return Number.isInteger(index) && index >= 0;
+}
+
 // The school's word for a period, in every form a sentence needs
 // (ARCHITECTURE 22.17): { one, many, oneLower, manyLower, count }, count being
 // how its periods are numbered: "number" (Period 3), "letter" (Block C) or
@@ -58,8 +70,8 @@ function letters(index) {
 export function periodWordForms(settings) {
   const custom = settings && settings.periodCustom;
   if (custom && typeof custom === 'object' && typeof custom.word === 'string' && custom.word.trim() !== '') {
-    const word = custom.word.trim();
-    const plural = typeof custom.plural === 'string' && custom.plural.trim() !== '' ? custom.plural.trim() : word + 's';
+    const word = clamped(custom.word, PERIOD_WORD_MOST);
+    const plural = typeof custom.plural === 'string' && custom.plural.trim() !== '' ? clamped(custom.plural, PERIOD_WORD_MOST) : clamped(word + 's', PERIOD_WORD_MOST);
     const count = custom.count === 'letter' || custom.count === 'ordinal' ? custom.count : 'number';
     return { one: word, many: plural, oneLower: word, manyLower: plural, count };
   }
@@ -68,8 +80,10 @@ export function periodWordForms(settings) {
   return { one: word, many: word + 's', oneLower: word.toLowerCase(), manyLower: word.toLowerCase() + 's', count };
 }
 
-// The short form: "3", "C", "3rd".
+// The short form: "3", "C", "3rd"; '' for an index that is not a whole number
+// from 0.
 export function periodLabel(settings, index) {
+  if (!isIndex(index)) return '';
   const { count } = periodWordForms(settings);
   if (count === 'letter') return letters(index);
   if (count === 'ordinal') return ordinal(index + 1);
@@ -80,17 +94,20 @@ export function periodLabel(settings, index) {
 // "Block C", "3rd Hour", "Lesson 3". For imports, CSV headers and wherever a
 // name would be ambiguous.
 export function periodNumberName(settings, index) {
+  if (!isIndex(index)) return '';
   const forms = periodWordForms(settings);
   const label = periodLabel(settings, index);
   return forms.count === 'ordinal' ? label + ' ' + forms.one : forms.one + ' ' + label;
 }
 
 // The name of period `index` (from 0): its own name when it has one
-// (`settings.periodNames`, as typed), else the number name.
+// (`settings.periodNames`, trimmed and held to PERIOD_NAME_MOST characters),
+// else the number name; '' for an index that is not a whole number from 0.
 export function periodName(settings, index) {
+  if (!isIndex(index)) return '';
   const names = settings && Array.isArray(settings.periodNames) ? settings.periodNames : [];
   const own = names[index];
-  if (typeof own === 'string' && own.trim() !== '') return own;
+  if (typeof own === 'string' && own.trim() !== '') return clamped(own, PERIOD_NAME_MOST);
   return periodNumberName(settings, index);
 }
 
