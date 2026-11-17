@@ -656,3 +656,74 @@ test('directions say "Take stairs A up to Floor 3" once for a walk up a whole st
   assert.match(text, /[Ss]tairs A/);
   assert.equal(/[Ss]tairs B/.test(text), false, text);
 });
+
+// ---------------------------------------------------------------- review fixes (SV2-128b)
+
+// Wells A (flights A, B) on Floors 1 to 3 and C (flights C, D) on Floors 1 to 3 at another column.
+function twoWells() {
+  const project = chain(3);
+  const other = [4, 5];
+  for (const n of [1, 2, 3]) project.building.floors[n - 1].cells = project.building.floors[n - 1].cells.slice(0, 60) + 'S' + project.building.floors[n - 1].cells.slice(61);
+  project.building.connections.push({ id: 'cwell00011', label: 'C', a: { floorId: floorId(1), cell: 60 }, b: { floorId: floorId(2), cell: 60 }, direction: 'both' }, { id: 'cwell00012', label: 'D', a: { floorId: floorId(2), cell: 60 }, b: { floorId: floorId(3), cell: 60 }, direction: 'both' });
+  assert.equal(other.length, 2);
+  const a = run(makeStairwell, project, { connectionId: 'cwell00001' });
+  return run(makeStairwell, a, { connectionId: 'cwell00011' });
+}
+
+test('setStairwellLetter and makeStairwell refuse a letter that is the label of a flight inside another well', () => {
+  const both = twoWells();
+  assert.deepEqual(wells(both), ['A', 'A', 'C', 'C']);
+  refused(setStairwellLetter, both, { well: 'A', letter: 'D' }, 'duplicate-label', /already a stairs connection D\./);
+  refused(setStairwellLetter, both, { well: 'A', letter: 'c' }, 'duplicate-label', /Stairwell C already uses/);
+  const project = chain(3);
+  for (const n of [1, 2, 3]) project.building.floors[n - 1].cells = project.building.floors[n - 1].cells.slice(0, 60) + 'S' + project.building.floors[n - 1].cells.slice(61);
+  project.building.connections.push({ id: 'cwell00011', label: 'C', a: { floorId: floorId(1), cell: 60 }, b: { floorId: floorId(2), cell: 60 }, direction: 'both' }, { id: 'cwell00012', label: 'D', a: { floorId: floorId(2), cell: 60 }, b: { floorId: floorId(3), cell: 60 }, direction: 'both' });
+  const made = run(makeStairwell, project, { connectionId: 'cwell00011' });
+  refused(makeStairwell, made, { connectionId: 'cwell00001', letter: 'D' }, 'duplicate-label', /already a stairs connection D\./);
+  assert.deepEqual(wells(run(makeStairwell, made, { connectionId: 'cwell00001', letter: 'A' })).slice(0, 2), ['A', 'A']);
+});
+
+test('removeStairwellStop: a plain flight that already joins the stops either side takes the well, so no stop is lost', () => {
+  const project = chain(4);
+  project.building.connections.push({ id: 'cwell00009', label: 'Z', a: { floorId: floorId(1), cell: CELL }, b: { floorId: floorId(3), cell: CELL }, direction: 'both' });
+  const made = clone(run(makeStairwell, project, { connectionId: 'cwell00001' }));
+  assert.equal(made.building.connections.find((connection) => connection.id === 'cwell00009').well, 'A', 'the run takes Z in too');
+  delete made.building.connections.find((connection) => connection.id === 'cwell00009').well;
+  const { after, text } = step(made, removeStairwellStop, { well: 'A', floorId: floorId(2) }, 'Remove Floor 2 from Stairwell A');
+  assert.equal(flight(after, 'cwell00009').well, 'A');
+  assert.deepEqual(stairwells(after.building)[0].stops.map((stop) => stop.floorId), [1, 3, 4].map(floorId), 'Floor 1 is still a stop');
+  assert.equal(stairwells(after.building)[0].parts, 1);
+  assert.match(text, /^Floor 2 is out of Stairwell A: stairs Z already joined Floor 1 and Floor 3, so it joins the stairwell/);
+  // a way the removed flights agreed on is written on it
+  const down = run(setStairwellDirection, made, { well: 'A', direction: 'down' });
+  delete flight(down, 'cwell00009').well;
+  const gone = run(removeStairwellStop, down, { well: 'A', floorId: floorId(2) });
+  assert.equal(flight(gone, 'cwell00009').direction, 'ba', 'down only, from the higher end');
+});
+
+test('stairwellThrough refuses a chosen cell that is already a stop of another well', () => {
+  const project = chain(4);
+  for (const id of ['cwell00001', 'cwell00002']) flight(project, id).well = 'A';
+  refused(stairwellThrough, project, { floorId: floorId(1), cell: CELL, floorIds: [floorId(3), floorId(4)] }, 'already-well', /^Floor 1, row 9, column 13 is already a stop of Stairwell A\.$/);
+});
+
+test('directionForWay keeps the direction of a flight between two floors at the same level', () => {
+  const project = chain(4);
+  project.building.floors[2] = { ...project.building.floors[2], level: project.building.floors[1].level };
+  const made = clone(run(makeStairwell, chain(4), { connectionId: 'cwell00001' }));
+  made.building.floors[2] = { ...made.building.floors[2], level: made.building.floors[1].level };
+  made.building.connections[1] = { ...made.building.connections[1], direction: 'ab' };
+  const up = run(setStairwellDirection, made, { well: 'A', direction: 'up' });
+  assert.equal(up.building.connections[1].direction, 'ab', 'a same-level flight keeps its own way');
+  const both = clone(made);
+  both.building.connections[1] = { ...both.building.connections[1], direction: 'both' };
+  assert.equal(run(setStairwellDirection, both, { well: 'A', direction: 'down' }).building.connections[1].direction, 'both');
+});
+
+test('removeStairwellStop refuses a well in parts', () => {
+  const made = run(makeStairwell, chain(5), { connectionId: 'cwell00001' });
+  const parts = clone(made);
+  parts.building.connections = parts.building.connections.filter((connection) => connection.id !== 'cwell00002');
+  assert.equal(stairwells(parts.building)[0].parts, 2);
+  refused(removeStairwellStop, parts, { well: 'A', floorId: floorId(1) }, 'well-parts', /is in 2 parts that share no stairs\. Join the parts first, then remove a stop\.$/);
+});
