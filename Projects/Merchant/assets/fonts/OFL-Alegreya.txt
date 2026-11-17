@@ -1,7 +1,8 @@
-Copyright 2011 The Alegreya Project Authors Alegreya-Italic[wght].ttf: Copyright 2011 The Alegreya Project Authors
+Copyright 2011 The Alegreya Project Authors (https://github.com/huertatipografica/Alegreya) Alegreya-Italic[wght].ttf: Copyright 2011 The Alegreya Project Authors (https://github.com/huertatipografica/Alegreya)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
-This license is copied below.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
 
 
 -----------------------------------------------------------
