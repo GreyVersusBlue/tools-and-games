@@ -172,6 +172,8 @@ row names a file it does not run.
 | `test/engine/building-checks.test.mjs` | Each building check, found where it is, with its sentence |
 | `test/engine/teacher-day.test.mjs` | The one rule for a teacher's day |
 | `test/engine/w7-rules.test.mjs` | W7's rule functions: period words and names, features, stairwells and their letter, away, directions through a stairwell, and a project without the new fields unchanged |
+| `test/engine/w7-fields.test.mjs` | W7's fields in `ids`, `validate` and `repair`: features and `featureIds`, the custom period word and names, `away` and a stairwell's `well`: what is refused (form only), what is mended with a note, `repair(sample)` the same object, and an older planner (the W7 rules cut out of a copy of the engine) passing every field through byte for byte |
+| `test/engine/w7-files.test.mjs` | W7's fields in the project, building and schedule files (round trips, the schedule file's optional settings extras, `applySchedule` carrying `away` with day types mapped), merge import taking the period word and names together, `buildingPart` and `applyBuilding` carrying features, and publishing each field only when present with the sample's published data unmoved |
 | `test/engine/checks.test.mjs` | The schedule checks of spec 5.7 |
 | `test/engine/checks-duties.test.mjs` | The checks with marks and duties: duty-clash, duty-nobody, no-planning and consecutive when a duty or a mark takes a period, the empty-period note under a mark |
 | `test/engine/routing.test.mjs` | Routes: the quickest, the tie-breaks, the options, the named failures |

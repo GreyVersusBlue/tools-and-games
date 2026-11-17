@@ -58,6 +58,8 @@ export const GROUPS = {
     'engine/building-checks.test.mjs', // SV2-04
     'engine/teacher-day.test.mjs', // SV2-09
     'engine/w7-rules.test.mjs', // SV2-125
+    'engine/w7-fields.test.mjs', // SV2-126
+    'engine/w7-files.test.mjs', // SV2-126
     'engine/checks.test.mjs', // SV2-09
     'engine/checks-duties.test.mjs', // SV2-84
     'engine/routing.test.mjs', // SV2-05
