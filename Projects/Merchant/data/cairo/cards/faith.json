@@ -126,7 +126,7 @@
         ]
       }
     ],
-    "note": "Traders of different faiths had long done business together. Around 1030 one Jewish firm dealt with Christians in Alexandria.",
+    "note": "Traders of different faiths had long done business together. Around 1030 one Jewish firm dealt with Christians in Alexandria, as two historians report it from Moshe Gil.",
     "unlocks": [
       "term-load"
     ],
@@ -198,18 +198,18 @@
         ]
       }
     ],
-    "note": "In May 1326 Ibn Battuta went up the Nile with the pilgrim caravan, on his way to Mecca. A writer of the 1180s says Saladin had ended the tax on pilgrims at Aydhab.",
+    "note": "In May 1326 Ibn Battuta left Cairo for Upper Egypt, on his way to Mecca by the Red Sea road through Aydhab. A writer of the 1180s says Saladin had ended the tax on pilgrims at Aydhab.",
     "unlocks": [
       "term-pilgrimage"
     ],
     "sources": [
       {
         "src": "ibn-battuta-1958",
-        "at": "vol. 1, p. 59; he went up the Nile with the pilgrim caravan in May 1326"
+        "at": "vol. 1, pp. 58 to 59; he left Cairo by the Upper Egypt road for the Hijaz, May 1326"
       },
       {
         "src": "peacock-2008",
-        "at": "p. 35; Saladin repealed the tax on pilgrims at Aydhab, from Ibn Jubayr"
+        "at": "p. 34; Saladin repealed the tax on pilgrims at Aydhab, from Ibn Jubayr"
       }
     ]
   }
