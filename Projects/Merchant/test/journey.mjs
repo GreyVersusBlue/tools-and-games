@@ -1266,6 +1266,129 @@ try {
     await page.close();
   }
 
+  // ---- MER-46: a whole three-act game, once by pointer and once by keyboard alone, on the fixed seed.
+  // After every season the page is compared with the engine run in Node on the same seed (the bar,
+  // the counter, the papers, and the whole saved state), the years between acts are read off the
+  // interlude page, and the last page is the ending stub. A reload in the middle of act two must
+  // pick the game up where it was. Reduced motion is on so 24 seasons do not wait on card flips;
+  // the flips themselves are covered by the cases above.
+  const RELOAD_AT = 12; // season 13 of 24, the fifth of act two (acts run t 0-7, 8-15, 16-23)
+  const playWhole = async (page, how) => {
+    await reduceMotion(page);
+    await start(page, how === 'pointer' ? 'pointer' : 'keys');
+    let model = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+    const state = () => engineState(page);
+    // the engine's side of a season: the first choice that is open to the player, the first
+    // expedition sent on the engine's own plan, every other paper set aside, then End the season
+    const nodeSeason = s => {
+      for (const p of s.desk) {
+        if (p.state !== 'open') continue;
+        const cs = eng.paperChoices(s, nodeContent, p.id);
+        const c = cs.find(x => { try { eng.choose(s, nodeContent, p.id, x.id); return true; } catch { return false; } });
+        s = eng.choose(s, nodeContent, p.id, c.id);
+        if (c.ui === 'outfit-first') { const plan = eng.suggestPlan(s, nodeContent, 'damascus'); if (plan) s = eng.outfit(s, nodeContent, plan); }
+      }
+      return eng.endSeason(s, nodeContent);
+    };
+    const faceOf = () => page.evaluate(() => ({ kind: document.querySelector('.sheet')?.dataset.kind, face: document.querySelector('.sheet')?.dataset.face }));
+    const sendByKeys = async () => {
+      await page.waitForSelector('#outfit-send, #map-toast:not([hidden])');
+      if (await page.$('#outfit-send')) { await page.focus('#outfit-send'); await page.keyboard.press('Enter'); await page.waitForSelector('#map-toast:not([hidden])'); }
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('#screen-desk');
+    };
+    const pointerSeason = async () => {
+      for (let guard = 0; guard < 14; guard++) {
+        if (await page.$eval('#btn-end', b => b.getAttribute('aria-disabled') === 'false')) break;
+        const k = await faceOf();
+        if (k.face === 'back') { await page.click('#btn-next'); await sendFromMap(page); continue; }
+        if (['return', 'lost', 'news', 'accounts'].includes(k.kind)) { await page.click('#btn-next'); continue; }
+        await page.click('.sheet .choice:not([aria-disabled="true"])');
+        await page.waitForSelector('.sheet[data-face="back"]');
+      }
+      await page.click('#btn-end');
+    };
+    const keySeason = async () => {
+      for (let guard = 0; guard < 14; guard++) {
+        if (await page.$eval('#btn-end', b => b.getAttribute('aria-disabled') === 'false')) break;
+        const k = await faceOf();
+        if (k.face === 'back') {
+          await page.keyboard.press('Enter');
+          if (['#map', '#outfit'].includes(await hashOf(page))) await sendByKeys();
+          continue;
+        }
+        if (['return', 'lost', 'news', 'accounts'].includes(k.kind)) {
+          // a record paper has no digit and Enter on its heading does nothing: Tab from the heading reaches Next
+          if (await page.evaluate(() => document.activeElement.id) !== 'btn-next') {
+            for (let i = 0; i < 6 && await page.evaluate(() => document.activeElement.id) !== 'btn-next'; i++) await page.keyboard.press('Tab');
+          }
+          eq(await page.evaluate(() => document.activeElement.id), 'btn-next', 'Tab reaches Next on a record paper');
+          await page.keyboard.press('Enter'); continue;
+        }
+        const n = await page.$$eval('.sheet .choice', cs => cs.findIndex(c => c.getAttribute('aria-disabled') !== 'true'));
+        await page.keyboard.press(String(n + 1));
+        await page.waitForSelector('.sheet[data-face="back"]');
+      }
+      await page.keyboard.press('e');
+    };
+    const season = how === 'pointer' ? pointerSeason : keySeason;
+    const seasonsSeen = [], interludes = [];
+    let reloaded = false;
+    for (let guard = 0; guard < 60 && model.phase !== 'recall'; guard++) {
+      if (model.phase === 'interlude') {
+        const gap = eng.view(model, nodeContent).interlude;
+        await page.waitForSelector('#btn-open-house');
+        eq(await page.$eval('#phase-title', e => e.textContent), 'Years pass', 'the interlude page');
+        eq(await page.$eval('#interlude-span', e => e.textContent), `${gap.from} to ${gap.to}`, 'the years named on the interlude page');
+        eq(await state(), JSON.parse(JSON.stringify(model)), `at the interlude before t=${model.t}`);
+        interludes.push({ page: `${gap.from} to ${gap.to}`, engine: gap });
+        model = eng.openSeason(model, nodeContent);
+        if (how === 'pointer') await page.click('#btn-open-house');
+        else { await page.focus('#btn-open-house'); await page.keyboard.press('Enter'); }
+        await page.waitForFunction(t => document.getElementById('bar-count')?.textContent.startsWith(`Season ${t + 1} `), {}, model.t);
+        continue;
+      }
+      await sameScreen(page, model, `${how} season ${model.t + 1}`, { raisedFirst: false });
+      seasonsSeen.push(model.t);
+      model = nodeSeason(model);
+      await season();
+      if (model.phase === 'desk') await page.waitForFunction(t => document.getElementById('bar-count')?.textContent.startsWith(`Season ${t + 1} `), {}, model.t);
+      eq(await state(), JSON.parse(JSON.stringify(model)), `${how}: engine state after season ${seasonsSeen.length}`);
+      if (model.t === RELOAD_AT && !reloaded) {
+        reloaded = true;
+        await page.reload({ waitUntil: 'load' });
+        await page.waitForSelector('#screen-desk .sheet-title');
+        await sameScreen(page, model, `${how} after the reload in act two`, { raisedFirst: false });
+        eq(await state(), JSON.parse(JSON.stringify(model)), `${how}: state after the reload`);
+        await reduceMotion(page);
+      }
+    }
+    // the end: phase recall, the stub page, and the same saved game as the engine's
+    await page.waitForSelector('#btn-to-title');
+    eq(await page.$eval('#phase-title', e => e.textContent), 'The last season is over');
+    eq(await state(), JSON.parse(JSON.stringify(model)), `${how}: the ended game`);
+    return { seasonsSeen, interludes, reloaded, model };
+  };
+
+  for (const how of ['pointer', 'keyboard']) {
+    const { page, consoleErrors } = await open(FRAMES[0]);
+    let out;
+    await test(`whole game by ${how}: three acts, 24 seasons, the page matches the engine after each, reload in act two`, async () => {
+      try { out = await playWhole(page, how); }
+      catch (e) { // say where the page was, so a stuck game names its screen and not just a timeout
+        const where = await page.evaluate(() => ({ hash: location.hash, t: window.__merchant?.state.t, phase: window.__merchant?.state.phase, sheet: document.querySelector('.sheet')?.dataset, title: document.querySelector('.sheet-title')?.textContent, focus: document.activeElement.id || document.activeElement.className, end: document.getElementById('btn-end')?.getAttribute('aria-disabled') })).catch(() => ({}));
+        throw new Error(`${e.message} (page at ${JSON.stringify(where)})`);
+      }
+      eq(out.seasonsSeen, Array.from({ length: 24 }, (_, i) => i), 'every season of the three acts was played on screen');
+      eq(out.reloaded, true, 'the reload in act two happened');
+      eq(out.interludes.length, 2, 'two interludes, between acts one and two and acts two and three');
+      eq(out.model.phase, 'recall');
+    });
+    await test(`whole game by ${how}: nothing offsite, no console error`, async () => { eq(page.__blocked, []); eq(consoleErrors, []); });
+    await page.screenshot({ path: path.join(SHOTS, `ending-stub-${how}.png`) });
+    await page.close();
+  }
+
 } finally {
   await browser.close();
   server.close();
