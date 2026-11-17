@@ -154,7 +154,7 @@ test('validate: every condition leaf is accepted, and agrees with the engine\'s 
   const samples = {
     season: { season: ['spring'] }, year: { year: [1200, 1202] }, act: { act: 1 }, length: { length: 'acts' },
     notebook: { notebook: 'testport' }, out: { out: { lte: 2 } }, money: { money: { lte: 900 } },
-    flag: { flag: 'x', not: true }, rep: { rep: 'partners', gte: 1 }, agent: { agent: 'mira', hired: true },
+    stock: { stock: 'wool', gte: 1 }, flag: { flag: 'x', not: true }, rep: { rep: 'partners', gte: 1 }, agent: { agent: 'mira', hired: true },
   };
   eq(Object.keys(samples).sort(), Object.keys(CONDITION_LEAVES).sort());
   const c2 = variant(c => { c.notebook = entries; });

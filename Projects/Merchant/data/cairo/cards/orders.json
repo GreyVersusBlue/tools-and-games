@@ -93,6 +93,10 @@
       {
         "id": "sell",
         "label": "Sell them now",
+        "requires": {
+          "stock": "linen",
+          "gte": 10
+        },
         "hint": "Abu Bakr will remember a good neighbour.",
         "now": [
           {

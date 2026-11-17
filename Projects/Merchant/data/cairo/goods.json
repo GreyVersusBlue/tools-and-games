@@ -44,7 +44,7 @@
  {
   "id": "gold",
   "name": "Gold",
-  "unit": "load",
+  "unit": "chest",
   "sigma": 0.04,
   "revert": 0.25,
   "notebook": "good-gold",

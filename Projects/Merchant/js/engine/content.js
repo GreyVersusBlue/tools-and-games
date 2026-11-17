@@ -25,7 +25,7 @@ const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 // The condition leaves of conditions.js, with the keys each takes besides its own. The suite
 // pins that this table and the engine's agree (test/content.mjs).
 export const CONDITION_LEAVES = {
-  season: [], year: [], act: [], length: [], notebook: [], out: [], money: [],
+  season: [], year: [], act: [], length: [], notebook: [], out: [], money: [], stock: ['gte'],
   flag: ['not', 'gte'], rep: ['gte', 'lte'], agent: ['hired', 'where'],
 };
 // Leaves only a letter's `when` may use (ARCHITECTURE 5.7); the engine does not read them yet.
@@ -170,6 +170,7 @@ export function validateContent(raw, { art } = {}) {
       case 'length': oneOf(['acts', 'full'], v, q); break;
       case 'notebook': refOf('notebook')(v, q); break;
       case 'out': case 'money': obj(v, q, { gte: (x, r) => int(x, r), lte: (x, r) => int(x, r) }); if (isObj(v) && !Object.keys(v).length) schema(q, 'needs gte or lte'); break;
+      case 'stock': refOf('goods')(v, q); if (!('gte' in c)) schema(p, 'stock needs gte'); else int(c.gte, `${p}.gte`, 1); break;
       case 'flag': str(v, q); if ('not' in c) bool(c.not, `${p}.not`); if ('gte' in c) int(c.gte, `${p}.gte`); break;
       case 'rep': oneOf(REP_GROUPS, v, q); if ('gte' in c) int(c.gte, `${p}.gte`); if ('lte' in c) int(c.lte, `${p}.lte`); if (!('gte' in c) && !('lte' in c)) schema(p, 'rep needs gte or lte'); break;
       case 'agent': refOf('agents')(v, q); if ('hired' in c) bool(c.hired, `${p}.hired`); if ('where' in c) str(c.where, `${p}.where`); break;
@@ -230,6 +231,16 @@ export function validateContent(raw, { art } = {}) {
       contracts: (v, p) => dict(v, p, idv, (x, q) => obj(x, q, { agentShare: (y, r) => { arr(y, r, (n, s) => int(n, s, 1)); if (Array.isArray(y) && y.length !== 2) schema(r, 'needs [numerator, denominator]'); } })),
       score: (v, p) => obj(v, p, { wealthScale: (x, q) => arr(x, q, () => {}), ranks: (x, q) => arr(x, q, () => {}) }),
       stills: (v, p) => dict(v, p, str, (x, q) => { str(x, q); artRef(x, q); }),
+      priceNews: bool,
+      // the chances of the ending (ARCHITECTURE 4.9); every key is optional and routes.js has a default for each
+      recall: (v, p) => {
+        const unit = (x, q) => num(x, q, 0, 1);
+        obj(v, p, {
+          reach: (x, q) => obj(x, q, { start: unit, perSeason: unit, floor: unit }),
+          recalledKeeps: unit, recalledSurvives: unit, stayedSurvives: unit, homeSurvives: unit,
+          byStop: (x, q) => dict(x, q, (k, r) => ref('stops', k, r), unit),
+        });
+      },
     }, ['id', 'name', 'home', 'currency', 'title', 'tagline', 'opening']);
     if (typeof city.id === 'string' && typeof raw.cityId === 'string' && city.id !== raw.cityId) schema('city.json.id', `says "${city.id}" but the folder is "${raw.cityId}"`);
   } else schema('city.json', 'is missing or empty');
@@ -277,7 +288,7 @@ export function validateContent(raw, { art } = {}) {
   // goods.json
   const goods = file('goods', raw.goods, []);
   arr(goods, 'goods.json', (g, p) => obj(g, p, {
-    id: idv, name: str, unit: (v, q) => oneOf(['load'], v, q), sigma: (v, q) => num(v, q, 0), revert: (v, q) => num(v, q, 0, 1),
+    id: idv, name: str, unit: (v, q) => oneOf(['load', 'chest'], v, q), sigma: (v, q) => num(v, q, 0), revert: (v, q) => num(v, q, 0, 1),
     notebook: refOf('notebook'), art: (v, q) => { str(v, q); artRef(v, q); }, sources,
   }, ['id', 'name', 'unit', 'sigma', 'revert']));
   if (Array.isArray(goods)) unique(goods, 'goods.json', 'good id');

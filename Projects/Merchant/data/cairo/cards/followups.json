@@ -364,6 +364,10 @@
       {
         "id": "sell",
         "label": "Sell the gold now",
+        "requires": {
+          "stock": "gold",
+          "gte": 2
+        },
         "hint": "You lose a little, and you are done.",
         "now": [
           {

@@ -56,12 +56,12 @@ function repairMarket(m, fresh, stops, goods) {
     const have = isObject(m?.[stop]) ? m[stop] : {};
     for (const g of Object.keys(fresh[stop] ?? {})) {
       const e = isObject(have[g]) ? have[g] : {};
-      out[stop][g] = { ...e, f: isNum(e.f) && e.f > 0 ? e.f : fresh[stop][g].f, glut: isNum(e.glut) && e.glut >= 0 ? e.glut : 0 };
+      out[stop][g] = { ...e, f: isNum(e.f) && e.f > 0 ? e.f : fresh[stop][g].f, glut: isNum(e.glut) ? Math.max(-0.3, e.glut) : 0 };
     }
     // goods a stop sells in the save but not in the fresh state stay only if the content has the good
     for (const g of Object.keys(have)) {
       if (!out[stop][g] && goods.has(g) && isObject(have[g])) {
-        out[stop][g] = { ...have[g], f: isNum(have[g].f) && have[g].f > 0 ? have[g].f : 1, glut: isNum(have[g].glut) && have[g].glut >= 0 ? have[g].glut : 0 };
+        out[stop][g] = { ...have[g], f: isNum(have[g].f) && have[g].f > 0 ? have[g].f : 1, glut: isNum(have[g].glut) ? Math.max(-0.3, have[g].glut) : 0 };
       }
     }
   }

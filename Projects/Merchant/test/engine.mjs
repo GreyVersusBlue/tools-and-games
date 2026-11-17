@@ -307,7 +307,8 @@ test('turn: canEndSeason is false until every paper is answered', () => {
 test('turn: endSeason advances t and opens the next season with cards drawn by weight', () => {
   const s = endSeason(answer(game(), content), content);
   eq([s.t, s.phase, view(s, content).season], [1, 'desk', 'summer']);
-  eq(s.desk.map(p => p.ref), ['lamp-order'], 'the second season holds the one card secondSeason asks for, drawn by weight');
+  eq(s.desk.filter(p => p.kind === 'card').map(p => p.ref), ['lamp-order'], 'the second season holds the one card secondSeason asks for, drawn by weight');
+  eq(s.desk.filter(p => p.kind !== 'card').map(p => p.kind), ['accounts'], 'and one folded Accounts paper for the opening cards\' later effects (MER-41)');
 });
 test('turn: a later effect fires on its season and not before', () => {
   let s = choose(game(), content, 'p0-1', 'buy');   // wool-due at season 2
@@ -339,7 +340,7 @@ test('turn: the desk is never over 5 papers however many follow-ups are due', ()
   eq(s.queue.filter(q => q.card?.startsWith('f')).length, 3, 'the three that did not fit wait');
   const t = newGame(c, { seed: 7, length: 'acts', house: 'plain' });
   t.queue = Array.from({ length: 3 }, (_, i) => ({ at: 1, do: [], card: `f${i}`, from: 'x/y' }));
-  eq(endSeason(answer(t, c), c).desk.length, 3);
+  eq(endSeason(answer(t, c), c).desk.filter(p => p.kind === 'card').length, 3, 'three follow-ups; the Accounts paper is a fourth paper, not a card');
 });
 test('turn: drawing never repeats a card within 6 seasons or two of one group', () => {
   let s = game({ length: 'full', seed: 3 });
@@ -385,7 +386,7 @@ test('turn: season order is pinned (ARCHITECTURE 4.1), with the jump between adv
 test('turn: a gap between acts goes to the interlude and openSeason opens the next act', () => {
   let s = game();
   for (let t = 0; t < 3; t++) s = endSeason(answer(s, content), content);
-  eq([s.phase, s.t, s.desk.length], ['interlude', 3, 0]);
+  eq([s.phase, s.t, s.desk.map(p => p.kind)], ['interlude', 3, ['accounts']], 'the Accounts paper of the last season waits on the desk through the interlude');
   throws(() => choose(s, content, 'p3-0', 'begin'), /nothing to answer/);
   s = openSeason(s, content);
   eq([s.phase, view(s, content).season, view(s, content).year, view(s, content).act], ['desk', 'spring', 1202, 2]);
@@ -410,8 +411,10 @@ test('turn: seed 7, the first choice of every paper, plays testport to the end; 
   while (s.phase !== 'recall') { s = s.phase === 'interlude' ? openSeason(s, content) : endSeason(answer(s, content), content); }
   s = recall(s, content, {});
   eq(s.phase, 'ended');
-  eq(s.money, 406, 'final money');
-  eq(s.log.length, 16, 'log length');
+  // MER-41: 406 and 16 became 416 and 24. The jump rolls each hired agent's retirement from state.rng, which moves the
+  // second act's draws, and the log gains one entry for the jump and one for each Accounts paper.
+  eq(s.money, 416, 'final money');
+  eq(s.log.length, 24, 'log length');
   eq(JSON.stringify(s), JSON.stringify((() => {
     let t = game();
     while (t.phase !== 'recall') { t = t.phase === 'interlude' ? openSeason(t, content) : endSeason(answer(t, content), content); }
@@ -494,7 +497,9 @@ test('queue: an item that still throws when it fires is logged and dropped, with
 
 test('desk cap, notices: six notices in one season leave five papers and the log says one was not shown', () => {
   const c = variant(x => { x.events.push(...Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, at: 1, do: [], notice: { title: 't', body: 'b' } }))); });
-  const s = endSeason(answer(newGame(c, { seed: 7, length: 'acts', house: 'plain' }), c), c);
+  const s0 = newGame(c, { seed: 7, length: 'acts', house: 'plain' });
+  const answered = answer(s0, c);
+  const s = endSeason({ ...answered, queue: [] }, c);   // no later effect is due, so no Accounts paper takes a place
   eq(s.desk.length, 5, 'a sixth notice does not go on the desk');
   eq(s.desk.every(p => p.kind === 'notice'), true);
   eq(s.log.filter(e => e.dropped === 'notice').map(e => e.ref), ['e5']);
@@ -593,11 +598,14 @@ test('acts numbering: "past the act\'s first half" reads the same position in bo
 
 test('pinned game: the papers of each season of seed 7 (full) are pinned, and a different seed deals different ones', () => {
   const { seq, s } = play(content, { seed: 7 });
-  eq(seq.map(x => x.join('+')), [
+  // MER-41: the papers other than the Accounts paper are exactly what they were; the money is too. The log grew by the
+  // accounts entries (23 to 39).
+  eq(seq.map(x => x.filter(r => r !== 'accounts').join('+')), [
     'welcome-note+wool-offer', 'lamp-order', 'wool-due+salt-order+court-summons', 'quay-toll+lamp-quarrel', 'salt-dispute+bridge-toll',
     'rope-dispute+harvest-gift', 'wool-offer', 'lamp-order', 'wool-due+salt-order', 'quay-toll+lamp-quarrel+court-summons', 'fair-closes+salt-dispute+bridge-toll',
   ]);
-  eq([s.money, s.log.length], [396, 23]);
+  eq(seq.map(x => x.includes('accounts')), [false, true, false, true, true, true, true, true, false, true, true], 'the seasons that open with an Accounts paper');
+  eq([s.money, s.log.length], [396, 39]);
   ok(JSON.stringify(play(content, { seed: 8 }).seq) !== JSON.stringify(seq), 'the draws decide the papers');
   ok(JSON.stringify(play(content, { seed: 7, length: 'acts' }).seq).length > 0);
 });
@@ -624,7 +632,7 @@ test('weight-0 filter: a card of weight 0 is never drawn, and a pool of only suc
   const c = variant(x => { for (const k of x.cards) if (k.group !== 'followups') k.weight = 0; });
   const { seq } = must('weight-0 filter: a pool holding only weight-0 cards must give an empty draw, not an error', () => play(c, { seed: 3 }));
   for (const papers of seq.slice(1)) for (const r of papers) ok(!c.cards.find(k => k.id === r && k.group !== 'followups' && k.weight === 0), `weight-0 card ${r} was drawn`);
-  eq(seq.slice(1).flat().filter(r => r !== 'wool-due' && r !== 'fair-closes' && !r.startsWith('f')), [], 'the desk held only follow-ups and notices once every drawable card weighed 0');
+  eq(seq.slice(1).flat().filter(r => r !== 'wool-due' && r !== 'fair-closes' && r !== 'accounts' && !r.startsWith('f')), [], 'the desk held only follow-ups and notices once every drawable card weighed 0');
 });
 test('follow-ups count against the card total: a season with a follow-up holds exactly the target of cards', () => {
   for (let seed = 1; seed <= 10; seed++) {
