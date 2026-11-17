@@ -115,8 +115,10 @@ test('teacher-away follows a day type that is the same as another: an entry nami
   same.dayTypes[1].bells = same.dayTypes[1].bells.map(() => null);
   for (const one of same.groups) delete one.days[B];
   const result = ofKind(checkSchedule(same, null), 'teacher-away');
-  assert.deepEqual(result.map((finding) => finding.id), ['teacher-away:dsample00b:1:tsample001', 'teacher-away:dsample00b:2:tsample001']);
-  assert.match(result[0].text, / on B Day /);
+  // the id is the check's own day type's (A Day, which B Day is the same as); the words say which holds
+  assert.deepEqual(result.map((finding) => finding.id), ['teacher-away:dsample00a:1:tsample001', 'teacher-away:dsample00a:2:tsample001']);
+  assert.match(result[0].text, / on B Day, but /);
+  assert.equal(result[0].where.dayTypeId, A);
 });
 
 test('a weekdays-only entry is a note, not a warning: the check cannot know the date', () => {
@@ -126,7 +128,7 @@ test('a weekdays-only entry is a note, not a warning: the check cannot know the 
   assert.equal(found.length, 2, 'A Day and B Day period 2');
   assert.equal(found[0].severity, 'note');
   assert.equal(found[0].id, 'teacher-away:dsample00a:1:tsample001', 'the id is the same as a warning\'s');
-  assert.equal(found[0].text, 'Ms. Halloran is not in school in Period 2 on Fridays, and 8B is in Room 101 in Period 2 on A Day. On those days that group needs another teacher.');
+  assert.equal(found[0].text, 'Ms. Halloran is not in school on Fridays, and 8B is in Room 101 in Period 2 on A Day. On those days that group needs another teacher.');
   // a whole entry on the same period wins: it is the warning
   const both = ofKind(checkSchedule(withAway([entry({ weekdays: [4], periods: [1] }), entry({ periods: [1] })]), null), 'teacher-away');
   assert.equal(both[0].severity, 'warning');
@@ -181,7 +183,7 @@ test('no-planning does not count an away period as planning, and says it is not 
   assert.equal(days.get('tsample002').some(isFree), false, 'an away period is not free');
   const found = ofKind(checkSchedule(project, null), 'no-planning').filter((finding) => finding.where.teacherId === 'tsample002');
   assert.equal(found.length, 1);
-  assert.match(found[0].text, /Period 2 is not in school, Period 5 is not in school and Period 6 is not in school, and there is a group in every other period\./);
+  assert.match(found[0].text, /: they are not in school in Period 2, Period 5 and Period 6, and there is a group in every other period\./);
 });
 
 test('consecutive ends a run at an away period, but an always duty between two classes does not', () => {
@@ -307,11 +309,118 @@ test('a period name that begins with a day type\'s name is still a period, and a
 test('a period name is shown in the check sentences and numbers stay in the CSV (periodName vs periodNumberName)', () => {
   const project = setPeriodName(withAway([entry({ periods: [1] })]), { period: 1, name: 'Advisory' }, ctx());
   const found = ofKind(checkSchedule(project, null), 'teacher-away')[0];
-  assert.match(found.text, /not in school in Advisory on A Day \(in Period 2\)/, 'the period\'s own name where it names the period, the number name in a range');
+  assert.match(found.text, /^Ms\. Halloran is not in school in Advisory on A Day, but 8B is in Room 101 then\./, 'the period\'s own name where it names the period; the entry\'s one period is not said twice');
+  const range = setPeriodName(withAway([entry({ periods: [1, 2] })]), { period: 1, name: 'Advisory' }, ctx());
+  assert.match(ofKind(checkSchedule(range, null), 'teacher-away')[0].text, /in Advisory on A Day \(in Periods 2 to 3\), but/, 'the number names in a range, which adds the other period');
 });
 
 test('the checks report names its grids by the school\'s own period word, as typed', () => {
   assert.match(render(school(), null, {}).html, /Teachers by period: A Day/);
   const custom = setPeriodCustom(school(), { word: 'Lesson', count: 'number' }, ctx());
   assert.match(render(custom, null, {}).html, /Teachers by Lesson: A Day/);
+});
+
+// ---------------------------------------------------------------- SV2-127b: malformed entries, sentences, ids
+
+// B Day the same as A Day, so one check speaks for both
+function withFollower(away) {
+  const project = withAway(away);
+  project.dayTypes[1].own = false;
+  project.dayTypes[1].sameAs = A;
+  project.dayTypes[1].bells = project.dayTypes[1].bells.map(() => null);
+  for (const one of project.groups) delete one.days[B];
+  return project;
+}
+
+test('a weekdays entry the rule cannot read gives no finding, and one with a readable weekday still gives its note', () => {
+  const unreadable = withAway([{ dayTypeIds: [], weekdays: [9], periods: [1] }]);
+  assert.deepEqual(ofKind(checkSchedule(unreadable, null), 'teacher-away'), [], 'awayFor ignores it, so the check must not word it');
+  const half = withAway([{ dayTypeIds: [], weekdays: [9, 4], periods: [1] }]);
+  const found = ofKind(checkSchedule(half, null), 'teacher-away');
+  assert.deepEqual(found.map((finding) => finding.severity), ['note', 'note']);
+  assert.match(found[0].text, /^Ms\. Halloran is not in school on Fridays, and 8B is in Room 101 in Period 2 on A Day\./);
+});
+
+test('the sentence repeats nothing: day types and a lone period are left out of the parenthesis, a range and other day types are not', () => {
+  const lead = 'Ms. Halloran is not in school in Period 2 on A Day';
+  const tail = ', but 8B is in Room 101 then. Change the entry, or give that group another teacher.';
+  const text = (away) => ofKind(checkSchedule(withAway(away), null), 'teacher-away')[0].text;
+  assert.equal(text([entry({ dayTypeIds: [A], periods: [1] })]), lead + tail, 'neither the day type nor the one period is said twice');
+  assert.equal(text([entry({ periods: [1] })]), lead + tail);
+  assert.equal(text([entry({ dayTypeIds: [A], periods: [1, 2] })]), lead + ' (in Periods 2 to 3)' + tail, 'the other period is news');
+  assert.equal(text([entry({ dayTypeIds: [A, B], periods: [1] })]), lead + ' (when it is A Day or B Day)' + tail, 'B Day is not in this sentence');
+});
+
+test('the note says what the entry adds: the weekdays, and a range of periods; a day type and weekdays together are one note', () => {
+  const found = (away) => ofKind(checkSchedule(withAway(away), null), 'teacher-away');
+  const both = found([entry({ dayTypeIds: [A], weekdays: [4], periods: [1] })]);
+  assert.deepEqual(both.map((finding) => [finding.id, finding.severity]), [['teacher-away:dsample00a:1:tsample001', 'note']], 'only A Day is named');
+  assert.equal(both[0].text, 'Ms. Halloran is not in school on Fridays, and 8B is in Room 101 in Period 2 on A Day. On those days that group needs another teacher.');
+  const range = found([entry({ weekdays: [3, 4], periods: [1, 2] })]);
+  assert.equal(range[0].text, 'Ms. Halloran is not in school in Periods 2 to 3 on Thursdays and Fridays, and 8B is in Room 101 in Period 2 on A Day. On those days that group needs another teacher.');
+});
+
+test('the id and the day are this check\'s own: an accepted finding keeps its id when the day type that is the same as it changes', () => {
+  const id = 'teacher-away:dsample00a:1:tsample001';
+  const both = withFollower([entry({ dayTypeIds: [A, B], periods: [1] })]);
+  const first = ofKind(checkSchedule(both, null), 'teacher-away');
+  assert.equal(first[0].id, id);
+  assert.equal(first.every((finding) => finding.where.dayTypeId === A), true, 'B Day has no finding of its own');
+  assert.match(first[0].text, / on A Day and B Day, but /);
+  const accepted = actions.acceptFinding(both, { findingId: id, reason: 'Covered' }, ctx());
+  // the entry now names only the follower: the words change, the id does not
+  const changed = clone(accepted);
+  changed.teachers.find((one) => one.id === HALLORAN).away = [entry({ dayTypeIds: [B], periods: [1] })];
+  const result = checkSchedule(changed, null);
+  assert.equal(result.findings.some((finding) => finding.id === id), false, 'still accepted');
+  const kept = result.accepted.find((finding) => finding.id === id);
+  assert.ok(kept, 'listed as accepted under the same id');
+  assert.match(kept.text, / on B Day, but /);
+  assert.equal(kept.where.dayTypeId, A);
+});
+
+test('no-planning with a follower day type: away all day on a day type it is the same as counts, away on the follower alone does not', () => {
+  const withC = (away) => {
+    const project = busyHalloran(away);
+    project.dayTypes.push({ id: 'dsample00c', name: 'C Day', own: false, sameAs: A, short: '', bells: Array(8).fill(null) });
+    return project;
+  };
+  const planning = (project) => ofKind(checkSchedule(project, null), 'no-planning').filter((finding) => finding.where.dayTypeId === A);
+  assert.equal(planning(withC()).length, 1, 'the setup raises it on A Day, which C Day shares');
+  assert.equal(planning(withC([entry({ dayTypeIds: [A] })])).length, 0, 'away all day on A Day: C Day, the same as it, is away too');
+  assert.equal(planning(withC([entry({ dayTypeIds: ['dsample00c'] })])).length, 1, 'C Day alone: A Day still has no planning');
+  // every() over the members and the first member alone give the same answers here, since a follower is away whenever its own day type is: only some() is told apart (checked by breaking it)
+});
+
+test('no-planning names an away period apart from a duty: "they are not in school in Period 5 and Period 6"', () => {
+  const project = school();
+  project.teachers.find((one) => one.id === 'tsample002').away = [entry({ dayTypeIds: [A], periods: [4, 5] })];
+  project.duties = [{ id: 'ugiven0001', kind: 'duty', label: '', when: 'period', period: 1, start: '', end: '', dayTypeIds: [A], weekdays: [], from: '', to: '', roomId: null, place: '', teacherIds: ['tsample002'], subjectIds: [], everyone: false }];
+  const found = ofKind(checkSchedule(project, null), 'no-planning').filter((finding) => finding.where.teacherId === 'tsample002' && finding.where.dayTypeId === A);
+  assert.equal(found.length, 1);
+  assert.equal(found[0].text, 'Mr. Brightwater has no planning period on A Day: Period 2 is a duty and they are not in school in Period 5 and Period 6, and there is a group in every other period.');
+});
+
+test('a bell schedule\'s off period and a school No class mark take the period before an away entry does', () => {
+  const project = withAway([entry({ dayTypeIds: [A], periods: [0, 3] })]);
+  project.bellSchedules = [{ id: 'bsample001', name: 'Assembly', short: '', bells: project.dayTypes[0].bells.map((bell) => (bell ? { ...bell } : null)), off: [0] }];
+  project.marks = [{ id: 'msample001', kind: 'noclass', label: 'Rally', period: 3, dayTypeIds: [], scope: 'school', grades: [], groupIds: [] }];
+  const kinds = (options) => teacherDay(project, HALLORAN, A, options).map((one) => one.marked);
+  assert.equal(kinds()[0], 'away', 'with the regular bells period 1 is away');
+  assert.equal(kinds({ bellsId: 'bsample001' })[0], 'noclass', 'an off period is No class, not away');
+  assert.equal(kinds()[3], 'noclass', 'a school No class mark is No class, not away');
+  assert.equal(isFree(teacherDay(project, HALLORAN, A)[3]), false);
+});
+
+test('a name two periods share is not matched with a day type in front of it either: the column is ignored and the note says so', () => {
+  const project = named([[1, 'Study'], [6, ' study ']]);
+  const mapping = guessColumns(['Group', 'A Day Study', 'Study (B Day)', 'B Day: Period 7', 'A Day Period 2'], project);
+  assert.deepEqual(brief(mapping), ['name', 'ignore', 'ignore', 'p6', 'p1']);
+  assert.equal(mapping[1].note, 'Two periods are called "Study", so this column is not matched by that name. Call it by its number, like Period 2.');
+  assert.equal(mapping[2].note, mapping[1].note);
+  assert.equal(mapping[3].dayTypeId, B);
+  // one period with that name still takes the prefix
+  const once = named([[1, 'Study']]);
+  const found = guessColumns(['Group', 'A Day Study', 'Study (B Day)'], once);
+  assert.deepEqual(found.slice(1).map((item) => [item.period, item.dayTypeId]), [[1, A], [1, B]]);
 });
