@@ -906,17 +906,28 @@ test('gold is traded by the chest: the goods file says so, and the account says 
 
 /** Plays a game to its end with a scripted plan: answer everything, send whoever is free to each stop in
     turn when suggestPlan has a plan, recall everyone at the end. */
-function run(c, { seed, length, house, stops }) {
+/** A plan for the final season: the first free agent, one load of a good the stop trades bought at home if the warehouse has none, the house's own contract. */
+function lastPlan(s, c, stop) {
+  const home = c.city.home;
+  const agent = c.agents.find(a => s.agents[a.id].hired && s.agents[a.id].where === home && !s.expeditions.some(x => x.agent === a.id));
+  const good = Object.keys(s.market[home] ?? {}).find(g => c.stops.find(x => x.id === stop)?.sells?.[g]);
+  const hit = agent && good && R.routeFor(s, c, stop, agent);
+  const plan = hit && { agent: agent.id, route: hit.route.id, cargo: { [good]: 1 }, purse: 0, contract: 'own', sell: [good], buy: [] };
+  return plan && checkPlan(s, c, plan).ok ? plan : null;
+}
+function run(c, { seed, length, house, stops, last = [] }) {
   let s = newGame(c, { seed, length, house });
-  let sent = 0;
+  let sent = 0, lastSent = false;
   while (s.phase !== 'recall') {
     if (s.phase === 'interlude') { s = openSeason(s, c); continue; }
     s = answer(s, c);
     for (const stop of stops) { const p = suggestPlan(s, c, stop); if (p) { s = outfit(s, c, p); sent++; } }
+    // `last`: in the final season send one more, to the first of these stops the house can, so an expedition has just left when the game ends
+    if (view(s, c).last) for (const stop of last) { const p = !lastSent && lastPlan(s, c, stop); if (p) { s = outfit(s, c, p); sent++; lastSent = true; } }
     s = endSeason(s, c);
   }
   const decisions = Object.fromEntries(s.expeditions.map(x => [x.id, 'recall']));
-  return { s: recall(s, c, decisions), sent };
+  return { s: recall(s, c, decisions), sent, lastSent };
 }
 const sound = s => {
   ok(Number.isInteger(s.money) && s.money >= 0, `money ${s.money}`);
@@ -942,8 +953,11 @@ test('a seeded testport game with a scripted plan runs to the end in both length
 });
 
 test('a seeded cairo three-act game with a scripted plan runs to the end in Node, jumps twice, and ends with the recall', () => {
-  const a = run(C, { seed: 9, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'] });
-  const b = run(C, { seed: 9, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'] });
+  // an expedition is sent in the final season, so it is on the road when the game ends whatever the cards drew
+  const plan = { seed: 9, length: 'acts', house: 'spice', stops: ['damascus', 'alexandria', 'venice'], last: ['damascus', 'alexandria', 'venice'] };
+  const a = run(C, plan);
+  const b = run(C, plan);
+  ok(a.lastSent || a.s.log.find(e => e.kind === 'recall').results.some(r => r.expedition), 'an agent was free to send in the final season, or one was already out');
   eq(a.s.phase, 'ended');
   sound(a.s);
   eq(JSON.stringify(a.s), JSON.stringify(b.s), 'a second run is the same game');
