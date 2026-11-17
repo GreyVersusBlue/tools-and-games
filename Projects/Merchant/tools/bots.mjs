@@ -10,7 +10,7 @@
 //   random   any destination, any good, any size
 //   qirad    greedy's choice and a medium cargo, always under a qirad with partners
 //
-// Defaults: 2,000 games per bot, 20,000 by hand (--games 20000). Games rotate through the
+// Defaults: 2,000 games per bot (about 11 minutes on three threads), 20,000 by hand (--games 20000). Games rotate through the
 // houses (--house to fix one). Seed of game i is SEED0 + i, so a run is repeatable.
 // test/bots-smoke.mjs imports `playGame` and `run` and plays 200 games for CI.
 

@@ -46,6 +46,8 @@ test('smoke: the same seed plays the same game twice', () => {
 test('smoke: a game on a worker thread equals the same game in this thread', async () => {
   const a = await run({ games: 3, bots: ['careful', 'qirad'], content, workers: 1 });
   const b = await run({ games: 3, bots: ['careful', 'qirad'], content, workers: 2 });
+  const line = g => `${g.bot}/${g.seed}/${g.house}: worth ${g.worth}, routes ${JSON.stringify(g.routes)}`;
+  eq(Object.values(b.results).flat().map(line), Object.values(a.results).flat().map(line));
   eq(b.results, a.results);
 });
 
