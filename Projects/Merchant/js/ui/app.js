@@ -12,10 +12,13 @@ import { newGameBody } from './screens/newgame.js';
 import { settingsBody, applySettings } from './screens/settings.js';
 import { createDesk } from './screens/desk.js';
 import { createMap } from './screens/map.js';
+import { ledgerBody } from './screens/ledger.js';
+import { notebookBody } from './screens/notebook.js';
 
 const SCREENS = new Set(['title', 'desk', 'map']);
 const NEEDS_GAME = new Set(['desk', 'map']);
 const PANELS = new Set(['about', 'settings', 'newgame']);
+const GAME_PANELS = new Set(['ledger', 'notebook']);   // dialogs over the desk, which need a game
 const WORDS = ['one', 'two', 'three', 'four'];
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -25,6 +28,7 @@ const testMode = params.get('test') === '1';
 
 const app = {
   content: null, slots: null, art: new Map(), settings: settingsDefaults(),
+  outfitFor: null, // a stop id the desk hands the map table to open the sheet on; the map reads and clears it
   state: null,     // the game in play, or null
   running: false,  // true once Continue or Begin put the player on the desk
   view() { return engine.view(app.state, app.content); },
@@ -43,6 +47,8 @@ const app = {
     queueMicrotask(() => { live.textContent = text; });
   },
   openMenu: b => openMenu(b),
+  /** The ledger or the notebook over the desk; `section` is where the ledger opens ('warehouse'). */
+  openBook: (name, opener, section) => open(name, opener, { section }),
   toTitle: () => goTo('title'),
 };
 
@@ -78,7 +84,7 @@ function confirmDialog(title, body, actions) {
 function trapTab(dialog) {
   dialog.addEventListener('keydown', e => {
     if (e.key !== 'Tab') return;
-    const stops = [...dialog.querySelectorAll('input:not([disabled]), button')];
+    const stops = [...dialog.querySelectorAll('input:not([disabled]), button:not([tabindex="-1"])')];
     const first = stops[0], last = stops[stops.length - 1];
     const here = document.activeElement;
     if (!e.shiftKey && here === last) { e.preventDefault(); first.focus(); }
@@ -97,7 +103,19 @@ const closeDialog = d => { if (d.open) d.close(); };
 const closeButton = (name, dialog) => h('div', { class: 'panel-actions' },
   h('button', { class: 'button', type: 'button', id: `panel-${name}-close`, onclick: () => closeDialog(dialog) }, 'Close'));
 
-function buildPanel(name) {
+function buildPanel(name, opts = {}) {
+  if (name === 'ledger') {
+    const d = makePanel('ledger', 'The ledger', ...ledgerBody(app));
+    d.classList.add('book');
+    d.append(closeButton(name, d));
+    return d;
+  }
+  if (name === 'notebook') {
+    const d = makePanel('notebook', 'The notebook', ...notebookBody(app, opts).nodes);
+    d.classList.add('book');
+    d.append(closeButton(name, d));
+    return d;
+  }
   if (name === 'about') {
     const d = makePanel('about', 'About this game', ...TITLE_TEXT.about.map(t => h('p', null, t)), h('p', null, TITLE_TEXT.noSave));
     d.append(closeButton(name, d));
@@ -125,12 +143,14 @@ function buildPanel(name) {
 }
 
 function restoreFocus(p) {
-  (p.opener?.isConnected ? p.opener : qs(`#btn-${p.name}`) ?? qs('#btn-menu'))?.focus();
+  // The desk redraws its bar, so the opener may have been replaced by a button with the same id.
+  const again = p.opener?.id && qs(`#${p.opener.id}`);
+  (p.opener?.isConnected ? p.opener : again || qs(`#btn-${p.name}`) || qs('#btn-menu'))?.focus();
 }
 
-function show(name, opener) {
+function show(name, opener, opts = {}) {
   if (openPanel) return;
-  const dialog = buildPanel(name);
+  const dialog = buildPanel(name, opts);
   document.body.append(dialog);
   // fromHistory is set when history already moved (Back, or another panel's hash) and the
   // page closes the dialog itself. The close event arrives later, as its own task, and must
@@ -150,12 +170,15 @@ function show(name, opener) {
   });
   trapTab(dialog);
   dialog.showModal();
-  dialog.querySelector('h2').focus(); // DESIGN 6: focus goes to the panel's title
+  // DESIGN 6: focus goes to the panel's title; the ledger opened at a section goes to that section's heading
+  const at = opts.section && qs(`#${name}-${opts.section}-h`, dialog);
+  (at ?? dialog.querySelector('h2')).focus();
+  at?.scrollIntoView({ block: 'start' });
 }
 
-function open(name, opener) {
+function open(name, opener, opts = {}) {
   history.pushState({ panel: name }, '', `#${name}`);
-  show(name, opener);
+  show(name, opener, opts);
 }
 
 /** Close the open panel because history moved, or because the page is leaving it. */
@@ -177,6 +200,9 @@ function openMenu(opener) {
   const dialog = h('dialog', { class: 'paper menu', id: 'panel-menu', 'aria-labelledby': 'panel-menu-title' },
     h('h2', { id: 'panel-menu-title', tabindex: '-1' }, 'Menu'),
     h('div', { class: 'menu-items' },
+      // DESIGN 5.2, 5.3: on a phone the bar holds only the Menu, so the ledger and the notebook are here
+      item('menu-ledger', 'Ledger', () => open('ledger', opener)),
+      item('menu-notebook', `Notebook ${app.state?.notebook.length ?? 0}`, () => open('notebook', opener)),
       item('menu-settings', 'Settings', () => open('settings', opener)),
       item('menu-about', 'About this game', () => open('about', opener)),
       item('menu-quit', 'Save and quit to title', () => { app.persist(); goTo('title'); })),
@@ -275,6 +301,20 @@ function route() {
     if (openPanel && openPanel.name !== name) closeFromHistory();
     if (!openPanel) show(name, null);
     return;
+  }
+  if (GAME_PANELS.has(name)) {
+    if (!app.running) {
+      const saved = app.slots.game.load();
+      if (saved) { app.state = saved; app.running = true; }
+    }
+    // The ledger and the notebook lie over the desk; with no game there is nothing to show.
+    if (!app.running) { history.replaceState(null, '', '#title'); name = 'title'; }
+    else {
+      if (screen !== 'desk' && screen !== 'map') renderScreen('desk');
+      if (openPanel && openPanel.name !== name) closeFromHistory();
+      if (!openPanel) show(name, null);
+      return;
+    }
   }
   closeFromHistory();
   // A reload on #desk with a save in this browser picks the game up where it was.

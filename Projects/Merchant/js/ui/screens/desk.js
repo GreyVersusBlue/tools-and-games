@@ -10,11 +10,6 @@ const WORDS = ['one', 'two', 'three', 'four'];
 const COUNT = ['No', 'One', 'Two', 'Three', 'Four', 'Five'];
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 
-const REASONS = {
-  ledger: 'The ledger opens in a later part of the game.',
-  notebook: 'The notebook opens in a later part of the game.',
-};
-
 const ICONS = {
   coin: '<svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>',
   speakerOn: '<svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 9v6h4l5 4V5L7 9z" fill="currentColor"/><path d="M15 8c2 2 2 6 0 8M18 5c4 4 4 10 0 14" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
@@ -92,10 +87,11 @@ export function createDesk(app) {
 
   // ---- the top bar
   function barNote(text) { note.textContent = text; app.say(text); }
-  const soft = (key, label, extra) => h('button', {
-    class: 'bar-btn', type: 'button', id: `btn-${key}`, 'aria-disabled': 'true', 'aria-describedby': `reason-${key}`,
-    onclick: () => barNote(REASONS[key]),
-  }, label, extra, h('span', { class: 'visually-hidden', id: `reason-${key}` }, ` ${REASONS[key]}`));
+  /** The ledger and the notebook are dialogs over the desk (DESIGN 4); a raised card's back may stay open under them. */
+  function openBook(name, opener, section) {
+    if (busy) return;
+    app.openBook(name, opener, section);
+  }
 
   /** The map table is its own screen with its own hash (#map). `outfitFor` is a stop to open the
       one-press sheet on once the map has drawn (DESIGN 7); the map reads it from the app and clears it. */
@@ -117,12 +113,14 @@ export function createDesk(app) {
         h('p', { class: 'count', id: 'bar-count' }, `Season ${app.state.t + 1} of ${total} · Act ${WORDS[v.act - 1] ?? v.act}`)),
       h('div', { class: 'bar-money' },
         h('p', { class: 'money', id: 'bar-money' }, icon(ICONS.coin), h('span', null, dinars(v.money))),
-        h('button', { class: 'bar-btn loads', type: 'button', id: 'btn-warehouse', 'aria-disabled': 'true', 'aria-describedby': 'reason-ledger',
-          onclick: () => barNote(REASONS.ledger) }, `${num(held)} ${held === 1 ? 'load' : 'loads'} in the warehouse`)),
+        h('button', { class: 'bar-btn loads', type: 'button', id: 'btn-warehouse', 'aria-haspopup': 'dialog',
+          onclick: e => openBook('ledger', e.currentTarget, 'warehouse') }, `${num(held)} ${held === 1 ? 'load' : 'loads'} in the warehouse`)),
       h('div', { class: 'bar-tools' },
         h('button', { class: 'bar-btn', type: 'button', id: 'btn-map', onclick: () => toMap() }, 'Map'),
-        soft('ledger', 'Ledger'),
-        soft('notebook', 'Notebook', h('span', { class: 'bar-badge' }, String(app.state.notebook.length))),
+        h('button', { class: 'bar-btn', type: 'button', id: 'btn-ledger', 'aria-haspopup': 'dialog',
+          onclick: e => openBook('ledger', e.currentTarget) }, 'Ledger'),
+        h('button', { class: 'bar-btn', type: 'button', id: 'btn-notebook', 'aria-haspopup': 'dialog',
+          onclick: e => openBook('notebook', e.currentTarget) }, 'Notebook', h('span', { class: 'bar-badge' }, String(app.state.notebook.length))),
         h('button', { class: 'bar-btn speaker', type: 'button', id: 'btn-sound', 'aria-pressed': sound ? 'true' : 'false', 'aria-label': 'Sound',
           onclick: () => { app.setSetting('sound', !app.settings.sound); drawBar(app.view()); } }, icon(sound ? ICONS.speakerOn : ICONS.speakerOff)),
         h('button', { class: 'bar-btn menu', type: 'button', id: 'btn-menu', 'aria-haspopup': 'dialog',
@@ -300,7 +298,7 @@ export function createDesk(app) {
     if (k === 'm') { e.preventDefault(); toMap(); return true; }
     if (k === 'l' || k === 'n') {
       e.preventDefault();
-      barNote(REASONS[{ l: 'ledger', n: 'notebook' }[k]]);
+      openBook(k === 'l' ? 'ledger' : 'notebook', qs(k === 'l' ? '#btn-ledger' : '#btn-notebook'));
       return true;
     }
     return false;
