@@ -29,7 +29,7 @@ export const ROOM_COLUMNS = [
 // After Shared. It is on paper only when the school has features, so a school
 // without them prints the columns above and no more; it sorts by how many a
 // room has.
-export const FEATURES_COLUMN = { id: 'features', label: 'Features', value: (row) => row.features.length, shown: (row) => row.features.join(', ') };
+export const FEATURES_COLUMN = { id: 'features', label: 'Features', value: (row) => (row.features || []).length, shown: (row) => (row.features || []).join(', ') };
 
 // One row per room, in the building's own order. Every text is as typed.
 export function roomRows(project, floorId) {
@@ -39,6 +39,7 @@ export function roomRows(project, floorId) {
     for (const space of floor.spaces) {
       if (space.kind !== 'room') continue;
       const subject = space.subjectId ? project.subjects.find((candidate) => candidate.id === space.subjectId) : null;
+      const features = roomFeatures(project.building, space).map((feature) => feature.name);
       rows.push({
         id: space.id,
         number: typeof space.number === 'string' ? space.number : '',
@@ -48,7 +49,8 @@ export function roomRows(project, floorId) {
         subject: subject ? subject.name : '',
         capacity: Number.isInteger(space.capacity) ? space.capacity : null,
         shared: space.shared === true,
-        features: roomFeatures(project.building, space).map((feature) => feature.name),
+        // only a room that has some carries the field, so a school with none has the rows it always had
+        ...(features.length > 0 ? { features } : {}),
       });
     }
   });
