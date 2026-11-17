@@ -549,7 +549,7 @@ test('the act jump: trust halves toward 0, an agent at -2 or lower leaves, and s
     const t = play(game(c, { length: 'acts', seed }), c, 3);
     if (t.agents.mira.where === 'gone') retired++;
   }
-  ok(retired > 5 && retired < 50, `${retired} of 200 retired at ${R.RETIRES}`);
+  ok(retired > 5 && retired < 50, `${retired} of 200 retired at ${R.jumpChances(c).retires}`);
 });
 
 test('the act jump applies the between events of that gap in order and shows their paragraphs, and does not fire them by `at` in the three-act game', () => {
@@ -665,7 +665,54 @@ test('the recall schema: every chance is a number from 0 to 1, an unknown key is
     void what;
   }
   eq(R.recallChances(T).reach, { start: 0.9, perSeason: 0.2, floor: 0.1 }, 'testport sets its own');
-  eq(R.recallChances(C), R.DEFAULT_RECALL, 'a city with no block gets the defaults');
+  eq(R.recallChances(variant(C, y => { delete y.city.recall; })), R.DEFAULT_RECALL, 'a city with no block gets the defaults');
+  eq(R.recallChances(C), { ...R.DEFAULT_RECALL, ...C.city.recall }, 'cairo reads its own block');
+  eq(R.recallChances(variant(C, y => { y.city.recall.reach.start = 0.5; })).reach.start, 0.5, 'and changing it in city.json changes the chance');
+});
+
+// ---- city.json's jump block
+
+test('jump: cairo has a recall block and a jump block, routes.js reads them, and a city with none gets the defaults', () => {
+  ok(C.city.recall && C.city.jump, 'cairo carries both blocks');
+  eq(R.jumpChances(C), { ...R.DEFAULT_JUMP, ...C.city.jump });
+  eq(R.jumpChances(variant(C, y => { delete y.city.jump; })), R.DEFAULT_JUMP, 'no block, the defaults');
+  eq(R.DEFAULT_JUMP, { retires: 0.1, wholeLoss: 0.4, survivesWhole: 0.75, partial: [0.25, 0.75] }, 'the numbers MER-41 shipped');
+  eq(C.city.jump, R.DEFAULT_JUMP, 'cairo writes down the same numbers, so nothing the bots measure moves');
+});
+
+test('jump: retires in city.json decides who retires across the act jump', () => {
+  const retired = retires => {
+    const c = variant(risk(T, 0), y => { y.city.jump = { retires }; });
+    const s = play(game(c, { length: 'acts', house: 'rich' }), c, 3);
+    return ['mira', 'tobin'].filter(id => s.agents[id].where === 'gone').length;
+  };
+  eq(retired(1), 2, 'everyone at home retires');
+  eq(retired(0), 0, 'nobody does');
+});
+
+test('jump: wholeLoss, survivesWhole and partial in city.json decide what a loss takes', () => {
+  const base = c => outfit(game(c), c, { ...WOOL, cargo: { wool: 10 }, purse: 30 });
+  const roll = (jump, seed) => {
+    const c = variant(risk(T, 1), y => { y.city.jump = jump; });
+    const s = base(c);
+    s.rng = seed; s.expeditions[0].rode = { leg: 0, start: 1 };
+    R.risk(s, c);
+    return s;
+  };
+  let checked = 0;
+  for (let seed = 1; seed <= 80; seed++) {
+    const whole = roll({ wholeLoss: 1, survivesWhole: 0 }, seed);
+    if (whole.desk.at(-1)?.kind === 'lost') checked++;
+    if (whole.desk.at(-1)?.kind === 'lost') eq([whole.expeditions.length, whole.desk.at(-1).data.whole, whole.desk.at(-1).data.survived, whole.agents.mira.where], [0, true, false, 'dead'], `seed ${seed}: always whole, nobody lives`);
+    const half = roll({ wholeLoss: 0, partial: [0.5, 0.5] }, seed);
+    if (half.desk.at(-1)?.kind === 'lost') eq([half.desk.at(-1).data.whole, half.expeditions[0]?.cargo.wool], [false, 5], `seed ${seed}: never whole, half of the wool`);
+  }
+  ok(checked > 20, `${checked} of 80 rolls at risk 0.95 were a loss to check`);
+  for (const [bad, re] of [
+    [{ retires: 2 }, /retires: needs a number from 0 to 1/],
+    [{ partial: [0.8, 0.2] }, /needs \[least, most\]/],
+    [{ partial: [0.5] }, /needs \[least, most\]/],
+  ]) throws(() => validateContent(variant(T, y => { y.city.jump = bad; })), re);
 });
 
 // ---- price news

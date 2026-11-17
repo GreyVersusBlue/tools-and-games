@@ -22,10 +22,15 @@ import { riskFactor, bargain, legSeasons } from './agents.js';
 
 export const WINTER_GALLEY = 1.5;   // risk times this on a galley leg started in winter (Duggan 2015: risky, not closed)
 export const UPKEEP = 4;            // coins a season for an expedition waiting at a stop (an estimate; the bots tune it)
-export const WHOLE_LOSS = 0.4;      // of the losses, the share that take the whole vessel
-export const SURVIVES_WHOLE = 0.75; // an agent whose vessel was lost gets home
-export const PARTIAL = [0.25, 0.75]; // a partial loss takes this share of each good
-export const RETIRES = 0.1;         // an agent at home retires during the years of the jump
+// What happens to an expedition that is lost, and to an agent at home across the act jump: the
+// defaults for city.json's `jump` block (ARCHITECTURE 5.1). A loss is rolled the same way on the
+// road and at the jump, so the loss shares are one set of numbers, read in both places.
+export const DEFAULT_JUMP = {
+  retires: 0.1,          // an agent at home retires during the years of the jump
+  wholeLoss: 0.4,        // of the losses, the share that take the whole vessel
+  survivesWhole: 0.75,   // an agent whose vessel was lost gets home
+  partial: [0.25, 0.75], // a partial loss takes this share of each good
+};
 export const MAX_WAIT = 4;          // seasons a plan may wait at one stop before it is refused
 export const DEFAULT_RECALL = {
   reach: { start: 0.95, perSeason: 0.15, floor: 0.1 }, // chance word reaches an agent in time, by seasons from home
@@ -197,16 +202,22 @@ export function legRisk(content, agent, leg, startIdx) {
   return clamp(leg.risk * riskFactor(agent, leg) * (winter ? WINTER_GALLEY : 1), 0, 0.95);
 }
 
+/** The chances of loss and retirement: city.json's `jump` over the defaults. */
+export function jumpChances(content) {
+  return { ...DEFAULT_JUMP, ...(content.city?.jump ?? {}) };
+}
+
 /** A loss happened to `x`. Draws: whole or partial; a whole loss then draws whether the agent
     lives, a partial loss how much goes. Returns what was lost; changes `x` on a partial loss. */
 function loseSome(s, content, x) {
-  if (next(s) < WHOLE_LOSS) {
-    const survived = next(s) < SURVIVES_WHOLE;
+  const J = jumpChances(content);
+  if (next(s) < J.wholeLoss) {
+    const survived = next(s) < J.survivesWhole;
     const cargo = { ...x.cargo }, purse = x.purse;
     x.cargo = {}; x.purse = 0;
     return { whole: true, survived, cargo, purse };
   }
-  const f = PARTIAL[0] + next(s) * (PARTIAL[1] - PARTIAL[0]);
+  const f = J.partial[0] + next(s) * (J.partial[1] - J.partial[0]);
   const cargo = {};
   for (const [g, n] of Object.entries(x.cargo)) {
     const lose = Math.min(n, Math.max(1, Math.round(n * f)));
@@ -762,7 +773,7 @@ export function jump(s, content) {
     if (!r || !r.hired || r.where === 'dead' || r.where === 'gone') continue;
     if (r.trust <= -2) { r.hired = false; r.where = 'gone'; entry.agents.push({ id: a.id, left: 'trust' }); continue; }
     r.trust = Math.trunc(r.trust / 2);
-    if (chance(s, RETIRES)) { r.hired = false; r.where = 'gone'; entry.agents.push({ id: a.id, left: 'retired' }); }
+    if (chance(s, jumpChances(content).retires)) { r.hired = false; r.where = 'gone'; entry.agents.push({ id: a.id, left: 'retired' }); }
   }
 
   // 4. markets reset to the new act's base prices, with no glut
