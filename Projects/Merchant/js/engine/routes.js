@@ -49,7 +49,7 @@ const words = n => NUMBER_WORDS[n] ?? String(n);
 const plural = (n, one, many) => (n === 1 ? one : many);
 const VESSEL = { caravan: 'caravan', galley: 'galley', dhow: 'dhow', nileboat: 'boat', mules: 'mule train' };
 
-/** "20 loads of linen", "1 chest of silver". */
+/** "20 loads of <good>", "1 chest of <good>". */
 function qty(content, good, n) {
   const unit = goodOf(content, good)?.unit ?? 'load';
   return `${n} ${plural(n, unit, `${unit}s`)} of ${goodName(content, good)}`;
@@ -81,7 +81,7 @@ function ahead(s, content, k) {
 /** Can `leg` be started in the season `k` places ahead? `why` is "season", "when" or "end". */
 function legOpen(s, content, leg, k) {
   const a = ahead(s, content, k);
-  if (!a) return { open: false, why: 'end' };
+  if (!a) return { open: true, idx: undefined };   // past the last season nothing is known, and the ending settles it
   if (!leg.opens.includes(seasonName(a.idx))) return { open: false, why: 'season', idx: a.idx };
   if (leg.when && !holds(leg.when, a.st, content)) return { open: false, why: 'when', idx: a.idx };
   return { open: true, idx: a.idx };
@@ -101,10 +101,10 @@ export function project(s, content, route) {
     const leg = route.legs[i];
     const limit = i === 0 ? 1 : MAX_WAIT;
     let w = 0, o = legOpen(s, content, leg, k);
-    while (!o.open && w < limit && o.why !== 'end') { w++; k++; o = legOpen(s, content, leg, k); }
+    while (!o.open && w < limit) { w++; k++; o = legOpen(s, content, leg, k); }
     if (!o.open) {
       const how = o.why === 'when' ? 'is not open in these years'
-        : o.why === 'end' ? 'would not start before the game ends' : `can only start in ${listWords(leg.opens.map(x => SEASON_WORDS[x]))}`;
+        : `can only start in ${listWords(leg.opens.map(x => SEASON_WORDS[x]))}`;
       return { ok: false, legs, why: `${i === 0 ? 'The first leg' : 'A later leg'}, ${legName(content, leg)}, ${how}.` };
     }
     if (w > 0 && i > 0) {
@@ -183,6 +183,7 @@ function payFromExpedition(s, content, x, amount) {
       while (x.cargo[g] > 0 && owed > 0) { x.cargo[g]--; given[g] = (given[g] ?? 0) + 1; owed -= worth(g); }
       if (!x.cargo[g]) delete x.cargo[g];
     }
+    if (owed < 0) x.purse += -owed;   // the toll-keeper gives change for a load
   }
   return given;
 }
@@ -246,6 +247,7 @@ function lostPaper(s, content, x, loss, leg) {
 
 /** What a loss costs each party under the contract: the capital bears it in proportion to stake. */
 function lossCosts(x, loss, content, s) {
+  if (loss.whole) return { house: x.staked.house, partners: x.staked.partners };   // all the capital went
   const home = homeOf(content);
   let value = loss.purse;
   for (const [g, n] of Object.entries(loss.cargo)) value += n * (M.truePrice(s, content, home, g) ?? 0);
@@ -556,10 +558,11 @@ export function tolls(s, content) {
     if (x.left > 0) continue;
     const route = routeOf(content, x.route);
     const leg = route.legs[rode.leg];
+    // at the far end the goods are sold first, so the toll comes out of what they fetched
+    if (rode.leg === outEnd(route)) tradeAtFar(s, content, x, route, idx);
     x.book.tolls += leg.toll;
     const given = payFromExpedition(s, content, x, leg.toll);
     for (const [g, q] of Object.entries(given)) x.book.paidInGoods[g] = (x.book.paidInGoods[g] ?? 0) + q;
-    if (rode.leg === outEnd(route)) tradeAtFar(s, content, x, route, idx);
     if (rode.leg === route.legs.length - 1) { x.status = 'home'; x.leg = route.legs.length; continue; }
     x.leg = rode.leg + 1;
     startLeg(s, content, x, 1);
@@ -845,7 +848,9 @@ export function recall(s, content, decisions = {}) {
   const idx = seasonIndex(s, content);
   const home = homeOf(content);
   const results = [];
+  const settled = new Set();
   for (const x of s.expeditions) {
+    settled.add(x.agent);
     const agent = agentOf(content, x.agent), route = routeOf(content, x.route);
     const lag = x.status === 'home' ? 0 : seasonsHome(content, x);
     const reach = clamp(cfg.reach.start - cfg.reach.perSeason * lag, cfg.reach.floor, 1);
@@ -880,7 +885,7 @@ export function recall(s, content, decisions = {}) {
   s.expeditions = [];
   for (const a of content.agents ?? []) {
     const r = s.agents[a.id];
-    if (!r?.hired || r.where !== home) continue;
+    if (!r?.hired || r.where !== home || settled.has(a.id)) continue;   // one who came home from the road above has had their roll
     const lives = next(s) < cfg.homeSurvives;
     if (!lives) r.where = 'dead';
     results.push({ agent: a.id, how: 'home', survived: lives, text: lives ? `${a.name} was in ${stopName(content, home)} and lived.` : `${a.name} was in ${stopName(content, home)} and died of the plague.` });

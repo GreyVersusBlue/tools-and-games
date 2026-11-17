@@ -25,9 +25,8 @@ export const steps = {
   returns(s, content) { routes.returns(s, content); },
   letters: noop,
   news(s, content) {
-    // city.json's priceNews (default true) turns price letters off for a city. A city that says
-    // false but supplies letters of its own (the market suite's testport) still gets them.
-    if (content.city?.priceNews === false && !content.letters?.length) return;
+    // city.json's priceNews (default true) turns price letters off for a city
+    if (content.city?.priceNews === false) return;
     market.news(s, content);
   },
   events(s, content) {
