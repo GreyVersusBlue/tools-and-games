@@ -49,6 +49,7 @@ export function loadHearth(opts = {}) {
     addEventListener() {}, removeEventListener() {}, requestAnimationFrame() {}, setTimeout, clearTimeout,
     innerWidth: 1200, innerHeight: 800, devicePixelRatio: 1,
     Image: function () { return S; },
+    Path2D: function () { return S; }, // A14 (speed): the look code keeps tree outlines as Path2D; the stub takes rect, arc and ellipse like any canvas call
   };
   ctx.window = ctx;
   Object.assign(ctx, opts.globals);

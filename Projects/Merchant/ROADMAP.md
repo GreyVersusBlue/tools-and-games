@@ -94,9 +94,16 @@ are played. The balance bots run both.
 
 | Act | Draft years | What it is about | Draft set pieces |
 |---|---|---|---|
-| 1 | Spring 1324 to Winter 1325 | Learning the routes with a small house | Mansa Musa's pilgrimage passes through Cairo, and al-Umari later wrote that gold lost value; the Aydhab road shut by war |
+| 1 | Spring 1324 to Winter 1325 | Learning the routes with a small house | Mansa Musa's pilgrimage passes through Cairo, and al-Umari later wrote that gold lost value; Cairo's merchants lend to the Mali party for the road home |
 | 2 | Spring 1335 to Winter 1336 | A larger house, more at risk | Abu Said's death ends the Ilkhanate's unity and the road east turns dangerous; grain shortage in 1336 |
-| 3 | Winter 1345 to Autumn 1347 | Reading the warnings | Venice's galleys return in 1345; rumours from the Black Sea; pepper's price leaps in 1347; the plague reaches Alexandria; recall your people or gamble |
+| 3 | Winter 1345 to Autumn 1347 | Reading the warnings | Venice's galleys return in 1345; rumours from the Black Sea; pepper scarce in 1346 and dearest in 1347; the plague reaches Alexandria; recall your people or gamble |
+
+Between the acts, the "years pass" page carries the events of the gap: between
+acts one and two, Ibn Battuta at Alexandria (1326), the Aydhab road shut by
+war in 1326 and open again, and the Sultan's pilgrimage of 1332; between acts
+two and three, the Sultan's death in 1341 and a Venetian envoy in 1344. In the
+full-years game each of these fires in its own season instead (corrected at
+the M2 landing, from the events the M1 research wrote).
 
 Corrected in M0 from the checked research (orchestrator, 2026-11-17): Ibn
 Battuta reached Egypt in spring 1326, after act one, so he appears on the page
@@ -311,10 +318,14 @@ go in a manifest that a test checks.
 
 | Kind | Sounds |
 |---|---|
-| The desk | Paper unfolding, a page turning, a reed pen scratching, a stamp pressed, coins set down, scale pans settling, a lamp lit |
+| The desk | Paper unfolding, a page turning, a pen scratching (a quill stands in for a reed pen), a stamp pressed, coins set down, scale pans settling, a lamp wick catching |
 | Places | Harbour (water on stone, rope and timber creaking, gulls), market murmur with no clear words, desert wind, rain on leaves, a courtyard at night |
-| The road | Camel bells, a camel's grunt, hooves on stone, a sail filling, a storm at sea |
-| The game | A letter arriving, a season ending, an expedition home |
+| The road | Metal bells for the camels until a CC0 camel-bell recording is found, a camel's grunt, hooves on stone, a sail filling, a storm at sea |
+| The game | A letter arriving, a season ending (a struck singing bowl, not a bell), an expedition home |
+
+The list was written in M1 (corrected at the M2 landing): each file's
+recording number and author go in the sound manifest, and every licence is
+read again when the files come in.
 
 Sound starts only after the player's first click, has one mute control, and
 the game is complete without it. The list is an M1 unit; the files go in at
