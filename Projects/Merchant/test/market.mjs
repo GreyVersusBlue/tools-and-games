@@ -125,7 +125,7 @@ for (const [name, C] of Object.entries(CITIES)) {
     throws(() => M.noteSale(s, content, home, 'nowhere', 1), /does not trade/);
   });
 
-  test(T('a price event multiplies f, and the glut rule decays its effect back toward 1'), () => {
+  test(T('a price event multiplies f, and two events multiply'), () => {
     const s = game();
     const before = M.truePrice(s, content, home, g0);
     apply(s, content, { price: home, good: g0, by: 0.5 });
