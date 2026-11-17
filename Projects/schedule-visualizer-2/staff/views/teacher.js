@@ -165,9 +165,19 @@ function dutyWhat(duty) {
 // A teacher's row for one period of a day: the classes, or what the free
 // period is. A free period that a duty or a mark takes says so, with "Duty"
 // (or "Meeting") as a small word over it; a duty that holds on some days only
-// is added with its days when the card is not today's. { what, where }.
-export function teacherRowOf(school, entry, dayTypeId, date, slotOf) {
+// is added with its days when the card is not today's, and so is an away
+// entry that holds on some weekdays only (`away`, school.awayOf's list for the
+// day type). { what, where }.
+export function teacherRowOf(school, entry, dayTypeId, date, slotOf, away) {
   const extra = sometimesIn(entry, date).map((duty) => h('span', { class: 'row__also', dataset: { also: duty.id } }, typed(dutyWords(duty)), ' (', sometimesWords(school, duty), ')', dutyPlace(school, duty) === '' ? null : [' · ', typed(dutyPlace(school, duty))]));
+  // an away entry that holds on some weekdays only is listed, worded by
+  // awayWords, on each period it names (or on all, when it names none) unless
+  // it is what takes the period
+  if (entry.marked !== 'away') {
+    for (const each of Array.isArray(away) ? away : []) {
+      if (each.sometimes && (each.periods.length === 0 || each.periods.includes(entry.period))) extra.push(h('span', { class: 'row__also', dataset: { also: 'away' } }, typed(each.words)));
+    }
+  }
   if (entry.kind === 'teaching') {
     const what = [];
     const where = [];
@@ -410,16 +420,18 @@ export function teacherPageOf(ctx, teacher, heading) {
   const dayOf = (dayType, date) => everyTeacherDay(school, dayType.id, date).get(teacher.id) || [];
   // two days are the same card when their periods, and what takes the free
   // ones, are: a duty or a mark in one and not the other makes two cards
+  // the away entries that apply to a day type, always and sometimes, are part
+  // of what makes a card: two day types that differ only by one are two cards
   const kinds = dayKindsOf(school, (dayType) => dayOf(dayType, null).map((entry) => [entry.marked, entry.duties.map((duty) => duty.id), entry.groups.map((taught) => {
     const slot = slotAt(dayType, taught, entry.period);
     return [taught.groupId, taught.roomId, slot.label, slot.roomText];
-  })]).concat([(() => {
+  })]).concat([school.awayOf(teacher.id, dayType.id).map((each) => each.words)], [(() => {
     const edges = edgeDuties(school, teacher.id, dayType.id, null);
     return [edges.before.map((duty) => duty.id), edges.after.map((duty) => duty.id)];
   })()]));
   const days = dayCardsOf(ctx, kinds, (dayType, period, date) => {
     const entry = dayOf(dayType, date)[period];
-    return teacherRowOf(school, entry, dayType.id, date, (taught, at) => slotAt(dayType, taught, at));
+    return teacherRowOf(school, entry, dayType.id, date, (taught, at) => slotAt(dayType, taught, at), school.awayOf(teacher.id, dayType.id));
   }, (dayType, date) => edgeDuties(school, teacher.id, dayType.id, date));
 
   const map = rooms.length > 0 && school.has('map') ? floorMap(ctx, {

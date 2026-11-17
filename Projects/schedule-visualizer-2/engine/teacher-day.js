@@ -22,7 +22,7 @@ import { findRoom, findById, roomNumberKey, WEEKDAY_NAMES } from './schema.js';
 import { findDayType } from './day-types.js';
 import { offPeriods, periodLabel, periodNumberName, periodWordForms } from './bells.js';
 import { meetingSlots } from './runs.js';
-import { markFor, schoolMarkFor, dutiesByTeacher, dutyIsSometimes, awayFor } from './marks.js';
+import { markFor, schoolMarkFor, dutiesByTeacher, dutyIsSometimes, awayFor, awayEntry } from './marks.js';
 
 // The teachers a slot counts for, by the rule above. Ids as stored; the
 // caller decides what to do with an id that names nobody.
@@ -39,13 +39,16 @@ export function slotTeacherIds(project, slot) {
 // school's own order. When the slot's room is not in the building roomId is
 // null and roomText is the number the slot kept; otherwise roomText is "".
 // `duties` is every duty the teacher has in the period, always or sometimes.
-// `marked` is set only on planning entries, to what takes the period: an
-// "away" when the teacher is not in school then (`teacher.away`, awayFor), else
-// an always duty's kind ("duty", "meeting", "lunch"), else a school mark's kind
-// ("lunch", "advisory", "activity", "noclass"), else null; a duty that holds
-// only on some days counts as always only when `options.date` is given and
-// matches. `options.bellsId` is a bell schedule whose off periods do not
-// meet. Null when D is not a day type of this project.
+// `marked` is set only on planning entries, to what takes the period, in this
+// order: a period nobody meets in, a school "noclass" mark or an off period of
+// `options.bellsId` ("noclass": a teacher "away" in a period that does not
+// exist for anyone reads as that period, "No class"); an "away" when the
+// teacher is not in school then (`teacher.away`, awayFor); an always duty's
+// kind ("duty", "meeting", "lunch"); another school mark's kind ("lunch",
+// "advisory", "activity"); else null. A duty that holds only on some days
+// counts as always only when `options.date` is given and matches.
+// `options.bellsId` is a bell schedule whose off periods do not meet. Null
+// when D is not a day type of this project.
 export function teacherDays(project, dayTypeId, options) {
   if (!findDayType(project, dayTypeId)) return null;
   const date = options && typeof options.date === 'string' ? options.date : null;
@@ -91,7 +94,11 @@ export function teacherDays(project, dayTypeId, options) {
     const hasAway = Boolean(teacher) && Array.isArray(teacher.away) && teacher.away.length > 0;
     for (const entry of day) {
       if (entry.kind !== 'planning') continue;
-      if (hasAway && awayFor(teacher, dayTypeId, entry.period, { project, date })) {
+      if (schoolMarks[entry.period] === 'noclass') {
+        entry.marked = 'noclass';
+        continue;
+      }
+      if (hasAway && awayFor(teacher, dayTypeId, entry.period, { project, date, bellsId })) {
         entry.marked = 'away';
         continue;
       }
@@ -123,27 +130,32 @@ function awayPeriods(settings, periods) {
     if (last && last[1] === period - 1) last[1] = period;
     else runs.push([period, period]);
   }
-  const words = runs.map(([from, to]) => (from === to ? periodNumberName(settings, from) : forms.many + ' ' + periodLabel(settings, from) + ' to ' + periodLabel(settings, to)));
+  const words = runs.map(([from, to]) => {
+    if (from === to) return periodNumberName(settings, from);
+    // "1st to 3rd Hour": the word follows an ordinal range, as it does in speech
+    if (forms.count === 'ordinal') return periodLabel(settings, from) + ' to ' + periodNumberName(settings, to);
+    return forms.many + ' ' + periodLabel(settings, from) + ' to ' + periodLabel(settings, to);
+  });
   return words.length <= 1 ? words.join('') : words.slice(0, -1).join(', ') + ' and ' + words[words.length - 1];
 }
 
 // An away entry in words (ARCHITECTURE 22.10): "Not in school", then the
 // periods ("in Periods 7 to 8"), the weekdays ("on Fridays") and the day
 // types ("when it is B Day"), whichever the entry names. `dayTypes` is the
-// project's list; an id it does not hold is left out. Day type names are given
-// as typed.
+// project's list. The entry is read as awayFor reads it (awayEntry), so an
+// entry that holds nowhere is worded nowhere: '' for it. Day type names are
+// given as typed.
 export function awayWords(settings, entry, dayTypes) {
+  const read = awayEntry(entry, dayTypes);
+  if (read === null) return '';
   const parts = ['Not in school'];
-  if (!entry || typeof entry !== 'object') return parts[0];
-  const periods = Array.isArray(entry.periods) ? entry.periods.filter((held) => Number.isInteger(held) && held >= 0) : [];
-  if (periods.length > 0) parts.push('in ' + awayPeriods(settings, periods));
-  const weekdays = Array.from(new Set(Array.isArray(entry.weekdays) ? entry.weekdays.filter((held) => Number.isInteger(held) && held >= 0 && held < WEEKDAY_NAMES.length) : [])).sort((a, b) => a - b);
-  if (weekdays.length > 0) {
-    const names = weekdays.map((day) => WEEKDAY_NAMES[day] + 's');
+  if (read.periods.length > 0) parts.push('in ' + awayPeriods(settings, read.periods));
+  if (read.weekdays.length > 0) {
+    const names = read.weekdays.map((day) => WEEKDAY_NAMES[day] + 's');
     parts.push('on ' + (names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1]));
   }
-  const known = new Map((Array.isArray(dayTypes) ? dayTypes : []).filter((dayType) => dayType && typeof dayType.id === 'string' && typeof dayType.name === 'string').map((dayType) => [dayType.id, dayType.name]));
-  const named = (Array.isArray(entry.dayTypeIds) ? entry.dayTypeIds : []).filter((id) => known.has(id)).map((id) => known.get(id));
+  const nameOf = new Map((Array.isArray(dayTypes) ? dayTypes : []).filter((dayType) => dayType && typeof dayType.id === 'string' && typeof dayType.name === 'string').map((dayType) => [dayType.id, dayType.name]));
+  const named = read.dayTypeIds.filter((id) => nameOf.has(id)).map((id) => nameOf.get(id));
   if (named.length > 0) parts.push('when it is ' + (named.length === 1 ? named[0] : named.slice(0, -1).join(', ') + ' or ' + named[named.length - 1]));
   return parts.join(' ');
 }
