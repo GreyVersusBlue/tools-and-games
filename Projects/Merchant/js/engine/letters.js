@@ -1,132 +1,189 @@
-// Letters from the road (ARCHITECTURE 4.2 step 2, 4.4, 5.7; DESIGN 4.5).
+// Letters from the road (ARCHITECTURE 4.2 step 2, 4.4, 5.7; DESIGN 4.5; DECISIONS 2026-11-17 12:10).
 //
-// Each opening season, every expedition on the road may write one letter, drawn from
-// letters.json by `when` and `weight`. The letter was written where the expedition stands, and
-// it travels: it reaches the desk `lag` seasons later, `lag` being market.lagOf, the same
-// function the price letters use. A letter carries its expedition and agent as the context of
-// its paper, the stop it was written at and the season it was written.
+// Each opening season, every expedition on the road may write one letter, drawn from letters.json
+// by `when` and `weight`. A letter belongs to the house's post, `state.post`, not to the
+// expedition, so it reaches the desk at its season whatever becomes of the expedition after:
+// home, lost, or settled by the act jump. A report's `happened` effects apply as it arrives.
+//   post entry: { id, kind, expedition, agent, stop, standing, written, lag, arrive }
+// `standing` is true when the agent wrote at a stop and false when riding to it: "at Hilltown" and
+// "on the road to Hilltown". `lag` is market.lagOf, the same seasons the price letters take.
 //
-// While a letter is on the road it lives on its expedition, in `x.post`:
-//   { id, kind, stop, leg, written, lag, arrive, def, delivered }
-// `leg` is the leg the expedition was on when it wrote, and the decision a question asks about
-// is what to do at the end of that leg: go on at once, or wait a season where it stands. `def`
-// is the plain agent's default, the `go` of the choice the question names with "default".
-// An answer comes back as an order on `x.orders`: { go, letter, leg, at }, with `at` the
-// season it reaches the expedition (the season the player answered, plus the same lag).
+// An answer to a question becomes an order on its expedition, `x.orders`: { go, letter, at }, `at`
+// the season it reaches the agent (the season answered plus the lag). `go` is one of WAIT, ON or
+// HOME and the order stands for the rest of the trip: routes.js asks `decide` at every decision
+// point, the end of each leg but the last, and a due order wins. Until one is due the agent acts by
+// trait at once: careful (or wary) holds at each decision point until the answer arrives, up to
+// MAX_HOLD seasons in all; bold goes on; anyone else does the question's default. An order the
+// trip ended before it could act on, or that was answered after the trip had ended, is logged as
+// dropped.
 //
-// routes.js asks `decide` when an expedition arrives at the end of a leg. A due order wins.
-// Until the order arrives the agent acts by its trait: careful waits, bold goes on, anyone else
-// does what the letter calls the default. An order that arrives after the expedition has passed
-// the end of that leg is dropped and logged.
+// A letter is written only if it can matter: a report must arrive no later than the season the
+// expedition's return is due, and a question only if its answer (written + 2 x lag) reaches the
+// agent by the trip's last decision point, so a question is never a lie.
 import { seasonIndex } from './calendar.js';
 import { holds, placeOf } from './conditions.js';
 import { applyAll } from './effects.js';
 import { addPaper, deskFull } from './state.js';
 import { chance, weighted } from './rng.js';
 import { lagOf, writeSeason } from './market.js';
-import { wary } from './agents.js';
+import { wary, legSeasons } from './agents.js';
 
 /** The chance a letter is written, for an expedition with a letter to write, in a season. */
 export const LETTER_CHANCE = 0.5;
-/** The `go` that holds an expedition a season where it stands; any other answer is "go on". */
-export const WAIT = 'wait';
+/** The three orders: hold a season at a decision point, go on, turn back toward home. */
+export const WAIT = 'wait', ON = 'on', HOME = 'home';
+export const GOES = [WAIT, ON, HOME];
+/** Seasons in all one trip may be held at decision points, by trait or by a wait order. */
+export const MAX_HOLD = 4;
 
 const letterOf = (content, id) => (content.letters ?? []).find(l => l.id === id);
 const agentOf = (content, id) => (content.agents ?? []).find(a => a.id === id);
 const stopName = (content, id) => (content.stops ?? []).find(s => s.id === id)?.name ?? id;
+const routeOf = (content, id) => (content.routes ?? []).find(r => r.id === id);
 
 /** The `go` of a choice's order, or null when the choice gives none. */
 const goOf = choice => (choice?.now ?? []).find(e => e && typeof e === 'object' && 'order' in e)?.order?.go ?? null;
 
-/** The letters an expedition could write now: weight above 0, `when` holds, not a once-only
-    letter that was written before, and not one already on its way from this expedition. */
-function pool(s, content, x) {
-  return (content.letters ?? []).filter(l =>
-    l.weight > 0 && !(l.repeat === false && s.seen[l.id]) && !(x.post ?? []).some(p => p.id === l.id) &&
-    holds(l.when, s, content, x));
+/** The `go` a plain agent does while a question is unanswered: its `default` choice's order. */
+const defaultOf = (content, id) => {
+  const l = letterOf(content, id);
+  return l?.kind === 'question' && l.default ? goOf(l.choices.find(c => c.id === l.default)) : null;
+};
+
+/** Seasons from the opening of the season being played until the expedition's last ride ends
+    (counting the season being played, which an expedition on a leg rides at its closing). */
+export function seasonsLeft(content, x) {
+  const legs = routeOf(content, x.route).legs, agent = agentOf(content, x.agent);
+  let n = x.status === 'out' ? x.left : legSeasons(agent, legs[x.leg]);
+  for (let i = x.leg + 1; i < legs.length; i++) n += legSeasons(agent, legs[i]);
+  return n;
 }
 
-/** Opening step "letters": drop what has gone stale, put on the desk what has arrived, then let
-    each expedition on the road write. */
+/** The season whose closing steps end the last leg `upTo` (inclusive) from where `x` is at the
+    opening of season `idx`: an expedition on a leg rides this season at its closing, one waiting
+    starts at that closing and first rides the next. */
+function closeOf(content, x, idx, upTo) {
+  const legs = routeOf(content, x.route).legs, agent = agentOf(content, x.agent);
+  let n = x.status === 'out' ? x.left - 1 : legSeasons(agent, legs[x.leg]);
+  for (let i = x.leg + 1; i <= upTo; i++) n += legSeasons(agent, legs[i]);
+  return idx + n;
+}
+
+/** The letters an expedition could write now: weight above 0, `when` holds, not a once-only letter
+    written before, not one of its own already on the way, and one that can matter (see the head). */
+function pool(s, content, x, idx, lag) {
+  const legs = routeOf(content, x.route).legs;
+  const home = closeOf(content, x, idx, legs.length - 1) + 1;                      // the season its return is due
+  const lastDecision = x.leg <= legs.length - 2 ? closeOf(content, x, idx, legs.length - 2) : -1;
+  return (content.letters ?? []).filter(l =>
+    l.weight > 0 && !(l.repeat === false && s.seen[l.id]) && !s.post.some(p => p.id === l.id && p.expedition === x.id) &&
+    holds(l.when, s, content, x) &&
+    (l.kind === 'question' ? idx + 2 * lag <= lastDecision : idx + lag <= home));
+}
+
+/** Opening step "letters": put on the desk what has arrived, then let each expedition on the
+    road write. */
 export function letters(s, content) {
   const idx = seasonIndex(s, content);
-  for (const x of s.expeditions) { staleOrders(s, content, x, idx); deliver(s, content, x, idx); }
+  s.post ??= [];
+  deliver(s, content, idx);
   for (const x of s.expeditions) write(s, content, x, idx);
-}
-
-/** An order whose season has come but whose leg the expedition is past reached it too late. */
-function staleOrders(s, content, x, idx) {
-  const kept = [];
-  for (const o of x.orders ?? []) {
-    if (o.at === undefined || o.at > idx || o.leg === undefined || o.leg >= x.leg) { kept.push(o); continue; }
-    s.log.push({ at: idx, kind: 'dropped', ref: `order:${o.letter}`, reason: `the answer to "${o.letter}" reached ${agentOf(content, x.agent)?.name ?? x.agent} after the expedition had passed the end of leg ${o.leg + 1}` });
-  }
-  x.orders = kept;
-  x.post = (x.post ?? []).filter(p => !(p.delivered && p.leg < x.leg));
 }
 
 /** A letter whose season has come goes onto the desk, if there is room; if not it waits a season.
     A report's `happened` effects apply now, once, as it reaches the house. */
-function deliver(s, content, x, idx) {
-  for (const p of x.post ?? []) {
-    if (p.delivered || p.arrive > idx || deskFull(s)) continue;
+function deliver(s, content, idx) {
+  const waiting = [];
+  for (const p of s.post) {
+    if (p.arrive > idx || deskFull(s)) { waiting.push(p); continue; }
     const letter = letterOf(content, p.id);
-    p.delivered = true;
     if (!letter) continue;
+    const ctx = { agent: p.agent, expedition: p.expedition };
     const trial = structuredClone(s);
-    try { applyAll(trial, content, letter.happened, { agent: x.agent, expedition: x.id }); }
+    try { applyAll(trial, content, letter.happened, ctx); }
     catch (e) { s.log.push({ at: idx, kind: 'dropped', ref: letter.id, reason: e.message }); continue; }
-    applyAll(s, content, letter.happened, { agent: x.agent, expedition: x.id }); // the trial said it holds
-    addPaper(s, { kind: 'letter', ref: letter.id, agent: x.agent, expedition: x.id, stop: p.stop, leg: p.leg, written: p.written, lag: p.lag, reached: idx });
+    applyAll(s, content, letter.happened, ctx); // the trial said it holds
+    addPaper(s, { kind: 'letter', ref: letter.id, agent: p.agent, expedition: p.expedition, stop: p.stop, standing: p.standing, written: p.written, lag: p.lag, reached: idx });
     s.log.push({ at: idx, kind: 'letter', ref: letter.id });
   }
+  s.post = waiting;
 }
 
 /** One draw at most for an expedition that is on the road and not at home. */
 function write(s, content, x, idx) {
   const place = placeOf(content, x);
-  if (!place || x.sent === idx || (x.post ?? []).some(p => p.written === idx)) return; // one a season
+  if (!place || x.sent === idx || s.post.some(p => p.expedition === x.id && p.written === idx)) return; // one a season
   const lag = lagOf(content, place.stop);
   if (!lag) return; // at home (0) or at a stop no route reaches (null): nobody writes
-  const choices = pool(s, content, x);
+  const choices = pool(s, content, x, idx, lag);
   if (!choices.length || !chance(s, LETTER_CHANCE)) return;
   const letter = weighted(s, choices);
   s.seen[letter.id] = (s.seen[letter.id] ?? 0) + 1;
-  const def = letter.kind === 'question' && letter.default ? goOf(letter.choices.find(c => c.id === letter.default)) : null;
-  (x.post ??= []).push({ id: letter.id, kind: letter.kind, stop: place.stop, leg: place.leg, written: idx, lag, arrive: idx + lag, def, delivered: false });
+  s.post.push({ id: letter.id, kind: letter.kind, expedition: x.id, agent: x.agent, stop: place.stop, standing: place.standing, written: idx, lag, arrive: idx + lag });
 }
 
 /** Called by choose() after the player answers a letter's question: stamps each order the choice
-    just pushed (the ones with no season yet) with the letter, its leg and the season it arrives. */
+    just pushed (the ones with no season yet) with the letter and the season it reaches the agent. */
 export function stamp(s, paper, idx) {
   const x = s.expeditions.find(e => e.id === paper.expedition);
   if (!x) return;
-  for (const o of x.orders) if (o.at === undefined) Object.assign(o, { letter: paper.ref, leg: paper.leg, at: idx + paper.lag });
+  for (const o of x.orders) if (o.at === undefined) Object.assign(o, { letter: paper.ref, at: idx + paper.lag });
 }
 
-/** An answer to a letter whose expedition is no longer on the road reaches no one. The orders in
-    `now` are left out of the choice and the rest of it still applies. Returns the effects to run. */
+const droppedOrder = (s, at, letter, reason) => s.log.push({ at, kind: 'dropped', ref: `order:${letter}`, reason });
+
+/** An answer to a letter whose expedition is gone (home and put away, lost, or settled at the jump)
+    reaches no one. The orders in `now` are left out of the choice, the rest of it still
+    applies, and the drop is logged. Returns the effects to run. */
 export function reachable(s, paper, now) {
-  if (s.expeditions.some(e => e.id === paper.expedition)) return now ?? [];
-  return (now ?? []).filter(e => !(e && typeof e === 'object' && 'order' in e));
+  const x = s.expeditions.find(e => e.id === paper.expedition);
+  if (x) return now ?? [];
+  const rest = (now ?? []).filter(e => !(e && typeof e === 'object' && 'order' in e));
+  if (rest.length !== (now ?? []).length) droppedOrder(s, paper.reached ?? s.log.at(-1)?.at ?? 0, paper.ref, `the answer to "${paper.ref}" came after the trip was over, so it reached no one`);
+  return rest;
 }
 
-/** What the expedition does on arriving at the end of leg `legIdx` at season `idx`:
-    WAIT (hold a season), or null (go on). Consumes the order it used. Called by routes.tolls
-    before the next leg starts. */
-export function decide(s, content, x, legIdx, idx) {
-  const orders = x.orders ?? [];
-  const due = orders.filter(o => o.leg === legIdx && o.at !== undefined && o.at <= idx).sort((a, b) => a.at - b.at);
-  if (due.length) {
-    x.orders = orders.filter(o => !due.includes(o));
-    return due[due.length - 1].go === WAIT ? WAIT : null;
+/** An expedition leaves the road (home, lost or settled): an order that never acted is dropped, and logged. */
+export function close(s, content, x, idx) {
+  for (const o of x.orders ?? []) {
+    if (o.used) continue;
+    droppedOrder(s, idx, o.letter, `the answer to "${o.letter}" had not acted before ${agentOf(content, x.agent)?.name ?? x.agent}'s trip was over`);
   }
-  const asked = (x.post ?? []).filter(p => p.kind === 'question' && p.leg === legIdx);
-  if (!asked.length) return null;
+  x.orders = [];
+}
+
+/** The questions an expedition's agent is still waiting on at season `idx`: letters of its own on
+    the way, and answers given but not yet arrived. */
+const pending = (s, x, idx) =>
+  s.post.filter(p => p.kind === 'question' && p.expedition === x.id).map(p => p.id)
+    .concat((x.orders ?? []).filter(o => o.at === undefined || o.at > idx).map(o => o.letter));
+
+/** What the expedition does on arriving at a decision point (the end of a leg that is not the last)
+    at season `idx`, or, with `again`, on waking in a season it was held: WAIT (hold a season), ON
+    (go on) or HOME (turn back toward home). Sets `x.hold` when a careful agent is holding, which
+    makes routes.move ask again next season. */
+export function decide(s, content, x, idx, { again = false } = {}) {
+  delete x.hold;
+  const held = () => (x.held ?? 0) < MAX_HOLD && (x.held = (x.held ?? 0) + 1);
+  const due = (x.orders ?? []).filter(o => o.at !== undefined && o.at <= idx).sort((a, b) => a.at - b.at);
+  if (due.length) {
+    for (const o of due) if (!o.used) { o.used = true; s.log.push({ at: idx, kind: 'order', ref: o.letter, choice: o.go }); }
+    const go = due[due.length - 1].go;
+    // an agent woken after a hold has already waited here, so a wait order has been kept
+    return go === WAIT && !again && held() ? WAIT : go === HOME ? HOME : ON;
+  }
+  const asked = pending(s, x, idx);
+  if (!asked.length) return ON;
   const traits = agentOf(content, x.agent)?.traits ?? [];
-  if (traits.includes('careful') || wary(s, x.agent)) return WAIT;
-  if (traits.includes('bold')) return null;
-  return asked[asked.length - 1].def === WAIT ? WAIT : null;
+  if (traits.includes('careful') || wary(s, x.agent)) {
+    if (!held()) return ON;
+    x.hold = true;
+    return WAIT;
+  }
+  if (again) return ON;
+  if (traits.includes('bold')) return ON;
+  const go = defaultOf(content, asked[asked.length - 1]);
+  return go === WAIT ? (held() ? WAIT : ON) : go === HOME ? HOME : ON;
 }
 
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
@@ -140,9 +197,9 @@ export function describe(s, content) {
     const name = agentOf(content, p.agent)?.name ?? p.agent;
     const stop = stopName(content, p.stop);
     out[p.id] = {
-      line: `From ${name}, at ${stop}. Written in ${writeSeason(content, p.written)}. It reached you in ${writeSeason(content, p.reached)}.`,
+      line: `From ${name}, ${p.standing === false ? 'on the road to' : 'at'} ${stop}. Written in ${writeSeason(content, p.written)}. It reached you in ${writeSeason(content, p.reached)}.`,
       answer: letter?.kind === 'question'
-        ? `Your answer will reach ${stop} ${p.lag === 1 ? 'next season' : `in ${NUMBER_WORDS[p.lag] ?? p.lag} seasons`}.`
+        ? `Your answer will reach ${name} ${p.lag === 1 ? 'next season' : `in ${NUMBER_WORDS[p.lag] ?? p.lag} seasons`}.`
         : null,
     };
   }

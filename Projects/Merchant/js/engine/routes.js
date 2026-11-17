@@ -19,9 +19,10 @@ import { cityOf, addPaper, deskFull } from './state.js';
 import { next, chance } from './rng.js';
 import * as M from './market.js';
 import { riskFactor, bargain, legSeasons, returnTrust, refusesOwn } from './agents.js';
-import { decide, WAIT } from './letters.js';
+import { decide, close, seasonsLeft, MAX_HOLD, WAIT, HOME } from './letters.js';
 
 export const WINTER_GALLEY = 1.5;   // risk times this on a galley leg started in winter (Duggan 2015: risky, not closed)
+export const QIRAD_STAKE = 60;      // coins the partners put in for a suggested qirad, at most (a fifth of the house's money when that is less)
 export const UPKEEP = 4;            // coins a season for an expedition waiting at a stop (an estimate; the bots tune it)
 // What happens to an expedition that is lost, and to an agent at home across the act jump: the
 // defaults for city.json's `jump` block (ARCHITECTURE 5.1). A loss is rolled the same way on the
@@ -32,7 +33,7 @@ export const DEFAULT_JUMP = {
   survivesWhole: 0.75,   // an agent whose vessel was lost gets home
   partial: [0.25, 0.75], // a partial loss takes this share of each good
 };
-export const MAX_WAIT = 4;          // seasons a plan may wait at one stop before it is refused
+export const MAX_WAIT = MAX_HOLD;   // seasons a plan may wait at one stop before it is refused (and a trip may be held in all, letters.js)
 export const DEFAULT_RECALL = {
   reach: { start: 0.95, perSeason: 0.15, floor: 0.1 }, // chance word reaches an agent in time, by seasons from home
   recalledKeeps: 0.6, recalledSurvives: 0.9,
@@ -443,19 +444,18 @@ export function suggestPlan(state, content, stopId) {
   const back = Object.keys(stop.sells).filter(b => b !== g && there(b) !== null && state.known[home]?.[b] && there(b) < homePrice(b))
     .sort((a, b) => (homePrice(b) - there(b)) - (homePrice(a) - there(a)) || (a < b ? -1 : 1));
   const plan = { agent: agent.id, route: hit.route.id, cargo: { [g]: load }, purse: 0, contract: 'own', sell: [g], buy: back.slice(0, 1) };
+  // an agent who will not go for a wage again is offered a qirad: partners put in a small purse and the house sends no money
+  if (refusesOwn(state, agent)) {
+    const stake = Math.max(1, Math.min(QIRAD_STAKE, Math.floor(state.money / 5)));
+    Object.assign(plan, { contract: 'qirad', partners: stake, purse: stake });
+  }
   return build(structuredClone(state), content, plan).problems.length ? null : plan;
 }
 
 // ---------------------------------------------------------------------------------------------
 // The closing steps
 
-const seasonsHome = (content, x) => {
-  const legs = routeOf(content, x.route).legs;
-  const agent = agentOf(content, x.agent);
-  let n = x.status === 'out' ? x.left : legSeasons(agent, legs[x.leg]);
-  for (let i = x.leg + 1; i < legs.length; i++) n += legSeasons(agent, legs[i]);
-  return n;
-};
+const seasonsHome = seasonsLeft;
 
 /** Fills in what an expedition written before these fields existed (or by hand, in a test) lacks. */
 function norm(x) {
@@ -488,8 +488,33 @@ export function move(s, content) {
     x.book.upkeep += UPKEEP;
     const given = payFromExpedition(s, content, x, UPKEEP);
     for (const [g, q] of Object.entries(given)) x.book.paidInGoods[g] = (x.book.paidInGoods[g] ?? 0) + q;
+    // held at a decision point by a careful agent: ask again, an answer may have come (letters.js)
+    if (x.hold) {
+      const go = decide(s, content, x, idx, { again: true });
+      if (go === WAIT) continue;
+      proceed(s, content, x, go, idx);
+      continue;
+    }
     startLeg(s, content, x, 1);
   }
+}
+
+/** What an expedition does at a decision point once `decide` has answered ON or HOME: ride the
+    next leg, or turn back. Turning back is possible only on the way out (the next leg is still an
+    out leg) and only if the road has a leg home from this stop; the goods the stop buys are sold
+    here, the rest are carried home. */
+function proceed(s, content, x, go, idx) {
+  const route = routeOf(content, x.route);
+  if (go === HOME && x.leg <= outEnd(route)) {
+    const stop = route.legs[x.leg].from;
+    const back = route.legs.findIndex((l, i) => i > outEnd(route) && l.from === stop);
+    if (back > 0) {
+      tradeAt(s, content, x, stop, { sell: Object.keys(x.cargo), buy: [] }, idx);
+      x.leg = back;
+      x.book.turned = stop;
+    }
+  }
+  startLeg(s, content, x, 1);
 }
 
 /** Starts leg x.leg if it is open `k` seasons ahead (the season after this one: k = 1). */
@@ -519,6 +544,7 @@ export function risk(s, content) {
     a.where = loss.survived ? homeOf(content) : 'dead';
     if (loss.survived && x.contract.kind === 'own') pay(s, content, x.out * (agentOf(content, x.agent).wage ?? 0));
     lost.push(x.id);
+    close(s, content, x, seasonIndex(s, content));
     s.log.push({ at: seasonIndex(s, content), kind: 'lost', ref: x.id, choice: loss.survived ? 'survived' : 'died' });
   }
   s.expeditions = s.expeditions.filter(x => !lost.includes(x.id));
@@ -526,10 +552,12 @@ export function risk(s, content) {
 
 /** Sells the goods the plan names and buys the ones it names with the money there, at the far
     end, through market.js with glut: each load is priced after the one before it. */
-function tradeAtFar(s, content, x, route, idx) {
-  const stop = route.to;
+function tradeAtFar(s, content, x, route, idx) { tradeAt(s, content, x, route.to, x.plan, idx); }
+
+/** The same at any stop, for `plan` = { sell, buy }: goods the stop does not trade stay in the cargo. */
+function tradeAt(s, content, x, stop, plan, idx) {
   const agent = agentOf(content, x.agent);
-  for (const g of x.plan.sell) {
+  for (const g of plan.sell) {
     const q = x.cargo[g] ?? 0;
     if (!q || !s.market[stop]?.[g]) continue;
     bumpSeen(x, stop, g, M.sellPrice(s, content, stop, g), idx);
@@ -542,7 +570,7 @@ function tradeAtFar(s, content, x, route, idx) {
     x.purse += got;
     x.book.sold.push({ good: g, q, got, stop });
   }
-  const goods = x.plan.buy.filter(g => s.market[stop]?.[g]);
+  const goods = plan.buy.filter(g => s.market[stop]?.[g]);
   goods.forEach((g, k) => {
     const budget = Math.floor(x.purse / (goods.length - k));
     bumpSeen(x, stop, g, M.buyPrice(s, content, stop, g), idx);
@@ -582,8 +610,9 @@ export function tolls(s, content) {
     if (rode.leg === route.legs.length - 1) { x.status = 'home'; x.leg = route.legs.length; continue; }
     x.leg = rode.leg + 1;
     // an order from a letter, or the agent's trait until one comes (letters.js): wait a season here
-    if (decide(s, content, x, rode.leg, idx) === WAIT) { x.status = 'waiting'; continue; }
-    startLeg(s, content, x, 1);
+    const go = decide(s, content, x, idx);
+    if (go === WAIT) { x.status = 'waiting'; continue; }
+    proceed(s, content, x, go, idx);
   }
 }
 
@@ -630,7 +659,7 @@ function bringHome(s, content, x, { elapsed }) {
 /** The return paper: the headline sentence first (DESIGN 4.6), then the account. */
 function returnPaper(s, content, r) {
   const { x, route } = r;
-  const agent = agentOf(content, x.agent), dest = stopName(content, route.to), homeName = stopName(content, homeOf(content));
+  const agent = agentOf(content, x.agent), dest = stopName(content, x.book.turned ?? route.to), homeName = stopName(content, homeOf(content));
   const n = r.houseNet;
   const headline = `${agent.name} came home from ${dest}. ${n > 0 ? `The house made ${coins(content, n)}.` : n < 0 ? `The house lost ${coins(content, -n)}.` : 'The house came out even.'}`;
   const book = x.book;
@@ -678,6 +707,7 @@ export function returns(s, content) {
     if (deskFull(s)) break;
     const r = bringHome(s, content, x, { elapsed: idx - x.sent });
     put(s, returnPaper(s, content, r));
+    close(s, content, x, idx);
     back.push(x.id);
     s.log.push({ at: idx, kind: 'return', ref: x.id, choice: r.houseNet >= 0 ? 'profit' : 'loss' });
   }
@@ -727,7 +757,7 @@ function settle(s, content, x) {
 
 /** One line for an expedition settled off stage (the interlude page, the ending). */
 function settledLine(s, content, x, out, r) {
-  const agent = agentOf(content, x.agent), dest = stopName(content, routeOf(content, x.route).to);
+  const agent = agentOf(content, x.agent), dest = stopName(content, x.book?.turned ?? routeOf(content, x.route).to);
   if (out.result === 'lost') {
     const surv = out.fate === 'died' ? `${agent.name} did not come back.` : `${agent.name} got home.`;
     return { expedition: x.id, agent: x.agent, result: 'lost', text: `${agent.name}'s expedition to ${dest} was lost on the way. ${surv}`, houseNet: -x.staked.house };
@@ -775,6 +805,7 @@ export function jump(s, content) {
     const road = routeOf(content, x.route) ? wholeRoad(content, x) : 0;
     x.out = Math.max(x.out, road);
     entry.settled.push(settleAndClose(s, content, x, Math.max(1, x.out)));
+    close(s, content, x, to);
   }
   s.expeditions = [];
 

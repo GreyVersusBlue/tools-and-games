@@ -71,6 +71,7 @@ export function freshState(content, { seed, length, house }) {
     market,
     known: {},
     expeditions: [],
+    post: [],
     agents,
     rep,
     desk: [],

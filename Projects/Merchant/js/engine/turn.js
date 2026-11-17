@@ -247,10 +247,10 @@ export function endSeason(state, content) {
   steps.tolls(s, content);
   steps.drift(s, content);
   steps.fireDue(s, content);
-  logSeason(s, content, moneyAtClose);
-  const before = seasonIndex(s, content);
+  const closing = seasonIndex(s, content), first = s.t === 0;
   const moved = steps.advance(s, content);
-  if (moved && seasonIndex(s, content) - before > 1) steps.jump(s, content);
+  if (moved && seasonIndex(s, content) - closing > 1) steps.jump(s, content);
+  logSeason(s, content, moneyAtClose, closing, first); // after the jump, so its money is in the season it happened
   steps.end(s, content, moved);
   if (s.phase === 'desk') open(s, content);
   return s;
@@ -262,11 +262,11 @@ export function endSeason(state, content) {
     then, which is where the next season's change starts. The first season starts from its
     house's money; a save from before this entry reads its first change from the money it was
     holding when the season closed. */
-function logSeason(s, content, moneyAtClose) {
+function logSeason(s, content, moneyAtClose, at, firstSeason) {
   const last = [...s.log].reverse().find(e => e.kind === 'season' && Number.isInteger(e.money));
-  const first = (content.houses ?? []).find(h => h.id === s.house)?.money ?? 0;
-  const from = last ? last.money : (s.t === 0 ? first : moneyAtClose);
-  s.log.push({ at: seasonIndex(s, content), kind: 'season', change: s.money - from, money: s.money });
+  const start = (content.houses ?? []).find(h => h.id === s.house)?.money ?? 0;
+  const from = last ? last.money : (firstSeason ? start : moneyAtClose);
+  s.log.push({ at, kind: 'season', change: s.money - from, money: s.money });
 }
 
 /** The ending's last choice (ARCHITECTURE 4.9): routes.js rolls each expedition and each agent at home. */
