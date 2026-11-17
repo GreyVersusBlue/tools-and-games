@@ -1758,6 +1758,29 @@ try {
       });
       await page.close();
     }
+
+    // the one-press outfit sheet's Change links sit on their own row's line at 360 and 390 wide (LOG 10:22)
+    for (const frame of [FRAMES[3], FRAMES[4]]) {
+      const { page } = await open(frame);
+      let s = eng.newGame(nodeContent, { seed: SEED, length: 'acts', house: 'spice' });
+      for (const p of s.desk) if (p.state === 'open') s = eng.choose(s, nodeContent, p.id, FIRSTC[p.ref]);
+      await loadSave(page, s, '#map');
+      await page.waitForSelector('#screen-map[data-ready]');
+      await page.click('#btn-outfit');
+      await page.waitForFunction(() => document.getElementById('panel-outfit')?.open);
+      await test(`${frame.name} ${frame.width} wide: each Change link is beside its row's words, on the same line, with none under them`, async () => {
+        const rows = await page.$$eval('#panel-outfit .summary', ps => ps.map(p => {
+          const t = p.firstElementChild.getBoundingClientRect(), c = p.querySelector('.change').getBoundingClientRect();
+          return { id: p.firstElementChild.id, textRight: t.right, linkLeft: c.left, textTop: t.top, textBottom: t.bottom, linkTop: c.top, linkBottom: c.bottom, line: parseFloat(getComputedStyle(p.firstElementChild).lineHeight) };
+        }));
+        eq(rows.map(r => r.id), ['summary-who', 'summary-where', 'summary-carry']);
+        for (const r of rows) {
+          ok(r.linkLeft >= r.textRight - 1, `${r.id}: the link starts at ${r.linkLeft}, the words end at ${r.textRight}`);
+          ok(r.linkTop < r.textBottom && r.linkBottom > r.textTop, `${r.id}: the link (${r.linkTop} to ${r.linkBottom}) is not on the words' lines (${r.textTop} to ${r.textBottom})`);
+        }
+      });
+      await page.close();
+    }
   }
 
 } finally {
