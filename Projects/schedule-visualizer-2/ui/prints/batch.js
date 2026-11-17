@@ -45,6 +45,7 @@ import { wordsJoined, partsToText, dayKindsOf, teacherSummaryOf } from '../../st
 import { groupSlots, everyTeacherDay, takenBy, sometimesIn, sometimesWords, edgeDuties, dutyWords, dutyPlace, dutyTimes } from '../../staff/clock.js';
 import { doorSignMarkup } from '../../staff/views/door-sign.js';
 import { roomUse, roomSummaryOf } from '../../staff/views/room.js';
+import { roomFeatures } from '../../engine/schema.js';
 import { esc, frame, paperOf, printDate, schoolName } from './document.js';
 
 export const UPRIGHT_SENTENCE = 'Door signs are upright sheets: they print in portrait.';
@@ -128,17 +129,23 @@ function teacherSheet(project, school, teacher, options) {
   })]).concat([(() => {
     const edges = edgeDuties(school, teacher.id, dayType.id, null);
     return [edges.before.map((duty) => duty.id), edges.after.map((duty) => duty.id)];
-  })()]));
+  })(), school.awayOf(teacher.id, dayType.id).map((each) => each.words)]));
   const dutyCell = (duty) => esc(dutyWords(duty)) + (sometimesWords(school, duty) === '' ? '' : ' ' + quiet('(' + sometimesWords(school, duty) + ')'));
   const edgeRows = (dayType) => {
     const edges = edgeDuties(school, teacher.id, dayType.id, null);
     const row = (label) => (duty) => ({ label, time: dutyTimes(school, duty), cells: [dutyCell(duty), dutyPlace(school, duty) === '' ? '' : esc(dutyPlace(school, duty))] });
     return { before: edges.before.map(row('Before school')), after: edges.after.map(row('After school')) };
   };
-  const tables = kinds.map((kind) => dayTable(school, kind, [school.data.settings.periodWord, 'Group', 'Room'], (dayType, period) => {
+  const tables = kinds.map((kind) => dayTable(school, kind, [school.periodWords().one, 'Group', 'Room'], (dayType, period) => {
     const entry = dayOf(dayType)[period];
     // duties that hold on some days only are added, with their days
     const also = entry ? sometimesIn(entry, null).map((duty) => dutyCell(duty) + (dutyPlace(school, duty) === '' ? '' : ' · ' + esc(dutyPlace(school, duty)))) : [];
+    // a part-time teacher's days out, in the staff browser's words, on each period they name
+    if (!entry || entry.marked !== 'away') {
+      for (const each of school.awayOf(teacher.id, dayType.id)) {
+        if (each.sometimes && (each.periods.length === 0 || each.periods.includes(period))) also.push(quiet(each.words));
+      }
+    }
     if (!entry || entry.kind === 'planning') {
       const taken = takenBy(school, entry, dayType.id, null);
       if (taken === null) return [also.length > 0 ? joined(also) : quiet('Planning'), ''];
@@ -193,7 +200,7 @@ function roomSheet(project, school, room, options) {
   const teachers = (room.teacherIds || []).map((teacherId) => school.teacher(teacherId)).filter(Boolean);
   const uses = new Map(school.dayTypes.map((dayType) => [dayType.id, roomUse(school, room.id, dayType.id)]));
   const kinds = dayKindsOf(school, (dayType) => uses.get(dayType.id).map((period) => period.map((use) => [use.group.id, use.label, use.teachers.map((teacher) => teacher.id)])));
-  const tables = kinds.map((kind) => dayTable(school, kind, [school.data.settings.periodWord, 'Group', 'Teacher'], (dayType, period) => {
+  const tables = kinds.map((kind) => dayTable(school, kind, [school.periodWords().one, 'Group', 'Teacher'], (dayType, period) => {
     const here = uses.get(dayType.id)[period] || [];
     if (here.length === 0) return [quiet('Empty'), ''];
     const who = [];
@@ -207,6 +214,9 @@ function roomSheet(project, school, room, options) {
   }));
   const features = [];
   if (room.shared) features.push('Shared space');
+  // the school's features, after Shared space, in the building's list order
+  const named = roomFeatures(school.data.building, room).map((feature) => feature.name);
+  if (named.length > 0) features.push('Features: ' + joined(named));
   if (room.wing) features.push('Wing: ' + room.wing);
   if (typeof room.capacity === 'number') features.push('Seats ' + room.capacity);
   // the floor is the first words of the sentence under these
