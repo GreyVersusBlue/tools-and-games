@@ -285,7 +285,7 @@ function begin() {
   overlay.classList.add('hidden');
   if (!isTouch) requestLock();
 }
-overlay.addEventListener('click', begin);
+overlay.addEventListener('click', e => { if (e.target.closest('a')) return; begin(); });
 canvas.addEventListener('click', () => {
   if (controls.enabled && !isTouch && document.pointerLockElement !== canvas) {
     requestLock();

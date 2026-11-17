@@ -75,6 +75,10 @@ body{
   border-bottom:1px solid var(--seam);
   position:sticky; top:0; z-index:50;
 }
+/* TG-97: the way back to the board, in the topbar's own paper tone. */
+.home-link{display:inline-flex; align-items:center; min-height:32px; padding:0 4px; margin:0 auto 0 18px; font-size:12px; letter-spacing:0.08em; text-transform:uppercase; color:var(--paper); text-decoration:underline; text-underline-offset:3px;}
+.home-link:hover{color:var(--copper);}
+.home-link:focus-visible{outline:2px solid var(--copper); outline-offset:2px; border-radius:3px;}
 #topbar h1{font-size:22px; margin:0; color:var(--paper);}
 #topbar h1 span{color:var(--copper);}
 #stats{display:flex; gap:26px; align-items:center;}
@@ -88,6 +92,7 @@ body{
 #factory-wrap{flex:1; padding:22px; min-width:0;}
 #sidebar{width:340px; padding:22px 22px 22px 0; flex-shrink:0;}
 
+@media (max-width:600px){ #topbar{flex-wrap:wrap; gap:2px 12px;} .home-link{order:3; margin:0;} }
 @media (max-width:980px){
   #main{flex-direction:column;}
   #sidebar{width:100%; padding:0 16px 16px;}
@@ -268,6 +273,7 @@ footer a{color:var(--copper); text-decoration:none;}
 
 <div id="topbar">
   <h1 class="display">Integer <span>Foundry</span></h1>
+  <a class="home-link" href="/">All games</a>
   <div id="stats">
     <div class="stat"><span class="label">Ingots</span><span class="val" id="stat-ingots">0</span></div>
     <div class="stat"><span class="label">Orders filled</span><span class="val slag" id="stat-orders">0</span></div>

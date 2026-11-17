@@ -32,6 +32,7 @@ export class MainMenu {
           <div class="mn-links">
             <button class="btn-game dim" data-act="settings">Settings</button>
             <button class="btn-game dim" data-act="controls">Controls</button>
+            <a class="btn-game dim" href="/">All games</a>
           </div>
         </div>
       </div>

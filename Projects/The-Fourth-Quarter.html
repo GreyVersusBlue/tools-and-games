@@ -45,6 +45,9 @@ h1,h2,h3{font-family:var(--disp);letter-spacing:.04em;text-transform:uppercase;f
 .bug.brand{min-width:200px}
 .bug.brand .val{font-family:var(--disp);color:var(--chalk);font-size:21px;letter-spacing:.05em}
 .bug.brand .lbl{color:var(--amberdim)}
+.bug.homeBug{justify-content:center;min-width:0;color:var(--amber);font-size:12px;letter-spacing:.08em;text-transform:uppercase;text-decoration:underline;text-underline-offset:3px} /* TG-97: the way back to the board */
+.bug.homeBug:hover{color:var(--chalk)}
+.bug.homeBug:focus-visible{outline:2px solid var(--amber);outline-offset:-3px}
 #liveBadge{display:none;align-items:center;gap:7px;margin-left:auto;padding:0 16px}
 #liveBadge .dot{width:10px;height:10px;border-radius:50%;background:var(--neon);animation:blink 1s steps(2) infinite}
 #liveBadge span{font-family:var(--disp);color:var(--neon);font-size:18px;letter-spacing:.15em}
@@ -172,6 +175,7 @@ textarea.saveio{width:100%;min-height:110px;background:#0b0805;color:var(--chalk
   <div class="bug"><span class="lbl">Reputation</span><span class="val" id="rep">0</span></div>
   <div class="bug"><span class="lbl">Seats</span><span class="val" id="seats">0</span></div>
   <div class="bug"><span class="lbl">TVs</span><span class="val" id="tvs">0</span></div>
+  <a class="bug homeBug" href="/">All games</a>
   <button id="settingsBtn" title="Back Office — settings">⚙</button>
   <div id="liveBadge"><div class="dot"></div><span>LIVE</span></div>
 </div>

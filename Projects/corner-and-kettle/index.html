@@ -148,6 +148,14 @@ body{
   padding:6px 10px;margin:0 0 14px 0;width:100%;
 }
 #guideBtn:hover{background:#41563c;}
+/* TG-97: the way back to the board, chalked on the menu board. */
+#homeLink{
+  display:block;margin:0 0 14px 0;padding:8px 10px;text-align:center;
+  font-family:'Quicksand',sans-serif;font-weight:700;font-size:0.8rem;
+  color:#f2ead7;background:#33422f;border:1px solid #7a8a6f;border-radius:8px;text-decoration:none;
+}
+#homeLink:hover{background:#41563c;}
+#homeLink:focus-visible{outline:2px solid #f2ead7;outline-offset:2px;}
 #queueRow{
   position:absolute;
   bottom:0;left:0;right:0;
@@ -678,6 +686,7 @@ body{
 <button id="muteToggle" title="Mute sounds" aria-label="Mute sounds">🔊</button>
 <div id="chalkboard">
   <h2>Menu Board</h2>
+  <a id="homeLink" href="/">All games</a>
   <button id="newGameBtn" title="Erase saved progress and start over">🗑️ New Game</button>
   <div id="save-bar"></div>
   <button type="button" id="guideBtn" title="Show the first-shift guide again">❔ Show the first-shift guide</button>

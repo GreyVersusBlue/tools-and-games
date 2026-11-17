@@ -51,6 +51,7 @@ export class Game {
     try { this.touch = new TouchControls(this.input); } catch (e) { this.touch = null; }
 
     this.uiRoot.addEventListener('click', (e) => {
+      if (e.target.closest && e.target.closest('a[href]')) return; // the title's "All games" link leaves the page; it must not also start the game
       const t = e.target.closest && e.target.closest('[data-act]');
       if (!t) return;
       this.resumeAudio();

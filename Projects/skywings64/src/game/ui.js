@@ -115,6 +115,7 @@ export function titleHTML() {
     </div>
     <div class="sw-press" role="button" tabindex="0"><span class="kbd-only">PRESS ENTER OR CLICK TO START</span><span class="pad-only">PRESS ${PAD_A} TO START</span></div>
     <div class="sw-touchnote">BEST ON A COMPUTER WITH A KEYBOARD AND MOUSE</div>
+    <a class="sw-home" href="/">ALL GAMES</a>
     <div class="sw-foot">
       ${prompt(['W', 'A', 'S', 'D'], PAD_DPAD, 'FLY')} ${prompt(['SHIFT', 'CTRL'], P('RT', 'tr') + P('LT', 'tr'), 'THROTTLE')} ${prompt(['SPACE'], PAD_A, 'ACTION')} ${prompt(['C'], P('Y', 'y'), 'CAMERA')} ${prompt(['ESC'], P('☰', 'dp'), 'PAUSE')}
     </div>
