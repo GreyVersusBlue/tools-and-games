@@ -1633,8 +1633,8 @@ export function repair(input, options) {
       kept.push(entry);
     }
     if (changed || kept.some((entry, k) => JSON.stringify(entry) !== JSON.stringify(teacher.away[k]))) teacher.away = kept;
-  // W7:END
   }
+  // W7:END
 
   const cut = (value, most) => Array.from(value).slice(0, most).join('');
   const labelOf = (thing, key, most, what) => {
