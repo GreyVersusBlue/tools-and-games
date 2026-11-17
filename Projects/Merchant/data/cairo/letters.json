@@ -1,1 +1,199 @@
-[]
+[
+  {
+    "id": "first-road-letter",
+    "kind": "question",
+    "from": {
+      "name": "Yusuf, on the road",
+      "role": "Damascus road",
+      "seal": "seal-1"
+    },
+    "title": "Soldiers on the road",
+    "body": "I am on the road to Damascus with our ten loads of linen. I travel with a caravan, a large group that goes together for safety. Soldiers of the Sultan are ahead of us, and the caravans are waiting. I can wait here with them, or go on by a quicker road that no one guards.",
+    "when": {
+      "all": [
+        {
+          "leg": {
+            "by": "caravan"
+          }
+        },
+        {
+          "notebook": "term-load"
+        }
+      ]
+    },
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "wait",
+        "label": "Wait with the caravan",
+        "hint": "It is slower, and safer.",
+        "now": [
+          {
+            "order": {
+              "go": "wait"
+            }
+          }
+        ]
+      },
+      {
+        "id": "go-on",
+        "label": "Take the quicker road",
+        "hint": "It is faster, and no one guards it.",
+        "now": [
+          {
+            "order": {
+              "go": "quick-road"
+            }
+          }
+        ]
+      }
+    ],
+    "note": "A caravan was a group that travelled together, to share water and guard each other. In 1326 Ibn Battuta rode with one from Cairo to Damascus in 21 to 23 days.",
+    "unlocks": [
+      "term-caravan"
+    ],
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, p. 67 and p. 80 n. 48; the caravan from Cairo to Damascus"
+      }
+    ]
+  },
+  {
+    "id": "toll-at-aydhab",
+    "kind": "report",
+    "from": {
+      "name": "Ali, at Aydhab",
+      "role": "The Red Sea road",
+      "seal": "seal-2"
+    },
+    "title": "A new toll on pepper",
+    "body": "I am at Aydhab. The governor's men asked a new toll on our pepper, more than last year. I paid 60 of your money rather than wait a month. Now we sail.",
+    "when": {
+      "all": [
+        {
+          "at": "aydhab"
+        },
+        {
+          "notebook": "term-toll"
+        }
+      ]
+    },
+    "happened": [
+      {
+        "money": -60
+      }
+    ],
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "right",
+        "label": "You did right",
+        "hint": "Ali will trust your judgment.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": 1
+          }
+        ]
+      },
+      {
+        "id": "argue",
+        "label": "You should have argued",
+        "hint": "Ali may argue next time, and lose time.",
+        "now": [
+          {
+            "trust": "$agent",
+            "by": -1
+          }
+        ]
+      },
+      {
+        "id": "complain",
+        "label": "Complain to the court in Cairo",
+        "hint": "It costs money. It may help every house.",
+        "now": [
+          {
+            "money": -30
+          }
+        ],
+        "later": [
+          {
+            "in": 3,
+            "do": [
+              {
+                "rep": "court",
+                "by": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "Ibn Battuta wrote that the money of Aydhab was shared by the sultan and the king of the Beja. One third went to the sultan.",
+    "sources": [
+      {
+        "src": "ibn-battuta-1958",
+        "at": "vol. 1, pp. 68 to 69; the revenue split of Aydhab"
+      }
+    ]
+  },
+  {
+    "id": "monsoon-question",
+    "kind": "question",
+    "from": {
+      "name": "Ali, at Aden",
+      "role": "The Red Sea road",
+      "seal": "seal-2"
+    },
+    "title": "The wind for India",
+    "body": "I am at Aden. The ships for India leave when the monsoon turns in summer, a wind that blows one way for months. If I go, I will not be home for a year and a half. If I stay, I can sell our goods here for less.",
+    "when": {
+      "at": "aden"
+    },
+    "weight": 0,
+    "repeat": false,
+    "choices": [
+      {
+        "id": "india",
+        "label": "Go to India",
+        "hint": "It is a long way and a big prize.",
+        "now": [
+          {
+            "order": {
+              "go": "india"
+            }
+          }
+        ]
+      },
+      {
+        "id": "home",
+        "label": "Sell at Aden and come home",
+        "hint": "It is sooner, and for less.",
+        "now": [
+          {
+            "order": {
+              "go": "home"
+            }
+          }
+        ]
+      }
+    ],
+    "note": "A monsoon is a wind that blows one way for months and then turns. Ships crossed the Indian Ocean only when the wind was right, so the trade ran by its calendar.",
+    "unlocks": [
+      "term-monsoon"
+    ],
+    "sources": [
+      {
+        "src": "chaudhuri-1985",
+        "at": "monsoon timing and the Red Sea trade"
+      },
+      {
+        "src": "hourani-1951",
+        "at": "dhows and the monsoons"
+      }
+    ]
+  }
+]
