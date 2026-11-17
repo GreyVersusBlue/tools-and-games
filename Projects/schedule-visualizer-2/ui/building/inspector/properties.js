@@ -4,7 +4,8 @@
 //
 // A room: its number, its teachers (the first is the main teacher; a name
 // that is new can be added as a teacher from here), its subject, wing,
-// capacity, whether it is a shared space, and its doors. An other space: its
+// capacity, its features (chips and a picker, ui/building/features.js), whether
+// it is a shared space, and its doors. An other space: its
 // label, kind and colour.
 
 import { h } from '../../components/dom.js';
@@ -19,6 +20,7 @@ import { selectField, checkField, wholeOrEmpty, keepFocus, heading, cellWords } 
 import { deleteSpace, openCellMenu } from '../menu.js';
 import { cellPanel } from './cell.js';
 import { cellFocus } from './cell-focus.js';
+import { featuresField } from '../features.js';
 
 const NO_SUBJECT = '';
 const NEW_TEACHER = 'new-teacher';
@@ -157,6 +159,7 @@ export function propertiesPanel(env) {
       format: (value) => (value === null ? '' : String(value)),
       commit: (value) => store.apply(setRoomFields, { roomId: room.id, capacity: value }),
     });
+    const features = featuresField(env, { room: current, state: () => state, id: 'room-features' });
     const shared = checkField({
       id: 'room-shared',
       label: 'Shared space',
@@ -195,6 +198,7 @@ export function propertiesPanel(env) {
       subject.element,
       wing.element,
       capacity.element,
+      features.element,
       shared.element,
       heading('Doors', 'room-doors-heading'),
       doors,
@@ -202,7 +206,7 @@ export function propertiesPanel(env) {
       h('div', { class: 'bi-buttons' }, clear, remove),
       h('div', { class: 'bi-buttons bi-buttons--marks' }, marksButton()),
     );
-    parts = { kind: 'room', number, teachers, noTeachers, subject, wing, capacity, shared, doors, doorsNote, teachersKey: null, doorsKey: null, subjectsKey: null };
+    parts = { kind: 'room', number, teachers, noTeachers, subject, wing, capacity, features, shared, doors, doorsNote, teachersKey: null, doorsKey: null, subjectsKey: null };
   }
 
   function syncRoom(room) {
@@ -211,6 +215,7 @@ export function propertiesPanel(env) {
     parts.wing.set(room.wing);
     parts.capacity.set(room.capacity);
     parts.shared.set(room.shared);
+    parts.features.sync();
     const subjectsKey = project.subjects.map((subject) => subject.id + ':' + subject.name).join('|');
     if (subjectsKey !== parts.subjectsKey) {
       parts.subjectsKey = subjectsKey;
