@@ -29,10 +29,11 @@ const idSet = list => new Set((Array.isArray(list) ? list : []).filter(isObject)
 
 // ---- validate and migrate (ARCHITECTURE 8.2)
 
-/** A plain object with a numeric `t`, a string `city` and a `phase` in the closed list.
-    Anything else is refused and the player starts fresh. */
+/** A plain object with a numeric `t` and a string `city`. Anything else is refused and the
+    player starts fresh. `phase` is not checked here: a stray phase should not cost a player
+    the game, so `repair` turns an unknown one into "desk" (DECISIONS 2026-11-17 01:28). */
 export function validate(s) {
-  return isObject(s) && isNum(s.t) && typeof s.city === 'string' && PHASES.includes(s.phase);
+  return isObject(s) && isNum(s.t) && typeof s.city === 'string';
 }
 
 /** Version drift only (#37), one step per version. A version-0 blob is one written before the
