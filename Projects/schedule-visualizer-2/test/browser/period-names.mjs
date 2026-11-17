@@ -256,8 +256,11 @@ test('9. a name that reads as a kind of mark offers the school mark under its fi
   assert.match(await text(nudge), /^Named Lunch, but still counted as a teaching or free period\. Mark it as lunch for the whole school$/);
   assert.equal(await toastNow(), 'Period 5 is named Lunch, but it is still counted as a teaching or free period. Mark it as lunch under its name.');
   await closeToast();
-  // saving the same name again says nothing a second time
-  await typeInto('.sch-names__row[data-period="4"] input', 'Lunch ');
+  // the name changed and changed back says nothing a second time
+  await typeInto('.sch-names__row[data-period="4"] input', 'Study');
+  await settled();
+  await closeToast();
+  await typeInto('.sch-names__row[data-period="4"] input', 'Lunch');
   await settled();
   assert.equal(await toastNow(), null, 'the toast was said once');
   const before = (await marks()).length;
