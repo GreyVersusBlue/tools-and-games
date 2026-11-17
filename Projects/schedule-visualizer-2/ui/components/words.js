@@ -2,11 +2,15 @@
 // (Period, Mod, Block or Hour) and the interface uses it everywhere.
 
 import { ELEVATOR_KIND, elevatorCars, nextConnectionLabel } from '../../engine/schema.js';
+import { periodWordForms } from '../../engine/bells.js';
 
-// { One: 'Period', one: 'period', Many: 'Periods', many: 'periods' }
+// { One: 'Period', one: 'period', Many: 'Periods', many: 'periods' }: the
+// school's word in the forms a sentence needs, from the engine's
+// periodWordForms (a custom word is as typed in every form, "Class" and
+// "Classes", ARCHITECTURE 22.17).
 export function periodWords(settings) {
-  const word = settings && typeof settings.periodWord === 'string' && settings.periodWord !== '' ? settings.periodWord : 'Period';
-  return { One: word, one: word.toLowerCase(), Many: word + 's', many: word.toLowerCase() + 's' };
+  const forms = periodWordForms(settings);
+  return { One: forms.one, one: forms.oneLower, Many: forms.many, many: forms.manyLower };
 }
 
 // count(3, 'room') -> "3 rooms"; count(1, 'room') -> "1 room"; count(0, 'room') -> "no rooms".
@@ -27,7 +31,7 @@ export function list(items) {
 // connected shows from the moment it is placed (DESIGN 13.2): the first one
 // no connection label and no car letter uses, as describeConnect picks it.
 export function pendingElevatorLetter(building) {
-  return nextConnectionLabel(building.connections.flatMap((connection) => [{ label: connection.label }, { label: connection.car === undefined ? '' : connection.car }]));
+  return nextConnectionLabel(building.connections.flatMap((connection) => [{ label: connection.label, well: connection.well }, { label: connection.car === undefined ? '' : connection.car }]));
 }
 
 // The figures of a project: what is in it, counted from the data. `connections`

@@ -11,6 +11,7 @@
 // module makes the button itself.
 
 import * as floorPlan from './floor-plan.js';
+import { periodWords } from '../components/words.js';
 import * as roomList from './room-list.js';
 import * as checksReport from './checks-report.js';
 import { BATCHES } from './batch.js';
@@ -67,6 +68,6 @@ export const printButtons = [
 // An entry's words in the school's own word for a period: "Print the
 // teachers by block". Every other word of the label is as written above.
 export function buttonLabel(entry, settings) {
-  const word = settings && typeof settings.periodWord === 'string' && settings.periodWord !== '' ? settings.periodWord.toLowerCase() : 'period';
+  const word = periodWords(settings).one;
   return entry.label.replace(/ by period$/, ' by ' + word);
 }

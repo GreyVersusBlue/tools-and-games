@@ -33,7 +33,7 @@
 
 import { h } from '../components/dom.js';
 import { intro } from '../components/card.js';
-import { count, figures } from '../components/words.js';
+import { count, figures, periodWords } from '../components/words.js';
 import { openPrintPreview } from '../components/print-preview.js';
 import { createPlanMap } from '../surface/plan-map.js';
 import { closedOverlay, closedMarks } from '../surface/overlays/closed.js';
@@ -658,7 +658,7 @@ export const section = {
       const none = summary.snapshot ? await noSnapshotBecause(ctx) : null;
       if (gone) return;
       const readOnly = Boolean(ctx.storage && ctx.storage.state.readOnly);
-      const snapshotLine = snapshotWords(summary, (project.settings.periodWord || 'Period').toLowerCase(), none, readOnly);
+      const snapshotLine = snapshotWords(summary, periodWords(project.settings).one, none, readOnly);
       // with closures alone nothing is written: no Apply, and no line about its undo
       const nothingToWrite = !summary.canApply && summary.total > 0;
       const sentences = summary.changes.concat(summary.levers);
