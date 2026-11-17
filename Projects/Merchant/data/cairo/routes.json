@@ -1,1 +1,2136 @@
-[]
+[
+ {
+  "id": "cairo-alexandria",
+  "to": "alexandria",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "alexandria",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+     }
+    ]
+   },
+   {
+    "from": "alexandria",
+    "to": "cairo",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-famagusta",
+  "to": "famagusta",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "alexandria",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+     }
+    ]
+   },
+   {
+    "from": "alexandria",
+    "to": "famagusta",
+    "by": "galley",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.06,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "pegolotti-1936",
+      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+     }
+    ]
+   },
+   {
+    "from": "famagusta",
+    "to": "alexandria",
+    "by": "galley",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.06,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "pegolotti-1936",
+      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+     }
+    ]
+   },
+   {
+    "from": "alexandria",
+    "to": "cairo",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-venice",
+  "to": "venice",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "alexandria",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+     }
+    ]
+   },
+   {
+    "from": "alexandria",
+    "to": "famagusta",
+    "by": "galley",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.06,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "pegolotti-1936",
+      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+     }
+    ]
+   },
+   {
+    "from": "famagusta",
+    "to": "venice",
+    "by": "galley",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.06,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "pegolotti-1936",
+      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+     }
+    ]
+   },
+   {
+    "from": "venice",
+    "to": "famagusta",
+    "by": "galley",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.06,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "pegolotti-1936",
+      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+     }
+    ]
+   },
+   {
+    "from": "famagusta",
+    "to": "alexandria",
+    "by": "galley",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.06,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "pegolotti-1936",
+      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+     }
+    ]
+   },
+   {
+    "from": "alexandria",
+    "to": "cairo",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-constantinople",
+  "to": "constantinople",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "alexandria",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+     }
+    ]
+   },
+   {
+    "from": "alexandria",
+    "to": "constantinople",
+    "by": "galley",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.05,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "pegolotti-1936",
+      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+     }
+    ]
+   },
+   {
+    "from": "constantinople",
+    "to": "alexandria",
+    "by": "galley",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.05,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "pegolotti-1936",
+      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+     }
+    ]
+   },
+   {
+    "from": "alexandria",
+    "to": "cairo",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-tunis",
+  "to": "tunis",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "alexandria",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+     }
+    ]
+   },
+   {
+    "from": "alexandria",
+    "to": "tunis",
+    "by": "galley",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.05,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "pegolotti-1936",
+      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+     }
+    ]
+   },
+   {
+    "from": "tunis",
+    "to": "alexandria",
+    "by": "galley",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.05,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "pegolotti-1936",
+      "at": "estimate; Pegolotti lists Alexandria duties, not sailing times"
+     }
+    ]
+   },
+   {
+    "from": "alexandria",
+    "to": "cairo",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; he went between Cairo and Alexandria three or four times and gives no time, vol. 1, p. 32 n."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-qus",
+  "to": "qus",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "qus",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 59 n. 185, citing Ibn Jubayr: 18 days by boat"
+     }
+    ]
+   },
+   {
+    "from": "qus",
+    "to": "cairo",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 71: eight nights in the flood of July 1326"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-quseir",
+  "to": "quseir",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "qus",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 59 n. 185, citing Ibn Jubayr: 18 days by boat"
+     }
+    ]
+   },
+   {
+    "from": "qus",
+    "to": "quseir",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.07,
+    "toll": 5,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 2, p. 413 n. 3: five days from Qus; the season, risk and toll are estimates"
+     }
+    ]
+   },
+   {
+    "from": "quseir",
+    "to": "qus",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.07,
+    "toll": 5,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; the five days of vol. 2, p. 413 n. 3, run the other way"
+     }
+    ]
+   },
+   {
+    "from": "qus",
+    "to": "cairo",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 71: eight nights in the flood of July 1326"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-aydhab",
+  "to": "aydhab",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "qus",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 59 n. 185, citing Ibn Jubayr: 18 days by boat"
+     }
+    ]
+   },
+   {
+    "from": "qus",
+    "to": "aydhab",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.08,
+    "toll": 8,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 59 n. 185: 19 days from Qus; p. 68: the town's revenue split, one third to the sultan and two thirds to the Beja king; the toll is an estimate"
+     }
+    ]
+   },
+   {
+    "from": "aydhab",
+    "to": "qus",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.08,
+    "toll": 8,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 59 n. 185: another fifteen days at least; the toll is an estimate"
+     }
+    ]
+   },
+   {
+    "from": "qus",
+    "to": "cairo",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 71: eight nights in the flood of July 1326"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-jeddah",
+  "to": "jeddah",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "qus",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 59 n. 185, citing Ibn Jubayr: 18 days by boat"
+     }
+    ]
+   },
+   {
+    "from": "qus",
+    "to": "aydhab",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.08,
+    "toll": 8,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 59 n. 185: 19 days from Qus; p. 68: the town's revenue split, one third to the sultan and two thirds to the Beja king; the toll is an estimate"
+     }
+    ]
+   },
+   {
+    "from": "aydhab",
+    "to": "jeddah",
+    "by": "dhow",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.07,
+    "toll": 5,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; one crossing took two days with a fair wind, then a storm, vol. 2, pp. 360 to 362"
+     }
+    ]
+   },
+   {
+    "from": "jeddah",
+    "to": "aydhab",
+    "by": "dhow",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.07,
+    "toll": 5,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; in 1330 a ship was blown south and he walked nine days to Aydhab, vol. 2, p. 413"
+     }
+    ]
+   },
+   {
+    "from": "aydhab",
+    "to": "qus",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.08,
+    "toll": 8,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 59 n. 185: another fifteen days at least; the toll is an estimate"
+     }
+    ]
+   },
+   {
+    "from": "qus",
+    "to": "cairo",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 71: eight nights in the flood of July 1326"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-aden",
+  "to": "aden",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "qus",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 59 n. 185, citing Ibn Jubayr: 18 days by boat"
+     }
+    ]
+   },
+   {
+    "from": "qus",
+    "to": "aydhab",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.08,
+    "toll": 8,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 59 n. 185: 19 days from Qus; p. 68: the town's revenue split, one third to the sultan and two thirds to the Beja king; the toll is an estimate"
+     }
+    ]
+   },
+   {
+    "from": "aydhab",
+    "to": "jeddah",
+    "by": "dhow",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.07,
+    "toll": 5,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; one crossing took two days with a fair wind, then a storm, vol. 2, pp. 360 to 362"
+     }
+    ]
+   },
+   {
+    "from": "jeddah",
+    "to": "aden",
+    "by": "dhow",
+    "seasons": 1,
+    "opens": [
+     "autumn",
+     "winter",
+     "spring"
+    ],
+    "risk": 0.06,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; Aden is the port of the merchants of India, vol. 2, p. 372; no sailing time was reached"
+     }
+    ]
+   },
+   {
+    "from": "aden",
+    "to": "jeddah",
+    "by": "dhow",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.06,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; as the voyage out, vol. 2, p. 372"
+     }
+    ]
+   },
+   {
+    "from": "jeddah",
+    "to": "aydhab",
+    "by": "dhow",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.07,
+    "toll": 5,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; in 1330 a ship was blown south and he walked nine days to Aydhab, vol. 2, p. 413"
+     }
+    ]
+   },
+   {
+    "from": "aydhab",
+    "to": "qus",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.08,
+    "toll": 8,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 59 n. 185: another fifteen days at least; the toll is an estimate"
+     }
+    ]
+   },
+   {
+    "from": "qus",
+    "to": "cairo",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 71: eight nights in the flood of July 1326"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-calicut",
+  "to": "calicut",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "qus",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 59 n. 185, citing Ibn Jubayr: 18 days by boat"
+     }
+    ]
+   },
+   {
+    "from": "qus",
+    "to": "aydhab",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.08,
+    "toll": 8,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 59 n. 185: 19 days from Qus; p. 68: the town's revenue split, one third to the sultan and two thirds to the Beja king; the toll is an estimate"
+     }
+    ]
+   },
+   {
+    "from": "aydhab",
+    "to": "jeddah",
+    "by": "dhow",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.07,
+    "toll": 5,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; one crossing took two days with a fair wind, then a storm, vol. 2, pp. 360 to 362"
+     }
+    ]
+   },
+   {
+    "from": "jeddah",
+    "to": "aden",
+    "by": "dhow",
+    "seasons": 1,
+    "opens": [
+     "autumn",
+     "winter",
+     "spring"
+    ],
+    "risk": 0.06,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; Aden is the port of the merchants of India, vol. 2, p. 372; no sailing time was reached"
+     }
+    ]
+   },
+   {
+    "from": "aden",
+    "to": "calicut",
+    "by": "dhow",
+    "seasons": 1,
+    "opens": [
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.1,
+    "toll": 8,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; Calicut is a chief port of Malabar, vol. 4, pp. 809 to 812; the monsoon dates come second hand from \"Monsoons, Mude and Gold,\" Saudi Aramco World, 2005"
+     }
+    ]
+   },
+   {
+    "from": "calicut",
+    "to": "aden",
+    "by": "dhow",
+    "seasons": 1,
+    "opens": [
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.1,
+    "toll": 8,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; as the voyage out, vol. 4, pp. 809 to 812"
+     }
+    ]
+   },
+   {
+    "from": "aden",
+    "to": "jeddah",
+    "by": "dhow",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.06,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; as the voyage out, vol. 2, p. 372"
+     }
+    ]
+   },
+   {
+    "from": "jeddah",
+    "to": "aydhab",
+    "by": "dhow",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.07,
+    "toll": 5,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; in 1330 a ship was blown south and he walked nine days to Aydhab, vol. 2, p. 413"
+     }
+    ]
+   },
+   {
+    "from": "aydhab",
+    "to": "qus",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.08,
+    "toll": 8,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 59 n. 185: another fifteen days at least; the toll is an estimate"
+     }
+    ]
+   },
+   {
+    "from": "qus",
+    "to": "cairo",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 71: eight nights in the flood of July 1326"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-hormuz",
+  "to": "hormuz",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "qus",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 59 n. 185, citing Ibn Jubayr: 18 days by boat"
+     }
+    ]
+   },
+   {
+    "from": "qus",
+    "to": "aydhab",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.08,
+    "toll": 8,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 59 n. 185: 19 days from Qus; p. 68: the town's revenue split, one third to the sultan and two thirds to the Beja king; the toll is an estimate"
+     }
+    ]
+   },
+   {
+    "from": "aydhab",
+    "to": "jeddah",
+    "by": "dhow",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.07,
+    "toll": 5,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; one crossing took two days with a fair wind, then a storm, vol. 2, pp. 360 to 362"
+     }
+    ]
+   },
+   {
+    "from": "jeddah",
+    "to": "aden",
+    "by": "dhow",
+    "seasons": 1,
+    "opens": [
+     "autumn",
+     "winter",
+     "spring"
+    ],
+    "risk": 0.06,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; Aden is the port of the merchants of India, vol. 2, p. 372; no sailing time was reached"
+     }
+    ]
+   },
+   {
+    "from": "aden",
+    "to": "hormuz",
+    "by": "dhow",
+    "seasons": 1,
+    "opens": [
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.08,
+    "toll": 8,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; Hormuz was on the island of Jarun, vol. 2, p. 400 nn. 117 to 118"
+     }
+    ]
+   },
+   {
+    "from": "hormuz",
+    "to": "aden",
+    "by": "dhow",
+    "seasons": 1,
+    "opens": [
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.08,
+    "toll": 8,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; Hormuz was on the island of Jarun, vol. 2, p. 400 nn. 117 to 118"
+     }
+    ]
+   },
+   {
+    "from": "aden",
+    "to": "jeddah",
+    "by": "dhow",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.06,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; as the voyage out, vol. 2, p. 372"
+     }
+    ]
+   },
+   {
+    "from": "jeddah",
+    "to": "aydhab",
+    "by": "dhow",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.07,
+    "toll": 5,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; in 1330 a ship was blown south and he walked nine days to Aydhab, vol. 2, p. 413"
+     }
+    ]
+   },
+   {
+    "from": "aydhab",
+    "to": "qus",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.08,
+    "toll": 8,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 59 n. 185: another fifteen days at least; the toll is an estimate"
+     }
+    ]
+   },
+   {
+    "from": "qus",
+    "to": "cairo",
+    "by": "nileboat",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.02,
+    "toll": 2,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 71: eight nights in the flood of July 1326"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-damascus",
+  "to": "damascus",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "damascus",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.04,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days, July and August 1326; the toll is an estimate"
+     }
+    ]
+   },
+   {
+    "from": "damascus",
+    "to": "cairo",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.04,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-aleppo",
+  "to": "aleppo",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "damascus",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.04,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days, July and August 1326; the toll is an estimate"
+     }
+    ]
+   },
+   {
+    "from": "damascus",
+    "to": "aleppo",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.04,
+    "toll": 5,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   },
+   {
+    "from": "aleppo",
+    "to": "damascus",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.04,
+    "toll": 5,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   },
+   {
+    "from": "damascus",
+    "to": "cairo",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.04,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-tabriz",
+  "to": "tabriz",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "damascus",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.04,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days, July and August 1326; the toll is an estimate"
+     }
+    ]
+   },
+   {
+    "from": "damascus",
+    "to": "aleppo",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.04,
+    "toll": 5,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   },
+   {
+    "from": "aleppo",
+    "to": "tabriz",
+    "by": "caravan",
+    "seasons": 2,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.08,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   },
+   {
+    "from": "tabriz",
+    "to": "aleppo",
+    "by": "caravan",
+    "seasons": 2,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.08,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   },
+   {
+    "from": "aleppo",
+    "to": "damascus",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.04,
+    "toll": 5,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   },
+   {
+    "from": "damascus",
+    "to": "cairo",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.04,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-samarkand",
+  "to": "samarkand",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "damascus",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.04,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days, July and August 1326; the toll is an estimate"
+     }
+    ]
+   },
+   {
+    "from": "damascus",
+    "to": "aleppo",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.04,
+    "toll": 5,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   },
+   {
+    "from": "aleppo",
+    "to": "tabriz",
+    "by": "caravan",
+    "seasons": 2,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.08,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   },
+   {
+    "from": "tabriz",
+    "to": "samarkand",
+    "by": "caravan",
+    "seasons": 2,
+    "opens": [
+     "spring",
+     "autumn"
+    ],
+    "risk": 0.1,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   },
+   {
+    "from": "samarkand",
+    "to": "tabriz",
+    "by": "caravan",
+    "seasons": 2,
+    "opens": [
+     "spring",
+     "autumn"
+    ],
+    "risk": 0.1,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   },
+   {
+    "from": "tabriz",
+    "to": "aleppo",
+    "by": "caravan",
+    "seasons": 2,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.08,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   },
+   {
+    "from": "aleppo",
+    "to": "damascus",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.04,
+    "toll": 5,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   },
+   {
+    "from": "damascus",
+    "to": "cairo",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.04,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-hormuz-by-land",
+  "to": "hormuz",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "damascus",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.04,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days, July and August 1326; the toll is an estimate"
+     }
+    ]
+   },
+   {
+    "from": "damascus",
+    "to": "aleppo",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.04,
+    "toll": 5,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   },
+   {
+    "from": "aleppo",
+    "to": "tabriz",
+    "by": "caravan",
+    "seasons": 2,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.08,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   },
+   {
+    "from": "tabriz",
+    "to": "hormuz",
+    "by": "caravan",
+    "seasons": 2,
+    "opens": [
+     "autumn",
+     "winter",
+     "spring"
+    ],
+    "risk": 0.1,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; Hormuz was on the island of Jarun, vol. 2, p. 400 nn. 117 to 118"
+     }
+    ]
+   },
+   {
+    "from": "hormuz",
+    "to": "tabriz",
+    "by": "caravan",
+    "seasons": 2,
+    "opens": [
+     "autumn",
+     "winter",
+     "spring"
+    ],
+    "risk": 0.1,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; Hormuz was on the island of Jarun, vol. 2, p. 400 nn. 117 to 118"
+     }
+    ]
+   },
+   {
+    "from": "tabriz",
+    "to": "aleppo",
+    "by": "caravan",
+    "seasons": 2,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn"
+    ],
+    "risk": 0.08,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   },
+   {
+    "from": "aleppo",
+    "to": "damascus",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.04,
+    "toll": 5,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   },
+   {
+    "from": "damascus",
+    "to": "cairo",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "spring",
+     "summer",
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.04,
+    "toll": 6,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; nearest recorded figure is Cairo to Damascus, vol. 1, p. 80 n. 48 and p. 118 n. 182: 21 to 23 days"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-tuat",
+  "to": "tuat",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "tuat",
+    "by": "caravan",
+    "seasons": 2,
+    "opens": [
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.12,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; Takedda to Sijilmasa by way of Tuat took about 12 weeks in 1353, vol. 4"
+     }
+    ]
+   },
+   {
+    "from": "tuat",
+    "to": "cairo",
+    "by": "caravan",
+    "seasons": 2,
+    "opens": [
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.12,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; as the road out, vol. 4"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-walata",
+  "to": "walata",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "tuat",
+    "by": "caravan",
+    "seasons": 2,
+    "opens": [
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.12,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; Takedda to Sijilmasa by way of Tuat took about 12 weeks in 1353, vol. 4"
+     }
+    ]
+   },
+   {
+    "from": "tuat",
+    "to": "walata",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "winter",
+     "spring"
+    ],
+    "risk": 0.14,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; Sijilmasa to Walata took two months, leaving 14 February 1352, vol. 4, p. 950"
+     }
+    ]
+   },
+   {
+    "from": "walata",
+    "to": "tuat",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.14,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; he left Takedda northward on 12 September 1353, vol. 4"
+     }
+    ]
+   },
+   {
+    "from": "tuat",
+    "to": "cairo",
+    "by": "caravan",
+    "seasons": 2,
+    "opens": [
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.12,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; as the road out, vol. 4"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cairo-gao",
+  "to": "gao",
+  "legs": [
+   {
+    "from": "cairo",
+    "to": "tuat",
+    "by": "caravan",
+    "seasons": 2,
+    "opens": [
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.12,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; Takedda to Sijilmasa by way of Tuat took about 12 weeks in 1353, vol. 4"
+     }
+    ]
+   },
+   {
+    "from": "tuat",
+    "to": "walata",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "winter",
+     "spring"
+    ],
+    "risk": 0.14,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; Sijilmasa to Walata took two months, leaving 14 February 1352, vol. 4, p. 950"
+     }
+    ]
+   },
+   {
+    "from": "walata",
+    "to": "gao",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "autumn",
+     "winter",
+     "spring"
+    ],
+    "risk": 0.08,
+    "toll": 8,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; he reached Gao by way of Mali, not from Walata, vol. 4, pp. 969 to 971"
+     }
+    ]
+   },
+   {
+    "from": "gao",
+    "to": "walata",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "autumn",
+     "winter",
+     "spring"
+    ],
+    "risk": 0.08,
+    "toll": 8,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; as the road out, vol. 4, pp. 969 to 971"
+     }
+    ]
+   },
+   {
+    "from": "walata",
+    "to": "tuat",
+    "by": "caravan",
+    "seasons": 1,
+    "opens": [
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.14,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; he left Takedda northward on 12 September 1353, vol. 4"
+     }
+    ]
+   },
+   {
+    "from": "tuat",
+    "to": "cairo",
+    "by": "caravan",
+    "seasons": 2,
+    "opens": [
+     "autumn",
+     "winter"
+    ],
+    "risk": 0.12,
+    "toll": 10,
+    "sources": [
+     {
+      "src": "ibn-battuta-1958",
+      "at": "estimate; as the road out, vol. 4"
+     }
+    ]
+   }
+  ]
+ }
+]
