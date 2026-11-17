@@ -111,6 +111,7 @@ function wayOfFlight(building, flight) {
 function directionForWay(building, flight, way) {
   if (way === 'both') return 'both';
   const [a, b] = [levelOf(building, flight.a.floorId), levelOf(building, flight.b.floorId)];
+  if (a.level === b.level) return flight.direction === 'ab' || flight.direction === 'ba' ? flight.direction : 'both';
   const lowToHigh = a.level < b.level ? 'ab' : 'ba';
   const highToLow = lowToHigh === 'ab' ? 'ba' : 'ab';
   return way === 'up' ? lowToHigh : highToLow;
@@ -150,7 +151,7 @@ function needLetter(building, value, own) {
       refuse('Elevator ' + (connection.car || connection.label) + ' already uses that letter. Each has its own letter or name; type a different one.', 'duplicate-label');
     }
     if (hasWell(connection) && nameKey(connection.well) === nameKey(letter)) refuse('Stairwell ' + connection.well.trim() + ' already uses that letter. Each has its own letter or name; type a different one.', 'duplicate-label');
-    if (!hasWell(connection) && typeof connection.label === 'string' && nameKey(connection.label) === nameKey(letter)) {
+    if (connection.kind !== ELEVATOR_KIND && typeof connection.label === 'string' && nameKey(connection.label) === nameKey(letter)) {
       refuse('There is already a stairs connection ' + connection.label + '. Each has its own letter or name; type a different one.', 'duplicate-label');
     }
   }
@@ -314,6 +315,11 @@ export const stairwellThrough = action(
       if (hasWell(have)) refuse('Stairs ' + stairsLetter(have) + ' between ' + floorName(building, ends[i].floorId) + ' and ' + floorName(building, ends[i + 1].floorId) + ' is already part of a stairwell. Split Stairwell ' + have.well.trim() + ' first, or leave one of those floors out.', 'already-well');
       kept.set(i, have);
     }
+    // a chosen cell that is already a stop of another well would show two letters
+    for (const stop of stops) {
+      const holder = building.connections.find((connection) => hasWell(connection) && [connection.a, connection.b].some((end) => end.floorId === stop.floor.id && end.cell === stop.cell));
+      if (holder) refuse(stop.floor.name + ', ' + cellWords(stop.floor, stop.cell) + ' is already a stop of Stairwell ' + holder.well.trim() + '.', 'already-well');
+    }
     const pool = lettersInUse(building);
     const letter = nextConnectionLabel(pool);
     // a new flight's own label is the first free one after the well's letter, so
@@ -410,6 +416,7 @@ export const removeStairwellStop = action(
     if (!floor) refuse('That floor is no longer in the building.', 'missing');
     const stop = well.stops.find((candidate) => candidate.floorId === floor.id);
     if (!stop) refuse('Stairwell ' + well.letter + ' does not stop on ' + floor.name + '.', 'missing');
+    if (well.parts > 1) refuse('Stairwell ' + well.letter + ' is in ' + well.parts + ' parts that share no stairs. Join the parts first, then remove a stop.', 'well-parts');
     if (well.stops.length <= 2) refuse('Stairwell ' + well.letter + ' has only two stops, so there is no stop to take out. To remove it, disconnect the stairs (Remove connection).', 'two-stops');
     const flights = flightsOfWell(building, well);
     const touching = flights.filter((flight) => sameEnd(flight.a, stop) || sameEnd(flight.b, stop));
@@ -421,9 +428,13 @@ export const removeStairwellStop = action(
     if (below.length > 0 && above.length > 0) {
       const low = below[below.length - 1];
       const high = above[0];
-      const already = connections.some((connection) => isStairs(connection) && ((sameEnd(connection.a, low) && sameEnd(connection.b, high)) || (sameEnd(connection.a, high) && sameEnd(connection.b, low))));
-      if (!already) {
-        const way = sharedWay(building, touching);
+      const already = connections.find((connection) => isStairs(connection) && ((sameEnd(connection.a, low) && sameEnd(connection.b, high)) || (sameEnd(connection.a, high) && sameEnd(connection.b, low))));
+      const way = sharedWay(building, touching);
+      if (already && !hasWell(already)) {
+        // a plain flight already joins the stop below and the stop above: it takes the well
+        connections = connections.map((connection) => (connection.id === already.id ? { ...already, well: well.letter, direction: directionForWay(building, already, way) } : connection));
+        text = floor.name + ' is out of Stairwell ' + well.letter + ': stairs ' + stairsLetter(already) + ' already joined ' + floorName(building, low.floorId) + ' and ' + floorName(building, high.floorId) + ', so it joins the stairwell, and the stairs on ' + floor.name + ' stay, not connected.';
+      } else if (!already) {
         const joinedFlight = { id: freshId(building, ctx), label: nextConnectionLabel(lettersInUse(building)), well: well.letter, a: { floorId: low.floorId, cell: low.cell }, b: { floorId: high.floorId, cell: high.cell }, direction: 'both' };
         joinedFlight.direction = directionForWay(building, joinedFlight, way);
         connections = connections.concat([joinedFlight]);
