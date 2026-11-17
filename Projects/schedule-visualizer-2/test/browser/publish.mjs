@@ -901,10 +901,18 @@ test('the frame is fed again for the ten settings a file carries and for no othe
     const lists = await page.evaluate(async () => {
       const { PUBLISHED_SETTINGS } = await import(new URL('ui/staff/preview.js', location.href).href);
       const { publishedModel } = await import(new URL('engine/publish-data.js', location.href).href);
-      return { compared: PUBLISHED_SETTINGS || null, published: Object.keys(publishedModel(globalThis.sv2.store.project, { clock: () => new Date() }).settings) };
+      const project = globalThis.sv2.store.project;
+      // the two W7 settings are written only when the project has them: the sample has neither
+      const carrying = { ...project, settings: { ...project.settings, periodCustom: { word: 'Class', plural: 'Classes', count: 'number' }, periodNames: ['Advisory'] } };
+      return {
+        compared: PUBLISHED_SETTINGS || null,
+        published: Object.keys(publishedModel(carrying, { clock: () => new Date() }).settings),
+        plain: Object.keys(publishedModel(project, { clock: () => new Date() }).settings),
+      };
     });
     assert.deepEqual(lists.compared, lists.published);
-    assert.equal(lists.published.length, 10);
+    assert.equal(lists.published.length, 12);
+    assert.equal(lists.plain.length, 10);
 
     // settings only the planner uses: the theme, the paper, a default head count, a check's limit
     const before = await sent(page);

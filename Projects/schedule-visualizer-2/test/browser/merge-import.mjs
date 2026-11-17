@@ -300,8 +300,8 @@ test('the settings: the taken and not-taken lists, the periods that stay, one un
   await page.click('dialog#merge-import[open] input[data-part="settings"]');
   await press(page, 'Next');
   await stepIs(page, '2');
-  assert.deepEqual(await summary(page), ['Periods: 8 → 9', 'Period word: Period → Mod', 'Default passing time: 4 minutes → 5 minutes', 'Time format: 12-hour → 24-hour']);
-  assert.deepEqual(await lines(page, 'taken'), ['Taken from the file: School name (only while this project\'s is blank), Periods (raised if the file has more, never lowered), Period word, Default passing time, Default head count, Colour scale, Checks and Time format.']);
+  assert.deepEqual(await summary(page), ['Periods: 8 → 9', 'The period word and names: Period → Mod', 'Default passing time: 4 minutes → 5 minutes', 'Time format: 12-hour → 24-hour']);
+  assert.deepEqual(await lines(page, 'taken'), ['Taken from the file: School name (only while this project\'s is blank), Periods (raised if the file has more, never lowered), The period word and names, Default passing time, Default head count, Colour scale, Checks and Time format.']);
   assert.deepEqual(await lines(page, 'not-taken'), ['Not taken: the theme and paper (this device\'s), and the cell size, walking and stair times and elevator times (they belong to the building).']);
   assert.match((await lines(page, 'snapshot'))[0], /“Before bringing in the settings”/);
   assert.equal(await signature(page), before);

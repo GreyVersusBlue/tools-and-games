@@ -55,7 +55,7 @@ export const PREVIEW_NOT_OPEN = 'The preview has not opened. Try again; publishi
 
 // The settings a published file carries: the keys of publishedModel's
 // `settings`, held equal to it by a case in test/browser/publish.mjs.
-export const PUBLISHED_SETTINGS = ['schoolName', 'periods', 'periodWord', 'defaultPassingSeconds', 'secondsPerCell', 'secondsPerStair', 'timeFormat', 'elevatorWaitSeconds', 'elevatorSecondsPerFloor', 'elevatorPeoplePerTrip'];
+export const PUBLISHED_SETTINGS = ['schoolName', 'periods', 'periodWord', 'defaultPassingSeconds', 'secondsPerCell', 'secondsPerStair', 'timeFormat', 'elevatorWaitSeconds', 'elevatorSecondsPerFloor', 'elevatorPeoplePerTrip', 'periodCustom', 'periodNames'];
 
 // The parts of a project a published file is made from. The store shares
 // every branch a change did not touch, so "the same parts" is "nothing a

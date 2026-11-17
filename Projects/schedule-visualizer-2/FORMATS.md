@@ -35,7 +35,7 @@ every rule on this page and `engine/repair.js` enforces them on every load.
   first is a letter that says what the thing is: `p` project, `f` floor, `r`
   room, `o` other space, `k` corridor name, `x` exit, `c` connection, `z`
   zone, `s` subject, `t` teacher, `g` group, `d` day type, `i` image, `n`
-  snapshot, `e` scenario. An id is unique across the whole project, never changes and is
+  snapshot, `e` scenario, `h` room feature. An id is unique across the whole project, never changes and is
   never reused. Renaming something never changes its id.
 - **Names are data.** Any name a user can type may hold any character and is
   stored exactly as typed, surrounding spaces included. Nothing here trims,
@@ -84,6 +84,8 @@ every rule on this page and `engine/repair.js` enforces them on every load.
 | `schoolName` | text | `""` | Empty shows the tool's own name. |
 | `periods` | integer | `8` | 1 to 16. Every day and every bell schedule has this many entries. |
 | `periodWord` | text | `"Period"` | `"Period"`, `"Mod"`, `"Block"` or `"Hour"`. Names are Period 1, Mod 1, Block A, 1st Hour. |
+| `periodCustom` | object or `null`, optional | absent reads as `null` | The school's own word for a period, which wins over `periodWord` (that keeps its value, so a copy of the tool from before it still shows it): `{ "word", "plural", "count" }`. `word` is 1 to 16 characters, trimmed, and is shown as typed in every form ("Lesson", never lower-cased). `plural` is 1 to 16 characters, optional (absent reads as the word and an "s"). `count` is `"number"` (Lesson 1), `"letter"` (Lesson A) or `"ordinal"` (1st Lesson). Written to the schedule file only when set (an optional extra of its settings). Published when set. Not in `defaultSettings()`: a new project has none. Validate refuses an object of another shape or a word, plural or count out of range; on load repair trims and cuts the words, makes a missing or unknown `count` `"number"`, and removes one it cannot read, each with a note. |
+| `periodNames` | text[], optional | absent reads as `[]` | The periods' own names: index is the period (from 0), `""` or a missing entry is no name, as typed. At most 16 entries, each at most 24 characters. A name wins over the word and number wherever a period is named. Validate refuses a list that is not text, more than 16 entries or an entry longer than 24; it does not refuse more entries than `periods` (an older copy of the tool may have shortened the day). On load repair cuts the list to `periods` entries and each name to 24 characters, clears an entry that is not text and removes a list it cannot read, each with a note. Written to the schedule file only when set. Published when it holds at least one entry. |
 | `defaultPassingSeconds` | integer | `240` | 0 to 3600. Used where bell times are missing. |
 | `defaultHeadCount` | integer | `25` | 1 to 999. Used for a group with no head count. |
 | `secondsPerCell` | integer | `3` | 1 to 10. Walking time for one corridor cell. |
@@ -109,6 +111,7 @@ every rule on this page and `engine/repair.js` enforces them on every load.
 | `floors` | Floor[] | At least one, in display order. |
 | `connections` | Connection[] | Stairs. |
 | `zones` | Zone[] | Areas left out of the congestion colour scale. |
+| `features` | Feature[], optional | Absent is none. The school's list of room features ("Lab", "Sink"), in display order. See "Room features". |
 
 **Floor**
 
@@ -146,6 +149,7 @@ stairs cell under a space is cleared.
 | `capacity` | integer or `null` | `null` | 1 to 999. |
 | `shared` | boolean | `false` | True for a gym, cafeteria or library: several groups at once is not a double-booking. |
 | `doors` | Door[] | `[]` | With none, the room is entered from any side that touches a corridor. |
+| `featureIds` | id[], optional | `[]` | The ids (`h…`) of the room's features, each once. Absent is none. See "Room features". |
 
 **Door**: `{ cell, side, stepFree? }`. `cell` is one of the room's own cells. `side` is
 `"n"`, `"e"`, `"s"` or `"w"`. The cell across that side is a corridor or
@@ -183,6 +187,43 @@ are text and may be empty. `stepFree` is optional; absent means `true`, and
 | `kind` | `"elevator"`, optional | Absent is stairs. See "Elevators and step-free marks". |
 | `staffOnly` | boolean, optional | Only on an elevator connection. Absent is `false`: anyone may use it. |
 | `car` | text, optional | Only on an elevator connection: the elevator's letter, the same on every connection of one elevator. Absent reads as the connection's own `label`. |
+| `well` | text, optional | A stairs connection only (never an elevator, which has `car`): the stairwell's letter, 1 to 8 characters, shown at every stop instead of the connection's own `label`. Absent means the flight is not part of a stairwell. See "Stairwells". |
+
+**Room features** (every field is optional: a project without them reads
+exactly as before, and a copy of the tool from before them keeps them through
+its own repair, which copies what it does not know). `building.features` is a
+list of at most 40 `{ id, name }`: `id` is `h…` (id kind `h`; `e` is a
+scenario) and unique in the project, `name` is 1 to 30 characters, as typed.
+Two features never share a name, compared without regard to capitals or
+surrounding spaces: that is a rule of the actions (which refuse), not of
+validate, and on load repair makes a repeated name unique ("Lab (2)"). A room's
+`featureIds` lists its features, each once, in the order of `building.features`.
+Validate checks the form only: a list of strings, each once; an id the list does
+not hold is not refused, since a copy of the tool from before features may
+have deleted the feature. On load repair drops entries that are not objects or
+have no name, gives a feature with a missing, malformed or repeated id a new
+one (a room that named it by the old id follows), cuts a name to 30 characters,
+stops the list at 40, and filters a room's `featureIds` to the ids the list holds, each once, in
+the list's order; each with a note. The features travel in the project file
+and the building file (they are part of the building), and a published file
+carries only the features a published room has.
+
+**Stairwells** (as above, optional). A stairwell is not stored: it is worked
+out by `stairwells(building)` in `engine/schema.js` from the stairs
+connections that share a `well` letter (compared without regard to capitals
+or surrounding spaces), as an elevator is from its cells. A flight is still one
+connection costing `secondsPerStair` for each level it changes, so routing is
+untouched. A well's flights join into one chain when they share stops;
+`parts` is more than 1 when they do not (a copy of the tool from before
+stairwells may have pulled a middle flight out). Validate checks the form only:
+a non-blank text of at most 8 characters, and nothing across connections. On load
+repair, each with a note: removes `well` from an elevator connection, removes
+one that is not text and cuts one longer than 8 characters; gives a well that
+has the same letter as a stairs connection that is not part of a stairwell a
+fresh letter (the plain flight keeps its own); and, for a well in more than one
+part, keeps the letter on the first part and gives each other part a fresh
+letter. A fresh letter is the first of A to Z, AA, AB… that no connection's
+label or well already uses.
 
 **Refuge** (an area of refuge): `{ id, cell, name }`. `id` is `a…`. `cell` is
 a corridor or stairs cell that is not an elevator stop, one refuge per cell.
@@ -273,6 +314,9 @@ whole cells inside its floor, `w` and `h` at least 1.
 | `subjectId` | id or `null` | `null` | |
 | `roomIds` | id[] | `[]` | The rooms the teacher is based in, each once. |
 | `notes` | text | `""` | |
+| `away` | AwayEntry[], optional | `[]` | When the teacher is not in school (part-time days). At most 12 entries. `notes` stays the free text it was. |
+
+**AwayEntry**: `{ dayTypeIds, weekdays, periods }`, all three lists. `dayTypeIds` empty means every day type, else these (and the day types that are the same as them); `weekdays` empty means every day, else 0 (Monday) to 6 (Sunday), each once, and the entry then holds only on a date that falls on one of them; `periods` empty means the whole day, else period numbers from 0, each once, in order. Validate checks the form only, and a day type id that is not in the project is not refused (a copy of the tool from before may have deleted the day type). On load repair, each with a note: drops an entry that is not an object or whose three fields are not lists (never widening it to every day or the whole day); removes day type ids that are not in the project and drops an entry that named some and has none left; removes periods past the end of the school day and drops an entry whose periods were all past the end; removes weekdays that are not 0 to 6, repeats and orders them; keeps at most 12 entries; and removes an `away` that is not a list.
 
 A teacher's `roomIds` and a room's `teacherIds` say the same thing: a room is
 in a teacher's list exactly when the teacher is in the room's list. The
@@ -510,6 +554,7 @@ removed on load: the scenario lab reconciles it and says what it dropped.
 | 1 | `format` and `version` are in the object. Each scenario change has its own `dayTypeId`. `Floor.level` exists. |
 | 1, unchanged | Added without a version step, every one optional: `DayType.sameAs` and `short`, `bellSchedules`, `calendar`, `marks`, `duties`, `release`, `PublishSettings.staleAtCalendarEnd`, `PublishSettings.lastPublishedHadCalendar` and `views.calendar`. A file without them reads exactly as before; a copy of the tool from before them keeps them through its own repair, which copies what it does not know. |
 | 1, unchanged | Added without a version step, every one optional (ARCHITECTURE 21.2, 21.5): `label`, `scenarios` and `Scenario.id` (id kind `e`). A file without them reads exactly as before; a copy of the tool from before them keeps them through its own repair, which copies what it does not know, and shows only the open scenario. |
+| 1, unchanged | Added without a version step, every one optional (ARCHITECTURE 22.2, 22.17): `Building.features` and `Room.featureIds` (id kind `h`), `settings.periodCustom` and `settings.periodNames`, `Teacher.away`, and `Connection.well`. A file without them reads exactly as before; a copy of the tool from before them keeps them through its own repair, which copies what it does not know. |
 | 1, unchanged | Added without a version step, every one optional (ARCHITECTURE 19.2): `Floor.lifts`, `notStepFree` and `refuges` (id kind `a`), `Door.stepFree`, `Exit.stepFree`, `Connection.kind`, `staffOnly` and `car`, `Group.stepFree`, and the settings `elevatorWaitSeconds`, `elevatorSecondsPerFloor` and `elevatorPeoplePerTrip`. A file without them reads exactly as before. |
 
 ### What is never in a project
@@ -570,6 +615,17 @@ same file, byte for byte. `test/fixtures/formats/project-v1.json` is a file
 written at version 1, kept to prove that later versions of the tool still
 read it and write it back unchanged.
 
+**Merge import** (the building alone, the schedule alone, or the settings
+alone, from a project file): the settings it takes are `schoolName` (only while
+this project's is blank), `periods` (raised, never lowered), `periodWord`,
+`defaultPassingSeconds`, `defaultHeadCount`, `colourScale`, `checks` and
+`timeFormat`. The period word, `periodCustom` and `periodNames` are one setting,
+"The period word and names": they are taken together, so a file that has a
+`periodWord` and no custom word or names takes those away from this project, and
+a file that holds only some of the three leaves the others as they are. A
+`periodCustom` or `periodNames` that is not of the form above refuses the whole
+import, naming it.
+
 ## The recovery export
 
 Format name `sv2-project`, version **1**. Written by `storage/session.js`
@@ -611,11 +667,13 @@ Format name `sv2-building`, version **1**. `writeBuildingFile`,
 
 | Field | Meaning |
 |---|---|
-| `building` | The Building of the project object, whole: floors, connections, zones, and with them every elevator and step-free field (`lifts`, `notStepFree`, `refuges`, the door and exit flags, a connection's `kind`, `staffOnly` and `car`). Traced images carry `data` and `type` as in the project file. |
+| `building` | The Building of the project object, whole: floors, connections, zones, `features` when it has any, and with them every elevator and step-free field (`lifts`, `notStepFree`, `refuges`, the door and exit flags, a connection's `kind`, `staffOnly` and `car`), a room's `featureIds` and a connection's `well`. Traced images carry `data` and `type` as in the project file. |
 | `subjects` | The subjects the building's rooms use, as in the project object, in the school's order. May be left out. |
 
 A room in the file keeps its `teacherIds` and `subjectId` as they were in the
-project it came from.
+project it came from. The feature list comes with the building: importing a
+building replaces the project's features with the file's (or with none, when the
+file has none), and a room keeps the `featureIds` it had in the file.
 
 The file carries no settings. The Cell scale (`settings.cellScale`) is a
 project setting, so a building imported into another project takes that
@@ -656,7 +714,7 @@ Format name `sv2-schedule`, version **1**. `writeScheduleFile`,
 {
   "format": "sv2-schedule",
   "version": 1,
-  "settings": { "periods", "periodWord", "defaultPassingSeconds", "defaultHeadCount" },
+  "settings": { "periods", "periodWord", "defaultPassingSeconds", "defaultHeadCount", "periodCustom"?, "periodNames"? },
   "rooms": [{ "id", "number" }],
   "subjects": Subject[],
   "teachers": Teacher[],
@@ -672,9 +730,9 @@ Format name `sv2-schedule`, version **1**. `writeScheduleFile`,
 
 | Field | Meaning |
 |---|---|
-| `settings` | Those four settings of the project object, all present. |
+| `settings` | Those four settings of the project object, all present, and two optional extras: `periodCustom` and `periodNames` (see Settings), each written only when the project has it and read when the file has it. A file without them is still a schedule file. |
 | `rooms` | The room index: one entry for each room a slot or a teacher names, with the number it had when the file was written. It is how the file is read against a building whose rooms have other ids. |
-| `subjects`, `teachers`, `groups`, `dayTypes` | As in the project object, unchanged, a day type's `sameAs` and `short` with it. A slot's `room` and a teacher's `roomIds` are ids found in `rooms`. |
+| `subjects`, `teachers`, `groups`, `dayTypes` | As in the project object, unchanged, a day type's `sameAs` and `short` with it, and a teacher's `away` when it has any. A slot's `room` and a teacher's `roomIds` are ids found in `rooms`. |
 | `bellSchedules` | Optional. As in the project object. Written only when the project has a bell schedule; absent is none. |
 | `calendar` | Optional. As in the project object, `changedAt` with it. Written only when the project has a calendar; absent is none. |
 | `marks`, `duties` | Optional. As in the project object (Mark, Duty). Written only when the project has any; absent is none. A duty's `roomId` is an id found in `rooms`, which lists it. |
@@ -762,8 +820,17 @@ without any).
 - **Limits.** A file that would bring the project to more than 12 day types,
   more than 12 bell schedules or more than 50 staggered dismissals is refused
   whole.
+- **When a teacher is away.** An added teacher carries the file's `away`; a
+  matched teacher takes the file's `away` when the file's teacher has the field
+  (a file that says `[]` clears it), and keeps its own when the file has none.
+  Every day type an entry names is re-pointed through the day type matches above;
+  an entry that named day types and has none left is dropped, never widened to
+  every day type, and counted as a dropped reference.
 - **Settings.** The period word and the two defaults are taken from the file
-  only when the user asks (`takeSettings`).
+  only when the user asks (`takeSettings`). The period word, the custom word
+  and the periods' own names are one setting, "The period word and names":
+  taken together, so a file that has the period word and no custom word or
+  names takes those away here.
 
 Importing a project's own schedule file changes nothing and makes no undo
 entry.
@@ -1150,10 +1217,10 @@ run on it unchanged, and `validate` and `repair` accept it.
 | `id` | id | The project's id. The staff browser keeps a reader's settings under it. |
 | `publishedAt` | date | When it was published, in UTC. Shown in the reader's own time zone. |
 | `staleAfter` | date | With a calendar and `publish.staleAtCalendarEnd` not `false`, the day after the calendar's `end` at 12:00 UTC (the school's date; noon UTC falls on it from UTC−11 to UTC+11). Otherwise, or when that is not after `publishedAt` (a calendar already over), `publishedAt` plus the project's `publish.stalenessDays`. After it the staff browser shows a notice and goes on working. `staleness(project, date)` in the same module says which applied. |
-| `settings` | object | `schoolName`, `periods`, `periodWord`, `defaultPassingSeconds`, `secondsPerCell`, `secondsPerStair`, `timeFormat`, as in the project. |
-| `building` | object | `floors` and `connections`. A floor has `id`, `name`, `level`, `width`, `height`, `cells`, `spaces`, `corridors`, `exits`. A room and an other space have every field they have in the project. |
+| `settings` | object | `schoolName`, `periods`, `periodWord`, `defaultPassingSeconds`, `secondsPerCell`, `secondsPerStair`, `timeFormat`, as in the project, the three elevator timings, and (only when the project has them) `periodCustom` and `periodNames`, as in the project. `periodNames` is written only when it holds at least one entry. |
+| `building` | object | `floors` and `connections`, and `features` (a list of `{ id, name }`) only when a published room has a feature: just those features, in the project's order. A floor has `id`, `name`, `level`, `width`, `height`, `cells`, `spaces`, `corridors`, `exits`. A room and an other space have every field they have in the project, a room's `featureIds` only when it has some. A stairs connection carries `well` only when it is part of a stairwell, and an elevator never does. |
 | `subjects` | list | As in the project. |
-| `teachers` | list | As in the project: `id`, `name`, `subjectId`, `roomIds`, `notes`. |
+| `teachers` | list | As in the project: `id`, `name`, `subjectId`, `roomIds`, `notes`, and `away` (each entry's `dayTypeIds`, `weekdays` and `periods`) only when the teacher has an entry. |
 | `dayTypes` | list | `id`, `name`, `own`, `sameAs` (`null` when absent in the project), `short` (`""` when absent), `bells`. |
 | `bellSchedules` | list | As in the project: `id`, `name`, `short`, `bells`, `off`. Empty when there are none. |
 | `calendar` | object or `null` | As in the project: `start`, `end`, `weekdays`, `rotation`, `dates`, `changedAt`. `null` when there is none. |
@@ -1161,6 +1228,8 @@ run on it unchanged, and `validate` and `repair` accept it.
 | `duties` | list | As in the project, every field: `id`, `kind`, `label`, `when`, `period`, `start`, `end`, `dayTypeIds`, `weekdays`, `from`, `to`, `roomId`, `place`, `teacherIds`, `subjectIds`, `everyone`. A duty with nobody on it is published with nobody on it. Empty when there are none. |
 | `groups` | list | `id`, `name`, `grade`, `colour`, `days`. |
 | `publish` | object | `views` (one true or false for each view, `calendar` included; one the project has no switch for is true) and `teacherNamesOnMap`. |
+
+Every field that is new since the first published files (`periodCustom`, `periodNames`, `features`, `featureIds`, `well`, `away`) is written only when the project has it, so a school that uses none publishes exactly what it published before.
 
 Never in it: a group's `headCount`, `settings.defaultHeadCount`, a floor's
 `image`, `building.zones`, `scenario`, `accepted`, `onboarding`,
