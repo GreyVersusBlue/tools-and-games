@@ -1062,7 +1062,7 @@ try {
           const sp = id => page.$eval(`.dot[data-stop="${id}"]`, d => [parseFloat(d.style.left), parseFloat(d.style.top)]);
           const [a, b] = [await sp(leg.from), await sp(leg.to)];
           const frac = x.status === 'out' ? 1 - x.left / leg.seasons : 0;
-          ok(Math.abs(ts[0].left - (a[0] + (b[0] - a[0]) * frac)) < 3 && Math.abs(ts[0].top - (a[1] + (b[1] - a[1]) * frac)) < 3, `token ${JSON.stringify(ts[0])} is not at ${frac} of ${leg.from} to ${leg.to}`);
+          ok(Math.abs(ts[0].left - (a[0] + (b[0] - a[0]) * frac)) < 0.15 && Math.abs(ts[0].top - (a[1] + (b[1] - a[1]) * frac)) < 0.15, `token ${JSON.stringify(ts[0])} is not at ${frac} of ${leg.from} to ${leg.to}`);
           if (lastLeft !== null && ts[0].left !== lastLeft) moved++;
           lastLeft = ts[0].left;
         }
@@ -1106,6 +1106,28 @@ try {
         const x = await page.evaluate(() => window.__merchant.state.expeditions.at(-1));
         eq([x.contract.kind, x.contract.agentShare, x.contract.of, x.purse], ['qirad', 1, 3, 50]);
         ok(x.staked.partners > 0, 'partners put money in');
+      });
+      // Cairo's legs are all one season, so no seeded game ever stands a token part way along one.
+      // Lengthen the live leg in the page and look again: the token sits at the fraction done, and
+      // two expeditions at the same place on a leg are one token with a count.
+      await test('tokens stand at the fraction of their leg done, and two on the same spot stack with a count', async () => {
+        await page.evaluate(() => {
+          const m = window.__merchant, x = m.state.expeditions.at(-1), leg = m.content.routes.find(r => r.id === x.route).legs[x.leg];
+          leg.seasons = 4; x.left = 3; x.status = 'out';
+          m.state.expeditions.push({ ...structuredClone(x), id: 'x-twin', agent: 'ali' });
+        });
+        await goDesk(page); await goMap(page);
+        const ts = await tokens(page);
+        eq(ts.length, 1, 'two expeditions on one spot are one token');
+        eq([ts[0].count, ts[0].ids.split(' ').length], ['2', 2]);
+        const info = await page.evaluate(() => {
+          const x = window.__merchant.state.expeditions.at(-1), leg = window.__merchant.content.routes.find(r => r.id === x.route).legs[x.leg];
+          const at = id => { const d = document.querySelector(`.dot[data-stop="${id}"]`); return [parseFloat(d.style.left), parseFloat(d.style.top)]; };
+          return { a: at(leg.from), b: at(leg.to) };
+        });
+        const want = [info.a[0] + (info.b[0] - info.a[0]) * 0.25, info.a[1] + (info.b[1] - info.a[1]) * 0.25];
+        ok(Math.abs(ts[0].left - want[0]) < 0.15 && Math.abs(ts[0].top - want[1]) < 0.15, `token at ${ts[0].left}, ${ts[0].top}, a quarter along is ${want}`);
+        ok(ts[0].label.startsWith('2 expeditions, home about '), ts[0].label);
       });
     }
     await page.close();
