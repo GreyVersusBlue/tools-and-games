@@ -28,6 +28,7 @@ export const ID_PREFIXES = {
   release: 'l',
   refuge: 'a',
   scenario: 'e', // W6:LINE
+  feature: 'h', // W7: a room feature (22.17; 'e' is a scenario)
 };
 
 const ID_PATTERN = /^[a-z][a-z0-9]{9}$/;
@@ -114,6 +115,7 @@ export function collectIds(project) {
     });
     each(building.connections, push);
     each(building.zones, push);
+    each(building.features, push);
   }
   each(project.subjects, push);
   each(project.teachers, push);
