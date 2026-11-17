@@ -14,7 +14,7 @@ import { freshState } from '../js/engine/state.js';
 import { validateContent, CONDITION_LEAVES } from '../js/engine/content.js';
 import { validateContent as exported } from '../js/engine/index.js';
 import { readingLevel, syllables, fkGrade, sentences, longestSentence, CEILINGS } from '../tools/reading-level.mjs';
-import { choiceVector, dominates, lintContent, loadBanned, OPENING_LETTERS } from '../tools/lint-content.mjs';
+import { choiceVector, dominates, gradientFailures, lintContent, loadBanned, OPENING_LETTERS } from '../tools/lint-content.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FIX = path.join(ROOT, 'test/fixtures');
@@ -86,6 +86,52 @@ for (const name of ['d5-entry-ok', 'term-with-entry']) {
     for (const tool of ['lint-content.mjs', 'reading-level.mjs']) { const r = run(tool, 'testport', name); eq(r.code, 0, `${tool}: ${r.out}`); }
   });
 }
+
+// ---- rule 8: the direction of trade (MER-51b)
+const gradeSrc = [{ src: content.sources[0].id }];
+const gradeVariant = (grad, edit = () => {}) => variant(c => { c.city.gradients = [{ note: 'Wool went up the hill.', sources: gradeSrc, ...grad }]; edit(c); });
+const rule8 = c => lintContent(c, { banned }).filter(f => f.rule === 8);
+test('gradient: testport carries none and passes', () => eq(rule8(content), []));
+test('gradient: wool dearer uphill passes', () => eq(rule8(gradeVariant({ good: 'wool', from: ['harbour', 'hilltown'] })), []));
+test('gradient: wool dearer downhill fails, naming both stops and both prices', () => {
+  const f = rule8(gradeVariant({ good: 'wool', from: ['hilltown', 'harbour'] }));
+  eq(f.length, 1, JSON.stringify(f));
+  ok(f[0].message.includes('wool at harbour costs 20') && f[0].message.includes('30 at hilltown'), f[0].message);
+});
+test('gradient: equal prices pass (a tie is allowed)', () => eq(rule8(gradeVariant({ good: 'wool', from: ['harbour', 'hilltown'] }, c => { c.stops.find(s => s.id === 'hilltown').sells.wool.base = 20; })), []));
+test('gradient: one cent under fails (the edge is exact)', () => eq(rule8(gradeVariant({ good: 'wool', from: ['harbour', 'hilltown'] }, c => { c.stops.find(s => s.id === 'hilltown').sells.wool.base = 19; })).length, 1));
+test('gradient: a tier ties inside itself and is held to the stops before it', () => {
+  const salt = grad => rule8(gradeVariant({ good: 'salt', ...grad }, c => { c.stops.find(s => s.id === 'saltmarsh').sells.salt.base = 12; }));
+  eq(salt({ from: [['harbour', 'saltmarsh'], 'hilltown'] }), [], 'harbour 10 and saltmarsh 12 tie in a tier; hilltown sells no salt');
+  eq(salt({ from: ['harbour', ['saltmarsh', 'hilltown']] }), [], 'saltmarsh 12 above harbour 10');
+  eq(salt({ from: ['saltmarsh', ['harbour', 'hilltown']] }).length, 1, 'harbour 10 under saltmarsh 12');
+});
+test('gradient: a stop that does not sell the good is skipped, not failed', () => eq(rule8(gradeVariant({ good: 'salt', from: ['saltmarsh', 'hilltown', 'harbour'] }, c => { c.stops.find(s => s.id === 'harbour').sells.salt.base = 99; })), []));
+test('gradient: an act whose base breaks the order fails though the plain base holds', () => {
+  const f = rule8(gradeVariant({ good: 'wool', from: ['harbour', 'hilltown'] }, c => { c.stops.find(s => s.id === 'hilltown').sells.wool.baseByAct = [30, 15, 30]; }));
+  eq(f.length, 1, JSON.stringify(f));
+  ok(f[0].message.includes('act 2'), f[0].message);
+});
+test('gradient: an unknown stop, an unknown good and a single stop are schema problems (rule 1)', () => {
+  for (const grad of [{ good: 'wool', from: ['harbour', 'nowhere'] }, { good: 'gems', from: ['harbour', 'hilltown'] }, { good: 'wool', from: ['harbour'] }]) {
+    ok(problemsOf(gradeVariant(grad)).length > 0, JSON.stringify(grad));
+  }
+});
+test('gradient: a gradient with no note or no source is a schema problem', () => {
+  ok(problemsOf(variant(c => { c.city.gradients = [{ good: 'wool', from: ['harbour', 'hilltown'], sources: gradeSrc }]; })).some(p => p.path.includes('note')));
+  ok(problemsOf(variant(c => { c.city.gradients = [{ good: 'wool', from: ['harbour', 'hilltown'], note: 'x' }]; })).some(p => p.path.includes('sources')));
+});
+test('gradient: gradientFailures alone, on plain stops', () => eq(gradientFailures({ good: 'g', from: ['a', 'b'] }, [{ id: 'a', sells: { g: { base: 5 } } }, { id: 'b', sells: { g: { base: 4 } } }], 'x').length, 1));
+test('gradient: cairo covers the directions the research records', () => {
+  const have = new Set(cairo.city.gradients.map(g => g.good));
+  for (const g of ['pepper', 'porcelain', 'incense', 'silk', 'gold', 'sugar', 'linen', 'glass', 'copper', 'wool', 'salt']) ok(have.has(g), `no gradient for ${g}`);
+  for (const g of cairo.city.gradients) ok(g.note.length > 20 && g.sources.length > 0, `gradient ${g.good} lacks its note or source`);
+});
+test('gradient: cairo keeps the trade the right way round (Venice pepper above Alexandria, Calicut below Hormuz)', () => {
+  const base = (s, g) => cairo.stops.find(x => x.id === s).sells[g].base;
+  ok(base('venice', 'pepper') >= base('alexandria', 'pepper') && base('calicut', 'pepper') <= base('hormuz', 'pepper'));
+  eq(rule8(cairo), []);
+});
 
 // ---- validateContent
 test('validate: testport has no problems', () => eq(problemsOf(content), []));

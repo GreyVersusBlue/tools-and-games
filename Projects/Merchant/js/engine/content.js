@@ -232,6 +232,8 @@ export function validateContent(raw, { art } = {}) {
       score: (v, p) => obj(v, p, { wealthScale: (x, q) => arr(x, q, () => {}), ranks: (x, q) => arr(x, q, () => {}) }),
       stills: (v, p) => dict(v, p, str, (x, q) => { str(x, q); artRef(x, q); }),
       priceNews: bool,
+      // the recorded direction of trade (DECISIONS 2026-11-17 10:25): `from` lists stops cheapest first, an inner list is a tier that ties among itself; the lint checks base prices against it
+      gradients: (v, p) => arr(v, p, (g, q) => obj(g, q, { good: refOf('goods'), from: (x, r) => arr(x, r, (t, u) => (Array.isArray(t) ? arr(t, u, refOf('stops'), 1) : refOf('stops')(t, u)), 2), note: str, sources }, ['good', 'from', 'note', 'sources'])),
       // what the map calls each group of close stops (stops.json's `cluster`), in words a twelve-year-old reads; an id with no name here is shown as the id
       clusters: (v, p) => dict(v, p, idv, str),
       // what a loss takes and who retires at the act jump (ARCHITECTURE 4.7); every key is optional and routes.js has a default for each

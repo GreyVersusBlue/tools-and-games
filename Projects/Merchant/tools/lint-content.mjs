@@ -13,6 +13,8 @@
 //   and no such entry reachable as an unlock
 // 6 ids unique, files parse, no unknown keys
 // 7 no em dash or en dash, no web address, no TODO
+// 8 the direction of trade: each gradient in city.json lists stops cheapest first, and the base price of
+//   its good at a stop is never below that of an earlier stop, in every act (MER-51b)
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -38,6 +40,7 @@ export const RULES = {
   5: 'D5 banned words',
   6: 'ids, files and keys',
   7: 'text rules',
+  8: 'the direction of trade',
 };
 
 /** Load a city the way the tools do. `overlay` is a folder whose files win over the city's. */
@@ -200,7 +203,48 @@ export function lintContent(content, { artIds, banned = [], city = content.cityI
       if (TODO.test(s.text)) fail(7, s.path, 'TODO');
     }
   }
+
+  // rule 8
+  for (const [i, g] of (content.city?.gradients ?? []).entries()) {
+    out.push(...gradientFailures(g, content.stops ?? [], `city.json.gradients[${i}] (${g.good})`));
+  }
   return out;
+}
+
+/**
+ * Rule 8 for one gradient. A tier is a stop id or a list of ids that tie among themselves; a tier's
+ * stops must each cost at least as much as every stop of every earlier tier. A stop that does not
+ * sell the good is skipped (a gradient may name a whole road and the good be sold on part of it).
+ * Checked for the base and for each act's base. Returns [{ rule: 8, path, message }].
+ */
+export function gradientFailures(g, stops, where) {
+  const byId = new Map(stops.map(s => [s.id, s]));
+  const price = (id, act) => {
+    const c = byId.get(id)?.sells?.[g.good];
+    if (!c) return undefined;
+    return act === undefined ? c.base : (c.baseByAct?.[act] ?? c.base);
+  };
+  const tiers = (g.from ?? []).map(t => (Array.isArray(t) ? t : [t]));
+  const out = [];
+  // the base, then each act's base when any listed stop gives one
+  const acts = [undefined, ...[0, 1, 2].filter(a => tiers.flat().some(id => byId.get(id)?.sells?.[g.good]?.baseByAct))];
+  for (const act of acts) {
+    let floor, floorAt;
+    for (const tier of tiers) {
+      let top, topAt;
+      for (const id of tier) {
+        const p = price(id, act);
+        if (p === undefined) continue;
+        if (floor !== undefined && p < floor) {
+          out.push({ rule: 8, path: where, message: `${g.good} at ${id} costs ${p}${act === undefined ? '' : ` in act ${act + 1}`}, under ${floor} at ${floorAt}, which the gradient puts before it` });
+        }
+        if (top === undefined || p > top) { top = p; topAt = id; }
+      }
+      if (top !== undefined && (floor === undefined || top > floor)) { floor = top; floorAt = topAt; }
+    }
+  }
+  const seen = new Set();
+  return out.filter(f => !seen.has(f.message) && seen.add(f.message));
 }
 
 export function report(tool, city, failures, summary) {
